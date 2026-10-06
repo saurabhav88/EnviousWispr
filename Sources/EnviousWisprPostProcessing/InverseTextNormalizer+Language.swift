@@ -61,8 +61,10 @@ extension InverseTextNormalizer {
 /// The language passes each registered base code runs, built ONCE from the generated data. A
 /// language whose data does not build has no passes (it runs the neutral subset only); nothing
 /// throws at dictation time. German runs number style, phone and clock; French, Spanish, Italian
-/// and Portuguese run the signed phone path and the hour-first clock pass. The ordinal pass is not listed: its
-/// month, fixed-phrase and name data are still pending.
+/// and Portuguese run the signed phone path and the hour-first clock pass; Dutch runs the signed
+/// phone path and the minute-first clock pass with its own number grammar; Polish runs the signed
+/// phone path. The ordinal pass is not listed: its month, fixed-phrase and name data are still
+/// pending.
 enum LanguagePassCatalog {
 
   struct Passes: Sendable {
@@ -79,17 +81,20 @@ enum LanguagePassCatalog {
       phone: (try? LanguagePhonePrefixRules.german()).map {
         LanguagePhonePrefixPass(grammar: grammar, rules: $0)
       },
-      clock: (try? LanguageClockIdiomRules.german()).map {
+      clock: (try? LanguageClockIdiomRules.forLanguage("de")).flatMap { $0 }.map {
         LanguageClockIdiomPass(grammar: grammar, rules: $0)
       },
       hourFirstClock: nil)
   }()
 
-  /// Languages whose phone pass runs the signed path only (spoken plus word, written sign) and
-  /// whose clock idioms say the hour first. Each pass is present when its own data builds.
+  /// Languages whose phone pass runs the signed path only (spoken plus word, written sign), with
+  /// an hour-first clock pass (French, Spanish, Italian, Portuguese) or a minute-first clock pass
+  /// over the language's own number grammar (Dutch). Each pass is present when its own data
+  /// builds.
   private static let signedPhoneOnly: [String: Passes] = {
     var table: [String: Passes] = [:]
     let codes = Set(PhoneTriggerData.triggerTokens.keys).union(HourFirstClockData.languages.keys)
+      .union(LanguageClockIdiomRules.languages).subtracting(["de"])
     for code in codes {
       let phone = (try? LanguagePhonePrefixRules.signedOnly(language: code)).map {
         LanguagePhonePrefixPass(grammar: nil, rules: $0)
@@ -97,9 +102,15 @@ enum LanguagePassCatalog {
       let hourFirstClock = LanguageHourFirstClockRules(language: code).map {
         LanguageHourFirstClockPass(rules: $0)
       }
-      guard phone != nil || hourFirstClock != nil else { continue }
+      var clock: LanguageClockIdiomPass?
+      if let rules = (try? LanguageClockIdiomRules.forLanguage(code)).flatMap({ $0 }),
+        let grammar = (try? LanguageNumberGrammar.forLanguage(code)).flatMap({ $0 })
+      {
+        clock = LanguageClockIdiomPass(grammar: grammar, rules: rules)
+      }
+      guard phone != nil || hourFirstClock != nil || clock != nil else { continue }
       table[code] = Passes(
-        numberStyle: nil, phone: phone, clock: nil, hourFirstClock: hourFirstClock)
+        numberStyle: nil, phone: phone, clock: clock, hourFirstClock: hourFirstClock)
     }
     return table
   }()

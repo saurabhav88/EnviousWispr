@@ -26,7 +26,9 @@ REAL_PHONE_OUTPUT = (HERE.parent.parent.parent
 REAL_ORDINAL_OUTPUT = (HERE.parent.parent.parent
                        / "Sources/EnviousWisprPostProcessing/Generated/GermanOrdinalData.swift")
 REAL_CLOCK_OUTPUT = (HERE.parent.parent.parent
-                     / "Sources/EnviousWisprPostProcessing/Generated/GermanClockIdiomData.swift")
+                     / "Sources/EnviousWisprPostProcessing/Generated/ClockIdiomData.swift")
+REAL_DUTCH_OUTPUT = (HERE.parent.parent.parent
+                     / "Sources/EnviousWisprPostProcessing/Generated/DutchNumberData.swift")
 
 COMMIT = "0123456789abcdef0123456789abcdef01234567"
 
@@ -535,7 +537,7 @@ class RealOrdinalRefusalTests(unittest.TestCase):
         result = run("--check")
         self.assertEqual(result.returncode, 0, result.stderr)
         # Number, phone, ordinal, clock, number-style and phone-trigger outputs.
-        self.assertEqual(result.stdout.count("check ok"), 7)
+        self.assertEqual(result.stdout.count("check ok"), 8)
 
     def test_the_manifest_declares_the_six_required_entries(self):
         manifest = json.loads(REAL_MANIFEST.read_text(encoding="utf-8"))
@@ -734,14 +736,16 @@ class ClockFixture(Fixture):
                             "schemaFile": "review-data.schema.json", "requiredEntries": CLOCK_IDS,
                             "templates": CLOCK_TEMPLATES, "anchors": ["um", "Gegen", "für"],
                             "trailingMarker": "Uhr", "outputSeparator": ":",
-                            "syntaxProvenance": "fixture provenance"}
+                            "syntaxProvenance": "fixture provenance",
+                            "requiresReviewedRefusals": True, "capitalizedNounGate": True}
         self.declaration.update(declaration or {})
-        self.clock_out = self.dir / "out" / "GermanClockIdiomData.swift"
+        self.clock_out = self.dir / "out" / "ClockIdiomData.swift"
+        self.languages = {}
         self.phone_out = self.dir / "out" / "GermanPhonePrefixData.swift"
         self.ordinal_out = self.dir / "out" / "GermanOrdinalData.swift"
 
     def generate(self, *extra):
-        manifest = self.manifest(clockIdiom=self.declaration)
+        manifest = self.manifest(clockIdiom={"de": self.declaration, **self.languages})
         return run("--manifest", str(manifest), "--out", str(self.out), "--phone-out",
                    str(self.phone_out), "--ordinal-out", str(self.ordinal_out), "--clock-out",
                    str(self.clock_out), *extra)
@@ -750,8 +754,13 @@ class ClockFixture(Fixture):
 class RealClockTests(unittest.TestCase):
     def test_real_output_carries_the_three_reviewed_literal_entries_and_the_syntax_data(self):
         text = REAL_CLOCK_OUTPUT.read_text(encoding="utf-8")
-        refusals = text.split("static let refusals")[1]
-        self.assertEqual(refusals.count("    Refusal(id:"), 3)
+        german, dutch = text.split('    "nl": Language(')
+        refusals = german.split("      refusals: [")[1]
+        self.assertEqual(refusals.count("        Refusal(id:"), 3)
+        self.assertNotIn("Refusal(id:", dutch)
+        self.assertIn("requiresReviewedRefusals: false", dutch)
+        self.assertIn('["het", "is", "nu"],', dutch)
+        self.assertIn('outputSeparator: ".",', dutch)
         for expected in (
             'id: "ref-clock-002", version: 3,', 'id: "ref-clock-003", version: 2,',
             'id: "ref-clock-004", version: 2,',
@@ -763,8 +772,9 @@ class RealClockTests(unittest.TestCase):
             self.assertIn(expected, refusals)
         for pending in ("ref-clock-001", "ref-clock-005", "ref-clock-007"):
             self.assertNotIn(pending, text)
-        self.assertIn('static let trailingMarker = "uhr"', text)
-        self.assertIn('static let outputSeparator = ":"', text)
+        self.assertIn('trailingMarker: "uhr",', german)
+        self.assertIn('outputSeparator: ":",', german)
+        self.assertIn("requiresReviewedRefusals: true", german)
         self.assertIn('Template(id: "half", tokens: ["halb"], hourOffset: -1, minute: 30, '
                       'inputHourLow: 2, inputHourHigh: 12, minuteSign: 0, minuteMax: 0)', text)
         self.assertIn('Template(id: "quarterAfter", tokens: ["viertel", "nach"], hourOffset: 0, '
@@ -773,12 +783,17 @@ class RealClockTests(unittest.TestCase):
         self.assertIn('Template(id: "minutesBefore", tokens: ["vor"], hourOffset: -1, minute: 60, '
                       'inputHourLow: 2, inputHourHigh: 12, minuteSign: -1, minuteMax: 29)', text)
         for anchor in ("um", "gegen", "bis", "ab", "für"):
-            self.assertIn(f'    "{anchor}",', text)
+            self.assertIn(f'        ["{anchor}"],', german)
 
     def test_the_manifest_declares_the_three_required_entries_and_the_templates(self):
         manifest = json.loads(REAL_MANIFEST.read_text(encoding="utf-8"))
-        decl = manifest["clockIdiom"]
+        decl = manifest["clockIdiom"]["de"]
         self.assertEqual(decl["requiredEntries"], CLOCK_IDS)
+        self.assertIs(decl["requiresReviewedRefusals"], True)
+        dutch = manifest["clockIdiom"]["nl"]
+        self.assertIs(dutch["requiresReviewedRefusals"], False)
+        self.assertEqual(dutch["requiredEntries"], [])
+        self.assertNotIn("refusalsFile", dutch)
         self.assertEqual([t["id"] for t in decl["templates"]],
                          ["half", "quarterAfter", "quarterTo", "minutesAfter", "minutesBefore",
                           "minutesAfterHalf", "minutesBeforeHalf"])
@@ -795,7 +810,7 @@ class RealClockTests(unittest.TestCase):
                      {"sign": 1, "max": 60}, {"sign": -1, "max": 29, "extra": 1}):
             with self.subTest(slot=slot):
                 bad = json.loads(json.dumps(manifest))
-                bad["clockIdiom"]["templates"][3]["minuteSlot"] = slot
+                bad["clockIdiom"]["de"]["templates"][3]["minuteSlot"] = slot
                 with self.assertRaises(gen.GenerationError):
                     gen.build_clock(bad, base)
 
@@ -813,9 +828,9 @@ class ClockFixtureTests(unittest.TestCase):
                     f'reasonCode: "{entry["reason_code"]}", phrases: [{phrases}], '
                     f'reviewRef: "{entry["review_ref"]}"),')
             self.assertIn(line, text)
-        self.assertIn('static let trailingMarker = "uhr"', text)
-        self.assertIn('    "gegen",', text)
-        self.assertIn('static let syntaxProvenance = "fixture provenance"', text)
+        self.assertIn('trailingMarker: "uhr",', text)
+        self.assertIn('        ["gegen"],', text)
+        self.assertIn('syntaxProvenance: "fixture provenance",', text)
 
     def test_pending_and_other_category_entries_are_never_emitted(self):
         pending = [clock_entry("ref-clock-005", panel_status="pending", review_ref=None)]
@@ -837,7 +852,7 @@ class ClockFixtureTests(unittest.TestCase):
         drifted = fixture.clock_out.read_bytes()
         bad = fixture.generate("--check")
         self.assertNotEqual(bad.returncode, 0)
-        self.assertIn("GermanClockIdiomData.swift", bad.stderr)
+        self.assertIn("ClockIdiomData.swift", bad.stderr)
         self.assertEqual(fixture.clock_out.read_bytes(), drifted)
 
 
@@ -911,13 +926,107 @@ class ClockFailureTests(unittest.TestCase):
 
     def test_anchor_marker_and_separator_failures(self):
         for declaration, needle in (
-            ({"anchors": ["um", "um"]}, "anchors"), ({"anchors": ["um zu"]}, "anchors"),
-            ({"anchors": [""]}, "anchors"), ({"trailingMarker": "uhr zeit"}, "trailingMarker"),
+            ({"anchors": ["um", "um"]}, "anchors"), ({"anchors": ["um  zu"]}, "anchor"),
+            ({"anchors": [""]}, "anchor"), ({"anchors": [" um"]}, "anchor"),
+            ({"anchors": ["het is", "Het is"]}, "anchors must be distinct"),
+            ({"trailingMarker": "uhr zeit"}, "trailingMarker"),
             ({"outputSeparator": "ab"}, "outputSeparator"), ({"outputSeparator": "1"}, "outputSeparator"),
             ({"syntaxProvenance": ""}, "syntaxProvenance is empty"),
         ):
             with self.subTest(declaration=declaration):
                 self.assert_fails_and_writes_nothing(ClockFixture(self, declaration=declaration), needle)
+
+
+    def test_refusal_policy_failures(self):
+        for declaration, needle in (
+            ({"requiresReviewedRefusals": None}, "requiresReviewedRefusals"),
+            ({"requiresReviewedRefusals": "yes"}, "requiresReviewedRefusals"),
+            ({"capitalizedNounGate": 1}, "capitalizedNounGate"),
+            ({"requiresReviewedRefusals": False}, "declares no refusal file"),
+        ):
+            with self.subTest(declaration=declaration):
+                self.assert_fails_and_writes_nothing(ClockFixture(self, declaration=declaration), needle)
+        fixture = ClockFixture(self)
+        fixture.languages = {"nl": dict(DUTCH_DECLARATION, requiredEntries=["ref-clock-002"])}
+        self.assert_fails_and_writes_nothing(fixture, "declares no refusal file")
+
+
+DUTCH_DECLARATION = {"category": "clock_idiom", "requiresReviewedRefusals": False,
+                     "requiredEntries": [], "capitalizedNounGate": False,
+                     "templates": [{"id": "half", "tokens": ["half"], "hourOffset": -1, "minute": 30,
+                                    "inputHours": [2, 12]}],
+                     "anchors": ["om", "het is nu"], "trailingMarker": "uur",
+                     "outputSeparator": ".", "syntaxProvenance": "dutch fixture"}
+
+
+class ClockLanguageTests(unittest.TestCase):
+    def test_a_language_without_reviewed_refusals_generates_without_a_file(self):
+        fixture = ClockFixture(self)
+        fixture.languages = {"nl": DUTCH_DECLARATION}
+        result = fixture.generate()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        text = fixture.clock_out.read_text(encoding="utf-8")
+        german, dutch = text.split('    "nl": Language(')
+        self.assertIn("requiresReviewedRefusals: true", german)
+        self.assertIn("requiresReviewedRefusals: false", dutch)
+        self.assertIn("requiredEntries: [],", dutch)
+        self.assertIn('        ["het", "is", "nu"],', dutch)
+        self.assertNotIn("Refusal(id:", dutch)
+        self.assertIn("[nl] no reviewed refusals declared", text)
+
+    def test_language_codes_must_be_two_letters(self):
+        fixture = ClockFixture(self)
+        fixture.languages = {"dutch": DUTCH_DECLARATION}
+        result = fixture.generate()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("two-letter language codes", result.stderr)
+
+
+class DutchLexiconTests(unittest.TestCase):
+    def load(self):
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("itn_generate_dutch", GENERATOR)
+        gen = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(gen)
+        return gen
+
+    def test_real_output_carries_the_independently_known_dutch_words(self):
+        text = REAL_DUTCH_OUTPUT.read_text(encoding="utf-8")
+        for line in ('    Word(spoken: "twaalf", value: 12),', '    Word(spoken: "één", value: 1),',
+                     '    Word(spoken: "twintig", value: 20),', '    Word(spoken: "tweeën", value: 2),',
+                     '    Word(spoken: "vijfen", value: 5),', '    "een",'):
+            self.assertIn(line, text)
+        self.assertNotIn("\u00ad", text)
+
+    def test_unexpected_source_shapes_fail(self):
+        gen = self.load()
+        manifest = json.loads(REAL_MANIFEST.read_text(encoding="utf-8"))
+        source = next(s for s in manifest["sources"] if s["id"] == "cldr-nl-rbnf")
+        original = (HERE.parent / source["file"]).read_text(encoding="utf-8")
+        for old, new, needle in (
+            ("20: [>%%number-en>]twintig;", "20: twintig;", "tens rule"),
+            ("2: twee\u00adën\u00ad;", "", "1..9"),
+            ("4: =%spellout-cardinal=\u00aden\u00ad;", "4: vieren;",
+             "no redirect"),
+            ("13: dertien;", "13: der tien;", "one literal word"),
+        ):
+            with self.subTest(old=old):
+                self.assertIn(old, original)
+                with tempfile.TemporaryDirectory() as tmp:
+                    base = Path(tmp)
+                    (base / "sources/cldr").mkdir(parents=True)
+                    (base / source["file"]).write_text(original.replace(old, new, 1), encoding="utf-8")
+                    with self.assertRaises(gen.GenerationError) as caught:
+                        gen.build_dutch_numbers(manifest, base)
+                    self.assertIn(needle, str(caught.exception))
+
+    def test_article_forms_must_be_standalone_words(self):
+        gen = self.load()
+        manifest = json.loads(REAL_MANIFEST.read_text(encoding="utf-8"))
+        source = next(s for s in manifest["sources"] if s["id"] == "cldr-nl-rbnf")
+        source["lexicon"]["articleForms"] = ["de"]
+        with self.assertRaises(gen.GenerationError):
+            gen.build_dutch_numbers(manifest, HERE.parent)
 
 
 class RealOrdinalTests(unittest.TestCase):

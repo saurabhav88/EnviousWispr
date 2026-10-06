@@ -79,7 +79,8 @@ DEFAULT_MANIFEST = HERE / "manifest.json"
 DEFAULT_OUT = ROOT / "Sources/EnviousWisprPostProcessing/Generated/GermanNumberData.swift"
 DEFAULT_PHONE_OUT = ROOT / "Sources/EnviousWisprPostProcessing/Generated/GermanPhonePrefixData.swift"
 DEFAULT_ORDINAL_OUT = ROOT / "Sources/EnviousWisprPostProcessing/Generated/GermanOrdinalData.swift"
-DEFAULT_CLOCK_OUT = ROOT / "Sources/EnviousWisprPostProcessing/Generated/GermanClockIdiomData.swift"
+DEFAULT_CLOCK_OUT = ROOT / "Sources/EnviousWisprPostProcessing/Generated/ClockIdiomData.swift"
+DEFAULT_DUTCH_OUT = ROOT / "Sources/EnviousWisprPostProcessing/Generated/DutchNumberData.swift"
 DEFAULT_STYLE_OUT = ROOT / "Sources/EnviousWisprPostProcessing/Generated/GermanNumberStyleData.swift"
 DEFAULT_TRIGGERS_OUT = ROOT / "Sources/EnviousWisprPostProcessing/Generated/PhoneTriggerData.swift"
 DEFAULT_HOUR_CLOCK_OUT = ROOT / "Sources/EnviousWisprPostProcessing/Generated/HourFirstClockData.swift"
@@ -460,7 +461,10 @@ def build(manifest, base):
     verify_sources(manifest, base)
     entries, quantity_words, rules, rule_counts, soft_hyphens = [], [], [], {}, 0
     nemo_ids, cldr_ids, ordinals = [], [], None
-    for source in manifest["sources"]:
+    # The German number table reads the German sources only; another language's source (for
+    # example the Dutch cardinal lexicon) has its own extraction and output.
+    german_sources = [s for s in manifest["sources"] if s.get("language", "de") == "de"]
+    for source in german_sources:
         kind = source.get("kind")
         if kind == "nemo-tsv":
             atoms, words = parse_nemo(source, base)
@@ -490,7 +494,7 @@ def build(manifest, base):
     if not atoms or not words or not rules:
         raise GenerationError("an empty generated table is never published")
     return {
-        "sources": manifest["sources"],
+        "sources": german_sources,
         "atoms": atoms,
         "words": words,
         "rules": rules,
@@ -517,6 +521,11 @@ def refusal_inputs(manifest, base, key, required_keys):
     decl = manifest.get(key)
     if decl is None:
         return None
+    return refusal_inputs_for(decl, base, key, required_keys)
+
+
+def refusal_inputs_for(decl, base, key, required_keys):
+    """`refusal_inputs` for one already-selected declaration (a language's clock idioms)."""
     for field in required_keys:
         if not decl.get(field):
             raise GenerationError(f"{key}: manifest field {field} is empty")
@@ -746,21 +755,54 @@ def emit_ordinal(result):
     return "\n".join(out)
 
 
+CLOCK_SYNTAX_KEYS = ("category", "templates", "anchors", "trailingMarker", "outputSeparator",
+                     "syntaxProvenance")
+
+
 def build_clock(manifest, base):
-    """The clock-idiom syntax data and the reviewed clock refusal entries (all literal phrases), or
-    None when not declared. The syntax data (templates, anchors, marker, separator) is
-    implementation admission data grounded in the approved scope; it is NOT a reviewed refusal and
-    nothing is derived from corpus sentences."""
-    loaded = refusal_inputs(manifest, base, "clockIdiom",
-                            ("category", "refusalsFile", "schemaFile", "requiredEntries",
-                             "templates", "anchors", "trailingMarker", "outputSeparator",
-                             "syntaxProvenance"))
-    if loaded is None:
+    """The clock-idiom syntax data and, where a language requires them, its reviewed clock refusal
+    entries (all literal phrases), per language, or None when not declared. The syntax data
+    (templates, anchors, marker, separator) is implementation admission data grounded in the
+    approved scope; it is NOT a reviewed refusal and nothing is derived from corpus sentences."""
+    declared = manifest.get("clockIdiom")
+    if declared is None:
         return None
-    decl, chosen, shapes, pending_excluded = loaded
+    if not isinstance(declared, dict) or not declared \
+            or not all(re.fullmatch(r"[a-z]{2}", code or "") for code in declared):
+        raise GenerationError("clockIdiom must map two-letter language codes to declarations")
+    return {"languages": [build_clock_language(code, declared[code], base)
+                          for code in sorted(declared)]}
+
+
+def build_clock_language(code, decl, base):
+    key = f"clockIdiom:{code}"
+    if not isinstance(decl, dict):
+        raise GenerationError(f"{key}: declaration must be an object")
+    for field in CLOCK_SYNTAX_KEYS:
+        if not decl.get(field):
+            raise GenerationError(f"{key}: manifest field {field} is empty")
+    # Refusal policy: an explicit Boolean. A language that requires reviewed refusals keeps the
+    # exact-set, review-status, version-reference and hash checks; one that does not reads no file.
+    policy = decl.get("requiresReviewedRefusals")
+    if not isinstance(policy, bool):
+        raise GenerationError(f"{key}: requiresReviewedRefusals must be true or false")
+    gate = decl.get("capitalizedNounGate")
+    if not isinstance(gate, bool):
+        raise GenerationError(f"{key}: capitalizedNounGate must be true or false")
+    if policy:
+        decl_chosen = refusal_inputs_for(decl, base, key,
+                                         ("category", "refusalsFile", "schemaFile",
+                                          "requiredEntries"))
+        _, chosen, _, pending_excluded = decl_chosen
+        required = list(decl["requiredEntries"])
+    else:
+        if decl.get("requiredEntries") != [] or "refusalsFile" in decl or "schemaFile" in decl:
+            raise GenerationError(f"{key}: a language without reviewed refusals declares no "
+                                  "refusal file and an empty requiredEntries")
+        chosen, pending_excluded, required = [], 0, []
     templates, seen_ids = [], set()
     for template in decl["templates"]:
-        where = f"clockIdiom:template:{template.get('id')}"
+        where = f"{key}:template:{template.get('id')}"
         tokens = [normalize_spoken(t) for t in template.get("tokens") or []]
         low_high = template.get("inputHours")
         offset, minute = template.get("hourOffset"), template.get("minute")
@@ -794,16 +836,22 @@ def build_clock(manifest, base):
         templates.append({"id": template["id"], "tokens": tokens, "hourOffset": offset,
                           "minute": minute, "low": low_high[0], "high": low_high[1],
                           "minuteSign": sign, "minuteMax": most})
-    anchors = [normalize_spoken(a) for a in decl["anchors"]]
-    if len(set(anchors)) != len(anchors) or any(not a or re.search(r"\s", a) for a in anchors):
-        raise GenerationError("clockIdiom: anchors must be distinct non-empty single words")
+    # An anchor is a word sequence ("um"; "het is nu") that must stand directly before the idiom.
+    anchors = []
+    for raw in decl["anchors"]:
+        words = normalize_spoken(raw).split(" ") if isinstance(raw, str) else []
+        if not words or any(not w or re.search(r"\s", w) for w in words):
+            raise GenerationError(f"{key}: anchor {raw!r} must be words joined by single spaces")
+        anchors.append(words)
+    if len({tuple(a) for a in anchors}) != len(anchors):
+        raise GenerationError(f"{key}: anchors must be distinct")
     marker = normalize_spoken(decl["trailingMarker"])
     if not marker or re.search(r"\s", marker):
-        raise GenerationError("clockIdiom: trailingMarker must be one non-empty word")
+        raise GenerationError(f"{key}: trailingMarker must be one non-empty word")
     separator = decl["outputSeparator"]
     if len(separator) != 1 or separator.isalnum():
-        raise GenerationError("clockIdiom: outputSeparator must be one punctuation character")
-    refusal_hash = load_refusal_hash()
+        raise GenerationError(f"{key}: outputSeparator must be one punctuation character")
+    refusal_hash = load_refusal_hash() if chosen else None
     rows, seen_phrases = [], set()
     for entry in sorted(chosen, key=lambda e: e["id"]):
         where, ref = check_reviewed(entry, "clockIdiom", refusal_hash)
@@ -820,25 +868,35 @@ def build_clock(manifest, base):
         rows.append({"id": entry["id"], "version": entry["version"],
                      "contentSHA256": entry["content_sha256"], "reasonCode": entry["reason_code"],
                      "phrases": phrases, "reviewRef": ref})
+    if policy and not rows:
+        raise GenerationError(f"{key}: a language that requires reviewed refusals emitted none")
     return {
-        "category": decl["category"], "templates": templates, "anchors": anchors,
+        "code": code, "category": decl["category"], "templates": templates, "anchors": anchors,
         "trailingMarker": marker, "outputSeparator": separator,
         "syntaxProvenance": decl["syntaxProvenance"], "rows": rows,
-        "pending_excluded": pending_excluded, "refusalsFile": decl["refusalsFile"],
+        "pending_excluded": pending_excluded, "refusalsFile": decl.get("refusalsFile"),
+        "requiresReviewedRefusals": policy, "requiredEntries": sorted(required),
+        "capitalizedNounGate": gate,
     }
 
 
 def clock_inventory_lines(result):
-    return [
-        "Source-to-output inventory (clock syntax data plus reviewed literal refusals, not a clock parser):",
-        f"  source {result['refusalsFile']}: reviewed entries of category {result['category']}",
-        f"  emitted: {len(result['rows'])} reviewed literal-phrase entries, each checked against its "
-        "semantic hash and version; syntax data is separate and is NOT a reviewed refusal",
-        f"  syntax data: {len(result['templates'])} templates, {len(result['anchors'])} anchors, "
-        f"marker {result['trailingMarker']!r}, separator {result['outputSeparator']!r}",
-        f"  excluded: {result['pending_excluded']} pending entries of this category, every other "
-        "category",
-    ]
+    lines = ["Source-to-output inventory (clock syntax data plus reviewed literal refusals, not a clock parser):"]
+    for lang in result["languages"]:
+        if lang["requiresReviewedRefusals"]:
+            lines += [
+                f"  [{lang['code']}] source {lang['refusalsFile']}: reviewed entries of category {lang['category']}",
+                f"  [{lang['code']}] emitted: {len(lang['rows'])} reviewed literal-phrase entries, each checked "
+                "against its semantic hash and version; syntax data is separate and is NOT a reviewed refusal",
+                f"  [{lang['code']}] excluded: {lang['pending_excluded']} pending entries of this category, "
+                "every other category",
+            ]
+        else:
+            lines.append(f"  [{lang['code']}] no reviewed refusals declared; none read, none emitted")
+        lines.append(
+            f"  [{lang['code']}] syntax data: {len(lang['templates'])} templates, {len(lang['anchors'])} "
+            f"anchors, marker {lang['trailingMarker']!r}, separator {lang['outputSeparator']!r}")
+    return lines
 
 
 def emit_clock(result):
@@ -849,10 +907,10 @@ def emit_clock(result):
     out += [
         "//",
         "// Implementation syntax data and reviewed refusal data only (#1677). The syntax data is not a",
-        "// reviewed refusal and not a general German clock grammar; the refusals are complete literal",
+        "// reviewed refusal and not a general clock grammar; the refusals are complete literal",
         "// phrases. Nothing here is derived from corpus sentences.",
         "",
-        "enum GermanClockIdiomData {",
+        "enum ClockIdiomData {",
         "  /// One idiom template: the spoken tokens before an hour word, the hour offset and the minutes",
         "  /// written, and the input hours it admits (the others need a clock-face choice). A template",
         "  /// with a minute slot (`minuteSign` 1 or -1) reads a spoken minute 1...minuteMax BEFORE its",
@@ -878,28 +936,54 @@ def emit_clock(result):
         "    let reviewRef: String",
         "  }",
         "",
-        f"  static let syntaxProvenance = {swift_string(result['syntaxProvenance'])}",
-        f"  static let trailingMarker = {swift_string(result['trailingMarker'])}",
-        f"  static let outputSeparator = {swift_string(result['outputSeparator'])}",
+        "  /// One language's clock-idiom data. `anchors` are word sequences (`[\"um\"]`,",
+        "  /// `[\"het\", \"is\", \"nu\"]`). A language with `requiresReviewedRefusals` carries exactly",
+        "  /// its `requiredEntries`; one without carries none.",
+        "  struct Language: Equatable {",
+        "    let code: String",
+        "    let syntaxProvenance: String",
+        "    let trailingMarker: String",
+        "    let outputSeparator: String",
+        "    let anchors: [[String]]",
+        "    let templates: [Template]",
+        "    let requiresReviewedRefusals: Bool",
+        "    let requiredEntries: [String]",
+        "    let refusals: [Refusal]",
+        "    let capitalizedNounGate: Bool",
+        "  }",
         "",
-        "  static let anchors: [String] = [",
+        "  static let languages: [String: Language] = [",
     ]
-    out += [f"    {swift_string(a)}," for a in result["anchors"]]
-    out += ["  ]", "", "  static let templates: [Template] = ["]
-    for t in result["templates"]:
-        tokens = ", ".join(swift_string(x) for x in t["tokens"])
-        out.append(f"    Template(id: {swift_string(t['id'])}, tokens: [{tokens}], "
-                   f"hourOffset: {t['hourOffset']}, minute: {t['minute']}, "
-                   f"inputHourLow: {t['low']}, inputHourHigh: {t['high']}, "
-                   f"minuteSign: {t['minuteSign']}, minuteMax: {t['minuteMax']}),")
-    out += ["  ]", "", "  static let refusals: [Refusal] = ["]
-    for r in result["rows"]:
-        phrases = ", ".join(swift_string(x) for x in r["phrases"])
-        out.append(
-            f"    Refusal(id: {swift_string(r['id'])}, version: {r['version']}, "
-            f"contentSHA256: {swift_string(r['contentSHA256'])}, "
-            f"reasonCode: {swift_string(r['reasonCode'])}, phrases: [{phrases}], "
-            f"reviewRef: {swift_string(r['reviewRef'])}),")
+    for lang in result["languages"]:
+        out += [
+            f"    {swift_string(lang['code'])}: Language(",
+            f"      code: {swift_string(lang['code'])},",
+            f"      syntaxProvenance: {swift_string(lang['syntaxProvenance'])},",
+            f"      trailingMarker: {swift_string(lang['trailingMarker'])},",
+            f"      outputSeparator: {swift_string(lang['outputSeparator'])},",
+            "      anchors: [",
+        ]
+        out += ["        [" + ", ".join(swift_string(w) for w in a) + "]," for a in lang["anchors"]]
+        out += ["      ],", "      templates: ["]
+        for t in lang["templates"]:
+            tokens = ", ".join(swift_string(x) for x in t["tokens"])
+            out.append(f"        Template(id: {swift_string(t['id'])}, tokens: [{tokens}], "
+                       f"hourOffset: {t['hourOffset']}, minute: {t['minute']}, "
+                       f"inputHourLow: {t['low']}, inputHourHigh: {t['high']}, "
+                       f"minuteSign: {t['minuteSign']}, minuteMax: {t['minuteMax']}),")
+        out += ["      ],",
+                f"      requiresReviewedRefusals: {'true' if lang['requiresReviewedRefusals'] else 'false'},",
+                "      requiredEntries: [" + ", ".join(swift_string(x) for x in lang["requiredEntries"]) + "],",
+                "      refusals: ["]
+        for r in lang["rows"]:
+            phrases = ", ".join(swift_string(x) for x in r["phrases"])
+            out.append(
+                f"        Refusal(id: {swift_string(r['id'])}, version: {r['version']}, "
+                f"contentSHA256: {swift_string(r['contentSHA256'])}, "
+                f"reasonCode: {swift_string(r['reasonCode'])}, phrases: [{phrases}], "
+                f"reviewRef: {swift_string(r['reviewRef'])}),")
+        out += ["      ],",
+                f"      capitalizedNounGate: {'true' if lang['capitalizedNounGate'] else 'false'}),"]
     out += ["  ]", "}", ""]
     return "\n".join(out)
 
@@ -1147,6 +1231,137 @@ def emit(result):
         out += ["  ]"]
     out += ["}", ""]
     return "\n".join(out)
+
+
+def build_dutch_numbers(manifest, base):
+    """The Dutch cardinal lexicon 0..99 from the pinned CLDR source, or None when not declared.
+    Reads exactly the declared rulesets and fails on any rule shape it does not expect."""
+    found = [src for src in manifest["sources"]
+             if src.get("kind") == "cldr-rbnf-lexicon" and src.get("language") == "nl"]
+    if not found:
+        return None
+    if len(found) != 1:
+        raise GenerationError("exactly one Dutch cardinal lexicon source may be declared")
+    source = found[0]
+    decl = source.get("lexicon") or {}
+    cardinal, stressed, compound = (decl.get("cardinalRuleset"), decl.get("stressedRuleset"),
+                                    decl.get("compoundRuleset"))
+    if not cardinal or not stressed or not compound:
+        raise GenerationError(f"{source['id']}: lexicon must name cardinal, stressed and compound rulesets")
+    rulesets = read_rbnf_rules(source, base)
+    for name in (cardinal, stressed, compound):
+        if name not in rulesets:
+            raise GenerationError(f"{source['id']}: ruleset {name} not found")
+    soft = 0
+    standalone, tens, excluded = {}, {}, 0
+    for selector, body, where in rulesets[cardinal]:
+        soft += body.count(SOFT_HYPHEN)
+        tokens = tokenize_body(body, where)
+        if not re.fullmatch(r"\d+", selector) or int(selector) >= 100:
+            excluded += 1
+            continue
+        value = int(selector)
+        if value < 20:
+            if len(tokens) != 1 or tokens[0][0] != "literal" or re.search(r"\s", tokens[0][1]):
+                raise GenerationError(f"{where}: atom {value} is not one literal word")
+            standalone[value] = normalize_spoken(tokens[0][1])
+            continue
+        kinds = [k for k, _ in tokens]
+        if value % 10 or kinds != ["optionalOpen", "remainderRule", "optionalClose", "literal"] \
+                or tokens[1][1] != compound or re.search(r"\s", tokens[3][1]):
+            raise GenerationError(f"{where}: tens rule {value} is not [>{compound}>]<word>")
+        tens[value] = normalize_spoken(tokens[3][1])
+    if sorted(standalone) != list(range(20)) or sorted(tens) != list(range(20, 100, 10)):
+        raise GenerationError(f"{source['id']}: cardinal atoms must be 0..19 and tens 20..90")
+    prefixes, redirect_from = {}, None
+    for selector, body, where in rulesets[compound]:
+        soft += body.count(SOFT_HYPHEN)
+        tokens = tokenize_body(body, where)
+        if not re.fullmatch(r"\d+", selector):
+            raise GenerationError(f"{where}: unexpected selector {selector!r}")
+        value = int(selector)
+        if len(tokens) == 1 and tokens[0][0] == "literal" and not re.search(r"\s", tokens[0][1]):
+            prefixes[value] = normalize_spoken(tokens[0][1])
+        elif [k for k, _ in tokens] == ["redirect", "literal"] and tokens[0][1] == cardinal:
+            if redirect_from is not None:
+                raise GenerationError(f"{where}: a second redirect rule")
+            redirect_from = (value, normalize_spoken(tokens[1][1]))
+        else:
+            raise GenerationError(f"{where}: compound rule {value} has an unexpected shape")
+    if redirect_from is None:
+        raise GenerationError(f"{source['id']}: {compound} has no redirect rule")
+    start, suffix = redirect_from
+    for value in range(start, 10):
+        if value in prefixes:
+            raise GenerationError(f"{source['id']}: {compound} spells {value} twice")
+        prefixes[value] = standalone[value] + suffix
+    if sorted(prefixes) != list(range(1, 10)):
+        raise GenerationError(f"{source['id']}: compound prefixes must cover 1..9")
+    stressed_rows = [(sel, body, where) for sel, body, where in rulesets[stressed]
+                     if re.fullmatch(r"\d+", sel)]
+    stressed_forms = {}
+    for selector, body, where in stressed_rows:
+        tokens = tokenize_body(body, where)
+        if len(tokens) == 1 and tokens[0][0] == "literal":
+            stressed_forms[int(selector)] = normalize_spoken(tokens[0][1])
+    if list(stressed_forms) != [1]:
+        raise GenerationError(f"{source['id']}: expected exactly one stressed literal, for 1")
+    words = [(w, v) for v, w in sorted(standalone.items())] + [(stressed_forms[1], 1)]
+    words += [(w, v) for v, w in sorted(tens.items())]
+    if len({w for w, _ in words}) != len(words):
+        raise GenerationError(f"{source['id']}: a standalone word spells two values")
+    articles = decl.get("articleForms")
+    if not isinstance(articles, list) or any(not isinstance(a, str) for a in articles):
+        raise GenerationError(f"{source['id']}: articleForms must be a list of words")
+    articles = [normalize_spoken(a) for a in articles]
+    spelled = {w for w, _ in words}
+    if len(set(articles)) != len(articles) or any(a not in spelled for a in articles):
+        raise GenerationError(f"{source['id']}: every articleForm must be a distinct standalone word")
+    return {"source": source, "standalone": words, "tens": [(w, v) for v, w in sorted(tens.items())],
+            "prefixes": [(w, v) for v, w in sorted(prefixes.items())], "articles": articles,
+            "soft": soft,
+            "excluded": excluded}
+
+
+def emit_dutch_numbers(result):
+    src = result["source"]
+    out = ["// GENERATED by scripts/itn/generate.py from scripts/itn/manifest.json. DO NOT EDIT.",
+           "// Regenerate with scripts/itn/generate.py; scripts/itn/generate.py --check verifies it.",
+           "//",
+           f"// Source-to-output inventory: {src['id']} {src['repo']} {src['tag']} {src['commit'][:12]} "
+           f"{src['path']} sha256 {src['sha256'][:12]} ({src['license']})",
+           f"//   included: {len(result['standalone'])} standalone words (0..19, the stressed one, tens), "
+           f"{len(result['prefixes'])} compound prefixes 1..9; excluded {result['excluded']} other cardinal rules",
+           f"//   normalization: NFC, lower-case, U+00AD removed ({result['soft']} in the read rules)",
+           "//",
+           "// Cardinal lexicon for the Dutch clock idioms (#1677). A compound is <prefix><tens>",
+           "// (`vijfentwintig` = `vijfen` + `twintig`); the prefix carries its own joint (`en`, `ën`).",
+           "",
+           "enum DutchNumberData {",
+           "  struct Word: Equatable {",
+           "    let spoken: String",
+           "    let value: Int",
+           "  }",
+           "",
+           "  static let standalone: [Word] = ["]
+    out += [f"    Word(spoken: {swift_string(w)}, value: {v})," for w, v in result["standalone"]]
+    out += ["  ]", "", "  static let tens: [Word] = ["]
+    out += [f"    Word(spoken: {swift_string(w)}, value: {v})," for w, v in result["tens"]]
+    out += ["  ]", "", "  static let compoundPrefixes: [Word] = ["]
+    out += [f"    Word(spoken: {swift_string(w)}, value: {v})," for w, v in result["prefixes"]]
+    out += ["  ]", "",
+            "  /// Number words that are also the indefinite article: alone they are not number evidence.",
+            "  static let articleForms: [String] = ["]
+    out += [f"    {swift_string(a)}," for a in result["articles"]]
+    out += ["  ]", "}", ""]
+    return "\n".join(out)
+
+
+def generate_dutch_bytes(manifest_path):
+    manifest_path = Path(manifest_path)
+    manifest = load_manifest(manifest_path)
+    result = build_dutch_numbers(manifest, manifest_path.parent)
+    return None if result is None else emit_dutch_numbers(result).encode("utf-8")
 
 
 def generate_bytes(manifest_path):
@@ -1523,7 +1738,7 @@ def write_atomically(path, data):
 
 def run_check(manifest_path, out_path, phone_out_path, ordinal_out_path, clock_out_path,
               style_out_path=DEFAULT_STYLE_OUT, triggers_out_path=DEFAULT_TRIGGERS_OUT,
-              hour_clock_out_path=DEFAULT_HOUR_CLOCK_OUT):
+              hour_clock_out_path=DEFAULT_HOUR_CLOCK_OUT, dutch_out_path=DEFAULT_DUTCH_OUT):
     """Verifies EVERY declared generated file without rewriting any of them."""
     with tempfile.TemporaryDirectory(prefix="itn-check-") as tmp:
         pairs = [(generate_bytes(manifest_path), out_path)]
@@ -1545,6 +1760,9 @@ def run_check(manifest_path, out_path, phone_out_path, ordinal_out_path, clock_o
         hour_clock = generate_hour_clock_bytes(manifest_path)
         if hour_clock is not None:
             pairs.append((hour_clock, hour_clock_out_path))
+        dutch = generate_dutch_bytes(manifest_path)
+        if dutch is not None:
+            pairs.append((dutch, dutch_out_path))
         for index, (fresh, committed) in enumerate(pairs):
             regenerated = Path(tmp) / f"fresh-{index}.swift"
             write_atomically(regenerated, fresh)
@@ -1596,6 +1814,7 @@ def main(argv=None):
     parser.add_argument("--style-out", default=str(DEFAULT_STYLE_OUT))
     parser.add_argument("--triggers-out", default=str(DEFAULT_TRIGGERS_OUT))
     parser.add_argument("--hour-clock-out", default=str(DEFAULT_HOUR_CLOCK_OUT))
+    parser.add_argument("--dutch-out", default=str(DEFAULT_DUTCH_OUT))
     mode = parser.add_mutually_exclusive_group()
     for flag in ("--check", "--self-test", "--refresh", "--inventory"):
         mode.add_argument(flag, action="store_true")
@@ -1607,7 +1826,7 @@ def main(argv=None):
             run_refresh(args.manifest)
         elif args.check:
             run_check(args.manifest, args.out, args.phone_out, args.ordinal_out, args.clock_out,
-                      args.style_out, args.triggers_out, args.hour_clock_out)
+                      args.style_out, args.triggers_out, args.hour_clock_out, args.dutch_out)
         elif args.inventory:
             manifest = load_manifest(args.manifest)
             print("\n".join(inventory_lines(build(manifest, Path(args.manifest).parent))))
@@ -1629,6 +1848,7 @@ def main(argv=None):
             style = generate_style_bytes(args.manifest)
             triggers = generate_triggers_bytes(args.manifest)
             hour_clock = generate_hour_clock_bytes(args.manifest)
+            dutch = generate_dutch_bytes(args.manifest)
             write_atomically(args.out, data)
             print(f"wrote {args.out} ({len(data)} bytes, sha256 {hashlib.sha256(data).hexdigest()})")
             if phone is not None:
@@ -1651,6 +1871,10 @@ def main(argv=None):
                 write_atomically(args.hour_clock_out, hour_clock)
                 print(f"wrote {args.hour_clock_out} ({len(hour_clock)} bytes, sha256 "
                       f"{hashlib.sha256(hour_clock).hexdigest()})")
+            if dutch is not None:
+                write_atomically(args.dutch_out, dutch)
+                print(f"wrote {args.dutch_out} ({len(dutch)} bytes, sha256 "
+                      f"{hashlib.sha256(dutch).hexdigest()})")
             if style is not None:
                 write_atomically(args.style_out, style)
                 print(f"wrote {args.style_out} ({len(style)} bytes, sha256 "

@@ -3,7 +3,7 @@ import Testing
 
 @testable import EnviousWisprPostProcessing
 
-// MARK: - The signed phone path in French, Spanish, Italian and Portuguese (#1677)
+// MARK: - The signed phone path in French, Spanish, Italian, Portuguese, Dutch and Polish (#1677)
 //
 // Inputs are engine output measured on Azure TTS through Parakeet and WhisperKit (the spoken plus
 // word kept before the digits, grouping chosen by the engine). Expected outputs are independent
@@ -13,7 +13,7 @@ import Testing
 // When this fails, an international number keeps its spoken plus word, loses a digit, or prose
 // with the plus word is rewritten.
 
-@Suite("Signed phone path in fr, es, it, pt (#1677)", .tags(.driftGuard))
+@Suite("Signed phone path in fr, es, it, pt, nl, pl (#1677)", .tags(.driftGuard))
 struct LanguagePhoneSignedLanguagesTests {
 
   private func converted(_ text: String, language: String) throws -> String {
@@ -52,6 +52,12 @@ struct LanguagePhoneSignedLanguagesTests {
       ("it", "Chiamami al più 39 347 1234567.", "Chiamami al +39 347 123 4567."),
       ("it", "Il numero è piu 39 06 4827 1935.", "Il numero è +39 06 4827 1935."),
       ("pt", "Ligue para mais 351 912 345 678.", "Ligue para +351 912 345 678."),
+      // Dutch and Polish (both engines keep the plus word; WhisperKit writes Polish "PLUS").
+      ("nl", "Mijn nummer is plus 31 6 12 34 56 78.", "Mijn nummer is +31 6 12345678."),
+      // 61 is the Poznań area code: libphonenumber writes the landline "+48 61 234 56 78".
+      ("pl", "Mój numer to plus 48 612 345 678.", "Mój numer to +48 61 234 56 78."),
+      ("pl", "Mój numer to PLUS 48 612 345 678.", "Mój numer to +48 61 234 56 78."),
+      ("pl", "Zadzwoń na plus 48 501 234 567.", "Zadzwoń na +48 501 234 567."),
     ]
     for (language, input, expected) in cases {
       #expect(
@@ -71,18 +77,21 @@ struct LanguagePhoneSignedLanguagesTests {
       ("pt", "Precisamos de mais 1.000.000 reais."), ("pt", "São mais 1.000.000 de pessoas."),
       ("fr", "Il y a plus 1 000 000 d'habitants."), ("es", "Son más 2.500.000 personas."),
       ("it", "Servono più 1.000.000 euro."), ("es", "Cuesta más 34 612 345 678 pesos."),
+      ("nl", "Morgen wordt het plus 20 graden."), ("nl", "Je doet 1 plus 1, dat is 2."),
+      ("nl", "Bel me op 06 12 34 56 78."), ("pl", "Jutro będzie plus 20 stopni."),
+      ("pl", "Dwa plus dwa to 4: 2 plus 2."), ("pl", "Zadzwoń pod numer 501 234 567."),
     ]
     for (language, text) in cases {
       #expect(bytes(try converted(text, language: language)) == bytes(text), "\(language): \(text)")
     }
   }
 
-  @Test("only the four declared languages have signed-only phone rules")
+  @Test("only the six declared languages have signed-only phone rules")
   func declaredLanguages() throws {
-    for code in ["fr", "es", "it", "pt"] {
+    for code in ["fr", "es", "it", "pt", "nl", "pl"] {
       #expect(try LanguagePhonePrefixRules.signedOnly(language: code) != nil, "\(code)")
     }
-    for code in ["de", "nl", "pl", "en"] {
+    for code in ["de", "ru", "sv", "en"] {
       #expect(try LanguagePhonePrefixRules.signedOnly(language: code) == nil, "\(code)")
     }
   }

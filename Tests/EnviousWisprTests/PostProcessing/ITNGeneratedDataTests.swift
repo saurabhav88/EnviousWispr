@@ -232,8 +232,9 @@ struct ITNGeneratedDataTests {
   }
 
   @Test("the generated clock syntax data and reviewed refusals carry their identity and provenance")
-  func clockIdiomData() {
-    typealias Clock = GermanClockIdiomData
+  func clockIdiomData() throws {
+    #expect(Set(ClockIdiomData.languages.keys) == ["de", "nl"])
+    let Clock = try #require(ClockIdiomData.languages["de"])
     #expect(
       Clock.templates.map(\.id) == [
         "half", "quarterAfter", "quarterTo", "minutesAfter", "minutesBefore", "minutesAfterHalf",
@@ -250,7 +251,9 @@ struct ITNGeneratedDataTests {
     #expect(Clock.templates.map(\.inputHourHigh) == [12, 11, 12, 11, 12, 12, 12])
     #expect(Clock.templates.map(\.minuteSign) == [0, 0, 0, 1, -1, 1, -1])
     #expect(Clock.templates.map(\.minuteMax) == [0, 0, 0, 29, 29, 14, 14])
-    #expect(Clock.anchors == ["um", "gegen", "bis", "ab", "für"])
+    #expect(Clock.anchors == [["um"], ["gegen"], ["bis"], ["ab"], ["für"]])
+    #expect(Clock.requiresReviewedRefusals && Clock.capitalizedNounGate)
+    #expect(Clock.requiredEntries == ["ref-clock-002", "ref-clock-003", "ref-clock-004"])
     #expect(Clock.trailingMarker == "uhr")
     #expect(Clock.outputSeparator == ":")
     #expect(Clock.syntaxProvenance.contains("not a reviewed refusal"))
@@ -263,9 +266,32 @@ struct ITNGeneratedDataTests {
     }
   }
 
-  @Test("only the named grammar adapter reads the generated data; the registry lists five languages")
+  @Test("the generated Dutch clock data and number lexicon carry their identity and provenance")
+  func dutchData() throws {
+    let clock = try #require(ClockIdiomData.languages["nl"])
+    #expect(
+      clock.templates.map(\.tokens) == [
+        ["half"], ["kwart", "over"], ["kwart", "voor"], ["over"], ["voor"], ["over", "half"],
+        ["voor", "half"],
+      ])
+    #expect(clock.templates.map(\.inputHourHigh) == [12, 11, 12, 11, 11, 12, 12])
+    #expect(clock.anchors.contains(["het", "is", "nu"]) && clock.anchors.contains(["om"]))
+    #expect(clock.trailingMarker == "uur" && clock.outputSeparator == ".")
+    #expect(!clock.requiresReviewedRefusals && clock.refusals.isEmpty && clock.requiredEntries.isEmpty)
+    #expect(!clock.capitalizedNounGate)
+    #expect(clock.syntaxProvenance.contains("not a reviewed refusal"))
+    #expect(DutchNumberData.standalone.count == 29)
+    #expect(DutchNumberData.tens.map(\.value) == [20, 30, 40, 50, 60, 70, 80, 90])
+    #expect(
+      DutchNumberData.compoundPrefixes.map(\.spoken) == [
+        "eenen", "tweeën", "drieën", "vieren", "vijfen", "zesen", "zevenen", "achten", "negenen",
+      ])
+    #expect(DutchNumberData.articleForms == ["een"])
+  }
+
+  @Test("only the named grammar adapter reads the generated data; the registry lists seven languages")
   func notReachableFromRuntime() throws {
-    #expect(LanguageRuleRegistry.production.count == 5)
+    #expect(LanguageRuleRegistry.production.count == 7)
     let sources = URL(fileURLWithPath: #filePath)
       .deletingLastPathComponent()  // PostProcessing
       .deletingLastPathComponent()  // EnviousWisprTests
@@ -286,7 +312,10 @@ struct ITNGeneratedDataTests {
     for case let file as URL in enumerator where file.pathExtension == "swift" {
       scanned += 1
       let text = try String(contentsOf: file, encoding: .utf8)
-      if text.contains("GermanNumberData"), file.lastPathComponent != "GermanNumberData.swift" {
+      let name = file.lastPathComponent
+      if (text.contains("GermanNumberData") && name != "GermanNumberData.swift")
+        || (text.contains("DutchNumberData") && name != "DutchNumberData.swift")
+      {
         readers.append(file.path)
       }
     }
@@ -330,7 +359,7 @@ struct ITNGeneratedDataTests {
       FileManager.default.enumerator(at: sources, includingPropertiesForKeys: nil))
     for case let file as URL in fourth where file.pathExtension == "swift" {
       let text = try String(contentsOf: file, encoding: .utf8)
-      if text.contains("GermanClockIdiomData"), file.lastPathComponent != "GermanClockIdiomData.swift" {
+      if text.contains("ClockIdiomData"), file.lastPathComponent != "ClockIdiomData.swift" {
         clockReaders.append(file.lastPathComponent)
       }
     }

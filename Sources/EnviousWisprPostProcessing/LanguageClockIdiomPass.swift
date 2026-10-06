@@ -8,7 +8,8 @@ import Foundation
 // articles and punctuation stay as written. An hour the engine already wrote as digits (`um halb 8`)
 // is an already-written number chunk: that edit runs to the end of the chunk through the editor's
 // clock-chunk permission and carries the chunk's closing punctuation (`halb 8.` to `7:30.`). The pass proposes edits against one immutable snapshot;
-// the shared editor applies them. The German language route runs it (`InverseTextNormalizer+Language`).
+// the shared editor applies them. The German and Dutch language routes run it
+// (`InverseTextNormalizer+Language`), each with its own rules and number grammar.
 //
 // SCOPE: only the templates in the rules convert (German `halb H`, `viertel nach H`, `viertel vor
 // H`, and with a spoken minute first `M nach H`, `M vor H`, `M nach halb H`, `M vor halb H`; the
@@ -21,9 +22,9 @@ import Foundation
 //     reads as a clock hour (1 to 12, spelled or as one or two ASCII digits); `halb so`, `halb`
 //     alone, `halb 8:30`, `halb 20`, `um sieben am Abend` and unsupported forms are not candidates;
 //  2. the idiom span fits 128 UTF-16 units and 8 tokens (whitespace counts);
-//  3. an immediately preceding whole anchor word, across horizontal whitespace, with no punctuation
-//     between: a CONSERVATIVE scope restriction, not proof that every phrase after an anchor is a
-//     clock time;
+//  3. an immediately preceding whole anchor (a word sequence: `um`, Dutch `het is nu`), its words
+//     contiguous across horizontal whitespace, with no punctuation inside it or before the idiom: a
+//     CONSERVATIVE scope restriction, not proof that every phrase after an anchor is a clock time;
 //  4. the hour is inside the template's input range, and a spoken minute inside the template's
 //     minute range: the hours that need a clock-face choice (`halb eins`, `viertel nach zwölf`,
 //     `5 vor eins`) are a STRUCTURAL exclusion (`ambiguousClockFace`), named
@@ -31,7 +32,10 @@ import Foundation
 //  5. no number material continues right after the hour word (a connector, a spoken number or
 //     digits), whatever stands between: a failed longer numeric expression is not a clock time;
 //  6. no competing unit or currency follows the hour chunk (the clock marker `Uhr` is the one
-//     allowed neighbour).
+//     allowed neighbour);
+//  7. an hour word that is also the indefinite article (Dutch `een`) ends the phrase: end of text,
+//     punctuation, a line break or the clock marker follows (`om 5 over een week` is not a time);
+//  8. where the language capitalizes nouns (German), no noun phrase follows a minute idiom.
 // REVIEWED LITERAL REFUSALS (duration, fraction, `halb voll`/`halb leer`) are matched first, as
 // complete token sequences, and consume their words; a refusal elsewhere never suppresses an
 // independent valid candidate.
@@ -67,6 +71,8 @@ struct LanguageClockIdiomPass: Sendable {
     /// A minute-slot idiom directly followed by a capitalized word other than the clock marker: a
     /// German noun after `um 5 nach 3` makes it a quantity (`steigt um 5 nach 3 Treffern`).
     case nounAfterMinuteIdiom
+    /// An hour word that is also the article (Dutch `een`) does not end the phrase.
+    case articleHourBeforeWord
     case editRefused(LanguageEditRefusal)
   }
 
@@ -103,14 +109,18 @@ struct LanguageClockIdiomPass: Sendable {
   // MARK: Entry
 
   func propose(in snapshot: LanguageTextSnapshot) -> Outcome {
-    guard !rules.templates.isEmpty, !rules.anchors.isEmpty, !rules.refusals.isEmpty,
-      !rules.trailingMarker.isEmpty
+    guard !rules.templates.isEmpty, !rules.anchors.isEmpty, !rules.trailingMarker.isEmpty
     else { return .unavailable("incomplete clock-idiom rules") }
-    for kind in LanguageClockIdiomRules.RefusalKind.allCases {
-      switch kind.enforcement {
-      case .completeLiteralPhraseMatch:
-        guard rules.refusals.contains(where: { $0.kind == kind }) else {
-          return .unavailable("no reviewed literal-phrase entry")
+    // A language whose contract includes reviewed refusals (German) never runs without them; one
+    // that declares none (Dutch) runs with an empty set.
+    if rules.requiresReviewedRefusals {
+      guard !rules.refusals.isEmpty else { return .unavailable("incomplete clock-idiom rules") }
+      for kind in LanguageClockIdiomRules.RefusalKind.allCases {
+        switch kind.enforcement {
+        case .completeLiteralPhraseMatch:
+          guard rules.refusals.contains(where: { $0.kind == kind }) else {
+            return .unavailable("no reviewed literal-phrase entry")
+          }
         }
       }
     }
@@ -266,7 +276,7 @@ struct LanguageClockIdiomPass: Sendable {
       prefix.append(character)
       utf16 += character.utf16.count
       let folded = LanguageNumberGrammar.fold(prefix)
-      guard rules.anchors.contains(folded) else { continue }
+      guard rules.anchors.contains([folded]) else { continue }
       let rest = String(decoding: Array(word.text.utf16.dropFirst(utf16)), as: UTF16.self)
       if LanguageNumberGrammar.fold(rest) == firstToken { return utf16 }
     }
@@ -316,13 +326,22 @@ struct LanguageClockIdiomPass: Sendable {
       return refuse(.noAnchor)
     }
     guard template.inputHours.contains(hour) else { return refuse(.ambiguousClockFace) }
+    // An hour spelled as a word that is also the article (Dutch `een`: in the grammar's standalone
+    // words and its non-standalone article forms) must end the phrase.
+    if grammar.nonStandalone.contains(words[hourIndex].folded),
+      !endsPhrase(hourIndex: hourIndex, words: words)
+    {
+      return refuse(.articleHourBeforeWord)
+    }
     if hasNumberContinuation(after: hourIndex, words: words, snapshot: snapshot) {
       return refuse(.numberContinuationAfter)
     }
     if hasCompetingUnit(after: hourIndex, words: words) {
       return refuse(.measurementOrCurrencyTail)
     }
-    if template.minuteSlot != nil, nounFollows(hourIndex: hourIndex, words: words) {
+    if template.minuteSlot != nil, rules.capitalizedNounGate,
+      nounFollows(hourIndex: hourIndex, words: words)
+    {
       return refuse(.nounAfterMinuteIdiom)
     }
     let minutes = minute < 10 ? "0\(minute)" : "\(minute)"
@@ -353,13 +372,29 @@ struct LanguageClockIdiomPass: Sendable {
     }
   }
 
-  /// A whole anchor word directly before the idiom, across horizontal whitespace, with no
-  /// punctuation on the anchor and none before the idiom.
+  /// A whole anchor directly before the idiom: one of the rules' word sequences ending at the word
+  /// before it, its words contiguous across horizontal whitespace, with no punctuation inside the
+  /// anchor, after it or before the idiom.
   private func hasAnchor(before first: Int, words: [Word]) -> Bool {
     guard first > 0, !words[first].hasLeadingPunctuation else { return false }
-    let anchor = words[first - 1]
-    return !anchor.hasTrailingPunctuation && anchor.gapAfterIsHorizontal
-      && rules.anchors.contains(anchor.folded)
+    let last = words[first - 1]
+    guard !last.hasTrailingPunctuation, last.gapAfterIsHorizontal else { return false }
+    for anchor in rules.anchors where anchor.count <= first {
+      let start = first - anchor.count
+      guard windowIsContiguous(words, from: start, width: anchor.count) else { continue }
+      if zip(anchor, words[start..<first]).allSatisfy({ $0 == $1.folded }) { return true }
+    }
+    return false
+  }
+
+  /// The hour word ends the phrase: end of text, closing punctuation, a line break, or the clock
+  /// marker follows it.
+  private func endsPhrase(hourIndex: Int, words: [Word]) -> Bool {
+    let hourWord = words[hourIndex]
+    guard hourIndex + 1 < words.count, !hourWord.hasTrailingPunctuation,
+      hourWord.gapAfterIsHorizontal
+    else { return true }
+    return words[hourIndex + 1].folded == rules.trailingMarker
   }
 
   /// Read past standalone punctuation and the permitted clock marker. Keeps whether every
@@ -404,6 +439,14 @@ struct LanguageClockIdiomPass: Sendable {
     }
 
     let key = next.folded
+    // A complete cardinal the grammar admits, glued compounds included (Dutch `tweeëntwintig`):
+    // read by the same parser, never by a second word table.
+    if !grammar.nonStandalone.contains(key),
+      case .parsed = LanguageNumberParser(grammar: grammar).parse(
+        .cardinal, in: snapshot, range: next.start..<next.end)
+    {
+      return true
+    }
     if grammar.nonStandalone.contains(key) {
       // An article alone is not number evidence. A complete licensed compound beginning with it
       // is, and a connector must not hide one.

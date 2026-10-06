@@ -24,10 +24,14 @@ struct LanguageClockIdiomPassTests {
 
   init() throws {
     grammar = try LanguageNumberGrammar.german()
-    pass = LanguageClockIdiomPass(grammar: grammar, rules: try LanguageClockIdiomRules.german())
+    pass = LanguageClockIdiomPass(grammar: grammar, rules: try Self.germanRules())
   }
 
   // MARK: Helpers
+
+  private static func germanRules() throws -> LanguageClockIdiomRules {
+    try #require(try LanguageClockIdiomRules.forLanguage("de"))
+  }
 
   private func run(_ text: String) throws -> (LanguageTextSnapshot, LanguageClockIdiomPass.Run) {
     let snapshot = LanguageTextSnapshot(text)
@@ -59,7 +63,7 @@ struct LanguageClockIdiomPassTests {
   @Test(
     "the rules carry the seven templates, five anchors, the marker and the three reviewed entries")
   func rulesFacts() throws {
-    let rules = try LanguageClockIdiomRules.german()
+    let rules = try Self.germanRules()
     #expect(
       rules.templates.map(\.id) == [
         "half", "quarterAfter", "quarterTo", "minutesAfter", "minutesBefore", "minutesAfterHalf",
@@ -79,7 +83,8 @@ struct LanguageClockIdiomPassTests {
     #expect(rules.templates[1].hourOffset == 0)
     #expect(rules.templates[1].minute == 15)
     #expect(rules.templates[1].inputHours == 1...11)
-    #expect(rules.anchors == ["um", "gegen", "bis", "ab", "für"])
+    #expect(rules.anchors == [["um"], ["gegen"], ["bis"], ["ab"], ["für"]])
+    #expect(rules.requiresReviewedRefusals && rules.capitalizedNounGate)
     #expect(rules.trailingMarker == "uhr")
     #expect(rules.outputSeparator == ":")
     #expect(rules.refusals.map(\.id) == ["ref-clock-002", "ref-clock-003", "ref-clock-004"])
@@ -100,7 +105,9 @@ struct LanguageClockIdiomPassTests {
       #expect(kind.enforcement == .completeLiteralPhraseMatch)
     }
     // The syntax data is implementation data, labelled as not a reviewed refusal.
-    #expect(GermanClockIdiomData.syntaxProvenance.contains("not a reviewed refusal"))
+    #expect(
+      try #require(ClockIdiomData.languages["de"]).syntaxProvenance.contains(
+        "not a reviewed refusal"))
   }
 
   @Test("the lowered refusals equal the reviewed clock entries in the refusal file, read directly")
@@ -111,7 +118,7 @@ struct LanguageClockIdiomPassTests {
     let reviewed = try #require(object["reviewed_entries"] as? [[String: Any]])
     let clock = reviewed.filter { $0["category"] as? String == "clock_idiom" }
       .sorted { ($0["id"] as? String ?? "") < ($1["id"] as? String ?? "") }
-    let rules = try LanguageClockIdiomRules.german()
+    let rules = try Self.germanRules()
     #expect(clock.count == 3)
     #expect(clock.compactMap { $0["id"] as? String } == rules.refusals.map(\.id))
     #expect(clock.compactMap { $0["version"] as? Int } == rules.refusals.map(\.version))
@@ -129,20 +136,26 @@ struct LanguageClockIdiomPassTests {
 
   @Test("unsupported, empty or duplicate data fails the whole adaptation")
   func adaptationFailsClosed() {
-    typealias Data = GermanClockIdiomData
+    typealias Data = ClockIdiomData
+    guard let german = Data.languages["de"] else {
+      Issue.record("no German clock data")
+      return
+    }
     let good = (
-      templates: Data.templates, anchors: Data.anchors, marker: Data.trailingMarker,
-      separator: Data.outputSeparator, refusals: Data.refusals
+      templates: german.templates, anchors: german.anchors, marker: german.trailingMarker,
+      separator: german.outputSeparator, refusals: german.refusals
     )
     func build(
-      templates: [Data.Template]? = nil, anchors: [String]? = nil, marker: String? = nil,
-      separator: String? = nil, refusals: [Data.Refusal]? = nil
+      templates: [Data.Template]? = nil, anchors: [[String]]? = nil, marker: String? = nil,
+      separator: String? = nil, refusals: [Data.Refusal]? = nil, required: Bool = true,
+      requiredEntries: [String]? = nil
     ) -> LanguageClockIdiomRules.BuildError? {
       do {
         _ = try LanguageClockIdiomRules.build(
           templates: templates ?? good.templates, anchors: anchors ?? good.anchors,
           trailingMarker: marker ?? good.marker, outputSeparator: separator ?? good.separator,
-          refusals: refusals ?? good.refusals)
+          refusals: refusals ?? good.refusals, requiresReviewedRefusals: required,
+          requiredEntries: requiredEntries ?? german.requiredEntries, capitalizedNounGate: true)
         return nil
       } catch let error as LanguageClockIdiomRules.BuildError {
         return error
@@ -173,12 +186,21 @@ struct LanguageClockIdiomPassTests {
     #expect(build(templates: [template(minute: 50, sign: 1, most: 29)]) == .invalidTemplate("t"))
     #expect(build(templates: [template(minute: 10, sign: -1, most: 14)]) == .invalidTemplate("t"))
     #expect(build(anchors: []) == .noAnchors)
-    #expect(build(anchors: ["um", "UM"]) == .invalidAnchor("um,UM"))
-    #expect(build(anchors: [""]) == .invalidAnchor(""))
+    #expect(build(anchors: [["um"], ["UM"]]) == .invalidAnchor("um,UM"))
+    #expect(build(anchors: [[""]]) == .invalidAnchor(""))
+    #expect(build(anchors: [[]]) == .invalidAnchor(""))
+    #expect(build(anchors: [["het is"]]) == .invalidAnchor("het is"))
     #expect(build(marker: "") == .emptyMarker)
     #expect(build(separator: "") == .invalidSeparator)
     #expect(build(separator: "::") == .invalidSeparator)
     #expect(build(refusals: []) == .noRefusals)
+    // The reviewed refusals of a language that requires them are exactly its required entries.
+    #expect(build(refusals: Array(good.refusals.dropLast())) == .refusalsNotRequiredSet)
+    #expect(build(requiredEntries: ["ref-clock-002"]) == .refusalsNotRequiredSet)
+    // A language without the policy carries none (Dutch); refusals without the policy fail.
+    #expect(build(refusals: [], required: false, requiredEntries: []) == nil)
+    #expect(build(required: false, requiredEntries: []) == .refusalsWithoutPolicy)
+    #expect(build(refusals: [], required: false) == .refusalsWithoutPolicy)
     let empty = Data.Refusal(
       id: "r", version: 1, contentSHA256: "x", reasonCode: "c", phrases: [""], reviewRef: "r")
     #expect(build(refusals: [empty]) == .emptyPhrase("r"))
@@ -189,15 +211,16 @@ struct LanguageClockIdiomPassTests {
 
   @Test("a pass without templates, anchors or refusals is unavailable and proposes nothing")
   func unavailableRules() throws {
-    let full = try LanguageClockIdiomRules.german()
+    let full = try Self.germanRules()
     func rules(
-      templates: [LanguageClockIdiomRules.Template]? = nil, anchors: Set<String>? = nil,
-      refusals: [LanguageClockIdiomRules.Refusal]? = nil
+      templates: [LanguageClockIdiomRules.Template]? = nil, anchors: Set<[String]>? = nil,
+      refusals: [LanguageClockIdiomRules.Refusal]? = nil, required: Bool = true
     ) -> LanguageClockIdiomRules {
       LanguageClockIdiomRules(
         templates: templates ?? full.templates, anchors: anchors ?? full.anchors,
         trailingMarker: full.trailingMarker, outputSeparator: full.outputSeparator,
-        refusals: refusals ?? full.refusals)
+        refusals: refusals ?? full.refusals, requiresReviewedRefusals: required,
+        capitalizedNounGate: full.capitalizedNounGate)
     }
     let snapshot = LanguageTextSnapshot("Wir kommen um halb sieben.")
     for broken in [rules(templates: []), rules(anchors: []), rules(refusals: [])] {
@@ -210,6 +233,16 @@ struct LanguageClockIdiomPassTests {
       }
     }
     #expect(try converted("Wir kommen um halb sieben.") == "Wir kommen um 6:30.")
+    // Without the reviewed-refusal policy an empty refusal set runs (the Dutch contract).
+    guard
+      case .ran(let run) = LanguageClockIdiomPass(
+        grammar: grammar, rules: rules(refusals: [], required: false)
+      ).propose(in: snapshot)
+    else {
+      Issue.record("rules without the refusal policy must run")
+      return
+    }
+    #expect(run.edits.count == 1)
   }
 
   // MARK: Both templates, boundaries, anchors

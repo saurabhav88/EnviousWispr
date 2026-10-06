@@ -139,6 +139,31 @@
       "licenseSha256": "43070e2d4e532684de521b885f385d0841030efa2b1a20bafb76133a5e1379c1",
       "licenseUrl": "https://raw.githubusercontent.com/NVIDIA/NeMo-text-processing/7efa127d968c081793ebf11fa94dfb4257302d48/LICENSE",
       "columns": "one column: scale words with no stated value"
+    },
+    {
+      "id": "cldr-nl-rbnf",
+      "kind": "cldr-rbnf-lexicon",
+      "language": "nl",
+      "repo": "unicode-org/cldr",
+      "tag": "release-48-2",
+      "commit": "11299982335beb974c1c63c45265184e759c0f41",
+      "path": "common/rbnf/nl.xml",
+      "url": "https://raw.githubusercontent.com/unicode-org/cldr/11299982335beb974c1c63c45265184e759c0f41/common/rbnf/nl.xml",
+      "file": "sources/cldr/nl.xml",
+      "sha256": "37e0dcdaec869cc4f50978761077283eebadc861cadfa486fd354b4d00dae482",
+      "license": "Unicode-3.0",
+      "licenseFile": "sources/cldr/LICENSE",
+      "licenseSha256": "b49d0e9f8ead51ca8b7df6fec89cc3ae6809198b4b9d43c74216da0118f23f5b",
+      "licenseUrl": "https://raw.githubusercontent.com/unicode-org/cldr/11299982335beb974c1c63c45265184e759c0f41/LICENSE",
+      "lexicon": {
+        "cardinalRuleset": "%spellout-cardinal",
+        "stressedRuleset": "%spellout-cardinal-stressed",
+        "compoundRuleset": "%%number-en",
+        "articleForms": [
+          "een"
+        ]
+      },
+      "note": "Cardinal lexicon 0..99 for Dutch clock idioms: the literal atoms 0..19 of %spellout-cardinal, its tens rules of the exact form [>%%number-en>]<word>, the compound prefixes of %%number-en (literal for 1..3, the redirect =%spellout-cardinal=en for 4..9) and the stressed one of %spellout-cardinal-stressed. articleForms names the number words that are also the indefinite article (een): alone they are not number evidence, and as a clock hour they must end the phrase. Every other rule (negative, decimal, scale, ordinal, year) is counted as excluded."
     }
   ],
   "phonePrefix": {
@@ -320,131 +345,264 @@
     "note": "Lowers ONLY the reviewed ordinal refusal entries (context shapes and literal phrases with their ids, versions, hashes). Pending entries and other categories are never emitted; the entries are not a context lexicon."
   },
   "clockIdiom": {
-    "category": "clock_idiom",
-    "refusalsFile": "refusals/de.json",
-    "schemaFile": "review-data.schema.json",
-    "requiredEntries": [
-      "ref-clock-002",
-      "ref-clock-003",
-      "ref-clock-004"
-    ],
-    "templates": [
-      {
-        "id": "half",
-        "tokens": [
-          "halb"
-        ],
-        "hourOffset": -1,
-        "minute": 30,
-        "inputHours": [
-          2,
-          12
-        ]
-      },
-      {
-        "id": "quarterAfter",
-        "tokens": [
-          "viertel",
-          "nach"
-        ],
-        "hourOffset": 0,
-        "minute": 15,
-        "inputHours": [
-          1,
-          11
-        ]
-      },
-      {
-        "id": "quarterTo",
-        "tokens": [
-          "viertel",
-          "vor"
-        ],
-        "hourOffset": -1,
-        "minute": 45,
-        "inputHours": [
-          2,
-          12
-        ]
-      },
-      {
-        "id": "minutesAfter",
-        "tokens": [
-          "nach"
-        ],
-        "hourOffset": 0,
-        "minute": 0,
-        "inputHours": [
-          1,
-          11
-        ],
-        "minuteSlot": {
-          "sign": 1,
-          "max": 29
+    "de": {
+      "category": "clock_idiom",
+      "refusalsFile": "refusals/de.json",
+      "schemaFile": "review-data.schema.json",
+      "requiredEntries": [
+        "ref-clock-002",
+        "ref-clock-003",
+        "ref-clock-004"
+      ],
+      "templates": [
+        {
+          "id": "half",
+          "tokens": [
+            "halb"
+          ],
+          "hourOffset": -1,
+          "minute": 30,
+          "inputHours": [
+            2,
+            12
+          ]
+        },
+        {
+          "id": "quarterAfter",
+          "tokens": [
+            "viertel",
+            "nach"
+          ],
+          "hourOffset": 0,
+          "minute": 15,
+          "inputHours": [
+            1,
+            11
+          ]
+        },
+        {
+          "id": "quarterTo",
+          "tokens": [
+            "viertel",
+            "vor"
+          ],
+          "hourOffset": -1,
+          "minute": 45,
+          "inputHours": [
+            2,
+            12
+          ]
+        },
+        {
+          "id": "minutesAfter",
+          "tokens": [
+            "nach"
+          ],
+          "hourOffset": 0,
+          "minute": 0,
+          "inputHours": [
+            1,
+            11
+          ],
+          "minuteSlot": {
+            "sign": 1,
+            "max": 29
+          }
+        },
+        {
+          "id": "minutesBefore",
+          "tokens": [
+            "vor"
+          ],
+          "hourOffset": -1,
+          "minute": 60,
+          "inputHours": [
+            2,
+            12
+          ],
+          "minuteSlot": {
+            "sign": -1,
+            "max": 29
+          }
+        },
+        {
+          "id": "minutesAfterHalf",
+          "tokens": [
+            "nach",
+            "halb"
+          ],
+          "hourOffset": -1,
+          "minute": 30,
+          "inputHours": [
+            2,
+            12
+          ],
+          "minuteSlot": {
+            "sign": 1,
+            "max": 14
+          }
+        },
+        {
+          "id": "minutesBeforeHalf",
+          "tokens": [
+            "vor",
+            "halb"
+          ],
+          "hourOffset": -1,
+          "minute": 30,
+          "inputHours": [
+            2,
+            12
+          ],
+          "minuteSlot": {
+            "sign": -1,
+            "max": 14
+          }
         }
-      },
-      {
-        "id": "minutesBefore",
-        "tokens": [
-          "vor"
-        ],
-        "hourOffset": -1,
-        "minute": 60,
-        "inputHours": [
-          2,
-          12
-        ],
-        "minuteSlot": {
-          "sign": -1,
-          "max": 29
+      ],
+      "anchors": [
+        "um",
+        "gegen",
+        "bis",
+        "ab",
+        "für"
+      ],
+      "trailingMarker": "uhr",
+      "outputSeparator": ":",
+      "syntaxProvenance": "Implementation admission and template data for the bounded clock scope, grounded in the approved plan, the frozen development expectations and the 2026-10-06 engine measurement (docs/audits/2026-10-06-1677-de-clock-minutes-shapes: both engines write spoken minutes as digits, '5 nach 2', '20 vor 5', '10 nach halb 8', and keep 'viertel vor acht' as words). Templates: halb H, viertel nach H, viertel vor H, M nach H, M vor H, M nach halb H, M vor halb H. The input-hour ranges exclude every hour whose written result needs a noon/midnight face choice (halb eins, viertel nach zwoelf, viertel vor eins, M nach zwoelf, M vor eins). This is not a reviewed refusal and not a general German clock grammar; bare viertel H, dreiviertel H (Parakeet garbles it) and the pending noon/midnight entry are neither converted nor lowered.",
+      "note": "Lowers ONLY the reviewed clock refusal entries (literal phrases with their ids, versions, hashes). Pending entries and other categories are never emitted.",
+      "requiresReviewedRefusals": true,
+      "capitalizedNounGate": true
+    },
+    "nl": {
+      "category": "clock_idiom",
+      "requiresReviewedRefusals": false,
+      "requiredEntries": [],
+      "capitalizedNounGate": false,
+      "templates": [
+        {
+          "id": "half",
+          "tokens": [
+            "half"
+          ],
+          "hourOffset": -1,
+          "minute": 30,
+          "inputHours": [
+            2,
+            12
+          ]
+        },
+        {
+          "id": "quarterAfter",
+          "tokens": [
+            "kwart",
+            "over"
+          ],
+          "hourOffset": 0,
+          "minute": 15,
+          "inputHours": [
+            1,
+            11
+          ]
+        },
+        {
+          "id": "quarterTo",
+          "tokens": [
+            "kwart",
+            "voor"
+          ],
+          "hourOffset": -1,
+          "minute": 45,
+          "inputHours": [
+            2,
+            12
+          ]
+        },
+        {
+          "id": "minutesAfter",
+          "tokens": [
+            "over"
+          ],
+          "hourOffset": 0,
+          "minute": 0,
+          "inputHours": [
+            1,
+            11
+          ],
+          "minuteSlot": {
+            "sign": 1,
+            "max": 29
+          }
+        },
+        {
+          "id": "minutesBefore",
+          "tokens": [
+            "voor"
+          ],
+          "hourOffset": -1,
+          "minute": 60,
+          "inputHours": [
+            2,
+            11
+          ],
+          "minuteSlot": {
+            "sign": -1,
+            "max": 29
+          }
+        },
+        {
+          "id": "minutesAfterHalf",
+          "tokens": [
+            "over",
+            "half"
+          ],
+          "hourOffset": -1,
+          "minute": 30,
+          "inputHours": [
+            2,
+            12
+          ],
+          "minuteSlot": {
+            "sign": 1,
+            "max": 14
+          }
+        },
+        {
+          "id": "minutesBeforeHalf",
+          "tokens": [
+            "voor",
+            "half"
+          ],
+          "hourOffset": -1,
+          "minute": 30,
+          "inputHours": [
+            2,
+            12
+          ],
+          "minuteSlot": {
+            "sign": -1,
+            "max": 14
+          }
         }
-      },
-      {
-        "id": "minutesAfterHalf",
-        "tokens": [
-          "nach",
-          "halb"
-        ],
-        "hourOffset": -1,
-        "minute": 30,
-        "inputHours": [
-          2,
-          12
-        ],
-        "minuteSlot": {
-          "sign": 1,
-          "max": 14
-        }
-      },
-      {
-        "id": "minutesBeforeHalf",
-        "tokens": [
-          "vor",
-          "halb"
-        ],
-        "hourOffset": -1,
-        "minute": 30,
-        "inputHours": [
-          2,
-          12
-        ],
-        "minuteSlot": {
-          "sign": -1,
-          "max": 14
-        }
-      }
-    ],
-    "anchors": [
-      "um",
-      "gegen",
-      "bis",
-      "ab",
-      "für"
-    ],
-    "trailingMarker": "uhr",
-    "outputSeparator": ":",
-    "syntaxProvenance": "Implementation admission and template data for the bounded clock scope, grounded in the approved plan, the frozen development expectations and the 2026-10-06 engine measurement (docs/audits/2026-10-06-1677-de-clock-minutes-shapes: both engines write spoken minutes as digits, '5 nach 2', '20 vor 5', '10 nach halb 8', and keep 'viertel vor acht' as words). Templates: halb H, viertel nach H, viertel vor H, M nach H, M vor H, M nach halb H, M vor halb H. The input-hour ranges exclude every hour whose written result needs a noon/midnight face choice (halb eins, viertel nach zwoelf, viertel vor eins, M nach zwoelf, M vor eins). This is not a reviewed refusal and not a general German clock grammar; bare viertel H, dreiviertel H (Parakeet garbles it) and the pending noon/midnight entry are neither converted nor lowered.",
-    "note": "Lowers ONLY the reviewed clock refusal entries (literal phrases with their ids, versions, hashes). Pending entries and other categories are never emitted."
+      ],
+      "anchors": [
+        "om",
+        "tegen",
+        "tot",
+        "vanaf",
+        "rond",
+        "het is",
+        "het is nu",
+        "is het",
+        "is het nu",
+        "het is inmiddels",
+        "is inmiddels"
+      ],
+      "trailingMarker": "uur",
+      "outputSeparator": ".",
+      "syntaxProvenance": "Implementation admission and template data for Dutch clock idioms (#1677, 2026-10-06), grounded in the measured engine shapes (docs/audits/2026-10-06-1677-pl-ru-nl-shapes, 2026-10-06-1677-full-list-eval) and real speech (2026-10-06-1677-pl-ru-nl-youtube, 2026-10-06-1677-podcast-speech: 'het is kwart over tien', 'het is nu 10 voor half 2', 'om half twee', 'tot half 4'), with the arithmetic of Taaladvies 'Kloktijden'. Templates: half H, kwart over H, kwart voor H, M over H, M voor H, M over half H, M voor half H. Input hours exclude every hour whose written result needs a noon/midnight face choice, and minutesBefore excludes twaalf so the idiom 'vijf voor twaalf' (almost too late) never converts. Output style 8.30 (Taaladvies; the engines' own Dutch style). This is not a reviewed refusal and not a general Dutch clock grammar.",
+      "note": "Dutch declares no reviewed refusals; the pass runs with none."
+    }
   },
   "numberStyle": {
     "unitSymbols": {
@@ -518,6 +676,20 @@
       ],
       "replacement": "+",
       "provenance": "Portuguese spoken plus. Measured 2026-10-06 on Azure TTS through Parakeet and WhisperKit: every international number keeps the spoken plus word before the digits; word from the language's own telephone usage."
+    },
+    "nl": {
+      "triggerTokens": [
+        "plus"
+      ],
+      "replacement": "+",
+      "provenance": "Dutch spoken plus. Measured 2026-10-06 on Azure TTS through Parakeet and WhisperKit: every international number keeps the spoken plus word before the digits (WhisperKit writes Polish 'PLUS'; matching folds case); word from the language's own telephone usage."
+    },
+    "pl": {
+      "triggerTokens": [
+        "plus"
+      ],
+      "replacement": "+",
+      "provenance": "Polish spoken plus. Measured 2026-10-06 on Azure TTS through Parakeet and WhisperKit: every international number keeps the spoken plus word before the digits (WhisperKit writes Polish 'PLUS'; matching folds case); word from the language's own telephone usage."
     }
   },
   "hourFirstClock": {
