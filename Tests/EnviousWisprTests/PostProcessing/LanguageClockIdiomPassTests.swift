@@ -493,6 +493,18 @@ struct LanguageClockIdiomPassTests {
     #expect(try run("Wir kommen um 7:30 Uhr an.").1.candidates.isEmpty)
   }
 
+  @Test("a sentence end after a digit hour converts, like a spelled hour before a new sentence")
+  func digitHourSentenceEnd() throws {
+    // `halb` and `viertel nach` never take an ordinal, so a period after the digit is read as the
+    // sentence end, exactly as `um halb acht. Danach` is today.
+    #expect(
+      try converted("Wir treffen uns um halb 8. Danach essen wir.")
+        == "Wir treffen uns um 7:30. Danach essen wir.")
+    #expect(
+      try converted("Wir treffen uns um halb acht. Danach essen wir.")
+        == "Wir treffen uns um 7:30. Danach essen wir.")
+  }
+
   @Test("digit hours outside 1 to 12, clock-face hours and other written forms never convert")
   func digitHourExclusions() throws {
     #expect(try dispositions("Wir treffen uns um halb 1.") == [.refused(.ambiguousClockFace)])
@@ -526,7 +538,7 @@ struct LanguageClockIdiomPassTests {
     }
   }
 
-  @Test("the editor rechecks the digit-hour permission and refuses every forged variant")
+  @Test("the editor rechecks the digit-hour chunk shape and its span; hour meaning stays the pass's")
   func digitHourPermission() throws {
     let snapshot = LanguageTextSnapshot("um halb 8. dann 9 Leute")
     // "halb 8." is 3..<10; the chunk "8." is 8..<10; "9" is 16..<17.
