@@ -217,6 +217,7 @@ struct TranscribeFileView: View {
       stepBarRow(compact: false)
       stepBarRow(compact: true)
     }
+    .settingsMapRegistration(.transcribeFileSteps)
   }
 
   private func stepBarRow(compact: Bool) -> some View {

@@ -9,22 +9,19 @@ struct KeybindsSettingsView: View {
   var body: some View {
     @Bindable var settings = settings
     SettingsContentView {
-      SettingsSectionHeading(resolvedTitle: String(
-        localized: "keybinds.section.recording", defaultValue: "Recording",
-        comment: "Keybinds page: section heading for the recording keys. Shown in capitals.").localizedUppercase)
+      SettingsSectionHeading(map: .id(.sectionKeybindsRecording), casing: .localizedUppercase)
       BrandedSection {
         BrandedRow {
           SettingsRow(
-            icon: "hand.tap", title: KeybindsSettingsCopy.modeTitle,
+            map: .id(.recordingMode),
+            icon: "hand.tap",
             short: KeybindsSettingsCopy.modeShort,
             help: settings.isPushToTalk
               ? KeybindsSettingsCopy.pushToTalkHelp : KeybindsSettingsCopy.toggleHelp
           ) {
             BrandedSegmentedPicker(
-              options: [
-                (String(localized: "Push to Talk"), nil, RecordingMode.pushToTalk),
-                (String(localized: "Toggle"), nil, RecordingMode.toggle),
-              ], selection: $settings.recordingMode
+              options: SettingsChoicePresentation.recordingMode.map(\.pickerOption),
+              selection: $settings.recordingMode
             )
             // As wide as the keybind fields below, two equal halves (founder, 2026-10-03).
             .frame(width: HotkeyRecorderView.Style.prominent.fieldWidth)
@@ -36,7 +33,7 @@ struct KeybindsSettingsView: View {
         }
         BrandedRow {
           KeybindSettingsRow(
-            icon: "mic", title: KeybindsSettingsCopy.recordTitle,
+            map: .id(.recordKeybind), icon: "mic",
             short: KeybindsSettingsCopy.recordShort, help: KeybindsSettingsCopy.recordHelp,
             keyCode: $settings.toggleKeyCode,
             modifiers: $settings.toggleModifiers, role: .record
@@ -44,7 +41,7 @@ struct KeybindsSettingsView: View {
         }
         BrandedRow {
           KeybindSettingsRow(
-            icon: "xmark", title: KeybindsSettingsCopy.cancelTitle,
+            map: .id(.cancelKeybind), icon: "xmark",
             short: KeybindsSettingsCopy.cancelShort, help: KeybindsSettingsCopy.cancelHelp,
             keyCode: $settings.cancelKeyCode,
             modifiers: $settings.cancelModifiers, role: .cancel
@@ -52,7 +49,8 @@ struct KeybindsSettingsView: View {
         }
         BrandedRow(showDivider: false) {
           SettingsRow(
-            icon: "arrow.uturn.backward", title: KeybindsSettingsCopy.recoveryTitle,
+            map: .id(.escapeRecovery),
+            icon: "arrow.uturn.backward",
             short: KeybindsSettingsCopy.recoveryShort, help: KeybindsSettingsCopy.recoveryHelp
           ) {
             Toggle("", isOn: $settings.escapeRecoveryEnabled)
@@ -63,13 +61,11 @@ struct KeybindsSettingsView: View {
           }
         }
       }
-      SettingsSectionHeading(resolvedTitle: String(
-        localized: "keybinds.section.shortcuts", defaultValue: "Shortcuts",
-        comment: "Keybinds page: section heading for paste, copy and add-a-word keys. Shown in capitals.").localizedUppercase)
+      SettingsSectionHeading(map: .id(.sectionKeybindsShortcuts), casing: .localizedUppercase)
       BrandedSection {
         BrandedRow {
           KeybindSettingsRow(
-            icon: "character.book.closed", title: KeybindsSettingsCopy.addTitle,
+            map: .id(.quickAddKeybind), icon: "character.book.closed",
             short: KeybindsSettingsCopy.addShort, help: KeybindsSettingsCopy.addHelp,
             keyCode: $settings.quickAddKeyCode,
             modifiers: $settings.quickAddModifiers, role: .quickAdd
@@ -77,7 +73,7 @@ struct KeybindsSettingsView: View {
         }
         BrandedRow {
           KeybindSettingsRow(
-            icon: "clipboard", title: KeybindsSettingsCopy.pasteTitle,
+            map: .id(.pasteLastKeybind), icon: "clipboard",
             short: KeybindsSettingsCopy.pasteShort, help: KeybindsSettingsCopy.pasteHelp,
             keyCode: $settings.pasteLastKeyCode,
             modifiers: $settings.pasteLastModifiers, role: .pasteLast
@@ -85,7 +81,7 @@ struct KeybindsSettingsView: View {
         }
         BrandedRow(showDivider: false) {
           KeybindSettingsRow(
-            icon: "doc.on.doc", title: KeybindsSettingsCopy.copyTitle,
+            map: .id(.copyLastKeybind), icon: "doc.on.doc",
             short: KeybindsSettingsCopy.copyShort, help: KeybindsSettingsCopy.copyHelp,
             keyCode: $settings.copyLastKeyCode,
             modifiers: $settings.copyLastModifiers, role: .copyLast
@@ -141,8 +137,9 @@ enum KeybindsSettingsCopy {
 
 /// Role owns Reset defaults; warnings remain visible below the short line.
 private struct KeybindSettingsRow: View {
+  /// The row's Settings Map identity; its title comes from the map node (#3482).
+  let map: SettingsMapRef
   let icon: String
-  let title: LocalizedStringResource
   let short: LocalizedStringResource
   let help: LocalizedStringResource
   @Binding var keyCode: UInt16
@@ -198,7 +195,7 @@ private struct KeybindSettingsRow: View {
   }
 
   var body: some View {
-    SettingsRow(icon: icon, title: title, short: short, help: help) {
+    SettingsRow(map: map, icon: icon, short: short, help: help) {
       HotkeyRecorderView(
         keyCode: $keyCode, modifiers: $modifiers,
         defaultKeyCode: defaultKeyCode, defaultModifiers: defaultModifiers,

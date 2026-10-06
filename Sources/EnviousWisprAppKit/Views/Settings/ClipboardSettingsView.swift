@@ -18,8 +18,7 @@ struct ClipboardSettingsView: View {
     SettingsContentView {
       VStack(alignment: .leading, spacing: SettingsPR1Layout.headingGap) {
       SettingsSectionHeading(
-        resolvedTitle: String(localized: Copy.clipboardHeading).localizedUppercase
-      ) {
+        map: .id(.sectionClipboard), casing: .localizedUppercase) {
         Text(DictationSettingsCopy.Engine.nextRecordingNote)
           .font(.stHelper)
           .foregroundStyle(.stTextSecondary)
@@ -29,8 +28,8 @@ struct ClipboardSettingsView: View {
       BrandedSection {
         BrandedRow {
           SettingsRow(
+            map: .id(.autoCopyToClipboard),
             icon: "doc.on.clipboard",
-            title: Copy.autoCopyTitle,
             short: Copy.autoCopyShort,
             help: Copy.autoCopyHelp
           ) {
@@ -43,8 +42,8 @@ struct ClipboardSettingsView: View {
         }
         BrandedRow {
           SettingsRow(
+            map: .id(.restoreClipboard),
             icon: "arrow.uturn.backward",
-            title: Copy.restoreTitle,
             short: Copy.restoreShort,
             help: Copy.restoreHelp
           ) {
@@ -57,8 +56,8 @@ struct ClipboardSettingsView: View {
         }
         BrandedRow(showDivider: false) {
           SettingsRow(
+            map: .id(.smartInsertion),
             icon: "text.cursor",
-            title: Copy.smartInsertionTitle,
             short: Copy.smartInsertionShort,
             help: Copy.smartInsertionHelp
           ) {
@@ -84,13 +83,13 @@ struct ClipboardSettingsView: View {
       // above, and Quick Add still applies on the next press.
       VStack(alignment: .leading, spacing: SettingsPR1Layout.headingGap) {
       SettingsSectionHeading(
-        resolvedTitle: String(localized: Copy.quickAddHeading).localizedUppercase)
+        map: .id(.sectionQuickAddClipboard), casing: .localizedUppercase)
 
       BrandedSection {
         BrandedRow(showDivider: false) {
           SettingsRow(
+            map: .id(.quickAddClipboardFallback),
             icon: "text.viewfinder",
-            title: Copy.quickAddTitle,
             short: Copy.quickAddShort,
             help: Copy.quickAddHelp
           ) {

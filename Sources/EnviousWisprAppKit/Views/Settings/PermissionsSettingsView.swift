@@ -8,11 +8,12 @@ struct PermissionsSettingsView: View {
   var body: some View {
     SettingsContentView {
       VStack(alignment: .leading, spacing: 10) {
-        SettingsSectionHeading(title: "PERMISSIONS")
+        SettingsSectionHeading(map: .id(.sectionPermissions))
         BrandedSection {
           BrandedRow {
             SettingsRow(
-              icon: "mic", title: "Microphone", short: "Needed to record your voice.",
+              map: .id(.permissionMicrophone),
+              icon: "mic", short: "Needed to record your voice.",
               help: "Allow microphone access so EnviousWispr can record your voice. If access was denied, Request Access opens System Settings."
             ) {
               if permissions.hasMicrophonePermission {
@@ -20,7 +21,11 @@ struct PermissionsSettingsView: View {
                   LocalizedStringResource(
                     "Microphone access granted", comment: "Permissions settings: status when granted."))
               } else {
-                SettingsActionButton(title: "Request Access", isEnabled: true, action: requestMicrophone)
+                SettingsActionButton(
+                  title: SettingsItemCopy.AppSettings.requestAccess, isEnabled: true,
+                  action: requestMicrophone
+                )
+                .settingsMapRegistration(.permissionMicrophoneRequest)
               }
             }
             .rowStatus {
@@ -31,7 +36,8 @@ struct PermissionsSettingsView: View {
           }
           BrandedRow(showDivider: false) {
             SettingsRow(
-              icon: "hand.raised", title: "Accessibility",
+              map: .id(.permissionAccessibility),
+              icon: "hand.raised",
               short: "Needed to paste text into other apps.",
               help: "Allow Accessibility access so EnviousWispr can paste your dictation into other apps."
             ) {
@@ -40,9 +46,10 @@ struct PermissionsSettingsView: View {
                   LocalizedStringResource(
                     "Accessibility access granted", comment: "Permissions settings: status when granted."))
               } else {
-                SettingsActionButton(title: "Open System Settings", isEnabled: true) {
+                SettingsActionButton(title: SettingsItemCopy.AppSettings.openSystemSettings, isEnabled: true) {
                   _ = permissions.requestAccessibilityAccess()
                 }
+                .settingsMapRegistration(.permissionAccessibilityOpenSettings)
               }
             }
             .rowStatus {

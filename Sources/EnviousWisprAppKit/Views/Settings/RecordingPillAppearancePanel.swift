@@ -58,8 +58,8 @@ struct RecordingPillAppearancePanel: View {
       // The help never sits inside a card's Button: the explanation is on the
       // row, and the cards below are only choices.
       SettingsRow(
+        map: .id(.pillStyle),
         icon: "waveform.badge.mic",
-        title: DictationSettingsCopy.Pill.styleTitle,
         short: DictationSettingsCopy.Pill.styleShort,
         help: DictationSettingsCopy.Pill.styleHelp
       ) {
@@ -118,13 +118,14 @@ struct RecordingPillAppearancePanel: View {
           } label: {
             // The hover padding sits INSIDE the label and carries the hit shape, so the
             // painted hover area is also the clickable area.
-            Text("Configure Live Preview")
+            Text(SettingsItemCopy.Pill.configureLivePreview)
               .foregroundStyle(Color.stAccent)
               .settingsHoverQuiet()
               .contentShape(Rectangle())
           }
           .buttonStyle(.plain)
           .accessibilityHint("Opens Dictation Settings, Live Preview.")
+          .settingsMapRegistration(.pillStyleConfigureLivePreview)
         }
       }
     }

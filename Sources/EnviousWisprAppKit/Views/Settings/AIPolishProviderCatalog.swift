@@ -312,6 +312,9 @@ struct PolishRailProvider: Identifiable, Equatable {
 }
 
 enum PolishRailCatalog {
+  /// The Gemini row's name: the vendor's product name, shared with the Settings Map (#3482).
+  static let geminiName = "Google Gemini"
+
   /// Flattened in render order (the dropdown's order). `providers(in:)` derives group
   /// membership from this list.
   ///
@@ -380,7 +383,7 @@ enum PolishRailCatalog {
     // vendor so the row reads as a cloud service beside OpenAI and Claude.
     // `PolishRailCatalogTests` pins this exact copy.
     PolishRailProvider(
-      provider: .gemini, name: "Google Gemini",
+      provider: .gemini, name: geminiName,
       tagline: String(
         localized: "Your API key",
         comment:

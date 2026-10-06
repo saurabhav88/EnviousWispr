@@ -43,6 +43,7 @@ struct PolishSectionHeading: View {
       .foregroundStyle(Color.stTextSecondary)
     }
     .padding(.leading, 4)
+    .settingsMapRegistration(.aiPolishProviderSection)
     .frame(maxWidth: .infinity, alignment: .leading)
   }
 }
@@ -88,6 +89,8 @@ struct PolishRowDivider: View {
 /// Without it the control squeezed the title to a few characters at the 750pt minimum window,
 /// and in German the key field nearly vanished (founder-feedback item 24).
 struct PolishRow<Detail: View, Trailing: View>: View {
+  /// The row's Settings Map identity or its approved exemption (#3482).
+  let registration: SettingsMapRegistration
   let icon: String
   var iconTint: Color = .stAccent
   var showsSpinner = false
@@ -96,6 +99,48 @@ struct PolishRow<Detail: View, Trailing: View>: View {
   @ViewBuilder let detail: () -> Detail
   @ViewBuilder let trailing: () -> Trailing
   var adaptsTrailing = false
+
+  /// A mapped row: the title comes from its Settings Map node.
+  init(
+    map: SettingsMapRef, icon: String, iconTint: Color = .stAccent, showsSpinner: Bool = false,
+    subtitle: String? = nil, @ViewBuilder detail: @escaping () -> Detail,
+    @ViewBuilder trailing: @escaping () -> Trailing, adaptsTrailing: Bool = false
+  ) {
+    self.init(
+      registration: .mapped(map.id), icon: icon, iconTint: iconTint, showsSpinner: showsSpinner,
+      title: map.title, subtitle: subtitle, detail: detail, trailing: trailing,
+      adaptsTrailing: adaptsTrailing)
+  }
+
+  /// A row the Settings Map deliberately leaves out, for an approved reason (for example a row
+  /// that only reports a setup step; its action registers on its own control).
+  init(
+    notInSettingsMap reason: SettingsMapExemption, icon: String, iconTint: Color = .stAccent,
+    showsSpinner: Bool = false, title: String, subtitle: String? = nil,
+    @ViewBuilder detail: @escaping () -> Detail, @ViewBuilder trailing: @escaping () -> Trailing,
+    adaptsTrailing: Bool = false
+  ) {
+    self.init(
+      registration: .exempt(reason), icon: icon, iconTint: iconTint, showsSpinner: showsSpinner,
+      title: title, subtitle: subtitle, detail: detail, trailing: trailing,
+      adaptsTrailing: adaptsTrailing)
+  }
+
+  private init(
+    registration: SettingsMapRegistration, icon: String, iconTint: Color, showsSpinner: Bool,
+    title: String, subtitle: String?, detail: @escaping () -> Detail,
+    trailing: @escaping () -> Trailing, adaptsTrailing: Bool
+  ) {
+    self.registration = registration
+    self.icon = icon
+    self.iconTint = iconTint
+    self.showsSpinner = showsSpinner
+    self.title = title
+    self.subtitle = subtitle
+    self.detail = detail
+    self.trailing = trailing
+    self.adaptsTrailing = adaptsTrailing
+  }
 
   var body: some View {
     Group {
@@ -110,6 +155,7 @@ struct PolishRow<Detail: View, Trailing: View>: View {
     }
     .padding(.horizontal, PolishSectionLayout.rowPaddingH)
     .padding(.vertical, PolishSectionLayout.rowPaddingV)
+    .settingsMapRegistration(registration)
   }
 
   private var beside: some View {
@@ -171,13 +217,23 @@ struct PolishRow<Detail: View, Trailing: View>: View {
 
 extension PolishRow where Detail == EmptyView {
   init(
-    icon: String, iconTint: Color = .stAccent, showsSpinner: Bool = false, title: String,
+    map: SettingsMapRef, icon: String, iconTint: Color = .stAccent, showsSpinner: Bool = false,
     subtitle: String? = nil, adaptsTrailing: Bool = false,
     @ViewBuilder trailing: @escaping () -> Trailing
   ) {
     self.init(
-      icon: icon, iconTint: iconTint, showsSpinner: showsSpinner, title: title,
-      subtitle: subtitle, detail: { EmptyView() }, trailing: trailing,
+      map: map, icon: icon, iconTint: iconTint, showsSpinner: showsSpinner, subtitle: subtitle,
+      detail: { EmptyView() }, trailing: trailing, adaptsTrailing: adaptsTrailing)
+  }
+
+  init(
+    notInSettingsMap reason: SettingsMapExemption, icon: String, iconTint: Color = .stAccent,
+    showsSpinner: Bool = false, title: String, subtitle: String? = nil,
+    adaptsTrailing: Bool = false, @ViewBuilder trailing: @escaping () -> Trailing
+  ) {
+    self.init(
+      notInSettingsMap: reason, icon: icon, iconTint: iconTint, showsSpinner: showsSpinner,
+      title: title, subtitle: subtitle, detail: { EmptyView() }, trailing: trailing,
       adaptsTrailing: adaptsTrailing)
   }
 }
@@ -304,13 +360,15 @@ struct PolishWhyParagraph: Equatable {
 
 /// The "WHY USE <X>" block that closes every provider's card.
 struct PolishWhyBlock: View {
-  let title: String
+  /// The block's Settings Map identity; its title comes from the map node (#3482).
+  let map: SettingsMapID
   let paragraphs: [PolishWhyParagraph]
-  var link: (title: String, url: URL)?
+  /// The block's link, by its Settings Map identity and destination.
+  var link: (map: SettingsMapID, url: URL)?
 
   var body: some View {
     VStack(alignment: .leading, spacing: 8) {
-      Text(title.uppercased())
+      Text(SettingsMapRef.id(map).title.uppercased())
         .font(.stSectionHeader)
         .tracking(0.6)
         .foregroundStyle(Color.stAccent)
@@ -322,11 +380,13 @@ struct PolishWhyBlock: View {
           .fixedSize(horizontal: false, vertical: true)
       }
       if let link {
-        Link(link.title, destination: link.url)
+        Link(SettingsMapRef.id(link.map).title, destination: link.url)
           .font(.stHelper)
           .tint(Color.stAccent)
+          .settingsMapRegistration(link.map)
       }
     }
+    .settingsMapRegistration(map)
   }
 
   /// The lead-in is bold by weight only: a run that carried its own font would replace the

@@ -63,9 +63,9 @@ enum LiveTranscriptionCopy {
   /// (a historical record — see the note there), the two comments quoting the original
   /// user report, and `ParakeetStreamingSentryError`'s diagnostic strings, which would
   /// change Sentry grouping and fire new-issue alerts for no user benefit.
-  static let toggleLabel = String(
-    localized: "Faster Transcription",
+  static let toggleLabelResource = LocalizedStringResource("Faster Transcription",
     comment: "Speech engine settings, Faster Transcription: the toggle's name.")
+  static var toggleLabel: String { String(localized: toggleLabelResource) }
 
   /// Shown under the toggle only when WhisperKit is selected AND the language is
   /// Auto-detect, because streaming must commit to one language up front and a bad early

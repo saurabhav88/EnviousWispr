@@ -26,21 +26,21 @@ enum LivePreviewSettingsCopy {
   /// Founder decision: Live Preview everywhere. The collision is answered by
   /// renaming the OTHER setting to "Faster Transcription" (#2155, ships
   /// immediately after this), not by this one staying nameless.
-  static let sectionHeader = String(
-    localized: "Live Preview",
+  static let sectionHeaderResource = LocalizedStringResource("Live Preview",
     comment: "Live Preview settings: section header.")
+  static var sectionHeader: String { String(localized: sectionHeaderResource) }
 
   /// #3385: the visible name of the switch again (the Live Preview tab has no
   /// page header to say what it does), worded as the founder's design has it.
-  static let toggleLabel = String(
-    localized: "Show words while you speak",
+  static let toggleLabelResource = LocalizedStringResource("Show words while you speak",
     comment: "Live Preview settings: toggle label.")
+  static var toggleLabel: String { String(localized: toggleLabelResource) }
 
   // MARK: - Language packs (#2080)
 
-  static let packsHeader = String(
-    localized: "Languages",
+  static let packsHeaderResource = LocalizedStringResource("Languages",
     comment: "Live Preview settings: packs header.")
+  static var packsHeader: String { String(localized: packsHeaderResource) }
 
   /// Explains the thing a user is otherwise left to infer: their Mac has only some
   /// of these, the missing ones are a download, and we will not take that decision
@@ -327,9 +327,9 @@ enum LivePreviewSettingsCopy {
     comment: "Live Preview settings: catalog nothing to install.")
   /// The bar's one remedy, named for where it goes rather than what it fetches: the
   /// catalogue is the only thing that can resolve a display name to an installable pack.
-  static let browseDownloadsButton = String(
-    localized: "Browse downloads",
+  static let browseDownloadsButtonResource = LocalizedStringResource("Browse downloads",
     comment: "Live Preview settings: browse downloads button.")
+  static var browseDownloadsButton: String { String(localized: browseDownloadsButtonResource) }
 
   /// The Languages row's trailing button, and the row's own summary.
   // `packsBrowseButton` ("Browse") was DELETED, not left unused. The Languages
@@ -346,9 +346,9 @@ enum LivePreviewSettingsCopy {
   /// part - they can see what is on the mac on the top of the live preview page").
   /// What is already installed is answered by the language control at the top of
   /// the page, which lists exactly the languages you can switch to.
-  static let packsInstallRowTitle = String(
-    localized: "Install new languages",
+  static let packsInstallRowTitleResource = LocalizedStringResource("Install new languages",
     comment: "Live Preview settings: packs install row title.")
+  static var packsInstallRowTitle: String { String(localized: packsInstallRowTitleResource) }
 
   // `packInstalled` ("Ready"), `packInUse` ("In use"), `packsInstalledSummary`,
   // `catalogFilterAvailable`, `catalogFilterInstalled` and `catalogNoneInstalled`

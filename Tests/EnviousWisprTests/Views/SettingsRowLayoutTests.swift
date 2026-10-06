@@ -36,11 +36,10 @@ struct SettingsRowLayoutTests {
     let width = Self.ordinaryWindowRowWidth
     let frames = try Self.measure(width: width) { control in
       SettingsRow(
+        fixtureTitle: "Microphone readiness",
         icon: "timer",
-        title: LocalizedStringResource(stringLiteral: "Microphone readiness"),
-        short: LocalizedStringResource(stringLiteral: "How long the mic stays ready after recording."),
-        help: LocalizedStringResource(stringLiteral: "Full explanation.")
-      ) { control }
+        resolvedShort: "How long the mic stays ready after recording.",
+        resolvedHelp: "Full explanation.") { control }
     }
     let control = try #require(frames.control, "the control never reported a frame")
     // Beside, not below: the control starts on the row's first line and ends at its
@@ -57,8 +56,8 @@ struct SettingsRowLayoutTests {
     #expect(width == 432, "the 750-point row width moved to \(width); recheck the fixture")
     let frames = try Self.measure(width: width) { control in
       SettingsRow(
+        fixtureTitle: "Microphone readiness",
         icon: "timer",
-        resolvedTitle: "Microphone readiness",
         resolvedShort: "How long the mic stays ready after recording.",
         resolvedHelp: "Full explanation."
       ) { control }
@@ -76,8 +75,8 @@ struct SettingsRowLayoutTests {
     let width = Self.minimumWindowRowWidth
     let oneLine = try Self.measure(width: width) { control in
       SettingsRow(
+        fixtureTitle: "Input device",
         icon: "waveform",
-        resolvedTitle: "Input device",
         resolvedShort: "Short.",
         helpContent: { Text(verbatim: "Structured help") }
       ) { control }
@@ -85,8 +84,8 @@ struct SettingsRowLayoutTests {
     let long = String(repeating: "A short line that a translation made much longer. ", count: 4)
     let wrapped = try Self.measure(width: width) { control in
       SettingsRow(
+        fixtureTitle: "Input device",
         icon: "waveform",
-        resolvedTitle: "Input device",
         resolvedShort: long,
         helpContent: { Text(verbatim: "Structured help") }
       ) { control }
@@ -157,8 +156,8 @@ struct SettingsRowLayoutTests {
     for (width, presentation) in cases {
       let frames = try Self.measure(width: width) { _ in
         SettingsRow(
+          map: .id(.inputDevice),
           icon: "waveform",
-          title: DictationSettingsCopy.Microphone.inputDeviceTitle,
           short: DictationSettingsCopy.Microphone.inputDeviceShort,
           help: DictationSettingsCopy.Microphone.inputDeviceHelp
         ) {
@@ -183,12 +182,12 @@ struct SettingsRowLayoutTests {
   @Test("empty and multi-root control builders keep a stable layout")
   func builderRoots() throws {
     let empty = try Self.measure(width: Self.minimumWindowRowWidth) { _ in
-      SettingsRow(icon: "capsule", resolvedTitle: "Style", resolvedShort: "Choose the pill.",
+      SettingsRow(fixtureTitle: "Style", icon: "capsule", resolvedShort: "Choose the pill.",
         resolvedHelp: "Help.") { EmptyView() }
     }
     #expect(empty.rowHeight > 0)
     let many = try Self.measure(width: Self.minimumWindowRowWidth) { control in
-      SettingsRow(icon: "capsule", resolvedTitle: "Style", resolvedShort: "Choose the pill.",
+      SettingsRow(fixtureTitle: "Style", icon: "capsule", resolvedShort: "Choose the pill.",
         resolvedHelp: "Help.") { Text("First"); control; Text("Last") }
     }
     #expect(many.rowHeight > 0)
@@ -198,7 +197,7 @@ struct SettingsRowLayoutTests {
   @Test("the microphone status slot follows the short line and is outside the picker")
   func statusSlot() throws {
     let frame = try LivePreviewSettingsLayoutTests.frame(width: Self.minimumWindowRowWidth) { probe in
-      SettingsRow(icon: "waveform", resolvedTitle: "Input device", resolvedShort: "Short.",
+      SettingsRow(fixtureTitle: "Input device", icon: "waveform", resolvedShort: "Short.",
         resolvedHelp: "Help.") { Color.gray.frame(width: 260, height: 50) }
         .rowStatus { Text("In use").font(.stRowHelper).background(probe) }
     }

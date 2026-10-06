@@ -44,22 +44,38 @@ enum DictionaryTab: String, CaseIterable, Identifiable {
 
   var id: Self { self }
 
-  var label: String {
+  /// The tab's Settings Map identity (#3482). Exhaustive, so a new tab must be given a node.
+  var mapID: SettingsMapID {
+    switch self {
+    case .yourWords: .dictionaryTabYourWords
+    case .vocabularyPacks: .dictionaryTabVocabularyPacks
+    case .learnFrom: .dictionaryTabLearnFrom
+    case .quickAdd: .dictionaryTabQuickAdd
+    }
+  }
+
+  /// The tab's name as a resource, so the side rail and the Settings Map (#3482) share one owner.
+  var labelResource: LocalizedStringResource {
     switch self {
     case .yourWords:
-      return String(localized: "Your Words", comment: "Your Words: a tab in the side rail.")
+      return LocalizedStringResource("Your Words", comment: "Your Words: a tab in the side rail.")
     case .vocabularyPacks:
-      return String(localized: "Vocabulary Packs", comment: "Your Words: a tab in the side rail.")
+      return LocalizedStringResource(
+        "Vocabulary Packs", comment: "Your Words: a tab in the side rail.")
     case .learnFrom:
-      return String(
-        localized: "Learn from...",
+      return LocalizedStringResource(
+        "Learn from...",
         comment: "Your Words: a tab in the side rail, for learning words from contacts and edits.")
     case .quickAdd:
-      return String(
-        localized: "Quick Add",
+      return LocalizedStringResource(
+        "Quick Add",
         comment:
           "Your Words: a tab in the side rail, the feature that adds a selected word from any app.")
     }
+  }
+
+  var label: String {
+    String(localized: labelResource)
   }
 
   var icon: String {
@@ -338,19 +354,23 @@ struct YourWordsView: View {
     // and gives no hover of its own. Add word is the primary, so it is the
     // one that fills.
     SettingsActionButton(
-      title: "Add word", isEnabled: true, emphasis: .filled, systemImage: "plus"
+      title: SettingsItemCopy.Dictionary.addWord, isEnabled: true, emphasis: .filled,
+      systemImage: "plus"
     ) {
       sheetRoute = .addTerm
     }
+    .settingsMapRegistration(.yourWordsAdd)
     // The ONLY doorway into Custom Words import (epic #1619). Shipped to
     // release users from v2.4.1 by founder decision, 2026-07-24; every
     // import PR still carries "adds no second entry point" in its
     // definition of done, so this stays the single doorway.
     SettingsActionButton(
-      title: "Import", isEnabled: true, systemImage: "square.and.arrow.down"
+      title: SettingsItemCopy.Dictionary.importWords, isEnabled: true,
+      systemImage: "square.and.arrow.down"
     ) {
       sheetRoute = .importWords
     }
+    .settingsMapRegistration(.yourWordsImport)
     // Export (#1680). ONE body-render snapshot drives both the count shown
     // in the save dialog and the array handed to the action, so the number
     // the user reads and the bytes written cannot come from different
@@ -360,11 +380,12 @@ struct YourWordsView: View {
     let proposed = CustomWordsExportAction.exportableWords(
       from: customWordsCoordinator.customWords)
     SettingsActionButton(
-      title: "Export your words", isEnabled: true,
+      title: SettingsItemCopy.Dictionary.exportWords, isEnabled: true,
       systemImage: "square.and.arrow.up"
     ) {
       exportWords(proposed: proposed)
     }
+    .settingsMapRegistration(.yourWordsExport)
   }
 
   /// Export the user's own words (#1680).
@@ -436,6 +457,7 @@ private struct DictionaryTabRail: View {
             selection = tab
           }
         }
+        .settingsMapRegistration(tab.mapID)
       }
     }
     .padding(10)

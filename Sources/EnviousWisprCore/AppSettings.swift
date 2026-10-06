@@ -72,38 +72,33 @@ public enum ModelUnloadPolicy: String, Codable, CaseIterable, Sendable {
   case fifteenMinutes
   case sixtyMinutes
 
-  public var displayName: String {
+  public var displayNameResource: LocalizedStringResource {
     switch self {
     case .never:
-      return String(
-        localized: "Never",
+      return LocalizedStringResource("Never",
         comment: "Speech engine settings: when an idle speech model is unloaded from memory.")
     case .immediately:
-      return String(
-        localized: "Immediately",
+      return LocalizedStringResource("Immediately",
         comment: "Speech engine settings: when an idle speech model is unloaded from memory.")
     case .twoMinutes:
-      return String(
-        localized: "After 2 minutes",
+      return LocalizedStringResource("After 2 minutes",
         comment: "Speech engine settings: when an idle speech model is unloaded from memory.")
     case .fiveMinutes:
-      return String(
-        localized: "After 5 minutes",
+      return LocalizedStringResource("After 5 minutes",
         comment: "Speech engine settings: when an idle speech model is unloaded from memory.")
     case .tenMinutes:
-      return String(
-        localized: "After 10 minutes",
+      return LocalizedStringResource("After 10 minutes",
         comment: "Speech engine settings: when an idle speech model is unloaded from memory.")
     case .fifteenMinutes:
-      return String(
-        localized: "After 15 minutes",
+      return LocalizedStringResource("After 15 minutes",
         comment: "Speech engine settings: when an idle speech model is unloaded from memory.")
     case .sixtyMinutes:
-      return String(
-        localized: "After 1 hour",
+      return LocalizedStringResource("After 1 hour",
         comment: "Speech engine settings: when an idle speech model is unloaded from memory.")
     }
   }
+
+  public var displayName: String { String(localized: displayNameResource) }
 
   /// Returns nil for .never and .immediately (timer-less policies).
   public var interval: TimeInterval? {

@@ -143,8 +143,9 @@ struct CustomTermsSection<Actions: View>: View {
               .foregroundStyle(.stTextSecondary)
               .font(.system(size: 12))
               .accessibilityHidden(true)
-            TextField("Search by word, mishearing, or category", text: $searchQuery)
+            TextField(String(localized: SettingsItemCopy.Dictionary.searchWords), text: $searchQuery)
               .textFieldStyle(.plain)
+              .settingsMapRegistration(.yourWordsSearch)
               .onChange(of: searchQuery) { _, _ in currentPage = 0 }
               .onChange(of: selectedCategory) { _, _ in currentPage = 0 }
               .onChange(of: autoLearnedOnly) { _, _ in currentPage = 0 }
@@ -161,7 +162,8 @@ struct CustomTermsSection<Actions: View>: View {
                   .settingsHoverQuiet(inset: 3)
               }
               .buttonStyle(.plain)
-              .accessibilityLabel("Clear search")
+              .accessibilityLabel(Text(SettingsItemCopy.Dictionary.clearSearch))
+              .settingsMapRegistration(.yourWordsClearSearch)
             }
           }
           .padding(.horizontal, 10)
@@ -389,8 +391,7 @@ struct CustomTermsSection<Actions: View>: View {
   private var categoryFilterRow: some View {
     WrappingHStack(spacing: 6) {
       categoryPill(
-        title: String(
-          localized: "All categories", comment: "Your Words: filter showing every category."),
+        title: String(localized: SettingsItemCopy.Dictionary.allCategories),
         isSelected: selectedCategory == nil
       ) {
         selectedCategory = nil
@@ -406,6 +407,7 @@ struct CustomTermsSection<Actions: View>: View {
         autoLearnedOnly.toggle()
       }
     }
+    .settingsMapRegistration(.yourWordsCategoryFilter)
   }
 
   private func categoryPill(title: String, isSelected: Bool, action: @escaping () -> Void)
@@ -467,9 +469,10 @@ struct CustomTermsSection<Actions: View>: View {
     } else if !filteredSelectableIDs.isEmpty {
       // "Mass edit", not "Select": founder, 2026-10-04, people did not read
       // "Select" as the way to act on many words at once.
-      SettingsActionButton(title: "Mass edit", isEnabled: true) {
+      SettingsActionButton(title: SettingsItemCopy.Dictionary.massEdit, isEnabled: true) {
         isSelecting = true
       }
+      .settingsMapRegistration(.yourWordsMassEdit)
     }
   }
 

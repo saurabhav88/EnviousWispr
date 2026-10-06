@@ -516,9 +516,7 @@ struct HotkeyRecorderView: View {
         }
         .buttonStyle(.plain)
         .help(
-          Text(
-            "Reset to default",
-            comment: "Keybind field: puts this keybind back to its original keys.")
+          Text(SettingsItemCopy.Keybinds.resetToDefault)
         )
         .accessibilityLabel(
           Text(
@@ -549,9 +547,7 @@ struct HotkeyRecorderView: View {
 
       if !isDefault {
         Button(action: resetToDefault) {
-          Text(
-            "Reset to default",
-            comment: "Keybind field: puts this keybind back to its original keys.")
+          Text(SettingsItemCopy.Keybinds.resetToDefault)
         }
         .buttonStyle(.plain)
         .font(.stHelper)

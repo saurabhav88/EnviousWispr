@@ -367,12 +367,8 @@ struct AIPolishSettingsView: View {
             )
           ) {
             VStack(alignment: .leading, spacing: 3) {
-              Text(
-                LocalizedStringResource(
-                  "settings.aiPolish.enable.title",
-                  defaultValue: "Enable AI Polish"
-                )
-              )
+              // The semantic key and default value are preserved in SettingsItemCopy (#3482).
+              Text(SettingsItemCopy.AIPolish.enable)
                 .settingsRowTitle()
               Text(
                 String(
@@ -382,6 +378,7 @@ struct AIPolishSettingsView: View {
             }
           }
           .toggleStyle(BrandedToggleStyle())
+          .settingsMapRegistration(.enableAIPolish)
         }
       }
 
@@ -391,10 +388,7 @@ struct AIPolishSettingsView: View {
       if settings.llmProvider != .none {
         VStack(alignment: .leading, spacing: SettingsPR1Layout.headingGap) {
           SettingsSectionHeading(
-            resolvedTitle: String(
-              localized: "Model", comment: "AI Polish: heading above the provider card."
-            ).uppercased()
-          ) {
+            map: .id(.sectionAiPolishModel), casing: .uppercased) {
             Text(SettingsCopy.frozenPerRecording)
               .font(.stHelper)
               .foregroundStyle(Color.stTextSecondary)
@@ -462,63 +456,67 @@ enum S1ControlCopy {
       "AI Polish, S1-mini writing-style card on Transcribe a File: introduction. %@ is the model name, S1-mini. Keep Superwhisper as written."
   )
 
-  static let stylingLabel = String(
-    localized: "Tone", comment: "AI Polish, S1-mini writing-style card: the tone setting's name.")
+  static let stylingLabelResource = LocalizedStringResource("Tone", comment: "AI Polish, S1-mini writing-style card: the tone setting's name.")
+  static var stylingLabel: String { String(localized: stylingLabelResource) }
   static let stylingShort = String(
     localized: "Choose how formal your text sounds.",
     comment: "AI Polish, S1-mini: the line under Tone.")
-  static let structureLabel = String(
-    localized: "Structure",
+  static let structureLabelResource = LocalizedStringResource("Structure",
     comment: "AI Polish, S1-mini writing-style card: the structure setting's name.")
+  static var structureLabel: String { String(localized: structureLabelResource) }
   static let structureShort = String(
     localized: "Keep sentences or turn spoken items into lists.",
     comment: "AI Polish, S1-mini: the line under Structure.")
-  static let contextLabel = String(
-    localized: "Context",
+  static let contextLabelResource = LocalizedStringResource("Context",
     comment: "AI Polish, S1-mini writing-style card: the context setting's name.")
+  static var contextLabel: String { String(localized: contextLabelResource) }
   static let contextShort = String(
     localized: "Format dictated greetings and sign-offs as email.",
     comment: "AI Polish, S1-mini: the line under Context.")
 
-  static func label(for styling: S1Styling) -> String {
+  static func labelResource(for styling: S1Styling) -> LocalizedStringResource {
     switch styling {
     case .casual:
-      return String(
-        localized: "Casual", comment: "AI Polish, S1-mini writing-style card: tone option.")
+      return LocalizedStringResource("Casual", comment: "AI Polish, S1-mini writing-style card: tone option.")
     case .semiCasual:
-      return String(
-        localized: "Semi-casual", comment: "AI Polish, S1-mini writing-style card: tone option.")
+      return LocalizedStringResource("Semi-casual", comment: "AI Polish, S1-mini writing-style card: tone option.")
     case .semiFormal:
-      return String(
-        localized: "Semi-formal", comment: "AI Polish, S1-mini writing-style card: tone option.")
+      return LocalizedStringResource("Semi-formal", comment: "AI Polish, S1-mini writing-style card: tone option.")
     case .formal:
-      return String(
-        localized: "Formal", comment: "AI Polish, S1-mini writing-style card: tone option.")
+      return LocalizedStringResource("Formal", comment: "AI Polish, S1-mini writing-style card: tone option.")
     }
   }
 
-  static func label(for structure: S1Structure) -> String {
+  static func label(for styling: S1Styling) -> String {
+    String(localized: labelResource(for: styling))
+  }
+
+  static func labelResource(for structure: S1Structure) -> LocalizedStringResource {
     switch structure {
     case .prose:
-      return String(
-        localized: "Prose",
+      return LocalizedStringResource("Prose",
         comment: "AI Polish, S1-mini writing-style card: structure option: plain sentences.")
     case .lists:
-      return String(
-        localized: "Lists",
+      return LocalizedStringResource("Lists",
         comment: "AI Polish, S1-mini writing-style card: structure option: bullet points.")
     }
   }
 
-  static func label(for context: S1Context) -> String {
+  static func label(for structure: S1Structure) -> String {
+    String(localized: labelResource(for: structure))
+  }
+
+  static func labelResource(for context: S1Context) -> LocalizedStringResource {
     switch context {
     case .general:
-      return String(
-        localized: "General", comment: "AI Polish, S1-mini writing-style card: context option.")
+      return LocalizedStringResource("General", comment: "AI Polish, S1-mini writing-style card: context option.")
     case .email:
-      return String(
-        localized: "Email",
+      return LocalizedStringResource("Email",
         comment: "AI Polish, S1-mini writing-style card: context option: an email layout.")
     }
+  }
+
+  static func label(for context: S1Context) -> String {
+    String(localized: labelResource(for: context))
   }
 }

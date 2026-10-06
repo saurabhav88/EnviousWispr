@@ -67,11 +67,11 @@ struct MicrophoneDevicePicker: View {
 
   @ViewBuilder private var menu: some View {
       choice(
-        tag: "", icon: "arrow.triangle.2.circlepath", title: String(localized: "Auto"),
+        tag: "", icon: "arrow.triangle.2.circlepath", title: String(localized: SettingsItemCopy.Microphone.auto),
         subtitle: String(
           localized: "Follows macOS",
           comment: "Microphone menu: the line under Auto. Auto uses the Mac's input microphone."),
-        spokenTitle: String(localized: "Auto"))
+        spokenTitle: String(localized: SettingsItemCopy.Microphone.auto))
       ForEach(devices) { device in
         let token = transportTokens[device.id]
         choice(
@@ -123,10 +123,10 @@ struct MicrophoneDevicePicker: View {
     switch (presentation.isAutomatic, presentation.transportBadge) {
     case (true, let badge?):
       return String(
-        localized: "\(String(localized: "Auto")) · \(badge)",
+        localized: "\(String(localized: SettingsItemCopy.Microphone.auto)) · \(badge)",
         comment: "Microphone settings: Auto, then how the chosen microphone is connected.")
     case (true, nil):
-      return String(localized: "Auto")
+      return String(localized: SettingsItemCopy.Microphone.auto)
     case (false, let badge?):
       return badge
     case (false, nil):

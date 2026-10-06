@@ -96,6 +96,42 @@ struct InterfaceCatalogSourceTests {
     #expect(withoutGerman.isEmpty, "keys without German: \(withoutGerman.sorted().prefix(10))")
   }
 
+  /// #3482: the Settings item names moved from inline literals into `SettingsItemCopy`. Each
+  /// constant keeps its key, default English and comment, so it reads the catalog entry the
+  /// literal read, and the app ships its German. Read from the source text (the constants are
+  /// not enumerable at run time); a line the reader cannot parse fails the count.
+  @Test("Settings item copy keeps its catalog entries, English, comments and shipped German")
+  func settingsItemCopyKeepsItsEntries() throws {
+    let source = try String(
+      contentsOf: Self.repoRoot.appendingPathComponent(
+        "Sources/EnviousWisprAppKit/Views/Settings/SettingsItemCopy.swift"), encoding: .utf8)
+    let pattern = try Regex(
+      #"LocalizedStringResource\(\s*"((?:[^"\\]|\\\([^)]*\))*)"(?:, defaultValue: "([^"\\]*)")?(?:, comment: "([^"\\]*)")?\)"#)
+    let constants = source.matches(of: pattern)
+    let calls = source.components(separatedBy: "LocalizedStringResource(").count - 1
+    #expect(constants.count == calls, "parsed \(constants.count) of \(calls) constants")
+    #expect(calls >= 100, "only \(calls) constants; the file moved or the reader broke")
+    let strings = try Self.strings()
+    let compiled = try Self.compiledTable(
+      in: try Self.builtApp(), language: "de", table: "Localizable")
+    for match in constants {
+      // An interpolated key is catalogued with `%@` in place of each interpolation.
+      let key = String(try #require(match.output[1].substring)).replacing(
+        try Regex(#"\\\([^)]*\)"#), with: "%@")
+      let english = match.output[2].substring.map(String.init) ?? key
+      let entry = try #require(strings[key] as? [String: Any], "\(key) is not in the catalog")
+      #expect((Self.value(of: entry, language: "en") ?? key) == english, "\(key): English changed")
+      if let comment = match.output[3].substring {
+        // A key shared by several controls carries each of their comments, one per line.
+        let lines = (entry["comment"] as? String ?? "").components(separatedBy: "\n")
+        #expect(lines.contains(String(comment)), "\(key): comment changed")
+      }
+      let german = Self.value(of: entry, language: "de")
+      #expect(german != nil && Self.state(of: entry, language: "de") == "translated", "\(key)")
+      #expect(compiled[key] == german, "\(key): the shipped German differs from the catalog")
+    }
+  }
+
   /// The unit-test process's `Bundle.main` is not the app, but the same build places the app
   /// beside the test bundle. Reading the COMPILED table there proves the catalog ships; a
   /// catalog dropped from the app target (deleted, commented out, excluded) leaves no table.

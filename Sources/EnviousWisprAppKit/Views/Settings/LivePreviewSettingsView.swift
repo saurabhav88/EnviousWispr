@@ -237,7 +237,7 @@ struct LivePreviewSettingsView: View {
       // #3385: the privacy sentence belongs to the PREVIEW, so its short form is
       // this section's note and never a Dictation-wide or shared-component claim.
       VStack(alignment: .leading, spacing: SettingsPR1Layout.headingGap) {
-      SettingsSectionHeading(resolvedTitle: LivePreviewSettingsCopy.sectionHeader.uppercased()) {
+      SettingsSectionHeading(map: .id(.sectionLivePreview), casing: .uppercased) {
         Text(PreviewCopy.privacyNote)
           .font(.stHelper)
           .foregroundStyle(.stTextSecondary)
@@ -348,8 +348,8 @@ struct LivePreviewSettingsView: View {
           // #3385: the switch has its visible name again, with the shared row's
           // short line and "?" (the tab has no page header to say what it does).
           SettingsRow(
+            map: .id(.livePreview),
             icon: "text.viewfinder",
-            resolvedTitle: LivePreviewSettingsCopy.toggleLabel,
             resolvedShort: String(localized: PreviewCopy.toggleShort)
           ) {
             // Both sentences: the approved short help, and the original one whose
@@ -434,6 +434,7 @@ struct LivePreviewSettingsView: View {
                 .accessibilityLabel(
                   "Change dictation language: \(language.name), \(language.provenance)")
                 .help(String(localized: PreviewCopy.languageShort))
+                .settingsMapRegistration(.livePreviewLanguage)
               }
 
           }
@@ -470,6 +471,7 @@ struct LivePreviewSettingsView: View {
               ) {
                 catalogRequest = CatalogRequest(search: initialSearch)
               }
+              .settingsMapRegistration(.livePreviewBrowseDownloads)
             }
           }
         }
@@ -516,7 +518,7 @@ struct LivePreviewSettingsView: View {
       // The first link from a settings page to the Help Centre. The two
       // engines differ in OS floor, language coverage and download size, and
       // a card cannot carry that comparison without becoming the article.
-      SettingsSectionHeading(resolvedTitle: LivePreviewEngineCopy.sectionHeader.uppercased()) {
+      SettingsSectionHeading(map: .id(.sectionPreviewEngine), casing: .uppercased) {
         Link(destination: URL(string: LivePreviewEngineCopy.learnMoreURL)!) {
           HStack(spacing: 4) {
             Text(LivePreviewEngineCopy.learnMoreLabel)
@@ -525,6 +527,7 @@ struct LivePreviewSettingsView: View {
           .font(.stHelper)
         }
         .foregroundStyle(.stAccent)
+        .settingsMapRegistration(.previewEngineCompare)
       }
 
       HStack(spacing: 6) {
@@ -542,9 +545,11 @@ struct LivePreviewSettingsView: View {
       .padding(.leading, 4)
 
       SettingsSummaryCard(
+        map: .id(.previewEngine),
         isExpanded: $showPreviewEngineChoices,
         changeAccessibilityLabel: PreviewCopy.changeEngine,
-        keepCurrentTitle: PreviewCopy.keepCurrent
+        change: .previewEngineChange,
+        keepCurrent: .previewEngineKeepCurrent
       ) {
         engineSummary(selected)
       } status: {
@@ -617,6 +622,7 @@ struct LivePreviewSettingsView: View {
                 ) {
                   perform(action)
                 }
+                .settingsMapRegistration(Self.mapID(for: action))
               }
             }
             if let progress = universal.progress {
@@ -669,6 +675,16 @@ struct LivePreviewSettingsView: View {
   /// is Universal's lone Remove, which this card's footer carries (see
   /// `removeLivesOnCard`); the separation above holds in both places, a sibling of
   /// the selection, never a child.
+
+  /// The preview engine card's Settings Map choice (#3482). Exhaustive, so a new engine must be
+  /// given a map node.
+  static func mapID(for choice: LivePreviewEngineChoice) -> SettingsMapID {
+    switch choice {
+    case .apple: .previewEngineApple
+    case .universal: .previewEngineUniversal
+    }
+  }
+
   private func engineCard(
     _ card: LivePreviewEnginePresentation.Card,
     icon: String,
@@ -676,7 +692,7 @@ struct LivePreviewSettingsView: View {
   ) -> some View {
     EngineCard(
       icon: icon,
-      title: card.title,
+      map: .id(Self.mapID(for: choice)),
       tagline: card.description,
       unavailability: card.unavailability,
       isSelected: card.isSelected,
@@ -697,6 +713,7 @@ struct LivePreviewSettingsView: View {
           ) {
             perform(action)
           }
+          .settingsMapRegistration(Self.mapID(for: action))
           .padding([.horizontal, .bottom], 16)
         }
       })
@@ -710,33 +727,22 @@ struct LivePreviewSettingsView: View {
     universal.action == .remove && universal.progress == nil
   }
 
-  private static func label(for action: LivePreviewEnginePresentation.Action) -> String {
+  /// The Universal engine action's Settings Map identity; its button name comes from the map
+  /// node (#3482). Exhaustive, so a new action must be given a node.
+  static func mapID(for action: LivePreviewEnginePresentation.Action) -> SettingsMapID {
     switch action {
-    case .download:
-      return String(
-        localized: "Download",
-        comment:
-          "Live Preview settings, Universal engine card: button. It starts the engine download.")
-    case .cancelDownload:
-      return String(
-        localized: "Cancel",
-        comment: "Live Preview settings, Universal engine card: button. It stops the download.")
-    case .resumeDownload:
-      return String(
-        localized: "Resume",
-        comment: "Live Preview settings, Universal engine card: button. It resumes the download.")
-    case .retryDownload:
-      return String(
-        localized: "Try Again",
-        comment:
-          "Live Preview settings, Universal engine card: button. It retries a failed download.")
-    case .remove:
-      return String(
-        localized: "Remove",
-        comment:
-          "Live Preview settings, Universal engine card: button. It deletes the downloaded engine.")
+    case .download: .previewEngineUniversalDownload
+    case .cancelDownload: .previewEngineUniversalCancel
+    case .resumeDownload: .previewEngineUniversalResume
+    case .retryDownload: .previewEngineUniversalRetry
+    case .remove: .previewEngineUniversalRemove
     }
   }
+
+  private static func label(for action: LivePreviewEnginePresentation.Action) -> String {
+    SettingsMapRef.id(mapID(for: action)).title
+  }
+
 
   private func perform(_ action: LivePreviewEnginePresentation.Action) {
     guard let modelDelivery else { return }
@@ -838,7 +844,7 @@ struct LivePreviewSettingsView: View {
   private var packsSection: some View {
     if showsApplePacks {
       VStack(alignment: .leading, spacing: SettingsPR1Layout.headingGap) {
-      SettingsSectionHeading(resolvedTitle: LivePreviewSettingsCopy.packsHeader.uppercased()) {
+      SettingsSectionHeading(map: .id(.previewLanguages), casing: .uppercased) {
         // #3385 B14 supersedes the 2026-08-26 count removal: a quiet heading
         // note only from the currently loaded inventory, never a 7/54 guess.
         if case .loaded(let inventory) = packs.state {
@@ -874,14 +880,10 @@ struct LivePreviewSettingsView: View {
         // (`swift-patterns.md` RULE: plain-button-content-shape, in `SettingsRow`).
         BrandedRow(showDivider: false) {
           SettingsRow(
+            map: .dynamic(
+              .previewLanguagesInstall,
+              .livePreviewPacks(loading: packs.state == .loading, failed: packs.state == .failed)),
             icon: "arrow.down.circle",
-            resolvedTitle: {
-              switch packs.state {
-              case .loading: return LivePreviewSettingsCopy.packsLoading
-              case .failed: return LivePreviewSettingsCopy.packsUnavailable
-              case .loaded: return LivePreviewSettingsCopy.packsInstallRowTitle
-              }
-            }(),
             resolvedShort: String(localized: PreviewCopy.installShort),
             resolvedHelp: LivePreviewSettingsCopy.packsDescription,
             primaryAction: { catalogRequest = CatalogRequest(search: "") }

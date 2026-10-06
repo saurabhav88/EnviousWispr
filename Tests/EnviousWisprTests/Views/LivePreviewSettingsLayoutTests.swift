@@ -66,8 +66,8 @@ struct LivePreviewSettingsLayoutTests {
     for width in [Self.minimumRowWidth, Self.ordinaryRowWidth] {
       let frame = try Self.frame(width: width) { probe in
         SettingsRow(
+          map: .dynamic(.previewLanguagesInstall, .livePreviewPacks(loading: false, failed: false)),
           icon: "arrow.down.circle",
-          resolvedTitle: "Install new languages",
           resolvedShort: "Download a language from macOS to preview it.",
           resolvedHelp: "Help.",
           primaryAction: {}
@@ -85,7 +85,7 @@ struct LivePreviewSettingsLayoutTests {
   func previewSecondaryControlPlacement() throws {
     for width: CGFloat in [432, 502, 503, 982] {
       let language = try Self.frame(width: width) { probe in
-        SettingsRow(icon: "text.viewfinder", resolvedTitle: "Show words while you speak",
+        SettingsRow(fixtureTitle: "Show words while you speak", icon: "text.viewfinder",
           resolvedShort: "See words before you finish your dictation.", resolvedHelp: "Help.") {
           Toggle("", isOn: .constant(true)).labelsHidden().toggleStyle(BrandedToggleStyle()).fixedSize()
         }
@@ -96,7 +96,7 @@ struct LivePreviewSettingsLayoutTests {
         }
       }
       let toggle = try Self.frame(width: width) { probe in
-        SettingsRow(icon: "text.viewfinder", resolvedTitle: "Show words while you speak",
+        SettingsRow(fixtureTitle: "Show words while you speak", icon: "text.viewfinder",
           resolvedShort: "See words before you finish your dictation.", resolvedHelp: "Help.") {
           Toggle("", isOn: .constant(true)).labelsHidden().toggleStyle(BrandedToggleStyle()).fixedSize().background(probe)
         }

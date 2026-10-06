@@ -17,7 +17,7 @@ struct MicrophoneSettingsLayoutTests {
     id: 77, name: "Scarlett 2i2", uid: "usb", inputChannelCount: 2)
 
   static func row(capturing: Bool) -> some View {
-    SettingsRow(icon: "waveform", title: DictationSettingsCopy.Microphone.inputDeviceTitle,
+    SettingsRow(map: .id(.inputDevice),icon: "waveform",
       short: DictationSettingsCopy.Microphone.inputDeviceShort,
       help: DictationSettingsCopy.Microphone.inputDeviceHelp) {
       MicrophoneDevicePicker(selection: .constant(""), devices: [device],
@@ -113,7 +113,7 @@ struct MicrophoneSettingsLayoutTests {
           for selected in options.indices {
             let picker = BrandedSegmentedPicker(options: options, selection: .constant(selected), comfortable: true)
             let box = ClipboardSettingsLayoutTests.Box()
-            let row = SettingsRow(icon: "timer", resolvedTitle: "Microphone", resolvedShort: "Description", resolvedHelp: "Help") {
+            let row = SettingsRow(fixtureTitle: "Microphone", icon: "timer", resolvedShort: "Description", resolvedHelp: "Help") {
               picker.content { index in
                 picker.segment(at: index).background(ClipboardSettingsLayoutTests.probe("segment-\(index)"))
               }.matchingSegmentedWidth(matched)

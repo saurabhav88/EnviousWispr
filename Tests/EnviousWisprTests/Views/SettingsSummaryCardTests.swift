@@ -83,9 +83,11 @@ struct SettingsSummaryCardTests {
     @MainActor final class Box { var frames: [String: CGRect] = [:] }
     let box = Box()
     let root = SettingsSummaryCard(
+      map: .id(.transcriptionEngine),
       isExpanded: .constant(expanded),
       changeAccessibilityLabel: LocalizedStringResource(stringLiteral: "Change speech engine"),
-      keepCurrentTitle: LocalizedStringResource(stringLiteral: "Keep current engine")
+      change: .transcriptionEngineChange,
+      keepCurrent: .transcriptionEngineKeepCurrent
     ) {
       Self.probe("summary", width: 200, height: 40)
     } status: {

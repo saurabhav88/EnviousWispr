@@ -34,7 +34,8 @@ struct SmartInsertionSettingRoutingTests {
     // The protection is the same and now parsed: exactly one row titled Smart insertion,
     // holding the page's only switch bound to the setting.
     let rows = ClipboardSettingsWiringTests.rows(in: Parser.parse(source: source))
-    let titled = rows.filter { $0.title == "Copy.smartInsertionTitle" }
+    // #3482: the row names itself by its Settings Map id.
+    let titled = rows.filter { $0.title == ".id(.smartInsertion)" }
     #expect(titled.count == 1, "expected exactly one Smart insertion row, found \(titled.count)")
     #expect(titled.first?.toggles == 1, "the Smart insertion row holds \(titled.first?.toggles ?? 0) switches")
     #expect(titled.first?.binding == "$settings.smartInsertion", "bound to \(titled.first?.binding ?? "nothing")")

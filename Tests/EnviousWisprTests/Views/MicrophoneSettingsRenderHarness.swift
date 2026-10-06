@@ -66,14 +66,14 @@ struct MicrophoneSettingsRenderHarness {
     return SettingsContentView {
       Text(german ? "DEUTSCH FIXTURES · Input device copy stays English" : "PAGE DRAFT · Production input row/picker")
         .font(.stHelper).foregroundStyle(Color.stTextSecondary)
-      SettingsSectionHeading(resolvedTitle: german ? "EINGABE & VERHALTEN" : "INPUT & BEHAVIOR", icon: "mic") {
+      SettingsSectionHeading(fixtureTitle: german ? "EINGABE & VERHALTEN" : "INPUT & BEHAVIOR", icon: "mic") {
         Text(german ? "Änderungen gelten ab der nächsten Aufnahme" : "Changes apply to the next recording")
           .font(.stHelper).foregroundStyle(Color.stTextSecondary)
       }
       BrandedSection {
         BrandedRow {
           VStack(alignment: .leading, spacing: 8) {
-            SettingsRow(icon: "waveform", resolvedTitle: german ? "Eingabegerät" : "Input device",
+            SettingsRow(fixtureTitle: german ? "Eingabegerät" : "Input device", icon: "waveform",
               resolvedShort: german ? "Wähle das Mikrofon für die Aufnahme." : String(localized: DictationSettingsCopy.Microphone.inputDeviceShort),
               resolvedHelp: String(localized: DictationSettingsCopy.Microphone.inputDeviceHelp)) {
               MicrophoneDevicePicker(selection: .constant(scenario.preferred),
@@ -85,7 +85,7 @@ struct MicrophoneSettingsRenderHarness {
                 .background(ClipboardSettingsLayoutTests.probe("status"))
             }.background(ClipboardSettingsLayoutTests.probe("input-row"))
             if let device = scenario.device, device.inputChannelCount > 1 {
-              SettingsRow(icon: "cable.connector", resolvedTitle: german ? "Eingang" : InputSocketCopy.label,
+              SettingsRow(fixtureTitle: german ? "Eingang" : InputSocketCopy.label, icon: "cable.connector",
                 resolvedShort: german ? "Wähle den Eingang, an dem dein Mikrofon steckt." : String(localized: DictationSettingsCopy.Microphone.socketShort),
                 resolvedHelp: String(localized: DictationSettingsCopy.Microphone.socketHelp)) {
                 BrandedSegmentedPicker(options: (0..<device.inputChannelCount).map {
@@ -97,7 +97,7 @@ struct MicrophoneSettingsRenderHarness {
           }
         }
         BrandedRow {
-          SettingsRow(icon: "speaker.wave.2.fill", resolvedTitle: german ? "Medien während des Diktierens" : "Media during dictation",
+          SettingsRow(fixtureTitle: german ? "Medien während des Diktierens" : "Media during dictation", icon: "speaker.wave.2.fill",
             resolvedShort: german ? "Was mit Musik und anderen Tönen geschieht." : String(localized: DictationSettingsCopy.Microphone.mediaShort),
             resolvedHelp: "Draft surrounding row; production media probe/listener is not mounted.") {
             BrandedSegmentedPicker(
@@ -108,7 +108,7 @@ struct MicrophoneSettingsRenderHarness {
         }
         BrandedRow {
           VStack(alignment: .leading, spacing: 8) {
-            SettingsRow(icon: "timer", resolvedTitle: german ? "Mikrofonbereitschaft" : "Microphone readiness",
+            SettingsRow(fixtureTitle: german ? "Mikrofonbereitschaft" : "Microphone readiness", icon: "timer",
               resolvedShort: german ? "Wie lange das Mikrofon nach der Aufnahme bereit bleibt." : String(localized: DictationSettingsCopy.Microphone.readinessShort),
               resolvedHelp: String(localized: DictationSettingsCopy.Microphone.readinessHelp)) {
               BrandedSegmentedPicker(
@@ -123,7 +123,7 @@ struct MicrophoneSettingsRenderHarness {
           }
         }
         BrandedRow(showDivider: false) {
-          SettingsRow(icon: "dot.radiowaves.left.and.right", resolvedTitle: german ? "Bluetooth-Tipps" : "Bluetooth tips",
+          SettingsRow(fixtureTitle: german ? "Bluetooth-Tipps" : "Bluetooth tips", icon: "dot.radiowaves.left.and.right",
             resolvedShort: german ? "So vermeidest du Verzögerungen beim Start." : String(localized: DictationSettingsCopy.Microphone.bluetoothShort),
             resolvedHelp: "Draft surrounding row; the unchanged full guide and toggle remain production UAT.") {
             SettingsActionButton(title: "Learn more", isEnabled: true, size: .large,

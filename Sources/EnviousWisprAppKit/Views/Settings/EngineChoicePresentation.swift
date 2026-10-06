@@ -28,6 +28,8 @@ enum EngineChoicePresentation {
 
   struct Choice: Sendable {
     let backend: ASRBackendType
+    /// The choice's Settings Map identity (#3482).
+    let mapID: SettingsMapID
     let icon: String
     let title: LocalizedStringResource
     let tagline: LocalizedStringResource
@@ -72,6 +74,7 @@ enum EngineChoicePresentation {
   // 2026-07-03).
   static let fast = Choice(
     backend: .parakeet,
+    mapID: .transcriptionEngineFast,
     icon: "bolt.fill",
     title: LocalizedStringResource(
       "Fast", comment: "Speech engine settings, engine card: the fast engine's name."),
@@ -108,6 +111,7 @@ enum EngineChoicePresentation {
 
   static let allLanguages = Choice(
     backend: .whisperKit,
+    mapID: .transcriptionEngineAllLanguages,
     icon: "globe",
     title: LocalizedStringResource(
       "All Languages",

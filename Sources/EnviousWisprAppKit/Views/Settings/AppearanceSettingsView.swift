@@ -34,11 +34,12 @@ struct AppearanceSettingsView: View {
     @Bindable var settings = settings
     SettingsContentView {
       VStack(alignment: .leading, spacing: 10) {
-        SettingsSectionHeading(title: "APPEARANCE")
+        SettingsSectionHeading(map: .id(.sectionAppearance))
         BrandedSection {
           BrandedRow {
             SettingsRow(
-              icon: "circle.lefthalf.filled", title: "Theme",
+              map: .id(.theme),
+              icon: "circle.lefthalf.filled",
               short: "Choose how EnviousWispr looks.",
               help: "Choose System to follow your Mac, or choose Light or Dark."
             ) {
@@ -51,25 +52,26 @@ struct AppearanceSettingsView: View {
               // A group, so each option keeps its own name for VoiceOver; a label on the
               // picker itself replaced every option's name with this one.
               .accessibilityElement(children: .contain)
-              .accessibilityLabel("Theme")
+              .accessibilityLabel(Text(SettingsItemCopy.AppSettings.theme))
             }
           }
           // #3142 Phase 5B: macOS applies this app-only language at launch. The
           // saved choice initializes the picker on every return to this tab.
           BrandedRow {
             SettingsRow(
-              icon: "globe", title: "Language",
+              map: .id(.appLanguage),
+              icon: "globe",
               short: "The language of the app interface.",
               help: "This changes only EnviousWispr. The new language applies after relaunch. System default follows your Mac."
             ) {
-              Picker("Language", selection: $language) {
-                Text("System default").tag("")
+              Picker(SettingsItemCopy.AppSettings.language, selection: $language) {
+                Text(SettingsItemCopy.AppSettings.systemDefault).tag("")
                 ForEach(AppLanguagePreference.live.languages, id: \.self) { code in
                   Text(verbatim: AppLanguagePreference.name(of: code)).tag(code)
                 }
               }
               .labelsHidden()
-              .accessibilityLabel("Language")
+              .accessibilityLabel(Text(SettingsItemCopy.AppSettings.language))
               .tint(.stAccent)
               .controlSize(.large)
               .fixedSize()
@@ -84,10 +86,11 @@ struct AppearanceSettingsView: View {
                     .font(.stRowHelper)
                     .foregroundStyle(.stTextSecondary)
                     .fixedSize(horizontal: false, vertical: true)
-                  SettingsActionButton(title: "Relaunch to apply", isEnabled: !isBusy) {
+                  SettingsActionButton(title: SettingsItemCopy.AppSettings.relaunch, isEnabled: !isBusy) {
                     guard !isBusy else { return }
                     AppRelauncher.relaunchWhenSafe { isBusy }
                   }
+                  .settingsMapRegistration(.appLanguageRelaunch)
                 }
               }
             }
@@ -96,7 +99,8 @@ struct AppearanceSettingsView: View {
           // cannot leave the app unreachable.
           BrandedRow {
             SettingsRow(
-              icon: "dock.rectangle", title: "Show app in Dock",
+              map: .id(.showInDock),
+              icon: "dock.rectangle",
               short: "Keep EnviousWispr in your Dock.",
               help: "When off, the Dock icon appears only while an EnviousWispr window is open. The menu bar icon always stays."
             ) {
@@ -104,14 +108,15 @@ struct AppearanceSettingsView: View {
                 .labelsHidden()
                 .toggleStyle(BrandedToggleStyle())
                 .fixedSize()
-                .accessibilityLabel("Show app in Dock")
+                .accessibilityLabel(Text(SettingsItemCopy.AppSettings.showInDock))
             }
           }
           // #3441: the gold wave on the menu bar icon while an update waits. Off keeps the
           // icon plain; the update still shows in the menu bar menu and What's New.
           BrandedRow(showDivider: false) {
             SettingsRow(
-              icon: "menubar.rectangle", title: "Update alert in menu bar",
+              map: .id(.updateAlertInMenuBar),
+              icon: "menubar.rectangle",
               short: "Show gold lips when an update is ready.",
               help: "When off, the menu bar icon stays plain while an update waits. You can still install it from the menu bar menu or What's New."
             ) {
@@ -119,7 +124,7 @@ struct AppearanceSettingsView: View {
                 .labelsHidden()
                 .toggleStyle(BrandedToggleStyle())
                 .fixedSize()
-                .accessibilityLabel("Update alert in menu bar")
+                .accessibilityLabel(Text(SettingsItemCopy.AppSettings.updateAlert))
             }
           }
         }

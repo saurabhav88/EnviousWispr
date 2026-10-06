@@ -125,6 +125,9 @@ struct DictationSettingsRenderHarness {
     var installed = ["en-US"]
     var stagedInstall = false
     var staleLanguage = false
+    /// #3482: the rows these switches reveal.
+    var stopOnSilence = false
+    var spokenPunctuation = false
   }
 
   static func page(tab: DictationTab, german: Bool, scenario: Scenario = Scenario(),
@@ -136,6 +139,8 @@ struct DictationSettingsRenderHarness {
     settings.livePreviewEnabled = scenario.previewOn
     settings.livePreviewEngine = .apple
     settings.otherAudioWhileDictating = .nothing
+    settings.vadAutoStop = scenario.stopOnSilence
+    settings.spokenPunctuation.enabled = scenario.spokenPunctuation
     let removalGate = InstallGate()
     let warmGate = InstallGate()
     if scenario.removing { Self.installGates.append(removalGate) }
@@ -316,9 +321,9 @@ struct DictationSettingsRenderHarness {
         for width: CGFloat in [750, 820, 1300] {
           for dark in [false, true] {
             let summary = SettingsContentView {
-              SettingsSummaryCard(isExpanded: .constant(false),
+              SettingsSummaryCard(map: .id(.transcriptionEngine), isExpanded: .constant(false),
                 changeAccessibilityLabel: DictationSettingsCopy.Engine.changeEngine,
-                keepCurrentTitle: DictationSettingsCopy.Engine.keepCurrent) {
+                change: .transcriptionEngineChange, keepCurrent: .transcriptionEngineKeepCurrent) {
                 EngineSummaryContent(icon: "bolt.fill", name: "Fast", model: "Parakeet v3",
                   short: "For everyday English and European dictation")
               } status: {

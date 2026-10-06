@@ -81,7 +81,14 @@ struct RecordingChimeCopyTests {
         contentsOf: RepoRoot.url.appending(
           path: "Sources/EnviousWisprAppKit/Views/Settings/RecordingChimesContent.swift"),
         encoding: .utf8))
+    // #3482: the switch title and section heading reach the page through the Settings Map.
+    let map = Parser.parse(
+      source: try String(
+        contentsOf: RepoRoot.url.appending(
+          path: "Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift"),
+        encoding: .utf8))
     let used = Self.members(of: ["Copy", "DictationSettingsCopy.Chimes"], in: page)
+      .union(Self.members(of: ["DictationSettingsCopy.Chimes"], in: map))
     #expect(used.count > 0, "no Chimes copy read from the page; the reader has stopped matching")
     let unused = declared.subtracting(used).sorted()
     #expect(unused.isEmpty, "declared but not shown on the page: \(unused)")

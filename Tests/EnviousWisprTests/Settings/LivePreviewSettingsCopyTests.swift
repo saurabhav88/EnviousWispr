@@ -126,7 +126,10 @@ struct LivePreviewSettingsCopyTests {
     let list = try #require(
       Self.allStringsLiteral(in: ownSource), "could not find the allStrings literal to check")
     let listed = Self.staticLetNames(referencedAs: "LivePreviewSettingsCopy", in: list)
-    let missing = declared.subtracting(listed).sorted()
+    // #3482: a `<name>Resource` twin is the same string as its listed `<name>` accessor.
+    let missing = declared.subtracting(listed).filter {
+      !($0.hasSuffix("Resource") && listed.contains(String($0.dropLast("Resource".count))))
+    }.sorted()
     #expect(
       missing.isEmpty,
       "not covered by allStrings, so no brand or empty check runs on them: \(missing)")

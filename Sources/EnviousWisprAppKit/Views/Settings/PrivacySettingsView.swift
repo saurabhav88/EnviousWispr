@@ -41,11 +41,12 @@ struct PrivacySettingsView: View {
     @Bindable var settings = settings
     SettingsContentView {
       VStack(alignment: .leading, spacing: 10) {
-        SettingsSectionHeading(title: "PRIVACY")
+        SettingsSectionHeading(map: .id(.sectionPrivacy))
         BrandedSection {
           BrandedRow {
             SettingsRow(
-              icon: "chart.bar", resolvedTitle: PrivacySettingsCopy.metricsLabel,
+              map: .id(.shareUsageMetrics),
+              icon: "chart.bar",
               resolvedShort: PrivacySettingsCopy.metricsShort,
               resolvedHelp: PrivacySettingsCopy.metricsHelp
             ) {
@@ -58,7 +59,8 @@ struct PrivacySettingsView: View {
           }
           BrandedRow {
             SettingsRow(
-              icon: "exclamationmark.triangle", resolvedTitle: PrivacySettingsCopy.crashLabel,
+              map: .id(.sendCrashReports),
+              icon: "exclamationmark.triangle",
               resolvedShort: PrivacySettingsCopy.crashShort,
               resolvedHelp: PrivacySettingsCopy.crashHelp
             ) {
@@ -85,6 +87,7 @@ struct PrivacySettingsView: View {
                       AppRelauncher.relaunchWhenSafe(stillBusy: $0)
                     }
                   }
+                  .settingsMapRegistration(.sendCrashReportsRestart)
                 }
                 .padding(.top, 4)
               }
@@ -94,7 +97,8 @@ struct PrivacySettingsView: View {
           // promise and open-source line stay word for word behind "?".
           BrandedRow(showDivider: false) {
             SettingsRow(
-              icon: "lock.shield", resolvedTitle: PrivacySettingsCopy.collectTitle,
+              map: .id(.whatWeCollect),
+              icon: "lock.shield",
               resolvedShort: PrivacySettingsCopy.collectShort,
               resolvedHelp: PrivacySettingsCopy.promise + " " + PrivacySettingsCopy.openSource
             ) {
@@ -116,6 +120,7 @@ struct PrivacySettingsView: View {
               .buttonStyle(.plain)
               .fixedSize()
               .accessibilityLabel(PrivacySettingsCopy.learnMoreLabel)
+              .settingsMapRegistration(.whatWeCollectSeeDetails)
             }
           }
         }
@@ -140,9 +145,8 @@ enum PrivacySettingsCopy {
       localized: "EnviousWispr is open source, so you can check exactly what we send.",
       comment: "Permissions settings, Privacy: line before the link to the data help article.")
   }
-  static var collectTitle: String {
-    String(localized: "What we collect", comment: "Permissions settings, Privacy: row title.")
-  }
+  static let collectTitleResource = LocalizedStringResource("What we collect", comment: "Permissions settings, Privacy: row title.")
+  static var collectTitle: String { String(localized: collectTitleResource) }
   /// Mockup wording for the row's short line (founder, 2026-10-03).
   static var collectShort: String {
     String(
@@ -150,19 +154,16 @@ enum PrivacySettingsCopy {
         "Never your audio, text, history, snippets, dictionary or API keys. Only what you type into the feedback form.",
       comment: "Permissions settings, Privacy: short line under What we collect.")
   }
-  static var seeDetailsLabel: String {
-    String(
-      localized: "See details",
+  static let seeDetailsLabelResource = LocalizedStringResource("See details",
       comment: "Permissions settings, Privacy: button that opens the What Data Is Collected help article.")
-  }
+  static var seeDetailsLabel: String { String(localized: seeDetailsLabelResource) }
   static var learnMoreLabel: String {
     String(
       localized: "See what we collect",
       comment: "Permissions settings, Privacy: link to the What Data Is Collected help article.")
   }
-  static var metricsLabel: String {
-    String(localized: "Share usage metrics", comment: "Permissions settings, Privacy: switch label.")
-  }
+  static let metricsLabelResource = LocalizedStringResource("Share usage metrics", comment: "Permissions settings, Privacy: switch label.")
+  static var metricsLabel: String { String(localized: metricsLabelResource) }
   static var metricsShort: String {
     String(localized: "Help us catch broken updates.")
   }
@@ -175,9 +176,8 @@ enum PrivacySettingsCopy {
         "Anonymous usage, settings, performance, and error data to help us catch broken updates.",
       comment: "Permissions settings, Privacy: explains the usage metrics switch.")
   }
-  static var crashLabel: String {
-    String(localized: "Send crash reports", comment: "Permissions settings, Privacy: switch label.")
-  }
+  static let crashLabelResource = LocalizedStringResource("Send crash reports", comment: "Permissions settings, Privacy: switch label.")
+  static var crashLabel: String { String(localized: crashLabelResource) }
   static var crashHelp: String {
     String(
       localized: "Stack traces and diagnostic details to help us fix crashes and errors.",
@@ -188,9 +188,7 @@ enum PrivacySettingsCopy {
       localized: "Takes effect when EnviousWispr restarts",
       comment: "Permissions settings, Privacy: shown after the crash reports switch changes.")
   }
-  static var restartAction: String {
-    String(
-      localized: "Restart now",
+  static let restartActionResource = LocalizedStringResource("Restart now",
       comment: "Permissions settings, Privacy: button that quits and reopens the app.")
-  }
+  static var restartAction: String { String(localized: restartActionResource) }
 }

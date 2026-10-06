@@ -8,11 +8,13 @@ enum ThemeChoicePresentation {
   struct Choice: Sendable {
     let value: AppearancePreference
     let label: LocalizedStringResource
+    /// The choice's Settings Map identity (#3482).
+    let mapID: SettingsMapID
   }
 
   static let choices: [Choice] = [
-    Choice(value: .system, label: "System"),
-    Choice(value: .light, label: "Light"),
-    Choice(value: .dark, label: "Dark"),
+    Choice(value: .system, label: "System", mapID: .themeSystem),
+    Choice(value: .light, label: "Light", mapID: .themeLight),
+    Choice(value: .dark, label: "Dark", mapID: .themeDark),
   ]
 }

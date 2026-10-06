@@ -18,7 +18,7 @@ struct EngineSettingsLayoutTests {
   func compactSwitchStaysTrailing() throws {
     for width: CGFloat in [432, 502, 982] {
       let frame = try LivePreviewSettingsLayoutTests.frame(width: width) { probe in
-        SettingsRow(icon: "face.smiling", resolvedTitle: "Convert spoken emoji (e.g. thumbs up emoji)",
+        SettingsRow(fixtureTitle: "Convert spoken emoji (e.g. thumbs up emoji)", icon: "face.smiling",
           resolvedShort: "Say a phrase followed by emoji to get its symbol. This longer translation must wrap.",
           resolvedHelp: "Bare words never convert.") {
           Toggle("", isOn: .constant(true)).labelsHidden().toggleStyle(BrandedToggleStyle()).fixedSize()

@@ -18,7 +18,7 @@ struct DictationSettingsView: View {
       VStack(spacing: 0) {
         SettingsTabStrip(
           items: DictationTab.allCases.map {
-            SettingsTabItem(id: $0, icon: $0.icon, label: $0.label)
+            SettingsTabItem(id: $0, icon: $0.icon, label: $0.label, map: $0.mapID)
           },
           selection: $selection
         )

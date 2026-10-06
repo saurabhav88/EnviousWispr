@@ -78,6 +78,8 @@ struct SettingsRowIcon: View {
 /// row says what the control is for at a glance while the full explanation
 /// stays behind the "?". Every row has help; there is no help-less variant.
 struct SettingsRow<Control: View, HelpContent: View>: View {
+  /// The row's Settings Map identity or its approved exemption (#3482).
+  let registration: SettingsMapRegistration
   let icon: String
   let title: String
   let short: String
@@ -121,11 +123,14 @@ struct SettingsRow<Control: View, HelpContent: View>: View {
   var primaryAction: (() -> Void)? = nil
 
   var body: some View {
-    if let primaryAction {
-      actionRow(primaryAction)
-    } else {
-      standardRow
+    Group {
+      if let primaryAction {
+        actionRow(primaryAction)
+      } else {
+        standardRow
+      }
     }
+    .settingsMapRegistration(registration)
   }
 
   private func actionRow(_ action: @escaping () -> Void) -> some View {
@@ -259,8 +264,54 @@ struct SettingsHelpText: View {
 }
 
 extension SettingsRow where HelpContent == SettingsHelpText {
-  /// Literal copy: the catalog extracts all three strings by their type.
+  /// A mapped row with literal copy: the title comes from its Settings Map node (#3482); the
+  /// catalog extracts the short line and help by their type.
   init(
+    map: SettingsMapRef,
+    icon: String,
+    short: LocalizedStringResource,
+    help: LocalizedStringResource,
+    @ViewBuilder control: () -> Control
+  ) {
+    self.init(
+      registration: .mapped(map.id), icon: icon, title: map.title,
+      resolvedShort: String(localized: short), resolvedHelp: String(localized: help),
+      control: control)
+  }
+
+  /// A mapped row whose short line and help are already-translated runtime strings (for
+  /// example a help sentence chosen by the current setting). Never pass an untranslated literal.
+  init(
+    map: SettingsMapRef,
+    icon: String,
+    resolvedShort: String,
+    resolvedHelp: String,
+    @ViewBuilder control: () -> Control
+  ) {
+    self.init(
+      registration: .mapped(map.id), icon: icon, title: map.title, resolvedShort: resolvedShort,
+      resolvedHelp: resolvedHelp, control: control)
+  }
+
+  /// A mapped action row: pressing anywhere but the "?" runs `primaryAction`; `control` is its
+  /// trailing decoration (a disclosure chevron), not a second control.
+  init(
+    map: SettingsMapRef,
+    icon: String,
+    resolvedShort: String,
+    resolvedHelp: String,
+    primaryAction: @escaping () -> Void,
+    @ViewBuilder control: () -> Control
+  ) {
+    self.init(
+      map: map, icon: icon, resolvedShort: resolvedShort, resolvedHelp: resolvedHelp,
+      control: control)
+    self.primaryAction = primaryAction
+  }
+
+  /// A row the Settings Map deliberately leaves out, for an approved reason, with literal copy.
+  init(
+    notInSettingsMap reason: SettingsMapExemption,
     icon: String,
     title: LocalizedStringResource,
     short: LocalizedStringResource,
@@ -268,60 +319,92 @@ extension SettingsRow where HelpContent == SettingsHelpText {
     @ViewBuilder control: () -> Control
   ) {
     self.init(
-      icon: icon,
-      resolvedTitle: String(localized: title),
-      resolvedShort: String(localized: short),
-      resolvedHelp: String(localized: help),
+      registration: .exempt(reason), icon: icon, title: String(localized: title),
+      resolvedShort: String(localized: short), resolvedHelp: String(localized: help),
       control: control)
   }
 
-  /// Already-translated runtime strings (for example a help sentence chosen by
-  /// the current setting). Never pass an untranslated literal here.
+  /// A row the Settings Map deliberately leaves out, for an approved reason, with
+  /// already-translated runtime strings.
   init(
+    notInSettingsMap reason: SettingsMapExemption,
     icon: String,
     resolvedTitle: String,
     resolvedShort: String,
     resolvedHelp: String,
     @ViewBuilder control: () -> Control
   ) {
+    self.init(
+      registration: .exempt(reason), icon: icon, title: resolvedTitle,
+      resolvedShort: resolvedShort, resolvedHelp: resolvedHelp, control: control)
+  }
+
+  private init(
+    registration: SettingsMapRegistration,
+    icon: String,
+    title: String,
+    resolvedShort: String,
+    resolvedHelp: String,
+    @ViewBuilder control: () -> Control
+  ) {
+    self.registration = registration
     self.icon = icon
-    self.title = resolvedTitle
+    self.title = title
     self.short = resolvedShort
     self.tooltip = resolvedHelp
     self.helpContent = SettingsHelpText(text: resolvedHelp)
     self.control = control()
   }
-
-  /// An action row: pressing anywhere but the "?" runs `primaryAction`;
-  /// `control` is its trailing decoration (a disclosure chevron), not a second
-  /// control.
-  init(
-    icon: String,
-    resolvedTitle: String,
-    resolvedShort: String,
-    resolvedHelp: String,
-    primaryAction: @escaping () -> Void,
-    @ViewBuilder control: () -> Control
-  ) {
-    self.init(
-      icon: icon, resolvedTitle: resolvedTitle, resolvedShort: resolvedShort,
-      resolvedHelp: resolvedHelp, control: control)
-    self.primaryAction = primaryAction
-  }
 }
 
 extension SettingsRow {
-  /// Structured help under a name that is already translated (a copy owner that
-  /// resolves its own string). Never pass an untranslated literal here.
+  /// A mapped row with structured help under an already-translated short line.
   init(
+    map: SettingsMapRef,
     icon: String,
-    resolvedTitle: String,
     resolvedShort: String,
     @ViewBuilder helpContent: () -> HelpContent,
     @ViewBuilder control: () -> Control
   ) {
+    self.registration = .mapped(map.id)
     self.icon = icon
-    self.title = resolvedTitle
+    self.title = map.title
+    self.short = resolvedShort
+    self.tooltip = nil
+    self.helpContent = helpContent()
+    self.control = control()
+  }
+}
+
+/// Test-host fixtures only (#3482): rows with arbitrary already-resolved copy, such as catalog
+/// German rendered in the English test host or layout stress strings. They register
+/// `.renderFixture`, which no shipped page may report. Compiled in every configuration so the
+/// Release test build links them; SettingsMapRegistrationTests forbids them in shipped code.
+extension SettingsRow where HelpContent == SettingsHelpText {
+  init(
+    fixtureTitle: String,
+    icon: String,
+    resolvedShort: String,
+    resolvedHelp: String,
+    @ViewBuilder control: () -> Control
+  ) {
+    self.init(
+      registration: .exempt(.renderFixture), icon: icon, title: fixtureTitle,
+      resolvedShort: resolvedShort, resolvedHelp: resolvedHelp, control: control)
+  }
+}
+
+extension SettingsRow {
+  init(
+    fixtureTitle: String,
+    icon: String,
+    resolvedShort: String,
+    @ViewBuilder helpContent: () -> HelpContent,
+    @ViewBuilder control: () -> Control
+  ) {
+    self.registration = .exempt(.renderFixture)
+    self.icon = icon
+    self.title = fixtureTitle
     self.short = resolvedShort
     self.tooltip = nil
     self.helpContent = helpContent()
@@ -422,26 +505,37 @@ struct SettingsInfoButton<Content: View>: View {
 /// The accent capitals heading above a group of rows ("INPUT & BEHAVIOR"),
 /// with an optional decorative icon and an optional trailing note or link.
 /// A heading for assistive technology too: it carries the header trait.
+/// How a heading shows its map title in capitals: as written (the copy is already capitals),
+/// `uppercased()`, or `localizedUppercase` (each heading keeps the casing it shipped with).
+enum SettingsHeadingCasing: Sendable {
+  case asWritten
+  case uppercased
+  case localizedUppercase
+
+  func apply(_ text: String) -> String {
+    switch self {
+    case .asWritten: text
+    case .uppercased: text.uppercased()
+    case .localizedUppercase: text.localizedUppercase
+    }
+  }
+}
+
 struct SettingsSectionHeading<Trailing: View>: View {
+  /// The heading's Settings Map identity (#3482); its title comes from the map node.
+  let registration: SettingsMapRegistration
   let title: String
   let icon: String?
   let trailing: Trailing
 
   init(
-    title: LocalizedStringResource,
+    map: SettingsMapRef,
+    casing: SettingsHeadingCasing = .asWritten,
     icon: String? = nil,
     @ViewBuilder trailing: () -> Trailing
   ) {
-    self.init(resolvedTitle: String(localized: title), icon: icon, trailing: trailing)
-  }
-
-  /// An already-translated heading. Never pass an untranslated literal here.
-  init(
-    resolvedTitle: String,
-    icon: String? = nil,
-    @ViewBuilder trailing: () -> Trailing
-  ) {
-    self.title = resolvedTitle
+    self.registration = .mapped(map.id)
+    self.title = casing.apply(map.title)
     self.icon = icon
     self.trailing = trailing()
   }
@@ -466,16 +560,29 @@ struct SettingsSectionHeading<Trailing: View>: View {
     }
     .padding(.leading, 4)
     .frame(maxWidth: .infinity, alignment: .leading)
+    .settingsMapRegistration(registration)
   }
 }
 
 extension SettingsSectionHeading where Trailing == EmptyView {
-  init(title: LocalizedStringResource, icon: String? = nil) {
-    self.init(title: title, icon: icon) { EmptyView() }
+  init(map: SettingsMapRef, casing: SettingsHeadingCasing = .asWritten, icon: String? = nil) {
+    self.init(map: map, casing: casing, icon: icon) { EmptyView() }
   }
+}
 
-  init(resolvedTitle: String, icon: String? = nil) {
-    self.init(resolvedTitle: resolvedTitle, icon: icon) { EmptyView() }
+/// Test-host fixture headings only (#3482); see the `SettingsRow` fixtures.
+extension SettingsSectionHeading {
+  init(fixtureTitle: String, icon: String? = nil, @ViewBuilder trailing: () -> Trailing) {
+    self.registration = .exempt(.renderFixture)
+    self.title = fixtureTitle
+    self.icon = icon
+    self.trailing = trailing()
+  }
+}
+
+extension SettingsSectionHeading where Trailing == EmptyView {
+  init(fixtureTitle: String, icon: String? = nil) {
+    self.init(fixtureTitle: fixtureTitle, icon: icon) { EmptyView() }
   }
 }
 
@@ -487,6 +594,8 @@ struct SettingsTabItem<Tab: Hashable>: Identifiable {
   let id: Tab
   let icon: String
   let label: LocalizedStringResource
+  /// The tab's Settings Map identity (#3482); the map node names it with this same label.
+  let map: SettingsMapID
 }
 
 /// The tabs across the top of a tabbed Settings page (#3385): icon and name
@@ -505,6 +614,7 @@ struct SettingsTabStrip<Tab: Hashable>: View {
           selection = item.id
         }
         .focused($focusedTab, equals: item.id)
+        .settingsMapRegistration(item.map)
         .id(item.id)
         .anchorPreference(key: SettingsTabBoundsKey.self, value: .bounds) { [$0] }
       }
@@ -715,9 +825,13 @@ private struct SettingsTabGlyphTrace: Shape {
 /// back to "Change" only for a reader who opened them with the keyboard or
 /// VoiceOver, and never to a button that is no longer there.
 struct SettingsSummaryCard<Summary: View, Status: View, Choices: View>: View {
+  /// The setting this card summarises, in the Settings Map (#3482).
+  let map: SettingsMapRef
   @Binding var isExpanded: Bool
   let changeAccessibilityLabel: LocalizedStringResource
-  let keepCurrentTitle: LocalizedStringResource
+  /// The card's Change and Keep current actions, in the Settings Map (#3482).
+  let change: SettingsMapID
+  let keepCurrent: SettingsMapID
   let summary: Summary
   let status: Status
   let choices: Choices
@@ -736,22 +850,30 @@ struct SettingsSummaryCard<Summary: View, Status: View, Choices: View>: View {
   @AccessibilityFocusState private var changeAccessibilityFocused: Bool
 
   init(
+    map: SettingsMapRef,
     isExpanded: Binding<Bool>,
     changeAccessibilityLabel: LocalizedStringResource,
-    keepCurrentTitle: LocalizedStringResource,
+    change: SettingsMapID,
+    keepCurrent: SettingsMapID,
     @ViewBuilder summary: () -> Summary,
     @ViewBuilder status: () -> Status,
     @ViewBuilder choices: () -> Choices
   ) {
+    self.map = map
     self._isExpanded = isExpanded
     self.changeAccessibilityLabel = changeAccessibilityLabel
-    self.keepCurrentTitle = keepCurrentTitle
+    self.change = change
+    self.keepCurrent = keepCurrent
     self.summary = summary()
     self.status = status()
     self.choices = choices()
   }
 
   var body: some View {
+    content.settingsMapRegistration(map.id)
+  }
+
+  private var content: some View {
     SettingsSummaryContentLayout(compactStatus: statusIsCompact, isExpanded: isExpanded) {
       VStack(alignment: .leading, spacing: 10) {
         if isExpanded {
@@ -759,13 +881,14 @@ struct SettingsSummaryCard<Summary: View, Status: View, Choices: View>: View {
           Button {
             isExpanded = false
           } label: {
-            Text(keepCurrentTitle)
+            Text(SettingsMapRef.id(keepCurrent).title)
               .font(.stBody)
               .foregroundStyle(Color.stAccent)
               .settingsHoverQuiet()
           }
           .buttonStyle(.plain)
           .padding(.leading, 4)
+          .settingsMapRegistration(keepCurrent)
         } else {
           summary
         }
@@ -837,12 +960,12 @@ struct SettingsSummaryCard<Summary: View, Status: View, Choices: View>: View {
       open(fromKeyboard: changeFocused, fromAccessibility: changeAccessibilityFocused)
     } label: {
       SettingsActionButton(
-        title: LocalizedStringResource(
-          "Change", comment: "Settings: button that opens the other choices for a setting."),
+        title: SettingsItemCopy.Shared.change,
         isEnabled: true, emphasis: .outlined, shape: .roundedRect, size: .medium)
     }
     .buttonStyle(.plain)
     .fixedSize()
+    .settingsMapRegistration(change)
     .focused($changeFocused)
     .accessibilityFocused($changeAccessibilityFocused)
     .accessibilityLabel(String(localized: changeAccessibilityLabel))
@@ -1572,7 +1695,8 @@ struct WrappingHStack: Layout {
 /// compact density.
 struct EngineCard<Footer: View>: View {
   let icon: String
-  let title: String
+  /// The card's Settings Map choice; its name comes from the map node (#3482).
+  let map: SettingsMapRef
   let tagline: String
   /// Ordered (label, value) rows rendered as the card's little spec table.
   /// Empty renders no table, which is how Live Preview's cards opt out.
@@ -1599,7 +1723,13 @@ struct EngineCard<Footer: View>: View {
 
   @ViewBuilder var footer: Footer
 
+  private var title: String { map.title }
+
   var body: some View {
+    card.settingsMapRegistration(map.id)
+  }
+
+  private var card: some View {
     VStack(alignment: .leading, spacing: 0) {
       Button(action: onSelect) {
         VStack(alignment: .leading, spacing: 12) {
@@ -1718,7 +1848,7 @@ extension EngineCard where Footer == EmptyView {
   /// The Transcription page's call shape, unchanged from before the extraction.
   init(
     icon: String,
-    title: String,
+    map: SettingsMapRef,
     tagline: String,
     specs: [(label: String, value: String)] = [],
     unavailability: String? = nil,
@@ -1727,7 +1857,7 @@ extension EngineCard where Footer == EmptyView {
   ) {
     self.init(
       icon: icon,
-      title: title,
+      map: map,
       tagline: tagline,
       specs: specs,
       unavailability: unavailability,
