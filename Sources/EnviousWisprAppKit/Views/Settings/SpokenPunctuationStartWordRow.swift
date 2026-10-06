@@ -55,7 +55,7 @@ struct SpokenPunctuationStartWordRow: View {
         ) { editor.commitDraft() }
         .accessibilityLabel(Text(SpokenPunctuationCopy.saveAccessibilityLabel))
         SettingsActionButton(
-          verbatimTitle: SpokenPunctuationCopy.resetLabel, isEnabled: editor.isCustomised
+          verbatimTitle: SpokenPunctuationCopy.resetLabel, isEnabled: editor.canReset
         ) { editor.reset() }
         .accessibilityLabel(Text(SpokenPunctuationCopy.resetAccessibilityLabel))
       }

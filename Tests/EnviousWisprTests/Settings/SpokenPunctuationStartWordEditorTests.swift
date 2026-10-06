@@ -76,6 +76,24 @@ struct SpokenPunctuationStartWordEditorTests {
     #expect(editor.isCustomised == false)
   }
 
+  @Test("Reset also clears an unsaved draft and a refusal message when the stored word is the default")
+  func resetClearsDraftAndRejection() {
+    let editor = SpokenPunctuationStartWordEditor(settings: Self.freshSettings())
+    #expect(editor.canReset == false)
+    editor.userEdited("Schreibe")
+    #expect(editor.canReset)
+    editor.reset()
+    #expect(editor.draft == "Diktiere")
+    #expect(editor.canReset == false)
+    editor.userEdited("two words")
+    editor.commitDraft()
+    #expect(editor.rejection != nil)
+    #expect(editor.canReset)
+    editor.reset()
+    #expect(editor.rejection == nil)
+    #expect(editor.canReset == false)
+  }
+
   // MARK: - What the row shows
 
   @Test("It shows the default word and a command built from the rules for every language")

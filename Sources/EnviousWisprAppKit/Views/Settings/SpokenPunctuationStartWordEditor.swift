@@ -93,6 +93,10 @@ final class SpokenPunctuationStartWordEditor {
   /// True while the picked language has a word of the user's own, which is when Reset does something.
   var isCustomised: Bool { settings.spokenPunctuation.startWordOverrides[language] != nil }
 
+  /// True while Reset has something to undo: a word of the user's own, a typed draft, or a refusal
+  /// message still on screen.
+  var canReset: Bool { isCustomised || hasUnsavedDraft || rejection != nil }
+
   /// A spoken command that inserts a period in the picked language, built from the rules table so the
   /// example can never name a word the pass does not accept. It stays in the dictation language.
   var exampleCommand: String? {
