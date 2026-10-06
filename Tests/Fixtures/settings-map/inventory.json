@@ -47,7 +47,8 @@
    "destination": {
     "page": "dictation",
     "tab": "engine"
-   }
+   },
+   "parent": "dictation.tab.engine"
   },
   {
    "id": "section.engineShared",
@@ -55,7 +56,8 @@
    "destination": {
     "page": "dictation",
     "tab": "engine"
-   }
+   },
+   "parent": "dictation.tab.engine"
   },
   {
    "id": "section.microphone",
@@ -63,7 +65,8 @@
    "destination": {
     "page": "dictation",
     "tab": "microphone"
-   }
+   },
+   "parent": "dictation.tab.microphone"
   },
   {
    "id": "section.livePreview",
@@ -71,7 +74,8 @@
    "destination": {
     "page": "dictation",
     "tab": "livePreview"
-   }
+   },
+   "parent": "dictation.tab.livePreview"
   },
   {
    "id": "section.previewEngine",
@@ -79,7 +83,8 @@
    "destination": {
     "page": "dictation",
     "tab": "livePreview"
-   }
+   },
+   "parent": "dictation.tab.livePreview"
   },
   {
    "id": "section.pill",
@@ -87,7 +92,8 @@
    "destination": {
     "page": "dictation",
     "tab": "pill"
-   }
+   },
+   "parent": "dictation.tab.pill"
   },
   {
    "id": "section.chimes",
@@ -95,7 +101,8 @@
    "destination": {
     "page": "dictation",
     "tab": "chimes"
-   }
+   },
+   "parent": "dictation.tab.chimes"
   },
   {
    "id": "section.clipboard",
@@ -103,7 +110,8 @@
    "destination": {
     "page": "dictation",
     "tab": "clipboard"
-   }
+   },
+   "parent": "dictation.tab.clipboard"
   },
   {
    "id": "section.quickAddClipboard",
@@ -111,35 +119,40 @@
    "destination": {
     "page": "dictation",
     "tab": "clipboard"
-   }
+   },
+   "parent": "dictation.tab.clipboard"
   },
   {
    "id": "section.keybindsRecording",
    "kind": "section",
    "destination": {
     "page": "keybinds"
-   }
+   },
+   "parent": "page.keybinds"
   },
   {
    "id": "section.keybindsShortcuts",
    "kind": "section",
    "destination": {
     "page": "keybinds"
-   }
+   },
+   "parent": "page.keybinds"
   },
   {
    "id": "section.aiPolishModel",
    "kind": "section",
    "destination": {
     "page": "aiPolish"
-   }
+   },
+   "parent": "page.aiPolish"
   },
   {
    "id": "section.dictionary",
    "kind": "section",
    "destination": {
     "page": "dictionary"
-   }
+   },
+   "parent": "page.dictionary"
   },
   {
    "id": "section.appearance",
@@ -147,7 +160,8 @@
    "destination": {
     "page": "appSettings",
     "tab": "appearance"
-   }
+   },
+   "parent": "appSettings.tab.appearance"
   },
   {
    "id": "section.permissions",
@@ -155,7 +169,8 @@
    "destination": {
     "page": "appSettings",
     "tab": "permissions"
-   }
+   },
+   "parent": "appSettings.tab.permissions"
   },
   {
    "id": "section.privacy",
@@ -163,7 +178,8 @@
    "destination": {
     "page": "appSettings",
     "tab": "privacy"
-   }
+   },
+   "parent": "appSettings.tab.privacy"
   },
   {
    "id": "section.about",
@@ -171,7 +187,8 @@
    "destination": {
     "page": "appSettings",
     "tab": "licenses"
-   }
+   },
+   "parent": "appSettings.tab.licenses"
   }
  ],
  "items": [
@@ -183,7 +200,7 @@
     "tab": "engine"
    },
    "disposition": "mapped",
-   "parent": null,
+   "parent": "page.dictation",
    "target": "dictation.tab.engine",
    "fallbacks": [],
    "dynamicTitle": false
@@ -196,7 +213,7 @@
     "tab": "microphone"
    },
    "disposition": "mapped",
-   "parent": null,
+   "parent": "page.dictation",
    "target": "dictation.tab.microphone",
    "fallbacks": [],
    "dynamicTitle": false
@@ -209,7 +226,7 @@
     "tab": "livePreview"
    },
    "disposition": "mapped",
-   "parent": null,
+   "parent": "page.dictation",
    "target": "dictation.tab.livePreview",
    "fallbacks": [],
    "dynamicTitle": false
@@ -222,7 +239,7 @@
     "tab": "pill"
    },
    "disposition": "mapped",
-   "parent": null,
+   "parent": "page.dictation",
    "target": "dictation.tab.pill",
    "fallbacks": [],
    "dynamicTitle": false
@@ -235,7 +252,7 @@
     "tab": "chimes"
    },
    "disposition": "mapped",
-   "parent": null,
+   "parent": "page.dictation",
    "target": "dictation.tab.chimes",
    "fallbacks": [],
    "dynamicTitle": false
@@ -248,7 +265,7 @@
     "tab": "clipboard"
    },
    "disposition": "mapped",
-   "parent": null,
+   "parent": "page.dictation",
    "target": "dictation.tab.clipboard",
    "fallbacks": [],
    "dynamicTitle": false
@@ -261,10 +278,15 @@
     "tab": "engine"
    },
    "disposition": "mapped",
-   "parent": null,
+   "parent": "section.transcriptionEngine",
    "target": "transcriptionEngine",
    "fallbacks": [],
-   "dynamicTitle": false
+   "dynamicTitle": false,
+   "seedParent": null,
+   "description": {
+    "kind": "none",
+    "why": "section note, not the item line"
+   }
   },
   {
    "id": "transcriptionEngine.change",
@@ -277,7 +299,8 @@
    "parent": "transcriptionEngine",
    "target": "transcriptionEngine",
    "fallbacks": [],
-   "dynamicTitle": false
+   "dynamicTitle": false,
+   "seedParent": "transcriptionEngine"
   },
   {
    "id": "transcriptionEngine.fast",
@@ -292,7 +315,12 @@
    "fallbacks": [
     "transcriptionEngine"
    ],
-   "dynamicTitle": false
+   "dynamicTitle": false,
+   "seedParent": "transcriptionEngine",
+   "description": {
+    "kind": "static",
+    "english": "Pick this for everyday English and European dictation."
+   }
   },
   {
    "id": "transcriptionEngine.allLanguages",
@@ -307,7 +335,12 @@
    "fallbacks": [
     "transcriptionEngine"
    ],
-   "dynamicTitle": false
+   "dynamicTitle": false,
+   "seedParent": "transcriptionEngine",
+   "description": {
+    "kind": "static",
+    "english": "Pick this for other languages or the toughest audio."
+   }
   },
   {
    "id": "transcriptionEngine.keepCurrent",
@@ -322,7 +355,8 @@
    "fallbacks": [
     "transcriptionEngine"
    ],
-   "dynamicTitle": false
+   "dynamicTitle": false,
+   "seedParent": "transcriptionEngine"
   },
   {
    "id": "transcriptionEngine.recheckFast",
@@ -337,7 +371,8 @@
    "fallbacks": [
     "transcriptionEngine"
    ],
-   "dynamicTitle": false
+   "dynamicTitle": false,
+   "seedParent": "transcriptionEngine"
   },
   {
    "id": "fastModel.cancelDownload",
@@ -352,7 +387,8 @@
    "fallbacks": [
     "transcriptionEngine"
    ],
-   "dynamicTitle": false
+   "dynamicTitle": false,
+   "seedParent": "transcriptionEngine"
   },
   {
    "id": "fastModel.resume",
@@ -367,7 +403,12 @@
    "fallbacks": [
     "transcriptionEngine"
    ],
-   "dynamicTitle": false
+   "dynamicTitle": false,
+   "seedParent": "transcriptionEngine",
+   "description": {
+    "kind": "none",
+    "why": "setup status line"
+   }
   },
   {
    "id": "fastModel.tryAgain",
@@ -382,7 +423,12 @@
    "fallbacks": [
     "transcriptionEngine"
    ],
-   "dynamicTitle": false
+   "dynamicTitle": false,
+   "seedParent": "transcriptionEngine",
+   "description": {
+    "kind": "none",
+    "why": "setup status line"
+   }
   },
   {
    "id": "whisperModel.setUp",
@@ -397,7 +443,8 @@
    "fallbacks": [
     "transcriptionEngine"
    ],
-   "dynamicTitle": false
+   "dynamicTitle": false,
+   "seedParent": "transcriptionEngine"
   },
   {
    "id": "whisperModel.cancelDownload",
@@ -412,7 +459,8 @@
    "fallbacks": [
     "transcriptionEngine"
    ],
-   "dynamicTitle": false
+   "dynamicTitle": false,
+   "seedParent": "transcriptionEngine"
   },
   {
    "id": "whisperModel.resume",
@@ -427,7 +475,12 @@
    "fallbacks": [
     "transcriptionEngine"
    ],
-   "dynamicTitle": false
+   "dynamicTitle": false,
+   "seedParent": "transcriptionEngine",
+   "description": {
+    "kind": "none",
+    "why": "setup status line"
+   }
   },
   {
    "id": "whisperModel.remove",
@@ -442,7 +495,8 @@
    "fallbacks": [
     "transcriptionEngine"
    ],
-   "dynamicTitle": false
+   "dynamicTitle": false,
+   "seedParent": "transcriptionEngine"
   },
   {
    "id": "whisperModel.recheck",
@@ -457,7 +511,8 @@
    "fallbacks": [
     "transcriptionEngine"
    ],
-   "dynamicTitle": false
+   "dynamicTitle": false,
+   "seedParent": "transcriptionEngine"
   },
   {
    "id": "whisperModel.tryAgain",
@@ -472,7 +527,12 @@
    "fallbacks": [
     "transcriptionEngine"
    ],
-   "dynamicTitle": false
+   "dynamicTitle": false,
+   "seedParent": "transcriptionEngine",
+   "description": {
+    "kind": "none",
+    "why": "setup status line"
+   }
   },
   {
    "id": "currentEngineSection",
@@ -482,10 +542,11 @@
     "tab": "engine"
    },
    "disposition": "mapped",
-   "parent": null,
+   "parent": "dictation.tab.engine",
    "target": "currentEngineSection",
    "fallbacks": [],
-   "dynamicTitle": true
+   "dynamicTitle": true,
+   "seedParent": null
   },
   {
    "id": "autoDetectLanguage",
@@ -495,12 +556,16 @@
     "tab": "engine"
    },
    "disposition": "mapped",
-   "parent": null,
+   "parent": "currentEngineSection",
    "target": "autoDetectLanguage",
    "fallbacks": [
     "transcriptionEngine"
    ],
-   "dynamicTitle": false
+   "dynamicTitle": false,
+   "seedParent": null,
+   "description": {
+    "kind": "runtime"
+   }
   },
   {
    "id": "autoDetectLanguage.resetSuggestions",
@@ -512,8 +577,16 @@
    "disposition": "mapped",
    "parent": "autoDetectLanguage",
    "target": "autoDetectLanguage.resetSuggestions",
-   "fallbacks": [],
-   "dynamicTitle": false
+   "fallbacks": [
+    "autoDetectLanguage",
+    "transcriptionEngine"
+   ],
+   "dynamicTitle": false,
+   "seedParent": "autoDetectLanguage",
+   "description": {
+    "kind": "none",
+    "why": "help text behind a question mark"
+   }
   },
   {
    "id": "lockedLanguage",
@@ -523,12 +596,17 @@
     "tab": "engine"
    },
    "disposition": "mapped",
-   "parent": null,
+   "parent": "currentEngineSection",
    "target": "lockedLanguage",
    "fallbacks": [
     "transcriptionEngine"
    ],
-   "dynamicTitle": true
+   "dynamicTitle": true,
+   "seedParent": null,
+   "description": {
+    "kind": "static",
+    "english": "Choose the language for dictation and preview."
+   }
   },
   {
    "id": "lockedLanguage.change",
@@ -540,8 +618,12 @@
    "disposition": "mapped",
    "parent": "lockedLanguage",
    "target": "lockedLanguage.change",
-   "fallbacks": [],
-   "dynamicTitle": false
+   "fallbacks": [
+    "lockedLanguage",
+    "transcriptionEngine"
+   ],
+   "dynamicTitle": false,
+   "seedParent": "lockedLanguage"
   },
   {
    "id": "fasterTranscription",
@@ -551,10 +633,14 @@
     "tab": "engine"
    },
    "disposition": "mapped",
-   "parent": null,
+   "parent": "currentEngineSection",
    "target": "fasterTranscription",
    "fallbacks": [],
-   "dynamicTitle": false
+   "dynamicTitle": false,
+   "seedParent": null,
+   "description": {
+    "kind": "runtime"
+   }
   },
   {
    "id": "stopOnSilence",
@@ -564,10 +650,15 @@
     "tab": "engine"
    },
    "disposition": "mapped",
-   "parent": null,
+   "parent": "section.engineShared",
    "target": "stopOnSilence",
    "fallbacks": [],
-   "dynamicTitle": false
+   "dynamicTitle": false,
+   "seedParent": null,
+   "description": {
+    "kind": "static",
+    "english": "Ends recording after you stop speaking."
+   }
   },
   {
    "id": "pauseDuration",
@@ -582,7 +673,12 @@
    "fallbacks": [
     "stopOnSilence"
    ],
-   "dynamicTitle": false
+   "dynamicTitle": false,
+   "seedParent": "stopOnSilence",
+   "description": {
+    "kind": "static",
+    "english": "How long a pause ends the recording."
+   }
   },
   {
    "id": "fillerRemoval",
@@ -592,10 +688,15 @@
     "tab": "engine"
    },
    "disposition": "mapped",
-   "parent": null,
+   "parent": "section.engineShared",
    "target": "fillerRemoval",
    "fallbacks": [],
-   "dynamicTitle": false
+   "dynamicTitle": false,
+   "seedParent": null,
+   "description": {
+    "kind": "static",
+    "english": "Strips common filler words from transcriptions."
+   }
   },
   {
    "id": "spokenEmoji",
@@ -605,10 +706,15 @@
     "tab": "engine"
    },
    "disposition": "mapped",
-   "parent": null,
+   "parent": "section.engineShared",
    "target": "spokenEmoji",
    "fallbacks": [],
-   "dynamicTitle": false
+   "dynamicTitle": false,
+   "seedParent": null,
+   "description": {
+    "kind": "static",
+    "english": "Say a phrase followed by emoji to get its symbol."
+   }
   },
   {
    "id": "spokenPunctuation",
@@ -618,10 +724,15 @@
     "tab": "engine"
    },
    "disposition": "mapped",
-   "parent": null,
+   "parent": "section.engineShared",
    "target": "spokenPunctuation",
    "fallbacks": [],
-   "dynamicTitle": false
+   "dynamicTitle": false,
+   "seedParent": null,
+   "description": {
+    "kind": "static",
+    "english": "Say comma or new paragraph to insert it."
+   }
   },
   {
    "id": "startWordLanguage",
@@ -636,7 +747,12 @@
    "fallbacks": [
     "spokenPunctuation"
    ],
-   "dynamicTitle": false
+   "dynamicTitle": false,
+   "seedParent": "spokenPunctuation",
+   "description": {
+    "kind": "static",
+    "english": "The word you say before a mark."
+   }
   },
   {
    "id": "startWordLanguage.en",
@@ -648,8 +764,14 @@
    "disposition": "mapped",
    "parent": "startWordLanguage",
    "target": "startWordLanguage",
-   "fallbacks": [],
-   "dynamicTitle": true
+   "fallbacks": [
+    "spokenPunctuation"
+   ],
+   "dynamicTitle": true,
+   "seedParent": "startWordLanguage",
+   "description": {
+    "kind": "runtime"
+   }
   },
   {
    "id": "startWordLanguage.de",
@@ -661,8 +783,14 @@
    "disposition": "mapped",
    "parent": "startWordLanguage",
    "target": "startWordLanguage",
-   "fallbacks": [],
-   "dynamicTitle": true
+   "fallbacks": [
+    "spokenPunctuation"
+   ],
+   "dynamicTitle": true,
+   "seedParent": "startWordLanguage",
+   "description": {
+    "kind": "runtime"
+   }
   },
   {
    "id": "startWordLanguage.fr",
@@ -674,8 +802,14 @@
    "disposition": "mapped",
    "parent": "startWordLanguage",
    "target": "startWordLanguage",
-   "fallbacks": [],
-   "dynamicTitle": true
+   "fallbacks": [
+    "spokenPunctuation"
+   ],
+   "dynamicTitle": true,
+   "seedParent": "startWordLanguage",
+   "description": {
+    "kind": "runtime"
+   }
   },
   {
    "id": "startWordLanguage.es",
@@ -687,8 +821,14 @@
    "disposition": "mapped",
    "parent": "startWordLanguage",
    "target": "startWordLanguage",
-   "fallbacks": [],
-   "dynamicTitle": true
+   "fallbacks": [
+    "spokenPunctuation"
+   ],
+   "dynamicTitle": true,
+   "seedParent": "startWordLanguage",
+   "description": {
+    "kind": "runtime"
+   }
   },
   {
    "id": "startWordLanguage.it",
@@ -700,8 +840,14 @@
    "disposition": "mapped",
    "parent": "startWordLanguage",
    "target": "startWordLanguage",
-   "fallbacks": [],
-   "dynamicTitle": true
+   "fallbacks": [
+    "spokenPunctuation"
+   ],
+   "dynamicTitle": true,
+   "seedParent": "startWordLanguage",
+   "description": {
+    "kind": "runtime"
+   }
   },
   {
    "id": "startWordField",
@@ -716,7 +862,8 @@
    "fallbacks": [
     "spokenPunctuation"
    ],
-   "dynamicTitle": false
+   "dynamicTitle": false,
+   "seedParent": "spokenPunctuation"
   },
   {
    "id": "startWord.save",
@@ -728,8 +875,11 @@
    "disposition": "mapped",
    "parent": "startWordField",
    "target": "startWord.save",
-   "fallbacks": [],
-   "dynamicTitle": false
+   "fallbacks": [
+    "spokenPunctuation"
+   ],
+   "dynamicTitle": false,
+   "seedParent": "startWordField"
   },
   {
    "id": "startWord.reset",
@@ -741,8 +891,11 @@
    "disposition": "mapped",
    "parent": "startWordField",
    "target": "startWord.reset",
-   "fallbacks": [],
-   "dynamicTitle": false
+   "fallbacks": [
+    "spokenPunctuation"
+   ],
+   "dynamicTitle": false,
+   "seedParent": "startWordField"
   },
   {
    "id": "unloadModel",
@@ -752,10 +905,15 @@
     "tab": "engine"
    },
    "disposition": "mapped",
-   "parent": null,
+   "parent": "section.engineShared",
    "target": "unloadModel",
    "fallbacks": [],
-   "dynamicTitle": false
+   "dynamicTitle": false,
+   "seedParent": null,
+   "description": {
+    "kind": "static",
+    "english": "Frees memory when you are not dictating."
+   }
   },
   {
    "id": "unloadModel.never",
@@ -768,7 +926,8 @@
    "parent": "unloadModel",
    "target": "unloadModel",
    "fallbacks": [],
-   "dynamicTitle": false
+   "dynamicTitle": false,
+   "seedParent": "unloadModel"
   },
   {
    "id": "unloadModel.immediately",
@@ -781,7 +940,12 @@
    "parent": "unloadModel",
    "target": "unloadModel",
    "fallbacks": [],
-   "dynamicTitle": false
+   "dynamicTitle": false,
+   "seedParent": "unloadModel",
+   "description": {
+    "kind": "none",
+    "why": "notice shown only while that option is chosen"
+   }
   },
   {
    "id": "unloadModel.twoMinutes",
@@ -794,7 +958,8 @@
    "parent": "unloadModel",
    "target": "unloadModel",
    "fallbacks": [],
-   "dynamicTitle": false
+   "dynamicTitle": false,
+   "seedParent": "unloadModel"
   },
   {
    "id": "unloadModel.fiveMinutes",
@@ -807,7 +972,8 @@
    "parent": "unloadModel",
    "target": "unloadModel",
    "fallbacks": [],
-   "dynamicTitle": false
+   "dynamicTitle": false,
+   "seedParent": "unloadModel"
   },
   {
    "id": "unloadModel.tenMinutes",
@@ -820,7 +986,8 @@
    "parent": "unloadModel",
    "target": "unloadModel",
    "fallbacks": [],
-   "dynamicTitle": false
+   "dynamicTitle": false,
+   "seedParent": "unloadModel"
   },
   {
    "id": "unloadModel.fifteenMinutes",
@@ -833,7 +1000,8 @@
    "parent": "unloadModel",
    "target": "unloadModel",
    "fallbacks": [],
-   "dynamicTitle": false
+   "dynamicTitle": false,
+   "seedParent": "unloadModel"
   },
   {
    "id": "unloadModel.oneHour",
@@ -846,7 +1014,8 @@
    "parent": "unloadModel",
    "target": "unloadModel",
    "fallbacks": [],
-   "dynamicTitle": false
+   "dynamicTitle": false,
+   "seedParent": "unloadModel"
   },
   {
    "id": "inputDevice",
@@ -856,10 +1025,15 @@
     "tab": "microphone"
    },
    "disposition": "mapped",
-   "parent": null,
+   "parent": "section.microphone",
    "target": "inputDevice",
    "fallbacks": [],
-   "dynamicTitle": false
+   "dynamicTitle": false,
+   "seedParent": null,
+   "description": {
+    "kind": "static",
+    "english": "Choose the microphone used for recording."
+   }
   },
   {
    "id": "inputDevice.auto",
@@ -872,7 +1046,12 @@
    "parent": "inputDevice",
    "target": "inputDevice",
    "fallbacks": [],
-   "dynamicTitle": false
+   "dynamicTitle": false,
+   "seedParent": "inputDevice",
+   "description": {
+    "kind": "static",
+    "english": "Follows macOS"
+   }
   },
   {
    "id": "inputDevice.device",
@@ -885,7 +1064,11 @@
    "parent": "inputDevice",
    "target": "inputDevice",
    "fallbacks": [],
-   "dynamicTitle": true
+   "dynamicTitle": true,
+   "seedParent": "inputDevice",
+   "description": {
+    "kind": "runtime"
+   }
   },
   {
    "id": "inputSocket",
@@ -900,7 +1083,12 @@
    "fallbacks": [
     "inputDevice"
    ],
-   "dynamicTitle": false
+   "dynamicTitle": false,
+   "seedParent": "inputDevice",
+   "description": {
+    "kind": "static",
+    "english": "Choose the socket your microphone is plugged into."
+   }
   },
   {
    "id": "inputSocket.input",
@@ -912,8 +1100,14 @@
    "disposition": "mapped",
    "parent": "inputSocket",
    "target": "inputSocket",
-   "fallbacks": [],
-   "dynamicTitle": true
+   "fallbacks": [
+    "inputDevice"
+   ],
+   "dynamicTitle": true,
+   "seedParent": "inputSocket",
+   "description": {
+    "kind": "runtime"
+   }
   },
   {
    "id": "mediaDuringDictation",
@@ -923,10 +1117,15 @@
     "tab": "microphone"
    },
    "disposition": "mapped",
-   "parent": null,
+   "parent": "section.microphone",
    "target": "mediaDuringDictation",
    "fallbacks": [],
-   "dynamicTitle": false
+   "dynamicTitle": false,
+   "seedParent": null,
+   "description": {
+    "kind": "static",
+    "english": "What music and video do while you dictate."
+   }
   },
   {
    "id": "mediaDuringDictation.continue",
@@ -939,7 +1138,12 @@
    "parent": "mediaDuringDictation",
    "target": "mediaDuringDictation",
    "fallbacks": [],
-   "dynamicTitle": false
+   "dynamicTitle": false,
+   "seedParent": "mediaDuringDictation",
+   "description": {
+    "kind": "none",
+    "why": "notice shown only while that option is chosen"
+   }
   },
   {
    "id": "mediaDuringDictation.lower",
@@ -952,7 +1156,8 @@
    "parent": "mediaDuringDictation",
    "target": "mediaDuringDictation",
    "fallbacks": [],
-   "dynamicTitle": false
+   "dynamicTitle": false,
+   "seedParent": "mediaDuringDictation"
   },
   {
    "id": "mediaDuringDictation.mute",
@@ -965,7 +1170,8 @@
    "parent": "mediaDuringDictation",
    "target": "mediaDuringDictation",
    "fallbacks": [],
-   "dynamicTitle": false
+   "dynamicTitle": false,
+   "seedParent": "mediaDuringDictation"
   },
   {
    "id": "mediaDuringDictation.pause",
@@ -978,7 +1184,8 @@
    "parent": "mediaDuringDictation",
    "target": "mediaDuringDictation",
    "fallbacks": [],
-   "dynamicTitle": false
+   "dynamicTitle": false,
+   "seedParent": "mediaDuringDictation"
   },
   {
    "id": "micReadiness",
@@ -988,10 +1195,15 @@
     "tab": "microphone"
    },
    "disposition": "mapped",
-   "parent": null,
+   "parent": "section.microphone",
    "target": "micReadiness",
    "fallbacks": [],
-   "dynamicTitle": false
+   "dynamicTitle": false,
+   "seedParent": null,
+   "description": {
+    "kind": "static",
+    "english": "How long the mic stays ready after recording."
+   }
   },
   {
    "id": "micReadiness.off",
@@ -1004,7 +1216,8 @@
    "parent": "micReadiness",
    "target": "micReadiness",
    "fallbacks": [],
-   "dynamicTitle": false
+   "dynamicTitle": false,
+   "seedParent": "micReadiness"
   },
   {
    "id": "micReadiness.10s",
@@ -1017,7 +1230,8 @@
    "parent": "micReadiness",
    "target": "micReadiness",
    "fallbacks": [],
-   "dynamicTitle": false
+   "dynamicTitle": false,
+   "seedParent": "micReadiness"
   },
   {
    "id": "micReadiness.30s",
@@ -1030,7 +1244,8 @@
    "parent": "micReadiness",
    "target": "micReadiness",
    "fallbacks": [],
-   "dynamicTitle": false
+   "dynamicTitle": false,
+   "seedParent": "micReadiness"
   },
   {
    "id": "micReadiness.60s",
@@ -1043,7 +1258,8 @@
    "parent": "micReadiness",
    "target": "micReadiness",
    "fallbacks": [],
-   "dynamicTitle": false
+   "dynamicTitle": false,
+   "seedParent": "micReadiness"
   },
   {
    "id": "micReadiness.always",
@@ -1056,7 +1272,12 @@
    "parent": "micReadiness",
    "target": "micReadiness",
    "fallbacks": [],
-   "dynamicTitle": false
+   "dynamicTitle": false,
+   "seedParent": "micReadiness",
+   "description": {
+    "kind": "none",
+    "why": "notice shown only while that option is chosen"
+   }
   },
   {
    "id": "bluetoothGuide",
@@ -1066,10 +1287,15 @@
     "tab": "microphone"
    },
    "disposition": "mapped",
-   "parent": null,
+   "parent": "section.microphone",
    "target": "bluetoothGuide",
    "fallbacks": [],
-   "dynamicTitle": false
+   "dynamicTitle": false,
+   "seedParent": null,
+   "description": {
+    "kind": "static",
+    "english": "Keeping your mic ready reduces Bluetooth startup delay."
+   }
   },
   {
    "id": "bluetoothGuide.learnMore",
@@ -1082,7 +1308,8 @@
    "parent": "bluetoothGuide",
    "target": "bluetoothGuide.learnMore",
    "fallbacks": [],
-   "dynamicTitle": false
+   "dynamicTitle": false,
+   "seedParent": "bluetoothGuide"
   },
   {
    "id": "livePreview",
@@ -1092,10 +1319,15 @@
     "tab": "livePreview"
    },
    "disposition": "mapped",
-   "parent": null,
+   "parent": "section.livePreview",
    "target": "livePreview",
    "fallbacks": [],
-   "dynamicTitle": false
+   "dynamicTitle": false,
+   "seedParent": null,
+   "description": {
+    "kind": "static",
+    "english": "See words before you finish your dictation."
+   }
   },
   {
    "id": "livePreview.language",
@@ -1107,8 +1339,15 @@
    "disposition": "mapped",
    "parent": "livePreview",
    "target": "livePreview.language",
-   "fallbacks": [],
-   "dynamicTitle": true
+   "fallbacks": [
+    "livePreview"
+   ],
+   "dynamicTitle": true,
+   "seedParent": "livePreview",
+   "description": {
+    "kind": "static",
+    "english": "This changes dictation too, not just the preview."
+   }
   },
   {
    "id": "livePreview.browseDownloads",
@@ -1120,8 +1359,11 @@
    "disposition": "mapped",
    "parent": "livePreview",
    "target": "livePreview.browseDownloads",
-   "fallbacks": [],
-   "dynamicTitle": false
+   "fallbacks": [
+    "livePreview"
+   ],
+   "dynamicTitle": false,
+   "seedParent": "livePreview"
   },
   {
    "id": "previewEngine",
@@ -1131,10 +1373,15 @@
     "tab": "livePreview"
    },
    "disposition": "mapped",
-   "parent": null,
+   "parent": "section.previewEngine",
    "target": "previewEngine",
    "fallbacks": [],
-   "dynamicTitle": false
+   "dynamicTitle": false,
+   "seedParent": null,
+   "description": {
+    "kind": "static",
+    "english": "Choose which engine shows words while you speak."
+   }
   },
   {
    "id": "previewEngine.change",
@@ -1147,7 +1394,8 @@
    "parent": "previewEngine",
    "target": "previewEngine",
    "fallbacks": [],
-   "dynamicTitle": false
+   "dynamicTitle": false,
+   "seedParent": "previewEngine"
   },
   {
    "id": "previewEngine.compare",
@@ -1160,7 +1408,8 @@
    "parent": "previewEngine",
    "target": "previewEngine.compare",
    "fallbacks": [],
-   "dynamicTitle": false
+   "dynamicTitle": false,
+   "seedParent": "previewEngine"
   },
   {
    "id": "previewEngine.apple",
@@ -1173,7 +1422,12 @@
    "parent": "previewEngine",
    "target": "previewEngine",
    "fallbacks": [],
-   "dynamicTitle": false
+   "dynamicTitle": false,
+   "seedParent": "previewEngine",
+   "description": {
+    "kind": "static",
+    "english": "Uses Apple's speech recognition. No separate preview-model download; some languages may need an Apple language download. Needs macOS 26."
+   }
   },
   {
    "id": "previewEngine.universal",
@@ -1186,7 +1440,12 @@
    "parent": "previewEngine",
    "target": "previewEngine",
    "fallbacks": [],
-   "dynamicTitle": false
+   "dynamicTitle": false,
+   "seedParent": "previewEngine",
+   "description": {
+    "kind": "static",
+    "english": "Works on macOS 14 and later, in more languages. Needs one optional 217 MB download."
+   }
   },
   {
    "id": "previewEngine.keepCurrent",
@@ -1199,7 +1458,8 @@
    "parent": "previewEngine",
    "target": "previewEngine",
    "fallbacks": [],
-   "dynamicTitle": false
+   "dynamicTitle": false,
+   "seedParent": "previewEngine"
   },
   {
    "id": "previewEngine.universal.download",
@@ -1212,7 +1472,12 @@
    "parent": "previewEngine.universal",
    "target": "previewEngine",
    "fallbacks": [],
-   "dynamicTitle": false
+   "dynamicTitle": false,
+   "seedParent": "previewEngine.universal",
+   "description": {
+    "kind": "none",
+    "why": "setup status line"
+   }
   },
   {
    "id": "previewEngine.universal.cancel",
@@ -1225,7 +1490,8 @@
    "parent": "previewEngine.universal",
    "target": "previewEngine",
    "fallbacks": [],
-   "dynamicTitle": false
+   "dynamicTitle": false,
+   "seedParent": "previewEngine.universal"
   },
   {
    "id": "previewEngine.universal.resume",
@@ -1238,7 +1504,12 @@
    "parent": "previewEngine.universal",
    "target": "previewEngine",
    "fallbacks": [],
-   "dynamicTitle": false
+   "dynamicTitle": false,
+   "seedParent": "previewEngine.universal",
+   "description": {
+    "kind": "none",
+    "why": "setup status line"
+   }
   },
   {
    "id": "previewEngine.universal.retry",
@@ -1251,7 +1522,12 @@
    "parent": "previewEngine.universal",
    "target": "previewEngine",
    "fallbacks": [],
-   "dynamicTitle": false
+   "dynamicTitle": false,
+   "seedParent": "previewEngine.universal",
+   "description": {
+    "kind": "none",
+    "why": "setup status line"
+   }
   },
   {
    "id": "previewEngine.universal.remove",
@@ -1264,7 +1540,8 @@
    "parent": "previewEngine.universal",
    "target": "previewEngine",
    "fallbacks": [],
-   "dynamicTitle": false
+   "dynamicTitle": false,
+   "seedParent": "previewEngine.universal"
   },
   {
    "id": "previewLanguages",
@@ -1274,12 +1551,16 @@
     "tab": "livePreview"
    },
    "disposition": "mapped",
-   "parent": null,
+   "parent": "section.previewEngine",
    "target": "previewLanguages",
    "fallbacks": [
     "previewEngine"
    ],
-   "dynamicTitle": false
+   "dynamicTitle": false,
+   "seedParent": null,
+   "description": {
+    "kind": "runtime"
+   }
   },
   {
    "id": "previewLanguages.install",
@@ -1291,8 +1572,15 @@
    "disposition": "mapped",
    "parent": "previewLanguages",
    "target": "previewLanguages",
-   "fallbacks": [],
-   "dynamicTitle": false
+   "fallbacks": [
+    "previewEngine"
+   ],
+   "dynamicTitle": true,
+   "seedParent": "previewLanguages",
+   "description": {
+    "kind": "static",
+    "english": "Download a language from macOS to preview it."
+   }
   },
   {
    "id": "pillPosition",
@@ -1302,10 +1590,15 @@
     "tab": "pill"
    },
    "disposition": "mapped",
-   "parent": null,
+   "parent": "section.pill",
    "target": "pillPosition",
    "fallbacks": [],
-   "dynamicTitle": false
+   "dynamicTitle": false,
+   "seedParent": null,
+   "description": {
+    "kind": "static",
+    "english": "Where the pill floats while you dictate."
+   }
   },
   {
    "id": "pillPosition.top",
@@ -1318,7 +1611,8 @@
    "parent": "pillPosition",
    "target": "pillPosition",
    "fallbacks": [],
-   "dynamicTitle": false
+   "dynamicTitle": false,
+   "seedParent": "pillPosition"
   },
   {
    "id": "pillPosition.bottom",
@@ -1331,7 +1625,8 @@
    "parent": "pillPosition",
    "target": "pillPosition",
    "fallbacks": [],
-   "dynamicTitle": false
+   "dynamicTitle": false,
+   "seedParent": "pillPosition"
   },
   {
    "id": "pillStyle",
@@ -1341,10 +1636,15 @@
     "tab": "pill"
    },
    "disposition": "mapped",
-   "parent": null,
+   "parent": "section.pill",
    "target": "pillStyle",
    "fallbacks": [],
-   "dynamicTitle": false
+   "dynamicTitle": false,
+   "seedParent": null,
+   "description": {
+    "kind": "static",
+    "english": "What the floating pill shows while you record."
+   }
   },
   {
    "id": "pillStyle.capsule",
@@ -1357,7 +1657,12 @@
    "parent": "pillStyle",
    "target": "pillStyle",
    "fallbacks": [],
-   "dynamicTitle": false
+   "dynamicTitle": false,
+   "seedParent": "pillStyle",
+   "description": {
+    "kind": "static",
+    "english": "A compact pill with a dot and level meter."
+   }
   },
   {
    "id": "pillStyle.levelRail",
@@ -1370,7 +1675,12 @@
    "parent": "pillStyle",
    "target": "pillStyle",
    "fallbacks": [],
-   "dynamicTitle": false
+   "dynamicTitle": false,
+   "seedParent": "pillStyle",
+   "description": {
+    "kind": "static",
+    "english": "A slim rail that follows your volume."
+   }
   },
   {
    "id": "pillStyle.readingWell",
@@ -1383,7 +1693,12 @@
    "parent": "pillStyle",
    "target": "pillStyle",
    "fallbacks": [],
-   "dynamicTitle": false
+   "dynamicTitle": false,
+   "seedParent": "pillStyle",
+   "description": {
+    "kind": "static",
+    "english": "Shows words as you speak. Turns Live Preview on."
+   }
   },
   {
    "id": "pillStyle.configureLivePreview",
@@ -1398,7 +1713,8 @@
    "fallbacks": [
     "pillStyle"
    ],
-   "dynamicTitle": false
+   "dynamicTitle": false,
+   "seedParent": "pillStyle"
   },
   {
    "id": "recordingChimes",
@@ -1408,10 +1724,15 @@
     "tab": "chimes"
    },
    "disposition": "mapped",
-   "parent": null,
+   "parent": "section.chimes",
    "target": "recordingChimes",
    "fallbacks": [],
-   "dynamicTitle": false
+   "dynamicTitle": false,
+   "seedParent": null,
+   "description": {
+    "kind": "static",
+    "english": "Plays a short chime when recording starts and stops."
+   }
   },
   {
    "id": "recordingChime",
@@ -1421,10 +1742,15 @@
     "tab": "chimes"
    },
    "disposition": "mapped",
-   "parent": null,
+   "parent": "section.chimes",
    "target": "recordingChime",
    "fallbacks": [],
-   "dynamicTitle": false
+   "dynamicTitle": false,
+   "seedParent": null,
+   "description": {
+    "kind": "static",
+    "english": "Hear this chime without changing your choice."
+   }
   },
   {
    "id": "recordingChime.dustMote",
@@ -1437,7 +1763,12 @@
    "parent": "recordingChime",
    "target": "recordingChime",
    "fallbacks": [],
-   "dynamicTitle": false
+   "dynamicTitle": false,
+   "seedParent": "recordingChime",
+   "description": {
+    "kind": "static",
+    "english": "Soft filtered air, no tone."
+   }
   },
   {
    "id": "recordingChime.velvetHush",
@@ -1450,7 +1781,12 @@
    "parent": "recordingChime",
    "target": "recordingChime",
    "fallbacks": [],
-   "dynamicTitle": false
+   "dynamicTitle": false,
+   "seedParent": "recordingChime",
+   "description": {
+    "kind": "static",
+    "english": "Two close tones, gentle warmth."
+   }
   },
   {
    "id": "recordingChime.mutedConfirm",
@@ -1463,7 +1799,12 @@
    "parent": "recordingChime",
    "target": "recordingChime",
    "fallbacks": [],
-   "dynamicTitle": false
+   "dynamicTitle": false,
+   "seedParent": "recordingChime",
+   "description": {
+    "kind": "static",
+    "english": "Same pitch both ways, plain."
+   }
   },
   {
    "id": "recordingChime.whisperTick",
@@ -1476,7 +1817,12 @@
    "parent": "recordingChime",
    "target": "recordingChime",
    "fallbacks": [],
-   "dynamicTitle": false
+   "dynamicTitle": false,
+   "seedParent": "recordingChime",
+   "description": {
+    "kind": "static",
+    "english": "Barely-there tick."
+   }
   },
   {
    "id": "recordingChime.roundPebble",
@@ -1489,7 +1835,12 @@
    "parent": "recordingChime",
    "target": "recordingChime",
    "fallbacks": [],
-   "dynamicTitle": false
+   "dynamicTitle": false,
+   "seedParent": "recordingChime",
+   "description": {
+    "kind": "static",
+    "english": "Rounded, no edge."
+   }
   },
   {
    "id": "recordingChime.paperTap",
@@ -1502,7 +1853,12 @@
    "parent": "recordingChime",
    "target": "recordingChime",
    "fallbacks": [],
-   "dynamicTitle": false
+   "dynamicTitle": false,
+   "seedParent": "recordingChime",
+   "description": {
+    "kind": "static",
+    "english": "Soft paper-like tap."
+   }
   },
   {
    "id": "recordingChime.softHush",
@@ -1515,7 +1871,12 @@
    "parent": "recordingChime",
    "target": "recordingChime",
    "fallbacks": [],
-   "dynamicTitle": false
+   "dynamicTitle": false,
+   "seedParent": "recordingChime",
+   "description": {
+    "kind": "static",
+    "english": "Slow fade, like a breath."
+   }
   },
   {
    "id": "recordingChime.lowNod",
@@ -1528,7 +1889,12 @@
    "parent": "recordingChime",
    "target": "recordingChime",
    "fallbacks": [],
-   "dynamicTitle": false
+   "dynamicTitle": false,
+   "seedParent": "recordingChime",
+   "description": {
+    "kind": "static",
+    "english": "Low, warm, unhurried."
+   }
   },
   {
    "id": "recordingChime.cloudPop",
@@ -1541,7 +1907,12 @@
    "parent": "recordingChime",
    "target": "recordingChime",
    "fallbacks": [],
-   "dynamicTitle": false
+   "dynamicTitle": false,
+   "seedParent": "recordingChime",
+   "description": {
+    "kind": "static",
+    "english": "Tiny filtered-air pop."
+   }
   },
   {
    "id": "recordingChime.velvetTap",
@@ -1554,7 +1925,12 @@
    "parent": "recordingChime",
    "target": "recordingChime",
    "fallbacks": [],
-   "dynamicTitle": false
+   "dynamicTitle": false,
+   "seedParent": "recordingChime",
+   "description": {
+    "kind": "static",
+    "english": "Muted, compact tap."
+   }
   },
   {
    "id": "recordingChime.satinShift",
@@ -1567,7 +1943,12 @@
    "parent": "recordingChime",
    "target": "recordingChime",
    "fallbacks": [],
-   "dynamicTitle": false
+   "dynamicTitle": false,
+   "seedParent": "recordingChime",
+   "description": {
+    "kind": "static",
+    "english": "Smooth two-tone shift."
+   }
   },
   {
    "id": "recordingChime.airGlint",
@@ -1580,7 +1961,12 @@
    "parent": "recordingChime",
    "target": "recordingChime",
    "fallbacks": [],
-   "dynamicTitle": false
+   "dynamicTitle": false,
+   "seedParent": "recordingChime",
+   "description": {
+    "kind": "static",
+    "english": "Clean, airy glint."
+   }
   },
   {
    "id": "recordingChime.preview",
@@ -1593,7 +1979,12 @@
    "parent": "recordingChime",
    "target": "recordingChime",
    "fallbacks": [],
-   "dynamicTitle": true
+   "dynamicTitle": true,
+   "seedParent": "recordingChime",
+   "description": {
+    "kind": "none",
+    "why": "conditional notice"
+   }
   },
   {
    "id": "autoCopyToClipboard",
@@ -1603,10 +1994,15 @@
     "tab": "clipboard"
    },
    "disposition": "mapped",
-   "parent": null,
+   "parent": "section.clipboard",
    "target": "autoCopyToClipboard",
    "fallbacks": [],
-   "dynamicTitle": false
+   "dynamicTitle": false,
+   "seedParent": null,
+   "description": {
+    "kind": "static",
+    "english": "Copies dictation when automatic pasting is skipped."
+   }
   },
   {
    "id": "restoreClipboard",
@@ -1616,10 +2012,15 @@
     "tab": "clipboard"
    },
    "disposition": "mapped",
-   "parent": null,
+   "parent": "section.clipboard",
    "target": "restoreClipboard",
    "fallbacks": [],
-   "dynamicTitle": false
+   "dynamicTitle": false,
+   "seedParent": null,
+   "description": {
+    "kind": "static",
+    "english": "Puts back what was on your clipboard before pasting."
+   }
   },
   {
    "id": "smartInsertion",
@@ -1629,10 +2030,15 @@
     "tab": "clipboard"
    },
    "disposition": "mapped",
-   "parent": null,
+   "parent": "section.clipboard",
    "target": "smartInsertion",
    "fallbacks": [],
-   "dynamicTitle": false
+   "dynamicTitle": false,
+   "seedParent": null,
+   "description": {
+    "kind": "static",
+    "english": "Fits text to the spacing and capitals around your cursor."
+   }
   },
   {
    "id": "quickAddClipboardFallback",
@@ -1642,10 +2048,15 @@
     "tab": "clipboard"
    },
    "disposition": "mapped",
-   "parent": null,
+   "parent": "section.quickAddClipboard",
    "target": "quickAddClipboardFallback",
    "fallbacks": [],
-   "dynamicTitle": false
+   "dynamicTitle": false,
+   "seedParent": null,
+   "description": {
+    "kind": "static",
+    "english": "Reads hidden selections and restores your clipboard."
+   }
   },
   {
    "id": "recordingMode",
@@ -1654,10 +2065,15 @@
     "page": "keybinds"
    },
    "disposition": "mapped",
-   "parent": null,
+   "parent": "section.keybindsRecording",
    "target": "recordingMode",
    "fallbacks": [],
-   "dynamicTitle": false
+   "dynamicTitle": false,
+   "seedParent": null,
+   "description": {
+    "kind": "static",
+    "english": "Hold to talk, or press once to start and again to stop."
+   }
   },
   {
    "id": "recordingMode.pushToTalk",
@@ -1669,7 +2085,12 @@
    "parent": "recordingMode",
    "target": "recordingMode",
    "fallbacks": [],
-   "dynamicTitle": false
+   "dynamicTitle": false,
+   "seedParent": "recordingMode",
+   "description": {
+    "kind": "none",
+    "why": "help text behind a question mark"
+   }
   },
   {
    "id": "recordingMode.toggle",
@@ -1681,7 +2102,12 @@
    "parent": "recordingMode",
    "target": "recordingMode",
    "fallbacks": [],
-   "dynamicTitle": false
+   "dynamicTitle": false,
+   "seedParent": "recordingMode",
+   "description": {
+    "kind": "none",
+    "why": "help text behind a question mark"
+   }
   },
   {
    "id": "recordKeybind",
@@ -1690,10 +2116,15 @@
     "page": "keybinds"
    },
    "disposition": "mapped",
-   "parent": null,
+   "parent": "section.keybindsRecording",
    "target": "recordKeybind",
    "fallbacks": [],
-   "dynamicTitle": false
+   "dynamicTitle": false,
+   "seedParent": null,
+   "description": {
+    "kind": "static",
+    "english": "Click Change to choose the keys you use."
+   }
   },
   {
    "id": "cancelKeybind",
@@ -1702,10 +2133,15 @@
     "page": "keybinds"
    },
    "disposition": "mapped",
-   "parent": null,
+   "parent": "section.keybindsRecording",
    "target": "cancelKeybind",
    "fallbacks": [],
-   "dynamicTitle": false
+   "dynamicTitle": false,
+   "seedParent": null,
+   "description": {
+    "kind": "static",
+    "english": "Cancels the current recording."
+   }
   },
   {
    "id": "escapeRecovery",
@@ -1714,10 +2150,15 @@
     "page": "keybinds"
    },
    "disposition": "mapped",
-   "parent": null,
+   "parent": "section.keybindsRecording",
    "target": "escapeRecovery",
    "fallbacks": [],
-   "dynamicTitle": false
+   "dynamicTitle": false,
+   "seedParent": null,
+   "description": {
+    "kind": "static",
+    "english": "Keeps cancelled dictations in History for 24 hours."
+   }
   },
   {
    "id": "quickAddKeybind",
@@ -1726,10 +2167,15 @@
     "page": "keybinds"
    },
    "disposition": "mapped",
-   "parent": null,
+   "parent": "section.keybindsShortcuts",
    "target": "quickAddKeybind",
    "fallbacks": [],
-   "dynamicTitle": false
+   "dynamicTitle": false,
+   "seedParent": null,
+   "description": {
+    "kind": "static",
+    "english": "Select a misheard word, then press these keys."
+   }
   },
   {
    "id": "pasteLastKeybind",
@@ -1738,10 +2184,15 @@
     "page": "keybinds"
    },
    "disposition": "mapped",
-   "parent": null,
+   "parent": "section.keybindsShortcuts",
    "target": "pasteLastKeybind",
    "fallbacks": [],
-   "dynamicTitle": false
+   "dynamicTitle": false,
+   "seedParent": null,
+   "description": {
+    "kind": "static",
+    "english": "Pastes your last dictation."
+   }
   },
   {
    "id": "copyLastKeybind",
@@ -1750,10 +2201,15 @@
     "page": "keybinds"
    },
    "disposition": "mapped",
-   "parent": null,
+   "parent": "section.keybindsShortcuts",
    "target": "copyLastKeybind",
    "fallbacks": [],
-   "dynamicTitle": false
+   "dynamicTitle": false,
+   "seedParent": null,
+   "description": {
+    "kind": "static",
+    "english": "Copies your last dictation."
+   }
   },
   {
    "id": "keybind.resetToDefault",
@@ -1762,10 +2218,11 @@
     "page": "keybinds"
    },
    "disposition": "mapped",
-   "parent": null,
+   "parent": "section.keybindsRecording",
    "target": "recordKeybind",
    "fallbacks": [],
-   "dynamicTitle": false
+   "dynamicTitle": false,
+   "seedParent": null
   },
   {
    "id": "transcribeFile.steps",
@@ -1774,10 +2231,11 @@
     "page": "transcribeFile"
    },
    "disposition": "mapped",
-   "parent": null,
+   "parent": "page.transcribeFile",
    "target": "transcribeFile.steps",
    "fallbacks": [],
-   "dynamicTitle": true
+   "dynamicTitle": true,
+   "seedParent": null
   },
   {
    "id": "transcribeFile.chooseFile",
@@ -2083,10 +2541,15 @@
     "page": "aiPolish"
    },
    "disposition": "mapped",
-   "parent": null,
+   "parent": "page.aiPolish",
    "target": "enableAIPolish",
    "fallbacks": [],
-   "dynamicTitle": false
+   "dynamicTitle": false,
+   "seedParent": null,
+   "description": {
+    "kind": "static",
+    "english": "Fixes grammar, punctuation and formatting"
+   }
   },
   {
    "id": "aiPolishProvider",
@@ -2095,10 +2558,17 @@
     "page": "aiPolish"
    },
    "disposition": "mapped",
-   "parent": null,
+   "parent": "section.aiPolishModel",
    "target": "aiPolishProvider",
-   "fallbacks": [],
-   "dynamicTitle": true
+   "fallbacks": [
+    "enableAIPolish"
+   ],
+   "dynamicTitle": true,
+   "seedParent": null,
+   "description": {
+    "kind": "none",
+    "why": "section note, not the item line"
+   }
   },
   {
    "id": "aiPolishProvider.egOne",
@@ -2113,7 +2583,12 @@
     "aiPolishProvider",
     "enableAIPolish"
    ],
-   "dynamicTitle": false
+   "dynamicTitle": false,
+   "seedParent": "aiPolishProvider",
+   "description": {
+    "kind": "static",
+    "english": "Our tuned model"
+   }
   },
   {
    "id": "aiPolishProvider.s1Mini",
@@ -2128,7 +2603,12 @@
     "aiPolishProvider",
     "enableAIPolish"
    ],
-   "dynamicTitle": false
+   "dynamicTitle": false,
+   "seedParent": "aiPolishProvider",
+   "description": {
+    "kind": "static",
+    "english": "by Superwhisper"
+   }
   },
   {
    "id": "aiPolishProvider.appleIntelligence",
@@ -2143,7 +2623,12 @@
     "aiPolishProvider",
     "enableAIPolish"
    ],
-   "dynamicTitle": false
+   "dynamicTitle": false,
+   "seedParent": "aiPolishProvider",
+   "description": {
+    "kind": "static",
+    "english": "Built into macOS"
+   }
   },
   {
    "id": "aiPolishProvider.ollama",
@@ -2158,7 +2643,12 @@
     "aiPolishProvider",
     "enableAIPolish"
    ],
-   "dynamicTitle": false
+   "dynamicTitle": false,
+   "seedParent": "aiPolishProvider",
+   "description": {
+    "kind": "static",
+    "english": "Your models, local or hosted"
+   }
   },
   {
    "id": "aiPolishProvider.openAI",
@@ -2173,7 +2663,12 @@
     "aiPolishProvider",
     "enableAIPolish"
    ],
-   "dynamicTitle": false
+   "dynamicTitle": false,
+   "seedParent": "aiPolishProvider",
+   "description": {
+    "kind": "static",
+    "english": "Your API key"
+   }
   },
   {
    "id": "aiPolishProvider.gemini",
@@ -2188,7 +2683,12 @@
     "aiPolishProvider",
     "enableAIPolish"
    ],
-   "dynamicTitle": false
+   "dynamicTitle": false,
+   "seedParent": "aiPolishProvider",
+   "description": {
+    "kind": "static",
+    "english": "Your API key"
+   }
   },
   {
    "id": "aiPolishProvider.claude",
@@ -2203,7 +2703,12 @@
     "aiPolishProvider",
     "enableAIPolish"
    ],
-   "dynamicTitle": false
+   "dynamicTitle": false,
+   "seedParent": "aiPolishProvider",
+   "description": {
+    "kind": "static",
+    "english": "Your API key"
+   }
   },
   {
    "id": "aiPolish.providerSection",
@@ -2218,7 +2723,8 @@
     "aiPolishProvider",
     "enableAIPolish"
    ],
-   "dynamicTitle": true
+   "dynamicTitle": true,
+   "seedParent": "aiPolishProvider"
   },
   {
    "id": "aiPolish.whyUse.egOne",
@@ -2233,7 +2739,8 @@
     "aiPolishProvider",
     "enableAIPolish"
    ],
-   "dynamicTitle": false
+   "dynamicTitle": false,
+   "seedParent": "aiPolishProvider.egOne"
   },
   {
    "id": "aiPolish.whyUse.s1Mini",
@@ -2248,7 +2755,8 @@
     "aiPolishProvider",
     "enableAIPolish"
    ],
-   "dynamicTitle": false
+   "dynamicTitle": false,
+   "seedParent": "aiPolishProvider.s1Mini"
   },
   {
    "id": "aiPolish.whyUse.appleIntelligence",
@@ -2263,7 +2771,8 @@
     "aiPolishProvider",
     "enableAIPolish"
    ],
-   "dynamicTitle": false
+   "dynamicTitle": false,
+   "seedParent": "aiPolishProvider.appleIntelligence"
   },
   {
    "id": "aiPolish.whyUse.ollama",
@@ -2278,7 +2787,8 @@
     "aiPolishProvider",
     "enableAIPolish"
    ],
-   "dynamicTitle": false
+   "dynamicTitle": false,
+   "seedParent": "aiPolishProvider.ollama"
   },
   {
    "id": "aiPolish.whyUse.openAI",
@@ -2293,7 +2803,8 @@
     "aiPolishProvider",
     "enableAIPolish"
    ],
-   "dynamicTitle": false
+   "dynamicTitle": false,
+   "seedParent": "aiPolishProvider.openAI"
   },
   {
    "id": "aiPolish.whyUse.gemini",
@@ -2308,7 +2819,8 @@
     "aiPolishProvider",
     "enableAIPolish"
    ],
-   "dynamicTitle": false
+   "dynamicTitle": false,
+   "seedParent": "aiPolishProvider.gemini"
   },
   {
    "id": "aiPolish.whyUse.claude",
@@ -2323,7 +2835,8 @@
     "aiPolishProvider",
     "enableAIPolish"
    ],
-   "dynamicTitle": false
+   "dynamicTitle": false,
+   "seedParent": "aiPolishProvider.claude"
   },
   {
    "id": "aiPolish.link.aboutAppleIntelligence",
@@ -2338,7 +2851,8 @@
     "aiPolishProvider",
     "enableAIPolish"
    ],
-   "dynamicTitle": false
+   "dynamicTitle": false,
+   "seedParent": "aiPolish.whyUse.appleIntelligence"
   },
   {
    "id": "aiPolish.link.ollamaLibrary",
@@ -2353,7 +2867,8 @@
     "aiPolishProvider",
     "enableAIPolish"
    ],
-   "dynamicTitle": false
+   "dynamicTitle": false,
+   "seedParent": "aiPolish.whyUse.ollama"
   },
   {
    "id": "aiPolish.link.openAIRateLimits",
@@ -2368,7 +2883,8 @@
     "aiPolishProvider",
     "enableAIPolish"
    ],
-   "dynamicTitle": false
+   "dynamicTitle": false,
+   "seedParent": "aiPolish.whyUse.openAI"
   },
   {
    "id": "aiPolish.link.geminiRateLimits",
@@ -2383,7 +2899,8 @@
     "aiPolishProvider",
     "enableAIPolish"
    ],
-   "dynamicTitle": false
+   "dynamicTitle": false,
+   "seedParent": "aiPolish.whyUse.gemini"
   },
   {
    "id": "aiPolish.link.claudeRateLimits",
@@ -2398,7 +2915,8 @@
     "aiPolishProvider",
     "enableAIPolish"
    ],
-   "dynamicTitle": false
+   "dynamicTitle": false,
+   "seedParent": "aiPolish.whyUse.claude"
   },
   {
    "id": "localModel.download",
@@ -2407,13 +2925,17 @@
     "page": "aiPolish"
    },
    "disposition": "mapped",
-   "parent": null,
+   "parent": "aiPolish.providerSection",
    "target": "localModel.download",
    "fallbacks": [
     "aiPolishProvider",
     "enableAIPolish"
    ],
-   "dynamicTitle": true
+   "dynamicTitle": false,
+   "seedParent": null,
+   "description": {
+    "kind": "runtime"
+   }
   },
   {
    "id": "localModel.cancel",
@@ -2422,13 +2944,17 @@
     "page": "aiPolish"
    },
    "disposition": "mapped",
-   "parent": null,
+   "parent": "aiPolish.providerSection",
    "target": "localModel.cancel",
    "fallbacks": [
     "aiPolishProvider",
     "enableAIPolish"
    ],
-   "dynamicTitle": true
+   "dynamicTitle": false,
+   "seedParent": null,
+   "description": {
+    "kind": "runtime"
+   }
   },
   {
    "id": "localModel.resume",
@@ -2437,13 +2963,18 @@
     "page": "aiPolish"
    },
    "disposition": "mapped",
-   "parent": null,
+   "parent": "aiPolish.providerSection",
    "target": "localModel.resume",
    "fallbacks": [
     "aiPolishProvider",
     "enableAIPolish"
    ],
-   "dynamicTitle": true
+   "dynamicTitle": false,
+   "seedParent": null,
+   "description": {
+    "kind": "none",
+    "why": "setup status line"
+   }
   },
   {
    "id": "localModel.resumeUpgrade",
@@ -2452,13 +2983,14 @@
     "page": "aiPolish"
    },
    "disposition": "mapped",
-   "parent": null,
+   "parent": "aiPolish.providerSection",
    "target": "aiPolishProvider",
    "fallbacks": [
     "aiPolishProvider",
     "enableAIPolish"
    ],
-   "dynamicTitle": true
+   "dynamicTitle": false,
+   "seedParent": null
   },
   {
    "id": "localModel.finishUpgrade",
@@ -2467,13 +2999,14 @@
     "page": "aiPolish"
    },
    "disposition": "mapped",
-   "parent": null,
+   "parent": "aiPolish.providerSection",
    "target": "aiPolishProvider",
    "fallbacks": [
     "aiPolishProvider",
     "enableAIPolish"
    ],
-   "dynamicTitle": true
+   "dynamicTitle": false,
+   "seedParent": null
   },
   {
    "id": "localModel.tryAgain",
@@ -2482,13 +3015,14 @@
     "page": "aiPolish"
    },
    "disposition": "mapped",
-   "parent": null,
+   "parent": "aiPolish.providerSection",
    "target": "localModel.tryAgain",
    "fallbacks": [
     "aiPolishProvider",
     "enableAIPolish"
    ],
-   "dynamicTitle": true
+   "dynamicTitle": false,
+   "seedParent": null
   },
   {
    "id": "localModel.testLive",
@@ -2497,13 +3031,14 @@
     "page": "aiPolish"
    },
    "disposition": "mapped",
-   "parent": null,
+   "parent": "aiPolish.providerSection",
    "target": "localModel.testLive",
    "fallbacks": [
     "aiPolishProvider",
     "enableAIPolish"
    ],
-   "dynamicTitle": true
+   "dynamicTitle": true,
+   "seedParent": null
   },
   {
    "id": "localModel.remove",
@@ -2521,13 +3056,18 @@
     "page": "aiPolish"
    },
    "disposition": "mapped",
-   "parent": null,
+   "parent": "aiPolish.providerSection",
    "target": "s1Tone",
    "fallbacks": [
     "aiPolishProvider",
     "enableAIPolish"
    ],
-   "dynamicTitle": false
+   "dynamicTitle": false,
+   "seedParent": null,
+   "description": {
+    "kind": "static",
+    "english": "Choose how formal your text sounds."
+   }
   },
   {
    "id": "s1Tone.casual",
@@ -2542,7 +3082,8 @@
     "aiPolishProvider",
     "enableAIPolish"
    ],
-   "dynamicTitle": false
+   "dynamicTitle": false,
+   "seedParent": "s1Tone"
   },
   {
    "id": "s1Tone.semiCasual",
@@ -2557,7 +3098,8 @@
     "aiPolishProvider",
     "enableAIPolish"
    ],
-   "dynamicTitle": false
+   "dynamicTitle": false,
+   "seedParent": "s1Tone"
   },
   {
    "id": "s1Tone.semiFormal",
@@ -2572,7 +3114,8 @@
     "aiPolishProvider",
     "enableAIPolish"
    ],
-   "dynamicTitle": false
+   "dynamicTitle": false,
+   "seedParent": "s1Tone"
   },
   {
    "id": "s1Tone.formal",
@@ -2587,7 +3130,8 @@
     "aiPolishProvider",
     "enableAIPolish"
    ],
-   "dynamicTitle": false
+   "dynamicTitle": false,
+   "seedParent": "s1Tone"
   },
   {
    "id": "s1Structure",
@@ -2596,13 +3140,18 @@
     "page": "aiPolish"
    },
    "disposition": "mapped",
-   "parent": null,
+   "parent": "aiPolish.providerSection",
    "target": "s1Structure",
    "fallbacks": [
     "aiPolishProvider",
     "enableAIPolish"
    ],
-   "dynamicTitle": false
+   "dynamicTitle": false,
+   "seedParent": null,
+   "description": {
+    "kind": "static",
+    "english": "Keep sentences or turn spoken items into lists."
+   }
   },
   {
    "id": "s1Structure.prose",
@@ -2617,7 +3166,8 @@
     "aiPolishProvider",
     "enableAIPolish"
    ],
-   "dynamicTitle": false
+   "dynamicTitle": false,
+   "seedParent": "s1Structure"
   },
   {
    "id": "s1Structure.lists",
@@ -2632,7 +3182,8 @@
     "aiPolishProvider",
     "enableAIPolish"
    ],
-   "dynamicTitle": false
+   "dynamicTitle": false,
+   "seedParent": "s1Structure"
   },
   {
    "id": "s1Context",
@@ -2641,13 +3192,18 @@
     "page": "aiPolish"
    },
    "disposition": "mapped",
-   "parent": null,
+   "parent": "aiPolish.providerSection",
    "target": "s1Context",
    "fallbacks": [
     "aiPolishProvider",
     "enableAIPolish"
    ],
-   "dynamicTitle": false
+   "dynamicTitle": false,
+   "seedParent": null,
+   "description": {
+    "kind": "static",
+    "english": "Format dictated greetings and sign-offs as email."
+   }
   },
   {
    "id": "s1Context.general",
@@ -2662,7 +3218,8 @@
     "aiPolishProvider",
     "enableAIPolish"
    ],
-   "dynamicTitle": false
+   "dynamicTitle": false,
+   "seedParent": "s1Context"
   },
   {
    "id": "s1Context.email",
@@ -2677,7 +3234,8 @@
     "aiPolishProvider",
     "enableAIPolish"
    ],
-   "dynamicTitle": false
+   "dynamicTitle": false,
+   "seedParent": "s1Context"
   },
   {
    "id": "appleIntelligence.status",
@@ -2692,7 +3250,11 @@
     "aiPolishProvider",
     "enableAIPolish"
    ],
-   "dynamicTitle": true
+   "dynamicTitle": true,
+   "seedParent": "aiPolishProvider.appleIntelligence",
+   "description": {
+    "kind": "runtime"
+   }
   },
   {
    "id": "appleIntelligence.recheck",
@@ -2707,7 +3269,8 @@
     "aiPolishProvider",
     "enableAIPolish"
    ],
-   "dynamicTitle": false
+   "dynamicTitle": false,
+   "seedParent": "appleIntelligence.status"
   },
   {
    "id": "ollama.downloadOllama",
@@ -2722,7 +3285,12 @@
     "aiPolishProvider",
     "enableAIPolish"
    ],
-   "dynamicTitle": false
+   "dynamicTitle": false,
+   "seedParent": "aiPolishProvider.ollama",
+   "description": {
+    "kind": "none",
+    "why": "setup status line"
+   }
   },
   {
    "id": "ollama.start",
@@ -2737,7 +3305,12 @@
     "aiPolishProvider",
     "enableAIPolish"
    ],
-   "dynamicTitle": false
+   "dynamicTitle": false,
+   "seedParent": "aiPolishProvider.ollama",
+   "description": {
+    "kind": "none",
+    "why": "setup status line"
+   }
   },
   {
    "id": "ollama.downloadModel",
@@ -2752,7 +3325,12 @@
     "aiPolishProvider",
     "enableAIPolish"
    ],
-   "dynamicTitle": true
+   "dynamicTitle": true,
+   "seedParent": "aiPolishProvider.ollama",
+   "description": {
+    "kind": "none",
+    "why": "setup status line"
+   }
   },
   {
    "id": "ollama.cancelPull",
@@ -2767,7 +3345,8 @@
     "aiPolishProvider",
     "enableAIPolish"
    ],
-   "dynamicTitle": false
+   "dynamicTitle": false,
+   "seedParent": "aiPolishProvider.ollama"
   },
   {
    "id": "ollama.server",
@@ -2782,7 +3361,11 @@
     "aiPolishProvider",
     "enableAIPolish"
    ],
-   "dynamicTitle": false
+   "dynamicTitle": false,
+   "seedParent": "aiPolishProvider.ollama",
+   "description": {
+    "kind": "runtime"
+   }
   },
   {
    "id": "ollama.recheck",
@@ -2797,7 +3380,8 @@
     "aiPolishProvider",
     "enableAIPolish"
    ],
-   "dynamicTitle": false
+   "dynamicTitle": false,
+   "seedParent": "aiPolishProvider.ollama"
   },
   {
    "id": "ollama.tryAgain",
@@ -2812,7 +3396,12 @@
     "aiPolishProvider",
     "enableAIPolish"
    ],
-   "dynamicTitle": false
+   "dynamicTitle": false,
+   "seedParent": "aiPolishProvider.ollama",
+   "description": {
+    "kind": "none",
+    "why": "setup status line"
+   }
   },
   {
    "id": "ollama.browseModels",
@@ -2827,7 +3416,12 @@
     "aiPolishProvider",
     "enableAIPolish"
    ],
-   "dynamicTitle": false
+   "dynamicTitle": false,
+   "seedParent": "aiPolishProvider.ollama",
+   "description": {
+    "kind": "none",
+    "why": "setup status line"
+   }
   },
   {
    "id": "ollama.prepareModel",
@@ -2842,7 +3436,8 @@
     "aiPolishProvider",
     "enableAIPolish"
    ],
-   "dynamicTitle": false
+   "dynamicTitle": false,
+   "seedParent": "polishModel"
   },
   {
    "id": "apiKey.openAI",
@@ -2851,13 +3446,18 @@
     "page": "aiPolish"
    },
    "disposition": "mapped",
-   "parent": null,
+   "parent": "aiPolish.providerSection",
    "target": "apiKey.openAI",
    "fallbacks": [
     "aiPolishProvider",
     "enableAIPolish"
    ],
-   "dynamicTitle": false
+   "dynamicTitle": false,
+   "seedParent": null,
+   "description": {
+    "kind": "static",
+    "english": "Sends text and dictation context to OpenAI."
+   }
   },
   {
    "id": "apiKey.gemini",
@@ -2866,13 +3466,18 @@
     "page": "aiPolish"
    },
    "disposition": "mapped",
-   "parent": null,
+   "parent": "aiPolish.providerSection",
    "target": "apiKey.gemini",
    "fallbacks": [
     "aiPolishProvider",
     "enableAIPolish"
    ],
-   "dynamicTitle": false
+   "dynamicTitle": false,
+   "seedParent": null,
+   "description": {
+    "kind": "static",
+    "english": "Sends text and dictation context to Google."
+   }
   },
   {
    "id": "apiKey.claude",
@@ -2881,13 +3486,18 @@
     "page": "aiPolish"
    },
    "disposition": "mapped",
-   "parent": null,
+   "parent": "aiPolish.providerSection",
    "target": "apiKey.claude",
    "fallbacks": [
     "aiPolishProvider",
     "enableAIPolish"
    ],
-   "dynamicTitle": false
+   "dynamicTitle": false,
+   "seedParent": null,
+   "description": {
+    "kind": "static",
+    "english": "Sends text and dictation context to Anthropic."
+   }
   },
   {
    "id": "apiKey.save",
@@ -2896,13 +3506,14 @@
     "page": "aiPolish"
    },
    "disposition": "mapped",
-   "parent": null,
+   "parent": "aiPolish.providerSection",
    "target": "apiKey.save",
    "fallbacks": [
     "aiPolishProvider",
     "enableAIPolish"
    ],
-   "dynamicTitle": false
+   "dynamicTitle": false,
+   "seedParent": null
   },
   {
    "id": "apiKey.clear",
@@ -2911,13 +3522,14 @@
     "page": "aiPolish"
    },
    "disposition": "mapped",
-   "parent": null,
+   "parent": "aiPolish.providerSection",
    "target": "apiKey.clear",
    "fallbacks": [
     "aiPolishProvider",
     "enableAIPolish"
    ],
-   "dynamicTitle": false
+   "dynamicTitle": false,
+   "seedParent": null
   },
   {
    "id": "apiKey.reveal",
@@ -2926,13 +3538,14 @@
     "page": "aiPolish"
    },
    "disposition": "mapped",
-   "parent": null,
+   "parent": "aiPolish.providerSection",
    "target": "apiKey.reveal",
    "fallbacks": [
     "aiPolishProvider",
     "enableAIPolish"
    ],
-   "dynamicTitle": true
+   "dynamicTitle": true,
+   "seedParent": null
   },
   {
    "id": "apiKey.checkAgain",
@@ -2950,13 +3563,14 @@
     "page": "aiPolish"
    },
    "disposition": "mapped",
-   "parent": null,
+   "parent": "aiPolish.providerSection",
    "target": "apiKey.getKeyLink",
    "fallbacks": [
     "aiPolishProvider",
     "enableAIPolish"
    ],
-   "dynamicTitle": true
+   "dynamicTitle": true,
+   "seedParent": null
   },
   {
    "id": "polishModel",
@@ -2965,13 +3579,17 @@
     "page": "aiPolish"
    },
    "disposition": "mapped",
-   "parent": null,
+   "parent": "aiPolish.providerSection",
    "target": "polishModel",
    "fallbacks": [
     "aiPolishProvider",
     "enableAIPolish"
    ],
-   "dynamicTitle": false
+   "dynamicTitle": false,
+   "seedParent": null,
+   "description": {
+    "kind": "runtime"
+   }
   },
   {
    "id": "polishModel.refresh",
@@ -2986,7 +3604,8 @@
     "aiPolishProvider",
     "enableAIPolish"
    ],
-   "dynamicTitle": false
+   "dynamicTitle": false,
+   "seedParent": "polishModel"
   },
   {
    "id": "enableDictionary",
@@ -2995,10 +3614,15 @@
     "page": "dictionary"
    },
    "disposition": "mapped",
-   "parent": null,
+   "parent": "page.dictionary",
    "target": "enableDictionary",
    "fallbacks": [],
-   "dynamicTitle": false
+   "dynamicTitle": false,
+   "seedParent": null,
+   "description": {
+    "kind": "static",
+    "english": "Use your words and vocabulary to improve recognition."
+   }
   },
   {
    "id": "dictionary.tab.yourWords",
@@ -3008,10 +3632,14 @@
     "dictionaryTab": "yourWords"
    },
    "disposition": "mapped",
-   "parent": null,
+   "parent": "page.dictionary",
    "target": "dictionary.tab.yourWords",
    "fallbacks": [],
-   "dynamicTitle": false
+   "dynamicTitle": false,
+   "description": {
+    "kind": "static",
+    "english": "Words you added"
+   }
   },
   {
    "id": "dictionary.tab.vocabularyPacks",
@@ -3021,10 +3649,14 @@
     "dictionaryTab": "vocabularyPacks"
    },
    "disposition": "mapped",
-   "parent": null,
+   "parent": "page.dictionary",
    "target": "dictionary.tab.vocabularyPacks",
    "fallbacks": [],
-   "dynamicTitle": false
+   "dynamicTitle": false,
+   "description": {
+    "kind": "static",
+    "english": "Ready-made lists"
+   }
   },
   {
    "id": "dictionary.tab.learnFrom",
@@ -3034,10 +3666,14 @@
     "dictionaryTab": "learnFrom"
    },
    "disposition": "mapped",
-   "parent": null,
+   "parent": "page.dictionary",
    "target": "dictionary.tab.learnFrom",
    "fallbacks": [],
-   "dynamicTitle": false
+   "dynamicTitle": false,
+   "description": {
+    "kind": "static",
+    "english": "Learn as you go"
+   }
   },
   {
    "id": "dictionary.tab.quickAdd",
@@ -3047,10 +3683,14 @@
     "dictionaryTab": "quickAdd"
    },
    "disposition": "mapped",
-   "parent": null,
+   "parent": "page.dictionary",
    "target": "dictionary.tab.quickAdd",
    "fallbacks": [],
-   "dynamicTitle": false
+   "dynamicTitle": false,
+   "description": {
+    "kind": "static",
+    "english": "Add from any app"
+   }
   },
   {
    "id": "yourWords.add",
@@ -3060,10 +3700,11 @@
     "dictionaryTab": "yourWords"
    },
    "disposition": "mapped",
-   "parent": null,
+   "parent": "dictionary.tab.yourWords",
    "target": "yourWords.add",
    "fallbacks": [],
-   "dynamicTitle": false
+   "dynamicTitle": false,
+   "seedParent": null
   },
   {
    "id": "yourWords.import",
@@ -3073,10 +3714,11 @@
     "dictionaryTab": "yourWords"
    },
    "disposition": "mapped",
-   "parent": null,
+   "parent": "dictionary.tab.yourWords",
    "target": "yourWords.import",
    "fallbacks": [],
-   "dynamicTitle": false
+   "dynamicTitle": false,
+   "seedParent": null
   },
   {
    "id": "yourWords.export",
@@ -3086,10 +3728,11 @@
     "dictionaryTab": "yourWords"
    },
    "disposition": "mapped",
-   "parent": null,
+   "parent": "dictionary.tab.yourWords",
    "target": "yourWords.export",
    "fallbacks": [],
-   "dynamicTitle": false
+   "dynamicTitle": false,
+   "seedParent": null
   },
   {
    "id": "yourWords.search",
@@ -3099,10 +3742,11 @@
     "dictionaryTab": "yourWords"
    },
    "disposition": "mapped",
-   "parent": null,
+   "parent": "dictionary.tab.yourWords",
    "target": "yourWords.search",
    "fallbacks": [],
-   "dynamicTitle": false
+   "dynamicTitle": false,
+   "seedParent": null
   },
   {
    "id": "yourWords.clearSearch",
@@ -3114,8 +3758,11 @@
    "disposition": "mapped",
    "parent": "yourWords.search",
    "target": "yourWords.clearSearch",
-   "fallbacks": [],
-   "dynamicTitle": false
+   "fallbacks": [
+    "yourWords.search"
+   ],
+   "dynamicTitle": false,
+   "seedParent": "yourWords.search"
   },
   {
    "id": "yourWords.categoryFilter",
@@ -3125,10 +3772,11 @@
     "dictionaryTab": "yourWords"
    },
    "disposition": "mapped",
-   "parent": null,
+   "parent": "dictionary.tab.yourWords",
    "target": "yourWords.categoryFilter",
    "fallbacks": [],
-   "dynamicTitle": false
+   "dynamicTitle": false,
+   "seedParent": null
   },
   {
    "id": "yourWords.category.all",
@@ -3141,7 +3789,8 @@
    "parent": "yourWords.categoryFilter",
    "target": "yourWords.categoryFilter",
    "fallbacks": [],
-   "dynamicTitle": false
+   "dynamicTitle": false,
+   "seedParent": "yourWords.categoryFilter"
   },
   {
    "id": "yourWords.category.general",
@@ -3154,7 +3803,8 @@
    "parent": "yourWords.categoryFilter",
    "target": "yourWords.categoryFilter",
    "fallbacks": [],
-   "dynamicTitle": false
+   "dynamicTitle": false,
+   "seedParent": "yourWords.categoryFilter"
   },
   {
    "id": "yourWords.category.person",
@@ -3167,7 +3817,8 @@
    "parent": "yourWords.categoryFilter",
    "target": "yourWords.categoryFilter",
    "fallbacks": [],
-   "dynamicTitle": false
+   "dynamicTitle": false,
+   "seedParent": "yourWords.categoryFilter"
   },
   {
    "id": "yourWords.category.brand",
@@ -3180,7 +3831,8 @@
    "parent": "yourWords.categoryFilter",
    "target": "yourWords.categoryFilter",
    "fallbacks": [],
-   "dynamicTitle": false
+   "dynamicTitle": false,
+   "seedParent": "yourWords.categoryFilter"
   },
   {
    "id": "yourWords.category.acronym",
@@ -3193,7 +3845,8 @@
    "parent": "yourWords.categoryFilter",
    "target": "yourWords.categoryFilter",
    "fallbacks": [],
-   "dynamicTitle": false
+   "dynamicTitle": false,
+   "seedParent": "yourWords.categoryFilter"
   },
   {
    "id": "yourWords.category.domain",
@@ -3206,7 +3859,8 @@
    "parent": "yourWords.categoryFilter",
    "target": "yourWords.categoryFilter",
    "fallbacks": [],
-   "dynamicTitle": false
+   "dynamicTitle": false,
+   "seedParent": "yourWords.categoryFilter"
   },
   {
    "id": "yourWords.category.autoLearned",
@@ -3219,7 +3873,8 @@
    "parent": "yourWords.categoryFilter",
    "target": "yourWords.categoryFilter",
    "fallbacks": [],
-   "dynamicTitle": false
+   "dynamicTitle": false,
+   "seedParent": "yourWords.categoryFilter"
   },
   {
    "id": "yourWords.massEdit",
@@ -3229,10 +3884,13 @@
     "dictionaryTab": "yourWords"
    },
    "disposition": "mapped",
-   "parent": null,
+   "parent": "dictionary.tab.yourWords",
    "target": "yourWords.massEdit",
-   "fallbacks": [],
-   "dynamicTitle": false
+   "fallbacks": [
+    "yourWords.search"
+   ],
+   "dynamicTitle": false,
+   "seedParent": null
   },
   {
    "id": "yourWords.selectAll",
@@ -3442,10 +4100,15 @@
     "dictionaryTab": "learnFrom"
    },
    "disposition": "mapped",
-   "parent": null,
+   "parent": "dictionary.tab.learnFrom",
    "target": "learnFrom",
    "fallbacks": [],
-   "dynamicTitle": false
+   "dynamicTitle": false,
+   "seedParent": null,
+   "description": {
+    "kind": "static",
+    "english": "Let EnviousWispr pick up new words on its own, from things you already have."
+   }
   },
   {
    "id": "selfLearningDictionary",
@@ -3455,10 +4118,15 @@
     "dictionaryTab": "learnFrom"
    },
    "disposition": "mapped",
-   "parent": null,
+   "parent": "dictionary.tab.learnFrom",
    "target": "selfLearningDictionary",
    "fallbacks": [],
-   "dynamicTitle": false
+   "dynamicTitle": false,
+   "seedParent": null,
+   "description": {
+    "kind": "static",
+    "english": "Automatically detects when you correct a dictation and adds the corrected word to your dictionary. Undo it from the notification, or remove it later in Your Words."
+   }
   },
   {
    "id": "selfLearningDictionary.learnMore",
@@ -3471,7 +4139,8 @@
    "parent": "selfLearningDictionary",
    "target": "selfLearningDictionary.learnMore",
    "fallbacks": [],
-   "dynamicTitle": false
+   "dynamicTitle": false,
+   "seedParent": "selfLearningDictionary"
   },
   {
    "id": "selfLearningDictionary.retryChecker",
@@ -3531,10 +4200,15 @@
     "dictionaryTab": "learnFrom"
    },
    "disposition": "mapped",
-   "parent": null,
+   "parent": "dictionary.tab.learnFrom",
    "target": "importContacts",
    "fallbacks": [],
-   "dynamicTitle": false
+   "dynamicTitle": false,
+   "seedParent": null,
+   "description": {
+    "kind": "static",
+    "english": "Add the names of people you know to your word list, so dictation spells them right."
+   }
   },
   {
    "id": "importContacts.import",
@@ -3577,7 +4251,12 @@
    "parent": "importContacts",
    "target": "contactsSyncOnLaunch",
    "fallbacks": [],
-   "dynamicTitle": false
+   "dynamicTitle": false,
+   "seedParent": "importContacts",
+   "description": {
+    "kind": "static",
+    "english": "Check for new contacts each time EnviousWispr starts. Off by default."
+   }
   },
   {
    "id": "quickAdd.step1",
@@ -3587,10 +4266,15 @@
     "dictionaryTab": "quickAdd"
    },
    "disposition": "mapped",
-   "parent": null,
+   "parent": "dictionary.tab.quickAdd",
    "target": "quickAdd.step1",
    "fallbacks": [],
-   "dynamicTitle": false
+   "dynamicTitle": false,
+   "seedParent": null,
+   "description": {
+    "kind": "static",
+    "english": "Select the word you want to fix in an email, chat, or document."
+   }
   },
   {
    "id": "quickAdd.step2",
@@ -3600,10 +4284,14 @@
     "dictionaryTab": "quickAdd"
    },
    "disposition": "mapped",
-   "parent": null,
+   "parent": "dictionary.tab.quickAdd",
    "target": "quickAdd.step2",
    "fallbacks": [],
-   "dynamicTitle": false
+   "dynamicTitle": false,
+   "seedParent": null,
+   "description": {
+    "kind": "runtime"
+   }
   },
   {
    "id": "quickAdd.step3",
@@ -3613,10 +4301,15 @@
     "dictionaryTab": "quickAdd"
    },
    "disposition": "mapped",
-   "parent": null,
+   "parent": "dictionary.tab.quickAdd",
    "target": "quickAdd.step3",
    "fallbacks": [],
-   "dynamicTitle": false
+   "dynamicTitle": false,
+   "seedParent": null,
+   "description": {
+    "kind": "static",
+    "english": "Choose the word you meant, or create a new one. Quick Add saves the highlighted spelling to your dictionary."
+   }
   },
   {
    "id": "quickAdd.shortcut",
@@ -3626,10 +4319,14 @@
     "dictionaryTab": "quickAdd"
    },
    "disposition": "mapped",
-   "parent": null,
+   "parent": "dictionary.tab.quickAdd",
    "target": "quickAdd.shortcut",
    "fallbacks": [],
-   "dynamicTitle": false
+   "dynamicTitle": false,
+   "seedParent": null,
+   "description": {
+    "kind": "runtime"
+   }
   },
   {
    "id": "quickAdd.menuBar",
@@ -3639,10 +4336,15 @@
     "dictionaryTab": "quickAdd"
    },
    "disposition": "mapped",
-   "parent": null,
+   "parent": "dictionary.tab.quickAdd",
    "target": "quickAdd.menuBar",
    "fallbacks": [],
-   "dynamicTitle": false
+   "dynamicTitle": false,
+   "seedParent": null,
+   "description": {
+    "kind": "static",
+    "english": "Click the EnviousWispr icon, then choose the item that starts with “Add”"
+   }
   },
   {
    "id": "snippets",
@@ -3651,10 +4353,15 @@
     "page": "snippets"
    },
    "disposition": "mapped",
-   "parent": null,
+   "parent": "page.snippets",
    "target": "snippets",
    "fallbacks": [],
-   "dynamicTitle": false
+   "dynamicTitle": false,
+   "seedParent": null,
+   "description": {
+    "kind": "static",
+    "english": "Save an email address, a signature, a link. Say your keyword, then the trigger, and the saved text lands where your cursor is. Say the trigger on its own and your dictation is left alone."
+   }
   },
   {
    "id": "snippetKeyword",
@@ -3663,10 +4370,15 @@
     "page": "snippets"
    },
    "disposition": "mapped",
-   "parent": null,
+   "parent": "page.snippets",
    "target": "snippetKeyword",
    "fallbacks": [],
-   "dynamicTitle": false
+   "dynamicTitle": false,
+   "seedParent": null,
+   "description": {
+    "kind": "static",
+    "english": "Say this first, then your trigger. One word."
+   }
   },
   {
    "id": "yourSnippets",
@@ -3675,10 +4387,14 @@
     "page": "snippets"
    },
    "disposition": "mapped",
-   "parent": null,
+   "parent": "page.snippets",
    "target": "yourSnippets",
    "fallbacks": [],
-   "dynamicTitle": false
+   "dynamicTitle": false,
+   "seedParent": null,
+   "description": {
+    "kind": "runtime"
+   }
   },
   {
    "id": "snippets.search",
@@ -3687,10 +4403,11 @@
     "page": "snippets"
    },
    "disposition": "mapped",
-   "parent": null,
+   "parent": "yourSnippets",
    "target": "snippets.search",
    "fallbacks": [],
-   "dynamicTitle": false
+   "dynamicTitle": false,
+   "seedParent": null
   },
   {
    "id": "snippets.import",
@@ -3699,10 +4416,11 @@
     "page": "snippets"
    },
    "disposition": "mapped",
-   "parent": null,
+   "parent": "yourSnippets",
    "target": "snippets.import",
    "fallbacks": [],
-   "dynamicTitle": false
+   "dynamicTitle": false,
+   "seedParent": null
   },
   {
    "id": "snippets.export",
@@ -3711,10 +4429,11 @@
     "page": "snippets"
    },
    "disposition": "mapped",
-   "parent": null,
+   "parent": "yourSnippets",
    "target": "snippets.export",
    "fallbacks": [],
-   "dynamicTitle": false
+   "dynamicTitle": false,
+   "seedParent": null
   },
   {
    "id": "snippets.add",
@@ -3723,10 +4442,11 @@
     "page": "snippets"
    },
    "disposition": "mapped",
-   "parent": null,
+   "parent": "yourSnippets",
    "target": "snippets.add",
    "fallbacks": [],
-   "dynamicTitle": false
+   "dynamicTitle": false,
+   "seedParent": null
   },
   {
    "id": "snippets.addFirst",
@@ -3735,10 +4455,17 @@
     "page": "snippets"
    },
    "disposition": "mapped",
-   "parent": null,
+   "parent": "yourSnippets",
    "target": "snippets.addFirst",
-   "fallbacks": [],
-   "dynamicTitle": false
+   "fallbacks": [
+    "snippets.add"
+   ],
+   "dynamicTitle": false,
+   "seedParent": null,
+   "description": {
+    "kind": "none",
+    "why": "empty-state heading"
+   }
   },
   {
    "id": "snippets.clearSearch",
@@ -3749,8 +4476,11 @@
    "disposition": "mapped",
    "parent": "snippets.search",
    "target": "snippets.clearSearch",
-   "fallbacks": [],
-   "dynamicTitle": false
+   "fallbacks": [
+    "snippets.search"
+   ],
+   "dynamicTitle": false,
+   "seedParent": "snippets.search"
   },
   {
    "id": "snippets.editRow",
@@ -3769,7 +4499,7 @@
     "tab": "appearance"
    },
    "disposition": "mapped",
-   "parent": null,
+   "parent": "page.appSettings",
    "target": "appSettings.tab.appearance",
    "fallbacks": [],
    "dynamicTitle": false
@@ -3782,7 +4512,7 @@
     "tab": "permissions"
    },
    "disposition": "mapped",
-   "parent": null,
+   "parent": "page.appSettings",
    "target": "appSettings.tab.permissions",
    "fallbacks": [],
    "dynamicTitle": false
@@ -3795,7 +4525,7 @@
     "tab": "privacy"
    },
    "disposition": "mapped",
-   "parent": null,
+   "parent": "page.appSettings",
    "target": "appSettings.tab.privacy",
    "fallbacks": [],
    "dynamicTitle": false
@@ -3808,7 +4538,7 @@
     "tab": "licenses"
    },
    "disposition": "mapped",
-   "parent": null,
+   "parent": "page.appSettings",
    "target": "appSettings.tab.licenses",
    "fallbacks": [],
    "dynamicTitle": false
@@ -3821,10 +4551,15 @@
     "tab": "appearance"
    },
    "disposition": "mapped",
-   "parent": null,
+   "parent": "section.appearance",
    "target": "theme",
    "fallbacks": [],
-   "dynamicTitle": false
+   "dynamicTitle": false,
+   "seedParent": null,
+   "description": {
+    "kind": "static",
+    "english": "Choose how EnviousWispr looks."
+   }
   },
   {
    "id": "theme.system",
@@ -3837,7 +4572,12 @@
    "parent": "theme",
    "target": "theme",
    "fallbacks": [],
-   "dynamicTitle": false
+   "dynamicTitle": false,
+   "seedParent": "theme",
+   "description": {
+    "kind": "none",
+    "why": "help text behind a question mark"
+   }
   },
   {
    "id": "theme.light",
@@ -3850,7 +4590,8 @@
    "parent": "theme",
    "target": "theme",
    "fallbacks": [],
-   "dynamicTitle": false
+   "dynamicTitle": false,
+   "seedParent": "theme"
   },
   {
    "id": "theme.dark",
@@ -3863,7 +4604,8 @@
    "parent": "theme",
    "target": "theme",
    "fallbacks": [],
-   "dynamicTitle": false
+   "dynamicTitle": false,
+   "seedParent": "theme"
   },
   {
    "id": "appLanguage",
@@ -3873,10 +4615,15 @@
     "tab": "appearance"
    },
    "disposition": "mapped",
-   "parent": null,
+   "parent": "section.appearance",
    "target": "appLanguage",
    "fallbacks": [],
-   "dynamicTitle": false
+   "dynamicTitle": false,
+   "seedParent": null,
+   "description": {
+    "kind": "static",
+    "english": "The language of the app interface."
+   }
   },
   {
    "id": "appLanguage.systemDefault",
@@ -3889,7 +4636,8 @@
    "parent": "appLanguage",
    "target": "appLanguage",
    "fallbacks": [],
-   "dynamicTitle": false
+   "dynamicTitle": false,
+   "seedParent": "appLanguage"
   },
   {
    "id": "appLanguage.shipped",
@@ -3902,7 +4650,8 @@
    "parent": "appLanguage",
    "target": "appLanguage",
    "fallbacks": [],
-   "dynamicTitle": true
+   "dynamicTitle": true,
+   "seedParent": "appLanguage"
   },
   {
    "id": "appLanguage.relaunch",
@@ -3914,8 +4663,15 @@
    "disposition": "mapped",
    "parent": "appLanguage",
    "target": "appLanguage.relaunch",
-   "fallbacks": [],
-   "dynamicTitle": false
+   "fallbacks": [
+    "appLanguage"
+   ],
+   "dynamicTitle": false,
+   "seedParent": "appLanguage",
+   "description": {
+    "kind": "none",
+    "why": "conditional notice"
+   }
   },
   {
    "id": "showInDock",
@@ -3925,10 +4681,15 @@
     "tab": "appearance"
    },
    "disposition": "mapped",
-   "parent": null,
+   "parent": "section.appearance",
    "target": "showInDock",
    "fallbacks": [],
-   "dynamicTitle": false
+   "dynamicTitle": false,
+   "seedParent": null,
+   "description": {
+    "kind": "static",
+    "english": "Keep EnviousWispr in your Dock."
+   }
   },
   {
    "id": "updateAlertInMenuBar",
@@ -3938,10 +4699,15 @@
     "tab": "appearance"
    },
    "disposition": "mapped",
-   "parent": null,
+   "parent": "section.appearance",
    "target": "updateAlertInMenuBar",
    "fallbacks": [],
-   "dynamicTitle": false
+   "dynamicTitle": false,
+   "seedParent": null,
+   "description": {
+    "kind": "static",
+    "english": "Show gold lips when an update is ready."
+   }
   },
   {
    "id": "permission.microphone",
@@ -3951,10 +4717,15 @@
     "tab": "permissions"
    },
    "disposition": "mapped",
-   "parent": null,
+   "parent": "section.permissions",
    "target": "permission.microphone",
    "fallbacks": [],
-   "dynamicTitle": false
+   "dynamicTitle": false,
+   "seedParent": null,
+   "description": {
+    "kind": "static",
+    "english": "Needed to record your voice."
+   }
   },
   {
    "id": "permission.microphone.request",
@@ -3965,9 +4736,10 @@
    },
    "disposition": "mapped",
    "parent": "permission.microphone",
-   "target": "permission.microphone.request",
+   "target": "permission.microphone",
    "fallbacks": [],
-   "dynamicTitle": false
+   "dynamicTitle": false,
+   "seedParent": "permission.microphone"
   },
   {
    "id": "permission.accessibility",
@@ -3977,10 +4749,15 @@
     "tab": "permissions"
    },
    "disposition": "mapped",
-   "parent": null,
+   "parent": "section.permissions",
    "target": "permission.accessibility",
    "fallbacks": [],
-   "dynamicTitle": false
+   "dynamicTitle": false,
+   "seedParent": null,
+   "description": {
+    "kind": "static",
+    "english": "Needed to paste text into other apps."
+   }
   },
   {
    "id": "permission.accessibility.openSettings",
@@ -3991,9 +4768,14 @@
    },
    "disposition": "mapped",
    "parent": "permission.accessibility",
-   "target": "permission.accessibility.openSettings",
+   "target": "permission.accessibility",
    "fallbacks": [],
-   "dynamicTitle": false
+   "dynamicTitle": false,
+   "seedParent": "permission.accessibility",
+   "description": {
+    "kind": "none",
+    "why": "conditional notice"
+   }
   },
   {
    "id": "shareUsageMetrics",
@@ -4003,10 +4785,15 @@
     "tab": "privacy"
    },
    "disposition": "mapped",
-   "parent": null,
+   "parent": "section.privacy",
    "target": "shareUsageMetrics",
    "fallbacks": [],
-   "dynamicTitle": false
+   "dynamicTitle": false,
+   "seedParent": null,
+   "description": {
+    "kind": "static",
+    "english": "Help us catch broken updates."
+   }
   },
   {
    "id": "sendCrashReports",
@@ -4016,10 +4803,15 @@
     "tab": "privacy"
    },
    "disposition": "mapped",
-   "parent": null,
+   "parent": "section.privacy",
    "target": "sendCrashReports",
    "fallbacks": [],
-   "dynamicTitle": false
+   "dynamicTitle": false,
+   "seedParent": null,
+   "description": {
+    "kind": "static",
+    "english": "Help us fix crashes and errors."
+   }
   },
   {
    "id": "sendCrashReports.restart",
@@ -4031,8 +4823,15 @@
    "disposition": "mapped",
    "parent": "sendCrashReports",
    "target": "sendCrashReports.restart",
-   "fallbacks": [],
-   "dynamicTitle": false
+   "fallbacks": [
+    "sendCrashReports"
+   ],
+   "dynamicTitle": false,
+   "seedParent": "sendCrashReports",
+   "description": {
+    "kind": "none",
+    "why": "conditional notice"
+   }
   },
   {
    "id": "whatWeCollect",
@@ -4042,10 +4841,15 @@
     "tab": "privacy"
    },
    "disposition": "mapped",
-   "parent": null,
+   "parent": "section.privacy",
    "target": "whatWeCollect",
    "fallbacks": [],
-   "dynamicTitle": false
+   "dynamicTitle": false,
+   "seedParent": null,
+   "description": {
+    "kind": "static",
+    "english": "Never your audio, text, history, snippets, dictionary or API keys. Only what you type into the feedback form."
+   }
   },
   {
    "id": "whatWeCollect.seeDetails",
@@ -4058,7 +4862,8 @@
    "parent": "whatWeCollect",
    "target": "whatWeCollect.seeDetails",
    "fallbacks": [],
-   "dynamicTitle": false
+   "dynamicTitle": false,
+   "seedParent": "whatWeCollect"
   },
   {
    "id": "license.gpl",
@@ -4068,10 +4873,15 @@
     "tab": "licenses"
    },
    "disposition": "mapped",
-   "parent": null,
+   "parent": "section.about",
    "target": "license.gpl",
    "fallbacks": [],
-   "dynamicTitle": false
+   "dynamicTitle": false,
+   "seedParent": null,
+   "description": {
+    "kind": "static",
+    "english": "Open source under the GNU GPL version 3."
+   }
   },
   {
    "id": "license.gpl.view",
@@ -4084,7 +4894,8 @@
    "parent": "license.gpl",
    "target": "license.gpl.view",
    "fallbacks": [],
-   "dynamicTitle": false
+   "dynamicTitle": false,
+   "seedParent": "license.gpl"
   },
   {
    "id": "license.notices",
@@ -4094,10 +4905,15 @@
     "tab": "licenses"
    },
    "disposition": "mapped",
-   "parent": null,
+   "parent": "section.about",
    "target": "license.notices",
    "fallbacks": [],
-   "dynamicTitle": false
+   "dynamicTitle": false,
+   "seedParent": null,
+   "description": {
+    "kind": "static",
+    "english": "Licenses for the tools EnviousWispr uses."
+   }
   },
   {
    "id": "license.notices.view",
@@ -4110,7 +4926,8 @@
    "parent": "license.notices",
    "target": "license.notices.view",
    "fallbacks": [],
-   "dynamicTitle": false
+   "dynamicTitle": false,
+   "seedParent": "license.notices"
   }
  ],
  "note": "Independent Settings Map inventory (#3482 PR A). Built from the Phase 0 seed (310 ids) and the approved plan section 5 exemptions, then reviewed by hand; never generated from SettingsMap.swift. Mapped rows give the expected searchable kind, destination, physical target and ordered fallbacks; exempt rows give the approved reason."

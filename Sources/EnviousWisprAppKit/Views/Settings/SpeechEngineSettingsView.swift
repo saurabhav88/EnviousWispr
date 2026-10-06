@@ -144,7 +144,7 @@ struct SpeechEngineSettingsView: View {
             SettingsRow(
               map: .id(.autoDetectLanguage),
               icon: "globe",
-              resolvedShort: String(
+              runtimeShort: String(
                 localized: settings.selectedBackend == .parakeet
                   ? Copy.autoDetectFastShort : Copy.autoDetectMultilingualShort),
               resolvedHelp: languageSectionCopy + "\n\n" + String(localized: Copy.suggestionsHelp)
@@ -188,7 +188,6 @@ struct SpeechEngineSettingsView: View {
                   map: .dynamic(
                     .lockedLanguage, .lockedLanguage(code: code, spelling: settings.englishSpelling)),
                   icon: "character.bubble",
-                  resolvedShort: String(localized: Copy.lockedLanguageShort),
                   resolvedHelp: String(localized: Copy.lockedLanguageHelp)
                 ) {
                   Button(SettingsItemCopy.Engine.lockedLanguageChange) {
@@ -238,7 +237,7 @@ struct SpeechEngineSettingsView: View {
               SettingsRow(
                 map: .id(.fasterTranscription),
                 icon: "waveform",
-                resolvedShort: String(
+                runtimeShort: String(
                   localized: settings.selectedBackend == .parakeet
                     ? Copy.fasterFastShort : Copy.fasterMultilingualShort)
               ) {
@@ -282,7 +281,6 @@ struct SpeechEngineSettingsView: View {
           SettingsRow(
             map: .id(.stopOnSilence),
             icon: "stopwatch",
-            short: Copy.stopOnSilenceShort,
             help: Copy.stopOnSilenceHelp
           ) {
             Toggle("", isOn: $settings.vadAutoStop)
@@ -319,7 +317,6 @@ struct SpeechEngineSettingsView: View {
           SettingsRow(
             map: .id(.fillerRemoval),
             icon: "sparkles",
-            short: Copy.fillerShort,
             help: Copy.fillerShort
           ) {
             Toggle("", isOn: $settings.fillerRemovalEnabled)
@@ -333,7 +330,6 @@ struct SpeechEngineSettingsView: View {
           SettingsRow(
             map: .id(.spokenEmoji),
             icon: "face.smiling",
-            short: Copy.emojiShort,
             help: Copy.emojiHelp
           ) {
             Toggle("", isOn: $settings.emojiFormatterEnabled)
@@ -346,8 +342,7 @@ struct SpeechEngineSettingsView: View {
         BrandedRow {
           SettingsRow(
             map: .id(.spokenPunctuation),
-            icon: "text.quote",
-            resolvedShort: String(localized: Copy.punctuationShort)
+            icon: "text.quote"
           ) {
             SpokenPunctuationHelpPanel()
           } control: {
@@ -368,7 +363,6 @@ struct SpeechEngineSettingsView: View {
             SettingsRow(
               map: .id(.unloadModelAfter),
               icon: "memorychip",
-              short: Copy.unloadShort,
               help: Copy.unloadHelp
             ) {
               Picker(String(localized: Copy.unloadTitle), selection: $settings.modelUnloadPolicy) {

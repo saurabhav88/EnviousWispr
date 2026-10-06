@@ -24,7 +24,6 @@ struct OpenSourceLicensesView: View {
             SettingsRow(
               map: .id(.licenseGpl),
               icon: "doc.text",
-              short: "Open source under the GNU GPL version 3.",
               help: "Read the GNU General Public License for EnviousWispr."
             ) {
               SettingsActionButton(title: SettingsItemCopy.AppSettings.viewLicense, isEnabled: true) {
@@ -39,7 +38,6 @@ struct OpenSourceLicensesView: View {
             SettingsRow(
               map: .id(.licenseNotices),
               icon: "doc.on.doc",
-              short: "Licenses for the tools EnviousWispr uses.",
               help: "Read the notices for WhisperKit, FluidAudio, Silero VAD, Sparkle and other components."
             ) {
               SettingsActionButton(title: SettingsItemCopy.AppSettings.viewNotices, isEnabled: true) {

@@ -3,6 +3,8 @@ import SwiftParser
 import SwiftSyntax
 import Testing
 
+@testable import EnviousWisprAppKit
+
 /// #3385: the Clipboard tab's four switches are shared rows, each wired to its own setting,
 /// in two headed sections: the three recording-scoped settings under CLIPBOARD with the
 /// next-recording note, and Quick Add under its own heading with no note. Read from the source
@@ -117,7 +119,8 @@ struct ClipboardSettingsWiringTests {
     _ icon: String, _ name: String, map: String, binding: String, quickAdd: Bool = false
   ) -> Row {
     Row(
-      icon: "\"\(icon)\"", title: ".id(.\(map))", short: "Copy.\(name)Short",
+      // #3482: the short line is the map node's description, checked in `shortLinesFromTheMap`.
+      icon: "\"\(icon)\"", title: ".id(.\(map))", short: "",
       help: "Copy.\(name)Help", toggles: 1, toggleTitle: "\"\"", binding: binding,
       modifiers: toggleModifiers,
       modifierArguments: [[], ["BrandedToggleStyle()"], [], ["Text(Copy.\(name)Title)"]],
@@ -153,6 +156,19 @@ struct ClipboardSettingsWiringTests {
         ], "the page holds a switch outside the four rows, or lost one")
     for (row, want) in zip(rows, expected) {
       #expect(row == want, "got \(row)\nwant \(want)")
+    }
+  }
+
+  @Test("each row's short line is its own copy, read from its Settings Map node")
+  func shortLinesFromTheMap() {
+    let expected: [(SettingsMapID, LocalizedStringResource)] = [
+      (.autoCopyToClipboard, DictationSettingsCopy.Clipboard.autoCopyShort),
+      (.restoreClipboard, DictationSettingsCopy.Clipboard.restoreShort),
+      (.smartInsertion, DictationSettingsCopy.Clipboard.smartInsertionShort),
+      (.quickAddClipboardFallback, DictationSettingsCopy.Clipboard.quickAddShort),
+    ]
+    for (id, copy) in expected {
+      #expect(SettingsMapRef.id(id).shortLine == String(localized: copy), "\(id.rawValue)")
     }
   }
 

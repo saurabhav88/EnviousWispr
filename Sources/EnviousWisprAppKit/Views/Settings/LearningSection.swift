@@ -113,7 +113,7 @@ struct LearningSection: View {
     BrandedPanel(
       icon: "sparkle.magnifyingglass",
       header: SettingsItemCopy.Dictionary.learnFromPanel,
-      description: "Let EnviousWispr pick up new words on its own, from things you already have."
+      description: SettingsItemCopy.Dictionary.learnFromShort
     ) {
       VStack(alignment: .leading, spacing: 12) {
         editsCard(settings: $settings)
@@ -277,7 +277,7 @@ struct LearningSection: View {
         HStack(alignment: .center, spacing: 10) {
           VStack(alignment: .leading, spacing: 2) {
             Text(SettingsItemCopy.Dictionary.syncOnLaunch).settingsRowLabel()
-            Text("Check for new contacts each time EnviousWispr starts. Off by default.")
+            Text(SettingsItemCopy.Dictionary.syncOnLaunchShort)
               .settingsReadingCopy()
               .fixedSize(horizontal: false, vertical: true)
           }
@@ -346,9 +346,7 @@ struct LearningSection: View {
     VStack(alignment: .leading, spacing: 2) {
       Text(SettingsItemCopy.Dictionary.importContacts)
         .settingsRowLabel()
-      Text(
-        "Add the names of people you know to your word list, so dictation spells them right."
-      )
+      Text(SettingsItemCopy.Dictionary.importContactsShort)
       .settingsReadingCopy()
       .fixedSize(horizontal: false, vertical: true)
     }

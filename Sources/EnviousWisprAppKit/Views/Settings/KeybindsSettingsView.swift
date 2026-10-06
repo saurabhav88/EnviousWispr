@@ -15,7 +15,6 @@ struct KeybindsSettingsView: View {
           SettingsRow(
             map: .id(.recordingMode),
             icon: "hand.tap",
-            short: KeybindsSettingsCopy.modeShort,
             help: settings.isPushToTalk
               ? KeybindsSettingsCopy.pushToTalkHelp : KeybindsSettingsCopy.toggleHelp
           ) {
@@ -34,7 +33,7 @@ struct KeybindsSettingsView: View {
         BrandedRow {
           KeybindSettingsRow(
             map: .id(.recordKeybind), icon: "mic",
-            short: KeybindsSettingsCopy.recordShort, help: KeybindsSettingsCopy.recordHelp,
+            help: KeybindsSettingsCopy.recordHelp,
             keyCode: $settings.toggleKeyCode,
             modifiers: $settings.toggleModifiers, role: .record
           )
@@ -42,7 +41,7 @@ struct KeybindsSettingsView: View {
         BrandedRow {
           KeybindSettingsRow(
             map: .id(.cancelKeybind), icon: "xmark",
-            short: KeybindsSettingsCopy.cancelShort, help: KeybindsSettingsCopy.cancelHelp,
+            help: KeybindsSettingsCopy.cancelHelp,
             keyCode: $settings.cancelKeyCode,
             modifiers: $settings.cancelModifiers, role: .cancel
           )
@@ -51,7 +50,7 @@ struct KeybindsSettingsView: View {
           SettingsRow(
             map: .id(.escapeRecovery),
             icon: "arrow.uturn.backward",
-            short: KeybindsSettingsCopy.recoveryShort, help: KeybindsSettingsCopy.recoveryHelp
+            help: KeybindsSettingsCopy.recoveryHelp
           ) {
             Toggle("", isOn: $settings.escapeRecoveryEnabled)
               .labelsHidden()
@@ -66,7 +65,7 @@ struct KeybindsSettingsView: View {
         BrandedRow {
           KeybindSettingsRow(
             map: .id(.quickAddKeybind), icon: "character.book.closed",
-            short: KeybindsSettingsCopy.addShort, help: KeybindsSettingsCopy.addHelp,
+            help: KeybindsSettingsCopy.addHelp,
             keyCode: $settings.quickAddKeyCode,
             modifiers: $settings.quickAddModifiers, role: .quickAdd
           )
@@ -74,7 +73,7 @@ struct KeybindsSettingsView: View {
         BrandedRow {
           KeybindSettingsRow(
             map: .id(.pasteLastKeybind), icon: "clipboard",
-            short: KeybindsSettingsCopy.pasteShort, help: KeybindsSettingsCopy.pasteHelp,
+            help: KeybindsSettingsCopy.pasteHelp,
             keyCode: $settings.pasteLastKeyCode,
             modifiers: $settings.pasteLastModifiers, role: .pasteLast
           )
@@ -82,7 +81,7 @@ struct KeybindsSettingsView: View {
         BrandedRow(showDivider: false) {
           KeybindSettingsRow(
             map: .id(.copyLastKeybind), icon: "doc.on.doc",
-            short: KeybindsSettingsCopy.copyShort, help: KeybindsSettingsCopy.copyHelp,
+            help: KeybindsSettingsCopy.copyHelp,
             keyCode: $settings.copyLastKeyCode,
             modifiers: $settings.copyLastModifiers, role: .copyLast
           )
@@ -140,7 +139,6 @@ private struct KeybindSettingsRow: View {
   /// The row's Settings Map identity; its title comes from the map node (#3482).
   let map: SettingsMapRef
   let icon: String
-  let short: LocalizedStringResource
   let help: LocalizedStringResource
   @Binding var keyCode: UInt16
   @Binding var modifiers: NSEvent.ModifierFlags
@@ -195,7 +193,7 @@ private struct KeybindSettingsRow: View {
   }
 
   var body: some View {
-    SettingsRow(map: map, icon: icon, short: short, help: help) {
+    SettingsRow(map: map, icon: icon, help: help) {
       HotkeyRecorderView(
         keyCode: $keyCode, modifiers: $modifiers,
         defaultKeyCode: defaultKeyCode, defaultModifiers: defaultModifiers,

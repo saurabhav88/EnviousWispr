@@ -106,7 +106,7 @@ struct InterfaceCatalogSourceTests {
       contentsOf: Self.repoRoot.appendingPathComponent(
         "Sources/EnviousWisprAppKit/Views/Settings/SettingsItemCopy.swift"), encoding: .utf8)
     let pattern = try Regex(
-      #"LocalizedStringResource\(\s*"((?:[^"\\]|\\\([^)]*\))*)"(?:, defaultValue: "([^"\\]*)")?(?:, comment: "([^"\\]*)")?\)"#)
+      #"LocalizedStringResource\(\s*"((?:[^"\\]|\\\([^)]*\)|\\u\{[0-9A-Fa-f]+\})*)"(?:, defaultValue: "([^"\\]*)")?(?:, comment: "([^"\\]*)")?\)"#)
     let constants = source.matches(of: pattern)
     let calls = source.components(separatedBy: "LocalizedStringResource(").count - 1
     #expect(constants.count == calls, "parsed \(constants.count) of \(calls) constants")
@@ -116,8 +116,15 @@ struct InterfaceCatalogSourceTests {
       in: try Self.builtApp(), language: "de", table: "Localizable")
     for match in constants {
       // An interpolated key is catalogued with `%@` in place of each interpolation.
-      let key = String(try #require(match.output[1].substring)).replacing(
+      // An interpolated key is catalogued with `%@` in place of each interpolation; a `\u{…}`
+      // escape is the character it names.
+      var key = String(try #require(match.output[1].substring)).replacing(
         try Regex(#"\\\([^)]*\)"#), with: "%@")
+      for escape in key.matches(of: try Regex(#"\\u\{([0-9A-Fa-f]+)\}"#)).reversed() {
+        let hex = try #require(escape.output[1].substring)
+        let scalar = try #require(UInt32(hex, radix: 16).flatMap(Unicode.Scalar.init))
+        key.replaceSubrange(escape.range, with: String(Character(scalar)))
+      }
       let english = match.output[2].substring.map(String.init) ?? key
       let entry = try #require(strings[key] as? [String: Any], "\(key) is not in the catalog")
       #expect((Self.value(of: entry, language: "en") ?? key) == english, "\(key): English changed")

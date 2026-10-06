@@ -1,3 +1,4 @@
+import EnviousWisprCore
 import SwiftUI
 
 // The pieces of the AI Polish "<NAME> · only for this model" card (#3385, founder's Claude
@@ -23,7 +24,12 @@ enum PolishSectionLayout {
 
 /// The "<NAME> · only for this model" heading above the card.
 struct PolishSectionHeading: View {
-  let providerName: String
+  let provider: LLMProvider
+
+  /// The provider's name, from its Settings Map node (#3482).
+  private var providerName: String {
+    SettingsMapRef.dynamic(.aiPolishProviderSection, .provider(provider)).title
+  }
 
   var body: some View {
     HStack(alignment: .firstTextBaseline, spacing: 6) {
@@ -100,12 +106,20 @@ struct PolishRow<Detail: View, Trailing: View>: View {
   @ViewBuilder let trailing: () -> Trailing
   var adaptsTrailing = false
 
-  /// A mapped row: the title comes from its Settings Map node.
+  /// A mapped row: the title and the line under it come from its Settings Map node. A node
+  /// whose line is composed from state (`.runtime`) takes it as `runtimeSubtitle`.
   init(
     map: SettingsMapRef, icon: String, iconTint: Color = .stAccent, showsSpinner: Bool = false,
-    subtitle: String? = nil, @ViewBuilder detail: @escaping () -> Detail,
+    runtimeSubtitle: String? = nil, @ViewBuilder detail: @escaping () -> Detail,
     @ViewBuilder trailing: @escaping () -> Trailing, adaptsTrailing: Bool = false
   ) {
+    let subtitle: String?
+    switch SettingsMap.node(map.id).description {
+    case .resource?: subtitle = map.shortLine
+    case .runtime?: subtitle = runtimeSubtitle
+    case nil: subtitle = nil
+    }
+    if runtimeSubtitle != nil { map.requireRuntimeShortLine() }
     self.init(
       registration: .mapped(map.id), icon: icon, iconTint: iconTint, showsSpinner: showsSpinner,
       title: map.title, subtitle: subtitle, detail: detail, trailing: trailing,
@@ -218,11 +232,12 @@ struct PolishRow<Detail: View, Trailing: View>: View {
 extension PolishRow where Detail == EmptyView {
   init(
     map: SettingsMapRef, icon: String, iconTint: Color = .stAccent, showsSpinner: Bool = false,
-    subtitle: String? = nil, adaptsTrailing: Bool = false,
+    runtimeSubtitle: String? = nil, adaptsTrailing: Bool = false,
     @ViewBuilder trailing: @escaping () -> Trailing
   ) {
     self.init(
-      map: map, icon: icon, iconTint: iconTint, showsSpinner: showsSpinner, subtitle: subtitle,
+      map: map, icon: icon, iconTint: iconTint, showsSpinner: showsSpinner,
+      runtimeSubtitle: runtimeSubtitle,
       detail: { EmptyView() }, trailing: trailing, adaptsTrailing: adaptsTrailing)
   }
 

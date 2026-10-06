@@ -83,6 +83,20 @@ struct SettingsMapRenderingTests {
       case .dictionary: Set(DictionaryTab.allCases.map(\.mapID))
       default: []
       }
+    // Each row sits under the heading the map names as its parent: the nearest heading drawn
+    // before it on the page. Read from the render, so a misplaced parent shows.
+    var heading: SettingsMapID?
+    for id in ids {
+      let node = SettingsMap.node(id)
+      if Self.headings.contains(id) {
+        heading = id
+        continue
+      }
+      guard let parent = node.parent, Self.headings.contains(parent) else { continue }
+      #expect(
+        heading == parent,
+        "\(label): \(id.rawValue) is drawn under \(heading?.rawValue ?? "no heading"), the map says \(parent.rawValue)")
+    }
     for id in ids where !strip.contains(id) {
       let node = SettingsMap.node(id)
       #expect(
@@ -90,6 +104,11 @@ struct SettingsMapRenderingTests {
         "\(label): \(id.rawValue) belongs to \(String(describing: node.destination))")
     }
   }
+
+  /// Headings that hold rows: the map's sections, and the headings drawn as items.
+  static let headings: Set<SettingsMapID> = Set(
+    SettingsMap.nodes.filter { $0.structure == .section }.map(\.id)
+  ).union([.currentEngineSection, .aiPolishProviderSection, .yourSnippets])
 
   static func dictationPage(
     _ tab: DictationTab, scenario: DictationSettingsRenderHarness.Scenario = .init()

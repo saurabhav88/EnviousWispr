@@ -70,13 +70,13 @@ struct LearnFromEditsSettingsPresentation: Equatable, Sendable {
     comment:
       "Your Words, Learn from: the self-learning dictionary row: a small badge after the feature's name saying the feature is still improving."
   )
-  static let rowCopy =
-    String(
-      localized:
-        "Automatically detects when you correct a dictation and adds the corrected word to your dictionary. Undo it from the notification, or remove it later in Your Words.",
+  static let rowCopyResource =
+    LocalizedStringResource(
+      "Automatically detects when you correct a dictation and adds the corrected word to your dictionary. Undo it from the notification, or remove it later in Your Words.",
       comment:
         "Your Words, Learn from: the self-learning dictionary row: what the feature does. Your Words is a page name."
     )
+  static var rowCopy: String { String(localized: rowCopyResource) }
   static let learnMoreLabelResource = LocalizedStringResource("Learn more",
     comment: "Your Words, Learn from: the self-learning dictionary row: link to the help article.")
   static var learnMoreLabel: String { String(localized: learnMoreLabelResource) }

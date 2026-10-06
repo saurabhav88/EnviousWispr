@@ -60,7 +60,6 @@ struct RecordingPillAppearancePanel: View {
       SettingsRow(
         map: .id(.pillStyle),
         icon: "waveform.badge.mic",
-        short: DictationSettingsCopy.Pill.styleShort,
         help: DictationSettingsCopy.Pill.styleHelp
       ) {
         EmptyView()
@@ -152,7 +151,7 @@ struct RecordingPillAppearancePanel: View {
   /// says it exists "for the picker's ORDER only", rather than by reordering the
   /// enum: the enum's order is a declaration site with other readers, and a
   /// presentation concern has no business moving it.
-  static var displayOrder: [RecordingPillDesign] {
+  nonisolated static var displayOrder: [RecordingPillDesign] {
     PillCatalog.designs(holdingWords: false) + PillCatalog.designs(holdingWords: true)
   }
 

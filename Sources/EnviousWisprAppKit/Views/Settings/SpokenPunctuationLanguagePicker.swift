@@ -74,7 +74,9 @@ struct SpokenPunctuationLanguagePicker: View {
 
   private func choice(_ code: String) -> some View {
     let isChosen = editor.language == code
-    let name = SpokenPunctuationStartWordEditor.displayName(for: code)
+    let name = SettingsMapRef.dynamic(
+      SettingsMapChoiceIDs.startWordLanguage(code), .startWordLanguage(code: code)
+    ).title
     let line = Self.startWordLine(editor.startWord(for: code))
     return SettingsDropdownRow(
       isChosen: isChosen, spokenTitle: name + ", " + line,

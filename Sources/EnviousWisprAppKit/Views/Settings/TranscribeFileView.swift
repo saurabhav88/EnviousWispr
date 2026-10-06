@@ -228,7 +228,8 @@ struct TranscribeFileView: View {
         if step == .working {
           stepChip(step, compact: compact)
             .accessibilityElement(children: .ignore)
-            .accessibilityLabel(step.title)
+            .accessibilityLabel(
+              SettingsMapRef.dynamic(.transcribeFileSteps, .transcribeFileStep(step)).title)
             .accessibilityAddTraits(.isStaticText)
         } else {
           Button {
@@ -237,7 +238,8 @@ struct TranscribeFileView: View {
             stepChip(step, compact: compact)
           }
           .buttonStyle(.plain)
-          .accessibilityLabel(step.title)
+          .accessibilityLabel(
+            SettingsMapRef.dynamic(.transcribeFileSteps, .transcribeFileStep(step)).title)
           .disabled(!coordinator.canGo(to: step))
         }
       }
@@ -270,7 +272,7 @@ struct TranscribeFileView: View {
         }
       }
       if !compact || current {
-        Text(step.title)
+        Text(SettingsMapRef.dynamic(.transcribeFileSteps, .transcribeFileStep(step)).title)
           .font(.system(size: 14, weight: .semibold))
           .foregroundStyle(tint)
           .lineLimit(1)

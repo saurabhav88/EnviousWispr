@@ -99,34 +99,32 @@ enum DictionaryTab: String, CaseIterable, Identifiable {
   /// measured 2026-08-29, when "Ready-made word lists" rendered as "Ready-made
   /// word l...". The shorter phrasing is just as true, so there is no reason to
   /// live with a truncated line.
-  var tagline: String {
+  var taglineResource: LocalizedStringResource {
     switch self {
     case .yourWords:
-      return String(
-        localized: "Words you added",
+      return LocalizedStringResource("Words you added",
         comment:
           "Your Words: a tab in the side rail: the line under Your Words. Keep it short, about 16 characters."
       )
     case .vocabularyPacks:
-      return String(
-        localized: "Ready-made lists",
+      return LocalizedStringResource("Ready-made lists",
         comment:
           "Your Words: a tab in the side rail: the line under Vocabulary Packs. Keep it short, about 16 characters."
       )
     case .learnFrom:
-      return String(
-        localized: "Learn as you go",
+      return LocalizedStringResource("Learn as you go",
         comment:
           "Your Words: a tab in the side rail: the line under Learn from. Keep it short, about 16 characters."
       )
     case .quickAdd:
-      return String(
-        localized: "Add from any app",
+      return LocalizedStringResource("Add from any app",
         comment:
           "Your Words: a tab in the side rail: the line under Quick Add. Keep it short, about 16 characters."
       )
     }
   }
+
+    var tagline: String { String(localized: taglineResource) }
 }
 
 /// #2492 — the Dictionary page (was "Your Words"). Rebuilt onto a fixed

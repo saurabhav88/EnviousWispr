@@ -20,7 +20,7 @@ import Observation
 final class SpokenPunctuationStartWordEditor {
 
   /// The languages with a table, in the order the picker lists them.
-  static let languages = SpokenPunctuationRules.startWordLanguages
+  nonisolated static let languages = SpokenPunctuationRules.startWordLanguages
 
   /// English is most people's dictation language and is first in the picker, so it is the choice when
   /// the dictation language gives no better one. The Mac's region is deliberately not consulted.
@@ -48,7 +48,7 @@ final class SpokenPunctuationStartWordEditor {
   }
 
   /// The language's name in the interface language, for the picker and the field's spoken name.
-  static func displayName(for code: String) -> String {
+  nonisolated static func displayName(for code: String) -> String {
     Locale.current.localizedString(forLanguageCode: code)?.localizedCapitalized ?? code
   }
 

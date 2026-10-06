@@ -158,7 +158,6 @@ struct SettingsRowLayoutTests {
         SettingsRow(
           map: .id(.inputDevice),
           icon: "waveform",
-          short: DictationSettingsCopy.Microphone.inputDeviceShort,
           help: DictationSettingsCopy.Microphone.inputDeviceHelp
         ) {
           MicrophoneDevicePicker(

@@ -73,7 +73,7 @@ struct AIPolishProviderPicker: View {
         ProviderLogoTile(provider: entry.provider, size: 46, isSelected: true)
         VStack(alignment: .leading, spacing: 3) {
           HStack(alignment: .firstTextBaseline, spacing: 8) {
-            Text(entry.name)
+            Text(SettingsMapRef.dynamic(.aiPolishProvider, .provider(entry.provider)).title)
               .font(.stRowTitle)
               .foregroundStyle(Color.stTextPrimary)
             Text(entry.group.heading)

@@ -1,6 +1,6 @@
 // Generated from the Settings Map inventory fixture (#3482); raw values are the stable ids.
 // Edit by adding or removing a case together with its node in SettingsMap.swift and its
-// fixture row in Tests/EnviousWisprTests/Settings/Fixtures/SettingsMap/inventory.json.
+// fixture row in Tests/Fixtures/settings-map/inventory.json.
 
 /// A stable Settings Map identity. Raw values never change once shipped: help links, search
 /// vocabulary and telemetry refer to them.

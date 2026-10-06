@@ -17,8 +17,7 @@ struct MicrophoneSettingsLayoutTests {
     id: 77, name: "Scarlett 2i2", uid: "usb", inputChannelCount: 2)
 
   static func row(capturing: Bool) -> some View {
-    SettingsRow(map: .id(.inputDevice),icon: "waveform",
-      short: DictationSettingsCopy.Microphone.inputDeviceShort,
+    SettingsRow(map: .id(.inputDevice), icon: "waveform",
       help: DictationSettingsCopy.Microphone.inputDeviceHelp) {
       MicrophoneDevicePicker(selection: .constant(""), devices: [device],
         presentation: .make(preferredUID: "", resolvedDevice: device, transportToken: "usb"),

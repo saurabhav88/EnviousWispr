@@ -28,7 +28,6 @@ struct RecordingChimesContent: View {
           SettingsRow(
             map: .id(.recordingChimes),
             icon: "bell.and.waveform",
-            short: Copy.toggleShort,
             help: Copy.toggleHelp
           ) {
             Toggle("", isOn: $playsChimes)
@@ -197,7 +196,7 @@ struct RecordingChimeCard: View {
   static let previewRegionSide: CGFloat = 44
 
   /// The chime's Settings Map choice (#3482). Exhaustive, so a new chime must be given a node.
-  static func mapID(for pairing: RecordingSoundPairing) -> SettingsMapID {
+  nonisolated static func mapID(for pairing: RecordingSoundPairing) -> SettingsMapID {
     switch pairing {
     case .dustMote: .recordingChimeDustMote
     case .velvetHush: .recordingChimeVelvetHush
@@ -278,7 +277,8 @@ struct RecordingChimeCard: View {
     .help(
       isPreviewEnabled ? "" : String(localized: DictationSettingsCopy.Chimes.previewUnavailable)
     )
-    .accessibilityLabel("Preview \(name)")
+    .accessibilityLabel(
+      SettingsMapRef.dynamic(.recordingChimePreview, .chime(name: name)).title)
   }
 
   private var selectButton: some View {

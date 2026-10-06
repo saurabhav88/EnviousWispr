@@ -13,8 +13,7 @@ struct PermissionsSettingsView: View {
           BrandedRow {
             SettingsRow(
               map: .id(.permissionMicrophone),
-              icon: "mic", short: "Needed to record your voice.",
-              help: "Allow microphone access so EnviousWispr can record your voice. If access was denied, Request Access opens System Settings."
+              icon: "mic", help: "Allow microphone access so EnviousWispr can record your voice. If access was denied, Request Access opens System Settings."
             ) {
               if permissions.hasMicrophonePermission {
                 grantedStatus(
@@ -38,7 +37,6 @@ struct PermissionsSettingsView: View {
             SettingsRow(
               map: .id(.permissionAccessibility),
               icon: "hand.raised",
-              short: "Needed to paste text into other apps.",
               help: "Allow Accessibility access so EnviousWispr can paste your dictation into other apps."
             ) {
               if permissions.hasAccessibilityPermission {

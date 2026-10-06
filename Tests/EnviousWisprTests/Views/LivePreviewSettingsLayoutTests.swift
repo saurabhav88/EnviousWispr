@@ -68,7 +68,6 @@ struct LivePreviewSettingsLayoutTests {
         SettingsRow(
           map: .dynamic(.previewLanguagesInstall, .livePreviewPacks(loading: false, failed: false)),
           icon: "arrow.down.circle",
-          resolvedShort: "Download a language from macOS to preview it.",
           resolvedHelp: "Help.",
           primaryAction: {}
         ) {

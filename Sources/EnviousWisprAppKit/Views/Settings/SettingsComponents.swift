@@ -264,32 +264,44 @@ struct SettingsHelpText: View {
 }
 
 extension SettingsRow where HelpContent == SettingsHelpText {
-  /// A mapped row with literal copy: the title comes from its Settings Map node (#3482); the
-  /// catalog extracts the short line and help by their type.
+  /// A mapped row: its title and short line come from its Settings Map node (#3482), so the row
+  /// and search can never describe it differently; the catalog extracts the help by its type.
   init(
     map: SettingsMapRef,
     icon: String,
-    short: LocalizedStringResource,
     help: LocalizedStringResource,
     @ViewBuilder control: () -> Control
   ) {
     self.init(
       registration: .mapped(map.id), icon: icon, title: map.title,
-      resolvedShort: String(localized: short), resolvedHelp: String(localized: help),
-      control: control)
+      resolvedShort: map.shortLine, resolvedHelp: String(localized: help), control: control)
   }
 
-  /// A mapped row whose short line and help are already-translated runtime strings (for
-  /// example a help sentence chosen by the current setting). Never pass an untranslated literal.
+  /// A mapped row whose help is an already-translated runtime string (for example a help
+  /// sentence chosen by the current setting). Never pass an untranslated literal.
   init(
     map: SettingsMapRef,
     icon: String,
-    resolvedShort: String,
     resolvedHelp: String,
     @ViewBuilder control: () -> Control
   ) {
     self.init(
-      registration: .mapped(map.id), icon: icon, title: map.title, resolvedShort: resolvedShort,
+      registration: .mapped(map.id), icon: icon, title: map.title, resolvedShort: map.shortLine,
+      resolvedHelp: resolvedHelp, control: control)
+  }
+
+  /// A mapped row whose short line its node declares `.runtime`: the row composes it from
+  /// state (the current engine, for example), so the map never samples it.
+  init(
+    map: SettingsMapRef,
+    icon: String,
+    runtimeShort: String,
+    resolvedHelp: String,
+    @ViewBuilder control: () -> Control
+  ) {
+    map.requireRuntimeShortLine()
+    self.init(
+      registration: .mapped(map.id), icon: icon, title: map.title, resolvedShort: runtimeShort,
       resolvedHelp: resolvedHelp, control: control)
   }
 
@@ -298,14 +310,11 @@ extension SettingsRow where HelpContent == SettingsHelpText {
   init(
     map: SettingsMapRef,
     icon: String,
-    resolvedShort: String,
     resolvedHelp: String,
     primaryAction: @escaping () -> Void,
     @ViewBuilder control: () -> Control
   ) {
-    self.init(
-      map: map, icon: icon, resolvedShort: resolvedShort, resolvedHelp: resolvedHelp,
-      control: control)
+    self.init(map: map, icon: icon, resolvedHelp: resolvedHelp, control: control)
     self.primaryAction = primaryAction
   }
 
@@ -358,18 +367,29 @@ extension SettingsRow where HelpContent == SettingsHelpText {
 }
 
 extension SettingsRow {
-  /// A mapped row with structured help under an already-translated short line.
+  /// A mapped row with structured help; its short line comes from its node.
   init(
     map: SettingsMapRef,
     icon: String,
-    resolvedShort: String,
     @ViewBuilder helpContent: () -> HelpContent,
     @ViewBuilder control: () -> Control
   ) {
+    self.init(map: map, icon: icon, runtimeShort: nil, helpContent: helpContent, control: control)
+  }
+
+  /// A mapped row with structured help under a short line its node declares `.runtime`.
+  init(
+    map: SettingsMapRef,
+    icon: String,
+    runtimeShort: String?,
+    @ViewBuilder helpContent: () -> HelpContent,
+    @ViewBuilder control: () -> Control
+  ) {
+    if runtimeShort != nil { map.requireRuntimeShortLine() }
     self.registration = .mapped(map.id)
     self.icon = icon
     self.title = map.title
-    self.short = resolvedShort
+    self.short = runtimeShort ?? map.shortLine
     self.tooltip = nil
     self.helpContent = helpContent()
     self.control = control()

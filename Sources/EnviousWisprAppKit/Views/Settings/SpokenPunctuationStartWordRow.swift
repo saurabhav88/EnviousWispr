@@ -19,8 +19,7 @@ struct SpokenPunctuationStartWordRow: View {
     VStack(alignment: .leading, spacing: 8) {
       SettingsRow(
         map: .id(.startWordLanguage),
-        icon: "text.cursor",
-        resolvedShort: SpokenPunctuationCopy.startWordShort
+        icon: "text.cursor"
       ) {
         SpokenPunctuationStartWordHelpPanel()
       } control: {

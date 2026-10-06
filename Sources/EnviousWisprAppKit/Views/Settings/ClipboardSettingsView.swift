@@ -30,7 +30,6 @@ struct ClipboardSettingsView: View {
           SettingsRow(
             map: .id(.autoCopyToClipboard),
             icon: "doc.on.clipboard",
-            short: Copy.autoCopyShort,
             help: Copy.autoCopyHelp
           ) {
             Toggle("", isOn: $settings.autoCopyToClipboard)
@@ -44,7 +43,6 @@ struct ClipboardSettingsView: View {
           SettingsRow(
             map: .id(.restoreClipboard),
             icon: "arrow.uturn.backward",
-            short: Copy.restoreShort,
             help: Copy.restoreHelp
           ) {
             Toggle("", isOn: $settings.restoreClipboardAfterPaste)
@@ -58,7 +56,6 @@ struct ClipboardSettingsView: View {
           SettingsRow(
             map: .id(.smartInsertion),
             icon: "text.cursor",
-            short: Copy.smartInsertionShort,
             help: Copy.smartInsertionHelp
           ) {
             Toggle("", isOn: $settings.smartInsertion)
@@ -90,7 +87,6 @@ struct ClipboardSettingsView: View {
           SettingsRow(
             map: .id(.quickAddClipboardFallback),
             icon: "text.viewfinder",
-            short: Copy.quickAddShort,
             help: Copy.quickAddHelp
           ) {
             Toggle("", isOn: $settings.quickAddClipboardFallback)

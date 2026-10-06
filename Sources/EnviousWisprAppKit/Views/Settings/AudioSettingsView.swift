@@ -108,7 +108,6 @@ struct AudioSettingsView: View {
             SettingsRow(
               map: .id(.inputDevice),
               icon: "waveform",
-              short: DictationSettingsCopy.Microphone.inputDeviceShort,
               help: DictationSettingsCopy.Microphone.inputDeviceHelp
             ) {
               MicrophoneDevicePicker(
@@ -136,14 +135,14 @@ struct AudioSettingsView: View {
               SettingsRow(
                 map: .id(.inputSocket),
                 icon: "cable.connector",
-                resolvedShort: String(localized: DictationSettingsCopy.Microphone.socketShort),
                 resolvedHelp: String(localized: DictationSettingsCopy.Microphone.socketHelp)
               ) {
                 if device.inputChannelCount <= 6 {
                   BrandedSegmentedPicker(
                     options: (0..<device.inputChannelCount).map { index in
                       (
-                        label: InputSocketCopy.optionLabel(index: index), systemImage: nil,
+                        label: SettingsMapRef.dynamic(.inputSocketInput, .inputSocket(index: index))
+                          .title, systemImage: nil,
                         value: index
                       )
                     },
@@ -155,7 +154,9 @@ struct AudioSettingsView: View {
                 } else {
                   Picker("", selection: socketSelection) {
                     ForEach(0..<device.inputChannelCount, id: \.self) { index in
-                      Text(InputSocketCopy.optionLabel(index: index)).tag(index)
+                      Text(
+                        SettingsMapRef.dynamic(.inputSocketInput, .inputSocket(index: index)).title
+                      ).tag(index)
                     }
                   }
                   .labelsHidden()
@@ -181,7 +182,6 @@ struct AudioSettingsView: View {
             SettingsRow(
               map: .id(.micReadiness),
               icon: "timer",
-              short: DictationSettingsCopy.Microphone.readinessShort,
               help: DictationSettingsCopy.Microphone.readinessHelp
             ) {
               BrandedSegmentedPicker(
@@ -232,8 +232,7 @@ private struct BluetoothGuideRow: View {
   var body: some View {
     SettingsRow(
       map: .id(.bluetoothGuide),
-      icon: "dot.radiowaves.left.and.right",
-      resolvedShort: String(localized: DictationSettingsCopy.Microphone.bluetoothShort)
+      icon: "dot.radiowaves.left.and.right"
     ) {
       BluetoothGuidePopoverContent(showBluetoothTips: $showBluetoothTips)
     } control: {

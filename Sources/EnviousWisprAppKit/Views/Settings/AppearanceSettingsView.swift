@@ -40,7 +40,6 @@ struct AppearanceSettingsView: View {
             SettingsRow(
               map: .id(.theme),
               icon: "circle.lefthalf.filled",
-              short: "Choose how EnviousWispr looks.",
               help: "Choose System to follow your Mac, or choose Light or Dark."
             ) {
               BrandedSegmentedPicker(
@@ -61,13 +60,15 @@ struct AppearanceSettingsView: View {
             SettingsRow(
               map: .id(.appLanguage),
               icon: "globe",
-              short: "The language of the app interface.",
               help: "This changes only EnviousWispr. The new language applies after relaunch. System default follows your Mac."
             ) {
               Picker(SettingsItemCopy.AppSettings.language, selection: $language) {
                 Text(SettingsItemCopy.AppSettings.systemDefault).tag("")
                 ForEach(AppLanguagePreference.live.languages, id: \.self) { code in
-                  Text(verbatim: AppLanguagePreference.name(of: code)).tag(code)
+                  Text(
+                    verbatim: SettingsMapRef.dynamic(.appLanguageShipped, .appLanguage(code: code))
+                      .title
+                  ).tag(code)
                 }
               }
               .labelsHidden()
@@ -101,7 +102,6 @@ struct AppearanceSettingsView: View {
             SettingsRow(
               map: .id(.showInDock),
               icon: "dock.rectangle",
-              short: "Keep EnviousWispr in your Dock.",
               help: "When off, the Dock icon appears only while an EnviousWispr window is open. The menu bar icon always stays."
             ) {
               Toggle("", isOn: $settings.showInDock)
@@ -117,7 +117,6 @@ struct AppearanceSettingsView: View {
             SettingsRow(
               map: .id(.updateAlertInMenuBar),
               icon: "menubar.rectangle",
-              short: "Show gold lips when an update is ready.",
               help: "When off, the menu bar icon stays plain while an update waits. You can still install it from the menu bar menu or What's New."
             ) {
               Toggle("", isOn: $settings.showMenuBarUpdateAlert)

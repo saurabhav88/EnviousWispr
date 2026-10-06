@@ -35,7 +35,6 @@ struct OtherAudioSettingsPanel: View {
       SettingsRow(
         map: .id(.mediaDuringDictation),
         icon: "speaker.wave.2.fill",
-        resolvedShort: String(localized: DictationSettingsCopy.Microphone.mediaShort),
         resolvedHelp: Self.footnote(for: settings.otherAudioWhileDictating)
       ) {
         BrandedSegmentedPicker(

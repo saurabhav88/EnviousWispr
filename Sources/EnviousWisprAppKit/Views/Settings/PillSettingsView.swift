@@ -31,7 +31,6 @@ struct PillSettingsView: View {
           SettingsRow(
             map: .id(.pillPosition),
             icon: "rectangle.portrait.and.arrow.right",
-            short: DictationSettingsCopy.Pill.positionShort,
             help: DictationSettingsCopy.Pill.positionHelp
           ) {
             BrandedSegmentedPicker(

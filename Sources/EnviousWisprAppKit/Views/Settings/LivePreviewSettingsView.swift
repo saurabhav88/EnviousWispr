@@ -349,8 +349,7 @@ struct LivePreviewSettingsView: View {
           // short line and "?" (the tab has no page header to say what it does).
           SettingsRow(
             map: .id(.livePreview),
-            icon: "text.viewfinder",
-            resolvedShort: String(localized: PreviewCopy.toggleShort)
+            icon: "text.viewfinder"
           ) {
             // Both sentences: the approved short help, and the original one whose
             // pasted-text half may not be dropped (`previewPrivacyFooter`).
@@ -421,7 +420,9 @@ struct LivePreviewSettingsView: View {
                 // describes the value, so leaving it outside made the control look
                 // like it ended at the name.
                 LivePreviewLanguageMenuButton(
-                  name: language.name, provenance: language.provenance
+                  name: SettingsMapRef.dynamic(.livePreviewLanguage, .previewLanguage(language))
+                    .title,
+                  provenance: language.provenance
                 ) {
                   showLanguageSheet = true
                 }
@@ -655,10 +656,18 @@ struct LivePreviewSettingsView: View {
       ],
       spacing: 12
     ) {
-      engineCard(apple, icon: "apple.logo", choice: .apple)
-      engineCard(universal, icon: "globe", choice: .universal)
+      // #3482: the Settings Map derives the preview engine choices from this same list.
+      ForEach(Self.engineChoices, id: \.self) { choice in
+        switch choice {
+        case .apple: engineCard(apple, icon: "apple.logo", choice: .apple)
+        case .universal: engineCard(universal, icon: "globe", choice: .universal)
+        }
+      }
     }
   }
+
+  /// The preview engine cards, in the order the grid shows them.
+  nonisolated static let engineChoices: [LivePreviewEngineChoice] = [.apple, .universal]
 
   /// One engine card.
   ///
@@ -678,10 +687,29 @@ struct LivePreviewSettingsView: View {
 
   /// The preview engine card's Settings Map choice (#3482). Exhaustive, so a new engine must be
   /// given a map node.
-  static func mapID(for choice: LivePreviewEngineChoice) -> SettingsMapID {
+  nonisolated static func mapID(for choice: LivePreviewEngineChoice) -> SettingsMapID {
     switch choice {
     case .apple: .previewEngineApple
     case .universal: .previewEngineUniversal
+    }
+  }
+
+  /// The preview engine card's name, which its map node carries: Apple's engine by its product
+  /// name, Universal by its catalog title.
+  nonisolated static func mapTitle(for choice: LivePreviewEngineChoice) -> SettingsMapTitle {
+    switch choice {
+    case .apple: .verbatim(LivePreviewEngineCopy.appleTitle)
+    case .universal: .resource(LivePreviewEngineCopy.universalTitleResource)
+    }
+  }
+
+  /// The line the preview engine card shows under its name, from the same copy owner.
+  nonisolated static func mapDescription(for choice: LivePreviewEngineChoice)
+    -> LocalizedStringResource
+  {
+    switch choice {
+    case .apple: LivePreviewEngineCopy.appleDescriptionResource
+    case .universal: LivePreviewEngineCopy.universalDescriptionResource
     }
   }
 
@@ -884,7 +912,6 @@ struct LivePreviewSettingsView: View {
               .previewLanguagesInstall,
               .livePreviewPacks(loading: packs.state == .loading, failed: packs.state == .failed)),
             icon: "arrow.down.circle",
-            resolvedShort: String(localized: PreviewCopy.installShort),
             resolvedHelp: LivePreviewSettingsCopy.packsDescription,
             primaryAction: { catalogRequest = CatalogRequest(search: "") }
           ) {

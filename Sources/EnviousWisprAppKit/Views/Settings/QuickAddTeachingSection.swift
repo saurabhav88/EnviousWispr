@@ -102,9 +102,7 @@ struct QuickAddTeachingSection: View {
     stepCard(
       1,
       title: String(localized: SettingsItemCopy.Dictionary.quickAddStep1),
-      body: String(
-        localized: "Select the word you want to fix in an email, chat, or document.",
-        comment: "Dictionary settings, Quick Add teaching card: step 1."))
+      body: String(localized: SettingsItemCopy.Dictionary.quickAddStep1Body))
     .settingsMapRegistration(.quickAddStep1)
     stepCard(
       2,
@@ -114,10 +112,7 @@ struct QuickAddTeachingSection: View {
     stepCard(
       3,
       title: String(localized: SettingsItemCopy.Dictionary.quickAddStep3),
-      body: String(
-        localized:
-          "Choose the word you meant, or create a new one. Quick Add saves the highlighted spelling to your dictionary.",
-        comment: "Dictionary settings, Quick Add teaching card: step 3.")
+      body: String(localized: SettingsItemCopy.Dictionary.quickAddStep3Body)
     )
     .settingsMapRegistration(.quickAddStep3)
   }
@@ -195,12 +190,7 @@ struct QuickAddTeachingSection: View {
       // Verified against MenuBarController.swift: the item's real title is
       // "Add to Dictionary" (nothing selected) or "Add "<word>"" — never
       // literally "Quick Add".
-      value: String(
-        localized:
-          "Click the EnviousWispr icon, then choose the item that starts with \u{201C}Add\u{201D}",
-        comment:
-          "Dictionary settings, Quick Add teaching card: how to reach it from the menu bar. Add is the first word of the menu item; use the same word as that menu item in this language, with this language's quotation marks."
-      )
+      value: String(localized: SettingsItemCopy.Dictionary.quickAddMenuBarBody)
     )
     .settingsMapRegistration(.quickAddMenuBar)
   }

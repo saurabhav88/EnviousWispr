@@ -1,3 +1,4 @@
+import EnviousWisprAudio
 import EnviousWisprCore
 import SwiftUI
 
@@ -59,16 +60,50 @@ enum SettingsMapRef: Sendable {
 
   /// The visible title, resolved through the node's own owner.
   var title: String { SettingsMap.title(of: self) }
+
+  /// The short line a row shows under its title, from the node's description owner. A node
+  /// without a static line is a wiring mistake the row cannot hide.
+  var shortLine: String {
+    guard case .resource(let resource) = SettingsMap.node(id).description else {
+      preconditionFailure("Settings Map: \(id.rawValue) has no static short line")
+    }
+    return String(localized: resource)
+  }
+
+  /// Traps unless the node declares its short line as composed at runtime.
+  func requireRuntimeShortLine() {
+    guard case .runtime = SettingsMap.node(id).description else {
+      preconditionFailure("Settings Map: \(id.rawValue) does not declare a runtime short line")
+    }
+  }
 }
 
-/// Typed runtime inputs for the dynamic resolvers. Each case belongs to exactly one
-/// `SettingsMapDynamicTitle`; `SettingsMap.title(of:)` traps on a mismatch.
+/// Typed runtime inputs for the dynamic resolvers: the state a title depends on, never a title.
+/// `SettingsMap.title(of:)` traps when a context does not fit the node's resolver.
 enum SettingsMapTitleContext: Sendable {
   case currentEngine(EngineChoicePresentation.Choice)
   case lockedLanguage(code: String, spelling: EnglishSpelling)
   case appleIntelligenceStatus(unavailable: Bool)
   /// The Live Preview language catalog's load state, which renames the install row.
   case livePreviewPacks(loading: Bool, failed: Bool)
+  /// A start-word language code from `SpokenPunctuationStartWordEditor.languages`.
+  case startWordLanguage(code: String)
+  case inputDevice(AudioInputDevice)
+  /// A zero-based input on a device with several inputs.
+  case inputSocket(index: Int)
+  case previewLanguage(LivePreviewStatusBarPresentation.Language)
+  /// The chime's display name, as the card shows it.
+  case chime(name: String)
+  case transcribeFileStep(FileImportCoordinator.Step)
+  /// The chosen AI Polish provider (provider card, its section heading, its key link).
+  case provider(LLMProvider)
+  /// The on-device polish engine (EG-1 or S1-mini).
+  case localEngine(name: String)
+  /// The Ollama model the setup step offers to download.
+  case ollamaModel(name: String)
+  case apiKeyReveal(revealed: Bool)
+  /// An app language code from the shipped localizations.
+  case appLanguage(code: String)
 }
 
 extension SettingsMap {
@@ -102,13 +137,62 @@ extension SettingsMap {
         )
         : String(
           localized: "Status", comment: "AI Polish, Apple Intelligence: the status row's title.")
-    case (.resource(let resource), .dynamic(.previewLanguagesInstall, .livePreviewPacks(let loading, let failed))):
+    case (.dynamic(.previewLanguagesInstall), .dynamic(_, .livePreviewPacks(let loading, let failed))):
       if loading { return LivePreviewSettingsCopy.packsLoading }
       if failed { return LivePreviewSettingsCopy.packsUnavailable }
-      return String(localized: resource)
+      return String(localized: LivePreviewSettingsCopy.packsInstallRowTitleResource)
+    case (.dynamic(.startWordLanguage), .dynamic(_, .startWordLanguage(let code))):
+      return SpokenPunctuationStartWordEditor.displayName(for: code)
+    case (.dynamic(.inputDeviceName), .dynamic(_, .inputDevice(let device))):
+      return device.name
+    case (.dynamic(.inputSocketOption), .dynamic(_, .inputSocket(let index))):
+      return InputSocketCopy.optionLabel(index: index)
+    case (.dynamic(.previewLanguage), .dynamic(_, .previewLanguage(let language))):
+      return language.name
+    case (.dynamic(.chimePreview), .dynamic(_, .chime(let name))):
+      return String(localized: "Preview \(name)")
+    case (.dynamic(.transcribeFileStep), .dynamic(_, .transcribeFileStep(let step))):
+      return step.title
+    case (.dynamic(.providerName), .dynamic(_, .provider(let provider))),
+      (.dynamic(.providerSection), .dynamic(_, .provider(let provider))):
+      return PolishRailCatalog.entry(for: provider)?.name ?? provider.displayName
+    case (.dynamic(.apiKeyLink), .dynamic(_, .provider(let provider))):
+      return apiKeyLinkTitle(for: provider)
+    case (.dynamic(.localModelTest), .dynamic(_, .localEngine(let name))):
+      return String(
+        localized: "Test that \(name) is live",
+        comment: "AI Polish, local model: re-checks that the model answers. %@ is its name.")
+    case (.dynamic(.ollamaModelDownload), .dynamic(_, .ollamaModel(let name))):
+      return String(localized: "Download \(name)")
+    case (.dynamic(.apiKeyReveal), .dynamic(_, .apiKeyReveal(let revealed))):
+      return revealed
+        ? String(localized: "Hide key", comment: "AI Polish: hides the API key text.")
+        : String(localized: "Show key", comment: "AI Polish: shows the API key text.")
+    case (.dynamic(.appLanguageName), .dynamic(_, .appLanguage(let code))):
+      return AppLanguagePreference.name(of: code)
     default:
       preconditionFailure(
         "Settings Map: \(ref.id.rawValue) was named with the wrong reference kind")
+    }
+  }
+
+  /// The cloud providers' "get a key" links. Providers without a key page have no link.
+  private static func apiKeyLinkTitle(for provider: LLMProvider) -> String {
+    switch provider {
+    case .openAI:
+      String(
+        localized: "Get your free API key at platform.openai.com",
+        comment: "AI Polish: link to the OpenAI API key page.")
+    case .gemini:
+      String(
+        localized: "Get your free API key at aistudio.google.com",
+        comment: "AI Polish: link to the Gemini API key page.")
+    case .claude:
+      String(
+        localized: "Get your Claude API key",
+        comment: "AI Polish: link to the Claude Platform API key page.")
+    case .ollama, .appleIntelligence, .egOne, .s1Mini, .none:
+      preconditionFailure("Settings Map: \(provider) has no API key link")
     }
   }
 }

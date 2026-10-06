@@ -420,7 +420,7 @@ struct ProviderSetupSection: View {
   var body: some View {
     if let entry = PolishRailCatalog.entry(for: provider) {
       VStack(alignment: .leading, spacing: SettingsPR1Layout.headingGap) {
-        PolishSectionHeading(providerName: entry.name)
+        PolishSectionHeading(provider: provider)
         if surface == .fileImport {
           Text(SettingsCopy.frozenPerImport)
             .font(.stHelper)
@@ -682,7 +682,7 @@ private var s1ControlRows: some View {
   }
   PolishRow(
     map: .id(.s1Tone),
-    icon: "textformat", subtitle: S1ControlCopy.stylingShort,
+    icon: "textformat",
     adaptsTrailing: true
   ) {
     BrandedSegmentedPicker(
@@ -696,8 +696,7 @@ private var s1ControlRows: some View {
   PolishRowDivider()
   PolishRow(
     map: .id(.s1Structure),
-    icon: "list.bullet",
-    subtitle: S1ControlCopy.structureShort, adaptsTrailing: true
+    icon: "list.bullet", adaptsTrailing: true
   ) {
     BrandedSegmentedPicker(
       options: S1Structure.allCases.map { (S1ControlCopy.label(for: $0), nil, $0) },
@@ -710,7 +709,7 @@ private var s1ControlRows: some View {
   PolishRowDivider()
   PolishRow(
     map: .id(.s1Context),
-    icon: "envelope", subtitle: S1ControlCopy.contextShort,
+    icon: "envelope",
     adaptsTrailing: true
   ) {
     BrandedSegmentedPicker(
@@ -729,7 +728,7 @@ private var modelSelectorRow: some View {
   PolishRow(
     map: .id(.polishModel),
     icon: "cpu",
-    subtitle: modelRowSubtitle, adaptsTrailing: true
+    runtimeSubtitle: modelRowSubtitle, adaptsTrailing: true
   ) {
     HStack(spacing: 8) {
       SettingsDropdownField(
@@ -827,9 +826,9 @@ private var modelFieldLabel: String {
     let accessibilityLabel: String
     let privacySentence: String
     /// The line under the key's name: what this provider receives (#3385).
-    var keyShort: String = ""
     /// Where to get a key, when the provider has a page for it.
-    var keyLink: (title: String, url: URL)?
+    /// The provider's key page. Its link title is the Settings Map's (#3482).
+    var keyLink: URL?
   }
 
   private var activeKeyDescriptor: APIKeyDescriptor {
@@ -846,14 +845,7 @@ private var modelFieldLabel: String {
           comment:
             "AI Polish: what a cloud provider receives, shown under its API key field. Keep \"store: false\" as written; it is a request field."
         ),
-        keyShort: String(
-          localized: "Sends text and dictation context to OpenAI.",
-          comment: "AI Polish: the line under the OpenAI API key's name."),
-        keyLink: (
-          String(
-            localized: "Get your free API key at platform.openai.com",
-            comment: "AI Polish: link to the OpenAI API key page."),
-          URL(string: "https://platform.openai.com/api-keys")!)
+        keyLink: URL(string: "https://platform.openai.com/api-keys")!
       )
     case .gemini:
       return APIKeyDescriptor(
@@ -866,14 +858,7 @@ private var modelFieldLabel: String {
           comment:
             "AI Polish: what a cloud provider receives, shown under its API key field. Keep \"store: false\" as written; it is a request field."
         ),
-        keyShort: String(
-          localized: "Sends text and dictation context to Google.",
-          comment: "AI Polish: the line under the Google Gemini API key's name."),
-        keyLink: (
-          String(
-            localized: "Get your free API key at aistudio.google.com",
-            comment: "AI Polish: link to the Gemini API key page."),
-          URL(string: "https://aistudio.google.com/apikey")!)
+        keyLink: URL(string: "https://aistudio.google.com/apikey")!
       )
     case .claude:
       // Claude's privacy sentence does not reuse OpenAI/Gemini's "store:
@@ -893,14 +878,7 @@ private var modelFieldLabel: String {
           localized:
             "Claude polish sends your transcribed text, plus the active app name and any custom words you've added, but never audio. Anthropic's own retention policy for your API account governs how long the request is kept.",
           comment: "AI Polish: what a cloud provider receives, shown under its API key field."),
-        keyShort: String(
-          localized: "Sends text and dictation context to Anthropic.",
-          comment: "AI Polish: the line under the Claude API key's name."),
-        keyLink: (
-          String(
-            localized: "Get your Claude API key",
-            comment: "AI Polish: link to the Claude Platform API key page."),
-          URL(string: "https://platform.claude.com/settings/keys")!)
+        keyLink: URL(string: "https://platform.claude.com/settings/keys")!
       )
     // #2651: enumerated rather than `default:`. The empty descriptor is only
     // safe because `apiKeyRow` renders for cloud providers alone, and that
@@ -956,10 +934,12 @@ private var apiKeyRow: some View {
   if let mapID = descriptor.mapID {
   PolishRow(
       map: .id(mapID),
-      icon: "key", subtitle: descriptor.keyShort,
+      icon: "key",
       detail: {
         if let link = descriptor.keyLink {
-          Link(link.title, destination: link.url)
+          Link(
+            SettingsMapRef.dynamic(.apiKeyGetKeyLink, .provider(provider)).title,
+            destination: link)
             .font(.stHelper).tint(Color.stAccent)
             .padding(.top, 2)
             .settingsMapRegistration(.apiKeyGetKeyLink)
@@ -1056,9 +1036,7 @@ private func keyField(_ descriptor: APIKeyDescriptor) -> some View {
 }
 
 private var revealKeyTitle: String {
-  revealsKey
-    ? String(localized: "Hide key", comment: "AI Polish: hides the API key text.")
-    : String(localized: "Show key", comment: "AI Polish: shows the API key text.")
+  SettingsMapRef.dynamic(.apiKeyReveal, .apiKeyReveal(revealed: revealsKey)).title
 }
 
 // MARK: - Validation Badge
@@ -1551,7 +1529,9 @@ private var ollamaSetupContent: some View {
         // own pull arrives second and cancels this download. Both pull entry points read
         // the same signal.
         SettingsActionButton(
-          title: "Download \(surfaceOllamaModel)",
+          verbatimTitle: SettingsMapRef.dynamic(
+            .ollamaDownloadModel, .ollamaModel(name: surfaceOllamaModel)
+          ).title,
           isEnabled: !hostedAddIsResolving,
           emphasis: .filled, size: .medium
         ) {
@@ -1600,7 +1580,7 @@ private var ollamaSetupContent: some View {
     PolishRow(
       map: .id(.ollamaServer),
       icon: "server.rack",
-      subtitle: OllamaSetupService.serverAddress
+      runtimeSubtitle: OllamaSetupService.serverAddress
     ) {
       HStack(spacing: 10) {
         ProviderStatusChip(
@@ -1775,7 +1755,7 @@ private var ollamaBrowseModelsCard: some View {
         .appleIntelligenceStatus(unavailable: report?.overallStatus == .unavailable)),
       icon: isAvailable ? "checkmark.circle" : "exclamationmark.triangle",
       iconTint: isAvailable ? .stAccent : .stWarning,
-      subtitle: appleStatusLine(report)
+      runtimeSubtitle: appleStatusLine(report)
     ) {
       HStack(spacing: 10) {
         if let status = currentProviderStatus {

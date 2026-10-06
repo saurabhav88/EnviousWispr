@@ -371,9 +371,7 @@ struct AIPolishSettingsView: View {
               Text(SettingsItemCopy.AIPolish.enable)
                 .settingsRowTitle()
               Text(
-                String(
-                  localized: "Fixes grammar, punctuation and formatting",
-                  comment: "AI Polish: the line under Enable AI Polish."))
+                String(localized: SettingsItemCopy.AIPolish.enableShort))
                 .settingsReadingCopy()
             }
           }
@@ -458,21 +456,21 @@ enum S1ControlCopy {
 
   static let stylingLabelResource = LocalizedStringResource("Tone", comment: "AI Polish, S1-mini writing-style card: the tone setting's name.")
   static var stylingLabel: String { String(localized: stylingLabelResource) }
-  static let stylingShort = String(
-    localized: "Choose how formal your text sounds.",
+  static let stylingShortResource = LocalizedStringResource("Choose how formal your text sounds.",
     comment: "AI Polish, S1-mini: the line under Tone.")
+  static var stylingShort: String { String(localized: stylingShortResource) }
   static let structureLabelResource = LocalizedStringResource("Structure",
     comment: "AI Polish, S1-mini writing-style card: the structure setting's name.")
   static var structureLabel: String { String(localized: structureLabelResource) }
-  static let structureShort = String(
-    localized: "Keep sentences or turn spoken items into lists.",
+  static let structureShortResource = LocalizedStringResource("Keep sentences or turn spoken items into lists.",
     comment: "AI Polish, S1-mini: the line under Structure.")
+  static var structureShort: String { String(localized: structureShortResource) }
   static let contextLabelResource = LocalizedStringResource("Context",
     comment: "AI Polish, S1-mini writing-style card: the context setting's name.")
   static var contextLabel: String { String(localized: contextLabelResource) }
-  static let contextShort = String(
-    localized: "Format dictated greetings and sign-offs as email.",
+  static let contextShortResource = LocalizedStringResource("Format dictated greetings and sign-offs as email.",
     comment: "AI Polish, S1-mini: the line under Context.")
+  static var contextShort: String { String(localized: contextShortResource) }
 
   static func labelResource(for styling: S1Styling) -> LocalizedStringResource {
     switch styling {

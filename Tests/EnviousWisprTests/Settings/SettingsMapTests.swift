@@ -1,3 +1,4 @@
+import EnviousWisprAudio
 import EnviousWisprCore
 import Foundation
 import Testing
@@ -26,6 +27,12 @@ struct SettingsMapTests {
       let target: String?
       let fallbacks: [String]?
       let dynamicTitle: Bool?
+      let description: Description?
+    }
+    struct Description: Decodable {
+      let kind: String
+      let english: String?
+      let why: String?
     }
     struct Structural: Decodable {
       let id: String
@@ -79,6 +86,67 @@ struct SettingsMapTests {
     #expect(nodes.count > 250, "only \(nodes.count) nodes; the map lost entries")
   }
 
+  /// The plan's tree (§3.6): window, page, tab, section, item. A node's parent sits higher in
+  /// that order, except that a choice or action belongs to the item it acts on.
+  @Test("the tree runs window, page, tab, section, item, and sections match the inventory")
+  func hierarchy() throws {
+    func level(_ structure: SettingsMapStructure) -> Int {
+      switch structure {
+      case .window: 0
+      case .page: 1
+      case .tab: 2
+      case .section: 3
+      case .item: 4
+      }
+    }
+    var checked = 0
+    for node in SettingsMap.nodes {
+      guard let parentID = node.parent else { continue }
+      let parent = SettingsMap.node(parentID)
+      checked += 1
+      if node.structure == .item, parent.structure == .item {
+        // Headings drawn as items (the current engine's heading, a provider's section) hold rows.
+        continue
+      }
+      #expect(
+        level(parent.structure) < level(node.structure),
+        "\(node.id.rawValue) (\(node.structure)) sits under \(parentID.rawValue) (\(parent.structure))")
+      if node.structure == .tab || node.structure == .section {
+        #expect(parent.destination?.page == node.destination?.page, "\(node.id.rawValue) page")
+      }
+    }
+    #expect(checked == SettingsMap.nodes.count - 1)
+    let sections = try Self.inventory().structural.filter { $0.kind == "section" }
+    #expect(sections.count == 17, "\(sections.count) sections")
+    for section in sections {
+      let node = SettingsMap.node(try #require(SettingsMapID(rawValue: section.id)))
+      #expect(node.structure == .section, "\(section.id)")
+      #expect(node.parent?.rawValue == section.parent, "\(section.id) parent")
+    }
+  }
+
+  /// An arrival lands on its target, or walks its fallbacks when the target is not on screen.
+  /// Whatever the state, the place it ends on must exist whenever its page is shown.
+  @Test("every entry ends on a place that is always shown")
+  func everyArrivalHasALanding() {
+    var checked = 0
+    for node in SettingsMap.nodes {
+      guard let target = node.target else { continue }
+      checked += 1
+      let landing = node.fallbacks.last ?? target
+      #expect(
+        SettingsMap.node(landing).visibility == .always,
+        "\(node.id.rawValue) ends on \(landing.rawValue), which is not always shown")
+      for step in node.fallbacks {
+        #expect(SettingsMap.node(step).item != nil, "\(node.id.rawValue) falls back to structure")
+        #expect(
+          SettingsMap.node(step).destination?.page == node.destination?.page,
+          "\(node.id.rawValue) falls back to another page")
+      }
+    }
+    #expect(checked == SettingsMap.nodes.filter { $0.item != nil }.count)
+  }
+
   @Test("searchable entries match the inventory both ways; exempt places have no id")
   func itemCorrespondence() throws {
     let inventory = try Self.inventory()
@@ -125,6 +193,83 @@ struct SettingsMapTests {
           node.parent?.rawValue == parent, "\(item.id) parent \(String(describing: node.parent))")
       }
     }
+  }
+
+  /// The expected English is the Phase 0 survey's text for the item's line, matched exactly to
+  /// the String Catalog; it is not read from the map or from the copy owners.
+  @Test("each item's description is its line's own owner, a declared runtime line, or none")
+  func descriptions() throws {
+    var counts: [String: Int] = [:]
+    for item in try Self.inventory().items where item.disposition == "mapped" {
+      let node = SettingsMap.node(try #require(SettingsMapID(rawValue: item.id)))
+      let kind = item.description?.kind ?? "none"
+      counts[kind, default: 0] += 1
+      switch (kind, node.description) {
+      case ("static", .resource(let resource)?):
+        #expect(
+          String(localized: resource) == item.description?.english,
+          "\(item.id): \(String(localized: resource))")
+      case ("runtime", .runtime?), ("none", nil):
+        break
+      default:
+        Issue.record("\(item.id): inventory says \(kind), map has \(String(describing: node.description))")
+      }
+    }
+    #expect(counts == ["static": 91, "runtime": 18, "none": 137], "\(counts)")
+    for node in SettingsMap.nodes where node.item == nil {
+      #expect(node.description == nil, "\(node.id.rawValue): structure has no line")
+    }
+  }
+
+  /// Each runtime-named place resolves through its node's resolver. Expected English is written
+  /// here from the shipped interface (test host locale: English), not read from the resolvers.
+  @Test("every runtime-named place resolves through its own resolver")
+  func dynamicResolvers() {
+    func title(_ id: SettingsMapID, _ context: SettingsMapTitleContext) -> String {
+      SettingsMapRef.dynamic(id, context).title
+    }
+    #expect(
+      title(.currentEngineSection, .currentEngine(EngineChoicePresentation.fast))
+        == "FAST · PARAKEET V3")
+    #expect(
+      title(.appleIntelligenceStatus, .appleIntelligenceStatus(unavailable: true))
+        == "Not available on this Mac")
+    #expect(
+      title(.appleIntelligenceStatus, .appleIntelligenceStatus(unavailable: false)) == "Status")
+    #expect(title(.startWordLanguageDe, .startWordLanguage(code: "de")) == "German")
+    let device = AudioInputDevice(id: 7, name: "Scarlett 2i2", uid: "usb", inputChannelCount: 2)
+    #expect(title(.inputDeviceDevice, .inputDevice(device)) == "Scarlett 2i2")
+    #expect(title(.inputSocketInput, .inputSocket(index: 1)) == "Input 2")
+    #expect(
+      title(.livePreviewLanguage, .previewLanguage(.init(name: "Deutsch", provenance: "x")))
+        == "Deutsch")
+    #expect(title(.recordingChimePreview, .chime(name: "Dust Mote")) == "Preview Dust Mote")
+    #expect(title(.transcribeFileSteps, .transcribeFileStep(.upload)) == "Upload")
+    #expect(title(.transcribeFileSteps, .transcribeFileStep(.polish)) == "Polish")
+    #expect(title(.aiPolishProvider, .provider(.gemini)) == "Google Gemini")
+    #expect(title(.aiPolishProviderSection, .provider(.egOne)) == "EG-1")
+    #expect(
+      title(.apiKeyGetKeyLink, .provider(.openAI))
+        == "Get your free API key at platform.openai.com")
+    #expect(title(.apiKeyGetKeyLink, .provider(.claude)) == "Get your Claude API key")
+    #expect(title(.localModelTestLive, .localEngine(name: "EG-1")) == "Test that EG-1 is live")
+    #expect(title(.ollamaDownloadModel, .ollamaModel(name: "llama3.2")) == "Download llama3.2")
+    #expect(title(.apiKeyReveal, .apiKeyReveal(revealed: false)) == "Show key")
+    #expect(title(.apiKeyReveal, .apiKeyReveal(revealed: true)) == "Hide key")
+    #expect(title(.appLanguageShipped, .appLanguage(code: "de")) == "Deutsch")
+    #expect(title(.lockedLanguage, .lockedLanguage(code: "de", spelling: .american)) == "Deutsch (German)")
+    let packs = title(.previewLanguagesInstall, .livePreviewPacks(loading: false, failed: false))
+    #expect(packs == String(localized: LivePreviewSettingsCopy.packsInstallRowTitleResource))
+    #expect(
+      title(.previewLanguagesInstall, .livePreviewPacks(loading: true, failed: false))
+        == LivePreviewSettingsCopy.packsLoading)
+    // Every declared resolver kind is exercised above or by a page render.
+    let dynamicKinds = Set(
+      SettingsMap.nodes.compactMap { node -> String? in
+        if case .dynamic(let kind) = node.title { return String(describing: kind) }
+        return nil
+      })
+    #expect(dynamicKinds.count == 17, "\(dynamicKinds.sorted())")
   }
 
   @Test("every title resolves through its owner; only the inventory's dynamic places are dynamic")
@@ -203,11 +348,10 @@ struct SettingsMapTests {
       #expect(list.allSatisfy { SettingsMap.node($0).item == .choice })
     }
     #expect(
-      Set(Self.choiceTitles(of: .pillStyle))
-        == Set(
-          RecordingPillAppearancePanel.displayOrder.map {
-            String(localized: $0.displayNameResource)
-          }))
+      Self.choiceTitles(of: .pillStyle)
+        == RecordingPillAppearancePanel.displayOrder.map {
+          String(localized: $0.displayNameResource)
+        })
     #expect(
       Self.choiceTitles(of: .recordingChime)
         == RecordingSoundPairing.allCases.map { String(localized: displayNameResource(for: $0)) })
@@ -227,11 +371,16 @@ struct SettingsMapTests {
         == [String(localized: SettingsItemCopy.Dictionary.allCategories)]
         + WordCategory.allCases.map(\.displayName) + [CustomTermProvenanceCopy.filterPill])
     // Every exposed provider; `LLMProvider.none` is the switched-off state, not a choice.
-    #expect(Self.choiceTitles(of: .aiPolishProvider) == PolishRailCatalog.all.map(\.name))
+    // The dropdown lists providers group by group.
+    #expect(
+      Self.choiceTitles(of: .aiPolishProvider)
+        == PolishRailGroup.allCases.flatMap { PolishRailCatalog.providers(in: $0) }.map(\.name))
+    #expect(Set(Self.choiceTitles(of: .aiPolishProvider)) == Set(PolishRailCatalog.all.map(\.name)))
     #expect(!PolishRailCatalog.all.contains { $0.provider == .none })
     #expect(
-      LivePreviewEngineChoice.allCases.map { LivePreviewSettingsView.mapID(for: $0) }
-        == [.previewEngineApple, .previewEngineUniversal])
+      LivePreviewSettingsView.engineChoices.map { LivePreviewSettingsView.mapID(for: $0) }
+        == SettingsMap.nodes.filter { $0.parent == .previewEngine && $0.item == .choice }.map(\.id))
+    #expect(Set(LivePreviewSettingsView.engineChoices) == Set(LivePreviewEngineChoice.allCases))
     #expect(
       SpokenPunctuationRules.startWordLanguages.map { "startWordLanguage.\($0)" }
         == SettingsMap.nodes.filter { $0.parent == .startWordLanguage && $0.item == .choice }

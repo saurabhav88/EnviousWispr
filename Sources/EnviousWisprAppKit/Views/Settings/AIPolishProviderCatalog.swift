@@ -302,13 +302,20 @@ enum PolishRailGroup: CaseIterable {
 struct PolishRailProvider: Identifiable, Equatable {
   let provider: LLMProvider
   let name: String
-  let tagline: String
+  /// The line under the name in the dropdown; the Settings Map (#3482) reads the same resource.
+  let taglineResource: LocalizedStringResource
   /// The line under the name on the provider card (founder's Claude Design, 2026-10-03).
   let short: String
   let group: PolishRailGroup
   let recommended: Bool
 
   var id: LLMProvider { provider }
+  var tagline: String { String(localized: taglineResource) }
+
+  static func == (lhs: Self, rhs: Self) -> Bool {
+    lhs.provider == rhs.provider && lhs.name == rhs.name && lhs.tagline == rhs.tagline
+      && lhs.short == rhs.short && lhs.group == rhs.group && lhs.recommended == rhs.recommended
+  }
 }
 
 enum PolishRailCatalog {
@@ -323,8 +330,8 @@ enum PolishRailCatalog {
   static let all: [PolishRailProvider] = [
     PolishRailProvider(
       provider: .egOne, name: LLMProvider.egOne.displayName,
-      tagline: String(
-        localized: "Our tuned model",
+      taglineResource: LocalizedStringResource(
+        "Our tuned model",
         comment: "AI Polish provider list: description under a provider name. EG-1, our own model."),
       short: String(
         localized: "Our model for cleaning up dictation on this Mac.",
@@ -339,8 +346,8 @@ enum PolishRailCatalog {
       // Founder 2026-09-04: the credit must be READABLE wherever the model is listed.
       // Capitalisation is fixed by the licence's ADDITIONAL TERM: "Superwhisper", lower-case
       // w, not "SuperWhisper". The card's short line carries the credit too.
-      tagline: String(
-        localized: "by Superwhisper",
+      taglineResource: LocalizedStringResource(
+        "by Superwhisper",
         comment:
           "AI Polish provider list: description under a provider name. Required licence credit; keep Superwhisper as written."
       ),
@@ -352,8 +359,8 @@ enum PolishRailCatalog {
       group: .onThisMac, recommended: false),
     PolishRailProvider(
       provider: .appleIntelligence, name: LLMProvider.appleIntelligence.displayName,
-      tagline: String(
-        localized: "Built into macOS",
+      taglineResource: LocalizedStringResource(
+        "Built into macOS",
         comment: "AI Polish provider list: description under a provider name. Apple Intelligence."),
       short: String(
         localized: "On-device polish on supported Macs with macOS 26+.",
@@ -361,8 +368,8 @@ enum PolishRailCatalog {
       group: .onThisMac, recommended: false),
     PolishRailProvider(
       provider: .ollama, name: LLMProvider.ollama.displayName,
-      tagline: String(
-        localized: "Your models, local or hosted",
+      taglineResource: LocalizedStringResource(
+        "Your models, local or hosted",
         comment: "AI Polish provider list: description under a provider name. Ollama."),
       short: String(
         localized: "Your models, local or hosted.",
@@ -370,8 +377,8 @@ enum PolishRailCatalog {
       group: .yourOwnSetup, recommended: false),
     PolishRailProvider(
       provider: .openAI, name: LLMProvider.openAI.displayName,
-      tagline: String(
-        localized: "Your API key",
+      taglineResource: LocalizedStringResource(
+        "Your API key",
         comment:
           "AI Polish provider list: description under a provider name. A cloud provider on the user's own key."
       ),
@@ -384,8 +391,8 @@ enum PolishRailCatalog {
     // `PolishRailCatalogTests` pins this exact copy.
     PolishRailProvider(
       provider: .gemini, name: geminiName,
-      tagline: String(
-        localized: "Your API key",
+      taglineResource: LocalizedStringResource(
+        "Your API key",
         comment:
           "AI Polish provider list: description under a provider name. A cloud provider on the user's own key."
       ),
@@ -395,8 +402,8 @@ enum PolishRailCatalog {
       group: .cloud, recommended: false),
     PolishRailProvider(
       provider: .claude, name: LLMProvider.claude.displayName,
-      tagline: String(
-        localized: "Your API key",
+      taglineResource: LocalizedStringResource(
+        "Your API key",
         comment:
           "AI Polish provider list: description under a provider name. A cloud provider on the user's own key."
       ),

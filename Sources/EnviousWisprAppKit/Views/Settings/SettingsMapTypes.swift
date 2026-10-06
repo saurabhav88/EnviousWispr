@@ -28,6 +28,14 @@ enum SettingsMapTitle: Sendable {
   case dynamic(SettingsMapDynamicTitle)
 }
 
+/// What a searchable item says about itself: the line the interface shows under or beside its
+/// name (#3482 plan §3.1). A resource is that line's own owner; `.runtime` marks a line the
+/// control composes from state (a count, a device, a download state), which the map never samples.
+enum SettingsMapDescription: Sendable {
+  case resource(LocalizedStringResource)
+  case runtime
+}
+
 /// The runtime-named nodes. Each case names one resolver; `SettingsMapTitleContext` carries its
 /// inputs. The static map never stores a sampled runtime value.
 enum SettingsMapDynamicTitle: Sendable {
@@ -40,7 +48,6 @@ enum SettingsMapDynamicTitle: Sendable {
   case previewLanguage
   case providerName
   case providerSection
-  case localModelPrimaryAction
   case localModelTest
   case ollamaModelDownload
   case chimePreview
@@ -48,6 +55,7 @@ enum SettingsMapDynamicTitle: Sendable {
   case apiKeyReveal
   case apiKeyLink
   case transcribeFileStep
+  case previewLanguagesInstall
 }
 
 /// When a node's control is on screen. Named conditions only, so the render tests can put the
@@ -88,6 +96,8 @@ struct SettingsMapNode: Sendable {
   /// Set when the node is a searchable entry.
   let item: SettingsMapItemKind?
   let title: SettingsMapTitle
+  /// The item's short line, when it has one; nil for structure and for items without a line.
+  let description: SettingsMapDescription?
   let parent: SettingsMapID?
   /// The page (and Dictation or App tab) the node lives on.
   let destination: SettingsDestination?
