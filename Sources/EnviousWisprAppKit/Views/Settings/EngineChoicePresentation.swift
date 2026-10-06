@@ -47,6 +47,9 @@ enum EngineChoicePresentation {
     }
   }
 
+  private static let fastModelName = "Parakeet v3"
+  private static let allLanguagesModelName = "Whisper Large v3 Turbo"
+
   private static let modelLabel = LocalizedStringResource(
     "Model", comment: "Speech engine settings, engine card: a row label in the card's spec table.")
   private static let languagesLabel = LocalizedStringResource(
@@ -75,10 +78,10 @@ enum EngineChoicePresentation {
     tagline: LocalizedStringResource(
       "Pick this for everyday English and European dictation.",
       comment: "Speech engine settings, engine card: when to pick the fast engine."),
-    model: "Parakeet v3",
+    model: fastModelName,
     summary: DictationSettingsCopy.Engine.fastSummary,
     specs: [
-      Spec(label: modelLabel, value: .verbatim("Parakeet v3")),
+      Spec(label: modelLabel, value: .verbatim(fastModelName)),
       Spec(
         label: languagesLabel,
         value: .localized(
@@ -112,10 +115,10 @@ enum EngineChoicePresentation {
     tagline: LocalizedStringResource(
       "Pick this for other languages or the toughest audio.",
       comment: "Speech engine settings, engine card: when to pick the multilingual engine."),
-    model: "Whisper Large v3 Turbo",
+    model: allLanguagesModelName,
     summary: DictationSettingsCopy.Engine.allLanguagesSummary,
     specs: [
-      Spec(label: modelLabel, value: .verbatim("Whisper Large v3 Turbo")),
+      Spec(label: modelLabel, value: .verbatim(allLanguagesModelName)),
       Spec(
         label: languagesLabel,
         value: .localized(
