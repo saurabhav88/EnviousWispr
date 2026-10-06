@@ -1621,6 +1621,9 @@ package final class WisprBootstrapper {
                 for: device, transportToken: AudioDeviceEnumerator.transportLabel(for: device.id)))
           }
         },
+        isMicrophoneConnected: { uid in
+          AudioDeviceEnumerator.allInputDevices().contains { $0.uid == uid }
+        },
         openTranscribeFile: {
           navigationCoordinator.request(.transcribeFile)
           appWindowCoordinator.showWindow()
