@@ -217,7 +217,7 @@ struct SnippetsCoordinatorImportTests {
     #expect(published == 1)
   }
 
-  @Test("An explicit refresh waits for a writer that holds the lock rather than answering stale")
+  @Test("A contended refresh adopts the writer's fresh disk state and publishes it")
   func refreshWaitsForAWriter() throws {
     let url = FileManager.default.temporaryDirectory
       .appendingPathComponent("ew-refresh-\(UUID().uuidString)", isDirectory: true)
@@ -235,6 +235,8 @@ struct SnippetsCoordinatorImportTests {
       version: SnippetsManager.currentVersion, keyword: "backslash", snippets: [after, before]))
     var published: [SnippetVocabulary] = []
     coordinator.onVocabularyChanged = { published.append($0) }
+    // This binds the stale-backup outcome, not elapsed time inside the kernel syscall.
+    // The observer releases the writer before acquisition; actual syscall blocking is not measured.
     fixture.arm()
     fixture.startWriter(data: data)
     var joined = false
