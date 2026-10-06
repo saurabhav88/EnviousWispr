@@ -675,21 +675,18 @@ struct OverlayDirectorTests {
       "a mid-dictation settings change resized the live pill, which is the #930 rebuild flicker")
   }
 
-  /// **The accessibility notice announces the SAME sentence whether or not the
-  /// toast is shown, and that is the whole reason it is one method.**
+  /// **VoiceOver says what the pill shows (#2321, founder 2026-10-04).**
   ///
-  /// The shipped panel posts the accessibility announcement BEFORE its
-  /// eligibility branch, so a VoiceOver user hears "Accessibility permission
-  /// needed for auto-paste" even on the runs where the toast is suppressed and
-  /// the clipboard hint is drawn instead. Routing the suppressed case through
-  /// `.pipeline(.clipboardFallback)` would say "Text copied to clipboard" — a
-  /// different sentence, and a silent change in what a blind user is told,
-  /// arriving inside a refactor.
+  /// The permission sentence is spoken only when the permission toast is really drawn. On the
+  /// runs where the toast is suppressed and the clipboard hint is drawn instead, VoiceOver
+  /// hears the hint's own sentence, so a blind user is not told about a permission the screen
+  /// no longer mentions. The shipped panel used to post the permission sentence BEFORE its
+  /// eligibility branch, which is the defect.
   ///
-  /// Paired ACCEPTED and SUPPRESSED cases, because a guard that only checked
-  /// the suppressed one would pass a version that never shows the toast at all.
-  @Test("the accessibility notice keeps its spoken sentence when the toast is suppressed")
-  func suppressedAccessibilityToastKeepsItsAnnouncement() {
+  /// Paired ACCEPTED and SUPPRESSED cases, because a guard that only checked the suppressed
+  /// one would pass a version that never shows the toast at all.
+  @Test("the accessibility notice speaks what the pill shows, toast or clipboard hint")
+  func suppressedAccessibilityToastSpeaksTheClipboardHint() {
     let (shown, _, shownSink) = Self.director()
     defer { Self.closeAllWindows() }
 
@@ -704,8 +701,8 @@ struct OverlayDirectorTests {
       shownSink.announcements.map(\.text)
         == [DictationNarrator.announcement(for: .accessibilityToast)])
 
-    // Suppressed because the user dismissed the standing warning — the real
-    // reason, driven through the real policy rather than a stubbed answer.
+    // Suppressed because the user dismissed the standing warning: the real reason, driven
+    // through the real policy rather than a stubbed answer.
     let (suppressed, _, suppressedSink) = Self.director(warningDismissed: { true })
 
     suppressed.present(.accessibilityNotice)
@@ -718,10 +715,8 @@ struct OverlayDirectorTests {
       fallback.text == DictationNarrator.clipboardFallbackText,
       "a suppressed toast did not fall back to the clipboard hint")
     #expect(
-      suppressedSink.announcements.map(\.text)
-        == [DictationNarrator.announcement(for: .accessibilityToast)],
-      "the suppressed run announced the clipboard sentence, which tells a blind user something different from what the shipped app tells them"
-    )
+      suppressedSink.announcements.map(\.text) == [fallback.text],
+      "VoiceOver did not say the sentence the pill shows")
   }
 
   /// **A duplicate push must cost nothing at all**, and "nothing" has three
@@ -796,15 +791,13 @@ struct OverlayDirectorTests {
     // reducer commits, and it was read here through a director hatch; the
     // reducer suite can assert it directly and in the Release lane. What this
     // case keeps is the part a user meets: the picture is the clipboard
-    // fallback and the sentence spoken is still the accessibility one.
+    // fallback and the sentence spoken is the pill's own (#2321).
     guard case .notice(let notice)? = d.renderModel.state.presentation?.content else {
       Issue.record("expected the clipboard fallback")
       return
     }
     #expect(notice.kind == .processing)
-    #expect(
-      sink.announcements.map(\.text)
-        == [DictationNarrator.announcement(for: .accessibilityToast)])
+    #expect(sink.announcements.map(\.text) == [notice.text])
   }
 
   /// **The two app-level buttons must be BOUND.** Grant and Discard were

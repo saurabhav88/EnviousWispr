@@ -568,27 +568,28 @@ struct OverlayReducer {
     let showToast = showingToast()
     let toast = reducePipeline(.accessibilityToast)
     guard !showToast, let shown = toast.presentation,
-      // The SECOND catalog request of this transition, with the SAME id.
-      // Stated rather than left to be rediscovered: this path substitutes the
-      // clipboard DEFINITION while retaining the accessibility entry's
-      // ANNOUNCEMENT, which is the one place the two halves of an entry
-      // legitimately come from different requests. Neither request carries or
-      // resolves a recording design.
+      // The SECOND catalog request of this transition, with the SAME id. Neither
+      // request carries or resolves a recording design.
       let fallback = PillCatalog.entry(for: .clipboardFallback, id: shown.id).definition
     else {
       return toast
     }
 
-    // Only the picture changes. `reducePipeline` has already set the intent to
-    // `.accessibilityToast` and that is the intent this IS; the fallback merely
-    // draws in its place.
+    // The picture AND the spoken sentence change (#2321, founder 2026-10-04): VoiceOver says
+    // what the pill shows, "Copied. Press \u{2318}V to paste", and the permission sentence is
+    // spoken only when the permission toast is really drawn. `reducePipeline` has already set
+    // the intent to `.accessibilityToast` and that is the intent this IS; the fallback merely
+    // draws in its place. Priority stays what the toast announced.
     state.set(current: fallback)
 
     return OverlayPlan(
       presentation: fallback, didChange: toast.didChange,
       expiryCommand: Self.command(for: fallback),
       deliverAction: toast.deliverAction, effects: toast.effects,
-      announcement: toast.announcement)
+      announcement: toast.announcement.map {
+        OverlayAnnouncement(
+          text: DictationNarrator.clipboardFallbackText, isHighPriority: $0.isHighPriority)
+      })
   }
 
   // MARK: - Features

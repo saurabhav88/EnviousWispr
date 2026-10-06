@@ -316,10 +316,9 @@ enum FrozenPillParity {
       expiry: .after(seconds: 3, pausesOnHover: false),
       announcement: nil),
 
-    // The accessibility path's two outcomes. The refused case is the one that
-    // matters: it draws the CLIPBOARD definition while retaining the
-    // ACCESSIBILITY announcement — the only place a definition and an
-    // announcement legitimately come from different requests.
+    // The accessibility path's two outcomes. The refused case draws the CLIPBOARD definition
+    // and speaks the pill's own sentence (#2321, founder 2026-10-04); it used to retain the
+    // ACCESSIBILITY announcement, so VoiceOver said something different from the screen.
     FrozenRow(
       label: "accessibilityNotice.toastRefused", hasDefinition: true, contentTag: "notice",
       notice: FrozenNotice(
@@ -328,7 +327,7 @@ enum FrozenPillParity {
       width: .measured, fixedHeight: nil,
       expiry: .after(seconds: 2.5, pausesOnHover: false),
       announcement: FrozenAnnouncement(
-        text: "Accessibility permission needed for auto-paste", isHighPriority: true)),
+        text: "Copied. Press ⌘V to paste", isHighPriority: true)),
 
     FrozenRow(
       label: "accessibilityNotice.toastShown", hasDefinition: true, contentTag: "notice",

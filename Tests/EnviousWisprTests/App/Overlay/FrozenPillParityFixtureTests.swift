@@ -163,11 +163,10 @@ struct FrozenPillParityFixtureTests {
     #expect(withWords.usesPreviewLayout != withoutWords.usesPreviewLayout)
   }
 
-  /// The accessibility refusal draws one request's definition under another
-  /// request's announcement. It is the only row where that is legitimate, and
-  /// C2 has to reproduce it exactly.
-  @Test("a refused accessibility toast draws the clipboard pill and keeps its own sentence")
-  func accessibilityRefusalMixesTwoRequests() throws {
+  /// The accessibility refusal draws the clipboard pill and speaks the pill's own sentence
+  /// (#2321). Priority stays the toast's; C2 has to reproduce both.
+  @Test("a refused accessibility toast draws the clipboard pill and speaks its sentence")
+  func accessibilityRefusalSpeaksWhatItDraws() throws {
     let refused = try #require(
       FrozenPillParity.rows.first { $0.label == "accessibilityNotice.toastRefused" })
     let clipboard = try #require(
@@ -182,7 +181,10 @@ struct FrozenPillParityFixtureTests {
     #expect(refused.width == clipboard.width)
     #expect(refused.expiry == clipboard.expiry)
     #expect(
-      refused.announcement == shown.announcement,
-      "the spoken sentence stays the accessibility one")
+      refused.announcement?.text == refused.notice?.text,
+      "VoiceOver must say the sentence the pill shows")
+    #expect(
+      refused.announcement?.isHighPriority == shown.announcement?.isHighPriority,
+      "the priority stays the toast's")
   }
 }
