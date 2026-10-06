@@ -41,6 +41,10 @@ struct InterfaceCatalogSourceTests {
     "notification.update.ready.body": "Version %@ ist bereit. Klicke zum Installieren.",
     "feedback.title": "Feedback senden",
     "feedback.send": "Senden",
+    // #3482: the Theme picker's choices, now owned by ThemeChoicePresentation.
+    "System": "System",
+    "Light": "Hell",
+    "Dark": "Dunkel",
     // #3271: the model download host moved; the sentence gives IT allowlist guidance.
     "Could not download the model. Check your connection. On a managed network, ask IT whether models.enviouswispr.com is allowed.":
       "Das Modell konnte nicht heruntergeladen werden. Prüfe deine Verbindung. Frage in einem verwalteten Netzwerk die IT, ob models.enviouswispr.com freigegeben ist.",
