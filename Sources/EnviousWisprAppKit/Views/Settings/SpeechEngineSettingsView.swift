@@ -55,119 +55,29 @@ struct SpeechEngineSettingsView: View {
   private var engineCards: some View {
     // ── Transcription Engine (card selector) ─────────────────────────
     // A primary choice with meaningful trade-offs, so it reads as two
-    // selectable cards rather than a segmented pill (#3). Copy advertises
-    // Parakeet's 25 European languages, not just English (founder, 2026-07-03).
+    // selectable cards rather than a segmented pill (#3).
     // (#3385: the cards now open under the summary's Change button.)
     // Two equal flexible columns so the pair always spans the full content
     // width (an adaptive grid left-packs them and strands empty space on the
     // right). Each card carries a "pick this when" tagline plus a four-row spec
-    // table. Every value is grounded: Parakeet's 25-language support is
-    // confirmed by the NVIDIA model card AND a live in-app test (French/Spanish/
-    // German, 2026-07-03); transcribe times come from our own benchmark data
-    // (asr-landscape-2026.md). The "Runs on" values are read from the actual
-    // compute-unit config: Parakeet loads `.cpuAndNeuralEngine` (FluidAudio
-    // AsrModels.defaultConfiguration), WhisperKit is pinned `.cpuAndGPU` and
-    // explicitly avoids the Neural Engine (WhisperKitBackend dictationCompute-
-    // Options, #879). Both run entirely on-device.
+    // table, owned by EngineChoicePresentation (#3482), where the grounding for
+    // every value lives beside it.
     LazyVGrid(
       columns: [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)],
       spacing: 12
     ) {
-      EngineCard(
-        icon: "bolt.fill",
-        title: String(
-          localized: "Fast", comment: "Speech engine settings, engine card: the fast engine's name."
-        ),
-        tagline: String(
-          localized: "Pick this for everyday English and European dictation.",
-          comment: "Speech engine settings, engine card: when to pick the fast engine."),
-        specs: [
-          (
-            String(
-              localized: "Model",
-              comment: "Speech engine settings, engine card: a row label in the card's spec table."),
-            "Parakeet v3"
-          ),
-          (
-            String(
-              localized: "Languages",
-              comment: "Speech engine settings, engine card: a row label in the card's spec table."),
-            String(
-              localized: "25 European languages",
-              comment: "Speech engine settings, engine card: how many languages it covers.")
-          ),
-          (
-            String(
-              localized: "Runs on",
-              comment: "Speech engine settings, engine card: a row label in the card's spec table."),
-            String(
-              localized: "Apple Neural Engine",
-              comment:
-                "Speech engine settings, engine card: the chip it runs on. Use Apple's own name for the Neural Engine in your language."
-            )
-          ),
-          (
-            String(
-              localized: "Transcribe time",
-              comment: "Speech engine settings, engine card: a row label in the card's spec table."),
-            String(
-              localized: "Usually ~0.1s after you speak",
-              comment:
-                "Speech engine settings, engine card: how quickly text appears. 0.1s is a tenth of a second."
-            )
-          ),
-        ],
-        isSelected: settings.selectedBackend == .parakeet
-      ) {
-        settings.selectedBackend = .parakeet
-        // #3385: picking, including the engine already chosen, closes the choices.
-        showEngineChoices = false
-      }
-      EngineCard(
-        icon: "globe",
-        title: String(
-          localized: "All Languages",
-          comment: "Speech engine settings, engine card: the multilingual engine's name."),
-        tagline: String(
-          localized: "Pick this for other languages or the toughest audio.",
-          comment: "Speech engine settings, engine card: when to pick the multilingual engine."),
-        specs: [
-          (
-            String(
-              localized: "Model",
-              comment: "Speech engine settings, engine card: a row label in the card's spec table."),
-            "Whisper Large v3 Turbo"
-          ),
-          (
-            String(
-              localized: "Languages",
-              comment: "Speech engine settings, engine card: a row label in the card's spec table."),
-            String(
-              localized: "99+ languages",
-              comment: "Speech engine settings, engine card: how many languages it covers.")
-          ),
-          (
-            String(
-              localized: "Runs on",
-              comment: "Speech engine settings, engine card: a row label in the card's spec table."),
-            String(
-              localized: "Apple GPU",
-              comment:
-                "Speech engine settings, engine card: the chip it runs on, the graphics processor.")
-          ),
-          (
-            String(
-              localized: "Transcribe time",
-              comment: "Speech engine settings, engine card: a row label in the card's spec table."),
-            String(
-              localized: "Usually 1-2s after you speak",
-              comment: "Speech engine settings, engine card: how quickly text appears, in seconds.")
-          ),
-        ],
-        isSelected: settings.selectedBackend == .whisperKit
-      ) {
-        settings.selectedBackend = .whisperKit
-        showEngineChoices = false
+      ForEach(EngineChoicePresentation.choices, id: \.backend) { choice in
+        EngineCard(
+          icon: choice.icon,
+          title: String(localized: choice.title),
+          tagline: String(localized: choice.tagline),
+          specs: choice.specs.map { (String(localized: $0.label), $0.value.resolved) },
+          isSelected: settings.selectedBackend == choice.backend
+        ) {
+          settings.selectedBackend = choice.backend
+          // #3385: picking, including the engine already chosen, closes the choices.
+          showEngineChoices = false
+        }
       }
     }
   }
@@ -515,20 +425,15 @@ struct SpeechEngineSettingsView: View {
 
   private var isParakeet: Bool { settings.selectedBackend == .parakeet }
 
-  private var currentEngineIcon: String { isParakeet ? "bolt.fill" : "globe" }
-
-  private var currentEngineName: String {
-    isParakeet
-      ? String(
-        localized: "Fast", comment: "Speech engine settings, engine card: the fast engine's name.")
-      : String(
-        localized: "All Languages",
-        comment: "Speech engine settings, engine card: the multilingual engine's name.")
+  private var currentEngine: EngineChoicePresentation.Choice {
+    EngineChoicePresentation.choice(for: settings.selectedBackend)
   }
 
-  private var currentEngineModel: String {
-    isParakeet ? "Parakeet v3" : "Whisper Large v3 Turbo"
-  }
+  private var currentEngineIcon: String { currentEngine.icon }
+
+  private var currentEngineName: String { String(localized: currentEngine.title) }
+
+  private var currentEngineModel: String { currentEngine.model }
 
   /// "FAST · PARAKEET V3": the heading names the engine these explanations describe.
   private var currentEngineHeading: String {
@@ -542,7 +447,7 @@ struct SpeechEngineSettingsView: View {
   private var engineSummary: some View {
     EngineSummaryContent(icon: currentEngineIcon, name: currentEngineName,
       model: currentEngineModel,
-      short: String(localized: isParakeet ? Copy.fastSummary : Copy.allLanguagesSummary))
+      short: String(localized: currentEngine.summary))
   }
 
   private func requestFastRecheck() {
