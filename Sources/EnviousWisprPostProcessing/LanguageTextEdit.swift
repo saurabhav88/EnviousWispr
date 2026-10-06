@@ -30,9 +30,10 @@ enum LanguageEditRefusal: Error, Sendable, Equatable {
   /// A digit-regrouping edit whose replacement does not carry exactly the original ASCII digits in
   /// order, or whose range holds a non-ASCII decimal digit.
   case changesDigits
-  /// A digit-hour edit whose named chunk is not one or two ASCII digits plus closing punctuation,
-  /// is not the end of the edit, or whose replacement drops that punctuation.
-  case notADigitHourChunk
+  /// A clock edit whose named chunks are not whole number chunks of one or two ASCII digits (an
+  /// optional `h`), lie outside the edit or overlap, carry punctuation without ending the edit, or
+  /// whose replacement drops that punctuation.
+  case notAClockChunk
 }
 
 /// An immutable original text with UTF-16 coordinates.
@@ -129,24 +130,27 @@ struct LanguageTextSnapshot: Sendable, Equatable {
         permission: .regroupsDigits))
   }
 
-  /// Mints an edit that replaces ONE already-written number chunk a pass has read as a clock hour
-  /// (`halb 8` to `7:30`). The chunk must be one or two ASCII digits followed only by closing
-  /// punctuation, it must end the edit, and the replacement must end with that same punctuation, so
-  /// a sentence mark or a bracket is carried, never dropped. The editor checks all of it again on
-  /// apply and refuses any other protected span the edit touches. For the clock pass's digit hours;
+  /// Mints an edit that replaces a spoken clock idiom whose hour or minutes the engine already
+  /// wrote as digits (`halb 8` to `7:30`, `9 menos cuarto` to `8:45`). It names EVERY number chunk
+  /// it consumes: each must be a whole number chunk of one or two ASCII digits, optionally followed
+  /// by `h` (`8h`), inside the edit; closing punctuation is allowed only on a chunk that ends the
+  /// edit, and the replacement must end with that same punctuation, so a sentence mark or a bracket
+  /// is carried, never dropped. The digits may change (a "to" idiom moves the hour back): the
+  /// clock meaning is the pass's decision, the editor checks the shape. The editor checks all of it
+  /// again on apply and refuses any other protected span the edit touches. For the clock passes;
   /// every other edit uses `edit(replacing:with:)` or `edit(regroupingDigitsIn:with:)`.
   func edit(
-    replacing range: Range<Int>, consumingDigitHourChunk chunk: Range<Int>,
+    replacing range: Range<Int>, consumingClockChunks chunks: [Range<Int>],
     with replacement: String
   ) -> Result<LanguageTextEdit, LanguageEditRefusal> {
     if let refusal = validate(range) { return .failure(refusal) }
-    guard isDigitHourEdit(range, chunk: chunk, replacement: replacement) else {
-      return .failure(.notADigitHourChunk)
+    guard isClockEdit(range, chunks: chunks, replacement: replacement) else {
+      return .failure(.notAClockChunk)
     }
     return .success(
       LanguageTextEdit(
         range: range, replacement: replacement, snapshotIdentity: identity,
-        permission: .replacesDigitHourChunk(chunk)))
+        permission: .replacesClockChunks(chunks)))
   }
 
   /// Mints an edit that rewrites a written number together with the unit word after it ("48
@@ -164,28 +168,38 @@ struct LanguageTextSnapshot: Sendable, Equatable {
         permission: .rewritesNumberAndUnit))
   }
 
-  /// Closing punctuation a digit-hour chunk may carry after its digits.
-  private static let digitHourClosing = Set(".,;:!?)]}\"'»”’“‘".unicodeScalars.map(\.value))
+  /// Closing punctuation a clock chunk may carry after its digits.
+  private static let clockChunkClosing = Set(".,;:!?)]}\"'»”’“‘".unicodeScalars.map(\.value))
 
-  /// True when `chunk` ends `range`, starts inside it, is one or two ASCII digits followed only by
-  /// closing punctuation, and `replacement` ends with that punctuation.
-  fileprivate func isDigitHourEdit(_ range: Range<Int>, chunk: Range<Int>, replacement: String)
+  /// True when `chunks` is a nonempty ascending list of disjoint ranges inside `range`, each one or
+  /// two ASCII digits, an optional `h`, then closing punctuation only when the chunk ends `range`
+  /// (and `replacement` ends with that punctuation).
+  fileprivate func isClockEdit(_ range: Range<Int>, chunks: [Range<Int>], replacement: String)
     -> Bool
   {
-    guard chunk.upperBound == range.upperBound, chunk.lowerBound > range.lowerBound,
-      let text = substring(chunk)
-    else { return false }
-    let scalars = Array(text.unicodeScalars)
-    var digitCount = 0
-    while digitCount < scalars.count, (0x30...0x39).contains(scalars[digitCount].value) {
-      digitCount += 1
+    guard !chunks.isEmpty else { return false }
+    var previousEnd = range.lowerBound
+    for chunk in chunks {
+      guard !chunk.isEmpty, chunk.lowerBound >= previousEnd, chunk.upperBound <= range.upperBound,
+        let text = substring(chunk)
+      else { return false }
+      previousEnd = chunk.upperBound
+      let scalars = Array(text.unicodeScalars)
+      var index = 0
+      while index < scalars.count, (0x30...0x39).contains(scalars[index].value) { index += 1 }
+      guard (1...2).contains(index) else { return false }
+      if index < scalars.count, scalars[index] == "h" { index += 1 }
+      guard scalars[index...].allSatisfy({ Self.clockChunkClosing.contains($0.value) }) else {
+        return false
+      }
+      if index < scalars.count {
+        guard chunk.upperBound == range.upperBound else { return false }
+        var closing = String.UnicodeScalarView()
+        closing.append(contentsOf: scalars[index...])
+        guard replacement.hasSuffix(String(closing)) else { return false }
+      }
     }
-    guard (1...2).contains(digitCount),
-      scalars[digitCount...].allSatisfy({ Self.digitHourClosing.contains($0.value) })
-    else { return false }
-    var closing = String.UnicodeScalarView()
-    closing.append(contentsOf: scalars[digitCount...])
-    return replacement.hasSuffix(String(closing))
+    return true
   }
 
   /// True when `replacement` holds exactly the ASCII digits of `range`, in order, and neither
@@ -234,9 +248,9 @@ struct LanguageTextEdit: Sendable, Equatable {
     case plain
     /// Minted by `edit(regroupingDigitsIn:with:)`: may cover whole number chunks, digits kept.
     case regroupsDigits
-    /// Minted by `edit(replacing:consumingDigitHourChunk:with:)`: may replace this one digit-hour
-    /// chunk.
-    case replacesDigitHourChunk(Range<Int>)
+    /// Minted by `edit(replacing:consumingClockChunks:with:)`: may replace exactly these whole
+    /// number chunks of a clock idiom.
+    case replacesClockChunks([Range<Int>])
     /// Minted by `edit(rewritingNumberAndUnitIn:with:)`: may cover whole number and measurement
     /// chunks, digits kept ("48 Prozent" to "48%").
     case rewritesNumberAndUnit
@@ -316,11 +330,16 @@ enum LanguageTextEditor {
             return .refused(.intersectsProtectedSpan(span))
           }
         }
-      case .replacesDigitHourChunk(let chunk):
-        guard snapshot.isDigitHourEdit(edit.range, chunk: chunk, replacement: edit.replacement)
-        else { return .refused(.notADigitHourChunk) }
-        for span in intersecting where span.kind != .number || span.range != chunk {
+      case .replacesClockChunks(let chunks):
+        guard snapshot.isClockEdit(edit.range, chunks: chunks, replacement: edit.replacement)
+        else { return .refused(.notAClockChunk) }
+        for span in intersecting where span.kind != .number || !chunks.contains(span.range) {
           return .refused(.intersectsProtectedSpan(span))
+        }
+        // Every named chunk must BE a number span of this snapshot, not a stretch of words.
+        let numberRanges = Set(intersecting.filter { $0.kind == .number }.map(\.range))
+        guard chunks.allSatisfy({ numberRanges.contains($0) }) else {
+          return .refused(.notAClockChunk)
         }
       }
     }

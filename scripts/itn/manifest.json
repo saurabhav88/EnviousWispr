@@ -440,5 +440,259 @@
       "replacement": "+",
       "provenance": "Portuguese spoken plus. Measured 2026-10-06 on Azure TTS through Parakeet and WhisperKit: every international number keeps the spoken plus word before the digits; word from the language's own telephone usage."
     }
+  },
+  "hourFirstClock": {
+    "fr": {
+      "style": "h",
+      "hourAnchors": [
+        "à",
+        "vers",
+        "jusqu'à",
+        "dès",
+        "avant",
+        "après"
+      ],
+      "gluedAnchors": [],
+      "hours": {
+        "une": 1,
+        "deux": 2,
+        "trois": 3,
+        "quatre": 4,
+        "cinq": 5,
+        "six": 6,
+        "sept": 7,
+        "huit": 8,
+        "neuf": 9,
+        "dix": 10,
+        "onze": 11,
+        "douze": 12
+      },
+      "hourMarkers": [
+        "heure",
+        "heures"
+      ],
+      "noon": [
+        "midi"
+      ],
+      "midnight": [
+        "minuit"
+      ],
+      "noonAnchors": [
+        "à",
+        "vers",
+        "jusqu'à",
+        "dès",
+        "avant",
+        "après"
+      ],
+      "connector": "et",
+      "fractions": {
+        "demie": 30,
+        "demi": 30,
+        "quart": 15
+      },
+      "minus": "moins",
+      "minusFractions": {
+        "le quart": 15
+      },
+      "before": null,
+      "minuteFirstAnchors": [],
+      "provenance": "Measured 2026-10-06 (Azure TTS, two voices, Parakeet and WhisperKit file runners; docs/audits/2026-10-06-1677-fr-shapes): the engines write the hour as digits or words and keep the half, quarter and 'to' words. Anchor and fraction words from the language's own clock usage; minute-first and digit-minute rules per the #1677 clock plan review."
+    },
+    "es": {
+      "style": "colon",
+      "hourAnchors": [
+        "a las",
+        "a la",
+        "hasta las",
+        "hasta la",
+        "desde las",
+        "desde la",
+        "sobre las",
+        "sobre la",
+        "para las",
+        "para la",
+        "de las",
+        "de la",
+        "son las",
+        "es la"
+      ],
+      "gluedAnchors": [],
+      "hours": {
+        "una": 1,
+        "dos": 2,
+        "tres": 3,
+        "cuatro": 4,
+        "cinco": 5,
+        "seis": 6,
+        "siete": 7,
+        "ocho": 8,
+        "nueve": 9,
+        "diez": 10,
+        "once": 11,
+        "doce": 12
+      },
+      "hourMarkers": [],
+      "noon": [],
+      "midnight": [],
+      "noonAnchors": [],
+      "connector": "y",
+      "fractions": {
+        "media": 30,
+        "cuarto": 15,
+        "un cuarto": 15
+      },
+      "minus": "menos",
+      "minusFractions": {
+        "cuarto": 15,
+        "un cuarto": 15
+      },
+      "before": {
+        "word": "para",
+        "articles": [
+          "las",
+          "la"
+        ],
+        "articleBeforeTime": true
+      },
+      "minuteFirstAnchors": [
+        "a",
+        "son",
+        "es"
+      ],
+      "provenance": "Measured 2026-10-06 (Azure TTS, two voices, Parakeet and WhisperKit file runners; docs/audits/2026-10-06-1677-es-shapes): the engines write the hour as digits or words and keep the half, quarter and 'to' words. Anchor and fraction words from the language's own clock usage; minute-first and digit-minute rules per the #1677 clock plan review."
+    },
+    "it": {
+      "style": "colon",
+      "hourAnchors": [
+        "alle",
+        "dalle",
+        "verso le",
+        "fino alle",
+        "entro le",
+        "per le",
+        "sono le"
+      ],
+      "gluedAnchors": [
+        "all'",
+        "dall'",
+        "l'"
+      ],
+      "hours": {
+        "una": 1,
+        "due": 2,
+        "tre": 3,
+        "quattro": 4,
+        "cinque": 5,
+        "sei": 6,
+        "sette": 7,
+        "otto": 8,
+        "nove": 9,
+        "dieci": 10,
+        "undici": 11,
+        "dodici": 12
+      },
+      "hourMarkers": [],
+      "noon": [
+        "mezzogiorno"
+      ],
+      "midnight": [
+        "mezzanotte"
+      ],
+      "noonAnchors": [
+        "a",
+        "per",
+        "verso",
+        "entro",
+        "dopo",
+        "è"
+      ],
+      "connector": "e",
+      "fractions": {
+        "mezza": 30,
+        "mezzo": 30,
+        "un quarto": 15,
+        "tre quarti": 45,
+        "3 quarti": 45
+      },
+      "minus": "meno",
+      "minusFractions": {
+        "un quarto": 15,
+        "1 quarto": 15
+      },
+      "before": null,
+      "minuteFirstAnchors": [],
+      "provenance": "Measured 2026-10-06 (Azure TTS, two voices, Parakeet and WhisperKit file runners; docs/audits/2026-10-06-1677-it-shapes): the engines write the hour as digits or words and keep the half, quarter and 'to' words. Anchor and fraction words from the language's own clock usage; minute-first and digit-minute rules per the #1677 clock plan review."
+    },
+    "pt": {
+      "style": "h",
+      "hourAnchors": [
+        "às",
+        "à",
+        "para as",
+        "para a",
+        "até às",
+        "até à",
+        "até as",
+        "desde as",
+        "pelas",
+        "pela"
+      ],
+      "gluedAnchors": [],
+      "hours": {
+        "uma": 1,
+        "duas": 2,
+        "três": 3,
+        "quatro": 4,
+        "cinco": 5,
+        "seis": 6,
+        "sete": 7,
+        "oito": 8,
+        "nove": 9,
+        "dez": 10,
+        "onze": 11,
+        "doze": 12
+      },
+      "hourMarkers": [],
+      "noon": [
+        "meio-dia"
+      ],
+      "midnight": [
+        "meia-noite"
+      ],
+      "noonAnchors": [
+        "ao",
+        "à",
+        "até ao",
+        "até à",
+        "pelo",
+        "pela"
+      ],
+      "connector": "e",
+      "fractions": {
+        "meia": 30,
+        "um quarto": 15,
+        "1 quarto": 15
+      },
+      "minus": "menos",
+      "minusFractions": {
+        "um quarto": 15,
+        "1 quarto": 15
+      },
+      "before": {
+        "word": "para",
+        "articles": [
+          "as",
+          "a",
+          "às"
+        ],
+        "articleBeforeTime": false
+      },
+      "minuteFirstAnchors": [
+        "às",
+        "à"
+      ],
+      "provenance": "Measured 2026-10-06 (Azure TTS, two voices, Parakeet and WhisperKit file runners; docs/audits/2026-10-06-1677-pt-shapes): the engines write the hour as digits or words and keep the half, quarter and 'to' words. Anchor and fraction words from the language's own clock usage; minute-first and digit-minute rules per the #1677 clock plan review."
+    }
   }
 }

@@ -82,6 +82,7 @@ DEFAULT_ORDINAL_OUT = ROOT / "Sources/EnviousWisprPostProcessing/Generated/Germa
 DEFAULT_CLOCK_OUT = ROOT / "Sources/EnviousWisprPostProcessing/Generated/GermanClockIdiomData.swift"
 DEFAULT_STYLE_OUT = ROOT / "Sources/EnviousWisprPostProcessing/Generated/GermanNumberStyleData.swift"
 DEFAULT_TRIGGERS_OUT = ROOT / "Sources/EnviousWisprPostProcessing/Generated/PhoneTriggerData.swift"
+DEFAULT_HOUR_CLOCK_OUT = ROOT / "Sources/EnviousWisprPostProcessing/Generated/HourFirstClockData.swift"
 
 SOFT_HYPHEN = "­"
 ROLE_ORDER = ["zero", "unit", "teen", "tens"]
@@ -1275,6 +1276,206 @@ def generate_triggers_bytes(manifest_path):
     return None if rows is None else emit_phone_triggers(rows).encode("utf-8")
 
 
+HOUR_CLOCK_FIELDS = {
+    "style", "hourAnchors", "gluedAnchors", "hours", "hourMarkers", "noon", "midnight",
+    "noonAnchors", "connector", "fractions", "minus", "minusFractions", "before",
+    "minuteFirstAnchors", "provenance",
+}
+
+
+def build_hour_first_clock(manifest):
+    """Validates `hourFirstClock` (#1677): the hour-first clock idioms of the languages that are
+    not German. Returns None when the manifest declares none. Never coerces a malformed value."""
+    decl = manifest.get("hourFirstClock")
+    if decl is None:
+        return None
+    if not isinstance(decl, dict) or not decl:
+        raise GenerationError("hourFirstClock: must be a non-empty object of language codes")
+
+    def word(value, where):
+        if not isinstance(value, str):
+            raise GenerationError(f"{where}: {value!r} is not a word")
+        folded = normalize_spoken(value)
+        if not folded or folded != value or re.search(r"\s", folded):
+            raise GenerationError(f"{where}: {value!r} must be one lower-case NFC word")
+        return folded
+
+    def phrase(value, where):
+        if not isinstance(value, str) or not value.strip():
+            raise GenerationError(f"{where}: {value!r} is not a phrase")
+        tokens = value.split(" ")
+        return [word(t, where) for t in tokens]
+
+    def phrases(value, where, allow_empty):
+        if not isinstance(value, list) or (not value and not allow_empty):
+            raise GenerationError(f"{where}: must be a {'' if allow_empty else 'non-empty '}list")
+        out = [phrase(v, where) for v in value]
+        if len({tuple(p) for p in out}) != len(out):
+            raise GenerationError(f"{where}: duplicate phrase")
+        return out
+
+    def valued(value, where, allowed):
+        if not isinstance(value, dict) or not value:
+            raise GenerationError(f"{where}: must be a non-empty object")
+        out = []
+        for key, minutes in value.items():
+            if minutes not in allowed or isinstance(minutes, bool):
+                raise GenerationError(f"{where}.{key}: minutes must be one of {sorted(allowed)}")
+            out.append((phrase(key, where), minutes))
+        return out
+
+    out = []
+    for code in sorted(decl):
+        entry = decl[code]
+        where = f"hourFirstClock.{code}"
+        if not re.fullmatch(r"[a-z]{2}", code):
+            raise GenerationError(f"hourFirstClock: {code!r} is not a two-letter language code")
+        if code == "de":
+            raise GenerationError("hourFirstClock: German owns its reviewed clockIdiom section")
+        if not isinstance(entry, dict) or set(entry) != HOUR_CLOCK_FIELDS:
+            raise GenerationError(f"{where}: fields are {', '.join(sorted(HOUR_CLOCK_FIELDS))}")
+        if entry["style"] not in ("h", "colon"):
+            raise GenerationError(f"{where}.style: must be 'h' or 'colon'")
+        hours = entry["hours"]
+        if not isinstance(hours, dict) or sorted(hours.values()) != list(range(1, 13)) \
+                or any(isinstance(v, bool) for v in hours.values()):
+            raise GenerationError(f"{where}.hours: must spell each hour 1 to 12 exactly once")
+        spelled = sorted((word(k, f"{where}.hours"), v) for k, v in hours.items())
+        glued = entry["gluedAnchors"]
+        if not isinstance(glued, list) or any(
+                not isinstance(g, str) or not g.endswith("'") or len(g) < 2 for g in glued):
+            raise GenerationError(f"{where}.gluedAnchors: each must end with an apostrophe")
+        glued = [word(g, f"{where}.gluedAnchors") for g in glued]
+        noon = [word(w, f"{where}.noon") for w in entry["noon"]] if isinstance(entry["noon"], list) \
+            else None
+        midnight = [word(w, f"{where}.midnight") for w in entry["midnight"]] \
+            if isinstance(entry["midnight"], list) else None
+        if noon is None or midnight is None:
+            raise GenerationError(f"{where}: noon and midnight must be lists")
+        noon_anchors = phrases(entry["noonAnchors"], f"{where}.noonAnchors", True)
+        if bool(noon or midnight) != bool(noon_anchors):
+            raise GenerationError(f"{where}: noonAnchors are required exactly when noon or midnight")
+        markers = entry["hourMarkers"]
+        if not isinstance(markers, list):
+            raise GenerationError(f"{where}.hourMarkers: must be a list")
+        markers = [word(w, f"{where}.hourMarkers") for w in markers]
+        before = entry["before"]
+        first_anchors = phrases(entry["minuteFirstAnchors"], f"{where}.minuteFirstAnchors", True)
+        if before is None:
+            if first_anchors:
+                raise GenerationError(f"{where}: minuteFirstAnchors need a 'before' word")
+            before_word, before_articles, article_before_time = None, [], False
+        else:
+            if not isinstance(before, dict) \
+                    or set(before) != {"word", "articles", "articleBeforeTime"} or not first_anchors:
+                raise GenerationError(f"{where}.before: needs word, articles, articleBeforeTime "
+                                      "and minuteFirstAnchors")
+            if not isinstance(before["articleBeforeTime"], bool):
+                raise GenerationError(f"{where}.before.articleBeforeTime: must be true or false")
+            before_word = word(before["word"], f"{where}.before.word")
+            if not isinstance(before["articles"], list) or not before["articles"]:
+                raise GenerationError(f"{where}.before.articles: must be a non-empty list")
+            before_articles = [word(a, f"{where}.before.articles") for a in before["articles"]]
+            article_before_time = before["articleBeforeTime"]
+        if not isinstance(entry["provenance"], str) or not entry["provenance"].strip():
+            raise GenerationError(f"{where}.provenance: is empty")
+        out.append({
+            "code": code,
+            "style": entry["style"],
+            "hourAnchors": phrases(entry["hourAnchors"], f"{where}.hourAnchors", False),
+            "gluedAnchors": glued,
+            "hours": spelled,
+            "hourMarkers": markers,
+            "noon": noon,
+            "midnight": midnight,
+            "noonAnchors": noon_anchors,
+            "connector": word(entry["connector"], f"{where}.connector"),
+            "fractions": valued(entry["fractions"], f"{where}.fractions", {15, 30, 45}),
+            "minus": word(entry["minus"], f"{where}.minus"),
+            "minusFractions": valued(entry["minusFractions"], f"{where}.minusFractions", {15}),
+            "beforeWord": before_word,
+            "beforeArticles": before_articles,
+            "articleBeforeTime": article_before_time,
+            "minuteFirstAnchors": first_anchors,
+            "provenance": entry["provenance"],
+        })
+    return out
+
+
+def emit_hour_first_clock(rows):
+    def tokens(p):
+        return "[" + ", ".join(swift_string(t) for t in p) + "]"
+
+    def tokens_list(ps):
+        return "[" + ", ".join(tokens(p) for p in ps) + "]"
+
+    def strings(ws):
+        return "[" + ", ".join(swift_string(w) for w in ws) + "]"
+
+    def valued(vs):
+        return "[" + ", ".join(f"({tokens(p)}, {m})" for p, m in vs) + "]"
+
+    out = ["// GENERATED by scripts/itn/generate.py from scripts/itn/manifest.json. DO NOT EDIT.",
+           "// Regenerate with scripts/itn/generate.py; scripts/itn/generate.py --check verifies it.",
+           "//",
+           f"// Hour-first clock idioms for {len(rows)} languages (#1677). Admission data, not reviewed",
+           "// refusals. Words are folded (lower case, NFC); a phrase is its words in order.",
+           "",
+           "enum HourFirstClockData {",
+           "  struct Language: Sendable {",
+           "    let style: String",
+           "    let hourAnchors: [[String]]",
+           "    let gluedAnchors: [String]",
+           "    let hours: [(word: String, value: Int)]",
+           "    let hourMarkers: [String]",
+           "    let noon: [String]",
+           "    let midnight: [String]",
+           "    let noonAnchors: [[String]]",
+           "    let connector: String",
+           "    let fractions: [(words: [String], minutes: Int)]",
+           "    let minus: String",
+           "    let minusFractions: [(words: [String], minutes: Int)]",
+           "    let beforeWord: String?",
+           "    let beforeArticles: [String]",
+           "    /// The minute-first form writes the article before the time (`a las 7:45`).",
+           "    let articleBeforeTime: Bool",
+           "    let minuteFirstAnchors: [[String]]",
+           "  }",
+           "",
+           "  static let languages: [String: Language] = ["]
+    for r in rows:
+        before = "nil" if r["beforeWord"] is None else swift_string(r["beforeWord"])
+        out += [
+            f"    {swift_string(r['code'])}: Language(",
+            f"      style: {swift_string(r['style'])},",
+            f"      hourAnchors: {tokens_list(r['hourAnchors'])},",
+            f"      gluedAnchors: {strings(r['gluedAnchors'])},",
+            "      hours: [" + ", ".join(f"({swift_string(w)}, {v})" for w, v in r["hours"]) + "],",
+            f"      hourMarkers: {strings(r['hourMarkers'])},",
+            f"      noon: {strings(r['noon'])},",
+            f"      midnight: {strings(r['midnight'])},",
+            f"      noonAnchors: {tokens_list(r['noonAnchors'])},",
+            f"      connector: {swift_string(r['connector'])},",
+            f"      fractions: {valued(r['fractions'])},",
+            f"      minus: {swift_string(r['minus'])},",
+            f"      minusFractions: {valued(r['minusFractions'])},",
+            f"      beforeWord: {before},",
+            f"      beforeArticles: {strings(r['beforeArticles'])},",
+            f"      articleBeforeTime: {'true' if r['articleBeforeTime'] else 'false'},",
+            f"      minuteFirstAnchors: {tokens_list(r['minuteFirstAnchors'])}),",
+        ]
+    out += ["  ]", ""]
+    for r in rows:
+        out.append(f"  // {r['code']}: " + r["provenance"].replace("\n", " "))
+    out += ["}", ""]
+    return "\n".join(out)
+
+
+def generate_hour_clock_bytes(manifest_path):
+    rows = build_hour_first_clock(load_manifest(Path(manifest_path)))
+    return None if rows is None else emit_hour_first_clock(rows).encode("utf-8")
+
+
 def generate_style_bytes(manifest_path):
     """The number-style output, or None when the manifest declares none."""
     manifest = load_manifest(Path(manifest_path))
@@ -1301,7 +1502,8 @@ def write_atomically(path, data):
 
 
 def run_check(manifest_path, out_path, phone_out_path, ordinal_out_path, clock_out_path,
-              style_out_path=DEFAULT_STYLE_OUT, triggers_out_path=DEFAULT_TRIGGERS_OUT):
+              style_out_path=DEFAULT_STYLE_OUT, triggers_out_path=DEFAULT_TRIGGERS_OUT,
+              hour_clock_out_path=DEFAULT_HOUR_CLOCK_OUT):
     """Verifies EVERY declared generated file without rewriting any of them."""
     with tempfile.TemporaryDirectory(prefix="itn-check-") as tmp:
         pairs = [(generate_bytes(manifest_path), out_path)]
@@ -1320,6 +1522,9 @@ def run_check(manifest_path, out_path, phone_out_path, ordinal_out_path, clock_o
         triggers = generate_triggers_bytes(manifest_path)
         if triggers is not None:
             pairs.append((triggers, triggers_out_path))
+        hour_clock = generate_hour_clock_bytes(manifest_path)
+        if hour_clock is not None:
+            pairs.append((hour_clock, hour_clock_out_path))
         for index, (fresh, committed) in enumerate(pairs):
             regenerated = Path(tmp) / f"fresh-{index}.swift"
             write_atomically(regenerated, fresh)
@@ -1370,6 +1575,7 @@ def main(argv=None):
     parser.add_argument("--clock-out", default=str(DEFAULT_CLOCK_OUT))
     parser.add_argument("--style-out", default=str(DEFAULT_STYLE_OUT))
     parser.add_argument("--triggers-out", default=str(DEFAULT_TRIGGERS_OUT))
+    parser.add_argument("--hour-clock-out", default=str(DEFAULT_HOUR_CLOCK_OUT))
     mode = parser.add_mutually_exclusive_group()
     for flag in ("--check", "--self-test", "--refresh", "--inventory"):
         mode.add_argument(flag, action="store_true")
@@ -1381,7 +1587,7 @@ def main(argv=None):
             run_refresh(args.manifest)
         elif args.check:
             run_check(args.manifest, args.out, args.phone_out, args.ordinal_out, args.clock_out,
-                      args.style_out, args.triggers_out)
+                      args.style_out, args.triggers_out, args.hour_clock_out)
         elif args.inventory:
             manifest = load_manifest(args.manifest)
             print("\n".join(inventory_lines(build(manifest, Path(args.manifest).parent))))
@@ -1402,6 +1608,7 @@ def main(argv=None):
             clock = generate_clock_bytes(args.manifest)
             style = generate_style_bytes(args.manifest)
             triggers = generate_triggers_bytes(args.manifest)
+            hour_clock = generate_hour_clock_bytes(args.manifest)
             write_atomically(args.out, data)
             print(f"wrote {args.out} ({len(data)} bytes, sha256 {hashlib.sha256(data).hexdigest()})")
             if phone is not None:
@@ -1420,6 +1627,10 @@ def main(argv=None):
                 write_atomically(args.triggers_out, triggers)
                 print(f"wrote {args.triggers_out} ({len(triggers)} bytes, sha256 "
                       f"{hashlib.sha256(triggers).hexdigest()})")
+            if hour_clock is not None:
+                write_atomically(args.hour_clock_out, hour_clock)
+                print(f"wrote {args.hour_clock_out} ({len(hour_clock)} bytes, sha256 "
+                      f"{hashlib.sha256(hour_clock).hexdigest()})")
             if style is not None:
                 write_atomically(args.style_out, style)
                 print(f"wrote {args.style_out} ({len(style)} bytes, sha256 "
