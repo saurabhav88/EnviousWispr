@@ -26,6 +26,7 @@ import argparse
 import datetime
 import hashlib
 import json
+import os
 import pathlib
 import re
 import shutil
@@ -62,22 +63,35 @@ def quote(value):
     return "'" + str(value).replace("'", "''") + "'"
 
 
-def declaration_lines(map_source, id_source):
-    """Map raw id -> (file, line) of the node's declaration: its `id: .case` (or family tuple
-    `(.case,`) in SettingsMap.swift, else its `case` line in SettingsMapID.swift."""
+def declaration_lines(map_source, id_source, parents, choices):
+    """Map raw id -> (file, line, producer) of the code that builds the node at the pinned
+    revision: its literal `id: .case` in SettingsMap.swift, or, for a generated choice, the
+    `choices(of: .parentCase, ...)` call that builds its family (else the one shared choice
+    constructor). SettingsMapID.swift only spells an id, so it is never cited."""
     cases = {}
-    id_lines = {}
-    for number, line in enumerate(id_source.splitlines(), 1):
+    for line in id_source.splitlines():
         match = re.search(r'case (\w+) = "([^"]+)"', line)
         if match:
             cases[match.group(2)] = match.group(1)
-            id_lines[match.group(2)] = number
     map_lines = map_source.splitlines()
+    generators = [n for n, text in enumerate(map_lines, 1)
+                  if re.search(r"\bid:\s*id,\s*structure:\s*\.item,\s*item:\s*\.choice\b", text)]
     found = {}
     for raw, case in cases.items():
         pattern = re.compile(r"(id: \.|\(\.)" + re.escape(case) + r"\b")
         line = next((n for n, text in enumerate(map_lines, 1) if pattern.search(text)), None)
-        found[raw] = (MAP_FILE, line) if line else (ID_FILE, id_lines[raw])
+        if line is not None:
+            found[raw] = (MAP_FILE, line, "node")
+            continue
+        parent_case = cases.get(parents.get(raw) or "")
+        family = [n for n, text in enumerate(map_lines, 1)
+                  if parent_case and re.search(r"\bof: \." + re.escape(parent_case) + r",", text)]
+        if len(family) == 1:
+            found[raw] = (MAP_FILE, family[0], f"choices(of: .{parent_case})")
+        elif raw in choices and len(generators) == 1:
+            found[raw] = (MAP_FILE, generators[0], "SettingsMap.choices (shared choice producer)")
+        else:
+            raise PublishError(f"{raw}: no unique verified map-node producer")
     return found
 
 
@@ -101,16 +115,26 @@ def plan(export, mapping, connection, declarations, revision, export_hash, date)
     existing = {row[0]: row for row in connection.execute(
         "SELECT surface_slug, platform_key, parent_surface_slug, surface_kind, user_label, position, "
         "evidence_key FROM ui_surface")}
+    # A declared-new surface is inserted once; on a later run it already exists, and is reused
+    # only if it is exactly the owned definition.
+    pending_new = {}
     for slug in surfaces:
         if slug in new:
-            if slug in existing:
-                raise PublishError(f"{slug} is declared new but already exists")
             spec = new[slug]
             if spec["kind"] not in KINDS:
                 raise PublishError(f"{slug}: unknown kind {spec['kind']}")
             parent = spec["parent"]
             if parent not in existing and parent not in new:
                 raise PublishError(f"{slug}: parent {parent} does not exist")
+            if parent in existing and existing[parent][1] != "macos":
+                raise PublishError(f"{slug}: parent {parent} is not macOS")
+            if slug in existing:
+                row = existing[slug]
+                if (row[1] != "macos" or row[2] != parent or row[3] != spec["kind"]
+                        or row[4] != spec["label"] or row[6] != f"ui-map-{slug}"):
+                    raise PublishError(f"{slug}: existing surface differs from the owned definition")
+            else:
+                pending_new[slug] = spec
         elif slug not in existing:
             raise PublishError(f"{slug} is not an existing surface and not declared new")
         elif existing[slug][1] != "macos":
@@ -124,20 +148,21 @@ def plan(export, mapping, connection, declarations, revision, export_hash, date)
     for slug, ids in surfaces.items():
         key = f"ui-map-{slug}"
         owned_keys.append(key)
-        file_path, line = declarations[ids[0]]
+        file_path, line, producer = declarations[ids[0]]
+        symbol = ("SettingsMap ids: " if producer == "node" else f"{producer} ids: ") + ", ".join(ids)
         statements.append(
             "INSERT INTO evidence (evidence_key, evidence_kind, repository, revision, file_path, "
             "symbol_or_anchor, line_start, line_end, excerpt, verified_at) VALUES ("
             + ", ".join(quote(v) for v in (
                 key, "code", "EnviousWispr", revision, file_path,
-                "SettingsMap ids: " + ", ".join(ids), line, line,
+                symbol, line, line,
                 f"settings-map export sha256 {export_hash}", date))
             + ") ON CONFLICT(evidence_key) DO UPDATE SET revision = excluded.revision, "
             "file_path = excluded.file_path, symbol_or_anchor = excluded.symbol_or_anchor, "
             "line_start = excluded.line_start, line_end = excluded.line_end, "
             "excerpt = excluded.excerpt, verified_at = excluded.verified_at;")
     positions = {}
-    for slug, spec in new.items():
+    for slug, spec in pending_new.items():
         parent = spec["parent"]
         if parent not in positions:
             current = connection.execute(
@@ -159,7 +184,7 @@ def plan(export, mapping, connection, declarations, revision, export_hash, date)
         if users:
             raise PublishError(f"{key} is no longer owned but {users[0][0]} still cites it; retire that surface first")
         statements.append(f"DELETE FROM evidence WHERE evidence_key = {quote(key)};")
-    return statements, owned_keys, list(new), stale
+    return statements, owned_keys, list(pending_new), stale
 
 
 def migration_text(statements, revision, export_hash, owned, new, stale, date):
@@ -231,6 +256,20 @@ def rebuild_in_copy(catalog_dir, sql, name):
         return result.returncode, (result.stdout + result.stderr)[-600:]
 
 
+def write_exclusive(catalog_dir, target, sql):
+    """Publishes the migration file without ever replacing one: another session may have taken
+    the same number since the dry run."""
+    with tempfile.TemporaryDirectory(prefix=".settings-map-", dir=catalog_dir / "data") as folder:
+        staging = pathlib.Path(folder) / "migration.sql"
+        staging.write_text(sql, encoding="utf-8")
+        try:
+            os.link(staging, target)
+        except FileExistsError:
+            raise PublishError(
+                f"{target} appeared during publication; nothing overwritten. "
+                "Rerun the complete dry run against the current catalog.")
+
+
 def next_name(catalog_dir, date):
     numbers = [int(p.name[:3]) for p in (catalog_dir / "data").glob("[0-9][0-9][0-9]-*.sql")]
     return f"{max(numbers, default=0) + 1:03d}-macos-settings-map-{date}.sql"
@@ -250,7 +289,10 @@ def run(args):
     export_hash = hashlib.sha256(export_bytes).hexdigest()
     export = json.loads(export_bytes)
     mapping = json.loads(git_show(revision, MAPPING))
-    declarations = declaration_lines(git_show(revision, MAP_FILE).decode(), git_show(revision, ID_FILE).decode())
+    parents = {n["id"]: n["parent"] for n in export["nodes"]}
+    choices = {n["id"] for n in export["nodes"] if n.get("kind") == "choice"}
+    declarations = declaration_lines(
+        git_show(revision, MAP_FILE).decode(), git_show(revision, ID_FILE).decode(), parents, choices)
     date = args.date or datetime.date.today().isoformat()
     connection = sqlite3.connect(f"file:{catalog_db}?mode=ro", uri=True)
     statements, owned, new, stale = plan(export, mapping, connection, declarations, revision[:12], export_hash, date)
@@ -271,9 +313,15 @@ def run(args):
     if not args.write:
         print("dry run: nothing written (pass --write at the wind-down catalog step)")
         return
+    publish(catalog_dir, name, sql, rebuild=lambda: subprocess.run(
+        ["bash", str(catalog_dir / "rebuild.sh")], capture_output=True, text=True))
+
+
+def publish(catalog_dir, name, sql, rebuild):
+    """Writes the migration exclusively, then rebuilds; a refused write never rebuilds."""
     target = catalog_dir / "data" / name
-    target.write_text(sql, encoding="utf-8")
-    result = subprocess.run(["bash", str(catalog_dir / "rebuild.sh")], capture_output=True, text=True)
+    write_exclusive(catalog_dir, target, sql)
+    result = rebuild()
     print(result.stdout[-400:])
     if result.returncode != 0:
         raise PublishError(f"rebuild.sh failed after writing {target}: {result.stderr[-400:]}")
@@ -323,7 +371,7 @@ def self_test():
                             {"id": "link", "title": {"source": "resource", "en": "Link"}}]}
         mapping = {"surfaces": {"mac-page": ["page"], "mac-ctl": ["item", "item.a"], "mac-new": ["link"]},
                    "newSurfaces": {"mac-new": {"kind": "control", "parent": "mac-page", "label": "Link [new]"}}}
-        declarations = {i: (MAP_FILE, n + 1) for n, i in enumerate(["page", "item", "item.a", "link"])}
+        declarations = {i: (MAP_FILE, n + 1, "node") for n, i in enumerate(["page", "item", "item.a", "link"])}
 
         statements, owned, new, stale = plan(export, mapping, connection, declarations, "abc", "hash", "2026-01-01")
         sql = migration_text(statements, "abc", "hash", owned, new, stale, "2026-01-01")
@@ -345,6 +393,57 @@ def self_test():
         check("detects a lost setting link", any("setting_surface" in p for p in verify_on_copy(db, bad, owned, new, stale)[0]))
         bad = sql.replace("COMMIT;", "INSERT INTO ui_surface VALUES ('x','macos','nope','control','X',1,'e1');\nCOMMIT;")
         check("detects a dangling reference", any("foreign key" in p for p in verify_on_copy(db, bad, owned, new, stale)[0]))
+
+        # A second planning run after a real publication reuses the owned new surface.
+        published = pathlib.Path(folder) / "published.db"
+        shutil.copyfile(db, published)
+        connection = sqlite3.connect(published)
+        connection.execute("PRAGMA foreign_keys = OFF")
+        connection.executescript(sql)
+        again = plan(export, mapping, connection, declarations, "abd", "hash2", "2026-01-02")
+        check("second run inserts nothing new and keeps ownership", again[2] == [] and again[1] == owned and again[3] == [])
+        drifted = dict(mapping, newSurfaces={"mac-new": dict(mapping["newSurfaces"]["mac-new"], label="Changed")})
+        try:
+            plan(export, drifted, connection, declarations, "abd", "hash2", "2026-01-02")
+            check("refuses a published surface that differs from its definition", False)
+        except PublishError:
+            check("refuses a published surface that differs from its definition", True)
+        connection.close()
+
+        # The migration file is written exclusively; a refused write leaves the file and never rebuilds.
+        catalog_dir = pathlib.Path(folder) / "catalog"
+        (catalog_dir / "data").mkdir(parents=True)
+        (catalog_dir / "data" / "005-other.sql").write_text("-- another session\n")
+        rebuilds = []
+
+        class Done:
+            returncode, stdout, stderr = 0, "", ""
+
+        try:
+            publish(catalog_dir, "005-other.sql", sql, rebuild=lambda: rebuilds.append(1) or Done())
+            check("refuses to overwrite another session's migration", False)
+        except PublishError:
+            check("refuses to overwrite another session's migration", True)
+        check("the other migration is byte-identical", (catalog_dir / "data" / "005-other.sql").read_text() == "-- another session\n")
+        check("no rebuild after a refused write", rebuilds == [])
+        publish(catalog_dir, "006-settings-map.sql", sql, rebuild=lambda: rebuilds.append(1) or Done())
+        check("an exclusive write publishes and rebuilds once", (catalog_dir / "data" / "006-settings-map.sql").read_text() == sql and rebuilds == [1])
+        check("no staging folder left behind", [p.name for p in (catalog_dir / "data").iterdir()] == sorted(["005-other.sql", "006-settings-map.sql"]) or sorted(p.name for p in (catalog_dir / "data").iterdir()) == ["005-other.sql", "006-settings-map.sql"])
+
+        # Producers: a literal node, a generated family, the shared constructor; never an id spelling.
+        map_source = "x\n    id: .page, structure: .page\n    id: .item, structure: .item\n  choices(\n    of: .item, destination: .x,\n        id: id, structure: .item, item: .choice, title: t\n"
+        id_source = 'case page = "page"\ncase item = "item"\ncase itemA = "item.a"\ncase orphan = "orphan"\n'
+        try:
+            declaration_lines(map_source, id_source, {"item.a": "item", "orphan": None}, {"item.a"})
+            check("an id with no producer is refused", False)
+        except PublishError:
+            check("an id with no producer is refused", True)
+        found = declaration_lines(map_source, id_source.replace('case orphan = "orphan"\n', ""), {"item.a": "item"}, {"item.a"})
+        shared = declaration_lines(map_source.replace("of: .item,", "of: .elsewhere,"), id_source.replace('case orphan = "orphan"\n', ""), {"item.a": "item"}, {"item.a"})
+        check("a choice with no family call cites the shared constructor", shared["item.a"] == (MAP_FILE, 6, "SettingsMap.choices (shared choice producer)"))
+        check("a literal node cites its own line", found["page"] == (MAP_FILE, 2, "node"))
+        check("a generated choice cites its family call", found["item.a"] == (MAP_FILE, 5, "choices(of: .item)"))
+        check("nothing cites the id file", all(f == MAP_FILE for f, _, _ in found.values()))
 
         connection = sqlite3.connect(db)
         for name, broken in (
