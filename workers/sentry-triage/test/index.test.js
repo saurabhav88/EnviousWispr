@@ -862,3 +862,15 @@ test("gate: a probe whose sentry-app-signature is WRONG is a forgery, not a prob
   assert.equal(res.status, 401, "present-but-invalid must never be treated as unsigned");
   assert.equal(scheduled.length, 0);
 });
+
+// Product Outcome: Android alerts must show the real OS, never "macOS Android 16".
+test("Android compact and context OS metadata render faithfully in the complete alert card", () => {
+  for (const event of [
+    { tags: [{ key: "os", value: "Android 16" }] },
+    { contexts: { os: { name: "Android", version: "16" } } },
+  ]) {
+    const embed = buildEmbedFromLookup({ status: "complete", events: [extractEventRecord(event)] },
+      { issueId: "123", title: "User Feedback: synthetic", permalink: "https://x/123/", timesSeen: 1, userCount: 1, priority: "P3" });
+    assert.equal(embed.fields.find((f) => f.name === "System").value, "Android 16");
+  }
+});
