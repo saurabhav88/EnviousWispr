@@ -34,6 +34,10 @@ import Foundation
 // complete token sequences, and consume their words; a refusal elsewhere never suppresses an
 // independent valid candidate.
 //
+// An anchor glued to `halb` by the engine ("bishalb sechs") is read as the anchor and the template
+// when the whole word is exactly an approved anchor plus the template's first word; the anchor
+// keeps its bytes and the written time gets a space ("bis 5:30").
+//
 // Not a general time parser: no spoken minutes, no 24-hour digits, no restyling of written times.
 
 struct LanguageClockIdiomPass: Sendable {
@@ -124,7 +128,28 @@ struct LanguageClockIdiomPass: Sendable {
           range: words[index].start..<words[index + consumed - 1].end, hour: nil,
           disposition: .refused(.literalPhrase(entry: match.entry)))
       } else {
-        for template in templates {
+        // An engine may glue the anchor to the template's first word ("bishalb sechs"): an exact
+        // whole word equal to an approved anchor plus that word, read from the rules' own anchors.
+        for template in templates where candidate == nil {
+          guard let split = gluedAnchorSplit(words[index], firstToken: template.tokens[0]) else {
+            continue
+          }
+          let width = template.tokens.count + 1
+          guard windowIsContiguous(words, from: index, width: width),
+            matches(phrase: Array(template.tokens.dropFirst()), at: index + 1, in: words)
+              || template.tokens.count == 1
+          else { continue }
+          let hourWord = words[index + width - 1]
+          guard
+            case .parsed(let number) = parser.parse(
+              .clockHour, in: snapshot, range: hourWord.start..<hourWord.end)
+          else { continue }
+          consumed = width
+          candidate = decide(
+            template: template, hour: number.value, first: index, hourIndex: index + width - 1,
+            words: words, snapshot: snapshot, gluedAnchorUTF16: split)
+        }
+        for template in templates where candidate == nil {
           let width = template.tokens.count + 1
           guard windowIsContiguous(words, from: index, width: width),
             matches(phrase: template.tokens, at: index, in: words)
@@ -214,6 +239,26 @@ struct LanguageClockIdiomPass: Sendable {
     return true
   }
 
+  /// The UTF-16 length of the anchor inside a glued word ("bis" in "bishalb", "für" in an NFD
+  /// "fu\u{308}rhalb"), when the whole word is exactly an approved anchor followed by `firstToken`;
+  /// otherwise nil. Splits only at character boundaries of the original text.
+  private func gluedAnchorSplit(_ word: Word, firstToken: String) -> Int? {
+    guard !word.hasLeadingPunctuation, word.folded.hasSuffix(firstToken),
+      word.folded.count > firstToken.count
+    else { return nil }
+    var prefix = ""
+    var utf16 = 0
+    for character in word.text {
+      prefix.append(character)
+      utf16 += character.utf16.count
+      let folded = LanguageNumberGrammar.fold(prefix)
+      guard rules.anchors.contains(folded) else { continue }
+      let rest = String(decoding: Array(word.text.utf16.dropFirst(utf16)), as: UTF16.self)
+      if LanguageNumberGrammar.fold(rest) == firstToken { return utf16 }
+    }
+    return nil
+  }
+
   private func matches(phrase: [String], at index: Int, in words: [Word]) -> Bool {
     guard windowIsContiguous(words, from: index, width: phrase.count) else { return false }
     for (offset, token) in phrase.enumerated() where words[index + offset].folded != token {
@@ -226,9 +271,13 @@ struct LanguageClockIdiomPass: Sendable {
 
   private func decide(
     template: LanguageClockIdiomRules.Template, hour: Int, first: Int, hourIndex: Int,
-    words: [Word], snapshot: LanguageTextSnapshot
+    words: [Word], snapshot: LanguageTextSnapshot, gluedAnchorUTF16: Int? = nil
   ) -> Candidate {
-    let range = words[first].start..<words[hourIndex].end
+    // A glued anchor keeps its own bytes: the idiom starts after it, and the written time gets the
+    // space the engine left out.
+    let idiomStart = words[first].start + (gluedAnchorUTF16 ?? 0)
+    let space = gluedAnchorUTF16 == nil ? "" : " "
+    let range = idiomStart..<words[hourIndex].end
     func refuse(_ refusal: Refusal) -> Candidate {
       Candidate(range: range, hour: hour, disposition: .refused(refusal))
     }
@@ -236,7 +285,9 @@ struct LanguageClockIdiomPass: Sendable {
     if hourIndex - first + 1 > Self.maxTokens || range.count > Self.maxSpanUTF16 {
       return refuse(.exceedsLimit)
     }
-    guard hasAnchor(before: first, words: words) else { return refuse(.noAnchor) }
+    guard gluedAnchorUTF16 != nil || hasAnchor(before: first, words: words) else {
+      return refuse(.noAnchor)
+    }
     guard template.inputHours.contains(hour) else { return refuse(.ambiguousClockFace) }
     if hasNumberContinuation(after: hourIndex, words: words, snapshot: snapshot) {
       return refuse(.numberContinuationAfter)
@@ -253,10 +304,10 @@ struct LanguageClockIdiomPass: Sendable {
       let chunk = hourWord.start..<hourWord.chunkEnd
       let closing = snapshot.substring(hourWord.end..<hourWord.chunkEnd) ?? ""
       minted = snapshot.edit(
-        replacing: words[first].start..<hourWord.chunkEnd, consumingDigitHourChunk: chunk,
-        with: written + closing)
+        replacing: idiomStart..<hourWord.chunkEnd, consumingDigitHourChunk: chunk,
+        with: space + written + closing)
     } else {
-      minted = snapshot.edit(replacing: range, with: written)
+      minted = snapshot.edit(replacing: range, with: space + written)
     }
     switch minted {
     case .success(let edit):

@@ -229,7 +229,13 @@ struct LanguagePhonePrefixPass: Sendable {
       }
     }
     let startsWithDigit = runStart >= 0
-    let scan = startsWithDigit ? scanner.scanRun(from: runStart) : nil
+    // A standalone spoken trigger may carry an engine's period after the calling code
+    // ("plus 44. 0, 1, 2 ..."); no other anchor and no later group gets that boundary.
+    let dotAfterCallingCode: ((String) -> Bool)? =
+      anchor.kind == .spoken ? { self.metadata.isAssignedCallingCode($0) == true } : nil
+    let scan =
+      startsWithDigit
+      ? scanner.scanRun(from: runStart, dotAfterFirstGroup: dotAfterCallingCode) : nil
     var tail = UnitTail.none
     if case .run(_, _, _, let runEnd)? = scan {
       tail = unitTail(after: runEnd, chunks: chunks, scanner: scanner)
@@ -454,7 +460,7 @@ private struct UnitScanner {
   /// a whole: a permitted separator always continues it, glued or non-ASCII continuations are
   /// malformed, and a numeric continuation behind a line break or sentence punctuation cannot
   /// turn part of a longer run into a number.
-  func scanRun(from start: Int) -> RunScan {
+  func scanRun(from start: Int, dotAfterFirstGroup: ((String) -> Bool)? = nil) -> RunScan {
     guard isASCIIDigit(at: start) else { return .malformed }
     var digits = ""
     var separators: [Separator] = []
@@ -503,6 +509,18 @@ private struct UnitScanner {
         separators.append(separator)
         position = groupEnd + 1
         continue
+      }
+
+      // The first group only: a period, horizontal whitespace and an ASCII digit continue the run
+      // when the caller says the group is exactly an assigned calling code.
+      if separators.isEmpty, let dotAfterFirstGroup, units[groupEnd] == 0x2E {
+        var after = groupEnd + 1
+        while isHorizontalWhitespace(at: after) { after += width(at: after) }
+        if after > groupEnd + 1, isASCIIDigit(at: after), dotAfterFirstGroup(digits) {
+          separators.append(.dot)
+          position = after
+          continue
+        }
       }
 
       var nextPosition = groupEnd

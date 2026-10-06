@@ -284,7 +284,7 @@ struct LanguageClockIdiomPassTests {
       "Wir kommen um drei viertel vier.", "Wir kommen um halb so spät.", "Wir kommen um halb.",
       "Wir kommen um halb zwanzig.", "Wir kommen um halb ein.", "Wir kommen um sieben am Abend.",
       "Wir kommen um viertel nach.", "Wir kommen um viertel nach dreizehn.", "Wir kommen um 6:30.",
-      "Wir kommen at half past six.", "Wir kommen um halb ٧.", "Wir kommen umhalb sieben.",
+      "Wir kommen at half past six.", "Wir kommen um halb ٧.",
     ] {
       let (_, result) = try run(text)
       #expect(result.candidates.isEmpty, "\(text)")
@@ -464,6 +464,37 @@ struct LanguageClockIdiomPassTests {
     #expect(bounded.edits.count == 70)
     #expect(bounded.candidates.count == LanguageClockIdiomPass.Run.diagnosticLimit)
     #expect(bounded.candidatesTruncated)
+  }
+
+  // MARK: An anchor the engine glued to halb
+
+  @Test("an exact anchor-plus-halb word reads as anchor and template; the anchor keeps its bytes")
+  func gluedAnchor() throws {
+    let cases: [(String, String)] = [
+      ("Wir sollten bishalb sechs fertig sein.", "Wir sollten bis 5:30 fertig sein."),
+      ("Wir kommen umhalb sieben.", "Wir kommen um 6:30."),
+      ("Wir kommen Umhalb sieben.", "Wir kommen Um 6:30."),
+      ("Wir kommen gegenhalb 8, ja.", "Wir kommen gegen 7:30, ja."),
+      ("Der Tisch ist fu\u{0308}rhalb acht reserviert.", "Der Tisch ist fu\u{0308}r 7:30 reserviert."),
+      ("Wir kommen abhalb zwölf Uhr.", "Wir kommen ab 11:30 Uhr."),
+    ]
+    for (input, expected) in cases {
+      #expect(bytes(try converted(input)) == bytes(expected), "\(input.debugDescription)")
+    }
+    // Every existing restriction still applies to the glued form.
+    #expect(try dispositions("Wir kommen umhalb eins.") == [.refused(.ambiguousClockFace)])
+    #expect(try dispositions("Wir kommen umhalb sieben 5 Leute.") == [.refused(.numberContinuationAfter)])
+    #expect(try dispositions("Wir füllen umhalb sieben Liter ein.") == [.refused(.measurementOrCurrencyTail)])
+    // Words that merely end in halb, or glue something else, are no candidates.
+    for text in [
+      "Deshalb sieben Leute.", "Innerhalb acht Tagen.", "Anderthalb sieben.", "Weshalb acht?",
+      "Wir kommen zuhalb sieben.", "Wir kommen umhalbe sieben.", "Wir kommen bishalbsieben.",
+      "Wir kommen (umhalb sieben).",
+    ] {
+      #expect(try run(text).1.edits.isEmpty, "\(text)")
+    }
+    // A second pass over the output proposes nothing.
+    #expect(try run("Wir sollten bis 5:30 fertig sein.").1.candidates.isEmpty)
   }
 
   // MARK: Digit hours the engine already wrote

@@ -337,6 +337,23 @@ struct LanguagePhonePrefixPassTests {
       bytes(try converted("Ruf plus 49 176 9087654\nDanke")) == bytes("Ruf +49 176 9087654\nDanke"))
   }
 
+  @Test("a period right after a spoken calling code continues the run; nowhere else")
+  func periodAfterCallingCode() throws {
+    #expect(bytes(try converted("Ruf plus 49. 176 9087654 an.")) == bytes("Ruf +49 176 9087654 an."))
+    // A spoken trunk zero after the period still gets the sign only, every digit as written.
+    #expect(
+      bytes(try converted("Ruf plus 44. 0, 1, 2, 1, 6, 1, 1, 2, 4, 4, 6. Danke"))
+        == bytes("Ruf +44. 0, 1, 2, 1, 6, 1, 1, 2, 4, 4, 6. Danke"))
+    for text in [
+      "Ruf plus 99. 176 9087654 an.", "Ruf plus 49 176. 9087654 an.", "Ruf plus 49.\n176 9087654 an.",
+      "Ruf +49. 176 9087654 an.", "Ruf plus49. 176 9087654 an.", "Es kostet plus 49. 176 9087654 Euro.",
+      "Ruf plus 49. Danach 176 9087654.",
+    ] {
+      #expect(try run(text).1.edits.isEmpty, "\(text.debugDescription)")
+      #expect(bytes(try converted(text)) == bytes(text), "\(text.debugDescription)")
+    }
+  }
+
   @Test(
     "spaced punctuation cannot hide a numeric continuation; spaced punctuation before prose converts"
   )
