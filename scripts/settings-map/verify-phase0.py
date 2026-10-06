@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 """Proves the Phase 0 reviews cover the shipped vocabulary's unchanged blocks (#3482).
 
+Ids under "added" in reviewed-edits.json are compared with their own reviewed blocks instead,
+and fail if a Phase 0 review also names them.
+
 For each language it rebuilds that language's blocks from the preserved Phase 0 review
 output in scripts/settings-map/receipts/phase0/, applies the only deterministic Phase 0
 transform (merge_multilingual.py drops a word that folds equal to its block's title) and
@@ -43,7 +46,10 @@ def main():
     args = parser.parse_args()
 
     resource = json.loads(args.resource.read_text(encoding="utf-8"))
-    edits = json.loads(args.edits.read_text(encoding="utf-8"))["blocks"]
+    edit_file = json.loads(args.edits.read_text(encoding="utf-8"))
+    edits = edit_file["blocks"]
+    # Added ids carry their own review (reviewed-edits.json "added"); Phase 0 never covers them.
+    added = edit_file.get("added", {})
     inventory = json.loads(args.inventory.read_text(encoding="utf-8"))
     mapped = {i["id"] for i in inventory["items"] if i["disposition"] == "mapped"}
 
@@ -70,11 +76,17 @@ def main():
             continue
         shipped = {e["id"]: next(b for b in e["blocks"] if b["language"] == code)
                    for e in resource["entries"]}
-        missing = mapped - set(reviewed[code])
+        overlap = set(added) & set(reviewed[code])
+        missing = mapped - set(reviewed[code]) - set(added)
         edited = 0
-        differing = []
+        differing = sorted(overlap)
         for entry_id in sorted(mapped - missing):
-            expected = dict(reviewed[code][entry_id])
+            if entry_id in overlap:
+                continue
+            if entry_id in added:
+                expected = dict(added[entry_id]["blocks"][code])
+            else:
+                expected = dict(reviewed[code][entry_id])
             replacement = edits.get(entry_id, {}).get(code, {})
             edited += bool(replacement)
             expected.update(replacement)
@@ -85,7 +97,8 @@ def main():
                 differing.append(entry_id)
         ok = not missing and not differing and set(shipped) == mapped
         failures += not ok
-        print(f"{code}: {'OK' if ok else 'FAIL'} {len(mapped) - len(missing)} reviewed blocks, "
+        print(f"{code}: {'OK' if ok else 'FAIL'} {len(mapped) - len(missing) - len(added)} Phase 0 blocks, "
+              f"{len(added)} added with their own review, "
               f"{edited} replaced by reviewed edits, missing {sorted(missing)[:5]}, "
               f"differing {differing[:5]}")
     sys.exit(1 if failures else 0)

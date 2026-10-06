@@ -97,8 +97,11 @@ struct SettingsSearchVocabularyTests {
     let vocabulary = try Self.shipped()
     // Literal words that must never be ignored (plan §3.7a), per language.
     let protected: [String: [String]] = [
-      "en": ["not", "no", "without", "off", "on", "disable"],
-      "de": ["nicht", "kein", "ohne", "aus", "an"],
+      "en": ["not", "no", "never", "without", "off", "on", "disable", "stop", "change"],
+      "de": [
+        "nicht", "kein", "keine", "keinen", "keinem", "keiner", "keines", "ohne", "aus", "an",
+        "ändern", "nie", "niemals",
+      ],
       "fr": ["pas", "sans", "non", "ne"],
       "es": ["no", "sin"],
       "it": ["non", "senza"],
@@ -120,7 +123,6 @@ struct SettingsSearchVocabularyTests {
     for code in Self.languages {
       let data = try #require(vocabulary.languageData[code])
       #expect(!data.stop.isEmpty && !data.markers.isEmpty, "\(code)")
-      #expect(data.markers.count <= 40, "\(code) has \(data.markers.count) markers")
     }
   }
 
@@ -145,8 +147,14 @@ struct SettingsSearchVocabularyTests {
       let phraseExemptions: [String]
     }
     struct Excluded: Decodable { let id: String }
+    struct Added: Decodable {
+      let id: String
+      let review: String
+    }
+    let canonicalization: String
     let resource: Resource
     let excludedIDs: [Excluded]
+    let addedIDs: [Added]
     let languages: [Language]
   }
 
@@ -165,6 +173,9 @@ struct SettingsSearchVocabularyTests {
     var problems: [String] = []
     if receipt.resource.sha256 != sha256(data) || receipt.resource.bytes != data.count {
       problems.append("resource hash or size")
+    }
+    if receipt.canonicalization != SettingsSearchVocabulary.canonicalization {
+      problems.append("canonicalization")
     }
     if receipt.languages.map(\.language) != languages { problems.append("language list") }
     for language in receipt.languages
@@ -185,6 +196,14 @@ struct SettingsSearchVocabularyTests {
       let kinds = Set(language.reviews.map(\.kind))
       #expect(kinds.isSuperset(of: ["phase0-content", "stop-and-markers"]), "\(language.language)")
       #expect(language.phraseExemptions.isEmpty, "\(language.language)")
+    }
+    // An id added after Phase 0 names its own review output, which must be in the repository.
+    for added in receipt.addedIDs {
+      #expect(vocabulary.entries[added.id] != nil, "\(added.id)")
+      #expect(
+        FileManager.default.fileExists(
+          atPath: RepoRoot.sourceURL("scripts/settings-map/receipts/\(added.review)").path),
+        "\(added.id): \(added.review)")
     }
     let german = try #require(receipt.languages.first { $0.language == "de" })
     #expect(german.reviews.contains { $0.kind == "german-council" })
@@ -212,14 +231,41 @@ struct SettingsSearchVocabularyTests {
   @Test("the review hash covers a language's lists and blocks in one fixed text")
   func canonicalText() throws {
     let vocabulary = try Self.fixtureVocabulary()
+    #expect(SettingsSearchVocabulary.canonicalization == "length-prefixed-v1")
     #expect(
       vocabulary.canonicalText(language: "en")
-        == "language\ten\nstop\tthe\u{1F}a\nmarkers\tnot\u{1F}off\n"
-        + "entry\talpha.one\t\tword1en\tphrase 1 en\t\n"
-        + "entry\talpha.two\t\t\tphrase 2 en\t\n")
+        == "8:language2:en4:stop1:23:the1:a7:markers1:23:not3:off"
+        + "5:entry9:alpha.one6:absent0:5:words1:17:word1en7:phrases1:111:phrase 1 en"
+        + "15:phraseExemption6:absent0:"
+        + "5:entry9:alpha.two6:absent0:5:words1:07:phrases1:111:phrase 2 en"
+        + "15:phraseExemption6:absent0:")
     #expect(
       vocabulary.canonicalText(language: "fr").hasSuffix(
-        "entry\talpha.two\ttitle 2 fr\t\tphrase 2 fr\t\n"))
+        "5:entry9:alpha.two7:present10:title 2 fr5:words1:07:phrases1:111:phrase 2 fr"
+          + "15:phraseExemption6:absent0:"))
+  }
+
+  /// Pairs of contents that a separator-joined text would confuse.
+  static let collisionPairs: [(String, [String], [String])] = [
+    ("unit separator", ["first", "second"], ["first\u{1F}second"]),
+    ("tab", ["first", "second"], ["first\tsecond"]),
+    ("newline", ["first", "second"], ["first\nsecond"]),
+    ("empty list against one empty-looking member", [], ["\u{1F}"]),
+  ]
+
+  @Test("different contents never share a review hash", arguments: collisionPairs.indices)
+  func noHashCollisions(pair: Int) throws {
+    let (name, left, right) = Self.collisionPairs[pair]
+    let base = try Self.fixtureVocabulary()
+    func with(_ phrases: [String]) -> SettingsSearchVocabulary {
+      var entries = base.entries
+      entries["alpha.one"]?["fr"] = .init(
+        title: "title 1 fr", words: [], phrases: phrases, phraseExemption: nil)
+      return SettingsSearchVocabulary(
+        version: 1, languageData: base.languageData, entries: entries, byteCount: 0)
+    }
+    #expect(
+      with(left).contentHash(language: "fr") != with(right).contentHash(language: "fr"), "\(name)")
   }
 
   // MARK: - Rejections
@@ -395,7 +441,7 @@ struct SettingsSearchVocabularyTests {
 
   @Test(
     "duplicate keys are refused before a dictionary can keep only the last one",
-    arguments: [#""schema":"x","#, #""schema":"x","#])
+    arguments: ["\"schema\":\"x\",", "\"\\u0073chema\":\"x\","])
   func rejectsDuplicateKeys(duplicate: String) throws {
     let text = try Self.fixtureText()
     let data = Data(
@@ -404,6 +450,27 @@ struct SettingsSearchVocabularyTests {
     #expect(
       SettingsSearchVocabulary.validate(data, expectedIDs: Self.fixtureIDs)
         == .failure(.invalid(["duplicate key \"schema\" in one JSON object"])))
+  }
+
+  static let wideEncodings: [(String, String.Encoding)] = [
+    ("UTF-16 with BOM", .utf16), ("UTF-16BE", .utf16BigEndian), ("UTF-16LE", .utf16LittleEndian),
+    ("UTF-32 with BOM", .utf32), ("UTF-32BE", .utf32BigEndian), ("UTF-32LE", .utf32LittleEndian),
+  ]
+
+  @Test(
+    "only UTF-8 is read, so a repeated key cannot hide in a wider encoding",
+    arguments: wideEncodings.indices)
+  func rejectsWideEncodings(encoding: Int) throws {
+    let (name, wide) = Self.wideEncodings[encoding]
+    let text = try Self.fixtureText().replacingOccurrences(
+      of: "{\n \"schema\"", with: "{\"version\":1,\"schema\"")
+    let data = try #require(text.data(using: wide), "\(name)")
+    #expect(
+      SettingsSearchVocabulary.validate(data, expectedIDs: Self.fixtureIDs)
+        == .failure(.invalid(["resource: expected UTF-8 JSON without raw NUL bytes"])), "\(name)")
+    #expect(
+      SettingsSearchVocabulary.validate(Data(text.utf8), expectedIDs: Self.fixtureIDs)
+        == .failure(.invalid(["duplicate key \"version\" in one JSON object"])))
   }
 
   @Test("text that is not JSON is invalid, not empty")

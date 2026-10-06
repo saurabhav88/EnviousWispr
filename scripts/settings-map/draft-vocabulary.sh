@@ -14,7 +14,7 @@
 #    the auth link (no global instructions, memories or config), web search off,
 #    read-only sandbox, --ignore-rules, --ephemeral.
 # 4. Writes an UNREVIEWED draft and a hash receipt to
-#    build/settings-map-drafts/<id>-<UTC time>/. It never edits the shipped
+#    build/settings-map-drafts/<id>-<UTC time>.<random>/. It never edits the shipped
 #    resource or any review receipt, and never validates the shipped schema:
 #    adoption goes through review and the Swift validator (see README.md).
 #
@@ -61,8 +61,8 @@ draft() {
   [ -f "$BRIEF" ] || die 2 "missing $BRIEF"
 
   local dir
-  dir="$DRAFTS_ROOT/$id-$(date -u +%Y%m%dT%H%M%SZ)"
-  mkdir -p "$dir"
+  mkdir -p "$DRAFTS_ROOT"
+  dir="$(mktemp -d "$DRAFTS_ROOT/$id-$(date -u +%Y%m%dT%H%M%SZ).XXXXXX")"
   local export_json="$dir/export.json"
 
   echo "draft-vocabulary: exporting $id from the compiled Settings Map (log: $dir/export.log)"
@@ -180,7 +180,7 @@ self_test() {
   # Launcher stub: records what it was given, then answers per id.
   stub_launch() {
     cat >"$scratch/stdin.txt"
-    echo "$1" >"$scratch/cwd.txt"
+    ls -A "$1" >"$scratch/workcontents.txt"
     ls -A "$2" >"$scratch/home.txt"
     (cd "$1" && git rev-parse --git-dir >/dev/null 2>&1) && echo inrepo >"$scratch/repo.txt" || echo outside >"$scratch/repo.txt"
     case "$(grep -o '"id":"[a-z.]*"' "$scratch/stdin.txt" | head -1)" in
@@ -210,7 +210,7 @@ self_test() {
   check "prompt is brief plus export only" "$(cat "$BRIEF" "$good/export.json" | shasum -a 256 | cut -d' ' -f1)" "$(sha "$scratch/stdin.txt")"
   check "CODEX_HOME held only the auth link" auth.json "$(cat "$scratch/home.txt")"
   check "Codex ran outside every repository" outside "$(cat "$scratch/repo.txt")"
-  check "Codex ran in an empty folder" "" "$(ls -A "$(cat "$scratch/cwd.txt")" 2>/dev/null || true)"
+  check "Codex ran in an empty folder" "" "$(cat "$scratch/workcontents.txt")"
   check "shipped resource and receipts untouched" "$before" "$(shipped_state)"
 
   rm -rf "$scratch"

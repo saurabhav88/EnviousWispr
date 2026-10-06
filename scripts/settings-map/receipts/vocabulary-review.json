@@ -1,9 +1,12 @@
 {
  "schema": "settings-search-vocabulary-review",
+ "canonicalization": "length-prefixed-v1",
+ "addedIDs": [],
+ "retiredIDs": [],
  "resource": {
   "path": "Sources/EnviousWisprAppKit/Resources/SettingsSearchVocabulary.json",
-  "sha256": "5206ccc386294606d2b6b4e3abf86d6e0806e492268f35a48c30b22fef6aba21",
-  "bytes": 1555313
+  "sha256": "15532dd8689d31fbe408b01559d58488b6e7b1cf1ac0b01ab5b701caa5857d63",
+  "bytes": 1591770
  },
  "sources": [
   {
@@ -22,7 +25,7 @@
   {
    "name": "reviewed-edits.json",
    "path": "scripts/settings-map/receipts/reviewed-edits.json",
-   "sha256": "03b379cf27d843b8f20578417f2b00732e2ba396c504b99e526b126e5933fa89"
+   "sha256": "8e824516fca3c0dd89fa1896abfc7c40adac2fe9499991b6a66e2694a7029a10"
   }
  ],
  "excludedIDs": [
@@ -287,7 +290,7 @@
  "languages": [
   {
    "language": "ar",
-   "contentSHA256": "e9ce10e48a03312eb7225242a653ae630cc734d9dd1ce855f6b92ca0b592e4fb",
+   "contentSHA256": "208a91823c775a3bc43a4a19ad6b904bf8d27ac1b8a03714411af94e424515dc",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -319,14 +322,36 @@
       "path": "lists/review-0.txt",
       "sha256": "590789d3a73521cc023958168000c9a09e54c4b4dfcfc74157a542b404827fa0"
      },
-     "disposition": "stop list and markers adopted as returned"
+     "disposition": "stop list adopted as returned; markers superseded by rounds 2 and 3"
+    },
+    {
+     "kind": "markers",
+     "method": "Codex, fresh isolated sessions, marker review rounds 2 and 3, group 0",
+     "date": "2026-10-06",
+     "reason": "chunk 4 review: required intent and negation forms (change, never, every negative determiner form) were missing; no length limit",
+     "round2": {
+      "prompt": "lists/markers-r2-prompt-0.md",
+      "output": {
+       "path": "lists/markers-r2-0.txt",
+       "sha256": "27ee31e4fa3b2f19679d5a4457094d8f8889354742d3bb353680d800ef6da19c"
+      },
+      "disposition": "not adopted: it protected ordinary setting words (for example English setting, speed, silence)"
+     },
+     "round3": {
+      "prompt": "lists/markers-r3-prompt-0.md",
+      "output": {
+       "path": "lists/markers-r3-0.txt",
+       "sha256": "fa3639a89431b723d615013bde7f91677b2089d15e87343fef1f977aecba19fb"
+      },
+      "disposition": "adopted as returned; exact repeated words removed (fi 3, hr 1) and canonically equal spellings (hi 3)"
+     }
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "bg",
-   "contentSHA256": "105ca958c96c5fedf4a7d1fc17f7b67d8f0eca5a43370556c5d07f3fa5b33a50",
+   "contentSHA256": "6d4cf03ea3ee6c649b3d736d9d7e524201a6751d5e6d9b194de256da3aa747fb",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -358,14 +383,36 @@
       "path": "lists/review-0.txt",
       "sha256": "590789d3a73521cc023958168000c9a09e54c4b4dfcfc74157a542b404827fa0"
      },
-     "disposition": "stop list and markers adopted as returned"
+     "disposition": "stop list adopted as returned; markers superseded by rounds 2 and 3"
+    },
+    {
+     "kind": "markers",
+     "method": "Codex, fresh isolated sessions, marker review rounds 2 and 3, group 0",
+     "date": "2026-10-06",
+     "reason": "chunk 4 review: required intent and negation forms (change, never, every negative determiner form) were missing; no length limit",
+     "round2": {
+      "prompt": "lists/markers-r2-prompt-0.md",
+      "output": {
+       "path": "lists/markers-r2-0.txt",
+       "sha256": "27ee31e4fa3b2f19679d5a4457094d8f8889354742d3bb353680d800ef6da19c"
+      },
+      "disposition": "not adopted: it protected ordinary setting words (for example English setting, speed, silence)"
+     },
+     "round3": {
+      "prompt": "lists/markers-r3-prompt-0.md",
+      "output": {
+       "path": "lists/markers-r3-0.txt",
+       "sha256": "fa3639a89431b723d615013bde7f91677b2089d15e87343fef1f977aecba19fb"
+      },
+      "disposition": "adopted as returned; exact repeated words removed (fi 3, hr 1) and canonically equal spellings (hi 3)"
+     }
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "cs",
-   "contentSHA256": "83ff56bc1c8998d23b12889e220df1aa07ad8973891ff204b1bae67a13a1b0ca",
+   "contentSHA256": "26f0be8aea063080a03b0f1ee09a391809a713a73ddcc672d3bd495710a4ca34",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -397,14 +444,36 @@
       "path": "lists/review-0.txt",
       "sha256": "590789d3a73521cc023958168000c9a09e54c4b4dfcfc74157a542b404827fa0"
      },
-     "disposition": "stop list and markers adopted as returned"
+     "disposition": "stop list adopted as returned; markers superseded by rounds 2 and 3"
+    },
+    {
+     "kind": "markers",
+     "method": "Codex, fresh isolated sessions, marker review rounds 2 and 3, group 0",
+     "date": "2026-10-06",
+     "reason": "chunk 4 review: required intent and negation forms (change, never, every negative determiner form) were missing; no length limit",
+     "round2": {
+      "prompt": "lists/markers-r2-prompt-0.md",
+      "output": {
+       "path": "lists/markers-r2-0.txt",
+       "sha256": "27ee31e4fa3b2f19679d5a4457094d8f8889354742d3bb353680d800ef6da19c"
+      },
+      "disposition": "not adopted: it protected ordinary setting words (for example English setting, speed, silence)"
+     },
+     "round3": {
+      "prompt": "lists/markers-r3-prompt-0.md",
+      "output": {
+       "path": "lists/markers-r3-0.txt",
+       "sha256": "fa3639a89431b723d615013bde7f91677b2089d15e87343fef1f977aecba19fb"
+      },
+      "disposition": "adopted as returned; exact repeated words removed (fi 3, hr 1) and canonically equal spellings (hi 3)"
+     }
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "da",
-   "contentSHA256": "c164ac0e99fd9d133ec2ee264ff94b8a8025fd1ddcff597228f39e0e6e254e7a",
+   "contentSHA256": "a4c2ae4a069388f8dbcb59a04aaa498577b241bca72b35a5c44a7391513987a6",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -436,14 +505,36 @@
       "path": "lists/review-0.txt",
       "sha256": "590789d3a73521cc023958168000c9a09e54c4b4dfcfc74157a542b404827fa0"
      },
-     "disposition": "stop list and markers adopted as returned"
+     "disposition": "stop list adopted as returned; markers superseded by rounds 2 and 3"
+    },
+    {
+     "kind": "markers",
+     "method": "Codex, fresh isolated sessions, marker review rounds 2 and 3, group 0",
+     "date": "2026-10-06",
+     "reason": "chunk 4 review: required intent and negation forms (change, never, every negative determiner form) were missing; no length limit",
+     "round2": {
+      "prompt": "lists/markers-r2-prompt-0.md",
+      "output": {
+       "path": "lists/markers-r2-0.txt",
+       "sha256": "27ee31e4fa3b2f19679d5a4457094d8f8889354742d3bb353680d800ef6da19c"
+      },
+      "disposition": "not adopted: it protected ordinary setting words (for example English setting, speed, silence)"
+     },
+     "round3": {
+      "prompt": "lists/markers-r3-prompt-0.md",
+      "output": {
+       "path": "lists/markers-r3-0.txt",
+       "sha256": "fa3639a89431b723d615013bde7f91677b2089d15e87343fef1f977aecba19fb"
+      },
+      "disposition": "adopted as returned; exact repeated words removed (fi 3, hr 1) and canonically equal spellings (hi 3)"
+     }
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "de",
-   "contentSHA256": "a24f31c2f8a13e8f999f4879a560166583c7c3ad74a17664aa60d76a8d4758e9",
+   "contentSHA256": "368924fd66afcf0e39e90ffede7d9bd97af548d801cd61a6fb7c3b1a82cf52bd",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -480,7 +571,29 @@
       "path": "lists/review-0.txt",
       "sha256": "590789d3a73521cc023958168000c9a09e54c4b4dfcfc74157a542b404827fa0"
      },
-     "disposition": "stop list and markers adopted as returned then changed by the German council review"
+     "disposition": "stop list adopted as returned then changed by the German council review; markers superseded by rounds 2 and 3"
+    },
+    {
+     "kind": "markers",
+     "method": "Codex, fresh isolated sessions, marker review rounds 2 and 3, group 0",
+     "date": "2026-10-06",
+     "reason": "chunk 4 review: required intent and negation forms (change, never, every negative determiner form) were missing; no length limit",
+     "round2": {
+      "prompt": "lists/markers-r2-prompt-0.md",
+      "output": {
+       "path": "lists/markers-r2-0.txt",
+       "sha256": "27ee31e4fa3b2f19679d5a4457094d8f8889354742d3bb353680d800ef6da19c"
+      },
+      "disposition": "not adopted: it protected ordinary setting words (for example English setting, speed, silence)"
+     },
+     "round3": {
+      "prompt": "lists/markers-r3-prompt-0.md",
+      "output": {
+       "path": "lists/markers-r3-0.txt",
+       "sha256": "fa3639a89431b723d615013bde7f91677b2089d15e87343fef1f977aecba19fb"
+      },
+      "disposition": "adopted as returned; exact repeated words removed (fi 3, hr 1) and canonically equal spellings (hi 3); German then corrected by the council round 3 (3 removed, 4 added)"
+     }
     },
     {
      "kind": "phrases",
@@ -498,14 +611,14 @@
      "date": "2026-10-06",
      "scope": "every German block of the 246 ids, the stop list and the markers",
      "digest": "council/digest.md",
-     "disposition": "7 findings adopted, 4 rejected with evidence; round 2: no changes from either provider"
+     "disposition": "round 1: 7 findings adopted, 4 rejected with evidence; round 2: no changes; round 3 (markers): 3 removals and 4 additions adopted, see council/digest.md"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "el",
-   "contentSHA256": "da0ec6ac92cfbc647aa57d979f7a19bfcf9433674322ff98a6bc95e16f13bfaf",
+   "contentSHA256": "2ace8098274adf819795f6a44db9645fa09a37e3e2d96e87f95d89216a019dd7",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -537,14 +650,36 @@
       "path": "lists/review-0.txt",
       "sha256": "590789d3a73521cc023958168000c9a09e54c4b4dfcfc74157a542b404827fa0"
      },
-     "disposition": "stop list and markers adopted as returned"
+     "disposition": "stop list adopted as returned; markers superseded by rounds 2 and 3"
+    },
+    {
+     "kind": "markers",
+     "method": "Codex, fresh isolated sessions, marker review rounds 2 and 3, group 0",
+     "date": "2026-10-06",
+     "reason": "chunk 4 review: required intent and negation forms (change, never, every negative determiner form) were missing; no length limit",
+     "round2": {
+      "prompt": "lists/markers-r2-prompt-0.md",
+      "output": {
+       "path": "lists/markers-r2-0.txt",
+       "sha256": "27ee31e4fa3b2f19679d5a4457094d8f8889354742d3bb353680d800ef6da19c"
+      },
+      "disposition": "not adopted: it protected ordinary setting words (for example English setting, speed, silence)"
+     },
+     "round3": {
+      "prompt": "lists/markers-r3-prompt-0.md",
+      "output": {
+       "path": "lists/markers-r3-0.txt",
+       "sha256": "fa3639a89431b723d615013bde7f91677b2089d15e87343fef1f977aecba19fb"
+      },
+      "disposition": "adopted as returned; exact repeated words removed (fi 3, hr 1) and canonically equal spellings (hi 3)"
+     }
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "en",
-   "contentSHA256": "c92b57198616f1bf8015c28b86df4e671722da57117b52b6a9cf2f98a45aa6b1",
+   "contentSHA256": "f022c7e0e6cc6f0e309957de73642a2cf5888230a79fe747f24a07615473d7c5",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -581,7 +716,29 @@
       "path": "lists/review-0.txt",
       "sha256": "590789d3a73521cc023958168000c9a09e54c4b4dfcfc74157a542b404827fa0"
      },
-     "disposition": "stop list and markers adopted as returned"
+     "disposition": "stop list adopted as returned; markers superseded by rounds 2 and 3"
+    },
+    {
+     "kind": "markers",
+     "method": "Codex, fresh isolated sessions, marker review rounds 2 and 3, group 0",
+     "date": "2026-10-06",
+     "reason": "chunk 4 review: required intent and negation forms (change, never, every negative determiner form) were missing; no length limit",
+     "round2": {
+      "prompt": "lists/markers-r2-prompt-0.md",
+      "output": {
+       "path": "lists/markers-r2-0.txt",
+       "sha256": "27ee31e4fa3b2f19679d5a4457094d8f8889354742d3bb353680d800ef6da19c"
+      },
+      "disposition": "not adopted: it protected ordinary setting words (for example English setting, speed, silence)"
+     },
+     "round3": {
+      "prompt": "lists/markers-r3-prompt-0.md",
+      "output": {
+       "path": "lists/markers-r3-0.txt",
+       "sha256": "fa3639a89431b723d615013bde7f91677b2089d15e87343fef1f977aecba19fb"
+      },
+      "disposition": "adopted as returned; exact repeated words removed (fi 3, hr 1) and canonically equal spellings (hi 3)"
+     }
     },
     {
      "kind": "phrases",
@@ -598,7 +755,7 @@
   },
   {
    "language": "es",
-   "contentSHA256": "8523501489d3bda9ccb5838d3f0d566107eda74577f29e7f77ebe38aa84d3192",
+   "contentSHA256": "ec48dc93078e81e1cbfbcdc27f5f42747c339ceda7ac87ff08047005bfba681a",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -630,14 +787,36 @@
       "path": "lists/review-0.txt",
       "sha256": "590789d3a73521cc023958168000c9a09e54c4b4dfcfc74157a542b404827fa0"
      },
-     "disposition": "stop list and markers adopted as returned"
+     "disposition": "stop list adopted as returned; markers superseded by rounds 2 and 3"
+    },
+    {
+     "kind": "markers",
+     "method": "Codex, fresh isolated sessions, marker review rounds 2 and 3, group 0",
+     "date": "2026-10-06",
+     "reason": "chunk 4 review: required intent and negation forms (change, never, every negative determiner form) were missing; no length limit",
+     "round2": {
+      "prompt": "lists/markers-r2-prompt-0.md",
+      "output": {
+       "path": "lists/markers-r2-0.txt",
+       "sha256": "27ee31e4fa3b2f19679d5a4457094d8f8889354742d3bb353680d800ef6da19c"
+      },
+      "disposition": "not adopted: it protected ordinary setting words (for example English setting, speed, silence)"
+     },
+     "round3": {
+      "prompt": "lists/markers-r3-prompt-0.md",
+      "output": {
+       "path": "lists/markers-r3-0.txt",
+       "sha256": "fa3639a89431b723d615013bde7f91677b2089d15e87343fef1f977aecba19fb"
+      },
+      "disposition": "adopted as returned; exact repeated words removed (fi 3, hr 1) and canonically equal spellings (hi 3)"
+     }
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "et",
-   "contentSHA256": "da5a57eff60d619f6b768bc10718095b592ad6e293462ee25447725d7f36da8f",
+   "contentSHA256": "d8beadd339b6a9a289ee938d57f1dc2233c9fb3c6893c2bcfe3bde35939592da",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -669,14 +848,36 @@
       "path": "lists/review-1.txt",
       "sha256": "9cc531ed3598381732d165e2b20502af9dafef466a7338ade5a76c60486f67e7"
      },
-     "disposition": "stop list and markers adopted as returned"
+     "disposition": "stop list adopted as returned; markers superseded by rounds 2 and 3"
+    },
+    {
+     "kind": "markers",
+     "method": "Codex, fresh isolated sessions, marker review rounds 2 and 3, group 1",
+     "date": "2026-10-06",
+     "reason": "chunk 4 review: required intent and negation forms (change, never, every negative determiner form) were missing; no length limit",
+     "round2": {
+      "prompt": "lists/markers-r2-prompt-1.md",
+      "output": {
+       "path": "lists/markers-r2-1.txt",
+       "sha256": "655ae39d0296ff8fef16d1adcb1c3ccd3f0b0019fbefef5c717bd70d63a49b8f"
+      },
+      "disposition": "not adopted: it protected ordinary setting words (for example English setting, speed, silence)"
+     },
+     "round3": {
+      "prompt": "lists/markers-r3-prompt-1.md",
+      "output": {
+       "path": "lists/markers-r3-1.txt",
+       "sha256": "5dceef7d746e6ee3d56883b415db61b8f7ee2165ee30c23ef1bd520758b0d2f8"
+      },
+      "disposition": "adopted as returned; exact repeated words removed (fi 3, hr 1) and canonically equal spellings (hi 3)"
+     }
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "fi",
-   "contentSHA256": "d7899974ba7acde95686db7677810a46a2f56427a397440fd9f4cefc5ed846a6",
+   "contentSHA256": "a5f74bb3b12f4a5eb1f6c56a6ca2a3d71da82f7bbdd8c4e59d4c1493754f4f15",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -708,14 +909,36 @@
       "path": "lists/review-1.txt",
       "sha256": "9cc531ed3598381732d165e2b20502af9dafef466a7338ade5a76c60486f67e7"
      },
-     "disposition": "stop list and markers adopted as returned"
+     "disposition": "stop list adopted as returned; markers superseded by rounds 2 and 3"
+    },
+    {
+     "kind": "markers",
+     "method": "Codex, fresh isolated sessions, marker review rounds 2 and 3, group 1",
+     "date": "2026-10-06",
+     "reason": "chunk 4 review: required intent and negation forms (change, never, every negative determiner form) were missing; no length limit",
+     "round2": {
+      "prompt": "lists/markers-r2-prompt-1.md",
+      "output": {
+       "path": "lists/markers-r2-1.txt",
+       "sha256": "655ae39d0296ff8fef16d1adcb1c3ccd3f0b0019fbefef5c717bd70d63a49b8f"
+      },
+      "disposition": "not adopted: it protected ordinary setting words (for example English setting, speed, silence)"
+     },
+     "round3": {
+      "prompt": "lists/markers-r3-prompt-1.md",
+      "output": {
+       "path": "lists/markers-r3-1.txt",
+       "sha256": "5dceef7d746e6ee3d56883b415db61b8f7ee2165ee30c23ef1bd520758b0d2f8"
+      },
+      "disposition": "adopted as returned; exact repeated words removed (fi 3, hr 1) and canonically equal spellings (hi 3)"
+     }
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "fr",
-   "contentSHA256": "fb231a5854440047b7bb58b478393d8797c385ac73a78d4b75333040856bf11f",
+   "contentSHA256": "1ffb3279409d95fefbf4f3138ecbb2d014aed8cb315bd76fac55a3676fe72977",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -747,14 +970,36 @@
       "path": "lists/review-1.txt",
       "sha256": "9cc531ed3598381732d165e2b20502af9dafef466a7338ade5a76c60486f67e7"
      },
-     "disposition": "stop list and markers adopted as returned"
+     "disposition": "stop list adopted as returned; markers superseded by rounds 2 and 3"
+    },
+    {
+     "kind": "markers",
+     "method": "Codex, fresh isolated sessions, marker review rounds 2 and 3, group 1",
+     "date": "2026-10-06",
+     "reason": "chunk 4 review: required intent and negation forms (change, never, every negative determiner form) were missing; no length limit",
+     "round2": {
+      "prompt": "lists/markers-r2-prompt-1.md",
+      "output": {
+       "path": "lists/markers-r2-1.txt",
+       "sha256": "655ae39d0296ff8fef16d1adcb1c3ccd3f0b0019fbefef5c717bd70d63a49b8f"
+      },
+      "disposition": "not adopted: it protected ordinary setting words (for example English setting, speed, silence)"
+     },
+     "round3": {
+      "prompt": "lists/markers-r3-prompt-1.md",
+      "output": {
+       "path": "lists/markers-r3-1.txt",
+       "sha256": "5dceef7d746e6ee3d56883b415db61b8f7ee2165ee30c23ef1bd520758b0d2f8"
+      },
+      "disposition": "adopted as returned; exact repeated words removed (fi 3, hr 1) and canonically equal spellings (hi 3)"
+     }
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "hi",
-   "contentSHA256": "dbabef872968b8afcb4cf2cebd8e1677b60cdc0840f266a0652322340c0e4eb3",
+   "contentSHA256": "09e3ee5a8518ab13a75c5bb390ae8154817aa5a700f6400511490f5141c2bf20",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -786,14 +1031,36 @@
       "path": "lists/review-1.txt",
       "sha256": "9cc531ed3598381732d165e2b20502af9dafef466a7338ade5a76c60486f67e7"
      },
-     "disposition": "stop list and markers adopted as returned"
+     "disposition": "stop list adopted as returned; markers superseded by rounds 2 and 3"
+    },
+    {
+     "kind": "markers",
+     "method": "Codex, fresh isolated sessions, marker review rounds 2 and 3, group 1",
+     "date": "2026-10-06",
+     "reason": "chunk 4 review: required intent and negation forms (change, never, every negative determiner form) were missing; no length limit",
+     "round2": {
+      "prompt": "lists/markers-r2-prompt-1.md",
+      "output": {
+       "path": "lists/markers-r2-1.txt",
+       "sha256": "655ae39d0296ff8fef16d1adcb1c3ccd3f0b0019fbefef5c717bd70d63a49b8f"
+      },
+      "disposition": "not adopted: it protected ordinary setting words (for example English setting, speed, silence)"
+     },
+     "round3": {
+      "prompt": "lists/markers-r3-prompt-1.md",
+      "output": {
+       "path": "lists/markers-r3-1.txt",
+       "sha256": "5dceef7d746e6ee3d56883b415db61b8f7ee2165ee30c23ef1bd520758b0d2f8"
+      },
+      "disposition": "adopted as returned; exact repeated words removed (fi 3, hr 1) and canonically equal spellings (hi 3)"
+     }
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "hr",
-   "contentSHA256": "59dcd6920d2f141f25a6eff877cc5a40242f924817dfc066a12850cbc40ce9f2",
+   "contentSHA256": "1ff947b852f9f3691bab9bda999548a294625c60c459f8c7e29798fa3a609e82",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -825,14 +1092,36 @@
       "path": "lists/review-1.txt",
       "sha256": "9cc531ed3598381732d165e2b20502af9dafef466a7338ade5a76c60486f67e7"
      },
-     "disposition": "stop list and markers adopted as returned"
+     "disposition": "stop list adopted as returned; markers superseded by rounds 2 and 3"
+    },
+    {
+     "kind": "markers",
+     "method": "Codex, fresh isolated sessions, marker review rounds 2 and 3, group 1",
+     "date": "2026-10-06",
+     "reason": "chunk 4 review: required intent and negation forms (change, never, every negative determiner form) were missing; no length limit",
+     "round2": {
+      "prompt": "lists/markers-r2-prompt-1.md",
+      "output": {
+       "path": "lists/markers-r2-1.txt",
+       "sha256": "655ae39d0296ff8fef16d1adcb1c3ccd3f0b0019fbefef5c717bd70d63a49b8f"
+      },
+      "disposition": "not adopted: it protected ordinary setting words (for example English setting, speed, silence)"
+     },
+     "round3": {
+      "prompt": "lists/markers-r3-prompt-1.md",
+      "output": {
+       "path": "lists/markers-r3-1.txt",
+       "sha256": "5dceef7d746e6ee3d56883b415db61b8f7ee2165ee30c23ef1bd520758b0d2f8"
+      },
+      "disposition": "adopted as returned; exact repeated words removed (fi 3, hr 1) and canonically equal spellings (hi 3)"
+     }
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "hu",
-   "contentSHA256": "f11bd5cc1c809368d2b3194a2a6693ac2f3b987eb47ecf9b03c5bf67bdcbbdfb",
+   "contentSHA256": "be785995cadc54f6d158e90a871590b8a32918ab062b552d26cdee30423db4a6",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -864,14 +1153,36 @@
       "path": "lists/review-1.txt",
       "sha256": "9cc531ed3598381732d165e2b20502af9dafef466a7338ade5a76c60486f67e7"
      },
-     "disposition": "stop list and markers adopted as returned"
+     "disposition": "stop list adopted as returned; markers superseded by rounds 2 and 3"
+    },
+    {
+     "kind": "markers",
+     "method": "Codex, fresh isolated sessions, marker review rounds 2 and 3, group 1",
+     "date": "2026-10-06",
+     "reason": "chunk 4 review: required intent and negation forms (change, never, every negative determiner form) were missing; no length limit",
+     "round2": {
+      "prompt": "lists/markers-r2-prompt-1.md",
+      "output": {
+       "path": "lists/markers-r2-1.txt",
+       "sha256": "655ae39d0296ff8fef16d1adcb1c3ccd3f0b0019fbefef5c717bd70d63a49b8f"
+      },
+      "disposition": "not adopted: it protected ordinary setting words (for example English setting, speed, silence)"
+     },
+     "round3": {
+      "prompt": "lists/markers-r3-prompt-1.md",
+      "output": {
+       "path": "lists/markers-r3-1.txt",
+       "sha256": "5dceef7d746e6ee3d56883b415db61b8f7ee2165ee30c23ef1bd520758b0d2f8"
+      },
+      "disposition": "adopted as returned; exact repeated words removed (fi 3, hr 1) and canonically equal spellings (hi 3)"
+     }
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "it",
-   "contentSHA256": "4fc5a08ad61dfed60f9c535e30c43e5d844099141098066e34567ff05f010bbb",
+   "contentSHA256": "2b0c287398c1bf81e51b56fec8fc41c3ac76a7b5670a27fe48f1b3a6d185f6b8",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -903,14 +1214,36 @@
       "path": "lists/review-1.txt",
       "sha256": "9cc531ed3598381732d165e2b20502af9dafef466a7338ade5a76c60486f67e7"
      },
-     "disposition": "stop list and markers adopted as returned"
+     "disposition": "stop list adopted as returned; markers superseded by rounds 2 and 3"
+    },
+    {
+     "kind": "markers",
+     "method": "Codex, fresh isolated sessions, marker review rounds 2 and 3, group 1",
+     "date": "2026-10-06",
+     "reason": "chunk 4 review: required intent and negation forms (change, never, every negative determiner form) were missing; no length limit",
+     "round2": {
+      "prompt": "lists/markers-r2-prompt-1.md",
+      "output": {
+       "path": "lists/markers-r2-1.txt",
+       "sha256": "655ae39d0296ff8fef16d1adcb1c3ccd3f0b0019fbefef5c717bd70d63a49b8f"
+      },
+      "disposition": "not adopted: it protected ordinary setting words (for example English setting, speed, silence)"
+     },
+     "round3": {
+      "prompt": "lists/markers-r3-prompt-1.md",
+      "output": {
+       "path": "lists/markers-r3-1.txt",
+       "sha256": "5dceef7d746e6ee3d56883b415db61b8f7ee2165ee30c23ef1bd520758b0d2f8"
+      },
+      "disposition": "adopted as returned; exact repeated words removed (fi 3, hr 1) and canonically equal spellings (hi 3)"
+     }
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "ja",
-   "contentSHA256": "76c6f3782b4ab1da59d9c6ee0a9c1cf6321997cda469b44108796cbde25d61da",
+   "contentSHA256": "0690eef8de443fe9ef45992111a63daae9e65e52b6c6663a346495ba340b9ed9",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -942,14 +1275,36 @@
       "path": "lists/review-1.txt",
       "sha256": "9cc531ed3598381732d165e2b20502af9dafef466a7338ade5a76c60486f67e7"
      },
-     "disposition": "stop list and markers adopted as returned"
+     "disposition": "stop list adopted as returned; markers superseded by rounds 2 and 3"
+    },
+    {
+     "kind": "markers",
+     "method": "Codex, fresh isolated sessions, marker review rounds 2 and 3, group 1",
+     "date": "2026-10-06",
+     "reason": "chunk 4 review: required intent and negation forms (change, never, every negative determiner form) were missing; no length limit",
+     "round2": {
+      "prompt": "lists/markers-r2-prompt-1.md",
+      "output": {
+       "path": "lists/markers-r2-1.txt",
+       "sha256": "655ae39d0296ff8fef16d1adcb1c3ccd3f0b0019fbefef5c717bd70d63a49b8f"
+      },
+      "disposition": "not adopted: it protected ordinary setting words (for example English setting, speed, silence)"
+     },
+     "round3": {
+      "prompt": "lists/markers-r3-prompt-1.md",
+      "output": {
+       "path": "lists/markers-r3-1.txt",
+       "sha256": "5dceef7d746e6ee3d56883b415db61b8f7ee2165ee30c23ef1bd520758b0d2f8"
+      },
+      "disposition": "adopted as returned; exact repeated words removed (fi 3, hr 1) and canonically equal spellings (hi 3)"
+     }
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "ko",
-   "contentSHA256": "e79ef848cfce3f706392bdb8b7fef715c0366c06200031d1d4aba19650836764",
+   "contentSHA256": "aaa35f18327467efb521dfe48b035de19329132a723013390fd1231fea21599d",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -981,14 +1336,36 @@
       "path": "lists/review-2.txt",
       "sha256": "9dbdc33cc9b2413880294c9bae44f9775ba4eee79c84aa735612d762cbcea50b"
      },
-     "disposition": "stop list and markers adopted as returned"
+     "disposition": "stop list adopted as returned; markers superseded by rounds 2 and 3"
+    },
+    {
+     "kind": "markers",
+     "method": "Codex, fresh isolated sessions, marker review rounds 2 and 3, group 2",
+     "date": "2026-10-06",
+     "reason": "chunk 4 review: required intent and negation forms (change, never, every negative determiner form) were missing; no length limit",
+     "round2": {
+      "prompt": "lists/markers-r2-prompt-2.md",
+      "output": {
+       "path": "lists/markers-r2-2.txt",
+       "sha256": "aa9bda6265d31fa7fe4fc9fc977da1cb68892ab053844c8e9593e6742d77d90e"
+      },
+      "disposition": "not adopted: it protected ordinary setting words (for example English setting, speed, silence)"
+     },
+     "round3": {
+      "prompt": "lists/markers-r3-prompt-2.md",
+      "output": {
+       "path": "lists/markers-r3-2.txt",
+       "sha256": "4da23cb504a8dafc0fabba3cc6137fa6a50df005e945be37af7c541d338009cd"
+      },
+      "disposition": "adopted as returned; exact repeated words removed (fi 3, hr 1) and canonically equal spellings (hi 3)"
+     }
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "lt",
-   "contentSHA256": "8cf1e6c95817ceec043a94c7082d9bc94db07690abb1bb9c7711958b69770e6b",
+   "contentSHA256": "8540e584d73f4f6d17b99c258ada96881c6d675dd92ae58bbed7000a6db3405b",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -1020,14 +1397,36 @@
       "path": "lists/review-2.txt",
       "sha256": "9dbdc33cc9b2413880294c9bae44f9775ba4eee79c84aa735612d762cbcea50b"
      },
-     "disposition": "stop list and markers adopted as returned"
+     "disposition": "stop list adopted as returned; markers superseded by rounds 2 and 3"
+    },
+    {
+     "kind": "markers",
+     "method": "Codex, fresh isolated sessions, marker review rounds 2 and 3, group 2",
+     "date": "2026-10-06",
+     "reason": "chunk 4 review: required intent and negation forms (change, never, every negative determiner form) were missing; no length limit",
+     "round2": {
+      "prompt": "lists/markers-r2-prompt-2.md",
+      "output": {
+       "path": "lists/markers-r2-2.txt",
+       "sha256": "aa9bda6265d31fa7fe4fc9fc977da1cb68892ab053844c8e9593e6742d77d90e"
+      },
+      "disposition": "not adopted: it protected ordinary setting words (for example English setting, speed, silence)"
+     },
+     "round3": {
+      "prompt": "lists/markers-r3-prompt-2.md",
+      "output": {
+       "path": "lists/markers-r3-2.txt",
+       "sha256": "4da23cb504a8dafc0fabba3cc6137fa6a50df005e945be37af7c541d338009cd"
+      },
+      "disposition": "adopted as returned; exact repeated words removed (fi 3, hr 1) and canonically equal spellings (hi 3)"
+     }
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "lv",
-   "contentSHA256": "91f7d0b5eaaadf97265c29510ffff7c50b399c6b97d0170972443278dc82911a",
+   "contentSHA256": "9030f6e77ff53d0cf6c149b8301e3f41d16cef0d738ea1250296f3084d43a21b",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -1059,14 +1458,36 @@
       "path": "lists/review-2.txt",
       "sha256": "9dbdc33cc9b2413880294c9bae44f9775ba4eee79c84aa735612d762cbcea50b"
      },
-     "disposition": "stop list and markers adopted as returned"
+     "disposition": "stop list adopted as returned; markers superseded by rounds 2 and 3"
+    },
+    {
+     "kind": "markers",
+     "method": "Codex, fresh isolated sessions, marker review rounds 2 and 3, group 2",
+     "date": "2026-10-06",
+     "reason": "chunk 4 review: required intent and negation forms (change, never, every negative determiner form) were missing; no length limit",
+     "round2": {
+      "prompt": "lists/markers-r2-prompt-2.md",
+      "output": {
+       "path": "lists/markers-r2-2.txt",
+       "sha256": "aa9bda6265d31fa7fe4fc9fc977da1cb68892ab053844c8e9593e6742d77d90e"
+      },
+      "disposition": "not adopted: it protected ordinary setting words (for example English setting, speed, silence)"
+     },
+     "round3": {
+      "prompt": "lists/markers-r3-prompt-2.md",
+      "output": {
+       "path": "lists/markers-r3-2.txt",
+       "sha256": "4da23cb504a8dafc0fabba3cc6137fa6a50df005e945be37af7c541d338009cd"
+      },
+      "disposition": "adopted as returned; exact repeated words removed (fi 3, hr 1) and canonically equal spellings (hi 3)"
+     }
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "mt",
-   "contentSHA256": "303dde0b04f53c91d632210a7bae93a5a564f4c2b4b768dc32d7afaab11705ea",
+   "contentSHA256": "53520c1563f8c5db741eafa15b05b314e7eaaf000fda205199130cc3c186d3c5",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -1098,14 +1519,36 @@
       "path": "lists/review-2.txt",
       "sha256": "9dbdc33cc9b2413880294c9bae44f9775ba4eee79c84aa735612d762cbcea50b"
      },
-     "disposition": "stop list and markers adopted as returned"
+     "disposition": "stop list adopted as returned; markers superseded by rounds 2 and 3"
+    },
+    {
+     "kind": "markers",
+     "method": "Codex, fresh isolated sessions, marker review rounds 2 and 3, group 2",
+     "date": "2026-10-06",
+     "reason": "chunk 4 review: required intent and negation forms (change, never, every negative determiner form) were missing; no length limit",
+     "round2": {
+      "prompt": "lists/markers-r2-prompt-2.md",
+      "output": {
+       "path": "lists/markers-r2-2.txt",
+       "sha256": "aa9bda6265d31fa7fe4fc9fc977da1cb68892ab053844c8e9593e6742d77d90e"
+      },
+      "disposition": "not adopted: it protected ordinary setting words (for example English setting, speed, silence)"
+     },
+     "round3": {
+      "prompt": "lists/markers-r3-prompt-2.md",
+      "output": {
+       "path": "lists/markers-r3-2.txt",
+       "sha256": "4da23cb504a8dafc0fabba3cc6137fa6a50df005e945be37af7c541d338009cd"
+      },
+      "disposition": "adopted as returned; exact repeated words removed (fi 3, hr 1) and canonically equal spellings (hi 3)"
+     }
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "nl",
-   "contentSHA256": "58489cb3fac0d7d7e37dacafae30cd936342a3ef8fbe46350a99b1295b01e4d9",
+   "contentSHA256": "57031584760b96e9874ccd9b8b2d74923e9c0e2863c5d142ca5923237ad8a7fa",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -1137,14 +1580,36 @@
       "path": "lists/review-2.txt",
       "sha256": "9dbdc33cc9b2413880294c9bae44f9775ba4eee79c84aa735612d762cbcea50b"
      },
-     "disposition": "stop list and markers adopted as returned"
+     "disposition": "stop list adopted as returned; markers superseded by rounds 2 and 3"
+    },
+    {
+     "kind": "markers",
+     "method": "Codex, fresh isolated sessions, marker review rounds 2 and 3, group 2",
+     "date": "2026-10-06",
+     "reason": "chunk 4 review: required intent and negation forms (change, never, every negative determiner form) were missing; no length limit",
+     "round2": {
+      "prompt": "lists/markers-r2-prompt-2.md",
+      "output": {
+       "path": "lists/markers-r2-2.txt",
+       "sha256": "aa9bda6265d31fa7fe4fc9fc977da1cb68892ab053844c8e9593e6742d77d90e"
+      },
+      "disposition": "not adopted: it protected ordinary setting words (for example English setting, speed, silence)"
+     },
+     "round3": {
+      "prompt": "lists/markers-r3-prompt-2.md",
+      "output": {
+       "path": "lists/markers-r3-2.txt",
+       "sha256": "4da23cb504a8dafc0fabba3cc6137fa6a50df005e945be37af7c541d338009cd"
+      },
+      "disposition": "adopted as returned; exact repeated words removed (fi 3, hr 1) and canonically equal spellings (hi 3)"
+     }
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "pl",
-   "contentSHA256": "939077e00c735e23258ede1ec6ebbefa6c77ff732c0d8b368d0400a9abcedc1d",
+   "contentSHA256": "358463b01f750d97f3ae3145c2b53c2935faf9abf49735303caca4e8957d8293",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -1176,14 +1641,36 @@
       "path": "lists/review-2.txt",
       "sha256": "9dbdc33cc9b2413880294c9bae44f9775ba4eee79c84aa735612d762cbcea50b"
      },
-     "disposition": "stop list and markers adopted as returned"
+     "disposition": "stop list adopted as returned; markers superseded by rounds 2 and 3"
+    },
+    {
+     "kind": "markers",
+     "method": "Codex, fresh isolated sessions, marker review rounds 2 and 3, group 2",
+     "date": "2026-10-06",
+     "reason": "chunk 4 review: required intent and negation forms (change, never, every negative determiner form) were missing; no length limit",
+     "round2": {
+      "prompt": "lists/markers-r2-prompt-2.md",
+      "output": {
+       "path": "lists/markers-r2-2.txt",
+       "sha256": "aa9bda6265d31fa7fe4fc9fc977da1cb68892ab053844c8e9593e6742d77d90e"
+      },
+      "disposition": "not adopted: it protected ordinary setting words (for example English setting, speed, silence)"
+     },
+     "round3": {
+      "prompt": "lists/markers-r3-prompt-2.md",
+      "output": {
+       "path": "lists/markers-r3-2.txt",
+       "sha256": "4da23cb504a8dafc0fabba3cc6137fa6a50df005e945be37af7c541d338009cd"
+      },
+      "disposition": "adopted as returned; exact repeated words removed (fi 3, hr 1) and canonically equal spellings (hi 3)"
+     }
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "pt",
-   "contentSHA256": "ba5381199916ad3abbf77aa49ea98516d5a5b83e7065ae21caa6b6374f46f867",
+   "contentSHA256": "b16f3ed180ca1788b70ba71d85ff536cd42941eff9bee24370d1fcec81993d56",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -1215,7 +1702,29 @@
       "path": "lists/review-2.txt",
       "sha256": "9dbdc33cc9b2413880294c9bae44f9775ba4eee79c84aa735612d762cbcea50b"
      },
-     "disposition": "stop list and markers adopted as returned"
+     "disposition": "stop list adopted as returned; markers superseded by rounds 2 and 3"
+    },
+    {
+     "kind": "markers",
+     "method": "Codex, fresh isolated sessions, marker review rounds 2 and 3, group 2",
+     "date": "2026-10-06",
+     "reason": "chunk 4 review: required intent and negation forms (change, never, every negative determiner form) were missing; no length limit",
+     "round2": {
+      "prompt": "lists/markers-r2-prompt-2.md",
+      "output": {
+       "path": "lists/markers-r2-2.txt",
+       "sha256": "aa9bda6265d31fa7fe4fc9fc977da1cb68892ab053844c8e9593e6742d77d90e"
+      },
+      "disposition": "not adopted: it protected ordinary setting words (for example English setting, speed, silence)"
+     },
+     "round3": {
+      "prompt": "lists/markers-r3-prompt-2.md",
+      "output": {
+       "path": "lists/markers-r3-2.txt",
+       "sha256": "4da23cb504a8dafc0fabba3cc6137fa6a50df005e945be37af7c541d338009cd"
+      },
+      "disposition": "adopted as returned; exact repeated words removed (fi 3, hr 1) and canonically equal spellings (hi 3)"
+     }
     },
     {
      "kind": "guard-edit",
@@ -1230,7 +1739,7 @@
   },
   {
    "language": "ro",
-   "contentSHA256": "155cfd74784ab0499bca442358d1f3594efb5fc9a7b8e5757af74193abb744ee",
+   "contentSHA256": "299934653caa8bdd0b81cd9816fbb110c918385b4032e6ada1bf07870c5d3187",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -1262,14 +1771,36 @@
       "path": "lists/review-2.txt",
       "sha256": "9dbdc33cc9b2413880294c9bae44f9775ba4eee79c84aa735612d762cbcea50b"
      },
-     "disposition": "stop list and markers adopted as returned"
+     "disposition": "stop list adopted as returned; markers superseded by rounds 2 and 3"
+    },
+    {
+     "kind": "markers",
+     "method": "Codex, fresh isolated sessions, marker review rounds 2 and 3, group 2",
+     "date": "2026-10-06",
+     "reason": "chunk 4 review: required intent and negation forms (change, never, every negative determiner form) were missing; no length limit",
+     "round2": {
+      "prompt": "lists/markers-r2-prompt-2.md",
+      "output": {
+       "path": "lists/markers-r2-2.txt",
+       "sha256": "aa9bda6265d31fa7fe4fc9fc977da1cb68892ab053844c8e9593e6742d77d90e"
+      },
+      "disposition": "not adopted: it protected ordinary setting words (for example English setting, speed, silence)"
+     },
+     "round3": {
+      "prompt": "lists/markers-r3-prompt-2.md",
+      "output": {
+       "path": "lists/markers-r3-2.txt",
+       "sha256": "4da23cb504a8dafc0fabba3cc6137fa6a50df005e945be37af7c541d338009cd"
+      },
+      "disposition": "adopted as returned; exact repeated words removed (fi 3, hr 1) and canonically equal spellings (hi 3)"
+     }
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "ru",
-   "contentSHA256": "e653d6a13ad27b904e9402e228699725041ff1882d475c153122c4043821391a",
+   "contentSHA256": "7e61a4e0e669faccf18a0ed919eec4fc4aec0e53fef50fbd0bb9cb1b842edeca",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -1301,14 +1832,36 @@
       "path": "lists/review-3.txt",
       "sha256": "bf57f868d0d71261e56f7c39b84ff8c6addd1686c75a067794d5bb5ee40ae570"
      },
-     "disposition": "stop list and markers adopted as returned"
+     "disposition": "stop list adopted as returned; markers superseded by rounds 2 and 3"
+    },
+    {
+     "kind": "markers",
+     "method": "Codex, fresh isolated sessions, marker review rounds 2 and 3, group 3",
+     "date": "2026-10-06",
+     "reason": "chunk 4 review: required intent and negation forms (change, never, every negative determiner form) were missing; no length limit",
+     "round2": {
+      "prompt": "lists/markers-r2-prompt-3.md",
+      "output": {
+       "path": "lists/markers-r2-3.txt",
+       "sha256": "3bfaed2e599d44e7f487b22e1c56d1bec745c1859d3f49c8df5da69e6973f5ae"
+      },
+      "disposition": "not adopted: it protected ordinary setting words (for example English setting, speed, silence)"
+     },
+     "round3": {
+      "prompt": "lists/markers-r3-prompt-3.md",
+      "output": {
+       "path": "lists/markers-r3-3.txt",
+       "sha256": "eccec85586a59aaca0badca75868f7f35364bf9507b8757d6e3f2499ddd4bf1b"
+      },
+      "disposition": "adopted as returned; exact repeated words removed (fi 3, hr 1) and canonically equal spellings (hi 3)"
+     }
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "sk",
-   "contentSHA256": "ef4afadb65b38c67b9cd89a57f447cc6bde26900687ce31fbf97553085631d7a",
+   "contentSHA256": "d74a5784f1d5aad64898a5625b433332ea130053bcdf82e095b7b38044094217",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -1340,14 +1893,36 @@
       "path": "lists/review-3.txt",
       "sha256": "bf57f868d0d71261e56f7c39b84ff8c6addd1686c75a067794d5bb5ee40ae570"
      },
-     "disposition": "stop list and markers adopted as returned"
+     "disposition": "stop list adopted as returned; markers superseded by rounds 2 and 3"
+    },
+    {
+     "kind": "markers",
+     "method": "Codex, fresh isolated sessions, marker review rounds 2 and 3, group 3",
+     "date": "2026-10-06",
+     "reason": "chunk 4 review: required intent and negation forms (change, never, every negative determiner form) were missing; no length limit",
+     "round2": {
+      "prompt": "lists/markers-r2-prompt-3.md",
+      "output": {
+       "path": "lists/markers-r2-3.txt",
+       "sha256": "3bfaed2e599d44e7f487b22e1c56d1bec745c1859d3f49c8df5da69e6973f5ae"
+      },
+      "disposition": "not adopted: it protected ordinary setting words (for example English setting, speed, silence)"
+     },
+     "round3": {
+      "prompt": "lists/markers-r3-prompt-3.md",
+      "output": {
+       "path": "lists/markers-r3-3.txt",
+       "sha256": "eccec85586a59aaca0badca75868f7f35364bf9507b8757d6e3f2499ddd4bf1b"
+      },
+      "disposition": "adopted as returned; exact repeated words removed (fi 3, hr 1) and canonically equal spellings (hi 3)"
+     }
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "sl",
-   "contentSHA256": "4c10a2df1e0594e48e92acfa3769216b111b5798666005bc139f53647b464a87",
+   "contentSHA256": "a74391050853b8ab182fc96804389eec5f27002971a702c78216a1960a2187f6",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -1379,14 +1954,36 @@
       "path": "lists/review-3.txt",
       "sha256": "bf57f868d0d71261e56f7c39b84ff8c6addd1686c75a067794d5bb5ee40ae570"
      },
-     "disposition": "stop list and markers adopted as returned"
+     "disposition": "stop list adopted as returned; markers superseded by rounds 2 and 3"
+    },
+    {
+     "kind": "markers",
+     "method": "Codex, fresh isolated sessions, marker review rounds 2 and 3, group 3",
+     "date": "2026-10-06",
+     "reason": "chunk 4 review: required intent and negation forms (change, never, every negative determiner form) were missing; no length limit",
+     "round2": {
+      "prompt": "lists/markers-r2-prompt-3.md",
+      "output": {
+       "path": "lists/markers-r2-3.txt",
+       "sha256": "3bfaed2e599d44e7f487b22e1c56d1bec745c1859d3f49c8df5da69e6973f5ae"
+      },
+      "disposition": "not adopted: it protected ordinary setting words (for example English setting, speed, silence)"
+     },
+     "round3": {
+      "prompt": "lists/markers-r3-prompt-3.md",
+      "output": {
+       "path": "lists/markers-r3-3.txt",
+       "sha256": "eccec85586a59aaca0badca75868f7f35364bf9507b8757d6e3f2499ddd4bf1b"
+      },
+      "disposition": "adopted as returned; exact repeated words removed (fi 3, hr 1) and canonically equal spellings (hi 3)"
+     }
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "sv",
-   "contentSHA256": "d30731e98c0ef54ae8e016395519e1995730512edce202f8c305d96109de8477",
+   "contentSHA256": "86099df3a65c277bd8edaa787ab48d10a73696a473a37e9d566fa77caf5325b0",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -1418,14 +2015,36 @@
       "path": "lists/review-3.txt",
       "sha256": "bf57f868d0d71261e56f7c39b84ff8c6addd1686c75a067794d5bb5ee40ae570"
      },
-     "disposition": "stop list and markers adopted as returned"
+     "disposition": "stop list adopted as returned; markers superseded by rounds 2 and 3"
+    },
+    {
+     "kind": "markers",
+     "method": "Codex, fresh isolated sessions, marker review rounds 2 and 3, group 3",
+     "date": "2026-10-06",
+     "reason": "chunk 4 review: required intent and negation forms (change, never, every negative determiner form) were missing; no length limit",
+     "round2": {
+      "prompt": "lists/markers-r2-prompt-3.md",
+      "output": {
+       "path": "lists/markers-r2-3.txt",
+       "sha256": "3bfaed2e599d44e7f487b22e1c56d1bec745c1859d3f49c8df5da69e6973f5ae"
+      },
+      "disposition": "not adopted: it protected ordinary setting words (for example English setting, speed, silence)"
+     },
+     "round3": {
+      "prompt": "lists/markers-r3-prompt-3.md",
+      "output": {
+       "path": "lists/markers-r3-3.txt",
+       "sha256": "eccec85586a59aaca0badca75868f7f35364bf9507b8757d6e3f2499ddd4bf1b"
+      },
+      "disposition": "adopted as returned; exact repeated words removed (fi 3, hr 1) and canonically equal spellings (hi 3)"
+     }
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "tr",
-   "contentSHA256": "3d1c43dc10b86c2f6325bc6ac6b5cf5ce929d838488080cc4313199ad56e6458",
+   "contentSHA256": "dfc018fa833cee77000a20a7ee192f852a0ce774a15c0e0a1ab5cc66b0891e54",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -1457,14 +2076,36 @@
       "path": "lists/review-3.txt",
       "sha256": "bf57f868d0d71261e56f7c39b84ff8c6addd1686c75a067794d5bb5ee40ae570"
      },
-     "disposition": "stop list and markers adopted as returned"
+     "disposition": "stop list adopted as returned; markers superseded by rounds 2 and 3"
+    },
+    {
+     "kind": "markers",
+     "method": "Codex, fresh isolated sessions, marker review rounds 2 and 3, group 3",
+     "date": "2026-10-06",
+     "reason": "chunk 4 review: required intent and negation forms (change, never, every negative determiner form) were missing; no length limit",
+     "round2": {
+      "prompt": "lists/markers-r2-prompt-3.md",
+      "output": {
+       "path": "lists/markers-r2-3.txt",
+       "sha256": "3bfaed2e599d44e7f487b22e1c56d1bec745c1859d3f49c8df5da69e6973f5ae"
+      },
+      "disposition": "not adopted: it protected ordinary setting words (for example English setting, speed, silence)"
+     },
+     "round3": {
+      "prompt": "lists/markers-r3-prompt-3.md",
+      "output": {
+       "path": "lists/markers-r3-3.txt",
+       "sha256": "eccec85586a59aaca0badca75868f7f35364bf9507b8757d6e3f2499ddd4bf1b"
+      },
+      "disposition": "adopted as returned; exact repeated words removed (fi 3, hr 1) and canonically equal spellings (hi 3)"
+     }
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "uk",
-   "contentSHA256": "400e1516a8f8df814c25749e0c60e13fe7e1f5239c41931272b7ac751c3c472b",
+   "contentSHA256": "fe1f99e59b4d0688477a98e23ed9c5d72efeb374418101149c8bfef881056bd3",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -1496,14 +2137,36 @@
       "path": "lists/review-3.txt",
       "sha256": "bf57f868d0d71261e56f7c39b84ff8c6addd1686c75a067794d5bb5ee40ae570"
      },
-     "disposition": "stop list and markers adopted as returned"
+     "disposition": "stop list adopted as returned; markers superseded by rounds 2 and 3"
+    },
+    {
+     "kind": "markers",
+     "method": "Codex, fresh isolated sessions, marker review rounds 2 and 3, group 3",
+     "date": "2026-10-06",
+     "reason": "chunk 4 review: required intent and negation forms (change, never, every negative determiner form) were missing; no length limit",
+     "round2": {
+      "prompt": "lists/markers-r2-prompt-3.md",
+      "output": {
+       "path": "lists/markers-r2-3.txt",
+       "sha256": "3bfaed2e599d44e7f487b22e1c56d1bec745c1859d3f49c8df5da69e6973f5ae"
+      },
+      "disposition": "not adopted: it protected ordinary setting words (for example English setting, speed, silence)"
+     },
+     "round3": {
+      "prompt": "lists/markers-r3-prompt-3.md",
+      "output": {
+       "path": "lists/markers-r3-3.txt",
+       "sha256": "eccec85586a59aaca0badca75868f7f35364bf9507b8757d6e3f2499ddd4bf1b"
+      },
+      "disposition": "adopted as returned; exact repeated words removed (fi 3, hr 1) and canonically equal spellings (hi 3)"
+     }
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "vi",
-   "contentSHA256": "8c257522ad5026cc26bb37cfbb6875dd4b33b01374f78dc3c5d621e7a83b763d",
+   "contentSHA256": "a68ce3397cbbc824ac894bc1ac6562d9989f177cd8ef7a880f7546c34a9fc198",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -1535,14 +2198,36 @@
       "path": "lists/review-3.txt",
       "sha256": "bf57f868d0d71261e56f7c39b84ff8c6addd1686c75a067794d5bb5ee40ae570"
      },
-     "disposition": "stop list and markers adopted as returned"
+     "disposition": "stop list adopted as returned; markers superseded by rounds 2 and 3"
+    },
+    {
+     "kind": "markers",
+     "method": "Codex, fresh isolated sessions, marker review rounds 2 and 3, group 3",
+     "date": "2026-10-06",
+     "reason": "chunk 4 review: required intent and negation forms (change, never, every negative determiner form) were missing; no length limit",
+     "round2": {
+      "prompt": "lists/markers-r2-prompt-3.md",
+      "output": {
+       "path": "lists/markers-r2-3.txt",
+       "sha256": "3bfaed2e599d44e7f487b22e1c56d1bec745c1859d3f49c8df5da69e6973f5ae"
+      },
+      "disposition": "not adopted: it protected ordinary setting words (for example English setting, speed, silence)"
+     },
+     "round3": {
+      "prompt": "lists/markers-r3-prompt-3.md",
+      "output": {
+       "path": "lists/markers-r3-3.txt",
+       "sha256": "eccec85586a59aaca0badca75868f7f35364bf9507b8757d6e3f2499ddd4bf1b"
+      },
+      "disposition": "adopted as returned; exact repeated words removed (fi 3, hr 1) and canonically equal spellings (hi 3)"
+     }
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "zh",
-   "contentSHA256": "f33e173042acf8a52c354096c5ea591b1aa6682149f19d7f7164d28dad0741a8",
+   "contentSHA256": "f259c05589a47eaee46e8e820802ff662f4718527b63a5c89184b67fc437cd56",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -1574,7 +2259,29 @@
       "path": "lists/review-3.txt",
       "sha256": "bf57f868d0d71261e56f7c39b84ff8c6addd1686c75a067794d5bb5ee40ae570"
      },
-     "disposition": "stop list and markers adopted as returned"
+     "disposition": "stop list adopted as returned; markers superseded by rounds 2 and 3"
+    },
+    {
+     "kind": "markers",
+     "method": "Codex, fresh isolated sessions, marker review rounds 2 and 3, group 3",
+     "date": "2026-10-06",
+     "reason": "chunk 4 review: required intent and negation forms (change, never, every negative determiner form) were missing; no length limit",
+     "round2": {
+      "prompt": "lists/markers-r2-prompt-3.md",
+      "output": {
+       "path": "lists/markers-r2-3.txt",
+       "sha256": "3bfaed2e599d44e7f487b22e1c56d1bec745c1859d3f49c8df5da69e6973f5ae"
+      },
+      "disposition": "not adopted: it protected ordinary setting words (for example English setting, speed, silence)"
+     },
+     "round3": {
+      "prompt": "lists/markers-r3-prompt-3.md",
+      "output": {
+       "path": "lists/markers-r3-3.txt",
+       "sha256": "eccec85586a59aaca0badca75868f7f35364bf9507b8757d6e3f2499ddd4bf1b"
+      },
+      "disposition": "adopted as returned; exact repeated words removed (fi 3, hr 1) and canonically equal spellings (hi 3)"
+     }
     }
    ],
    "phraseExemptions": []

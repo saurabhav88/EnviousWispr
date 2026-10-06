@@ -105,6 +105,11 @@ extension SettingsSearchVocabulary {
     -> Result<SettingsSearchVocabulary, SettingsSearchVocabularyError>
   {
     guard data.count <= maximumBytes else { return .failure(.tooLarge(bytes: data.count)) }
+    // The duplicate-key scan reads UTF-8; JSONSerialization would also accept UTF-16 or UTF-32,
+    // whose repeated keys the scan cannot see.
+    guard String(data: data, encoding: .utf8) != nil, !data.contains(0) else {
+      return .failure(.invalid(["resource: expected UTF-8 JSON without raw NUL bytes"]))
+    }
     if let duplicate = StrictJSONKeys.firstDuplicateKey(in: data) {
       return .failure(.invalid(["duplicate key \"\(duplicate)\" in one JSON object"]))
     }
@@ -355,25 +360,34 @@ extension SettingsSearchVocabulary {
 // MARK: - Review binding
 
 extension SettingsSearchVocabulary {
+  /// The canonical encoding's version, recorded in review receipts.
+  static let canonicalization = "length-prefixed-v1"
+
   /// A language's reviewed content in one canonical text, so a review receipt can name exactly
   /// what was reviewed: its stop list, markers and every entry's block, entries in id order.
-  /// The adoption tooling computes the same text; a receipt whose hash differs is stale.
+  /// Every field is written as its UTF-8 byte count, a colon and the field, and every list
+  /// starts with its count, so no two different contents share a text (a separator or newline
+  /// inside a phrase cannot imitate a field boundary). The adoption tooling computes the same
+  /// text; a receipt whose hash differs is stale.
   func canonicalText(language code: String) -> String {
-    let separator = "\u{1F}"
-    var lines = ["language\t\(code)"]
+    var fields = ["language", code]
     if let data = languageData[code] {
-      lines.append("stop\t" + data.stop.joined(separator: separator))
-      lines.append("markers\t" + data.markers.joined(separator: separator))
+      fields += ["stop", String(data.stop.count)] + data.stop
+      fields += ["markers", String(data.markers.count)] + data.markers
     }
     for id in entries.keys.sorted() {
       guard let block = entries[id]?[code] else { continue }
-      lines.append(
-        [
-          "entry", id, block.title ?? "", block.words.joined(separator: separator),
-          block.phrases.joined(separator: separator), block.phraseExemption ?? "",
-        ].joined(separator: "\t"))
+      fields += [
+        "entry", id, block.title == nil ? "absent" : "present", block.title ?? "",
+        "words", String(block.words.count),
+      ] + block.words
+      fields += ["phrases", String(block.phrases.count)] + block.phrases
+      fields += [
+        "phraseExemption", block.phraseExemption == nil ? "absent" : "present",
+        block.phraseExemption ?? "",
+      ]
     }
-    return lines.joined(separator: "\n") + "\n"
+    return fields.map { "\($0.utf8.count):\($0)" }.joined()
   }
 
   func contentHash(language code: String) -> String {
