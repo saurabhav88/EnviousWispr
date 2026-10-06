@@ -35,19 +35,7 @@ struct SpokenPunctuationStartWordRow: View {
   }
 
   private var languagePicker: some View {
-    Picker(
-      SpokenPunctuationCopy.languagePickerLabel,
-      selection: Binding(
-        get: { editor.language },
-        set: { editor.selectLanguage($0) })
-    ) {
-      ForEach(SpokenPunctuationStartWordEditor.languages, id: \.self) { code in
-        Text(SpokenPunctuationStartWordEditor.displayName(for: code)).tag(code)
-      }
-    }
-    .labelsHidden()
-    .fixedSize()
-    .accessibilityLabel(Text(SpokenPunctuationCopy.languagePickerLabel))
+    SpokenPunctuationLanguagePicker(editor: editor)
   }
 
   private var editorBlock: some View {

@@ -6846,13 +6846,13 @@
         }
       }
     },
-    "English works as it does today: say the word on its own." : {
+    "English works as it does today: say the word on its own. You can also give English a start word." : {
       "comment" : "Speech engine settings, spoken punctuation help: English needs no start word.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Englisch funktioniert wie bisher: Sag das Wort einfach allein."
+            "value" : "Englisch funktioniert wie bisher: Sag das Wort einfach allein. Du kannst auch für Englisch ein Startwort festlegen."
           }
         }
       }
@@ -17422,13 +17422,13 @@
         }
       }
     },
-    "The word you say before a mark in German, French, Spanish or Italian. Pick a word you would not say in a normal sentence." : {
+    "The word you say before a mark. German, French, Spanish and Italian need one; English does not. Pick a word you would not say in a normal sentence." : {
       "comment" : "Speech engine settings, Start word row: the short line under the row's name.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Das Wort, das du im Deutschen, Französischen, Spanischen oder Italienischen vor einem Zeichen sagst. Wähle ein Wort, das du in einem normalen Satz nicht sagen würdest."
+            "value" : "Das Wort, das du vor einem Zeichen sagst. Deutsch, Französisch, Spanisch und Italienisch brauchen eines, Englisch nicht. Wähle ein Wort, das du in einem normalen Satz nicht sagen würdest."
           }
         }
       }
@@ -23159,13 +23159,13 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Turn on Spoken punctuation in Dictation Settings > Engine, then say a start word before the mark. In German say \"Diktiere Punkt\", in French \"Place point\", in Spanish \"Añade punto\" and in Italian \"Metti punto\". You can change the start word for each language. English works as before."
+            "value" : "Turn on Spoken punctuation in Dictation Settings > Engine, then say a start word before the mark. In German say \"Diktiere Punkt\", in French \"Place point\", in Spanish \"Añade punto\" and in Italian \"Metti punto\". You can change the start word for each language. English works as before, and you can give English a start word too."
           }
         },
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Schalte „Gesprochene Satzzeichen“ unter Diktateinstellungen > Engine ein und sag dann vor dem Zeichen ein Startwort. Auf Deutsch sagst du „Diktiere Punkt“, auf Französisch „Place point“, auf Spanisch „Añade punto“ und auf Italienisch „Metti punto“. Du kannst das Startwort für jede Sprache ändern. Englisch funktioniert wie bisher."
+            "value" : "Schalte „Gesprochene Satzzeichen“ unter Diktateinstellungen > Engine ein und sag dann vor dem Zeichen ein Startwort. Auf Deutsch sagst du „Diktiere Punkt“, auf Französisch „Place point“, auf Spanisch „Añade punto“ und auf Italienisch „Metti punto“. Du kannst das Startwort für jede Sprache ändern. Englisch funktioniert wie bisher, und du kannst auch für Englisch ein Startwort festlegen."
           }
         }
       }

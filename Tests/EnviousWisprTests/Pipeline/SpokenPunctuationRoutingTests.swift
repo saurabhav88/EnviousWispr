@@ -632,4 +632,64 @@ struct SpokenPunctuationRoutingTests {
       #expect(out.text == sentence, "language \(language), form \(form)")
     }
   }
+
+  // MARK: - English with a start word
+
+  private static let englishWord = SpokenPunctuationSettings(
+    enabled: true, startWordOverrides: ["en": "Insert"])
+
+  @Test("English with a start word converts after it, and reports the pass")
+  func englishStartWordConverts() async throws {
+    let step = step(Self.englishWord)
+    let out = try await step.process(ctx("alpha insert period beta", language: "en"))
+    #expect(out.text == "alpha. Beta")
+    #expect(step.lastRun?.punctuationStatus == .rewrote)
+    #expect(step.lastRun?.punctuationRulesFired == 1)
+    #expect(step.lastRun?.punctuationLanguage == "en")
+  }
+
+  @Test("English with a start word leaves the bare command words alone")
+  func englishStartWordLeavesBareWords() async throws {
+    let step = step(Self.englishWord)
+    let input = "The grace period expires and alpha comma beta"
+    let out = try await step.process(ctx(input, language: "en"))
+    #expect(out.text == input)
+    #expect(step.lastRun?.punctuationStatus == .ranNoMatch)
+    #expect(step.lastRun?.punctuationRulesFired == 0)
+  }
+
+  @Test("English without a start word is the bare table with no status, as before")
+  func englishWithoutStartWordIsUnchanged() async throws {
+    let step = step(Self.on)
+    let out = try await step.process(ctx("alpha period beta", language: "en"))
+    #expect(out.text.hasPrefix("alpha."), "\(out.text)")
+    #expect(step.lastRun?.punctuationStatus == nil)
+    #expect(step.lastRun?.punctuationRulesFired == nil)
+  }
+
+  @Test(
+    "The English plan exists only with the switch on and a valid English start word",
+    arguments: [
+      (true, ["en": "Insert"], "Insert"),
+      (true, ["en": "Mark", "de": "Sprich"], "Mark"),
+    ])
+  func englishPlanWithAStartWord(enabled: Bool, overrides: [String: String], word: String) {
+    let plan = InverseTextNormalizationStep.englishPunctuationPlan(
+      settings: SpokenPunctuationSettings(enabled: enabled, startWordOverrides: overrides))
+    #expect(plan?.attemptLanguage == "en")
+    #expect(plan?.startWord == word)
+  }
+
+  @Test(
+    "No English plan when the switch is off, nothing is set, or the word is invalid",
+    arguments: [
+      (false, ["en": "Insert"]), (true, [:]), (true, ["de": "Sprich"]), (true, ["en": ""]),
+      (true, ["en": "period"]), (true, ["en": "new"]), (true, ["en": "two words"]),
+    ])
+  func noEnglishPlan(enabled: Bool, overrides: [String: String]) {
+    #expect(
+      InverseTextNormalizationStep.englishPunctuationPlan(
+        settings: SpokenPunctuationSettings(enabled: enabled, startWordOverrides: overrides))
+        == nil)
+  }
 }

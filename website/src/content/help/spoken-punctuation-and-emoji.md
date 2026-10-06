@@ -57,7 +57,7 @@ The default start words are:
 - Spanish: **Añade**
 - Italian: **Metti**
 
-Spoken punctuation must be on. It works when your dictation language is German, French, Spanish or Italian, whether you chose the language or EnviousWispr detected it. English works as it does today: say the word on its own.
+Spoken punctuation must be on. It works when your dictation language is German, French, Spanish or Italian, whether you chose the language or EnviousWispr detected it. English works as it does today: say the word on its own. You can also give English a start word, see Choose your own start word below.
 
 In French, a mark is written straight after the word before it, with no space. In Spanish, EnviousWispr writes only the closing question mark or exclamation mark, not the opening one.
 
@@ -130,6 +130,8 @@ Turn on **Spoken punctuation**. A **Start word** row appears under it.
 Picking a language here only chooses which start word you edit. It does not change your dictation language.
 
 If your speech engine often writes a different word for your start word, pick another word. A word the engine hears clearly works best.
+
+English has no start word by default, so its commands work on their own. To use a start word in English, pick **English** in **Start word for** and type a word, for example "Insert". Then "insert period" gives a full stop, and "the grace period expires" stays words. A start word works with comma, period, full stop, question mark, exclamation mark, exclamation point, colon, semicolon, new line and new paragraph. Backslash is not one of them and is off while English has a start word. The spoken slash is not affected. Clear the field to go back to no start word.
 
 To use no start word, clear the field and press Return. The field then shows **No start word**. Every command word of that language now becomes a mark wherever you say it, as English does. In German, "der springende Punkt" then becomes "der springende." and "drei Komma fünf" becomes "drei, fünf". Press **Reset** to bring back the default start word.
 

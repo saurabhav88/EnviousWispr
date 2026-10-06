@@ -28,7 +28,7 @@ enum SpokenPunctuationCopy {
       "In German, French, Spanish and Italian you say a start word first, then the mark. A command word on its own stays an ordinary word.",
     comment: "Speech engine settings, spoken punctuation help: how the start word works.")
   static let helpEnglish = String(
-    localized: "English works as it does today: say the word on its own.",
+    localized: "English works as it does today: say the word on its own. You can also give English a start word.",
     comment: "Speech engine settings, spoken punctuation help: English needs no start word.")
   static let helpPolish = String(
     localized:
@@ -61,7 +61,7 @@ enum SpokenPunctuationCopy {
     comment: "Speech engine settings, spoken punctuation: the Start word row's name.")
   static let startWordShort = String(
     localized:
-      "The word you say before a mark in German, French, Spanish or Italian. Pick a word you would not say in a normal sentence.",
+      "The word you say before a mark. German, French, Spanish and Italian need one; English does not. Pick a word you would not say in a normal sentence.",
     comment: "Speech engine settings, Start word row: the short line under the row's name.")
   static let startWordHelp = String(
     localized:

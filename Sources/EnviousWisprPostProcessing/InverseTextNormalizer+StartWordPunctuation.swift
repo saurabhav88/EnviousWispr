@@ -61,7 +61,7 @@ extension InverseTextNormalizer {
     _ text: String, language: String, startWord: String, protectedSentinels: [String]
   ) -> SpokenPunctuationResult {
     let unchanged = SpokenPunctuationResult(text: text, rulesFired: 0)
-    guard let rules = SpokenPunctuationRules.rules(for: language) else { return unchanged }
+    guard let rules = SpokenPunctuationRules.startWordRules(for: language) else { return unchanged }
     let start = startWord.trimmingCharacters(in: .whitespacesAndNewlines)
       .precomposedStringWithCanonicalMapping
 

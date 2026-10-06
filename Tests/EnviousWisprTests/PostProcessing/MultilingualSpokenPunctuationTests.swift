@@ -512,4 +512,55 @@ struct MultilingualSpokenPunctuationTests {
   func noStartWordLeavesTheOldDefaultAlone() {
     #expect(Self.apply("Diktiere mir bitte einen Brief", "de", start: "").text == "Diktiere mir bitte einen Brief")
   }
+
+  // MARK: - English with a start word (the optional mode)
+
+  @Test("English is offered a start word but is not one of the four required-start-word languages")
+  func englishIsAnOptionNotATable() {
+    #expect(SpokenPunctuationRules.startWordLanguages == ["en", "de", "fr", "es", "it"])
+    #expect(SpokenPunctuationRules.rules(for: "en") == nil, "the four-language table lookup stays nil")
+    #expect(SpokenPunctuationRules.startWordRules(for: "en")?.isEmpty == false)
+    #expect(SpokenPunctuationRules.startWordDefault(for: "en") == "", "English default is no start word")
+    #expect(SpokenPunctuationRules.startWordDefault(for: "de") == "Diktiere")
+    #expect(SpokenPunctuationRules.startWordDefault(for: "nl") == nil)
+    #expect(SpokenPunctuationRules.effectiveStartWords(overrides: [:])["en"] == "")
+  }
+
+  /// Every English start-word form, with what the BARE English path (`InverseTextNormalizer.punct`) writes
+  /// for the same words. Both paths are run on the same literal expectation, so a change to one table
+  /// that the other does not follow fails here.
+  private static let englishParity: [(form: String, expected: String)] = [
+    ("comma", "Alpha, beta"), ("period", "Alpha. Beta"), ("full stop", "Alpha. Beta"),
+    ("question mark", "Alpha? Beta"), ("exclamation mark", "Alpha! Beta"),
+    ("exclamation point", "Alpha! Beta"), ("colon", "Alpha: beta"), ("semicolon", "Alpha; beta"),
+    ("new line", "Alpha\nBeta"), ("new paragraph", "Alpha\n\nBeta"),
+  ]
+
+  @Test("The English start-word table covers exactly the forms the parity rows name")
+  func englishParityCoversEveryForm() {
+    let forms = Set(SpokenPunctuationRules.startWordForms(for: "en") ?? [])
+    #expect(forms == Set(Self.englishParity.map(\.form)))
+  }
+
+  @Test("Each English form writes the same thing bare and after a start word", arguments: [
+    "comma", "period", "full stop", "question mark", "exclamation mark", "exclamation point",
+    "colon", "semicolon", "new line", "new paragraph",
+  ])
+  func englishBareAndStartWordAgree(form: String) throws {
+    let expected = try #require(Self.englishParity.first { $0.form == form }).expected
+    // The marks and their order must agree. Spaces around a break and the capital after it are tidied
+    // by later stages of the real chain on the bare path, so they are compared without them.
+    func squash(_ text: String) -> String { text.replacingOccurrences(of: " ", with: "").lowercased() }
+    let bare = InverseTextNormalizer().normalize("Alpha \(form) beta", spokenPunctuation: true)
+    #expect(squash(bare) == squash(expected), "bare path: \(bare.debugDescription)")
+    let viaStartWord = Self.apply("Alpha Insert \(form) beta", "en", start: "Insert").text
+    #expect(viaStartWord == expected, "start-word path: \(viaStartWord.debugDescription)")
+  }
+
+  @Test("An English start word does not convert bare words or other languages' commands")
+  func englishStartWordIsRequired() {
+    #expect(Self.apply("The grace period expires", "en", start: "Insert").rulesFired == 0)
+    #expect(Self.apply("alpha period beta", "en", start: "Insert").text == "alpha period beta")
+    #expect(Self.apply("alpha Insert Punkt beta", "en", start: "Insert").rulesFired == 0)
+  }
 }

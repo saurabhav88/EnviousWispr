@@ -769,12 +769,17 @@ public final class SettingsManager {
     -> SpokenPunctuationStartWord.Outcome
   {
     guard let code = LanguageNormalizer.baseCode(language),
-      let forms = SpokenPunctuationRules.spokenForms(for: code)
+      let forms = SpokenPunctuationRules.startWordForms(for: code)
     else { return .refused(.unsupportedLanguage) }
     // A blank field is the user's choice of NO start word: stored as `""`, accepted, and never
     // equal to a default. The matcher then reads the language's command words bare.
     if raw.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-      if spokenPunctuation.startWordOverrides[code] != "" {
+      // English's default already IS no start word, so a blank there is "not customised": no override.
+      if SpokenPunctuationRules.startWordDefault(for: code) == "" {
+        if spokenPunctuation.startWordOverrides[code] != nil {
+          spokenPunctuation.startWordOverrides.removeValue(forKey: code)
+        }
+      } else if spokenPunctuation.startWordOverrides[code] != "" {
         spokenPunctuation.startWordOverrides[code] = ""
       }
       return .accepted("")
@@ -782,7 +787,7 @@ public final class SettingsManager {
     let outcome = SpokenPunctuationStartWord.validate(raw, language: code, spokenForms: forms)
     guard case .accepted(let word) = outcome else { return outcome }
     var overrides = spokenPunctuation.startWordOverrides
-    let defaultWord = SpokenPunctuationRules.defaultStartWord(for: code)
+    let defaultWord = SpokenPunctuationRules.startWordDefault(for: code)
     if let defaultWord, word.lowercased() == defaultWord.lowercased() {
       overrides.removeValue(forKey: code)
     } else {

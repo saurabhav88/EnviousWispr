@@ -15,8 +15,12 @@ import Testing
 @Suite("Start word editor (#2450)", .tags(.productOutcome))
 struct SpokenPunctuationStartWordEditorTests {
 
+  /// Most of these tests edit German, so the dictation language is locked to it and the picker opens
+  /// there; `initialLanguage` covers every other mode, and the English tests pick English themselves.
   private static func freshSettings() -> SettingsManager {
-    SettingsManager(defaults: TestDefaults.suite("SW-2450-\(UUID().uuidString)")!)
+    let settings = SettingsManager(defaults: TestDefaults.suite("SW-2450-\(UUID().uuidString)")!)
+    settings.languageMode = .locked("de")
+    return settings
   }
 
   private final class Counter: @unchecked Sendable {
@@ -25,11 +29,11 @@ struct SpokenPunctuationStartWordEditorTests {
 
   // MARK: - Which language opens
 
-  @Test("The picker opens on the locked language when it has a table, otherwise German")
+  @Test("The picker opens on the locked language when it is offered, otherwise English")
   func initialLanguage() {
     let cases: [(LanguageMode, String)] = [
       (.locked("fr"), "fr"), (.locked("es"), "es"), (.locked("it"), "it"),
-      (.locked("de-DE"), "de"), (.locked("en"), "de"), (.locked("nl"), "de"), (.auto, "de"),
+      (.locked("de-DE"), "de"), (.locked("en"), "en"), (.locked("nl"), "en"), (.auto, "en"),
     ]
     for (mode, expected) in cases {
       let settings = Self.freshSettings()
@@ -61,7 +65,7 @@ struct SpokenPunctuationStartWordEditorTests {
   @Test("It shows the default word and a command built from the rules for every language")
   func defaultsAndExamples() throws {
     let expected = [
-      "de": "Diktiere", "fr": "Place", "es": "Añade", "it": "Metti",
+      "en": "", "de": "Diktiere", "fr": "Place", "es": "Añade", "it": "Metti",
     ]
     for code in SpokenPunctuationStartWordEditor.languages {
       let editor = SpokenPunctuationStartWordEditor(settings: Self.freshSettings())
@@ -69,8 +73,10 @@ struct SpokenPunctuationStartWordEditorTests {
       #expect(editor.effectiveWord == expected[code])
       #expect(editor.draft == expected[code])
       let form = try #require(
-        SpokenPunctuationRules.rules(for: code)?.first { $0.command == .period }?.spokenForms.first)
-      #expect(editor.exampleCommand == "\(try #require(expected[code])) \(form)")
+        SpokenPunctuationRules.startWordRules(for: code)?.first { $0.command == .period }?
+          .spokenForms.first)
+      let word = try #require(expected[code])
+      #expect(editor.exampleCommand == (word.isEmpty ? form : "\(word) \(form)"))
       #expect(editor.isCustomised == false)
     }
   }
@@ -280,5 +286,49 @@ struct SpokenPunctuationStartWordEditorTests {
     #expect(editor.hasNoStartWord == false)
     #expect(editor.draft == "Diktiere")
     #expect(settings.spokenPunctuation.startWordOverrides.isEmpty)
+  }
+
+  @Test("The language dropdown reads every language's own start word, blank included")
+  func startWordForEveryLanguage() {
+    let settings = Self.freshSettings()
+    let editor = SpokenPunctuationStartWordEditor(settings: settings)
+    #expect(editor.startWord(for: "de") == "Diktiere")
+    #expect(editor.startWord(for: "fr") == "Place")
+    #expect(editor.startWord(for: "es") == "Añade")
+    #expect(editor.startWord(for: "it") == "Metti")
+    settings.commitSpokenPunctuationStartWord("Sprich", language: "fr")
+    settings.commitSpokenPunctuationStartWord("", language: "it")
+    #expect(editor.startWord(for: "fr") == "Sprich")
+    #expect(editor.startWord(for: "it") == "")
+    #expect(editor.startWord(for: "de") == "Diktiere", "another language is untouched")
+    #expect(SpokenPunctuationLanguagePicker.startWordLine("") == SpokenPunctuationCopy.noStartWordPlaceholder)
+    #expect(SpokenPunctuationLanguagePicker.startWordLine("Sprich") == "Sprich")
+  }
+
+  @Test("English is offered first, starts with no start word, and takes one the user types")
+  func englishStartWord() {
+    let settings = Self.freshSettings()
+    let editor = SpokenPunctuationStartWordEditor(settings: settings)
+    #expect(SpokenPunctuationStartWordEditor.languages.first == "en")
+    editor.selectLanguage("en")
+    #expect(editor.hasNoStartWord)
+    #expect(editor.isCustomised == false)
+    #expect(editor.exampleCommand == "period")
+    editor.userEdited("Insert")
+    editor.commitDraft()
+    #expect(editor.rejection == nil)
+    #expect(settings.spokenPunctuation.startWordOverrides == ["en": "Insert"])
+    #expect(editor.exampleCommand == "Insert period")
+    // An English command word cannot be the start word.
+    editor.userEdited("period")
+    editor.commitDraft()
+    #expect(editor.rejection == .collidesWithCommand)
+    #expect(editor.draft == "Insert")
+    // Clearing the field goes back to the default, which for English IS no start word: no override.
+    editor.userEdited("")
+    editor.commitDraft()
+    #expect(editor.hasNoStartWord)
+    #expect(settings.spokenPunctuation.startWordOverrides.isEmpty)
+    #expect(editor.isCustomised == false)
   }
 }

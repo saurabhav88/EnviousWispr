@@ -298,8 +298,9 @@ final class InverseTextNormalizationStep: TextProcessingStep {
     let routeLabel: String
     let requestRoute: ITNWorkRequest.Route
     let punctuationLanguage: String?
-    // #2450: the start-word pass belongs to the NEUTRAL route only. The English route has no pass and
-    // reports no status; a vetted language route (none in production yet) owns its own passes.
+    // #2450: the start-word pass belongs to the NEUTRAL route, and to the ENGLISH route only while the
+    // user has given English a start word (its default is none: bare words, no pass, no status). A
+    // vetted language route (none in production yet) owns its own passes.
     let plan: PunctuationPlan?
     switch route {
     case .english:
@@ -309,7 +310,7 @@ final class InverseTextNormalizationStep: TextProcessingStep {
       routeLabel = "english"
       requestRoute = .english
       punctuationLanguage = "en"
-      plan = nil
+      plan = Self.englishPunctuationPlan(settings: spokenPunctuationSnapshot)
     case .language(let code):
       rules = registry.ruleSet(forLanguage: context.language)
       admitted = true
@@ -329,8 +330,12 @@ final class InverseTextNormalizationStep: TextProcessingStep {
         language: context.language, englishVetoed: context.englishRulesVetoed,
         settings: spokenPunctuationSnapshot)
     }
+    // With an English start word the bare English words must NOT convert, so the normalizer is told the
+    // plain switch is off for this take and the start-word pass below does the converting.
+    var normalizerSettings = spokenPunctuationSnapshot
+    if case .english = route, plan != nil { normalizerSettings.enabled = false }
     let request = ITNWorkRequest(
-      route: requestRoute, input: input, spokenPunctuation: spokenPunctuationSnapshot,
+      route: requestRoute, input: input, spokenPunctuation: normalizerSettings,
       punctuationLanguage: plan?.attemptLanguage, startWord: plan?.startWord,
       protectedSentinels: protectedSentinels)
     let work: @Sendable (ITNWorkRequest) async -> ITNWorkResult
@@ -356,9 +361,10 @@ final class InverseTextNormalizationStep: TextProcessingStep {
         let text = InverseTextNormalizationGate.execute(
           request.input, route: route, rules: rules, normalizer: normalizer,
           spokenPunctuation: request.spokenPunctuation.enabled)
-        // #2450: on the neutral route, the start-word pass runs INSIDE the same closure, so one
-        // deadline covers both and a timeout discards both, returning the whole pre-ITN text.
-        guard case .neutral = route, let language = request.punctuationLanguage,
+        // #2450: when this take has a plan (neutral route, or English with a start word), the
+        // start-word pass runs INSIDE the same closure, so one deadline covers both and a timeout
+        // discards both, returning the whole pre-ITN text.
+        guard let language = request.punctuationLanguage,
           let startWord = request.startWord
         else { return ITNWorkResult(text: text, punctuationRulesFired: nil) }
         let result = normalizer.applyStartWordPunctuation(
@@ -393,8 +399,8 @@ final class InverseTextNormalizationStep: TextProcessingStep {
     }
     let elapsedMs = (CFAbsoluteTimeGetCurrent() - start) * 1000
     // "Not attempted", "attempted and matched nothing" and "attempted and abandoned" stay three
-    // different answers, and an abandoned run discards its count. The English and language routes
-    // have no start-word pass, so they report neither a status nor a count.
+    // different answers, and an abandoned run discards its count. The language routes, and the English
+    // route without a start word, have no start-word pass, so they report neither a status nor a count.
     let punctuation: (status: SpokenPunctuationStatus?, rulesFired: Int?) =
       plan.map { Self.punctuationOutcome(plan: $0, result: maybeResult) } ?? (nil, nil)
     guard let converted = maybeResult?.text else {
@@ -511,6 +517,22 @@ extension InverseTextNormalizationStep {
       }
     }
     return PunctuationPlan(attemptLanguage: base, startWord: startWord, notAttemptedStatus: nil)
+  }
+
+  /// The English route's plan: `nil` (the bare English words, no pass, no status, exactly as before)
+  /// unless the switch is on AND English has a start word. A stored English word that fails validation
+  /// does not widen anything: it falls back to the default, no start word.
+  nonisolated static func englishPunctuationPlan(settings: SpokenPunctuationSettings)
+    -> PunctuationPlan?
+  {
+    guard settings.enabled, let forms = SpokenPunctuationRules.startWordForms(for: "en"),
+      let effective = SpokenPunctuationRules.effectiveStartWords(
+        overrides: settings.startWordOverrides)["en"],
+      !effective.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+      case .accepted(let validated) = SpokenPunctuationStartWord.validate(
+        effective, language: "en", spokenForms: forms)
+    else { return nil }
+    return PunctuationPlan(attemptLanguage: "en", startWord: validated, notAttemptedStatus: nil)
   }
 
   /// The status and count to report once the work has finished, or timed out (`result == nil`).

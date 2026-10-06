@@ -129,7 +129,6 @@ struct SpokenPunctuationSettingsPersistenceTests {
       ("Punkt", "de", .collidesWithCommand),
       ("point", "fr", .collidesWithCommand),
       ("Sprich", "nl", .unsupportedLanguage),
-      ("Sprich", "en", .unsupportedLanguage),
     ])
   func refusalsChangeNothing(
     raw: String, language: String, reason: SpokenPunctuationStartWord.Refusal
@@ -240,14 +239,14 @@ struct SpokenPunctuationSettingsPersistenceTests {
 
   // MARK: - Effective words come from one owner
 
-  @Test("Effective words are the override else the default, for exactly the four languages")
+  @Test("Effective words are the override else the default, for exactly the five Start word languages")
   func effectiveWords() {
     #expect(
       SpokenPunctuationRules.effectiveStartWords(overrides: [:])
-        == ["de": "Diktiere", "fr": "Place", "es": "Añade", "it": "Metti"])
+        == ["en": "", "de": "Diktiere", "fr": "Place", "es": "Añade", "it": "Metti"])
     #expect(
       SpokenPunctuationRules.effectiveStartWords(overrides: ["de": "Sprich", "nl": "Dikteer"])
-        == ["de": "Sprich", "fr": "Place", "es": "Añade", "it": "Metti"])
+        == ["en": "", "de": "Sprich", "fr": "Place", "es": "Añade", "it": "Metti"])
   }
 
   @Test("A snapshot keeps an effective word even when it equals today's default")

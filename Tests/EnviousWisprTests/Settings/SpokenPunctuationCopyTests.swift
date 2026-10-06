@@ -30,7 +30,7 @@ struct SpokenPunctuationCopyTests {
   func helpLines() {
     #expect(
       SpokenPunctuationCopy.helpEnglish
-        == "English works as it does today: say the word on its own.")
+        == "English works as it does today: say the word on its own. You can also give English a start word.")
     #expect(SpokenPunctuationCopy.helpPolish.contains("AI polish off"))
     #expect(SpokenPunctuationCopy.helpPolish.contains("protect") == false)
   }

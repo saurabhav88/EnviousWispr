@@ -87,7 +87,7 @@ enum WhatsNewContent {
       icon: "text.quote",
       title: "Spoken punctuation in German, French, Spanish and Italian",
       description:
-        "Turn on Spoken punctuation in Dictation Settings > Engine, then say a start word before the mark. In German say \"Diktiere Punkt\", in French \"Place point\", in Spanish \"Añade punto\" and in Italian \"Metti punto\". You can change the start word for each language. English works as before.",
+        "Turn on Spoken punctuation in Dictation Settings > Engine, then say a start word before the mark. In German say \"Diktiere Punkt\", in French \"Place point\", in Spanish \"Añade punto\" and in Italian \"Metti punto\". You can change the start word for each language. English works as before, and you can give English a start word too.",
       version: "2.5.3"
     ),
 

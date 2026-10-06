@@ -20,11 +20,11 @@ import Observation
 final class SpokenPunctuationStartWordEditor {
 
   /// The languages with a table, in the order the picker lists them.
-  static let languages = SpokenPunctuationRules.supportedLanguages
+  static let languages = SpokenPunctuationRules.startWordLanguages
 
-  /// German is the first table and the language the feature was asked for, so it is the choice when
+  /// English is most people's dictation language and is first in the picker, so it is the choice when
   /// the dictation language gives no better one. The Mac's region is deliberately not consulted.
-  static let fallbackLanguage = "de"
+  static let fallbackLanguage = "en"
 
   private let settings: SettingsManager
 
@@ -52,7 +52,7 @@ final class SpokenPunctuationStartWordEditor {
     Locale.current.localizedString(forLanguageCode: code)?.localizedCapitalized ?? code
   }
 
-  /// The supported language the dictation language is locked to, otherwise German.
+  /// The offered language the dictation language is locked to, otherwise English.
   static func initialLanguage(for mode: LanguageMode) -> String {
     if case .locked(let code) = mode,
       let base = LanguageNormalizer.baseCode(code),
@@ -74,6 +74,10 @@ final class SpokenPunctuationStartWordEditor {
   /// The start word in force for the picked language: the user's word, else the shipped default.
   var effectiveWord: String { Self.effectiveWord(for: language, settings: settings) }
 
+  /// The start word in force for ANY supported language, `""` when its field is blank. The language
+  /// dropdown shows it under each language's name.
+  func startWord(for code: String) -> String { Self.effectiveWord(for: code, settings: settings) }
+
   /// True while the picked language has NO start word, the user's choice of a blank field.
   var hasNoStartWord: Bool { effectiveWord.isEmpty }
 
@@ -90,7 +94,7 @@ final class SpokenPunctuationStartWordEditor {
   /// example can never name a word the pass does not accept. It stays in the dictation language.
   var exampleCommand: String? {
     guard
-      let form = SpokenPunctuationRules.rules(for: language)?.first(where: { $0.command == .period }
+      let form = SpokenPunctuationRules.startWordRules(for: language)?.first(where: { $0.command == .period }
       )?
       .spokenForms.first
     else { return nil }

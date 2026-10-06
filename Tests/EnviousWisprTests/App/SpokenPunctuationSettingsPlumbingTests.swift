@@ -19,6 +19,9 @@ import Testing
 struct SpokenPunctuationSettingsPlumbingTests {
 
   private static let allDefaults = ["de": "Diktiere", "fr": "Place", "es": "Añade", "it": "Metti"]
+  /// What `effectiveStartWords` returns with nothing customised: the four defaults plus English, whose
+  /// default is no start word (the empty string).
+  private static let effectiveDefaults = allDefaults.merging(["en": ""]) { a, _ in a }
 
   private static func freshSettings() -> SettingsManager {
     SettingsManager(defaults: TestDefaults.suite("SP-2450-\(UUID().uuidString)")!)
@@ -186,7 +189,7 @@ struct SpokenPunctuationSettingsPlumbingTests {
     #expect(
       SpokenPunctuationRules.effectiveStartWords(
         overrides: processor.inverseTextNormalizationStep.spokenPunctuation.startWordOverrides)
-        == Self.allDefaults)
+        == Self.effectiveDefaults)
   }
 
   // MARK: - File import
@@ -201,14 +204,14 @@ struct SpokenPunctuationSettingsPlumbingTests {
     #expect(frozen.spokenPunctuationEnabled == true)
     #expect(
       frozen.spokenPunctuationStartWords
-        == ["de": "Sprich", "fr": "Place", "es": "Añade", "it": "Metti"])
+        == ["de": "Sprich", "fr": "Place", "es": "Añade", "it": "Metti", "en": ""])
   }
 
-  @Test("With nothing customised the import freezes all four defaults")
+  @Test("With nothing customised the import freezes every default, English as no start word")
   func importFreezeCapturesDefaults() {
     let frozen = FileImportSettingsFreeze.snapshot(settings: Self.freshSettings())
     #expect(frozen.spokenPunctuationEnabled == false)
-    #expect(frozen.spokenPunctuationStartWords == Self.allDefaults)
+    #expect(frozen.spokenPunctuationStartWords == Self.effectiveDefaults)
   }
 
   @Test("A frozen import is unaffected by a later settings change")

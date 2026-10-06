@@ -10,8 +10,10 @@ import Foundation
 /// (founder-approved placement correction, 2026-10-04).
 ///
 /// **Sole owner of "which spoken phrase becomes which mark" for `de`, `fr`, `es` and `it`, and of each
-/// language's default start word.** English is deliberately NOT here: it keeps its bare-word table,
-/// `InverseTextNormalizer.punct`, byte for byte, with its own toggle position and default.
+/// language's default start word.** English keeps its bare-word table, `InverseTextNormalizer.punct`,
+/// byte for byte, as its DEFAULT (no start word). Since the founder's 2026-10-05 request English can
+/// also be given a start word; the `english` table below exists ONLY for that option and is guarded
+/// against drifting from `punct` by a parity test (`MultilingualSpokenPunctuationTests`).
 ///
 /// ## Why a start word
 ///
@@ -51,6 +53,28 @@ package enum SpokenPunctuationRules {
 
   /// Languages that have a table, in help-article order.
   package static let supportedLanguages = ["de", "fr", "es", "it"]
+
+  /// The languages the Start word row offers, in picker order: English first (its default is NO start
+  /// word, today's bare words), then the four languages that need one.
+  package static let startWordLanguages = ["en"] + supportedLanguages
+
+  /// The rules a start word gates: the four tables, and for English the `english` table. `nil` for any
+  /// other language. `rules(for:)` stays `nil` for English on purpose (it is the table of the languages
+  /// that REQUIRE a start word); this is the lookup of the Start word feature.
+  package static func startWordRules(for language: String) -> [SpokenPunctuationRule]? {
+    baseCode(language) == "en" ? english : rules(for: language)
+  }
+
+  /// Every spoken form `startWordRules(for:)` knows, for start-word collision checks.
+  package static func startWordForms(for language: String) -> [String]? {
+    startWordRules(for: language)?.flatMap(\.spokenForms)
+  }
+
+  /// The default start word of a Start word language: the shipped word, or `""` for English, whose
+  /// default is no start word. `nil` for a language the row does not offer.
+  package static func startWordDefault(for language: String) -> String? {
+    baseCode(language) == "en" ? "" : defaultStartWord(for: language)
+  }
 
   /// The rules for a language, or `nil` when there is no table for it.
   ///
@@ -93,8 +117,8 @@ package enum SpokenPunctuationRules {
   /// unsupported language is ignored.
   package static func effectiveStartWords(overrides: [String: String]) -> [String: String] {
     var words: [String: String] = [:]
-    for language in supportedLanguages {
-      words[language] = overrides[language] ?? defaultStartWord(for: language)
+    for language in startWordLanguages {
+      words[language] = overrides[language] ?? startWordDefault(for: language)
     }
     return words
   }
@@ -120,17 +144,19 @@ package enum SpokenPunctuationRules {
     for key in raw.keys.sorted() {
       guard let value = raw[key],
         let code = LanguageNormalizer.baseCode(key),
-        let forms = spokenForms(for: code)
+        let forms = startWordForms(for: code)
       else { continue }
       if value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-        result[code] = ""
+        // Blank is the choice of no start word. For a language whose default already IS no start word
+        // (English) the sparse store holds nothing, so it is dropped there.
+        if !(dropDefaults && startWordDefault(for: code) == "") { result[code] = "" }
         continue
       }
       guard
         case .accepted(let word) = SpokenPunctuationStartWord.validate(
           value, language: code, spokenForms: forms)
       else { continue }
-      if dropDefaults, let defaultWord = defaultStartWord(for: code),
+      if dropDefaults, let defaultWord = startWordDefault(for: code),
         word.lowercased() == defaultWord.lowercased()
       {
         continue
@@ -201,6 +227,23 @@ package enum SpokenPunctuationRules {
     .init(command: .colon, spokenForms: ["due punti"], replacement: ":"),
     .init(command: .comma, spokenForms: ["virgola"], replacement: ","),
     .init(command: .period, spokenForms: ["punto"], replacement: "."),
+  ]
+
+  /// English, for the OPTIONAL start word only (the default, bare words, is `InverseTextNormalizer.punct`
+  /// and is untouched). The forms and marks mirror `punct` row for row; `MultilingualSpokenPunctuationTests`
+  /// runs both paths on every form so a change to one that the other does not follow fails.
+  /// `backslash` is not here: it stays on the plain switch and is not a start-word command.
+  private static let english: [SpokenPunctuationRule] = [
+    .init(command: .paragraphBreak, spokenForms: ["new paragraph"], replacement: "\n\n"),
+    .init(command: .lineBreak, spokenForms: ["new line"], replacement: "\n"),
+    .init(command: .questionMark, spokenForms: ["question mark"], replacement: "?"),
+    .init(
+      command: .exclamationMark, spokenForms: ["exclamation mark", "exclamation point"],
+      replacement: "!"),
+    .init(command: .colon, spokenForms: ["colon"], replacement: ":"),
+    .init(command: .semicolon, spokenForms: ["semicolon"], replacement: ";"),
+    .init(command: .comma, spokenForms: ["comma"], replacement: ","),
+    .init(command: .period, spokenForms: ["period", "full stop"], replacement: "."),
   ]
 
   /// `de`, `de-DE`, `de_DE` and any casing all name the same table.
