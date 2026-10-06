@@ -182,4 +182,25 @@ struct TranscribeFileDoneLayoutTests {
       top.hasSuffix("documentControls\n  }\n") || top.contains("documentControls\n  }"),
       "`documentControls` must be the last thing above the document")
   }
+
+  /// #3399: the note and both buttons share a line only while they fit at their own sizes. A
+  /// source scan, like its siblings: it cannot see the 578 pt page, so the Live UAT row is the
+  /// refusal screen at the 820 pt window. It does catch the cheap regression of the note, Back
+  /// and Try again going back into one plain `HStack` that squeezes the buttons.
+  @Test("the action row stacks the note above the buttons when they do not fit (#3399)")
+  func actionRowAdaptsToNarrowWidths() {
+    guard let source = Self.viewSource else { return }
+    guard let start = source.range(of: "private func actionRow(") else {
+      Issue.record("`actionRow` is gone")
+      return
+    }
+    let rest = source[start.upperBound...]
+    let end = rest.range(of: "\n  // MARK: ")?.lowerBound ?? rest.endIndex
+    let row = String(rest[..<end])
+    #expect(row.contains("ViewThatFits(in: .horizontal)"), "the row no longer adapts to its width")
+    #expect(row.contains(".fixedSize()"), "the buttons can be squeezed below their own size again")
+    #expect(
+      row.contains("VStack(alignment: .leading, spacing: 10)"),
+      "the narrow layout lost its note-above-buttons stack")
+  }
 }

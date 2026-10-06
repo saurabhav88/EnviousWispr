@@ -350,18 +350,35 @@ struct TranscribeFileView: View {
     note: String, showBack: Bool = true, forwardTitle: String, forwardEnabled: Bool = true,
     forward: @escaping () -> Void
   ) -> some View {
-    BrandedSection {
-      HStack(spacing: 10) {
-        Text(note).foregroundStyle(Color.stTextSecondary)
-        Spacer(minLength: 12)
-        if showBack, coordinator.canGoBack {
-          wizardSecondary(
-            String(
-              localized: "Back",
-              comment: "Transcribe a File: button that returns to the previous step.")
-          ) { coordinator.goBack() }
+    // #3399: the note and both buttons share one line only while they fit at their own sizes.
+    // Narrower, the note goes above a button row, so no button title wraps or turns vertical.
+    let buttons = HStack(spacing: 10) {
+      if showBack, coordinator.canGoBack {
+        wizardSecondary(
+          String(
+            localized: "Back",
+            comment: "Transcribe a File: button that returns to the previous step.")
+        ) { coordinator.goBack() }
+      }
+      wizardPrimary(forwardTitle, isEnabled: forwardEnabled, action: forward)
+    }
+    .fixedSize()
+    return BrandedSection {
+      ViewThatFits(in: .horizontal) {
+        HStack(spacing: 10) {
+          Text(note).foregroundStyle(Color.stTextSecondary)
+            .lineLimit(1).fixedSize(horizontal: true, vertical: false)
+          Spacer(minLength: 12)
+          buttons
         }
-        wizardPrimary(forwardTitle, isEnabled: forwardEnabled, action: forward)
+        VStack(alignment: .leading, spacing: 10) {
+          Text(note).foregroundStyle(Color.stTextSecondary)
+            .fixedSize(horizontal: false, vertical: true)
+          HStack(spacing: 0) {
+            Spacer(minLength: 0)
+            buttons
+          }
+        }
       }
       .padding(.horizontal, SettingsLayout.rowPaddingH)
       .padding(.vertical, SettingsLayout.rowPaddingV)
