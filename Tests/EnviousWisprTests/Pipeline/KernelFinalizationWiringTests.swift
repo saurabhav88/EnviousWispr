@@ -3495,13 +3495,15 @@ extension KernelFinalizationWiringTests {
     #expect(outcome.cleanupLanguage == "de")
     #expect(outcome.cleanupLanguageSource == "dictation")
     #expect(outcome.cleanupLanguageBucket == "ge90")
-    #expect(outcome.itnSkipReason == "non_english", "a resolved German take skips English ITN")
+    // German has a registered rule set (#1677): the take runs the German language route, so no
+    // ITN skip reason is recorded.
+    #expect(outcome.itnSkipReason == nil, "a resolved German take runs the German language route")
 
     let metrics = try #require(outcome.transcript?.metrics)
     #expect(metrics.cleanupLanguage == "de")
     #expect(metrics.cleanupLanguageSource == "dictation")
     #expect(metrics.cleanupLanguageBucket == "ge90")
-    #expect(metrics.itnSkipReason == "non_english")
+    #expect(metrics.itnSkipReason == nil)
   }
 
   @Test("#2614 the live wiring hands a detecting engine's answer to the chain: ITN runs on English")

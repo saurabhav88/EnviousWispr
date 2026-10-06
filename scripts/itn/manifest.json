@@ -1,0 +1,412 @@
+{
+  "schema": 1,
+  "generator": "scripts/itn/generate.py",
+  "language": "de",
+  "output": "Sources/EnviousWisprPostProcessing/Generated/GermanNumberData.swift",
+  "sources": [
+    {
+      "id": "cldr-de-rbnf",
+      "kind": "cldr-rbnf",
+      "repo": "unicode-org/cldr",
+      "tag": "release-48-2",
+      "commit": "11299982335beb974c1c63c45265184e759c0f41",
+      "path": "common/rbnf/de.xml",
+      "url": "https://raw.githubusercontent.com/unicode-org/cldr/11299982335beb974c1c63c45265184e759c0f41/common/rbnf/de.xml",
+      "file": "sources/cldr/de.xml",
+      "sha256": "e582561fe0301f52a8cd5bbdb6b6227f5cc4f57983427452a510358255c02980",
+      "license": "Unicode-3.0",
+      "licenseFile": "sources/cldr/LICENSE",
+      "licenseSha256": "b49d0e9f8ead51ca8b7df6fec89cc3ae6809198b4b9d43c74216da0118f23f5b",
+      "licenseUrl": "https://raw.githubusercontent.com/unicode-org/cldr/11299982335beb974c1c63c45265184e759c0f41/LICENSE",
+      "rulesets": [
+        "%spellout-numbering",
+        "%spellout-cardinal-masculine",
+        "%spellout-cardinal-feminine"
+      ],
+      "note": "Canonical <rbnfRules> text block of rulesetGrouping SpelloutRules; the deprecated per-rule <ruleset> elements are not read.",
+      "ordinal": {
+        "base": "%spellout-ordinal",
+        "irregularBelow": 9,
+        "inflectionRulesets": [
+          "%spellout-ordinal-n",
+          "%spellout-ordinal-r"
+        ],
+        "excludedRulesets": [
+          "%spellout-ordinal-s",
+          "%spellout-ordinal-m"
+        ],
+        "note": "Bounded ordinal extraction: irregular forms below 9, the regular suffix rules below 100 and the -n and -r inflections. Every other ordinal rule (negative, decimal, scale, -s, -m) is counted as deliberately excluded."
+      }
+    },
+    {
+      "id": "nemo-de-zero",
+      "kind": "nemo-tsv",
+      "nemoKind": "zero",
+      "repo": "NVIDIA/NeMo-text-processing",
+      "tag": "r1.2.0",
+      "commit": "7efa127d968c081793ebf11fa94dfb4257302d48",
+      "path": "nemo_text_processing/text_normalization/de/data/numbers/zero.tsv",
+      "url": "https://raw.githubusercontent.com/NVIDIA/NeMo-text-processing/7efa127d968c081793ebf11fa94dfb4257302d48/nemo_text_processing/text_normalization/de/data/numbers/zero.tsv",
+      "file": "sources/nemo/zero.tsv",
+      "sha256": "b6d5aabac2fa999374156d00ef7d5d845eab256a0a2ecb622cb568b7a78300a9",
+      "license": "Apache-2.0",
+      "licenseFile": "sources/nemo/LICENSE",
+      "licenseSha256": "43070e2d4e532684de521b885f385d0841030efa2b1a20bafb76133a5e1379c1",
+      "licenseUrl": "https://raw.githubusercontent.com/NVIDIA/NeMo-text-processing/7efa127d968c081793ebf11fa94dfb4257302d48/LICENSE",
+      "columns": "column 1 spoken form; column 2 value 0"
+    },
+    {
+      "id": "nemo-de-digit",
+      "kind": "nemo-tsv",
+      "nemoKind": "digit",
+      "repo": "NVIDIA/NeMo-text-processing",
+      "tag": "r1.2.0",
+      "commit": "7efa127d968c081793ebf11fa94dfb4257302d48",
+      "path": "nemo_text_processing/text_normalization/de/data/numbers/digit.tsv",
+      "url": "https://raw.githubusercontent.com/NVIDIA/NeMo-text-processing/7efa127d968c081793ebf11fa94dfb4257302d48/nemo_text_processing/text_normalization/de/data/numbers/digit.tsv",
+      "file": "sources/nemo/digit.tsv",
+      "sha256": "eb84c6b83536d509fe6692c4823025f32266997c898f77d6b1c0f77dee6d7431",
+      "license": "Apache-2.0",
+      "licenseFile": "sources/nemo/LICENSE",
+      "licenseSha256": "43070e2d4e532684de521b885f385d0841030efa2b1a20bafb76133a5e1379c1",
+      "licenseUrl": "https://raw.githubusercontent.com/NVIDIA/NeMo-text-processing/7efa127d968c081793ebf11fa94dfb4257302d48/LICENSE",
+      "columns": "column 1 spoken form; column 2 unit digit 2..9 (ones.tsv carries 1)"
+    },
+    {
+      "id": "nemo-de-ones",
+      "kind": "nemo-tsv",
+      "nemoKind": "ones",
+      "repo": "NVIDIA/NeMo-text-processing",
+      "tag": "r1.2.0",
+      "commit": "7efa127d968c081793ebf11fa94dfb4257302d48",
+      "path": "nemo_text_processing/text_normalization/de/data/numbers/ones.tsv",
+      "url": "https://raw.githubusercontent.com/NVIDIA/NeMo-text-processing/7efa127d968c081793ebf11fa94dfb4257302d48/nemo_text_processing/text_normalization/de/data/numbers/ones.tsv",
+      "file": "sources/nemo/ones.tsv",
+      "sha256": "cfc4e743ad26b98c5b14aac064ff37bbacd78c5f1012d1f153512779730e2824",
+      "license": "Apache-2.0",
+      "licenseFile": "sources/nemo/LICENSE",
+      "licenseSha256": "43070e2d4e532684de521b885f385d0841030efa2b1a20bafb76133a5e1379c1",
+      "licenseUrl": "https://raw.githubusercontent.com/NVIDIA/NeMo-text-processing/7efa127d968c081793ebf11fa94dfb4257302d48/LICENSE",
+      "columns": "column 1 spoken form; column 2 value 1 with an optional third column FST weight (ignored)"
+    },
+    {
+      "id": "nemo-de-teen",
+      "kind": "nemo-tsv",
+      "nemoKind": "teen",
+      "repo": "NVIDIA/NeMo-text-processing",
+      "tag": "r1.2.0",
+      "commit": "7efa127d968c081793ebf11fa94dfb4257302d48",
+      "path": "nemo_text_processing/text_normalization/de/data/numbers/teen.tsv",
+      "url": "https://raw.githubusercontent.com/NVIDIA/NeMo-text-processing/7efa127d968c081793ebf11fa94dfb4257302d48/nemo_text_processing/text_normalization/de/data/numbers/teen.tsv",
+      "file": "sources/nemo/teen.tsv",
+      "sha256": "9ce69f570bc0565c23f17ad1baedee0d88bf125c04153c2fa3c1d1cccf5b30f6",
+      "license": "Apache-2.0",
+      "licenseFile": "sources/nemo/LICENSE",
+      "licenseSha256": "43070e2d4e532684de521b885f385d0841030efa2b1a20bafb76133a5e1379c1",
+      "licenseUrl": "https://raw.githubusercontent.com/NVIDIA/NeMo-text-processing/7efa127d968c081793ebf11fa94dfb4257302d48/LICENSE",
+      "columns": "column 1 spoken form; column 2 value 10..19"
+    },
+    {
+      "id": "nemo-de-ties",
+      "kind": "nemo-tsv",
+      "nemoKind": "ties",
+      "repo": "NVIDIA/NeMo-text-processing",
+      "tag": "r1.2.0",
+      "commit": "7efa127d968c081793ebf11fa94dfb4257302d48",
+      "path": "nemo_text_processing/text_normalization/de/data/numbers/ties.tsv",
+      "url": "https://raw.githubusercontent.com/NVIDIA/NeMo-text-processing/7efa127d968c081793ebf11fa94dfb4257302d48/nemo_text_processing/text_normalization/de/data/numbers/ties.tsv",
+      "file": "sources/nemo/ties.tsv",
+      "sha256": "11488cc9fb175a85ecd426327560782e429bbf1e90b8b037c3d25f065640e394",
+      "license": "Apache-2.0",
+      "licenseFile": "sources/nemo/LICENSE",
+      "licenseSha256": "43070e2d4e532684de521b885f385d0841030efa2b1a20bafb76133a5e1379c1",
+      "licenseUrl": "https://raw.githubusercontent.com/NVIDIA/NeMo-text-processing/7efa127d968c081793ebf11fa94dfb4257302d48/LICENSE",
+      "columns": "column 1 spoken form; column 2 TENS DIGIT 2..9; the generator multiplies by ten"
+    },
+    {
+      "id": "nemo-de-quantities",
+      "kind": "nemo-tsv",
+      "nemoKind": "quantities",
+      "repo": "NVIDIA/NeMo-text-processing",
+      "tag": "r1.2.0",
+      "commit": "7efa127d968c081793ebf11fa94dfb4257302d48",
+      "path": "nemo_text_processing/text_normalization/de/data/numbers/quantities.tsv",
+      "url": "https://raw.githubusercontent.com/NVIDIA/NeMo-text-processing/7efa127d968c081793ebf11fa94dfb4257302d48/nemo_text_processing/text_normalization/de/data/numbers/quantities.tsv",
+      "file": "sources/nemo/quantities.tsv",
+      "sha256": "7a5b0981709ddfe88f0d5498c75084c5830bdc608e7478863fd9caafc18e5f56",
+      "license": "Apache-2.0",
+      "licenseFile": "sources/nemo/LICENSE",
+      "licenseSha256": "43070e2d4e532684de521b885f385d0841030efa2b1a20bafb76133a5e1379c1",
+      "licenseUrl": "https://raw.githubusercontent.com/NVIDIA/NeMo-text-processing/7efa127d968c081793ebf11fa94dfb4257302d48/LICENSE",
+      "columns": "one column: scale words with no stated value"
+    }
+  ],
+  "phonePrefix": {
+    "category": "phone_country_prefix",
+    "refusalsFile": "refusals/de.json",
+    "schemaFile": "review-data.schema.json",
+    "requiredEntries": [
+      "ref-phone-001",
+      "ref-phone-002",
+      "ref-phone-003",
+      "ref-phone-004"
+    ],
+    "replacement": "+",
+    "note": "Lowers ONLY the reviewed phone-prefix refusal entries (typed shapes, ids, versions, hashes). Pending entries and other categories are never emitted.",
+    "unsignedContext": {
+      "linkersBefore": [
+        "ist",
+        "sind",
+        "lautet",
+        "lauten",
+        "war",
+        "wäre",
+        "jetzt",
+        "nämlich",
+        "also",
+        "bitte",
+        "unter",
+        "neue",
+        "neu",
+        "die",
+        "der",
+        "dem",
+        "meine",
+        "seine",
+        "ihre",
+        "unsere"
+      ],
+      "phoneWords": [
+        "nummer",
+        "nummern",
+        "telefonnummer",
+        "telefonnummern",
+        "handynummer",
+        "handynummern",
+        "festnetznummer",
+        "festnetznummern",
+        "mobilnummer",
+        "mobilnummern",
+        "mobilfunknummer",
+        "rufnummer",
+        "rufnummern",
+        "faxnummer",
+        "rückrufnummer",
+        "durchwahl",
+        "telefon",
+        "handy",
+        "festnetz",
+        "mobiltelefon",
+        "hotline",
+        "whatsapp"
+      ],
+      "nonNounWords": [
+        "sie",
+        "ihnen",
+        "ihr",
+        "ihre",
+        "ihrer",
+        "ich",
+        "wir",
+        "er",
+        "es",
+        "du",
+        "man",
+        "ruf",
+        "rufen",
+        "rufe",
+        "schreib",
+        "schreiben",
+        "notier",
+        "notiere",
+        "unter",
+        "bei",
+        "die",
+        "der",
+        "das",
+        "den",
+        "dem",
+        "meine",
+        "mein",
+        "seine",
+        "unsere",
+        "bitte",
+        "erreichen",
+        "melden",
+        "hier",
+        "also",
+        "und",
+        "oder",
+        "nämlich",
+        "kurz"
+      ],
+      "valueVerbs": [
+        "kostet",
+        "kosten",
+        "beträgt",
+        "betragen",
+        "wiegt",
+        "wiegen",
+        "misst",
+        "messen",
+        "zählt",
+        "zählen",
+        "zahlen",
+        "zahlt",
+        "summiert",
+        "ergibt",
+        "ergeben",
+        "umfasst"
+      ],
+      "possessorArticles": [
+        "der",
+        "des",
+        "vom",
+        "von"
+      ],
+      "fieldSuffixes": [
+        "nummer",
+        "nummern"
+      ],
+      "localQualifiers": [
+        "lokal",
+        "lokale",
+        "lokalen",
+        "lokaler",
+        "lokales",
+        "national",
+        "nationale",
+        "nationalen",
+        "nationaler",
+        "nationales",
+        "inländisch",
+        "inländische",
+        "inländischen",
+        "inländischer",
+        "ortsnetz",
+        "ortsnummer",
+        "intern",
+        "interne",
+        "internen",
+        "interner",
+        "hausintern",
+        "nebenstelle"
+      ],
+      "possessiveSuffix": "s",
+      "provenance": "Founder direction for #1677 evolution: a phone number by default, refused only when the number belongs to something else. Word classes for the shared unsigned-number gates: words that may stand between a label and the number, phone words that do not make the number another field, capitalised words that are not nouns, value verbs that make the number an amount, possessor articles, number-field suffixes, and explicit local or national qualifiers. Chosen from the failure analysis of the fresh German acceptance run; not reviewed refusals."
+    }
+  },
+  "ordinalRefusals": {
+    "category": "ordinal",
+    "refusalsFile": "refusals/de.json",
+    "schemaFile": "review-data.schema.json",
+    "requiredEntries": [
+      "ref-ordinal-001",
+      "ref-ordinal-002",
+      "ref-ordinal-003",
+      "ref-ordinal-004",
+      "ref-ordinal-005",
+      "ref-ordinal-006"
+    ],
+    "allowedShapes": [
+      "ordinal_word_without_following_noun",
+      "ordinal_word_before_fraction_noun",
+      "ordinal_word_in_fixed_phrase",
+      "ordinal_word_in_proper_name",
+      "ordinal_word_in_date_phrase",
+      "ordinal_adverb"
+    ],
+    "writtenSuffix": ".",
+    "note": "Lowers ONLY the reviewed ordinal refusal entries (context shapes and literal phrases with their ids, versions, hashes). Pending entries and other categories are never emitted; the entries are not a context lexicon."
+  },
+  "clockIdiom": {
+    "category": "clock_idiom",
+    "refusalsFile": "refusals/de.json",
+    "schemaFile": "review-data.schema.json",
+    "requiredEntries": [
+      "ref-clock-002",
+      "ref-clock-003",
+      "ref-clock-004"
+    ],
+    "templates": [
+      {
+        "id": "half",
+        "tokens": [
+          "halb"
+        ],
+        "hourOffset": -1,
+        "minute": 30,
+        "inputHours": [
+          2,
+          12
+        ]
+      },
+      {
+        "id": "quarterAfter",
+        "tokens": [
+          "viertel",
+          "nach"
+        ],
+        "hourOffset": 0,
+        "minute": 15,
+        "inputHours": [
+          1,
+          11
+        ]
+      }
+    ],
+    "anchors": [
+      "um",
+      "gegen",
+      "bis",
+      "ab",
+      "für"
+    ],
+    "trailingMarker": "uhr",
+    "outputSeparator": ":",
+    "syntaxProvenance": "Implementation admission and template data for the bounded clock scope (founder option B, halb H and viertel nach H only), grounded in the approved plan and the frozen development expectations. The input-hour ranges exclude halb eins and viertel nach zwoelf, which would need a noon/midnight face choice. This is not a reviewed refusal entry and not a general German clock grammar; the pending regional forms (viertel vor H, bare viertel H, dreiviertel H) and the pending noon/midnight entry are neither converted nor lowered.",
+    "note": "Lowers ONLY the reviewed clock refusal entries (literal phrases with their ids, versions, hashes). Pending entries and other categories are never emitted."
+  },
+  "numberStyle": {
+    "unitSymbols": {
+      "prozent": "%"
+    },
+    "postcodeLabels": [
+      "postleitzahl",
+      "plz"
+    ],
+    "streetSuffixes": [
+      "straße",
+      "strasse",
+      "str",
+      "weg",
+      "platz",
+      "allee",
+      "gasse",
+      "ring",
+      "damm",
+      "ufer",
+      "markt",
+      "chaussee",
+      "pfad",
+      "steig",
+      "stieg",
+      "hof",
+      "berg",
+      "park",
+      "brücke",
+      "kai",
+      "promenade",
+      "zeile",
+      "graben",
+      "winkel",
+      "feld",
+      "garten",
+      "tor",
+      "anger",
+      "weiler"
+    ],
+    "postcodeDigits": 5,
+    "provenance": "Founder direction for #1677 evolution (addresses, numbers, percentages, dates). Measured engine output: both engines already write cardinals, decimals, money, dates and house numbers as digits; they write a five-digit postcode with a thousands dot after a street address or a postcode label ('Hauptstraße 12 10.115 Berlin', 'Postleitzahl 50.667 Köln'), and WhisperKit sometimes keeps the word 'Prozent' after a number. Not a reviewed refusal."
+  }
+}

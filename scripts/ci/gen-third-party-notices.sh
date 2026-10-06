@@ -102,6 +102,18 @@ COMPONENTS=(
   # committed data asset; VarCon's copyright and permission notices are vendored verbatim
   # beside the table.
   "VarCon (American/British spelling data, bundled as british-spelling.json)|2020.12.07|Permissive (Atkinson and Titze permission notices; Ispell BSD-style licence)|repo:Sources/EnviousWisprPostProcessing/Resources/varcon-LICENSE.txt|http://wordlist.aspell.net/|"
+  # #1677: the German number data in Sources/EnviousWisprPostProcessing/Generated/GermanNumberData.swift
+  # is generated offline by scripts/itn/generate.py from these two pinned upstream data sets. Not
+  # SwiftPM deps, committed data (no code from either is included); each upstream licence is kept
+  # verbatim beside its pinned source files under scripts/itn/sources/.
+  # #1677: phone-number validation and formatting for the language cleanup passes. The metadata
+  # is Google libphonenumber's, shipped inside PhoneNumberKit and copied byte for byte into
+  # EnviousWisprPostProcessing/Resources (LanguagePhoneMetadata); its Apache-2.0 text is vendored
+  # beside that copy, hence the repo: path.
+  "PhoneNumberKit|5.0.11|MIT|PhoneNumberKit/LICENSE|https://github.com/PhoneNumberKit/PhoneNumberKit|phonenumberkit"
+  "libphonenumber phone-number metadata (bundled in PhoneNumberKit, copied into the app's cleanup resources)|v9.0.40 (9d77a671)|Apache-2.0|repo:Sources/EnviousWisprPostProcessing/Resources/libphonenumber-LICENSE.txt|https://github.com/google/libphonenumber|"
+  "NeMo text-processing (German number word lists, lexical data only)|r1.2.0 (7efa127d)|Apache-2.0|repo:scripts/itn/sources/nemo/LICENSE|https://github.com/NVIDIA/NeMo-text-processing|"
+  "Unicode CLDR (German rule-based number format data, lexical data only)|release-48-2 (11299982)|Unicode-3.0 (Unicode License v3)|repo:scripts/itn/sources/cldr/LICENSE|https://github.com/unicode-org/cldr|"
 )
 
 # --- Cross-check the DIRECT-dep coverage against Package.resolved (Codex #2) ---
