@@ -200,6 +200,9 @@ enum LanguageProtectedSpans {
     "centavo", "centavos", "cêntimo", "cêntimos",
     // Polish.
     "pln", "zł", "złoty", "złote", "złotych", "grosz", "grosze", "groszy",
+    // Swedish and Ukrainian.
+    "sek", "kr", "krona", "kronor", "öre", "uah", "грн", "₴", "гривня", "гривні", "гривень",
+    "копійка", "копійки", "копійок",
   ]
 
   /// Units that make a number a temperature or a percentage. One authority: `units` is built from

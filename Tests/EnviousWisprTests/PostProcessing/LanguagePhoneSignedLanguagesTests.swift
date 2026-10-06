@@ -86,6 +86,8 @@ struct LanguagePhoneSignedLanguagesTests {
       ("pl", "Dwa plus dwa to 4: 2 plus 2."), ("pl", "Zadzwoń pod numer 501 234 567."),
       ("sv", "I morgon blir det plus 20 grader."), ("sv", "Två plus 2 är 4."),
       ("uk", "Завтра буде плюс 20 градусів."), ("uk", "Два плюс 2 дорівнює 4."),
+      ("sv", "Det kostar plus 46 700 000 000 kronor."), ("sv", "Totalt plus 46 701 234 567 kr."),
+      ("uk", "Разом плюс 380 671 234 567 гривень."), ("uk", "Ще плюс 380 671 234 567 грн."),
       ("pl", "To kosztuje plus 48 501 234 567 PLN."), ("pl", "Razem plus 48 501 234 567 złotych."),
     ]
     for (language, text) in cases {
