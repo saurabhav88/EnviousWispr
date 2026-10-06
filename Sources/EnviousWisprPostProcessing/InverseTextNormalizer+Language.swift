@@ -62,8 +62,8 @@ extension InverseTextNormalizer {
 /// language whose data does not build has no passes (it runs the neutral subset only); nothing
 /// throws at dictation time. German runs number style, phone and clock; French, Spanish, Italian
 /// and Portuguese run the signed phone path and the hour-first clock pass; Dutch runs the signed
-/// phone path and the minute-first clock pass with its own number grammar; Polish runs the signed
-/// phone path. The ordinal pass is not listed: its month, fixed-phrase and name data are still
+/// phone path and the minute-first clock pass with its own number grammar; Polish, Swedish and
+/// Ukrainian run the signed phone path. The ordinal pass is not listed: its month, fixed-phrase and name data are still
 /// pending.
 enum LanguagePassCatalog {
 
@@ -98,7 +98,8 @@ enum LanguagePassCatalog {
     for code in codes {
       // The language's number grammar, when it has one (Dutch), also lets the phone pass refuse a
       // spoken operand before the plus word ("een plus 31 …" is a sum). KNOWN LIMIT (#1677): a
-      // language without a grammar (French, Spanish, Italian, Portuguese, Polish) refuses only a
+      // language without a grammar (French, Spanish, Italian, Portuguese, Polish, Swedish,
+      // Ukrainian) refuses only a
       // WRITTEN operand, so a spoken sum whose second operand is itself a valid international
       // number ("dwa plus 48 501 234 567") gains a "+"; every digit is kept. Closing it needs a
       // sourced number lexicon per language.

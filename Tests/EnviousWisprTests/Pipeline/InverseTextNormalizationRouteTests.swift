@@ -89,7 +89,7 @@ struct InverseTextNormalizationRouteTests {
             language: row.language, englishVetoed: veto, backendSupportsLID: lid)
           let route = InverseTextNormalizationGate.route(
             language: row.language, englishVetoed: veto, backendSupportsLID: lid)
-          // The production registry lists de, fr, es, it, pt, nl and pl: the rows for those languages
+          // The production registry lists de, fr, es, it, pt, nl, pl, sv and uk: the rows for those languages
           // (literal labels to literal codes, not the subject's canonicaliser) route to
           // `.language`; every other row is unchanged.
           let registeredRows: [String: String] = [
@@ -162,15 +162,15 @@ struct InverseTextNormalizationRouteTests {
     #expect(route("", lid: true) == .neutral("lid_backend_nil"))
   }
 
-  /// A drift guard, not product coverage: the shipped registry lists de, fr, es, it, pt, nl, pl
-  /// (#1677).
-  @Test("the production registry lists exactly de, fr, es, it, pt, nl and pl", .tags(.driftGuard))
+  /// A drift guard, not product coverage: the shipped registry lists de, fr, es, it, pt, nl, pl,
+  /// sv, uk (#1677).
+  @Test("the production registry lists exactly de, fr, es, it, pt, nl, pl, sv and uk", .tags(.driftGuard))
   func productionRegistryMembers() {
-    #expect(LanguageRuleRegistry.production.count == 7)
-    for code in ["de", "fr", "es", "it", "pt", "nl", "pl"] {
+    #expect(LanguageRuleRegistry.production.count == 9)
+    for code in ["de", "fr", "es", "it", "pt", "nl", "pl", "sv", "uk"] {
       #expect(LanguageRuleRegistry.production.ruleSet(forLanguage: code)?.baseCode == code, "\(code)")
     }
-    for code in ["ru", "sv", "uk", "no", "zh"] {
+    for code in ["ru", "fi", "da", "no", "zh"] {
       #expect(LanguageRuleRegistry.production.ruleSet(forLanguage: code) == nil, "\(code)")
     }
   }
@@ -216,9 +216,9 @@ struct InverseTextNormalizationRouteTests {
   @Test("each skip bucket runs the neutral subset and never the English time rule")
   func everySkipBucketRunsNeutralOnly() async throws {
     let cases: [(String, String?, Bool, Bool, String)] = [
-      // Swedish: a non-English language with no registered rule set (#1677 registers
-      // de/fr/es/it/pt/nl/pl).
-      ("non_english", "sv", false, true, "non_english"),
+      // Finnish: a non-English language with no registered rule set (#1677 registers
+      // de/fr/es/it/pt/nl/pl/sv/uk).
+      ("non_english", "fi", false, true, "non_english"),
       ("language_vetoed", nil, true, true, "language_vetoed"),
       ("lid_backend_nil", nil, false, true, "lid_backend_nil"),
     ]
@@ -239,7 +239,7 @@ struct InverseTextNormalizationRouteTests {
   func skippedNoOpIsByteIdentical() async throws {
     // Leading/trailing whitespace, CRLF and DECOMPOSED Unicode (e + U+0301), all untouched.
     let input = "  Ruhe\u{0301} bitte,\r\num sieben am Abend.\n  "
-    for (language, vetoed, lid) in [("sv", false, true), (nil, true, true), (nil, false, true)]
+    for (language, vetoed, lid) in [("fi", false, true), (nil, true, true), (nil, false, true)]
       as [(String?, Bool, Bool)]
     {
       let step = InverseTextNormalizationStep()
@@ -259,7 +259,7 @@ struct InverseTextNormalizationRouteTests {
     let neutral = InverseTextNormalizationStep()
     neutral.backendSupportsLID = true
     let n = try await neutral.process(
-      ctx("mandalo a marco arroba esempio punto com", language: "sv"))
+      ctx("mandalo a marco arroba esempio punto com", language: "fi"))
     #expect(n.text == "mandalo a marco@esempio.com")
     #expect(neutral.lastRun?.ran == false)
 

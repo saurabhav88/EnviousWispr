@@ -690,6 +690,20 @@
       ],
       "replacement": "+",
       "provenance": "Polish spoken plus. Measured 2026-10-06 on Azure TTS through Parakeet and WhisperKit: every international number keeps the spoken plus word before the digits (WhisperKit writes Polish 'PLUS'; matching folds case); word from the language's own telephone usage."
+    },
+    "sv": {
+      "triggerTokens": [
+        "plus"
+      ],
+      "replacement": "+",
+      "provenance": "Swedish spoken plus. Measured 2026-10-06 on Azure TTS through Parakeet and WhisperKit (docs/audits/2026-10-06-1677-sv-uk-eval): every international number keeps the spoken plus word before the digits; word from the language's own telephone usage."
+    },
+    "uk": {
+      "triggerTokens": [
+        "плюс"
+      ],
+      "replacement": "+",
+      "provenance": "Ukrainian spoken plus. Measured 2026-10-06 on Azure TTS through Parakeet and WhisperKit (docs/audits/2026-10-06-1677-sv-uk-eval): every international number keeps the spoken plus word before the digits; word from the language's own telephone usage."
     }
   },
   "hourFirstClock": {

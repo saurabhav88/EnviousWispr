@@ -3,7 +3,8 @@ import Testing
 
 @testable import EnviousWisprPostProcessing
 
-// MARK: - The signed phone path in French, Spanish, Italian, Portuguese, Dutch and Polish (#1677)
+// MARK: - The signed phone path in French, Spanish, Italian, Portuguese, Dutch, Polish, Swedish and
+// Ukrainian (#1677)
 //
 // Inputs are engine output measured on Azure TTS through Parakeet and WhisperKit (the spoken plus
 // word kept before the digits, grouping chosen by the engine). Expected outputs are independent
@@ -13,7 +14,7 @@ import Testing
 // When this fails, an international number keeps its spoken plus word, loses a digit, or prose
 // with the plus word is rewritten.
 
-@Suite("Signed phone path in fr, es, it, pt, nl, pl (#1677)", .tags(.driftGuard))
+@Suite("Signed phone path in fr, es, it, pt, nl, pl, sv, uk (#1677)", .tags(.driftGuard))
 struct LanguagePhoneSignedLanguagesTests {
 
   private func converted(_ text: String, language: String) throws -> String {
@@ -58,6 +59,9 @@ struct LanguagePhoneSignedLanguagesTests {
       ("pl", "Mój numer to plus 48 612 345 678.", "Mój numer to +48 61 234 56 78."),
       ("pl", "Mój numer to PLUS 48 612 345 678.", "Mój numer to +48 61 234 56 78."),
       ("pl", "Zadzwoń na plus 48 501 234 567.", "Zadzwoń na +48 501 234 567."),
+      // Swedish and Ukrainian (libphonenumber grouping).
+      ("sv", "Mitt nummer är plus 46 70 123 45 67.", "Mitt nummer är +46 70 123 45 67."),
+      ("uk", "Мій номер плюс 380 67 123 45 67.", "Мій номер +380 67 123 4567."),
     ]
     for (language, input, expected) in cases {
       #expect(
@@ -80,6 +84,10 @@ struct LanguagePhoneSignedLanguagesTests {
       ("nl", "Morgen wordt het plus 20 graden."), ("nl", "Je doet 1 plus 1, dat is 2."),
       ("nl", "Bel me op 06 12 34 56 78."), ("pl", "Jutro będzie plus 20 stopni."),
       ("pl", "Dwa plus dwa to 4: 2 plus 2."), ("pl", "Zadzwoń pod numer 501 234 567."),
+      ("sv", "I morgon blir det plus 20 grader."), ("sv", "Två plus 2 är 4."),
+      ("uk", "Завтра буде плюс 20 градусів."), ("uk", "Два плюс 2 дорівнює 4."),
+      ("sv", "Det kostar plus 46 700 000 000 kronor."), ("sv", "Totalt plus 46 701 234 567 kr."),
+      ("uk", "Разом плюс 380 671 234 567 гривень."), ("uk", "Ще плюс 380 671 234 567 грн."),
       ("pl", "To kosztuje plus 48 501 234 567 PLN."), ("pl", "Razem plus 48 501 234 567 złotych."),
     ]
     for (language, text) in cases {
@@ -87,12 +95,12 @@ struct LanguagePhoneSignedLanguagesTests {
     }
   }
 
-  @Test("only the six declared languages have signed-only phone rules")
+  @Test("only the eight declared languages have signed-only phone rules")
   func declaredLanguages() throws {
-    for code in ["fr", "es", "it", "pt", "nl", "pl"] {
+    for code in ["fr", "es", "it", "pt", "nl", "pl", "sv", "uk"] {
       #expect(try LanguagePhonePrefixRules.signedOnly(language: code) != nil, "\(code)")
     }
-    for code in ["de", "ru", "sv", "en"] {
+    for code in ["de", "ru", "fi", "en"] {
       #expect(try LanguagePhonePrefixRules.signedOnly(language: code) == nil, "\(code)")
     }
   }
