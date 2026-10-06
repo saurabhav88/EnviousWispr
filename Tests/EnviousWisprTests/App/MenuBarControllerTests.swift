@@ -244,13 +244,11 @@ struct MenuBarControllerTests {
     let defaults = TestDefaults.suite(name)!
     defaults.removePersistentDomain(forName: name)
     let settings = SettingsManager(defaults: defaults)
-    let controller = makeController(settings: settings)
+    let usb = MicrophoneMenuChoice(uid: "usb-uid", title: "USB Mic · USB")
+    let controller = makeController(settings: settings, liveMicrophones: { [usb] })
     let menu = NSMenu()
     controller.renderMenu(
-      into: menu,
-      state: fixture(
-        pipelineState: .idle,
-        microphoneChoices: [MicrophoneMenuChoice(uid: "usb-uid", title: "USB Mic · USB")]))
+      into: menu, state: fixture(pipelineState: .idle, microphoneChoices: [usb]))
     let rows = item(menu, id: MenuBarItemID.microphone)?.submenu?.items ?? []
     #expect(rows.count == 2)
 
@@ -259,6 +257,26 @@ struct MenuBarControllerTests {
     #expect(settings.selectedInputDeviceUID == "usb-uid")
 
     perform(rows.first)
+    #expect(settings.preferredInputDeviceIDOverride == "")
+    #expect(settings.selectedInputDeviceUID == "")
+  }
+
+  @Test("Microphone submenu: a row for a mic unplugged after the menu opened saves nothing (#3479)")
+  func microphoneSubmenuIgnoresAnUnpluggedMic() {
+    let name = "ew.menuMicrophoneGoneTest." + UUID().uuidString
+    let defaults = TestDefaults.suite(name)!
+    defaults.removePersistentDomain(forName: name)
+    let settings = SettingsManager(defaults: defaults)
+    let usb = MicrophoneMenuChoice(uid: "usb-uid", title: "USB Mic · USB")
+    // The menu is drawn with the USB mic; by click time the live list no longer has it.
+    let controller = makeController(settings: settings, liveMicrophones: { [] })
+    let menu = NSMenu()
+    controller.renderMenu(
+      into: menu, state: fixture(pipelineState: .idle, microphoneChoices: [usb]))
+    let rows = item(menu, id: MenuBarItemID.microphone)?.submenu?.items ?? []
+    #expect(rows.count == 2)
+
+    perform(rows.last)
     #expect(settings.preferredInputDeviceIDOverride == "")
     #expect(settings.selectedInputDeviceUID == "")
   }
@@ -996,7 +1014,8 @@ struct MenuBarControllerTests {
   }
 
   private func makeController(
-    spy: ActionSpy = ActionSpy(), settings: SettingsManager = SettingsManager()
+    spy: ActionSpy = ActionSpy(), settings: SettingsManager = SettingsManager(),
+    liveMicrophones: @escaping @MainActor () -> [MicrophoneMenuChoice] = { [] }
   ) -> MenuBarController {
     let asrManager = ASRManager(engineMutationScope: .alwaysAllowedForTesting)
     // Shared lightweight audio fake from DictationRuntimeTestSupport (same
@@ -1047,7 +1066,7 @@ struct MenuBarControllerTests {
         continueOnboarding: { spy.fired.append("continueOnboarding") },
         openMainWindow: { spy.fired.append("openMainWindow") },
         openHelpCenter: { spy.fired.append("openHelpCenter") },
-        microphoneChoices: { [] },
+        microphoneChoices: liveMicrophones,
         openTranscribeFile: { spy.fired.append("openTranscribeFile") },
         openPermissions: { spy.fired.append("openPermissions") },
         polishSetupWarning: { spy.polishSetupWarning },

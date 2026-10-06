@@ -859,6 +859,11 @@ final class MenuBarController: NSObject {
   /// owner Settings uses.
   @objc private func setMicrophoneAction(_ sender: NSMenuItem) {
     guard let uid = sender.representedObject as? String else { return }
+    // #3479: a mic unplugged while the menu was open leaves a clickable row. Auto ("") is always
+    // valid; any other UID must still be a live input, or nothing would ever correct the write.
+    guard uid.isEmpty || actions.microphoneChoices().contains(where: { $0.uid == uid }) else {
+      return
+    }
     settings.chooseInputDevice(uid: uid)
   }
 
