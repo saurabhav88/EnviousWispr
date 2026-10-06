@@ -129,7 +129,8 @@ final class InverseTextNormalizationStep: TextProcessingStep {
   /// slash is read in both switch positions (#3038, `InverseTextNormalizer.slashReading`).
   ///
   /// #2450: the whole setting is snapshotted before asynchronous work. The English route reads
-  /// only `enabled`; eligible non-English routes also use the validated effective start word.
+  /// only `enabled` unless English has a valid start word (`englishPunctuationPlan`); eligible
+  /// non-English routes also use the validated effective start word.
   ///
   /// Default `.off` — the safe state for a step built in isolation (tests, and
   /// recovery before `applySettings` runs), and it matches the shipped product
@@ -164,8 +165,8 @@ final class InverseTextNormalizationStep: TextProcessingStep {
     /// Character length before / after (edit size is allowed; #253 precedent).
     let lenBefore: Int
     let lenAfter: Int
-    /// #2450: what the start-word pass did for this take. Nil on the English route (no pass exists
-    /// there) and, by design, never inferred from `changed`, which also covers every other ITN
+    /// #2450: what the start-word pass did for this take. Nil on the English route when no start word
+    /// is configured, and, by design, never inferred from `changed`, which also covers every other ITN
     /// conversion. Not a precision claim.
     let punctuationStatus: SpokenPunctuationStatus?
     /// #2450: the number of commands the start-word pass rewrote. Non-nil only for `rewrote` and
@@ -482,7 +483,8 @@ extension InverseTextNormalizationStep {
   /// | on | no | resolved, no table | `unsupported`, not attempted |
   /// | on | no | resolved, has a table | attempted with the validated effective word |
   ///
-  /// English never reaches here (the English route has no pass and reports no status). A positively
+  /// English never reaches here (its optional start-word plan is `englishPunctuationPlan`; without a
+  /// start word the English route has no pass and reports no status). A positively
   /// identified language with no table is never given another language's table, and a nil language
   /// is never guessed.
   ///
