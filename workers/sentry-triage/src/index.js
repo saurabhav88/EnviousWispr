@@ -344,7 +344,12 @@ export async function handleTriage(body, env) {
     priority: decision.priority,
   });
 
-  const result = await postDiscord(env.DISCORD_WEBHOOK_URL, embed, {
+  // Sentry's issue lookup owns project identity; feedback text and tags cannot choose a channel.
+  // A missing Android binding must refuse delivery, never fall back into the Mac channel.
+  const webhookUrl = issue.project?.id === "4512117176795136"
+    ? env.DISCORD_ANDROID_WEBHOOK_URL
+    : env.DISCORD_WEBHOOK_URL;
+  const result = await postDiscord(webhookUrl, embed, {
     issueId,
     deadlineAt: operationDeadlineAt,
   });

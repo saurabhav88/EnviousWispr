@@ -64,6 +64,7 @@ function harness({ issueLookup = () => ok(ISSUE), discordStatus = 204 } = {}) {
     GITHUB_ISSUES_READ_TOKEN: "gh",
     GITHUB_REPO: "saurabhav88/EnviousWispr",
     DISCORD_WEBHOOK_URL: "https://discord.test/hook",
+    DISCORD_ANDROID_WEBHOOK_URL: "https://discord.test/android",
   };
   return { env, requests, embeds, restore: () => (globalThis.fetch = realFetch) };
 }
@@ -84,6 +85,7 @@ test("event_alert.triggered resolves the issue by id and POSTS a card", async ()
     "the issue must be fetched by id; the action payload does not carry one"
   );
   assert.equal(h.embeds.length, 1, "this is the whole point: a card reaches Discord");
+  assert.deepEqual(h.requests.filter((u) => u.startsWith("https://discord.test")), ["https://discord.test/hook"]);
   assert.match(h.embeds[0].title, /ENVIOUSWISPR-4M|polish_provider_failed/);
 });
 
@@ -106,4 +108,24 @@ test("a payload with neither data.issue nor an event issue_id still skips", asyn
   }
   assert.equal(h.embeds.length, 0);
   assert.equal(h.requests.length, 0, "nothing to look up means no subrequest spent");
+});
+
+// Product Outcome: Android issues and feedback must reach the Android channel, never the Mac channel.
+for (const issueCategory of ["error", "feedback"]) {
+  test(`Android ${issueCategory} action uses the fetched Sentry project to select its channel`, async () => {
+    const h = harness({ issueLookup: () => ok({ ...ISSUE, issueCategory,
+      shortId: "ENVIOUSWISPR-ANDROID-7", project: { id: "4512117176795136", slug: "enviouswispr-android" } }) });
+    try { await handleTriage(eventAlertBody(), h.env); } finally { h.restore(); }
+    assert.equal(h.embeds.length, 1);
+    assert.deepEqual(h.requests.filter((u) => u.startsWith("https://discord.test")), ["https://discord.test/android"]);
+  });
+}
+
+test("missing Android channel binding refuses delivery without posting to Mac or writing a throttle", async () => {
+  const h = harness({ issueLookup: () => ok({ ...ISSUE, project: { id: "4512117176795136" } }) });
+  delete h.env.DISCORD_ANDROID_WEBHOOK_URL;
+  try { await handleTriage(eventAlertBody(), h.env); } finally { h.restore(); }
+  assert.deepEqual(h.requests.filter((u) => u.startsWith("https://discord.test")), []);
+  assert.equal(h.embeds.length, 0);
+  assert.equal(h.env.SENTRY_DEDUP.store.has(`sentry:${ISSUE.id}`), false);
 });
