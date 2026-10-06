@@ -100,6 +100,9 @@ struct LanguagePhonePrefixPass: Sendable {
     case alreadyWellFormed
     /// The metadata rejects the digits.
     case notAValidNumber(LanguagePhoneMetadata.Invalid)
+    /// The metadata rejects the digits and they are grouped in thousands (`1.000.000`,
+    /// `2 500 000`): an amount, so the sign-only fallback does not apply.
+    case thousandsGroupedAmount
     /// The metadata could not be loaded; no number is validated.
     case metadataUnavailable(String)
     /// Unsigned: the number belongs to another field, a label, a quantity or an amount.
@@ -314,8 +317,9 @@ struct LanguagePhonePrefixPass: Sendable {
       }
       if rules.triggers.contains(words[chunkIndex - 1].folded) { return nil }
     }
-    guard case .run(let digits, let separators, let firstGroup, let runEnd) = scanner.scanRun(
-      from: runStart),
+    guard
+      case .run(let digits, let separators, let firstGroup, let runEnd) = scanner.scanRun(
+        from: runStart),
       (8...Self.maxDigits).contains(digits.utf8.count), !digits.hasPrefix("00")
     else { return nil }
     // Dates and other dotted numbers are never unsigned telephone numbers: a dot separator, or
@@ -511,6 +515,9 @@ struct LanguagePhonePrefixPass: Sendable {
     case .valid(let number): formatted = number.formatted
     case .unavailable(let reason): return (.refused(.metadataUnavailable(reason)), 0)
     case .invalid(let reason):
+      if Self.isThousandsGrouped(snapshot.substring(runStart..<runEnd)) {
+        return (.refused(.thousandsGroupedAmount), 0)
+      }
       return fallback(
         anchor: anchor, digits: digits, firstGroup: firstGroup, reason: reason, snapshot: snapshot)
     }
@@ -529,6 +536,19 @@ struct LanguagePhonePrefixPass: Sendable {
     case .success(let edit): return (.proposed(edit), range.upperBound)
     case .failure(let refusal): return (.refused(.editRefused(refusal)), 0)
     }
+  }
+
+  /// True when a run is written as a thousands-grouped amount: one to three digits, then two or
+  /// more groups of exactly three (`1.000.000`, `2 500 000`, `12,345,678`). Numbers dictated as
+  /// telephone numbers are grouped by the engine in pairs or calling-code-first and carry a
+  /// shorter or longer group; an invalid number in this shape is a quantity or a price.
+  static func isThousandsGrouped(_ run: String?) -> Bool {
+    guard let run else { return false }
+    let groups = run.split(whereSeparator: { !("0"..."9").contains($0) }).map(\.count)
+    guard groups.count >= 3, let first = groups.first, (1...3).contains(first) else {
+      return false
+    }
+    return groups.dropFirst().allSatisfy { $0 == 3 }
   }
 
   /// The sign-only edit for a spoken number the metadata does not accept (a misheard digit, a

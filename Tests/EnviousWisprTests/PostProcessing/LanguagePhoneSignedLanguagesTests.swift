@@ -37,16 +37,25 @@ struct LanguagePhoneSignedLanguagesTests {
   @Test("the measured engine shapes convert, every digit kept")
   func measuredShapes() throws {
     let cases: [(String, String, String)] = [
-      ("fr", "Vous pouvez me joindre au plus 33 612 34 56 78.", "Vous pouvez me joindre au +33 6 12 34 56 78."),
-      ("fr", "Le numéro du bureau est le plus 331 42 68 15 23.", "Le numéro du bureau est le +33 1 42 68 15 23."),
-      ("es", "Llámame al más 34612 34 56 78, por favor.", "Llámame al +34 612 34 56 78, por favor."),
+      (
+        "fr", "Vous pouvez me joindre au plus 33 612 34 56 78.",
+        "Vous pouvez me joindre au +33 6 12 34 56 78."
+      ),
+      (
+        "fr", "Le numéro du bureau est le plus 331 42 68 15 23.",
+        "Le numéro du bureau est le +33 1 42 68 15 23."
+      ),
+      (
+        "es", "Llámame al más 34612 34 56 78, por favor.", "Llámame al +34 612 34 56 78, por favor."
+      ),
       ("es", "Mi número es mas 34 612 34 56 78.", "Mi número es +34 612 34 56 78."),
       ("it", "Chiamami al più 39 347 1234567.", "Chiamami al +39 347 123 4567."),
       ("it", "Il numero è piu 39 06 4827 1935.", "Il numero è +39 06 4827 1935."),
       ("pt", "Ligue para mais 351 912 345 678.", "Ligue para +351 912 345 678."),
     ]
     for (language, input, expected) in cases {
-      #expect(bytes(try converted(input, language: language)) == bytes(expected), "\(language): \(input)")
+      #expect(
+        bytes(try converted(input, language: language)) == bytes(expected), "\(language): \(input)")
     }
   }
 
@@ -58,6 +67,10 @@ struct LanguagePhoneSignedLanguagesTests {
       ("es", "Dos más tres son cinco: 2 más 3."), ("es", "Necesitamos más 20 sillas."),
       ("it", "Siamo più di 50 persone."), ("it", "Servono più 5 euro."),
       ("pt", "Mais 20 minutos e chegamos."), ("pt", "Ligue para 912 345 678."),
+      // Large amounts after the plus word: thousands grouping, with and without a money word.
+      ("pt", "Precisamos de mais 1.000.000 reais."), ("pt", "São mais 1.000.000 de pessoas."),
+      ("fr", "Il y a plus 1 000 000 d'habitants."), ("es", "Son más 2.500.000 personas."),
+      ("it", "Servono più 1.000.000 euro."), ("es", "Cuesta más 34 612 345 678 pesos."),
     ]
     for (language, text) in cases {
       #expect(bytes(try converted(text, language: language)) == bytes(text), "\(language): \(text)")

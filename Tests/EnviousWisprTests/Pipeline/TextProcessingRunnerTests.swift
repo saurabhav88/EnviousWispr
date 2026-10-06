@@ -823,15 +823,15 @@ extension TextProcessingRunnerTests {
 
   @Test("#2614 a locked non-English take keeps its lock even when the text reads as English")
   func lockedLanguageOutranksTheText() async throws {
-    // Spanish locked, English spoken numbers. Automatic would resolve this text to
-    // English and format the number; the lock says Spanish, so the English-only ITN
-    // skips exactly as today's locked path did, and the take is byte-identical.
+    // Dutch locked (a language with no language rules), English spoken numbers. Automatic
+    // would resolve this text to English and format the number; the lock says Dutch, so the
+    // English-only ITN skips exactly as today's locked path did, and the take is byte-identical.
     let spoken = "call me at two zero three please"
     let (steps, itn) = Self.cleanupSteps(backendSupportsLID: false)
     let result = try await deterministicRunner().run(
-      rawText: spoken, evidence: .locked("es"), targetAppName: nil, steps: steps)
+      rawText: spoken, evidence: .locked("nl"), targetAppName: nil, steps: steps)
     #expect(result.context.text == spoken)
-    #expect(result.context.language == "es")
+    #expect(result.context.language == "nl")
     #expect(result.context.languageSource == .locked)
     #expect(itn.lastRun?.skipReason == "non_english")
   }
