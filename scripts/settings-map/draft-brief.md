@@ -20,4 +20,4 @@ Output: one JSON object only, no commentary, no code fence, in exactly this shap
 {"id": "<the place id>", "blocks": [{"language": "ar", "title": "...", "words": [...], "phrases": [...]}, ..., {"language": "de", "words": [...], "phrases": [...]}, ...]}
 One block per language, in the order listed above.
 
-The place (exported from the app's Settings Map; "context" lists its page, tab and section, outermost first):
+The place (exported from the app's Settings Map; "entries" holds the place, "ancestors" its page, tab and section, outermost first):

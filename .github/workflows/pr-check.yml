@@ -232,12 +232,25 @@ jobs:
           set -euo pipefail
           . "$GITHUB_WORKSPACE/scripts/lib/xcode-test-run.sh"
           . "$GITHUB_WORKSPACE/scripts/lib/ci-phase.sh"
+          # #3482: the same run also executes the opt-in SettingsMapExportTests, which writes
+          # the Settings Map export here; the next step compares it with reference/. A fresh
+          # folder, so a file there can only come from this run.
+          rm -rf "$RUNNER_TEMP/settings-map-export"
+          mkdir "$RUNNER_TEMP/settings-map-export"
+          TEST_RUNNER_EW_SETTINGS_MAP_EXPORT="$RUNNER_TEMP/settings-map-export/settings-map.json" \
           TEST_RUNNER_CI="$TEST_RUNNER_CI" ew_phase tests_release /dev/null -- ew_run_tests \
             "$DERIVED_DATA_PATH/Build/Products" \
             "$XCODE_RELEASE_SCHEME" \
             "$GITHUB_WORKSPACE/xcode-test-release" \
             "PR Release lane" \
             "EnviousWisprTests EnviousWisprDesktopEffectsTests EnviousWisprASRTests"
+
+      # #3482: reference/settings-map.json and .md must equal the export the step above
+      # just wrote from the compiled map and vocabulary (no second build or test run). A
+      # missing export (the opt-in test did not run) fails here instead of passing.
+      - name: Check the Settings Map export is in sync
+        if: steps.changes.outputs.needs_build == 'true'
+        run: scripts/settings-map/export.sh --from "$RUNNER_TEMP/settings-map-export/settings-map.json" --check
 
       # #2162: a red lane was undiagnosable from CI because `gh run view --log`
       # truncates at roughly 6 MB and a failing run and a passing run produced an

@@ -35,6 +35,20 @@ The Codex session runs from an empty folder outside every repository, with a pri
 
 `receipts/vocabulary-review.json` binds the resource bytes and each language's content to its reviews. `receipts/phase0/` keeps the Phase 0 review outputs and briefs, `receipts/lists/` the stop-list and marker reviews, `receipts/council/` the German council prompts and digest, `receipts/additions/` reviews of ids added after Phase 0 (raw council answers stay in the council's encrypted history).
 
+## Export and reference
+
+`reference/settings-map.json` is the full export (every node in map order, its owned copy in English and German, runtime resolvers named, the validated vocabulary and fingerprints of the map metadata, the interface catalog and the vocabulary). `reference/settings-map.md` is rendered from it by `render-reference.py`. Both are generated:
+
+- `scripts/settings-map/export.sh` extracts afresh through `SettingsMapExportTests` (it builds the test target), renders, and replaces both files.
+- `scripts/settings-map/export.sh --check` does the same into a staging folder and fails if either committed file is missing or stale; it never writes them.
+- `scripts/settings-map/export.sh --from <export.json> [--check]` renders an export another run already wrote. CI uses it after the Release test run, which executes the export test with `TEST_RUNNER_EW_SETTINGS_MAP_EXPORT` set (`.github/workflows/pr-check.yml`, step "Check the Settings Map export is in sync").
+- `SettingsMapExportSyncTests` also compares the committed JSON with a fresh in-process export in every test run.
+- `--self-test` on `export.sh`, `render-reference.py` and `publish-catalog.py` runs offline.
+
+## Product catalog publication
+
+`scripts/settings-map/publish-catalog.py --catalog ~/.claude/knowledge/enviouswispr --revision <sha>` reads the export and `catalog-surfaces.json` committed at `<sha>`. `catalog-surfaces.json` is the one mapping from map ids to catalog `ui_surface` slugs: several ids may share one physical control (a picker and its choices), and `newSurfaces` declares the few controls the catalog had not listed. The tool refuses an unmapped or unknown id, a slug that is not an existing macOS surface, and any change outside what it owns. Without `--write` it applies the migration to a disposable copy, compares every table before and after, and runs the catalog's `rebuild.sh` on a copied folder. With `--write` (only at the session wind-down catalog step) it writes `data/NNN-macos-settings-map-<date>.sql` and rebuilds. It owns the `ui-map-<slug>` evidence rows and the new surfaces; it updates no other surface and no setting link.
+
 ## Notes for the search matcher (PR B)
 
 - Stop words and markers are compared after folding (`SettingsSearchVocabulary.fold`: case, diacritics, ß as ss). The Phase 0 Python builder folded with NFKD and mark removal, which differs for some scripts (Hangul, kana voicing, Greek final sigma); the matcher owns runtime folding and must test it per script.
