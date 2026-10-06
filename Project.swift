@@ -294,7 +294,9 @@ let project = Project(
     firstPartyLibrary(
       "EnviousWisprPostProcessing",
       dependencies: [
-        .target(name: "EnviousWisprCore")
+        .target(name: "EnviousWisprCore"),
+        // #1677: phone-number metadata for the language cleanup passes (pinned in Package.swift).
+        .package(product: "PhoneNumberKit"),
       ], hasResources: true),
     firstPartyLibrary(
       "EnviousWisprAudio",
