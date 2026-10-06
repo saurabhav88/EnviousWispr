@@ -64,6 +64,9 @@ struct LanguageClockIdiomPass: Sendable {
     case numberContinuationAfter
     /// A unit or currency other than the clock marker follows: a quantity or a price.
     case measurementOrCurrencyTail
+    /// A minute-slot idiom directly followed by a capitalized word other than the clock marker: a
+    /// German noun after `um 5 nach 3` makes it a quantity (`steigt um 5 nach 3 Treffern`).
+    case nounAfterMinuteIdiom
     case editRefused(LanguageEditRefusal)
   }
 
@@ -319,6 +322,9 @@ struct LanguageClockIdiomPass: Sendable {
     if hasCompetingUnit(after: hourIndex, words: words) {
       return refuse(.measurementOrCurrencyTail)
     }
+    if template.minuteSlot != nil, nounFollows(hourIndex: hourIndex, words: words) {
+      return refuse(.nounAfterMinuteIdiom)
+    }
     let minutes = minute < 10 ? "0\(minute)" : "\(minute)"
     let written = "\(hour + template.hourOffset)\(rules.outputSeparator)\(minutes)"
     let hourWord = words[hourIndex]
@@ -428,6 +434,20 @@ struct LanguageClockIdiomPass: Sendable {
       }
     }
     return false
+  }
+
+  /// A capitalized word directly after the hour word (horizontal whitespace, no punctuation
+  /// between), other than the clock marker: German capitalizes nouns, and a noun right after a
+  /// number pair reads as a quantity. A sentence mark ends the idiom and allows anything after it.
+  private func nounFollows(hourIndex: Int, words: [Word]) -> Bool {
+    let hour = words[hourIndex]
+    guard hourIndex + 1 < words.count, !hour.hasTrailingPunctuation, hour.gapAfterIsHorizontal
+    else { return false }
+    let next = words[hourIndex + 1]
+    guard !next.hasLeadingPunctuation, next.folded != rules.trailingMarker,
+      let first = next.text.first
+    else { return false }
+    return first.isUppercase
   }
 
   /// A unit or currency other than the clock marker after the hour chunk, past standalone

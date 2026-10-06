@@ -312,6 +312,8 @@ struct LanguageClockIdiomPassTests {
       ("Der Flieger landet um 25 nach 11.", "Der Flieger landet um 11:25."),
       ("Das Spiel beginnt um 10 nach halb 8.", "Das Spiel beginnt um 7:40."),
       ("Um sieben nach acht klingelte es.", "Um 8:07 klingelte es."),
+      ("Wir kommen um 5 nach 2 Uhr.", "Wir kommen um 2:05 Uhr."),
+      ("Wir kommen um 5 nach 2. Danach Kaffee.", "Wir kommen um 2:05. Danach Kaffee."),
     ]
     for (input, expected) in cases {
       #expect(bytes(try converted(input)) == bytes(expected), "\(input)")
@@ -323,6 +325,8 @@ struct LanguageClockIdiomPassTests {
       "Wir essen um 5 nach 12.", "Wir kommen um 5 vor 1.", "Wir kommen um 30 nach 2.",
       "Wir kommen um 20 vor halb 9.", "Wir warten um 5 nach 3 Minuten.",
       "Treffpunkt ist Viertel vor 9 Uhr am Eingang.", "Bitte sei um kurz nach drei da.",
+      // A capitalized noun right after a minute idiom makes it a quantity.
+      "Die Punktzahl steigt um fünf nach drei Treffern.", "Der Wert sinkt um 5 nach 3 Runden.",
     ] {
       #expect(bytes(try converted(text)) == bytes(text), "\(text)")
     }
