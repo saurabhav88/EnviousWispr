@@ -245,7 +245,7 @@ struct MenuBarControllerTests {
     defaults.removePersistentDomain(forName: name)
     let settings = SettingsManager(defaults: defaults)
     let usb = MicrophoneMenuChoice(uid: "usb-uid", title: "USB Mic · USB")
-    let controller = makeController(settings: settings, liveMicrophones: { [usb] })
+    let controller = makeController(settings: settings, connectedMicrophones: ["usb-uid"])
     let menu = NSMenu()
     controller.renderMenu(
       into: menu, state: fixture(pipelineState: .idle, microphoneChoices: [usb]))
@@ -268,8 +268,8 @@ struct MenuBarControllerTests {
     defaults.removePersistentDomain(forName: name)
     let settings = SettingsManager(defaults: defaults)
     let usb = MicrophoneMenuChoice(uid: "usb-uid", title: "USB Mic · USB")
-    // The menu is drawn with the USB mic; by click time the live list no longer has it.
-    let controller = makeController(settings: settings, liveMicrophones: { [] })
+    // The menu is drawn with the USB mic; by click time the system no longer lists it, even if the cached list still does.
+    let controller = makeController(settings: settings, connectedMicrophones: [])
     let menu = NSMenu()
     controller.renderMenu(
       into: menu, state: fixture(pipelineState: .idle, microphoneChoices: [usb]))
@@ -1015,7 +1015,7 @@ struct MenuBarControllerTests {
 
   private func makeController(
     spy: ActionSpy = ActionSpy(), settings: SettingsManager = SettingsManager(),
-    liveMicrophones: @escaping @MainActor () -> [MicrophoneMenuChoice] = { [] }
+    connectedMicrophones: Set<String> = []
   ) -> MenuBarController {
     let asrManager = ASRManager(engineMutationScope: .alwaysAllowedForTesting)
     // Shared lightweight audio fake from DictationRuntimeTestSupport (same
@@ -1066,7 +1066,8 @@ struct MenuBarControllerTests {
         continueOnboarding: { spy.fired.append("continueOnboarding") },
         openMainWindow: { spy.fired.append("openMainWindow") },
         openHelpCenter: { spy.fired.append("openHelpCenter") },
-        microphoneChoices: liveMicrophones,
+        microphoneChoices: { [] },
+        isMicrophoneConnected: { connectedMicrophones.contains($0) },
         openTranscribeFile: { spy.fired.append("openTranscribeFile") },
         openPermissions: { spy.fired.append("openPermissions") },
         polishSetupWarning: { spy.polishSetupWarning },
