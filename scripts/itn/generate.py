@@ -772,13 +772,28 @@ def build_clock(manifest, base):
         if not (isinstance(low_high, list) and len(low_high) == 2
                 and all(isinstance(v, int) for v in low_high) and 1 <= low_high[0] <= low_high[1] <= 12):
             raise GenerationError(f"{where}: inputHours must be two ints inside 1..12")
-        if not isinstance(offset, int) or not isinstance(minute, int) or not 0 <= minute <= 59:
-            raise GenerationError(f"{where}: hourOffset must be an int and minute 0..59")
+        slot = template.get("minuteSlot")
+        sign, most = 0, 0
+        if slot is not None:
+            # A spoken minute before the tokens (`5 nach`, `10 vor halb`): the written minute is
+            # minute + sign x spoken minute, for every spoken minute 1..max.
+            if not isinstance(slot, dict) or set(slot) != {"sign", "max"} \
+                    or slot["sign"] not in (1, -1) or isinstance(slot["sign"], bool) \
+                    or not isinstance(slot["max"], int) or isinstance(slot["max"], bool) \
+                    or not 1 <= slot["max"] <= 59:
+                raise GenerationError(f"{where}: minuteSlot needs sign 1 or -1 and max 1..59")
+            sign, most = slot["sign"], slot["max"]
+        if set(template) - {"id", "tokens", "hourOffset", "minute", "inputHours", "minuteSlot"}:
+            raise GenerationError(f"{where}: unknown template field")
+        if not isinstance(offset, int) or not isinstance(minute, int) or isinstance(minute, bool) \
+                or not all(0 <= minute + sign * m <= 59 for m in ([1, most] if sign else [0])):
+            raise GenerationError(f"{where}: hourOffset must be an int and every written minute 0..59")
         if not (1 <= low_high[0] + offset and low_high[1] + offset <= 12):
             raise GenerationError(f"{where}: the output hour would leave 1..12; the template "
                                   "must exclude the hours that need a clock-face choice")
         templates.append({"id": template["id"], "tokens": tokens, "hourOffset": offset,
-                          "minute": minute, "low": low_high[0], "high": low_high[1]})
+                          "minute": minute, "low": low_high[0], "high": low_high[1],
+                          "minuteSign": sign, "minuteMax": most})
     anchors = [normalize_spoken(a) for a in decl["anchors"]]
     if len(set(anchors)) != len(anchors) or any(not a or re.search(r"\s", a) for a in anchors):
         raise GenerationError("clockIdiom: anchors must be distinct non-empty single words")
@@ -839,7 +854,9 @@ def emit_clock(result):
         "",
         "enum GermanClockIdiomData {",
         "  /// One idiom template: the spoken tokens before an hour word, the hour offset and the minutes",
-        "  /// written, and the input hours it admits (the others need a clock-face choice).",
+        "  /// written, and the input hours it admits (the others need a clock-face choice). A template",
+        "  /// with a minute slot (`minuteSign` 1 or -1) reads a spoken minute 1...minuteMax BEFORE its",
+        "  /// tokens and writes minute + minuteSign x that minute.",
         "  struct Template: Equatable {",
         "    let id: String",
         "    let tokens: [String]",
@@ -847,6 +864,8 @@ def emit_clock(result):
         "    let minute: Int",
         "    let inputHourLow: Int",
         "    let inputHourHigh: Int",
+        "    let minuteSign: Int",
+        "    let minuteMax: Int",
         "  }",
         "",
         "  /// One reviewed refusal entry (a set of complete literal phrases), exactly as approved.",
@@ -871,7 +890,8 @@ def emit_clock(result):
         tokens = ", ".join(swift_string(x) for x in t["tokens"])
         out.append(f"    Template(id: {swift_string(t['id'])}, tokens: [{tokens}], "
                    f"hourOffset: {t['hourOffset']}, minute: {t['minute']}, "
-                   f"inputHourLow: {t['low']}, inputHourHigh: {t['high']}),")
+                   f"inputHourLow: {t['low']}, inputHourHigh: {t['high']}, "
+                   f"minuteSign: {t['minuteSign']}, minuteMax: {t['minuteMax']}),")
     out += ["  ]", "", "  static let refusals: [Refusal] = ["]
     for r in result["rows"]:
         phrases = ", ".join(swift_string(x) for x in r["phrases"])

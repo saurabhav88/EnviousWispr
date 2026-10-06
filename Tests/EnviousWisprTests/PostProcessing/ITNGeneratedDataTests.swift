@@ -234,12 +234,22 @@ struct ITNGeneratedDataTests {
   @Test("the generated clock syntax data and reviewed refusals carry their identity and provenance")
   func clockIdiomData() {
     typealias Clock = GermanClockIdiomData
-    #expect(Clock.templates.map(\.id) == ["half", "quarterAfter"])
-    #expect(Clock.templates.map(\.tokens) == [["halb"], ["viertel", "nach"]])
-    #expect(Clock.templates.map(\.hourOffset) == [-1, 0])
-    #expect(Clock.templates.map(\.minute) == [30, 15])
-    #expect(Clock.templates.map(\.inputHourLow) == [2, 1])
-    #expect(Clock.templates.map(\.inputHourHigh) == [12, 11])
+    #expect(
+      Clock.templates.map(\.id) == [
+        "half", "quarterAfter", "quarterTo", "minutesAfter", "minutesBefore", "minutesAfterHalf",
+        "minutesBeforeHalf",
+      ])
+    #expect(
+      Clock.templates.map(\.tokens) == [
+        ["halb"], ["viertel", "nach"], ["viertel", "vor"], ["nach"], ["vor"], ["nach", "halb"],
+        ["vor", "halb"],
+      ])
+    #expect(Clock.templates.map(\.hourOffset) == [-1, 0, -1, 0, -1, -1, -1])
+    #expect(Clock.templates.map(\.minute) == [30, 15, 45, 0, 60, 30, 30])
+    #expect(Clock.templates.map(\.inputHourLow) == [2, 1, 2, 1, 2, 2, 2])
+    #expect(Clock.templates.map(\.inputHourHigh) == [12, 11, 12, 11, 12, 12, 12])
+    #expect(Clock.templates.map(\.minuteSign) == [0, 0, 0, 1, -1, 1, -1])
+    #expect(Clock.templates.map(\.minuteMax) == [0, 0, 0, 29, 29, 14, 14])
     #expect(Clock.anchors == ["um", "gegen", "bis", "ab", "für"])
     #expect(Clock.trailingMarker == "uhr")
     #expect(Clock.outputSeparator == ":")

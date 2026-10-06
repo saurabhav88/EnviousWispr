@@ -57,10 +57,20 @@ struct LanguageClockIdiomPassTests {
   // MARK: The rules
 
   @Test(
-    "the rules carry the two templates, five anchors, the marker and the three reviewed entries")
+    "the rules carry the seven templates, five anchors, the marker and the three reviewed entries")
   func rulesFacts() throws {
     let rules = try LanguageClockIdiomRules.german()
-    #expect(rules.templates.map(\.id) == ["half", "quarterAfter"])
+    #expect(
+      rules.templates.map(\.id) == [
+        "half", "quarterAfter", "quarterTo", "minutesAfter", "minutesBefore", "minutesAfterHalf",
+        "minutesBeforeHalf",
+      ])
+    #expect(rules.templates[0].minuteSlot == nil && rules.templates[2].minuteSlot == nil)
+    #expect(rules.templates[2].tokens == ["viertel", "vor"])
+    #expect(rules.templates[2].inputHours == 2...12)
+    #expect(rules.templates[3].minuteSlot?.sign == 1 && rules.templates[3].minuteSlot?.minutes == 1...29)
+    #expect(rules.templates[4].minuteSlot?.sign == -1 && rules.templates[4].minute == 60)
+    #expect(rules.templates[6].minuteSlot?.minutes == 1...14)
     #expect(rules.templates[0].tokens == ["halb"])
     #expect(rules.templates[0].hourOffset == -1)
     #expect(rules.templates[0].minute == 30)
@@ -142,11 +152,11 @@ struct LanguageClockIdiomPassTests {
     }
     func template(
       _ id: String = "t", tokens: [String] = ["halb"], offset: Int = -1, minute: Int = 30,
-      low: Int = 2, high: Int = 12
+      low: Int = 2, high: Int = 12, sign: Int = 0, most: Int = 0
     ) -> Data.Template {
       Data.Template(
         id: id, tokens: tokens, hourOffset: offset, minute: minute, inputHourLow: low,
-        inputHourHigh: high)
+        inputHourHigh: high, minuteSign: sign, minuteMax: most)
     }
     #expect(build() == nil)
     #expect(build(templates: []) == .noTemplates)
@@ -156,6 +166,12 @@ struct LanguageClockIdiomPassTests {
     #expect(build(templates: [template(low: 7, high: 3)]) == .invalidTemplate("t"))
     #expect(build(templates: [template(minute: 60)]) == .invalidTemplate("t"))
     #expect(build(templates: [template(offset: 1, low: 2, high: 12)]) == .invalidTemplate("t"))
+    // Minute slots: a sign of 1 or -1, at least one minute, every written minute inside 0...59.
+    #expect(build(templates: [template(minute: 60, sign: -1, most: 29)]) == nil)
+    #expect(build(templates: [template(minute: 0, sign: 2, most: 5)]) == .invalidTemplate("t"))
+    #expect(build(templates: [template(minute: 0, sign: 1, most: 0)]) == .invalidTemplate("t"))
+    #expect(build(templates: [template(minute: 50, sign: 1, most: 29)]) == .invalidTemplate("t"))
+    #expect(build(templates: [template(minute: 10, sign: -1, most: 14)]) == .invalidTemplate("t"))
     #expect(build(anchors: []) == .noAnchors)
     #expect(build(anchors: ["um", "UM"]) == .invalidAnchor("um,UM"))
     #expect(build(anchors: [""]) == .invalidAnchor(""))
@@ -276,10 +292,54 @@ struct LanguageClockIdiomPassTests {
     }
   }
 
+  @Test("viertel vor H and a spoken minute before nach, vor and halb become written times")
+  func quarterToAndMinutes() throws {
+    // Engine output measured 2026-10-06 (docs/audits/2026-10-06-1677-de-clock-minutes-shapes,
+    // Azure TTS, Parakeet and WhisperKit).
+    let cases: [(String, String)] = [
+      ("Wir treffen uns um viertel vor acht am Bahnhof.", "Wir treffen uns um 7:45 am Bahnhof."),
+      ("Der Zug fährt um Viertel vor 12 ab.", "Der Zug fährt um 11:45 ab."),
+      ("Komm bitte gegen Viertel vor sieben vorbei.", "Komm bitte gegen 6:45 vorbei."),
+      ("Wir essen um 5 nach 2 zu Mittag.", "Wir essen um 2:05 zu Mittag."),
+      ("Der Bus kommt um 10 nach 7.", "Der Bus kommt um 7:10."),
+      ("Treffen wir uns um 20 nach 3?", "Treffen wir uns um 3:20?"),
+      ("Das Kino fängt um 5 vor 8 an.", "Das Kino fängt um 7:55 an."),
+      ("Das Kino fängt um fünf vor acht an.", "Das Kino fängt um 7:55 an."),
+      ("Die Sitzung endet um 20 vor 5.", "Die Sitzung endet um 4:40."),
+      ("Wir kommen um 5 vor halb neun.", "Wir kommen um 8:25."),
+      ("Wir kommen um fünf vor halb neun.", "Wir kommen um 8:25."),
+      ("Wir kommen um 5 nach halb 9.", "Wir kommen um 8:35."),
+      ("Der Flieger landet um 25 nach 11.", "Der Flieger landet um 11:25."),
+      ("Das Spiel beginnt um 10 nach halb 8.", "Das Spiel beginnt um 7:40."),
+      ("Um sieben nach acht klingelte es.", "Um 8:07 klingelte es."),
+      ("Wir kommen um 5 nach 2 Uhr.", "Wir kommen um 2:05 Uhr."),
+      ("Wir kommen um 5 nach 2. Danach Kaffee.", "Wir kommen um 2:05. Danach Kaffee."),
+      ("Wir wollen um 5 nach 2 essen.", "Wir wollen um 2:05 essen."),
+      ("Wir sind um 10 vor 6 zu Hause.", "Wir sind um 5:50 zu Hause."),
+    ]
+    for (input, expected) in cases {
+      #expect(bytes(try converted(input)) == bytes(expected), "\(input)")
+    }
+    // No anchor, not an hour, a clock-face hour, a minute out of range, a unit after the hour.
+    for text in [
+      "Die Zahl war 20 nach Abzug der Kosten.", "Ich habe noch 10 vor mir.",
+      "Er kam um 10 nach Hause.", "Der Termin ist um viertel vor eins.",
+      "Wir essen um 5 nach 12.", "Wir kommen um 5 vor 1.", "Wir kommen um 30 nach 2.",
+      "Wir kommen um 20 vor halb 9.", "Wir warten um 5 nach 3 Minuten.",
+      "Treffpunkt ist Viertel vor 9 Uhr am Eingang.", "Bitte sei um kurz nach drei da.",
+      // A capitalized noun right after a minute idiom makes it a quantity.
+      "Die Punktzahl steigt um fünf nach drei Treffern.", "Der Wert sinkt um 5 nach 3 Runden.",
+      "Die Punktzahl steigt um fünf nach drei weiteren Treffern.",
+      "Die Punktzahl steigt um fünf nach drei weiteren erfolgreichen Treffern.",
+    ] {
+      #expect(bytes(try converted(text)) == bytes(text), "\(text)")
+    }
+  }
+
   @Test("pending regional forms and unsupported shapes are not candidates and stay as written")
   func pendingAndUnsupportedForms() throws {
     for text in [
-      "Wir kommen um viertel vor drei.", "Wir kommen um viertel drei.",
+      "Wir kommen um viertel drei.",
       "Wir kommen um dreiviertel vier.",
       "Wir kommen um drei viertel vier.", "Wir kommen um halb so spät.", "Wir kommen um halb.",
       "Wir kommen um halb zwanzig.", "Wir kommen um halb ein.", "Wir kommen um sieben am Abend.",
@@ -544,7 +604,7 @@ struct LanguageClockIdiomPassTests {
       "Wir kommen um halb 0.", "Wir kommen um halb 00.", "Wir kommen um halb 13.",
       "Wir kommen um halb 20.", "Wir kommen um halb 008.", "Wir kommen um halb 8:30.",
       "Wir kommen um halb 8%.", "Wir kommen um halb \u{FF18}.", "Wir kommen um halb 8er.",
-      "Wir kommen um halb (8).", "Wir kommen um viertel vor 8.",
+      "Wir kommen um halb (8).",
     ] {
       #expect(try run(text).1.candidates.isEmpty, "\(text)")
       #expect(bytes(try converted(text)) == bytes(text), "\(text)")

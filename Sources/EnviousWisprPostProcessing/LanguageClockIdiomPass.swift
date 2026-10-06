@@ -10,9 +10,10 @@ import Foundation
 // clock-chunk permission and carries the chunk's closing punctuation (`halb 8.` to `7:30.`). The pass proposes edits against one immutable snapshot;
 // the shared editor applies them. The German language route runs it (`InverseTextNormalizer+Language`).
 //
-// SCOPE (founder option B): only the templates in the rules convert (`halb H` and `viertel nach H`
-// for German). Regional forms (`viertel vor H`, bare `viertel H`, `dreiviertel H`) are neither
-// converted nor refused: they are simply not candidates. No AM/PM or 24-hour inference ever happens:
+// SCOPE: only the templates in the rules convert (German `halb H`, `viertel nach H`, `viertel vor
+// H`, and with a spoken minute first `M nach H`, `M vor H`, `M nach halb H`, `M vor halb H`; the
+// engines write that minute as digits: `um 5 nach 2` to `um 2:05`). Bare `viertel H` and
+// `dreiviertel H` are neither converted nor refused: they are simply not candidates. No AM/PM or 24-hour inference ever happens:
 // the written time is the idiom's own hour and minutes.
 //
 // ADMISSION (all must hold, otherwise no edit and a named refusal):
@@ -23,8 +24,9 @@ import Foundation
 //  3. an immediately preceding whole anchor word, across horizontal whitespace, with no punctuation
 //     between: a CONSERVATIVE scope restriction, not proof that every phrase after an anchor is a
 //     clock time;
-//  4. the hour is inside the template's input range: the hours that need a clock-face choice
-//     (`halb eins`, `viertel nach zwölf`) are a STRUCTURAL exclusion (`ambiguousClockFace`), named
+//  4. the hour is inside the template's input range, and a spoken minute inside the template's
+//     minute range: the hours that need a clock-face choice (`halb eins`, `viertel nach zwölf`,
+//     `5 vor eins`) are a STRUCTURAL exclusion (`ambiguousClockFace`), named
 //     distinctly and NOT the execution of the pending noon/midnight refusal entry;
 //  5. no number material continues right after the hour word (a connector, a spoken number or
 //     digits), whatever stands between: a failed longer numeric expression is not a clock time;
@@ -38,7 +40,7 @@ import Foundation
 // when the whole word is exactly an approved anchor plus the template's first word; the anchor
 // keeps its bytes and the written time gets a space ("bis 5:30").
 //
-// Not a general time parser: no spoken minutes, no 24-hour digits, no restyling of written times.
+// Not a general time parser: no 24-hour digits, no restyling of written times.
 
 struct LanguageClockIdiomPass: Sendable {
 
@@ -62,6 +64,9 @@ struct LanguageClockIdiomPass: Sendable {
     case numberContinuationAfter
     /// A unit or currency other than the clock marker follows: a quantity or a price.
     case measurementOrCurrencyTail
+    /// A minute-slot idiom directly followed by a capitalized word other than the clock marker: a
+    /// German noun after `um 5 nach 3` makes it a quantity (`steigt um 5 nach 3 Treffern`).
+    case nounAfterMinuteIdiom
     case editRefused(LanguageEditRefusal)
   }
 
@@ -130,7 +135,7 @@ struct LanguageClockIdiomPass: Sendable {
       } else {
         // An engine may glue the anchor to the template's first word ("bishalb sechs"): an exact
         // whole word equal to an approved anchor plus that word, read from the rules' own anchors.
-        for template in templates where candidate == nil {
+        for template in templates where candidate == nil && template.minuteSlot == nil {
           guard let split = gluedAnchorSplit(words[index], firstToken: template.tokens[0]) else {
             continue
           }
@@ -146,22 +151,31 @@ struct LanguageClockIdiomPass: Sendable {
           else { continue }
           consumed = width
           candidate = decide(
-            template: template, hour: number.value, first: index, hourIndex: index + width - 1,
-            words: words, snapshot: snapshot, gluedAnchorUTF16: split)
+            template: template, hour: number.value, minute: template.minute, first: index,
+            hourIndex: index + width - 1, words: words, snapshot: snapshot, gluedAnchorUTF16: split)
         }
         for template in templates where candidate == nil {
-          let width = template.tokens.count + 1
+          // A minute-slot template reads the spoken minute first (`5 nach 2`, `10 vor halb 8`).
+          let slotWidth = template.minuteSlot == nil ? 0 : 1
+          let width = slotWidth + template.tokens.count + 1
           guard windowIsContiguous(words, from: index, width: width),
-            matches(phrase: template.tokens, at: index, in: words)
+            matches(phrase: template.tokens, at: index + slotWidth, in: words)
           else { continue }
+          var minute = template.minute
+          if let slot = template.minuteSlot {
+            guard let spoken = spokenMinute(words[index], parser: parser, snapshot: snapshot),
+              slot.minutes.contains(spoken)
+            else { continue }
+            minute = template.minute + slot.sign * spoken
+          }
           let hourWord = words[index + width - 1]
           let hourRange = hourWord.start..<hourWord.end
           guard case .parsed(let number) = parser.parse(.clockHour, in: snapshot, range: hourRange)
           else { continue }
           consumed = width
           candidate = decide(
-            template: template, hour: number.value, first: index, hourIndex: index + width - 1,
-            words: words, snapshot: snapshot)
+            template: template, hour: number.value, minute: minute, first: index,
+            hourIndex: index + width - 1, words: words, snapshot: snapshot)
           break
         }
       }
@@ -269,9 +283,22 @@ struct LanguageClockIdiomPass: Sendable {
 
   // MARK: Decision
 
+  /// A spoken minute: one or two ASCII digits, or a cardinal the shared parser reads.
+  private func spokenMinute(
+    _ word: Word, parser: LanguageNumberParser, snapshot: LanguageTextSnapshot
+  ) -> Int? {
+    if (1...2).contains(word.text.count), word.text.allSatisfy({ $0.isASCII && $0.isNumber }) {
+      return Int(word.text)
+    }
+    guard !word.text.contains(where: \.isNumber),
+      case .parsed(let number) = parser.parse(.cardinal, in: snapshot, range: word.start..<word.end)
+    else { return nil }
+    return number.value
+  }
+
   private func decide(
-    template: LanguageClockIdiomRules.Template, hour: Int, first: Int, hourIndex: Int,
-    words: [Word], snapshot: LanguageTextSnapshot, gluedAnchorUTF16: Int? = nil
+    template: LanguageClockIdiomRules.Template, hour: Int, minute: Int, first: Int,
+    hourIndex: Int, words: [Word], snapshot: LanguageTextSnapshot, gluedAnchorUTF16: Int? = nil
   ) -> Candidate {
     // A glued anchor keeps its own bytes: the idiom starts after it, and the written time gets the
     // space the engine left out.
@@ -295,19 +322,29 @@ struct LanguageClockIdiomPass: Sendable {
     if hasCompetingUnit(after: hourIndex, words: words) {
       return refuse(.measurementOrCurrencyTail)
     }
-    let minutes = template.minute < 10 ? "0\(template.minute)" : "\(template.minute)"
+    if template.minuteSlot != nil, nounFollows(hourIndex: hourIndex, words: words) {
+      return refuse(.nounAfterMinuteIdiom)
+    }
+    let minutes = minute < 10 ? "0\(minute)" : "\(minute)"
     let written = "\(hour + template.hourOffset)\(rules.outputSeparator)\(minutes)"
     let hourWord = words[hourIndex]
+    func hasDigit(_ word: Word) -> Bool {
+      word.chunkText.unicodeScalars.contains(where: { $0.properties.numericType != nil })
+    }
+    // Every digit word in the idiom (a written minute, a written hour) is a protected number
+    // chunk: the edit names each one; a digit hour's closing punctuation is carried.
+    let digitChunks = words[first...hourIndex].filter(hasDigit).map {
+      ($0.chunkEnd - $0.chunkText.utf16.count)..<$0.chunkEnd
+    }
     let minted: Result<LanguageTextEdit, LanguageEditRefusal>
-    if hourWord.chunkText.unicodeScalars.contains(where: { $0.properties.numericType != nil }) {
-      // A digit hour is a protected number chunk: replace the whole chunk, punctuation carried.
-      let chunk = hourWord.start..<hourWord.chunkEnd
-      let closing = snapshot.substring(hourWord.end..<hourWord.chunkEnd) ?? ""
-      minted = snapshot.edit(
-        replacing: idiomStart..<hourWord.chunkEnd, consumingClockChunks: [chunk],
-        with: space + written + closing)
-    } else {
+    if digitChunks.isEmpty {
       minted = snapshot.edit(replacing: range, with: space + written)
+    } else {
+      let end = hasDigit(hourWord) ? hourWord.chunkEnd : hourWord.end
+      let closing = hasDigit(hourWord) ? snapshot.substring(hourWord.end..<hourWord.chunkEnd) ?? "" : ""
+      minted = snapshot.edit(
+        replacing: idiomStart..<end, consumingClockChunks: digitChunks,
+        with: space + written + closing)
     }
     switch minted {
     case .success(let edit):
@@ -395,6 +432,30 @@ struct LanguageClockIdiomPass: Sendable {
         prefix.append(contentsOf: scalars.prefix(joint))
         if String(prefix) == key { return true }
       }
+    }
+    return false
+  }
+
+  /// A German noun phrase directly after the hour word: a capitalized word other than the clock
+  /// marker, reached across horizontal whitespace with no punctuation and only through lowercase
+  /// words ending in `-en` (the inflection of an adjective or determiner after a numeral:
+  /// `drei weiteren Treffern`). German capitalizes nouns, and a noun phrase right after a number
+  /// pair reads as a quantity (`steigt um 5 nach 3 Treffern`). A sentence mark ends the idiom and
+  /// allows anything after it. An article-led object (`um 5 nach 2 einen Termin`) or an `-en`
+  /// adverb before a noun (`zusammen Kaffee`) also stops the conversion: the text stays as spoken.
+  /// KNOWN LIMIT (accepted, founder direction "no edge-case spirals", #1677): German noun-phrase
+  /// grammar is open, so a quantity whose modifiers do not end in `-en` (`um 5 nach 3 sehr guten
+  /// Treffern`, coordinated modifiers) can still read as a time. Closing it needs a parser.
+  private func nounFollows(hourIndex: Int, words: [Word]) -> Bool {
+    var index = hourIndex
+    while index + 1 < words.count {
+      let current = words[index]
+      guard !current.hasTrailingPunctuation, current.gapAfterIsHorizontal else { return false }
+      let next = words[index + 1]
+      guard !next.hasLeadingPunctuation, let first = next.text.first else { return false }
+      if first.isUppercase { return next.folded != rules.trailingMarker }
+      guard first.isLowercase, next.folded.hasSuffix("en") else { return false }
+      index += 1
     }
     return false
   }
