@@ -436,18 +436,25 @@ struct LanguageClockIdiomPass: Sendable {
     return false
   }
 
-  /// A capitalized word directly after the hour word (horizontal whitespace, no punctuation
-  /// between), other than the clock marker: German capitalizes nouns, and a noun right after a
-  /// number pair reads as a quantity. A sentence mark ends the idiom and allows anything after it.
+  /// A German noun phrase directly after the hour word: a capitalized word other than the clock
+  /// marker, reached across horizontal whitespace with no punctuation and only through lowercase
+  /// words ending in `-en` (the inflection of an adjective or determiner after a numeral:
+  /// `drei weiteren Treffern`). German capitalizes nouns, and a noun phrase right after a number
+  /// pair reads as a quantity (`steigt um 5 nach 3 Treffern`). A sentence mark ends the idiom and
+  /// allows anything after it. An article-led object (`um 5 nach 2 einen Termin`) also stops the
+  /// conversion: the text stays as spoken.
   private func nounFollows(hourIndex: Int, words: [Word]) -> Bool {
-    let hour = words[hourIndex]
-    guard hourIndex + 1 < words.count, !hour.hasTrailingPunctuation, hour.gapAfterIsHorizontal
-    else { return false }
-    let next = words[hourIndex + 1]
-    guard !next.hasLeadingPunctuation, next.folded != rules.trailingMarker,
-      let first = next.text.first
-    else { return false }
-    return first.isUppercase
+    var index = hourIndex
+    while index + 1 < words.count {
+      let current = words[index]
+      guard !current.hasTrailingPunctuation, current.gapAfterIsHorizontal else { return false }
+      let next = words[index + 1]
+      guard !next.hasLeadingPunctuation, let first = next.text.first else { return false }
+      if first.isUppercase { return next.folded != rules.trailingMarker }
+      guard first.isLowercase, next.folded.hasSuffix("en") else { return false }
+      index += 1
+    }
+    return false
   }
 
   /// A unit or currency other than the clock marker after the hour chunk, past standalone
