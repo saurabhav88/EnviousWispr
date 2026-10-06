@@ -1,5 +1,5 @@
 {
-  "originHash" : "432c5820c26bdf5f4855b6419e281846739577debaa6dd53e54d50d8e36be33d",
+  "originHash" : "01486088e97a09c4e61b694f9018983e3d027ae7fcddee0781d3b31211add522",
   "pins" : [
     {
       "identity" : "argmax-oss-swift",
@@ -48,8 +48,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/PostHog/posthog-ios.git",
       "state" : {
-        "revision" : "131859db52a6d65bc77a6f8846239a22bad8dd14",
-        "version" : "3.68.2"
+        "revision" : "e7ddccc6cedb44bde5b484070f6a99c817ee192f",
+        "version" : "3.89.0"
       }
     },
     {
@@ -57,8 +57,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/getsentry/sentry-cocoa.git",
       "state" : {
-        "revision" : "a00a9784fff7193cbb0f9fae509fec8107e07744",
-        "version" : "9.26.1"
+        "revision" : "b539e098293067be54fa5cf1f11d9e16cdbba94a",
+        "version" : "9.30.0"
       }
     },
     {
@@ -66,8 +66,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/sparkle-project/Sparkle.git",
       "state" : {
-        "revision" : "ac2def288cbff5cfc7df3ffef6abdf45b72bcb0a",
-        "version" : "2.9.6"
+        "revision" : "eef1a539a373c1f1a320624b1130fc5de7b2e100",
+        "version" : "2.10.0"
       }
     },
     {
