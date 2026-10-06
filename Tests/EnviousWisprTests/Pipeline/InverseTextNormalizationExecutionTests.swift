@@ -200,7 +200,7 @@ struct InverseTextNormalizationExecutionTests {
     let cases:
       [(label: String, language: String?, vetoed: Bool, route: String, ran: Bool, reason: String?)] =
         [
-          ("neutral non_english", "nl", false, "neutral", false, "non_english"),
+          ("neutral non_english", "sv", false, "neutral", false, "non_english"),
           ("neutral vetoed", nil, true, "neutral", false, "language_vetoed"),
           ("english", "en", false, "english", true, nil),
         ]

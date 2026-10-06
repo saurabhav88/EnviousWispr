@@ -15,6 +15,10 @@ import Foundation
 //  - clock hours 1 through 12, a range check on a single cardinal word or on one or two ASCII
 //    digits (`8`, `08`); digits are read only as a clock hour.
 // Telephone numbers are not grammar: `LanguagePhoneMetadata` validates them.
+// The Dutch grammar (`dutch()`) is CARDINAL-ONLY: 0 through 99 from the generated Dutch lexicon,
+// a compound being `<prefix><tens>` where the prefix carries its own joint (`vijfen`, `tweeën`), so
+// its connector is empty; it admits no ordinal. Its article forms (`een`) are BOTH standalone (a clock
+// hour, `kwart over een`) and non-standalone (alone they are not evidence of a longer number).
 // Anything else (negative, decimal, fraction, scale words, values above 99, article forms such as
 // bare `ein`) is outside the grammar, and the parser refuses it as a whole.
 //
@@ -71,6 +75,56 @@ struct LanguageNumberGrammar: Sendable, Equatable {
 }
 
 extension LanguageNumberGrammar {
+
+  /// The number grammar of one language, or nil when the language has none. Throws when its
+  /// generated data has not the shape the adapter relies on.
+  static func forLanguage(_ code: String) throws -> LanguageNumberGrammar? {
+    switch code {
+    case "de": return try german()
+    case "nl": return try dutch()
+    default: return nil
+    }
+  }
+
+  /// Builds the Dutch cardinal-only grammar from the generated lexicon, or throws.
+  static func dutch() throws -> LanguageNumberGrammar {
+    typealias Data = DutchNumberData
+    var standalone: [String: Int] = [:]
+    for word in Data.standalone {
+      let key = fold(word.spoken)
+      guard !key.isEmpty, standalone[key] == nil, (0...99).contains(word.value) else {
+        throw BuildError.inconsistentData("standalone \(word.spoken)")
+      }
+      standalone[key] = word.value
+    }
+    var tens: [String: Int] = [:]
+    for word in Data.tens {
+      let key = fold(word.spoken)
+      guard (20...90).contains(word.value), word.value % 10 == 0, tens[key] == nil,
+        standalone[key] == word.value
+      else { throw BuildError.inconsistentData("tens \(word.spoken)") }
+      tens[key] = word.value
+    }
+    var prefixes: [String: Int] = [:]
+    for word in Data.compoundPrefixes {
+      let key = fold(word.spoken)
+      guard (1...9).contains(word.value), prefixes[key] == nil, !key.isEmpty else {
+        throw BuildError.inconsistentData("compound prefix \(word.spoken)")
+      }
+      prefixes[key] = word.value
+    }
+    let articles = Set(Data.articleForms.map(fold))
+    guard articles.allSatisfy({ standalone[$0] != nil }) else {
+      throw BuildError.inconsistentData("article form outside the standalone words")
+    }
+    guard Set(standalone.values) == Set(0...19).union(Set(tens.values)),
+      Set(tens.values) == Set(stride(from: 20, through: 90, by: 10)),
+      Set(prefixes.values) == Set(1...9), prefixes.count == 9
+    else { throw BuildError.missingData("Dutch cardinal lexicon") }
+    return LanguageNumberGrammar(
+      limits: .supported, standalone: standalone, nonStandalone: articles, compoundUnits: prefixes,
+      connector: "", tens: tens, ordinalForms: [:])
+  }
 
   /// Builds the German grammar from the generated data, or throws if the data has not the shape
   /// this adapter relies on.

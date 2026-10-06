@@ -84,8 +84,9 @@ import EnviousWisprPostProcessing
   func neutralSubsetOnSkippedTake() async throws {
     let step = InverseTextNormalizationStep()
     step.backendSupportsLID = true
-    // Dutch: an unregistered non-English take runs the neutral subset (#1677 registers de/fr/es/it/pt).
-    let out = try await step.process(ctx("Frage B Bindestrich 2, Code zwei null drei", language: "nl"))
+    // Swedish: an unregistered non-English take runs the neutral subset (#1677 registers
+    // de/fr/es/it/pt/nl/pl).
+    let out = try await step.process(ctx("Frage B Bindestrich 2, Code zwei null drei", language: "sv"))
     #expect(out.text == "Frage B-2, Code zwei null drei")
     #expect(step.lastRun?.ran == false)
     #expect(step.lastRun?.changed == true)
@@ -108,7 +109,7 @@ import EnviousWisprPostProcessing
   func skipsForNonEnglishLanguage() async throws {
     let step = InverseTextNormalizationStep()
     step.backendSupportsLID = true
-    let out = try await step.process(ctx("the code is two zero three", language: "nl"))
+    let out = try await step.process(ctx("the code is two zero three", language: "sv"))
     #expect(out.text == "the code is two zero three")
     #expect(step.lastRun?.ran == false)
     #expect(step.lastRun?.skipReason == "non_english")

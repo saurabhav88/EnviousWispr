@@ -198,6 +198,8 @@ enum LanguageProtectedSpans {
     "real", "reais", "peso", "pesos", "franc", "francs", "franchi", "livre", "livres",
     "libra", "libras", "sterline", "centime", "centimes", "céntimo", "céntimos", "centesimi",
     "centavo", "centavos", "cêntimo", "cêntimos",
+    // Polish.
+    "pln", "zł", "złoty", "złote", "złotych", "grosz", "grosze", "groszy",
   ]
 
   /// Units that make a number a temperature or a percentage. One authority: `units` is built from
@@ -216,6 +218,9 @@ enum LanguageProtectedSpans {
     // French, Spanish, Italian and Portuguese minute and second words.
     "minutes", "minuto", "minutos", "minuti", "seconde", "secondes", "segundo", "segundos",
     "secondo", "secondi",
+    // Dutch time spans (the clock marker `uur` is read separately by the clock pass).
+    "minuut", "seconden", "uren", "dag", "dagen", "week", "weken", "maand", "maanden", "jaar",
+    "jaren",
   ]
 
   private static let units: Set<String> = temperatureAndPercentUnits.union(otherUnits)
