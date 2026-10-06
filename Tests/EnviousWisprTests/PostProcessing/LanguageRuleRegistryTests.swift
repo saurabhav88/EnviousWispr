@@ -59,11 +59,13 @@ struct LanguageRuleRegistryTests {
     }
   }
 
-  @Test("the production registry lists exactly German")
-  func productionIsGerman() {
-    #expect(LanguageRuleRegistry.production.count == 1)
+  @Test("the production registry lists exactly de, fr, es, it and pt")
+  func productionMembers() {
+    #expect(LanguageRuleRegistry.production.count == 5)
     #expect(LanguageRuleRegistry.production.ruleSet(forLanguage: "de-DE")?.baseCode == "de")
-    #expect(LanguageRuleRegistry.production.ruleSet(forLanguage: "fr") == nil)
+    #expect(LanguageRuleRegistry.production.ruleSet(forLanguage: "fr")?.baseCode == "fr")
+    #expect(LanguageRuleRegistry.production.ruleSet(forLanguage: "pt_BR")?.baseCode == "pt")
+    #expect(LanguageRuleRegistry.production.ruleSet(forLanguage: "nl") == nil)
     #expect(LanguageRuleRegistry.production.ruleSet(forLanguage: "en") == nil)
   }
 }

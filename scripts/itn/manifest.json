@@ -408,5 +408,37 @@
     ],
     "postcodeDigits": 5,
     "provenance": "Founder direction for #1677 evolution (addresses, numbers, percentages, dates). Measured engine output: both engines already write cardinals, decimals, money, dates and house numbers as digits; they write a five-digit postcode with a thousands dot after a street address or a postcode label ('Hauptstraße 12 10.115 Berlin', 'Postleitzahl 50.667 Köln'), and WhisperKit sometimes keeps the word 'Prozent' after a number. Not a reviewed refusal."
+  },
+  "phoneTriggers": {
+    "fr": {
+      "triggerTokens": [
+        "plus"
+      ],
+      "replacement": "+",
+      "provenance": "French spoken plus. Measured 2026-10-06 on Azure TTS through Parakeet and WhisperKit: every international number keeps the spoken plus word before the digits; word from the language's own telephone usage."
+    },
+    "es": {
+      "triggerTokens": [
+        "más",
+        "mas"
+      ],
+      "replacement": "+",
+      "provenance": "Spanish spoken plus ('más', unaccented 'mas' as engines also write). Measured 2026-10-06 on Azure TTS through Parakeet and WhisperKit: every international number keeps the spoken plus word before the digits; word from the language's own telephone usage."
+    },
+    "it": {
+      "triggerTokens": [
+        "più",
+        "piu"
+      ],
+      "replacement": "+",
+      "provenance": "Italian spoken plus ('più', unaccented 'piu'). Measured 2026-10-06 on Azure TTS through Parakeet and WhisperKit: every international number keeps the spoken plus word before the digits; word from the language's own telephone usage."
+    },
+    "pt": {
+      "triggerTokens": [
+        "mais"
+      ],
+      "replacement": "+",
+      "provenance": "Portuguese spoken plus. Measured 2026-10-06 on Azure TTS through Parakeet and WhisperKit: every international number keeps the spoken plus word before the digits; word from the language's own telephone usage."
+    }
   }
 }

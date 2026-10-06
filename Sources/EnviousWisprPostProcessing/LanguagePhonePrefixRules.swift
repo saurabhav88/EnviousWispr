@@ -114,7 +114,8 @@ struct LanguagePhonePrefixRules: Sendable, Equatable {
   /// What replaces the trigger word and its separator.
   let replacement: String
   let refusals: [Refusal]
-  let unsigned: Unsigned
+  /// Word classes for unsigned numbers; nil for a language whose pass runs the signed path only.
+  let unsigned: Unsigned?
 
   func refusal(for shape: Shape) -> Refusal? {
     refusals.first { $0.shape == shape }
@@ -128,10 +129,22 @@ struct LanguagePhonePrefixRules: Sendable, Equatable {
       unsigned: try Unsigned.german())
   }
 
+  /// The rules for a language whose phone pass runs the SIGNED path only (a spoken plus word or a
+  /// written sign; #1677 multilingual phase 1): its plus words from the generated
+  /// `PhoneTriggerData`, and the four refusal shapes, which are language-independent predicates
+  /// over the candidate, taken from the reviewed German rows that define them. No unsigned word
+  /// classes: an unsigned run is never a candidate in these languages. Nil for a language with no
+  /// declared plus words.
+  static func signedOnly(language baseCode: String) throws -> LanguagePhonePrefixRules? {
+    guard let words = PhoneTriggerData.triggerTokens[baseCode] else { return nil }
+    return try build(
+      rows: GermanPhonePrefixData.refusals, triggerTokens: words, replacement: "+", unsigned: nil)
+  }
+
   /// The adaptation itself, taking its input as values so the failure paths are testable.
   static func build(
     rows: [GermanPhonePrefixData.Refusal], triggerTokens: [String], replacement: String,
-    unsigned: Unsigned
+    unsigned: Unsigned?
   ) throws -> LanguagePhonePrefixRules {
     guard !replacement.isEmpty else { throw BuildError.emptyReplacement }
     let triggers = triggerTokens.map(LanguageNumberGrammar.fold)

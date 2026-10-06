@@ -1,6 +1,7 @@
 import EnviousWisprCore
 
-/// The set of languages that have a vetted rule set (#1677). Production registers German.
+/// The set of languages that have a vetted rule set (#1677). Production registers German, French,
+/// Spanish, Italian and Portuguese.
 ///
 /// Owns exactly one question: "does this explicit non-English language value have a vetted rule
 /// set?". It holds no resolver, no second language key and no inventory of what the neutral address
@@ -19,10 +20,11 @@ package struct LanguageRuleRegistry: Sendable {
 
   private let sets: [String: LanguageRuleSet]
 
-  /// The shipped registry: German (phone and clock passes, #1677). A test pins its exact members.
+  /// The shipped registry (#1677): German (number style, phone, clock) and French, Spanish,
+  /// Italian, Portuguese (signed phone path). A test pins its exact members.
   package static let production: LanguageRuleRegistry = {
     var table: [String: LanguageRuleSet] = [:]
-    for code in ["de"] {
+    for code in ["de", "fr", "es", "it", "pt"] {
       if let set = LanguageRuleSet(language: code) { table[set.baseCode] = set }
     }
     return LanguageRuleRegistry(validatedSets: table)

@@ -52,8 +52,9 @@ extension InverseTextNormalizer {
 
 /// The language passes each registered base code runs, built ONCE from the generated data. A
 /// language whose data does not build has no passes (it runs the neutral subset only); nothing
-/// throws at dictation time. The ordinal pass is not listed: its month, fixed-phrase and name
-/// data are still pending.
+/// throws at dictation time. German runs number style, phone and clock; French, Spanish, Italian
+/// and Portuguese run the signed phone path only for now. The ordinal pass is not listed: its
+/// month, fixed-phrase and name data are still pending.
 enum LanguagePassCatalog {
 
   struct Passes: Sendable {
@@ -74,10 +75,21 @@ enum LanguagePassCatalog {
       })
   }()
 
+  /// Languages whose phone pass runs the signed path only (spoken plus word, written sign).
+  private static let signedPhoneOnly: [String: Passes] = {
+    var table: [String: Passes] = [:]
+    for code in PhoneTriggerData.triggerTokens.keys {
+      guard let rules = try? LanguagePhonePrefixRules.signedOnly(language: code) else { continue }
+      table[code] = Passes(
+        numberStyle: nil, phone: LanguagePhonePrefixPass(grammar: nil, rules: rules), clock: nil)
+    }
+    return table
+  }()
+
   static func passes(for baseCode: String) -> Passes? {
     switch baseCode {
     case "de": return german
-    default: return nil
+    default: return signedPhoneOnly[baseCode]
     }
   }
 }
