@@ -1,4 +1,5 @@
 import EnviousWisprCore
+import EnviousWisprServices
 import Foundation
 import Observation
 
@@ -51,6 +52,28 @@ final class SettingsSearchModel {
   private var meaningSkipped = false
   private var meaningView: SettingsSearchPlaceVectors.View?
   private var meaningTask: Task<Void, Never>?
+  /// When the final query's meaning pass started, for `meaning_elapsed_ms`.
+  private var meaningStarted: ContinuousClock.Instant?
+  private var meaningElapsedMilliseconds: Double?
+
+  // MARK: Telemetry (plan §8.1)
+
+  /// One attempt: from the first non-empty query until a committed navigation or a dismissal.
+  struct Attempt: Equatable {
+    /// Share usage metrics was on when it began and has not been switched off since.
+    var eligible: Bool
+    /// The last query/result snapshot the panel presented; frozen while the panel is closed.
+    var query = ""
+    var resultCount = 0
+    var meaningPending = false
+    var meaningElapsedMilliseconds: Double?
+    var frozen = false
+  }
+
+  private(set) var attempt: Attempt?
+  /// Reads "Share usage metrics" now; the window sets it once its settings are in scope.
+  @ObservationIgnored var usageMetricsOn: @MainActor () -> Bool
+  private let emitFinished: @MainActor (SettingsSearchFinished) -> Void
   private let announce: @MainActor (String) -> Void
   private let announcementDelay: Duration
 
@@ -59,10 +82,14 @@ final class SettingsSearchModel {
   init(
     loadIndex: @escaping @Sendable () async -> SettingsSearchIndex?,
     meaningWorker: SettingsSearchMeaningWorker? = nil,
+    usageMetricsOn: @escaping @MainActor () -> Bool = { false },
+    emitFinished: @escaping @MainActor (SettingsSearchFinished) -> Void = { _ in },
     announce: @escaping @MainActor (String) -> Void,
     announcementDelay: Duration = .milliseconds(700)
   ) {
     self.loadIndex = loadIndex
+    self.usageMetricsOn = usageMetricsOn
+    self.emitFinished = emitFinished
     self.meaningWorker = meaningWorker
     meaningPass = meaningWorker == nil ? .skipped : .completed
     self.announce = announce
@@ -94,6 +121,7 @@ final class SettingsSearchModel {
         }
       },
       meaningWorker: .bundled(),
+      emitFinished: { TelemetryService.shared.settingsSearchFinished($0) },
       announce: announce)
   }
 
@@ -128,12 +156,15 @@ final class SettingsSearchModel {
     cancelAnnouncement()
     cancelMeaning()
     if text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+      finish(endedBy: .queryEmpty)
       results = []
       selectedEntryID = nil
       isPanelPresented = false
       return
     }
+    if attempt == nil { attempt = Attempt(eligible: usageMetricsOn()) }
     isPanelPresented = true
+    attempt?.frozen = false
     refresh()
   }
 
@@ -179,6 +210,7 @@ final class SettingsSearchModel {
       selectionMovedByUser = false
       selectedEntryID = newResults.first?.entryID
     }
+    recordSnapshot()
     if pendingSubmit == generation {
       pendingSubmit = nil
       if let request = requestForSelection() {
@@ -226,6 +258,7 @@ final class SettingsSearchModel {
   /// An outside click: close the panel; keep the query, results and selection.
   func dismissPanel() {
     isPanelPresented = false
+    attempt?.frozen = true
     cancelAnnouncement()
   }
 
@@ -233,6 +266,61 @@ final class SettingsSearchModel {
   func reopenPanel() {
     guard !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
     isPanelPresented = true
+    attempt?.frozen = false
+    recordSnapshot()
+  }
+
+  // MARK: - Telemetry (plan §8.1)
+
+  /// Share usage metrics changed: switching it off invalidates the attempt for good.
+  func usageMetricsChanged(isOn: Bool) {
+    if !isOn { attempt?.eligible = false }
+  }
+
+  /// The panel's current query/result snapshot, kept while it is presented.
+  private func recordSnapshot() {
+    guard var current = attempt, !current.frozen, isPanelPresented, !query.isEmpty else { return }
+    current.query = query
+    current.resultCount = results.count
+    current.meaningPending = meaningPass == .pending
+    current.meaningElapsedMilliseconds = meaningPass == .completed ? meaningElapsedMilliseconds : nil
+    attempt = current
+  }
+
+  /// Ends the attempt with one row (deduplicated: a finished attempt is gone). A committed
+  /// navigation passes how it ended; the sidebar also passes the page and tab it opened.
+  func finish(
+    endedBy: SettingsSearchFinished.EndedBy, sidebarPage: String? = nil, sidebarTab: String? = nil
+  ) {
+    guard let ended = attempt else { return }
+    attempt = nil
+    guard ended.eligible, usageMetricsOn(), !ended.query.isEmpty else { return }
+    let outcome = Self.outcome(endedBy: endedBy, snapshot: ended)
+    emitFinished(
+      SettingsSearchFinished(
+        outcome: outcome, endedBy: endedBy, resultCount: ended.resultCount,
+        appLanguage: appLanguageCode, meaningElapsedMilliseconds: ended.meaningElapsedMilliseconds,
+        sidebarPage: sidebarPage, sidebarTab: sidebarTab, typedQuery: ended.query))
+  }
+
+  static func outcome(
+    endedBy: SettingsSearchFinished.EndedBy, snapshot: Attempt
+  ) -> SettingsSearchFinished.Outcome {
+    switch endedBy {
+    case .searchResult:
+      return .resultChosen
+    case .sidebar:
+      if snapshot.resultCount > 0 { return .sidebarBypass }
+      return snapshot.meaningPending ? .abandoned : .zeroResults
+    case .externalDestination, .escape, .clear, .queryEmpty, .windowClose:
+      if snapshot.meaningPending { return .abandoned }
+      return snapshot.resultCount == 0 ? .zeroResults : .abandoned
+    }
+  }
+
+  private var appLanguageCode: String {
+    if case .ready(let index) = indexState { return index.appLanguage }
+    return Bundle.main.preferredLocalizations.first == "de" ? "de" : "en"
   }
 
   // MARK: - Meaning pass
@@ -245,6 +333,8 @@ final class SettingsSearchModel {
       return
     }
     meaningPass = .pending
+    meaningStarted = .now
+    meaningElapsedMilliseconds = nil
     let text = query
     let languages = Self.meaningLanguages(index)
     let appLanguage = index.appLanguage
@@ -285,8 +375,15 @@ final class SettingsSearchModel {
   ) {
     if skipped { meaningSkipped = true }
     guard generation == self.generation else { return }
-    if let fused { show(fused, for: generation) }
+    meaningElapsedMilliseconds =
+      skipped
+      ? nil
+      : meaningStarted.map {
+        let elapsed = $0.duration(to: .now).components
+        return Double(elapsed.seconds) * 1_000 + Double(elapsed.attoseconds) / 1e15
+      }
     meaningPass = skipped ? .skipped : .completed
+    if let fused { show(fused, for: generation) } else { recordSnapshot() }
   }
 
   private func cancelMeaning() {
@@ -319,8 +416,10 @@ final class SettingsSearchModel {
     }
   }
 
-  /// Escape, the clear button, a committed navigation or the window closing.
-  func reset() {
+  /// Escape, the clear button, a committed navigation or the window closing. `endedBy` finishes
+  /// the attempt first (nil when the caller already finished it, as a navigation commit does).
+  func reset(endedBy: SettingsSearchFinished.EndedBy? = nil) {
+    if let endedBy { finish(endedBy: endedBy) }
     query = ""
     results = []
     selectedEntryID = nil

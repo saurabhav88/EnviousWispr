@@ -48,13 +48,13 @@ struct SettingsSearchField: View {
       }
       .onKeyPress(.escape) {
         guard !model.query.isEmpty else { return .ignored }
-        model.reset()
+        model.reset(endedBy: .escape)
         return .handled
       }
       .settingsMapRegistration(.windowSearch)
       if !model.query.isEmpty {
         Button {
-          model.reset()
+          model.reset(endedBy: .clear)
           isFocused.wrappedValue = true
         } label: {
           Image(systemName: "xmark.circle.fill")

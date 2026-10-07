@@ -6,7 +6,7 @@ section: "Privacy"
 order: 2
 keywords: ["what data", "analytics", "telemetry", "collected", "do you see my text", "do you store", "opt out", "turn off", "tracking", "crash reports", "usage metrics", "diagnostics", "send feedback privacy", "help check", "TypeSafe", "share usage metrics"]
 related: ["privacy-overview"]
-updated: 2026-10-02
+updated: 2026-10-07
 deflection: "show_but_always_send"
 ---
 EnviousWispr collects anonymous usage data and crash reports, and you can turn either one off. Nothing you say is part of that. Your audio never reaches Envious Labs, the company that makes the app. The app never sends us your dictations or transcripts, unless you type them into a feedback message yourself.
@@ -39,13 +39,19 @@ None of these is ever included in usage data or crash reports, or attached to a 
 - Your API keys
 - Your name or email address, unless you choose to include either in a feedback report
 
-Anything you type into a feedback report yourself is the one exception, because you choose to send it.
+Two kinds of text you type are exceptions. A feedback report is sent because you choose to send it. A search in Settings that finds nothing is described [below](#settings-searches-that-find-nothing).
 
 ## What does the app collect?
 
 The app collects anonymous usage and crash data. That data shows whether a release broke dictation on a particular macOS version, or whether anyone ever opens a setting that took a month to build. Both are on by default, and you can turn either one off.
 
 The app records how you use it, never what you said. There is no account, and nothing in the data names you. Each installation gets a random ID, so that one Mac counts as one user. The privacy policy has the full detail.
+
+### Settings searches that find nothing
+
+When a search in the Settings window finds no setting, or you skip its results and pick a page from the sidebar instead, the app sends the words you typed, so we can teach the search the words people actually use. This happens only while **Share usage metrics** is on.
+
+The words are checked on your Mac first. A search that looks like an email address, a web address, a long number, or a key is not sent at all. When a search finds what you wanted, the app sends only counts, never the words.
 
 ## How can I check this myself?
 
@@ -63,7 +69,7 @@ Two switches control this, in the **Privacy** section of **Settings** > **Permis
 
 | Switch | What it covers | When a change applies |
 | :--- | :--- | :--- |
-| **Share usage metrics** | Anonymous usage, settings, and timing data: that a dictation happened, how long it took, which engine ran, which app it went into, and which settings are on. | Right away. Turning it off stops collection at once. If the app starts with it off, the usage service does not start at all. |
+| **Share usage metrics** | Anonymous usage, settings, and timing data: that a dictation happened, how long it took, which engine ran, which app it went into, and which settings are on. Also the words of a Settings search that found nothing. | Right away. Turning it off stops collection at once. If the app starts with it off, the usage service does not start at all. |
 | **Send crash reports** | Reports about crashes and errors, and a short note that the app is running, used to count sessions without a crash. | The next time EnviousWispr starts. After you change it, the switch shows **Restart now** so you can apply it straight away. If the app starts with it off, the crash-reporting service does not start at all. |
 
 ## What still happens after I turn a switch off?

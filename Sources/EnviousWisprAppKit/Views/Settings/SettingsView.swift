@@ -59,11 +59,14 @@ struct UnifiedWindowView: View {
       }
       .background(
         SettingsWindowCloseObserver {
-          search.reset()
+          search.reset(endedBy: .windowClose)
           navigationState.reveal = nil
         })
       // #3482 §3.4: a direct tab change drops an arrival meant for another tab.
       .onChange(of: navigationState.dictationTab) { _, _ in navigationState.dropRevealIfNotShowing() }
+      // #3482 §8.1: the failed-search row follows "Share usage metrics", read at every terminal.
+      .onAppear { search.usageMetricsOn = { settings.shareUsageMetrics } }
+      .onChange(of: settings.shareUsageMetrics) { _, isOn in search.usageMetricsChanged(isOn: isOn) }
       .onChange(of: navigationState.appSettingsTab) { _, _ in
         navigationState.dropRevealIfNotShowing()
       }
@@ -160,7 +163,17 @@ struct UnifiedWindowView: View {
   private func commit(_ intent: SettingsNavigationIntent) {
     let wasOnAIPolish = navigationState.selectedPage == .aiPolish
     navigationState.perform(intent)
-    // #3482 §3.4: every committed navigation ends the search (a Stay never reaches here).
+    // #3482 §3.4, §8.1: every committed navigation ends the search (a Stay never reaches here),
+    // reporting how it ended after the navigation committed.
+    switch intent {
+    case .search:
+      search.finish(endedBy: .searchResult)
+    case .sidebar(let page):
+      search.finish(
+        endedBy: .sidebar, sidebarPage: page.rawValue, sidebarTab: openTab(on: page))
+    case .destination:
+      search.finish(endedBy: .externalDestination)
+    }
     search.reset()
     // A new AI Polish visit begins: remember what was chosen before the person changes it.
     if intent.page == .aiPolish, !wasOnAIPolish { providerWhenVisitBegan = settings.llmProvider }
@@ -202,6 +215,16 @@ struct UnifiedWindowView: View {
       {
         leave(to: intent)
       }
+    }
+  }
+
+  /// The tab a page shows now, as a raw value, for the sidebar-bypass row (§8.1).
+  private func openTab(on page: SettingsPage) -> String? {
+    switch page {
+    case .dictation: return navigationState.dictationTab.rawValue
+    case .appSettings: return navigationState.appSettingsTab.rawValue
+    case .dictionary: return navigationState.dictionaryTab.rawValue
+    default: return nil
     }
   }
 
