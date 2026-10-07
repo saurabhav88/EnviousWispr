@@ -144,6 +144,14 @@ EnviousWispr.app/
 !Sources/EnviousWispr/Resources/SpeakerModels/
 !Sources/EnviousWispr/Resources/SpeakerModels/**
 
+# #3482: the Settings search meaning assets are COMMITTED (embed, never download; same rationale
+# as the models above): the precompiled query encoder, its tokenizer, the place vectors and
+# manifest.json. Re-include the folder, overriding the broad *.bin glob above. The encoder's
+# weights/weight.bin is ~88 MB (< GitHub's 100 MB per-file limit), so normal git. Regenerate with
+# scripts/settings-map/meaning-assets.py; every change adds this much to the repository's history.
+!Sources/EnviousWispr/Resources/SettingsSearchMeaning/
+!Sources/EnviousWispr/Resources/SettingsSearchMeaning/**
+
 # Dolt database files (added by bd init)
 .dolt/
 *.db
