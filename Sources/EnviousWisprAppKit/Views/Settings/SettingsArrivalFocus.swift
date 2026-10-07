@@ -61,6 +61,12 @@ extension EnvironmentValues {
   }
 }
 
+extension EnvironmentValues {
+  /// Full Keyboard Access, when a test pins it; nil reads the machine's setting. It decides whether
+  /// a toggle, picker, button or tab takes keyboard focus.
+  @Entry var settingsArrivalFullKeyboardAccess: Bool? = nil
+}
+
 /// The focus decision, pure so every case is tested without a window.
 enum SettingsArrivalFocusPlanner {
   /// What one arrival does. The search field is always released; the request is nil when no
@@ -86,12 +92,12 @@ enum SettingsArrivalFocusPlanner {
     showing && handledToken == pendingToken
   }
 
-  /// Whether keyboard focus may be asked of a control. A text field or a control whose owner moves
-  /// focus itself always takes it; a toggle, picker or button takes it only with Full Keyboard
-  /// Access on. Asking one that cannot makes SwiftUI hand focus back to the search field (seen
-  /// live), so it is not asked.
-  static func mayAskKeyboardFocus(ownerMovesFocus: Bool, fullKeyboardAccess: Bool) -> Bool {
-    ownerMovesFocus || fullKeyboardAccess
+  /// Whether keyboard focus may be asked of a control. A text field, or the keybind recorder, takes
+  /// it always; a toggle, picker, button or tab takes it only with Full Keyboard Access on. Asking
+  /// one that cannot makes SwiftUI hand focus back to the search field (seen live, for the Dictation
+  /// tab strip), so it is not asked, whether the control is focused by this adapter or by its owner.
+  static func mayAskKeyboardFocus(takesFocusAlways: Bool, fullKeyboardAccess: Bool) -> Bool {
+    takesFocusAlways || fullKeyboardAccess
   }
 
   /// The default release: resign the key window's text editor (the search field's), and nothing
@@ -116,7 +122,8 @@ extension View {
   ///   - enabled: false makes the adapter inert, for one segment of several that is the entry point.
   ///   - perform: for a control whose owner already holds its keyboard focus state (a text
   ///     field's `@FocusState`, a tab strip's focused tab): the owner moves keyboard focus itself.
-  ///   - textEntry: this control is a text field, which takes keyboard focus without Full Keyboard Access.
+  ///   - textEntry: this control takes keyboard focus without Full Keyboard Access (a text field, or the
+  ///     keybind recorder). Left false for a toggle, picker, button or tab: they are asked only with it on.
   ///   - voiceOver: false when the control's owner also holds its VoiceOver focus state and moves
   ///     that itself in `perform`.
   func settingsArrivalFocusControl(
@@ -157,6 +164,7 @@ struct SettingsArrivalFocusAdapter: ViewModifier {
   @Environment(\.settingsArrivalFocusRequest) private var request
   @Environment(\.settingsArrivalFocusTaken) private var taken
   @Environment(\.settingsArrivalFocusIsCurrent) private var isCurrent
+  @Environment(\.settingsArrivalFullKeyboardAccess) private var fullKeyboardAccess
   @FocusState private var keyboardFocused: Bool
   @AccessibilityFocusState private var voiceOverFocused: Bool
 
@@ -190,14 +198,12 @@ struct SettingsArrivalFocusAdapter: ViewModifier {
     guard enabled, let request, let target, request.target == target, request.kind == kind,
       isCurrent(request)
     else { return }
-    if kind == .control {
-      if let perform {
-        perform()
-      } else if SettingsArrivalFocusPlanner.mayAskKeyboardFocus(
-        ownerMovesFocus: textEntry, fullKeyboardAccess: NSApp.isFullKeyboardAccessEnabled)
-      {
-        keyboardFocused = true
-      }
+    if kind == .control,
+      SettingsArrivalFocusPlanner.mayAskKeyboardFocus(
+        takesFocusAlways: textEntry,
+        fullKeyboardAccess: fullKeyboardAccess ?? NSApp.isFullKeyboardAccessEnabled)
+    {
+      if let perform { perform() } else { keyboardFocused = true }
     }
     // VoiceOver moves its cursor when asked; with it off there is nothing to move.
     if voiceOver, NSWorkspace.shared.isVoiceOverEnabled { voiceOverFocused = true }

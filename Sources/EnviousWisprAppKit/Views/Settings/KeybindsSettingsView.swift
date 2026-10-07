@@ -212,7 +212,7 @@ private struct KeybindSettingsRow: View {
       )
       .frame(width: HotkeyRecorderView.Style.prominent.fieldWidth)
       // A search arrival lands in the recorder through the focus states it already owns.
-      .settingsArrivalFocusControl(voiceOver: false) {
+      .settingsArrivalFocusControl(voiceOver: false, textEntry: true) {
         recordingKeybindFocused = true
         if NSWorkspace.shared.isVoiceOverEnabled { guidanceReturnFocus = true }
       }

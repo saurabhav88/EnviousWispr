@@ -42,9 +42,9 @@ struct SettingsArrivalFocusTests {
 
   @Test("keyboard focus is asked of a toggle or button only with Full Keyboard Access on")
   func keyboardFocusNeedsAControlThatTakesIt() {
-    #expect(!Planner.mayAskKeyboardFocus(ownerMovesFocus: false, fullKeyboardAccess: false))
-    #expect(Planner.mayAskKeyboardFocus(ownerMovesFocus: false, fullKeyboardAccess: true))
-    #expect(Planner.mayAskKeyboardFocus(ownerMovesFocus: true, fullKeyboardAccess: false))
+    #expect(!Planner.mayAskKeyboardFocus(takesFocusAlways: false, fullKeyboardAccess: false))
+    #expect(Planner.mayAskKeyboardFocus(takesFocusAlways: false, fullKeyboardAccess: true))
+    #expect(Planner.mayAskKeyboardFocus(takesFocusAlways: true, fullKeyboardAccess: false))
   }
 
   @Test("a control beats a read-only registration of the same place, in either order")
@@ -200,14 +200,17 @@ struct SettingsArrivalFocusTests {
 
   /// Hosts one real control adapter handed `request` directly, with the owner's live check
   /// answering `current`; returns how often the adapter acted and reported the request taken.
-  static func adapterActs(current: Bool) async -> (performed: Int, taken: Int) {
+  static func adapterActs(
+    current: Bool, textEntry: Bool = true, fullKeyboardAccess: Bool = false
+  ) async -> (performed: Int, taken: Int) {
     let request = SettingsArrivalFocusRequest(token: 1, target: .pauseDuration, kind: .control)
     var performed = 0
     var taken = 0
     let view = Button("Pause duration") {}
-      .settingsArrivalFocusControl(perform: { performed += 1 })
+      .settingsArrivalFocusControl(textEntry: textEntry, perform: { performed += 1 })
       .settingsMapRegistration(.pauseDuration)
       .environment(\.settingsArrivalFocusRequest, request)
+      .environment(\.settingsArrivalFullKeyboardAccess, fullKeyboardAccess)
       .environment(\.settingsArrivalFocusIsCurrent) { asked in asked == request && current }
       .environment(\.settingsArrivalFocusTaken) { _ in taken += 1 }
       .frame(width: 300, height: 100)
@@ -232,6 +235,20 @@ struct SettingsArrivalFocusTests {
     // A request that outlived its arrival (a same-place navigation or a window close since).
     let stale = await Self.adapterActs(current: false)
     #expect(stale.performed == 0 && stale.taken == 0, "\(stale)")
+  }
+
+  @Test("a tab or button is not asked for keyboard focus without Full Keyboard Access, a text field is")
+  func adapterGatesKeyboardFocus() async {
+    // The Dictation tab strip: it moves focus through its owner's closure, and a tab cannot take
+    // focus with Full Keyboard Access off, so asking made focus fall back to the search field.
+    let tab = await Self.adapterActs(current: true, textEntry: false, fullKeyboardAccess: false)
+    #expect(tab.performed == 0, "a tab was asked for keyboard focus with Full Keyboard Access off: \(tab)")
+    #expect(tab.taken == 1, "the request must still be taken, so it is not offered again: \(tab)")
+    // Controls: the same adapter asks with Full Keyboard Access on, and a text field always asks.
+    let withAccess = await Self.adapterActs(current: true, textEntry: false, fullKeyboardAccess: true)
+    #expect(withAccess.performed == 1, "\(withAccess)")
+    let textField = await Self.adapterActs(current: true, textEntry: true, fullKeyboardAccess: false)
+    #expect(textField.performed == 1, "\(textField)")
   }
 
   @Test("a place that is not a control is offered to VoiceOver only")

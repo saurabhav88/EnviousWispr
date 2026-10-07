@@ -118,7 +118,7 @@ struct SnippetsView: View {
   private var keywordInput: some View {
     TextField("", text: $keywordField)
       .accessibilityLabel(Text(SettingsItemCopy.Snippets.keyword))
-      .settingsArrivalFocusControl { keywordFocused = true }
+      .settingsArrivalFocusControl(textEntry: true) { keywordFocused = true }
       .settingsMapRegistration(.snippetKeyword)
       .focused($keywordFocused)
       .settingsFieldChrome(focused: $keywordFocused)

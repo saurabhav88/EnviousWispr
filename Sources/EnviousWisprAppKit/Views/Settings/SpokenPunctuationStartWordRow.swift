@@ -90,7 +90,7 @@ struct SpokenPunctuationStartWordRow: View {
       prompt: Text(SpokenPunctuationCopy.noStartWordPlaceholder)
     )
     .focused($fieldFocused)
-    .settingsArrivalFocusControl { fieldFocused = true }
+    .settingsArrivalFocusControl(textEntry: true) { fieldFocused = true }
     .settingsFieldChrome(focused: $fieldFocused)
     .frame(width: 160)
     .onSubmit { editor.commitDraft() }

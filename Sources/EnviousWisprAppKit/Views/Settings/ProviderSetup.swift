@@ -1018,7 +1018,7 @@ private func keyField(_ descriptor: APIKeyDescriptor) -> some View {
     .textFieldStyle(.plain)
     .font(.system(size: 14, design: .monospaced))
     .focused($keyFieldFocused)
-    .settingsArrivalFocusControl { keyFieldFocused = true }
+    .settingsArrivalFocusControl(textEntry: true) { keyFieldFocused = true }
     .accessibilityLabel(descriptor.accessibilityLabel)
     .onChange(of: activeKeyBinding.wrappedValue) { _, _ in
       dismissStaleFailureStatus()
