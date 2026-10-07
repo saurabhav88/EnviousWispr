@@ -64,11 +64,10 @@ extension EnvironmentValues {
   /// Whether a reveal's destination (page, tab, Dictionary tab) is the one on screen now.
   @Entry var settingsRevealIsShowing: @MainActor (SettingsReveal) -> Bool = { _ in false }
   /// Whether an arrival that already finished (its reveal acknowledged, so `settingsRevealIsShowing`
-  /// no longer applies) still belongs to what the window shows: no newer search, no other
-  /// navigation since `epoch`, and its page and tab on screen. Read live, not from a snapshot.
-  @Entry var settingsArrivalStillCurrent: @MainActor (SettingsReveal, _ epoch: Int) -> Bool = {
-    _, _ in false
-  }
+  /// no longer applies) still belongs to what the window shows: no newer search, and its page and
+  /// tab on screen. Read live from the window's state, never from a copy of this view's
+  /// environment, which a queued closure may hold from an earlier pass.
+  @Entry var settingsArrivalStillCurrent: @MainActor (SettingsReveal) -> Bool = { _ in false }
   /// The marked scroll view around a registration, nil outside every marked scroll view.
   @Entry var settingsArrivalViewport: SettingsArrivalViewportID? = nil
 }
@@ -236,7 +235,7 @@ struct SettingsArrivalModifier: ViewModifier {
   /// The adapters the page has published, and the focus move in flight (one shot).
   @State private var focusKinds: [SettingsMapID: SettingsArrivalFocusKind] = [:]
   @State private var focusRequest: SettingsArrivalFocusRequest?
-  @State private var pendingFocus: (reveal: SettingsReveal, target: SettingsMapID, epoch: Int)?
+  @State private var pendingFocus: (reveal: SettingsReveal, target: SettingsMapID)?
   @State private var focusExpiry: Task<Void, Never>?
 
   /// A focus request nobody took (no adapter mounted for it) is dropped, so a control that mounts
@@ -253,7 +252,10 @@ struct SettingsArrivalModifier: ViewModifier {
 
   func body(content: Content) -> some View {
     ScrollViewReader { reader in
-      arrival(content).onAppear { proxy = reader }
+      arrival(content).onAppear {
+        proxy = reader
+        reconcile()
+      }
     }
   }
 
@@ -329,8 +331,8 @@ struct SettingsArrivalModifier: ViewModifier {
         if SettingsArrivalVisibility.partly(place.rect, in: place.clip) {
           SettingsArrivalRing(rect: place.rect)
             .mask {
-              // The ring's own 4pt outset stays visible at the scroll view's edge.
-              let edge = place.clip.insetBy(dx: -6, dy: -6)
+              // The ring's own 4pt outset, and no further: it never paints past the scroll view.
+              let edge = place.clip.insetBy(dx: -4, dy: -4)
               Rectangle().frame(width: edge.width, height: edge.height)
                 .position(x: edge.midX, y: edge.midY)
             }
@@ -353,6 +355,9 @@ struct SettingsArrivalModifier: ViewModifier {
   }
 
   private func decideNow() {
+    // No scroll owner yet: deciding now would arrive without scrolling. The reader's onAppear
+    // reconciles again once it is stored.
+    guard proxy != nil else { return }
     let current = reveal
     let action = SettingsArrivalPlanner.decide(
       reveal: current, showing: current.map(showing) ?? false, mounted: mounted,
@@ -399,7 +404,7 @@ struct SettingsArrivalModifier: ViewModifier {
   /// Focus follows the arrival by one layout pass, and is judged again then: a newer arrival, or a
   /// change to another page or tab in between, cancels it.
   private func startFocus(_ reveal: SettingsReveal, target: SettingsMapID) {
-    pendingFocus = (reveal, target, navigationEpoch)
+    pendingFocus = (reveal, target)
     DispatchQueue.main.async { moveFocus() }
   }
 
@@ -411,7 +416,7 @@ struct SettingsArrivalModifier: ViewModifier {
     guard
       SettingsArrivalFocusPlanner.mayMove(
         pendingToken: pending.reveal.token, handledToken: handledToken,
-        showing: stillCurrent(pending.reveal, pending.epoch))
+        showing: stillCurrent(pending.reveal))
     else { return }
     let move = SettingsArrivalFocusPlanner.plan(
       target: pending.target, token: pending.reveal.token, kinds: focusKinds)

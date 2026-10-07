@@ -62,21 +62,24 @@ struct SpeechEngineSettingsView: View {
     // right). Each card carries a "pick this when" tagline plus a four-row spec
     // table, owned by EngineChoicePresentation (#3482), where the grounding for
     // every value lives beside it.
-    LazyVGrid(
-      columns: [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)],
-      spacing: 12
-    ) {
-      ForEach(EngineChoicePresentation.choices, id: \.backend) { choice in
-        EngineCard(
-          icon: choice.icon,
-          map: .id(choice.mapID),
-          tagline: String(localized: choice.tagline),
-          specs: choice.specs.map { (String(localized: $0.label), $0.value.resolved) },
-          isSelected: settings.selectedBackend == choice.backend
-        ) {
-          settings.selectedBackend = choice.backend
-          // #3385: picking, including the engine already chosen, closes the choices.
-          showEngineChoices = false
+    // Eager (`Grid`, not `LazyVGrid`): a lazy grid below the fold has no cards, so a Settings
+    // search for an engine could not arrive at one (#3482). Two cards gain nothing from laziness;
+    // flexible frames split the row evenly, as the flexible columns did.
+    Grid(horizontalSpacing: 12, verticalSpacing: 12) {
+      GridRow(alignment: .top) {
+        ForEach(EngineChoicePresentation.choices, id: \.backend) { choice in
+          EngineCard(
+            icon: choice.icon,
+            map: .id(choice.mapID),
+            tagline: String(localized: choice.tagline),
+            specs: choice.specs.map { (String(localized: $0.label), $0.value.resolved) },
+            isSelected: settings.selectedBackend == choice.backend
+          ) {
+            settings.selectedBackend = choice.backend
+            // #3385: picking, including the engine already chosen, closes the choices.
+            showEngineChoices = false
+          }
+          .frame(maxWidth: .infinity, alignment: .top)
         }
       }
     }
