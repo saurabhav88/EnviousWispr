@@ -167,7 +167,8 @@ actor SettingsSearchMeaningWorker {
     }
   }
 
-  private static func loadProduction(assets: SettingsSearchMeaningAssets) async throws -> sending
+  /// The production load, also used by tests that wrap it (for example to delay it).
+  static func loadProduction(assets: SettingsSearchMeaningAssets) async throws -> sending
     Loaded
   {
     let manifest: SettingsSearchMeaningAssets.Manifest

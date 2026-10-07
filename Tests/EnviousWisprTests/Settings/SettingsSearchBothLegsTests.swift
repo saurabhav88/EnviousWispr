@@ -82,19 +82,25 @@ struct SettingsSearchBothLegsTests {
 
   @Test("meaning_elapsed_ms counts encoding and scoring, never the model load")
   func elapsedExcludesLoad() async throws {
-    let worker = Self.worker()
+    let assets = SettingsSearchMeaningAssets(
+      directory: RepoRoot.sourceURL("Sources/EnviousWispr/Resources/SettingsSearchMeaning"))
+    // The load is held back three seconds on purpose; the first search pays for it.
+    let worker = SettingsSearchMeaningWorker(loadBudgetMilliseconds: 60_000) {
+      try await Task.sleep(for: .seconds(3))  // test-fixture-timer: the delayed load is the control
+      return try await SettingsSearchMeaningWorker.loadProduction(assets: assets)
+    }
     let index = try SettingsSearchMatchingTests.english.get()
     let model = SettingsSearchModel(
       loadIndex: { index }, meaningWorker: worker, announce: { _ in },
       announcementDelay: .seconds(60))
     _ = await Self.search(model, "mic")
     let elapsed = try #require(model.meaningElapsedMilliseconds, "no meaning time recorded")
-    // Control: the load this first search paid for, as the worker measured it.
     guard case .ready(let loadMilliseconds) = await worker.ensureLoaded() else {
       Issue.record("the meaning pass did not load")
       return
     }
-    #expect(elapsed < loadMilliseconds, "\(elapsed) ms includes the \(loadMilliseconds) ms load")
+    #expect(loadMilliseconds >= 3_000, "the control delay did not happen: \(loadMilliseconds) ms")
+    #expect(elapsed < 3_000, "\(elapsed) ms includes the three-second load")
   }
 
   @Test("a place only the meaning model found carries no match hint")

@@ -2459,11 +2459,6 @@ package final class WisprBootstrapper {
   package func onboardingWindowContent() -> some View {
     OnboardingWindowRoot(b: self)
   }
-
-  /// The main window's menu commands: Edit › Find Settings (#3482).
-  package func mainWindowCommands() -> some Commands {
-    FindSettingsCommand()
-  }
 }
 
 /// The main window's root view. Owns the onboarding-presented view-state (was

@@ -225,10 +225,12 @@ extension FocusedValues {
 }
 
 /// Edit › Find Settings (Command-F), routed to the focused main window (#3482 §3.3).
-struct FindSettingsCommand: Commands {
+package struct FindSettingsCommand: Commands {
   @FocusedValue(\.settingsFind) private var find
 
-  var body: some Commands {
+  package init() {}
+
+  package var body: some Commands {
     CommandGroup(after: .textEditing) {
       Button(String(localized: SettingsSearchCopy.findSettings)) { find?() }
         .keyboardShortcut("f", modifiers: .command)
