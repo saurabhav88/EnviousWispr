@@ -875,6 +875,7 @@ struct SettingsSummaryCard<Summary: View, Status: View, Choices: View>: View {
   /// A search arrival at this card lands on its Change button, which holds the focus state above.
   @Environment(\.settingsArrivalFocusRequest) private var arrivalRequest
   @Environment(\.settingsArrivalFocusTaken) private var arrivalTaken
+  @Environment(\.settingsArrivalFocusIsCurrent) private var arrivalIsCurrent
 
   init(
     map: SettingsMapRef,
@@ -1001,7 +1002,7 @@ struct SettingsSummaryCard<Summary: View, Status: View, Choices: View>: View {
     }
     .onChange(of: arrivalRequest, initial: true) { _, request in
       guard let request, request.target == map.id || request.target == change,
-        request.kind == .control
+        request.kind == .control, arrivalIsCurrent(request)
       else { return }
       if NSApp.isFullKeyboardAccessEnabled { changeFocused = true }
       if NSWorkspace.shared.isVoiceOverEnabled { changeAccessibilityFocused = true }

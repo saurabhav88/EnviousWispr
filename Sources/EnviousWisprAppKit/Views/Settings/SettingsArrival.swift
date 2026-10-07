@@ -236,6 +236,8 @@ struct SettingsArrivalModifier: ViewModifier {
   /// The adapters the page has published, and the focus move in flight (one shot).
   @State private var focusKinds: [SettingsMapID: SettingsArrivalFocusKind] = [:]
   @State private var focusRequest: SettingsArrivalFocusRequest?
+  /// The arrival `focusRequest` belongs to, judged again when an adapter is about to act.
+  @State private var focusReveal: SettingsReveal?
   @State private var pendingFocus: (reveal: SettingsReveal, target: SettingsMapID)?
   @State private var focusExpiry: Task<Void, Never>?
 
@@ -270,6 +272,10 @@ struct SettingsArrivalModifier: ViewModifier {
       .environment(\.settingsArrivalFocusRequest, focusRequest)
       .environment(\.settingsArrivalFocusTaken) { taken in
         if focusRequest == taken { dropFocusRequest() }
+      }
+      .environment(\.settingsArrivalFocusIsCurrent) { request in
+        guard request == focusRequest, let focusReveal else { return false }
+        return stillCurrent(focusReveal)
       }
       // Kept in state: an overlay reads one preference, and the controls' places need the
       // scroll views' frames beside them.
@@ -426,6 +432,7 @@ struct SettingsArrivalModifier: ViewModifier {
       target: pending.target, token: pending.reveal.token, kinds: focusKinds)
     if move.releaseSearch { releaseSearchFocus() }
     guard let request = move.request else { return }
+    focusReveal = pending.reveal
     focusRequest = request
     focusExpiry?.cancel()
     focusExpiry = Task { @MainActor in
@@ -439,6 +446,7 @@ struct SettingsArrivalModifier: ViewModifier {
     focusExpiry?.cancel()
     focusExpiry = nil
     focusRequest = nil
+    focusReveal = nil
   }
 
   private func scroll(to target: SettingsMapID) {

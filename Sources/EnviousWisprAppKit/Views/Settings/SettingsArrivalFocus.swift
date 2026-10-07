@@ -46,6 +46,12 @@ extension EnvironmentValues {
   @Entry var settingsArrivalRegisteredID: SettingsMapID? = nil
   /// The focus move in flight, if any (one shot: the first adapter to act reports it taken).
   @Entry var settingsArrivalFocusRequest: SettingsArrivalFocusRequest? = nil
+  /// Asked by an adapter just before it acts: whether the request is still the owner's live one
+  /// and its arrival still current (no navigation since, page and tab showing). False outside an
+  /// arrival owner, so a request reaching an adapter by any other path moves nothing.
+  @Entry var settingsArrivalFocusIsCurrent: @MainActor (SettingsArrivalFocusRequest) -> Bool = {
+    _ in false
+  }
   /// An adapter reports that it acted on the request; the arrival owner then drops the request.
   @Entry var settingsArrivalFocusTaken: @MainActor (SettingsArrivalFocusRequest) -> Void = { _ in }
   /// Takes keyboard focus out of the search field. The default resigns a text editor in the key
@@ -150,6 +156,7 @@ struct SettingsArrivalFocusAdapter: ViewModifier {
   @Environment(\.settingsArrivalRegisteredID) private var registered
   @Environment(\.settingsArrivalFocusRequest) private var request
   @Environment(\.settingsArrivalFocusTaken) private var taken
+  @Environment(\.settingsArrivalFocusIsCurrent) private var isCurrent
   @FocusState private var keyboardFocused: Bool
   @AccessibilityFocusState private var voiceOverFocused: Bool
 
@@ -180,7 +187,8 @@ struct SettingsArrivalFocusAdapter: ViewModifier {
   }
 
   private func act(on request: SettingsArrivalFocusRequest?) {
-    guard enabled, let request, let target, request.target == target, request.kind == kind
+    guard enabled, let request, let target, request.target == target, request.kind == kind,
+      isCurrent(request)
     else { return }
     if kind == .control {
       if let perform {

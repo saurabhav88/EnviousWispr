@@ -198,6 +198,42 @@ struct SettingsArrivalFocusTests {
     #expect(events.last == .request(nil))
   }
 
+  /// Hosts one real control adapter handed `request` directly, with the owner's live check
+  /// answering `current`; returns how often the adapter acted and reported the request taken.
+  static func adapterActs(current: Bool) async -> (performed: Int, taken: Int) {
+    let request = SettingsArrivalFocusRequest(token: 1, target: .pauseDuration, kind: .control)
+    var performed = 0
+    var taken = 0
+    let view = Button("Pause duration") {}
+      .settingsArrivalFocusControl(perform: { performed += 1 })
+      .settingsMapRegistration(.pauseDuration)
+      .environment(\.settingsArrivalFocusRequest, request)
+      .environment(\.settingsArrivalFocusIsCurrent) { asked in asked == request && current }
+      .environment(\.settingsArrivalFocusTaken) { _ in taken += 1 }
+      .frame(width: 300, height: 100)
+    let host = NSHostingView(rootView: view)
+    host.frame = CGRect(x: 0, y: 0, width: 300, height: 100)
+    let window = NSWindow(
+      contentRect: host.frame, styleMask: [.borderless], backing: .buffered, defer: false)
+    window.contentView = host
+    defer { window.contentView = nil }
+    host.layoutSubtreeIfNeeded()
+    await afterQueuedMainWork()
+    host.layoutSubtreeIfNeeded()
+    await afterQueuedMainWork()
+    return (performed, taken)
+  }
+
+  @Test("an adapter acts only while the owner says its arrival is current")
+  func adapterChecksCurrency() async {
+    // Control: the same request acts when current, so the refusal below is the check's doing.
+    let live = await Self.adapterActs(current: true)
+    #expect(live.performed == 1 && live.taken == 1, "\(live)")
+    // A request that outlived its arrival (a same-place navigation or a window close since).
+    let stale = await Self.adapterActs(current: false)
+    #expect(stale.performed == 0 && stale.taken == 0, "\(stale)")
+  }
+
   @Test("a place that is not a control is offered to VoiceOver only")
   func readOnlyArrival() async throws {
     let recorder = Recorder()
