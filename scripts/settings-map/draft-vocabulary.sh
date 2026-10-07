@@ -71,7 +71,7 @@ draft() {
   "$EXPORT_FN" "$id" "$export_json" "$dir/export.log" || status=$?
   if [ "$status" -ne 0 ] || [ ! -s "$export_json" ]; then
     local reason
-    reason="$(grep -A1 'recorded an issue' "$dir/export.log" | grep -Eo "$id is (a structural Settings Map node|not a searchable Settings Map id)[^\"]*|the built app has no German catalog[^\"]*" \
+    reason="$(grep -A1 'recorded an issue' "$dir/export.log" | grep -Eo "$id is (a structural Settings Map node|not a searchable Settings Map id)[^\"]*|the built app has no [a-z]+ catalog[^\"]*|app products beside the tests[^\"]*|[a-z]+: no catalog entry[^\"]*" \
       | head -1 || true)"
     die 3 "${reason:-export failed (status $status, no export file); see $dir/export.log}. No model ran."
   fi

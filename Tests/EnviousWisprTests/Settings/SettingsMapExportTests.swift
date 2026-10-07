@@ -34,10 +34,9 @@ struct SettingsMapExportTests {
     let description: String
   }
 
-  /// The app this test target was built with: tests run unhosted, so `Bundle.main` is the test
-  /// runner, and the compiled String Catalog lives in the sibling `EnviousWispr.app`.
-  static let app = Bundle(for: BundleMarker.self).bundleURL.deletingLastPathComponent()
-    .appendingPathComponent("EnviousWispr.app")
+  /// Tests run unhosted, so `Bundle.main` is the test runner; the compiled String Catalog lives in
+  /// the app built beside the test bundle, whose name depends on the configuration
+  /// (InterfaceCatalogSourceTests.builtApp: `EnviousWispr.app` or `EnviousWispr Local.app`).
 
   // MARK: - Copy resolution
 
@@ -52,6 +51,7 @@ struct SettingsMapExportTests {
       throw ExportError(description: "en: unresolved placeholder in \"\(english)\"")
     }
     if code == "en" { return english }
+    let app = try InterfaceCatalogSourceTests.builtApp()
     let missing = "\u{0}missing"
     func entry(_ language: String) throws -> String? {
       guard let table = Bundle(url: app.appendingPathComponent("Contents/Resources/\(language).lproj"))
@@ -328,5 +328,4 @@ struct SettingsMapExportTests {
     try FileManager.default.moveItem(at: staging, to: output)
   }
 
-  private final class BundleMarker {}
 }

@@ -194,7 +194,8 @@ struct InterfaceCatalogSourceTests {
         == "EnviousWispr benötigt Zugriff auf dein Mikrofon, um deine Sprache in Text umzuwandeln.")
   }
 
-  private static func builtApp() throws -> URL {
+  /// The app built beside the test bundle (shared with SettingsMapExportTests).
+  static func builtApp() throws -> URL {
     let products = Bundle(for: BuildProductsMarker.self).bundleURL.deletingLastPathComponent()
     // The product name is per configuration: Debug and Release build `EnviousWispr.app`, Dev
     // builds `EnviousWispr Local.app` (Project.swift Dev settings). Exactly one lives beside the
