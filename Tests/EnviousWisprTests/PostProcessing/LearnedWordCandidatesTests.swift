@@ -476,4 +476,53 @@ struct LearnedWordCandidatesTests {
     #expect(variants.count == 32)
     #expect(variants.first?.text == phrase)
   }
+
+  @Test("#3518: inner learned words are found by the matcher's own word edges (Codex diff review r2)")
+  func innerWordsUseTheMatchersWordEdges() {
+    // A word joined to the next by punctuation, not a space.
+    let slash = [
+      LearnedWord(canonical: "Saurabh", observedMisspellings: ["Sarab"]),
+      LearnedWord(canonical: "TeamHandle", observedMisspellings: ["Saurabh/team A V"]),
+    ]
+    let misheard = "Ping Sarab/team A V now."
+    #expect(
+      Self.spots(misheard, LearnedWordCandidates.questions(for: misheard, learned: slash))
+        == ["Sarab/team A V->TeamHandle", "Sarab->Saurabh"])
+    let literal = "Ping Saurabh/team A V now."
+    #expect(
+      Self.spots(
+        literal,
+        LearnedWordCandidates.questions(for: literal, learned: slash, knownSpellings: ["Saurabh"]))
+        == ["Saurabh/team A V->TeamHandle"])
+    // Two learned words that overlap inside the phrase: both are kept, so both settled
+    // spellings are exempt where the phrase holds them as written.
+    let overlap = [
+      LearnedWord(canonical: "C", observedMisspellings: ["see"]),
+      LearnedWord(canonical: "C++", observedMisspellings: ["see plus plus"]),
+      LearnedWord(canonical: "cppav", observedMisspellings: ["C++ A V"]),
+    ]
+    let text = "Ping C++ A V today."
+    #expect(
+      Self.spots(
+        text,
+        LearnedWordCandidates.questions(for: text, learned: overlap, knownSpellings: ["C", "C++"]))
+        == ["C++ A V->cppav"])
+  }
+
+  @Test("#3518: a phrase that is itself another learned word is not rebuilt from that word")
+  func wholePhraseIsNotAnInnerWord() {
+    let learned = [
+      LearnedWord(canonical: "Envious Labs", observedMisspellings: ["envious laps"]),
+      LearnedWord(canonical: "EnviousSales", observedMisspellings: ["Envious Labs"]),
+    ]
+    let text = "Invoices for envious laps today."
+    #expect(
+      Self.spots(text, LearnedWordCandidates.questions(for: text, learned: learned))
+        == ["envious laps->Envious Labs"])
+    #expect(
+      LearnedWordCandidates.questions(
+        for: "Invoices for Envious Labs today.", learned: learned,
+        knownSpellings: ["Envious Labs", "EnviousSales"]
+      ).isEmpty)
+  }
 }

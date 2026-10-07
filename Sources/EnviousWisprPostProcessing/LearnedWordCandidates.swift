@@ -18,6 +18,9 @@ public enum LearnedWordCandidates: Sendable {
   private static let maxBoundaryOverhang = 20
   /// #3518: spellings searched per learned phrase, the phrase as taught first.
   private static let maxVariantsPerAlias = 32
+  /// #3518: a learned phrase longer than this is searched only as taught (Judge 1 learns 1 to 4
+  /// words per side; this bounds the boundary-pair lookups).
+  private static let maxExpandedAliasScalars = 120
 
   private struct Candidate {
     let range: Range<String.Index>
@@ -188,47 +191,36 @@ public enum LearnedWordCandidates: Sendable {
     guard scalars.contains(where: { $0.properties.isWhitespace }) else {
       return [Variant(text: alias, retained: [], composed: false)]
     }
-    // The phrase's whitespace-separated pieces, then every run of consecutive pieces looked up
-    // as a learned word: a dictionary lookup per run, not a search per learned word, so a large
-    // vocabulary costs no more here. Each run is tried as written ("C++", "U.S."), then with
-    // punctuation peeled from its edges ("Saurabh," / "(Saurabh" / "Saurabh."), longest first.
-    var pieces = [Range<Int>]()
-    var pieceStart: Int?
-    for (offset, scalar) in scalars.enumerated() {
-      if scalar.properties.isWhitespace {
-        if let start = pieceStart { pieces.append(start..<offset) }
-        pieceStart = nil
-      } else if pieceStart == nil {
-        pieceStart = offset
-      }
+    // Every stretch of the phrase that starts and ends on a word boundary, by the same rule
+    // the matcher and the settled check use (`isWholeWord`), looked up as a learned word: one
+    // dictionary lookup per stretch, so a large vocabulary costs no more here, and every
+    // learned word the matcher would see inside the phrase is found ("Saurabh" in
+    // "Saurabh/team", both "C" and "C++" in "C++ A V"). Overlaps are kept; variant
+    // building never replaces two overlapping words at once. A learned phrase is 1 to 4
+    // words (Judge 1), so the stretches are few; a long one is not expanded.
+    guard scalars.count <= maxExpandedAliasScalars else {
+      return [Variant(text: alias, retained: [], composed: false)]
     }
-    if let start = pieceStart { pieces.append(start..<scalars.count) }
-    func peelable(_ scalar: Unicode.Scalar) -> Bool { !isWordScalar(scalar) || scalar == "." }
-    var occurrences = [Occurrence]()
     let ownerKey = owner.lowercased()
-    for first in pieces.indices {
-      var lowers = [pieces[first].lowerBound]
-      while let lower = lowers.last, lower + 1 < pieces[first].upperBound,
-        peelable(scalars[lower]), scalars[lower] != "."
-      {
-        lowers.append(lower + 1)
-      }
-      for last in first..<pieces.count {
-        var uppers = [pieces[last].upperBound]
-        while let upper = uppers.last, upper - 1 > pieces[last].lowerBound,
-          peelable(scalars[upper - 1])
-        {
-          uppers.append(upper - 1)
-        }
-        search: for lower in lowers {
-          for upper in uppers where lower < upper {
-            let range = lower..<upper
-            let key = String(String.UnicodeScalarView(scalars[range])).lowercased()
-            if key != ownerKey, misspellings[key] != nil {
-              occurrences.append(Occurrence(range: range, key: key))
-              break search
-            }
-          }
+    let starts = scalars.indices.filter {
+      scalars[$0].properties.isWhitespace == false
+        && ($0 == 0 || isWordScalar(scalars[$0 - 1]) == false)
+    }
+    let ends = (1...scalars.count).filter { end in
+      scalars[end - 1].properties.isWhitespace == false
+        && (end == scalars.count || isWordScalar(scalars[end]) == false
+          || isSentencePeriod(in: alias, at: alias.unicodeScalars.index(
+            alias.unicodeScalars.startIndex, offsetBy: end)))
+    }
+    // Only a word INSIDE the phrase: a phrase that is itself another learned word (#3105's
+    // "Envious Labs" taught as a misspelling of "EnviousSales") is never rebuilt from that
+    // word's misspellings.
+    var occurrences = [Occurrence]()
+    for start in starts {
+      for end in ends where end > start && (start > 0 || end < scalars.count) {
+        let key = String(String.UnicodeScalarView(scalars[start..<end])).lowercased()
+        if key != ownerKey, misspellings[key] != nil {
+          occurrences.append(Occurrence(range: start..<end, key: key))
         }
       }
     }
