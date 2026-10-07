@@ -113,7 +113,8 @@ public enum SettingsSearchQueryFilter {
   /// path, or an IBAN with letters in its account part (one with seven digits is already dropped).
   private static func looksLikePersonalAddress(_ query: String) -> Bool {
     let patterns = [
-      #"\b[a-z0-9._%+-]+\s*[\[(]?\s*at\s*[\])]?\s*[a-z0-9-]+(?:\s*[\[(]?\s*dot\s*[\])]?\s*[a-z0-9-]+)+\b"#,
+      // "at" and "dot" only as whole words or in brackets: "formatting dot points" is a search.
+      #"\b[a-z0-9._%+-]+(?:\s+at\s+|\s*[\[(]\s*at\s*[\])]\s*)[a-z0-9-]+(?:(?:\s+dot\s+|\s*[\[(]\s*dot\s*[\])]\s*)[a-z0-9-]+)+\b"#,
       #"\b\d{1,3}(?:\s?\.\s?\d{1,3}){3}\b"#,
       #"[0-9a-f]{0,4}::[0-9a-f]{0,4}|\b(?:[0-9a-f]{1,4}:){3,}[0-9a-f]{1,4}\b"#,
       #"\b(?:[0-9a-f]{2}[:-]){5}[0-9a-f]{2}\b"#,

@@ -33,6 +33,9 @@ struct SettingsSearchTelemetryTests {
     #expect(SettingsSearchQueryFilter.reportable("users folder") == "users folder")
     #expect(SettingsSearchQueryFilter.reportable("desk-top mic") == "desk-top mic")
     #expect(SettingsSearchQueryFilter.reportable("what is that") == "what is that")
+    for text in ["formatting dotted lists", "formatting dot points", "dictation dot commands"] {
+      #expect(SettingsSearchQueryFilter.reportable(text) == text, "dropped \(text)")
+    }
     // The sent text keeps what was typed; only the checks read the normalized copy.
     #expect(SettingsSearchQueryFilter.reportable("dark\u{00A0}mode") == "dark\u{00A0}mode")
     // A Japanese vocabulary phrase longer than 32 characters, written without spaces.
