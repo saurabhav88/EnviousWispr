@@ -175,7 +175,7 @@ struct CustomWordsExportActionTests {
     let document = CustomWordsTransferDocument(words: over)
 
     let refusal = CustomWordsExportAction.refusalIfUnimportable(
-      document: document, encoded: try document.encoded())
+      encoded: try document.encoded())
 
     #expect(refusal != nil)
     #expect(refusal?.contains("Nothing was exported") == true)
@@ -190,7 +190,7 @@ struct CustomWordsExportActionTests {
 
     #expect(
       CustomWordsExportAction.refusalIfUnimportable(
-        document: document, encoded: try document.encoded()) == nil)
+        encoded: try document.encoded()) == nil)
   }
 
   @Test("a word the importer would refuse blocks the export")
@@ -205,7 +205,7 @@ struct CustomWordsExportActionTests {
     ])
 
     let refusal = CustomWordsExportAction.refusalIfUnimportable(
-      document: document, encoded: try document.encoded())
+      encoded: try document.encoded())
 
     #expect(refusal?.contains("Nothing was exported") == true)
   }
@@ -222,7 +222,7 @@ struct CustomWordsExportActionTests {
 
     #expect(
       CustomWordsExportAction.refusalIfUnimportable(
-        document: document, encoded: try document.encoded()) == nil)
+        encoded: try document.encoded()) == nil)
   }
 
   @Test("export refuses a library that trips the stored-surface ceiling")
@@ -243,7 +243,7 @@ struct CustomWordsExportActionTests {
     #expect(document.words.count < CustomWordsImportLimits.maximumExportedCandidates)
 
     let refusal = CustomWordsExportAction.refusalIfUnimportable(
-      document: document, encoded: try document.encoded())
+      encoded: try document.encoded())
 
     #expect(refusal?.contains("Nothing was exported") == true)
     // Reported as words AND alternate spellings, not as a word count the user
@@ -279,7 +279,7 @@ struct CustomWordsExportActionTests {
       }
       let exportRefuses =
         CustomWordsExportAction.refusalIfUnimportable(
-          document: document, encoded: encoded) != nil
+          encoded: encoded) != nil
 
       #expect(importerRefuses == exportRefuses)
     }
@@ -332,7 +332,7 @@ struct CustomWordsExportActionTests {
     let document = CustomWordsTransferDocument(words: live.filter { $0.source == .user })
     #expect(
       CustomWordsExportAction.refusalIfUnimportable(
-        document: document, encoded: try document.encoded()) == nil)
+        encoded: try document.encoded()) == nil)
   }
 
   // MARK: - #1697: the count the user is shown and the bytes on disk are one fact

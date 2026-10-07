@@ -267,15 +267,6 @@ enum InstallResolution: Equatable, Sendable {
   }
 }
 
-/// Terminal result of one launch-time evaluation.
-public enum ApplicationRelocationOutcome: Equatable, Sendable {
-  case notNeeded
-  case suppressed
-  case declined
-  case relaunched(destination: URL)
-  case continuedAfterFailure(RelocationFailure)
-}
-
 /// User's answer to the one-click prompt.
 enum RelocationChoice: Equatable, Sendable {
   case move

@@ -30,7 +30,6 @@ enum ColdPressGuard {
   static func reconcileSelectedBackend(
     overlay: OverlayDirector,
     selectedDriver: KernelDictationDriver,
-    selected: ASRBackendType,
     ensureSelectedReady: @escaping @MainActor () async -> EngineCoordinator.PressReadiness
   ) {
     let label = selectedDriver.engineDisplayName

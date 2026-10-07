@@ -6,8 +6,7 @@ import Foundation
 /// path), built from `FluidAudioASRErrorKind` — never from `FluidAudio.ASRError` directly
 /// (see `EnviousWisprFluidAudioBridge`'s naming-trap doc comment). `CustomNSError`
 /// conforms so the app-owned domain/code automatically applies the moment anything
-/// downstream does `error as NSError` (exactly what `XPCErrorSanitizer.sanitizeForXPC`
-/// already does) — no manual bridging call needed.
+/// downstream does `error as NSError` — no manual bridging call needed.
 enum ParakeetTranscriptionSentryError: Error, LocalizedError, CustomNSError, Sendable, Equatable {
   case notInitialized(String)
   case invalidAudioData(String)
@@ -79,7 +78,7 @@ enum ParakeetTranscriptionSentryError: Error, LocalizedError, CustomNSError, Sen
   }
 
   /// Reconstructs the typed, conforming error from an NSError that survived the XPC
-  /// round-trip (domain/code preserved by `XPCErrorSanitizer.sanitizeForXPC`). Returns
+  /// round-trip (domain and code preserved). Returns
   /// `nil` if the domain doesn't match — a genuinely unrelated XPC-layer error.
   init?(reconstructingFrom error: NSError) {
     guard error.domain == Self.errorDomain else { return nil }

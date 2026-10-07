@@ -718,10 +718,10 @@ struct OverlayReducer {
       guard case .learned = shown.phase else {
         // A result still on screen gives way: a fresh learn is newer news than
         // an old result, and a result owes no end report.
-        return replaceLearnedPill(with: model, outgoing: current, effects: [])
+        return replaceLearnedPill(with: model, effects: [])
       }
       return replaceLearnedPill(
-        with: model, outgoing: current,
+        with: model,
         effects: [.correctionLearnedEnded(pillID: shown.id, presentation: current.id)])
     }
     guard state.featureSlotIsAvailable else { return .noChange }
@@ -731,7 +731,7 @@ struct OverlayReducer {
   /// A different learned pill takes the slot with its own identity and a fresh
   /// learned dwell; the outgoing `.learned` offer is reported ended.
   private mutating func replaceLearnedPill(
-    with model: LearnedCorrectionPillModel, outgoing: PillDefinition, effects: [PillEffect]
+    with model: LearnedCorrectionPillModel, effects: [PillEffect]
   ) -> OverlayPlan {
     let entry = PillCatalog.entry(for: .correctionLearned(model), id: makeID())
     guard let definition = entry.definition else {

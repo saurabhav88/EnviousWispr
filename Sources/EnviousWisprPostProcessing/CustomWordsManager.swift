@@ -178,9 +178,6 @@ public final class CustomWordsManager {
       .appendingPathComponent("custom-words.json")
   }
 
-  /// This instance's file, so a test-injected manager can be guarded too.
-  package var storageURL: URL { fileURL }
-
   public init() {
     guard
       let baseURL = FileManager.default.urls(

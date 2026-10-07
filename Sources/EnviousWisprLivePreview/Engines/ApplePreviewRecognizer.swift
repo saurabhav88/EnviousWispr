@@ -64,7 +64,6 @@ actor ApplePreviewRecognizer: LivePreviewEngine {
   private let locale: Locale
 
   private var targetFormat: AVAudioFormat?
-  private var converter: AVAudioConverter?
   private var sourceFormat: AVAudioFormat?
 
   /// The only session state this actor keeps. Everything else a session owns lives

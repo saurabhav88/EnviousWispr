@@ -3,7 +3,7 @@ import Foundation
 /// Issue #445: shared constants and types for the model-load watchdog.
 ///
 /// the dictation kernel (Parakeet) wraps its model-load `await` in
-/// `raceWithSignalWatcher` against a `LoadProgressWatcher`, surfaces a
+/// a race against a `LoadProgressWatcher`, surfaces a
 /// Sentry/PostHog event on wedge, and triggers service-level recovery via
 /// `asrManager.cancelInFlightLoad()` (XPC connection invalidate, host task
 /// cancel, fresh helper on next press).

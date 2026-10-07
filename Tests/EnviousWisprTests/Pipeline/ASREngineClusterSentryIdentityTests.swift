@@ -6,18 +6,16 @@ import Testing
 @testable import EnviousWisprPipeline
 @testable import EnviousWisprServices
 
-/// #1525 PR G — `ASREngineError`, `XPCOperationSignalWedgeError`, and
-/// `ParakeetDeliveryError`'s Sentry identities are PINNED, mirroring
+/// #1525 PR G — `ASREngineError` and `ParakeetDeliveryError`'s Sentry identities
+/// are PINNED, mirroring
 /// `ModelLoadWatchdog.WedgeError`'s shipped pattern (PR B) for the two structs.
 ///
 /// `ASREngineError` measures to plain declaration order (`#0`-`#3`) — but none of
 /// its 4 cases is currently reachable against a real production adapter today
 /// (preflight §3: `.decodeFailed` is superseded before capture, `.wedged` cannot
 /// arm against either real adapter, `.loadFailed`/`.engineCrashed` have no
-/// producer). `XPCOperationSignalWedgeError` measures as `#1` and carries 2 real
-/// production issues (ENVIOUSWISPR-22, ENVIOUSWISPR-1B) from a producer deleted
-/// this morning — this suite's pin lock asserts the EXACT string that matches
-/// those issues verbatim. `ParakeetDeliveryError` measures as `#1`, confirmed
+/// producer). (`XPCOperationSignalWedgeError`, which had no producer left, was
+/// deleted in #3505.) `ParakeetDeliveryError` measures as `#1`, confirmed
 /// constant across all 10 `DeliveryFailureClass` reasons, and is a confirmed
 /// current capture route.
 ///
@@ -25,7 +23,7 @@ import Testing
 /// shipping code (`docs/audits/2026-07-14-1525-pr-g-preflight.md`). This suite is
 /// the lock — any drift in the shipped identity reddens.
 @Suite(
-  "ASREngineError / XPCOperationSignalWedgeError / ParakeetDeliveryError Sentry stable identity (#1525 PR G)"
+  "ASREngineError / ParakeetDeliveryError Sentry stable identity (#1525 PR G)"
 )
 struct ASREngineClusterSentryIdentityTests {
 
@@ -56,18 +54,7 @@ struct ASREngineClusterSentryIdentityTests {
     }
   }
 
-  // MARK: - B. Pin lock — XPCOperationSignalWedgeError, ParakeetDeliveryError
-
-  @Test("XPCOperationSignalWedgeError keeps the exact string matching its 2 live production issues")
-  func xpcOperationSignalWedgeErrorPinLock() {
-    let error = XPCOperationSignalWedgeError(
-      service: "ASR", stage: "start_streaming", observedPhase: "loading")
-
-    #expect(
-      SentryBreadcrumb.structuredDescriptor(error)
-        == "EnviousWisprCore.XPCOperationSignalWedgeError#1")
-    #expect(error.sentrySemanticID == "xpc.operation_signal_wedge")
-  }
+  // MARK: - B. Pin lock — ParakeetDeliveryError
 
   @Test("ParakeetDeliveryError keeps the same descriptor across every DeliveryFailureClass reason")
   func parakeetDeliveryErrorPinLock() {
@@ -146,29 +133,6 @@ struct ASREngineClusterSentryIdentityTests {
     #expect(event.tags?["pipeline.stage"] == "asr")
     #expect(event.tags?["error.category"] == "model_load_failed")
     #expect(event.tags?["error.identity"] == "parakeet.delivery_failed")
-  }
-
-  @MainActor
-  @Test(
-    "the historical-live XPCOperationSignalWedgeError event carries the exact string matching ENVIOUSWISPR-22/-1B"
-  )
-  func xpcOperationSignalWedgeErrorEventShape() {
-    let error = XPCOperationSignalWedgeError(
-      service: "Audio", stage: "stop_capture", observedPhase: "draining")
-
-    let event = SentryBreadcrumb.makeHandledErrorEvent(
-      error, category: Self.audioCategory, stage: "audio", environment: "development")
-
-    #expect(
-      event.message?.formatted
-        == "audio_capture_failed: EnviousWisprCore.XPCOperationSignalWedgeError#1")
-    #expect(
-      event.fingerprint
-        == [
-          "handled_error", "audio_capture_failed",
-          "EnviousWisprCore.XPCOperationSignalWedgeError#1", "development",
-        ])
-    #expect(event.tags?["error.identity"] == "xpc.operation_signal_wedge")
   }
 
   @Test(

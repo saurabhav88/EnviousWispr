@@ -809,7 +809,7 @@ public final class OllamaSetupService {
   }
 
   /// Full detection pipeline, matching every original branch of
-  /// `detectState()`/`hasAnyModels()`: binary -> server -> models. Makes ZERO
+  /// `detectState()`: binary -> server -> models. Makes ZERO
   /// direct writes — `detectState`'s single commit point applies the result.
   private func resolveState(
     transport: (@Sendable (URLRequest) async throws -> (Data, URLResponse))?,
@@ -881,8 +881,8 @@ public final class OllamaSetupService {
 
     // Without this snapshot, a failed model-list fetch inside `resolveState`
     // has no way to preserve the current behavior — `refreshDownloadedModels()`
-    // originally left `downloadedModels` UNTOUCHED on failure, and
-    // `hasAnyModels()` decided readiness from that retained list. Passed
+    // originally left `downloadedModels` UNTOUCHED on failure, and readiness
+    // was decided from that retained list. Passed
     // through so `resolveState` can reproduce the same fallback without
     // reading instance state itself (still zero direct writes).
     let startingDownloadedModels = downloadedModels
@@ -986,12 +986,6 @@ public final class OllamaSetupService {
       setupState = .error(Self.portConflictMessage)
       return false
     }
-  }
-
-  /// Check whether Ollama has at least one pulled model.
-  public func hasAnyModels() async -> Bool {
-    await refreshDownloadedModels()
-    return !downloadedModels.isEmpty
   }
 
   // MARK: - Model Management
@@ -1665,7 +1659,7 @@ public final class OllamaSetupService {
         }
 
         // Value-returning probes only — NEVER the side-effecting
-        // isServerRunning()/hasAnyModels(), which would each need their own
+        // isServerRunning(), which would need its own
         // guard against this same Task racing a concurrent explicit
         // detectState() commit.
         let fetched = await self.fetchDownloadedModels(transport: transport)

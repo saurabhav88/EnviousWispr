@@ -137,7 +137,7 @@ enum CustomWordsExportAction {
     _ document: CustomWordsTransferDocument
   ) async throws -> (Data, String?) {
     let encoded = try document.encoded()
-    return (encoded, refusalIfUnimportable(document: document, encoded: encoded))
+    return (encoded, refusalIfUnimportable(encoded: encoded))
   }
 
   /// Asks the IMPORTER whether it can read these bytes, rather than keeping a
@@ -150,9 +150,7 @@ enum CustomWordsExportAction {
   /// preflight no longer describes importability at all — it runs the actual
   /// import path over the actual bytes. A ceiling added to the parser from now
   /// on is enforced here the moment it exists, with nothing to keep in sync.
-  nonisolated static func refusalIfUnimportable(
-    document: CustomWordsTransferDocument, encoded: Data
-  ) -> String? {
+  nonisolated static func refusalIfUnimportable(encoded: Data) -> String? {
     // The byte ceiling belongs to the READER, not the parser, so it is the one
     // check that has to be stated here. It mirrors FileImportSource.
     if encoded.count > CustomWordsImportLimits.maximumExportedFileBytes {

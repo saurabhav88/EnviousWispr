@@ -48,27 +48,6 @@ package enum CustomWordsImportTextPolicy {
     }
   }
 
-  /// Whether text looks like WORDS rather than merely printable characters.
-  ///
-  /// Stricter than `isPlausiblyText`: non-ASCII must be a letter, mark, or
-  /// digit. Symbols are the tell that an encoding was misread — `qg¬N` rather
-  /// than `Beyoncé` — and no one puts a maths symbol in a vocabulary entry.
-  /// ASCII passes freely so `C++` and `.NET` are unaffected.
-  package static func looksLikeWords(_ text: String) -> Bool {
-    guard !text.isEmpty, isPlausiblyText(text) else { return false }
-    return text.unicodeScalars.allSatisfy { scalar in
-      if scalar.isASCII { return true }
-      if wordFormingInvisibles.contains(scalar.value) { return true }
-      switch scalar.properties.generalCategory {
-      case .uppercaseLetter, .lowercaseLetter, .titlecaseLetter, .modifierLetter,
-        .otherLetter, .nonspacingMark, .spacingMark, .decimalNumber, .otherNumber:
-        return true
-      default:
-        return false
-      }
-    }
-  }
-
   /// Whether a single stored value — a canonical or an alias — is acceptable.
   ///
   /// Line breaks and tabs are separators BETWEEN words, never content within

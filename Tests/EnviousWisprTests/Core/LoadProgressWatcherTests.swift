@@ -11,7 +11,7 @@ import Testing
 /// watcher and advances it deterministically with `tick(seconds:)` — including
 /// pre-first-signal, which crosses the fire floor in logical time and asserts
 /// `hasFired == false` (#881 TO-1). Tests whose sleeps are non-load-bearing
-/// (identical-mtime, stop() release, raceWithSignalWatcher orchestration) keep
+/// (identical-mtime, stop() release) keep
 /// real `Task.sleep` because the sleep duration does not feed any asserted
 /// measurement. The one real `Task.sleep` that survives in pre-first-signal is
 /// the 100ms continuation-park before `stop()`, which is scheduling, not a
@@ -186,62 +186,6 @@ struct LoadProgressWatcherTests {
     let snap = watcher.snapshot
     #expect(snap.signalCountTotal == 1, "Identical mtime must not multiply signal count")
     watcher.stop()
-  }
-
-  @Test("raceWithSignalWatcher returns .completed when work wins")
-  func raceCompletedPath() async {
-    let watcher = LoadProgressWatcher()
-    watcher.start()
-    let outcome = await raceWithSignalWatcher(watcher: watcher) {
-      try await Task.sleep(nanoseconds: 50_000_000)
-      return 42
-    }
-    watcher.stop()
-    if case .completed(let value) = outcome {
-      #expect(value == 42)
-    } else {
-      Issue.record("Expected .completed(42), got \(outcome)")
-    }
-  }
-
-  @Test("raceWithSignalWatcher can wait through parent cancellation for cleanup awaits")
-  func raceWaitsThroughParentCancellationWhenRequested() async {
-    let watcher = LoadProgressWatcher()
-    watcher.start()
-    let task = Task { @MainActor in
-      await raceWithSignalWatcher(
-        watcher: watcher,
-        parentCancellationBehavior: .waitForResolution
-      ) {
-        try await Task.sleep(nanoseconds: 50_000_000)
-        return 42
-      }
-    }
-    await sleep(ms: 10)
-    task.cancel()
-    let outcome = await task.value
-    watcher.stop()
-    if case .completed(let value) = outcome {
-      #expect(value == 42)
-    } else {
-      Issue.record("Expected cleanup wait to complete after cancellation, got \(outcome)")
-    }
-  }
-
-  @Test("raceWithSignalWatcher returns .threw when work throws")
-  func raceThrewPath() async {
-    struct TestError: Error {}
-    let watcher = LoadProgressWatcher()
-    watcher.start()
-    let outcome: WatcherOutcome<Int> = await raceWithSignalWatcher(watcher: watcher) {
-      throw TestError()
-    }
-    watcher.stop()
-    if case .threw = outcome {
-      // ok
-    } else {
-      Issue.record("Expected .threw, got \(outcome)")
-    }
   }
 
   @Test("Snapshot fields are accurate after a successful attempt")

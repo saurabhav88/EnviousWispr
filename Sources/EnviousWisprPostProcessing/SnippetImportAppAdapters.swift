@@ -213,9 +213,6 @@ package struct SnippetImportAppRegistry: Sendable {
     self.adapters = adapters
   }
 
-  package func adapter(withID id: String) -> (any SnippetImportAppAdapter)? {
-    adapters.first { $0.identifier == id }
-  }
 }
 
 /// Reads one competitor app's snippets into the shared import pipeline.
