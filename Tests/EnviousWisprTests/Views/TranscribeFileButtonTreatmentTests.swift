@@ -29,8 +29,9 @@ struct TranscribeFileButtonTreatmentTests {
   /// The secondary must not be the purple-bordered pill. `outlined` is that pill and it
   /// stays available for the rest of Settings, so this pins which one the wizard asks for.
   @Test("the wizard's secondary is the quiet treatment, never the purple pill")
-  func theSecondaryIsQuiet() {
-    guard let source = Self.viewSource else { return }
+  func theSecondaryIsQuiet() throws {
+    let source = try #require(
+      Self.viewSource, "TranscribeFileView.swift is unreadable, so this check would prove nothing")
     guard let helper = source.range(of: "private func wizardSecondary") else {
       Issue.record("wizardSecondary is gone")
       return
