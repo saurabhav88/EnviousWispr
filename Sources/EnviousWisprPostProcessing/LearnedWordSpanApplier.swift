@@ -54,6 +54,28 @@ public enum LearnedWordSpanApplier: Sendable {
       }
     }
 
+    // #3518 (founder 2026-10-07): an approved fix that strictly contains an approved fix
+    // for a different word wins, longest first ("Sarab A V" -> "Saurabhav" over "Sarab" ->
+    // "Saurabh"). A fix already removed here cannot remove another.
+    let longestFirst = approved.indices.filter { removed.contains($0) == false }.sorted {
+      let left = text.unicodeScalars.distance(
+        from: approved[$0].range.lowerBound, to: approved[$0].range.upperBound)
+      let right = text.unicodeScalars.distance(
+        from: approved[$1].range.lowerBound, to: approved[$1].range.upperBound)
+      return left == right ? $0 < $1 : left > right
+    }
+    for outer in longestFirst where removed.contains(outer) == false {
+      for inner in longestFirst where inner != outer && removed.contains(inner) == false {
+        let a = approved[outer]
+        let b = approved[inner]
+        if a.word.utf8.elementsEqual(b.word.utf8) == false, a.range != b.range,
+          contains(a.range, b.range)
+        {
+          removed.insert(inner)
+        }
+      }
+    }
+
     // Resolve scored claims from highest to lowest. Once a claim loses, it
     // cannot also eliminate another overlapping claim farther along the text.
     if scoresComparable {
