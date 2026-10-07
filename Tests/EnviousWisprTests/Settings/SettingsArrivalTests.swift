@@ -1,4 +1,6 @@
+import AppKit
 import Foundation
+import SwiftUI
 import Testing
 
 @testable import EnviousWisprAppKit
@@ -148,5 +150,72 @@ struct SettingsArrivalTests {
     #expect(
       SettingsSearchCopy.arrivedAtFallback(landed: "Stop recording", chosen: "Pause duration")
         == "Showing Stop recording for Pause duration")
+  }
+
+  // MARK: - The page's one owner
+
+  @Test("a control counts as on screen only inside its own scroll view; a fixed one, in the page")
+  func visibilityClip() {
+    let page = CGRect(x: 0, y: 0, width: 700, height: 500)
+    let viewport = SettingsArrivalViewportID()
+    let viewports = [viewport: CGRect(x: 0, y: 60, width: 700, height: 440)]
+    let inScroll = SettingsArrivalVisibility.clip(
+      page: page, viewport: viewport, viewports: viewports)
+    let fixed = SettingsArrivalVisibility.clip(page: page, viewport: nil, viewports: viewports)
+    // A row scrolled up under the tab strip: inside the page, outside its scroll view.
+    let underStrip = CGRect(x: 20, y: 10, width: 200, height: 30)
+    #expect(SettingsArrivalVisibility.partly(underStrip, in: inScroll) == false)
+    #expect(SettingsArrivalVisibility.fully(underStrip, in: fixed), "the tab strip itself")
+    let half = CGRect(x: 20, y: 480, width: 200, height: 40)
+    #expect(SettingsArrivalVisibility.partly(half, in: inScroll))
+    #expect(SettingsArrivalVisibility.fully(half, in: inScroll) == false)
+    // A scroll view that has not reported its frame hides its controls rather than guessing.
+    let unknown = SettingsArrivalVisibility.clip(
+      page: page, viewport: SettingsArrivalViewportID(), viewports: viewports)
+    #expect(SettingsArrivalVisibility.partly(CGRect(x: 0, y: 100, width: 10, height: 10), in: unknown) == false)
+  }
+
+  /// Hosts a page shaped like Dictation Settings (a tab strip above the page's scroll view, a row
+  /// far below the fold) under one arrival owner, and returns the acknowledged token once the
+  /// arrival for `entryID` completes. A missing arrival is a wiring fault, which stops a Debug run.
+  static func arrival(at entryID: String) async throws -> Int? {
+    let reveal = try Self.reveal(entryID, token: 7)
+    var acknowledged: Int?
+    let page = VStack(spacing: 0) {
+      Button("Microphone") {}
+        .settingsMapRegistration(.dictationTabMicrophone)
+        .frame(height: 40)
+      SettingsContentView {
+        Color.clear.frame(height: 2_000)
+        Toggle("Copy to clipboard", isOn: .constant(false))
+          .settingsMapRegistration(.autoCopyToClipboard)
+      }
+    }
+    .modifier(SettingsArrivalModifier())
+    .environment(\.settingsReveal, reveal)
+    .environment(\.settingsRevealIsShowing) { _ in acknowledged == nil }
+    .environment(\.settingsRevealAcknowledge) { acknowledged = $0 }
+    .frame(width: 700, height: 500)
+    let host = NSHostingView(rootView: page)
+    host.frame = CGRect(x: 0, y: 0, width: 700, height: 500)
+    let window = NSWindow(
+      contentRect: host.frame, styleMask: [.borderless], backing: .buffered, defer: false)
+    window.contentView = host
+    defer { window.contentView = nil }
+    // deadline-fallback: a hang guard; the wait ends on the acknowledgement itself.
+    let deadline = ContinuousClock.now + .seconds(10)
+    while acknowledged == nil, ContinuousClock.now < deadline {
+      host.layoutSubtreeIfNeeded()
+      try await Task.sleep(for: .milliseconds(20))
+    }
+    return acknowledged
+  }
+
+  @Test("a tab outside the page's scroll view and a row far below the fold are both arrived at")
+  func pageOwnerReachesEveryPlace() async throws {
+    _ = SettingsMap.takeRecordedFaults()
+    #expect(try await Self.arrival(at: "dictation.tab.microphone") == 7, "the tab strip")
+    #expect(try await Self.arrival(at: "autoCopyToClipboard") == 7, "scrolled into view")
+    #expect(SettingsMap.takeRecordedFaults().isEmpty)
   }
 }

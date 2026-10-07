@@ -450,6 +450,8 @@ struct UnifiedWindowView: View {
   @ViewBuilder
   private func page(@ViewBuilder content: () -> some View) -> some View {
     content()
+      // #3482 §3.4: the page's one search-arrival owner, above every scroll view on the page.
+      .modifier(SettingsArrivalModifier())
       // The only place `navigationState` is in scope, so the only place this can
       // be supplied without threading a binding through every page.
       .environment(\.settingsNavigate) { navigate(.destination($0)) }
@@ -460,6 +462,13 @@ struct UnifiedWindowView: View {
       .environment(\.settingsRevealIsShowing) { reveal in
         // Only the current reveal: queued work for an overtaken one never acts (§3.4).
         guard navigationState.reveal?.token == reveal.token,
+          let id = SettingsMapID(rawValue: reveal.entryID)
+        else { return false }
+        let node = SettingsMap.node(id)
+        return navigationState.isShowing(node.destination, dictionaryTab: node.dictionaryTab)
+      }
+      .environment(\.settingsArrivalStillCurrent) { reveal, epoch in
+        guard navigationState.epoch == epoch, navigationState.lastRevealToken == reveal.token,
           let id = SettingsMapID(rawValue: reveal.entryID)
         else { return false }
         let node = SettingsMap.node(id)

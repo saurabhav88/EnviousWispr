@@ -148,7 +148,6 @@ struct YourWordsView: View {
   /// The tab on screen. Owned by `SettingsNavigationState` (#3482), so a search result can open
   /// one; the page only reads and sets it, as `AppSettingsView(selection:)` does.
   @Binding var selection: DictionaryTab
-  @Environment(\.settingsRevealIsShowing) private var revealIsShowing
   @State private var sheetRoute: YourWordsSheetRoute?
   // Outcome-to-message mapping is shared with `BulkDeleteConfirmSheet` so both
   // export entry points present the identical copy (#1703).
@@ -171,9 +170,8 @@ struct YourWordsView: View {
   var body: some View {
     @Bindable var settings = settings
 
-    // #3482 §3.4: search arrival covers the heading (a fixed target, no scroll) and the
+    // #3482 §3.4: the window's page owner arrives at the heading (a fixed target) and in the
     // scrolled pane; lazy rows are reached by scrolling the pane to its top first.
-    ScrollViewReader { arrivalProxy in
     VStack(alignment: .leading, spacing: SettingsLayout.sectionSpacing) {
       // #3385: the banner became the shared heading and row (tracker A5).
       DictionarySettingsHeading(isEnabled: $settings.wordCorrectionEnabled)
@@ -223,6 +221,8 @@ struct YourWordsView: View {
             }
           }
           .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+          .settingsArrivalViewport()
+          .preference(key: SettingsArrivalLazyTopKey.self, value: Self.topAnchor)
           .background(
             GeometryReader { proxy in
               Color.clear.onAppear { paneHeight = proxy.size.height }
@@ -236,10 +236,6 @@ struct YourWordsView: View {
           }
         }
       }
-    }
-    .modifier(
-      SettingsArrivalModifier(
-        proxy: arrivalProxy, topScrollID: AnyHashable(Self.topAnchor), showing: revealIsShowing))
     }
     .padding(.top, SettingsLayout.contentTop)
     .padding(.horizontal, SettingsLayout.contentH)

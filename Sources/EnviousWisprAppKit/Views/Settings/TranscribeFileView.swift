@@ -54,11 +54,8 @@ struct TranscribeFileView: View {
   /// fact about this screen's last press, cleared with the document's generation.
   @State private var copiedAt: Date?
 
-  @Environment(\.settingsRevealIsShowing) private var revealIsShowing
-
   var body: some View {
-    // #3482 §3.4: the step bar is a fixed search target (ring and announcement, no scroll).
-    ScrollViewReader { arrivalProxy in
+    // #3482 §3.4: the step bar is a fixed search target; the window's page owner arrives there.
     VStack(spacing: 0) {
       stepBar
       if coordinator.step == .done {
@@ -69,9 +66,6 @@ struct TranscribeFileView: View {
       if pinsPrivacyFooter {
         privacyFooter
       }
-    }
-    .modifier(
-      SettingsArrivalModifier(proxy: arrivalProxy, topScrollID: nil, showing: revealIsShowing))
     }
     .frame(maxWidth: .infinity, maxHeight: .infinity)
     .background(Color.stPageBg)

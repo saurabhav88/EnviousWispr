@@ -5,13 +5,47 @@ import SwiftUI
 // so a remount never replays it. Selecting a result only navigates and reveals; nothing here
 // changes a setting.
 
-/// Where each registered control is, by map id, in the scroll owner's coordinate space.
+/// Where a registered control is, and the scroll view it sits in (nil: fixed on the page, such as
+/// a tab strip or a pinned heading).
+struct SettingsRevealPlace: Equatable {
+  let bounds: Anchor<CGRect>
+  let viewport: SettingsArrivalViewportID?
+}
+
+/// Where each registered control is, by map id; the page's one arrival owner reads it.
 struct SettingsRevealAnchorKey: PreferenceKey {
-  static let defaultValue: [SettingsMapID: Anchor<CGRect>] = [:]
+  static let defaultValue: [SettingsMapID: SettingsRevealPlace] = [:]
   static func reduce(
-    value: inout [SettingsMapID: Anchor<CGRect>], nextValue: () -> [SettingsMapID: Anchor<CGRect>]
+    value: inout [SettingsMapID: SettingsRevealPlace],
+    nextValue: () -> [SettingsMapID: SettingsRevealPlace]
   ) {
     value.merge(nextValue()) { first, _ in first }
+  }
+}
+
+/// One scroll view on a page that holds registered controls.
+struct SettingsArrivalViewportID: Hashable {
+  fileprivate let id = UUID()
+}
+
+/// The visible frame of each marked scroll view, so a control scrolled out of its scroll view is
+/// not counted as on screen just because it is still inside the page.
+struct SettingsArrivalViewportKey: PreferenceKey {
+  static let defaultValue: [SettingsArrivalViewportID: Anchor<CGRect>] = [:]
+  static func reduce(
+    value: inout [SettingsArrivalViewportID: Anchor<CGRect>],
+    nextValue: () -> [SettingsArrivalViewportID: Anchor<CGRect>]
+  ) {
+    value.merge(nextValue()) { first, _ in first }
+  }
+}
+
+/// The scroll id at the top of a page's lazy content (Dictionary), so arrival can scroll there to
+/// make lazy rows exist before it gives up on them. nil: the page has no lazy content.
+struct SettingsArrivalLazyTopKey: PreferenceKey {
+  static let defaultValue: String? = nil
+  static func reduce(value: inout String?, nextValue: () -> String?) {
+    value = value ?? nextValue()
   }
 }
 
@@ -29,14 +63,71 @@ extension EnvironmentValues {
   @Entry var settingsNavigationEpoch: Int = 0
   /// Whether a reveal's destination (page, tab, Dictionary tab) is the one on screen now.
   @Entry var settingsRevealIsShowing: @MainActor (SettingsReveal) -> Bool = { _ in false }
+  /// Whether an arrival that already finished (its reveal acknowledged, so `settingsRevealIsShowing`
+  /// no longer applies) still belongs to what the window shows: no newer search, no other
+  /// navigation since `epoch`, and its page and tab on screen. Read live, not from a snapshot.
+  @Entry var settingsArrivalStillCurrent: @MainActor (SettingsReveal, _ epoch: Int) -> Bool = {
+    _, _ in false
+  }
+  /// The marked scroll view around a registration, nil outside every marked scroll view.
+  @Entry var settingsArrivalViewport: SettingsArrivalViewportID? = nil
 }
 
 extension View {
   /// The geometry and scroll identity search arrival uses, published with every mapped
   /// registration (SettingsMapRegistration.swift).
   func settingsRevealAnchor(_ id: SettingsMapID) -> some View {
-    self.id(SettingsRevealScrollID(id: id))
-      .anchorPreference(key: SettingsRevealAnchorKey.self, value: .bounds) { [id: $0] }
+    modifier(SettingsRevealAnchorModifier(id: id))
+  }
+
+  /// Marks a page scroll view that holds registered controls (SettingsArrival.swift).
+  func settingsArrivalViewport() -> some View {
+    modifier(SettingsArrivalViewportModifier())
+  }
+}
+
+private struct SettingsRevealAnchorModifier: ViewModifier {
+  let id: SettingsMapID
+  @Environment(\.settingsArrivalViewport) private var viewport
+
+  func body(content: Content) -> some View {
+    content.id(SettingsRevealScrollID(id: id))
+      .anchorPreference(key: SettingsRevealAnchorKey.self, value: .bounds) {
+        [id: SettingsRevealPlace(bounds: $0, viewport: viewport)]
+      }
+  }
+}
+
+private struct SettingsArrivalViewportModifier: ViewModifier {
+  @State private var id = SettingsArrivalViewportID()
+
+  func body(content: Content) -> some View {
+    content
+      .environment(\.settingsArrivalViewport, id)
+      .anchorPreference(key: SettingsArrivalViewportKey.self, value: .bounds) { [id: $0] }
+  }
+}
+
+/// Which registered controls are on screen: a control inside a marked scroll view counts only
+/// within that scroll view's visible frame; any other control counts within the page.
+enum SettingsArrivalVisibility {
+  /// The area a control can be seen in: the page, cut down to its scroll view when it has one.
+  /// A scroll view that has not published its frame yet hides its controls (an empty area).
+  static func clip(
+    page: CGRect, viewport: SettingsArrivalViewportID?,
+    viewports: [SettingsArrivalViewportID: CGRect]
+  ) -> CGRect {
+    guard let viewport else { return page }
+    guard let frame = viewports[viewport] else { return .null }
+    return page.intersection(frame)
+  }
+
+  static func fully(_ rect: CGRect, in clip: CGRect) -> Bool {
+    !clip.isNull && clip.contains(rect)
+  }
+
+  static func partly(_ rect: CGRect, in clip: CGRect) -> Bool {
+    !clip.isNull && clip.intersects(rect)
   }
 }
 
@@ -110,21 +201,23 @@ struct SettingsArrivalRing: View {
   }
 }
 
-/// One scroll owner's arrival: decides on appear, reveal change and control-inventory change;
-/// scrolls, rings, announces and acknowledges. `materialize` scrolls lazy content to its top
-/// before a fallback is ever chosen.
+/// The page's one arrival owner (the window's `page { }`): decides on appear, reveal change and
+/// control-inventory change; scrolls, rings, announces and acknowledges. It sits above every
+/// scroll view, so controls outside them (tab strips, pinned headings) are reachable too.
+/// `materialize` scrolls lazy content to its top before a fallback is ever chosen.
 struct SettingsArrivalModifier: ViewModifier {
-  let proxy: ScrollViewProxy
-  /// The scroll id at the top of lazy content (Dictionary), or nil for an eager page.
-  var topScrollID: AnyHashable?
-  /// Whether the reveal's destination is the one on screen (page, tab, Dictionary tab).
-  let showing: @MainActor (SettingsReveal) -> Bool
-
   @Environment(\.settingsReveal) private var reveal
+  /// Whether the reveal's destination is the one on screen (page, tab, Dictionary tab).
+  @Environment(\.settingsRevealIsShowing) private var showing
   @Environment(\.settingsRevealAcknowledge) private var acknowledge
   @Environment(\.settingsArrivalReleaseSearchFocus) private var releaseSearchFocus
   @Environment(\.settingsNavigationEpoch) private var navigationEpoch
+  @Environment(\.settingsArrivalStillCurrent) private var stillCurrent
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
+  @State private var proxy: ScrollViewProxy?
+  /// The scroll id at the top of the page's lazy content (Dictionary), nil for an eager page.
+  @State private var topScrollID: String?
+  @State private var viewportAnchors: [SettingsArrivalViewportID: Anchor<CGRect>] = [:]
   @State private var mounted: Set<SettingsMapID> = []
   /// Controls wholly inside the visible area: arrival does not scroll for these (a pinned header
   /// control, or one already on screen, stays where the person sees it).
@@ -159,38 +252,29 @@ struct SettingsArrivalModifier: ViewModifier {
   static let ringDuration: Duration = .seconds(8)
 
   func body(content: Content) -> some View {
+    ScrollViewReader { reader in
+      arrival(content).onAppear { proxy = reader }
+    }
+  }
+
+  private func arrival(_ content: Content) -> some View {
     content
       .onPreferenceChange(SettingsRevealAnchorKey.self) { anchors in
         mounted = Set(anchors.keys)
       }
+      .onPreferenceChange(SettingsArrivalLazyTopKey.self) { topScrollID = $0 }
       .onPreferenceChange(SettingsArrivalFocusKey.self) { focusKinds = $0 }
       .environment(\.settingsArrivalFocusRequest, focusRequest)
       .environment(\.settingsArrivalFocusTaken) { taken in
         if focusRequest == taken { dropFocusRequest() }
       }
+      // Kept in state: an overlay reads one preference, and the controls' places need the
+      // scroll views' frames beside them.
+      .onPreferenceChange(SettingsArrivalViewportKey.self) { viewportAnchors = $0 }
       .overlayPreferenceValue(SettingsRevealAnchorKey.self) { anchors in
-        GeometryReader { geometry in
-          let visible = CGRect(origin: .zero, size: geometry.size)
-          let rects = anchors.mapValues { geometry[$0] }
-          let inside = Set(rects.compactMap { visible.contains($0.value) ? $0.key : nil })
-          let touching = Set(rects.compactMap { visible.intersects($0.value) ? $0.key : nil })
-          Color.clear
-            .onChange(of: inside, initial: true) { _, now in fullyVisible = now }
-            .onChange(of: touching, initial: true) { _, now in
-              partlyVisible = now
-              completeArrivalIfVisible()
-            }
-          if let ring, let rect = rects[ring.id] {
-            if rect.intersects(visible) {
-              SettingsArrivalRing(rect: rect)
-            } else if arriving == nil {
-              // Scrolled out of view by the person: the ring has done its job.
-              Color.clear.onAppear { dismissRing() }
-            }
-          }
-        }
-        .allowsHitTesting(false)
-        .accessibilityHidden(true)
+        visibilityAndRing(anchors: anchors, viewportAnchors: viewportAnchors)
+          .allowsHitTesting(false)
+          .accessibilityHidden(true)
       }
       // A later tap or key in the page dismisses the ring without consuming it.
       .simultaneousGesture(TapGesture().onEnded { dismissRing() })
@@ -215,6 +299,49 @@ struct SettingsArrivalModifier: ViewModifier {
       }
   }
 
+  /// Tracks which controls are on screen and draws the ring, clipped to the ring's scroll view so
+  /// it never paints over a tab strip or heading outside it.
+  private func visibilityAndRing(
+    anchors: [SettingsMapID: SettingsRevealPlace],
+    viewportAnchors: [SettingsArrivalViewportID: Anchor<CGRect>]
+  ) -> some View {
+    GeometryReader { geometry in
+      let page = CGRect(origin: .zero, size: geometry.size)
+      let viewports = viewportAnchors.mapValues { geometry[$0] }
+      let placed = anchors.mapValues { place in
+        (
+          rect: geometry[place.bounds],
+          clip: SettingsArrivalVisibility.clip(
+            page: page, viewport: place.viewport, viewports: viewports)
+        )
+      }
+      let inside = Set(
+        placed.compactMap { SettingsArrivalVisibility.fully($0.value.rect, in: $0.value.clip) ? $0.key : nil })
+      let touching = Set(
+        placed.compactMap { SettingsArrivalVisibility.partly($0.value.rect, in: $0.value.clip) ? $0.key : nil })
+      Color.clear
+        .onChange(of: inside, initial: true) { _, now in fullyVisible = now }
+        .onChange(of: touching, initial: true) { _, now in
+          partlyVisible = now
+          completeArrivalIfVisible()
+        }
+      if let ring, let place = placed[ring.id] {
+        if SettingsArrivalVisibility.partly(place.rect, in: place.clip) {
+          SettingsArrivalRing(rect: place.rect)
+            .mask {
+              // The ring's own 4pt outset stays visible at the scroll view's edge.
+              let edge = place.clip.insetBy(dx: -6, dy: -6)
+              Rectangle().frame(width: edge.width, height: edge.height)
+                .position(x: edge.midX, y: edge.midY)
+            }
+        } else if arriving == nil {
+          // Scrolled out of view by the person: the ring has done its job.
+          Color.clear.onAppear { dismissRing() }
+        }
+      }
+    }
+  }
+
   private func reconcile() {
     guard !deciding else { return }
     deciding = true
@@ -237,7 +364,7 @@ struct SettingsArrivalModifier: ViewModifier {
       break
     case .materialize:
       materializedToken = current.token
-      if let topScrollID { proxy.scrollTo(topScrollID, anchor: .top) }
+      if let topScrollID { proxy?.scrollTo(topScrollID, anchor: .top) }
       reconcile()
     case .arrive(let target, let isFallback):
       handledToken = current.token
@@ -279,13 +406,12 @@ struct SettingsArrivalModifier: ViewModifier {
   private func moveFocus() {
     guard let pending = pendingFocus else { return }
     pendingFocus = nil
-    // The reveal was acknowledged just before this pass, so the token check no longer applies; the
-    // arrival is still this owner's when its token is the one handled here and no other navigation
-    // (page, tab, Dictionary tab or window close) moved the epoch since it completed.
+    // The reveal was acknowledged just before this pass, so `showing` no longer applies; the
+    // window answers live whether the arrival still holds (no newer search or navigation).
     guard
       SettingsArrivalFocusPlanner.mayMove(
         pendingToken: pending.reveal.token, handledToken: handledToken,
-        showing: navigationEpoch == pending.epoch)
+        showing: stillCurrent(pending.reveal, pending.epoch))
     else { return }
     let move = SettingsArrivalFocusPlanner.plan(
       target: pending.target, token: pending.reveal.token, kinds: focusKinds)
@@ -310,9 +436,9 @@ struct SettingsArrivalModifier: ViewModifier {
     guard !fullyVisible.contains(target) else { return }
     let id = SettingsRevealScrollID(id: target)
     if reduceMotion {
-      proxy.scrollTo(id, anchor: .center)
+      proxy?.scrollTo(id, anchor: .center)
     } else {
-      withAnimation(.easeInOut(duration: 0.3)) { proxy.scrollTo(id, anchor: .center) }
+      withAnimation(.easeInOut(duration: 0.3)) { proxy?.scrollTo(id, anchor: .center) }
     }
   }
 

@@ -1056,21 +1056,17 @@ struct SettingsSummaryContentLayout: Layout {
 struct SettingsContentView<Content: View>: View {
   @ViewBuilder let content: Content
 
-  @Environment(\.settingsRevealIsShowing) private var revealIsShowing
-
   var body: some View {
-    ScrollViewReader { proxy in
-      ScrollView {
-        VStack(alignment: .leading, spacing: SettingsLayout.sectionSpacing) {
-          content
-        }
-        .padding(.top, SettingsLayout.contentTop)
-        .padding(.horizontal, SettingsLayout.contentH)
-        .padding(.bottom, SettingsLayout.contentBottom)
+    ScrollView {
+      VStack(alignment: .leading, spacing: SettingsLayout.sectionSpacing) {
+        content
       }
-      // #3482 §3.4: a search arrival on this page (eager content: no materialize step).
-      .modifier(SettingsArrivalModifier(proxy: proxy, topScrollID: nil, showing: revealIsShowing))
+      .padding(.top, SettingsLayout.contentTop)
+      .padding(.horizontal, SettingsLayout.contentH)
+      .padding(.bottom, SettingsLayout.contentBottom)
     }
+    // #3482 §3.4: search arrival (the window's page owner) judges visibility inside this frame.
+    .settingsArrivalViewport()
     .frame(maxWidth: .infinity, maxHeight: .infinity)
     .background(Color.stPageBg)
     .tint(.stAccent)

@@ -80,7 +80,11 @@ struct SettingsArrivalFocusTests {
     let stream: AsyncStream<Event>
     private let continuation: AsyncStream<Event>.Continuation
     private(set) var events: [Event] = []
+    /// The window's navigation, as `SettingsNavigationState` keeps it: the reveal clears when it is
+    /// acknowledged, and a later navigation moves the epoch.
     var showing = true
+    var revealToken: Int? = 1
+    var epoch = 0
     /// Runs inside the acknowledgement, before the arrival's focus move is judged.
     var onAcknowledge: (() -> Void)?
 
@@ -117,13 +121,21 @@ struct SettingsArrivalFocusTests {
     let request = try #require(SettingsSearchRequest(entryID: entryID))
     let reveal = SettingsReveal(
       entryID: entryID, anchor: request.target, fallbacks: request.fallbacks, token: 1)
+    // Built as the window's `page { }` builds it: the page's one arrival owner above the page.
     let page = SettingsContentView {
       content()
       Probe(recorder: recorder)
     }
+    .modifier(SettingsArrivalModifier())
     .environment(\.settingsReveal, reveal)
-    .environment(\.settingsRevealIsShowing) { [recorder] _ in recorder.showing }
+    .environment(\.settingsRevealIsShowing) { [recorder] reveal in
+      recorder.showing && recorder.revealToken == reveal.token
+    }
+    .environment(\.settingsArrivalStillCurrent) { [recorder] reveal, epoch in
+      recorder.showing && recorder.epoch == epoch && reveal.token == 1
+    }
     .environment(\.settingsRevealAcknowledge) { [recorder] token in
+      if recorder.revealToken == token { recorder.revealToken = nil }
       recorder.onAcknowledge?()
       recorder.record(.acknowledged(token))
     }
@@ -228,8 +240,9 @@ struct SettingsArrivalFocusTests {
   @Test("an arrival whose page stopped showing in between moves nothing")
   func staleArrivalMovesNothing() async throws {
     let recorder = Recorder()
-    // Judged again one layout pass after the scroll: the person has gone to another tab.
-    recorder.onAcknowledge = { [recorder] in recorder.showing = false }
+    // Judged again one layout pass after the scroll: the person has gone to another tab, which
+    // moves the window's navigation epoch.
+    recorder.onAcknowledge = { [recorder] in recorder.epoch += 1 }
     try await Self.arrive(
       at: "pauseDuration", recorder: recorder,
       content: {
