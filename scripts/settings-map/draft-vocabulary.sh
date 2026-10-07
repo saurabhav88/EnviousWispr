@@ -90,8 +90,10 @@ PY
   # A fresh isolated context, outside every repository.
   local iso
   iso="$(mktemp -d "${TMPDIR:-/tmp}/ew-vocab-draft.XXXXXX")" || die 4 "cannot create an isolated folder"
+  local cleanup
+  printf -v cleanup 'rm -rf -- %q' "$iso"
   # shellcheck disable=SC2064
-  trap "rm -rf '$iso'" EXIT
+  trap "$cleanup" EXIT
   mkdir "$iso/work" "$iso/codex-home" || die 4 "cannot create the isolated folders"
   ln -s "$CODEX_AUTH" "$iso/codex-home/auth.json" || die 4 "cannot link the Codex auth file"
   if git -C "$iso/work" rev-parse --git-dir >/dev/null 2>&1; then
@@ -150,7 +152,9 @@ shipped_state() {
 
 self_test() {
   local scratch passed=0 failed=0 before
-  scratch="$(mktemp -d "${TMPDIR:-/tmp}/ew-vocab-selftest.XXXXXX")"
+  # The quote in the name checks that every cleanup handler quotes its paths.
+  scratch="$(mktemp -d "${TMPDIR:-/tmp}/ew-vocab-selftest's.XXXXXX")"
+  export TMPDIR="$scratch"
   before="$(shipped_state)"
   DRAFTS_ROOT="$scratch/drafts"
   CODEX_AUTH="$scratch/auth.json"

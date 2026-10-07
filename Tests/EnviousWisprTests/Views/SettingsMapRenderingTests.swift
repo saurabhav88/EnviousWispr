@@ -688,6 +688,14 @@ struct SettingsMapRenderingTests {
 
   @Test("each state registers exactly what the reviewed fixture lists", arguments: stateLabels)
   func state(label: String) async throws {
+    // The Live Preview fixture rows include the Apple engine's language controls, which the view
+    // shows only where Apple's recognizer exists (macOS 26 or later). Say so instead of failing on
+    // a confusing difference; every machine that runs this suite today has it.
+    if label.hasPrefix("dictation.livePreview") {
+      try #require(
+        ApplePreviewEngineResolver.isSupportedOnThisSystem,
+        "\(label): the fixture assumes Apple Live Preview support (macOS 26 or later); this Mac has none")
+    }
     let rendered = try await Self.render(label)
     print("MAP-STATE \(Self.observed(label, rendered.list))")
     Self.checkCommon(

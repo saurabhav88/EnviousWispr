@@ -67,8 +67,11 @@ run() {
 
   local staging
   staging="$(mktemp -d "${TMPDIR:-/tmp}/settings-map-export.XXXXXX")" || die 2 "cannot create a staging folder"
+  # Paths are quoted with %q, so a folder name with a quote cannot break the handler.
+  local cleanup
+  printf -v cleanup 'rm -rf -- %q' "$staging"
   # shellcheck disable=SC2064
-  trap "rm -rf '$staging'" EXIT
+  trap "$cleanup" EXIT
 
   if [ -n "$from" ]; then
     [ -s "$from" ] || die 2 "no export at $from (did the export test run?)"
@@ -79,8 +82,12 @@ run() {
     "$EXTRACT_FN" "$staging/export.json" "$staging/extract.log" || status=$?
     if [ "$status" -ne 0 ] || [ ! -s "$staging/export.json" ]; then
       grep -A1 'recorded an issue' "$staging/extract.log" >&2 || true
-      cp "$staging/extract.log" "${TMPDIR:-/tmp}/settings-map-extract-failed.log" 2>/dev/null || true
-      die 2 "extraction failed (status $status); log kept at ${TMPDIR:-/tmp}/settings-map-extract-failed.log"
+      local kept
+      if kept="$(mktemp "${TMPDIR:-/tmp}/settings-map-extract-failed.XXXXXX")" &&
+        cp "$staging/extract.log" "$kept"; then
+        die 2 "extraction failed (status $status); log kept at $kept"
+      fi
+      die 2 "extraction failed (status $status); the log could not be kept"
     fi
     mv "$staging/export.json" "$staging/settings-map.json" || die 2 "cannot stage the export"
   fi
@@ -109,8 +116,12 @@ run() {
   mkdir "$REFERENCE/.export.lock" 2>/dev/null || die 2 "another export is writing reference/ (remove reference/.export.lock if none is)"
   local json_tmp="" md_tmp=""
   # From here on, any exit releases the lock and removes this run's temporaries.
+  # The temporary names expand when the handler runs, after they are set.
+  # shellcheck disable=SC2016
+  printf -v cleanup 'rm -rf -- %q; rm -f -- "${json_tmp:-}" "${md_tmp:-}"; rmdir -- %q 2>/dev/null || true' \
+    "$staging" "$REFERENCE/.export.lock"
   # shellcheck disable=SC2064
-  trap "rm -rf '$staging'; rm -f \"\${json_tmp:-}\" \"\${md_tmp:-}\"; rmdir '$REFERENCE/.export.lock' 2>/dev/null || true" EXIT
+  trap "$cleanup" EXIT
   trap 'exit 130' INT
   trap 'exit 143' TERM
   json_tmp="$(mktemp "$REFERENCE/.settings-map.json.XXXXXX")" || die 2 "cannot create a temporary file in reference/"
@@ -129,7 +140,9 @@ run() {
 # ---- self-test: stubbed extractor, private reference folder; no build ---------
 self_test() {
   local scratch passed=0 failed=0
-  scratch="$(mktemp -d "${TMPDIR:-/tmp}/settings-map-export-selftest.XXXXXX")"
+  # The quote in the name checks that every cleanup handler quotes its paths.
+  scratch="$(mktemp -d "${TMPDIR:-/tmp}/settings-map-export-selftest's.XXXXXX")"
+  export TMPDIR="$scratch"
   REFERENCE="$scratch/reference"
   EXTRACT_FN=stub_extract
   local good="$scratch/good.json"
