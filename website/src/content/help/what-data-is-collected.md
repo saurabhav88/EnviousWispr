@@ -9,7 +9,7 @@ related: ["privacy-overview"]
 updated: 2026-10-07
 deflection: "show_but_always_send"
 ---
-EnviousWispr collects anonymous usage data and crash reports, and you can turn either one off. Nothing you say is part of that. Your audio never reaches Envious Labs, the company that makes the app. The app never sends us your dictations or transcripts, unless you type them into a feedback message yourself.
+EnviousWispr collects anonymous usage data and crash reports, and you can turn either one off. Nothing you say is part of that. Usage data can include a Settings search that found nothing, after the app filters it. Your audio never reaches Envious Labs, the company that makes the app. The app never sends us your dictations or transcripts, unless you type them into a feedback message yourself.
 
 ## What stays on my Mac?
 
@@ -39,7 +39,7 @@ None of these is ever included in usage data or crash reports, or attached to a 
 - Your API keys
 - Your name or email address, unless you choose to include either in a feedback report
 
-Two kinds of text you type are exceptions. A feedback report is sent because you choose to send it. A search in Settings that finds nothing is described [below](#settings-searches-that-find-nothing).
+Two kinds of text you type do leave your Mac. A feedback message is sent only when you choose to send it, and pressing Send also runs a help check on it. In recent versions, the words of a Settings search that finds nothing are sent with usage data, as explained in [Does the app send what I type in Settings search?](#does-the-app-send-what-i-type-in-settings-search).
 
 ## What does the app collect?
 
@@ -47,11 +47,13 @@ The app collects anonymous usage and crash data. That data shows whether a relea
 
 The app records how you use it, never what you said. There is no account, and nothing in the data names you. Each installation gets a random ID, so that one Mac counts as one user. The privacy policy has the full detail.
 
-### Settings searches that find nothing
+### Does the app send what I type in Settings search?
 
-When a search in the Settings window finds no setting, or you skip its results and pick a page from the sidebar instead, the app sends the words you typed, so we can teach the search the words people actually use. This happens only while **Share usage metrics** is on.
+In recent versions, yes, in two cases only: when a search in Settings finds no setting, or when you skip its results and pick a page from the sidebar instead. The app then sends the last search you typed, in lower case, so we can teach the search the words people use. It never sends each keystroke. It does this only if **Share usage metrics** was on when you started typing and stayed on.
 
-The words are checked on your Mac first. A search that looks like an email address, a web address, a long number, or a key is not sent at all. When a search finds what you wanted, the app sends only counts, never the words.
+The search is checked on your Mac first. A search shorter than 3 or longer than 80 characters is not sent, and neither is one that contains an @ sign, looks like a web address, has seven or more digits, or looks like an API key or access token.
+
+If you pick a result, or close a search that still had results, the app never sends the words. It sends only how the search ended, how many results it had, and the app language.
 
 ## How can I check this myself?
 
@@ -59,6 +61,7 @@ EnviousWispr is open source, so you do not have to take our word for any of this
 
 - [`ObservabilityBootstrap.swift`](https://github.com/saurabhav88/EnviousWispr/blob/main/Sources/EnviousWisprServices/ObservabilityBootstrap.swift) starts or skips the usage and crash-reporting services, depending on your two switches.
 - [`TelemetryService.swift`](https://github.com/saurabhav88/EnviousWispr/blob/main/Sources/EnviousWisprServices/TelemetryService.swift) builds the usage events the app sends. The PostHog library adds its standard lifecycle events for when the app is installed, updated, or launched.
+- [`SettingsSearchFinished.swift`](https://github.com/saurabhav88/EnviousWispr/blob/main/Sources/EnviousWisprServices/SettingsSearchFinished.swift) decides which Settings search text may be sent, and drops any that looks private.
 - [`SentryEventSanitizer.swift`](https://github.com/saurabhav88/EnviousWispr/blob/main/Sources/EnviousWisprObservabilityCore/SentryEventSanitizer.swift) checks crash reports before they are sent. It removes email addresses, common API-key formats, your Mac user name in file paths, and any text longer than 100 characters that is not a web address.
 
 You can also watch the traffic with a network monitor. Usage data goes to PostHog (`us.i.posthog.com`) and crash reports go to Sentry (an `ingest.us.sentry.io` address). With a switch off, the app stops sending that kind of data. Feedback you choose to send still goes to Sentry, whatever the switches say.
@@ -69,7 +72,7 @@ Two switches control this, in the **Privacy** section of **Settings** > **Permis
 
 | Switch | What it covers | When a change applies |
 | :--- | :--- | :--- |
-| **Share usage metrics** | Anonymous usage, settings, and timing data: that a dictation happened, how long it took, which engine ran, which app it went into, and which settings are on. Also the words of a Settings search that found nothing. | Right away. Turning it off stops collection at once. If the app starts with it off, the usage service does not start at all. |
+| **Share usage metrics** | Anonymous usage, settings, and timing data: that a dictation happened, how long it took, which engine ran, which app it went into, and which settings are on. Also the words of a Settings search that found nothing or that you skipped for the sidebar. | Right away. Turning it off stops collection at once. If the app starts with it off, the usage service does not start at all. |
 | **Send crash reports** | Reports about crashes and errors, and a short note that the app is running, used to count sessions without a crash. | The next time EnviousWispr starts. After you change it, the switch shows **Restart now** so you can apply it straight away. If the app starts with it off, the crash-reporting service does not start at all. |
 
 ## What still happens after I turn a switch off?
