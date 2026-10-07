@@ -1844,16 +1844,6 @@ public enum PasteService {
     return count
   }
 
-  /// UTF-16 length of whatever is selected, or nil when the range will not read.
-  ///
-  /// A dictation that REPLACES a selection shortens the field by that much before it
-  /// lengthens it, so a copies count that ignores the selection reads a replacement as a
-  /// short delivery and lands on `unknown`.
-  package static func selectedTextLength(of element: AXUIElement) -> Int? {
-    guard let range = selectedRange(of: element), range.length >= 0 else { return nil }
-    return range.length
-  }
-
   /// How many copies of a delivery of `insertedLength` landed, judged by length alone.
   ///
   /// `expected` is what the field must hold if exactly one copy arrived. One further
@@ -1861,6 +1851,10 @@ public enum PasteService {
   /// during the settle window, an app that rewrites the field, a count we could not read.
   /// Returning nil rather than guessing matters more here than usual, because this number
   /// is destined for a dashboard where a wrong verdict becomes a wrong headline.
+  ///
+  /// `selectionLengthBefore` matters because a dictation that REPLACES a selection shortens
+  /// the field by that much before it lengthens it; ignoring it reads a replacement as a
+  /// short delivery.
   package static func copiesDelivered(
     countAfter: Int?, countBefore: Int, selectionLengthBefore: Int, insertedLength: Int
   ) -> Int? {

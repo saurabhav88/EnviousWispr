@@ -946,7 +946,6 @@ extension PasteArrivalCapture {
     let startedAtMs: Int
     let pastedAtMs: Int
     var result: PastedRegionCaptureOutcome?
-    var last: PastedRegionCaptureOutcome = .ended(.dictatedTextNotFound)
     var waiters: [CheckedContinuation<PastedRegionCaptureOutcome, Never>] = []
     var retry: (any PastedRegionScheduledWork)?
 
@@ -991,7 +990,6 @@ extension PasteArrivalCapture {
     // Before every attempt, like the landing reads: a failed opt-in is asked again (bounded).
     enableManualAccessibilityIfNeeded()
     let (outcome, retryable) = editAttempt(pastedAtMs: request.pastedAtMs)
-    request.last = outcome
     onEditAttempt?()
     let elapsed = scheduler.nowMs - request.startedAtMs
     guard retryable, elapsed < PastedRegionTiming.arrivalShadowMs else {

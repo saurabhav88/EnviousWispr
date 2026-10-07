@@ -118,8 +118,8 @@ final class BenchmarkSuite {
     await body()
   }
 
-  /// Run ASR benchmarks with the given ASR manager.
-  func run(using asrManager: any ASRManagerInterface, activeEngine: ActiveEngineOperation) async {
+  /// Run ASR benchmarks on the active engine.
+  func run(activeEngine: ActiveEngineOperation) async {
     guard !isRunning else { return }
     await withEngineClaim { await runBatch(activeEngine: activeEngine) }
   }

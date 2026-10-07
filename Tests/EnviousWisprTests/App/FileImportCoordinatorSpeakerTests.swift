@@ -144,7 +144,7 @@ struct FileImportCoordinatorSpeakerTests {
     processPart: @escaping @MainActor (String, String?) async throws ->
       FileImportRunner
       .PartOutcome = { part, _ in
-        FileImportRunner.PartOutcome(text: part, polishedText: part, polishError: nil)
+        FileImportRunner.PartOutcome(text: part, polishedText: part)
       }
   ) -> FileImportCoordinator {
     FileImportCoordinator(
@@ -190,7 +190,7 @@ struct FileImportCoordinatorSpeakerTests {
       saveToHistory: { _ in throw SaveError() },
       processPart: { part, _ in
         await cleanupRecorder.record(sampleCount: 0, durationSeconds: 0)
-        return FileImportRunner.PartOutcome(text: part, polishedText: part, polishError: nil)
+        return FileImportRunner.PartOutcome(text: part, polishedText: part)
       })
 
     coordinator.choose(url: Self.anyURL)
@@ -369,21 +369,6 @@ struct FileImportCoordinatorSpeakerTests {
     #expect(await capture.durationSeconds == 3.0)
     #expect(await capture.analysisMs != nil)
     #expect(await capture.wordTimingCoverage == coverage)
-  }
-
-  // MARK: - Retry identity digest (#2809 addendum §2.5, no caller in phase 2)
-
-  @Test("the PCM digest is deterministic and distinguishes different audio")
-  func pcmDigestIsDeterministicAndDistinguishing() {
-    let samplesA: [Float] = [0.1, 0.2, 0.3, 0.4]
-    let samplesB: [Float] = [0.1, 0.2, 0.3, 0.5]
-    let digestA1 = FileImportDocumentMath.pcmDigestHex(samplesA)
-    let digestA2 = FileImportDocumentMath.pcmDigestHex(samplesA)
-    let digestB = FileImportDocumentMath.pcmDigestHex(samplesB)
-
-    #expect(digestA1 == digestA2)
-    #expect(digestA1 != digestB)
-    #expect(digestA1.count == 64, "SHA-256 hex should be 64 characters")
   }
 
   // MARK: - Turn storage (#2810 phase 3)
@@ -745,7 +730,7 @@ struct FileImportCoordinatorSpeakerTests {
     speakerLabeler: @escaping @MainActor ([Float], TimeInterval) async -> SpeakerAnalysis,
     processPart: @escaping @MainActor (String, String?) async throws ->
       FileImportRunner.PartOutcome = { part, _ in
-        FileImportRunner.PartOutcome(text: part, polishedText: part, polishError: nil)
+        FileImportRunner.PartOutcome(text: part, polishedText: part)
       },
     emitTurnTelemetry: @escaping @MainActor (
       TelemetryService.FileImportTurnsOutcome, Int?, Int
@@ -841,7 +826,7 @@ struct FileImportCoordinatorSpeakerTests {
     func outcome(_ part: String) -> FileImportRunner.PartOutcome {
       let swapped = part.split(separator: " ").map { swaps[String($0)] ?? String($0) }
       return FileImportRunner.PartOutcome(
-        text: part, polishedText: swapped.joined(separator: " "), polishError: nil)
+        text: part, polishedText: swapped.joined(separator: " "))
     }
   }
 
@@ -1194,7 +1179,7 @@ struct FileImportCoordinatorSpeakerTests {
         }
         // The second run rewrites the first word of each section, so its text is told apart.
         let cleaned = index == 0 ? part : "again " + part
-        return FileImportRunner.PartOutcome(text: part, polishedText: cleaned, polishError: nil)
+        return FileImportRunner.PartOutcome(text: part, polishedText: cleaned)
       })
 
     coordinator.choose(url: Self.anyURL)
@@ -1247,7 +1232,7 @@ struct FileImportCoordinatorSpeakerTests {
           await secondPartGate.markArrived()
           await secondPartGate.waitUntilOpen()
         }
-        return FileImportRunner.PartOutcome(text: part, polishedText: part, polishError: nil)
+        return FileImportRunner.PartOutcome(text: part, polishedText: part)
       })
 
     coordinator.choose(url: Self.anyURL)
@@ -1315,7 +1300,7 @@ struct FileImportCoordinatorSpeakerTests {
       store: store, transcribedText: fixture.text, wordTimings: fixture.timings,
       speakerLabeler: { _, _ in .labeled(count: 2, segments: fixture.segments) },
       processPart: { part, _ in
-        FileImportRunner.PartOutcome(text: part, polishedText: "clean " + part, polishError: nil)
+        FileImportRunner.PartOutcome(text: part, polishedText: "clean " + part)
       })
 
     coordinator.choose(url: Self.anyURL)
@@ -1360,7 +1345,7 @@ struct FileImportCoordinatorSpeakerTests {
           await secondPartGate.markArrived()
           await secondPartGate.waitUntilOpen()
         }
-        return FileImportRunner.PartOutcome(text: part, polishedText: "clean " + part, polishError: nil)
+        return FileImportRunner.PartOutcome(text: part, polishedText: "clean " + part)
       },
       emitTurnTelemetry: { telemetry.record($0, $1, $2) })
 
@@ -1413,7 +1398,7 @@ struct FileImportCoordinatorSpeakerTests {
         return .labeled(count: 2, segments: Self.twoSpeakerSegments)
       },
       processPart: { part, _ in
-        FileImportRunner.PartOutcome(text: part, polishedText: "clean " + part, polishError: nil)
+        FileImportRunner.PartOutcome(text: part, polishedText: "clean " + part)
       })
 
     coordinator.choose(url: Self.anyURL)
@@ -1466,7 +1451,7 @@ struct FileImportCoordinatorSpeakerTests {
           await secondPartGate.markArrived()
           await secondPartGate.waitUntilOpen()
         }
-        return FileImportRunner.PartOutcome(text: part, polishedText: "clean " + part, polishError: nil)
+        return FileImportRunner.PartOutcome(text: part, polishedText: "clean " + part)
       })
 
     coordinator.choose(url: Self.anyURL)
@@ -1749,7 +1734,7 @@ struct FileImportCoordinatorSpeakerTests {
       speakerLabeler: { _, _ in .labeled(count: 2, segments: fixture.segments) },
       processPart: { part, _ in
         calls.record(part)
-        return FileImportRunner.PartOutcome(text: part, polishedText: part, polishError: nil)
+        return FileImportRunner.PartOutcome(text: part, polishedText: part)
       })
 
     coordinator.choose(url: Self.anyURL)
@@ -1783,7 +1768,7 @@ struct FileImportCoordinatorSpeakerTests {
       speakerLabeler: { _, _ in .labeled(count: 2, segments: Self.twoSpeakerSegments) },
       processPart: { part, _ in
         FileImportRunner.PartOutcome(
-          text: part, polishedText: nil, polishError: nil, polishAttempted: false)
+          text: part, polishedText: nil, polishAttempted: false)
       })
 
     coordinator.choose(url: Self.anyURL)
@@ -1813,7 +1798,7 @@ struct FileImportCoordinatorSpeakerTests {
       store: store, wordTimings: Self.twoSpeakerWordTimings(),
       speakerLabeler: { _, _ in .labeled(count: 2, segments: Self.twoSpeakerSegments) },
       processPart: { part, _ in
-        FileImportRunner.PartOutcome(text: part, polishedText: nil, polishError: "boom")
+        FileImportRunner.PartOutcome(text: part, polishedText: nil)
       })
 
     coordinator.choose(url: Self.anyURL)
@@ -1845,8 +1830,8 @@ struct FileImportCoordinatorSpeakerTests {
       speakerLabeler: { _, _ in .labeled(count: 2, segments: Self.twoSpeakerSegments) },
       processPart: { part, _ in
         part == "there friend"
-          ? FileImportRunner.PartOutcome(text: part, polishedText: nil, polishError: "boom")
-          : FileImportRunner.PartOutcome(text: part, polishedText: "Hello.", polishError: nil)
+          ? FileImportRunner.PartOutcome(text: part, polishedText: nil)
+          : FileImportRunner.PartOutcome(text: part, polishedText: "Hello.")
       },
       emitTurnTelemetry: { telemetry.record($0, $1, $2) })
 
@@ -1893,7 +1878,7 @@ struct FileImportCoordinatorSpeakerTests {
         // The first cleanup sees the one-speaker document; the retry's re-clean sees the
         // two sections (#2851 follow-up).
         if part != "hello there friend" { await cleanupCounter.increment() }
-        return FileImportRunner.PartOutcome(text: part, polishedText: part, polishError: nil)
+        return FileImportRunner.PartOutcome(text: part, polishedText: part)
       })
 
     coordinator.choose(url: Self.anyURL)

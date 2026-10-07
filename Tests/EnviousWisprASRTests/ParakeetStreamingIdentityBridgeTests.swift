@@ -46,8 +46,6 @@ struct ParakeetStreamingIdentityBridgeTests {
     let bridged = error as NSError
 
     #expect(bridged.domain == ParakeetStreamingSentryError.errorDomain)
-    // The reconstruction the proxy performs, on the value that really crosses.
-    #expect(ParakeetStreamingSentryError(reconstructingFrom: bridged) == error)
     #expect(error.sentrySemanticID == "parakeet_streaming.all_windows_failed.unrecognised")
   }
 
@@ -97,7 +95,8 @@ struct ParakeetStreamingIdentityBridgeTests {
     let decoded = try #require(
       try NSKeyedUnarchiver.unarchivedObject(ofClass: NSError.self, from: data))
 
-    #expect(ParakeetStreamingSentryError(reconstructingFrom: decoded) == error)
+    #expect(decoded.domain == ParakeetStreamingSentryError.errorDomain)
+    #expect(decoded.code == (error as NSError).code)
     #expect(decoded.localizedDescription == error.errorDescription)
   }
 }

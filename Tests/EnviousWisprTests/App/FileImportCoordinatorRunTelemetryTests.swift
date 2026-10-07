@@ -78,7 +78,7 @@ struct FileImportCoordinatorRunTelemetryTests {
       "One. Two. Three."
     },
     processPart: @escaping @MainActor (String) async throws -> FileImportRunner.PartOutcome = {
-      FileImportRunner.PartOutcome(text: $0, polishedText: $0, polishError: nil)
+      FileImportRunner.PartOutcome(text: $0, polishedText: $0)
     },
     polishProvider: LLMProvider = .egOne,
     emitRunTelemetry: @escaping @MainActor (

@@ -488,13 +488,6 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
   @ObservationIgnored
   package private(set) var sessionlessWedgeGuard: SessionlessLoadWedgeGuard?
 
-  /// Heart-path error sink for the driver's own direct `.asrInterrupted`
-  /// captureError emit. Defaulted to the production global so the only behavior
-  /// change is testability — the factory threads the same injected sink it
-  /// gives the emitter and lifecycle sink, so a test observes every driver-
-  /// owned captureError path through one sink (Codex review #875).
-  private let captureErrorSink: KernelDictationDriverFactory.HeartPathCaptureErrorSink
-
   init(
     kernel: RecordingSessionKernel,
     observer: KernelHeartPathTelemetryObserver,
@@ -502,9 +495,7 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
     context: KernelSessionContext,
     steps: LimbSteps,
     adapter: any ASREngineAdapter,
-    engineMutationScope: EngineMutationScope,
-    captureErrorSink: @escaping KernelDictationDriverFactory.HeartPathCaptureErrorSink =
-      KernelDictationDriverFactory.defaultCaptureErrorSink
+    engineMutationScope: EngineMutationScope
   ) {
     self.kernel = kernel
     self.observer = observer
@@ -513,7 +504,6 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
     self.steps = steps
     self.adapter = adapter
     self.engineMutationScope = engineMutationScope
-    self.captureErrorSink = captureErrorSink
     self.lastFiredState = Self.pipelineState(
       for: kernel.state, outcome: kernel.recordingOutcome, externalReason: nil)
     self.lastEndedWithoutSaveSessionID = nil

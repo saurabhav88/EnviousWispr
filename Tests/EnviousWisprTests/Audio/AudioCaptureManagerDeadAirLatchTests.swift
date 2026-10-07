@@ -16,7 +16,7 @@ import Testing
 // tile and zero-run math is covered by `DeadAirStreamingDetectorTests`; this
 // suite pins the manager's refusal, reset, forwarding, and backlog wiring.
 @MainActor
-@Suite("AudioCaptureManager dead-air refusal + compatibility view (#1317/#1543/#1578)")
+@Suite("AudioCaptureManager dead-air refusal reason (#1317/#1543/#1578)")
 struct AudioCaptureManagerDeadAirLatchTests {
 
   /// A manager armed to ingest without real hardware. No `startEnginePhase`, so
@@ -28,17 +28,17 @@ struct AudioCaptureManagerDeadAirLatchTests {
     return manager
   }
 
-  @Test("a non-zero sample breaks the trailing zero-run and clears the compatibility view")
+  @Test("a non-zero sample breaks the trailing zero-run and clears the refusal reason")
   func nonZeroClearsTheCompatibilityView() {
     let manager = armedManager()
     manager.ingestSamples(
       [Float](repeating: 0, count: AudioConstants.minimumTranscriptionSamples), level: 0)
-    #expect(manager.zeroSignalDiscriminatorSawIneligible, "precondition: refused")
+    #expect(manager.zeroSignalRefusalReason != nil, "precondition: refused")
 
     // The refused-then-recovered negative: real audio breaks the trailing
     // zero-run, so the earlier refusal must no longer stick.
     manager.ingestSamples([0.5], level: 0.5)
-    #expect(!manager.zeroSignalDiscriminatorSawIneligible)
+    #expect(manager.zeroSignalRefusalReason == nil)
   }
 
   // MARK: - #1578 — the refusal carries a reason, and is counted exactly once
@@ -59,7 +59,7 @@ struct AudioCaptureManagerDeadAirLatchTests {
     let manager = armedManager()
     #expect(manager.zeroSignalRefusalReason == nil)
     #expect(!manager.zeroSignalRunWasClassifiedReactively)
-    #expect(!manager.zeroSignalDiscriminatorSawIneligible)
+    #expect(manager.zeroSignalRefusalReason == nil)
 
     manager.ingestSamples(Self.zeros(), level: 0)
 
@@ -67,8 +67,6 @@ struct AudioCaptureManagerDeadAirLatchTests {
     // outcome, and the manager must report it rather than a generic refusal.
     #expect(manager.zeroSignalRefusalReason == .boundDeviceUnavailable)
     #expect(manager.zeroSignalRunWasClassifiedReactively)
-    // The legacy Boolean now derives from the reason; it must not have drifted.
-    #expect(manager.zeroSignalDiscriminatorSawIneligible)
   }
 
   @Test("meaningful signal records no reason, attempts no forward, adds no backlog")
@@ -88,7 +86,7 @@ struct AudioCaptureManagerDeadAirLatchTests {
     #expect(!manager.zeroSignalRunWasClassifiedReactively)
     #expect(attempts == 0)
     #expect(manager.takePendingZeroSignalRefusals().isEmpty)
-    #expect(!manager.zeroSignalDiscriminatorSawIneligible)
+    #expect(manager.zeroSignalRefusalReason == nil)
   }
 
   @Test("a zero run spanning many batches forwards exactly once")
@@ -151,13 +149,13 @@ struct AudioCaptureManagerDeadAirLatchTests {
     let manager = armedManager()
     manager.ingestSamples(Self.zeros(), level: 0)
     #expect(manager.zeroSignalRefusalReason != nil, "precondition: refused")
-    #expect(manager.zeroSignalDiscriminatorSawIneligible, "precondition: refused")
+    #expect(manager.zeroSignalRefusalReason != nil, "precondition: refused")
 
     manager.ingestSamples(Self.loud(), level: 0.5)
 
     // Current-run facts are gone, so the next run gets its own forward…
     #expect(manager.zeroSignalRefusalReason == nil)
-    #expect(!manager.zeroSignalDiscriminatorSawIneligible)
+    #expect(manager.zeroSignalRefusalReason == nil)
     #expect(!manager.zeroSignalRunWasClassifiedReactively)
     // …but the refusal that already happened is NOT undone by the microphone
     // coming back. This is the case that produces nothing at all today.

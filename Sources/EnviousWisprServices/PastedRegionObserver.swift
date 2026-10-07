@@ -624,10 +624,6 @@ package protocol PastedRegionAXOperations: AnyObject {
   func focusedElement(pid: pid_t) -> PastedRegionFocus
   /// Whether the bound was installed; a read behind a failed install is unbounded.
   func setMessagingTimeout(_ element: AXUIElement, seconds: Double) -> Bool
-  /// #3423: one uncached system-wide `AXFocusedUIElement` read and the pid that owns the answer,
-  /// bounded by `PasteService.keyboardFocusReadCapSeconds` or what `budget` has left, whichever is
-  /// less; a spent budget answers `.unreadable` with no call. Nil: the cap alone.
-  func keyboardFocusRead(budget: PasteLandingPrepareBudget?) -> KeyboardFocusRead
   /// #3423: whether `pid` counts as the active destination: the front app (today's rule, decided
   /// without a focus read), or, when it is not front, the confirmed keyboard-focus owner. The ONE
   /// answer to that question: there is no raw front-pid read on this seam, because the front
@@ -1681,18 +1677,6 @@ package final class PastedRegionObserver: PastedRegionObserving {
         }
       }
     }
-  }
-
-  /// The element's whole text the way capture reads it: `AXValue` first, and the range reader only
-  /// when the value is absent or not text (a FAILED value read is not retried). Nil when `admit`
-  /// refused a call (#3106).
-  package static func readWholeText(
-    of element: AXUIElement, ax: any PastedRegionAXOperations,
-    admit: @MainActor (AXUIElement) -> Bool
-  ) -> PastedRegionValueRead? {
-    guard let read = readText(of: element, using: .value, ax: ax, admit: admit) else { return nil }
-    guard read == .absent || read == .notText else { return read }
-    return readText(of: element, using: .range, ax: ax, admit: admit)
   }
 
   /// A failed Accessibility call at capture or during a watch. Only the codes

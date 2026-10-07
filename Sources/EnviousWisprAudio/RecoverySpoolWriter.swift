@@ -15,7 +15,7 @@ import os
 
 /// Low-level append target. Abstracted so tests can inject a failing sink to
 /// exercise the fail-open path without a real disk-full.
-public protocol RecoverySpoolFileSink {
+package protocol RecoverySpoolFileSink {
   func open() throws
   func write(_ data: Data) throws
   /// Durably flush to stable storage (`F_FULLFSYNC` on macOS).

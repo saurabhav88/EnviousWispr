@@ -170,9 +170,6 @@ final class FileImportCoordinator {
     }
   }
 
-  /// The Parakeet constant, kept as the name the calibration comment and the tests use.
-  nonisolated static let secondsPerAudioMinute: Double = secondsPerAudioMinute(for: .parakeet)
-
   func estimateText(backend: ASRBackendType) -> String {
     guard let file else { return "" }
     return Self.estimateText(audioSeconds: file.seconds, backend: backend)
@@ -1992,8 +1989,7 @@ final class FileImportCoordinator {
       phase = "Finding who said what"
       let stepTask = Task { [weak self] () async -> Void in
         await self?.runSpeakerStep(
-          analysisSamples: analysisSamples, generationAtStart: generationAtStart,
-          historyIDAtStart: historyIDAtStart, rawText: result.text,
+          analysisSamples: analysisSamples, historyIDAtStart: historyIDAtStart,
           wordTimings: result.wordTimings, wordTimingCoverage: result.wordTimingCoverage)
       }
       speakerStepTask = stepTask
@@ -2029,7 +2025,7 @@ final class FileImportCoordinator {
   /// an early return, or cancellation — but only for the document this pass was FOR, so a
   /// stale completion can never mark a NEWER document's own in-progress pass as finished.
   private func runSpeakerStep(
-    analysisSamples: [Float], generationAtStart: Int, historyIDAtStart: UUID?, rawText: String,
+    analysisSamples: [Float], historyIDAtStart: UUID?,
     wordTimings: [ASRWordTiming]?, wordTimingCoverage: ASRWordTimingCoverage?
   ) async {
     defer {
@@ -2061,8 +2057,7 @@ final class FileImportCoordinator {
     emitSpeakerTelemetry(outcome, durationSeconds, analysisMs, wordTimingCoverage)
 
     await runTurnStorage(
-      outcome: outcome, wordTimings: wordTimings, rawText: rawText,
-      generationAtStart: generationAtStart, historyIDAtStart: historyIDAtStart)
+      outcome: outcome, wordTimings: wordTimings, historyIDAtStart: historyIDAtStart)
   }
 
   /// Phase 3: turn assembly, background turn-safe cleanup, and storage (#2810 addendum §3
@@ -2071,15 +2066,9 @@ final class FileImportCoordinator {
   /// finishes, and claims the same engine admission the visible run does for its own
   /// duration, exactly as round 2 of the addendum's review settled.
   private func runTurnStorage(
-    outcome: SpeakerAnalysis, wordTimings: [ASRWordTiming]?, rawText: String,
-    generationAtStart: Int, historyIDAtStart: UUID?
+    outcome: SpeakerAnalysis, wordTimings: [ASRWordTiming]?, historyIDAtStart: UUID?
   ) async {
-    // NEVER named `historyID` — that would SHADOW the live computed property for the rest of
-    // this function, turning every `historyIDAtStart == historyID` guard below into a
-    // comparison of two constants that can never diverge, silently neutering the staleness
-    // check they exist to perform (found by chunk review, in the sibling `retrySpeakerAnalysis`
-    // this pattern was copied into — fixed here too since the class is the same).
-    guard let historyIDForWrite = historyID else { return }
+    guard historyID != nil else { return }
     let passStart = CFAbsoluteTimeGetCurrent()
 
     // Every STALENESS check gates on document identity (see `runSpeakerStep`'s comment):
@@ -2091,8 +2080,7 @@ final class FileImportCoordinator {
 
     guard
       let (assembledTurns, labeledCount) = await assembleTurnsOrPersistTerminal(
-        outcome: outcome, wordTimings: wordTimings, historyIDForWrite: historyIDForWrite,
-        historyIDAtStart: historyIDAtStart, passStart: passStart)
+        outcome: outcome, wordTimings: wordTimings, historyIDAtStart: historyIDAtStart)
     else { return }
     guard historyIDAtStart == historyID, !Task.isCancelled else { return }
 
@@ -2116,12 +2104,8 @@ final class FileImportCoordinator {
   /// caller must stop, writing nothing further. Non-nil hands back turns ready for EITHER
   /// cleanup (the ordinary path) or direct persistence (retry, which skips cleanup).
   private func assembleTurnsOrPersistTerminal(
-    outcome: SpeakerAnalysis, wordTimings: [ASRWordTiming]?, historyIDForWrite: UUID,
-    historyIDAtStart: UUID?, passStart: CFAbsoluteTime
+    outcome: SpeakerAnalysis, wordTimings: [ASRWordTiming]?, historyIDAtStart: UUID?
   ) async -> (turns: [Turn], labeledCount: Int)? {
-    // `historyIDForWrite`, NEVER `historyID` — that name would SHADOW the live computed
-    // property for this whole function, turning every `historyIDAtStart == historyID` guard
-    // below into a comparison of two constants that can never diverge (found by chunk review).
     // Non-labeled outcomes map directly through the one exhaustive mapping (chunk 1) and
     // never touch turn assembly. A missing `wordTimings` matters ONLY when assembly is
     // actually needed — checking it before the outcome type would let a merge-input gap
@@ -2312,16 +2296,11 @@ final class FileImportCoordinator {
       level: .info, category: "FileImportCoordinator")
     guard historyIDAtStart == historyID, !Task.isCancelled else { return }
     emitSpeakerTelemetry(outcome, durationSeconds, analysisMs, wordTimingCoverage)
-    // A fresh timer for the turn-storage phase, matching `runTurnStorage`'s own two-timer
-    // shape (`analysisStart` for the analyzer alone, `passStart` for everything after) — so
-    // this pass's `ms=` reads the same way as the ordinary pass's, minus the cleanup it skips.
-    let passStart = CFAbsoluteTimeGetCurrent()
-    guard let historyIDForWrite = historyID, historyIDForWrite == historyIDAtStart else { return }
+    guard historyID != nil, historyID == historyIDAtStart else { return }
 
     guard
       let (assembledTurns, labeledCount) = await assembleTurnsOrPersistTerminal(
-        outcome: outcome, wordTimings: wordTimings, historyIDForWrite: historyIDForWrite,
-        historyIDAtStart: historyIDAtStart, passStart: passStart)
+        outcome: outcome, wordTimings: wordTimings, historyIDAtStart: historyIDAtStart)
     else {
       // A terminal result (one voice, no timings, all unknown): written now, since no
       // cleanup follows to write it.

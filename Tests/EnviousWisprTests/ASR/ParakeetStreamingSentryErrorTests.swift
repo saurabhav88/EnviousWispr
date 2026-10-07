@@ -189,41 +189,7 @@ struct ParakeetStreamingSentryErrorTests {
     #expect(starts.allSatisfy { (200...299).contains($0) })
   }
 
-  /// A code from a block this build does not know must NOT be read as a known case with
-  /// an unknown inner cause. Without the block bound, an unbounded `> base` test would
-  /// absorb every code allocated above it — including the `startFailed` block.
-  @Test("a code outside every allocated block reconstructs to nil, not to a neighbour")
-  func unallocatedCodeReconstructsToNil() {
-    for code in [50, 99, 300, 1000] {
-      let ns = NSError(domain: ParakeetStreamingSentryError.errorDomain, code: code)
-      #expect(
-        ParakeetStreamingSentryError(reconstructingFrom: ns) == nil,
-        "code \(code) must not reconstruct")
-    }
-  }
-
-  /// The reverse direction of the same guard: an offset INSIDE a known block but not yet
-  /// allocated must degrade to "cause unrecognised", never to a wrong cause.
-  @Test("an unallocated offset inside a block degrades to an unrecognised cause")
-  func unallocatedOffsetDegradesToUnrecognised() {
-    let ns = NSError(domain: ParakeetStreamingSentryError.errorDomain, code: 150)
-    #expect(ParakeetStreamingSentryError(reconstructingFrom: ns) == .allWindowsFailed(inner: nil))
-  }
-
-  // MARK: - C. NSError round-trip (survives the XPC boundary)
-
-  @Test("every case round-trips through its NSError bridge")
-  func nsErrorRoundTrip() {
-    for (error, _, _) in Self.pins {
-      let bridged = error as NSError
-      #expect(bridged.domain == ParakeetStreamingSentryError.errorDomain)
-      guard let reconstructed = ParakeetStreamingSentryError(reconstructingFrom: bridged) else {
-        Issue.record("reconstruction failed for \(error)")
-        continue
-      }
-      #expect(reconstructed == error)
-    }
-  }
+  // MARK: - C. NSError archive round-trip
 
   /// Same reason as the batch conformer: a plain `as NSError` cast survives in-process
   /// but an actual archive round-trip drops the description unless `errorUserInfo`
@@ -237,14 +203,6 @@ struct ParakeetStreamingSentryErrorTests {
     let decoded = try #require(
       try NSKeyedUnarchiver.unarchivedObject(ofClass: NSError.self, from: data))
     #expect(decoded.localizedDescription == error.errorDescription)
-    // And the identity itself survives, which is the part the diagnostics depend on.
-    #expect(ParakeetStreamingSentryError(reconstructingFrom: decoded) == error)
-  }
-
-  @Test("reconstructingFrom returns nil for an unrelated NSError domain")
-  func reconstructionRejectsForeignDomain() {
-    let foreign = NSError(domain: "SomeOtherDomain", code: 100)
-    #expect(ParakeetStreamingSentryError(reconstructingFrom: foreign) == nil)
   }
 
   // MARK: - D. Descriptions are app-authored

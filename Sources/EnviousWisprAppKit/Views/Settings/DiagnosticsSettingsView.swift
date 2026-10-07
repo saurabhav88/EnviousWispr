@@ -223,8 +223,7 @@ struct DiagnosticsSettingsView: View {
             HStack {
               Button("Run ASR Benchmark") {
                 Task {
-                  await diagnostics.benchmark.run(
-                    using: asrManager, activeEngine: activeEngine)
+                  await diagnostics.benchmark.run(activeEngine: activeEngine)
                 }
               }
               Button("Run Pipeline Benchmark") {

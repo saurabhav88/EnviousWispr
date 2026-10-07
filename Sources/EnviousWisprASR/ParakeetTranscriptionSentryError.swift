@@ -76,27 +76,6 @@ enum ParakeetTranscriptionSentryError: Error, LocalizedError, CustomNSError, Sen
     case .unknownFutureCase(let d): self = .unknownTranscriptionFailure(d)
     }
   }
-
-  /// Reconstructs the typed, conforming error from an NSError that survived the XPC
-  /// round-trip (domain and code preserved). Returns
-  /// `nil` if the domain doesn't match — a genuinely unrelated XPC-layer error.
-  init?(reconstructingFrom error: NSError) {
-    guard error.domain == Self.errorDomain else { return nil }
-    let d = error.localizedDescription
-    switch error.code {
-    case 0: self = .notInitialized(d)
-    case 1: self = .invalidAudioData(d)
-    case 2: self = .modelLoadFailed(d)
-    case 3: self = .processingFailed(d)
-    case 4: self = .modelCompilationFailed(d)
-    case 5: self = .unsupportedPlatform(d)
-    case 6: self = .streamingConversionFailed(d)
-    case 7: self = .fileAccessFailed(d)
-    case 8: self = .unknownTranscriptionFailure(d)
-    case 9: self = .encoderInstantiationFailed(d)
-    default: return nil
-    }
-  }
 }
 
 extension ParakeetTranscriptionSentryError: StableSentryErrorIdentity {

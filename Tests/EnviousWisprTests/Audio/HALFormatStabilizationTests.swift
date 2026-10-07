@@ -82,7 +82,7 @@ struct HALFormatStabilizationTests {
     #expect(outcome.settledRate == nil)
   }
 
-  // MARK: - #1445 validity guard (shared rate clause with isUsableFormat)
+  // MARK: - #1445 validity guard
 
   @Test("isUsableRate rejects nil, zero, negative, and NaN; accepts positive (#1445)")
   func isUsableRatePredicate() {
