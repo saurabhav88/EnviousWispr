@@ -799,6 +799,20 @@
    "section.pill"
   ]
  },
+ "dictation.pill.off": {
+  "exempt": {},
+  "mapped": [
+   "dictation.tab.chimes",
+   "dictation.tab.clipboard",
+   "dictation.tab.engine",
+   "dictation.tab.livePreview",
+   "dictation.tab.microphone",
+   "dictation.tab.pill",
+   "pillPosition",
+   "pillStyle",
+   "section.pill"
+  ]
+ },
  "dictionary.learnFrom": {
   "exempt": {},
   "mapped": [

@@ -72,6 +72,7 @@ enum SettingsMapVisibility: Sendable {
   case spokenPunctuationOn
   case multiInputDevice
   case previewChoicesExpanded
+  case pillShowsWords
   case universalSetupState
   case appleLanguagePacks
   case previewLanguageKnown
@@ -86,6 +87,7 @@ enum SettingsMapVisibility: Sendable {
   case permissionState
   case crashReportsChanged
   case snippetsEmpty
+  case snippetsListed
   case wordsListed
   case searchHasQuery
 }

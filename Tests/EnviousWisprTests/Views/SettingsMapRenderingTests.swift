@@ -170,7 +170,7 @@ struct SettingsMapRenderingTests {
       "dictation.engine.allLanguagesReady", "dictation.engine.allLanguagesDownloading",
       "dictation.engine.allLanguagesPaused", "dictation.engine.allLanguagesFailed",
       "dictation.engine.switchesOn", "dictation.engine.fastDownloading",
-      "dictation.microphone.multiInput",
+      "dictation.microphone.multiInput", "dictation.pill.off",
       "dictation.livePreview.choicesOpen", "dictation.livePreview.off",
       "dictation.livePreview.noPacks", "dictation.livePreview.languageMissing",
       "aiPolish.off", "aiPolish.appleIntelligence", "aiPolish.egOne", "aiPolish.s1Mini",
@@ -253,7 +253,7 @@ struct SettingsMapRenderingTests {
     }
     return Rendered(
       list: list, destination: .dictation(tab),
-      alwaysOnThisPage: ordinary ? alwaysShown(on: .dictation(tab)) : [])
+      alwaysOnThisPage: alwaysShown(on: .dictation(tab)))
   }
 
   /// Controls each Dictation tab shows in its ordinary state (written from the pages, not
@@ -573,7 +573,7 @@ struct SettingsMapRenderingTests {
           .environment(coordinator)))
     return Rendered(
       list: list, destination: .snippets,
-      alwaysOnThisPage: state.isEmpty ? alwaysShown(on: .snippets) : [])
+      alwaysOnThisPage: alwaysShown(on: .snippets))
   }
 
   static func keybindsRender() async throws -> [SettingsMapRegistration] {
@@ -636,7 +636,9 @@ struct SettingsMapRenderingTests {
     }
     return Rendered(
       list: list, destination: .appSettings(tab),
-      alwaysOnThisPage: state.isEmpty ? alwaysShown(on: .appSettings(tab)) : [])
+      // The restart and language states render the tab's page alone, without the tab strip.
+      alwaysOnThisPage: alwaysShown(
+        on: .appSettings(tab), includeTabs: state.isEmpty || state == "denied"))
   }
 
   private enum Unexpected: Error { case work }

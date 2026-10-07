@@ -181,7 +181,9 @@ struct DictationSettingsRenderHarness {
       whisperKitKernelDriver: DictationRuntimeFixtures.makeWhisperKitPipeline(audioCapture: audio, store: store),
       audioCapture: audio, asrManager: asr)
     let runtime = idleRuntime(settings: settings, audio: audio, asr: asr, recording: recording, store: store)
-    let pill = PillAppearanceModel(settings: settings, capability: { .available })
+    // The app reports .previewOff while Live Preview is off, which selects the wordless design.
+    let previewOn = scenario.previewOn
+    let pill = PillAppearanceModel(settings: settings, capability: { previewOn ? .available : .previewOff })
     let supported = scenario.supported
     let installed = scenario.installed
     let stagedInstall = scenario.stagedInstall

@@ -4405,7 +4405,9 @@
    "disposition": "mapped",
    "parent": "yourSnippets",
    "target": "snippets.search",
-   "fallbacks": [],
+   "fallbacks": [
+    "yourSnippets"
+   ],
    "dynamicTitle": false,
    "seedParent": null
   },
@@ -4477,7 +4479,8 @@
    "parent": "snippets.search",
    "target": "snippets.clearSearch",
    "fallbacks": [
-    "snippets.search"
+    "snippets.search",
+    "yourSnippets"
    ],
    "dynamicTitle": false,
    "seedParent": "snippets.search"

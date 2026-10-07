@@ -522,7 +522,7 @@ enum SettingsMap {
       title: .resource(SettingsItemCopy.Pill.configureLivePreview),
       description: nil,
       parent: .pillStyle, destination: .dictation(.pill), dictionaryTab: nil,
-      visibility: .always, target: .pillStyleConfigureLivePreview, fallbacks: [.pillStyle]),
+      visibility: .pillShowsWords, target: .pillStyleConfigureLivePreview, fallbacks: [.pillStyle]),
     SettingsMapNode(
       id: .recordingChimes, structure: .item, item: .setting,
       title: .resource(DictationSettingsCopy.Chimes.toggleTitle),
@@ -1044,7 +1044,7 @@ enum SettingsMap {
       title: .resource(SettingsItemCopy.Snippets.search),
       description: nil,
       parent: .yourSnippets, destination: .snippets, dictionaryTab: nil,
-      visibility: .always, target: .snippetsSearch, fallbacks: []),
+      visibility: .snippetsListed, target: .snippetsSearch, fallbacks: [.yourSnippets]),
     SettingsMapNode(
       id: .snippetsImport, structure: .item, item: .action,
       title: .resource(SettingsItemCopy.Snippets.importSnippets),
@@ -1074,7 +1074,7 @@ enum SettingsMap {
       title: .resource(SettingsItemCopy.Snippets.clearSearch),
       description: nil,
       parent: .snippetsSearch, destination: .snippets, dictionaryTab: nil,
-      visibility: .searchHasQuery, target: .snippetsClearSearch, fallbacks: [.snippetsSearch]),
+      visibility: .searchHasQuery, target: .snippetsClearSearch, fallbacks: [.snippetsSearch, .yourSnippets]),
     SettingsMapNode(
       id: .appSettingsTabAppearance, structure: .tab, item: .feature,
       title: .resource(AppSettingsTab.appearance.label),

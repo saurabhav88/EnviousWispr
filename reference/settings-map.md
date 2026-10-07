@@ -14,7 +14,7 @@ The interface ships in English and German. The other 30 languages (ar, bg, cs, d
 
 271 nodes, 246 searchable, 7872 vocabulary blocks.
 
-Fingerprints: mapSHA256 `258b88a74038f8c5da26dd7721ba7e856b07bc7cb38ece09ba1eabdc52a57381`, uiCatalogSHA256 `58c3376108ca16955fd63cc4b6e24579abcd7c702557cacdbd0ed76685e6934c`, vocabularyCanonicalization `length-prefixed-v1`, vocabularySHA256 `15532dd8689d31fbe408b01559d58488b6e7b1cf1ac0b01ab5b701caa5857d63`
+Fingerprints: mapSHA256 `d5c2178162473ae9d7e70b3c1e946d9c92ebdf524e68fa3373a91e0ad1924069`, uiCatalogSHA256 `58c3376108ca16955fd63cc4b6e24579abcd7c702557cacdbd0ed76685e6934c`, vocabularyCanonicalization `length-prefixed-v1`, vocabularySHA256 `15532dd8689d31fbe408b01559d58488b6e7b1cf1ac0b01ab5b701caa5857d63`
 
 ## Structure
 
@@ -2035,7 +2035,7 @@ Fingerprints: mapSHA256 `258b88a74038f8c5da26dd7721ba7e856b07bc7cb38ece09ba1eabd
 | Description | none |
 | Destination | `dictation` › `pill` |
 | Dictionary tab | none |
-| Shown when | `always` |
+| Shown when | `pillShowsWords` |
 | Arrival target | [`pillStyle.configureLivePreview`](#node-pillStyle-configureLivePreview) |
 | Fallbacks, in order | [`pillStyle`](#node-pillStyle) |
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
@@ -3896,9 +3896,9 @@ Fingerprints: mapSHA256 `258b88a74038f8c5da26dd7721ba7e856b07bc7cb38ece09ba1eabd
 | Description | none |
 | Destination | `snippets` |
 | Dictionary tab | none |
-| Shown when | `always` |
+| Shown when | `snippetsListed` |
 | Arrival target | [`snippets.search`](#node-snippets-search) |
-| Fallbacks, in order | none |
+| Fallbacks, in order | [`yourSnippets`](#node-yourSnippets) |
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | phrases: find a snippet in my saved collection; search my existing text snippets |
 | Search (de) | words: Bausteinsuche<br>phrases: einen Textbaustein in meiner Sammlung finden; meine vorhandenen Textbausteine durchsuchen |
@@ -4003,7 +4003,7 @@ Fingerprints: mapSHA256 `258b88a74038f8c5da26dd7721ba7e856b07bc7cb38ece09ba1eabd
 | Dictionary tab | none |
 | Shown when | `searchHasQuery` |
 | Arrival target | [`snippets.clearSearch`](#node-snippets-clearSearch) |
-| Fallbacks, in order | [`snippets.search`](#node-snippets-search) |
+| Fallbacks, in order | [`snippets.search`](#node-snippets-search), [`yourSnippets`](#node-yourSnippets) |
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | phrases: clear the search field in my snippet list |
 | Search (de) | phrases: das Suchfeld in meiner Textbausteinliste leeren |
