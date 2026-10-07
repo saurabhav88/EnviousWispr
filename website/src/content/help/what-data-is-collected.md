@@ -51,9 +51,9 @@ The app records how you use it, never what you said. There is no account, and no
 
 In recent versions, yes, in two cases only: when a search in Settings finds no setting, or when you skip its results and pick a page from the sidebar instead. The app then sends the last search you typed, in lower case, so we can teach the search the words people use. It never sends each keystroke. It does this only if **Share usage metrics** was on when you started typing and stayed on.
 
-The search is checked on your Mac first. A search shorter than 3 or longer than 80 characters is not sent, and neither is one that contains an @ sign, looks like a web address, has seven or more digits, or looks like an API key or access token.
+The search is checked on your Mac first. A search shorter than 3 or longer than 80 characters, or longer than 320 bytes of text, is not sent, and neither is one that contains an @ sign, looks like a web address, has seven or more digits, or looks like an API key or access token.
 
-If you pick a result, or close a search that still had results, the app never sends the words. It sends only how the search ended, how many results it had, and the app language.
+If you pick a result, or close a search that still had results, the app never sends the words. Every search report, with or without the words, says how the search ended, how many results it had, the app language and, when available, how long the app took to find related settings. If you picked a page from the sidebar, it also names that page and tab.
 
 ## How can I check this myself?
 
