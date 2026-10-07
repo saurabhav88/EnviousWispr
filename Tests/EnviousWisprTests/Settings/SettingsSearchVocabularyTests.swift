@@ -161,7 +161,9 @@ struct SettingsSearchVocabularyTests {
   }
 
   /// One entry's English as the reference export states it: each of title and description is
-  /// its kind plus its English text, resolver name, verbatim text or runtime role.
+  /// its kind plus its English text, resolver name, verbatim text or runtime role. Limit: a
+  /// dynamic title is bound by its resolver's NAME, so rewording a resolver's template (say
+  /// "Preview \(name)") without renaming it is not caught here; review those by hand.
   static func sourceFingerprint(_ node: [String: Any]) throws -> String {
     func field(_ value: Any?) throws -> String {
       guard let field = value as? [String: Any] else { return "none" }

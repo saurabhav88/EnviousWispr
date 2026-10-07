@@ -75,14 +75,16 @@ struct SettingsMapRegistrationTests {
         }
       }
     }
+    // No frozen totals: adding a row edits the reviewed registration sites, not this test.
+    #expect(total > 0, "the scan found no shared rows; the component list or parser broke")
     #expect(
-      total == 93,
-      "\(total) shared rows; frozen at 93 (map \(first["map"] ?? 0), exempt \(first["notInSettingsMap"] ?? 0))"
-    )
-    #expect(first["map"] == 74 && first["notInSettingsMap"] == 19, "\(first)")
+      (first["map"] ?? 0) + (first["notInSettingsMap"] ?? 0) == total,
+      "\(total) shared rows, \(first)")
+    let approved = Set(
+      SettingsMapExemption.allCases.filter { $0 != .renderFixture }.map { "." + $0.rawValue })
     #expect(
-      exemptions == [".statusLine": 15, ".sheetOrPopoverContent": 3, ".savedKeyRetry": 1],
-      "\(exemptions)")
+      Set(exemptions.keys).isSubset(of: approved),
+      "exemptions outside the approved reasons: \(Set(exemptions.keys).subtracting(approved))")
   }
 
   /// Registrations written directly on custom controls (not through a shared component).

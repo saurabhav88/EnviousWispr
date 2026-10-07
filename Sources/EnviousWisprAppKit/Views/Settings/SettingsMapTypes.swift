@@ -123,7 +123,7 @@ struct SettingsMapNode: Sendable {
 
 /// Why a shared settings control deliberately has no Settings Map identity. Only reasons the
 /// approved plan names (§3.4, §5); never "test", "legacy" or "not migrated yet".
-enum SettingsMapExemption: String, Sendable {
+enum SettingsMapExemption: String, Sendable, CaseIterable {
   /// Transcribe a File: only the page and its fixed step bar are indexed; wizard controls are not.
   case transcribeFileWizard
   /// Vocabulary pack list and detail (plan §5).

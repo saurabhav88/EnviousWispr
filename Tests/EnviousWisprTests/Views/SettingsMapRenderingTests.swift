@@ -735,7 +735,10 @@ struct SettingsMapRenderingTests {
 
   @Test("each state registers exactly what the reviewed fixture lists", arguments: stateLabels)
   func state(label: String) async throws {
+    _ = SettingsMap.takeRecordedFaults()
     let rendered = try await Self.render(label)
+    // A Release test run does not stop on a wiring fault; it is recorded instead.
+    #expect(SettingsMap.takeRecordedFaults() == [], "\(label): Settings Map wiring faults")
     print("MAP-STATE \(Self.observed(label, rendered.list))")
     Self.checkCommon(
       rendered.list, on: rendered.destination, label: label,
@@ -766,6 +769,7 @@ struct SettingsMapRenderingTests {
   @Test("switching from a cloud provider to a local model shows the local model's rows")
   func cloudToLocalSwitch() async throws {
     let home = try Home(provider: .openAI)
+    _ = SettingsMap.takeRecordedFaults()
     let list = try await Self.registrations(
       home.polish(AIPolishSettingsView(setupModel: ProviderSetupModel())),
       afterFirstLayout: { home.settings.llmProvider = .egOne },
@@ -773,6 +777,7 @@ struct SettingsMapRenderingTests {
     let ids = Set(Self.mapped(list))
     #expect(!ids.contains(.apiKeyGetKeyLink), "the cloud key link stayed after the switch")
     #expect(!ids.contains(.apiKeyOpenAI), "the OpenAI key row stayed after the switch")
+    #expect(SettingsMap.takeRecordedFaults() == [], "Settings Map wiring faults during the switch")
   }
 
   @Test("the fixture names exactly the rendered states")
