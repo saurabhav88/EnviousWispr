@@ -274,19 +274,6 @@ import Testing
     #expect(fx.kernelDriver.state == .error(.noMicrophoneFound))
   }
 
-  @Test("XPC-sanitized no-microphone prewarm error surfaces distinct copy")
-  func sanitizedNoMicrophonePrewarmErrorSurfacesDistinctCopy() async {
-    let fx = Self.makeFixture()
-    fx.asr.activeBackendType = .parakeet
-    fx.asr.isModelLoaded = true
-    fx.audio.preWarmError = XPCErrorSanitizer.sanitizeForXPC(
-      AudioError.noBuiltInMicrophoneFound)
-
-    _ = await fx.starter.start()
-
-    #expect(fx.kernelDriver.state == .error(.noMicrophoneFound))
-  }
-
   @Test(
     "a prewarm failure while mic permission is denied surfaces the actionable permission notice, not the generic capture error (cloud review P2 #1563)"
   )

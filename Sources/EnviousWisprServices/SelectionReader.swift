@@ -180,15 +180,6 @@ public enum SelectionReader {
       self.focusedSubrole = focusedSubrole
     }
 
-    /// Whether the focused element is a secure text field.
-    ///
-    /// A SECOND guard behind `IsSecureEventInputEnabled`, not a replacement for it. Secure input
-    /// mode is the real protection and is process-wide; this catches a password field in an app
-    /// that never enabled it. The cost of being wrong here is a password on the clipboard, which is
-    /// the one outcome in this whole feature worth a redundant check.
-    public var focusedElementIsSecure: Bool {
-      focusedSubrole == (kAXSecureTextFieldSubrole as String)
-    }
   }
 
   /// Whether a read should also sample the focused element's subrole.
@@ -217,33 +208,6 @@ public enum SelectionReader {
   }
 
   // MARK: - The live read
-
-  /// Read the selection from the frontmost application.
-  ///
-  /// **Call this BEFORE activating our own app**, or the frontmost application is us and the answer
-  /// is about our own window.
-  ///
-  /// Per-application, never system-wide: `AXUIElementCreateSystemWide()` can answer for a different
-  /// process than the one the user is looking at, and the whole point here is to read the app they
-  /// just made a selection in.
-  /// `timeout` bounds EACH Accessibility operation, in seconds. Nil keeps the system default.
-  ///
-  /// **PER OPERATION, not per call.** This makes two round trips — the focused-element lookup and
-  /// the selected-text read — so the worst case a caller should plan for is TWICE this value. An
-  /// earlier version's comment claimed it bounded how long the menu waits; it did not.
-  ///
-  /// **Zero is refused rather than honoured.** Accessibility reads a zero messaging timeout as
-  /// "use the system default", so `timeout: 0` would REMOVE the bound rather than tighten it — the
-  /// most obviously safe number producing the least safe behaviour.
-  ///
-  /// **A caller that must not block passes one.** The menu-bar door renders inside
-  /// `menuNeedsUpdate`, which AppKit requires to be synchronous — so a frontmost application whose
-  /// Accessibility provider stalls would hold the main actor and the menu simply would not open.
-  /// The default is far longer than a menu can wait.
-  @MainActor
-  public static func read(timeout: Float? = nil) -> Result {
-    performRead(timeout: timeout, subrole: .skip).result
-  }
 
   /// The same read, handing back the sample it was taken from (#2465).
   ///

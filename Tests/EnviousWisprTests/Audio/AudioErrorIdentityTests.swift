@@ -15,11 +15,4 @@ struct AudioErrorIdentityTests {
     #expect(error.localizedDescription == "No usable microphone device was found.")
   }
 
-  @Test("XPC sanitizer preserves no-microphone domain and code")
-  func xpcSanitizerPreservesNoMicrophoneIdentity() {
-    let sanitized = XPCErrorSanitizer.sanitizeForXPC(AudioError.noBuiltInMicrophoneFound)
-    #expect(sanitized.domain == AudioError.errorDomain)
-    #expect(sanitized.code == AudioError.noBuiltInMicrophoneFound.errorCode)
-    #expect(sanitized.localizedDescription == "No usable microphone device was found.")
-  }
 }

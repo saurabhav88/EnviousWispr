@@ -224,21 +224,6 @@ final class AppWindowCoordinator: UpdateDialogPresenting {
     }
   }
 
-  /// #1392: whether the user still has a main app window right now. Static
-  /// and state-free — callers that don't own a window reference (Sparkle's
-  /// attended-update-session-end hook) can check without a new stored
-  /// dependency. Thin snapshot wrapper around the pure decision above; Live
-  /// UAT is what proves this wrapper's real-`NSApp` snapshot is correct.
-  static func isMainWindowPresented() -> Bool {
-    isMainWindowPresented(
-      windowStates: NSApp.windows.map {
-        (
-          matchesIdentity: matchesMainWindowIdentity($0), isVisible: $0.isVisible,
-          isMiniaturized: $0.isMiniaturized
-        )
-      })
-  }
-
   /// Remove both window-close observers. Called once from
   /// `AppDelegate.applicationWillTerminate`.
   func tearDown() {

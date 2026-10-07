@@ -14,8 +14,8 @@ import Foundation
 /// them an inner error's own description). So the string a reader sees is written here,
 /// and the identity is the case.
 ///
-/// **The inner cause rides the `errorCode`, and it has to.** `XPCErrorSanitizer` rebuilds
-/// every error crossing the boundary with `userInfo` reduced to exactly one key
+/// **The inner cause rides the `errorCode`, and it has to.** The retired XPC boundary's
+/// sanitizer (removed in #3505) rebuilt every error crossing the boundary with `userInfo` reduced to exactly one key
 /// (`NSLocalizedDescriptionKey`) — that is a stated invariant of that type, not an
 /// accident — so domain, code and description are the ONLY channels that survive. The
 /// inner cause is the whole diagnostic point of `allWindowsFailed`, and Sentry emission

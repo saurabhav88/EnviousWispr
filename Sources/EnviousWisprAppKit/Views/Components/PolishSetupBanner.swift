@@ -1,4 +1,3 @@
-import EnviousWisprServices
 import SwiftUI
 
 /// History banner for an unfinished AI polish setup (#3438, plan §17 C5). Shown while the

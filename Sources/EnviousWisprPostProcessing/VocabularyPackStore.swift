@@ -136,15 +136,6 @@ public final class VocabularyPackStore: Sendable {
     return pack
   }
 
-  /// Flattened terms for every enabled pack (deterministic order). Missing
-  /// packs are skipped (fail-open).
-  public func terms(for enabled: Set<VocabularyPackID>) -> [CustomWord] {
-    enabled
-      .sorted { $0.rawValue < $1.rawValue }
-      .compactMap { load($0) }
-      .flatMap(\.terms)
-  }
-
   // MARK: - Bundle resolution (subdirectory then flat, per Tuist flattening)
 
   private func resourceURL(for id: VocabularyPackID) -> URL? {

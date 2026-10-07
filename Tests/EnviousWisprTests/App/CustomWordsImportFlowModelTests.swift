@@ -128,16 +128,6 @@ struct CustomWordsImportFlowModelTests {
     #expect(model.step != .result(.nothingFound))
   }
 
-  @Test("reset clears the selected method and returns to the picker")
-  func resetClearsSelectedMethodAndReturnsToPicker() {
-    let model = Self.makeModel()
-    model.select(.upload)
-    model.showReview()
-    model.reset()
-    #expect(model.step == .methodPicker)
-    #expect(model.selectedMethod == nil)
-  }
-
   @Test("show review before any method is selected is ignored")
   func showReviewWithoutMethodIsIgnored() {
     let model = Self.makeModel()
@@ -211,16 +201,6 @@ struct CustomWordsImportFlowModelTests {
 
     #expect(model.step == .paste)
     #expect(model.pasteDraft == "Kubernetes\nAnthropic")
-  }
-
-  @Test("resetting the sheet clears the pasted draft")
-  func resetClearsThePasteDraft() {
-    let model = Self.makeModel()
-    model.select(.paste)
-    model.pasteDraft = "Kubernetes"
-    model.reset()
-    #expect(model.pasteDraft.isEmpty)
-    #expect(model.step == .methodPicker)
   }
 
   // MARK: - Discardable draft confirmation (#1700)

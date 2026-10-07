@@ -176,7 +176,7 @@ public final class EGOneRuntime: EGOneLeaseProviding {
 
   /// Live "did an in-flight recording freeze .egOne?" read, set by the
   /// composition root (#1271 matrix gap 3; the authority is
-  /// `PipelineSettingsSync.isEGOnePinnedInFlight`). Remove Model must not
+  /// `PipelineSettingsSync.pinnedLocalProvider()`). Remove Model must not
   /// stop the server and delete the artifact underneath a recording that
   /// still needs it.
   public var isPinnedInFlight: (@MainActor () -> Bool)?
@@ -236,9 +236,6 @@ public final class EGOneRuntime: EGOneLeaseProviding {
   /// endpoint or a health verdict to a model that is not the resident one, so
   /// this value is what stops a polish being answered by other weights.
   private let provider: LLMProvider
-  /// Namespace for this model's persisted values. EG-1's is `eg1.` exactly as
-  /// before, so nothing it already wrote moves.
-  private let defaultsKeyPrefix: String
   /// Which model the health probe should present itself as. See
   /// `EGOneServerManager.ProbeSpec`.
   private let probeSpec: EGOneServerManager.ProbeSpec
@@ -285,7 +282,6 @@ public final class EGOneRuntime: EGOneLeaseProviding {
     case .openAI, .gemini, .claude, .ollama, .appleIntelligence, .none:
       preconditionFailure("EGOneRuntime serves a bundled local model; \(provider) is not one")
     }
-    self.defaultsKeyPrefix = keyPrefix
     self.pausedProjectionKey = "\(keyPrefix)pausedInstallProjection"
     self.manifest = manifest
     self.serverBinaryURL = serverBinaryURL

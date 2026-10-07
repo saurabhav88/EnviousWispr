@@ -430,9 +430,6 @@ struct SnippetImportAppAdaptersTests {
     #expect(SnippetImportAppRegistry.v1.displayNames == ["Wispr Flow", "TypeWhisper"])
     #expect(
       SnippetImportAppRegistry.v1.adapters.map(\.identifier) == ["wispr_flow", "typewhisper"])
-    #expect(
-      SnippetImportAppRegistry.v1.adapter(withID: "typewhisper")?.displayName == "TypeWhisper")
-    #expect(SnippetImportAppRegistry.v1.adapter(withID: "wispr-flow") == nil)
   }
 
   @Test("each adapter probes its app's real store location")

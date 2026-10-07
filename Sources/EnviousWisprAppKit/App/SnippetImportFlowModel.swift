@@ -198,15 +198,6 @@ final class SnippetImportFlowModel {
     }
   }
 
-  func reset() {
-    abandonWork()
-    clearRun()
-    pasteDraft = ""
-    pasteFormat = .auto
-    selectedMethod = nil
-    step = .methodPicker
-  }
-
   /// Sheet dismissal. Nothing is written on the way out; an in-flight load or comparison is
   /// cancelled and can no longer publish. A commit already started still completes and is
   /// still reported; only its result screen is dropped.

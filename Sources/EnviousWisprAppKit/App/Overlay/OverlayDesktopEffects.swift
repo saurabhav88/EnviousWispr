@@ -48,7 +48,6 @@ package protocol OverlayPanelDriving: AnyObject {
 
 /// A live workspace subscription, cancellable exactly once.
 package protocol WorkspaceObservation: AnyObject {
-  func cancel()
 }
 
 /// How the overlay learns the user switched Spaces.

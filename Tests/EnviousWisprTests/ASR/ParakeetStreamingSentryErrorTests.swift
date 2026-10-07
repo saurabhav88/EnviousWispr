@@ -167,7 +167,7 @@ struct ParakeetStreamingSentryErrorTests {
 
   // MARK: - B. Code allocation
 
-  /// The inner cause has to ride the `errorCode`, because `XPCErrorSanitizer` rebuilds
+  /// The inner cause has to ride the `errorCode`, because the retired XPC sanitizer rebuilt
   /// every error crossing the boundary with `userInfo` reduced to exactly one key. So the
   /// code allocation IS the wire format, and a collision would silently merge two causes.
   @Test("every declared case has a distinct errorCode")

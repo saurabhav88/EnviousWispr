@@ -1281,9 +1281,6 @@ package struct SmartImportRegistry: Sendable {
     self.adapters = adapters
   }
 
-  package func adapter(withID id: String) -> (any SmartImportAdapter)? {
-    adapters.first { $0.identifier == id }
-  }
 }
 
 /// Reads one competitor app's vocabulary into the shared pipeline.

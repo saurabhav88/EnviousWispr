@@ -58,13 +58,6 @@ package enum WhisperPreviewEngineResolver {
     )
   }
 
-  /// **Always true, and that is the entire point of this engine.** Apple's needs
-  /// macOS 26; this one runs on the whole supported range, which is what makes
-  /// the preview real for the older half of it. Anything that can change while
-  /// the app runs — whether the model is downloaded — belongs in `resolve`, not
-  /// here.
-  package static let isSupportedOnThisSystem = true
-
   /// The language Whisper decodes, and the commitment the prepared engine is keyed on. Auto
   /// decodes with detection (nil). A regional lock decodes its language subtag, since Whisper's
   /// tokens carry no region; a bare lock is passed through as it was before #3124. The commitment

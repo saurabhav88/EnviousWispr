@@ -174,9 +174,6 @@ struct SnippetImportFlowModelTests {
     #expect(model.step == .review)
     model.goBack()
     #expect(model.step == .file, "Back from review returns to the selected input screen")
-    model.reset()
-    #expect(model.step == .methodPicker)
-    #expect(model.selectedMethod == nil)
   }
 
   // MARK: - Rows and decisions
