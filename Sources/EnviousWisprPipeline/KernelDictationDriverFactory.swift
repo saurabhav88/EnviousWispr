@@ -879,10 +879,7 @@ public enum KernelDictationDriverFactory {
       emitLifecycleEvent: { [lifecycleSink] event in lifecycleSink.emit(event) }
     )
 
-    // 10. Driver. Pass the unified sink so the driver's direct
-    //     `.asrInterrupted` captureError emit (XPC crash fallback) also routes
-    //     through the injected sink — full parity with the old global delegate
-    //     spy for tests (Codex review #875).
+    // 10. Driver.
     let driver = KernelDictationDriver(
       kernel: kernel,
       observer: observer,
@@ -890,8 +887,7 @@ public enum KernelDictationDriverFactory {
       context: context,
       steps: limbSteps,
       adapter: adapter,
-      engineMutationScope: engineMutationScope,
-      captureErrorSink: captureErrorSink
+      engineMutationScope: engineMutationScope
     )
     driver.start()  // arms driver-side state observation (PR-4a)
 

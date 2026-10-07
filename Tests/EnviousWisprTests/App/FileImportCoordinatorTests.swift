@@ -79,7 +79,7 @@ struct FileImportCoordinatorTests {
   }
 
   private static func outcome(_ text: String) -> FileImportRunner.PartOutcome {
-    FileImportRunner.PartOutcome(text: text, polishedText: text, polishError: nil)
+    FileImportRunner.PartOutcome(text: text, polishedText: text)
   }
 
   private func makeCoordinator(

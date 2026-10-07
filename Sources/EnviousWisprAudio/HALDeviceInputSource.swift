@@ -20,7 +20,6 @@ private final class HALStoppedFlag: Sendable {
   private let _lock = OSAllocatedUnfairLock(initialState: false)
   func set() { _lock.withLock { $0 = true } }
   func isSet() -> Bool { _lock.withLock { $0 } }
-  func reset() { _lock.withLock { $0 = false } }
 }
 
 /// Fixed-capacity SPSC ring of pre-allocated raw sample chunks. The AUHAL
@@ -127,7 +126,6 @@ private final class HALSessionCounters: Sendable {
   /// reason it might.
   func incrementLostChunk() { state.withLock { $0.lostChunks += 1 } }
   func snapshot() -> Snapshot { state.withLock { $0 } }
-  func reset() { state.withLock { $0 = Snapshot() } }
   /// Read and clear under ONE lock acquisition. A separate `snapshot()` then
   /// `reset()` leaves a window in which the RT and consumer threads can increment
   /// a counter that neither the returned snapshot nor the cleared state contains,
@@ -1153,8 +1151,7 @@ final class HALDeviceInputSource: AudioInputSource {
   ///
   /// Two jobs, one contract:
   /// 1. SETTLED — poll the device's native rate until two consecutive reads
-  ///    agree AND the agreed rate is usable (`> 0`; #1445 — the `isUsableFormat`
-  ///    rate clause). Two-reads-agree shape; Apple forum 770232 documents
+  ///    agree AND the agreed rate is usable (`> 0`; #1445, `isUsableRate`). Two-reads-agree shape; Apple forum 770232 documents
   ///    AirPods reporting a transient wrong rate corrected by a later
   ///    notification.
   /// 2. MATCHES — the settled rate must equal the rate this unit's converter
@@ -1196,7 +1193,7 @@ final class HALDeviceInputSource: AudioInputSource {
   /// SETTLED = two consecutive reads agree AND the agreed rate is usable
   /// (`> 0`). During a device transition `nativeRateReader` can report a
   /// non-nil `0.0`; two agreeing invalid reads must not read as stable
-  /// (the `isUsableFormat` rule, #1473). The result is
+  /// (`isUsableRate`, #1473). The result is
   /// `matchesPrepared` — a settled-but-DIVERGENT rate is deliberately false
   /// (routes into the kernel's one-rebuild retry seam).
   struct RateSettleOutcome: Equatable {
@@ -1205,23 +1202,12 @@ final class HALDeviceInputSource: AudioInputSource {
     let polls: Int
   }
 
-  /// A read only counts toward "settled" when it is non-nil and `> 0` (shares
-  /// the rate clause of `isUsableFormat`). Rejects zero, negatives, and NaN
+  /// A read only counts toward "settled" when it is non-nil and `> 0`.
+  /// Rejects zero, negatives, and NaN
   /// (`Double.nan > 0` is false).
   nonisolated static func isUsableRate(_ rate: Double?) -> Bool {
     guard let rate else { return false }
     return rate > 0
-  }
-
-  /// A hardware format only counts as settled once it is also usable. During a
-  /// device transition a format read can report 0 Hz or 0 channels; two
-  /// consecutive *invalid* reads compare equal, so an equality-only check would
-  /// call that "stable" and hand an unusable format to converter creation.
-  /// Rate + channel-count validity authority (#1473).
-  nonisolated static func isUsableFormat(sampleRate: Double, channelCount: AVAudioChannelCount)
-    -> Bool
-  {
-    sampleRate > 0 && channelCount > 0
   }
 
   static func settleNativeRate(

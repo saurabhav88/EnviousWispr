@@ -305,9 +305,8 @@ import Testing
   ///   through `transcribe`).
   /// - `start` (`WhisperKitIncrementalSession`): 25 raw text matches, almost
   ///   all `Timer`/`NWListener`/`NWConnection`/hotkey-service/watcher
-  ///   `.start()` calls with no relation to the ASR engine. The real sites
-  ///   are `TailBenchmarkHarness.swift:163`, `TailBenchmarkHarness.swift:288`,
-  ///   and `WhisperKitEngineAdapter.swift:526` (`session.start(audioSamplesProvider:)`).
+  ///   `.start()` calls with no relation to the ASR engine. The real site
+  ///   is `WhisperKitEngineAdapter.swift:538` (`session.start(audioSamplesProvider:)`).
   ///
   /// Both exclusions are permanent under THIS design, not temporary
   /// oversights — a future rename of either protocol requirement (e.g.
@@ -1270,28 +1269,6 @@ import Testing
     CallSite(
       file: "Sources/EnviousWisprAppKit/App/BenchmarkSuite.swift", matcher: "cancelStreaming",
       text: "await asrManager.cancelStreaming()", classification: .gated),
-
-    // MARK: TailBenchmarkHarness — an external eval-harness support type
-    // (`scripts/eval/tail_runner`), never constructed anywhere in production
-    // `Sources/` (grep-verified). Reachable in theory, never exercised by the
-    // shipping app's own configuration — the same `dormant` bucket as
-    // `WhisperKitBackend`'s existing test-seam entry.
-    CallSite(
-      file: "Sources/EnviousWisprASR/TailBenchmarkHarness.swift", matcher: "transcribe",
-      text: "let results = try await model.kit.transcribe(",
-      classification: .dormant),
-    CallSite(
-      file: "Sources/EnviousWisprASR/TailBenchmarkHarness.swift", matcher: "transcribe",
-      text: "let results = try await model.kit.transcribe(",
-      classification: .dormant),
-    CallSite(
-      file: "Sources/EnviousWisprASR/TailBenchmarkHarness.swift", matcher: "transcribe",
-      text: "let results = try await model.kit.transcribe(",
-      classification: .dormant),
-    CallSite(
-      file: "Sources/EnviousWisprASR/TailBenchmarkHarness.swift", matcher: "finalize",
-      text: "let result = await session.finalize(finalSamples: [], speechSegments: [])",
-      classification: .dormant),
 
     // MARK: DictationRuntime / KernelDictationDriver — the onboarding
     // install Cancel button's seam (#1388 step 3). Race-safe by

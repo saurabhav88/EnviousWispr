@@ -108,7 +108,7 @@
         mergeSpeakerFields: { _, _, _ in true },
         historyRowExists: { _ in true },
         processPart: { part, _ in
-          FileImportRunner.PartOutcome(text: part, polishedText: part, polishError: nil)
+          FileImportRunner.PartOutcome(text: part, polishedText: part)
         })
     }
 
@@ -380,7 +380,7 @@
         saveToHistory: { _ in }, updateHistoryRow: { _ in true },
         mergeSpeakerFields: { _, _, _ in true }, historyRowExists: { _ in true },
         processPart: { part, _ in
-          FileImportRunner.PartOutcome(text: part, polishedText: part, polishError: nil)
+          FileImportRunner.PartOutcome(text: part, polishedText: part)
         })
       let refusingSink = ReplySink()
       let refusingDoor = makeDoor(refusing, sink: refusingSink)

@@ -87,10 +87,6 @@ public final class AudioCaptureManager: AudioCaptureInterface {
   /// terminal.
   private var pendingZeroSignalRefusals: [ZeroSignalRefusalContext] = []
 
-  public var zeroSignalDiscriminatorSawIneligible: Bool {
-    currentZeroSignalRefusalReason != nil
-  }
-
   public var zeroSignalRefusalReason: ZeroSignalEligibility? {
     currentZeroSignalRefusalReason
   }

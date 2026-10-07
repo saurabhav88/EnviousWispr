@@ -375,18 +375,16 @@ struct KernelFinalizationWiring {
   let currentTick: @MainActor () -> UInt64
   let sleepTicks: @MainActor (Int) async -> Void
 
-  /// Clipboard-copy seam for the copy-only delivery branch (#2146).
-  ///
-  /// Production defaults to `PasteService.copyToClipboard`, so behaviour is
-  /// unchanged. It exists so a TEST never reaches the process-global board —
-  /// the developer's own — which the copy-only branch used to overwrite on every
-  /// run of every suite that constructed this wiring.
-  let copyToClipboard: @MainActor (String) -> Void
-
   /// `save` and `deliverPaste` are closure seams over `TranscriptStore.save`
   /// and `PasteCascadeExecutor.deliver` — the same test-seam shape
   /// this wiring exposes. The App wraps the concrete types; tests
   /// pass fakes without touching disk or the AX paste APIs.
+  ///
+  /// `copyToClipboard` is the clipboard-copy seam for the copy-only delivery
+  /// branch (#2146), captured by the delivery closure. Production passes
+  /// `PasteService.copyToClipboard`. It exists so a TEST never reaches the
+  /// process-global board (the developer's own), which the copy-only branch
+  /// used to overwrite on every run of every suite that constructed this wiring.
   init(
     outcome: KernelFinalizationOutcome,
     context: KernelSessionContext,
@@ -511,7 +509,6 @@ struct KernelFinalizationWiring {
     // mentions a clipboard anywhere.
     copyToClipboard: @escaping @MainActor (String) -> Void
   ) {
-    self.copyToClipboard = copyToClipboard
     // processText — run the limb chain, write the polish side-channel, return
     // the final display text. `onPolishStarted` is wired into
     // `LLMPolishStep.onWillProcess` so the limb emits and the kernel observes

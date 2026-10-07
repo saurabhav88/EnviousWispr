@@ -32,17 +32,15 @@ public final class FileImportRunner {
   public struct PartOutcome: Sendable, Equatable {
     public let text: String
     public let polishedText: String?
-    public let polishError: String?
     /// Whether a polisher was asked for this part. Defaults to true so every
     /// existing construction keeps meaning what it meant.
     private let polishAttempted: Bool
 
     public init(
-      text: String, polishedText: String?, polishError: String?, polishAttempted: Bool = true
+      text: String, polishedText: String?, polishAttempted: Bool = true
     ) {
       self.text = text
       self.polishedText = polishedText
-      self.polishError = polishError
       self.polishAttempted = polishAttempted
     }
 
@@ -225,7 +223,7 @@ public final class FileImportRunner {
     let context = result.context
     let polished = (context.polishedText?.isEmpty ?? true) ? nil : context.polishedText
     return PartOutcome(
-      text: context.text, polishedText: polished, polishError: result.polishError,
+      text: context.text, polishedText: polished,
       // **Read from the frozen configuration, not from the outcome.** Whether a
       // polisher was ASKED is a property of the run's settings; whether it
       // ANSWERED is a property of this part. Deriving the first from the second

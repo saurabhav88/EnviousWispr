@@ -1,4 +1,3 @@
-import CryptoKit
 import EnviousWisprASR
 import EnviousWisprCore
 import EnviousWisprPipeline
@@ -212,17 +211,6 @@ enum FileImportDocumentMath {
         originalTextRange: turn.originalTextRange,
         processedText: joined,
         wasPolished: !mine.contains(where: \.isUnpolished))
-    }
-  }
-
-  /// SHA-256 over the raw Float32 bytes of the PCM ASR consumed, so a retry can compare a
-  /// re-decoded source against what actually ran without re-reading the whole buffer.
-  /// #2809 addendum §2.5 "Retry identity" — a method with a unit test and no caller in
-  /// phase 2; phase 4's retry-after-failure UI is the first caller.
-  static func pcmDigestHex(_ samples: [Float]) -> String {
-    samples.withUnsafeBufferPointer { buffer in
-      let digest = SHA256.hash(data: Data(buffer: buffer))
-      return digest.map { String(format: "%02x", $0) }.joined()
     }
   }
 

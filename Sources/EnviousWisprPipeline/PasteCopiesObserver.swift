@@ -83,11 +83,6 @@ package actor PasteCopiesGate {
     guard let bundleID else { return }
     disabled.insert(bundleID)
   }
-
-  package func isDisabled(_ bundleID: String?) -> Bool {
-    guard let bundleID else { return false }
-    return disabled.contains(bundleID)
-  }
 }
 
 package enum PasteCopiesObserver {

@@ -1,31 +1,5 @@
-import EnviousWisprCore
 import EnviousWisprModelDelivery
 import Foundation
-
-/// Thrown when the multilingual (WhisperKit) delivery stage ends in a typed
-/// failure — carries the class/detail so the App layer can render the delivery
-/// state copy through the existing setup surface. Sibling of
-/// `ParakeetDeliveryError`.
-public struct WhisperKitDeliveryError: Error, Equatable {
-  public let reason: DeliveryFailureClass
-  public let detail: String?
-
-  init(_ failure: DeliveryFailure) {
-    self.reason = failure.reason
-    self.detail = failure.detail
-  }
-}
-
-/// #1525 identity pin: a fixed wire identity for the Sentry model-load-failed
-/// path when multilingual delivery cannot be ensured. NEVER change this string
-/// once shipped (mirrors `ParakeetDeliveryError`).
-extension WhisperKitDeliveryError: StableSentryErrorIdentity {
-  public var sentryFingerprintDescriptor: String {
-    "EnviousWisprPipeline.WhisperKitDeliveryError#1"
-  }
-
-  public var sentrySemanticID: String { "whisper_kit.delivery_failed" }
-}
 
 /// Pipeline-side handle for one delivery-managed model whose transfer does
 /// not use Parakeet's `ProgressFile` bridge: the multilingual WhisperKit engine

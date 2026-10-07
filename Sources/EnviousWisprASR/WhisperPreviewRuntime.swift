@@ -68,7 +68,7 @@ package actor WhisperPreviewRuntime {
   }
 
   /// Load once and keep it. The adapter holds this runtime across recordings so
-  /// a second press does not pay the load again; `unload()` is how it goes away.
+  /// a second press does not pay the load again; dropping the runtime frees it.
   package func ensureLoaded() async throws -> any WhisperKitTranscribing {
     if let loaded { return loaded }
 
@@ -157,13 +157,6 @@ package actor WhisperPreviewRuntime {
       localAgreement: true,
       onHypothesis: onHypothesis,
       hypothesisRetentionLimit: hypothesisRetentionLimit)
-  }
-
-  /// Drop the model. Called when the engine is superseded — a revision bump, a
-  /// digest change, or the user turning the preview off — so 217 MB does not sit
-  /// resident for a feature nobody is using.
-  package func unload() {
-    loaded = nil
   }
 
   /// Whether a model is currently held. Lets a caller assert residency rather

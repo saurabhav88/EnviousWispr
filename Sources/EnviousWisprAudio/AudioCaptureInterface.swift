@@ -108,25 +108,8 @@ public protocol AudioCaptureInterface: AnyObject {
   /// are different concerns even when they describe the same fact.
   var boundInputDeviceKind: String? { get }
 
-  /// #1317, superseded as a consumer surface by #1578: a COMPATIBILITY VIEW of
-  /// whether the CURRENT trailing all-zero run has a categorical refusal reason.
-  /// True once the reactive check refused a candidate buffer somewhere in that
-  /// run, for ANY of the classifier's five non-eligible reasons — not mute alone.
-  ///
-  /// Scoped to the current run: a non-zero sample that breaks the trailing zero
-  /// run clears it, so an earlier refusal elsewhere in the same recording cannot
-  /// blind a later, unrelated genuine failure.
-  ///
-  /// `AudioCaptureManager` DERIVES this from `zeroSignalRefusalReason`; it is not
-  /// independent storage. New code reads the reason and the
-  /// reactively-classified flag below instead — the kernel's STOP path no longer
-  /// consults this at all. Default `false` for conformers with no reactive
-  /// per-buffer detector, which have nothing to observe.
-  var zeroSignalDiscriminatorSawIneligible: Bool { get }
-
   /// #1578: WHY the current trailing zero run was refused, or `nil` when the
-  /// run has no refusal. The compatibility view above answers only THAT a
-  /// refusal happened; this carries the categorical reason, which is the fact
+  /// run has no refusal. It carries the categorical reason, which is the fact
   /// #1578 exists to stop discarding.
   var zeroSignalRefusalReason: ZeroSignalEligibility? { get }
 
@@ -289,12 +272,6 @@ extension AudioCaptureInterface {
   /// the ONLY public surface #1714 adds. Observation-only: nothing may branch
   /// capture on it, and a nil value degrades attribution, never recording.
   public var currentInputResolutionSource: String? { nil }
-
-  /// #1317: default `false` — test fakes and simulator doubles have no reactive
-  /// per-buffer detector, so no run of theirs can carry a refusal reason.
-  /// `AudioCaptureManager` overrides it with a value DERIVED from the current
-  /// run's categorical reason (#1578), never with separate storage.
-  public var zeroSignalDiscriminatorSawIneligible: Bool { false }
 
   /// #1578: no reactive per-buffer detector means no refusal reason to report.
   public var zeroSignalRefusalReason: ZeroSignalEligibility? { nil }

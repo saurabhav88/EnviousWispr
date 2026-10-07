@@ -223,7 +223,6 @@ extension IncrementalResult {
       decodeCount: decodeCount,
       totalDecodeTimeMs: 100,
       accepted: true,
-      mode: "stub-mode",
       strategy: "stub-strategy",
       tailDecodeMs: 0
     )
@@ -236,7 +235,6 @@ extension IncrementalResult {
       decodeCount: 0,
       totalDecodeTimeMs: 0,
       accepted: false,
-      mode: "stub-mode",
       strategy: "stub-strategy",
       tailDecodeMs: 0,
       stopWhileDecodeInFlight: stopWhileDecodeInFlight

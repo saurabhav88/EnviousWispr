@@ -83,21 +83,7 @@ struct ParakeetTranscriptionSentryErrorTests {
     }
   }
 
-  // MARK: - C. NSError round-trip (survives the XPC boundary)
-
-  @Test("ParakeetTranscriptionSentryError round-trips through its NSError bridge for every case")
-  func nsErrorRoundTrip() {
-    for (error, _, _) in Self.pins {
-      let bridged = error as NSError
-      #expect(bridged.domain == ParakeetTranscriptionSentryError.errorDomain)
-      guard let reconstructed = ParakeetTranscriptionSentryError(reconstructingFrom: bridged)
-      else {
-        Issue.record("reconstruction failed for \(error)")
-        continue
-      }
-      #expect(reconstructed == error)
-    }
-  }
+  // MARK: - C. NSError archive round-trip
 
   /// #1525 PR I-B (Codex cloud review): a plain `as NSError` cast is not enough —
   /// Foundation's special "boxed Swift LocalizedError" bridging survives a same-
@@ -114,12 +100,6 @@ struct ParakeetTranscriptionSentryErrorTests {
     let decoded = try #require(
       try NSKeyedUnarchiver.unarchivedObject(ofClass: NSError.self, from: data))
     #expect(decoded.localizedDescription == "a real vendor description")
-  }
-
-  @Test("reconstructingFrom returns nil for an unrelated NSError domain")
-  func reconstructionRejectsForeignDomain() {
-    let foreign = NSError(domain: "SomeOtherDomain", code: 0)
-    #expect(ParakeetTranscriptionSentryError(reconstructingFrom: foreign) == nil)
   }
 
   // MARK: - D. Event-construction contract

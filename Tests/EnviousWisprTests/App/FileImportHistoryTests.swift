@@ -91,7 +91,7 @@ struct FileImportHistoryTests {
       processPart: { _, _ in
         onPart?()
         return FileImportRunner.PartOutcome(
-          text: cleaned, polishedText: cleaned, polishError: nil)
+          text: cleaned, polishedText: cleaned)
       })
   }
 
@@ -568,7 +568,7 @@ struct FileImportHistoryTests {
       // Every part comes back with NO polished text, which is what a bypassed or entirely
       // failed polish produces.
       processPart: { part, _ in
-        FileImportRunner.PartOutcome(text: part, polishedText: nil, polishError: "unavailable")
+        FileImportRunner.PartOutcome(text: part, polishedText: nil)
       })
     await run(c)
 

@@ -41,10 +41,6 @@ public final class WhisperKitSetupService {
 
   public private(set) var setupState: WhisperKitSetupState = .checking
 
-  /// Model variant. Source of truth: `WhisperKitBackend.defaultModelVariant()`.
-  // BRAIN: gotcha id=model-name-format
-  public let modelVariant: String = WhisperKitBackend.defaultModelVariant()
-
   /// Reads current availability: `.ready` when an admitted verified model exists,
   /// admission truth alone; a refused foreign copy is simply not an installed model.
   /// `.notDownloaded` otherwise. Injected by the composition root over the

@@ -414,15 +414,15 @@
           return "OK"
         }
         // `clear_batch_decode_fault(<backend>,<trialID>)` clears BOTH the
-        // adapter-boundary pending-failure state for `backend` and the
-        // oracle/trial state for `trialID`, so a forgotten trial from one
-        // Live UAT scenario cannot leak into the next.
-        if let (backend, trialID) = parseBackendAndTrialArgCommand(
+        // adapter-boundary pending-failure state for `backend` and ALL
+        // oracle/trial state (the trial ID is accepted but not needed), so a
+        // forgotten trial from one Live UAT scenario cannot leak into the next.
+        if let (backend, _) = parseBackendAndTrialArgCommand(
           cmd, prefix: "clear_batch_decode_fault(")
         {
           guard let batchDecodeFaultController else { return "ERR no_dependency" }
           batchDecodeFaultController.clearBatchDecodeFault(backend: backend)
-          await batchDecodeFaultController.clearBatchDecodeFault(trialID: trialID)
+          await batchDecodeFaultController.clearBatchDecodeFault()
           return "OK"
         }
         if let (backend, trialID) = parseBackendAndTrialArgCommand(
