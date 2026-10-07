@@ -570,4 +570,16 @@ struct LearnedWordCandidatesTests {
           .first == "Sarab->Saurabh")
     }
   }
+
+  @Test("#3518: a word's discarded longer alias never crowds out a containing fix (Codex diff review r5)")
+  func wordsRankBySurvivingSpan() {
+    let learned = [
+      LearnedWord(canonical: "Saurabh", observedMisspellings: ["Sarab", "Sarab A V account"]),
+      LearnedWord(canonical: "Handle", observedMisspellings: ["Sarab A V"]),
+    ]
+    let text = "Hi Sarab A V account."
+    #expect(
+      Self.spots(text, LearnedWordCandidates.questions(for: text, learned: learned, maxSpots: 1))
+        == ["Sarab A V->Handle"])
+  }
 }
