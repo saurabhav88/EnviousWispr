@@ -199,6 +199,24 @@ def build_unigram(tokenizer: dict) -> bytes:
 # --------------------------------------------------------------------------- place-vectors
 
 
+def check_model_matches_encoder(out_dir: pathlib.Path, weights: pathlib.Path, new_model: bool) -> None:
+    """Place vectors must come from the model the shipped query encoder was built from: vectors
+    from any other model have the same shape and pass every text and file check, yet score against
+    an incompatible encoder. The manifest's recorded weights hash is the authority; only a
+    deliberate model change (`--new-model`, which also needs `encoder`) may replace it."""
+    recorded = read_manifest(out_dir).get("placeVectors", {}).get("model", {})
+    if recorded.get("docPrefix", DOC_PREFIX) != DOC_PREFIX:
+        sys.exit(f"the manifest's document prefix {recorded.get('docPrefix')!r} is not {DOC_PREFIX!r}")
+    expected = recorded.get("fineTunedWeightsSHA256")
+    if not weights.is_file():
+        sys.exit(f"no model weights at {weights}")
+    actual = sha256_file(weights)
+    if expected and actual != expected and not new_model:
+        sys.exit(
+            f"refusing: {weights} has sha256 {actual}, but the shipped encoder was built from "
+            f"{expected}. Use that model, or pass --new-model and rebuild the encoder too.")
+
+
 def cmd_place_vectors(args) -> int:
     import numpy as np
     import sentence_transformers
@@ -212,6 +230,7 @@ def cmd_place_vectors(args) -> int:
         sys.exit("--texts is not a settings-search-place-texts file")
     rows = texts["rows"]
     model_dir = pathlib.Path(args.model)
+    check_model_matches_encoder(out_dir, model_dir / "model.safetensors", args.new_model)
     model = SentenceTransformer(str(model_dir), device=args.device)
     vectors = model.encode(
         [DOC_PREFIX + text for text in rows], normalize_embeddings=True, batch_size=64,
@@ -416,6 +435,32 @@ def cmd_self_test(_args) -> int:
         problems = check_problems(root, None)
         if not any("is missing" in p or "treeSHA256" in p for p in problems):
             failures.append("check_problems did not notice the missing assets")
+        # Place vectors only from the encoder's own model: a control that accepts, then refusals.
+        weights = root / "model.safetensors"
+        weights.write_bytes(b"winner")
+        (root / MANIFEST).write_text(json.dumps({"placeVectors": {"model": {
+            "fineTunedWeightsSHA256": hashlib.sha256(b"winner").hexdigest(),
+            "docPrefix": DOC_PREFIX}}}))
+        try:
+            check_model_matches_encoder(root, weights, new_model=False)
+        except SystemExit:
+            failures.append("check_model_matches_encoder refused the encoder's own model")
+        weights.write_bytes(b"another model")
+        try:
+            check_model_matches_encoder(root, weights, new_model=False)
+            failures.append("check_model_matches_encoder accepted another model")
+        except SystemExit:
+            pass
+        try:
+            check_model_matches_encoder(root, weights, new_model=True)
+        except SystemExit:
+            failures.append("check_model_matches_encoder refused a declared --new-model")
+        (root / MANIFEST).write_text(json.dumps({"placeVectors": {"model": {"docPrefix": "query: "}}}))
+        try:
+            check_model_matches_encoder(root, weights, new_model=True)
+            failures.append("check_model_matches_encoder accepted another document prefix")
+        except SystemExit:
+            pass
     for failure in failures:
         print(f"FAIL: {failure}", file=sys.stderr)
     print("self-test " + ("FAILED" if failures else "passed"))
@@ -434,6 +479,9 @@ def main() -> int:
     place.add_argument("--model", required=True)
     place.add_argument("--base", default="intfloat/multilingual-e5-small")
     place.add_argument("--device", default="cpu")
+    place.add_argument(
+        "--new-model", action="store_true",
+        help="a deliberate model change; the encoder must be rebuilt from the same model")
     encoder = sub.add_parser("encoder", parents=[common])
     encoder.add_argument("--package", required=True)
     encoder.add_argument("--tokenizer-dir", required=True)
