@@ -211,10 +211,11 @@ def check_model_matches_encoder(out_dir: pathlib.Path, weights: pathlib.Path, ne
     if not weights.is_file():
         sys.exit(f"no model weights at {weights}")
     actual = sha256_file(weights)
-    if expected and actual != expected and not new_model:
+    if (not expected or actual != expected) and not new_model:
         sys.exit(
             f"refusing: {weights} has sha256 {actual}, but the shipped encoder was built from "
-            f"{expected}. Use that model, or pass --new-model and rebuild the encoder too.")
+            f"{expected or 'a model the manifest does not record'}. Use that model, or pass "
+            "--new-model and rebuild the encoder too.")
 
 
 def cmd_place_vectors(args) -> int:
@@ -455,6 +456,12 @@ def cmd_self_test(_args) -> int:
             check_model_matches_encoder(root, weights, new_model=True)
         except SystemExit:
             failures.append("check_model_matches_encoder refused a declared --new-model")
+        (root / MANIFEST).write_text(json.dumps({"placeVectors": {"model": {"docPrefix": DOC_PREFIX}}}))
+        try:
+            check_model_matches_encoder(root, weights, new_model=False)
+            failures.append("check_model_matches_encoder accepted a model the manifest does not record")
+        except SystemExit:
+            pass
         (root / MANIFEST).write_text(json.dumps({"placeVectors": {"model": {"docPrefix": "query: "}}}))
         try:
             check_model_matches_encoder(root, weights, new_model=True)
