@@ -249,10 +249,9 @@ import Testing
   // MARK: PR-5 Rung 4 — factory surface + production-unwired invariant
 
   // PR-5 Rung 5 (#827) — `makeForWhisperKitHasNoProductionCaller` was deleted
-  // in this PR; its invariant inverted at cutover. The replacements below lock
-  // the post-cutover invariants (exactly one App caller; zero references to
-  // the deleted `WhisperKitPipeline` type / `WhisperKitPipelineState` enum /
-  // `whisperKitPipeline` variable name; VAD signal source single-constructed).
+  // in this PR; its invariant inverted at cutover. The tests below lock the
+  // post-cutover invariants that remain: exactly one App caller of the
+  // WhisperKit factory branch, and a single VAD signal source.
 
   @Test("WhisperKit factory branch has exactly one production caller")
   func makeForWhisperKitHasExactlyOneProductionCaller() throws {
@@ -597,9 +596,8 @@ import Testing
 
   /// Recursive scan over every `Sources/**/*.swift` file. Returns
   /// `relative/path.swift:LINE_NUMBER: line-content` for every line whose
-  /// regex matches. Used by the PR-5 Rung 5 freeze tests that lock the
-  /// post-cutover invariants (no `WhisperKitPipeline`, no
-  /// `WhisperKitPipelineState`, no `whisperKitPipeline`, single VAD source).
+  /// regex matches. Used by the factory-caller, VAD-construction,
+  /// identity-literal and adapter-construction checks in this suite.
   ///
   /// Lines whose first non-whitespace characters are `//` or `///` are
   /// skipped — comments referencing the legacy names are intentional

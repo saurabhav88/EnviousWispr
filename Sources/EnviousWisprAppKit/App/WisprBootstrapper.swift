@@ -74,9 +74,8 @@ package final class WisprBootstrapper {
   /// #2649: both local engines, named. See `LocalPolishRuntimeSet`.
   ///
   /// This REPLACED a separate `egOneRuntime` property rather than joining it.
-  /// The set already holds that runtime, so keeping both would have held one
-  /// twice and pushed this type past its stored-property ceiling — a guard that
-  /// exists to make growth deliberate, and this growth was avoidable.
+  /// The set already holds that runtime, so keeping both properties would
+  /// retain the same runtime twice.
   let localPolishRuntimes: LocalPolishRuntimeSet
   /// #1348 Phase 2: owned model-delivery home (controller + Parakeet
   /// registration + telemetry bridge + observable UI mirror). The +1 stored

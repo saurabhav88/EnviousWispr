@@ -8,8 +8,9 @@ import Testing
 // PR-9 deleted the old `DictationPipeline` driver protocol. This suite is the
 // permanent guard that no SECOND recording-orchestration brain reappears and
 // that the lifecycle FSM + the event entry point stay single-owner. It
-// complements `EngineIdentityFreezeTests` (which guards engine-identity literals, the old
-// WhisperKit pipeline, and adapter construction — not kernel ownership).
+// complements `EngineIdentityFreezeTests` (which guards engine-identity reads,
+// the factory caller, VAD construction and adapter construction — not kernel
+// ownership).
 //
 // Two invariants, each with matcher controls:
 //   1. `enum RecordingSessionState` (the lifecycle FSM) has exactly ONE source
