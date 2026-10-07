@@ -90,8 +90,15 @@ struct ClipboardSettingsCopyTests {
       source: try String(
         contentsOf: RepoRoot.url.appending(path: ClipboardSettingsWiringTests.path), encoding: .utf8
       ))
+    // #3482: the row titles and headings reach the page through the Settings Map.
+    let map = Parser.parse(
+      source: try String(
+        contentsOf: RepoRoot.url.appending(
+          path: "Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift"),
+        encoding: .utf8))
     let used = RecordingChimeCopyTests.members(
       of: ["Copy", "DictationSettingsCopy.Clipboard"], in: page)
+      .union(RecordingChimeCopyTests.members(of: ["DictationSettingsCopy.Clipboard"], in: map))
     #expect(used.count > 0, "no Clipboard copy read from the page; the reader has stopped matching")
     let unused = declared.subtracting(used).sorted()
     #expect(unused.isEmpty, "declared but not shown on the page: \(unused)")

@@ -9,7 +9,7 @@ struct InputSocketCopyTests {
 
   @Test("the row label, option labels and helper are byte-exact")
   func copyIsFrozen() {
-    #expect(InputSocketCopy.label == "Mic is on")
+    #expect(String(localized: InputSocketCopy.labelResource) == "Mic is on")
     #expect(InputSocketCopy.optionLabel(index: 0) == "Input 1")
     #expect(InputSocketCopy.optionLabel(index: 1) == "Input 2")
     #expect(InputSocketCopy.optionLabel(index: 5) == "Input 6")
@@ -20,7 +20,7 @@ struct InputSocketCopyTests {
   @Test("no dashes anywhere in the row's copy (content rule)")
   func noDashes() {
     let all = [
-      InputSocketCopy.label, InputSocketCopy.optionLabel(index: 3),
+      String(localized: InputSocketCopy.labelResource), InputSocketCopy.optionLabel(index: 3),
       InputSocketCopy.helper(deviceName: "Any Box"),
     ]
     for s in all {

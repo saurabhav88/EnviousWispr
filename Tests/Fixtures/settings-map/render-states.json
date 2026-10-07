@@ -1,0 +1,956 @@
+{
+ "aiPolish.appleIntelligence": {
+  "exempt": {},
+  "mapped": [
+   "aiPolish.link.aboutAppleIntelligence",
+   "aiPolish.providerSection",
+   "aiPolish.whyUse.appleIntelligence",
+   "aiPolishProvider",
+   "appleIntelligence.recheck",
+   "appleIntelligence.status",
+   "enableAIPolish",
+   "section.aiPolishModel"
+  ]
+ },
+ "aiPolish.claude": {
+  "exempt": {},
+  "mapped": [
+   "aiPolish.link.claudeRateLimits",
+   "aiPolish.providerSection",
+   "aiPolish.whyUse.claude",
+   "aiPolishProvider",
+   "apiKey.claude",
+   "apiKey.getKeyLink",
+   "apiKey.save",
+   "enableAIPolish",
+   "polishModel",
+   "polishModel.refresh",
+   "section.aiPolishModel"
+  ]
+ },
+ "aiPolish.egOne": {
+  "exempt": {
+   "statusLine": 1
+  },
+  "mapped": [
+   "aiPolish.providerSection",
+   "aiPolish.whyUse.egOne",
+   "aiPolishProvider",
+   "enableAIPolish",
+   "localModel.download",
+   "section.aiPolishModel"
+  ]
+ },
+ "aiPolish.egOne.downloading": {
+  "exempt": {
+   "statusLine": 1
+  },
+  "mapped": [
+   "aiPolish.providerSection",
+   "aiPolish.whyUse.egOne",
+   "aiPolishProvider",
+   "enableAIPolish",
+   "localModel.cancel",
+   "section.aiPolishModel"
+  ]
+ },
+ "aiPolish.egOne.failed": {
+  "exempt": {
+   "statusLine": 1
+  },
+  "mapped": [
+   "aiPolish.providerSection",
+   "aiPolish.whyUse.egOne",
+   "aiPolishProvider",
+   "enableAIPolish",
+   "localModel.tryAgain",
+   "section.aiPolishModel"
+  ]
+ },
+ "aiPolish.egOne.installed": {
+  "exempt": {
+   "statusLine": 1
+  },
+  "mapped": [
+   "aiPolish.providerSection",
+   "aiPolish.whyUse.egOne",
+   "aiPolishProvider",
+   "enableAIPolish",
+   "localModel.testLive",
+   "section.aiPolishModel"
+  ]
+ },
+ "aiPolish.egOne.paused": {
+  "exempt": {
+   "statusLine": 1
+  },
+  "mapped": [
+   "aiPolish.providerSection",
+   "aiPolish.whyUse.egOne",
+   "aiPolishProvider",
+   "enableAIPolish",
+   "localModel.resume",
+   "section.aiPolishModel"
+  ]
+ },
+ "aiPolish.gemini": {
+  "exempt": {},
+  "mapped": [
+   "aiPolish.link.geminiRateLimits",
+   "aiPolish.providerSection",
+   "aiPolish.whyUse.gemini",
+   "aiPolishProvider",
+   "apiKey.gemini",
+   "apiKey.getKeyLink",
+   "apiKey.save",
+   "enableAIPolish",
+   "polishModel",
+   "polishModel.refresh",
+   "section.aiPolishModel"
+  ]
+ },
+ "aiPolish.off": {
+  "exempt": {},
+  "mapped": [
+   "enableAIPolish"
+  ]
+ },
+ "aiPolish.ollama.error": {
+  "exempt": {
+   "statusLine": 1
+  },
+  "mapped": [
+   "aiPolish.link.ollamaLibrary",
+   "aiPolish.providerSection",
+   "aiPolish.whyUse.ollama",
+   "aiPolishProvider",
+   "enableAIPolish",
+   "ollama.tryAgain",
+   "section.aiPolishModel"
+  ]
+ },
+ "aiPolish.ollama.noModels": {
+  "exempt": {
+   "statusLine": 1
+  },
+  "mapped": [
+   "aiPolish.link.ollamaLibrary",
+   "aiPolish.providerSection",
+   "aiPolish.whyUse.ollama",
+   "aiPolishProvider",
+   "enableAIPolish",
+   "ollama.browseModels",
+   "ollama.downloadModel",
+   "ollama.recheck",
+   "section.aiPolishModel"
+  ]
+ },
+ "aiPolish.ollama.notInstalled": {
+  "exempt": {
+   "statusLine": 1
+  },
+  "mapped": [
+   "aiPolish.link.ollamaLibrary",
+   "aiPolish.providerSection",
+   "aiPolish.whyUse.ollama",
+   "aiPolishProvider",
+   "enableAIPolish",
+   "ollama.downloadOllama",
+   "ollama.recheck",
+   "section.aiPolishModel"
+  ]
+ },
+ "aiPolish.ollama.notRunning": {
+  "exempt": {
+   "statusLine": 1
+  },
+  "mapped": [
+   "aiPolish.link.ollamaLibrary",
+   "aiPolish.providerSection",
+   "aiPolish.whyUse.ollama",
+   "aiPolishProvider",
+   "enableAIPolish",
+   "ollama.recheck",
+   "ollama.start",
+   "section.aiPolishModel"
+  ]
+ },
+ "aiPolish.ollama.pulling": {
+  "exempt": {
+   "statusLine": 1
+  },
+  "mapped": [
+   "aiPolish.link.ollamaLibrary",
+   "aiPolish.providerSection",
+   "aiPolish.whyUse.ollama",
+   "aiPolishProvider",
+   "enableAIPolish",
+   "ollama.browseModels",
+   "ollama.cancelPull",
+   "section.aiPolishModel"
+  ]
+ },
+ "aiPolish.ollama.ready": {
+  "exempt": {},
+  "mapped": [
+   "aiPolish.link.ollamaLibrary",
+   "aiPolish.providerSection",
+   "aiPolish.whyUse.ollama",
+   "aiPolishProvider",
+   "enableAIPolish",
+   "ollama.browseModels",
+   "ollama.prepareModel",
+   "ollama.recheck",
+   "ollama.server",
+   "polishModel",
+   "section.aiPolishModel"
+  ]
+ },
+ "aiPolish.openAI": {
+  "exempt": {},
+  "mapped": [
+   "aiPolish.link.openAIRateLimits",
+   "aiPolish.providerSection",
+   "aiPolish.whyUse.openAI",
+   "aiPolishProvider",
+   "apiKey.getKeyLink",
+   "apiKey.openAI",
+   "apiKey.save",
+   "enableAIPolish",
+   "polishModel",
+   "polishModel.refresh",
+   "section.aiPolishModel"
+  ]
+ },
+ "aiPolish.openAI.draftKey": {
+  "exempt": {},
+  "mapped": [
+   "aiPolish.link.openAIRateLimits",
+   "aiPolish.providerSection",
+   "aiPolish.whyUse.openAI",
+   "aiPolishProvider",
+   "apiKey.getKeyLink",
+   "apiKey.openAI",
+   "apiKey.reveal",
+   "apiKey.save",
+   "enableAIPolish",
+   "polishModel",
+   "polishModel.refresh",
+   "section.aiPolishModel"
+  ]
+ },
+ "aiPolish.openAI.savedKey": {
+  "exempt": {},
+  "mapped": [
+   "aiPolish.link.openAIRateLimits",
+   "aiPolish.providerSection",
+   "aiPolish.whyUse.openAI",
+   "aiPolishProvider",
+   "apiKey.clear",
+   "apiKey.getKeyLink",
+   "apiKey.openAI",
+   "apiKey.reveal",
+   "apiKey.save",
+   "enableAIPolish",
+   "polishModel",
+   "polishModel.refresh",
+   "section.aiPolishModel"
+  ]
+ },
+ "aiPolish.s1Mini": {
+  "exempt": {
+   "statusLine": 1
+  },
+  "mapped": [
+   "aiPolish.providerSection",
+   "aiPolish.whyUse.s1Mini",
+   "aiPolishProvider",
+   "enableAIPolish",
+   "localModel.download",
+   "s1Context",
+   "s1Structure",
+   "s1Tone",
+   "section.aiPolishModel"
+  ]
+ },
+ "appSettings.appearance": {
+  "exempt": {},
+  "mapped": [
+   "appLanguage",
+   "appSettings.tab.appearance",
+   "appSettings.tab.licenses",
+   "appSettings.tab.permissions",
+   "appSettings.tab.privacy",
+   "section.appearance",
+   "showInDock",
+   "theme",
+   "updateAlertInMenuBar"
+  ]
+ },
+ "appSettings.appearance.languageChange": {
+  "exempt": {},
+  "mapped": [
+   "appLanguage",
+   "appLanguage.relaunch",
+   "section.appearance",
+   "showInDock",
+   "theme",
+   "updateAlertInMenuBar"
+  ]
+ },
+ "appSettings.licenses": {
+  "exempt": {},
+  "mapped": [
+   "appSettings.tab.appearance",
+   "appSettings.tab.licenses",
+   "appSettings.tab.permissions",
+   "appSettings.tab.privacy",
+   "license.gpl",
+   "license.gpl.view",
+   "license.notices",
+   "license.notices.view",
+   "section.about"
+  ]
+ },
+ "appSettings.permissions": {
+  "exempt": {},
+  "mapped": [
+   "appSettings.tab.appearance",
+   "appSettings.tab.licenses",
+   "appSettings.tab.permissions",
+   "appSettings.tab.privacy",
+   "permission.accessibility",
+   "permission.microphone",
+   "section.permissions"
+  ]
+ },
+ "appSettings.permissions.denied": {
+  "exempt": {},
+  "mapped": [
+   "appSettings.tab.appearance",
+   "appSettings.tab.licenses",
+   "appSettings.tab.permissions",
+   "appSettings.tab.privacy",
+   "permission.accessibility",
+   "permission.accessibility.openSettings",
+   "permission.microphone",
+   "permission.microphone.request",
+   "section.permissions"
+  ]
+ },
+ "appSettings.privacy": {
+  "exempt": {},
+  "mapped": [
+   "appSettings.tab.appearance",
+   "appSettings.tab.licenses",
+   "appSettings.tab.permissions",
+   "appSettings.tab.privacy",
+   "section.privacy",
+   "sendCrashReports",
+   "shareUsageMetrics",
+   "whatWeCollect",
+   "whatWeCollect.seeDetails"
+  ]
+ },
+ "appSettings.privacy.restartNeeded": {
+  "exempt": {},
+  "mapped": [
+   "section.privacy",
+   "sendCrashReports",
+   "sendCrashReports.restart",
+   "shareUsageMetrics",
+   "whatWeCollect",
+   "whatWeCollect.seeDetails"
+  ]
+ },
+ "dictation.chimes": {
+  "exempt": {},
+  "mapped": [
+   "dictation.tab.chimes",
+   "dictation.tab.clipboard",
+   "dictation.tab.engine",
+   "dictation.tab.livePreview",
+   "dictation.tab.microphone",
+   "dictation.tab.pill",
+   "recordingChime",
+   "recordingChime.airGlint",
+   "recordingChime.cloudPop",
+   "recordingChime.dustMote",
+   "recordingChime.lowNod",
+   "recordingChime.mutedConfirm",
+   "recordingChime.paperTap",
+   "recordingChime.roundPebble",
+   "recordingChime.satinShift",
+   "recordingChime.softHush",
+   "recordingChime.velvetHush",
+   "recordingChime.velvetTap",
+   "recordingChime.whisperTick",
+   "recordingChimes",
+   "section.chimes"
+  ]
+ },
+ "dictation.clipboard": {
+  "exempt": {},
+  "mapped": [
+   "autoCopyToClipboard",
+   "dictation.tab.chimes",
+   "dictation.tab.clipboard",
+   "dictation.tab.engine",
+   "dictation.tab.livePreview",
+   "dictation.tab.microphone",
+   "dictation.tab.pill",
+   "quickAddClipboardFallback",
+   "restoreClipboard",
+   "section.clipboard",
+   "section.quickAddClipboard",
+   "smartInsertion"
+  ]
+ },
+ "dictation.engine": {
+  "exempt": {},
+  "mapped": [
+   "autoDetectLanguage",
+   "autoDetectLanguage.resetSuggestions",
+   "currentEngineSection",
+   "dictation.tab.chimes",
+   "dictation.tab.clipboard",
+   "dictation.tab.engine",
+   "dictation.tab.livePreview",
+   "dictation.tab.microphone",
+   "dictation.tab.pill",
+   "fasterTranscription",
+   "fillerRemoval",
+   "lockedLanguage",
+   "lockedLanguage.change",
+   "section.engineShared",
+   "section.transcriptionEngine",
+   "spokenEmoji",
+   "spokenPunctuation",
+   "stopOnSilence",
+   "transcriptionEngine",
+   "transcriptionEngine.change",
+   "transcriptionEngine.recheckFast",
+   "unloadModel"
+  ]
+ },
+ "dictation.engine.allLanguagesAuto": {
+  "exempt": {
+   "statusLine": 1
+  },
+  "mapped": [
+   "currentEngineSection",
+   "dictation.tab.chimes",
+   "dictation.tab.clipboard",
+   "dictation.tab.engine",
+   "dictation.tab.livePreview",
+   "dictation.tab.microphone",
+   "dictation.tab.pill",
+   "fasterTranscription",
+   "fillerRemoval",
+   "section.engineShared",
+   "section.transcriptionEngine",
+   "spokenEmoji",
+   "spokenPunctuation",
+   "stopOnSilence",
+   "transcriptionEngine",
+   "transcriptionEngine.change",
+   "unloadModel",
+   "whisperModel.recheck",
+   "whisperModel.setUp"
+  ]
+ },
+ "dictation.engine.allLanguagesDownloading": {
+  "exempt": {},
+  "mapped": [
+   "currentEngineSection",
+   "dictation.tab.chimes",
+   "dictation.tab.clipboard",
+   "dictation.tab.engine",
+   "dictation.tab.livePreview",
+   "dictation.tab.microphone",
+   "dictation.tab.pill",
+   "fasterTranscription",
+   "fillerRemoval",
+   "section.engineShared",
+   "section.transcriptionEngine",
+   "spokenEmoji",
+   "spokenPunctuation",
+   "stopOnSilence",
+   "transcriptionEngine",
+   "transcriptionEngine.change",
+   "unloadModel",
+   "whisperModel.cancelDownload"
+  ]
+ },
+ "dictation.engine.allLanguagesFailed": {
+  "exempt": {},
+  "mapped": [
+   "currentEngineSection",
+   "dictation.tab.chimes",
+   "dictation.tab.clipboard",
+   "dictation.tab.engine",
+   "dictation.tab.livePreview",
+   "dictation.tab.microphone",
+   "dictation.tab.pill",
+   "fasterTranscription",
+   "fillerRemoval",
+   "section.engineShared",
+   "section.transcriptionEngine",
+   "spokenEmoji",
+   "spokenPunctuation",
+   "stopOnSilence",
+   "transcriptionEngine",
+   "transcriptionEngine.change",
+   "unloadModel",
+   "whisperModel.tryAgain"
+  ]
+ },
+ "dictation.engine.allLanguagesPaused": {
+  "exempt": {},
+  "mapped": [
+   "currentEngineSection",
+   "dictation.tab.chimes",
+   "dictation.tab.clipboard",
+   "dictation.tab.engine",
+   "dictation.tab.livePreview",
+   "dictation.tab.microphone",
+   "dictation.tab.pill",
+   "fasterTranscription",
+   "fillerRemoval",
+   "section.engineShared",
+   "section.transcriptionEngine",
+   "spokenEmoji",
+   "spokenPunctuation",
+   "stopOnSilence",
+   "transcriptionEngine",
+   "transcriptionEngine.change",
+   "unloadModel",
+   "whisperModel.recheck",
+   "whisperModel.resume"
+  ]
+ },
+ "dictation.engine.allLanguagesReady": {
+  "exempt": {},
+  "mapped": [
+   "autoDetectLanguage",
+   "autoDetectLanguage.resetSuggestions",
+   "currentEngineSection",
+   "dictation.tab.chimes",
+   "dictation.tab.clipboard",
+   "dictation.tab.engine",
+   "dictation.tab.livePreview",
+   "dictation.tab.microphone",
+   "dictation.tab.pill",
+   "fasterTranscription",
+   "fillerRemoval",
+   "lockedLanguage",
+   "lockedLanguage.change",
+   "section.engineShared",
+   "section.transcriptionEngine",
+   "spokenEmoji",
+   "spokenPunctuation",
+   "stopOnSilence",
+   "transcriptionEngine",
+   "transcriptionEngine.change",
+   "unloadModel",
+   "whisperModel.recheck",
+   "whisperModel.remove"
+  ]
+ },
+ "dictation.engine.choicesOpen": {
+  "exempt": {},
+  "mapped": [
+   "autoDetectLanguage",
+   "autoDetectLanguage.resetSuggestions",
+   "currentEngineSection",
+   "dictation.tab.chimes",
+   "dictation.tab.clipboard",
+   "dictation.tab.engine",
+   "dictation.tab.livePreview",
+   "dictation.tab.microphone",
+   "dictation.tab.pill",
+   "fasterTranscription",
+   "fillerRemoval",
+   "lockedLanguage",
+   "lockedLanguage.change",
+   "section.engineShared",
+   "section.transcriptionEngine",
+   "spokenEmoji",
+   "spokenPunctuation",
+   "stopOnSilence",
+   "transcriptionEngine",
+   "transcriptionEngine.allLanguages",
+   "transcriptionEngine.fast",
+   "transcriptionEngine.keepCurrent",
+   "transcriptionEngine.recheckFast",
+   "unloadModel"
+  ]
+ },
+ "dictation.engine.fastDownloading": {
+  "exempt": {},
+  "mapped": [
+   "autoDetectLanguage",
+   "autoDetectLanguage.resetSuggestions",
+   "currentEngineSection",
+   "dictation.tab.chimes",
+   "dictation.tab.clipboard",
+   "dictation.tab.engine",
+   "dictation.tab.livePreview",
+   "dictation.tab.microphone",
+   "dictation.tab.pill",
+   "fastModel.cancelDownload",
+   "fasterTranscription",
+   "fillerRemoval",
+   "lockedLanguage",
+   "lockedLanguage.change",
+   "section.engineShared",
+   "section.transcriptionEngine",
+   "spokenEmoji",
+   "spokenPunctuation",
+   "stopOnSilence",
+   "transcriptionEngine",
+   "transcriptionEngine.change",
+   "transcriptionEngine.recheckFast",
+   "unloadModel"
+  ]
+ },
+ "dictation.engine.switchesOn": {
+  "exempt": {},
+  "mapped": [
+   "autoDetectLanguage",
+   "autoDetectLanguage.resetSuggestions",
+   "currentEngineSection",
+   "dictation.tab.chimes",
+   "dictation.tab.clipboard",
+   "dictation.tab.engine",
+   "dictation.tab.livePreview",
+   "dictation.tab.microphone",
+   "dictation.tab.pill",
+   "fasterTranscription",
+   "fillerRemoval",
+   "lockedLanguage",
+   "lockedLanguage.change",
+   "pauseDuration",
+   "section.engineShared",
+   "section.transcriptionEngine",
+   "spokenEmoji",
+   "spokenPunctuation",
+   "startWord.reset",
+   "startWord.save",
+   "startWordField",
+   "startWordLanguage",
+   "stopOnSilence",
+   "transcriptionEngine",
+   "transcriptionEngine.change",
+   "transcriptionEngine.recheckFast",
+   "unloadModel"
+  ]
+ },
+ "dictation.livePreview": {
+  "exempt": {},
+  "mapped": [
+   "dictation.tab.chimes",
+   "dictation.tab.clipboard",
+   "dictation.tab.engine",
+   "dictation.tab.livePreview",
+   "dictation.tab.microphone",
+   "dictation.tab.pill",
+   "livePreview",
+   "livePreview.language",
+   "previewEngine",
+   "previewEngine.change",
+   "previewEngine.compare",
+   "previewLanguages",
+   "previewLanguages.install",
+   "section.livePreview",
+   "section.previewEngine"
+  ]
+ },
+ "dictation.livePreview.choicesOpen": {
+  "exempt": {},
+  "mapped": [
+   "dictation.tab.chimes",
+   "dictation.tab.clipboard",
+   "dictation.tab.engine",
+   "dictation.tab.livePreview",
+   "dictation.tab.microphone",
+   "dictation.tab.pill",
+   "livePreview",
+   "livePreview.language",
+   "previewEngine",
+   "previewEngine.apple",
+   "previewEngine.compare",
+   "previewEngine.keepCurrent",
+   "previewEngine.universal",
+   "previewLanguages",
+   "previewLanguages.install",
+   "section.livePreview",
+   "section.previewEngine"
+  ]
+ },
+ "dictation.livePreview.languageMissing": {
+  "exempt": {},
+  "mapped": [
+   "dictation.tab.chimes",
+   "dictation.tab.clipboard",
+   "dictation.tab.engine",
+   "dictation.tab.livePreview",
+   "dictation.tab.microphone",
+   "dictation.tab.pill",
+   "livePreview",
+   "livePreview.browseDownloads",
+   "livePreview.language",
+   "previewEngine",
+   "previewEngine.change",
+   "previewEngine.compare",
+   "previewLanguages",
+   "previewLanguages.install",
+   "section.livePreview",
+   "section.previewEngine"
+  ]
+ },
+ "dictation.livePreview.noPacks": {
+  "exempt": {},
+  "mapped": [
+   "dictation.tab.chimes",
+   "dictation.tab.clipboard",
+   "dictation.tab.engine",
+   "dictation.tab.livePreview",
+   "dictation.tab.microphone",
+   "dictation.tab.pill",
+   "livePreview",
+   "livePreview.language",
+   "previewEngine",
+   "previewEngine.change",
+   "previewEngine.compare",
+   "previewLanguages",
+   "previewLanguages.install",
+   "section.livePreview",
+   "section.previewEngine"
+  ]
+ },
+ "dictation.livePreview.off": {
+  "exempt": {},
+  "mapped": [
+   "dictation.tab.chimes",
+   "dictation.tab.clipboard",
+   "dictation.tab.engine",
+   "dictation.tab.livePreview",
+   "dictation.tab.microphone",
+   "dictation.tab.pill",
+   "livePreview",
+   "livePreview.language",
+   "previewEngine",
+   "previewEngine.change",
+   "previewEngine.compare",
+   "previewLanguages",
+   "previewLanguages.install",
+   "section.livePreview",
+   "section.previewEngine"
+  ]
+ },
+ "dictation.microphone": {
+  "exempt": {},
+  "mapped": [
+   "bluetoothGuide",
+   "bluetoothGuide.learnMore",
+   "dictation.tab.chimes",
+   "dictation.tab.clipboard",
+   "dictation.tab.engine",
+   "dictation.tab.livePreview",
+   "dictation.tab.microphone",
+   "dictation.tab.pill",
+   "inputDevice",
+   "mediaDuringDictation",
+   "micReadiness",
+   "section.microphone"
+  ]
+ },
+ "dictation.microphone.multiInput": {
+  "exempt": {},
+  "mapped": [
+   "bluetoothGuide",
+   "bluetoothGuide.learnMore",
+   "dictation.tab.chimes",
+   "dictation.tab.clipboard",
+   "dictation.tab.engine",
+   "dictation.tab.livePreview",
+   "dictation.tab.microphone",
+   "dictation.tab.pill",
+   "inputDevice",
+   "inputSocket",
+   "mediaDuringDictation",
+   "micReadiness",
+   "section.microphone"
+  ]
+ },
+ "dictation.pill": {
+  "exempt": {},
+  "mapped": [
+   "dictation.tab.chimes",
+   "dictation.tab.clipboard",
+   "dictation.tab.engine",
+   "dictation.tab.livePreview",
+   "dictation.tab.microphone",
+   "dictation.tab.pill",
+   "pillPosition",
+   "pillStyle",
+   "pillStyle.configureLivePreview",
+   "section.pill"
+  ]
+ },
+ "dictation.pill.off": {
+  "exempt": {},
+  "mapped": [
+   "dictation.tab.chimes",
+   "dictation.tab.clipboard",
+   "dictation.tab.engine",
+   "dictation.tab.livePreview",
+   "dictation.tab.microphone",
+   "dictation.tab.pill",
+   "pillPosition",
+   "pillStyle",
+   "section.pill"
+  ]
+ },
+ "dictionary.learnFrom": {
+  "exempt": {},
+  "mapped": [
+   "contactsSyncOnLaunch",
+   "importContacts",
+   "learnFrom",
+   "selfLearningDictionary",
+   "selfLearningDictionary.learnMore"
+  ]
+ },
+ "dictionary.quickAdd": {
+  "exempt": {},
+  "mapped": [
+   "quickAdd.menuBar",
+   "quickAdd.shortcut",
+   "quickAdd.step1",
+   "quickAdd.step2",
+   "quickAdd.step3"
+  ]
+ },
+ "dictionary.vocabularyPacks": {
+  "exempt": {},
+  "mapped": []
+ },
+ "dictionary.yourWords.empty": {
+  "exempt": {},
+  "mapped": [
+   "dictionary.tab.learnFrom",
+   "dictionary.tab.quickAdd",
+   "dictionary.tab.vocabularyPacks",
+   "dictionary.tab.yourWords",
+   "enableDictionary",
+   "section.dictionary",
+   "yourWords.add",
+   "yourWords.categoryFilter",
+   "yourWords.export",
+   "yourWords.import",
+   "yourWords.search"
+  ]
+ },
+ "dictionary.yourWords.searching": {
+  "exempt": {},
+  "mapped": [
+   "yourWords.categoryFilter",
+   "yourWords.clearSearch",
+   "yourWords.massEdit",
+   "yourWords.search"
+  ]
+ },
+ "dictionary.yourWords.withWords": {
+  "exempt": {},
+  "mapped": [
+   "dictionary.tab.learnFrom",
+   "dictionary.tab.quickAdd",
+   "dictionary.tab.vocabularyPacks",
+   "dictionary.tab.yourWords",
+   "enableDictionary",
+   "section.dictionary",
+   "yourWords.add",
+   "yourWords.categoryFilter",
+   "yourWords.export",
+   "yourWords.import",
+   "yourWords.massEdit",
+   "yourWords.search"
+  ]
+ },
+ "keybinds": {
+  "exempt": {},
+  "mapped": [
+   "cancelKeybind",
+   "copyLastKeybind",
+   "escapeRecovery",
+   "pasteLastKeybind",
+   "quickAddKeybind",
+   "recordKeybind",
+   "recordingMode",
+   "section.keybindsRecording",
+   "section.keybindsShortcuts"
+  ]
+ },
+ "snippets": {
+  "exempt": {},
+  "mapped": [
+   "snippetKeyword",
+   "snippets",
+   "snippets.add",
+   "snippets.export",
+   "snippets.import",
+   "snippets.search",
+   "yourSnippets"
+  ]
+ },
+ "snippets.empty": {
+  "exempt": {},
+  "mapped": [
+   "snippetKeyword",
+   "snippets",
+   "snippets.add",
+   "snippets.addFirst",
+   "snippets.export",
+   "snippets.import",
+   "yourSnippets"
+  ]
+ },
+ "snippets.searching": {
+  "exempt": {},
+  "mapped": [
+   "snippetKeyword",
+   "snippets",
+   "snippets.add",
+   "snippets.clearSearch",
+   "snippets.export",
+   "snippets.import",
+   "snippets.search",
+   "yourSnippets"
+  ]
+ },
+ "transcribeFile": {
+  "exempt": {},
+  "mapped": [
+   "transcribeFile.steps"
+  ]
+ },
+ "dictation.livePreview.appleUnsupported": {
+  "exempt": {},
+  "mapped": [
+   "dictation.tab.chimes",
+   "dictation.tab.clipboard",
+   "dictation.tab.engine",
+   "dictation.tab.livePreview",
+   "dictation.tab.microphone",
+   "dictation.tab.pill",
+   "livePreview",
+   "previewEngine",
+   "previewEngine.change",
+   "previewEngine.compare",
+   "section.livePreview",
+   "section.previewEngine"
+  ]
+ }
+}

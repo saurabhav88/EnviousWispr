@@ -40,20 +40,26 @@ enum SettingsPage: String, CaseIterable, Identifiable {
 
   var id: String { rawValue }
 
-  var label: String {
+  /// The page's name as a resource, so the sidebar and the Settings Map (#3482) share one
+  /// owner. Diagnostics is a DEBUG-only developer page with no catalog entry, so it has none.
+  var labelResource: LocalizedStringResource? {
     switch self {
-    case .history: String(localized: "History")
-    case .dictation: String(localized: "Dictation Settings")
-    case .keybinds: String(localized: "Keybinds")
-    case .transcribeFile: String(localized: "Transcribe a File")
-    case .aiPolish: String(localized: "AI Polish")
-    case .dictionary: String(localized: "Dictionary")
-    case .snippets: String(localized: "Snippets")
-    case .appSettings: String(localized: "App Settings")
+    case .history: "History"
+    case .dictation: "Dictation Settings"
+    case .keybinds: "Keybinds"
+    case .transcribeFile: "Transcribe a File"
+    case .aiPolish: "AI Polish"
+    case .dictionary: "Dictionary"
+    case .snippets: "Snippets"
+    case .appSettings: "App Settings"
     #if DEBUG
-      case .diagnostics: "Diagnostics"
+      case .diagnostics: nil
     #endif
     }
+  }
+
+  var label: String {
+    labelResource.map { String(localized: $0) } ?? "Diagnostics"
   }
 
   var icon: String {
@@ -116,6 +122,18 @@ enum DictationTab: String, CaseIterable, Hashable, Identifiable {
   case clipboard
 
   var id: Self { self }
+
+  /// The tab's Settings Map identity (#3482). Exhaustive, so a new tab must be given a node.
+  var mapID: SettingsMapID {
+    switch self {
+    case .engine: .dictationTabEngine
+    case .microphone: .dictationTabMicrophone
+    case .livePreview: .dictationTabLivePreview
+    case .pill: .dictationTabPill
+    case .chimes: .dictationTabChimes
+    case .clipboard: .dictationTabClipboard
+    }
+  }
 
   var label: LocalizedStringResource {
     switch self {

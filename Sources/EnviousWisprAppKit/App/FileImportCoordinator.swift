@@ -41,30 +41,27 @@ final class FileImportCoordinator {
     case working
     case done
 
-    var title: String {
+    var titleResource: LocalizedStringResource {
       switch self {
       case .upload:
-        return String(
-          localized: "Upload", comment: "Transcribe a File: a step name in the step bar.")
+        return LocalizedStringResource("Upload", comment: "Transcribe a File: a step name in the step bar.")
       case .transcription:
-        return String(
-          localized: "Transcription", comment: "Transcribe a File: a step name in the step bar.")
+        return LocalizedStringResource("Transcription", comment: "Transcribe a File: a step name in the step bar.")
       case .polish:
-        return String(
-          localized: "transcribeFile.step.polish", defaultValue: "Polish",
+        return LocalizedStringResource("transcribeFile.step.polish", defaultValue: "Polish",
           comment:
             "Transcribe a File: a step name in the step bar. Polish means the AI cleanup of the text (to polish it), never the Polish language."
         )
       case .review:
-        return String(
-          localized: "Review", comment: "Transcribe a File: a step name in the step bar.")
+        return LocalizedStringResource("Review", comment: "Transcribe a File: a step name in the step bar.")
       case .working:
-        return String(
-          localized: "Working", comment: "Transcribe a File: a step name in the step bar.")
+        return LocalizedStringResource("Working", comment: "Transcribe a File: a step name in the step bar.")
       case .done:
-        return String(localized: "Done", comment: "Transcribe a File: a step name in the step bar.")
+        return LocalizedStringResource("Done", comment: "Transcribe a File: a step name in the step bar.")
       }
     }
+
+        var title: String { String(localized: titleResource) }
   }
 
   private(set) var step: Step = .upload

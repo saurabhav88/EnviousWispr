@@ -18,30 +18,32 @@ struct OpenSourceLicensesView: View {
   var body: some View {
     SettingsContentView {
       VStack(alignment: .leading, spacing: 10) {
-        SettingsSectionHeading(title: "ABOUT")
+        SettingsSectionHeading(map: .id(.sectionAbout))
         BrandedSection {
           BrandedRow {
             SettingsRow(
-              icon: "doc.text", title: "EnviousWispr · GPLv3",
-              short: "Open source under the GNU GPL version 3.",
+              map: .id(.licenseGpl),
+              icon: "doc.text",
               help: "Read the GNU General Public License for EnviousWispr."
             ) {
-              SettingsActionButton(title: "View license", isEnabled: true) {
+              SettingsActionButton(title: SettingsItemCopy.AppSettings.viewLicense, isEnabled: true) {
                 open(.license)
               }
+              .settingsMapRegistration(.licenseGplView)
               .focused($focusedDocument, equals: .license)
               .accessibilityFocused($accessibilityDocument, equals: .license)
             }
           }
           BrandedRow(showDivider: false) {
             SettingsRow(
-              icon: "doc.on.doc", title: "Third-Party Notices",
-              short: "Licenses for the tools EnviousWispr uses.",
+              map: .id(.licenseNotices),
+              icon: "doc.on.doc",
               help: "Read the notices for WhisperKit, FluidAudio, Silero VAD, Sparkle and other components."
             ) {
-              SettingsActionButton(title: "View notices", isEnabled: true) {
+              SettingsActionButton(title: SettingsItemCopy.AppSettings.viewNotices, isEnabled: true) {
                 open(.notices)
               }
+              .settingsMapRegistration(.licenseNoticesView)
               .focused($focusedDocument, equals: .notices)
               .accessibilityFocused($accessibilityDocument, equals: .notices)
             }

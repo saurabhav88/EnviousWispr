@@ -20,7 +20,7 @@ struct SharedEngineCardLayoutTests {
       #expect(frames["choices"] != nil && frames["status"] != nil)
       for (_, frame) in frames { #expect(frame.minX >= 0 && frame.maxX <= width) }
       let footer = try LivePreviewSettingsLayoutTests.frame(width: (width - 12) / 2) { probe in
-        EngineCard(icon: "globe", title: "All Languages", tagline: "For other languages or the toughest audio",
+        EngineCard(icon: "globe", map: .id(.transcriptionEngineAllLanguages), tagline: "For other languages or the toughest audio",
           specs: [("Model", "Whisper Large v3 Turbo"), ("Languages", "99+ languages"),
             ("Runs on", "Apple GPU"), ("Transcribe time", "Usually 1-2s after you speak")],
           isSelected: true, onSelect: {}, footer: {
@@ -47,7 +47,8 @@ struct SharedEnginePresentationWiringTests {
     let end = try #require(source.range(of: "// MARK: - Settings Content Container", range: start.lowerBound..<source.endIndex))
     let tree = SwiftParser.Parser.parse(source: String(source[start.lowerBound..<end.lowerBound]))
     let bodies = tree.tokens(viewMode: .sourceAccurate).compactMap { token -> SwiftSyntax.AccessorBlockSyntax? in
-      guard token.text == "body", let binding = token.parent?.parent?.as(SwiftSyntax.PatternBindingSyntax.self) else { return nil }
+      // #3482: `body` adds the card's Settings Map registration to `content`, which holds the layout.
+      guard token.text == "content", let binding = token.parent?.parent?.as(SwiftSyntax.PatternBindingSyntax.self) else { return nil }
       return binding.accessorBlock
     }
     let body = try #require(bodies.first)
@@ -87,12 +88,12 @@ struct SharedEnginePresentationWiringTests {
     }
     #expect(resetRows.count == 1)
     let row = try #require(resetRows.first)
-    #expect(ClipboardSettingsWiringTests.argument("resolvedTitle", of: row) == "String(localized: Copy.autoDetectTitle)")
+    #expect(ClipboardSettingsWiringTests.argument("map", of: row) == ".id(.autoDetectLanguage)")
     #expect(row.tokens(viewMode: .sourceAccurate).contains { $0.text == "suggestionsHelp" })
     #expect(row.tokens(viewMode: .sourceAccurate).contains { $0.text == "accessibilityLabel" })
     let buttons = ClipboardSettingsWiringTests.calls(named: "Button", in: row)
     #expect(buttons.count == 1)
-    #expect(buttons.first?.arguments.first?.expression.trimmedDescription == "\"Reset suggestions\"")
+    #expect(buttons.first?.arguments.first?.expression.trimmedDescription == "SettingsItemCopy.Engine.resetSuggestions")
     #expect(ClipboardSettingsWiringTests.calls(named: "SettingsInfoButton", in: row).isEmpty)
     #expect(ClipboardSettingsWiringTests.argument("resolvedHelp", of: row)?.contains("Copy.suggestionsHelp") == true)
   }

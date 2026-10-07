@@ -420,7 +420,7 @@ struct ProviderSetupSection: View {
   var body: some View {
     if let entry = PolishRailCatalog.entry(for: provider) {
       VStack(alignment: .leading, spacing: SettingsPR1Layout.headingGap) {
-        PolishSectionHeading(providerName: entry.name)
+        PolishSectionHeading(provider: provider)
         if surface == .fileImport {
           Text(SettingsCopy.frozenPerImport)
             .font(.stHelper)
@@ -437,6 +437,9 @@ struct ProviderSetupSection: View {
         revealsKey = false
         modelMenuOpen = false
       }
+      // Transcribe a File shows this same card as a wizard step, which the Settings Map leaves
+      // out (plan §5); there every control inside it counts as wizard content (#3482).
+      .settingsMapExemptScope(.transcribeFileWizard, when: surface == .fileImport)
       .sheet(
         isPresented: Binding(
           get: { model.modelsSheetOpen },
@@ -619,6 +622,7 @@ private var cloudRows: some View {
   // the Keychain is shared and so is the failure.
   if savedKeyIsUnknownForCurrentProvider {
     PolishRow(
+      notInSettingsMap: .savedKeyRetry,
       icon: "questionmark.circle", iconTint: .stWarning,
       title: String(
         localized: "We could not check your saved key on this Mac.",
@@ -677,7 +681,8 @@ private var s1ControlRows: some View {
     }
   }
   PolishRow(
-    icon: "textformat", title: S1ControlCopy.stylingLabel, subtitle: S1ControlCopy.stylingShort,
+    map: .id(.s1Tone),
+    icon: "textformat",
     adaptsTrailing: true
   ) {
     BrandedSegmentedPicker(
@@ -690,8 +695,8 @@ private var s1ControlRows: some View {
   }
   PolishRowDivider()
   PolishRow(
-    icon: "list.bullet", title: S1ControlCopy.structureLabel,
-    subtitle: S1ControlCopy.structureShort, adaptsTrailing: true
+    map: .id(.s1Structure),
+    icon: "list.bullet", adaptsTrailing: true
   ) {
     BrandedSegmentedPicker(
       options: S1Structure.allCases.map { (S1ControlCopy.label(for: $0), nil, $0) },
@@ -703,7 +708,8 @@ private var s1ControlRows: some View {
   }
   PolishRowDivider()
   PolishRow(
-    icon: "envelope", title: S1ControlCopy.contextLabel, subtitle: S1ControlCopy.contextShort,
+    map: .id(.s1Context),
+    icon: "envelope",
     adaptsTrailing: true
   ) {
     BrandedSegmentedPicker(
@@ -720,14 +726,15 @@ private var s1ControlRows: some View {
 @ViewBuilder
 private var modelSelectorRow: some View {
   PolishRow(
-    icon: "cpu", title: String(localized: "Model", comment: "AI Polish: the model row's title."),
-    subtitle: modelRowSubtitle, adaptsTrailing: true
+    map: .id(.polishModel),
+    icon: "cpu",
+    runtimeSubtitle: modelRowSubtitle, adaptsTrailing: true
   ) {
     HStack(spacing: 8) {
       SettingsDropdownField(
         value: modelFieldLabel, isOpen: modelMenuOpen,
         width: PolishSectionLayout.controlColumn,
-        spokenTitle: String(localized: "Model", comment: "AI Polish: the model row's title."),
+        spokenTitle: String(localized: SettingsItemCopy.AIPolish.model),
         isEnabled: !surfaceDiscoveredModels.isEmpty
       ) {
         modelMenuOpen.toggle()
@@ -752,9 +759,7 @@ private var modelSelectorRow: some View {
       } else {
         PolishIconButton(
           systemName: "arrow.clockwise",
-          help: String(
-            localized: "Refresh available models",
-            comment: "AI Polish: re-checks the key and reloads the model list."),
+          help: String(localized: SettingsItemCopy.AIPolish.refreshModels),
           isSpinning: surfaceIsDiscovering
         ) {
           Task {
@@ -762,6 +767,7 @@ private var modelSelectorRow: some View {
               provider: provider, settings: settings, surface: surface)
           }
         }
+        .settingsMapRegistration(.polishModelRefresh)
       }
     }
   }
@@ -812,14 +818,17 @@ private var modelFieldLabel: String {
   /// descriptor, so adding Claude widens this switch instead of tripling the
   /// body (issue #158, plan §3).
   private struct APIKeyDescriptor {
-    let label: String
+    /// The key field's Settings Map identity; its name comes from the map node (#3482). Nil for
+    /// the providers that have no key field.
+    let mapID: SettingsMapID?
     let placeholder: String
     let keychainId: String
     let accessibilityLabel: String
     let privacySentence: String
     /// The line under the key's name: what this provider receives (#3385).
-    var keyShort: String = ""
-    /// Where to get a key, when the provider has a page for it.
+    /// Where to get a key, when the provider has a page for it. The title is the Settings Map's
+    /// (#3482), resolved here for this arm's own provider: the row's detail closure runs later and
+    /// can see the NEXT provider while this row leaves, which has no key page.
     var keyLink: (title: String, url: URL)?
   }
 
@@ -827,51 +836,33 @@ private var modelFieldLabel: String {
     switch provider {
     case .openAI:
       return APIKeyDescriptor(
-        label: String(
-          localized: "OpenAI API Key",
-          comment: "AI Polish: label and VoiceOver name of the API key field."),
+        mapID: .apiKeyOpenAI,
         placeholder: "sk-proj-…",
         keychainId: KeychainManager.openAIKeyID,
-        accessibilityLabel: String(
-          localized: "OpenAI API Key",
-          comment: "AI Polish: label and VoiceOver name of the API key field."),
+        accessibilityLabel: SettingsMapRef.id(.apiKeyOpenAI).title,
         privacySentence: String(
           localized:
             "OpenAI polish sends your transcribed text, plus the active app name and any custom words you've added, but never audio. EnviousWispr also sends store: false so the provider is asked not to retain the request or response.",
           comment:
             "AI Polish: what a cloud provider receives, shown under its API key field. Keep \"store: false\" as written; it is a request field."
         ),
-        keyShort: String(
-          localized: "Sends text and dictation context to OpenAI.",
-          comment: "AI Polish: the line under the OpenAI API key's name."),
         keyLink: (
-          String(
-            localized: "Get your free API key at platform.openai.com",
-            comment: "AI Polish: link to the OpenAI API key page."),
+          SettingsMapRef.dynamic(.apiKeyGetKeyLink, .provider(.openAI)).title,
           URL(string: "https://platform.openai.com/api-keys")!)
       )
     case .gemini:
       return APIKeyDescriptor(
-        label: String(
-          localized: "Google Gemini API Key",
-          comment: "AI Polish: label and VoiceOver name of the API key field."), placeholder: "AI…",
+        mapID: .apiKeyGemini, placeholder: "AI…",
         keychainId: KeychainManager.geminiKeyID,
-        accessibilityLabel: String(
-          localized: "Google Gemini API Key",
-          comment: "AI Polish: label and VoiceOver name of the API key field."),
+        accessibilityLabel: SettingsMapRef.id(.apiKeyGemini).title,
         privacySentence: String(
           localized:
             "Gemini polish sends your transcribed text, plus the active app name and any custom words you've added, but never audio. EnviousWispr also sends store: false so the provider is asked not to retain the request or response.",
           comment:
             "AI Polish: what a cloud provider receives, shown under its API key field. Keep \"store: false\" as written; it is a request field."
         ),
-        keyShort: String(
-          localized: "Sends text and dictation context to Google.",
-          comment: "AI Polish: the line under the Google Gemini API key's name."),
         keyLink: (
-          String(
-            localized: "Get your free API key at aistudio.google.com",
-            comment: "AI Polish: link to the Gemini API key page."),
+          SettingsMapRef.dynamic(.apiKeyGetKeyLink, .provider(.gemini)).title,
           URL(string: "https://aistudio.google.com/apikey")!)
       )
     case .claude:
@@ -884,25 +875,16 @@ private var modelFieldLabel: String {
       // instead of claiming only the transcript leaves the Mac (#158,
       // Codex r5).
       return APIKeyDescriptor(
-        label: String(
-          localized: "Claude API Key",
-          comment: "AI Polish: label and VoiceOver name of the API key field."),
+        mapID: .apiKeyClaude,
         placeholder: "sk-ant-…",
         keychainId: KeychainManager.claudeKeyID,
-        accessibilityLabel: String(
-          localized: "Claude API Key",
-          comment: "AI Polish: label and VoiceOver name of the API key field."),
+        accessibilityLabel: SettingsMapRef.id(.apiKeyClaude).title,
         privacySentence: String(
           localized:
             "Claude polish sends your transcribed text, plus the active app name and any custom words you've added, but never audio. Anthropic's own retention policy for your API account governs how long the request is kept.",
           comment: "AI Polish: what a cloud provider receives, shown under its API key field."),
-        keyShort: String(
-          localized: "Sends text and dictation context to Anthropic.",
-          comment: "AI Polish: the line under the Claude API key's name."),
         keyLink: (
-          String(
-            localized: "Get your Claude API key",
-            comment: "AI Polish: link to the Claude Platform API key page."),
+          SettingsMapRef.dynamic(.apiKeyGetKeyLink, .provider(.claude)).title,
           URL(string: "https://platform.claude.com/settings/keys")!)
       )
     // #2651: enumerated rather than `default:`. The empty descriptor is only
@@ -912,7 +894,7 @@ private var modelFieldLabel: String {
     // sentence. Naming the non-cloud set makes the compiler ask.
     case .ollama, .appleIntelligence, .egOne, .s1Mini, .none:
       return APIKeyDescriptor(
-        label: "", placeholder: "", keychainId: "", accessibilityLabel: "", privacySentence: "")
+        mapID: nil, placeholder: "", keychainId: "", accessibilityLabel: "", privacySentence: "")
     }
   }
 
@@ -956,65 +938,69 @@ private var modelFieldLabel: String {
 @ViewBuilder
 private var apiKeyRow: some View {
   let descriptor = activeKeyDescriptor
+  if let mapID = descriptor.mapID {
   PolishRow(
-    icon: "key", title: descriptor.label, subtitle: descriptor.keyShort,
-    detail: {
-      if let link = descriptor.keyLink {
-        Link(link.title, destination: link.url)
-          .font(.stHelper).tint(Color.stAccent)
-          .padding(.top, 2)
-      }
-    },
-    trailing: {
-      VStack(alignment: .leading, spacing: 6) {
-        HStack(spacing: 8) {
-          keyField(descriptor)
-          SettingsActionButton(
-            title: LocalizedStringResource(
-              "Save", comment: "AI Polish: button that saves the API key."),
-            isEnabled: !activeKeyBinding.wrappedValue.isEmpty && keyDraftIsEdited,
-            emphasis: .filled, size: .medium
-          ) {
-            let provider = provider
-            let key = activeKeyBinding.wrappedValue
-            guard saveKey(key: key, keychainId: descriptor.keychainId) else {
-              // A failed store may or may not have changed what is stored; say unknown and
-              // drop any verdict about the previous key rather than guess (#3438).
-              savedKeyPresence.recordUncertain(provider)
-              return
-            }
-            setKeySaved(!key.isEmpty)
-            // Before the check below starts, so its verdict is tied to THIS key (#3438).
-            savedKeyPresence.recordSaved(provider)
-            Task {
-              await llmDiscovery.validateKeyAndDiscoverModels(
-                provider: provider, settings: settings, surface: surface, source: .save)
-            }
-          }
-          // Clear destroys a stored key, so it is offered only when one is stored, and in
-          // the destructive style so it never reads like an inert button.
-          if savedKeyIsPresentForCurrentProvider {
+      map: .id(mapID),
+      icon: "key",
+      detail: {
+        if let link = descriptor.keyLink {
+          Link(link.title, destination: link.url)
+            .font(.stHelper).tint(Color.stAccent)
+            .padding(.top, 2)
+            .settingsMapRegistration(.apiKeyGetKeyLink)
+        }
+      },
+      trailing: {
+        VStack(alignment: .leading, spacing: 6) {
+          HStack(spacing: 8) {
+            keyField(descriptor)
             SettingsActionButton(
-              title: LocalizedStringResource(
-                "Clear", comment: "AI Polish: button that deletes the saved API key."),
-              isEnabled: true, emphasis: .destructive, size: .medium
+              title: SettingsItemCopy.AIPolish.keySave,
+              isEnabled: !activeKeyBinding.wrappedValue.isEmpty && keyDraftIsEdited,
+              emphasis: .filled, size: .medium
             ) {
-              guard clearKey(keychainId: descriptor.keychainId) else {
+              let provider = provider
+              let key = activeKeyBinding.wrappedValue
+              guard saveKey(key: key, keychainId: descriptor.keychainId) else {
+                // A failed store may or may not have changed what is stored; say unknown and
+                // drop any verdict about the previous key rather than guess (#3438).
                 savedKeyPresence.recordUncertain(provider)
                 return
               }
-              activeKeyBinding.wrappedValue = ""
-              setKeySaved(false)
-              savedKeyPresence.recordCleared(provider)
-              revealsKey = false
-              llmDiscovery.reset()
+              setKeySaved(!key.isEmpty)
+              // Before the check below starts, so its verdict is tied to THIS key (#3438).
+              savedKeyPresence.recordSaved(provider)
+              Task {
+                await llmDiscovery.validateKeyAndDiscoverModels(
+                  provider: provider, settings: settings, surface: surface, source: .save)
+              }
+            }
+            .settingsMapRegistration(.apiKeySave)
+            // Clear destroys a stored key, so it is offered only when one is stored, and in
+            // the destructive style so it never reads like an inert button.
+            if savedKeyIsPresentForCurrentProvider {
+              SettingsActionButton(
+                title: SettingsItemCopy.AIPolish.keyClear,
+                isEnabled: true, emphasis: .destructive, size: .medium
+              ) {
+                guard clearKey(keychainId: descriptor.keychainId) else {
+                  savedKeyPresence.recordUncertain(provider)
+                  return
+                }
+                activeKeyBinding.wrappedValue = ""
+                setKeySaved(false)
+                savedKeyPresence.recordCleared(provider)
+                revealsKey = false
+                llmDiscovery.reset()
+              }
+              .settingsMapRegistration(.apiKeyClear)
             }
           }
+          validationBadge
         }
-        validationBadge
-      }
-    },
-    adaptsTrailing: true)
+      },
+      adaptsTrailing: true)
+  }
 }
 
 /// The key field: secure by default, plain text while the eye is on. Both are the same
@@ -1047,6 +1033,7 @@ private func keyField(_ descriptor: APIKeyDescriptor) -> some View {
       .buttonStyle(.plain)
       .help(revealKeyTitle)
       .accessibilityLabel(revealKeyTitle)
+      .settingsMapRegistration(.apiKeyReveal)
     }
   }
   .settingsFieldChrome(focused: $keyFieldFocused)
@@ -1054,9 +1041,7 @@ private func keyField(_ descriptor: APIKeyDescriptor) -> some View {
 }
 
 private var revealKeyTitle: String {
-  revealsKey
-    ? String(localized: "Hide key", comment: "AI Polish: hides the API key text.")
-    : String(localized: "Show key", comment: "AI Polish: shows the API key text.")
+  SettingsMapRef.dynamic(.apiKeyReveal, .apiKeyReveal(revealed: revealsKey)).title
 }
 
 // MARK: - Validation Badge
@@ -1240,8 +1225,7 @@ private var whyBlock: some View {
   switch provider {
   case .egOne:
     PolishWhyBlock(
-      title: String(
-        localized: "Why use EG-1", comment: "AI Polish: card title explaining a provider."),
+      map: .aiPolishWhyUseEgOne,
       paragraphs: [
         PolishWhyParagraph(
           lead: nil,
@@ -1277,9 +1261,7 @@ private var whyBlock: some View {
     // languages our transcription supports), so the copy says English rather than implying
     // parity.
     PolishWhyBlock(
-      title: String(
-        localized: "Why use \(LLMProvider.s1Mini.displayName)",
-        comment: "AI Polish: card title explaining a provider. %@ is the model name, S1-mini."),
+      map: .aiPolishWhyUseS1Mini,
       paragraphs: [
         PolishWhyParagraph(
           lead: nil,
@@ -1308,9 +1290,7 @@ private var whyBlock: some View {
       ])
   case .appleIntelligence:
     PolishWhyBlock(
-      title: String(
-        localized: "Why use Apple Intelligence",
-        comment: "AI Polish: card title explaining a provider."),
+      map: .aiPolishWhyUseAppleIntelligence,
       paragraphs: [
         PolishWhyParagraph(
           lead: nil,
@@ -1334,19 +1314,13 @@ private var whyBlock: some View {
               "Apple Intelligence needs macOS 26 or later, a supported Mac, and Apple Intelligence turned on in System Settings. The status above says what this Mac reports.",
             comment: "AI Polish, Why use Apple Intelligence: when it is not available.")),
       ],
-      link: (
-        String(
-          localized: "About Apple Intelligence",
-          comment: "AI Polish: link to Apple's Apple Intelligence support page."),
-        URL(string: "https://support.apple.com/en-us/121115")!
-      ))
+      link: (map: .aiPolishLinkAboutAppleIntelligence, url: URL(string: "https://support.apple.com/en-us/121115")!))
   case .ollama:
     // #1914: Ollama can run models on its own servers, so the local claim is scoped to local
     // polish. Stating which is which is accuracy, not a warning: per the 2026-08-01 doctrine
     // correction there is no discouragement of the hosted path.
     PolishWhyBlock(
-      title: String(
-        localized: "Why use Ollama", comment: "AI Polish: card title explaining a provider."),
+      map: .aiPolishWhyUseOllama,
       paragraphs: [
         PolishWhyParagraph(
           lead: nil,
@@ -1375,15 +1349,10 @@ private var whyBlock: some View {
               "AI Polish, Why use Ollama: where to get another model. Keep ollama pull as written.")
         ),
       ],
-      link: (
-        String(
-          localized: "Ollama model library", comment: "AI Polish: link to Ollama's model library."),
-        URL(string: "https://ollama.com/library")!
-      ))
+      link: (map: .aiPolishLinkOllamaLibrary, url: URL(string: "https://ollama.com/library")!))
   case .openAI:
     PolishWhyBlock(
-      title: String(
-        localized: "Why use OpenAI", comment: "AI Polish: card title explaining a provider."),
+      map: .aiPolishWhyUseOpenAI,
       paragraphs: [
         PolishWhyParagraph(
           lead: nil,
@@ -1408,16 +1377,10 @@ private var whyBlock: some View {
               "Your key lists the models your OpenAI account can use, and EnviousWispr leaves out kinds of model it cannot use for cleanup. Some models need a verified organization or a higher usage tier.",
             comment: "AI Polish, Why use OpenAI: why a model may be missing.")),
       ],
-      link: (
-        String(
-          localized: "OpenAI rate limits by tier",
-          comment: "AI Polish: link to OpenAI's rate limits page."),
-        URL(string: "https://platform.openai.com/docs/guides/rate-limits")!
-      ))
+      link: (map: .aiPolishLinkOpenAIRateLimits, url: URL(string: "https://platform.openai.com/docs/guides/rate-limits")!))
   case .gemini:
     PolishWhyBlock(
-      title: String(
-        localized: "Why use Gemini", comment: "AI Polish: card title explaining a provider."),
+      map: .aiPolishWhyUseGemini,
       paragraphs: [
         PolishWhyParagraph(
           lead: nil,
@@ -1442,16 +1405,10 @@ private var whyBlock: some View {
               "Those aren't blocked by EnviousWispr. Your Gemini API key doesn't currently have access to them. Some Gemini models are gated by region, billing tier, or preview status.",
             comment: "AI Polish, Why use Gemini: why a model may be locked.")),
       ],
-      link: (
-        String(
-          localized: "Gemini API rate limits by tier",
-          comment: "AI Polish: link to Google's Gemini rate limits page."),
-        URL(string: "https://ai.google.dev/gemini-api/docs/rate-limits")!
-      ))
+      link: (map: .aiPolishLinkGeminiRateLimits, url: URL(string: "https://ai.google.dev/gemini-api/docs/rate-limits")!))
   case .claude:
     PolishWhyBlock(
-      title: String(
-        localized: "Why use Claude", comment: "AI Polish: card title explaining a provider."),
+      map: .aiPolishWhyUseClaude,
       paragraphs: [
         PolishWhyParagraph(
           lead: nil,
@@ -1482,12 +1439,7 @@ private var whyBlock: some View {
               "Those aren't blocked by EnviousWispr. Model access and limits depend on your Anthropic account's usage tier.",
             comment: "AI Polish, Why use Claude: why a model may be missing.")),
       ],
-      link: (
-        String(
-          localized: "Claude API rate limits",
-          comment: "AI Polish: link to Anthropic's rate limits page."),
-        URL(string: "https://docs.anthropic.com/en/api/rate-limits")!
-      ))
+      link: (map: .aiPolishLinkClaudeRateLimits, url: URL(string: "https://docs.anthropic.com/en/api/rate-limits")!))
   case .none:
     EmptyView()
   }
@@ -1506,6 +1458,7 @@ private var ollamaSetupContent: some View {
   switch state {
   case .detecting:
     PolishRow(
+      notInSettingsMap: .statusLine,
       icon: "magnifyingglass", showsSpinner: true,
       title: String(
         localized: "Checking Ollama installation...",
@@ -1516,6 +1469,7 @@ private var ollamaSetupContent: some View {
 
   case .notInstalled:
     PolishRow(
+      notInSettingsMap: .statusLine,
       icon: "arrow.down.circle",
       title: String(
         localized: "Install Ollama", comment: "AI Polish, Ollama setup: the current step."),
@@ -1530,24 +1484,23 @@ private var ollamaSetupContent: some View {
     ) {
       HStack(spacing: 8) {
         SettingsActionButton(
-          title: LocalizedStringResource(
-            "Download Ollama", comment: "AI Polish, Ollama setup: opens the Ollama download page."
-          ),
+          title: SettingsItemCopy.AIPolish.downloadOllama,
           isEnabled: true, emphasis: .filled, size: .medium
         ) {
           if let url = URL(string: "https://ollama.com/download") {
             NSWorkspace.shared.open(url)
           }
         }
+        .settingsMapRegistration(.ollamaDownloadOllama)
         ollamaRefreshButton()
       }
     }
 
   case .installedNotRunning:
     PolishRow(
+      notInSettingsMap: .statusLine,
       icon: "play.circle",
-      title: String(
-        localized: "Start Ollama", comment: "AI Polish, Ollama setup: the current step."),
+      title: String(localized: SettingsItemCopy.AIPolish.startOllama),
       subtitle: String(
         localized: "Ollama is installed but isn't running yet. Or run `ollama serve` in Terminal.",
         comment:
@@ -1557,18 +1510,19 @@ private var ollamaSetupContent: some View {
     ) {
       HStack(spacing: 8) {
         SettingsActionButton(
-          title: LocalizedStringResource(
-            "Start Ollama", comment: "AI Polish, Ollama setup: the current step."),
+          title: SettingsItemCopy.AIPolish.startOllama,
           isEnabled: true, emphasis: .filled, size: .medium
         ) {
           setup.ollamaSetup.startServer()
         }
+        .settingsMapRegistration(.ollamaStart)
         ollamaRefreshButton()
       }
     }
 
   case .runningNoModels:
     PolishRow(
+      notInSettingsMap: .statusLine,
       icon: "arrow.down.circle",
       title: String(
         localized: "Download a model", comment: "AI Polish, Ollama setup: the current step."),
@@ -1580,7 +1534,9 @@ private var ollamaSetupContent: some View {
         // own pull arrives second and cancels this download. Both pull entry points read
         // the same signal.
         SettingsActionButton(
-          title: "Download \(surfaceOllamaModel)",
+          verbatimTitle: SettingsMapRef.dynamic(
+            .ollamaDownloadModel, .ollamaModel(name: surfaceOllamaModel)
+          ).title,
           isEnabled: !hostedAddIsResolving,
           emphasis: .filled, size: .medium
         ) {
@@ -1589,6 +1545,7 @@ private var ollamaSetupContent: some View {
           // changed the setting to something that failed every test gets asked first.
           ProviderSetupDownloads.request(surfaceOllamaModel, model: model, setup: setup)
         }
+        .settingsMapRegistration(.ollamaDownloadModel)
         ollamaRefreshButton()
       }
     }
@@ -1597,6 +1554,7 @@ private var ollamaSetupContent: some View {
 
   case .pullingModel(let progress, let status):
     PolishRow(
+      notInSettingsMap: .statusLine,
       icon: "arrow.down.circle",
       // #1956: reads the service rather than hard-coding, so a hosted Add is not announced
       // as a download.
@@ -1614,9 +1572,10 @@ private var ollamaSetupContent: some View {
               .monospacedDigit()
               .foregroundStyle(Color.stTextSecondary)
           }
-          PolishTextAction(title: String(localized: "Cancel")) {
+          PolishTextAction(title: String(localized: SettingsItemCopy.AIPolish.ollamaCancel)) {
             setup.ollamaSetup.cancelPull()
           }
+          .settingsMapRegistration(.ollamaCancelPull)
         }
       })
     PolishRowDivider()
@@ -1624,9 +1583,9 @@ private var ollamaSetupContent: some View {
 
   case .ready:
     PolishRow(
+      map: .id(.ollamaServer),
       icon: "server.rack",
-      title: String(localized: "Server", comment: "AI Polish, Ollama: the server row's title."),
-      subtitle: OllamaSetupService.serverAddress
+      runtimeSubtitle: OllamaSetupService.serverAddress
     ) {
       HStack(spacing: 10) {
         ProviderStatusChip(
@@ -1650,14 +1609,14 @@ private var ollamaSetupContent: some View {
 
   case .error(let message):
     PolishRow(
+      notInSettingsMap: .statusLine,
       icon: "exclamationmark.triangle", iconTint: .stWarning,
       title: String(
         localized: "Something went wrong", comment: "AI Polish, Ollama: an unexpected error."),
       subtitle: message
     ) {
       SettingsActionButton(
-        title: LocalizedStringResource(
-          "Try Again", comment: "AI Polish, Ollama: checks the Ollama setup again."),
+        title: SettingsItemCopy.AIPolish.ollamaTryAgain,
         isEnabled: true, emphasis: .quiet, size: .medium
       ) {
         Task {
@@ -1668,6 +1627,7 @@ private var ollamaSetupContent: some View {
           }
         }
       }
+      .settingsMapRegistration(.ollamaTryAgain)
     }
   }
 }
@@ -1719,11 +1679,7 @@ private var ollamaBrowseModelsCard: some View {
         .background(Color.stAccentLight, in: RoundedRectangle(cornerRadius: 8))
       VStack(alignment: .leading, spacing: 3) {
         HStack(spacing: 8) {
-          Text(
-            String(
-              localized: "Download more models",
-              comment: "AI Polish, Ollama: title of the card that opens the model list.")
-          )
+          Text(SettingsItemCopy.AIPolish.ollamaBrowseModels)
           .font(.stRowLabel)
           .foregroundStyle(Color.stTextPrimary)
           Text(
@@ -1758,6 +1714,7 @@ private var ollamaBrowseModelsCard: some View {
       .padding(.vertical, 6)
       .background(Capsule().fill(Color.stAccentSolid))
     }
+  .settingsMapRegistration(.ollamaBrowseModels)
     .padding(12)
     .background(
       RoundedRectangle(cornerRadius: 11, style: .continuous).fill(Color.stAccent.opacity(0.06))
@@ -1798,14 +1755,12 @@ private var ollamaBrowseModelsCard: some View {
     let report = aiAvailability.latestReport
     let isAvailable = report?.overallStatus == .available
     PolishRow(
+      map: .dynamic(
+        .appleIntelligenceStatus,
+        .appleIntelligenceStatus(unavailable: report?.overallStatus == .unavailable)),
       icon: isAvailable ? "checkmark.circle" : "exclamationmark.triangle",
       iconTint: isAvailable ? .stAccent : .stWarning,
-      title: report?.overallStatus == .unavailable
-        ? String(
-          localized: "Not available on this Mac",
-          comment: "AI Polish, Apple Intelligence: the status row's title when this Mac reports it unavailable.")
-        : String(localized: "Status", comment: "AI Polish, Apple Intelligence: the status row's title."),
-      subtitle: appleStatusLine(report)
+      runtimeSubtitle: appleStatusLine(report)
     ) {
       HStack(spacing: 10) {
         if let status = currentProviderStatus {
@@ -1813,13 +1768,12 @@ private var ollamaBrowseModelsCard: some View {
         }
         PolishIconButton(
           systemName: "arrow.clockwise",
-          help: String(
-            localized: "Check Apple Intelligence availability",
-            comment: "AI Polish, Apple Intelligence: re-checks availability."),
+          help: String(localized: SettingsItemCopy.AIPolish.appleRecheck),
           isSpinning: aiAvailability.isChecking
         ) {
           aiAvailability.debouncedCheck()
         }
+        .settingsMapRegistration(.appleIntelligenceRecheck)
       }
     }
     .help(
@@ -2428,8 +2382,7 @@ private var ollamaBrowseModelsCard: some View {
   private func ollamaRefreshButton() -> some View {
     PolishIconButton(
       systemName: "arrow.clockwise",
-      help: String(
-        localized: "Re-check Ollama status", comment: "AI Polish, Ollama: checks Ollama again.")
+      help: String(localized: SettingsItemCopy.AIPolish.ollamaRecheck)
     ) {
       Task {
         await setup.ollamaSetup.detectState()
@@ -2439,6 +2392,7 @@ private var ollamaBrowseModelsCard: some View {
         }
       }
     }
+    .settingsMapRegistration(.ollamaRecheck)
   }
 
   // MARK: - Ollama Warm-up Indicator
@@ -2488,11 +2442,12 @@ private var ollamaBrowseModelsCard: some View {
     default:
       PolishIconButton(
         systemName: "bolt",
-        help: String(localized: "Prepare model", comment: "AI Polish, Ollama: loads the model now.")
+        help: String(localized: SettingsItemCopy.AIPolish.ollamaPrepareModel)
       ) {
         guard !surfaceCloudModel.isEmpty else { return }
         setup.ollamaSetup.warmUpModel(surfaceCloudModel)
       }
+      .settingsMapRegistration(.ollamaPrepareModel)
     }
   }
 }

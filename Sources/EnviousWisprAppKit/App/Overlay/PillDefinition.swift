@@ -84,24 +84,23 @@ extension RecordingPillDesign {
   /// table in the view would be a second one on day one — the drift shape this
   /// phase exists to remove, one field over — and a design added later would
   /// render with a blank card until somebody remembered the other list.
-  var displayName: String {
+  var displayNameResource: LocalizedStringResource {
     switch self {
     case .classic:
-      return String(
-        localized: "Capsule",
+      return LocalizedStringResource("Capsule",
         comment: "Recording Pill settings: name of the original recording pill style.")
     case .readingWell:
-      return String(
-        localized: "Reading Well",
+      return LocalizedStringResource("Reading Well",
         comment:
           "Recording Pill settings: name of the recording pill style that shows your words as you speak."
       )
     case .levelRail:
-      return String(
-        localized: "Level Rail",
+      return LocalizedStringResource("Level Rail",
         comment: "Recording Pill settings: name of the recording pill style with a voice level meter.")
     }
   }
+
+    var displayName: String { String(localized: displayNameResource) }
 
   /// One sentence on the card, in the user's terms rather than ours. No em or en
   /// dashes (GR-NO-DASHES).

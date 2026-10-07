@@ -101,28 +101,20 @@ struct QuickAddTeachingSection: View {
   private var stepCards: some View {
     stepCard(
       1,
-      title: String(
-        localized: "Highlight a word",
-        comment: "Dictionary settings, Quick Add teaching card: step 1 title."),
-      body: String(
-        localized: "Select the word you want to fix in an email, chat, or document.",
-        comment: "Dictionary settings, Quick Add teaching card: step 1."))
+      title: String(localized: SettingsItemCopy.Dictionary.quickAddStep1),
+      body: String(localized: SettingsItemCopy.Dictionary.quickAddStep1Body))
+    .settingsMapRegistration(.quickAddStep1)
     stepCard(
       2,
-      title: String(
-        localized: "Trigger Quick Add",
-        comment: "Dictionary settings, Quick Add teaching card: step 2 title."),
+      title: String(localized: SettingsItemCopy.Dictionary.quickAddStep2),
       body: triggerStepBody)
+    .settingsMapRegistration(.quickAddStep2)
     stepCard(
       3,
-      title: String(
-        localized: "Choose and save",
-        comment: "Dictionary settings, Quick Add teaching card: step 3 title."),
-      body: String(
-        localized:
-          "Choose the word you meant, or create a new one. Quick Add saves the highlighted spelling to your dictionary.",
-        comment: "Dictionary settings, Quick Add teaching card: step 3.")
+      title: String(localized: SettingsItemCopy.Dictionary.quickAddStep3),
+      body: String(localized: SettingsItemCopy.Dictionary.quickAddStep3Body)
     )
+    .settingsMapRegistration(.quickAddStep3)
   }
 
   private func stepCard(_ number: Int, title: String, body: String) -> some View {
@@ -163,9 +155,7 @@ struct QuickAddTeachingSection: View {
     } label: {
       calloutContent(
         icon: "keyboard",
-        label: String(
-          localized: "Keyboard shortcut",
-          comment: "Dictionary settings, Quick Add teaching card: label of the shortcut callout."),
+        label: String(localized: SettingsItemCopy.Dictionary.quickAddShortcut),
         // The LIVE configured shortcut, not the shipped default — this must
         // stay correct after someone rebinds Quick Add on Keybinds. When it
         // currently conflicts with Record or Cancel, say so rather than
@@ -190,24 +180,19 @@ struct QuickAddTeachingSection: View {
     }
     .buttonStyle(.plain)
     .accessibilityHint("Opens Keybinds")
+    .settingsMapRegistration(.quickAddShortcut)
   }
 
   private var menuBarCallout: some View {
     calloutContent(
       icon: "circle.grid.2x2",
-      label: String(
-        localized: "Menu bar",
-        comment: "Dictionary settings, Quick Add teaching card: label of the menu bar callout."),
+      label: String(localized: SettingsItemCopy.Dictionary.quickAddMenuBar),
       // Verified against MenuBarController.swift: the item's real title is
       // "Add to Dictionary" (nothing selected) or "Add "<word>"" — never
       // literally "Quick Add".
-      value: String(
-        localized:
-          "Click the EnviousWispr icon, then choose the item that starts with \u{201C}Add\u{201D}",
-        comment:
-          "Dictionary settings, Quick Add teaching card: how to reach it from the menu bar. Add is the first word of the menu item; use the same word as that menu item in this language, with this language's quotation marks."
-      )
+      value: String(localized: SettingsItemCopy.Dictionary.quickAddMenuBarBody)
     )
+    .settingsMapRegistration(.quickAddMenuBar)
   }
 
   private func calloutContent(icon: String, label: String, value: String) -> some View {

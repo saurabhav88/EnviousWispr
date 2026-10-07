@@ -1,0 +1,50 @@
+{
+  "ko": {
+    "verdict": "changed",
+    "markers": ["안", "못", "아니", "않다", "않게", "않아", "없다", "없이", "말고", "말아", "마", "켜", "켜줘", "꺼", "꺼줘", "활성화", "비활성화", "시작", "중지", "멈춰", "표시", "숨기기", "음소거", "해제", "일시정지", "재개", "더", "덜", "크게", "작게", "빠르게", "느리게", "위", "아래", "다시", "또", "높여", "낮춰", "늘려", "줄여"],
+    "stop": ["이", "을", "에", "의", "가", "를", "들", "에서", "으로", "나", "로", "과", "것", "그", "와", "제", "우리", "에게", "네", "저", "등", "그리고", "및", "너", "이런", "해요", "자신", "제가", "저는", "나는", "좀요", "부탁해요"],
+    "notes": "Normalized Hangul, prioritized common commands within 40 markers, and removed numbers, timing, quantity, and ambiguous fragments from stop."
+  },
+  "lt": {
+    "verdict": "changed",
+    "markers": ["ne", "nėra", "be", "niekada", "nieko", "joks", "jokia", "jokių", "įjungti", "įjunk", "išjungti", "išjunk", "pristabdyk", "tęsk", "įgalink", "pradėti", "pradėk", "sustabdyti", "sustabdyk", "rodyti", "rodyk", "slėpti", "paslėpk", "nutildyti", "nutildyk", "pristabdyti", "tęsti", "daugiau", "mažiau", "garsiau", "tyliau", "greičiau", "lėčiau", "didesnis", "mažesnis", "aukštyn", "žemyn", "vėl", "padidinti", "sumažinti"],
+    "stop": ["ir", "kad", "su", "tai", "kaip", "ar", "o", "savo", "bet", "apie", "jis", "pat", "kas", "prie", "nes", "arba", "ji", "kur", "pagal", "mes", "mano", "kuris", "man", "jums", "tarp", "jus", "kuri", "gal", "tiesiog", "pats", "ta", "tas", "toks", "mums", "taigi", "kodel", "kodėl", "juk", "pas", "tokia", "prašau", "norėčiau"],
+    "notes": "Prioritized imperative controls and removed negation, continuation, quantity, conditions, and timing from stop."
+  },
+  "lv": {
+    "verdict": "changed",
+    "markers": ["ne", "nav", "bez", "nekad", "nekas", "neko", "neviena", "neviens", "ieslēgt", "ieslēdz", "izslēgt", "izslēdz", "iespējot", "atspējot", "sākt", "sāc", "apturēt", "apturi", "pārtraukt", "rādīt", "rādi", "paslēpt", "paslēp", "apklusināt", "pauze", "turpināt", "turpini", "vairāk", "mazāk", "skaļāk", "klusāk", "ātrāk", "lēnāk", "lielāks", "mazāks", "augšup", "lejup", "atkal", "palielināt", "samazināt"],
+    "stop": ["un", "ir", "ar", "par", "ka", "ari", "arī", "vai", "bet", "ta", "tā", "lai", "bija", "var", "bus", "būs", "jo", "gan", "nu", "esmu", "kaut", "pa", "tiek", "pat", "but", "būt", "tacu", "taču", "tika", "tapec", "tāpēc", "esi", "tomer", "tomēr", "te", "starp", "esam", "es", "man", "lūdzu"],
+    "notes": "Added the common resume imperative and missing fillers while protecting comparison, restriction, direction, and timing."
+  },
+  "mt": {
+    "verdict": "changed",
+    "markers": ["le", "mhux", "mingħajr", "bla", "qatt", "xejn", "ebda", "ħadd", "la", "ixgħel", "itfi", "mixgħul", "mitfi", "attiva", "iddiżattiva", "ibda", "waqqaf", "waqqafha", "uri", "aħbi", "sikket", "issikket", "pawża", "kompli", "aktar", "iżjed", "inqas", "ogħla", "baxx", "akbar", "iżgħar", "fuq", "isfel", "erġa'", "żid", "naqqas", "malajr", "bil-mod", "għolli", "niżżel"],
+    "stop": ["il", "l", "u", "ta", "tal", "tat", "li", "għal", "lil", "jien", "inti", "hu", "hija", "aħna", "intom", "huma", "dan", "din", "dak", "dik", "jekk", "jogħġbok", "nixtieq"],
+    "notes": "Replaced activation nouns with common speed and adjustment words and added basic fillers, including the polite expression jekk jogħġbok."
+  },
+  "nl": {
+    "verdict": "changed",
+    "markers": ["niet", "nee", "geen", "zonder", "nooit", "niks", "aan", "uit", "inschakelen", "uitschakelen", "aanzetten", "uitzetten", "activeren", "deactiveren", "start", "starten", "stop", "stoppen", "toon", "tonen", "verberg", "verbergen", "dempen", "pauzeren", "hervatten", "meer", "minder", "luider", "harder", "zachter", "stiller", "sneller", "langzamer", "groter", "kleiner", "omhoog", "omlaag", "opnieuw", "weer", "af"],
+    "stop": ["de", "van", "het", "een", "en", "ik", "dat", "voor", "je", "te", "met", "zijn", "er", "maar", "om", "hij", "ook", "ze", "door", "naar", "bij", "dit", "wat", "heeft", "of", "deze", "hebben", "kan", "zo", "mijn", "wel", "u", "wordt", "heb", "worden", "haar", "ben", "kunnen", "me", "moet", "hoe", "ons", "waar", "werd", "onze", "wil", "zich", "zou", "doen", "dus", "maken", "mij", "had", "hun", "zal", "jij", "moeten", "wij", "daar", "toch", "zij", "zoals", "iets", "omdat", "waren", "hem", "jullie", "ja", "wie", "waarom", "via", "gewoon", "bent", "maakt", "willen", "iedereen", "iemand", "uw", "werden", "zelf", "hebt", "kunt", "mag", "doet", "want", "zeker", "zullen", "misschien", "alstublieft", "alsjeblieft", "graag"],
+    "notes": "Prioritized common volume commands and protected repetition, switching particles, quantity, scope, and timing."
+  },
+  "pl": {
+    "verdict": "changed",
+    "markers": ["nie", "bez", "nigdy", "nic", "żaden", "żadna", "żadnych", "włącz", "włączyć", "wyłącz", "wyłączyć", "uruchom", "zatrzymaj", "zatrzymać", "przerwij", "pokaż", "pokazać", "ukryj", "ukryć", "wycisz", "wyciszyć", "wstrzymaj", "wznów", "więcej", "mniej", "bardziej", "głośniej", "ciszej", "szybciej", "wolniej", "większy", "mniejszy", "większą", "mniejszą", "zwiększ", "zmniejsz", "górę", "dół", "ponownie", "znów"],
+    "stop": ["w", "i", "na", "sie", "się", "do", "jest", "ze", "że", "o", "jak", "ale", "co", "tak", "dla", "tym", "czy", "przez", "tego", "sa", "są", "ma", "mi", "mnie", "moze", "może", "bo", "ja", "ten", "oraz", "bedzie", "będzie", "byc", "być", "jego", "sobie", "ich", "mam", "tez", "też", "był", "ktore", "które", "jako", "jestem", "było", "jej", "ktory", "który", "nawet", "go", "no", "cos", "coś", "ci", "tam", "te", "wiec", "więc", "gdzie", "tej", "zeby", "żeby", "jednak", "lub", "mozna", "można", "przy", "nas", "takze", "także", "tu", "była", "u", "tych", "rowniez", "również", "ta", "takie", "ktos", "ktoś", "kto", "ktora", "która", "aby", "albo", "ty", "maja", "mają", "ktorzy", "którzy", "dlaczego", "nich", "mu", "mamy", "chce", "chcę", "je", "temu", "tutaj", "został", "beda", "będą", "były", "nam", "ktorych", "których", "taki", "swoje", "dlatego", "ktorym", "którym", "miał", "moje", "moj", "mój", "ok", "trzeba", "nim", "ciebie", "moga", "mogą", "oni", "cie", "cię", "ktorej", "której", "moja", "ona", "jakie", "proszę"],
+    "notes": "Prioritized direction and common size inflections, added polite fillers, and protected quantity, restriction, timing, and comparison."
+  },
+  "pt": {
+    "verdict": "changed",
+    "markers": ["não", "nao", "sem", "nunca", "nada", "nenhum", "nenhuma", "nem", "ativar", "ativa", "ative", "desativar", "desativa", "desative", "ligar", "liga", "ligue", "desligar", "desliga", "desligue", "iniciar", "parar", "pare", "mostrar", "ocultar", "silenciar", "pausar", "retomar", "mais", "menos", "maior", "menor", "aumentar", "diminuir", "rápido", "devagar", "alto", "baixo", "cima", "novamente"],
+    "stop": ["a", "e", "um", "de", "o", "que", "do", "em", "da", "para", "uma", "no", "na", "por", "os", "eu", "como", "dos", "mas", "foi", "ao", "me", "voce", "você", "ser", "seu", "sua", "tem", "sao", "são", "das", "ou", "ele", "isso", "nos", "tambem", "também", "esta", "está", "meu", "pelo", "ela", "vai", "pela", "sobre", "bem", "mesmo", "pode", "te", "ter", "aqui", "fazer", "minha", "quem", "entre", "era", "seus", "nas", "assim", "este", "onde", "estao", "estão", "esse", "essa", "eles", "ha", "há", "porque", "tenho", "foram", "aos", "coisa", "sou", "suas", "quero", "sei", "entao", "então", "nossa", "faz", "qual", "quer", "estou", "seja", "sera", "será", "la", "lá", "qualquer", "sim", "sendo", "diz", "sabe", "tinha", "dar", "ir", "boa", "estava", "nosso", "deve", "podem", "estar", "dizer", "favor", "poderia", "gostaria"],
+    "notes": "Added speed, volume, upward direction, repetition, and basic fillers while protecting setting terms, quantity, scope, and timing."
+  },
+  "ro": {
+    "verdict": "changed",
+    "markers": ["nu", "fără", "nici", "niciodată", "nimic", "niciun", "nicio", "activează", "activare", "dezactivează", "dezactivare", "pornește", "pornire", "oprește", "oprire", "oprit", "pornit", "începe", "arată", "afișează", "afișare", "ascunde", "întrerupe", "pauză", "reia", "continuă", "mai", "mult", "puțin", "tare", "încet", "repede", "lent", "mare", "mic", "sus", "jos", "iar", "mărește", "micșorează"],
+    "stop": ["de", "si", "și", "la", "sa", "să", "din", "o", "pe", "cu", "un", "este", "ca", "care", "pentru", "se", "au", "ce", "fost", "al", "am", "sunt", "fi", "va", "lui", "dar", "sau", "i", "ne", "ar", "le", "poate", "prin", "cum", "ale", "despre", "era", "are", "l", "cel", "cele", "noi", "el", "ei", "dintre", "te", "face", "pot", "chiar", "vor", "asa", "așa", "acest", "bine", "mi", "catre", "către", "unui", "avea", "ma", "mă", "unde", "cea", "eu", "unei", "intre", "între", "în", "aceasta", "ii", "îi", "asta", "ceea", "avut", "lor", "il", "îl", "d", "aici", "m", "astfel", "ea", "orice", "ceva", "acesta", "dat", "unor", "avem", "sale", "isi", "își", "mea", "ori", "voi", "insa", "însă", "ti", "ți", "aceste", "acolo", "mine", "imi", "îmi", "da", "acestea", "nostru", "rog", "vreau", "aș", "vă"],
+    "notes": "Replaced the rare dezmutare and lower-priority forms with common controls and protected timing, quantity, restriction, and negation fragments."
+  }
+}

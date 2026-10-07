@@ -9,7 +9,7 @@ struct AppSettingsView: View {
       VStack(spacing: 0) {
         SettingsTabStrip(
           items: AppSettingsTab.allCases.map {
-            SettingsTabItem(id: $0, icon: $0.icon, label: $0.label)
+            SettingsTabItem(id: $0, icon: $0.icon, label: $0.label, map: $0.mapID)
           }, selection: $selection
         )
         .frame(width: max(0, pane.size.width - 2 * (SettingsLayout.contentH - 4)))

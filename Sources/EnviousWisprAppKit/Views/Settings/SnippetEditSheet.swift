@@ -80,6 +80,7 @@ struct SnippetEditSheet: View {
   private var triggerField: some View {
     VStack(alignment: .leading, spacing: 6) {
       SettingsRow(
+        notInSettingsMap: .sheetOrPopoverContent,
         icon: "text.word.spacing",
         title: "Trigger",
         short: SnippetsSettingsCopy.triggerShort,
@@ -108,6 +109,7 @@ struct SnippetEditSheet: View {
   private var expansionField: some View {
     VStack(alignment: .leading, spacing: 6) {
       SettingsRow(
+        notInSettingsMap: .sheetOrPopoverContent,
         icon: "doc.text",
         title: "Text to paste",
         short: SnippetsSettingsCopy.textShort,

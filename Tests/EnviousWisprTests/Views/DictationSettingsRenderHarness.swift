@@ -1,6 +1,8 @@
 import AppKit
 import CoreAudio
+import EnviousWisprAudio
 import EnviousWisprCore
+import EnviousWisprModelDelivery
 import EnviousWisprPipeline
 @testable import EnviousWisprServices
 import SwiftUI
@@ -119,12 +121,22 @@ struct DictationSettingsRenderHarness {
     var removing = false
     var preparing = false
     var previewOn = true
+    /// Whether Apple's preview engine runs here; set, so a state never depends on the macOS.
+    var appleSupported = true
     var mode: LanguageMode = .locked("en")
     var active: LivePreviewPacksModel.ActiveLanguage = .ready(tag: "en-US", name: "English")
     var supported = ["en-US", "de-DE"]
     var installed = ["en-US"]
     var stagedInstall = false
     var staleLanguage = false
+    /// #3482: the rows these switches reveal.
+    var stopOnSilence = false
+    var spokenPunctuation = false
+    /// Microphones the page lists, and the chosen one's UID ("" follows macOS).
+    var devices: [AudioInputDevice] = []
+    var preferredInputUID = ""
+    /// A Fast model delivery state to show instead of the fixture's own.
+    var fastDelivery: DeliveryState?
   }
 
   static func page(tab: DictationTab, german: Bool, scenario: Scenario = Scenario(),
@@ -136,6 +148,8 @@ struct DictationSettingsRenderHarness {
     settings.livePreviewEnabled = scenario.previewOn
     settings.livePreviewEngine = .apple
     settings.otherAudioWhileDictating = .nothing
+    settings.vadAutoStop = scenario.stopOnSilence
+    settings.spokenPunctuation.enabled = scenario.spokenPunctuation
     let removalGate = InstallGate()
     let warmGate = InstallGate()
     if scenario.removing { Self.installGates.append(removalGate) }
@@ -159,7 +173,8 @@ struct DictationSettingsRenderHarness {
       ollamaStatusProbe: { _ in })
     let presenter = LanguageSuggestionPresenter(overlay: NoOverlay(), onLanguageAccepted: { _ in }, defaults: defaults)
     let devices = AudioDeviceList()
-    devices.availableInputDevices = []
+    devices.availableInputDevices = scenario.devices
+    settings.preferredInputDeviceIDOverride = scenario.preferredInputUID
     let audio = RouterTestAudioCapture()
     let asr = RouterTestASRManager()
     let store = TranscriptStore(directory: runDirectory.appending(path: "fixture-history"))
@@ -168,7 +183,9 @@ struct DictationSettingsRenderHarness {
       whisperKitKernelDriver: DictationRuntimeFixtures.makeWhisperKitPipeline(audioCapture: audio, store: store),
       audioCapture: audio, asrManager: asr)
     let runtime = idleRuntime(settings: settings, audio: audio, asr: asr, recording: recording, store: store)
-    let pill = PillAppearanceModel(settings: settings, capability: { .available })
+    // The app reports .previewOff while Live Preview is off, which selects the wordless design.
+    let previewOn = scenario.previewOn
+    let pill = PillAppearanceModel(settings: settings, capability: { previewOn ? .available : .previewOff })
     let supported = scenario.supported
     let installed = scenario.installed
     let stagedInstall = scenario.stagedInstall
@@ -228,6 +245,9 @@ struct DictationSettingsRenderHarness {
       // The normal page now renders real async controller admission, rather
       // than omitting its home. Only sparse, isolated files are provided.
       let fixture = try ModelDeliveryHomeTests.fastRenderFixture()
+      if let fastDelivery = scenario.fastDelivery {
+        fixture.home.applyParakeetStateForTesting(fastDelivery)
+      }
       hostedRoot = AnyView(hostedRoot.environment(fixture.home))
       #if DEBUG
       hostedRoot = AnyView(hostedRoot.environment(\.fastAdmissionTestHooks,
@@ -237,7 +257,8 @@ struct DictationSettingsRenderHarness {
     }
     return AnyView(hostedRoot.environment(settings).environment(setup).environment(presenter)
       .environment(devices).environment(recording).environment(runtime).environment(pill)
-      .environment(\.settingsNavigate, { _ in }))
+      .environment(\.settingsNavigate, { _ in })
+      .environment(\.applePreviewSupported, scenario.appleSupported))
   }
 
   // Fixture timer is unnecessary: a stored MainActor continuation parks the fake
@@ -316,9 +337,9 @@ struct DictationSettingsRenderHarness {
         for width: CGFloat in [750, 820, 1300] {
           for dark in [false, true] {
             let summary = SettingsContentView {
-              SettingsSummaryCard(isExpanded: .constant(false),
+              SettingsSummaryCard(map: .id(.transcriptionEngine), isExpanded: .constant(false),
                 changeAccessibilityLabel: DictationSettingsCopy.Engine.changeEngine,
-                keepCurrentTitle: DictationSettingsCopy.Engine.keepCurrent) {
+                change: .transcriptionEngineChange, keepCurrent: .transcriptionEngineKeepCurrent) {
                 EngineSummaryContent(icon: "bolt.fill", name: "Fast", model: "Parakeet v3",
                   short: "For everyday English and European dictation")
               } status: {

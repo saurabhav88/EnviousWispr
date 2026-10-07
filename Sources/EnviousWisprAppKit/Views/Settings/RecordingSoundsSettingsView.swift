@@ -78,132 +78,116 @@ enum RecordingChimeCatalog {
   }
 }
 
-private func displayName(for pairing: RecordingSoundPairing) -> String {
+func displayNameResource(for pairing: RecordingSoundPairing) -> LocalizedStringResource {
   switch pairing {
   case .dustMote:
-    return String(
-      localized: "Dust Mote",
+    return LocalizedStringResource("Dust Mote",
       comment:
         "Chimes settings: a recording chime's name. A playful name; translate its feel, or keep it."
     )
   case .velvetHush:
-    return String(
-      localized: "Velvet Hush",
+    return LocalizedStringResource("Velvet Hush",
       comment:
         "Chimes settings: a recording chime's name. A playful name; translate its feel, or keep it."
     )
   case .mutedConfirm:
-    return String(
-      localized: "Muted Confirm",
+    return LocalizedStringResource("Muted Confirm",
       comment:
         "Chimes settings: a recording chime's name. A playful name; translate its feel, or keep it."
     )
   case .whisperTick:
-    return String(
-      localized: "Whisper Tick",
+    return LocalizedStringResource("Whisper Tick",
       comment:
         "Chimes settings: a recording chime's name. A playful name; translate its feel, or keep it."
     )
   case .roundPebble:
-    return String(
-      localized: "Round Pebble",
+    return LocalizedStringResource("Round Pebble",
       comment:
         "Chimes settings: a recording chime's name. A playful name; translate its feel, or keep it."
     )
   case .paperTap:
-    return String(
-      localized: "Paper Tap",
+    return LocalizedStringResource("Paper Tap",
       comment:
         "Chimes settings: a recording chime's name. A playful name; translate its feel, or keep it."
     )
   case .softHush:
-    return String(
-      localized: "Soft Hush",
+    return LocalizedStringResource("Soft Hush",
       comment:
         "Chimes settings: a recording chime's name. A playful name; translate its feel, or keep it."
     )
   case .lowNod:
-    return String(
-      localized: "Low Nod",
+    return LocalizedStringResource("Low Nod",
       comment:
         "Chimes settings: a recording chime's name. A playful name; translate its feel, or keep it."
     )
   case .cloudPop:
-    return String(
-      localized: "Cloud Pop",
+    return LocalizedStringResource("Cloud Pop",
       comment:
         "Chimes settings: a recording chime's name. A playful name; translate its feel, or keep it."
     )
   case .velvetTap:
-    return String(
-      localized: "Velvet Tap",
+    return LocalizedStringResource("Velvet Tap",
       comment:
         "Chimes settings: a recording chime's name. A playful name; translate its feel, or keep it."
     )
   case .satinShift:
-    return String(
-      localized: "Satin Shift",
+    return LocalizedStringResource("Satin Shift",
       comment:
         "Chimes settings: a recording chime's name. A playful name; translate its feel, or keep it."
     )
   case .airGlint:
-    return String(
-      localized: "Air Glint",
+    return LocalizedStringResource("Air Glint",
       comment:
         "Chimes settings: a recording chime's name. A playful name; translate its feel, or keep it."
     )
   }
 }
 
-private func pairingDescription(for pairing: RecordingSoundPairing) -> String {
+private func displayName(for pairing: RecordingSoundPairing) -> String {
+  String(localized: displayNameResource(for: pairing))
+}
+
+func pairingDescriptionResource(for pairing: RecordingSoundPairing) -> LocalizedStringResource {
   switch pairing {
   case .dustMote:
-    return String(
-      localized: "Soft filtered air, no tone.",
+    return LocalizedStringResource("Soft filtered air, no tone.",
       comment: "Chimes settings: describes how a recording chime sounds.")
   case .velvetHush:
-    return String(
-      localized: "Two close tones, gentle warmth.",
+    return LocalizedStringResource("Two close tones, gentle warmth.",
       comment: "Chimes settings: describes how a recording chime sounds.")
   case .mutedConfirm:
-    return String(
-      localized: "Same pitch both ways, plain.",
+    return LocalizedStringResource("Same pitch both ways, plain.",
       comment: "Chimes settings: describes how a recording chime sounds.")
   case .whisperTick:
-    return String(
-      localized: "Barely-there tick.",
+    return LocalizedStringResource("Barely-there tick.",
       comment: "Chimes settings: describes how a recording chime sounds.")
   case .roundPebble:
-    return String(
-      localized: "Rounded, no edge.",
+    return LocalizedStringResource("Rounded, no edge.",
       comment: "Chimes settings: describes how a recording chime sounds.")
   case .paperTap:
-    return String(
-      localized: "Soft paper-like tap.",
+    return LocalizedStringResource("Soft paper-like tap.",
       comment: "Chimes settings: describes how a recording chime sounds.")
   case .softHush:
-    return String(
-      localized: "Slow fade, like a breath.",
+    return LocalizedStringResource("Slow fade, like a breath.",
       comment: "Chimes settings: describes how a recording chime sounds.")
   case .lowNod:
-    return String(
-      localized: "Low, warm, unhurried.",
+    return LocalizedStringResource("Low, warm, unhurried.",
       comment: "Chimes settings: describes how a recording chime sounds.")
   case .cloudPop:
-    return String(
-      localized: "Tiny filtered-air pop.",
+    return LocalizedStringResource("Tiny filtered-air pop.",
       comment: "Chimes settings: describes how a recording chime sounds.")
   case .velvetTap:
-    return String(
-      localized: "Muted, compact tap.",
+    return LocalizedStringResource("Muted, compact tap.",
       comment: "Chimes settings: describes how a recording chime sounds.")
   case .satinShift:
-    return String(
-      localized: "Smooth two-tone shift.",
+    return LocalizedStringResource("Smooth two-tone shift.",
       comment: "Chimes settings: describes how a recording chime sounds.")
   case .airGlint:
-    return String(
-      localized: "Clean, airy glint.",
+    return LocalizedStringResource("Clean, airy glint.",
       comment: "Chimes settings: describes how a recording chime sounds.")
   }
+}
+
+private func pairingDescription(for pairing: RecordingSoundPairing) -> String {
+  String(localized: pairingDescriptionResource(for: pairing))
 }

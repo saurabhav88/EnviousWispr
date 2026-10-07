@@ -1,0 +1,4937 @@
+{
+ "schema": 1,
+ "seed": "Phase 0 inventory/seed.json (310 ids)",
+ "structural": [
+  {
+   "id": "window.settings",
+   "kind": "window"
+  },
+  {
+   "id": "page.aiPolish",
+   "kind": "page",
+   "parent": "window.settings"
+  },
+  {
+   "id": "page.appSettings",
+   "kind": "page",
+   "parent": "window.settings"
+  },
+  {
+   "id": "page.dictation",
+   "kind": "page",
+   "parent": "window.settings"
+  },
+  {
+   "id": "page.dictionary",
+   "kind": "page",
+   "parent": "window.settings"
+  },
+  {
+   "id": "page.keybinds",
+   "kind": "page",
+   "parent": "window.settings"
+  },
+  {
+   "id": "page.snippets",
+   "kind": "page",
+   "parent": "window.settings"
+  },
+  {
+   "id": "page.transcribeFile",
+   "kind": "page",
+   "parent": "window.settings"
+  },
+  {
+   "id": "section.transcriptionEngine",
+   "kind": "section",
+   "destination": {
+    "page": "dictation",
+    "tab": "engine"
+   },
+   "parent": "dictation.tab.engine"
+  },
+  {
+   "id": "section.engineShared",
+   "kind": "section",
+   "destination": {
+    "page": "dictation",
+    "tab": "engine"
+   },
+   "parent": "dictation.tab.engine"
+  },
+  {
+   "id": "section.microphone",
+   "kind": "section",
+   "destination": {
+    "page": "dictation",
+    "tab": "microphone"
+   },
+   "parent": "dictation.tab.microphone"
+  },
+  {
+   "id": "section.livePreview",
+   "kind": "section",
+   "destination": {
+    "page": "dictation",
+    "tab": "livePreview"
+   },
+   "parent": "dictation.tab.livePreview"
+  },
+  {
+   "id": "section.previewEngine",
+   "kind": "section",
+   "destination": {
+    "page": "dictation",
+    "tab": "livePreview"
+   },
+   "parent": "dictation.tab.livePreview"
+  },
+  {
+   "id": "section.pill",
+   "kind": "section",
+   "destination": {
+    "page": "dictation",
+    "tab": "pill"
+   },
+   "parent": "dictation.tab.pill"
+  },
+  {
+   "id": "section.chimes",
+   "kind": "section",
+   "destination": {
+    "page": "dictation",
+    "tab": "chimes"
+   },
+   "parent": "dictation.tab.chimes"
+  },
+  {
+   "id": "section.clipboard",
+   "kind": "section",
+   "destination": {
+    "page": "dictation",
+    "tab": "clipboard"
+   },
+   "parent": "dictation.tab.clipboard"
+  },
+  {
+   "id": "section.quickAddClipboard",
+   "kind": "section",
+   "destination": {
+    "page": "dictation",
+    "tab": "clipboard"
+   },
+   "parent": "dictation.tab.clipboard"
+  },
+  {
+   "id": "section.keybindsRecording",
+   "kind": "section",
+   "destination": {
+    "page": "keybinds"
+   },
+   "parent": "page.keybinds"
+  },
+  {
+   "id": "section.keybindsShortcuts",
+   "kind": "section",
+   "destination": {
+    "page": "keybinds"
+   },
+   "parent": "page.keybinds"
+  },
+  {
+   "id": "section.aiPolishModel",
+   "kind": "section",
+   "destination": {
+    "page": "aiPolish"
+   },
+   "parent": "page.aiPolish"
+  },
+  {
+   "id": "section.dictionary",
+   "kind": "section",
+   "destination": {
+    "page": "dictionary"
+   },
+   "parent": "page.dictionary"
+  },
+  {
+   "id": "section.appearance",
+   "kind": "section",
+   "destination": {
+    "page": "appSettings",
+    "tab": "appearance"
+   },
+   "parent": "appSettings.tab.appearance"
+  },
+  {
+   "id": "section.permissions",
+   "kind": "section",
+   "destination": {
+    "page": "appSettings",
+    "tab": "permissions"
+   },
+   "parent": "appSettings.tab.permissions"
+  },
+  {
+   "id": "section.privacy",
+   "kind": "section",
+   "destination": {
+    "page": "appSettings",
+    "tab": "privacy"
+   },
+   "parent": "appSettings.tab.privacy"
+  },
+  {
+   "id": "section.about",
+   "kind": "section",
+   "destination": {
+    "page": "appSettings",
+    "tab": "licenses"
+   },
+   "parent": "appSettings.tab.licenses"
+  }
+ ],
+ "items": [
+  {
+   "id": "dictation.tab.engine",
+   "kind": "feature",
+   "destination": {
+    "page": "dictation",
+    "tab": "engine"
+   },
+   "disposition": "mapped",
+   "parent": "page.dictation",
+   "target": "dictation.tab.engine",
+   "fallbacks": [],
+   "dynamicTitle": false
+  },
+  {
+   "id": "dictation.tab.microphone",
+   "kind": "feature",
+   "destination": {
+    "page": "dictation",
+    "tab": "microphone"
+   },
+   "disposition": "mapped",
+   "parent": "page.dictation",
+   "target": "dictation.tab.microphone",
+   "fallbacks": [],
+   "dynamicTitle": false
+  },
+  {
+   "id": "dictation.tab.livePreview",
+   "kind": "feature",
+   "destination": {
+    "page": "dictation",
+    "tab": "livePreview"
+   },
+   "disposition": "mapped",
+   "parent": "page.dictation",
+   "target": "dictation.tab.livePreview",
+   "fallbacks": [],
+   "dynamicTitle": false
+  },
+  {
+   "id": "dictation.tab.pill",
+   "kind": "feature",
+   "destination": {
+    "page": "dictation",
+    "tab": "pill"
+   },
+   "disposition": "mapped",
+   "parent": "page.dictation",
+   "target": "dictation.tab.pill",
+   "fallbacks": [],
+   "dynamicTitle": false
+  },
+  {
+   "id": "dictation.tab.chimes",
+   "kind": "feature",
+   "destination": {
+    "page": "dictation",
+    "tab": "chimes"
+   },
+   "disposition": "mapped",
+   "parent": "page.dictation",
+   "target": "dictation.tab.chimes",
+   "fallbacks": [],
+   "dynamicTitle": false
+  },
+  {
+   "id": "dictation.tab.clipboard",
+   "kind": "feature",
+   "destination": {
+    "page": "dictation",
+    "tab": "clipboard"
+   },
+   "disposition": "mapped",
+   "parent": "page.dictation",
+   "target": "dictation.tab.clipboard",
+   "fallbacks": [],
+   "dynamicTitle": false
+  },
+  {
+   "id": "transcriptionEngine",
+   "kind": "setting",
+   "destination": {
+    "page": "dictation",
+    "tab": "engine"
+   },
+   "disposition": "mapped",
+   "parent": "section.transcriptionEngine",
+   "target": "transcriptionEngine",
+   "fallbacks": [],
+   "dynamicTitle": false,
+   "seedParent": null,
+   "description": {
+    "kind": "none",
+    "why": "section note, not the item line"
+   }
+  },
+  {
+   "id": "transcriptionEngine.change",
+   "kind": "action",
+   "destination": {
+    "page": "dictation",
+    "tab": "engine"
+   },
+   "disposition": "mapped",
+   "parent": "transcriptionEngine",
+   "target": "transcriptionEngine",
+   "fallbacks": [],
+   "dynamicTitle": false,
+   "seedParent": "transcriptionEngine"
+  },
+  {
+   "id": "transcriptionEngine.fast",
+   "kind": "choice",
+   "destination": {
+    "page": "dictation",
+    "tab": "engine"
+   },
+   "disposition": "mapped",
+   "parent": "transcriptionEngine",
+   "target": "transcriptionEngine",
+   "fallbacks": [
+    "transcriptionEngine"
+   ],
+   "dynamicTitle": false,
+   "seedParent": "transcriptionEngine",
+   "description": {
+    "kind": "static",
+    "english": "Pick this for everyday English and European dictation."
+   }
+  },
+  {
+   "id": "transcriptionEngine.allLanguages",
+   "kind": "choice",
+   "destination": {
+    "page": "dictation",
+    "tab": "engine"
+   },
+   "disposition": "mapped",
+   "parent": "transcriptionEngine",
+   "target": "transcriptionEngine",
+   "fallbacks": [
+    "transcriptionEngine"
+   ],
+   "dynamicTitle": false,
+   "seedParent": "transcriptionEngine",
+   "description": {
+    "kind": "static",
+    "english": "Pick this for other languages or the toughest audio."
+   }
+  },
+  {
+   "id": "transcriptionEngine.keepCurrent",
+   "kind": "action",
+   "destination": {
+    "page": "dictation",
+    "tab": "engine"
+   },
+   "disposition": "mapped",
+   "parent": "transcriptionEngine",
+   "target": "transcriptionEngine",
+   "fallbacks": [
+    "transcriptionEngine"
+   ],
+   "dynamicTitle": false,
+   "seedParent": "transcriptionEngine"
+  },
+  {
+   "id": "transcriptionEngine.recheckFast",
+   "kind": "action",
+   "destination": {
+    "page": "dictation",
+    "tab": "engine"
+   },
+   "disposition": "mapped",
+   "parent": "transcriptionEngine",
+   "target": "transcriptionEngine.recheckFast",
+   "fallbacks": [
+    "transcriptionEngine"
+   ],
+   "dynamicTitle": false,
+   "seedParent": "transcriptionEngine"
+  },
+  {
+   "id": "fastModel.cancelDownload",
+   "kind": "action",
+   "destination": {
+    "page": "dictation",
+    "tab": "engine"
+   },
+   "disposition": "mapped",
+   "parent": "transcriptionEngine",
+   "target": "fastModel.cancelDownload",
+   "fallbacks": [
+    "transcriptionEngine"
+   ],
+   "dynamicTitle": false,
+   "seedParent": "transcriptionEngine"
+  },
+  {
+   "id": "fastModel.resume",
+   "kind": "action",
+   "destination": {
+    "page": "dictation",
+    "tab": "engine"
+   },
+   "disposition": "mapped",
+   "parent": "transcriptionEngine",
+   "target": "transcriptionEngine",
+   "fallbacks": [
+    "transcriptionEngine"
+   ],
+   "dynamicTitle": false,
+   "seedParent": "transcriptionEngine",
+   "description": {
+    "kind": "none",
+    "why": "setup status line"
+   }
+  },
+  {
+   "id": "fastModel.tryAgain",
+   "kind": "action",
+   "destination": {
+    "page": "dictation",
+    "tab": "engine"
+   },
+   "disposition": "mapped",
+   "parent": "transcriptionEngine",
+   "target": "transcriptionEngine",
+   "fallbacks": [
+    "transcriptionEngine"
+   ],
+   "dynamicTitle": false,
+   "seedParent": "transcriptionEngine",
+   "description": {
+    "kind": "none",
+    "why": "setup status line"
+   }
+  },
+  {
+   "id": "whisperModel.setUp",
+   "kind": "action",
+   "destination": {
+    "page": "dictation",
+    "tab": "engine"
+   },
+   "disposition": "mapped",
+   "parent": "transcriptionEngine",
+   "target": "whisperModel.setUp",
+   "fallbacks": [
+    "transcriptionEngine"
+   ],
+   "dynamicTitle": false,
+   "seedParent": "transcriptionEngine"
+  },
+  {
+   "id": "whisperModel.cancelDownload",
+   "kind": "action",
+   "destination": {
+    "page": "dictation",
+    "tab": "engine"
+   },
+   "disposition": "mapped",
+   "parent": "transcriptionEngine",
+   "target": "whisperModel.cancelDownload",
+   "fallbacks": [
+    "transcriptionEngine"
+   ],
+   "dynamicTitle": false,
+   "seedParent": "transcriptionEngine"
+  },
+  {
+   "id": "whisperModel.resume",
+   "kind": "action",
+   "destination": {
+    "page": "dictation",
+    "tab": "engine"
+   },
+   "disposition": "mapped",
+   "parent": "transcriptionEngine",
+   "target": "whisperModel.resume",
+   "fallbacks": [
+    "transcriptionEngine"
+   ],
+   "dynamicTitle": false,
+   "seedParent": "transcriptionEngine",
+   "description": {
+    "kind": "none",
+    "why": "setup status line"
+   }
+  },
+  {
+   "id": "whisperModel.remove",
+   "kind": "action",
+   "destination": {
+    "page": "dictation",
+    "tab": "engine"
+   },
+   "disposition": "mapped",
+   "parent": "transcriptionEngine",
+   "target": "whisperModel.remove",
+   "fallbacks": [
+    "transcriptionEngine"
+   ],
+   "dynamicTitle": false,
+   "seedParent": "transcriptionEngine"
+  },
+  {
+   "id": "whisperModel.recheck",
+   "kind": "action",
+   "destination": {
+    "page": "dictation",
+    "tab": "engine"
+   },
+   "disposition": "mapped",
+   "parent": "transcriptionEngine",
+   "target": "whisperModel.recheck",
+   "fallbacks": [
+    "transcriptionEngine"
+   ],
+   "dynamicTitle": false,
+   "seedParent": "transcriptionEngine"
+  },
+  {
+   "id": "whisperModel.tryAgain",
+   "kind": "action",
+   "destination": {
+    "page": "dictation",
+    "tab": "engine"
+   },
+   "disposition": "mapped",
+   "parent": "transcriptionEngine",
+   "target": "whisperModel.tryAgain",
+   "fallbacks": [
+    "transcriptionEngine"
+   ],
+   "dynamicTitle": false,
+   "seedParent": "transcriptionEngine",
+   "description": {
+    "kind": "none",
+    "why": "setup status line"
+   }
+  },
+  {
+   "id": "currentEngineSection",
+   "kind": "feature",
+   "destination": {
+    "page": "dictation",
+    "tab": "engine"
+   },
+   "disposition": "mapped",
+   "parent": "dictation.tab.engine",
+   "target": "currentEngineSection",
+   "fallbacks": [],
+   "dynamicTitle": true,
+   "seedParent": null
+  },
+  {
+   "id": "autoDetectLanguage",
+   "kind": "setting",
+   "destination": {
+    "page": "dictation",
+    "tab": "engine"
+   },
+   "disposition": "mapped",
+   "parent": "currentEngineSection",
+   "target": "autoDetectLanguage",
+   "fallbacks": [
+    "transcriptionEngine"
+   ],
+   "dynamicTitle": false,
+   "seedParent": null,
+   "description": {
+    "kind": "runtime"
+   }
+  },
+  {
+   "id": "autoDetectLanguage.resetSuggestions",
+   "kind": "action",
+   "destination": {
+    "page": "dictation",
+    "tab": "engine"
+   },
+   "disposition": "mapped",
+   "parent": "autoDetectLanguage",
+   "target": "autoDetectLanguage.resetSuggestions",
+   "fallbacks": [
+    "autoDetectLanguage",
+    "transcriptionEngine"
+   ],
+   "dynamicTitle": false,
+   "seedParent": "autoDetectLanguage",
+   "description": {
+    "kind": "none",
+    "why": "help text behind a question mark"
+   }
+  },
+  {
+   "id": "lockedLanguage",
+   "kind": "setting",
+   "destination": {
+    "page": "dictation",
+    "tab": "engine"
+   },
+   "disposition": "mapped",
+   "parent": "currentEngineSection",
+   "target": "lockedLanguage",
+   "fallbacks": [
+    "transcriptionEngine"
+   ],
+   "dynamicTitle": true,
+   "seedParent": null,
+   "description": {
+    "kind": "static",
+    "english": "Choose the language for dictation and preview."
+   }
+  },
+  {
+   "id": "lockedLanguage.change",
+   "kind": "action",
+   "destination": {
+    "page": "dictation",
+    "tab": "engine"
+   },
+   "disposition": "mapped",
+   "parent": "lockedLanguage",
+   "target": "lockedLanguage.change",
+   "fallbacks": [
+    "lockedLanguage",
+    "transcriptionEngine"
+   ],
+   "dynamicTitle": false,
+   "seedParent": "lockedLanguage"
+  },
+  {
+   "id": "fasterTranscription",
+   "kind": "setting",
+   "destination": {
+    "page": "dictation",
+    "tab": "engine"
+   },
+   "disposition": "mapped",
+   "parent": "currentEngineSection",
+   "target": "fasterTranscription",
+   "fallbacks": [],
+   "dynamicTitle": false,
+   "seedParent": null,
+   "description": {
+    "kind": "runtime"
+   }
+  },
+  {
+   "id": "stopOnSilence",
+   "kind": "setting",
+   "destination": {
+    "page": "dictation",
+    "tab": "engine"
+   },
+   "disposition": "mapped",
+   "parent": "section.engineShared",
+   "target": "stopOnSilence",
+   "fallbacks": [],
+   "dynamicTitle": false,
+   "seedParent": null,
+   "description": {
+    "kind": "static",
+    "english": "Ends recording after you stop speaking."
+   }
+  },
+  {
+   "id": "pauseDuration",
+   "kind": "setting",
+   "destination": {
+    "page": "dictation",
+    "tab": "engine"
+   },
+   "disposition": "mapped",
+   "parent": "stopOnSilence",
+   "target": "pauseDuration",
+   "fallbacks": [
+    "stopOnSilence"
+   ],
+   "dynamicTitle": false,
+   "seedParent": "stopOnSilence",
+   "description": {
+    "kind": "static",
+    "english": "How long a pause ends the recording."
+   }
+  },
+  {
+   "id": "fillerRemoval",
+   "kind": "setting",
+   "destination": {
+    "page": "dictation",
+    "tab": "engine"
+   },
+   "disposition": "mapped",
+   "parent": "section.engineShared",
+   "target": "fillerRemoval",
+   "fallbacks": [],
+   "dynamicTitle": false,
+   "seedParent": null,
+   "description": {
+    "kind": "static",
+    "english": "Strips common filler words from transcriptions."
+   }
+  },
+  {
+   "id": "spokenEmoji",
+   "kind": "setting",
+   "destination": {
+    "page": "dictation",
+    "tab": "engine"
+   },
+   "disposition": "mapped",
+   "parent": "section.engineShared",
+   "target": "spokenEmoji",
+   "fallbacks": [],
+   "dynamicTitle": false,
+   "seedParent": null,
+   "description": {
+    "kind": "static",
+    "english": "Say a phrase followed by emoji to get its symbol."
+   }
+  },
+  {
+   "id": "spokenPunctuation",
+   "kind": "setting",
+   "destination": {
+    "page": "dictation",
+    "tab": "engine"
+   },
+   "disposition": "mapped",
+   "parent": "section.engineShared",
+   "target": "spokenPunctuation",
+   "fallbacks": [],
+   "dynamicTitle": false,
+   "seedParent": null,
+   "description": {
+    "kind": "static",
+    "english": "Say comma or new paragraph to insert it."
+   }
+  },
+  {
+   "id": "startWordLanguage",
+   "kind": "setting",
+   "destination": {
+    "page": "dictation",
+    "tab": "engine"
+   },
+   "disposition": "mapped",
+   "parent": "spokenPunctuation",
+   "target": "startWordLanguage",
+   "fallbacks": [
+    "spokenPunctuation"
+   ],
+   "dynamicTitle": false,
+   "seedParent": "spokenPunctuation",
+   "description": {
+    "kind": "static",
+    "english": "The word you say before a mark."
+   }
+  },
+  {
+   "id": "startWordLanguage.en",
+   "kind": "choice",
+   "destination": {
+    "page": "dictation",
+    "tab": "engine"
+   },
+   "disposition": "mapped",
+   "parent": "startWordLanguage",
+   "target": "startWordLanguage",
+   "fallbacks": [
+    "spokenPunctuation"
+   ],
+   "dynamicTitle": true,
+   "seedParent": "startWordLanguage",
+   "description": {
+    "kind": "runtime"
+   }
+  },
+  {
+   "id": "startWordLanguage.de",
+   "kind": "choice",
+   "destination": {
+    "page": "dictation",
+    "tab": "engine"
+   },
+   "disposition": "mapped",
+   "parent": "startWordLanguage",
+   "target": "startWordLanguage",
+   "fallbacks": [
+    "spokenPunctuation"
+   ],
+   "dynamicTitle": true,
+   "seedParent": "startWordLanguage",
+   "description": {
+    "kind": "runtime"
+   }
+  },
+  {
+   "id": "startWordLanguage.fr",
+   "kind": "choice",
+   "destination": {
+    "page": "dictation",
+    "tab": "engine"
+   },
+   "disposition": "mapped",
+   "parent": "startWordLanguage",
+   "target": "startWordLanguage",
+   "fallbacks": [
+    "spokenPunctuation"
+   ],
+   "dynamicTitle": true,
+   "seedParent": "startWordLanguage",
+   "description": {
+    "kind": "runtime"
+   }
+  },
+  {
+   "id": "startWordLanguage.es",
+   "kind": "choice",
+   "destination": {
+    "page": "dictation",
+    "tab": "engine"
+   },
+   "disposition": "mapped",
+   "parent": "startWordLanguage",
+   "target": "startWordLanguage",
+   "fallbacks": [
+    "spokenPunctuation"
+   ],
+   "dynamicTitle": true,
+   "seedParent": "startWordLanguage",
+   "description": {
+    "kind": "runtime"
+   }
+  },
+  {
+   "id": "startWordLanguage.it",
+   "kind": "choice",
+   "destination": {
+    "page": "dictation",
+    "tab": "engine"
+   },
+   "disposition": "mapped",
+   "parent": "startWordLanguage",
+   "target": "startWordLanguage",
+   "fallbacks": [
+    "spokenPunctuation"
+   ],
+   "dynamicTitle": true,
+   "seedParent": "startWordLanguage",
+   "description": {
+    "kind": "runtime"
+   }
+  },
+  {
+   "id": "startWordField",
+   "kind": "setting",
+   "destination": {
+    "page": "dictation",
+    "tab": "engine"
+   },
+   "disposition": "mapped",
+   "parent": "spokenPunctuation",
+   "target": "startWordField",
+   "fallbacks": [
+    "spokenPunctuation"
+   ],
+   "dynamicTitle": false,
+   "seedParent": "spokenPunctuation"
+  },
+  {
+   "id": "startWord.save",
+   "kind": "action",
+   "destination": {
+    "page": "dictation",
+    "tab": "engine"
+   },
+   "disposition": "mapped",
+   "parent": "startWordField",
+   "target": "startWord.save",
+   "fallbacks": [
+    "spokenPunctuation"
+   ],
+   "dynamicTitle": false,
+   "seedParent": "startWordField"
+  },
+  {
+   "id": "startWord.reset",
+   "kind": "action",
+   "destination": {
+    "page": "dictation",
+    "tab": "engine"
+   },
+   "disposition": "mapped",
+   "parent": "startWordField",
+   "target": "startWord.reset",
+   "fallbacks": [
+    "spokenPunctuation"
+   ],
+   "dynamicTitle": false,
+   "seedParent": "startWordField"
+  },
+  {
+   "id": "unloadModel",
+   "kind": "setting",
+   "destination": {
+    "page": "dictation",
+    "tab": "engine"
+   },
+   "disposition": "mapped",
+   "parent": "section.engineShared",
+   "target": "unloadModel",
+   "fallbacks": [],
+   "dynamicTitle": false,
+   "seedParent": null,
+   "description": {
+    "kind": "static",
+    "english": "Frees memory when you are not dictating."
+   }
+  },
+  {
+   "id": "unloadModel.never",
+   "kind": "choice",
+   "destination": {
+    "page": "dictation",
+    "tab": "engine"
+   },
+   "disposition": "mapped",
+   "parent": "unloadModel",
+   "target": "unloadModel",
+   "fallbacks": [],
+   "dynamicTitle": false,
+   "seedParent": "unloadModel"
+  },
+  {
+   "id": "unloadModel.immediately",
+   "kind": "choice",
+   "destination": {
+    "page": "dictation",
+    "tab": "engine"
+   },
+   "disposition": "mapped",
+   "parent": "unloadModel",
+   "target": "unloadModel",
+   "fallbacks": [],
+   "dynamicTitle": false,
+   "seedParent": "unloadModel",
+   "description": {
+    "kind": "none",
+    "why": "notice shown only while that option is chosen"
+   }
+  },
+  {
+   "id": "unloadModel.twoMinutes",
+   "kind": "choice",
+   "destination": {
+    "page": "dictation",
+    "tab": "engine"
+   },
+   "disposition": "mapped",
+   "parent": "unloadModel",
+   "target": "unloadModel",
+   "fallbacks": [],
+   "dynamicTitle": false,
+   "seedParent": "unloadModel"
+  },
+  {
+   "id": "unloadModel.fiveMinutes",
+   "kind": "choice",
+   "destination": {
+    "page": "dictation",
+    "tab": "engine"
+   },
+   "disposition": "mapped",
+   "parent": "unloadModel",
+   "target": "unloadModel",
+   "fallbacks": [],
+   "dynamicTitle": false,
+   "seedParent": "unloadModel"
+  },
+  {
+   "id": "unloadModel.tenMinutes",
+   "kind": "choice",
+   "destination": {
+    "page": "dictation",
+    "tab": "engine"
+   },
+   "disposition": "mapped",
+   "parent": "unloadModel",
+   "target": "unloadModel",
+   "fallbacks": [],
+   "dynamicTitle": false,
+   "seedParent": "unloadModel"
+  },
+  {
+   "id": "unloadModel.fifteenMinutes",
+   "kind": "choice",
+   "destination": {
+    "page": "dictation",
+    "tab": "engine"
+   },
+   "disposition": "mapped",
+   "parent": "unloadModel",
+   "target": "unloadModel",
+   "fallbacks": [],
+   "dynamicTitle": false,
+   "seedParent": "unloadModel"
+  },
+  {
+   "id": "unloadModel.oneHour",
+   "kind": "choice",
+   "destination": {
+    "page": "dictation",
+    "tab": "engine"
+   },
+   "disposition": "mapped",
+   "parent": "unloadModel",
+   "target": "unloadModel",
+   "fallbacks": [],
+   "dynamicTitle": false,
+   "seedParent": "unloadModel"
+  },
+  {
+   "id": "inputDevice",
+   "kind": "setting",
+   "destination": {
+    "page": "dictation",
+    "tab": "microphone"
+   },
+   "disposition": "mapped",
+   "parent": "section.microphone",
+   "target": "inputDevice",
+   "fallbacks": [],
+   "dynamicTitle": false,
+   "seedParent": null,
+   "description": {
+    "kind": "static",
+    "english": "Choose the microphone used for recording."
+   }
+  },
+  {
+   "id": "inputDevice.auto",
+   "kind": "choice",
+   "destination": {
+    "page": "dictation",
+    "tab": "microphone"
+   },
+   "disposition": "mapped",
+   "parent": "inputDevice",
+   "target": "inputDevice",
+   "fallbacks": [],
+   "dynamicTitle": false,
+   "seedParent": "inputDevice",
+   "description": {
+    "kind": "static",
+    "english": "Follows macOS"
+   }
+  },
+  {
+   "id": "inputDevice.device",
+   "kind": "choice",
+   "destination": {
+    "page": "dictation",
+    "tab": "microphone"
+   },
+   "disposition": "mapped",
+   "parent": "inputDevice",
+   "target": "inputDevice",
+   "fallbacks": [],
+   "dynamicTitle": true,
+   "seedParent": "inputDevice",
+   "description": {
+    "kind": "runtime"
+   }
+  },
+  {
+   "id": "inputSocket",
+   "kind": "setting",
+   "destination": {
+    "page": "dictation",
+    "tab": "microphone"
+   },
+   "disposition": "mapped",
+   "parent": "inputDevice",
+   "target": "inputSocket",
+   "fallbacks": [
+    "inputDevice"
+   ],
+   "dynamicTitle": false,
+   "seedParent": "inputDevice",
+   "description": {
+    "kind": "static",
+    "english": "Choose the socket your microphone is plugged into."
+   }
+  },
+  {
+   "id": "inputSocket.input",
+   "kind": "choice",
+   "destination": {
+    "page": "dictation",
+    "tab": "microphone"
+   },
+   "disposition": "mapped",
+   "parent": "inputSocket",
+   "target": "inputSocket",
+   "fallbacks": [
+    "inputDevice"
+   ],
+   "dynamicTitle": true,
+   "seedParent": "inputSocket",
+   "description": {
+    "kind": "runtime"
+   }
+  },
+  {
+   "id": "mediaDuringDictation",
+   "kind": "setting",
+   "destination": {
+    "page": "dictation",
+    "tab": "microphone"
+   },
+   "disposition": "mapped",
+   "parent": "section.microphone",
+   "target": "mediaDuringDictation",
+   "fallbacks": [],
+   "dynamicTitle": false,
+   "seedParent": null,
+   "description": {
+    "kind": "static",
+    "english": "What music and video do while you dictate."
+   }
+  },
+  {
+   "id": "mediaDuringDictation.continue",
+   "kind": "choice",
+   "destination": {
+    "page": "dictation",
+    "tab": "microphone"
+   },
+   "disposition": "mapped",
+   "parent": "mediaDuringDictation",
+   "target": "mediaDuringDictation",
+   "fallbacks": [],
+   "dynamicTitle": false,
+   "seedParent": "mediaDuringDictation",
+   "description": {
+    "kind": "none",
+    "why": "notice shown only while that option is chosen"
+   }
+  },
+  {
+   "id": "mediaDuringDictation.lower",
+   "kind": "choice",
+   "destination": {
+    "page": "dictation",
+    "tab": "microphone"
+   },
+   "disposition": "mapped",
+   "parent": "mediaDuringDictation",
+   "target": "mediaDuringDictation",
+   "fallbacks": [],
+   "dynamicTitle": false,
+   "seedParent": "mediaDuringDictation"
+  },
+  {
+   "id": "mediaDuringDictation.mute",
+   "kind": "choice",
+   "destination": {
+    "page": "dictation",
+    "tab": "microphone"
+   },
+   "disposition": "mapped",
+   "parent": "mediaDuringDictation",
+   "target": "mediaDuringDictation",
+   "fallbacks": [],
+   "dynamicTitle": false,
+   "seedParent": "mediaDuringDictation"
+  },
+  {
+   "id": "mediaDuringDictation.pause",
+   "kind": "choice",
+   "destination": {
+    "page": "dictation",
+    "tab": "microphone"
+   },
+   "disposition": "mapped",
+   "parent": "mediaDuringDictation",
+   "target": "mediaDuringDictation",
+   "fallbacks": [],
+   "dynamicTitle": false,
+   "seedParent": "mediaDuringDictation"
+  },
+  {
+   "id": "micReadiness",
+   "kind": "setting",
+   "destination": {
+    "page": "dictation",
+    "tab": "microphone"
+   },
+   "disposition": "mapped",
+   "parent": "section.microphone",
+   "target": "micReadiness",
+   "fallbacks": [],
+   "dynamicTitle": false,
+   "seedParent": null,
+   "description": {
+    "kind": "static",
+    "english": "How long the mic stays ready after recording."
+   }
+  },
+  {
+   "id": "micReadiness.off",
+   "kind": "choice",
+   "destination": {
+    "page": "dictation",
+    "tab": "microphone"
+   },
+   "disposition": "mapped",
+   "parent": "micReadiness",
+   "target": "micReadiness",
+   "fallbacks": [],
+   "dynamicTitle": false,
+   "seedParent": "micReadiness"
+  },
+  {
+   "id": "micReadiness.10s",
+   "kind": "choice",
+   "destination": {
+    "page": "dictation",
+    "tab": "microphone"
+   },
+   "disposition": "mapped",
+   "parent": "micReadiness",
+   "target": "micReadiness",
+   "fallbacks": [],
+   "dynamicTitle": false,
+   "seedParent": "micReadiness"
+  },
+  {
+   "id": "micReadiness.30s",
+   "kind": "choice",
+   "destination": {
+    "page": "dictation",
+    "tab": "microphone"
+   },
+   "disposition": "mapped",
+   "parent": "micReadiness",
+   "target": "micReadiness",
+   "fallbacks": [],
+   "dynamicTitle": false,
+   "seedParent": "micReadiness"
+  },
+  {
+   "id": "micReadiness.60s",
+   "kind": "choice",
+   "destination": {
+    "page": "dictation",
+    "tab": "microphone"
+   },
+   "disposition": "mapped",
+   "parent": "micReadiness",
+   "target": "micReadiness",
+   "fallbacks": [],
+   "dynamicTitle": false,
+   "seedParent": "micReadiness"
+  },
+  {
+   "id": "micReadiness.always",
+   "kind": "choice",
+   "destination": {
+    "page": "dictation",
+    "tab": "microphone"
+   },
+   "disposition": "mapped",
+   "parent": "micReadiness",
+   "target": "micReadiness",
+   "fallbacks": [],
+   "dynamicTitle": false,
+   "seedParent": "micReadiness",
+   "description": {
+    "kind": "none",
+    "why": "notice shown only while that option is chosen"
+   }
+  },
+  {
+   "id": "bluetoothGuide",
+   "kind": "feature",
+   "destination": {
+    "page": "dictation",
+    "tab": "microphone"
+   },
+   "disposition": "mapped",
+   "parent": "section.microphone",
+   "target": "bluetoothGuide",
+   "fallbacks": [],
+   "dynamicTitle": false,
+   "seedParent": null,
+   "description": {
+    "kind": "static",
+    "english": "Keeping your mic ready reduces Bluetooth startup delay."
+   }
+  },
+  {
+   "id": "bluetoothGuide.learnMore",
+   "kind": "action",
+   "destination": {
+    "page": "dictation",
+    "tab": "microphone"
+   },
+   "disposition": "mapped",
+   "parent": "bluetoothGuide",
+   "target": "bluetoothGuide.learnMore",
+   "fallbacks": [],
+   "dynamicTitle": false,
+   "seedParent": "bluetoothGuide"
+  },
+  {
+   "id": "livePreview",
+   "kind": "setting",
+   "destination": {
+    "page": "dictation",
+    "tab": "livePreview"
+   },
+   "disposition": "mapped",
+   "parent": "section.livePreview",
+   "target": "livePreview",
+   "fallbacks": [],
+   "dynamicTitle": false,
+   "seedParent": null,
+   "description": {
+    "kind": "static",
+    "english": "See words before you finish your dictation."
+   }
+  },
+  {
+   "id": "livePreview.language",
+   "kind": "action",
+   "destination": {
+    "page": "dictation",
+    "tab": "livePreview"
+   },
+   "disposition": "mapped",
+   "parent": "livePreview",
+   "target": "livePreview.language",
+   "fallbacks": [
+    "livePreview"
+   ],
+   "dynamicTitle": true,
+   "seedParent": "livePreview",
+   "description": {
+    "kind": "static",
+    "english": "This changes dictation too, not just the preview."
+   }
+  },
+  {
+   "id": "livePreview.browseDownloads",
+   "kind": "action",
+   "destination": {
+    "page": "dictation",
+    "tab": "livePreview"
+   },
+   "disposition": "mapped",
+   "parent": "livePreview",
+   "target": "livePreview.browseDownloads",
+   "fallbacks": [
+    "livePreview"
+   ],
+   "dynamicTitle": false,
+   "seedParent": "livePreview"
+  },
+  {
+   "id": "previewEngine",
+   "kind": "setting",
+   "destination": {
+    "page": "dictation",
+    "tab": "livePreview"
+   },
+   "disposition": "mapped",
+   "parent": "section.previewEngine",
+   "target": "previewEngine",
+   "fallbacks": [],
+   "dynamicTitle": false,
+   "seedParent": null,
+   "description": {
+    "kind": "static",
+    "english": "Choose which engine shows words while you speak."
+   }
+  },
+  {
+   "id": "previewEngine.change",
+   "kind": "action",
+   "destination": {
+    "page": "dictation",
+    "tab": "livePreview"
+   },
+   "disposition": "mapped",
+   "parent": "previewEngine",
+   "target": "previewEngine",
+   "fallbacks": [],
+   "dynamicTitle": false,
+   "seedParent": "previewEngine"
+  },
+  {
+   "id": "previewEngine.compare",
+   "kind": "action",
+   "destination": {
+    "page": "dictation",
+    "tab": "livePreview"
+   },
+   "disposition": "mapped",
+   "parent": "previewEngine",
+   "target": "previewEngine.compare",
+   "fallbacks": [],
+   "dynamicTitle": false,
+   "seedParent": "previewEngine"
+  },
+  {
+   "id": "previewEngine.apple",
+   "kind": "choice",
+   "destination": {
+    "page": "dictation",
+    "tab": "livePreview"
+   },
+   "disposition": "mapped",
+   "parent": "previewEngine",
+   "target": "previewEngine",
+   "fallbacks": [],
+   "dynamicTitle": false,
+   "seedParent": "previewEngine",
+   "description": {
+    "kind": "static",
+    "english": "Uses Apple's speech recognition. No separate preview-model download; some languages may need an Apple language download. Needs macOS 26."
+   }
+  },
+  {
+   "id": "previewEngine.universal",
+   "kind": "choice",
+   "destination": {
+    "page": "dictation",
+    "tab": "livePreview"
+   },
+   "disposition": "mapped",
+   "parent": "previewEngine",
+   "target": "previewEngine",
+   "fallbacks": [],
+   "dynamicTitle": false,
+   "seedParent": "previewEngine",
+   "description": {
+    "kind": "static",
+    "english": "Works on macOS 14 and later, in more languages. Needs one optional 217 MB download."
+   }
+  },
+  {
+   "id": "previewEngine.keepCurrent",
+   "kind": "action",
+   "destination": {
+    "page": "dictation",
+    "tab": "livePreview"
+   },
+   "disposition": "mapped",
+   "parent": "previewEngine",
+   "target": "previewEngine",
+   "fallbacks": [],
+   "dynamicTitle": false,
+   "seedParent": "previewEngine"
+  },
+  {
+   "id": "previewEngine.universal.download",
+   "kind": "action",
+   "destination": {
+    "page": "dictation",
+    "tab": "livePreview"
+   },
+   "disposition": "mapped",
+   "parent": "previewEngine.universal",
+   "target": "previewEngine",
+   "fallbacks": [],
+   "dynamicTitle": false,
+   "seedParent": "previewEngine.universal",
+   "description": {
+    "kind": "none",
+    "why": "setup status line"
+   }
+  },
+  {
+   "id": "previewEngine.universal.cancel",
+   "kind": "action",
+   "destination": {
+    "page": "dictation",
+    "tab": "livePreview"
+   },
+   "disposition": "mapped",
+   "parent": "previewEngine.universal",
+   "target": "previewEngine",
+   "fallbacks": [],
+   "dynamicTitle": false,
+   "seedParent": "previewEngine.universal"
+  },
+  {
+   "id": "previewEngine.universal.resume",
+   "kind": "action",
+   "destination": {
+    "page": "dictation",
+    "tab": "livePreview"
+   },
+   "disposition": "mapped",
+   "parent": "previewEngine.universal",
+   "target": "previewEngine",
+   "fallbacks": [],
+   "dynamicTitle": false,
+   "seedParent": "previewEngine.universal",
+   "description": {
+    "kind": "none",
+    "why": "setup status line"
+   }
+  },
+  {
+   "id": "previewEngine.universal.retry",
+   "kind": "action",
+   "destination": {
+    "page": "dictation",
+    "tab": "livePreview"
+   },
+   "disposition": "mapped",
+   "parent": "previewEngine.universal",
+   "target": "previewEngine",
+   "fallbacks": [],
+   "dynamicTitle": false,
+   "seedParent": "previewEngine.universal",
+   "description": {
+    "kind": "none",
+    "why": "setup status line"
+   }
+  },
+  {
+   "id": "previewEngine.universal.remove",
+   "kind": "action",
+   "destination": {
+    "page": "dictation",
+    "tab": "livePreview"
+   },
+   "disposition": "mapped",
+   "parent": "previewEngine.universal",
+   "target": "previewEngine",
+   "fallbacks": [],
+   "dynamicTitle": false,
+   "seedParent": "previewEngine.universal"
+  },
+  {
+   "id": "previewLanguages",
+   "kind": "feature",
+   "destination": {
+    "page": "dictation",
+    "tab": "livePreview"
+   },
+   "disposition": "mapped",
+   "parent": "section.previewEngine",
+   "target": "previewLanguages",
+   "fallbacks": [
+    "previewEngine"
+   ],
+   "dynamicTitle": false,
+   "seedParent": null,
+   "description": {
+    "kind": "runtime"
+   }
+  },
+  {
+   "id": "previewLanguages.install",
+   "kind": "action",
+   "destination": {
+    "page": "dictation",
+    "tab": "livePreview"
+   },
+   "disposition": "mapped",
+   "parent": "previewLanguages",
+   "target": "previewLanguages",
+   "fallbacks": [
+    "previewEngine"
+   ],
+   "dynamicTitle": true,
+   "seedParent": "previewLanguages",
+   "description": {
+    "kind": "static",
+    "english": "Download a language from macOS to preview it."
+   }
+  },
+  {
+   "id": "pillPosition",
+   "kind": "setting",
+   "destination": {
+    "page": "dictation",
+    "tab": "pill"
+   },
+   "disposition": "mapped",
+   "parent": "section.pill",
+   "target": "pillPosition",
+   "fallbacks": [],
+   "dynamicTitle": false,
+   "seedParent": null,
+   "description": {
+    "kind": "static",
+    "english": "Where the pill floats while you dictate."
+   }
+  },
+  {
+   "id": "pillPosition.top",
+   "kind": "choice",
+   "destination": {
+    "page": "dictation",
+    "tab": "pill"
+   },
+   "disposition": "mapped",
+   "parent": "pillPosition",
+   "target": "pillPosition",
+   "fallbacks": [],
+   "dynamicTitle": false,
+   "seedParent": "pillPosition"
+  },
+  {
+   "id": "pillPosition.bottom",
+   "kind": "choice",
+   "destination": {
+    "page": "dictation",
+    "tab": "pill"
+   },
+   "disposition": "mapped",
+   "parent": "pillPosition",
+   "target": "pillPosition",
+   "fallbacks": [],
+   "dynamicTitle": false,
+   "seedParent": "pillPosition"
+  },
+  {
+   "id": "pillStyle",
+   "kind": "setting",
+   "destination": {
+    "page": "dictation",
+    "tab": "pill"
+   },
+   "disposition": "mapped",
+   "parent": "section.pill",
+   "target": "pillStyle",
+   "fallbacks": [],
+   "dynamicTitle": false,
+   "seedParent": null,
+   "description": {
+    "kind": "static",
+    "english": "What the floating pill shows while you record."
+   }
+  },
+  {
+   "id": "pillStyle.capsule",
+   "kind": "choice",
+   "destination": {
+    "page": "dictation",
+    "tab": "pill"
+   },
+   "disposition": "mapped",
+   "parent": "pillStyle",
+   "target": "pillStyle",
+   "fallbacks": [],
+   "dynamicTitle": false,
+   "seedParent": "pillStyle",
+   "description": {
+    "kind": "static",
+    "english": "A compact pill with a dot and level meter."
+   }
+  },
+  {
+   "id": "pillStyle.levelRail",
+   "kind": "choice",
+   "destination": {
+    "page": "dictation",
+    "tab": "pill"
+   },
+   "disposition": "mapped",
+   "parent": "pillStyle",
+   "target": "pillStyle",
+   "fallbacks": [],
+   "dynamicTitle": false,
+   "seedParent": "pillStyle",
+   "description": {
+    "kind": "static",
+    "english": "A slim rail that follows your volume."
+   }
+  },
+  {
+   "id": "pillStyle.readingWell",
+   "kind": "choice",
+   "destination": {
+    "page": "dictation",
+    "tab": "pill"
+   },
+   "disposition": "mapped",
+   "parent": "pillStyle",
+   "target": "pillStyle",
+   "fallbacks": [],
+   "dynamicTitle": false,
+   "seedParent": "pillStyle",
+   "description": {
+    "kind": "static",
+    "english": "Shows words as you speak. Turns Live Preview on."
+   }
+  },
+  {
+   "id": "pillStyle.configureLivePreview",
+   "kind": "action",
+   "destination": {
+    "page": "dictation",
+    "tab": "pill"
+   },
+   "disposition": "mapped",
+   "parent": "pillStyle",
+   "target": "pillStyle.configureLivePreview",
+   "fallbacks": [
+    "pillStyle"
+   ],
+   "dynamicTitle": false,
+   "seedParent": "pillStyle"
+  },
+  {
+   "id": "recordingChimes",
+   "kind": "setting",
+   "destination": {
+    "page": "dictation",
+    "tab": "chimes"
+   },
+   "disposition": "mapped",
+   "parent": "section.chimes",
+   "target": "recordingChimes",
+   "fallbacks": [],
+   "dynamicTitle": false,
+   "seedParent": null,
+   "description": {
+    "kind": "static",
+    "english": "Plays a short chime when recording starts and stops."
+   }
+  },
+  {
+   "id": "recordingChime",
+   "kind": "setting",
+   "destination": {
+    "page": "dictation",
+    "tab": "chimes"
+   },
+   "disposition": "mapped",
+   "parent": "section.chimes",
+   "target": "recordingChime",
+   "fallbacks": [],
+   "dynamicTitle": false,
+   "seedParent": null,
+   "description": {
+    "kind": "static",
+    "english": "Hear this chime without changing your choice."
+   }
+  },
+  {
+   "id": "recordingChime.dustMote",
+   "kind": "choice",
+   "destination": {
+    "page": "dictation",
+    "tab": "chimes"
+   },
+   "disposition": "mapped",
+   "parent": "recordingChime",
+   "target": "recordingChime",
+   "fallbacks": [],
+   "dynamicTitle": false,
+   "seedParent": "recordingChime",
+   "description": {
+    "kind": "static",
+    "english": "Soft filtered air, no tone."
+   }
+  },
+  {
+   "id": "recordingChime.velvetHush",
+   "kind": "choice",
+   "destination": {
+    "page": "dictation",
+    "tab": "chimes"
+   },
+   "disposition": "mapped",
+   "parent": "recordingChime",
+   "target": "recordingChime",
+   "fallbacks": [],
+   "dynamicTitle": false,
+   "seedParent": "recordingChime",
+   "description": {
+    "kind": "static",
+    "english": "Two close tones, gentle warmth."
+   }
+  },
+  {
+   "id": "recordingChime.mutedConfirm",
+   "kind": "choice",
+   "destination": {
+    "page": "dictation",
+    "tab": "chimes"
+   },
+   "disposition": "mapped",
+   "parent": "recordingChime",
+   "target": "recordingChime",
+   "fallbacks": [],
+   "dynamicTitle": false,
+   "seedParent": "recordingChime",
+   "description": {
+    "kind": "static",
+    "english": "Same pitch both ways, plain."
+   }
+  },
+  {
+   "id": "recordingChime.whisperTick",
+   "kind": "choice",
+   "destination": {
+    "page": "dictation",
+    "tab": "chimes"
+   },
+   "disposition": "mapped",
+   "parent": "recordingChime",
+   "target": "recordingChime",
+   "fallbacks": [],
+   "dynamicTitle": false,
+   "seedParent": "recordingChime",
+   "description": {
+    "kind": "static",
+    "english": "Barely-there tick."
+   }
+  },
+  {
+   "id": "recordingChime.roundPebble",
+   "kind": "choice",
+   "destination": {
+    "page": "dictation",
+    "tab": "chimes"
+   },
+   "disposition": "mapped",
+   "parent": "recordingChime",
+   "target": "recordingChime",
+   "fallbacks": [],
+   "dynamicTitle": false,
+   "seedParent": "recordingChime",
+   "description": {
+    "kind": "static",
+    "english": "Rounded, no edge."
+   }
+  },
+  {
+   "id": "recordingChime.paperTap",
+   "kind": "choice",
+   "destination": {
+    "page": "dictation",
+    "tab": "chimes"
+   },
+   "disposition": "mapped",
+   "parent": "recordingChime",
+   "target": "recordingChime",
+   "fallbacks": [],
+   "dynamicTitle": false,
+   "seedParent": "recordingChime",
+   "description": {
+    "kind": "static",
+    "english": "Soft paper-like tap."
+   }
+  },
+  {
+   "id": "recordingChime.softHush",
+   "kind": "choice",
+   "destination": {
+    "page": "dictation",
+    "tab": "chimes"
+   },
+   "disposition": "mapped",
+   "parent": "recordingChime",
+   "target": "recordingChime",
+   "fallbacks": [],
+   "dynamicTitle": false,
+   "seedParent": "recordingChime",
+   "description": {
+    "kind": "static",
+    "english": "Slow fade, like a breath."
+   }
+  },
+  {
+   "id": "recordingChime.lowNod",
+   "kind": "choice",
+   "destination": {
+    "page": "dictation",
+    "tab": "chimes"
+   },
+   "disposition": "mapped",
+   "parent": "recordingChime",
+   "target": "recordingChime",
+   "fallbacks": [],
+   "dynamicTitle": false,
+   "seedParent": "recordingChime",
+   "description": {
+    "kind": "static",
+    "english": "Low, warm, unhurried."
+   }
+  },
+  {
+   "id": "recordingChime.cloudPop",
+   "kind": "choice",
+   "destination": {
+    "page": "dictation",
+    "tab": "chimes"
+   },
+   "disposition": "mapped",
+   "parent": "recordingChime",
+   "target": "recordingChime",
+   "fallbacks": [],
+   "dynamicTitle": false,
+   "seedParent": "recordingChime",
+   "description": {
+    "kind": "static",
+    "english": "Tiny filtered-air pop."
+   }
+  },
+  {
+   "id": "recordingChime.velvetTap",
+   "kind": "choice",
+   "destination": {
+    "page": "dictation",
+    "tab": "chimes"
+   },
+   "disposition": "mapped",
+   "parent": "recordingChime",
+   "target": "recordingChime",
+   "fallbacks": [],
+   "dynamicTitle": false,
+   "seedParent": "recordingChime",
+   "description": {
+    "kind": "static",
+    "english": "Muted, compact tap."
+   }
+  },
+  {
+   "id": "recordingChime.satinShift",
+   "kind": "choice",
+   "destination": {
+    "page": "dictation",
+    "tab": "chimes"
+   },
+   "disposition": "mapped",
+   "parent": "recordingChime",
+   "target": "recordingChime",
+   "fallbacks": [],
+   "dynamicTitle": false,
+   "seedParent": "recordingChime",
+   "description": {
+    "kind": "static",
+    "english": "Smooth two-tone shift."
+   }
+  },
+  {
+   "id": "recordingChime.airGlint",
+   "kind": "choice",
+   "destination": {
+    "page": "dictation",
+    "tab": "chimes"
+   },
+   "disposition": "mapped",
+   "parent": "recordingChime",
+   "target": "recordingChime",
+   "fallbacks": [],
+   "dynamicTitle": false,
+   "seedParent": "recordingChime",
+   "description": {
+    "kind": "static",
+    "english": "Clean, airy glint."
+   }
+  },
+  {
+   "id": "recordingChime.preview",
+   "kind": "action",
+   "destination": {
+    "page": "dictation",
+    "tab": "chimes"
+   },
+   "disposition": "mapped",
+   "parent": "recordingChime",
+   "target": "recordingChime",
+   "fallbacks": [],
+   "dynamicTitle": true,
+   "seedParent": "recordingChime",
+   "description": {
+    "kind": "none",
+    "why": "conditional notice"
+   }
+  },
+  {
+   "id": "autoCopyToClipboard",
+   "kind": "setting",
+   "destination": {
+    "page": "dictation",
+    "tab": "clipboard"
+   },
+   "disposition": "mapped",
+   "parent": "section.clipboard",
+   "target": "autoCopyToClipboard",
+   "fallbacks": [],
+   "dynamicTitle": false,
+   "seedParent": null,
+   "description": {
+    "kind": "static",
+    "english": "Copies dictation when automatic pasting is skipped."
+   }
+  },
+  {
+   "id": "restoreClipboard",
+   "kind": "setting",
+   "destination": {
+    "page": "dictation",
+    "tab": "clipboard"
+   },
+   "disposition": "mapped",
+   "parent": "section.clipboard",
+   "target": "restoreClipboard",
+   "fallbacks": [],
+   "dynamicTitle": false,
+   "seedParent": null,
+   "description": {
+    "kind": "static",
+    "english": "Puts back what was on your clipboard before pasting."
+   }
+  },
+  {
+   "id": "smartInsertion",
+   "kind": "setting",
+   "destination": {
+    "page": "dictation",
+    "tab": "clipboard"
+   },
+   "disposition": "mapped",
+   "parent": "section.clipboard",
+   "target": "smartInsertion",
+   "fallbacks": [],
+   "dynamicTitle": false,
+   "seedParent": null,
+   "description": {
+    "kind": "static",
+    "english": "Fits text to the spacing and capitals around your cursor."
+   }
+  },
+  {
+   "id": "quickAddClipboardFallback",
+   "kind": "setting",
+   "destination": {
+    "page": "dictation",
+    "tab": "clipboard"
+   },
+   "disposition": "mapped",
+   "parent": "section.quickAddClipboard",
+   "target": "quickAddClipboardFallback",
+   "fallbacks": [],
+   "dynamicTitle": false,
+   "seedParent": null,
+   "description": {
+    "kind": "static",
+    "english": "Reads hidden selections and restores your clipboard."
+   }
+  },
+  {
+   "id": "recordingMode",
+   "kind": "setting",
+   "destination": {
+    "page": "keybinds"
+   },
+   "disposition": "mapped",
+   "parent": "section.keybindsRecording",
+   "target": "recordingMode",
+   "fallbacks": [],
+   "dynamicTitle": false,
+   "seedParent": null,
+   "description": {
+    "kind": "static",
+    "english": "Hold to talk, or press once to start and again to stop."
+   }
+  },
+  {
+   "id": "recordingMode.pushToTalk",
+   "kind": "choice",
+   "destination": {
+    "page": "keybinds"
+   },
+   "disposition": "mapped",
+   "parent": "recordingMode",
+   "target": "recordingMode",
+   "fallbacks": [],
+   "dynamicTitle": false,
+   "seedParent": "recordingMode",
+   "description": {
+    "kind": "none",
+    "why": "help text behind a question mark"
+   }
+  },
+  {
+   "id": "recordingMode.toggle",
+   "kind": "choice",
+   "destination": {
+    "page": "keybinds"
+   },
+   "disposition": "mapped",
+   "parent": "recordingMode",
+   "target": "recordingMode",
+   "fallbacks": [],
+   "dynamicTitle": false,
+   "seedParent": "recordingMode",
+   "description": {
+    "kind": "none",
+    "why": "help text behind a question mark"
+   }
+  },
+  {
+   "id": "recordKeybind",
+   "kind": "setting",
+   "destination": {
+    "page": "keybinds"
+   },
+   "disposition": "mapped",
+   "parent": "section.keybindsRecording",
+   "target": "recordKeybind",
+   "fallbacks": [],
+   "dynamicTitle": false,
+   "seedParent": null,
+   "description": {
+    "kind": "static",
+    "english": "Click Change to choose the keys you use."
+   }
+  },
+  {
+   "id": "cancelKeybind",
+   "kind": "setting",
+   "destination": {
+    "page": "keybinds"
+   },
+   "disposition": "mapped",
+   "parent": "section.keybindsRecording",
+   "target": "cancelKeybind",
+   "fallbacks": [],
+   "dynamicTitle": false,
+   "seedParent": null,
+   "description": {
+    "kind": "static",
+    "english": "Cancels the current recording."
+   }
+  },
+  {
+   "id": "escapeRecovery",
+   "kind": "setting",
+   "destination": {
+    "page": "keybinds"
+   },
+   "disposition": "mapped",
+   "parent": "section.keybindsRecording",
+   "target": "escapeRecovery",
+   "fallbacks": [],
+   "dynamicTitle": false,
+   "seedParent": null,
+   "description": {
+    "kind": "static",
+    "english": "Keeps cancelled dictations in History for 24 hours."
+   }
+  },
+  {
+   "id": "quickAddKeybind",
+   "kind": "setting",
+   "destination": {
+    "page": "keybinds"
+   },
+   "disposition": "mapped",
+   "parent": "section.keybindsShortcuts",
+   "target": "quickAddKeybind",
+   "fallbacks": [],
+   "dynamicTitle": false,
+   "seedParent": null,
+   "description": {
+    "kind": "static",
+    "english": "Select a misheard word, then press these keys."
+   }
+  },
+  {
+   "id": "pasteLastKeybind",
+   "kind": "setting",
+   "destination": {
+    "page": "keybinds"
+   },
+   "disposition": "mapped",
+   "parent": "section.keybindsShortcuts",
+   "target": "pasteLastKeybind",
+   "fallbacks": [],
+   "dynamicTitle": false,
+   "seedParent": null,
+   "description": {
+    "kind": "static",
+    "english": "Pastes your last dictation."
+   }
+  },
+  {
+   "id": "copyLastKeybind",
+   "kind": "setting",
+   "destination": {
+    "page": "keybinds"
+   },
+   "disposition": "mapped",
+   "parent": "section.keybindsShortcuts",
+   "target": "copyLastKeybind",
+   "fallbacks": [],
+   "dynamicTitle": false,
+   "seedParent": null,
+   "description": {
+    "kind": "static",
+    "english": "Copies your last dictation."
+   }
+  },
+  {
+   "id": "keybind.resetToDefault",
+   "kind": "action",
+   "destination": {
+    "page": "keybinds"
+   },
+   "disposition": "mapped",
+   "parent": "section.keybindsRecording",
+   "target": "recordKeybind",
+   "fallbacks": [],
+   "dynamicTitle": false,
+   "seedParent": null
+  },
+  {
+   "id": "transcribeFile.steps",
+   "kind": "feature",
+   "destination": {
+    "page": "transcribeFile"
+   },
+   "disposition": "mapped",
+   "parent": "page.transcribeFile",
+   "target": "transcribeFile.steps",
+   "fallbacks": [],
+   "dynamicTitle": true,
+   "seedParent": null
+  },
+  {
+   "id": "transcribeFile.chooseFile",
+   "kind": "action",
+   "destination": {
+    "page": "transcribeFile"
+   },
+   "disposition": "exempt",
+   "reason": "transcribeFileWizard"
+  },
+  {
+   "id": "transcribeFile.feature.privacy",
+   "kind": "feature",
+   "destination": {
+    "page": "transcribeFile"
+   },
+   "disposition": "exempt",
+   "reason": "transcribeFileWizard"
+  },
+  {
+   "id": "transcribeFile.feature.engines",
+   "kind": "feature",
+   "destination": {
+    "page": "transcribeFile"
+   },
+   "disposition": "exempt",
+   "reason": "transcribeFileWizard"
+  },
+  {
+   "id": "transcribeFile.feature.polish",
+   "kind": "feature",
+   "destination": {
+    "page": "transcribeFile"
+   },
+   "disposition": "exempt",
+   "reason": "transcribeFileWizard"
+  },
+  {
+   "id": "transcribeFile.feature.original",
+   "kind": "feature",
+   "destination": {
+    "page": "transcribeFile"
+   },
+   "disposition": "exempt",
+   "reason": "transcribeFileWizard"
+  },
+  {
+   "id": "transcribeFile.chooseDifferentFile",
+   "kind": "action",
+   "destination": {
+    "page": "transcribeFile"
+   },
+   "disposition": "exempt",
+   "reason": "transcribeFileWizard"
+  },
+  {
+   "id": "transcribeFile.removeFile",
+   "kind": "action",
+   "destination": {
+    "page": "transcribeFile"
+   },
+   "disposition": "exempt",
+   "reason": "transcribeFileWizard"
+  },
+  {
+   "id": "transcribeFile.continue",
+   "kind": "action",
+   "destination": {
+    "page": "transcribeFile"
+   },
+   "disposition": "exempt",
+   "reason": "transcribeFileWizard"
+  },
+  {
+   "id": "transcribeFile.engine",
+   "kind": "setting",
+   "destination": {
+    "page": "transcribeFile"
+   },
+   "disposition": "exempt",
+   "reason": "transcribeFileWizard"
+  },
+  {
+   "id": "transcribeFile.engine.fast",
+   "kind": "choice",
+   "destination": {
+    "page": "transcribeFile"
+   },
+   "disposition": "exempt",
+   "reason": "transcribeFileWizard"
+  },
+  {
+   "id": "transcribeFile.engine.allLanguages",
+   "kind": "choice",
+   "destination": {
+    "page": "transcribeFile"
+   },
+   "disposition": "exempt",
+   "reason": "transcribeFileWizard"
+  },
+  {
+   "id": "transcribeFile.polish",
+   "kind": "setting",
+   "destination": {
+    "page": "transcribeFile"
+   },
+   "disposition": "exempt",
+   "reason": "transcribeFileWizard"
+  },
+  {
+   "id": "transcribeFile.polish.egOne",
+   "kind": "choice",
+   "destination": {
+    "page": "transcribeFile"
+   },
+   "disposition": "exempt",
+   "reason": "transcribeFileWizard"
+  },
+  {
+   "id": "transcribeFile.polish.appleIntelligence",
+   "kind": "choice",
+   "destination": {
+    "page": "transcribeFile"
+   },
+   "disposition": "exempt",
+   "reason": "transcribeFileWizard"
+  },
+  {
+   "id": "transcribeFile.polish.ollama",
+   "kind": "choice",
+   "destination": {
+    "page": "transcribeFile"
+   },
+   "disposition": "exempt",
+   "reason": "transcribeFileWizard"
+  },
+  {
+   "id": "transcribeFile.polish.openAI",
+   "kind": "choice",
+   "destination": {
+    "page": "transcribeFile"
+   },
+   "disposition": "exempt",
+   "reason": "transcribeFileWizard"
+  },
+  {
+   "id": "transcribeFile.polish.gemini",
+   "kind": "choice",
+   "destination": {
+    "page": "transcribeFile"
+   },
+   "disposition": "exempt",
+   "reason": "transcribeFileWizard"
+  },
+  {
+   "id": "transcribeFile.polish.claude",
+   "kind": "choice",
+   "destination": {
+    "page": "transcribeFile"
+   },
+   "disposition": "exempt",
+   "reason": "transcribeFileWizard"
+  },
+  {
+   "id": "transcribeFile.polishSetup",
+   "kind": "feature",
+   "destination": {
+    "page": "transcribeFile"
+   },
+   "disposition": "exempt",
+   "reason": "transcribeFileWizard"
+  },
+  {
+   "id": "transcribeFile.useDictationPolish",
+   "kind": "action",
+   "destination": {
+    "page": "transcribeFile"
+   },
+   "disposition": "exempt",
+   "reason": "transcribeFileWizard"
+  },
+  {
+   "id": "transcribeFile.start",
+   "kind": "action",
+   "destination": {
+    "page": "transcribeFile"
+   },
+   "disposition": "exempt",
+   "reason": "transcribeFileWizard"
+  },
+  {
+   "id": "transcribeFile.view",
+   "kind": "setting",
+   "destination": {
+    "page": "transcribeFile"
+   },
+   "disposition": "exempt",
+   "reason": "transcribeFileWizard"
+  },
+  {
+   "id": "transcribeFile.view.cleaned",
+   "kind": "choice",
+   "destination": {
+    "page": "transcribeFile"
+   },
+   "disposition": "exempt",
+   "reason": "transcribeFileWizard"
+  },
+  {
+   "id": "transcribeFile.view.markedUp",
+   "kind": "choice",
+   "destination": {
+    "page": "transcribeFile"
+   },
+   "disposition": "exempt",
+   "reason": "transcribeFileWizard"
+  },
+  {
+   "id": "transcribeFile.view.original",
+   "kind": "choice",
+   "destination": {
+    "page": "transcribeFile"
+   },
+   "disposition": "exempt",
+   "reason": "transcribeFileWizard"
+  },
+  {
+   "id": "transcribeFile.times",
+   "kind": "setting",
+   "destination": {
+    "page": "transcribeFile"
+   },
+   "disposition": "exempt",
+   "reason": "transcribeFileWizard"
+  },
+  {
+   "id": "transcribeFile.copy",
+   "kind": "action",
+   "destination": {
+    "page": "transcribeFile"
+   },
+   "disposition": "exempt",
+   "reason": "transcribeFileWizard"
+  },
+  {
+   "id": "transcribeFile.save",
+   "kind": "action",
+   "destination": {
+    "page": "transcribeFile"
+   },
+   "disposition": "exempt",
+   "reason": "transcribeFileWizard"
+  },
+  {
+   "id": "transcribeFile.share",
+   "kind": "action",
+   "destination": {
+    "page": "transcribeFile"
+   },
+   "disposition": "exempt",
+   "reason": "transcribeFileWizard"
+  },
+  {
+   "id": "transcribeFile.newTranscription",
+   "kind": "action",
+   "destination": {
+    "page": "transcribeFile"
+   },
+   "disposition": "exempt",
+   "reason": "transcribeFileWizard"
+  },
+  {
+   "id": "transcribeFile.changePolisher",
+   "kind": "action",
+   "destination": {
+    "page": "transcribeFile"
+   },
+   "disposition": "exempt",
+   "reason": "transcribeFileWizard"
+  },
+  {
+   "id": "transcribeFile.stopSpeakers",
+   "kind": "action",
+   "destination": {
+    "page": "transcribeFile"
+   },
+   "disposition": "exempt",
+   "reason": "transcribeFileWizard"
+  },
+  {
+   "id": "transcribeFile.retrySpeakers",
+   "kind": "action",
+   "destination": {
+    "page": "transcribeFile"
+   },
+   "disposition": "exempt",
+   "reason": "transcribeFileWizard"
+  },
+  {
+   "id": "enableAIPolish",
+   "kind": "setting",
+   "destination": {
+    "page": "aiPolish"
+   },
+   "disposition": "mapped",
+   "parent": "page.aiPolish",
+   "target": "enableAIPolish",
+   "fallbacks": [],
+   "dynamicTitle": false,
+   "seedParent": null,
+   "description": {
+    "kind": "static",
+    "english": "Fixes grammar, punctuation and formatting"
+   }
+  },
+  {
+   "id": "aiPolishProvider",
+   "kind": "setting",
+   "destination": {
+    "page": "aiPolish"
+   },
+   "disposition": "mapped",
+   "parent": "section.aiPolishModel",
+   "target": "aiPolishProvider",
+   "fallbacks": [
+    "enableAIPolish"
+   ],
+   "dynamicTitle": true,
+   "seedParent": null,
+   "description": {
+    "kind": "none",
+    "why": "section note, not the item line"
+   }
+  },
+  {
+   "id": "aiPolishProvider.egOne",
+   "kind": "choice",
+   "destination": {
+    "page": "aiPolish"
+   },
+   "disposition": "mapped",
+   "parent": "aiPolishProvider",
+   "target": "aiPolishProvider",
+   "fallbacks": [
+    "aiPolishProvider",
+    "enableAIPolish"
+   ],
+   "dynamicTitle": false,
+   "seedParent": "aiPolishProvider",
+   "description": {
+    "kind": "static",
+    "english": "Our tuned model"
+   }
+  },
+  {
+   "id": "aiPolishProvider.s1Mini",
+   "kind": "choice",
+   "destination": {
+    "page": "aiPolish"
+   },
+   "disposition": "mapped",
+   "parent": "aiPolishProvider",
+   "target": "aiPolishProvider",
+   "fallbacks": [
+    "aiPolishProvider",
+    "enableAIPolish"
+   ],
+   "dynamicTitle": false,
+   "seedParent": "aiPolishProvider",
+   "description": {
+    "kind": "static",
+    "english": "by Superwhisper"
+   }
+  },
+  {
+   "id": "aiPolishProvider.appleIntelligence",
+   "kind": "choice",
+   "destination": {
+    "page": "aiPolish"
+   },
+   "disposition": "mapped",
+   "parent": "aiPolishProvider",
+   "target": "aiPolishProvider",
+   "fallbacks": [
+    "aiPolishProvider",
+    "enableAIPolish"
+   ],
+   "dynamicTitle": false,
+   "seedParent": "aiPolishProvider",
+   "description": {
+    "kind": "static",
+    "english": "Built into macOS"
+   }
+  },
+  {
+   "id": "aiPolishProvider.ollama",
+   "kind": "choice",
+   "destination": {
+    "page": "aiPolish"
+   },
+   "disposition": "mapped",
+   "parent": "aiPolishProvider",
+   "target": "aiPolishProvider",
+   "fallbacks": [
+    "aiPolishProvider",
+    "enableAIPolish"
+   ],
+   "dynamicTitle": false,
+   "seedParent": "aiPolishProvider",
+   "description": {
+    "kind": "static",
+    "english": "Your models, local or hosted"
+   }
+  },
+  {
+   "id": "aiPolishProvider.openAI",
+   "kind": "choice",
+   "destination": {
+    "page": "aiPolish"
+   },
+   "disposition": "mapped",
+   "parent": "aiPolishProvider",
+   "target": "aiPolishProvider",
+   "fallbacks": [
+    "aiPolishProvider",
+    "enableAIPolish"
+   ],
+   "dynamicTitle": false,
+   "seedParent": "aiPolishProvider",
+   "description": {
+    "kind": "static",
+    "english": "Your API key"
+   }
+  },
+  {
+   "id": "aiPolishProvider.gemini",
+   "kind": "choice",
+   "destination": {
+    "page": "aiPolish"
+   },
+   "disposition": "mapped",
+   "parent": "aiPolishProvider",
+   "target": "aiPolishProvider",
+   "fallbacks": [
+    "aiPolishProvider",
+    "enableAIPolish"
+   ],
+   "dynamicTitle": false,
+   "seedParent": "aiPolishProvider",
+   "description": {
+    "kind": "static",
+    "english": "Your API key"
+   }
+  },
+  {
+   "id": "aiPolishProvider.claude",
+   "kind": "choice",
+   "destination": {
+    "page": "aiPolish"
+   },
+   "disposition": "mapped",
+   "parent": "aiPolishProvider",
+   "target": "aiPolishProvider",
+   "fallbacks": [
+    "aiPolishProvider",
+    "enableAIPolish"
+   ],
+   "dynamicTitle": false,
+   "seedParent": "aiPolishProvider",
+   "description": {
+    "kind": "static",
+    "english": "Your API key"
+   }
+  },
+  {
+   "id": "aiPolish.providerSection",
+   "kind": "feature",
+   "destination": {
+    "page": "aiPolish"
+   },
+   "disposition": "mapped",
+   "parent": "aiPolishProvider",
+   "target": "aiPolish.providerSection",
+   "fallbacks": [
+    "aiPolishProvider",
+    "enableAIPolish"
+   ],
+   "dynamicTitle": true,
+   "seedParent": "aiPolishProvider"
+  },
+  {
+   "id": "aiPolish.whyUse.egOne",
+   "kind": "feature",
+   "destination": {
+    "page": "aiPolish"
+   },
+   "disposition": "mapped",
+   "parent": "aiPolishProvider.egOne",
+   "target": "aiPolish.whyUse.egOne",
+   "fallbacks": [
+    "aiPolishProvider",
+    "enableAIPolish"
+   ],
+   "dynamicTitle": false,
+   "seedParent": "aiPolishProvider.egOne"
+  },
+  {
+   "id": "aiPolish.whyUse.s1Mini",
+   "kind": "feature",
+   "destination": {
+    "page": "aiPolish"
+   },
+   "disposition": "mapped",
+   "parent": "aiPolishProvider.s1Mini",
+   "target": "aiPolish.whyUse.s1Mini",
+   "fallbacks": [
+    "aiPolishProvider",
+    "enableAIPolish"
+   ],
+   "dynamicTitle": false,
+   "seedParent": "aiPolishProvider.s1Mini"
+  },
+  {
+   "id": "aiPolish.whyUse.appleIntelligence",
+   "kind": "feature",
+   "destination": {
+    "page": "aiPolish"
+   },
+   "disposition": "mapped",
+   "parent": "aiPolishProvider.appleIntelligence",
+   "target": "aiPolish.whyUse.appleIntelligence",
+   "fallbacks": [
+    "aiPolishProvider",
+    "enableAIPolish"
+   ],
+   "dynamicTitle": false,
+   "seedParent": "aiPolishProvider.appleIntelligence"
+  },
+  {
+   "id": "aiPolish.whyUse.ollama",
+   "kind": "feature",
+   "destination": {
+    "page": "aiPolish"
+   },
+   "disposition": "mapped",
+   "parent": "aiPolishProvider.ollama",
+   "target": "aiPolish.whyUse.ollama",
+   "fallbacks": [
+    "aiPolishProvider",
+    "enableAIPolish"
+   ],
+   "dynamicTitle": false,
+   "seedParent": "aiPolishProvider.ollama"
+  },
+  {
+   "id": "aiPolish.whyUse.openAI",
+   "kind": "feature",
+   "destination": {
+    "page": "aiPolish"
+   },
+   "disposition": "mapped",
+   "parent": "aiPolishProvider.openAI",
+   "target": "aiPolish.whyUse.openAI",
+   "fallbacks": [
+    "aiPolishProvider",
+    "enableAIPolish"
+   ],
+   "dynamicTitle": false,
+   "seedParent": "aiPolishProvider.openAI"
+  },
+  {
+   "id": "aiPolish.whyUse.gemini",
+   "kind": "feature",
+   "destination": {
+    "page": "aiPolish"
+   },
+   "disposition": "mapped",
+   "parent": "aiPolishProvider.gemini",
+   "target": "aiPolish.whyUse.gemini",
+   "fallbacks": [
+    "aiPolishProvider",
+    "enableAIPolish"
+   ],
+   "dynamicTitle": false,
+   "seedParent": "aiPolishProvider.gemini"
+  },
+  {
+   "id": "aiPolish.whyUse.claude",
+   "kind": "feature",
+   "destination": {
+    "page": "aiPolish"
+   },
+   "disposition": "mapped",
+   "parent": "aiPolishProvider.claude",
+   "target": "aiPolish.whyUse.claude",
+   "fallbacks": [
+    "aiPolishProvider",
+    "enableAIPolish"
+   ],
+   "dynamicTitle": false,
+   "seedParent": "aiPolishProvider.claude"
+  },
+  {
+   "id": "aiPolish.link.aboutAppleIntelligence",
+   "kind": "action",
+   "destination": {
+    "page": "aiPolish"
+   },
+   "disposition": "mapped",
+   "parent": "aiPolish.whyUse.appleIntelligence",
+   "target": "aiPolish.whyUse.appleIntelligence",
+   "fallbacks": [
+    "aiPolishProvider",
+    "enableAIPolish"
+   ],
+   "dynamicTitle": false,
+   "seedParent": "aiPolish.whyUse.appleIntelligence"
+  },
+  {
+   "id": "aiPolish.link.ollamaLibrary",
+   "kind": "action",
+   "destination": {
+    "page": "aiPolish"
+   },
+   "disposition": "mapped",
+   "parent": "aiPolish.whyUse.ollama",
+   "target": "aiPolish.whyUse.ollama",
+   "fallbacks": [
+    "aiPolishProvider",
+    "enableAIPolish"
+   ],
+   "dynamicTitle": false,
+   "seedParent": "aiPolish.whyUse.ollama"
+  },
+  {
+   "id": "aiPolish.link.openAIRateLimits",
+   "kind": "action",
+   "destination": {
+    "page": "aiPolish"
+   },
+   "disposition": "mapped",
+   "parent": "aiPolish.whyUse.openAI",
+   "target": "aiPolish.whyUse.openAI",
+   "fallbacks": [
+    "aiPolishProvider",
+    "enableAIPolish"
+   ],
+   "dynamicTitle": false,
+   "seedParent": "aiPolish.whyUse.openAI"
+  },
+  {
+   "id": "aiPolish.link.geminiRateLimits",
+   "kind": "action",
+   "destination": {
+    "page": "aiPolish"
+   },
+   "disposition": "mapped",
+   "parent": "aiPolish.whyUse.gemini",
+   "target": "aiPolish.whyUse.gemini",
+   "fallbacks": [
+    "aiPolishProvider",
+    "enableAIPolish"
+   ],
+   "dynamicTitle": false,
+   "seedParent": "aiPolish.whyUse.gemini"
+  },
+  {
+   "id": "aiPolish.link.claudeRateLimits",
+   "kind": "action",
+   "destination": {
+    "page": "aiPolish"
+   },
+   "disposition": "mapped",
+   "parent": "aiPolish.whyUse.claude",
+   "target": "aiPolish.whyUse.claude",
+   "fallbacks": [
+    "aiPolishProvider",
+    "enableAIPolish"
+   ],
+   "dynamicTitle": false,
+   "seedParent": "aiPolish.whyUse.claude"
+  },
+  {
+   "id": "localModel.download",
+   "kind": "action",
+   "destination": {
+    "page": "aiPolish"
+   },
+   "disposition": "mapped",
+   "parent": "aiPolish.providerSection",
+   "target": "localModel.download",
+   "fallbacks": [
+    "aiPolishProvider",
+    "enableAIPolish"
+   ],
+   "dynamicTitle": false,
+   "seedParent": null,
+   "description": {
+    "kind": "runtime"
+   }
+  },
+  {
+   "id": "localModel.cancel",
+   "kind": "action",
+   "destination": {
+    "page": "aiPolish"
+   },
+   "disposition": "mapped",
+   "parent": "aiPolish.providerSection",
+   "target": "localModel.cancel",
+   "fallbacks": [
+    "aiPolishProvider",
+    "enableAIPolish"
+   ],
+   "dynamicTitle": false,
+   "seedParent": null,
+   "description": {
+    "kind": "runtime"
+   }
+  },
+  {
+   "id": "localModel.resume",
+   "kind": "action",
+   "destination": {
+    "page": "aiPolish"
+   },
+   "disposition": "mapped",
+   "parent": "aiPolish.providerSection",
+   "target": "localModel.resume",
+   "fallbacks": [
+    "aiPolishProvider",
+    "enableAIPolish"
+   ],
+   "dynamicTitle": false,
+   "seedParent": null,
+   "description": {
+    "kind": "none",
+    "why": "setup status line"
+   }
+  },
+  {
+   "id": "localModel.resumeUpgrade",
+   "kind": "action",
+   "destination": {
+    "page": "aiPolish"
+   },
+   "disposition": "mapped",
+   "parent": "aiPolish.providerSection",
+   "target": "aiPolishProvider",
+   "fallbacks": [
+    "aiPolishProvider",
+    "enableAIPolish"
+   ],
+   "dynamicTitle": false,
+   "seedParent": null
+  },
+  {
+   "id": "localModel.finishUpgrade",
+   "kind": "action",
+   "destination": {
+    "page": "aiPolish"
+   },
+   "disposition": "mapped",
+   "parent": "aiPolish.providerSection",
+   "target": "aiPolishProvider",
+   "fallbacks": [
+    "aiPolishProvider",
+    "enableAIPolish"
+   ],
+   "dynamicTitle": false,
+   "seedParent": null
+  },
+  {
+   "id": "localModel.tryAgain",
+   "kind": "action",
+   "destination": {
+    "page": "aiPolish"
+   },
+   "disposition": "mapped",
+   "parent": "aiPolish.providerSection",
+   "target": "localModel.tryAgain",
+   "fallbacks": [
+    "aiPolishProvider",
+    "enableAIPolish"
+   ],
+   "dynamicTitle": false,
+   "seedParent": null
+  },
+  {
+   "id": "localModel.testLive",
+   "kind": "action",
+   "destination": {
+    "page": "aiPolish"
+   },
+   "disposition": "mapped",
+   "parent": "aiPolish.providerSection",
+   "target": "localModel.testLive",
+   "fallbacks": [
+    "aiPolishProvider",
+    "enableAIPolish"
+   ],
+   "dynamicTitle": true,
+   "seedParent": null
+  },
+  {
+   "id": "localModel.remove",
+   "kind": "action",
+   "destination": {
+    "page": "aiPolish"
+   },
+   "disposition": "exempt",
+   "reason": "bundledModelRemove"
+  },
+  {
+   "id": "s1Tone",
+   "kind": "setting",
+   "destination": {
+    "page": "aiPolish"
+   },
+   "disposition": "mapped",
+   "parent": "aiPolish.providerSection",
+   "target": "s1Tone",
+   "fallbacks": [
+    "aiPolishProvider",
+    "enableAIPolish"
+   ],
+   "dynamicTitle": false,
+   "seedParent": null,
+   "description": {
+    "kind": "static",
+    "english": "Choose how formal your text sounds."
+   }
+  },
+  {
+   "id": "s1Tone.casual",
+   "kind": "choice",
+   "destination": {
+    "page": "aiPolish"
+   },
+   "disposition": "mapped",
+   "parent": "s1Tone",
+   "target": "s1Tone",
+   "fallbacks": [
+    "aiPolishProvider",
+    "enableAIPolish"
+   ],
+   "dynamicTitle": false,
+   "seedParent": "s1Tone"
+  },
+  {
+   "id": "s1Tone.semiCasual",
+   "kind": "choice",
+   "destination": {
+    "page": "aiPolish"
+   },
+   "disposition": "mapped",
+   "parent": "s1Tone",
+   "target": "s1Tone",
+   "fallbacks": [
+    "aiPolishProvider",
+    "enableAIPolish"
+   ],
+   "dynamicTitle": false,
+   "seedParent": "s1Tone"
+  },
+  {
+   "id": "s1Tone.semiFormal",
+   "kind": "choice",
+   "destination": {
+    "page": "aiPolish"
+   },
+   "disposition": "mapped",
+   "parent": "s1Tone",
+   "target": "s1Tone",
+   "fallbacks": [
+    "aiPolishProvider",
+    "enableAIPolish"
+   ],
+   "dynamicTitle": false,
+   "seedParent": "s1Tone"
+  },
+  {
+   "id": "s1Tone.formal",
+   "kind": "choice",
+   "destination": {
+    "page": "aiPolish"
+   },
+   "disposition": "mapped",
+   "parent": "s1Tone",
+   "target": "s1Tone",
+   "fallbacks": [
+    "aiPolishProvider",
+    "enableAIPolish"
+   ],
+   "dynamicTitle": false,
+   "seedParent": "s1Tone"
+  },
+  {
+   "id": "s1Structure",
+   "kind": "setting",
+   "destination": {
+    "page": "aiPolish"
+   },
+   "disposition": "mapped",
+   "parent": "aiPolish.providerSection",
+   "target": "s1Structure",
+   "fallbacks": [
+    "aiPolishProvider",
+    "enableAIPolish"
+   ],
+   "dynamicTitle": false,
+   "seedParent": null,
+   "description": {
+    "kind": "static",
+    "english": "Keep sentences or turn spoken items into lists."
+   }
+  },
+  {
+   "id": "s1Structure.prose",
+   "kind": "choice",
+   "destination": {
+    "page": "aiPolish"
+   },
+   "disposition": "mapped",
+   "parent": "s1Structure",
+   "target": "s1Structure",
+   "fallbacks": [
+    "aiPolishProvider",
+    "enableAIPolish"
+   ],
+   "dynamicTitle": false,
+   "seedParent": "s1Structure"
+  },
+  {
+   "id": "s1Structure.lists",
+   "kind": "choice",
+   "destination": {
+    "page": "aiPolish"
+   },
+   "disposition": "mapped",
+   "parent": "s1Structure",
+   "target": "s1Structure",
+   "fallbacks": [
+    "aiPolishProvider",
+    "enableAIPolish"
+   ],
+   "dynamicTitle": false,
+   "seedParent": "s1Structure"
+  },
+  {
+   "id": "s1Context",
+   "kind": "setting",
+   "destination": {
+    "page": "aiPolish"
+   },
+   "disposition": "mapped",
+   "parent": "aiPolish.providerSection",
+   "target": "s1Context",
+   "fallbacks": [
+    "aiPolishProvider",
+    "enableAIPolish"
+   ],
+   "dynamicTitle": false,
+   "seedParent": null,
+   "description": {
+    "kind": "static",
+    "english": "Format dictated greetings and sign-offs as email."
+   }
+  },
+  {
+   "id": "s1Context.general",
+   "kind": "choice",
+   "destination": {
+    "page": "aiPolish"
+   },
+   "disposition": "mapped",
+   "parent": "s1Context",
+   "target": "s1Context",
+   "fallbacks": [
+    "aiPolishProvider",
+    "enableAIPolish"
+   ],
+   "dynamicTitle": false,
+   "seedParent": "s1Context"
+  },
+  {
+   "id": "s1Context.email",
+   "kind": "choice",
+   "destination": {
+    "page": "aiPolish"
+   },
+   "disposition": "mapped",
+   "parent": "s1Context",
+   "target": "s1Context",
+   "fallbacks": [
+    "aiPolishProvider",
+    "enableAIPolish"
+   ],
+   "dynamicTitle": false,
+   "seedParent": "s1Context"
+  },
+  {
+   "id": "appleIntelligence.status",
+   "kind": "feature",
+   "destination": {
+    "page": "aiPolish"
+   },
+   "disposition": "mapped",
+   "parent": "aiPolishProvider.appleIntelligence",
+   "target": "appleIntelligence.status",
+   "fallbacks": [
+    "aiPolishProvider",
+    "enableAIPolish"
+   ],
+   "dynamicTitle": true,
+   "seedParent": "aiPolishProvider.appleIntelligence",
+   "description": {
+    "kind": "runtime"
+   }
+  },
+  {
+   "id": "appleIntelligence.recheck",
+   "kind": "action",
+   "destination": {
+    "page": "aiPolish"
+   },
+   "disposition": "mapped",
+   "parent": "appleIntelligence.status",
+   "target": "appleIntelligence.recheck",
+   "fallbacks": [
+    "aiPolishProvider",
+    "enableAIPolish"
+   ],
+   "dynamicTitle": false,
+   "seedParent": "appleIntelligence.status"
+  },
+  {
+   "id": "ollama.downloadOllama",
+   "kind": "action",
+   "destination": {
+    "page": "aiPolish"
+   },
+   "disposition": "mapped",
+   "parent": "aiPolishProvider.ollama",
+   "target": "ollama.downloadOllama",
+   "fallbacks": [
+    "aiPolishProvider",
+    "enableAIPolish"
+   ],
+   "dynamicTitle": false,
+   "seedParent": "aiPolishProvider.ollama",
+   "description": {
+    "kind": "none",
+    "why": "setup status line"
+   }
+  },
+  {
+   "id": "ollama.start",
+   "kind": "action",
+   "destination": {
+    "page": "aiPolish"
+   },
+   "disposition": "mapped",
+   "parent": "aiPolishProvider.ollama",
+   "target": "ollama.start",
+   "fallbacks": [
+    "aiPolishProvider",
+    "enableAIPolish"
+   ],
+   "dynamicTitle": false,
+   "seedParent": "aiPolishProvider.ollama",
+   "description": {
+    "kind": "none",
+    "why": "setup status line"
+   }
+  },
+  {
+   "id": "ollama.downloadModel",
+   "kind": "action",
+   "destination": {
+    "page": "aiPolish"
+   },
+   "disposition": "mapped",
+   "parent": "aiPolishProvider.ollama",
+   "target": "ollama.downloadModel",
+   "fallbacks": [
+    "aiPolishProvider",
+    "enableAIPolish"
+   ],
+   "dynamicTitle": true,
+   "seedParent": "aiPolishProvider.ollama",
+   "description": {
+    "kind": "none",
+    "why": "setup status line"
+   }
+  },
+  {
+   "id": "ollama.cancelPull",
+   "kind": "action",
+   "destination": {
+    "page": "aiPolish"
+   },
+   "disposition": "mapped",
+   "parent": "aiPolishProvider.ollama",
+   "target": "ollama.cancelPull",
+   "fallbacks": [
+    "aiPolishProvider",
+    "enableAIPolish"
+   ],
+   "dynamicTitle": false,
+   "seedParent": "aiPolishProvider.ollama"
+  },
+  {
+   "id": "ollama.server",
+   "kind": "feature",
+   "destination": {
+    "page": "aiPolish"
+   },
+   "disposition": "mapped",
+   "parent": "aiPolishProvider.ollama",
+   "target": "ollama.server",
+   "fallbacks": [
+    "aiPolishProvider",
+    "enableAIPolish"
+   ],
+   "dynamicTitle": false,
+   "seedParent": "aiPolishProvider.ollama",
+   "description": {
+    "kind": "runtime"
+   }
+  },
+  {
+   "id": "ollama.recheck",
+   "kind": "action",
+   "destination": {
+    "page": "aiPolish"
+   },
+   "disposition": "mapped",
+   "parent": "aiPolishProvider.ollama",
+   "target": "ollama.recheck",
+   "fallbacks": [
+    "aiPolishProvider",
+    "enableAIPolish"
+   ],
+   "dynamicTitle": false,
+   "seedParent": "aiPolishProvider.ollama"
+  },
+  {
+   "id": "ollama.tryAgain",
+   "kind": "action",
+   "destination": {
+    "page": "aiPolish"
+   },
+   "disposition": "mapped",
+   "parent": "aiPolishProvider.ollama",
+   "target": "ollama.tryAgain",
+   "fallbacks": [
+    "aiPolishProvider",
+    "enableAIPolish"
+   ],
+   "dynamicTitle": false,
+   "seedParent": "aiPolishProvider.ollama",
+   "description": {
+    "kind": "none",
+    "why": "setup status line"
+   }
+  },
+  {
+   "id": "ollama.browseModels",
+   "kind": "action",
+   "destination": {
+    "page": "aiPolish"
+   },
+   "disposition": "mapped",
+   "parent": "aiPolishProvider.ollama",
+   "target": "ollama.browseModels",
+   "fallbacks": [
+    "aiPolishProvider",
+    "enableAIPolish"
+   ],
+   "dynamicTitle": false,
+   "seedParent": "aiPolishProvider.ollama",
+   "description": {
+    "kind": "none",
+    "why": "setup status line"
+   }
+  },
+  {
+   "id": "ollama.prepareModel",
+   "kind": "action",
+   "destination": {
+    "page": "aiPolish"
+   },
+   "disposition": "mapped",
+   "parent": "polishModel",
+   "target": "ollama.prepareModel",
+   "fallbacks": [
+    "aiPolishProvider",
+    "enableAIPolish"
+   ],
+   "dynamicTitle": false,
+   "seedParent": "polishModel"
+  },
+  {
+   "id": "apiKey.openAI",
+   "kind": "setting",
+   "destination": {
+    "page": "aiPolish"
+   },
+   "disposition": "mapped",
+   "parent": "aiPolish.providerSection",
+   "target": "apiKey.openAI",
+   "fallbacks": [
+    "aiPolishProvider",
+    "enableAIPolish"
+   ],
+   "dynamicTitle": false,
+   "seedParent": null,
+   "description": {
+    "kind": "static",
+    "english": "Sends text and dictation context to OpenAI."
+   }
+  },
+  {
+   "id": "apiKey.gemini",
+   "kind": "setting",
+   "destination": {
+    "page": "aiPolish"
+   },
+   "disposition": "mapped",
+   "parent": "aiPolish.providerSection",
+   "target": "apiKey.gemini",
+   "fallbacks": [
+    "aiPolishProvider",
+    "enableAIPolish"
+   ],
+   "dynamicTitle": false,
+   "seedParent": null,
+   "description": {
+    "kind": "static",
+    "english": "Sends text and dictation context to Google."
+   }
+  },
+  {
+   "id": "apiKey.claude",
+   "kind": "setting",
+   "destination": {
+    "page": "aiPolish"
+   },
+   "disposition": "mapped",
+   "parent": "aiPolish.providerSection",
+   "target": "apiKey.claude",
+   "fallbacks": [
+    "aiPolishProvider",
+    "enableAIPolish"
+   ],
+   "dynamicTitle": false,
+   "seedParent": null,
+   "description": {
+    "kind": "static",
+    "english": "Sends text and dictation context to Anthropic."
+   }
+  },
+  {
+   "id": "apiKey.save",
+   "kind": "action",
+   "destination": {
+    "page": "aiPolish"
+   },
+   "disposition": "mapped",
+   "parent": "aiPolish.providerSection",
+   "target": "apiKey.save",
+   "fallbacks": [
+    "aiPolishProvider",
+    "enableAIPolish"
+   ],
+   "dynamicTitle": false,
+   "seedParent": null
+  },
+  {
+   "id": "apiKey.clear",
+   "kind": "action",
+   "destination": {
+    "page": "aiPolish"
+   },
+   "disposition": "mapped",
+   "parent": "aiPolish.providerSection",
+   "target": "apiKey.clear",
+   "fallbacks": [
+    "aiPolishProvider",
+    "enableAIPolish"
+   ],
+   "dynamicTitle": false,
+   "seedParent": null
+  },
+  {
+   "id": "apiKey.reveal",
+   "kind": "action",
+   "destination": {
+    "page": "aiPolish"
+   },
+   "disposition": "mapped",
+   "parent": "aiPolish.providerSection",
+   "target": "apiKey.reveal",
+   "fallbacks": [
+    "aiPolishProvider",
+    "enableAIPolish"
+   ],
+   "dynamicTitle": true,
+   "seedParent": null
+  },
+  {
+   "id": "apiKey.checkAgain",
+   "kind": "action",
+   "destination": {
+    "page": "aiPolish"
+   },
+   "disposition": "exempt",
+   "reason": "savedKeyRetry"
+  },
+  {
+   "id": "apiKey.getKeyLink",
+   "kind": "action",
+   "destination": {
+    "page": "aiPolish"
+   },
+   "disposition": "mapped",
+   "parent": "aiPolish.providerSection",
+   "target": "apiKey.getKeyLink",
+   "fallbacks": [
+    "aiPolishProvider",
+    "enableAIPolish"
+   ],
+   "dynamicTitle": true,
+   "seedParent": null
+  },
+  {
+   "id": "polishModel",
+   "kind": "setting",
+   "destination": {
+    "page": "aiPolish"
+   },
+   "disposition": "mapped",
+   "parent": "aiPolish.providerSection",
+   "target": "polishModel",
+   "fallbacks": [
+    "aiPolishProvider",
+    "enableAIPolish"
+   ],
+   "dynamicTitle": false,
+   "seedParent": null,
+   "description": {
+    "kind": "runtime"
+   }
+  },
+  {
+   "id": "polishModel.refresh",
+   "kind": "action",
+   "destination": {
+    "page": "aiPolish"
+   },
+   "disposition": "mapped",
+   "parent": "polishModel",
+   "target": "polishModel.refresh",
+   "fallbacks": [
+    "aiPolishProvider",
+    "enableAIPolish"
+   ],
+   "dynamicTitle": false,
+   "seedParent": "polishModel"
+  },
+  {
+   "id": "enableDictionary",
+   "kind": "setting",
+   "destination": {
+    "page": "dictionary"
+   },
+   "disposition": "mapped",
+   "parent": "page.dictionary",
+   "target": "enableDictionary",
+   "fallbacks": [],
+   "dynamicTitle": false,
+   "seedParent": null,
+   "description": {
+    "kind": "static",
+    "english": "Use your words and vocabulary to improve recognition."
+   }
+  },
+  {
+   "id": "dictionary.tab.yourWords",
+   "kind": "feature",
+   "destination": {
+    "page": "dictionary",
+    "dictionaryTab": "yourWords"
+   },
+   "disposition": "mapped",
+   "parent": "page.dictionary",
+   "target": "dictionary.tab.yourWords",
+   "fallbacks": [],
+   "dynamicTitle": false,
+   "description": {
+    "kind": "static",
+    "english": "Words you added"
+   }
+  },
+  {
+   "id": "dictionary.tab.vocabularyPacks",
+   "kind": "feature",
+   "destination": {
+    "page": "dictionary",
+    "dictionaryTab": "vocabularyPacks"
+   },
+   "disposition": "mapped",
+   "parent": "page.dictionary",
+   "target": "dictionary.tab.vocabularyPacks",
+   "fallbacks": [],
+   "dynamicTitle": false,
+   "description": {
+    "kind": "static",
+    "english": "Ready-made lists"
+   }
+  },
+  {
+   "id": "dictionary.tab.learnFrom",
+   "kind": "feature",
+   "destination": {
+    "page": "dictionary",
+    "dictionaryTab": "learnFrom"
+   },
+   "disposition": "mapped",
+   "parent": "page.dictionary",
+   "target": "dictionary.tab.learnFrom",
+   "fallbacks": [],
+   "dynamicTitle": false,
+   "description": {
+    "kind": "static",
+    "english": "Learn as you go"
+   }
+  },
+  {
+   "id": "dictionary.tab.quickAdd",
+   "kind": "feature",
+   "destination": {
+    "page": "dictionary",
+    "dictionaryTab": "quickAdd"
+   },
+   "disposition": "mapped",
+   "parent": "page.dictionary",
+   "target": "dictionary.tab.quickAdd",
+   "fallbacks": [],
+   "dynamicTitle": false,
+   "description": {
+    "kind": "static",
+    "english": "Add from any app"
+   }
+  },
+  {
+   "id": "yourWords.add",
+   "kind": "action",
+   "destination": {
+    "page": "dictionary",
+    "dictionaryTab": "yourWords"
+   },
+   "disposition": "mapped",
+   "parent": "dictionary.tab.yourWords",
+   "target": "yourWords.add",
+   "fallbacks": [],
+   "dynamicTitle": false,
+   "seedParent": null
+  },
+  {
+   "id": "yourWords.import",
+   "kind": "action",
+   "destination": {
+    "page": "dictionary",
+    "dictionaryTab": "yourWords"
+   },
+   "disposition": "mapped",
+   "parent": "dictionary.tab.yourWords",
+   "target": "yourWords.import",
+   "fallbacks": [],
+   "dynamicTitle": false,
+   "seedParent": null
+  },
+  {
+   "id": "yourWords.export",
+   "kind": "action",
+   "destination": {
+    "page": "dictionary",
+    "dictionaryTab": "yourWords"
+   },
+   "disposition": "mapped",
+   "parent": "dictionary.tab.yourWords",
+   "target": "yourWords.export",
+   "fallbacks": [],
+   "dynamicTitle": false,
+   "seedParent": null
+  },
+  {
+   "id": "yourWords.search",
+   "kind": "setting",
+   "destination": {
+    "page": "dictionary",
+    "dictionaryTab": "yourWords"
+   },
+   "disposition": "mapped",
+   "parent": "dictionary.tab.yourWords",
+   "target": "yourWords.search",
+   "fallbacks": [],
+   "dynamicTitle": false,
+   "seedParent": null
+  },
+  {
+   "id": "yourWords.clearSearch",
+   "kind": "action",
+   "destination": {
+    "page": "dictionary",
+    "dictionaryTab": "yourWords"
+   },
+   "disposition": "mapped",
+   "parent": "yourWords.search",
+   "target": "yourWords.clearSearch",
+   "fallbacks": [
+    "yourWords.search"
+   ],
+   "dynamicTitle": false,
+   "seedParent": "yourWords.search"
+  },
+  {
+   "id": "yourWords.categoryFilter",
+   "kind": "setting",
+   "destination": {
+    "page": "dictionary",
+    "dictionaryTab": "yourWords"
+   },
+   "disposition": "mapped",
+   "parent": "dictionary.tab.yourWords",
+   "target": "yourWords.categoryFilter",
+   "fallbacks": [],
+   "dynamicTitle": false,
+   "seedParent": null
+  },
+  {
+   "id": "yourWords.category.all",
+   "kind": "choice",
+   "destination": {
+    "page": "dictionary",
+    "dictionaryTab": "yourWords"
+   },
+   "disposition": "mapped",
+   "parent": "yourWords.categoryFilter",
+   "target": "yourWords.categoryFilter",
+   "fallbacks": [],
+   "dynamicTitle": false,
+   "seedParent": "yourWords.categoryFilter"
+  },
+  {
+   "id": "yourWords.category.general",
+   "kind": "choice",
+   "destination": {
+    "page": "dictionary",
+    "dictionaryTab": "yourWords"
+   },
+   "disposition": "mapped",
+   "parent": "yourWords.categoryFilter",
+   "target": "yourWords.categoryFilter",
+   "fallbacks": [],
+   "dynamicTitle": false,
+   "seedParent": "yourWords.categoryFilter"
+  },
+  {
+   "id": "yourWords.category.person",
+   "kind": "choice",
+   "destination": {
+    "page": "dictionary",
+    "dictionaryTab": "yourWords"
+   },
+   "disposition": "mapped",
+   "parent": "yourWords.categoryFilter",
+   "target": "yourWords.categoryFilter",
+   "fallbacks": [],
+   "dynamicTitle": false,
+   "seedParent": "yourWords.categoryFilter"
+  },
+  {
+   "id": "yourWords.category.brand",
+   "kind": "choice",
+   "destination": {
+    "page": "dictionary",
+    "dictionaryTab": "yourWords"
+   },
+   "disposition": "mapped",
+   "parent": "yourWords.categoryFilter",
+   "target": "yourWords.categoryFilter",
+   "fallbacks": [],
+   "dynamicTitle": false,
+   "seedParent": "yourWords.categoryFilter"
+  },
+  {
+   "id": "yourWords.category.acronym",
+   "kind": "choice",
+   "destination": {
+    "page": "dictionary",
+    "dictionaryTab": "yourWords"
+   },
+   "disposition": "mapped",
+   "parent": "yourWords.categoryFilter",
+   "target": "yourWords.categoryFilter",
+   "fallbacks": [],
+   "dynamicTitle": false,
+   "seedParent": "yourWords.categoryFilter"
+  },
+  {
+   "id": "yourWords.category.domain",
+   "kind": "choice",
+   "destination": {
+    "page": "dictionary",
+    "dictionaryTab": "yourWords"
+   },
+   "disposition": "mapped",
+   "parent": "yourWords.categoryFilter",
+   "target": "yourWords.categoryFilter",
+   "fallbacks": [],
+   "dynamicTitle": false,
+   "seedParent": "yourWords.categoryFilter"
+  },
+  {
+   "id": "yourWords.category.autoLearned",
+   "kind": "choice",
+   "destination": {
+    "page": "dictionary",
+    "dictionaryTab": "yourWords"
+   },
+   "disposition": "mapped",
+   "parent": "yourWords.categoryFilter",
+   "target": "yourWords.categoryFilter",
+   "fallbacks": [],
+   "dynamicTitle": false,
+   "seedParent": "yourWords.categoryFilter"
+  },
+  {
+   "id": "yourWords.massEdit",
+   "kind": "action",
+   "destination": {
+    "page": "dictionary",
+    "dictionaryTab": "yourWords"
+   },
+   "disposition": "mapped",
+   "parent": "dictionary.tab.yourWords",
+   "target": "yourWords.massEdit",
+   "fallbacks": [
+    "yourWords.search"
+   ],
+   "dynamicTitle": false,
+   "seedParent": null
+  },
+  {
+   "id": "yourWords.selectAll",
+   "kind": "action",
+   "destination": {
+    "page": "dictionary",
+    "dictionaryTab": "yourWords"
+   },
+   "disposition": "exempt",
+   "reason": "userContent"
+  },
+  {
+   "id": "yourWords.cancelSelection",
+   "kind": "action",
+   "destination": {
+    "page": "dictionary",
+    "dictionaryTab": "yourWords"
+   },
+   "disposition": "exempt",
+   "reason": "userContent"
+  },
+  {
+   "id": "yourWords.delete",
+   "kind": "action",
+   "destination": {
+    "page": "dictionary",
+    "dictionaryTab": "yourWords"
+   },
+   "disposition": "exempt",
+   "reason": "userContent"
+  },
+  {
+   "id": "yourWords.edit",
+   "kind": "action",
+   "destination": {
+    "page": "dictionary",
+    "dictionaryTab": "yourWords"
+   },
+   "disposition": "exempt",
+   "reason": "userContent"
+  },
+  {
+   "id": "yourWords.previousPage",
+   "kind": "action",
+   "destination": {
+    "page": "dictionary",
+    "dictionaryTab": "yourWords"
+   },
+   "disposition": "exempt",
+   "reason": "userContent"
+  },
+  {
+   "id": "yourWords.nextPage",
+   "kind": "action",
+   "destination": {
+    "page": "dictionary",
+    "dictionaryTab": "yourWords"
+   },
+   "disposition": "exempt",
+   "reason": "userContent"
+  },
+  {
+   "id": "vocabularyPacks",
+   "kind": "feature",
+   "destination": {
+    "page": "dictionary",
+    "dictionaryTab": "vocabularyPacks"
+   },
+   "disposition": "exempt",
+   "reason": "vocabularyPackContent"
+  },
+  {
+   "id": "vocabularyPack.tech",
+   "kind": "setting",
+   "destination": {
+    "page": "dictionary",
+    "dictionaryTab": "vocabularyPacks"
+   },
+   "disposition": "exempt",
+   "reason": "vocabularyPackContent"
+  },
+  {
+   "id": "vocabularyPack.medical",
+   "kind": "setting",
+   "destination": {
+    "page": "dictionary",
+    "dictionaryTab": "vocabularyPacks"
+   },
+   "disposition": "exempt",
+   "reason": "vocabularyPackContent"
+  },
+  {
+   "id": "vocabularyPack.legal",
+   "kind": "setting",
+   "destination": {
+    "page": "dictionary",
+    "dictionaryTab": "vocabularyPacks"
+   },
+   "disposition": "exempt",
+   "reason": "vocabularyPackContent"
+  },
+  {
+   "id": "vocabularyPack.brands",
+   "kind": "setting",
+   "destination": {
+    "page": "dictionary",
+    "dictionaryTab": "vocabularyPacks"
+   },
+   "disposition": "exempt",
+   "reason": "vocabularyPackContent"
+  },
+  {
+   "id": "vocabularyPack.names",
+   "kind": "setting",
+   "destination": {
+    "page": "dictionary",
+    "dictionaryTab": "vocabularyPacks"
+   },
+   "disposition": "exempt",
+   "reason": "vocabularyPackContent"
+  },
+  {
+   "id": "vocabularyPack.seeAll",
+   "kind": "action",
+   "destination": {
+    "page": "dictionary",
+    "dictionaryTab": "vocabularyPacks"
+   },
+   "disposition": "exempt",
+   "reason": "vocabularyPackContent"
+  },
+  {
+   "id": "vocabularyPack.detail.back",
+   "kind": "action",
+   "destination": {
+    "page": "dictionary",
+    "dictionaryTab": "vocabularyPacks"
+   },
+   "disposition": "exempt",
+   "reason": "vocabularyPackContent"
+  },
+  {
+   "id": "vocabularyPack.detail.packOn",
+   "kind": "setting",
+   "destination": {
+    "page": "dictionary",
+    "dictionaryTab": "vocabularyPacks"
+   },
+   "disposition": "exempt",
+   "reason": "vocabularyPackContent"
+  },
+  {
+   "id": "vocabularyPack.detail.search",
+   "kind": "setting",
+   "destination": {
+    "page": "dictionary",
+    "dictionaryTab": "vocabularyPacks"
+   },
+   "disposition": "exempt",
+   "reason": "vocabularyPackContent"
+  },
+  {
+   "id": "vocabularyPack.detail.wordToggle",
+   "kind": "setting",
+   "destination": {
+    "page": "dictionary",
+    "dictionaryTab": "vocabularyPacks"
+   },
+   "disposition": "exempt",
+   "reason": "vocabularyPackContent"
+  },
+  {
+   "id": "vocabularyPack.detail.restore",
+   "kind": "action",
+   "destination": {
+    "page": "dictionary",
+    "dictionaryTab": "vocabularyPacks"
+   },
+   "disposition": "exempt",
+   "reason": "vocabularyPackContent"
+  },
+  {
+   "id": "vocabularyPack.detail.mishearing",
+   "kind": "setting",
+   "destination": {
+    "page": "dictionary",
+    "dictionaryTab": "vocabularyPacks"
+   },
+   "disposition": "exempt",
+   "reason": "vocabularyPackContent"
+  },
+  {
+   "id": "vocabularyPack.detail.addMishearing",
+   "kind": "action",
+   "destination": {
+    "page": "dictionary",
+    "dictionaryTab": "vocabularyPacks"
+   },
+   "disposition": "exempt",
+   "reason": "vocabularyPackContent"
+  },
+  {
+   "id": "learnFrom",
+   "kind": "feature",
+   "destination": {
+    "page": "dictionary",
+    "dictionaryTab": "learnFrom"
+   },
+   "disposition": "mapped",
+   "parent": "dictionary.tab.learnFrom",
+   "target": "learnFrom",
+   "fallbacks": [],
+   "dynamicTitle": false,
+   "seedParent": null,
+   "description": {
+    "kind": "static",
+    "english": "Let EnviousWispr pick up new words on its own, from things you already have."
+   }
+  },
+  {
+   "id": "selfLearningDictionary",
+   "kind": "setting",
+   "destination": {
+    "page": "dictionary",
+    "dictionaryTab": "learnFrom"
+   },
+   "disposition": "mapped",
+   "parent": "dictionary.tab.learnFrom",
+   "target": "selfLearningDictionary",
+   "fallbacks": [],
+   "dynamicTitle": false,
+   "seedParent": null,
+   "description": {
+    "kind": "static",
+    "english": "Automatically detects when you correct a dictation and adds the corrected word to your dictionary. Undo it from the notification, or remove it later in Your Words."
+   }
+  },
+  {
+   "id": "selfLearningDictionary.learnMore",
+   "kind": "action",
+   "destination": {
+    "page": "dictionary",
+    "dictionaryTab": "learnFrom"
+   },
+   "disposition": "mapped",
+   "parent": "selfLearningDictionary",
+   "target": "selfLearningDictionary.learnMore",
+   "fallbacks": [],
+   "dynamicTitle": false,
+   "seedParent": "selfLearningDictionary"
+  },
+  {
+   "id": "selfLearningDictionary.retryChecker",
+   "kind": "action",
+   "destination": {
+    "page": "dictionary",
+    "dictionaryTab": "learnFrom"
+   },
+   "disposition": "exempt",
+   "reason": "learningSetupAction"
+  },
+  {
+   "id": "selfLearningDictionary.download",
+   "kind": "action",
+   "destination": {
+    "page": "dictionary",
+    "dictionaryTab": "learnFrom"
+   },
+   "disposition": "exempt",
+   "reason": "learningSetupAction"
+  },
+  {
+   "id": "selfLearningDictionary.cancel",
+   "kind": "action",
+   "destination": {
+    "page": "dictionary",
+    "dictionaryTab": "learnFrom"
+   },
+   "disposition": "exempt",
+   "reason": "learningSetupAction"
+  },
+  {
+   "id": "selfLearningDictionary.retryLoad",
+   "kind": "action",
+   "destination": {
+    "page": "dictionary",
+    "dictionaryTab": "learnFrom"
+   },
+   "disposition": "exempt",
+   "reason": "learningSetupAction"
+  },
+  {
+   "id": "selfLearningDictionary.removeAndDownload",
+   "kind": "action",
+   "destination": {
+    "page": "dictionary",
+    "dictionaryTab": "learnFrom"
+   },
+   "disposition": "exempt",
+   "reason": "learningSetupAction"
+  },
+  {
+   "id": "importContacts",
+   "kind": "feature",
+   "destination": {
+    "page": "dictionary",
+    "dictionaryTab": "learnFrom"
+   },
+   "disposition": "mapped",
+   "parent": "dictionary.tab.learnFrom",
+   "target": "importContacts",
+   "fallbacks": [],
+   "dynamicTitle": false,
+   "seedParent": null,
+   "description": {
+    "kind": "static",
+    "english": "Add the names of people you know to your word list, so dictation spells them right."
+   }
+  },
+  {
+   "id": "importContacts.import",
+   "kind": "action",
+   "destination": {
+    "page": "dictionary",
+    "dictionaryTab": "learnFrom"
+   },
+   "disposition": "exempt",
+   "reason": "learningSetupAction"
+  },
+  {
+   "id": "importContacts.openSettings",
+   "kind": "action",
+   "destination": {
+    "page": "dictionary",
+    "dictionaryTab": "learnFrom"
+   },
+   "disposition": "exempt",
+   "reason": "learningSetupAction"
+  },
+  {
+   "id": "importContacts.removeImported",
+   "kind": "action",
+   "destination": {
+    "page": "dictionary",
+    "dictionaryTab": "learnFrom"
+   },
+   "disposition": "exempt",
+   "reason": "learningSetupAction"
+  },
+  {
+   "id": "contactsSyncOnLaunch",
+   "kind": "setting",
+   "destination": {
+    "page": "dictionary",
+    "dictionaryTab": "learnFrom"
+   },
+   "disposition": "mapped",
+   "parent": "importContacts",
+   "target": "contactsSyncOnLaunch",
+   "fallbacks": [],
+   "dynamicTitle": false,
+   "seedParent": "importContacts",
+   "description": {
+    "kind": "static",
+    "english": "Check for new contacts each time EnviousWispr starts. Off by default."
+   }
+  },
+  {
+   "id": "quickAdd.step1",
+   "kind": "feature",
+   "destination": {
+    "page": "dictionary",
+    "dictionaryTab": "quickAdd"
+   },
+   "disposition": "mapped",
+   "parent": "dictionary.tab.quickAdd",
+   "target": "quickAdd.step1",
+   "fallbacks": [],
+   "dynamicTitle": false,
+   "seedParent": null,
+   "description": {
+    "kind": "static",
+    "english": "Select the word you want to fix in an email, chat, or document."
+   }
+  },
+  {
+   "id": "quickAdd.step2",
+   "kind": "feature",
+   "destination": {
+    "page": "dictionary",
+    "dictionaryTab": "quickAdd"
+   },
+   "disposition": "mapped",
+   "parent": "dictionary.tab.quickAdd",
+   "target": "quickAdd.step2",
+   "fallbacks": [],
+   "dynamicTitle": false,
+   "seedParent": null,
+   "description": {
+    "kind": "runtime"
+   }
+  },
+  {
+   "id": "quickAdd.step3",
+   "kind": "feature",
+   "destination": {
+    "page": "dictionary",
+    "dictionaryTab": "quickAdd"
+   },
+   "disposition": "mapped",
+   "parent": "dictionary.tab.quickAdd",
+   "target": "quickAdd.step3",
+   "fallbacks": [],
+   "dynamicTitle": false,
+   "seedParent": null,
+   "description": {
+    "kind": "static",
+    "english": "Choose the word you meant, or create a new one. Quick Add saves the highlighted spelling to your dictionary."
+   }
+  },
+  {
+   "id": "quickAdd.shortcut",
+   "kind": "action",
+   "destination": {
+    "page": "dictionary",
+    "dictionaryTab": "quickAdd"
+   },
+   "disposition": "mapped",
+   "parent": "dictionary.tab.quickAdd",
+   "target": "quickAdd.shortcut",
+   "fallbacks": [],
+   "dynamicTitle": false,
+   "seedParent": null,
+   "description": {
+    "kind": "runtime"
+   }
+  },
+  {
+   "id": "quickAdd.menuBar",
+   "kind": "feature",
+   "destination": {
+    "page": "dictionary",
+    "dictionaryTab": "quickAdd"
+   },
+   "disposition": "mapped",
+   "parent": "dictionary.tab.quickAdd",
+   "target": "quickAdd.menuBar",
+   "fallbacks": [],
+   "dynamicTitle": false,
+   "seedParent": null,
+   "description": {
+    "kind": "static",
+    "english": "Click the EnviousWispr icon, then choose the item that starts with “Add”"
+   }
+  },
+  {
+   "id": "snippets",
+   "kind": "feature",
+   "destination": {
+    "page": "snippets"
+   },
+   "disposition": "mapped",
+   "parent": "page.snippets",
+   "target": "snippets",
+   "fallbacks": [],
+   "dynamicTitle": false,
+   "seedParent": null,
+   "description": {
+    "kind": "static",
+    "english": "Save an email address, a signature, a link. Say your keyword, then the trigger, and the saved text lands where your cursor is. Say the trigger on its own and your dictation is left alone."
+   }
+  },
+  {
+   "id": "snippetKeyword",
+   "kind": "setting",
+   "destination": {
+    "page": "snippets"
+   },
+   "disposition": "mapped",
+   "parent": "page.snippets",
+   "target": "snippetKeyword",
+   "fallbacks": [],
+   "dynamicTitle": false,
+   "seedParent": null,
+   "description": {
+    "kind": "static",
+    "english": "Say this first, then your trigger. One word."
+   }
+  },
+  {
+   "id": "yourSnippets",
+   "kind": "feature",
+   "destination": {
+    "page": "snippets"
+   },
+   "disposition": "mapped",
+   "parent": "page.snippets",
+   "target": "yourSnippets",
+   "fallbacks": [],
+   "dynamicTitle": false,
+   "seedParent": null,
+   "description": {
+    "kind": "runtime"
+   }
+  },
+  {
+   "id": "snippets.search",
+   "kind": "setting",
+   "destination": {
+    "page": "snippets"
+   },
+   "disposition": "mapped",
+   "parent": "yourSnippets",
+   "target": "snippets.search",
+   "fallbacks": [
+    "yourSnippets"
+   ],
+   "dynamicTitle": false,
+   "seedParent": null
+  },
+  {
+   "id": "snippets.import",
+   "kind": "action",
+   "destination": {
+    "page": "snippets"
+   },
+   "disposition": "mapped",
+   "parent": "yourSnippets",
+   "target": "snippets.import",
+   "fallbacks": [],
+   "dynamicTitle": false,
+   "seedParent": null
+  },
+  {
+   "id": "snippets.export",
+   "kind": "action",
+   "destination": {
+    "page": "snippets"
+   },
+   "disposition": "mapped",
+   "parent": "yourSnippets",
+   "target": "snippets.export",
+   "fallbacks": [],
+   "dynamicTitle": false,
+   "seedParent": null
+  },
+  {
+   "id": "snippets.add",
+   "kind": "action",
+   "destination": {
+    "page": "snippets"
+   },
+   "disposition": "mapped",
+   "parent": "yourSnippets",
+   "target": "snippets.add",
+   "fallbacks": [],
+   "dynamicTitle": false,
+   "seedParent": null
+  },
+  {
+   "id": "snippets.addFirst",
+   "kind": "action",
+   "destination": {
+    "page": "snippets"
+   },
+   "disposition": "mapped",
+   "parent": "yourSnippets",
+   "target": "snippets.addFirst",
+   "fallbacks": [
+    "snippets.add"
+   ],
+   "dynamicTitle": false,
+   "seedParent": null,
+   "description": {
+    "kind": "none",
+    "why": "empty-state heading"
+   }
+  },
+  {
+   "id": "snippets.clearSearch",
+   "kind": "action",
+   "destination": {
+    "page": "snippets"
+   },
+   "disposition": "mapped",
+   "parent": "snippets.search",
+   "target": "snippets.clearSearch",
+   "fallbacks": [
+    "snippets.search",
+    "yourSnippets"
+   ],
+   "dynamicTitle": false,
+   "seedParent": "snippets.search"
+  },
+  {
+   "id": "snippets.editRow",
+   "kind": "action",
+   "destination": {
+    "page": "snippets"
+   },
+   "disposition": "exempt",
+   "reason": "userContent"
+  },
+  {
+   "id": "appSettings.tab.appearance",
+   "kind": "feature",
+   "destination": {
+    "page": "appSettings",
+    "tab": "appearance"
+   },
+   "disposition": "mapped",
+   "parent": "page.appSettings",
+   "target": "appSettings.tab.appearance",
+   "fallbacks": [],
+   "dynamicTitle": false
+  },
+  {
+   "id": "appSettings.tab.permissions",
+   "kind": "feature",
+   "destination": {
+    "page": "appSettings",
+    "tab": "permissions"
+   },
+   "disposition": "mapped",
+   "parent": "page.appSettings",
+   "target": "appSettings.tab.permissions",
+   "fallbacks": [],
+   "dynamicTitle": false
+  },
+  {
+   "id": "appSettings.tab.privacy",
+   "kind": "feature",
+   "destination": {
+    "page": "appSettings",
+    "tab": "privacy"
+   },
+   "disposition": "mapped",
+   "parent": "page.appSettings",
+   "target": "appSettings.tab.privacy",
+   "fallbacks": [],
+   "dynamicTitle": false
+  },
+  {
+   "id": "appSettings.tab.licenses",
+   "kind": "feature",
+   "destination": {
+    "page": "appSettings",
+    "tab": "licenses"
+   },
+   "disposition": "mapped",
+   "parent": "page.appSettings",
+   "target": "appSettings.tab.licenses",
+   "fallbacks": [],
+   "dynamicTitle": false
+  },
+  {
+   "id": "theme",
+   "kind": "setting",
+   "destination": {
+    "page": "appSettings",
+    "tab": "appearance"
+   },
+   "disposition": "mapped",
+   "parent": "section.appearance",
+   "target": "theme",
+   "fallbacks": [],
+   "dynamicTitle": false,
+   "seedParent": null,
+   "description": {
+    "kind": "static",
+    "english": "Choose how EnviousWispr looks."
+   }
+  },
+  {
+   "id": "theme.system",
+   "kind": "choice",
+   "destination": {
+    "page": "appSettings",
+    "tab": "appearance"
+   },
+   "disposition": "mapped",
+   "parent": "theme",
+   "target": "theme",
+   "fallbacks": [],
+   "dynamicTitle": false,
+   "seedParent": "theme",
+   "description": {
+    "kind": "none",
+    "why": "help text behind a question mark"
+   }
+  },
+  {
+   "id": "theme.light",
+   "kind": "choice",
+   "destination": {
+    "page": "appSettings",
+    "tab": "appearance"
+   },
+   "disposition": "mapped",
+   "parent": "theme",
+   "target": "theme",
+   "fallbacks": [],
+   "dynamicTitle": false,
+   "seedParent": "theme"
+  },
+  {
+   "id": "theme.dark",
+   "kind": "choice",
+   "destination": {
+    "page": "appSettings",
+    "tab": "appearance"
+   },
+   "disposition": "mapped",
+   "parent": "theme",
+   "target": "theme",
+   "fallbacks": [],
+   "dynamicTitle": false,
+   "seedParent": "theme"
+  },
+  {
+   "id": "appLanguage",
+   "kind": "setting",
+   "destination": {
+    "page": "appSettings",
+    "tab": "appearance"
+   },
+   "disposition": "mapped",
+   "parent": "section.appearance",
+   "target": "appLanguage",
+   "fallbacks": [],
+   "dynamicTitle": false,
+   "seedParent": null,
+   "description": {
+    "kind": "static",
+    "english": "The language of the app interface."
+   }
+  },
+  {
+   "id": "appLanguage.systemDefault",
+   "kind": "choice",
+   "destination": {
+    "page": "appSettings",
+    "tab": "appearance"
+   },
+   "disposition": "mapped",
+   "parent": "appLanguage",
+   "target": "appLanguage",
+   "fallbacks": [],
+   "dynamicTitle": false,
+   "seedParent": "appLanguage"
+  },
+  {
+   "id": "appLanguage.shipped",
+   "kind": "choice",
+   "destination": {
+    "page": "appSettings",
+    "tab": "appearance"
+   },
+   "disposition": "mapped",
+   "parent": "appLanguage",
+   "target": "appLanguage",
+   "fallbacks": [],
+   "dynamicTitle": true,
+   "seedParent": "appLanguage"
+  },
+  {
+   "id": "appLanguage.relaunch",
+   "kind": "action",
+   "destination": {
+    "page": "appSettings",
+    "tab": "appearance"
+   },
+   "disposition": "mapped",
+   "parent": "appLanguage",
+   "target": "appLanguage.relaunch",
+   "fallbacks": [
+    "appLanguage"
+   ],
+   "dynamicTitle": false,
+   "seedParent": "appLanguage",
+   "description": {
+    "kind": "none",
+    "why": "conditional notice"
+   }
+  },
+  {
+   "id": "showInDock",
+   "kind": "setting",
+   "destination": {
+    "page": "appSettings",
+    "tab": "appearance"
+   },
+   "disposition": "mapped",
+   "parent": "section.appearance",
+   "target": "showInDock",
+   "fallbacks": [],
+   "dynamicTitle": false,
+   "seedParent": null,
+   "description": {
+    "kind": "static",
+    "english": "Keep EnviousWispr in your Dock."
+   }
+  },
+  {
+   "id": "updateAlertInMenuBar",
+   "kind": "setting",
+   "destination": {
+    "page": "appSettings",
+    "tab": "appearance"
+   },
+   "disposition": "mapped",
+   "parent": "section.appearance",
+   "target": "updateAlertInMenuBar",
+   "fallbacks": [],
+   "dynamicTitle": false,
+   "seedParent": null,
+   "description": {
+    "kind": "static",
+    "english": "Show gold lips when an update is ready."
+   }
+  },
+  {
+   "id": "permission.microphone",
+   "kind": "feature",
+   "destination": {
+    "page": "appSettings",
+    "tab": "permissions"
+   },
+   "disposition": "mapped",
+   "parent": "section.permissions",
+   "target": "permission.microphone",
+   "fallbacks": [],
+   "dynamicTitle": false,
+   "seedParent": null,
+   "description": {
+    "kind": "static",
+    "english": "Needed to record your voice."
+   }
+  },
+  {
+   "id": "permission.microphone.request",
+   "kind": "action",
+   "destination": {
+    "page": "appSettings",
+    "tab": "permissions"
+   },
+   "disposition": "mapped",
+   "parent": "permission.microphone",
+   "target": "permission.microphone",
+   "fallbacks": [],
+   "dynamicTitle": false,
+   "seedParent": "permission.microphone"
+  },
+  {
+   "id": "permission.accessibility",
+   "kind": "feature",
+   "destination": {
+    "page": "appSettings",
+    "tab": "permissions"
+   },
+   "disposition": "mapped",
+   "parent": "section.permissions",
+   "target": "permission.accessibility",
+   "fallbacks": [],
+   "dynamicTitle": false,
+   "seedParent": null,
+   "description": {
+    "kind": "static",
+    "english": "Needed to paste text into other apps."
+   }
+  },
+  {
+   "id": "permission.accessibility.openSettings",
+   "kind": "action",
+   "destination": {
+    "page": "appSettings",
+    "tab": "permissions"
+   },
+   "disposition": "mapped",
+   "parent": "permission.accessibility",
+   "target": "permission.accessibility",
+   "fallbacks": [],
+   "dynamicTitle": false,
+   "seedParent": "permission.accessibility",
+   "description": {
+    "kind": "none",
+    "why": "conditional notice"
+   }
+  },
+  {
+   "id": "shareUsageMetrics",
+   "kind": "setting",
+   "destination": {
+    "page": "appSettings",
+    "tab": "privacy"
+   },
+   "disposition": "mapped",
+   "parent": "section.privacy",
+   "target": "shareUsageMetrics",
+   "fallbacks": [],
+   "dynamicTitle": false,
+   "seedParent": null,
+   "description": {
+    "kind": "static",
+    "english": "Help us catch broken updates."
+   }
+  },
+  {
+   "id": "sendCrashReports",
+   "kind": "setting",
+   "destination": {
+    "page": "appSettings",
+    "tab": "privacy"
+   },
+   "disposition": "mapped",
+   "parent": "section.privacy",
+   "target": "sendCrashReports",
+   "fallbacks": [],
+   "dynamicTitle": false,
+   "seedParent": null,
+   "description": {
+    "kind": "static",
+    "english": "Help us fix crashes and errors."
+   }
+  },
+  {
+   "id": "sendCrashReports.restart",
+   "kind": "action",
+   "destination": {
+    "page": "appSettings",
+    "tab": "privacy"
+   },
+   "disposition": "mapped",
+   "parent": "sendCrashReports",
+   "target": "sendCrashReports.restart",
+   "fallbacks": [
+    "sendCrashReports"
+   ],
+   "dynamicTitle": false,
+   "seedParent": "sendCrashReports",
+   "description": {
+    "kind": "none",
+    "why": "conditional notice"
+   }
+  },
+  {
+   "id": "whatWeCollect",
+   "kind": "feature",
+   "destination": {
+    "page": "appSettings",
+    "tab": "privacy"
+   },
+   "disposition": "mapped",
+   "parent": "section.privacy",
+   "target": "whatWeCollect",
+   "fallbacks": [],
+   "dynamicTitle": false,
+   "seedParent": null,
+   "description": {
+    "kind": "static",
+    "english": "Never your audio, text, history, snippets, dictionary or API keys. Only what you type into the feedback form."
+   }
+  },
+  {
+   "id": "whatWeCollect.seeDetails",
+   "kind": "action",
+   "destination": {
+    "page": "appSettings",
+    "tab": "privacy"
+   },
+   "disposition": "mapped",
+   "parent": "whatWeCollect",
+   "target": "whatWeCollect.seeDetails",
+   "fallbacks": [],
+   "dynamicTitle": false,
+   "seedParent": "whatWeCollect"
+  },
+  {
+   "id": "license.gpl",
+   "kind": "feature",
+   "destination": {
+    "page": "appSettings",
+    "tab": "licenses"
+   },
+   "disposition": "mapped",
+   "parent": "section.about",
+   "target": "license.gpl",
+   "fallbacks": [],
+   "dynamicTitle": false,
+   "seedParent": null,
+   "description": {
+    "kind": "static",
+    "english": "Open source under the GNU GPL version 3."
+   }
+  },
+  {
+   "id": "license.gpl.view",
+   "kind": "action",
+   "destination": {
+    "page": "appSettings",
+    "tab": "licenses"
+   },
+   "disposition": "mapped",
+   "parent": "license.gpl",
+   "target": "license.gpl.view",
+   "fallbacks": [],
+   "dynamicTitle": false,
+   "seedParent": "license.gpl"
+  },
+  {
+   "id": "license.notices",
+   "kind": "feature",
+   "destination": {
+    "page": "appSettings",
+    "tab": "licenses"
+   },
+   "disposition": "mapped",
+   "parent": "section.about",
+   "target": "license.notices",
+   "fallbacks": [],
+   "dynamicTitle": false,
+   "seedParent": null,
+   "description": {
+    "kind": "static",
+    "english": "Licenses for the tools EnviousWispr uses."
+   }
+  },
+  {
+   "id": "license.notices.view",
+   "kind": "action",
+   "destination": {
+    "page": "appSettings",
+    "tab": "licenses"
+   },
+   "disposition": "mapped",
+   "parent": "license.notices",
+   "target": "license.notices.view",
+   "fallbacks": [],
+   "dynamicTitle": false,
+   "seedParent": "license.notices"
+  }
+ ],
+ "note": "Independent Settings Map inventory (#3482 PR A). Built from the Phase 0 seed (310 ids) and the approved plan section 5 exemptions, then reviewed by hand; never generated from SettingsMap.swift. Mapped rows give the expected searchable kind, destination, physical target and ordered fallbacks; exempt rows give the approved reason."
+}

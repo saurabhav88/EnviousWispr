@@ -1023,13 +1023,18 @@ struct RecordingPillPreviewWiringTests {
         if let call = node.as(FunctionCallExprSyntax.self),
           call.calledExpression.as(DeclReferenceExprSyntax.self)?.baseName.text == "SettingsRow"
         {
-          row = argument("title", of: call)?.trimmedDescription
+          row = (argument("map", of: call) ?? argument("title", of: call))?.trimmedDescription
           break
         }
         current = node.parent
       }
-      // Each option's own tag, in order, so swapped Top / Bottom tags are seen.
-      let values =
+      // Each option's own tag, in order, so swapped Top / Bottom tags are seen. #3482: the row
+      // reads the shared choice list, whose order and values are the ones checked.
+      let shared =
+        argument("options", of: picker)?.trimmedDescription
+          == "SettingsChoicePresentation.pillPosition.map(\\.pickerOption)"
+        ? SettingsChoicePresentation.pillPosition.map { "OverlayPillPosition.\($0.value)" } : nil
+      let values = shared ??
         argument("options", of: picker)?
         .as(ArrayExprSyntax.self)?.elements.map { element -> String in
           guard let tuple = element.expression.as(TupleExprSyntax.self),
@@ -1051,7 +1056,7 @@ struct RecordingPillPreviewWiringTests {
     #expect(
       pickers == [
         PositionPicker(
-          rowTitle: "DictationSettingsCopy.Pill.positionTitle",
+          rowTitle: ".id(.pillPosition)",
           selection: "$settings.overlayPillPosition",
           values: ["OverlayPillPosition.top", "OverlayPillPosition.bottom"])
       ], "\(pickers)")

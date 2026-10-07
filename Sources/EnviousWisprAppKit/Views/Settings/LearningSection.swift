@@ -112,14 +112,15 @@ struct LearningSection: View {
     // card, so the tab opens with a sentence rather than with a control.
     BrandedPanel(
       icon: "sparkle.magnifyingglass",
-      header: "Learn from...",
-      description: "Let EnviousWispr pick up new words on its own, from things you already have."
+      header: SettingsItemCopy.Dictionary.learnFromPanel,
+      description: SettingsItemCopy.Dictionary.learnFromShort
     ) {
       VStack(alignment: .leading, spacing: 12) {
         editsCard(settings: $settings)
         contactsCard(settings: $settings)
       }
     }
+    .settingsMapRegistration(.learnFrom)
     .sheet(isPresented: confirmSheetBinding) {
       if let preview = contactsImport.pendingPreview {
         ContactsImportConfirm(
@@ -166,6 +167,7 @@ struct LearningSection: View {
             .fixedSize()
             .accessibilityLabel(LearnFromEditsSettingsPresentation.rowTitle)
         }
+        .settingsMapRegistration(.selfLearningDictionary)
         Text(LearnFromEditsSettingsPresentation.rowCopy)
           .settingsReadingCopy()
           .fixedSize(horizontal: false, vertical: true)
@@ -200,6 +202,7 @@ struct LearningSection: View {
           .font(.stHelper)
         }
         .foregroundStyle(.stAccent)
+        .settingsMapRegistration(.selfLearningDictionaryLearnMore)
         if let reason = learnFromEdits.secondaryLine {
           HStack(alignment: .center, spacing: 8) {
             Text(reason)
@@ -273,8 +276,8 @@ struct LearningSection: View {
 
         HStack(alignment: .center, spacing: 10) {
           VStack(alignment: .leading, spacing: 2) {
-            Text("Keep in sync on launch").settingsRowLabel()
-            Text("Check for new contacts each time EnviousWispr starts. Off by default.")
+            Text(SettingsItemCopy.Dictionary.syncOnLaunch).settingsRowLabel()
+            Text(SettingsItemCopy.Dictionary.syncOnLaunchShort)
               .settingsReadingCopy()
               .fixedSize(horizontal: false, vertical: true)
           }
@@ -283,8 +286,9 @@ struct LearningSection: View {
             .toggleStyle(BrandedToggleStyle())
             .labelsHidden()
             .fixedSize()
-            .accessibilityLabel("Keep in sync on launch")
+            .accessibilityLabel(Text(SettingsItemCopy.Dictionary.syncOnLaunch))
         }
+        .settingsMapRegistration(.contactsSyncOnLaunch)
       }
     }
   }
@@ -340,14 +344,13 @@ struct LearningSection: View {
 
   private var contactsRowLabel: some View {
     VStack(alignment: .leading, spacing: 2) {
-      Text("Import from Contacts")
+      Text(SettingsItemCopy.Dictionary.importContacts)
         .settingsRowLabel()
-      Text(
-        "Add the names of people you know to your word list, so dictation spells them right."
-      )
+      Text(SettingsItemCopy.Dictionary.importContactsShort)
       .settingsReadingCopy()
       .fixedSize(horizontal: false, vertical: true)
     }
+    .settingsMapRegistration(.importContacts)
   }
 
   /// Right-side control: spinner while working, Open Settings if denied, the

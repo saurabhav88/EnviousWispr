@@ -10,9 +10,17 @@ struct AppearanceSettingsView: View {
   @Environment(LiveRecordingState.self) private var liveRecordingState: LiveRecordingState?
   @Environment(FileImportCoordinator.self) private var fileImportCoordinator: FileImportCoordinator?
   /// "" is "System default".
-  @State private var language = AppLanguagePreference.live.choice ?? ""
+  @State private var language: String
+  /// Where the language choice is read and written. The app passes nothing and uses the live
+  /// preference; a render test passes an isolated one (#3482).
+  private let languagePreference: AppLanguagePreference
   /// The language this process launched with; macOS fixes it at launch.
   private static let launchLanguage = Bundle.main.preferredLocalizations.first ?? "en"
+
+  init(languagePreference: AppLanguagePreference = .live) {
+    self.languagePreference = languagePreference
+    _language = State(initialValue: languagePreference.choice ?? "")
+  }
   /// A relaunch now would lose work in flight (`AppRelauncher.workInFlight` says which).
   private var isBusy: Bool {
     AppRelauncher.workInFlight(
@@ -25,7 +33,7 @@ struct AppearanceSettingsView: View {
   /// view updates), and the selection starts from the saved value, so the offer also survives
   /// leaving and reopening this page.
   private var needsRelaunch: Bool {
-    AppLanguagePreference.live.language(
+    languagePreference.language(
       forChoice: language.isEmpty ? nil : language,
       systemPreferences: AppLanguagePreference.systemPreferences) != Self.launchLanguage
   }
@@ -34,49 +42,50 @@ struct AppearanceSettingsView: View {
     @Bindable var settings = settings
     SettingsContentView {
       VStack(alignment: .leading, spacing: 10) {
-        SettingsSectionHeading(title: "APPEARANCE")
+        SettingsSectionHeading(map: .id(.sectionAppearance))
         BrandedSection {
           BrandedRow {
             SettingsRow(
-              icon: "circle.lefthalf.filled", title: "Theme",
-              short: "Choose how EnviousWispr looks.",
+              map: .id(.theme),
+              icon: "circle.lefthalf.filled",
               help: "Choose System to follow your Mac, or choose Light or Dark."
             ) {
               BrandedSegmentedPicker(
-                options: [
-                  (String(localized: "System"), nil, AppearancePreference.system),
-                  (String(localized: "Light"), nil, AppearancePreference.light),
-                  (String(localized: "Dark"), nil, AppearancePreference.dark),
-                ], selection: $settings.appearancePreference
+                options: ThemeChoicePresentation.choices.map {
+                  (String(localized: $0.label), nil, $0.value)
+                }, selection: $settings.appearancePreference
               )
               .fixedSize()
               // A group, so each option keeps its own name for VoiceOver; a label on the
               // picker itself replaced every option's name with this one.
               .accessibilityElement(children: .contain)
-              .accessibilityLabel("Theme")
+              .accessibilityLabel(Text(SettingsItemCopy.AppSettings.theme))
             }
           }
           // #3142 Phase 5B: macOS applies this app-only language at launch. The
           // saved choice initializes the picker on every return to this tab.
           BrandedRow {
             SettingsRow(
-              icon: "globe", title: "Language",
-              short: "The language of the app interface.",
+              map: .id(.appLanguage),
+              icon: "globe",
               help: "This changes only EnviousWispr. The new language applies after relaunch. System default follows your Mac."
             ) {
-              Picker("Language", selection: $language) {
-                Text("System default").tag("")
-                ForEach(AppLanguagePreference.live.languages, id: \.self) { code in
-                  Text(verbatim: AppLanguagePreference.name(of: code)).tag(code)
+              Picker(SettingsItemCopy.AppSettings.language, selection: $language) {
+                Text(SettingsItemCopy.AppSettings.systemDefault).tag("")
+                ForEach(languagePreference.languages, id: \.self) { code in
+                  Text(
+                    verbatim: SettingsMapRef.dynamic(.appLanguageShipped, .appLanguage(code: code))
+                      .title
+                  ).tag(code)
                 }
               }
               .labelsHidden()
-              .accessibilityLabel("Language")
+              .accessibilityLabel(Text(SettingsItemCopy.AppSettings.language))
               .tint(.stAccent)
               .controlSize(.large)
               .fixedSize()
               .onChange(of: language) { _, code in
-                AppLanguagePreference.live.choose(code.isEmpty ? nil : code)
+                languagePreference.choose(code.isEmpty ? nil : code)
               }
             }
             .rowStatus {
@@ -86,10 +95,11 @@ struct AppearanceSettingsView: View {
                     .font(.stRowHelper)
                     .foregroundStyle(.stTextSecondary)
                     .fixedSize(horizontal: false, vertical: true)
-                  SettingsActionButton(title: "Relaunch to apply", isEnabled: !isBusy) {
+                  SettingsActionButton(title: SettingsItemCopy.AppSettings.relaunch, isEnabled: !isBusy) {
                     guard !isBusy else { return }
                     AppRelauncher.relaunchWhenSafe { isBusy }
                   }
+                  .settingsMapRegistration(.appLanguageRelaunch)
                 }
               }
             }
@@ -98,30 +108,30 @@ struct AppearanceSettingsView: View {
           // cannot leave the app unreachable.
           BrandedRow {
             SettingsRow(
-              icon: "dock.rectangle", title: "Show app in Dock",
-              short: "Keep EnviousWispr in your Dock.",
+              map: .id(.showInDock),
+              icon: "dock.rectangle",
               help: "When off, the Dock icon appears only while an EnviousWispr window is open. The menu bar icon always stays."
             ) {
               Toggle("", isOn: $settings.showInDock)
                 .labelsHidden()
                 .toggleStyle(BrandedToggleStyle())
                 .fixedSize()
-                .accessibilityLabel("Show app in Dock")
+                .accessibilityLabel(Text(SettingsItemCopy.AppSettings.showInDock))
             }
           }
           // #3441: the gold wave on the menu bar icon while an update waits. Off keeps the
           // icon plain; the update still shows in the menu bar menu and What's New.
           BrandedRow(showDivider: false) {
             SettingsRow(
-              icon: "menubar.rectangle", title: "Update alert in menu bar",
-              short: "Show gold lips when an update is ready.",
+              map: .id(.updateAlertInMenuBar),
+              icon: "menubar.rectangle",
               help: "When off, the menu bar icon stays plain while an update waits. You can still install it from the menu bar menu or What's New."
             ) {
               Toggle("", isOn: $settings.showMenuBarUpdateAlert)
                 .labelsHidden()
                 .toggleStyle(BrandedToggleStyle())
                 .fixedSize()
-                .accessibilityLabel("Update alert in menu bar")
+                .accessibilityLabel(Text(SettingsItemCopy.AppSettings.updateAlert))
             }
           }
         }

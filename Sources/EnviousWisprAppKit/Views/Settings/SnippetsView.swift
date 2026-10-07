@@ -11,7 +11,13 @@ import SwiftUI
 struct SnippetsView: View {
   @Environment(SnippetsCoordinator.self) private var coordinator
 
-  @State private var query = ""
+  @State private var query: String
+
+  /// `initialQuery` lets a render test show the list mid-search (the Clear button, #3482); the
+  /// app always opens it empty.
+  init(initialQuery: String = "") {
+    _query = State(initialValue: initialQuery)
+  }
   /// ONE route for both sheets, so the two can never be presented at once: two independent
   /// `.sheet(item:)` states are not mutually exclusive, and macOS 14 behaviour with two
   /// presented sheets is unverified (plan §3.5).
@@ -86,6 +92,7 @@ struct SnippetsView: View {
               .foregroundStyle(.stTextSecondary)
               .fixedSize(horizontal: false, vertical: true)
           }
+          .settingsMapRegistration(.snippets)
         }
       }
       BrandedRow(showDivider: false) {
@@ -103,14 +110,15 @@ struct SnippetsView: View {
   private var keywordLabel: some View {
     HStack(spacing: 10) {
       SettingsRowIcon(systemName: "mic")
-      Text("Keyword").settingsRowLabel()
+      Text(SettingsItemCopy.Snippets.keyword).settingsRowLabel()
     }
     .accessibilityHidden(true)
   }
 
   private var keywordInput: some View {
     TextField("", text: $keywordField)
-      .accessibilityLabel("Keyword")
+      .accessibilityLabel(Text(SettingsItemCopy.Snippets.keyword))
+      .settingsMapRegistration(.snippetKeyword)
       .focused($keywordFocused)
       .settingsFieldChrome(focused: $keywordFocused)
       .frame(width: 200)
@@ -127,7 +135,7 @@ struct SnippetsView: View {
         .font(.stRowHelper)
         .foregroundStyle(.stTextSecondary)
         .fixedSize(horizontal: false, vertical: true)
-      SettingsInfoButton(rowTitle: String(localized: "Keyword"), tooltip: nil) {
+      SettingsInfoButton(rowTitle: String(localized: SettingsItemCopy.Snippets.keyword), tooltip: nil) {
         VStack(alignment: .leading, spacing: 8) {
           SettingsHelpText(text: String(localized: SnippetsSettingsCopy.keywordHelp))
           keywordExample
@@ -172,7 +180,7 @@ struct SnippetsView: View {
   private var listCard: some View {
     VStack(alignment: .leading, spacing: 7) {
       // The count sits on the heading line, right (mockup 14).
-      SettingsSectionHeading(resolvedTitle: String(localized: "Your snippets").uppercased()) {
+      SettingsSectionHeading(map: .id(.yourSnippets), casing: .uppercased) {
         if !coordinator.storeUnreadable, !coordinator.snippets.isEmpty {
           Text(countLabel).font(.stHelper).foregroundStyle(.stTextSecondary)
         }
@@ -213,13 +221,15 @@ struct SnippetsView: View {
       // Enabled even when the store is unreadable, like Export: the import itself then
       // refuses with the coordinator's own sentence rather than the button going dark.
       SettingsActionButton(
-        title: "Import", isEnabled: true, emphasis: .outlined, shape: .roundedRect,
-        size: .medium, systemImage: "square.and.arrow.down"
+        title: SettingsItemCopy.Snippets.importSnippets, isEnabled: true, emphasis: .outlined,
+        shape: .roundedRect, size: .medium, systemImage: "square.and.arrow.down"
       ) {
         sheetRoute = .importSnippets
       }
+      .settingsMapRegistration(.snippetsImport)
       SettingsActionButton(
-        title: "Export", isEnabled: !coordinator.snippets.isEmpty, emphasis: .outlined,
+        title: SettingsItemCopy.Snippets.exportSnippets, isEnabled: !coordinator.snippets.isEmpty,
+        emphasis: .outlined,
         shape: .roundedRect, size: .medium, systemImage: "square.and.arrow.up"
       ) {
         let vocabulary = coordinator.vocabulary
@@ -230,12 +240,14 @@ struct SnippetsView: View {
               currentVocabulary: { coordinator.refreshFromDisk() }))
         }
       }
+      .settingsMapRegistration(.snippetsExport)
       SettingsActionButton(
-        title: "Add snippet", isEnabled: true, emphasis: .filled, shape: .roundedRect,
-        size: .medium, systemImage: "plus"
+        title: SettingsItemCopy.Snippets.add, isEnabled: true, emphasis: .filled,
+        shape: .roundedRect, size: .medium, systemImage: "plus"
       ) {
         sheetRoute = .edit(SnippetDraft(snippet: nil))
       }
+      .settingsMapRegistration(.snippetsAdd)
     }
     .padding(.horizontal, SettingsLayout.rowPaddingH)
     .padding(.vertical, SettingsLayout.rowPaddingV)
@@ -267,8 +279,9 @@ struct SnippetsView: View {
       Image(systemName: "magnifyingglass")
         .foregroundStyle(.stTextTertiary)
         .accessibilityHidden(true)
-      TextField("Search snippets", text: $query)
+      TextField(String(localized: SettingsItemCopy.Snippets.search), text: $query)
         .textFieldStyle(.plain)
+        .settingsMapRegistration(.snippetsSearch)
     }
     .padding(.horizontal, 10)
     .padding(.vertical, 7)
@@ -286,9 +299,10 @@ struct SnippetsView: View {
       VStack(spacing: 8) {
         Text("No snippets match \u{201C}\(query.trimmingCharacters(in: .whitespaces))\u{201D}")
           .settingsRowLabel()
-        SettingsActionButton(title: "Clear search", isEnabled: true, emphasis: .outlined) {
+        SettingsActionButton(title: SettingsItemCopy.Snippets.clearSearch, isEnabled: true, emphasis: .outlined) {
           query = ""
         }
+        .settingsMapRegistration(.snippetsClearSearch)
       }
       .frame(maxWidth: .infinity)
       .padding(.vertical, 32)
@@ -400,9 +414,10 @@ struct SnippetsView: View {
       .settingsHelperCopy()
       .multilineTextAlignment(.center)
       .frame(maxWidth: 340)
-      SettingsActionButton(title: "Add your first snippet", isEnabled: true, emphasis: .filled) {
+      SettingsActionButton(title: SettingsItemCopy.Snippets.addFirst, isEnabled: true, emphasis: .filled) {
         sheetRoute = .edit(SnippetDraft(snippet: nil))
       }
+      .settingsMapRegistration(.snippetsAddFirst)
       .padding(.top, 4)
     }
     .frame(maxWidth: .infinity)

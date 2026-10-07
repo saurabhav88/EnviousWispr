@@ -109,6 +109,13 @@ final class ModelDeliveryHome {
   /// Observable mirror of the Parakeet delivery state for SwiftUI renderers.
   private(set) var parakeetState: DeliveryState = .notReady
 
+  /// Render-test seam (#3482): shows a Fast delivery state without a running controller, so the
+  /// Settings Map render matrix can draw the Cancel control. Internal; the app never calls it.
+  // periphery:ignore - render-test seam (#3482 chunk 3): SettingsMapRenderingTests stages a Fast download
+  func applyParakeetStateForTesting(_ state: DeliveryState) {
+    parakeetState = state
+  }
+
   /// #996 phase D: fired on every Parakeet `.admitted` (including the launch
   /// replay of an already-admitted copy), so a companion model's fetch policy can
   /// run "after Parakeet" without polling the mirror. A list because two owners

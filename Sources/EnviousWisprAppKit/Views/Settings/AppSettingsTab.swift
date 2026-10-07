@@ -9,6 +9,16 @@ enum AppSettingsTab: String, CaseIterable, Hashable, Identifiable {
 
   var id: Self { self }
 
+  /// The tab's Settings Map identity (#3482). Exhaustive, so a new tab must be given a node.
+  var mapID: SettingsMapID {
+    switch self {
+    case .appearance: .appSettingsTabAppearance
+    case .permissions: .appSettingsTabPermissions
+    case .privacy: .appSettingsTabPrivacy
+    case .licenses: .appSettingsTabLicenses
+    }
+  }
+
   var label: LocalizedStringResource {
     switch self {
     case .appearance: "Appearance"

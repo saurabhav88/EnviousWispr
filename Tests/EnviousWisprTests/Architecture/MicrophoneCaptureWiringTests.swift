@@ -70,7 +70,7 @@ struct MicrophoneCaptureWiringTests {
   @Test("the structural scan distinguishes deferred, eager and precomputed reads")
   func observationPlacementExtractorControls() {
     let validSlot = Parser.parse(source:
-      "SettingsRow(title: DictationSettingsCopy.Microphone.inputDeviceTitle) { PickerView() }.rowStatus { Status() }")
+      "SettingsRow(map: .id(.inputDevice)) { PickerView() }.rowStatus { Status() }")
     #expect(Self.inputStatusSlots(in: validSlot) == ["Status()"])
     let wrongRow = Parser.parse(source:
       "SettingsRow(title: Other.title) { PickerView() }.rowStatus { Status() }")
@@ -107,8 +107,9 @@ struct MicrophoneCaptureWiringTests {
           member.declName.baseName.text == "rowStatus",
           let row = member.base?.as(FunctionCallExprSyntax.self),
           row.calledExpression.trimmedDescription == "SettingsRow",
-          row.arguments.first(where: { $0.label?.text == "title" })?.expression.trimmedDescription
-            == "DictationSettingsCopy.Microphone.inputDeviceTitle",
+          // #3482: the Input device row names itself by its Settings Map id.
+          row.arguments.first(where: { $0.label?.text == "map" })?.expression.trimmedDescription
+            == ".id(.inputDevice)",
           let closure = node.trailingClosure {
           slots.append(contentsOf: closure.statements.map { $0.item.trimmedDescription })
         }

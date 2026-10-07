@@ -33,42 +33,12 @@ struct OtherAudioSettingsPanel: View {
     @Bindable var settings = settings
     VStack(alignment: .leading, spacing: 8) {
       SettingsRow(
+        map: .id(.mediaDuringDictation),
         icon: "speaker.wave.2.fill",
-        resolvedTitle: String(localized: DictationSettingsCopy.Microphone.mediaTitle),
-        resolvedShort: String(localized: DictationSettingsCopy.Microphone.mediaShort),
         resolvedHelp: Self.footnote(for: settings.otherAudioWhileDictating)
       ) {
         BrandedSegmentedPicker(
-          options: [
-            (
-              String(
-                localized: "otherAudio.option.continue", defaultValue: "Continue",
-                comment:
-                  "Microphone settings, media during dictation: option that leaves other audio playing (keeps playing, not 'go on')."
-              ), "play.fill", OtherAudioWhileDictating.nothing
-            ),
-            (
-              String(
-                localized: "Lower",
-                comment:
-                  "Microphone settings, media during dictation: option that turns other audio down."
-              ), "speaker.wave.1", OtherAudioWhileDictating.turnDown
-            ),
-            (
-              String(
-                localized: "Mute",
-                comment:
-                  "Microphone settings, media during dictation: option that silences other audio."),
-              "speaker.slash", OtherAudioWhileDictating.mute
-            ),
-            (
-              String(
-                localized: "Pause",
-                comment:
-                  "Microphone settings, media during dictation: option that pauses what is playing."
-              ), "pause.circle", OtherAudioWhileDictating.pauseMusic
-            ),
-          ],
+          options: SettingsChoicePresentation.mediaDuringDictation.map(\.pickerOption),
           selection: $settings.otherAudioWhileDictating,
           comfortable: true
         )

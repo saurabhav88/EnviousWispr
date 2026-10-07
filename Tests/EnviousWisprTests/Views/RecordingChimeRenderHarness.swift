@@ -38,7 +38,7 @@ struct RecordingChimeRenderHarness {
         // Literal German catalog fixtures: Bundle.main here belongs to the English test host.
         // These are the production grid/cards, not proof of app-bundle localization.
         SettingsContentView {
-          SettingsSectionHeading(resolvedTitle: "AUFNAHMESIGNALTÖNE · DE FIXTURES")
+          SettingsSectionHeading(fixtureTitle: "AUFNAHMESIGNALTÖNE · DE FIXTURES")
           RecordingChimeGrid {
             ForEach(RecordingSoundPairing.allCases, id: \.self) { pairing in
               RecordingChimeCard(pairing: pairing, isSelected: pairing == .dustMote,
