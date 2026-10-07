@@ -1343,12 +1343,14 @@ enum SettingsMap {
   /// A Settings Map wiring mistake: a missing or duplicate node, or a name asked for with the
   /// wrong kind of reference. It stops a DEBUG build and every Debug test that reaches it. In a
   /// Release build (the PR gate's test run) it is recorded, and every rendered Settings state
-  /// fails on a recorded fault. A shipped app logs it and shows a plain fallback, never closing
-  /// the Settings window over a name (adversarial review 2026-10-07, after the AI Polish
-  /// key-link crash).
+  /// fails on a recorded fault. A shipped app shows a plain fallback (and, like every release
+  /// build, logs nothing), never closing the Settings window over a name (adversarial review
+  /// 2026-10-07, after the AI Polish key-link crash).
   static func wiringFault(_ message: @autoclosure () -> String) {
     let text = message()
-    settingsMapLog.fault("\(text, privacy: .public)")
+    #if DEBUG
+      Task { await AppLogger.shared.log(text, level: .info, category: "SettingsMap") }
+    #endif
     recordedFaults.withLock { $0.append(text) }
     assertionFailure(text)
   }
@@ -1365,4 +1367,3 @@ enum SettingsMap {
   private static let recordedFaults = OSAllocatedUnfairLock<[String]>(initialState: [])
 }
 
-private let settingsMapLog = Logger(subsystem: "com.enviouswispr.app", category: "SettingsMap")
