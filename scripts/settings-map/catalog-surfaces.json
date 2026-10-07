@@ -5,6 +5,9 @@
   "mac-window-main": [
    "window.settings"
   ],
+  "mac-ctl-settings-search": [
+   "window.search"
+  ],
   "mac-page-ai-polish": [
    "page.aiPolish"
   ],
@@ -669,6 +672,11 @@
    "kind": "control",
    "parent": "mac-sec-snippets-list",
    "label": "Add your first snippet [only when there are no snippets]"
+  },
+  "mac-ctl-settings-search": {
+   "kind": "control",
+   "parent": "mac-window-main",
+   "label": "Search settings [Cmd+F; finds a page, setting or choice]"
   }
  }
 }
