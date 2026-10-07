@@ -450,4 +450,30 @@ struct LearnedWordCandidatesTests {
     #expect(search.composed == 1)
     #expect(search.truncated == 0)
   }
+
+  @Test("#3518: a learned word with punctuation inside a learned phrase is found (Codex diff review r1)")
+  func punctuatedInnerWord() {
+    let learned = [
+      LearnedWord(canonical: "C++", observedMisspellings: ["see plus plus"]),
+      LearnedWord(canonical: "cppav", observedMisspellings: ["C++ A V"]),
+    ]
+    let misheard = "Ping see plus plus A V today."
+    #expect(
+      Self.spots(misheard, LearnedWordCandidates.questions(for: misheard, learned: learned))
+        == ["see plus plus A V->cppav", "see plus plus->C++"])
+    let literal = "Ping C++ A V today."
+    #expect(
+      Self.spots(
+        literal, LearnedWordCandidates.questions(for: literal, learned: learned, knownSpellings: ["C++"]))
+        == ["C++ A V->cppav"])
+  }
+
+  @Test("#3518: a phrase of many overlapping learned words builds at most 32 spellings (Codex diff review r1)")
+  func overlappingWordsStayBounded() {
+    let phrase = Array(repeating: "ha", count: 28).joined(separator: " ")
+    let variants = LearnedWordCandidates.variants(
+      of: phrase, owner: "Laugh", misspellings: ["ha ha": ["ha"], "laugh": [phrase]])
+    #expect(variants.count == 32)
+    #expect(variants.first?.text == phrase)
+  }
 }

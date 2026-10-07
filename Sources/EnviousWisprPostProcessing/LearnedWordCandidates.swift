@@ -29,7 +29,7 @@ public enum LearnedWordCandidates: Sendable {
   /// with a learned word inside it written as one of that word's own misspellings.
   /// `retained` holds the unicode-scalar offsets of the learned words left as written: the
   /// only places a spelling the user already has may sit inside a match.
-  private struct Variant {
+  struct Variant {
     let text: String
     let retained: [Range<Int>]
     let composed: Bool
@@ -173,11 +173,11 @@ public enum LearnedWordCandidates: Sendable {
   }
 
   /// The spellings searched for one learned phrase, the phrase as taught first, at most
-  /// `maxVariantsPerAlias` distinct ones. Only a phrase with whitespace is expanded, and only
+  /// `maxVariantsPerAlias` of them. Only a phrase with whitespace is expanded, and only
   /// where another learned word sits in it as a whole word, found in the phrase as taught.
   /// Overlapping learned words ("Envious" and "Envious Labs") are alternatives: one
   /// spelling never replaces both.
-  private static func variants(
+  static func variants(
     of alias: String, owner: String, misspellings: [String: [String]]
   ) -> [Variant] {
     struct Occurrence {
@@ -188,35 +188,46 @@ public enum LearnedWordCandidates: Sendable {
     guard scalars.contains(where: { $0.properties.isWhitespace }) else {
       return [Variant(text: alias, retained: [], composed: false)]
     }
-    // Whole words of the phrase (runs of word characters, `isWordScalar`), then every run of
-    // consecutive words looked up as a learned word: a dictionary lookup per run, not a
-    // search per learned word, so a large vocabulary costs no more here.
-    var words = [Range<Int>]()
-    var wordStart: Int?
+    // The phrase's whitespace-separated pieces, then every run of consecutive pieces looked up
+    // as a learned word: a dictionary lookup per run, not a search per learned word, so a large
+    // vocabulary costs no more here. Each run is tried as written ("C++", "U.S."), then with
+    // punctuation peeled from its edges ("Saurabh," / "(Saurabh" / "Saurabh."), longest first.
+    var pieces = [Range<Int>]()
+    var pieceStart: Int?
     for (offset, scalar) in scalars.enumerated() {
-      if isWordScalar(scalar) {
-        if wordStart == nil { wordStart = offset }
-      } else if let start = wordStart {
-        words.append(start..<offset)
-        wordStart = nil
+      if scalar.properties.isWhitespace {
+        if let start = pieceStart { pieces.append(start..<offset) }
+        pieceStart = nil
+      } else if pieceStart == nil {
+        pieceStart = offset
       }
     }
-    if let start = wordStart { words.append(start..<scalars.count) }
+    if let start = pieceStart { pieces.append(start..<scalars.count) }
+    func peelable(_ scalar: Unicode.Scalar) -> Bool { !isWordScalar(scalar) || scalar == "." }
     var occurrences = [Occurrence]()
     let ownerKey = owner.lowercased()
-    for first in words.indices {
-      for last in first..<words.count {
-        // The run as written ("U.S."), and without a trailing sentence period ("Saurabh.").
-        var upper = words[last].upperBound
-        var ends = [upper]
-        while upper > words[last].lowerBound + 1, scalars[upper - 1] == "." { upper -= 1 }
-        if upper != ends[0] { ends.append(upper) }
-        for end in ends {
-          let range = words[first].lowerBound..<end
-          let key = String(String.UnicodeScalarView(scalars[range])).lowercased()
-          if key != ownerKey, misspellings[key] != nil {
-            occurrences.append(Occurrence(range: range, key: key))
-            break
+    for first in pieces.indices {
+      var lowers = [pieces[first].lowerBound]
+      while let lower = lowers.last, lower + 1 < pieces[first].upperBound,
+        peelable(scalars[lower]), scalars[lower] != "."
+      {
+        lowers.append(lower + 1)
+      }
+      for last in first..<pieces.count {
+        var uppers = [pieces[last].upperBound]
+        while let upper = uppers.last, upper - 1 > pieces[last].lowerBound,
+          peelable(scalars[upper - 1])
+        {
+          uppers.append(upper - 1)
+        }
+        search: for lower in lowers {
+          for upper in uppers where lower < upper {
+            let range = lower..<upper
+            let key = String(String.UnicodeScalarView(scalars[range])).lowercased()
+            if key != ownerKey, misspellings[key] != nil {
+              occurrences.append(Occurrence(range: range, key: key))
+              break search
+            }
           }
         }
       }
@@ -260,17 +271,14 @@ public enum LearnedWordCandidates: Sendable {
       return Variant(text: String(text), retained: retained, composed: replaced.isEmpty == false)
     }
 
+    // The cap counts spellings built, including one spelling reached two ways (each keeps its
+    // own exemptions), so a phrase of many overlapping learned words stays bounded (Codex
+    // diff review r1: "ha ha" learned from "ha", in a phrase of 28 "ha", took 2.85 s).
     var result = [Variant]()
-    var distinct = Set<String>()
     func visit(_ index: Int, _ replaced: [(occurrence: Int, with: String)]) {
-      guard distinct.count < maxVariantsPerAlias else { return }
+      guard result.count < maxVariantsPerAlias else { return }
       guard index < occurrences.count else {
-        let variant = build(replaced)
-        // Same spelling, other provenance: kept, so its exemptions are judged on their own.
-        if distinct.contains(variant.text) || distinct.count < maxVariantsPerAlias {
-          distinct.insert(variant.text)
-          result.append(variant)
-        }
+        result.append(build(replaced))
         return
       }
       visit(index + 1, replaced)
