@@ -75,12 +75,15 @@ public enum SettingsSearchQueryFilter {
 
   /// What the checks read; the sent text stays the query itself. Invisible format characters
   /// (zero-width spaces and joiners) are removed, so one hidden inside a key or an address cannot
-  /// split it, and every kind of whitespace (a non-breaking space too) becomes one plain space,
-  /// so the patterns below match whatever spacing was typed.
+  /// split it, compatibility forms (full-width punctuation) become plain ones, and every kind of
+  /// whitespace (a non-breaking space too) becomes one plain space, so the patterns below match
+  /// whatever spacing was typed.
   static func detectionCopy(_ query: String) -> String {
     var out = String.UnicodeScalarView()
     var lastWasSpace = false
-    for scalar in query.unicodeScalars where scalar.properties.generalCategory != .format {
+    // Compatibility forms first (a full-width colon or letter reads as the plain one).
+    let folded = query.precomposedStringWithCompatibilityMapping
+    for scalar in folded.unicodeScalars where scalar.properties.generalCategory != .format {
       if CharacterSet.whitespacesAndNewlines.contains(scalar) {
         if !lastWasSpace { out.append(" ") }
         lastWasSpace = true
@@ -110,11 +113,11 @@ public enum SettingsSearchQueryFilter {
   /// path, or an IBAN with letters in its account part (one with seven digits is already dropped).
   private static func looksLikePersonalAddress(_ query: String) -> Bool {
     let patterns = [
-      #"\b[a-z0-9._%+-]+\s+at\s+[a-z0-9-]+(?:\s+dot\s+[a-z0-9-]+)+\b"#,
-      #"\b\d{1,3}(?:\.\d{1,3}){3}\b"#,
+      #"\b[a-z0-9._%+-]+\s*[\[(]?\s*at\s*[\])]?\s*[a-z0-9-]+(?:\s*[\[(]?\s*dot\s*[\])]?\s*[a-z0-9-]+)+\b"#,
+      #"\b\d{1,3}(?:\s?\.\s?\d{1,3}){3}\b"#,
       #"[0-9a-f]{0,4}::[0-9a-f]{0,4}|\b(?:[0-9a-f]{1,4}:){3,}[0-9a-f]{1,4}\b"#,
       #"\b(?:[0-9a-f]{2}[:-]){5}[0-9a-f]{2}\b"#,
-      #"(?:^|[^a-z0-9])(?:/users/|/home/|~/|[a-z]:[\\/]users[\\/])"#,
+      #"/users/|/home/|(?:^|[^a-z0-9])~/|[a-z]:[\\/]users[\\/]"#,
       #"\b[a-z]{2}\d{2}(?:\s?[a-z0-9]{4}){3,}\b"#,
     ]
     return patterns.contains { query.range(of: $0, options: .regularExpression) != nil }
@@ -139,9 +142,19 @@ public enum SettingsSearchQueryFilter {
       // A label joined by "/", "+" or "." still hides a known prefix, so each piece is checked
       // too, and the whole run (Google's "ya29." keeps its dot).
       let pieces = [candidate] + candidate.split(whereSeparator: { "/+.".contains($0) }).map(String.init)
+      // A prefix also counts after "-" or "_" inside a run ("key_glpat-..."), but not inside a
+      // word ("desk-top" is not "sk-").
+      if credentialPrefixes.contains(where: { prefix in
+        candidate.range(
+          of: "(?:^|[^a-z0-9])" + NSRegularExpression.escapedPattern(for: prefix),
+          options: .regularExpression) != nil
+      }) { return true }
       for piece in pieces {
         if credentialPrefixes.contains(where: piece.hasPrefix) { return true }
         if piece.count == 20, piece.hasPrefix("akia") || piece.hasPrefix("asia") { return true }
+        for part in piece.split(whereSeparator: { "-_".contains($0) }) where part.count == 20 {
+          if part.hasPrefix("akia") || part.hasPrefix("asia") { return true }
+        }
       }
       let hasDigit = candidate.unicodeScalars.contains(where: CharacterSet.decimalDigits.contains)
       let hasLetter = candidate.unicodeScalars.contains(where: CharacterSet.letters.contains)

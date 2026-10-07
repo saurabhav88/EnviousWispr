@@ -31,6 +31,8 @@ struct SettingsSearchTelemetryTests {
     #expect(SettingsSearchQueryFilter.reportable("talk at home") == "talk at home")
     #expect(SettingsSearchQueryFilter.reportable("password manager") == "password manager")
     #expect(SettingsSearchQueryFilter.reportable("users folder") == "users folder")
+    #expect(SettingsSearchQueryFilter.reportable("desk-top mic") == "desk-top mic")
+    #expect(SettingsSearchQueryFilter.reportable("what is that") == "what is that")
     // The sent text keeps what was typed; only the checks read the normalized copy.
     #expect(SettingsSearchQueryFilter.reportable("dark\u{00A0}mode") == "dark\u{00A0}mode")
     // A Japanese vocabulary phrase longer than 32 characters, written without spaces.
@@ -63,6 +65,11 @@ struct SettingsSearchTelemetryTests {
       "path:/Users/Jane", "path=/Users/Jane", "C:/Users/Jane", "jane  at  example  dot  com",
       "jane\u{00A0}at\u{00A0}example\u{00A0}dot\u{00A0}com",
       "LU46\u{00A0}001A\u{00A0}BCDE\u{00A0}FGHI\u{00A0}JKLM", "token/ghp_abc", "notes.sk-abc",
+      // Third round: prefixes after "_" or "-", a full-width colon, nested home paths, bracketed
+      // at and dot, spaced dots in an IPv4 address.
+      "key_glpat-abcdefghijklmnopqrst", "key-AKIA" + String(repeating: "B", count: 16),
+      "password\u{FF1A}Tr0ub4dor!", "/System/Volumes/Data/Users/Jane", "/Volumes/Mac/Users/Jane",
+      "jane(at)example(dot)com", "jane [at] example [dot] com", "10 . 0 . 0 . 1",
     ] {
       #expect(SettingsSearchQueryFilter.reportable(text) == nil, "kept \(text)")
     }
