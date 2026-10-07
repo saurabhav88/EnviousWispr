@@ -15,13 +15,11 @@ import SwiftSyntax
 @Suite(.tags(.productOutcome))
 struct LivePreviewSettingsCopyTests {
 
-  /// Every user-facing string on this page, plus the pill's. The brand and non-empty checks below
-  /// iterate this list, so a string missing from it is a string those checks do not cover.
+  /// Every user-facing string on this page, plus the pill's. The non-empty check below iterates
+  /// this list, so a string missing from it is a string that check does not cover.
   ///
-  /// The list is hand-written because Swift cannot enumerate static members at runtime, which is
-  /// exactly why `everyCopyPropertyIsCovered` reads the source and fails when the two drift. Left
-  /// unguarded, the list went from covering all of this file's copy to covering 4 of 21 as the
-  /// page grew, silently, with no test turning red (found in self-review, 2026-08-16).
+  /// The list is hand-written because Swift cannot enumerate static members at runtime; add new
+  /// copy here by hand (the source-reading coverage check was retired in #3505).
   private var allStrings: [String] {
     [
       String(localized: LivePreviewSettingsCopy.sectionHeaderResource),

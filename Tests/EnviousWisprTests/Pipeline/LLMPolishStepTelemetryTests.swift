@@ -420,9 +420,8 @@ struct LLMPolishStepTelemetryTests {
   /// can exist anywhere, and they sat above the genuine stuck-model case in any
   /// "what is failing most" query.
   ///
-  /// `http_404` (44 events / 39 users) is deliberately NOT removed — see
-  /// `skipPolicyIsProofOnly`. A model absent from `/api/tags` may still be
-  /// resident.
+  /// `http_404` (44 events / 39 users) is deliberately NOT removed: a model
+  /// absent from `/api/tags` may still be resident.
   /// `nonisolated` because `@Test(arguments:)` is evaluated outside the suite's
   /// `@MainActor` isolation (`swift-testing-patterns.md`
   /// RULE: swift-testing-mainactor-arguments-needs-nonisolated).

@@ -8,23 +8,10 @@ import Testing
 /// The shipped wizard used the settings-wide capsule with a purple border, which is the pill
 /// he rejected by name.
 ///
-/// **What this check is, and what it is NOT.** It COUNTS direct `SettingsActionButton`
-/// constructions in `TranscribeFileView.swift`. It does not verify WHERE they occur, so two
-/// constructions somewhere else would pass it; it says nothing about the plain `Button`
-/// controls the file also uses on purpose (the drop zone, the X, the six polish cards); and
-/// it renders no pixel, so it cannot see whether anything LOOKS right. Styling is verified
-/// by screenshot and accessibility by driving the running app, which are the only
-/// instruments that can. Narrowed by Codex, whose point was that "every button" was a claim
-/// this count cannot make.
-///
-/// **It is worth having anyway, for the reason the ownership tripwire in
-/// `ProviderSetupOwnershipTests` is.** The cheap thing to do when adding a seventh button to
-/// this wizard is to reach for the same type every other settings page uses, and that button
-/// would be a purple pill among rounded rectangles. Two buttons of different shapes pass
-/// every behavioural test in the suite, because both work.
-///
-/// Two-way controlled: verified failing on 2026-09-10 by restoring one direct construction
-/// in the Done step's action row, which it named in its failure message.
+/// **What this checks.** The wizard's secondary button asks for the quiet, rounded-rectangle
+/// treatment, never the purple-bordered pill. It reads source text and renders no pixel;
+/// styling is verified by screenshot. (The construction count that used to sit here was
+/// retired in #3505.)
 @Suite("Transcribe a File button treatment (#2772)", .tags(.driftGuard))
 struct TranscribeFileButtonTreatmentTests {
   /// Derived from this file rather than the working directory: a relative path would scan
@@ -37,15 +24,6 @@ struct TranscribeFileButtonTreatmentTests {
       .deletingLastPathComponent()  // repo root
       .appendingPathComponent("Sources/EnviousWisprAppKit/Views/Settings/TranscribeFileView.swift")
     return try? String(contentsOf: url, encoding: .utf8)
-  }
-
-  @Test("the scanner can see its subject")
-  func theScannerCanSeeItsSubject() {
-    let source = Self.viewSource
-    #expect(source != nil, "TranscribeFileView.swift is unreadable, so the result below is vacuous")
-    #expect(
-      source?.contains("private func wizardPrimary") == true,
-      "the helper this checks for is gone, so the check no longer means anything")
   }
 
   /// The secondary must not be the purple-bordered pill. `outlined` is that pill and it

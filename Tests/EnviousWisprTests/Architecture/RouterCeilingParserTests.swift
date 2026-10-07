@@ -145,9 +145,9 @@ import Testing
   }
 
   @Test func classBody_failsClosedOnSourceThatDoesNotParse() {
-    // The property the ceilings depend on: source the parser cannot read must
-    // THROW, never return a small confident number, because every ceiling is a
-    // `<=` bound and a count that reads LOW passes forever without complaining.
+    // Source the parser cannot read must THROW, never return a small confident
+    // number: the retired ceilings were `<=` bounds, and a count that reads LOW
+    // would have passed forever without complaining.
     //
     // Asserted with a plain SYNTAX error, which is an error in every build
     // configuration. The first version of this test used a 30-level nesting

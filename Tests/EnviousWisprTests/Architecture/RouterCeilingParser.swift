@@ -56,8 +56,8 @@ enum RouterCeilingParser {
   // MARK: - Source extraction
 
   /// The member text of `typeName`'s class body, sliced from the real source.
-  /// Returned as text because every consumer and all 52 regression tests take a
-  /// body string; the counters re-parse it rather than re-scan it.
+  /// Returned as text because its consumers take a body string; the counters
+  /// re-parse it rather than re-scan it.
   static func classBody(named typeName: String, at path: String) throws -> String {
     let source = try String(contentsOf: RepoRoot.sourceURL(path), encoding: .utf8)
     let tree = try parsed(source, context: "\(typeName) at \(path)")

@@ -525,10 +525,9 @@ struct SeamCasingRuntimeSerializationTests {
     "#1922 The SHIPPED German veto answers noun for a one-word noun",
     .enabled(if: SeamCasingRuntimeSerializationTests.germanWordClassAvailable))
   func shippedGermanVetoTagsAOneWordNoun() async throws {
-    // The case above freezes an `NLTagger` FACT and is therefore blind to the
-    // shipped call site — reverting the ordering in `prepare` left it green, which
-    // the mutation control exposed. This one drives the REAL closure the product
-    // uses, so it fails when that ordering regresses.
+    // A test of `NLTagger` alone (since retired) was blind to the shipped call
+    // site: reverting the ordering in `prepare` left it green. This one drives the
+    // REAL closure the product uses, so it fails when that ordering regresses.
     //
     // No preparation override: the point is to exercise the real
     // `NSSpellChecker` + `NLTagger` build. Gated on German word-class

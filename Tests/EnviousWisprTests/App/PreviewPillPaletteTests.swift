@@ -93,9 +93,7 @@ struct PreviewPillPaletteTests {
   /// I maintain by hand cannot protect against me forgetting to maintain it.
   ///
   /// Swift cannot enumerate static members at runtime, so the palette's own source
-  /// is the only authority available — the same mechanism
-  /// `LivePreviewSettingsCopyTests.everyCopyPropertyIsCovered` uses, and for the
-  /// same reason.
+  /// is the only authority available.
   @Test("every colour in the palette reaches BOTH hand-written arrays")
   func everyPaletteColourIsAccountedFor() throws {
     // The main text and the notice must stay in the contrast-checked list, not drift to surfaces.

@@ -8,7 +8,7 @@ struct LLMRetryPolicyTests {
 
   // MARK: - Constants
 
-  /// #2093: the durable claim is not the two literals above — it is that the
+  /// #2093: the durable claim is not the delay literals themselves — it is that the
   /// SLEEPS cannot eat the budget they run inside. They are spent within the
   /// polish step's own deadline, so at 1s+3s a single transient 5xx made a short
   /// cloud dictation's timeout arithmetically certain on the old 5s base, and

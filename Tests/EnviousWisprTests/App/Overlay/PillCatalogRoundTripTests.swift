@@ -24,11 +24,9 @@ struct PillCatalogRoundTripTests {
 
   /// Every `OverlayIntent` arm, with a payload where it takes one.
   ///
-  /// **Hand-written and therefore checked for completeness below.** `OverlayIntent`
-  /// is not `CaseIterable` — several arms carry payloads that have no canonical
-  /// value — so this list cannot be derived. An array literal is not exhaustive
-  /// over an enum, and a new arm silently missing from it would leave the whole
-  /// suite passing while covering nothing, so `everyIntentArmIsListed` counts.
+  /// **Hand-written.** `OverlayIntent` is not `CaseIterable` (several arms carry
+  /// payloads with no canonical value), so this list cannot be derived; a new arm
+  /// must be added here by hand. Its completeness check was retired in #3505.
   private static let intents: [OverlayIntent] = [
     .hidden,
     .recording(audioLevel: 0),

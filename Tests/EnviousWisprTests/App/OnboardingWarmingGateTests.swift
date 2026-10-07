@@ -689,9 +689,8 @@ import Testing
 
       /// **The reopen DECISION, which no test could reach** (#2371 row 20).
       ///
-      /// `reopeningClearsTheBox` above calls `beginPractice()` directly, so it
-      /// proves the RESET works and says nothing about whether the screen decides
-      /// to run it. That decision lived in `PracticeScreen.onAppear` — unreachable
+      /// Calling `beginPractice()` directly proves the RESET works and says nothing
+      /// about whether the screen decides to run it. That decision lived in `PracticeScreen.onAppear` — unreachable
       /// from a unit test — so making `practiceBelongsToCurrentVisit` always answer
       /// true left the whole suite green while a reopened window kept the previous
       /// visit's words and an already-lit FINISH SETUP.

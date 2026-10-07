@@ -70,20 +70,17 @@ struct CapsuleBackgroundFreezeTests {
     try read(at: RepoRoot.url.appending(path: path), naming: path)
   }
 
-  /// Split from `read(_:)` so `anEmptyMemberIsRefused` can hand it a file it made
-  /// itself. Nothing else about the refusal changes: this is where the throw
-  /// lives, and it is the one the count-based guards go through.
+  /// Where the empty-file refusal lives.
   private static func read(at url: URL, naming path: String) throws -> String {
     let text = try String(contentsOf: url, encoding: .utf8)
-    // Fails closed: an empty or unreadable member makes every count below read
-    // low, which is indistinguishable from a deleted literal.
+    // Fails closed: an empty or unreadable member must not read as "no literal".
     guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
       throw CapsuleFreezeSourceError.empty(path)
     }
     return text
   }
 
-  /// The two-file set, concatenated. Used by the count-based guards.
+  /// The two-file set, concatenated.
   private static func capsuleSources() throws -> String {
     try capsuleSourcePaths.map { try read($0) }.joined(separator: "\n")
   }
@@ -105,14 +102,9 @@ struct CapsuleBackgroundFreezeTests {
     }
   }
 
-  /// **Which DECLARATION owns each literal, which the count above cannot say.**
-  ///
-  /// #2380. `capsuleLiteralsAreFrozen` counts across an aggregate of two files and
-  /// asserts a total, so a literal that LEAVES its intended declaration while
-  /// another occurrence appears anywhere else in those files leaves the count
-  /// unchanged and the suite green. That is this suite's own recorded defect one
-  /// level up: counting fixed the two-copies case and not the which-declaration
-  /// case.
+  /// **Which DECLARATION owns each literal** (#2380): a literal that leaves its
+  /// intended declaration while another copy appears elsewhere must still fail.
+  /// (The file-wide literal count that once sat beside this was retired in #3505.)
   ///
   /// Read off the SYNTAX TREE rather than the balanced brace walk #2380 proposed.
   /// A walk is a second implementation of something the parser already knows, and

@@ -141,7 +141,7 @@ struct LiveTranscriptionCopyTests {
   }
 
   /// Every string either panel can render, both engines, in one place so a new field
-  /// cannot be added without the dash and empty checks covering it.
+  /// cannot be added without the empty check covering it.
   private var allUserFacingStrings: [String] {
     var out = [
       LiveTranscriptionCopy.toggleLabel,
