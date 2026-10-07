@@ -31,7 +31,6 @@ struct SettingsSearchField: View {
       .onSubmit {
         if let request = model.submit() { choose(request) }
       }
-      .onAppear { model.submitWhenReady = choose }
       .onKeyPress(.downArrow) {
         guard model.isPanelPresented else { return .ignored }
         model.moveSelection(by: 1)

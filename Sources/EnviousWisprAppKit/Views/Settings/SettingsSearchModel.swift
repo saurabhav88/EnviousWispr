@@ -39,11 +39,6 @@ final class SettingsSearchModel {
   private(set) var generation = 0
 
   private var selectionMovedByUser = false
-  /// Return pressed while the index was still loading, for this generation: the top result
-  /// opens as soon as it exists, unless the person types again first.
-  private var pendingSubmit: Int?
-  /// Opens a result chosen by a Return that arrived before results did (set by the field).
-  @ObservationIgnored var submitWhenReady: ((SettingsSearchRequest) -> Void)?
   private var announcement: Task<Void, Never>?
   private let loadIndex: @Sendable () async -> SettingsSearchIndex?
   /// The meaning pass (plan §3.7a): nil means words only. Skipped for the rest of the window
@@ -152,7 +147,6 @@ final class SettingsSearchModel {
     query = text
     generation &+= 1
     selectionMovedByUser = false
-    pendingSubmit = nil
     cancelAnnouncement()
     cancelMeaning()
     if text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
@@ -166,6 +160,7 @@ final class SettingsSearchModel {
     isPanelPresented = true
     attempt?.frozen = false
     refresh()
+    recordSnapshot()
   }
 
   private func refresh() {
@@ -198,8 +193,9 @@ final class SettingsSearchModel {
   /// Word results for `generation`: shown at once, then the meaning pass may re-order them.
   private func deliver(_ wordResults: [SettingsSearchResult], for generation: Int) {
     guard generation == self.generation else { return }
-    show(wordResults, for: generation)
+    // Pending first, so the snapshot shows never record an unfinished search as finished.
     startMeaning(wordResults, for: generation)
+    show(wordResults, for: generation)
   }
 
   /// Results for `generation`; a stale generation is dropped. Delivery never opens the panel.
@@ -211,13 +207,6 @@ final class SettingsSearchModel {
       selectedEntryID = newResults.first?.entryID
     }
     recordSnapshot()
-    if pendingSubmit == generation {
-      pendingSubmit = nil
-      if let request = requestForSelection() {
-        submitWhenReady?(request)
-        return
-      }
-    }
     scheduleAnnouncement(for: generation)
   }
 
@@ -239,12 +228,10 @@ final class SettingsSearchModel {
     return SettingsSearchRequest(entryID: entryID)
   }
 
-  /// Return in the field: the selected visible result, or, while the index is still loading,
-  /// the top result once it arrives (nil now in that case).
+  /// Return in the field: only a result the person can see (a Return before results exist does
+  /// nothing, so it never opens a result that was not on screen).
   func submit() -> SettingsSearchRequest? {
-    if let request = requestForSelection() { return request }
-    if isPanelPresented, case .loading = indexState { pendingSubmit = generation }
-    return nil
+    requestForSelection()
   }
 
   /// A result row clicked.
@@ -282,7 +269,12 @@ final class SettingsSearchModel {
     guard var current = attempt, !current.frozen, isPanelPresented, !query.isEmpty else { return }
     current.query = query
     current.resultCount = results.count
-    current.meaningPending = meaningPass == .pending
+    // Results still coming (the index loading, or the meaning pass running) or not available at
+    // all: the attempt can only end as abandoned, never as "found nothing" with its text.
+    switch indexState {
+    case .ready: current.meaningPending = meaningPass == .pending
+    case .notLoaded, .loading, .unavailable: current.meaningPending = true
+    }
     current.meaningElapsedMilliseconds = meaningPass == .completed ? meaningElapsedMilliseconds : nil
     attempt = current
   }
@@ -355,15 +347,23 @@ final class SettingsSearchModel {
               vocabularyLanguages: languages)
           }.value
         }
-        guard let view, let similarities = view.similarities(query: values) else {
-          // Assets built for another map, or a bad vector: words only for this window.
+        guard let view else {
           self?.meaningFinished(nil, skipped: true, for: generation)
           return
         }
         let hits = wordResults.map {
           SettingsSearchWordHit(entryID: $0.entryID, coverage: $0.coverage, score: $0.score)
         }
-        let fused = SettingsSearchMeaningFusion.rank(wordHits: hits, similarities: similarities)
+        // Scoring and fusion off the main actor; the generation is checked again on return.
+        let scored = await Task.detached { () -> [SettingsSearchFusedResult]?? in
+          guard let similarities = view.similarities(query: values) else { return .none }
+          return .some(SettingsSearchMeaningFusion.rank(wordHits: hits, similarities: similarities))
+        }.value
+        guard let fused = scored else {
+          // A bad vector: words only for this window.
+          self?.meaningFinished(nil, skipped: true, for: generation)
+          return
+        }
         self?.meaningView = view
         self?.meaningFinished(fused.map { Self.results(from: $0, words: wordResults) }, skipped: false, for: generation)
       }
@@ -383,7 +383,13 @@ final class SettingsSearchModel {
         return Double(elapsed.seconds) * 1_000 + Double(elapsed.attoseconds) / 1e15
       }
     meaningPass = skipped ? .skipped : .completed
-    if let fused { show(fused, for: generation) } else { recordSnapshot() }
+    if let fused {
+      show(fused, for: generation)
+    } else {
+      recordSnapshot()
+      // The pass ended without new results: the word results are final, so say how many.
+      scheduleAnnouncement(for: generation)
+    }
   }
 
   private func cancelMeaning() {
@@ -394,11 +400,10 @@ final class SettingsSearchModel {
     if !meaningSkipped, meaningWorker != nil { meaningPass = .completed }
   }
 
-  /// The bench-validated meaning view: the app language's name rows and vocabulary blocks, plus
-  /// the Mac's other preferred languages' blocks; English blocks only when English is the app
-  /// language (a German window's English block was never measured).
+  /// The meaning view uses the window's active-language snapshot (plan §3.7a): English, the app
+  /// language and the Mac's supported preferred languages, the same set as the word leg.
   static func meaningLanguages(_ index: SettingsSearchIndex) -> [String] {
-    index.languages.filter { $0 != "en" || index.appLanguage == "en" }
+    index.languages
   }
 
   /// Fused order back to result rows: word results keep their scores and hints; a place only the
@@ -425,7 +430,6 @@ final class SettingsSearchModel {
     selectedEntryID = nil
     selectionMovedByUser = false
     isPanelPresented = false
-    pendingSubmit = nil
     generation &+= 1
     cancelAnnouncement()
     cancelMeaning()
@@ -439,7 +443,7 @@ final class SettingsSearchModel {
     announcement = Task { [weak self] in
       try? await Task.sleep(for: delay)
       guard !Task.isCancelled, let self, generation == self.generation,
-        self.isPanelPresented
+        self.isPanelPresented, !self.results.isEmpty || self.meaningPass != .pending
       else { return }
       self.announce(SettingsSearchCopy.resultCount(self.results.count))
     }

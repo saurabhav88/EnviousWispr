@@ -71,6 +71,32 @@ struct SettingsArrivalTests {
         canMaterialize: false) == .fault)
   }
 
+  @Test("a mounted fallback never wins while lazy content may still hold the chosen control")
+  func lazyPrimaryBeatsMountedFallback() throws {
+    let reveal = try Self.reveal("pauseDuration")
+    let fallback = try #require(reveal.fallbacks.first)
+    #expect(
+      Planner.decide(
+        reveal: reveal, showing: true, mounted: [fallback], handledToken: nil,
+        canMaterialize: true) == .materialize)
+    #expect(
+      Planner.decide(
+        reveal: reveal, showing: true, mounted: [fallback], handledToken: nil,
+        canMaterialize: false) == .arrive(fallback, isFallback: true))
+  }
+
+  @Test("every committed navigation and a window close move the navigation epoch")
+  func epochMoves() throws {
+    var state = SettingsNavigationState()
+    let start = state.epoch
+    state.selectSidebar(.keybinds)
+    state.apply(try #require(SettingsSearchRequest(entryID: "pauseDuration")))
+    state.apply(.snippets)
+    state.endWindowSession()
+    #expect(state.epoch == start + 4)
+    #expect(state.reveal == nil)
+  }
+
   @Test("acknowledging clears only the matching reveal; a newer one survives")
   func acknowledgeMatchesToken() throws {
     var state = SettingsNavigationState()

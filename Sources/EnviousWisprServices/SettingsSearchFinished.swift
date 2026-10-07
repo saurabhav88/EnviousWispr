@@ -70,9 +70,9 @@ public enum SettingsSearchQueryFilter {
 
   private static func looksLikeWebAddress(_ query: String) -> Bool {
     if query.contains("://") || query.hasPrefix("www.") { return true }
-    // A word with a dot between letters and a known top-level ending ("example.com").
-    let pattern =
-      #"[a-z0-9-]+\.(com|net|org|io|de|co|app|dev|ai|edu|gov|uk|fr|es|it|nl|ch|at|info|me)\b"#
+    // Any domain shape, whatever its ending ("example.com", "example.cloud", "a.b.xyz"). This
+    // drops a few harmless dotted words too; dropping is the safe direction.
+    let pattern = #"\b(?:[a-z0-9-]+\.)+[a-z]{2,63}\b"#
     return query.range(of: pattern, options: .regularExpression) != nil
   }
 

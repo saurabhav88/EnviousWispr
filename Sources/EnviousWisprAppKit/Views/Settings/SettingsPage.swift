@@ -231,8 +231,11 @@ struct SettingsNavigationState: Equatable {
   var reveal: SettingsReveal?
   /// The token of the latest reveal, kept after `reveal` clears so tokens never repeat.
   private(set) var lastRevealToken = 0
+  /// Increments on every committed navigation and when the window closes (#3482 §3.4).
+  private(set) var epoch = 0
 
   mutating func selectSidebar(_ page: SettingsPage) {
+    epoch += 1
     reveal = nil
     selectedPage = page
   }
@@ -273,7 +276,14 @@ struct SettingsNavigationState: Equatable {
     }
   }
 
+  /// The window closed: no arrival or ring survives it.
+  mutating func endWindowSession() {
+    epoch += 1
+    reveal = nil
+  }
+
   mutating func apply(_ destination: SettingsDestination) {
+    epoch += 1
     reveal = nil
     selectedPage = destination.page
     switch destination {

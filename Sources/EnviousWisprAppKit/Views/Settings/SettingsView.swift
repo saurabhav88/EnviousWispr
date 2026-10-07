@@ -60,7 +60,7 @@ struct UnifiedWindowView: View {
       .background(
         SettingsWindowCloseObserver {
           search.reset(endedBy: .windowClose)
-          navigationState.reveal = nil
+          navigationState.endWindowSession()
         })
       // #3482 §3.4: a direct tab change drops an arrival meant for another tab.
       .onChange(of: navigationState.dictationTab) { _, _ in navigationState.dropRevealIfNotShowing() }
@@ -458,6 +458,7 @@ struct UnifiedWindowView: View {
       // #3482: the arrival a search navigation asked for, nil for every other navigation.
       .environment(\.settingsReveal, navigationState.reveal)
       .environment(\.settingsRevealAcknowledge) { navigationState.acknowledgeReveal(token: $0) }
+      .environment(\.settingsNavigationEpoch, navigationState.epoch)
       .environment(\.settingsRevealIsShowing) { reveal in
         guard let id = SettingsMapID(rawValue: reveal.entryID) else { return false }
         let node = SettingsMap.node(id)

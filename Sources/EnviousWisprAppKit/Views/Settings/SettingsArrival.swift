@@ -24,6 +24,9 @@ struct SettingsRevealScrollID: Hashable {
 extension EnvironmentValues {
   /// Tells the window that the arrival for a token finished. Supplied by the window's `page { }`.
   @Entry var settingsRevealAcknowledge: @MainActor (Int) -> Void = { _ in }
+  /// Increments on every committed navigation and on window close; an arrival in flight for an
+  /// older navigation ends, and so does its ring.
+  @Entry var settingsNavigationEpoch: Int = 0
   /// Whether a reveal's destination (page, tab, Dictionary tab) is the one on screen now.
   @Entry var settingsRevealIsShowing: @MainActor (SettingsReveal) -> Bool = { _ in false }
 }
@@ -65,6 +68,8 @@ enum SettingsArrivalPlanner {
     guard let reveal, reveal.token != handledToken, showing else { return .none }
     // The initial empty inventory is "not ready yet", never "hidden".
     guard !mounted.isEmpty else { return .wait }
+    // Lazy content may hold the chosen control off screen: reach it before any fallback.
+    if canMaterialize && !mounted.contains(reveal.anchor) { return .materialize }
     if let target = reveal.arrival(mounted: mounted) {
       return .arrive(target, isFallback: target != reveal.anchor)
     }
@@ -117,16 +122,29 @@ struct SettingsArrivalModifier: ViewModifier {
 
   @Environment(\.settingsReveal) private var reveal
   @Environment(\.settingsRevealAcknowledge) private var acknowledge
+  @Environment(\.settingsNavigationEpoch) private var navigationEpoch
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
   @State private var mounted: Set<SettingsMapID> = []
-  /// Controls wholly inside the visible scroll area: arrival does not scroll for these (a pinned
-  /// header control, or one already on screen, stays where the person sees it).
+  /// Controls wholly inside the visible area: arrival does not scroll for these (a pinned header
+  /// control, or one already on screen, stays where the person sees it).
   @State private var fullyVisible: Set<SettingsMapID> = []
+  /// Controls at least partly inside the visible area.
+  @State private var partlyVisible: Set<SettingsMapID> = []
   @State private var handledToken: Int?
   @State private var materializedToken: Int?
+  /// An arrival scrolled toward but not yet seen on screen: it completes (announcement and
+  /// acknowledgement) only once its control is visible, and the ring is not dismissed for being
+  /// out of view while the reveal scroll runs.
+  @State private var arriving: Arriving?
   @State private var ring: (id: SettingsMapID, token: Int)?
   @State private var ringExpiry: Task<Void, Never>?
   @State private var deciding = false
+
+  struct Arriving: Equatable {
+    let target: SettingsMapID
+    let isFallback: Bool
+    let reveal: SettingsReveal
+  }
 
   static let ringDuration: Duration = .seconds(8)
 
@@ -138,13 +156,19 @@ struct SettingsArrivalModifier: ViewModifier {
       .overlayPreferenceValue(SettingsRevealAnchorKey.self) { anchors in
         GeometryReader { geometry in
           let visible = CGRect(origin: .zero, size: geometry.size)
-          let inside = Set(anchors.compactMap { visible.contains(geometry[$0.value]) ? $0.key : nil })
-          Color.clear.onChange(of: inside, initial: true) { _, now in fullyVisible = now }
-          if let ring, let anchor = anchors[ring.id] {
-            let rect = geometry[anchor]
+          let rects = anchors.mapValues { geometry[$0] }
+          let inside = Set(rects.compactMap { visible.contains($0.value) ? $0.key : nil })
+          let touching = Set(rects.compactMap { visible.intersects($0.value) ? $0.key : nil })
+          Color.clear
+            .onChange(of: inside, initial: true) { _, now in fullyVisible = now }
+            .onChange(of: touching, initial: true) { _, now in
+              partlyVisible = now
+              completeArrivalIfVisible()
+            }
+          if let ring, let rect = rects[ring.id] {
             if rect.intersects(visible) {
               SettingsArrivalRing(rect: rect)
-            } else {
+            } else if arriving == nil {
               // Scrolled out of view by the person: the ring has done its job.
               Color.clear.onAppear { dismissRing() }
             }
@@ -153,12 +177,25 @@ struct SettingsArrivalModifier: ViewModifier {
         .allowsHitTesting(false)
         .accessibilityHidden(true)
       }
-      // A later tap in the page dismisses the ring without consuming the tap.
+      // A later tap or key in the page dismisses the ring without consuming it.
       .simultaneousGesture(TapGesture().onEnded { dismissRing() })
+      .onKeyPress(phases: .down) { _ in
+        if arriving == nil { dismissRing() }
+        return .ignored
+      }
       .onAppear { reconcile() }
       .onChange(of: reveal) { _, _ in reconcile() }
       .onChange(of: mounted) { _, _ in reconcile() }
-      .onDisappear { dismissRing() }
+      // Any other navigation, or the window closing, ends this arrival and its ring.
+      .onChange(of: navigationEpoch) { _, _ in
+        if let arriving, reveal?.token == arriving.reveal.token { return }
+        arriving = nil
+        dismissRing()
+      }
+      .onDisappear {
+        arriving = nil
+        dismissRing()
+      }
   }
 
   private func reconcile() {
@@ -187,10 +224,10 @@ struct SettingsArrivalModifier: ViewModifier {
       reconcile()
     case .arrive(let target, let isFallback):
       handledToken = current.token
+      arriving = Arriving(target: target, isFallback: isFallback, reveal: current)
       scroll(to: target)
       showRing(target, token: current.token)
-      announce(entryID: current.entryID, landed: isFallback ? target : nil)
-      acknowledge(current.token)
+      completeArrivalIfVisible()
     case .fault:
       handledToken = current.token
       SettingsMap.wiringFault(
@@ -198,6 +235,19 @@ struct SettingsArrivalModifier: ViewModifier {
       )
       acknowledge(current.token)
     }
+  }
+
+  /// The arrival is done once its control is on screen and the reveal still applies: announce
+  /// where the person landed, then acknowledge the token.
+  private func completeArrivalIfVisible() {
+    guard let pending = arriving, partlyVisible.contains(pending.target) else { return }
+    arriving = nil
+    guard reveal?.token == pending.reveal.token, showing(pending.reveal) else {
+      dismissRing()
+      return
+    }
+    announce(entryID: pending.reveal.entryID, landed: pending.isFallback ? pending.target : nil)
+    acknowledge(pending.reveal.token)
   }
 
   private func scroll(to target: SettingsMapID) {

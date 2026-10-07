@@ -44,62 +44,25 @@ struct SettingsSearchBothLegsTests {
     #expect(model.meaningPass == .completed, "the meaning pass was skipped")
   }
 
-  /// Rows where the shipped search does not put the expected setting FIRST, measured
-  /// 2026-10-07 with the frozen winner. Which setting should lead is a ranking decision for the
-  /// founder (plan §18, SettingsSearchMatchingTests.bothLegsTable); until then each first-place
-  /// miss is a known issue, and the expected setting must still be in the top five.
-  static let firstPlacePending: Set<String> = [
-    "en: shortcut", "de: kürzel", "en: quiet", "en: export", "en: make it stop when I pause",
-    "en: use a different microphone", "de: ein anderes Mikrofon verwenden",
-    "de: den Signalton ausschalten", "en: how do I change the shortcut", "de: Tastenkürzel ändern",
-    "en: microfone", "en: turn off the sound",
-  ]
-
-  /// "whisperkit": the reviewed vocabulary has no "WhisperKit" word, so neither leg finds it.
-  /// Adding it needs a reviewed vocabulary edit and regenerated place vectors.
-  static let vocabularyGap: Set<String> = ["en: whisperkit"]
-
-  /// Rows where even the top five misses a listed setting with the meaning pass on (measured
-  /// 2026-10-07): "microfone" (a typo: its word score is low, and the meaning re-rank fills the top
-  /// five with other microphone places), and "shortcut" (Cancel recording's shortcut falls to
-  /// sixth). Founder ranking decisions, like `firstPlacePending`.
-  static let topFivePending: Set<String> = ["en: microfone", "en: shortcut"]
-
+  /// The plan's §18 acceptance (first place, and the listed others in the top five) is binding:
+  /// no row here is waived. Measured 2026-10-07 with the frozen winner, twelve rows miss first
+  /// place and three miss the top five ("whisperkit": no "WhisperKit" word in the reviewed
+  /// vocabulary; "microfone"; "shortcut"'s Cancel row). The conflict between the frozen winner
+  /// and these rows is the founder's decision (plan §12); neither the knobs nor the expected
+  /// entries change without it.
   func check(_ row: SettingsSearchMatchingTests.Row, _ ids: [String]) {
-    guard !Self.vocabularyGap.contains(row.testDescription) else {
-      withKnownIssue("\(row.testDescription): vocabulary gap, founder decision pending") {
-        #expect(ids.first == row.first, "\(row.testDescription): \(Array(ids.prefix(5)))")
-      }
-      return
-    }
     guard let first = row.first else {
       #expect(ids.isEmpty, "\(row.testDescription) answered \(Array(ids.prefix(5)))")
       return
     }
-    let topFive = {
-      #expect(ids.prefix(5).contains(first), "\(row.testDescription): \(Array(ids.prefix(5)))")
-      for id in row.alsoInTopFive {
-        #expect(
-          ids.prefix(5).contains(id), "\(row.testDescription): \(id) not in \(Array(ids.prefix(5)))")
-      }
-    }
-    if Self.topFivePending.contains(row.testDescription) {
-      withKnownIssue("\(row.testDescription): top five is a founder decision", isIntermittent: true) {
-        topFive()
-      }
-    } else {
-      topFive()
-    }
-    if Self.firstPlacePending.contains(row.testDescription) {
-      withKnownIssue("\(row.testDescription): which setting leads is a founder decision") {
-        #expect(ids.first == first, "\(row.testDescription): \(Array(ids.prefix(5)))")
-      }
-    } else {
-      #expect(ids.first == first, "\(row.testDescription): \(Array(ids.prefix(5)))")
+    #expect(ids.first == first, "\(row.testDescription): \(Array(ids.prefix(5)))")
+    for id in row.alsoInTopFive {
+      #expect(
+        ids.prefix(5).contains(id), "\(row.testDescription): \(id) not in \(Array(ids.prefix(5)))")
     }
   }
 
-  @Test("each both-legs row has its setting in the top five; first place as decided")
+  @Test("each both-legs row shows its setting first, and its others in the top five")
   func bothLegsTable() async throws {
     let english = try Self.model("en")
     let german = try Self.model("de")
@@ -108,7 +71,7 @@ struct SettingsSearchBothLegsTests {
     }
   }
 
-  @Test("the word-leg rows keep their setting in the top five with the meaning pass on")
+  @Test("the word-leg rows keep their answers with the meaning pass on")
   func wordRowsHold() async throws {
     let english = try Self.model("en")
     let german = try Self.model("de")
