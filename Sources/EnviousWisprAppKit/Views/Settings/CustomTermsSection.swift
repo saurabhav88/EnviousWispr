@@ -148,6 +148,7 @@ struct CustomTermsSection<Actions: View>: View {
               .accessibilityHidden(true)
             TextField(String(localized: SettingsItemCopy.Dictionary.searchWords), text: $searchQuery)
               .textFieldStyle(.plain)
+              .settingsArrivalFocusControl(textEntry: true)
               .settingsMapRegistration(.yourWordsSearch)
               .onChange(of: searchQuery) { _, _ in currentPage = 0 }
               .onChange(of: selectedCategory) { _, _ in currentPage = 0 }
@@ -166,6 +167,7 @@ struct CustomTermsSection<Actions: View>: View {
               }
               .buttonStyle(.plain)
               .accessibilityLabel(Text(SettingsItemCopy.Dictionary.clearSearch))
+              .settingsArrivalFocusControl()
               .settingsMapRegistration(.yourWordsClearSearch)
             }
           }

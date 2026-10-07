@@ -44,6 +44,12 @@ extension View {
     .transformPreference(SettingsRevealAnchorKey.self) { value in
       if condition { value = [:] }
     }
+    .transformPreference(SettingsArrivalFocusKey.self) { value in
+      if condition { value = [:] }
+    }
+    .transformEnvironment(\.settingsArrivalRegisteredID) { place in
+      if condition { place = nil }
+    }
   }
 }
 
@@ -54,7 +60,12 @@ private struct SettingsRevealAnchorModifier: ViewModifier {
 
   func body(content: Content) -> some View {
     if case .mapped(let id) = registration {
-      content.settingsRevealAnchor(id)
+      content
+        .settingsRevealAnchor(id)
+        // The controls inside find their place here (SettingsArrivalFocus.swift); a registration
+        // that is not itself a control only offers VoiceOver focus.
+        .environment(\.settingsArrivalRegisteredID, id)
+        .settingsArrivalFocusReadOnly(place: id)
     } else {
       content
     }

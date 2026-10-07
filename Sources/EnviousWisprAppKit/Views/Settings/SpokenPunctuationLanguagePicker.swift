@@ -54,6 +54,7 @@ struct SpokenPunctuationLanguagePicker: View {
       .contentShape(Rectangle())
     }
     .buttonStyle(.plain)
+    .settingsArrivalFocusControl()
     .fixedSize()
     .accessibilityLabel(Text(SpokenPunctuationCopy.languagePickerLabel))
     .accessibilityValue(

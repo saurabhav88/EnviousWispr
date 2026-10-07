@@ -81,6 +81,8 @@ struct UnifiedWindowView: View {
       .toolbar { SettingsWindowToolbar() }
     }
     .tint(.stAccentSolid)
+    // #3482: an arrival that moves focus to a setting first lets go of the search field.
+    .environment(\.settingsArrivalReleaseSearchFocus) { searchFocused = false }
     // `initial: true`: a request made before this window existed (the menu's
     // Settings item opens the window and asks in the same breath) still lands.
     .onChange(of: navigationCoordinator.pendingDestination, initial: true) { _, destination in

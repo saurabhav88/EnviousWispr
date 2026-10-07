@@ -173,6 +173,7 @@ struct SettingsDropdownField: View {
       .contentShape(Rectangle())
     }
     .buttonStyle(.plain)
+    .settingsArrivalFocusControl()
     .disabled(!isEnabled)
     .accessibilityLabel(spokenTitle)
     .accessibilityValue(value)

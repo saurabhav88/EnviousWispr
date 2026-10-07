@@ -122,6 +122,7 @@ struct SettingsArrivalModifier: ViewModifier {
 
   @Environment(\.settingsReveal) private var reveal
   @Environment(\.settingsRevealAcknowledge) private var acknowledge
+  @Environment(\.settingsArrivalReleaseSearchFocus) private var releaseSearchFocus
   @Environment(\.settingsNavigationEpoch) private var navigationEpoch
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
   @State private var mounted: Set<SettingsMapID> = []
@@ -139,6 +140,15 @@ struct SettingsArrivalModifier: ViewModifier {
   @State private var ring: (id: SettingsMapID, token: Int)?
   @State private var ringExpiry: Task<Void, Never>?
   @State private var deciding = false
+  /// The adapters the page has published, and the focus move in flight (one shot).
+  @State private var focusKinds: [SettingsMapID: SettingsArrivalFocusKind] = [:]
+  @State private var focusRequest: SettingsArrivalFocusRequest?
+  @State private var pendingFocus: (reveal: SettingsReveal, target: SettingsMapID, epoch: Int)?
+  @State private var focusExpiry: Task<Void, Never>?
+
+  /// A focus request nobody took (no adapter mounted for it) is dropped, so a control that mounts
+  /// much later is never given focus by an arrival that is long over.
+  static let focusRequestLifetime: Duration = .seconds(1)
 
   struct Arriving: Equatable {
     let target: SettingsMapID
@@ -152,6 +162,11 @@ struct SettingsArrivalModifier: ViewModifier {
     content
       .onPreferenceChange(SettingsRevealAnchorKey.self) { anchors in
         mounted = Set(anchors.keys)
+      }
+      .onPreferenceChange(SettingsArrivalFocusKey.self) { focusKinds = $0 }
+      .environment(\.settingsArrivalFocusRequest, focusRequest)
+      .environment(\.settingsArrivalFocusTaken) { taken in
+        if focusRequest == taken { dropFocusRequest() }
       }
       .overlayPreferenceValue(SettingsRevealAnchorKey.self) { anchors in
         GeometryReader { geometry in
@@ -195,6 +210,8 @@ struct SettingsArrivalModifier: ViewModifier {
       .onDisappear {
         arriving = nil
         dismissRing()
+        pendingFocus = nil
+        dropFocusRequest()
       }
   }
 
@@ -224,6 +241,7 @@ struct SettingsArrivalModifier: ViewModifier {
       reconcile()
     case .arrive(let target, let isFallback):
       handledToken = current.token
+      dropFocusRequest()
       arriving = Arriving(target: target, isFallback: isFallback, reveal: current)
       scroll(to: target)
       showRing(target, token: current.token)
@@ -247,7 +265,45 @@ struct SettingsArrivalModifier: ViewModifier {
       return
     }
     announce(entryID: pending.reveal.entryID, landed: pending.isFallback ? pending.target : nil)
+    startFocus(pending.reveal, target: pending.target)
     acknowledge(pending.reveal.token)
+  }
+
+  /// Focus follows the arrival by one layout pass, and is judged again then: a newer arrival, or a
+  /// change to another page or tab in between, cancels it.
+  private func startFocus(_ reveal: SettingsReveal, target: SettingsMapID) {
+    pendingFocus = (reveal, target, navigationEpoch)
+    DispatchQueue.main.async { moveFocus() }
+  }
+
+  private func moveFocus() {
+    guard let pending = pendingFocus else { return }
+    pendingFocus = nil
+    // The reveal was acknowledged just before this pass, so the token check no longer applies; the
+    // arrival is still this owner's when its token is the one handled here and no other navigation
+    // (page, tab, Dictionary tab or window close) moved the epoch since it completed.
+    guard
+      SettingsArrivalFocusPlanner.mayMove(
+        pendingToken: pending.reveal.token, handledToken: handledToken,
+        showing: navigationEpoch == pending.epoch)
+    else { return }
+    let move = SettingsArrivalFocusPlanner.plan(
+      target: pending.target, token: pending.reveal.token, kinds: focusKinds)
+    if move.releaseSearch { releaseSearchFocus() }
+    guard let request = move.request else { return }
+    focusRequest = request
+    focusExpiry?.cancel()
+    focusExpiry = Task { @MainActor in
+      try? await Task.sleep(for: Self.focusRequestLifetime)
+      guard !Task.isCancelled, focusRequest == request else { return }
+      focusRequest = nil
+    }
+  }
+
+  private func dropFocusRequest() {
+    focusExpiry?.cancel()
+    focusExpiry = nil
+    focusRequest = nil
   }
 
   private func scroll(to target: SettingsMapID) {

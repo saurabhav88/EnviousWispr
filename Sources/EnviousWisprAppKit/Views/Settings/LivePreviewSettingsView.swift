@@ -528,6 +528,7 @@ struct LivePreviewSettingsView: View {
           .font(.stHelper)
         }
         .foregroundStyle(.stAccent)
+        .settingsArrivalFocusControl()
         .settingsMapRegistration(.previewEngineCompare)
       }
 

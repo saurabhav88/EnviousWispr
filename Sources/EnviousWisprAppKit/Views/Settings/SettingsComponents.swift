@@ -158,6 +158,7 @@ struct SettingsRow<Control: View, HelpContent: View>: View {
         .settingsHoverRow(cornerRadius: 8)
       }
       .buttonStyle(.plain)
+      .settingsArrivalFocusControl()
       .accessibilityLabel(title)
       .accessibilityHint(short)
       SettingsInfoButton(rowTitle: title, tooltip: tooltip) { helpContent }
@@ -636,6 +637,7 @@ struct SettingsTabStrip<Tab: Hashable>: View {
           selection = item.id
         }
         .focused($focusedTab, equals: item.id)
+        .settingsArrivalFocusControl(place: item.map) { focusedTab = item.id }
         .settingsMapRegistration(item.map)
         .id(item.id)
         .anchorPreference(key: SettingsTabBoundsKey.self, value: .bounds) { [$0] }
@@ -870,6 +872,9 @@ struct SettingsSummaryCard<Summary: View, Status: View, Choices: View>: View {
   @State private var isMounted = false
   @FocusState private var changeFocused: Bool
   @AccessibilityFocusState private var changeAccessibilityFocused: Bool
+  /// A search arrival at this card lands on its Change button, which holds the focus state above.
+  @Environment(\.settingsArrivalFocusRequest) private var arrivalRequest
+  @Environment(\.settingsArrivalFocusTaken) private var arrivalTaken
 
   init(
     map: SettingsMapRef,
@@ -991,6 +996,17 @@ struct SettingsSummaryCard<Summary: View, Status: View, Choices: View>: View {
     .focused($changeFocused)
     .accessibilityFocused($changeAccessibilityFocused)
     .accessibilityLabel(String(localized: changeAccessibilityLabel))
+    .transformPreference(SettingsArrivalFocusKey.self) { [change] value in
+      for place in [map.id, change] where value[place] != .control { value[place] = .control }
+    }
+    .onChange(of: arrivalRequest, initial: true) { _, request in
+      guard let request, request.target == map.id || request.target == change,
+        request.kind == .control
+      else { return }
+      if NSApp.isFullKeyboardAccessEnabled { changeFocused = true }
+      if NSWorkspace.shared.isVoiceOverEnabled { changeAccessibilityFocused = true }
+      arrivalTaken(request)
+    }
   }
 }
 
@@ -1339,6 +1355,7 @@ struct BrandedToggleStyle: ToggleStyle {
       .contentShape(Rectangle())
     }
     .buttonStyle(.plain)
+    .settingsArrivalFocusControl()
     // The style is a plain Button, so VoiceOver would otherwise announce only
     // "button" with no state. Surface on/off as an accessibility value + toggle
     // trait so the switch state is spoken (#1298; validate keyboard + VO in UAT).
@@ -1422,6 +1439,7 @@ struct BrandedSlider<V: BinaryFloatingPoint>: View where V.Stride: BinaryFloatin
       HStack(spacing: 8) {
         Text(lowLabel).font(.stHelper).foregroundStyle(.stTextSecondary)
         Slider(value: $value, in: range, step: step)
+          .settingsArrivalFocusControl()
           .tint(.stAccent)
         Text(highLabel).font(.stHelper).foregroundStyle(.stTextSecondary)
       }
@@ -1527,6 +1545,8 @@ struct BrandedSegmentedPicker<T: Hashable>: View {
         tint: isSelected ? SettingsHover.selectedRowVeil : SettingsHover.rowTint)
     }
     .buttonStyle(.plain)
+    // The chosen option is where a search arrival lands: it is the picker's current value.
+    .settingsArrivalFocusControl(enabled: isSelected)
     .accessibilityValue(
       isSelected
         ? String(localized: "selected", comment: "VoiceOver: a chosen segmented option.") : "")
@@ -1843,6 +1863,7 @@ struct EngineCard<Footer: View>: View {
         .contentShape(Rectangle())
       }
       .buttonStyle(.plain)
+      .settingsArrivalFocusControl()
       .accessibilityElement(children: .combine)
       .accessibilityLabel(title)
       // **The explicit label REPLACES the combined children, so without this the
@@ -2171,6 +2192,7 @@ struct SettingsActionButton: View {
     Button(role: emphasis == .destructive ? .destructive : nil, action: action) {
       styledLabel
     }
+    .settingsArrivalFocusControl()
   }
 
   /// The treatment, with no control around it. Shared so a decorative instance and a real

@@ -155,6 +155,7 @@ struct SpeechEngineSettingsView: View {
                 // last-shown lang) so the chip can surface fresh for previously
                 // dismissed/suppressed languages.
                 Button(SettingsItemCopy.Engine.resetSuggestions) { languageSuggestionPresenter.resetAllChipState() }
+                  .settingsArrivalFocusControl()
                   .settingsMapRegistration(.autoDetectLanguageResetSuggestions)
                   .buttonStyle(.plain)
                   .font(.stHelper)
@@ -196,6 +197,7 @@ struct SpeechEngineSettingsView: View {
                   .controlSize(.small)
                   .font(.stHelper)
                   .accessibilityLabel(String(localized: Copy.changeLanguage))
+                  .settingsArrivalFocusControl()
                   .settingsMapRegistration(.lockedLanguageChange)
                 }
                 // #1678: a lock can outlive the engine that could honour it.
@@ -371,6 +373,7 @@ struct SpeechEngineSettingsView: View {
                 }
               }
               .labelsHidden()
+              .settingsArrivalFocusControl()
               .fixedSize()
             }
             // Kept visible as well as behind "?": it says what the chosen
@@ -512,6 +515,7 @@ struct SpeechEngineSettingsView: View {
         .disabled(fastAdmission == nil)
         .help(String(localized: EngineSummaryCopy.recheckFast))
         .accessibilityLabel(Text(EngineSummaryCopy.recheckFast))
+        .settingsArrivalFocusControl()
         .settingsMapRegistration(.transcriptionEngineRecheckFast)
       }
       .fixedSize(horizontal: true, vertical: false)
@@ -815,6 +819,7 @@ struct SpeechEngineSettingsView: View {
           .controlSize(.small)
           .buttonStyle(.borderless)
           .foregroundStyle(.stError)
+          .settingsArrivalFocusControl()
           .settingsMapRegistration(.whisperModelCancelDownload)
         }
       }
@@ -900,6 +905,7 @@ struct SpeechEngineSettingsView: View {
             .controlSize(.small)
             .buttonStyle(.borderless)
             .foregroundStyle(.stError)
+            .settingsArrivalFocusControl()
             .settingsMapRegistration(.whisperModelRemove)
             whisperKitRefreshButton
           }
@@ -922,6 +928,7 @@ struct SpeechEngineSettingsView: View {
         }
         .controlSize(.small)
         .font(.stHelper)
+        .settingsArrivalFocusControl()
         .settingsMapRegistration(.whisperModelTryAgain)
       }
     }
@@ -945,6 +952,7 @@ struct SpeechEngineSettingsView: View {
     .buttonStyle(.borderless)
     .help(Text(SettingsItemCopy.Engine.whisperRecheck))
     .accessibilityLabel(Text(SettingsItemCopy.Engine.whisperRecheck))
+    .settingsArrivalFocusControl()
     .settingsMapRegistration(.whisperModelRecheck)
   }
 

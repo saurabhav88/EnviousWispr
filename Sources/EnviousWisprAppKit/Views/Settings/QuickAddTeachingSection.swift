@@ -180,6 +180,7 @@ struct QuickAddTeachingSection: View {
     }
     .buttonStyle(.plain)
     .accessibilityHint("Opens Keybinds")
+    .settingsArrivalFocusControl()
     .settingsMapRegistration(.quickAddShortcut)
   }
 

@@ -211,6 +211,11 @@ private struct KeybindSettingsRow: View {
         accessibilityFocus: $guidanceReturnFocus
       )
       .frame(width: HotkeyRecorderView.Style.prominent.fieldWidth)
+      // A search arrival lands in the recorder through the focus states it already owns.
+      .settingsArrivalFocusControl(voiceOver: false) {
+        recordingKeybindFocused = true
+        if NSWorkspace.shared.isVoiceOverEnabled { guidanceReturnFocus = true }
+      }
       .popover(isPresented: $showGlobeGuidance, arrowEdge: .bottom) {
         GlobeGuidancePopover(onDismiss: dismissGlobeGuidance)
           .onExitCommand(perform: dismissGlobeGuidance)

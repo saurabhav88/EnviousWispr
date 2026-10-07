@@ -547,6 +547,7 @@ private struct DictionaryTabRow: View {
       .contentShape(Rectangle())
     }
     .buttonStyle(.plain)
+    .settingsArrivalFocusControl()
     .accessibilityElement(children: .combine)
     .accessibilityLabel(tab.label)
     .accessibilityValue(
