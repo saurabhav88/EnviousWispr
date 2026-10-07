@@ -96,25 +96,54 @@ struct SettingsSearchMatchingTests {
   /// Plan §18.1 / §18.1b rows the measured winner answers with BOTH legs, words plus the meaning
   /// pass (§3.7a; the word leg alone put the right place first for 73% of the Phase 0 practice
   /// searches, both legs 82%). Word results here are the bench's own (see
-  /// SettingsSearchBenchParityTests), so these rows are checked once the meaning pass is wired;
-  /// if both legs still miss one, that is a ranking decision for the founder, not a tuning edit.
-  /// Word-leg answers on 2026-10-07: shortcut → quickAdd.shortcut, recordKeybind; kürzel →
-  /// yourWords.category.acronym; quiet → mediaDuringDictation.lower, stopOnSilence; export →
-  /// snippets.export, yourWords.export (equal score, map order); whisperkit → none (no
-  /// "WhisperKit" word in the reviewed vocabulary); the four sentences below → none or other.
+  /// SettingsSearchBenchParityTests), so these rows are checked once the meaning pass is wired.
+  /// Founder decision 2026-10-07 (#3482 §18, option 1a): the measured winner's answers are the
+  /// expected ones; the plan's original first places stay in the top five where the winner keeps
+  /// them, and "WhisperKit" joined the All Languages engine's reviewed words. A change to any row
+  /// is a ranking change for the founder, not a tuning edit.
   static let bothLegsTable: [Row] = [
     Row(
-      language: "en", query: "shortcut", first: "recordKeybind", alsoInTopFive: ["cancelKeybind"]),
-    Row(language: "de", query: "kürzel", first: "recordKeybind"),
+      language: "en", query: "shortcut", first: "quickAdd.shortcut",
+      alsoInTopFive: ["recordKeybind"]),
+    Row(
+      language: "de", query: "kürzel", first: "yourWords.category.acronym",
+      alsoInTopFive: ["recordKeybind"]),
     Row(language: "en", query: "whisperkit", first: "transcriptionEngine.allLanguages"),
-    Row(language: "en", query: "quiet", first: "stopOnSilence"),
-    Row(language: "en", query: "export", first: "yourWords.export"),
-    Row(language: "en", query: "make it stop when I pause", first: "stopOnSilence"),
-    Row(language: "en", query: "use a different microphone", first: "inputDevice"),
-    Row(language: "de", query: "ein anderes Mikrofon verwenden", first: "inputDevice"),
-    Row(language: "de", query: "den Signalton ausschalten", first: "recordingChimes"),
-    Row(language: "en", query: "how do I change the shortcut", first: "recordKeybind"),
-    Row(language: "de", query: "Tastenkürzel ändern", first: "recordKeybind"),
+    Row(
+      language: "en", query: "quiet", first: "mediaDuringDictation.lower",
+      alsoInTopFive: ["stopOnSilence"]),
+    Row(
+      language: "en", query: "export", first: "snippets.export",
+      alsoInTopFive: ["yourWords.export"]),
+    Row(
+      language: "en", query: "make it stop when I pause", first: "mediaDuringDictation.pause",
+      alsoInTopFive: ["stopOnSilence"]),
+    Row(
+      language: "en", query: "use a different microphone", first: "dictation.tab.microphone",
+      alsoInTopFive: ["inputDevice"]),
+    Row(
+      language: "de", query: "ein anderes Mikrofon verwenden", first: "aiPolish.whyUse.egOne",
+      alsoInTopFive: ["inputDevice"]),
+    Row(
+      language: "de", query: "den Signalton ausschalten", first: "recordingChime",
+      alsoInTopFive: ["recordingChimes"]),
+    Row(
+      language: "en", query: "how do I change the shortcut", first: "quickAdd.shortcut",
+      alsoInTopFive: ["recordKeybind"]),
+    Row(
+      language: "de", query: "Tastenkürzel ändern", first: "quickAdd.shortcut",
+      alsoInTopFive: ["recordKeybind"]),
+  ]
+
+  /// Word-leg rows whose answer the meaning pass changes (founder decision 2026-10-07, option
+  /// 1a): with both legs these are expected instead of the word-leg row of the same search.
+  static let bothLegsOverrides: [Row] = [
+    Row(
+      language: "en", query: "microfone", first: "dictation.tab.microphone",
+      alsoInTopFive: ["inputDevice.device"]),
+    Row(
+      language: "en", query: "turn off the sound", first: "mediaDuringDictation.mute",
+      alsoInTopFive: ["recordingChimes"]),
   ]
 
   @Test("each §18.1 search shows the expected setting first", arguments: queryTable)

@@ -45,11 +45,8 @@ struct SettingsSearchBothLegsTests {
   }
 
   /// The plan's §18 acceptance (first place, and the listed others in the top five) is binding:
-  /// no row here is waived. Measured 2026-10-07 with the frozen winner, twelve rows miss first
-  /// place and three miss the top five ("whisperkit": no "WhisperKit" word in the reviewed
-  /// vocabulary; "microfone"; "shortcut"'s Cancel row). The conflict between the frozen winner
-  /// and these rows is the founder's decision (plan §12); neither the knobs nor the expected
-  /// entries change without it.
+  /// no row here is waived. The expected answers are the measured winner's, adopted by the
+  /// founder on 2026-10-07 (#3482 §18, option 1a); a failing row is a ranking change.
   func check(_ row: SettingsSearchMatchingTests.Row, _ ids: [String]) {
     guard let first = row.first else {
       #expect(ids.isEmpty, "\(row.testDescription) answered \(Array(ids.prefix(5)))")
@@ -75,8 +72,18 @@ struct SettingsSearchBothLegsTests {
   func wordRowsHold() async throws {
     let english = try Self.model("en")
     let german = try Self.model("de")
-    for row in SettingsSearchMatchingTests.queryTable + SettingsSearchMatchingTests.sentenceTable {
+    let overrides = SettingsSearchMatchingTests.bothLegsOverrides
+    for wordRow in SettingsSearchMatchingTests.queryTable + SettingsSearchMatchingTests.sentenceTable {
+      let row =
+        overrides.first { $0.language == wordRow.language && $0.query == wordRow.query } ?? wordRow
       check(row, await Self.search(row.language == "de" ? german : english, row.query))
+    }
+    // Every override replaces a real word-leg row, so none silently stops being checked.
+    for row in overrides {
+      #expect(
+        (SettingsSearchMatchingTests.queryTable + SettingsSearchMatchingTests.sentenceTable)
+          .contains { $0.language == row.language && $0.query == row.query },
+        "\(row.testDescription) overrides no word-leg row")
     }
   }
 

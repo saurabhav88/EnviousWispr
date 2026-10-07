@@ -14,7 +14,7 @@ The interface ships in English and German. The other 30 languages (ar, bg, cs, d
 
 272 nodes, 246 searchable, 7872 vocabulary blocks.
 
-Fingerprints: mapSHA256 `3b96a329324271bf627324461a899c14b2637a5417cc989e991de9781a2f0246`, uiCatalogSHA256 `996f87c5fb3a03cf6bab80c01e96c1cb348fb3c90c172602244f8c923259c598`, vocabularyCanonicalization `length-prefixed-v1`, vocabularySHA256 `15532dd8689d31fbe408b01559d58488b6e7b1cf1ac0b01ab5b701caa5857d63`
+Fingerprints: mapSHA256 `3b96a329324271bf627324461a899c14b2637a5417cc989e991de9781a2f0246`, uiCatalogSHA256 `996f87c5fb3a03cf6bab80c01e96c1cb348fb3c90c172602244f8c923259c598`, vocabularyCanonicalization `length-prefixed-v1`, vocabularySHA256 `1d9af94e6eb6a759ef03b3c5a1222fbe4533818ae790fea63f11639519cc732d`
 
 ## Structure
 
@@ -4583,8 +4583,8 @@ Fingerprints: mapSHA256 `3b96a329324271bf627324461a899c14b2637a5417cc989e991de97
 | Arrival target | [`transcriptionEngine`](#node-transcriptionEngine) |
 | Fallbacks, in order | [`transcriptionEngine`](#node-transcriptionEngine) |
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
-| Search (en) | words: Whisper, Turbo, GPU<br>phrases: use Whisper for dictation; choose the dictation model for difficult audio; I need to dictate in a language outside Europe |
-| Search (de) | words: Whisper, Turbo, GPU<br>phrases: nimm Whisper fürs Diktieren; wähle das Diktiermodell für schwierige Aufnahmen; ich möchte in einer außereuropäischen Sprache diktieren |
+| Search (en) | words: Whisper, Turbo, GPU, WhisperKit<br>phrases: use Whisper for dictation; choose the dictation model for difficult audio; I need to dictate in a language outside Europe |
+| Search (de) | words: Whisper, Turbo, GPU, WhisperKit<br>phrases: nimm Whisper fürs Diktieren; wähle das Diktiermodell für schwierige Aufnahmen; ich möchte in einer außereuropäischen Sprache diktieren |
 | Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-startWordLanguage-en"></a>

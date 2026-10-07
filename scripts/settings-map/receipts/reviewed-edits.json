@@ -6940,6 +6940,266 @@
     ]
    }
   },
+  "transcriptionEngine.allLanguages": {
+   "ar": {
+    "words": [
+     "Whisper للإملاء",
+     "Turbo للإملاء",
+     "إملاء غير أوروبي",
+     "WhisperKit"
+    ]
+   },
+   "bg": {
+    "words": [
+     "Whisper диктовка",
+     "Turbo диктовка",
+     "GPU диктовка",
+     "WhisperKit"
+    ]
+   },
+   "cs": {
+    "words": [
+     "Whisper diktování",
+     "Turbo diktování",
+     "GPU diktování",
+     "WhisperKit"
+    ]
+   },
+   "da": {
+    "words": [
+     "Whisper diktering",
+     "Turbo diktering",
+     "GPU diktering",
+     "WhisperKit"
+    ]
+   },
+   "de": {
+    "words": [
+     "Whisper",
+     "Turbo",
+     "GPU",
+     "WhisperKit"
+    ]
+   },
+   "el": {
+    "words": [
+     "Whisper υπαγόρευσης",
+     "Turbo υπαγόρευσης",
+     "GPU υπαγόρευσης",
+     "WhisperKit"
+    ]
+   },
+   "en": {
+    "words": [
+     "Whisper",
+     "Turbo",
+     "GPU",
+     "WhisperKit"
+    ]
+   },
+   "es": {
+    "words": [
+     "Whisper dictado",
+     "Turbo dictado",
+     "GPU dictado",
+     "WhisperKit"
+    ]
+   },
+   "et": {
+    "words": [
+     "Whisper dikteerimiseks",
+     "Turbo dikteerimiseks",
+     "GPU dikteerimiseks",
+     "WhisperKit"
+    ]
+   },
+   "fi": {
+    "words": [
+     "Whisper-sanelu",
+     "Turbo-sanelu",
+     "GPU-sanelu",
+     "WhisperKit"
+    ]
+   },
+   "fr": {
+    "words": [
+     "Whisper dictée",
+     "Turbo dictée",
+     "GPU dictée",
+     "WhisperKit"
+    ]
+   },
+   "hi": {
+    "words": [
+     "Whisper डिक्टेशन",
+     "Turbo डिक्टेशन",
+     "GPU डिक्टेशन",
+     "WhisperKit"
+    ]
+   },
+   "hr": {
+    "words": [
+     "Whisper diktiranje",
+     "Turbo diktiranje",
+     "GPU diktiranje",
+     "WhisperKit"
+    ]
+   },
+   "hu": {
+    "words": [
+     "Whisper diktálás",
+     "Turbo diktálás",
+     "GPU diktálás",
+     "WhisperKit"
+    ]
+   },
+   "it": {
+    "words": [
+     "Whisper dettatura",
+     "Turbo dettatura",
+     "GPU dettatura",
+     "WhisperKit"
+    ]
+   },
+   "ja": {
+    "words": [
+     "音声入力 Whisper",
+     "音声入力 Turbo",
+     "音声入力 多言語",
+     "WhisperKit"
+    ]
+   },
+   "ko": {
+    "words": [
+     "Whisper 받아쓰기",
+     "Turbo 받아쓰기",
+     "GPU 받아쓰기",
+     "WhisperKit"
+    ]
+   },
+   "lt": {
+    "words": [
+     "Whisper diktavimui",
+     "Turbo diktavimui",
+     "GPU diktavimui",
+     "WhisperKit"
+    ]
+   },
+   "lv": {
+    "words": [
+     "Whisper diktēšanai",
+     "Turbo diktēšanai",
+     "GPU diktēšanai",
+     "WhisperKit"
+    ]
+   },
+   "mt": {
+    "words": [
+     "Whisper dettatura",
+     "Turbo dettatura",
+     "GPU dettatura",
+     "WhisperKit"
+    ]
+   },
+   "nl": {
+    "words": [
+     "Whisper dictatie",
+     "Turbo dictatie",
+     "GPU dictatie",
+     "WhisperKit"
+    ]
+   },
+   "pl": {
+    "words": [
+     "Whisper dyktowanie",
+     "Turbo dyktowanie",
+     "GPU dyktowanie",
+     "WhisperKit"
+    ]
+   },
+   "pt": {
+    "words": [
+     "Whisper no ditado",
+     "Turbo no ditado",
+     "GPU no ditado",
+     "WhisperKit"
+    ]
+   },
+   "ro": {
+    "words": [
+     "Whisper dictare",
+     "Turbo dictare",
+     "GPU dictare",
+     "WhisperKit"
+    ]
+   },
+   "ru": {
+    "words": [
+     "Whisper для диктовки",
+     "Turbo для диктовки",
+     "99 языков диктовки",
+     "WhisperKit"
+    ]
+   },
+   "sk": {
+    "words": [
+     "Whisper diktovanie",
+     "Turbo diktovanie",
+     "GPU diktovanie",
+     "WhisperKit"
+    ]
+   },
+   "sl": {
+    "words": [
+     "Whisper narekovanje",
+     "Turbo narekovanje",
+     "GPU narekovanje",
+     "WhisperKit"
+    ]
+   },
+   "sv": {
+    "words": [
+     "Whisper diktering",
+     "Turbo diktering",
+     "GPU diktering",
+     "WhisperKit"
+    ]
+   },
+   "tr": {
+    "words": [
+     "Whisper dikte",
+     "Turbo dikte",
+     "GPU dikte",
+     "WhisperKit"
+    ]
+   },
+   "uk": {
+    "words": [
+     "Whisper диктування",
+     "Turbo диктування",
+     "GPU диктування",
+     "складне аудіо диктування",
+     "WhisperKit"
+    ]
+   },
+   "vi": {
+    "words": [
+     "Whisper nhập giọng nói",
+     "Turbo nhập giọng nói",
+     "GPU nhập giọng nói",
+     "WhisperKit"
+    ]
+   },
+   "zh": {
+    "words": [
+     "Whisper听写",
+     "Turbo听写",
+     "非欧洲语言听写",
+     "疑难音频听写",
+     "WhisperKit"
+    ]
+   }
+  },
   "yourWords.category.general": {
    "de": {
     "words": [],

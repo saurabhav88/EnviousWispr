@@ -5,8 +5,8 @@
  "retiredIDs": [],
  "resource": {
   "path": "Sources/EnviousWisprAppKit/Resources/SettingsSearchVocabulary.json",
-  "sha256": "15532dd8689d31fbe408b01559d58488b6e7b1cf1ac0b01ab5b701caa5857d63",
-  "bytes": 1591770
+  "sha256": "1d9af94e6eb6a759ef03b3c5a1222fbe4533818ae790fea63f11639519cc732d",
+  "bytes": 1592186
  },
  "sources": [
   {
@@ -25,7 +25,7 @@
   {
    "name": "reviewed-edits.json",
    "path": "scripts/settings-map/receipts/reviewed-edits.json",
-   "sha256": "8e824516fca3c0dd89fa1896abfc7c40adac2fe9499991b6a66e2694a7029a10"
+   "sha256": "b18cd547ff5520178c90ce2fd626beced2157cd84a4ef4e4578be2d839f4d2e3"
   }
  ],
  "excludedIDs": [
@@ -290,7 +290,7 @@
  "languages": [
   {
    "language": "ar",
-   "contentSHA256": "208a91823c775a3bc43a4a19ad6b904bf8d27ac1b8a03714411af94e424515dc",
+   "contentSHA256": "538a8472b481010f8b49eb4d45d7016f76f14c39e8c9ede1845c5f66b743be00",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -345,13 +345,22 @@
       },
       "disposition": "adopted as returned; exact repeated words removed (fi 3, hr 1) and canonically equal spellings (hi 3)"
      }
+    },
+    {
+     "kind": "founder-edit",
+     "method": "Founder decision 2026-10-07 (#3482 plan §18, ranking option 1a): add the product name \"WhisperKit\", untranslated, to transcriptionEngine.allLanguages in every language so a search for the engine's own name finds it",
+     "date": "2026-10-07",
+     "ids": [
+      "transcriptionEngine.allLanguages"
+     ],
+     "disposition": "the word appended to the reviewed words; nothing else changed"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "bg",
-   "contentSHA256": "6d4cf03ea3ee6c649b3d736d9d7e524201a6751d5e6d9b194de256da3aa747fb",
+   "contentSHA256": "5ca50d08700e95a12769d3253a2d1542599dbdaf0f84b69bcf797292a190c68f",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -406,13 +415,22 @@
       },
       "disposition": "adopted as returned; exact repeated words removed (fi 3, hr 1) and canonically equal spellings (hi 3)"
      }
+    },
+    {
+     "kind": "founder-edit",
+     "method": "Founder decision 2026-10-07 (#3482 plan §18, ranking option 1a): add the product name \"WhisperKit\", untranslated, to transcriptionEngine.allLanguages in every language so a search for the engine's own name finds it",
+     "date": "2026-10-07",
+     "ids": [
+      "transcriptionEngine.allLanguages"
+     ],
+     "disposition": "the word appended to the reviewed words; nothing else changed"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "cs",
-   "contentSHA256": "26f0be8aea063080a03b0f1ee09a391809a713a73ddcc672d3bd495710a4ca34",
+   "contentSHA256": "d7edf33d079b46a13c3e8f9fd03632adaa4ad6411016e4b9e571d91bfc8a698e",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -467,13 +485,22 @@
       },
       "disposition": "adopted as returned; exact repeated words removed (fi 3, hr 1) and canonically equal spellings (hi 3)"
      }
+    },
+    {
+     "kind": "founder-edit",
+     "method": "Founder decision 2026-10-07 (#3482 plan §18, ranking option 1a): add the product name \"WhisperKit\", untranslated, to transcriptionEngine.allLanguages in every language so a search for the engine's own name finds it",
+     "date": "2026-10-07",
+     "ids": [
+      "transcriptionEngine.allLanguages"
+     ],
+     "disposition": "the word appended to the reviewed words; nothing else changed"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "da",
-   "contentSHA256": "a4c2ae4a069388f8dbcb59a04aaa498577b241bca72b35a5c44a7391513987a6",
+   "contentSHA256": "273d9c86b24394e6c796feb87f2f154cedb0b292d200ea651722af0197b2b155",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -528,13 +555,22 @@
       },
       "disposition": "adopted as returned; exact repeated words removed (fi 3, hr 1) and canonically equal spellings (hi 3)"
      }
+    },
+    {
+     "kind": "founder-edit",
+     "method": "Founder decision 2026-10-07 (#3482 plan §18, ranking option 1a): add the product name \"WhisperKit\", untranslated, to transcriptionEngine.allLanguages in every language so a search for the engine's own name finds it",
+     "date": "2026-10-07",
+     "ids": [
+      "transcriptionEngine.allLanguages"
+     ],
+     "disposition": "the word appended to the reviewed words; nothing else changed"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "de",
-   "contentSHA256": "368924fd66afcf0e39e90ffede7d9bd97af548d801cd61a6fb7c3b1a82cf52bd",
+   "contentSHA256": "4671dcf2490714effd576b86b9065cb58078975e1d38620e207b2065b0dfad82",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -612,13 +648,22 @@
      "scope": "every German block of the 246 ids, the stop list and the markers",
      "digest": "council/digest.md",
      "disposition": "round 1: 7 findings adopted, 4 rejected with evidence; round 2: no changes; round 3 (markers): 3 removals and 4 additions adopted, see council/digest.md"
+    },
+    {
+     "kind": "founder-edit",
+     "method": "Founder decision 2026-10-07 (#3482 plan §18, ranking option 1a): add the product name \"WhisperKit\", untranslated, to transcriptionEngine.allLanguages in every language so a search for the engine's own name finds it",
+     "date": "2026-10-07",
+     "ids": [
+      "transcriptionEngine.allLanguages"
+     ],
+     "disposition": "the word appended to the reviewed words; nothing else changed"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "el",
-   "contentSHA256": "2ace8098274adf819795f6a44db9645fa09a37e3e2d96e87f95d89216a019dd7",
+   "contentSHA256": "60557f1af6e60c09cdf200ef52686009057d177d7b39b2c2b765101c1f52792e",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -673,13 +718,22 @@
       },
       "disposition": "adopted as returned; exact repeated words removed (fi 3, hr 1) and canonically equal spellings (hi 3)"
      }
+    },
+    {
+     "kind": "founder-edit",
+     "method": "Founder decision 2026-10-07 (#3482 plan §18, ranking option 1a): add the product name \"WhisperKit\", untranslated, to transcriptionEngine.allLanguages in every language so a search for the engine's own name finds it",
+     "date": "2026-10-07",
+     "ids": [
+      "transcriptionEngine.allLanguages"
+     ],
+     "disposition": "the word appended to the reviewed words; nothing else changed"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "en",
-   "contentSHA256": "f022c7e0e6cc6f0e309957de73642a2cf5888230a79fe747f24a07615473d7c5",
+   "contentSHA256": "5cf21f2ada93737a12b28f9adc34fb4aaac660559a3bbf30b875dc6b4c8f817c",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -749,13 +803,22 @@
      "method": "drafted in a fresh isolated Codex session (lists/phrases-draft-prompt.md), reviewed in list review group 0",
      "date": "2026-10-06",
      "disposition": "adopted as the review returned them"
+    },
+    {
+     "kind": "founder-edit",
+     "method": "Founder decision 2026-10-07 (#3482 plan §18, ranking option 1a): add the product name \"WhisperKit\", untranslated, to transcriptionEngine.allLanguages in every language so a search for the engine's own name finds it",
+     "date": "2026-10-07",
+     "ids": [
+      "transcriptionEngine.allLanguages"
+     ],
+     "disposition": "the word appended to the reviewed words; nothing else changed"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "es",
-   "contentSHA256": "ec48dc93078e81e1cbfbcdc27f5f42747c339ceda7ac87ff08047005bfba681a",
+   "contentSHA256": "b82cca956c08e0f0b599768d458f171da1bd3197615500c32e81bc9555975b9c",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -810,13 +873,22 @@
       },
       "disposition": "adopted as returned; exact repeated words removed (fi 3, hr 1) and canonically equal spellings (hi 3)"
      }
+    },
+    {
+     "kind": "founder-edit",
+     "method": "Founder decision 2026-10-07 (#3482 plan §18, ranking option 1a): add the product name \"WhisperKit\", untranslated, to transcriptionEngine.allLanguages in every language so a search for the engine's own name finds it",
+     "date": "2026-10-07",
+     "ids": [
+      "transcriptionEngine.allLanguages"
+     ],
+     "disposition": "the word appended to the reviewed words; nothing else changed"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "et",
-   "contentSHA256": "d8beadd339b6a9a289ee938d57f1dc2233c9fb3c6893c2bcfe3bde35939592da",
+   "contentSHA256": "3da04bf4f6714465119fa269dc25a0fb4e7ceacdcfd07d0a6217a929e76c948b",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -871,13 +943,22 @@
       },
       "disposition": "adopted as returned; exact repeated words removed (fi 3, hr 1) and canonically equal spellings (hi 3)"
      }
+    },
+    {
+     "kind": "founder-edit",
+     "method": "Founder decision 2026-10-07 (#3482 plan §18, ranking option 1a): add the product name \"WhisperKit\", untranslated, to transcriptionEngine.allLanguages in every language so a search for the engine's own name finds it",
+     "date": "2026-10-07",
+     "ids": [
+      "transcriptionEngine.allLanguages"
+     ],
+     "disposition": "the word appended to the reviewed words; nothing else changed"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "fi",
-   "contentSHA256": "a5f74bb3b12f4a5eb1f6c56a6ca2a3d71da82f7bbdd8c4e59d4c1493754f4f15",
+   "contentSHA256": "429007a636c615cf2c0c8554d8dd09121fcf1ca1a1a6b7c741fea9854b9fa282",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -932,13 +1013,22 @@
       },
       "disposition": "adopted as returned; exact repeated words removed (fi 3, hr 1) and canonically equal spellings (hi 3)"
      }
+    },
+    {
+     "kind": "founder-edit",
+     "method": "Founder decision 2026-10-07 (#3482 plan §18, ranking option 1a): add the product name \"WhisperKit\", untranslated, to transcriptionEngine.allLanguages in every language so a search for the engine's own name finds it",
+     "date": "2026-10-07",
+     "ids": [
+      "transcriptionEngine.allLanguages"
+     ],
+     "disposition": "the word appended to the reviewed words; nothing else changed"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "fr",
-   "contentSHA256": "1ffb3279409d95fefbf4f3138ecbb2d014aed8cb315bd76fac55a3676fe72977",
+   "contentSHA256": "c16af05edd6eed63f27e104b78bfe675bd4ef2a6a8d3ca40b86f71a166d5a481",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -993,13 +1083,22 @@
       },
       "disposition": "adopted as returned; exact repeated words removed (fi 3, hr 1) and canonically equal spellings (hi 3)"
      }
+    },
+    {
+     "kind": "founder-edit",
+     "method": "Founder decision 2026-10-07 (#3482 plan §18, ranking option 1a): add the product name \"WhisperKit\", untranslated, to transcriptionEngine.allLanguages in every language so a search for the engine's own name finds it",
+     "date": "2026-10-07",
+     "ids": [
+      "transcriptionEngine.allLanguages"
+     ],
+     "disposition": "the word appended to the reviewed words; nothing else changed"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "hi",
-   "contentSHA256": "09e3ee5a8518ab13a75c5bb390ae8154817aa5a700f6400511490f5141c2bf20",
+   "contentSHA256": "f7ea387f60a1634d8218fa1b5017ff9b7e87fb6b9c635e13fe4a3ae46a9c8862",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -1054,13 +1153,22 @@
       },
       "disposition": "adopted as returned; exact repeated words removed (fi 3, hr 1) and canonically equal spellings (hi 3)"
      }
+    },
+    {
+     "kind": "founder-edit",
+     "method": "Founder decision 2026-10-07 (#3482 plan §18, ranking option 1a): add the product name \"WhisperKit\", untranslated, to transcriptionEngine.allLanguages in every language so a search for the engine's own name finds it",
+     "date": "2026-10-07",
+     "ids": [
+      "transcriptionEngine.allLanguages"
+     ],
+     "disposition": "the word appended to the reviewed words; nothing else changed"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "hr",
-   "contentSHA256": "1ff947b852f9f3691bab9bda999548a294625c60c459f8c7e29798fa3a609e82",
+   "contentSHA256": "4d3ba8c0f74d755b048142b110ec6766be65a2707836f46a1d411f287d0856ef",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -1115,13 +1223,22 @@
       },
       "disposition": "adopted as returned; exact repeated words removed (fi 3, hr 1) and canonically equal spellings (hi 3)"
      }
+    },
+    {
+     "kind": "founder-edit",
+     "method": "Founder decision 2026-10-07 (#3482 plan §18, ranking option 1a): add the product name \"WhisperKit\", untranslated, to transcriptionEngine.allLanguages in every language so a search for the engine's own name finds it",
+     "date": "2026-10-07",
+     "ids": [
+      "transcriptionEngine.allLanguages"
+     ],
+     "disposition": "the word appended to the reviewed words; nothing else changed"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "hu",
-   "contentSHA256": "be785995cadc54f6d158e90a871590b8a32918ab062b552d26cdee30423db4a6",
+   "contentSHA256": "d4d6577e02dfc265c6e264abdd17a8a7184d802be5dff2bc28dd730d6807f44f",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -1176,13 +1293,22 @@
       },
       "disposition": "adopted as returned; exact repeated words removed (fi 3, hr 1) and canonically equal spellings (hi 3)"
      }
+    },
+    {
+     "kind": "founder-edit",
+     "method": "Founder decision 2026-10-07 (#3482 plan §18, ranking option 1a): add the product name \"WhisperKit\", untranslated, to transcriptionEngine.allLanguages in every language so a search for the engine's own name finds it",
+     "date": "2026-10-07",
+     "ids": [
+      "transcriptionEngine.allLanguages"
+     ],
+     "disposition": "the word appended to the reviewed words; nothing else changed"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "it",
-   "contentSHA256": "2b0c287398c1bf81e51b56fec8fc41c3ac76a7b5670a27fe48f1b3a6d185f6b8",
+   "contentSHA256": "0aa8f2b38665ccd381771d7cdfed41d99007ad10723b6bb20306e340f6f1b14c",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -1237,13 +1363,22 @@
       },
       "disposition": "adopted as returned; exact repeated words removed (fi 3, hr 1) and canonically equal spellings (hi 3)"
      }
+    },
+    {
+     "kind": "founder-edit",
+     "method": "Founder decision 2026-10-07 (#3482 plan §18, ranking option 1a): add the product name \"WhisperKit\", untranslated, to transcriptionEngine.allLanguages in every language so a search for the engine's own name finds it",
+     "date": "2026-10-07",
+     "ids": [
+      "transcriptionEngine.allLanguages"
+     ],
+     "disposition": "the word appended to the reviewed words; nothing else changed"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "ja",
-   "contentSHA256": "0690eef8de443fe9ef45992111a63daae9e65e52b6c6663a346495ba340b9ed9",
+   "contentSHA256": "6e7c0fd17dcd3ddf312db811c6a451c396cfe3b9438586bcf70095dcd879cf84",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -1298,13 +1433,22 @@
       },
       "disposition": "adopted as returned; exact repeated words removed (fi 3, hr 1) and canonically equal spellings (hi 3)"
      }
+    },
+    {
+     "kind": "founder-edit",
+     "method": "Founder decision 2026-10-07 (#3482 plan §18, ranking option 1a): add the product name \"WhisperKit\", untranslated, to transcriptionEngine.allLanguages in every language so a search for the engine's own name finds it",
+     "date": "2026-10-07",
+     "ids": [
+      "transcriptionEngine.allLanguages"
+     ],
+     "disposition": "the word appended to the reviewed words; nothing else changed"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "ko",
-   "contentSHA256": "aaa35f18327467efb521dfe48b035de19329132a723013390fd1231fea21599d",
+   "contentSHA256": "52555daf2e84b35315e0fb817195d4caa2d3955db9fc87da47c8e40b0a8cbcb6",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -1359,13 +1503,22 @@
       },
       "disposition": "adopted as returned; exact repeated words removed (fi 3, hr 1) and canonically equal spellings (hi 3)"
      }
+    },
+    {
+     "kind": "founder-edit",
+     "method": "Founder decision 2026-10-07 (#3482 plan §18, ranking option 1a): add the product name \"WhisperKit\", untranslated, to transcriptionEngine.allLanguages in every language so a search for the engine's own name finds it",
+     "date": "2026-10-07",
+     "ids": [
+      "transcriptionEngine.allLanguages"
+     ],
+     "disposition": "the word appended to the reviewed words; nothing else changed"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "lt",
-   "contentSHA256": "8540e584d73f4f6d17b99c258ada96881c6d675dd92ae58bbed7000a6db3405b",
+   "contentSHA256": "352bd2312aca0322fe07f952dfd4d19c429c795a606a81b727658160e339d4d5",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -1420,13 +1573,22 @@
       },
       "disposition": "adopted as returned; exact repeated words removed (fi 3, hr 1) and canonically equal spellings (hi 3)"
      }
+    },
+    {
+     "kind": "founder-edit",
+     "method": "Founder decision 2026-10-07 (#3482 plan §18, ranking option 1a): add the product name \"WhisperKit\", untranslated, to transcriptionEngine.allLanguages in every language so a search for the engine's own name finds it",
+     "date": "2026-10-07",
+     "ids": [
+      "transcriptionEngine.allLanguages"
+     ],
+     "disposition": "the word appended to the reviewed words; nothing else changed"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "lv",
-   "contentSHA256": "9030f6e77ff53d0cf6c149b8301e3f41d16cef0d738ea1250296f3084d43a21b",
+   "contentSHA256": "d01b09e7ff9d1c70bd68383ae719f017ace5921bfd2f656c79e1ba72d2f775d7",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -1481,13 +1643,22 @@
       },
       "disposition": "adopted as returned; exact repeated words removed (fi 3, hr 1) and canonically equal spellings (hi 3)"
      }
+    },
+    {
+     "kind": "founder-edit",
+     "method": "Founder decision 2026-10-07 (#3482 plan §18, ranking option 1a): add the product name \"WhisperKit\", untranslated, to transcriptionEngine.allLanguages in every language so a search for the engine's own name finds it",
+     "date": "2026-10-07",
+     "ids": [
+      "transcriptionEngine.allLanguages"
+     ],
+     "disposition": "the word appended to the reviewed words; nothing else changed"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "mt",
-   "contentSHA256": "53520c1563f8c5db741eafa15b05b314e7eaaf000fda205199130cc3c186d3c5",
+   "contentSHA256": "c98e70782f9f89f9183defb24ac251611dcb827c98bc6313a077b95c7f0cfb82",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -1542,13 +1713,22 @@
       },
       "disposition": "adopted as returned; exact repeated words removed (fi 3, hr 1) and canonically equal spellings (hi 3)"
      }
+    },
+    {
+     "kind": "founder-edit",
+     "method": "Founder decision 2026-10-07 (#3482 plan §18, ranking option 1a): add the product name \"WhisperKit\", untranslated, to transcriptionEngine.allLanguages in every language so a search for the engine's own name finds it",
+     "date": "2026-10-07",
+     "ids": [
+      "transcriptionEngine.allLanguages"
+     ],
+     "disposition": "the word appended to the reviewed words; nothing else changed"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "nl",
-   "contentSHA256": "57031584760b96e9874ccd9b8b2d74923e9c0e2863c5d142ca5923237ad8a7fa",
+   "contentSHA256": "afbc26ee78064a4878f316bc0dc5849dfa97ba25ecfd04c2e517c6e4a3a894b8",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -1603,13 +1783,22 @@
       },
       "disposition": "adopted as returned; exact repeated words removed (fi 3, hr 1) and canonically equal spellings (hi 3)"
      }
+    },
+    {
+     "kind": "founder-edit",
+     "method": "Founder decision 2026-10-07 (#3482 plan §18, ranking option 1a): add the product name \"WhisperKit\", untranslated, to transcriptionEngine.allLanguages in every language so a search for the engine's own name finds it",
+     "date": "2026-10-07",
+     "ids": [
+      "transcriptionEngine.allLanguages"
+     ],
+     "disposition": "the word appended to the reviewed words; nothing else changed"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "pl",
-   "contentSHA256": "358463b01f750d97f3ae3145c2b53c2935faf9abf49735303caca4e8957d8293",
+   "contentSHA256": "47de5d699ccf18f3eeb2cdcf2166ddd7d7bc23ee43e049bd74d0deced1adb1b3",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -1664,13 +1853,22 @@
       },
       "disposition": "adopted as returned; exact repeated words removed (fi 3, hr 1) and canonically equal spellings (hi 3)"
      }
+    },
+    {
+     "kind": "founder-edit",
+     "method": "Founder decision 2026-10-07 (#3482 plan §18, ranking option 1a): add the product name \"WhisperKit\", untranslated, to transcriptionEngine.allLanguages in every language so a search for the engine's own name finds it",
+     "date": "2026-10-07",
+     "ids": [
+      "transcriptionEngine.allLanguages"
+     ],
+     "disposition": "the word appended to the reviewed words; nothing else changed"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "pt",
-   "contentSHA256": "b16f3ed180ca1788b70ba71d85ff536cd42941eff9bee24370d1fcec81993d56",
+   "contentSHA256": "4158a038947d2a1499f62aefdbb42f3c913642a8b498c0fbccbfe80a8326e963",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -1733,13 +1931,22 @@
      ],
      "date": "2026-10-06",
      "disposition": "removed the word \"um\" (Portuguese \"a\", a reviewed stop word) so the filler list cannot make it unsearchable; no new content"
+    },
+    {
+     "kind": "founder-edit",
+     "method": "Founder decision 2026-10-07 (#3482 plan §18, ranking option 1a): add the product name \"WhisperKit\", untranslated, to transcriptionEngine.allLanguages in every language so a search for the engine's own name finds it",
+     "date": "2026-10-07",
+     "ids": [
+      "transcriptionEngine.allLanguages"
+     ],
+     "disposition": "the word appended to the reviewed words; nothing else changed"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "ro",
-   "contentSHA256": "299934653caa8bdd0b81cd9816fbb110c918385b4032e6ada1bf07870c5d3187",
+   "contentSHA256": "575441506c091ea095a4562d876841b35462cfe9e112a3f31ae819c90112a7aa",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -1794,13 +2001,22 @@
       },
       "disposition": "adopted as returned; exact repeated words removed (fi 3, hr 1) and canonically equal spellings (hi 3)"
      }
+    },
+    {
+     "kind": "founder-edit",
+     "method": "Founder decision 2026-10-07 (#3482 plan §18, ranking option 1a): add the product name \"WhisperKit\", untranslated, to transcriptionEngine.allLanguages in every language so a search for the engine's own name finds it",
+     "date": "2026-10-07",
+     "ids": [
+      "transcriptionEngine.allLanguages"
+     ],
+     "disposition": "the word appended to the reviewed words; nothing else changed"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "ru",
-   "contentSHA256": "7e61a4e0e669faccf18a0ed919eec4fc4aec0e53fef50fbd0bb9cb1b842edeca",
+   "contentSHA256": "9fb200712fd0f9fd902223d1fc27014dc2ca5675a02a02383ec2f6d013ff42ab",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -1855,13 +2071,22 @@
       },
       "disposition": "adopted as returned; exact repeated words removed (fi 3, hr 1) and canonically equal spellings (hi 3)"
      }
+    },
+    {
+     "kind": "founder-edit",
+     "method": "Founder decision 2026-10-07 (#3482 plan §18, ranking option 1a): add the product name \"WhisperKit\", untranslated, to transcriptionEngine.allLanguages in every language so a search for the engine's own name finds it",
+     "date": "2026-10-07",
+     "ids": [
+      "transcriptionEngine.allLanguages"
+     ],
+     "disposition": "the word appended to the reviewed words; nothing else changed"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "sk",
-   "contentSHA256": "d74a5784f1d5aad64898a5625b433332ea130053bcdf82e095b7b38044094217",
+   "contentSHA256": "566f6e32ac829a5898b55d44de74562a047e559611ce348d2df8d97e1f4ae3cd",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -1916,13 +2141,22 @@
       },
       "disposition": "adopted as returned; exact repeated words removed (fi 3, hr 1) and canonically equal spellings (hi 3)"
      }
+    },
+    {
+     "kind": "founder-edit",
+     "method": "Founder decision 2026-10-07 (#3482 plan §18, ranking option 1a): add the product name \"WhisperKit\", untranslated, to transcriptionEngine.allLanguages in every language so a search for the engine's own name finds it",
+     "date": "2026-10-07",
+     "ids": [
+      "transcriptionEngine.allLanguages"
+     ],
+     "disposition": "the word appended to the reviewed words; nothing else changed"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "sl",
-   "contentSHA256": "a74391050853b8ab182fc96804389eec5f27002971a702c78216a1960a2187f6",
+   "contentSHA256": "22f439abcf9d155cea6a8ba77d5072854b796d23416f0892a222368fe03209b6",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -1977,13 +2211,22 @@
       },
       "disposition": "adopted as returned; exact repeated words removed (fi 3, hr 1) and canonically equal spellings (hi 3)"
      }
+    },
+    {
+     "kind": "founder-edit",
+     "method": "Founder decision 2026-10-07 (#3482 plan §18, ranking option 1a): add the product name \"WhisperKit\", untranslated, to transcriptionEngine.allLanguages in every language so a search for the engine's own name finds it",
+     "date": "2026-10-07",
+     "ids": [
+      "transcriptionEngine.allLanguages"
+     ],
+     "disposition": "the word appended to the reviewed words; nothing else changed"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "sv",
-   "contentSHA256": "86099df3a65c277bd8edaa787ab48d10a73696a473a37e9d566fa77caf5325b0",
+   "contentSHA256": "db4687b60fc4ed90917634dedda2a07860d98d0fe92b84d81851ab6abdc0c6fa",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -2038,13 +2281,22 @@
       },
       "disposition": "adopted as returned; exact repeated words removed (fi 3, hr 1) and canonically equal spellings (hi 3)"
      }
+    },
+    {
+     "kind": "founder-edit",
+     "method": "Founder decision 2026-10-07 (#3482 plan §18, ranking option 1a): add the product name \"WhisperKit\", untranslated, to transcriptionEngine.allLanguages in every language so a search for the engine's own name finds it",
+     "date": "2026-10-07",
+     "ids": [
+      "transcriptionEngine.allLanguages"
+     ],
+     "disposition": "the word appended to the reviewed words; nothing else changed"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "tr",
-   "contentSHA256": "dfc018fa833cee77000a20a7ee192f852a0ce774a15c0e0a1ab5cc66b0891e54",
+   "contentSHA256": "24b0311dc94889c263b9206817d27d19571c83f5cd0a60a80866f783bffc00c5",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -2099,13 +2351,22 @@
       },
       "disposition": "adopted as returned; exact repeated words removed (fi 3, hr 1) and canonically equal spellings (hi 3)"
      }
+    },
+    {
+     "kind": "founder-edit",
+     "method": "Founder decision 2026-10-07 (#3482 plan §18, ranking option 1a): add the product name \"WhisperKit\", untranslated, to transcriptionEngine.allLanguages in every language so a search for the engine's own name finds it",
+     "date": "2026-10-07",
+     "ids": [
+      "transcriptionEngine.allLanguages"
+     ],
+     "disposition": "the word appended to the reviewed words; nothing else changed"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "uk",
-   "contentSHA256": "fe1f99e59b4d0688477a98e23ed9c5d72efeb374418101149c8bfef881056bd3",
+   "contentSHA256": "dcea70b623554f7a708ab7dfc17d74c69cfc5a125d6233cdc2c742a1ed146036",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -2160,13 +2421,22 @@
       },
       "disposition": "adopted as returned; exact repeated words removed (fi 3, hr 1) and canonically equal spellings (hi 3)"
      }
+    },
+    {
+     "kind": "founder-edit",
+     "method": "Founder decision 2026-10-07 (#3482 plan §18, ranking option 1a): add the product name \"WhisperKit\", untranslated, to transcriptionEngine.allLanguages in every language so a search for the engine's own name finds it",
+     "date": "2026-10-07",
+     "ids": [
+      "transcriptionEngine.allLanguages"
+     ],
+     "disposition": "the word appended to the reviewed words; nothing else changed"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "vi",
-   "contentSHA256": "a68ce3397cbbc824ac894bc1ac6562d9989f177cd8ef7a880f7546c34a9fc198",
+   "contentSHA256": "8284ecb3eb7afc2095ed20a19f6c5d4b2dc36bb60f5b3a62d5da3ebd5d9f7358",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -2221,13 +2491,22 @@
       },
       "disposition": "adopted as returned; exact repeated words removed (fi 3, hr 1) and canonically equal spellings (hi 3)"
      }
+    },
+    {
+     "kind": "founder-edit",
+     "method": "Founder decision 2026-10-07 (#3482 plan §18, ranking option 1a): add the product name \"WhisperKit\", untranslated, to transcriptionEngine.allLanguages in every language so a search for the engine's own name finds it",
+     "date": "2026-10-07",
+     "ids": [
+      "transcriptionEngine.allLanguages"
+     ],
+     "disposition": "the word appended to the reviewed words; nothing else changed"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "zh",
-   "contentSHA256": "f259c05589a47eaee46e8e820802ff662f4718527b63a5c89184b67fc437cd56",
+   "contentSHA256": "c124deb2c3d37ea35e7b971eb6e38481bbccec27eca32e82d8330974246c12d1",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -2282,6 +2561,15 @@
       },
       "disposition": "adopted as returned; exact repeated words removed (fi 3, hr 1) and canonically equal spellings (hi 3)"
      }
+    },
+    {
+     "kind": "founder-edit",
+     "method": "Founder decision 2026-10-07 (#3482 plan §18, ranking option 1a): add the product name \"WhisperKit\", untranslated, to transcriptionEngine.allLanguages in every language so a search for the engine's own name finds it",
+     "date": "2026-10-07",
+     "ids": [
+      "transcriptionEngine.allLanguages"
+     ],
+     "disposition": "the word appended to the reviewed words; nothing else changed"
     }
    ],
    "phraseExemptions": []
