@@ -55,16 +55,23 @@ public struct SettingsSearchFinished: Equatable, Sendable {
 
 /// The privacy filter for a failed search's text (#3482 plan §8.1): trimmed and lowercased,
 /// 3 to 80 characters and at most 320 UTF-8 bytes; the WHOLE query is dropped (never a shortened
-/// prefix) when it looks like an email address, a web address, has seven or more digits, or looks
-/// like a credential or token. "API key" itself is fine.
+/// prefix) when it looks like an email address (also spelled out with "at" and "dot"), a web,
+/// IP or hardware address, a home-folder path, a bank account number, has seven or more digits,
+/// or looks like a credential or token. "API key" itself is fine. Arbitrary personal text (a name,
+/// a password with no label) cannot be recognised; the privacy policy discloses failed-search text.
 public enum SettingsSearchQueryFilter {
   public static func reportable(_ text: String) -> String? {
     let query = text.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
     guard (3...80).contains(query.count), query.utf8.count <= 320 else { return nil }
-    if query.contains("@") { return nil }
-    if looksLikeWebAddress(query) { return nil }
-    if query.unicodeScalars.filter(CharacterSet.decimalDigits.contains).count >= 7 { return nil }
-    if looksLikeCredential(query) { return nil }
+    // Checks read a copy without invisible format characters (zero-width spaces and joiners), so
+    // one hidden inside a key or an address cannot split it; the sent text is the query itself.
+    let checked = String(
+      String.UnicodeScalarView(query.unicodeScalars.filter { $0.properties.generalCategory != .format }))
+    if checked.contains("@") { return nil }
+    if looksLikeWebAddress(checked) { return nil }
+    if checked.unicodeScalars.filter(CharacterSet.decimalDigits.contains).count >= 7 { return nil }
+    if looksLikePersonalAddress(checked) { return nil }
+    if looksLikeCredential(checked) { return nil }
     return query
   }
 
@@ -74,6 +81,20 @@ public enum SettingsSearchQueryFilter {
     // drops a few harmless dotted words too; dropping is the safe direction.
     let pattern = #"\b(?:[a-z0-9-]+\.)+[a-z]{2,63}\b"#
     return query.range(of: pattern, options: .regularExpression) != nil
+  }
+
+  /// An email spelled out ("jane at example dot com"), an IPv4, IPv6 or MAC address, a home-folder
+  /// path, or an IBAN with letters in its account part (one with seven digits is already dropped).
+  private static func looksLikePersonalAddress(_ query: String) -> Bool {
+    let patterns = [
+      #"\b[a-z0-9._%+-]+ at [a-z0-9-]+(?: dot [a-z0-9-]+)+\b"#,
+      #"\b\d{1,3}(?:\.\d{1,3}){3}\b"#,
+      #"[0-9a-f]{0,4}::[0-9a-f]{0,4}|\b(?:[0-9a-f]{1,4}:){3,}[0-9a-f]{1,4}\b"#,
+      #"\b(?:[0-9a-f]{2}[:-]){5}[0-9a-f]{2}\b"#,
+      #"(?:^|[\s"'(])(?:/users/|/home/|~/|[a-z]:\\users\\)"#,
+      #"\b[a-z]{2}\d{2}(?: ?[a-z0-9]{4}){3,}\b"#,
+    ]
+    return patterns.contains { query.range(of: $0, options: .regularExpression) != nil }
   }
 
   /// Known key and token prefixes (lowercased: the query is lowercased first). OpenAI and
@@ -90,7 +111,8 @@ public enum SettingsSearchQueryFilter {
     // Candidates are the runs of letters, digits and token punctuation, so a key glued to a
     // label or wrapped in punctuation ("token:ghp_...", "key=sk-...", "(aiza...)") is still
     // seen on its own.
-    let tokenCharacters = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "-_."))
+    // Base64 keys carry "+/=" too.
+    let tokenCharacters = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "-_.+/="))
     var candidates: [String] = []
     var current = ""
     for scalar in query.unicodeScalars {
@@ -107,10 +129,11 @@ public enum SettingsSearchQueryFilter {
       if token.count == 20, token.hasPrefix("akia") || token.hasPrefix("asia") { return true }
       let hasDigit = token.unicodeScalars.contains(where: CharacterSet.decimalDigits.contains)
       let hasLetter = token.unicodeScalars.contains(where: CharacterSet.letters.contains)
-      // A long mixed run of letters and digits, or any run longer than a real word: the longest
-      // German settings compound is under 32 characters ("spracherkennungseinstellungen", 29).
+      // A long mixed run of letters and digits, or any Latin run longer than a real word: the
+      // longest German settings compound is under 32 characters ("spracherkennungseinstellungen",
+      // 29). Only ASCII runs: Japanese and Chinese phrases are written without spaces.
       if token.count >= 20, hasDigit, hasLetter { return true }
-      if token.count >= 32 { return true }
+      if token.count >= 32, token.unicodeScalars.allSatisfy(\.isASCII) { return true }
     }
     return false
   }

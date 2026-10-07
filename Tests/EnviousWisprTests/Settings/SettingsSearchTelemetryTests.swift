@@ -27,6 +27,11 @@ struct SettingsSearchTelemetryTests {
       SettingsSearchQueryFilter.reportable("Spracherkennungseinstellungen")
         == "spracherkennungseinstellungen")
     #expect(SettingsSearchQueryFilter.reportable("openai key: where?") == "openai key: where?")
+    #expect(SettingsSearchQueryFilter.reportable("pause after 10:30") == "pause after 10:30")
+    #expect(SettingsSearchQueryFilter.reportable("talk at home") == "talk at home")
+    // A Japanese vocabulary phrase longer than 32 characters, written without spaces.
+    let japanese = "文章整形に使うClaudeモデルの選び方や表示されない理由を知りたい"
+    #expect(SettingsSearchQueryFilter.reportable(japanese) == japanese.lowercased())
   }
 
   @Test("the whole query is dropped when it could identify someone or hold a secret")
@@ -41,6 +46,12 @@ struct SettingsSearchTelemetryTests {
       "token:ghp_" + String(repeating: "a", count: 36), "key=sk-ant-api03-abc", "(AIzaSyabc)",
       "\"xoxb-abc-def\"", "github_pat_abcdefghij", "AKIA" + String(repeating: "B", count: 16),
       "hf_abcdefgh", "glpat-abcdefghij", "my key is " + String(repeating: "q", count: 32),
+      // Found by a local enumeration of the class (PR #3513): an invisible character inside a
+      // key, a base64 key, an email spelled out, network and hardware addresses, a home-folder
+      // path, an IBAN with letters in its account part.
+      "g\u{200B}hp_" + String(repeating: "a", count: 18) + "\u{200B}" + String(repeating: "b", count: 18),
+      "sA9vwtMpIDApkvvl82t+Rpf/OtIxebKjstdK=", "jane at example dot com", "10.0.0.1",
+      "fe80::abcd", "aa:bb:cc:dd:ee:ff", "/Users/Jane/Documents", "LU46 001A BCDE FGHI JKLM",
     ] {
       #expect(SettingsSearchQueryFilter.reportable(text) == nil, "kept \(text)")
     }
