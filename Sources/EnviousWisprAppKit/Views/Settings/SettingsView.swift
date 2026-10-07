@@ -296,7 +296,7 @@ struct UnifiedWindowView: View {
     case .aiPolish:
       page { AIPolishSettingsView() }
     case .dictionary:
-      page { YourWordsView() }
+      page { YourWordsView(selection: $navigationState.dictionaryTab) }
     case .snippets:
       page { SnippetsView() }
     case .appSettings:
@@ -365,6 +365,8 @@ struct UnifiedWindowView: View {
       // The only place `navigationState` is in scope, so the only place this can
       // be supplied without threading a binding through every page.
       .environment(\.settingsNavigate) { navigate(.destination($0)) }
+      // #3482: the arrival a search navigation asked for, nil for every other navigation.
+      .environment(\.settingsReveal, navigationState.reveal)
   }
 }
 

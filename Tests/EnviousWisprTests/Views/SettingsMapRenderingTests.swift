@@ -535,7 +535,7 @@ struct SettingsMapRenderingTests {
       let (home, words) = try dictionaryHome()
       if state != "empty" { try #require(words.add(CustomWord(canonical: "Envious")) == nil) }
       let list = try await registrations(
-        AnyView(YourWordsView().environment(home.settings).environment(words)))
+        AnyView(YourWordsView(selection: .constant(.yourWords)).environment(home.settings).environment(words)))
       let always = alwaysShown(on: .dictionary).filter {
         let node = SettingsMap.node($0)
         return node.dictionaryTab == nil || node.dictionaryTab == .yourWords
