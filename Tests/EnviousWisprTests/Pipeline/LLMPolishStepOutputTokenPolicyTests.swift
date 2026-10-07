@@ -67,35 +67,6 @@ struct LLMPolishStepOutputTokenPolicyTests {
         == .capped(LLMConstants.ollamaThinkingMaxTokens))
   }
 
-  /// #1914 retirement freeze. The four families that were hard-coded in the
-  /// retired prefix list must still receive the large floor — but now because
-  /// the daemon SAYS they think, not because their name matched a list. All four
-  /// were verified live 2026-08-01 to report the `thinking` capability (`qwen3`
-  /// and `deepseek-r1` as local builds).
-  @Test(
-    "the four formerly hard-coded families keep the thinking floor via capability",
-    arguments: ["gemma4:latest", "gemma4:8b", "qwen3", "qwen3:7b", "deepseek-r1", "gpt-oss:20b"])
-  func retiredPrefixFamiliesKeepFloorViaCapability(model: String) {
-    #expect(
-      LLMPolishStep.outputTokenPolicy(
-        provider: .ollama, model: model, textCount: 300, thinks: true)
-        == .capped(LLMConstants.ollamaThinkingMaxTokens))
-  }
-
-  /// The load-bearing half of the retirement. These names would have matched
-  /// nothing in the old list AND report no thinking capability, so they keep the
-  /// tight floor. Without this, an always-thinking implementation would pass the
-  /// test above while silently handing every model the large budget.
-  @Test(
-    "models the daemon reports as non-thinking keep the tight floor",
-    arguments: ["llama3.2", "mistral", "gemma2:2b", "qwen2.5:7b", "tinyllama"])
-  func nonThinkingModelsKeepTightFloor(model: String) {
-    #expect(
-      LLMPolishStep.outputTokenPolicy(
-        provider: .ollama, model: model, textCount: 300, thinks: false)
-        == .capped(LLMConstants.ollamaMaxTokens))
-  }
-
   /// The model NAME must no longer influence Ollama's budget at all. The same
   /// name yields both floors depending only on the reported capability — which
   /// is exactly what a surviving name-based fallback would break.

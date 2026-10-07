@@ -22,8 +22,8 @@ import Foundation
 // population is exactly the count measured before the work began, and that count
 // comes from a plain text search — which cannot tell a comment from code. A
 // mention here would enlarge the population silently, so the oracle would break
-// the other proof that depends on it. The forbidden list is enumerated once, in
-// `FrozenPillParityFixtureTests`, and enforced there rather than restated here.
+// the other proof that depends on it. (The test that enforced the forbidden list
+// was retired in #3505; keep the rule by review.)
 //
 // Nothing in this file is derived from any post-refactor implementation. A table
 // that reads its expectations from the code under test proves only

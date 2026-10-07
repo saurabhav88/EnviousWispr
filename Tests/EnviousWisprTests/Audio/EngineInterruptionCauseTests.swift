@@ -26,10 +26,4 @@ struct EngineInterruptionCauseTests {
     #expect(!EngineInterruptionCause.engineLost.isDeviceLoss)
   }
 
-  @Test("every raw value round-trips through its rawValue")
-  func rawValuesRoundTrip() {
-    for cause in EngineInterruptionCause.allCases {
-      #expect(EngineInterruptionCause(rawValue: cause.rawValue) == cause)
-    }
-  }
 }

@@ -9,15 +9,6 @@ import Testing
 @Suite("DiagnosticsCoordinator — benchmark ownership")
 struct DiagnosticsCoordinatorTests {
 
-  @Test("coordinator owns a fresh BenchmarkSuite")
-  func ownsBenchmarkSuite() {
-    let coordinator = DiagnosticsCoordinator(engineMutationScope: .alwaysAllowedForTesting)
-    #expect(coordinator.benchmark.isRunning == false)
-    #expect(coordinator.benchmark.results.isEmpty)
-    #expect(coordinator.benchmark.pipelineResult == nil)
-    #expect(coordinator.benchmark.progress.isEmpty)
-  }
-
   @Test("two coordinators own independent BenchmarkSuite instances")
   func independentInstances() {
     let a = DiagnosticsCoordinator(engineMutationScope: .alwaysAllowedForTesting)

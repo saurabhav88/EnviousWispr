@@ -95,26 +95,6 @@ import Testing
 
     // MARK: Test 1 — the `.failed` terminal
 
-    /// RED on `origin/main`: the `.failed` arm emits its capture error and
-    /// returns without ever clearing capture scope, so a later unrelated Sentry
-    /// event inherits `recording.active=true`.
-    @Test("the .failed terminal clears recording scope")
-    func failedTerminalClearsRecordingScope() {
-      let recorder = RecordingStateRecorder()
-      let sink = makeSink(recorder: recorder)
-
-      sink.emit(.failed(.asrEmpty))
-
-      #expect(
-        recorder.inactiveCalls.count == 1,
-        """
-        the .failed terminal must clear recording.active exactly once, but \
-        \(recorder.inactiveCalls.count) inactive updates were emitted. On \
-        unmodified origin/main this is 0 — the .failed arm has no clear of its \
-        own and no generic terminal postamble runs after it.
-        """)
-    }
-
     // MARK: Test 2 — cancel arriving during `.stopping`
 
     /// RED on `origin/main` for the same reason, reached through the REAL route

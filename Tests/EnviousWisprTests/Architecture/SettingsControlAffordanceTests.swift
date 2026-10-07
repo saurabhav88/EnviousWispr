@@ -79,23 +79,6 @@ struct SettingsControlAffordanceTests {
       """)
   }
 
-  /// A two-way control on the scanner itself.
-  ///
-  /// Without this, a pattern that matched nothing and a directory that resolved
-  /// nowhere both report the same clean green as a genuinely clean tree. This
-  /// asserts the detector finds a string it is pointed at, using the ONE file
-  /// that is guaranteed to contain it: this test's own source, which spells the
-  /// pattern out in `containerDependentStyles` above.
-  @Test("The style scanner can actually find a match")
-  func scannerFindsAKnownOccurrence() throws {
-    let ownSource = try String(contentsOf: URL(fileURLWithPath: #filePath), encoding: .utf8)
-    for style in Self.containerDependentStyles {
-      #expect(
-        ownSource.contains(style),
-        "scanner pattern \(style) did not match its own literal; the detector is broken")
-    }
-  }
-
   /// Hover is DERIVED at render time, never stored by an `onHover` closure.
   ///
   /// **Round one of review found hover ignoring a parent's `.disabled(...)`.

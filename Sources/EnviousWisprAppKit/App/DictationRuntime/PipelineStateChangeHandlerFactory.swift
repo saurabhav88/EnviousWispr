@@ -15,8 +15,8 @@ import Foundation
 enum PipelineStateChangeHandlerFactory {
   /// The coordinator-owned seams the handler's closures reach back into. Passed
   /// as closures rather than a coordinator reference so the coordinator's own
-  /// methods stay `private` (its non-private-method ceiling is exactly full) and
-  /// the handler cannot reach anything it was not handed.
+  /// methods stay `private` and the handler cannot reach anything it was not
+  /// handed.
   struct Deps {
     let showOverlay: @MainActor (OverlayIntent) -> Void
     let cancelPendingWarning: @MainActor () -> Void

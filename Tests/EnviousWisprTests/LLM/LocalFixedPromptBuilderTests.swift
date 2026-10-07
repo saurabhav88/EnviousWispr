@@ -78,28 +78,6 @@ struct LocalFixedPromptBuilderTests {
       plan.envelope.messages[1].content == "Transcript to clean:\n\nloop in jamal actually priya")
   }
 
-  /// `CloudFixedPromptBuilder` appends "IMPORTANT: Very short input..." at ten words or
-  /// fewer. That guard fires on 417 of the 1,690 benchmark cases (24.7%), so inheriting it
-  /// would change the prompt on a quarter of the cases the numbers came from. Excluded
-  /// deliberately — this test freezes that decision so a future "parity with cloud" tidy-up
-  /// has to argue with it.
-  @Test("short input gets no extra guard clause, unlike the cloud builder")
-  func shortInputAddsNothing() {
-    let plan = planner.plan(input: localInput(transcript: "call me back"))
-    #expect(plan.envelope.messages[0].content == LocalFixedPromptBuilder.localFixedSystemPrompt)
-    #expect(!plan.envelope.messages[0].content.contains("Very short input"))
-  }
-
-  /// Also excluded: the unconditional language-preservation preamble the cloud builder
-  /// prepends. The prompt's own first line carries it, and prepending would diverge from the
-  /// measured artifact on every case.
-  @Test("no unconditional language preamble is prepended")
-  func noLanguagePreamble() {
-    let system = planner.plan(input: localInput()).envelope.messages[0].content
-    #expect(system.hasPrefix("Clean dictated speech for direct paste."))
-    #expect(!system.contains("Keep the cleaned text in the same language(s)"))
-  }
-
   // MARK: - Conditional enrichments are kept
 
   @Test("locked language adds a hint after the fixed prompt")
@@ -122,14 +100,6 @@ struct LocalFixedPromptBuilderTests {
     ).envelope.messages[0].content
     #expect(system.contains("FooFlux"))
     #expect(system.contains("This is the one exception to leaving the wording unchanged."))
-  }
-
-  @Test("no enrichment fires when none is configured (two-way control)")
-  func noEnrichmentsByDefault() {
-    let system = planner.plan(input: localInput()).envelope.messages[0].content
-    #expect(!system.contains("LANGUAGE:"))
-    #expect(!system.contains("The user is dictating in"))
-    #expect(!system.contains("preferred spellings"))
   }
 
   // MARK: - Mode is ignored

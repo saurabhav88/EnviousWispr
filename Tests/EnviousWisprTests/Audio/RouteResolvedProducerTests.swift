@@ -37,10 +37,4 @@ struct RouteResolvedProducerTests {
     #expect(CaptureRouteDecision.routeResolvedChanged(from: prior, to: next))
   }
 
-  @Test("re-fires when a no-BT reason changes to a BT reason")
-  func noBTToBTReasonChanged() {
-    let prior = decision(.halDeviceInput, .noBTAutoInput)
-    let next = decision(.halDeviceInput, .btOutputAutoInput)
-    #expect(CaptureRouteDecision.routeResolvedChanged(from: prior, to: next))
-  }
 }

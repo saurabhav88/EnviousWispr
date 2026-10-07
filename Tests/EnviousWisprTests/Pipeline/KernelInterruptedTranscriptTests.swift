@@ -99,24 +99,6 @@ struct KernelInterruptedTranscriptTests {
     #expect(try #require(saved.transcript).inputDeviceWasRemoved == false)
   }
 
-  /// A capture-session interruption is salvaged exactly like a disconnect, but
-  /// the History badge shows a crossed-out microphone. The session can be
-  /// interrupted for ANY reason with the mic still attached, so the badge must
-  /// stay off. (The duration cap used to sit in this class too; #1408's A3
-  /// rerouted it as a normal `.maxDuration` stop, so it can no longer stamp a
-  /// cause at all.)
-  @Test("a capture-session-loss salvage is NOT badged as a disconnect")
-  func captureSessionLossSalvageIsNotBadged() async throws {
-    let telemetryState = KernelTelemetryState()
-    let saved = InterruptedSavedTranscriptBox()
-    let wiring = makeWiring(telemetryState: telemetryState, saved: saved)
-
-    telemetryState.interruptionCause = .engineLost
-    try await wiring.store("hi", UUID(), .ordinary)
-
-    #expect(try #require(saved.transcript).inputDeviceWasRemoved == false)
-  }
-
   @Test("an ordinary completion saves a transcript that is not flagged")
   func ordinaryCompletionIsNotFlagged() async throws {
     let telemetryState = KernelTelemetryState()

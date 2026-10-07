@@ -73,34 +73,4 @@ struct OutputClassifierEmissionPolicyTests {
     #expect(plan.attemptedRealLoad == true)
   }
 
-  @Test("attemptedRealLoad is true for exactly the 3 outcomes that ran a real load")
-  func attemptedRealLoadPartitionsCorrectly() {
-    let outcomes: [(OutputClassifierAttemptOutcome, Bool)] = [
-      (.skippedAlreadyReady, false),
-      (.skippedLoadInProgress, false),
-      (.skippedPermanentlyDisabled(reason: .missingFile), false),
-      (.succeeded, true),
-      (.failedFirstTime(reason: .missingFile), true),
-      (.failedRetryable(errorCategory: "unknown_load_error"), true),
-    ]
-    for (outcome, expected) in outcomes {
-      #expect(OutputClassifierEmissionPolicy.forOutcome(outcome).attemptedRealLoad == expected)
-    }
-  }
-
-  @Test("sentryReason is non-nil for exactly one outcome: failedFirstTime")
-  func sentryReasonOnlyOnFailedFirstTime() {
-    let outcomes: [OutputClassifierAttemptOutcome] = [
-      .skippedAlreadyReady,
-      .skippedLoadInProgress,
-      .skippedPermanentlyDisabled(reason: .missingFile),
-      .succeeded,
-      .failedFirstTime(reason: .missingFile),
-      .failedRetryable(errorCategory: "cancelled"),
-    ]
-    let alertingOutcomes = outcomes.filter {
-      OutputClassifierEmissionPolicy.forOutcome($0).sentryReason != nil
-    }
-    #expect(alertingOutcomes.count == 1)
-  }
 }

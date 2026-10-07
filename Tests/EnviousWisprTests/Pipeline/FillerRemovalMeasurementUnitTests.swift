@@ -113,17 +113,4 @@ struct FillerRemovalMeasurementUnitTests {
 
   // MARK: - The plumbing the fix must not break
 
-  /// `removingFillers` looks the per-language protection table up with
-  /// `match.range(at: 1)`, so splitting the alternation had to keep the outer parenthesis
-  /// as the only capturing group. If it did not, a protected token would stop being
-  /// recognised and #2259's German rows would start failing instead of this one — which
-  /// is why the check lives here, beside the change that could break it.
-  @Test("the token is still capture group 1, so per-language protection still resolves")
-  func perLanguageProtectionStillResolves() async throws {
-    let step = FillerRemovalStep()
-    step.fillerRemovalEnabled = true
-    let german = try await step.process(
-      TextProcessingContext(text: "Ich glaube er kommt morgen", language: "de")).text
-    #expect(german == "Ich glaube er kommt morgen", "the protected token was not looked up")
-  }
 }

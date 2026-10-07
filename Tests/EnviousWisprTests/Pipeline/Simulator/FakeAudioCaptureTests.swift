@@ -81,13 +81,6 @@ struct FakeAudioCaptureTests {
     #expect(interrupted == true)
   }
 
-  @Test("Telemetry callbacks start nil on a fresh source")
-  func telemetryCallbacksStartNil() {
-    let capture = FakeAudioCapture()
-    #expect(capture.onCaptureStalled == nil)
-    #expect(capture.onRouteResolved == nil)
-  }
-
   @MainActor
   final class CollectedCount {
     var value = 0

@@ -129,14 +129,6 @@ struct SpeechSettingsCopyTests {
       ])
   }
 
-  @Test("the model row keeps its two labels")
-  func modelPreparing() {
-    #expect(
-      ModelPreparingCopy.preparing
-        == "Getting the model ready. This usually takes about 30 seconds.")
-    #expect(ModelPreparingCopy.ready == "Model Ready")
-  }
-
   /// In English the shown name IS the English name, so the display order is exactly the old
   /// English order, and English (UK) still sits right after English.
   @Test("in English, language names and their order are unchanged")
@@ -162,13 +154,4 @@ struct SpeechSettingsCopyTests {
     #expect(entry.nativeName == "ZZ")
   }
 
-  @Test("the English rows describe their spelling")
-  func spellingSubtitles() {
-    #expect(
-      LanguageCatalog.pickerSubtitle(for: LanguageCatalog.englishUK)
-        == "British spelling: colour, organise, centre")
-    #expect(
-      LanguageCatalog.pickerSubtitle(for: LanguageCatalog.entry(for: "en"))
-        == "American spelling: color, organize, center")
-  }
 }

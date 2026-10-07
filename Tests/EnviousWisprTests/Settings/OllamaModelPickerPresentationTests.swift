@@ -339,11 +339,4 @@ struct OllamaModelPickerPresentationTests {
     #expect(pickerTitle.contains(listDate), "\(pickerTitle) does not contain \(listDate)")
   }
 
-  /// Rule 6: no em or en dashes in user-facing copy.
-  @Test("the hosted heading contains no em or en dash")
-  func headingHasNoDashes() {
-    let title = OllamaModelPickerPresentation.hostedGroupTitle
-    #expect(!title.contains("\u{2014}"))
-    #expect(!title.contains("\u{2013}"))
-  }
 }

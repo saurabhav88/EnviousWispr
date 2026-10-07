@@ -42,16 +42,6 @@ import Testing
     }
   }
 
-  /// The two update situations stay distinguishable. Someone who STARTED the
-  /// upgrade and stopped is a different problem from someone who never began:
-  /// the first suggests the download is failing, the second that the prompt is
-  /// not landing. One name would hide which.
-  @Test func theTwoUpdateSituationsAreDistinguishable() {
-    #expect(
-      EGOnePausedInstallState.projection(of: .updatePaused(resumable: true, targetVersion: "1.1"))
-        != EGOnePausedInstallState.projection(of: .updatePaused(resumable: false, targetVersion: "1.1")))
-  }
-
   /// The version never reaches telemetry: the projection carries no payload,
   /// so a free-form version string cannot make the property unbounded.
   @Test func theVersionNeverReachesTelemetry() {

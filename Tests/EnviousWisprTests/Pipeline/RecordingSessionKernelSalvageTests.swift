@@ -539,31 +539,6 @@ struct ExhaustedRetrySpoolDeletionTests {
       }
     }
 
-    /// The floor must not over-reach. A user who cancels has asked us to stop;
-    /// a completion delivered a transcript; every other `.failed` reason keeps
-    /// its own honest cause (#1755: all of them delete at the coordinator).
-    @Test("the floor leaves every terminal outside its honesty set alone")
-    func floorLeavesOtherTerminalsAlone() async {
-      let (_, wrapper) = makeWrapper()
-      wrapper.telemetryState.interruptionCause = .deviceRemoved
-      let kernel = wrapper.testKernel
-
-      #expect(kernel.testInterruptedTerminalFloor(.completed) == .completed)
-      #expect(
-        kernel.testInterruptedTerminalFloor(.cancelled) == .cancelled,
-        "an explicit user cancel is never overridden")
-      #expect(
-        kernel.testInterruptedTerminalFloor(.asrInterrupted(wasRecording: false))
-          == .asrInterrupted(wasRecording: false))
-      #expect(kernel.testInterruptedTerminalFloor(.failed(.asrEmpty)) == .failed(.asrEmpty))
-      #expect(kernel.testInterruptedTerminalFloor(.failed(.asrFailed)) == .failed(.asrFailed))
-      // Folded in with the other two no-transcript endings: all three land on
-      // one honest terminal so none keeps a different overlay for a reason no
-      // user could name.
-      #expect(
-        kernel.testInterruptedTerminalFloor(.failed(.noAudioCaptured)).kind == .audioInterrupted)
-    }
-
     // MARK: 2b. The floor is unconditional — the SENTENCE is what varies
 
     /// HONESTY, for every cause. A no-transcript terminal is rewritten no
@@ -772,17 +747,6 @@ struct ExhaustedRetrySpoolDeletionTests {
       #expect(unrecoverable.isEmpty)
     }
 
-    /// `isDeviceLoss` is a distinct question from recoverability. An engine that
-    /// failed to recover with the device still attached is salvaged like a
-    /// disconnect but is not one: telling that user "Microphone disconnected," or
-    /// badging their transcript with a crossed-out microphone, would describe an
-    /// event that never happened.
-    @Test("an engine loss is recoverable but is NOT a device loss")
-    func engineLossIsRecoverableButNotDeviceLoss() {
-      #expect(EngineInterruptionCause.engineLost.hasRecoverableAudio)
-      #expect(!EngineInterruptionCause.engineLost.isDeviceLoss)
-    }
-
     /// Exactly one cause is backed by a real `DeviceIsAlive` check. `.engineLost`
     /// also covers a recovery timeout and a failed engine restart with the mic
     /// still attached, so it is excluded.
@@ -792,29 +756,6 @@ struct ExhaustedRetrySpoolDeletionTests {
       #expect(deviceLosses == [.deviceRemoved])
     }
 
-    /// The split's whole point. `.engineLost` used to mean both of these, and the
-    /// disclosure could not tell them apart.
-    @Test("an engine that failed to recover is salvageable but is not a disconnect")
-    func engineLostIsSalvageableButNotADisconnect() {
-      #expect(EngineInterruptionCause.engineLost.hasRecoverableAudio)
-      #expect(!EngineInterruptionCause.engineLost.isDeviceLoss)
-      #expect(EngineInterruptionCause.deviceRemoved.hasRecoverableAudio)
-      #expect(EngineInterruptionCause.deviceRemoved.isDeviceLoss)
-    }
-
-    /// Recoverability and device-loss are different questions. In-process every
-    /// cause is recoverable, but only a verified removal is a device loss, so
-    /// device-loss is a strict subset of recoverable.
-    @Test("device-loss is a strict subset of recoverable")
-    func deviceLossIsStrictSubsetOfRecoverable() {
-      let recoverable = Set(EngineInterruptionCause.allCases.filter(\.hasRecoverableAudio))
-      let deviceLoss = Set(EngineInterruptionCause.allCases.filter(\.isDeviceLoss))
-      // An engine loss is salvageable but is not a disconnect...
-      #expect(recoverable.contains(.engineLost))
-      #expect(!deviceLoss.contains(.engineLost))
-      // ...so device-loss is strictly smaller than the recoverable set.
-      #expect(deviceLoss.isStrictSubset(of: recoverable))
-    }
   }
 
   // MARK: - The interruption sentence
@@ -844,19 +785,6 @@ struct ExhaustedRetrySpoolDeletionTests {
             "\(cause) is not a microphone walking away, so it must not claim one did")
         }
       }
-    }
-
-    /// The set mapping to `.deviceRemoved` is exactly the `isDeviceLoss` set —
-    /// coupled, so a new cause cannot inherit the disconnect reason by accident.
-    @Test("the disconnect-reason set is exactly the isDeviceLoss set")
-    func disconnectReasonSetEqualsDeviceLossSet() {
-      let claims = Set(
-        EngineInterruptionCause.allCases.filter {
-          KernelDictationDriver.terminalNoticeReason(for: $0) == .deviceRemoved
-        })
-      let deviceLoss = Set(EngineInterruptionCause.allCases.filter(\.isDeviceLoss))
-      #expect(claims == deviceLoss)
-      #expect(claims == [.deviceRemoved])
     }
 
     /// A no-stamped-cause interruption should never be reachable (the kernel

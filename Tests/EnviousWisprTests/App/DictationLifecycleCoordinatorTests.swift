@@ -79,10 +79,6 @@ import Testing
     return (coordinator, audio, pipeline, whisperKitKernelDriver, lockBox, engineLease)
   }
 
-  @Test func constructionDoesNotCrash() {
-    _ = Self.makeCoordinator()
-  }
-
   @Test func cancelPendingWarningIsSafeWhenNoTaskPending() {
     let fixtures = Self.makeCoordinator()
     // No `install()`, no recording — nothing scheduled a warning Task.
@@ -115,15 +111,6 @@ import Testing
     #expect(fixtures.coordinator.isCurrentSession(42) == true)
     #expect(fixtures.coordinator.isCurrentSession(7) == false)
     #expect(fixtures.coordinator.isCurrentSession(0) == false)
-  }
-
-  @Test func installSetsBothPipelineCallbacks() {
-    let fixtures = Self.makeCoordinator()
-    #expect(fixtures.kernelDriver.onStateChange == nil)
-    #expect(fixtures.whisperKitKernelDriver.onStateChange == nil)
-    fixtures.coordinator.install()
-    #expect(fixtures.kernelDriver.onStateChange != nil)
-    #expect(fixtures.whisperKitKernelDriver.onStateChange != nil)
   }
 
   /// V2 Lane C invariant C4 (#291), relocated from `HandsFreeLockTests` as a

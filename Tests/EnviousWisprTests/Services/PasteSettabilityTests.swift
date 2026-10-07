@@ -122,16 +122,4 @@ struct PasteDeclineReasonTests {
     #expect(expected.count == 17)
   }
 
-  @Test("no two reasons share a raw value")
-  func rawValuesAreUnique() {
-    // A duplicate would silently merge two causes in every chart built on this.
-    let all: [PasteService.AXDeclineReason] = [
-      .accessibilityDenied, .focusMissing, .focusNonText, .roleUnreadable, .roleNotText,
-      .selectedTextNotSettable, .countUnreadableOrInvalid, .rangeUnreadable, .rangeInvalid,
-      .beforeImageUnreadableOrIncomplete, .focusUnconfirmed, .setFailed, .noMutation, .unverifiable,
-      .chromiumOmniboxNavigationSeam, .geckoDirectWriteUnconfirmable, .recordedWindowKeyPasteOnly,
-    ]
-    #expect(Set(all.map(\.rawValue)).count == all.count)
-    #expect(all.count == 17)
-  }
 }

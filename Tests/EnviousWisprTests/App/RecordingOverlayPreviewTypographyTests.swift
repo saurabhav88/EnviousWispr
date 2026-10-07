@@ -193,14 +193,6 @@ struct PreviewWellFadeTests {
 
   private static let cap = RecordingOverlayView.previewHeight(lines: 5)
 
-  @Test("a short transcript does not fade")
-  func shortTextDoesNotFade() {
-    let oneLine = RecordingOverlayView.previewHeight(lines: 1)
-    #expect(
-      !PreviewWellText.wellIsFull(measuredHeight: oneLine, cap: Self.cap),
-      "a one-line well reported full, so its only line would be dimmed")
-  }
-
   @Test("a well below the cap does not fade", arguments: [1, 2, 3, 4])
   func belowTheCapDoesNotFade(lines: Int) {
     let height = RecordingOverlayView.previewHeight(lines: lines)

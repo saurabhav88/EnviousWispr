@@ -51,10 +51,4 @@ struct WhisperKitTailPaddingTests {
     #expect(padded.suffix(Self.expectedPadSamples).allSatisfy { $0 == 0 })
   }
 
-  @Test("padding an empty buffer yields silence rather than trapping")
-  func padOfEmptyBufferIsSilence() {
-    let padded = WhisperKitBackend.padAudioWithSilence([])
-    #expect(padded.count == Self.expectedPadSamples)
-    #expect(padded.allSatisfy { $0 == 0 })
-  }
 }

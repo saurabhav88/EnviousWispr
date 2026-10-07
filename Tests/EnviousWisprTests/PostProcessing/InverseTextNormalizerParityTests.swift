@@ -101,6 +101,8 @@ struct InverseTextNormalizerParityTests {
   func byteForByteParity() throws {
     let rows = try Self.loadRows()
     #expect(rows.count > 1500, "parity fixture looks truncated: \(rows.count) rows")
+    // The safety-floor rows must stay in the fixture, or parity would pass without them.
+    #expect(rows.contains { $0.slice == "negative" }, "parity fixture lost its negative rows")
     #expect(Self.checkParity(rows, label: "curated") == 0)
   }
 
@@ -116,19 +118,6 @@ struct InverseTextNormalizerParityTests {
   }
 
   // MARK: - Safety property: no corruption of natural prose (heaviest-weighted rubric)
-
-  @Test("Natural-speech negatives pass through unchanged (no-corruption floor)")
-  func negativesArePreserved() throws {
-    let rows = try Self.loadRows().filter { $0.slice == "negative" }
-    #expect(rows.isEmpty == false)
-    let itn = InverseTextNormalizer()
-    var corrupted: [(String, String)] = []
-    for row in rows where itn.normalize(row.input, spokenPunctuation: true) != row.expected {
-      corrupted.append((row.input, itn.normalize(row.input, spokenPunctuation: true)))
-    }
-    // Parity already pins these to the oracle; this is a focused readout of the safety floor.
-    #expect(corrupted.isEmpty, "negatives diverged from oracle: \(corrupted.prefix(10))")
-  }
 
   // MARK: - Safety property: idempotence (normalize is a fixed point of itself)
 

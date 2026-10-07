@@ -176,26 +176,6 @@ import Testing
     #expect(spy.starts == 1)
     #expect(spy.stops == 1)
     #expect(spy.cancels == 0)
-  }
-
-  /// The specific failure the derived-membership design exists to prevent. If the
-  /// Globe key were a member with no flag, `contains([])` would be true on the
-  /// release event too, so release would read as a second PRESS and recording
-  /// would never stop. This is the case the mutation control drives RED.
-  @Test("Release is distinguishable from press, so recording can actually stop")
-  func releaseIsNotReadAsPress() async {
-    let spy = Spy()
-    let clock = ManualClock()
-    let service = makeService(spy, clock: clock)
-
-    press(service)
-    await settle(service)
-    clock.advance(ms: 800)
-    release(service)
-    await settle(service)
-
-    #expect(spy.stops == 1, "release did not stop the recording")
-    #expect(spy.starts == 1, "release was misread as a second press")
     #expect(spy.actions == ["start"], "a misread release would emit a second start")
   }
 

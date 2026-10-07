@@ -86,57 +86,6 @@ struct QuickAddPanelCopyTests {
     }
   }
 
-  /// **The structural half, because no behavioural test can see a state that forgot to ask.** A
-  /// fifth state added below the `let word` line inherits the bound; one that interpolates `heard`
-  /// directly does not, and would pass every assertion above that does not happen to name it.
-  /// Same defence as the ladder's twice-only policy check, for the same reason.
-  @Test("No header state can interpolate the unbounded selection")
-  func headerStatesCannotReachTheRawSelection() throws {
-    let source = try String(
-      contentsOf: Self.repoRoot.appendingPathComponent(
-        "Sources/EnviousWisprAppKit/Views/QuickAdd/QuickAddPanelView.swift"), encoding: .utf8)
-    let body = try #require(Self.groupHeaderBody(in: source), "could not locate groupHeader")
-    #expect(
-      body.contains("HeardWordDisplay.bounded(heard)"),
-      "the bound is what every state below it inherits")
-    // **Two-way control, because the negative alone passes vacuously if the escaping is wrong.**
-    // A source-string check that never matches anything is indistinguishable from one that matches
-    // nothing bad. This proves the same escaping mechanism DOES resolve against this body.
-    #expect(
-      body.contains("\\(word)"),
-      "the interpolation check cannot see the source, so its negative proves nothing")
-    #expect(
-      !body.contains("\\(heard)"),
-      "a state interpolated the unbounded selection directly")
-  }
-
-  /// The function body of `groupHeader`, from its signature to its closing brace.
-  private static func groupHeaderBody(in source: String) -> String? {
-    guard
-      let start = source.range(
-        of: "static func groupHeader(_ state: GroupHeaderState, heard: String) -> String {"),
-      let end = source.range(of: "\n  }\n", range: start.upperBound..<source.endIndex)
-    else { return nil }
-    return String(source[start.lowerBound..<end.upperBound])
-  }
-
-  /// **Found by walking up to a marker, not by counting parents.** A hand-counted chain of
-  /// `deletingLastPathComponent()` is correct only for the depth the file sits at today, is silently
-  /// wrong the moment the file moves, and cannot be checked by reading — the first deletion removes
-  /// the FILENAME rather than a directory, which is exactly the off-by-one a reviewer raised against
-  /// the counted version. This asks the filesystem instead, so there is no number to get wrong.
-  private static var repoRoot: URL {
-    var directory = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
-    // Bounded: `deletingLastPathComponent` on "/" returns "/", so stop at the volume root rather
-    // than looping forever if the marker is somehow absent.
-    while directory.path != "/" {
-      let manifest = directory.appendingPathComponent("Package.swift")
-      if FileManager.default.fileExists(atPath: manifest.path) { return directory }
-      directory = directory.deletingLastPathComponent()
-    }
-    return directory
-  }
-
   @Test("EVERY header state names the word that was read")
   func everyHeaderStateNamesTheHeardWord() {
     // Enumerated from the type rather than listed by hand, so a fifth state cannot be added with

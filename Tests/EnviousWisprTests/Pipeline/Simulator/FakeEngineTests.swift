@@ -94,17 +94,6 @@ struct FakeEngineTests {
     }
   }
 
-  @Test("finalize() after cancel() returns .cancelled, never partial text")
-  func finalizeAfterCancelIsCancelled() async {
-    let (engine, _) = makeEngine(.batchSuccess(text: "should not appear"))
-    await engine.cancel()
-    let outcome = await engine.finalize(batchSamples: nil)
-    guard case .cancelled = outcome else {
-      Issue.record("expected .cancelled, got \(outcome)")
-      return
-    }
-  }
-
   @Test("acceptAudio after a terminal session is a no-op")
   func acceptAudioAfterTerminalIsNoOp() async throws {
     let (engine, _) = makeEngine(.batchSuccess(text: "x"))

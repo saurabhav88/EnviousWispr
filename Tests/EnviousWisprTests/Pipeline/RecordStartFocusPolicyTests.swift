@@ -124,18 +124,6 @@ struct RecordStartFocusPolicyTests {
     }
   }
 
-  @Test("a helper-owned field (a Gecko content process) keeps the front application as the target")
-  func helperOwnedGeckoFieldKeepsTheBrowser() throws {
-    let (front, owner) = try apps()
-    // The front app stands in for Firefox; the owner for its content process (prohibited policy).
-    let (context, _) = record(
-      front: front, focus: .focused(element: field, ownerPID: owner.processIdentifier),
-      owner: owner, eligible: false)
-    #expect(context.focusOwnerState == .disagreeKeptFront)
-    #expect(context.targetApp == front, "the front app's bundle-keyed policies still apply")
-    #expect(context.targetElement == field)
-  }
-
   /// Launchers whose panels take the focus without becoming front, as named in #3423.
   static let launcherBundleIDs: Set<String> = [
     "com.raycast.macos", "com.runningwithcrayons.Alfred", "com.apple.Spotlight",

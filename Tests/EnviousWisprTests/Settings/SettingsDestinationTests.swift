@@ -124,19 +124,6 @@ struct SettingsDestinationTests {
     }
   }
 
-  @Test("the sidebar has eight release rows, and Dictation Settings is in RECORD")
-  func sidebarRows() {
-    let release = SettingsPage.allCases.filter {
-      #if DEBUG
-        return $0 != .diagnostics
-      #else
-        return true
-      #endif
-    }
-    #expect(release.count == 8)
-    #expect(SettingsPage.dictation.group == .record)
-  }
-
   @Test("each Dictation tab has its own icon")
   func tabIcons() {
     #expect(

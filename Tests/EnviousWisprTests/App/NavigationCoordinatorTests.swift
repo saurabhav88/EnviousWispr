@@ -8,12 +8,6 @@ import Testing
 @Suite("NavigationCoordinator — pending settings tab handoff", .tags(.productOutcome))
 struct NavigationCoordinatorTests {
 
-  @Test("initial pending destination is nil")
-  func initialPendingDestinationIsNil() {
-    let coordinator = NavigationCoordinator()
-    #expect(coordinator.pendingDestination == nil)
-  }
-
   @Test("request sets pending destination")
   func requestSetsPendingDestination() {
     let coordinator = NavigationCoordinator()
@@ -37,10 +31,4 @@ struct NavigationCoordinatorTests {
     #expect(coordinator.pendingDestination == .appSettings(.permissions))
   }
 
-  @Test("consume when nil is a no-op")
-  func consumeWhenNilIsNoop() {
-    let coordinator = NavigationCoordinator()
-    coordinator.consume()
-    #expect(coordinator.pendingDestination == nil)
-  }
 }

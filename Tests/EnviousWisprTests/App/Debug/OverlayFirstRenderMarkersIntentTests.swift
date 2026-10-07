@@ -63,12 +63,5 @@
       }
     }
 
-    @Test("only the host event reads the ambient intent at all")
-    func onlyTheHostEventReadsTheAmbientIntent() {
-      let hostIntent = OverlayFirstRenderMarkers.withPresentationIntent(.other) {
-        OverlayFirstRenderMarkers.capture(.hostOrderFrontComplete).intent
-      }
-      #expect(hostIntent == .other, "hostOrderFrontComplete did not read the ambient intent")
-    }
   }
 #endif

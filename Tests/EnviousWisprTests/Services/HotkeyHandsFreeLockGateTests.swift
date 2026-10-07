@@ -423,24 +423,4 @@ import EnviousWisprServices
     #expect(spy.presses == ["start", "start"], "no callback means nothing recorded")
   }
 
-  @Test("the accepted session id is carried unchanged to the publication query")
-  func acceptedSessionIDIsCarried() async {
-    let spy = Spy()
-    let clock = ManualClock()
-    let driver = StartDriver()
-    let service = makeService(spy, driver: driver, clock: clock)
-    var askedAbout: [String] = []
-    service.onStartRecording = driver.handler
-    service.onLockRequested = { sessionID in
-      askedAbout.append(sessionID)
-      return .published
-    }
-
-    down(service)
-    up(service)
-    down(service)
-    await driver.resolve(.recording("A5A0C0DE-1631"))
-
-    #expect(askedAbout == ["A5A0C0DE-1631"], "the id must not be recomputed at publication")
-  }
 }

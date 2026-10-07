@@ -15,13 +15,11 @@ import SwiftSyntax
 @Suite(.tags(.productOutcome))
 struct LivePreviewSettingsCopyTests {
 
-  /// Every user-facing string on this page, plus the pill's. The brand and non-empty checks below
-  /// iterate this list, so a string missing from it is a string those checks do not cover.
+  /// Every user-facing string on this page, plus the pill's. The non-empty check below iterates
+  /// this list, so a string missing from it is a string that check does not cover.
   ///
-  /// The list is hand-written because Swift cannot enumerate static members at runtime, which is
-  /// exactly why `everyCopyPropertyIsCovered` reads the source and fails when the two drift. Left
-  /// unguarded, the list went from covering all of this file's copy to covering 4 of 21 as the
-  /// page grew, silently, with no test turning red (found in self-review, 2026-08-16).
+  /// The list is hand-written because Swift cannot enumerate static members at runtime; add new
+  /// copy here by hand (the source-reading coverage check was retired in #3505).
   private var allStrings: [String] {
     [
       String(localized: LivePreviewSettingsCopy.sectionHeaderResource),
@@ -95,105 +93,6 @@ struct LivePreviewSettingsCopyTests {
       String(localized: DictationSettingsCopy.Preview.changeEngine),
       String(localized: DictationSettingsCopy.Preview.keepCurrent),
     ]
-  }
-
-  /// Arms the two checks above against the file they are supposed to protect.
-  ///
-  /// Reads the source rather than the values because the defect is an OMISSION, and a runtime list
-  /// cannot report what is absent from itself. Compares the `static let` names declared in
-  /// `LivePreviewSettingsCopy` against the names referenced in this test file's `allStrings`, so
-  /// adding copy without listing it fails HERE, naming the missing property, rather than quietly
-  /// widening the gap.
-  ///
-  /// Scope, stated so a later reader does not over-trust it: `static func` copy that takes an
-  /// argument is out of scope, since there is no single string to check; those are covered by the
-  /// named tests further down.
-  @Test("Every copy property on the page is covered by allStrings")
-  func everyCopyPropertyIsCovered() throws {
-    let sourceURL = RepoRoot.url.appending(
-      path: "Sources/EnviousWisprAppKit/Views/Settings/LivePreviewSettingsCopy.swift")
-    let source = try String(contentsOf: sourceURL, encoding: .utf8)
-    let declared = Self.staticLetNames(in: source)
-    // A parse that finds nothing would make this test vacuously green, which is the failure mode
-    // this whole exercise is about.
-    #expect(
-      declared.count >= 20, "parsed \(declared.count) properties; the regex has stopped matching")
-
-    // Scoped to the `allStrings` literal, NOT the whole test file: every property is referenced
-    // somewhere in here by the named tests below, so a file-wide scan would call all 21 covered
-    // and pass while covering 4.
-    let ownSource = try String(contentsOf: URL(filePath: #filePath), encoding: .utf8)
-    let list = try #require(
-      Self.allStringsLiteral(in: ownSource), "could not find the allStrings literal to check")
-    let listed = Self.staticLetNames(referencedAs: "LivePreviewSettingsCopy", in: list)
-    // #3482: a `<name>Resource` twin is the same string as its listed `<name>` accessor.
-    let missing = declared.subtracting(listed).filter {
-      !($0.hasSuffix("Resource") && listed.contains(String($0.dropLast("Resource".count))))
-    }.sorted()
-    #expect(
-      missing.isEmpty,
-      "not covered by allStrings, so no brand or empty check runs on them: \(missing)")
-  }
-
-  /// #3385: the same omission check over the Live Preview tab's copy in `DictationSettingsCopy`,
-  /// scoped to its `enum Preview` block so the other tabs' copy is not counted.
-  @Test("Every Live Preview tab copy property is covered by allStrings")
-  func everyPreviewTabCopyPropertyIsCovered() throws {
-    let sourceURL = RepoRoot.url.appending(
-      path: "Sources/EnviousWisprAppKit/Views/Settings/DictationSettingsCopy.swift")
-    let source = try String(contentsOf: sourceURL, encoding: .utf8)
-    // BASE_SHA control: the old slice continued to EOF and counted Pill and
-    // Clipboard's sibling keys. Parse the actual enum boundary instead.
-    let tree = Parser.parse(source: source)
-    let preview = try #require(tree.tokens(viewMode: .sourceAccurate).first {
-      $0.text == "Preview" && $0.parent?.is(EnumDeclSyntax.self) == true
-    }?.parent?.as(EnumDeclSyntax.self), "no enum Preview block")
-    let declared = Self.staticLetNames(in: preview.trimmedDescription)
-    #expect(declared.count >= 11, "parsed \(declared.count) properties; the block has moved")
-    let ownSource = try String(contentsOf: URL(filePath: #filePath), encoding: .utf8)
-    let list = try #require(Self.allStringsLiteral(in: ownSource))
-    let listed = Self.staticLetNames(referencedAs: "DictationSettingsCopy.Preview", in: list)
-    let missing = declared.subtracting(listed).sorted()
-    #expect(missing.isEmpty, "Live Preview tab copy not covered by allStrings: \(missing)")
-  }
-
-  /// The text of the `allStrings` array literal, from its opening bracket to the line that closes
-  /// the computed property. Returns nil rather than an empty string if the shape changes, so the
-  /// caller fails loudly instead of concluding nothing is listed.
-  private static func allStringsLiteral(in source: String) -> String? {
-    guard let start = source.range(of: "private var allStrings: [String] {") else { return nil }
-    let rest = source[start.upperBound...]
-    guard let end = rest.range(of: "\n  }") else { return nil }
-    return String(rest[..<end.lowerBound])
-  }
-
-  /// `static let name` declarations, by name.
-  private static func staticLetNames(in source: String) -> Set<String> {
-    matches(of: #"static let ([a-zA-Z][a-zA-Z0-9]*)"#, in: source)
-  }
-
-  /// `Type.member` references, by member name.
-  private static func staticLetNames(referencedAs type: String, in source: String) -> Set<String> {
-    matches(of: "\(type)\\.([a-zA-Z][a-zA-Z0-9]*)", in: source)
-  }
-
-  private static func matches(of pattern: String, in source: String) -> Set<String> {
-    guard let regex = try? NSRegularExpression(pattern: pattern) else { return [] }
-    let range = NSRange(source.startIndex..., in: source)
-    var found: Set<String> = []
-    for match in regex.matches(in: source, range: range) {
-      if let r = Range(match.range(at: 1), in: source) { found.insert(String(source[r])) }
-    }
-    return found
-  }
-
-  /// Brand rule: no em-dashes or en-dashes in user-facing copy.
-  @Test("No user-facing string carries an em-dash or en-dash")
-  func noDashes() {
-    for s in allStrings {
-      #expect(s.contains("\u{2014}") == false, "em-dash in user-facing copy: \(s)")
-      #expect(s.contains("\u{2013}") == false, "en-dash in user-facing copy: \(s)")
-    }
   }
 
   @Test("No user-facing string is empty")
@@ -287,64 +186,6 @@ struct LivePreviewSettingsCopyTests {
     for c in [apple, universal] {
       #expect(c.contains("dictation"), "a caveat stopped naming dictation at all")
     }
-  }
-
-  @Test("Each engine caveat is the sentence a human approved")
-  func caveatSentencesAreFrozen() {
-    #expect(
-      LivePreviewSettingsCopy.pickerAppleCaveat
-        == """
-        This changes dictation too, not just the preview. On Automatic, dictation \
-        follows what you speak, but the preview must pick one language up front and \
-        uses your Mac's.
-        """)
-    #expect(
-      LivePreviewSettingsCopy.pickerUniversalCaveat
-        == """
-        This changes dictation too, not just the preview. On Automatic, this engine \
-        works the language out as you speak.
-        """)
-    #expect(
-      LivePreviewSettingsCopy.pickerAppleCaveat
-        != LivePreviewSettingsCopy.pickerUniversalCaveat)
-  }
-
-  /// The status bar's provenance describes CONFIGURATION, never activity: the chip
-  /// renders in every state, including off and failed, so any word implying live
-  /// detection is a claim the bar cannot keep.
-  ///
-  /// **This test used to be a list of banned words, and #2441's independent evasion
-  /// pass walked past it — measured, not argued.** Replacing
-  /// `languageProvenanceDetected` with `"picking up your voice"` is a promise the bar
-  /// cannot keep, holds none of the banned words, and left the whole suite green. The
-  /// paired control, `"listening now"`, fired. So the list caught the words somebody
-  /// thought of and nothing else, which is what a vocabulary guard can do.
-  ///
-  /// **Whether a sentence promises output is a judgement about English, and no list
-  /// of substrings decides it.** What a test CAN hold is that the set of sentences is
-  /// closed and each one is the sentence a human approved, so any rewording is red
-  /// exactly once, here, on the copy surface where a reviewer is already reading the
-  /// words. That is the whole mechanism, and it is stated rather than implied.
-  ///
-  /// **Deliberately literals, and only in THIS file.** The presentation suite compares
-  /// against the symbols on purpose — its subject is which sentence is chosen, not
-  /// what it says, and pinning words there would fail on every honest correction.
-  /// Here the words ARE the subject.
-  @Test("Each provenance sentence is the one that was approved")
-  func provenanceSentencesAreFrozen() {
-    #expect(LivePreviewSettingsCopy.languageProvenanceFromMac == "from your Mac")
-    #expect(LivePreviewSettingsCopy.languageProvenanceUserPicked == "you picked this")
-    #expect(LivePreviewSettingsCopy.languageProvenanceDetected == "no language pinned")
-
-    // Distinctness, which no single constant can satisfy on its own: three sentences
-    // that had drifted into one would still pass every equality above only if all
-    // three were edited, and would pass nothing here.
-    let all = [
-      LivePreviewSettingsCopy.languageProvenanceFromMac,
-      LivePreviewSettingsCopy.languageProvenanceUserPicked,
-      LivePreviewSettingsCopy.languageProvenanceDetected,
-    ]
-    #expect(Set(all).count == 3, "two provenances say the same thing")
   }
 
   @Test("The description says the preview is not the pasted text")

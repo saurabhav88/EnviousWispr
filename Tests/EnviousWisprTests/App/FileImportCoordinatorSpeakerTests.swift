@@ -72,8 +72,6 @@ struct FileImportCoordinatorSpeakerTests {
       return hasArrived
     }
 
-    func arrivedSoFar() -> Bool { hasArrived }
-
     func open() {
       isOpen = true
       for waiter in openWaiters { waiter.resume() }
@@ -386,11 +384,6 @@ struct FileImportCoordinatorSpeakerTests {
     #expect(digestA1 == digestA2)
     #expect(digestA1 != digestB)
     #expect(digestA1.count == 64, "SHA-256 hex should be 64 characters")
-  }
-
-  @Test("an empty buffer still produces a stable digest, not a crash")
-  func pcmDigestHandlesEmptyBuffer() {
-    #expect(FileImportDocumentMath.pcmDigestHex([]) == FileImportDocumentMath.pcmDigestHex([]))
   }
 
   // MARK: - Turn storage (#2810 phase 3)

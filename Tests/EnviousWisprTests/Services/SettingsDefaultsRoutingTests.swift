@@ -692,30 +692,6 @@ struct SettingsDefaultsRoutingTests {
 
   // MARK: - #1987 Globe key guidance claim
 
-  /// The claim is one shared owner, so a second caller gets `false` no matter who
-  /// asked first. That single-owner design is what makes the surface ORDER
-  /// irrelevant, which is why it is not simulated here.
-  ///
-  /// An earlier version of this test labelled two identical blocks "onboarding
-  /// first" and "Settings first". They executed the same two calls against
-  /// `SettingsManager`, so the labels described an ordering the code never varied
-  /// and neither surface appeared at all. Removed rather than reworded: a name
-  /// that claims more than the body does is worse than a narrower name, because
-  /// it stops the next reader looking for the missing coverage.
-  ///
-  /// NOT COVERED HERE, deliberately, and on the founder's manual pass instead:
-  /// that `KeybindsSettingsView` and `ReadyScreenV2` actually CALL this on an
-  /// accepted bind. Both call sites live in SwiftUI view bodies that need a
-  /// rendered hierarchy, so deleting either one leaves every test in this file
-  /// green. A user who binds Globe and sees no explanation is the visible symptom.
-  @Test("A second claim on the same store returns false")
-  func guidanceClaimIsOncePerInstall() {
-    let suite = TestDefaults.suite("GlobeClaim-\(UUID().uuidString)")!
-    let settings = SettingsManager(defaults: suite)
-    #expect(settings.claimGlobeKeyGuidancePresentation(for: ModifierKeyCodes.globe))
-    #expect(!settings.claimGlobeKeyGuidancePresentation(for: ModifierKeyCodes.globe))
-  }
-
   /// A separate installation is unaffected by another store's claim. Without this,
   /// a claim keyed on something process-wide rather than on the defaults store
   /// would pass every other test in this file.

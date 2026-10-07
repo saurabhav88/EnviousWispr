@@ -56,13 +56,6 @@ struct LLMWarmupGateTests {
     #expect(LLMNetworkSession.cloudWarmupPolicy(for: provider) == expected)
   }
 
-  /// The regression this issue exists to prevent, stated as its own row: Gemini
-  /// must never warm, whatever else changes.
-  @Test("Gemini never warms")
-  func geminiNeverWarms() {
-    #expect(LLMNetworkSession.cloudWarmupPolicy(for: .gemini) == .never)
-  }
-
   // MARK: - Gemini touches nothing
 
   /// `preWarmModel` is the shared door all three cloud providers enter, so

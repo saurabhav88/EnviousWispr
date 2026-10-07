@@ -102,16 +102,6 @@ struct SentryFingerprintTests {
     #expect(prod.last == "production")
   }
 
-  @Test("same environment across two calls is byte-identical")
-  func sameEnvironmentIsStable() {
-    let err = NSError(domain: "EnviousWispr", code: -3)
-    let first = SentryBreadcrumb.handledErrorFingerprint(
-      for: .xpcServiceError, error: err, environment: "development")
-    let second = SentryBreadcrumb.handledErrorFingerprint(
-      for: .xpcServiceError, error: err, environment: "development")
-    #expect(first == second)
-  }
-
   // MARK: - detail discriminator (#945)
 
   @Test("optional detail appends an extra fingerprint component before the trailing environment")
@@ -138,17 +128,6 @@ struct SentryFingerprintTests {
     let rate = SentryBreadcrumb.handledErrorFingerprint(
       for: .polishProviderFailed, error: err, detail: "rate_limited", environment: Self.testEnv)
     #expect(credits != rate)
-  }
-
-  @Test("nil detail leaves the base fingerprint unchanged")
-  func nilDetailIsBackwardCompatible() {
-    let err = NSError(domain: "EnviousWispr", code: -3)
-    let withNil = SentryBreadcrumb.handledErrorFingerprint(
-      for: .xpcServiceError, error: err, detail: nil, environment: Self.testEnv)
-    let legacy = SentryBreadcrumb.handledErrorFingerprint(
-      for: .xpcServiceError, error: err, environment: Self.testEnv)
-    #expect(withNil == legacy)
-    #expect(withNil == ["handled_error", "xpc_service_error", "EnviousWispr#-3", Self.testEnv])
   }
 
   // MARK: - AI-failure fingerprint

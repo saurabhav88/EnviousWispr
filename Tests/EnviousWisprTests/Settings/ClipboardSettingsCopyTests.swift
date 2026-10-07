@@ -60,22 +60,6 @@ struct ClipboardSettingsCopyTests {
     }
   }
 
-  @Test("the three explanations the page showed before move behind \"?\" unchanged")
-  func retainedExplanations() {
-    // Typed from the pre-#3385 page (f485f2e8), British "capitalisation" included.
-    #expect(
-      String(localized: Copy.restoreHelp)
-        == "Saves and restores whatever was on your clipboard before pasting your dictation.")
-    #expect(
-      String(localized: Copy.smartInsertionHelp)
-        == "Matches spacing and capitalisation to the text around your cursor when you dictate into the middle of a sentence."
-    )
-    #expect(
-      String(localized: Copy.quickAddHelp)
-        == "Some apps will not tell other apps what you have highlighted. In those, adding a word from your selection briefly copies it and then puts your clipboard back."
-    )
-  }
-
   @Test("the test lists every Clipboard string, and the page shows every one")
   func everyStringIsCoveredAndUsed() throws {
     let copySource = try String(

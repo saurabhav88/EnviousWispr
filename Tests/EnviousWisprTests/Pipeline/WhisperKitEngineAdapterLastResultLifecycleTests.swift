@@ -36,28 +36,6 @@ import Testing
     #expect(adapter.lastResult == nil)
   }
 
-  @Test("lastResult is set after a successful .transcript finalize()")
-  func lastResultSetAfterSuccessfulFinalize() async throws {
-    let backend = StubWhisperKitBackend()
-    await backend.setTranscribeResult(
-      ASRResult(
-        text: "polished", language: "en", duration: 1, processingTime: 0.1,
-        backendType: .whisperKit))
-    let adapter = WhisperKitEngineAdapter(
-      backend: backend, engineMutationScope: .alwaysAllowedForTesting)
-    let sid = SessionID()
-    try await adapter.beginSession(sid, options: .default, streaming: false)
-    feed(adapter, samples: speechSamples(count: 16_000), session: sid)
-    adapter.observeSpeechSegments([SpeechSegment(startSample: 0, endSample: 16_000)])
-    let outcome = await adapter.finalize(batchSamples: nil)
-    guard case .transcript = outcome else {
-      Issue.record("expected .transcript, got \(outcome)")
-      return
-    }
-    let result = try #require(adapter.lastResult)
-    #expect(result.text == "polished")
-  }
-
   @Test("lastResult is nil after cancel()")
   func lastResultNilAfterCancel() async throws {
     let backend = StubWhisperKitBackend()

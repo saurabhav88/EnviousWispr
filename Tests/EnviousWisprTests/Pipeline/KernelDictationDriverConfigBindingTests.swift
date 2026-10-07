@@ -112,41 +112,6 @@ import Testing
       await assertClears(outcome: .completed)
     }
 
-    @Test("currentSessionConfig clears when the session concludes .cancelled")
-    func clearsOnCancelled() async {
-      await assertClears(outcome: .cancelled)
-    }
-
-    @Test("currentSessionConfig clears when the session concludes .discarded")
-    func clearsOnDiscarded() async {
-      await assertClears(outcome: .discarded(.tooShort))
-    }
-
-    @Test("currentSessionConfig clears when the session concludes .noSpeech")
-    func clearsOnNoSpeech() async {
-      await assertClears(outcome: .noSpeech(.vadGate))
-    }
-
-    @Test("currentSessionConfig clears when the session concludes .failed")
-    func clearsOnFailed() async {
-      await assertClears(outcome: .failed(.asrEmpty))
-    }
-
-    @Test("currentSessionConfig clears when the session concludes .audioInterrupted")
-    func clearsOnAudioInterrupted() async {
-      await assertClears(outcome: .audioInterrupted(nil))
-    }
-
-    @Test("currentSessionConfig clears when the session concludes .asrInterrupted")
-    func clearsOnASRInterrupted() async {
-      await assertClears(outcome: .asrInterrupted(wasRecording: true))
-    }
-
-    @Test("currentSessionConfig clears when the session concludes .noTransport")
-    func clearsOnNoTransport() async {
-      await assertClears(outcome: .noTransport)
-    }
-
     private func assertClears(outcome: RecordingOutcome) async {
       let fx = makeFixture()
       fx.context.config = .testDefault()

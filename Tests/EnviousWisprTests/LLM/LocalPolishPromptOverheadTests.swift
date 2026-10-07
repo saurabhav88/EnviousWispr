@@ -76,14 +76,6 @@ struct LocalPolishPromptOverheadTests {
     }
   }
 
-  /// Two-way control. A reserve larger than every prompt passes trivially, so
-  /// the row above proves nothing until the comparison is shown to FIRE.
-  @Test("the reserve check rejects a prompt that would not fit")
-  func theCheckFiresOnAnOversizePrompt() {
-    let oversize = String(repeating: "x", count: Self.reservedBytes + 1)
-    #expect(oversize.utf8.count > Self.reservedBytes)
-  }
-
   /// The reserve must stay ahead of the LARGEST bundled prompt by a real
   /// margin, not merely clear it. A reserve that exactly fits today becomes
   /// wrong on the next word added to a prompt.

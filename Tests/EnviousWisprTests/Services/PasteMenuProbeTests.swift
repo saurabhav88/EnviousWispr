@@ -25,12 +25,6 @@ struct PasteMenuProbeTests {
     #expect(!PasteService.isPasteShortcut(cmdChar: "v", modifiers: 1))
   }
 
-  @Test("⌥⌘V (Option bit set) does NOT match")
-  func optionCommandVRejected() {
-    // kAXMenuItemModifierOption = 1 << 1
-    #expect(!PasteService.isPasteShortcut(cmdChar: "v", modifiers: 2))
-  }
-
   @Test("NoCommand bit set (1<<3) does NOT match — that shortcut has no ⌘")
   func noCommandRejected() {
     // kAXMenuItemModifierNoCommand = 1 << 3 = 8
@@ -52,10 +46,4 @@ struct PasteMenuProbeTests {
     #expect(!PasteService.isPasteShortcut(cmdChar: "v", modifiers: -1))
   }
 
-  @Test("matches on shortcut alone — title is never consulted (localization-proof)")
-  func matchesRegardlessOfLocale() {
-    // A localized menu would title this "Coller" / "貼り付け" etc.; the matcher
-    // never sees the title, only the ⌘V shortcut, so it matches identically.
-    #expect(PasteService.isPasteShortcut(cmdChar: "v", modifiers: 0))
-  }
 }

@@ -3,12 +3,10 @@ import SwiftParser
 import SwiftSyntax
 import Testing
 
-/// PR8 of #763 — strict source parser for `*EventRouter` / `WedgeRecoveryRouter`
-/// and the `DictationRuntime`-family ceiling tests.
+/// PR8 of #763 — strict source parser for class bodies, used by
+/// `AppDelegateCeilingsTests` and its own `RouterCeilingParserTests`.
 ///
-/// Counts ONLY top-level `let` stored properties, matching the governing rule
-/// in `.claude/rules/architecture-rules.md` ("How the ceiling parser counts")
-/// and the sibling parser `CeilingsTestSupport`. `var` declarations (owned
+/// Counts ONLY top-level `let` stored properties. `var` declarations (owned
 /// mutable state, lazy properties, setter-injected outlets, callback closures)
 /// are NOT collaborators and are excluded.
 ///
@@ -58,8 +56,8 @@ enum RouterCeilingParser {
   // MARK: - Source extraction
 
   /// The member text of `typeName`'s class body, sliced from the real source.
-  /// Returned as text because every consumer and all 52 regression tests take a
-  /// body string; the counters re-parse it rather than re-scan it.
+  /// Returned as text because its consumers take a body string; the counters
+  /// re-parse it rather than re-scan it.
   static func classBody(named typeName: String, at path: String) throws -> String {
     let source = try String(contentsOf: RepoRoot.sourceURL(path), encoding: .utf8)
     let tree = try parsed(source, context: "\(typeName) at \(path)")
@@ -94,37 +92,6 @@ enum RouterCeilingParser {
       guard let type = binding.type else { return !binding.isBooleanLiteralInitialized }
       return !isPrimitive(type) && !isFunctionType(type) && !isNSObjectProtocol(type)
     }.count
-  }
-
-  /// Closure-injected slot: `let` whose declared type is a function type,
-  /// including every wrapping Swift permits around one.
-  static func closureInjectedCount(in body: String) -> Int {
-    storedLetBindings(in: body).filter { binding in
-      guard let type = binding.type else { return false }
-      return isFunctionType(type)
-    }.count
-  }
-
-  /// The classification-independent count used by architecture ceilings. An
-  /// alias can look like a collaborator while spelling a closure, but it still
-  /// consumes exactly one dependency slot here.
-  static func storedDependencyCount(in body: String) -> Int {
-    collaboratorCount(in: body) + closureInjectedCount(in: body)
-  }
-
-  /// Every parser-visible instance stored property, whether declared with `let`
-  /// or `var`. This is the right counter for a composition-root state ceiling:
-  /// unlike collaborator ceilings, owned mutable state is part of that home's
-  /// size and must consume a slot too.
-  static func storedPropertyCount(in body: String) -> Int {
-    storedBindings(in: body, includeVars: true).count
-  }
-
-  /// Non-private `func` declarations declared directly in the class body.
-  static func nonPrivateMethodCount(in body: String) -> Int {
-    members(in: body).compactMap { $0.as(FunctionDeclSyntax.self) }
-      .filter { !isPrivate($0.modifiers) }
-      .count
   }
 
   /// Every module imported by `source`, including imports behind `#if`.
@@ -389,12 +356,6 @@ enum RouterCeilingParser {
   private static func isTypeProperty(_ modifiers: DeclModifierListSyntax) -> Bool {
     modifiers.contains {
       $0.name.tokenKind == .keyword(.static) || $0.name.tokenKind == .keyword(.class)
-    }
-  }
-
-  private static func isPrivate(_ modifiers: DeclModifierListSyntax) -> Bool {
-    modifiers.contains {
-      $0.name.tokenKind == .keyword(.private) || $0.name.tokenKind == .keyword(.fileprivate)
     }
   }
 

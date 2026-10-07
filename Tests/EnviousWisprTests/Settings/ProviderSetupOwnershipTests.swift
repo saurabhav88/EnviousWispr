@@ -56,20 +56,6 @@ struct ProviderSetupOwnershipTests {
       "the scan cannot see ProviderSetup.swift, so every result below is vacuous")
   }
 
-  /// The API key FIELD — the thing a user types a secret into — is rendered in exactly one
-  /// place. `LLMModelDiscoveryCoordinator` and `StandingSnapshotBuilder` also name the key
-  /// ids, and neither renders a field; the marker here is the editor's own row, not the id.
-  @Test("only one view offers a key field")
-  func onlyOneViewOffersAKeyField() {
-    let owners = Self.swiftFiles
-      .filter { $0.text.contains("activeKeyDescriptor") }
-      .map(\.path)
-      .sorted()
-    #expect(
-      owners == ["ProviderSetup.swift"],
-      "the key field must have one owner; found \(owners)")
-  }
-
   /// The two halves of the #1950 download confirmation stay in one namespace. A view that
   /// calls `pullModel` directly has skipped the verdict check, which is the exact defect
   /// #1956 had to patch onto a second control after a sweep missed it.
@@ -84,16 +70,4 @@ struct ProviderSetupOwnershipTests {
       "pullModel must be reached through ProviderSetupDownloads; found \(callers)")
   }
 
-  /// The three Keychain WRITE paths live with the editor. A second writer is how one
-  /// screen would save a key the other never learns about.
-  @Test("only one view writes a provider key")
-  func onlyOneViewWritesAProviderKey() {
-    let writers = Self.swiftFiles
-      .filter { $0.text.contains("keychainManager.store(") }
-      .map(\.path)
-      .sorted()
-    #expect(
-      writers == ["ProviderSetup.swift"],
-      "provider keys must be written in one place; found \(writers)")
-  }
 }

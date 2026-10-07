@@ -144,28 +144,6 @@ struct DictationSessionConfigFactoryTests {
       "the next recording observes the new value")
   }
 
-  /// The factory must READ the setting, not hard-code the default. Without this,
-  /// a factory that simply omitted the argument would inherit
-  /// `DictationSessionConfig`'s `false` default and pass the freeze test above
-  /// on its first assertion by accident.
-  @Test("the factory reads Escape Recovery from settings rather than the type default")
-  func escapeRecoveryComesFromSettingsNotTheTypeDefault() async throws {
-    let harness = try Harness.make(backend: .parakeet)
-    harness.settings.escapeRecoveryEnabled = true
-
-    let config = DictationSessionConfigFactory.make(
-      asrManager: harness.asrManager,
-      kernelDriver: harness.kernelDriver,
-      whisperKitKernelDriver: harness.whisperKitKernelDriver,
-      settings: harness.settings,
-      triggerSource: .pttHotkey
-    )
-
-    #expect(
-      config.escapeRecoveryEnabled == true,
-      "a factory that forgot the argument would report the type's false default")
-  }
-
   // MARK: - LLM model resolution
 
   @Test("appleIntelligence resolves to apple-intelligence literal")

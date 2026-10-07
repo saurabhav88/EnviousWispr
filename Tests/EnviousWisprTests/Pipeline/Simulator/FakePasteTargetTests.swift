@@ -12,6 +12,7 @@ struct FakePasteTargetTests {
     let outcome = target.attemptPaste("hello")
     #expect(outcome == .pasted)
     #expect(target.pasteCount == 1)
+    #expect(target.pasteAttempts == ["hello"])
     #expect(target.transcriptDelivered == true)
   }
 
@@ -24,14 +25,6 @@ struct FakePasteTargetTests {
     #expect(target.pasteCount == 0, "a clipboard fallback is not a real paste")
     #expect(target.clipboardCopies == ["hello"])
     #expect(target.transcriptDelivered == true, "clipboard fallback still delivers")
-  }
-
-  @Test("never double-pastes — one attempt is one record")
-  func neverDoublePastes() {
-    let target = FakePasteTarget()
-    target.attemptPaste("a")
-    #expect(target.pasteCount == 1)
-    #expect(target.pasteAttempts == ["a"])
   }
 
   @Test("no attempt means nothing delivered")

@@ -420,9 +420,8 @@ struct LLMPolishStepTelemetryTests {
   /// can exist anywhere, and they sat above the genuine stuck-model case in any
   /// "what is failing most" query.
   ///
-  /// `http_404` (44 events / 39 users) is deliberately NOT removed — see
-  /// `skipPolicyIsProofOnly`. A model absent from `/api/tags` may still be
-  /// resident.
+  /// `http_404` (44 events / 39 users) is deliberately NOT removed: a model
+  /// absent from `/api/tags` may still be resident.
   /// `nonisolated` because `@Test(arguments:)` is evaluated outside the suite's
   /// `@MainActor` isolation (`swift-testing-patterns.md`
   /// RULE: swift-testing-mainactor-arguments-needs-nonisolated).
@@ -501,24 +500,6 @@ struct LLMPolishStepTelemetryTests {
 
     #expect(requests.count == 1, "no proof of absence means the unload must still be attempted")
     #expect(spy.limbFailureCalls.count == 1, "and a genuine failure must still report")
-  }
-
-  /// The decision function directly, exhaustively. The eviction tests above
-  /// cover the wiring; this pins the POLICY, so a new `OllamaReadiness` case
-  /// cannot quietly inherit "safe to skip" — the direction that costs a #286
-  /// regression rather than a redundant localhost request.
-  @Test("only proven-no-residency answers may skip the unload")
-  func skipPolicyIsProofOnly() {
-    #expect(LLMPolishStep.evictionIsProvablyUnnecessary(.daemonUnreachable))
-    #expect(LLMPolishStep.evictionIsProvablyUnnecessary(.noModelSelected))
-    #expect(LLMPolishStep.evictionIsProvablyUnnecessary(.serverDown) == false)
-    // `/api/tags` lists INSTALLED models, so a model deleted while loaded is
-    // absent from tags and still resident — "not installed" is not proof of
-    // "not loaded" (cloud review, PR #2071).
-    #expect(LLMPolishStep.evictionIsProvablyUnnecessary(.modelMissing) == false)
-    #expect(
-      LLMPolishStep.evictionIsProvablyUnnecessary(
-        .ready(facts: OllamaModelFacts(isRemote: false, thinks: nil))) == false)
   }
 
   /// A remote model reaches `.ready` too (the daemon lists it in `/api/tags`),

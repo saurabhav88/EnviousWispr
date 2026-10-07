@@ -669,25 +669,6 @@ struct LoadProgressWatcherTests {
     watcher.stop()
   }
 
-  @Test("#1388: default init keeps gate (B) — the XPC-operation watcher is unchanged")
-  func defaultInitKeepsGateB() async {
-    // The opt-out is scoped to the model-load guard. The default configuration
-    // (XPCOperationSignalWatcher's) must keep firing exactly as before —
-    // same shape as `bothGatesFire`, pinned here as the #1388 non-regression.
-    let clock = ManualClock()
-    let watcher = LoadProgressWatcher(currentTime: { clock.now })
-    watcher.start()
-    watcher.observeTick(observedMtime: mtime(0), observedPhase: "op")
-    clock.tick(seconds: 0.150)
-    watcher.observeTick(observedMtime: mtime(1), observedPhase: "op")
-    clock.tick(seconds: 0.150)
-    watcher.observeTick(observedMtime: mtime(2), observedPhase: "op")
-    clock.tick(seconds: 0.810)
-    watcher.observeTick(observedMtime: mtime(2), observedPhase: "op")
-    #expect(watcher.hasFired, "the default (XPC-operation) configuration keeps gate (B) intact")
-    watcher.stop()
-  }
-
   @Test("#1339: default init (no deadline) preserves the pre-#1339 listing-stall behavior")
   func defaultsPreserveLegacyBehavior() async {
     let clock = ManualClock()

@@ -25,9 +25,7 @@ enum InputResolutionTelemetryReporting {
   /// three-line form measured 1331 against a limit of 1330, and this extraction
   /// bought the line back.
   ///
-  /// That saving was later spent anyway — main independently reached 1329 before
-  /// this branch merged, so the ceiling went to 1335 with a changelog entry in
-  /// `EnviousWisprAppCeilingsTests`. Keep the extraction regardless: it is the
+  /// That line limit has since been retired (#3505). Keep the extraction: it is the
   /// named seam these tests drive, and it keeps the composition root's line about
   /// wiring rather than about telemetry field mapping.
   static func observing(_ manager: AudioCaptureManager) -> AudioCaptureManager {

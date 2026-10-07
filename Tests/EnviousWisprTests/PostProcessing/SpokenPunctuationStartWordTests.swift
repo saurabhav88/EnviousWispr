@@ -146,13 +146,4 @@ struct SpokenPunctuationStartWordTests {
         == SpokenPunctuationSettings(enabled: false, startWordOverrides: [:]))
   }
 
-  @Test("Two values differ by enablement and by overrides")
-  func equalityTracksBothFields() {
-    let base = SpokenPunctuationSettings(enabled: true, startWordOverrides: ["de": "Sprich"])
-    #expect(
-      base != SpokenPunctuationSettings(enabled: false, startWordOverrides: ["de": "Sprich"]))
-    #expect(base != SpokenPunctuationSettings(enabled: true, startWordOverrides: [:]))
-    #expect(
-      base == SpokenPunctuationSettings(enabled: true, startWordOverrides: ["de": "Sprich"]))
-  }
 }

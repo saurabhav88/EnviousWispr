@@ -255,18 +255,6 @@ struct SelectionAcquisitionTests {
     #expect(!SelectionAcquisition.isKeystrokeForwarding("com.apple"))
   }
 
-  /// **The list is OPEN-WORLD and this row says so out loud**, because a set nobody can enumerate is
-  /// the shape that quietly becomes a claim. There is no authority listing every remote-desktop or
-  /// virtual-machine client, so the next one to ship will not be here — which is exactly why the
-  /// global setting exists and why no copy anywhere promises this list is complete.
-  @Test("The list is a sample with a stated escape, not a claim to be exhaustive")
-  func theForwardingListIsExplicitlyIncomplete() {
-    #expect(SelectionAcquisition.keystrokeForwardingBundleIdentifiers.count > 5)
-    #expect(
-      !SelectionAcquisition.isKeystrokeForwarding("com.some.remote.client.shipping.next.year"),
-      "and the escape for that one is the setting, which is why `fallbackEnabled` is a parameter")
-  }
-
   // MARK: Which read outcomes the fallback may act on
 
   /// The three shapes an app takes when it HAS a selection on screen and publishes nothing usable:

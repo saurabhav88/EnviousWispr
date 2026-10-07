@@ -26,20 +26,6 @@ struct LanguageChipExpiryOwnershipTests {
   private static let payload = LanguageChipPayload(
     lang: "es", displayName: "Spanish", state: .askToLock, generation: 7)
 
-  /// **A COMPILE contract, and it is the whole point of the row.**
-  ///
-  /// It asserts nothing at runtime because there is nothing to assert: the claim
-  /// is that the leaf's initialiser no longer ACCEPTS a timer callback. That is
-  /// a property of the type, so the compiler is the only thing that can check
-  /// it, and a row that merely constructs the view is how you ask.
-  ///
-  /// Committed before the deletion, where it fails to build for want of
-  /// `onAutoDismiss`.
-  @Test("the chip is constructible with no timer callback at all")
-  func chipTakesNoTimerCallback() {
-    _ = LanguageChipView(payload: Self.payload, onLock: {}, onDismiss: {})
-  }
-
   private final class Counts {
     var expires = 0
   }

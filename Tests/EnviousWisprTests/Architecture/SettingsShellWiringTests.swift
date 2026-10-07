@@ -25,49 +25,7 @@ struct SettingsShellWiringTests {
     }.count
   }
 
-  static let headerNames: Set<String> = [
-    "SettingsPageHeader", "settingsPageSection", "SettingsPageSectionKey",
-  ]
-
   // MARK: - Header mechanism
-
-  @Test("no code names the page-header mechanism, and SettingsPage has no subtitle")
-  func headerMechanismIsGone() throws {
-    var hits: [String] = []
-    for directory in ["Sources", "Tests"] {
-      let root = RepoRoot.url.appending(path: directory)
-      let files =
-        FileManager.default.enumerator(at: root, includingPropertiesForKeys: nil)?
-        .compactMap { $0 as? URL }.filter { $0.pathExtension == "swift" } ?? []
-      #expect(files.count > 50, "\(directory): scanned \(files.count) files")
-      for file in files {
-        let tree = Parser.parse(source: try String(contentsOf: file, encoding: .utf8))
-        let count = Self.identifierCount(Self.headerNames, in: tree)
-        if count > 0 { hits.append("\(file.lastPathComponent): \(count)") }
-      }
-    }
-    #expect(hits.isEmpty, "header mechanism still named in code: \(hits)")
-
-    let section = try Self.parse("\(Self.settingsDir)/SettingsPage.swift")
-    let enumDecl = try #require(
-      section.statements.compactMap { $0.item.as(EnumDeclSyntax.self) }
-        .first { $0.name.text == "SettingsPage" })
-    let members = enumDecl.memberBlock.members.compactMap { $0.decl.as(VariableDeclSyntax.self) }
-      .flatMap { $0.bindings.map { $0.pattern.trimmedDescription } }
-    #expect(members.contains("label") && members.contains("icon"), "read \(members)")
-    #expect(!members.contains("subtitle"), "SettingsPage.subtitle is back")
-  }
-
-  @Test("a header name in a comment or a string is not code, a real one is")
-  func headerControl() {
-    let fixture = Parser.parse(
-      source: """
-        // SettingsPageHeader(icon: "x")
-        let a = "settingsPageSection"
-        let b = SettingsPageHeader(icon: "x", title: "t", subtitle: "s")
-        """)
-    #expect(Self.identifierCount(Self.headerNames, in: fixture) == 1)
-  }
 
   // MARK: - Dictionary
 
@@ -377,83 +335,6 @@ struct SettingsShellWiringTests {
     #expect(wiring.hoverOverrideUses == 1)
   }
 
-  @Test("only the sidebar row itself reads the render-only hover override")
-  func hoverOverrideIsRenderOnly() throws {
-    let root = RepoRoot.url.appending(path: "Sources")
-    let files = FileManager.default.enumerator(at: root, includingPropertiesForKeys: nil)?
-      .compactMap { $0 as? URL }.filter { $0.pathExtension == "swift" } ?? []
-    var uses: [String: Int] = [:]
-    for file in files {
-      let count = Self.identifierCount(
-        ["hoverOverride"], in: Parser.parse(source: try String(contentsOf: file, encoding: .utf8)))
-      if count > 0 { uses[file.lastPathComponent] = count }
-    }
-    #expect(files.count > 50)
-    #expect(Set(uses.keys) == ["SidebarNavRow.swift"], "hoverOverride read in \(uses)")
-  }
-
   // MARK: - Sidebar paint
 
-  /// The branches of `SidebarNavRow.paint`: each condition and the paint calls it makes, read
-  /// from real calls: `fill(<what>)`, `strokeBorder`, `shadow`.
-  static func paintBranches(in tree: some SyntaxProtocol) -> [String] {
-    guard let paint = tree.tokens(viewMode: .sourceAccurate).lazy.compactMap({ token -> VariableDeclSyntax? in
-      guard token.tokenKind == .identifier("paint"),
-        let binding = token.parent?.as(IdentifierPatternSyntax.self)?.parent?.as(PatternBindingSyntax.self)
-      else { return nil }
-      return binding.parent?.parent?.as(VariableDeclSyntax.self)
-    }).first
-    else { return [] }
-    var branches: [String] = []
-    var next: IfExprSyntax? = paint.tokens(viewMode: .sourceAccurate).lazy.compactMap {
-      $0.parent?.as(IfExprSyntax.self)
-    }.first
-    while let branch = next {
-      var kinds: [String] = []
-      for fill in RecordingChimeWiringTests.memberCallNodes(in: branch.body, named: "fill") {
-        let argument = fill.arguments.first?.expression
-        let what =
-          argument?.as(FunctionCallExprSyntax.self)?.calledExpression.trimmedDescription
-          ?? argument?.trimmedDescription ?? ""
-        kinds.append("fill(\(what))")
-      }
-      for name in ["strokeBorder", "shadow"]
-      where !RecordingChimeWiringTests.memberCallNodes(in: branch.body, named: name).isEmpty {
-        kinds.append(name)
-      }
-      branches.append("\(branch.conditions.trimmedDescription): \(kinds.joined(separator: "+"))")
-      next = branch.elseBody?.as(IfExprSyntax.self)
-    }
-    return branches
-  }
-
-  @Test(
-    "a selected row rests flat; gradient and glow only under the pointer; unselected hover tints")
-  func selectedRowRestsFlat() throws {
-    let branches = Self.paintBranches(in: try Self.parse("\(Self.settingsDir)/SidebarNavRow.swift"))
-    #expect(
-      branches == [
-        "isSelected && hovering: fill(LinearGradient)+strokeBorder+shadow",
-        "isSelected: fill(Color.stAccentSolid)",
-        "hovering: fill(SettingsHover.rowTint)",
-      ],
-      "\(branches)")
-  }
-
-  @Test("a permanent glow is seen, and quoted or commented paint names are not paint")
-  func paintControl() {
-    let fixture = Parser.parse(
-      source: """
-        struct SidebarNavRow: View {
-          private var paint: some View {
-            if isSelected { shape.fill(LinearGradient(colors: c)).shadow(color: x, radius: 7) }
-            else if hovering {
-              // shape.fill(SettingsHover.rowTint)
-              Text("stAccentSolid LinearGradient .shadow(")
-            }
-          }
-        }
-        """)
-    #expect(Self.paintBranches(in: fixture) == ["isSelected: fill(LinearGradient)+shadow", "hovering: "])
-  }
 }

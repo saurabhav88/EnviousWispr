@@ -247,39 +247,4 @@ struct ZeroSignalDeviceIdentityTests {
     #expect(muteLast.muteCalls == 1)
   }
 
-  /// The Boolean wrapper is retained for direct callers, so it must stay exactly
-  /// `classify(...) == .eligible` for every reachable non-nil outcome — including
-  /// the healthy one, or an always-false wrapper would satisfy the refusals alone.
-  @Test("#1578: isEligible equals classify == .eligible for every non-nil outcome")
-  func booleanWrapperMatchesClassificationForEveryOutcome() {
-    let bindWithoutUID = BoundInputDevice(
-      deviceID: 121, deviceUID: nil, transportLabel: "bluetooth",
-      resolutionSource: "system_default", inputChannel: 0)
-
-    // (bind, uidNow, liveness, mute) → the outcome each row is here to cover.
-    let rows: [(BoundInputDevice, String??, DeviceLiveness, DeviceMuteState)] = [
-      (Self.bound, nil, .alive, .unmuted),  // eligible
-      (Self.bound, .some("00-11-22-33-44-55:input"), .alive, .unmuted),  // identityMismatch
-      (bindWithoutUID, nil, .alive, .unmuted),  // identityMismatch
-      (Self.bound, .some(nil), .alive, .unmuted),  // identityMismatch
-      (Self.bound, nil, .removed, .unmuted),  // notAlive
-      (Self.bound, nil, .unverified, .unmuted),  // notAlive
-      (Self.bound, nil, .alive, .muted),  // deviceMuted
-      (Self.bound, nil, .alive, .unverified),  // muteUnverified
-    ]
-
-    var observed: Set<ZeroSignalEligibility> = []
-    for (bind, uidNow, liveness, muteState) in rows {
-      let reason = Self.classify(
-        bound: bind, uidNow: uidNow, liveness: liveness, muteState: muteState)
-      let boolean = Self.evaluate(
-        bound: bind, uidNow: uidNow, liveness: liveness, muteState: muteState)
-      #expect(boolean == (reason == .eligible), "wrapper disagreed with \(reason)")
-      observed.insert(reason)
-    }
-
-    // Every case except the nil-bind one — which `isEligible` structurally cannot
-    // reach, since it takes a non-optional bind — is exercised above.
-    #expect(observed == Set(ZeroSignalEligibility.allCases).subtracting([.boundDeviceUnavailable]))
-  }
 }

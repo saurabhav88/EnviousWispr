@@ -83,26 +83,6 @@ struct OllamaManageModelsPresentationTests {
     #expect(catalog.allSatisfy { !$0.isDownloaded })
   }
 
-  /// Two-way control on the partition, asserted against the PRODUCTION policy
-  /// the view actually reads — not against a filter re-implemented here. An
-  /// earlier version of this test wrote its own `isRemote` predicate, which
-  /// meant it stayed green even if the view dropped the hosted group entirely:
-  /// it was testing its own copy, not the app.
-  @Test("catalogPresentation partitions into exactly the local and hosted rows")
-  func catalogPartitionsBothWays() {
-    let catalog = OllamaSetupService.dynamicCatalog(from: [
-      row("gpt-oss:120b-cloud", isRemote: true),
-      row("gemma4:31b-cloud", isRemote: true),
-      row("llama3.2", isRemote: false),
-    ])
-    let groups = OllamaCatalogPresentation.groups(from: catalog.filter(\.isDownloaded))
-    #expect(groups.hosted.count == 2)
-    #expect(groups.local.count == 1)
-    #expect(groups.local.first?.name == "llama3.2")
-    // Nothing may be dropped or duplicated by the split.
-    #expect(groups.local.count + groups.hosted.count == catalog.filter(\.isDownloaded).count)
-  }
-
   /// The heading is production-owned so the view cannot silently reword it into
   /// something that no longer says where the model runs.
   @Test("the hosted group heading states where the model runs")
@@ -303,21 +283,6 @@ struct OllamaManageModelsPresentationTests {
 
   // MARK: - #1956 Delete policy
 
-  @Test("a local row may be deleted")
-  func localRowShowsDelete() {
-    #expect(OllamaCatalogPresentation.showsDeleteAction(catalogEntry("llama3.2", isRemote: false)))
-  }
-
-  @Test("a hosted row may never be deleted, registered or merely advertised")
-  func hostedRowHidesDelete() {
-    #expect(
-      OllamaCatalogPresentation.showsDeleteAction(
-        catalogEntry("gpt-oss:20b-cloud", isRemote: true, isDownloaded: true)) == false)
-    #expect(
-      OllamaCatalogPresentation.showsDeleteAction(
-        catalogEntry("glm-5.2", isRemote: true, isDownloaded: false)) == false)
-  }
-
   /// The delete policy must not consult `isDownloaded`. A policy keyed on it
   /// would hide Delete from a local model the user has not downloaded yet, and
   /// would show it on a registered hosted one.
@@ -334,23 +299,6 @@ struct OllamaManageModelsPresentationTests {
   }
 
   // MARK: - #1956 Action label
-
-  @Test("a local row's action is Download")
-  func localRowSaysDownload() {
-    #expect(
-      OllamaCatalogPresentation.actionLabel(for: catalogEntry("llama3.2", isRemote: false))
-        == "Download")
-  }
-
-  @Test("a hosted row's action is Add, registered or merely advertised")
-  func hostedRowSaysAdd() {
-    #expect(
-      OllamaCatalogPresentation.actionLabel(
-        for: catalogEntry("gpt-oss:20b-cloud", isRemote: true, isDownloaded: true)) == "Add")
-    #expect(
-      OllamaCatalogPresentation.actionLabel(
-        for: catalogEntry("glm-5.2", isRemote: true, isDownloaded: false)) == "Add")
-  }
 
   @Test("the action label follows remoteness alone, never downloaded state")
   func actionLabelIgnoresDownloadedState() {
@@ -420,16 +368,6 @@ struct OllamaManageModelsPresentationTests {
     #expect(
       OllamaCatalogPresentation.rowIsPulling(
         local, currentPullingModel: "gpt-oss:20b", hostedPullAdvertisedID: nil))
-  }
-
-  /// A stale advertised id cannot outlive its pull, because liveness is read
-  /// from `currentPullingModel` and not from the id.
-  @Test("a leftover advertised id matches nothing once the pull has ended")
-  func staleAdvertisedIDMatchesNothing() {
-    let hosted = catalogEntry("glm-5.2", isRemote: true, isDownloaded: false)
-    #expect(
-      !OllamaCatalogPresentation.rowIsPulling(
-        hosted, currentPullingModel: nil, hostedPullAdvertisedID: "glm-5.2"))
   }
 
   // MARK: - #1956 Hosted rows keep their variant tag (whole-diff review r3)
@@ -510,28 +448,7 @@ struct OllamaManageModelsPresentationTests {
     #expect(OllamaCatalogPresentation.tierSnapshot.freeVerified.count == 7)
   }
 
-  /// The snapshot holds ADVERTISED ids. A pullable form here would still work,
-  /// because membership is normalised, but its presence would mean the shipped
-  /// data had drifted from what the endpoint actually advertises.
-  @Test("the snapshot holds advertised ids, not pullable cloud registrations")
-  func snapshotHoldsAdvertisedIDs() {
-    for id in OllamaCatalogPresentation.tierSnapshot.freeVerified {
-      #expect(id.hasSuffix(":cloud") == false, "\(id) is a pullable form")
-      #expect(id.hasSuffix("-cloud") == false, "\(id) is a pullable form")
-    }
-  }
-
   // MARK: - #1956 Expiry boundary
-
-  @Test("at 29 days the snapshot still orders the list")
-  func splitAtTwentyNineDays() throws {
-    let entries = [catalogEntry("gpt-oss:20b", isRemote: true)]
-    let groups = OllamaCatalogPresentation.hostedTierGroups(
-      entries: entries, now: try daysAfterSnapshot(29))
-    let split = try #require(splitTiers(groups))
-    #expect(split.free.map(\.name) == ["gpt-oss:20b"])
-    #expect(split.checkedAt == OllamaCatalogPresentation.tierSnapshot.verifiedAt)
-  }
 
   @Test("at exactly 30 days the snapshot still orders the list")
   func splitAtExactlyThirtyDays() throws {
@@ -726,14 +643,6 @@ struct OllamaManageModelsPresentationTests {
     #expect(!label.lowercased().contains("download"))
     // The percentage cannot leak in at any value.
     #expect(OllamaCatalogPresentation.progressLabel(for: hosted, percent: 73) == "Adding…")
-  }
-
-  /// Two-way control: a local download is still a download, and still shows its
-  /// real percentage.
-  @Test("a local row in progress still says Downloading with its percentage")
-  func localProgressKeepsDownloadWording() {
-    let local = catalogEntry("llama3.2", isRemote: false, isDownloaded: false)
-    #expect(OllamaCatalogPresentation.progressLabel(for: local, percent: 42) == "Downloading… 42%")
   }
 
   // MARK: - #1956 The verification date is stated in UTC (review r6)

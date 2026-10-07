@@ -77,11 +77,8 @@ final class AppLifecycleCoordinator {
   // hands the presenter a `Trigger` fact.
   private let bluetoothAwarenessPresenter: BluetoothAwarenessPresenter
   /// #1707 Phase 2: DEBUG fault-injection oracle (§11.1/§3.2a-i), forwarded
-  /// into `DebugFaultEndpoint`'s construction below — a deliberate, explicit
-  /// stored-property allowlist addition (`AppLifecycleCoordinatorCeilingsTests.swift`),
-  /// not a workaround around it: the ceilings test exists to catch accidental
-  /// growth, and this is one genuinely new capability adding exactly one
-  /// dependency.
+  /// into `DebugFaultEndpoint`'s construction below: one genuinely new
+  /// capability adding exactly one dependency.
   private let batchDecodeFaultController: BatchDecodeFaultController?
   /// #2787: the persisted stage checkpoint. Read once at launch for the
   /// previous process's interrupted take, and mirrored into every telemetry
@@ -91,8 +88,7 @@ final class AppLifecycleCoordinator {
   /// #996: what each real transition into `.recording` tells the learn-from-edits
   /// watcher (a new dictation cancels a live edit watch, plan §3.1 step 4). One
   /// closure, stored because the pipeline-state closure is installed in
-  /// `applicationDidFinishLaunching`, after `init` has returned; a deliberate
-  /// allowlist addition (`AppLifecycleCoordinatorCeilingsTests`), one narrow
+  /// `applicationDidFinishLaunching`, after `init` has returned; one narrow
   /// callback rather than a second pipeline observer.
   private let onRecordingStarted: @MainActor () -> Void
 
@@ -118,7 +114,7 @@ final class AppLifecycleCoordinator {
     applicationRelocationCoordinator: ApplicationRelocationCoordinator,
     bluetoothAwarenessPresenter: BluetoothAwarenessPresenter,
     // #1176: captured in the onboarding-dismiss closure below (NOT stored — keeps
-    // this coordinator's stored-property ceiling clean).
+    // this coordinator's stored properties lean).
     onboardingProgress: OnboardingProgress,
     transcriptionCheckpointStore: TranscriptionCheckpointStore,
     batchDecodeFaultController: BatchDecodeFaultController? = nil,

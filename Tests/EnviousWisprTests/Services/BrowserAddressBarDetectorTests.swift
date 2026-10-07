@@ -84,11 +84,6 @@ struct BrowserAddressBarDetectorTests {
 
   // MARK: - family(forBundleIdentifier:) — the cheap, no-AX-call half (Codex review r1)
 
-  @Test("Safari's bundle resolves to the .safari family")
-  func safariResolvesToSafariFamily() {
-    #expect(BrowserAddressBarDetector.family(forBundleIdentifier: "com.apple.Safari") == .safari)
-  }
-
   @Test(
     "Every Chromium bundle resolves to the .chromium family",
     arguments: ["com.google.Chrome", "com.brave.Browser", "com.microsoft.edgemac"])

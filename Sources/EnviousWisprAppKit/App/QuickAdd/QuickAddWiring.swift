@@ -7,9 +7,8 @@ import SwiftUI
 
 /// Everything Quick Add needs to actually run, in ONE object (#2381).
 ///
-/// **One stored property in the composition root, not four.** `EnviousWisprAppCeilingsTests` caps
-/// what `WisprBootstrapper` may hold, and the documented way to spend one slot on a group of
-/// collaborators is a nested type — the same pattern `RecordingLockedAccess` and
+/// **One stored property in the composition root, not four.** The way to keep a group of
+/// collaborators in one slot of `WisprBootstrapper` is a nested type — the same pattern `RecordingLockedAccess` and
 /// `SparkleUpdaterFactory` use. It is also what keeps the deletability property honest: removing this
 /// feature is three directories, one property, and one call.
 ///

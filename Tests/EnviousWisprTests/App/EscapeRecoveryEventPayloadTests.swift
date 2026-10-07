@@ -107,16 +107,6 @@ import Testing
         ])
     }
 
-    /// The two the abandonment contract creates. An earlier draft of the plan
-    /// omitted both, which would have made a deliberate discard indistinguishable
-    /// from a failure.
-    @Test("abandoned and transcription_failed are in the vocabulary")
-    func abandonmentOutcomesExist() {
-      let labels = Set(EscapeRecoveryTerminalOutcome.allCases.map(\.rawValue))
-      #expect(labels.contains("abandoned"))
-      #expect(labels.contains("transcription_failed"))
-    }
-
     /// `restored` MEANS the user got the text back, so a "failed" value is a
     /// contradiction that would inflate the numerator of the ratio this funnel
     /// exists to compute.

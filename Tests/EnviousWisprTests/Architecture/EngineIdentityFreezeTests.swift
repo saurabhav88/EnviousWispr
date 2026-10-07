@@ -248,31 +248,10 @@ import Testing
 
   // MARK: PR-5 Rung 4 — factory surface + production-unwired invariant
 
-  @Test("KernelDictationDriverFactory exposes both engine-construction methods")
-  func factoryExposesBothEngineMethods() throws {
-    let relative = "Sources/EnviousWisprPipeline/KernelDictationDriverFactory.swift"
-    let source = try Self.readSource(relative)
-    // PR-5 Rung 5 (#827) narrowed factory methods from `public` to `package`.
-    #expect(
-      source.contains("package static func makeForParakeet("),
-      """
-      \(relative) must expose `makeForParakeet(inputs:)` at `package` access.
-      The Parakeet engine branch is the live caller path; removing or renaming
-      it silently would break the App's launch-time pipeline construction.
-      """)
-    #expect(
-      source.contains("package static func makeForWhisperKit("),
-      """
-      \(relative) must expose `makeForWhisperKit(inputs:)` at `package` access.
-      Rung 5 wired the App caller; removing it would break WhisperKit recording.
-      """)
-  }
-
   // PR-5 Rung 5 (#827) — `makeForWhisperKitHasNoProductionCaller` was deleted
-  // in this PR; its invariant inverted at cutover. The replacements below lock
-  // the post-cutover invariants (exactly one App caller; zero references to
-  // the deleted `WhisperKitPipeline` type / `WhisperKitPipelineState` enum /
-  // `whisperKitPipeline` variable name; VAD signal source single-constructed).
+  // in this PR; its invariant inverted at cutover. The tests below lock the
+  // post-cutover invariants that remain: exactly one App caller of the
+  // WhisperKit factory branch, and a single VAD signal source.
 
   @Test("WhisperKit factory branch has exactly one production caller")
   func makeForWhisperKitHasExactlyOneProductionCaller() throws {
@@ -310,58 +289,6 @@ import Testing
       `EnviousWisprAppKit/App/WisprBootstrapper.swift` (#919: the composition \
       root relocated out of the app target's `@main` struct into the kit);
       found \(callers).
-      """)
-  }
-
-  @Test("WhisperKitPipeline has no construction site in production")
-  func whisperKitPipelineHasNoConstructionSite() throws {
-    let offenders = try Self.scanSources(pattern: #"\bWhisperKitPipeline\s*\("#)
-    #expect(
-      offenders.isEmpty,
-      """
-      Found WhisperKitPipeline construction site(s) — the legacy class was
-      deleted in PR-5 Rung 5 (#827). Use `KernelDictationDriverFactory
-      .makeForWhisperKit(inputs:)` instead.
-      \(offenders.joined(separator: "\n"))
-      """)
-  }
-
-  @Test("WhisperKitPipeline does not appear in type positions")
-  func whisperKitPipelineHasNoTypeAnnotations() throws {
-    let offenders = try Self.scanSources(
-      pattern: #":\s*WhisperKitPipeline\b|:\s*any\s+WhisperKitPipeline\b"#)
-    #expect(
-      offenders.isEmpty,
-      """
-      Found WhisperKitPipeline type annotation(s) — the legacy class was
-      deleted in PR-5 Rung 5 (#827). Stored fields and parameters now type
-      against `KernelDictationDriver`.
-      \(offenders.joined(separator: "\n"))
-      """)
-  }
-
-  @Test("whisperKitPipeline variable name is fully scrubbed from Sources/")
-  func whisperKitPipelineVariableNameIsGone() throws {
-    let offenders = try Self.scanSources(pattern: #"\bwhisperKitPipeline\b"#)
-    #expect(
-      offenders.isEmpty,
-      """
-      Found references to the `whisperKitPipeline` identifier — PR-5 Rung 5
-      (#827) renamed every App-layer field and parameter to
-      `whisperKitKernelDriver`.
-      \(offenders.joined(separator: "\n"))
-      """)
-  }
-
-  @Test("WhisperKitPipelineState enum is deleted; no refs remain")
-  func whisperKitPipelineStateHasZeroRefs() throws {
-    let offenders = try Self.scanSources(pattern: #"\bWhisperKitPipelineState\b"#)
-    #expect(
-      offenders.isEmpty,
-      """
-      Found references to the deleted `WhisperKitPipelineState` enum — PR-5
-      Rung 5 (#827) collapsed both backends onto the shared `PipelineState`.
-      \(offenders.joined(separator: "\n"))
       """)
   }
 
@@ -669,9 +596,8 @@ import Testing
 
   /// Recursive scan over every `Sources/**/*.swift` file. Returns
   /// `relative/path.swift:LINE_NUMBER: line-content` for every line whose
-  /// regex matches. Used by the PR-5 Rung 5 freeze tests that lock the
-  /// post-cutover invariants (no `WhisperKitPipeline`, no
-  /// `WhisperKitPipelineState`, no `whisperKitPipeline`, single VAD source).
+  /// regex matches. Used by the factory-caller, VAD-construction,
+  /// identity-literal and adapter-construction checks in this suite.
   ///
   /// Lines whose first non-whitespace characters are `//` or `///` are
   /// skipped — comments referencing the legacy names are intentional

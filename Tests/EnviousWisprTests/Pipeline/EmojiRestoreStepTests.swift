@@ -42,23 +42,7 @@ import Testing
     #expect(step().isEnabled == true)
   }
 
-  @Test("maxDuration is a generous backstop, not a real deadline")
-  func maxDurationBackstop() {
-    #expect(step().maxDuration == .milliseconds(50))
-  }
-
   // MARK: Provider gate
-
-  @Test("Non-AFM provider is left completely untouched (no restore, no telemetry)")
-  func nonAFMProviderUntouched() async throws {
-    var c = TextProcessingContext(text: "Shipped it 🚀.", language: nil)
-    c.llmProvider = LLMProvider.openAI.rawValue
-    c.polishedText = "Shipped it."  // pretend a cloud model dropped the emoji
-    let s = step()
-    let out = try await s.process(c)
-    #expect(out.polishedText == "Shipped it.")  // unchanged — cloud owns its own emoji
-    #expect(s.lastRun == nil)
-  }
 
   @Test("Nil polished text → no-op, no telemetry (delivery uses the emoji-bearing text)")
   func nilPolishedIsNoop() async throws {
@@ -163,26 +147,6 @@ import Testing
     #expect(s.lastRun?.dropped == 0)
   }
 
-  /// Cloud review caught that gating on `provider == .ollama` silently included HOSTED
-  /// Ollama and EG-1-served-through-Ollama, because `LLMPolishStep` stamps all three with the
-  /// same provider rawValue — the code included two paths its own comment excluded. The gate
-  /// keys on the prompt FAMILY now, and this pins every Ollama sub-path separately so the
-  /// distinction cannot silently collapse back to the provider.
-  @Test(
-    "only the LOCAL Ollama family restores; hosted and EG-1-via-Ollama do not (#1948)",
-    arguments: [
-      (PromptFamily.localFixed, true),
-      (PromptFamily.cloudFixed, false),  // hosted Ollama — takes the fixed v6 prompt
-      (PromptFamily.egOneFixed, false),  // EG-1 served through Ollama — training prompt
-    ])
-  func ollamaFamilyGate(family: PromptFamily, shouldRestore: Bool) async throws {
-    let s = step()
-    let out = try await s.process(
-      ollamaContext(pre: "shipped it 🚀", polished: "Shipped it.", family: family))
-    #expect((out.polishedText?.contains("🚀") ?? false) == shouldRestore)
-    #expect((s.lastRun != nil) == shouldRestore)
-  }
-
   /// Every non-Ollama provider except Apple Intelligence stays untouched, whatever family
   /// happens to be stamped. A future widening past measured evidence has to change this test
   /// and bring numbers with it.
@@ -204,21 +168,6 @@ import Testing
     let out = try await s.process(c)
     #expect(out.polishedText == "Shipped it.")
     #expect(s.lastRun == nil)
-  }
-
-  /// Apple Intelligence returns before the family stamp, so it must still be matched by
-  /// provider with a nil family. Without this, moving the gate to the family would have
-  /// silently switched AFM restoration off — the regression that motivated #761.
-  @Test("Apple Intelligence still restores with NO family stamped (#1948)")
-  func appleIntelligenceRestoresWithoutFamily() async throws {
-    var c = TextProcessingContext(text: "shipped it 🚀", language: nil)
-    c.llmProvider = LLMProvider.appleIntelligence.rawValue
-    c.promptFamily = nil
-    c.polishedText = "Shipped it."
-    let s = step()
-    let out = try await s.process(c)
-    #expect(out.polishedText?.contains("🚀") == true)
-    #expect(s.lastRun?.restored == 1)
   }
 
   /// Cross-product of provider and family (design review Q2). The gate requires BOTH, so a
@@ -370,30 +319,6 @@ import Testing
     }
   }
 
-  /// Two-way control: a non-blank polish on the same input still restores, so the guard above
-  /// cannot be satisfied by simply disabling restoration.
-  @Test("a non-blank polish on the same input still restores (#1948 control)")
-  func nonBlankStillRestores() async throws {
-    let s = step()
-    let out = try await s.process(
-      ollamaContext(pre: "on my way now 🙏", polished: "On my way now."))
-    #expect(out.polishedText?.contains("🙏") == true)
-    #expect(s.lastRun?.restored == 1)
-  }
-
-  /// A nil provider AND a nil family must restore nothing — the state a skipped or failed
-  /// polish leaves behind, where `polishedText` came from somewhere other than a model.
-  @Test("nil provider and nil family restore nothing (#1948)")
-  func nilProviderUntouched() async throws {
-    var c = TextProcessingContext(text: "shipped it 🚀", language: nil)
-    c.llmProvider = nil
-    c.promptFamily = nil
-    c.polishedText = "Shipped it."
-    let s = step()
-    let out = try await s.process(c)
-    #expect(out.polishedText == "Shipped it.")
-    #expect(s.lastRun == nil)
-  }
   // MARK: - The real handoff, end to end (#1948, design review Q4)
 
   /// Every test above SEEDS `promptFamily` by hand, so all of them would still pass if

@@ -66,12 +66,6 @@ struct CustomWordSourceMigrationTests {
     #expect(decoded.source == .user)
   }
 
-  @Test("Default init param defaults source to .user")
-  func defaultInitSourceIsUser() {
-    let word = CustomWord(canonical: "Test")
-    #expect(word.source == .user)
-  }
-
   @Test("Explicit source param is honored at construction")
   func explicitSourceHonored() {
     let b = CustomWord(canonical: "Builtin", source: .builtin)

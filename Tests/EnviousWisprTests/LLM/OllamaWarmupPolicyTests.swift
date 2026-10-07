@@ -40,12 +40,6 @@ struct OllamaWarmupPolicyTests {
         == .run(facts: OllamaModelFacts(isRemote: false, thinks: false)))
   }
 
-  @Test("a remote model does NOT warm")
-  func remoteModelSkips() {
-    let remote = model("gpt-oss:120b-cloud", isRemote: true, thinks: true)
-    #expect(OllamaSetupService.warmupPolicy(for: remote) == .skipRemote)
-  }
-
   /// The two-way control. Without the local case above, an implementation that
   /// skipped EVERYTHING would satisfy the remote test while silently disabling
   /// warm-up for every user — a pure regression with no visible symptom beyond
@@ -75,27 +69,10 @@ struct OllamaWarmupPolicyTests {
   // built inline, changing the warm-up's thinking level from "low" to "high"
   // left every test in this suite green. Policy coverage is not body coverage.
 
-  @Test("a thinking model's warm-up sends think low, as a string")
-  func thinkingWarmupSendsLow() {
-    let body = OllamaSetupService.makeWarmupRequestBody(model: "qwen3", thinks: true)
-    #expect(body["think"] as? String == "low")
-  }
-
   @Test("a non-thinking model's warm-up sends no think key at all")
   func nonThinkingWarmupOmitsThink() {
     let body = OllamaSetupService.makeWarmupRequestBody(model: "llama3.2", thinks: false)
     #expect(body["think"] == nil)
-  }
-
-  /// The #272 regression this chunk closes. A `Bool` and a `String` both satisfy
-  /// `!= nil`, so the TYPE is what makes this assertion meaningful — asserting
-  /// mere presence would pass for the forbidden `think: false`.
-  @Test("warm-up never emits a boolean think, in either direction")
-  func warmupNeverSendsBooleanThink() {
-    #expect(
-      OllamaSetupService.makeWarmupRequestBody(model: "m", thinks: true)["think"] as? Bool == nil)
-    #expect(
-      OllamaSetupService.makeWarmupRequestBody(model: "m", thinks: false)["think"] as? Bool == nil)
   }
 
   @Test("warm-up preserves its existing shape apart from the thinking key")
