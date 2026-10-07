@@ -74,6 +74,25 @@ jobs:
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: scripts/ci/classify-changes.sh "$BASE_SHA" "$HEAD_SHA"
 
+      # #3505: the eval-package compile (last step of this job) took 669 s of a
+      # 33-minute check on every app-code PR. It runs only when the PR changes one
+      # of the packages' inputs, which scripts/ci/eval-package-inputs.py DERIVES
+      # from the manifests (root targets reachable from the products the packages
+      # use, plus manifests, lockfile and these scripts) rather than a hand list
+      # that could miss a new dependency. Every doubt (empty SHA, failed diff,
+      # unreadable manifest) answers true. The self-test runs here, not in the
+      # ubuntu aggregator, because the derivation needs `swift package`.
+      - name: Detect eval-package input changes
+        id: eval_inputs
+        if: steps.changes.outputs.needs_build == 'true'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          scripts/ci/needs-eval-packages.sh --self-test
+          scripts/ci/needs-eval-packages.sh "$BASE_SHA" "$HEAD_SHA"
+
       # #1778: the notices gate used to run ONLY during release packaging, so a
       # dependency bump that forgot the generator sat green on main until someone
       # tried to ship - v2.4.1 lost two release runs to exactly that (Sparkle
@@ -312,7 +331,7 @@ jobs:
       # files), so the suite's build is freed first. `find -xdev -delete`, not
       # `rm -rf`, and only after proving the directory is not its own mount.
       - name: Free DerivedData before the eval packages
-        if: steps.changes.outputs.needs_build == 'true'
+        if: steps.changes.outputs.needs_build == 'true' && steps.eval_inputs.outputs.needs_eval_packages != 'false'
         run: |
           set -euo pipefail
           echo "==> disk before: $(df -h "$GITHUB_WORKSPACE" | tail -1)"
@@ -327,7 +346,7 @@ jobs:
           echo "==> disk after:  $(df -h "$GITHUB_WORKSPACE" | tail -1)"
 
       - name: Compile standalone eval packages
-        if: steps.changes.outputs.needs_build == 'true'
+        if: steps.changes.outputs.needs_build == 'true' && steps.eval_inputs.outputs.needs_eval_packages != 'false'
         run: |
           set -euo pipefail
           . "$GITHUB_WORKSPACE/scripts/lib/ci-phase.sh"
