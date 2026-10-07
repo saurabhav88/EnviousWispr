@@ -181,12 +181,7 @@ struct SettingsMapExportTests {
   /// One node's metadata, without vocabulary. Enum-valued fields are the Swift case names of
   /// SettingsMapStructure, SettingsMapVisibility and SettingsMapDynamicTitle.
   static func node(_ node: SettingsMapNode) throws -> [String: Any] {
-    var context: [String] = []
-    var parent = node.parent
-    while let id = parent {
-      context.insert(id.rawValue, at: 0)
-      parent = SettingsMap.node(id).parent
-    }
+    let context = try ancestors(of: node).map(\.rawValue)
     return [
       "id": node.id.rawValue,
       "structure": "\(node.structure)",
@@ -203,6 +198,22 @@ struct SettingsMapExportTests {
       "fallbacks": node.fallbacks.map(\.rawValue),
       "declaredIn": mapFile,
     ]
+  }
+
+  /// A node's ancestors, outermost first. A repeated id is a cycle, which fails the export
+  /// instead of looping.
+  static func ancestors(of node: SettingsMapNode) throws -> [SettingsMapID] {
+    var chain: [SettingsMapID] = []
+    var seen: Set<SettingsMapID> = [node.id]
+    var parent = node.parent
+    while let id = parent {
+      guard seen.insert(id).inserted else {
+        throw ExportError(description: "\(node.id.rawValue) sits in a cycle at \(id.rawValue)")
+      }
+      chain.insert(id, at: 0)
+      parent = SettingsMap.node(id).parent
+    }
+    return chain
   }
 
   static func block(_ block: SettingsSearchVocabulary.Block) -> [String: Any] {
@@ -293,13 +304,8 @@ struct SettingsMapExportTests {
           ? "\(id) is a structural Settings Map node; it has no vocabulary"
           : "\(id) is not a searchable Settings Map id (unknown, renamed or exempt)")
     }
-    var ancestors: [[String: Any]] = []
-    var parent = entry.node.parent
-    while let ancestorID = parent, ancestorID != .windowSettings {
-      let ancestor = SettingsMap.node(ancestorID)
-      ancestors.insert(try node(ancestor), at: 0)
-      parent = ancestor.parent
-    }
+    let ancestors = try Self.ancestors(of: entry.node).filter { $0 != .windowSettings }
+      .map { try node(SettingsMap.node($0)) }
     return try serialize([
       "schema": "settings-map-export", "version": formatVersion,
       "entries": [try node(entry.node)], "ancestors": ancestors,

@@ -79,7 +79,7 @@ struct SettingsMapTests {
       while let parent = cursor {
         let next = try #require(
           SettingsMap.byID[parent], "\(node.id.rawValue) has a missing parent")
-        #expect(seen.insert(parent).inserted, "\(node.id.rawValue) sits in a cycle")
+        try #require(seen.insert(parent).inserted, "\(node.id.rawValue) sits in a cycle")
         cursor = next.parent
       }
     }
