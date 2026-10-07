@@ -71,6 +71,29 @@ self_test() {
   check "Sources/EnviousWisprCoreExtra/X.swift" false "prefix match needs the slash"
   check "Package.swift.orig" false "exact file is not a prefix"
   check "" false "no files"
+  # Real git diffs: a file moved OUT of an input directory, and a non-ASCII name.
+  local tmp
+  tmp="$(mktemp -d)"
+  (
+    cd "$tmp" && git init -q && git config user.email t@t && git config user.name t
+    mkdir -p Sources/EnviousWisprCore Sources/EnviousWisprAppKit
+    printf 'let a = 1\n' >Sources/EnviousWisprCore/Foo.swift && git add -A && git commit -qm base
+    git mv Sources/EnviousWisprCore/Foo.swift Sources/EnviousWisprAppKit/Foo.swift && git commit -qm move
+    printf 'let b = 2\n' >"Sources/EnviousWisprCore/Café.swift" && git add -A && git commit -qm accent
+  ) >/dev/null
+  local base_sha
+  base_sha="$(git -C "$tmp" rev-list --max-parents=0 HEAD)"
+  diff_paths() {
+    local raw paths=""
+    raw="$(mktemp)"
+    git -C "$tmp" diff --no-renames --name-only -z "$1" >"$raw"
+    while IFS= read -r -d '' p; do paths+="$p"$'\n'; done <"$raw"
+    rm -f "$raw"
+    printf '%s' "$paths"
+  }
+  check "$(diff_paths "${base_sha}...HEAD~1")" true "file moved out of an input directory"
+  check "$(diff_paths "HEAD~1...HEAD")" true "non-ASCII file name in an input directory"
+  rm -rf "$tmp"
   # The real derivation must find the root targets the packages use.
   if real="$(python3 "$here/eval-package-inputs.py" "$repo")" && grep -qx "Sources/EnviousWisprCore/" <<<"$real"; then
     echo "ok   [derivation includes Core]"
@@ -93,10 +116,19 @@ case "${1:-}" in
       emit true "BASE_SHA or HEAD_SHA is empty; compiling to be safe"
       exit 0
     fi
-    if ! changed="$(git -C "$repo" diff --name-only "${base}...${head}" 2>/dev/null)"; then
+    # --no-renames: a rename reports only its destination, so a file moved OUT of an
+    # input directory would look like an unrelated change. -z: without it Git quotes
+    # non-ASCII, quote and backslash names, which then match no input prefix. Both
+    # failures would skip a needed compile; NUL-separated, rename-free paths cannot.
+    raw="$(mktemp)"
+    if ! git -C "$repo" diff --no-renames --name-only -z "${base}...${head}" >"$raw" 2>/dev/null; then
+      rm -f "$raw"
       emit true "git diff ${base}...${head} failed; compiling to be safe"
       exit 0
     fi
+    changed=""
+    while IFS= read -r -d '' path; do changed+="$path"$'\n'; done <"$raw"
+    rm -f "$raw"
     inputs="$(inputs_or_fail_safe)" || exit 0
     classify "$inputs" <<<"$changed"
     ;;
