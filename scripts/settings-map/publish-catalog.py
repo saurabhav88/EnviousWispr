@@ -208,6 +208,20 @@ def snapshot(connection):
     return {table: set(connection.execute(f"SELECT * FROM {table}")) for table in tables}
 
 
+def snapshot_after(catalog_db, sql, times):
+    """Database contents after applying `sql` `times` times to a disposable copy."""
+    with tempfile.TemporaryDirectory() as folder:
+        copy = pathlib.Path(folder) / "catalog.db"
+        shutil.copyfile(catalog_db, copy)
+        connection = sqlite3.connect(copy)
+        connection.execute("PRAGMA foreign_keys = OFF")
+        for _ in range(times):
+            connection.executescript(sql)
+        contents = snapshot(connection)
+        connection.close()
+        return contents
+
+
 def verify_on_copy(catalog_db, sql, owned_keys, new_slugs, stale_keys):
     """Applies the migration to a disposable copy and proves what it preserves."""
     with tempfile.TemporaryDirectory() as folder:
@@ -385,7 +399,12 @@ def self_test():
         check("preserves everything it does not own", problems == [])
         check("setting links unchanged", report.get("setting_surface") == "1 unchanged")
         check("other tables unchanged", report.get("platform") == "2 unchanged")
-        check("applying twice is stable", verify_on_copy(db, sql + sql.replace("BEGIN;", "").replace("COMMIT;", ""), owned, new, stale)[0] == [])
+        check("applying twice leaves exactly what applying once does",
+              snapshot_after(db, sql, 1) == snapshot_after(db, sql, 2))
+        drifting = sql.replace("verified_at = excluded.verified_at;", "verified_at = evidence.verified_at || 'x';", 1)
+        check("the drift control changed the migration", drifting != sql)
+        check("the stability check catches a migration that drifts on reapplication",
+              snapshot_after(db, drifting, 1) != snapshot_after(db, drifting, 2))
 
         bad = sql.replace("COMMIT;", "UPDATE ui_surface SET user_label = 'x' WHERE surface_slug = 'win-ctl';\nCOMMIT;")
         check("detects a change to a row it does not own", any("ui_surface" in p for p in verify_on_copy(db, bad, owned, new, stale)[0]))

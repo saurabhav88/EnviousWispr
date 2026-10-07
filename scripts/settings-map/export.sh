@@ -103,10 +103,17 @@ run() {
   fi
 
   mkdir -p "$REFERENCE"
-  cp "$staging/settings-map.json" "$REFERENCE/settings-map.json.new"
-  cp "$staging/settings-map.md" "$REFERENCE/settings-map.md.new"
-  mv "$REFERENCE/settings-map.json.new" "$REFERENCE/settings-map.json"
-  mv "$REFERENCE/settings-map.md.new" "$REFERENCE/settings-map.md"
+  # One writer at a time, so two exports cannot pair one run's JSON with another's Markdown.
+  mkdir "$REFERENCE/.export.lock" 2>/dev/null || die 2 "another export is writing reference/ (remove reference/.export.lock if none is)"
+  local json_tmp md_tmp
+  json_tmp="$(mktemp "$REFERENCE/.settings-map.json.XXXXXX")"
+  md_tmp="$(mktemp "$REFERENCE/.settings-map.md.XXXXXX")"
+  cp "$staging/settings-map.json" "$json_tmp"
+  cp "$staging/settings-map.md" "$md_tmp"
+  chmod 644 "$json_tmp" "$md_tmp"
+  mv "$json_tmp" "$REFERENCE/settings-map.json"
+  mv "$md_tmp" "$REFERENCE/settings-map.md"
+  rmdir "$REFERENCE/.export.lock"
   echo "export.sh: wrote reference/settings-map.json and reference/settings-map.md"
 }
 
@@ -174,6 +181,11 @@ PY
   check "--from a one-place export is refused" 2 "$(status run --from "$scratch/place.json")"
   check "refusal left files untouched" "$written" "$(hash)"
   check "unknown argument" 2 "$(status run --bogus)"
+  mkdir "$REFERENCE/.export.lock"
+  check "a held lock refuses a second writer" 2 "$(status run --from "$good")"
+  check "the refused writer left the files" "$written" "$(hash)"
+  rmdir "$REFERENCE/.export.lock"
+  check "no temporary files left in reference/" "" "$(find "$REFERENCE" -name '.settings-map.*' | head -1)"
 
   rm -rf "$scratch"
   echo "self-test: $passed passed, $failed failed"

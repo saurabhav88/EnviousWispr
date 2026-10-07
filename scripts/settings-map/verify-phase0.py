@@ -26,6 +26,10 @@ import sys
 import unicodedata
 
 INTERFACE = ("en", "de")
+DECLARED = [
+    "ar", "bg", "cs", "da", "de", "el", "en", "es", "et", "fi", "fr", "hi", "hr", "hu", "it", "ja",
+    "ko", "lt", "lv", "mt", "nl", "pl", "pt", "ro", "ru", "sk", "sl", "sv", "tr", "uk", "vi", "zh",
+]
 
 
 def fold(text):
@@ -97,7 +101,12 @@ def main():
                                         "phrases": block["phrases"]}
 
     failures = 0
-    for code in resource["languages"]:
+    if resource.get("languages") != DECLARED:
+        print(f"FAIL the resource declares {resource.get('languages')}, not the 32 declared languages")
+        failures += 1
+    checked = 0
+    for code in DECLARED:
+        checked += 1
         if code not in reviewed:
             print(f"{code}: FAIL no Phase 0 review output")
             failures += 1
@@ -118,6 +127,9 @@ def main():
             replacement = edits.get(entry_id, {}).get(code, {})
             edited += bool(replacement)
             expected.update(replacement)
+            if entry_id not in shipped:
+                differing.append(entry_id)
+                continue
             got = {k: v for k, v in shipped[entry_id].items() if k != "language"}
             if code in INTERFACE:
                 expected.pop("title", None)
@@ -129,7 +141,7 @@ def main():
               f"{len(added)} added with their own review, "
               f"{edited} replaced by reviewed edits, missing {sorted(missing)[:5]}, "
               f"differing {differing[:5]}")
-    sys.exit(1 if failures else 0)
+    sys.exit(1 if failures or checked != len(DECLARED) else 0)
 
 
 if __name__ == "__main__":
