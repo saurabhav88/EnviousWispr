@@ -46,7 +46,7 @@ struct SettingsSearchTelemetryTests {
   @Test("the whole query is dropped when it could identify someone or hold a secret")
   func dropsSensitiveQueries() {
     for text in [
-      "me@example.com", "https://example.com/x", "www.example.com", "visit example.com",
+      "me@example.com", "jane@work", "https://example.com/x", "www.example.com", "visit example.com",
       "example.cloud", "my.site.xyz",
       "call 555 123 4567", "1234567", "sk-proj-abc123", "AIzaSyD-whatever",
       "ghp_0123456789abcdef", "a8F3k2L9q0Z7x1C4v6B5n", "ab", String(repeating: "x", count: 81),
