@@ -61,8 +61,9 @@ draft() {
   [ -f "$BRIEF" ] || die 2 "missing $BRIEF"
 
   local dir
-  mkdir -p "$DRAFTS_ROOT"
-  dir="$(mktemp -d "$DRAFTS_ROOT/$id-$(date -u +%Y%m%dT%H%M%SZ).XXXXXX")"
+  # Every step checks its own status: draft may run where errexit does not apply.
+  mkdir -p "$DRAFTS_ROOT" || die 2 "cannot create $DRAFTS_ROOT"
+  dir="$(mktemp -d "$DRAFTS_ROOT/$id-$(date -u +%Y%m%dT%H%M%SZ).XXXXXX")" || die 2 "cannot create a draft folder"
   local export_json="$dir/export.json"
 
   echo "draft-vocabulary: exporting $id from the compiled Settings Map (log: $dir/export.log)"
@@ -84,13 +85,15 @@ sys.exit(0 if document.get("schema") == "settings-map-export" and isinstance(ent
 PY
 
   local prompt="$dir/prompt.md"
-  cat "$BRIEF" "$export_json" >"$prompt"
+  cat "$BRIEF" "$export_json" >"$prompt" || die 2 "cannot write $prompt"
 
   # A fresh isolated context, outside every repository.
   local iso
-  iso="$(mktemp -d "${TMPDIR:-/tmp}/ew-vocab-draft.XXXXXX")"
-  mkdir "$iso/work" "$iso/codex-home"
-  ln -s "$CODEX_AUTH" "$iso/codex-home/auth.json"
+  iso="$(mktemp -d "${TMPDIR:-/tmp}/ew-vocab-draft.XXXXXX")" || die 4 "cannot create an isolated folder"
+  # shellcheck disable=SC2064
+  trap "rm -rf '$iso'" EXIT
+  mkdir "$iso/work" "$iso/codex-home" || die 4 "cannot create the isolated folders"
+  ln -s "$CODEX_AUTH" "$iso/codex-home/auth.json" || die 4 "cannot link the Codex auth file"
   if git -C "$iso/work" rev-parse --git-dir >/dev/null 2>&1; then
     die 4 "isolation failed: $iso/work is inside a git repository"
   fi
@@ -108,7 +111,7 @@ PY
   "$LAUNCH_FN" "$iso/work" "$iso/codex-home" "$iso/out.txt" <"$prompt" || status=$?
   [ "$status" -eq 0 ] || die 4 "codex-run failed with exit $status (quota, auth or stall); no draft written"
   [ -s "$iso/out.txt.last" ] || die 4 "codex-run exited 0 without an answer file"
-  cp "$iso/out.txt.last" "$dir/answer.txt"
+  cp "$iso/out.txt.last" "$dir/answer.txt" || die 4 "cannot keep the answer"
 
   python3 - "$dir/answer.txt" "$id" "$dir/draft.json" <<'PY' || die 5 "the answer is not one JSON object for $id; see $dir/answer.txt"
 import json, sys
@@ -135,8 +138,7 @@ PY
     echo "draft sha256: $(sha "$dir/draft.json")"
     echo "launch: codex-run exec, read-only sandbox, web search off, --ignore-rules, --ephemeral"
     echo "isolation: working folder outside every repository; CODEX_HOME held only auth.json"
-  } >"$dir/receipt.txt"
-  rm -rf "$iso"
+  } >"$dir/receipt.txt" || die 2 "cannot write the receipt"
   echo "draft-vocabulary: UNREVIEWED draft at $dir/draft.json (receipt: $dir/receipt.txt)"
 }
 
@@ -212,6 +214,12 @@ self_test() {
   check "Codex ran outside every repository" outside "$(cat "$scratch/repo.txt")"
   check "Codex ran in an empty folder" "" "$(cat "$scratch/workcontents.txt")"
   check "shipped resource and receipts untouched" "$before" "$(shipped_state)"
+  local real_root="$DRAFTS_ROOT"
+  : >"$scratch/not-a-folder"
+  DRAFTS_ROOT="$scratch/not-a-folder/drafts"
+  check "an unwritable draft folder stops the run" 2 "$(run good.id)"
+  DRAFTS_ROOT="$real_root"
+  check "no isolated folder is left behind" 0 "$(find "${TMPDIR:-/tmp}" -maxdepth 1 -name 'ew-vocab-draft.*' -newer "$scratch/auth.json" | wc -l | tr -d ' ')"
 
   rm -rf "$scratch"
   echo "self-test: $passed passed, $failed failed"

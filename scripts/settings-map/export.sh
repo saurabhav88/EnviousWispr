@@ -21,6 +21,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 REFERENCE="$ROOT/reference"
 RENDER="$ROOT/scripts/settings-map/render-reference.py"
 EXTRACT_FN=extract
+MV="mv"
 
 die() {
   local code="$1"
@@ -65,13 +66,13 @@ run() {
   done
 
   local staging
-  staging="$(mktemp -d "${TMPDIR:-/tmp}/settings-map-export.XXXXXX")"
+  staging="$(mktemp -d "${TMPDIR:-/tmp}/settings-map-export.XXXXXX")" || die 2 "cannot create a staging folder"
   # shellcheck disable=SC2064
   trap "rm -rf '$staging'" EXIT
 
   if [ -n "$from" ]; then
     [ -s "$from" ] || die 2 "no export at $from (did the export test run?)"
-    cp "$from" "$staging/settings-map.json"
+    cp "$from" "$staging/settings-map.json" || die 2 "cannot read $from"
   else
     echo "export.sh: extracting from the compiled Settings Map (log: $staging/extract.log)"
     local status=0
@@ -81,7 +82,7 @@ run() {
       cp "$staging/extract.log" "${TMPDIR:-/tmp}/settings-map-extract-failed.log" 2>/dev/null || true
       die 2 "extraction failed (status $status); log kept at ${TMPDIR:-/tmp}/settings-map-extract-failed.log"
     fi
-    mv "$staging/export.json" "$staging/settings-map.json"
+    mv "$staging/export.json" "$staging/settings-map.json" || die 2 "cannot stage the export"
   fi
   render "$staging"
 
@@ -102,18 +103,26 @@ run() {
     return 0
   fi
 
-  mkdir -p "$REFERENCE"
+  mkdir -p "$REFERENCE" || die 2 "cannot create reference/"
   # One writer at a time, so two exports cannot pair one run's JSON with another's Markdown.
+  # Every step below checks its own status: run may be called where errexit does not apply.
   mkdir "$REFERENCE/.export.lock" 2>/dev/null || die 2 "another export is writing reference/ (remove reference/.export.lock if none is)"
-  local json_tmp md_tmp
-  json_tmp="$(mktemp "$REFERENCE/.settings-map.json.XXXXXX")"
-  md_tmp="$(mktemp "$REFERENCE/.settings-map.md.XXXXXX")"
-  cp "$staging/settings-map.json" "$json_tmp"
-  cp "$staging/settings-map.md" "$md_tmp"
-  chmod 644 "$json_tmp" "$md_tmp"
-  mv "$json_tmp" "$REFERENCE/settings-map.json"
-  mv "$md_tmp" "$REFERENCE/settings-map.md"
-  rmdir "$REFERENCE/.export.lock"
+  local json_tmp="" md_tmp=""
+  # From here on, any exit releases the lock and removes this run's temporaries.
+  # shellcheck disable=SC2064
+  trap "rm -rf '$staging'; rm -f \"\${json_tmp:-}\" \"\${md_tmp:-}\"; rmdir '$REFERENCE/.export.lock' 2>/dev/null || true" EXIT
+  trap 'exit 130' INT
+  trap 'exit 143' TERM
+  json_tmp="$(mktemp "$REFERENCE/.settings-map.json.XXXXXX")" || die 2 "cannot create a temporary file in reference/"
+  md_tmp="$(mktemp "$REFERENCE/.settings-map.md.XXXXXX")" || die 2 "cannot create a temporary file in reference/"
+  cp "$staging/settings-map.json" "$json_tmp" || die 2 "cannot copy settings-map.json"
+  cp "$staging/settings-map.md" "$md_tmp" || die 2 "cannot copy settings-map.md"
+  chmod 644 "$json_tmp" "$md_tmp" || die 2 "cannot set file modes"
+  "$MV" "$json_tmp" "$REFERENCE/settings-map.json" || die 2 "could not install settings-map.json"
+  json_tmp=""
+  "$MV" "$md_tmp" "$REFERENCE/settings-map.md" || die 2 "could not install settings-map.md; reference/settings-map.json is new, rerun the export"
+  md_tmp=""
+  rmdir "$REFERENCE/.export.lock" || die 2 "could not release reference/.export.lock"
   echo "export.sh: wrote reference/settings-map.json and reference/settings-map.md"
 }
 
@@ -186,6 +195,12 @@ PY
   check "the refused writer left the files" "$written" "$(hash)"
   rmdir "$REFERENCE/.export.lock"
   check "no temporary files left in reference/" "" "$(find "$REFERENCE" -name '.settings-map.*' | head -1)"
+  MV=false
+  check "a failed install fails the run" 2 "$(status run --from "$good")"
+  check "a failed install releases the lock" no "$([ -d "$REFERENCE/.export.lock" ] && echo yes || echo no)"
+  check "a failed install leaves no temporaries" "" "$(find "$REFERENCE" -name '.settings-map.*' | head -1)"
+  check "a failed install left the files" "$written" "$(hash)"
+  MV="mv"
 
   rm -rf "$scratch"
   echo "self-test: $passed passed, $failed failed"

@@ -25,7 +25,9 @@ Usage:
 import argparse
 import hashlib
 import json
+import os
 import sys
+import tempfile
 import unicodedata
 
 LANGUAGES = [
@@ -134,6 +136,8 @@ def build(source_bytes, inventory, edits):
                 block["title"] = original.get("title", "")
             block["words"] = replacement.get("words", original["words"])
             block["phrases"] = replacement.get("phrases", original["phrases"])
+            if not block["phrases"] and "phraseExemption" in original:
+                block["phraseExemption"] = original["phraseExemption"]
             blocks.append(block)
         entries.append({"id": entry_id, "blocks": blocks})
 
@@ -197,6 +201,10 @@ def self_test():
          "still mapped"),
         ("retired without a reason", inventory(["keep"]), edits(retired={"gone": " "}),
          "nonblank reason"),
+        ("a reviewed phrase exemption is kept", inventory(["keep", "new"]),
+         edits(added={"new": {"blocks": {code: block(code, "n") | {"phrases": [], "phraseExemption": "title suffices"}
+                                        for code in LANGUAGES}, "review": "r", "reviewSHA256": "0" * 64}},
+               retired={"gone": "x"}), "exemption kept"),
         ("canonically equal list words", inventory(["keep"]),
          edits(retired={"gone": "x"}, languageData=lists | {"hi": {"stop": ["filler"],
                "markers": ["\u095c", "\u0921\u093c"]}}), "canonically equal"),
@@ -204,7 +212,12 @@ def self_test():
     failures = 0
     for name, inv, ed, want in cases:
         try:
-            got = [e["id"] for e in build(source, inv, ed)["entries"]]
+            built = build(source, inv, ed)
+            got = [e["id"] for e in built["entries"]]
+            if want == "exemption kept":
+                kept = all(b.get("phraseExemption") == "title suffices" and b["phrases"] == []
+                           for e in built["entries"] if e["id"] == "new" for b in e["blocks"])
+                got = "exemption kept" if kept else "exemption dropped"
         except BuildError as error:
             got = str(error)
         ok = got == want if isinstance(want, list) else isinstance(got, str) and want in got
@@ -235,8 +248,18 @@ def main():
     except BuildError as error:
         fail(str(error))
     data = encode(resource)
-    with open(args.out, "wb") as handle:
-        handle.write(data)
+    # Write beside the target and rename, so a reader never sees half a resource.
+    directory = os.path.dirname(os.path.abspath(args.out))
+    descriptor, staging = tempfile.mkstemp(prefix=".settings-search-vocabulary.", dir=directory)
+    try:
+        with os.fdopen(descriptor, "wb") as handle:
+            handle.write(data)
+        os.chmod(staging, 0o644)
+        os.replace(staging, args.out)
+    except BaseException:
+        if os.path.exists(staging):
+            os.unlink(staging)
+        raise
 
     print(f"resource {args.out}: {len(data)} bytes, SHA-256 {sha256(data)}")
     print(f"ids: {len(resource['entries'])} written, {len(edits.get('added', {}))} added, "

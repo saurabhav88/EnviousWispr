@@ -24,6 +24,7 @@ migration:
 
 import argparse
 import datetime
+import fcntl
 import hashlib
 import json
 import os
@@ -289,7 +290,7 @@ def next_name(catalog_dir, date):
     return f"{max(numbers, default=0) + 1:03d}-macos-settings-map-{date}.sql"
 
 
-def run(args):
+def run_unlocked(args):
     catalog_dir = pathlib.Path(args.catalog).expanduser()
     catalog_db = catalog_dir / "catalog.db"
     if not catalog_db.is_file():
@@ -340,6 +341,17 @@ def publish(catalog_dir, name, sql, rebuild):
     if result.returncode != 0:
         raise PublishError(f"rebuild.sh failed after writing {target}: {result.stderr[-400:]}")
     print(f"published {target}")
+
+
+def run(args):
+    """A --write publication holds an exclusive lock on the catalog folder, so two sessions
+    cannot write migrations or run rebuild.sh over each other's catalog.db.building."""
+    if not args.write:
+        return run_unlocked(args)
+    lock_path = pathlib.Path(args.catalog).expanduser() / ".settings-map-publish.lock"
+    with lock_path.open("a") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        return run_unlocked(args)
 
 
 def self_test():
