@@ -1040,14 +1040,20 @@ struct SettingsSummaryContentLayout: Layout {
 struct SettingsContentView<Content: View>: View {
   @ViewBuilder let content: Content
 
+  @Environment(\.settingsRevealIsShowing) private var revealIsShowing
+
   var body: some View {
-    ScrollView {
-      VStack(alignment: .leading, spacing: SettingsLayout.sectionSpacing) {
-        content
+    ScrollViewReader { proxy in
+      ScrollView {
+        VStack(alignment: .leading, spacing: SettingsLayout.sectionSpacing) {
+          content
+        }
+        .padding(.top, SettingsLayout.contentTop)
+        .padding(.horizontal, SettingsLayout.contentH)
+        .padding(.bottom, SettingsLayout.contentBottom)
       }
-      .padding(.top, SettingsLayout.contentTop)
-      .padding(.horizontal, SettingsLayout.contentH)
-      .padding(.bottom, SettingsLayout.contentBottom)
+      // #3482 §3.4: a search arrival on this page (eager content: no materialize step).
+      .modifier(SettingsArrivalModifier(proxy: proxy, topScrollID: nil, showing: revealIsShowing))
     }
     .frame(maxWidth: .infinity, maxHeight: .infinity)
     .background(Color.stPageBg)

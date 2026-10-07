@@ -57,7 +57,19 @@ struct UnifiedWindowView: View {
       .overlayPreferenceValue(SettingsSearchFieldAnchorKey.self) { anchor in
         searchDropdown(anchor)
       }
-      .background(SettingsWindowCloseObserver { search.reset() })
+      .background(
+        SettingsWindowCloseObserver {
+          search.reset()
+          navigationState.reveal = nil
+        })
+      // #3482 §3.4: a direct tab change drops an arrival meant for another tab.
+      .onChange(of: navigationState.dictationTab) { _, _ in navigationState.dropRevealIfNotShowing() }
+      .onChange(of: navigationState.appSettingsTab) { _, _ in
+        navigationState.dropRevealIfNotShowing()
+      }
+      .onChange(of: navigationState.dictionaryTab) { _, _ in
+        navigationState.dropRevealIfNotShowing()
+      }
       .focusedSceneValue(\.settingsFind) {
         search.reopenPanel()
         searchFocused = true
@@ -422,6 +434,12 @@ struct UnifiedWindowView: View {
       .environment(\.settingsNavigate) { navigate(.destination($0)) }
       // #3482: the arrival a search navigation asked for, nil for every other navigation.
       .environment(\.settingsReveal, navigationState.reveal)
+      .environment(\.settingsRevealAcknowledge) { navigationState.acknowledgeReveal(token: $0) }
+      .environment(\.settingsRevealIsShowing) { reveal in
+        guard let id = SettingsMapID(rawValue: reveal.entryID) else { return false }
+        let node = SettingsMap.node(id)
+        return navigationState.isShowing(node.destination, dictionaryTab: node.dictionaryTab)
+      }
   }
 }
 

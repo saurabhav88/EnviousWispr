@@ -38,6 +38,11 @@ final class SettingsSearchModel {
   private(set) var generation = 0
 
   private var selectionMovedByUser = false
+  /// Return pressed while the index was still loading, for this generation: the top result
+  /// opens as soon as it exists, unless the person types again first.
+  private var pendingSubmit: Int?
+  /// Opens a result chosen by a Return that arrived before results did (set by the field).
+  @ObservationIgnored var submitWhenReady: ((SettingsSearchRequest) -> Void)?
   private var announcement: Task<Void, Never>?
   private let loadIndex: @Sendable () async -> SettingsSearchIndex?
   private let announce: @MainActor (String) -> Void
@@ -109,6 +114,7 @@ final class SettingsSearchModel {
     query = text
     generation &+= 1
     selectionMovedByUser = false
+    pendingSubmit = nil
     cancelAnnouncement()
     if text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
       results = []
@@ -155,6 +161,13 @@ final class SettingsSearchModel {
       selectionMovedByUser = false
       selectedEntryID = newResults.first?.entryID
     }
+    if pendingSubmit == generation {
+      pendingSubmit = nil
+      if let request = requestForSelection() {
+        submitWhenReady?(request)
+        return
+      }
+    }
     scheduleAnnouncement(for: generation)
   }
 
@@ -174,6 +187,14 @@ final class SettingsSearchModel {
   func requestForSelection() -> SettingsSearchRequest? {
     guard isPanelPresented, let entryID = selectedResult?.entryID else { return nil }
     return SettingsSearchRequest(entryID: entryID)
+  }
+
+  /// Return in the field: the selected visible result, or, while the index is still loading,
+  /// the top result once it arrives (nil now in that case).
+  func submit() -> SettingsSearchRequest? {
+    if let request = requestForSelection() { return request }
+    if isPanelPresented, case .loading = indexState { pendingSubmit = generation }
+    return nil
   }
 
   /// A result row clicked.
@@ -203,6 +224,7 @@ final class SettingsSearchModel {
     selectedEntryID = nil
     selectionMovedByUser = false
     isPanelPresented = false
+    pendingSubmit = nil
     generation &+= 1
     cancelAnnouncement()
   }

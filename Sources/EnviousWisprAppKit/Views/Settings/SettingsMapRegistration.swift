@@ -30,6 +30,7 @@ extension View {
 
   func settingsMapRegistration(_ registration: SettingsMapRegistration) -> some View {
     transformPreference(SettingsMapRegistrationKey.self) { $0.append(registration) }
+      .modifier(SettingsRevealAnchorModifier(registration: registration))
   }
 
   /// Records that this control deliberately has no map identity, and why.
@@ -38,6 +39,24 @@ extension View {
   func settingsMapExemptScope(_ reason: SettingsMapExemption, when condition: Bool) -> some View {
     transformPreference(SettingsMapRegistrationKey.self) { value in
       if condition { value = value.map { _ in .exempt(reason) } }
+    }
+    // An exempt region is never an arrival target (#3482 §3.4).
+    .transformPreference(SettingsRevealAnchorKey.self) { value in
+      if condition { value = [:] }
+    }
+  }
+}
+
+/// A mapped registration also publishes its arrival geometry and scroll identity; an exempt one
+/// publishes nothing.
+private struct SettingsRevealAnchorModifier: ViewModifier {
+  let registration: SettingsMapRegistration
+
+  func body(content: Content) -> some View {
+    if case .mapped(let id) = registration {
+      content.settingsRevealAnchor(id)
+    } else {
+      content
     }
   }
 }

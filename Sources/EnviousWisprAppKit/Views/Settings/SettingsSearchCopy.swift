@@ -39,6 +39,22 @@ enum SettingsSearchCopy {
       comment: "Settings search, VoiceOver: how many results the search shows.")
   }
 
+  /// Spoken when a search result opens its place: "Showing Pause duration".
+  static func arrived(_ title: String) -> String {
+    String(
+      localized: "Showing \(title)",
+      comment: "Settings search, VoiceOver: the place the chosen result opened. %@ is its name.")
+  }
+
+  /// Spoken when the chosen place is hidden and its declared fallback opened instead:
+  /// "Showing Stop recording on silence for Pause duration".
+  static func arrivedAtFallback(landed: String, chosen: String) -> String {
+    String(
+      localized: "Showing \(landed) for \(chosen)",
+      comment:
+        "Settings search, VoiceOver: the chosen setting is hidden right now, so the setting that shows it opened. The first %@ is the place opened, the second the chosen result.")
+  }
+
   /// Result labels for searchable places whose map title is dynamic and has no fixed context
   /// (orchestrator-approved table, docs/audits/2026-10-07-settings-search-chunk4-labels.md).
   /// `SettingsSearchPresentationTests` requires every such place to have one.

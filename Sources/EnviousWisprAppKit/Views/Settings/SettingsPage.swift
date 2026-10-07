@@ -248,6 +248,31 @@ struct SettingsNavigationState: Equatable {
       token: lastRevealToken)
   }
 
+  /// The arrival for `token` finished (#3482 §3.4): clear it, so a remount never replays it.
+  /// A newer reveal is left alone.
+  mutating func acknowledgeReveal(token: Int) {
+    if reveal?.token == token { reveal = nil }
+  }
+
+  /// The person changed tab directly, or the window closed: a pending arrival no longer applies
+  /// when its place is not on the tab now showing.
+  mutating func dropRevealIfNotShowing() {
+    guard let reveal, let id = SettingsMapID(rawValue: reveal.entryID) else { return }
+    let node = SettingsMap.node(id)
+    if !isShowing(node.destination, dictionaryTab: node.dictionaryTab) { self.reveal = nil }
+  }
+
+  /// Whether `destination` (and, on Dictionary, `dictionaryTab`) is what the window shows now.
+  func isShowing(_ destination: SettingsDestination?, dictionaryTab: DictionaryTab?) -> Bool {
+    guard let destination, destination.page == selectedPage else { return false }
+    switch destination {
+    case .dictation(let tab): return tab == dictationTab
+    case .appSettings(let tab): return tab == appSettingsTab
+    case .dictionary: return dictionaryTab.map { $0 == self.dictionaryTab } ?? true
+    default: return true
+    }
+  }
+
   mutating func apply(_ destination: SettingsDestination) {
     reveal = nil
     selectedPage = destination.page

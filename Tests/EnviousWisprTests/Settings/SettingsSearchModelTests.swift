@@ -176,6 +176,45 @@ struct SettingsSearchModelTests {
     #expect(spoken.lines.count == 1, "a reset search was still announced: \(spoken.lines)")
   }
 
+  @MainActor @Observable final class ChosenLog { var ids: [String] = [] }
+
+  @Test("Return pressed while the index loads opens the top result once it exists")
+  func returnWhileLoading() async throws {
+    let ready = try Self.index.get()
+    let gate = AsyncGate()
+    let chosen = ChosenLog()
+    let model = SettingsSearchModel(
+      loadIndex: {
+        await gate.wait()
+        return ready
+      }, announce: { _ in }, announcementDelay: .milliseconds(20))
+    model.submitWhenReady = { chosen.ids.append($0.entryID) }
+    model.setQuery("dock")
+    #expect(model.submit() == nil, "nothing to open before results exist")
+    await gate.open()
+    #expect(await Self.waitUntil { !chosen.ids.isEmpty })
+    #expect(chosen.ids == ["showInDock"])
+  }
+
+  @Test("typing after an early Return cancels it")
+  func typingCancelsEarlyReturn() async throws {
+    let ready = try Self.index.get()
+    let gate = AsyncGate()
+    let chosen = ChosenLog()
+    let model = SettingsSearchModel(
+      loadIndex: {
+        await gate.wait()
+        return ready
+      }, announce: { _ in }, announcementDelay: .milliseconds(20))
+    model.submitWhenReady = { chosen.ids.append($0.entryID) }
+    model.setQuery("dock")
+    _ = model.submit()
+    model.setQuery("dark")
+    await gate.open()
+    #expect(await Self.waitUntil { model.results.first?.entryID == "theme.dark" })
+    #expect(chosen.ids.isEmpty, "an early Return opened a result after more typing")
+  }
+
   @Test("every searchable place has a result title, a breadcrumb and a request")
   func everyResultCanBeShown() throws {
     for entry in SettingsSearchCatalog.entries {
