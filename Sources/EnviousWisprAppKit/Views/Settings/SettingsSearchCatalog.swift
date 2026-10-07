@@ -4,6 +4,7 @@ import Foundation
 /// order, and nothing else. A projection, never a second list: every field is the map node's own,
 /// so a place's kind, parent, title and description owners, destination, Dictionary tab, target
 /// and fallbacks cannot drift from the map. Metadata only; it never resolves live user state.
+// periphery:ignore - search catalog for PR B (#3482); tests and the export read it now
 enum SettingsSearchCatalog {
   /// One searchable place.
   struct Entry: Sendable {

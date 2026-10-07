@@ -9,6 +9,7 @@ import Foundation
 ///
 /// `validate(_:expectedIDs:)` is the one schema authority. The production loader, the required
 /// tests and vocabulary adoption all run it; nothing else decides what a valid file is.
+// periphery:ignore - search vocabulary for PR B (#3482); loaded by tests, the export and tooling now
 struct SettingsSearchVocabulary: Sendable, Equatable {
   struct Block: Sendable, Equatable {
     /// The place's name in this language. Nil for the interface languages, whose titles are
@@ -56,6 +57,7 @@ struct SettingsSearchVocabulary: Sendable, Equatable {
   }
 }
 
+// periphery:ignore - search vocabulary for PR B (#3482)
 enum SettingsSearchVocabularyError: Error, Equatable, CustomStringConvertible {
   /// The resource is not in the bundle.
   case missingResource
@@ -77,6 +79,7 @@ enum SettingsSearchVocabularyError: Error, Equatable, CustomStringConvertible {
   }
 }
 
+// periphery:ignore - search vocabulary for PR B (#3482)
 extension SettingsSearchVocabulary {
   /// Loads and validates the bundled resource. Never an empty vocabulary on failure: a caller
   /// gets the typed reason. PR A exposes this to tests and tooling only; the app does not load
@@ -359,6 +362,7 @@ extension SettingsSearchVocabulary {
 
 // MARK: - Review binding
 
+// periphery:ignore - search vocabulary for PR B (#3482)
 extension SettingsSearchVocabulary {
   /// The canonical encoding's version, recorded in review receipts.
   static let canonicalization = "length-prefixed-v1"
@@ -399,6 +403,7 @@ extension SettingsSearchVocabulary {
 /// Finds a key repeated inside one JSON object, which `JSONSerialization` would resolve
 /// silently (last wins). A small structural scan over the UTF-8 text; it does not interpret
 /// values, so `JSONSerialization` still decides whether the document is JSON at all.
+// periphery:ignore - search vocabulary validator for PR B (#3482)
 enum StrictJSONKeys {
   static func firstDuplicateKey(in data: Data) -> String? {
     let bytes = [UInt8](data)

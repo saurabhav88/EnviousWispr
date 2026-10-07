@@ -105,11 +105,11 @@ struct AIPolishCopyTests {
         == "Superwhisper trained S1-mini on these three settings. They are shared with dictation. Change them any time; a new pick applies to your next file and your next dictation."
     )
     #expect(S1ControlCopy.stylingLabel == "Tone")
-    #expect(S1ControlCopy.stylingShort == "Choose how formal your text sounds.")
+    #expect(String(localized: S1ControlCopy.stylingShortResource) == "Choose how formal your text sounds.")
     #expect(S1ControlCopy.structureLabel == "Structure")
-    #expect(S1ControlCopy.structureShort == "Keep sentences or turn spoken items into lists.")
+    #expect(String(localized: S1ControlCopy.structureShortResource) == "Keep sentences or turn spoken items into lists.")
     #expect(S1ControlCopy.contextLabel == "Context")
-    #expect(S1ControlCopy.contextShort == "Format dictated greetings and sign-offs as email.")
+    #expect(String(localized: S1ControlCopy.contextShortResource) == "Format dictated greetings and sign-offs as email.")
     #expect(
       S1Styling.allCases.map(S1ControlCopy.label(for:)) == [
         "Casual", "Semi-casual", "Semi-formal", "Formal",

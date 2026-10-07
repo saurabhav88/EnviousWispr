@@ -85,7 +85,7 @@ struct MicrophoneSettingsRenderHarness {
                 .background(ClipboardSettingsLayoutTests.probe("status"))
             }.background(ClipboardSettingsLayoutTests.probe("input-row"))
             if let device = scenario.device, device.inputChannelCount > 1 {
-              SettingsRow(fixtureTitle: german ? "Eingang" : InputSocketCopy.label, icon: "cable.connector",
+              SettingsRow(fixtureTitle: german ? "Eingang" : String(localized: InputSocketCopy.labelResource), icon: "cable.connector",
                 resolvedShort: german ? "Wähle den Eingang, an dem dein Mikrofon steckt." : String(localized: DictationSettingsCopy.Microphone.socketShort),
                 resolvedHelp: String(localized: DictationSettingsCopy.Microphone.socketHelp)) {
                 BrandedSegmentedPicker(options: (0..<device.inputChannelCount).map {

@@ -11,7 +11,7 @@ struct LivePreviewSettingsEnglishTests {
 
   @Test("every Live Preview copy entry keeps its English")
   func copyEntries() {
-    #expect(LivePreviewSettingsCopy.sectionHeader == "Live Preview")
+    #expect(String(localized: LivePreviewSettingsCopy.sectionHeaderResource) == "Live Preview")
     // #3385: the founder design's wording, now the visible row name.
     #expect(LivePreviewSettingsCopy.toggleLabel == "Show words while you speak")
     #expect(LivePreviewSettingsCopy.packsHeader == "Languages")
@@ -95,7 +95,7 @@ struct LivePreviewSettingsEnglishTests {
       LivePreviewSettingsCopy.catalogNothingToInstall
         == "Every language Apple offers is already on this Mac.")
     #expect(LivePreviewSettingsCopy.browseDownloadsButton == "Browse downloads")
-    #expect(LivePreviewSettingsCopy.packsInstallRowTitle == "Install new languages")
+    #expect(String(localized: LivePreviewSettingsCopy.packsInstallRowTitleResource) == "Install new languages")
     #expect(LivePreviewSettingsCopy.catalogDoneButton == "Done")
     #expect(LivePreviewSettingsCopy.catalogCloseLabel == "Close")
     #expect(LivePreviewSettingsCopy.languageAnyLanguage == "Automatic")

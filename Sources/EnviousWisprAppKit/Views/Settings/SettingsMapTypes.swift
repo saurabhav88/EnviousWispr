@@ -93,21 +93,28 @@ enum SettingsMapVisibility: Sendable {
 /// One node of the Settings Map.
 struct SettingsMapNode: Sendable {
   let id: SettingsMapID
+  // periphery:ignore - Settings Map metadata read by tests, the export and PR B search (#3482); no production reader until PR B
   let structure: SettingsMapStructure
   /// Set when the node is a searchable entry.
   let item: SettingsMapItemKind?
   let title: SettingsMapTitle
   /// The item's short line, when it has one; nil for structure and for items without a line.
   let description: SettingsMapDescription?
+  // periphery:ignore - Settings Map metadata read by tests, the export and PR B search (#3482); no production reader until PR B
   let parent: SettingsMapID?
+  // periphery:ignore - Settings Map metadata read by tests, the export and PR B search (#3482); no production reader until PR B
   /// The page (and Dictation or App tab) the node lives on.
   let destination: SettingsDestination?
+  // periphery:ignore - Settings Map metadata read by tests, the export and PR B search (#3482); no production reader until PR B
   /// The Dictionary tab, for Dictionary nodes. PR A records it; selection stays where it is.
   let dictionaryTab: DictionaryTab?
+  // periphery:ignore - Settings Map metadata read by tests, the export and PR B search (#3482); no production reader until PR B
   let visibility: SettingsMapVisibility
+  // periphery:ignore - Settings Map metadata read by tests, the export and PR B search (#3482); no production reader until PR B
   /// The registered control an arrival points at: the node itself or its row or card. Every
   /// searchable entry has one; structural nodes need none.
   let target: SettingsMapID?
+  // periphery:ignore - Settings Map metadata read by tests, the export and PR B search (#3482); no production reader until PR B
   /// Where an arrival goes, in order, when the target is not on screen.
   let fallbacks: [SettingsMapID]
 }

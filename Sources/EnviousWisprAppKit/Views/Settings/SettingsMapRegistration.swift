@@ -40,10 +40,6 @@ extension View {
       if condition { value = value.map { _ in .exempt(reason) } }
     }
   }
-
-  func settingsMapExemption(_ reason: SettingsMapExemption) -> some View {
-    settingsMapRegistration(.exempt(reason))
-  }
 }
 
 /// How a mapped control names itself: by id, or by id plus the typed runtime input its node's

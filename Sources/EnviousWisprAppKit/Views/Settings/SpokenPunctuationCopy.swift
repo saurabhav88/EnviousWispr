@@ -58,10 +58,8 @@ enum SpokenPunctuationCopy {
 
   static let startWordTitleResource = LocalizedStringResource("Start word",
     comment: "Speech engine settings, spoken punctuation: the Start word row's name.")
-  static var startWordTitle: String { String(localized: startWordTitleResource) }
   static let startWordShortResource = LocalizedStringResource("The word you say before a mark.",
     comment: "Speech engine settings, Start word row: the short line under the row's name.")
-  static var startWordShort: String { String(localized: startWordShortResource) }
   static let startWordHelp = String(
     localized:
       "Say your start word and then the mark. The start word tells a command from an ordinary word. Pick a word you would not say in a normal sentence. Leave the field blank to use command words on their own. You can set a different word for each language.",

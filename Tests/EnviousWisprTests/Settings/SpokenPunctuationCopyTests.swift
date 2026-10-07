@@ -37,7 +37,7 @@ struct SpokenPunctuationCopyTests {
 
   @Test("The row keeps one short line; the help says how to pick a word, that blank means none, and that the picker is not the dictation language")
   func rowLines() {
-    #expect(SpokenPunctuationCopy.startWordShort == "The word you say before a mark.")
+    #expect(String(localized: SpokenPunctuationCopy.startWordShortResource) == "The word you say before a mark.")
     #expect(
       SpokenPunctuationCopy.startWordHelp.contains(
         "Pick a word you would not say in a normal sentence"))
@@ -88,8 +88,8 @@ struct SpokenPunctuationCopyTests {
         SpokenPunctuationCopy.helpFootnote,
         SpokenPunctuationCopy.learnMoreLabel,
         SpokenPunctuationCopy.learnMoreAccessibilityLabel,
-        SpokenPunctuationCopy.startWordTitle,
-        SpokenPunctuationCopy.startWordShort,
+        String(localized: SpokenPunctuationCopy.startWordTitleResource),
+        String(localized: SpokenPunctuationCopy.startWordShortResource),
         SpokenPunctuationCopy.startWordHelp,
         SpokenPunctuationCopy.languagePickerLabel,
         SpokenPunctuationCopy.pickerIsNotDictationLanguage,

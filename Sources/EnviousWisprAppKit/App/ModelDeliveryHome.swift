@@ -111,6 +111,7 @@ final class ModelDeliveryHome {
 
   /// Render-test seam (#3482): shows a Fast delivery state without a running controller, so the
   /// Settings Map render matrix can draw the Cancel control. Internal; the app never calls it.
+  // periphery:ignore - render-test seam (#3482 chunk 3): SettingsMapRenderingTests stages a Fast download
   func applyParakeetStateForTesting(_ state: DeliveryState) {
     parakeetState = state
   }

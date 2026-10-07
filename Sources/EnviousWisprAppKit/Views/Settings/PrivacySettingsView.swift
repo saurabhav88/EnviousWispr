@@ -152,11 +152,9 @@ enum PrivacySettingsCopy {
       comment: "Permissions settings, Privacy: line before the link to the data help article.")
   }
   static let collectTitleResource = LocalizedStringResource("What we collect", comment: "Permissions settings, Privacy: row title.")
-  static var collectTitle: String { String(localized: collectTitleResource) }
   /// Mockup wording for the row's short line (founder, 2026-10-03).
   static let collectShortResource = LocalizedStringResource("Never your audio, text, history, snippets, dictionary or API keys. Only what you type into the feedback form.",
       comment: "Permissions settings, Privacy: short line under What we collect.")
-  static var collectShort: String { String(localized: collectShortResource) }
   static let seeDetailsLabelResource = LocalizedStringResource("See details",
       comment: "Permissions settings, Privacy: button that opens the What Data Is Collected help article.")
   static var seeDetailsLabel: String { String(localized: seeDetailsLabelResource) }
@@ -168,9 +166,7 @@ enum PrivacySettingsCopy {
   static let metricsLabelResource = LocalizedStringResource("Share usage metrics", comment: "Permissions settings, Privacy: switch label.")
   static var metricsLabel: String { String(localized: metricsLabelResource) }
   static let metricsShortResource = LocalizedStringResource("Help us catch broken updates.")
-  static var metricsShort: String { String(localized: metricsShortResource) }
   static let crashShortResource = LocalizedStringResource("Help us fix crashes and errors.")
-  static var crashShort: String { String(localized: crashShortResource) }
   static var metricsHelp: String {
     String(
       localized:

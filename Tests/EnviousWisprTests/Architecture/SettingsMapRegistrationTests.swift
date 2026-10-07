@@ -236,7 +236,7 @@ struct SettingsMapRegistrationTests {
         }
       }
       for token in tree.tokens(viewMode: .sourceAccurate)
-      where ["settingsMapRegistration", "settingsMapExemption", "settingsMapExemptScope"]
+      where ["settingsMapRegistration", "settingsMapExemptScope"]
         .contains(token.text)
       {
         guard let member = token.parent?.parent?.as(MemberAccessExprSyntax.self),

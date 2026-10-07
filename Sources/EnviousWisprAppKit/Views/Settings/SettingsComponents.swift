@@ -592,6 +592,7 @@ extension SettingsSectionHeading where Trailing == EmptyView {
 
 /// Test-host fixture headings only (#3482); see the `SettingsRow` fixtures.
 extension SettingsSectionHeading {
+  // periphery:ignore - test-host render fixture (#3482); shipped code may not use it
   init(fixtureTitle: String, icon: String? = nil, @ViewBuilder trailing: () -> Trailing) {
     self.registration = .exempt(.renderFixture)
     self.title = fixtureTitle
@@ -601,6 +602,7 @@ extension SettingsSectionHeading {
 }
 
 extension SettingsSectionHeading where Trailing == EmptyView {
+  // periphery:ignore - test-host render fixture (#3482); shipped code may not use it
   init(fixtureTitle: String, icon: String? = nil) {
     self.init(fixtureTitle: fixtureTitle, icon: icon) { EmptyView() }
   }

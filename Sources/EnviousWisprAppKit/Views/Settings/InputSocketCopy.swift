@@ -10,7 +10,6 @@ enum InputSocketCopy {
     comment:
       "Microphone settings, input socket (for a device with several inputs): label before the choice of input, as in Mic is on Input 2."
   )
-  static var label: String { String(localized: labelResource) }
 
   static func optionLabel(index: Int) -> String {
     String(

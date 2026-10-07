@@ -24,7 +24,7 @@ struct LivePreviewSettingsCopyTests {
   /// page grew, silently, with no test turning red (found in self-review, 2026-08-16).
   private var allStrings: [String] {
     [
-      LivePreviewSettingsCopy.sectionHeader,
+      String(localized: LivePreviewSettingsCopy.sectionHeaderResource),
       LivePreviewSettingsCopy.toggleLabel,
       LivePreviewSettingsCopy.packsHeader,
       LivePreviewSettingsCopy.packsDescription,
@@ -48,7 +48,7 @@ struct LivePreviewSettingsCopyTests {
       LivePreviewSettingsCopy.catalogDoneButton,
       // #2445 catalogue-sheet polish.
       LivePreviewSettingsCopy.catalogCloseLabel,
-      LivePreviewSettingsCopy.packsInstallRowTitle,
+      String(localized: LivePreviewSettingsCopy.packsInstallRowTitleResource),
       LivePreviewSettingsCopy.statusActiveLabel,
       LivePreviewSettingsCopy.statusActiveDetail,
       LivePreviewSettingsCopy.statusOffLabel,

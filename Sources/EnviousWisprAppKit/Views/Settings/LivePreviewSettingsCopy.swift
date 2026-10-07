@@ -28,7 +28,6 @@ enum LivePreviewSettingsCopy {
   /// immediately after this), not by this one staying nameless.
   static let sectionHeaderResource = LocalizedStringResource("Live Preview",
     comment: "Live Preview settings: section header.")
-  static var sectionHeader: String { String(localized: sectionHeaderResource) }
 
   /// #3385: the visible name of the switch again (the Live Preview tab has no
   /// page header to say what it does), worded as the founder's design has it.
@@ -348,7 +347,6 @@ enum LivePreviewSettingsCopy {
   /// the page, which lists exactly the languages you can switch to.
   static let packsInstallRowTitleResource = LocalizedStringResource("Install new languages",
     comment: "Live Preview settings: packs install row title.")
-  static var packsInstallRowTitle: String { String(localized: packsInstallRowTitleResource) }
 
   // `packInstalled` ("Ready"), `packInUse` ("In use"), `packsInstalledSummary`,
   // `catalogFilterAvailable`, `catalogFilterInstalled` and `catalogNoneInstalled`
