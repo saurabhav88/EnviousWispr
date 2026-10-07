@@ -472,7 +472,7 @@ struct LearnedWordCandidatesTests {
   func overlappingWordsStayBounded() {
     let phrase = Array(repeating: "ha", count: 28).joined(separator: " ")
     let variants = LearnedWordCandidates.variants(
-      of: phrase, misspellings: ["ha ha": ["ha"], "laugh": [phrase]])
+      of: phrase, owner: "Laugh", misspellings: ["ha ha": ["ha"], "laugh": [phrase]])
     #expect(variants.count == 32)
     #expect(variants.first?.text == phrase)
   }
@@ -526,7 +526,7 @@ struct LearnedWordCandidatesTests {
       ).isEmpty)
   }
 
-  @Test("#3518: a phrase with no space, and a phrase holding its own word, expand too (Codex class check)")
+  @Test("#3518: a phrase with no space expands; a phrase holding its own word does not (second-pass review)")
   func phrasesWithoutSpacesAndSelfWords() {
     let slash = [
       LearnedWord(canonical: "Saurabh", observedMisspellings: ["Sarab"]),
@@ -535,10 +535,28 @@ struct LearnedWordCandidatesTests {
     #expect(
       Self.spots("Ping Sarab/team.", LearnedWordCandidates.questions(for: "Ping Sarab/team.", learned: slash))
         == ["Sarab/team->TeamName", "Sarab->Saurabh"])
+    // Two fixes to one word keep the shorter span (#3105), so the phrase taught for its own
+    // word is not rebuilt: the answer does not depend on the question budget.
     let selfWord = [LearnedWord(canonical: "Saurabh", observedMisspellings: ["Sarab", "Saurabh A V"])]
-    #expect(
-      Self.spots(
-        "Hi Sarab A V.", LearnedWordCandidates.questions(for: "Hi Sarab A V.", learned: selfWord))
-        == ["Sarab A V->Saurabh", "Sarab->Saurabh"])
+    for budget in [1, 16] {
+      #expect(
+        Self.spots(
+          "Hi Sarab A V.",
+          LearnedWordCandidates.questions(for: "Hi Sarab A V.", learned: selfWord, maxSpots: budget))
+          == ["Sarab->Saurabh"])
+    }
+  }
+
+  @Test("#3518: a spot reachable as taught counts as taught whatever the alias order (second-pass review)")
+  func composedCountIgnoresAliasOrder() {
+    for outer in [["Saurabh A V", "Sarab A V"], ["Sarab A V", "Saurabh A V"]] {
+      let learned = [
+        LearnedWord(canonical: "Saurabh", observedMisspellings: ["Sarab"]),
+        LearnedWord(canonical: "Saurabhav", observedMisspellings: outer),
+      ]
+      let search = LearnedWordCandidates.search(for: "Hi Sarab A V.", learned: learned)
+      #expect(search.questions.contains { $0.word == "Saurabhav" })
+      #expect(search.composed == 0)
+    }
   }
 }

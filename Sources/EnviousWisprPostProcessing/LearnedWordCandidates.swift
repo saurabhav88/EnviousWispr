@@ -25,7 +25,7 @@ public enum LearnedWordCandidates: Sendable {
   private struct Candidate {
     let range: Range<String.Index>
     let word: String
-    let composed: Bool
+    var composed: Bool
   }
 
   /// One spelling searched for a learned phrase: the phrase as taught, or (#3518) the phrase
@@ -88,7 +88,7 @@ public enum LearnedWordCandidates: Sendable {
       return Search(questions: [], composed: 0, truncated: 0)
     }
     var candidates = [Candidate]()
-    var seen = Set<CandidateKey>()
+    var seen = [CandidateKey: Int]()
     // #3105 founder live test: "EnviousWispr" (already right, from the user's own word)
     // was asked about and swapped for the learned "EnviousSales". Text already spelled
     // exactly as one of the user's words is final: no spot overlapping it is asked.
@@ -112,7 +112,13 @@ public enum LearnedWordCandidates: Sendable {
         return false
       }
       let key = CandidateKey(range: range, wordUTF8: Data(word.utf8))
-      guard seen.insert(key).inserted else { return false }
+      if let existing = seen[key] {
+        // The same spot reached as taught and as built counts as taught, whichever came
+        // first (second-pass review: the count followed alias order).
+        if variant.composed == false { candidates[existing].composed = false }
+        return false
+      }
+      seen[key] = candidates.count
       candidates.append(Candidate(range: range, word: word, composed: variant.composed))
       return true
     }
@@ -120,7 +126,7 @@ public enum LearnedWordCandidates: Sendable {
     let misspellings = misspellingsByWord(learned)
     for entry in learned {
       for observed in entry.observedMisspellings where observed.isEmpty == false {
-        for variant in variants(of: observed, misspellings: misspellings) {
+        for variant in variants(of: observed, owner: entry.canonical, misspellings: misspellings) {
           var searchStart = text.startIndex
           var added = 0
           while added < maxSpots, searchStart < text.endIndex,
@@ -176,14 +182,15 @@ public enum LearnedWordCandidates: Sendable {
   }
 
   /// The spellings searched for one learned phrase, the phrase as taught first, at most
-  /// `maxVariantsPerAlias` of them. A phrase is expanded only where a learned word sits strictly
-  /// inside it as a whole word, found in the phrase as taught (Codex class check: "Saurabh/team"
-  /// has no space, and a phrase may hold the very word it is taught for, "Saurabh A V" ->
-  /// "Saurabh").
+  /// `maxVariantsPerAlias` of them. A phrase is expanded only where ANOTHER learned word sits
+  /// strictly inside it as a whole word, found in the phrase as taught ("Saurabh/team" counts:
+  /// no space is needed). A phrase is not expanded through the word it is taught for
+  /// ("Saurabh A V" -> "Saurabh"): two fixes to one word keep the shorter span (#3105), so that
+  /// question could never win, and the winner would follow the question budget.
   /// Overlapping learned words ("Envious" and "Envious Labs") are alternatives: one
   /// spelling never replaces both.
   static func variants(
-    of alias: String, misspellings: [String: [String]]
+    of alias: String, owner: String, misspellings: [String: [String]]
   ) -> [Variant] {
     struct Occurrence {
       let range: Range<Int>
@@ -200,6 +207,7 @@ public enum LearnedWordCandidates: Sendable {
     guard scalars.count <= maxExpandedAliasScalars else {
       return [Variant(text: alias, retained: [], composed: false)]
     }
+    let ownerKey = owner.lowercased()
     let starts = scalars.indices.filter {
       scalars[$0].properties.isWhitespace == false
         && ($0 == 0 || isWordScalar(scalars[$0 - 1]) == false)
@@ -217,7 +225,7 @@ public enum LearnedWordCandidates: Sendable {
     for start in starts {
       for end in ends where end > start && (start > 0 || end < scalars.count) {
         let key = String(String.UnicodeScalarView(scalars[start..<end])).lowercased()
-        if misspellings[key] != nil {
+        if key != ownerKey, misspellings[key] != nil {
           occurrences.append(Occurrence(range: start..<end, key: key))
         }
       }
