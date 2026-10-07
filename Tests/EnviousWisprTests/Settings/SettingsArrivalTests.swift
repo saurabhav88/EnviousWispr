@@ -133,6 +133,33 @@ struct SettingsArrivalTests {
     #expect(state.epoch == afterSearch + 2)
   }
 
+  @Test("a finished arrival stays current only until any navigation, even to the same place")
+  func arrivalCurrency() throws {
+    let request = try #require(SettingsSearchRequest(entryID: "pauseDuration"))
+    var state = SettingsNavigationState()
+    state.apply(request)
+    let token = try #require(state.reveal?.token)
+    state.acknowledgeReveal(token: token)
+    #expect(state.arrivalIsCurrent(token: token, entryID: "pauseDuration"))
+    // An ordinary commit to the same page and tab: still showing, no longer this arrival's.
+    state.apply(request.destination)
+    #expect(state.isShowing(request.destination, dictionaryTab: nil))
+    #expect(state.arrivalIsCurrent(token: token, entryID: "pauseDuration") == false)
+
+    var closed = SettingsNavigationState()
+    closed.apply(request)
+    let closedToken = try #require(closed.reveal?.token)
+    closed.acknowledgeReveal(token: closedToken)
+    closed.endWindowSession()
+    #expect(closed.arrivalIsCurrent(token: closedToken, entryID: "pauseDuration") == false)
+
+    var newer = SettingsNavigationState()
+    newer.apply(request)
+    let olderToken = try #require(newer.reveal?.token)
+    newer.apply(request)
+    #expect(newer.arrivalIsCurrent(token: olderToken, entryID: "pauseDuration") == false)
+  }
+
   @Test("the Dictionary tab is part of what 'showing' means")
   func dictionaryTabShowing() throws {
     var state = SettingsNavigationState()

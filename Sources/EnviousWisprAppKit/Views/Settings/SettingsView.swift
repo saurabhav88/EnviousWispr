@@ -468,11 +468,7 @@ struct UnifiedWindowView: View {
         return navigationState.isShowing(node.destination, dictionaryTab: node.dictionaryTab)
       }
       .environment(\.settingsArrivalStillCurrent) { reveal in
-        guard navigationState.lastRevealToken == reveal.token,
-          let id = SettingsMapID(rawValue: reveal.entryID)
-        else { return false }
-        let node = SettingsMap.node(id)
-        return navigationState.isShowing(node.destination, dictionaryTab: node.dictionaryTab)
+        navigationState.arrivalIsCurrent(token: reveal.token, entryID: reveal.entryID)
       }
   }
 }

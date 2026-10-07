@@ -64,8 +64,9 @@ extension EnvironmentValues {
   /// Whether a reveal's destination (page, tab, Dictionary tab) is the one on screen now.
   @Entry var settingsRevealIsShowing: @MainActor (SettingsReveal) -> Bool = { _ in false }
   /// Whether an arrival that already finished (its reveal acknowledged, so `settingsRevealIsShowing`
-  /// no longer applies) still belongs to what the window shows: no newer search, and its page and
-  /// tab on screen. Read live from the window's state, never from a copy of this view's
+  /// no longer applies) still belongs to what the window shows: no newer search, no navigation
+  /// since it was committed, and its page and tab on screen
+  /// (`SettingsNavigationState.arrivalIsCurrent`). Read live from the window's state, never from a copy of this view's
   /// environment, which a queued closure may hold from an earlier pass.
   @Entry var settingsArrivalStillCurrent: @MainActor (SettingsReveal) -> Bool = { _ in false }
   /// The marked scroll view around a registration, nil outside every marked scroll view.
@@ -289,6 +290,9 @@ struct SettingsArrivalModifier: ViewModifier {
       .onChange(of: mounted) { _, _ in reconcile() }
       // Any other navigation, or the window closing, ends this arrival and its ring.
       .onChange(of: navigationEpoch) { _, _ in
+        // A focus move still queued, or asked and not yet taken, belongs to an older navigation.
+        pendingFocus = nil
+        dropFocusRequest()
         if let arriving, showing(arriving.reveal) { return }
         arriving = nil
         dismissRing()

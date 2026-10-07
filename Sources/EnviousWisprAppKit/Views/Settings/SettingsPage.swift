@@ -233,6 +233,9 @@ struct SettingsNavigationState: Equatable {
   private(set) var lastRevealToken = 0
   /// Increments on every committed navigation and when the window closes (#3482 §3.4).
   private(set) var epoch = 0
+  /// The epoch the latest reveal was committed in: any later navigation, even to the same page
+  /// and tab, or a window close, makes that arrival history.
+  private(set) var lastRevealEpoch = 0
 
   mutating func selectSidebar(_ page: SettingsPage) {
     epoch += 1
@@ -246,9 +249,21 @@ struct SettingsNavigationState: Equatable {
     apply(request.destination)
     if let tab = request.dictionaryTab { dictionaryTab = tab }
     lastRevealToken += 1
+    lastRevealEpoch = epoch
     reveal = SettingsReveal(
       entryID: request.entryID, anchor: request.target, fallbacks: request.fallbacks,
       token: lastRevealToken)
+  }
+
+  /// Whether the arrival for `token` still belongs to what the window shows, after its reveal was
+  /// acknowledged and cleared: it is the latest search, nothing has navigated since it was
+  /// committed, and its page and tab are on screen.
+  func arrivalIsCurrent(token: Int, entryID: String) -> Bool {
+    guard token == lastRevealToken, epoch == lastRevealEpoch,
+      let id = SettingsMapID(rawValue: entryID)
+    else { return false }
+    let node = SettingsMap.node(id)
+    return isShowing(node.destination, dictionaryTab: node.dictionaryTab)
   }
 
   /// The arrival for `token` finished (#3482 §3.4): clear it, so a remount never replays it.
