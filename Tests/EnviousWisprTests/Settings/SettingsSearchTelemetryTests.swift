@@ -19,6 +19,14 @@ struct SettingsSearchTelemetryTests {
     #expect(SettingsSearchQueryFilter.reportable("API key") == "api key")
     #expect(SettingsSearchQueryFilter.reportable("Tastenkürzel ändern") == "tastenkürzel ändern")
     #expect(SettingsSearchQueryFilter.reportable("windows 11") == "windows 11")
+    // Near misses for the credential check: real words, a long German compound, a key's name.
+    #expect(SettingsSearchQueryFilter.reportable("skip silence") == "skip silence")
+    #expect(SettingsSearchQueryFilter.reportable("hfp headset") == "hfp headset")
+    #expect(SettingsSearchQueryFilter.reportable("asian languages") == "asian languages")
+    #expect(
+      SettingsSearchQueryFilter.reportable("Spracherkennungseinstellungen")
+        == "spracherkennungseinstellungen")
+    #expect(SettingsSearchQueryFilter.reportable("openai key: where?") == "openai key: where?")
   }
 
   @Test("the whole query is dropped when it could identify someone or hold a secret")
@@ -28,6 +36,11 @@ struct SettingsSearchTelemetryTests {
       "example.cloud", "my.site.xyz",
       "call 555 123 4567", "1234567", "sk-proj-abc123", "AIzaSyD-whatever",
       "ghp_0123456789abcdef", "a8F3k2L9q0Z7x1C4v6B5n", "ab", String(repeating: "x", count: 81),
+      // A key glued to a label or wrapped in punctuation (cloud review, PR #3513); built from
+      // parts so no secret-shaped literal sits in the source.
+      "token:ghp_" + String(repeating: "a", count: 36), "key=sk-ant-api03-abc", "(AIzaSyabc)",
+      "\"xoxb-abc-def\"", "github_pat_abcdefghij", "AKIA" + String(repeating: "B", count: 16),
+      "hf_abcdefgh", "glpat-abcdefghij", "my key is " + String(repeating: "q", count: 32),
     ] {
       #expect(SettingsSearchQueryFilter.reportable(text) == nil, "kept \(text)")
     }

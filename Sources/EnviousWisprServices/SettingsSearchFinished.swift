@@ -76,21 +76,41 @@ public enum SettingsSearchQueryFilter {
     return query.range(of: pattern, options: .regularExpression) != nil
   }
 
+  /// Known key and token prefixes (lowercased: the query is lowercased first). OpenAI and
+  /// Anthropic `sk-`, Stripe-style `sk_`/`rk_`/`pk_`, Google `aiza` and `ya29.`, GitHub
+  /// `ghp_`/`gho_`/`ghu_`/`ghs_`/`ghr_`/`github_pat_`, Slack `xox`, GitLab `glpat-`, Hugging
+  /// Face `hf_`. AWS access key ids (`akia`/`asia` plus 16 characters) are matched by length too,
+  /// so a search for "asia" or "asian languages" is kept.
+  static let credentialPrefixes = [
+    "sk-", "sk_", "rk_", "pk_", "aiza", "ya29.", "ghp_", "gho_", "ghu_", "ghs_", "ghr_",
+    "github_pat_", "xox", "glpat-", "hf_",
+  ]
+
   private static func looksLikeCredential(_ query: String) -> Bool {
-    for word in query.split(whereSeparator: { $0.isWhitespace }) {
-      let token = String(word)
-      if token.hasPrefix("sk-") || token.hasPrefix("aiza") || token.hasPrefix("ghp_")
-        || token.hasPrefix("xox")
-      {
-        return true
+    // Candidates are the runs of letters, digits and token punctuation, so a key glued to a
+    // label or wrapped in punctuation ("token:ghp_...", "key=sk-...", "(aiza...)") is still
+    // seen on its own.
+    let tokenCharacters = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "-_."))
+    var candidates: [String] = []
+    var current = ""
+    for scalar in query.unicodeScalars {
+      if tokenCharacters.contains(scalar) {
+        current.unicodeScalars.append(scalar)
+      } else if !current.isEmpty {
+        candidates.append(current)
+        current = ""
       }
-      // A long run of letters, digits and token punctuation with both letters and digits.
-      let tokenish = token.unicodeScalars.allSatisfy {
-        CharacterSet.alphanumerics.contains($0) || "-_.".unicodeScalars.contains($0)
-      }
+    }
+    if !current.isEmpty { candidates.append(current) }
+    for token in candidates {
+      if credentialPrefixes.contains(where: token.hasPrefix) { return true }
+      if token.count == 20, token.hasPrefix("akia") || token.hasPrefix("asia") { return true }
       let hasDigit = token.unicodeScalars.contains(where: CharacterSet.decimalDigits.contains)
       let hasLetter = token.unicodeScalars.contains(where: CharacterSet.letters.contains)
-      if tokenish, token.count >= 20, hasDigit, hasLetter { return true }
+      // A long mixed run of letters and digits, or any run longer than a real word: the longest
+      // German settings compound is under 32 characters ("spracherkennungseinstellungen", 29).
+      if token.count >= 20, hasDigit, hasLetter { return true }
+      if token.count >= 32 { return true }
     }
     return false
   }
