@@ -1,12 +1,10 @@
 import Foundation
 import Testing
 
-/// Self-test for `RouterCeilingParser` (issue #808). The parser feeds nine
-/// architecture-ceiling suites; before #808 it anchored on the first inner
-/// brace and returned a method body, so every `count <= N` consumer assertion
-/// passed on `0`. These tests assert exact counts against synthetic source so
-/// that regression — and the `let`-only / multi-line-fold behavior — cannot
-/// return silently.
+/// Self-test for `RouterCeilingParser` (issue #808). Before #808 the parser
+/// anchored on the first inner brace and returned a method body. These tests
+/// assert exact results against synthetic source so that regression cannot
+/// return silently; `AppDelegateCeilingsTests` is the remaining consumer.
 @Suite struct RouterCeilingParserTests {
 
   /// Writes `source` to a temp `.swift` file and returns the parsed class body.

@@ -3,8 +3,8 @@ import SwiftParser
 import SwiftSyntax
 import Testing
 
-/// PR8 of #763 — strict source parser for class bodies, used by the remaining
-/// architecture tests (`AppDelegateCeilingsTests`, `EngineIdentityFreezeTests`).
+/// PR8 of #763 — strict source parser for class bodies, used by
+/// `AppDelegateCeilingsTests` and its own `RouterCeilingParserTests`.
 ///
 /// Counts ONLY top-level `let` stored properties. `var` declarations (owned
 /// mutable state, lazy properties, setter-injected outlets, callback closures)
@@ -91,15 +91,6 @@ enum RouterCeilingParser {
     storedLetBindings(in: body).filter { binding in
       guard let type = binding.type else { return !binding.isBooleanLiteralInitialized }
       return !isPrimitive(type) && !isFunctionType(type) && !isNSObjectProtocol(type)
-    }.count
-  }
-
-  /// Closure-injected slot: `let` whose declared type is a function type,
-  /// including every wrapping Swift permits around one.
-  static func closureInjectedCount(in body: String) -> Int {
-    storedLetBindings(in: body).filter { binding in
-      guard let type = binding.type else { return false }
-      return isFunctionType(type)
     }.count
   }
 
@@ -365,12 +356,6 @@ enum RouterCeilingParser {
   private static func isTypeProperty(_ modifiers: DeclModifierListSyntax) -> Bool {
     modifiers.contains {
       $0.name.tokenKind == .keyword(.static) || $0.name.tokenKind == .keyword(.class)
-    }
-  }
-
-  private static func isPrivate(_ modifiers: DeclModifierListSyntax) -> Bool {
-    modifiers.contains {
-      $0.name.tokenKind == .keyword(.private) || $0.name.tokenKind == .keyword(.fileprivate)
     }
   }
 

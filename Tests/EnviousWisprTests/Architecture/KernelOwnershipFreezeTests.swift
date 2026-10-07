@@ -11,20 +11,14 @@ import Testing
 // complements `EngineIdentityFreezeTests` (which guards engine-identity literals, the old
 // WhisperKit pipeline, and adapter construction — not kernel ownership).
 //
-// Four invariants:
-//   1. `DictationPipeline` (the deleted driver protocol) never returns to
-//      `Sources/**`; in `Tests/**` it may appear only in this file.
-//   2. `enum RecordingSessionState` (the lifecycle FSM) has exactly ONE source
+// Two invariants, each with matcher controls:
+//   1. `enum RecordingSessionState` (the lifecycle FSM) has exactly ONE source
 //      declaration — fail-closed `== 1`, so a silent rename trips the guard.
-//   3. `func handle(event: PipelineEvent)` (the driver's event entry point) has
+//   2. `func handle(event: PipelineEvent)` (the driver's event entry point) has
 //      exactly ONE source declaration — fail-closed `== 1`.
-//   4. `TranscriptionPipeline` (the deleted Parakeet pipeline type) never
-//      returns to `Sources/**`.
 //
-// Known blind spot (named, not fixed): a semantically-equivalent second FSM
-// declared under a DIFFERENT enum name evades invariant 2. The protocol-token
-// ban (1) + the single `handle(event:)` entry lock (3) + Codex code-diff review
-// are the covering layers; a name-blind structural detector is out of scope.
+// Known blind spot (named, not fixed): a second FSM declared under a DIFFERENT
+// enum name evades invariant 1; code review covers it.
 
 @Suite struct KernelOwnershipFreezeTests {
 

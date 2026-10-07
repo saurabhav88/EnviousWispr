@@ -1,20 +1,10 @@
 import Foundation
 import Testing
 
-/// Locks `AppDelegate` at its thin-AppKit-adapter shape.
-///
-/// #919: `AppDelegate` stays in the thin shell (the `@NSApplicationDelegateAdaptor`
-/// must live in the `@main` `App` struct's module). It now holds ONE weak ref —
-/// the `WisprBootstrapper` (the relocated composition root in EnviousWisprAppKit) —
-/// and forwards the forced `NSApplicationDelegate` callbacks into it. The
-/// pre-#919 two-weak-ref shape (sparkleUpdateController + appLifecycleCoordinator)
-/// collapsed to the single bootstrapper ref; the engine modules are no longer
-/// imported here.
-///
-/// The shape gate is an EXACT stored-property-name allowlist. This test parses
-/// every stored declaration in the class body and asserts the name set EQUALS
-/// the allowlist. Re-adding a dependency to `AppDelegate` fails the test —
-/// dependencies belong in the bootstrapper/homes, not the adapter.
+/// Checks that `AppDelegate` calls `assertAttached()` before forwarding both
+/// launch callbacks to `LiveApplication`, and that `assertAttached()` keeps its
+/// `assertionFailure`. (The stored-property and size limits that used to live
+/// here were retired in #3505; they are a review item.)
 @Suite struct AppDelegateCeilingsTests {
   private static let sourcePath =
     "Sources/EnviousWispr/AppDelegate.swift"

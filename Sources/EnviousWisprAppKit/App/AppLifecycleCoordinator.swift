@@ -114,7 +114,7 @@ final class AppLifecycleCoordinator {
     applicationRelocationCoordinator: ApplicationRelocationCoordinator,
     bluetoothAwarenessPresenter: BluetoothAwarenessPresenter,
     // #1176: captured in the onboarding-dismiss closure below (NOT stored — keeps
-    // this coordinator's stored-property ceiling clean).
+    // this coordinator's stored properties lean).
     onboardingProgress: OnboardingProgress,
     transcriptionCheckpointStore: TranscriptionCheckpointStore,
     batchDecodeFaultController: BatchDecodeFaultController? = nil,

@@ -97,16 +97,6 @@ struct LivePreviewSettingsCopyTests {
     ]
   }
 
-  private static func matches(of pattern: String, in source: String) -> Set<String> {
-    guard let regex = try? NSRegularExpression(pattern: pattern) else { return [] }
-    let range = NSRange(source.startIndex..., in: source)
-    var found: Set<String> = []
-    for match in regex.matches(in: source, range: range) {
-      if let r = Range(match.range(at: 1), in: source) { found.insert(String(source[r])) }
-    }
-    return found
-  }
-
   @Test("No user-facing string is empty")
   func noEmptyStrings() {
     for s in allStrings {

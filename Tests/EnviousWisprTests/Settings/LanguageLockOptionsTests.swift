@@ -49,38 +49,6 @@ struct LanguageLockOptionsTests {
     #expect(codes?.isEmpty == false)
   }
 
-  private final class FastBackendReferenceVisitor: SyntaxVisitor {
-    var foundReference = false
-
-    init() {
-      super.init(viewMode: .sourceAccurate)
-    }
-
-    private static func isFastBackend(_ token: TokenSyntax) -> Bool {
-      (token.identifier?.name ?? token.text) == "ParakeetBackend"
-    }
-
-    override func visit(_ node: DeclReferenceExprSyntax) -> SyntaxVisitorContinueKind {
-      if Self.isFastBackend(node.baseName) { foundReference = true }
-      return foundReference ? .skipChildren : .visitChildren
-    }
-
-    override func visit(_ node: MemberAccessExprSyntax) -> SyntaxVisitorContinueKind {
-      if Self.isFastBackend(node.declName.baseName) { foundReference = true }
-      return foundReference ? .skipChildren : .visitChildren
-    }
-
-    override func visit(_ node: IdentifierTypeSyntax) -> SyntaxVisitorContinueKind {
-      if Self.isFastBackend(node.name) { foundReference = true }
-      return foundReference ? .skipChildren : .visitChildren
-    }
-
-    override func visit(_ node: MemberTypeSyntax) -> SyntaxVisitorContinueKind {
-      if Self.isFastBackend(node.name) { foundReference = true }
-      return foundReference ? .skipChildren : .visitChildren
-    }
-  }
-
   /// #2154, cloud review r3. **Every consumer of the resolved language must read
   /// the staleness owner, not `packs.active` directly.**
   ///

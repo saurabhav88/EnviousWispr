@@ -6,8 +6,8 @@ import Foundation
 /// #879 — the press-on-cold-engine policy, factored off `RecordingStarter` so
 /// the start path owns STARTING and not every policy that touches it (mirrors
 /// `ASREngineReadiness+ColdStartCohort.swift`, which lives off `RecordingStarter`
-/// for the same reason). The method-count ceiling still guards that split; the
-/// line ceiling this note also cited was deleted in #2292 C6.
+/// for the same reason). The ceiling tests that once guarded that split were
+/// retired (#2292 C6, #3505); keep it by review.
 ///
 /// When the user presses while the active engine is not yet ready (fresh
 /// install, or first launch after a macOS update wiped the compiled-model

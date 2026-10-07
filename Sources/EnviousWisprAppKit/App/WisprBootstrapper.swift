@@ -1180,8 +1180,8 @@ package final class WisprBootstrapper {
 
     // The benchmark is a FOURTH workload on the one inference slot, so it takes
     // the same claim a dictation, a replay and an import take. Built here rather
-    // than inside `DiagnosticsCoordinator`, whose import ceiling refuses to know
-    // about the pipeline — correctly, since its job is owning the surface.
+    // than inside `DiagnosticsCoordinator`, which should not know about the
+    // pipeline: its job is owning the surface.
     let diagnosticsCoordinator = DiagnosticsCoordinator(
       benchmark: BenchmarkSuite(
         engineMutationScope: engineMutationScope, engineLease: engineLease))
