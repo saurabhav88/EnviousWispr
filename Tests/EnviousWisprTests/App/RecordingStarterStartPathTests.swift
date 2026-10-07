@@ -665,10 +665,8 @@ import Testing
   // MARK: - #2648 shared-resource admission
 
   /// **This is the pair the whole safety promise rests on.** `RecordingStarter`
-  /// has exactly two non-private methods that begin a recording, and its ceiling
-  /// suite caps that surface at 3, so a third route cannot be added without
-  /// failing `RecordingStarterCeilingsTests.nonPrivateMethodCount` first. These
-  /// rows cover both of the two that exist.
+  /// has exactly two non-private methods that begin a recording. These rows cover
+  /// both; a third route needs its own row here.
   ///
   /// A pair is the dangerous number: gating one reads exactly like gating both
   /// (`workflow-process.md`

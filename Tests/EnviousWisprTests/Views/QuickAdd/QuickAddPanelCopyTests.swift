@@ -86,33 +86,6 @@ struct QuickAddPanelCopyTests {
     }
   }
 
-  /// The function body of `groupHeader`, from its signature to its closing brace.
-  private static func groupHeaderBody(in source: String) -> String? {
-    guard
-      let start = source.range(
-        of: "static func groupHeader(_ state: GroupHeaderState, heard: String) -> String {"),
-      let end = source.range(of: "\n  }\n", range: start.upperBound..<source.endIndex)
-    else { return nil }
-    return String(source[start.lowerBound..<end.upperBound])
-  }
-
-  /// **Found by walking up to a marker, not by counting parents.** A hand-counted chain of
-  /// `deletingLastPathComponent()` is correct only for the depth the file sits at today, is silently
-  /// wrong the moment the file moves, and cannot be checked by reading — the first deletion removes
-  /// the FILENAME rather than a directory, which is exactly the off-by-one a reviewer raised against
-  /// the counted version. This asks the filesystem instead, so there is no number to get wrong.
-  private static var repoRoot: URL {
-    var directory = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
-    // Bounded: `deletingLastPathComponent` on "/" returns "/", so stop at the volume root rather
-    // than looping forever if the marker is somehow absent.
-    while directory.path != "/" {
-      let manifest = directory.appendingPathComponent("Package.swift")
-      if FileManager.default.fileExists(atPath: manifest.path) { return directory }
-      directory = directory.deletingLastPathComponent()
-    }
-    return directory
-  }
-
   @Test("EVERY header state names the word that was read")
   func everyHeaderStateNamesTheHeardWord() {
     // Enumerated from the type rather than listed by hand, so a fifth state cannot be added with

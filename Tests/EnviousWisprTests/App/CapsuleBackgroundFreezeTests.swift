@@ -105,25 +105,6 @@ struct CapsuleBackgroundFreezeTests {
     }
   }
 
-  /// The capsule's own values, exactly as they were before #2204.
-  /// Counts MEASURED against the tree at #2204's base, not reasoned about — the
-  /// first version guessed 2 for the border and the suite went red on its own
-  /// expectation. A drop names a deletion; a rise names a stale list.
-  ///
-  /// `capsule fill` is 2 because `DistressCapsuleBackground` carries the same
-  /// value, which is precisely how the earlier existence check managed to pass
-  /// while the capsule's own fill had been deleted. The border is 1 because only
-  /// the `.capsule` branch spells it with the `Capsule()` prefix.
-  ///
-  /// Every expectation below is UNCHANGED across the #2374 split. Only the source
-  /// the guard reads changed; if a number here ever moves in a relocation commit,
-  /// that is the finding.
-  nonisolated static let frozenCapsuleLiterals: [(what: String, expected: Int, literal: String)] = [
-    ("capsule fill", 2, "Color(red: 0.078, green: 0.078, blue: 0.11).opacity(0.82)"),
-    ("capsule border", 1, "Capsule().strokeBorder(Color.white.opacity(0.1), lineWidth: 0.5)"),
-    ("capsule notice text", 1, "Color.white.opacity(0.95)"),
-  ]
-
   /// **Which DECLARATION owns each literal, which the count above cannot say.**
   ///
   /// #2380. `capsuleLiteralsAreFrozen` counts across an aggregate of two files and

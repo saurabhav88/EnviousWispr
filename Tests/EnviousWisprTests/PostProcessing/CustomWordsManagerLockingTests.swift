@@ -1058,10 +1058,8 @@ struct CustomWordsManagerLockingTests {
 }
 
 /// Brace-balanced extraction of a function body, anchored on its EXACT
-/// declaration-line substring rather than the first inner brace — the same
-/// technique `AppWindowCoordinatorCeilingsTests.classBodyOfAppWindowCoordinator`
-/// uses for a class body, applied here to a function signature that may span
-/// multiple lines before its opening brace.
+/// declaration-line substring rather than the first inner brace, so a function
+/// signature may span multiple lines before its opening brace.
 private func functionBody(
   in source: String, declaring signature: String,
   sourceLocation: SourceLocation = #_sourceLocation

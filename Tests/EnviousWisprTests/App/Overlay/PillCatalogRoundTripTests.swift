@@ -85,29 +85,6 @@ struct PillCatalogRoundTripTests {
     }
   }
 
-  /// Exhaustive over `OverlayIntent`, so a new arm fails to compile here as well
-  /// as in the catalog.
-  private static func caseName(_ intent: OverlayIntent) -> String {
-    switch intent {
-    case .hidden: return "hidden"
-    case .recording: return "recording"
-    case .processing: return "processing"
-    case .clipboardFallback: return "clipboardFallback"
-    case .accessibilityToast: return "accessibilityToast"
-    case .warning: return "warning"
-    case .error: return "error"
-    case .advisory: return "advisory"
-    case .interruption: return "interruption"
-    case .passiveChip: return "passiveChip"
-    case .cachingModel: return "cachingModel"
-    case .engineReady: return "engineReady"
-    case .recoveringLastRecording: return "recoveringLastRecording"
-    case .recoverySucceeded: return "recoverySucceeded"
-    case .bluetoothAwareness: return "bluetoothAwareness"
-    case .escapeRecovery: return "escapeRecovery"
-    }
-  }
-
 
   private static func isRecording(_ intent: OverlayIntent) -> Bool {
     if case .recording = intent { return true }

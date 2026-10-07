@@ -49,12 +49,6 @@ struct LanguageLockOptionsTests {
     #expect(codes?.isEmpty == false)
   }
 
-  private static func namesFastBackend(in source: String) -> Bool {
-    let visitor = FastBackendReferenceVisitor()
-    visitor.walk(Parser.parse(source: source))
-    return visitor.foundReference
-  }
-
   private final class FastBackendReferenceVisitor: SyntaxVisitor {
     var foundReference = false
 

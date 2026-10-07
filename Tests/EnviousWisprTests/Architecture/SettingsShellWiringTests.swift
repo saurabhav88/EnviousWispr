@@ -25,10 +25,6 @@ struct SettingsShellWiringTests {
     }.count
   }
 
-  static let headerNames: Set<String> = [
-    "SettingsPageHeader", "settingsPageSection", "SettingsPageSectionKey",
-  ]
-
   // MARK: - Header mechanism
 
   // MARK: - Dictionary
@@ -340,38 +336,5 @@ struct SettingsShellWiringTests {
   }
 
   // MARK: - Sidebar paint
-
-  /// The branches of `SidebarNavRow.paint`: each condition and the paint calls it makes, read
-  /// from real calls: `fill(<what>)`, `strokeBorder`, `shadow`.
-  static func paintBranches(in tree: some SyntaxProtocol) -> [String] {
-    guard let paint = tree.tokens(viewMode: .sourceAccurate).lazy.compactMap({ token -> VariableDeclSyntax? in
-      guard token.tokenKind == .identifier("paint"),
-        let binding = token.parent?.as(IdentifierPatternSyntax.self)?.parent?.as(PatternBindingSyntax.self)
-      else { return nil }
-      return binding.parent?.parent?.as(VariableDeclSyntax.self)
-    }).first
-    else { return [] }
-    var branches: [String] = []
-    var next: IfExprSyntax? = paint.tokens(viewMode: .sourceAccurate).lazy.compactMap {
-      $0.parent?.as(IfExprSyntax.self)
-    }.first
-    while let branch = next {
-      var kinds: [String] = []
-      for fill in RecordingChimeWiringTests.memberCallNodes(in: branch.body, named: "fill") {
-        let argument = fill.arguments.first?.expression
-        let what =
-          argument?.as(FunctionCallExprSyntax.self)?.calledExpression.trimmedDescription
-          ?? argument?.trimmedDescription ?? ""
-        kinds.append("fill(\(what))")
-      }
-      for name in ["strokeBorder", "shadow"]
-      where !RecordingChimeWiringTests.memberCallNodes(in: branch.body, named: name).isEmpty {
-        kinds.append(name)
-      }
-      branches.append("\(branch.conditions.trimmedDescription): \(kinds.joined(separator: "+"))")
-      next = branch.elseBody?.as(IfExprSyntax.self)
-    }
-    return branches
-  }
 
 }

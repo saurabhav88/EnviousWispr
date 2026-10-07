@@ -20,10 +20,8 @@ import Foundation
 /// reference solely to wire `onPipelineStateChange` (icon updates).
 @MainActor
 final class DictationLifecycleCoordinator {
-  // MARK: - Collaborators (let-counted by CeilingsTestSupport)
+  // MARK: - Collaborators
   //
-  // Ceiling 11 (raised from parent migration plan's 10; see
-  // `DictationLifecycleCoordinatorCeilingsTests` Bible-changelog comment).
   // The 11th slot is `recordingLockedAccess`, a get/set closure-pair struct
   // that lets the coordinator read AND write the hands-free `isRecordingLocked`
   // flag without storing a reference to its owner. PR-C.3 of #763 rehomed that

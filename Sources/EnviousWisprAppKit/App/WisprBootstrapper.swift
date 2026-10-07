@@ -80,8 +80,7 @@ package final class WisprBootstrapper {
   let localPolishRuntimes: LocalPolishRuntimeSet
   /// #1348 Phase 2: owned model-delivery home (controller + Parakeet
   /// registration + telemetry bridge + observable UI mirror). The +1 stored
-  /// property is the plan's named cost (ceiling 34 -> 35, Bible entry in
-  /// EnviousWisprAppCeilingsTests).
+  /// property is the plan's named cost.
   let modelDelivery: ModelDeliveryHome
   /// The take selector also answers the Dictionary status line.
   let checkerEligibility: LearnedWordCheckerEligibility
@@ -125,8 +124,7 @@ package final class WisprBootstrapper {
   /// #2377 Phase 6 C4: the app-lifetime overlay owner, previously a local
   /// only. Storing it here is what lets `applicationDidFinishLaunching()`
   /// call `recordingOverlay.prewarmFirstRender()` — the +1 stored property
-  /// is the plan's named cost (ceiling 39 -> 40, Bible entry in
-  /// EnviousWisprAppCeilingsTests).
+  /// is the plan's named cost.
   let recordingOverlay: OverlayDirector
 
   /// #996: Self-Learning Dictionary as ONE app-lifetime slot (the Quick Add
@@ -134,7 +132,6 @@ package final class WisprBootstrapper {
   /// paste observer, the watcher and the arm selection live inside it; the
   /// coordinator and the paste registry hold their collaborators weakly, so
   /// this property is what keeps the feature alive for the app's lifetime.
-  /// Ceiling 44 -> 45, Bible entry in EnviousWisprAppCeilingsTests.
   let learnFromEdits: LearnFromEditsWiring
 
   /// - Parameter makeHotkeyEffects: supplies the live desktop-effect adapter the
@@ -153,9 +150,8 @@ package final class WisprBootstrapper {
   /// #2455 C3: this type's own activation seam, for the onboarding-dismissal
   /// policy change in the scene body below.
   ///
-  /// One stored property, not two: `EnviousWisprAppCeilingsTests` caps what this
-  /// type may hold, and the panel seam is consumed by collaborators rather than by
-  /// this type, so only the activator is retained.
+  /// One stored property, not two: the panel seam is consumed by collaborators
+  /// rather than by this type, so only the activator is retained.
   ///
   /// `fileprivate`, not `private`: `ActionWirer` below is a separate type in this
   /// file and is handed this seam at construction. Swift's `private` does not reach

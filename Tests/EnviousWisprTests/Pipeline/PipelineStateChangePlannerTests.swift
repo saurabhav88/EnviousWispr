@@ -24,8 +24,6 @@ struct PipelineStateChangePlannerTests {
 
   private static let recordingIntent: OverlayIntent = .recording(audioLevel: 0)
   private static let hiddenIntent: OverlayIntent = .hidden
-  private static let polishingIntent: OverlayIntent = .processing(phase: .polishing)
-  private static let transcribingIntent: OverlayIntent = .processing(phase: .transcribing)
 
   // MARK: - Three-way .complete overlay priority
 

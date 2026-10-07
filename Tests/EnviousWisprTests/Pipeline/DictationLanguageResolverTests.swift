@@ -19,13 +19,6 @@ struct DictationLanguageResolverTests {
   static let germanText = "Ich gehe heute Abend zum See und danach in die Stadt zurück."
   static let englishText = "I went to the store this afternoon and then walked back home again."
 
-  /// The rule #1921 deleted, as a seam, so the fix can be shown to be the cause.
-  static func lengthFlooredIdentify(_ text: String) -> (language: String, confidence: Double)? {
-    let letters = text.unicodeScalars.filter(\.properties.isAlphabetic).count
-    guard letters >= 24 else { return nil }
-    return DictationLanguageResolver.identify(text)
-  }
-
   /// A seam that answers with a fixed language and confidence, for the cases real
   /// recogniser output cannot reproducibly produce.
   static func fixed(_ language: String, _ confidence: Double)

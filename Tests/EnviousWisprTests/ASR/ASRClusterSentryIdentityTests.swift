@@ -72,16 +72,6 @@ struct ASRClusterSentryIdentityTests {
 
   // MARK: - C. The property that matters
 
-  /// A deterministic `CustomNSError` — its bridged domain/code are declared,
-  /// not inferred from enum layout, so this test asserts the override itself
-  /// and never depends on the compiler behaviour the design escapes.
-  private struct StableFixtureError: Error, CustomNSError, StableSentryErrorIdentity {
-    static let errorDomain = "fixture.raw"
-    var errorCode: Int { 30 }
-    let sentryFingerprintDescriptor = "fixture.pinned#asr"
-    let sentrySemanticID = "fixture.semantic"
-  }
-
   // MARK: - D. Dev/prod split survives the pin
 
   // MARK: - E. Event-construction contract

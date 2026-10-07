@@ -3,12 +3,10 @@ import SwiftParser
 import SwiftSyntax
 import Testing
 
-/// PR8 of #763 — strict source parser for `*EventRouter` / `WedgeRecoveryRouter`
-/// and the `DictationRuntime`-family ceiling tests.
+/// PR8 of #763 — strict source parser for class bodies, used by the remaining
+/// architecture tests (`AppDelegateCeilingsTests`, `EngineIdentityFreezeTests`).
 ///
-/// Counts ONLY top-level `let` stored properties, matching the governing rule
-/// in `.claude/rules/architecture-rules.md` ("How the ceiling parser counts")
-/// and the sibling parser `CeilingsTestSupport`. `var` declarations (owned
+/// Counts ONLY top-level `let` stored properties. `var` declarations (owned
 /// mutable state, lazy properties, setter-injected outlets, callback closures)
 /// are NOT collaborators and are excluded.
 ///
@@ -103,28 +101,6 @@ enum RouterCeilingParser {
       guard let type = binding.type else { return false }
       return isFunctionType(type)
     }.count
-  }
-
-  /// The classification-independent count used by architecture ceilings. An
-  /// alias can look like a collaborator while spelling a closure, but it still
-  /// consumes exactly one dependency slot here.
-  static func storedDependencyCount(in body: String) -> Int {
-    collaboratorCount(in: body) + closureInjectedCount(in: body)
-  }
-
-  /// Every parser-visible instance stored property, whether declared with `let`
-  /// or `var`. This is the right counter for a composition-root state ceiling:
-  /// unlike collaborator ceilings, owned mutable state is part of that home's
-  /// size and must consume a slot too.
-  static func storedPropertyCount(in body: String) -> Int {
-    storedBindings(in: body, includeVars: true).count
-  }
-
-  /// Non-private `func` declarations declared directly in the class body.
-  static func nonPrivateMethodCount(in body: String) -> Int {
-    members(in: body).compactMap { $0.as(FunctionDeclSyntax.self) }
-      .filter { !isPrivate($0.modifiers) }
-      .count
   }
 
   /// Every module imported by `source`, including imports behind `#if`.

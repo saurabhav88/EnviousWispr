@@ -28,6 +28,19 @@ struct AudioCaptureManagerDeadAirLatchTests {
     return manager
   }
 
+  @Test("a non-zero sample breaks the trailing zero-run and clears the compatibility view")
+  func nonZeroClearsTheCompatibilityView() {
+    let manager = armedManager()
+    manager.ingestSamples(
+      [Float](repeating: 0, count: AudioConstants.minimumTranscriptionSamples), level: 0)
+    #expect(manager.zeroSignalDiscriminatorSawIneligible, "precondition: refused")
+
+    // The refused-then-recovered negative: real audio breaks the trailing
+    // zero-run, so the earlier refusal must no longer stick.
+    manager.ingestSamples([0.5], level: 0.5)
+    #expect(!manager.zeroSignalDiscriminatorSawIneligible)
+  }
+
   // MARK: - #1578 — the refusal carries a reason, and is counted exactly once
 
   private static func zeros(_ n: Int = AudioConstants.minimumTranscriptionSamples) -> [Float] {

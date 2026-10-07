@@ -97,26 +97,6 @@ struct LivePreviewSettingsCopyTests {
     ]
   }
 
-  /// The text of the `allStrings` array literal, from its opening bracket to the line that closes
-  /// the computed property. Returns nil rather than an empty string if the shape changes, so the
-  /// caller fails loudly instead of concluding nothing is listed.
-  private static func allStringsLiteral(in source: String) -> String? {
-    guard let start = source.range(of: "private var allStrings: [String] {") else { return nil }
-    let rest = source[start.upperBound...]
-    guard let end = rest.range(of: "\n  }") else { return nil }
-    return String(rest[..<end.lowerBound])
-  }
-
-  /// `static let name` declarations, by name.
-  private static func staticLetNames(in source: String) -> Set<String> {
-    matches(of: #"static let ([a-zA-Z][a-zA-Z0-9]*)"#, in: source)
-  }
-
-  /// `Type.member` references, by member name.
-  private static func staticLetNames(referencedAs type: String, in source: String) -> Set<String> {
-    matches(of: "\(type)\\.([a-zA-Z][a-zA-Z0-9]*)", in: source)
-  }
-
   private static func matches(of pattern: String, in source: String) -> Set<String> {
     guard let regex = try? NSRegularExpression(pattern: pattern) else { return [] }
     let range = NSRange(source.startIndex..., in: source)

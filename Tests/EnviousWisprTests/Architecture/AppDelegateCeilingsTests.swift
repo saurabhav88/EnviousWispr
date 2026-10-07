@@ -19,13 +19,6 @@ import Testing
   private static let sourcePath =
     "Sources/EnviousWispr/AppDelegate.swift"
 
-  /// #2455 C1 (#2458): `bootstrapper` -> `application`. The shell delegate now
-  /// forwards into `LiveApplication`, which owns the bootstrapper, because the
-  /// live desktop-effect choice belongs above `EnviousWisprAppKit`.
-  private static let storedPropertyAllowlist: Set<String> = [
-    "application"
-  ]
-
   /// The loud-guard tripwire (#919). Both lifecycle entry points that deref the
   /// weak `bootstrapper` ref must call `assertAttached()` first, and the helper
   /// must keep its `#if DEBUG` `assertionFailure`. The pre-#919 release-build
@@ -77,37 +70,3 @@ import Testing
   }
 }
 
-/// Extracts the names of top-level (brace-depth 0) `let`/`var` stored-property
-/// declarations in a class body. Includes all access levels and primitive
-/// types; excludes computed properties (declaration line ends with `{`).
-private func storedPropertyNames(in body: String) -> Set<String> {
-  let declPattern =
-    #"^[[:space:]]*(@[A-Za-z_][A-Za-z0-9_]*(\([^)]*\))?[[:space:]]+)*"#
-    + #"(public|internal|private|fileprivate|package|open)?[[:space:]]*"#
-    + #"(weak[[:space:]]+)?(let|var)[[:space:]]+([A-Za-z_][A-Za-z0-9_]*)"#
-  guard let regex = try? NSRegularExpression(pattern: declPattern) else { return [] }
-
-  var depth = 0
-  var names: Set<String> = []
-  for line in body.split(separator: "\n", omittingEmptySubsequences: false) {
-    let opens = line.filter { $0 == "{" }.count
-    let closes = line.filter { $0 == "}" }.count
-    let depthForThisLine = depth - max(0, closes - opens)
-    if depthForThisLine == 0 {
-      let s = String(line)
-      let isComputed =
-        s.range(of: #"\{[[:space:]]*$"#, options: .regularExpression) != nil
-      if !isComputed {
-        let ns = s as NSString
-        if let m = regex.firstMatch(
-          in: s, range: NSRange(location: 0, length: ns.length)),
-          m.numberOfRanges > 6, m.range(at: 6).location != NSNotFound
-        {
-          names.insert(ns.substring(with: m.range(at: 6)))
-        }
-      }
-    }
-    depth += opens - closes
-  }
-  return names
-}

@@ -7,9 +7,8 @@ import Testing
 // `RecordingSessionKernel`, adapted by the single `KernelDictationDriver`.
 // PR-9 deleted the old `DictationPipeline` driver protocol. This suite is the
 // permanent guard that no SECOND recording-orchestration brain reappears and
-// that the lifecycle FSM + the event entry point stay single-owner. It models
-// `AppStateFreezeTests` (#763 terminal guard) and complements
-// `EngineIdentityFreezeTests` (which guards engine-identity literals, the old
+// that the lifecycle FSM + the event entry point stay single-owner. It
+// complements `EngineIdentityFreezeTests` (which guards engine-identity literals, the old
 // WhisperKit pipeline, and adapter construction — not kernel ownership).
 //
 // Four invariants:
@@ -32,8 +31,6 @@ import Testing
   // Whole-word so `KernelDictationDriver` / `KernelDictationDriverFactory` do
   // not false-positive on the deleted `DictationPipeline` protocol name.
   private static let dictationPipelineToken = #"\bDictationPipeline\b"#
-  // Whole-word so `WhisperKitPipelineState` etc. do not false-positive.
-  private static let transcriptionPipelineToken = #"\bTranscriptionPipeline\b"#
   // The `enum` keyword precedes the name only at the declaration; a usage such
   // as `RecordingSessionState.idle` is never preceded by `enum`.
   private static let recordingSessionStateDecl = #"\benum\s+RecordingSessionState\b"#
@@ -109,7 +106,7 @@ import Testing
     #expect(Self.countMatches(in: source, pattern: Self.dictationPipelineToken) == 0)
   }
 
-  // MARK: - Helpers (mirror EngineIdentityFreezeTests / AppStateFreezeTests)
+  // MARK: - Helpers (mirror EngineIdentityFreezeTests)
 
   /// Recursive scan over every `Sources/**/*.swift` file. Returns
   /// `relative/path.swift:LINE: trimmed` for each non-comment line whose regex
@@ -118,12 +115,6 @@ import Testing
   /// freeze.
   private static func scanSources(pattern: String) throws -> [String] {
     try scan(root: "Sources", pattern: pattern, allowing: [])
-  }
-
-  /// Same scan over `Tests/**/*.swift`, excluding any file whose basename is in
-  /// `allowing` (this freeze file legitimately contains the banned tokens).
-  private static func scanTests(pattern: String, allowing: [String]) throws -> [String] {
-    try scan(root: "Tests", pattern: pattern, allowing: allowing)
   }
 
   private static func scan(root: String, pattern: String, allowing: [String]) throws -> [String] {

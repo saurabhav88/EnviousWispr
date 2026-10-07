@@ -165,12 +165,7 @@ struct RecordingPillChromeTests {
   /// different colour or duration — the enum would still be injective and the
   /// chrome table would still read correctly while the pill changed. These pin
   /// what the cases actually produce, at the shipped values.
-  ///
-  /// `Color.white.opacity(0.95)` is also counted by
-  /// `CapsuleBackgroundFreezeTests.frozenCapsuleLiterals`, which is a tripwire on
-  /// the FILE. This is the same fact asserted on the VALUE, and the two fail for
-  /// different reasons: that one catches the literal being edited, this one
-  /// catches the ink being pointed somewhere else.
+
   @Test("the shipped ink and animation values are what they have always been")
   func resolvedValuesAreShipped() {
     #expect(PillInk.capsuleWhite.notice == Color.white.opacity(0.95))

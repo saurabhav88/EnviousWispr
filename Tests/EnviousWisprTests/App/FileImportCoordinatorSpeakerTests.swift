@@ -72,8 +72,6 @@ struct FileImportCoordinatorSpeakerTests {
       return hasArrived
     }
 
-    func arrivedSoFar() -> Bool { hasArrived }
-
     func open() {
       isOpen = true
       for waiter in openWaiters { waiter.resume() }

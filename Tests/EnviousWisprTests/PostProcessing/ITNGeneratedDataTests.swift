@@ -289,4 +289,82 @@ struct ITNGeneratedDataTests {
     #expect(DutchNumberData.articleForms == ["een"])
   }
 
+  @Test("only the named grammar adapter reads the generated data; the registry lists nine languages")
+  func notReachableFromRuntime() throws {
+    #expect(LanguageRuleRegistry.production.count == 9)
+    let sources = URL(fileURLWithPath: #filePath)
+      .deletingLastPathComponent()  // PostProcessing
+      .deletingLastPathComponent()  // EnviousWisprTests
+      .deletingLastPathComponent()  // Tests
+      .deletingLastPathComponent()  // repo root
+      .appendingPathComponent("Sources")
+    var isDirectory: ObjCBool = false
+    guard FileManager.default.fileExists(atPath: sources.path, isDirectory: &isDirectory),
+      isDirectory.boolValue
+    else {
+      Issue.record("Sources/ not found beside the tests; the reachability scan could not run")
+      return
+    }
+    let enumerator = try #require(
+      FileManager.default.enumerator(at: sources, includingPropertiesForKeys: nil))
+    var scanned = 0
+    var readers: [String] = []
+    for case let file as URL in enumerator where file.pathExtension == "swift" {
+      scanned += 1
+      let text = try String(contentsOf: file, encoding: .utf8)
+      let name = file.lastPathComponent
+      if (text.contains("GermanNumberData") && name != "GermanNumberData.swift")
+        || (text.contains("DutchNumberData") && name != "DutchNumberData.swift")
+      {
+        readers.append(file.path)
+      }
+    }
+    #expect(scanned > 100, "the scan must actually read the source tree (read \(scanned))")
+    let names = readers.map { URL(fileURLWithPath: $0).lastPathComponent }.sorted()
+    #expect(
+      names == ["LanguageNumberGrammar.swift"],
+      "the only reader must be the grammar adapter; found: \(readers)")
+
+    // The reviewed phone refusals have exactly one reader too: the phone-prefix rules adapter.
+    var phoneReaders: [String] = []
+    let second = try #require(
+      FileManager.default.enumerator(at: sources, includingPropertiesForKeys: nil))
+    for case let file as URL in second where file.pathExtension == "swift" {
+      let text = try String(contentsOf: file, encoding: .utf8)
+      if text.contains("GermanPhonePrefixData"), file.lastPathComponent != "GermanPhonePrefixData.swift" {
+        phoneReaders.append(file.lastPathComponent)
+      }
+    }
+    #expect(
+      phoneReaders.sorted() == ["LanguagePhonePrefixRules.swift"],
+      "the only reader of the phone data must be the rules adapter; found: \(phoneReaders)")
+
+    // And the reviewed ordinal refusals have exactly one reader: the ordinal rules adapter.
+    var ordinalReaders: [String] = []
+    let third = try #require(
+      FileManager.default.enumerator(at: sources, includingPropertiesForKeys: nil))
+    for case let file as URL in third where file.pathExtension == "swift" {
+      let text = try String(contentsOf: file, encoding: .utf8)
+      if text.contains("GermanOrdinalData"), file.lastPathComponent != "GermanOrdinalData.swift" {
+        ordinalReaders.append(file.lastPathComponent)
+      }
+    }
+    #expect(
+      ordinalReaders.sorted() == ["LanguageOrdinalRules.swift"],
+      "the only reader of the ordinal data must be the rules adapter; found: \(ordinalReaders)")
+
+    // And the clock syntax and refusal data have exactly one reader: the clock rules adapter.
+    var clockReaders: [String] = []
+    let fourth = try #require(
+      FileManager.default.enumerator(at: sources, includingPropertiesForKeys: nil))
+    for case let file as URL in fourth where file.pathExtension == "swift" {
+      let text = try String(contentsOf: file, encoding: .utf8)
+      if text.contains("ClockIdiomData"), file.lastPathComponent != "ClockIdiomData.swift" {
+        clockReaders.append(file.lastPathComponent)
+      }
+    }
+    #expect(
+      clockReaders.sorted() == ["LanguageClockIdiomRules.swift"],
+      "the only reader of the clock data must be the rules adapter; found: \(clockReaders)")
+  }
 }

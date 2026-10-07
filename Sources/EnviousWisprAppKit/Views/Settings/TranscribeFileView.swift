@@ -1049,9 +1049,8 @@ struct TranscribeFileView: View {
     let provider: LLMProvider
     let detail: String
 
-    /// Read from the provider, never restated here. `LLMProviderDisplayNameFreezeTests`
-    /// enforces it, and it is right to: a licence-bound spelling or a rename has
-    /// to change in one place, not in every screen that happens to list them.
+    /// Read from the provider, never restated here: a licence-bound spelling or a
+    /// rename has to change in one place, not in every screen that lists them.
     var title: String { provider.displayName }
   }
 
