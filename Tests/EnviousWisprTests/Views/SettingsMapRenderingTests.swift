@@ -757,7 +757,14 @@ struct SettingsMapRenderingTests {
     )
     let exempt = Dictionary(
       uniqueKeysWithValues: Self.exempt(rendered.list).map { ($0.key.rawValue, $0.value) })
-    #expect(exempt == expected.exempt, "\(label): exemptions \(exempt)")
+    var wantExempt = expected.exempt
+    // The fixture was recorded on a Mac with more than 8 GB. On an 8 GB Mac (the support floor,
+    // and the hosted CI runners) EG-1's card adds its low-memory note, one more status line
+    // (LocalEngineStatusCard, `showsLowMemoryNote`).
+    if label.hasPrefix("aiPolish.egOne"), ProcessInfo.processInfo.physicalMemory <= 8 << 30 {
+      wantExempt["statusLine", default: 0] += 1
+    }
+    #expect(exempt == wantExempt, "\(label): exemptions \(exempt)")
   }
 
   /// Choosing a local model while a cloud provider's key row is on screen. The leaving row's
