@@ -23,12 +23,13 @@ The Codex session runs from an empty folder outside every repository, with a pri
 
 1. Review the draft: accuracy against the real control (Codex, with repo access), naturalness per language (a fresh Codex session per language; German also through the GPT and Gemini council, which needs founder approval for the spend). Save the reviewed result as `scripts/settings-map/receipts/additions/<id>.json` in the shape `{"id": "<id>", "blocks": {"<language>": {"title"?, "words", "phrases"}, ...}}` with all 32 languages, next to the review transcript.
 2. Record it in `scripts/settings-map/receipts/reviewed-edits.json`. The builder reconciles every id into exactly one group and stops on anything else:
-   - a retained id (in the Phase 0 source and still mapped): reviewed word or phrase changes go under `blocks.<id>.<language>`;
+   - a retained id (in the Phase 0 source and still mapped): reviewed word, phrase or translated-title changes go under `blocks.<id>.<language>` (English and German titles come from the interface and are not edited here);
    - an added id (mapped, not in the Phase 0 source): `added.<id>` with `blocks` for all 32 languages, `review` (the path of that JSON under `receipts/`) and `reviewSHA256` (its SHA-256). The verifier and the tests require the file to stay under `receipts/`, match the hash, name the id and hold exactly the adopted blocks;
    - a retired id (in the Phase 0 source, no longer mapped or exempt): `retired.<id>` with a nonblank reason;
    - a renamed id is a retirement plus an addition; its new blocks need their own review.
 3. Rebuild: `scripts/settings-map/build-vocabulary.py --source <multilingual-v2.json> --inventory Tests/Fixtures/settings-map/inventory.json --edits scripts/settings-map/receipts/reviewed-edits.json --out Sources/EnviousWisprAppKit/Resources/SettingsSearchVocabulary.json`. It prints the resource hash and each language's content hash. `--self-test` checks the reconciliation rules on a tiny source.
 4. Update `scripts/settings-map/receipts/vocabulary-review.json`: the new review under each language it covers, the added id under `addedIDs` with its review path, and the printed hashes. The tests compare every language's hash with the shipped content and require each added id's review file, so content without a matching receipt fails.
+   Also set `reviewedSourceSHA256.<id>` for every id whose blocks were reviewed: the test `reviewsMatchTheCurrentEnglish` prints the value. It fails for any id whose English title or description changed since its translations were reviewed, so renaming a setting asks for exactly that id's re-review.
 5. `scripts/settings-map/verify-phase0.py` (usage in its header) must still report every language OK: retained blocks equal their Phase 0 review plus reviewed edits, added blocks equal their own reviewed blocks.
 
 ## Receipts

@@ -1,5 +1,6 @@
 import EnviousWisprCore
 import Foundation
+import os
 
 /// The Settings Map (#3482 plan §3.6): every searchable place in the Settings window, its
 /// structure and where an arrival lands. Titles come from the interface's own owners (see
@@ -1230,8 +1231,8 @@ enum SettingsMap {
     + choices(
       of: .startWordLanguage, destination: .dictation(.engine), dictionaryTab: nil,
       visibility: .spokenPunctuationOn, fallbacks: [.spokenPunctuation],
-      SpokenPunctuationStartWordEditor.languages.map {
-        (SettingsMapChoiceIDs.startWordLanguage($0), .dynamic(.startWordLanguage), .runtime)
+      SpokenPunctuationStartWordEditor.languages.compactMap { code in
+        SettingsMapChoiceIDs.startWordLanguage(code).map { ($0, .dynamic(.startWordLanguage), .runtime) }
       })
     + choices(
       of: .unloadModelAfter, destination: .dictation(.engine), dictionaryTab: nil,
@@ -1320,11 +1321,35 @@ enum SettingsMap {
     }
   }
 
-  /// Every node by id. Building it traps on a duplicate id, which the map tests also check.
-  static let byID: [SettingsMapID: SettingsMapNode] = Dictionary(uniqueKeysWithValues: nodes.map { ($0.id, $0) })
+  /// Every node by id. A duplicate id is a wiring fault (the map tests fail on it); the first
+  /// node wins.
+  static let byID: [SettingsMapID: SettingsMapNode] = Dictionary(
+    nodes.map { ($0.id, $0) },
+    uniquingKeysWith: { first, _ in
+      wiringFault("Settings Map has two nodes \(first.id.rawValue)")
+      return first
+    })
 
   static func node(_ id: SettingsMapID) -> SettingsMapNode {
-    guard let node = byID[id] else { preconditionFailure("Settings Map has no node \(id.rawValue)") }
+    guard let node = byID[id] else {
+      wiringFault("Settings Map has no node \(id.rawValue)")
+      return SettingsMapNode(
+        id: id, structure: .item, item: nil, title: .verbatim(""), description: nil, parent: nil,
+        destination: nil, dictionaryTab: nil, visibility: .always, target: nil, fallbacks: [])
+    }
     return node
   }
+
+  /// A Settings Map wiring mistake: a missing or duplicate node, or a name asked for with the
+  /// wrong kind of reference. It stops a DEBUG build and every Debug test that reaches it, and
+  /// the map tests check the same facts in every configuration. A shipped app logs it and shows
+  /// a plain fallback, never closing the Settings window over a name (adversarial review
+  /// 2026-10-07, after the AI Polish key-link crash).
+  static func wiringFault(_ message: @autoclosure () -> String) {
+    let text = message()
+    settingsMapLog.fault("\(text, privacy: .public)")
+    assertionFailure(text)
+  }
 }
+
+private let settingsMapLog = Logger(subsystem: "com.enviouswispr.app", category: "SettingsMap")

@@ -121,6 +121,8 @@ struct DictationSettingsRenderHarness {
     var removing = false
     var preparing = false
     var previewOn = true
+    /// Whether Apple's preview engine runs here; set, so a state never depends on the macOS.
+    var appleSupported = true
     var mode: LanguageMode = .locked("en")
     var active: LivePreviewPacksModel.ActiveLanguage = .ready(tag: "en-US", name: "English")
     var supported = ["en-US", "de-DE"]
@@ -255,7 +257,8 @@ struct DictationSettingsRenderHarness {
     }
     return AnyView(hostedRoot.environment(settings).environment(setup).environment(presenter)
       .environment(devices).environment(recording).environment(runtime).environment(pill)
-      .environment(\.settingsNavigate, { _ in }))
+      .environment(\.settingsNavigate, { _ in })
+      .environment(\.applePreviewSupported, scenario.appleSupported))
   }
 
   // Fixture timer is unnecessary: a stored MainActor continuation parks the fake

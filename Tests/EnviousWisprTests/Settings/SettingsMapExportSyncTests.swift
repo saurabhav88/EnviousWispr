@@ -48,7 +48,7 @@ struct SettingsMapExportSyncTests {
     #expect(Self.syncProblems(committed: fresh, fresh: fresh) == [])
   }
 
-  @Test("every map node appears once, in map order; 246 searchable nodes carry all 32 languages")
+  @Test("every map node appears once, in map order; every searchable node carries all 32 languages")
   func completeness() throws {
     let document = try Self.committedDocument()
     let list = try #require(document["nodes"] as? [[String: Any]])
@@ -58,7 +58,6 @@ struct SettingsMapExportSyncTests {
     let mapped = Set(inventory.items.filter { $0.disposition == "mapped" }.map(\.id))
     let structural = Set(inventory.structural.map(\.id))
     #expect(Set(ids) == mapped.union(structural).union(["window.settings"]))
-    #expect(ids.count == 271)
     let searchable = list.filter { $0["searchable"] as? Bool == true }
     #expect(Set(searchable.compactMap { $0["id"] as? String }) == mapped)
     var blocks = 0
@@ -67,7 +66,8 @@ struct SettingsMapExportSyncTests {
       #expect(Set(vocabulary.keys) == Set(SettingsSearchVocabularyTests.languages))
       blocks += vocabulary.count
     }
-    #expect(blocks == 7_872)
+    #expect(!searchable.isEmpty, "the export has no searchable places")
+    #expect(blocks == searchable.count * SettingsSearchVocabularyTests.languages.count)
     #expect(
       list.filter { $0["searchable"] as? Bool != true }.allSatisfy { $0["vocabulary"] == nil })
   }

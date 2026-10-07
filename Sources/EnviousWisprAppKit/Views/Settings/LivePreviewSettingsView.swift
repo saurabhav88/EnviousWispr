@@ -89,7 +89,7 @@ struct LivePreviewSettingsView: View {
 
   /// Whether APPLE's engine can run here. Still the gate for the pack list and
   /// the active-language summary, which are about Apple's packs specifically.
-  private var isAppleSupported: Bool { ApplePreviewEngineResolver.isSupportedOnThisSystem }
+  @Environment(\.applePreviewSupported) private var isAppleSupported
 
   /// Whether the universal engine was composable in this build.
   private var universalExists: Bool {
@@ -979,5 +979,19 @@ struct LivePreviewLanguageMenuButton: View {
       .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
     }
     .buttonStyle(.plain)
+  }
+}
+
+/// Whether Apple's preview engine runs on this Mac (macOS 26 or later). In the app it is always
+/// the system's own answer; the Settings render tests set it so each state renders the same on
+/// every macOS, and render the unsupported page on purpose (#3482 adversarial review).
+private struct ApplePreviewSupportedKey: EnvironmentKey {
+  static var defaultValue: Bool { ApplePreviewEngineResolver.isSupportedOnThisSystem }
+}
+
+extension EnvironmentValues {
+  var applePreviewSupported: Bool {
+    get { self[ApplePreviewSupportedKey.self] }
+    set { self[ApplePreviewSupportedKey.self] = newValue }
   }
 }

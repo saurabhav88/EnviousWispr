@@ -935,5 +935,22 @@
   "mapped": [
    "transcribeFile.steps"
   ]
+ },
+ "dictation.livePreview.appleUnsupported": {
+  "exempt": {},
+  "mapped": [
+   "dictation.tab.chimes",
+   "dictation.tab.clipboard",
+   "dictation.tab.engine",
+   "dictation.tab.livePreview",
+   "dictation.tab.microphone",
+   "dictation.tab.pill",
+   "livePreview",
+   "previewEngine",
+   "previewEngine.change",
+   "previewEngine.compare",
+   "section.livePreview",
+   "section.previewEngine"
+  ]
  }
 }

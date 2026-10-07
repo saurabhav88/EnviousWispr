@@ -175,6 +175,7 @@ struct SettingsMapRenderingTests {
       "dictation.microphone.multiInput", "dictation.pill.off",
       "dictation.livePreview.choicesOpen", "dictation.livePreview.off",
       "dictation.livePreview.noPacks", "dictation.livePreview.languageMissing",
+      "dictation.livePreview.appleUnsupported",
       "aiPolish.off", "aiPolish.appleIntelligence", "aiPolish.egOne", "aiPolish.s1Mini",
       "aiPolish.openAI", "aiPolish.gemini", "aiPolish.claude", "aiPolish.openAI.savedKey",
       "aiPolish.openAI.draftKey",
@@ -251,6 +252,7 @@ struct SettingsMapRenderingTests {
       scenario.devices = [multiInputDevice]
       scenario.preferredInputUID = multiInputDevice.uid
     case "off": scenario.previewOn = false
+    case "appleUnsupported": scenario.appleSupported = false
     case "noPacks": scenario.installed = []
     case "languageMissing": scenario.active = .needsDownload(name: "German")
     default: throw StateError.unknown(label)
@@ -733,15 +735,6 @@ struct SettingsMapRenderingTests {
 
   @Test("each state registers exactly what the reviewed fixture lists", arguments: stateLabels)
   func state(label: String) async throws {
-    // The Live Preview fixture rows include the Apple engine's language controls, which the view
-    // shows only where Apple's recognizer exists (macOS 26 or later). Say so instead of failing on
-    // a confusing difference; every machine that runs this suite today has it.
-    if label.hasPrefix("dictation.livePreview") {
-      try #require(
-        ApplePreviewEngineResolver.isSupportedOnThisSystem,
-        "\(label): the fixture assumes Apple Live Preview support (macOS 26 or later); this Mac has none"
-      )
-    }
     let rendered = try await Self.render(label)
     print("MAP-STATE \(Self.observed(label, rendered.list))")
     Self.checkCommon(

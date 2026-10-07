@@ -53,17 +53,16 @@ struct SettingsSearchVocabularyTests {
     #expect(vocabulary.byteCount == bundled.count)
   }
 
-  @Test("its ids are exactly the inventory's 246 mapped ids; the 64 exempt ids are gone")
+  @Test("its ids are exactly the inventory's mapped ids; the exempt ids are gone")
   func idsMatchTheInventory() throws {
     let vocabulary = try Self.shipped()
     let ids = try Self.inventoryIDs()
-    #expect(ids.mapped.count == 246)
-    #expect(ids.exempt.count == 64)
+    #expect(!ids.mapped.isEmpty, "the inventory reader found no mapped ids")
     #expect(Set(vocabulary.entries.keys) == ids.mapped)
     #expect(Set(vocabulary.entries.keys).isDisjoint(with: ids.exempt))
   }
 
-  @Test("every entry has exactly the 32 declared languages: 7,872 entry and language pairs")
+  @Test("every entry has exactly the 32 declared languages")
   func everyEntryHasEveryLanguage() throws {
     #expect(SettingsSearchVocabulary.declaredLanguages == Self.languages)
     let vocabulary = try Self.shipped()
@@ -73,7 +72,8 @@ struct SettingsSearchVocabularyTests {
       #expect(Set(blocks.keys) == Set(Self.languages), "\(id)")
       pairs += blocks.count
     }
-    #expect(pairs == 7_872)
+    #expect(!vocabulary.entries.isEmpty, "the vocabulary has no entries")
+    #expect(pairs == vocabulary.entries.count * Self.languages.count)
   }
 
   @Test("English and German titles come from the interface; every other block has its own title")
@@ -156,6 +156,62 @@ struct SettingsSearchVocabularyTests {
     let excludedIDs: [Excluded]
     let addedIDs: [Added]
     let languages: [Language]
+    /// Per searchable id, the English its translations were reviewed against.
+    let reviewedSourceSHA256: [String: String]
+  }
+
+  /// One entry's English as the reference export states it: each of title and description is
+  /// its kind plus its English text, resolver name, verbatim text or runtime role.
+  static func sourceFingerprint(_ node: [String: Any]) throws -> String {
+    func field(_ value: Any?) throws -> String {
+      guard let field = value as? [String: Any] else { return "none" }
+      let source = try #require(field["source"] as? String)
+      let key = ["resource": "en", "dynamic": "resolver", "verbatim": "text", "runtime": "role"][
+        source]
+      let name = try #require(key, "unknown source \(source)")
+      let text = try #require(field[name] as? String)
+      try #require(!text.isEmpty)
+      return source + "\u{1F}" + text
+    }
+    return sha256(
+      Data((try field(node["title"]) + "\u{1E}" + field(node["description"])).utf8))
+  }
+
+  /// A renamed setting keeps its id and its translated vocabulary, which then describes the old
+  /// name. This names every entry whose English changed since its translations were reviewed.
+  @Test("each entry's translations were reviewed against the English it shows now")
+  func reviewsMatchTheCurrentEnglish() throws {
+    let receipt = try Self.receipt()
+    let export = try #require(
+      JSONSerialization.jsonObject(
+        with: Data(contentsOf: RepoRoot.sourceURL("reference/settings-map.json")))
+        as? [String: Any])
+    let nodes = try #require(export["nodes"] as? [[String: Any]])
+    let searchable = nodes.filter { $0["searchable"] as? Bool == true }
+    try #require(!searchable.isEmpty, "the export has no searchable places")
+    var current: [String: String] = [:]
+    for node in searchable {
+      current[try #require(node["id"] as? String)] = try Self.sourceFingerprint(node)
+    }
+    #expect(Set(receipt.reviewedSourceSHA256.keys) == Set(current.keys))
+    for (id, hash) in current.sorted(by: { $0.key < $1.key })
+    where receipt.reviewedSourceSHA256[id] != hash {
+      Issue.record(
+        "\(id): its English changed since its translations were reviewed. Re-review its translated blocks, then set reviewedSourceSHA256.\(id) to \(hash) in scripts/settings-map/receipts/vocabulary-review.json"
+      )
+    }
+    // Control: a changed English title changes the fingerprint.
+    var renamed = try #require(searchable.first)
+    var title = try #require(renamed["title"] as? [String: Any])
+    if title["source"] as? String == "resource" {
+      title["en"] = "Renamed"
+    } else {
+      title["source"] = "verbatim"
+      title["text"] = "Renamed"
+    }
+    renamed["title"] = title
+    #expect(
+      try Self.sourceFingerprint(renamed) != Self.sourceFingerprint(try #require(searchable.first)))
   }
 
   static func receipt() throws -> Receipt {
@@ -202,7 +258,8 @@ struct SettingsSearchVocabularyTests {
     #expect(Set(receipt.addedIDs.map(\.id)) == Set(edits.keys))
     for (id, record) in edits {
       #expect(
-        Self.additionProblems(id: id, record: record, vocabulary: vocabulary, receipts: Self.receiptsRoot)
+        Self.additionProblems(
+          id: id, record: record, vocabulary: vocabulary, receipts: Self.receiptsRoot)
           == [], "\(id)")
     }
     let german = try #require(receipt.languages.first { $0.language == "de" })
@@ -237,7 +294,9 @@ struct SettingsSearchVocabularyTests {
     let root = receipts.standardizedFileURL.path + "/"
     let url = receipts.appendingPathComponent(record.review).standardizedFileURL
     guard url.path.hasPrefix(root) else { return ["review outside receipts"] }
-    guard let data = try? Data(contentsOf: url), !data.isEmpty else { return ["review missing or empty"] }
+    guard let data = try? Data(contentsOf: url), !data.isEmpty else {
+      return ["review missing or empty"]
+    }
     guard sha256(data) == record.reviewSHA256 else { return ["review hash differs"] }
     guard let document = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
       return ["review is not a JSON object"]
@@ -287,7 +346,8 @@ struct SettingsSearchVocabularyTests {
     }
     let record = AddedRecord(
       review: additionCase == .outsideReceipts ? "../alpha.one.json" : "additions/alpha.one.json",
-      reviewSHA256: additionCase == .staleHash ? String(repeating: "0", count: 64) : Self.sha256(review))
+      reviewSHA256: additionCase == .staleHash
+        ? String(repeating: "0", count: 64) : Self.sha256(review))
     var shipped = vocabulary
     if additionCase == .changedContent {
       var entries = vocabulary.entries
@@ -308,7 +368,8 @@ struct SettingsSearchVocabularyTests {
       case .outsideReceipts: ["review outside receipts"]
       }
     #expect(
-      Self.additionProblems(id: "alpha.one", record: record, vocabulary: shipped, receipts: receipts)
+      Self.additionProblems(
+        id: "alpha.one", record: record, vocabulary: shipped, receipts: receipts)
         == expected)
   }
 

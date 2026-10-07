@@ -8,7 +8,7 @@ Inputs, all named on the command line:
               which are exempt. Every source id must be one or the other.
   --edits     scripts/settings-map/receipts/reviewed-edits.json: the reviewed stop
               lists and markers for every language, and reviewed replacements of
-              single blocks' words or phrases.
+              single blocks' words, phrases or (outside English and German) title.
 
 It writes the resource and prints each language's content hash. It never writes a
 review receipt and never decides validity: the Swift validator
@@ -128,12 +128,15 @@ def build(source_bytes, inventory, edits):
             else:
                 original = source["entries"][entry_id][code]
                 replacement = edits["blocks"].get(entry_id, {}).get(code, {})
-            unknown = set(replacement) - {"words", "phrases"}
+            # A translated title may be replaced too (a renamed setting), except in the interface
+            # languages, whose titles come from the interface itself.
+            editable = {"words", "phrases"} | (set() if code in INTERFACE else {"title"})
+            unknown = set(replacement) - editable
             if unknown:
-                raise BuildError(f"{entry_id}/{code}: edits may replace words or phrases only, not {sorted(unknown)}")
+                raise BuildError(f"{entry_id}/{code}: edits may replace {sorted(editable)} only, not {sorted(unknown)}")
             block = {"language": code}
             if code not in INTERFACE:
-                block["title"] = original.get("title", "")
+                block["title"] = replacement.get("title", original.get("title", ""))
             block["words"] = replacement.get("words", original["words"])
             block["phrases"] = replacement.get("phrases", original["phrases"])
             if not block["phrases"] and "phraseExemption" in original:
@@ -205,6 +208,10 @@ def self_test():
          edits(added={"new": {"blocks": {code: block(code, "n") | {"phrases": [], "phraseExemption": "title suffices"}
                                         for code in LANGUAGES}, "review": "r", "reviewSHA256": "0" * 64}},
                retired={"gone": "x"}), "exemption kept"),
+        ("a reviewed title edit replaces the translated title", inventory(["keep"]),
+         edits(retired={"gone": "x"}, blocks={"keep": {"fr": {"title": "nouveau"}}}), "title edited"),
+        ("an interface language's title is not editable", inventory(["keep"]),
+         edits(retired={"gone": "x"}, blocks={"keep": {"de": {"title": "neu"}}}), "not ['title']"),
         ("canonically equal list words", inventory(["keep"]),
          edits(retired={"gone": "x"}, languageData=lists | {"hi": {"stop": ["filler"],
                "markers": ["\u095c", "\u0921\u093c"]}}), "canonically equal"),
@@ -218,6 +225,10 @@ def self_test():
                 kept = all(b.get("phraseExemption") == "title suffices" and b["phrases"] == []
                            for e in built["entries"] if e["id"] == "new" for b in e["blocks"])
                 got = "exemption kept" if kept else "exemption dropped"
+            if want == "title edited":
+                titles = {b["language"]: b.get("title") for e in built["entries"] if e["id"] == "keep"
+                          for b in e["blocks"]}
+                got = "title edited" if titles["fr"] == "nouveau" and titles["it"] == "t it" else str(titles)
         except BuildError as error:
             got = str(error)
         ok = got == want if isinstance(want, list) else isinstance(got, str) and want in got

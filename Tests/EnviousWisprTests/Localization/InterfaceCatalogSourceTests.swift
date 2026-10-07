@@ -99,14 +99,15 @@ struct InterfaceCatalogSourceTests {
   /// #3482: the Settings item names moved from inline literals into `SettingsItemCopy`. Each
   /// constant keeps its key, default English and comment, so it reads the catalog entry the
   /// literal read, and the app ships its German. Read from the source text (the constants are
-  /// not enumerable at run time); a line the reader cannot parse fails the count.
+  /// not enumerable at run time); a line the reader cannot parse fails the count. Arguments may
+  /// wrap onto new lines, as the formatter leaves them.
   @Test("Settings item copy keeps its catalog entries, English, comments and shipped German")
   func settingsItemCopyKeepsItsEntries() throws {
     let source = try String(
       contentsOf: Self.repoRoot.appendingPathComponent(
         "Sources/EnviousWisprAppKit/Views/Settings/SettingsItemCopy.swift"), encoding: .utf8)
     let pattern = try Regex(
-      #"LocalizedStringResource\(\s*"((?:[^"\\]|\\\([^)]*\)|\\u\{[0-9A-Fa-f]+\})*)"(?:, defaultValue: "([^"\\]*)")?(?:, comment: "([^"\\]*)")?\)"#)
+      #"LocalizedStringResource\(\s*"((?:[^"\\]|\\\([^)]*\)|\\u\{[0-9A-Fa-f]+\})*)"(?:,\s*defaultValue:\s*"([^"\\]*)")?(?:,\s*comment:\s*"([^"\\]*)")?\s*\)"#)
     let constants = source.matches(of: pattern)
     let calls = source.components(separatedBy: "LocalizedStringResource(").count - 1
     #expect(constants.count == calls, "parsed \(constants.count) of \(calls) constants")

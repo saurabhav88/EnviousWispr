@@ -61,21 +61,24 @@ enum SettingsMapRef: Sendable {
   /// without a static line is a wiring mistake the row cannot hide.
   var shortLine: String {
     guard case .resource(let resource) = SettingsMap.node(id).description else {
-      preconditionFailure("Settings Map: \(id.rawValue) has no static short line")
+      SettingsMap.wiringFault("Settings Map: \(id.rawValue) has no static short line")
+      return ""
     }
     return String(localized: resource)
   }
 
-  /// Traps unless the node declares its short line as composed at runtime.
+  /// A wiring fault unless the node declares its short line as composed at runtime.
   func requireRuntimeShortLine() {
     guard case .runtime = SettingsMap.node(id).description else {
-      preconditionFailure("Settings Map: \(id.rawValue) does not declare a runtime short line")
+      SettingsMap.wiringFault(
+        "Settings Map: \(id.rawValue) does not declare a runtime short line")
+      return
     }
   }
 }
 
 /// Typed runtime inputs for the dynamic resolvers: the state a title depends on, never a title.
-/// `SettingsMap.title(of:)` traps when a context does not fit the node's resolver.
+/// A context that does not fit the node's resolver is a wiring fault (`SettingsMap.wiringFault`).
 enum SettingsMapTitleContext: Sendable {
   case currentEngine(EngineChoicePresentation.Choice)
   case lockedLanguage(code: String, spelling: EnglishSpelling)
@@ -167,8 +170,8 @@ extension SettingsMap {
     case (.dynamic(.appLanguageName), .dynamic(_, .appLanguage(let code))):
       return AppLanguagePreference.name(of: code)
     default:
-      preconditionFailure(
-        "Settings Map: \(ref.id.rawValue) was named with the wrong reference kind")
+      wiringFault("Settings Map: \(ref.id.rawValue) was named with the wrong reference kind")
+      return ""
     }
   }
 
@@ -176,19 +179,20 @@ extension SettingsMap {
   private static func apiKeyLinkTitle(for provider: LLMProvider) -> String {
     switch provider {
     case .openAI:
-      String(
+      return String(
         localized: "Get your free API key at platform.openai.com",
         comment: "AI Polish: link to the OpenAI API key page.")
     case .gemini:
-      String(
+      return String(
         localized: "Get your free API key at aistudio.google.com",
         comment: "AI Polish: link to the Gemini API key page.")
     case .claude:
-      String(
+      return String(
         localized: "Get your Claude API key",
         comment: "AI Polish: link to the Claude Platform API key page.")
     case .ollama, .appleIntelligence, .egOne, .s1Mini, .none:
-      preconditionFailure("Settings Map: \(provider) has no API key link")
+      wiringFault("Settings Map: \(provider) has no API key link")
+      return ""
     }
   }
 }

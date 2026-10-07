@@ -77,28 +77,33 @@ extension PolishRailProvider {
   /// state, never a list entry (`PolishRailCatalog.all` does not contain it).
   var settingsMapID: SettingsMapID {
     switch provider {
-    case .egOne: .aiPolishProviderEgOne
-    case .s1Mini: .aiPolishProviderS1Mini
-    case .appleIntelligence: .aiPolishProviderAppleIntelligence
-    case .ollama: .aiPolishProviderOllama
-    case .openAI: .aiPolishProviderOpenAI
-    case .gemini: .aiPolishProviderGemini
-    case .claude: .aiPolishProviderClaude
-    case .none: preconditionFailure("the switched-off state is not a provider list entry")
+    case .egOne: return .aiPolishProviderEgOne
+    case .s1Mini: return .aiPolishProviderS1Mini
+    case .appleIntelligence: return .aiPolishProviderAppleIntelligence
+    case .ollama: return .aiPolishProviderOllama
+    case .openAI: return .aiPolishProviderOpenAI
+    case .gemini: return .aiPolishProviderGemini
+    case .claude: return .aiPolishProviderClaude
+    case .none:
+      SettingsMap.wiringFault("the switched-off state is not a provider list entry")
+      return .aiPolishProvider
     }
   }
 }
 
 enum SettingsMapChoiceIDs {
   /// The start-word editor's language options (`SpokenPunctuationStartWordEditor.languages`).
-  static func startWordLanguage(_ code: String) -> SettingsMapID {
+  /// Nil, and a wiring fault, for a language the map does not name yet (the map tests fail on it).
+  static func startWordLanguage(_ code: String) -> SettingsMapID? {
     switch code {
-    case "en": .startWordLanguageEn
-    case "de": .startWordLanguageDe
-    case "fr": .startWordLanguageFr
-    case "es": .startWordLanguageEs
-    case "it": .startWordLanguageIt
-    default: preconditionFailure("start-word language \(code) has no Settings Map identity")
+    case "en": return .startWordLanguageEn
+    case "de": return .startWordLanguageDe
+    case "fr": return .startWordLanguageFr
+    case "es": return .startWordLanguageEs
+    case "it": return .startWordLanguageIt
+    default:
+      SettingsMap.wiringFault("start-word language \(code) has no Settings Map identity")
+      return nil
     }
   }
 }

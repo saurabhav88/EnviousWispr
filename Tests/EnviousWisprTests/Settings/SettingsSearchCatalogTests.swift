@@ -12,8 +12,8 @@ struct SettingsSearchCatalogTests {
   func exactProjection() throws {
     let inventory = try SettingsMapTests.inventory()
     let mapped = inventory.items.filter { $0.disposition == "mapped" }.map(\.id)
-    #expect(mapped.count == 246)
-    #expect(SettingsSearchCatalog.entries.count == 246)
+    #expect(!mapped.isEmpty, "the inventory reader found no mapped ids")
+    #expect(SettingsSearchCatalog.entries.count == mapped.count)
     #expect(Set(SettingsSearchCatalog.entries.map(\.id)) == Set(mapped))
     #expect(SettingsSearchCatalog.searchableIDs == Set(mapped))
     let structural = Set(inventory.structural.map(\.id))
