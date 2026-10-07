@@ -118,7 +118,7 @@ recovery.press_blocked	ungraded	ungraded	-	pre-#2987
 recovery.press_unblocked	ungraded	ungraded	-	pre-#2987
 settings.change_applied	ungraded	ungraded	-	pre-#2987
 settings.change_blocked	ungraded	ungraded	-	pre-#2987
-settings.search_finished	per_user_action	keep	Settings search gaps: founder reviews distinct-install query gaps and sidebar destinations weekly for four weeks after release, then monthly	#3482
+settings.search_finished	per_user_action	keep	analytics-operations.md FACT: app-posthog-events (Settings search gaps: founder reviews distinct-install query gaps and sidebar destinations weekly for four weeks after release, then monthly)	#3482
 settings.changed	ungraded	ungraded	-	pre-#2987
 settings.model_preparing_impression	ungraded	ungraded	-	pre-#2987
 settings.snapshot	ungraded	ungraded	-	pre-#2987
