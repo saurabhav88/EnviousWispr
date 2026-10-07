@@ -18,6 +18,17 @@ struct FakeEngineTests {
 
   // MARK: Per-behavior finalize outcomes
 
+  @Test("batchSuccess finalizes to a non-empty transcript")
+  func batchSuccessOutcome() async {
+    let (engine, _) = makeEngine(.batchSuccess(text: "hello"))
+    let outcome = await engine.finalize(batchSamples: nil)
+    guard case .transcript(let result) = outcome else {
+      Issue.record("expected .transcript, got \(outcome)")
+      return
+    }
+    #expect(result.text == "hello")
+  }
+
   @Test("streamingSuccess finalizes to the final transcript")
   func streamingSuccessOutcome() async {
     let (engine, _) = makeEngine(.streamingSuccess(partials: ["he"], final: "hello"))

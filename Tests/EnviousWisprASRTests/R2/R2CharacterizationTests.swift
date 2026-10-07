@@ -148,6 +148,18 @@ struct R2CharacterizationTests {
     #expect(result.abstained == false)
   }
 
+  @Test("R2-CHAR-031: normal-clip medium-prob accepts at mediumAuto tier")
+  func mediumAutoTier() async {
+    let (detector, _) = r2MakeDetector()
+    let result = await detector.evaluateForTesting(
+      windowProbs: ["en": 0.65, "de": 0.45],
+      voicedDuration: 4.0,
+      mode: .auto
+    )
+    #expect(result.tier == .mediumAuto)
+    #expect(result.lang == "en")
+  }
+
   @Test("R2-CHAR-033: narrow margin (below normalMargin) drops the decision to lowAuto")
   func narrowMarginDropsToLowAuto() async {
     // Inputs (0.65 top, 0.60 runner-up, margin 0.05) are below `normalMargin`.

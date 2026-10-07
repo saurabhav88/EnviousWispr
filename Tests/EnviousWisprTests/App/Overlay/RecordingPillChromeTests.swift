@@ -42,6 +42,15 @@ struct RecordingPillChromeTests {
     }
   }
 
+  /// The paired case that stops the sweep above passing vacuously: a design must
+  /// equal ITSELF, or `Equatable` is comparing nothing and every pair differs.
+  @Test("chrome is stable and self-equal", arguments: RecordingPillDesign.allCases)
+  func chromeIsSelfEqual(design: RecordingPillDesign) {
+    #expect(
+      design.chrome == design.chrome,
+      "\(design)'s chrome does not equal itself, so the injectivity sweep proves nothing")
+  }
+
   /// **Pinned per design, read off the base revision's own branches.**
   ///
   /// `.classic` was the `false` side of every `usesPreviewLayout` read and
