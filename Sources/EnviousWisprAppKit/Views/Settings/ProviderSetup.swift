@@ -826,9 +826,10 @@ private var modelFieldLabel: String {
     let accessibilityLabel: String
     let privacySentence: String
     /// The line under the key's name: what this provider receives (#3385).
-    /// Where to get a key, when the provider has a page for it.
-    /// The provider's key page. Its link title is the Settings Map's (#3482).
-    var keyLink: URL?
+    /// Where to get a key, when the provider has a page for it. The title is the Settings Map's
+    /// (#3482), resolved here for this arm's own provider: the row's detail closure runs later and
+    /// can see the NEXT provider while this row leaves, which has no key page.
+    var keyLink: (title: String, url: URL)?
   }
 
   private var activeKeyDescriptor: APIKeyDescriptor {
@@ -845,7 +846,9 @@ private var modelFieldLabel: String {
           comment:
             "AI Polish: what a cloud provider receives, shown under its API key field. Keep \"store: false\" as written; it is a request field."
         ),
-        keyLink: URL(string: "https://platform.openai.com/api-keys")!
+        keyLink: (
+          SettingsMapRef.dynamic(.apiKeyGetKeyLink, .provider(.openAI)).title,
+          URL(string: "https://platform.openai.com/api-keys")!)
       )
     case .gemini:
       return APIKeyDescriptor(
@@ -858,7 +861,9 @@ private var modelFieldLabel: String {
           comment:
             "AI Polish: what a cloud provider receives, shown under its API key field. Keep \"store: false\" as written; it is a request field."
         ),
-        keyLink: URL(string: "https://aistudio.google.com/apikey")!
+        keyLink: (
+          SettingsMapRef.dynamic(.apiKeyGetKeyLink, .provider(.gemini)).title,
+          URL(string: "https://aistudio.google.com/apikey")!)
       )
     case .claude:
       // Claude's privacy sentence does not reuse OpenAI/Gemini's "store:
@@ -878,7 +883,9 @@ private var modelFieldLabel: String {
           localized:
             "Claude polish sends your transcribed text, plus the active app name and any custom words you've added, but never audio. Anthropic's own retention policy for your API account governs how long the request is kept.",
           comment: "AI Polish: what a cloud provider receives, shown under its API key field."),
-        keyLink: URL(string: "https://platform.claude.com/settings/keys")!
+        keyLink: (
+          SettingsMapRef.dynamic(.apiKeyGetKeyLink, .provider(.claude)).title,
+          URL(string: "https://platform.claude.com/settings/keys")!)
       )
     // #2651: enumerated rather than `default:`. The empty descriptor is only
     // safe because `apiKeyRow` renders for cloud providers alone, and that
@@ -937,9 +944,7 @@ private var apiKeyRow: some View {
       icon: "key",
       detail: {
         if let link = descriptor.keyLink {
-          Link(
-            SettingsMapRef.dynamic(.apiKeyGetKeyLink, .provider(provider)).title,
-            destination: link)
+          Link(link.title, destination: link.url)
             .font(.stHelper).tint(Color.stAccent)
             .padding(.top, 2)
             .settingsMapRegistration(.apiKeyGetKeyLink)

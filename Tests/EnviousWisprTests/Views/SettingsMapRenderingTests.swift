@@ -87,7 +87,8 @@ struct SettingsMapRenderingTests {
     _ list: [SettingsMapRegistration], on destination: SettingsDestination, label: String,
     allowEmpty: Bool = false
   ) {
-    #expect(allowEmpty || !list.isEmpty, "\(label): the page registered nothing, which is not a pass")
+    #expect(
+      allowEmpty || !list.isEmpty, "\(label): the page registered nothing, which is not a pass")
     #expect(
       !list.contains(.exempt(.renderFixture)), "\(label): a test fixture row on a real page")
     let ids = mapped(list)
@@ -114,7 +115,8 @@ struct SettingsMapRenderingTests {
       guard let parent = node.parent, Self.headings.contains(parent) else { continue }
       #expect(
         heading == parent,
-        "\(label): \(id.rawValue) is drawn under \(heading?.rawValue ?? "no heading"), the map says \(parent.rawValue)")
+        "\(label): \(id.rawValue) is drawn under \(heading?.rawValue ?? "no heading"), the map says \(parent.rawValue)"
+      )
     }
     for id in ids where !strip.contains(id) {
       let node = SettingsMap.node(id)
@@ -198,7 +200,8 @@ struct SettingsMapRenderingTests {
     case "snippets": return try await snippets(label)
     case "keybinds":
       let list = try await keybindsRender()
-      return Rendered(list: list, destination: .keybinds, alwaysOnThisPage: alwaysShown(on: .keybinds))
+      return Rendered(
+        list: list, destination: .keybinds, alwaysOnThisPage: alwaysShown(on: .keybinds))
     case "appSettings": return try await appSettings(label)
     case "transcribeFile": return try await transcribeFile()
     default: throw StateError.unknown(label)
@@ -224,14 +227,24 @@ struct SettingsMapRenderingTests {
     switch parts.count > 2 ? parts[2] : "" {
     case "": ordinary = true
     case "choicesOpen": scenario.expanded = true
-    case "allLanguagesAuto": scenario.backend = .whisperKit; scenario.mode = .auto
-    case "allLanguagesReady": scenario.backend = .whisperKit; scenario.setupState = .ready
+    case "allLanguagesAuto":
+      scenario.backend = .whisperKit
+      scenario.mode = .auto
+    case "allLanguagesReady":
+      scenario.backend = .whisperKit
+      scenario.setupState = .ready
     case "allLanguagesDownloading":
       scenario.backend = .whisperKit
       scenario.setupState = .downloading(progress: 0.4, status: "")
-    case "allLanguagesPaused": scenario.backend = .whisperKit; scenario.setupState = .paused
-    case "allLanguagesFailed": scenario.backend = .whisperKit; scenario.setupState = .error("fixture")
-    case "switchesOn": scenario.stopOnSilence = true; scenario.spokenPunctuation = true
+    case "allLanguagesPaused":
+      scenario.backend = .whisperKit
+      scenario.setupState = .paused
+    case "allLanguagesFailed":
+      scenario.backend = .whisperKit
+      scenario.setupState = .error("fixture")
+    case "switchesOn":
+      scenario.stopOnSilence = true
+      scenario.spokenPunctuation = true
     case "fastDownloading":
       scenario.fastDelivery = .downloading(fractionCompleted: 0.3, bytesWritten: 3, totalBytes: 10)
     case "multiInput":
@@ -331,7 +344,8 @@ struct SettingsMapRenderingTests {
           .environment(
             LLMModelDiscoveryCoordinator(
               keychainManager: keys, cacheDefaults: defaults, savedKeyPresence: SavedKeyPresence(),
-              discoverModels: { _, _ in [] }))
+              discoverModels: { _, _ in [] })
+          )
           .environment(SavedKeyPresence())
           .environment(egOne).environment(LocalPolishRuntimeSet(egOne: egOne, s1Mini: s1))
           .environment(\.keychainManager, keys))
@@ -364,16 +378,31 @@ struct SettingsMapRenderingTests {
     let daemon: @Sendable (URLRequest) async throws -> (Data, URLResponse)
     let expected: SettingsMapID
     switch state {
-    case "notInstalled": (installed, daemon, expected) = (false, Self.daemon(status: nil, models: []), .ollamaDownloadOllama)
-    case "notRunning": (installed, daemon, expected) = (true, Self.daemon(status: nil, models: []), .ollamaStart)
-    case "noModels": (installed, daemon, expected) = (true, Self.daemon(status: 200, models: []), .ollamaDownloadModel)
-    case "ready": (installed, daemon, expected) = (true, Self.daemon(status: 200, models: ["fixture:1b"]), .ollamaServer)
-    case "error": (installed, daemon, expected) = (true, Self.daemon(status: 503, models: []), .ollamaTryAgain)
-    case "pulling": (installed, daemon, expected) = (true, Self.daemon(status: 200, models: []), .ollamaCancelPull)
+    case "notInstalled":
+      (installed, daemon, expected) = (
+        false, Self.daemon(status: nil, models: []), .ollamaDownloadOllama
+      )
+    case "notRunning":
+      (installed, daemon, expected) = (true, Self.daemon(status: nil, models: []), .ollamaStart)
+    case "noModels":
+      (installed, daemon, expected) = (
+        true, Self.daemon(status: 200, models: []), .ollamaDownloadModel
+      )
+    case "ready":
+      (installed, daemon, expected) = (
+        true, Self.daemon(status: 200, models: ["fixture:1b"]), .ollamaServer
+      )
+    case "error":
+      (installed, daemon, expected) = (true, Self.daemon(status: 503, models: []), .ollamaTryAgain)
+    case "pulling":
+      (installed, daemon, expected) = (
+        true, Self.daemon(status: 200, models: []), .ollamaCancelPull
+      )
     default: throw StateError.unknown(state)
     }
     let service = OllamaSetupService(
-      cloudCatalogClient: OllamaCloudCatalogClient { _, _ in throw URLError(.notConnectedToInternet) },
+      cloudCatalogClient: OllamaCloudCatalogClient { _, _ in throw URLError(.notConnectedToInternet)
+      },
       findOllamaBinaryOverride: { installed ? "/fixture/ollama" : nil },
       localDaemonTransport: daemon,
       // Parks until cancelled, so the real pull state holds and nothing is downloaded.
@@ -385,8 +414,11 @@ struct SettingsMapRenderingTests {
     let key = "OllamaSetupService.lastKnownReady"
     let saved = UserDefaults.standard.object(forKey: key)
     defer {
-      if let saved { UserDefaults.standard.set(saved, forKey: key) }
-      else { UserDefaults.standard.removeObject(forKey: key) }
+      if let saved {
+        UserDefaults.standard.set(saved, forKey: key)
+      } else {
+        UserDefaults.standard.removeObject(forKey: key)
+      }
       service.cancelPull()
     }
     // An empty model keeps the ready state from warming a model over the network.
@@ -403,7 +435,8 @@ struct SettingsMapRenderingTests {
     let parts = label.split(separator: ".").map(String.init)
     if parts[1] == "ollama" {
       let list = try await ollamaRender(parts[2])
-      return Rendered(list: list, destination: .aiPolish, alwaysOnThisPage: alwaysShown(on: .aiPolish))
+      return Rendered(
+        list: list, destination: .aiPolish, alwaysOnThisPage: alwaysShown(on: .aiPolish))
     }
     let provider: LLMProvider =
       parts[1] == "off" ? .none : try #require(LLMProvider(rawValue: parts[1]))
@@ -446,9 +479,11 @@ struct SettingsMapRenderingTests {
       }
       let own = Set(providerRows[provider] ?? [])
       let leaked = ids.intersection(providerRows.values.flatMap { $0 }).subtracting(own)
-      #expect(leaked.isEmpty, "\(label): another provider's rows: \(leaked.map(\.rawValue).sorted())")
+      #expect(
+        leaked.isEmpty, "\(label): another provider's rows: \(leaked.map(\.rawValue).sorted())")
     }
-    return Rendered(list: list, destination: .aiPolish, alwaysOnThisPage: alwaysShown(on: .aiPolish))
+    return Rendered(
+      list: list, destination: .aiPolish, alwaysOnThisPage: alwaysShown(on: .aiPolish))
   }
 
   /// Each provider's own rows (written from ProviderSetup and the why-use blocks).
@@ -506,7 +541,9 @@ struct SettingsMapRenderingTests {
       return Rendered(list: list, destination: .dictionary, alwaysOnThisPage: always)
     }
     let list = try await dictionaryTab(tab)
-    let strays = mapped(list).filter { SettingsMap.node($0).dictionaryTab.map { $0 != tab } ?? false }
+    let strays = mapped(list).filter {
+      SettingsMap.node($0).dictionaryTab.map { $0 != tab } ?? false
+    }
     #expect(strays.isEmpty, "\(label): another tab's controls: \(strays.map(\.rawValue))")
     return Rendered(
       list: list, destination: .dictionary,
@@ -530,7 +567,10 @@ struct SettingsMapRenderingTests {
     let checker = LearnedWordCheckerEligibility(
       delivery: ModelDeliveryHome(
         engineMutationScope: .live(
-          tryBegin: { Issue.record("render tried a model change"); return false }, end: { true },
+          tryBegin: {
+            Issue.record("render tried a model change")
+            return false
+          }, end: { true },
           wake: {}, onRefused: { _ in }),
         manifestBundle: try #require(Bundle(url: resources)),
         appSupportOverride: dir.appending(path: "delivery", directoryHint: .isDirectory)),
@@ -541,7 +581,8 @@ struct SettingsMapRenderingTests {
       ])
     let content: AnyView =
       switch tab {
-      case .yourWords: AnyView(CustomTermsSection(initialSearchQuery: searching ? "envious" : "") { EmptyView() })
+      case .yourWords:
+        AnyView(CustomTermsSection(initialSearchQuery: searching ? "envious" : "") { EmptyView() })
       case .vocabularyPacks: AnyView(VocabPacksSection())
       case .learnFrom: AnyView(LearningSection())
       case .quickAdd: AnyView(QuickAddTeachingSection())
@@ -614,7 +655,8 @@ struct SettingsMapRenderingTests {
       // The appearance page with an isolated language preference that already chose German.
       let name = "ew.settingsMapLanguage.\(UUID().uuidString)"
       let defaults = try #require(TestDefaults.suite(name))
-      let preference = AppLanguagePreference(defaults: defaults, domain: name, shipped: ["en", "de"])
+      let preference = AppLanguagePreference(
+        defaults: defaults, domain: name, shipped: ["en", "de"])
       preference.choose("de")
       try #require(preference.choice == "de")
       page = AnyView(
@@ -680,9 +722,12 @@ struct SettingsMapRenderingTests {
   /// One line per state, in the fixture's shape, for review when a state changes.
   static func observed(_ label: String, _ list: [SettingsMapRegistration]) -> String {
     let mapped = Self.mapped(list).map(\.rawValue).sorted()
-    let exempt = Dictionary(uniqueKeysWithValues: Self.exempt(list).map { ($0.key.rawValue, $0.value) })
+    let exempt = Dictionary(
+      uniqueKeysWithValues: Self.exempt(list).map { ($0.key.rawValue, $0.value) })
     let object: [String: Any] = ["mapped": mapped, "exempt": exempt]
-    let data = (try? JSONSerialization.data(withJSONObject: [label: object], options: [.sortedKeys])) ?? Data()
+    let data =
+      (try? JSONSerialization.data(withJSONObject: [label: object], options: [.sortedKeys]))
+      ?? Data()
     return String(decoding: data, as: UTF8.self)
   }
 
@@ -694,7 +739,8 @@ struct SettingsMapRenderingTests {
     if label.hasPrefix("dictation.livePreview") {
       try #require(
         ApplePreviewEngineResolver.isSupportedOnThisSystem,
-        "\(label): the fixture assumes Apple Live Preview support (macOS 26 or later); this Mac has none")
+        "\(label): the fixture assumes Apple Live Preview support (macOS 26 or later); this Mac has none"
+      )
     }
     let rendered = try await Self.render(label)
     print("MAP-STATE \(Self.observed(label, rendered.list))")
@@ -707,9 +753,26 @@ struct SettingsMapRenderingTests {
     let want = Set(expected.mapped)
     #expect(
       mapped == want,
-      "\(label): new \(mapped.subtracting(want).sorted()); missing \(want.subtracting(mapped).sorted())")
-    let exempt = Dictionary(uniqueKeysWithValues: Self.exempt(rendered.list).map { ($0.key.rawValue, $0.value) })
+      "\(label): new \(mapped.subtracting(want).sorted()); missing \(want.subtracting(mapped).sorted())"
+    )
+    let exempt = Dictionary(
+      uniqueKeysWithValues: Self.exempt(rendered.list).map { ($0.key.rawValue, $0.value) })
     #expect(exempt == expected.exempt, "\(label): exemptions \(exempt)")
+  }
+
+  /// Choosing a local model while a cloud provider's key row is on screen. The leaving row's
+  /// "get a key" link once read the NEW provider, which has no key page, and stopped the app
+  /// (live check 2026-10-06, OpenAI to EG-1).
+  @Test("switching from a cloud provider to a local model shows the local model's rows")
+  func cloudToLocalSwitch() async throws {
+    let home = try Home(provider: .openAI)
+    let list = try await Self.registrations(
+      home.polish(AIPolishSettingsView(setupModel: ProviderSetupModel())),
+      afterFirstLayout: { home.settings.llmProvider = .egOne },
+      until: { $0.contains(.aiPolishWhyUseEgOne) })
+    let ids = Set(Self.mapped(list))
+    #expect(!ids.contains(.apiKeyGetKeyLink), "the cloud key link stayed after the switch")
+    #expect(!ids.contains(.apiKeyOpenAI), "the OpenAI key row stayed after the switch")
   }
 
   @Test("the fixture names exactly the rendered states")
