@@ -29,6 +29,10 @@ struct SettingsSearchTelemetryTests {
     #expect(SettingsSearchQueryFilter.reportable("openai key: where?") == "openai key: where?")
     #expect(SettingsSearchQueryFilter.reportable("pause after 10:30") == "pause after 10:30")
     #expect(SettingsSearchQueryFilter.reportable("talk at home") == "talk at home")
+    #expect(SettingsSearchQueryFilter.reportable("password manager") == "password manager")
+    #expect(SettingsSearchQueryFilter.reportable("users folder") == "users folder")
+    // The sent text keeps what was typed; only the checks read the normalized copy.
+    #expect(SettingsSearchQueryFilter.reportable("dark\u{00A0}mode") == "dark\u{00A0}mode")
     // A Japanese vocabulary phrase longer than 32 characters, written without spaces.
     let japanese = "文章整形に使うClaudeモデルの選び方や表示されない理由を知りたい"
     #expect(SettingsSearchQueryFilter.reportable(japanese) == japanese.lowercased())
@@ -52,6 +56,13 @@ struct SettingsSearchTelemetryTests {
       "g\u{200B}hp_" + String(repeating: "a", count: 18) + "\u{200B}" + String(repeating: "b", count: 18),
       "sA9vwtMpIDApkvvl82t+Rpf/OtIxebKjstdK=", "jane at example dot com", "10.0.0.1",
       "fe80::abcd", "aa:bb:cc:dd:ee:ff", "/Users/Jane/Documents", "LU46 001A BCDE FGHI JKLM",
+      // Second enumeration round: labels joined by "=", a non-ASCII label, a labelled password,
+      // labelled and Windows paths, and any whitespace between the parts of an address.
+      "key=glpat-abcdefghijklmnopqrst", "key=AKIA" + String(repeating: "B", count: 16),
+      "clé=" + String(repeating: "a", count: 32), "password:Tr0ub4dor!", "Passwort = geheim",
+      "path:/Users/Jane", "path=/Users/Jane", "C:/Users/Jane", "jane  at  example  dot  com",
+      "jane\u{00A0}at\u{00A0}example\u{00A0}dot\u{00A0}com",
+      "LU46\u{00A0}001A\u{00A0}BCDE\u{00A0}FGHI\u{00A0}JKLM", "token/ghp_abc", "notes.sk-abc",
     ] {
       #expect(SettingsSearchQueryFilter.reportable(text) == nil, "kept \(text)")
     }

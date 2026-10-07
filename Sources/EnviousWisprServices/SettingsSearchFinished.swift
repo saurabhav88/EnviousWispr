@@ -63,16 +63,39 @@ public enum SettingsSearchQueryFilter {
   public static func reportable(_ text: String) -> String? {
     let query = text.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
     guard (3...80).contains(query.count), query.utf8.count <= 320 else { return nil }
-    // Checks read a copy without invisible format characters (zero-width spaces and joiners), so
-    // one hidden inside a key or an address cannot split it; the sent text is the query itself.
-    let checked = String(
-      String.UnicodeScalarView(query.unicodeScalars.filter { $0.properties.generalCategory != .format }))
+    let checked = detectionCopy(query)
     if checked.contains("@") { return nil }
     if looksLikeWebAddress(checked) { return nil }
     if checked.unicodeScalars.filter(CharacterSet.decimalDigits.contains).count >= 7 { return nil }
     if looksLikePersonalAddress(checked) { return nil }
+    if looksLikeLabelledPassword(checked) { return nil }
     if looksLikeCredential(checked) { return nil }
     return query
+  }
+
+  /// What the checks read; the sent text stays the query itself. Invisible format characters
+  /// (zero-width spaces and joiners) are removed, so one hidden inside a key or an address cannot
+  /// split it, and every kind of whitespace (a non-breaking space too) becomes one plain space,
+  /// so the patterns below match whatever spacing was typed.
+  static func detectionCopy(_ query: String) -> String {
+    var out = String.UnicodeScalarView()
+    var lastWasSpace = false
+    for scalar in query.unicodeScalars where scalar.properties.generalCategory != .format {
+      if CharacterSet.whitespacesAndNewlines.contains(scalar) {
+        if !lastWasSpace { out.append(" ") }
+        lastWasSpace = true
+      } else {
+        out.append(scalar)
+        lastWasSpace = false
+      }
+    }
+    return String(out)
+  }
+
+  /// A password written after its label ("password: ...", "pwd=...") in a few languages.
+  private static func looksLikeLabelledPassword(_ query: String) -> Bool {
+    let pattern = #"\b(?:password|passwd|pwd|passwort|kennwort|mot de passe|contraseña|senha|wachtwoord|hasło)\s*[:=]"#
+    return query.range(of: pattern, options: .regularExpression) != nil
   }
 
   private static func looksLikeWebAddress(_ query: String) -> Bool {
@@ -87,12 +110,12 @@ public enum SettingsSearchQueryFilter {
   /// path, or an IBAN with letters in its account part (one with seven digits is already dropped).
   private static func looksLikePersonalAddress(_ query: String) -> Bool {
     let patterns = [
-      #"\b[a-z0-9._%+-]+ at [a-z0-9-]+(?: dot [a-z0-9-]+)+\b"#,
+      #"\b[a-z0-9._%+-]+\s+at\s+[a-z0-9-]+(?:\s+dot\s+[a-z0-9-]+)+\b"#,
       #"\b\d{1,3}(?:\.\d{1,3}){3}\b"#,
       #"[0-9a-f]{0,4}::[0-9a-f]{0,4}|\b(?:[0-9a-f]{1,4}:){3,}[0-9a-f]{1,4}\b"#,
       #"\b(?:[0-9a-f]{2}[:-]){5}[0-9a-f]{2}\b"#,
-      #"(?:^|[\s"'(])(?:/users/|/home/|~/|[a-z]:\\users\\)"#,
-      #"\b[a-z]{2}\d{2}(?: ?[a-z0-9]{4}){3,}\b"#,
+      #"(?:^|[^a-z0-9])(?:/users/|/home/|~/|[a-z]:[\\/]users[\\/])"#,
+      #"\b[a-z]{2}\d{2}(?:\s?[a-z0-9]{4}){3,}\b"#,
     ]
     return patterns.contains { query.range(of: $0, options: .regularExpression) != nil }
   }
@@ -108,33 +131,44 @@ public enum SettingsSearchQueryFilter {
   ]
 
   private static func looksLikeCredential(_ query: String) -> Bool {
-    // Candidates are the runs of letters, digits and token punctuation, so a key glued to a
-    // label or wrapped in punctuation ("token:ghp_...", "key=sk-...", "(aiza...)") is still
-    // seen on its own.
-    // Base64 keys carry "+/=" too.
-    let tokenCharacters = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "-_.+/="))
-    var candidates: [String] = []
-    var current = ""
-    for scalar in query.unicodeScalars {
-      if tokenCharacters.contains(scalar) {
-        current.unicodeScalars.append(scalar)
-      } else if !current.isEmpty {
-        candidates.append(current)
-        current = ""
+    // Candidates are the runs of letters, digits and key punctuation ("-_.+/", base64 too), so a
+    // key glued to a label or wrapped in punctuation ("token:...", "key=...", "(...)") is seen on
+    // its own. "=" separates (it only pads base64 at the end), so "key=<value>" splits.
+    let tokenCharacters = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "-_.+/"))
+    for candidate in runs(of: query, in: tokenCharacters) {
+      // A label joined by "/", "+" or "." still hides a known prefix, so each piece is checked
+      // too, and the whole run (Google's "ya29." keeps its dot).
+      let pieces = [candidate] + candidate.split(whereSeparator: { "/+.".contains($0) }).map(String.init)
+      for piece in pieces {
+        if credentialPrefixes.contains(where: piece.hasPrefix) { return true }
+        if piece.count == 20, piece.hasPrefix("akia") || piece.hasPrefix("asia") { return true }
       }
-    }
-    if !current.isEmpty { candidates.append(current) }
-    for token in candidates {
-      if credentialPrefixes.contains(where: token.hasPrefix) { return true }
-      if token.count == 20, token.hasPrefix("akia") || token.hasPrefix("asia") { return true }
-      let hasDigit = token.unicodeScalars.contains(where: CharacterSet.decimalDigits.contains)
-      let hasLetter = token.unicodeScalars.contains(where: CharacterSet.letters.contains)
-      // A long mixed run of letters and digits, or any Latin run longer than a real word: the
-      // longest German settings compound is under 32 characters ("spracherkennungseinstellungen",
-      // 29). Only ASCII runs: Japanese and Chinese phrases are written without spaces.
-      if token.count >= 20, hasDigit, hasLetter { return true }
-      if token.count >= 32, token.unicodeScalars.allSatisfy(\.isASCII) { return true }
+      let hasDigit = candidate.unicodeScalars.contains(where: CharacterSet.decimalDigits.contains)
+      let hasLetter = candidate.unicodeScalars.contains(where: CharacterSet.letters.contains)
+      // A long mixed run of letters and digits, or a Latin run longer than any real word (the
+      // longest German settings compound, "spracherkennungseinstellungen", has 29). Measured on
+      // ASCII sub-runs: Japanese and Chinese phrases are written without spaces, and a non-ASCII
+      // label ("clé") must not hide the key after it.
+      if candidate.count >= 20, hasDigit, hasLetter { return true }
+      let ascii = CharacterSet(charactersIn: Unicode.Scalar(0)...Unicode.Scalar(127))
+      if runs(of: candidate, in: ascii).contains(where: { $0.count >= 32 }) { return true }
     }
     return false
+  }
+
+  /// The maximal runs of `query` made only of `characters`.
+  private static func runs(of query: String, in characters: CharacterSet) -> [String] {
+    var result: [String] = []
+    var current = String.UnicodeScalarView()
+    for scalar in query.unicodeScalars {
+      if characters.contains(scalar) {
+        current.append(scalar)
+      } else if !current.isEmpty {
+        result.append(String(current))
+        current = String.UnicodeScalarView()
+      }
+    }
+    if !current.isEmpty { result.append(String(current)) }
+    return result
   }
 }
