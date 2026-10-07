@@ -125,6 +125,7 @@ struct AIPolishProviderPicker: View {
       .contentShape(Rectangle())
     }
     .buttonStyle(.plain)
+    .settingsArrivalFocusControl()
     // The card is the dropdown's button: it names the setting, says the choice and its
     // group, and its status, so VoiceOver hears what a sighted user reads on it.
     .settingsMapRegistration(.aiPolishProvider)

@@ -6,6 +6,7 @@
 /// vocabulary and telemetry refer to them.
 enum SettingsMapID: String, CaseIterable, Hashable, Sendable {
   case windowSettings = "window.settings"
+  case windowSearch = "window.search"
   case pageAiPolish = "page.aiPolish"
   case pageAppSettings = "page.appSettings"
   case pageDictation = "page.dictation"

@@ -188,6 +188,7 @@ struct LearningSection: View {
                 let provider = settings.wrappedValue.llmProvider
                 Task { await checkerEligibility.retryDownload(for: provider) }
               }
+              .settingsArrivalWithoutInheritedPlace()
             }
           }
         }
@@ -202,6 +203,7 @@ struct LearningSection: View {
           .font(.stHelper)
         }
         .foregroundStyle(.stAccent)
+        .settingsArrivalFocusControl()
         .settingsMapRegistration(.selfLearningDictionaryLearnMore)
         if let reason = learnFromEdits.secondaryLine {
           HStack(alignment: .center, spacing: 8) {
@@ -214,6 +216,7 @@ struct LearningSection: View {
               SettingsActionButton(verbatimTitle: Self.actionTitle(action), isEnabled: true) {
                 availability.perform(action)
               }
+              .settingsArrivalWithoutInheritedPlace()
             }
           }
         }
@@ -373,12 +376,16 @@ struct LearningSection: View {
       SettingsActionButton(title: "Open Settings", isEnabled: true, emphasis: .filled) {
         openContactsSettings()
       }
+      .settingsArrivalWithoutInheritedPlace()
+      .settingsArrivalFocusControl(place: .importContacts)
     default:
       SettingsActionButton(
         title: contactsImport.importedCount > 0 ? "Re-scan" : "Import", isEnabled: true
       ) {
         Task { await contactsImport.prepareImport() }
       }
+      .settingsArrivalWithoutInheritedPlace()
+      .settingsArrivalFocusControl(place: .importContacts)
     }
   }
 

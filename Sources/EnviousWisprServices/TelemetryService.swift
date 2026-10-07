@@ -1171,6 +1171,34 @@ public final class TelemetryService {
     PostHogSDK.shared.capture("hotkey.lock_resolved", properties: props)
   }
 
+  /// #3482: one finished Settings search attempt (plan §8.1). Closed values and counts; the
+  /// typed text only when the search found nothing or was bypassed with the sidebar, already
+  /// passed through `SettingsSearchQueryFilter`. Never sent to Sentry or any log. The caller
+  /// checks "Share usage metrics" at the terminal; PostHog itself runs only while it is on.
+  public func settingsSearchFinished(_ finished: SettingsSearchFinished) {
+    var strings: [String: String] = [
+      "outcome": finished.outcome.rawValue, "ended_by": finished.endedBy.rawValue,
+      "app_language": finished.appLanguage,
+    ]
+    if let page = finished.sidebarPage { strings["page"] = page }
+    if let tab = finished.sidebarTab { strings["tab"] = tab }
+    if let query = finished.query { strings["query"] = query }
+    let ints: [String: Int] = ["result_count": finished.resultCount]
+    var doubles: [String: Double] = [:]
+    if let elapsed = finished.meaningElapsedMilliseconds { doubles["meaning_elapsed_ms"] = elapsed }
+    var props: [String: Any] = [:]
+    for (k, v) in strings { props[k] = v }
+    for (k, v) in ints { props[k] = v }
+    for (k, v) in doubles { props[k] = v }
+    #if DEBUG
+      testEventHook?(
+        CapturedTelemetryEvent(
+          name: "settings.search_finished", stringProps: strings, intProps: ints,
+          doubleProps: doubles, boolProps: [:]))
+    #endif
+    PostHogSDK.shared.capture("settings.search_finished", properties: props)
+  }
+
   /// #3275: how one in-app help check ended, once per check, from `FeedbackSubmission`. Counts,
   /// closed values and version stamps only: never the message, a concern, a quote, card text or a
   /// link (the message goes to TypeSafe for the check; none of it comes here). Fires only while

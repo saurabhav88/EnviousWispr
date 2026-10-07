@@ -284,6 +284,12 @@ struct SettingsShellWiringTests {
     #expect(ClipboardSettingsWiringTests.calls(named: "WhatsNewToolbarButton", in: tree).count == 2)
     let appHost = try #require(ClipboardSettingsWiringTests.calls(named: "AppSettingsView", in: tree).first)
     #expect(ClipboardSettingsWiringTests.argument("selection", of: appHost) == "$navigationState.appSettingsTab")
+    // #3482: the Dictionary tab is window state, bound the same way.
+    let dictionaryHost = try #require(
+      ClipboardSettingsWiringTests.calls(named: "YourWordsView", in: tree).first)
+    #expect(
+      ClipboardSettingsWiringTests.argument("selection", of: dictionaryHost)
+        == "$navigationState.dictionaryTab")
     #expect(wiring.standardActivity == "sidebarActivity(section)")
     #expect(wiring.bannerInsideScroll == false, "the update banner moved into the scrolling list")
     #expect(wiring.hoverOverrideUses == 0, "production passes the render-only hover override")

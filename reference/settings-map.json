@@ -1,14 +1,14 @@
 {
   "counts" : {
-    "nodes" : 271,
+    "nodes" : 272,
     "searchable" : 246,
     "vocabularyBlocks" : 7872
   },
   "fingerprints" : {
-    "mapSHA256" : "d5c2178162473ae9d7e70b3c1e946d9c92ebdf524e68fa3373a91e0ad1924069",
-    "uiCatalogSHA256" : "58c3376108ca16955fd63cc4b6e24579abcd7c702557cacdbd0ed76685e6934c",
+    "mapSHA256" : "3ec2032ed9a46f013dffdceacf0933126b939d65047a33e9ecf9c7c0df38b6b6",
+    "uiCatalogSHA256" : "2b07ed7a19fec227cf290611909378c18720c070a02f2e7dab4a87ceb8e62280",
     "vocabularyCanonicalization" : "length-prefixed-v1",
-    "vocabularySHA256" : "15532dd8689d31fbe408b01559d58488b6e7b1cf1ac0b01ab5b701caa5857d63"
+    "vocabularySHA256" : "1d9af94e6eb6a759ef03b3c5a1222fbe4533818ae790fea63f11639519cc732d"
   },
   "interfaceLanguages" : [
     "en",
@@ -6971,6 +6971,33 @@
         "note" : "a shared product name, the same in every language",
         "source" : "verbatim",
         "text" : "EnviousWispr"
+      },
+      "visibility" : "always"
+    },
+    {
+      "context" : [
+        "window.settings"
+      ],
+      "declaredIn" : "Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift",
+      "description" : null,
+      "destination" : null,
+      "dictionaryTab" : null,
+      "fallbacks" : [
+
+      ],
+      "id" : "window.search",
+      "kind" : null,
+      "parent" : "window.settings",
+      "searchable" : false,
+      "structure" : "section",
+      "target" : null,
+      "title" : {
+        "catalog" : "Sources/EnviousWispr/Resources/Localizable.xcstrings",
+        "de" : "Einstellungen suchen",
+        "en" : "Search settings",
+        "key" : "Search settings",
+        "source" : "resource",
+        "table" : "Localizable"
       },
       "visibility" : "always"
     },
@@ -72476,7 +72503,8 @@
           "words" : [
             "Whisper للإملاء",
             "Turbo للإملاء",
-            "إملاء غير أوروبي"
+            "إملاء غير أوروبي",
+            "WhisperKit"
           ]
         },
         "bg" : {
@@ -72488,7 +72516,8 @@
           "words" : [
             "Whisper диктовка",
             "Turbo диктовка",
-            "GPU диктовка"
+            "GPU диктовка",
+            "WhisperKit"
           ]
         },
         "cs" : {
@@ -72500,7 +72529,8 @@
           "words" : [
             "Whisper diktování",
             "Turbo diktování",
-            "GPU diktování"
+            "GPU diktování",
+            "WhisperKit"
           ]
         },
         "da" : {
@@ -72512,7 +72542,8 @@
           "words" : [
             "Whisper diktering",
             "Turbo diktering",
-            "GPU diktering"
+            "GPU diktering",
+            "WhisperKit"
           ]
         },
         "de" : {
@@ -72524,7 +72555,8 @@
           "words" : [
             "Whisper",
             "Turbo",
-            "GPU"
+            "GPU",
+            "WhisperKit"
           ]
         },
         "el" : {
@@ -72536,7 +72568,8 @@
           "words" : [
             "Whisper υπαγόρευσης",
             "Turbo υπαγόρευσης",
-            "GPU υπαγόρευσης"
+            "GPU υπαγόρευσης",
+            "WhisperKit"
           ]
         },
         "en" : {
@@ -72548,7 +72581,8 @@
           "words" : [
             "Whisper",
             "Turbo",
-            "GPU"
+            "GPU",
+            "WhisperKit"
           ]
         },
         "es" : {
@@ -72560,7 +72594,8 @@
           "words" : [
             "Whisper dictado",
             "Turbo dictado",
-            "GPU dictado"
+            "GPU dictado",
+            "WhisperKit"
           ]
         },
         "et" : {
@@ -72572,7 +72607,8 @@
           "words" : [
             "Whisper dikteerimiseks",
             "Turbo dikteerimiseks",
-            "GPU dikteerimiseks"
+            "GPU dikteerimiseks",
+            "WhisperKit"
           ]
         },
         "fi" : {
@@ -72584,7 +72620,8 @@
           "words" : [
             "Whisper-sanelu",
             "Turbo-sanelu",
-            "GPU-sanelu"
+            "GPU-sanelu",
+            "WhisperKit"
           ]
         },
         "fr" : {
@@ -72596,7 +72633,8 @@
           "words" : [
             "Whisper dictée",
             "Turbo dictée",
-            "GPU dictée"
+            "GPU dictée",
+            "WhisperKit"
           ]
         },
         "hi" : {
@@ -72608,7 +72646,8 @@
           "words" : [
             "Whisper डिक्टेशन",
             "Turbo डिक्टेशन",
-            "GPU डिक्टेशन"
+            "GPU डिक्टेशन",
+            "WhisperKit"
           ]
         },
         "hr" : {
@@ -72620,7 +72659,8 @@
           "words" : [
             "Whisper diktiranje",
             "Turbo diktiranje",
-            "GPU diktiranje"
+            "GPU diktiranje",
+            "WhisperKit"
           ]
         },
         "hu" : {
@@ -72632,7 +72672,8 @@
           "words" : [
             "Whisper diktálás",
             "Turbo diktálás",
-            "GPU diktálás"
+            "GPU diktálás",
+            "WhisperKit"
           ]
         },
         "it" : {
@@ -72644,7 +72685,8 @@
           "words" : [
             "Whisper dettatura",
             "Turbo dettatura",
-            "GPU dettatura"
+            "GPU dettatura",
+            "WhisperKit"
           ]
         },
         "ja" : {
@@ -72656,7 +72698,8 @@
           "words" : [
             "音声入力 Whisper",
             "音声入力 Turbo",
-            "音声入力 多言語"
+            "音声入力 多言語",
+            "WhisperKit"
           ]
         },
         "ko" : {
@@ -72668,7 +72711,8 @@
           "words" : [
             "Whisper 받아쓰기",
             "Turbo 받아쓰기",
-            "GPU 받아쓰기"
+            "GPU 받아쓰기",
+            "WhisperKit"
           ]
         },
         "lt" : {
@@ -72680,7 +72724,8 @@
           "words" : [
             "Whisper diktavimui",
             "Turbo diktavimui",
-            "GPU diktavimui"
+            "GPU diktavimui",
+            "WhisperKit"
           ]
         },
         "lv" : {
@@ -72692,7 +72737,8 @@
           "words" : [
             "Whisper diktēšanai",
             "Turbo diktēšanai",
-            "GPU diktēšanai"
+            "GPU diktēšanai",
+            "WhisperKit"
           ]
         },
         "mt" : {
@@ -72704,7 +72750,8 @@
           "words" : [
             "Whisper dettatura",
             "Turbo dettatura",
-            "GPU dettatura"
+            "GPU dettatura",
+            "WhisperKit"
           ]
         },
         "nl" : {
@@ -72716,7 +72763,8 @@
           "words" : [
             "Whisper dictatie",
             "Turbo dictatie",
-            "GPU dictatie"
+            "GPU dictatie",
+            "WhisperKit"
           ]
         },
         "pl" : {
@@ -72728,7 +72776,8 @@
           "words" : [
             "Whisper dyktowanie",
             "Turbo dyktowanie",
-            "GPU dyktowanie"
+            "GPU dyktowanie",
+            "WhisperKit"
           ]
         },
         "pt" : {
@@ -72740,7 +72789,8 @@
           "words" : [
             "Whisper no ditado",
             "Turbo no ditado",
-            "GPU no ditado"
+            "GPU no ditado",
+            "WhisperKit"
           ]
         },
         "ro" : {
@@ -72752,7 +72802,8 @@
           "words" : [
             "Whisper dictare",
             "Turbo dictare",
-            "GPU dictare"
+            "GPU dictare",
+            "WhisperKit"
           ]
         },
         "ru" : {
@@ -72764,7 +72815,8 @@
           "words" : [
             "Whisper для диктовки",
             "Turbo для диктовки",
-            "99 языков диктовки"
+            "99 языков диктовки",
+            "WhisperKit"
           ]
         },
         "sk" : {
@@ -72776,7 +72828,8 @@
           "words" : [
             "Whisper diktovanie",
             "Turbo diktovanie",
-            "GPU diktovanie"
+            "GPU diktovanie",
+            "WhisperKit"
           ]
         },
         "sl" : {
@@ -72788,7 +72841,8 @@
           "words" : [
             "Whisper narekovanje",
             "Turbo narekovanje",
-            "GPU narekovanje"
+            "GPU narekovanje",
+            "WhisperKit"
           ]
         },
         "sv" : {
@@ -72800,7 +72854,8 @@
           "words" : [
             "Whisper diktering",
             "Turbo diktering",
-            "GPU diktering"
+            "GPU diktering",
+            "WhisperKit"
           ]
         },
         "tr" : {
@@ -72812,7 +72867,8 @@
           "words" : [
             "Whisper dikte",
             "Turbo dikte",
-            "GPU dikte"
+            "GPU dikte",
+            "WhisperKit"
           ]
         },
         "uk" : {
@@ -72825,7 +72881,8 @@
             "Whisper диктування",
             "Turbo диктування",
             "GPU диктування",
-            "складне аудіо диктування"
+            "складне аудіо диктування",
+            "WhisperKit"
           ]
         },
         "vi" : {
@@ -72837,7 +72894,8 @@
           "words" : [
             "Whisper nhập giọng nói",
             "Turbo nhập giọng nói",
-            "GPU nhập giọng nói"
+            "GPU nhập giọng nói",
+            "WhisperKit"
           ]
         },
         "zh" : {
@@ -72850,7 +72908,8 @@
             "Whisper听写",
             "Turbo听写",
             "非欧洲语言听写",
-            "疑难音频听写"
+            "疑难音频听写",
+            "WhisperKit"
           ]
         }
       }

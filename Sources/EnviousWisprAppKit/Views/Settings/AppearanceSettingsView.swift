@@ -80,6 +80,7 @@ struct AppearanceSettingsView: View {
                 }
               }
               .labelsHidden()
+              .settingsArrivalFocusControl()
               .accessibilityLabel(Text(SettingsItemCopy.AppSettings.language))
               .tint(.stAccent)
               .controlSize(.large)

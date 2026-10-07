@@ -28,6 +28,21 @@ struct SettingsMapRenderingTests {
 
   @MainActor final class Box { var value: [SettingsMapRegistration] = [] }
 
+  /// Where a render also leaves the focus adapters its pages published (#3482 chunk 5b). A task
+  /// local, so a test that wants them sets it for its own render and no other suite sees it.
+  @MainActor final class FocusSink { var kinds: [SettingsMapID: SettingsArrivalFocusKind] = [:] }
+  @TaskLocal static var focusSink: FocusSink?
+
+  /// How many AppKit views of a rendered page can become key views (tab stops), counted after the
+  /// final layout; written for a render only when a test sets the sink.
+  @MainActor final class TabStopSink { var keyViews = -1 }
+  @TaskLocal static var tabStopSink: TabStopSink?
+
+  static func keyViewCount(_ view: NSView) -> Int {
+    (view.canBecomeKeyView && !view.isHidden ? 1 : 0)
+      + view.subviews.reduce(0) { $0 + keyViewCount($1) }
+  }
+
   /// Everything a rendered view registers, in render order. When `ready` is given, the read
   /// waits for the page's own preference updates (an appear-time key read, a status probe)
   /// until it holds; the deadline is a hang guard, never a pass condition.
@@ -37,6 +52,8 @@ struct SettingsMapRenderingTests {
     until ready: ((Set<SettingsMapID>) -> Bool)? = nil
   ) async throws -> [SettingsMapRegistration] {
     let box = Box()
+    let sink = focusSink
+    let tabStopSink = tabStopSink
     let (changes, continuation) = AsyncStream<Void>.makeStream()
     let root =
       view
@@ -44,6 +61,9 @@ struct SettingsMapRenderingTests {
       .onPreferenceChange(SettingsMapRegistrationKey.self) { value in
         MainActor.assumeIsolated { box.value = value }
         continuation.yield()
+      }
+      .onPreferenceChange(SettingsArrivalFocusKey.self) { value in
+        MainActor.assumeIsolated { sink?.kinds = value }
       }
     let host = NSHostingView(rootView: root)
     host.frame = CGRect(x: 0, y: 0, width: width, height: height)
@@ -68,6 +88,7 @@ struct SettingsMapRenderingTests {
       }
     }
     continuation.finish()
+    tabStopSink?.keyViews = keyViewCount(host)
     return box.value
   }
 
@@ -535,7 +556,7 @@ struct SettingsMapRenderingTests {
       let (home, words) = try dictionaryHome()
       if state != "empty" { try #require(words.add(CustomWord(canonical: "Envious")) == nil) }
       let list = try await registrations(
-        AnyView(YourWordsView().environment(home.settings).environment(words)))
+        AnyView(YourWordsView(selection: .constant(.yourWords)).environment(home.settings).environment(words)))
       let always = alwaysShown(on: .dictionary).filter {
         let node = SettingsMap.node($0)
         return node.dictionaryTab == nil || node.dictionaryTab == .yourWords

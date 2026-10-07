@@ -14,6 +14,13 @@ enum SettingsMap {
   static let nodes: [SettingsMapNode] = [window] + literalNodes + choiceNodes
 
   private static let literalNodes: [SettingsMapNode] = [
+    // The sidebar's search field (#3482 PR B): a place in the window, never a search result.
+    SettingsMapNode(
+      id: .windowSearch, structure: .section, item: nil,
+      title: .resource(SettingsSearchCopy.placeholder),
+      description: nil,
+      parent: .windowSettings, destination: nil, dictionaryTab: nil,
+      visibility: .always, target: nil, fallbacks: []),
     SettingsMapNode(
       id: .pageAiPolish, structure: .page, item: nil,
       title: .resource(SettingsPage.aiPolish.labelResource!),

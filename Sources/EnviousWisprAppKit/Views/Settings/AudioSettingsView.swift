@@ -160,6 +160,7 @@ struct AudioSettingsView: View {
                     }
                   }
                   .labelsHidden()
+                  .settingsArrivalFocusControl()
                   .fixedSize()
                 }
               }

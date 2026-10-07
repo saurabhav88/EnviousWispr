@@ -117,7 +117,10 @@ struct SettingsMapTests {
     }
     #expect(checked == SettingsMap.nodes.count - 1)
     let sections = try Self.inventory().structural.filter { $0.kind == "section" }
-    #expect(sections.count == 17, "\(sections.count) sections")
+    // The map's sections are exactly the inventory's (no frozen total, #3482 review).
+    #expect(
+      Set(sections.map(\.id))
+        == Set(SettingsMap.nodes.filter { $0.structure == .section }.map(\.id.rawValue)))
     for section in sections {
       let node = SettingsMap.node(try #require(SettingsMapID(rawValue: section.id)))
       #expect(node.structure == .section, "\(section.id)")
@@ -276,7 +279,10 @@ struct SettingsMapTests {
         if case .dynamic(let kind) = node.title { return String(describing: kind) }
         return nil
       })
-    #expect(dynamicKinds.count == 17, "\(dynamicKinds.sorted())")
+    // Every declared resolver kind is used by some node (no frozen total, #3482 review).
+    #expect(
+      dynamicKinds == Set(SettingsMapDynamicTitle.allCases.map { String(describing: $0) }),
+      "\(dynamicKinds.sorted())")
   }
 
   @Test("every title resolves through its owner; only the inventory's dynamic places are dynamic")

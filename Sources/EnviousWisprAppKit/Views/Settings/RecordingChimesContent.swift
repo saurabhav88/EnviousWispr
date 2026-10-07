@@ -300,6 +300,7 @@ struct RecordingChimeCard: View {
       .contentShape(RecordingChimeSelectRegion())
     }
     .buttonStyle(.plain)
+    .settingsArrivalFocusControl()
     .accessibilityLabel(name)
     .accessibilityValue(isSelected ? SettingsCopy.selectedValue : "")
     .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)

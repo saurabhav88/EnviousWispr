@@ -145,7 +145,9 @@ struct YourWordsView: View {
 
   @Environment(SettingsManager.self) private var settings
   @Environment(CustomWordsCoordinator.self) private var customWordsCoordinator
-  @State private var selectedTab: DictionaryTab = .yourWords
+  /// The tab on screen. Owned by `SettingsNavigationState` (#3482), so a search result can open
+  /// one; the page only reads and sets it, as `AppSettingsView(selection:)` does.
+  @Binding var selection: DictionaryTab
   @State private var sheetRoute: YourWordsSheetRoute?
   // Outcome-to-message mapping is shared with `BulkDeleteConfirmSheet` so both
   // export entry points present the identical copy (#1703).
@@ -168,12 +170,14 @@ struct YourWordsView: View {
   var body: some View {
     @Bindable var settings = settings
 
+    // #3482 §3.4: the window's page owner arrives at the heading (a fixed target) and in the
+    // scrolled pane; lazy rows are reached by scrolling the pane to its top first.
     VStack(alignment: .leading, spacing: SettingsLayout.sectionSpacing) {
       // #3385: the banner became the shared heading and row (tracker A5).
       DictionarySettingsHeading(isEnabled: $settings.wordCorrectionEnabled)
 
       HStack(alignment: .top, spacing: DictionaryRailMetrics.columnGap) {
-        DictionaryTabRail(selection: $selectedTab)
+        DictionaryTabRail(selection: $selection)
           // 216pt, the width the AI Polish rail used (until #3385 made that
           // list a dropdown), because these rows carry the same content it
           // did: a 32pt tile, a name, and a tagline. The previous 168pt was chosen
@@ -217,6 +221,8 @@ struct YourWordsView: View {
             }
           }
           .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+          .settingsArrivalViewport()
+          .preference(key: SettingsArrivalLazyTopKey.self, value: Self.topAnchor)
           .background(
             GeometryReader { proxy in
               Color.clear.onAppear { paneHeight = proxy.size.height }
@@ -283,7 +289,7 @@ struct YourWordsView: View {
 
   @ViewBuilder
   private var selectedTabContent: some View {
-    switch selectedTab {
+    switch selection {
     case .yourWords:
       yourWordsBanners
       // The three page actions are handed to the list card rather than drawn
@@ -537,6 +543,7 @@ private struct DictionaryTabRow: View {
       .contentShape(Rectangle())
     }
     .buttonStyle(.plain)
+    .settingsArrivalFocusControl()
     .accessibilityElement(children: .combine)
     .accessibilityLabel(tab.label)
     .accessibilityValue(

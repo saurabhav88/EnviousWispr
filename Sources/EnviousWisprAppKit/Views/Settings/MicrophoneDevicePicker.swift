@@ -57,6 +57,7 @@ struct MicrophoneDevicePicker: View {
       .contentShape(Rectangle())
     }
     .buttonStyle(.plain)
+    .settingsArrivalFocusControl()
     .fixedSize()
     .accessibilityLabel(String(localized: DictationSettingsCopy.Microphone.inputDeviceTitle))
     .accessibilityValue([presentation.deviceName ?? placeholder, detail].compactMap { $0 }.joined(separator: ", "))

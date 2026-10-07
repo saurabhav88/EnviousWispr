@@ -947,6 +947,7 @@ private var apiKeyRow: some View {
           Link(link.title, destination: link.url)
             .font(.stHelper).tint(Color.stAccent)
             .padding(.top, 2)
+            .settingsArrivalFocusControl()
             .settingsMapRegistration(.apiKeyGetKeyLink)
         }
       },
@@ -1017,6 +1018,7 @@ private func keyField(_ descriptor: APIKeyDescriptor) -> some View {
     .textFieldStyle(.plain)
     .font(.system(size: 14, design: .monospaced))
     .focused($keyFieldFocused)
+    .settingsArrivalFocusControl(textEntry: true) { keyFieldFocused = true }
     .accessibilityLabel(descriptor.accessibilityLabel)
     .onChange(of: activeKeyBinding.wrappedValue) { _, _ in
       dismissStaleFailureStatus()
@@ -1033,6 +1035,7 @@ private func keyField(_ descriptor: APIKeyDescriptor) -> some View {
       .buttonStyle(.plain)
       .help(revealKeyTitle)
       .accessibilityLabel(revealKeyTitle)
+      .settingsArrivalFocusControl()
       .settingsMapRegistration(.apiKeyReveal)
     }
   }
@@ -1714,6 +1717,7 @@ private var ollamaBrowseModelsCard: some View {
       .padding(.vertical, 6)
       .background(Capsule().fill(Color.stAccentSolid))
     }
+  .settingsArrivalFocusControl()
   .settingsMapRegistration(.ollamaBrowseModels)
     .padding(12)
     .background(

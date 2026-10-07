@@ -60,6 +60,9 @@ package final class LiveApplication {
   package var onboardingWindowID: String { bootstrapper.onboardingWindowID }
 
   package func mainWindowContent() -> some View { bootstrapper.mainWindowContent() }
+  /// The main window's menu commands: Edit › Find Settings (#3482). Built here, not on the
+  /// bootstrapper, whose public surface stays the lifecycle forwards and view factories.
+  package func mainWindowCommands() -> some Commands { FindSettingsCommand() }
   package func onboardingWindowContent() -> some View {
     bootstrapper.onboardingWindowContent()
   }

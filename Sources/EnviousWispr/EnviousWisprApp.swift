@@ -42,6 +42,8 @@ struct EnviousWisprApp: App {
     }
     .defaultSize(width: 820, height: 600)
     .windowToolbarStyle(.unifiedCompact)
+    // #3482: Edit › Find Settings (Command-F), routed to the focused main window.
+    .commands { application.mainWindowCommands() }
 
     // Onboarding window — non-resizable, centered, auto-opens on first launch.
     Window(application.onboardingWindowTitle, id: application.onboardingWindowID) {

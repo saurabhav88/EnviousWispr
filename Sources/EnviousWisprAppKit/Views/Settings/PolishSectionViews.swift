@@ -321,6 +321,7 @@ struct PolishIconButton: View {
       .contentShape(Rectangle())
     }
     .buttonStyle(.plain)
+    .settingsArrivalFocusControl()
     .disabled(!isEnabled || isSpinning)
     .help(help)
     .accessibilityLabel(help)
@@ -343,6 +344,7 @@ struct PolishTextAction: View {
         .settingsHoverQuiet(tint: tint)
     }
     .buttonStyle(.plain)
+    .settingsArrivalFocusControl()
     .disabled(!isEnabled)
     .opacity(isEnabled ? 1 : 0.45)
   }
@@ -398,6 +400,7 @@ struct PolishWhyBlock: View {
         Link(SettingsMapRef.id(link.map).title, destination: link.url)
           .font(.stHelper)
           .tint(Color.stAccent)
+          .settingsArrivalFocusControl()
           .settingsMapRegistration(link.map)
       }
     }

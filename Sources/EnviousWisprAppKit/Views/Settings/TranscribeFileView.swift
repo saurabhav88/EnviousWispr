@@ -55,6 +55,7 @@ struct TranscribeFileView: View {
   @State private var copiedAt: Date?
 
   var body: some View {
+    // #3482 §3.4: the step bar is a fixed search target; the window's page owner arrives there.
     VStack(spacing: 0) {
       stepBar
       if coordinator.step == .done {

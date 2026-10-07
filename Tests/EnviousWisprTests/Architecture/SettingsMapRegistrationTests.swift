@@ -107,8 +107,9 @@ struct SettingsMapRegistrationTests {
     ".startWordField", ".startWordReset", ".startWordSave", ".transcribeFileSteps",
     ".transcriptionEngineRecheckFast", ".whatWeCollectSeeDetails", ".whisperModelCancelDownload",
     ".whisperModelRecheck", ".whisperModelRemove", ".whisperModelResume", ".whisperModelSetUp",
-    ".whisperModelTryAgain", ".yourWordsAdd", ".yourWordsCategoryFilter", ".yourWordsClearSearch",
-    ".yourWordsExport", ".yourWordsImport", ".yourWordsMassEdit", ".yourWordsSearch",
+    ".whisperModelTryAgain", ".windowSearch", ".yourWordsAdd", ".yourWordsCategoryFilter",
+    ".yourWordsClearSearch", ".yourWordsExport", ".yourWordsImport", ".yourWordsMassEdit",
+    ".yourWordsSearch",
   ]
 
   static func registeredLiterals() throws -> [String] {

@@ -12,13 +12,14 @@ Generated from the compiled Settings Map and the validated search vocabulary. Do
 
 The interface ships in English and German. The other 30 languages (ar, bg, cs, da, el, es, et, fi, fr, hi, hr, hu, it, ja, ko, lt, lv, mt, nl, pl, pt, ro, ru, sk, sl, sv, tr, uk, vi, zh) are search metadata only: words and titles people may type, matched against the same places. Titles below read English / German.
 
-271 nodes, 246 searchable, 7872 vocabulary blocks.
+272 nodes, 246 searchable, 7872 vocabulary blocks.
 
-Fingerprints: mapSHA256 `d5c2178162473ae9d7e70b3c1e946d9c92ebdf524e68fa3373a91e0ad1924069`, uiCatalogSHA256 `58c3376108ca16955fd63cc4b6e24579abcd7c702557cacdbd0ed76685e6934c`, vocabularyCanonicalization `length-prefixed-v1`, vocabularySHA256 `15532dd8689d31fbe408b01559d58488b6e7b1cf1ac0b01ab5b701caa5857d63`
+Fingerprints: mapSHA256 `3ec2032ed9a46f013dffdceacf0933126b939d65047a33e9ecf9c7c0df38b6b6`, uiCatalogSHA256 `2b07ed7a19fec227cf290611909378c18720c070a02f2e7dab4a87ceb8e62280`, vocabularyCanonicalization `length-prefixed-v1`, vocabularySHA256 `1d9af94e6eb6a759ef03b3c5a1222fbe4533818ae790fea63f11639519cc732d`
 
 ## Structure
 
 - [EnviousWispr](#node-window-settings) `window.settings` (window)
+  - [Search settings / Einstellungen suchen](#node-window-search) `window.search` (section)
   - [AI Polish / KI-Nachbearbeitung](#node-page-aiPolish) `page.aiPolish` (page)
     - [Model / Modell](#node-section-aiPolishModel) `section.aiPolishModel` (section)
       - [(named at runtime by `providerName`)](#node-aiPolishProvider) `aiPolishProvider` (setting)
@@ -302,6 +303,24 @@ Fingerprints: mapSHA256 `d5c2178162473ae9d7e70b3c1e946d9c92ebdf524e68fa3373a91e0
 | Kind | structure only, not searchable |
 | Parent | none |
 | Title source | product name |
+| Description | none |
+| Destination | none |
+| Dictionary tab | none |
+| Shown when | `always` |
+| Arrival target | none |
+| Fallbacks, in order | none |
+| Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
+
+<a id="node-window-search"></a>
+
+### Search settings / Einstellungen suchen (`window.search`)
+
+| Field | Value |
+|---|---|
+| Structure | section |
+| Kind | structure only, not searchable |
+| Parent | [`window.settings`](#node-window-settings) |
+| Title source | catalog key `Search settings` |
 | Description | none |
 | Destination | none |
 | Dictionary tab | none |
@@ -4564,8 +4583,8 @@ Fingerprints: mapSHA256 `d5c2178162473ae9d7e70b3c1e946d9c92ebdf524e68fa3373a91e0
 | Arrival target | [`transcriptionEngine`](#node-transcriptionEngine) |
 | Fallbacks, in order | [`transcriptionEngine`](#node-transcriptionEngine) |
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
-| Search (en) | words: Whisper, Turbo, GPU<br>phrases: use Whisper for dictation; choose the dictation model for difficult audio; I need to dictate in a language outside Europe |
-| Search (de) | words: Whisper, Turbo, GPU<br>phrases: nimm Whisper fürs Diktieren; wähle das Diktiermodell für schwierige Aufnahmen; ich möchte in einer außereuropäischen Sprache diktieren |
+| Search (en) | words: Whisper, Turbo, GPU, WhisperKit<br>phrases: use Whisper for dictation; choose the dictation model for difficult audio; I need to dictate in a language outside Europe |
+| Search (de) | words: Whisper, Turbo, GPU, WhisperKit<br>phrases: nimm Whisper fürs Diktieren; wähle das Diktiermodell für schwierige Aufnahmen; ich möchte in einer außereuropäischen Sprache diktieren |
 | Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-startWordLanguage-en"></a>

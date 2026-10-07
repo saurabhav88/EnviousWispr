@@ -124,6 +124,7 @@ struct RecordingPillAppearancePanel: View {
           }
           .buttonStyle(.plain)
           .accessibilityHint("Opens Dictation Settings, Live Preview.")
+          .settingsArrivalFocusControl()
           .settingsMapRegistration(.pillStyleConfigureLivePreview)
         }
       }
@@ -589,6 +590,9 @@ struct RecordingPillPreviewTile: View {
         isSelected: isSelected && isEnabled)
     }
     .buttonStyle(.plain)
+    // The Style row above holds the setting's registration and no control: the cards beside it are
+    // its choices, and the chosen one is where a search arrival lands.
+    .settingsArrivalFocusControl(place: .pillStyle, enabled: isSelected)
     .disabled(!isEnabled)
     .opacity(isEnabled ? 1 : 0.45)
     // **Addressed by role and title, never by an accessibility identifier**

@@ -528,6 +528,7 @@ struct LivePreviewSettingsView: View {
           .font(.stHelper)
         }
         .foregroundStyle(.stAccent)
+        .settingsArrivalFocusControl()
         .settingsMapRegistration(.previewEngineCompare)
       }
 
@@ -649,18 +650,21 @@ struct LivePreviewSettingsView: View {
     // fill the row so the bottoms agree too. The heights differ legitimately —
     // Apple's tagline runs to two lines and Universal carries a footer button —
     // so equalising is the fix rather than trimming copy to match.
-    LazyVGrid(
-      columns: [
-        GridItem(.flexible(), spacing: 12, alignment: .top),
-        GridItem(.flexible(), spacing: 12, alignment: .top),
-      ],
-      spacing: 12
-    ) {
-      // #3482: the Settings Map derives the preview engine choices from this same list.
-      ForEach(Self.engineChoices, id: \.self) { choice in
-        switch choice {
-        case .apple: engineCard(apple, icon: "apple.logo", choice: .apple)
-        case .universal: engineCard(universal, icon: "globe", choice: .universal)
+    //
+    // Eager (`Grid`, not `LazyVGrid`): a lazy grid below the fold has no cards, so a Settings
+    // search for a preview engine could not arrive at one (#3482). Flexible frames split the row
+    // evenly, as the flexible columns did; the row is as tall as the taller card.
+    Grid(horizontalSpacing: 12, verticalSpacing: 12) {
+      GridRow(alignment: .top) {
+        // #3482: the Settings Map derives the preview engine choices from this same list.
+        ForEach(Self.engineChoices, id: \.self) { choice in
+          Group {
+            switch choice {
+            case .apple: engineCard(apple, icon: "apple.logo", choice: .apple)
+            case .universal: engineCard(universal, icon: "globe", choice: .universal)
+            }
+          }
+          .frame(maxWidth: .infinity, alignment: .top)
         }
       }
     }

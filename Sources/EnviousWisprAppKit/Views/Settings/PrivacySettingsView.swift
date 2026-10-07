@@ -126,6 +126,7 @@ struct PrivacySettingsView: View {
               .buttonStyle(.plain)
               .fixedSize()
               .accessibilityLabel(PrivacySettingsCopy.learnMoreLabel)
+              .settingsArrivalFocusControl()
               .settingsMapRegistration(.whatWeCollectSeeDetails)
             }
           }

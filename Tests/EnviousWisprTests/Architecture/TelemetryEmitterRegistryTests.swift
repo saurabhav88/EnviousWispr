@@ -152,8 +152,14 @@ struct TelemetryEmitterRegistryTests {
   /// (`escape_recovery_undo`) present only on an Escape Recovery Undo restore and omitted for
   /// dictation, no content; reader separates restores from dictation landings; registry rows
   /// unchanged.
+  /// #3482: one NEW event, `settings.search_finished`, one site in `settingsSearchFinished`
+  /// (per_user_action, keep; checklist: one row per finished Settings search attempt, deduplicated
+  /// at the terminal and gated on "Share usage metrics"; closed outcome, ended_by, app language,
+  /// page/tab raw values on sidebar navigation, result count, optional meaning time; the filtered
+  /// query only on zero_results and sidebar_bypass; no take_id; reader the "Settings search gaps"
+  /// review).
   static let sitesFingerprint =
-    "966760256a04c2d94adce7997166069d25ec393c2faa0d679ef21eb994f26043"
+    "51cf94797f1102383e0178389940c14ad15f7ff0c0897855a537ea8412a9a254"
   static let ungradedFingerprint =
     "8c5e46c2f2f7fb59004bb2eb5ea1ac210ef32dbb79fdcb68b3eff70a28cc133f"
 

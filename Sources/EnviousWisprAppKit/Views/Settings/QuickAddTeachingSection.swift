@@ -22,7 +22,7 @@ import SwiftUI
 /// drafted to stand where the frame had been, on the worry that the tab would
 /// otherwise open cold on "1. Highlight a word"; the founder rejected the
 /// premise, because the Dictionary page always opens on Your Words
-/// (`YourWordsView.selectedTab` defaults to `.yourWords`) and this tab is only
+/// (`SettingsNavigationState.dictionaryTab` defaults to `.yourWords`) and this tab is only
 /// ever reached by clicking a rail row that already reads "Quick Add / Add from
 /// any app". Nobody arrives here without having asked for it.
 ///
@@ -180,6 +180,7 @@ struct QuickAddTeachingSection: View {
     }
     .buttonStyle(.plain)
     .accessibilityHint("Opens Keybinds")
+    .settingsArrivalFocusControl()
     .settingsMapRegistration(.quickAddShortcut)
   }
 

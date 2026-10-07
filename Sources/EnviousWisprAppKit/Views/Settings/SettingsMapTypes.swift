@@ -38,7 +38,7 @@ enum SettingsMapDescription: Sendable {
 
 /// The runtime-named nodes. Each case names one resolver; `SettingsMapTitleContext` carries its
 /// inputs. The static map never stores a sampled runtime value.
-enum SettingsMapDynamicTitle: Sendable {
+enum SettingsMapDynamicTitle: Sendable, CaseIterable {
   case currentEngineHeading
   case lockedLanguage
   case startWordLanguage

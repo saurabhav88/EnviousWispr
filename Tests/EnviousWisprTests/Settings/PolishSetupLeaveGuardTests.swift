@@ -42,7 +42,7 @@ struct PolishSetupLeaveGuardTests {
     }
   }
 
-  private static func monitor(_ world: World) -> PolishSetupMonitor {
+  static func monitor(_ world: World) -> PolishSetupMonitor {
     let monitor = PolishSetupMonitor(readInputs: { world.inputs })
     world.onTransition = { [weak monitor] in monitor?.configurationOrEligibilityChanged() }
     monitor.start()
