@@ -112,15 +112,23 @@ struct SettingsArrivalTests {
     #expect(state.reveal == nil)
   }
 
-  @Test("a direct tab change drops an arrival meant for another tab")
-  func tabChangeDropsReveal() throws {
+  @Test("a direct tab change ends the arrival and its ring; the tab a search opened does not")
+  func tabChanges() throws {
     var state = SettingsNavigationState()
     state.apply(try #require(SettingsSearchRequest(entryID: "pauseDuration")))
-    let tab = state.dictationTab
+    let afterSearch = state.epoch
+    // The search request set the tab itself: its own arrival survives the tab-change hook.
+    state.noteTabChange()
     #expect(state.reveal != nil)
-    state.dictationTab = tab == .engine ? .microphone : .engine
-    state.dropRevealIfNotShowing()
+    #expect(state.epoch == afterSearch)
+    // The person picks another tab.
+    state.dictationTab = state.dictationTab == .engine ? .microphone : .engine
+    state.noteTabChange()
     #expect(state.reveal == nil, "the arrival survived a change to another tab")
+    #expect(state.epoch == afterSearch + 1, "the ring would survive a direct tab change")
+    // After an acknowledged arrival (no reveal left), a direct change still ends the ring.
+    state.noteTabChange()
+    #expect(state.epoch == afterSearch + 2)
   }
 
   @Test("the Dictionary tab is part of what 'showing' means")

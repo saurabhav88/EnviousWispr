@@ -80,6 +80,23 @@ struct SettingsSearchBothLegsTests {
     }
   }
 
+  @Test("meaning_elapsed_ms counts encoding and scoring, never the model load")
+  func elapsedExcludesLoad() async throws {
+    let worker = Self.worker()
+    let index = try SettingsSearchMatchingTests.english.get()
+    let model = SettingsSearchModel(
+      loadIndex: { index }, meaningWorker: worker, announce: { _ in },
+      announcementDelay: .seconds(60))
+    _ = await Self.search(model, "mic")
+    let elapsed = try #require(model.meaningElapsedMilliseconds, "no meaning time recorded")
+    // Control: the load this first search paid for, as the worker measured it.
+    guard case .ready(let loadMilliseconds) = await worker.ensureLoaded() else {
+      Issue.record("the meaning pass did not load")
+      return
+    }
+    #expect(elapsed < loadMilliseconds, "\(elapsed) ms includes the \(loadMilliseconds) ms load")
+  }
+
   @Test("a place only the meaning model found carries no match hint")
   func meaningOnlyHasNoHint() async throws {
     let model = try Self.model("en")

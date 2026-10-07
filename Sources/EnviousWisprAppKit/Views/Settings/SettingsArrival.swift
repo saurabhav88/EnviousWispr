@@ -188,7 +188,7 @@ struct SettingsArrivalModifier: ViewModifier {
       .onChange(of: mounted) { _, _ in reconcile() }
       // Any other navigation, or the window closing, ends this arrival and its ring.
       .onChange(of: navigationEpoch) { _, _ in
-        if let arriving, reveal?.token == arriving.reveal.token { return }
+        if let arriving, showing(arriving.reveal) { return }
         arriving = nil
         dismissRing()
       }

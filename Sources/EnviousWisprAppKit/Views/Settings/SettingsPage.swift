@@ -257,14 +257,6 @@ struct SettingsNavigationState: Equatable {
     if reveal?.token == token { reveal = nil }
   }
 
-  /// The person changed tab directly, or the window closed: a pending arrival no longer applies
-  /// when its place is not on the tab now showing.
-  mutating func dropRevealIfNotShowing() {
-    guard let reveal, let id = SettingsMapID(rawValue: reveal.entryID) else { return }
-    let node = SettingsMap.node(id)
-    if !isShowing(node.destination, dictionaryTab: node.dictionaryTab) { self.reveal = nil }
-  }
-
   /// Whether `destination` (and, on Dictionary, `dictionaryTab`) is what the window shows now.
   func isShowing(_ destination: SettingsDestination?, dictionaryTab: DictionaryTab?) -> Bool {
     guard let destination, destination.page == selectedPage else { return false }
@@ -274,6 +266,17 @@ struct SettingsNavigationState: Equatable {
     case .dictionary: return dictionaryTab.map { $0 == self.dictionaryTab } ?? true
     default: return true
     }
+  }
+
+  /// A tab changed. When the person changed it directly (no pending reveal on that tab), it ends
+  /// any arrival and ring in progress; the tab a search request opened keeps its own arrival.
+  mutating func noteTabChange() {
+    if let reveal, let id = SettingsMapID(rawValue: reveal.entryID) {
+      let node = SettingsMap.node(id)
+      if isShowing(node.destination, dictionaryTab: node.dictionaryTab) { return }
+    }
+    epoch += 1
+    reveal = nil
   }
 
   /// The window closed: no arrival or ring survives it.

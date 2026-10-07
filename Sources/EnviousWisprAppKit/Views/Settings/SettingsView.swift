@@ -63,16 +63,12 @@ struct UnifiedWindowView: View {
           navigationState.endWindowSession()
         })
       // #3482 §3.4: a direct tab change drops an arrival meant for another tab.
-      .onChange(of: navigationState.dictationTab) { _, _ in navigationState.dropRevealIfNotShowing() }
+      .onChange(of: navigationState.dictationTab) { _, _ in navigationState.noteTabChange() }
       // #3482 §8.1: the failed-search row follows "Share usage metrics", read at every terminal.
       .onAppear { search.usageMetricsOn = { settings.shareUsageMetrics } }
       .onChange(of: settings.shareUsageMetrics) { _, isOn in search.usageMetricsChanged(isOn: isOn) }
-      .onChange(of: navigationState.appSettingsTab) { _, _ in
-        navigationState.dropRevealIfNotShowing()
-      }
-      .onChange(of: navigationState.dictionaryTab) { _, _ in
-        navigationState.dropRevealIfNotShowing()
-      }
+      .onChange(of: navigationState.appSettingsTab) { _, _ in navigationState.noteTabChange() }
+      .onChange(of: navigationState.dictionaryTab) { _, _ in navigationState.noteTabChange() }
       .focusedSceneValue(\.settingsFind) {
         search.reopenPanel()
         searchFocused = true
@@ -460,7 +456,10 @@ struct UnifiedWindowView: View {
       .environment(\.settingsRevealAcknowledge) { navigationState.acknowledgeReveal(token: $0) }
       .environment(\.settingsNavigationEpoch, navigationState.epoch)
       .environment(\.settingsRevealIsShowing) { reveal in
-        guard let id = SettingsMapID(rawValue: reveal.entryID) else { return false }
+        // Only the current reveal: queued work for an overtaken one never acts (§3.4).
+        guard navigationState.reveal?.token == reveal.token,
+          let id = SettingsMapID(rawValue: reveal.entryID)
+        else { return false }
         let node = SettingsMap.node(id)
         return navigationState.isShowing(node.destination, dictionaryTab: node.dictionaryTab)
       }

@@ -47,9 +47,8 @@ final class SettingsSearchModel {
   private var meaningSkipped = false
   private var meaningView: SettingsSearchPlaceVectors.View?
   private var meaningTask: Task<Void, Never>?
-  /// When the final query's meaning pass started, for `meaning_elapsed_ms`.
-  private var meaningStarted: ContinuousClock.Instant?
-  private var meaningElapsedMilliseconds: Double?
+  /// Encoding plus scoring time of the last completed meaning pass, for `meaning_elapsed_ms`.
+  private(set) var meaningElapsedMilliseconds: Double?
 
   // MARK: Telemetry (plan §8.1)
 
@@ -325,14 +324,21 @@ final class SettingsSearchModel {
       return
     }
     meaningPass = .pending
-    meaningStarted = .now
     meaningElapsedMilliseconds = nil
     let text = query
     let languages = Self.meaningLanguages(index)
     let appLanguage = index.appLanguage
     let cachedView = meaningView
     meaningTask = Task { [weak self] in
+      // §8.1 meaning_elapsed_ms is query encoding plus scoring only: the model load and the
+      // vector view's construction are excluded.
+      if case .skipped = await worker.ensureLoaded() {
+        self?.meaningFinished(nil, skipped: true, for: generation)
+        return
+      }
+      let encodeStart = ContinuousClock.now
       let outcome = await worker.encode(text, generation: generation)
+      let encodeTime = encodeStart.duration(to: .now)
       switch outcome {
       case .stale:
         return
@@ -355,33 +361,33 @@ final class SettingsSearchModel {
           SettingsSearchWordHit(entryID: $0.entryID, coverage: $0.coverage, score: $0.score)
         }
         // Scoring and fusion off the main actor; the generation is checked again on return.
+        let scoreStart = ContinuousClock.now
         let scored = await Task.detached { () -> [SettingsSearchFusedResult]?? in
           guard let similarities = view.similarities(query: values) else { return .none }
           return .some(SettingsSearchMeaningFusion.rank(wordHits: hits, similarities: similarities))
         }.value
+        let elapsed = encodeTime + scoreStart.duration(to: .now)
         guard let fused = scored else {
           // A bad vector: words only for this window.
           self?.meaningFinished(nil, skipped: true, for: generation)
           return
         }
         self?.meaningView = view
-        self?.meaningFinished(fused.map { Self.results(from: $0, words: wordResults) }, skipped: false, for: generation)
+        self?.meaningFinished(
+          fused.map { Self.results(from: $0, words: wordResults) }, skipped: false,
+          elapsed: elapsed, for: generation)
       }
     }
   }
 
   private func meaningFinished(
-    _ fused: [SettingsSearchResult]?, skipped: Bool, for generation: Int
+    _ fused: [SettingsSearchResult]?, skipped: Bool, elapsed: Duration? = nil, for generation: Int
   ) {
     if skipped { meaningSkipped = true }
     guard generation == self.generation else { return }
-    meaningElapsedMilliseconds =
-      skipped
-      ? nil
-      : meaningStarted.map {
-        let elapsed = $0.duration(to: .now).components
-        return Double(elapsed.seconds) * 1_000 + Double(elapsed.attoseconds) / 1e15
-      }
+    meaningElapsedMilliseconds = elapsed.map {
+      Double($0.components.seconds) * 1_000 + Double($0.components.attoseconds) / 1e15
+    }
     meaningPass = skipped ? .skipped : .completed
     if let fused {
       show(fused, for: generation)
