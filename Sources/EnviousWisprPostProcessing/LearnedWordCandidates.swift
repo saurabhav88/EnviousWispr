@@ -120,7 +120,7 @@ public enum LearnedWordCandidates: Sendable {
     let misspellings = misspellingsByWord(learned)
     for entry in learned {
       for observed in entry.observedMisspellings where observed.isEmpty == false {
-        for variant in variants(of: observed, owner: entry.canonical, misspellings: misspellings) {
+        for variant in variants(of: observed, misspellings: misspellings) {
           var searchStart = text.startIndex
           var added = 0
           while added < maxSpots, searchStart < text.endIndex,
@@ -176,21 +176,20 @@ public enum LearnedWordCandidates: Sendable {
   }
 
   /// The spellings searched for one learned phrase, the phrase as taught first, at most
-  /// `maxVariantsPerAlias` of them. Only a phrase with whitespace is expanded, and only
-  /// where another learned word sits in it as a whole word, found in the phrase as taught.
+  /// `maxVariantsPerAlias` of them. A phrase is expanded only where a learned word sits strictly
+  /// inside it as a whole word, found in the phrase as taught (Codex class check: "Saurabh/team"
+  /// has no space, and a phrase may hold the very word it is taught for, "Saurabh A V" ->
+  /// "Saurabh").
   /// Overlapping learned words ("Envious" and "Envious Labs") are alternatives: one
   /// spelling never replaces both.
   static func variants(
-    of alias: String, owner: String, misspellings: [String: [String]]
+    of alias: String, misspellings: [String: [String]]
   ) -> [Variant] {
     struct Occurrence {
       let range: Range<Int>
       let key: String
     }
     let scalars = Array(alias.unicodeScalars)
-    guard scalars.contains(where: { $0.properties.isWhitespace }) else {
-      return [Variant(text: alias, retained: [], composed: false)]
-    }
     // Every stretch of the phrase that starts and ends on a word boundary, by the same rule
     // the matcher and the settled check use (`isWholeWord`), looked up as a learned word: one
     // dictionary lookup per stretch, so a large vocabulary costs no more here, and every
@@ -201,7 +200,6 @@ public enum LearnedWordCandidates: Sendable {
     guard scalars.count <= maxExpandedAliasScalars else {
       return [Variant(text: alias, retained: [], composed: false)]
     }
-    let ownerKey = owner.lowercased()
     let starts = scalars.indices.filter {
       scalars[$0].properties.isWhitespace == false
         && ($0 == 0 || isWordScalar(scalars[$0 - 1]) == false)
@@ -219,7 +217,7 @@ public enum LearnedWordCandidates: Sendable {
     for start in starts {
       for end in ends where end > start && (start > 0 || end < scalars.count) {
         let key = String(String.UnicodeScalarView(scalars[start..<end])).lowercased()
-        if key != ownerKey, misspellings[key] != nil {
+        if misspellings[key] != nil {
           occurrences.append(Occurrence(range: start..<end, key: key))
         }
       }

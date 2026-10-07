@@ -472,7 +472,7 @@ struct LearnedWordCandidatesTests {
   func overlappingWordsStayBounded() {
     let phrase = Array(repeating: "ha", count: 28).joined(separator: " ")
     let variants = LearnedWordCandidates.variants(
-      of: phrase, owner: "Laugh", misspellings: ["ha ha": ["ha"], "laugh": [phrase]])
+      of: phrase, misspellings: ["ha ha": ["ha"], "laugh": [phrase]])
     #expect(variants.count == 32)
     #expect(variants.first?.text == phrase)
   }
@@ -524,5 +524,21 @@ struct LearnedWordCandidatesTests {
         for: "Invoices for Envious Labs today.", learned: learned,
         knownSpellings: ["Envious Labs", "EnviousSales"]
       ).isEmpty)
+  }
+
+  @Test("#3518: a phrase with no space, and a phrase holding its own word, expand too (Codex class check)")
+  func phrasesWithoutSpacesAndSelfWords() {
+    let slash = [
+      LearnedWord(canonical: "Saurabh", observedMisspellings: ["Sarab"]),
+      LearnedWord(canonical: "TeamName", observedMisspellings: ["Saurabh/team"]),
+    ]
+    #expect(
+      Self.spots("Ping Sarab/team.", LearnedWordCandidates.questions(for: "Ping Sarab/team.", learned: slash))
+        == ["Sarab/team->TeamName", "Sarab->Saurabh"])
+    let selfWord = [LearnedWord(canonical: "Saurabh", observedMisspellings: ["Sarab", "Saurabh A V"])]
+    #expect(
+      Self.spots(
+        "Hi Sarab A V.", LearnedWordCandidates.questions(for: "Hi Sarab A V.", learned: selfWord))
+        == ["Sarab A V->Saurabh", "Sarab->Saurabh"])
   }
 }
