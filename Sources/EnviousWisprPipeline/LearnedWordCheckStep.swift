@@ -131,6 +131,11 @@ public final class LearnedWordCheckStep: TextProcessingStep, CorrectorVocabulary
     public let latencyMs: Int
     public let arm: String
     public let fallbackReason: FallbackReason?
+    /// #3518, local log only: questions built from a learned word inside a learned phrase,
+    /// candidates cut by the question budget, and the time spent finding candidates.
+    public var composed = 0
+    public var truncated = 0
+    public var candidateMs = 0
   }
 
   /// Where the take's counts go: the take's `dictation.terminal` row
@@ -265,7 +270,7 @@ public final class LearnedWordCheckStep: TextProcessingStep, CorrectorVocabulary
         }
         Task {
           await AppLogger.shared.log(
-            "LearnedWordCheck: flagged=\(outcome.flagged) approved=\(outcome.approved) applied=\(outcome.applied) contested=\(outcome.contested) latency_ms=\(outcome.latencyMs) arm=\(outcome.arm) reason=\(outcome.fallbackReason?.rawValue ?? "none")",
+            "LearnedWordCheck: flagged=\(outcome.flagged) approved=\(outcome.approved) applied=\(outcome.applied) contested=\(outcome.contested) latency_ms=\(outcome.latencyMs) arm=\(outcome.arm) reason=\(outcome.fallbackReason?.rawValue ?? "none") composed=\(outcome.composed) truncated=\(outcome.truncated) candidate_ms=\(outcome.candidateMs)",
             level: .info, category: "Pipeline")
         }
       }
@@ -279,9 +284,12 @@ public final class LearnedWordCheckStep: TextProcessingStep, CorrectorVocabulary
     }
     let vocabulary = context.frozenCorrectorVocabulary ?? correctorVocabulary
     let learned = LearnedWordCandidates.learnedWords(from: vocabulary.terms)
-    let questions = LearnedWordCandidates.questions(
+    let searchStart = ContinuousClock.now
+    let search = LearnedWordCandidates.search(
       for: context.text, learned: learned,
       knownSpellings: vocabulary.terms.filter { $0.source != .pack }.map(\.canonical))
+    let searchElapsed = ContinuousClock.now - searchStart
+    let questions = search.questions
     let start = ContinuousClock.now
     func outcome(approved: Int, applied: Int, contested: Int, reason: Outcome.FallbackReason?)
       -> Outcome
@@ -291,7 +299,10 @@ public final class LearnedWordCheckStep: TextProcessingStep, CorrectorVocabulary
         flagged: questions.count, approved: approved, applied: applied, contested: contested,
         latencyMs: Int(elapsed.components.seconds) * 1000
           + Int(elapsed.components.attoseconds / 1_000_000_000_000_000),
-        arm: checker.armName, fallbackReason: reason)
+        arm: checker.armName, fallbackReason: reason, composed: search.composed,
+        truncated: search.truncated,
+        candidateMs: Int(searchElapsed.components.seconds) * 1000
+          + Int(searchElapsed.components.attoseconds / 1_000_000_000_000_000))
     }
     guard !questions.isEmpty else {
       lastOutcome = outcome(approved: 0, applied: 0, contested: 0, reason: .noCandidates)

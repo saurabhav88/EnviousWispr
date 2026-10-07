@@ -16,10 +16,33 @@ public enum LearnedWordCandidates: Sendable {
   private static let maxContextCharacters = 400
   private static let contextSideCharacters = 200
   private static let maxBoundaryOverhang = 20
+  /// #3518: spellings searched per learned phrase, the phrase as taught first.
+  private static let maxVariantsPerAlias = 32
 
   private struct Candidate {
     let range: Range<String.Index>
     let word: String
+    let composed: Bool
+  }
+
+  /// One spelling searched for a learned phrase: the phrase as taught, or (#3518) the phrase
+  /// with a learned word inside it written as one of that word's own misspellings.
+  /// `retained` holds the unicode-scalar offsets of the learned words left as written: the
+  /// only places a spelling the user already has may sit inside a match.
+  private struct Variant {
+    let text: String
+    let retained: [Range<Int>]
+    let composed: Bool
+  }
+
+  /// The questions plus the counts the step logs (#3518).
+  package struct Search: Sendable {
+    package let questions: [LearnedWordCheckQuestion]
+    /// Questions whose spot matched a spelling the expansion built, not a phrase as taught.
+    package let composed: Int
+    /// Eligible candidates collected but cut by `maxSpots`. Not a count of every spot left
+    /// unsearched: per-spelling scanning limits and the 32-spelling cap are not counted.
+    package let truncated: Int
   }
 
   private struct CandidateKey: Hashable {
@@ -43,7 +66,24 @@ public enum LearnedWordCandidates: Sendable {
     for text: String, learned: [LearnedWord], maxSpots: Int = 16,
     knownSpellings: [String] = []
   ) -> [LearnedWordCheckQuestion] {
-    guard text.isEmpty == false, learned.isEmpty == false else { return [] }
+    search(for: text, learned: learned, maxSpots: maxSpots, knownSpellings: knownSpellings)
+      .questions
+  }
+
+  /// `questions(for:learned:maxSpots:knownSpellings:)` with the counts the step logs.
+  ///
+  /// #3518 founder rule (2026-10-07): when a learned phrase contains another learned word,
+  /// that word's own misspellings count there too. Judge 1 learns from the text on screen,
+  /// which this check may already have changed ("Sarab" -> "Saurabh"), so the user's fix
+  /// "Saurabh A V" -> "Saurabhav" is saved in a spelling the recogniser never writes; it
+  /// writes "Sarab A V". Every spelling built this way is still only a question.
+  package static func search(
+    for text: String, learned: [LearnedWord], maxSpots: Int = 16,
+    knownSpellings: [String] = []
+  ) -> Search {
+    guard text.isEmpty == false, learned.isEmpty == false else {
+      return Search(questions: [], composed: 0, truncated: 0)
+    }
     var candidates = [Candidate]()
     var seen = Set<CandidateKey>()
     // #3105 founder live test: "EnviousWispr" (already right, from the user's own word)
@@ -57,57 +97,225 @@ public enum LearnedWordCandidates: Sendable {
     // entry they belong to: each alias contributes at most `maxSpots` matches,
     // enough to cover its share of the first `maxSpots`, and the cut is made
     // after sorting.
-    func add(_ range: Range<String.Index>, word: String) -> Bool {
-      guard settled.allSatisfy({ !$0.overlaps(range) }) else { return false }
+    // #3518: a settled spelling inside a longer match is final unless it is a learned word
+    // the phrase itself contains, left as written. Text the expansion substituted earns no
+    // exemption, and a spelling equal to the whole match or only partly inside it never does.
+    func add(_ range: Range<String.Index>, word: String, variant: Variant) -> Bool {
+      let retained = retainedRanges(of: variant, matchedAt: range, in: text)
+      guard
+        settled.allSatisfy({ !$0.overlaps(range) || ($0 != range && retained.contains($0)) })
+      else { return false }
       guard text[range].unicodeScalars.elementsEqual(word.unicodeScalars) == false else {
         return false
       }
       let key = CandidateKey(range: range, wordUTF8: Data(word.utf8))
       guard seen.insert(key).inserted else { return false }
-      candidates.append(Candidate(range: range, word: word))
+      candidates.append(Candidate(range: range, word: word, composed: variant.composed))
       return true
     }
 
+    let misspellings = misspellingsByWord(learned)
     for entry in learned {
       for observed in entry.observedMisspellings where observed.isEmpty == false {
-        var searchStart = text.startIndex
-        var added = 0
-        while added < maxSpots, searchStart < text.endIndex,
-          let range = text.range(
-            of: observed, options: .caseInsensitive, range: searchStart..<text.endIndex)
-        {
-          let matched = text[range]
-          let sameLettersIgnoringCase = matched.lowercased().unicodeScalars.elementsEqual(
-            observed.lowercased().unicodeScalars)
-          let startsAtBoundary =
-            range.lowerBound == text.startIndex
-            || isWordScalar(
-              text.unicodeScalars[text.unicodeScalars.index(before: range.lowerBound)]) == false
-          let endsAtBoundary =
-            range.upperBound == text.endIndex
-            || isWordScalar(text.unicodeScalars[range.upperBound]) == false
-            || Self.isSentencePeriod(in: text, at: range.upperBound)
-          if sameLettersIgnoringCase && startsAtBoundary && endsAtBoundary,
-            add(range, word: entry.canonical)
+        for variant in variants(of: observed, owner: entry.canonical, misspellings: misspellings) {
+          var searchStart = text.startIndex
+          var added = 0
+          while added < maxSpots, searchStart < text.endIndex,
+            let range = text.range(
+              of: variant.text, options: .caseInsensitive, range: searchStart..<text.endIndex)
           {
-            added += 1
+            let matched = text[range]
+            let sameLettersIgnoringCase = matched.lowercased().unicodeScalars.elementsEqual(
+              variant.text.lowercased().unicodeScalars)
+            if sameLettersIgnoringCase && isWholeWord(range, in: text),
+              add(range, word: entry.canonical, variant: variant)
+            {
+              added += 1
+            }
+            searchStart = text.unicodeScalars.index(after: range.lowerBound)
           }
-          searchStart = text.unicodeScalars.index(after: range.lowerBound)
         }
       }
     }
 
+    // #3518: at one start the longer fix is asked first, so the budget never keeps a
+    // shorter fix in place of the longer one that contains it.
     candidates.sort {
       if $0.range.lowerBound != $1.range.lowerBound {
         return $0.range.lowerBound < $1.range.lowerBound
       }
+      if $0.range.upperBound != $1.range.upperBound {
+        return $0.range.upperBound > $1.range.upperBound
+      }
       return $0.word < $1.word
     }
-    return candidates.prefix(maxSpots).enumerated().map { id, candidate in
-      LearnedWordCheckQuestion(
-        id: id, sentence: text, range: candidate.range,
-        contextRange: contextRange(in: text, around: candidate.range), word: candidate.word)
+    let kept = candidates.prefix(max(0, maxSpots))
+    return Search(
+      questions: kept.enumerated().map { id, candidate in
+        LearnedWordCheckQuestion(
+          id: id, sentence: text, range: candidate.range,
+          contextRange: contextRange(in: text, around: candidate.range), word: candidate.word)
+      },
+      composed: kept.filter(\.composed).count,
+      truncated: candidates.count - kept.count)
+  }
+
+  /// Every learned word's misspellings by lowercased canonical. Entries spelled alike are
+  /// merged, and each list is deduplicated and sorted by UTF-8 bytes, so the spellings built
+  /// from them do not depend on vocabulary order.
+  private static func misspellingsByWord(_ learned: [LearnedWord]) -> [String: [String]] {
+    var merged = [String: Set<String>]()
+    for entry in learned {
+      merged[entry.canonical.lowercased(), default: []].formUnion(
+        entry.observedMisspellings.filter { $0.isEmpty == false })
     }
+    return merged.mapValues { $0.sorted { $0.utf8.lexicographicallyPrecedes($1.utf8) } }
+  }
+
+  /// The spellings searched for one learned phrase, the phrase as taught first, at most
+  /// `maxVariantsPerAlias` distinct ones. Only a phrase with whitespace is expanded, and only
+  /// where another learned word sits in it as a whole word, found in the phrase as taught.
+  /// Overlapping learned words ("Envious" and "Envious Labs") are alternatives: one
+  /// spelling never replaces both.
+  private static func variants(
+    of alias: String, owner: String, misspellings: [String: [String]]
+  ) -> [Variant] {
+    struct Occurrence {
+      let range: Range<Int>
+      let key: String
+    }
+    let scalars = Array(alias.unicodeScalars)
+    guard scalars.contains(where: { $0.properties.isWhitespace }) else {
+      return [Variant(text: alias, retained: [], composed: false)]
+    }
+    // Whole words of the phrase (runs of word characters, `isWordScalar`), then every run of
+    // consecutive words looked up as a learned word: a dictionary lookup per run, not a
+    // search per learned word, so a large vocabulary costs no more here.
+    var words = [Range<Int>]()
+    var wordStart: Int?
+    for (offset, scalar) in scalars.enumerated() {
+      if isWordScalar(scalar) {
+        if wordStart == nil { wordStart = offset }
+      } else if let start = wordStart {
+        words.append(start..<offset)
+        wordStart = nil
+      }
+    }
+    if let start = wordStart { words.append(start..<scalars.count) }
+    var occurrences = [Occurrence]()
+    let ownerKey = owner.lowercased()
+    for first in words.indices {
+      for last in first..<words.count {
+        // The run as written ("U.S."), and without a trailing sentence period ("Saurabh.").
+        var upper = words[last].upperBound
+        var ends = [upper]
+        while upper > words[last].lowerBound + 1, scalars[upper - 1] == "." { upper -= 1 }
+        if upper != ends[0] { ends.append(upper) }
+        for end in ends {
+          let range = words[first].lowerBound..<end
+          let key = String(String.UnicodeScalarView(scalars[range])).lowercased()
+          if key != ownerKey, misspellings[key] != nil {
+            occurrences.append(Occurrence(range: range, key: key))
+            break
+          }
+        }
+      }
+    }
+    guard occurrences.isEmpty == false else {
+      return [Variant(text: alias, retained: [], composed: false)]
+    }
+    occurrences.sort {
+      if $0.range.lowerBound != $1.range.lowerBound {
+        return $0.range.lowerBound < $1.range.lowerBound
+      }
+      if $0.range.count != $1.range.count { return $0.range.count > $1.range.count }
+      return $0.key < $1.key
+    }
+
+    func build(_ replaced: [(occurrence: Int, with: String)]) -> Variant {
+      var text = String.UnicodeScalarView()
+      var retained = [Range<Int>]()
+      var cursor = 0
+      let replacedRanges = replaced.map { occurrences[$0.occurrence].range }
+      for occurrence in occurrences
+      where replacedRanges.contains(where: { $0.overlaps(occurrence.range) }) == false {
+        // A kept learned word: its place in the built spelling, after earlier replacements.
+        let shift = replaced.reduce(0) { total, item in
+          let range = occurrences[item.occurrence].range
+          guard range.upperBound <= occurrence.range.lowerBound else { return total }
+          return total + item.with.unicodeScalars.count - range.count
+        }
+        retained.append(
+          (occurrence.range.lowerBound + shift)..<(occurrence.range.upperBound + shift))
+      }
+      for item in replaced.sorted(by: {
+        occurrences[$0.occurrence].range.lowerBound < occurrences[$1.occurrence].range.lowerBound
+      }) {
+        let range = occurrences[item.occurrence].range
+        text.append(contentsOf: scalars[cursor..<range.lowerBound])
+        text.append(contentsOf: item.with.unicodeScalars)
+        cursor = range.upperBound
+      }
+      text.append(contentsOf: scalars[cursor...])
+      return Variant(text: String(text), retained: retained, composed: replaced.isEmpty == false)
+    }
+
+    var result = [Variant]()
+    var distinct = Set<String>()
+    func visit(_ index: Int, _ replaced: [(occurrence: Int, with: String)]) {
+      guard distinct.count < maxVariantsPerAlias else { return }
+      guard index < occurrences.count else {
+        let variant = build(replaced)
+        // Same spelling, other provenance: kept, so its exemptions are judged on their own.
+        if distinct.contains(variant.text) || distinct.count < maxVariantsPerAlias {
+          distinct.insert(variant.text)
+          result.append(variant)
+        }
+        return
+      }
+      visit(index + 1, replaced)
+      let occurrence = occurrences[index]
+      guard
+        replaced.contains(where: { occurrences[$0.occurrence].range.overlaps(occurrence.range) })
+          == false
+      else { return }
+      for spelling in misspellings[occurrence.key] ?? [] {
+        visit(index + 1, replaced + [(index, spelling)])
+      }
+    }
+    visit(0, [])
+    return result
+  }
+
+  /// The text ranges of a variant's kept learned words in one match, or none when the match
+  /// is not scalar-for-scalar the variant (a case mapping that changes length).
+  private static func retainedRanges(
+    of variant: Variant, matchedAt range: Range<String.Index>, in text: String
+  ) -> [Range<String.Index>] {
+    guard variant.retained.isEmpty == false else { return [] }
+    let scalars = text.unicodeScalars
+    guard
+      scalars.distance(from: range.lowerBound, to: range.upperBound)
+        == variant.text.unicodeScalars.count
+    else { return [] }
+    return variant.retained.map {
+      scalars.index(range.lowerBound, offsetBy: $0.lowerBound)
+        ..< scalars.index(range.lowerBound, offsetBy: $0.upperBound)
+    }
+  }
+
+  /// Whole word in `text`: nothing word-like right before or after, or a sentence-ending
+  /// period after.
+  private static func isWholeWord(_ range: Range<String.Index>, in text: String) -> Bool {
+    let startsAtBoundary =
+      range.lowerBound == text.startIndex
+      || isWordScalar(
+        text.unicodeScalars[text.unicodeScalars.index(before: range.lowerBound)]) == false
+    let endsAtBoundary =
+      range.upperBound == text.endIndex
+      || isWordScalar(text.unicodeScalars[range.upperBound]) == false
+      || Self.isSentencePeriod(in: text, at: range.upperBound)
+    return startsAtBoundary && endsAtBoundary
   }
 
   /// Every whole-word, exact-case occurrence in `text` of a spelling the user already has.
@@ -118,15 +326,7 @@ public enum LearnedWordCandidates: Sendable {
       while searchStart < text.endIndex,
         let range = text.range(of: spelling, options: .literal, range: searchStart..<text.endIndex)
       {
-        let startsAtBoundary =
-          range.lowerBound == text.startIndex
-          || isWordScalar(
-            text.unicodeScalars[text.unicodeScalars.index(before: range.lowerBound)]) == false
-        let endsAtBoundary =
-          range.upperBound == text.endIndex
-          || isWordScalar(text.unicodeScalars[range.upperBound]) == false
-          || Self.isSentencePeriod(in: text, at: range.upperBound)
-        if startsAtBoundary && endsAtBoundary { ranges.append(range) }
+        if isWholeWord(range, in: text) { ranges.append(range) }
         searchStart = text.unicodeScalars.index(after: range.lowerBound)
       }
     }
