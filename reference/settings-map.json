@@ -5,8 +5,8 @@
     "vocabularyBlocks" : 7872
   },
   "fingerprints" : {
-    "mapSHA256" : "3b96a329324271bf627324461a899c14b2637a5417cc989e991de9781a2f0246",
-    "uiCatalogSHA256" : "996f87c5fb3a03cf6bab80c01e96c1cb348fb3c90c172602244f8c923259c598",
+    "mapSHA256" : "3ec2032ed9a46f013dffdceacf0933126b939d65047a33e9ecf9c7c0df38b6b6",
+    "uiCatalogSHA256" : "2b07ed7a19fec227cf290611909378c18720c070a02f2e7dab4a87ceb8e62280",
     "vocabularyCanonicalization" : "length-prefixed-v1",
     "vocabularySHA256" : "1d9af94e6eb6a759ef03b3c5a1222fbe4533818ae790fea63f11639519cc732d"
   },
@@ -6993,7 +6993,7 @@
       "target" : null,
       "title" : {
         "catalog" : "Sources/EnviousWispr/Resources/Localizable.xcstrings",
-        "de" : "Einstellungen durchsuchen",
+        "de" : "Einstellungen suchen",
         "en" : "Search settings",
         "key" : "Search settings",
         "source" : "resource",

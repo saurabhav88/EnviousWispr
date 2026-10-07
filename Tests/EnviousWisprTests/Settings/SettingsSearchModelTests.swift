@@ -10,6 +10,17 @@ import Testing
 @MainActor
 @Suite("Settings search field model (#3482)", .tags(.productOutcome))
 struct SettingsSearchModelTests {
+  @Test("the result list never runs past the window: at most eight rows, else the room left")
+  func listHeightFitsTheWindow() {
+    let eightRows = SettingsSearchPanel.rowHeight * SettingsSearchPanel.visibleRows
+    #expect(SettingsSearchPanel.listHeight(available: .infinity) == eightRows)
+    #expect(SettingsSearchPanel.listHeight(available: 1_000) == eightRows)
+    // The smallest window (750 x 440) leaves less than eight rows under the field; uncapped, the
+    // list ran about 123 pt past the window's bottom edge (live UAT, 2026-10-07).
+    #expect(SettingsSearchPanel.listHeight(available: 287) == 285)
+    #expect(SettingsSearchPanel.listHeight(available: 0) == 0)
+  }
+
   static let index = Result { try SettingsSearchMatchingTests.index("en", preferred: ["en-US"]) }
 
   @MainActor @Observable final class SpokenLog { var lines: [String] = [] }

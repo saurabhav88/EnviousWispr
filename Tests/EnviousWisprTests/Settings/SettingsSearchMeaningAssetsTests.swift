@@ -108,19 +108,9 @@ struct SettingsSearchMeaningAssetsTests {
     return (data, fingerprints.compactMapValues { $0 as? String })
   }
 
-  @Test("the vectors were built from the committed map, interface catalog and vocabulary")
-  func builtFromTheCurrentMapAndVocabulary() throws {
-    let manifest = try Self.manifest()
-    let fingerprints = try Self.committedExport().fingerprints
-    #expect(
-      manifest.sources.mapSHA256 == fingerprints["mapSHA256"], "map changed: \(Self.regenerate)")
-    #expect(
-      manifest.sources.vocabularySHA256 == fingerprints["vocabularySHA256"],
-      "vocabulary changed: \(Self.regenerate)")
-    #expect(
-      manifest.sources.uiCatalogSHA256 == fingerprints["uiCatalogSHA256"],
-      "interface text changed: \(Self.regenerate)")
-  }
+  // The vectors are bound to the exact texts they embed (below), not to whole-file hashes of the
+  // map, vocabulary or interface catalog: an unrelated string change anywhere in the app must not
+  // demand a re-embedding. The manifest's `sources` stay as provenance only.
 
   @Test("the vectors are for exactly the texts of the current export, and every searchable place")
   func textsMatchTheCurrentExport() throws {

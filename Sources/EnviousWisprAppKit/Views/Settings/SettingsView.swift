@@ -387,7 +387,9 @@ struct UnifiedWindowView: View {
             )
             .onTapGesture { search.dismissPanel() }
             .accessibilityHidden(true)
-          SettingsSearchPanel(model: search) { request in navigate(.search(request)) }
+          SettingsSearchPanel(
+            model: search, availableHeight: max(0, proxy.size.height - top - 8)
+          ) { request in navigate(.search(request)) }
             .frame(width: width)
             .frame(maxHeight: max(0, proxy.size.height - top - 8), alignment: .top)
             .offset(x: field.minX, y: top)

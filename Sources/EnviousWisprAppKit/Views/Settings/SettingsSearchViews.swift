@@ -80,6 +80,9 @@ struct SettingsSearchField: View {
 /// Light and Dark.
 struct SettingsSearchPanel: View {
   let model: SettingsSearchModel
+  /// The height the window leaves under the search field. The list never grows past it, so at the
+  /// smallest window every row, and the selected one, stays on screen.
+  var availableHeight: CGFloat = .infinity
   let choose: (SettingsSearchRequest) -> Void
 
   static let rowHeight: CGFloat = 52
@@ -101,7 +104,7 @@ struct SettingsSearchPanel: View {
             }
             .padding(6)
           }
-          .frame(maxHeight: Self.rowHeight * Self.visibleRows)
+          .frame(maxHeight: Self.listHeight(available: availableHeight))
           .onChange(of: model.selectedEntryID) { _, id in
             if let id { proxy.scrollTo(id) }
           }
@@ -116,6 +119,11 @@ struct SettingsSearchPanel: View {
         .allowsHitTesting(false)
     )
     .shadow(color: .black.opacity(0.28), radius: 18, y: 8)
+  }
+
+  /// About eight rows, or less when the window leaves less (the panel's own 1 pt border included).
+  static func listHeight(available: CGFloat) -> CGFloat {
+    max(0, min(rowHeight * visibleRows, available - 2))
   }
 
   private func message(_ text: String) -> some View {
