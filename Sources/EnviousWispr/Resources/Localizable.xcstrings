@@ -988,6 +988,29 @@
         }
       }
     },
+    "%lld settings found" : {
+      "comment" : "Settings search, VoiceOver: how many results the search shows.",
+      "localizations" : {
+        "de" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld Einstellung gefunden"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld Einstellungen gefunden"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "%lld words" : {
       "localizations" : {
         "de" : {
@@ -1460,6 +1483,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "KI-Nachbearbeitung"
+          }
+        }
+      }
+    },
+    "AI Polish provider" : {
+      "comment" : "Settings search result: the model card that chooses who polishes the text.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Anbieter für KI-Nachbearbeitung"
           }
         }
       }
@@ -3244,6 +3278,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Apple Intelligence erfordert macOS 26 oder neuer."
+          }
+        }
+      }
+    },
+    "Apple Intelligence status" : {
+      "comment" : "Settings search result: whether Apple Intelligence is available on this Mac.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Status von Apple Intelligence"
           }
         }
       }
@@ -5669,6 +5714,17 @@
         }
       }
     },
+    "Current dictation engine" : {
+      "comment" : "Settings search result: the heading that names the speech engine in use.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aktuelle Diktier-Engine"
+          }
+        }
+      }
+    },
     "Current step" : {
       "comment" : "VoiceOver: the Ollama setup step to do now.",
       "localizations" : {
@@ -6089,6 +6145,7 @@
       }
     },
     "Dictation language" : {
+      "comment" : "Settings search result: the language dictation is locked to.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -6365,6 +6422,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Ein Modell laden"
+          }
+        }
+      }
+    },
+    "Download a model for Ollama" : {
+      "comment" : "Settings search result: downloads a model for the Ollama provider.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Modell für Ollama herunterladen"
           }
         }
       }
@@ -6842,6 +6910,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Englisch (UK)"
+          }
+        }
+      }
+    },
+    "English or German" : {
+      "comment" : "Settings search result: the languages the app itself can be shown in.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Englisch oder Deutsch"
           }
         }
       }
@@ -7421,6 +7500,28 @@
         }
       }
     },
+    "File transcription steps" : {
+      "comment" : "Settings search result: the steps of Transcribe a File.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Schritte für „Datei transkribieren“"
+          }
+        }
+      }
+    },
+    "Find Settings" : {
+      "comment" : "Edit menu: moves the cursor into the Settings search field (Command-F).",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Einstellungen suchen"
+          }
+        }
+      }
+    },
     "Finding snippets" : {
       "comment" : "Snippets, import snippets: sheet title while reading the source.",
       "localizations" : {
@@ -7933,12 +8034,34 @@
         }
       }
     },
+    "German, French, Spanish and Italian use a start word by default. You can change it or leave it blank. Say the start word first, then the mark. With a start word, a command word on its own stays an ordinary word." : {
+      "comment" : "Speech engine settings, spoken punctuation help: how the start word works.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Deutsch, Französisch, Spanisch und Italienisch nutzen standardmäßig ein Startwort. Du kannst es ändern oder leer lassen. Sag zuerst das Startwort und dann das Zeichen. Mit Startwort bleibt ein Befehlswort allein ein gewöhnliches Wort."
+          }
+        }
+      }
+    },
     "Get Started" : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Loslegen"
+          }
+        }
+      }
+    },
+    "Get an API key" : {
+      "comment" : "Settings search result: link to the chosen cloud provider's API key page.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "API-Schlüssel abrufen"
           }
         }
       }
@@ -8665,17 +8788,6 @@
         }
       }
     },
-    "German, French, Spanish and Italian use a start word by default. You can change it or leave it blank. Say the start word first, then the mark. With a start word, a command word on its own stays an ordinary word." : {
-      "comment" : "Speech engine settings, spoken punctuation help: how the start word works.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Deutsch, Französisch, Spanisch und Italienisch nutzen standardmäßig ein Startwort. Du kannst es ändern oder leer lassen. Sag zuerst das Startwort und dann das Zeichen. Mit Startwort bleibt ein Befehlswort allein ein gewöhnliches Wort."
-          }
-        }
-      }
-    },
     "In a hurry? Skip ahead" : {
       "localizations" : {
         "de" : {
@@ -8726,6 +8838,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Eingang %lld"
+          }
+        }
+      }
+    },
+    "Input 1, Input 2…" : {
+      "comment" : "Settings search result: the inputs of a microphone with several inputs.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Eingang 1, Eingang 2 …"
           }
         }
       }
@@ -9576,6 +9699,17 @@
         }
       }
     },
+    "Leaving this blank means no start word. Command words become marks wherever you say them, even inside a normal sentence." : {
+      "comment" : "Speech engine settings, Start word row: shown while the field is blank or its draft is blank, because every command word then becomes a mark.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wenn du das Feld leer lässt, gibt es kein Startwort. Befehlswörter werden überall dort zu Satzzeichen, wo du sie sagst, auch mitten in einem normalen Satz."
+          }
+        }
+      }
+    },
     "Legal" : {
       "comment" : "Your Words, vocabulary packs: a pack's name.",
       "localizations" : {
@@ -9687,6 +9821,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Liste"
+          }
+        }
+      }
+    },
+    "Listen to the sound" : {
+      "comment" : "Settings search result: plays a recording chime so you can hear it.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ton anhören"
           }
         }
       }
@@ -10187,6 +10332,17 @@
         }
       }
     },
+    "Matches “%@”" : {
+      "comment" : "Settings search result: the word that found this setting. %@ is that word.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Treffer: „%@“"
+          }
+        }
+      }
+    },
     "May need a paid Ollama plan" : {
       "comment" : "AI Polish, Ollama model list: heading for hosted models that may need a paid Ollama plan.",
       "localizations" : {
@@ -10358,6 +10514,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Mikrofon getrennt. Wörter könnten fehlen."
+          }
+        }
+      }
+    },
+    "Microphone in the list" : {
+      "comment" : "Settings search result: one microphone in the Input device list.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mikrofon in der Liste"
           }
         }
       }
@@ -11122,6 +11289,17 @@
         }
       }
     },
+    "No settings match “%@”." : {
+      "comment" : "Settings search: shown when nothing matches. %@ is what the person typed.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Keine passenden Einstellungen für „%@“ gefunden."
+          }
+        }
+      }
+    },
     "No snippets found. Each line needs a trigger and some text." : {
       "comment" : "Snippets, import snippets: paste count, none found.",
       "localizations" : {
@@ -11181,17 +11359,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Keine gesprochenen Varianten"
-          }
-        }
-      }
-    },
-    "Leaving this blank means no start word. Command words become marks wherever you say them, even inside a normal sentence." : {
-      "comment" : "Speech engine settings, Start word row: shown while the field is blank or its draft is blank, because every command word then becomes a mark.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Wenn du das Feld leer lässt, gibt es kein Startwort. Befehlswörter werden überall dort zu Satzzeichen, wo du sie sagst, auch mitten in einem normalen Satz."
           }
         }
       }
@@ -14272,6 +14439,17 @@
         }
       }
     },
+    "Return" : {
+      "comment" : "Settings search: key hint on the selected result; Return opens it.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Return"
+          }
+        }
+      }
+    },
     "Review" : {
       "comment" : "Snippets, import snippets: sheet title, reviewing what will be added.\nTranscribe a File: a step name in the step bar.",
       "localizations" : {
@@ -14789,6 +14967,17 @@
         }
       }
     },
+    "Search is not available right now." : {
+      "comment" : "Settings search: the search data could not be loaded; shown instead of results.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Suche ist derzeit nicht verfügbar."
+          }
+        }
+      }
+    },
     "Search languages" : {
       "localizations" : {
         "de" : {
@@ -14806,6 +14995,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Modelle suchen"
+          }
+        }
+      }
+    },
+    "Search settings" : {
+      "comment" : "Settings sidebar: placeholder in the search field.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Einstellungen durchsuchen"
           }
         }
       }
@@ -15150,6 +15350,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Dein Tastenkürzel wird eingerichtet"
+          }
+        }
+      }
+    },
+    "Settings for the chosen provider" : {
+      "comment" : "Settings search result: the setup section of the chosen AI Polish provider.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Einstellungen für den gewählten Anbieter"
           }
         }
       }
@@ -16350,6 +16561,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Prüfen, ob %@ läuft"
+          }
+        }
+      }
+    },
+    "Test that the model is live" : {
+      "comment" : "Settings search result: re-checks that the local polish model answers.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Prüfen, ob das Modell läuft"
           }
         }
       }

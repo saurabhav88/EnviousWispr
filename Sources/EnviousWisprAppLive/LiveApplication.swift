@@ -60,6 +60,7 @@ package final class LiveApplication {
   package var onboardingWindowID: String { bootstrapper.onboardingWindowID }
 
   package func mainWindowContent() -> some View { bootstrapper.mainWindowContent() }
+  package func mainWindowCommands() -> some Commands { bootstrapper.mainWindowCommands() }
   package func onboardingWindowContent() -> some View {
     bootstrapper.onboardingWindowContent()
   }

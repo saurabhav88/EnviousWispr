@@ -139,6 +139,7 @@
  "SettingsComponents.swift | settingsMapRegistration | map.id",
  "SettingsComponents.swift | settingsMapRegistration | registration",
  "SettingsComponents.swift | settingsMapRegistration | registration",
+ "SettingsSearchViews.swift | settingsMapRegistration | .windowSearch",
  "SnippetEditSheet.swift | SettingsRow | exempt .sheetOrPopoverContent",
  "SnippetEditSheet.swift | SettingsRow | exempt .sheetOrPopoverContent",
  "SnippetsView.swift | SettingsSectionHeading | map .id(.yourSnippets)",

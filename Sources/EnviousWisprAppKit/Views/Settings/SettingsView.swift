@@ -26,6 +26,11 @@ struct UnifiedWindowView: View {
   @State private var providerWhenVisitBegan: LLMProvider?
   @State private var hasUnsavedKeyDraft = false
   @FocusState private var focusedSidebarPage: SettingsPage?
+  /// #3482: this window's Settings search, and whether its field has keyboard focus.
+  @State private var search = SettingsSearchModel.live { message in
+    AccessibilityNotification.Announcement(message).post()
+  }
+  @FocusState private var searchFocused: Bool
 
   /// Owned HERE so a language download survives the user navigating to another section: this view
   /// is retained, the pages inside `detailContent` are not. See
@@ -48,6 +53,15 @@ struct UnifiedWindowView: View {
         detailCard
       }
       .padding(SettingsLayout.windowFrameInset)
+      // #3482 §3.3: the dropdown floats above both cards, outside their clip shapes.
+      .overlayPreferenceValue(SettingsSearchFieldAnchorKey.self) { anchor in
+        searchDropdown(anchor)
+      }
+      .background(SettingsWindowCloseObserver { search.reset() })
+      .focusedSceneValue(\.settingsFind) {
+        search.reopenPanel()
+        searchFocused = true
+      }
       .frame(maxWidth: .infinity, maxHeight: .infinity)
       .background(Color.stWindowBg)
       // Keep the app name as the window title (Window menu / VoiceOver) but hide
@@ -134,6 +148,8 @@ struct UnifiedWindowView: View {
   private func commit(_ intent: SettingsNavigationIntent) {
     let wasOnAIPolish = navigationState.selectedPage == .aiPolish
     navigationState.perform(intent)
+    // #3482 §3.4: every committed navigation ends the search (a Stay never reaches here).
+    search.reset()
     // A new AI Polish visit begins: remember what was chosen before the person changes it.
     if intent.page == .aiPolish, !wasOnAIPolish { providerWhenVisitBegan = settings.llmProvider }
   }
@@ -179,6 +195,8 @@ struct UnifiedWindowView: View {
 
   private func leave(to intent: SettingsNavigationIntent) {
     commit(intent)
+    // #3482 §3.4: a search arrival owns focus (the reveal moves it to the chosen control).
+    if case .search = intent { return }
     focusedSidebarPage = intent.page
   }
 
@@ -208,7 +226,14 @@ struct UnifiedWindowView: View {
       }
       .padding(.horizontal, 14)
       .padding(.top, 12)
-      .padding(.bottom, 12)
+      .padding(.bottom, 10)
+
+      // #3482 §3.3: Settings search, between the identity header and the divider.
+      SettingsSearchField(model: search, isFocused: $searchFocused) { request in
+        navigate(.search(request))
+      }
+      .padding(.horizontal, 10)
+      .padding(.bottom, 10)
 
       Divider().overlay(Color.stDivider)
 
@@ -241,6 +266,7 @@ struct UnifiedWindowView: View {
         .padding(.vertical, 8)
       }
       .scrollContentBackground(.hidden)
+      .searchPanelBlocksBackground(search.isPanelPresented)
 
       // Issue #343: in-app update banner. Fixed sibling of the scroll (NOT a
       // scrolling row) so it stays pinned to the bottom of the sidebar card.
@@ -269,6 +295,7 @@ struct UnifiedWindowView: View {
   /// equally-inset panels on the canvas.
   private var detailCard: some View {
     detailContent
+      .searchPanelBlocksBackground(search.isPanelPresented)
       .frame(maxWidth: .infinity, maxHeight: .infinity)
       .clipShape(
         RoundedRectangle(cornerRadius: SettingsLayout.windowCardRadius, style: .continuous)
@@ -305,6 +332,34 @@ struct UnifiedWindowView: View {
       case .diagnostics:
         page { DiagnosticsSettingsView() }
     #endif
+    }
+  }
+
+  /// #3482 §3.3, §3.4: the dropdown under the search field, above both cards, and the surface
+  /// that turns an outside click into closing it (the field and the panel stay clickable).
+  @ViewBuilder
+  private func searchDropdown(_ anchor: Anchor<CGRect>?) -> some View {
+    if search.isPanelPresented, let anchor {
+      GeometryReader { proxy in
+        let field = proxy[anchor]
+        let width = max(0, min(440, proxy.size.width - field.minX - 8))
+        let top = field.maxY + 6
+        ZStack(alignment: .topLeading) {
+          Color.clear
+            .contentShape(
+              Path { path in
+                path.addRect(CGRect(origin: .zero, size: proxy.size))
+                path.addRect(field)
+              }, eoFill: true
+            )
+            .onTapGesture { search.dismissPanel() }
+            .accessibilityHidden(true)
+          SettingsSearchPanel(model: search) { request in navigate(.search(request)) }
+            .frame(width: width)
+            .frame(maxHeight: max(0, proxy.size.height - top - 8), alignment: .top)
+            .offset(x: field.minX, y: top)
+        }
+      }
     }
   }
 
