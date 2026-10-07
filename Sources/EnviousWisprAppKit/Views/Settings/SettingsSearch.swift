@@ -223,6 +223,8 @@ struct SettingsSearchIndex: Sendable {
 
   let places: [Place]
   let languages: [String]
+  /// The interface language the index was built for ("en" or "de").
+  let appLanguage: String
   let stop: Set<String>
   let markers: Set<String>
 
@@ -314,6 +316,7 @@ struct SettingsSearchIndex: Sendable {
     markers: Set<String>
   ) {
     self.languages = languages
+    self.appLanguage = appLanguage
     self.stop = stop
     self.markers = markers
 

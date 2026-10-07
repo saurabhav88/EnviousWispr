@@ -45,6 +45,12 @@ final class SettingsSearchModel {
   @ObservationIgnored var submitWhenReady: ((SettingsSearchRequest) -> Void)?
   private var announcement: Task<Void, Never>?
   private let loadIndex: @Sendable () async -> SettingsSearchIndex?
+  /// The meaning pass (plan §3.7a): nil means words only. Skipped for the rest of the window
+  /// session after any skip the worker reports.
+  private let meaningWorker: SettingsSearchMeaningWorker?
+  private var meaningSkipped = false
+  private var meaningView: SettingsSearchPlaceVectors.View?
+  private var meaningTask: Task<Void, Never>?
   private let announce: @MainActor (String) -> Void
   private let announcementDelay: Duration
 
@@ -52,10 +58,13 @@ final class SettingsSearchModel {
   /// be used. `announce` speaks the result count after typing pauses.
   init(
     loadIndex: @escaping @Sendable () async -> SettingsSearchIndex?,
+    meaningWorker: SettingsSearchMeaningWorker? = nil,
     announce: @escaping @MainActor (String) -> Void,
     announcementDelay: Duration = .milliseconds(700)
   ) {
     self.loadIndex = loadIndex
+    self.meaningWorker = meaningWorker
+    meaningPass = meaningWorker == nil ? .skipped : .completed
     self.announce = announce
     self.announcementDelay = announcementDelay
   }
@@ -84,6 +93,7 @@ final class SettingsSearchModel {
           return nil
         }
       },
+      meaningWorker: .bundled(),
       announce: announce)
   }
 
@@ -116,6 +126,7 @@ final class SettingsSearchModel {
     selectionMovedByUser = false
     pendingSubmit = nil
     cancelAnnouncement()
+    cancelMeaning()
     if text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
       results = []
       selectedEntryID = nil
@@ -153,8 +164,15 @@ final class SettingsSearchModel {
     if !query.isEmpty { deliver(index.results(for: query), for: generation) }
   }
 
+  /// Word results for `generation`: shown at once, then the meaning pass may re-order them.
+  private func deliver(_ wordResults: [SettingsSearchResult], for generation: Int) {
+    guard generation == self.generation else { return }
+    show(wordResults, for: generation)
+    startMeaning(wordResults, for: generation)
+  }
+
   /// Results for `generation`; a stale generation is dropped. Delivery never opens the panel.
-  private func deliver(_ newResults: [SettingsSearchResult], for generation: Int) {
+  private func show(_ newResults: [SettingsSearchResult], for generation: Int) {
     guard generation == self.generation else { return }
     results = newResults
     if !selectionMovedByUser || selectedResult == nil {
@@ -217,6 +235,90 @@ final class SettingsSearchModel {
     isPanelPresented = true
   }
 
+  // MARK: - Meaning pass
+
+  /// Encodes the typed text off the main actor and re-orders the word results by meaning, adding
+  /// places only the meaning model found (shown without a hint). Word results never wait for it.
+  private func startMeaning(_ wordResults: [SettingsSearchResult], for generation: Int) {
+    guard let worker = meaningWorker, !meaningSkipped, case .ready(let index) = indexState else {
+      meaningPass = .skipped
+      return
+    }
+    meaningPass = .pending
+    let text = query
+    let languages = Self.meaningLanguages(index)
+    let appLanguage = index.appLanguage
+    let cachedView = meaningView
+    meaningTask = Task { [weak self] in
+      let outcome = await worker.encode(text, generation: generation)
+      switch outcome {
+      case .stale:
+        return
+      case .skipped:
+        self?.meaningFinished(nil, skipped: true, for: generation)
+      case .vector(_, let values):
+        var view = cachedView
+        if view == nil, let places = await worker.placeVectors {
+          view = await Task.detached {
+            places.view(
+              entryIDs: SettingsSearchCatalog.entries.map(\.id), appLanguage: appLanguage,
+              vocabularyLanguages: languages)
+          }.value
+        }
+        guard let view, let similarities = view.similarities(query: values) else {
+          // Assets built for another map, or a bad vector: words only for this window.
+          self?.meaningFinished(nil, skipped: true, for: generation)
+          return
+        }
+        let hits = wordResults.map {
+          SettingsSearchWordHit(entryID: $0.entryID, coverage: $0.coverage, score: $0.score)
+        }
+        let fused = SettingsSearchMeaningFusion.rank(wordHits: hits, similarities: similarities)
+        self?.meaningView = view
+        self?.meaningFinished(fused.map { Self.results(from: $0, words: wordResults) }, skipped: false, for: generation)
+      }
+    }
+  }
+
+  private func meaningFinished(
+    _ fused: [SettingsSearchResult]?, skipped: Bool, for generation: Int
+  ) {
+    if skipped { meaningSkipped = true }
+    guard generation == self.generation else { return }
+    if let fused { show(fused, for: generation) }
+    meaningPass = skipped ? .skipped : .completed
+  }
+
+  private func cancelMeaning() {
+    meaningTask?.cancel()
+    meaningTask = nil
+    let next = generation
+    if let worker = meaningWorker { Task { await worker.advance(to: next) } }
+    if !meaningSkipped, meaningWorker != nil { meaningPass = .completed }
+  }
+
+  /// The bench-validated meaning view: the app language's name rows and vocabulary blocks, plus
+  /// the Mac's other preferred languages' blocks; English blocks only when English is the app
+  /// language (a German window's English block was never measured).
+  static func meaningLanguages(_ index: SettingsSearchIndex) -> [String] {
+    index.languages.filter { $0 != "en" || index.appLanguage == "en" }
+  }
+
+  /// Fused order back to result rows: word results keep their scores and hints; a place only the
+  /// meaning model found has no hint (it matched no authored word).
+  static func results(
+    from fused: [SettingsSearchFusedResult], words: [SettingsSearchResult]
+  ) -> [SettingsSearchResult] {
+    let byID = Dictionary(words.map { ($0.entryID, $0) }, uniquingKeysWith: { first, _ in first })
+    let kinds = Dictionary(
+      SettingsSearchCatalog.entries.map { ($0.id, $0.kind) }, uniquingKeysWith: { first, _ in first })
+    return fused.compactMap { item in
+      if let word = byID[item.entryID] { return word }
+      guard let kind = kinds[item.entryID] else { return nil }
+      return SettingsSearchResult(entryID: item.entryID, kind: kind, coverage: 0, score: 0, hint: nil)
+    }
+  }
+
   /// Escape, the clear button, a committed navigation or the window closing.
   func reset() {
     query = ""
@@ -227,6 +329,7 @@ final class SettingsSearchModel {
     pendingSubmit = nil
     generation &+= 1
     cancelAnnouncement()
+    cancelMeaning()
   }
 
   // MARK: - Announcement
