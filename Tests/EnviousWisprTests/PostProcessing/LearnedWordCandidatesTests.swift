@@ -559,4 +559,15 @@ struct LearnedWordCandidatesTests {
       #expect(search.composed == 0)
     }
   }
+
+  @Test("#3518: at the budget, a same-word phrase never displaces that word's shorter fix (Codex diff review r4)")
+  func sameWordShorterFixKeepsItsPlace() {
+    let learned = [LearnedWord(canonical: "Saurabh", observedMisspellings: ["Sarab", "Sarab A V"])]
+    let text = "Hi Sarab A V."
+    for budget in [1, 16] {
+      #expect(
+        Self.spots(text, LearnedWordCandidates.questions(for: text, learned: learned, maxSpots: budget))
+          .first == "Sarab->Saurabh")
+    }
+  }
 }

@@ -147,16 +147,29 @@ public enum LearnedWordCandidates: Sendable {
       }
     }
 
-    // #3518: at one start the longer fix is asked first, so the budget never keeps a
-    // shorter fix in place of the longer one that contains it.
+    // #3518: at one start, the word with the longest fix is asked first, so the budget never
+    // keeps a shorter fix for another word in place of it ("Sarab A V" -> "Saurabhav" before
+    // "Sarab" -> "Saurabh"). Within one word the shorter span still comes first, as the applier
+    // keeps it (#3105; Codex diff review r4: a same-word phrase must not displace it at the
+    // budget). One key per candidate, so the order is total.
+    struct StartWord: Hashable {
+      let start: String.Index
+      let word: String
+    }
+    var longestForWord = [StartWord: String.Index]()
+    for candidate in candidates {
+      let key = StartWord(start: candidate.range.lowerBound, word: candidate.word)
+      longestForWord[key] = max(longestForWord[key] ?? candidate.range.upperBound, candidate.range.upperBound)
+    }
     candidates.sort {
       if $0.range.lowerBound != $1.range.lowerBound {
         return $0.range.lowerBound < $1.range.lowerBound
       }
-      if $0.range.upperBound != $1.range.upperBound {
-        return $0.range.upperBound > $1.range.upperBound
-      }
-      return $0.word < $1.word
+      let left = longestForWord[StartWord(start: $0.range.lowerBound, word: $0.word)]!
+      let right = longestForWord[StartWord(start: $1.range.lowerBound, word: $1.word)]!
+      if left != right { return left > right }
+      if $0.word != $1.word { return $0.word < $1.word }
+      return $0.range.upperBound < $1.range.upperBound
     }
     let kept = candidates.prefix(max(0, maxSpots))
     return Search(
