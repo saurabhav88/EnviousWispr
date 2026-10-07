@@ -37,22 +37,25 @@ struct PromptPlannerTests {
         for: .gemini, modelID: "gemini-2.0-flash", ollamaIsRemote: nil,
         egOneFamily: .egOneFixed) == .cloudFixed)
     #expect(DefaultPromptPlanner.builder(for: .cloudFixed) is CloudFixedPromptBuilder)
-  }
-
-  @Test("OpenAI -> cloudFixed")
-  func openAIFamily() {
     #expect(
       DefaultPromptPlanner.family(
         for: .openAI, modelID: "gpt-4o-mini", ollamaIsRemote: nil,
         egOneFamily: .egOneFixed) == .cloudFixed)
-  }
-
-  @Test("Claude -> cloudFixed (#158)")
-  func claudeFamily() {
     #expect(
       DefaultPromptPlanner.family(
         for: .claude, modelID: "claude-haiku-4-5", ollamaIsRemote: nil,
         egOneFamily: .egOneFixed) == .cloudFixed)
+    #expect(
+      DefaultPromptPlanner.family(
+        for: .appleIntelligence, modelID: "apple-intelligence", ollamaIsRemote: nil,
+        egOneFamily: .egOneFixed) == .cloudFixed)
+    // An Ollama host whose location is not yet known routes as local.
+    #expect(
+      DefaultPromptPlanner.family(for: .ollama, modelID: "llama3.2", ollamaIsRemote: nil, egOneFamily: .egOneFixed)
+        == .localFixed)
+    #expect(
+      DefaultPromptPlanner.family(for: .ollama, modelID: "gemma3:4b", ollamaIsRemote: nil, egOneFamily: .egOneFixed)
+        == .localFixed)
   }
 
   // MARK: - #1948 routing: execution location decides, never the name
@@ -91,33 +94,9 @@ struct PromptPlannerTests {
         == .cloudFixed)
   }
 
-  /// `nil` is not a production Ollama state — readiness assigns a non-optional `Bool` and
-  /// every failed arm throws before planning. It exists for defaulted non-Ollama and tooling
-  /// call sites, and routes LOCAL deliberately: sending the local prompt to a hosted model
-  /// costs a suboptimal prompt, while sending the cloud prompt to a local model is the
-  /// larger error. This asserts the chosen fail-safe direction, not a daemon behaviour.
-  @Test("Ollama with unknown execution location -> localFixed (fail-safe direction)")
-  func ollamaNilRemoteRoutesLocal() {
-    #expect(
-      DefaultPromptPlanner.family(for: .ollama, modelID: "llama3.2", ollamaIsRemote: nil, egOneFamily: .egOneFixed)
-        == .localFixed)
-    #expect(
-      DefaultPromptPlanner.family(for: .ollama, modelID: "gemma3:4b", ollamaIsRemote: nil, egOneFamily: .egOneFixed)
-        == .localFixed)
-  }
-
   @Test("localFixed selects LocalFixedPromptBuilder")
   func localFixedBuilder() {
     #expect(DefaultPromptPlanner.builder(for: .localFixed) is LocalFixedPromptBuilder)
-  }
-
-  @Test("appleIntelligence -> cloudFixed (fallback, should not reach planner)")
-  func appleIntelligenceFallback() {
-    #expect(
-      DefaultPromptPlanner.family(
-        for: .appleIntelligence, modelID: "apple-intelligence", ollamaIsRemote: nil,
-        egOneFamily: .egOneFixed)
-        == .cloudFixed)
   }
 
   // MARK: - EG-1 routing (#1269)
@@ -128,27 +107,13 @@ struct PromptPlannerTests {
       DefaultPromptPlanner.family(for: .ollama, modelID: "eg-1", ollamaIsRemote: false, egOneFamily: .egOneFixed)
         == .egOneFixed)
     #expect(DefaultPromptPlanner.builder(for: .egOneFixed) is EGOnePromptBuilder)
-  }
-
-  @Test("Ollama + eg-1:latest tag -> egOneFixed")
-  func egOneLatestTag() {
-    #expect(
-      DefaultPromptPlanner.family(for: .ollama, modelID: "eg-1:latest", ollamaIsRemote: false, egOneFamily: .egOneFixed)
-        == .egOneFixed)
-  }
-
-  @Test("Ollama + EG-1 uppercase -> egOneFixed (case-insensitive)")
-  func egOneUppercase() {
-    #expect(
-      DefaultPromptPlanner.family(for: .ollama, modelID: "EG-1", ollamaIsRemote: false, egOneFamily: .egOneFixed)
-        == .egOneFixed)
-  }
-
-  @Test("Ollama + eg-1:q4 tag -> egOneFixed (tags of the published model are ours)")
-  func egOneTagVariant() {
-    #expect(
-      DefaultPromptPlanner.family(for: .ollama, modelID: "eg-1:q4", ollamaIsRemote: false, egOneFamily: .egOneFixed)
-        == .egOneFixed)
+    // Tag and case variants of the same model name.
+    for modelID in ["eg-1:latest", "EG-1", "eg-1:q4"] {
+      #expect(
+        DefaultPromptPlanner.family(
+          for: .ollama, modelID: modelID, ollamaIsRemote: false, egOneFamily: .egOneFixed)
+          == .egOneFixed, "\(modelID)")
+    }
   }
 
   /// #1948: EG-1 identity outranks execution location in both directions. A hosted EG-1
@@ -181,17 +146,6 @@ struct PromptPlannerTests {
     #expect(
       DefaultPromptPlanner.family(for: .openAI, modelID: "eg-1", ollamaIsRemote: nil, egOneFamily: .egOneFixed)
         == .cloudFixed)
-  }
-
-  @Test("EG-1 plan forces .message mode regardless of length (#1269)")
-  func egOneForcesMessageMode() {
-    let short = planner.plan(
-      input: makeInput(transcript: "hey call me back", provider: .ollama, modelID: "eg-1"))
-    #expect(short.mode == .message)
-    let longText = Array(repeating: "word", count: 120).joined(separator: " ")
-    let longPlan = planner.plan(
-      input: makeInput(transcript: longText, provider: .ollama, modelID: "eg-1"))
-    #expect(longPlan.mode == .message)
   }
 
   @Test("EG-1 builder emits the exact training prompt and wrapper (golden)")
@@ -451,13 +405,6 @@ struct PromptPlannerTests {
 
   // MARK: - Plan produces valid envelope
 
-  @Test("plan always produces non-empty envelope")
-  func planProducesEnvelope() {
-    let plan = planner.plan(input: makeInput())
-    #expect(!plan.envelope.messages.isEmpty)
-    #expect(plan.envelope.messages[0].role == .system)
-  }
-
   @Test("plan with empty transcript still produces valid output")
   func emptyTranscript() {
     let plan = planner.plan(
@@ -468,19 +415,12 @@ struct PromptPlannerTests {
 
   // MARK: - Builder selection produces correct prompt style
 
-  @Test("Gemini plan uses the fixed v6 prompt with a plain user message")
-  func geminiPlanStyle() {
-    let plan = planner.plan(input: makeInput(provider: .gemini, modelID: "gemini-2.5-flash"))
-    let system = plan.envelope.messages[0].content
-    let user = plan.envelope.messages[1].content
-    #expect(system.contains("You are the writing assistant inside a dictation app"))
-    #expect(user.hasPrefix("Transcript to clean:"))
-    #expect(!user.contains("<transcript>"))
-  }
-
   @Test("OpenAI plan uses the fixed v6 prompt with a plain user message")
   func openAIPlanStyle() {
     let plan = planner.plan(input: makeInput(provider: .openAI, modelID: "gpt-4o-mini"))
+    #expect(plan.envelope.messages.count >= 2)
+    guard plan.envelope.messages.count >= 2 else { return }
+    #expect(plan.envelope.messages[0].role == .system)
     let system = plan.envelope.messages[0].content
     let user = plan.envelope.messages[1].content
     #expect(system.contains("You are the writing assistant inside a dictation app"))

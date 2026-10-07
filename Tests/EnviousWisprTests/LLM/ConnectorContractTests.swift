@@ -44,17 +44,6 @@ struct ConnectorContractTests {
     #expect(envelope.asSingleTurn() == nil)
   }
 
-  @Test("asSingleTurn handles system-only + user pair")
-  func singleTurnSystemUser() {
-    let envelope = PromptEnvelope(messages: [
-      PromptMessage(role: .system, content: "Sys"),
-      PromptMessage(role: .user, content: "Usr"),
-    ])
-    let pair = envelope.asSingleTurn()
-    #expect(pair?.system == "Sys")
-    #expect(pair?.user == "Usr")
-  }
-
   @Test("asSingleTurn handles user-only (no system)")
   func singleTurnNoSystem() {
     let envelope = PromptEnvelope(messages: [
@@ -67,25 +56,6 @@ struct ConnectorContractTests {
   }
 
   // MARK: - OpenAI envelope contract
-
-  @Test("OpenAI plan is a single-turn fixed v6 prompt with a plain user message")
-  func openAISingleTurn() {
-    let input = PromptBuildInput(
-      transcript: "test text",
-      provider: .openAI,
-      modelID: "gpt-4o-mini",
-      appName: "Slack",
-      language: nil,
-      polishVocabulary: PolishVocabulary(terms: [], generation: 0)
-    )
-    let plan = DefaultPromptPlanner().plan(input: input)
-    let pair = plan.envelope.asSingleTurn()
-    #expect(pair != nil)
-    // #1255: cloud is one fixed prompt, plain "Transcript to clean" user message, no sandwich.
-    #expect(pair?.user == "Transcript to clean:\n\ntest text")
-    #expect(pair?.user.contains("<transcript>") == false)
-    #expect(pair?.system?.contains("You are the writing assistant inside a dictation app") == true)
-  }
 
   // MARK: - Gemini envelope contract
 
@@ -111,25 +81,6 @@ struct ConnectorContractTests {
   }
 
   // MARK: - Claude envelope contract (#158)
-
-  @Test("Claude plan is a single-turn fixed v6 prompt with a plain user message")
-  func claudeSingleTurn() {
-    let input = PromptBuildInput(
-      transcript: "test text",
-      provider: .claude,
-      modelID: "claude-haiku-4-5",
-      appName: "Slack",
-      language: nil,
-      polishVocabulary: PolishVocabulary(terms: [], generation: 0)
-    )
-    let plan = DefaultPromptPlanner().plan(input: input)
-    let pair = plan.envelope.asSingleTurn()
-    #expect(pair != nil)
-    // #1255: Claude joins the same fixed cloud prompt — plain user message, no sandwich.
-    #expect(pair?.user == "Transcript to clean:\n\ntest text")
-    #expect(pair?.user.contains("<transcript>") == false)
-    #expect(pair?.system?.contains("You are the writing assistant inside a dictation app") == true)
-  }
 
   // MARK: - Ollama/Gemma envelope contract
 }

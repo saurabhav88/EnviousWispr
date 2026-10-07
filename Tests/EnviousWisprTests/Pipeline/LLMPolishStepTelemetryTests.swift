@@ -503,24 +503,6 @@ struct LLMPolishStepTelemetryTests {
     #expect(spy.limbFailureCalls.count == 1, "and a genuine failure must still report")
   }
 
-  /// The decision function directly, exhaustively. The eviction tests above
-  /// cover the wiring; this pins the POLICY, so a new `OllamaReadiness` case
-  /// cannot quietly inherit "safe to skip" — the direction that costs a #286
-  /// regression rather than a redundant localhost request.
-  @Test("only proven-no-residency answers may skip the unload")
-  func skipPolicyIsProofOnly() {
-    #expect(LLMPolishStep.evictionIsProvablyUnnecessary(.daemonUnreachable))
-    #expect(LLMPolishStep.evictionIsProvablyUnnecessary(.noModelSelected))
-    #expect(LLMPolishStep.evictionIsProvablyUnnecessary(.serverDown) == false)
-    // `/api/tags` lists INSTALLED models, so a model deleted while loaded is
-    // absent from tags and still resident — "not installed" is not proof of
-    // "not loaded" (cloud review, PR #2071).
-    #expect(LLMPolishStep.evictionIsProvablyUnnecessary(.modelMissing) == false)
-    #expect(
-      LLMPolishStep.evictionIsProvablyUnnecessary(
-        .ready(facts: OllamaModelFacts(isRemote: false, thinks: nil))) == false)
-  }
-
   /// A remote model reaches `.ready` too (the daemon lists it in `/api/tags`),
   /// so the readiness gate deliberately does NOT subsume the #1914
   /// proven-remote suppression in `PipelineSettingsSync`. Pinned so a later

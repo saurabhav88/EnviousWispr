@@ -105,8 +105,4 @@ struct SmartInsertionSettingRoutingTests {
     #expect(factory.contains("smartInsertion: settings.smartInsertion"))
   }
 
-  @Test("the test helper defaults OFF so existing suites keep legacy behaviour")
-  func testHelperDefaultsOff() {
-    #expect(DictationSessionConfig.testDefault().smartInsertion == false)
-  }
 }

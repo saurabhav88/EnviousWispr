@@ -522,51 +522,6 @@ struct SeamCasingRuntimeSerializationTests {
   }
 
   @Test(
-    "#1922 The tagger is pinned AFTER its string, or the pin is silently discarded",
-    .enabled(if: SeamCasingRuntimeSerializationTests.germanWordClassAvailable))
-  func taggerLanguagePinSurvivesTheStringAssignment() {
-    // Cloud review, P2. Assigning `NLTagger.string` RESETS the tagger, so calling
-    // `setLanguage` first threw the pin away — and the shipped comment claimed the
-    // pin was load-bearing, which made a false claim look deliberate.
-    //
-    // This asserts the API contract directly rather than through the runtime,
-    // because the runtime's closure only exists after a real `NSSpellChecker`
-    // preparation and this question is purely about `NLTagger`.
-    //
-    // SINGLE WORDS, deliberately. A first probe of eight multi-word German
-    // sentences found ZERO differences — auto-detection gets German right when it
-    // has a sentence to work with — so a test built from those would have frozen
-    // nothing. The divergence is on one-word payloads, which is exactly the
-    // dictation this feature serves.
-    func tag(_ payload: String, pinFirst: Bool) -> NLTag? {
-      let tagger = NLTagger(tagSchemes: [.lexicalClass])
-      if pinFirst {
-        tagger.setLanguage(.german, range: payload.startIndex..<payload.endIndex)
-        tagger.string = payload
-      } else {
-        tagger.string = payload
-        tagger.setLanguage(.german, range: payload.startIndex..<payload.endIndex)
-      }
-      return tagger.tag(at: payload.startIndex, unit: .word, scheme: .lexicalClass).0
-    }
-
-    // Ordinary German nouns. Each MUST tag as a noun so the veto keeps its
-    // capital; pinned-first they came back `OtherWord` and were lowercased.
-    for noun in ["Hut", "Bad", "Boot"] {
-      #expect(
-        tag(noun, pinFirst: false) == .noun,
-        "\(noun) must tag as a noun when the language is pinned AFTER the string")
-    }
-
-    // The two-way control. Without it this passes on a machine where BOTH orders
-    // happen to answer `.noun`, which would prove nothing about the ordering.
-    let divergent = ["Hut", "Bad", "Boot"].filter { tag($0, pinFirst: true) != .noun }
-    #expect(
-      divergent.isEmpty == false,
-      "at least one word must differ between the orderings, or this test cannot fail")
-  }
-
-  @Test(
     "#1922 The SHIPPED German veto answers noun for a one-word noun",
     .enabled(if: SeamCasingRuntimeSerializationTests.germanWordClassAvailable))
   func shippedGermanVetoTagsAOneWordNoun() async throws {

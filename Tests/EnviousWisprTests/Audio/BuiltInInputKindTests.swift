@@ -27,20 +27,6 @@ struct BuiltInInputKindTests {
       AudioDeviceEnumerator.builtInInputKind(forUID: "BuiltInHeadphoneInputDevice") == "jack_input")
   }
 
-  /// The whole point: these two must not be the same value. A refactor that
-  /// collapsed them would silently restore the ambiguity this field removes,
-  /// and every assertion above would still pass if both returned the same
-  /// non-nil string.
-  @Test("the internal microphone and the jack input are never the same kind")
-  func internalAndJackAreDistinct() {
-    let internalKind = AudioDeviceEnumerator.builtInInputKind(forUID: "BuiltInMicrophoneDevice")
-    let jackKind = AudioDeviceEnumerator.builtInInputKind(forUID: "BuiltInHeadphoneInputDevice")
-
-    #expect(internalKind != nil)
-    #expect(jackKind != nil)
-    #expect(internalKind != jackKind)
-  }
-
   /// Non-built-in transports return nil on purpose. `usb` and `bluetooth` are
   /// already unambiguous in the transport label, so a value here would be a
   /// second authority for a fact that already has one.

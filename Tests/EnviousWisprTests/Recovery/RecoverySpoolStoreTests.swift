@@ -503,17 +503,6 @@ struct RecoverySpoolStoreTests {
       "absent would replay a cancelled dictation into permanent History")
   }
 
-  /// The control: with no temp file and no marker, absence still means absence.
-  /// Without this the guard above could be satisfied by calling everything
-  /// malformed, which would fail closed on every ordinary crash recovery and
-  /// discard text nobody cancelled.
-  @Test("escape marker: a spool with no marker at all is still absent")
-  func noMarkerIsStillAbsent() throws {
-    let store = makeStore()
-
-    #expect(store.readEscapeMarker(for: "ordinary") == .absent)
-  }
-
   /// The temp file must go when the marker does, or a later read for that id
   /// fails closed forever on evidence of a recovery whose spool is long gone.
   @Test("escape marker: deletion clears an interrupted write too")

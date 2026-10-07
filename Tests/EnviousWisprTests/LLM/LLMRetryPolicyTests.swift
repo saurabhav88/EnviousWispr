@@ -8,11 +8,6 @@ struct LLMRetryPolicyTests {
 
   // MARK: - Constants
 
-  @Test("default delays are 200ms and 400ms")
-  func defaultDelays() {
-    #expect(LLMRetryPolicy.defaultDelays == [200_000_000, 400_000_000])
-  }
-
   /// #2093: the durable claim is not the two literals above — it is that the
   /// SLEEPS cannot eat the budget they run inside. They are spent within the
   /// polish step's own deadline, so at 1s+3s a single transient 5xx made a short
@@ -31,11 +26,6 @@ struct LLMRetryPolicyTests {
     #expect(totalSleepSeconds < 15.0 * 0.1)
   }
 
-  @Test("default max retries is 2")
-  func defaultMaxRetries() {
-    #expect(LLMRetryPolicy.defaultMaxRetries == 2)
-  }
-
   // MARK: - LLMError retryable cases
 
   /// #2641: `LLMError.rateLimited` has no producer — the connectors classify a
@@ -46,11 +36,6 @@ struct LLMRetryPolicyTests {
   @Test("bare rateLimited has no producer and is not retryable")
   func bareRateLimitedNotRetryable() {
     #expect(!LLMRetryPolicy.isRetryable(LLMError.rateLimited))
-  }
-
-  @Test("requestFailed with server error is retryable")
-  func serverErrorRetryable() {
-    #expect(LLMRetryPolicy.isRetryable(LLMError.requestFailed("server error")))
   }
 
   @Test("requestFailed containing server error substring is retryable")

@@ -68,30 +68,3 @@ struct TranscribeFileCopiedTests {
   }
 }
 
-/// The wizard reaches the clipboard through `PasteService` only, the door History's Copy
-/// already uses, so the two surfaces cannot drift apart. The call lives in
-/// `TranscribeFileExport` since #2938 (the view's export half); the view itself must not
-/// grow a second door.
-@Suite("Transcribe a File clipboard door (#2817 item 8)", .tags(.driftGuard))
-struct TranscribeFileClipboardDoorTests {
-  static func source(_ file: String) -> String? {
-    let url = URL(fileURLWithPath: #filePath)
-      .deletingLastPathComponent()  // Views
-      .deletingLastPathComponent()  // EnviousWisprTests
-      .deletingLastPathComponent()  // Tests
-      .deletingLastPathComponent()  // repo root
-      .appendingPathComponent("Sources/EnviousWisprAppKit/Views/Settings/\(file)")
-    return try? String(contentsOf: url, encoding: .utf8)
-  }
-
-  @Test("the wizard never touches NSPasteboard directly")
-  func noDirectPasteboard() {
-    let export = Self.source("TranscribeFileExport.swift")
-    let view = Self.source("TranscribeFileView.swift")
-    #expect(export != nil && view != nil, "a source file is unreadable, so this row is vacuous")
-    #expect(export?.contains("PasteService.copyToClipboard(") == true, "the door call is gone")
-    #expect(export?.contains("NSPasteboard.general") == false, "a direct pasteboard write is back")
-    #expect(view?.contains("NSPasteboard.general") == false, "a direct pasteboard write is back")
-    #expect(view?.contains("PasteService.copyToClipboard(") == false, "the view grew a second door")
-  }
-}

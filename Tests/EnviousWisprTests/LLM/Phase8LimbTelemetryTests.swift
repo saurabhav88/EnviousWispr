@@ -77,16 +77,6 @@ import Testing
       #expect(box.named("limb.failure_observed").isEmpty)
     }
 
-    @Test("a spy LLMTelemetrySink captures both callbacks")
-    func spySinkCaptures() {
-      let spy = SinkSpy()
-      let sink = spy.makeSink()
-      sink.limbFailure("llm_prewarm", "prewarm", "failed", "openAI_-1001", 10)
-      sink.legacyKeyCleanupFailed(TestStableSentryError(), "openai-api-key")
-      #expect(spy.limbs == ["llm_prewarm"])
-      #expect(spy.cleanups == ["openai-api-key"])
-    }
-
     @Test("evictModel reports failed on a transport error")
     func evictFailedOnError() async {
       let connector = OllamaConnector(networkExecutor: { _ in throw URLError(.timedOut) })

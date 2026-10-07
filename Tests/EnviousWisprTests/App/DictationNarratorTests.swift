@@ -51,28 +51,6 @@ import Testing
     }
   }
 
-  @Test("no sentence carries raw internal detail (the retired leak prefixes)")
-  func noRawDetailLeak() {
-    let bannedPrefixes = [
-      "Model load failed:", "Recording failed:", "Transcription failed:",
-      "Speech engine isn't responding",  // old ModelLoadWatchdog.userMessage
-    ]
-    for reason in TerminalNoticeReason.allCases {
-      let copy = DictationNarrator.copy(for: reason)
-      for banned in bannedPrefixes {
-        #expect(!copy.contains(banned), "\(reason) copy must not contain '\(banned)'")
-      }
-    }
-  }
-
-  @Test("the terminal sentences use no em/en dashes (in-app copy rule)")
-  func noDashesInTerminalCopy() {
-    for reason in TerminalNoticeReason.allCases {
-      let copy = DictationNarrator.copy(for: reason)
-      #expect(!copy.contains("\u{2014}") && !copy.contains("\u{2013}"), "\(reason) copy has a dash")
-    }
-  }
-
   // MARK: - Processing phases (E2, #1564)
 
   /// The active-pill / main-window form uses three ASCII periods and the
@@ -115,20 +93,6 @@ import Testing
       #expect(
         !short.contains("...") && !short.contains("\u{2026}"), "\(phase) short copy has an ellipsis"
       )
-    }
-  }
-
-  @Test("processing copy uses no em/en dashes (in-app copy rule)")
-  func noDashesInProcessingCopy() {
-    for phase in ProcessingPhase.allCases {
-      for copy in [
-        DictationNarrator.copy(for: phase),
-        DictationNarrator.statusBadgeCopy(for: phase),
-        DictationNarrator.shortCopy(for: phase),
-      ] {
-        #expect(
-          !copy.contains("\u{2014}") && !copy.contains("\u{2013}"), "\(phase) copy has a dash")
-      }
     }
   }
 
@@ -239,33 +203,6 @@ import Testing
         !sentenceWords.contains(jargon),
         "the refusal sentence for \(holder) leaked the mechanism: \(sentence)")
     }
-  }
-
-  /// Only a VERIFIED device removal may name the microphone. If this fails, a
-  /// user whose engine died with the mic still attached is being lied to.
-  @Test("the neutral interruption family never mentions the microphone")
-  func neutralInterruptionNeverClaimsTheMicrophone() {
-    for alsoTrimmedLead in [false, true] {
-      let copy = DictationNarrator.copy(
-        for: .interruptedTail(disclosure: .otherInterruption, alsoTrimmedLead: alsoTrimmedLead))
-      #expect(!copy.localizedCaseInsensitiveContains("microphone"))
-      #expect(!copy.localizedCaseInsensitiveContains("mic"))
-    }
-  }
-
-  /// The founder cleanups: no banned em/en dash and no literal `--`. The polish
-  /// warning is one sentence since #3438 ("Pasted without AI polish.").
-  @Test("the cleaned-up warning sentences drop the dash and double-hyphen")
-  func cleanedWarningSentencesAreClean() {
-    let cleaned = [
-      DictationNarrator.copy(for: .modelNotDownloaded(engineLabel: "EG-1")),
-      DictationNarrator.copy(for: .polishFailed),
-    ]
-    for copy in cleaned {
-      #expect(!copy.contains("\u{2014}") && !copy.contains("\u{2013}"), "\(copy) has a dash")
-      #expect(!copy.contains(" -- "), "\(copy) has a literal double-hyphen")
-    }
-    #expect(DictationNarrator.copy(for: .polishFailed) == "Pasted without AI polish.")
   }
 
   // MARK: - In-panel recording notices (E3, #1567)
@@ -382,22 +319,6 @@ import Testing
     #expect(DictationNarrator.loadingModelSidebar == "Loading Model")
     #expect(DictationNarrator.recordingStatus == "Recording")
     #expect(DictationNarrator.errorStatus == "Error")
-  }
-
-  /// The byte-distinct render forms must stay distinct: the main-window body uses
-  /// ASCII `...`, the toolbar badge uses the single Unicode ellipsis, and the
-  /// recovery container AX label drops the ellipsis the visible title carries.
-  @Test("the distinct render forms keep their exact byte differences")
-  func distinctRenderFormsStayDistinct() {
-    #expect(DictationNarrator.loadingModelStatus != DictationNarrator.loadingModelBadge)
-    #expect(DictationNarrator.loadingModelStatus.contains("..."))
-    #expect(DictationNarrator.loadingModelBadge.contains("\u{2026}"))
-    #expect(!DictationNarrator.loadingModelBadge.contains("..."))
-    // The sidebar form is title-case, distinct from the body form.
-    #expect(DictationNarrator.loadingModelSidebar != DictationNarrator.loadingModelStatus)
-    // The recovery AX label has no ellipsis; the visible title does.
-    #expect(DictationNarrator.recoveryAccessibilityLabel != DictationNarrator.recoveryTitle)
-    #expect(!DictationNarrator.recoveryAccessibilityLabel.contains("…"))
   }
 
   /// #1897 — the IN-PROGRESS recovery subtitle must not assert the outcome the

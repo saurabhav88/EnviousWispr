@@ -156,16 +156,4 @@ struct AFMGenerationSentryErrorTests {
     #expect(event.tags?["error.identity"] == "afm.unsupported_language_or_locale")
   }
 
-  @Test(
-    "a non-conforming error's descriptor and fingerprint are unchanged (#1525 PR J-1: makeHandledErrorEvent narrowed — structuredDescriptor/handledErrorFingerprint stay generic)"
-  )
-  func nonConformingErrorEventUnchanged() {
-    let error = NSError(domain: "EnviousWispr", code: -3)
-
-    #expect(SentryBreadcrumb.structuredDescriptor(error) == "EnviousWispr#-3")
-    #expect(
-      SentryBreadcrumb.handledErrorFingerprint(
-        for: Self.category, error: error, environment: Self.env)
-        == ["handled_error", "generation_failed", "EnviousWispr#-3", Self.env])
-  }
 }

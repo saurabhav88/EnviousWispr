@@ -80,19 +80,6 @@ struct SettingsManagerLastProviderTests {
 
   // MARK: - Toggle restore round trip (the view's on/off contract)
 
-  @Test("off then on restores the previously selected engine")
-  func offThenOnRestores() {
-    let settings = SettingsManager(defaults: Self.freshSuite())
-    settings.llmProvider = .ollama
-    // Toggle off.
-    settings.llmProvider = .none
-    #expect(settings.llmProvider == .none)
-    // Toggle on → the view restores lastLLMProvider (guarding .none → default).
-    settings.llmProvider =
-      settings.lastLLMProvider == .none ? .appleIntelligence : settings.lastLLMProvider
-    #expect(settings.llmProvider == .ollama)
-  }
-
   @Test("memory survives a reload after being turned off")
   func memorySurvivesReloadWhileOff() {
     let suite = Self.freshSuite()

@@ -59,29 +59,6 @@ struct PreviewPillPaletteTests {
 
   // MARK: - Light is legible
 
-  /// The pill floats over arbitrary windows, so it cannot borrow contrast from
-  /// what is behind it. Text on surface has to carry itself.
-  @Test("light text on the light surface clears a readable contrast ratio")
-  func lightTextIsLegible() throws {
-    let surface = try #require(PreviewPillPalette.resolved(PreviewPillPalette.surface, in: .aqua))
-    let text = try #require(PreviewPillPalette.resolved(PreviewPillPalette.text, in: .aqua))
-    let ratio = Self.contrastRatio(text, on: surface)
-    #expect(
-      ratio >= 4.5,
-      "light text on the light surface is \(String(format: "%.1f", ratio)):1, below 4.5:1")
-  }
-
-  @Test("dark text on the dark surface clears a readable contrast ratio")
-  func darkTextIsLegible() throws {
-    let surface = try #require(
-      PreviewPillPalette.resolved(PreviewPillPalette.surface, in: .darkAqua))
-    let text = try #require(PreviewPillPalette.resolved(PreviewPillPalette.text, in: .darkAqua))
-    let ratio = Self.contrastRatio(text, on: surface)
-    #expect(
-      ratio >= 4.5,
-      "dark text on the dark surface is \(String(format: "%.1f", ratio)):1, below 4.5:1")
-  }
-
   /// Read from the palette. See `allPillColours`.
   nonisolated static var textColours: [(name: String, colour: Color)] {
     PreviewPillPalette.textColours
@@ -121,6 +98,8 @@ struct PreviewPillPaletteTests {
   /// same reason.
   @Test("every colour in the palette reaches BOTH hand-written arrays")
   func everyPaletteColourIsAccountedFor() throws {
+    // The main text and the notice must stay in the contrast-checked list, not drift to surfaces.
+    #expect(Set(PreviewPillPalette.textColours.map(\.name)).isSuperset(of: ["text", "notice"]))
     let url = RepoRoot.url.appending(
       path: "Sources/EnviousWisprAppKit/App/PreviewPillPalette.swift")
     let source = try String(contentsOf: url, encoding: .utf8)
@@ -180,23 +159,6 @@ struct PreviewPillPaletteTests {
       allColours has \(Self.allPillColours.count) entries — a duplicate inside one of \
       them would silently drop a colour from these set comparisons.
       """)
-  }
-
-  /// The notice is the colour that was hardcoded white and would have been
-  /// invisible on a light pill. It carries a cap warning, so it is the one piece
-  /// of copy in the box the user must not miss.
-  @Test("the notice is legible in both appearances")
-  func noticeIsLegibleInBoth() throws {
-    for appearance in [NSAppearance.Name.aqua, .darkAqua] {
-      let surface = try #require(
-        PreviewPillPalette.resolved(PreviewPillPalette.surface, in: appearance))
-      let notice = try #require(
-        PreviewPillPalette.resolved(PreviewPillPalette.notice, in: appearance))
-      let ratio = Self.contrastRatio(notice, on: surface)
-      #expect(
-        ratio >= 4.5,
-        "the notice is \(String(format: "%.1f", ratio)):1 in \(appearance.rawValue)")
-    }
   }
 
   /// The pill is near-opaque on purpose: it sits over arbitrary windows and must

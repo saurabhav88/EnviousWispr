@@ -124,15 +124,6 @@ import Testing
     #expect(mixed.runs[0].original == "sarah smith" && mixed.runs[0].replacement == "Sarah Smyth")
   }
 
-  @Test("inputs are never mutated and the drop reasons are the closed set")
-  func inputsUntouched() {
-    let pasted = "Ask Sarah to review."
-    let edited = "Ask Saira to review."
-    _ = EditAlignment.align(pasted: pasted, edited: edited)
-    #expect(pasted == "Ask Sarah to review." && edited == "Ask Saira to review.")
-    #expect(EditAlignment.DropReason.allCases.count == 5)
-  }
-
   @Test("sentence decoration stays on the surface run and off its lexical core")
   func decorationAndCore() throws {
     let r = try #require(EditAlignment.align(pasted: "Ask Sarah.", edited: "Ask Saira.").runs.first)

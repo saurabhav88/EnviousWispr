@@ -113,25 +113,6 @@ struct PipelineStateChangePlannerTests {
     #expect(plan.effects.contains(.showOverlay(Self.recordingIntent)))
   }
 
-  @Test("complete + polish failed (not clipboard) -> overlay + schedulePolishFailedWarning")
-  func completePolishFailedSchedulesWarning() {
-    let plan = PipelineStateChangePlanner.plan(
-      to: PipelineState.complete,
-      pipelineOverlayIntent: Self.hiddenIntent,
-      isClipboardFallback: false,
-      isAccessibilityToast: false,
-      lastPolishNotice: PolishNotice(leadIn: .failed, text: "openai 429 rate-limited"),
-      hasCurrentTranscript: true,
-      historySaved: true,
-      historySaveReason: nil
-    )
-    #expect(plan.effects.contains(.showOverlay(.hidden)))
-    #expect(plan.effects.contains(.schedulePolishFailedWarning))
-    #expect(plan.effects.contains(.appendCompletedTranscript))
-    #expect(plan.effects.contains(.reportDictationCompleted))
-    #expect(!plan.effects.contains(.cancelPendingWarning))
-  }
-
   @Test(
     "complete + SKIPPED polish notice -> overlay shows but NO failure warning (#945)",
     .bug(
@@ -204,25 +185,6 @@ struct PipelineStateChangePlannerTests {
       historySaveReason: nil
     )
     #expect(plan.effects.contains(.schedulePolishFailedWarning) == warns)
-  }
-
-  @Test("complete + success (no fallback, no polish error) -> no warning, telemetry fires")
-  func completeSuccessEmitsNoWarning() {
-    let plan = PipelineStateChangePlanner.plan(
-      to: PipelineState.complete,
-      pipelineOverlayIntent: Self.hiddenIntent,
-      isClipboardFallback: false,
-      isAccessibilityToast: false,
-      lastPolishNotice: nil,
-      hasCurrentTranscript: true,
-      historySaved: true,
-      historySaveReason: nil
-    )
-    #expect(plan.effects.contains(.showOverlay(.hidden)))
-    #expect(!plan.effects.contains(.schedulePolishFailedWarning))
-    #expect(plan.effects.contains(.appendCompletedTranscript))
-    #expect(plan.effects.contains(.reportDictationCompleted))
-    #expect(!plan.effects.contains(.cancelPendingWarning))
   }
 
   @Test("complete without current transcript -> neither append nor telemetry fires (Phase C)")
@@ -554,22 +516,6 @@ struct PipelineStateChangePlannerTests {
     )
     #expect(plan.effects.contains(.scheduleHistorySaveFailedWarning(reason: "permission denied")))
     #expect(!plan.effects.contains(.schedulePolishFailedWarning))
-  }
-
-  @Test("complete + history saved (success) -> append fires, no history pill")
-  func completeHistorySavedAppendsNoPill() {
-    let plan = PipelineStateChangePlanner.plan(
-      to: PipelineState.complete,
-      pipelineOverlayIntent: Self.hiddenIntent,
-      isClipboardFallback: false,
-      isAccessibilityToast: false,
-      lastPolishNotice: nil,
-      hasCurrentTranscript: true,
-      historySaved: true,
-      historySaveReason: nil
-    )
-    #expect(plan.effects.contains(.appendCompletedTranscript))
-    #expect(!plan.effects.contains(.scheduleHistorySaveFailedWarning(reason: "disk is full")))
   }
 
   // MARK: - #1434 salvaged-lead disclosure

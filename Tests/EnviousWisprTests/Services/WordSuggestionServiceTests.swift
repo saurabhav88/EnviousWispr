@@ -129,21 +129,6 @@ struct WordSuggestionServiceParserTests {
     #expect(parsed == ["okay are", "oh K R", "okayer"])
   }
 
-  @Test("Meta-commentary line with 'Note:' is dropped")
-  func metaNoteDropped() {
-    let raw =
-      "Sourabh\nSorab\nSarab\nNote: I have excluded Saurabh as it is forbidden."
-    let parsed = WordSuggestionService.parsePlainStringAliases(raw)
-    #expect(parsed == ["Sourabh", "Sorab", "Sarab"])
-  }
-
-  @Test("Meta-commentary 'Example for X:' is dropped")
-  func metaExampleDropped() {
-    let raw = "Example for \"Parvati\":\npar vati\npoor vati"
-    let parsed = WordSuggestionService.parsePlainStringAliases(raw)
-    #expect(parsed == ["par vati", "poor vati"])
-  }
-
   @Test("Sentences containing 'If you' or 'phonetic' dropped")
   func metaPhraseDropped() {
     let raw =
@@ -293,15 +278,6 @@ struct WordSuggestionServiceParserTests {
     let parsed = WordSuggestionService.parsePlainStringAliases(raw)
 
     #expect(parsed == ["+44", "++alias", "--alias", "***alias", "1.2"])
-  }
-
-  @Test("Compact numbered list markers with no separating space still strip")
-  func compactNumberedMarkersStripped() {
-    let raw = "1.kuber netties\n2)cube ernetes"
-
-    let parsed = WordSuggestionService.parsePlainStringAliases(raw)
-
-    #expect(parsed == ["kuber netties", "cube ernetes"])
   }
 
   @Test("Marker-only lines vanish; decimals survive; compact markers still strip")

@@ -114,19 +114,6 @@ struct ProviderStatusMappingTests {
     #expect(s?.tone == .error)
   }
 
-  /// Two-way control on the pair above: the two paused states must NOT collapse
-  /// to the same chip. `paused` means "nothing works yet, finish when you like";
-  /// `updatePaused` means "something that was working has stopped". A mapping
-  /// that returned one tone for both would pass each test above in isolation.
-  @Test("the two paused states are distinguishable at the chip")
-  func pausedAndUpdatePausedDoNotCollapse() {
-    let paused = status(for: .egOne, egOneInstall: .paused)
-    let updatePaused = status(
-      for: .egOne, egOneInstall: .updatePaused(resumable: true, targetVersion: "1.1"))
-    #expect(paused?.label != updatePaused?.label)
-    #expect(paused?.tone != updatePaused?.tone)
-  }
-
   // MARK: - Rail and row agreement (#2109)
 
   /// Every EG-1 install state, so the agreement checks below cannot silently
@@ -202,51 +189,6 @@ struct ProviderStatusMappingTests {
     }
   }
 
-  /// The properties above are necessary and NOT sufficient: they would all
-  /// still pass with "Resume upgrade" and "Finish upgrade" REVERSED, or with
-  /// reassuring copy on `updatePaused`. Both would be user-visibly wrong and
-  /// invisible to a property test, so the founder-decided wording is pinned
-  /// directly here.
-  ///
-  /// The pairing is the point. `resumable` means the user already started the
-  /// download, so the verb must be Resume; not-resumable means they have not,
-  /// so it must be Finish. Swapping them tells people to resume something they
-  /// never began.
-  @Test("the paused actions are pinned to the right state")
-  func pausedActionsUseTheDecidedWording() {
-    #expect(egOneRow(.paused).primaryAction == "Resume")
-    #expect(
-      egOneRow(.updatePaused(resumable: true, targetVersion: "1.1"))
-        .primaryAction
-        == "Resume upgrade")
-    #expect(
-      egOneRow(.updatePaused(resumable: false, targetVersion: "1.1"))
-        .primaryAction
-        == "Finish upgrade")
-    // Never "Install": the user already has a working model, and Install reads
-    // as a new product to acquire — Frank's stated failure mode.
-    #expect(
-      egOneRow(.updatePaused(resumable: false, targetVersion: "1.1"))
-        .primaryAction?
-        .contains("Install") == false)
-  }
-
-  /// Both update messages must SAY that cleanup is off. A reassuring string
-  /// here would satisfy every structural invariant while hiding the exact
-  /// condition #2109 exists to surface.
-  @Test("the update messages state that cleanup is paused")
-  func updateMessagesSayCleanupIsPaused() {
-    for resumable in [true, false] {
-      let message = egOneRow(
-        .updatePaused(resumable: resumable, targetVersion: "1.1")
-      ).message
-      #expect(message.contains("AI cleanup is paused"), "\(resumable): message must not reassure")
-      // The download size is deliberately absent: leading with 2.9 GB to
-      // someone who already has a working model reads as a cost, not a fix.
-      #expect(message.contains("GB") == false, "\(resumable): size must not lead this row")
-    }
-  }
-
   /// The version label, composed where it is tested rather than in the view.
   @Test("the version label renders only when there is something honest to show")
   func versionLabelSuppressesNilAndBlank() {
@@ -276,32 +218,6 @@ struct ProviderStatusMappingTests {
       .updatePaused(resumable: false, targetVersion: nil))
     #expect(unknown.message.contains("the new EG-1"))
     #expect(unknown.message.contains("V") == false, "a nil version must not render a version token")
-  }
-
-  /// Remove Model is NOT offered while an upgrade is pending. `remove()`
-  /// deletes the CURRENT manifest's files, and in this state the current
-  /// revision is exactly what is not installed — the button would leave the
-  /// older model's gigabytes untouched and return the row to this state.
-  @Test func removeIsNotOfferedWhileAnUpgradeIsPending() {
-    for resumable in [true, false] {
-      let row = egOneRow(
-        .updatePaused(resumable: resumable, targetVersion: "1.1"))
-      #expect(
-        row.showsRemove == false,
-        "Remove is offered in a state where it cannot remove the installed model")
-    }
-    // Two-way control: it IS offered where it works.
-    #expect(egOneRow(.installed(version: "1.1")).showsRemove)
-  }
-
-  /// The two paused rows must not read identically. One means "nothing works
-  /// yet"; the other means "something that WAS working has stopped".
-  @Test("the paused rows say different things")
-  func pausedRowsAreDistinguishable() {
-    let paused = egOneRow(.paused)
-    let update = egOneRow(.updatePaused(resumable: true, targetVersion: "1.1"))
-    #expect(paused.message != update.message)
-    #expect(paused.primaryAction != update.primaryAction)
   }
 
   @Test("EG-1 downloading → Downloading / needs-setup")

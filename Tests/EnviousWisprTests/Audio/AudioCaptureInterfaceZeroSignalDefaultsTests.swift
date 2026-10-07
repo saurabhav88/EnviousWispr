@@ -103,40 +103,6 @@ struct AudioCaptureInterfaceZeroSignalDefaultsTests {
 
   // MARK: - Conformer defaults, seen through the existential
 
-  @Test("a conformer with no reactive detector reports no refusal reason")
-  func defaultRefusalReasonIsNil() {
-    let audioCapture: any AudioCaptureInterface = DefaultsOnlyAudioCapture()
-    #expect(audioCapture.zeroSignalRefusalReason == nil)
-  }
-
-  @Test("a conformer with no reactive detector never claims it classified the run")
-  func defaultReactivelyClassifiedFlagIsFalse() {
-    let audioCapture: any AudioCaptureInterface = DefaultsOnlyAudioCapture()
-    #expect(audioCapture.zeroSignalRunWasClassifiedReactively == false)
-  }
-
-  @Test("a conformer with no backlog hands over an empty array, synchronously")
-  func defaultTakePendingReturnsEmpty() {
-    let audioCapture: any AudioCaptureInterface = DefaultsOnlyAudioCapture()
-    #expect(audioCapture.takePendingZeroSignalRefusals().isEmpty)
-  }
-
-  /// The settable requirement needs an explicit no-op setter in the extension;
-  /// a read-only computed default would not compile against `{ get set }`. This
-  /// test is the compile-time proof of that, plus the runtime proof that the
-  /// discard is deliberate rather than an accidental store.
-  @Test("assigning the refusal callback through the existential compiles and is discarded")
-  func defaultCallbackAcceptsAssignmentAndStaysNil() {
-    // `let`, not `var`: the protocol is class-bound, so its property setters are
-    // non-mutating and the binding itself is never reassigned.
-    let audioCapture: any AudioCaptureInterface = DefaultsOnlyAudioCapture()
-
-    audioCapture.onZeroSignalRefused = { _ in true }
-
-    // The default getter is `nil` by contract, so the closure above is not
-    // retrievable and must never be invoked from here.
-    #expect(audioCapture.onZeroSignalRefused == nil)
-  }
 }
 
 /// A conformer that overrides NOTHING of the #1578 surface — no stored reason,

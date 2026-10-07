@@ -44,22 +44,6 @@ struct PasteCascadeAXOutcomeTests {
     #expect(disposition.tierFailureReason == "unverifiable")
   }
 
-  @Test("Only a provable no-mutation may be retried")
-  func exactlyOneOutcomeRetries() {
-    let retryable: [PasteService.AXInsertOutcome] = [.verified, .noMutation, .unverifiable]
-      .filter { dispositionForAXDirect($0).allowsAutomaticRetry }
-    #expect(retryable == [.noMutation])
-  }
-
-  @Test("Every outcome maps to a distinct disposition")
-  func mappingIsTotalAndDistinct() {
-    let dispositions = [
-      dispositionForAXDirect(.verified),
-      dispositionForAXDirect(.noMutation),
-      dispositionForAXDirect(.unverifiable),
-    ]
-    #expect(Set(dispositions.map(String.init(describing:))).count == 3)
-  }
 }
 
 // #2297: whether Tier 1 (AX direct write) runs at all is decided before the

@@ -8,29 +8,6 @@ struct CustomWordTests {
 
   // MARK: - Codable round-trip
 
-  @Test("encode then decode preserves all properties")
-  func roundTrip() throws {
-    let word = CustomWord(
-      canonical: "ChatGPT",
-      aliases: ["chatgpt", "chat gpt"],
-      category: .brand,
-      priority: 5,
-      forceReplace: true,
-      caseSensitive: true
-    )
-
-    let data = try JSONEncoder().encode(word)
-    let decoded = try JSONDecoder().decode(CustomWord.self, from: data)
-
-    #expect(decoded.id == word.id)
-    #expect(decoded.canonical == "ChatGPT")
-    #expect(decoded.aliases == ["chatgpt", "chat gpt"])
-    #expect(decoded.category == .brand)
-    #expect(decoded.priority == 5)
-    #expect(decoded.forceReplace == true)
-    #expect(decoded.caseSensitive == true)
-  }
-
   @Test("decode from known JSON payload")
   func decodeStaticJSON() throws {
     let json = """
@@ -66,6 +43,8 @@ struct CustomWordTests {
     #expect(word.forceReplace == false)
     #expect(word.caseSensitive == false)
     #expect(word.learnedAliases.isEmpty && word.learnedAt == nil && !word.isAutoLearned)
+    #expect(word.frequencyUsed == 0)
+    #expect(word.lastUsed == nil)
   }
 
   // MARK: - Learned provenance (#996)

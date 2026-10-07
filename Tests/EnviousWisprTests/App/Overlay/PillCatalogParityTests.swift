@@ -185,9 +185,19 @@ struct PillCatalogParityTests {
         Issue.record("no frozen row labelled \(label) — the oracle and this table disagree")
         continue
       }
-      let observed = Self.project(
-        PillCatalog.entry(for: request, id: PresentationID()), label: label)
+      let entry = PillCatalog.entry(for: request, id: PresentationID())
+      let observed = Self.project(entry, label: label)
       #expect(observed == expected, "\(label) drifted from the frozen capture")
+      // Two rows also checked against literal expectations, independent of the frozen capture.
+      if case .hidden = request {
+        #expect(entry.definition == nil, "hidden must empty the slot")
+        #expect(entry.announcement?.text == "Recording complete")
+        #expect(entry.announcement?.isHighPriority == false)
+      }
+      if case .importStatus = request {
+        #expect(entry.definition != nil, "import status must occupy the slot")
+        #expect(entry.announcement == nil, "import status announces nothing")
+      }
     }
   }
 
@@ -290,25 +300,6 @@ struct PillCatalogParityTests {
     let observed = Self.project(
       PillCatalog.entry(for: .bluetoothAwareness, id: PresentationID()), label: row.label)
     #expect(observed == row, "the feature route is not what the single catalog arm produces")
-  }
-
-  /// `.hidden` is the shape a definition-only return could not have carried.
-  @Test("hidden empties the slot and still announces")
-  func hiddenAnnouncesWithoutDefinition() {
-    let entry = PillCatalog.entry(for: .hidden, id: PresentationID())
-    #expect(entry.definition == nil, "hidden must empty the slot")
-    #expect(entry.announcement?.text == "Recording complete")
-    #expect(entry.announcement?.isHighPriority == false)
-  }
-
-  /// Import status is the one silent request, and the fixture asserts nil rather
-  /// than omitting the row.
-  @Test("import status has a definition and says nothing")
-  func importStatusIsSilent() {
-    let entry = PillCatalog.entry(
-      for: .importStatus(message: "Imported 12 words"), id: PresentationID())
-    #expect(entry.definition != nil, "import status must occupy the slot")
-    #expect(entry.announcement == nil, "import status announces nothing")
   }
 
   /// The id travels onto the definition rather than being looked up afterwards.

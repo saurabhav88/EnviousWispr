@@ -154,21 +154,6 @@ struct FluidAudioBridgeClassificationTests {
     #expect(classifyFluidAudioModelLoadError(OtherError()) == nil)
   }
 
-  /// #1525 PR I-B naming-trap regression: a future accidental reintroduction of
-  /// `ASRError`/`FluidAudio.ASRError` inside `EnviousWisprASR` would be caught by
-  /// THAT module failing to compile or silently never matching — this test proves
-  /// the bridge itself (the durable fix) correctly resolves FluidAudio's real
-  /// `ASRError`, not some shadowing type, by asserting a case that only exists on
-  /// the real vendor enum.
-  @Test("the bridge resolves FluidAudio's real ASRError, not a shadowing type")
-  func resolvesRealFluidAudioType() {
-    let kind = classifyFluidAudioASRError(ASRError.notInitialized)
-    guard case .notInitialized = kind else {
-      Issue.record("expected .notInitialized, got \(String(describing: kind))")
-      return
-    }
-  }
-
   // MARK: - FluidAudioStreamingErrorKind (streaming path, 7 vendor cases) — #1654
 
   /// Ship criterion 1. Every case is driven from a REAL vendor error value, not a

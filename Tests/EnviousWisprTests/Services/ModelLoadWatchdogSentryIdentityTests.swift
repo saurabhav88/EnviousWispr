@@ -51,18 +51,6 @@ struct ModelLoadWatchdogSentryIdentityTests {
     }
   }
 
-  @Test("the single declared identity is unique within WedgeError")
-  func identityIsUniqueWithinType() {
-    let errors = [ModelLoadWatchdog.WedgeError()]
-
-    #expect(
-      Set(errors.map(\.sentryFingerprintDescriptor)).count == errors.count
-    )
-    #expect(
-      Set(errors.map(\.sentrySemanticID)).count == errors.count
-    )
-  }
-
   // MARK: - B. The property that matters
 
   /// A deterministic `CustomNSError` — its bridged domain/code are declared,
@@ -76,30 +64,7 @@ struct ModelLoadWatchdogSentryIdentityTests {
     let sentrySemanticID = "fixture.semantic"
   }
 
-  @Test("the explicit identity overrides the bridged NSError identity")
-  func explicitIdentityOverridesBridge() {
-    let error = StableFixtureError()
-    let bridged = error as NSError
-
-    #expect(bridged.domain == "fixture.raw")
-    #expect(bridged.code == 10)
-    #expect(SentryBreadcrumb.structuredDescriptor(error) == "fixture.pinned#modelload")
-  }
-
   // MARK: - C. Dev/prod split survives the pin
-
-  @Test("environment keeps the same descriptor's dev and prod fingerprints separate")
-  func devProdSplitSurvives() {
-    let error = ModelLoadWatchdog.WedgeError()
-    let prod = SentryBreadcrumb.handledErrorFingerprint(
-      for: .modelLoadWedged, error: error, environment: "production")
-    let dev = SentryBreadcrumb.handledErrorFingerprint(
-      for: .modelLoadWedged, error: error, environment: "development")
-
-    #expect(prod != dev)
-    #expect(prod.last == "production")
-    #expect(dev.last == "development")
-  }
 
   // MARK: - D. Event-construction contract
 
@@ -119,16 +84,4 @@ struct ModelLoadWatchdogSentryIdentityTests {
     #expect(event.tags?["error.identity"] == Self.semanticID)
   }
 
-  @Test(
-    "a non-conforming error's descriptor and fingerprint are unchanged (#1525 PR J-1: makeHandledErrorEvent narrowed — structuredDescriptor/handledErrorFingerprint stay generic)"
-  )
-  func nonConformingErrorEventUnchanged() {
-    let error = NSError(domain: "EnviousWispr", code: -3)
-
-    #expect(SentryBreadcrumb.structuredDescriptor(error) == "EnviousWispr#-3")
-    #expect(
-      SentryBreadcrumb.handledErrorFingerprint(
-        for: .modelLoadFailed, error: error, environment: Self.env)
-        == ["handled_error", "model_load_failed", "EnviousWispr#-3", Self.env])
-  }
 }

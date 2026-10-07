@@ -75,12 +75,21 @@ struct OverlayHostingParityTests {
     for (name, host) in Self.hosts() {
       let d = Self.director(on: host)
       d.present(.warning(reason: .polishFailed))
+      // The fake must never start refusing: a refusing fake silently blanks every suite using it.
+      if let fake = host as? WindowlessOverlayHost {
+        #expect(fake.presented.count == 1, "the fake was never asked to present")
+        #expect(fake.isShowing, "the fake accepted a presentation and then reported nothing showing")
+      }
 
       d.dismissCurrent(.announced)
 
       #expect(
         d.renderModel.state.presentation == nil,
         "the \(name) host left a pill on screen after hiding")
+      if let fake = host as? WindowlessOverlayHost {
+        #expect(fake.hideCount == 1, "the fake was never asked to hide")
+        #expect(!fake.isShowing, "the fake was hidden and still reports a presentation showing")
+      }
     }
   }
 }

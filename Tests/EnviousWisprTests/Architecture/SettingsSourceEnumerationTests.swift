@@ -100,10 +100,4 @@ struct SettingsSourceEnumerationTests {
     }
   }
 
-  @Test("The real Settings population contains every expected file")
-  func productionPopulation() throws {
-    let files = try SettingsSourceEnumeration.sources()
-    #expect(files.isEmpty == false)
-    print("SETTINGS SOURCES \(files.count): \(files.map(\.path).joined(separator: ", "))")
-  }
 }

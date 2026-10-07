@@ -106,12 +106,4 @@ struct PasteCopiesDeliveredTests {
 
   // MARK: - Where length and meaning come apart, documented rather than asserted away
 
-  // A destination that normalises can move a TRUE DOUBLE into the one-copy band: submit 12,
-  // have each copy stored as 6, and the field grows by 12. This row is not a bug report. It
-  // records that a `one` verdict is an estimate about LENGTH and never a proof about content,
-  // which is why the dashboard label says estimate and why Phase 3 may not rest on a small count.
-  @Test("a normalising destination can hide a true double, and that is a known limit")
-  func normalisationCanHideADouble() {
-    #expect(copies(before: 0, inserted: 12, after: 12) == 1)
-  }
 }

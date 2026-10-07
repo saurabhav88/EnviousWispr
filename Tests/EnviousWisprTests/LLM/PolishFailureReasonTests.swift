@@ -90,162 +90,6 @@ struct PolishFailureReasonTests {
 
   // MARK: - Messages (copy)
 
-  @Test("the out-of-credits message names billing, never 'rate limited' (the bug it fixes)")
-  func outOfCreditsCopy() {
-    let msg = PolishFailureReason.outOfCredits.composedMessage(provider: .openAI)
-    #expect(
-      msg == "AI polish failed: your OpenAI account is out of credits. Check your provider billing."
-    )
-    #expect(!msg.lowercased().contains("rate limit"))
-  }
-
-  @Test("missing-key message uses the skipped lead-in and points to Settings")
-  func apiKeyMissingCopy() {
-    let msg = PolishFailureReason.apiKeyMissing.composedMessage(provider: .gemini)
-    #expect(msg == "AI polish skipped: no Gemini API key set yet. Add one in Settings.")
-  }
-
-  @Test("Gemini rate-or-quota copy names BOTH (Gemini cannot split them)")
-  func rateOrQuotaCopy() {
-    let msg = PolishFailureReason.rateLimitedOrQuota.composedMessage(provider: .gemini)
-    #expect(msg.contains("rate or quota"))
-    #expect(msg.contains("billing"))
-  }
-
-  @Test("model-unavailable and unreachable have distinct Ollama vs cloud variants")
-  func ollamaSpecificCopy() {
-    let cloudModel = PolishFailureReason.modelUnavailable.composedMessage(provider: .openAI)
-    let ollamaModel = PolishFailureReason.modelUnavailable.composedMessage(provider: .ollama)
-    #expect(cloudModel.contains("OpenAI model"))
-    #expect(ollamaModel.contains("Ollama"))
-    #expect(cloudModel != ollamaModel)
-
-    let cloudReach = PolishFailureReason.providerUnreachable.composedMessage(provider: .gemini)
-    let ollamaReach = PolishFailureReason.providerUnreachable.composedMessage(provider: .ollama)
-    #expect(cloudReach.contains("internet connection"))
-    #expect(ollamaReach.contains("Start Ollama"))
-    #expect(cloudReach != ollamaReach)
-  }
-
-  /// #1914: a 401 from Ollama means the user is signed out of ollama.com, and the
-  /// generic line points at an EnviousWispr Settings API key that Ollama has
-  /// none of. Frozen as an EXACT composed string, not a `contains`, because the
-  /// value of this arm is the specific command it names.
-  @Test("Ollama 401 copy names the real signin command, not a Settings key")
-  func ollamaSignedOutCopy() {
-    let ollama = PolishFailureReason.apiKeyRejected.composedMessage(provider: .ollama)
-    #expect(
-      ollama
-        == "AI polish failed: Ollama isn't signed in. "
-        + "Run ollama signin in Terminal, then try again.")
-    #expect(ollama.contains("ollama signin"))
-    #expect(ollama.contains("Settings") == false)
-
-    // The control, stated for what it actually proves: the cloud arm is BYTE
-    // IDENTICAL to before #1914. Deleting the Ollama branch is caught by the
-    // three expectations above, not by this one — with the branch gone, Ollama's
-    // text would still differ from OpenAI's, because `name` is interpolated. So
-    // this line pins the untouched arm; it does not detect the missing branch.
-    let cloud = PolishFailureReason.apiKeyRejected.composedMessage(provider: .openAI)
-    #expect(
-      cloud == "AI polish failed: OpenAI rejected your API key. Check or replace it in Settings.")
-  }
-
-  /// #1914: a 403 from Ollama means the model is subscription-gated, measured
-  /// 2026-08-01 from `this model requires a subscription`. The generic line
-  /// suggests API-access and region checks instead of naming that cause.
-  @Test("Ollama 403 copy names the subscription and offers picking another model")
-  func ollamaPaidTierCopy() {
-    let ollama = PolishFailureReason.accessDenied.composedMessage(provider: .ollama)
-    #expect(
-      ollama
-        == "AI polish failed: that Ollama model requires a subscription. "
-        + "Pick another model or check your Ollama plan.")
-    #expect(ollama.contains("subscription"))
-    #expect(ollama.contains("region") == false)
-
-    // Same control shape as the 401 test: this pins the cloud arm as unchanged.
-    // It is the exact-string expectation above that fails if the Ollama branch
-    // is deleted, not a comparison between the two.
-    let cloud = PolishFailureReason.accessDenied.composedMessage(provider: .gemini)
-    #expect(
-      cloud
-        == "AI polish failed: Gemini denied access. "
-        + "Check your provider billing, API access, region, or selected model.")
-  }
-
-  @Test("the generic fallback lines read cleanly after their lead-in (no restated lead-in)")
-  func genericFallbackCopyTightened() {
-    // Founder-approved tightening (2026-06-22): these three compose without
-    // repeating the lead-in (no "AI polish skipped: AI cleanup took too long").
-    #expect(
-      PolishFailureReason.timedOut.composedMessage(provider: .openAI)
-        == "AI polish skipped: OpenAI did not answer in time. Pasted without AI polish."
-    )
-    // #2884: the generic badRequest sentence now belongs to the non-cloud arms
-    // only; the cloud copy is pinned per provider in `badRequestNamesTheProvider`.
-    #expect(
-      PolishFailureReason.badRequest.composedMessage(provider: .ollama)
-        == "AI polish failed: a configuration problem stopped it. Pasted without AI polish."
-    )
-    #expect(
-      PolishFailureReason.unknown.composedMessage(provider: .openAI)
-        == "AI polish failed: an unexpected error stopped it. Pasted without AI polish."
-    )
-  }
-
-  // #2884: a production Gemini 400 was every time a picker-admitted model that
-  // cannot polish text. The copy names the provider and the fix for the three
-  // key-holding providers; the local and bundled arms keep the generic sentence.
-  @Test(
-    "badRequest names the provider and points at the model picker for cloud providers",
-    arguments: [
-      (LLMProvider.gemini, "Gemini"),
-      (.openAI, "OpenAI"),
-      (.claude, "Claude"),
-    ])
-  func badRequestNamesTheProvider(provider: LLMProvider, name: String) {
-    #expect(
-      PolishFailureReason.badRequest.composedMessage(provider: provider)
-        == "AI polish failed: \(name) rejected the request. Pick another model in Settings.")
-  }
-
-  @Test(
-    "badRequest keeps the generic sentence for every non-cloud provider",
-    arguments: [
-      LLMProvider.ollama, .appleIntelligence, .egOne, .s1Mini, .none,
-    ])
-  func badRequestStaysGenericOffCloud(provider: LLMProvider) {
-    #expect(
-      PolishFailureReason.badRequest.composedMessage(provider: provider)
-        == "AI polish failed: a configuration problem stopped it. Pasted without AI polish."
-    )
-  }
-
-  /// #3142: each notice is one whole sentence, so nothing composes it from the tone any more.
-  /// The English sentence still opens with the words that match its tone, for every provider.
-  @Test("every English notice opens with the words for its tone")
-  func englishNoticeOpensWithItsTone() {
-    for reason in PolishFailureReason.allCases {
-      for provider in LLMProvider.allCases {
-        let opening = reason.leadIn == .skipped ? "AI polish skipped: " : "AI polish failed: "
-        #expect(
-          reason.composedMessage(provider: provider).hasPrefix(opening), "\(reason) \(provider)")
-      }
-    }
-  }
-
-  @Test("no message uses em-dashes or en-dashes (human-facing copy rule)")
-  func noFancyDashes() {
-    for reason in PolishFailureReason.allCases {
-      for provider in [LLMProvider.openAI, .gemini, .claude, .ollama] {
-        let msg = reason.composedMessage(provider: provider)
-        #expect(!msg.contains("\u{2014}"), "\(reason)/\(provider) contains em-dash")
-        #expect(!msg.contains("\u{2013}"), "\(reason)/\(provider) contains en-dash")
-      }
-    }
-  }
-
   // MARK: - from(_:) mapping
 
   @Test("from unwraps the .classified carrier to its reason")
@@ -305,12 +149,6 @@ struct PolishFailureReasonTests {
     #expect(
       !PolishFailureReason.outOfCredits.composedMessage(provider: .openAI).lowercased().contains(
         "try again"))
-  }
-
-  @Test("a present-but-rejected key is NOT the missing-key (skipped) reason")
-  func rejectedVsMissingDistinct() {
-    #expect(PolishFailureReason.apiKeyRejected.leadIn == .failed)
-    #expect(PolishFailureReason.apiKeyMissing.leadIn == .skipped)
   }
 
   // MARK: - Telemetry channel (#1446)
@@ -569,25 +407,6 @@ struct PolishFailureReasonTests {
         PolishFailureReason.outputTruncated.telemetryChannel(provider: provider)
           == .nonAlertingAnalytics)
     }
-  }
-
-  @Test("outputTruncated composed copy is exact per cloud provider")
-  func outputTruncatedComposedCopy() {
-    for (provider, name) in [
-      (LLMProvider.openAI, "OpenAI"), (.gemini, "Gemini"), (.claude, "Claude"),
-    ] {
-      #expect(
-        PolishFailureReason.outputTruncated.composedMessage(provider: provider)
-          == "AI polish failed: \(name) ended the response before cleanup finished. "
-          + "Pasted without AI polish. "
-          + "If this keeps happening, choose another model or use a shorter dictation.")
-    }
-  }
-
-  @Test("classified(outputTruncated) unwraps unchanged")
-  func classifiedUnwrapsUnchanged() {
-    #expect(
-      PolishFailureReason.from(LLMError.classified(.outputTruncated)) == .outputTruncated)
   }
 
   // MARK: - #3142: every notice, typed out

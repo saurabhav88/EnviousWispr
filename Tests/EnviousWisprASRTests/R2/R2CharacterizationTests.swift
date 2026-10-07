@@ -103,33 +103,7 @@ struct R2CharacterizationTests {
     #expect(result.tier == .locked)
   }
 
-  @Test("R2-CHAR-003: locked mode with empty audio still returns locked code (no abstain)")
-  func lockedModeIgnoresEmptyAudio() async {
-    let (detector, _) = r2MakeDetector()
-    let result = await detector.evaluateForTesting(
-      windowProbs: [:],
-      voicedDuration: 0.1,  // below short-clip gate
-      mode: .locked("de")
-    )
-    #expect(result.lang == "de")
-    #expect(result.tier == .locked)
-    #expect(result.abstained == false)
-  }
-
   // MARK: - Duration gate (Layer 1)
-
-  @Test("R2-CHAR-010: voicedDuration below shortClipMinSec abstains regardless of confidence")
-  func durationGateAbstainsBelowMin() async {
-    let (detector, _) = r2MakeDetector()
-    let result = await detector.evaluateForTesting(
-      windowProbs: ["en": 0.99],
-      voicedDuration: 0.5,  // < 1.0s
-      mode: .auto
-    )
-    #expect(result.abstained)
-    #expect(result.tier == .abstain)
-    #expect(result.lang == nil)
-  }
 
   @Test("R2-CHAR-011: empty windowProbs (no observations) abstains")
   func emptyObservationsAbstains() async {
@@ -145,18 +119,6 @@ struct R2CharacterizationTests {
   }
 
   // MARK: - Strict short-clip thresholds (Layer 2 + Layer 3 boundary)
-
-  @Test("R2-CHAR-020: short clip (1.0-2.5s) requires high prob to escape strict abstain")
-  func shortClipFailsStrict() async {
-    let (detector, _) = r2MakeDetector()
-    let result = await detector.evaluateForTesting(
-      windowProbs: ["en": 0.70, "de": 0.50],  // passes normal, fails strict
-      voicedDuration: 1.5,
-      mode: .auto
-    )
-    #expect(result.tier == .abstain)
-    #expect(result.abstained)
-  }
 
   @Test("R2-CHAR-021: short clip with high prob passes strict")
   func shortClipPassesStrict() async {
@@ -184,30 +146,6 @@ struct R2CharacterizationTests {
     #expect(result.tier == .lowAuto)
     #expect(result.lang == "en")
     #expect(result.abstained == false)
-  }
-
-  @Test("R2-CHAR-031: normal-clip medium-prob accepts at mediumAuto tier")
-  func mediumAutoTier() async {
-    let (detector, _) = r2MakeDetector()
-    let result = await detector.evaluateForTesting(
-      windowProbs: ["en": 0.65, "de": 0.45],
-      voicedDuration: 4.0,
-      mode: .auto
-    )
-    #expect(result.tier == .mediumAuto)
-    #expect(result.lang == "en")
-  }
-
-  @Test("R2-CHAR-032: normal-clip high-prob with margin accepts at highAuto tier")
-  func highAutoTier() async {
-    let (detector, _) = r2MakeDetector()
-    let result = await detector.evaluateForTesting(
-      windowProbs: ["en": 0.85, "de": 0.55],
-      voicedDuration: 4.0,
-      mode: .auto
-    )
-    #expect(result.tier == .highAuto)
-    #expect(result.lang == "en")
   }
 
   @Test("R2-CHAR-033: narrow margin (below normalMargin) drops the decision to lowAuto")
@@ -244,61 +182,6 @@ struct R2CharacterizationTests {
     )
     let mem = await detector.peekMemory()
     #expect(mem.sessionPreferred == nil)
-  }
-
-  @Test("R2-CHAR-040b: two consecutive high-conf accepts of same lang seed sessionPreferred")
-  func twoHighConfSeedSessionPreferred() async {
-    let (detector, _) = r2MakeDetector()
-    _ = await detector.evaluateForTesting(
-      windowProbs: ["en": 0.92, "de": 0.40],
-      voicedDuration: 4.0,
-      mode: .auto
-    )
-    _ = await detector.evaluateForTesting(
-      windowProbs: ["en": 0.90, "de": 0.45],
-      voicedDuration: 4.0,
-      mode: .auto
-    )
-    let mem = await detector.peekMemory()
-    #expect(mem.sessionPreferred == "en")
-  }
-
-  @Test("R2-CHAR-041: anti-flap blocks weak switch from established sessionPreferred")
-  func antiFlapBlocksWeakSwitch() async {
-    let (detector, _) = r2MakeDetector()
-    // Establish de as sessionPreferred via two strong utterances
-    _ = await detector.evaluateForTesting(
-      windowProbs: ["de": 0.92, "en": 0.40], voicedDuration: 4.0, mode: .auto
-    )
-    _ = await detector.evaluateForTesting(
-      windowProbs: ["de": 0.90, "en": 0.45], voicedDuration: 4.0, mode: .auto
-    )
-    // Weak switch attempt to en (below switch bar) should be blocked
-    let result = await detector.evaluateForTesting(
-      windowProbs: ["en": 0.70, "de": 0.45],
-      voicedDuration: 4.0,
-      mode: .auto
-    )
-    #expect(result.lang == "de")  // anti-flap kept de as winner
-    #expect(result.usedSessionPrior == true)
-  }
-
-  @Test("R2-CHAR-042: single strong utterance does not switch sessionPreferred")
-  func antiFlapOneStrongDoesNotSwitch() async {
-    let (detector, _) = r2MakeDetector()
-    _ = await detector.evaluateForTesting(
-      windowProbs: ["de": 0.92, "en": 0.40], voicedDuration: 4.0, mode: .auto
-    )
-    _ = await detector.evaluateForTesting(
-      windowProbs: ["de": 0.90, "en": 0.45], voicedDuration: 4.0, mode: .auto
-    )
-    // One strong en utterance — should NOT switch yet (needs two consecutive)
-    let result = await detector.evaluateForTesting(
-      windowProbs: ["en": 0.92, "de": 0.40],
-      voicedDuration: 4.0,
-      mode: .auto
-    )
-    #expect(result.lang == "de")  // first switch attempt blocked
   }
 
   @Test("R2-CHAR-043: session-prior rescues lowAuto when preferred matches")

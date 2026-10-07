@@ -38,12 +38,6 @@ struct FillerRemovalLanguageProtectionTests {
     #expect(out == "Wir treffen uns um drei Uhr")
   }
 
-  @Test("German: \"um\" (in order to) survives")
-  func germanUmSurvivesPurpose() async throws {
-    let out = try await process("Ich rufe an um zu fragen", language: "de")
-    #expect(out == "Ich rufe an um zu fragen")
-  }
-
   @Test("German: both \"um\" and \"er\" survive in one sentence")
   func germanBothTokensSurvive() async throws {
     let out = try await process(

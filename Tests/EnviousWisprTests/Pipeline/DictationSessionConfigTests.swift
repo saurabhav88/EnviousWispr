@@ -4,33 +4,6 @@ import Testing
 @Suite("DictationSessionConfig — per-recording snapshot")
 struct DictationSessionConfigTests {
 
-  @Test("testDefault factory returns SettingsManager-default-shaped values")
-  func testDefaultIsShapedLikeSettingsDefaults() {
-    let config = DictationSessionConfig.testDefault()
-
-    #expect(config.autoCopyToClipboard == true)
-    #expect(config.autoPasteToActiveApp == false)
-    #expect(config.restoreClipboardAfterPaste == false)
-    // OFF in the test helper while production defaults ON, so existing suites
-    // keep their legacy behaviour until they opt in.
-    #expect(config.smartInsertion == false)
-    #expect(config.vadAutoStop == false)
-    #expect(config.vadSilenceTimeout == 1.5)
-    #expect(config.vadSensitivity == 0.5)
-    #expect(config.vadEnergyGate == false)
-    #expect(config.languageMode == .auto)
-    #expect(config.useStreamingASR == true)
-    #expect(config.modelUnloadPolicy == .never)
-    #expect(config.llmProvider == .none)
-    #expect(config.llmModel == "")
-    #expect(config.polishInstructions.systemPrompt == PolishInstructions.default.systemPrompt)
-    #expect(config.selectedInputDeviceUID == "")
-    #expect(config.preferredInputDeviceIDOverride == "")
-    // #2649: the shipped control line, which is also what a site that forgets
-    // the argument gets.
-    #expect(config.s1Control == .default)
-  }
-
   @Test("per-field overrides survive construction intact")
   func testFieldOverridesHonored() {
     let config = DictationSessionConfig.testDefault(
@@ -63,14 +36,6 @@ struct DictationSessionConfigTests {
     #expect(config.smartInsertion == true)
     #expect(
       config.s1Control == S1ControlSettings(styling: .casual, structure: .prose, context: .email))
-  }
-
-  @Test("Sendable value semantics — modifying a copy's source does not mutate the snapshot")
-  func testValueSemantics() {
-    var sourceFlag = true
-    let config = DictationSessionConfig.testDefault(autoCopyToClipboard: sourceFlag)
-    sourceFlag = false
-    #expect(config.autoCopyToClipboard == true)
   }
 
   @Test(

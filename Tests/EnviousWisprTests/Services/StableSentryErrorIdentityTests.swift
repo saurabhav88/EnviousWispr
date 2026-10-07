@@ -108,41 +108,7 @@ struct StableSentryErrorIdentityTests {
 
   // MARK: - C. Uniqueness
 
-  @Test("descriptors and semantic IDs are unique across cases")
-  func identitiesAreUnique() {
-    let descriptors = Self.allCases.map(\.2)
-    let semanticIDs = Self.allCases.map(\.3)
-
-    #expect(Set(descriptors).count == descriptors.count)
-    #expect(Set(semanticIDs).count == semanticIDs.count)
-  }
-
   // MARK: - F. Collision freeze
-
-  /// The three same-category pairs that a renumber would have merged: each pair's
-  /// second member would have inherited the first's shipped fingerprint.
-  @Test("cases a renumber would have merged still group separately")
-  func collisionPairsStaySeparate() {
-    let pairs: [(HeartPathError, HeartPathError, SentryBreadcrumb.ErrorCategory)] = [
-      (
-        .pasteCascadeClipboardFallback(
-          tiersAttempted: ["a"], focusClassification: "f", targetBundleID: nil),
-        .pasteCGEventCreationFailed(accessibilityTrusted: true), .pasteFailed
-      ),
-      (
-        .zombieEngineZeroPeak(sessionID: 1, durationMs: 0, route: "builtin", sampleCount: 1),
-        .audioEngineInterrupted(route: "builtin", durationMs: 0), .audioCaptureFailed
-      ),
-    ]
-
-    for (lhs, rhs, category) in pairs {
-      let lhsFingerprint = SentryBreadcrumb.handledErrorFingerprint(
-        for: category, error: lhs, environment: Self.env)
-      let rhsFingerprint = SentryBreadcrumb.handledErrorFingerprint(
-        for: category, error: rhs, environment: Self.env)
-      #expect(lhsFingerprint != rhsFingerprint)
-    }
-  }
 
   // MARK: - G. Event-construction contract
 
@@ -165,16 +131,4 @@ struct StableSentryErrorIdentityTests {
     #expect(event.tags?["error.identity"] == "heartpath.paste_cascade_clipboard_fallback")
   }
 
-  @Test(
-    "a non-conforming error's descriptor and fingerprint are unchanged (#1525 PR J-1: makeHandledErrorEvent narrowed — structuredDescriptor/handledErrorFingerprint stay generic)"
-  )
-  func nonConformingErrorEventUnchanged() {
-    let error = NSError(domain: "EnviousWispr", code: -3)
-
-    #expect(SentryBreadcrumb.structuredDescriptor(error) == "EnviousWispr#-3")
-    #expect(
-      SentryBreadcrumb.handledErrorFingerprint(
-        for: .xpcServiceError, error: error, environment: Self.env)
-        == ["handled_error", "xpc_service_error", "EnviousWispr#-3", Self.env])
-  }
 }

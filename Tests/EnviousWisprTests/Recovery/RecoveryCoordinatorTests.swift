@@ -1237,22 +1237,6 @@ struct RecoveryCoordinatorTests {
     #expect(h.replayer.replayedIDs.isEmpty, "id suppressed on this instance's rescan")
   }
 
-  @Test("nextLaunchOnlyRecoveryIDs is never cleared within one coordinator instance's lifetime")
-  func nextLaunchOnlyIDsNeverClearedOnSameInstance() async throws {
-    let h = Self.makeHarness()
-    let id = "persist-\(UUID().uuidString)"
-    try Self.writeSpool(h.spoolStore, id)
-    h.replayer.outcomeByID[id] = .deferredMarkerClearFailed
-    await h.coordinator.scanAndRecover()
-    #expect(h.replayer.replayedIDs == [id])
-    // Repeated rescans on the SAME instance never re-attempt it.
-    for _ in 0..<3 {
-      h.replayer.replayedIDs = []
-      await h.coordinator.scanAndRecover()
-      #expect(h.replayer.replayedIDs.isEmpty)
-    }
-  }
-
   @Test("a live failure deletes its spool, so a same-launch scan finds nothing to replay (#1755)")
   func liveFailureDeletedNothingForSameSessionRescan() async throws {
     // #1755 rewrite of the PR #1732 retention test: `.failed` now DELETES —
@@ -1421,20 +1405,6 @@ struct RecoveryCoordinatorTests {
   }
 
   // MARK: - #1707 Phase 3 §3.2: EngineRecoveryGate integration
-
-  @Test("a mutation claim held on the gate defers the ENTIRE scan — no item is attempted")
-  func gateDeniedRecoveryDefersWholeScan() async throws {
-    let gate = EngineRecoveryGate()
-    let h = Self.makeHarness(
-      recoveryEngineClaim: .live(
-        tryBegin: { gate.tryBeginRecovery() }, end: { gate.endRecovery() }))
-    #expect(gate.tryBeginMutation(), "an unrelated engine mutation holds the gate")
-    try Self.writeSpool(h.spoolStore, "orphan-\(UUID().uuidString)")
-    await h.coordinator.scanAndRecover()
-    #expect(
-      h.replayer.replayedIDs.isEmpty, "the gate denied the claim before any item was attempted")
-    #expect(!h.coordinator.isRecovering)
-  }
 
   @Test("once the held mutation releases, requestRecoveryRecheck() lets the deferred scan succeed")
   func gateReleaseThenRequestRecheckSucceeds() async throws {

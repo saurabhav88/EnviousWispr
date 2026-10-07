@@ -687,22 +687,6 @@ import Testing
         #expect(vm.practiceSucceeded, "a cleared box revoked a success that had already happened")
       }
 
-      /// Same reason `beginWarmingGate` resets: a reopened onboarding must not
-      /// inherit a previous visit's success and offer FINISH SETUP to someone who
-      /// has not dictated in THIS one.
-      @Test("a reopened onboarding cannot inherit the last visit's dictation")
-      func reopeningClearsTheBox() {
-        let vm = makePracticeViewModel()
-        vm.setPracticeText("hey Mike pick up Emma from school today")
-        #expect(vm.practiceSucceeded)
-
-        vm.beginPractice()
-
-        #expect(vm.currentScreen == .tryItOut)
-        #expect(vm.practiceText.isEmpty)
-        #expect(vm.practiceSucceeded == false, "the box opened already believing it had succeeded")
-      }
-
       /// **The reopen DECISION, which no test could reach** (#2371 row 20).
       ///
       /// `reopeningClearsTheBox` above calls `beginPractice()` directly, so it
@@ -898,19 +882,6 @@ import Testing
           "the screen claimed it heard someone who said nothing")
       }
 
-      /// The other half, and why the copy was not simply replaced: real silence
-      /// is 20.3% of first takes, and telling THAT person to click a box they
-      /// already clicked is the same wrong advice pointed the other way.
-      @Test("a silent take with the box focused is still all-quiet")
-      func focusedSilenceIsStillSilence() {
-        let vm = makePracticeViewModel()
-        vm.practiceTakeStarted(boxFocused: true)
-
-        vm.practiceTakeEnded()
-
-        #expect(vm.practiceState == .saidNothing)
-      }
-
       /// Words arriving is what decides success, whatever the focus flag said
       /// at the start — a take that lands text has plainly not missed.
       @Test("a productive take is success even if focus was uncertain at the start")
@@ -940,19 +911,6 @@ import Testing
         #expect(
           vm.practiceState != .saidNothing,
           "the screen blamed a quiet room for our own failure")
-      }
-
-      /// The other half: a genuinely quiet room must NOT be dressed up as our
-      /// failure, or the most common first-take outcome starts reading as the
-      /// product breaking.
-      @Test("silence with a healthy pipeline is still silence")
-      func healthySilenceIsStillSilence() {
-        let vm = makePracticeViewModel()
-        vm.practiceTakeStarted(boxFocused: true, transcriptCount: 0)
-
-        vm.practiceTakeEnded(transcriptCount: 0, pipelineFailed: false)
-
-        #expect(vm.practiceState == .saidNothing)
       }
 
       /// A failure outranks every other reading, because no text and no

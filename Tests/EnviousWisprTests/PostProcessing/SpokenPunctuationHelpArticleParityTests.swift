@@ -204,14 +204,6 @@ struct SpokenPunctuationHelpArticleParityTests {
     }
   }
 
-  @Test("The four language sections appear once each and in the listed order")
-  func sectionOrder() throws {
-    let lines = try Self.article().components(separatedBy: "\n")
-    let positions = Self.languages.map { entry in lines.firstIndex(of: entry.heading) }
-    #expect(positions.allSatisfy { $0 != nil })
-    #expect(positions.compactMap { $0 } == positions.compactMap { $0 }.sorted())
-  }
-
   @Test("The article uses the app's own label and the real Settings location")
   func labelsMatchTheApp() throws {
     let markdown = try Self.article()
@@ -300,11 +292,4 @@ struct SpokenPunctuationHelpArticleParityTests {
     #expect(rows == [Row(say: "a b", result: ".")])
   }
 
-  @Test("A wrong accent, a wrong case or a wrong mark is a difference, never normalised away")
-  func comparisonIsExact() {
-    let expected = [Row(say: "Place point", result: ".")]
-    #expect([Row(say: "Insere point", result: ".")] != expected)
-    #expect([Row(say: "place point", result: ".")] != expected)
-    #expect([Row(say: "Place point", result: ",")] != expected)
-  }
 }

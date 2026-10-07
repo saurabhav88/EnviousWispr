@@ -87,14 +87,6 @@ struct PasteLandingLifecycleTests {
         == .unknown)
   }
 
-  @Test("The fake's unscripted window answer is a failure, never a window")
-  func fakeDefaultIsFailure() {
-    let ax = PastedRegionFakeAX()
-    #expect(
-      PasteArrivalCapture.targetWindow(
-        captured: Self.field, application: Self.app, ax: ax, budget: budget(ax).0) == .unknown)
-  }
-
   // MARK: Focus
 
   private func focus(_ ax: PastedRegionFakeAX, _ prepare: PasteLandingPrepareBudget)

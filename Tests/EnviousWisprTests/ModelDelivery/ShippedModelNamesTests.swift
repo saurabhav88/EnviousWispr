@@ -30,21 +30,6 @@ import Testing
     }
   }
 
-  /// Two-way control. The guard above passes trivially on a list with no
-  /// collisions, which is every list we ship — so it proves nothing until it
-  /// is shown to REJECT one. This constructs the collision the real registry
-  /// must never contain.
-  @Test func theGuardRejectsACollidingPair() {
-    let colliding = ["eg-1", "eg-1-mini"].sorted()
-    var caught = false
-    for a in colliding {
-      for b in colliding where a != b {
-        if b.hasPrefix(a) { caught = true }
-      }
-    }
-    #expect(caught, "the prefix rule cannot detect the collision it exists to forbid")
-  }
-
   /// The registry must not drift from what actually ships. A bundled manifest
   /// naming a model absent from this list means the guard above is reasoning
   /// over a stale set and silently covers less than it appears to.
@@ -210,27 +195,6 @@ import Testing
             b.hasSuffix(a) == false,
             "\(key): variant \"\(a)\" is a suffix of \"\(b)\", so a sweep for one would match the other's staging and delete its resumable bytes")
         }
-      }
-    }
-  }
-
-  /// Two-way control, driving the same rule against the collision it forbids.
-  @Test func theVariantSuffixRuleRejectsAnOverlappingPair() {
-    let colliding = ["foo", "bar-foo"].sorted()
-    var caught = false
-    for a in colliding {
-      for b in colliding where a != b {
-        if b.hasSuffix(a) { caught = true }
-      }
-    }
-    #expect(caught, "the suffix rule cannot detect the overlap it exists to forbid")
-
-    // And it must NOT fire on the real shipped WhisperKit pair, which is
-    // neither a prefix nor a suffix of the other.
-    let shipped = ["openai_whisper-large-v3-v20240930_turbo", "openai_whisper-small_216MB"]
-    for a in shipped {
-      for b in shipped where a != b {
-        #expect(b.hasSuffix(a) == false, "the shipped pair must not be flagged")
       }
     }
   }

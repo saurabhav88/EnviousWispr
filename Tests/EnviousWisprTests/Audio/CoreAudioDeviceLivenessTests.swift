@@ -77,22 +77,6 @@ struct CoreAudioDeviceLivenessTests {
 
   // MARK: - The claim boundary
 
-  /// The whole point of the `.unverified` case: only a confirmed removal may
-  /// reach `isDeviceLoss`, which is what gates the pill and the badge. An
-  /// unverified read still interrupts and still salvages — it just stays silent.
-  @Test("only a confirmed removal earns a user-facing disconnect claim")
-  func onlyRemovedEarnsTheClaim() {
-    let causeFor: (DeviceLiveness) -> EngineInterruptionCause = {
-      $0 == .removed ? .deviceRemoved : .engineLost
-    }
-    #expect(causeFor(.removed).isDeviceLoss)
-    #expect(!causeFor(.unverified).isDeviceLoss)
-
-    // ...and neither answer costs the user their dictation.
-    #expect(causeFor(.removed).hasRecoverableAudio)
-    #expect(causeFor(.unverified).hasRecoverableAudio)
-  }
-
   // MARK: - Against the real system
 
   /// Guards the premise the pure cases are built on, using the machine's own

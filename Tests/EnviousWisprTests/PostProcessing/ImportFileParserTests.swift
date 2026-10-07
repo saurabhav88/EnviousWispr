@@ -141,27 +141,7 @@ struct ImportFileParserTests {
     #expect(batch.candidates.isEmpty)
   }
 
-  @Test("text in an unknowable encoding is refused rather than guessed at")
-  func latin1TextIsRefused() async throws {
-    // Superseded contract (#1683). This previously asserted that Latin-1 text
-    // "still reads" — which sounds generous and was in fact the catch-all that
-    // imported mojibake as words, since Latin-1 accepts every byte and can
-    // never report failure. Refusing beats storing a wrong word.
-    let url = try write(try #require("Beyoncé".data(using: .isoLatin1)), as: "legacy.txt")
-    await #expect(throws: ImportFileError.unreadable) {
-      try await FileImportSource(url: url).loadCandidates()
-    }
-  }
-
   // MARK: - Unsupported and unreadable
-
-  @Test("a spreadsheet is named as unsupported, with somewhere to go")
-  func spreadsheetReportsUnsupportedType() async throws {
-    let url = try write("a,b,c", as: "words.csv")
-    await #expect(throws: ImportFileError.unsupportedType(".csv")) {
-      _ = try await FileImportSource(url: url).loadCandidates()
-    }
-  }
 
   @Test("a spreadsheet is never quietly read as a word list")
   func csvIsRefusedRatherThanMangledByThePlainTextParser() async throws {

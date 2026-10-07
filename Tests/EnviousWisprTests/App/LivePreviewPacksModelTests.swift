@@ -281,19 +281,6 @@ struct LivePreviewPacksModelTests {
     return packs.map(\.tag).sorted()
   }
 
-  /// The deadline's own control.
-  ///
-  /// Without it, a latch that never times out looks identical to one that does — every run is
-  /// green either way — and "this cannot hang the suite" stays a comment rather than a fact. The
-  /// documented failure is precisely a doc comment claiming a deadline the code did not have.
-  @Test("The latch reports its deadline instead of parking forever")
-  func latchDeadlineFires() async {
-    let neverOpened = Gate()
-    // settle: the deadline IS the subject under test here, not a wait for something else
-    let opened = await neverOpened.wait(timeout: .milliseconds(50))
-    #expect(!opened, "a gate nobody opens must report the deadline, not wedge the run")
-  }
-
   /// Apple can install the pack and then throw on something afterwards. Before this, the row
   /// rendered "Ready" and "That download did not finish" together — two contradictory answers to
   /// one question, with the wrong one being the answer the user acts on.

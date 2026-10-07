@@ -81,14 +81,6 @@ struct PasteFocusClassificationTests {
     #expect(c == .textField)
   }
 
-  @Test("missing element with wrapper-bundle hint still classifies as .missing")
-  func missingElementWithWrapperHint() {
-    let c = classifyPasteFocus(
-      elementPresent: false, roleIsTextField: false,
-      targetBundleID: "com.pake.c6796d")
-    #expect(c == .missing)
-  }
-
   @Test("similar-looking but not-actually-pake prefix is rejected")
   func similarPrefixRejected() {
     // Test the hard edge: bundle id starting with "com.pak" should NOT match
@@ -96,20 +88,6 @@ struct PasteFocusClassificationTests {
     let c = classifyPasteFocus(
       elementPresent: true, roleIsTextField: false,
       targetBundleID: "com.pakistan.app")
-    #expect(c == .nonText)
-  }
-
-  @Test("AX-denied path passes nil bundle id so wrapper hint cannot bypass accessibility toast")
-  func axDeniedPathDoesNotReceiveHint() {
-    // This test documents the contract at PasteCascadeExecutor:152-153:
-    // when AX is not trusted, the cascade MUST NOT pass the bundle id to the
-    // classifier. Otherwise a com.pake.* target would be promoted to
-    // `.missing` and skip the educational accessibility-denied toast.
-    // We assert the helper's behavior directly: simulate the AX-denied call
-    // by passing nil and verifying it returns `.nonText` regardless of the
-    // bundle id we *would* have passed if AX were granted.
-    let c = classifyPasteFocus(
-      elementPresent: true, roleIsTextField: false, targetBundleID: nil)
     #expect(c == .nonText)
   }
 

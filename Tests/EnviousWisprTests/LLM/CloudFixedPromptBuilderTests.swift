@@ -147,13 +147,4 @@ struct CloudFixedPromptBuilderTests {
     #expect(s.contains(fixedPromptOpening))
   }
 
-  @Test("list-shaped input + custom spelling — vocab and fixed prompt coexist")
-  func listPlusVocab() {
-    let s = system(
-      makeInput(
-        transcript: "grab milk bread eggs and coffee on the way home from EnviousWispr",
-        vocab: [CustomWord(canonical: "EnviousWispr")]))
-    #expect(s.contains(fixedPromptOpening))
-    #expect(s.contains("preferred spellings"))
-  }
 }

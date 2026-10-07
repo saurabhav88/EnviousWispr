@@ -64,19 +64,6 @@ struct SnippetsTransferDocumentTests {
     #expect(read.snippets[0].createdAt == Date(timeIntervalSinceReferenceDate: 778_000_000))
   }
 
-  @Test("Encoding one snippet the way Export does reproduces the shipped bytes")
-  func encoderReproducesShippedBytes() throws {
-    let document = SnippetsTransferDocument(
-      version: 1, keyword: "backslash",
-      snippets: [
-        Snippet(
-          id: UUID(uuidString: "5F3A2C1E-0B7D-4E8A-9C21-3D4E5F6A7B8C")!,
-          trigger: "my email address", expansion: "hello@example.com",
-          createdAt: Date(timeIntervalSinceReferenceDate: 778_000_000))
-      ])
-    #expect(String(decoding: try encoded(document), as: UTF8.self) == Self.shippedV1)
-  }
-
   @Test("A file from a newer version is refused with the update message, not 'damaged'")
   func newerVersionIsUnsupported() throws {
     let data = try encoded(

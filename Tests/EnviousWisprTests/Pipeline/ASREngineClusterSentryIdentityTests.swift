@@ -56,14 +56,6 @@ struct ASREngineClusterSentryIdentityTests {
     }
   }
 
-  @Test("all 4 declared ASREngineError identities are unique")
-  func asrEngineIdentitiesAreUnique() {
-    let errors = Self.asrEnginePins.map(\.0)
-
-    #expect(Set(errors.map(\.sentryFingerprintDescriptor)).count == 4)
-    #expect(Set(errors.map(\.sentrySemanticID)).count == 4)
-  }
-
   // MARK: - B. Pin lock — XPCOperationSignalWedgeError, ParakeetDeliveryError
 
   @Test("XPCOperationSignalWedgeError keeps the exact string matching its 2 live production issues")

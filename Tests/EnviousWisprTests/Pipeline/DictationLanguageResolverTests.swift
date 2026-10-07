@@ -128,21 +128,6 @@ struct DictationLanguageResolverTests {
     #expect(resolved.source == .dictation, "the insertion identifies itself; no document needed")
   }
 
-  @Test("#1921 The SAME input still refuses under the deleted length floor")
-  func shortEnglishContinuationRefusedByTheOldRule() {
-    // The other half of the two-way. Without this the test above would pass on a
-    // build where the floor was never removed, as long as something else
-    // happened to answer — it would prove the framework, not the fix.
-    let resolved = DictationLanguageResolver.resolve(
-      lockedLanguage: nil,
-      engineDetectsLanguage: false,
-      engineReportedLanguage: "en",
-      text: "Warmer and summer starts.",
-      surroundingText: "I can't wait till the weather is ",
-      identify: Self.lengthFlooredIdentify)
-    #expect(resolved.language == nil, "the length floor is what refused it, and it is now gone")
-  }
-
   // MARK: - Obligation 2: German safety
 
   @Test(

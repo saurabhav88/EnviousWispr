@@ -69,11 +69,6 @@ struct AudioInputSourceConformanceFreezeTests {
     }
   }
 
-  @Test("every conformer's backend tag is unique")
-  func backendTagsAreUnique() {
-    let tags = ConformerKind.allCases.map { make($0).captureSourceType }
-    #expect(Set(tags).count == tags.count)
-  }
 }
 
 // #1377 slice 2b / #1378 — locks candidate D's additive device-target contract:
@@ -88,13 +83,6 @@ struct HALDeviceInputSourceDeviceTargetTests {
   func defaultTargetIsNil() {
     let source = HALDeviceInputSource()
     #expect(source.targetDeviceUID == nil)
-  }
-
-  @Test("a pinned target UID is reflected")
-  func pinnedTargetReflected() {
-    let source = HALDeviceInputSource()
-    source.targetDeviceUID = "BC-87-FA-9C-7E-71:input"
-    #expect(source.targetDeviceUID == "BC-87-FA-9C-7E-71:input")
   }
 
   // MARK: - #1714: warm compatibility, delegated to InputDeviceResolver

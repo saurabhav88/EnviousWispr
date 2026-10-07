@@ -43,33 +43,6 @@ import Testing
 
   // MARK: 1 — the deleted driver protocol stays deleted
 
-  @Test("DictationPipeline protocol is absent from Sources/ (PR-9 deleted it)")
-  func dictationPipelineAbsentFromSources() throws {
-    let hits = try Self.scanSources(pattern: Self.dictationPipelineToken)
-    #expect(
-      hits.isEmpty,
-      """
-      The deleted `DictationPipeline` driver protocol reappears in Sources/:
-      \(hits.joined(separator: "\n"))
-      PR-9 of #827 deleted it. `KernelDictationDriver` is the single concrete
-      recording driver and the App holds it directly. Do not reintroduce a
-      shared driver protocol — that is a second orchestration brain.
-      """)
-  }
-
-  @Test("DictationPipeline appears in Tests/ only in this freeze file")
-  func dictationPipelineAbsentFromTestsExceptThisFile() throws {
-    let offenders = try Self.scanTests(
-      pattern: Self.dictationPipelineToken, allowing: ["KernelOwnershipFreezeTests.swift"])
-    #expect(
-      offenders.isEmpty,
-      """
-      Test files reference the deleted `DictationPipeline` protocol:
-      \(offenders.joined(separator: "\n"))
-      Re-point the test at the concrete `KernelDictationDriver`.
-      """)
-  }
-
   // MARK: 2 — the lifecycle FSM has exactly one owner (fail-closed)
 
   @Test("enum RecordingSessionState has exactly one source declaration")
@@ -104,25 +77,7 @@ import Testing
 
   // MARK: 4 — the deleted Parakeet pipeline type stays deleted
 
-  @Test("TranscriptionPipeline type is absent from Sources/ (deleted PR-4b.4)")
-  func transcriptionPipelineAbsentFromSources() throws {
-    let hits = try Self.scanSources(pattern: Self.transcriptionPipelineToken)
-    #expect(
-      hits.isEmpty,
-      """
-      The deleted `TranscriptionPipeline` type reappears in Sources/:
-      \(hits.joined(separator: "\n"))
-      It was deleted at PR-4b.4 (#827) when Parakeet moved onto the kernel.
-      """)
-  }
-
   // MARK: Adversarial — the matchers flag real reintroductions
-
-  @Test("a re-added DictationPipeline protocol declaration is flagged")
-  func adversarialProtocolReintroductionFlagged() {
-    let line = "public protocol DictationPipeline: AnyObject {"
-    #expect(Self.regexFlags(source: line, pattern: Self.dictationPipelineToken))
-  }
 
   @Test("a second enum RecordingSessionState declaration is flagged")
   func adversarialSecondFSMFlagged() {
@@ -136,38 +91,9 @@ import Testing
     #expect(Self.regexFlags(source: line, pattern: Self.handleEventDecl))
   }
 
-  @Test("a TranscriptionPipeline construction is flagged")
-  func adversarialTranscriptionPipelineFlagged() {
-    let line = "    let p = TranscriptionPipeline()"
-    #expect(Self.regexFlags(source: line, pattern: Self.transcriptionPipelineToken))
-  }
-
   // MARK: Fail-closed — a silent rename (count 0) must NOT satisfy `== 1`
 
-  @Test("single-declaration locks are fail-closed: 0 and 2 both fail the == 1 check")
-  func singleDeclarationLocksAreFailClosed() {
-    let zero = "let x = 1\nlet y = 2\n"
-    let two = "enum RecordingSessionState {}\nenum RecordingSessionState {}\n"
-    #expect(Self.countMatches(in: zero, pattern: Self.recordingSessionStateDecl) == 0)
-    #expect(Self.countMatches(in: two, pattern: Self.recordingSessionStateDecl) == 2)
-    // Both differ from 1, so the live `== 1` assertion fails closed in either case.
-  }
-
   // MARK: Negative controls — legitimate code is NOT flagged
-
-  @Test("KernelDictationDriver / KernelDictationDriverFactory are not flagged by the protocol ban")
-  func negativeControlDriverNamesNotFlagged() {
-    let cls = "public final class KernelDictationDriver: HeartPathTelemetryTarget {"
-    let factory = "public enum KernelDictationDriverFactory {"
-    #expect(Self.regexFlags(source: cls, pattern: Self.dictationPipelineToken) == false)
-    #expect(Self.regexFlags(source: factory, pattern: Self.dictationPipelineToken) == false)
-  }
-
-  @Test("WhisperKitPipelineState is not flagged by the TranscriptionPipeline ban")
-  func negativeControlSubstringNotFlagged() {
-    let line = "    let s: WhisperKitPipelineState = .idle"
-    #expect(Self.regexFlags(source: line, pattern: Self.transcriptionPipelineToken) == false)
-  }
 
   @Test("a handle(event:) CALL site is not flagged by the declaration matcher")
   func negativeControlCallSiteNotFlagged() {

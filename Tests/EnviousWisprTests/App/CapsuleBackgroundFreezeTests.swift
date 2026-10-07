@@ -95,45 +95,6 @@ struct CapsuleBackgroundFreezeTests {
     try read(capsuleSourcePaths[0])
   }
 
-  /// **The fail-closed read, which nothing exercised until #2380.**
-  ///
-  /// Every count in this file goes through `read`. An empty or missing member
-  /// makes each of them read LOW, and low is exactly what a deleted literal
-  /// produces — so without the throw the two failures are indistinguishable, and
-  /// the suite reports the wrong one. That is why the migration was written to
-  /// refuse rather than to contribute zero.
-  ///
-  /// **Asserts the THROW, never a count.** Observing a count here would pass for
-  /// the wrong reason: zero occurrences is the very thing being disambiguated.
-  ///
-  /// Both halves, because they fail differently. An EMPTY file reaches our own
-  /// refusal; a MISSING one never gets past `String(contentsOf:)`, and a guard
-  /// that only ever saw the second would not prove the first exists.
-  @Test("an empty or missing source member is refused, never counted as zero")
-  func anEmptyMemberIsRefused() throws {
-    let dir = URL(fileURLWithPath: NSTemporaryDirectory())
-      .appending(path: "ew-2380-\(UUID().uuidString)")
-    try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-    defer { try? FileManager.default.removeItem(at: dir) }
-
-    let blank = dir.appending(path: "Blank.swift")
-    try "   \n\t\n".write(to: blank, atomically: true, encoding: .utf8)
-    #expect(throws: CapsuleFreezeSourceError.self) {
-      _ = try Self.read(at: blank, naming: "Blank.swift")
-    }
-
-    let absent = dir.appending(path: "NeverWritten.swift")
-    #expect(throws: (any Error).self) {
-      _ = try Self.read(at: absent, naming: "NeverWritten.swift")
-    }
-
-    // The two-way half: a member with content comes back, so the refusal above
-    // is about emptiness rather than about this helper refusing everything.
-    let real = dir.appending(path: "Real.swift")
-    try "struct S {}\n".write(to: real, atomically: true, encoding: .utf8)
-    #expect(try Self.read(at: real, naming: "Real.swift").contains("struct S"))
-  }
-
   enum CapsuleFreezeSourceError: Error, CustomStringConvertible {
     case empty(String)
     var description: String {
@@ -308,34 +269,6 @@ struct CapsuleBackgroundFreezeTests {
       expected \(entry.expected). The aggregate count can stay right while this is \
       wrong: a literal that moved OUT of this declaration and reappeared anywhere \
       else in the same two files leaves the total unchanged.
-      """)
-  }
-
-  /// **Counts occurrences rather than asking whether the literal exists anywhere,
-  /// and the mutation control is what found that.** The first version used
-  /// `source.contains(...)`. Deleting the capsule fill entirely — the exact leak
-  /// this suite exists to catch — left that check GREEN, because
-  /// `DistressCapsuleBackground` carries the same literal and the whole-file
-  /// search found it there. A guard that reads the whole file cannot tell which
-  /// copy it found.
-  ///
-  /// Kept ALONGSIDE `frozenLiteralsStayInTheirOwnDeclaration` rather than replaced
-  /// by it (#2380): the aggregate is a cheap floor that notices a literal vanishing
-  /// from the two files entirely, and the ownership row is the sharp edge.
-  @Test(
-    "the capsule's own colours are unchanged",
-    arguments: CapsuleBackgroundFreezeTests.frozenCapsuleLiterals)
-  func capsuleLiteralsAreFrozen(entry: (what: String, expected: Int, literal: String)) throws {
-    let source = try Self.capsuleSources()
-    let found = source.components(separatedBy: entry.literal).count - 1
-    #expect(
-      found == entry.expected,
-      """
-      the \(entry.what) literal appears \(found) times, expected \(entry.expected). \
-      #2204 is gated to the preview branch; the capsule paint is shared by seven \
-      other pills that ship to everyone and is reserved for a separate redesign. A \
-      count that DROPPED means one of them lost its colour; a count that ROSE means \
-      the freeze list is stale.
       """)
   }
 

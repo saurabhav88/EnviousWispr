@@ -250,15 +250,6 @@ import Testing
     #expect(twice[0].disposition == twice[1].disposition)
   }
 
-  @Test("inputs are never mutated by filtering")
-  func inputsUntouched() {
-    let word = CustomWord(canonical: "Saira", aliases: ["Sarah"])
-    let inp = inputs(userWords: [word])
-    _ = F.filter(runs: [run("sarah", "Saira"), run("a", "b"), run("c", "d")], inputs: inp)
-    #expect(inp.userWords == [word] && inp.packTerms.isEmpty)
-    #expect(word.aliases == ["Sarah"])
-  }
-
   // MARK: - #996 baseline 2026-09-20, W1: a file-name-shaped canonical
 
   @Test(

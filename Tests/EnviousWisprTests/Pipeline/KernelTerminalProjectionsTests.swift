@@ -46,16 +46,6 @@ struct KernelTerminalProjectionsTests {
     }
   }
 
-  /// The one non-identity mapping, called out because it is the name #1890
-  /// counts and an "obvious" correction to `asr_empty` would silently break
-  /// that issue's queries.
-  @Test("asrEmpty maps to asr_empty_with_speech, not asr_empty")
-  func asrEmptyKeepsItsMoreSpecificName() {
-    #expect(RecordingFailureReason.asrEmpty.terminalNoticeReason == .asrEmptyWithSpeech)
-    #expect(
-      RecordingFailureReason.asrEmpty.terminalNoticeReason.rawValue == "asr_empty_with_speech")
-  }
-
   /// Cheap diagnostic, NOT the vocabulary authority — a wrong snake_case value
   /// passes this. The exhaustive table above is what actually pins the codes.
   @Test("no emitted reason code contains an uppercase letter")

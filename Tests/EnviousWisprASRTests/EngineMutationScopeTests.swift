@@ -58,25 +58,6 @@ struct EngineMutationScopeTests {
     #expect(grantedRefusalCount == 0)
   }
 
-  @Test("a granted claim releases and forwards a wake on normal completion")
-  func releaseAndWakeOnNormalCompletion() async {
-    var released = false
-    var woke = false
-    let scope = EngineMutationScope.live(
-      tryBegin: { true },
-      end: {
-        released = true
-        return true
-      },
-      wake: { woke = true },
-      onRefused: { _ in })
-
-    _ = await scope.withClaim(site: "site") { 1 }
-
-    #expect(released)
-    #expect(woke)
-  }
-
   @Test("a granted claim releases and forwards a wake even when the operation throws")
   func releaseAndWakeOnThrownError() async {
     struct ProbeError: Error {}

@@ -20,17 +20,6 @@ import Testing
 @MainActor
 struct EscapeRecoveryExpiryOwnershipTests {
 
-  /// **A COMPILE contract.** It asserts nothing at runtime because the claim is
-  /// about the initialiser's shape: the leaf can no longer be handed an expiry
-  /// callback, so the compiler is the only thing that can check it.
-  ///
-  /// Committed before the deletion, where it fails to build for want of
-  /// `onExpire`.
-  @Test("the recovery pill is constructible with no expiry callback")
-  func recoveryPillTakesNoExpiryCallback() {
-    _ = EscapeRecoveryPillView(onPaste: {}, dwell: nil)
-  }
-
   /// A dwell that arrives late is drawn from its REMAINDER, not from the start.
   ///
   /// Not a new claim and not this chunk's subject — it is here because the

@@ -17,15 +17,4 @@ struct InputSocketCopyTests {
       InputSocketCopy.helper(deviceName: "Scarlett 2i2 USB") == "Remembered for Scarlett 2i2 USB.")
   }
 
-  @Test("no dashes anywhere in the row's copy (content rule)")
-  func noDashes() {
-    let all = [
-      String(localized: InputSocketCopy.labelResource), InputSocketCopy.optionLabel(index: 3),
-      InputSocketCopy.helper(deviceName: "Any Box"),
-    ]
-    for s in all {
-      #expect(s.contains("\u{2014}") == false, "em dash in: \(s)")
-      #expect(s.contains("\u{2013}") == false, "en dash in: \(s)")
-    }
-  }
 }

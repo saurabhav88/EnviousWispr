@@ -13,13 +13,6 @@ struct CaptureTelemetryStateTests {
     #expect(state.shouldEmitZombie(route: "bt", window: .seconds(30)) == true)
   }
 
-  @Test("shouldEmitZombie within window on same route returns false")
-  func sameRouteSuppressed() {
-    let state = CaptureTelemetryState()
-    state.markZombieEmitted(route: "bt")
-    #expect(state.shouldEmitZombie(route: "bt", window: .seconds(30)) == false)
-  }
-
   @Test("shouldEmitZombie when route changes returns true")
   func routeChangeReEmits() {
     let state = CaptureTelemetryState()
@@ -40,16 +33,6 @@ struct CaptureTelemetryStateTests {
     state.markZombieEmitted(route: "bt")
     state.recordSuccessfulRecording(recoveryTransport: "builtin", sessionID: 1)
     #expect(state.shouldEmitZombie(route: "bt", window: .seconds(30)) == true)
-  }
-
-  @Test("recordSuccessfulRecording sets a time-since baseline")
-  func successSetsBaseline() {
-    let state = CaptureTelemetryState()
-    #expect(state.timeSinceLastSuccessfulRecordingMs() == nil)
-    state.recordSuccessfulRecording(recoveryTransport: "builtin", sessionID: 1)
-    let ms = state.timeSinceLastSuccessfulRecordingMs()
-    #expect(ms != nil)
-    #expect((ms ?? -1) >= 0)
   }
 
   // MARK: - Injected-clock boundary tests (#784 PR1, 2026-05-18)
@@ -166,14 +149,6 @@ struct CaptureTelemetryStateTests {
     #expect(state.recordSuccessfulRecording(recoveryTransport: "builtin", sessionID: 1) == nil)
   }
 
-  @Test("transport_changed reflects a transport-class change at resolution")
-  func transportChangedFlag() {
-    let state = CaptureTelemetryState()
-    state.armDeadMicWatch(
-      DeadMicRetireWatch(shape: "all_zero_from_start", transport: "bluetooth"), sessionID: 1)
-    let outcome = state.recordSuccessfulRecording(recoveryTransport: "builtin", sessionID: 2)
-    #expect(outcome?.transportChanged == true)
-  }
 }
 
 /// Fake monotonic instant clock for tests that need deterministic

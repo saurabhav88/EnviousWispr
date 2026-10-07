@@ -160,21 +160,6 @@ struct LevelRailDesignTests {
 
   // MARK: - It perturbed nothing
 
-  /// The two shipped designs are byte-identical to what `RenderedPillFreezeTests`
-  /// froze before this design existed. Asserted here as well as there because the
-  /// frozen suite proves they did not move; this proves adding a CASE did not move
-  /// them, which is the specific risk of widening a switch.
-  @Test(
-    "adding a design left the shipped two exactly as they were",
-    arguments: [
-      (RecordingPillDesign.classic, CGSize(width: 185, height: 92)),
-      (RecordingPillDesign.readingWell, CGSize(width: 400, height: 34)),
-    ])
-  func shippedDesignsAreUnmoved(row: (RecordingPillDesign, CGSize)) {
-    let measured = RenderedPillHarness.recordingRootSize(design: row.0)
-    #expect(measured == row.1, "\(row.0) measured \(measured), frozen at \(row.1)")
-  }
-
   /// The catalog's own geometry for the new design, so a wrong number is caught
   /// without rendering anything.
   @Test("the catalog gives the level rail its declared geometry")

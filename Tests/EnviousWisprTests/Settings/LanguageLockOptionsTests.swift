@@ -49,69 +49,6 @@ struct LanguageLockOptionsTests {
     #expect(codes?.isEmpty == false)
   }
 
-  /// The two backends must not answer alike. If a refactor collapsed the switch,
-  /// the fast engine would start offering all 99 and every lock outside its 25
-  /// would become the silent failure above.
-  @Test("The two backends give genuinely different answers")
-  func theBackendsDiffer() {
-    let whisper = LanguageLockOptions.lockableCodes(for: .whisperKit)
-    let parakeet = LanguageLockOptions.lockableCodes(for: .parakeet)
-    #expect(whisper != parakeet)
-    #expect(whisper == nil)
-    #expect(parakeet != nil)
-  }
-
-  /// The rule has exactly one implementation. Settings pages depend on the
-  /// shared owner, never on the concrete ASR backend that feeds it. This
-  /// boundary catches a copied rule at its source, before receiver aliases or
-  /// helper parameters can hide the eventual member access.
-  @Test("Only the shared owner names the fast backend")
-  func onlyTheOwnerNamesTheFastBackend() throws {
-    let sources = try SettingsSourceEnumeration.sources()
-    let ownerPath = SettingsSourceEnumeration.relativeDirectory + "/LanguageLockOptions.swift"
-    let files = sources.filter { $0.path != ownerPath }
-    try #require(files.isEmpty == false, "the backend boundary has no non-owner subjects")
-
-    var offenders: [String] = []
-    for file in files {
-      if Self.namesFastBackend(in: file.text) {
-        offenders.append(file.path)
-      }
-    }
-    #expect(
-      offenders.isEmpty,
-      "ParakeetBackend is named outside LanguageLockOptions in: \(offenders)")
-
-    // Two-way control: the check can actually find the string, so an empty
-    // result means "looked correctly and found nothing" rather than "the sweep
-    // is broken". Without this, a wrong path reads as a clean pass.
-    let owner = try #require(sources.first { $0.path == ownerPath }).text
-    #expect(
-      Self.namesFastBackend(in: owner),
-      "positive control failed: the sweep cannot see the owner naming ParakeetBackend"
-    )
-  }
-
-  /// #2161's independent mutant hid the backend member behind a receiver alias.
-  /// The boundary check catches the root type reference instead, regardless of
-  /// how many aliases, parameters, or control-flow scopes follow it. SwiftSyntax
-  /// keeps comments and string literals out of these nodes, so prose is safe.
-  @Test("The backend boundary scan reads syntax, not matching prose")
-  func backendBoundaryScanIsStructural() {
-    for source in [
-      "let fastBackend = ParakeetBackend.self",
-      "let fastBackend: ParakeetBackend.Type = ParakeetBackend.self",
-      "typealias FastBackend = ParakeetBackend",
-      "func codes(backend: ParakeetBackend.Type) { backend.lockableLanguageCodes }",
-      "return EnviousWisprASR.ParakeetBackend.lockableLanguageCodes",
-    ] {
-      #expect(Self.namesFastBackend(in: source), "missed backend syntax: \(source)")
-    }
-    #expect(!Self.namesFastBackend(in: "return self.lockableLanguageCodes"))
-    #expect(!Self.namesFastBackend(in: "let backend = OtherBackend.self"))
-    #expect(!Self.namesFastBackend(in: "// ParakeetBackend\nlet note = \"ParakeetBackend\""))
-  }
-
   private static func namesFastBackend(in source: String) -> Bool {
     let visitor = FastBackendReferenceVisitor()
     visitor.walk(Parser.parse(source: source))

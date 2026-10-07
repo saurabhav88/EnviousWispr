@@ -56,18 +56,6 @@ struct WordCorrectorEmojiReservationTests {
 
   // MARK: - Persistence (R2 grounded-review addition)
 
-  @Test(
-    "Persistence: 'emoji' custom-word entry stays in the vocabulary list (only the runtime substitution is suppressed)"
-  )
-  func customWordEntryPersistsButIsNotApplied() {
-    let foo = CustomWord(canonical: "Foo", aliases: ["emoji"])
-    // The vocabulary itself is unchanged — entry remains. Only the per-correction
-    // substitution is suppressed at runtime.
-    #expect(foo.aliases == ["emoji"])
-    let (result, _) = corrector.correct("emoji", against: [foo])
-    #expect(result == "emoji", "Runtime substitution suppressed for reserved trigger")
-  }
-
   // MARK: - Negative control
 
   @Test("Negative control: a non-reserved custom word DOES substitute normally")

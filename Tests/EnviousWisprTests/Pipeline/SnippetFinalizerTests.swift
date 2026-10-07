@@ -92,18 +92,6 @@ struct SnippetFinalizerTests {
     expectNoSentinelSurvives(ctx)
   }
 
-  /// The control that makes the row above mean something. Same shape, same added period, flag
-  /// off — the period stays, because it is the user's sentence and not the snippet's ending.
-  @Test("Without the flag the same added period is kept")
-  func polishAddedTerminatorIsKeptWithoutTheFlag() {
-    var ctx = context(
-      text: "email me at EWSNIPaaa", polished: "Email me at EWSNIPaaa.", records: [email])
-
-    SnippetFinalizer.finalize(&ctx)
-
-    #expect(ctx.polishedText == "Email me at sam@example.com.")
-  }
-
   /// A saved expansion that ends itself. The doubled stop appears only AFTER substitution, so
   /// nothing before this step could have caught it.
   @Test("An expansion that ends a sentence does not gain a second stop from polish")

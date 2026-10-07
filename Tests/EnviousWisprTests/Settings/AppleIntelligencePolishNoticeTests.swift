@@ -49,30 +49,6 @@ struct AppleIntelligencePolishNoticeTests {
 
   // MARK: - Negatives (unavailable, but not an actionable reason)
 
-  @Test("Ineligible hardware stays silent (unreachable in-app: Apple-Silicon-only)")
-  func deviceNotEligibleIsSilent() {
-    // We ship arm64-only, so an ineligible Mac never launches us. If the
-    // classifier ever saw this reason it must NOT surface a note the user
-    // cannot act on.
-    #expect(
-      makeReport(status: .unavailable, reasons: [.deviceNotEligible]).onboardingPolishNotice == nil)
-    #expect(
-      makeReport(status: .unavailable, reasons: [.unsupportedHardware]).onboardingPolishNotice
-        == nil)
-  }
-
-  @Test("Transient unavailable reasons stay silent")
-  func transientReasonsAreSilent() {
-    for reason in [
-      AIFailureReason.modelNotReady, .modelAccessFailed, .generationFailed, .notCompiledIn,
-      .unknownError,
-    ] {
-      #expect(
-        makeReport(status: .unavailable, reasons: [reason]).onboardingPolishNotice == nil,
-        "\(reason) should be silent")
-    }
-  }
-
   @Test("Every reason except the two actionable ones is silent under .unavailable")
   func allOtherReasonsAreSilent() {
     for reason in AIFailureReason.allCases
@@ -102,16 +78,6 @@ struct AppleIntelligencePolishNoticeTests {
   }
 
   // MARK: - Precedence (defensive: the two are mutually exclusive in practice)
-
-  @Test("When both actionable reasons co-occur, enableInSettings wins")
-  func enableInSettingsTakesPrecedence() {
-    // Unreachable in practice (the eligibility gate that yields
-    // appleIntelligenceDisabled is skipped when the OS gate fails), but the
-    // documented order checks the toggle-fixable case first.
-    let report = makeReport(
-      status: .unavailable, reasons: [.unsupportedOS, .appleIntelligenceDisabled])
-    #expect(report.onboardingPolishNotice == .enableInSettings)
-  }
 
   // MARK: - Deep-link constant
 

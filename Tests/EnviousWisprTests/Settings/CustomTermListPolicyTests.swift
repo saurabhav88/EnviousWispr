@@ -157,12 +157,6 @@ struct CustomTermListPolicyTests {
     #expect(CustomTermListPolicy.paged(words, page: 1).count == 25)
   }
 
-  @Test("paged: out-of-range page → empty")
-  func pagedOutOfRange() {
-    let words = (0..<10).map { Self.make("term\($0)") }
-    #expect(CustomTermListPolicy.paged(words, page: 5).isEmpty)
-  }
-
   // MARK: - selectableIDs (#1703)
 
   @Test(

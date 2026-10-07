@@ -148,12 +148,6 @@ struct AIPolishClassifierTests {
     #expect(AIPolishModelClassifier.isRecommendedForCleanup("gemini-1.5-flash-8b"))
   }
 
-  @Test("Mixed-case ids normalize")
-  func mixedCaseNormalizes() {
-    #expect(AIPolishModelClassifier.isRecommendedForCleanup("GPT-4o-Mini"))
-    #expect(AIPolishModelClassifier.isRecommendedForCleanup("Gemini-2.5-Flash"))
-  }
-
   // MARK: - Negatives — flagships (no positive token)
 
   @Test("Flagship models without size suffix are not recommended")

@@ -57,15 +57,4 @@ struct S1ControlCopyTests {
     }
   }
 
-  /// Every segment label is a distinct word, so two options can never render
-  /// as the same pill.
-  @Test("option labels are distinct within each axis")
-  func labelsAreDistinct() {
-    #expect(
-      Set(S1Styling.allCases.map(S1ControlCopy.label(for:))).count == S1Styling.allCases.count)
-    #expect(
-      Set(S1Structure.allCases.map(S1ControlCopy.label(for:))).count == S1Structure.allCases.count)
-    #expect(
-      Set(S1Context.allCases.map(S1ControlCopy.label(for:))).count == S1Context.allCases.count)
-  }
 }

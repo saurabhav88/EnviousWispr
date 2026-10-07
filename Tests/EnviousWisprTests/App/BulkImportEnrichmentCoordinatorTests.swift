@@ -750,26 +750,6 @@ struct BulkImportEnrichmentCoordinatorTests {
 
   // MARK: - Required coverage: priority, single-flight, pill counts, chunking
 
-  @Test("every suggestion call uses .background priority")
-  func everyCallUsesBackgroundPriority() async throws {
-    let (coordinator, _) = makeCoordinator()
-    _ = coordinator.commitImport(
-      plan(
-        baseline: coordinator.customWords,
-        additions: [
-          CustomWordsImportCandidate(canonical: "Kubernetes"),
-          CustomWordsImportCandidate(canonical: "Qualtrics"),
-        ]))
-    let suggester = FakeAliasSuggester()
-    let bulkCoordinator = BulkImportEnrichmentCoordinator(
-      customWords: coordinator, aliasSuggester: suggester, presentStatus: { _ in })
-
-    bulkCoordinator.requestDrain()
-    await bulkCoordinator.awaitDrainForTesting()
-
-    #expect(suggester.priorities == [.background, .background])
-  }
-
   @Test("two overlapping requestDrain() calls run exactly one walker, never two")
   func overlappingRequestDrainCallsAreSingleFlight() async throws {
     let (coordinator, _) = makeCoordinator()

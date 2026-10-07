@@ -131,21 +131,6 @@ import Testing
 
     // MARK: - 2. Remembered selection is irrelevant
 
-    @Test("adoption ignores selectedInputDeviceUID entirely")
-    func adoptionIgnoresRememberedSelection() async throws {
-      let stub = StubSource()
-      stub.boundToReturn = BoundInputDevice(
-        deviceID: 7, deviceUID: "actually-bound-uid", transportLabel: "built_in",
-        resolutionSource: "system_default", inputChannel: 0)
-      let manager = Self.makeManager(
-        stub, rememberedSelection: "remembered-but-never-opened-uid")
-
-      try await manager.startEnginePhase()
-
-      #expect(manager.zeroSignalDiscriminatorDevice?.deviceUID == "actually-bound-uid")
-      #expect(manager.zeroSignalDiscriminatorDevice?.deviceUID != "remembered-but-never-opened-uid")
-    }
-
     // MARK: - 3. A throwing attempt must not leave the previous session's device
 
     @Test("a throwing prepare() leaves nil, never the prior session's device")

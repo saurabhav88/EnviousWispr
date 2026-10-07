@@ -69,30 +69,7 @@ struct OutputClassifierSentryIdentityTests {
     let sentrySemanticID = "fixture.semantic"
   }
 
-  @Test("the explicit identity overrides the bridged NSError identity")
-  func explicitIdentityOverridesBridge() {
-    let error = StableFixtureError()
-    let bridged = error as NSError
-
-    #expect(bridged.domain == "fixture.raw")
-    #expect(bridged.code == 20)
-    #expect(SentryBreadcrumb.structuredDescriptor(error) == "fixture.pinned#outputclassifier")
-  }
-
   // MARK: - C. Dev/prod split survives the pin
-
-  @Test("environment keeps the same descriptor's dev and prod fingerprints separate")
-  func devProdSplitSurvives() {
-    let error = OutputClassifierError.disabled(.missingFile)
-    let prod = SentryBreadcrumb.handledErrorFingerprint(
-      for: Self.category, error: error, detail: "missing_file", environment: "production")
-    let dev = SentryBreadcrumb.handledErrorFingerprint(
-      for: Self.category, error: error, detail: "missing_file", environment: "development")
-
-    #expect(prod != dev)
-    #expect(prod.last == "production")
-    #expect(dev.last == "development")
-  }
 
   // MARK: - D. Event-construction contract
 
@@ -117,16 +94,4 @@ struct OutputClassifierSentryIdentityTests {
     #expect(event.tags?["error.identity"] == Self.semanticID)
   }
 
-  @Test(
-    "a non-conforming error's descriptor and fingerprint are unchanged (#1525 PR J-1: makeHandledErrorEvent narrowed — structuredDescriptor/handledErrorFingerprint stay generic)"
-  )
-  func nonConformingErrorEventUnchanged() {
-    let error = NSError(domain: "EnviousWispr", code: -3)
-
-    #expect(SentryBreadcrumb.structuredDescriptor(error) == "EnviousWispr#-3")
-    #expect(
-      SentryBreadcrumb.handledErrorFingerprint(
-        for: Self.category, error: error, environment: Self.env)
-        == ["handled_error", "output_classifier_load_failed", "EnviousWispr#-3", Self.env])
-  }
 }

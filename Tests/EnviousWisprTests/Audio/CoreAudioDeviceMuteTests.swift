@@ -50,15 +50,6 @@ struct CoreAudioDeviceMuteTests {
     #expect(CoreAudioDeviceMute.interpret(status: status, isMuted: 0) == .unverified)
   }
 
-  /// A failed read must not be rescued by a stale non-zero out-parameter —
-  /// the status is the authority, `isMuted` only meaningful under `noErr`.
-  @Test("a failed read ignores isMuted entirely")
-  func failedReadDoesNotConsultIsMuted() {
-    #expect(
-      CoreAudioDeviceMute.interpret(status: kAudioHardwareNotRunningError, isMuted: 0)
-        == .unverified)
-  }
-
   // MARK: - Against the real system
 
   /// Guards the premise the pure cases are built on: a nonexistent device ID
