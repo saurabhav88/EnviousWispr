@@ -187,8 +187,11 @@ package enum SeamCasingOracleRuntime {
   @concurrent
   private static func drain() async {
     while true {
-      // `waiting` is read in the same critical section as the decision, for
-      // `drainDecisionForTesting` only.
+      // For `drainDecisionForTesting` only: the observer is read BEFORE the
+      // decision, so a pass that decided under an earlier case can never report
+      // to an observer a later case installed; `waiting` is read in the same
+      // critical section as the decision.
+      let observe = drainDecisionForTesting.withLock { $0 }
       let (next, waiting): ((String, Int)?, [String]) = state.withLock { state in
         guard state.latched == nil else { return (nil, state.pending) }
         // Wait for in-flight decisions. Their `NSSpellChecker` calls were
@@ -199,7 +202,7 @@ package enum SeamCasingOracleRuntime {
         state.preparing = true
         return ((base, state.epoch), state.pending)
       }
-      drainDecisionForTesting.withLock({ $0 })?(next?.0, waiting)
+      observe?(next?.0, waiting)
       guard let (base, startedEpoch) = next else {
         // Either nothing to do, or a lease is out. A lease holder re-pokes the
         // drain on release, so returning here cannot strand pending work.
