@@ -563,7 +563,12 @@ struct SettingsMapRenderingTests {
       }
       return Rendered(list: list, destination: .dictionary, alwaysOnThisPage: always)
     }
-    let list = try await dictionaryTab(tab)
+    // A third label part picks the Learn From row's picture: `dictionary.learnFrom.download` is the
+    // state whose row offers an action button, which the default `.unwired` picture never shows.
+    let presentation: LearnFromEditsSettingsPresentation =
+      parts.count > 2 && parts[2] == "download"
+      ? .init(selection: .unavailable(.noQualifiedArm), judge: .notInstalled) : .unwired
+    let list = try await dictionaryTab(tab, learnFromPresentation: presentation)
     let strays = mapped(list).filter {
       SettingsMap.node($0).dictionaryTab.map { $0 != tab } ?? false
     }
@@ -574,8 +579,10 @@ struct SettingsMapRenderingTests {
   }
 
   /// The other three tabs, hosted as YourWordsView hosts them (its tab is private state).
-  static func dictionaryTab(_ tab: DictionaryTab, searching: Bool = false) async throws
-    -> [SettingsMapRegistration]
+  static func dictionaryTab(
+    _ tab: DictionaryTab, searching: Bool = false,
+    learnFromPresentation: LearnFromEditsSettingsPresentation = .unwired
+  ) async throws -> [SettingsMapRegistration]
   {
     let (home, words) = try Self.dictionaryHome()
     if searching { try #require(words.add(CustomWord(canonical: "Envious")) == nil) }
@@ -615,7 +622,7 @@ struct SettingsMapRenderingTests {
         ScrollView { LazyVStack(alignment: .leading, spacing: 0) { content } }
           .environment(home.settings).environment(words).environment(packs)
           .environment(contacts).environment(checker)
-          .environment(LearnFromEditsAvailability(presentation: .unwired))))
+          .environment(LearnFromEditsAvailability(presentation: learnFromPresentation))))
   }
 
   // MARK: - Snippets, Keybinds, App Settings, Transcribe a File
