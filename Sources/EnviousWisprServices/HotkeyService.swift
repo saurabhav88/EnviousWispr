@@ -139,7 +139,8 @@ public final class HotkeyService {
   private var localModifierMonitorToken: DesktopEffectToken?
 
   public private(set) var isEnabled = false
-  public private(set) var isModifierHeld = false
+  /// The record key is held, as the push-to-talk gesture last saw it (#3544 P1: owned by `gesture`).
+  public var isModifierHeld: Bool { gesture.isHeld }
 
   /// Tracks the in-flight recording Task so we can cancel zombie Tasks from
   /// previous press/release events before starting new ones. This serializes
@@ -148,22 +149,15 @@ public final class HotkeyService {
 
   // MARK: - Hands-Free (Double-Press Lock) State
 
+  /// The push-to-talk record gesture (#3544 P1). Every hands-free decision and the state it reads
+  /// moved into this value verbatim with their reasons; this service applies its decisions on the
+  /// same turn, exactly as before.
+  private var gesture = RecordGesture()
+
   /// True when recording is locked into hands-free mode.
   /// When locked, key releases are suppressed and recording continues
   /// until the next key press or cancel.
-  public private(set) var isRecordingLocked: Bool = false
-
-  /// Timestamp of the key-down that started the current recording session.
-  /// Used for the 500ms double-press detection window.
-  private var recordingStart: InputTime? = nil
-
-  /// #1631 — identifies one start attempt, incremented only when a fresh press
-  /// stamps a new one, so a late result can prove which press it belongs to.
-  ///
-  /// Deliberately NOT `stateGeneration`: that is bumped by every unlocked release
-  /// too, so a generation captured at press time is already stale in exactly the
-  /// press → release → press sequence this fix exists for.
-  private var startPressID: UInt64 = 0
+  public var isRecordingLocked: Bool { gesture.isLocked }
 
   /// #1631 — the press whose start confirmed a continuing session, and that
   /// session's opaque id. Together they gate publication: hands-free intent is
@@ -175,47 +169,6 @@ public final class HotkeyService {
   /// Debounce timer: on quick PTT release (< 500ms), waits for a possible
   /// second press before stopping. Cancelled on double-press or new recording.
   private var debounceTask: Task<Void, Never>? = nil
-
-  /// Monotonically increasing counter incremented on every state-changing event
-  /// (press, release, cleanup). Debounce callbacks compare their captured
-  /// generation to the current value — if they differ, the callback is stale
-  /// and must not fire. This is the primary guard against Task.isCancelled
-  /// races where cancellation hasn't propagated before the closure executes.
-  private var stateGeneration: UInt64 = 0
-
-  /// Timestamp when hands-free lock was activated. Used as a cooldown guard:
-  /// presses within 500ms of locking are ignored to prevent accidental
-  /// finger-bounce from immediately stopping the locked recording.
-  private var lockAt: InputTime? = nil
-
-  // MARK: - #3534 Stop-timer race measurement (diagnostic only)
-
-  /// Bumped by `invalidateQuickTapDiagnostics()`, the one owner of the measurement's lifecycle
-  /// (plan §3.3). An attempt and a stop marker remember the epoch they were made in; a cleanup,
-  /// a mode or binding change, or a monitor teardown in between voids their claim. Nothing here
-  /// changes what a press or the timer does.
-  private var diagnosticEpoch: UInt64 = 0
-
-  /// What a recording attempt started under, captured with `recordingStart`.
-  private struct DiagnosticOrigin {
-    let binding: ShortcutBinding
-    let mode: RecordingMode
-    let epoch: UInt64
-  }
-  private var attemptOrigin: DiagnosticOrigin?
-
-  /// The lone-tap timer's stop request, kept so the NEXT press can tell whether it was
-  /// physically pressed before that stop was requested: a timer that ran before a queued valid
-  /// second press. A stop REQUEST, not a confirmed end of recording.
-  private struct QuickTapStop {
-    let start: InputTime
-    let binding: ShortcutBinding
-    let mode: RecordingMode
-    /// The epoch AFTER the timer's own cleanup, so only a later invalidation voids it.
-    let epoch: UInt64
-    let stoppedAtUptime: TimeInterval
-  }
-  private var lastQuickTapStop: QuickTapStop?
 
   // MARK: - Callbacks (wired by the former root state)
 
@@ -420,68 +373,12 @@ public final class HotkeyService {
   /// control when the wait ends rather than race a real timer.
   private let sleep: @MainActor (TimeInterval) async -> Void
 
-  /// One record-key input (#3534): when this service HANDLED it, and when the OS
-  /// says it HAPPENED, if that time passed acceptance.
-  ///
-  /// Why both. NSEvent monitor handlers and the Carbon handler run on the main
-  /// thread, and right after a first press starts a recording the main thread is
-  /// busy for 100-700 ms (measured on a loaded Mac, #3534). The release or second
-  /// press is then HANDLED late, so a window judged by handling time reads a fast
-  /// double tap as slow and a fast tap as a hold. Occurrence timestamps
-  /// distinguish these captured misses. Their accuracy under heavy load remains
-  /// unverified; the microphone check ran only while calm.
-  private struct InputTime {
-    let handled: TimeInterval
-    let occurred: TimeInterval?
-  }
-
-  /// The double-press window, the lone-tap wait and the lock cooldown.
-  private static var window: TimeInterval {
-    Double(TimingConstants.handsFreeDebounceDelayMs) / 1000.0
-  }
-
-  /// Acceptance bounds for an OS timestamp, relative to its handling time.
-  /// 50 ms of future tolerates clock-read jitter (undelayed events agree within
-  /// about 1 ms). 2 s of age is 2.9x the largest lag measured (695 ms); an older
-  /// or zero stamp (synthetic events, sleep) is treated as unknown.
-  private static let occurrenceFutureTolerance: TimeInterval = 0.05
-  private static let occurrenceMaxAge: TimeInterval = 2.0
+  private typealias InputTime = RecordGesture.InputTime
 
   /// Stamp one record-key input with this service's clock, keeping the OS time
   /// only if it is plausible.
   private func capture(_ stamp: TimeInterval?) -> InputTime {
-    let handled = uptime()
-    guard let stamp, stamp > 0,
-      stamp <= handled + Self.occurrenceFutureTolerance,
-      stamp >= handled - Self.occurrenceMaxAge
-    else { return InputTime(handled: handled, occurred: nil) }
-    return InputTime(handled: handled, occurred: stamp)
-  }
-
-  /// The single owner of which clock compares two inputs (#3534): OS occurrence
-  /// times when both inputs have one and they are in order, otherwise both
-  /// handling times. Never one of each, so a rejected stamp is never subtracted
-  /// from an accepted one. `elapsed` and the lone-tap deadline both call this.
-  private func clockPair(from a: InputTime, to b: InputTime)
-    -> (start: TimeInterval, end: TimeInterval, usesOccurrence: Bool)
-  {
-    if let ao = a.occurred, let bo = b.occurred, bo >= ao { return (ao, bo, true) }
-    return (a.handled, b.handled, false)
-  }
-
-  /// Seconds from one record-key input to a later one.
-  private func elapsed(from a: InputTime, to b: InputTime) -> TimeInterval {
-    let pair = clockPair(from: a, to: b)
-    return pair.end - pair.start
-  }
-
-  /// `window_timing` for a lock intent (#3534): `rescued` when the occurrence
-  /// clock put the second press inside the window but the handling clock would
-  /// not have, `on_time` otherwise.
-  private func lockWindowTiming(from start: InputTime, to input: InputTime) -> String {
-    let pair = clockPair(from: start, to: input)
-    let handledGap = input.handled - start.handled
-    return pair.usesOccurrence && handledGap > Self.window ? "rescued" : "on_time"
+    InputTime.accepting(stamp: stamp, handled: uptime())
   }
 
   /// The OS calls this service is allowed to make (#2455 C2).
@@ -598,7 +495,7 @@ public final class HotkeyService {
     removeCarbonEventHandler()
     removeModifierMonitors()
     isEnabled = false
-    isModifierHeld = false
+    gesture.forgetHeld()
     performCleanup()
   }
 
@@ -627,7 +524,7 @@ public final class HotkeyService {
   /// Re-register hotkeys after the recorder is done.
   public func resume() {
     guard isEnabled, isSuspended else { return }
-    isModifierHeld = false
+    gesture.forgetHeld()
     performCleanup()
     registerToggleHotkey()
     // No armed-state snapshot, unlike cancel: Quick Add is armed whenever the service is, so
@@ -749,49 +646,20 @@ public final class HotkeyService {
   /// Reset all hands-free state. Called before every stop/cancel callback
   /// and on service stop/resume.
   private func performCleanup() {
-    stateGeneration &+= 1
-    isRecordingLocked = false
-    recordingStart = nil
-    lockAt = nil
+    gesture.cleanup()
     // #1631: acceptance must never outlive the attempt that earned it, or a later
     // press could inherit it and publish on a session it never started.
     acceptedStartPressID = nil
     acceptedSessionID = nil
     debounceTask?.cancel()
     debounceTask = nil
-    attemptOrigin = nil
-    invalidateQuickTapDiagnostics()
   }
 
   /// #3534 §3.3: the one place the stop-timer measurement is voided. Called from
   /// `performCleanup`, actual mode and binding changes, and `removeModifierMonitors` (which
   /// every monitor install, cancel rebind, app-shortcut rebind and `suspend()` pass through).
   private func invalidateQuickTapDiagnostics() {
-    diagnosticEpoch &+= 1
-    lastQuickTapStop = nil
-  }
-
-  /// #3534 §3.3: offer the stop marker to this press, once. Returns how long after the saved first
-  /// press this press HAPPENED when it was physically pressed before the lone-tap timer requested
-  /// its stop, inside the window, and nothing has voided the measurement; nil otherwise. Missing
-  /// or rejected OS times mean unknown, never a claim.
-  private func consumeQuickTapStop(_ input: InputTime) -> Int? {
-    guard let stop = lastQuickTapStop else { return nil }
-    lastQuickTapStop = nil
-    guard stop.epoch == diagnosticEpoch, stop.binding == recordBinding, stop.mode == recordingMode
-    else { return nil }
-    let pair = clockPair(from: stop.start, to: input)
-    guard pair.usesOccurrence, pair.end - pair.start <= Self.window,
-      pair.end <= stop.stoppedAtUptime, stop.stoppedAtUptime <= input.handled
-    else { return nil }
-    let pressedMs = Int((pair.end - pair.start) * 1000)
-    Task {
-      await AppLogger.shared.log(
-        "Second press arrived after the lone-tap stop (pressed \(pressedMs)ms after first)",
-        level: .info, category: "HotkeyService"
-      )
-    }
-    return pressedMs
+    gesture.invalidateDiagnostics()
   }
 
   #if DEBUG
@@ -833,7 +701,7 @@ public final class HotkeyService {
     // guessing from a scheduling turn. A signal fired inside the start callback
     // cannot serve: this method runs AFTER that callback returns.
     defer { onStartResolvedForTesting?() }
-    guard pressID == startPressID, recordingStart != nil else { return }
+    guard gesture.isLiveAttempt(pressID) else { return }
     switch outcome {
     case .recording(let sessionID):
       acceptedStartPressID = pressID
@@ -842,7 +710,7 @@ public final class HotkeyService {
     case .noRecording:
       // Only a press that already recorded hands-free intent has a decision to
       // report; a refusal landing before the second tap has nothing to resolve.
-      if isRecordingLocked {
+      if gesture.isLocked {
         emitLockResolved(committed: false, reason: .startProducedNoRecording)
       }
       performCleanup()
@@ -857,8 +725,8 @@ public final class HotkeyService {
   /// replaced by one a toolbar press started — before the second tap arrives.
   /// Asking at the moment of use is the whole design; see the plan's class table.
   private func publishLockIfReady() {
-    guard isRecordingLocked,
-      acceptedStartPressID == startPressID,
+    guard gesture.isLocked,
+      acceptedStartPressID == gesture.attemptID,
       let sessionID = acceptedSessionID
     else { return }
     let result = onLockRequested?(sessionID) ?? .unavailable
@@ -869,7 +737,7 @@ public final class HotkeyService {
         case .notLockable: "not_lockable"
         case .unavailable: "unavailable"
         }
-      traceTiming("lock_publication press=\(startPressID) result=\(traced)")
+      traceTiming("lock_publication press=\(gesture.attemptID) result=\(traced)")
     #endif
     switch result {
     case .published:
@@ -919,13 +787,20 @@ public final class HotkeyService {
   }
 
   private func handleRecordPress(_ input: InputTime) {
-    // Guard: if already held (duplicate press event), ignore
-    guard !isModifierHeld else { return }
-    isModifierHeld = true
-
     // #3534 §3.3: offered once, BEFORE the processing guard, so a refused press can carry it.
     // Only the `start` and `ignored_processing` rows below attach it; any other role drops it.
-    let afterStopTimer: String? = consumeQuickTapStop(input) != nil ? "after_stop_timer" : nil
+    guard case .admitted(let afterStopTimerMs) = gesture.admitPress(
+      input, binding: recordBinding, mode: recordingMode)
+    else { return }
+    if let pressedMs = afterStopTimerMs {
+      Task {
+        await AppLogger.shared.log(
+          "Second press arrived after the lone-tap stop (pressed \(pressedMs)ms after first)",
+          level: .info, category: "HotkeyService"
+        )
+      }
+    }
+    let afterStopTimer: String? = afterStopTimerMs != nil ? "after_stop_timer" : nil
 
     // Anti-spam Layer 1: Block new recordings while pipeline is processing.
     if let isProcessing = onIsProcessing, isProcessing() {
@@ -937,24 +812,15 @@ public final class HotkeyService {
       }
       // #1175 (C3): a press that never commits is exactly an under-fire case.
       emitHotkeyPressed(.ignoredProcessing, trigger: .ptt, windowTiming: afterStopTimer)
-      isModifierHeld = false
+      gesture.refuseForProcessing()
       return
     }
 
-    let isRecording = recordingStart != nil
-
-    if !isRecording {
-      // Not recording → start fresh
-      stateGeneration &+= 1
-      isRecordingLocked = false
-      recordingStart = input
-      attemptOrigin = DiagnosticOrigin(
-        binding: recordBinding, mode: recordingMode, epoch: diagnosticEpoch)
+    switch gesture.classifyPress(input, binding: recordBinding, mode: recordingMode) {
+    case .start(let pressID):
       // #1631: a fresh attempt owns a fresh identity, and inherits no acceptance.
-      startPressID &+= 1
       acceptedStartPressID = nil
       acceptedSessionID = nil
-      let pressID = startPressID
       debounceTask?.cancel()
       debounceTask = nil
       recordingTask?.cancel()
@@ -971,75 +837,61 @@ public final class HotkeyService {
       // #1175 (C3): emit AFTER the recording Task is created; the `.live` sink
       // defers the actual write off this turn so it never delays the callback.
       emitHotkeyPressed(.start, trigger: .ptt, windowTiming: afterStopTimer)
-    } else if let start = recordingStart, elapsed(from: start, to: input) <= Self.window {
-      // Within 500ms window
-      if isRecordingLocked {
-        // Triple press → cancel
-        Task {
-          await AppLogger.shared.log(
-            "Triple press — cancelling hands-free recording",
-            level: .info, category: "HotkeyService"
-          )
-        }
-        performCleanup()
-        isModifierHeld = false
-        recordingTask?.cancel()
-        recordingTask = Task { await onCancelRecording?() }
-        // #1175 (Codex code-diff #2): hands-free triple-press cancel is an
-        // accepted keydown too — distinguished from the Escape cancel by trigger.
-        emitHotkeyPressed(.cancel, trigger: .ptt)
-      } else {
-        // Double press → lock into hands-free
-        Task {
-          await AppLogger.shared.log(
-            // #1631: this records the REQUEST. Whether it becomes a lock is not
-            // known yet — `Hands-free mode activated` is logged by the publisher.
-            "Double press — requesting hands-free mode",
-            level: .info, category: "HotkeyService"
-          )
-        }
-        debounceTask?.cancel()
-        debounceTask = nil
-        // #3534: computed BEFORE publication, whose rejection cleanup clears `recordingStart`.
-        let windowTiming = lockWindowTiming(from: start, to: input)
-        #if DEBUG
-          let pair = clockPair(from: start, to: input)
-          traceTiming(
-            "lock_intent press=\(startPressID) press_handled=\(Self.traceSeconds(input.handled)) "
-              + "press_occurred=\(Self.traceSeconds(input.occurred)) "
-              + "clock=\(pair.usesOccurrence ? "occurrence" : "handling") "
-              + "elapsed_ms=\(Int((pair.end - pair.start) * 1000)) window_timing=\(windowTiming)")
-        #endif
-        isRecordingLocked = true
-        lockAt = input
-        // DO NOT cancel recordingTask here — the pipeline startup must
-        // continue running. Cancelling it aborts preWarm/toggleRecording,
-        // leaving the UI locked but no actual recording happening.
-        // #1631: intent is recorded above; publication happens only if this
-        // press's start has already confirmed a session that is still running.
-        // If it has not yet, `resolveStart` publishes when it does.
-        publishLockIfReady()
-        emitHotkeyPressed(.lock, trigger: .ptt, windowTiming: windowTiming)
+
+    case .tripleCancel:
+      Task {
+        await AppLogger.shared.log(
+          "Triple press — cancelling hands-free recording",
+          level: .info, category: "HotkeyService"
+        )
       }
-    } else if isRecordingLocked {
-      // Lock cooldown: ignore presses within 500ms of locking.
-      // Prevents accidental finger-bounce on modifier keys from
-      // immediately stopping a just-locked recording.
-      if let lt = lockAt, elapsed(from: lt, to: input) <= Self.window {
-        let sinceLockMs = Int(elapsed(from: lt, to: input) * 1000)
-        Task {
-          await AppLogger.shared.log(
-            "Press ignored — lock cooldown (\(sinceLockMs)ms since lock)",
-            level: .info, category: "HotkeyService"
-          )
-        }
-        // #1175 (Codex code-diff #2): a cooldown finger-bounce is an accepted
-        // keydown that produces no recording action.
-        emitHotkeyPressed(.ignoredCooldown, trigger: .ptt)
-        isModifierHeld = false
-        return
+      performCleanup()
+      recordingTask?.cancel()
+      recordingTask = Task { await onCancelRecording?() }
+      // #1175 (Codex code-diff #2): hands-free triple-press cancel is an
+      // accepted keydown too — distinguished from the Escape cancel by trigger.
+      emitHotkeyPressed(.cancel, trigger: .ptt)
+
+    case .lockIntent(let windowTiming, let elapsedMs, let usesOccurrence):
+      Task {
+        await AppLogger.shared.log(
+          // #1631: this records the REQUEST. Whether it becomes a lock is not
+          // known yet — `Hands-free mode activated` is logged by the publisher.
+          "Double press — requesting hands-free mode",
+          level: .info, category: "HotkeyService"
+        )
       }
-      // Single press while locked (after cooldown) → stop
+      debounceTask?.cancel()
+      debounceTask = nil
+      #if DEBUG
+        traceTiming(
+          "lock_intent press=\(gesture.attemptID) press_handled=\(Self.traceSeconds(input.handled)) "
+            + "press_occurred=\(Self.traceSeconds(input.occurred)) "
+            + "clock=\(usesOccurrence ? "occurrence" : "handling") "
+            + "elapsed_ms=\(elapsedMs) window_timing=\(windowTiming)")
+      #endif
+      // DO NOT cancel recordingTask here — the pipeline startup must
+      // continue running. Cancelling it aborts preWarm/toggleRecording,
+      // leaving the UI locked but no actual recording happening.
+      // #1631: intent is recorded above; publication happens only if this
+      // press's start has already confirmed a session that is still running.
+      // If it has not yet, `resolveStart` publishes when it does.
+      publishLockIfReady()
+      emitHotkeyPressed(.lock, trigger: .ptt, windowTiming: windowTiming)
+
+    case .ignoredCooldown(let sinceLockMs):
+      Task {
+        await AppLogger.shared.log(
+          "Press ignored — lock cooldown (\(sinceLockMs)ms since lock)",
+          level: .info, category: "HotkeyService"
+        )
+      }
+      // #1175 (Codex code-diff #2): a cooldown finger-bounce is an accepted
+      // keydown that produces no recording action.
+      emitHotkeyPressed(.ignoredCooldown, trigger: .ptt)
+      gesture.forgetHeld()
+
+    case .stopLocked:
       Task {
         await AppLogger.shared.log(
           "Single press while locked — stopping hands-free recording",
@@ -1047,17 +899,12 @@ public final class HotkeyService {
         )
       }
       performCleanup()
-      isModifierHeld = false
       recordingTask?.cancel()
       recordingTask = Task { await onStopRecording?() }
       // #1175 (Codex code-diff #2): single press while locked stops the session.
       emitHotkeyPressed(.stop, trigger: .ptt)
-    } else if let start = recordingStart {
-      // #3534: unlocked, a lone-tap stop pending, and this press came after the
-      // window. No state change, exactly as before: the pending stop and its
-      // generation stay, and this press's release takes the stop path. Before
-      // this branch the press left no log line and no row.
-      let afterFirstMs = Int(elapsed(from: start, to: input) * 1000)
+
+    case .lateAfterWindow(let afterFirstMs):
       Task {
         await AppLogger.shared.log(
           "Second press after the double-tap window (\(afterFirstMs)ms after first)",
@@ -1069,86 +916,56 @@ public final class HotkeyService {
   }
 
   private func handleRecordRelease(_ input: InputTime) {
-    guard isModifierHeld else { return }
-    isModifierHeld = false
+    switch gesture.release(input) {
+    case .ignored, .suppressedLocked:
+      return
 
-    let isRecording = recordingStart != nil
-
-    // Not recording → ignore
-    guard isRecording else { return }
-
-    // Locked → suppress release entirely
-    if isRecordingLocked { return }
-
-    // Quick release (within 500ms) → debounce, wait for double-press
-    if let start = recordingStart, elapsed(from: start, to: input) <= Self.window {
-      stateGeneration &+= 1
-      let capturedGeneration = stateGeneration
-      // #3534: retain at least 500 ms from release handling. An occurrence-only
-      // deadline could expire before a second press that the old classification
-      // would accept. This floor preserves that handling-time grace period;
-      // classification still uses `clockPair`. It does not reproduce extra delay
-      // from the legacy task starting late. Compute the remaining wait when this
-      // task runs; request no further wait if the deadline has passed.
-      let pair = clockPair(from: start, to: input)
-      let deadline = max(pair.end, input.handled) + Self.window
+    case .quick(let quick):
+      let capturedGeneration = quick.capturedGeneration
+      let deadline = quick.deadline
       let sleep = self.sleep
       let uptime = self.uptime
       #if DEBUG
         let tracePrefix =
-          "press=\(startPressID) release_handled=\(Self.traceSeconds(input.handled)) "
+          "press=\(gesture.attemptID) release_handled=\(Self.traceSeconds(input.handled)) "
           + "deadline=\(Self.traceSeconds(deadline)) "
-          + "clock=\(pair.usesOccurrence ? "occurrence" : "handling")"
+          + "clock=\(quick.usesOccurrence ? "occurrence" : "handling")"
         traceTiming(
           "quick_release \(tracePrefix) release_occurred=\(Self.traceSeconds(input.occurred)) "
-            + "event_deadline=\(Self.traceSeconds(pair.end + Self.window))")
+            + "event_deadline=\(Self.traceSeconds(quick.eventDeadline))")
       #endif
       debounceTask?.cancel()
       debounceTask = Task { @MainActor [weak self] in
         defer { self?.onDebounceResolvedForTesting?() }
         await sleep(max(0, deadline - uptime()))
         guard !Task.isCancelled, let self else { return }
-        // Stale check: if any state-changing event occurred during sleep,
-        // this callback is outdated and must not fire.
-        guard self.stateGeneration == capturedGeneration else { return }
-        // Timer fired — user didn't double-press. Stop as normal PTT.
-        guard self.recordingStart != nil, !self.isRecordingLocked else { return }
+        guard
+          case .stop(let stop) = self.gesture.checkLoneTap(
+            capturedGeneration: capturedGeneration, binding: self.recordBinding,
+            mode: self.recordingMode)
+        else { return }
         Task {
           await AppLogger.shared.log(
             "Debounce timer fired — stopping PTT (no double-press detected)",
             level: .info, category: "HotkeyService"
           )
         }
-        // #3534 §3.3, in this order. (1) Snapshot, and decide whether this stop may be
-        // attributed: nothing has voided the attempt since its first press.
-        let attempt = self.recordingStart
-        let origin = self.attemptOrigin
-        let attributable =
-          origin.map {
-            $0.epoch == self.diagnosticEpoch && $0.binding == self.recordBinding
-              && $0.mode == self.recordingMode
-          } ?? false
         // (2) Cleanup, which itself voids the measurement (bumps the epoch).
         self.performCleanup()
-        // (3) Only an attributable stop leaves a marker, stamped with the post-cleanup epoch.
         let stoppedAt = uptime()
-        if attributable, let attempt, let origin {
-          self.lastQuickTapStop = QuickTapStop(
-            start: attempt, binding: origin.binding, mode: origin.mode,
-            epoch: self.diagnosticEpoch, stoppedAtUptime: stoppedAt)
-        }
+        self.gesture.recordQuickTapStop(stop, stoppedAt: stoppedAt)
         #if DEBUG
           self.traceTiming(
             "stop_request \(tracePrefix) requested_at=\(Self.traceSeconds(stoppedAt)) "
-              + "attributable=\(attributable) (a stop request, not a finished recording)")
+              + "attributable=\(stop.attributable) (a stop request, not a finished recording)")
         #endif
         // (4) Queue the normal stop, attributable or not.
         self.recordingTask?.cancel()
         self.recordingTask = Task { await self.onStopRecording?() }
       }
-    } else {
-      // Normal PTT release (held > 500ms) → stop immediately
-      performCleanup()  // increments stateGeneration
+
+    case .hold:
+      performCleanup()  // increments the gesture's generation
       recordingTask?.cancel()
       recordingTask = Task { await onStopRecording?() }
     }
