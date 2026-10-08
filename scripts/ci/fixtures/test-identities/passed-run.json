@@ -1,0 +1,859 @@
+{
+ "devices": [
+  {
+   "architecture": "arm64",
+   "deviceId": "00006050-000151C2216B401C",
+   "deviceName": "My Mac",
+   "modelName": "MacBook Pro",
+   "osBuildNumber": "25G227",
+   "osVersion": "26.7",
+   "platform": "macOS"
+  }
+ ],
+ "testPlanConfigurations": [
+  {
+   "configurationId": "1",
+   "configurationName": "Test Scheme Action"
+  }
+ ],
+ "testNodes": [
+  {
+   "children": [
+    {
+     "name": "EnviousWisprTests",
+     "nodeIdentifierURL": "test://com.apple.xcode/EnviousWispr/EnviousWisprTests",
+     "nodeType": "Unit test bundle",
+     "result": "Passed",
+     "children": [
+      {
+       "children": [
+        {
+         "children": [
+          {
+           "name": "Test skipped",
+           "nodeType": "Skip Message"
+          }
+         ],
+         "duration": "0.00002s",
+         "durationInSeconds": 2.002716064453125e-05,
+         "name": "everyOfferedModelPolishesSuccessfully()",
+         "nodeIdentifier": "ClaudeLiveSweepTests/everyOfferedModelPolishesSuccessfully()",
+         "nodeIdentifierURL": "test://com.apple.xcode/EnviousWispr/EnviousWisprTests/ClaudeLiveSweepTests/everyOfferedModelPolishesSuccessfully()",
+         "nodeType": "Test Case",
+         "result": "Skipped"
+        },
+        {
+         "children": [
+          {
+           "name": "Test skipped",
+           "nodeType": "Skip Message"
+          }
+         ],
+         "duration": "0.000037s",
+         "durationInSeconds": 3.695487976074219e-05,
+         "name": "latencyReceipt()",
+         "nodeIdentifier": "ClaudeLiveSweepTests/latencyReceipt()",
+         "nodeIdentifierURL": "test://com.apple.xcode/EnviousWispr/EnviousWisprTests/ClaudeLiveSweepTests/latencyReceipt()",
+         "nodeType": "Test Case",
+         "result": "Skipped"
+        },
+        {
+         "children": [
+          {
+           "name": "Test skipped",
+           "nodeType": "Skip Message"
+          }
+         ],
+         "duration": "0.000021s",
+         "durationInSeconds": 2.09808349609375e-05,
+         "name": "compatibilitySweep()",
+         "nodeIdentifier": "ClaudeLiveSweepTests/compatibilitySweep()",
+         "nodeIdentifierURL": "test://com.apple.xcode/EnviousWispr/EnviousWisprTests/ClaudeLiveSweepTests/compatibilitySweep()",
+         "nodeType": "Test Case",
+         "result": "Skipped"
+        }
+       ],
+       "name": "Claude all-models live sweep",
+       "nodeIdentifierURL": "test://com.apple.xcode/EnviousWispr/EnviousWisprTests/ClaudeLiveSweepTests",
+       "nodeType": "Test Suite",
+       "result": "Skipped"
+      },
+      {
+       "children": [
+        {
+         "duration": "0.0047s",
+         "durationInSeconds": 0.004717111587524414,
+         "name": "a delivered recording-exit reads as unconsumed before the forward path runs",
+         "nodeIdentifier": "DrainReadyWorkSettleTests/unconsumedExitWindowIsFlagged()",
+         "nodeIdentifierURL": "test://com.apple.xcode/EnviousWispr/EnviousWisprTests/DrainReadyWorkSettleTests/unconsumedExitWindowIsFlagged()",
+         "nodeType": "Test Case",
+         "result": "Passed"
+        },
+        {
+         "duration": "0.0042s",
+         "durationInSeconds": 0.004218101501464844,
+         "name": "a cancel-delivered exit reads as unconsumed before the forward path runs",
+         "nodeIdentifier": "DrainReadyWorkSettleTests/cancelExitWindowIsFlagged()",
+         "nodeIdentifierURL": "test://com.apple.xcode/EnviousWispr/EnviousWisprTests/DrainReadyWorkSettleTests/cancelExitWindowIsFlagged()",
+         "nodeType": "Test Case",
+         "result": "Passed"
+        },
+        {
+         "duration": "4s",
+         "durationInSeconds": 4.108756065368652,
+         "name": "A8 survives the 64-schedule sweep under heavy MainActor contention",
+         "nodeIdentifier": "DrainReadyWorkSettleTests/a8SurvivesSweepUnderContention()",
+         "nodeIdentifierURL": "test://com.apple.xcode/EnviousWispr/EnviousWisprTests/DrainReadyWorkSettleTests/a8SurvivesSweepUnderContention()",
+         "nodeType": "Test Case",
+         "result": "Passed"
+        },
+        {
+         "duration": "0.013s",
+         "durationInSeconds": 0.013311147689819336,
+         "name": "drainUntilConcluded waits for a published terminal, or reports giving up",
+         "nodeIdentifier": "DrainReadyWorkSettleTests/concludedDrainWaitsForTheTerminal()",
+         "nodeIdentifierURL": "test://com.apple.xcode/EnviousWispr/EnviousWisprTests/DrainReadyWorkSettleTests/concludedDrainWaitsForTheTerminal()",
+         "nodeType": "Test Case",
+         "result": "Passed"
+        },
+        {
+         "children": [
+          {
+           "name": "the finalize is held, so no terminal can ever publish",
+           "nodeType": "Expected Failure"
+          }
+         ],
+         "duration": "0.69s",
+         "durationInSeconds": 0.6939349174499512,
+         "name": "a session that never concludes is reported loudly, not settled silently",
+         "nodeIdentifier": "DrainReadyWorkSettleTests/neverConcludingSessionIsReportedLoudly()",
+         "nodeIdentifierURL": "test://com.apple.xcode/EnviousWispr/EnviousWisprTests/DrainReadyWorkSettleTests/neverConcludingSessionIsReportedLoudly()",
+         "nodeType": "Test Case",
+         "result": "Expected Failure"
+        }
+       ],
+       "name": "drainReadyWork settle — recording-exit hand-off",
+       "nodeIdentifierURL": "test://com.apple.xcode/EnviousWispr/EnviousWisprTests/DrainReadyWorkSettleTests",
+       "nodeType": "Test Suite",
+       "result": "Passed"
+      },
+      {
+       "children": [
+        {
+         "children": [
+          {
+           "duration": "0.00021s",
+           "durationInSeconds": 0.0002071857452392578,
+           "name": "\"8\"",
+           "nodeIdentifierURL": "test://com.apple.xcode/EnviousWispr/EnviousWisprTests/Issue1358FillerEmptyReproTests/realWordSurvives(_:)",
+           "nodeType": "Arguments",
+           "result": "Passed"
+          },
+          {
+           "duration": "0.00021s",
+           "durationInSeconds": 0.0002090930938720703,
+           "name": "\"25.\"",
+           "nodeIdentifierURL": "test://com.apple.xcode/EnviousWispr/EnviousWisprTests/Issue1358FillerEmptyReproTests/realWordSurvives(_:)",
+           "nodeType": "Arguments",
+           "result": "Passed"
+          }
+         ],
+         "duration": "0.0019s",
+         "durationInSeconds": 0.0018535909198579333,
+         "name": "real short words the founder confirmed are never erased",
+         "nodeIdentifier": "Issue1358FillerEmptyReproTests/realWordSurvives(_:)",
+         "nodeIdentifierURL": "test://com.apple.xcode/EnviousWispr/EnviousWisprTests/Issue1358FillerEmptyReproTests/realWordSurvives(_:)",
+         "nodeType": "Test Case",
+         "result": "Passed"
+        },
+        {
+         "children": [
+          {
+           "duration": "0.00023s",
+           "durationInSeconds": 0.00023317337036132812,
+           "name": "\"ah\"",
+           "nodeIdentifierURL": "test://com.apple.xcode/EnviousWispr/EnviousWisprTests/Issue1358FillerEmptyReproTests/fillerCollapsesToEmpty(_:)",
+           "nodeType": "Arguments",
+           "result": "Passed"
+          },
+          {
+           "duration": "0.00025s",
+           "durationInSeconds": 0.0002498626708984375,
+           "name": "\"er\"",
+           "nodeIdentifierURL": "test://com.apple.xcode/EnviousWispr/EnviousWisprTests/Issue1358FillerEmptyReproTests/fillerCollapsesToEmpty(_:)",
+           "nodeType": "Arguments",
+           "result": "Passed"
+          }
+         ],
+         "duration": "0.0017s",
+         "durationInSeconds": 0.001689910888671875,
+         "name": "bare filler captures collapse to empty (reproduces the failure precondition)",
+         "nodeIdentifier": "Issue1358FillerEmptyReproTests/fillerCollapsesToEmpty(_:)",
+         "nodeIdentifierURL": "test://com.apple.xcode/EnviousWispr/EnviousWisprTests/Issue1358FillerEmptyReproTests/fillerCollapsesToEmpty(_:)",
+         "nodeType": "Test Case",
+         "result": "Passed"
+        },
+        {
+         "duration": "0.0003s",
+         "durationInSeconds": 0.0002968311309814453,
+         "name": "repeated filler partially strips to a fragment, not empty",
+         "nodeIdentifier": "Issue1358FillerEmptyReproTests/repeatedFillerLeavesFragment()",
+         "nodeIdentifierURL": "test://com.apple.xcode/EnviousWispr/EnviousWisprTests/Issue1358FillerEmptyReproTests/repeatedFillerLeavesFragment()",
+         "nodeType": "Test Case",
+         "result": "Passed"
+        }
+       ],
+       "name": "#1358 filler-removal empties short transcripts (reproduction)",
+       "nodeIdentifierURL": "test://com.apple.xcode/EnviousWispr/EnviousWisprTests/Issue1358FillerEmptyReproTests",
+       "nodeType": "Test Suite",
+       "result": "Passed"
+      },
+      {
+       "children": [
+        {
+         "duration": "0.001s",
+         "durationInSeconds": 0.0010161399841308594,
+         "name": "rangeOfStatement_requiresAnIdentifierBoundaryAndIgnoresNonCode()",
+         "nodeIdentifier": "RouterCeilingParserTests/rangeOfStatement_requiresAnIdentifierBoundaryAndIgnoresNonCode()",
+         "nodeIdentifierURL": "test://com.apple.xcode/EnviousWispr/EnviousWisprTests/RouterCeilingParserTests/rangeOfStatement_requiresAnIdentifierBoundaryAndIgnoresNonCode()",
+         "nodeType": "Test Case",
+         "result": "Passed"
+        },
+        {
+         "duration": "0.0027s",
+         "durationInSeconds": 0.002701997756958008,
+         "name": "classBody_returnsClassBody_notInnerMethodBody()",
+         "nodeIdentifier": "RouterCeilingParserTests/classBody_returnsClassBody_notInnerMethodBody()",
+         "nodeIdentifierURL": "test://com.apple.xcode/EnviousWispr/EnviousWisprTests/RouterCeilingParserTests/classBody_returnsClassBody_notInnerMethodBody()",
+         "nodeType": "Test Case",
+         "result": "Passed"
+        },
+        {
+         "duration": "0.0021s",
+         "durationInSeconds": 0.0021440982818603516,
+         "name": "classBody_handlesConformanceListDeclaration()",
+         "nodeIdentifier": "RouterCeilingParserTests/classBody_handlesConformanceListDeclaration()",
+         "nodeIdentifierURL": "test://com.apple.xcode/EnviousWispr/EnviousWisprTests/RouterCeilingParserTests/classBody_handlesConformanceListDeclaration()",
+         "nodeType": "Test Case",
+         "result": "Passed"
+        },
+        {
+         "duration": "0.0026s",
+         "durationInSeconds": 0.002643108367919922,
+         "name": "classBody_ignoresDeclarationTextInComment()",
+         "nodeIdentifier": "RouterCeilingParserTests/classBody_ignoresDeclarationTextInComment()",
+         "nodeIdentifierURL": "test://com.apple.xcode/EnviousWispr/EnviousWisprTests/RouterCeilingParserTests/classBody_ignoresDeclarationTextInComment()",
+         "nodeType": "Test Case",
+         "result": "Passed"
+        },
+        {
+         "duration": "0.0022s",
+         "durationInSeconds": 0.002154111862182617,
+         "name": "classBody_ignoresDeclarationTextInStringLiteral()",
+         "nodeIdentifier": "RouterCeilingParserTests/classBody_ignoresDeclarationTextInStringLiteral()",
+         "nodeIdentifierURL": "test://com.apple.xcode/EnviousWispr/EnviousWisprTests/RouterCeilingParserTests/classBody_ignoresDeclarationTextInStringLiteral()",
+         "nodeType": "Test Case",
+         "result": "Passed"
+        },
+        {
+         "duration": "0.0024s",
+         "durationInSeconds": 0.002357006072998047,
+         "name": "classBody_ignoresBraceInStringLiteralBody()",
+         "nodeIdentifier": "RouterCeilingParserTests/classBody_ignoresBraceInStringLiteralBody()",
+         "nodeIdentifierURL": "test://com.apple.xcode/EnviousWispr/EnviousWisprTests/RouterCeilingParserTests/classBody_ignoresBraceInStringLiteralBody()",
+         "nodeType": "Test Case",
+         "result": "Passed"
+        },
+        {
+         "duration": "0.0017s",
+         "durationInSeconds": 0.0016760826110839844,
+         "name": "classBody_ignoresBraceInComment()",
+         "nodeIdentifier": "RouterCeilingParserTests/classBody_ignoresBraceInComment()",
+         "nodeIdentifierURL": "test://com.apple.xcode/EnviousWispr/EnviousWisprTests/RouterCeilingParserTests/classBody_ignoresBraceInComment()",
+         "nodeType": "Test Case",
+         "result": "Passed"
+        },
+        {
+         "duration": "0.0023s",
+         "durationInSeconds": 0.0022919178009033203,
+         "name": "classBody_preservesOffsetsAcrossNonASCII()",
+         "nodeIdentifier": "RouterCeilingParserTests/classBody_preservesOffsetsAcrossNonASCII()",
+         "nodeIdentifierURL": "test://com.apple.xcode/EnviousWispr/EnviousWisprTests/RouterCeilingParserTests/classBody_preservesOffsetsAcrossNonASCII()",
+         "nodeType": "Test Case",
+         "result": "Passed"
+        },
+        {
+         "duration": "0.0042s",
+         "durationInSeconds": 0.004180908203125,
+         "name": "collaboratorCount_countsNonisolatedStoredProperties()",
+         "nodeIdentifier": "RouterCeilingParserTests/collaboratorCount_countsNonisolatedStoredProperties()",
+         "nodeIdentifierURL": "test://com.apple.xcode/EnviousWispr/EnviousWisprTests/RouterCeilingParserTests/collaboratorCount_countsNonisolatedStoredProperties()",
+         "nodeType": "Test Case",
+         "result": "Passed"
+        },
+        {
+         "duration": "0.0048s",
+         "durationInSeconds": 0.0048329830169677734,
+         "name": "collaboratorCount_countsEveryModifierSwiftAllowsOnAStoredLet()",
+         "nodeIdentifier": "RouterCeilingParserTests/collaboratorCount_countsEveryModifierSwiftAllowsOnAStoredLet()",
+         "nodeIdentifierURL": "test://com.apple.xcode/EnviousWispr/EnviousWisprTests/RouterCeilingParserTests/collaboratorCount_countsEveryModifierSwiftAllowsOnAStoredLet()",
+         "nodeType": "Test Case",
+         "result": "Passed"
+        },
+        {
+         "duration": "0.0023s",
+         "durationInSeconds": 0.002252817153930664,
+         "name": "collaboratorCount_stillExcludesStaticTypeProperties()",
+         "nodeIdentifier": "RouterCeilingParserTests/collaboratorCount_stillExcludesStaticTypeProperties()",
+         "nodeIdentifierURL": "test://com.apple.xcode/EnviousWispr/EnviousWisprTests/RouterCeilingParserTests/collaboratorCount_stillExcludesStaticTypeProperties()",
+         "nodeType": "Test Case",
+         "result": "Passed"
+        },
+        {
+         "duration": "0.0031s",
+         "durationInSeconds": 0.003103017807006836,
+         "name": "collaboratorCount_descendsIntoConditionalCompilationBlocks()",
+         "nodeIdentifier": "RouterCeilingParserTests/collaboratorCount_descendsIntoConditionalCompilationBlocks()",
+         "nodeIdentifierURL": "test://com.apple.xcode/EnviousWispr/EnviousWisprTests/RouterCeilingParserTests/collaboratorCount_descendsIntoConditionalCompilationBlocks()",
+         "nodeType": "Test Case",
+         "result": "Passed"
+        },
+        {
+         "duration": "0.0023s",
+         "durationInSeconds": 0.0023179054260253906,
+         "name": "nonPrivateMethodCount_descendsIntoConditionalCompilationBlocks()",
+         "nodeIdentifier": "RouterCeilingParserTests/nonPrivateMethodCount_descendsIntoConditionalCompilationBlocks()",
+         "nodeIdentifierURL": "test://com.apple.xcode/EnviousWispr/EnviousWisprTests/RouterCeilingParserTests/nonPrivateMethodCount_descendsIntoConditionalCompilationBlocks()",
+         "nodeType": "Test Case",
+         "result": "Passed"
+        },
+        {
+         "duration": "0.0017s",
+         "durationInSeconds": 0.0016701221466064453,
+         "name": "collaboratorCount_excludesVarStoredProperty()",
+         "nodeIdentifier": "RouterCeilingParserTests/collaboratorCount_excludesVarStoredProperty()",
+         "nodeIdentifierURL": "test://com.apple.xcode/EnviousWispr/EnviousWisprTests/RouterCeilingParserTests/collaboratorCount_excludesVarStoredProperty()",
+         "nodeType": "Test Case",
+         "result": "Passed"
+        },
+        {
+         "duration": "0.0022s",
+         "durationInSeconds": 0.0022249221801757812,
+         "name": "collaboratorCount_excludesVarComputedProperty()",
+         "nodeIdentifier": "RouterCeilingParserTests/collaboratorCount_excludesVarComputedProperty()",
+         "nodeIdentifierURL": "test://com.apple.xcode/EnviousWispr/EnviousWisprTests/RouterCeilingParserTests/collaboratorCount_excludesVarComputedProperty()",
+         "nodeType": "Test Case",
+         "result": "Passed"
+        },
+        {
+         "duration": "0.0039s",
+         "durationInSeconds": 0.003921985626220703,
+         "name": "storedPropertyCount_countsLetsAndVarsButExcludesComputedAndTypeProperties()",
+         "nodeIdentifier": "RouterCeilingParserTests/storedPropertyCount_countsLetsAndVarsButExcludesComputedAndTypeProperties()",
+         "nodeIdentifierURL": "test://com.apple.xcode/EnviousWispr/EnviousWisprTests/RouterCeilingParserTests/storedPropertyCount_countsLetsAndVarsButExcludesComputedAndTypeProperties()",
+         "nodeType": "Test Case",
+         "result": "Passed"
+        },
+        {
+         "duration": "0.0039s",
+         "durationInSeconds": 0.003883838653564453,
+         "name": "storedDependencyCount_includesBothClassificationBuckets()",
+         "nodeIdentifier": "RouterCeilingParserTests/storedDependencyCount_includesBothClassificationBuckets()",
+         "nodeIdentifierURL": "test://com.apple.xcode/EnviousWispr/EnviousWisprTests/RouterCeilingParserTests/storedDependencyCount_includesBothClassificationBuckets()",
+         "nodeType": "Test Case",
+         "result": "Passed"
+        },
+        {
+         "duration": "0.0028s",
+         "durationInSeconds": 0.0028188228607177734,
+         "name": "sharedCeilingSupportCountsDirectClosureDependencies()",
+         "nodeIdentifier": "RouterCeilingParserTests/sharedCeilingSupportCountsDirectClosureDependencies()",
+         "nodeIdentifierURL": "test://com.apple.xcode/EnviousWispr/EnviousWisprTests/RouterCeilingParserTests/sharedCeilingSupportCountsDirectClosureDependencies()",
+         "nodeType": "Test Case",
+         "result": "Passed"
+        },
+        {
+         "duration": "0.0022s",
+         "durationInSeconds": 0.002195119857788086,
+         "name": "collaboratorCount_excludesPrimitiveLet()",
+         "nodeIdentifier": "RouterCeilingParserTests/collaboratorCount_excludesPrimitiveLet()",
+         "nodeIdentifierURL": "test://com.apple.xcode/EnviousWispr/EnviousWisprTests/RouterCeilingParserTests/collaboratorCount_excludesPrimitiveLet()",
+         "nodeType": "Test Case",
+         "result": "Passed"
+        },
+        {
+         "duration": "0.0026s",
+         "durationInSeconds": 0.0025529861450195312,
+         "name": "closureCount_countsSingleLineClosure()",
+         "nodeIdentifier": "RouterCeilingParserTests/closureCount_countsSingleLineClosure()",
+         "nodeIdentifierURL": "test://com.apple.xcode/EnviousWispr/EnviousWisprTests/RouterCeilingParserTests/closureCount_countsSingleLineClosure()",
+         "nodeType": "Test Case",
+         "result": "Passed"
+        },
+        {
+         "duration": "0.0032s",
+         "durationInSeconds": 0.0032210350036621094,
+         "name": "closureCount_countsMultiLineClosureDeclaration()",
+         "nodeIdentifier": "RouterCeilingParserTests/closureCount_countsMultiLineClosureDeclaration()",
+         "nodeIdentifierURL": "test://com.apple.xcode/EnviousWispr/EnviousWisprTests/RouterCeilingParserTests/closureCount_countsMultiLineClosureDeclaration()",
+         "nodeType": "Test Case",
+         "result": "Passed"
+        },
+        {
+         "duration": "0.0061s",
+         "durationInSeconds": 0.006084918975830078,
+         "name": "closureCount_countsEffectfulClosures()",
+         "nodeIdentifier": "RouterCeilingParserTests/closureCount_countsEffectfulClosures()",
+         "nodeIdentifierURL": "test://com.apple.xcode/EnviousWispr/EnviousWisprTests/RouterCeilingParserTests/closureCount_countsEffectfulClosures()",
+         "nodeType": "Test Case",
+         "result": "Passed"
+        },
+        {
+         "duration": "0.0036s",
+         "durationInSeconds": 0.003598928451538086,
+         "name": "closureCount_foldsWhenTheEffectSpecifierStartsTheNextLine()",
+         "nodeIdentifier": "RouterCeilingParserTests/closureCount_foldsWhenTheEffectSpecifierStartsTheNextLine()",
+         "nodeIdentifierURL": "test://com.apple.xcode/EnviousWispr/EnviousWisprTests/RouterCeilingParserTests/closureCount_foldsWhenTheEffectSpecifierStartsTheNextLine()",
+         "nodeType": "Test Case",
+         "result": "Passed"
+        },
+        {
+         "duration": "0.0046s",
+         "durationInSeconds": 0.004616975784301758,
+         "name": "closureCount_countsTypedThrows()",
+         "nodeIdentifier": "RouterCeilingParserTests/closureCount_countsTypedThrows()",
+         "nodeIdentifierURL": "test://com.apple.xcode/EnviousWispr/EnviousWisprTests/RouterCeilingParserTests/closureCount_countsTypedThrows()",
+         "nodeType": "Test Case",
+         "result": "Passed"
+        },
+        {
+         "duration": "0.0047s",
+         "durationInSeconds": 0.0046558380126953125,
+         "name": "closureCount_toleratesTriviaAnywhereInTheSignature()",
+         "nodeIdentifier": "RouterCeilingParserTests/closureCount_toleratesTriviaAnywhereInTheSignature()",
+         "nodeIdentifierURL": "test://com.apple.xcode/EnviousWispr/EnviousWisprTests/RouterCeilingParserTests/closureCount_toleratesTriviaAnywhereInTheSignature()",
+         "nodeType": "Test Case",
+         "result": "Passed"
+        },
+        {
+         "duration": "0.0027s",
+         "durationInSeconds": 0.0026819705963134766,
+         "name": "closureCount_foldsPastAMultiLineBlockComment()",
+         "nodeIdentifier": "RouterCeilingParserTests/closureCount_foldsPastAMultiLineBlockComment()",
+         "nodeIdentifierURL": "test://com.apple.xcode/EnviousWispr/EnviousWisprTests/RouterCeilingParserTests/closureCount_foldsPastAMultiLineBlockComment()",
+         "nodeType": "Test Case",
+         "result": "Passed"
+        },
+        {
+         "duration": "0.0026s",
+         "durationInSeconds": 0.0025849342346191406,
+         "name": "braceDepth_ignoresBracesInsideABlockComment()",
+         "nodeIdentifier": "RouterCeilingParserTests/braceDepth_ignoresBracesInsideABlockComment()",
+         "nodeIdentifierURL": "test://com.apple.xcode/EnviousWispr/EnviousWisprTests/RouterCeilingParserTests/braceDepth_ignoresBracesInsideABlockComment()",
+         "nodeType": "Test Case",
+         "result": "Passed"
+        },
+        {
+         "duration": "0.0037s",
+         "durationInSeconds": 0.0037298202514648438,
+         "name": "braceDepth_stillExcludesMembersOfANestedType()",
+         "nodeIdentifier": "RouterCeilingParserTests/braceDepth_stillExcludesMembersOfANestedType()",
+         "nodeIdentifierURL": "test://com.apple.xcode/EnviousWispr/EnviousWisprTests/RouterCeilingParserTests/braceDepth_stillExcludesMembersOfANestedType()",
+         "nodeType": "Test Case",
+         "result": "Passed"
+        },
+        {
+         "duration": "0.0051s",
+         "durationInSeconds": 0.00506591796875,
+         "name": "closureCount_balancesParenthesesNestedInTheParameterType()",
+         "nodeIdentifier": "RouterCeilingParserTests/closureCount_balancesParenthesesNestedInTheParameterType()",
+         "nodeIdentifierURL": "test://com.apple.xcode/EnviousWispr/EnviousWisprTests/RouterCeilingParserTests/closureCount_balancesParenthesesNestedInTheParameterType()",
+         "nodeType": "Test Case",
+         "result": "Passed"
+        },
+        {
+         "duration": "0.0036s",
+         "durationInSeconds": 0.0036458969116210938,
+         "name": "closureCount_acceptsEffectSpecifiersWithNoSurroundingWhitespace()",
+         "nodeIdentifier": "RouterCeilingParserTests/closureCount_acceptsEffectSpecifiersWithNoSurroundingWhitespace()",
+         "nodeIdentifierURL": "test://com.apple.xcode/EnviousWispr/EnviousWisprTests/RouterCeilingParserTests/closureCount_acceptsEffectSpecifiersWithNoSurroundingWhitespace()",
+         "nodeType": "Test Case",
+         "result": "Passed"
+        },
+        {
+         "duration": "0.0046s",
+         "durationInSeconds": 0.004578113555908203,
+         "name": "closureCount_countsOptionalAndParenthesisedFunctionTypes()",
+         "nodeIdentifier": "RouterCeilingParserTests/closureCount_countsOptionalAndParenthesisedFunctionTypes()",
+         "nodeIdentifierURL": "test://com.apple.xcode/EnviousWispr/EnviousWisprTests/RouterCeilingParserTests/closureCount_countsOptionalAndParenthesisedFunctionTypes()",
+         "nodeType": "Test Case",
+         "result": "Passed"
+        },
+        {
+         "duration": "0.0034s",
+         "durationInSeconds": 0.0033500194549560547,
+         "name": "closureCount_foldsWhenAnAttributeEndsTheLine()",
+         "nodeIdentifier": "RouterCeilingParserTests/closureCount_foldsWhenAnAttributeEndsTheLine()",
+         "nodeIdentifierURL": "test://com.apple.xcode/EnviousWispr/EnviousWisprTests/RouterCeilingParserTests/closureCount_foldsWhenAnAttributeEndsTheLine()",
+         "nodeType": "Test Case",
+         "result": "Passed"
+        },
+        {
+         "duration": "0.004s",
+         "durationInSeconds": 0.004032135009765625,
+         "name": "closureCount_foldsWhenAParameterisedAttributeEndsTheLine()",
+         "nodeIdentifier": "RouterCeilingParserTests/closureCount_foldsWhenAParameterisedAttributeEndsTheLine()",
+         "nodeIdentifierURL": "test://com.apple.xcode/EnviousWispr/EnviousWisprTests/RouterCeilingParserTests/closureCount_foldsWhenAParameterisedAttributeEndsTheLine()",
+         "nodeType": "Test Case",
+         "result": "Passed"
+        },
+        {
+         "duration": "0.0038s",
+         "durationInSeconds": 0.0038368701934814453,
+         "name": "closureCount_aTupleContainingAClosureIsNotAClosure()",
+         "nodeIdentifier": "RouterCeilingParserTests/closureCount_aTupleContainingAClosureIsNotAClosure()",
+         "nodeIdentifierURL": "test://com.apple.xcode/EnviousWispr/EnviousWisprTests/RouterCeilingParserTests/closureCount_aTupleContainingAClosureIsNotAClosure()",
+         "nodeType": "Test Case",
+         "result": "Passed"
+        },
+        {
+         "duration": "0.0032s",
+         "durationInSeconds": 0.003214120864868164,
+         "name": "closureCount_foldsWhenTheColonStartsTheNextLine()",
+         "nodeIdentifier": "RouterCeilingParserTests/closureCount_foldsWhenTheColonStartsTheNextLine()",
+         "nodeIdentifierURL": "test://com.apple.xcode/EnviousWispr/EnviousWisprTests/RouterCeilingParserTests/closureCount_foldsWhenTheColonStartsTheNextLine()",
+         "nodeType": "Test Case",
+         "result": "Passed"
+        },
+        {
+         "duration": "0.0032s",
+         "durationInSeconds": 0.003186941146850586,
+         "name": "closureCount_aDictionaryOfClosuresIsACollaborator()",
+         "nodeIdentifier": "RouterCeilingParserTests/closureCount_aDictionaryOfClosuresIsACollaborator()",
+         "nodeIdentifierURL": "test://com.apple.xcode/EnviousWispr/EnviousWisprTests/RouterCeilingParserTests/closureCount_aDictionaryOfClosuresIsACollaborator()",
+         "nodeType": "Test Case",
+         "result": "Passed"
+        },
+        {
+         "duration": "0.0033s",
+         "durationInSeconds": 0.0032961368560791016,
+         "name": "closureCount_readsACompactAttributeAndParameterList()",
+         "nodeIdentifier": "RouterCeilingParserTests/closureCount_readsACompactAttributeAndParameterList()",
+         "nodeIdentifierURL": "test://com.apple.xcode/EnviousWispr/EnviousWisprTests/RouterCeilingParserTests/closureCount_readsACompactAttributeAndParameterList()",
+         "nodeType": "Test Case",
+         "result": "Passed"
+        },
+        {
+         "duration": "0.0048s",
+         "durationInSeconds": 0.004831075668334961,
+         "name": "closureCount_keepsGenuineAttributeArgumentLists()",
+         "nodeIdentifier": "RouterCeilingParserTests/closureCount_keepsGenuineAttributeArgumentLists()",
+         "nodeIdentifierURL": "test://com.apple.xcode/EnviousWispr/EnviousWisprTests/RouterCeilingParserTests/closureCount_keepsGenuineAttributeArgumentLists()",
+         "nodeType": "Test Case",
+         "result": "Passed"
+        },
+        {
+         "duration": "0.0084s",
+         "durationInSeconds": 0.00836491584777832,
+         "name": "closureCount_foldsTheFormatterNormalisedAttributeWrap()",
+         "nodeIdentifier": "RouterCeilingParserTests/closureCount_foldsTheFormatterNormalisedAttributeWrap()",
+         "nodeIdentifierURL": "test://com.apple.xcode/EnviousWispr/EnviousWisprTests/RouterCeilingParserTests/closureCount_foldsTheFormatterNormalisedAttributeWrap()",
+         "nodeType": "Test Case",
+         "result": "Passed"
+        },
+        {
+         "duration": "0.0024s",
+         "durationInSeconds": 0.0024499893188476562,
+         "name": "closureCount_aCompleteLetDoesNotFoldTheNextDeclaration()",
+         "nodeIdentifier": "RouterCeilingParserTests/closureCount_aCompleteLetDoesNotFoldTheNextDeclaration()",
+         "nodeIdentifierURL": "test://com.apple.xcode/EnviousWispr/EnviousWisprTests/RouterCeilingParserTests/closureCount_aCompleteLetDoesNotFoldTheNextDeclaration()",
+         "nodeType": "Test Case",
+         "result": "Passed"
+        },
+        {
+         "duration": "0.0038s",
+         "durationInSeconds": 0.003846883773803711,
+         "name": "closureCount_commasInsideNestedTypesStillCountAsClosures()",
+         "nodeIdentifier": "RouterCeilingParserTests/closureCount_commasInsideNestedTypesStillCountAsClosures()",
+         "nodeIdentifierURL": "test://com.apple.xcode/EnviousWispr/EnviousWisprTests/RouterCeilingParserTests/closureCount_commasInsideNestedTypesStillCountAsClosures()",
+         "nodeType": "Test Case",
+         "result": "Passed"
+        },
+        {
+         "duration": "0.0032s",
+         "durationInSeconds": 0.0031669139862060547,
+         "name": "closureCount_survivesDeeplyNestedWrappers()",
+         "nodeIdentifier": "RouterCeilingParserTests/closureCount_survivesDeeplyNestedWrappers()",
+         "nodeIdentifierURL": "test://com.apple.xcode/EnviousWispr/EnviousWisprTests/RouterCeilingParserTests/closureCount_survivesDeeplyNestedWrappers()",
+         "nodeType": "Test Case",
+         "result": "Passed"
+        },
+        {
+         "duration": "0.0034s",
+         "durationInSeconds": 0.0033540725708007812,
+         "name": "closureCount_trailingParenTypeIsNotMistakenForAnAttribute()",
+         "nodeIdentifier": "RouterCeilingParserTests/closureCount_trailingParenTypeIsNotMistakenForAnAttribute()",
+         "nodeIdentifierURL": "test://com.apple.xcode/EnviousWispr/EnviousWisprTests/RouterCeilingParserTests/closureCount_trailingParenTypeIsNotMistakenForAnAttribute()",
+         "nodeType": "Test Case",
+         "result": "Passed"
+        },
+        {
+         "duration": "0.039s",
+         "durationInSeconds": 0.03914594650268555,
+         "name": "closureCount_aFunctionMetatypeIsACollaborator()",
+         "nodeIdentifier": "RouterCeilingParserTests/closureCount_aFunctionMetatypeIsACollaborator()",
+         "nodeIdentifierURL": "test://com.apple.xcode/EnviousWispr/EnviousWisprTests/RouterCeilingParserTests/closureCount_aFunctionMetatypeIsACollaborator()",
+         "nodeType": "Test Case",
+         "result": "Passed"
+        },
+        {
+         "duration": "0.0036s",
+         "durationInSeconds": 0.0035619735717773438,
+         "name": "closureCount_readsTheGenericOptionalSpelling()",
+         "nodeIdentifier": "RouterCeilingParserTests/closureCount_readsTheGenericOptionalSpelling()",
+         "nodeIdentifierURL": "test://com.apple.xcode/EnviousWispr/EnviousWisprTests/RouterCeilingParserTests/closureCount_readsTheGenericOptionalSpelling()",
+         "nodeType": "Test Case",
+         "result": "Passed"
+        },
+        {
+         "duration": "0.0028s",
+         "durationInSeconds": 0.0028219223022460938,
+         "name": "closureCount_genericOptionalRejectsAMetatypeSuffix()",
+         "nodeIdentifier": "RouterCeilingParserTests/closureCount_genericOptionalRejectsAMetatypeSuffix()",
+         "nodeIdentifierURL": "test://com.apple.xcode/EnviousWispr/EnviousWisprTests/RouterCeilingParserTests/closureCount_genericOptionalRejectsAMetatypeSuffix()",
+         "nodeType": "Test Case",
+         "result": "Passed"
+        },
+        {
+         "duration": "0.021s",
+         "durationInSeconds": 0.020834922790527344,
+         "name": "closureCount_genericOptionalToleratesTriviaInThePrefix()",
+         "nodeIdentifier": "RouterCeilingParserTests/closureCount_genericOptionalToleratesTriviaInThePrefix()",
+         "nodeIdentifierURL": "test://com.apple.xcode/EnviousWispr/EnviousWisprTests/RouterCeilingParserTests/closureCount_genericOptionalToleratesTriviaInThePrefix()",
+         "nodeType": "Test Case",
+         "result": "Passed"
+        },
+        {
+         "duration": "0.0038s",
+         "durationInSeconds": 0.003799915313720703,
+         "name": "closureCount_aTypeNamedLikeOptionalIsNotTheWrapper()",
+         "nodeIdentifier": "RouterCeilingParserTests/closureCount_aTypeNamedLikeOptionalIsNotTheWrapper()",
+         "nodeIdentifierURL": "test://com.apple.xcode/EnviousWispr/EnviousWisprTests/RouterCeilingParserTests/closureCount_aTypeNamedLikeOptionalIsNotTheWrapper()",
+         "nodeType": "Test Case",
+         "result": "Passed"
+        },
+        {
+         "duration": "0.004s",
+         "durationInSeconds": 0.003961086273193359,
+         "name": "closureCount_genericOptionalStillRejectsNonClosures()",
+         "nodeIdentifier": "RouterCeilingParserTests/closureCount_genericOptionalStillRejectsNonClosures()",
+         "nodeIdentifierURL": "test://com.apple.xcode/EnviousWispr/EnviousWisprTests/RouterCeilingParserTests/closureCount_genericOptionalStillRejectsNonClosures()",
+         "nodeType": "Test Case",
+         "result": "Passed"
+        },
+        {
+         "duration": "0.0039s",
+         "durationInSeconds": 0.003876209259033203,
+         "name": "closureCount_optionalMarkersAndDefaultsStillCountAsClosures()",
+         "nodeIdentifier": "RouterCeilingParserTests/closureCount_optionalMarkersAndDefaultsStillCountAsClosures()",
+         "nodeIdentifierURL": "test://com.apple.xcode/EnviousWispr/EnviousWisprTests/RouterCeilingParserTests/closureCount_optionalMarkersAndDefaultsStillCountAsClosures()",
+         "nodeType": "Test Case",
+         "result": "Passed"
+        },
+        {
+         "duration": "0.0027s",
+         "durationInSeconds": 0.0027229785919189453,
+         "name": "closureCount_recursionDoesNotInventClosuresInsidePlainGroups()",
+         "nodeIdentifier": "RouterCeilingParserTests/closureCount_recursionDoesNotInventClosuresInsidePlainGroups()",
+         "nodeIdentifierURL": "test://com.apple.xcode/EnviousWispr/EnviousWisprTests/RouterCeilingParserTests/closureCount_recursionDoesNotInventClosuresInsidePlainGroups()",
+         "nodeType": "Test Case",
+         "result": "Passed"
+        },
+        {
+         "duration": "0.027s",
+         "durationInSeconds": 0.026991844177246094,
+         "name": "closureCount_attributeMidLineDoesNotFoldTheNextDeclaration()",
+         "nodeIdentifier": "RouterCeilingParserTests/closureCount_attributeMidLineDoesNotFoldTheNextDeclaration()",
+         "nodeIdentifierURL": "test://com.apple.xcode/EnviousWispr/EnviousWisprTests/RouterCeilingParserTests/closureCount_attributeMidLineDoesNotFoldTheNextDeclaration()",
+         "nodeType": "Test Case",
+         "result": "Passed"
+        },
+        {
+         "duration": "0.003s",
+         "durationInSeconds": 0.0029680728912353516,
+         "name": "closureCount_stillRejectsGenericsThatMerelyContainParentheses()",
+         "nodeIdentifier": "RouterCeilingParserTests/closureCount_stillRejectsGenericsThatMerelyContainParentheses()",
+         "nodeIdentifierURL": "test://com.apple.xcode/EnviousWispr/EnviousWisprTests/RouterCeilingParserTests/closureCount_stillRejectsGenericsThatMerelyContainParentheses()",
+         "nodeType": "Test Case",
+         "result": "Passed"
+        },
+        {
+         "duration": "0.003s",
+         "durationInSeconds": 0.0030028820037841797,
+         "name": "closureCount_doesNotFoldPastACommentWhenNoSpecifierFollows()",
+         "nodeIdentifier": "RouterCeilingParserTests/closureCount_doesNotFoldPastACommentWhenNoSpecifierFollows()",
+         "nodeIdentifierURL": "test://com.apple.xcode/EnviousWispr/EnviousWisprTests/RouterCeilingParserTests/closureCount_doesNotFoldPastACommentWhenNoSpecifierFollows()",
+         "nodeType": "Test Case",
+         "result": "Passed"
+        },
+        {
+         "duration": "0.0032s",
+         "durationInSeconds": 0.0031859874725341797,
+         "name": "closureCount_ignoresArrowsInCommentsAndStrings()",
+         "nodeIdentifier": "RouterCeilingParserTests/closureCount_ignoresArrowsInCommentsAndStrings()",
+         "nodeIdentifierURL": "test://com.apple.xcode/EnviousWispr/EnviousWisprTests/RouterCeilingParserTests/closureCount_ignoresArrowsInCommentsAndStrings()",
+         "nodeType": "Test Case",
+         "result": "Passed"
+        },
+        {
+         "duration": "0.0025s",
+         "durationInSeconds": 0.0025320053100585938,
+         "name": "closureCount_doesNotFoldACompleteParenthesizedType()",
+         "nodeIdentifier": "RouterCeilingParserTests/closureCount_doesNotFoldACompleteParenthesizedType()",
+         "nodeIdentifierURL": "test://com.apple.xcode/EnviousWispr/EnviousWisprTests/RouterCeilingParserTests/closureCount_doesNotFoldACompleteParenthesizedType()",
+         "nodeType": "Test Case",
+         "result": "Passed"
+        },
+        {
+         "duration": "0.0095s",
+         "durationInSeconds": 0.00951385498046875,
+         "name": "nonPrivateMethodCount_countsNonPrivateExcludesPrivateAndInit()",
+         "nodeIdentifier": "RouterCeilingParserTests/nonPrivateMethodCount_countsNonPrivateExcludesPrivateAndInit()",
+         "nodeIdentifierURL": "test://com.apple.xcode/EnviousWispr/EnviousWisprTests/RouterCeilingParserTests/nonPrivateMethodCount_countsNonPrivateExcludesPrivateAndInit()",
+         "nodeType": "Test Case",
+         "result": "Passed"
+        },
+        {
+         "duration": "0.0022s",
+         "durationInSeconds": 0.0022270679473876953,
+         "name": "collaboratorCount_stringLiteralPunctuationDoesNotTriggerFold()",
+         "nodeIdentifier": "RouterCeilingParserTests/collaboratorCount_stringLiteralPunctuationDoesNotTriggerFold()",
+         "nodeIdentifierURL": "test://com.apple.xcode/EnviousWispr/EnviousWisprTests/RouterCeilingParserTests/collaboratorCount_stringLiteralPunctuationDoesNotTriggerFold()",
+         "nodeType": "Test Case",
+         "result": "Passed"
+        },
+        {
+         "duration": "0.00057s",
+         "durationInSeconds": 0.0005660057067871094,
+         "name": "imports_descendIntoConditionalCompilationBlocks()",
+         "nodeIdentifier": "RouterCeilingParserTests/imports_descendIntoConditionalCompilationBlocks()",
+         "nodeIdentifierURL": "test://com.apple.xcode/EnviousWispr/EnviousWisprTests/RouterCeilingParserTests/imports_descendIntoConditionalCompilationBlocks()",
+         "nodeType": "Test Case",
+         "result": "Passed"
+        },
+        {
+         "duration": "0.0023s",
+         "durationInSeconds": 0.00232696533203125,
+         "name": "closureInjectedCount_excludesAnInferredClosureThatCannotBeInjected()",
+         "nodeIdentifier": "RouterCeilingParserTests/closureInjectedCount_excludesAnInferredClosureThatCannotBeInjected()",
+         "nodeIdentifierURL": "test://com.apple.xcode/EnviousWispr/EnviousWisprTests/RouterCeilingParserTests/closureInjectedCount_excludesAnInferredClosureThatCannotBeInjected()",
+         "nodeType": "Test Case",
+         "result": "Passed"
+        },
+        {
+         "duration": "0.003s",
+         "durationInSeconds": 0.0029659271240234375,
+         "name": "collaboratorCount_doesNotUnwrapAnOptionalNestedInAnotherType()",
+         "nodeIdentifier": "RouterCeilingParserTests/collaboratorCount_doesNotUnwrapAnOptionalNestedInAnotherType()",
+         "nodeIdentifierURL": "test://com.apple.xcode/EnviousWispr/EnviousWisprTests/RouterCeilingParserTests/collaboratorCount_doesNotUnwrapAnOptionalNestedInAnotherType()",
+         "nodeType": "Test Case",
+         "result": "Passed"
+        },
+        {
+         "duration": "0.014s",
+         "durationInSeconds": 0.014468908309936523,
+         "name": "closureInjectedCount_expandsATupleDestructuringPatternIntoOneSlotEach()",
+         "nodeIdentifier": "RouterCeilingParserTests/closureInjectedCount_expandsATupleDestructuringPatternIntoOneSlotEach()",
+         "nodeIdentifierURL": "test://com.apple.xcode/EnviousWispr/EnviousWisprTests/RouterCeilingParserTests/closureInjectedCount_expandsATupleDestructuringPatternIntoOneSlotEach()",
+         "nodeType": "Test Case",
+         "result": "Passed"
+        },
+        {
+         "duration": "0.0033s",
+         "durationInSeconds": 0.0033431053161621094,
+         "name": "closureInjectedCount_expandsNestedTuplePatterns()",
+         "nodeIdentifier": "RouterCeilingParserTests/closureInjectedCount_expandsNestedTuplePatterns()",
+         "nodeIdentifierURL": "test://com.apple.xcode/EnviousWispr/EnviousWisprTests/RouterCeilingParserTests/closureInjectedCount_expandsNestedTuplePatterns()",
+         "nodeType": "Test Case",
+         "result": "Passed"
+        },
+        {
+         "duration": "0.0029s",
+         "durationInSeconds": 0.0028917789459228516,
+         "name": "collaboratorCount_aTupleTYPEStillOccupiesOneSlot()",
+         "nodeIdentifier": "RouterCeilingParserTests/collaboratorCount_aTupleTYPEStillOccupiesOneSlot()",
+         "nodeIdentifierURL": "test://com.apple.xcode/EnviousWispr/EnviousWisprTests/RouterCeilingParserTests/collaboratorCount_aTupleTYPEStillOccupiesOneSlot()",
+         "nodeType": "Test Case",
+         "result": "Passed"
+        },
+        {
+         "duration": "0.0026s",
+         "durationInSeconds": 0.0025589466094970703,
+         "name": "collaboratorCount_aDestructuredInferredTupleStaysVisible()",
+         "nodeIdentifier": "RouterCeilingParserTests/collaboratorCount_aDestructuredInferredTupleStaysVisible()",
+         "nodeIdentifierURL": "test://com.apple.xcode/EnviousWispr/EnviousWisprTests/RouterCeilingParserTests/collaboratorCount_aDestructuredInferredTupleStaysVisible()",
+         "nodeType": "Test Case",
+         "result": "Passed"
+        },
+        {
+         "duration": "0.0073s",
+         "durationInSeconds": 0.007297039031982422,
+         "name": "closureInjectedCount_unwrapsWithNoFixedDepthOfItsOwn()",
+         "nodeIdentifier": "RouterCeilingParserTests/closureInjectedCount_unwrapsWithNoFixedDepthOfItsOwn()",
+         "nodeIdentifierURL": "test://com.apple.xcode/EnviousWispr/EnviousWisprTests/RouterCeilingParserTests/closureInjectedCount_unwrapsWithNoFixedDepthOfItsOwn()",
+         "nodeType": "Test Case",
+         "result": "Passed"
+        },
+        {
+         "duration": "0.0069s",
+         "durationInSeconds": 0.006871938705444336,
+         "name": "closureInjectedCount_expandsTuplePatternsWithNoFixedDepthOfItsOwn()",
+         "nodeIdentifier": "RouterCeilingParserTests/closureInjectedCount_expandsTuplePatternsWithNoFixedDepthOfItsOwn()",
+         "nodeIdentifierURL": "test://com.apple.xcode/EnviousWispr/EnviousWisprTests/RouterCeilingParserTests/closureInjectedCount_expandsTuplePatternsWithNoFixedDepthOfItsOwn()",
+         "nodeType": "Test Case",
+         "result": "Passed"
+        },
+        {
+         "duration": "0.0076s",
+         "durationInSeconds": 0.0075681209564208984,
+         "name": "collaboratorCount_countsAnAliasedClosureAsACollaborator_knownLimit()",
+         "nodeIdentifier": "RouterCeilingParserTests/collaboratorCount_countsAnAliasedClosureAsACollaborator_knownLimit()",
+         "nodeIdentifierURL": "test://com.apple.xcode/EnviousWispr/EnviousWisprTests/RouterCeilingParserTests/collaboratorCount_countsAnAliasedClosureAsACollaborator_knownLimit()",
+         "nodeType": "Test Case",
+         "result": "Passed"
+        },
+        {
+         "children": [
+          {
+           "name": "parsed(_:context:) records an issue as well as throwing",
+           "nodeType": "Expected Failure"
+          },
+          {
+           "name": "parsed(_:context:) records an issue as well as throwing",
+           "nodeType": "Expected Failure"
+          }
+         ],
+         "duration": "0.014s",
+         "durationInSeconds": 0.014274120330810547,
+         "name": "classBody_failsClosedOnSourceThatDoesNotParse()",
+         "nodeIdentifier": "RouterCeilingParserTests/classBody_failsClosedOnSourceThatDoesNotParse()",
+         "nodeIdentifierURL": "test://com.apple.xcode/EnviousWispr/EnviousWisprTests/RouterCeilingParserTests/classBody_failsClosedOnSourceThatDoesNotParse()",
+         "nodeType": "Test Case",
+         "result": "Expected Failure"
+        }
+       ],
+       "name": "RouterCeilingParserTests",
+       "nodeIdentifierURL": "test://com.apple.xcode/EnviousWispr/EnviousWisprTests/RouterCeilingParserTests",
+       "nodeType": "Test Suite",
+       "result": "Passed"
+      }
+     ]
+    }
+   ],
+   "name": "EnviousWispr",
+   "nodeType": "Test Plan",
+   "result": "Passed"
+  }
+ ],
+ "_provenance": "xcrun xcresulttool get test-results tests, Xcode 27A266a, from a full local Debug run of 7758 test cases; four suites kept (Skipped, Expected Failure, Repetition, Runtime Warning), passing Arguments trimmed"
+}

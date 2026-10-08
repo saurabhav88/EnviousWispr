@@ -1,0 +1,346 @@
+{
+ "devices": [
+  {
+   "architecture": "arm64",
+   "deviceId": "00006050-000151C2216B401C",
+   "deviceName": "My Mac",
+   "modelName": "MacBook Pro",
+   "osBuildNumber": "26B5091g",
+   "osVersion": "27.2",
+   "platform": "macOS"
+  }
+ ],
+ "testNodes": [
+  {
+   "children": [
+    {
+     "children": [
+      {
+       "children": [
+        {
+         "children": [
+          {
+           "duration": "0.00062s",
+           "durationInSeconds": 0.0006241798400878906,
+           "name": "(dictated: \"9 High Plains Road Shelton Connecticut 06484 two days from now\", expected: \"9 High Plains Road, Shelton, Connecticut 06484 two days from now\")",
+           "nodeIdentifierURL": "test://com.apple.xcode/EnviousWispr/EnviousWisprTests/InverseTextNormalizerStreetAddressTests/row(row:)",
+           "nodeType": "Arguments",
+           "result": "Passed"
+          },
+          {
+           "duration": "0.0062s",
+           "durationInSeconds": 0.006242036819458008,
+           "name": "(dictated: \"9 High Plains Road Shelton Connecticut 06484\", expected: \"9 High Plains Road, Shelton, Connecticut 06484\")",
+           "nodeIdentifierURL": "test://com.apple.xcode/EnviousWispr/EnviousWisprTests/InverseTextNormalizerStreetAddressTests/row(row:)",
+           "nodeType": "Arguments",
+           "result": "Passed"
+          }
+         ],
+         "duration": "0.00091s",
+         "durationInSeconds": 0.0009073019027709961,
+         "name": "a dictated address is written with digits and commas",
+         "nodeIdentifier": "InverseTextNormalizerStreetAddressTests/row(row:)",
+         "nodeIdentifierURL": "test://com.apple.xcode/EnviousWispr/EnviousWisprTests/InverseTextNormalizerStreetAddressTests/row(row:)",
+         "nodeType": "Test Case",
+         "result": "Passed",
+         "tags": [
+          "productOutcome"
+         ]
+        },
+        {
+         "children": [
+          {
+           "children": [
+            {
+             "name": "Expectation failed: (english(text) → \"Revenue for 2019 Main Street, Bank Denver, Colorado 80203 rose.\") == (text → \"Revenue for 2019 Main Street Bank Denver Colorado 80203 rose.\")",
+             "nodeType": "Failure Message",
+             "sourceLocation": {
+              "filePath": "/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr/Tests/EnviousWisprTests/PostProcessing/InverseTextNormalizerStreetAddressTests.swift",
+              "lineNumber": 214
+             }
+            }
+           ],
+           "duration": "0.00065s",
+           "durationInSeconds": 0.0006520748138427734,
+           "name": "\"Revenue for 2019 Main Street Bank Denver Colorado 80203 rose.\"",
+           "nodeIdentifierURL": "test://com.apple.xcode/EnviousWispr/EnviousWisprTests/InverseTextNormalizerStreetAddressTests/control(text:)",
+           "nodeType": "Arguments",
+           "result": "Failed"
+          },
+          {
+           "duration": "0.00029s",
+           "durationInSeconds": 0.00029397010803222656,
+           "name": "\"Apartment seven is empty.\"",
+           "nodeIdentifierURL": "test://com.apple.xcode/EnviousWispr/EnviousWisprTests/InverseTextNormalizerStreetAddressTests/control(text:)",
+           "nodeType": "Arguments",
+           "result": "Passed"
+          },
+          {
+           "duration": "0.00043s",
+           "durationInSeconds": 0.00042700767517089844,
+           "name": "\"Court Street, Brooklyn is where we met in 2019.\"",
+           "nodeIdentifierURL": "test://com.apple.xcode/EnviousWispr/EnviousWisprTests/InverseTextNormalizerStreetAddressTests/control(text:)",
+           "nodeType": "Arguments",
+           "result": "Passed"
+          }
+         ],
+         "duration": "0.00046s",
+         "durationInSeconds": 0.0004566959712816321,
+         "name": "prose that is not a whole address is left alone",
+         "nodeIdentifier": "InverseTextNormalizerStreetAddressTests/control(text:)",
+         "nodeIdentifierURL": "test://com.apple.xcode/EnviousWispr/EnviousWisprTests/InverseTextNormalizerStreetAddressTests/control(text:)",
+         "nodeType": "Test Case",
+         "result": "Failed",
+         "tags": [
+          "productOutcome"
+         ]
+        },
+        {
+         "children": [
+          {
+           "name": "Expectation failed: (english(s) → \"Shipped from 2001 Main Street, Hartford, Connecticut 06103.\") == (s → \"Shipped from 2001 Main Street, Hartford Connecticut 06103.\")",
+           "nodeType": "Failure Message",
+           "sourceLocation": {
+            "filePath": "/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr/Tests/EnviousWisprTests/PostProcessing/InverseTextNormalizerStreetAddressTests.swift",
+            "lineNumber": 222
+           }
+          }
+         ],
+         "duration": "0.0006s",
+         "durationInSeconds": 0.0005970001220703125,
+         "name": "a year-shaped house number after a time word stays as spoken",
+         "nodeIdentifier": "InverseTextNormalizerStreetAddressTests/yearGuardMiss()",
+         "nodeIdentifierURL": "test://com.apple.xcode/EnviousWispr/EnviousWisprTests/InverseTextNormalizerStreetAddressTests/yearGuardMiss()",
+         "nodeType": "Test Case",
+         "result": "Failed",
+         "tags": [
+          "productOutcome"
+         ]
+        },
+        {
+         "duration": "0.0015s",
+         "durationInSeconds": 0.0014951229095458984,
+         "name": "a house number too long to read is left to the number pass",
+         "nodeIdentifier": "InverseTextNormalizerStreetAddressTests/tooLongHouseNumber()",
+         "nodeIdentifierURL": "test://com.apple.xcode/EnviousWispr/EnviousWisprTests/InverseTextNormalizerStreetAddressTests/tooLongHouseNumber()",
+         "nodeType": "Test Case",
+         "result": "Passed",
+         "tags": [
+          "productOutcome"
+         ]
+        },
+        {
+         "children": [
+          {
+           "duration": "0.00039s",
+           "durationInSeconds": 0.00038909912109375,
+           "name": "(dictated: \"9 - 11 Main Street Hartford Connecticut 06103.\", expected: \"9 - 11 Main Street Hartford Connecticut 06103.\")",
+           "nodeIdentifierURL": "test://com.apple.xcode/EnviousWispr/EnviousWisprTests/InverseTextNormalizerStreetAddressTests/borrowedNumber(row:)",
+           "nodeType": "Arguments",
+           "result": "Passed"
+          },
+          {
+           "duration": "0.00037s",
+           "durationInSeconds": 0.0003731250762939453,
+           "name": "(dictated: \"9 FT Main Street Hartford Connecticut 06103.\", expected: \"9 FT Main Street Hartford Connecticut 06103.\")",
+           "nodeIdentifierURL": "test://com.apple.xcode/EnviousWispr/EnviousWisprTests/InverseTextNormalizerStreetAddressTests/borrowedNumber(row:)",
+           "nodeType": "Arguments",
+           "result": "Passed"
+          }
+         ],
+         "duration": "0.00042s",
+         "durationInSeconds": 0.0004227388472784133,
+         "name": "a number that belongs to the words before it is not a house number",
+         "nodeIdentifier": "InverseTextNormalizerStreetAddressTests/borrowedNumber(row:)",
+         "nodeIdentifierURL": "test://com.apple.xcode/EnviousWispr/EnviousWisprTests/InverseTextNormalizerStreetAddressTests/borrowedNumber(row:)",
+         "nodeType": "Test Case",
+         "result": "Passed",
+         "tags": [
+          "productOutcome"
+         ]
+        },
+        {
+         "children": [
+          {
+           "children": [
+            {
+             "name": "Expectation failed: (english(row.dictated) → \"Figures from 2019 Main Street, Bank Denver, Colorado 80203 arrived.\") == (row.expected → \"Figures from 2019 Main Street Bank Denver Colorado 80203 arrived.\")",
+             "nodeType": "Failure Message",
+             "sourceLocation": {
+              "filePath": "/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr/Tests/EnviousWisprTests/PostProcessing/InverseTextNormalizerStreetAddressTests.swift",
+              "lineNumber": 304
+             }
+            }
+           ],
+           "duration": "0.00049s",
+           "durationInSeconds": 0.00048804283142089844,
+           "name": "(dictated: \"Figures from 2019 Main Street Bank Denver Colorado 80203 arrived.\", expected: \"Figures from 2019 Main Street Bank Denver Colorado 80203 arrived.\")",
+           "nodeIdentifierURL": "test://com.apple.xcode/EnviousWispr/EnviousWisprTests/InverseTextNormalizerStreetAddressTests/notAddress(row:)",
+           "nodeType": "Arguments",
+           "result": "Failed"
+          },
+          {
+           "children": [
+            {
+             "name": "Expectation failed: (english(row.dictated) → \"Revenue for 2020 Main Street, Bank Denver, Colorado 80203 rose.\") == (row.expected → \"Revenue for 2020 Main Street Bank Denver Colorado 80203 rose.\")",
+             "nodeType": "Failure Message",
+             "sourceLocation": {
+              "filePath": "/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr/Tests/EnviousWisprTests/PostProcessing/InverseTextNormalizerStreetAddressTests.swift",
+              "lineNumber": 304
+             }
+            }
+           ],
+           "duration": "0.00055s",
+           "durationInSeconds": 0.0005509853363037109,
+           "name": "(dictated: \"Revenue for twenty twenty Main Street Bank Denver Colorado 80203 rose.\", expected: \"Revenue for 2020 Main Street Bank Denver Colorado 80203 rose.\")",
+           "nodeIdentifierURL": "test://com.apple.xcode/EnviousWispr/EnviousWisprTests/InverseTextNormalizerStreetAddressTests/notAddress(row:)",
+           "nodeType": "Arguments",
+           "result": "Failed"
+          },
+          {
+           "duration": "0.00064s",
+           "durationInSeconds": 0.0006449222564697266,
+           "name": "(dictated: \"9 High Plains Road Shelton Connecticut zero six four eight four two days from now\", expected: \"9 High Plains Road Shelton Connecticut 064842 days from now\")",
+           "nodeIdentifierURL": "test://com.apple.xcode/EnviousWispr/EnviousWisprTests/InverseTextNormalizerStreetAddressTests/notAddress(row:)",
+           "nodeType": "Arguments",
+           "result": "Passed"
+          },
+          {
+           "duration": "0.00049s",
+           "durationInSeconds": 0.0004870891571044922,
+           "name": "(dictated: \"one hundred and 23 Main Street Hartford Connecticut 06103\", expected: \"100 and 23 Main Street Hartford Connecticut 06103\")",
+           "nodeIdentifierURL": "test://com.apple.xcode/EnviousWispr/EnviousWisprTests/InverseTextNormalizerStreetAddressTests/notAddress(row:)",
+           "nodeType": "Arguments",
+           "result": "Passed"
+          }
+         ],
+         "duration": "0.00056s",
+         "durationInSeconds": 0.0005596478780110677,
+         "name": "a year or a longer digit run is not read as an address",
+         "nodeIdentifier": "InverseTextNormalizerStreetAddressTests/notAddress(row:)",
+         "nodeIdentifierURL": "test://com.apple.xcode/EnviousWispr/EnviousWisprTests/InverseTextNormalizerStreetAddressTests/notAddress(row:)",
+         "nodeType": "Test Case",
+         "result": "Failed",
+         "tags": [
+          "productOutcome"
+         ]
+        },
+        {
+         "children": [
+          {
+           "duration": "0.00034s",
+           "durationInSeconds": 0.0003428459167480469,
+           "name": "(dictated: \"Deliver to Keizersgracht 123, 1015 CJ Amsterdam.\", expected: \"Deliver to Keizersgracht 123, 1015 CJ Amsterdam.\")",
+           "nodeIdentifierURL": "test://com.apple.xcode/EnviousWispr/EnviousWisprTests/InverseTextNormalizerStreetAddressTests/nonUSAddress(row:)",
+           "nodeType": "Arguments",
+           "result": "Passed"
+          },
+          {
+           "duration": "0.00041s",
+           "durationInSeconds": 0.00041294097900390625,
+           "name": "(dictated: \"I live at 221 Linking Road, Bandra West, Mumbai, Maharashtra 400050.\", expected: \"I live at 221 Linking Road, Bandra West, Mumbai, Maharashtra 400050.\")",
+           "nodeIdentifierURL": "test://com.apple.xcode/EnviousWispr/EnviousWisprTests/InverseTextNormalizerStreetAddressTests/nonUSAddress(row:)",
+           "nodeType": "Arguments",
+           "result": "Passed"
+          }
+         ],
+         "duration": "0.0004s",
+         "durationInSeconds": 0.0004042176639332491,
+         "name": "an Indian, UK or European address is not read as a US address",
+         "nodeIdentifier": "InverseTextNormalizerStreetAddressTests/nonUSAddress(row:)",
+         "nodeIdentifierURL": "test://com.apple.xcode/EnviousWispr/EnviousWisprTests/InverseTextNormalizerStreetAddressTests/nonUSAddress(row:)",
+         "nodeType": "Test Case",
+         "result": "Passed",
+         "tags": [
+          "productOutcome"
+         ]
+        },
+        {
+         "children": [
+          {
+           "duration": "0.00042s",
+           "durationInSeconds": 0.0004229545593261719,
+           "name": "(dictated: \"9 High Plains Road Shelton Connecticut 06484 two days from now\", expected: \"9 High Plains Road, Shelton, Connecticut 06484 two days from now\")",
+           "nodeIdentifierURL": "test://com.apple.xcode/EnviousWispr/EnviousWisprTests/InverseTextNormalizerStreetAddressTests/idempotent(row:)",
+           "nodeType": "Arguments",
+           "result": "Passed"
+          },
+          {
+           "duration": "0.00034s",
+           "durationInSeconds": 0.0003368854522705078,
+           "name": "(dictated: \"9 High Plains Road Shelton Connecticut 06484\", expected: \"9 High Plains Road, Shelton, Connecticut 06484\")",
+           "nodeIdentifierURL": "test://com.apple.xcode/EnviousWispr/EnviousWisprTests/InverseTextNormalizerStreetAddressTests/idempotent(row:)",
+           "nodeType": "Arguments",
+           "result": "Passed"
+          }
+         ],
+         "duration": "0.00044s",
+         "durationInSeconds": 0.0004354294608621036,
+         "name": "a formatted address is not changed again",
+         "nodeIdentifier": "InverseTextNormalizerStreetAddressTests/idempotent(row:)",
+         "nodeIdentifierURL": "test://com.apple.xcode/EnviousWispr/EnviousWisprTests/InverseTextNormalizerStreetAddressTests/idempotent(row:)",
+         "nodeType": "Test Case",
+         "result": "Passed",
+         "tags": [
+          "productOutcome"
+         ]
+        },
+        {
+         "children": [
+          {
+           "duration": "0.0008s",
+           "durationInSeconds": 0.0007960796356201172,
+           "name": "(dictated: \"9 High Plains Road Shelton Connecticut 06484 two days from now\", expected: \"9 High Plains Road, Shelton, Connecticut 06484 two days from now\")",
+           "nodeIdentifierURL": "test://com.apple.xcode/EnviousWispr/EnviousWisprTests/InverseTextNormalizerStreetAddressTests/neutralRoute(row:)",
+           "nodeType": "Arguments",
+           "result": "Passed"
+          },
+          {
+           "duration": "0.045s",
+           "durationInSeconds": 0.04477190971374512,
+           "name": "(dictated: \"9 High Plains Road Shelton Connecticut 06484\", expected: \"9 High Plains Road, Shelton, Connecticut 06484\")",
+           "nodeIdentifierURL": "test://com.apple.xcode/EnviousWispr/EnviousWisprTests/InverseTextNormalizerStreetAddressTests/neutralRoute(row:)",
+           "nodeType": "Arguments",
+           "result": "Passed"
+          }
+         ],
+         "duration": "0.0021s",
+         "durationInSeconds": 0.002136672244352453,
+         "name": "a non-English take never reads the address",
+         "nodeIdentifier": "InverseTextNormalizerStreetAddressTests/neutralRoute(row:)",
+         "nodeIdentifierURL": "test://com.apple.xcode/EnviousWispr/EnviousWisprTests/InverseTextNormalizerStreetAddressTests/neutralRoute(row:)",
+         "nodeType": "Test Case",
+         "result": "Passed",
+         "tags": [
+          "productOutcome"
+         ]
+        }
+       ],
+       "name": "ITN formats dictated US street addresses (#3211)",
+       "nodeIdentifierURL": "test://com.apple.xcode/EnviousWispr/EnviousWisprTests/InverseTextNormalizerStreetAddressTests",
+       "nodeType": "Test Suite",
+       "result": "Failed",
+       "tags": [
+        "productOutcome"
+       ]
+      }
+     ],
+     "name": "EnviousWisprTests",
+     "nodeIdentifierURL": "test://com.apple.xcode/EnviousWispr/EnviousWisprTests",
+     "nodeType": "Unit test bundle",
+     "result": "Failed"
+    }
+   ],
+   "name": "EnviousWispr",
+   "nodeType": "Test Plan",
+   "result": "Failed"
+  }
+ ],
+ "testPlanConfigurations": [
+  {
+   "configurationId": "1",
+   "configurationName": "Test Scheme Action"
+  }
+ ],
+ "_provenance": "xcrun xcresulttool get test-results tests, Xcode 27A266a, 2026-10-08, from a mutation-battery row (InverseTextNormalizerStreetAddressTests, 3 real failures); passing Arguments trimmed to two per case"
+}
