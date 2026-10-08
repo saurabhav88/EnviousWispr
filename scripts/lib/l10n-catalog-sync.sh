@@ -366,6 +366,20 @@ def keep_translated_removals(committed_strings, kept, source_language):
     return stale
 
 
+def keep_every_committed_key(committed_strings, synced_strings):
+    """Dev --update never removes (#3524): a Dev build cannot show that a key is gone from the
+    Release app (a `#if !DEBUG` literal is absent from it), so every committed key the sync would
+    drop, or would newly mark `stale`, gets its complete committed entry back, translations and
+    all. Returns the keys kept that way. Removal stays a Release-mode operation."""
+    kept = []
+    for key, entry in committed_strings.items():
+        now = synced_strings.get(key)
+        if now is None or (now.get("extractionState") == "stale" and entry.get("extractionState") != "stale"):
+            synced_strings[key] = copy.deepcopy(entry)
+            kept.append(key)
+    return sorted(kept)
+
+
 def xcstringstool_sync(start, files, work):
     """Run `xcstringstool sync` over a copy of `start` (a catalog object) and return the result."""
     work.mkdir()
@@ -664,10 +678,8 @@ def main(argv):
             sys.stdout.write("".join(f"{p.relative_to(args.derived_data)}\0" for p in files))
             return 0
         dev = args.configuration == "Dev"
-        if dev and args.update:
-            raise Refused("--update --configuration Dev is not available yet; use a Release build")
         if dev and not args.expect_inputs:
-            raise Refused("--check --configuration Dev needs --expect-inputs <the pushed code's input digest>")
+            raise Refused("--configuration Dev needs --expect-inputs <the input digest of the code the Dev build is of>")
         if args.dev_derived_data and (dev or not args.check or not args.expect_inputs):
             raise Refused("--dev-derived-data goes with --check --configuration Release and --expect-inputs")
         build = xcode_build()
@@ -727,6 +739,14 @@ def main(argv):
                 args.servicesmenu_catalog,
                 *sync_seeded_table(args.servicesmenu_catalog, services_seed, services_menu_comment),
             ))
+        retained = []
+        if dev and args.update:
+            # A partial repair: add and update from the Dev extraction, remove nothing, and leave a
+            # committed Dev-only entry exactly as committed (Dev extraction is not its authority).
+            for k in DEV_ONLY_KEYS & set(committed["strings"]):
+                synced["strings"][k] = copy.deepcopy(committed["strings"][k])
+            for path, before, after in tables:
+                retained += [(path, k) for k in keep_every_committed_key(before["strings"], after["strings"])]
         print(f"inputs: {len(files)} .stringsdata from {len(PRODUCTION_TARGETS)} production targets")
         print(f"What's New: {len(seed)} keys from {args.whats_new_source.name}")
         print(f"{args.info_plist.name}: {len(info_seed)} InfoPlist keys, {len(services_seed)} ServicesMenu keys")
@@ -781,6 +801,16 @@ def main(argv):
                 print(f"updated {path}")
             if not drifted:
                 print("catalog already in sync")
+            if dev:
+                if retained:
+                    print(f"KEPT: {len(retained)} committed key(s) this Dev build does not extract, left unchanged "
+                          "with their translations; a Dev update never removes (CI's Release check reports removals):")
+                    for path, key in retained[:50]:
+                        print(f"  {path.name}: {key!r}")
+                    if len(retained) > 50:
+                        print(f"  ... and {len(retained) - 50} more")
+                print("This was a partial repair from a Dev build: it does not show Release equivalence; "
+                      "CI's Release check stays the authority.")
             if incomplete:
                 print("the translations above are incomplete; --update never supplies them, and --check fails until they are added")
             return 0
@@ -788,11 +818,16 @@ def main(argv):
             print("INCOMPLETE: add or review the translations listed above and mark them translated "
                   "(interface-localization.md RULE: new-or-changed-ui-text-updates-the-catalog).")
         if drifted:
-            print(f"DRIFT: {len(added)} added, {len(removed)} removed, {len(changed)} changed. To fix, on Xcode "
-                  f"{PINNED_XCODE_BUILD}: xcodebuild build -project EnviousWispr.xcodeproj -scheme EnviousWispr-Release "
-                  "-configuration Release -derivedDataPath .derivedData/L10n -destination 'generic/platform=macOS', "
-                  "then scripts/lib/l10n-catalog-sync.sh --update --derived-data .derivedData/L10n "
-                  "--configuration Release, and commit the changed catalogs in Sources/EnviousWispr/Resources/.")
+            print(f"DRIFT: {len(added)} added, {len(removed)} removed, {len(changed)} changed. To add and update "
+                  "keys from your Dev build (scripts/build-dev-app.sh writes .derivedData/Dev/ew-l10n-receipt.json), "
+                  "run scripts/lib/l10n-catalog-sync.sh --update --configuration Dev --derived-data .derivedData/Dev "
+                  "--expect-inputs \"$(python3 scripts/lib/l10n-build-receipt.py input-digest --repo . "
+                  "--configuration Dev | python3 -c 'import json,sys; print(json.load(sys.stdin)[\"input_digest\"])')\" "
+                  "and commit the changed catalogs in Sources/EnviousWispr/Resources/. A Dev update never removes a key: "
+                  f"removals come from CI's Release report, or, on Xcode {PINNED_XCODE_BUILD}: xcodebuild build "
+                  "-project EnviousWispr.xcodeproj -scheme EnviousWispr-Release -configuration Release "
+                  "-derivedDataPath .derivedData/L10n -destination 'generic/platform=macOS', then "
+                  "scripts/lib/l10n-catalog-sync.sh --update --derived-data .derivedData/L10n --configuration Release.")
             return 1
         if incomplete or dev_only_leak:
             return 1

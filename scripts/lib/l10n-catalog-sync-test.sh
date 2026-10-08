@@ -896,7 +896,6 @@ dev_case("Dev: an extraction changed after the receipt is could-not-run", 2, ["e
          after_receipt=lambda dd: next(dd.rglob("EnviousWisprCore.build/Objects-normal/arm64/File.stringsdata")).write_text(
              stringsdata([entry("EnviousWisprCore plain copy"), entry("rebuilt")])))
 dev_case("Dev: --expect-inputs is required", 2, ["needs --expect-inputs"], expect="omit")
-dev_case("Dev: --update stays refused", 2, ["--update --configuration Dev is not available"], mode="--update")
 dev_case("Dev: a listed Dev-only key (DEBUG-only literal) is ignored", 0,
          ["Dev-only keys ignored: 1 of 35", "catalog in sync"], extra_keys=[DEV_ONLY_SAMPLE])
 dev_case("Dev: an unlisted new key is drift", 1, ["added: 'a key nobody listed'"], extra_keys=["a key nobody listed"])
@@ -1004,6 +1003,157 @@ with tempfile.TemporaryDirectory() as tmp:
     if "DRIFT" in out:
         failures.append("leak case drifted")
         print("FAIL  the leak case also drifted, so it does not isolate the leak")
+
+
+# --- Dev partial repair (#3524 PR 3): add and update from a certified Dev build, remove nothing ---
+def dev_update(name, *, edit_committed=None, whats_new_source=None, receipt="valid", then_check=None,
+               verify=None, want_code=0, want_texts=(), **fx):
+    """Commit a catalog from the Release fixture, apply edit_committed, run a Dev --update, then
+    verify(before, after, out) on the three catalogs' complete objects; optionally a Dev --check."""
+    global cases
+    with tempfile.TemporaryDirectory() as tmp:
+        root = pathlib.Path(tmp)
+        catalog = root / "Localizable.xcstrings"
+        committed_catalog(catalog)
+        assert run("--update", "--derived-data", str(fixture(root / "clean")), "--configuration", "Release",
+                   "--catalog", str(catalog))[0] == 0
+        if edit_committed:
+            data = json.loads(catalog.read_text())
+            edit_committed(data["strings"])
+            catalog.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n")
+        before_bytes = catalog.read_bytes()
+        before = json.loads(before_bytes)
+        dd = fixture(root / "dev", configuration="Dev", **fx)
+        digest = write_receipt(dd) if receipt == "valid" else None
+        wn = None
+        if whats_new_source is not None:
+            wn = root / "WhatsNewContent.swift"
+            wn.write_text(whats_new_source)
+        code, out = run("--update", "--derived-data", str(dd), "--configuration", "Dev", "--catalog", str(catalog),
+                        "--expect-inputs", digest or "f" * 64, whats_new_source=wn)
+        after_bytes = catalog.read_bytes()
+        problem = None
+        if code != want_code or not all(t in out for t in want_texts):
+            problem = f"exit {code}, wanted {want_code} with {list(want_texts)}"
+        elif verify:
+            problem = verify(before, json.loads(after_bytes), out, before_bytes == after_bytes)
+        if not problem and then_check:
+            want_check, check_text = then_check
+            c_code, c_out = run("--check", "--derived-data", str(dd), "--configuration", "Dev", "--catalog", str(catalog),
+                                "--expect-inputs", digest or "f" * 64, whats_new_source=wn)
+            if c_code != want_check or check_text not in c_out:
+                problem = f"the following Dev --check exited {c_code}, wanted {want_check} with {check_text!r}\n{c_out}"
+        cases += 1
+        print(f"{'PASS' if not problem else 'FAIL'}  {name}")
+        if problem:
+            failures.append(name)
+            print(f"  {problem}\n{out}")
+
+
+def same_entry(key):
+    return lambda b, a, out, unchanged: None if a["strings"].get(key) == b["strings"][key] else (
+        f"{key!r} changed: {b['strings'][key]!r} -> {a['strings'].get(key)!r}")
+
+
+def english_only_absent(strings):
+    strings["a release only label"] = {"comment": "only in Release", "extractionState": "extracted_with_value",
+                                       "localizations": {"en": {"stringUnit": {"state": "new", "value": "a release only label"}}}}
+
+
+def translated_absent(strings):
+    english_only_absent(strings)
+    strings["a release only label"]["localizations"]["de"] = {"stringUnit": {"state": "translated", "value": "nur in Release"}}
+
+
+def german_and_hand_edited_english(strings):
+    german_on_one_key(strings)
+    edit_translated_default(strings)
+
+
+def committed_dev_only_entry(strings):
+    strings[DEV_ONLY_SAMPLE] = {"comment": "committed by hand", "extractionState": "manual",
+                                "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Hand text"}}}}
+
+
+dev_update("Dev update: a new key is added", extra_keys=["a new label"],
+           verify=lambda b, a, out, u: None if "a new label" in a["strings"] and "a new label" not in b["strings"] else "not added",
+           then_check=(0, "catalog in sync"))
+dev_update("Dev update: changed English is updated, German kept and flagged for review", edit_committed=german_and_hand_edited_english,
+           verify=lambda b, a, out, u: None if (
+               a["strings"]["fixture.value.key"]["localizations"]["en"]["stringUnit"]["value"] == "Value text"
+               and a["strings"]["fixture.value.key"]["localizations"]["de"]["stringUnit"]["value"] == "Werttext"
+               and a["strings"]["fixture.value.key"]["localizations"]["de"]["stringUnit"]["state"] == "needs_review")
+           else f"got {a['strings']['fixture.value.key']!r}")
+dev_update("Dev update: an absent English-only key is kept exactly", edit_committed=english_only_absent,
+           verify=same_entry("a release only label"), want_texts=["KEPT: 1", "'a release only label'"],
+           then_check=(1, "removed: 'a release only label'"))
+dev_update("Dev update: an absent translated key is kept exactly, not marked stale", edit_committed=translated_absent,
+           verify=same_entry("a release only label"), want_texts=["KEPT: 1"])
+dev_update("Dev update: What's New keys gone from the seed are kept exactly", whats_new_source=whats_new(alpha_bullets=("One",)),
+           verify=lambda b, a, out, u: same_entry("whatsNew.alpha.bullet.1")(b, a, out, u), want_texts=["whatsNew.alpha.bullet.1"])
+dev_update("Dev update: a committed Dev-only entry is left exactly as committed", edit_committed=committed_dev_only_entry,
+           extra_keys=[DEV_ONLY_SAMPLE], verify=same_entry(DEV_ONLY_SAMPLE))
+dev_update("Dev update: a listed Dev-only key is not added", extra_keys=[DEV_ONLY_SAMPLE],
+           verify=lambda b, a, out, u: None if DEV_ONLY_SAMPLE not in a["strings"] and u else "Dev-only key written or file changed")
+dev_update("Dev update: no receipt writes nothing", receipt="none", want_code=2, want_texts=["not of the pushed code"],
+           extra_keys=["a new label"], verify=None)
+dev_update("Dev update: an invalid What's New seed writes nothing", whats_new_source=whats_new(duplicate=True), want_code=2,
+           extra_keys=["a new label"])
+dev_update("Dev update: incomplete German is reported, never supplied", edit_committed=german_on_one_key, extra_keys=["a new label"],
+           want_texts=["INCOMPLETE", "--update never supplies them"],
+           verify=lambda b, a, out, u: None if "de" not in a["strings"]["a new label"].get("localizations", {}) else "German fabricated",
+           then_check=(1, "INCOMPLETE"))
+dev_update("Dev update: a clean tree is a no-op and leaves the file byte-identical",
+           verify=lambda b, a, out, u: None if u and "catalog already in sync" in out else "file rewritten or not reported in sync")
+dev_update("Dev update: says it is partial and not Release equivalence", want_texts=["partial repair from a Dev build"])
+
+
+# The no-write cases above assert exit 2; prove the bytes too.
+def no_write_case(name, **kw):
+    global cases
+    with tempfile.TemporaryDirectory() as tmp:
+        root = pathlib.Path(tmp)
+        catalog = root / "Localizable.xcstrings"
+        committed_catalog(catalog)
+        assert run("--update", "--derived-data", str(fixture(root / "clean")), "--configuration", "Release",
+                   "--catalog", str(catalog))[0] == 0
+        before = catalog.read_bytes()
+        dd = fixture(root / "dev", configuration="Dev", extra_keys=["a new label"])
+        digest = write_receipt(dd)
+        wn = None
+        if kw.get("whats_new_source"):
+            wn = root / "WhatsNewContent.swift"
+            wn.write_text(kw["whats_new_source"])
+        code, out = run("--update", "--derived-data", str(dd), "--configuration", "Dev", "--catalog", str(catalog),
+                        "--expect-inputs", kw.get("expect", digest), whats_new_source=wn)
+        cases += 1
+        ok = code == 2 and catalog.read_bytes() == before
+        print(f"{'PASS' if ok else 'FAIL'}  {name}: exit {code}, catalog {'unchanged' if catalog.read_bytes() == before else 'CHANGED'}")
+        if not ok:
+            failures.append(name)
+            print(out)
+
+
+no_write_case("Dev update: a receipt for other code leaves the catalog byte-identical", expect="f" * 64)
+no_write_case("Dev update: an invalid seed leaves the catalog byte-identical", whats_new_source=whats_new(duplicate=True))
+
+# Release update still removes what its extraction no longer has (contrast with the Dev case).
+with tempfile.TemporaryDirectory() as tmp:
+    root = pathlib.Path(tmp)
+    catalog = root / "Localizable.xcstrings"
+    committed_catalog(catalog)
+    dd = fixture(root / "clean")
+    assert run("--update", "--derived-data", str(dd), "--configuration", "Release", "--catalog", str(catalog))[0] == 0
+    data = json.loads(catalog.read_text())
+    english_only_absent(data["strings"])
+    catalog.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n")
+    code, out = run("--update", "--derived-data", str(dd), "--configuration", "Release", "--catalog", str(catalog))
+    gone = "a release only label" not in json.loads(catalog.read_text())["strings"]
+    cases += 1
+    print(f"{'PASS' if code == 0 and gone else 'FAIL'}  Release update: still removes a key its extraction lacks")
+    if not (code == 0 and gone):
+        failures.append("Release update removal")
+        print(out)
 
 print(f"{cases} cases, {len(failures)} failed" + (f": {failures}" if failures else ""))
 sys.exit(1 if failures else 0)
