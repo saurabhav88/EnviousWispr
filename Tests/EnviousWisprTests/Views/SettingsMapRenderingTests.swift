@@ -38,6 +38,11 @@ struct SettingsMapRenderingTests {
   @MainActor final class TabStopSink { var keyViews = -1 }
   @TaskLocal static var tabStopSink: TabStopSink?
 
+  /// The places the page's arrival owner can see (`SettingsRevealAnchorKey`), written for a
+  /// render only when a test sets the sink (#3545).
+  @MainActor final class RevealSink { var ids: Set<SettingsMapID> = [] }
+  @TaskLocal static var revealSink: RevealSink?
+
   static func keyViewCount(_ view: NSView) -> Int {
     (view.canBecomeKeyView && !view.isHidden ? 1 : 0)
       + view.subviews.reduce(0) { $0 + keyViewCount($1) }
@@ -54,6 +59,7 @@ struct SettingsMapRenderingTests {
     let box = Box()
     let sink = focusSink
     let tabStopSink = tabStopSink
+    let revealSink = revealSink
     let (changes, continuation) = AsyncStream<Void>.makeStream()
     let root =
       view
@@ -64,6 +70,9 @@ struct SettingsMapRenderingTests {
       }
       .onPreferenceChange(SettingsArrivalFocusKey.self) { value in
         MainActor.assumeIsolated { sink?.kinds = value }
+      }
+      .onPreferenceChange(SettingsRevealAnchorKey.self) { value in
+        MainActor.assumeIsolated { revealSink?.ids = Set(value.keys) }
       }
     let host = NSHostingView(rootView: root)
     host.frame = CGRect(x: 0, y: 0, width: width, height: height)
@@ -764,9 +773,18 @@ struct SettingsMapRenderingTests {
   @Test("each state registers exactly what the reviewed fixture lists", arguments: stateLabels)
   func state(label: String) async throws {
     _ = SettingsMap.takeRecordedFaults()
-    let rendered = try await Self.render(label)
+    let reveals = RevealSink()
+    let rendered = try await Self.$revealSink.withValue(reveals) { try await Self.render(label) }
     // A Release test run does not stop on a wiring fault; it is recorded instead.
     #expect(SettingsMap.takeRecordedFaults() == [], "\(label): Settings Map wiring faults")
+    // Every mapped control is a place a search can land on, so the page's arrival owner must see
+    // it. A registration drawn inside another one was hidden by it, and choosing that result
+    // stopped a Debug build (#3545).
+    let reachable = Set(Self.mapped(rendered.list))
+    #expect(
+      reveals.ids == reachable,
+      "\(label): search cannot land on \(reachable.subtracting(reveals.ids).map(\.rawValue).sorted()); lands on unregistered \(reveals.ids.subtracting(reachable).map(\.rawValue).sorted())"
+    )
     print("MAP-STATE \(Self.observed(label, rendered.list))")
     Self.checkCommon(
       rendered.list, on: rendered.destination, label: label,

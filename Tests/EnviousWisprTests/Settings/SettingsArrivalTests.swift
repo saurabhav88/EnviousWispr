@@ -216,6 +216,13 @@ struct SettingsArrivalTests {
         Color.clear.frame(height: 2_000)
         Toggle("Copy to clipboard", isOn: .constant(false))
           .settingsMapRegistration(.autoCopyToClipboard)
+        // A row inside a card that is itself registered, like Self-Learning Dictionary inside
+        // the Learn From panel (#3545).
+        VStack {
+          Toggle("Self-Learning Dictionary", isOn: .constant(false))
+            .settingsMapRegistration(.selfLearningDictionary)
+        }
+        .settingsMapRegistration(.learnFrom)
       }
     }
     .modifier(SettingsArrivalModifier())
@@ -243,6 +250,8 @@ struct SettingsArrivalTests {
     _ = SettingsMap.takeRecordedFaults()
     #expect(try await Self.arrival(at: "dictation.tab.microphone") == 7, "the tab strip")
     #expect(try await Self.arrival(at: "autoCopyToClipboard") == 7, "scrolled into view")
+    #expect(
+      try await Self.arrival(at: "selfLearningDictionary") == 7, "a row inside a registered card")
     #expect(SettingsMap.takeRecordedFaults().isEmpty)
   }
 }

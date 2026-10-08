@@ -92,8 +92,11 @@ private struct SettingsRevealAnchorModifier: ViewModifier {
 
   func body(content: Content) -> some View {
     content.id(SettingsRevealScrollID(id: id))
-      .anchorPreference(key: SettingsRevealAnchorKey.self, value: .bounds) {
-        [id: SettingsRevealPlace(bounds: $0, viewport: viewport)]
+      // A transform, not `.anchorPreference(value:)`: a set value replaces what the views inside
+      // published, so a row inside a registered card was never a place to arrive at and choosing
+      // it was a wiring fault (#3545, measured with a probe).
+      .transformAnchorPreference(key: SettingsRevealAnchorKey.self, value: .bounds) { value, bounds in
+        if value[id] == nil { value[id] = SettingsRevealPlace(bounds: bounds, viewport: viewport) }
       }
   }
 }
@@ -104,7 +107,10 @@ private struct SettingsArrivalViewportModifier: ViewModifier {
   func body(content: Content) -> some View {
     content
       .environment(\.settingsArrivalViewport, id)
-      .anchorPreference(key: SettingsArrivalViewportKey.self, value: .bounds) { [id: $0] }
+      // A transform for the same reason: a marked scroll view inside this one keeps its frame.
+      .transformAnchorPreference(key: SettingsArrivalViewportKey.self, value: .bounds) { value, bounds in
+        value[id] = bounds
+      }
   }
 }
 
