@@ -54,56 +54,95 @@ enum WhatsNewContent {
   }
 
   static let entries: [Entry] = [
-    // MARK: - v2.5.3 (unpublished)
+    // MARK: - v2.5.3
 
-    // #3385: one release after PR1, PR2 and PR3. Historical notes stay unchanged.
+    // Founder-written group, 2026-10-07 (Claude Doc "EnviousWispr 2.5.3 Release Notes"). Titles and
+    // descriptions are his text. Declared repairs, approved in chat: launcher entry narrowed to
+    // Raycast (Spotlight and Alfred untested, #3423); "across" -> "in more" European languages
+    // (#1677 covers de, fr, es, it, pt, nl, pl, sv, uk phone/clock and it, pl, ru email); "frequency
+    // weighting" dropped (#3522 changed phrase matching only); Undo copies when it cannot paste, not
+    // on focus loss (#3453). His four section headers do not ship: the app has no categories (#1493).
+    // Facts behind the claims: #3385/#3513 Settings + search; #3454 menu items; #3440 Raycast;
+    // #3450 "Update alert in menu bar" switch; #2450 start word; #3380 EG-1 word-copying (long takes);
+    // #3429 Claude Sonnet/Opus 5.5, gpt-6 models, Gemini 3.8 Flash thinking off.
     Entry(
       id: "settings-easier-to-find",
       icon: "slider.horizontal.3",
-      title: "Settings are easier to find",
+      title: "Streamlined Settings with Instant Search",
       description:
-        "Settings now puts related controls together, with shorter explanations and help beside each row. Keybinds, AI Polish and Snippets have a clearer layout too. Here is where each moved setting lives now:",
-      bullets: [
-        "Transcription -> Dictation Settings > Engine",
-        "Microphone -> Dictation Settings > Microphone",
-        "Live Preview -> Dictation Settings > Live Preview",
-        "Sounds -> Dictation Settings > Chimes",
-        "Clipboard -> Dictation Settings > Clipboard",
-        "Appearance recording pill controls -> Dictation Settings > Recording Pill",
-        "Appearance -> App Settings > Appearance",
-        "Permissions -> App Settings > Permissions",
-        "Permissions privacy controls -> App Settings > Privacy",
-        "Open Source Licenses -> App Settings > Licenses",
-        "What's New and Check for Updates -> the gift button, What's New & Updates",
-      ],
+        "Completely redesigned the settings UI to eliminate clutter, featuring a new search bar to quickly jump to any configuration option.",
       version: "2.5.3"
     ),
-
-    // #2450: Settings > Dictation Settings > Engine, "Spoken punctuation" (OFF by default) and its
-    // "Start word" row. Checked against the code: the defaults are the Core rules table's, the
-    // period forms are its `.period` rows, and English is routed through the unchanged table.
-    Entry(
-      id: "spoken-punctuation-more-languages",
-      icon: "text.quote",
-      title: "Spoken punctuation in German, French, Spanish and Italian",
-      description:
-        "Turn on Spoken punctuation in Dictation Settings > Engine, then say a start word before the mark. In German say \"Diktiere Punkt\", in French \"Place point\", in Spanish \"Añade punto\" and in Italian \"Metti punto\". You can change the start word for each language. English works as before, and you can give English a start word too.",
-      version: "2.5.3"
-    ),
-
-    // #3454: the menu bar menu's Microphone submenu, "Settings..." renamed "Open EnviousWispr"
-    // (opens on History, no Cmd+,) and the Help Center item.
     Entry(
       id: "menu-bar-menu-shortcuts",
       icon: "menubar.rectangle",
-      title: "A quicker menu bar menu",
+      title: "Modernized Menu Bar",
       description:
-        "The menu bar menu now has a few shortcuts:",
-      bullets: [
-        "Microphone: switch microphones without opening the app",
-        "Open EnviousWispr: replaces Settings and opens on your History",
-        "Help Center: opens the help website",
-      ],
+        "Refreshed the menu bar interface with a cleaner layout and faster access to primary controls.",
+      version: "2.5.3"
+    ),
+    Entry(
+      id: "launcher-dictation",
+      icon: "command",
+      title: "Launcher Support (Raycast)",
+      description:
+        "Dictation now works inside Raycast and similar keyboard launchers.",
+      version: "2.5.3"
+    ),
+    Entry(
+      id: "menu-bar-update-alert-switch",
+      icon: "bell.slash",
+      title: "Quiet Update Notifications",
+      description:
+        "Added a toggle to prevent the menu bar icon from changing states when an update is available.",
+      version: "2.5.3"
+    ),
+    Entry(
+      id: "spoken-punctuation-more-languages",
+      icon: "text.quote",
+      title: "Spoken Punctuation (DE, FR, ES, IT)",
+      description:
+        "Added spoken punctuation support for German, French, Spanish, and Italian using localized trigger words (e.g., \"Diktiere Punkt\" in German).",
+      version: "2.5.3"
+    ),
+    Entry(
+      id: "regional-formatting",
+      icon: "globe",
+      title: "Expanded Regional Formatting",
+      description:
+        "Dictated phone numbers, timestamps, and email addresses now format accurately in more European languages.",
+      version: "2.5.3"
+    ),
+    Entry(
+      id: "eg1-faster-long-dictations",
+      icon: "hare",
+      title: "Faster Local Polishing with EG-1",
+      description:
+        "Reduced latency when cleaning up and formatting longer dictations using the on-device EG-1 engine.",
+      version: "2.5.3"
+    ),
+    Entry(
+      id: "newer-ai-models",
+      icon: "sparkles",
+      title: "Updated Model Support",
+      description:
+        "Added support for Claude 5.5 and OpenAI gpt-6, alongside significant speed improvements when using Gemini 3.8 Flash.",
+      version: "2.5.3"
+    ),
+    Entry(
+      id: "self-learning-phrases",
+      icon: "brain",
+      title: "Smarter Self-Learning Dictionary",
+      description:
+        "Tuned phrase detection to apply learned vocabulary fixes more consistently.",
+      version: "2.5.3"
+    ),
+    Entry(
+      id: "undo-after-escape",
+      icon: "arrow.uturn.backward",
+      title: "Escape Recovery & Undo",
+      description:
+        "Undo after Escape now pastes your words into the field you were in, or copies them to your clipboard if it can't paste.",
       version: "2.5.3"
     ),
 
