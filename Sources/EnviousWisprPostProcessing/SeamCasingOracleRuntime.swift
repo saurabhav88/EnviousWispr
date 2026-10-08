@@ -668,16 +668,6 @@ package enum SeamCasingOracleRuntime {
     }
   }
 
-  /// Stop a REAL launch prewarm from starting from now on, without touching any
-  /// other state. Test-only.
-  ///
-  /// The test exclusion helper calls it on entry: suites that build a dictation
-  /// driver outside the exclusion trigger `prewarm()`, which starts a real
-  /// preparation unless prewarm is already marked started (#3417).
-  package static func markPrewarmStartedForTesting() {
-    state.withLock { $0.prewarmStarted = true }
-  }
-
   /// Wait until no builder is inside the shared checker. Returns false if one is
   /// still inside when `timeout` elapses. Test and fault-injection only.
   ///

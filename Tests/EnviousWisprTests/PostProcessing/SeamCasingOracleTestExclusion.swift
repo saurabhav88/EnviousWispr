@@ -83,19 +83,6 @@ func withSeamCasingOracleExclusion<T>(
 ) async rethrows -> T {
   await SeamCasingOracleTestExclusion.shared.acquire()
 
-  // Start every case with the checker EMPTY, not only hand over empty: a suite
-  // that builds a dictation driver outside this exclusion can start the real
-  // launch prewarm at any moment until something marks it started, and since
-  // #3417 a reset keeps a running builder's claim, so a case that resets and
-  // installs an oracle would see `oracleWarming` while that builder runs. Mark
-  // prewarm as started (so it cannot begin mid-case), then wait for any builder
-  // already inside to leave.
-  SeamCasingOracleRuntime.markPrewarmStartedForTesting()
-  if await !SeamCasingOracleRuntime.waitUntilNoBuilderForTesting(timeout: .seconds(5)) {
-    Issue.record(
-      "withSeamCasingOracleExclusion: a builder was still inside the checker 5 s after this holder acquired; the case starts with it inside")
-  }
-
   // READ-ONLY, and that is load-bearing rather than tidy.
   //
   // The obvious way to save prior state is `snapshot(for: "en")`. That is a
@@ -115,6 +102,19 @@ func withSeamCasingOracleExclusion<T>(
   // answer. Warming and unavailable phases are not restored for the same reason —
   // both recompute safely.
   let prior = SeamCasingOracleRuntime.installedOracleForTesting("en")
+
+  // Start every case with the checker EMPTY, not only hand over empty: a suite
+  // that builds a dictation driver outside this exclusion can start the real
+  // launch prewarm, and since #3417 a reset keeps a running builder's claim, so a
+  // case that resets and installs an oracle would see `oracleWarming` while that
+  // builder runs. The reset marks prewarm started and drops queued work (a
+  // queued-but-unstarted prewarm included); the wait then lets any builder
+  // already inside leave. `prior` is read first because the reset clears it.
+  SeamCasingOracleRuntime.resetForTesting()
+  if await !SeamCasingOracleRuntime.waitUntilNoBuilderForTesting(timeout: .seconds(5)) {
+    Issue.record(
+      "withSeamCasingOracleExclusion: a builder was still inside the checker 5 s after this holder acquired; the case starts with it inside")
+  }
 
   @Sendable func restoreAndRelease() async {
     SeamCasingOracleRuntime.resetForTesting()
