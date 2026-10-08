@@ -27,6 +27,13 @@ if [ "${1:-}" = "--self-test" ]; then
   shift
   exec python3 "$PROJECT_ROOT/scripts/xcode-test-self-test.py" "$@"
 fi
+# #3524: keep the tracked pre-push hook switched on (scripts/githooks/install.sh owns the
+# policy). Silent when it is on; never stops this run.
+if [ -e "$PROJECT_ROOT/scripts/githooks/install.sh" ]; then
+  if "$PROJECT_ROOT/scripts/githooks/install.sh" --ensure; then :; else
+    echo "==> git hooks: not active for this checkout (see the line above); CI remains the check." >&2
+  fi
+fi
 # #2157 chunk C: shared owner for conditional project generation.
 # shellcheck source=scripts/lib/ensure-generated.sh
 . "$PROJECT_ROOT/scripts/lib/ensure-generated.sh"

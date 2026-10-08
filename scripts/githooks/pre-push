@@ -13,6 +13,9 @@
 #                              cloud CI checks it (e.g. a commit from before fast-checks.sh)
 #   hook fault ............... any unexpected error in this hook blocks the push, with the
 #                              rollback command; a broken gate never waves a push through
+#   cleanup failure .......... after a complete verdict, a warning naming the kept temp
+#                              directory; the verdict stands (it is the hook's copy, not
+#                              the pushed code; founder 2026-10-07)
 # Deletions and tags are skipped: they push no new code.
 #
 # Usage:
@@ -44,7 +47,7 @@ WORK=""            # this run's own temp directory; every snapshot lives inside 
 SNAPSHOTS=()       # owned detached worktrees, registered BEFORE creation so a partial one is covered
 CHILD=""           # the running check, stopped with its whole process tree on interruption
 SNAP_DIR=""        # set by snapshot(); not command substitution, which would lose SNAPSHOTS
-CLEANUP_ERROR=""   # what cleanup could not do; a cleanup failure blocks the push
+CLEANUP_ERROR=""   # what cleanup could not do; warned after a verdict, never silent
 
 # Is <path> registered as a worktree of this repository? Sets REGISTRATION to "registered"
 # or "absent", and ADMIN_ENTRY to the admin directory whose `gitdir` file points at
@@ -259,11 +262,14 @@ main() {
     done
   done
 
+  # A cleanup failure is about this hook's own temp copy, never the pushed code: after a
+  # complete verdict it warns and leaves the verdict alone (founder 2026-10-07, #3524).
+  # A fault or interruption BEFORE a verdict still blocks (hook_fault, on_signal).
   if ! cleanup; then
     trap - ERR
-    echo "==> pre-push: BLOCKED (hook fault: $CLEANUP_ERROR)" >&2
-    echo "    Remove it with: git worktree remove --force <path>, then push again. Rollback: $ROLLBACK" >&2
-    exit 1
+    echo "==> pre-push: WARNING: $CLEANUP_ERROR. This is about the hook's temp copy, not your code; the verdict below stands." >&2
+    echo "    Remove it with: git worktree remove --force <path> for each snapshot inside it, then delete the directory." >&2
+    warned=$((warned + 1))
   fi
   if [ "$blocked" -gt 0 ]; then
     echo "==> pre-push: BLOCKED ($blocked failing check(s) across $checked commit(s); fix them, or see above)" >&2
@@ -421,18 +427,27 @@ STUB
   [ -n "$slow_child" ] && kill "$slow_child" 2> /dev/null
   git -C "$repo" reset --quiet --hard HEAD~1
 
-  # 13. a snapshot that cannot be removed blocks the push and is kept, never left dangling
+  # 13. a snapshot that cannot be removed after a verdict is kept and named, never left
+  #     dangling; it warns without changing the verdict: a passing push goes through and a
+  #     failing one still blocks
+  local kept outcome
   if ! inject '  local snap="$1"' '  local snap="$1"; return 1'; then
     check "the cleanup-failure copy was made" "no" "yes"
   else
-    echo f13 > "$repo/f13"; git -C "$repo" add f13; git -C "$repo" commit --quiet -m f13
-    push origin main; rc=$?
-    local kept; kept="$(sed -n 's/.*kept \(.*ew-pre-push\.[A-Za-z0-9]*\).*/\1/p' "$tmp/push.out" | head -1)"
-    check "a cleanup failure blocks the push and names what it kept" "$rc|$(grep -c 'could not remove snapshot' "$tmp/push.out")|$([ -n "$kept" ] && [ -d "$kept" ] && echo kept || echo missing)" "1|1|kept"
-    if [ -n "$kept" ]; then
-      for snap in "$kept"/*; do git -C "$repo" worktree remove --force "$snap" > /dev/null 2>&1; done
-      rm -rf "$kept"
-    fi
+    for outcome in pass fail; do
+      if [ "$outcome" = fail ]; then touch "$repo/BROKEN"; fi
+      echo "f13$outcome" > "$repo/f13"; git -C "$repo" add -A; git -C "$repo" commit --quiet -m "f13 $outcome"
+      push origin main; rc=$?
+      kept="$(sed -n 's/.*kept \(.*ew-pre-push\.[A-Za-z0-9]*\).*/\1/p' "$tmp/push.out" | head -1)"
+      check "a cleanup failure on a $outcome verdict warns, keeps the verdict, names what it kept" \
+        "$rc|$(grep -c 'WARNING: could not remove snapshot' "$tmp/push.out")|$(grep -c 'not your code' "$tmp/push.out")|$([ -n "$kept" ] && [ -d "$kept" ] && echo kept || echo missing)" \
+        "$([ "$outcome" = pass ] && echo 0 || echo 1)|1|1|kept"
+      if [ -n "$kept" ]; then
+        for snap in "$kept"/*; do git -C "$repo" worktree remove --force "$snap" > /dev/null 2>&1; done
+        rm -rf "$kept"
+      fi
+    done
+    git -C "$repo" rm --quiet BROKEN; git -C "$repo" commit --quiet -m "f13 fixed"
   fi
   cp "$hook" "$tmp/hooks/pre-push"
 
@@ -481,8 +496,8 @@ STUB
   out="$( set -e; PROCESS_TREE_INCOMPLETE=""; stop_tree "$pid"; echo "survived:${PROCESS_TREE_INCOMPLETE:-none}" )"
   check "stopping an already-exited process is not a failure" "$out" "survived:none"
 
-  # 20-21. a registration query git cannot answer never authorises a delete: the push is
-  # blocked and the temp directory is kept, whether the query fails before removal (the
+  # 20-21. a registration query git cannot answer never authorises a delete: the temp
+  # directory is kept and named in a warning (the passing verdict stands), whether the query fails before removal (the
   # snapshot and its registration both survive) or while verifying afterwards.
   local call when
   for call in 1 3; do
@@ -499,9 +514,9 @@ STUB
     if [ "$call" = 1 ]; then
       survivors="$(git -C "$repo" worktree list --porcelain | grep -c "^worktree $kept/")|$(find "$kept" -mindepth 1 -maxdepth 1 -type d 2> /dev/null | wc -l | tr -d ' ')"
     fi
-    check "a failed registration query $when blocks and keeps the temp directory" \
-      "$rc|$(grep -c 'could not remove snapshot' "$tmp/push.out")|$([ -n "$kept" ] && [ -d "$kept" ] && echo kept || echo missing)|$survivors" \
-      "1|1|kept|$([ "$call" = 1 ] && echo '1|1' || echo '-')"
+    check "a failed registration query $when warns and keeps the temp directory" \
+      "$rc|$(grep -c 'WARNING: could not remove snapshot' "$tmp/push.out")|$([ -n "$kept" ] && [ -d "$kept" ] && echo kept || echo missing)|$survivors" \
+      "0|1|kept|$([ "$call" = 1 ] && echo '1|1' || echo '-')"
     if [ -n "$kept" ]; then
       for snap in "$kept"/*; do [ -e "$snap" ] && git -C "$repo" worktree remove --force "$snap" > /dev/null 2>&1; done
       rm -rf "$kept"

@@ -44,6 +44,14 @@ DEV_BUNDLE_ID="com.enviouswispr.app.dev"
 
 cd "$PROJECT_ROOT"
 
+# #3524: keep the tracked pre-push hook switched on (scripts/githooks/install.sh owns the
+# policy). Silent when it is on; never stops this run.
+if [ -e "$PROJECT_ROOT/scripts/githooks/install.sh" ]; then
+  if "$PROJECT_ROOT/scripts/githooks/install.sh" --ensure; then :; else
+    echo "==> git hooks: not active for this checkout (see the line above); CI remains the check." >&2
+  fi
+fi
+
 # ─── Step 1: Preflight — the self-signed dev identity must be USABLE ──────────
 #
 # Tests what signing actually needs — the identity and its private key — and NOT
