@@ -49,6 +49,9 @@ MAX_MESSAGES, MAX_MESSAGE_CHARS = 5, 500
 MAX_ARGUMENTS, MAX_ARGUMENT_CHARS = 10, 300
 _SHA = re.compile(r"[0-9a-f]{40}")
 _JOB = re.compile(r"[A-Za-z0-9_.-]{1,64}")
+# A test key never holds markup, whitespace, a backtick or "--" (none of 7758 measured keys
+# do), so a key can never close or forge an HTML comment marker in an issue body.
+_KEY = re.compile(r"test://(?!.*--)[^<>\s`]+")
 
 
 class Gap(Exception):
@@ -150,7 +153,7 @@ def xcode_build(runner=subprocess.run):
 
 def record(meta, load):
     """The document to write: meta plus identities, or meta plus the gap reason."""
-    doc = {"schema": SCHEMA, **meta, "evidence": "complete", "gap": None, "counts": {}, "identities": []}
+    doc = {"schema": SCHEMA, "xcode_build": None, **meta, "evidence": "complete", "gap": None, "counts": {}, "identities": []}
     try:
         found = identities(load())
     except Gap as gap:
@@ -159,6 +162,64 @@ def record(meta, load):
     doc["identities"] = found
     for item in found:
         doc["counts"][item["result"]] = doc["counts"].get(item["result"], 0) + 1
+    return doc
+
+
+IDENTITY_FIELDS = {"key", "target", "suite", "name", "node_identifier", "result", "failures", "failed_arguments"}
+DOCUMENT_FIELDS = {"schema", "job", "run", "attempt", "sha", "lane_outcome", "xcode_build", "evidence", "gap",
+                   "counts", "identities"}
+MAX_IDENTITIES = 50000
+
+
+def validate_document(doc, job, run, attempt):
+    """The document this script writes, for exactly this job, run and attempt; raises ValueError.
+    scripts/ci/record-test-failures.py reads artifacts only through this check."""
+    def fail(why):
+        raise ValueError(f"test-identities document for {job} run {run} attempt {attempt}: {why}")
+    if not isinstance(doc, dict) or set(doc) != DOCUMENT_FIELDS:
+        fail("unexpected fields")
+    if type(doc["schema"]) is not int or doc["schema"] != SCHEMA:
+        fail(f"schema {doc['schema']!r}")
+    if (doc["job"], doc["run"], doc["attempt"]) != (job, run, attempt) or type(doc["run"]) is not int \
+            or type(doc["attempt"]) is not int:
+        fail(f"names {doc['job']!r} run {doc['run']!r} attempt {doc['attempt']!r}")
+    if not isinstance(doc["sha"], str) or not _SHA.fullmatch(doc["sha"]) or doc["lane_outcome"] not in OUTCOMES:
+        fail("bad sha or lane outcome")
+    if not (doc["xcode_build"] is None or isinstance(doc["xcode_build"], str)):
+        fail("bad xcode_build")
+    items, counts = doc["identities"], doc["counts"]
+    if not isinstance(items, list) or not isinstance(counts, dict) or len(items) > MAX_IDENTITIES:
+        fail("bad identities or counts")
+    if doc["evidence"] == "gap":
+        if not isinstance(doc["gap"], str) or items or counts:
+            fail("a gap must carry a reason and nothing else")
+        return doc
+    if doc["evidence"] != "complete" or doc["gap"] is not None or not items:
+        fail("bad evidence")
+    seen, tally = set(), {}
+    for item in items:
+        if not isinstance(item, dict) or set(item) != IDENTITY_FIELDS:
+            fail("an identity with unexpected fields")
+        key, result = item["key"], item["result"]
+        if not isinstance(key, str) or not _KEY.fullmatch(key) or len(key) > 1000 or key in seen:
+            fail(f"bad or duplicate key {str(key)[:80]!r}")
+        if result not in RESULTS.values():
+            fail(f"bad result {result!r}")
+        for field in ("target", "suite", "name", "node_identifier"):
+            if not (item[field] is None or (isinstance(item[field], str) and len(item[field]) <= 1000)):
+                fail(f"bad {field} for {key}")
+        for field, count, chars in (("failures", MAX_MESSAGES, MAX_MESSAGE_CHARS),
+                                    ("failed_arguments", MAX_ARGUMENTS, MAX_ARGUMENT_CHARS)):
+            values = item[field]
+            if not isinstance(values, list) or len(values) > count or any(
+                    not isinstance(v, str) or len(v) > chars for v in values):
+                fail(f"bad {field} for {key}")
+        seen.add(key)
+        tally[result] = tally.get(result, 0) + 1
+    if any(k not in RESULTS.values() or type(v) is not int or v < 1 for k, v in counts.items()):
+        fail("bad count fields")
+    if counts != tally:
+        fail("counts do not match the identities")
     return doc
 
 
@@ -330,6 +391,44 @@ def self_test():
             code = main(["--from-json", str(here / "failed-run.json"), *[x for kv in args.items() for x in kv],
                          "--out", str(stray)])
             expect(f"{name} is refused and writes nothing", (code, stray.exists()), (2, False))
+
+    good = record(meta, lambda: json.loads((here / "failed-run.json").read_text()))
+    expect("24 validate_document accepts what record() writes",
+           validate_document(json.loads(json.dumps(good)), "build-and-test", 7, 2)["evidence"], "complete")
+    gap_doc = record(meta, bad_load)
+    expect("25 validate_document accepts a gap", validate_document(gap_doc, "build-and-test", 7, 2)["evidence"], "gap")
+
+    def rejects(edit, job="build-and-test", run=7, attempt=2, source=None):
+        doc = json.loads(json.dumps(source or good))
+        edit(doc)
+        try:
+            validate_document(doc, job, run, attempt)
+        except ValueError:
+            return True
+        return False
+    for name, edit, extra in [
+        ("26 another attempt's document", lambda d: None, {"attempt": 1}),
+        ("27 another job's document", lambda d: None, {"job": "debug-validation"}),
+        ("28 an extra top-level field", lambda d: d.update(x=1), {}),
+        ("29 counts that disagree", lambda d: d["counts"].update(FAILED=9), {}),
+        ("30 an unknown result", lambda d: d["identities"][0].update(result="Failed"), {}),
+        ("31 a duplicate key", lambda d: d["identities"].append(dict(d["identities"][0])), {}),
+        ("32 a key that is not a test URL", lambda d: d["identities"][0].update(key="x"), {}),
+        ("33 too many failure messages", lambda d: d["identities"][0].update(failures=["m"] * 6), {}),
+        ("34 a bool run", lambda d: d.update(run=True), {"run": True}),
+        ("35 a complete document with no identities", lambda d: (d.update(identities=[], counts={})), {}),
+        ("36 a gap with identities", lambda d: d.update(evidence="gap", gap="x"), {}),
+        ("37 a short sha", lambda d: d.update(sha="abc"), {}),
+        ("38 a bool schema", lambda d: d.update(schema=True), {}),
+        ("39 a float schema", lambda d: d.update(schema=1.0), {}),
+        ("40 a bool count", lambda d: d["counts"].update(FAILED=True, PASSED=True) if False else d.update(
+            counts={"FAILED": True, "PASSED": 6}), {}),
+        ("41 a float count", lambda d: d.update(counts={"FAILED": 3.0, "PASSED": 6}), {}),
+        ("42 a key that forges a marker", lambda d: d["identities"][0].update(key="test://x-->y"), {}),
+        ("43 a key with markup", lambda d: d["identities"][0].update(key="test://x<!--y"), {}),
+        ("44 a key with a space", lambda d: d["identities"][0].update(key="test://x y"), {}),
+    ]:
+        expect(f"{name} is rejected", rejects(edit, **extra), True)
 
     print(f"self-test: {cases} cases, {len(failures)} failure(s)")
     return 1 if failures else 0
