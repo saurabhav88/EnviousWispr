@@ -28,6 +28,7 @@ next reconcile replays; replays add nothing already recorded.
 Usage:
   record-test-failures.py run --repo <o/r> --run-id <id> [--dry-run]
   record-test-failures.py reconcile --repo <o/r> [--now <ISO>] [--dry-run]
+  record-test-failures.py canary --repo <o/r> --run-id <id>
   record-test-failures.py --self-test
 Exit 0 whenever the arguments were valid, including "could not record"; 2 on bad arguments.
 """
@@ -216,6 +217,12 @@ def _title(item):
     return f"CI test failure: {where} / {item['name'] or item['node_identifier']}"[:200]
 
 
+def can_hold_failure(path, run_attempt, conclusion):
+    """False for a run that cannot hold a recordable failure: a main run that passed on its first
+    attempt has no failed attempt, and a PR run never re-run records nothing."""
+    return run_attempt != 1 or (path == MAIN and conclusion != "success")
+
+
 def plan_run(actions, repo, run_id, server="https://github.com"):
     """(events, gaps, skipped_reason) for one run. Each event is a dict for record_event()."""
     info = actions.run(run_id)
@@ -228,6 +235,8 @@ def plan_run(actions, repo, run_id, server="https://github.com"):
         mode = "rerun"
     else:
         return [], [], f"not a recorded workflow or event ({path}, {event})"
+    if not can_hold_failure(path, info["run_attempt"], info.get("conclusion")):
+        return [], [], None
     run_url = f"{server}/{repo}/actions/runs/{run_id}"
     listing = None
     events, gaps = [], []
@@ -349,8 +358,7 @@ def reconcile(actions, store, repo, now, dry_run=False, out=print):
     # has no failed attempt, and a PR run never re-run records nothing).
     created = _iso(min(start, now - RERUN_HORIZON))
     run_ids = sorted({row["id"] for workflow in (MAIN, PR) for row in actions.runs(os.path.basename(workflow), created)
-                      if row["updated_at"] >= since
-                      and (row["run_attempt"] != 1 or (workflow == MAIN and row["conclusion"] != "success"))})
+                      if row["updated_at"] >= since and can_hold_failure(workflow, row["run_attempt"], row["conclusion"])})
     gaps, tally = [], {}
     for run_id in run_ids:
         events, run_gaps, _ = plan_run(actions, repo, run_id)
@@ -370,6 +378,19 @@ def reconcile(actions, store, repo, now, dry_run=False, out=print):
     return len(run_ids), tally, gaps
 
 
+CANARY_KEY = "test://com.apple.xcode/EnviousWispr/RecorderCanary/recorderCanary()"
+
+
+def canary(store, run_id):
+    """One fixture event through the real issue path, then the fixture issue is closed."""
+    outcome, number = upsert.upsert_event(
+        store, LABEL, CANARY_KEY, f"canary/{run_id}", "CI test-failure recorder: canary (fixture, not a test failure)",
+        f"Canary from recorder run {run_id}: the recorder can create, comment and close issues. Not a test failure.",
+        [LABEL, "task", "P4-backlog", "area:dev-infra"])
+    store.update(number, state="closed")
+    return number
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__.split("\n", 1)[0])
     parser.add_argument("--self-test", action="store_true")
@@ -378,6 +399,9 @@ def main(argv=None):
     p.add_argument("--repo", required=True)
     p.add_argument("--run-id", type=int, required=True)
     p.add_argument("--dry-run", action="store_true")
+    p = sub.add_parser("canary", help="record one fixture event, then close its issue (live wiring proof)")
+    p.add_argument("--repo", required=True)
+    p.add_argument("--run-id", type=int, required=True)
     p = sub.add_parser("reconcile")
     p.add_argument("--repo", required=True)
     p.add_argument("--now")
@@ -390,7 +414,10 @@ def main(argv=None):
         return 2
     actions, store = Actions(args.repo), upsert.Store(args.repo)
     try:
-        if args.command == "run":
+        if args.command == "canary":
+            number = canary(store, args.run_id)
+            print(f"record-test-failures: canary recorded on #{number} and closed it")
+        elif args.command == "run":
             events, gaps, skipped = plan_run(actions, args.repo, args.run_id)
             if skipped:
                 print(f"record-test-failures: run {args.run_id} not recorded: {skipped}")
@@ -829,6 +856,21 @@ def self_test():
     fake.set_job(78, 1, "release-validation", "timed_out")
     fake.add_doc("release-validation", 78, 1, _doc("release-validation", 78, 1, A, "failure", {"x": "FAILED"}))
     expect("47 a timed-out test job is treated as failed", run(fake, 78)[0], {"created": 1})
+
+    fake = FakeActions()
+    store = upsert.Store("o/r", runner=fake)
+    first = canary(store, 900)
+    again = canary(store, 901)
+    expect("48 the canary creates, then comments on, its own closed fixture issue and closes it each time",
+           (first, again, fake.issues.issues[first]["state"], len(fake.issues.comments[first]),
+            "P4-backlog" in [l["name"] for l in fake.issues.issues[first]["labels"]]), (first, first, "closed", 1, True))
+    fake = FakeActions()
+    fake.add_run(79, MAIN, conclusion="success")
+    fake.add_run(80, PR, event="pull_request", branch="feat/x", conclusion="failure")
+    fake.calls.clear()
+    expect("49 run mode reads nothing more for runs that cannot hold a failure",
+           (run(fake, 79)[:2], run(fake, 80)[:2], [c for c in fake.calls if "/attempts/" in c or "artifacts" in c]),
+           (({}, []), ({}, []), []))
 
     lines = []
     fake = FakeActions()

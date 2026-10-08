@@ -258,6 +258,7 @@ jobs:
       # timing-sensitive test failed under the load. The overlap went, the test
       # stayed; the eval compile is its own step after this one again.
       - name: Run logic tests (release, Xcode)
+        id: release-tests
         if: steps.changes.outputs.needs_build == 'true'
         run: |
           set -euo pipefail
@@ -275,6 +276,30 @@ jobs:
             "$GITHUB_WORKSPACE/xcode-test-release" \
             "PR Release lane" \
             "EnviousWisprTests EnviousWisprDesktopEffectsTests EnviousWisprASRTests"
+
+      # #3524 PR 4: every executed test and its result, for the trusted recorder workflow
+      # (ci-test-failure-recorder.yml), which reads only this artifact. Runs whenever the test
+      # step ran, pass or fail, and can never change this job's verdict.
+      - name: Record Release test identities
+        if: ${{ !cancelled() && (steps.release-tests.outcome == 'success' || steps.release-tests.outcome == 'failure') }}
+        continue-on-error: true
+        env:
+          LANE_OUTCOME: ${{ steps.release-tests.outcome }}
+        run: |
+          python3 scripts/ci/test-identities.py --bundle "$GITHUB_WORKSPACE/xcode-test-release.xcresult" \
+            --job build-and-test --run "$GITHUB_RUN_ID" --attempt "$GITHUB_RUN_ATTEMPT" \
+            --sha "$(git rev-parse HEAD)" --lane-outcome "$LANE_OUTCOME" \
+            --out "$RUNNER_TEMP/test-identities/test-identities.json"
+
+      - name: Upload Release test identities
+        if: ${{ !cancelled() && (steps.release-tests.outcome == 'success' || steps.release-tests.outcome == 'failure') }}
+        continue-on-error: true
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: test-identities-build-and-test-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/test-identities/test-identities.json
+          if-no-files-found: warn
+          retention-days: 35
 
       # #3482: reference/settings-map.json and .md must equal the export the step above
       # just wrote from the compiled map and vocabulary (no second build or test run). A

@@ -1,0 +1,84 @@
+name: CI Test Failure Recorder
+
+# #3524 PR 4: one GitHub issue per failing test (label `ci-test-failure`), from the
+# `test-identities-<job>-<run>-<attempt>` artifacts that PR Check (build-and-test) and Main
+# Post-Merge Check (release-validation, debug-validation) upload. scripts/ci/record-test-failures.py
+# owns what is recorded and how it is worded; this file only triggers it.
+#
+# Trust: `workflow_run` always runs THIS file from the default branch, and the job checks out
+# main, so a pull request cannot change the code that holds `issues: write`. The recorder reads
+# artifacts as data only (validated JSON), and skips a fork's runs by the run record's head
+# repository before reading anything.
+#
+# Writers are serialised by one concurrency group. A queued run can still be superseded, so the
+# recorder is idempotent and the daily reconcile replays every run updated since its last
+# checkpoint (on the ledger issue). Nothing here can change a test job's verdict.
+
+on:
+  workflow_run:
+    workflows: ["PR Check", "Main Post-Merge Check"]
+    types: [completed]
+  schedule:
+    # Daily reconcile; the minute is offset from :00 (#1131).
+    - cron: '47 6 * * *'
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'reconcile, or canary (records one fixture event and closes its issue)'
+        required: true
+        default: reconcile
+        type: choice
+        options: [reconcile, canary]
+
+permissions: {}
+
+concurrency:
+  group: ci-test-failure-recorder
+  cancel-in-progress: false
+
+jobs:
+  record:
+    # A manual dispatch can pick another branch's copy of THIS file; checking out main pins
+    # only the Python. Run the writer only from main's workflow definition. workflow_run and
+    # schedule events always carry the default branch's ref; a canary dispatch must target main.
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      actions: read
+      issues: write
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          ref: refs/heads/main
+          persist-credentials: false
+
+      - name: Self-test the recorder
+        run: |
+          set -euo pipefail
+          python3 scripts/ci/test-identities.py --self-test
+          python3 scripts/ci/issue_upsert.py --self-test
+          python3 scripts/ci/record-test-failures.py --self-test
+
+      - name: Record
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          EVENT: ${{ github.event_name }}
+          SOURCE_RUN: ${{ github.event.workflow_run.id }}
+          MODE: ${{ inputs.mode }}
+        run: |
+          set -euo pipefail
+          case "$EVENT" in
+            workflow_run) python3 scripts/ci/record-test-failures.py run --repo "$REPO" --run-id "$SOURCE_RUN" ;;
+            workflow_dispatch)
+              if [ "$MODE" = canary ]; then
+                python3 scripts/ci/record-test-failures.py canary --repo "$REPO" --run-id "$GITHUB_RUN_ID"
+              else
+                python3 scripts/ci/record-test-failures.py reconcile --repo "$REPO"
+              fi
+              ;;
+            *) python3 scripts/ci/record-test-failures.py reconcile --repo "$REPO" ;;
+          esac
