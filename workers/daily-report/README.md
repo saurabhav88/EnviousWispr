@@ -1,7 +1,7 @@
 # Daily Report Worker (issue #1433)
 
 A daily Cloudflare Worker with independent performance and per-platform Sentry write-ups (#3547).
-Read-only: it consumes events that already emit to PostHog. It gates nothing,
+Read-only: it consumes events already received by PostHog or Sentry. It gates nothing,
 alerts on nothing — purely a digest for the founder's morning read.
 
 Plan + full metric-definition rationale (including the two real bugs caught
@@ -37,7 +37,7 @@ noise on a genuinely empty day).
 
 ## Reading the version check and the error section (#2621)
 
-The two lower embeds print numbers and one footnote, nothing that explains method. The founder read
+The version check prints measurements and a footnote; separate Sentry write-ups report recorded error activity. The founder read
 the earlier shape ("Covering 80.7% of measured dictations across 2 releases", "People counts are
 non-additive", "Ranked against this measure's median week-to-week movement") as noise he could not
 decode, so the explanations live here instead.
@@ -68,15 +68,21 @@ when nothing has been measured on it. A release out the whole week is just its v
   where enough history exists, otherwise by size of change; the sample counts behind each are in
   `ranking.movers`. A measure that did not move between the two releases is never a mover.
 
-**Errors, yesterday.** One headline: people who hit an error on the release line and newer, and the
-direction against the previous period. The error and problem counts are still measured (`data.events`, `data.rows.length`) and no
-longer printed. No rate is ever shown: Sentry and PostHog join only per install and only partially
-(`sentry-operations.md` RULE: join-sentry-to-posthog-by-install), so dividing one system's people by
-the other's would be arithmetic across two identity systems. `Lost the dictation` and `Worked, but
-worse` are the two severity groups; `delivery not proven` marks a row whose producer cannot confirm
-the text was lost; `NEW` marks a problem first seen in the window. The tail line `Up to N people hit an
-error on builds older than X` is an upper bound because per-release people counts are not additive, and
-it can overlap the headline: one person can hit errors on a current build and an old one.
+**Sentry morning write-ups.** Separate Mac and Android messages cover recorded
+crash/error activity in yesterday's Eastern calendar day, including known
+problems and older builds. Customer-release, developer-build and unknown-build
+cohorts use environment and `app.build_type` together; debug evidence overrides
+a contradictory production tag.
+
+Complete headline aggregates provide event totals and the change from the
+previous Eastern day. Problem rows show occurrences, Sentry-reported identities,
+safe version labels and issue links. Identity counts are exact only under
+the complete zero/one-row rule; otherwise they are explicit lower bounds.
+Incomplete problem lists disclose their limits and omit unsupported changes.
+No affected-person rate or crash-free claim is made.
+
+The performance message contains only adoption and version scorecard sections.
+The weekly digest retains its existing production/release-scoped Sentry recap.
 
 ## Release list source (the appcast, not GitHub)
 
