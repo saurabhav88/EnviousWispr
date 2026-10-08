@@ -532,10 +532,12 @@ jobs:
   # or one of the two substitutes testing-philosophy.md's ship condition names.
   # Measured 2026-09-13: 8 of 18 such PRs since 2026-09-10 carried none. Runs
   # on every PR (the count decides whether anything more is asked) and needs no
-  # Xcode. The body is read live with gh rather than from the event payload, so
-  # a body edited after the push is what the check sees on a re-run; an edit
-  # alone does not re-trigger (pull_request `edited` would cancel the macOS
-  # lanes for a typo fix), the failure message says to re-run the job or push.
+  # Xcode. The declaration is a `Recipe:` commit trailer (#3524): the newest
+  # first-parent commit in the PR's base..head range that carries one decides,
+  # so the pre-push hook can run the same check before the push. The range
+  # comes from the event's PR SHAs, never the merge checkout's HEAD; the issue
+  # recipe is validated against the merge checkout. A correction is a new
+  # commit (`git commit --allow-empty --trailer "Recipe: #N"`), then push.
   recipe-check:
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -556,11 +558,12 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
           set -euo pipefail
           python3 scripts/ci/check-test-recipe.py --self-test
-          python3 scripts/ci/check-test-recipe.py --base "$BASE_SHA" --head "$HEAD_SHA" --pr "$PR_NUMBER" --checkout "$PWD"
+          python3 scripts/ci/check-test-recipe.py \
+            --trailers --base "$BASE_SHA" --head "$HEAD_SHA" \
+            --repo "$PWD" --checkout "$PWD"
 
   # Required aggregate gate. This is the ONLY required status check on main
   # (ruleset main-protection, context "build-check"); keeping the job id
