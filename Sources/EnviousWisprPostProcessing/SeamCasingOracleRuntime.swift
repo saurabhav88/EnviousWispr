@@ -187,17 +187,19 @@ package enum SeamCasingOracleRuntime {
   @concurrent
   private static func drain() async {
     while true {
-      let next: (String, Int)? = state.withLock { state in
-        guard state.latched == nil else { return nil }
+      // `waiting` is read in the same critical section as the decision, for
+      // `drainDecisionForTesting` only.
+      let (next, waiting): ((String, Int)?, [String]) = state.withLock { state in
+        guard state.latched == nil else { return (nil, state.pending) }
         // Wait for in-flight decisions. Their `NSSpellChecker` calls were
         // authorised before we got here and must finish before we start ours.
-        guard state.decisionLeases == 0, !state.preparing else { return nil }
-        guard let base = state.pending.first else { return nil }
+        guard state.decisionLeases == 0, !state.preparing else { return (nil, state.pending) }
+        guard let base = state.pending.first else { return (nil, state.pending) }
         state.pending.removeFirst()
         state.preparing = true
-        return (base, state.epoch)
+        return ((base, state.epoch), state.pending)
       }
-      drainDecisionForTesting.withLock({ $0 })?(next != nil)
+      drainDecisionForTesting.withLock({ $0 })?(next?.0, waiting)
       guard let (base, startedEpoch) = next else {
         // Either nothing to do, or a lease is out. A lease holder re-pokes the
         // drain on release, so returning here cannot strand pending work.
@@ -606,17 +608,20 @@ package enum SeamCasingOracleRuntime {
   private static let preparationOverride =
     OSAllocatedUnfairLock<(@Sendable (String) -> SeamCasingOracle)?>(initialState: nil)
 
-  /// Observe each drain pass's decision: `true` when it claimed a language to
-  /// prepare, `false` when it found the drain busy, a lease out or nothing pending.
-  /// Test-only and observation-only.
+  /// Observe each drain pass's decision: the language it claimed (nil when it found
+  /// the drain busy, a lease out or nothing pending) and the languages still
+  /// pending, both read in the decision's own critical section. Test-only and
+  /// observation-only.
   ///
   /// Exists because a drain is a DETACHED task with no handle (`pokeDrain()`), so a
   /// test cannot otherwise know that a drain has looked at the state and declined.
   /// #3417's reset test needs exactly that: it must tell "the new drain refused
   /// because the old builder still owns the checker" from "the new drain has not
-  /// run yet", or it cannot fail on the parent commit deterministically.
+  /// run yet", or it cannot fail on the parent commit deterministically. The
+  /// pending list lets it ignore a stray drain from an earlier case that decided
+  /// before its own language was even requested.
   package static let drainDecisionForTesting =
-    OSAllocatedUnfairLock<(@Sendable (Bool) -> Void)?>(initialState: nil)
+    OSAllocatedUnfairLock<(@Sendable (String?, [String]) -> Void)?>(initialState: nil)
 
   /// Install a fixed phase for one language without touching a system service.
   ///

@@ -190,11 +190,17 @@ struct SeamCasingRuntimeSerializationTests {
         inside.withLock { $0 -= 1 }
         return Self.ready(["tack", "danke"])
       }
+      // Only a decision ABOUT Swedish counts: one that claimed it (the defect), or
+      // one that declined while Swedish was waiting (the busy flag held). A stray
+      // drain from an earlier case that decides before Swedish is requested sees
+      // neither and is ignored, so it cannot pass this case by accident.
       SeamCasingOracleRuntime.drainDecisionForTesting.withLock {
-        $0 = { claimed in
+        $0 = { claimed, waiting in
+          let aboutSwedish = claimed == "sv" || (claimed == nil && waiting.contains("sv"))
+          guard aboutSwedish else { return }
           let isFirst = firstDecision.withLock { value -> Bool in
             guard value == nil else { return false }
-            value = claimed
+            value = claimed == "sv"
             return true
           }
           if isFirst { decided.signal() }
