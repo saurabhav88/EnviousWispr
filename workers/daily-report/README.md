@@ -111,6 +111,10 @@ a format drift in the release job fails at PR time rather than one morning.
 
 ## Correctness guardrail (why this worker trusts nothing on faith)
 
+The bucket-completeness guard below belongs to performance mode. Sentry uses
+its independent complete headlines, bounded problem rows and joint build-tag
+projection; missing/malformed data is not a zero report.
+
 An early planning-time bug: a naive PostHog query silently truncated at 100
 rows while the real population was 110. The fix that survived into this
 worker: every per-user bucket count (engine, polish) is checked against an
@@ -180,7 +184,10 @@ Deploy, then verify the LIVE worker, before calling any worker change done:
 cd workers/daily-report
 npx wrangler deploy
 
-# 3. verify the deployed code actually runs (this DOES post a real report).
+# 3. verify each deployed mode (these DO post real reports).
+# The default request is performance only; also check both Sentry modes with
+# ?report=sentry&platform=mac&date=YYYY-MM-DD and
+# ?report=sentry&platform=android&date=YYYY-MM-DD under the same header secret.
 # -f is load-bearing: without it curl exits 0 on a 401/500, so a failed verify
 # reads as a passed one - the exact false-success this section exists to stop.
 # Matches daily-report-ping.yml, which also uses -fsS.
@@ -272,6 +279,16 @@ cron trigger time. Same secret lives as repo secret
 
 ## Failure visibility (how you'd know if this breaks)
 
+The section-local failure behavior below applies to performance mode.
+Sentry query/render failures attempt one unavailable report and fail that
+platform's job. Missing destination configuration or an invalid date fails
+before queries or delivery. A rejected delivery causes no second post.
+Other mode jobs remain independent.
+
+Default recovery requests run performance only. Recover each Sentry write-up
+separately with `report=sentry` and the appropriate `platform=mac` or
+`platform=android`, retaining the requested date and authentication.
+
 Three independent signals:
 
 1. **Section-local failures still deliver a report, then fail the run.** A
@@ -351,18 +368,24 @@ deliberate, spaced-out action.
 
 ## Rollback
 
-Delete the GitHub workflow to stop the daily run; `npx wrangler delete
-enviouswispr-daily-report` removes the worker entirely. Revert the PR to
-remove the code. A bad metric definition is a source-level fix + redeploy —
-no data migration involved, this worker is stateless (reads PostHog,
-writes only to Discord).
+For #3547 rollback, pause the morning workflow and drain scheduled and
+recorded direct invocations. Restore the pinned previous reporting deployment
+while paused, restore its matching one-job workflow, then resume scheduling.
+Preserve the Worker, credentials and existing reporting service. A source
+revert alone does not restore the deployed version.
+
+Coordinate native-alert rollback separately: disable replacement Discord
+actions before restoring old consumers, restore the relay and bindings before
+enabling those consumers, and restore its heartbeat last. The approved plan's
+§3.4 and the operation receipts record the complete ordering and pinned versions.
 
 ## Shared infrastructure (#1589)
 
 The PostHog transport and Discord delivery this worker uses now live in
 `workers/shared/`, because `workers/weekly-digest` became a second consumer.
-This worker's behaviour is unchanged: the same retry policy, the same
-concurrency cap, the same `daily_report_*` query names.
+That extraction preserved the performance retry policy, concurrency cap and
+`daily_report_*` query names. The separate #3547 Sentry modes have their own
+bounded query names and budget over the same shared transport.
 
 **Deploy consequence.** Each worker bundles its own snapshot at deploy time, so
 a change under `workers/shared/` is live only in the workers redeployed since.
