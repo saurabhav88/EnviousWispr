@@ -90,7 +90,7 @@ struct HotkeyQuickAddShortcutTests {
       effects: RecordingDesktopHotkeyEffects(),
       telemetry: HotkeyTelemetrySink(
         registrationFailed: { _, _, _, _ in },
-        pressed: { trigger, _, keyShape, _, action in
+        pressed: { trigger, _, keyShape, _, action, _ in
           sink.presses.append((trigger, keyShape, action))
         }))
     service.recordingMode = .toggle

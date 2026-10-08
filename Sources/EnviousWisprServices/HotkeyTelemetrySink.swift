@@ -28,10 +28,13 @@ public struct HotkeyTelemetrySink: Sendable {
   /// press: `globe` / `right_option` / `other_modifier` / `chord`. String-typed
   /// deliberately, because this sink is `public` and `HotkeyKeyIdentity` is
   /// `package`; callers pass `.rawValue`. Never a raw key code.
+  ///
+  /// `windowTiming` (#3534) is `rescued` / `on_time` on a hands-free lock intent,
+  /// nil on every other row.
   public var pressed:
     @MainActor (
       _ triggerSource: String, _ inputMode: String, _ keyShape: String, _ keyIdentity: String,
-      _ pressAction: String
+      _ pressAction: String, _ windowTiming: String?
     ) -> Void
 
   /// #1631 — a recorded hands-free intent reached a publication decision.
@@ -43,7 +46,7 @@ public struct HotkeyTelemetrySink: Sendable {
 
   public init(
     registrationFailed: @escaping @MainActor (String, String, Int32?, String) -> Void,
-    pressed: @escaping @MainActor (String, String, String, String, String) -> Void,
+    pressed: @escaping @MainActor (String, String, String, String, String, String?) -> Void,
     lockResolved: @escaping @MainActor (Bool, String) -> Void = { _, _ in }
   ) {
     self.registrationFailed = registrationFailed
@@ -53,7 +56,7 @@ public struct HotkeyTelemetrySink: Sendable {
 
   /// Inert sink — the default for tests and any non-app construction.
   public static let noop = HotkeyTelemetrySink(
-    registrationFailed: { _, _, _, _ in }, pressed: { _, _, _, _, _ in },
+    registrationFailed: { _, _, _, _ in }, pressed: { _, _, _, _, _, _ in },
     lockResolved: { _, _ in })
 
   /// Production sink. Registration failure → PostHog breakdown + Sentry handled
@@ -76,7 +79,7 @@ public struct HotkeyTelemetrySink: Sendable {
         // toggle conflict and a dead NSEvent monitor are distinct issues.
         fingerprintDetail: "\(mechanism)/\(hotkeyKind)")
     },
-    pressed: { triggerSource, inputMode, keyShape, keyIdentity, pressAction in
+    pressed: { triggerSource, inputMode, keyShape, keyIdentity, pressAction, windowTiming in
       // `DispatchQueue.main.async` (NOT `Task { @MainActor }`, which may run on the
       // current cycle — gotchas-audio `dispatch-main-for-runloop-deferral`) defers
       // the PostHog enqueue-write to the next run loop so the input-press turn does
@@ -86,7 +89,8 @@ public struct HotkeyTelemetrySink: Sendable {
         MainActor.assumeIsolated {
           TelemetryService.shared.hotkeyPressed(
             triggerSource: triggerSource, inputMode: inputMode,
-            keyShape: keyShape, keyIdentity: keyIdentity, pressAction: pressAction)
+            keyShape: keyShape, keyIdentity: keyIdentity, pressAction: pressAction,
+            windowTiming: windowTiming)
         }
       }
     },

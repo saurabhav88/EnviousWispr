@@ -35,7 +35,7 @@ import EnviousWisprServices
     var sink: HotkeyTelemetrySink {
       HotkeyTelemetrySink(
         registrationFailed: { _, _, _, _ in },
-        pressed: { [weak self] _, _, _, _, action in self?.presses.append(action) },
+        pressed: { [weak self] _, _, _, _, action, _ in self?.presses.append(action) },
         lockResolved: { [weak self] committed, reason in
           self?.lockDecisions.append((committed, reason))
         })
@@ -129,15 +129,15 @@ import EnviousWisprServices
   /// lock branch. Every case here pins the clock so the branch under test is the
   /// branch that runs, regardless of machine load.
   @MainActor final class ManualClock {
-    private(set) var now = Date(timeIntervalSince1970: 1_000_000)
-    func advance(ms: Int) { now = now.addingTimeInterval(Double(ms) / 1000.0) }
+    private(set) var now: TimeInterval = 1_000_000
+    func advance(ms: Int) { now += Double(ms) / 1000.0 }
   }
 
   private func makeService(
     _ spy: Spy, driver: StartDriver? = nil, clock: ManualClock
   ) -> HotkeyService {
     let service = HotkeyService(
-      effects: RecordingDesktopHotkeyEffects(), telemetry: spy.sink, now: { clock.now })
+      effects: RecordingDesktopHotkeyEffects(), telemetry: spy.sink, uptime: { clock.now })
     service.onStartResolvedForTesting = { driver?.noteServiceResolved() }
     service.recordingMode = .pushToTalk
     // keyCode 0 ('A') is a chord key, so no NSEvent monitor is involved.

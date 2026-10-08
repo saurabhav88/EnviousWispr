@@ -331,6 +331,10 @@ public final class HotkeyService {
     case copyLast = "copy_last"
     case ignoredProcessing = "ignored_processing"
     case ignoredCooldown = "ignored_cooldown"
+    /// #3534: a second press that came after the 500 ms window while a lone-tap stop was
+    /// pending. Its outcome is unchanged (the pending stop runs; its release stops); before
+    /// this it took no branch at all and left no row.
+    case lateAfterWindow = "late_after_window"
   }
 
   /// Which hotkey delivered the press.
@@ -344,7 +348,10 @@ public final class HotkeyService {
   }
 
   /// Injected clock for the 500ms double-press window and the lock cooldown.
-  /// Defaults to the real clock, so production is unchanged.
+  /// Uses system uptime for handling time (#3534). OS stamps are nominally
+  /// startup-relative; sleep/wake compatibility is not verified. Acceptance
+  /// bounds reject implausible stamps, and comparisons fall back as a pair.
+  /// Defaults to the real clock.
   ///
   /// Tests MUST inject: the window is measured in real elapsed time, so a test
   /// that awaits anything between the two presses can be pushed outside the
@@ -353,14 +360,75 @@ public final class HotkeyService {
   /// `swift-patterns.md` RULE: tests-no-real-time-scheduling-precision forbids —
   /// found by the independent whole-diff review, which reproduced eight failures
   /// running this suite alongside its siblings while it passed alone.
-  private let now: @MainActor () -> Date
+  private let uptime: @MainActor () -> TimeInterval
 
-  /// When one record-key input was handled (#3534).
-  private struct InputTime { let handled: Date }
+  /// Injected wait for the lone-tap stop (#3534). Same reason as `uptime`: the
+  /// stop deadline is now computed from the release's own time, so a test must
+  /// control when the wait ends rather than race a real timer.
+  private let sleep: @MainActor (TimeInterval) async -> Void
+
+  /// One record-key input (#3534): when this service HANDLED it, and when the OS
+  /// says it HAPPENED, if that time passed acceptance.
+  ///
+  /// Why both. NSEvent monitor handlers and the Carbon handler run on the main
+  /// thread, and right after a first press starts a recording the main thread is
+  /// busy for 100-700 ms (measured on a loaded Mac, #3534). The release or second
+  /// press is then HANDLED late, so a window judged by handling time reads a fast
+  /// double tap as slow and a fast tap as a hold. Occurrence timestamps
+  /// distinguish these captured misses. Their accuracy under heavy load remains
+  /// unverified; the microphone check ran only while calm.
+  private struct InputTime {
+    let handled: TimeInterval
+    let occurred: TimeInterval?
+  }
+
+  /// The double-press window, the lone-tap wait and the lock cooldown.
+  private static var window: TimeInterval {
+    Double(TimingConstants.handsFreeDebounceDelayMs) / 1000.0
+  }
+
+  /// Acceptance bounds for an OS timestamp, relative to its handling time.
+  /// 50 ms of future tolerates clock-read jitter (undelayed events agree within
+  /// about 1 ms). 2 s of age is 2.9x the largest lag measured (695 ms); an older
+  /// or zero stamp (synthetic events, sleep) is treated as unknown.
+  private static let occurrenceFutureTolerance: TimeInterval = 0.05
+  private static let occurrenceMaxAge: TimeInterval = 2.0
+
+  /// Stamp one record-key input with this service's clock, keeping the OS time
+  /// only if it is plausible.
+  private func capture(_ stamp: TimeInterval?) -> InputTime {
+    let handled = uptime()
+    guard let stamp, stamp > 0,
+      stamp <= handled + Self.occurrenceFutureTolerance,
+      stamp >= handled - Self.occurrenceMaxAge
+    else { return InputTime(handled: handled, occurred: nil) }
+    return InputTime(handled: handled, occurred: stamp)
+  }
+
+  /// The single owner of which clock compares two inputs (#3534): OS occurrence
+  /// times when both inputs have one and they are in order, otherwise both
+  /// handling times. Never one of each, so a rejected stamp is never subtracted
+  /// from an accepted one. `elapsed` and the lone-tap deadline both call this.
+  private func clockPair(from a: InputTime, to b: InputTime)
+    -> (start: TimeInterval, end: TimeInterval, usesOccurrence: Bool)
+  {
+    if let ao = a.occurred, let bo = b.occurred, bo >= ao { return (ao, bo, true) }
+    return (a.handled, b.handled, false)
+  }
 
   /// Seconds from one record-key input to a later one.
   private func elapsed(from a: InputTime, to b: InputTime) -> TimeInterval {
-    b.handled.timeIntervalSince(a.handled)
+    let pair = clockPair(from: a, to: b)
+    return pair.end - pair.start
+  }
+
+  /// `window_timing` for a lock intent (#3534): `rescued` when the occurrence
+  /// clock put the second press inside the window but the handling clock would
+  /// not have, `on_time` otherwise.
+  private func lockWindowTiming(from start: InputTime, to input: InputTime) -> String {
+    let pair = clockPair(from: start, to: input)
+    let handledGap = input.handled - start.handled
+    return pair.usesOccurrence && handledGap > Self.window ? "rescued" : "on_time"
   }
 
   /// The OS calls this service is allowed to make (#2455 C2).
@@ -386,11 +454,15 @@ public final class HotkeyService {
   package init(
     effects: any DesktopHotkeyEffects,
     telemetry: HotkeyTelemetrySink = .noop,
-    now: @escaping @MainActor () -> Date = { Date() }
+    uptime: @escaping @MainActor () -> TimeInterval = { ProcessInfo.processInfo.systemUptime },
+    sleep: @escaping @MainActor (TimeInterval) async -> Void = {
+      try? await Task.sleep(for: .seconds($0))
+    }
   ) {
     self.effects = effects
     self.telemetry = telemetry
-    self.now = now
+    self.uptime = uptime
+    self.sleep = sleep
   }
 
   /// The single release path for anything this service installed.
@@ -426,7 +498,9 @@ public final class HotkeyService {
   /// two strings, invokes the injected closure); the `.live` sink defers the
   /// actual PostHog write off the input turn (heart path). The args ARE the
   /// snapshot — no shared-state re-read.
-  private func emitHotkeyPressed(_ action: PressAction, trigger: PressTrigger) {
+  private func emitHotkeyPressed(
+    _ action: PressAction, trigger: PressTrigger, windowTiming: String? = nil
+  ) {
     let inputMode = recordingMode.rawValue
     // key_shape reflects the TRIGGERING hotkey: the cancel hotkey (Escape, a chord
     // by default) vs the toggle/PTT hotkey (modifier-only by default). The PTT
@@ -447,7 +521,8 @@ public final class HotkeyService {
     // Globe from Right Option because both are modifier-only. Content-free class,
     // never the key code itself.
     let keyIdentity = HotkeyKeyIdentity.classify(keyCode: keyCode).rawValue
-    telemetry.pressed(trigger.rawValue, inputMode, keyShape, keyIdentity, action.rawValue)
+    telemetry.pressed(
+      trigger.rawValue, inputMode, keyShape, keyIdentity, action.rawValue, windowTiming)
   }
 
   public func start() {
@@ -708,6 +783,11 @@ public final class HotkeyService {
   /// path. Test-only; production never sets it.
   package var onStartResolvedForTesting: (@MainActor () -> Void)?
 
+  /// #3534 test seam — invoked once per lone-tap stop task, on every exit path
+  /// (cancelled, stale, locked, stopped), so a test learns the timer finished
+  /// from the subject rather than from a guess. Test-only; production never sets it.
+  package var onDebounceResolvedForTesting: (@MainActor () -> Void)?
+
   // periphery:ignore - test seam
   package func awaitInFlightStartForTesting() async {
     await recordingTask?.value
@@ -718,15 +798,16 @@ public final class HotkeyService {
   /// Unified PTT + hands-free state machine.
   /// Called by both `handleCarbonHotkey` and `handleFlagsChangedValues` for
   /// push-to-talk mode press/release events.
-  private func handleRecordAction(isPress: Bool) {
+  private func handleRecordAction(isPress: Bool, timestamp: TimeInterval?) {
+    let input = capture(timestamp)
     if isPress {
-      handleRecordPress()
+      handleRecordPress(input)
     } else {
-      handleRecordRelease()
+      handleRecordRelease(input)
     }
   }
 
-  private func handleRecordPress() {
+  private func handleRecordPress(_ input: InputTime) {
     // Guard: if already held (duplicate press event), ignore
     guard !isModifierHeld else { return }
     isModifierHeld = true
@@ -751,7 +832,7 @@ public final class HotkeyService {
       // Not recording → start fresh
       stateGeneration &+= 1
       isRecordingLocked = false
-      recordingStart = InputTime(handled: now())
+      recordingStart = input
       // #1631: a fresh attempt owns a fresh identity, and inherits no acceptance.
       startPressID &+= 1
       acceptedStartPressID = nil
@@ -773,10 +854,7 @@ public final class HotkeyService {
       // #1175 (C3): emit AFTER the recording Task is created; the `.live` sink
       // defers the actual write off this turn so it never delays the callback.
       emitHotkeyPressed(.start, trigger: .ptt)
-    } else if let start = recordingStart,
-      elapsed(from: start, to: InputTime(handled: now()))
-        <= Double(TimingConstants.handsFreeDebounceDelayMs) / 1000.0
-    {
+    } else if let start = recordingStart, elapsed(from: start, to: input) <= Self.window {
       // Within 500ms window
       if isRecordingLocked {
         // Triple press → cancel
@@ -805,8 +883,10 @@ public final class HotkeyService {
         }
         debounceTask?.cancel()
         debounceTask = nil
+        // #3534: computed BEFORE publication, whose rejection cleanup clears `recordingStart`.
+        let windowTiming = lockWindowTiming(from: start, to: input)
         isRecordingLocked = true
-        lockAt = InputTime(handled: now())
+        lockAt = input
         // DO NOT cancel recordingTask here — the pipeline startup must
         // continue running. Cancelling it aborts preWarm/toggleRecording,
         // leaving the UI locked but no actual recording happening.
@@ -814,19 +894,17 @@ public final class HotkeyService {
         // press's start has already confirmed a session that is still running.
         // If it has not yet, `resolveStart` publishes when it does.
         publishLockIfReady()
-        emitHotkeyPressed(.lock, trigger: .ptt)
+        emitHotkeyPressed(.lock, trigger: .ptt, windowTiming: windowTiming)
       }
     } else if isRecordingLocked {
       // Lock cooldown: ignore presses within 500ms of locking.
       // Prevents accidental finger-bounce on modifier keys from
       // immediately stopping a just-locked recording.
-      if let lt = lockAt,
-        elapsed(from: lt, to: InputTime(handled: now()))
-          <= Double(TimingConstants.handsFreeDebounceDelayMs) / 1000.0
-      {
+      if let lt = lockAt, elapsed(from: lt, to: input) <= Self.window {
+        let sinceLockMs = Int(elapsed(from: lt, to: input) * 1000)
         Task {
           await AppLogger.shared.log(
-            "Press ignored — lock cooldown (\(Int(elapsed(from: lt, to: InputTime(handled: now())) * 1000))ms since lock)",
+            "Press ignored — lock cooldown (\(sinceLockMs)ms since lock)",
             level: .info, category: "HotkeyService"
           )
         }
@@ -849,10 +927,23 @@ public final class HotkeyService {
       recordingTask = Task { await onStopRecording?() }
       // #1175 (Codex code-diff #2): single press while locked stops the session.
       emitHotkeyPressed(.stop, trigger: .ptt)
+    } else if let start = recordingStart {
+      // #3534: unlocked, a lone-tap stop pending, and this press came after the
+      // window. No state change, exactly as before: the pending stop and its
+      // generation stay, and this press's release takes the stop path. Before
+      // this branch the press left no log line and no row.
+      let afterFirstMs = Int(elapsed(from: start, to: input) * 1000)
+      Task {
+        await AppLogger.shared.log(
+          "Second press after the double-tap window (\(afterFirstMs)ms after first)",
+          level: .info, category: "HotkeyService"
+        )
+      }
+      emitHotkeyPressed(.lateAfterWindow, trigger: .ptt)
     }
   }
 
-  private func handleRecordRelease() {
+  private func handleRecordRelease(_ input: InputTime) {
     guard isModifierHeld else { return }
     isModifierHeld = false
 
@@ -865,15 +956,21 @@ public final class HotkeyService {
     if isRecordingLocked { return }
 
     // Quick release (within 500ms) → debounce, wait for double-press
-    if let start = recordingStart,
-      elapsed(from: start, to: InputTime(handled: now()))
-        <= Double(TimingConstants.handsFreeDebounceDelayMs) / 1000.0
-    {
+    if let start = recordingStart, elapsed(from: start, to: input) <= Self.window {
       stateGeneration &+= 1
       let capturedGeneration = stateGeneration
+      // #3534: 500 ms after the release HAPPENED, on the same clock that judged it
+      // quick (`clockPair`); with no usable OS times, 500 ms after it was handled,
+      // as before. A release handled late can find this deadline already due.
+      // The remaining wait is read when the task RUNS, so a busy main thread that
+      // starts the task late does not push the stop past the deadline.
+      let deadline = clockPair(from: start, to: input).end + Self.window
+      let sleep = self.sleep
+      let uptime = self.uptime
       debounceTask?.cancel()
       debounceTask = Task { @MainActor [weak self] in
-        try? await Task.sleep(for: .milliseconds(TimingConstants.handsFreeDebounceDelayMs))
+        defer { self?.onDebounceResolvedForTesting?() }
+        await sleep(max(0, deadline - uptime()))
         guard !Task.isCancelled, let self else { return }
         // Stale check: if any state-changing event occurred during sleep,
         // this callback is outdated and must not fire.
@@ -915,7 +1012,7 @@ public final class HotkeyService {
     // `[weak self]` because the adapter retains this callback for the life of the
     // handler; a strong capture would be service -> adapter -> callback -> service.
     eventHandlerToken = effects.installCarbonHandler { [weak self] event in
-      self?.handleCarbonHotkey(id: event.id, isRelease: event.isRelease)
+      self?.handleCarbonHotkey(id: event.id, isRelease: event.isRelease, timestamp: event.timestamp)
     }
   }
 
@@ -1038,7 +1135,8 @@ public final class HotkeyService {
         self?.handleInstalledMonitorFlagsChangedValues(
           keyCode: event.keyCode,
           flags: NSEvent.ModifierFlags(rawValue: UInt(event.rawFlags)),
-          generation: generation)
+          generation: generation,
+          timestamp: event.timestamp)
       }, scope: "global")
 
     localModifierMonitorToken = recordMonitorInstall(
@@ -1046,7 +1144,8 @@ public final class HotkeyService {
         self?.handleInstalledMonitorFlagsChangedValues(
           keyCode: event.keyCode,
           flags: NSEvent.ModifierFlags(rawValue: UInt(event.rawFlags)),
-          generation: generation)
+          generation: generation,
+          timestamp: event.timestamp)
       }, scope: "local")
   }
 
@@ -1349,7 +1448,10 @@ public final class HotkeyService {
   // MARK: - Event Dispatch
 
   /// Called from the Carbon event handler on the main thread for RegisterEventHotKey events.
-  public func handleCarbonHotkey(id: UInt32, isRelease: Bool) {
+  ///
+  /// `timestamp`: the OS time the event happened, seconds since startup (#3534);
+  /// nil when unknown, which keeps handling-time behavior.
+  public func handleCarbonHotkey(id: UInt32, isRelease: Bool, timestamp: TimeInterval? = nil) {
     Task {
       await AppLogger.shared.log(
         "Carbon hotkey event: id=\(id), isRelease=\(isRelease), mode=\(recordingMode)",
@@ -1364,7 +1466,7 @@ public final class HotkeyService {
         emitHotkeyPressed(.toggle, trigger: .toggle)
       } else {
         // Push-to-talk mode with hands-free support
-        handleRecordAction(isPress: !isRelease)
+        handleRecordAction(isPress: !isRelease, timestamp: timestamp)
       }
 
     case HotkeyID.cancel.rawValue:
@@ -1410,10 +1512,10 @@ public final class HotkeyService {
   /// would not help anyway, because `suspend()`/`resume()` leaves it permissive
   /// for exactly the delivery this guard exists to refuse (#1993).
   package func handleInstalledMonitorFlagsChangedValues(
-    keyCode: UInt16, flags: NSEvent.ModifierFlags, generation: UInt64
+    keyCode: UInt16, flags: NSEvent.ModifierFlags, generation: UInt64, timestamp: TimeInterval?
   ) {
     guard generation == monitorGeneration else { return }
-    handleFlagsChangedValues(keyCode: keyCode, flags: flags)
+    handleFlagsChangedValues(keyCode: keyCode, flags: flags, timestamp: timestamp)
   }
 
   /// Processes modifier key changes from pre-extracted values.
@@ -1423,7 +1525,9 @@ public final class HotkeyService {
   /// Test seam (#1987): `package` rather than `private` so tests drive the REAL
   /// modifier dispatch path on a plain import. `internal` would work only through
   /// `@testable`, which couples the seam to a compilation mode.
-  package func handleFlagsChangedValues(keyCode: UInt16, flags: NSEvent.ModifierFlags) {
+  package func handleFlagsChangedValues(
+    keyCode: UInt16, flags: NSEvent.ModifierFlags, timestamp: TimeInterval? = nil
+  ) {
     guard !isSuspended else { return }
 
     let currentFlags = flags.intersection(.deviceIndependentFlagsMask)
@@ -1547,7 +1651,7 @@ public final class HotkeyService {
       emitHotkeyPressed(.toggle, trigger: .toggle)
     } else {
       // Push-to-talk mode with hands-free support
-      handleRecordAction(isPress: isPress)
+      handleRecordAction(isPress: isPress, timestamp: timestamp)
     }
   }
 

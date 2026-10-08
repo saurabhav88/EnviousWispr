@@ -158,8 +158,14 @@ struct TelemetryEmitterRegistryTests {
   /// page/tab raw values on sidebar navigation, result count, optional meaning time; the filtered
   /// query only on zero_results and sidebar_bypass; no take_id; reader the "Settings search gaps"
   /// review).
+  /// #3534: `hotkeyPressed` gained `windowTiming:`, which changes the enclosing-function identity
+  /// of the same single `hotkey.pressed` site. No new site, no new event, same per-press cadence
+  /// and treatment. Checklist: existing row; one closed String (`rescued`/`on_time`) only on lock
+  /// rows and omitted otherwise, no content; the new `late_after_window` press_action is one more
+  /// value on the same row for a second press just past the window (one row per such press);
+  /// reader the #3534 rescued-lock query; the registry row text is updated in the same #3534 PR.
   static let sitesFingerprint =
-    "51cf94797f1102383e0178389940c14ad15f7ff0c0897855a537ea8412a9a254"
+    "6b3e50adc7eba1d323edf006903909a02cc860db5ba1938c4f29374876d22ff8"
   static let ungradedFingerprint =
     "8c5e46c2f2f7fb59004bb2eb5ea1ac210ef32dbb79fdcb68b3eff70a28cc133f"
 
