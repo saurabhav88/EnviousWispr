@@ -102,6 +102,16 @@ def identities(results):
             raise Gap(f"duplicate test key {key}")
         seen.add(key)
         kids = _children(node)
+        messages = []
+
+        def collect(parent):
+            # Swift Testing puts a parameterized case's messages under its Arguments (and their
+            # Repetitions), not under the Test Case itself.
+            for child in _children(parent):
+                if child.get("nodeType") == "Failure Message":
+                    messages.append(child.get("name"))
+                collect(child)
+        collect(node)
         found.append({
             "key": key,
             "target": target,
@@ -109,8 +119,7 @@ def identities(results):
             "name": node.get("name"),
             "node_identifier": node.get("nodeIdentifier"),
             "result": RESULTS[raw],
-            "failures": _bounded([k.get("name") for k in kids if k.get("nodeType") == "Failure Message"],
-                                 MAX_MESSAGES, MAX_MESSAGE_CHARS),
+            "failures": _bounded(messages, MAX_MESSAGES, MAX_MESSAGE_CHARS),
             "failed_arguments": _bounded([k.get("name") for k in kids
                                           if k.get("nodeType") == "Arguments" and k.get("result") == "Failed"],
                                          MAX_ARGUMENTS, MAX_ARGUMENT_CHARS),
@@ -276,6 +285,10 @@ def self_test():
     note = by_key[base + "InverseTextNormalizerStreetAddressTests/notAddress(row:)"]
     expect("3 a parameterized failure is one identity listing its failing arguments",
            [a[:24] for a in note["failed_arguments"]], ['(dictated: "Figures from', '(dictated: "Revenue for '])
+    control = by_key[base + "InverseTextNormalizerStreetAddressTests/control(text:)"]
+    expect("3b failure messages under a parameterized case's arguments are kept",
+           (len(note["failures"]) >= 1, len(control["failures"]) >= 1, note["failures"][0][:20]),
+           (True, True, "Expectation failed: "))
     expect("4 the meta is carried unchanged", {k: doc[k] for k in meta}, meta)
 
     doc = record(meta, lambda: json.loads((here / "passed-run.json").read_text()))

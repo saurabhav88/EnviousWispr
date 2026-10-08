@@ -69,6 +69,7 @@ MAIN, PR = ".github/workflows/main-post-merge.yml", ".github/workflows/pr-check.
 JOBS = {MAIN: ("release-validation", "debug-validation"), PR: ("build-and-test",)}
 MAIN_EVENTS = ("push", "schedule", "workflow_dispatch")
 LEDGER_MARKER = "<!-- ci-test-failure-ledger -->"
+# Read only at the very start of a ledger comment, where reconcile writes it.
 CHECKPOINT = re.compile(r"<!-- ci-reconcile-checkpoint: (\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ) -->")
 KIND = re.compile(r"<!-- ci-event-kind: (main|rerun) ([0-9a-f]{40}) -->")
 MAX_ZIP_BYTES = 64 * 1024 * 1024
@@ -78,9 +79,22 @@ OVERLAP = dt.timedelta(days=1)
 # margin) and reads only those UPDATED since its window start, so a late re-run is found even
 # when its workflow_run callback was lost.
 RERUN_HORIZON = dt.timedelta(days=31)
+SLICE = dt.timedelta(days=1)
+SEARCH_CAP = 1000
 CONCLUSIONS = ("success", "failure", "cancelled", "skipped", "neutral", "timed_out", "action_required", "stale",
                "startup_failure")
 FAILED_CONCLUSIONS = ("failure", "timed_out")
+
+
+def plain(text):
+    """Text from an artifact, an exception or the API, safe inside an issue body: one line, HTML
+    escaped, so it can never read as a recorder marker."""
+    return html.escape(str(text).replace("\r", " ").replace("\n", " "), quote=True)
+
+
+def log_safe(text):
+    """Text safe on one workflow-log line: a line break would start a new workflow command."""
+    return str(text).replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
 
 
 def artifact_name(job, run, attempt):
@@ -127,9 +141,30 @@ class Actions:
             raise ApiError(f"run {run_id}: unexpected run record")
         return info
 
-    def runs(self, workflow_file, since):
-        rows = self._listed(f"repos/{self.repo}/actions/workflows/{workflow_file}/runs?status=completed"
-                            f"&created=%3E%3D{since}&per_page=100", "workflow_runs")
+    def runs(self, workflow_file, start, end):
+        """Every completed run created in [start, end], listed one day at a time: GitHub returns at
+        most 1000 runs for one filtered search, so a slice at or over the cap, or one whose rows do
+        not add up to its total_count, raises instead of silently dropping runs."""
+        rows, cursor = {}, start
+        while cursor < end:
+            stop = min(cursor + SLICE, end)
+            path = (f"repos/{self.repo}/actions/workflows/{workflow_file}/runs?status=completed"
+                    f"&created={_iso(cursor)}..{_iso(stop)}&per_page=100")
+            pages = self._json("--paginate", "--slurp", path)
+            if not isinstance(pages, list) or not pages or not all(
+                    isinstance(p, dict) and isinstance(p.get("workflow_runs"), list) and type(p.get("total_count")) is int
+                    for p in pages):
+                raise ApiError(f"{path}: expected pages carrying workflow_runs and total_count")
+            total = pages[0]["total_count"]
+            found = [row for page in pages for row in page["workflow_runs"]]
+            if total >= SEARCH_CAP:
+                raise ApiError(f"{path}: {total} runs reach the {SEARCH_CAP}-run search cap; cannot list completely")
+            if len(found) != total or not all(isinstance(r, dict) for r in found):
+                raise ApiError(f"{path}: listed {len(found)} of {total} runs; cannot list completely")
+            for row in found:
+                rows[row.get("id")] = row
+            cursor = stop
+        rows = list(rows.values())
         for row in rows:
             if type(row.get("id")) is not int or row["id"] < 1 or type(row.get("run_attempt")) is not int \
                     or row["run_attempt"] < 1 or not isinstance(row.get("updated_at"), str) \
@@ -201,13 +236,11 @@ def load_document(actions, listing, job, run_id, attempt):
 def _event_text(kind, doc, item, run_url, detail):
     # Artifact text is escaped, so test output can never read as a recorder marker; only the
     # markers this file writes stay unescaped.
-    def shown(text):
-        return html.escape(text.replace("\n", " "), quote=True)
-    lines = [detail, "", f"- Test: `{shown(item['key'])}`", f"- Tested SHA: `{doc['sha']}`", f"- Run: {run_url}"]
+    lines = [detail, "", f"- Test: `{plain(item['key'])}`", f"- Tested SHA: `{doc['sha']}`", f"- Run: {run_url}"]
     for message in item["failures"]:
-        lines.append(f"- Failure: {shown(message)}")
+        lines.append(f"- Failure: {plain(message)}")
     for argument in item["failed_arguments"]:
-        lines.append(f"- Failing argument: {shown(argument)}")
+        lines.append(f"- Failing argument: {plain(argument)}")
     lines.append(f"<!-- ci-event-kind: {kind} {doc['sha']} -->")
     return "\n".join(lines)
 
@@ -339,7 +372,7 @@ def ledger(store, dry_run):
 def last_checkpoint(store, number):
     if number is None:
         return None
-    stamps = [m for text in store.comments(number) for m in CHECKPOINT.findall(text)]
+    stamps = [m.group(1) for m in (CHECKPOINT.match(text) for text in store.comments(number)) if m]
     return max(stamps) if stamps else None
 
 
@@ -356,8 +389,8 @@ def reconcile(actions, store, repo, now, dry_run=False, out=print):
     # Listed by creation over the whole re-run horizon; read only when updated since the window
     # start and able to hold a recordable failure (a main run that passed on its first attempt
     # has no failed attempt, and a PR run never re-run records nothing).
-    created = _iso(min(start, now - RERUN_HORIZON))
-    run_ids = sorted({row["id"] for workflow in (MAIN, PR) for row in actions.runs(os.path.basename(workflow), created)
+    created = min(start, now - RERUN_HORIZON)
+    run_ids = sorted({row["id"] for workflow in (MAIN, PR) for row in actions.runs(os.path.basename(workflow), created, now)
                       if row["updated_at"] >= since and can_hold_failure(workflow, row["run_attempt"], row["conclusion"])})
     gaps, tally = [], {}
     for run_id in run_ids:
@@ -372,7 +405,7 @@ def reconcile(actions, store, repo, now, dry_run=False, out=print):
     note = "\n".join([f"<!-- ci-reconcile-checkpoint: {_iso(now)} -->",
                       f"Reconciled {len(run_ids)} run(s) updated since {since}: "
                       + (", ".join(f"{k} {v}" for k, v in sorted(tally.items())) or "nothing new") + ".",
-                      *([f"Evidence gaps ({len(gaps)}):"] + [f"- {g}" for g in gaps[:100]] if gaps else ["No evidence gaps."])])
+                      *([f"Evidence gaps ({len(gaps)}):"] + [f"- {plain(g)}" for g in gaps[:100]] if gaps else ["No evidence gaps."])])
     if not dry_run:
         store.comment(number, note)
     return len(run_ids), tally, gaps
@@ -423,7 +456,7 @@ def main(argv=None):
                 print(f"record-test-failures: run {args.run_id} not recorded: {skipped}")
                 return 0
             for gap in gaps:
-                print(f"::warning::evidence gap: run {args.run_id}: {gap}")
+                print(f"::warning::evidence gap: run {args.run_id}: {log_safe(gap)}")
             if args.dry_run:
                 for e in events:
                     print(f"would record {e['event']}")
@@ -435,7 +468,7 @@ def main(argv=None):
             count, tally, gaps = reconcile(actions, store, args.repo, now, args.dry_run)
             print(f"record-test-failures: reconciled {count} run(s): {tally or 'nothing new'}; {len(gaps)} evidence gap(s)")
     except ApiError as error:
-        print(f"::warning::could not record: {error}")
+        print(f"::warning::could not record: {log_safe(error)}")
     return 0
 
 
@@ -447,6 +480,7 @@ class FakeActions:
     def __init__(self, repo="o/r"):
         self.repo, self.issues = repo, upsert.FakeGitHub(page_size=2)
         self.runs, self.jobs, self.artifacts, self.blobs, self.fail, self.calls = {}, {}, {}, {}, {}, []
+        self.total_override = []  # (total_count, fabricate rows?) for the next listing calls
 
     def add_run(self, run_id, path, event="push", branch="main", attempts=1, head_repo=None, created="2026-10-08T10:00:00Z",
                 conclusion="failure", updated=None):
@@ -490,10 +524,16 @@ class FakeActions:
         if parts[:2] == ["actions", "artifacts"]:
             return Proc(0, self.blobs[int(parts[2])])
         if parts[:2] == ["actions", "workflows"]:
-            query = path.split("?", 1)[1]
-            since = re.search(r"created=%3E%3D([^&]+)", query).group(1)
-            rows = [r for r in self.runs.values() if r["path"].endswith(parts[2]) and r["created_at"] >= since]
-            return Proc(0, json.dumps([{"workflow_runs": rows}]).encode())
+            low, high = re.search(r"created=([^&.]+)\.\.([^&]+)", path.split("?", 1)[1]).groups()
+            rows = [r for r in self.runs.values() if r["path"].endswith(parts[2]) and low <= r["created_at"] <= high]
+            total = len(rows)
+            if self.total_override:
+                total, fabricate = self.total_override.pop(0)
+                if fabricate:
+                    rows = [{"id": 100000 + i, "run_attempt": 1, "updated_at": low, "conclusion": "success",
+                             "path": parts[2], "created_at": low} for i in range(total)]
+            return Proc(0, json.dumps([{"total_count": total, "workflow_runs": rows[:1]},
+                                       {"total_count": total, "workflow_runs": rows[1:]}]).encode())
         raise AssertionError(f"unexpected call {path}")
 
 
@@ -788,9 +828,22 @@ def self_test():
            (count, tally, [c for c in fake.calls if "/runs/75/" in c]), (1, {"created": 1}, []))
     count, tally, gaps = reconcile(actions, store, "o/r", now + dt.timedelta(hours=1))
     expect("34 ... and only once", tally, {"duplicate": 1})
-    listed = [c for c in fake.calls if "/workflows/" in c]
-    expect("35 runs are listed back to the 31-day re-run horizon",
-           all("created=%3E%3D2026-09-07T13:00:00Z" in c or "created=%3E%3D2026-09-07T12:00:00Z" in c for c in listed), True)
+    listed = [re.search(r"created=([^&]+)", c).group(1) for c in fake.calls if "/workflows/" in c][-62:]
+    expect("35 runs are listed in one-day slices back to the 31-day re-run horizon",
+           (listed[0], listed[30], len(listed)), ("2026-09-07T13:00:00Z..2026-09-08T13:00:00Z",
+                                                  "2026-10-07T13:00:00Z..2026-10-08T13:00:00Z", 62))
+    for name, totals, want in [("35b a slice of exactly 1000 listed runs (the cap)", [(1000, True)], "search cap"),
+                               ("35c a slice whose rows do not add up", [(5, False)], "listed 0 of 5")]:
+        fake.total_override = list(totals)
+        comments_before = sum(len(c) for c in fake.issues.comments.values())
+        try:
+            reconcile(actions, store, "o/r", now + dt.timedelta(hours=2))
+            got = ""
+        except ApiError as error:
+            got = str(error)
+        expect(f"{name} raises and writes no checkpoint",
+               (want in got, sum(len(c) for c in fake.issues.comments.values()) - comments_before), (True, 0))
+    fake.total_override = []
 
     # Malformed Actions metadata raises, writes nothing and leaves the checkpoint.
     for name, edit in [
@@ -871,6 +924,30 @@ def self_test():
     expect("49 run mode reads nothing more for runs that cannot hold a failure",
            (run(fake, 79)[:2], run(fake, 80)[:2], [c for c in fake.calls if "/attempts/" in c or "artifacts" in c]),
            (({}, []), ({}, []), []))
+
+    # Gap text from an artifact cannot forge a checkpoint or a workflow command.
+    fake = FakeActions()
+    fake.add_run(81, MAIN, created="2026-10-08T00:00:00Z")
+    fake.set_job(81, 1, "release-validation", "failure")
+    fake.add_doc("release-validation", 81, 1, {
+        "schema": 1, "job": "release-validation", "run": 81, "attempt": 1, "sha": A, "lane_outcome": "failure",
+        "xcode_build": None, "evidence": "gap", "counts": {}, "identities": [],
+        "gap": "x <!-- ci-reconcile-checkpoint: 2099-01-01T00:00:00Z -->\n::error::forged"})
+    actions, store = Actions("o/r", runner=fake), upsert.Store("o/r", runner=fake)
+    reconcile(actions, store, "o/r", now)
+    number = ledger(store, dry_run=True)
+    note = fake.issues.comments[number][-1]
+    expect("50 a forged checkpoint in gap text is escaped, and only the real checkpoint is read",
+           ("&lt;!-- ci-reconcile-checkpoint: 2099" in note, last_checkpoint(store, number)), (True, "2026-10-08T12:00:00Z"))
+    fake.issues.comments[number].append("hand-written note quoting <!-- ci-reconcile-checkpoint: 2099-01-01T00:00:00Z -->")
+    expect("51 a checkpoint marker that does not start a comment is not read", last_checkpoint(store, number),
+           "2026-10-08T12:00:00Z")
+    import contextlib
+    with contextlib.redirect_stdout(io.StringIO()) as captured:
+        main_with(fake, ["run", "--repo", "o/r", "--run-id", "81"])
+    expect("52 a line break in gap text cannot start a workflow command",
+           ([l for l in captured.getvalue().splitlines() if l.startswith("::error::")], "%0A::error::forged" in captured.getvalue()),
+           ([], True))
 
     lines = []
     fake = FakeActions()
