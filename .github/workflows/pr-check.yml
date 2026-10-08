@@ -114,6 +114,15 @@ jobs:
           derived-data-path: ${{ env.DERIVED_DATA_PATH }}
           configuration: release
 
+      # #3524 PR 3: the Dev-build catalog receipt wrapper (scripts/lib/l10n-build-with-receipt.sh)
+      # and its two callers, on owned git fixtures with a stub build; it asks the real Xcode
+      # for its build version, so it lives here, after Xcode setup and before the costly build.
+      - name: Catalog receipt wrapper self-test
+        if: steps.changes.outputs.needs_build == 'true'
+        run: |
+          set -euo pipefail
+          python3 scripts/lib/l10n-build-with-receipt-test.py
+
       # #3019: every build/test phase runs through `ew_phase`
       # (scripts/lib/ci-phase.sh): same command, same exit status, plus a named
       # log and the seconds for the EW-CI-METRICS line at the end of the job.
@@ -159,11 +168,14 @@ jobs:
 
       # #3142: the committed String Catalog must equal what the compiler extracts
       # from the Release build that just ran. Exit 1 prints the added, removed and
-      # changed keys; the fix is `scripts/lib/l10n-catalog-sync.sh --update` on a
-      # local Release build, then commit the catalog. Exit 2 means the check could
+      # changed keys (and fails if a DEV_ONLY_KEYS member is ever extracted here,
+      # #3524); the printed repair names the Dev partial repair first and this
+      # Release check stays the authority for removals. Exit 2 means the check could
       # not run (toolchain, missing inputs), never "in sync". The sync reads only
       # production-target .stringsdata, so the test targets this build adds are
-      # not extracted (and an unknown target folder is refused, not included).
+      # not extracted (and an unknown target folder is refused, not included). No
+      # Dev build runs here (founder 2026-10-08, plan §3.3 amendment): the pre-push
+      # hook checks the Dev extraction on the Mac.
       - name: Check String Catalog is in sync (release)
         if: steps.changes.outputs.needs_build == 'true'
         run: |

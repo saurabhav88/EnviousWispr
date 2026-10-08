@@ -53,6 +53,7 @@ MEMBERS=(
   "judge-contracts|python3|build-check"
   "eval-harness-self-tests|python3|build-check"
   "language-data-generator|python3|build-check"
+  "l10n-receipt-self-test|bash python3 git|build-check"
   "third-party-notices|bash python3 perl|other-job"
   "worker-tests|node|other-job"
 )
@@ -197,6 +198,14 @@ member_judge_contracts() {
   # asserts its own exact test count, because the runner it borrows from
   # exits 0 when it discovers zero tests.
   python3 scripts/eval/behavior_judge_test.py
+}
+
+# #3524 PR 3: the String Catalog receipt helper (fingerprints, schema, publication, the changed-input
+# query the pre-push catalog check gates on). Git fixtures and a stub catalog script only: no
+# Xcode, so the Ubuntu aggregator holds it. Its build wrapper's suite needs Xcode and runs in the
+# macOS build-and-test job instead.
+member_l10n_receipt_self_test() {
+  python3 scripts/lib/l10n-build-receipt.py --self-test
 }
 
 # CI step: Eval harness self-tests (#2013)
@@ -452,7 +461,7 @@ run_all() {
 
 # The member list, frozen independently of MEMBERS. Adding or removing a member
 # is a deliberate edit to both.
-EXPECTED_MEMBERS="ci-self-tests dependency-direction lane-verdict-self-test dev-app-lock-self-test download-link-lint runtime-uat-self-tests judge-contracts eval-harness-self-tests language-data-generator third-party-notices worker-tests"
+EXPECTED_MEMBERS="ci-self-tests dependency-direction lane-verdict-self-test dev-app-lock-self-test download-link-lint runtime-uat-self-tests judge-contracts eval-harness-self-tests language-data-generator l10n-receipt-self-test third-party-notices worker-tests"
 
 member_names() { local r; for r in "$@"; do printf '%s ' "${r%%|*}"; done; }
 
@@ -497,7 +506,7 @@ self_test() {
   for name in $EXPECTED_MEMBERS; do
     check "member function exists for $name" "$(declare -F "member_${name//-/_}" > /dev/null && echo yes || echo no)" "yes"
   done
-  check "--ci leaves out exactly the other-job members" "$(selected_members 1 | cut -d'|' -f1 | grep -c -e third-party-notices -e worker-tests)|$(selected_members 1 | wc -l | tr -d ' ')" "0|9"
+  check "--ci leaves out exactly the other-job members" "$(selected_members 1 | cut -d'|' -f1 | grep -c -e third-party-notices -e worker-tests)|$(selected_members 1 | wc -l | tr -d ' ')" "0|10"
 
   local saved_members=("${MEMBERS[@]}")
   MEMBERS=("bad-record-without-fields")

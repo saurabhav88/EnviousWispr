@@ -28,6 +28,8 @@ PROJECT_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 . "$PROJECT_ROOT/scripts/lib/launch-check.sh"
 # shellcheck source=scripts/lib/spm-seed.sh
 . "$PROJECT_ROOT/scripts/lib/spm-seed.sh"
+# shellcheck source=scripts/lib/l10n-build-with-receipt.sh
+. "$PROJECT_ROOT/scripts/lib/l10n-build-with-receipt.sh"
 # ONE cleanup handler, releasing every seed lock this process owns. A second
 # `trap EXIT` would silently REPLACE this one rather than adding to it.
 trap 'ew_seed_release_all' EXIT
@@ -158,7 +160,11 @@ ew_seed_resolve_or_unseed "$DERIVED_DATA" \
     -derivedDataPath "$DERIVED_DATA"
 
 echo "==> Step 4: Building EnviousWispr-Dev (Dev config, self-signed)..."
-xcodebuild build \
+# #3524: the build runs inside the catalog-receipt wrapper, which first tries to remove the old
+# receipt (if it cannot, no new one is written) and writes .derivedData/Dev/ew-l10n-receipt.json
+# only after a successful compile of unmoved inputs. The receipt covers the compile's string extraction, not the signing, deploy or launch
+# below. xcodebuild's exit status is still this step's status.
+ew_l10n_build_with_receipt "$PROJECT_ROOT" "$DERIVED_DATA" xcodebuild build \
   -project EnviousWispr.xcodeproj \
   -scheme "EnviousWispr-Dev" \
   -configuration Dev \

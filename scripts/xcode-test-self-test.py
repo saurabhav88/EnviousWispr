@@ -238,6 +238,7 @@ class BuildEntrypointHookContract(unittest.TestCase):
         (lib / 'ensure-generated.sh').write_text('ew_ensure_generated() { echo generate >> "$TRACE"; }\n')
         (lib / 'launch-check.sh').write_text(':\n')
         (lib / 'spm-seed.sh').write_text('ew_seed_release_all() { :; }\n')
+        (lib / 'l10n-build-with-receipt.sh').write_text(':\n')
         hooks = self.root / 'scripts/githooks'
         hooks.mkdir()
         installer = hooks / 'install.sh'

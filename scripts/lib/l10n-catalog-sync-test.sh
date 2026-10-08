@@ -67,8 +67,18 @@ def entry(key, value=None):
     return e
 
 
-def fixture(root, extra_keys=(), drop_manual=None, manual_override=None, drop_target=None, extra_target=None, metadata_only_target=None):
-    base = root / "dd/Build/Intermediates.noindex/EnviousWispr.build/Release"
+def fixture(root, extra_keys=(), drop_manual=None, manual_override=None, drop_target=None, extra_target=None, metadata_only_target=None,
+            configuration="Release", retired=None):
+    base = root / f"dd/Build/Intermediates.noindex/EnviousWispr.build/{configuration}"
+    if retired is not None:
+        # The retired XPC target's stale folder (#1908): `retired` maps file names (under
+        # Objects-normal/arm64) or paths with a "/" (relative to the folder) to contents.
+        folder = base / "EnviousWisprASRService.build"
+        (folder / "Objects-normal/arm64").mkdir(parents=True)
+        for name, body in retired.items():
+            target = folder / name if "/" in name else folder / "Objects-normal/arm64" / name
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text(body)
     for t in TARGETS:
         if t == drop_target:
             continue
@@ -158,12 +168,12 @@ def plist_args(root):
             "--servicesmenu-catalog", str(root / "ServicesMenu.xcstrings")]
 
 
-def run(*args, env=None, whats_new_source=None, plist_root=None):
+def run(*args, env=None, whats_new_source=None, plist_root=None, sync=None):
     with tempfile.TemporaryDirectory() as tmp:
         if whats_new_source is None:
             whats_new_source = pathlib.Path(tmp) / "WhatsNewContent.swift"
             whats_new_source.write_text(whats_new())
-        p = subprocess.run([SYNC, *args, "--whats-new-source", str(whats_new_source),
+        p = subprocess.run([sync or SYNC, *args, "--whats-new-source", str(whats_new_source),
                             *plist_args(plist_root or SHARED_PLIST)], capture_output=True, text=True, env=env)
         return p.returncode, p.stdout + p.stderr
 
@@ -303,6 +313,29 @@ case("update restores the code's English", 0, "updated", mode="--update", edit_c
      else f"English left as {s['fixture.value.key']['localizations']['en']['stringUnit']['value']!r}")
 # Debug extracts #if DEBUG copy that never ships; only Release is an authority.
 case("Debug configuration refuses", 2, "invalid choice", configuration="Debug")
+
+# --- --list-inputs (#3524): exactly the files --check reads, relative and NUL-separated ---
+with tempfile.TemporaryDirectory() as tmp:
+    root = pathlib.Path(tmp)
+    dd = fixture(root / "list")
+    p = subprocess.run([SYNC, "--list-inputs", "--derived-data", str(dd), "--configuration", "Release"],
+                       capture_output=True, text=True)
+    got = sorted(x for x in p.stdout.split("\0") if x)
+    want = sorted(f"Build/Intermediates.noindex/EnviousWispr.build/Release/{t}.build/Objects-normal/arm64/File.stringsdata"
+                  for t in TARGETS)
+    cases += 1
+    ok = p.returncode == 0 and got == want and p.stdout.endswith("\0")
+    print(f"{'PASS' if ok else 'FAIL'}  --list-inputs names every production File.stringsdata, no metadata or test file: "
+          f"exit {p.returncode}, {len(got)} listed, {len(want)} expected")
+    if not ok:
+        failures.append("--list-inputs set")
+        print(p.stdout.replace("\0", "\n"), p.stderr)
+    code = subprocess.run([SYNC, "--list-inputs", "--derived-data", str(fixture(root / "unknown", extra_target="SomethingNew")),
+                           "--configuration", "Release"], capture_output=True, text=True)
+    expect("--list-inputs refuses an unknown target like --check", code.returncode, code.stderr, 2, "do not know")
+    code = subprocess.run([SYNC, "--list-inputs", "--derived-data", str(dd), "--configuration", "Dev"],
+                          capture_output=True, text=True)
+    expect("--list-inputs for Dev reads the Dev folder, not Release", code.returncode, code.stderr, 2, "no build intermediates")
 
 # --- What's New seed (#3142 PR 2E) ---
 WN = "whatsNew."
@@ -780,6 +813,443 @@ plist_case("German in the permission catalog requires it in all three catalogs",
            ["INCOMPLETE: InfoPlist.xcstrings: de", "'NSContactsUsageDescription': missing",
             "INCOMPLETE: Localizable.xcstrings: de", "INCOMPLETE: ServicesMenu.xcstrings: de"], catalogs_from=PLIST,
            edit_tables={"InfoPlist.xcstrings": german_on_one_prompt})
+
+
+# --- Dev check mode (#3524 PR 3): judged only with a receipt for the pushed code ---
+import importlib.util as _ilu
+_spec = _ilu.spec_from_file_location("receipt", pathlib.Path(SYNC).parent / "l10n-build-receipt.py")
+receipt_mod = _ilu.module_from_spec(_spec)
+_spec.loader.exec_module(receipt_mod)
+DEV_ONLY_SAMPLE = "Copy Log Path"  # a real DEV_ONLY_KEYS member (DiagnosticsSettingsView.swift, #if DEBUG)
+
+
+def write_receipt(dd, tree="1" * 40, xcode=None):
+    """A complete, valid receipt for the fixture's real extraction; returns its input digest."""
+    xcode = xcode or receipt_mod.xcode_build()
+    try:
+        count, digest = receipt_mod.extraction(dd, "Dev", pathlib.Path(SYNC))
+    except receipt_mod.Unavailable:
+        # A tree the catalog script refuses: a well-formed receipt, so the refusal under test is
+        # the extraction's own, reached through verification.
+        count, digest = 1, "0" * 64
+    data = {"version": 1, "configuration": "Dev", "xcode_build": xcode, "input_tree": tree,
+            "input_digest": receipt_mod.input_digest(tree, xcode, "Dev"),
+            "extraction_count": count, "extraction_digest": digest}
+    (dd / "ew-l10n-receipt.json").write_text(json.dumps(data))
+    return data["input_digest"]
+
+
+def dev_case(name, want_code, want_texts, *, receipt="valid", expect=None, mode="--check", edit_committed=None,
+             after_receipt=None, before_receipt=None, extra_args=(), absent_texts=(), **fx):
+    global cases
+    with tempfile.TemporaryDirectory() as tmp:
+        root = pathlib.Path(tmp)
+        catalog = root / "Localizable.xcstrings"
+        committed_catalog(catalog)
+        code, out = run("--update", "--derived-data", str(fixture(root / "clean")), "--configuration", "Release",
+                        "--catalog", str(catalog))
+        assert code == 0, out
+        if edit_committed:
+            data = json.loads(catalog.read_text())
+            edit_committed(data["strings"])
+            catalog.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n")
+        dd = fixture(root / "dev", configuration="Dev", **fx)
+        tree = before_receipt(dd, root) if before_receipt else None
+        digest = None
+        if receipt == "valid":
+            digest = write_receipt(dd, tree=tree or "1" * 40)
+        elif receipt == "other-xcode":
+            digest = write_receipt(dd, xcode="27Z999z")
+        elif receipt == "malformed":
+            digest = write_receipt(dd)
+            (dd / "ew-l10n-receipt.json").write_text('{"version": true}')
+        if after_receipt:
+            after_receipt(dd)
+        args = [mode, "--derived-data", str(dd), "--configuration", "Dev", "--catalog", str(catalog),
+                *[a.replace("@ROOT@", str(root)) for a in extra_args]]
+        if expect != "omit":
+            args += ["--expect-inputs", expect or digest or "0" * 64]
+        code, out = run(*args)
+        cases += 1
+        ok = code == want_code and all(t in out for t in want_texts) and not any(t in out for t in absent_texts)
+        print(f"{'PASS' if ok else 'FAIL'}  {name}: exit {code}")
+        if not ok:
+            failures.append(name)
+            print(out)
+
+
+def german_on_one_key(strings):
+    strings["fixture.value.key"]["localizations"]["de"] = {"stringUnit": {"state": "translated", "value": "Werttext"}}
+
+
+def committed_release_only(strings):
+    strings["a release only label"] = {"extractionState": "extracted_with_value",
+                                       "localizations": {"en": {"stringUnit": {"state": "new", "value": "a release only label"}}}}
+
+
+dev_case("Dev: a valid receipt and a clean tree pass", 0, ["receipt ok", "catalog in sync"])
+dev_case("Dev: the 35 listed keys absent from this extraction are warned about", 0,
+         ["WARNING: 35 DEV_ONLY_KEYS member(s) not extracted by this Dev build"])
+dev_case("Dev: no receipt is could-not-run", 2, ["could not verify the Dev build receipt", "no receipt"], receipt="none")
+dev_case("Dev: a malformed receipt is could-not-run", 2, ["could not verify the Dev build receipt", "malformed"], receipt="malformed")
+dev_case("Dev: a receipt for other code is could-not-run", 2, ["not of the pushed code"], expect="f" * 64)
+dev_case("Dev: a receipt from another Xcode build is could-not-run", 2, ["Xcode build 27Z999z"], receipt="other-xcode")
+dev_case("Dev: an extraction changed after the receipt is could-not-run", 2, ["extraction changed"],
+         after_receipt=lambda dd: next(dd.rglob("EnviousWisprCore.build/Objects-normal/arm64/File.stringsdata")).write_text(
+             stringsdata([entry("EnviousWisprCore plain copy"), entry("rebuilt")])))
+dev_case("Dev: --expect-inputs is required", 2, ["needs --expect-inputs"], expect="omit")
+dev_case("Dev: a listed Dev-only key (DEBUG-only literal) is ignored", 0,
+         ["Dev-only keys ignored: 1 of 35", "catalog in sync"], extra_keys=[DEV_ONLY_SAMPLE])
+dev_case("Dev: an unlisted new key is drift", 1, ["added: 'a key nobody listed'"], extra_keys=["a key nobody listed"])
+dev_case("Dev: a configuration-dependent English default is drift", 1, ["changed: 'fixture.value.key'"],
+         edit_committed=edit_translated_default)
+dev_case("Dev: a Release-only literal reads as removed and fails (conservative)", 1, ["removed: 'a release only label'"],
+         edit_committed=committed_release_only)
+dev_case("Dev: a German gap on a non-listed key fails", 1, ["INCOMPLETE: Localizable.xcstrings: de"],
+         edit_committed=german_on_one_key)
+dev_case("Dev: the retired ASR folder with only shortcut metadata is accepted", 0, ["catalog in sync"],
+         retired={"ExtractedAppShortcutsMetadata.stringsdata": stringsdata([])})
+dev_case("Dev: the retired ASR folder with real extraction still refuses", 2, ["EnviousWisprASRService"],
+         retired={"ExtractedAppShortcutsMetadata.stringsdata": stringsdata([]), "File.stringsdata": stringsdata([entry("x")])})
+dev_case("Dev: an empty retired ASR folder still refuses", 2, ["EnviousWisprASRService"], retired={})
+dev_case("Dev: real extraction anywhere in the retired folder refuses", 2, ["EnviousWisprASRService"],
+         retired={"ExtractedAppShortcutsMetadata.stringsdata": stringsdata([]),
+                  "Other/Place/Real.stringsdata": stringsdata([entry("x")])})
+
+
+# The catalogs are judged from the verified copy: a build rewriting the original extraction after
+# the copy was verified cannot produce a defect. A private copy of the script runs a wrapper in
+# place of the receipt helper that rewrites one ORIGINAL file, then runs the real helper.
+with tempfile.TemporaryDirectory() as tmp:
+    root = pathlib.Path(tmp)
+    repo = root / "repo"
+    (repo / "scripts/lib").mkdir(parents=True)
+    (repo / "scripts/ci").mkdir(parents=True)
+    here = pathlib.Path(SYNC).parent
+    shutil.copy(SYNC, repo / "scripts/lib/l10n-catalog-sync.sh")
+    shutil.copy(here / "l10n-build-receipt.py", repo / "scripts/lib/l10n-build-receipt-real.py")
+    shutil.copy(here.parent / "ci/render-release-notes.py", repo / "scripts/ci/render-release-notes.py")
+    (repo / "scripts/lib/l10n-build-receipt.py").write_text(
+        "import os, pathlib, runpy, sys\n"
+        "target = os.environ.get('REWRITE_ORIGINAL')\n"
+        "if target:\n"
+        "    pathlib.Path(target).write_text(os.environ['REWRITE_TEXT'])\n"
+        "real = str(pathlib.Path(__file__).with_name('l10n-build-receipt-real.py'))\n"
+        "sys.argv[0] = real\n"
+        "runpy.run_path(real, run_name='__main__')\n")
+    catalog = root / "Localizable.xcstrings"
+    committed_catalog(catalog)
+    assert run("--update", "--derived-data", str(fixture(root / "clean")), "--configuration", "Release",
+               "--catalog", str(catalog))[0] == 0
+    dd = fixture(root / "dev", configuration="Dev")
+    digest = write_receipt(dd)
+    original = next(dd.rglob("EnviousWisprAppKit.build/Objects-normal/arm64/File.stringsdata"))
+    rewritten = json.loads(original.read_text())
+    rewritten["tables"]["Localizable"].append(json.loads(stringsdata([entry("a key a concurrent build added")]))["tables"]["Localizable"][0])
+    env = dict(os.environ, REWRITE_ORIGINAL=str(original), REWRITE_TEXT=json.dumps(rewritten))
+    code, out = run("--check", "--derived-data", str(dd), "--configuration", "Dev", "--catalog", str(catalog),
+                    "--expect-inputs", digest, env=env, sync=str(repo / "scripts/lib/l10n-catalog-sync.sh"))
+    expect("Dev: an extraction rewritten after verification is not read (the certified copy is judged)",
+           code, out, 0, "catalog in sync")
+    cases += 1
+    moved = "a key a concurrent build added" in original.read_text()
+    print(f"{'PASS' if moved else 'FAIL'}  precondition: the original really was rewritten during the run")
+    if not moved:
+        failures.append("rewrite precondition")
+
+
+# --- Release with explicit Dev evidence: the "found in neither" warning ---
+def release_with_dev(name, want_code, want_texts, *, dev_keys=(), receipt=True, expect=None):
+    global cases
+    with tempfile.TemporaryDirectory() as tmp:
+        root = pathlib.Path(tmp)
+        catalog = root / "Localizable.xcstrings"
+        committed_catalog(catalog)
+        rel = fixture(root / "rel")
+        assert run("--update", "--derived-data", str(rel), "--configuration", "Release", "--catalog", str(catalog))[0] == 0
+        dev_dd = fixture(root / "dev", configuration="Dev", extra_keys=list(dev_keys))
+        digest = write_receipt(dev_dd) if receipt else "0" * 64
+        args = ["--check", "--derived-data", str(rel), "--configuration", "Release", "--catalog", str(catalog),
+                "--dev-derived-data", str(dev_dd)]
+        if expect != "omit":
+            args += ["--expect-inputs", expect or digest]
+        code, out = run(*args)
+        cases += 1
+        ok = code == want_code and all(t in out for t in want_texts)
+        print(f"{'PASS' if ok else 'FAIL'}  {name}: exit {code}")
+        if not ok:
+            failures.append(name)
+            print(out)
+
+
+release_with_dev("Release + Dev evidence: listed keys found in neither are warned about", 0,
+                 ["WARNING: 35 DEV_ONLY_KEYS member(s) found in neither", "catalog in sync"])
+release_with_dev("Release + Dev evidence: a key the Dev build extracts is not in the warning", 0,
+                 ["WARNING: 34 DEV_ONLY_KEYS member(s) found in neither"], dev_keys=[DEV_ONLY_SAMPLE])
+release_with_dev("Release + Dev evidence: Dev evidence without a matching receipt is could-not-run", 2,
+                 ["could not verify the Dev build receipt"], receipt=False)
+release_with_dev("Release + Dev evidence: --expect-inputs is required", 2, ["--dev-derived-data goes with"], expect="omit")
+case("Release: a DEV_ONLY_KEYS member in the Release extraction fails", 1, "DEV_ONLY_KEYS LEAK", extra_keys=[DEV_ONLY_SAMPLE])
+
+
+# The same leak with the key already committed by a real --update: no drift, so the leak alone
+# must fail the check.
+with tempfile.TemporaryDirectory() as tmp:
+    root = pathlib.Path(tmp)
+    catalog = root / "Localizable.xcstrings"
+    committed_catalog(catalog)
+    dd = fixture(root / "leak", extra_keys=[DEV_ONLY_SAMPLE])
+    assert run("--update", "--derived-data", str(dd), "--configuration", "Release", "--catalog", str(catalog))[0] == 0
+    code, out = run("--check", "--derived-data", str(dd), "--configuration", "Release", "--catalog", str(catalog))
+    expect("Release: the leak fails on its own, with no drift", code, out, 1, "DEV_ONLY_KEYS LEAK")
+    if "DRIFT" in out:
+        failures.append("leak case drifted")
+        print("FAIL  the leak case also drifted, so it does not isolate the leak")
+
+
+# --- A NEW text proven inside `#if DEBUG` warns instead of blocking (#3524 PR 3) ---
+PROBE = "Sources/EnviousWisprAppKit/Probe.swift"
+NEW_DEBUG_KEY = "a new diagnostics label"
+
+
+def probe(source, lines, build_root="/Users/someone/other-checkout", rel=PROBE, extra=None, record_rel=None, links=None,
+          edit_after=None, git=True):
+    """A source root (under the case's temp dir) holding `source` at `rel`, and an extraction
+    record for NEW_DEBUG_KEY at each of `lines`, as the compiler writes it (absolute build path).
+    Returns the source root's input tree, so the receipt names that code; edit_after then changes
+    files, as an edit after the build would."""
+    def prepare(dd, root):
+        src = root / "src"
+        (src / rel).parent.mkdir(parents=True, exist_ok=True)
+        (src / rel).write_text(source)
+        for path, text in (extra or {}).items():
+            (src / path).parent.mkdir(parents=True, exist_ok=True)
+            (src / path).write_text(text)
+        for path, target_path in (links or {}).items():
+            (src / path).symlink_to(target_path)
+        tree = None
+        if git:
+            for path in ("Project.swift", "Package.swift", "Sources/EnviousWispr/Resources/Info.plist",
+                         "Sources/EnviousWisprAppKit/Views/Settings/WhatsNewContent.swift"):
+                (src / path).parent.mkdir(parents=True, exist_ok=True)
+                (src / path).write_text("// a required build input\n")
+            subprocess.run(["git", "init", "-q", str(src)], check=True)
+            try:
+                tree = receipt_mod.input_tree(src)
+            except receipt_mod.Unavailable:
+                tree = None  # no receipt could name this code (e.g. an escaping link); the case still runs
+        for path, text in (edit_after or {}).items():
+            (src / path).write_text(text)
+        target = next(dd.rglob("EnviousWisprAppKit.build/Objects-normal/arm64"))
+        entries = [{"key": NEW_DEBUG_KEY, "location": {"startingLine": n, "startingColumn": 5}} for n in lines]
+        (target / "Probe.stringsdata").write_text(json.dumps(
+            {"source": f"{build_root}/{record_rel or rel}", "tables": {"Localizable": entries}, "version": 1}))
+        return tree
+    return prepare
+
+
+def dbg(name, want_code, source, lines, **kw):
+    texts = ["judged as Dev-only", "catalog in sync"] if want_code == 0 else [f"added: {NEW_DEBUG_KEY!r}"]
+    absent = [] if want_code == 0 else ["judged as Dev-only"]
+    dev_case(name, want_code, texts, absent_texts=absent, extra_args=("--source-root", "@ROOT@/src"),
+             before_receipt=probe(source, lines, **{k: v for k, v in kw.items() if k in ("build_root", "rel", "extra", "record_rel", "links", "edit_after", "git")}))
+
+
+L = f'Text("{NEW_DEBUG_KEY}")'
+dbg("debug-only: inside #if DEBUG, from another checkout's build path: warns, passes", 0,
+    f"struct V {{\n#if DEBUG\n  var b: some View {{ {L} }}\n#endif\n}}\n", [3])
+dbg("debug-only: outside any #if: blocks", 1, f"struct V {{\n  var b: some View {{ {L} }}\n}}\n", [2])
+dbg("debug-only: in the #else of #if DEBUG: blocks", 1,
+    f"#if DEBUG\nlet x = 1\n#else\nlet y = {L}\n#endif\n", [4])
+dbg("debug-only: #if !DEBUG: blocks", 1, f"#if !DEBUG\nlet y = {L}\n#endif\n", [2])
+dbg("debug-only: #if DEBUG || SHIPPING: blocks", 1, f"#if DEBUG || SHIPPING\nlet y = {L}\n#endif\n", [2])
+dbg("debug-only: nested inside #if os(macOS): warns, passes", 0,
+    f"#if os(macOS)\n#if DEBUG\nlet y = {L}\n#endif\n#endif\n", [3])
+dbg("debug-only: #elseif DEBUG: warns, passes", 0, f"#if FOO\nlet a = 1\n#elseif DEBUG\nlet y = {L}\n#endif\n", [4])
+dbg("debug-only: a fake #if DEBUG inside a block comment is ignored: blocks", 1,
+    f"/*\n#if DEBUG\n*/\nlet y = {L}\n/*\n#endif\n*/\n", [4])
+dbg("debug-only: a fake #if DEBUG inside a multi-line string is ignored: blocks", 1,
+    f'let s = """\n#if DEBUG\n"""\nlet y = {L}\nlet t = """\n#endif\n"""\n', [4])
+dbg("debug-only: one occurrence in DEBUG and one shipping: blocks", 1,
+    f"#if DEBUG\nlet a = {L}\n#endif\nlet b = {L}\n", [2, 4])
+dbg("debug-only: a build path naming no Sources/ file here: blocks", 1,
+    f"#if DEBUG\nlet y = {L}\n#endif\n", [2], record_rel="Sources/EnviousWisprAppKit/NotHere.swift")
+dbg("debug-only: an ambiguous build path: blocks", 1,
+    f"#if DEBUG\nlet y = {L}\n#endif\n", [2], build_root="/x/Sources/nested",
+    extra={"Sources/nested/Sources/EnviousWisprAppKit/Probe.swift": f"#if DEBUG\nlet y = {L}\n#endif\n"})
+dbg("debug-only: a block comment on a directive line: blocks (unsupported)", 1,
+    f"#if DEBUG\nlet debug = 1\n#endif /*\n#if DEBUG\n*/\nlet shipping = {L}\n#if os(macOS) /*\n#endif\n*/\n#endif\n", [6])
+dbg("debug-only: #sourceLocation in the file: blocks (unsupported)", 1,
+    f'#if DEBUG\n#sourceLocation(file: "x.swift", line: 1)\nlet y = {L}\n#sourceLocation()\n#endif\n', [3])
+dbg("debug-only: a build path that climbs out of Sources/ with ..: blocks", 1,
+    f"let y = {L}\n", [2], build_root="/old", record_rel="Sources/../Elsewhere/Probe.swift",
+    extra={"Elsewhere/Probe.swift": f"#if DEBUG\nlet y = {L}\n#endif\n"})
+dbg("debug-only: a build path through a folder link that leaves Sources/: blocks", 1,
+    f"let y = {L}\n", [2], record_rel="Sources/Link/Probe.swift", links={"Sources/Link": "../Elsewhere"},
+    extra={"Elsewhere/Probe.swift": f"#if DEBUG\nlet y = {L}\n#endif\n"})
+dbg("debug-only: an escaped delimiter inside a multi-line string: blocks (unsupported)", 1,
+    'let s = """\n  \\"""\n  #if DEBUG\n  """\n' + f'let x = {L}\n' + 'let t = """\n  #endif\n  \\"""\n  """\n', [5])
+dbg("debug-only: the source was edited after the build: blocks", 1,
+    f"// a shipping label\nlet y = {L}\n", [2], edit_after={PROBE: f"#if DEBUG\nlet y = {L}\n#endif\n"})
+dbg("debug-only: a source root that is not a git checkout: blocks", 1,
+    f"#if DEBUG\nlet y = {L}\n#endif\n", [2], git=False)
+dbg("debug-only: malformed nesting: blocks", 1, f"#if DEBUG\nlet y = {L}\n#endif\n#endif\n", [2])
+dbg("debug-only: a raw string in the file: blocks (unsupported)", 1,
+    f'#if DEBUG\nlet r = #"raw"#\nlet y = {L}\n#endif\n', [3])
+dbg("debug-only: a line past the end of the file: blocks", 1, f"#if DEBUG\nlet y = {L}\n#endif\n", [40])
+dev_case("debug-only: a LISTED key is unaffected (still ignored, no warning)", 0, ["Dev-only keys ignored: 1 of 35"],
+         absent_texts=["judged as Dev-only"], extra_keys=[DEV_ONLY_SAMPLE])
+
+
+# --- Dev partial repair (#3524 PR 3): add and update from a certified Dev build, remove nothing ---
+def dev_update(name, *, edit_committed=None, whats_new_source=None, receipt="valid", then_check=None,
+               verify=None, want_code=0, want_texts=(), **fx):
+    """Commit a catalog from the Release fixture, apply edit_committed, run a Dev --update, then
+    verify(before, after, out) on the three catalogs' complete objects; optionally a Dev --check."""
+    global cases
+    with tempfile.TemporaryDirectory() as tmp:
+        root = pathlib.Path(tmp)
+        catalog = root / "Localizable.xcstrings"
+        committed_catalog(catalog)
+        assert run("--update", "--derived-data", str(fixture(root / "clean")), "--configuration", "Release",
+                   "--catalog", str(catalog))[0] == 0
+        if edit_committed:
+            data = json.loads(catalog.read_text())
+            edit_committed(data["strings"])
+            catalog.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n")
+        before_bytes = catalog.read_bytes()
+        before = json.loads(before_bytes)
+        dd = fixture(root / "dev", configuration="Dev", **fx)
+        digest = write_receipt(dd) if receipt == "valid" else None
+        wn = None
+        if whats_new_source is not None:
+            wn = root / "WhatsNewContent.swift"
+            wn.write_text(whats_new_source)
+        code, out = run("--update", "--derived-data", str(dd), "--configuration", "Dev", "--catalog", str(catalog),
+                        "--expect-inputs", digest or "f" * 64, whats_new_source=wn)
+        after_bytes = catalog.read_bytes()
+        problem = None
+        if code != want_code or not all(t in out for t in want_texts):
+            problem = f"exit {code}, wanted {want_code} with {list(want_texts)}"
+        elif verify:
+            problem = verify(before, json.loads(after_bytes), out, before_bytes == after_bytes)
+        if not problem and then_check:
+            want_check, check_text = then_check
+            c_code, c_out = run("--check", "--derived-data", str(dd), "--configuration", "Dev", "--catalog", str(catalog),
+                                "--expect-inputs", digest or "f" * 64, whats_new_source=wn)
+            if c_code != want_check or check_text not in c_out:
+                problem = f"the following Dev --check exited {c_code}, wanted {want_check} with {check_text!r}\n{c_out}"
+        cases += 1
+        print(f"{'PASS' if not problem else 'FAIL'}  {name}")
+        if problem:
+            failures.append(name)
+            print(f"  {problem}\n{out}")
+
+
+def same_entry(key):
+    return lambda b, a, out, unchanged: None if a["strings"].get(key) == b["strings"][key] else (
+        f"{key!r} changed: {b['strings'][key]!r} -> {a['strings'].get(key)!r}")
+
+
+def english_only_absent(strings):
+    strings["a release only label"] = {"comment": "only in Release", "extractionState": "extracted_with_value",
+                                       "localizations": {"en": {"stringUnit": {"state": "new", "value": "a release only label"}}}}
+
+
+def translated_absent(strings):
+    english_only_absent(strings)
+    strings["a release only label"]["localizations"]["de"] = {"stringUnit": {"state": "translated", "value": "nur in Release"}}
+
+
+def german_and_hand_edited_english(strings):
+    german_on_one_key(strings)
+    edit_translated_default(strings)
+
+
+def committed_dev_only_entry(strings):
+    strings[DEV_ONLY_SAMPLE] = {"comment": "committed by hand", "extractionState": "manual",
+                                "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Hand text"}}}}
+
+
+dev_update("Dev update: a new key is added", extra_keys=["a new label"],
+           verify=lambda b, a, out, u: None if "a new label" in a["strings"] and "a new label" not in b["strings"] else "not added",
+           then_check=(0, "catalog in sync"))
+dev_update("Dev update: changed English is updated, German kept and flagged for review", edit_committed=german_and_hand_edited_english,
+           verify=lambda b, a, out, u: None if (
+               a["strings"]["fixture.value.key"]["localizations"]["en"]["stringUnit"]["value"] == "Value text"
+               and a["strings"]["fixture.value.key"]["localizations"]["de"]["stringUnit"]["value"] == "Werttext"
+               and a["strings"]["fixture.value.key"]["localizations"]["de"]["stringUnit"]["state"] == "needs_review")
+           else f"got {a['strings']['fixture.value.key']!r}")
+dev_update("Dev update: an absent English-only key is kept exactly", edit_committed=english_only_absent,
+           verify=same_entry("a release only label"), want_texts=["KEPT: 1", "'a release only label'"],
+           then_check=(1, "removed: 'a release only label'"))
+dev_update("Dev update: an absent translated key is kept exactly, not marked stale", edit_committed=translated_absent,
+           verify=same_entry("a release only label"), want_texts=["KEPT: 1"])
+dev_update("Dev update: What's New keys gone from the seed are kept exactly", whats_new_source=whats_new(alpha_bullets=("One",)),
+           verify=lambda b, a, out, u: same_entry("whatsNew.alpha.bullet.1")(b, a, out, u), want_texts=["whatsNew.alpha.bullet.1"])
+dev_update("Dev update: a committed Dev-only entry is left exactly as committed", edit_committed=committed_dev_only_entry,
+           extra_keys=[DEV_ONLY_SAMPLE], verify=same_entry(DEV_ONLY_SAMPLE))
+dev_update("Dev update: a listed Dev-only key is not added", extra_keys=[DEV_ONLY_SAMPLE],
+           verify=lambda b, a, out, u: None if DEV_ONLY_SAMPLE not in a["strings"] and u else "Dev-only key written or file changed")
+dev_update("Dev update: no receipt writes nothing", receipt="none", want_code=2, want_texts=["could not verify the Dev build receipt"],
+           extra_keys=["a new label"], verify=None)
+dev_update("Dev update: an invalid What's New seed writes nothing", whats_new_source=whats_new(duplicate=True), want_code=2,
+           extra_keys=["a new label"])
+dev_update("Dev update: incomplete German is reported, never supplied", edit_committed=german_on_one_key, extra_keys=["a new label"],
+           want_texts=["INCOMPLETE", "--update never supplies them"],
+           verify=lambda b, a, out, u: None if "de" not in a["strings"]["a new label"].get("localizations", {}) else "German fabricated",
+           then_check=(1, "INCOMPLETE"))
+dev_update("Dev update: a clean tree is a no-op and leaves the file byte-identical",
+           verify=lambda b, a, out, u: None if u and "catalog already in sync" in out else "file rewritten or not reported in sync")
+dev_update("Dev update: says it is partial and not Release equivalence", want_texts=["partial repair from a Dev build"])
+
+
+# The no-write cases above assert exit 2; prove the bytes too.
+def no_write_case(name, **kw):
+    global cases
+    with tempfile.TemporaryDirectory() as tmp:
+        root = pathlib.Path(tmp)
+        catalog = root / "Localizable.xcstrings"
+        committed_catalog(catalog)
+        assert run("--update", "--derived-data", str(fixture(root / "clean")), "--configuration", "Release",
+                   "--catalog", str(catalog))[0] == 0
+        before = catalog.read_bytes()
+        dd = fixture(root / "dev", configuration="Dev", extra_keys=["a new label"])
+        digest = write_receipt(dd)
+        wn = None
+        if kw.get("whats_new_source"):
+            wn = root / "WhatsNewContent.swift"
+            wn.write_text(kw["whats_new_source"])
+        code, out = run("--update", "--derived-data", str(dd), "--configuration", "Dev", "--catalog", str(catalog),
+                        "--expect-inputs", kw.get("expect", digest), whats_new_source=wn)
+        cases += 1
+        ok = code == 2 and catalog.read_bytes() == before
+        print(f"{'PASS' if ok else 'FAIL'}  {name}: exit {code}, catalog {'unchanged' if catalog.read_bytes() == before else 'CHANGED'}")
+        if not ok:
+            failures.append(name)
+            print(out)
+
+
+no_write_case("Dev update: a receipt for other code leaves the catalog byte-identical", expect="f" * 64)
+no_write_case("Dev update: an invalid seed leaves the catalog byte-identical", whats_new_source=whats_new(duplicate=True))
+
+# Release update still removes what its extraction no longer has (contrast with the Dev case).
+with tempfile.TemporaryDirectory() as tmp:
+    root = pathlib.Path(tmp)
+    catalog = root / "Localizable.xcstrings"
+    committed_catalog(catalog)
+    dd = fixture(root / "clean")
+    assert run("--update", "--derived-data", str(dd), "--configuration", "Release", "--catalog", str(catalog))[0] == 0
+    data = json.loads(catalog.read_text())
+    english_only_absent(data["strings"])
+    catalog.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n")
+    code, out = run("--update", "--derived-data", str(dd), "--configuration", "Release", "--catalog", str(catalog))
+    gone = "a release only label" not in json.loads(catalog.read_text())["strings"]
+    cases += 1
+    print(f"{'PASS' if code == 0 and gone else 'FAIL'}  Release update: still removes a key its extraction lacks")
+    if not (code == 0 and gone):
+        failures.append("Release update removal")
+        print(out)
 
 print(f"{cases} cases, {len(failures)} failed" + (f": {failures}" if failures else ""))
 sys.exit(1 if failures else 0)
