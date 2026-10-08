@@ -525,28 +525,31 @@ struct HotkeyEventTimeDoubleTapTests {
     #expect(rig.requestedDeadlines.isEmpty)
   }
 
-  @Test("A zero start time with a valid release uses handling time for the window and the deadline")
-  func zeroStartTimeUsesHandlingPair() async throws {
+  @Test("A zero start time with a valid release uses handling time for both, never a mixed pair")
+  func zeroStartTimeUsesHandlingPair() async {
     let rig = Rig()
     let (service, _) = makeService(rig)
     defer { service.stop() }
+    // Handling pair: 600 ms, a hold, so it stops at once. A mixed pair (start handled 1000,
+    // release happened 1000.3) would read 300 ms, a quick tap, and schedule a timer instead.
     drive(
       service, rig,
-      [Event(isPress: true, occurred: 0, handled: 1000), .release(1000.3, handled: 1000.4)])
-    await rig.waitForSleepRequests(count: 1)
-    let deadline = try #require(rig.requestedDeadlines.last)
-    #expect(abs(deadline - 1000.9) < 1e-9)
+      [Event(isPress: true, occurred: 0, handled: 1000), .release(1000.3, handled: 1000.6)])
+    await settle(service)
+    #expect(rig.stops == 1)
+    #expect(rig.requestedDeadlines.isEmpty)
   }
 
   @Test("A release time earlier than the press time uses handling time for both")
-  func reversedOccurrencePairUsesHandlingPair() async throws {
+  func reversedOccurrencePairUsesHandlingPair() async {
     let rig = Rig()
     let (service, _) = makeService(rig)
     defer { service.stop() }
-    drive(service, rig, [.press(1000.2), .release(1000.1, handled: 1000.3)])
-    await rig.waitForSleepRequests(count: 1)
-    let deadline = try #require(rig.requestedDeadlines.last)
-    #expect(abs(deadline - 1000.8) < 1e-9)
+    // Handling pair: 600 ms, a hold. The reversed occurrence pair would read -100 ms, a quick tap.
+    drive(service, rig, [.press(1000.2), .release(1000.1, handled: 1000.8)])
+    await settle(service)
+    #expect(rig.stops == 1)
+    #expect(rig.requestedDeadlines.isEmpty)
   }
 
   @Test("An OS time exactly 2 s old is used; 2.001 s old is not")
