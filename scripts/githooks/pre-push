@@ -210,9 +210,10 @@ check_fast_checks() {
 }
 
 # run_bounded <seconds> <command...>: run the command as CHILD (so an interruption stops it
-# and everything it started) and return its status, or 124 when the deadline passed; then the
-# command's whole process tree has been stopped, TERM first and KILL after STOP_GRACE for
-# anything that ignores it. The deadline is wall time (SECONDS), not a count of sleeps.
+# and everything it started) and return its status, or 124 when the deadline passed; then every
+# process in the command's tree AT THE DEADLINE has been stopped, TERM first and KILL after
+# STOP_GRACE for anything that ignores it. Known limit: a process started after that listing
+# (say, by a TERM handler) is not covered; process groups were tried and rejected (process-tree.sh). The deadline is wall time (SECONDS), not a count of sleeps.
 # macOS has no `timeout`.
 run_bounded() {
   local limit="$1" start rc
@@ -852,6 +853,7 @@ PY
   waited=0
   while [ ! -s "$tmp/slow.pid" ] && [ "$waited" -lt 150 ]; do sleep 0.1; waited=$((waited + 1)); done
   local live_snaps
+  check "R16 precondition: the checker started before the interruption" "$([ -s "$tmp/slow.pid" ] && echo yes || echo no)" "yes"
   live_snaps="$(git -C "$repo" worktree list --porcelain | grep -c 'ew-pre-push')"
   kill -TERM "$pid" 2> /dev/null
   if wait "$pid"; then rc=0; else rc=$?; fi
@@ -877,6 +879,7 @@ PY
     SELFTEST_SLOW_PID="$tmp/slow.pid" rpush origin stubborn; rc=$?
     elapsed=$(($(date +%s) - started))
     slow="$(cat "$tmp/slow.pid" 2> /dev/null)"
+    check "R17 precondition: the checker started" "$([ -n "$slow" ] && echo yes || echo no)" "yes"
     check "R17 a checker past its deadline is COULD NOT RUN, stopped by KILL, and returns promptly" \
       "$rc|$(grep -c 'the check took longer than 1 s' "$tmp/push.out")|$([ -n "$slow" ] && kill -0 "$slow" 2> /dev/null && echo running || echo stopped)|$([ "$elapsed" -lt 10 ] && echo prompt || echo "slow ${elapsed}s")" \
       "0|1|stopped|prompt"

@@ -111,7 +111,10 @@ def recipe_trailers(repo, base, head):
     when no commit in the range carries one. Only git's own trailer block counts: `Recipe:` text in
     an earlier paragraph of a message is prose, not a declaration.
     """
-    rc = subprocess.run(["git", "log", "--first-parent", f"--format={_LOG_FORMAT}", f"{base}..{head}"],
+    # trailer.separators is pinned to git's default ":" so a workstation setting cannot hide a
+    # trailer that CI, on default settings, would see.
+    rc = subprocess.run(["git", "-c", "trailer.separators=:", "log", "--first-parent",
+                         f"--format={_LOG_FORMAT}", f"{base}..{head}"],
                         cwd=repo, capture_output=True, text=True)
     if rc.returncode != 0:
         raise Infrastructure(f"git log {base}..{head} failed (rc={rc.returncode}): "
@@ -459,6 +462,13 @@ def _self_test(scratch):
     expect("a squash that drops the message loses the trailer, and the message names squash",
            (code, "squash or fixup can drop them" in msg), (1, True))
 
+    # A workstation trailer.separators setting does not hide a trailer CI would see.
+    repo, base, head = _repo_with_test_lines(scratch, FLOOR + 1)
+    sha = _commit(repo, "test: control", trailer="Recipe: resource-control ManifestTests")
+    _git(repo, "config", "trailer.separators", "=")
+    code, msg = run_check(repo, base, sha)
+    expect("a repository trailer.separators setting does not hide the trailer", (code, sha[:12] in msg), (0, True))
+
     # 26-28. The real GitHub boundary through a fake gh on PATH: lookups run in --repo, a gh
     # failure is Infrastructure, and the validator forwards --repo to its issue read.
     fakebin = scratch / "fakebin"
@@ -540,6 +550,14 @@ def _self_test(scratch):
     code, out = _cli("--trailers", "--base", base, "--head", head, "--repo", str(missing))
     expect("repository path missing: exit 3, could not run, no traceback",
            (code, "could not run" in out, "Traceback" in out), (3, True, False))
+    rel_cwd = os.getcwd()
+    os.chdir(repo.parent)
+    try:
+        code, out = _cli("--trailers", "--base", base, "--head", head, "--repo", repo.name,
+                         "--checkout", os.path.relpath(landing, repo.parent))
+    finally:
+        os.chdir(rel_cwd)
+    expect("relative --repo and --checkout from another directory: exit 0", (code, "1/1 rows runnable" in out), (0, True))
     bare = _commit(repo, "fix: drop the declaration", "Recipe:")
     code, out = _cli("--trailers", "--base", base, "--head", bare, "--repo", str(repo), "--checkout", str(landing))
     expect("a real recipe failure through the CLI stays exit 1", (code, "empty `Recipe:` trailer" in out), (1, True))
@@ -564,9 +582,12 @@ def main(argv=None):
         return self_test()
     if not (args.trailers and args.base and args.head):
         parser.error("--trailers, --base and --head are required (or --self-test)")
-    checkout = args.checkout if args.checkout is not None else args.repo
+    # Absolute, because the validator runs with --repo as its working directory: a relative
+    # --checkout would then resolve inside the repository a second time.
+    repo = args.repo.resolve()
+    checkout = (args.checkout if args.checkout is not None else args.repo).resolve()
     try:
-        code, message = check(args.repo, checkout, args.base, args.head)
+        code, message = check(repo, checkout, args.base, args.head)
     except (Infrastructure, OSError) as error:
         # OSError: git or gh could not start, or --repo does not exist. Unknown, not a verdict.
         print(f"::error title=recipe-check::could not run: {error}\nNot a verdict on the change; re-run the check.")
