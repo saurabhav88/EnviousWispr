@@ -395,6 +395,19 @@ struct SettingsArrivalFocusTests {
     }
   }
 
+  /// The Learn From row offers an action button only while its model is missing, a state the default
+  /// `.unwired` picture never shows. That button opts out of the panel's place; if it did not, the
+  /// whole panel would publish as a control and a search result for it would land on the button.
+  @Test("the Learn From panel stays read-only while its row offers an action button")
+  func learnFromActionButtonDoesNotClaimThePanel() async throws {
+    let page = try await Self.render("dictionary.learnFrom.download")
+    #expect(page.kinds[.learnFrom] == .readOnly, "the panel is published as \(String(describing: page.kinds[.learnFrom]))")
+    let controls: Set<SettingsMapID> = [.selfLearningDictionary, .contactsSyncOnLaunch, .importContacts]
+    let published = Set(page.kinds.filter { $0.value == .control }.keys)
+    let extra = published.subtracting(controls).filter { !Self.otherRealControls.contains($0.rawValue) }
+    #expect(extra.isEmpty, "unexpected controls \(extra.map(\.rawValue).sorted())")
+  }
+
   // MARK: - No new tab stops
 
   /// AppKit views that can become key views on each page, counted by the same counter on commit
