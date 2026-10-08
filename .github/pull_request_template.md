@@ -6,14 +6,18 @@
 
 -
 
-## Recipe
-<!-- Required when this PR adds more than 100 lines under Tests/ (the recipe-check job fails otherwise).
-     Exactly ONE line, one of:
-       Recipe: #<N>                     a test-hardening issue whose recipe validates against this PR
-       Recipe: parent-red <TestName>    the new test ran RED on the parent commit for the bug's reason
-       Recipe: resource-control <Test>  a two-way control on a non-Swift resource, in this PR
-     Under the floor, delete this section. -->
-Recipe:
+<!-- Recipe: when this PR adds more than 100 lines under Tests/, a COMMIT on the branch must carry a
+     `Recipe:` trailer (#3524); recipe-check and the pre-push hook read the commits, not this body.
+     The newest first-parent commit in the PR's base..head range that carries one decides, and it
+     must carry exactly one valid value:
+       Recipe: #<N>                     a test-hardening issue whose recipe (in the issue) validates
+                                        against the tree that lands
+       Recipe: parent-red <TestName>    declared: the new test ran RED on the parent commit for the
+                                        bug's reason (the check records the claim; review checks it)
+       Recipe: resource-control <Test>  declared: a two-way control on a non-Swift resource, in this PR
+     To add or correct it, make a new commit, never a history rewrite:
+       git commit --allow-empty --trailer "Recipe: #N" -m "test: name recipe #N"
+     A normal rebase keeps trailers; a squash or fixup can drop them. -->
 
 ## Pre-Merge Checklist
 

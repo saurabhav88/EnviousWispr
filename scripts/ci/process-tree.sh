@@ -38,3 +38,51 @@ stop_tree() { # stop_tree <pid>: TERM every descendant, deepest first, then <pid
   fi
   return 0
 }
+
+tree_pids() { # tree_pids <pid>: <pid> and every descendant, deepest first; 1 if pgrep cannot answer
+  local children rc child
+  if children="$(pgrep -P "$1")"; then rc=0; else rc=$?; fi
+  if [ "$rc" -gt 1 ]; then return 1; fi
+  for child in $children; do
+    tree_pids "$child" || return 1
+  done
+  echo "$1"
+}
+
+# stop_tree_bounded <pid> <grace seconds>: for a process that may ignore TERM (a deadline,
+# not a polite interruption). The whole tree is listed BEFORE any signal, so a child
+# orphaned when its parent exits is still covered; every listed process gets TERM, then
+# whatever is alive after <grace> seconds gets KILL. Only listed processes are signalled.
+# Survivors are recorded in PROCESS_TREE_INCOMPLETE.
+stop_tree_bounded() {
+  local pids pid alive start
+  if ! pids="$(tree_pids "$1")"; then
+    # shellcheck disable=SC2034 # read by the scripts that source this file
+    PROCESS_TREE_INCOMPLETE="could not list the child processes of $1"
+    pids="$1"
+  fi
+  for pid in $pids; do
+    kill -TERM "$pid" 2> /dev/null || true
+  done
+  start=$SECONDS
+  while :; do
+    alive=""
+    for pid in $pids; do
+      if kill -0 "$pid" 2> /dev/null; then alive="$alive $pid"; fi
+    done
+    if [ -z "$alive" ]; then return 0; fi
+    if [ $((SECONDS - start)) -ge "$2" ]; then break; fi
+    sleep 0.1
+  done
+  for pid in $alive; do
+    kill -KILL "$pid" 2> /dev/null || true
+  done
+  sleep 0.1
+  for pid in $alive; do
+    if kill -0 "$pid" 2> /dev/null; then
+      # shellcheck disable=SC2034 # read by the scripts that source this file
+      PROCESS_TREE_INCOMPLETE="could not stop process $pid"
+    fi
+  done
+  return 0
+}

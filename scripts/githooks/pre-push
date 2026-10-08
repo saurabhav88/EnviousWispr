@@ -5,12 +5,15 @@
 # scripts/githooks (Claude, Codex and terminal pushes alike). For each branch commit being
 # pushed it makes a detached worktree of THAT commit, so uncommitted and untracked files in
 # the pushing checkout can never change the verdict, and runs that commit's own
-# scripts/ci/fast-checks.sh against it: the same list cloud CI runs in build-check.
+# scripts/ci/fast-checks.sh against it: the same list cloud CI runs in build-check. It then
+# runs the commit's own Recipe trailer check (check-test-recipe.py) against the prospective
+# merge of that commit into a freshly fetched origin/main: the tree that would land.
 #
 # Verdicts:
 #   a check FAILS ............ the push is blocked; the check's own output says why
 #   COULD NOT RUN ............ a warning naming what is missing; the push goes ahead and
-#                              cloud CI checks it (e.g. a commit from before fast-checks.sh)
+#                              cloud CI checks it (e.g. a commit from before fast-checks.sh,
+#                              offline, a fetch slower than 15 s, a conflict with main)
 #   hook fault ............... any unexpected error in this hook blocks the push, with the
 #                              rollback command; a broken gate never waves a push through
 #   cleanup failure .......... after a complete verdict, a warning naming the kept temp
@@ -48,6 +51,11 @@ SNAPSHOTS=()       # owned detached worktrees, registered BEFORE creation so a p
 CHILD=""           # the running check, stopped with its whole process tree on interruption
 SNAP_DIR=""        # set by snapshot(); not command substitution, which would lose SNAPSHOTS
 CLEANUP_ERROR=""   # what cleanup could not do; warned after a verdict, never silent
+FETCH_SECONDS=15   # the plan's cap on waiting for the network (#3524 §3.4)
+RECIPE_SECONDS=15  # the recipe check reads GitHub, so the same network cap applies
+STOP_GRACE=2       # seconds between TERM and KILL when a deadline stops a command
+MAIN_STATE=""      # "" until fetched; then "ok", or why origin/main could not be fetched
+MAIN_SHA=""        # origin/main as fetched once for this run; every pushed commit merges with it
 
 # Is <path> registered as a worktree of this repository? Sets REGISTRATION to "registered"
 # or "absent", and ADMIN_ENTRY to the admin directory whose `gitdir` file points at
@@ -136,8 +144,9 @@ hook_fault() {
 on_signal() {
   trap - ERR INT TERM
   if [ -n "$CHILD" ]; then
-    stop_tree "$CHILD"
-    wait "$CHILD" 2> /dev/null || true
+    # Bounded: a check that ignores TERM is KILLed after STOP_GRACE, never waited on forever.
+    stop_tree_bounded "$CHILD" "$STOP_GRACE"
+    if ! kill -0 "$CHILD" 2> /dev/null; then wait "$CHILD" 2> /dev/null || true; fi
   fi
   echo "==> pre-push: BLOCKED (interrupted)" >&2
   if [ -n "$PROCESS_TREE_INCOMPLETE" ]; then echo "    Cleanup incomplete: $PROCESS_TREE_INCOMPLETE" >&2; fi
@@ -147,9 +156,8 @@ on_signal() {
 
 # The checks this hook runs, in order. Each takes `--repo <main worktree> --tree <snapshot>
 # --sha <commit>` and returns 0 PASS, 1 FAIL, 3 COULD NOT RUN; anything else is a hook fault.
-# PR 2 adds the Recipe trailer check here; PR 3 adds the String Catalog check, which reads
-# ORIGIN_DEV_DATA. Neither exists yet.
-CHECKS="check_fast_checks"
+# PR 3 adds the String Catalog check, which reads ORIGIN_DEV_DATA; it does not exist yet.
+CHECKS="check_fast_checks check_recipe"
 
 # Parse the dispatch contract; every check calls this first.
 parse_check_args() {
@@ -198,6 +206,127 @@ check_fast_checks() {
     0) return 0 ;;
     1) return 1 ;;
     *) echo "==> fast-checks: exited $rc, which is not a verdict" >&2; return 4 ;;
+  esac
+}
+
+# run_bounded <seconds> <command...>: run the command as CHILD (so an interruption stops it
+# and everything it started) and return its status, or 124 when the deadline passed; then every
+# process in the command's tree AT THE DEADLINE has been stopped, TERM first and KILL after
+# STOP_GRACE for anything that ignores it. Known limit: a process started after that listing
+# (say, by a TERM handler) is not covered; process groups were tried and rejected (process-tree.sh). The deadline is wall time (SECONDS), not a count of sleeps.
+# macOS has no `timeout`.
+run_bounded() {
+  local limit="$1" start rc
+  shift
+  "$@" &
+  CHILD=$!
+  start=$SECONDS
+  while kill -0 "$CHILD" 2> /dev/null; do
+    if [ $((SECONDS - start)) -ge "$limit" ]; then
+      stop_tree_bounded "$CHILD" "$STOP_GRACE"
+      if [ -n "$PROCESS_TREE_INCOMPLETE" ]; then
+        echo "==> pre-push: WARNING: $PROCESS_TREE_INCOMPLETE after a deadline" >&2
+      fi
+      if ! kill -0 "$CHILD" 2> /dev/null; then wait "$CHILD" 2> /dev/null || true; fi
+      CHILD=""
+      return 124
+    fi
+    sleep 0.1
+  done
+  if wait "$CHILD"; then rc=0; else rc=$?; fi
+  CHILD=""
+  return "$rc"
+}
+
+# Refresh origin/main once per run, within FETCH_SECONDS, and fix MAIN_SHA for the whole run.
+# A failure is remembered in MAIN_STATE and makes the recipe check COULD NOT RUN; it never
+# falls back to a stale origin/main, HEAD or the unmerged commit.
+fetch_main() {
+  local rc
+  [ -z "$MAIN_STATE" ] || return 0
+  # An explicit destination: a plain `fetch origin main` updates origin/main only when the
+  # configured fetch mapping says so, and a stale origin/main would then look fresh.
+  if run_bounded "$FETCH_SECONDS" env GIT_TERMINAL_PROMPT=0 \
+    git -C "$REPO" fetch --quiet --no-tags origin "+refs/heads/main:refs/remotes/origin/main" \
+    > "$WORK/fetch.out" 2>&1; then rc=0; else rc=$?; fi
+  case "$rc" in
+    0) ;;
+    124) MAIN_STATE="git fetch origin main took longer than $FETCH_SECONDS s"; return 0 ;;
+    *) MAIN_STATE="git fetch origin main failed (exit $rc): $(head -c 300 "$WORK/fetch.out" | tr '\n' ' ')"; return 0 ;;
+  esac
+  if MAIN_SHA="$(git -C "$REPO" rev-parse --verify --quiet 'refs/remotes/origin/main^{commit}')"; then
+    MAIN_STATE="ok"
+  else
+    MAIN_STATE="git fetch origin main left no refs/remotes/origin/main"
+  fi
+}
+
+# The Recipe trailer check (#3524 §3.2): the pushed commit's own check-test-recipe.py reads
+# the trailers in merge-base(origin/main, sha)..sha, asks GitHub from the repository, and
+# validates an issue recipe against the prospective merge, so a row anchored on code only
+# main has, or on code main has since removed, is judged as it will land.
+check_recipe() {
+  local checker base out merge_tree landing land_tree land rc
+  parse_check_args "$@" || return 4
+  checker="$CHECK_TREE/scripts/ci/check-test-recipe.py"
+  if [ ! -f "$checker" ] || ! grep -q -- '"--trailers"' "$checker"; then
+    echo "==> recipe: COULD NOT RUN (${CHECK_SHA:0:12} has no trailer-reading check-test-recipe.py; recipe-check in CI will check)" >&2
+    return 3
+  fi
+  if ! command -v python3 > /dev/null 2>&1; then
+    echo "==> recipe: COULD NOT RUN (no python3 on PATH; recipe-check in CI will check)" >&2
+    return 3
+  fi
+  fetch_main
+  if [ "$MAIN_STATE" != "ok" ]; then
+    echo "==> recipe: COULD NOT RUN ($MAIN_STATE); recipe-check in CI will check" >&2
+    return 3
+  fi
+  if base="$(git -C "$CHECK_REPO" merge-base "$MAIN_SHA" "$CHECK_SHA")"; then rc=0; else rc=$?; fi
+  case "$rc" in
+    0) ;;
+    1)
+      echo "==> recipe: COULD NOT RUN (${CHECK_SHA:0:12} shares no history with origin/main ${MAIN_SHA:0:12}; recipe-check in CI will check)" >&2
+      return 3
+      ;;
+    *) echo "==> recipe: git merge-base exited $rc" >&2; return 4 ;;
+  esac
+  if out="$(git -C "$CHECK_REPO" merge-tree --write-tree "$MAIN_SHA" "$CHECK_SHA" 2>&1)"; then rc=0; else rc=$?; fi
+  case "$rc" in
+    0) ;;
+    1)
+      echo "==> recipe: COULD NOT RUN (${CHECK_SHA:0:12} conflicts with origin/main ${MAIN_SHA:0:12}, so there is no landing tree; recipe-check in CI will check once the conflict is resolved)" >&2
+      return 3
+      ;;
+    *) echo "==> recipe: git merge-tree exited $rc: ${out:0:300}" >&2; return 4 ;;
+  esac
+  merge_tree="${out%%$'\n'*}"
+  case "$merge_tree" in
+    *[!0-9a-f]* | "") echo "==> recipe: git merge-tree printed no tree id: ${out:0:300}" >&2; return 4 ;;
+  esac
+  [ ${#merge_tree} -eq 40 ] || { echo "==> recipe: git merge-tree printed no tree id: ${out:0:300}" >&2; return 4; }
+  # A throwaway commit only so `git worktree add` can check the tree out; nothing refers to it
+  # and it is never pushed, so signing is turned off for this one command: a signer that is
+  # missing or asks for a passphrase must not decide a push. Repository settings are untouched.
+  landing="$(GIT_AUTHOR_NAME=pre-push GIT_AUTHOR_EMAIL=pre-push@example.invalid \
+    GIT_COMMITTER_NAME=pre-push GIT_COMMITTER_EMAIL=pre-push@example.invalid \
+    git -c commit.gpgSign=false -C "$CHECK_REPO" commit-tree "$merge_tree" -p "$MAIN_SHA" -p "$CHECK_SHA" \
+    -m "pre-push: prospective merge of $CHECK_SHA into origin/main $MAIN_SHA")"
+  snapshot "$landing"
+  land="$SNAP_DIR"
+  land_tree="$(git -C "$land" rev-parse 'HEAD^{tree}')"
+  [ "$land_tree" = "$merge_tree" ] && [ "$land" != "$CHECK_TREE" ] \
+    || { echo "==> recipe: the landing snapshot is not the prospective merge (tree $land_tree)" >&2; return 4; }
+  echo "==> recipe: ${CHECK_SHA:0:12} merged with origin/main ${MAIN_SHA:0:12} (base ${base:0:12})" >&2
+  if run_bounded "$RECIPE_SECONDS" python3 "$checker" --trailers --base "$base" --head "$CHECK_SHA" \
+    --repo "$CHECK_REPO" --checkout "$land" >&2; then rc=0; else rc=$?; fi
+  case "$rc" in
+    0 | 1 | 3) return "$rc" ;;
+    124)
+      echo "==> recipe: COULD NOT RUN (the check took longer than $RECIPE_SECONDS s; recipe-check in CI will check)" >&2
+      return 3
+      ;;
+    *) echo "==> recipe: check-test-recipe.py exited $rc, which is not a verdict" >&2; return 4 ;;
   esac
 }
 
@@ -332,6 +461,8 @@ if [ -e "$tree/SLOW" ]; then
 fi
 [ ! -e "$tree/BROKEN" ]
 STUB
+  cp "$(dirname "$hook")/../ci/check-test-recipe.py" "$repo/scripts/ci/check-test-recipe.py"
+  cp "$(dirname "$hook")/../validate-mutation-recipe.py" "$(dirname "$hook")/../mutation-battery.py" "$repo/scripts/"
   echo base > "$repo/README"
   git -C "$repo" add -A
   git -C "$repo" commit --quiet -m base
@@ -390,12 +521,13 @@ STUB
     | GIT_INDEX_FILE="$tmp/not-an-index" "$BASH" "$hook" origin "$remote" 2>&1)"; rc=$?
   check "inherited GIT_INDEX_FILE is cleared before checks run" "$rc|$(printf '%s' "$out" | grep -c 'GIT_INDEX_FILE=unset')" "0|1"
 
-  # 9. a commit with no fast-checks.sh is COULD NOT RUN: a warning, not a block
+  # 9. a commit with no fast-checks.sh and no recipe checker is COULD NOT RUN twice: warnings,
+  #    not a block
   git -C "$repo" checkout --quiet --orphan bare-branch
   git -C "$repo" rm --quiet -r --cached . > /dev/null
   echo x > "$repo/only-file"; git -C "$repo" add only-file; git -C "$repo" commit --quiet -m orphan
   push origin bare-branch; rc=$?
-  check "missing evidence warns and allows" "$rc|$(grep -c 'COULD NOT RUN' "$tmp/push.out")|$(grep -c 'OK with 1 warning' "$tmp/push.out")" "0|1|1"
+  check "missing evidence warns and allows" "$rc|$(grep -c 'COULD NOT RUN' "$tmp/push.out")|$(grep -c 'OK with 2 warning' "$tmp/push.out")" "0|2|1"
   git -C "$repo" checkout --quiet -f main; git -C "$repo" clean --quiet -fd
 
   # 10. a fault inside the hook blocks, through a private copy that fails mid-run
@@ -549,6 +681,242 @@ STUB
     git -C "$repo" worktree prune
   fi
   cp "$hook" "$tmp/hooks/pre-push"
+
+  # R1-R16. The Recipe trailer check (#3524 PR 2) through real pushes. A fake gh on PATH logs
+  # the directory it ran in and answers the label and recipe reads; the real checker and
+  # validator judge a landing tree large enough for the validator's oracle floors.
+  local fakebin="$tmp/fakebin" ghlog="$tmp/gh-cwd.log" body="$tmp/issue-body.md"
+  local r_dup r_fix base_main started elapsed sleepy sleepy_child bystander
+  mkdir -p "$fakebin"
+  cat > "$fakebin/gh" << EOF
+#!/bin/sh
+pwd -P >> '$ghlog'
+if [ "\${FAKE_GH_FAIL:-}" = 1 ]; then echo "HTTP 502" >&2; exit 1; fi
+case "\$*" in
+  *body,comments*) cat '$body' ;;
+  *) echo test-hardening ;;
+esac
+EOF
+  # A transport that never answers and ignores TERM, as does the child it starts, for the
+  # fetch deadline: only the KILL escalation can stop it.
+  cat > "$fakebin/git-remote-sleepy" << EOF
+#!/bin/sh
+trap '' TERM
+echo \$\$ > '$tmp/sleepy.pid'
+sleep 30 &
+echo \$! > '$tmp/sleepy.child'
+wait
+EOF
+  chmod +x "$fakebin/gh" "$fakebin/git-remote-sleepy"
+  printf '%s\n' 'A test-hardening issue.' '' '```json' \
+    '{"rows": [{"label": "a representative mutation", "file": "Sources/Thing.swift", "anchor": "let guarded = true", "replacement": "let guarded = false", "suite": "EnviousWisprTests/ThingTests", "expect_fail": "the guard holds"}]}' \
+    '```' > "$body"
+  rpush() { PATH="$fakebin:$PATH" git -C "$repo" push "$@" > "$tmp/push.out" 2>&1; }
+  add_test_lines() { # add_test_lines <file> <count>: <count> new lines under Tests/Probe/
+    mkdir -p "$repo/Tests/Probe"
+    awk -v n="$2" 'BEGIN { for (i = 0; i < n; i++) print "// line " i }' > "$repo/Tests/Probe/$1"
+  }
+  git -C "$repo" checkout --quiet main
+  python3 - "$repo/Tests/EnviousWisprTests" << 'PY'
+import pathlib, sys
+tests = pathlib.Path(sys.argv[1])
+tests.mkdir(parents=True, exist_ok=True)
+(tests / "ThingTests.swift").write_text(
+    'import Testing\n@Suite struct ThingTests {\n    @Test("the guard holds") func guardHolds() {}\n}\n')
+for i in range(100):
+    cases = "".join(f'    @Test("filler {i} case {j}") func case{j}() {{}}\n' for j in range(11))
+    (tests / f"Filler{i}Tests.swift").write_text(
+        "import Testing\n" + "// padding for the oracle size floor\n" * 30
+        + f"@Suite struct Filler{i}Tests {{\n{cases}}}\n")
+PY
+  git -C "$repo" add -A
+  git -C "$repo" commit --quiet --trailer "Recipe: resource-control FillerTests" -m "test corpus"
+  rpush origin main; rc=$?
+  check "R1 a declared route on main passes through the hook" "$rc|$(grep -c 'declares route `resource-control`' "$tmp/push.out")" "0|1"
+  base_main="$(git -C "$repo" rev-parse main)"
+
+  git -C "$repo" checkout --quiet -b rec
+  add_test_lines New.swift 101
+  git -C "$repo" add -A; git -C "$repo" commit --quiet -m "tests"
+  rpush origin rec; rc=$?
+  check "R2 over the floor with no trailer blocks and prints the repair command" \
+    "$rc|$(grep -c 'no commit in the range carries' "$tmp/push.out")|$(grep -c 'git commit --allow-empty --trailer "Recipe: #N"' "$tmp/push.out")|$(grep -c "base ${base_main:0:12}" "$tmp/push.out")" "1|1|1|1"
+  git -C "$repo" commit --quiet --allow-empty -m "two" -m "$(printf 'Recipe: #7\nRecipe: parent-red X')"
+  r_dup="$(git -C "$repo" rev-parse HEAD)"
+  rpush origin rec; rc=$?
+  check "R3 two trailers on the newest declaring commit block" "$rc|$(grep -c 'carries 2 of them' "$tmp/push.out")" "1|1"
+  git -C "$repo" commit --quiet --allow-empty --trailer "Recipe: #7" -m "test: name recipe #7"
+  r_fix="$(git -C "$repo" rev-parse HEAD)"
+  rpush origin rec; rc=$?
+  check "R4 the correction is judged, and its anchor is missing from the landing tree: blocks" \
+    "$rc|$(grep -c "commit ${r_fix:0:12}" "$tmp/push.out")|$(grep -c 'row 1: UNRUNNABLE' "$tmp/push.out")" "1|1|1"
+
+  # Main gains the anchored file; the pushed commit still lacks it.
+  git -C "$repo" checkout --quiet main
+  mkdir -p "$repo/Sources"; echo "let guarded = true" > "$repo/Sources/Thing.swift"
+  git -C "$repo" add -A; git -C "$repo" commit --quiet -m "main: thing"
+  rpush origin main; rc=$?
+  check "precondition: main with the anchored file pushes" "$rc" "0"
+  git -C "$repo" checkout --quiet rec
+  : > "$ghlog"
+  rpush origin rec; rc=$?
+  check "R5 the landing tree carries main-only changes: the same commit now passes" \
+    "$rc|$(git -C "$repo" cat-file -e "$r_fix:Sources/Thing.swift" 2> /dev/null && echo has || echo lacks)|$(grep -c '1/1 rows runnable' "$tmp/push.out")" "0|lacks|1"
+  check "R6 every GitHub lookup ran in the repository" "$(sort -u "$ghlog" | tr '\n' ' ')" "$repo "
+
+  git -C "$repo" checkout --quiet main
+  echo "let guarded = maybe" > "$repo/Sources/Thing.swift"
+  git -C "$repo" commit --quiet -am "main: anchor moves"
+  rpush origin main
+  git -C "$repo" checkout --quiet rec
+  rpush origin rec:rec2; rc=$?
+  check "R7 the same commit blocks once main has moved its anchor" "$rc|$(grep -c 'row 1: UNRUNNABLE' "$tmp/push.out")" "1|1"
+  git -C "$repo" checkout --quiet main
+  echo "let guarded = true" > "$repo/Sources/Thing.swift"
+  git -C "$repo" commit --quiet -am "main: anchor back"
+  rpush origin main
+  git -C "$repo" checkout --quiet rec
+
+  git -C "$repo" branch rec-old "$r_dup"
+  rpush origin rec-old; rc=$?
+  check "R8 a non-HEAD branch is judged on its own range" "$rc|$(grep -c 'carries 2 of them' "$tmp/push.out")" "1|1"
+
+  add_test_lines Dirty.swift 500; echo "// dirty" >> "$repo/Tests/Probe/New.swift"
+  rpush origin rec:rec3; rc=$?
+  check "R9 uncommitted and untracked test lines in the pushing checkout change nothing" "$rc" "0"
+  rm -f "$repo/Tests/Probe/Dirty.swift"; git -C "$repo" checkout --quiet -- Tests/Probe/New.swift
+
+  rpush origin rec:rec4 rec-old:rec-old2; rc=$?
+  check "R10 two refs in one push are both judged; the bad one blocks" \
+    "$rc|$(grep -c "recipe: ${r_fix:0:12} merged" "$tmp/push.out")|$(grep -c "recipe: ${r_dup:0:12} merged" "$tmp/push.out")" "1|1|1"
+
+  git -C "$repo" remote set-url origin "$tmp/no-such-remote.git"
+  PATH="$fakebin:$PATH" git -C "$repo" push "$remote" rec-old:rec-old3 > "$tmp/push.out" 2>&1; rc=$?
+  check "R11 a failed fetch of origin/main is COULD NOT RUN: warns and allows" \
+    "$rc|$(grep -c 'recipe: COULD NOT RUN (git fetch origin main failed' "$tmp/push.out")" "0|1"
+  git -C "$repo" remote set-url origin "sleepy::x"
+  if ! inject 'FETCH_SECONDS=15   # the plan'"'"'s cap on waiting for the network (#3524 §3.4)' 'FETCH_SECONDS=1'; then
+    check "the short-deadline copy was made" "no" "yes"
+  else
+    sleep 60 &
+    bystander=$!
+    started="$(date +%s)"
+    PATH="$fakebin:$PATH" git -C "$repo" push "$remote" rec-old:rec-old4 > "$tmp/push.out" 2>&1; rc=$?
+    elapsed=$(($(date +%s) - started))
+    sleepy="$(cat "$tmp/sleepy.pid" 2> /dev/null)"; sleepy_child="$(cat "$tmp/sleepy.child" 2> /dev/null)"
+    check "R12 a fetch past its deadline is COULD NOT RUN and allows, promptly, though it ignores TERM" \
+      "$rc|$(grep -c 'took longer than 1 s' "$tmp/push.out")|$([ "$elapsed" -lt 10 ] && echo prompt || echo "slow ${elapsed}s")" \
+      "0|1|prompt"
+    check "R12b the TERM-ignoring transport and its child are stopped; an unrelated process is not" \
+      "$([ -n "$sleepy" ] && [ -n "$sleepy_child" ] && echo listed || echo missing)|$(kill -0 "$sleepy" 2> /dev/null && echo running || echo stopped)|$(kill -0 "$sleepy_child" 2> /dev/null && echo running || echo stopped)|$(kill -0 "$bystander" 2> /dev/null && echo running || echo stopped)" \
+      "listed|stopped|stopped|running"
+    kill "$bystander" 2> /dev/null
+    wait "$bystander" 2> /dev/null
+    [ -n "$sleepy" ] && kill -KILL "$sleepy" 2> /dev/null
+    [ -n "$sleepy_child" ] && kill -KILL "$sleepy_child" 2> /dev/null
+  fi
+  cp "$hook" "$tmp/hooks/pre-push"
+  git -C "$repo" remote set-url origin "$remote"
+
+  git -C "$repo" checkout --quiet -b conflict "$base_main"
+  echo "branch side" > "$repo/README"; add_test_lines Conflict.swift 101
+  git -C "$repo" add -A; git -C "$repo" commit --quiet -m "conflicting change"
+  git -C "$repo" checkout --quiet main
+  echo "main side" > "$repo/README"; git -C "$repo" commit --quiet -am "main side"
+  rpush origin main
+  rpush origin conflict; rc=$?
+  check "R13 a conflict with origin/main is COULD NOT RUN: warns and allows" \
+    "$rc|$(grep -c 'conflicts with origin/main' "$tmp/push.out")" "0|1"
+
+  git -C "$repo" checkout --quiet rec
+  FAKE_GH_FAIL=1 rpush origin rec:rec5; rc=$?
+  check "R14 the checker's own could-not-run (exit 3) warns and allows" \
+    "$rc|$(grep -c 'recipe-check::could not run' "$tmp/push.out")|$(grep -c 'OK with 1 warning' "$tmp/push.out")" "0|1|1"
+
+  git -C "$repo" checkout --quiet -b odd main
+  printf '%s\n' '#!/usr/bin/env python3' '# "--trailers"' 'import sys' 'sys.exit(7)' > "$repo/scripts/ci/check-test-recipe.py"
+  git -C "$repo" commit --quiet -am "a checker with an unexpected status"
+  rpush origin odd; rc=$?
+  check "R15 an unexpected checker status blocks as a hook fault" \
+    "$rc|$(grep -c 'exited 7, which is not a verdict' "$tmp/push.out")|$(grep -c 'hook fault: check_recipe returned 4' "$tmp/push.out")" "1|1|1"
+
+  # R16. Interruption while the checker runs: both snapshots (pushed commit and landing tree)
+  # exist, the checker is stopped, and both are removed.
+  git -C "$repo" checkout --quiet -b slowcheck main
+  printf '%s\n' '#!/usr/bin/env python3' '# "--trailers"' 'import os, time' \
+    'open(os.environ["SELFTEST_SLOW_PID"], "w").write(str(os.getpid()))' 'time.sleep(30)' > "$repo/scripts/ci/check-test-recipe.py"
+  git -C "$repo" commit --quiet -am "a slow checker"
+  rm -f "$tmp/slow.pid"
+  printf 'refs/heads/slowcheck %s refs/heads/slowcheck %s\n' "$(git -C "$repo" rev-parse HEAD)" "$ZERO_SHA" > "$tmp/stdin"
+  (cd "$repo" && SELFTEST_SLOW_PID="$tmp/slow.pid" exec "$BASH" "$hook" origin "$remote" < "$tmp/stdin" > "$tmp/int.out" 2>&1) &
+  pid=$!
+  waited=0
+  while [ ! -s "$tmp/slow.pid" ] && [ "$waited" -lt 150 ]; do sleep 0.1; waited=$((waited + 1)); done
+  local live_snaps
+  check "R16 precondition: the checker started before the interruption" "$([ -s "$tmp/slow.pid" ] && echo yes || echo no)" "yes"
+  live_snaps="$(git -C "$repo" worktree list --porcelain | grep -c 'ew-pre-push')"
+  kill -TERM "$pid" 2> /dev/null
+  if wait "$pid"; then rc=0; else rc=$?; fi
+  slow="$(cat "$tmp/slow.pid" 2> /dev/null)"
+  sleep 0.2
+  check "R16 interrupting the recipe check blocks, stops the checker, removes both snapshots" \
+    "$rc|$live_snaps|$([ -n "$slow" ] && kill -0 "$slow" 2> /dev/null && echo running || echo stopped)|$(git -C "$repo" worktree list --porcelain | grep -c 'ew-pre-push')" \
+    "130|2|stopped|0"
+  [ -n "$slow" ] && kill "$slow" 2> /dev/null
+  git -C "$repo" checkout --quiet main
+
+  # R17. The checker past its deadline (it ignores TERM): COULD NOT RUN, promptly, stopped.
+  git -C "$repo" checkout --quiet -b stubborn main
+  printf '%s\n' '#!/usr/bin/env python3' '# "--trailers"' 'import os, signal, time' \
+    'signal.signal(signal.SIGTERM, signal.SIG_IGN)' \
+    'open(os.environ["SELFTEST_SLOW_PID"], "w").write(str(os.getpid()))' 'time.sleep(30)' > "$repo/scripts/ci/check-test-recipe.py"
+  git -C "$repo" commit --quiet -am "a checker that ignores TERM"
+  if ! inject 'RECIPE_SECONDS=15  # the recipe check reads GitHub, so the same network cap applies' 'RECIPE_SECONDS=1'; then
+    check "the short-checker-deadline copy was made" "no" "yes"
+  else
+    rm -f "$tmp/slow.pid"
+    started="$(date +%s)"
+    SELFTEST_SLOW_PID="$tmp/slow.pid" rpush origin stubborn; rc=$?
+    elapsed=$(($(date +%s) - started))
+    slow="$(cat "$tmp/slow.pid" 2> /dev/null)"
+    check "R17 precondition: the checker started" "$([ -n "$slow" ] && echo yes || echo no)" "yes"
+    check "R17 a checker past its deadline is COULD NOT RUN, stopped by KILL, and returns promptly" \
+      "$rc|$(grep -c 'the check took longer than 1 s' "$tmp/push.out")|$([ -n "$slow" ] && kill -0 "$slow" 2> /dev/null && echo running || echo stopped)|$([ "$elapsed" -lt 10 ] && echo prompt || echo "slow ${elapsed}s")" \
+      "0|1|stopped|prompt"
+    [ -n "$slow" ] && kill -KILL "$slow" 2> /dev/null
+  fi
+  cp "$hook" "$tmp/hooks/pre-push"
+  git -C "$repo" checkout --quiet main
+
+  # R18. A fetch mapping that does not write origin/main, and a stale origin/main: the hook
+  # still judges against the freshly fetched tip.
+  local fresh stale
+  fresh="$(git -C "$remote" rev-parse refs/heads/main)"
+  stale="$(git -C "$repo" rev-parse "$fresh~1")"
+  git -C "$repo" config remote.origin.fetch "+refs/heads/main:refs/remotes/origin/elsewhere"
+  git -C "$repo" update-ref refs/remotes/origin/main "$stale"
+  git -C "$repo" checkout --quiet -b mapping main
+  git -C "$repo" commit --quiet --allow-empty -m "mapping probe"
+  rpush origin mapping; rc=$?
+  check "R18 a custom fetch mapping and a stale origin/main still judge against the fresh tip" \
+    "$rc|$(grep -c "merged with origin/main ${fresh:0:12}" "$tmp/push.out")|$(git -C "$repo" rev-parse refs/remotes/origin/main)" \
+    "0|1|$fresh"
+  git -C "$repo" config remote.origin.fetch "+refs/heads/*:refs/remotes/origin/*"
+  git -C "$repo" checkout --quiet main
+
+  # R19. Signing turned on with a signer that does not exist: the throwaway landing commit
+  # is still made, and the repository's signing setting is left exactly as it was.
+  git -C "$repo" checkout --quiet -b signing main
+  git -C "$repo" commit --quiet --allow-empty -m "signing probe"
+  git -C "$repo" config commit.gpgSign true
+  git -C "$repo" config gpg.program "$tmp/no-such-signer"
+  rpush origin signing; rc=$?
+  check "R19 an unavailable signer does not stop the landing snapshot; signing config unchanged" \
+    "$rc|$(grep -c 'recipe: .* merged with origin/main' "$tmp/push.out")|$(git -C "$repo" config --get commit.gpgSign)|$(git -C "$repo" config --get gpg.program)" \
+    "0|1|true|$tmp/no-such-signer"
+  git -C "$repo" config --unset commit.gpgSign
+  git -C "$repo" config --unset gpg.program
+  git -C "$repo" checkout --quiet main
 
   # 12. every run removed its own snapshots and temp directories
   check "no snapshot worktree is left registered" "$(git -C "$repo" worktree list | grep -c 'ew-pre-push' || true)" "0"

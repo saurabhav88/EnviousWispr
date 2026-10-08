@@ -820,7 +820,12 @@ def main(argv=None):
     source = parser.add_mutually_exclusive_group(required=True)
     source.add_argument("--issue", type=int)
     source.add_argument("--recipes", type=pathlib.Path)
-    parser.add_argument("--checkout", type=pathlib.Path, default=pathlib.Path.cwd())
+    parser.add_argument("--checkout", type=pathlib.Path, default=pathlib.Path.cwd(),
+                        help="the tree whose files the recipe rows are checked against")
+    parser.add_argument(
+        "--repo", type=pathlib.Path,
+        help="where the --issue lookup runs gh (default: --checkout). check-test-recipe.py passes "
+             "the repository here and a throwaway snapshot as --checkout (#3524).")
     parser.add_argument(
         "--fix", action="store_true",
         help="also print corrected rows for the UNRUNNABLE ones whose repair is "
@@ -835,7 +840,7 @@ def main(argv=None):
             if args.issue <= 0:
                 raise RuntimeError("issue number must be positive")
             try:
-                raw = battery.recipes_from_issue(args.issue, args.checkout)
+                raw = battery.recipes_from_issue(args.issue, args.repo if args.repo is not None else args.checkout)
             except battery.Refusal as error:
                 raise RuntimeError(str(error)) from error
             recipes = [json.loads(raw)]
