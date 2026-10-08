@@ -80,7 +80,15 @@ classify() {
     printf 'needs_build=true\n' >>"$GITHUB_OUTPUT"
     printf 'needs_website=%s\n' "$website" >>"$GITHUB_OUTPUT"
     echo "==> CI build workflow, composite action or the spoken-punctuation help article changed — full Xcode build required (needs_website=$website)"
-  elif grep -qvE '^(website/|docs/|\.github/|\.claude/|CLAUDE\.md)' <<<"$changed"; then
+  # Content that no app build or test reads skips the Xcode lanes (founder 2026-10-08: content
+  # changes never pay for app tests; PR #3531, website + help + README.md only, ran the
+  # 26-minute build because README.md was missing here). A path joins this list only after
+  # checking Project.swift, Package.swift and Tests/ for a reader; a file a test reads goes in
+  # the build-forcing list above instead. Checked 2026-10-08: README.md, .mailmap and
+  # benchmark-results/ have no reader. Kept OUT on purpose: assets/ (the release DMG
+  # background and the app icon), LICENSE and THIRD-PARTY-NOTICES.txt (bundled by
+  # Project.swift), reference/ (SettingsMapExportSyncTests), workers/ (DeliveryManifestTests).
+  elif grep -qvE '^(website/|docs/|\.github/|\.claude/|CLAUDE\.md|README\.md$|\.mailmap$|benchmark-results/)' <<<"$changed"; then
     printf 'needs_build=true\n' >>"$GITHUB_OUTPUT"
     printf 'needs_website=%s\n' "$website" >>"$GITHUB_OUTPUT"
     echo "==> Swift source changes detected — full Xcode build required (needs_website=$website)"
@@ -104,7 +112,9 @@ detect() {
   echo "==> Detecting changed files (three-dot): base=$base head=$head"
   local rc=0 err_file changed
   err_file="${RUNNER_TEMP:-/tmp}/classify_diff_err.txt"
-  changed="$(git diff --name-only "${base}...${head}" 2>"$err_file")" || rc=$?
+  # --no-renames: rename detection lists only the destination, so a move from
+  # Sources/ into an allowlisted folder would hide the deleted source path.
+  changed="$(git diff --no-renames --name-only "${base}...${head}" 2>"$err_file")" || rc=$?
   if [ "$rc" -ne 0 ]; then
     # #825 fail-safe: this detector is a build-skipping optimization, not a
     # gate. A diff that cannot resolve base/head must not red the required
@@ -155,7 +165,9 @@ push_diff() {
   fi
   local rc=0 err_file changed
   err_file="${RUNNER_TEMP:-/tmp}/classify_push_err.txt"
-  changed="$(git diff --name-only "$before" "$after" 2>"$err_file")" || rc=$?
+  # --no-renames: rename detection lists only the destination, so a move from
+  # Sources/ into an allowlisted folder would hide the deleted source path.
+  changed="$(git diff --no-renames --name-only "$before" "$after" 2>"$err_file")" || rc=$?
   if [ "$rc" -ne 0 ]; then
     # BEFORE unreachable (e.g. a multi-commit push deeper than the shallow
     # clone). Fail safe to a full build rather than under-classify. Keyed on the
@@ -310,6 +322,21 @@ self_test() {
   _expect_classify $'docs/x.md\nwebsite/src/content/help/spoken-punctuation-and-emoji.md' true "parity article plus docs -> build and website" true
   _expect_classify "website/src/content/help/spoken-punctuation-and-emojis.md" false "near-miss article name -> website only" true
   _expect_classify "website/src/content/help/using-snippets.md" false "another help article -> website only" true
+  # 2026-10-08: content no app build or test reads skips the build. Two-way controls: the
+  # same names elsewhere, a near-miss name, and the kept-out neighbours still build.
+  _expect_classify $'README.md
+website/src/content/help/using-snippets.md
+website/src/pages/index.astro' false "PR #3531 shape: README + help + pages -> website only" true
+  _expect_classify "README.md" false "README alone -> no build" false
+  _expect_classify ".mailmap" false "mailmap alone -> no build" false
+  _expect_classify "benchmark-results/eval/x.json" false "benchmark results -> no build" false
+  _expect_classify "Sources/EnviousWispr/README.md" true "a README under Sources still builds" false
+  _expect_classify "README.md.orig" true "near-miss root name still builds" false
+  _expect_classify "assets/installer/EnviousWispr-DMG-Background@2x.png" true "assets feed the release build" false
+  _expect_classify "THIRD-PARTY-NOTICES.txt" true "bundled notices still build" false
+  _expect_classify "reference/settings-map.json" true "settings map is read by a test" false
+  _expect_classify $'README.md
+Sources/B.swift' true "README plus swift -> build" false
 
   echo "== three-dot diff + #825 fail-safe (temp repos) =="
   local sb orig head head2 maintip
@@ -345,6 +372,14 @@ self_test() {
   git commit -qm "pr swift"
   head2="$(git rev-parse HEAD)"
   _expect_detect "$maintip" "$head2" true "swift change on PR side"
+  # A move from app code into an allowlisted folder must still build: the
+  # deleted source path has to stay visible to the classifier.
+  git switch -qc pr-mv "$maintip"
+  mkdir -p benchmark-results
+  git mv app.swift benchmark-results/app.swift
+  git commit -qm "pr move swift into benchmark-results"
+  _expect_detect "$maintip" "$(git rev-parse HEAD)" true "source moved into benchmark-results -> build"
+  git switch -q pr
   # unreachable base, head present -> fail-safe full build (#825).
   _expect_detect "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef" "$head2" true "unreachable base -> fail-safe full build"
   # absent head (stale merge ref) -> exit 1, no output.
@@ -373,6 +408,11 @@ self_test() {
   git add -A
   git commit -qm "push docs only"
   _expect_push "$sbase" "$(git rev-parse HEAD)" false "single content-only push -> false"
+  sbase="$(git rev-parse HEAD)"
+  mkdir -p benchmark-results
+  git mv more.swift benchmark-results/more.swift
+  git commit -qm "push move swift into benchmark-results"
+  _expect_push "$sbase" "$(git rev-parse HEAD)" true "push: source moved into benchmark-results -> build"
   _expect_push "0000000000000000000000000000000000000000" "$pushhead" true "all-zeroes before -> full build"
   _expect_push "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef" "$pushhead" true "unreachable before -> fail-safe full build"
   _expect_push_exit1 "" "$pushhead" "empty before -> exit 1"
