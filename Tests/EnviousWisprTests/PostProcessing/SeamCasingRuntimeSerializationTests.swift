@@ -136,6 +136,107 @@ struct SeamCasingRuntimeSerializationTests {
     }
   }
 
+  // MARK: - A reset never hands the checker to a second builder (#3417)
+
+  /// The CI flake #3417 traced, made deterministic. A test that requests a language
+  /// and returns leaves its drain inside the builder; the exclusion helper then
+  /// resets the runtime for the next test. If the reset drops the busy flag, the
+  /// next test's drain starts a second builder beside the stale one, and when the
+  /// stale one returns it clears the NEW claim and takes the next language too:
+  /// two builders inside the one shared checker, the `saw 2` CI recorded.
+  ///
+  /// `drainDecisionForTesting` tells this case whether the new drain claimed or
+  /// declined, so it never guesses from elapsed time.
+  @Test("#3417 A reset while a builder is still inside never lets a second builder in")
+  func resetKeepsTheBuilderInside() async throws {
+    try await withSeamCasingOracleExclusion {
+      let firstEntered = DispatchSemaphore(value: 0)
+      let releaseFirst = DispatchSemaphore(value: 0)
+      let decided = DispatchSemaphore(value: 0)
+      let secondEntered = DispatchSemaphore(value: 0)
+      let releaseSecond = DispatchSemaphore(value: 0)
+      let firstDecision = OSAllocatedUnfairLock<Bool?>(initialState: nil)
+      let inside = OSAllocatedUnfairLock(initialState: 0)
+      let peak = OSAllocatedUnfairLock(initialState: 0)
+      defer {
+        SeamCasingOracleRuntime.drainDecisionForTesting.withLock { $0 = nil }
+        releaseFirst.signal()
+        releaseSecond.signal()
+        releaseSecond.signal()
+      }
+
+      // The earlier test: a preparation still inside its builder when that test ends.
+      SeamCasingOracleRuntime.resetForTesting(prewarmStarted: false)
+      SeamCasingOracleRuntime.setPreparationOverrideForTesting { _ in
+        firstEntered.signal()
+        // deadline-fallback: `releaseFirst` is the signal; this bound only stops a defect hanging the suite
+        _ = releaseFirst.wait(timeout: .now() + 5)
+        return Self.ready([])
+      }
+      let first = Task.detached { await SeamCasingOracleRuntime.prewarm() }
+      try #require(await Self.awaitSignal(firstEntered), "precondition: the earlier builder is inside")
+
+      // The next test begins, exactly as the exclusion helper hands over.
+      SeamCasingOracleRuntime.resetForTesting()
+      SeamCasingOracleRuntime.setPreparationOverrideForTesting { _ in
+        let now = inside.withLock { value -> Int in
+          value += 1
+          return value
+        }
+        peak.withLock { $0 = max($0, now) }
+        secondEntered.signal()
+        // deadline-fallback: `releaseSecond` is the signal; this bound only stops a defect hanging the suite
+        _ = releaseSecond.wait(timeout: .now() + 5)
+        inside.withLock { $0 -= 1 }
+        return Self.ready(["tack", "danke"])
+      }
+      // Only a decision ABOUT Swedish counts: one that claimed it (the defect), or
+      // one that declined while Swedish was waiting (the busy flag held). A stray
+      // drain from an earlier case that decides before Swedish is requested sees
+      // neither and is ignored, so it cannot pass this case by accident.
+      SeamCasingOracleRuntime.drainDecisionForTesting.withLock {
+        $0 = { claimed, waiting in
+          let aboutSwedish = claimed == "sv" || (claimed == nil && waiting.contains("sv"))
+          guard aboutSwedish else { return }
+          let isFirst = firstDecision.withLock { value -> Bool in
+            guard value == nil else { return false }
+            value = claimed == "sv"
+            return true
+          }
+          if isFirst { decided.signal() }
+        }
+      }
+
+      _ = Self.probe("sv")
+      try #require(await Self.awaitSignal(decided), "the new drain must reach its decision")
+      SeamCasingOracleRuntime.drainDecisionForTesting.withLock { $0 = nil }
+      let claimedBesideTheEarlierBuilder = firstDecision.withLock { $0 } ?? false
+      if claimedBesideTheEarlierBuilder {
+        try #require(await Self.awaitSignal(secondEntered))
+      }
+
+      _ = Self.probe("da")
+      releaseFirst.signal()
+      try #require(await Self.awaitSignal(secondEntered), "a builder must start once the earlier one leaves")
+
+      let observed = peak.withLock { $0 }
+      #expect(
+        observed == 1,
+        "a reset must not let a second builder into the shared checker, saw \(observed)")
+      #expect(!claimedBesideTheEarlierBuilder, "the new drain must wait for the earlier builder")
+
+      releaseSecond.signal()
+      releaseSecond.signal()
+      await first.value
+      #expect(
+        await Self.waitUntil {
+          SeamCasingOracleRuntime.installedOracleForTesting("sv") != nil
+            && SeamCasingOracleRuntime.installedOracleForTesting("da") != nil
+        },
+        "both languages must still publish, one at a time")
+    }
+  }
+
   // MARK: - The lease
 
   @Test("#1922 A decision lease blocks preparation until it is released")
