@@ -348,6 +348,8 @@ struct HotkeyEventTimeDoubleTapTests {
     #expect(rig.stops == 1, "the stop was requested twice")
     #expect(rig.actions == ["start", "start"])
     #expect(service.isRecordingLocked == false)
+    // Pressed at +186 ms, before the stop was requested at 1000.689: the race is recorded.
+    #expect(rig.presses.last?.windowTiming == "after_stop_timer")
   }
 
   // MARK: - Gestures that must not change
@@ -651,6 +653,266 @@ struct HotkeyEventTimeDoubleTapTests {
     await settle(service)
     #expect(rig.starts == 0)
     #expect(rig.actions.isEmpty)
+  }
+
+  // MARK: - Measuring the timer-first race (plan §3.3)
+
+  /// Toggle id is 1; the cancel and Quick Add Carbon ids, mirrored like `toggleID`.
+  private static let cancelID: UInt32 = 3
+  private static let quickAddID: UInt32 = 4
+
+  /// A lone tap whose release was handled late, so its deadline (1000.556) is already due; the
+  /// timer runs before any second press and requests the stop at 1000.689.
+  private func stopByTimer(_ service: HotkeyService, _ rig: Rig) async {
+    drive(service, rig, [.press(1000), .release(1000.056, handled: 1000.689)])
+    await rig.waitForSleepRequests(count: 1)
+    rig.fireDueTimers()
+    await rig.waitForDebounce(count: 1)
+    await settle(service)
+  }
+
+  @Test("A press that came before the timer's stop, refused while processing, still carries the race")
+  func afterStopTimerOnIgnoredProcessing() async {
+    let rig = Rig()
+    let (service, _) = makeService(rig)
+    defer { service.stop() }
+    await stopByTimer(service, rig)
+    service.onIsProcessing = { true }
+    drive(service, rig, .press(1000.186, handled: 1000.700))
+
+    #expect(rig.actions == ["start", "ignored_processing"])
+    #expect(rig.presses.last?.windowTiming == "after_stop_timer")
+    #expect(rig.stops == 1)
+
+    // Claimed once: a second qualifying press finds no marker.
+    drive(service, rig, .press(1000.20, handled: 1000.71))
+    #expect(rig.actions == ["start", "ignored_processing", "ignored_processing"])
+    #expect(rig.presses.map(\.windowTiming) == [nil, "after_stop_timer", nil])
+    #expect(rig.stops == 1)
+  }
+
+  @Test("An unstamped first press cannot support a stop-timer race claim")
+  func unstampedFirstPressMakesNoClaim() async {
+    let rig = Rig()
+    let (service, _) = makeService(rig)
+    defer { service.stop() }
+    drive(
+      service, rig,
+      [
+        Event(isPress: true, occurred: nil, handled: 1000),
+        .release(1000.08),
+      ])
+    await rig.waitForSleepRequests(count: 1)
+    rig.now = 1000.58
+    rig.fireDueTimers()
+    await rig.waitForDebounce(count: 1)
+    await settle(service)
+
+    drive(service, rig, .press(1000.30, handled: 1000.70))
+    await settle(service)
+    #expect(rig.actions == ["start", "start"])
+    #expect(rig.presses.last?.windowTiming == nil)
+    #expect(rig.stops == 1)
+  }
+
+  @Test("Cancel after the timer stop clears its race marker")
+  func cancelAfterTheStopClearsMarker() async {
+    let rig = Rig()
+    let (service, _) = makeService(rig)
+    defer { service.stop() }
+    await stopByTimer(service, rig)
+
+    service.handleCarbonHotkey(id: Self.cancelID, isRelease: false, timestamp: 1000.69)
+    drive(service, rig, .press(1000.186, handled: 1000.700))
+    await settle(service)
+    #expect(rig.actions == ["start", "cancel", "start"])
+    #expect(rig.presses.last?.windowTiming == nil)
+    #expect(rig.stops == 1)
+  }
+
+  enum NotARace: String, CaseIterable, Sendable {
+    case noPressTime = "no OS time on the press"
+    case pressBeforeFirst = "press happened before the first press"
+    case outsideWindow = "press happened 600 ms after the first"
+  }
+
+  @Test("A press that is not provably before the stop and inside the window makes no claim",
+    arguments: NotARace.allCases)
+  func noClaimWithoutProof(notARace: NotARace) async {
+    let rig = Rig()
+    let (service, _) = makeService(rig)
+    defer { service.stop() }
+    await stopByTimer(service, rig)
+    let occurred: TimeInterval? =
+      switch notARace {
+      case .noPressTime: nil
+      case .pressBeforeFirst: 999.9
+      case .outsideWindow: 1000.6
+      }
+    drive(service, rig, Event(isPress: true, occurred: occurred, handled: 1000.700))
+
+    #expect(rig.actions == ["start", "start"])
+    #expect(rig.presses.last?.windowTiming == nil)
+    #expect(rig.stops == 1)
+  }
+
+  @Test("A press that happened after the stop was requested is not the race; just before it is")
+  func pressAfterTheStopRequestIsNotTheRace() async {
+    for (occurred, expected) in [(1000.52, nil), (1000.49, "after_stop_timer")] as [(TimeInterval, String?)] {
+      let rig = Rig()
+      let (service, _) = makeService(rig)
+      defer { service.stop() }
+      // First press stamped 40 ms in the future (accepted); the release has no OS time, so the
+      // deadline is its handling time + 500 ms = 1000.5, which is when the stop is requested.
+      drive(
+        service, rig,
+        [Event(isPress: true, occurred: 1000.04, handled: 1000), Event(isPress: false, occurred: nil, handled: 1000)])
+      await rig.waitForSleepRequests(count: 1)
+      rig.now = 1000.5
+      rig.fireDueTimers()
+      await rig.waitForDebounce(count: 1)
+      await settle(service)
+      drive(service, rig, .press(occurred, handled: 1000.53))
+      #expect(rig.presses.last?.windowTiming == expected, "pressed at \(occurred)")
+    }
+  }
+
+  @Test("The race is claimed once: not by a release, not by Quick Add, and never on the later lock")
+  func claimedOnceAndNeverCarried() async {
+    let rig = Rig()
+    let (service, _) = makeService(rig)
+    defer { service.stop() }
+    await stopByTimer(service, rig)
+    // A stray release and another shortcut leave the marker for the record press.
+    drive(service, rig, .release(1000.69, handled: 1000.69))
+    rig.now = 1000.695
+    service.handleCarbonHotkey(id: Self.quickAddID, isRelease: false, timestamp: 1000.1)
+    drive(service, rig, .press(1000.186, handled: 1000.700))
+    // The new recording's own double tap: its lock carries its own timing, not the race.
+    drive(service, rig, [.release(1000.25, handled: 1000.75), .press(1000.30, handled: 1000.80)])
+    await settle(service)
+
+    #expect(rig.actions == ["start", "quick_add", "start", "lock"])
+    #expect(rig.presses.map(\.windowTiming) == [nil, nil, "after_stop_timer", "on_time"])
+  }
+
+  @Test("A toggle-mode press never carries the race")
+  func togglePressNeverCarriesTheRace() async {
+    let rig = Rig()
+    let (service, _) = makeService(rig)
+    defer { service.stop() }
+    await stopByTimer(service, rig)
+    service.recordingMode = .toggle
+    drive(service, rig, .press(1000.186, handled: 1000.700))
+    #expect(rig.actions == ["start", "toggle"])
+    #expect(rig.presses.last?.windowTiming == nil)
+  }
+
+  enum Invalidation: String, CaseIterable, Sendable {
+    case modeRoundTrip = "mode PTT to toggle and back"
+    case recordKeyRoundTrip = "record key A to B to A"
+    case recordModifierChange = "record modifiers changed"
+    case cancelRebind = "cancel key rebound"
+    case quickAddRebind = "Quick Add rebound"
+    case pasteLastRebind = "Paste Last rebound"
+    case copyLastRebind = "Copy Last rebound"
+    case monitorRemoval = "suspend, which removes the monitors"
+  }
+
+  private func invalidate(_ change: Invalidation, _ service: HotkeyService) {
+    switch change {
+    case .modeRoundTrip:
+      service.recordingMode = .toggle
+      service.recordingMode = .pushToTalk
+    case .recordKeyRoundTrip:
+      service.toggleKeyCode = 1
+      service.toggleKeyCode = 0
+    case .recordModifierChange:
+      service.toggleModifiers = [.command]
+      service.toggleModifiers = []
+    case .cancelRebind:
+      service.cancelKeyCode = 50
+      service.reapplyCancelBinding()
+    case .quickAddRebind:
+      service.quickAddKeyCode = 51
+      service.reapplyAppShortcutBinding(.quickAdd)
+    case .pasteLastRebind:
+      service.pasteLastKeyCode = 51
+      service.reapplyAppShortcutBinding(.pasteLast)
+    case .copyLastRebind:
+      service.copyLastKeyCode = 51
+      service.reapplyAppShortcutBinding(.copyLast)
+    case .monitorRemoval:
+      // Suspend alone: `resume()` also cleans up, which would void the claim by another route.
+      service.suspend()
+    }
+  }
+
+  @Test("A change after the stop voids the race claim; the stop itself is unchanged",
+    arguments: Invalidation.allCases)
+  func invalidatedAfterTheStop(change: Invalidation) async {
+    let rig = Rig()
+    let (service, _) = makeService(rig)
+    defer { service.stop() }
+    service.start()
+    await stopByTimer(service, rig)
+    invalidate(change, service)
+    drive(service, rig, .press(1000.186, handled: 1000.700))
+
+    #expect(rig.stops == 1)
+    #expect(rig.presses.last?.action == "start")
+    #expect(rig.presses.last?.windowTiming == nil, Comment(rawValue: change.rawValue))
+  }
+
+  @Test("A change while the stop is pending voids the claim; the pending stop still runs once",
+    arguments: Invalidation.allCases.filter { $0 != .monitorRemoval })
+  func invalidatedBeforeTheStop(change: Invalidation) async {
+    let rig = Rig()
+    let (service, _) = makeService(rig)
+    defer { service.stop() }
+    service.start()
+    drive(service, rig, [.press(1000), .release(1000.056, handled: 1000.689)])
+    await rig.waitForSleepRequests(count: 1)
+    invalidate(change, service)
+    rig.fireDueTimers()
+    await rig.waitForDebounce(count: 1)
+    await settle(service)
+    drive(service, rig, .press(1000.186, handled: 1000.700))
+
+    #expect(rig.stops == 1, "a diagnostic change must not change the stop")
+    #expect(rig.presses.last?.windowTiming == nil, Comment(rawValue: change.rawValue))
+  }
+
+  @Test("Suspending while the stop is pending keeps the stop and voids the claim")
+  func suspendBeforeTheStop() async {
+    let rig = Rig()
+    let (service, _) = makeService(rig)
+    defer { service.stop() }
+    service.start()
+    drive(service, rig, [.press(1000), .release(1000.056, handled: 1000.689)])
+    await rig.waitForSleepRequests(count: 1)
+    service.suspend()
+    rig.fireDueTimers()
+    await rig.waitForDebounce(count: 1)
+    await settle(service)
+    #expect(rig.stops == 1, "suspend preserves the pending stop, as before")
+    drive(service, rig, .press(1000.186, handled: 1000.700))
+    #expect(rig.presses.last?.windowTiming == nil)
+    service.resume()
+  }
+
+  @Test("Stopping and restarting the service after the stop voids the claim")
+  func stopAndRestartAfterTheStop() async {
+    let rig = Rig()
+    let (service, _) = makeService(rig)
+    defer { service.stop() }
+    service.start()
+    await stopByTimer(service, rig)
+    service.stop()
+    service.start()
+    drive(service, rig, .press(1000.186, handled: 1000.700))
+    #expect(rig.stops == 1)
+    #expect(rig.presses.last?.windowTiming == nil)
   }
 
   // MARK: - Start and publication decisions are unchanged

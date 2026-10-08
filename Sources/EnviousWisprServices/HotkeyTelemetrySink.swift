@@ -30,7 +30,8 @@ public struct HotkeyTelemetrySink: Sendable {
   /// `package`; callers pass `.rawValue`. Never a raw key code.
   ///
   /// `windowTiming` (#3534) is `rescued` / `on_time` on a hands-free lock intent,
-  /// nil on every other row.
+  /// `after_stop_timer` on a Push-to-Talk `start` or `ignored_processing` press that was
+  /// physically pressed before the lone-tap stop it lost to, and nil on every other row.
   public var pressed:
     @MainActor (
       _ triggerSource: String, _ inputMode: String, _ keyShape: String, _ keyIdentity: String,

@@ -117,6 +117,42 @@ struct TelemetryVolumePolicyTests {
       Policy.decide(event: "hotkey.pressed", properties: [:], uuid: Self.droppedUUID) == .keep)
   }
 
+  @Test("#3534: a press carrying after_stop_timer is kept whole in every bucket; others are sampled as before")
+  func afterStopTimerPressIsKept() {
+    for action in ["start", "ignored_processing"] {
+      for uuid in [Self.keptUUID, Self.droppedUUID, Self.edgeUUID, Self.lastKeptUUID] {
+        #expect(
+          Policy.decide(
+            event: "hotkey.pressed",
+            properties: ["press_action": action, "window_timing": "after_stop_timer"], uuid: uuid)
+            == .keep, Comment(rawValue: "\(action) \(uuid)"))
+      }
+    }
+    // The lock values are not the race signal: a `start` row with them is sampled as before.
+    for timing in ["rescued", "on_time", "unheard_of"] {
+      #expect(
+        Policy.decide(
+          event: "hotkey.pressed", properties: ["press_action": "start", "window_timing": timing],
+          uuid: Self.droppedUUID) == .drop, Comment(rawValue: timing))
+      #expect(
+        Policy.decide(
+          event: "hotkey.pressed", properties: ["press_action": "start", "window_timing": timing],
+          uuid: Self.keptUUID) == Self.sampled, Comment(rawValue: timing))
+    }
+    // The new late press is outside the sampled set, so it is kept whole like every signal action.
+    #expect(
+      Policy.decide(
+        event: "hotkey.pressed", properties: ["press_action": "late_after_window"],
+        uuid: Self.droppedUUID) == .keep)
+    // The kept row still carries the policy stamp and no sampling stamps.
+    let out = Policy.apply(
+      event: "hotkey.pressed",
+      properties: ["press_action": "start", "window_timing": "after_stop_timer"],
+      uuid: Self.droppedUUID)
+    #expect(out?["telemetry_policy_version"] as? Int == 6)
+    #expect(out?["$sample_threshold"] == nil)
+  }
+
   @Test("an all-succeeded cold prepare is sampled; any failed outcome is kept whole")
   func inputResolution() {
     let happy: [String: Any] = [
@@ -325,7 +361,7 @@ struct TelemetryVolumePolicyTests {
       Policy.apply(
         event: "dictation.started", properties: ["take_id": "T", "backend": "parakeet"],
         uuid: Self.droppedUUID))
-    #expect(out["telemetry_policy_version"] as? Int == 5)
+    #expect(out["telemetry_policy_version"] as? Int == 6)
     #expect(out["take_id"] as? String == "T")
     #expect(out["$sample_threshold"] == nil)
     #expect(out.count == 3)
@@ -336,7 +372,7 @@ struct TelemetryVolumePolicyTests {
     let out = try #require(
       Policy.apply(
         event: "hotkey.pressed", properties: ["press_action": "start"], uuid: Self.keptUUID))
-    #expect(out["telemetry_policy_version"] as? Int == 5)
+    #expect(out["telemetry_policy_version"] as? Int == 6)
     #expect(out["$sample_type"] as? [String] == ["sampleByEvent"])
     // A FRACTION, as posthog-js stores it: a percentage here would make the standard
     // `1 / $sample_threshold` weight ten-fold wrong (cloud review on #2962).
@@ -371,7 +407,7 @@ struct TelemetryVolumePolicyTests {
           "note": "someone@example.com",
         ],
         uuid: Self.droppedUUID))
-    #expect(out["telemetry_policy_version"] as? Int == 5)
+    #expect(out["telemetry_policy_version"] as? Int == 6)
     // The two bundle stamps come from the CURRENT bundle, on every row, whether or not
     // `register()` has run: `Application Installed` rows carried no environment at all
     // before this (801 of 801 in the 30 days to 2026-09-15).

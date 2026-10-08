@@ -188,6 +188,35 @@ public final class HotkeyService {
   /// finger-bounce from immediately stopping the locked recording.
   private var lockAt: InputTime? = nil
 
+  // MARK: - #3534 Stop-timer race measurement (diagnostic only)
+
+  /// Bumped by `invalidateQuickTapDiagnostics()`, the one owner of the measurement's lifecycle
+  /// (plan §3.3). An attempt and a stop marker remember the epoch they were made in; a cleanup,
+  /// a mode or binding change, or a monitor teardown in between voids their claim. Nothing here
+  /// changes what a press or the timer does.
+  private var diagnosticEpoch: UInt64 = 0
+
+  /// What a recording attempt started under, captured with `recordingStart`.
+  private struct DiagnosticOrigin {
+    let binding: ShortcutBinding
+    let mode: RecordingMode
+    let epoch: UInt64
+  }
+  private var attemptOrigin: DiagnosticOrigin?
+
+  /// The lone-tap timer's stop request, kept so the NEXT press can tell whether it was
+  /// physically pressed before that stop was requested: a timer that ran before a queued valid
+  /// second press. A stop REQUEST, not a confirmed end of recording.
+  private struct QuickTapStop {
+    let start: InputTime
+    let binding: ShortcutBinding
+    let mode: RecordingMode
+    /// The epoch AFTER the timer's own cleanup, so only a later invalidation voids it.
+    let epoch: UInt64
+    let stoppedAtUptime: TimeInterval
+  }
+  private var lastQuickTapStop: QuickTapStop?
+
   // MARK: - Callbacks (wired by the former root state)
 
   public var onToggleRecording: (@MainActor () async -> Void)?
@@ -239,7 +268,11 @@ public final class HotkeyService {
 
   // MARK: - Configuration
 
-  public var recordingMode: RecordingMode = .toggle
+  // #3534: every binding and the mode below void the stop-timer measurement when they ACTUALLY
+  // change (diagnostic state only; the settings sync assigns unchanged values freely).
+  public var recordingMode: RecordingMode = .toggle {
+    didSet { if recordingMode != oldValue { invalidateQuickTapDiagnostics() } }
+  }
 
   // Every fallback below reads `ShortcutRole.defaultBinding`, the one owner of what a shortcut ships
   // as. These are the value a service carries before `HotkeyController` pushes the user's settings,
@@ -251,34 +284,54 @@ public final class HotkeyService {
   // shim and a follow-up.
 
   /// Toggle-mode hotkey key code. Right Option, a bare modifier.
-  public var toggleKeyCode: UInt16 = ShortcutRole.record.defaultKeyCode
+  public var toggleKeyCode: UInt16 = ShortcutRole.record.defaultKeyCode {
+    didSet { if toggleKeyCode != oldValue { invalidateQuickTapDiagnostics() } }
+  }
 
   /// Toggle-mode required modifiers — none, because a bare modifier stores empty modifiers.
-  public var toggleModifiers: NSEvent.ModifierFlags = ShortcutRole.record.defaultModifiers
+  public var toggleModifiers: NSEvent.ModifierFlags = ShortcutRole.record.defaultModifiers {
+    didSet { if toggleModifiers != oldValue { invalidateQuickTapDiagnostics() } }
+  }
 
   /// Key code for the cancel hotkey. Escape.
-  public var cancelKeyCode: UInt16 = ShortcutRole.cancel.defaultKeyCode
+  public var cancelKeyCode: UInt16 = ShortcutRole.cancel.defaultKeyCode {
+    didSet { if cancelKeyCode != oldValue { invalidateQuickTapDiagnostics() } }
+  }
 
   /// Required modifiers for cancel hotkey — none, bare Escape.
-  public var cancelModifiers: NSEvent.ModifierFlags = ShortcutRole.cancel.defaultModifiers
+  public var cancelModifiers: NSEvent.ModifierFlags = ShortcutRole.cancel.defaultModifiers {
+    didSet { if cancelModifiers != oldValue { invalidateQuickTapDiagnostics() } }
+  }
 
   /// Key code for the Quick Add hotkey (#2381). The shipped value, read from its one owner.
-  public var quickAddKeyCode: UInt16 = ShortcutRole.quickAdd.defaultKeyCode
+  public var quickAddKeyCode: UInt16 = ShortcutRole.quickAdd.defaultKeyCode {
+    didSet { if quickAddKeyCode != oldValue { invalidateQuickTapDiagnostics() } }
+  }
 
   /// Required modifiers for the Quick Add hotkey, read from the same owner.
-  public var quickAddModifiers: NSEvent.ModifierFlags = ShortcutRole.quickAdd.defaultModifiers
+  public var quickAddModifiers: NSEvent.ModifierFlags = ShortcutRole.quickAdd.defaultModifiers {
+    didSet { if quickAddModifiers != oldValue { invalidateQuickTapDiagnostics() } }
+  }
 
   /// Paste Last Dictation's key code (#3106), read from the same owner.
-  public var pasteLastKeyCode: UInt16 = ShortcutRole.pasteLast.defaultKeyCode
+  public var pasteLastKeyCode: UInt16 = ShortcutRole.pasteLast.defaultKeyCode {
+    didSet { if pasteLastKeyCode != oldValue { invalidateQuickTapDiagnostics() } }
+  }
 
   /// Paste Last Dictation's required modifiers.
-  public var pasteLastModifiers: NSEvent.ModifierFlags = ShortcutRole.pasteLast.defaultModifiers
+  public var pasteLastModifiers: NSEvent.ModifierFlags = ShortcutRole.pasteLast.defaultModifiers {
+    didSet { if pasteLastModifiers != oldValue { invalidateQuickTapDiagnostics() } }
+  }
 
   /// Copy Last Dictation's key code (#3106), read from the same owner.
-  public var copyLastKeyCode: UInt16 = ShortcutRole.copyLast.defaultKeyCode
+  public var copyLastKeyCode: UInt16 = ShortcutRole.copyLast.defaultKeyCode {
+    didSet { if copyLastKeyCode != oldValue { invalidateQuickTapDiagnostics() } }
+  }
 
   /// Copy Last Dictation's required modifiers.
-  public var copyLastModifiers: NSEvent.ModifierFlags = ShortcutRole.copyLast.defaultModifiers
+  public var copyLastModifiers: NSEvent.ModifierFlags = ShortcutRole.copyLast.defaultModifiers {
+    didSet { if copyLastModifiers != oldValue { invalidateQuickTapDiagnostics() } }
+  }
 
   // MARK: - Lifecycle
 
@@ -706,7 +759,55 @@ public final class HotkeyService {
     acceptedSessionID = nil
     debounceTask?.cancel()
     debounceTask = nil
+    attemptOrigin = nil
+    invalidateQuickTapDiagnostics()
   }
+
+  /// #3534 §3.3: the one place the stop-timer measurement is voided. Called from
+  /// `performCleanup`, actual mode and binding changes, and `removeModifierMonitors` (which
+  /// every monitor install, cancel rebind, app-shortcut rebind and `suspend()` pass through).
+  private func invalidateQuickTapDiagnostics() {
+    diagnosticEpoch &+= 1
+    lastQuickTapStop = nil
+  }
+
+  /// #3534 §3.3: offer the stop marker to this press, once. Returns how long after the saved first
+  /// press this press HAPPENED when it was physically pressed before the lone-tap timer requested
+  /// its stop, inside the window, and nothing has voided the measurement; nil otherwise. Missing
+  /// or rejected OS times mean unknown, never a claim.
+  private func consumeQuickTapStop(_ input: InputTime) -> Int? {
+    guard let stop = lastQuickTapStop else { return nil }
+    lastQuickTapStop = nil
+    guard stop.epoch == diagnosticEpoch, stop.binding == recordBinding, stop.mode == recordingMode
+    else { return nil }
+    let pair = clockPair(from: stop.start, to: input)
+    guard pair.usesOccurrence, pair.end - pair.start <= Self.window,
+      pair.end <= stop.stoppedAtUptime, stop.stoppedAtUptime <= input.handled
+    else { return nil }
+    let pressedMs = Int((pair.end - pair.start) * 1000)
+    Task {
+      await AppLogger.shared.log(
+        "Second press arrived after the lone-tap stop (pressed \(pressedMs)ms after first)",
+        level: .info, category: "HotkeyService"
+      )
+    }
+    return pressedMs
+  }
+
+  #if DEBUG
+    /// #3534 §10 DEBUG timing trace. Every value is captured by the caller before this
+    /// returns; the log write is asynchronous, so line order is not event order: read the
+    /// captured times. A stop REQUEST and a lock INTENT are not a finished recording.
+    private func traceTiming(_ line: String) {
+      Task {
+        await AppLogger.shared.log("[timing] \(line)", level: .info, category: "HotkeyService")
+      }
+    }
+
+    private static func traceSeconds(_ value: TimeInterval?) -> String {
+      value.map { String(format: "%.3f", $0) } ?? "nil"
+    }
+  #endif
 
   // MARK: - #1631 Start reconciliation and hands-free publication
 
@@ -760,7 +861,17 @@ public final class HotkeyService {
       acceptedStartPressID == startPressID,
       let sessionID = acceptedSessionID
     else { return }
-    switch onLockRequested?(sessionID) ?? .unavailable {
+    let result = onLockRequested?(sessionID) ?? .unavailable
+    #if DEBUG
+      let traced: String =
+        switch result {
+        case .published: "published"
+        case .notLockable: "not_lockable"
+        case .unavailable: "unavailable"
+        }
+      traceTiming("lock_publication press=\(startPressID) result=\(traced)")
+    #endif
+    switch result {
     case .published:
       emitLockResolved(committed: true, reason: .published)
     case .notLockable:
@@ -812,6 +923,10 @@ public final class HotkeyService {
     guard !isModifierHeld else { return }
     isModifierHeld = true
 
+    // #3534 §3.3: offered once, BEFORE the processing guard, so a refused press can carry it.
+    // Only the `start` and `ignored_processing` rows below attach it; any other role drops it.
+    let afterStopTimer: String? = consumeQuickTapStop(input) != nil ? "after_stop_timer" : nil
+
     // Anti-spam Layer 1: Block new recordings while pipeline is processing.
     if let isProcessing = onIsProcessing, isProcessing() {
       Task {
@@ -821,7 +936,7 @@ public final class HotkeyService {
         )
       }
       // #1175 (C3): a press that never commits is exactly an under-fire case.
-      emitHotkeyPressed(.ignoredProcessing, trigger: .ptt)
+      emitHotkeyPressed(.ignoredProcessing, trigger: .ptt, windowTiming: afterStopTimer)
       isModifierHeld = false
       return
     }
@@ -833,6 +948,8 @@ public final class HotkeyService {
       stateGeneration &+= 1
       isRecordingLocked = false
       recordingStart = input
+      attemptOrigin = DiagnosticOrigin(
+        binding: recordBinding, mode: recordingMode, epoch: diagnosticEpoch)
       // #1631: a fresh attempt owns a fresh identity, and inherits no acceptance.
       startPressID &+= 1
       acceptedStartPressID = nil
@@ -853,7 +970,7 @@ public final class HotkeyService {
       }
       // #1175 (C3): emit AFTER the recording Task is created; the `.live` sink
       // defers the actual write off this turn so it never delays the callback.
-      emitHotkeyPressed(.start, trigger: .ptt)
+      emitHotkeyPressed(.start, trigger: .ptt, windowTiming: afterStopTimer)
     } else if let start = recordingStart, elapsed(from: start, to: input) <= Self.window {
       // Within 500ms window
       if isRecordingLocked {
@@ -885,6 +1002,14 @@ public final class HotkeyService {
         debounceTask = nil
         // #3534: computed BEFORE publication, whose rejection cleanup clears `recordingStart`.
         let windowTiming = lockWindowTiming(from: start, to: input)
+        #if DEBUG
+          let pair = clockPair(from: start, to: input)
+          traceTiming(
+            "lock_intent press=\(startPressID) press_handled=\(Self.traceSeconds(input.handled)) "
+              + "press_occurred=\(Self.traceSeconds(input.occurred)) "
+              + "clock=\(pair.usesOccurrence ? "occurrence" : "handling") "
+              + "elapsed_ms=\(Int((pair.end - pair.start) * 1000)) window_timing=\(windowTiming)")
+        #endif
         isRecordingLocked = true
         lockAt = input
         // DO NOT cancel recordingTask here — the pipeline startup must
@@ -962,11 +1087,21 @@ public final class HotkeyService {
       // #3534: 500 ms after the release HAPPENED, on the same clock that judged it
       // quick (`clockPair`); with no usable OS times, 500 ms after it was handled,
       // as before. A release handled late can find this deadline already due.
-      // The remaining wait is read when the task RUNS, so a busy main thread that
-      // starts the task late does not push the stop past the deadline.
-      let deadline = clockPair(from: start, to: input).end + Self.window
+      // Compute the remaining wait when the task runs, avoiding additional task-start
+      // delay. If the deadline is already past, request no further wait.
+      let pair = clockPair(from: start, to: input)
+      let deadline = pair.end + Self.window
       let sleep = self.sleep
       let uptime = self.uptime
+      #if DEBUG
+        let tracePrefix =
+          "press=\(startPressID) release_handled=\(Self.traceSeconds(input.handled)) "
+          + "deadline=\(Self.traceSeconds(deadline)) "
+          + "clock=\(pair.usesOccurrence ? "occurrence" : "handling")"
+        traceTiming(
+          "quick_release \(tracePrefix) release_occurred=\(Self.traceSeconds(input.occurred)) "
+            + "already_due=\(input.handled >= deadline)")
+      #endif
       debounceTask?.cancel()
       debounceTask = Task { @MainActor [weak self] in
         defer { self?.onDebounceResolvedForTesting?() }
@@ -983,7 +1118,30 @@ public final class HotkeyService {
             level: .info, category: "HotkeyService"
           )
         }
+        // #3534 §3.3, in this order. (1) Snapshot, and decide whether this stop may be
+        // attributed: nothing has voided the attempt since its first press.
+        let attempt = self.recordingStart
+        let origin = self.attemptOrigin
+        let attributable =
+          origin.map {
+            $0.epoch == self.diagnosticEpoch && $0.binding == self.recordBinding
+              && $0.mode == self.recordingMode
+          } ?? false
+        // (2) Cleanup, which itself voids the measurement (bumps the epoch).
         self.performCleanup()
+        // (3) Only an attributable stop leaves a marker, stamped with the post-cleanup epoch.
+        let stoppedAt = uptime()
+        if attributable, let attempt, let origin {
+          self.lastQuickTapStop = QuickTapStop(
+            start: attempt, binding: origin.binding, mode: origin.mode,
+            epoch: self.diagnosticEpoch, stoppedAtUptime: stoppedAt)
+        }
+        #if DEBUG
+          self.traceTiming(
+            "stop_request \(tracePrefix) requested_at=\(Self.traceSeconds(stoppedAt)) "
+              + "attributable=\(attributable) (a stop request, not a finished recording)")
+        #endif
+        // (4) Queue the normal stop, attributable or not.
         self.recordingTask?.cancel()
         self.recordingTask = Task { await self.onStopRecording?() }
       }
@@ -1190,6 +1348,8 @@ public final class HotkeyService {
     // `suspend(); resume()` each burn two generations. An event queued against
     // any earlier installation can therefore never match again.
     monitorGeneration &+= 1
+    // #3534 §3.3: a monitor teardown voids the stop-timer measurement (diagnostic only).
+    invalidateQuickTapDiagnostics()
   }
 
   private func removeCarbonEventHandler() {

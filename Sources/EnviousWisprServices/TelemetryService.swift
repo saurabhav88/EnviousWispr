@@ -930,7 +930,8 @@ public final class TelemetryService {
       "trigger_source": triggerSource, "input_mode": inputMode,
       "key_shape": keyShape, "key_identity": keyIdentity, "press_action": pressAction,
     ]
-    // #3534: present only on hands-free lock intents (`rescued` / `on_time`).
+    // #3534: present only on hands-free lock intents (`rescued` / `on_time`) and on a press
+    // that came before the lone-tap stop it lost to (`after_stop_timer`); absent otherwise.
     if let windowTiming { props["window_timing"] = windowTiming }
     #if DEBUG
       // #1987: DERIVED from `props`, never re-listed. The previous shape built the
