@@ -96,6 +96,34 @@ import_access='(public|package|internal|fileprivate|private)'
 import_attr='(@[A-Za-z_][A-Za-z0-9_]*(\([^)]*\))?[[:space:]]+)*'
 import_grep_pattern="^[[:space:]]*${import_attr}(${import_access}[[:space:]]+)?import[[:space:]]+(${import_kinds}[[:space:]]+)?EnviousWispr"
 
+# Per-line helpers, all bash builtins: the loops below handle every import line
+# in Sources/ and Tests/ (1,631 on 2026-10-07), and the earlier `echo | cut |
+# sed` and `echo | grep` pipelines spawned about eight processes per line, 32 s
+# on the Mac, enough to keep this out of a pre-push hook (#3524). Each helper
+# matches the pipeline it replaced exactly; the results land in REPLY.
+#
+# strip_comment: `cut -d: -f3- | sed -E 's|//.*$||; s|/\*.*$||'`. Drops grep's
+# `path:lineno:` prefix, then any line or block comment tail.
+strip_comment() {
+  local rest=${1#*:}
+  rest=${rest#*:}
+  rest=${rest%%//*}
+  REPLY=${rest%%/\**}
+}
+# imported_module: `sed -E "s/^.*import[[:space:]]+(KINDS[[:space:]]+)?(EnviousWispr[A-Za-z_]*).*/\3/"`.
+# POSIX ERE takes the leftmost-longest `(.*)`, so the LAST `import` on the line
+# wins, as sed's greedy `^.*` does; no match returns the input unchanged, as sed
+# does. Group 4 because KINDS carries its own parentheses.
+imported_module() {
+  local re="^(.*)import[[:space:]]+(${import_kinds}[[:space:]]+)?(EnviousWispr[A-Za-z_]*)"
+  if [[ $1 =~ $re ]]; then REPLY=${BASH_REMATCH[4]}; else REPLY=$1; fi
+}
+# is_permitted: `echo " $permitted " | grep -q " $imp "`.
+is_permitted() {
+  case " $1 " in *" $2 "*) return 0 ;; esac
+  return 1
+}
+
 for module_dir in Sources/*/; do
   module=$(basename "$module_dir")
   if ! permitted=$(permitted_imports_for "$module"); then
@@ -105,22 +133,20 @@ for module_dir in Sources/*/; do
   fi
   modules_scanned=$((modules_scanned + 1))
   while IFS= read -r line; do
-    file=$(echo "$line" | cut -d: -f1)
+    file=${line%%:*}
     # Strip the leading `path:lineno:` prefix from grep + any line/block comment
     # tail before extracting the module. Stripping comments matters because an
     # inline `// EnviousWisprCore` after a forbidden `import EnviousWisprPipeline`
-    # would otherwise be picked up by the greedy sed below.
-    code=$(echo "$line" | cut -d: -f3- | sed -E 's|//.*$||; s|/\*.*$||')
+    # would otherwise be picked up by the greedy match below.
+    strip_comment "$line"; code=$REPLY
     # Extract the imported module name. Handles plain (`import EnviousWisprX`)
     # and scoped (`import struct EnviousWisprX.Foo`) forms by anchoring the
     # capture to the first `EnviousWispr<rest>` token AFTER the `import` keyword.
-    # `${import_kinds}` already wraps the alternation in `(...)`, so the outer
-    # `(${import_kinds}[[:space:]]+)?` is group 1 and the inner alternation is
-    # group 2. The EnviousWispr capture is group 3.
-    imp=$(echo "$code" | sed -E "s/^.*import[[:space:]]+(${import_kinds}[[:space:]]+)?(EnviousWispr[A-Za-z_]*).*/\\3/")
+    # `imported_module` (above) owns the capture-group arithmetic.
+    imported_module "$code"; imp=$REPLY
     case "$imp" in
       EnviousWispr*)
-        if ! echo " $permitted " | grep -q " $imp "; then
+        if ! is_permitted "$permitted" "$imp"; then
           echo "DEP-DIRECTION: $file: '$module' imports '$imp' (not in allowed: $permitted)"
           violations=$((violations + 1))
         fi
@@ -229,12 +255,12 @@ for test_dir in Tests/*/; do
   fi
   modules_scanned=$((modules_scanned + 1))
   while IFS= read -r line; do
-    file=$(echo "$line" | cut -d: -f1)
-    code=$(echo "$line" | cut -d: -f3- | sed -E 's|//.*$||; s|/\*.*$||')
-    imp=$(echo "$code" | sed -E "s/^.*import[[:space:]]+(${import_kinds}[[:space:]]+)?(EnviousWispr[A-Za-z_]*).*/\\3/")
+    file=${line%%:*}
+    strip_comment "$line"; code=$REPLY
+    imported_module "$code"; imp=$REPLY
     case "$imp" in
       EnviousWispr*)
-        if ! echo " $permitted " | grep -q " $imp "; then
+        if ! is_permitted "$permitted" "$imp"; then
           echo "DEP-DIRECTION: $file: test target '$target' imports '$imp' (not in allowed: $permitted)"
           violations=$((violations + 1))
         fi
@@ -258,15 +284,15 @@ done
 # purpose — that is what Live UAT is. Those scripts are the sanctioned way to reach
 # the OS; this rule governs compiled code, which is not.
 while IFS= read -r line; do
-  file=$(echo "$line" | cut -d: -f1)
+  file=${line%%:*}
   case "$file" in
     Sources/EnviousWisprDesktopEffects/*) continue ;;
     # Standalone launcher executable (#3423), built by its sibling build.sh.
     # Package.swift and Project.swift exclude it from test targets.
     Tests/Fixtures/launcher-panel/LauncherPanel.swift) continue ;;
   esac
-  code=$(echo "$line" | cut -d: -f3- | sed -E 's|//.*$||; s|/\*.*$||')
-  if echo "$code" | grep -Eq "$live_effect_pattern"; then
+  strip_comment "$line"; code=$REPLY
+  if [[ $code =~ $live_effect_pattern ]]; then
     echo "DEP-DIRECTION: $file: live desktop call outside Sources/EnviousWisprDesktopEffects/"
     violations=$((violations + 1))
   fi

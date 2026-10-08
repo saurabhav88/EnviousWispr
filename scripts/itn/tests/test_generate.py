@@ -6,6 +6,7 @@ expectations, and against the committed German sources. Fixtures prove the gener
 German sentence converts correctly.
 """
 
+import atexit
 import hashlib
 import json
 import re
@@ -79,7 +80,30 @@ def cldr_xml(rules):
             + rules + "]]></rbnfRules></rulesetGrouping></rbnf></ldml>\n")
 
 
+# Every output the generator can write. A generating run that names only some of them
+# writes the rest to their DEFAULT paths, which are the committed files under Sources/,
+# so three tests here once rewrote 8 committed files on every run (#3524: same bytes,
+# fresh mtimes, which a parallel or in-place check run must not see).
+OUTPUT_FLAGS = ("--out", "--phone-out", "--ordinal-out", "--clock-out", "--style-out",
+                "--triggers-out", "--hour-clock-out", "--dutch-out")
+# Modes that write no default output: --check regenerates into its own temp dir.
+NON_WRITING_MODES = ("--check", "--inventory", "--self-test", "--refresh")
+_SCRATCH = tempfile.TemporaryDirectory(prefix="itn-test-outputs-")
+atexit.register(_SCRATCH.cleanup)
+
+
 def run(*args):
+    """Run the generator, sending every output the caller did not name to a scratch file.
+
+    The routing lives here, not in each test, so a new test cannot forget an output flag
+    and rewrite a committed file under Sources/.
+    """
+    args = list(args)
+    if not any(mode in args for mode in NON_WRITING_MODES):
+        scratch = Path(tempfile.mkdtemp(dir=_SCRATCH.name))
+        for flag in OUTPUT_FLAGS:
+            if flag not in args:
+                args += [flag, str(scratch / (flag.strip("-") + ".swift"))]
     return subprocess.run([sys.executable, str(GENERATOR), *args],
                           capture_output=True, text=True)
 
