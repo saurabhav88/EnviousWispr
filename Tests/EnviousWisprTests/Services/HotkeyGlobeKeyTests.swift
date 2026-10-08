@@ -36,8 +36,8 @@ import Testing
 @Suite struct HotkeyGlobeKeyTests {
 
   @MainActor final class ManualClock {
-    private(set) var now = Date(timeIntervalSince1970: 2_000_000)
-    func advance(ms: Int) { now = now.addingTimeInterval(Double(ms) / 1000.0) }
+    private(set) var now: TimeInterval = 2_000_000
+    func advance(ms: Int) { now += Double(ms) / 1000.0 }
   }
 
   /// Signal-driven wait for a callback that has no task to await.
@@ -102,7 +102,7 @@ import Testing
     var sink: HotkeyTelemetrySink {
       HotkeyTelemetrySink(
         registrationFailed: { _, _, _, _ in },
-        pressed: { [weak self] _, _, _, identity, action in
+        pressed: { [weak self] _, _, _, identity, action, _ in
           self?.actions.append(action)
           self?.identities.append(identity)
         },
@@ -114,7 +114,7 @@ import Testing
     _ spy: Spy, clock: ManualClock, mode: RecordingMode = .pushToTalk
   ) -> HotkeyService {
     let service = HotkeyService(
-      effects: RecordingDesktopHotkeyEffects(), telemetry: spy.sink, now: { clock.now })
+      effects: RecordingDesktopHotkeyEffects(), telemetry: spy.sink, uptime: { clock.now })
     service.recordingMode = mode
     service.toggleKeyCode = ModifierKeyCodes.globe
     service.onStartRecording = { [weak spy] in
@@ -437,7 +437,7 @@ import Testing
 
     service.handleInstalledMonitorFlagsChangedValues(
       keyCode: ModifierKeyCodes.globe, flags: [.function],
-      generation: service.monitorGeneration)
+      generation: service.monitorGeneration, timestamp: nil)
     await settle(service)
 
     #expect(spy.starts == 1, "the guard refused a live event — the shortcut is dead for everyone")
@@ -452,7 +452,7 @@ import Testing
     service.stop()
 
     service.handleInstalledMonitorFlagsChangedValues(
-      keyCode: ModifierKeyCodes.globe, flags: [.function], generation: installed)
+      keyCode: ModifierKeyCodes.globe, flags: [.function], generation: installed, timestamp: nil)
     await settle(service)
 
     #expect(spy.starts == 0)
@@ -478,7 +478,8 @@ import Testing
     #expect(service.isEnabled, "precondition: the rebind re-enabled hotkeys")
 
     service.handleInstalledMonitorFlagsChangedValues(
-      keyCode: ModifierKeyCodes.globe, flags: [.function], generation: firstInstallation)
+      keyCode: ModifierKeyCodes.globe, flags: [.function], generation: firstInstallation,
+      timestamp: nil)
     await settle(service)
 
     #expect(spy.starts == 0, "an event from the pre-rebind monitor started a dictation")

@@ -44,9 +44,13 @@ package struct DesktopEffectToken: Hashable, Sendable {
 package struct DesktopHotkeyEvent: Sendable {
   package let id: UInt32
   package let isRelease: Bool
-  package init(id: UInt32, isRelease: Bool) {
+  /// When the event happened, seconds since startup (Carbon `GetEventTime`), or
+  /// nil when unknown (#3534).
+  package let timestamp: TimeInterval?
+  package init(id: UInt32, isRelease: Bool, timestamp: TimeInterval? = nil) {
     self.id = id
     self.isRelease = isRelease
+    self.timestamp = timestamp
   }
 }
 
@@ -57,9 +61,13 @@ package struct DesktopHotkeyEvent: Sendable {
 package struct DesktopModifierEvent: Sendable {
   package let keyCode: UInt16
   package let rawFlags: UInt64
-  package init(keyCode: UInt16, rawFlags: UInt64) {
+  /// When the event happened, seconds since startup (`NSEvent.timestamp`), or nil
+  /// when unknown (#3534).
+  package let timestamp: TimeInterval?
+  package init(keyCode: UInt16, rawFlags: UInt64, timestamp: TimeInterval? = nil) {
     self.keyCode = keyCode
     self.rawFlags = rawFlags
+    self.timestamp = timestamp
   }
 }
 

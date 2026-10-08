@@ -30,6 +30,9 @@ import Testing
       /// this suite is unchanged.
       let keyIdentity: String
       let pressAction: String
+      /// #3534 — `rescued` / `on_time` on a lock intent, `after_stop_timer` on a press that lost
+      /// to the lone-tap stop, nil elsewhere.
+      var windowTiming: String? = nil
     }
     struct Registration: Equatable {
       let mechanism: String
@@ -46,10 +49,11 @@ import Testing
           self?.registrations.append(
             Registration(mechanism: mechanism, hotkeyKind: kind, osStatus: status, keyShape: shape))
         },
-        pressed: { [weak self] ts, im, ks, ki, pa in
+        pressed: { [weak self] ts, im, ks, ki, pa, wt in
           self?.presses.append(
             Press(
-              triggerSource: ts, inputMode: im, keyShape: ks, keyIdentity: ki, pressAction: pa))
+              triggerSource: ts, inputMode: im, keyShape: ks, keyIdentity: ki, pressAction: pa,
+              windowTiming: wt))
         })
     }
   }
@@ -315,6 +319,53 @@ import Testing
       #expect(event?.intProps.isEmpty == true)
       #expect(event?.doubleProps.isEmpty == true)
       #expect(event?.boolProps.isEmpty == true)
+    }
+
+    /// #3534: a lock intent carries `window_timing`; the case above, with none, carries no
+    /// such key at all.
+    @Test("hotkey.pressed wire payload carries window_timing only when given")
+    func wirePayloadCarriesWindowTiming() {
+      let box = EventBox()
+      let previousHook = TelemetryService.shared.testEventHook
+      TelemetryService.shared.testEventHook = { event in
+        if event.name == "hotkey.pressed" { box.set(event) }
+      }
+      defer { TelemetryService.shared.testEventHook = previousHook }
+
+      TelemetryService.shared.hotkeyPressed(
+        triggerSource: "ptt_hotkey", inputMode: "pushToTalk", keyShape: "modifier_only",
+        keyIdentity: "right_option", pressAction: "lock", windowTiming: "rescued")
+
+      #expect(
+        box.value?.stringProps == [
+          "trigger_source": "ptt_hotkey", "input_mode": "pushToTalk",
+          "key_shape": "modifier_only", "key_identity": "right_option", "press_action": "lock",
+          "window_timing": "rescued",
+        ])
+      #expect(box.value?.intProps.isEmpty == true)
+    }
+
+    /// #3534: the race signal rides an ordinary `start` row with the same closed shape.
+    @Test("hotkey.pressed wire payload carries after_stop_timer on a start row")
+    func wirePayloadCarriesAfterStopTimer() {
+      let box = EventBox()
+      let previousHook = TelemetryService.shared.testEventHook
+      TelemetryService.shared.testEventHook = { event in
+        if event.name == "hotkey.pressed" { box.set(event) }
+      }
+      defer { TelemetryService.shared.testEventHook = previousHook }
+
+      TelemetryService.shared.hotkeyPressed(
+        triggerSource: "ptt_hotkey", inputMode: "pushToTalk", keyShape: "modifier_only",
+        keyIdentity: "right_option", pressAction: "start", windowTiming: "after_stop_timer")
+
+      #expect(
+        box.value?.stringProps == [
+          "trigger_source": "ptt_hotkey", "input_mode": "pushToTalk",
+          "key_shape": "modifier_only", "key_identity": "right_option", "press_action": "start",
+          "window_timing": "after_stop_timer",
+        ])
+      #expect(box.value?.intProps.isEmpty == true)
     }
   #endif
 

@@ -144,12 +144,15 @@ package final class LiveDesktopHotkeyEffects: DesktopHotkeyEffects {
   package func installGlobalModifierMonitor(
     _ callback: @escaping @MainActor (DesktopModifierEvent) -> Void
   ) -> DesktopEffectToken? {
-    // Global monitor callbacks may arrive off the main thread, and `NSEvent` is
-    // not Sendable — so the event is decoded to plain values HERE and only those
-    // cross the hop.
+    // Apple delivers monitor handlers on the main thread, but the handler is not
+    // typed `@MainActor` and `NSEvent` is not Sendable, so the event is decoded to
+    // plain values HERE and only those cross the hop. The timestamp is decoded too:
+    // a busy main thread handles this event late, and only the OS time says when
+    // the key actually moved (#3534).
     let monitor = NSEvent.addGlobalMonitorForEvents(matching: .flagsChanged) { event in
       let value = DesktopModifierEvent(
-        keyCode: event.keyCode, rawFlags: UInt64(event.modifierFlags.rawValue))
+        keyCode: event.keyCode, rawFlags: UInt64(event.modifierFlags.rawValue),
+        timestamp: event.timestamp)
       DispatchQueue.main.async {
         MainActor.assumeIsolated { callback(value) }
       }
@@ -164,7 +167,8 @@ package final class LiveDesktopHotkeyEffects: DesktopHotkeyEffects {
       MainActor.assumeIsolated {
         callback(
           DesktopModifierEvent(
-            keyCode: event.keyCode, rawFlags: UInt64(event.modifierFlags.rawValue)))
+            keyCode: event.keyCode, rawFlags: UInt64(event.modifierFlags.rawValue),
+            timestamp: event.timestamp))
       }
       // Pass the event through. Returning nil here would swallow the keystroke
       // for the rest of the app while the callback still fired, so nothing in a
@@ -249,7 +253,8 @@ private func liveCarbonHotkeyHandler(
 
   let value = DesktopHotkeyEvent(
     id: hotkeyID.id,
-    isRelease: GetEventKind(event) == UInt32(kEventHotKeyReleased))
+    isRelease: GetEventKind(event) == UInt32(kEventHotKeyReleased),
+    timestamp: GetEventTime(event))
 
   let box = Unmanaged<CarbonHandlerBox>.fromOpaque(userData).takeUnretainedValue()
   MainActor.assumeIsolated { box.callback(value) }

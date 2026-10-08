@@ -79,7 +79,7 @@ file_import_turns_displayed	ungraded	ungraded	-	pre-#2987
 file_import_turns_rename	ungraded	ungraded	-	pre-#2987
 file_import_turns_retry	ungraded	ungraded	-	pre-#2987
 hotkey.lock_resolved	ungraded	ungraded	-	pre-#2987
-hotkey.pressed	ungraded	ungraded	-	pre-#2987
+hotkey.pressed	ungraded	ungraded	analytics-operations.md FACT: app-posthog-events (#3534: rescue share = window_timing rescued / lock rows; any after_stop_timer row, kept whole from telemetry_policy_version 6, triggers the race-defense follow-up; late_after_window counts presses just past the window)	pre-#2987
 hotkey.registration	ungraded	ungraded	-	pre-#2987
 install_cancelled	ungraded	ungraded	-	pre-#2987
 language.detected	ungraded	ungraded	-	pre-#2987

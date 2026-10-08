@@ -41,7 +41,9 @@ package enum TelemetryVolumePolicy {
   /// 5: #3106 PR A, `paste.landing_observed` re-vocabularied by the shared reader
   ///    (`found`/`absent`/`no_target`/`cannot_read`/`inconclusive`, plus the late check); only an
   ///    early `found` is sampled. Rows below 5 carry the old vocabulary: read the two apart.
-  package static let policyVersion = 5
+  /// 6: #3534, a `hotkey.pressed` row with `window_timing = after_stop_timer` is kept whole
+  ///    whatever its `press_action`; below 6 such a `start` row was sampled like any other.
+  package static let policyVersion = 6
   package static let policyVersionKey = "telemetry_policy_version"
 
   /// Percent of matching happy-path rows that are KEPT. One rate on purpose: a table of
@@ -136,6 +138,9 @@ package enum TelemetryVolumePolicy {
     let isHappyPath: Bool
     switch event {
     case "hotkey.pressed":
+      // #3534: a press that came before a lone-tap stop it lost to is the race signal; it rides
+      // an ordinary `start` row, so it is kept whole before the action rule can sample it.
+      if properties["window_timing"] as? String == "after_stop_timer" { return nil }
       guard let action = properties["press_action"] as? String else { return nil }
       isHappyPath = happyPathPressActions.contains(action)
     case "audio.input_resolution":

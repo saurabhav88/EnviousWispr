@@ -115,7 +115,7 @@ final class RecordingDesktopHotkeyEffects: DesktopHotkeyEffects {
 func makeHotkeyService(
   effects: RecordingDesktopHotkeyEffects = RecordingDesktopHotkeyEffects(),
   telemetry: HotkeyTelemetrySink = .noop,
-  now: @escaping @MainActor () -> Date = { Date() }
+  uptime: @escaping @MainActor () -> TimeInterval = { ProcessInfo.processInfo.systemUptime }
 ) -> (service: HotkeyService, effects: RecordingDesktopHotkeyEffects) {
-  (HotkeyService(effects: effects, telemetry: telemetry, now: now), effects)
+  (HotkeyService(effects: effects, telemetry: telemetry, uptime: uptime), effects)
 }
