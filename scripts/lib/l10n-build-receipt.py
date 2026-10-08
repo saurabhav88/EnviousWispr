@@ -368,16 +368,26 @@ def read_receipt(receipt):
 
 
 def verify(receipt, repo, commit, derived, configuration, xcode=None, catalog_script=CATALOG_SCRIPT):
+    """verify_expected with the expected digest computed from commit's tree in repo."""
+    xcode = xcode or xcode_build()
+    want = fields(repo, configuration, xcode, commit)
+    return verify_expected(receipt, want["input_digest"], derived, configuration, xcode, catalog_script,
+                           pushed=f"{commit[:12]}, input tree {want['input_tree'][:12]}")
+
+
+def verify_expected(receipt, expected, derived, configuration, xcode=None, catalog_script=CATALOG_SCRIPT,
+                    pushed=None):
+    """The one receipt check: schema, configuration, this Mac's Xcode build, the expected input
+    digest and the extraction now on disk must all match. Anything else is Unavailable."""
     data = read_receipt(receipt)
     if data["configuration"] != configuration:
         raise Unavailable(f"the receipt is for {data['configuration']}, not {configuration}")
     xcode = xcode or xcode_build()
     if data["xcode_build"] != xcode:
         raise Unavailable(f"the receipt's Xcode build {data['xcode_build']} is not this Mac's {xcode}")
-    want = fields(repo, configuration, xcode, commit)
-    if data["input_digest"] != want["input_digest"] or data["input_tree"] != want["input_tree"]:
-        raise Unavailable(f"the Dev build is not of the pushed code ({commit[:12]}): input tree "
-                          f"{data['input_tree'][:12]} built, {want['input_tree'][:12]} pushed")
+    if data["input_digest"] != expected:
+        raise Unavailable(f"the Dev build is not of the pushed code ({pushed or 'input digest ' + expected[:12]}): "
+                          f"input tree {data['input_tree'][:12]} built")
     count, digest = extraction(derived, configuration, catalog_script)
     if (count, digest) != (data["extraction_count"], data["extraction_digest"]):
         raise Unavailable("the extraction changed since the receipt was written")
@@ -776,8 +786,9 @@ def main(argv=None):
     p.add_argument("--receipt", type=pathlib.Path, required=True)
     p = sub.add_parser("verify")
     p.add_argument("--receipt", type=pathlib.Path, required=True)
-    p.add_argument("--repo", type=pathlib.Path, required=True)
-    p.add_argument("--commit", required=True)
+    p.add_argument("--repo", type=pathlib.Path)
+    p.add_argument("--commit")
+    p.add_argument("--expect-inputs", help="the expected input_digest, instead of --repo/--commit")
     p.add_argument("--derived-data", type=pathlib.Path, required=True)
     p.add_argument("--configuration", required=True)
     args = parser.parse_args(argv)
@@ -796,8 +807,15 @@ def main(argv=None):
             data = publish(args.repo, args.derived_data, args.configuration, args.before, args.build_exit, args.receipt)
             print(f"receipt: {args.receipt} ({data['extraction_count']} .stringsdata, inputs {data['input_tree'][:12]})")
         elif args.command == "verify":
-            data = verify(args.receipt, args.repo, args.commit, args.derived_data, args.configuration)
-            print(f"receipt ok: the Dev build is of {args.commit[:12]} ({data['extraction_count']} .stringsdata)")
+            if bool(args.expect_inputs) == bool(args.repo and args.commit):
+                parser.error("verify needs either --expect-inputs or both --repo and --commit")
+            if args.expect_inputs:
+                data = verify_expected(args.receipt, args.expect_inputs, args.derived_data, args.configuration)
+                what = f"input digest {args.expect_inputs[:12]}"
+            else:
+                data = verify(args.receipt, args.repo, args.commit, args.derived_data, args.configuration)
+                what = args.commit[:12]
+            print(f"receipt ok: the Dev build is of {what} ({data['extraction_count']} .stringsdata)")
         else:
             parser.error("a command or --self-test is required")
     except (Unavailable, OSError) as error:
