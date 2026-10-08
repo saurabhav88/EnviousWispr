@@ -25,6 +25,10 @@ Commands (exit 0 done, 2 could not / evidence unavailable; nothing here is a cat
       remove P if present; a build calls this first, so a failed build leaves no receipt.
   publish --repo R --derived-data D --configuration C --before DIGEST --build-exit N --receipt P
       write P atomically when N is 0 and R's input digest still equals DIGEST.
+  changed-inputs --repo R --base B --head H
+      list the input paths (same membership as the fingerprint) that differ between B and H,
+      both sides of a rename included; exit 0 when there are some, 10 when there are none,
+      2 when git cannot say.
   verify --receipt P --repo R --commit SHA --derived-data D --configuration C
       0 when P is a complete receipt for SHA's inputs under the current Xcode build and D still
       holds the extraction it certifies; otherwise 2 with the reason.
@@ -236,6 +240,13 @@ def input_tree(repo, commit=None):
         if not any(p.startswith("Sources/") for p in paths):
             raise Unavailable("no files under Sources/")
         return _git(repo, "write-tree", index=index).decode().strip()
+
+
+def changed_inputs(repo, base, head):
+    """Input paths that differ between base and head. --no-renames lists a rename as its deletion
+    and its addition, so a source moved in or out of the inputs is seen from either side."""
+    out = _git(repo, "diff", "--name-only", "--no-renames", "-z", base, head)
+    return sorted(p for p in out.decode().split("\0") if p and is_input(p))
 
 
 def xcode_build():
@@ -760,6 +771,30 @@ def _self_test(root):
     receipt.unlink()
     refused("19c a missing receipt is unavailable", lambda: read_receipt(receipt), "no receipt")
 
+    # changed-inputs: the same membership as the fingerprint, renames seen from both sides.
+    c0 = _run(a, "rev-parse", "HEAD")
+    (a / "README.md").write_text("docs only\n")
+    _run(a, "commit", "-q", "-am", "docs")
+    c1 = _run(a, "rev-parse", "HEAD")
+    expect("21 a non-input change lists no inputs", changed_inputs(a, c0, c1), [])
+    _run(a, "mv", "Sources/EnviousWisprCore/A.swift", "Sources/EnviousWisprCore/Renamed.swift")
+    _run(a, "commit", "-q", "-m", "rename")
+    c2 = _run(a, "rev-parse", "HEAD")
+    expect("21b a rename lists both sides", changed_inputs(a, c1, c2),
+           ["Sources/EnviousWisprCore/A.swift", "Sources/EnviousWisprCore/Renamed.swift"])
+    _run(a, "mv", "Sources/EnviousWisprCore/Renamed.swift", "Notes.swift")
+    _run(a, "commit", "-q", "-m", "move out of the inputs")
+    expect("21c a move out of the inputs is still seen", changed_inputs(a, c2, _run(a, "rev-parse", "HEAD")),
+           ["Sources/EnviousWisprCore/Renamed.swift"])
+    refused("21d an unknown revision is unavailable, never an empty list", lambda: changed_inputs(a, "f" * 40, c2), "git diff")
+    cli = subprocess.run([sys.executable, __file__, "changed-inputs", "--repo", str(a), "--base", c0, "--head", c1],
+                         capture_output=True, text=True)
+    cli2 = subprocess.run([sys.executable, __file__, "changed-inputs", "--repo", str(a), "--base", c1, "--head", c2],
+                          capture_output=True, text=True)
+    cli3 = subprocess.run([sys.executable, __file__, "changed-inputs", "--repo", str(a), "--base", "f" * 40, "--head", c2],
+                          capture_output=True, text=True)
+    expect("21e CLI exit codes: none 10, some 0, cannot say 2", (cli.returncode, cli2.returncode, cli3.returncode), (10, 0, 2))
+
     leftovers = [p.name for p in receipt.parent.iterdir() if p.name.startswith(".ew-l10n-receipt.")]
     expect("20 no temporary receipt file is left behind", leftovers, [])
     print(f"self-test: {cases} cases, {fails} failure(s)")
@@ -784,6 +819,10 @@ def main(argv=None):
     p.add_argument("--before", required=True)
     p.add_argument("--build-exit", type=int, required=True)
     p.add_argument("--receipt", type=pathlib.Path, required=True)
+    p = sub.add_parser("changed-inputs")
+    p.add_argument("--repo", type=pathlib.Path, required=True)
+    p.add_argument("--base", required=True)
+    p.add_argument("--head", required=True)
     p = sub.add_parser("verify")
     p.add_argument("--receipt", type=pathlib.Path, required=True)
     p.add_argument("--repo", type=pathlib.Path)
@@ -798,6 +837,11 @@ def main(argv=None):
         if args.command == "input-digest":
             print(json.dumps(fields(args.repo, args.configuration, args.xcode_build or xcode_build(), args.commit),
                              sort_keys=True))
+        elif args.command == "changed-inputs":
+            paths = changed_inputs(args.repo, args.base, args.head)
+            for path in paths:
+                print(path)
+            return 0 if paths else 10
         elif args.command == "invalidate":
             try:
                 args.receipt.unlink()

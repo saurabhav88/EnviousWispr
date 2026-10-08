@@ -14,13 +14,13 @@
 #   l10n-catalog-sync.sh --list-inputs --derived-data <dir> --configuration Release|Dev
 #       prints the `.stringsdata` files this script would read, relative to <dir>,
 #       NUL-separated, and changes nothing (#3524: scripts/lib/l10n-build-receipt.py
-#       fingerprints exactly this set, so the eligibility rules have one owner). Dev is
-#       accepted here only; --update and --check stay Release-only.
+#       fingerprints exactly this set, so the eligibility rules have one owner).
 #
-# Release is the only accepted configuration: the catalog holds the text that
-# SHIPS. A Debug build also extracts copy from `#if DEBUG` screens (13 keys when
-# measured 2026-09-24), which would then read as drift against the Release check
-# CI runs, and would hand translators text no customer sees.
+# Dev --check and --update require --expect-inputs and a matching build receipt.
+# Dev updates are partial repairs: they never remove committed keys or translations.
+# Release remains the authority for shipped text, removals and configuration differences:
+# the catalog holds the text that SHIPS, and a Dev build also extracts copy from
+# `#if DEBUG` screens (DEV_ONLY_KEYS), which no customer sees.
 #
 # Inputs are an EXPLICIT production-target list, never a directory sweep: the same
 # derived-data tree also holds third-party and test-target `.stringsdata`, and a test
@@ -216,6 +216,159 @@ def verified_dev_snapshot(derived, receipt, expected, work):
         raise Refused(f"could not run: the Dev build is not of the pushed code. {(proof.stderr or proof.stdout).strip()}")
     print(proof.stdout.strip())
     return collect_inputs(mirror, "Dev")
+
+
+# --- New debug-only text in a Dev check (#3524 PR 3, Codex-adopted safeguards) ---
+# A NEW key the Dev build extracts and the committed catalog lacks is a defect, unless the compiler's
+# own record proves every occurrence sits inside `#if DEBUG`: then it is reported as a warning
+# (add it to DEV_ONLY_KEYS before any Dev repair) and the Release check in CI stays the authority.
+# The proof is conservative: an unresolved source path, an ambiguous one, a directive the scanner
+# cannot read, malformed nesting, a line the scanner cannot classify, or any condition other than
+# exactly `DEBUG` gives no exemption, so the key stays a defect.
+class Unsupported(Exception):
+    pass
+
+
+def directive_frames(text):
+    """{line number: [(kind, condition), ...]} of the `#if` frames active on each line, where kind is
+    "if"/"elseif"/"else". Directives inside block comments and multi-line strings are ignored.
+    Raises Unsupported on raw strings, interpolation containing quotes, or malformed nesting."""
+    frames, out = [], {}
+    block, multi = 0, False
+    for number, line in enumerate(text.split("\n"), 1):
+        out[number] = list(frames)
+        stripped = line.lstrip()
+        if not block and not multi and stripped.startswith("#") and not stripped.startswith('#"'):
+            if "/*" in stripped or "*/" in stripped:
+                raise Unsupported("block comment on a directive line")
+            word, _, rest = stripped.partition(" ")
+            rest = rest.split("//")[0].strip()
+            if word.startswith("#sourceLocation"):
+                raise Unsupported("source location remapping")
+            if word == "#if":
+                frames.append(("if", rest))
+            elif word == "#elseif":
+                if not frames:
+                    raise Unsupported("#elseif without #if")
+                frames[-1] = ("elseif", rest)
+            elif word == "#else":
+                if not frames:
+                    raise Unsupported("#else without #if")
+                frames[-1] = ("else", frames[-1][1])
+            elif word == "#endif":
+                if not frames:
+                    raise Unsupported("#endif without #if")
+                frames.pop()
+            elif word in ("#warning", "#error", "#available", "#unavailable", "#selector",
+                          "#keyPath", "#file", "#fileID", "#filePath", "#line", "#column", "#function",
+                          "#dsohandle", "#Preview", "#expect", "#require"):
+                pass
+            elif word.startswith("#if") or word.startswith("#else"):
+                raise Unsupported(f"directive {word!r}")
+            continue
+        i = 0
+        while i < len(line):
+            if block:
+                if line.startswith("*/", i):
+                    block -= 1
+                    i += 2
+                elif line.startswith("/*", i):
+                    block += 1
+                    i += 2
+                else:
+                    i += 1
+                continue
+            if multi:
+                if line.startswith('"""', i):
+                    multi = False
+                    i += 3
+                else:
+                    i += 1
+                continue
+            if line.startswith("//", i):
+                break
+            if line.startswith("/*", i):
+                block += 1
+                i += 2
+            elif line.startswith('#"', i) or line.startswith('#"""', i):
+                raise Unsupported("raw string literal")
+            elif line.startswith('"""', i):
+                multi = True
+                i += 3
+            elif line[i] == '"':
+                j = i + 1
+                while j < len(line) and line[j] != '"':
+                    if line.startswith("\\(", j):
+                        depth, k = 1, j + 2
+                        while k < len(line) and depth:
+                            if line[k] == '"':
+                                raise Unsupported("interpolation containing a string")
+                            depth += {"(": 1, ")": -1}.get(line[k], 0)
+                            k += 1
+                        j = k
+                    elif line[j] == "\\":
+                        j += 2
+                    else:
+                        j += 1
+                if j >= len(line):
+                    raise Unsupported("unterminated string literal")
+                i = j + 1
+            else:
+                i += 1
+    if frames or block or multi:
+        raise Unsupported("unclosed #if, comment or string at end of file")
+    return out
+
+
+def resolve_source(source, source_root):
+    """The one file under source_root/Sources/ that an absolute build-time path names, or None."""
+    marker = "/Sources/"
+    found, start = [], source.find(marker)
+    while start != -1:
+        rel = "Sources/" + source[start + len(marker):]
+        candidate = source_root / rel
+        if ".." not in pathlib.Path(rel).parts and candidate.is_file() and not candidate.is_symlink():
+            try:
+                candidate.resolve().relative_to((source_root / "Sources").resolve())
+            except ValueError:
+                pass
+            else:
+                found.append(rel)
+        start = source.find(marker, start + 1)
+    return found[0] if len(found) == 1 else None
+
+
+def debug_only_proof(key, files, source_root):
+    """[(rel path, line)] when every extraction record of key sits inside an `#if DEBUG` (or
+    `#elseif DEBUG`) branch of a resolvable source file; None otherwise."""
+    records = []
+    for f in files:
+        data = json.loads(f.read_text())
+        for entry in data.get("tables", {}).get("Localizable", []):
+            if entry.get("key") == key:
+                records.append((data.get("source"), (entry.get("location") or {}).get("startingLine")))
+    if not records:
+        return None
+    proof, scanned = [], {}
+    for source, line in records:
+        if not isinstance(source, str) or not isinstance(line, int):
+            return None
+        rel = resolve_source(source, source_root)
+        if rel is None:
+            return None
+        if rel not in scanned:
+            try:
+                scanned[rel] = directive_frames((source_root / rel).read_text())
+            except (Unsupported, OSError, UnicodeDecodeError):
+                scanned[rel] = None
+        frames = scanned[rel]
+        if frames is None or line not in frames:
+            return None
+        active = frames[line]
+        if not any(kind in ("if", "elseif") and cond.strip().strip("()").strip() == "DEBUG" for kind, cond in active):
+            return None
+        proof.append((rel, line))
+    return proof
 
 
 def extracted_defaults(files):
@@ -662,6 +815,9 @@ def main(argv):
     parser.add_argument("--expect-inputs", help="Dev --check: the pushed code's input digest "
                         "(l10n-build-receipt.py input-digest --commit <sha>)")
     parser.add_argument("--receipt", type=pathlib.Path, help="Dev --check: default <derived-data>/ew-l10n-receipt.json")
+    parser.add_argument("--source-root", type=pathlib.Path, default=REPO,
+                        help="Dev --check: the checkout whose Sources/ the extraction's source paths are read "
+                             "from (default: this script's checkout, the pushed snapshot in the hook)")
     parser.add_argument("--dev-derived-data", type=pathlib.Path,
                         help="Release --check only: a Dev build of the same code (its receipt must match "
                              "--expect-inputs); enables the warning for DEV_ONLY_KEYS found in neither build")
@@ -722,6 +878,15 @@ def main(argv):
             for k in ignored:
                 del synced["strings"][k]
             print(f"Dev-only keys ignored: {len(ignored)} of {len(DEV_ONLY_KEYS)} listed")
+            if args.check:
+                for k in sorted(k for k in synced["strings"] if k not in committed["strings"] and k not in DEV_ONLY_KEYS):
+                    proof = debug_only_proof(k, files, args.source_root)
+                    if proof:
+                        del synced["strings"][k]
+                        where = ", ".join(f"{rel}:{line}" for rel, line in proof)
+                        print(f"WARNING: new text inside #if DEBUG, judged as Dev-only: {k!r} ({where}). Add it to "
+                              "DEV_ONLY_KEYS in scripts/lib/l10n-catalog-sync.sh before any Dev repair; CI's Release "
+                              "check stays the authority.")
             unseen = sorted(DEV_ONLY_KEYS - extracted_keys)
             if unseen:
                 print(f"WARNING: {len(unseen)} DEV_ONLY_KEYS member(s) not extracted by this Dev build "

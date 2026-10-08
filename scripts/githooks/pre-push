@@ -7,7 +7,9 @@
 # the pushing checkout can never change the verdict, and runs that commit's own
 # scripts/ci/fast-checks.sh against it: the same list cloud CI runs in build-check. It then
 # runs the commit's own Recipe trailer check (check-test-recipe.py) against the prospective
-# merge of that commit into a freshly fetched origin/main: the tree that would land.
+# merge of that commit into a freshly fetched origin/main: the tree that would land. When the
+# commit changes app inputs or catalogs, it then checks the String Catalogs from the PUSHING
+# checkout's own last Dev build, but only if that build's receipt says it is of the pushed code.
 #
 # Verdicts:
 #   a check FAILS ............ the push is blocked; the check's own output says why
@@ -43,8 +45,8 @@ HOOK_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
   exit 1
 }
 
-ORIGIN=""          # the checkout the push runs from; its Dev build data is read in PR 3
-ORIGIN_DEV_DATA="" # that checkout's Dev build data
+ORIGIN=""          # the checkout the push runs from
+ORIGIN_DEV_DATA="" # that checkout's Dev build data: the only Dev extraction the catalog check reads
 REPO=""            # the repository's main registered worktree: history and GitHub identity
 WORK=""            # this run's own temp directory; every snapshot lives inside it
 SNAPSHOTS=()       # owned detached worktrees, registered BEFORE creation so a partial one is covered
@@ -54,6 +56,7 @@ CLEANUP_ERROR=""   # what cleanup could not do; warned after a verdict, never si
 FETCH_SECONDS=15   # the plan's cap on waiting for the network (#3524 §3.4)
 RECIPE_SECONDS=15  # the recipe check reads GitHub, so the same network cap applies
 STOP_GRACE=2       # seconds between TERM and KILL when a deadline stops a command
+CATALOG_SECONDS=120 # the catalog check: local only (digest, snapshot copy, two xcstringstool syncs)
 MAIN_STATE=""      # "" until fetched; then "ok", or why origin/main could not be fetched
 MAIN_SHA=""        # origin/main as fetched once for this run; every pushed commit merges with it
 
@@ -156,8 +159,7 @@ on_signal() {
 
 # The checks this hook runs, in order. Each takes `--repo <main worktree> --tree <snapshot>
 # --sha <commit>` and returns 0 PASS, 1 FAIL, 3 COULD NOT RUN; anything else is a hook fault.
-# PR 3 adds the String Catalog check, which reads ORIGIN_DEV_DATA; it does not exist yet.
-CHECKS="check_fast_checks check_recipe"
+CHECKS="check_fast_checks check_recipe check_catalog"
 
 # Parse the dispatch contract; every check calls this first.
 parse_check_args() {
@@ -330,6 +332,79 @@ check_recipe() {
   esac
 }
 
+# The String Catalog check (#3524 §3.3), only when base..sha changes an app input or catalog
+# (the receipt helper's own input membership). The pushed commit's catalog script judges the
+# pushed commit's catalogs against the extraction in ORIGIN_DEV_DATA, and only when that build's
+# receipt matches the pushed commit's input digest. Never another checkout's build, never a
+# build here: anything it cannot prove is COULD NOT RUN, and CI's Release check stays the authority.
+check_catalog() {
+  local helper sync base rc digest tag
+  parse_check_args "$@" || return 4
+  tag="${CHECK_SHA:0:12}"
+  helper="$CHECK_TREE/scripts/lib/l10n-build-receipt.py"
+  sync="$CHECK_TREE/scripts/lib/l10n-catalog-sync.sh"
+  if [ ! -f "$helper" ] || [ ! -f "$sync" ] || ! grep -q -- '"changed-inputs"' "$helper" \
+    || ! grep -q -- '"--expect-inputs"' "$sync"; then
+    echo "==> catalog: COULD NOT RUN ($tag has no Dev catalog check; CI's Release catalog check will check)" >&2
+    return 3
+  fi
+  if ! command -v python3 > /dev/null 2>&1; then
+    echo "==> catalog: COULD NOT RUN (no python3 on PATH; CI's Release catalog check will check)" >&2
+    return 3
+  fi
+  fetch_main
+  if [ "$MAIN_STATE" != "ok" ]; then
+    echo "==> catalog: COULD NOT RUN ($MAIN_STATE, so the changed paths are unknown); CI's Release catalog check will check" >&2
+    return 3
+  fi
+  if base="$(git -C "$CHECK_REPO" merge-base "$MAIN_SHA" "$CHECK_SHA")"; then rc=0; else rc=$?; fi
+  case "$rc" in
+    0) ;;
+    1) echo "==> catalog: COULD NOT RUN ($tag shares no history with origin/main; CI will check)" >&2; return 3 ;;
+    *) echo "==> catalog: git merge-base exited $rc" >&2; return 4 ;;
+  esac
+  if run_bounded "$CATALOG_SECONDS" python3 "$helper" changed-inputs --repo "$CHECK_REPO" --base "$base" \
+    --head "$CHECK_SHA" > "$WORK/catalog-changed.$tag" 2>&1; then rc=0; else rc=$?; fi
+  case "$rc" in
+    0) ;;
+    10) echo "==> catalog: skipped (no app input or catalog changed in ${base:0:12}..$tag)" >&2; return 0 ;;
+    2 | 124)
+      echo "==> catalog: COULD NOT RUN (cannot tell which paths changed: $(head -c 300 "$WORK/catalog-changed.$tag" | tr '\n' ' ')); CI will check" >&2
+      return 3
+      ;;
+    *) echo "==> catalog: changed-inputs exited $rc, which is not an answer" >&2; return 4 ;;
+  esac
+  if [ ! -d "$ORIGIN_DEV_DATA" ]; then
+    echo "==> catalog: COULD NOT RUN (no Dev build in $ORIGIN; scripts/build-dev-app.sh makes one); CI's Release catalog check will check" >&2
+    return 3
+  fi
+  if run_bounded "$CATALOG_SECONDS" python3 "$helper" input-digest --repo "$CHECK_REPO" --commit "$CHECK_SHA" \
+    --configuration Dev > "$WORK/catalog-digest.$tag" 2> "$WORK/catalog-digest-err.$tag"; then rc=0; else rc=$?; fi
+  case "$rc" in
+    0) ;;
+    2 | 124)
+      echo "==> catalog: COULD NOT RUN (no input digest for $tag: $(head -c 300 "$WORK/catalog-digest-err.$tag" | tr '\n' ' ')); CI will check" >&2
+      return 3
+      ;;
+    *) echo "==> catalog: input-digest exited $rc, which is not an answer" >&2; return 4 ;;
+  esac
+  digest="$(python3 -c 'import json, sys; print(json.load(open(sys.argv[1]))["input_digest"])' \
+    "$WORK/catalog-digest.$tag" 2> /dev/null)" || digest=""
+  case "$digest" in
+    *[!0-9a-f]* | "") echo "==> catalog: input-digest printed no digest: $(head -c 200 "$WORK/catalog-digest.$tag")" >&2; return 4 ;;
+  esac
+  [ ${#digest} -eq 64 ] || { echo "==> catalog: input-digest printed no digest" >&2; return 4; }
+  echo "==> catalog: $tag changes app inputs; checking against the Dev build in $ORIGIN_DEV_DATA" >&2
+  if run_bounded "$CATALOG_SECONDS" bash "$sync" --check --configuration Dev --derived-data "$ORIGIN_DEV_DATA" \
+    --expect-inputs "$digest" >&2; then rc=0; else rc=$?; fi
+  case "$rc" in
+    0 | 1) return "$rc" ;;
+    2) echo "==> catalog: COULD NOT RUN (see the reason above); CI's Release catalog check will check" >&2; return 3 ;;
+    124) echo "==> catalog: COULD NOT RUN (took longer than $CATALOG_SECONDS s); CI will check" >&2; return 3 ;;
+    *) echo "==> catalog: l10n-catalog-sync.sh exited $rc, which is not a verdict" >&2; return 4 ;;
+  esac
+}
+
 # Make a detached worktree of <sha> inside WORK; its path lands in SNAP_DIR.
 snapshot() {
   local sha="$1" dir
@@ -350,7 +425,6 @@ main() {
   command -v pgrep > /dev/null 2>&1 || hook_fault "missing tool: pgrep"
   ORIGIN="$(git rev-parse --show-toplevel)" || hook_fault "not inside a git checkout"
   ORIGIN_DEV_DATA="$ORIGIN/.derivedData/Dev"
-  : "$ORIGIN_DEV_DATA"
   # The main registered worktree: the first `worktree` line of the porcelain list.
   REPO="$(git worktree list --porcelain | sed -n '1s/^worktree //p')"
   [ -n "$REPO" ] && [ -d "$REPO" ] || hook_fault "cannot resolve the repository's main worktree"
@@ -428,6 +502,7 @@ self_test() {
   tmp="$(cd "$(mktemp -d)" && pwd -P)"
   repo="$tmp/repo"
   remote="$tmp/remote.git"
+  export CATALOG_TRACE="$tmp/catalog.trace"
 
   check() { # check <label> <actual> <expected>
     cases=$((cases + 1))
@@ -463,6 +538,23 @@ fi
 STUB
   cp "$(dirname "$hook")/../ci/check-test-recipe.py" "$repo/scripts/ci/check-test-recipe.py"
   cp "$(dirname "$hook")/../validate-mutation-recipe.py" "$(dirname "$hook")/../mutation-battery.py" "$repo/scripts/"
+  # The catalog check (#3524 PR 3): the REAL receipt helper (gating and the pushed commit's input
+  # digest) and a stand-in catalog script that records how the hook called it and answers with
+  # CATALOG_STUB_RC. The real catalog semantics are l10n-catalog-sync-test.sh's job.
+  mkdir -p "$repo/scripts/lib"
+  cp "$(dirname "$hook")/../lib/l10n-build-receipt.py" "$repo/scripts/lib/"
+  cat > "$repo/scripts/lib/l10n-catalog-sync.sh" << 'CATSTUB'
+#!/usr/bin/env bash
+# stand-in; carries the "--expect-inputs" capability marker the hook looks for
+echo "catalog-stub dir=$(cd "$(dirname "$0")/../.." && pwd -P) args=$*" >> "$CATALOG_TRACE"
+if [ -n "${CATALOG_STUB_SLEEP:-}" ]; then
+  trap '' TERM
+  echo "$$" > "$CATALOG_TRACE.pid"
+  sleep "$CATALOG_STUB_SLEEP" &
+  wait
+fi
+exit "${CATALOG_STUB_RC:-0}"
+CATSTUB
   echo base > "$repo/README"
   git -C "$repo" add -A
   git -C "$repo" commit --quiet -m base
@@ -521,13 +613,13 @@ STUB
     | GIT_INDEX_FILE="$tmp/not-an-index" "$BASH" "$hook" origin "$remote" 2>&1)"; rc=$?
   check "inherited GIT_INDEX_FILE is cleared before checks run" "$rc|$(printf '%s' "$out" | grep -c 'GIT_INDEX_FILE=unset')" "0|1"
 
-  # 9. a commit with no fast-checks.sh and no recipe checker is COULD NOT RUN twice: warnings,
-  #    not a block
+  # 9. a commit with no fast-checks.sh, no recipe checker and no catalog check is COULD NOT RUN
+  #    three times: warnings, not a block
   git -C "$repo" checkout --quiet --orphan bare-branch
   git -C "$repo" rm --quiet -r --cached . > /dev/null
   echo x > "$repo/only-file"; git -C "$repo" add only-file; git -C "$repo" commit --quiet -m orphan
   push origin bare-branch; rc=$?
-  check "missing evidence warns and allows" "$rc|$(grep -c 'COULD NOT RUN' "$tmp/push.out")|$(grep -c 'OK with 2 warning' "$tmp/push.out")" "0|2|1"
+  check "missing evidence warns and allows" "$rc|$(grep -c 'COULD NOT RUN' "$tmp/push.out")|$(grep -c 'OK with 3 warning' "$tmp/push.out")" "0|3|1"
   git -C "$repo" checkout --quiet -f main; git -C "$repo" clean --quiet -fd
 
   # 10. a fault inside the hook blocks, through a private copy that fails mid-run
@@ -805,7 +897,7 @@ PY
     elapsed=$(($(date +%s) - started))
     sleepy="$(cat "$tmp/sleepy.pid" 2> /dev/null)"; sleepy_child="$(cat "$tmp/sleepy.child" 2> /dev/null)"
     check "R12 a fetch past its deadline is COULD NOT RUN and allows, promptly, though it ignores TERM" \
-      "$rc|$(grep -c 'took longer than 1 s' "$tmp/push.out")|$([ "$elapsed" -lt 10 ] && echo prompt || echo "slow ${elapsed}s")" \
+      "$rc|$(grep -c 'recipe: COULD NOT RUN (git fetch origin main took longer than 1 s' "$tmp/push.out")|$([ "$elapsed" -lt 10 ] && echo prompt || echo "slow ${elapsed}s")" \
       "0|1|prompt"
     check "R12b the TERM-ignoring transport and its child are stopped; an unrelated process is not" \
       "$([ -n "$sleepy" ] && [ -n "$sleepy_child" ] && echo listed || echo missing)|$(kill -0 "$sleepy" 2> /dev/null && echo running || echo stopped)|$(kill -0 "$sleepy_child" 2> /dev/null && echo running || echo stopped)|$(kill -0 "$bystander" 2> /dev/null && echo running || echo stopped)" \
@@ -918,6 +1010,140 @@ PY
   git -C "$repo" config --unset gpg.program
   git -C "$repo" checkout --quiet main
 
+  # C1-C14. The String Catalog check (#3524 PR 3) through real pushes, with the stand-in catalog
+  # script committed in the base: gating by the real receipt helper, the arguments the hook
+  # passes, and the status mapping. Needs Xcode for the input digest (`xcodebuild -version`).
+  local cat_a cat_b w2 cat_pid
+  digest_of() { python3 "$repo/scripts/lib/l10n-build-receipt.py" input-digest --repo "$repo" --commit "$1" \
+    --configuration Dev | python3 -c 'import json, sys; print(json.load(sys.stdin)["input_digest"])'; }
+  stub_calls() { grep -c 'catalog-stub' "$CATALOG_TRACE" 2> /dev/null || true; }
+  git -C "$repo" checkout --quiet main
+  mkdir -p "$repo/Sources/EnviousWispr/Resources" "$repo/Sources/EnviousWisprAppKit/Views/Settings" "$repo/Sources/EnviousWisprCore"
+  echo "let project = 1" > "$repo/Project.swift"
+  echo "let package = 1" > "$repo/Package.swift"
+  echo "<plist/>" > "$repo/Sources/EnviousWispr/Resources/Info.plist"
+  echo "let whatsNew = 1" > "$repo/Sources/EnviousWisprAppKit/Views/Settings/WhatsNewContent.swift"
+  echo "let a = 1" > "$repo/Sources/EnviousWisprCore/A.swift"
+  printf '.derivedData/\n' > "$repo/.gitignore"
+  git -C "$repo" add -A; git -C "$repo" commit --quiet -m "app inputs"
+  rpush origin main; rc=$?
+  check "C0 app inputs changed with no Dev build in this checkout: COULD NOT RUN, allowed" \
+    "$rc|$(grep -c "catalog: COULD NOT RUN (no Dev build in $repo" "$tmp/push.out")" "0|1"
+  mkdir -p "$repo/.derivedData/Dev"
+
+  : > "$CATALOG_TRACE"
+  git -C "$repo" checkout --quiet -b cat-docs main
+  echo "docs" > "$repo/NOTES.md"; git -C "$repo" add -A; git -C "$repo" commit --quiet -m "docs only"
+  rpush origin cat-docs; rc=$?
+  check "C1 no app input changed: catalog skipped, the catalog script never runs" \
+    "$rc|$(grep -c 'catalog: skipped' "$tmp/push.out")|$(stub_calls)" "0|1|0"
+
+  git -C "$repo" checkout --quiet -b cat-add main
+  echo "let b = 1" > "$repo/Sources/EnviousWisprCore/B.swift"; git -C "$repo" add -A; git -C "$repo" commit --quiet -m "add source"
+  cat_a="$(git -C "$repo" rev-parse HEAD)"
+  : > "$CATALOG_TRACE"
+  rpush origin cat-add; rc=$?
+  check "C2 an added source runs the pushed commit's catalog script on THIS checkout's Dev build with the pushed commit's digest" \
+    "$rc|$(stub_calls)|$(grep -c -- "--derived-data $repo/.derivedData/Dev --expect-inputs $(digest_of "$cat_a")" "$CATALOG_TRACE")|$(grep -c "dir=$tmp/repo " "$CATALOG_TRACE")" \
+    "0|1|1|0"
+  for change in delete rename; do
+    git -C "$repo" checkout --quiet -b "cat-$change" main
+    if [ "$change" = delete ]; then git -C "$repo" rm --quiet Sources/EnviousWisprCore/A.swift
+    else git -C "$repo" mv Sources/EnviousWisprCore/A.swift NOTES-A.swift; fi
+    git -C "$repo" commit --quiet -m "$change"
+    : > "$CATALOG_TRACE"
+    rpush origin "cat-$change"; rc=$?
+    check "C3 a source $change is an input change: checked" "$rc|$(stub_calls)" "0|1"
+  done
+
+  git -C "$repo" checkout --quiet cat-add
+  for code in 1 2 7; do
+    : > "$CATALOG_TRACE"
+    CATALOG_STUB_RC=$code rpush origin "cat-add:cat-rc$code"; rc=$?
+    case "$code" in
+      1) check "C4 a catalog defect (exit 1) blocks the push" "$rc|$(grep -c 'BLOCKED (1 failing' "$tmp/push.out")" "1|1" ;;
+      2) check "C5 could not run (exit 2): warns and allows" "$rc|$(grep -c 'catalog: COULD NOT RUN (see the reason above)' "$tmp/push.out")" "0|1" ;;
+      7) check "C6 an unexpected catalog exit is a hook fault" "$rc|$(grep -c 'hook fault: check_catalog returned 4' "$tmp/push.out")" "1|1" ;;
+    esac
+  done
+
+  echo "let c = 1" > "$repo/Sources/EnviousWisprCore/C.swift"; git -C "$repo" add -A; git -C "$repo" commit --quiet -m "another source"
+  cat_b="$(git -C "$repo" rev-parse HEAD)"
+  : > "$CATALOG_TRACE"
+  rpush origin "$cat_a:refs/heads/cat-older"; rc=$?
+  check "C7 a non-HEAD push is judged with ITS commit's digest, not HEAD's" \
+    "$rc|$(grep -c -- "--expect-inputs $(digest_of "$cat_a")" "$CATALOG_TRACE")|$(grep -c -- "--expect-inputs $(digest_of "$cat_b")" "$CATALOG_TRACE")" "0|1|0"
+  echo "let a = dirty" > "$repo/Sources/EnviousWisprCore/A.swift"
+  : > "$CATALOG_TRACE"
+  rpush origin "cat-add:cat-dirty"; rc=$?
+  check "C8 dirty files in the pushing checkout never change the digest" \
+    "$rc|$(grep -c -- "--expect-inputs $(digest_of "$cat_b")" "$CATALOG_TRACE")" "0|1"
+  git -C "$repo" checkout --quiet -- Sources/EnviousWisprCore/A.swift
+  : > "$CATALOG_TRACE"
+  rpush origin "$cat_a:refs/heads/cat-two-a" "$cat_b:refs/heads/cat-two-b"; rc=$?
+  check "C9 two refs in one push: each commit judged with its own digest" \
+    "$rc|$(stub_calls)|$(grep -c -- "--expect-inputs $(digest_of "$cat_a")" "$CATALOG_TRACE")|$(grep -c -- "--expect-inputs $(digest_of "$cat_b")" "$CATALOG_TRACE")" \
+    "0|2|1|1"
+
+  # C10. Another checkout of the same repository HAS a Dev build; the pushing one does not.
+  w2="$tmp/worktree-two"
+  git -C "$repo" worktree add --quiet -b cat-w2 "$w2" cat-add
+  echo "let d = 1" > "$w2/Sources/EnviousWisprCore/D.swift"; git -C "$w2" add -A; git -C "$w2" commit --quiet -m "from w2"
+  : > "$CATALOG_TRACE"
+  PATH="$fakebin:$PATH" git -C "$w2" push origin cat-w2 > "$tmp/push.out" 2>&1; rc=$?
+  check "C10 no fallback to another checkout's Dev build" \
+    "$rc|$(grep -c "catalog: COULD NOT RUN (no Dev build in $w2" "$tmp/push.out")|$(stub_calls)" "0|1|0"
+  # With a Dev build in BOTH checkouts, the pushing checkout's is the one passed.
+  mkdir -p "$w2/.derivedData/Dev"
+  : > "$CATALOG_TRACE"
+  PATH="$fakebin:$PATH" git -C "$w2" push origin cat-w2:cat-w2-again > "$tmp/push.out" 2>&1; rc=$?
+  check "C10b both checkouts have a Dev build: the pushing checkout's is the one judged" \
+    "$rc|$(grep -c -- "--derived-data $w2/.derivedData/Dev " "$CATALOG_TRACE")|$(grep -c -- "--derived-data $repo/.derivedData/Dev " "$CATALOG_TRACE")" \
+    "0|1|0"
+  git -C "$repo" worktree remove --force "$w2"
+
+  # C11. Past its deadline (the stand-in ignores TERM): COULD NOT RUN, stopped, allowed.
+  if ! inject 'CATALOG_SECONDS=120 # the catalog check: local only (digest, snapshot copy, two xcstringstool syncs)' 'CATALOG_SECONDS=3'; then
+    check "the short-catalog-deadline copy was made" "no" "yes"
+  else
+    rm -f "$CATALOG_TRACE.pid"
+    CATALOG_STUB_SLEEP=30 rpush origin "cat-add:cat-slow"; rc=$?
+    cat_pid="$(cat "$CATALOG_TRACE.pid" 2> /dev/null)"
+    check "C11 a catalog check past its deadline: COULD NOT RUN, stopped, allowed" \
+      "$rc|$(grep -c 'catalog: COULD NOT RUN (took longer than 3 s)' "$tmp/push.out")|$([ -n "$cat_pid" ] && kill -0 "$cat_pid" 2> /dev/null && echo running || echo stopped)" \
+      "0|1|stopped"
+    [ -n "$cat_pid" ] && kill -KILL "$cat_pid" 2> /dev/null
+  fi
+  cp "$hook" "$tmp/hooks/pre-push"
+
+  # C12. Interrupted while the catalog check runs: blocked, stopped, no snapshot left.
+  rm -f "$CATALOG_TRACE.pid"
+  printf 'refs/heads/cat-add %s refs/heads/cat-int %s\n' "$cat_b" "$ZERO_SHA" > "$tmp/stdin"
+  (cd "$repo" && CATALOG_STUB_SLEEP=30 exec "$BASH" "$hook" origin "$remote" < "$tmp/stdin" > "$tmp/int.out" 2>&1) &
+  pid=$!
+  waited=0
+  while [ ! -s "$CATALOG_TRACE.pid" ] && [ "$waited" -lt 300 ]; do sleep 0.1; waited=$((waited + 1)); done
+  cat_pid="$(cat "$CATALOG_TRACE.pid" 2> /dev/null)"
+  check "C12 precondition: the catalog check started" "$([ -n "$cat_pid" ] && echo yes || echo no)" "yes"
+  kill -TERM "$pid" 2> /dev/null
+  if wait "$pid"; then rc=0; else rc=$?; fi
+  sleep 0.2
+  check "C12 interrupting the catalog check blocks, stops it and leaves no snapshot" \
+    "$rc|$([ -n "$cat_pid" ] && kill -0 "$cat_pid" 2> /dev/null && echo running || echo stopped)|$(git -C "$repo" worktree list --porcelain | grep -c 'ew-pre-push')" \
+    "130|stopped|0"
+  [ -n "$cat_pid" ] && kill -KILL "$cat_pid" 2> /dev/null
+
+  # C13. A pushed commit whose own helper cannot answer which paths changed is COULD NOT RUN.
+  git -C "$repo" checkout --quiet -b cat-broken-helper cat-add
+  printf '%s\n' '#!/usr/bin/env python3' '# "changed-inputs"' 'import sys; sys.exit(2)' > "$repo/scripts/lib/l10n-build-receipt.py"
+  git -C "$repo" commit --quiet -am "helper that cannot say"
+  : > "$CATALOG_TRACE"
+  rpush origin cat-broken-helper; rc=$?
+  check "C13 changed paths unknown: COULD NOT RUN, never 'nothing changed'" \
+    "$rc|$(grep -c 'catalog: COULD NOT RUN (cannot tell which paths changed' "$tmp/push.out")|$(grep -c 'catalog: skipped' "$tmp/push.out")|$(stub_calls)" \
+    "0|1|0|0"
+  git -C "$repo" checkout --quiet main
+
   # 12. every run removed its own snapshots and temp directories
   check "no snapshot worktree is left registered" "$(git -C "$repo" worktree list | grep -c 'ew-pre-push' || true)" "0"
   check "no hook temp directory is left behind" "$(find "${TMPDIR:-/tmp}" -maxdepth 1 -name 'ew-pre-push.*' | wc -l | tr -d ' ')" "$leftovers_before"
@@ -931,6 +1157,13 @@ if [ "${1:-}" = "--self-test" ]; then
   self_test
   exit $?
 fi
-trap 'hook_fault "unexpected error at line $LINENO"' ERR
+# bash 3.2 (macOS /bin/bash) also fires this trap INSIDE a `$( ... )` whose failure the code
+# handles (`if x="$(cmd)"; then`), at a deeper BASH_SUBSHELL, where hook_fault would delete WORK
+# while the hook runs on (#3524 PR 3: measured with a failing `git merge-tree` and `pgrep -P`).
+# Deeper than the hook's own level, the trap only ends that sub-command with its status; a
+# failure at the hook's level is still a hook fault.
+HOOK_DEPTH="${BASH_SUBSHELL:-0}"
+# shellcheck disable=SC2154 # ew_rc is assigned inside the trap text itself
+trap 'ew_rc=$?; if [ "${BASH_SUBSHELL:-0}" -gt "$HOOK_DEPTH" ]; then exit "$ew_rc"; fi; hook_fault "unexpected error at line $LINENO"' ERR
 trap on_signal INT TERM
 main "$@"

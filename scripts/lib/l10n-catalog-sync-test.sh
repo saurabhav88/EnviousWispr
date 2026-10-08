@@ -840,7 +840,7 @@ def write_receipt(dd, tree="1" * 40, xcode=None):
 
 
 def dev_case(name, want_code, want_texts, *, receipt="valid", expect=None, mode="--check", edit_committed=None,
-             after_receipt=None, **fx):
+             after_receipt=None, before_receipt=None, extra_args=(), absent_texts=(), **fx):
     global cases
     with tempfile.TemporaryDirectory() as tmp:
         root = pathlib.Path(tmp)
@@ -854,6 +854,8 @@ def dev_case(name, want_code, want_texts, *, receipt="valid", expect=None, mode=
             edit_committed(data["strings"])
             catalog.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n")
         dd = fixture(root / "dev", configuration="Dev", **fx)
+        if before_receipt:
+            before_receipt(dd, root)
         digest = None
         if receipt == "valid":
             digest = write_receipt(dd)
@@ -864,12 +866,13 @@ def dev_case(name, want_code, want_texts, *, receipt="valid", expect=None, mode=
             (dd / "ew-l10n-receipt.json").write_text('{"version": true}')
         if after_receipt:
             after_receipt(dd)
-        args = [mode, "--derived-data", str(dd), "--configuration", "Dev", "--catalog", str(catalog)]
+        args = [mode, "--derived-data", str(dd), "--configuration", "Dev", "--catalog", str(catalog),
+                *[a.replace("@ROOT@", str(root)) for a in extra_args]]
         if expect != "omit":
             args += ["--expect-inputs", expect or digest or "0" * 64]
         code, out = run(*args)
         cases += 1
-        ok = code == want_code and all(t in out for t in want_texts)
+        ok = code == want_code and all(t in out for t in want_texts) and not any(t in out for t in absent_texts)
         print(f"{'PASS' if ok else 'FAIL'}  {name}: exit {code}")
         if not ok:
             failures.append(name)
@@ -1003,6 +1006,77 @@ with tempfile.TemporaryDirectory() as tmp:
     if "DRIFT" in out:
         failures.append("leak case drifted")
         print("FAIL  the leak case also drifted, so it does not isolate the leak")
+
+
+# --- A NEW text proven inside `#if DEBUG` warns instead of blocking (#3524 PR 3) ---
+PROBE = "Sources/EnviousWisprAppKit/Probe.swift"
+NEW_DEBUG_KEY = "a new diagnostics label"
+
+
+def probe(source, lines, build_root="/Users/someone/other-checkout", rel=PROBE, extra=None, record_rel=None, links=None):
+    """A source root (under the case's temp dir) holding `source` at `rel`, and an extraction
+    record for NEW_DEBUG_KEY at each of `lines`, as the compiler writes it (absolute build path)."""
+    def prepare(dd, root):
+        src = root / "src"
+        (src / rel).parent.mkdir(parents=True, exist_ok=True)
+        (src / rel).write_text(source)
+        for path, text in (extra or {}).items():
+            (src / path).parent.mkdir(parents=True, exist_ok=True)
+            (src / path).write_text(text)
+        for path, target_path in (links or {}).items():
+            (src / path).symlink_to(target_path)
+        target = next(dd.rglob("EnviousWisprAppKit.build/Objects-normal/arm64"))
+        entries = [{"key": NEW_DEBUG_KEY, "location": {"startingLine": n, "startingColumn": 5}} for n in lines]
+        (target / "Probe.stringsdata").write_text(json.dumps(
+            {"source": f"{build_root}/{record_rel or rel}", "tables": {"Localizable": entries}, "version": 1}))
+    return prepare
+
+
+def dbg(name, want_code, source, lines, **kw):
+    texts = ["judged as Dev-only", "catalog in sync"] if want_code == 0 else [f"added: {NEW_DEBUG_KEY!r}"]
+    absent = [] if want_code == 0 else ["judged as Dev-only"]
+    dev_case(name, want_code, texts, absent_texts=absent, extra_args=("--source-root", "@ROOT@/src"),
+             before_receipt=probe(source, lines, **{k: v for k, v in kw.items() if k in ("build_root", "rel", "extra", "record_rel", "links")}))
+
+
+L = f'Text("{NEW_DEBUG_KEY}")'
+dbg("debug-only: inside #if DEBUG, from another checkout's build path: warns, passes", 0,
+    f"struct V {{\n#if DEBUG\n  var b: some View {{ {L} }}\n#endif\n}}\n", [3])
+dbg("debug-only: outside any #if: blocks", 1, f"struct V {{\n  var b: some View {{ {L} }}\n}}\n", [2])
+dbg("debug-only: in the #else of #if DEBUG: blocks", 1,
+    f"#if DEBUG\nlet x = 1\n#else\nlet y = {L}\n#endif\n", [4])
+dbg("debug-only: #if !DEBUG: blocks", 1, f"#if !DEBUG\nlet y = {L}\n#endif\n", [2])
+dbg("debug-only: #if DEBUG || SHIPPING: blocks", 1, f"#if DEBUG || SHIPPING\nlet y = {L}\n#endif\n", [2])
+dbg("debug-only: nested inside #if os(macOS): warns, passes", 0,
+    f"#if os(macOS)\n#if DEBUG\nlet y = {L}\n#endif\n#endif\n", [3])
+dbg("debug-only: #elseif DEBUG: warns, passes", 0, f"#if FOO\nlet a = 1\n#elseif DEBUG\nlet y = {L}\n#endif\n", [4])
+dbg("debug-only: a fake #if DEBUG inside a block comment is ignored: blocks", 1,
+    f"/*\n#if DEBUG\n*/\nlet y = {L}\n/*\n#endif\n*/\n", [4])
+dbg("debug-only: a fake #if DEBUG inside a multi-line string is ignored: blocks", 1,
+    f'let s = """\n#if DEBUG\n"""\nlet y = {L}\nlet t = """\n#endif\n"""\n', [4])
+dbg("debug-only: one occurrence in DEBUG and one shipping: blocks", 1,
+    f"#if DEBUG\nlet a = {L}\n#endif\nlet b = {L}\n", [2, 4])
+dbg("debug-only: a build path naming no Sources/ file here: blocks", 1,
+    f"#if DEBUG\nlet y = {L}\n#endif\n", [2], record_rel="Sources/EnviousWisprAppKit/NotHere.swift")
+dbg("debug-only: an ambiguous build path: blocks", 1,
+    f"#if DEBUG\nlet y = {L}\n#endif\n", [2], build_root="/x/Sources/nested",
+    extra={"Sources/nested/Sources/EnviousWisprAppKit/Probe.swift": f"#if DEBUG\nlet y = {L}\n#endif\n"})
+dbg("debug-only: a block comment on a directive line: blocks (unsupported)", 1,
+    f"#if DEBUG\nlet debug = 1\n#endif /*\n#if DEBUG\n*/\nlet shipping = {L}\n#if os(macOS) /*\n#endif\n*/\n#endif\n", [6])
+dbg("debug-only: #sourceLocation in the file: blocks (unsupported)", 1,
+    f'#if DEBUG\n#sourceLocation(file: "x.swift", line: 1)\nlet y = {L}\n#sourceLocation()\n#endif\n', [3])
+dbg("debug-only: a build path that climbs out of Sources/ with ..: blocks", 1,
+    f"let y = {L}\n", [2], build_root="/old", record_rel="Sources/../Elsewhere/Probe.swift",
+    extra={"Elsewhere/Probe.swift": f"#if DEBUG\nlet y = {L}\n#endif\n"})
+dbg("debug-only: a build path through a folder link that leaves Sources/: blocks", 1,
+    f"let y = {L}\n", [2], record_rel="Sources/Link/Probe.swift", links={"Sources/Link": "../Elsewhere"},
+    extra={"Elsewhere/Probe.swift": f"#if DEBUG\nlet y = {L}\n#endif\n"})
+dbg("debug-only: malformed nesting: blocks", 1, f"#if DEBUG\nlet y = {L}\n#endif\n#endif\n", [2])
+dbg("debug-only: a raw string in the file: blocks (unsupported)", 1,
+    f'#if DEBUG\nlet r = #"raw"#\nlet y = {L}\n#endif\n', [3])
+dbg("debug-only: a line past the end of the file: blocks", 1, f"#if DEBUG\nlet y = {L}\n#endif\n", [40])
+dev_case("debug-only: a LISTED key is unaffected (still ignored, no warning)", 0, ["Dev-only keys ignored: 1 of 35"],
+         absent_texts=["judged as Dev-only"], extra_keys=[DEV_ONLY_SAMPLE])
 
 
 # --- Dev partial repair (#3524 PR 3): add and update from a certified Dev build, remove nothing ---
