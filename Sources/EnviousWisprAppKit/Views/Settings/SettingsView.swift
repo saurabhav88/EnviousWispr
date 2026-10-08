@@ -139,10 +139,9 @@ struct UnifiedWindowView: View {
   /// request from the menu or elsewhere. Leaving AI Polish while the chosen model is not set up
   /// asks first; while that question is open, the latest request replaces the pending one.
   private func navigate(_ intent: SettingsNavigationIntent) {
-    if var pending = pendingLeave {
+    if let pending = pendingLeave {
       // The latest request wins; the question on screen keeps its identity.
-      pending.intent = intent
-      pendingLeave = pending
+      pendingLeave = PolishSetupLeaveGuard.replacingPendingDestination(of: pending, with: intent)
       return
     }
     if let request = PolishSetupLeaveGuard.request(

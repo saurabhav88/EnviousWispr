@@ -309,8 +309,8 @@ struct SettingsSearchLeaveGuardTests {
       Self.ask(.sidebar(.history), state: state, world: world, monitor: monitor))
     let latest = SettingsNavigationIntent.search(
       try #require(SettingsSearchRequest(entryID: "selfLearningDictionary")))
-    // What `UnifiedWindowView.navigate` does while a question is open.
-    pending.intent = latest
+    // What `SettingsView.navigate` does while a question is open.
+    pending = PolishSetupLeaveGuard.replacingPendingDestination(of: pending, with: latest)
     #expect(Self.answer(.leaveAnyway, pending, world: world, monitor: monitor) == .navigate(latest))
   }
 
