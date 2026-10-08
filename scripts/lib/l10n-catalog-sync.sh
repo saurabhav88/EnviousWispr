@@ -11,6 +11,11 @@
 #   l10n-catalog-sync.sh --check  --derived-data <dir> --configuration Release
 #       syncs a scratch copy and fails (exit 1) if it differs from the committed
 #       catalog, printing the added, removed and changed keys. Exit 2: could not run.
+#   l10n-catalog-sync.sh --list-inputs --derived-data <dir> --configuration Release|Dev
+#       prints the `.stringsdata` files this script would read, relative to <dir>,
+#       NUL-separated, and changes nothing (#3524: scripts/lib/l10n-build-receipt.py
+#       fingerprints exactly this set, so the eligibility rules have one owner). Dev is
+#       accepted here only; --update and --check stay Release-only.
 #
 # Release is the only accepted configuration: the catalog holds the text that
 # SHIPS. A Debug build also extracts copy from `#if DEBUG` screens (13 keys when
@@ -564,8 +569,9 @@ def main(argv):
     mode = parser.add_mutually_exclusive_group(required=True)
     mode.add_argument("--update", action="store_true")
     mode.add_argument("--check", action="store_true")
+    mode.add_argument("--list-inputs", action="store_true")
     parser.add_argument("--derived-data", required=True, type=pathlib.Path)
-    parser.add_argument("--configuration", required=True, choices=["Release"])
+    parser.add_argument("--configuration", required=True, choices=["Release", "Dev"])
     parser.add_argument("--catalog", type=pathlib.Path, default=CATALOG)
     parser.add_argument("--whats-new-source", type=pathlib.Path, default=WHATS_NEW_SOURCE)
     parser.add_argument("--info-plist", type=pathlib.Path, default=INFO_PLIST)
@@ -573,6 +579,12 @@ def main(argv):
     parser.add_argument("--servicesmenu-catalog", type=pathlib.Path, default=SERVICESMENU_CATALOG)
     args = parser.parse_args(argv)
     try:
+        if args.list_inputs:
+            files = collect_inputs(args.derived_data, args.configuration)
+            sys.stdout.write("".join(f"{p.relative_to(args.derived_data)}\0" for p in files))
+            return 0
+        if args.configuration != "Release":
+            raise Refused(f"--update and --check accept only --configuration Release (got {args.configuration})")
         build = xcode_build()
         if build != PINNED_XCODE_BUILD:
             raise Refused(f"Xcode build {build} is not the pinned {PINNED_XCODE_BUILD}")

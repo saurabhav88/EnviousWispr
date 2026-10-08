@@ -205,6 +205,8 @@ scripts/lib/*
 # #3142: the single writer of the interface String Catalog, and its self-test.
 !scripts/lib/l10n-catalog-sync.sh
 !scripts/lib/l10n-catalog-sync-test.sh
+# #3524 PR 3: which code a Dev build's catalog extraction belongs to (input-digest receipt).
+!scripts/lib/l10n-build-receipt.py
 # #3013: the hardware battery for a physical Mac and its launchd job.
 !scripts/nightly-local-battery.sh
 !scripts/launchd/

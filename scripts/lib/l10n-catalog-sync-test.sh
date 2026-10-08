@@ -303,6 +303,31 @@ case("update restores the code's English", 0, "updated", mode="--update", edit_c
      else f"English left as {s['fixture.value.key']['localizations']['en']['stringUnit']['value']!r}")
 # Debug extracts #if DEBUG copy that never ships; only Release is an authority.
 case("Debug configuration refuses", 2, "invalid choice", configuration="Debug")
+# Dev is accepted by --list-inputs only (#3524); --check and --update stay Release-only.
+case("Dev configuration refuses --check", 2, "accept only --configuration Release", configuration="Dev")
+
+# --- --list-inputs (#3524): exactly the files --check reads, relative and NUL-separated ---
+with tempfile.TemporaryDirectory() as tmp:
+    root = pathlib.Path(tmp)
+    dd = fixture(root / "list")
+    p = subprocess.run([SYNC, "--list-inputs", "--derived-data", str(dd), "--configuration", "Release"],
+                       capture_output=True, text=True)
+    got = sorted(x for x in p.stdout.split("\0") if x)
+    want = sorted(f"Build/Intermediates.noindex/EnviousWispr.build/Release/{t}.build/Objects-normal/arm64/File.stringsdata"
+                  for t in TARGETS)
+    cases += 1
+    ok = p.returncode == 0 and got == want and p.stdout.endswith("\0")
+    print(f"{'PASS' if ok else 'FAIL'}  --list-inputs names every production File.stringsdata, no metadata or test file: "
+          f"exit {p.returncode}, {len(got)} listed, {len(want)} expected")
+    if not ok:
+        failures.append("--list-inputs set")
+        print(p.stdout.replace("\0", "\n"), p.stderr)
+    code = subprocess.run([SYNC, "--list-inputs", "--derived-data", str(fixture(root / "unknown", extra_target="SomethingNew")),
+                           "--configuration", "Release"], capture_output=True, text=True)
+    expect("--list-inputs refuses an unknown target like --check", code.returncode, code.stderr, 2, "do not know")
+    code = subprocess.run([SYNC, "--list-inputs", "--derived-data", str(dd), "--configuration", "Dev"],
+                          capture_output=True, text=True)
+    expect("--list-inputs for Dev reads the Dev folder, not Release", code.returncode, code.stderr, 2, "no build intermediates")
 
 # --- What's New seed (#3142 PR 2E) ---
 WN = "whatsNew."
