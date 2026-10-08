@@ -238,8 +238,10 @@ main() {
       echo "==> pre-push: skip $remote_ref (deletion)" >&2
       continue
     fi
-    case "$local_ref $remote_ref" in
-      refs/tags/* | *" refs/tags/"*)
+    # Skipped by DESTINATION: a tag pushed to a branch (refs/tags/x:refs/heads/y) puts
+    # code on that branch, so it is checked like any branch push.
+    case "$remote_ref" in
+      refs/tags/*)
         echo "==> pre-push: skip $remote_ref (tag)" >&2
         continue
         ;;
@@ -380,6 +382,8 @@ STUB
   git -C "$repo" tag v-bad "$sha_bad"
   push origin v-bad; rc=$?
   check "a tag is skipped and allowed" "$rc|$(grep -c '(tag)' "$tmp/push.out")" "0|1"
+  push origin refs/tags/v-bad:refs/heads/from-tag; rc=$?
+  check "a tag pushed to a branch is checked like a branch" "$rc|$(checked_shas)|$(grep -c '(tag)' "$tmp/push.out")" "1|$sha_bad |0"
 
   # 8. inherited git variables do not leak into the snapshot's checks
   out="$(cd "$repo" && printf 'refs/heads/main %s refs/heads/main %s\n' "$(git rev-parse main)" "$ZERO_SHA" \
