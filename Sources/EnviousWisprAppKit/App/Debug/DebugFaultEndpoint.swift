@@ -293,6 +293,17 @@
         // Order is load-bearing and documented on the seam: `resetForTesting`
         // CLEARS any override, so it must run first.
         SeamCasingOracleRuntime.resetForTesting()
+        // The reset cannot stop a preparation already running (launch prewarm, or
+        // another language), and keeps its claim (#3417); while it runs every
+        // snapshot answers `oracleWarming`. Answer `OK` only once it has left, so
+        // the promise below holds; refuse rather than acknowledge early. 3 s, under
+        // the 5 s socket timeout in `Tests/RuntimeUAT/faultInjection.py`, so a
+        // driver reads `ERR busy` rather than an empty reply. Commands are assumed
+        // to arrive one at a time from one driver: a `clear_oracle_delay` sent
+        // while this waits is undone when it resumes.
+        guard await SeamCasingOracleRuntime.waitUntilNoBuilderForTesting(timeout: .seconds(3)) else {
+          return "ERR busy"
+        }
         let slow = SeamCasingOracle.delayingDictionaryForFaultInjection(milliseconds: ms)
         // The override alone is NOT enough, and the first version of this command
         // shipped that bug: `resetForTesting` clears every prepared phase, so the

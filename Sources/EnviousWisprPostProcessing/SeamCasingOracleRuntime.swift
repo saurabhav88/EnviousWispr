@@ -668,13 +668,34 @@ package enum SeamCasingOracleRuntime {
     }
   }
 
-  /// Whether a builder is inside the shared checker right now. Test-only.
+  /// Stop a REAL launch prewarm from starting from now on, without touching any
+  /// other state. Test-only.
   ///
-  /// Exists for the exclusion helper's hand-over (#3417): a reset cannot stop a
-  /// builder that is already running, so the helper waits for this to read false
-  /// before the next holder starts, and no case begins with a stale builder inside.
-  package static func isPreparingForTesting() -> Bool {
-    state.withLock { $0.preparing }
+  /// The test exclusion helper calls it on entry: suites that build a dictation
+  /// driver outside the exclusion trigger `prewarm()`, which starts a real
+  /// preparation unless prewarm is already marked started (#3417).
+  package static func markPrewarmStartedForTesting() {
+    state.withLock { $0.prewarmStarted = true }
+  }
+
+  /// Wait until no builder is inside the shared checker. Returns false if one is
+  /// still inside when `timeout` elapses. Test and fault-injection only.
+  ///
+  /// A reset cannot stop a builder that is already running, and since #3417 it
+  /// keeps that builder's claim, so every reset caller that then promises a state
+  /// waits here first: the test exclusion helper before handing over, and
+  /// `DebugFaultEndpoint`'s `force_oracle_delay` before it answers `OK` (otherwise
+  /// the next dictation would answer `oracleWarming` instead of stalling). The
+  /// published flag IS the signal; the interval samples it and the deadline only
+  /// stops a defect hanging the caller.
+  package static func waitUntilNoBuilderForTesting(timeout: Duration) async -> Bool {
+    let deadline = ContinuousClock.now + timeout
+    while state.withLock({ $0.preparing }) {
+      guard ContinuousClock.now < deadline else { return false }
+      // settle: poll interval for the published-state signal, not a fixed wait
+      try? await Task.sleep(for: .milliseconds(2))
+    }
+    return true
   }
 
   /// Leases outstanding right now. Test-only.
