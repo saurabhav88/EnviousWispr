@@ -364,6 +364,17 @@ enum PolishSetupLeaveGuard {
       goBackProvider: goBack, keyNotSaved: keyIsMissing && keyNotSaved)
   }
 
+  /// Another request arriving while a question is open: the latest destination replaces the
+  /// pending one's, and the question keeps its episode, problem and offers. The window shell and
+  /// the tests both go through here, so neither can drift from the other.
+  static func replacingPendingDestination(
+    of pending: PolishSetupLeaveRequest, with intent: SettingsNavigationIntent
+  ) -> PolishSetupLeaveRequest {
+    var latest = pending
+    latest.intent = intent
+    return latest
+  }
+
   /// What pressing `action` on `request` does now. Every button is validated against the live
   /// state BEFORE any effect: an effect is returned only while the displayed episode is still
   /// the current one. A changed state never re-presents a question from here (a second alert
