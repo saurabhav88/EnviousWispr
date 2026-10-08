@@ -595,6 +595,26 @@ struct SettingsMapRenderingTests {
   {
     let (home, words) = try Self.dictionaryHome()
     if searching { try #require(words.add(CustomWord(canonical: "Envious")) == nil) }
+    let content: AnyView =
+      switch tab {
+      case .yourWords:
+        AnyView(CustomTermsSection(initialSearchQuery: searching ? "envious" : "") { EmptyView() })
+      case .vocabularyPacks: AnyView(VocabPacksSection())
+      case .learnFrom: AnyView(LearningSection())
+      case .quickAdd: AnyView(QuickAddTeachingSection())
+      }
+    return try await Self.registrations(
+      try dictionaryEnvironment(
+        AnyView(ScrollView { LazyVStack(alignment: .leading, spacing: 0) { content } }),
+        home: home, words: words, learnFromPresentation: learnFromPresentation))
+  }
+
+  /// Everything the Dictionary page's four tabs read from the environment, from isolated stores
+  /// (shared with the arrival tests that host the real page, #3545).
+  static func dictionaryEnvironment(
+    _ view: AnyView, home: Home, words: CustomWordsCoordinator,
+    learnFromPresentation: LearnFromEditsSettingsPresentation = .unwired
+  ) throws -> AnyView {
     let dir = home.directory
     let packs = VocabularyPackManager(
       overridesStore: VocabularyPackOverridesStore(fileURL: dir.appending(path: "overrides.json")),
@@ -618,20 +638,11 @@ struct SettingsMapRenderingTests {
           base: nil, promptTemplateID: nil,
           runtime: home.egOne, debugThreshold: nil)
       ])
-    let content: AnyView =
-      switch tab {
-      case .yourWords:
-        AnyView(CustomTermsSection(initialSearchQuery: searching ? "envious" : "") { EmptyView() })
-      case .vocabularyPacks: AnyView(VocabPacksSection())
-      case .learnFrom: AnyView(LearningSection())
-      case .quickAdd: AnyView(QuickAddTeachingSection())
-      }
-    return try await Self.registrations(
-      AnyView(
-        ScrollView { LazyVStack(alignment: .leading, spacing: 0) { content } }
-          .environment(home.settings).environment(words).environment(packs)
-          .environment(contacts).environment(checker)
-          .environment(LearnFromEditsAvailability(presentation: learnFromPresentation))))
+    return AnyView(
+      view
+        .environment(home.settings).environment(words).environment(packs)
+        .environment(contacts).environment(checker)
+        .environment(LearnFromEditsAvailability(presentation: learnFromPresentation)))
   }
 
   // MARK: - Snippets, Keybinds, App Settings, Transcribe a File

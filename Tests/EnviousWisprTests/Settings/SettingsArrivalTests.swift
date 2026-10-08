@@ -1,4 +1,5 @@
 import AppKit
+import EnviousWisprCore
 import Foundation
 import SwiftUI
 import Testing
@@ -252,6 +253,148 @@ struct SettingsArrivalTests {
     #expect(try await Self.arrival(at: "autoCopyToClipboard") == 7, "scrolled into view")
     #expect(
       try await Self.arrival(at: "selfLearningDictionary") == 7, "a row inside a registered card")
+    #expect(SettingsMap.takeRecordedFaults().isEmpty)
+  }
+
+  // MARK: - The real Dictionary page (#3545 T7)
+
+  /// What a hosted page reports back: the acknowledged token (also as an event the test awaits)
+  /// and what it published beside the arrival owner.
+  @MainActor final class RevealBox {
+    var acknowledged: Int?
+    var mounted: Set<SettingsMapID> = []
+    let acknowledgements: AsyncStream<Int>
+    let acknowledgementSink: AsyncStream<Int>.Continuation
+    init() { (acknowledgements, acknowledgementSink) = AsyncStream<Int>.makeStream() }
+  }
+
+  /// The real Dictionary page under one arrival owner, as the window's `page { }` hosts it.
+  struct DictionaryPage: View {
+    let box: RevealBox
+    /// Handed in as a new root value once the page is scrolled, as the window hands a page its
+    /// reveal.
+    let reveal: SettingsReveal?
+    @State var tab: DictionaryTab
+    let environment: (AnyView) -> AnyView
+
+    var body: some View {
+      environment(AnyView(YourWordsView(selection: $tab)))
+        .onPreferenceChange(SettingsRevealAnchorKey.self) { places in
+          MainActor.assumeIsolated { box.mounted = Set(places.keys) }
+        }
+        .modifier(SettingsArrivalModifier())
+        .environment(\.settingsReveal, reveal)
+        .environment(\.settingsRevealIsShowing) { _ in box.acknowledged == nil }
+        .environment(\.settingsRevealAcknowledge) { token in
+          box.acknowledged = token
+          box.acknowledgementSink.yield(token)
+        }
+    }
+  }
+
+  /// The scroll view holding the most content: the Dictionary's word list.
+  static func tallestScrollView(in view: NSView) -> NSScrollView? {
+    var all: [NSScrollView] = []
+    func walk(_ v: NSView) {
+      if let scroll = v as? NSScrollView { all.append(scroll) }
+      v.subviews.forEach(walk)
+    }
+    walk(view)
+    return all.max { ($0.documentView?.frame.height ?? 0) < ($1.documentView?.frame.height ?? 0) }
+  }
+
+  /// Hosts the real Dictionary page with 200 words (four pages of 50), optionally scrolls its
+  /// list to the bottom, then reveals `entryID`. Returns the acknowledged token and how far the
+  /// list is scrolled afterwards (AppKit's own reading, independent of the arrival's geometry).
+  static func dictionaryArrival(
+    at entryID: String, tab: DictionaryTab, height: CGFloat, scrolledToBottom: Bool
+  ) async throws -> (acknowledged: Int?, scrolledBefore: CGFloat, scrolledAfter: CGFloat) {
+    let (home, words) = try SettingsMapRenderingTests.dictionaryHome()
+    for index in 0..<200 {
+      try #require(words.add(CustomWord(canonical: "Arrivalword\(index)")) == nil)
+    }
+    let box = RevealBox()
+    let environment: (AnyView) -> AnyView = { view in
+      (try? SettingsMapRenderingTests.dictionaryEnvironment(view, home: home, words: words))
+        ?? AnyView(EmptyView())
+    }
+    func page(_ reveal: SettingsReveal?) -> some View {
+      DictionaryPage(box: box, reveal: reveal, tab: tab, environment: environment)
+        .frame(width: 900, height: height)
+    }
+    let host = NSHostingView(rootView: page(nil))
+    host.frame = CGRect(x: 0, y: 0, width: 900, height: height)
+    let window = NSWindow(
+      contentRect: host.frame, styleMask: [.borderless], backing: .buffered, defer: false)
+    window.contentView = host
+    defer { window.contentView = nil }
+    host.layoutSubtreeIfNeeded()
+    window.displayIfNeeded()
+    let list = try #require(tallestScrollView(in: host), "the page has no scroll view")
+    if scrolledToBottom {
+      let document = try #require(list.documentView)
+      let bottom = max(0, document.frame.height - list.contentView.bounds.height)
+      list.contentView.scroll(to: NSPoint(x: 0, y: bottom))
+      list.reflectScrolledClipView(list.contentView)
+      host.layoutSubtreeIfNeeded()
+    }
+    let before = list.contentView.bounds.origin.y
+    // Finish the work the first layout and the scroll queued, so the page's own deferred decision
+    // has run before the person chooses; choosing in that same turn is chunk 2's case (#3545).
+    await SettingsArrivalFocusTests.afterQueuedMainWork()
+    host.layoutSubtreeIfNeeded()
+    if scrolledToBottom && height < 400 {
+      try #require(
+        box.mounted.contains(.yourWordsAdd) == false,
+        "the short-pane fixture must unmount Add before arrival: \(box.mounted.map(\.rawValue).sorted())")
+    }
+    host.rootView = page(try Self.reveal(entryID, token: 9))
+    // test-fixture-timer: an offscreen host only lays out when asked; this pumps layout (and the
+    // scroll the arrival starts) while the test waits on the acknowledgement event itself.
+    let pump = Task { @MainActor in
+      while !Task.isCancelled {
+        host.layoutSubtreeIfNeeded()
+        window.displayIfNeeded()
+        try? await Task.sleep(for: .milliseconds(20))
+      }
+    }
+    let guardTask = Task { @MainActor in
+      // deadline-fallback: a hang guard around the event stream; the wait is the event itself.
+      try? await Task.sleep(for: .seconds(10))
+      box.acknowledgementSink.finish()
+    }
+    for await _ in box.acknowledgements { break }
+    pump.cancel()
+    guardTask.cancel()
+    host.layoutSubtreeIfNeeded()
+    if box.acknowledged == nil {
+      Issue.record("no arrival at \(entryID); page published \(box.mounted.map(\.rawValue).sorted())")
+    }
+    return (box.acknowledged, before, list.contentView.bounds.origin.y)
+  }
+
+  @Test(
+    "the real Dictionary page: a Your Words control from the bottom of a long list, and a Learn From row",
+    .bug("https://github.com/saurabhav88/EnviousWispr/issues/3545", "Dictionary arrival"))
+  func realDictionaryArrival() async throws {
+    _ = SettingsMap.takeRecordedFaults()
+    // Tall pane: the list controls are pinned, so they stay on screen while the words scroll.
+    let pinned = try await Self.dictionaryArrival(
+      at: "yourWords.add", tab: .yourWords, height: 700, scrolledToBottom: true)
+    #expect(pinned.acknowledged == 9, "pinned controls, list scrolled to the bottom")
+    #expect(pinned.scrolledBefore > 0, "the fixture scrolled the list")
+    // Short pane: the controls do not fit pinned, so they scroll away with the words and the
+    // arrival has to bring them back.
+    let unpinned = try await Self.dictionaryArrival(
+      at: "yourWords.add", tab: .yourWords, height: 380, scrolledToBottom: true)
+    #expect(unpinned.acknowledged == 9, "unpinned controls far above the visible words")
+    #expect(unpinned.scrolledBefore > 0, "the fixture scrolled the list")
+    #expect(
+      unpinned.scrolledAfter < unpinned.scrolledBefore,
+      "the list scrolled back toward the controls: \(unpinned.scrolledBefore) to \(unpinned.scrolledAfter)")
+    let learn = try await Self.dictionaryArrival(
+      at: "selfLearningDictionary", tab: .learnFrom, height: 700, scrolledToBottom: false)
+    #expect(learn.acknowledged == 9, "a Learn From row")
     #expect(SettingsMap.takeRecordedFaults().isEmpty)
   }
 }
