@@ -25,7 +25,7 @@ Your audio, yes, always. It is turned into text on your Mac and never sent anywh
 The app connects to the internet only for specific tasks.
 
 - **Updates and downloads.** The app checks for new versions and downloads the speech and AI models you choose.
-- **Anonymous usage and crash data.** Both are on by default, and you can turn either one off in **Settings** > **Permissions**. They report which app and macOS versions were involved in a problem, and never what you said. See [What Data Is Collected](/help/what-data-is-collected/).
+- **Anonymous usage and crash data.** Both are on by default, and you can turn either one off in **App Settings** > **Privacy**. They report which app and macOS versions were involved in a problem, and never what you said. See [What Data Is Collected](/help/what-data-is-collected/).
 - **Cloud AI Polish, only if you choose it.** If you pick OpenAI, Gemini, Claude, or one of Ollama's hosted models, your text goes to that company under your own account with them. Your audio never does. See [AI Polish and Cloud Data](/help/ai-polish-and-cloud-data/).
 - **Send Feedback, only when you press Send.** The message you type goes to Envious Labs. In recent versions, pressing Send also sends the text of your message (never your email address or diagnostics) through enviouswispr.com to an AI service that looks for matching help pages. See [Sending Feedback From the App](/help/sending-feedback/).
 

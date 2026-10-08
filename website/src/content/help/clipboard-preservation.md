@@ -25,15 +25,15 @@ In three situations EnviousWispr does not put your old clipboard back, each to a
 
 ### Keep my dictation on the clipboard
 
-Two settings on the **Clipboard** page control this. Open **Settings** > **Clipboard**. Both are on by default.
+Two settings on the **Clipboard** tab control this. Open **Dictation Settings** > **Clipboard**. Both are on by default.
 
 - **Restore clipboard after paste.** Puts what you had copied back after your dictation lands. Switch it off if you would rather keep the dictation on your clipboard to paste again somewhere else.
 - **Auto-copy to clipboard.** Copies your dictation to the clipboard whenever EnviousWispr is not pasting it into an app for you.
 
-**Settings** > **Clipboard** also holds **Smart insertion**, which matches spacing and capitals to the text around your cursor. See [_How Text Gets Pasted Into Your App_](/help/how-text-gets-pasted-into-your-app/).
+**Dictation Settings** > **Clipboard** also holds **Smart insertion**, which matches spacing and capitals to the text around your cursor. See [_How Text Gets Pasted Into Your App_](/help/how-text-gets-pasted-into-your-app/).
 
 ### Quick Add and your clipboard
 
 Adding a word from a selection normally reads what you highlighted without touching your clipboard. Some apps will not say what you have selected, such as messaging apps built for iPad and some terminals. In those, EnviousWispr briefly copies your selection, reads it, and puts your clipboard back. Your clipboard history will show both entries.
 
-The switch is **Read selections through the clipboard**, under **Quick Add** on the same **Clipboard** page. It is on by default, and it turns itself off in common remote desktop and virtual machine apps. See [_Adding a Word From Your Selection_](/help/adding-a-word-from-your-selection/).
+The switch is **Read selections through the clipboard**, under **Quick Add** on the same **Clipboard** tab. It is on by default, and it turns itself off in common remote desktop and virtual machine apps. See [_Adding a Word From Your Selection_](/help/adding-a-word-from-your-selection/).

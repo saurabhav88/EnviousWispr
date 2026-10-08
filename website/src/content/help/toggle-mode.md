@@ -15,9 +15,9 @@ In **Toggle** mode you press your recording keybind once to start recording and 
 
 1. Click the EnviousWispr icon in your menu bar and choose **Open EnviousWispr**.
 2. Open **Keybinds**.
-3. Under **1. Choose recording mode**, pick **Toggle**.
+3. In the **Recording mode** row, pick **Toggle**.
 
-The card you pick is highlighted. It worked when a single press starts recording instead of needing a constant hold. Your recording keybind stays the same in both modes.
+The option you pick is highlighted. It worked when a single press starts recording instead of needing a constant hold. Your recording keybind stays the same in both modes.
 
 ### Dictate in Toggle mode
 

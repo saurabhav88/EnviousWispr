@@ -40,7 +40,7 @@ The EnviousWispr icon sits at the top right of your screen in the menu bar, near
 
 ### Keep EnviousWispr in the menu bar only
 
-To hide the Dock icon when no EnviousWispr window is open, turn off **Show app in Dock** under **Settings** > **Appearance**.
+To hide the Dock icon when no EnviousWispr window is open, turn off **Show app in Dock** under **App Settings** > **Appearance**.
 
 ### Updates
 

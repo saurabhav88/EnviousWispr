@@ -32,7 +32,7 @@ In Push to Talk, three quick presses of your recording keybind cancel a hands-fr
 
 1. Click the EnviousWispr icon in your menu bar and choose **Open EnviousWispr**.
 2. Open **Keybinds**.
-3. Find **Escape Recovery** under **Cancel Recording** and switch it on or off.
+3. Find the **Escape Recovery** row, below **Cancel recording**, and switch it on or off.
 
 With it off, your cancel keybind discards the recording the moment you press it.
 

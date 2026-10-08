@@ -15,14 +15,14 @@ When EnviousWispr writes a name the wrong way, you do not have to open settings 
 
 There are two ways in, and both do the same thing.
 
-1. **Use the shortcut.** Highlight the word, then press your Quick Add keybind. It is **Control Shift W** unless you have changed it. To see or change it, go to **Settings** > **Keybinds** and look under **Add a Word**.
+1. **Use the shortcut.** Highlight the word, then press your Quick Add keybind. It is **Control Shift W** unless you have changed it. To see or change it, go to **Keybinds** and look at the **Add selected word to Dictionary** row.
 2. **Use the menu bar.** Highlight the word, click the EnviousWispr icon, and choose the item that starts with **Add**. It names the word it found, so you can check it before you click.
 
 The panel shows the word first and ranks the words already in your library, so you pick which one this spelling belongs to. Nothing is saved until you choose.
 
 ### The shortcut opens a recording instead
 
-Before version 2.4.7, the shortcut shared the Option key with the record key, so pressing it could start a recording instead of opening the panel. The shortcut is now Control Shift W. If you had chosen your own keys, they are untouched. If you still see this, check the keys under **Settings** > **Keybinds** > **Add a Word**.
+Before version 2.4.7, the shortcut shared the Option key with the record key, so pressing it could start a recording instead of opening the panel. The shortcut is now Control Shift W. If you had chosen your own keys, they are untouched. If you still see this, check the keys under **Keybinds** > **Add selected word to Dictionary**.
 
 ### It says it could not read my selection
 
@@ -54,7 +54,7 @@ There is a fraction of a second, while it asks the app and before the panel appe
 
 ### Stop it from using my clipboard
 
-1. Open **Settings** > **Clipboard**.
+1. Open **Dictation Settings** > **Clipboard**.
 2. Switch off **Read selections through the clipboard**.
 
 The setting takes effect on your very next press. The shortcut keeps working everywhere else. In the apps that will not share a selection, it tells you it could not read one.

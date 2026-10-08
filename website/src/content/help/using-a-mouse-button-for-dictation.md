@@ -16,7 +16,7 @@ Most extra buttons on a gaming mouse can start dictation. The **Keybinds** page 
 The keybind box shows exactly what EnviousWispr receives from a button.
 
 1. **Open Keybinds.** Click the EnviousWispr icon in your menu bar, choose **Open EnviousWispr**, and go to **Keybinds**.
-2. **Select the keybind box.** Click the **Recording keybind** box.
+2. **Select the keybind box.** Click the keys field in the **Start / stop recording** row.
 3. **Press one of the extra buttons on your mouse.** Use a side button or a thumb button, not left or right click.
 
 Whatever appears in the box is what that button sends.
@@ -39,7 +39,7 @@ Sending `4` is not useful on its own. If you set `4` as your keybind, it would s
 **F13 through F20 are the best choice.** Most Mac keyboards stop at F12, so these keys sit unused and nothing competes for them. A letter or number is a poor choice, because your keybind would fire every time you typed that character.
 
 1. **Remap the button to F13 in your mouse software.** Most gaming mouse software can assign a keyboard key to a button. Assign F13 to the button you want to dictate with.
-2. **Press the mouse button in the Recording keybind box.** `F13` appears in the box and saves immediately.
+2. **Press the mouse button in the Start / stop recording field.** `F13` appears in the field and saves immediately.
 3. **Try it.** Click into a text field and press the button. Recording starts.
 
 ### My mouse software does not run on macOS
@@ -51,12 +51,12 @@ Several manufacturers have thin macOS support, and Razer's Synapse 3 does not ru
 
 ### Nothing appears in the keybind box
 
-If nothing appeared in the **Recording keybind** box, the button is sending something EnviousWispr does not accept as a keybind. That is usually one of two things:
+If nothing appeared in the **Start / stop recording** field, the button is sending something EnviousWispr does not accept as a keybind. That is usually one of two things:
 
 - **A real mouse click.** The scroll wheel click is the common case. It already opens links in new tabs and closes tabs in every browser, so taking it over for dictation costs you that.
 - **A media key.** Buttons set to play, pause, volume or track skip send a different kind of event that the keybind box does not read, even though they are not mouse clicks.
 
-Either way, the fix is the same. Open your mouse software and assign the button a keyboard key instead, F13 for preference, then open **Settings** > **Keybinds**, click the recording keybind box and press the mouse button. If your software does not show what the button is currently set to, the EventViewer bundled with [Karabiner-Elements](https://karabiner-elements.pqrs.org) will.
+Either way, the fix is the same. Open your mouse software and assign the button a keyboard key instead, F13 for preference, then open **Keybinds**, click the keys field in the **Start / stop recording** row and press the mouse button. If your software does not show what the button is currently set to, the EventViewer bundled with [Karabiner-Elements](https://karabiner-elements.pqrs.org) will.
 
 ### Which recording mode suits a mouse button
 

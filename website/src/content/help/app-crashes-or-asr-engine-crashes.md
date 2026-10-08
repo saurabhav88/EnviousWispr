@@ -28,6 +28,6 @@ If the app quits, crashes, is force quit, or your Mac loses power in the middle 
 
 ### Turn crash reports on or off
 
-EnviousWispr sends crash reports to Envious Labs so we can find and fix the cause. To change this, go to **Settings** > **Permissions** and switch **Send crash reports** on or off. The change applies after EnviousWispr restarts.
+EnviousWispr sends crash reports to Envious Labs so we can find and fix the cause. To change this, go to **App Settings** > **Privacy** and switch **Send crash reports** on or off. The change applies after EnviousWispr restarts.
 
 A crash report describes what the app's code was doing when it failed. It never includes what you said. Audio recordings and text transcripts are never part of a crash report.

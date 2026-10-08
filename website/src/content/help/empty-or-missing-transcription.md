@@ -13,13 +13,13 @@ When a recording finishes and no text appears, something between your microphone
 
 ### Microphone not working: check that EnviousWispr can hear you
 
-Watch the recording pill on screen while you talk. Its meter moves with your voice, and on a Mac that can show them, your words appear in the pill as you speak. If the meter stays flat and no words appear, your microphone is not reaching the app. Check the microphone permission under **Settings** > **Permissions**, any hardware mute switch, and the selected microphone under **Settings** > **Microphone**.
+Watch the recording pill on screen while you talk. Its meter moves with your voice, and on a Mac that can show them, your words appear in the pill as you speak. If the meter stays flat and no words appear, your microphone is not reaching the app. Check the microphone permission under **App Settings** > **Permissions**, any hardware mute switch, and the selected microphone under **Dictation Settings** > **Microphone**.
 
 ### Allow the microphone
 
 macOS requires explicit permission for an app to use your microphone. Open **System Settings** > **Privacy & Security** > **Microphone**. EnviousWispr should be in the list with its switch on.
 
-If EnviousWispr is not in the list, macOS has not been asked yet. Open **Settings** > **Permissions** in EnviousWispr and click **Request Access** under **Microphone**. macOS then asks you to allow access. See [_Granting Permissions_](/help/granting-permissions-microphone-accessibility-and-automation/).
+If EnviousWispr is not in the list, macOS has not been asked yet. Open **App Settings** > **Permissions** in EnviousWispr and click **Request Access** under **Microphone**. macOS then asks you to allow access. See [_Granting Permissions_](/help/granting-permissions-microphone-accessibility-and-automation/).
 
 ### Check for a hardware mute
 
@@ -27,7 +27,7 @@ A physical mute switch stops your voice reaching the app even when everything el
 
 ### Pick the right microphone
 
-EnviousWispr needs to listen to the device you are actually speaking into. Open EnviousWispr settings and go to **Microphone**. When it is set to **Auto**, EnviousWispr records from whatever input your Mac is using, which may not be the device at your mouth. Pick a specific device from the list to remove the doubt.
+EnviousWispr needs to listen to the device you are actually speaking into. Open **Dictation Settings** > **Microphone**. When it is set to **Auto**, EnviousWispr records from whatever input your Mac is using, which may not be the device at your mouth. Pick a specific device from the list to remove the doubt.
 
 If your Mac's default input is a virtual device, such as one installed by Krisp, Loopback, BlackHole, an aggregate device or a meeting app, **Auto** skips it and records from a real microphone, because a virtual device delivers only silence. A virtual device is still used when it is the only input on your Mac.
 

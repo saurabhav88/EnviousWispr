@@ -52,4 +52,4 @@ If you pulled S1-mini into Ollama yourself and selected it there, EnviousWispr r
 
 ### Where does the S1-mini name and licence appear?
 
-Superwhisper's licence asks that the model is identified as S1-mini wherever it appears, and EnviousWispr does that. The licence and notice files ship inside the app under **Open Source Licenses**.
+Superwhisper's licence asks that the model is identified as S1-mini wherever it appears, and EnviousWispr does that. The licence and notice files ship inside the app under **App Settings** > **Licenses** > **Third-Party Notices**.

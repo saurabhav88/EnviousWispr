@@ -68,7 +68,7 @@ You can also watch the traffic with a network monitor. Usage data goes to PostHo
 
 ## How do I turn off usage data or crash reports?
 
-Two switches control this, in the **Privacy** section of **Settings** > **Permissions**. Each one works on its own.
+Two switches control this, in **App Settings** > **Privacy**. Each one works on its own.
 
 | Switch | What it covers | When a change applies |
 | :--- | :--- | :--- |

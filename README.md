@@ -116,16 +116,17 @@ On our own benchmark of 1,890 real dictation-cleanup cases, EG-1 passed 93.7%, a
 - ✋ **Voice Activity Detection** via Silero VAD that stops recording automatically when you stop talking
 - 📚 **Custom vocabulary and vocabulary packs** for names, brands, and technical terms the ASR might miss, plus one-tap import of names from your Contacts (which never leave your Mac)
 - 🧠 **Self-Learning Dictionary**: correct a dictation and EnviousWispr detects the change and adds the intended term to your dictionary
-- 📋 **Paste Last Dictation**: ⌃⌘V pastes your most recent dictation wherever your cursor is and ⌃⌘C copies it, both changeable in Settings > Keybinds
+- 📋 **Paste Last Dictation**: ⌃⌘V pastes your most recent dictation wherever your cursor is and ⌃⌘C copies it, both changeable in Keybinds
 - 🔇 **Media while you dictate**: choose whether your music and videos continue, lower, mute or pause while you talk
-- 🇩🇪 **English and German interface**: choose the app's language in Settings > Appearance
+- 🇩🇪 **English and German interface**: choose the app's language in App Settings > Appearance
 - 💬 **Send Feedback**: tell us what works from inside the app, and it may suggest help articles that answer your question before you send
-- 🛡️ **Privacy controls**: choose whether to share usage metrics and crash reports in Settings > Permissions
+- 🛡️ **Privacy controls**: choose whether to share usage metrics and crash reports in App Settings > Privacy
 - ➕ **Quick Add**: highlight a misheard word anywhere on macOS and save the right spelling to your dictionary with a keyboard shortcut or from the menu bar, without opening Settings
-- 🎨 **Your choice of recording pill**: pick the recording indicator design you like in Appearance settings, and try a practice dictation before setup ends
+- 🎨 **Your choice of recording pill**: pick the recording indicator design you like in Dictation Settings > Recording Pill, and try a practice dictation before setup ends
 - ⌨️ **Global keybind** with push-to-talk, toggle, and hands-free modes (double-press to lock for long-form dictation)
 - 📋 **Auto-paste** directly into the active app, or just copy to clipboard
 - 🕘 **History** for browsing, searching, and reviewing past dictations and transcripts, with an All / Dictations / Transcripts filter above the list
+- 🔎 **Settings search**: type in the Settings sidebar, or press ⌘F, to jump straight to any setting
 - 🧭 **Menu bar native** with minimal footprint
 - 🔄 **Auto-updates** via Sparkle
 
@@ -133,6 +134,16 @@ On our own benchmark of 1,890 real dictation-cleanup cases, EG-1 passed 93.7%, a
 
 EnviousWispr ships often. A few of the user-facing improvements from recent releases:
 
+- **Streamlined Settings with Instant Search.** Completely redesigned the settings UI to eliminate clutter, featuring a new search bar to quickly jump to any configuration option. (v2.5.3)
+- **Modernized Menu Bar.** Refreshed the menu bar interface with a cleaner layout and faster access to primary controls. (v2.5.3)
+- **Launcher Support (Raycast).** Dictation now works inside Raycast. (v2.5.3)
+- **Quiet Update Notifications.** Added a toggle to prevent the menu bar icon from changing states when an update is available. (v2.5.3)
+- **Spoken Punctuation (DE, FR, ES, IT).** Added spoken punctuation support for German, French, Spanish, and Italian using localized trigger words (e.g., "Diktiere Punkt" in German). (v2.5.3)
+- **Expanded Regional Formatting.** Dictated phone numbers, timestamps, and email addresses now format accurately in more European languages. (v2.5.3)
+- **Faster Local Polishing with EG-1.** Reduced latency when cleaning up and formatting longer dictations using the on-device EG-1 engine. (v2.5.3)
+- **Updated Model Support.** Added support for Claude 5.5 and OpenAI gpt-6, alongside significant speed improvements when using Gemini 3.8 Flash. (v2.5.3)
+- **Smarter Self-Learning Dictionary.** Tuned phrase detection to apply learned vocabulary fixes more consistently. (v2.5.3)
+- **Escape Recovery & Undo.** Undo after Escape now pastes your words into the field you were in, or copies them to your clipboard if it can't paste. (v2.5.3)
 - **Privacy controls.** Choose whether to share usage metrics and crash reports in Settings > Permissions. Crash report changes apply after a restart. When sending feedback, choose whether to attach diagnostics and preview the file first. (v2.5.2)
 - **Word check loads on demand.** Envious Word Check now loads when a dictation or file transcription needs it instead of when EnviousWispr starts, and normally leaves memory after about 10 minutes without use. (v2.5.2)
 - **Help before you send feedback.** When you press Send in Send Feedback, EnviousWispr shows up to three help articles that might answer your question. Read one, or send your message as you wrote it. On macOS 26 or later with Apple Intelligence on, you can mark each part of your message solved and choose not to send it. (v2.5.2)
@@ -197,10 +208,10 @@ Or download manually:
 1. Download [EnviousWispr.dmg](https://enviouswispr.com/download?source=github_readme&utm_source=github&utm_medium=referral&utm_campaign=enviouswispr-evergreen-readme) from the latest release
 2. Drag to Applications, launch
 3. Grant **Microphone**, **Accessibility**, and (on first paste fallback) **Automation** permissions when prompted
-4. Set your preferred keybind in Settings > Keybinds
+4. Set your preferred keybind on the Keybinds page
 5. Start talking
 
-**Optional:** Turn on AI polish in Settings > AI Polish. Keep it fully on-device with EG-1 (recommended, macOS 14+), S1-mini by Superwhisper, Apple Intelligence (macOS 26+), or Ollama, or add an OpenAI, Gemini, or Claude API key.
+**Optional:** Turn on AI polish on the AI Polish page. Keep it fully on-device with EG-1 (recommended, macOS 14+), S1-mini by Superwhisper, Apple Intelligence (macOS 26+), or Ollama, or add an OpenAI, Gemini, or Claude API key.
 
 ## Requirements
 
@@ -249,7 +260,7 @@ EnviousWispr is built on a simple principle: **your voice is yours.**
 
 - Audio is processed locally and is not uploaded. Local recovery can temporarily retain audio.
 - LLM polish (if enabled) can run entirely on your Mac with EG-1 (our own model), Apple Intelligence, or a local Ollama model, so the polish step makes no network call. If you pick OpenAI, Gemini, or Claude, only text is sent (your transcript plus the polish instructions) using your own API key. If you pick a hosted Ollama model, the same text is sent to Ollama using your Ollama sign-in. Audio is never sent.
-- Anonymous product analytics (PostHog) and crash reporting (Sentry) are on by default, and each can be turned off in Settings > Permissions. A crash-reporting change applies after the app restarts.
+- Anonymous product analytics (PostHog) and crash reporting (Sentry) are on by default, and each can be turned off in App Settings > Privacy. A crash-reporting change applies after the app restarts.
 - Crash reports exclude dictated text and audio. Technical context and identifiers are described in [What Data Is Collected](https://enviouswispr.com/help/what-data-is-collected/).
 
 ## Connect

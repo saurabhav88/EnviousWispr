@@ -15,7 +15,7 @@ Both engines run entirely on your Mac. Neither sends your audio anywhere, and ne
 
 ### Parakeet or WhisperKit: which should I use?
 
-The **Transcription** page names the engines **Fast** and **All Languages**. This article uses those names with the model in brackets.
+The **Engine** tab of **Dictation Settings** names the engines **Fast** and **All Languages**. This article uses those names with the model in brackets.
 
 | | Fast (Parakeet) | All Languages (WhisperKit) |
 | --- | --- | --- |
@@ -29,14 +29,14 @@ Fast is the default, it is faster, and it covers 25 European languages. If your 
 ### Switch to another engine
 
 1. **Open the engine settings.** Click the EnviousWispr icon in your menu bar, choose **Open EnviousWispr**, and go to **Dictation Settings** > **Engine**.
-2. **Pick your engine.** Click the **Fast** card for Parakeet or the **All Languages** card for WhisperKit. Each card names the model it runs.
-3. **Download the model.** The first time you choose All Languages, click **Download WhisperKit Model**. The model does not download on its own, and it takes about 1.5 GB of storage.
+2. **Pick your engine.** Under **Transcription Engine**, click **Change**, then click the **Fast** card for Parakeet or the **All Languages** card for WhisperKit. Each card names the model it runs.
+3. **Set up the model.** The first time you choose All Languages, the summary shows **Model not set up**. Click **Set up model**. The model does not download on its own, and it takes about 1.5 GB of storage.
 
 The change applies to your next recording. If a dictation is in progress, the page says the change applies after it finishes.
 
 ### The wrong alphabet shows up in my dictation
 
-On the Fast engine, you can stop stray letters from another alphabet, such as Greek or Cyrillic turning up in a German dictation. Lock your language under **Settings** > **Transcription** > **Language**. A lock cannot tell apart two languages that share one alphabet, such as German and Dutch. See [Multi-Language Dictation](/help/multi-language-dictation/).
+On the Fast engine, you can stop stray letters from another alphabet, such as Greek or Cyrillic turning up in a German dictation. Lock your language under **Dictation Settings** > **Engine**. A lock cannot tell apart two languages that share one alphabet, such as German and Dutch. See [Multi-Language Dictation](/help/multi-language-dictation/).
 
 ### Dictation is slow or misses my language
 

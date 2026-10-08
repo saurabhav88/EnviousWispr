@@ -38,5 +38,5 @@ You can have EnviousWispr end a recording after a pause in your speech. The [aut
 
 1. Click the EnviousWispr icon in your menu bar and choose **Open EnviousWispr**.
 2. Open **Dictation Settings**, then **Engine**.
-3. Under **Auto-Stop**, switch on **Stop recording on silence**. It is off by default.
+3. Under **Applies to both engines**, switch on **Stop recording on silence**. It is off by default.
 4. Use the **Pause duration** slider to choose how long a pause ends the recording, from half a second to three seconds.
