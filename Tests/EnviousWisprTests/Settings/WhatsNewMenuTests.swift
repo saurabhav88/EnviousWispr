@@ -24,24 +24,13 @@ struct WhatsNewMenuTests {
     #expect(WhatsNewMenuPresentation.entries(version: "no-such-release").isEmpty)
   }
 
-  @Test("The settings announcement lists each move in the menu itself")
-  func moveAnnouncementBullets() throws {
+  @Test("The settings announcement leads the menu")
+  func settingsAnnouncementLeads() throws {
     let entry = try #require(WhatsNewMenuPresentation.entries().first)
     #expect(entry.id == "settings-easier-to-find")
-    // Written out here, not read from WhatsNewContent: dropping or changing a move must fail.
-    #expect(entry.bullets == [
-      "Transcription -> Dictation Settings > Engine",
-      "Microphone -> Dictation Settings > Microphone",
-      "Live Preview -> Dictation Settings > Live Preview",
-      "Sounds -> Dictation Settings > Chimes",
-      "Clipboard -> Dictation Settings > Clipboard",
-      "Appearance recording pill controls -> Dictation Settings > Recording Pill",
-      "Appearance -> App Settings > Appearance",
-      "Permissions -> App Settings > Permissions",
-      "Permissions privacy controls -> App Settings > Privacy",
-      "Open Source Licenses -> App Settings > Licenses",
-      "What's New and Check for Updates -> the gift button, What's New & Updates",
-    ])
+    // Founder 2026-10-07: the 2.5.3 note names the redesign and search only; the old -> new
+    // path table moved to the help article (#3456), so the menu entry carries no list.
+    #expect(entry.bullets.isEmpty)
   }
 
   @Test("Existing full descriptions use their localized entry keys and English fallback")
@@ -64,7 +53,8 @@ struct WhatsNewMenuTests {
     let future = WhatsNewContent.Entry(
       id: "future-entry", icon: "gift", title: "Future", description: "Full English description",
       bullets: ["First point", "Second point"], version: "2.5.2")
-    let rows = WhatsNewMenuPresentation.entries(from: [known, future], version: "2.5.2", bundle: bundle)
+    let rows = WhatsNewMenuPresentation.entries(
+      from: [known, future], version: "2.5.2", bundle: bundle)
     #expect(rows.map(\.title) == ["Translated title", "Future"])
     #expect(
       rows.map(\.description) == ["Translated existing description", "Translated full description"])
