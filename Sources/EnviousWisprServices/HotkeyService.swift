@@ -155,7 +155,7 @@ public final class HotkeyService {
 
   /// Timestamp of the key-down that started the current recording session.
   /// Used for the 500ms double-press detection window.
-  private var recordingStartTime: Date? = nil
+  private var recordingStart: InputTime? = nil
 
   /// #1631 — identifies one start attempt, incremented only when a fresh press
   /// stamps a new one, so a late result can prove which press it belongs to.
@@ -186,7 +186,7 @@ public final class HotkeyService {
   /// Timestamp when hands-free lock was activated. Used as a cooldown guard:
   /// presses within 500ms of locking are ignored to prevent accidental
   /// finger-bounce from immediately stopping the locked recording.
-  private var lockTime: Date? = nil
+  private var lockAt: InputTime? = nil
 
   // MARK: - Callbacks (wired by the former root state)
 
@@ -354,6 +354,14 @@ public final class HotkeyService {
   /// found by the independent whole-diff review, which reproduced eight failures
   /// running this suite alongside its siblings while it passed alone.
   private let now: @MainActor () -> Date
+
+  /// When one record-key input was handled (#3534).
+  private struct InputTime { let handled: Date }
+
+  /// Seconds from one record-key input to a later one.
+  private func elapsed(from a: InputTime, to b: InputTime) -> TimeInterval {
+    b.handled.timeIntervalSince(a.handled)
+  }
 
   /// The OS calls this service is allowed to make (#2455 C2).
   ///
@@ -615,8 +623,8 @@ public final class HotkeyService {
   private func performCleanup() {
     stateGeneration &+= 1
     isRecordingLocked = false
-    recordingStartTime = nil
-    lockTime = nil
+    recordingStart = nil
+    lockAt = nil
     // #1631: acceptance must never outlive the attempt that earned it, or a later
     // press could inherit it and publish on a session it never started.
     acceptedStartPressID = nil
@@ -649,7 +657,7 @@ public final class HotkeyService {
     // guessing from a scheduling turn. A signal fired inside the start callback
     // cannot serve: this method runs AFTER that callback returns.
     defer { onStartResolvedForTesting?() }
-    guard pressID == startPressID, recordingStartTime != nil else { return }
+    guard pressID == startPressID, recordingStart != nil else { return }
     switch outcome {
     case .recording(let sessionID):
       acceptedStartPressID = pressID
@@ -737,13 +745,13 @@ public final class HotkeyService {
       return
     }
 
-    let isRecording = recordingStartTime != nil
+    let isRecording = recordingStart != nil
 
     if !isRecording {
       // Not recording → start fresh
       stateGeneration &+= 1
       isRecordingLocked = false
-      recordingStartTime = now()
+      recordingStart = InputTime(handled: now())
       // #1631: a fresh attempt owns a fresh identity, and inherits no acceptance.
       startPressID &+= 1
       acceptedStartPressID = nil
@@ -765,9 +773,9 @@ public final class HotkeyService {
       // #1175 (C3): emit AFTER the recording Task is created; the `.live` sink
       // defers the actual write off this turn so it never delays the callback.
       emitHotkeyPressed(.start, trigger: .ptt)
-    } else if let startTime = recordingStartTime,
-      now().timeIntervalSince(startTime) <= Double(TimingConstants.handsFreeDebounceDelayMs)
-        / 1000.0
+    } else if let start = recordingStart,
+      elapsed(from: start, to: InputTime(handled: now()))
+        <= Double(TimingConstants.handsFreeDebounceDelayMs) / 1000.0
     {
       // Within 500ms window
       if isRecordingLocked {
@@ -798,7 +806,7 @@ public final class HotkeyService {
         debounceTask?.cancel()
         debounceTask = nil
         isRecordingLocked = true
-        lockTime = now()
+        lockAt = InputTime(handled: now())
         // DO NOT cancel recordingTask here — the pipeline startup must
         // continue running. Cancelling it aborts preWarm/toggleRecording,
         // leaving the UI locked but no actual recording happening.
@@ -812,12 +820,13 @@ public final class HotkeyService {
       // Lock cooldown: ignore presses within 500ms of locking.
       // Prevents accidental finger-bounce on modifier keys from
       // immediately stopping a just-locked recording.
-      if let lt = lockTime,
-        now().timeIntervalSince(lt) <= Double(TimingConstants.handsFreeDebounceDelayMs) / 1000.0
+      if let lt = lockAt,
+        elapsed(from: lt, to: InputTime(handled: now()))
+          <= Double(TimingConstants.handsFreeDebounceDelayMs) / 1000.0
       {
         Task {
           await AppLogger.shared.log(
-            "Press ignored — lock cooldown (\(Int(now().timeIntervalSince(lt) * 1000))ms since lock)",
+            "Press ignored — lock cooldown (\(Int(elapsed(from: lt, to: InputTime(handled: now())) * 1000))ms since lock)",
             level: .info, category: "HotkeyService"
           )
         }
@@ -847,7 +856,7 @@ public final class HotkeyService {
     guard isModifierHeld else { return }
     isModifierHeld = false
 
-    let isRecording = recordingStartTime != nil
+    let isRecording = recordingStart != nil
 
     // Not recording → ignore
     guard isRecording else { return }
@@ -856,9 +865,9 @@ public final class HotkeyService {
     if isRecordingLocked { return }
 
     // Quick release (within 500ms) → debounce, wait for double-press
-    if let startTime = recordingStartTime,
-      now().timeIntervalSince(startTime) <= Double(TimingConstants.handsFreeDebounceDelayMs)
-        / 1000.0
+    if let start = recordingStart,
+      elapsed(from: start, to: InputTime(handled: now()))
+        <= Double(TimingConstants.handsFreeDebounceDelayMs) / 1000.0
     {
       stateGeneration &+= 1
       let capturedGeneration = stateGeneration
@@ -870,7 +879,7 @@ public final class HotkeyService {
         // this callback is outdated and must not fire.
         guard self.stateGeneration == capturedGeneration else { return }
         // Timer fired — user didn't double-press. Stop as normal PTT.
-        guard self.recordingStartTime != nil, !self.isRecordingLocked else { return }
+        guard self.recordingStart != nil, !self.isRecordingLocked else { return }
         Task {
           await AppLogger.shared.log(
             "Debounce timer fired — stopping PTT (no double-press detected)",
