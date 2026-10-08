@@ -23,7 +23,7 @@ python3 scripts/itn/generate.py --inventory    # print the source-to-output inve
 python3 -m unittest discover -s scripts/itn/tests -p 'test_generate.py'
 ```
 
-CI (`build-check` in `.github/workflows/pr-check.yml`, step "Language data generator") runs the `--check` line and the `test_generate.py` line. Both read only files in the checkout and make no network request.
+CI (`build-check` in `.github/workflows/pr-check.yml`, through the `language-data-generator` member of `scripts/ci/fast-checks.sh`, which the local pre-push hook also runs) runs the `--check` line and the `test_generate.py` line. Both read only files in the checkout and make no network request.
 
 Do not run these in CI or as a routine check:
 

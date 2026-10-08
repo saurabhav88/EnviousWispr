@@ -197,6 +197,8 @@ scripts/lib/*
 # #3482: the Settings search vocabulary draft command, its review receipts and authoring notes
 # (plan §3.6 item 3). Unreviewed drafts stay local (build/settings-map-drafts/).
 !scripts/settings-map/
+# #3524: the tracked git hooks every checkout runs (core.hooksPath = scripts/githooks).
+!scripts/githooks/
 # #3400: the machine-wide claim on the shared dev app, read by build-dev-app.sh.
 !scripts/lib/dev-app-lock.py
 !scripts/lib/dev-app-lock-test.py

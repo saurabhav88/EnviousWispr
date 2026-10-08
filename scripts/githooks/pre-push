@@ -1,0 +1,568 @@
+#!/usr/bin/env bash
+# scripts/githooks/pre-push: run the quick CI checks on the exact commits being pushed (#3524).
+#
+# Git runs this before every `git push` from any checkout whose `core.hooksPath` points at
+# scripts/githooks (Claude, Codex and terminal pushes alike). For each branch commit being
+# pushed it makes a detached worktree of THAT commit, so uncommitted and untracked files in
+# the pushing checkout can never change the verdict, and runs that commit's own
+# scripts/ci/fast-checks.sh against it: the same list cloud CI runs in build-check.
+#
+# Verdicts:
+#   a check FAILS ............ the push is blocked; the check's own output says why
+#   COULD NOT RUN ............ a warning naming what is missing; the push goes ahead and
+#                              cloud CI checks it (e.g. a commit from before fast-checks.sh)
+#   hook fault ............... any unexpected error in this hook blocks the push, with the
+#                              rollback command; a broken gate never waves a push through
+#   cleanup failure .......... after a complete verdict, a warning naming the kept temp
+#                              directory; the verdict stands (it is the hook's copy, not
+#                              the pushed code; founder 2026-10-07)
+# Deletions and tags are skipped: they push no new code.
+#
+# Usage:
+#   (git) pre-push <remote-name> <remote-url>   with "<local ref> <local sha> <remote ref>
+#                                                <remote sha>" lines on stdin
+#   pre-push --self-test                         drive real `git push` calls against an
+#                                                owned local remote in a temp directory
+#
+# Rollback: scripts/githooks/install.sh --uninstall (the installer is part of this change set).
+#
+# Portability: macOS /bin/bash 3.2 and Linux bash 5.
+# -E: the ERR trap below also fires inside functions.
+set -Eeuo pipefail
+
+ZERO_SHA=0000000000000000000000000000000000000000
+ROLLBACK="scripts/githooks/install.sh --uninstall"
+
+HOOK_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=scripts/ci/process-tree.sh
+. "$HOOK_DIR/../ci/process-tree.sh" || {
+  echo "==> pre-push: BLOCKED (hook fault: cannot load $HOOK_DIR/../ci/process-tree.sh). Rollback: $ROLLBACK" >&2
+  exit 1
+}
+
+ORIGIN=""          # the checkout the push runs from; its Dev build data is read in PR 3
+ORIGIN_DEV_DATA="" # that checkout's Dev build data
+REPO=""            # the repository's main registered worktree: history and GitHub identity
+WORK=""            # this run's own temp directory; every snapshot lives inside it
+SNAPSHOTS=()       # owned detached worktrees, registered BEFORE creation so a partial one is covered
+CHILD=""           # the running check, stopped with its whole process tree on interruption
+SNAP_DIR=""        # set by snapshot(); not command substitution, which would lose SNAPSHOTS
+CLEANUP_ERROR=""   # what cleanup could not do; warned after a verdict, never silent
+
+# Is <path> registered as a worktree of this repository? Sets REGISTRATION to "registered"
+# or "absent", and ADMIN_ENTRY to the admin directory whose `gitdir` file points at
+# <path>/.git, if any. Both git's own list and the admin directories are read: git's list
+# omits an entry whose `gitdir` file cannot be read, so the list alone could call a
+# registered snapshot absent. Exact path match; WORK is canonicalised with `pwd -P` when
+# made, so the spellings agree. Returns 1 when either source cannot be read: an unknown is
+# never read as "absent", so it can never authorise a delete.
+REGISTRATION=""
+ADMIN_ENTRY=""
+read_registration() {
+  local listing common entry gitdir
+  REGISTRATION=""
+  ADMIN_ENTRY=""
+  listing="$(git -C "$REPO" worktree list --porcelain)" || return 1
+  common="$(git -C "$REPO" rev-parse --path-format=absolute --git-common-dir)" || return 1
+  for entry in "$common"/worktrees/*; do
+    # No gitdir file: git cannot map that entry to any path, ours included.
+    [ -f "$entry/gitdir" ] || continue
+    gitdir="$(cat "$entry/gitdir")" || return 1
+    if [ "$gitdir" = "$1/.git" ]; then ADMIN_ENTRY="$entry"; fi
+  done
+  case $'\n'"$listing"$'\n' in
+    (*$'\n'"worktree $1"$'\n'*) REGISTRATION="registered" ;;
+    (*) if [ -n "$ADMIN_ENTRY" ]; then REGISTRATION="registered"; else REGISTRATION="absent"; fi ;;
+  esac
+}
+
+# Remove git's registration for exactly <path>: its own admin directory. Never
+# `git worktree prune`, which would also drop registrations that are not ours. Returns 1
+# if the path is still registered, or cannot be checked, afterwards.
+unregister_exact() {
+  read_registration "$1" || return 1
+  if [ -n "$ADMIN_ENTRY" ]; then rm -rf "$ADMIN_ENTRY" || return 1; fi
+  read_registration "$1" || return 1
+  [ "$REGISTRATION" = "absent" ]
+}
+
+# Remove one owned snapshot, whatever state a crash or a fault left it in. Returns 1 if the
+# snapshot is still registered or still on disk afterwards, or if git cannot say; the
+# directory is deleted only after git confirms it is no longer registered.
+remove_snapshot() {
+  local snap="$1"
+  read_registration "$snap" || return 1
+  if [ "$REGISTRATION" = "registered" ]; then
+    if [ -d "$snap" ]; then
+      git -C "$REPO" worktree remove --force "$snap" > /dev/null 2>&1 || true
+    fi
+    # Still registered (a missing directory, or a checkout without its .git file): remove
+    # exactly this registration, then the directory.
+    read_registration "$snap" || return 1
+    if [ "$REGISTRATION" = "registered" ]; then unregister_exact "$snap" || return 1; fi
+  fi
+  if [ -e "$snap" ]; then rm -rf "$snap" || return 1; fi
+  read_registration "$snap" || return 1
+  [ "$REGISTRATION" = "absent" ] && [ ! -e "$snap" ]
+}
+
+# Remove every owned snapshot and the temp directory. Returns 1, with CLEANUP_ERROR set, if
+# any snapshot could not be removed; then the temp directory is KEPT and named, so a person
+# can finish with `git worktree remove --force <path>`.
+cleanup() {
+  local snap failed=""
+  for snap in ${SNAPSHOTS[@]+"${SNAPSHOTS[@]}"}; do
+    remove_snapshot "$snap" || failed="$failed $snap"
+  done
+  SNAPSHOTS=()
+  if [ -n "$failed" ]; then
+    CLEANUP_ERROR="could not remove snapshot(s):$failed; kept $WORK"
+    WORK=""
+    return 1
+  fi
+  if [ -n "$WORK" ]; then rm -rf "$WORK" || { CLEANUP_ERROR="could not remove $WORK"; WORK=""; return 1; }; fi
+  WORK=""
+  return 0
+}
+
+hook_fault() {
+  trap - ERR INT TERM
+  echo "==> pre-push: BLOCKED (hook fault: $1)" >&2
+  echo "    The gate itself failed, so this push was not judged. Rollback: $ROLLBACK" >&2
+  if ! cleanup; then echo "    Cleanup also failed: $CLEANUP_ERROR" >&2; fi
+  exit 1
+}
+
+on_signal() {
+  trap - ERR INT TERM
+  if [ -n "$CHILD" ]; then
+    stop_tree "$CHILD"
+    wait "$CHILD" 2> /dev/null || true
+  fi
+  echo "==> pre-push: BLOCKED (interrupted)" >&2
+  if [ -n "$PROCESS_TREE_INCOMPLETE" ]; then echo "    Cleanup incomplete: $PROCESS_TREE_INCOMPLETE" >&2; fi
+  if ! cleanup; then echo "    Cleanup also failed: $CLEANUP_ERROR" >&2; fi
+  exit 130
+}
+
+# The checks this hook runs, in order. Each takes `--repo <main worktree> --tree <snapshot>
+# --sha <commit>` and returns 0 PASS, 1 FAIL, 3 COULD NOT RUN; anything else is a hook fault.
+# PR 2 adds the Recipe trailer check here; PR 3 adds the String Catalog check, which reads
+# ORIGIN_DEV_DATA. Neither exists yet.
+CHECKS="check_fast_checks"
+
+# Parse the dispatch contract; every check calls this first.
+parse_check_args() {
+  CHECK_REPO="" CHECK_TREE="" CHECK_SHA=""
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --repo | --tree | --sha)
+        # A missing value must return, not loop: a failed `shift 2` leaves $# unchanged.
+        if [ $# -lt 2 ] || [ -z "$2" ]; then
+          echo "==> pre-push: missing value for $1" >&2
+          return 4
+        fi
+        case "$1" in
+          --repo) CHECK_REPO="$2" ;;
+          --tree) CHECK_TREE="$2" ;;
+          --sha) CHECK_SHA="$2" ;;
+        esac
+        shift 2
+        ;;
+      *) echo "==> pre-push: unknown check argument: $1" >&2; return 4 ;;
+    esac
+  done
+  case "$CHECK_SHA" in
+    *[!0-9a-f]* | "") echo "==> pre-push: not a commit id: '$CHECK_SHA'" >&2; return 4 ;;
+  esac
+  [ -d "$CHECK_REPO" ] && [ -d "$CHECK_TREE" ] && [ ${#CHECK_SHA} -eq 40 ] \
+    || { echo "==> pre-push: bad check arguments (repo=$CHECK_REPO tree=$CHECK_TREE sha=$CHECK_SHA)" >&2; return 4; }
+}
+
+check_fast_checks() {
+  local runner rc
+  parse_check_args "$@" || return 4
+  runner="$CHECK_TREE/scripts/ci/fast-checks.sh"
+  if [ ! -f "$runner" ]; then
+    echo "==> fast-checks: COULD NOT RUN (${CHECK_SHA:0:12} has no scripts/ci/fast-checks.sh; CI will check)" >&2
+    return 3
+  fi
+  # The runner needs only the tree; history checks (PR 2) use --repo. Same interpreter as
+  # this hook, so a hook running under one bash never judges with another.
+  "$BASH" "$runner" --tree "$CHECK_TREE" >&2 &
+  CHILD=$!
+  if wait "$CHILD"; then rc=0; else rc=$?; fi
+  CHILD=""
+  # The runner exits 0 (all PASS or SKIP), 1 (a member or the runner failed) or 2 (usage).
+  case "$rc" in
+    0) return 0 ;;
+    1) return 1 ;;
+    *) echo "==> fast-checks: exited $rc, which is not a verdict" >&2; return 4 ;;
+  esac
+}
+
+# Make a detached worktree of <sha> inside WORK; its path lands in SNAP_DIR.
+snapshot() {
+  local sha="$1" dir
+  dir="$WORK/${sha:0:12}"
+  SNAPSHOTS+=("$dir")
+  git -C "$REPO" worktree add --detach --quiet "$dir" "$sha" > /dev/null 2>&1 \
+    || hook_fault "cannot create a snapshot of $sha"
+  [ "$(git -C "$dir" rev-parse HEAD)" = "$sha" ] || hook_fault "snapshot of $sha is at the wrong commit"
+  SNAP_DIR="$dir"
+}
+
+main() {
+  local local_ref local_sha remote_ref remote_sha seen="" sha tree check rc
+  local blocked=0 warned=0 checked=0
+
+  # Resolve the pushing checkout BEFORE touching any other tree, then drop the variables git
+  # sets for this repository so commands in a snapshot cannot be pointed back at it.
+  command -v pgrep > /dev/null 2>&1 || hook_fault "missing tool: pgrep"
+  ORIGIN="$(git rev-parse --show-toplevel)" || hook_fault "not inside a git checkout"
+  ORIGIN_DEV_DATA="$ORIGIN/.derivedData/Dev"
+  : "$ORIGIN_DEV_DATA"
+  # The main registered worktree: the first `worktree` line of the porcelain list.
+  REPO="$(git worktree list --porcelain | sed -n '1s/^worktree //p')"
+  [ -n "$REPO" ] && [ -d "$REPO" ] || hook_fault "cannot resolve the repository's main worktree"
+  unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_OBJECT_DIRECTORY GIT_PREFIX
+  WORK="$(mktemp -d "${TMPDIR:-/tmp}/ew-pre-push.XXXXXX")" || hook_fault "cannot create a temp directory"
+  # Canonical spelling (/var -> /private/var on macOS) so registration checks match exactly.
+  WORK="$(cd "$WORK" && pwd -P)" || hook_fault "cannot resolve the temp directory"
+  echo "==> pre-push: CI gap: the website build and check:help take longer than the local cut; website-check in CI remains the authority." >&2
+
+  while read -r local_ref local_sha remote_ref remote_sha; do
+    [ -n "$local_ref" ] || continue
+    : "$remote_sha"
+    if [ "$local_sha" = "$ZERO_SHA" ]; then
+      echo "==> pre-push: skip $remote_ref (deletion)" >&2
+      continue
+    fi
+    # Skipped by DESTINATION: a tag pushed to a branch (refs/tags/x:refs/heads/y) puts
+    # code on that branch, so it is checked like any branch push.
+    case "$remote_ref" in
+      refs/tags/*)
+        echo "==> pre-push: skip $remote_ref (tag)" >&2
+        continue
+        ;;
+    esac
+    case " $seen " in *" $local_sha "*) continue ;; esac
+    seen="$seen $local_sha"
+
+    echo "==> pre-push: checking ${local_sha:0:12} ($local_ref -> $remote_ref)" >&2
+    snapshot "$local_sha"
+    tree="$SNAP_DIR"
+    checked=$((checked + 1))
+    for check in $CHECKS; do
+      if "$check" --repo "$REPO" --tree "$tree" --sha "$local_sha"; then rc=0; else rc=$?; fi
+      case "$rc" in
+        0) ;;
+        1) blocked=$((blocked + 1)) ;;
+        3) warned=$((warned + 1)) ;;
+        *) hook_fault "$check returned $rc for $local_sha" ;;
+      esac
+    done
+  done
+
+  # A cleanup failure is about this hook's own temp copy, never the pushed code: after a
+  # complete verdict it warns and leaves the verdict alone (founder 2026-10-07, #3524).
+  # A fault or interruption BEFORE a verdict still blocks (hook_fault, on_signal).
+  if ! cleanup; then
+    trap - ERR
+    echo "==> pre-push: WARNING: $CLEANUP_ERROR. This is about the hook's temp copy, not your code; the verdict below stands." >&2
+    echo "    Remove it with: git worktree remove --force <path> for each snapshot inside it, then delete the directory." >&2
+    warned=$((warned + 1))
+  fi
+  if [ "$blocked" -gt 0 ]; then
+    echo "==> pre-push: BLOCKED ($blocked failing check(s) across $checked commit(s); fix them, or see above)" >&2
+    exit 1
+  fi
+  if [ "$warned" -gt 0 ]; then
+    echo "==> pre-push: OK with $warned warning(s) ($checked commit(s); CI will check what could not run here)" >&2
+  else
+    echo "==> pre-push: OK ($checked commit(s) checked)" >&2
+  fi
+}
+
+# ---------------------------------------------------------------------------
+# Self-test: a throwaway repository with a stub fast-checks.sh, an owned bare
+# remote, and real `git push` calls through this hook. The stub fails when a
+# committed file BROKEN exists, records the commit it checked, and sleeps while
+# a committed file SLOW exists.
+# ---------------------------------------------------------------------------
+# shellcheck disable=SC2016 # the self-test passes literal shell text into private hook copies
+self_test() {
+  local hook tmp repo remote fails=0 cases=0 out rc sha_good sha_bad pid leftovers_before
+  set +e
+  hook="$(cd "$(dirname "$0")" && pwd)/$(basename "$0")"
+  leftovers_before="$(find "${TMPDIR:-/tmp}" -maxdepth 1 -name 'ew-pre-push.*' | wc -l | tr -d ' ')"
+  tmp="$(cd "$(mktemp -d)" && pwd -P)"
+  repo="$tmp/repo"
+  remote="$tmp/remote.git"
+
+  check() { # check <label> <actual> <expected>
+    cases=$((cases + 1))
+    if [ "$2" = "$3" ]; then echo "ok    $1"; else echo "FAIL  $1: got [$2] want [$3]"; fails=$((fails + 1)); fi
+  }
+  push() { git -C "$repo" push "$@" > "$tmp/push.out" 2>&1; }
+  # inject <exact line> <replacement>: a private hook copy with one whole line replaced;
+  # fails (and the caller records it) unless exactly one line matched.
+  inject() {
+    awk -v old="$1" -v new="$2" '$0 == old { print new; n++; next } { print } END { exit (n == 1 ? 0 : 1) }' \
+      "$hook" > "$tmp/hooks/pre-push"
+  }
+  checked_shas() { grep -o 'stub checked [0-9a-f]*' "$tmp/push.out" | cut -d' ' -f3 | sort | tr '\n' ' '; }
+
+  git init --quiet --bare "$remote"
+  git init --quiet -b main "$repo"
+  git -C "$repo" config user.email self-test@example.invalid
+  git -C "$repo" config user.name self-test
+  mkdir -p "$repo/scripts/ci" "$tmp/hooks"
+  cat > "$repo/scripts/ci/fast-checks.sh" << 'STUB'
+#!/usr/bin/env bash
+tree="$2"
+echo "stub checked $(git -C "$tree" rev-parse HEAD)"
+echo "stub env GIT_INDEX_FILE=${GIT_INDEX_FILE:-unset}"
+echo "stub bash $BASH_VERSION"
+if [ -e "$tree/SLOW" ]; then
+  sleep 30 &
+  echo "$!" > "$SELFTEST_SLOW_PID.child"
+  echo "$$" > "$SELFTEST_SLOW_PID"
+  wait
+fi
+[ ! -e "$tree/BROKEN" ]
+STUB
+  echo base > "$repo/README"
+  git -C "$repo" add -A
+  git -C "$repo" commit --quiet -m base
+  git -C "$repo" remote add origin "$remote"
+  cp "$hook" "$tmp/hooks/pre-push"
+  mkdir -p "$tmp/ci"
+  cp "$(dirname "$hook")/../ci/process-tree.sh" "$tmp/ci/process-tree.sh"
+  git -C "$repo" config core.hooksPath "$tmp/hooks"
+
+  # 1. clean pass, and the commit checked is the one pushed
+  push origin main; rc=$?
+  sha_good="$(git -C "$repo" rev-parse HEAD)"
+  check "a clean push passes and checks the pushed commit" "$rc|$(checked_shas)" "0|$sha_good "
+  echo "      (git ran the hook with: $(grep -o 'stub bash .*' "$tmp/push.out" | head -1))"
+  check "the website CI gap is named in the hook output" "$(grep -c 'CI gap: the website build' "$tmp/push.out")" "1"
+
+  # 2. a committed failure blocks; the fix passes
+  touch "$repo/BROKEN"; git -C "$repo" add -A; git -C "$repo" commit --quiet -m broken
+  sha_bad="$(git -C "$repo" rev-parse HEAD)"
+  push origin main; rc=$?
+  check "a committed failure blocks the push" "$rc|$(grep -c 'BLOCKED (1 failing' "$tmp/push.out")" "1|1"
+  git -C "$repo" rm --quiet BROKEN; git -C "$repo" commit --quiet -m fixed
+  push origin main; rc=$?
+  check "the fixed commit passes" "$rc" "0"
+
+  # 3. a non-HEAD branch is checked at ITS commit, not the working tree's
+  git -C "$repo" branch bad "$sha_bad"
+  push origin bad:bad; rc=$?
+  check "a non-HEAD branch is checked at its own commit" "$rc|$(checked_shas)" "1|$sha_bad "
+
+  # 4. dirty and untracked files in the pushing checkout change nothing
+  git -C "$repo" checkout --quiet -b side
+  touch "$repo/BROKEN"; echo dirty >> "$repo/README"
+  push origin side; rc=$?
+  check "uncommitted and untracked files do not reach the verdict" "$rc" "0"
+  rm -f "$repo/BROKEN"; git -C "$repo" checkout --quiet -- README
+
+  # 5. two refs in one push: both checked, one bad blocks
+  git -C "$repo" branch good2 HEAD
+  push origin bad:bad2 good2:good2; rc=$?
+  check "two refs in one push are both checked" "$rc|$(checked_shas)" "1|$(printf '%s\n' "$sha_bad" "$(git -C "$repo" rev-parse good2)" | sort | tr '\n' ' ')"
+
+  # 6. a deletion is skipped
+  push origin :side; rc=$?
+  check "a deletion is skipped and allowed" "$rc|$(grep -c '(deletion)' "$tmp/push.out")" "0|1"
+
+  # 7. a tag is skipped, even on a bad commit
+  git -C "$repo" tag v-bad "$sha_bad"
+  push origin v-bad; rc=$?
+  check "a tag is skipped and allowed" "$rc|$(grep -c '(tag)' "$tmp/push.out")" "0|1"
+  push origin refs/tags/v-bad:refs/heads/from-tag; rc=$?
+  check "a tag pushed to a branch is checked like a branch" "$rc|$(checked_shas)|$(grep -c '(tag)' "$tmp/push.out")" "1|$sha_bad |0"
+
+  # 8. inherited git variables do not leak into the snapshot's checks
+  out="$(cd "$repo" && printf 'refs/heads/main %s refs/heads/main %s\n' "$(git rev-parse main)" "$ZERO_SHA" \
+    | GIT_INDEX_FILE="$tmp/not-an-index" "$BASH" "$hook" origin "$remote" 2>&1)"; rc=$?
+  check "inherited GIT_INDEX_FILE is cleared before checks run" "$rc|$(printf '%s' "$out" | grep -c 'GIT_INDEX_FILE=unset')" "0|1"
+
+  # 9. a commit with no fast-checks.sh is COULD NOT RUN: a warning, not a block
+  git -C "$repo" checkout --quiet --orphan bare-branch
+  git -C "$repo" rm --quiet -r --cached . > /dev/null
+  echo x > "$repo/only-file"; git -C "$repo" add only-file; git -C "$repo" commit --quiet -m orphan
+  push origin bare-branch; rc=$?
+  check "missing evidence warns and allows" "$rc|$(grep -c 'COULD NOT RUN' "$tmp/push.out")|$(grep -c 'OK with 1 warning' "$tmp/push.out")" "0|1|1"
+  git -C "$repo" checkout --quiet -f main; git -C "$repo" clean --quiet -fd
+
+  # 10. a fault inside the hook blocks, through a private copy that fails mid-run
+  # shellcheck disable=SC2016 # the sed program is literal shell text, not to be expanded
+  sed 's/^    checked=\$((checked + 1))$/    checked=$((checked + 1)); false/' "$hook" > "$tmp/hooks/pre-push"
+  # shellcheck disable=SC2016 # literal text again
+  if [ "$(grep -cx '    checked=\$((checked + 1)); false' "$tmp/hooks/pre-push")" != 1 ]; then
+    check "the fault-injection copy was made" "no" "yes"
+  else
+    echo f10 > "$repo/f10"; git -C "$repo" add f10; git -C "$repo" commit --quiet -m f10
+    push origin main; rc=$?
+    check "a hook fault blocks the push and names the rollback" "$rc|$(grep -c 'hook fault' "$tmp/push.out")|$(grep -c "$ROLLBACK" "$tmp/push.out")" "1|1|1"
+  fi
+  cp "$hook" "$tmp/hooks/pre-push"
+
+  # 11. interruption stops the running check, blocks, and leaves no snapshot behind
+  touch "$repo/SLOW"; git -C "$repo" add SLOW; git -C "$repo" commit --quiet -m slow
+  printf 'refs/heads/main %s refs/heads/main %s\n' "$(git -C "$repo" rev-parse HEAD)" "$ZERO_SHA" > "$tmp/stdin"
+  (cd "$repo" && SELFTEST_SLOW_PID="$tmp/slow.pid" exec "$BASH" "$hook" origin "$remote" < "$tmp/stdin" > "$tmp/int.out" 2>&1) &
+  pid=$!
+  local waited=0
+  while [ ! -s "$tmp/slow.pid" ] && [ "$waited" -lt 100 ]; do sleep 0.1; waited=$((waited + 1)); done
+  kill -TERM "$pid" 2> /dev/null
+  if wait "$pid"; then rc=0; else rc=$?; fi
+  check "an interrupted hook blocks the push" "$rc|$(grep -c 'BLOCKED (interrupted)' "$tmp/int.out")" "130|1"
+  local slow slow_child; slow="$(cat "$tmp/slow.pid" 2> /dev/null)"; slow_child="$(cat "$tmp/slow.pid.child" 2> /dev/null)"
+  check "precondition: the slow check and its child were running when interrupted" "$([ -n "$slow" ] && [ -n "$slow_child" ] && echo yes || echo no)" "yes"
+  sleep 0.2
+  check "interruption stopped the check itself" "$([ -n "$slow" ] && kill -0 "$slow" 2> /dev/null && echo running || echo stopped)" "stopped"
+  check "interruption stopped the check's own child process" "$([ -n "$slow_child" ] && kill -0 "$slow_child" 2> /dev/null && echo running || echo stopped)" "stopped"
+  # Fallback cleanup of this test's own processes only, after the assertions.
+  [ -n "$slow" ] && kill "$slow" 2> /dev/null
+  [ -n "$slow_child" ] && kill "$slow_child" 2> /dev/null
+  git -C "$repo" reset --quiet --hard HEAD~1
+
+  # 13. a snapshot that cannot be removed after a verdict is kept and named, never left
+  #     dangling; it warns without changing the verdict: a passing push goes through and a
+  #     failing one still blocks
+  local kept outcome
+  if ! inject '  local snap="$1"' '  local snap="$1"; return 1'; then
+    check "the cleanup-failure copy was made" "no" "yes"
+  else
+    for outcome in pass fail; do
+      if [ "$outcome" = fail ]; then touch "$repo/BROKEN"; fi
+      echo "f13$outcome" > "$repo/f13"; git -C "$repo" add -A; git -C "$repo" commit --quiet -m "f13 $outcome"
+      push origin main; rc=$?
+      kept="$(sed -n 's/.*kept \(.*ew-pre-push\.[A-Za-z0-9]*\).*/\1/p' "$tmp/push.out" | head -1)"
+      check "a cleanup failure on a $outcome verdict warns, keeps the verdict, names what it kept" \
+        "$rc|$(grep -c 'WARNING: could not remove snapshot' "$tmp/push.out")|$(grep -c 'not your code' "$tmp/push.out")|$([ -n "$kept" ] && [ -d "$kept" ] && echo kept || echo missing)" \
+        "$([ "$outcome" = pass ] && echo 0 || echo 1)|1|1|kept"
+      if [ -n "$kept" ]; then
+        for snap in "$kept"/*; do git -C "$repo" worktree remove --force "$snap" > /dev/null 2>&1; done
+        rm -rf "$kept"
+      fi
+    done
+    git -C "$repo" rm --quiet BROKEN; git -C "$repo" commit --quiet -m "f13 fixed"
+  fi
+  cp "$hook" "$tmp/hooks/pre-push"
+
+  # 14. a temp directory whose path contains spaces works end to end
+  mkdir -p "$tmp/with space"
+  echo f14 > "$repo/f14"; git -C "$repo" add f14; git -C "$repo" commit --quiet -m f14
+  TMPDIR="$tmp/with space" push origin main; rc=$?
+  check "a temp path with spaces passes and leaves nothing behind" "$rc|$(find "$tmp/with space" -mindepth 1 | wc -l | tr -d ' ')" "0|0"
+
+  # 15-17. a snapshot left half-made by a fault is removed through git's own registration,
+  # exactly, and an unrelated stale registration is left alone (no global prune).
+  git -C "$repo" worktree add --quiet --detach "$tmp/stale" HEAD
+  rm -rf "$tmp/stale"
+  local state label n=15
+  for state in 'rm -f "$dir/.git"' 'rm -rf "$dir"'; do
+    case "$state" in *'.git'*) label="a registered snapshot without its .git file" ;; *) label="a registration whose directory is gone" ;; esac
+    if ! inject '  SNAP_DIR="$dir"' "  $state; false"; then
+      check "the half-made-snapshot copy was made ($label)" "no" "yes"
+      continue
+    fi
+    echo "f$n" > "$repo/f$n"; git -C "$repo" add "f$n"; git -C "$repo" commit --quiet -m "f$n"
+    push origin main; rc=$?
+    check "$label: blocked as a hook fault, cleaned up exactly" "$rc|$(grep -c 'hook fault' "$tmp/push.out")|$(grep -c 'Cleanup also failed' "$tmp/push.out")|$(git -C "$repo" worktree list --porcelain | grep -c 'ew-pre-push')" "1|1|0|0"
+    n=$((n + 1))
+  done
+  cp "$hook" "$tmp/hooks/pre-push"
+  check "an unrelated stale registration is left untouched" "$(git -C "$repo" worktree list --porcelain | grep -cxF "worktree $tmp/stale")" "1"
+  git -C "$repo" worktree prune
+
+  # 18. malformed check arguments return at once, never loop
+  local args_case
+  for args_case in "--repo" "--repo $repo --tree" "--bogus x" "--repo $repo --tree $repo --sha zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz" "--repo $repo --tree $repo --sha 1234"; do
+    # shellcheck disable=SC2086 # word splitting is the point: each case is an argument list
+    ( parse_check_args $args_case 2> /dev/null ) &
+    pid=$!
+    waited=0
+    while kill -0 "$pid" 2> /dev/null && [ "$waited" -lt 30 ]; do sleep 0.1; waited=$((waited + 1)); done
+    if kill -0 "$pid" 2> /dev/null; then kill "$pid"; rc=hung; elif wait "$pid"; then rc=0; else rc=$?; fi
+    check "malformed check arguments are refused at once: $args_case" "$rc" "4"
+  done
+
+  # 19. a process that already exited does not stop an errexit caller's cleanup
+  true &
+  pid=$!
+  wait "$pid"
+  out="$( set -e; PROCESS_TREE_INCOMPLETE=""; stop_tree "$pid"; echo "survived:${PROCESS_TREE_INCOMPLETE:-none}" )"
+  check "stopping an already-exited process is not a failure" "$out" "survived:none"
+
+  # 20-21. a registration query git cannot answer never authorises a delete: the temp
+  # directory is kept and named in a warning (the passing verdict stands), whether the query fails before removal (the
+  # snapshot and its registration both survive) or while verifying afterwards.
+  local call when
+  for call in 1 3; do
+    case "$call" in 1) when="before removal" ;; *) when="while verifying" ;; esac
+    if ! inject '  listing="$(git -C "$REPO" worktree list --porcelain)" || return 1' \
+      "  QUERIES=\$((\${QUERIES:-0} + 1)); [ \"\$QUERIES\" -ne $call ] || return 1; listing=\"\$(git -C \"\$REPO\" worktree list --porcelain)\" || return 1"; then
+      check "the failing-query copy was made ($when)" "no" "yes"
+      continue
+    fi
+    echo "q$call" > "$repo/q$call"; git -C "$repo" add "q$call"; git -C "$repo" commit --quiet -m "q$call"
+    push origin main; rc=$?
+    kept="$(sed -n 's/.*kept \(.*ew-pre-push\.[A-Za-z0-9]*\).*/\1/p' "$tmp/push.out" | head -1)"
+    local survivors="-"
+    if [ "$call" = 1 ]; then
+      survivors="$(git -C "$repo" worktree list --porcelain | grep -c "^worktree $kept/")|$(find "$kept" -mindepth 1 -maxdepth 1 -type d 2> /dev/null | wc -l | tr -d ' ')"
+    fi
+    check "a failed registration query $when warns and keeps the temp directory" \
+      "$rc|$(grep -c 'WARNING: could not remove snapshot' "$tmp/push.out")|$([ -n "$kept" ] && [ -d "$kept" ] && echo kept || echo missing)|$survivors" \
+      "0|1|kept|$([ "$call" = 1 ] && echo '1|1' || echo '-')"
+    if [ -n "$kept" ]; then
+      for snap in "$kept"/*; do [ -e "$snap" ] && git -C "$repo" worktree remove --force "$snap" > /dev/null 2>&1; done
+      rm -rf "$kept"
+    fi
+    git -C "$repo" worktree prune
+  done
+  cp "$hook" "$tmp/hooks/pre-push"
+
+  # 22. an admin entry whose gitdir file cannot be read stops the exact unregister: the push
+  # is blocked and the snapshot's admin entry is kept, never guessed away. The entry made
+  # unreadable is the snapshot's own; git itself prunes an unreadable foreign one on push.
+  # shellcheck disable=SC2016 # the replacement is literal hook text
+  if ! inject '  SNAP_DIR="$dir"' '  rm -f "$dir/.git"; chmod 000 "$(git -C "$REPO" rev-parse --path-format=absolute --git-common-dir)/worktrees/${dir##*/}/gitdir"; false'; then
+    check "the unreadable-gitdir copy was made" "no" "yes"
+  else
+    echo f22 > "$repo/f22"; git -C "$repo" add f22; git -C "$repo" commit --quiet -m f22
+    push origin main; rc=$?
+    kept="$(sed -n 's/.*kept \(.*ew-pre-push\.[A-Za-z0-9]*\).*/\1/p' "$tmp/push.out" | head -1)"
+    local admin_entries
+    admin_entries="$(find "$repo/.git/worktrees" -mindepth 1 -maxdepth 1 -type d 2> /dev/null | wc -l | tr -d ' ')"
+    check "an unreadable gitdir blocks, keeps the snapshot's admin entry, and names the failure" \
+      "$rc|$(grep -c 'Cleanup also failed: could not remove snapshot' "$tmp/push.out")|$admin_entries|$([ -n "$kept" ] && [ -d "$kept" ] && echo kept || echo missing)" \
+      "1|1|1|kept"
+    chmod 644 "$repo"/.git/worktrees/*/gitdir 2> /dev/null
+    [ -n "$kept" ] && rm -rf "$kept"
+    git -C "$repo" worktree prune
+  fi
+  cp "$hook" "$tmp/hooks/pre-push"
+
+  # 12. every run removed its own snapshots and temp directories
+  check "no snapshot worktree is left registered" "$(git -C "$repo" worktree list | grep -c 'ew-pre-push' || true)" "0"
+  check "no hook temp directory is left behind" "$(find "${TMPDIR:-/tmp}" -maxdepth 1 -name 'ew-pre-push.*' | wc -l | tr -d ' ')" "$leftovers_before"
+
+  rm -rf "$tmp"
+  echo "self-test: $cases cases, $fails failure(s)"
+  [ "$fails" -eq 0 ]
+}
+
+if [ "${1:-}" = "--self-test" ]; then
+  self_test
+  exit $?
+fi
+trap 'hook_fault "unexpected error at line $LINENO"' ERR
+trap on_signal INT TERM
+main "$@"
