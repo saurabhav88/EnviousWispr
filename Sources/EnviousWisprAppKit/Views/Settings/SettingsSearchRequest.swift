@@ -17,6 +17,11 @@ struct SettingsSearchRequest: Equatable {
   let target: SettingsMapID
   /// Where an arrival goes, in order, when `target` is not on screen.
   let fallbacks: [SettingsMapID]
+  /// Every place an arrival can land, best first (#3545): target, fallbacks, section heading, tab
+  /// or page landing. Built once here from the map.
+  let ladder: [SettingsArrivalRung]
+  /// The rendered content the entry lives in, which arrival waits for (#3545).
+  let content: SettingsArrivalContent
 
   /// The request for the searchable entry `entryID`, or nil when the id is not a map node, is not
   /// a searchable entry, or the node declares no destination or target. Never guesses a page.
@@ -29,6 +34,8 @@ struct SettingsSearchRequest: Equatable {
     self.dictionaryTab = node.dictionaryTab
     self.target = target
     self.fallbacks = node.fallbacks
+    self.ladder = SettingsMap.arrivalLadder(for: id)
+    self.content = SettingsArrivalContent(destination: destination, dictionaryTab: node.dictionaryTab)
   }
 }
 
@@ -43,12 +50,25 @@ struct SettingsReveal: Equatable {
   let anchor: SettingsMapID
   /// Tried in order when `anchor` is not on screen.
   let fallbacks: [SettingsMapID]
+  /// The request's ladder: where this arrival can land, best first (#3545).
+  let ladder: [SettingsArrivalRung]
+  /// The content this arrival waits for (#3545).
+  let content: SettingsArrivalContent
   let token: Int
 
-  /// Where to arrive given the controls on screen now: `anchor`, else the first declared fallback
-  /// that is mounted. Nil when none is, which is an implementation failure under plan §3.4 and
-  /// never a successful arrival.
+  /// The arrival for a chosen request, carrying the request's own ladder and content.
+  init(request: SettingsSearchRequest, token: Int) {
+    entryID = request.entryID
+    anchor = request.target
+    fallbacks = request.fallbacks
+    ladder = request.ladder
+    content = request.content
+    self.token = token
+  }
+
+  /// The best place to land given the controls on screen now: the first mounted rung of the
+  /// ladder, or nil when none is mounted yet (the arrival owner then waits; never a failure).
   func arrival(mounted: Set<SettingsMapID>) -> SettingsMapID? {
-    ([anchor] + fallbacks).first { mounted.contains($0) }
+    ladder.first { mounted.contains($0.id) }?.id
   }
 }

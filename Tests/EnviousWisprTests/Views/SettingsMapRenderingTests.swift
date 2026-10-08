@@ -40,8 +40,15 @@ struct SettingsMapRenderingTests {
 
   /// The places the page's arrival owner can see (`SettingsRevealAnchorKey`), written for a
   /// render only when a test sets the sink (#3545).
-  @MainActor final class RevealSink { var ids: Set<SettingsMapID> = [] }
+  @MainActor final class RevealSink {
+    var ids: Set<SettingsMapID> = []
+    /// Each place with the content it was drawn in (#3545).
+    var places: [SettingsMapID: SettingsArrivalContent?] = [:]
+  }
   @TaskLocal static var revealSink: RevealSink?
+  /// The page tag the window's `page { }` sets around a page, for a render that hosts a page
+  /// without that wrapper (#3545).
+  @TaskLocal static var pageTag: SettingsArrivalContent?
 
   static func keyViewCount(_ view: NSView) -> Int {
     (view.canBecomeKeyView && !view.isHidden ? 1 : 0)
@@ -63,6 +70,7 @@ struct SettingsMapRenderingTests {
     let (changes, continuation) = AsyncStream<Void>.makeStream()
     let root =
       view
+      .environment(\.settingsArrivalContent, pageTag)
       .frame(width: width, height: height)
       .onPreferenceChange(SettingsMapRegistrationKey.self) { value in
         MainActor.assumeIsolated { box.value = value }
@@ -72,7 +80,10 @@ struct SettingsMapRenderingTests {
         MainActor.assumeIsolated { sink?.kinds = value }
       }
       .onPreferenceChange(SettingsRevealAnchorKey.self) { value in
-        MainActor.assumeIsolated { revealSink?.ids = Set(value.keys) }
+        MainActor.assumeIsolated {
+          revealSink?.ids = Set(value.keys)
+          revealSink?.places = value.mapValues(\.content)
+        }
       }
     let host = NSHostingView(rootView: root)
     host.frame = CGRect(x: 0, y: 0, width: width, height: height)
@@ -157,9 +168,7 @@ struct SettingsMapRenderingTests {
   }
 
   /// Headings that hold rows: the map's sections, and the headings drawn as items.
-  static let headings: Set<SettingsMapID> = Set(
-    SettingsMap.nodes.filter { $0.structure == .section }.map(\.id)
-  ).union([.currentEngineSection, .aiPolishProviderSection, .yourSnippets])
+  static let headings: Set<SettingsMapID> = SettingsMap.headingIDs
 
   /// Where an arrival lands (the target, or the node itself for a heading or tab) for every node
   /// the map says is always on screen when `destination` is shown. A choice inside a menu lands
@@ -605,7 +614,11 @@ struct SettingsMapRenderingTests {
       }
     return try await Self.registrations(
       try dictionaryEnvironment(
-        AnyView(ScrollView { LazyVStack(alignment: .leading, spacing: 0) { content } }),
+        AnyView(
+          ScrollView { LazyVStack(alignment: .leading, spacing: 0) { content } }
+            // As YourWordsView tags the tab it draws (#3545).
+            .environment(
+              \.settingsArrivalContent, SettingsArrivalContent(page: .dictionary, dictionaryTab: tab))),
         home: home, words: words, learnFromPresentation: learnFromPresentation))
   }
 
@@ -683,7 +696,7 @@ struct SettingsMapRenderingTests {
       AnyView(KeybindsSettingsView().environment(home.settings).environment(runtime)))
   }
 
-  static func appSettings(_ label: String) async throws -> Rendered {
+  static func appSettings(_ label: String, withTabStrip: Bool = false) async throws -> Rendered {
     let parts = label.split(separator: ".").map(String.init)
     let tab = try #require(AppSettingsTab(rawValue: parts[1]))
     let state = parts.count > 2 ? parts[2] : ""
@@ -692,7 +705,7 @@ struct SettingsMapRenderingTests {
     let permissions = PermissionsService(
       accessibilityReader: { granted }, microphoneReader: { granted ? .authorized : .denied },
       openMicrophoneSettings: { _ in })
-    let page: AnyView
+    var page: AnyView
     switch state {
     case "restartNeeded":
       // The privacy page as App Settings hosts it, in a run that launched with the other
@@ -700,7 +713,9 @@ struct SettingsMapRenderingTests {
       let launched = !home.settings.sendCrashReports
       page = AnyView(
         PrivacySettingsView(launchedCrashReports: { launched })
-          .environment(\.settingsPR1Density, true))
+          .environment(\.settingsPR1Density, true)
+          // As AppSettingsView tags the tab it draws (#3545).
+          .environment(\.settingsArrivalContent, SettingsArrivalContent(page: .appSettings, appSettingsTab: tab)))
     case "languageChange":
       // The appearance page with an isolated language preference that already chose German.
       let name = "ew.settingsMapLanguage.\(UUID().uuidString)"
@@ -711,9 +726,23 @@ struct SettingsMapRenderingTests {
       try #require(preference.choice == "de")
       page = AnyView(
         AppearanceSettingsView(languagePreference: preference)
-          .environment(\.settingsPR1Density, true))
+          .environment(\.settingsPR1Density, true)
+          // As AppSettingsView tags the tab it draws (#3545).
+          .environment(\.settingsArrivalContent, SettingsArrivalContent(page: .appSettings, appSettingsTab: tab)))
     default:
       page = AnyView(AppSettingsView(selection: .constant(tab)))
+    }
+    if withTabStrip {
+      // App Settings' real tab strip above the tab's page, as AppSettingsView draws it (#3545).
+      let inner = page
+      page = AnyView(
+        VStack(spacing: 0) {
+          SettingsTabStrip(
+            items: AppSettingsTab.allCases.map {
+              SettingsTabItem(id: $0, icon: $0.icon, label: $0.label, map: $0.mapID)
+            }, selection: .constant(tab))
+          inner
+        })
     }
     let list = try await registrations(
       AnyView(
@@ -781,13 +810,211 @@ struct SettingsMapRenderingTests {
     return String(decoding: data, as: UTF8.self)
   }
 
+  /// States whose reviewed inventory fixture hosts one tab's content without the page around it.
+  /// Their landing is checked on a second render of the whole page in the same state
+  /// (`wholePagePlaces`), never on anchors combined from two renders.
+  static let tabContentOnlyStates: Set<String> = [
+    "dictionary.yourWords.searching", "dictionary.vocabularyPacks", "dictionary.learnFrom",
+    "dictionary.quickAdd", "appSettings.privacy.restartNeeded",
+    "appSettings.appearance.languageChange",
+  ]
+
+  /// The content a state label declares: its page, and its tab where the page has tabs.
+  static func declaredContent(_ label: String) throws -> SettingsArrivalContent {
+    let parts = label.split(separator: ".").map(String.init)
+    let page = try #require(SettingsPage(rawValue: parts[0]), "\(label) names no page")
+    switch page {
+    case .dictation:
+      return SettingsArrivalContent(page: page, dictationTab: try #require(DictationTab(rawValue: parts[1])))
+    case .appSettings:
+      return SettingsArrivalContent(page: page, appSettingsTab: try #require(AppSettingsTab(rawValue: parts[1])))
+    case .dictionary:
+      return SettingsArrivalContent(page: page, dictionaryTab: try #require(DictionaryTab(rawValue: parts[1])))
+    default:
+      return SettingsArrivalContent(page: page)
+    }
+  }
+
+  /// #3545 T2, every rendered state: each control carries the state's declared tab (or, outside
+  /// the tab, its page); and every entry of that tab or page has a rung of its ladder on screen
+  /// with the tag the arrival owner reads, so a hidden row still lands on its section or tab.
+  static func expectStateLands(
+    places: [SettingsMapID: SettingsArrivalContent?], label: String
+  ) async throws {
+    let content = try declaredContent(label)
+    expectTags(places, content: content, label: label)
+    if tabContentOnlyStates.contains(label) {
+      // The inventory render above is the tab's content alone; landing is checked on the whole
+      // page, rendered again in the same state.
+      let whole = try await wholePagePlaces(label)
+      expectTags(whole, content: content, label: "\(label) (whole page)")
+      expectEntriesLand(whole, content: content, label: "\(label) (whole page)")
+    } else {
+      expectEntriesLand(places, content: content, label: label)
+    }
+  }
+
+  /// One render of the whole page for a state whose inventory fixture draws only the tab's
+  /// content: the real YourWordsView for Dictionary states (search seeded through the page's own
+  /// input), and for the two App Settings states the same page with App Settings' real tab strip
+  /// above it, as AppSettingsView draws it.
+  static func wholePagePlaces(_ label: String) async throws -> [SettingsMapID: SettingsArrivalContent?] {
+    let content = try declaredContent(label)
+    let sink = RevealSink()
+    let view: AnyView
+    if let tab = content.dictionaryTab {
+      let (home, words) = try dictionaryHome()
+      try #require(words.add(CustomWord(canonical: "Envious")) == nil)
+      view = try dictionaryEnvironment(
+        AnyView(
+          YourWordsView(
+            selection: .constant(tab),
+            initialSearchQuery: label.hasSuffix(".searching") ? "envious" : "")),
+        home: home, words: words)
+      _ = try await $pageTag.withValue(content.pageOnly) {
+        try await $revealSink.withValue(sink) { try await registrations(view) }
+      }
+    } else {
+      _ = try await $pageTag.withValue(content.pageOnly) {
+        try await $revealSink.withValue(sink) { try await appSettings(label, withTabStrip: true) }
+      }
+    }
+    return sink.places
+  }
+
+  /// The page's fixed controls (tab strip, the Dictionary's fixed heading): the page's tag; every
+  /// other control: the tab's.
+  static func fixedControls(of page: SettingsPage) -> Set<SettingsMapID> {
+    switch page {
+    case .dictation: Set(DictationTab.allCases.map(\.mapID))
+    case .appSettings: Set(AppSettingsTab.allCases.map(\.mapID))
+    case .dictionary:
+      Set(DictionaryTab.allCases.map(\.mapID)).union([.enableDictionary, .sectionDictionary])
+    default: []
+    }
+  }
+
+  static func expectTags(
+    _ places: [SettingsMapID: SettingsArrivalContent?], content: SettingsArrivalContent,
+    label: String
+  ) {
+    let fixed = fixedControls(of: content.page)
+    for (id, tag) in places {
+      let expected = fixed.contains(id) ? content.pageOnly : content
+      #expect(
+        tag == .some(expected),
+        "\(label): \(id.rawValue) carries \(String(describing: tag)); expected \(expected)")
+    }
+  }
+
+  static func expectEntriesLand(
+    _ places: [SettingsMapID: SettingsArrivalContent?], content: SettingsArrivalContent,
+    label: String
+  ) {
+    for entry in SettingsSearchCatalog.entries {
+      guard let request = SettingsSearchRequest(entryID: entry.id) else {
+        Issue.record("\(label): \(entry.id) is not a result")
+        continue
+      }
+      guard request.content == content || request.content == content.pageOnly else { continue }
+      #expect(!request.ladder.isEmpty, "\(entry.id) has no ladder")
+      let lands = request.ladder.contains {
+        places[$0.id] == .some(content) || places[$0.id] == .some(content.pageOnly)
+      }
+      #expect(lands, "\(label): \(entry.id) has no rung on screen: \(request.ladder.map(\.id.rawValue))")
+    }
+  }
+
+  /// #3545 T2, whole pages: each destination rendered as the window renders it (the real
+  /// DictationSettingsView, AppSettingsView and YourWordsView for every tab; the untabbed pages),
+  /// with `page { }`'s tag. Every entry that lives there has a ladder and a rung on screen, tagged
+  /// as the arrival owner reads it; every control of a tab carries that tab, the strip the page.
+  @Test("every entry lands on its page as the window renders it, for every page and tab")
+  func everyEntryLandsOnItsWholePage() async throws {
+    typealias Places = [SettingsMapID: SettingsArrivalContent?]
+    func render(_ view: AnyView, page: SettingsPage) async throws -> Places {
+      let sink = RevealSink()
+      _ = try await Self.$pageTag.withValue(SettingsArrivalContent(page: page)) {
+        try await Self.$revealSink.withValue(sink) { try await Self.registrations(view) }
+      }
+      return sink.places
+    }
+    func rendered(_ label: String, page: SettingsPage) async throws -> Places {
+      let sink = RevealSink()
+      _ = try await Self.$pageTag.withValue(SettingsArrivalContent(page: page)) {
+        try await Self.$revealSink.withValue(sink) { try await Self.render(label) }
+      }
+      return sink.places
+    }
+    var pages: [(content: SettingsArrivalContent, places: Places, strip: Set<SettingsMapID>)] = []
+    for tab in DictationTab.allCases {
+      let view = try await DictationSettingsRenderHarness.page(tab: tab, german: false)
+      pages.append(
+        (
+          SettingsArrivalContent(page: .dictation, dictationTab: tab),
+          try await render(view, page: .dictation), Set(DictationTab.allCases.map(\.mapID))
+        ))
+    }
+    for tab in AppSettingsTab.allCases {
+      pages.append(
+        (
+          SettingsArrivalContent(page: .appSettings, appSettingsTab: tab),
+          try await rendered("appSettings.\(tab.rawValue)", page: .appSettings),
+          Set(AppSettingsTab.allCases.map(\.mapID))
+        ))
+    }
+    for tab in DictionaryTab.allCases {
+      let (home, words) = try Self.dictionaryHome()
+      try #require(words.add(CustomWord(canonical: "Envious")) == nil)
+      let view = try Self.dictionaryEnvironment(
+        AnyView(YourWordsView(selection: .constant(tab))), home: home, words: words)
+      pages.append(
+        (
+          SettingsArrivalContent(page: .dictionary, dictionaryTab: tab),
+          try await render(view, page: .dictionary),
+          Set(DictionaryTab.allCases.map(\.mapID)).union([.enableDictionary, .sectionDictionary])
+        ))
+    }
+    let untabbed: [(String, SettingsPage)] = [
+      ("keybinds", .keybinds), ("snippets", .snippets), ("transcribeFile", .transcribeFile),
+      ("aiPolish.off", .aiPolish), ("aiPolish.openAI", .aiPolish),
+    ]
+    for (label, page) in untabbed {
+      pages.append((SettingsArrivalContent(page: page), try await rendered(label, page: page), []))
+    }
+    for (content, places, strip) in pages {
+      #expect(!places.isEmpty, "\(content): nothing rendered")
+      for (id, tag) in places {
+        let want = strip.contains(id) ? content.pageOnly : content
+        #expect(tag == want, "\(content): \(id.rawValue) carries \(String(describing: tag))")
+      }
+      for entry in SettingsSearchCatalog.entries {
+        let request = try #require(
+          SettingsSearchRequest(entryID: entry.id), "\(entry.id) is a result")
+        // The entry's own tab, or a page-level entry of this page.
+        guard request.content == content || request.content == content.pageOnly else { continue }
+        #expect(!request.ladder.isEmpty, "\(entry.id) has no ladder")
+        let lands = request.ladder.contains {
+          places[$0.id] == .some(content) || places[$0.id] == .some(content.pageOnly)
+        }
+        #expect(
+          lands, "\(content): \(entry.id) has no rung on screen: \(request.ladder.map(\.id.rawValue))")
+      }
+    }
+  }
+
   @Test("each state registers exactly what the reviewed fixture lists", arguments: stateLabels)
   func state(label: String) async throws {
     _ = SettingsMap.takeRecordedFaults()
     let reveals = RevealSink()
-    let rendered = try await Self.$revealSink.withValue(reveals) { try await Self.render(label) }
+    let page = try #require(
+      SettingsPage(rawValue: String(label.split(separator: ".")[0])), "\(label) names no page")
+    let rendered = try await Self.$pageTag.withValue(SettingsArrivalContent(page: page)) {
+      try await Self.$revealSink.withValue(reveals) { try await Self.render(label) }
+    }
     // A Release test run does not stop on a wiring fault; it is recorded instead.
     #expect(SettingsMap.takeRecordedFaults() == [], "\(label): Settings Map wiring faults")
+    try await Self.expectStateLands(places: reveals.places, label: label)
     // Every mapped control is a place a search can land on, so the page's arrival owner must see
     // it. A registration drawn inside another one was hidden by it, and choosing that result
     // stopped a Debug build (#3545).

@@ -1,3 +1,4 @@
+import EnviousWisprCore
 import SwiftUI
 
 // Arrival after a search navigation (#3482 plan §3.4): scroll the chosen place into view, draw
@@ -5,11 +6,52 @@ import SwiftUI
 // so a remount never replays it. Selecting a result only navigates and reveals; nothing here
 // changes a setting.
 
-/// Where a registered control is, and the scroll view it sits in (nil: fixed on the page, such as
-/// a tab strip or a pinned heading).
+/// Where a registered control is, the scroll view it sits in (nil: fixed on the page, such as
+/// a tab strip or a pinned heading), and the content it was drawn in (#3545): carried in the same
+/// value, so the arrival owner never pairs controls with a separately cached page or tab.
 struct SettingsRevealPlace: Equatable {
   let bounds: Anchor<CGRect>
   let viewport: SettingsArrivalViewportID?
+  let content: SettingsArrivalContent?
+}
+
+/// The rendered content a control belongs to: its page, and its tab where the page has tabs
+/// (#3545). Set by `page { }` for the page and by each tabbed page around the tab it renders.
+struct SettingsArrivalContent: Hashable, Sendable {
+  let page: SettingsPage
+  let dictationTab: DictationTab?
+  let appSettingsTab: AppSettingsTab?
+  let dictionaryTab: DictionaryTab?
+
+  init(
+    page: SettingsPage, dictationTab: DictationTab? = nil, appSettingsTab: AppSettingsTab? = nil,
+    dictionaryTab: DictionaryTab? = nil
+  ) {
+    self.page = page
+    self.dictationTab = dictationTab
+    self.appSettingsTab = appSettingsTab
+    self.dictionaryTab = dictionaryTab
+  }
+
+  /// The content a map destination is drawn in. A Dictionary entry without a tab is page-level.
+  init(destination: SettingsDestination, dictionaryTab: DictionaryTab?) {
+    switch destination {
+    case .dictation(let tab): self.init(page: .dictation, dictationTab: tab)
+    case .appSettings(let tab): self.init(page: .appSettings, appSettingsTab: tab)
+    case .dictionary: self.init(page: .dictionary, dictionaryTab: dictionaryTab)
+    default: self.init(page: destination.page)
+    }
+  }
+
+  /// The page without any tab: what fixed controls (tab strips, fixed headings) carry.
+  var pageOnly: SettingsArrivalContent { SettingsArrivalContent(page: page) }
+}
+
+/// The top of a page's lazy content and the content it belongs to (#3545), so arrival scrolls
+/// there only for the destination's own lazy content.
+struct SettingsArrivalLazyTop: Equatable {
+  let scrollID: String
+  let content: SettingsArrivalContent
 }
 
 /// Where each registered control is, by map id; the page's one arrival owner reads it.
@@ -43,8 +85,8 @@ struct SettingsArrivalViewportKey: PreferenceKey {
 /// The scroll id at the top of a page's lazy content (Dictionary), so arrival can scroll there to
 /// make lazy rows exist before it gives up on them. nil: the page has no lazy content.
 struct SettingsArrivalLazyTopKey: PreferenceKey {
-  static let defaultValue: String? = nil
-  static func reduce(value: inout String?, nextValue: () -> String?) {
+  static let defaultValue: SettingsArrivalLazyTop? = nil
+  static func reduce(value: inout SettingsArrivalLazyTop?, nextValue: () -> SettingsArrivalLazyTop?) {
     value = value ?? nextValue()
   }
 }
@@ -61,16 +103,20 @@ extension EnvironmentValues {
   /// Increments on every committed navigation and on window close; an arrival in flight for an
   /// older navigation ends, and so does its ring.
   @Entry var settingsNavigationEpoch: Int = 0
-  /// Whether a reveal's destination (page, tab, Dictionary tab) is the one on screen now.
-  @Entry var settingsRevealIsShowing: @MainActor (SettingsReveal) -> Bool = { _ in false }
-  /// Whether an arrival that already finished (its reveal acknowledged, so `settingsRevealIsShowing`
-  /// no longer applies) still belongs to what the window shows: no newer search, no navigation
+  /// Whether an arrival that already finished (its reveal acknowledged) still belongs to what the
+  /// window shows: no newer search, no navigation
   /// since it was committed, and its page and tab on screen
   /// (`SettingsNavigationState.arrivalIsCurrent`). Read live from the window's state, never from a copy of this view's
   /// environment, which a queued closure may hold from an earlier pass.
   @Entry var settingsArrivalStillCurrent: @MainActor (SettingsReveal) -> Bool = { _ in false }
   /// The marked scroll view around a registration, nil outside every marked scroll view.
   @Entry var settingsArrivalViewport: SettingsArrivalViewportID? = nil
+  /// The rendered content around a registration (#3545): the page from `page { }`, overridden by
+  /// a tabbed page around the tab it draws.
+  @Entry var settingsArrivalContent: SettingsArrivalContent? = nil
+  /// Told every decision the arrival owner makes, with the inputs it decided on (#3545). No-op in
+  /// the app; hosted tests wait on the owner's own decisions through it.
+  @Entry var settingsArrivalDecided: @MainActor (SettingsArrivalDecision) -> Void = { _ in }
 }
 
 extension View {
@@ -89,14 +135,21 @@ extension View {
 private struct SettingsRevealAnchorModifier: ViewModifier {
   let id: SettingsMapID
   @Environment(\.settingsArrivalViewport) private var viewport
+  @Environment(\.settingsArrivalContent) private var drawnIn
 
   func body(content: Content) -> some View {
-    content.id(SettingsRevealScrollID(id: id))
+    // Plain values read here, in `body`, for the escaping transform below.
+    let id = id
+    let viewport = viewport
+    let drawnIn = drawnIn
+    return content.id(SettingsRevealScrollID(id: id))
       // A transform, not `.anchorPreference(value:)`: a set value replaces what the views inside
       // published, so a row inside a registered card was never a place to arrive at and choosing
       // it was a wiring fault (#3545, measured with a probe).
       .transformAnchorPreference(key: SettingsRevealAnchorKey.self, value: .bounds) { value, bounds in
-        if value[id] == nil { value[id] = SettingsRevealPlace(bounds: bounds, viewport: viewport) }
+        if value[id] == nil {
+          value[id] = SettingsRevealPlace(bounds: bounds, viewport: viewport, content: drawnIn)
+        }
       }
   }
 }
@@ -137,40 +190,68 @@ enum SettingsArrivalVisibility {
   }
 }
 
-/// The arrival decision, pure so every case is tested without a window.
+/// One decision of the arrival owner and the inputs it read (#3545): `action` nil when the owner
+/// did not decide at all (page gone, no scroll owner, no reveal, or the arrival is no longer
+/// current).
+struct SettingsArrivalDecision {
+  let reveal: SettingsReveal?
+  let action: SettingsArrivalPlanner.Action?
+  let places: [SettingsMapID: SettingsArrivalContent?]
+  let lazyTop: SettingsArrivalLazyTop?
+}
+
+/// The arrival decision, pure so every case is tested without a window (#3545 plan §3.2).
 enum SettingsArrivalPlanner {
   enum Action: Equatable {
-    /// Nothing to do: no reveal, already handled, or it belongs to another page or tab.
+    /// Nothing to do: no reveal, or this token was already arrived at.
     case none
-    /// The page has not published its controls yet; decide again when it has.
+    /// The destination's content has not rendered yet; decide again when it has.
     case wait
-    /// Lazy content may hold the target: scroll to the top first, then decide again.
+    /// The destination's lazy content may hold the target: scroll to its top once, then decide.
     case materialize
-    /// Arrive at this control (the reveal's own anchor or a declared fallback).
-    case arrive(SettingsMapID, isFallback: Bool)
-    /// Neither the anchor nor any fallback is on the page: an implementation failure.
-    case fault
+    /// Arrive at this rung of the entry's ladder.
+    case arrive(SettingsMapID, kind: SettingsArrivalLandingKind)
   }
 
   /// - Parameters:
-  ///   - showing: whether the reveal's destination (page, tab, Dictionary tab) is on screen now.
-  ///   - mounted: the mapped controls the page has published.
-  ///   - handledToken: the token this scroll owner already arrived at, if any.
-  ///   - canMaterialize: the page has lazy content and has not yet been scrolled to its top for
-  ///     this token.
+  ///   - places: every published control and the content it was drawn in.
+  ///   - lazyTop: the top of lazy content on the page, tagged with its content.
+  ///   - handledToken: the token this owner already arrived at, if any.
+  ///   - materializedToken: the token this owner already scrolled lazy content for, if any.
   static func decide(
-    reveal: SettingsReveal?, showing: Bool, mounted: Set<SettingsMapID>, handledToken: Int?,
-    canMaterialize: Bool
+    reveal: SettingsReveal?, places: [SettingsMapID: SettingsArrivalContent?],
+    lazyTop: SettingsArrivalLazyTop?, handledToken: Int?, materializedToken: Int?
   ) -> Action {
-    guard let reveal, reveal.token != handledToken, showing else { return .none }
-    // The initial empty inventory is "not ready yet", never "hidden".
-    guard !mounted.isEmpty else { return .wait }
-    // Lazy content may hold the chosen control off screen: reach it before any fallback.
-    if canMaterialize && !mounted.contains(reveal.anchor) { return .materialize }
-    if let target = reveal.arrival(mounted: mounted) {
-      return .arrive(target, isFallback: target != reveal.anchor)
+    guard let reveal, reveal.token != handledToken else { return .none }
+    let destination = reveal.content
+    let pageOnly = destination.pageOnly
+    // Controls of the destination's content, and the page's fixed controls (tab strip, fixed
+    // headings). A previous tab's controls, even with the same ids, are neither.
+    let eligible = Set(places.compactMap { $0.value == destination || $0.value == pageOnly ? $0.key : nil })
+    let contentReady = places.values.contains { $0 == destination }
+    let ladder = reveal.ladder
+    let firstMounted = ladder.first { eligible.contains($0.id) }
+    let lazyIsDestination = lazyTop?.content == destination
+    // 1. A fixed target (a tab, a fixed heading) needs no tab content.
+    if let target = ladder.first, places[target.id] == .some(pageOnly) {
+      return .arrive(target.id, kind: .target)
     }
-    return canMaterialize ? .materialize : .fault
+    // 2. No tab content yet.
+    if !contentReady {
+      guard lazyIsDestination else { return .wait }
+      if materializedToken != reveal.token { return .materialize }
+      // The destination's lazy content is identified and was materialized once.
+      return firstMounted.map { .arrive($0.id, kind: $0.kind) } ?? .wait
+    }
+    // 3. Lazy content may still hold the target.
+    if let target = ladder.first, !eligible.contains(target.id), lazyIsDestination,
+      materializedToken != reveal.token
+    {
+      return .materialize
+    }
+    // 4. The ladder over eligible places. Its last rung, the tab or page landing, is fixed, so it
+    // is mounted whenever the page is.
+    return firstMounted.map { .arrive($0.id, kind: $0.kind) } ?? .wait
   }
 }
 
@@ -213,18 +294,26 @@ struct SettingsArrivalRing: View {
 /// `materialize` scrolls lazy content to its top before a fallback is ever chosen.
 struct SettingsArrivalModifier: ViewModifier {
   @Environment(\.settingsReveal) private var reveal
-  /// Whether the reveal's destination is the one on screen (page, tab, Dictionary tab).
-  @Environment(\.settingsRevealIsShowing) private var showing
   @Environment(\.settingsRevealAcknowledge) private var acknowledge
   @Environment(\.settingsArrivalReleaseSearchFocus) private var releaseSearchFocus
   @Environment(\.settingsNavigationEpoch) private var navigationEpoch
   @Environment(\.settingsArrivalStillCurrent) private var stillCurrent
+  @Environment(\.settingsArrivalDecided) private var decided
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
   @State private var proxy: ScrollViewProxy?
   /// The scroll id at the top of the page's lazy content (Dictionary), nil for an eager page.
-  @State private var topScrollID: String?
+  /// The top of the page's lazy content (Dictionary) and its content, nil for an eager page.
+  @State private var lazyTop: SettingsArrivalLazyTop?
   @State private var viewportAnchors: [SettingsArrivalViewportID: Anchor<CGRect>] = [:]
-  @State private var mounted: Set<SettingsMapID> = []
+  /// Every published control and the content it was drawn in.
+  @State private var places: [SettingsMapID: SettingsArrivalContent?] = [:]
+  /// The reveal, mirrored from the environment on every change. A queued decision reads this, never
+  /// the environment value its closure captured when it was queued (#3545: that copy was stale and
+  /// a reveal committed while a decision was queued was decided as nil).
+  @State private var liveReveal: SettingsReveal?
+  /// The page is on screen. Cleared before disappearance cleanup, so a decision queued before the
+  /// page left never acts (#3545).
+  @State private var isMounted = false
   /// Controls wholly inside the visible area: arrival does not scroll for these (a pinned header
   /// control, or one already on screen, stays where the person sees it).
   @State private var fullyVisible: Set<SettingsMapID> = []
@@ -232,13 +321,14 @@ struct SettingsArrivalModifier: ViewModifier {
   @State private var partlyVisible: Set<SettingsMapID> = []
   @State private var handledToken: Int?
   @State private var materializedToken: Int?
-  /// An arrival scrolled toward but not yet seen on screen: it completes (announcement and
-  /// acknowledgement) only once its control is visible, and the ring is not dismissed for being
+  /// An arrival scrolled toward but not yet seen on screen: the ring is not dismissed for being
   /// out of view while the reveal scroll runs.
   @State private var arriving: Arriving?
   @State private var ring: (id: SettingsMapID, token: Int)?
   @State private var ringExpiry: Task<Void, Never>?
   @State private var deciding = false
+  /// A change arrived while a decision was queued: decide once more after it, never drop it.
+  @State private var decideAgain = false
   /// The adapters the page has published, and the focus move in flight (one shot).
   @State private var focusKinds: [SettingsMapID: SettingsArrivalFocusKind] = [:]
   @State private var focusRequest: SettingsArrivalFocusRequest?
@@ -253,7 +343,7 @@ struct SettingsArrivalModifier: ViewModifier {
 
   struct Arriving: Equatable {
     let target: SettingsMapID
-    let isFallback: Bool
+    let kind: SettingsArrivalLandingKind
     let reveal: SettingsReveal
   }
 
@@ -262,6 +352,7 @@ struct SettingsArrivalModifier: ViewModifier {
   func body(content: Content) -> some View {
     ScrollViewReader { reader in
       arrival(content).onAppear {
+        isMounted = true
         proxy = reader
         reconcile()
       }
@@ -271,9 +362,9 @@ struct SettingsArrivalModifier: ViewModifier {
   private func arrival(_ content: Content) -> some View {
     content
       .onPreferenceChange(SettingsRevealAnchorKey.self) { anchors in
-        mounted = Set(anchors.keys)
+        places = anchors.mapValues(\.content)
       }
-      .onPreferenceChange(SettingsArrivalLazyTopKey.self) { topScrollID = $0 }
+      .onPreferenceChange(SettingsArrivalLazyTopKey.self) { lazyTop = $0 }
       .onPreferenceChange(SettingsArrivalFocusKey.self) { focusKinds = $0 }
       .environment(\.settingsArrivalFocusRequest, focusRequest)
       .environment(\.settingsArrivalFocusTaken) { taken in
@@ -298,18 +389,27 @@ struct SettingsArrivalModifier: ViewModifier {
         return .ignored
       }
       .onAppear { reconcile() }
-      .onChange(of: reveal) { _, _ in reconcile() }
-      .onChange(of: mounted) { _, _ in reconcile() }
+      .onChange(of: reveal, initial: true) { _, new in
+        liveReveal = new
+        reconcile()
+      }
+      // Tags are part of the value, so a tab switch whose controls share ids still reconciles.
+      .onChange(of: places) { _, _ in reconcile() }
+      .onChange(of: lazyTop) { _, _ in reconcile() }
       // Any other navigation, or the window closing, ends this arrival and its ring.
       .onChange(of: navigationEpoch) { _, _ in
         // A focus move still queued, or asked and not yet taken, belongs to an older navigation.
         pendingFocus = nil
         dropFocusRequest()
-        if let arriving, showing(arriving.reveal) { return }
+        if let arriving, stillCurrent(arriving.reveal) { return }
         arriving = nil
         dismissRing()
       }
       .onDisappear {
+        isMounted = false
+        liveReveal = nil
+        proxy = nil
+        decideAgain = false
         arriving = nil
         dismissRing()
         pendingFocus = nil
@@ -361,60 +461,76 @@ struct SettingsArrivalModifier: ViewModifier {
   }
 
   private func reconcile() {
-    guard !deciding else { return }
+    guard !deciding else {
+      decideAgain = true
+      return
+    }
     deciding = true
-    // One layout pass after the change, so the inventory describes the committed page.
+    // Coalescing only: the decision reads live state (`liveReveal`, `places`, `lazyTop`), and the
+    // content tags, not this hop, say whether the destination has rendered.
     DispatchQueue.main.async {
       deciding = false
       decideNow()
+      if decideAgain {
+        decideAgain = false
+        reconcile()
+      }
     }
   }
 
   private func decideNow() {
+    // The inputs this decision reads, frozen at entry and reported once it has acted.
+    let observedReveal = liveReveal
+    let observedPlaces = places
+    let observedLazyTop = lazyTop
+    var observedAction: SettingsArrivalPlanner.Action?
+    defer {
+      decided(
+        SettingsArrivalDecision(
+          reveal: observedReveal, action: observedAction, places: observedPlaces,
+          lazyTop: observedLazyTop))
+    }
     // No scroll owner yet: deciding now would arrive without scrolling. The reader's onAppear
     // reconciles again once it is stored.
-    guard proxy != nil else { return }
-    let current = reveal
+    // A decision queued before the page left, or before a newer navigation, never acts.
+    guard isMounted, proxy != nil, let current = observedReveal, stillCurrent(current) else {
+      return
+    }
     let action = SettingsArrivalPlanner.decide(
-      reveal: current, showing: current.map(showing) ?? false, mounted: mounted,
-      handledToken: handledToken,
-      canMaterialize: topScrollID != nil && materializedToken != current?.token)
-    guard let current else { return }
+      reveal: current, places: observedPlaces, lazyTop: observedLazyTop,
+      handledToken: handledToken, materializedToken: materializedToken)
+    observedAction = action
     switch action {
     case .none, .wait:
       break
     case .materialize:
       materializedToken = current.token
-      if let topScrollID { proxy?.scrollTo(topScrollID, anchor: .top) }
+      if let observedLazyTop { proxy?.scrollTo(observedLazyTop.scrollID, anchor: .top) }
       reconcile()
-    case .arrive(let target, let isFallback):
+    case .arrive(let target, let kind):
       handledToken = current.token
+      #if DEBUG
+        let message = "arrival landed=\(kind) entry=\(current.entryID) at=\(target.rawValue)"
+        Task { await AppLogger.shared.log(message, level: .info, category: "SettingsMap") }
+      #endif
       dropFocusRequest()
-      arriving = Arriving(target: target, isFallback: isFallback, reveal: current)
+      arriving = Arriving(target: target, kind: kind, reveal: current)
       scroll(to: target)
       showRing(target, token: current.token)
-      completeArrivalIfVisible()
-    case .fault:
-      handledToken = current.token
-      SettingsMap.wiringFault(
-        "Settings search: no arrival for \(current.entryID) (anchor \(current.anchor.rawValue), fallbacks \(current.fallbacks.map(\.rawValue)))"
-      )
+      // Announced and acknowledged now (#3545 plan §3.4), not when the place becomes visible:
+      // scrolling and the ring follow visibility; finishing the arrival never waits on it.
+      announce(entryID: current.entryID, landed: kind == .target ? nil : target)
       acknowledge(current.token)
+      startFocus(current, target: target)
+      completeArrivalIfVisible()
     }
   }
 
-  /// The arrival is done once its control is on screen and the reveal still applies: announce
-  /// where the person landed, then acknowledge the token.
+  /// The arrival's place is on screen: the reveal scroll is over, so the ring may now be dismissed
+  /// when the person scrolls it away.
   private func completeArrivalIfVisible() {
     guard let pending = arriving, partlyVisible.contains(pending.target) else { return }
     arriving = nil
-    guard reveal?.token == pending.reveal.token, showing(pending.reveal) else {
-      dismissRing()
-      return
-    }
-    announce(entryID: pending.reveal.entryID, landed: pending.isFallback ? pending.target : nil)
-    startFocus(pending.reveal, target: pending.target)
-    acknowledge(pending.reveal.token)
   }
 
   /// Focus follows the arrival by one layout pass, and is judged again then: a newer arrival, or a

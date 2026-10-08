@@ -16,76 +16,110 @@ struct SettingsArrivalTests {
 
   static func reveal(_ entryID: String, token: Int = 1) throws -> SettingsReveal {
     let request = try #require(SettingsSearchRequest(entryID: entryID))
-    return SettingsReveal(
-      entryID: entryID, anchor: request.target, fallbacks: request.fallbacks, token: token)
+    return SettingsReveal(request: request, token: token)
   }
 
-  @Test("nothing happens without a reveal, for a handled token, or on another page or tab")
+  /// Places as a page publishes them: each control with the content it was drawn in.
+  static func places(
+    _ content: SettingsArrivalContent?, _ ids: SettingsMapID...
+  ) -> [SettingsMapID: SettingsArrivalContent?] {
+    Dictionary(uniqueKeysWithValues: ids.map { ($0, content) })
+  }
+
+  static let engine = SettingsArrivalContent(page: .dictation, dictationTab: .engine)
+  static let clipboard = SettingsArrivalContent(page: .dictation, dictationTab: .clipboard)
+  static let dictation = SettingsArrivalContent(page: .dictation)
+
+  static func decide(
+    _ reveal: SettingsReveal?, _ places: [SettingsMapID: SettingsArrivalContent?],
+    lazyTop: SettingsArrivalLazyTop? = nil, handled: Int? = nil, materialized: Int? = nil
+  ) -> Planner.Action {
+    Planner.decide(
+      reveal: reveal, places: places, lazyTop: lazyTop, handledToken: handled,
+      materializedToken: materialized)
+  }
+
+  @Test("nothing happens without a reveal or for a token already arrived at")
   func noArrival() throws {
     let reveal = try Self.reveal("pauseDuration", token: 3)
+    let content = reveal.content
+    #expect(Self.decide(nil, Self.places(content, .pauseDuration)) == .none)
     #expect(
-      Planner.decide(
-        reveal: nil, showing: true, mounted: [.pauseDuration], handledToken: nil,
-        canMaterialize: false) == .none)
-    #expect(
-      Planner.decide(
-        reveal: reveal, showing: true, mounted: [.pauseDuration], handledToken: 3,
-        canMaterialize: false) == .none, "a handled token arrived again")
-    #expect(
-      Planner.decide(
-        reveal: reveal, showing: false, mounted: [.pauseDuration], handledToken: nil,
-        canMaterialize: false) == .none, "arrived while another tab was showing")
+      Self.decide(reveal, Self.places(content, .pauseDuration), handled: 3) == .none,
+      "a handled token arrived again")
   }
 
-  @Test("an empty control inventory waits; it is never read as 'hidden'")
-  func emptyInventoryWaits() throws {
+  @Test("readiness is the destination's own content: none, untagged or another tab's waits")
+  func readinessIsTaggedContent() throws {
+    let reveal = try Self.reveal("autoCopyToClipboard")
+    #expect(reveal.content == Self.clipboard)
+    #expect(Self.decide(reveal, [:]) == .wait, "nothing rendered")
+    #expect(
+      Self.decide(reveal, Self.places(Self.dictation, .dictationTabEngine, .dictationTabClipboard))
+        == .wait, "only the tab strip: the tab's own rows have not rendered")
+    #expect(
+      Self.decide(reveal, Self.places(Self.engine, .unloadModelAfter, .autoCopyToClipboard)) == .wait,
+      "the previous tab's controls, even one with the target's id, prove nothing")
+    #expect(
+      Self.decide(reveal, Self.places(nil, .autoCopyToClipboard)) == .wait,
+      "an untagged control proves nothing")
+    #expect(
+      Self.decide(reveal, Self.places(Self.clipboard, .autoCopyToClipboard))
+        == .arrive(.autoCopyToClipboard, kind: .target))
+  }
+
+  @Test("a fixed target, such as a tab, arrives before the tab's content renders")
+  func fixedTargetArrivesFirst() throws {
+    let reveal = try Self.reveal("dictation.tab.microphone")
+    #expect(
+      Self.decide(reveal, Self.places(Self.dictation, .dictationTabMicrophone))
+        == .arrive(.dictationTabMicrophone, kind: .target))
+  }
+
+  @Test("each rung in order: target, declared fallback, section, then the tab")
+  func ladderOrder() throws {
     let reveal = try Self.reveal("pauseDuration")
-    #expect(
-      Planner.decide(
-        reveal: reveal, showing: true, mounted: [], handledToken: nil, canMaterialize: false)
-        == .wait)
+    let content = reveal.content
+    let ladder = reveal.ladder
+    try #require(ladder.count >= 4, "pauseDuration has a fallback, a section and a tab: \(ladder.map(\.id))")
+    #expect(ladder.map(\.kind) == [.target, .fallback, .section, .landing])
+    let all = ladder.map(\.id)
+    for (index, rung) in ladder.enumerated() {
+      // Every rung below this one is on screen; the ones above are not.
+      var placed = Dictionary(uniqueKeysWithValues: all[index...].map { ($0, Optional(content)) })
+      if rung.kind == .landing { placed[rung.id] = content.pageOnly }
+      // The tab's content has rendered, with a row that is no rung of this entry.
+      placed[.theme] = content
+      #expect(Self.decide(reveal, placed) == .arrive(rung.id, kind: rung.kind), "\(rung)")
+    }
   }
 
-  @Test("the chosen control when it is on the page, else the first declared fallback on it")
-  func anchorThenFallback() throws {
-    let reveal = try Self.reveal("pauseDuration")
-    try #require(!reveal.fallbacks.isEmpty, "pauseDuration declares a fallback")
-    #expect(
-      Planner.decide(
-        reveal: reveal, showing: true, mounted: [reveal.anchor, reveal.fallbacks[0]],
-        handledToken: nil, canMaterialize: false) == .arrive(reveal.anchor, isFallback: false))
-    #expect(
-      Planner.decide(
-        reveal: reveal, showing: true, mounted: [reveal.fallbacks[0], .windowSearch],
-        handledToken: nil, canMaterialize: false)
-        == .arrive(reveal.fallbacks[0], isFallback: true))
-  }
-
-  @Test("lazy content is scrolled to its top before any fallback; then a missing place faults")
-  func materializeBeforeFallback() throws {
+  @Test("lazy content is scrolled to its top once, before any lower rung; never for another tab")
+  func materializeOnce() throws {
     let reveal = try Self.reveal("yourWords.export")
+    let content = reveal.content
+    let lazy = SettingsArrivalLazyTop(scrollID: "top", content: content)
+    let other = SettingsArrivalLazyTop(
+      scrollID: "top", content: SettingsArrivalContent(page: .dictionary, dictionaryTab: .learnFrom))
+    let tab = try #require(reveal.ladder.last?.id)
+    let strip = Self.places(content.pageOnly, tab, .enableDictionary)
+    // Some of the tab's content is on screen, not the target.
+    var partial = strip
+    partial[.yourWordsSearch] = content
+    #expect(Self.decide(reveal, partial, lazyTop: lazy) == .materialize)
     #expect(
-      Planner.decide(
-        reveal: reveal, showing: true, mounted: [.enableDictionary], handledToken: nil,
-        canMaterialize: true) == .materialize)
+      Self.decide(reveal, partial, lazyTop: lazy, materialized: reveal.token)
+        == .arrive(tab, kind: .landing), "after the one scroll, the best rung on screen")
     #expect(
-      Planner.decide(
-        reveal: reveal, showing: true, mounted: [.enableDictionary], handledToken: nil,
-        canMaterialize: false) == .fault)
-  }
-
-  @Test("a mounted fallback never wins while lazy content may still hold the chosen control")
-  func lazyPrimaryBeatsMountedFallback() throws {
-    let reveal = try Self.reveal("pauseDuration")
-    let fallback = try #require(reveal.fallbacks.first)
+      Self.decide(reveal, partial, lazyTop: other) == .arrive(tab, kind: .landing),
+      "another tab's lazy content is never scrolled")
+    // None of the tab's content is on screen yet.
+    #expect(Self.decide(reveal, strip, lazyTop: lazy) == .materialize)
     #expect(
-      Planner.decide(
-        reveal: reveal, showing: true, mounted: [fallback], handledToken: nil,
-        canMaterialize: true) == .materialize)
-    #expect(
-      Planner.decide(
-        reveal: reveal, showing: true, mounted: [fallback], handledToken: nil,
-        canMaterialize: false) == .arrive(fallback, isFallback: true))
+      Self.decide(reveal, strip, lazyTop: lazy, materialized: reveal.token)
+        == .arrive(tab, kind: .landing))
+    #expect(Self.decide(reveal, strip, lazyTop: other) == .wait)
+    #expect(Self.decide(reveal, strip) == .wait)
   }
 
   @Test("every committed navigation and a window close move the navigation epoch")
@@ -206,9 +240,10 @@ struct SettingsArrivalTests {
   /// Hosts a page shaped like Dictation Settings (a tab strip above the page's scroll view, a row
   /// far below the fold) under one arrival owner, and returns the acknowledged token once the
   /// arrival for `entryID` completes. A missing arrival is a wiring fault, which stops a Debug run.
-  static func arrival(at entryID: String) async throws -> Int? {
+  static func arrival(at entryID: String) async throws -> (token: Int?, landed: SettingsMapID?) {
     let reveal = try Self.reveal(entryID, token: 7)
     var acknowledged: Int?
+    var landed: SettingsMapID?
     let page = VStack(spacing: 0) {
       Button("Microphone") {}
         .settingsMapRegistration(.dictationTabMicrophone)
@@ -225,11 +260,17 @@ struct SettingsArrivalTests {
         }
         .settingsMapRegistration(.learnFrom)
       }
+      // The scrolling content is the reveal's own tab; the strip above it is the page's (#3545).
+      .environment(\.settingsArrivalContent, reveal.content)
     }
+    .environment(\.settingsArrivalContent, reveal.content.pageOnly)
     .modifier(SettingsArrivalModifier())
     .environment(\.settingsReveal, reveal)
-    .environment(\.settingsRevealIsShowing) { _ in acknowledged == nil }
     .environment(\.settingsRevealAcknowledge) { acknowledged = $0 }
+    .environment(\.settingsArrivalStillCurrent) { _ in true }
+    .environment(\.settingsArrivalDecided) { decision in
+      if case .arrive(let id, _) = decision.action { landed = id }
+    }
     .frame(width: 700, height: 500)
     let host = NSHostingView(rootView: page)
     host.frame = CGRect(x: 0, y: 0, width: 700, height: 500)
@@ -243,16 +284,305 @@ struct SettingsArrivalTests {
       host.layoutSubtreeIfNeeded()
       try await Task.sleep(for: .milliseconds(20))
     }
-    return acknowledged
+    return (acknowledged, landed)
   }
 
   @Test("a tab outside the page's scroll view and a row far below the fold are both arrived at")
   func pageOwnerReachesEveryPlace() async throws {
     _ = SettingsMap.takeRecordedFaults()
-    #expect(try await Self.arrival(at: "dictation.tab.microphone") == 7, "the tab strip")
-    #expect(try await Self.arrival(at: "autoCopyToClipboard") == 7, "scrolled into view")
+    let tab = try await Self.arrival(at: "dictation.tab.microphone")
+    #expect(tab.token == 7 && tab.landed == .dictationTabMicrophone, "the tab strip: \(tab)")
+    let row = try await Self.arrival(at: "autoCopyToClipboard")
+    #expect(row.token == 7 && row.landed == .autoCopyToClipboard, "below the fold: \(row)")
+    let nested = try await Self.arrival(at: "selfLearningDictionary")
     #expect(
-      try await Self.arrival(at: "selfLearningDictionary") == 7, "a row inside a registered card")
+      nested.token == 7 && nested.landed == .selfLearningDictionary,
+      "a row inside a registered card: \(nested)")
+    #expect(SettingsMap.takeRecordedFaults().isEmpty)
+  }
+
+  // MARK: - Tagged content, hosted (#3545 T3, T4, T6, T12)
+
+  /// Rows that appear one pass after their tab opens, as rows that wait on state do.
+  struct LateRows: View {
+    let ids: [SettingsMapID]
+    @State private var ready = false
+    var body: some View {
+      VStack {
+        if ready {
+          ForEach(ids, id: \.self) { id in
+            Toggle(id.rawValue, isOn: .constant(false)).settingsMapRegistration(id)
+          }
+        }
+      }
+      .onAppear { DispatchQueue.main.async { ready = true } }
+    }
+  }
+
+  /// A Dictation-shaped page: a fixed tab strip (page tag) above one tab's rows, under one arrival
+  /// owner, as `page { }` and DictationSettingsView build it. `rowTab` tags the rows (nil: untagged),
+  /// `lazy` publishes a lazy-content top marker for `tab`.
+  struct TaggedPage: View {
+    let box: RevealBox
+    let reveal: SettingsReveal?
+    let tab: DictationTab
+    var rows: [SettingsMapID] = []
+    var rowTab: DictationTab??
+    var late = false
+    var lazy = false
+    /// The tab the lazy marker says it tops (default: the drawn tab).
+    var lazyTab: DictationTab?
+
+    var body: some View {
+      let drawn = SettingsArrivalContent(page: .dictation, dictationTab: tab)
+      let rowTag = (rowTab ?? .some(tab)).map {
+        SettingsArrivalContent(page: .dictation, dictationTab: $0)
+      }
+      return VStack(spacing: 0) {
+        ForEach(DictationTab.allCases, id: \.self) { tab in
+          Button(tab.rawValue) {}.settingsMapRegistration(tab.mapID)
+        }
+        SettingsContentView {
+          Color.clear.frame(height: 0).id("lazyTop")
+          if late {
+            LateRows(ids: rows)
+          } else {
+            ForEach(rows, id: \.self) { id in
+              Toggle(id.rawValue, isOn: .constant(false)).settingsMapRegistration(id)
+            }
+          }
+        }
+        .environment(\.settingsArrivalContent, rowTag)
+        .preference(
+          key: SettingsArrivalLazyTopKey.self,
+          value: lazy
+            ? SettingsArrivalLazyTop(
+              scrollID: "lazyTop",
+              content: lazyTab.map { SettingsArrivalContent(page: .dictation, dictationTab: $0) } ?? drawn)
+            : nil)
+      }
+      .environment(\.settingsArrivalContent, SettingsArrivalContent(page: .dictation))
+      .modifier(SettingsArrivalModifier())
+      .environment(\.settingsReveal, reveal)
+      .environment(\.settingsRevealAcknowledge) { token in
+        box.acknowledged = token
+        box.acknowledgementSink.yield(token)
+      }
+      .environment(\.settingsArrivalStillCurrent) { _ in box.current }
+      .environment(\.settingsArrivalDecided) { box.record($0) }
+      .frame(width: 700, height: 500)
+    }
+  }
+
+  /// One hosted page the test steps through. Each step hands the host a new root (as the window
+  /// hands a page a new reveal or tab) and waits for the arrival owner's own decision about it.
+  @MainActor final class Stepper {
+    let host: NSHostingView<TaggedPage>
+    let window: NSWindow
+    let box: RevealBox
+
+    init(_ page: TaggedPage) {
+      box = page.box
+      host = NSHostingView(rootView: page)
+      host.frame = CGRect(x: 0, y: 0, width: 700, height: 500)
+      window = NSWindow(
+        contentRect: host.frame, styleMask: [.borderless], backing: .buffered, defer: false)
+      window.contentView = host
+      host.layoutSubtreeIfNeeded()
+    }
+
+    /// The controls `page` publishes once drawn, with their tags: what a decision about it read.
+    static func expected(_ page: TaggedPage) -> [SettingsMapID: SettingsArrivalContent?] {
+      var places = Dictionary(
+        uniqueKeysWithValues: DictationTab.allCases.map {
+          ($0.mapID, Optional(SettingsArrivalContent(page: .dictation)))
+        })
+      let rowTag = (page.rowTab ?? .some(page.tab)).map {
+        SettingsArrivalContent(page: .dictation, dictationTab: $0)
+      }
+      for row in page.rows { places[row] = rowTag }
+      return places
+    }
+
+    /// Shows `page` and returns the owner's first decision made on exactly what `page` draws
+    /// (its controls, tags and marker), or nil when none came before the hang guard.
+    func show(_ page: TaggedPage) async -> SettingsArrivalDecision? {
+      let want = Self.expected(page)
+      let marker: SettingsArrivalLazyTop? =
+        page.lazy
+        ? SettingsArrivalLazyTop(
+          scrollID: "lazyTop",
+          content: SettingsArrivalContent(page: .dictation, dictationTab: page.lazyTab ?? page.tab))
+        : nil
+      let since = box.decisions.count
+      host.rootView = page
+      let found = await decision(after: since) {
+        $0.reveal == page.reveal && $0.places == want && $0.lazyTop == marker
+      }
+      if found == nil {
+        Issue.record(
+          "no decision on \(want.keys.map(\.rawValue).sorted()); decisions since: \(box.decisions.dropFirst(since).map { "\(String(describing: $0.action)) \($0.places.mapValues { $0.map { "\($0.dictationTab.map(\.rawValue) ?? "page")" } ?? "nil" })" })"
+        )
+      }
+      return found
+    }
+
+    /// The first decision at or after index `since` that `accept` takes, waiting on the owner's
+    /// decision events (layout pumped meanwhile), or nil when none came before the hang guard.
+    func decision(
+      after since: Int, _ accept: @escaping (SettingsArrivalDecision) -> Bool
+    ) async -> SettingsArrivalDecision? {
+      // test-fixture-timer: an offscreen host only lays out when asked; this pumps layout while
+      // the test waits on the owner's decision events.
+      let pump = Task { @MainActor [host, window] in
+        while !Task.isCancelled {
+          // Display as well as layout: a state change made in a preference callback is applied in
+          // the host's display pass, not by layout alone.
+          host.layoutSubtreeIfNeeded()
+          window.displayIfNeeded()
+          try? await Task.sleep(for: .milliseconds(20))
+        }
+      }
+      box.hangGuardFired = false
+      let guardTask = Task { @MainActor [box] in
+        // deadline-fallback: a hang guard around the decision events; the wait is the event.
+        try? await Task.sleep(for: .seconds(5))
+        // A cancelled sleep returns at once; only a guard that ran its full time fires.
+        guard !Task.isCancelled else { return }
+        box.hangGuardFired = true
+        box.decisionSink.yield(
+          SettingsArrivalDecision(reveal: nil, action: nil, places: [:], lazyTop: nil))
+      }
+      defer {
+        pump.cancel()
+        guardTask.cancel()
+      }
+      func found() -> SettingsArrivalDecision? {
+        box.decisions.dropFirst(since).first(where: accept)
+      }
+      if let decision = found() { return decision }
+      for await _ in box.decisionEvents {
+        if let decision = found() { return decision }
+        if box.hangGuardFired { return nil }
+      }
+      return nil
+    }
+
+    func close() { window.contentView = nil }
+  }
+
+  @Test(
+    "a tab's rows arrive only from that tab: stale, empty and same-id old-tab rows wait",
+    .bug("https://github.com/saurabhav88/EnviousWispr/issues/3545", "late tab content"))
+  func staleThenRealContent() async throws {
+    _ = SettingsMap.takeRecordedFaults()
+    let reveal = try Self.reveal("autoCopyToClipboard", token: 5)
+    let box = RevealBox()
+    let stepper = Stepper(TaggedPage(box: box, reveal: nil, tab: .engine, rows: [.unloadModelAfter]))
+    defer { stepper.close() }
+    // The choice opens Clipboard while the Engine tab's rows are still the ones drawn.
+    let stale = await stepper.show(
+      TaggedPage(box: box, reveal: reveal, tab: .clipboard, rows: [.unloadModelAfter], rowTab: .engine))
+    #expect(stale?.action == .wait, "previous tab's rows: \(String(describing: stale?.action))")
+    // A row with the target's own id, still tagged with the previous tab.
+    let sameID = await stepper.show(
+      TaggedPage(box: box, reveal: reveal, tab: .clipboard, rows: [.autoCopyToClipboard], rowTab: .engine))
+    #expect(sameID?.action == .wait, "same-id row of the previous tab: \(String(describing: sameID?.action))")
+    // The tab is drawn but its rows are not there yet.
+    let empty = await stepper.show(TaggedPage(box: box, reveal: reveal, tab: .clipboard))
+    #expect(empty?.action == .wait, "no rows yet: \(String(describing: empty?.action))")
+    // The rows render one pass after the tab.
+    let real = await stepper.show(
+      TaggedPage(box: box, reveal: reveal, tab: .clipboard, rows: [.autoCopyToClipboard], late: true))
+    #expect(real?.action == .arrive(.autoCopyToClipboard, kind: .target))
+    #expect(box.landings == [SettingsArrivalRung(id: .autoCopyToClipboard, kind: .target)])
+    #expect(box.acknowledged == 5)
+    #expect(SettingsMap.takeRecordedFaults().isEmpty)
+  }
+
+  @Test("a result chosen in the same turn as the page's first layout still arrives")
+  func sameTurnChoiceArrives() async throws {
+    let reveal = try Self.reveal("autoCopyToClipboard", token: 6)
+    let box = RevealBox()
+    let stepper = Stepper(TaggedPage(box: box, reveal: nil, tab: .clipboard, rows: [.autoCopyToClipboard]))
+    defer { stepper.close() }
+    // No wait between the first layout and the choice: the first decision is still queued.
+    let decision = await stepper.show(
+      TaggedPage(box: box, reveal: reveal, tab: .clipboard, rows: [.autoCopyToClipboard]))
+    #expect(
+      decision?.action == .arrive(.autoCopyToClipboard, kind: .target),
+      "the reveal committed while the first decision was queued was lost: \(box.decisions.map(\.action))")
+  }
+
+  @Test("a hidden target lands on its section, and on the tab when the section is hidden too")
+  func hiddenTargetLandsLower() async throws {
+    let reveal = try Self.reveal("pauseDuration", token: 7)
+    let section = try #require(reveal.ladder.first { $0.kind == .section }?.id)
+    let tab = try #require(reveal.content.dictationTab)
+    let box = RevealBox()
+    let stepper = Stepper(TaggedPage(box: box, reveal: nil, tab: tab, rows: [section]))
+    defer { stepper.close() }
+    let onSection = await stepper.show(TaggedPage(box: box, reveal: reveal, tab: tab, rows: [section]))
+    #expect(onSection?.action == .arrive(section, kind: .section))
+    // Another row of the same tab, so the tab's content has rendered but holds no rung.
+    let rungs = Set(reveal.ladder.map(\.id))
+    let destination = SettingsMap.node(.pauseDuration).destination
+    let unrelated = try #require(
+      SettingsMap.nodes.first {
+        $0.structure == .item && $0.destination == destination && !rungs.contains($0.id)
+      }?.id)
+    let other = RevealBox()
+    let second = Stepper(TaggedPage(box: other, reveal: nil, tab: tab, rows: [unrelated]))
+    defer { second.close() }
+    let onTab = await second.show(
+      TaggedPage(box: other, reveal: try Self.reveal("pauseDuration", token: 8), tab: tab, rows: [unrelated]))
+    #expect(onTab?.action == .arrive(tab.mapID, kind: .landing))
+  }
+
+  @Test("a lazy-content marker scrolls once only when it tops this tab, even with the same scroll id")
+  func lazyMarkerRetag() async throws {
+    let reveal = try Self.reveal("autoCopyToClipboard", token: 4)
+    let box = RevealBox()
+    let stepper = Stepper(TaggedPage(box: box, reveal: nil, tab: .clipboard))
+    defer { stepper.close() }
+    let bare = await stepper.show(TaggedPage(box: box, reveal: reveal, tab: .clipboard))
+    #expect(bare?.action == .wait, "no content and no marker")
+    // A marker with the same scroll id that still says it tops the previous tab.
+    let other = await stepper.show(
+      TaggedPage(box: box, reveal: reveal, tab: .clipboard, lazy: true, lazyTab: .engine))
+    #expect(other?.action == .wait, "another tab's marker is never scrolled")
+    // Same scroll id, same controls; only the marker's tab changes.
+    let before = box.decisions.count
+    let mine = await stepper.show(TaggedPage(box: box, reveal: reveal, tab: .clipboard, lazy: true))
+    #expect(mine?.action == .materialize)
+    // After the one scroll, the owner decides again and lands on the best rung on screen.
+    let landed = await stepper.decision(after: before) {
+      if case .arrive = $0.action { true } else { false }
+    }
+    #expect(landed?.action == .arrive(.dictationTabClipboard, kind: .landing))
+    #expect(box.landings == [SettingsArrivalRung(id: .dictationTabClipboard, kind: .landing)])
+    #expect(box.decisions.filter { $0.action == .materialize }.count == 1, "scrolled more than once")
+  }
+
+  @Test("waiting content never rings; a navigation before it renders ends the arrival")
+  func untaggedAndOverriddenWait() async throws {
+    _ = SettingsMap.takeRecordedFaults()
+    let reveal = try Self.reveal("autoCopyToClipboard", token: 9)
+    let box = RevealBox()
+    let stepper = Stepper(TaggedPage(box: box, reveal: nil, tab: .clipboard))
+    defer { stepper.close() }
+    // Content that never says what it is proves nothing: the owner keeps waiting.
+    let untagged = await stepper.show(
+      TaggedPage(box: box, reveal: reveal, tab: .clipboard, rows: [.autoCopyToClipboard], rowTab: .some(nil)))
+    #expect(untagged?.action == .wait)
+    // Another navigation makes this arrival history; the content then renders.
+    box.current = false
+    let overtaken = await stepper.show(
+      TaggedPage(box: box, reveal: reveal, tab: .clipboard, rows: [.autoCopyToClipboard]))
+    try #require(overtaken != nil, "the owner never looked at the rendered content")
+    #expect(overtaken?.action == nil, "an arrival overtaken by navigation still decided")
+    #expect(box.landings.isEmpty)
+    #expect(box.acknowledged == nil)
     #expect(SettingsMap.takeRecordedFaults().isEmpty)
   }
 
@@ -263,9 +593,30 @@ struct SettingsArrivalTests {
   @MainActor final class RevealBox {
     var acknowledged: Int?
     var mounted: Set<SettingsMapID> = []
+    /// Every decision the arrival owner made, in order, and the same as events to wait on.
+    var decisions: [SettingsArrivalDecision] = []
+    let decisionEvents: AsyncStream<SettingsArrivalDecision>
+    let decisionSink: AsyncStream<SettingsArrivalDecision>.Continuation
+    /// Where the arrival owner landed, in order.
+    var landings: [SettingsArrivalRung] {
+      decisions.compactMap {
+        if case .arrive(let id, let kind) = $0.action { SettingsArrivalRung(id: id, kind: kind) } else { nil }
+      }
+    }
+    func record(_ decision: SettingsArrivalDecision) {
+      decisions.append(decision)
+      decisionSink.yield(decision)
+    }
+    /// Set by a stepper's hang guard when no matching decision came.
+    var hangGuardFired = false
+    /// What `settingsArrivalStillCurrent` answers: false once another navigation happened.
+    var current = true
     let acknowledgements: AsyncStream<Int>
     let acknowledgementSink: AsyncStream<Int>.Continuation
-    init() { (acknowledgements, acknowledgementSink) = AsyncStream<Int>.makeStream() }
+    init() {
+      (acknowledgements, acknowledgementSink) = AsyncStream<Int>.makeStream()
+      (decisionEvents, decisionSink) = AsyncStream<SettingsArrivalDecision>.makeStream()
+    }
   }
 
   /// The real Dictionary page under one arrival owner, as the window's `page { }` hosts it.
@@ -279,12 +630,15 @@ struct SettingsArrivalTests {
 
     var body: some View {
       environment(AnyView(YourWordsView(selection: $tab)))
+        // What the window's `page { }` sets; YourWordsView tags its own tab inside (#3545).
+        .environment(\.settingsArrivalContent, SettingsArrivalContent(page: .dictionary))
         .onPreferenceChange(SettingsRevealAnchorKey.self) { places in
           MainActor.assumeIsolated { box.mounted = Set(places.keys) }
         }
         .modifier(SettingsArrivalModifier())
         .environment(\.settingsReveal, reveal)
-        .environment(\.settingsRevealIsShowing) { _ in box.acknowledged == nil }
+        .environment(\.settingsArrivalStillCurrent) { _ in box.current }
+        .environment(\.settingsArrivalDecided) { box.record($0) }
         .environment(\.settingsRevealAcknowledge) { token in
           box.acknowledged = token
           box.acknowledgementSink.yield(token)
@@ -308,7 +662,9 @@ struct SettingsArrivalTests {
   /// list is scrolled afterwards (AppKit's own reading, independent of the arrival's geometry).
   static func dictionaryArrival(
     at entryID: String, tab: DictionaryTab, height: CGFloat, scrolledToBottom: Bool
-  ) async throws -> (acknowledged: Int?, scrolledBefore: CGFloat, scrolledAfter: CGFloat) {
+  ) async throws -> (
+    acknowledged: Int?, landed: SettingsArrivalRung?, scrolledBefore: CGFloat, scrolledAfter: CGFloat
+  ) {
     let (home, words) = try SettingsMapRenderingTests.dictionaryHome()
     for index in 0..<200 {
       try #require(words.add(CustomWord(canonical: "Arrivalword\(index)")) == nil)
@@ -361,6 +717,7 @@ struct SettingsArrivalTests {
     let guardTask = Task { @MainActor in
       // deadline-fallback: a hang guard around the event stream; the wait is the event itself.
       try? await Task.sleep(for: .seconds(10))
+      guard !Task.isCancelled else { return }
       box.acknowledgementSink.finish()
     }
     for await _ in box.acknowledgements { break }
@@ -370,7 +727,7 @@ struct SettingsArrivalTests {
     if box.acknowledged == nil {
       Issue.record("no arrival at \(entryID); page published \(box.mounted.map(\.rawValue).sorted())")
     }
-    return (box.acknowledged, before, list.contentView.bounds.origin.y)
+    return (box.acknowledged, box.landings.last, before, list.contentView.bounds.origin.y)
   }
 
   @Test(
@@ -382,12 +739,14 @@ struct SettingsArrivalTests {
     let pinned = try await Self.dictionaryArrival(
       at: "yourWords.add", tab: .yourWords, height: 700, scrolledToBottom: true)
     #expect(pinned.acknowledged == 9, "pinned controls, list scrolled to the bottom")
+    #expect(pinned.landed == SettingsArrivalRung(id: .yourWordsAdd, kind: .target))
     #expect(pinned.scrolledBefore > 0, "the fixture scrolled the list")
     // Short pane: the controls do not fit pinned, so they scroll away with the words and the
     // arrival has to bring them back.
     let unpinned = try await Self.dictionaryArrival(
       at: "yourWords.add", tab: .yourWords, height: 380, scrolledToBottom: true)
     #expect(unpinned.acknowledged == 9, "unpinned controls far above the visible words")
+    #expect(unpinned.landed == SettingsArrivalRung(id: .yourWordsAdd, kind: .target))
     #expect(unpinned.scrolledBefore > 0, "the fixture scrolled the list")
     #expect(
       unpinned.scrolledAfter < unpinned.scrolledBefore,
@@ -395,6 +754,7 @@ struct SettingsArrivalTests {
     let learn = try await Self.dictionaryArrival(
       at: "selfLearningDictionary", tab: .learnFrom, height: 700, scrolledToBottom: false)
     #expect(learn.acknowledged == 9, "a Learn From row")
+    #expect(learn.landed == SettingsArrivalRung(id: .selfLearningDictionary, kind: .target))
     #expect(SettingsMap.takeRecordedFaults().isEmpty)
   }
 }

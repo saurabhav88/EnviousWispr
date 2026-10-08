@@ -28,6 +28,10 @@ struct DictationSettingsView: View {
 
         // Each tab keeps its own page's scroll view, so no outer one here.
         tabContent.frame(width: pane.size.width)
+          // #3545: the tab drawn here, carried by every control inside it.
+          .environment(
+            \.settingsArrivalContent,
+            SettingsArrivalContent(page: .dictation, dictationTab: selection))
       }
       .frame(width: pane.size.width, height: pane.size.height)
     }
