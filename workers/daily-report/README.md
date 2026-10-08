@@ -1,6 +1,6 @@
 # Daily Report Worker (issue #1433)
 
-A daily Cloudflare Worker that posts a plain-English usage summary to Discord.
+A daily Cloudflare Worker with independent performance and per-platform Sentry write-ups (#3547).
 Read-only: it consumes events that already emit to PostHog. It gates nothing,
 alerts on nothing — purely a digest for the founder's morning read.
 
@@ -120,14 +120,16 @@ cd workers/daily-report
 node --test                     # pure query-shape/bucketing/formatting logic, no network
 ```
 
-Pre-deploy live-query smoke (runs the real HogQL against production
-PostHog **and the real Sentry queries**, asserts the completeness check
-passes, prints the would-be message, posts nothing):
+Pre-deploy smokes drive the actual selected mode, intercept only Discord delivery,
+and fail on unavailable/incomplete data. No report is posted:
 
 ```bash
 ~/.claude/bin/get-key launch posthog-personal-api-key POSTHOG_KEY -- \
-  ~/.claude/bin/get-key launch sentry-workers-readonly-token SENTRY_KEY -- \
-  node workers/daily-report/live-query-smoke.mjs [YYYY-MM-DD]
+  node workers/daily-report/live-query-smoke.mjs --report performance [YYYY-MM-DD]
+~/.claude/bin/get-key launch sentry-workers-readonly-token SENTRY_KEY -- \
+  node workers/daily-report/live-query-smoke.mjs --report sentry --platform mac [YYYY-MM-DD]
+~/.claude/bin/get-key launch sentry-workers-readonly-token SENTRY_KEY -- \
+  node workers/daily-report/live-query-smoke.mjs --report sentry --platform android [YYYY-MM-DD]
 ```
 
 `SENTRY_KEY` is the same least-privilege token the deployed Worker holds
@@ -232,6 +234,15 @@ so the public `workers.dev` URL cannot be crawled into spamming Discord.
   recovery after a missed scheduled run (see Failure visibility below). The
   DATA reported is always for the literal date given, computed the same way
   as the default "yesterday" path.
+- Missing `report` selects `performance`; `report=performance` sends adoption and
+  version scorecard only, without Sentry queries/credentials.
+- `report=sentry&platform=mac|android` sends a separate broader crash/error
+  write-up for that fixed project/channel. It has no PostHog/appcast dependency.
+  Missing Android binding refuses delivery; it never falls back to Mac.
+- Unsupported/empty report modes and invalid Sentry platforms return 400 before
+  outbound work; `platform` is invalid for performance mode.
+- Morning workflow has independent performance and Mac/Android Sentry jobs;
+  matrix fail-fast is false and no vendor job depends on another's success.
 - 401 body: `"unauthorized\n"`. Request body is ignored. Never logs the
   trigger secret, a PostHog response body, or a Discord response body —
   only counts, labels, and HTTP status codes.
