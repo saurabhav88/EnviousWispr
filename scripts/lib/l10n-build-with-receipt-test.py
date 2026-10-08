@@ -286,6 +286,48 @@ def main():
         expect("11i ... and unavailable once the extraction changes", (rebuilt.returncode, "extraction changed" in rebuilt.stderr),
                (2, True))
 
+        # 11j-11n. The wrapper builds only into its own checkout's .derivedData/Dev, not through a
+        # link, named as the command's -derivedDataPath; otherwise exit 2 before anything runs.
+        def refused_before_build(name, r, repo, untouched):
+            expect(name, (r.returncode, "refusing to build" in r.stderr,
+                          any(l.startswith("argv:") for l in trace(repo)), untouched()), (2, True, False, True))
+        repo = make_repo(root / "other-folder")
+        dd = repo / ".derivedData/Other"
+        dd.mkdir(parents=True)
+        (dd / "ew-l10n-receipt.json").write_text('{"stale": true}')
+        refused_before_build("11j another folder of this checkout: refused, no build, nothing removed", wrap(repo, dd), repo,
+                             lambda: (dd / "ew-l10n-receipt.json").exists())
+        repo = make_repo(root / "linked")
+        shared = root / "shared-derived"
+        (shared / "Dev").mkdir(parents=True)
+        (repo / ".derivedData").symlink_to(shared)
+        refused_before_build("11k a linked .derivedData: refused, no build", wrap(repo, repo / ".derivedData/Dev"), repo,
+                             lambda: not any(shared.rglob("*.stringsdata")))
+        repo = make_repo(root / "linked-dev")
+        (repo / ".derivedData").mkdir()
+        (shared / "Dev2").mkdir()
+        (repo / ".derivedData/Dev").symlink_to(shared / "Dev2")
+        refused_before_build("11l a linked .derivedData/Dev, run directly: refused, no build",
+                             wrap(repo, repo / ".derivedData/Dev", direct=True), repo,
+                             lambda: not any((shared / "Dev2").rglob("*.stringsdata")))
+        a, b = make_repo(root / "owner"), make_repo(root / "intruder")
+        a_dd = a / ".derivedData/Dev"
+        assert wrap(a, a_dd).returncode == 0 and (a_dd / "ew-l10n-receipt.json").exists()
+        before = {p: p.read_bytes() for p in a_dd.rglob("*") if p.is_file()}
+        refused_before_build("11m another checkout's wrapper aimed at this checkout's folder: refused, no build",
+                             wrap(b, a_dd), b, lambda: {p: p.read_bytes() for p in a_dd.rglob("*") if p.is_file()} == before)
+        repo = make_repo(root / "mismatch")
+        dd = repo / ".derivedData/Dev"
+        r = subprocess.run([str(repo / "scripts/lib/l10n-build-with-receipt.sh"), str(dd), "--", "xcodebuild", "build",
+                            "-derivedDataPath", str(root / "elsewhere")], cwd=repo, env=env_for(repo), capture_output=True, text=True)
+        refused_before_build("11n a build command naming another -derivedDataPath: refused, no build", r, repo,
+                             lambda: not (root / "elsewhere").exists())
+        repo = make_repo(root / "unnamed")
+        dd = repo / ".derivedData/Dev"
+        r = subprocess.run([str(repo / "scripts/lib/l10n-build-with-receipt.sh"), str(dd), "--", "xcodebuild", "build"],
+                           cwd=repo, env=env_for(repo), capture_output=True, text=True)
+        refused_before_build("11o a build command naming no -derivedDataPath: refused, no build", r, repo, lambda: True)
+
         # 12-13. The real build-dev-app.sh, every external boundary stubbed: the receipt is written
         # after the compile; a later step failing (codesign) keeps the script's failure and the
         # receipt, whose claim is the compile's extraction only. Nothing is quit or launched.

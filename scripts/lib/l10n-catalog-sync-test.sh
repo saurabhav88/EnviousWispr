@@ -854,11 +854,10 @@ def dev_case(name, want_code, want_texts, *, receipt="valid", expect=None, mode=
             edit_committed(data["strings"])
             catalog.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n")
         dd = fixture(root / "dev", configuration="Dev", **fx)
-        if before_receipt:
-            before_receipt(dd, root)
+        tree = before_receipt(dd, root) if before_receipt else None
         digest = None
         if receipt == "valid":
-            digest = write_receipt(dd)
+            digest = write_receipt(dd, tree=tree or "1" * 40)
         elif receipt == "other-xcode":
             digest = write_receipt(dd, xcode="27Z999z")
         elif receipt == "malformed":
@@ -891,8 +890,8 @@ def committed_release_only(strings):
 dev_case("Dev: a valid receipt and a clean tree pass", 0, ["receipt ok", "catalog in sync"])
 dev_case("Dev: the 35 listed keys absent from this extraction are warned about", 0,
          ["WARNING: 35 DEV_ONLY_KEYS member(s) not extracted by this Dev build"])
-dev_case("Dev: no receipt is could-not-run", 2, ["not of the pushed code", "no receipt"], receipt="none")
-dev_case("Dev: a malformed receipt is could-not-run", 2, ["not of the pushed code", "malformed"], receipt="malformed")
+dev_case("Dev: no receipt is could-not-run", 2, ["could not verify the Dev build receipt", "no receipt"], receipt="none")
+dev_case("Dev: a malformed receipt is could-not-run", 2, ["could not verify the Dev build receipt", "malformed"], receipt="malformed")
 dev_case("Dev: a receipt for other code is could-not-run", 2, ["not of the pushed code"], expect="f" * 64)
 dev_case("Dev: a receipt from another Xcode build is could-not-run", 2, ["Xcode build 27Z999z"], receipt="other-xcode")
 dev_case("Dev: an extraction changed after the receipt is could-not-run", 2, ["extraction changed"],
@@ -988,7 +987,7 @@ release_with_dev("Release + Dev evidence: listed keys found in neither are warne
 release_with_dev("Release + Dev evidence: a key the Dev build extracts is not in the warning", 0,
                  ["WARNING: 34 DEV_ONLY_KEYS member(s) found in neither"], dev_keys=[DEV_ONLY_SAMPLE])
 release_with_dev("Release + Dev evidence: Dev evidence without a matching receipt is could-not-run", 2,
-                 ["not of the pushed code"], receipt=False)
+                 ["could not verify the Dev build receipt"], receipt=False)
 release_with_dev("Release + Dev evidence: --expect-inputs is required", 2, ["--dev-derived-data goes with"], expect="omit")
 case("Release: a DEV_ONLY_KEYS member in the Release extraction fails", 1, "DEV_ONLY_KEYS LEAK", extra_keys=[DEV_ONLY_SAMPLE])
 
@@ -1013,9 +1012,12 @@ PROBE = "Sources/EnviousWisprAppKit/Probe.swift"
 NEW_DEBUG_KEY = "a new diagnostics label"
 
 
-def probe(source, lines, build_root="/Users/someone/other-checkout", rel=PROBE, extra=None, record_rel=None, links=None):
+def probe(source, lines, build_root="/Users/someone/other-checkout", rel=PROBE, extra=None, record_rel=None, links=None,
+          edit_after=None, git=True):
     """A source root (under the case's temp dir) holding `source` at `rel`, and an extraction
-    record for NEW_DEBUG_KEY at each of `lines`, as the compiler writes it (absolute build path)."""
+    record for NEW_DEBUG_KEY at each of `lines`, as the compiler writes it (absolute build path).
+    Returns the source root's input tree, so the receipt names that code; edit_after then changes
+    files, as an edit after the build would."""
     def prepare(dd, root):
         src = root / "src"
         (src / rel).parent.mkdir(parents=True, exist_ok=True)
@@ -1025,10 +1027,24 @@ def probe(source, lines, build_root="/Users/someone/other-checkout", rel=PROBE, 
             (src / path).write_text(text)
         for path, target_path in (links or {}).items():
             (src / path).symlink_to(target_path)
+        tree = None
+        if git:
+            for path in ("Project.swift", "Package.swift", "Sources/EnviousWispr/Resources/Info.plist",
+                         "Sources/EnviousWisprAppKit/Views/Settings/WhatsNewContent.swift"):
+                (src / path).parent.mkdir(parents=True, exist_ok=True)
+                (src / path).write_text("// a required build input\n")
+            subprocess.run(["git", "init", "-q", str(src)], check=True)
+            try:
+                tree = receipt_mod.input_tree(src)
+            except receipt_mod.Unavailable:
+                tree = None  # no receipt could name this code (e.g. an escaping link); the case still runs
+        for path, text in (edit_after or {}).items():
+            (src / path).write_text(text)
         target = next(dd.rglob("EnviousWisprAppKit.build/Objects-normal/arm64"))
         entries = [{"key": NEW_DEBUG_KEY, "location": {"startingLine": n, "startingColumn": 5}} for n in lines]
         (target / "Probe.stringsdata").write_text(json.dumps(
             {"source": f"{build_root}/{record_rel or rel}", "tables": {"Localizable": entries}, "version": 1}))
+        return tree
     return prepare
 
 
@@ -1036,7 +1052,7 @@ def dbg(name, want_code, source, lines, **kw):
     texts = ["judged as Dev-only", "catalog in sync"] if want_code == 0 else [f"added: {NEW_DEBUG_KEY!r}"]
     absent = [] if want_code == 0 else ["judged as Dev-only"]
     dev_case(name, want_code, texts, absent_texts=absent, extra_args=("--source-root", "@ROOT@/src"),
-             before_receipt=probe(source, lines, **{k: v for k, v in kw.items() if k in ("build_root", "rel", "extra", "record_rel", "links")}))
+             before_receipt=probe(source, lines, **{k: v for k, v in kw.items() if k in ("build_root", "rel", "extra", "record_rel", "links", "edit_after", "git")}))
 
 
 L = f'Text("{NEW_DEBUG_KEY}")'
@@ -1071,6 +1087,12 @@ dbg("debug-only: a build path that climbs out of Sources/ with ..: blocks", 1,
 dbg("debug-only: a build path through a folder link that leaves Sources/: blocks", 1,
     f"let y = {L}\n", [2], record_rel="Sources/Link/Probe.swift", links={"Sources/Link": "../Elsewhere"},
     extra={"Elsewhere/Probe.swift": f"#if DEBUG\nlet y = {L}\n#endif\n"})
+dbg("debug-only: an escaped delimiter inside a multi-line string: blocks (unsupported)", 1,
+    'let s = """\n  \\"""\n  #if DEBUG\n  """\n' + f'let x = {L}\n' + 'let t = """\n  #endif\n  \\"""\n  """\n', [5])
+dbg("debug-only: the source was edited after the build: blocks", 1,
+    f"// a shipping label\nlet y = {L}\n", [2], edit_after={PROBE: f"#if DEBUG\nlet y = {L}\n#endif\n"})
+dbg("debug-only: a source root that is not a git checkout: blocks", 1,
+    f"#if DEBUG\nlet y = {L}\n#endif\n", [2], git=False)
 dbg("debug-only: malformed nesting: blocks", 1, f"#if DEBUG\nlet y = {L}\n#endif\n#endif\n", [2])
 dbg("debug-only: a raw string in the file: blocks (unsupported)", 1,
     f'#if DEBUG\nlet r = #"raw"#\nlet y = {L}\n#endif\n', [3])
@@ -1169,7 +1191,7 @@ dev_update("Dev update: a committed Dev-only entry is left exactly as committed"
            extra_keys=[DEV_ONLY_SAMPLE], verify=same_entry(DEV_ONLY_SAMPLE))
 dev_update("Dev update: a listed Dev-only key is not added", extra_keys=[DEV_ONLY_SAMPLE],
            verify=lambda b, a, out, u: None if DEV_ONLY_SAMPLE not in a["strings"] and u else "Dev-only key written or file changed")
-dev_update("Dev update: no receipt writes nothing", receipt="none", want_code=2, want_texts=["not of the pushed code"],
+dev_update("Dev update: no receipt writes nothing", receipt="none", want_code=2, want_texts=["could not verify the Dev build receipt"],
            extra_keys=["a new label"], verify=None)
 dev_update("Dev update: an invalid What's New seed writes nothing", whats_new_source=whats_new(duplicate=True), want_code=2,
            extra_keys=["a new label"])

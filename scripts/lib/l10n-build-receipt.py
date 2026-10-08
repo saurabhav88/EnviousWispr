@@ -315,6 +315,8 @@ def publish(repo, derived, configuration, before, build_exit, receipt, xcode=Non
     if after["input_digest"] != before:
         raise Unavailable("the inputs changed while the build ran (digest before != after); no receipt")
     count, digest = extraction(derived, configuration, catalog_script)
+    if fields(repo, configuration, xcode)["input_digest"] != before:
+        raise Unavailable("the inputs changed while certifying extraction; no receipt")
     data = validate({**after, "extraction_count": count, "extraction_digest": digest})
     write_atomically(receipt, data)
     return data
@@ -736,6 +738,14 @@ def _self_test(root):
     refused("17 inputs changed during the build publish nothing",
             lambda: publish(a, derived, "Dev", before, 0, receipt, xcode="27A266a", catalog_script=stub), "changed while the build ran")
     expect("17b ... and no receipt file exists", receipt.exists(), False)
+    (a / "Sources/EnviousWisprCore/A.swift").write_text(FIXTURE["Sources/EnviousWisprCore/A.swift"])
+    racing = root / "racing-catalog.sh"
+    racing.write_text(f"printf 'let a = edited while certifying\\n' > '{a / 'Sources/EnviousWisprCore/A.swift'}'\n"
+                      f"exec bash '{stub}' \"$@\"\n")
+    refused("17c inputs changed while the extraction was read publish nothing",
+            lambda: publish(a, derived, "Dev", before, 0, receipt, xcode="27A266a", catalog_script=racing),
+            "changed while certifying extraction")
+    expect("17d ... and no receipt file exists", receipt.exists(), False)
     (a / "Sources/EnviousWisprCore/A.swift").write_text(FIXTURE["Sources/EnviousWisprCore/A.swift"])
 
     publish(a, derived, "Dev", before, 0, receipt, xcode="27A266a", catalog_script=stub)

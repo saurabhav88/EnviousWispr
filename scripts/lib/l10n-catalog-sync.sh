@@ -213,7 +213,8 @@ def verified_dev_snapshot(derived, receipt, expected, work):
                             "--expect-inputs", expected, "--derived-data", str(mirror), "--configuration", "Dev"],
                            capture_output=True, text=True)
     if proof.returncode != 0:
-        raise Refused(f"could not run: the Dev build is not of the pushed code. {(proof.stderr or proof.stdout).strip()}")
+        raise Refused(f"could not run: could not verify the Dev build receipt against the pushed code. "
+                      f"{(proof.stderr or proof.stdout).strip()}")
     print(proof.stdout.strip())
     return collect_inputs(mirror, "Dev")
 
@@ -279,6 +280,8 @@ def directive_frames(text):
                     i += 1
                 continue
             if multi:
+                if line[i] == "\\":
+                    raise Unsupported("escape in multi-line string")
                 if line.startswith('"""', i):
                     multi = False
                     i += 3
@@ -336,6 +339,22 @@ def resolve_source(source, source_root):
                 found.append(rel)
         start = source.find(marker, start + 1)
     return found[0] if len(found) == 1 else None
+
+
+def source_root_is_receipt_code(source_root, expected):
+    """True when the working bytes under source_root have the input digest the receipt names, so
+    the `#if DEBUG` proof reads the code that was built; otherwise prints why and grants nothing."""
+    digest = subprocess.run([sys.executable, str(RECEIPT_HELPER), "input-digest", "--repo", str(source_root),
+                             "--configuration", "Dev"], capture_output=True, text=True)
+    try:
+        actual = json.loads(digest.stdout)["input_digest"] if digest.returncode == 0 else None
+    except (ValueError, KeyError, TypeError):
+        actual = None
+    if actual != expected:
+        why = (digest.stderr or digest.stdout).strip()[:300] if actual is None else f"its input digest is {actual[:12]}"
+        print(f"NOTE: no #if DEBUG exemption: {source_root} is not the code the Dev build receipt names ({why}).")
+        return False
+    return True
 
 
 def debug_only_proof(key, files, source_root):
@@ -878,15 +897,20 @@ def main(argv):
             for k in ignored:
                 del synced["strings"][k]
             print(f"Dev-only keys ignored: {len(ignored)} of {len(DEV_ONLY_KEYS)} listed")
+            new_keys = sorted(k for k in synced["strings"] if k not in committed["strings"] and k not in DEV_ONLY_KEYS)
+            proofs = {}
             if args.check:
-                for k in sorted(k for k in synced["strings"] if k not in committed["strings"] and k not in DEV_ONLY_KEYS):
-                    proof = debug_only_proof(k, files, args.source_root)
-                    if proof:
-                        del synced["strings"][k]
-                        where = ", ".join(f"{rel}:{line}" for rel, line in proof)
-                        print(f"WARNING: new text inside #if DEBUG, judged as Dev-only: {k!r} ({where}). Add it to "
-                              "DEV_ONLY_KEYS in scripts/lib/l10n-catalog-sync.sh before any Dev repair; CI's Release "
-                              "check stays the authority.")
+                proofs = {k: proof for k in new_keys if (proof := debug_only_proof(k, files, args.source_root))}
+            # The source digest is read AFTER every proof read, so an edit made before or during the
+            # reads moves the digest and grants nothing.
+            if proofs and not source_root_is_receipt_code(args.source_root, args.expect_inputs):
+                proofs = {}
+            for k, proof in proofs.items():
+                del synced["strings"][k]
+                where = ", ".join(f"{rel}:{line}" for rel, line in proof)
+                print(f"WARNING: new text inside #if DEBUG, judged as Dev-only: {k!r} ({where}). Add it to "
+                      "DEV_ONLY_KEYS in scripts/lib/l10n-catalog-sync.sh before any Dev repair; CI's Release "
+                      "check stays the authority.")
             unseen = sorted(DEV_ONLY_KEYS - extracted_keys)
             if unseen:
                 print(f"WARNING: {len(unseen)} DEV_ONLY_KEYS member(s) not extracted by this Dev build "

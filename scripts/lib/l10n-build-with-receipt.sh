@@ -21,6 +21,9 @@
 # receipt certifies the compile's string extraction only; it says nothing about signing,
 # deploying or launching the app, which build-dev-app.sh does afterwards.
 #
+# The derived-data folder must be <project-root>/.derivedData/Dev (no link), and the build command
+# must name it as -derivedDataPath; otherwise the wrapper refuses with exit 2 before building.
+#
 # Sourced:  ew_l10n_build_with_receipt <project-root> <derived-data> <build command...>
 # Run:      l10n-build-with-receipt.sh <derived-data> -- <build command...>
 #           (the project root is this script's checkout)
@@ -34,6 +37,24 @@ ew_l10n_build_with_receipt() {
   esac
   helper="$root/scripts/lib/l10n-build-receipt.py"
   receipt="$derived/ew-l10n-receipt.json"
+  # Builds only into this checkout's own folder, the one the pre-push check reads, and only when
+  # the build command names that same folder: a wrapper run from another checkout, or a command
+  # aimed elsewhere, could otherwise put its extraction under this checkout's receipt.
+  local arg value prev="" named=0 mismatch=0
+  for arg in "$@"; do
+    if [ "$prev" = "-derivedDataPath" ]; then
+      case "$arg" in /*) value="$arg" ;; *) value="$root/$arg" ;; esac
+      named=1
+      [ "$value" = "$derived" ] || mismatch=1
+    fi
+    prev="$arg"
+  done
+  if [ "$derived" != "$root/.derivedData/Dev" ] || [ -L "$root/.derivedData" ] || [ -L "$derived" ] \
+    || [ "$named" -eq 0 ] || [ "$mismatch" -eq 1 ]; then
+    echo "==> refusing to build: this wrapper builds only into $root/.derivedData/Dev (not a link), named" \
+      "as the build command's -derivedDataPath; nothing was built or removed." >&2
+    return 2
+  fi
   if python3 "$helper" invalidate --receipt "$receipt" && [ ! -e "$receipt" ]; then :; else
     echo "==> catalog receipt unavailable: could not remove $receipt; this build will not write a new one," \
       "and the older one is usable only if verification still matches it." >&2
