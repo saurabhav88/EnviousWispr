@@ -1,4 +1,5 @@
 import Foundation
+import Testing
 
 @testable import EnviousWisprPostProcessing
 
@@ -87,11 +88,11 @@ func withSeamCasingOracleExclusion<T>(
   // The obvious way to save prior state is `snapshot(for: "en")`. That is a
   // decision-time call and is deliberately NOT read-only: an absent language is
   // enqueued and a real `NSSpellChecker` preparation is started. The body then
-  // calls `resetForTesting()`, which clears `preparing` without being able to
-  // cancel a builder already running — so the test's own preparation could
-  // overlap the stray one and produce exactly the concurrent access these suites
-  // exist to prove cannot happen. Observation manufacturing the defect it
-  // observes. Confirming whole-diff review, P2.
+  // calls `resetForTesting()`, which cannot cancel a builder already running. It
+  // used to clear `preparing` as well, so the test's own preparation overlapped
+  // the stray one; since #3417 the reset keeps that flag and the test's
+  // preparation waits for the stray builder instead. Either way a save helper
+  // must not start a preparation. Confirming whole-diff review, P2.
   //
   // ENGLISH only, and that is a deliberate limit. The runtime holds one phase per
   // language now (#1922), and there is no way to enumerate them without
@@ -104,6 +105,22 @@ func withSeamCasingOracleExclusion<T>(
 
   @Sendable func restoreAndRelease() async {
     SeamCasingOracleRuntime.resetForTesting()
+    // A case can return while a drain it started is still inside its builder (a
+    // request the case never waited on). The reset keeps that builder's claim
+    // (#3417), so wait for it to leave before handing over: the next holder then
+    // starts with nothing inside the checker, instead of finding every language
+    // refusing with `oracleWarming` or, before #3417, a second builder beside it.
+    // The published flag IS the signal; the interval samples it and the deadline
+    // only stops a defect hanging the suite.
+    let deadline = ContinuousClock.now + .seconds(5)
+    while SeamCasingOracleRuntime.isPreparingForTesting(), ContinuousClock.now < deadline {
+      // settle: poll interval for the published-state signal, not a fixed wait
+      try? await Task.sleep(for: .milliseconds(2))
+    }
+    if SeamCasingOracleRuntime.isPreparingForTesting() {
+      Issue.record(
+        "withSeamCasingOracleExclusion: a builder was still inside the checker 5 s after the case ended; the next holder starts with it inside")
+    }
     if let prior { SeamCasingOracleRuntime.installForTesting(prior, for: "en") }
     await SeamCasingOracleTestExclusion.shared.release()
   }

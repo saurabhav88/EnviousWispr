@@ -197,6 +197,7 @@ package enum SeamCasingOracleRuntime {
         state.preparing = true
         return (base, state.epoch)
       }
+      drainDecisionForTesting.withLock({ $0 })?(next != nil)
       guard let (base, startedEpoch) = next else {
         // Either nothing to do, or a lease is out. A lease holder re-pokes the
         // drain on release, so returning here cannot strand pending work.
@@ -577,7 +578,17 @@ package enum SeamCasingOracleRuntime {
     // helper resets on the way out, which makes this the backstop.
     preparationOverride.withLock { $0 = nil }
     state.withLock { state in
+      // `preparing` survives the reset because it records a PHYSICAL fact: a
+      // builder is inside the shared checker right now, and a reset cannot stop
+      // it (the builder is synchronous; cancellation is cooperative). Clearing it
+      // let the next case's drain start a second builder beside the stale one,
+      // which then cleared the new claim on return and took the next language
+      // too: two builders at once, #3417's `saw 2` on CI. Kept, the stale drain
+      // finishes, discards its result on the epoch check, clears its own flag and
+      // drains the new case's languages one at a time.
+      let builderInside = state.preparing
       state = State(prewarmStarted: prewarmStarted, epoch: state.epoch + 1)
+      state.preparing = builderInside
     }
   }
 
@@ -594,6 +605,18 @@ package enum SeamCasingOracleRuntime {
 
   private static let preparationOverride =
     OSAllocatedUnfairLock<(@Sendable (String) -> SeamCasingOracle)?>(initialState: nil)
+
+  /// Observe each drain pass's decision: `true` when it claimed a language to
+  /// prepare, `false` when it found the drain busy, a lease out or nothing pending.
+  /// Test-only and observation-only.
+  ///
+  /// Exists because a drain is a DETACHED task with no handle (`pokeDrain()`), so a
+  /// test cannot otherwise know that a drain has looked at the state and declined.
+  /// #3417's reset test needs exactly that: it must tell "the new drain refused
+  /// because the old builder still owns the checker" from "the new drain has not
+  /// run yet", or it cannot fail on the parent commit deterministically.
+  package static let drainDecisionForTesting =
+    OSAllocatedUnfairLock<(@Sendable (Bool) -> Void)?>(initialState: nil)
 
   /// Install a fixed phase for one language without touching a system service.
   ///
@@ -621,11 +644,12 @@ package enum SeamCasingOracleRuntime {
   /// a helper whose only job is to save state so it can hand it back.
   ///
   /// Using `snapshot(for:)` for that started a REAL `NSSpellChecker` preparation
-  /// which `resetForTesting()` then could not cancel — it clears `preparing`
-  /// without stopping the builder — so the test's own preparation could overlap
-  /// the stray one. That is precisely the concurrent access these tests exist to
-  /// prove cannot happen, manufactured by the observation itself. Confirming
-  /// whole-diff review, P2.
+  /// which `resetForTesting()` then could not cancel, so the stray builder was
+  /// still inside the checker when the test began its own preparation (then
+  /// overlapping it, because reset also cleared `preparing`; since #3417 it keeps
+  /// the flag, so the test's preparation waits instead). Starting a real
+  /// preparation from an observation helper is still wrong. Confirming whole-diff
+  /// review, P2.
   ///
   /// Returns nil when the language is absent, warming, or unavailable; all three
   /// recompute safely on next request, so only a READY oracle is worth restoring.
@@ -634,6 +658,15 @@ package enum SeamCasingOracleRuntime {
       guard case .ready(let oracle)? = state.phases[base] else { return nil }
       return oracle
     }
+  }
+
+  /// Whether a builder is inside the shared checker right now. Test-only.
+  ///
+  /// Exists for the exclusion helper's hand-over (#3417): a reset cannot stop a
+  /// builder that is already running, so the helper waits for this to read false
+  /// before the next holder starts, and no case begins with a stale builder inside.
+  package static func isPreparingForTesting() -> Bool {
+    state.withLock { $0.preparing }
   }
 
   /// Leases outstanding right now. Test-only.
