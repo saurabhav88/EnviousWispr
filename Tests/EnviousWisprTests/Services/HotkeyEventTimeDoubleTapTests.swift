@@ -305,7 +305,7 @@ struct HotkeyEventTimeDoubleTapTests {
   @Test(
     "A release handled late still waits 500 ms after it was handled, and a press handled meanwhile locks"
   )
-  func lateReleaseKeepsTheOldStopTime() async throws {
+  func lateReleaseKeepsTheHandlingGrace() async throws {
     let rig = Rig()
     let (service, _) = makeService(rig)
     defer { service.stop() }
@@ -313,7 +313,7 @@ struct HotkeyEventTimeDoubleTapTests {
     await rig.waitForSleepRequests(count: 1)
 
     // 500 ms after the release HAPPENED would be 1000.556, already past when it was handled
-    // at 1000.689. The stop is never earlier than the pre-#3534 timer: 1000.689 + 0.5.
+    // at 1000.689. The handling-time floor keeps 500 ms after handling: 1000.689 + 0.5.
     let delay = try #require(rig.requestedDelays.last)
     #expect(abs(delay - 0.5) < 1e-9)
     let deadline = try #require(rig.requestedDeadlines.last)
@@ -690,7 +690,7 @@ struct HotkeyEventTimeDoubleTapTests {
   private static let quickAddID: UInt32 = 4
 
   /// A lone tap whose release was handled 633 ms late. The stop is due 500 ms after the release
-  /// was handled (1001.189, never earlier than before #3534); the timer runs before any second
+  /// was handled (1001.189, the handling-time floor); the timer runs before any second
   /// press and requests the stop then.
   private static let lateReleaseStop: TimeInterval = 1001.189
 

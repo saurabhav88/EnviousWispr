@@ -1084,14 +1084,12 @@ public final class HotkeyService {
     if let start = recordingStart, elapsed(from: start, to: input) <= Self.window {
       stateGeneration &+= 1
       let capturedGeneration = stateGeneration
-      // #3534: 500 ms after the release, and never earlier than 500 ms after it was
-      // HANDLED, which is when the pre-#3534 timer stopped. An occurrence-time
-      // deadline alone could fall due while a valid second press is still queued on
-      // a busy main thread, so the stop would win a double tap the old timer
-      // allowed. The later bound keeps every lone tap's stop where it was before;
-      // classification still uses `clockPair`. Compute the remaining wait when the
-      // task runs, avoiding additional task-start delay. If the deadline is already
-      // past, request no further wait.
+      // #3534: retain at least 500 ms from release handling. An occurrence-only
+      // deadline could expire before a second press that the old classification
+      // would accept. This floor preserves that handling-time grace period;
+      // classification still uses `clockPair`. It does not reproduce extra delay
+      // from the legacy task starting late. Compute the remaining wait when this
+      // task runs; request no further wait if the deadline has passed.
       let pair = clockPair(from: start, to: input)
       let deadline = max(pair.end, input.handled) + Self.window
       let sleep = self.sleep
