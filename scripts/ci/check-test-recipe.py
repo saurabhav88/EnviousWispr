@@ -64,11 +64,11 @@ REPAIR = ('Add the declaration as a new commit (never rewrite history):\n'
           '  git commit --allow-empty --trailer "Recipe: #N" -m "test: name recipe #N"\n'
           'An ordinary rebase keeps commit trailers; a squash or fixup can drop them, so a trailer '
           'that went missing after a history rewrite needs this new commit.')
-# One git log record per first-parent commit: SHA, the trailer values, then the same trailers with
-# their keys. The keyed form is what tells an EMPTY `Recipe:` (keyed "Recipe: ", value "") from no
-# trailer at all (both empty). `unfold` joins a continuation line into its value.
-_LOG_FORMAT = ("%H%x00%(trailers:key=Recipe,valueonly,unfold,separator=%x1f)"
-               "%x00%(trailers:key=Recipe,unfold,separator=%x1f)%x1e")
+# One git log record per first-parent commit: SHA, then its Recipe trailers WITH their keys, one
+# entry per trailer. Values are cut from these entries: the keyed form keeps an EMPTY `Recipe:`
+# (entry "Recipe: "), which `valueonly` silently drops when the commit has another Recipe
+# trailer, so a value-only list would undercount. `unfold` joins a continuation line.
+_LOG_FORMAT = "%H%x00%(trailers:key=Recipe,unfold,separator=%x1f)%x1e"
 
 VALIDATOR = pathlib.Path(__file__).resolve().parent.parent / "validate-mutation-recipe.py"
 
@@ -124,15 +124,18 @@ def recipe_trailers(repo, base, head):
         if not record:
             continue
         fields = record.split("\x00")
-        if len(fields) != 3:
+        if len(fields) != 2:
             raise Infrastructure(f"git log printed a record this check cannot read: {record[:200]!r}")
-        sha, values, keyed = fields
+        sha, keyed = fields
         if not keyed:
             continue
-        found = values.split("\x1f")
-        if len(found) != len(keyed.split("\x1f")):
-            raise Infrastructure(f"git log trailer fields disagree for {sha}: {values!r} vs {keyed!r}")
-        return sha, [value.strip() for value in found]
+        values = []
+        for entry in keyed.split("\x1f"):
+            # trailer.separators is pinned to ":" above, so every entry is "<key>:<value>".
+            if ":" not in entry:
+                raise Infrastructure(f"git log printed a trailer this check cannot read for {sha}: {entry!r}")
+            values.append(entry.split(":", 1)[1].strip())
+        return sha, values
     return None
 
 
@@ -379,6 +382,11 @@ def _self_test(scratch):
     sha = _commit(repo, "bare", "Recipe: parent-red")
     code, _ = run_check(repo, base, sha)
     expect("parent-red with no test named: fails", code, 1)
+
+    # An empty trailer beside a filled one is still two trailers, never "could not run".
+    sha = _commit(repo, "empty beside filled", "Recipe:\nRecipe: parent-red X")
+    code, msg = run_check(repo, base, sha)
+    expect("an empty trailer beside a filled one: fails as two trailers", (code, "carries 2 of them" in msg), (1, True))
 
     # 10. Two trailers on the newest declaring commit.
     sha = _commit(repo, "two", "Recipe: #7\nRecipe: parent-red X")
