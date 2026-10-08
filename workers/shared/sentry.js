@@ -287,6 +287,53 @@ function hasMorePages(headers, rowCount, perPage) {
   return /rel="next"[^,]*results="true"/.test(link);
 }
 
+// Opt-in metadata: old readers keep their response contract. Follow an opaque
+// cursor, never the supplied URL; retain fixed project/query/fields (#3547).
+function nextPageCursor(headers, expectedUrl, queryName) {
+  const link = headers?.get?.("link") || "";
+  if (!link) return null;
+  let next = null;
+  let seenNext = false;
+  for (const entry of link.split(/,\s*(?=<)/)) {
+    const match = /^\s*<([^>]+)>\s*;(.+)$/.exec(entry);
+    if (!match) throw new SentryShapeError(queryName, "invalid pagination header");
+    const attributes = new Map();
+    for (const item of match[2].split(";")) {
+      const pair = /^\s*([a-z]+)\s*=\s*"([^\"]*)"\s*$/.exec(item);
+      if (!pair || attributes.has(pair[1])) {
+        throw new SentryShapeError(queryName, "invalid pagination attributes");
+      }
+      attributes.set(pair[1], pair[2]);
+    }
+    if (attributes.get("rel") !== "next") continue;
+    if (seenNext) throw new SentryShapeError(queryName, "ambiguous next page");
+    seenNext = true;
+    if (attributes.get("results") === "false") continue;
+    if (attributes.get("results") !== "true" || next !== null) {
+      throw new SentryShapeError(queryName, "ambiguous next page");
+    }
+    let target;
+    try { target = new URL(match[1]); } catch (_) {
+      throw new SentryShapeError(queryName, "invalid next-page URL");
+    }
+    if (target.origin !== expectedUrl.origin || target.pathname !== expectedUrl.pathname) {
+      throw new SentryShapeError(queryName, "next page changed query endpoint");
+    }
+    const values = target.searchParams.getAll("cursor");
+    const cursor = values.length === 1 ? values[0] : null;
+    if (!validCursor(cursor) || (attributes.has("cursor") && attributes.get("cursor") !== cursor)) {
+      throw new SentryShapeError(queryName, "invalid next-page cursor");
+    }
+    next = cursor;
+  }
+  return next;
+}
+
+function validCursor(cursor) {
+  return typeof cursor === "string" && cursor.length > 0 && cursor.length <= 512
+    && !/[\u0000-\u001f\u007f]/.test(cursor);
+}
+
 /**
  * Runs ONE Discover aggregate against `/organizations/<org>/events/`.
  *
@@ -323,6 +370,8 @@ export async function discoverAggregate(env, params, opts = {}) {
     end = null,
     statsPeriod = null,
     environment = null,
+    cursor = null,
+    includeCursor = false,
   } = params;
 
   if (typeof queryName !== "string" || queryName.length === 0) {
@@ -330,6 +379,9 @@ export async function discoverAggregate(env, params, opts = {}) {
   }
   if (!Array.isArray(fields) || fields.length === 0) {
     throw new TypeError(`${queryName}: discoverAggregate requires at least one field`);
+  }
+  if ((cursor !== null && !validCursor(cursor)) || typeof includeCursor !== "boolean") {
+    throw new TypeError(`${queryName}: invalid pagination options`);
   }
   // Exactly one window form. Sending both lets Sentry choose, and which one it
   // honours is not something this code should be guessing about when the answer
@@ -352,6 +404,7 @@ export async function discoverAggregate(env, params, opts = {}) {
     url.searchParams.set("statsPeriod", statsPeriod);
   }
   url.searchParams.set("per_page", String(perPage));
+  if (cursor !== null) url.searchParams.set("cursor", cursor);
 
   const { body, headers } = await requestJson(url.toString(), queryName, config, opts);
 
@@ -388,6 +441,7 @@ export async function discoverAggregate(env, params, opts = {}) {
     rows,
     fields: Object.keys(metaFields),
     truncated: hasMorePages(headers, rows.length, perPage),
+    ...(includeCursor ? { nextCursor: nextPageCursor(headers, url, queryName) } : {}),
   };
 }
 
@@ -411,10 +465,16 @@ export async function discoverAggregate(env, params, opts = {}) {
  */
 export async function issueList(env, params, opts = {}) {
   const config = requireConfig(env);
-  const { queryName, query = "", environment = null, limit = 100, start = null, end = null } = params;
+  const {
+    queryName, query = "", environment = null, limit = 100, start = null, end = null,
+    cursor = null, includeCursor = false,
+  } = params;
 
   if (typeof queryName !== "string" || queryName.length === 0) {
     throw new TypeError("issueList requires a queryName");
+  }
+  if ((cursor !== null && !validCursor(cursor)) || typeof includeCursor !== "boolean") {
+    throw new TypeError(`${queryName}: invalid pagination options`);
   }
   // Both or neither. One alone silently falls back to the relative form, which
   // is the exact confusion this parameter was added to remove.
@@ -429,6 +489,7 @@ export async function issueList(env, params, opts = {}) {
   const url = new URL(`${config.regionUrl}/api/0/projects/${config.org}/${project}/issues/`);
   url.searchParams.set("query", query);
   url.searchParams.set("limit", String(limit));
+  if (cursor !== null) url.searchParams.set("cursor", cursor);
   if (start !== null) {
     url.searchParams.set("start", start);
     url.searchParams.set("end", end);
@@ -476,7 +537,11 @@ export async function issueList(env, params, opts = {}) {
     });
   }
 
-  return { issues, truncated: hasMorePages(headers, issues.length, limit) };
+  return {
+    issues,
+    truncated: hasMorePages(headers, issues.length, limit),
+    ...(includeCursor ? { nextCursor: nextPageCursor(headers, url, queryName) } : {}),
+  };
 }
 
 /** Exported so a caller's subrequest-budget arithmetic reads the REAL retry
