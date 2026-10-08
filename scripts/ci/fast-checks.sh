@@ -89,6 +89,13 @@ member_ci_self_tests() {
   # building correctly and slowly with nothing red. Needs no Xcode, so
   # this ubuntu aggregator can hold it.
   scripts/ci/configure-compilation-cache.sh --self-test
+  # #3524 PR 4: the failure recorder runs only from main, after merge, so a
+  # change to it or its helpers is proven here first. notify-nightly.py's
+  # self-test otherwise ran only when a nightly had already failed.
+  python3 scripts/ci/test-identities.py --self-test
+  python3 scripts/ci/issue_upsert.py --self-test
+  python3 scripts/ci/record-test-failures.py --self-test
+  python3 scripts/ci/notify-nightly.py --self-test
 }
 
 # CI step: Dependency direction (#3095)
