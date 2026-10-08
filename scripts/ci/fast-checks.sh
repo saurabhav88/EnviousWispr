@@ -301,26 +301,11 @@ member_worker_tests() {
 
 RUNNER_LOGS=""
 ACTIVE_PIDS=""
-CLEANUP_INCOMPLETE=""
 
-# A member's whole process tree: interruption walks each running member's
-# descendants by parent PID (`pgrep -P`, on macOS and Linux alike) and signals
-# them before the member itself, so the Python and Node processes a member
-# started stop too, and nothing outside our own tree is touched. (Process
-# groups via `set -m` were tried first; whether a non-interactive bash gives a
-# background job its own group depends on how bash itself was launched.)
-stop_tree() { # stop_tree <pid>: TERM every descendant, deepest first, then pid
-  local children rc child
-  # pgrep exits 1 for "no children"; anything else means we could not look, so
-  # the cleanup is reported incomplete rather than assumed done.
-  children="$(pgrep -P "$1")"
-  rc=$?
-  if [ "$rc" -gt 1 ]; then CLEANUP_INCOMPLETE="could not list the child processes of $1 (pgrep exit $rc)"; fi
-  for child in $children; do
-    stop_tree "$child"
-  done
-  kill -TERM "$1" 2> /dev/null
-}
+# A member's whole process tree is stopped by stop_tree (scripts/ci/process-tree.sh,
+# shared with the pre-push hook).
+# shellcheck source=scripts/ci/process-tree.sh
+. "$SCRIPT_DIR/process-tree.sh" || { echo "fast-checks: cannot load $SCRIPT_DIR/process-tree.sh" >&2; exit 2; }
 
 stop_members() {
   local pid
@@ -336,8 +321,8 @@ stop_members() {
 on_interrupt() {
   stop_members
   [ -n "$RUNNER_LOGS" ] && rm -rf "$RUNNER_LOGS"
-  if [ -n "$CLEANUP_INCOMPLETE" ]; then
-    echo "==> fast-checks: FAIL (interrupted; cleanup incomplete: $CLEANUP_INCOMPLETE)"
+  if [ -n "$PROCESS_TREE_INCOMPLETE" ]; then
+    echo "==> fast-checks: FAIL (interrupted; cleanup incomplete: $PROCESS_TREE_INCOMPLETE)"
   else
     echo "==> fast-checks: FAIL (interrupted)"
   fi
@@ -580,7 +565,8 @@ self_test() {
       printf 'member_s() { sleep 30 & echo $! > "%s/grandchild"; wait; }\n' "$tmp"
       printf '%s\n' "$marker"
     } > "$copy"
-    bash "$copy" --tree "$tmp" > "$tmp/interrupted.out" 2>&1 &
+    cp "$SCRIPT_DIR/process-tree.sh" "$tmp/process-tree.sh"
+    "$BASH" "$copy" --tree "$tmp" > "$tmp/interrupted.out" 2>&1 &
     pid=$!
     local waited=0
     while [ ! -s "$tmp/grandchild" ] && [ "$waited" -lt 50 ]; do sleep 0.1; waited=$((waited + 1)); done
@@ -604,7 +590,7 @@ self_test() {
       printf '%s\n' 'pgrep() { return 2; }'
       printf '%s\n' "$marker"
     } > "$copy"
-    bash "$copy" --tree "$tmp" > "$tmp/interrupted.out" 2>&1 &
+    "$BASH" "$copy" --tree "$tmp" > "$tmp/interrupted.out" 2>&1 &
     pid=$!
     waited=0
     while [ ! -s "$tmp/grandchild" ] && [ "$waited" -lt 50 ]; do sleep 0.1; waited=$((waited + 1)); done
