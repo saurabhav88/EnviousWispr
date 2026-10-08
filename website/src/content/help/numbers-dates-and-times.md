@@ -62,7 +62,7 @@ Number formatting runs before any AI polish. If polish is switched off or hits a
 
 Spoken number words are converted only in English. When you dictate in another language, the speech engine usually writes numbers as digits itself. EnviousWispr then tidies addresses, links and codes said with that language's own words.
 
-First, set your dictation language under **Settings** > **Transcription** so EnviousWispr knows the language. Then it handles these:
+First, set your dictation language under **Dictation Settings** > **Engine** so EnviousWispr knows the language. Then it handles these:
 
 - **Email addresses** with the local words for "at" and "dot", including names with accents. "maría punto lópez arroba gmail punto com" becomes maría.lópez@gmail.com.
 - **Web addresses** with the local words for "dot", "slash" and "colon" in French, Spanish, Polish, Dutch, German, Russian, Portuguese and Italian. "beispiel Punkt de Schrägstrich hilfe" becomes beispiel.de/hilfe.

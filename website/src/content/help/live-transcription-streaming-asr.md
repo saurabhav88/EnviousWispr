@@ -25,7 +25,7 @@ Nothing looks different in your document while you record. Only the timing of th
 
 On the Fast engine, it saves no time you would notice on a dictation under a minute. It only pulls ahead at around five minutes or longer.
 
-On the All Languages engine, it does nothing while your language is set to **Auto-detect language**. Pick a language under **Settings** > **Transcription** > **Language** first.
+On the All Languages engine, it does nothing while your language is set to **Auto-detect language**. Pick a language in **Dictation Settings** > **Engine** first (switch off **Auto-detect language**).
 
 If you want to see words on screen while you speak, that is a different setting: see [Live Preview](/help/live-preview-words-on-screen/).
 

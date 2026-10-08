@@ -32,7 +32,7 @@ If your text does not show up, see [_Paste Not Working?_](/help/paste-not-workin
 
 **Smart insertion** looks at the text on either side of your cursor and matches it. Dictating into the middle of a sentence adds a space where one is needed and gets the capital letter right, instead of jamming your new words against what is already there.
 
-To turn it off, open **Settings** > **Clipboard** and switch off **Smart insertion**. It is on by default.
+To turn it off, open **Dictation Settings** > **Clipboard** and switch off **Smart insertion**. It is on by default.
 
 Capital matching works in English, German, French, Italian, Spanish, Portuguese, Dutch, Danish, Swedish, Finnish, Russian, and Turkish. German follows its own rules, so nouns keep the capital letters they are supposed to have. In every other language, EnviousWispr adjusts the spacing and leaves your capitals exactly as you spoke them.
 

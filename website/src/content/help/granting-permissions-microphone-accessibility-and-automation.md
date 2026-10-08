@@ -11,13 +11,13 @@ deflection: "can_resolve"
 ---
 EnviousWispr listens to your microphone and types into other apps, so macOS asks you to grant it permissions first. Microphone is required. Accessibility is strongly recommended, and Automation is needed only in rare cases. Setup asks for Microphone and Accessibility before the practice dictation at the end, so most people grant both there.
 
-The **Permissions** page in EnviousWispr settings always shows the current status of each one. The same page also has the **Privacy** switches for usage data and crash reports. Those are EnviousWispr settings, not macOS permissions. See [_What Data Is Collected_](/help/what-data-is-collected/).
+The **Permissions** tab of **App Settings** always shows the current status of each one. The **Privacy** tab beside it has the switches for usage data and crash reports. Those are EnviousWispr settings, not macOS permissions. See [_What Data Is Collected_](/help/what-data-is-collected/).
 
 ### EnviousWispr can't hear me: allow the microphone
 
 This permission lets EnviousWispr hear your voice while you dictate. Setup asks for it. If you skipped the prompt, ask again from EnviousWispr:
 
-1. Open **Settings** > **Permissions**.
+1. Open **App Settings** > **Permissions**.
 2. Under **Microphone**, click **Request Access**. If you already said no, this button opens System Settings for you.
 3. In **System Settings** > **Privacy & Security** > **Microphone**, switch EnviousWispr on.
 

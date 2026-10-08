@@ -13,7 +13,7 @@ When the start of your speech goes missing, the microphone was still waking up a
 ### The first word is missing from my dictation
 
 1. **Pause briefly.** Wait a beat after pressing your keybind before you begin to speak.
-2. **Keep the microphone awake for longer.** Go to **Settings** \> **Microphone** and set **Microphone readiness** to **60 sec** or **Always**.
+2. **Keep the microphone awake for longer.** Go to **Dictation Settings** \> **Microphone** and set **Microphone readiness** to **60 sec** or **Always**.
 
 You will know it worked when your next few dictations open with the exact word you meant to say.
 

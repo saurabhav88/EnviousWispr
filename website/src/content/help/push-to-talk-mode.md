@@ -19,15 +19,15 @@ deflection: "can_resolve"
 
 Recording stops the moment you release the key, so a cough, a deep breath, or a passing conversation after you finish never reaches the transcript.
 
-A short sound confirms when recording starts and stops. To switch it off, go to **Settings** > **Sounds** and turn off **Play recording sounds**.
+A short sound confirms when recording starts and stops. To switch it off, go to **Dictation Settings** > **Chimes** and turn off **Play recording chimes**.
 
 ### Switch to Push to Talk
 
 1. Click the EnviousWispr icon in your menu bar and choose **Open EnviousWispr**.
 2. Open **Keybinds**.
-3. Under **1. Choose recording mode**, pick **Push to Talk**.
+3. In the **Recording mode** row, pick **Push to Talk**.
 
-The card you pick is highlighted. It worked when holding your keybind starts a recording and releasing it ends the recording.
+The option you pick is highlighted. It worked when holding your keybind starts a recording and releasing it ends the recording.
 
 ### Record without holding the key
 
