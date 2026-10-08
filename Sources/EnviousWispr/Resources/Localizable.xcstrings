@@ -23258,13 +23258,13 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Dictation now works inside Raycast and similar keyboard launchers."
+            "value" : "Dictation now works inside Raycast."
           }
         },
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Diktieren funktioniert jetzt in Raycast und ähnlichen Tastatur-Launchern."
+            "value" : "Diktieren funktioniert jetzt in Raycast."
           }
         }
       }

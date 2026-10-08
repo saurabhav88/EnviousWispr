@@ -86,7 +86,7 @@ enum WhatsNewContent {
       icon: "command",
       title: "Launcher Support (Raycast)",
       description:
-        "Dictation now works inside Raycast and similar keyboard launchers.",
+        "Dictation now works inside Raycast.",
       version: "2.5.3"
     ),
     Entry(
