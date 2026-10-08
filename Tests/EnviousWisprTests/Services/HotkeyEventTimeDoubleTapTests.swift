@@ -303,19 +303,21 @@ struct HotkeyEventTimeDoubleTapTests {
   }
 
   @Test(
-    "A release handled late gets a deadline that is already due, and a press handled first still locks"
+    "A release handled late still waits 500 ms after it was handled, and a press handled meanwhile locks"
   )
-  func overdueDeadlinePressFirstLocks() async throws {
+  func lateReleaseKeepsTheOldStopTime() async throws {
     let rig = Rig()
     let (service, _) = makeService(rig)
     defer { service.stop() }
     drive(service, rig, [.press(1000), .release(1000.056, handled: 1000.689)])
     await rig.waitForSleepRequests(count: 1)
 
-    // The deadline is 500 ms after the release HAPPENED (1000.556), so it was
-    // already due when the release was handled at 1000.689: no wait remains.
+    // 500 ms after the release HAPPENED would be 1000.556, already past when it was handled
+    // at 1000.689. The stop is never earlier than the pre-#3534 timer: 1000.689 + 0.5.
     let delay = try #require(rig.requestedDelays.last)
-    #expect(delay == 0)
+    #expect(abs(delay - 0.5) < 1e-9)
+    let deadline = try #require(rig.requestedDeadlines.last)
+    #expect(abs(deadline - Self.lateReleaseStop) < 1e-9)
 
     drive(service, rig, .press(1000.186, handled: 1000.689))
     rig.fireDueTimers()
@@ -329,26 +331,49 @@ struct HotkeyEventTimeDoubleTapTests {
   }
 
   @Test(
-    "When the due timer runs before the second press is handled, it stops once and the press starts fresh"
+    "A timer that falls due while a valid second press is still queued does not stop the recording"
   )
-  func overdueDeadlineTimerFirstStopsOnce() async {
+  func timerDueBeforeQueuedPressStillLocks() async throws {
     let rig = Rig()
     let (service, _) = makeService(rig)
     defer { service.stop() }
-    drive(service, rig, [.press(1000), .release(1000.056, handled: 1000.689)])
+    // Every event handled about 400 ms late. By event time the stop would be due at 1000.58,
+    // before the second press is handled at 1000.60; the old timer stopped at 1000.95.
+    drive(
+      service, rig,
+      [.press(1000, handled: 1000.40), .release(1000.08, handled: 1000.45)])
     await rig.waitForSleepRequests(count: 1)
+    let deadline = try #require(rig.requestedDeadlines.last)
+    #expect(abs(deadline - 1000.95) < 1e-9)
+    rig.now = 1000.58
     rig.fireDueTimers()
+    drive(service, rig, .press(1000.20, handled: 1000.60))
     await rig.waitForDebounce(count: 1)
+    await rig.waitForStarts(count: 1)
     await settle(service)
+
+    #expect(rig.actions == ["start", "lock"])
+    #expect(rig.published == 1)
+    #expect(rig.stops == 0)
+  }
+
+  @Test(
+    "When the timer runs before the second press is handled, it stops once and the press starts fresh"
+  )
+  func timerFirstStopsOnce() async {
+    let rig = Rig()
+    let (service, _) = makeService(rig)
+    defer { service.stop() }
+    await stopByTimer(service, rig)
     #expect(rig.stops == 1)
 
-    drive(service, rig, .press(1000.186, handled: 1000.700))
+    drive(service, rig, .press(1000.186, handled: 1001.2))
     await settle(service)
 
     #expect(rig.stops == 1, "the stop was requested twice")
     #expect(rig.actions == ["start", "start"])
     #expect(service.isRecordingLocked == false)
-    // Pressed at +186 ms, before the stop was requested at 1000.689: the race is recorded.
+    // Pressed at +186 ms, before the stop was requested at 1001.189: the race is recorded.
     #expect(rig.presses.last?.windowTiming == "after_stop_timer")
   }
 
@@ -531,10 +556,10 @@ struct HotkeyEventTimeDoubleTapTests {
     defer { service.stop() }
     drive(service, accepted, [.press(1000), .release(1000, handled: 1000 + 2.0)])
     await accepted.waitForSleepRequests(count: 1)
-    // Accepted: the release happened at the press, so it is a quick tap whose
-    // deadline (1000.5) has already passed.
+    // Accepted: the release happened at the press, so it is a quick tap; its stop waits
+    // 500 ms after the release was handled, as before.
     let delay = try #require(accepted.requestedDelays.last)
-    #expect(delay == 0)
+    #expect(abs(delay - 0.5) < 1e-9)
     #expect(accepted.stops == 0)
 
     let rejected = Rig()
@@ -661,11 +686,15 @@ struct HotkeyEventTimeDoubleTapTests {
   private static let cancelID: UInt32 = 3
   private static let quickAddID: UInt32 = 4
 
-  /// A lone tap whose release was handled late, so its deadline (1000.556) is already due; the
-  /// timer runs before any second press and requests the stop at 1000.689.
+  /// A lone tap whose release was handled 633 ms late. The stop is due 500 ms after the release
+  /// was handled (1001.189, never earlier than before #3534); the timer runs before any second
+  /// press and requests the stop then.
+  private static let lateReleaseStop: TimeInterval = 1001.189
+
   private func stopByTimer(_ service: HotkeyService, _ rig: Rig) async {
     drive(service, rig, [.press(1000), .release(1000.056, handled: 1000.689)])
     await rig.waitForSleepRequests(count: 1)
+    rig.now = Self.lateReleaseStop
     rig.fireDueTimers()
     await rig.waitForDebounce(count: 1)
     await settle(service)
@@ -678,14 +707,14 @@ struct HotkeyEventTimeDoubleTapTests {
     defer { service.stop() }
     await stopByTimer(service, rig)
     service.onIsProcessing = { true }
-    drive(service, rig, .press(1000.186, handled: 1000.700))
+    drive(service, rig, .press(1000.186, handled: 1001.2))
 
     #expect(rig.actions == ["start", "ignored_processing"])
     #expect(rig.presses.last?.windowTiming == "after_stop_timer")
     #expect(rig.stops == 1)
 
     // Claimed once: a second qualifying press finds no marker.
-    drive(service, rig, .press(1000.20, handled: 1000.71))
+    drive(service, rig, .press(1000.20, handled: 1001.21))
     #expect(rig.actions == ["start", "ignored_processing", "ignored_processing"])
     #expect(rig.presses.map(\.windowTiming) == [nil, "after_stop_timer", nil])
     #expect(rig.stops == 1)
@@ -723,7 +752,7 @@ struct HotkeyEventTimeDoubleTapTests {
     await stopByTimer(service, rig)
 
     service.handleCarbonHotkey(id: Self.cancelID, isRelease: false, timestamp: 1000.69)
-    drive(service, rig, .press(1000.186, handled: 1000.700))
+    drive(service, rig, .press(1000.186, handled: 1001.2))
     await settle(service)
     #expect(rig.actions == ["start", "cancel", "start"])
     #expect(rig.presses.last?.windowTiming == nil)
@@ -749,7 +778,7 @@ struct HotkeyEventTimeDoubleTapTests {
       case .pressBeforeFirst: 999.9
       case .outsideWindow: 1000.6
       }
-    drive(service, rig, Event(isPress: true, occurred: occurred, handled: 1000.700))
+    drive(service, rig, Event(isPress: true, occurred: occurred, handled: 1001.2))
 
     #expect(rig.actions == ["start", "start"])
     #expect(rig.presses.last?.windowTiming == nil)
@@ -784,12 +813,12 @@ struct HotkeyEventTimeDoubleTapTests {
     defer { service.stop() }
     await stopByTimer(service, rig)
     // A stray release and another shortcut leave the marker for the record press.
-    drive(service, rig, .release(1000.69, handled: 1000.69))
-    rig.now = 1000.695
+    drive(service, rig, .release(1000.69, handled: 1001.19))
+    rig.now = 1001.195
     service.handleCarbonHotkey(id: Self.quickAddID, isRelease: false, timestamp: 1000.1)
-    drive(service, rig, .press(1000.186, handled: 1000.700))
+    drive(service, rig, .press(1000.186, handled: 1001.2))
     // The new recording's own double tap: its lock carries its own timing, not the race.
-    drive(service, rig, [.release(1000.25, handled: 1000.75), .press(1000.30, handled: 1000.80)])
+    drive(service, rig, [.release(1000.25, handled: 1001.25), .press(1000.30, handled: 1001.30)])
     await settle(service)
 
     #expect(rig.actions == ["start", "quick_add", "start", "lock"])
@@ -803,7 +832,7 @@ struct HotkeyEventTimeDoubleTapTests {
     defer { service.stop() }
     await stopByTimer(service, rig)
     service.recordingMode = .toggle
-    drive(service, rig, .press(1000.186, handled: 1000.700))
+    drive(service, rig, .press(1000.186, handled: 1001.2))
     #expect(rig.actions == ["start", "toggle"])
     #expect(rig.presses.last?.windowTiming == nil)
   }
@@ -857,7 +886,7 @@ struct HotkeyEventTimeDoubleTapTests {
     service.start()
     await stopByTimer(service, rig)
     invalidate(change, service)
-    drive(service, rig, .press(1000.186, handled: 1000.700))
+    drive(service, rig, .press(1000.186, handled: 1001.2))
 
     #expect(rig.stops == 1)
     #expect(rig.presses.last?.action == "start")
@@ -874,10 +903,11 @@ struct HotkeyEventTimeDoubleTapTests {
     drive(service, rig, [.press(1000), .release(1000.056, handled: 1000.689)])
     await rig.waitForSleepRequests(count: 1)
     invalidate(change, service)
+    rig.now = Self.lateReleaseStop
     rig.fireDueTimers()
     await rig.waitForDebounce(count: 1)
     await settle(service)
-    drive(service, rig, .press(1000.186, handled: 1000.700))
+    drive(service, rig, .press(1000.186, handled: 1001.2))
 
     #expect(rig.stops == 1, "a diagnostic change must not change the stop")
     #expect(rig.presses.last?.windowTiming == nil, Comment(rawValue: change.rawValue))
@@ -892,11 +922,12 @@ struct HotkeyEventTimeDoubleTapTests {
     drive(service, rig, [.press(1000), .release(1000.056, handled: 1000.689)])
     await rig.waitForSleepRequests(count: 1)
     service.suspend()
+    rig.now = Self.lateReleaseStop
     rig.fireDueTimers()
     await rig.waitForDebounce(count: 1)
     await settle(service)
     #expect(rig.stops == 1, "suspend preserves the pending stop, as before")
-    drive(service, rig, .press(1000.186, handled: 1000.700))
+    drive(service, rig, .press(1000.186, handled: 1001.2))
     #expect(rig.presses.last?.windowTiming == nil)
     service.resume()
   }
@@ -910,7 +941,7 @@ struct HotkeyEventTimeDoubleTapTests {
     await stopByTimer(service, rig)
     service.stop()
     service.start()
-    drive(service, rig, .press(1000.186, handled: 1000.700))
+    drive(service, rig, .press(1000.186, handled: 1001.2))
     #expect(rig.stops == 1)
     #expect(rig.presses.last?.windowTiming == nil)
   }

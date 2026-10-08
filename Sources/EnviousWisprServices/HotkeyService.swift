@@ -1084,13 +1084,16 @@ public final class HotkeyService {
     if let start = recordingStart, elapsed(from: start, to: input) <= Self.window {
       stateGeneration &+= 1
       let capturedGeneration = stateGeneration
-      // #3534: 500 ms after the release HAPPENED, on the same clock that judged it
-      // quick (`clockPair`); with no usable OS times, 500 ms after it was handled,
-      // as before. A release handled late can find this deadline already due.
-      // Compute the remaining wait when the task runs, avoiding additional task-start
-      // delay. If the deadline is already past, request no further wait.
+      // #3534: 500 ms after the release, and never earlier than 500 ms after it was
+      // HANDLED, which is when the pre-#3534 timer stopped. An occurrence-time
+      // deadline alone could fall due while a valid second press is still queued on
+      // a busy main thread, so the stop would win a double tap the old timer
+      // allowed. The later bound keeps every lone tap's stop where it was before;
+      // classification still uses `clockPair`. Compute the remaining wait when the
+      // task runs, avoiding additional task-start delay. If the deadline is already
+      // past, request no further wait.
       let pair = clockPair(from: start, to: input)
-      let deadline = pair.end + Self.window
+      let deadline = max(pair.end, input.handled) + Self.window
       let sleep = self.sleep
       let uptime = self.uptime
       #if DEBUG
@@ -1100,7 +1103,7 @@ public final class HotkeyService {
           + "clock=\(pair.usesOccurrence ? "occurrence" : "handling")"
         traceTiming(
           "quick_release \(tracePrefix) release_occurred=\(Self.traceSeconds(input.occurred)) "
-            + "already_due=\(input.handled >= deadline)")
+            + "event_deadline=\(Self.traceSeconds(pair.end + Self.window))")
       #endif
       debounceTask?.cancel()
       debounceTask = Task { @MainActor [weak self] in
