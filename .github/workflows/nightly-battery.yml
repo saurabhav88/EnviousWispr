@@ -52,6 +52,7 @@ on:
       - 'scripts/ci/debug-only-tests.txt'
       - 'scripts/ci/notify-nightly.py'
       - 'scripts/ci/check-alerting-heartbeat.py'  # loaded by notify-nightly.py
+      - 'scripts/ci/issue_upsert.py'  # loaded by notify-nightly.py
 
 concurrency:
   group: nightly-battery-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
