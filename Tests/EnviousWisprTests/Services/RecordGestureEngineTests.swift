@@ -559,6 +559,30 @@ struct RecordGestureEngineTests {
     #expect(rig.sink.validNames == ["start", "holdStop"])
   }
 
+  @Test("a joining attempt's second tap is still joining after a quick release")
+  func joinSurvivesAQuickRelease() {
+    let rig = Rig()
+    rig.engine.openListenerAdmission(installation: 7)
+    rig.engine.setRecordingActive(true)
+    #expect(Self.listener(rig, true, 0) == nil)
+    #expect(Self.listener(rig, false, 0.1) == nil)
+    #expect(Self.listener(rig, true, 0.55) == nil)
+    #expect(!rig.engine.otherKeyFromListener(input: rig.at(0.56), installation: 7))
+  }
+
+  @Test("a press after this engine ended the running session's attempt is a fresh start")
+  func pressAfterOwnEndingIsFresh() {
+    let rig = Rig()
+    rig.engine.openListenerAdmission(installation: 7)
+    _ = Self.listener(rig, true, 0)
+    rig.engine.setRecordingActive(true)  // this take's session is running
+    #expect(rig.engine.otherKeyFromListener(input: rig.at(0.2), installation: 7))
+    // The session is still tearing down when the next press arrives.
+    #expect(Self.listener(rig, true, 2) == nil)
+    #expect(rig.engine.otherKeyFromListener(input: rig.at(2.2), installation: 7),
+      "the fresh take was treated as joining the dismissed session")
+  }
+
   @Test("a held ordinary key never refuses a press that joins a running recording")
   func ordinaryKeyNeverRefusesAJoiningPress() {
     let rig = Rig()

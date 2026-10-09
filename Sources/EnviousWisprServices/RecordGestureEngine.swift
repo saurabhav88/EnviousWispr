@@ -244,6 +244,15 @@ package final class RecordGestureEngine: Sendable {
     /// test `RecordingStarter.start()` uses to join one), as the dictation lifecycle reports it.
     /// Not cleared by suspend, resume, restart or reset: it is the pipeline's, not the shortcuts'.
     var recordingActive = false
+    /// The attempt whose `.start` found a session running, so it only joins it (#3544 P4). Kept by
+    /// attempt, not by press: a quick release clears `owned`, and the attempt's second tap must
+    /// still be joining.
+    var joinedAttempt: UInt64?
+    /// This engine has already ended the running session's attempt (a listener cancel or an
+    /// other-key dismissal), so that session is on its way out: the next `.start` is a fresh take,
+    /// not a join, even if the pipeline has not reported the session over yet. Cleared when it
+    /// does, or consumed by that next `.start`.
+    var endingRequested = false
     /// Bumped on every ACTUAL change of record binding, mode or any role's binding, and by the
     /// unconditional `reset()`. Distinct from `HotkeyService`'s installation counter.
     var listenerConfigurationGeneration: UInt64 = 0
@@ -346,7 +355,10 @@ package final class RecordGestureEngine: Sendable {
 
   /// Whether a session is running now (#3544 P4): a fresh record press made while one is joins it.
   package func setRecordingActive(_ active: Bool) {
-    state.withLock { $0.recordingActive = active }
+    state.withLock { s in
+      s.recordingActive = active
+      if !active { s.endingRequested = false }
+    }
   }
 
   /// Start admitting listener input from `installation`. Every earlier installation's input is
@@ -496,6 +508,7 @@ package final class RecordGestureEngine: Sendable {
       }
       // Disarmed here, as main's cancel does, so a second cancel event cannot act twice.
       s.cancelArmed = false
+      s.endingRequested = true
       let attempt: UInt64? = s.gesture.start != nil ? s.gesture.attemptID : nil
       var work = TimerWork()
       var effects: [Effect] = []
@@ -535,6 +548,7 @@ package final class RecordGestureEngine: Sendable {
       let attempt = s.gesture.attemptID
       var work = TimerWork()
       var effects: [Effect] = []
+      s.endingRequested = true
       s.gesture.cleanup()
       // The record key is still physically down, but its release is now unowned and refused, so
       // the gesture must stop counting it as held: otherwise the next press reads as a duplicate.
@@ -700,8 +714,11 @@ package final class RecordGestureEngine: Sendable {
         return work
       }
       let decision = s.gesture.classifyPress(input, binding: s.binding, mode: s.mode)
-      let joinsRecording: Bool =
-        if case .start = decision { s.recordingActive } else { s.owned?.joinsRecording ?? false }
+      if case .start = decision {
+        s.joinedAttempt = s.recordingActive && !s.endingRequested ? s.gesture.attemptID : nil
+        s.endingRequested = false
+      }
+      let joinsRecording = s.joinedAttempt == s.gesture.attemptID
       // The held key's release follows this press, whatever the configuration is by then.
       s.owned = OwnedPress(
         keyCode: keyCode, attemptID: s.gesture.attemptID, fromMain: fromMain, recovery: recovery,

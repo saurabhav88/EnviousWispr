@@ -505,6 +505,28 @@ struct KeyboardListenerIntegrationTests {
     #expect(ptt.joins == 1 && ptt.starts == 0, "a joining press asked to create a session")
   }
 
+  @Test("a press while a dismissed session is still ending starts a fresh take, not a join")
+  func pressDuringDismissalTeardownStarts() async {
+    let ptt = PTT()
+    defer { ptt.service.stop() }
+    let done = HotkeyGlobeKeyTests.CallbackWaiter()
+    ptt.service.onDismissRecording = { _ in done.note() }
+    ptt.at(0)
+    await ptt.keys.press(ModifierKeyCodes.rightOption, at: 500)
+    await ptt.service.awaitInFlightStartForTesting()
+    ptt.service.setRecordingActive(true)  // the take's session is running
+    ptt.at(0.3)
+    await letterDown(ptt, at: 0.3)
+    await done.wait(until: 1)
+    ptt.at(0.5)
+    await ptt.keys.release(ModifierKeyCodes.rightOption, at: 500.5)
+    ptt.joinable = nil  // the dismissed session is ending
+    ptt.at(2)
+    await ptt.keys.press(ModifierKeyCodes.rightOption, at: 502)
+    await ptt.service.awaitInFlightStartForTesting()
+    #expect(ptt.starts == 2 && ptt.joins == 0, "starts \(ptt.starts), joins \(ptt.joins)")
+  }
+
   /// The session a press found may end before main runs that press: the press only ever joins,
   /// so it creates nothing (a new take would start with an ordinary key held and no protection).
   @Test("a joining press whose session ended before it ran starts nothing")
