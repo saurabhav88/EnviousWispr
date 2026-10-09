@@ -10,13 +10,24 @@ import Observation
 @MainActor
 @Observable
 final class SettingsSearchModel {
-  /// The index, built once per window from the bundled vocabulary on the first non-empty query.
+  /// The index search answers from (#3545 plan §3.5). The first non-empty query builds a
+  /// title-only index synchronously and answers from it while the full index (with the bundled
+  /// vocabulary) loads; the full index then replaces it and the current query runs again.
   enum IndexState {
     case notLoaded
-    case loading
+    /// Answering from the title-only index while the full index loads.
+    case loading(titleOnly: SettingsSearchIndex)
     case ready(SettingsSearchIndex)
-    /// The vocabulary is missing or invalid: search says it is unavailable, never "no results".
-    case unavailable
+    /// The vocabulary could not be used: the title-only index answers for this window.
+    case titleOnly(SettingsSearchIndex)
+  }
+
+  /// The index answering now, nil before the first non-empty query.
+  var answeringIndex: SettingsSearchIndex? {
+    switch indexState {
+    case .notLoaded: nil
+    case .loading(let index), .ready(let index), .titleOnly(let index): index
+    }
   }
 
   /// The meaning pass (plan §3.7 item 8): word results show at once; a final "no results" waits
@@ -41,6 +52,8 @@ final class SettingsSearchModel {
   private var selectionMovedByUser = false
   private var announcement: Task<Void, Never>?
   private let loadIndex: @Sendable () async -> SettingsSearchIndex?
+  /// Builds the title-only index on the main actor, before the full index exists.
+  private let titleIndex: @MainActor () -> SettingsSearchIndex
   /// The meaning pass (plan §3.7a): nil means words only. Skipped for the rest of the window
   /// session after any skip the worker reports.
   private let meaningWorker: SettingsSearchMeaningWorker?
@@ -75,6 +88,7 @@ final class SettingsSearchModel {
   /// be used. `announce` speaks the result count after typing pauses.
   init(
     loadIndex: @escaping @Sendable () async -> SettingsSearchIndex?,
+    titleIndex: @escaping @MainActor () -> SettingsSearchIndex = SettingsSearchModel.windowTitleIndex,
     meaningWorker: SettingsSearchMeaningWorker? = nil,
     usageMetricsOn: @escaping @MainActor () -> Bool = { false },
     emitFinished: @escaping @MainActor (SettingsSearchFinished) -> Void = { _ in },
@@ -82,12 +96,20 @@ final class SettingsSearchModel {
     announcementDelay: Duration = .milliseconds(700)
   ) {
     self.loadIndex = loadIndex
+    self.titleIndex = titleIndex
     self.usageMetricsOn = usageMetricsOn
     self.emitFinished = emitFinished
     self.meaningWorker = meaningWorker
     meaningPass = meaningWorker == nil ? .skipped : .completed
     self.announce = announce
     self.announcementDelay = announcementDelay
+  }
+
+  /// The title-only index for this app's languages: the same inputs as the full index.
+  static func windowTitleIndex() -> SettingsSearchIndex {
+    SettingsSearchIndex.titleOnly(
+      appLanguage: Bundle.main.preferredLocalizations.first ?? "en",
+      preferredLanguages: Locale.preferredLanguages)
   }
 
   /// The search everyone sees in the app: English, the app language and the Mac's supported
@@ -126,16 +148,11 @@ final class SettingsSearchModel {
     results.first { $0.entryID == selectedEntryID }
   }
 
-  /// "No settings match" shows only for a finished, empty search: never while the index loads,
-  /// when it is unavailable, or while the meaning pass may still add results.
+  /// "No settings match" shows for an empty answer from any index once the meaning pass, if
+  /// running, has finished: never a blank panel while the full index loads (#3545).
   var showsNoResults: Bool {
-    guard !query.isEmpty, case .ready = indexState else { return false }
+    guard !query.isEmpty, answeringIndex != nil else { return false }
     return results.isEmpty && meaningPass != .pending
-  }
-
-  var isUnavailable: Bool {
-    if case .unavailable = indexState { return true }
-    return false
   }
 
   // MARK: - Typing
@@ -163,30 +180,32 @@ final class SettingsSearchModel {
   }
 
   private func refresh() {
-    switch indexState {
-    case .ready(let index):
-      deliver(index.results(for: query), for: generation)
-    case .notLoaded:
-      indexState = .loading
+    if case .notLoaded = indexState {
+      // Answers now from titles; the full index loads once, off the main actor.
+      indexState = .loading(titleOnly: titleIndex())
       let load = loadIndex
       Task { [weak self] in
         let index = await load()
         self?.indexLoaded(index)
       }
-    case .loading, .unavailable:
-      break
     }
+    if let index = answeringIndex { deliver(index.results(for: query), for: generation) }
   }
 
+  /// The full index arrived (or could not be built): it replaces the title-only answers by running
+  /// the CURRENT query again; a cleared query stays cleared and a closed panel stays closed.
   private func indexLoaded(_ index: SettingsSearchIndex?) {
+    guard case .loading(let titles) = indexState else { return }
     guard let index else {
-      indexState = .unavailable
-      results = []
-      selectedEntryID = nil
+      // The title-only index keeps answering for this window; its answer is now final.
+      indexState = .titleOnly(titles)
+      recordSnapshot()
       return
     }
     indexState = .ready(index)
-    if !query.isEmpty { deliver(index.results(for: query), for: generation) }
+    guard !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+    cancelMeaning()
+    deliver(index.results(for: query), for: generation)
   }
 
   /// Word results for `generation`: shown at once, then the meaning pass may re-order them.
@@ -270,9 +289,11 @@ final class SettingsSearchModel {
     current.resultCount = results.count
     // Results still coming (the index loading, or the meaning pass running) or not available at
     // all: the attempt can only end as abandoned, never as "found nothing" with its text.
+    // While the full index loads, title-only answers can still change, so the attempt is not yet
+    // final either way: it is recorded as pending, as before.
     switch indexState {
-    case .ready: current.meaningPending = meaningPass == .pending
-    case .notLoaded, .loading, .unavailable: current.meaningPending = true
+    case .ready, .titleOnly: current.meaningPending = meaningPass == .pending
+    case .notLoaded, .loading: current.meaningPending = true
     }
     current.meaningElapsedMilliseconds = meaningPass == .completed ? meaningElapsedMilliseconds : nil
     attempt = current
@@ -310,7 +331,7 @@ final class SettingsSearchModel {
   }
 
   private var appLanguageCode: String {
-    if case .ready(let index) = indexState { return index.appLanguage }
+    if let index = answeringIndex { return index.appLanguage }
     return Bundle.main.preferredLocalizations.first == "de" ? "de" : "en"
   }
 

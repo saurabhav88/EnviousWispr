@@ -1,3 +1,4 @@
+import EnviousWisprServices
 import Foundation
 import Observation
 import Testing
@@ -24,6 +25,7 @@ struct SettingsSearchModelTests {
   static let index = Result { try SettingsSearchMatchingTests.index("en", preferred: ["en-US"]) }
 
   @MainActor @Observable final class SpokenLog { var lines: [String] = [] }
+  @MainActor final class FinishedLog { var rows: [SettingsSearchFinished] = [] }
 
   /// A model on the real index; announcements are collected, not spoken.
   static func model(spoken: SpokenLog = SpokenLog()) throws -> SettingsSearchModel {
@@ -58,10 +60,11 @@ struct SettingsSearchModelTests {
     return true
   }
 
+  /// The full index has arrived, or could not be built and the title-only index answers.
   static func ready(_ model: SettingsSearchModel) async -> Bool {
     await waitUntil {
       if case .ready = model.indexState { return true }
-      if case .unavailable = model.indexState { return true }
+      if case .titleOnly = model.indexState { return true }
       return false
     }
   }
@@ -135,31 +138,162 @@ struct SettingsSearchModelTests {
     #expect(model.isPanelPresented == false, "an empty search reopened")
   }
 
-  @Test("a search typed while the index loads gets its own results, never 'no results' first")
-  func loadingNeverSaysNoResults() async throws {
-    let ready = try Self.index.get()
-    let gate = AsyncGate()
-    let model = SettingsSearchModel(
-      loadIndex: {
-        await gate.wait()
-        return ready
-      }, announce: { _ in }, announcementDelay: .milliseconds(20))
-    model.setQuery("zzqx")
-    #expect(model.showsNoResults == false, "said no results while the index was still loading")
-    model.setQuery("dock")
-    await gate.open()
-    #expect(await Self.waitUntil { model.results.first?.entryID == "showInDock" })
+  /// A small index whose answers the test controls: each place found by its one title word.
+  static func fixture(_ rows: [(SettingsMapID, String)]) -> SettingsSearchIndex {
+    let documents = rows.map { id, title in
+      SettingsSearchIndex.Document(
+        id: id.rawValue, kind: .setting, parentID: nil, titles: ["en": title], descriptions: [:],
+        context: [:], bias: 0)
+    }
+    return SettingsSearchIndex(
+      documents: documents, blocks: [:], appLanguage: "en", interface: ["en"], languages: ["en"],
+      stop: [], markers: [])
   }
 
-  @Test("a missing vocabulary is 'unavailable', never 'no results'")
-  func unavailableIsNotNoResults() async throws {
-    let model = SettingsSearchModel(
-      loadIndex: { nil }, announce: { _ in }, announcementDelay: .milliseconds(20))
-    model.setQuery("mic")
-    #expect(await Self.ready(model))
-    #expect(model.isUnavailable)
-    #expect(model.showsNoResults == false)
+  /// A model that answers from `titles` at once and from `full` once `gate` opens; counts how
+  /// often the full index is asked for.
+  static func gatedModel(
+    _ gate: AsyncGate, loads: LoadCounter = LoadCounter(),
+    titles: SettingsSearchIndex, full: SettingsSearchIndex?,
+    usageMetricsOn: @escaping @MainActor () -> Bool = { false },
+    emitFinished: @escaping @MainActor (SettingsSearchFinished) -> Void = { _ in }
+  ) -> SettingsSearchModel {
+    SettingsSearchModel(
+      loadIndex: {
+        await loads.count()
+        await gate.wait()
+        return full
+      }, titleIndex: { titles }, usageMetricsOn: usageMetricsOn, emitFinished: emitFinished,
+      announce: { _ in }, announcementDelay: .milliseconds(20))
+  }
+
+  // #3545 T8. Replaces #3482's "a search typed while the index loads ... never 'no results'
+  // first": the panel now answers from titles at once instead of showing nothing while the full
+  // index loads, so an unmatched search says "No settings match" from its title-only answer.
+  @Test("a search typed while the full index loads is answered from titles; the full index reruns the current one")
+  func titleAnswersWhileLoading() async throws {
+    let gate = AsyncGate()
+    let loads = LoadCounter()
+    let model = Self.gatedModel(
+      gate, loads: loads,
+      titles: Self.fixture([(.theme, "alpha"), (.inputDevice, "beta")]),
+      full: Self.fixture([(.showInDock, "beta")]))
+    model.setQuery("alpha")
+    // Before setQuery returned: visible, selected, choosable, from titles.
+    #expect(model.isPanelPresented)
+    #expect(model.results.map(\.entryID) == ["theme"])
+    #expect(model.selectedEntryID == "theme")
+    #expect(model.requestForSelection()?.entryID == "theme")
+    if case .loading = model.indexState {} else { Issue.record("not answering from titles: \(model.indexState)") }
+    // A later search during the same load also answers at once, from titles.
+    model.setQuery("beta")
+    #expect(model.results.map(\.entryID) == ["inputDevice"])
+    model.setQuery("zzqx")
     #expect(model.results.isEmpty)
+    #expect(model.showsNoResults, "a blank panel while the full index loads")
+    model.setQuery("beta")
+    await gate.open()
+    #expect(await Self.waitUntil { model.results.map(\.entryID) == ["showInDock"] })
+    #expect(await loads.value == 1, "the full index was loaded more than once")
+    // The full index answers "alpha" with nothing: it really replaced the title index.
+    model.setQuery("alpha")
+    #expect(model.results.isEmpty)
+  }
+
+  @Test("the full index keeps a selection the person moved, and never reopens or revives a search")
+  func swapKeepsThePersonsState() async throws {
+    // Titles answer A then B; the person moves to B. The full index puts C first; B survives.
+    let gate = AsyncGate()
+    let model = Self.gatedModel(
+      gate, titles: Self.fixture([(.theme, "gamma"), (.inputDevice, "gamma")]),
+      full: Self.fixture([(.showInDock, "gamma"), (.theme, "gamma"), (.inputDevice, "gamma")]))
+    model.setQuery("gamma")
+    #expect(model.results.map(\.entryID) == ["theme", "inputDevice"])
+    model.moveSelection(by: 1)
+    #expect(model.selectedEntryID == "inputDevice")
+    await gate.open()
+    #expect(await Self.waitUntil { model.results.first?.entryID == "showInDock" })
+    #expect(model.selectedEntryID == "inputDevice", "the full index took back the person's selection")
+
+    // A closed panel stays closed when the full index arrives.
+    let closedGate = AsyncGate()
+    let closed = Self.gatedModel(
+      closedGate, titles: Self.fixture([(.theme, "beta")]), full: Self.fixture([(.showInDock, "beta")]))
+    closed.setQuery("beta")
+    closed.dismissPanel()
+    await closedGate.open()
+    #expect(await Self.waitUntil { closed.results.first?.entryID == "showInDock" })
+    #expect(closed.isPanelPresented == false, "the full index reopened a closed panel")
+    #expect(closed.query == "beta")
+
+    // A search cleared while loading stays cleared.
+    let resetGate = AsyncGate()
+    let reset = Self.gatedModel(
+      resetGate, titles: Self.fixture([(.theme, "beta")]), full: Self.fixture([(.showInDock, "beta")]))
+    reset.setQuery("beta")
+    reset.reset()
+    await resetGate.open()
+    #expect(await Self.ready(reset))
+    #expect(reset.query.isEmpty && reset.results.isEmpty && reset.isPanelPresented == false)
+  }
+
+  @Test("a vocabulary that cannot be used leaves search answering by title, and the attempt final")
+  func unusableVocabularyKeepsTitleSearch() async throws {
+    let finished = FinishedLog()
+    let gate = AsyncGate()
+    let model = Self.gatedModel(
+      gate, titles: Self.fixture([(.theme, "beta")]), full: nil, usageMetricsOn: { true },
+      emitFinished: { finished.rows.append($0) })
+    model.setQuery("zzqx")
+    #expect(model.attempt?.meaningPending == true, "titles answer while the full index loads")
+    await gate.open()
+    #expect(await Self.ready(model))
+    if case .titleOnly = model.indexState {} else { Issue.record("expected title-only: \(model.indexState)") }
+    #expect(model.attempt?.meaningPending == false, "the title-only answer is final now")
+    #expect(model.showsNoResults)
+    model.setQuery("beta")
+    #expect(model.results.map(\.entryID) == ["theme"])
+    model.setQuery("zzqx")
+    model.reset(endedBy: .escape)
+    #expect(finished.rows.map(\.outcome) == [.zeroResults])
+  }
+
+  @Test("the title-only index holds every searchable place and builds quickly enough to measure")
+  func titleIndexCoversTheCatalog() {
+    let started = ContinuousClock.now
+    let index = SettingsSearchIndex.titleOnly(appLanguage: "en", preferredLanguages: ["en-US"])
+    let elapsed = started.duration(to: .now)
+    #expect(index.places.count == SettingsSearchCatalog.entries.count)
+    #expect(index.places.allSatisfy { !$0.visibleTitle.isEmpty }, "a place with no title words")
+    print("TITLE-INDEX places=\(index.places.count) build=\(elapsed)")
+  }
+
+  /// The built app's English and German text, whatever language this test process runs in.
+  static let builtCatalogWithLabels: SettingsSearchIndex.Copy = {
+    var copy = SettingsSearchMatchingTests.builtCatalog
+    copy.dynamicLabel = { id, language in
+      SettingsSearchPresentation.dynamicTitleResource(of: id).flatMap {
+        try? SettingsMapExportTests.resolve($0, language)
+      }
+    }
+    return copy
+  }()
+
+  @Test("a German window's title index names run-time places in German and in English")
+  func titleIndexLabelsFollowTheLanguage() throws {
+    let german = SettingsSearchIndex.titleOnly(
+      appLanguage: "de", preferredLanguages: ["de-DE", "en-US"], copy: Self.builtCatalogWithLabels)
+    let english = SettingsSearchIndex.titleOnly(
+      appLanguage: "en", preferredLanguages: ["en-US"], copy: Self.builtCatalogWithLabels)
+    let id = SettingsMapID.lockedLanguage.rawValue
+    let de = try #require(german.places.first { $0.id == id })
+    let en = try #require(english.places.first { $0.id == id })
+    #expect(de.visibleTitle["diktiersprache"] != nil, "German label missing: \(de.visibleTitle)")
+    #expect(de.otherTitle["dictation"] != nil, "English label missing under German: \(de.otherTitle)")
+    #expect(en.visibleTitle["dictation"] != nil, "English label missing: \(en.visibleTitle)")
+    #expect(en.visibleTitle["diktiersprache"] == nil)
+    // A German search finds it by its German name.
+    #expect(german.results(for: "diktiersprache").first?.entryID == id)
   }
 
   @Test("nothing matching shows no results once the search is finished")
@@ -187,16 +321,16 @@ struct SettingsSearchModelTests {
     #expect(spoken.lines.count == 1, "a reset search was still announced: \(spoken.lines)")
   }
 
+  // #3545: while the full index loads, titles answer at once, so "before any result is on screen"
+  // is a search with no title match that the full index then answers. Same guard: Return opens
+  // only what the panel shows.
   @Test("Return before any result is on screen opens nothing, now or later")
   func returnBeforeResults() async throws {
-    let ready = try Self.index.get()
     let gate = AsyncGate()
-    let model = SettingsSearchModel(
-      loadIndex: {
-        await gate.wait()
-        return ready
-      }, announce: { _ in }, announcementDelay: .milliseconds(20))
-    model.setQuery("dock")
+    let model = Self.gatedModel(
+      gate, titles: Self.fixture([(.theme, "alpha")]), full: Self.fixture([(.showInDock, "delta")]))
+    model.setQuery("delta")
+    #expect(model.results.isEmpty)
     #expect(model.submit() == nil, "Return opened a result nobody could see")
     await gate.open()
     #expect(await Self.waitUntil { model.results.first?.entryID == "showInDock" })
@@ -239,6 +373,11 @@ struct SettingsSearchModelTests {
 }
 
 /// A one-shot gate a test opens to let a parked load finish.
+actor LoadCounter {
+  private(set) var value = 0
+  func count() { value += 1 }
+}
+
 actor AsyncGate {
   private var isOpen = false
   private var waiters: [CheckedContinuation<Void, Never>] = []

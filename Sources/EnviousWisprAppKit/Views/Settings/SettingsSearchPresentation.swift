@@ -17,40 +17,50 @@ enum SettingsSearchPresentation {
   }
 
   /// The places whose dynamic title has a fixed context or a label; a test requires every
-  /// searchable dynamic-title place to be one of them.
-  static func dynamicTitle(of id: SettingsMapID) -> String {
+  /// searchable dynamic-title place to be one of them. `language` nil reads the app's language;
+  /// a code ("en", "de") reads that language's text, as the search index does for each of its
+  /// interface languages (#3545).
+  static func dynamicTitle(of id: SettingsMapID, language: String? = nil) -> String {
     switch id {
     case .startWordLanguageEn, .startWordLanguageDe, .startWordLanguageFr, .startWordLanguageEs,
       .startWordLanguageIt:
       let code = String(id.rawValue.split(separator: ".").last ?? "")
-      return SettingsMapRef.dynamic(id, .startWordLanguage(code: code)).title
-    case .apiKeyReveal:
-      return SettingsMapRef.dynamic(.apiKeyReveal, .apiKeyReveal(revealed: false)).title
-    case .lockedLanguage:
-      return String(
-        localized: "Dictation language",
-        comment: "The language dictation is locked to: the language sheet's title and a Settings search result.")
-    case .livePreviewLanguage:
-      return String(localized: DictationSettingsCopy.Engine.changeLanguage)
-    case .previewLanguagesInstall:
-      return String(localized: LivePreviewSettingsCopy.packsInstallRowTitleResource)
-    case .currentEngineSection: return String(localized: SettingsSearchCopy.Label.currentEngine)
-    case .inputDeviceDevice: return String(localized: SettingsSearchCopy.Label.microphoneInList)
-    case .inputSocketInput: return String(localized: SettingsSearchCopy.Label.inputs)
-    case .recordingChimePreview: return String(localized: SettingsSearchCopy.Label.listenToSound)
-    case .transcribeFileSteps: return String(localized: SettingsSearchCopy.Label.fileSteps)
-    case .aiPolishProvider: return String(localized: SettingsSearchCopy.Label.provider)
-    case .aiPolishProviderSection:
-      return String(localized: SettingsSearchCopy.Label.providerSettings)
-    case .localModelTestLive: return String(localized: SettingsSearchCopy.Label.testModel)
-    case .appleIntelligenceStatus:
-      return String(localized: SettingsSearchCopy.Label.appleIntelligenceStatus)
-    case .ollamaDownloadModel: return String(localized: SettingsSearchCopy.Label.ollamaModel)
-    case .apiKeyGetKeyLink: return String(localized: SettingsSearchCopy.Label.getAPIKey)
-    case .appLanguageShipped: return String(localized: SettingsSearchCopy.Label.appLanguages)
+      guard let language else {
+        return SettingsMapRef.dynamic(id, .startWordLanguage(code: code)).title
+      }
+      return Locale(identifier: language).localizedString(forLanguageCode: code)?
+        .localizedCapitalized ?? code
     default:
-      SettingsMap.wiringFault("Settings search: \(id.rawValue) has a dynamic title and no label")
-      return ""
+      guard var resource = dynamicTitleResource(of: id) else {
+        SettingsMap.wiringFault("Settings search: \(id.rawValue) has a dynamic title and no label")
+        return ""
+      }
+      if let language { resource.locale = Locale(identifier: language) }
+      return String(localized: resource)
+    }
+  }
+
+  /// The reviewed label of a dynamic-title place other than a start-word language, nil when it
+  /// has none. The one label table: search results and the title-only index both read it.
+  static func dynamicTitleResource(of id: SettingsMapID) -> LocalizedStringResource? {
+    switch id {
+    case .apiKeyReveal: SettingsMapRef.showKeyTitle
+    case .lockedLanguage: SettingsSearchCopy.Label.dictationLanguage
+    case .livePreviewLanguage: DictationSettingsCopy.Engine.changeLanguage
+    case .previewLanguagesInstall: LivePreviewSettingsCopy.packsInstallRowTitleResource
+    case .currentEngineSection: SettingsSearchCopy.Label.currentEngine
+    case .inputDeviceDevice: SettingsSearchCopy.Label.microphoneInList
+    case .inputSocketInput: SettingsSearchCopy.Label.inputs
+    case .recordingChimePreview: SettingsSearchCopy.Label.listenToSound
+    case .transcribeFileSteps: SettingsSearchCopy.Label.fileSteps
+    case .aiPolishProvider: SettingsSearchCopy.Label.provider
+    case .aiPolishProviderSection: SettingsSearchCopy.Label.providerSettings
+    case .localModelTestLive: SettingsSearchCopy.Label.testModel
+    case .appleIntelligenceStatus: SettingsSearchCopy.Label.appleIntelligenceStatus
+    case .ollamaDownloadModel: SettingsSearchCopy.Label.ollamaModel
+    case .apiKeyGetKeyLink: SettingsSearchCopy.Label.getAPIKey
+    case .appLanguageShipped: SettingsSearchCopy.Label.appLanguages
+    default: nil
     }
   }
 
