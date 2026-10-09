@@ -41,13 +41,13 @@ If holding a key down is uncomfortable, toggle mode asks less of your hand. One 
 
 ### Pressing another key right after your keybind
 
-In push to talk, if you press another key within the first second after your keybind goes down, EnviousWispr treats it as typing, not dictation. It throws that recording away: nothing is pasted and nothing is kept, even with Escape Recovery on. This lets you keep using a modifier such as Option for typing special characters or for other shortcuts.
+When your push-to-talk keybind is a modifier key used on its own, pressing another ordinary key during the first second can dismiss the recording. Keys matching an eligible configured shortcut are exempt. A dismissed recording is thrown away: nothing is pasted or kept, even with Escape Recovery on.
 
-After the first second, extra keys are ignored and your dictation carries on as usual. A locked dictation (double tap) and toggle mode are not affected.
+After the first second, extra keys do not cause this dismissal. A locked recording and toggle mode are not affected.
 
-If another key is already down when you press your keybind, no dictation starts. Let go of the other key and press your keybind again.
+For this kind of push-to-talk keybind, an ordinary key already down prevents a new recording from starting. Release that key, then press your keybind again.
 
-When macOS Secure Input is on, often because a password field is active, EnviousWispr cannot see other keys, so this rule pauses. A short notice in the recording panel tells you, and your dictation still works.
+Secure Input prevents the listener from seeing ordinary keys, so this typing protection is unavailable while it is active. When the app detects that this affects a qualifying dictation, it can show a short notice. Detection can take up to five seconds. Bare-modifier dictation can continue.
 
 ### Change the cancel key
 
