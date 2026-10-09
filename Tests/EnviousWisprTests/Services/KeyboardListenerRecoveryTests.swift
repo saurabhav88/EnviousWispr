@@ -329,4 +329,42 @@ struct KeyboardListenerRecoveryTests {
       secureInput: SecureInputObservation(enabled: true, ownerPID: 812))
     #expect(event.secureInput == nil)
   }
+
+  @Test("after a storm replacement, the next bare Copy Last and Paste Last presses act afresh")
+  func bareActionHoldsAreRetiredByAReplacement() async throws {
+    let rig = Rig()
+    var copies = 0
+    var pastePresses = 0
+    var pastes = 0
+    rig.service.copyLastKeyCode = ModifierKeyCodes.rightCommand
+    rig.service.copyLastModifiers = []
+    rig.service.pasteLastKeyCode = ModifierKeyCodes.leftOption
+    rig.service.pasteLastModifiers = []
+    rig.service.onCopyLast = { copies += 1 }
+    rig.service.onPasteLast = { pastes += 1 }
+    rig.service.onPasteLastPressed = { pastePresses += 1 }
+    rig.service.start()
+    defer { rig.service.stop() }
+    let before = ListenerKeyboard(rig.effects)
+    await before.press(ModifierKeyCodes.rightCommand)
+    await before.press(ModifierKeyCodes.leftOption)
+    #expect(copies == 1)
+    #expect(pastePresses == 1)
+    // The OS storms the listener while both are held; their releases go unseen.
+    rig.stormHealth()
+    await rig.storm(through: rig.effects.keyboardListenerSink)
+    rig.effects.keyboardListenerHealthAnswer = KeyboardListenerHealth(
+      terminal: nil, disableEpisodes: 0, reenables: 0, cost: nil)
+    rig.clock.now = 560
+    rig.timers.fireDue()
+    await rig.retries.wait(until: 1)
+    #expect(pastes == 0, "a retired hold must not fire")
+    let after = ListenerKeyboard(rig.effects)
+    await after.press(ModifierKeyCodes.rightCommand)
+    #expect(copies == 2, "the first Copy Last after recovery did nothing")
+    await after.press(ModifierKeyCodes.leftOption)
+    #expect(pastePresses == 2, "Paste Last did not take a fresh target")
+    await after.release(ModifierKeyCodes.leftOption)
+    #expect(pastes == 1)
+  }
 }

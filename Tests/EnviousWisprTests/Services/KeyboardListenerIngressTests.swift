@@ -327,4 +327,20 @@ struct KeyboardListenerIngressTests {
     #expect(rig.reads.withLock { $0 } == 1)
     #expect(rig.effects == ["start", "holdStop"])
   }
+
+  @Test("a retried event is dropped when the configuration changed while it was verified")
+  func retryIsDroppedAfterAConfigurationChange() async {
+    let rig = Rig()
+    await rig.key(Self.option, held: [Self.option], at: 0)
+    rig.readings.withLock { $0[Self.option] = .up }  // the old hold's release was missed
+    // Between the verification's commit and the retry, the user switches to toggle mode.
+    let engine = rig.engine
+    var bindings = ShortcutBindings.shipped
+    bindings.record = .keyboard(keyCode: Self.option, modifiers: [])
+    let toggle = bindings
+    rig.afterCommit.withLock { $0 = { engine.configure(bindings: toggle, mode: .toggle) } }
+    await rig.key(Self.option, held: [Self.option], at: 3)  // the unplaceable duplicate
+    #expect(rig.effects == ["start", "holdStop"])
+    #expect(rig.mainEdges.withLock { $0 }.isEmpty, "an old event was read as a toggle press")
+  }
 }

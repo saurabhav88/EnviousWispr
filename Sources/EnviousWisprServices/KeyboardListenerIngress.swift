@@ -148,12 +148,18 @@ package final class KeyboardListenerIngress: Sendable {
     }
   }
 
-  /// `onlyAfter`: for the one bounded retry, the input sequence it may run at; any newer input
-  /// since its verification makes the retry stale, and it is dropped.
-  private func ingest(_ event: KeyEventValue, retried: Bool, onlyAfter: UInt64? = nil) {
+  /// `onlyAfter` / `onlyGeneration`: for the one bounded retry, the input sequence it may run at
+  /// and the configuration the event was first classified under; newer input or a configuration
+  /// change since its verification makes the retry stale, and it is dropped before it can be read
+  /// as a different shortcut.
+  private func ingest(
+    _ event: KeyEventValue, retried: Bool, onlyAfter: UInt64? = nil,
+    onlyGeneration: UInt64? = nil
+  ) {
     guard !event.isOurs, event.keyCode != Self.ignoredGlobeKeyCode else { return }
     let handled = clock()
     let classification = engine.listenerClassification()
+    if let onlyGeneration, classification.generation != onlyGeneration { return }
     let unplaced = state.withLock { s -> Bool in
       guard !s.closed else { return false }
       if let onlyAfter, s.inputSequence != onlyAfter { return false }
@@ -317,7 +323,8 @@ package final class KeyboardListenerIngress: Sendable {
     afterReconcileCommitForTesting?()
     drain()
     if let retry, released.contains(retry.keyCode) {
-      ingest(retry, retried: true, onlyAfter: sequence)
+      ingest(
+        retry, retried: true, onlyAfter: sequence, onlyGeneration: classification.generation)
     }
   }
 

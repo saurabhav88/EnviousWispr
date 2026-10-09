@@ -1354,6 +1354,10 @@ public final class HotkeyService {
     engine.closeListenerAdmission()
     keyboardListenerIngress?.close()
     keyboardListenerIngress = nil
+    // A bare-modifier action held now (Paste Last, Copy Last) can no longer see its release: the
+    // next installation's tracker starts empty. Retire the hold without firing it, so the next
+    // press acts (and Paste takes a fresh target); Carbon chord holds are not the listener's.
+    appShortcutsHeld.subtract(appShortcutsHeld.filter { binding(for: $0).isBareModifier })
     // #3534 §3.3: an ingress teardown voids the stop-timer measurement (diagnostic only).
     invalidateQuickTapDiagnostics()
     #if DEBUG
