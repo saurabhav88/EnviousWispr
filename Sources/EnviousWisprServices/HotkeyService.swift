@@ -1427,7 +1427,7 @@ public final class HotkeyService {
       // The sink holds its own installation's segment, never "the current one".
       let segment = shadowDiagnostics.makeSegment(
         installation: generation, generation: comparisonGeneration,
-        snapshot: currentShadowSnapshot)
+        snapshot: currentShadowSnapshot, keyStateReader: effects.keyStateReader)
       let sink: @Sendable (KeyEventValue) -> ListenerVerdict = { event in
         segment.listenerEvent(event)
         return .passThrough
@@ -1472,18 +1472,22 @@ public final class HotkeyService {
     listenerRetry = nil
     listenerGeneration &+= 1
     #if DEBUG
-      let hadListener = keyboardListenerToken != nil
+      let removing = keyboardListenerToken
     #endif
     // Remove first: once the adapter confirms, no callback for this installation is running.
     release(&keyboardListenerToken)
     #if DEBUG
-      if hadListener {
+      if let removing {
+        // Read after removal, so the final callback is counted; complete only when the removal
+        // was confirmed (a refused one leaves the listener running).
+        let health = effects.keyboardListenerHealth(removing)
+        let healthComplete = keyboardListenerToken == nil
         // A new comparison generation from here on: whatever live decides after this boundary
         // is never compared with the closing installation's records.
         comparisonGeneration &+= 1
         engine.setObservationGeneration(comparisonGeneration)
         publishShadowSnapshot(updatingEngine: false)
-        shadowDiagnostics.close(reason: reason)
+        shadowDiagnostics.close(reason: reason, health: health, healthComplete: healthComplete)
       }
     #endif
   }

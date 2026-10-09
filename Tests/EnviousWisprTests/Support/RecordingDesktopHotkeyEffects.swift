@@ -1,5 +1,6 @@
 import EnviousWisprServices
 import Foundation
+import os
 
 /// The unit suite's stand-in for the OS (#2455 C2, issue #2459).
 ///
@@ -105,6 +106,33 @@ final class RecordingDesktopHotkeyEffects: DesktopHotkeyEffects {
     return token
   }
 
+  /// What `keyboardListenerHealth` answers for the installed listener's token.
+  var keyboardListenerHealthAnswer = KeyboardListenerHealth(
+    terminal: nil, disableEpisodes: 0, reenables: 0, cost: nil)
+
+  private(set) var keyboardListenerHealthQueries = 0
+
+  /// The last removed listener's token, answered like the live adapter's final-state slot.
+  private var lastRemovedListener: DesktopEffectToken?
+
+  func keyboardListenerHealth(_ token: DesktopEffectToken) -> KeyboardListenerHealth? {
+    keyboardListenerHealthQueries += 1
+    return token == keyboardListenerToken || token == lastRemovedListener
+      ? keyboardListenerHealthAnswer : nil
+  }
+
+  /// Answers for `keyStateReader`; keys not listed read `.unknown`.
+  nonisolated let keyStates = OSAllocatedUnfairLock<[UInt16: KeyStateTracker.Reading]>(
+    initialState: [:])
+
+  var keyStateReader: @Sendable (Set<UInt16>) -> [UInt16: KeyStateTracker.Reading] {
+    let states = keyStates
+    return { keys in
+      let known = states.withLock { $0 }
+      return Dictionary(uniqueKeysWithValues: keys.map { ($0, known[$0] ?? .unknown) })
+    }
+  }
+
   /// When set, every removal is refused, as Carbon can refuse `UnregisterEventHotKey`. Off by
   /// default so no suite has to reason about a failure the OS rarely produces.
   var refuseRemovals = false
@@ -117,6 +145,7 @@ final class RecordingDesktopHotkeyEffects: DesktopHotkeyEffects {
     if token == keyboardListenerToken {
       keyboardListenerToken = nil
       keyboardListenerSink = nil
+      lastRemovedListener = token
     }
     return true
   }

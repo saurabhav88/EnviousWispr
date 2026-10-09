@@ -544,5 +544,115 @@ struct HotkeyShadowIntegrationTests {
       #expect(reads.withLock { $0 } - before == 1)
       service.stop()
     }
+
+    @Test("stop reads the listener's final health after removing it")
+    func stopReadsHealthAfterRemoval() {
+      let rig = Rig()
+      rig.service.start()
+      #expect(rig.effects.keyboardListenerHealthQueries == 0)
+      rig.service.stop()
+      #expect(rig.effects.keyboardListenerHealthQueries == 1)
+    }
+
+    @Test("a closing segment logs the listener's health and callback cost with its definition")
+    func closeLogsHealth() throws {
+      let seen = DispatchSemaphore(value: 0)
+      let line = OSAllocatedUnfairLock<String?>(initialState: nil)
+      let (diagnostics, _) = Self.activeSegment(log: { l in
+        guard l.contains("listener_health") else { return }
+        line.withLock { $0 = l }
+        seen.signal()
+      })
+      diagnostics.close(
+        reason: "stop",
+        health: KeyboardListenerHealth(
+          terminal: .disableStorm, disableEpisodes: 5, reenables: 4,
+          cost: KeyboardListenerCost(
+            samples: 1200, maxNanoseconds: 90_000, p99LowerNanoseconds: 8_192,
+            p99UpperNanoseconds: 9_742, recordingNanoseconds: 40)))
+      // deadline-fallback: bound the logger's own signal.
+      try #require(seen.wait(timeout: .now() + 5) == .success)
+      let text = try #require(line.withLock { $0 })
+      #expect(text.contains("terminal=disableStorm"))
+      #expect(text.contains("disable_episodes=5 reenables=4"))
+      #expect(
+        text.contains(
+          "cost_subject=callback_entry_to_return_excluding_recording cost_unit=ns samples=1200"))
+      #expect(text.contains("max=90000 p99_bucket=[8192,9742)"))
+      #expect(text.contains("recording_uncontended_mean=40 complete=true"))
+    }
+
+    @Test("after a re-enable the shadow reconciles a release it missed, so the next press starts")
+    func reenableReconcilesAMissedRelease() throws {
+      let rig = Rig()
+      rig.service.recordingMode = .pushToTalk
+      rig.service.onStartRecording = { .recording("s") }
+      rig.service.start()
+      try both(rig, 0x80040, at: 0)
+      // Held 1 s: live sees the release; the shadow's tap was off and missed it.
+      rig.clock.now = 501
+      rig.service.handleInstalledMonitorFlagsChangedValues(
+        keyCode: 61, flags: [], generation: rig.service.monitorGeneration, timestamp: 501)
+      rig.effects.keyStates.withLock { $0[61] = .up }
+      let sink = try #require(rig.effects.keyboardListenerSink)
+      _ = sink(KeyEventValue(kind: .tapReenabled, keyCode: 0, rawFlags: 0, timestamp: 501.5))
+      try both(rig, 0x80040, at: 3)
+      try both(rig, 0, at: 3.75)
+      let tally = rig.service.shadowDiagnostics.drainForTesting()
+      #expect(tally.mappingErrors == 0)
+      // The first press and edge, then the second press, its edge, release and its edge agree.
+      #expect(tally.agreements >= 6)
+      rig.service.stop()
+    }
+
+    @Test("a health report read while the listener was still owned is marked partial")
+    func refusedRemovalHealthIsPartial() {
+      let health = KeyboardListenerHealth(
+        terminal: nil, disableEpisodes: 0, reenables: 0,
+        cost: KeyboardListenerCost(
+          samples: 3, maxNanoseconds: 5, p99LowerNanoseconds: 4, p99UpperNanoseconds: 6,
+          recordingNanoseconds: 1))
+      let line = HotkeyShadowDiagnostics.Segment.healthLine(
+        installation: 7, health, complete: false)
+      #expect(line.contains("complete=false"))
+    }
+
+    @Test("a refused health line leaves the closing summary unclean")
+    func refusedHealthLineIsUnclean() throws {
+      let entered = DispatchSemaphore(value: 0)
+      let (parked, continuation) = AsyncStream<Void>.makeStream(
+        bufferingPolicy: .bufferingOldest(1))
+      defer { continuation.finish() }
+      let (diagnostics, segment) = Self.activeSegment(
+        log: { _ in
+          entered.signal()
+          for await _ in parked {}
+        }, logCapacity: 1)
+      // One mapping error each drain: the first line occupies the logger, the second the
+      // one-line channel, so the health and summary lines that follow are refused.
+      for i in 0..<2 {
+        let t = 500 + Double(i)
+        diagnostics.submit(
+          ShadowRecord(
+            lane: .live, generation: 1, sequence: UInt64(i + 1), category: .decision,
+            keyCode: 61, role: .record, phase: .release, outcome: .gesture(.quickRelease),
+            rawOccurred: nil, acceptedOccurred: t, handled: t, attemptStartOccurred: 499))
+        diagnostics.submit(
+          ShadowRecord(
+            lane: .shadow, generation: 1, sequence: UInt64(i + 1), category: .decision,
+            keyCode: 61, role: .record, phase: .release, outcome: .gesture(.holdStop),
+            rawOccurred: nil, acceptedOccurred: t, handled: t, attemptStartOccurred: 499))
+        _ = segment.drainForTesting()
+        // deadline-fallback: require the logger's own entry signal before the second drain.
+        if i == 0 { try #require(entered.wait(timeout: .now() + 5) == .success) }
+      }
+      let before = segment.drainForTesting().suppressedLines
+      diagnostics.close(
+        reason: "stop",
+        health: KeyboardListenerHealth(terminal: nil, disableEpisodes: 0, reenables: 0, cost: nil))
+      let settled = segment.settledTallyForTesting()
+      #expect(settled.suppressedLines >= before + 2)
+      #expect(settled.clean == false)
+    }
   #endif
 }

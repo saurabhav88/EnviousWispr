@@ -60,11 +60,14 @@
     /// A segment for an installation about to be attempted. It compares nothing until
     /// `activate`; a failed install simply drops it.
     package func makeSegment(
-      installation: UInt64, generation: UInt64, snapshot: ShadowKeyboardPolicy.Snapshot
+      installation: UInt64, generation: UInt64, snapshot: ShadowKeyboardPolicy.Snapshot,
+      keyStateReader: @escaping @Sendable (Set<UInt16>) -> [UInt16: KeyStateTracker.Reading] = {
+        _ in [:]
+      }
     ) -> Segment {
       Segment(
         installation: installation, firstGeneration: generation, snapshot: snapshot,
-        clock: clock, lines: lines)
+        clock: clock, lines: lines, keyStateReader: keyStateReader)
     }
 
     /// The installation went live: `segment` receives live records from now on.
@@ -85,13 +88,15 @@
 
     /// The installation ended (stop, suspend): close its segment. Call after the listener has
     /// been removed, so no callback can still be running for it.
-    package func close(reason: String) {
+    package func close(
+      reason: String, health: KeyboardListenerHealth? = nil, healthComplete: Bool = true
+    ) {
       let segment = current.withLock { c -> Segment? in
         let s = c
         c = nil
         return s
       }
-      segment?.close(reason: reason)
+      segment?.close(reason: reason, health: health, healthComplete: healthComplete)
     }
 
     // MARK: - Producers
@@ -179,6 +184,7 @@
       private let worker: DispatchQueue
       private let clock: RecordGestureEngine.Clock
       private let lines: AsyncStream<String>.Continuation
+      private let keyStateReader: @Sendable (Set<UInt16>) -> [UInt16: KeyStateTracker.Reading]
       /// `DispatchSourceTimer` is not `Sendable`; it is created, cancelled and released only
       /// under this lock.
       private let timer = OSAllocatedUnfairLock<DispatchSourceTimer?>(uncheckedState: nil)
@@ -187,9 +193,11 @@
 
       fileprivate init(
         installation: UInt64, firstGeneration: UInt64, snapshot: ShadowKeyboardPolicy.Snapshot,
-        clock: @escaping RecordGestureEngine.Clock, lines: AsyncStream<String>.Continuation
+        clock: @escaping RecordGestureEngine.Clock, lines: AsyncStream<String>.Continuation,
+        keyStateReader: @escaping @Sendable (Set<UInt16>) -> [UInt16: KeyStateTracker.Reading]
       ) {
         self.installation = installation
+        self.keyStateReader = keyStateReader
         self.firstGeneration = firstGeneration
         self.clock = clock
         self.lines = lines
@@ -216,7 +224,13 @@
 
       /// The listener sink's DEBUG work, on the listener thread.
       package func listenerEvent(_ event: KeyEventValue) {
-        policy.ingest(event, handled: clock(), installation: installation)
+        switch event.kind {
+        case .tapReenabled:
+          // The tap was off: keys may have moved unseen. Reconcile held keys against the OS.
+          policy.reconcile(handled: clock(), reader: keyStateReader)
+        case .flagsChanged, .keyDown, .keyUp, .secureInputChanged:
+          policy.ingest(event, handled: clock(), installation: installation)
+        }
       }
 
       fileprivate func submit(_ record: ShadowRecord) {
@@ -256,7 +270,9 @@
 
       /// No more admissions or shadow timers; then, on the worker and after everything already
       /// emitted, compare, flush, log samples and one summary.
-      fileprivate func close(reason: String) {
+      fileprivate func close(
+        reason: String, health: KeyboardListenerHealth? = nil, healthComplete: Bool = true
+      ) {
         policy.endInstallation()
         stopTimer()
         worker.async { [self] in
@@ -266,6 +282,10 @@
           let flushed = comparator.flush(generationsBefore: .max)
           tally.withLock { t in for v in flushed { Self.count(v, into: &t) } }
           for r in samples { emit("[shadow] unmatched \(Self.describe(r))") }
+          // Health first: a refused health line must make the summary that follows unclean.
+          if let health {
+            emit(Self.healthLine(installation: installation, health, complete: healthComplete))
+          }
           let summary = tally.withLock { $0 }
           emit(Self.summaryLine(reason: reason, installation: installation, summary))
         }
@@ -345,6 +365,27 @@
           + "suppressed_lines=\(t.suppressedLines) out_of_scope=\(t.outOfScope) "
           + "earlier_generation=\(t.earlierGeneration) "
           + "outside_installation=\(t.outsideInstallation) executions=[\(executions)]"
+      }
+
+      /// The listener's own record for this installation: storm or not, re-enables, and the
+      /// callback cost with its definition (see `KeyboardListenerCost`).
+      package static func healthLine(
+        installation: UInt64, _ h: KeyboardListenerHealth, complete: Bool
+      ) -> String {
+        let terminal = h.terminal.map { "\($0)" } ?? "running"
+        var line =
+          "[shadow] listener_health installation=\(installation) terminal=\(terminal) "
+          + "disable_episodes=\(h.disableEpisodes) reenables=\(h.reenables)"
+        if let c = h.cost {
+          line +=
+            " cost_subject=callback_entry_to_return_excluding_recording cost_unit=ns "
+            + "samples=\(c.samples) max=\(c.maxNanoseconds) "
+            + "p99_bucket=[\(c.p99LowerNanoseconds),\(c.p99UpperNanoseconds)) "
+            + "recording_uncontended_mean=\(c.recordingNanoseconds) complete=\(complete)"
+        } else {
+          line += " cost=no_samples"
+        }
+        return line
       }
 
       private static func describe(_ r: ShadowRecord) -> String {

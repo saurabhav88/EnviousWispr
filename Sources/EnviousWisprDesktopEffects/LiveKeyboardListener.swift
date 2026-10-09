@@ -59,8 +59,10 @@ final class LiveKeyboardListener: @unchecked Sendable {
     /// `stormEpisodes` long.
     var episodeStarts: [TimeInterval] = []
     var inDisabledEpisode = false
+    var disableEpisodes = 0
+    var reenables = 0
     #if DEBUG
-      var cost = CostRing()
+      var cost = CostHistogram()
     #endif
   }
 
@@ -87,6 +89,10 @@ final class LiveKeyboardListener: @unchecked Sendable {
   /// be created (no Accessibility) or the worker did not answer in time; in the second case the
   /// worker finds the stop latched when it does run, and cleans up instead of activating.
   func start() -> Bool {
+    #if DEBUG
+      // Calibrate the recording cost now, not lazily during a report.
+      _ = Self.recordingNanoseconds
+    #endif
     let thread = Thread { [self] in run() }
     thread.name = "EnviousWispr.KeyboardListener"
     thread.qualityOfService = .userInteractive
@@ -227,9 +233,6 @@ final class LiveKeyboardListener: @unchecked Sendable {
   // MARK: - Callback paths (worker thread)
 
   fileprivate func deliver(_ event: CGEvent) {
-    #if DEBUG
-      let entered = clock_gettime_nsec_np(CLOCK_UPTIME_RAW)
-    #endif
     // Removal closes admission under the lock. An event admitted just before removal may still
     // finish its sink call outside the lock; a successful removal waits for worker cleanup, which
     // runs only after this callback returns.
@@ -241,11 +244,15 @@ final class LiveKeyboardListener: @unchecked Sendable {
       timestamp: TimeInterval(event.timestamp) / 1_000_000_000,
       isAutorepeat: event.getIntegerValueField(.keyboardEventAutorepeat) != 0)
     _ = sink(value)
-    #if DEBUG
-      let duration = clock_gettime_nsec_np(CLOCK_UPTIME_RAW) &- entered
-      state.withLock { $0.cost.record(duration) }
-    #endif
   }
+
+  #if DEBUG
+    /// Record one whole callback's duration (any event type, recovery and reconciliation
+    /// included), excluding this increment itself.
+    fileprivate func recordCallbackDuration(_ duration: UInt64) {
+      state.withLock { $0.cost.record(duration) }
+    }
+  #endif
 
   /// Called for a disable notification and by the watchdog. One episode per disable, however many
   /// times it is noticed; a storm stops the installation.
@@ -256,6 +263,7 @@ final class LiveKeyboardListener: @unchecked Sendable {
       guard !s.stopRequested else { return nil }
       if !s.inDisabledEpisode {
         s.inDisabledEpisode = true
+        s.disableEpisodes += 1
         s.episodeStarts.removeAll { now - $0 > Self.stormWindow }
         s.episodeStarts.append(now)
         if s.episodeStarts.count >= Self.stormEpisodes {
@@ -278,6 +286,7 @@ final class LiveKeyboardListener: @unchecked Sendable {
       CGEvent.tapEnable(tap: tap, enable: true)
       guard CGEvent.tapIsEnabled(tap: tap) else { return false }
       s.inDisabledEpisode = false
+      s.reenables += 1
       return s.delivering
     }
     if report {
@@ -288,55 +297,103 @@ final class LiveKeyboardListener: @unchecked Sendable {
     }
   }
 
+  // MARK: - Health
+
+  /// The listener's content-free state; the cost is DEBUG only.
+  func health() -> KeyboardListenerHealth {
+    let (terminal, episodes, reenables) = state.withLock {
+      ($0.terminalReason, $0.disableEpisodes, $0.reenables)
+    }
+    let mapped: KeyboardListenerHealth.Terminal? =
+      switch terminal {
+      case .removed: .removed
+      case .startFailed: .startFailed
+      case .disableStorm: .disableStorm
+      case nil: nil
+      }
+    #if DEBUG
+      let cost = costReport()
+    #else
+      let cost: KeyboardListenerCost? = nil
+    #endif
+    return KeyboardListenerHealth(
+      terminal: mapped, disableEpisodes: episodes, reenables: reenables, cost: cost)
+  }
+
   // MARK: - Callback cost (DEBUG)
 
   #if DEBUG
-    /// Callback durations, taken and drained outside the callback's own work. A duration ends
-    /// before its own ring write, so it understates the full callback by that write. Max is exact over
-    /// every sample; p99 is over the retained window and marked partial once older samples were
-    /// overwritten.
-    struct CostReport: Equatable {
-      let samples: Int
-      let retained: Int
-      let maxNanoseconds: UInt64
-      let p99Nanoseconds: UInt64
-      var complete: Bool { samples == retained }
-    }
+    /// The uncontended mean cost of one histogram increment under the lock, measured once when
+    /// the first listener starts, so the report can state what callback durations exclude. A mean
+    /// without contention, not a bound on the excluded cost of any one callback.
+    private static let recordingNanoseconds: UInt64 = {
+      let lock = OSAllocatedUnfairLock(initialState: CostHistogram())
+      let rounds: UInt64 = 10_000
+      let start = clock_gettime_nsec_np(CLOCK_UPTIME_RAW)
+      for i in 0..<rounds { lock.withLock { $0.record(i & 1023) } }
+      return (clock_gettime_nsec_np(CLOCK_UPTIME_RAW) &- start) / rounds
+    }()
 
-    func costReport() -> CostReport? {
-      // An independent copy: returning the ring itself would share its storage, and the next
-      // callback's write would then copy it (allocate) inside the callback.
-      let (ring, total, maximum) = state.withLock { s in
-        let copy = s.cost.values.withUnsafeBufferPointer { buffer in
-          var result: [UInt64] = []
-          result.reserveCapacity(buffer.count)
-          result.append(contentsOf: buffer)
-          return result
-        }
-        return (copy, s.cost.total, s.cost.maximum)
+    /// Every callback's duration so far; the copy is a fixed-size value taken under the lock.
+    func costReport() -> KeyboardListenerCost? {
+      // An independent copy of the counts: returning the stored value would share its storage,
+      // and the next callback's write would then copy it (allocate) inside the callback.
+      let histogram = state.withLock { s -> CostHistogram in
+        var copy = CostHistogram()
+        copy.counts = s.cost.counts.withUnsafeBufferPointer { Array($0) }
+        copy.total = s.cost.total
+        copy.maximum = s.cost.maximum
+        return copy
       }
-      guard total > 0 else { return nil }
-      let retained = Array(ring.prefix(min(total, CostRing.capacity))).sorted()
-      let index = max(0, Int((Double(retained.count) * 0.99).rounded(.up)) - 1)
-      return CostReport(
-        samples: total, retained: retained.count, maxNanoseconds: maximum,
-        p99Nanoseconds: retained[index])
+      guard histogram.total > 0 else { return nil }
+      let (lower, upper) = histogram.percentileBounds(0.99)
+      return KeyboardListenerCost(
+        samples: Int(histogram.total), maxNanoseconds: histogram.maximum,
+        p99LowerNanoseconds: lower, p99UpperNanoseconds: upper,
+        recordingNanoseconds: Self.recordingNanoseconds)
     }
   #endif
 }
 
 #if DEBUG
-  /// Fixed-size ring of callback durations; writing never allocates.
-  private struct CostRing {
-    static let capacity = 4096
-    var values = [UInt64](repeating: 0, count: capacity)
-    var total = 0
+  /// Callback durations in quarter-octave buckets: bucket `i` holds durations below
+  /// 2^((i + 1) / 4) ns, the last bucket everything longer. Recording is one array increment
+  /// into fixed storage; nothing is ever dropped.
+  struct CostHistogram: Sendable {
+    static let buckets = 112  // up to 2^28 ns, about 268 ms, then the overflow bucket
+    var counts = [UInt64](repeating: 0, count: buckets)
+    var total: UInt64 = 0
     var maximum: UInt64 = 0
 
-    mutating func record(_ duration: UInt64) {
-      values[total % Self.capacity] = duration
-      total += 1
-      if duration > maximum { maximum = duration }
+    static func bucket(_ nanoseconds: UInt64) -> Int {
+      guard nanoseconds > 0 else { return 0 }
+      let index = Int((log2(Double(nanoseconds)) * 4).rounded(.down))
+      return min(max(index, 0), buckets - 1)
+    }
+
+    static func lowerBound(_ bucket: Int) -> UInt64 {
+      bucket == 0 ? 0 : UInt64(pow(2, Double(bucket) / 4))
+    }
+
+    static func upperBound(_ bucket: Int) -> UInt64 {
+      bucket == buckets - 1 ? .max : UInt64(pow(2, Double(bucket + 1) / 4).rounded(.up))
+    }
+
+    mutating func record(_ nanoseconds: UInt64) {
+      counts[Self.bucket(nanoseconds)] &+= 1
+      total &+= 1
+      if nanoseconds > maximum { maximum = nanoseconds }
+    }
+
+    /// The bucket bounds holding the given percentile of all samples.
+    func percentileBounds(_ p: Double) -> (lower: UInt64, upper: UInt64) {
+      let target = UInt64((Double(total) * p).rounded(.up))
+      var seen: UInt64 = 0
+      for (i, count) in counts.enumerated() {
+        seen += count
+        if seen >= max(target, 1) { return (Self.lowerBound(i), Self.upperBound(i)) }
+      }
+      return (Self.lowerBound(Self.buckets - 1), .max)
     }
   }
 #endif
@@ -351,8 +408,14 @@ private final class CallbackContext {
 private func keyboardTapCallback(
   proxy: CGEventTapProxy, type: CGEventType, event: CGEvent, userInfo: UnsafeMutableRawPointer?
 ) -> Unmanaged<CGEvent>? {
+  #if DEBUG
+    let entered = clock_gettime_nsec_np(CLOCK_UPTIME_RAW)
+  #endif
   guard let userInfo else { return Unmanaged.passUnretained(event) }
   let listener = Unmanaged<CallbackContext>.fromOpaque(userInfo).takeUnretainedValue().listener
+  #if DEBUG
+    defer { listener.recordCallbackDuration(clock_gettime_nsec_np(CLOCK_UPTIME_RAW) &- entered) }
+  #endif
   switch type {
   case .flagsChanged:
     listener.deliver(event)

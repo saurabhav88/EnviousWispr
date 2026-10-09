@@ -125,6 +125,59 @@ package enum ListenerVerdict: Sendable, Equatable {
   case swallow
 }
 
+/// What the keyboard listener can say about itself, content-free (#3544 P2).
+package struct KeyboardListenerHealth: Sendable, Equatable {
+  package enum Terminal: Sendable, Equatable {
+    case removed
+    case startFailed
+    /// Disabled by the OS too often (the listener's storm rule); stopped for good.
+    case disableStorm
+  }
+  package var terminal: Terminal?
+  /// OS disables noticed, one per episode however often it was noticed.
+  package var disableEpisodes: Int
+  /// Re-enables confirmed by the tap reading enabled again.
+  package var reenables: Int
+  /// DEBUG builds only; nil in release.
+  package var cost: KeyboardListenerCost?
+
+  package init(
+    terminal: Terminal?, disableEpisodes: Int, reenables: Int, cost: KeyboardListenerCost?
+  ) {
+    self.terminal = terminal
+    self.disableEpisodes = disableEpisodes
+    self.reenables = reenables
+    self.cost = cost
+  }
+}
+
+/// How long the listener's callback took, over a whole installation (DEBUG).
+///
+/// The subject is the whole tap callback, from entry to return, for every event type: decoding
+/// and the sink's synchronous work, and the disable recovery and reconciliation path. It excludes
+/// the one histogram increment that records it, whose uncontended mean cost is measured once at
+/// start (`recordingNanoseconds`). Durations land in a fixed
+/// histogram of quarter-octave buckets, so every sample counts (no sampling window) and the p99 is
+/// reported as the bounds of its bucket; the maximum is exact.
+package struct KeyboardListenerCost: Sendable, Equatable {
+  package var samples: Int
+  package var maxNanoseconds: UInt64
+  package var p99LowerNanoseconds: UInt64
+  package var p99UpperNanoseconds: UInt64
+  package var recordingNanoseconds: UInt64
+
+  package init(
+    samples: Int, maxNanoseconds: UInt64, p99LowerNanoseconds: UInt64,
+    p99UpperNanoseconds: UInt64, recordingNanoseconds: UInt64
+  ) {
+    self.samples = samples
+    self.maxNanoseconds = maxNanoseconds
+    self.p99LowerNanoseconds = p99LowerNanoseconds
+    self.p99UpperNanoseconds = p99UpperNanoseconds
+    self.recordingNanoseconds = recordingNanoseconds
+  }
+}
+
 /// What asking the OS to register a hotkey produced.
 ///
 /// Three cases, not two, because the third is REACHABLE and was the trap the
@@ -178,6 +231,14 @@ package protocol DesktopHotkeyEffects: AnyObject {
   func installKeyboardListener(
     _ sink: @escaping @Sendable (KeyEventValue) -> ListenerVerdict
   ) -> DesktopEffectToken?
+
+  /// The listener's state: the installed one's, or, in DEBUG builds, the last removed one's final
+  /// state (read after its removal, so its last callback is counted). Nil otherwise.
+  func keyboardListenerHealth(_ token: DesktopEffectToken) -> KeyboardListenerHealth?
+
+  /// Reads whether keys are down right now, for reconciling after the tap was off. Callable from
+  /// any thread (the listener's, typically); a key it cannot read is `.unknown`.
+  var keyStateReader: @Sendable (Set<UInt16>) -> [UInt16: KeyStateTracker.Reading] { get }
 
   /// Release whatever this token identifies.
   ///

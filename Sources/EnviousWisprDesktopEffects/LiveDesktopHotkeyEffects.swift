@@ -193,6 +193,37 @@ package final class LiveDesktopHotkeyEffects: DesktopHotkeyEffects {
     return token
   }
 
+  #if DEBUG
+    /// The last removed listener's final state, kept so a report read after removal includes its
+    /// final callback. One slot.
+    private var lastRemovedListenerHealth:
+      (token: DesktopEffectToken, health: KeyboardListenerHealth)?
+  #endif
+
+  package func keyboardListenerHealth(_ token: DesktopEffectToken) -> KeyboardListenerHealth? {
+    if case .keyboardListener(let listener) = resources[token] {
+      return listener.health()
+    }
+    #if DEBUG
+      if let last = lastRemovedListenerHealth, last.token == token { return last.health }
+    #endif
+    return nil
+  }
+
+  /// `CGEventSource.keyState` on the HID system state: the physical keyboard as the system last
+  /// saw it. Which state table reports a release made under Secure Input is not yet verified
+  /// (#3544 P0 item 3, real-hand probe pending), so this is used only to reconcile after a
+  /// re-enable, where an unread or wrong answer leaves the shadow model uncertain, never acting.
+  package var keyStateReader: @Sendable (Set<UInt16>) -> [UInt16: KeyStateTracker.Reading] {
+    { keys in
+      var answers: [UInt16: KeyStateTracker.Reading] = [:]
+      for key in keys {
+        answers[key] = CGEventSource.keyState(.hidSystemState, key: CGKeyCode(key)) ? .down : .up
+      }
+      return answers
+    }
+  }
+
   private func store(_ monitor: Any?) -> DesktopEffectToken? {
     guard let monitor else { return nil }
     let token = DesktopEffectToken()
@@ -235,6 +266,9 @@ package final class LiveDesktopHotkeyEffects: DesktopHotkeyEffects {
         resources[token] = .keyboardListener(listener)
         return false
       }
+      #if DEBUG
+        lastRemovedListenerHealth = (token, listener.health())
+      #endif
     }
     return true
   }
