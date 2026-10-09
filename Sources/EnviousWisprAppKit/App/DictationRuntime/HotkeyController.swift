@@ -102,6 +102,19 @@ final class HotkeyController {
       }
       if await finalizer.cancel(trigger: .shortcut) { hotkeyService?.setCancelHotkeyEnabled(false) }
     }
+    // #3544 P4 (D2): another key within 1000 ms of a bare push-to-talk press dismisses the take.
+    // Destructive by its trigger (never Escape Recovery, never an abandonment), so no disarm here:
+    // the recording's own ending disarms cancel as for any stop. Only the session that press
+    // started, and only while it is still the one running, as for the lock (#1631): a dismissal
+    // must never end a newer take or one still transcribing.
+    hotkeyService.onDismissRecording = { [weak starter, weak finalizer] sessionID in
+      guard let starter, let finalizer else {
+        Self.reportNilCollaborator(callback: "onDismissRecording")
+        return
+      }
+      guard starter.activeDriver.continuingSessionID == sessionID else { return }
+      await finalizer.cancel(trigger: .otherKeyInterference)
+    }
     hotkeyService.onIsProcessing = { [weak starter] in
       starter?.isProcessing ?? false
     }

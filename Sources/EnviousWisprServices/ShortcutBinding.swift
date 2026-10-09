@@ -183,6 +183,18 @@ package struct ShortcutBindings: Equatable, Sendable {
     self.copyLast = copyLast
   }
 
+  /// The key codes of every role whose binding is a chord, not a bare modifier (#3544 P4). Such a
+  /// key going down while dictating is the user reaching for a configured shortcut (the cancel
+  /// chord, Escape by default, among them), never interference.
+  package var chordKeyCodes: Set<UInt16> {
+    Set(
+      ShortcutRole.allCases.compactMap { role in
+        let binding = self[role]
+        guard !binding.isBareModifier, case .keyboard(let keyCode, _) = binding else { return nil }
+        return keyCode
+      })
+  }
+
   /// What a fresh install has, read from `ShortcutRole.defaultBinding`.
   package static let shipped = ShortcutBindings(
     record: ShortcutRole.record.defaultBinding, cancel: ShortcutRole.cancel.defaultBinding,

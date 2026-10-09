@@ -47,6 +47,7 @@ struct RecordGestureEngineTests {
       case .loneTapStop: return "loneTapStop"
       case .loneTapResolved: return "resolved"
       case .cancel: return "cancel"
+      case .dismiss: return "dismiss"
       }
     }
   }
@@ -479,6 +480,74 @@ struct RecordGestureEngineTests {
       result.withLock { $0 = refusal }
     }
     return result.withLock { $0 }
+  }
+
+  // MARK: - Other-key dismissal (#3544 P4, D2)
+
+  /// Another key at `t` after an unlocked push-to-talk press at 0, both by their own event times.
+  private static func dismissOutcome(at t: TimeInterval) -> (dismissed: Bool, names: [String]) {
+    let rig = Rig()
+    rig.engine.openListenerAdmission(installation: 7)
+    #expect(Self.listener(rig, true, 0) == nil)
+    let dismissed = rig.engine.otherKeyFromListener(input: rig.at(t), installation: 7)
+    #expect(Self.listener(rig, false, 3) == (dismissed ? .unownedRelease : nil))
+    rig.engine.drainForTesting()
+    return (dismissed, rig.sink.validNames)
+  }
+
+  @Test("another key below 1000 ms dismisses; at or above 1000 ms it is ignored and release stops")
+  func otherKeyWindowBoundary() {
+    let below = Self.dismissOutcome(at: 0.999)
+    #expect(below.dismissed)
+    #expect(below.names == ["start", "dismiss"], "the dismissed hold's release still stopped")
+    for late in [1.0, 1.5] {
+      let outcome = Self.dismissOutcome(at: late)
+      #expect(!outcome.dismissed, "a key at \(late) s dismissed")
+      #expect(outcome.names == ["start", "holdStop"])
+    }
+  }
+
+  @Test("another key never dismisses a locked take, a toggle-mode take or a released key")
+  func otherKeyOnlyDismissesAnUnlockedHeldPress() {
+    // Locked: a double tap, then another key 0.3 s after the first press.
+    let locked = Rig()
+    locked.engine.openListenerAdmission(installation: 7)
+    _ = Self.listener(locked, true, 0)
+    _ = Self.listener(locked, false, 0.1)
+    _ = Self.listener(locked, true, 0.2)
+    #expect(locked.engine.snapshot.isLocked)
+    #expect(!locked.engine.otherKeyFromListener(input: locked.at(0.3), installation: 7))
+    // Toggle mode: the listener owns no press at all.
+    let toggle = Rig()
+    toggle.engine.configure(
+      bindings: ShortcutBindings.shipped, mode: .toggle)
+    toggle.engine.openListenerAdmission(installation: 7)
+    #expect(!toggle.engine.otherKeyFromListener(input: toggle.at(0.1), installation: 7))
+    // Released before the other key: nothing held to dismiss.
+    let released = Rig()
+    released.engine.openListenerAdmission(installation: 7)
+    _ = Self.listener(released, true, 0)
+    _ = Self.listener(released, false, 0.6)
+    #expect(!released.engine.otherKeyFromListener(input: released.at(0.7), installation: 7))
+    // A stale installation's key changes nothing.
+    let stale = Rig()
+    stale.engine.openListenerAdmission(installation: 7)
+    _ = Self.listener(stale, true, 0)
+    #expect(!stale.engine.otherKeyFromListener(input: stale.at(0.2), installation: 6))
+  }
+
+  @Test("after a dismissal the record key's next press starts a fresh attempt")
+  func dismissalThenFreshStart() {
+    let rig = Rig()
+    rig.engine.openListenerAdmission(installation: 7)
+    _ = Self.listener(rig, true, 0)
+    #expect(rig.engine.otherKeyFromListener(input: rig.at(0.2), installation: 7))
+    #expect(Self.listener(rig, false, 0.4) == .unownedRelease)
+    #expect(Self.listener(rig, true, 2) == nil)
+    rig.engine.drainForTesting()
+    let starts = rig.sink.delivered.filter { $0.name == "start" && $0.valid }.map(\.attempt)
+    #expect(starts.count == 2, "delivered: \(rig.sink.delivered)")
+    #expect(Set(starts).count == 2, "the fresh press reused the dismissed attempt")
   }
 
   @Test("listener input from a closed or earlier installation is refused and changes nothing")

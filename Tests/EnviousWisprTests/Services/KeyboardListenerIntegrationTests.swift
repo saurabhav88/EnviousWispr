@@ -437,6 +437,82 @@ struct KeyboardListenerIntegrationTests {
     #expect(toggles == 1)
   }
 
+  // MARK: - Other-key dismissal on main (#3544 P4, D2)
+
+  private func letterDown(_ ptt: PTT, at t: TimeInterval) async {
+    let sink = ptt.effects.keyboardListenerSink
+    let event = KeyEventValue(kind: .keyDown, keyCode: 0, rawFlags: 0, timestamp: 500 + t)
+    await Task.detached { _ = sink?(event) }.value
+    await ListenerKeyboard.mainTurn()
+  }
+
+  @Test("an early other key dismisses exactly the session its press started, once, and stops nothing")
+  func dismissalEndsTheStartedSession() async {
+    let ptt = PTT()
+    defer { ptt.service.stop() }
+    var dismissed: [String] = []
+    let done = HotkeyGlobeKeyTests.CallbackWaiter()
+    ptt.service.onDismissRecording = { sessionID in
+      dismissed.append(sessionID)
+      done.note()
+    }
+    ptt.at(0)
+    await ptt.keys.press(ModifierKeyCodes.rightOption, at: 500)
+    await ptt.service.awaitInFlightStartForTesting()
+    ptt.at(0.3)
+    await letterDown(ptt, at: 0.3)
+    await done.wait(until: 1)
+    ptt.at(1.5)
+    await ptt.keys.release(ModifierKeyCodes.rightOption, at: 501.5)
+    await ListenerKeyboard.mainTurn()
+    #expect(dismissed == ["s1"])
+    #expect(ptt.stops == 0, "the dismissed hold's release stopped a recording")
+  }
+
+  @Test("a dismissal during a pending start waits for that start and ends its session")
+  func dismissalDuringPendingStart() async throws {
+    let ptt = PTT()
+    defer { ptt.service.stop() }
+    var gate: CheckedContinuation<Void, Never>?
+    let startEntered = HotkeyGlobeKeyTests.CallbackWaiter()
+    ptt.service.onStartRecording = {
+      startEntered.note()
+      await withCheckedContinuation { gate = $0 }
+      return .recording("slow")
+    }
+    var dismissed: [String] = []
+    let done = HotkeyGlobeKeyTests.CallbackWaiter()
+    ptt.service.onDismissRecording = { sessionID in
+      dismissed.append(sessionID)
+      done.note()
+    }
+    ptt.at(0)
+    await ptt.keys.press(ModifierKeyCodes.rightOption, at: 500)
+    await startEntered.wait(until: 1)
+    ptt.at(0.2)
+    await letterDown(ptt, at: 0.2)
+    #expect(dismissed.isEmpty, "dismissed before its start produced a session")
+    try #require(gate).resume()
+    await done.wait(until: 1)
+    #expect(dismissed == ["slow"])
+  }
+
+  @Test("a dismissed press whose start produced no recording dismisses nothing")
+  func dismissalOfARefusedStartDoesNothing() async {
+    let ptt = PTT()
+    defer { ptt.service.stop() }
+    ptt.service.onStartRecording = { .noRecording }
+    var dismissed: [String] = []
+    ptt.service.onDismissRecording = { dismissed.append($0) }
+    ptt.at(0)
+    await ptt.keys.press(ModifierKeyCodes.rightOption, at: 500)
+    await ptt.service.awaitInFlightStartForTesting()
+    ptt.at(0.2)
+    await letterDown(ptt, at: 0.2)
+    await ListenerKeyboard.mainTurn()
+    #expect(dismissed.isEmpty, "a refused attempt's dismissal reached the app")
+  }
+
   @Test("our own marked events and key code 179 change nothing")
   func markedAndIgnoredEventsDoNothing() async {
     let ptt = PTT()

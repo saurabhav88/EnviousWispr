@@ -14,7 +14,9 @@ import os
 /// **What the callback may do.** Decode primitive fields, call the sink synchronously, return the
 /// event. Nothing that can wait: no main hop, no `Task`, no logging, no formatting. In P2 the event
 /// is always returned unchanged whatever the sink says (shadow mode, plan §3.4); `.swallow` is
-/// honoured from P5. Mask is `flagsChanged` only until P4 (plan §3.1).
+/// honoured from P5. Mask: `flagsChanged`, plus `keyDown` and `keyUp` from P4 (plan §3.1) for the
+/// other-key rule; an ordinary key's code and flags reach the sink and go no further than the
+/// ingress's local key state.
 ///
 /// **Recovery.** The OS disables a tap whose callback runs too long, or on some user input. The
 /// callback and a 2 s watchdog both notice; the listener re-enables and reports `.tapReenabled`
@@ -149,7 +151,9 @@ final class LiveKeyboardListener: @unchecked Sendable {
 
   private func run() {
     let context = Unmanaged.passRetained(CallbackContext(listener: self))
-    let mask = CGEventMask(1 << CGEventType.flagsChanged.rawValue)
+    let mask = CGEventMask(
+      1 << CGEventType.flagsChanged.rawValue | 1 << CGEventType.keyDown.rawValue
+        | 1 << CGEventType.keyUp.rawValue)
     guard
       let tap = CGEvent.tapCreate(
         tap: .cgSessionEventTap, place: .headInsertEventTap, options: .defaultTap,
@@ -250,13 +254,13 @@ final class LiveKeyboardListener: @unchecked Sendable {
 
   // MARK: - Callback paths (worker thread)
 
-  fileprivate func deliver(_ event: CGEvent) {
+  fileprivate func deliver(_ event: CGEvent, kind: KeyEventValue.Kind) {
     // Removal closes admission under the lock. An event admitted just before removal may still
     // finish its sink call outside the lock; a successful removal waits for worker cleanup, which
     // runs only after this callback returns.
     guard state.withLock({ $0.delivering && !$0.stopRequested }) else { return }
     let value = KeyEventValue(
-      kind: .flagsChanged,
+      kind: kind,
       keyCode: UInt16(truncatingIfNeeded: event.getIntegerValueField(.keyboardEventKeycode)),
       rawFlags: event.flags.rawValue,
       timestamp: TimeInterval(event.timestamp) / 1_000_000_000,
@@ -471,7 +475,11 @@ private func keyboardTapCallback(
   #endif
   switch type {
   case .flagsChanged:
-    listener.deliver(event)
+    listener.deliver(event, kind: .flagsChanged)
+  case .keyDown:
+    listener.deliver(event, kind: .keyDown)
+  case .keyUp:
+    listener.deliver(event, kind: .keyUp)
   case .tapDisabledByTimeout, .tapDisabledByUserInput:
     listener.recoverFromDisable()
   default:

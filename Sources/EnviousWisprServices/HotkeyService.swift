@@ -183,6 +183,11 @@ public final class HotkeyService {
   /// start has confirmed a session that is still running.
   private var acceptedStartPressID: UInt64?
   private var acceptedSessionID: String?
+  /// Attempts the engine dismissed whose start main may still be resolving (#3544 P4), and the
+  /// session each start produced, so the dismissal ends exactly that session even after a newer
+  /// press replaced the attempt's execution state.
+  private var pendingDismissals: Set<UInt64> = []
+  private var dismissedSessions: [UInt64: String] = [:]
 
   // MARK: - Callbacks (wired by the former root state)
 
@@ -205,6 +210,11 @@ public final class HotkeyService {
   /// The `String` is an opaque token, compared for equality only — Services never
   /// interprets it.
   package var onLockRequested: (@MainActor (String) -> HandsFreeLockRequestResult)?
+
+  /// #3544 P4 (D2): end the recording session `String` started by a dismissed push-to-talk press,
+  /// destructively, if that session is still the one running. The `String` is the same opaque
+  /// session token `onLockRequested` receives.
+  package var onDismissRecording: (@MainActor (String) async -> Void)?
 
   /// Returns true if the pipeline is in a processing state (transcribing, polishing, etc.).
   /// Used by the processing state gate to block new recordings during processing.
@@ -809,6 +819,10 @@ public final class HotkeyService {
     // guessing from a scheduling turn. A signal fired inside the start callback
     // cannot serve: this method runs AFTER that callback returns.
     defer { onStartResolvedForTesting?() }
+    // A dismissed attempt's session is remembered whatever replaced its execution state since.
+    if pendingDismissals.contains(pressID), case .recording(let sessionID) = outcome {
+      dismissedSessions[pressID] = sessionID
+    }
     guard pressID == executingAttemptID else { return }
     switch outcome {
     case .recording(let sessionID):
@@ -914,6 +928,7 @@ public final class HotkeyService {
       case .quickRelease(let trace): executeQuickRelease(trace)
       case .loneTapStop(let trace): executeLoneTapStop(trace)
       case .cancel(let cancel): executeListenerCancel(cancel)
+      case .dismiss(let dismiss): executeListenerDismiss(dismiss)
       case .loneTapResolved: break
       }
     }
@@ -936,6 +951,31 @@ public final class HotkeyService {
       await self.onCancelRecording?()
     }
     emitHotkeyPressed(.cancel, trigger: .cancel)
+  }
+
+  /// Other-key interference ended this attempt in the engine (#3544 P4, D2). Main ends the
+  /// recording that attempt's start produced, once that start has resolved, and nothing else: a
+  /// start main never issued (refused, replaced) has nothing to end, and the session check in
+  /// `onDismissRecording` keeps a newer take safe. A press after this waits for it, as after a
+  /// listener cancel (`listenerCancellationTask`).
+  private func executeListenerDismiss(_ dismiss: RecordGestureEngine.Dismiss) {
+    let attempt = dismiss.attemptID
+    guard executingAttemptID == attempt else { return }
+    pendingDismissals.insert(attempt)
+    if acceptedStartPressID == attempt, let sessionID = acceptedSessionID {
+      dismissedSessions[attempt] = sessionID
+    }
+    clearExecutionState()
+    let start = recordingTask
+    let earlier = listenerCancellationTask
+    listenerCancellationTask = Task { [weak self] in
+      await earlier?.value
+      await start?.value
+      guard let self else { return }
+      self.pendingDismissals.remove(attempt)
+      guard let sessionID = self.dismissedSessions.removeValue(forKey: attempt) else { return }
+      await self.onDismissRecording?(sessionID)
+    }
   }
 
   private func executePress(_ press: RecordGestureEngine.Press, attemptID: UInt64) {

@@ -85,6 +85,14 @@ package struct KeyStateTracker: Equatable, Sendable {
   package private(set) var held: [UInt16: Hold] = [:]
   /// Held keys whose release could not be proven from aggregate-only evidence.
   package private(set) var ambiguous: Set<UInt16> = []
+  /// Ordinary (non-modifier) keys seen down and not yet up, each with when it was last seen down,
+  /// autorepeat included (#3544 P4). Local state only: never logged, never sent.
+  package private(set) var ordinaryDown: [UInt16: TimeInterval] = [:]
+
+  /// How long an ordinary key counts as held after its last keyDown with no keyUp. A held key
+  /// autorepeats well inside this; a keyUp the listener never saw (Secure Input hides key events)
+  /// must not block a record start for ever.
+  package static let ordinaryHeldFreshness: TimeInterval = 2.0
 
   package init() {}
 
@@ -127,6 +135,28 @@ package struct KeyStateTracker: Equatable, Sendable {
   }()
 
   // MARK: - Input
+
+  /// One ordinary keyDown or keyUp (#3544 P4). Returns whether it is a fresh press: a keyDown that
+  /// is not autorepeat. Modifier keys, our own events and every other kind change nothing.
+  package mutating func ingestOrdinary(_ event: KeyEventValue, handled: TimeInterval) -> Bool {
+    guard !event.isOurs, ModifierKeyCodes.flag(for: event.keyCode) == nil else { return false }
+    ordinaryDown = ordinaryDown.filter { handled - $0.value < Self.ordinaryHeldFreshness }
+    switch event.kind {
+    case .keyDown:
+      ordinaryDown[event.keyCode] = handled
+      return !event.isAutorepeat
+    case .keyUp:
+      ordinaryDown[event.keyCode] = nil
+      return false
+    case .flagsChanged, .tapReenabled, .secureInputChanged, .stormStopped:
+      return false
+    }
+  }
+
+  /// Whether an ordinary key is held at `now`, as far as the listener has seen.
+  package func isOrdinaryKeyHeld(at now: TimeInterval) -> Bool {
+    ordinaryDown.values.contains { now - $0 < Self.ordinaryHeldFreshness }
+  }
 
   /// Apply one listener event. Ignores everything but an unmarked `flagsChanged` from a standalone
   /// modifier key.

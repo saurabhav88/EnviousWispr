@@ -89,6 +89,10 @@ package final class RecordGestureEngine: Sendable {
     /// the attempt it captured and retired its wait, so a record press after it starts fresh; main
     /// runs the cancel and clears only that attempt's execution state.
     case cancel(Cancel)
+    /// Another key went down within `otherKeyDismissalWindow` of an unlocked push-to-talk press
+    /// (#3544 P4, D2). The engine already ended the attempt; main dismisses that attempt's
+    /// recording only, destructively.
+    case dismiss(Dismiss)
     /// One scheduled lone-tap wait finished, on any path (stopped, stale, locked, cancelled).
     /// A completion signal for tests; always applied, even in an invalidated batch.
     case loneTapResolved
@@ -109,6 +113,11 @@ package final class RecordGestureEngine: Sendable {
     package let keyCode: UInt16
     /// The attempt that was live when the cancel arrived, or nil when none was.
     package let attemptID: UInt64?
+  }
+
+  package struct Dismiss: Sendable, Equatable {
+    /// The attempt the dismissed press started.
+    package let attemptID: UInt64
   }
 
   package struct QuickReleaseTrace: Sendable {
@@ -480,6 +489,52 @@ package final class RecordGestureEngine: Sendable {
     perform(work)
     if submit { submitAsyncDrain() }
     return refusal
+  }
+
+  /// How long after an unlocked push-to-talk press another key still dismisses it (#3544 P4, D2;
+  /// Wispr Flow's 1000 ms). Measured between the two events' own times, from the record press.
+  package static let otherKeyDismissalWindow: TimeInterval = 1.0
+
+  /// Another (non-shortcut) key went down, as the listener observed it (#3544 P4, D2). When the
+  /// bare push-to-talk record press this installation's listener admitted is still held, not
+  /// locked, and less than `otherKeyDismissalWindow` old at `input` (strictly below: a key at
+  /// exactly 1000 ms is late), its attempt is ended here, in input order, and a `.dismiss` effect
+  /// queued. Its later release is then unowned and inert. Returns whether it dismissed.
+  @discardableResult
+  package func otherKeyFromListener(
+    input: RecordGesture.InputTime, installation: UInt64
+  ) -> Bool {
+    let (dismissed, work, submit) = state.withLock { s -> (Bool, TimerWork, Bool) in
+      guard s.listenerInstallation == installation, s.mode == .pushToTalk,
+        let owned = s.owned, !owned.fromMain, owned.attemptID == s.gesture.attemptID,
+        s.gesture.isHeld, !s.gesture.isLocked, let start = s.gesture.start,
+        Self.elapsed(from: start, to: input) < Self.otherKeyDismissalWindow
+      else { return (false, TimerWork(), false) }
+      let attempt = s.gesture.attemptID
+      var work = TimerWork()
+      var effects: [Effect] = []
+      s.gesture.cleanup()
+      // The record key is still physically down, but its release is now unowned and refused, so
+      // the gesture must stop counting it as held: otherwise the next press reads as a duplicate.
+      s.gesture.forgetHeld()
+      s.owned = nil
+      Self.cancelTimer(&s, into: &work, effects: &effects, retired: true)
+      effects.append(.dismiss(Dismiss(attemptID: attempt)))
+      s.outbox.append(Batch(epoch: s.epoch, attemptID: attempt, effects: effects))
+      return (true, work, Self.claimAsyncDrain(&s))
+    }
+    perform(work)
+    if submit { submitAsyncDrain() }
+    return dismissed
+  }
+
+  /// Seconds from `start` to `input`, by the events' own times when both carry one, otherwise by
+  /// handling time (the accepted #3534 domain).
+  private static func elapsed(
+    from start: RecordGesture.InputTime, to input: RecordGesture.InputTime
+  ) -> TimeInterval {
+    if let a = start.occurred, let b = input.occurred { return b - a }
+    return input.handled - start.handled
   }
 
   /// Why a listener record input is refused, or nil to admit it.

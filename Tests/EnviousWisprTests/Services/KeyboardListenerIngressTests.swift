@@ -53,6 +53,7 @@ struct KeyboardListenerIngressTests {
           case .quickRelease: self?.effects.append("quickRelease")
           case .loneTapStop: self?.effects.append("loneTapStop")
           case .cancel: self?.effects.append("cancel")
+          case .dismiss: self?.effects.append("dismiss")
           case .loneTapResolved: break
           }
         }
@@ -321,6 +322,66 @@ struct KeyboardListenerIngressTests {
     #expect(rig.effects == ["start"], "a reading taken before the re-enable was counted")
     await rig.fireSweeps(at: 15)
     #expect(rig.effects == ["start", "holdStop"])
+  }
+
+  // MARK: - Ordinary keys (#3544 P4)
+
+  private static let letterA: UInt16 = 0
+  private static let escape: UInt16 = 53
+
+  private func ordinary(
+    _ rig: Rig, _ kind: KeyEventValue.Kind, _ key: UInt16, at t: TimeInterval,
+    autorepeat: Bool = false, ours: Bool = false
+  ) async {
+    await rig.send(
+      KeyEventValue(
+        kind: kind, keyCode: key, rawFlags: 0, timestamp: 500 + t, isAutorepeat: autorepeat,
+        isOurs: ours),
+      at: t)
+  }
+
+  @Test("a record press with an ordinary key already held starts nothing; after its release it starts")
+  func heldOrdinaryKeyRefusesStart() async {
+    let rig = Rig()
+    await ordinary(rig, .keyDown, Self.letterA, at: 0)
+    await rig.key(Self.option, held: [Self.option], at: 0.2)
+    await rig.key(Self.option, held: [], at: 0.4)
+    #expect(rig.effects.isEmpty, "a record press during typing started a dictation")
+    await ordinary(rig, .keyUp, Self.letterA, at: 0.5)
+    await rig.key(Self.option, held: [Self.option], at: 1)
+    #expect(rig.effects == ["start"])
+  }
+
+  @Test("an ordinary key whose keyUp was never seen stops blocking a start after 2 s")
+  func staleOrdinaryKeyStopsBlocking() async {
+    let rig = Rig()
+    await ordinary(rig, .keyDown, Self.letterA, at: 0)
+    await rig.key(Self.option, held: [Self.option], at: 2.5)
+    #expect(rig.effects == ["start"])
+  }
+
+  @Test("a fresh ordinary key early in a hold dismisses it once; repeats, our own and shortcut keys never")
+  func earlyOrdinaryKeyDismisses() async {
+    let rig = Rig()
+    await rig.key(Self.option, held: [Self.option], at: 0)
+    await ordinary(rig, .keyDown, Self.escape, at: 0.1)  // the cancel chord's key
+    await ordinary(rig, .keyDown, Self.letterA, at: 0.2, ours: true)  // our own paste or copy
+    await ordinary(rig, .keyDown, Self.letterA, at: 0.3, autorepeat: true)
+    #expect(rig.effects == ["start"])
+    await ordinary(rig, .keyDown, Self.letterA, at: 0.4)
+    await ordinary(rig, .keyDown, 1, at: 0.5)
+    #expect(rig.effects == ["start", "dismiss"])
+    await rig.key(Self.option, held: [], at: 0.8)
+    #expect(rig.effects == ["start", "dismiss"], "the dismissed hold's release stopped something")
+  }
+
+  @Test("a key event of either kind carries nothing to the sweep's input count or any main edge")
+  func ordinaryKeysReachNoMainEdge() async {
+    let rig = Rig()
+    await ordinary(rig, .keyDown, Self.letterA, at: 0)
+    await ordinary(rig, .keyUp, Self.letterA, at: 0.1)
+    #expect(rig.mainEdges.withLock { $0 }.isEmpty)
+    #expect(rig.ingress.heldKeysForTesting.isEmpty, "an ordinary key became a held modifier")
   }
 
   @Test("an answer that went stale while the reader ran is dropped, never applied")
