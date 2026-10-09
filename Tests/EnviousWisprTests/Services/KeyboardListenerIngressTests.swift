@@ -233,6 +233,34 @@ struct KeyboardListenerIngressTests {
     #expect(rig.ingress.heldKeysForTesting == [Self.option])
   }
 
+  /// Input with no side bits (synthetic or assistive keyboards): Right Option is the record key and
+  /// Left Option stays held. Right Option's release leaves the Option family on, so the tracker
+  /// cannot tell it from a press; verification reads it up and ends the hold. The event must not
+  /// then be retried as a new press, or the release starts a second recording.
+  @Test("an aggregate-only release while the other side is held stops, and starts nothing")
+  func ambiguousReleaseIsNotRetriedAsAPress() async {
+    let rig = Rig()
+    let family = UInt64(NSEvent.ModifierFlags.option.rawValue)
+    let leftOption = ModifierKeyCodes.leftOption
+    rig.readings.withLock {
+      $0[Self.option] = .down
+      $0[leftOption] = .down
+    }
+    await rig.send(
+      KeyEventValue(kind: .flagsChanged, keyCode: Self.option, rawFlags: family, timestamp: 500),
+      at: 0)
+    await rig.send(
+      KeyEventValue(kind: .flagsChanged, keyCode: leftOption, rawFlags: family, timestamp: 501),
+      at: 1)
+    #expect(rig.effects == ["start"])
+    rig.readings.withLock { $0[Self.option] = .up }
+    await rig.send(
+      KeyEventValue(kind: .flagsChanged, keyCode: Self.option, rawFlags: family, timestamp: 503),
+      at: 3)
+    #expect(rig.effects == ["start", "holdStop"])
+    #expect(rig.ingress.heldKeysForTesting == [leftOption])
+  }
+
   @Test("an answer that went stale while the reader ran is dropped, never applied")
   func staleAnswersAreDropped() async {
     // Shift is Quick Add here, so the input that arrives mid-read is placed without itself

@@ -160,9 +160,9 @@ package final class KeyboardListenerIngress: Sendable {
     let handled = clock()
     let classification = engine.listenerClassification()
     if let onlyGeneration, classification.generation != onlyGeneration { return }
-    let unplaced = state.withLock { s -> Bool in
-      guard !s.closed else { return false }
-      if let onlyAfter, s.inputSequence != onlyAfter { return false }
+    let (unplaced, ambiguous) = state.withLock { s -> (Bool, Bool) in
+      guard !s.closed else { return (false, false) }
+      if let onlyAfter, s.inputSequence != onlyAfter { return (false, false) }
       s.inputSequence &+= 1
       let update = s.tracker.ingest(
         event, handled: handled, configuration: classification.configuration)
@@ -175,11 +175,16 @@ package final class KeyboardListenerIngress: Sendable {
       // event the tracker could not turn into an edge contradicts it, and a press of a key no
       // shortcut owns may be the first thing after a missed release of one that is.
       let unmatchedPress = update.edges.contains { $0.phase == .press && $0.role == nil }
-      return ModifierKeyCodes.flag(for: event.keyCode) != nil
+      let unplaced =
+        ModifierKeyCodes.flag(for: event.keyCode) != nil
         && (update.edges.isEmpty || unmatchedPress)
+      return (unplaced, update.ambiguousKey == event.keyCode)
     }
     drain()
-    if unplaced { reconcile(retry: retried ? nil : event) }
+    // Verified, but never retried when the event was aggregate-only evidence about a held key:
+    // with the family still on (the other side held) it is as likely that key's release as a new
+    // press, and once verification reads the key up, a retry would turn that release into a press.
+    if unplaced { reconcile(retry: retried || ambiguous ? nil : event) }
     armSweepIfNeeded()
   }
 
