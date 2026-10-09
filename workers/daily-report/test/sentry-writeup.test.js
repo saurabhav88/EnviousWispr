@@ -137,6 +137,31 @@ test("bounded pagination keeps the same query and follows only cursor metadata",
   assert.equal(second.searchParams.get("cursor"), "100:1:0");
 });
 
+test("canonical Sentry links keep regional requests scoped through continuation and terminal pages", async () => {
+  // Live US responses advertise sentry.io links. Only their cursor is used;
+  // outbound reads must keep the configured region, project and fields.
+  const canonical = (url) => next(url).replace("https://us.sentry.io/", "https://sentry.io/");
+  const terminal = (url) => canonical(url).replace('results="true"', 'results="false"');
+  const rows = Array.from({ length: 100 }, (_, i) => problem(i + 1, 1, 1));
+  const r = rig({ current: rows, currentLink: canonical, currentPage2: [problem(101, 1, 1)], currentPage2Link: terminal,
+    matrix: rows.map((row) => detail(row["issue.id"], 1)), matrixLink: canonical,
+    matrixPage2: [detail(101, 1)], matrixPage2Link: terminal, currentHead: [head(101, 1)], prior: [], priorHead: [],
+    firstSeen: [{ shortId: "ENVIOUSWISPR-2", firstSeen: "2026-10-07T04:01:00Z" }], firstSeenLink: canonical,
+    firstSeenPage2: [{ shortId: "ENVIOUSWISPR-1", firstSeen: "2026-10-07T04:02:00Z" }], firstSeenPage2Link: terminal });
+  const data = await read(r);
+  assert.equal(data.issuesComplete, true);
+  assert.equal(data.buildsComplete, true);
+  assert.equal(data.newnessComplete, true);
+  assert.equal(data.sections[0].problems.length, 101);
+  assert.equal(data.sections[0].current.events, 101);
+  assert.equal(data.sections[0].problems.find((p) => p.id === 1).isNew, true);
+  assert.equal(r.requests.length, 9);
+  for (const url of r.requests) {
+    assert.equal(url.origin, "https://us.sentry.io");
+    if (url.pathname.endsWith("/events/")) assert.equal(url.searchParams.get("project"), ENV.SENTRY_PROJECT_ID);
+  }
+});
+
 test("explicit terminal full pages keep exact counts and newness at both page boundaries", async () => {
   const terminal = (url) => next(url).replace('results="true"', 'results="false"');
   for (const total of [100, 200]) {

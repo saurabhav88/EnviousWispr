@@ -316,7 +316,12 @@ function nextPageMetadata(headers, expectedUrl, queryName) {
     try { target = new URL(match[1]); } catch (_) {
       throw new SentryShapeError(queryName, "invalid next-page URL");
     }
-    if (target.origin !== expectedUrl.origin || target.pathname !== expectedUrl.pathname) {
+    // US API responses advertise canonical sentry.io links (live #3547
+    // receipt). Accept only this fixed service pair; follow only the cursor
+    // while the next request retains its configured region/project/query.
+    const serviceOrigins = [SENTRY_REGION_URL, "https://sentry.io"];
+    const sameService = serviceOrigins.includes(expectedUrl.origin) && serviceOrigins.includes(target.origin);
+    if ((target.origin !== expectedUrl.origin && !sameService) || target.pathname !== expectedUrl.pathname) {
       throw new SentryShapeError(queryName, "next page changed query endpoint");
     }
     if (attributes.get("results") === "false") {
