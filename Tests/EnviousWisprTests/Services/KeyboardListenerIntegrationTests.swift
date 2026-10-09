@@ -446,9 +446,11 @@ struct KeyboardListenerIntegrationTests {
 
   // MARK: - Other-key dismissal on main (#3544 P4, D2)
 
-  private func letterDown(_ ptt: PTT, at t: TimeInterval) async {
+  private func letterDown(_ ptt: PTT, at t: TimeInterval, kind: KeyEventValue.Kind = .keyDown)
+    async
+  {
     let sink = ptt.effects.keyboardListenerSink
-    let event = KeyEventValue(kind: .keyDown, keyCode: 0, rawFlags: 0, timestamp: 500 + t)
+    let event = KeyEventValue(kind: kind, keyCode: 0, rawFlags: 0, timestamp: 500 + t)
     await Task.detached { _ = sink?(event) }.value
     await ListenerKeyboard.mainTurn()
   }
@@ -544,6 +546,8 @@ struct KeyboardListenerIntegrationTests {
     await done.wait(until: 1)
     ptt.at(0.5)
     await ptt.keys.release(ModifierKeyCodes.rightOption, at: 500.5)
+    ptt.at(0.6)
+    await letterDown(ptt, at: 0.6, kind: .keyUp)
     ptt.joinable = nil  // the dismissed session is ending
     ptt.at(2)
     await ptt.keys.press(ModifierKeyCodes.rightOption, at: 502)

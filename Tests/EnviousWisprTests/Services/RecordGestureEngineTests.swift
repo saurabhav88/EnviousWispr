@@ -583,6 +583,17 @@ struct RecordGestureEngineTests {
       "the fresh take was treated as joining the dismissed session")
   }
 
+  @Test("a held ordinary key still refuses a fresh start while a dismissed session is ending")
+  func typingProtectionHoldsWhileADismissalEnds() {
+    let rig = Rig()
+    rig.engine.openListenerAdmission(installation: 7)
+    _ = Self.listener(rig, true, 0)
+    rig.engine.setRecordingActive(true)
+    #expect(rig.engine.otherKeyFromListener(input: rig.at(0.2), installation: 7))
+    _ = Self.listener(rig, false, 0.4)
+    #expect(Self.listener(rig, true, 1, ordinaryKeyHeld: true) == .ordinaryKeyHeld)
+  }
+
   @Test("a held ordinary key never refuses a press that joins a running recording")
   func ordinaryKeyNeverRefusesAJoiningPress() {
     let rig = Rig()

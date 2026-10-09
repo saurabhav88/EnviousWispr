@@ -602,9 +602,17 @@ package final class RecordGestureEngine: Sendable {
   private static func startWhileTyping(
     _ s: State, isPress: Bool, ordinaryKeyHeld: Bool
   ) -> ListenerRefusal? {
-    guard isPress, ordinaryKeyHeld, s.gesture.start == nil, !s.gesture.isLocked, !s.recordingActive
+    guard isPress, ordinaryKeyHeld, s.gesture.start == nil, !s.gesture.isLocked,
+      !startWouldJoin(s)
     else { return nil }
     return .ordinaryKeyHeld
+  }
+
+  /// Whether a fresh start now would join a running session rather than make one (#3544 P4): a
+  /// session is running and it is not one this engine already ended. The one test for both the
+  /// join classification and the typing-protection exemption, so they cannot disagree.
+  private static func startWouldJoin(_ s: State) -> Bool {
+    s.recordingActive && !s.endingRequested
   }
 
   /// A release decided from a reading about `onlyAttempt`, arriving after a newer attempt took the
@@ -723,7 +731,7 @@ package final class RecordGestureEngine: Sendable {
       }
       let decision = s.gesture.classifyPress(input, binding: s.binding, mode: s.mode)
       if case .start = decision {
-        s.joinedAttempt = s.recordingActive && !s.endingRequested ? s.gesture.attemptID : nil
+        s.joinedAttempt = Self.startWouldJoin(s) ? s.gesture.attemptID : nil
         s.endingRequested = false
       }
       let joinsRecording = s.joinedAttempt == s.gesture.attemptID
