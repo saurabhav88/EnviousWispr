@@ -594,6 +594,18 @@ struct RecordGestureEngineTests {
     #expect(Self.listener(rig, true, 1, ordinaryKeyHeld: true) == .ordinaryKeyHeld)
   }
 
+  @Test("a press after this engine stopped the running session's attempt is a fresh start")
+  func pressAfterOwnStopIsFresh() {
+    let rig = Rig()
+    rig.engine.openListenerAdmission(installation: 7)
+    _ = Self.listener(rig, true, 0)
+    rig.engine.setRecordingActive(true)
+    _ = Self.listener(rig, false, 2)  // a hold stop; the session is still ending
+    #expect(Self.listener(rig, true, 3) == nil)
+    #expect(rig.engine.otherKeyFromListener(input: rig.at(3.2), installation: 7),
+      "the fresh take was treated as joining the stopped session")
+  }
+
   @Test("a held ordinary key never refuses a press that joins a running recording")
   func ordinaryKeyNeverRefusesAJoiningPress() {
     let rig = Rig()

@@ -555,23 +555,25 @@ struct KeyboardListenerIntegrationTests {
     #expect(ptt.starts == 2 && ptt.joins == 0, "starts \(ptt.starts), joins \(ptt.joins)")
   }
 
-  /// The session a press found may end before main runs that press: the press only ever joins,
-  /// so it creates nothing (a new take would start with an ordinary key held and no protection).
-  @Test("a joining press whose session ended before it ran starts nothing")
-  func expiredJoinStartsNothing() async {
+  /// The session a press found may end before main runs that press (a stop the engine never
+  /// saw). With no ordinary key held the press becomes the fresh take it would have been; with one
+  /// held it creates nothing (a new take would start during typing, past typing protection).
+  @Test("a joining press whose session ended before it ran starts fresh only with no key held",
+    arguments: [false, true])
+  func expiredJoin(ordinaryKeyHeld: Bool) async {
     let ptt = PTT()
     defer { ptt.service.stop() }
     ptt.service.setRecordingActive(true)
     ptt.joinable = nil  // the menu take concluded before main ran the press
+    if ordinaryKeyHeld {
+      ptt.at(-0.2)
+      await letterDown(ptt, at: -0.2)
+    }
     ptt.at(0)
     await ptt.keys.press(ModifierKeyCodes.rightOption, at: 500)
     await ptt.service.awaitInFlightStartForTesting()
-    ptt.at(1)
-    await ptt.keys.release(ModifierKeyCodes.rightOption, at: 501)
-    await ListenerKeyboard.mainTurn()
     #expect(ptt.joins == 1)
-    #expect(ptt.starts == 0, "an expired join created a new session")
-    #expect(ptt.stops == 0, "a refused join's release stopped something")
+    #expect(ptt.starts == (ordinaryKeyHeld ? 0 : 1), "starts \(ptt.starts)")
   }
 
   @Test("a dismissal during a pending start waits for that start and ends its session")

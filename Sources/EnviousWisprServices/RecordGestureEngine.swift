@@ -107,9 +107,12 @@ package final class RecordGestureEngine: Sendable {
     package let input: RecordGesture.InputTime
     package let afterStopTimerMs: Int?
     package let decision: RecordGesture.PressDecision
-    /// A `.start` made while a session was running (#3544 P4): it may only join that session,
-    /// never create one, so main calls `onJoinRecording` for it.
+    /// A `.start` made while a session was running (#3544 P4): main calls `onJoinRecording` for it.
     package var joinsRecording = false
+    /// For a joining `.start`: whether it may make a fresh take if that session has already ended
+    /// by the time main runs it. True only when no ordinary key was held at the press, so typing
+    /// protection (which a joining press skips) would not have refused it either.
+    package var mayStartIfJoinFails = false
   }
 
   package struct Cancel: Sendable {
@@ -245,8 +248,9 @@ package final class RecordGestureEngine: Sendable {
     /// release clears `owned`, and the attempt's second tap must still be joining. Also set by
     /// `markJoined` when main finds a start joined a session that began after the press.
     var joinedAttempt: UInt64?
-    /// This engine has already ended the running session's attempt (a listener cancel or an
-    /// other-key dismissal), so that session is on its way out: the next `.start` is a fresh take,
+    /// This engine has already decided the running session's ending (a hold stop, a lone-tap stop,
+    /// a locked stop, a triple-press cancel, a listener cancel or an other-key dismissal), so that
+    /// session is on its way out: the next `.start` is a fresh take,
     /// not a join, even if the pipeline has not reported the session over yet. Cleared when it
     /// does, or consumed by that next `.start`.
     var endingRequested = false
@@ -360,6 +364,14 @@ package final class RecordGestureEngine: Sendable {
     }
   }
 
+  /// Main found the session `attempt` was to join already over and is starting a fresh take for
+  /// it instead (#3544 P4): it is that take's own attempt now, so interference applies again.
+  package func unmarkJoined(attempt: UInt64) {
+    state.withLock { s in
+      if s.joinedAttempt == attempt { s.joinedAttempt = nil }
+    }
+  }
+
   /// Whether a session is running now (#3544 P4): a fresh record press made while one is joins it.
   package func setRecordingActive(_ active: Bool) {
     state.withLock { s in
@@ -456,7 +468,8 @@ package final class RecordGestureEngine: Sendable {
         return (refusal, TimerWork(), false)
       }
       let work = Self.admit(
-        &s, isPress: isPress, input: input, fromMain: false, recovery: recovery)
+        &s, isPress: isPress, input: input, fromMain: false, recovery: recovery,
+        ordinaryKeyHeld: ordinaryKeyHeld)
       return (nil, work, Self.claimAsyncDrain(&s))
     }
     perform(work)
@@ -711,7 +724,7 @@ package final class RecordGestureEngine: Sendable {
 
   private static func admit(
     _ s: inout State, isPress: Bool, input: RecordGesture.InputTime, fromMain: Bool,
-    recovery: ListenerPressRecovery
+    recovery: ListenerPressRecovery, ordinaryKeyHeld: Bool = false
   ) -> TimerWork {
     s.inputSequence &+= 1
     let sequence = s.inputSequence
@@ -744,6 +757,7 @@ package final class RecordGestureEngine: Sendable {
         cancelTimer(&s, into: &work, effects: &effects)
       case .tripleCancel, .stopLocked:
         // The engine applies its own cleanup; main clears only its execution state.
+        s.endingRequested = true
         s.gesture.cleanup()
         cancelTimer(&s, into: &work, effects: &effects)
       case .ignoredCooldown, .lateAfterWindow:
@@ -754,7 +768,7 @@ package final class RecordGestureEngine: Sendable {
           Press(
             inputSequence: sequence, mode: s.mode, keyCode: keyCode, input: input,
             afterStopTimerMs: afterStopTimerMs, decision: decision,
-            joinsRecording: joinsRecording)))
+            joinsRecording: joinsRecording, mayStartIfJoinFails: !ordinaryKeyHeld)))
     } else {
       s.owned = nil
       let decision = s.gesture.release(input)
@@ -775,6 +789,7 @@ package final class RecordGestureEngine: Sendable {
         work.schedule = (token, quick.deadline, fromMain)
         effects.append(.quickRelease(trace))
       case .hold:
+        s.endingRequested = true
         s.gesture.cleanup()
         cancelTimer(&s, into: &work, effects: &effects)
         effects.append(.holdStop)
@@ -846,6 +861,7 @@ package final class RecordGestureEngine: Sendable {
       if case .stop(let stop) = check {
         // #3534 §3.3, in this order: (1) snapshot (in checkLoneTap), (2) cleanup, (3) marker
         // with the post-cleanup epoch and the time read after cleanup.
+        s.endingRequested = true
         s.gesture.cleanup()
         let stoppedAt = clock()
         s.gesture.recordQuickTapStop(stop, stoppedAt: stoppedAt)

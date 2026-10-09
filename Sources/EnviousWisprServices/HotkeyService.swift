@@ -1057,7 +1057,18 @@ public final class HotkeyService {
           self.resolveStart(pressID: pressID, outcome: .noRecording)
           return
         }
-        self.resolveStart(pressID: pressID, outcome: await handler())
+        var outcome = await handler()
+        // #3544 P4: the session this press was to join ended before main ran it (a stop the engine
+        // never saw: menu, window, auto-stop, cap). With no ordinary key held at the press, a
+        // fresh take is what the press would have been, so start one rather than drop it.
+        if press.joinsRecording, press.mayStartIfJoinFails, outcome == .noRecording,
+          !Task.isCancelled, self.executingAttemptID == pressID,
+          let start = self.onStartRecording
+        {
+          self.engine.unmarkJoined(attempt: pressID)
+          outcome = await start()
+        }
+        self.resolveStart(pressID: pressID, outcome: outcome)
       }
       // #1175 (C3): emit AFTER the recording Task is created; the `.live` sink
       // defers the actual write off this turn so it never delays the callback.
