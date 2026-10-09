@@ -510,6 +510,9 @@ final class SettingsSearchModel {
     let workerReset = workerReset
     Task { [weak self] in
       await workerReset?.value
+      // A request a later window close replaced never starts a load: a failure it left in the
+      // worker would reach the next window session.
+      guard self?.meaningLoadAttempt == attempt, self?.meaningModel == .loading else { return }
       let readiness = await worker.ensureLoaded()
       self?.meaningLoadFinished(readiness, attempt: attempt)
     }
