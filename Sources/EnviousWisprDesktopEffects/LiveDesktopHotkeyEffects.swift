@@ -167,16 +167,21 @@ package final class LiveDesktopHotkeyEffects: DesktopHotkeyEffects {
     return nil
   }
 
-  /// The system's modifier flags on the HID system state, read once per call and interpreted per
-  /// key by `KeyStateTracker.reading`. Reconciliation releases a hold only on an `.up` answer, so
-  /// an unclear reading keeps the hold.
+  /// Modifier keys: the system's modifier flags on the HID system state, read once per call and
+  /// interpreted per key by `KeyStateTracker.reading`. Ordinary keys: `CGEventSource.keyState`.
+  /// Reconciliation releases a hold only on an `.up` answer, so an unclear reading keeps the hold.
   package var keyStateReader: @Sendable (Set<UInt16>) -> [UInt16: KeyStateTracker.Reading] {
     { keys in
       // One read of the system's modifier flags answers every key (see `KeyStateTracker.reading`).
       let flags = CGEventSource.flagsState(.hidSystemState).rawValue
       var answers: [UInt16: KeyStateTracker.Reading] = [:]
       for key in keys {
-        answers[key] = KeyStateTracker.reading(forKey: key, flags: flags)
+        // An ordinary key (#3544 P4): `keyState` reads it correctly (P4 C3 probe: down 10 ms into a
+        // held key, up after). It is the modifier read that is broken, so modifiers use the flags.
+        answers[key] =
+          ModifierKeyCodes.flag(for: key) == nil
+          ? (CGEventSource.keyState(.hidSystemState, key: CGKeyCode(key)) ? .down : .up)
+          : KeyStateTracker.reading(forKey: key, flags: flags)
       }
       return answers
     }

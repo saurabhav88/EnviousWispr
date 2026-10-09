@@ -326,16 +326,20 @@ struct KeyboardListenerIngressTests {
 
   // MARK: - Ordinary keys (#3544 P4)
 
-  private static let letterA: UInt16 = 0
-  private static let escape: UInt16 = 53
+  nonisolated private static let letterA: UInt16 = 0
+  nonisolated private static let escape: UInt16 = 53
+
+  nonisolated private static let letterW: UInt16 = 13
+  private static let controlShift = UInt64(
+    NSEvent.ModifierFlags.control.rawValue | NSEvent.ModifierFlags.shift.rawValue)
 
   private func ordinary(
     _ rig: Rig, _ kind: KeyEventValue.Kind, _ key: UInt16, at t: TimeInterval,
-    autorepeat: Bool = false, ours: Bool = false
+    autorepeat: Bool = false, ours: Bool = false, flags: UInt64 = 0
   ) async {
     await rig.send(
       KeyEventValue(
-        kind: kind, keyCode: key, rawFlags: 0, timestamp: 500 + t, isAutorepeat: autorepeat,
+        kind: kind, keyCode: key, rawFlags: flags, timestamp: 500 + t, isAutorepeat: autorepeat,
         isOurs: ours),
       at: t)
   }
@@ -352,19 +356,59 @@ struct KeyboardListenerIngressTests {
     #expect(rig.effects == ["start"])
   }
 
-  @Test("an ordinary key whose keyUp was never seen stops blocking a start after 2 s")
-  func staleOrdinaryKeyStopsBlocking() async {
+  /// Age never releases an ordinary key; a reading does. A key held without autorepeat blocks a
+  /// start for as long as it reads down; a keyUp the listener missed is cleared by its up reading.
+  @Test("a held ordinary key blocks a start however long it is held; a missed keyUp is cleared by a reading")
+  func ordinaryKeyHeldIsConfirmedByReading() async {
     let rig = Rig()
     await ordinary(rig, .keyDown, Self.letterA, at: 0)
-    await rig.key(Self.option, held: [Self.option], at: 2.5)
+    rig.readings.withLock { $0[Self.letterA] = .down }
+    await rig.key(Self.option, held: [Self.option], at: 4)
+    await rig.key(Self.option, held: [], at: 4.2)
+    #expect(rig.effects.isEmpty, "an ordinary key held 4 s stopped blocking a start")
+    rig.readings.withLock { $0[Self.letterA] = .up }  // its keyUp was never delivered
+    await rig.key(Self.option, held: [Self.option], at: 5)
     #expect(rig.effects == ["start"])
+  }
+
+  @Test("a held ordinary key never blocks a locked take's stop")
+  func ordinaryKeyNeverBlocksALockedStop() async {
+    let rig = Rig()
+    await rig.key(Self.option, held: [Self.option], at: 0)
+    await rig.key(Self.option, held: [], at: 0.1)
+    await rig.key(Self.option, held: [Self.option], at: 0.2)
+    await rig.key(Self.option, held: [], at: 0.3)
+    #expect(rig.engine.snapshot.isLocked, "the double tap did not lock: \(rig.effects)")
+    await ordinary(rig, .keyDown, Self.letterA, at: 2)  // locked: ignored, still held
+    rig.readings.withLock { $0[Self.letterA] = .down }
+    await rig.key(Self.option, held: [Self.option], at: 3)
+    #expect(rig.engine.snapshot.isLocked == false, "a held key trapped a locked take")
+  }
+
+  @Test("a configured chord is exempt only with its own modifiers, and only while eligible")
+  func chordExemptionNeedsTheWholeChord() async {
+    // Quick Add ships as Control-Shift-W.
+    let matching = Rig()
+    await matching.key(Self.option, held: [Self.option], at: 0)
+    await ordinary(matching, .keyDown, Self.letterW, at: 0.2, flags: Self.controlShift)
+    #expect(matching.effects == ["start"], "the configured chord dismissed the take")
+    let bare = Rig()
+    await bare.key(Self.option, held: [Self.option], at: 0)
+    await ordinary(bare, .keyDown, Self.letterW, at: 0.2)
+    #expect(bare.effects == ["start", "dismiss"], "a bare W was treated as the chord")
+    // Cancel (Escape) is eligible only while armed.
+    let disarmed = Rig()
+    await disarmed.key(Self.option, held: [Self.option], at: 0)
+    await ordinary(disarmed, .keyDown, Self.escape, at: 0.2)
+    #expect(disarmed.effects == ["start", "dismiss"], "a disarmed cancel key was exempt")
   }
 
   @Test("a fresh ordinary key early in a hold dismisses it once; repeats, our own and shortcut keys never")
   func earlyOrdinaryKeyDismisses() async {
     let rig = Rig()
+    rig.engine.setCancelArmed(true)
     await rig.key(Self.option, held: [Self.option], at: 0)
-    await ordinary(rig, .keyDown, Self.escape, at: 0.1)  // the cancel chord's key
+    await ordinary(rig, .keyDown, Self.escape, at: 0.1)  // the armed cancel chord
     await ordinary(rig, .keyDown, Self.letterA, at: 0.2, ours: true)  // our own paste or copy
     await ordinary(rig, .keyDown, Self.letterA, at: 0.3, autorepeat: true)
     #expect(rig.effects == ["start"])

@@ -183,16 +183,28 @@ package struct ShortcutBindings: Equatable, Sendable {
     self.copyLast = copyLast
   }
 
-  /// The key codes of every role whose binding is a chord, not a bare modifier (#3544 P4). Such a
-  /// key going down while dictating is the user reaching for a configured shortcut (the cancel
-  /// chord, Escape by default, among them), never interference.
-  package var chordKeyCodes: Set<UInt16> {
-    Set(
-      ShortcutRole.allCases.compactMap { role in
-        let binding = self[role]
-        guard !binding.isBareModifier, case .keyboard(let keyCode, _) = binding else { return nil }
-        return keyCode
-      })
+  /// The modifiers a chord shortcut is matched on: the four Carbon dispatches by
+  /// (`HotkeyService.carbonModifiers`). Caps Lock, Fn and device bits never take part.
+  package static let chordMatchModifiers: NSEvent.ModifierFlags = [
+    .command, .option, .control, .shift,
+  ]
+
+  /// Whether a key going down with `rawFlags` is one of the configured, currently eligible chord
+  /// shortcuts (#3544 P4): its key AND its effective modifiers match a role in `armed` whose
+  /// binding is a chord. Such a key while dictating is the user reaching for that shortcut, never
+  /// interference. Matching only; Carbon still owns dispatch, and nothing is swallowed.
+  package func matchesChord(
+    keyCode: UInt16, rawFlags: UInt64, armed: Set<ShortcutRole>
+  ) -> Bool {
+    let held = NSEvent.ModifierFlags(rawValue: UInt(truncatingIfNeeded: rawFlags))
+      .intersection(Self.chordMatchModifiers)
+    return armed.contains { role in
+      let binding = self[role]
+      guard !binding.isBareModifier, case .keyboard(let code, let modifiers) = binding else {
+        return false
+      }
+      return code == keyCode && modifiers.intersection(Self.chordMatchModifiers) == held
+    }
   }
 
   /// What a fresh install has, read from `ShortcutRole.defaultBinding`.

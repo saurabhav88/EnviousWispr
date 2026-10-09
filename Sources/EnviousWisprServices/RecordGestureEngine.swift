@@ -177,6 +177,9 @@ package final class RecordGestureEngine: Sendable {
     case wrongKey
     /// A release whose press this engine never admitted from that key.
     case unownedRelease
+    /// A press that would start a new dictation while an ordinary key is held (#3544 P4,
+    /// exact-set start). Never refuses a press of a live take (second tap, locked stop).
+    case ordinaryKeyHeld
     /// A cancel while cancel is not armed.
     case cancelNotArmed
   }
@@ -404,13 +407,14 @@ package final class RecordGestureEngine: Sendable {
   package func ingestFromListener(
     keyCode: UInt16, isPress: Bool, input: RecordGesture.InputTime, generation: UInt64,
     installation: UInt64, recovery: ListenerPressRecovery = .notReadable,
-    onlyAttempt: UInt64? = nil
+    onlyAttempt: UInt64? = nil, ordinaryKeyHeld: Bool = false
   ) -> ListenerRefusal? {
     let (refusal, work, submit) = state.withLock { s -> (ListenerRefusal?, TimerWork, Bool) in
       if let refusal = Self.refusal(
         &s, keyCode: keyCode, isPress: isPress,
         generation: generation, installation: installation)
         ?? Self.staleAttempt(s, onlyAttempt)
+        ?? Self.startWhileTyping(s, isPress: isPress, ordinaryKeyHeld: ordinaryKeyHeld)
       {
         s.refusals[refusal, default: 0] += 1
         return (refusal, TimerWork(), false)
@@ -538,6 +542,17 @@ package final class RecordGestureEngine: Sendable {
   }
 
   /// Why a listener record input is refused, or nil to admit it.
+  /// A press that would START a dictation (no live attempt, nothing locked) while an ordinary key
+  /// is held is refused before it touches the gesture (#3544 P4). A press of a live take (the
+  /// second tap of a double tap, the stop of a locked take) is never refused, so a held key can
+  /// never trap a recording.
+  private static func startWhileTyping(
+    _ s: State, isPress: Bool, ordinaryKeyHeld: Bool
+  ) -> ListenerRefusal? {
+    guard isPress, ordinaryKeyHeld, s.gesture.start == nil, !s.gesture.isLocked else { return nil }
+    return .ordinaryKeyHeld
+  }
+
   /// A release decided from a reading about `onlyAttempt`, arriving after a newer attempt took the
   /// key: refused, so a stale reading can never end the newer press.
   private static func staleAttempt(_ s: State, _ onlyAttempt: UInt64?) -> ListenerRefusal? {

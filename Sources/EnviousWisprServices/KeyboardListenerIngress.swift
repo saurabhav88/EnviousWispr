@@ -76,7 +76,7 @@ package final class KeyboardListenerIngress: Sendable {
     case engine(
       keyCode: UInt16, isPress: Bool, input: RecordGesture.InputTime, generation: UInt64,
       recovery: RecordGestureEngine.ListenerPressRecovery = .notReadable,
-      onlyAttempt: UInt64? = nil)
+      onlyAttempt: UInt64? = nil, ordinaryKeyHeld: Bool = false)
     case cancel(keyCode: UInt16, generation: UInt64)
     case main(MainEdge)
     /// A fresh ordinary key press, for the engine's other-key dismissal (#3544 P4, D2). Carries
@@ -179,8 +179,13 @@ package final class KeyboardListenerIngress: Sendable {
     guard !event.isOurs, event.keyCode != Self.ignoredGlobeKeyCode else { return }
     let handled = clock()
     let classification = engine.listenerClassification()
+    // An ordinary key the listener still thinks is held would refuse a record start (#3544 P4):
+    // confirm it first, outside every lock, so a keyUp the listener never saw cannot block one.
+    let ordinary = state.withLock { $0.tracker.ordinaryDown }
+    let ordinaryAnswers = ordinary.isEmpty ? [:] : reader(ordinary)
     state.withLock { s in
       guard !s.closed else { return }
+      s.tracker.confirmOrdinary(ordinaryAnswers)
       s.inputSequence &+= 1
       let update = s.tracker.ingest(
         event, handled: handled, configuration: classification.configuration)
@@ -207,17 +212,19 @@ package final class KeyboardListenerIngress: Sendable {
   }
 
   /// One ordinary key event (#3544 P4). Updates the local ordinary-key state, and queues a fresh
-  /// press for the engine's dismissal decision in input order with modifier events, unless the
-  /// key belongs to a configured chord shortcut (that is the user reaching for it, not
+  /// press for the engine's dismissal decision in input order with modifier events, unless the key
+  /// and its modifiers match a configured, eligible chord shortcut (the user reaching for it, not
   /// interference). Nothing about the key leaves this function.
   private func ingestOrdinary(_ event: KeyEventValue) {
     guard !event.isOurs else { return }
     let handled = clock()
-    let chordKeys = engine.listenerClassification().configuration.bindings.chordKeyCodes
+    let configuration = engine.listenerClassification().configuration
+    let isChord = configuration.bindings.matchesChord(
+      keyCode: event.keyCode, rawFlags: event.rawFlags, armed: configuration.armed)
     state.withLock { s in
       guard !s.closed else { return }
-      let fresh = s.tracker.ingestOrdinary(event, handled: handled)
-      guard fresh, !chordKeys.contains(event.keyCode) else { return }
+      let fresh = s.tracker.ingestOrdinary(event)
+      guard fresh, !isChord else { return }
       s.pending.append(
         .otherKey(input: .accepting(stamp: event.timestamp, handled: handled)))
     }
@@ -235,10 +242,6 @@ package final class KeyboardListenerIngress: Sendable {
     case .press:
       let route: Route?
       switch edge.role {
-      case .record? where s.tracker.isOrdinaryKeyHeld(at: edge.handled):
-        // Exact-set start (#3544 P4): a record press with an ordinary key already held is part of
-        // something else being typed, never a dictation. Unrouted, so its release does nothing.
-        route = nil
       case .record?:
         route = classification.mode == .pushToTalk ? .engine : .main(.record)
       case .cancel?:
@@ -259,10 +262,12 @@ package final class KeyboardListenerIngress: Sendable {
         // modifier-flags reader later (#3544 P4 C2).
         let recovery: RecordGestureEngine.ListenerPressRecovery =
           edge.evidence == .aggregateOnly ? .notReadable : .readable
+        // Exact-set start (#3544 P4): the engine refuses a press that would START a dictation while
+        // an ordinary key is held; a stop, lock or second tap of a live take is never refused.
         actions.append(
           .engine(
             keyCode: edge.keyCode, isPress: true, input: input, generation: generation,
-            recovery: recovery))
+            recovery: recovery, ordinaryKeyHeld: s.tracker.isOrdinaryKeyHeld))
       case .cancel?:
         actions.append(.cancel(keyCode: edge.keyCode, generation: generation))
       case .main(let role)?:
@@ -318,10 +323,13 @@ package final class KeyboardListenerIngress: Sendable {
 
   private func perform(_ action: Action) {
     switch action {
-    case .engine(let keyCode, let isPress, let input, let generation, let recovery, let onlyAttempt):
+    case .engine(
+      let keyCode, let isPress, let input, let generation, let recovery, let onlyAttempt,
+      let ordinaryKeyHeld):
       engine.ingestFromListener(
         keyCode: keyCode, isPress: isPress, input: input, generation: generation,
-        installation: installation, recovery: recovery, onlyAttempt: onlyAttempt)
+        installation: installation, recovery: recovery, onlyAttempt: onlyAttempt,
+        ordinaryKeyHeld: ordinaryKeyHeld)
     case .cancel(let keyCode, let generation):
       engine.cancelFromListener(
         keyCode: keyCode, generation: generation, installation: installation)
