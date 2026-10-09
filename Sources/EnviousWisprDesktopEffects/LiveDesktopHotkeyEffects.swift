@@ -37,6 +37,7 @@ package final class LiveDesktopHotkeyEffects: DesktopHotkeyEffects {
     case hotkey(EventHotKeyRef)
     case handler(EventHandlerRef, Unmanaged<CarbonHandlerBox>)
     case monitor(Any)
+    case keyboardListener(LiveKeyboardListener)
   }
 
   private var resources: [DesktopEffectToken: Resource] = [:]
@@ -180,12 +181,16 @@ package final class LiveDesktopHotkeyEffects: DesktopHotkeyEffects {
 
   // MARK: - Keyboard listener
 
-  /// Incomplete scaffolding (#3544 P2 Chunk 1): nothing calls this yet, and it installs nothing.
-  /// Chunk 3 replaces it with the event tap on its own thread.
+  /// The keyboard listener's event tap on its own thread (#3544 P2). Nil when the tap could not be
+  /// created or its thread did not start in time; `HotkeyService` reports that.
   package func installKeyboardListener(
     _ sink: @escaping @Sendable (KeyEventValue) -> ListenerVerdict
   ) -> DesktopEffectToken? {
-    nil
+    let listener = LiveKeyboardListener(sink: sink)
+    guard listener.start() else { return nil }
+    let token = DesktopEffectToken()
+    resources[token] = .keyboardListener(listener)
+    return token
   }
 
   private func store(_ monitor: Any?) -> DesktopEffectToken? {
@@ -223,6 +228,13 @@ package final class LiveDesktopHotkeyEffects: DesktopHotkeyEffects {
       box.release()
     case .monitor(let monitor):
       NSEvent.removeMonitor(monitor)
+    case .keyboardListener(let listener):
+      // Same contract as the handler: until the worker confirms its cleanup the callback context
+      // is still live, so the caller keeps its token and can retry.
+      guard listener.stop() else {
+        resources[token] = .keyboardListener(listener)
+        return false
+      }
     }
     return true
   }
