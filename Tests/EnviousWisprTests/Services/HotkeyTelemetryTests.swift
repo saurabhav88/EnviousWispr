@@ -212,25 +212,25 @@ import Testing
       var heldAtEmit: [Bool] = []
     }
     let box = Box()
-    var now: TimeInterval = 100
+    let clock = HotkeyTestClock(100)
     let sink = HotkeyTelemetrySink(
       registrationFailed: { _, _, _, _ in },
       pressed: { _, _, _, _, action, _ in
         if action == "ignored_cooldown" { box.heldAtEmit.append(box.service?.isModifierHeld ?? false) }
       })
     let service = HotkeyService(
-      effects: RecordingDesktopHotkeyEffects(), telemetry: sink, uptime: { now }, sleep: { _ in })
+      effects: RecordingDesktopHotkeyEffects(), telemetry: sink, uptime: clock.uptime)
     box.service = service
     service.recordingMode = .pushToTalk
     service.toggleKeyCode = 0
     service.handleCarbonHotkey(id: toggleID, isRelease: false, timestamp: 100)
-    now = 100.125
+    clock.now = 100.125
     service.handleCarbonHotkey(id: toggleID, isRelease: true, timestamp: 100.125)
-    now = 100.25
+    clock.now = 100.25
     service.handleCarbonHotkey(id: toggleID, isRelease: false, timestamp: 100.25)  // lock
-    now = 100.375
+    clock.now = 100.375
     service.handleCarbonHotkey(id: toggleID, isRelease: true, timestamp: 100.375)
-    now = 100.625
+    clock.now = 100.625
     service.handleCarbonHotkey(id: toggleID, isRelease: false, timestamp: 100.625)  // cooldown
     #expect(box.heldAtEmit == [true])
     #expect(service.isModifierHeld == false)

@@ -35,9 +35,11 @@ import Testing
 @MainActor
 @Suite struct HotkeyGlobeKeyTests {
 
-  @MainActor final class ManualClock {
-    private(set) var now: TimeInterval = 2_000_000
-    func advance(ms: Int) { now += Double(ms) / 1000.0 }
+  /// #3544: the engine reads this clock off the main actor, so it is the thread-safe test clock.
+  final class ManualClock: Sendable {
+    private let clock = HotkeyTestClock(2_000_000)
+    var now: TimeInterval { clock.now }
+    func advance(ms: Int) { clock.advance(ms: ms) }
   }
 
   /// Signal-driven wait for a callback that has no task to await.
