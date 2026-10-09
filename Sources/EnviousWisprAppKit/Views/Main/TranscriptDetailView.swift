@@ -544,8 +544,11 @@ struct TranscriptDetailView: View {
 /// over `transcriptCoordinator` (a reference) and re-reads `exportText`'s own live,
 /// expiry-checked selection at that later point, the same delivery-time validation Save gets
 /// from being read after its modal returns.
-private struct DeliverableText: Transferable, Sendable {
-  let resolve: @Sendable () -> String?
+// Module-internal so regression tests can cross the real CoreTransferable boundary.
+struct DeliverableText: Transferable, Sendable {
+  // #3566: the system requests data away from the UI executor. The resolver reads
+  // MainActor-owned History state, so its type must preserve that isolation.
+  let resolve: @MainActor @Sendable () -> String?
 
   /// A `nil` resolve must REFUSE delivery, never substitute empty content (found by chunk
   /// review): `Data("".utf8)` reads to the receiving app as a successful, if empty, export —
@@ -555,7 +558,7 @@ private struct DeliverableText: Transferable, Sendable {
 
   static var transferRepresentation: some TransferRepresentation {
     DataRepresentation(exportedContentType: .plainText) { deliverable in
-      guard let text = deliverable.resolve() else { throw ExpiredError() }
+      guard let text = await deliverable.resolve() else { throw ExpiredError() }
       return Data(text.utf8)
     }
   }
