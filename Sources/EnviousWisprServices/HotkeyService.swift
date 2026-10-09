@@ -330,6 +330,26 @@ public final class HotkeyService {
   /// a trap in a teardown path would be worse than a collision that cannot occur.
   package private(set) var monitorGeneration: UInt64 = 0
 
+  // MARK: - Keyboard listener (#3544 P2, shadow mode)
+
+  /// The keyboard listener's resource. Kept when its removal is refused, like every other token
+  /// here, and a new listener is never installed while it is still owned.
+  private var keyboardListenerToken: DesktopEffectToken?
+
+  /// The listener's installation identity, separate from `monitorGeneration`: bumped on every
+  /// install attempt and every removal, so a retry scheduled for an earlier installation never
+  /// installs one after a stop, suspend or newer install.
+  package private(set) var listenerGeneration: UInt64 = 0
+
+  /// One `registrationFailed(event_tap)` per run of failed installs, not one per retry.
+  private var listenerFailureReported = false
+  private var listenerRetry: RecordGestureEngine.TimerHandle?
+  /// Schedules the install retry off main; the fire hops to main to re-check the lifecycle.
+  private let listenerRetryScheduler: RecordGestureEngine.Scheduler
+  /// Test seam: invoked once each time a scheduled install retry runs on main, on every exit
+  /// path. Production never sets it.
+  package var onListenerRetryResolvedForTesting: (@MainActor () -> Void)?
+
   // MARK: - Telemetry (Telemetry Bible Phase 6, #1175)
 
   /// Injected hotkey/input-silence telemetry. Default `.noop` keeps legacy/test
@@ -419,6 +439,7 @@ public final class HotkeyService {
     self.effects = effects
     self.telemetry = telemetry
     self.uptime = uptime
+    self.listenerRetryScheduler = scheduler
     self.engine = RecordGestureEngine(
       binding: .keyboard(
         keyCode: ShortcutRole.record.defaultKeyCode, modifiers: ShortcutRole.record.defaultModifiers),
@@ -508,6 +529,7 @@ public final class HotkeyService {
     isEnabled = true
     reconcileAppShortcutRegistrations()
     installModifierMonitors()
+    installKeyboardListener()
     // Cancel hotkey is NOT registered here — only during recording
   }
 
@@ -517,6 +539,7 @@ public final class HotkeyService {
     unregisterToggleHotkey()
     removeCarbonEventHandler()
     removeModifierMonitors()
+    removeKeyboardListener()
     isEnabled = false
     engine.forgetHeld()
     performCleanup()
@@ -541,6 +564,7 @@ public final class HotkeyService {
     unregisterAppShortcuts()
     unregisterToggleHotkey()
     removeModifierMonitors()
+    removeKeyboardListener()
     isSuspended = true
   }
 
@@ -557,6 +581,7 @@ public final class HotkeyService {
     isSuspended = false
     reconcileAppShortcutRegistrations()
     installModifierMonitors()
+    installKeyboardListener()
     if cancelArmedBeforeSuspend { registerCancelHotkey() }
     cancelArmedBeforeSuspend = false
   }
@@ -1232,6 +1257,53 @@ public final class HotkeyService {
 
   private func removeCarbonEventHandler() {
     release(&eventHandlerToken)
+  }
+
+  /// Install the keyboard listener (#3544 P2). Shadow mode: the listener passes every event
+  /// through and nothing reads it yet, so a failure changes nothing for the user; it is reported
+  /// once and retried while the service is running and not suspended, at the cadence the app
+  /// already polls a missing Accessibility grant (`TimingConstants.accessibilityPollIntervalSec`),
+  /// since that is the usual cause.
+  private func installKeyboardListener() {
+    guard isEnabled, !isSuspended, keyboardListenerToken == nil else { return }
+    listenerRetry?.cancel()
+    listenerRetry = nil
+    listenerGeneration &+= 1
+    let generation = listenerGeneration
+    if let token = effects.installKeyboardListener({ _ in .passThrough }) {
+      keyboardListenerToken = token
+      listenerFailureReported = false
+      return
+    }
+    if !listenerFailureReported {
+      listenerFailureReported = true
+      telemetry.registrationFailed(
+        "event_tap", ShortcutRole.record.telemetryKind, nil,
+        recordBinding.isBareModifier ? "modifier_only" : "chord")
+    }
+    // Weak at every level: a pending retry must not keep a released service alive.
+    listenerRetry = listenerRetryScheduler(TimingConstants.accessibilityPollIntervalSec) {
+      [weak self] in
+      DispatchQueue.main.async { [weak self] in
+        MainActor.assumeIsolated {
+          guard let self else { return }
+          // Test seam: signalled on every exit of a retry that reached main.
+          defer { self.onListenerRetryResolvedForTesting?() }
+          guard self.listenerGeneration == generation else { return }
+          self.listenerRetry = nil
+          self.installKeyboardListener()
+        }
+      }
+    }
+  }
+
+  /// Remove the keyboard listener and retire any pending retry. A refused removal keeps the
+  /// token, so no replacement is installed while the old tap may still be live.
+  private func removeKeyboardListener() {
+    listenerRetry?.cancel()
+    listenerRetry = nil
+    listenerGeneration &+= 1
+    release(&keyboardListenerToken)
   }
 
   // MARK: - Registration Helpers
