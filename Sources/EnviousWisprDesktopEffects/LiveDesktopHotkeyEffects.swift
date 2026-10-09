@@ -167,15 +167,16 @@ package final class LiveDesktopHotkeyEffects: DesktopHotkeyEffects {
     return nil
   }
 
-  /// `CGEventSource.keyState` on the HID system state: the physical keyboard as the system last
-  /// saw it. Which state table reports a release made under Secure Input is not yet verified
-  /// (#3544 P0 item 3, real-hand probe pending), so this is used only to reconcile after a
-  /// re-enable, where an unread or wrong answer leaves the shadow model uncertain, never acting.
+  /// The system's modifier flags on the HID system state, read once per call and interpreted per
+  /// key by `KeyStateTracker.reading`. Reconciliation releases a hold only on an `.up` answer, so
+  /// an unclear reading keeps the hold.
   package var keyStateReader: @Sendable (Set<UInt16>) -> [UInt16: KeyStateTracker.Reading] {
     { keys in
+      // One read of the system's modifier flags answers every key (see `KeyStateTracker.reading`).
+      let flags = CGEventSource.flagsState(.hidSystemState).rawValue
       var answers: [UInt16: KeyStateTracker.Reading] = [:]
       for key in keys {
-        answers[key] = CGEventSource.keyState(.hidSystemState, key: CGKeyCode(key)) ? .down : .up
+        answers[key] = KeyStateTracker.reading(forKey: key, flags: flags)
       }
       return answers
     }

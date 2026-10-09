@@ -63,14 +63,9 @@ package struct KeyStateTracker: Equatable, Sendable {
     package let role: ShortcutRole?
   }
 
-  /// The result of one input: its edges, and the key left ambiguous by aggregate-only evidence.
+  /// The result of one input: its edges. A release of a key never seen down makes none.
   package struct Update: Equatable, Sendable {
     package var edges: [Edge] = []
-    package var ambiguousKey: UInt16?
-    /// The changed key reported up while no hold of it was observed (its press came before the
-    /// listener, or was missed). Not an edge: held state is unchanged. Reported so a consumer
-    /// that compares with another reader of the same event can account for it.
-    package var unheldRelease: Edge?
   }
 
   /// One held key: when it was first seen down and on what evidence. Duplicates never refresh it.
@@ -98,6 +93,21 @@ package struct KeyStateTracker: Equatable, Sendable {
   /// Device-dependent left and right masks per family, from `IOLLEvent.h`
   /// (`NX_DEVICEL*KEYMASK` / `NX_DEVICER*KEYMASK`), mirrored as primitives so this file needs no
   /// IOKit import.
+  /// What the system's current modifier flags (`CGEventSource.flagsState(.hidSystemState)`) say
+  /// about `key`. The family flag off proves it up; its own side bit proves it down; another side's
+  /// bit with its own clear proves it up. The family on with no side bits at all (synthetic input)
+  /// proves nothing, so it is `.unknown` and a reconciliation changes nothing. Globe reads its
+  /// function flag. `CGEventSource.keyState` is not used: it read a held modifier as up (#3544 P3
+  /// hotfix), which ended push-to-talk holds at the first five-second sweep.
+  package static func reading(forKey key: UInt16, flags: UInt64) -> Reading {
+    guard let flag = ModifierKeyCodes.flag(for: key) else { return .unknown }
+    guard flags & UInt64(flag.rawValue) != 0 else { return .up }
+    guard let masks = sideMasks[key] else { return .down }
+    if flags & masks.own != 0 { return .down }
+    if flags & masks.family != 0 { return .up }
+    return .unknown
+  }
+
   private static let sideMasks: [UInt16: (own: UInt64, family: UInt64)] = {
     let control: (left: UInt64, right: UInt64) = (0x0000_0001, 0x0000_2000)
     let shift: (left: UInt64, right: UInt64) = (0x0000_0002, 0x0000_0004)
@@ -151,13 +161,9 @@ package struct KeyStateTracker: Equatable, Sendable {
       update.edges.append(edge(.release, code, evidence))
     }
 
-    /// The changed key going up: a release edge if a hold was observed, else noted as unheld.
+    /// The changed key going up: a release edge if a hold was observed, else nothing.
     func releaseChanged(_ evidence: Evidence) {
-      if held[key] == nil {
-        update.unheldRelease = edge(.release, key, evidence)
-      } else {
-        release(key, evidence)
-      }
+      release(key, evidence)
     }
 
     guard let masks = Self.sideMasks[key] else {
@@ -167,7 +173,6 @@ package struct KeyStateTracker: Equatable, Sendable {
     }
     if !familyOn {
       // The family is off: every member that was held is released, in key-code order.
-      if held[key] == nil { update.unheldRelease = edge(.release, key, .aggregateCleared) }
       let members = held.keys.filter { Self.sideMasks[$0]?.family == masks.family }.sorted()
       for member in members { release(member, .aggregateCleared) }
       return update
@@ -181,7 +186,6 @@ package struct KeyStateTracker: Equatable, Sendable {
       press(.aggregateOnly)
     } else {
       ambiguous.insert(key)
-      update.ambiguousKey = key
     }
     return update
   }

@@ -71,7 +71,7 @@ struct KeyboardListenerIngressTests {
         installation: installation, engine: engine,
         reader: { keys in
           reads.withLock { $0 += 1 }
-          // Once: the input it delivers may itself trigger a verification.
+          // Once: a hook runs during the first read only.
           duringRead.withLock { hook -> (@Sendable () -> Void)? in
             defer { hook = nil }
             return hook
@@ -168,35 +168,70 @@ struct KeyboardListenerIngressTests {
 
   // MARK: - Reconciliation triggers
 
-  @Test("a confirmed re-enable releases a hold the OS reads up")
-  func reenableReconciles() async {
+  /// A re-enable means key-ups may have been missed, not that the record key came up: it ends
+  /// nothing itself, and restarts the sweep's count, so an up reading taken before it never counts.
+  @Test("a re-enable ends nothing itself and restarts the two-reading count")
+  func reenableRestartsConfirmation() async {
     let rig = Rig()
     await rig.key(Self.option, held: [Self.option], at: 0)
     rig.readings.withLock { $0[Self.option] = .up }  // the key-up happened while the tap was off
-    await rig.notice(.tapReenabled, at: 2)
+    await rig.fireSweeps(at: 5)
+    await rig.notice(.tapReenabled, at: 6)
+    #expect(rig.effects == ["start"])
+    await rig.fireSweeps(at: 10)
+    #expect(rig.effects == ["start"], "an up reading from before the re-enable was counted")
+    await rig.fireSweeps(at: 15)
     #expect(rig.effects == ["start", "holdStop"])
     #expect(rig.ingress.heldKeysForTesting.isEmpty)
   }
 
-  @Test("Secure Input clearing reconciles; entering it does not")
-  func secureInputClearReconciles() async {
+  @Test("Secure Input clearing restarts the count and ends nothing itself; entering it does neither")
+  func secureInputClearRestartsConfirmation() async {
     let rig = Rig()
     await rig.key(Self.option, held: [Self.option], at: 0)
     rig.readings.withLock { $0[Self.option] = .up }
-    await rig.notice(.secureInputChanged, secureInputOn: true, at: 1)
-    #expect(rig.reads.withLock { $0 } == 0)
+    await rig.fireSweeps(at: 5)
+    await rig.notice(.secureInputChanged, secureInputOn: true, at: 6)
+    #expect(rig.reads.withLock { $0 } == 1, "entering Secure Input read key state")
+    await rig.notice(.secureInputChanged, secureInputOn: false, at: 7)
+    #expect(rig.reads.withLock { $0 } == 1, "clearing Secure Input read key state")
     #expect(rig.effects == ["start"])
-    await rig.notice(.secureInputChanged, secureInputOn: false, at: 2)
+    await rig.fireSweeps(at: 10)
+    #expect(rig.effects == ["start"], "an up reading from before Secure Input cleared was counted")
+    await rig.fireSweeps(at: 15)
     #expect(rig.effects == ["start", "holdStop"])
   }
 
-  @Test("the 5 s sweep releases a hold the OS reads up, with no key event")
+  /// One up reading is never enough: a reader that misread a held key once must not end a
+  /// dictation (#3544 P3 hotfix: a held Right Option read up and cut every hold at five seconds).
+  @Test("two consecutive sweeps that read a hold up release it, with no key event; one never does")
   func sweepReleasesAMissedKeyUp() async {
     let rig = Rig()
     await rig.key(Self.option, held: [Self.option], at: 0)
     #expect(rig.timers.requestedDelays.contains(5))
     rig.readings.withLock { $0[Self.option] = .up }
     await rig.fireSweeps(at: 5)
+    #expect(rig.effects == ["start"], "a single up reading ended the hold")
+    await rig.fireSweeps(at: 10)
+    #expect(rig.effects == ["start", "holdStop"])
+  }
+
+  @Test("an up reading followed by a down reading, or by any key event, starts the count again")
+  func sweepConfirmationResets() async {
+    let rig = Rig()
+    await rig.key(Self.option, held: [Self.option], at: 0)
+    rig.readings.withLock { $0[Self.option] = .up }
+    await rig.fireSweeps(at: 5)
+    rig.readings.withLock { $0[Self.option] = .down }
+    await rig.fireSweeps(at: 10)
+    rig.readings.withLock { $0[Self.option] = .up }
+    await rig.fireSweeps(at: 15)
+    #expect(rig.effects == ["start"], "up, down, up released the hold")
+    // An admitted modifier event between readings restarts confirmation.
+    await rig.key(Self.shift, held: [Self.option, Self.shift], at: 16)
+    await rig.fireSweeps(at: 20)
+    #expect(rig.effects == ["start"], "input between two up readings released the hold")
+    await rig.fireSweeps(at: 25)
     #expect(rig.effects == ["start", "holdStop"])
   }
 
@@ -214,30 +249,30 @@ struct KeyboardListenerIngressTests {
     #expect(rig.reads.withLock { $0 } == 3)
   }
 
-  @Test("an event the tracker cannot place is verified first, then retried once")
-  func unmatchedPressIsVerified() async {
+  /// An event the tracker cannot place is a sign events were missed, not proof the record key came
+  /// up: it ends nothing and reads nothing itself; the sweeps decide.
+  @Test("an event the tracker cannot place ends nothing itself; two sweeps release a missed key-up")
+  func unplacedEventEndsNothing() async {
     let rig = Rig()
     await rig.key(Self.option, held: [Self.option], at: 0)
     #expect(rig.effects == ["start"])
-    // A press of a key the tracker already holds cannot be placed. Read down: the hold is real,
-    // and the duplicate is never a second press.
-    rig.readings.withLock { $0[Self.option] = .down }
-    await rig.key(Self.option, held: [Self.option], at: 1)
-    #expect(rig.reads.withLock { $0 } == 1, "the duplicate was verified")
-    #expect(rig.effects == ["start"])
-    // Read up: the old hold's release was missed. It is released (release-only recovery), then
-    // the event is placed on its one retry, as the new press it is.
+    // A press of a key the tracker already holds cannot be placed; it is never a second press.
     rig.readings.withLock { $0[Self.option] = .up }
-    await rig.key(Self.option, held: [Self.option], at: 3)
-    #expect(rig.effects == ["start", "holdStop", "start"])
-    #expect(rig.ingress.heldKeysForTesting == [Self.option])
+    await rig.key(Self.option, held: [Self.option], at: 1)
+    #expect(rig.reads.withLock { $0 } == 0, "the unplaced event read key state")
+    #expect(rig.effects == ["start"])
+    await rig.fireSweeps(at: 6)
+    #expect(rig.effects == ["start"])
+    await rig.fireSweeps(at: 11)
+    #expect(rig.effects == ["start", "holdStop"])
+    #expect(rig.ingress.heldKeysForTesting.isEmpty)
   }
 
   /// Input with no side bits (synthetic or assistive keyboards): Right Option is the record key and
   /// Left Option stays held. Right Option's release leaves the Option family on, so the tracker
-  /// cannot tell it from a press; verification reads it up and ends the hold. The event must not
-  /// then be retried as a new press, or the release starts a second recording.
-  @Test("an aggregate-only release while the other side is held stops, and starts nothing")
+  /// cannot tell it from a press. It must never become a new press (a second recording); the
+  /// sweeps end the hold once they read the key up twice.
+  @Test("an aggregate-only release while the other side is held starts nothing; the sweeps stop it")
   func ambiguousReleaseIsNotRetriedAsAPress() async {
     let rig = Rig()
     let family = UInt64(NSEvent.ModifierFlags.option.rawValue)
@@ -257,14 +292,36 @@ struct KeyboardListenerIngressTests {
     await rig.send(
       KeyEventValue(kind: .flagsChanged, keyCode: Self.option, rawFlags: family, timestamp: 503),
       at: 3)
+    #expect(rig.effects == ["start"])
+    await rig.fireSweeps(at: 6)
+    await rig.fireSweeps(at: 11)
     #expect(rig.effects == ["start", "holdStop"])
     #expect(rig.ingress.heldKeysForTesting == [leftOption])
   }
 
+  /// A re-enable that lands while a sweep's reader is out voids that sweep's answer too: only
+  /// readings taken after the re-enable count.
+  @Test("a re-enable during a sweep's read voids that reading")
+  func reenableDuringAReadVoidsIt() async {
+    let rig = Rig()
+    await rig.key(Self.option, held: [Self.option], at: 0)
+    rig.readings.withLock { $0[Self.option] = .up }
+    let ingress = rig.ingress!
+    rig.duringRead.withLock {
+      $0 = {
+        ingress.receive(KeyEventValue(kind: .tapReenabled, keyCode: 0, rawFlags: 0, timestamp: nil))
+      }
+    }
+    await rig.fireSweeps(at: 5)
+    await rig.fireSweeps(at: 10)
+    #expect(rig.effects == ["start"], "a reading taken before the re-enable was counted")
+    await rig.fireSweeps(at: 15)
+    #expect(rig.effects == ["start", "holdStop"])
+  }
+
   @Test("an answer that went stale while the reader ran is dropped, never applied")
   func staleAnswersAreDropped() async {
-    // Shift is Quick Add here, so the input that arrives mid-read is placed without itself
-    // asking for a verification of its own.
+    // Input arrives mid-read; Shift is Quick Add here, so it is an ordinary placed press.
     var bindings = ShortcutBindings.shipped
     bindings.record = .keyboard(keyCode: Self.option, modifiers: [])
     bindings.quickAdd = .keyboard(keyCode: Self.shift, modifiers: [])
@@ -281,7 +338,8 @@ struct KeyboardListenerIngressTests {
             rawFlags: ListenerKeyboard.rawFlags([Self.option, Self.shift]), timestamp: 501.9))
       }
     }
-    await rig.notice(.tapReenabled, at: 2)
+    await rig.fireSweeps(at: 5)
+    #expect(rig.reads.withLock { $0 } == 1)
     #expect(rig.effects == ["start"])
     #expect(rig.ingress.heldKeysForTesting.contains(Self.option))
   }
@@ -297,6 +355,8 @@ struct KeyboardListenerIngressTests {
     #expect(rig.ingress.heldKeysForTesting.isEmpty)
     rig.readings.withLock { $0[Self.option] = .up }
     await rig.fireSweeps(at: 5)
+    #expect(rig.effects == ["start"], "a single up reading ended the hold")
+    await rig.fireSweeps(at: 10)
     #expect(rig.effects == ["start", "holdStop"])
     #expect(rig.engine.ownedListenerKey == nil)
   }
@@ -332,43 +392,28 @@ struct KeyboardListenerIngressTests {
     let rig = Rig()
     await rig.key(Self.option, held: [Self.option], at: 0)
     rig.readings.withLock { $0[Self.option] = .up }  // its key-up was missed
-    // In the window between the reconciliation's commit and its drain, the user presses again.
+    await rig.fireSweeps(at: 5)  // the first up reading ends nothing
+    // In the window between the second sweep's commit and its drain, the user presses again.
     let ingress = rig.ingress!
     rig.afterCommit.withLock {
       $0 = {
         ingress.receive(
           KeyEventValue(
             kind: .flagsChanged, keyCode: Self.option,
-            rawFlags: ListenerKeyboard.rawFlags([Self.option]), timestamp: 502.5))
+            rawFlags: ListenerKeyboard.rawFlags([Self.option]), timestamp: 510.5))
       }
     }
-    await rig.notice(.tapReenabled, at: 2.5)
+    await rig.fireSweeps(at: 10)
     #expect(rig.effects == ["start", "holdStop", "start"], "the new press was read as a duplicate")
   }
 
-  @Test("a press of a key no shortcut owns verifies held state first")
-  func unboundPressVerifies() async {
+  @Test("a press of a key no shortcut owns ends nothing and reads nothing")
+  func unboundPressEndsNothing() async {
     let rig = Rig()
     await rig.key(Self.option, held: [Self.option], at: 0)
-    rig.readings.withLock { $0[Self.option] = .up }  // Right Option's release was missed
+    rig.readings.withLock { $0[Self.option] = .up }  // a wrong reading, or a missed release
     await rig.key(Self.shift, held: [Self.option, Self.shift], at: 2)
-    #expect(rig.reads.withLock { $0 } == 1)
-    #expect(rig.effects == ["start", "holdStop"])
-  }
-
-  @Test("a retried event is dropped when the configuration changed while it was verified")
-  func retryIsDroppedAfterAConfigurationChange() async {
-    let rig = Rig()
-    await rig.key(Self.option, held: [Self.option], at: 0)
-    rig.readings.withLock { $0[Self.option] = .up }  // the old hold's release was missed
-    // Between the verification's commit and the retry, the user switches to toggle mode.
-    let engine = rig.engine
-    var bindings = ShortcutBindings.shipped
-    bindings.record = .keyboard(keyCode: Self.option, modifiers: [])
-    let toggle = bindings
-    rig.afterCommit.withLock { $0 = { engine.configure(bindings: toggle, mode: .toggle) } }
-    await rig.key(Self.option, held: [Self.option], at: 3)  // the unplaceable duplicate
-    #expect(rig.effects == ["start", "holdStop"])
-    #expect(rig.mainEdges.withLock { $0 }.isEmpty, "an old event was read as a toggle press")
+    #expect(rig.reads.withLock { $0 } == 0)
+    #expect(rig.effects == ["start"])
   }
 }
