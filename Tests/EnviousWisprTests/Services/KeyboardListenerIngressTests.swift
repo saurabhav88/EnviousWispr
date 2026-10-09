@@ -401,6 +401,17 @@ struct KeyboardListenerIngressTests {
     await disarmed.key(Self.option, held: [Self.option], at: 0)
     await ordinary(disarmed, .keyDown, Self.escape, at: 0.2)
     #expect(disarmed.effects == ["start", "dismiss"], "a disarmed cancel key was exempt")
+    // A chord the bare record modifier displaces (Quick Add on Option-W under bare Right Option)
+    // holds no Carbon registration, so it is not exempt either.
+    var bindings = ShortcutBindings.shipped
+    bindings.record = .keyboard(keyCode: Self.option, modifiers: [])
+    bindings.quickAdd = .keyboard(keyCode: Self.letterW, modifiers: [.option])
+    let displaced = Rig(bindings: bindings)
+    await displaced.key(Self.option, held: [Self.option], at: 0)
+    await ordinary(
+      displaced, .keyDown, Self.letterW, at: 0.2,
+      flags: UInt64(NSEvent.ModifierFlags.option.rawValue))
+    #expect(displaced.effects == ["start", "dismiss"], "a displaced chord was exempt")
   }
 
   @Test("a fresh ordinary key early in a hold dismisses it once; repeats, our own and shortcut keys never")
