@@ -23,7 +23,8 @@ import os
 /// provisional baselines (§14), to be checked against P2 live measurements.
 ///
 /// **Not produced yet.** `.secureInputChanged` (detection and policy are P3, plan §3.5; a disable
-/// is never read as Secure Input, #3544 P0) and `isOurs` (the shared self-event marker is P3).
+/// is never read as Secure Input, #3544 P0). `isOurs` is read from the shared
+/// `SyntheticKeyboardEventMarker`.
 ///
 /// **`@unchecked Sendable`, and why that is true.** Everything shared between threads lives in
 /// `state`, behind one lock. The tap, run loop source, watchdog timer and callback context are
@@ -242,7 +243,9 @@ final class LiveKeyboardListener: @unchecked Sendable {
       keyCode: UInt16(truncatingIfNeeded: event.getIntegerValueField(.keyboardEventKeycode)),
       rawFlags: event.flags.rawValue,
       timestamp: TimeInterval(event.timestamp) / 1_000_000_000,
-      isAutorepeat: event.getIntegerValueField(.keyboardEventAutorepeat) != 0)
+      isAutorepeat: event.getIntegerValueField(.keyboardEventAutorepeat) != 0,
+      isOurs: event.getIntegerValueField(.eventSourceUserData)
+        == SyntheticKeyboardEventMarker.userData)
     _ = sink(value)
   }
 
