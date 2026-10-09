@@ -217,11 +217,6 @@ package final class RecordGestureEngine: Sendable {
     /// Whether a key-state reading may end this hold (#3544 P4 C2). Kept with the attempt, so it
     /// survives listener replacement and absence.
     let recovery: ListenerPressRecovery
-    /// Whether this attempt's press found a session already running (one started from the menu, the
-    /// main window or an earlier take), so its start joins that session rather than making one
-    /// (#3544 P4). Other-key interference never ends a recording this press did
-    /// not start; the press keeps its stop and lock.
-    let joinsRecording: Bool
   }
 
   /// The listener-owned record press a held-record check may ask about: its key, its attempt, and
@@ -244,9 +239,11 @@ package final class RecordGestureEngine: Sendable {
     /// test `RecordingStarter.start()` uses to join one), as the dictation lifecycle reports it.
     /// Not cleared by suspend, resume, restart or reset: it is the pipeline's, not the shortcuts'.
     var recordingActive = false
-    /// The attempt whose `.start` found a session running, so it only joins it (#3544 P4). Kept by
-    /// attempt, not by press: a quick release clears `owned`, and the attempt's second tap must
-    /// still be joining.
+    /// The attempt whose `.start` found a session running (one started from the menu, the main
+    /// window or an earlier take), so it only joins it (#3544 P4): other-key interference never
+    /// ends it, and its press keeps its stop and lock. Kept by attempt, not by press: a quick
+    /// release clears `owned`, and the attempt's second tap must still be joining. Also set by
+    /// `markJoined` when main finds a start joined a session that began after the press.
     var joinedAttempt: UInt64?
     /// This engine has already ended the running session's attempt (a listener cancel or an
     /// other-key dismissal), so that session is on its way out: the next `.start` is a fresh take,
@@ -351,6 +348,16 @@ package final class RecordGestureEngine: Sendable {
   /// before must not be refused for it.
   package func setCancelArmed(_ armed: Bool) {
     state.withLock { $0.cancelArmed = armed }
+  }
+
+  /// Main found that `attempt`'s start joined a session that began after its press (#3544 P4): it
+  /// is a joining attempt from now on. A dismissal already decided for it stands; the controller
+  /// still refuses to cancel the joined session.
+  package func markJoined(attempt: UInt64) {
+    state.withLock { s in
+      guard s.gesture.attemptID == attempt else { return }
+      s.joinedAttempt = attempt
+    }
   }
 
   /// Whether a session is running now (#3544 P4): a fresh record press made while one is joins it.
@@ -540,7 +547,7 @@ package final class RecordGestureEngine: Sendable {
   ) -> Bool {
     let (dismissed, work, submit) = state.withLock { s -> (Bool, TimerWork, Bool) in
       guard s.listenerInstallation == installation, s.mode == .pushToTalk,
-        let owned = s.owned, !owned.fromMain, !owned.joinsRecording,
+        let owned = s.owned, !owned.fromMain, s.joinedAttempt != owned.attemptID,
         owned.attemptID == s.gesture.attemptID,
         s.gesture.isHeld, !s.gesture.isLocked, let start = s.gesture.start,
         Self.elapsed(from: start, to: input) < Self.otherKeyDismissalWindow
@@ -570,7 +577,8 @@ package final class RecordGestureEngine: Sendable {
   /// which may only say keyboard features are paused while one is.
   package func otherKeyRuleApplies(at now: TimeInterval) -> Bool {
     state.withLock { s in
-      guard s.mode == .pushToTalk, let owned = s.owned, !owned.fromMain, !owned.joinsRecording,
+      guard s.mode == .pushToTalk, let owned = s.owned, !owned.fromMain,
+        s.joinedAttempt != owned.attemptID,
         owned.attemptID == s.gesture.attemptID, s.gesture.isHeld, !s.gesture.isLocked,
         let start = s.gesture.start
       else { return false }
@@ -721,8 +729,7 @@ package final class RecordGestureEngine: Sendable {
       let joinsRecording = s.joinedAttempt == s.gesture.attemptID
       // The held key's release follows this press, whatever the configuration is by then.
       s.owned = OwnedPress(
-        keyCode: keyCode, attemptID: s.gesture.attemptID, fromMain: fromMain, recovery: recovery,
-        joinsRecording: joinsRecording)
+        keyCode: keyCode, attemptID: s.gesture.attemptID, fromMain: fromMain, recovery: recovery)
       switch decision {
       case .start, .lockIntent:
         // A fresh attempt or a lock: the pending lone-tap stop no longer applies.

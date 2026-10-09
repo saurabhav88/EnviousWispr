@@ -505,6 +505,30 @@ struct KeyboardListenerIntegrationTests {
     #expect(ptt.joins == 1 && ptt.starts == 0, "a joining press asked to create a session")
   }
 
+  /// A menu recording began after the press was classified, so the press looked fresh; its start
+  /// joined that session. From then on interference spares it and the release still stops it.
+  @Test("a start that finds it joined a session marks the attempt joined")
+  func lateDiscoveredJoinKeepsItsStop() async {
+    let ptt = PTT()
+    defer { ptt.service.stop() }
+    var dismissed: [String] = []
+    ptt.service.onDismissRecording = { dismissed.append($0) }
+    ptt.service.onStartRecording = { [unowned ptt] in
+      ptt.service.markExecutingStartJoined()
+      return .recording("menu")
+    }
+    ptt.at(0)
+    await ptt.keys.press(ModifierKeyCodes.rightOption, at: 500)
+    await ptt.service.awaitInFlightStartForTesting()
+    ptt.at(0.3)
+    await letterDown(ptt, at: 0.3)
+    ptt.at(1.5)
+    await ptt.keys.release(ModifierKeyCodes.rightOption, at: 501.5)
+    await ListenerKeyboard.mainTurn()
+    #expect(dismissed.isEmpty, "interference ended a session the start only joined")
+    #expect(ptt.stops == 1, "the late-discovered join lost its stop")
+  }
+
   @Test("a press while a dismissed session is still ending starts a fresh take, not a join")
   func pressDuringDismissalTeardownStarts() async {
     let ptt = PTT()

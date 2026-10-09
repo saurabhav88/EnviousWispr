@@ -86,8 +86,14 @@ package struct KeyStateTracker: Equatable, Sendable {
   /// Held keys whose release could not be proven from aggregate-only evidence.
   package private(set) var ambiguous: Set<UInt16> = []
   /// Ordinary (non-modifier) keys seen down and not yet up, in event order (#3544 P4). Local state
-  /// only: never logged, never sent. Age never releases one; only its keyUp or a resync does.
+  /// only: never logged, never sent. Age never releases one; only its keyUp or a reading does.
   package private(set) var ordinaryDown: Set<UInt16> = []
+  /// Ordinary keys a reading (not a keyUp) removed, and when that reading was taken. A reading is
+  /// the present: an event that OCCURRED before it may have happened while the key was still down
+  /// (its keyUp then queued behind that event), so for such an event the key still counts as held.
+  private var ordinaryReadUpAt: [UInt16: TimeInterval] = [:]
+  /// How long a read-up key is remembered for that comparison; events are handled well inside it.
+  package static let ordinaryReadUpMemory: TimeInterval = 2
 
   package init() {}
 
@@ -138,28 +144,41 @@ package struct KeyStateTracker: Equatable, Sendable {
     switch event.kind {
     case .keyDown:
       ordinaryDown.insert(event.keyCode)
+      ordinaryReadUpAt[event.keyCode] = nil
       return !event.isAutorepeat
     case .keyUp:
       ordinaryDown.remove(event.keyCode)
+      ordinaryReadUpAt[event.keyCode] = nil
       return false
     case .flagsChanged, .tapReenabled, .secureInputChanged, .stormStopped:
       return false
     }
   }
 
-  /// Whether an ordinary key is held, as far as the listener has seen.
-  package var isOrdinaryKeyHeld: Bool { !ordinaryDown.isEmpty }
+  /// Whether an ordinary key was held when an event that occurred at `occurred` (handled at
+  /// `handled`) happened: one the events say is down, or one a reading removed after that moment.
+  /// An event with no usable occurrence time is compared from `ordinaryReadUpMemory` / 2 before it
+  /// was handled.
+  package mutating func isOrdinaryKeyHeld(occurred: TimeInterval?, handled: TimeInterval) -> Bool {
+    ordinaryReadUpAt = ordinaryReadUpAt.filter { handled - $0.value < Self.ordinaryReadUpMemory }
+    if !ordinaryDown.isEmpty { return true }
+    let moment = occurred ?? handled - Self.ordinaryReadUpMemory / 2
+    return ordinaryReadUpAt.values.contains { $0 > moment }
+  }
 
-  /// Replace ordinary-key state with a present-time reading, at a recovery boundary only (an
-  /// installation's first event, a tap re-enable, Secure Input changing): the events in between
-  /// may have been lost, so the reading is the best account. Never between boundaries, where a
-  /// reading could overrule a queued event the listener has not handled yet. `except` keeps the key
-  /// of the event being handled, which its own event then applies. Unknown changes nothing.
-  package mutating func resyncOrdinary(_ answers: [UInt16: Reading], except: UInt16? = nil) {
+  /// Apply a present-time reading taken at `readAt`: at a recovery boundary (an installation's
+  /// first event, a tap re-enable, Secure Input changing) for every ordinary key, and on the sweep
+  /// for the keys still held. A key read up is removed but remembered with `readAt`, so an event
+  /// that occurred before the reading still sees it held (`isOrdinaryKeyHeld`). `except` keeps the
+  /// key of the event being handled, which its own event then applies. Unknown changes nothing.
+  package mutating func resyncOrdinary(
+    _ answers: [UInt16: Reading], at readAt: TimeInterval, except: UInt16? = nil
+  ) {
     for (key, answer) in answers where key != except && ModifierKeyCodes.flag(for: key) == nil {
       switch answer {
       case .down: ordinaryDown.insert(key)
-      case .up: ordinaryDown.remove(key)
+      case .up:
+        if ordinaryDown.remove(key) != nil { ordinaryReadUpAt[key] = readAt }
       case .unknown: break
       }
     }

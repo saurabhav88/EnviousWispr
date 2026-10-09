@@ -414,6 +414,41 @@ struct KeyboardListenerIngressTests {
     #expect(rig.effects.isEmpty, "a stale Secure Input sample let a reading overrule event order")
   }
 
+  /// Secure Input that came and went between samples hid a keyUp: the sweep reads the key up and
+  /// clears it, so the key cannot block starts until it is pressed again.
+  @Test("the sweep clears an ordinary key whose keyUp was hidden between samples")
+  func sweepClearsAHiddenOrdinaryKeyUp() async {
+    let rig = Rig()
+    await ordinary(rig, .keyDown, Self.letterA, at: 0)
+    rig.readings.withLock { $0[Self.letterA] = .up }  // released while Secure Input hid it
+    await rig.key(Self.option, held: [Self.option], at: 1)
+    await rig.key(Self.option, held: [], at: 1.2)
+    #expect(rig.effects.isEmpty)
+    await rig.fireSweeps(at: 5)
+    await rig.key(Self.option, held: [Self.option], at: 6)
+    #expect(rig.effects == ["start"], "a hidden keyUp kept blocking starts after the sweep")
+  }
+
+  /// A reading is the present: a record press that OCCURRED before the reading may have happened
+  /// while the key was still down, so the key still counts for it.
+  @Test("a key a reading removed still counts for a record press that occurred before the reading")
+  func readingNeverAppliesToAnEarlierEvent() async {
+    let rig = Rig()
+    await ordinary(rig, .keyDown, Self.letterA, at: 0)
+    rig.readings.withLock { $0[Self.letterA] = .up }
+    await rig.fireSweeps(at: 5.1)  // read at 505.1
+    // Option went down at 505.0 (A still held then), handled at 505.2.
+    await rig.send(
+      KeyEventValue(
+        kind: .flagsChanged, keyCode: Self.option,
+        rawFlags: ListenerKeyboard.rawFlags([Self.option]), timestamp: 505.0),
+      at: 5.2)
+    await rig.key(Self.option, held: [], at: 5.3)
+    #expect(rig.effects.isEmpty, "a later reading let a start through an ordinary-key chord")
+    await rig.key(Self.option, held: [Self.option], at: 6)
+    #expect(rig.effects == ["start"])
+  }
+
   /// A key held across a listener replacement has no keyDown to come: the new installation reads
   /// every ordinary key before its first event acts, even before `start()` runs.
   @Test("an ordinary key held across a listener replacement refuses a start from the first event")

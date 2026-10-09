@@ -689,6 +689,14 @@ public final class HotkeyService {
     engine.setRecordingActive(active)
   }
 
+  /// The start running now found a session already running and joined it (#3544 P4), although its
+  /// press was classified before that session began: called by `onStartRecording` before it
+  /// returns, so interference from here on spares the joined session and the press keeps its stop.
+  package func markExecutingStartJoined() {
+    guard let attempt = executingAttemptID else { return }
+    engine.markJoined(attempt: attempt)
+  }
+
   /// Arm or disarm the cancel hotkey from a single decision (#2087).
   ///
   /// The lifecycle used to call `registerCancelHotkey()` / `unregisterCancelHotkey()`

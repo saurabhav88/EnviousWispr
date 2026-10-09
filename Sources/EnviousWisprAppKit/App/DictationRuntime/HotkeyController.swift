@@ -32,9 +32,9 @@ final class HotkeyController {
   let settings: SettingsManager
   /// The session a hotkey start joined rather than created (a recording already running from the
   /// menu or the main window), if any (#3544 P4). Other-key interference may only end a recording
-  /// its own press started, never one it joined. The gesture engine decides this first, from cancel
-  /// being armed at the press, and keeps the press's stop; this check covers a press that arrived
-  /// before the running recording armed cancel.
+  /// its own press started, never one it joined. The gesture engine decides this first, from the
+  /// running-session signal at the press or `markExecutingStartJoined` once the start finds one,
+  /// and keeps the press's stop; this check covers interference decided before either.
   private var joinedSessionID: String?
 
   var hotkeyDescription: String { hotkeyService.hotkeyDescription }
@@ -92,6 +92,7 @@ final class HotkeyController {
       }
       // A start while a recording is already running joins that session (`RecordingStarter.start`).
       let alreadyRunning = starter.activeDriver.state.isActive
+      if alreadyRunning { self?.hotkeyService.markExecutingStartJoined() }
       let outcome = await starter.start()
       if case .recording(let sessionID) = outcome {
         self?.joinedSessionID = alreadyRunning ? sessionID : nil
