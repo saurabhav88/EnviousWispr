@@ -250,9 +250,7 @@ struct SettingsNavigationState: Equatable {
     if let tab = request.dictionaryTab { dictionaryTab = tab }
     lastRevealToken += 1
     lastRevealEpoch = epoch
-    reveal = SettingsReveal(
-      entryID: request.entryID, anchor: request.target, fallbacks: request.fallbacks,
-      token: lastRevealToken)
+    reveal = SettingsReveal(request: request, token: lastRevealToken)
   }
 
   /// Whether the arrival for `token` still belongs to what the window shows, after its reveal was

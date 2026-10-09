@@ -9,13 +9,18 @@ import Testing
 @MainActor
 @Suite("Settings search with the meaning pass (#3482)", .tags(.productOutcome))
 struct SettingsSearchBothLegsTests {
-  /// The committed assets, with a load budget wide enough for a Debug test process (the shipped
-  /// budget is measured in Release; SettingsSearchMeaningWorkerTests owns that rule).
+  /// The committed assets.
   static func worker() -> SettingsSearchMeaningWorker {
     SettingsSearchMeaningWorker.bundled(
       assets: SettingsSearchMeaningAssets(
-        directory: RepoRoot.sourceURL("Sources/EnviousWispr/Resources/SettingsSearchMeaning")),
-      loadBudgetMilliseconds: 60_000)
+        directory: RepoRoot.sourceURL("Sources/EnviousWispr/Resources/SettingsSearchMeaning")))
+  }
+
+  /// A deadline no Debug test process reaches: these rows judge the ranking a completed pass
+  /// gives, never the deadline (`SettingsSearchModelTests` owns that, #3545). The shipped
+  /// deadline is measured in its own campaign.
+  static let noDeadline: @Sendable () async -> Void = {
+    try? await Task.sleep(for: .seconds(600))  // test-fixture-timer: a deadline these rows never reach
   }
 
   static func model(_ language: String) throws -> SettingsSearchModel {
@@ -23,16 +28,19 @@ struct SettingsSearchBothLegsTests {
       try language == "de"
       ? SettingsSearchMatchingTests.german.get() : SettingsSearchMatchingTests.english.get()
     return SettingsSearchModel(
-      loadIndex: { index }, meaningWorker: worker(), announce: { _ in },
+      loadIndex: { index }, meaningWorker: worker(), meaningDeadlineElapses: noDeadline,
+      announce: { _ in },
       announcementDelay: .seconds(60))
   }
 
-  /// Types `query` and waits for the meaning pass to finish (or be skipped).
+  /// Types `query` and waits for the meaning pass to finish (or be skipped). The first search
+  /// answers by words while the model loads and runs again with meaning once it is ready, so the
+  /// wait is for a ready model and an ended pass.
   static func search(_ model: SettingsSearchModel, _ query: String) async -> [String] {
     model.setQuery(query)
     _ = await SettingsSearchModelTests.waitUntil(seconds: 60) {
       guard case .ready = model.indexState else { return false }
-      return model.meaningPass != .pending
+      return model.meaningModel == .ready && model.meaningPass != .pending
     }
     return model.results.map(\.entryID)
   }
@@ -92,13 +100,14 @@ struct SettingsSearchBothLegsTests {
     let assets = SettingsSearchMeaningAssets(
       directory: RepoRoot.sourceURL("Sources/EnviousWispr/Resources/SettingsSearchMeaning"))
     // The load is held back three seconds on purpose; the first search pays for it.
-    let worker = SettingsSearchMeaningWorker(loadBudgetMilliseconds: 60_000) {
+    let worker = SettingsSearchMeaningWorker {
       try await Task.sleep(for: .seconds(3))  // test-fixture-timer: the delayed load is the control
       return try await SettingsSearchMeaningWorker.loadProduction(assets: assets)
     }
     let index = try SettingsSearchMatchingTests.english.get()
     let model = SettingsSearchModel(
-      loadIndex: { index }, meaningWorker: worker, announce: { _ in },
+      loadIndex: { index }, meaningWorker: worker, meaningDeadlineElapses: Self.noDeadline,
+      announce: { _ in },
       announcementDelay: .seconds(60))
     _ = await Self.search(model, "mic")
     let elapsed = try #require(model.meaningElapsedMilliseconds, "no meaning time recorded")
@@ -120,5 +129,133 @@ struct SettingsSearchBothLegsTests {
     for result in model.results where !wordIDs.contains(result.entryID) {
       #expect(result.hint == nil, "\(result.entryID) invented a hint")
     }
+  }
+}
+
+/// #3545 plan §3.5: the meaning deadline's measurement. Opt-in: runs only when the runner sets
+/// `TEST_RUNNER_EW_MEANING_CAMPAIGN` (`cold:<n>` for one process-cold first pass, or `warm` for
+/// one unmeasured warm-up and 30 measured warm passes) and `TEST_RUNNER_EW_MEANING_OUT` (a JSONL
+/// file each measured pass is appended to). `scripts/settings-map/meaning-deadline-campaign.sh`
+/// drives it. A pass is timed from the moment its search reaches the full index until the model
+/// says meaning answered, through the window's own model and the production worker over the
+/// committed assets, with a deadline it never reaches, so no sample is cut short.
+@MainActor
+@Suite(
+  "Settings search meaning deadline campaign (#3545, opt-in)", .tags(.harnessContract),
+  .enabled(if: ProcessInfo.processInfo.environment["EW_MEANING_CAMPAIGN"] != nil))
+struct SettingsSearchMeaningCampaignTests {
+  /// The distinct English practice searches of the Phase 0 bench, in fixture order (distinct, so
+  /// every measured search is a new query the model runs).
+  static func queries() throws -> [String] {
+    var seen: Set<String> = []
+    return try SettingsSearchBenchParityTests.fixture().golden.filter { $0.lang == "en" }.map(\.q)
+      .filter { seen.insert($0).inserted }
+  }
+
+  struct Sample: Encodable {
+    let phase: String
+    let index: Int
+    let query: String
+    let milliseconds: Double
+    let outcome: String
+    let meaningElapsedMilliseconds: Double?
+    let loadMilliseconds: Double?
+  }
+
+  static func append(_ sample: Sample, to path: String) throws {
+    var line = try JSONEncoder().encode(sample)
+    line.append(0x0A)
+    let url = URL(fileURLWithPath: path)
+    if !FileManager.default.fileExists(atPath: path) {
+      try Data().write(to: url)
+    }
+    let handle = try FileHandle(forWritingTo: url)
+    defer { try? handle.close() }
+    try handle.seekToEnd()
+    try handle.write(contentsOf: line)
+  }
+
+  static func outcome(_ pass: SettingsSearchModel.MeaningPass) -> String {
+    switch pass {
+    case .pending: "pending"
+    case .completed: "completed"
+    case .skipped: "skipped"
+    case .abandoned: "abandoned"
+    }
+  }
+
+  /// Waits until the meaning model is ready and the pass for the current query has ended; false
+  /// at the bound. A first search answers by words while the model loads, then runs again with
+  /// meaning, so a cold sample is the time until meaning answered.
+  static func passEnded(_ model: SettingsSearchModel) async -> Bool {
+    await SettingsSearchModelTests.waitUntil(seconds: 120) {
+      guard case .ready = model.indexState else { return false }
+      return model.meaningModel == .ready && model.meaningPass != .pending
+    }
+  }
+
+  @Test("measure meaning pass wall time")
+  func measure() async throws {
+    let environment = ProcessInfo.processInfo.environment
+    let phase = try #require(environment["EW_MEANING_CAMPAIGN"])
+    let out = try #require(environment["EW_MEANING_OUT"], "EW_MEANING_OUT is not set")
+    let queries = try Self.queries()
+    try #require(queries.count >= 61, "the practice set has \(queries.count) English searches")
+    let index = try SettingsSearchMatchingTests.english.get()
+    let gate = AsyncGate()
+    let worker = SettingsSearchBothLegsTests.worker()
+    let model = SettingsSearchModel(
+      loadIndex: {
+        await gate.wait()
+        return index
+      }, meaningWorker: worker, meaningDeadlineElapses: SettingsSearchBothLegsTests.noDeadline,
+      announce: { _ in }, announcementDelay: .seconds(600))
+    func load() async -> Double? {
+      if case .ready(let ms) = await worker.ensureLoaded() { return ms }
+      return nil
+    }
+
+    // The first pass of this process: the search waits on the index, the clock starts as the
+    // index arrives, and the pass pays for the model load.
+    let first: Int
+    if phase.hasPrefix("cold:") {
+      first = try #require(Int(phase.dropFirst(5)))
+      try #require((0..<30).contains(first), "cold runs are numbered 0 to 29")
+    } else {
+      try #require(phase == "warm", "EW_MEANING_CAMPAIGN is cold:<n> or warm")
+      first = 30
+    }
+    model.setQuery(queries[first])
+    let started = ContinuousClock.now
+    await gate.open()
+    try #require(await Self.passEnded(model), "the first pass never ended")
+    let firstTime = started.duration(to: .now)
+    if phase != "warm" {
+      try Self.append(
+        Sample(
+          phase: "cold", index: first, query: queries[first],
+          milliseconds: Self.milliseconds(firstTime), outcome: Self.outcome(model.meaningPass),
+          meaningElapsedMilliseconds: model.meaningElapsedMilliseconds,
+          loadMilliseconds: await load()), to: out)
+      return
+    }
+    // Warm: the first pass above was the unmeasured warm-up.
+    for number in 31..<61 {
+      let query = queries[number]
+      let start = ContinuousClock.now
+      model.setQuery(query)
+      try #require(await Self.passEnded(model), "pass \(number) never ended")
+      let time = start.duration(to: .now)
+      try Self.append(
+        Sample(
+          phase: "warm", index: number, query: query, milliseconds: Self.milliseconds(time),
+          outcome: Self.outcome(model.meaningPass),
+          meaningElapsedMilliseconds: model.meaningElapsedMilliseconds,
+          loadMilliseconds: await load()), to: out)
+    }
+  }
+
+  static func milliseconds(_ duration: Duration) -> Double {
+    Double(duration.components.seconds) * 1_000 + Double(duration.components.attoseconds) / 1e15
   }
 }

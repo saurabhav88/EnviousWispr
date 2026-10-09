@@ -30,6 +30,8 @@ package final class WisprBootstrapper {
   let recoveryCoordinator: RecoveryCoordinator
   let languageSuggestionPresenter: LanguageSuggestionPresenter
   let updateCoordinatorHolder: UpdateCoordinatorHolder
+  /// #3545: injected into the main window for the Settings search arrival's key watcher.
+  let settingsKeyMonitor: any SettingsKeyMonitoring
   let sparkleUpdateController: SparkleUpdateController
   let updateTriggerCoordinator: UpdateTriggerCoordinator
   let transcriptCoordinator: TranscriptCoordinator
@@ -170,6 +172,9 @@ package final class WisprBootstrapper {
     // the same reason `makeHotkeyEffects` is: a default would let this
     // test-linked module install a monitor on the developer's desktop.
     scrollWheelMonitor: any ScrollWheelMonitoring,
+    // #3545: the Settings search arrival's key watcher. Required and non-defaulted for the same
+    // reason as `scrollWheelMonitor`.
+    settingsKeyMonitor: any SettingsKeyMonitoring,
     relocationRelauncher: any RelocationRelaunching,
     overlayEffects: DesktopOverlayEffects,
     // #1413: the output-volume and media-player seams. Required and non-defaulted
@@ -1750,6 +1755,7 @@ package final class WisprBootstrapper {
     self.recoveryCoordinator = recoveryCoordinator
     self.languageSuggestionPresenter = languageSuggestionPresenter
     self.updateCoordinatorHolder = updateCoordinatorHolder
+    self.settingsKeyMonitor = settingsKeyMonitor
     self.sparkleUpdateController = sparkleUpdateController
     self.updateTriggerCoordinator = updateTriggerCoordinator
     // #2648 — Transcribe a File. Built here because the job outlives every view
@@ -2484,6 +2490,7 @@ private struct MainWindowRoot: View {
       .environment(b.diagnosticsCoordinator)
       .environment(b.languageSuggestionPresenter)
       .environment(b.updateCoordinatorHolder)
+      .environment(\.settingsKeyMonitor, b.settingsKeyMonitor)
       .environment(b.transcriptCoordinator)
       .environment(b.fileImportCoordinator)
       .environment(b.liveRecordingState)

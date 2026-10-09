@@ -6,7 +6,7 @@ import os
 
 /// #3482 chunk 3: the worker that owns the meaning pass for one Settings window session.
 /// **When this fails, typing in the Settings search either freezes, shows a result for an older
-/// search, or keeps using a model that is too slow or broken instead of falling back to the word
+/// search, or keeps using a broken model instead of falling back to the word
 /// results.** The Core ML encoder is replaced by scripted ones; the real encoder is covered by
 /// `SettingsSearchMeaningEncoderTests`.
 @Suite("Settings search meaning worker (#3482)", .tags(.productOutcome))
@@ -70,23 +70,19 @@ struct SettingsSearchMeaningWorkerTests {
     #expect(log.withLock { $0 } == ["reference", "hello"])
   }
 
-  @Test("a load exactly at the budget is kept, one nanosecond over is skipped")
-  func loadBudgetBoundary() async {
+  // #3545 (founder 2026-10-09) removed the one-second load budget: a slow load was discarded and
+  // meaning stayed off until the app restarted. This replaces its boundary test.
+  @Test("a slow load is kept and serves the searches after it")
+  func slowLoadIsKept() async {
     let log = OSAllocatedUnfairLock(initialState: [String]())
-    let atBudget = SettingsSearchMeaningWorker(
-      loadBudgetMilliseconds: 1_000, nowNanoseconds: Self.clock([0, 1_000_000_000])
-    ) { Self.loaded(log) }
-    #expect(await atBudget.ensureLoaded() == .ready(loadMilliseconds: 1_000))
-
-    let over = SettingsSearchMeaningWorker(
-      loadBudgetMilliseconds: 1_000, nowNanoseconds: Self.clock([0, 1_000_000_001])
-    ) { Self.loaded(log) }
-    #expect(await over.ensureLoaded() == .skipped(.loadTooSlow))
-    // Skipped for the session: nothing is encoded, the model and vectors are released.
-    log.withLock { $0.removeAll() }
-    #expect(await over.encode("hello", generation: 1) == .skipped(.loadTooSlow))
-    #expect(await over.placeVectors == nil)
-    #expect(log.withLock { $0.isEmpty })
+    // 11.5 s, the first load measured after a restart.
+    let worker = SettingsSearchMeaningWorker(nowNanoseconds: Self.clock([0, 11_500_000_000])) {
+      Self.loaded(log)
+    }
+    #expect(await worker.ensureLoaded() == .ready(loadMilliseconds: 11_500))
+    #expect(
+      await worker.encode("hello", generation: 1) == .vector(generation: 1, values: [1, 0, 0]))
+    #expect(await worker.placeVectors != nil)
   }
 
   @Test("a load that fails is skipped once and never retried in this session")
@@ -225,6 +221,98 @@ struct SettingsSearchMeaningWorkerTests {
     // Choosing the same generation again is allowed (a retry of the same search).
     #expect(await worker.encode("new", generation: 5) == .vector(generation: 5, values: [1, 0, 0]))
     #expect(log.withLock { $0.contains("old") } == false)
+  }
+
+  // MARK: - Window-session reset (#3545 T8)
+
+  /// Every skip reason, written out: true when a window close lets the next session retry it.
+  static let retried: [(SettingsSearchMeaningWorker.SkipReason, Bool)] = [
+    (.loadFailed, true), (.assetsInvalid, true), (.encodeFailed, true), (.selfTestFailed, true),
+    (.assetsMissing, false),
+  ]
+
+  @Test("a window close retries a failed load, self-test, bad assets or encode; never missing assets",
+    arguments: retried.indices)
+  func resetRetriesOnlyTransientFailures(row: Int) async {
+    let (reason, retries) = Self.retried[row]
+    #expect(Set(Self.retried.map(\.0.rawValue)).count == 5)
+    let log = OSAllocatedUnfairLock(initialState: [String]())
+    let calls = OSAllocatedUnfairLock(initialState: 0)
+    let worker = SettingsSearchMeaningWorker {
+      let call = calls.withLock { $0 += 1; return $0 }
+      if call == 1 { throw SettingsSearchMeaningWorker.LoadFailure(reason: reason) }
+      return Self.loaded(log)
+    }
+    #expect(await worker.ensureLoaded() == .skipped(reason))
+    await worker.resetTransientFailure()
+    let after = await worker.ensureLoaded()
+    if retries {
+      if case .ready = after {} else { Issue.record("\(reason) stayed off: \(after)") }
+      #expect(calls.withLock { $0 } == 2, "\(reason) was not loaded again")
+    } else {
+      #expect(after == .skipped(reason), "\(reason): \(after)")
+      #expect(calls.withLock { $0 } == 1, "\(reason) was loaded again")
+    }
+  }
+
+  /// A loader held at `gate` whose first load ends with `firstFails` (then loads normally).
+  static func heldWorker(
+    _ gate: Gate, loads: OSAllocatedUnfairLock<Int>, firstFails: Bool
+  ) -> SettingsSearchMeaningWorker {
+    let log = OSAllocatedUnfairLock(initialState: [String]())
+    return SettingsSearchMeaningWorker {
+      let call = loads.withLock { $0 += 1; return $0 }
+      if call == 1 {
+        gate.startedContinuation.yield()
+        for await _ in gate.released { break }
+        if firstFails { throw SettingsSearchMeaningWorker.LoadFailure(reason: .loadFailed) }
+      }
+      return Self.loaded(log)
+    }
+  }
+
+  @Test("a window close while the load runs keeps that load: one load serves both sessions")
+  func resetKeepsARunningLoad() async {
+    let loads = OSAllocatedUnfairLock(initialState: 0)
+    let gate = Gate()
+    let worker = Self.heldWorker(gate, loads: loads, firstFails: false)
+    let first = Task { await worker.ensureLoaded() }
+    for await _ in gate.started { break }
+    // The reset waits for the running load; the next session's caller shares it.
+    let entered = Latch()
+    let reset = Task {
+      await worker.resetTransientFailure(willAwaitPreparation: { Task { await entered.open() } })
+    }
+    // Bounded: a reset that never waits records a failure and still lets the load go.
+    #expect(await entered.wait(), "the reset did not wait for the running load")
+    let second = Task { await worker.ensureLoaded() }
+    gate.releaseContinuation.yield()
+    await reset.value
+    let readiness = [await first.value, await second.value, await worker.ensureLoaded()]
+    #expect(readiness.allSatisfy { if case .ready = $0 { true } else { false } }, "\(readiness)")
+    #expect(loads.withLock { $0 } == 1)
+  }
+
+  @Test("a load that fails after the window closed is retried by the next window, not inherited")
+  func failureAfterCloseIsCleared() async {
+    let loads = OSAllocatedUnfairLock(initialState: 0)
+    let gate = Gate()
+    let worker = Self.heldWorker(gate, loads: loads, firstFails: true)
+    let first = Task { await worker.ensureLoaded() }
+    for await _ in gate.started { break }
+    // The reset is waiting on the running load before the load is allowed to fail.
+    let entered = Latch()
+    let reset = Task {
+      await worker.resetTransientFailure(willAwaitPreparation: { Task { await entered.open() } })
+    }
+    // Bounded: a reset that never waits records a failure and still lets the load go.
+    #expect(await entered.wait(), "the reset did not wait for the running load")
+    gate.releaseContinuation.yield()
+    #expect(await first.value == .skipped(.loadFailed))
+    await reset.value
+    let next = await worker.ensureLoaded()
+    if case .ready = next {} else { Issue.record("the next window inherited the failure: \(next)") }
+    #expect(loads.withLock { $0 } == 2)
   }
 
   @Test("several callers share one load")

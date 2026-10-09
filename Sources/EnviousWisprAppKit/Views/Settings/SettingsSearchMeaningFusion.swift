@@ -90,10 +90,21 @@ enum SettingsSearchMeaningFusion {
       } : []
 
     let maxScore = wordHits.map(\.score).max() ?? 1
+    // The word score on a 0 to 100 scale. A best score of zero or below (a place bias such as
+    // Transcribe a File's -80 can make every score negative) cannot be divided by: zero gives no
+    // number and a negative divisor reverses the order. Then the word matcher's own order is the
+    // scale instead, from 100 for its first result down to 100 / count for its last (#3545 plan
+    // §3.5, T10). A positive best score keeps the bench's score scaling unchanged.
+    func wordScale(_ position: Int) -> Double {
+      guard maxScore > 0 else {
+        return 100 * Double(wordHits.count - position) / Double(wordHits.count)
+      }
+      return wordHits[position].score / maxScore * 100
+    }
     func key(_ position: Int) -> (Double, Double) {
-      let hit = wordHits[position]
-      return (
-        hit.coverage, hit.score / maxScore * 100 + knobs.meaningWeight * sims[hitIndexes[position]]
+      (
+        wordHits[position].coverage,
+        wordScale(position) + knobs.meaningWeight * sims[hitIndexes[position]]
       )
     }
     // Stable on purpose: equal keys keep the word matcher's order.

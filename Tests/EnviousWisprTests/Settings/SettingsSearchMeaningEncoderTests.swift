@@ -22,11 +22,10 @@ struct SettingsSearchMeaningEncoderTests {
     let queries: [Item]
   }
 
-  /// A hang guard, not a latency bound: the budget that decides skipping is tested with a scripted
-  /// clock in `SettingsSearchMeaningWorkerTests`.
+  /// The production worker over the committed assets.
   static func worker() -> SettingsSearchMeaningWorker {
     SettingsSearchMeaningWorker.bundled(
-      assets: SettingsSearchMeaningAssetsTests.assets(), loadBudgetMilliseconds: 120_000)
+      assets: SettingsSearchMeaningAssetsTests.assets())
   }
 
   static func fixture() throws -> QueryFixture {

@@ -162,6 +162,61 @@ struct SettingsSearchMeaningFusionTests {
     #expect(ids(fused) == ["p2", "p0", "p1"])
   }
 
+  // MARK: - A best word score of zero or below (#3545 T10)
+
+  /// Knobs that add no meaning-only places, so only the word results' order is judged.
+  private let rerankOnly = SettingsSearchMeaningKnobs(
+    threshold: 2, zMin: 3.5, meaningWeight: 200, cap: 30)
+
+  private func fuse(_ hits: [(String, Double, Double)], _ values: [Double]) throws -> [String] {
+    let fused = SettingsSearchMeaningFusion.rank(
+      wordHits: hits.map { SettingsSearchWordHit(entryID: $0.0, coverage: $0.1, score: $0.2) },
+      similarities: try similarities(values), knobs: rerankOnly)
+    let results = try #require(fused, "the fusion refused its inputs")
+    #expect(results.allSatisfy { !$0.isMeaningOnly })
+    return results.map(\.entryID)
+  }
+
+  @Test("a best word score of zero keeps the word order when meaning is equal")
+  func zeroBestKeepsOrder() throws {
+    // Word order p2, p0, p1 with scores 0, -10, -80; every similarity 0.5.
+    let order = try fuse([("p2", 1, 0), ("p0", 1, -10), ("p1", 1, -80)], [0.5, 0.5, 0.5])
+    #expect(order == ["p2", "p0", "p1"])
+  }
+
+  @Test("a negative best word score keeps the word order when meaning is equal, never reverses it")
+  func negativeBestKeepsOrder() throws {
+    // Scores -5, -20, -80: dividing by -5 would make them 100, 400, 1600 and reverse the list.
+    let order = try fuse([("p2", 1, -5), ("p0", 1, -20), ("p1", 1, -80)], [0.5, 0.5, 0.5])
+    #expect(order == ["p2", "p0", "p1"])
+  }
+
+  @Test(
+    "with a best word score of zero or below, a clearly better meaning still moves a place up",
+    arguments: [[0.0, -10, -80], [-5.0, -20, -80]])
+  func nonPositiveBestStillReranks(scores: [Double]) throws {
+    // Position scale 100, 66.7, 33.3 for p2, p0, p1. Similarities p0 0.1, p1 0.6, p2 0.1:
+    // p2 = 100 + 20 = 120, p0 = 66.7 + 20 = 86.7, p1 = 33.3 + 120 = 153.3.
+    let order = try fuse(
+      [("p2", 1, scores[0]), ("p0", 1, scores[1]), ("p1", 1, scores[2])], [0.1, 0.6, 0.1])
+    #expect(order == ["p1", "p2", "p0"])
+  }
+
+  @Test("with a best word score of zero or below, lower coverage stays behind whatever its meaning")
+  func nonPositiveBestKeepsCoverageFirst() throws {
+    let order = try fuse([("p0", 1, -10), ("p1", 0.5, -5)], [0.0, 1.0])
+    #expect(order == ["p0", "p1"])
+  }
+
+  @Test("a positive best word score keeps the bench's score scaling, negative siblings included")
+  func positiveBestUnchanged() throws {
+    // Score scale 100, 90, -40 for p0, p1, p2; similarities 0.1, 0.2, 0.45:
+    // p0 = 100 + 20 = 120, p1 = 90 + 40 = 130, p2 = -40 + 90 = 50.
+    // (Position scaling would give p0 = 120, p1 = 106.7, p2 = 123.3 and put p2 first.)
+    let order = try fuse([("p0", 1, 100), ("p1", 1, 90), ("p2", 1, -40)], [0.1, 0.2, 0.45])
+    #expect(order == ["p1", "p0", "p2"])
+  }
+
   @Test("a standing-out search adds meaning-only places at or above the threshold, best first")
   func meaningOnlyResults() throws {
     // 60 places: 56 at 0.1, then 0.9, 0.75, 0.70 and 0.6999. mean 0.1442, sd 0.1666, z = 4.5.
