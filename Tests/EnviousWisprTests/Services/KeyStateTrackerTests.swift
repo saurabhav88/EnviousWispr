@@ -117,7 +117,6 @@ struct KeyStateTrackerTests {
     let maybeUp = tracker.ingest(
       Self.flags(61, Self.optionFlag), handled: 3, configuration: Self.config)
     #expect(maybeUp.edges.isEmpty)
-    #expect(maybeUp.ambiguousKey == 61)
     #expect(tracker.ambiguous == [61])
     #expect(Set(tracker.held.keys) == [58, 61])
     let cleared = tracker.ingest(Self.flags(58, 0), handled: 4, configuration: Self.config)
@@ -218,18 +217,33 @@ struct KeyStateTrackerTests {
     #expect(tracker.ambiguous.isEmpty)
   }
 
-  @Test("a release of a key never seen down is reported, not made an edge")
-  func unheldReleaseIsReported() {
+  @Test("a release of a key never seen down makes no edge and holds nothing")
+  func unheldReleaseMakesNoEdge() {
     var tracker = KeyStateTracker()
     let up = tracker.ingest(Self.flags(61, 0), handled: 1, configuration: Self.config)
     #expect(up.edges.isEmpty)
-    #expect(up.unheldRelease?.keyCode == 61)
-    #expect(up.unheldRelease?.phase == .release)
-    #expect(up.unheldRelease?.role == .record)
     #expect(tracker.held.isEmpty)
     let side = tracker.ingest(
       Self.flags(61, Self.optionFlag | 0x20), handled: 2, configuration: Self.config)
     #expect(side.edges.isEmpty)
-    #expect(side.unheldRelease?.evidence == .sideBit)
+    #expect(tracker.held.isEmpty)
+  }
+
+  /// The reader behind every reconciliation (#3544 P3 hotfix). `CGEventSource.keyState` read a held
+  /// Right Option as up, so the five-second sweep ended push-to-talk dictations that ran past five
+  /// seconds. Literal flag values: Option 0x80000, right Option side bit 0x40, left 0x20; Function
+  /// 0x800000.
+  @Test("system modifier flags read a held key as down, a released one as up, and no side bits as unknown")
+  func readingFromSystemFlags() {
+    let rightOption: UInt16 = 61
+    #expect(KeyStateTracker.reading(forKey: rightOption, flags: 0x80040) == .down)
+    #expect(KeyStateTracker.reading(forKey: rightOption, flags: 0x100) == .up)
+    // Left Option still held, Right Option's own bit clear: Right Option is up.
+    #expect(KeyStateTracker.reading(forKey: rightOption, flags: 0x80020) == .up)
+    // Synthetic input: the family on with no side bits proves nothing either way.
+    #expect(KeyStateTracker.reading(forKey: rightOption, flags: 0x80000) == .unknown)
+    #expect(KeyStateTracker.reading(forKey: 63, flags: 0x800000) == .down)
+    #expect(KeyStateTracker.reading(forKey: 63, flags: 0) == .up)
+    #expect(KeyStateTracker.reading(forKey: 0, flags: 0x80040) == .unknown)
   }
 }

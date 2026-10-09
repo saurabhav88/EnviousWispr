@@ -22,18 +22,20 @@ import os
 /// (#2381). The tracker reads side bits, so a release is a release; and remembering the route at
 /// the press means a release can never be reinterpreted as another role.
 ///
-/// **Reconciliation** (plan §3.5, B3/B4, A2). Held state is checked against the injected key-state
-/// reader after a confirmed tap re-enable, when Secure Input clears, every 5 s while any key is held
-/// or the engine still owns a record press, and when an event cannot be turned into an edge (a
-/// duplicate press, a release of a key never seen down, aggregate-only evidence for a held key).
-/// The reader runs outside every lock; its answers apply only if the installation, the
-/// configuration generation and the input sequence are unchanged since it was asked. Up releases
-/// (release-only recovery), down keeps, unknown changes nothing; age alone never releases a key.
-/// Nothing here can start a recording, make a second press or lock a take.
+/// **Reconciliation** (plan §3.5, B3/B4, A2; #3544 P3 hotfix). A dictation is part of the heart
+/// path and may run 60 minutes, so a READ of key state never ends one on a single answer. Held
+/// state is checked against the injected key-state reader every 5 s while any key is held or the
+/// engine still owns a record press, and a key is released only when two consecutive sweeps read it
+/// up with no input between them. Evidence that events may have been missed (a confirmed tap
+/// re-enable, Secure Input clearing, an event the tracker could not place) does not release
+/// anything: it restarts that count, so the next two sweeps decide. The reader runs outside every
+/// lock; its answers apply only if the installation, the configuration generation and the input
+/// sequence are unchanged since it was asked. Down keeps, unknown changes nothing; age alone never
+/// releases a key. Nothing here can start a recording, make a second press or lock a take.
 ///
-/// **Held-record watchdog.** The 5 s sweep also asks about the key of the press the engine owns,
-/// even when this installation never saw it (a listener replaced mid-hold), and releases it if it
-/// reads up, so a lost key-up cannot leave push-to-talk recording forever.
+/// **Held-record watchdog.** The sweep also asks about the key of the press the engine owns, even
+/// when this installation never saw it (a listener replaced mid-hold), and releases it on the same
+/// two consecutive up readings, so a lost key-up cannot leave push-to-talk recording forever.
 ///
 /// Our own synthetic events (`isOurs`) and key code 179 (a second Globe code some keyboards send,
 /// Wispr Flow ignores it too) change nothing. Every event passes through to the system in P3.
@@ -81,6 +83,10 @@ package final class KeyboardListenerIngress: Sendable {
     /// newer press could still reach the engine after it, and the press would read as a duplicate.
     var pending: [Action] = []
     var draining = false
+    /// Keys the previous sweep read up, and the input sequence it read them at. A sweep releases a
+    /// key only when two consecutive sweeps read it up with no input between them, so a single wrong
+    /// reading can never end a dictation (#3544 P3 hotfix). Cleared by any sign of missed events.
+    var sweepReadUp: (sequence: UInt64, keys: Set<UInt16>) = (0, [])
   }
 
   package let installation: UInt64
@@ -136,33 +142,27 @@ package final class KeyboardListenerIngress: Sendable {
   package func receive(_ event: KeyEventValue) {
     switch event.kind {
     case .flagsChanged:
-      ingest(event, retried: false)
+      ingest(event)
     case .tapReenabled:
-      // Keys may have moved while the tap was off.
-      reconcile()
+      // Keys may have moved while the tap was off: the next two sweeps decide.
+      restartConfirmation()
     case .secureInputChanged:
       // Leaving Secure Input: key-ups may have been hidden (plan A2). Entering changes nothing.
-      if event.secureInput?.enabled == false { reconcile() }
+      if event.secureInput?.enabled == false { restartConfirmation() }
     case .keyDown, .keyUp, .stormStopped:
       break
     }
   }
 
-  /// `onlyAfter` / `onlyGeneration`: for the one bounded retry, the input sequence it may run at
-  /// and the configuration the event was first classified under; newer input or a configuration
-  /// change since its verification makes the retry stale, and it is dropped before it can be read
-  /// as a different shortcut.
-  private func ingest(
-    _ event: KeyEventValue, retried: Bool, onlyAfter: UInt64? = nil,
-    onlyGeneration: UInt64? = nil
-  ) {
+  /// One modifier event. Every admitted event advances the input sequence, which also restarts the
+  /// sweep's two-reading count: an event the tracker could not place (a duplicate press, a release of
+  /// a key never seen down, aggregate-only evidence for a held key) is left to the next two sweeps.
+  private func ingest(_ event: KeyEventValue) {
     guard !event.isOurs, event.keyCode != Self.ignoredGlobeKeyCode else { return }
     let handled = clock()
     let classification = engine.listenerClassification()
-    if let onlyGeneration, classification.generation != onlyGeneration { return }
-    let (unplaced, ambiguous) = state.withLock { s -> (Bool, Bool) in
-      guard !s.closed else { return (false, false) }
-      if let onlyAfter, s.inputSequence != onlyAfter { return (false, false) }
+    state.withLock { s in
+      guard !s.closed else { return }
       s.inputSequence &+= 1
       let update = s.tracker.ingest(
         event, handled: handled, configuration: classification.configuration)
@@ -171,20 +171,20 @@ package final class KeyboardListenerIngress: Sendable {
         route(&s, edge, classification, into: &actions)
       }
       s.pending.append(contentsOf: actions)
-      // Verify before trusting the held state this event leaves (unmatched-press recovery, B3): an
-      // event the tracker could not turn into an edge contradicts it, and a press of a key no
-      // shortcut owns may be the first thing after a missed release of one that is.
-      let unmatchedPress = update.edges.contains { $0.phase == .press && $0.role == nil }
-      let unplaced =
-        ModifierKeyCodes.flag(for: event.keyCode) != nil
-        && (update.edges.isEmpty || unmatchedPress)
-      return (unplaced, update.ambiguousKey == event.keyCode)
     }
     drain()
-    // Verified, but never retried when the event was aggregate-only evidence about a held key:
-    // with the family still on (the other side held) it is as likely that key's release as a new
-    // press, and once verification reads the key up, a retry would turn that release into a press.
-    if unplaced { reconcile(retry: retried || ambiguous ? nil : event) }
+    armSweepIfNeeded()
+  }
+
+  /// Evidence that events may have been missed: forget any up reading, so a key is released only by
+  /// two sweeps that both read it up after this point.
+  private func restartConfirmation() {
+    state.withLock { s in
+      // Advancing the sequence also voids a sweep whose reader is out right now: its answer was
+      // taken before this point and must not count.
+      s.inputSequence &+= 1
+      s.sweepReadUp.keys.removeAll()
+    }
     armSweepIfNeeded()
   }
 
@@ -286,9 +286,9 @@ package final class KeyboardListenerIngress: Sendable {
 
   // MARK: - Reconciliation
 
-  /// Verify held state against the reader. `retry`: the event that could not be placed, ingested
-  /// once more if verification released its key (bounded: never retried twice).
-  private func reconcile(retry: KeyEventValue? = nil) {
+  /// One sweep: verify held state against the reader. An up answer releases a key only when the
+  /// previous sweep read it up too, with no input and no sign of missed events between them.
+  private func reconcile() {
     let classification = engine.listenerClassification()
     let owned = engine.ownedListenerKey
     guard
@@ -302,17 +302,30 @@ package final class KeyboardListenerIngress: Sendable {
     // Outside every lock: the reader is an OS call in production.
     let answers = reader(keys)
     let handled = clock()
-    let (released, sequence) = state.withLock { s -> (Set<UInt16>, UInt64) in
-      // Stale answers are dropped, never applied: a later trigger asks again.
+    state.withLock { s in
+      // Stale answers are dropped, never applied: the next sweep asks again.
       guard !s.closed, s.inputSequence == captured.sequence,
         engine.listenerConfigurationGeneration == classification.generation
-      else { return ([], s.inputSequence) }
+      else {
+        // A rejected sweep breaks the run of consecutive readings too.
+        s.sweepReadUp.keys.removeAll()
+        return
+      }
+      var answers = answers
+      let previous =
+        s.sweepReadUp.sequence == captured.sequence ? s.sweepReadUp.keys : Set<UInt16>()
+      var readUp = Set<UInt16>()
+      for (key, answer) in answers where answer == .up {
+        readUp.insert(key)
+        if !previous.contains(key) { answers[key] = .unknown }
+      }
+      // A key released now starts no count of its own.
+      s.sweepReadUp = (captured.sequence, readUp.subtracting(previous))
       var actions: [Action] = []
       let edges = s.tracker.reconcile(
         handled: handled, configuration: classification.configuration
       ) { _ in answers }
       for edge in edges { route(&s, edge, classification, into: &actions) }
-      var released = Set(edges.map(\.keyCode))
       // The watchdog: a record press the engine owns that this installation never saw down.
       if let owned, !captured.held.contains(owned), answers[owned] == .up {
         actions.append(
@@ -320,17 +333,11 @@ package final class KeyboardListenerIngress: Sendable {
             keyCode: owned, isPress: false,
             input: RecordGesture.InputTime(handled: handled, occurred: nil),
             generation: classification.generation))
-        released.insert(owned)
       }
       s.pending.append(contentsOf: actions)
-      return (released, s.inputSequence)
     }
     afterReconcileCommitForTesting?()
     drain()
-    if let retry, released.contains(retry.keyCode) {
-      ingest(
-        retry, retried: true, onlyAfter: sequence, onlyGeneration: classification.generation)
-    }
   }
 
   // MARK: - Sweep

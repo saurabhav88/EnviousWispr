@@ -141,9 +141,13 @@ struct KeyboardListenerRecoveryTests {
     await Rig.mainTurn()
     #expect(rig.effects.keyboardListenerToken == nil)
     #expect(stops == 0)
-    // The key comes up unseen: the next check ends the hold.
+    // The key comes up unseen: one up reading is not enough; the second in a row ends the hold.
     rig.effects.keyStates.withLock { $0[ModifierKeyCodes.rightOption] = .up }
     rig.clock.now = 566
+    rig.timers.fireDue()
+    await Rig.mainTurn()
+    #expect(stops == 0, "a single up reading ended the hold")
+    rig.clock.now = 572
     rig.timers.fireDue()
     await stopped.wait(until: 1)
     #expect(stops == 1)
@@ -179,6 +183,10 @@ struct KeyboardListenerRecoveryTests {
     #expect((rig.effects.keyboardListenerToken != nil) == refused)
     rig.effects.keyStates.withLock { $0[ModifierKeyCodes.rightOption] = .up }
     rig.clock.now = 505
+    rig.timers.fireDue()
+    await Rig.mainTurn()
+    #expect(stops == 0, "a single up reading ended the hold")
+    rig.clock.now = 510
     rig.timers.fireDue()
     await stopped.wait(until: 1)
     #expect(stops == 1)

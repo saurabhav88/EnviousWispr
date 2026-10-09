@@ -382,6 +382,9 @@ public final class HotkeyService {
   /// suspend or a reinstall cancels it.
   private var orphanedHoldCheck: RecordGestureEngine.TimerHandle?
   private var orphanedHoldCheckToken: UInt64 = 0
+  /// The key the previous orphaned-hold check read up, if any: a hold ends only on two consecutive
+  /// up readings, as with the listener's own sweep (#3544 P3 hotfix).
+  private var orphanedHoldReadUp: UInt16?
   /// Schedules the install retry off main; the fire hops to main to re-check the lifecycle.
   private let listenerRetryScheduler: RecordGestureEngine.Scheduler
   /// Test seam: invoked once each time a scheduled install retry runs on main, on every exit
@@ -1327,6 +1330,7 @@ public final class HotkeyService {
   private func cancelOrphanedHoldCheck() {
     orphanedHoldCheck?.cancel()
     orphanedHoldCheck = nil
+    orphanedHoldReadUp = nil
   }
 
   private func orphanedHoldCheckFired(token: UInt64) {
@@ -1336,7 +1340,10 @@ public final class HotkeyService {
     guard keyboardListenerIngress == nil, isEnabled, !isSuspended,
       let key = engine.ownedListenerKey
     else { return }
-    if effects.keyStateReader([key])[key] == .up {
+    let readUp = effects.keyStateReader([key])[key] == .up
+    let confirmed = readUp && orphanedHoldReadUp == key
+    orphanedHoldReadUp = readUp && !confirmed ? key : nil
+    if confirmed {
       engine.releaseOrphanedListenerPress(
         keyCode: key, input: RecordGesture.InputTime(handled: uptime(), occurred: nil))
       onOrphanedHoldReleasedForTesting?()
