@@ -67,6 +67,10 @@ package struct KeyStateTracker: Equatable, Sendable {
   package struct Update: Equatable, Sendable {
     package var edges: [Edge] = []
     package var ambiguousKey: UInt16?
+    /// The changed key reported up while no hold of it was observed (its press came before the
+    /// listener, or was missed). Not an edge: held state is unchanged. Reported so a consumer
+    /// that compares with another reader of the same event can account for it.
+    package var unheldRelease: Edge?
   }
 
   /// One held key: when it was first seen down and on what evidence. Duplicates never refresh it.
@@ -147,19 +151,29 @@ package struct KeyStateTracker: Equatable, Sendable {
       update.edges.append(edge(.release, code, evidence))
     }
 
+    /// The changed key going up: a release edge if a hold was observed, else noted as unheld.
+    func releaseChanged(_ evidence: Evidence) {
+      if held[key] == nil {
+        update.unheldRelease = edge(.release, key, evidence)
+      } else {
+        release(key, evidence)
+      }
+    }
+
     guard let masks = Self.sideMasks[key] else {
       // Globe: no side bits, its own flag is its state.
-      if familyOn { press(.functionFlag) } else { release(key, .functionFlag) }
+      if familyOn { press(.functionFlag) } else { releaseChanged(.functionFlag) }
       return update
     }
     if !familyOn {
       // The family is off: every member that was held is released, in key-code order.
+      if held[key] == nil { update.unheldRelease = edge(.release, key, .aggregateCleared) }
       let members = held.keys.filter { Self.sideMasks[$0]?.family == masks.family }.sorted()
       for member in members { release(member, .aggregateCleared) }
       return update
     }
     if event.rawFlags & masks.family != 0 {
-      if event.rawFlags & masks.own != 0 { press(.sideBit) } else { release(key, .sideBit) }
+      if event.rawFlags & masks.own != 0 { press(.sideBit) } else { releaseChanged(.sideBit) }
       return update
     }
     // Aggregate on, no side bits: a press for an unheld key; for a held key, not proof of anything.

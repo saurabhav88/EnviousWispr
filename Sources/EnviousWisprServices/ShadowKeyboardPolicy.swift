@@ -153,7 +153,10 @@ package final class ShadowKeyboardPolicy: Sendable {
                   .occurred, handled: handled, ambiguous: true))
           }
         }
-        for edge in update.edges {
+        // A release of a key with no observed hold is handled like a release (live reads every
+        // flagsChanged the same way), without changing held state.
+        let edges = (update.unheldRelease.map { [$0] } ?? []) + update.edges
+        for edge in edges {
           // The edge's role as live reads it: a release belongs to the role its press was
           // admitted for, and a consumed cancel key stays cancel's tail, even after cancel
           // disarmed itself and the matcher would now answer another role or none.
@@ -327,9 +330,17 @@ package final class ShadowKeyboardPolicy: Sendable {
       }
     case .release:
       guard let owner = s.owners.removeValue(forKey: edge.keyCode) else {
-        decision(
-          s.consumed.contains(edge.keyCode) ? .cancel : edge.role,
-          s.consumed.contains(edge.keyCode) ? .consumedTail : .noDecision)
+        if s.consumed.contains(edge.keyCode) {
+          decision(.cancel, .consumedTail)
+        } else if edge.role == .record, snapshot.mode == .pushToTalk, snapshot.enabled,
+          !snapshot.suspended
+        {
+          // Live hands every record-key release to the gesture, which ignores one it holds no
+          // press for; the shadow does the same.
+          gesture(&s, edge: edge, isPress: false, into: &work)
+        } else {
+          decision(edge.role, .noDecision)
+        }
         return
       }
       switch owner {

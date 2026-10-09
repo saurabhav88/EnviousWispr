@@ -698,5 +698,19 @@ struct HotkeyShadowIntegrationTests {
       #expect(tally.ambiguities == 0)
       rig.service.stop()
     }
+
+    @Test("a stray key-up with no press seen agrees in both lanes")
+    func strayReleaseAgrees() throws {
+      let rig = Rig()
+      rig.service.recordingMode = .pushToTalk
+      rig.service.start()
+      try both(rig, 0, at: 0)
+      let tally = rig.service.shadowDiagnostics.drainForTesting()
+      #expect(tally.agreements == 2)  // the edge and the ignored release
+      #expect(tally.mappingErrors == 0)
+      let closing = try #require(rig.service.shadowDiagnostics.currentSegmentForTesting)
+      rig.service.stop()
+      #expect(closing.settledTallyForTesting().incomplete == 0)
+    }
   #endif
 }

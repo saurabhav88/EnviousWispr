@@ -217,4 +217,19 @@ struct KeyStateTrackerTests {
     #expect(Set(tracker.held.keys) == [55, 58])
     #expect(tracker.ambiguous.isEmpty)
   }
+
+  @Test("a release of a key never seen down is reported, not made an edge")
+  func unheldReleaseIsReported() {
+    var tracker = KeyStateTracker()
+    let up = tracker.ingest(Self.flags(61, 0), handled: 1, configuration: Self.config)
+    #expect(up.edges.isEmpty)
+    #expect(up.unheldRelease?.keyCode == 61)
+    #expect(up.unheldRelease?.phase == .release)
+    #expect(up.unheldRelease?.role == .record)
+    #expect(tracker.held.isEmpty)
+    let side = tracker.ingest(
+      Self.flags(61, Self.optionFlag | 0x20), handled: 2, configuration: Self.config)
+    #expect(side.edges.isEmpty)
+    #expect(side.unheldRelease?.evidence == .sideBit)
+  }
 }
