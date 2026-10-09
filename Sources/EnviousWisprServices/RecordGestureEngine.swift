@@ -20,8 +20,15 @@ import os
 /// runs is picked up by it.
 ///
 /// Invalidation (plan §3.4, the one rule): a batch is dropped iff its `epoch` is older than the
-/// engine's (bumped ONLY by the unconditional `reset()`) or its attempt is in the refused set
-/// (written ONLY by `reset(attempt:)`). Nothing else invalidates a queued batch.
+/// engine's (bumped ONLY by the unconditional `reset()`) or it is attempt-scoped and its attempt is
+/// in the refused set (written ONLY by `reset(attempt:)`). Nothing else invalidates a queued batch.
+///
+/// Listener admission (#3544 P3): input from the keyboard listener thread names the key, the
+/// listener configuration generation it was classified under and its installation, and is checked
+/// against them in the same critical section that admits it, so an edge classified before a rebind,
+/// a stop or a reinstall can never act under what came after. A refused input changes nothing.
+/// This admission generation is separate from the batch epoch: it gates input, never an
+/// already-admitted batch.
 ///
 /// `Sendable` by construction: every stored property is a `let` of a `Sendable` type, and all
 /// mutable state lives inside one `OSAllocatedUnfairLock`. No callback, log, telemetry or wait on
@@ -78,6 +85,10 @@ package final class RecordGestureEngine: Sendable {
     /// Timer fired — user didn't double-press. Stop as normal PTT. The engine already cleaned up
     /// and recorded the stop marker (#3534 §3.3 steps 1-3); main queues the stop (step 4).
     case loneTapStop(LoneTapStopTrace)
+    /// The listener's bare cancel key, decided in input order (#3544 P3). The engine already ended
+    /// the attempt it captured and retired its wait, so a record press after it starts fresh; main
+    /// runs the cancel and clears only that attempt's execution state.
+    case cancel(Cancel)
     /// One scheduled lone-tap wait finished, on any path (stopped, stale, locked, cancelled).
     /// A completion signal for tests; always applied, even in an invalidated batch.
     case loneTapResolved
@@ -92,6 +103,12 @@ package final class RecordGestureEngine: Sendable {
     package let input: RecordGesture.InputTime
     package let afterStopTimerMs: Int?
     package let decision: RecordGesture.PressDecision
+  }
+
+  package struct Cancel: Sendable {
+    package let keyCode: UInt16
+    /// The attempt that was live when the cancel arrived, or nil when none was.
+    package let attemptID: UInt64?
   }
 
   package struct QuickReleaseTrace: Sendable {
@@ -113,6 +130,36 @@ package final class RecordGestureEngine: Sendable {
     package let epoch: UInt64
     package let attemptID: UInt64
     package let effects: [Effect]
+    /// False for a batch that is not one attempt's decision (a listener cancel): refusing the
+    /// attempt it names must not drop it, since the cancel is what ends that attempt.
+    package var attemptScoped = true
+  }
+
+  // MARK: - Listener admission
+
+  /// What the listener's input is classified against, beyond the record binding and mode.
+  /// Changing any of these (actually changing; equal assignments are free) starts a new
+  /// listener configuration generation.
+  package struct ListenerCancel: Equatable, Sendable {
+    package var binding: ShortcutBinding
+    package init(binding: ShortcutBinding) { self.binding = binding }
+  }
+
+  /// Why the engine refused a listener input. A refused input changes no state.
+  package enum ListenerRefusal: Hashable, Sendable, CaseIterable {
+    /// No listener installation is admitting input, or the input came from an earlier one.
+    case staleInstallation
+    /// Classified under a configuration that has since changed.
+    case staleGeneration
+    /// The record binding is not a bare modifier in push-to-talk, so it is not the listener's
+    /// to decide here (toggle and chords stay on the main path).
+    case notListenerBinding
+    /// The key is not the configured record key (or, for a cancel, the bare cancel key).
+    case wrongKey
+    /// A release whose press this engine never admitted from that key.
+    case unownedRelease
+    /// A cancel while cancel is not armed.
+    case cancelNotArmed
   }
 
   /// Snapshot readers outside the engine see.
@@ -140,10 +187,26 @@ package final class RecordGestureEngine: Sendable {
     #endif
   }
 
+  /// The press whose release the listener may deliver: its key and the attempt it belonged to.
+  private struct OwnedPress: Sendable {
+    let keyCode: UInt16
+    let attemptID: UInt64
+  }
+
   private struct State: Sendable {
     var gesture = RecordGesture()
     var binding: ShortcutBinding
     var mode: RecordingMode
+    var cancel = ListenerCancel(binding: ShortcutRole.cancel.defaultBinding)
+    var cancelArmed = false
+    /// Bumped on every ACTUAL change of record binding, mode or cancel binding, and by the
+    /// unconditional `reset()`. Distinct from `HotkeyService`'s installation counter.
+    var listenerConfigurationGeneration: UInt64 = 0
+    /// The listener installation admitting input, or nil while none is (stopped, suspended,
+    /// not installed).
+    var listenerInstallation: UInt64?
+    var owned: OwnedPress?
+    var refusals: [ListenerRefusal: Int] = [:]
     var epoch: UInt64 = 0
     var refused: Set<UInt64> = []
     var inputSequence: UInt64 = 0
@@ -188,10 +251,58 @@ package final class RecordGestureEngine: Sendable {
   /// lone-tap check). Pushed on every change; diagnostics are invalidated separately, by
   /// `invalidateDiagnostics()`, only on an ACTUAL change (unchanged assignments are free).
   package func configure(binding: ShortcutBinding, mode: RecordingMode) {
-    state.withLock {
-      $0.binding = binding
-      $0.mode = mode
+    state.withLock { Self.apply(&$0, binding: binding, mode: mode) }
+  }
+
+  /// The one writer of the record binding and mode: an actual change starts a new listener
+  /// generation, an equal assignment does not (settings assign unchanged values freely, and a
+  /// harmless repeat must never strand a held key's release).
+  private static func apply(_ s: inout State, binding: ShortcutBinding, mode: RecordingMode) {
+    if s.binding != binding || s.mode != mode { s.listenerConfigurationGeneration &+= 1 }
+    s.binding = binding
+    s.mode = mode
+  }
+
+  /// The cancel binding the listener's cancel is classified against. An actual change starts a
+  /// new listener generation.
+  package func configureCancel(_ cancel: ListenerCancel) {
+    state.withLock { s in
+      if s.cancel != cancel { s.listenerConfigurationGeneration &+= 1 }
+      s.cancel = cancel
     }
+  }
+
+  /// Whether cancel is armed now. Checked when a listener cancel is admitted, not part of the
+  /// generation: arming happens as a recording starts, and a record press classified a moment
+  /// before must not be refused for it.
+  package func setCancelArmed(_ armed: Bool) {
+    state.withLock { $0.cancelArmed = armed }
+  }
+
+  /// Start admitting listener input from `installation`. Every earlier installation's input is
+  /// refused from now on.
+  package func openListenerAdmission(installation: UInt64) {
+    state.withLock { $0.listenerInstallation = installation }
+  }
+
+  /// Stop admitting listener input (the listener was removed: stop, suspend, reinstall).
+  package func closeListenerAdmission() {
+    state.withLock { $0.listenerInstallation = nil }
+  }
+
+  /// The installation whose input is admitted now, or nil.
+  package var listenerInstallation: UInt64? {
+    state.withLock { $0.listenerInstallation }
+  }
+
+  /// The generation the listener classifies its next input under.
+  package var listenerConfigurationGeneration: UInt64 {
+    state.withLock { $0.listenerConfigurationGeneration }
+  }
+
+  /// How many listener inputs were refused, by reason. Diagnostics only.
+  package var listenerRefusals: [ListenerRefusal: Int] {
+    state.withLock { $0.refusals }
   }
 
   package func invalidateDiagnostics() {
@@ -217,8 +328,7 @@ package final class RecordGestureEngine: Sendable {
       binding: ShortcutBinding, mode: RecordingMode, observationGeneration: UInt64
     ) {
       state.withLock {
-        $0.binding = binding
-        $0.mode = mode
+        Self.apply(&$0, binding: binding, mode: mode)
         $0.observationGeneration = observationGeneration
       }
     }
@@ -297,6 +407,107 @@ package final class RecordGestureEngine: Sendable {
     drainOnMain()
   }
 
+  /// A record-key press or release from the keyboard listener thread (#3544 P3), classified under
+  /// `generation` and delivered by `installation`. Validated and admitted in one critical section;
+  /// returns why it was refused, or nil when admitted. Its effects reach main through the pending
+  /// async drain, like `ingest`.
+  ///
+  /// A press needs the current generation, a bare-modifier record binding in push-to-talk and that
+  /// key. A release needs only the press this engine admitted from the same key: it follows its
+  /// press, so a release after a rebind still ends the hold it belongs to and is never rematched.
+  @discardableResult
+  package func ingestFromListener(
+    keyCode: UInt16, isPress: Bool, input: RecordGesture.InputTime, generation: UInt64,
+    installation: UInt64
+  ) -> ListenerRefusal? {
+    let (refusal, work, submit) = state.withLock { s -> (ListenerRefusal?, TimerWork, Bool) in
+      if let refusal = Self.refusal(&s, keyCode: keyCode, isPress: isPress,
+        generation: generation, installation: installation)
+      {
+        s.refusals[refusal, default: 0] += 1
+        return (refusal, TimerWork(), false)
+      }
+      let work = Self.admit(&s, isPress: isPress, input: input)
+      return (nil, work, Self.claimAsyncDrain(&s))
+    }
+    perform(work)
+    #if DEBUG
+      report(work.observations)
+    #endif
+    if submit { submitAsyncDrain() }
+    return refusal
+  }
+
+  /// The listener's bare cancel key (#3544 P3), in the same order as record input: the attempt
+  /// live NOW is captured and ended here, so a record press after it starts fresh even if main
+  /// has not run the cancel yet, and main's cleanup touches only that attempt. Returns why it was
+  /// refused, or nil when admitted.
+  @discardableResult
+  package func cancelFromListener(
+    keyCode: UInt16, generation: UInt64, installation: UInt64
+  ) -> ListenerRefusal? {
+    let (refusal, work, submit) = state.withLock { s -> (ListenerRefusal?, TimerWork, Bool) in
+      let refusal: ListenerRefusal? =
+        if s.listenerInstallation != installation {
+          .staleInstallation
+        } else if s.listenerConfigurationGeneration != generation {
+          .staleGeneration
+        } else if !s.cancel.binding.isBareModifier || Self.key(s.cancel.binding) != keyCode
+          || (s.binding.isBareModifier && Self.key(s.binding) == keyCode)
+        {
+          // Record wins a tie (#3106): a key that is also the bare record key is never cancel.
+          .wrongKey
+        } else if !s.cancelArmed {
+          .cancelNotArmed
+        } else {
+          nil
+        }
+      if let refusal {
+        s.refusals[refusal, default: 0] += 1
+        return (refusal, TimerWork(), false)
+      }
+      // Disarmed here, as main's cancel does, so a second cancel event cannot act twice.
+      s.cancelArmed = false
+      let attempt: UInt64? = s.gesture.start != nil ? s.gesture.attemptID : nil
+      var work = TimerWork()
+      var effects: [Effect] = []
+      s.gesture.cleanup()
+      Self.cancelTimer(&s, into: &work, effects: &effects, retired: true)
+      effects.append(.cancel(Cancel(keyCode: keyCode, attemptID: attempt)))
+      var batch = Batch(epoch: s.epoch, attemptID: attempt ?? s.gesture.attemptID, effects: effects)
+      batch.attemptScoped = false
+      s.outbox.append(batch)
+      return (nil, work, Self.claimAsyncDrain(&s))
+    }
+    perform(work)
+    #if DEBUG
+      report(work.observations)
+    #endif
+    if submit { submitAsyncDrain() }
+    return refusal
+  }
+
+  /// Why a listener record input is refused, or nil to admit it.
+  private static func refusal(
+    _ s: inout State, keyCode: UInt16, isPress: Bool, generation: UInt64, installation: UInt64
+  ) -> ListenerRefusal? {
+    guard s.listenerInstallation == installation else { return .staleInstallation }
+    if !isPress {
+      guard let owned = s.owned, owned.keyCode == keyCode else { return .unownedRelease }
+      return nil
+    }
+    guard s.listenerConfigurationGeneration == generation else { return .staleGeneration }
+    guard s.binding.isBareModifier, s.mode == .pushToTalk else { return .notListenerBinding }
+    guard Self.key(s.binding) == keyCode else { return .wrongKey }
+    return nil
+  }
+
+  private static func key(_ binding: ShortcutBinding) -> UInt16 {
+    switch binding {
+    case .keyboard(let code, _): code
+    }
+  }
+
   // MARK: - Reset
 
   /// Unconditional reset: explicit cancel, service `stop()` and `resume()`. Bumps the epoch, so
@@ -305,6 +516,10 @@ package final class RecordGestureEngine: Sendable {
   package func reset() {
     let work = state.withLock { s -> TimerWork in
       s.epoch &+= 1
+      // A listener input classified before this reset (a press already read on the listener
+      // thread) must not start a dictation after it: the epoch gates batches, this gates input.
+      // A held key's release still follows its press (ownership), so no hold is stranded.
+      s.listenerConfigurationGeneration &+= 1
       s.gesture.cleanup()
       var work = TimerWork()
       Self.cancelTimer(&s, into: &work)
@@ -341,13 +556,19 @@ package final class RecordGestureEngine: Sendable {
   /// refusal), unless a later input has already been ingested.
   package func forgetHeld(ifNoInputAfter sequence: UInt64) {
     state.withLock {
-      if $0.inputSequence == sequence { $0.gesture.forgetHeld() }
+      if $0.inputSequence == sequence {
+        $0.gesture.forgetHeld()
+        $0.owned = nil
+      }
     }
   }
 
   /// Forget the held key without a release: `stop()` and `resume()`.
   package func forgetHeld() {
-    state.withLock { $0.gesture.forgetHeld() }
+    state.withLock {
+      $0.gesture.forgetHeld()
+      $0.owned = nil
+    }
   }
 
   // MARK: - Admission (under the lock)
@@ -379,6 +600,7 @@ package final class RecordGestureEngine: Sendable {
       guard case .admitted(let afterStopTimerMs) = s.gesture.admitPress(
         input, binding: s.binding, mode: s.mode)
       else {
+        // A duplicate leaves the earlier press's ownership in place.
         #if DEBUG
           work.observations.append(
             stamped(
@@ -390,6 +612,8 @@ package final class RecordGestureEngine: Sendable {
         return work
       }
       let decision = s.gesture.classifyPress(input, binding: s.binding, mode: s.mode)
+      // The held key's release follows this press, whatever the configuration is by then.
+      s.owned = OwnedPress(keyCode: keyCode, attemptID: s.gesture.attemptID)
       #if DEBUG
         // The admitted press consumed whatever marker there was; its origin goes with it.
         let markerOrigin = afterStopTimerMs == nil ? nil : s.lastStopOrigin
@@ -420,6 +644,7 @@ package final class RecordGestureEngine: Sendable {
             inputSequence: sequence, mode: s.mode, keyCode: keyCode, input: input,
             afterStopTimerMs: afterStopTimerMs, decision: decision)))
     } else {
+      s.owned = nil
       let decision = s.gesture.release(input)
       #if DEBUG
         var deadline: TimeInterval?
@@ -601,7 +826,7 @@ package final class RecordGestureEngine: Sendable {
           return nil
         }
         let batch = s.outbox.removeFirst()
-        let valid = batch.epoch == s.epoch && !s.refused.contains(batch.attemptID)
+        let valid = Self.isValid(batch, in: s)
         return (batch, valid, s.sink)
       }
       guard let (batch, valid, sink) = next else { return }
@@ -613,7 +838,11 @@ package final class RecordGestureEngine: Sendable {
   /// reset the engine or refused the attempt (the one invalidation rule, plan §3.4).
   @MainActor
   package func isValid(_ batch: Batch) -> Bool {
-    state.withLock { batch.epoch == $0.epoch && !$0.refused.contains(batch.attemptID) }
+    state.withLock { Self.isValid(batch, in: $0) }
+  }
+
+  private static func isValid(_ batch: Batch, in s: State) -> Bool {
+    batch.epoch == s.epoch && (!batch.attemptScoped || !s.refused.contains(batch.attemptID))
   }
 
   /// Test seam: invoked once each time a pending main-queue drain finishes, on every exit path.

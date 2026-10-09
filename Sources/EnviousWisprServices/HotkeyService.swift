@@ -128,7 +128,10 @@ public final class HotkeyService {
   /// disarm-on-abandonment can be OBSERVED by a test — the alternative was
   /// asserting on a spy for a call the production code might simply not make.
   package private(set) var isCancelArmed = false {
-    didSet { if isCancelArmed != oldValue { shadowConfigurationChanged() } }
+    didSet {
+      engine.setCancelArmed(isCancelArmed)
+      if isCancelArmed != oldValue { shadowConfigurationChanged() }
+    }
   }
 
   /// Cancel's armed state at the moment `suspend()` ran, so `resume()` can put a
@@ -150,6 +153,12 @@ public final class HotkeyService {
   /// previous press/release events before starting new ones. This serializes
   /// recording commands — only one start or stop operation runs at a time.
   private var recordingTask: Task<Void, Never>?
+  /// The listener cancel's callback, kept apart from `recordingTask` so the next start can wait for
+  /// it: a start that ran while the cancel was still tearing the old session down would find that
+  /// session active and resume it instead of starting a new one (#3544 P3).
+  private var listenerCancellationTask: Task<Void, Never>?
+  /// Test seam: a start is about to wait for a listener cancel's teardown. Production never sets it.
+  package var onListenerCancellationWaitForTesting: (@MainActor () -> Void)?
 
   // MARK: - Hands-Free (Double-Press Lock) State
 
@@ -167,6 +176,9 @@ public final class HotkeyService {
   /// When locked, key releases are suppressed and recording continues
   /// until the next key press or cancel.
   public var isRecordingLocked: Bool { engine.snapshot.isLocked }
+
+  /// Test seam: the record gesture engine, for driving listener admission directly (#3544 P3).
+  package var recordGestureEngineForTesting: RecordGestureEngine { engine }
 
   /// #1631 — the press whose start confirmed a continuing session, and that
   /// session's opaque id. Together they gate publication: hands-free intent is
@@ -272,6 +284,7 @@ public final class HotkeyService {
   public var cancelKeyCode: UInt16 = ShortcutRole.cancel.defaultKeyCode {
     didSet {
       if cancelKeyCode != oldValue { invalidateQuickTapDiagnostics() }
+      configureEngineCancel()
       shadowConfigurationChanged()
     }
   }
@@ -280,6 +293,7 @@ public final class HotkeyService {
   public var cancelModifiers: NSEvent.ModifierFlags = ShortcutRole.cancel.defaultModifiers {
     didSet {
       if cancelModifiers != oldValue { invalidateQuickTapDiagnostics() }
+      configureEngineCancel()
       shadowConfigurationChanged()
     }
   }
@@ -520,6 +534,7 @@ public final class HotkeyService {
       }
     #endif
     configureEngine()
+    configureEngineCancel()
   }
 
   /// The single release path for anything this service installed.
@@ -808,6 +823,11 @@ public final class HotkeyService {
     #endif
   }
 
+  /// Push the cancel binding the listener's cancel is classified against (#3544 P3).
+  private func configureEngineCancel() {
+    engine.configureCancel(.init(binding: cancelBinding))
+  }
+
   /// A value the shadow comparison depends on changed (#3544 P2). Nothing in release builds.
   private func shadowConfigurationChanged() {
     #if DEBUG
@@ -1031,9 +1051,30 @@ public final class HotkeyService {
       case .holdStop: executeHoldStop()
       case .quickRelease(let trace): executeQuickRelease(trace)
       case .loneTapStop(let trace): executeLoneTapStop(trace)
+      case .cancel(let cancel): executeListenerCancel(cancel)
       case .loneTapResolved: break
       }
     }
+  }
+
+  /// The listener's bare cancel, decided by the engine in input order (#3544 P3). The engine
+  /// already ended the attempt it captured; main runs the same cancel as the monitor path below,
+  /// except that it clears execution state only for that attempt, so a newer attempt decided
+  /// after the cancel keeps its start.
+  private func executeListenerCancel(_ cancel: RecordGestureEngine.Cancel) {
+    // The recording that armed it may have ended since the key was pressed; then there is
+    // nothing to cancel, and the engine's ending of an attempt that no longer records is moot.
+    guard isCancelArmed else { return }
+    isCancelArmed = false
+    // The monitor path's consumed-tail mark, for the same reason (see `.cancel` in
+    // `handleFlagsChangedValues`).
+    keyCodeConsumedByCancel = cancel.keyCode
+    if executingAttemptID == cancel.attemptID { clearExecutionState() }
+    listenerCancellationTask = Task { [weak self] in
+      guard let self else { return }
+      await self.onCancelRecording?()
+    }
+    emitHotkeyPressed(.cancel, trigger: .cancel)
   }
 
   private func executePress(_ press: RecordGestureEngine.Press, attemptID: UInt64) {
@@ -1073,8 +1114,16 @@ public final class HotkeyService {
       clearExecutionState()
       executingAttemptID = pressID
       recordingTask?.cancel()
+      let pendingCancellation = listenerCancellationTask
       recordingTask = Task { [weak self] in
         guard let self else { return }
+        // A listener cancel decided before this press finishes first (see
+        // `listenerCancellationTask`); if this start was replaced meanwhile, the newer one owns it.
+        if let pendingCancellation {
+          self.onListenerCancellationWaitForTesting?()
+          await pendingCancellation.value
+          guard !Task.isCancelled, self.executingAttemptID == pressID else { return }
+        }
         guard let handler = self.onStartRecording else {
           // No callback wired means nothing was recorded, so the optimistic
           // bookkeeping is exactly as wrong here as on any other refusal.
@@ -1445,6 +1494,7 @@ public final class HotkeyService {
     if let token = effects.installKeyboardListener(sink) {
       keyboardListenerToken = token
       listenerFailureReported = false
+      engine.openListenerAdmission(installation: generation)
       #if DEBUG
         shadowDiagnostics.activate(segment)
       #endif
@@ -1483,6 +1533,8 @@ public final class HotkeyService {
     listenerRetry?.cancel()
     listenerRetry = nil
     listenerGeneration &+= 1
+    // No input from this installation is admitted from now on, even a callback still finishing.
+    engine.closeListenerAdmission()
     #if DEBUG
       let removing = keyboardListenerToken
     #endif

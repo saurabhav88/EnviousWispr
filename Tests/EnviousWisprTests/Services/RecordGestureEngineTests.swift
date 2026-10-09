@@ -46,6 +46,7 @@ struct RecordGestureEngineTests {
       case .quickRelease: return "quickRelease"
       case .loneTapStop: return "loneTapStop"
       case .loneTapResolved: return "resolved"
+      case .cancel: return "cancel"
       }
     }
   }
@@ -518,4 +519,300 @@ struct RecordGestureEngineTests {
       #expect(all.map(\.sequence) == [1, 2, 3])
     }
   #endif
+
+  // MARK: - Listener admission (#3544 P3)
+
+  private static let rightCommand: UInt16 = 54
+
+  /// A listener record input on a worker thread, classified under the engine's current
+  /// generation unless one is given.
+  private static func listener(
+    _ rig: Rig, _ isPress: Bool, _ t: TimeInterval, key: UInt16 = ModifierKeyCodes.rightOption,
+    generation: UInt64? = nil, installation: UInt64 = 7
+  ) -> RecordGestureEngine.ListenerRefusal? {
+    let engine = rig.engine
+    let input = rig.at(t)
+    let generation = generation ?? engine.listenerConfigurationGeneration
+    let result = OSAllocatedUnfairLock<RecordGestureEngine.ListenerRefusal?>(initialState: nil)
+    offMain {
+      rig.clock.now = 500 + t
+      let refusal = engine.ingestFromListener(
+        keyCode: key, isPress: isPress, input: input, generation: generation,
+        installation: installation)
+      result.withLock { $0 = refusal }
+    }
+    return result.withLock { $0 }
+  }
+
+  @Test("listener input from a closed or earlier installation is refused and changes nothing")
+  func staleInstallationIsRefused() {
+    let rig = Rig()
+    #expect(Self.listener(rig, true, 0) == .staleInstallation)  // nothing open yet
+    rig.engine.openListenerAdmission(installation: 8)
+    #expect(Self.listener(rig, true, 0, installation: 7) == .staleInstallation)
+    rig.engine.closeListenerAdmission()
+    #expect(Self.listener(rig, true, 0, installation: 8) == .staleInstallation)
+    rig.engine.drainForTesting()
+    #expect(rig.sink.delivered.isEmpty)
+    #expect(rig.engine.snapshot.isHeld == false)
+    #expect(rig.engine.listenerRefusals[.staleInstallation] == 3)
+  }
+
+  @Test("a press classified before a rebind is refused; a wrong key and a chord binding are too")
+  func stalePressesAreRefused() {
+    let rig = Rig()
+    rig.engine.openListenerAdmission(installation: 7)
+    let before = rig.engine.listenerConfigurationGeneration
+    rig.engine.configure(
+      binding: .keyboard(keyCode: ModifierKeyCodes.leftOption, modifiers: []), mode: .pushToTalk)
+    #expect(rig.engine.listenerConfigurationGeneration != before)
+    #expect(
+      Self.listener(rig, true, 0, key: ModifierKeyCodes.leftOption, generation: before)
+        == .staleGeneration)
+    #expect(Self.listener(rig, true, 0, key: ModifierKeyCodes.rightOption) == .wrongKey)
+    rig.engine.configure(
+      binding: .keyboard(keyCode: ModifierKeyCodes.leftOption, modifiers: []), mode: .toggle)
+    #expect(
+      Self.listener(rig, true, 0, key: ModifierKeyCodes.leftOption) == .notListenerBinding)
+    rig.engine.configure(binding: .keyboard(keyCode: 15, modifiers: [.command]), mode: .pushToTalk)
+    #expect(Self.listener(rig, true, 0, key: 15) == .notListenerBinding)
+    rig.engine.drainForTesting()
+    #expect(rig.sink.delivered.isEmpty)
+    #expect(rig.engine.snapshot.isHeld == false)
+  }
+
+  @Test("a release with no admitted press from that key is refused, never rematched")
+  func unownedReleaseIsRefused() {
+    let rig = Rig()
+    rig.engine.openListenerAdmission(installation: 7)
+    #expect(Self.listener(rig, false, 0) == .unownedRelease)
+    // A main-path press does own its key, but a different key's release still finds nothing.
+    rig.main(true, 0.1)
+    #expect(Self.listener(rig, false, 1, key: ModifierKeyCodes.leftOption) == .unownedRelease)
+    #expect(rig.engine.snapshot.isHeld)
+    #expect(rig.engine.listenerRefusals[.unownedRelease] == 2)
+  }
+
+  @Test("an unchanged configure keeps the generation, and the held key's release still stops")
+  func repeatedConfigureKeepsTheHold() {
+    let rig = Rig()
+    rig.engine.openListenerAdmission(installation: 7)
+    let generation = rig.engine.listenerConfigurationGeneration
+    #expect(Self.listener(rig, true, 0) == nil)
+    rig.engine.configure(
+      binding: .keyboard(keyCode: ModifierKeyCodes.rightOption, modifiers: []), mode: .pushToTalk)
+    rig.engine.configureCancel(.init(binding: ShortcutRole.cancel.defaultBinding))
+    #expect(rig.engine.listenerConfigurationGeneration == generation)
+    #expect(Self.listener(rig, false, 1, generation: generation) == nil)
+    rig.engine.drainForTesting()
+    #expect(rig.sink.validNames == ["start", "holdStop"])
+  }
+
+  @Test("after an actual rebind, the held key's release still ends its own hold")
+  func releaseFollowsItsPressAcrossARebind() {
+    let rig = Rig()
+    rig.engine.openListenerAdmission(installation: 7)
+    #expect(Self.listener(rig, true, 0) == nil)
+    let old = rig.engine.listenerConfigurationGeneration
+    rig.engine.configure(
+      binding: .keyboard(keyCode: ModifierKeyCodes.leftOption, modifiers: []), mode: .pushToTalk)
+    #expect(Self.listener(rig, false, 1, generation: old) == nil)
+    rig.engine.drainForTesting()
+    #expect(rig.sink.validNames == ["start", "holdStop"])
+    #expect(rig.engine.snapshot.isHeld == false)
+  }
+
+  @Test("a listener cancel is refused unless armed, on the bare cancel key, and not the record key")
+  func cancelAdmission() {
+    let rig = Rig()
+    rig.engine.openListenerAdmission(installation: 7)
+    rig.engine.configureCancel(.init(binding: .keyboard(keyCode: Self.rightCommand, modifiers: [])))
+    let g = rig.engine.listenerConfigurationGeneration
+    #expect(
+      rig.engine.cancelFromListener(keyCode: Self.rightCommand, generation: g, installation: 7)
+        == .cancelNotArmed)
+    rig.engine.setCancelArmed(true)
+    #expect(
+      rig.engine.cancelFromListener(
+        keyCode: ModifierKeyCodes.leftOption, generation: g, installation: 7) == .wrongKey)
+    #expect(
+      rig.engine.cancelFromListener(keyCode: Self.rightCommand, generation: g &- 1, installation: 7)
+        == .staleGeneration)
+    // Record wins a tie: cancel bound to the record key is never cancel.
+    rig.engine.configureCancel(
+      .init(binding: .keyboard(keyCode: ModifierKeyCodes.rightOption, modifiers: [])))
+    #expect(
+      rig.engine.cancelFromListener(
+        keyCode: ModifierKeyCodes.rightOption, generation: rig.engine.listenerConfigurationGeneration,
+        installation: 7) == .wrongKey)
+    rig.engine.drainForTesting()
+    #expect(rig.sink.delivered.isEmpty)
+  }
+
+  /// A service whose record key is bare Right Option in push-to-talk and whose cancel key is bare
+  /// Right Command, with the listener installed, counting starts, cancels and lock publications.
+  @MainActor private final class CancelRig {
+    let clock = HotkeyTestClock(500)
+    let timers: HotkeyTestScheduler
+    let service: HotkeyService
+    var starts = 0
+    var published = 0
+    let cancels = HotkeyGlobeKeyTests.CallbackWaiter()
+    var cancelCount = 0
+    /// While set, the cancel callback waits here after it is entered, as a real teardown does.
+    var cancelGate: CheckedContinuation<Void, Never>?
+    var holdCancel = false
+    init() {
+      timers = HotkeyTestScheduler(clock: clock)
+      service = HotkeyService(
+        effects: RecordingDesktopHotkeyEffects(), uptime: clock.uptime,
+        scheduler: timers.scheduler)
+      service.recordingMode = .pushToTalk
+      service.cancelKeyCode = RecordGestureEngineTests.rightCommand
+      service.cancelModifiers = []
+      service.onStartRecording = { [unowned self] in
+        starts += 1
+        return .recording("session-\(starts)")
+      }
+      service.onLockRequested = { [unowned self] _ in
+        published += 1
+        return .published
+      }
+      service.onCancelRecording = { [unowned self] in
+        cancelCount += 1
+        cancels.note()
+        if holdCancel {
+          await withCheckedContinuation { cancelGate = $0 }
+        }
+      }
+      service.start()
+    }
+    var engine: RecordGestureEngine { service.recordGestureEngineForTesting }
+    func record(_ isPress: Bool, _ t: TimeInterval) {
+      clock.now = 500 + t
+      let refusal = engine.ingestFromListener(
+        keyCode: ModifierKeyCodes.rightOption, isPress: isPress,
+        input: .accepting(stamp: 500 + t, handled: 500 + t),
+        generation: engine.listenerConfigurationGeneration, installation: engine.listenerInstallation ?? 0)
+      #expect(refusal == nil)
+    }
+    func cancel() {
+      let refusal = engine.cancelFromListener(
+        keyCode: RecordGestureEngineTests.rightCommand, generation: engine.listenerConfigurationGeneration,
+        installation: engine.listenerInstallation ?? 0)
+      #expect(refusal == nil)
+    }
+  }
+
+  @Test("a cancel made before a new press, while main is busy, cancels only the older dictation")
+  func queuedCancelSparesTheNextHeldAttempt() async {
+    let rig = CancelRig()
+    defer { rig.service.stop() }
+    rig.record(true, 0)
+    rig.engine.drainForTesting()
+    await rig.service.awaitInFlightStartForTesting()
+    rig.service.setCancelHotkeyEnabled(true)
+    // Main withheld: cancel, release the record key, press it again; all decided before main runs.
+    rig.cancel()
+    rig.record(false, 2.0)
+    rig.record(true, 2.5)
+    rig.engine.drainForTesting()
+    await rig.cancels.wait(until: 1)
+    await rig.service.awaitInFlightStartForTesting()
+    #expect(rig.cancelCount == 1)
+    #expect(rig.starts == 2)
+    #expect(rig.service.isModifierHeld)
+    // The newer attempt is fully alive on main: a quick release and a second press lock it.
+    rig.record(false, 2.625)
+    rig.record(true, 2.75)
+    rig.engine.drainForTesting()
+    #expect(rig.published == 1)
+    #expect(rig.service.isRecordingLocked)
+  }
+
+  @Test("a cancel of a hands-free dictation makes the next press a new dictation, not a stop")
+  func queuedCancelOfALockedAttemptStartsFresh() async {
+    let rig = CancelRig()
+    defer { rig.service.stop() }
+    rig.record(true, 0)
+    rig.engine.drainForTesting()
+    await rig.service.awaitInFlightStartForTesting()
+    rig.record(false, 0.125)
+    rig.record(true, 0.25)
+    rig.engine.drainForTesting()
+    #expect(rig.service.isRecordingLocked)
+    rig.record(false, 0.375)
+    rig.engine.drainForTesting()
+    rig.service.setCancelHotkeyEnabled(true)
+    rig.cancel()
+    rig.record(true, 3.0)
+    rig.engine.drainForTesting()
+    await rig.cancels.wait(until: 1)
+    await rig.service.awaitInFlightStartForTesting()
+    #expect(rig.cancelCount == 1)
+    #expect(rig.starts == 2)
+    #expect(rig.service.isRecordingLocked == false)
+    #expect(rig.service.isModifierHeld)
+  }
+
+  @Test("the next dictation starts only after a listener cancel has finished tearing down")
+  func nextStartWaitsForTheCancel() async throws {
+    let rig = CancelRig()
+    defer { rig.service.stop() }
+    rig.record(true, 0)
+    rig.engine.drainForTesting()
+    await rig.service.awaitInFlightStartForTesting()
+    rig.service.setCancelHotkeyEnabled(true)
+    rig.holdCancel = true
+    let reachedWait = HotkeyGlobeKeyTests.CallbackWaiter()
+    rig.service.onListenerCancellationWaitForTesting = { reachedWait.note() }
+    rig.cancel()
+    rig.record(false, 2.0)
+    rig.record(true, 2.5)
+    rig.engine.drainForTesting()
+    await rig.cancels.wait(until: 1)
+    // The start has reached its wait while the cancel is still tearing down.
+    await reachedWait.wait(until: 1)
+    #expect(rig.starts == 1)
+    let gate = try #require(rig.cancelGate)
+    rig.cancelGate = nil
+    gate.resume()
+    await rig.service.awaitInFlightStartForTesting()
+    #expect(rig.starts == 2)
+    rig.record(false, 2.625)
+    rig.record(true, 2.75)
+    rig.engine.drainForTesting()
+    #expect(rig.published == 1)
+    #expect(rig.service.isRecordingLocked)
+  }
+
+  @Test("a listener press classified before an explicit reset is refused after it")
+  func resetRefusesAClassifiedPress() {
+    let rig = Rig()
+    rig.engine.openListenerAdmission(installation: 7)
+    let classified = rig.engine.listenerConfigurationGeneration
+    rig.engine.reset()
+    #expect(Self.listener(rig, true, 0, generation: classified) == .staleGeneration)
+    rig.engine.drainForTesting()
+    #expect(rig.sink.validNames.contains("start") == false)
+    #expect(rig.engine.snapshot.isHeld == false)
+  }
+
+  @Test("a queued listener cancel is still delivered after its attempt is refused")
+  func cancelSurvivesItsAttemptsRefusal() {
+    let rig = Rig()
+    rig.engine.openListenerAdmission(installation: 7)
+    rig.engine.configureCancel(.init(binding: .keyboard(keyCode: Self.rightCommand, modifiers: [])))
+    #expect(Self.listener(rig, true, 0) == nil)
+    rig.engine.drainForTesting()
+    let attempt = rig.sink.delivered.first { $0.name == "start" }?.attempt ?? 0
+    rig.engine.setCancelArmed(true)
+    #expect(
+      rig.engine.cancelFromListener(
+        keyCode: Self.rightCommand, generation: rig.engine.listenerConfigurationGeneration,
+        installation: 7) == nil)
+    rig.engine.reset(attempt: attempt)
+    rig.engine.drainForTesting()
+    #expect(rig.sink.validNames.filter { $0 == "cancel" }.count == 1)
+  }
 }
