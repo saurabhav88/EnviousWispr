@@ -29,39 +29,42 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 
 # The seven probes of plan section 11.1. `row_has` is extra text the result row must also show
-# when the title alone is ambiguous. `kinds` are the ladder rungs this probe accepts: the row
-# itself, or the documented lower rung when the row is hidden in the founder's current state.
+# when the title alone is ambiguous. `landings` are the (rung, anchor id) pairs this probe
+# accepts, from the Settings Map: the result's own target (a choice's target is its parent
+# control), or for a row the current state can hide, its declared fallbacks and section.
+# `dest_tab` on Dictionary is the selected section of its rail.
 PROBES = [
     {"name": "self-learning-dictionary", "page": "Dictionary", "tab": None,
      "query": "self-learning", "title": "Self-Learning Dictionary", "row_has": None,
-     "entry": "selfLearningDictionary", "dest_page": "Dictionary", "dest_tab": None,
-     "kinds": ("target",)},
+     "entry": "selfLearningDictionary", "dest_page": "Dictionary", "dest_tab": "Learn from...",
+     "landings": {("target", "selfLearningDictionary")}},
     {"name": "unload-model-from-clipboard", "page": "Dictation Settings", "tab": "Clipboard",
      "query": "unload model", "title": "Unload model after", "row_has": None,
      "entry": "unloadModel", "dest_page": "Dictation Settings", "dest_tab": "Engine",
-     "kinds": ("target",)},
+     "landings": {("target", "unloadModel")}},
     {"name": "auto-copy-from-engine", "page": "Dictation Settings", "tab": "Engine",
      "query": "auto-copy", "title": "Auto-copy to clipboard", "row_has": None,
      "entry": "autoCopyToClipboard", "dest_page": "Dictation Settings", "dest_tab": "Clipboard",
-     "kinds": ("target",)},
+     "landings": {("target", "autoCopyToClipboard")}},
     {"name": "microphone-tab-from-keybinds", "page": "Keybinds", "tab": None,
      "query": "microphone", "title": "Microphone", "row_has": "Dictation",
      "entry": "dictation.tab.microphone", "dest_page": "Dictation Settings",
-     "dest_tab": "Microphone", "kinds": ("target",)},
+     "dest_tab": "Microphone", "landings": {("target", "dictation.tab.microphone")}},
     {"name": "enable-dictionary-from-app-settings", "page": "App Settings", "tab": "Appearance",
      "query": "enable dictionary", "title": "Enable Dictionary", "row_has": None,
      "entry": "enableDictionary", "dest_page": "Dictionary", "dest_tab": None,
-     "kinds": ("target",)},
+     "landings": {("target", "enableDictionary")}},
     {"name": "chime-choice-from-engine", "page": "Dictation Settings", "tab": "Engine",
      "query": "dust mote", "title": "Dust Mote", "row_has": None,
      "entry": "recordingChime.dustMote", "dest_page": "Dictation Settings", "dest_tab": "Chimes",
-     "kinds": ("target",)},
+     "landings": {("target", "recordingChime")}},
     # Save shows only while a key is being typed; with no draft the row is hidden and the
     # arrival lands on a lower rung of its ladder. The probe never types or saves a key.
     {"name": "api-key-save", "page": "AI Polish", "tab": None,
      "query": "api key save", "title": "Save", "row_has": None,
      "entry": "apiKey.save", "dest_page": "AI Polish", "dest_tab": None,
-     "kinds": ("target", "fallback", "section", "landing")},
+     "landings": {("target", "apiKey.save"), ("fallback", "aiPolishProvider"),
+                  ("fallback", "enableAIPolish"), ("section", "aiPolish.providerSection")}},
 ]
 
 ARRIVAL = re.compile(r"arrival landed=(\w+) entry=(\S+) at=(\S+)( upgrade=true)?")
@@ -83,9 +86,9 @@ def verdict(probe, alive, arrivals, page, tab):
         return "FAIL", "the app is no longer running"
     if not arrivals:
         return "FAIL", "no arrival line for this result was logged"
-    kind = arrivals[-1][0]
-    if kind not in probe["kinds"]:
-        return "FAIL", f"landed on {kind}, expected one of {list(probe['kinds'])}"
+    kind, anchor, _ = arrivals[-1]
+    if (kind, anchor) not in probe["landings"]:
+        return "FAIL", f"unexpected landing {(kind, anchor)!r}, expected one of {sorted(probe['landings'])}"
     if page != probe["dest_page"]:
         return "FAIL", f"the selected page is {page!r}, expected {probe['dest_page']!r}"
     if probe["dest_tab"] is not None and tab != probe["dest_tab"]:
@@ -163,7 +166,9 @@ def run_probe(probe, w, u, sn, pid):
         selected = [p for p in sn.PAGES
                     if sn.selection_state(ax, ax.get_attr(sn.unique_control(ax, side, p), "AXValue"))]
         page = selected[0] if len(selected) == 1 else None
-        if page in sn.TABS:
+        if page == "Dictionary":
+            tab = sn.selected_section(ax, root)
+        elif page in sn.TABS:
             tab = sn.current_tab(ax, root, page)
     outcome, reason = verdict(probe, alive, arrivals, page, tab)
     row.update(outcome=outcome, reason=reason, alive=alive, arrivals=arrivals,
@@ -226,15 +231,28 @@ def _self_test():
                                                   ("target", "apiKey.save", True)])
     check("no line for another entry", arrival_lines(lines, "missing") == [])
     probe = PROBES[1]
-    check("dead app fails", verdict(probe, False, [("target", "x", False)], "Dictation Settings", "Engine")[0] == "FAIL")
+    good = [("target", "unloadModel", False)]
+    check("dead app fails", verdict(probe, False, good, "Dictation Settings", "Engine")[0] == "FAIL")
     check("no arrival fails", verdict(probe, True, [], "Dictation Settings", "Engine")[0] == "FAIL")
-    check("wrong rung fails", verdict(probe, True, [("section", "x", False)], "Dictation Settings", "Engine")[0] == "FAIL")
-    check("wrong page fails", verdict(probe, True, [("target", "x", False)], "Keybinds", None)[0] == "FAIL")
-    check("wrong tab fails", verdict(probe, True, [("target", "x", False)], "Dictation Settings", "Clipboard")[0] == "FAIL")
-    check("the right rung, page and tab pass",
-          verdict(probe, True, [("target", "x", False)], "Dictation Settings", "Engine")[0] == "PASS")
+    check("wrong rung fails", verdict(probe, True, [("section", "unloadModel", False)], "Dictation Settings", "Engine")[0] == "FAIL")
+    check("wrong anchor fails", verdict(probe, True, [("target", "unloadModel.never", False)], "Dictation Settings", "Engine")[0] == "FAIL")
+    check("wrong page fails", verdict(probe, True, good, "Keybinds", None)[0] == "FAIL")
+    check("wrong tab fails", verdict(probe, True, good, "Dictation Settings", "Clipboard")[0] == "FAIL")
+    check("the right rung, anchor, page and tab pass", verdict(probe, True, good, "Dictation Settings", "Engine")[0] == "PASS")
     check("the last line decides (an upgrade to the row passes)",
-          verdict(probe, True, [("section", "s", False), ("target", "x", True)], "Dictation Settings", "Engine")[0] == "PASS")
+          verdict(probe, True, [("section", "section.engineShared", False)] + [("target", "unloadModel", True)],
+                  "Dictation Settings", "Engine")[0] == "PASS")
+    dictionary = PROBES[0]
+    sld = [("target", "selfLearningDictionary", False)]
+    check("Dictionary: the wrong section fails", verdict(dictionary, True, sld, "Dictionary", "Your Words")[0] == "FAIL")
+    check("Dictionary: Learn from... passes", verdict(dictionary, True, sld, "Dictionary", "Learn from...")[0] == "PASS")
+    chime = PROBES[5]
+    check("a choice lands on its parent control", verdict(chime, True, [("target", "recordingChime", False)], "Dictation Settings", "Chimes")[0] == "PASS")
+    save = PROBES[6]
+    check("Save hidden: its declared section passes",
+          verdict(save, True, [("section", "aiPolish.providerSection", False)], "AI Polish", None)[0] == "PASS")
+    check("Save: an undeclared landing fails",
+          verdict(save, True, [("landing", "page.aiPolish", False)], "AI Polish", None)[0] == "FAIL")
     check("seven probes with unique names", len(PROBES) == 7 and len({p["name"] for p in PROBES}) == 7)
     print("self-test:", "FAIL" if failures else "PASS")
     return 1 if failures else 0
