@@ -2626,6 +2626,10 @@ public enum PasteService {
       let keyUp = CGEvent(
         keyboardEventSource: source, virtualKey: UInt16(kVK_ANSI_V), keyDown: false)
     else { return false }
+    // Marked as ours (#3544 P3), so the keyboard listener never reads this chord as the user's.
+    for event in [keyDown, keyUp] {
+      event.setIntegerValueField(.eventSourceUserData, value: SyntheticKeyboardEventMarker.userData)
+    }
     keyDown.flags = .maskCommand
     keyDown.post(tap: .cgAnnotatedSessionEventTap)
     keyUp.flags = .maskCommand

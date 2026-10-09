@@ -13,6 +13,8 @@ public struct FeedbackDraft: Equatable, Sendable {
   public let message: String
   /// `nil` when the field was left empty; never an empty string.
   public let email: String?
+  /// What the user said the report is about, or nil when they did not say (#3544 P3).
+  public let category: FeedbackCategory?
 
   /// Why a draft cannot be sent yet, for the form to show.
   public enum Issue: Equatable, Sendable {
@@ -20,11 +22,12 @@ public struct FeedbackDraft: Equatable, Sendable {
   }
 
   /// Trims both fields; `nil` when `issue(message:email:)` finds a problem.
-  public init?(message: String, email: String) {
+  public init?(message: String, email: String, category: FeedbackCategory? = nil) {
     guard Self.issue(message: message, email: email) == nil else { return nil }
     self.message = message.trimmingCharacters(in: .whitespacesAndNewlines)
     let trimmedEmail = email.trimmingCharacters(in: .whitespacesAndNewlines)
     self.email = trimmedEmail.isEmpty ? nil : trimmedEmail
+    self.category = category
   }
 
   /// A plausible reply address: a typo guard, not a delivery check. A dot-atom local part (no
@@ -94,7 +97,7 @@ public enum FeedbackReporter {
     let record = FeedbackRecord(
       id: id, submittedAt: now, message: draft.message, email: draft.email,
       attachment: diagnostics?.data, context: context, attempts: 0, nextAttemptAt: nil,
-      state: .pending, rejectedStatus: nil, helpOutcome: helpOutcome,
+      state: .pending, rejectedStatus: nil, helpOutcome: helpOutcome, category: draft.category,
       usageLinkID: usageLinkID(
         diagnostics: diagnostics, usageMetrics: usageMetrics, savedID: savedID))
     switch await outbox.enqueue(record) {
@@ -159,6 +162,18 @@ extension FeedbackRecord.Context {
     guard sysctlbyname("kern.osversion", &buffer, &size, nil, 0) == 0 else { return "unknown" }
     return String(cString: buffer)
   }
+}
+
+/// A closed set of things a feedback report can say it is about (#3544 P3), chosen by the user in
+/// the form and sent as a label beside the message, never inside it. Content-free by construction:
+/// the label is the only thing it adds.
+public enum FeedbackCategory: String, Codable, Equatable, Sendable, CaseIterable {
+  /// Typing or a keyboard shortcut misbehaved while EnviousWispr was running (the keyboard
+  /// listener's release-stop signal, #3544 plan §13).
+  case typingOrShortcutInterference = "typing_or_shortcut_interference"
+
+  /// The Sentry tag the label travels under.
+  static let sentryTagKey = "feedback_category"
 }
 
 /// The unsent feedback text, kept on this Mac so closing the popover, the window or the app does

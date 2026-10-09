@@ -159,8 +159,8 @@ package struct RecordGesture: Sendable {
 
   /// #3544: `HotkeyService.invalidateQuickTapDiagnostics()` and `cleanup()` delegate here.
   /// #3534 §3.3: the one place the stop-timer measurement is voided. Called from
-  /// `performCleanup`, actual mode and binding changes, and `removeModifierMonitors` (which
-  /// every monitor install, cancel rebind, app-shortcut rebind and `suspend()` pass through).
+  /// `performCleanup`, actual mode and binding changes, and `HotkeyService.removeKeyboardListener`
+  /// (which every stop, suspend, storm and reinstall passes through).
   package mutating func invalidateDiagnostics() {
     diagnosticEpoch &+= 1
     lastQuickTapStop = nil

@@ -919,6 +919,28 @@ public final class TelemetryService {
     PostHogSDK.shared.capture("hotkey.registration", properties: props)
   }
 
+  /// #3544 P3: the keyboard listener had trouble (an installation ended after an OS disable, or
+  /// an install succeeded after failed attempts). Rare failure; counts and closed-set strings.
+  public func hotkeyListenerHealth(_ report: HotkeyListenerHealthReport) {
+    let props: [String: Any] = [
+      "terminal": report.terminal, "reason": report.reason,
+      "disable_episodes": report.disableEpisodes, "reenables": report.reenables,
+      "install_attempts": report.installAttempts, "install_failures": report.installFailures,
+      "installs": report.installs,
+    ]
+    #if DEBUG
+      // Derived from `props`, every typed bucket, as `hotkeyPressed` does.
+      testEventHook?(
+        CapturedTelemetryEvent(
+          name: "hotkey.listener_health",
+          stringProps: props.compactMapValues { $0 as? String },
+          intProps: props.compactMapValues { $0 as? Int },
+          doubleProps: props.compactMapValues { $0 as? Double },
+          boolProps: props.compactMapValues { $0 as? Bool }))
+    #endif
+    PostHogSDK.shared.capture("hotkey.listener_health", properties: props)
+  }
+
   /// A raw accepted hotkey keydown was routed to a recording action — the C3
   /// denominator for `dictation.invoked` (which fires post-commit and under-fires
   /// raw presses). Metadata only (low-cardinality enums; never the key codes).

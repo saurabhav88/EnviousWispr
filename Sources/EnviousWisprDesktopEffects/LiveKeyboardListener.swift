@@ -1,3 +1,4 @@
+import Carbon.HIToolbox
 import CoreGraphics
 import EnviousWisprServices
 import Foundation
@@ -18,12 +19,15 @@ import os
 /// **Recovery.** The OS disables a tap whose callback runs too long, or on some user input. The
 /// callback and a 2 s watchdog both notice; the listener re-enables and reports `.tapReenabled`
 /// only once the tap is confirmed enabled again. Five disable episodes within 60 s is a storm: the
-/// installation stops for good and reports why (`terminalReason`); a replacement and its cooldown
-/// belong to the owner (plan §7, cooldown still to be measured). Both numbers are the plan's
-/// provisional baselines (§14), to be checked against P2 live measurements.
+/// installation stops for good, reports why (`terminalReason`) and tells the sink once
+/// (`.stormStopped`), with no key event needed; the replacement and its cooldown belong to the
+/// owner (`HotkeyService`, #3544 P3). Both numbers are the plan's provisional baselines (§14).
 ///
-/// **Not produced yet.** `.secureInputChanged` (detection and policy are P3, plan §3.5; a disable
-/// is never read as Secure Input, #3544 P0) and `isOurs` (the shared self-event marker is P3).
+/// **Secure Input** (#3544 P3, plan A2). The worker samples `IsSecureEventInputEnabled` when the
+/// installation becomes active and every 5 s on its run loop (no key input needed), and reports
+/// each change as `.secureInputChanged`, with the owner's pid when the session names one. Never
+/// inferred from a tap disable (#3544 P0). `isOurs` is read from the shared
+/// `SyntheticKeyboardEventMarker`.
 ///
 /// **`@unchecked Sendable`, and why that is true.** Everything shared between threads lives in
 /// `state`, behind one lock. The tap, run loop source, watchdog timer and callback context are
@@ -42,6 +46,8 @@ final class LiveKeyboardListener: @unchecked Sendable {
   /// ... within this window.
   static let stormWindow: TimeInterval = 60
   static let watchdogInterval: TimeInterval = 2
+  /// How often the worker samples Secure Input, idle or not (plan A2).
+  static let secureInputInterval: TimeInterval = 5
   /// Bound on waiting for the worker to acknowledge start or stop. An administrative hang guard,
   /// not a keyboard latency budget; same shape as the bounded waits in `LiveMediaRemoteAdapter`.
   /// Adequacy NOT VERIFIED until P2 live measurement.
@@ -75,6 +81,8 @@ final class LiveKeyboardListener: @unchecked Sendable {
   private var tap: CFMachPort?
   private var source: CFRunLoopSource?
   private var watchdog: CFRunLoopTimer?
+  private var secureInputTimer: CFRunLoopTimer?
+  private var secureInput = SecureInputChangeDetector()
   private var context: Unmanaged<CallbackContext>?
 
   init(sink: @escaping @Sendable (KeyEventValue) -> ListenerVerdict) {
@@ -200,6 +208,14 @@ final class LiveKeyboardListener: @unchecked Sendable {
     }
     startedSignal.signal()
     if proceed {
+      // The first state, including Secure Input already on at launch, then every 5 s.
+      sampleSecureInput()
+      let secureInputTimer = CFRunLoopTimerCreateWithHandler(
+        kCFAllocatorDefault, CFAbsoluteTimeGetCurrent() + Self.secureInputInterval,
+        Self.secureInputInterval, 0, 0
+      ) { [unowned self] _ in self.sampleSecureInput() }
+      self.secureInputTimer = secureInputTimer
+      CFRunLoopAddTimer(runLoop, secureInputTimer, .commonModes)
       // `stop()` sets the latch, then queues a block that stops the run from inside it, so every
       // exit re-reads the latch and a stop that lands between the check and the run still ends it.
       while !state.withLock({ $0.stopRequested }) {
@@ -214,6 +230,7 @@ final class LiveKeyboardListener: @unchecked Sendable {
     state.withLock { $0.delivering = false }
     if let tap { CGEvent.tapEnable(tap: tap, enable: false) }
     if let watchdog { CFRunLoopTimerInvalidate(watchdog) }
+    if let secureInputTimer { CFRunLoopTimerInvalidate(secureInputTimer) }
     if let source { CFRunLoopRemoveSource(runLoop, source, .commonModes) }
     if let tap { CFMachPortInvalidate(tap) }
     // Callbacks run only on this thread's run loop, which is no longer running and no longer has
@@ -221,6 +238,7 @@ final class LiveKeyboardListener: @unchecked Sendable {
     context?.release()
     context = nil
     watchdog = nil
+    secureInputTimer = nil
     source = nil
     tap = nil
     state.withLock { s in
@@ -242,7 +260,9 @@ final class LiveKeyboardListener: @unchecked Sendable {
       keyCode: UInt16(truncatingIfNeeded: event.getIntegerValueField(.keyboardEventKeycode)),
       rawFlags: event.flags.rawValue,
       timestamp: TimeInterval(event.timestamp) / 1_000_000_000,
-      isAutorepeat: event.getIntegerValueField(.keyboardEventAutorepeat) != 0)
+      isAutorepeat: event.getIntegerValueField(.keyboardEventAutorepeat) != 0,
+      isOurs: event.getIntegerValueField(.eventSourceUserData)
+        == SyntheticKeyboardEventMarker.userData)
     _ = sink(value)
   }
 
@@ -276,6 +296,11 @@ final class LiveKeyboardListener: @unchecked Sendable {
     }
     guard let storm else { return }
     if storm {
+      // Told once, before cleanup: the owner replaces this installation after its cooldown.
+      _ = sink(
+        KeyEventValue(
+          kind: .stormStopped, keyCode: 0, rawFlags: 0,
+          timestamp: ProcessInfo.processInfo.systemUptime))
       CFRunLoopStop(CFRunLoopGetCurrent())
       return
     }
@@ -295,6 +320,34 @@ final class LiveKeyboardListener: @unchecked Sendable {
           kind: .tapReenabled, keyCode: 0, rawFlags: 0,
           timestamp: ProcessInfo.processInfo.systemUptime))
     }
+  }
+
+  /// Worker thread, never inside the tap callback. Reports a change only.
+  private func sampleSecureInput() {
+    let enabled = IsSecureEventInputEnabled()
+    guard let observation = secureInput.sample(
+      enabled: enabled, ownerPID: enabled ? Self.secureInputOwnerPID() : nil)
+    else { return }
+    guard state.withLock({ $0.delivering && !$0.stopRequested }) else { return }
+    _ = sink(
+      KeyEventValue(
+        kind: .secureInputChanged, keyCode: 0, rawFlags: 0,
+        timestamp: ProcessInfo.processInfo.systemUptime, secureInput: observation))
+  }
+
+  /// Best effort: the pid the current session's dictionary names as holding Secure Input. The key
+  /// is not documented by Apple, so any missing or malformed value is an unknown owner, never
+  /// "Secure Input is off". NOT VERIFIED on every supported macOS release.
+  private static func secureInputOwnerPID() -> Int32? {
+    guard let session = CGSessionCopyCurrentDictionary() as? [String: Any],
+      let number = session["kCGSSessionSecureInputPID"] as? NSNumber
+    else { return nil }
+    // Exact positive integers only: a Boolean, fraction or out-of-range value is unknown.
+    guard CFGetTypeID(number) != CFBooleanGetTypeID(),
+      let pid = Int32(exactly: number.doubleValue),
+      pid > 0
+    else { return nil }
+    return pid
   }
 
   // MARK: - Health

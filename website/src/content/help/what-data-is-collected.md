@@ -6,7 +6,7 @@ section: "Privacy"
 order: 2
 keywords: ["what data", "analytics", "telemetry", "collected", "do you see my text", "do you store", "opt out", "turn off", "tracking", "crash reports", "usage metrics", "diagnostics", "send feedback privacy", "help check", "TypeSafe", "share usage metrics"]
 related: ["privacy-overview"]
-updated: 2026-10-07
+updated: 2026-10-09
 deflection: "show_but_always_send"
 ---
 EnviousWispr collects anonymous usage data and crash reports, and you can turn either one off. Nothing you say is part of that. Usage data can include a Settings search that found nothing, after the app filters it. Your audio never reaches Envious Labs, the company that makes the app. The app never sends us your dictations or transcripts, unless you type them into a feedback message yourself.
@@ -46,6 +46,8 @@ Two kinds of text you type do leave your Mac. A feedback message is sent only wh
 The app collects anonymous usage and crash data. That data shows whether a release broke dictation on a particular macOS version, or whether anyone ever opens a setting that took a month to build. Both are on by default, and you can turn either one off.
 
 The app records how you use it, never what you said. There is no account, and nothing in the data names you. Each installation gets a random ID, so that one Mac counts as one user. The privacy policy has the full detail.
+
+If the part of the app that listens for your keybind has trouble, for example macOS keeps switching it off, usage data includes counts of how often that happened and whether it recovered. These shortcut-health reports never include which keys you pressed.
 
 ### Does the app send what I type in Settings search?
 

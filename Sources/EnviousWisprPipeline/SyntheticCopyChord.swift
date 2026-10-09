@@ -2,6 +2,7 @@ import AppKit
 import Carbon.HIToolbox
 import CoreGraphics
 import EnviousWisprCore
+import EnviousWisprServices
 
 /// Posts one Command+C at a named process, and derives which key that actually is (#2465).
 ///
@@ -87,6 +88,10 @@ enum SyntheticCopyChord {
       let keyDown = CGEvent(keyboardEventSource: source, virtualKey: copyKeyCode, keyDown: true),
       let keyUp = CGEvent(keyboardEventSource: source, virtualKey: copyKeyCode, keyDown: false)
     else { return .notPosted }
+    // Marked as ours (#3544 P3), so the keyboard listener never reads this chord as the user's.
+    for event in [commandDown, commandUp, keyDown, keyUp] {
+      event.setIntegerValueField(.eventSourceUserData, value: SyntheticKeyboardEventMarker.userData)
+    }
 
     commandDown.postToPid(pid)
     keyDown.flags = .maskCommand

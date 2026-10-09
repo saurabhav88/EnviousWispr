@@ -45,20 +45,25 @@ public struct HotkeyTelemetrySink: Sendable {
   /// / `publication_unavailable`. Metadata only — no session id, no key codes.
   public var lockResolved: @MainActor (_ committed: Bool, _ reason: String) -> Void
 
+  /// #3544 P3 — the keyboard listener had trouble; a healthy launch sends nothing. Metadata only.
+  public var listenerHealth: @MainActor (HotkeyListenerHealthReport) -> Void
+
   public init(
     registrationFailed: @escaping @MainActor (String, String, Int32?, String) -> Void,
     pressed: @escaping @MainActor (String, String, String, String, String, String?) -> Void,
-    lockResolved: @escaping @MainActor (Bool, String) -> Void = { _, _ in }
+    lockResolved: @escaping @MainActor (Bool, String) -> Void = { _, _ in },
+    listenerHealth: @escaping @MainActor (HotkeyListenerHealthReport) -> Void = { _ in }
   ) {
     self.registrationFailed = registrationFailed
     self.pressed = pressed
     self.lockResolved = lockResolved
+    self.listenerHealth = listenerHealth
   }
 
   /// Inert sink — the default for tests and any non-app construction.
   public static let noop = HotkeyTelemetrySink(
     registrationFailed: { _, _, _, _ in }, pressed: { _, _, _, _, _, _ in },
-    lockResolved: { _, _ in })
+    lockResolved: { _, _ in }, listenerHealth: { _ in })
 
   /// Production sink. Registration failure → PostHog breakdown + Sentry handled
   /// error (synchronous, durable). Press → PostHog, deferred to the next run loop
@@ -103,7 +108,49 @@ public struct HotkeyTelemetrySink: Sendable {
           TelemetryService.shared.hotkeyLockResolved(committed: committed, reason: reason)
         }
       }
+    },
+    listenerHealth: { report in
+      // Deferred like the others: reported from listener install or teardown on main, which may
+      // be a stop or resume on the input turn.
+      DispatchQueue.main.async {
+        MainActor.assumeIsolated { TelemetryService.shared.hotkeyListenerHealth(report) }
+      }
     })
+}
+
+/// One `hotkey.listener_health` row (#3544 P3).
+///
+/// Sent only when the listener had trouble, so a healthy launch sends none: when an installation
+/// ends after the OS disabled its tap at least once (`terminal` `removed` / `disable_storm`,
+/// `reason` `stop` / `suspend` / `storm` / `reinstall`, with that installation's
+/// `disableEpisodes` and confirmed `reenables`); when an install succeeds after failed
+/// attempts (`terminal` `none`, `reason` `installed_after_failures`, episode counts 0); and when
+/// shortcuts stop or suspend while installs are still failing (`terminal` `start_failed`,
+/// `reason` `stop` / `suspend`, episode counts 0). Each failure episode reports once.
+/// `installAttempts`, `installFailures` and `installs` are this launch's totals so far: adapter
+/// install calls, the ones that returned no listener, and the ones that did. Counts and closed
+/// strings only; never a key.
+public struct HotkeyListenerHealthReport: Sendable, Equatable {
+  public var terminal: String
+  public var reason: String
+  public var disableEpisodes: Int
+  public var reenables: Int
+  public var installAttempts: Int
+  public var installFailures: Int
+  public var installs: Int
+
+  public init(
+    terminal: String, reason: String, disableEpisodes: Int, reenables: Int,
+    installAttempts: Int, installFailures: Int, installs: Int
+  ) {
+    self.terminal = terminal
+    self.reason = reason
+    self.disableEpisodes = disableEpisodes
+    self.reenables = reenables
+    self.installAttempts = installAttempts
+    self.installFailures = installFailures
+    self.installs = installs
+  }
 }
 
 /// The error captured to Sentry when a hotkey registration fails. Carries only

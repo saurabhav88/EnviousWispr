@@ -11,8 +11,8 @@ import Testing
 /// asserts the emitted `press_action` / `trigger_source` / `key_shape` and the
 /// registration-failure path. `press_action` is derived entirely from
 /// HotkeyService's own state — no pipeline read — so every value is reachable
-/// here. The modifier-only `handleFlagsChangedValues` toggle site shares the same
-/// helper and is covered by Live UAT (the shipped default).
+/// here. The keyboard listener's modifier-only toggle site shares the same
+/// helper and is covered by `HotkeyGlobeKeyTests` and Live UAT (the shipped default).
 @MainActor
 // `.serialized` (#1987): the wire-payload case installs and restores the
 // process-global `testEventHook`, so no sibling case may run beside it.
@@ -176,33 +176,6 @@ import Testing
     #expect(spy.presses.first?.pressAction == "start")
   }
 
-  @Test("monitor nil-install reports a registration failure")
-  func monitorNilReportsFailure() {
-    let spy = Spy()
-    let service = makeService(spy, mode: .toggle, modifierOnly: true)
-    _ = service.recordMonitorInstall(nil, scope: "global")
-    #expect(
-      spy.registrations == [
-        .init(
-          mechanism: "nsevent_global", hotkeyKind: "toggle", osStatus: nil,
-          keyShape: "modifier_only")
-      ])
-  }
-
-  @Test("non-nil monitor install reports nothing and returns the token")
-  func monitorOkReportsNothing() {
-    let spy = Spy()
-    let service = makeService(spy, mode: .toggle, modifierOnly: true)
-    // #2455 C2: an opaque `DesktopEffectToken` rather than a raw `NSObject`
-    // monitor. The chokepoint's contract is unchanged — report a nil install,
-    // pass anything else through untouched — but no `NSEvent` value reaches this
-    // module any more.
-    let token = DesktopEffectToken()
-    let returned = service.recordMonitorInstall(token, scope: "local")
-    #expect(spy.registrations.isEmpty)
-    #expect(returned == token)
-  }
-
   @Test("A lock-cooldown press reports while the key still reads as held, then releases it (#3544)")
   func cooldownPressReportsWhileHeld() {
     // #3544 P1: the base emitted `ignored_cooldown` before clearing the held flag; the gesture
@@ -246,7 +219,6 @@ import Testing
     service.recordingMode = .pushToTalk
     service.toggleKeyCode = 0
     service.handleCarbonHotkey(id: toggleID, isRelease: false)
-    _ = service.recordMonitorInstall(nil, scope: "global")
     #expect(service.isModifierHeld)  // press was processed normally
   }
 
@@ -350,6 +322,31 @@ import Testing
         ],
         "hotkey.pressed carries an unexpected property: \(allKeys.sorted())")
       #expect(event?.intProps.isEmpty == true)
+      #expect(event?.doubleProps.isEmpty == true)
+      #expect(event?.boolProps.isEmpty == true)
+    }
+
+    @Test("hotkey.listener_health wire payload is closed strings and counts, never a key")
+    func listenerHealthWirePayload() {
+      let box = EventBox()
+      let previousHook = TelemetryService.shared.testEventHook
+      TelemetryService.shared.testEventHook = { event in
+        if event.name == "hotkey.listener_health" { box.set(event) }
+      }
+      defer { TelemetryService.shared.testEventHook = previousHook }
+
+      TelemetryService.shared.hotkeyListenerHealth(
+        HotkeyListenerHealthReport(
+          terminal: "disable_storm", reason: "storm", disableEpisodes: 5, reenables: 4,
+          installAttempts: 2, installFailures: 0, installs: 2))
+
+      let event = box.value
+      #expect(event?.stringProps == ["terminal": "disable_storm", "reason": "storm"])
+      #expect(
+        event?.intProps == [
+          "disable_episodes": 5, "reenables": 4, "install_attempts": 2, "install_failures": 0,
+          "installs": 2,
+        ])
       #expect(event?.doubleProps.isEmpty == true)
       #expect(event?.boolProps.isEmpty == true)
     }

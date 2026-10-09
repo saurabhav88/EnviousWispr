@@ -15,13 +15,14 @@ struct FeedbackSenderTests {
 
   static func record(
     message: String = "hi", email: String? = nil, attachment: Data? = nil,
-    helpOutcome: FeedbackHelpOutcome? = nil, usageLinkID: String? = nil
+    helpOutcome: FeedbackHelpOutcome? = nil, category: FeedbackCategory? = nil,
+    usageLinkID: String? = nil
   ) -> FeedbackRecord {
     FeedbackRecord(
       id: UUID(uuidString: "5D1E6A2B-9C3F-4E7A-8B10-2F4C6D8E0A1B")!,
       submittedAt: Date(timeIntervalSince1970: 1_790_000_000), message: message, email: email,
       attachment: attachment, context: context, attempts: 0, nextAttemptAt: nil, state: .pending,
-      rejectedStatus: nil, helpOutcome: helpOutcome, usageLinkID: usageLinkID)
+      rejectedStatus: nil, helpOutcome: helpOutcome, category: category, usageLinkID: usageLinkID)
   }
 
   /// A help-check outcome (#3275) with one of each match kind and resolution.
@@ -389,6 +390,52 @@ struct FeedbackSenderTests {
       let record = try JSONDecoder().decode(
         FeedbackRecord.self, from: try JSONSerialization.data(withJSONObject: object))
       #expect(record.usageLinkID == nil)
+      #expect(record.message == tagged.message)
+      #expect(record.id == tagged.id)
+    }
+  }
+
+  // MARK: - Category (#3544 P3)
+
+  @Test("A category travels as one closed tag beside the message, never inside it")
+  func categoryTag() throws {
+    let record = Self.record(message: "Option+E typed nothing", category: .typingOrShortcutInterference)
+    var payload = FeedbackSender.feedbackPayload(for: record)
+    let tags = try #require(payload.removeValue(forKey: "tags") as? [String: String])
+    #expect(tags == ["feedback_category": "typing_or_shortcut_interference"])
+    // Without the tag, the payload is the plain report's payload, key for key: the message is not
+    // prefixed or rewritten.
+    let plain = FeedbackSender.feedbackPayload(for: Self.record(message: "Option+E typed nothing"))
+    #expect(
+      NSDictionary(dictionary: payload).isEqual(to: plain), "the tag is the only difference")
+    #expect(Self.tags(Self.record()) == nil, "no category, no tag")
+  }
+
+  @Test("The category survives storage and retries; an old record without it and an unknown one decode")
+  func categoryCodec() throws {
+    let tagged = Self.record(category: .typingOrShortcutInterference)
+    for attempts in [0, 1, 2] {
+      var record = tagged
+      record.attempts = attempts
+      let stored = try JSONDecoder().decode(
+        FeedbackRecord.self, from: JSONEncoder().encode(record))
+      #expect(stored.category == .typingOrShortcutInterference, "attempt \(attempts)")
+      #expect(Self.tags(stored)?["feedback_category"] == "typing_or_shortcut_interference")
+    }
+    // A record written before categories existed has no such key.
+    let plainJSON = try JSONEncoder().encode(Self.record())
+    let plainObject = try #require(
+      try JSONSerialization.jsonObject(with: plainJSON) as? [String: Any])
+    #expect(plainObject["category"] == nil)
+    #expect(try JSONDecoder().decode(FeedbackRecord.self, from: plainJSON).category == nil)
+    // A value a later version wrote (or a corrupt one) drops only the category; the report survives.
+    for unknown in ["something_new", 7] as [Any] {
+      var object = try #require(
+        try JSONSerialization.jsonObject(with: JSONEncoder().encode(tagged)) as? [String: Any])
+      object["category"] = unknown
+      let record = try JSONDecoder().decode(
+        FeedbackRecord.self, from: try JSONSerialization.data(withJSONObject: object))
+      #expect(record.category == nil)
       #expect(record.message == tagged.message)
       #expect(record.id == tagged.id)
     }

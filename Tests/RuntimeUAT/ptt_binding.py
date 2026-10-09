@@ -282,9 +282,9 @@ def resolve(
     is_modifier_only = keycode in set(modifier_keys_by_name.values())
 
     # A nonzero modifier value only matters for an ORDINARY key. For a standalone
-    # modifier the app never consults toggleModifiers: installModifierMonitors()
-    # returns early unless isModifierOnly (HotkeyService.swift:629) and
-    # registerToggleHotkey() returns early when it is (:704).
+    # modifier the app never consults toggleModifiers: the keyboard listener matches
+    # bare modifiers by key code (KeyboardListenerIngress / ShortcutMatcher) and
+    # registerToggleHotkey() returns early for a bare modifier.
     if not is_modifier_only and modifiers_raw != 0:
         raise PTTBindingError(
             f"unsupported chord: keycode={keycode}, "

@@ -6,7 +6,7 @@ section: "Recording"
 order: 4
 keywords: ["keybind", "keybinds", "hotkey", "shortcut", "keyboard shortcut", "change the key", "how do i change the key", "key combo", "keybinding", "remap", "different key", "globe key", "fn key", "caps lock", "conflicts with another app", "quick add shortcut", "control shift w", "paste last dictation", "copy last dictation", "control command v", "control command c", "keybind not working", "not active", "key already in use"]
 related: ["adding-a-word-from-your-selection", "escape-recovery", "transcript-history"]
-updated: 2026-09-29
+updated: 2026-10-09
 deflection: "can_resolve"
 ---
 Your keybind is the key you hold or press to record, and you can change it to whatever suits your hands. EnviousWispr arrives set to the right Option key.
@@ -80,3 +80,5 @@ The recording keybind wins. The other row then says **Not active** and names the
 If **Keybinds** warns that macOS reports your combination as already taken, pick a different combination there.
 
 If a keybind does nothing and no warning appears, another app or a macOS feature may be using the same combination. Try a different one.
+
+A modifier key used on its own as a keybind, such as Right Option or Globe, also needs the Accessibility permission. If it does nothing, see [_Accessibility Permission Not Working_](/help/accessibility-permission-not-working/).

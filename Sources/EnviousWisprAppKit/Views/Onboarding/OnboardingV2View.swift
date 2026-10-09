@@ -1724,17 +1724,17 @@ private struct PermissionsPhaseView: View {
                 .foregroundStyle(Color.obWarning)
                 .font(.system(size: 16, weight: .semibold))
               VStack(alignment: .leading, spacing: 6) {
-                Text("Required to paste your dictation")
+                Text("Required for your shortcut and for pasting")
                   .font(.obLabel)
                   .foregroundStyle(Color.obTextPrimary)
                 Text(
-                  "macOS calls this permission \"Accessibility,\" but EnviousWispr uses it for exactly one thing: pasting your dictation into the app you're typing in. Without it, every dictation lands in the clipboard and you'd have to paste manually."
+                  "macOS calls this permission \"Accessibility.\" It lets EnviousWispr recognize modifier keys such as Right Option and paste your dictation into other apps. Without it, a modifier key used on its own does not respond. Other supported keybinds can still start dictation, and you paste the finished text from the clipboard."
                 )
                 .font(.obCaption)
                 .foregroundStyle(Color.obTextSecondary)
                 .fixedSize(horizontal: false, vertical: true)
                 Text(
-                  "We only use Accessibility at the moment we paste your dictation. Never to read your keystrokes, never to watch what happens in other apps."
+                  "Shortcut recognition happens on your Mac. Shortcut-health reports do not contain typed text or a history of key presses."
                 )
                 .font(.obCaption)
                 .foregroundStyle(Color.obTextSecondary)

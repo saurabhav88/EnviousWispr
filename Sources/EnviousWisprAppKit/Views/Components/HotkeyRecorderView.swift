@@ -121,9 +121,8 @@ final class KeyCaptureNSView: NSView {
   /// **Direction comes from membership here, never from the event's modifier flag.**
   /// Left and right Shift are two key codes sharing one `.shift` flag, so the flag
   /// cannot say which of them moved: releasing left while right is held reports the
-  /// flag as still present. `HotkeyService.handleFlagsChangedValues` uses the flag
-  /// test and carries a documented workaround for exactly that
-  /// (`HotkeyService.swift:1205-1216`); this path does not repeat it.
+  /// flag as still present. The keyboard listener reads device-dependent side bits for
+  /// the same reason (`KeyStateTracker`, #3544); this path uses membership instead.
   private var held: Set<UInt16> = []
 
   /// Every key code this capture has ADMITTED. Ambient modifiers rejected by
