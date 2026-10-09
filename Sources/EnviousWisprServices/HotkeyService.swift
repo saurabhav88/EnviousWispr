@@ -1228,11 +1228,13 @@ public final class HotkeyService {
       return .passThrough
     }
     listenerInstallAttempts += 1
+    // Admission opens before the adapter call: the tap can deliver a press before the call
+    // returns, and the engine must own that press or its hold records nothing.
+    engine.openListenerAdmission(installation: generation)
     if let token = effects.installKeyboardListener(sink) {
       keyboardListenerToken = token
       listenerFailureReported = false
       listenerInstalls += 1
-      engine.openListenerAdmission(installation: generation)
       keyboardListenerIngress = ingress
       ingress.start()
       if listenerFailuresSinceInstall > 0 {
@@ -1242,6 +1244,7 @@ public final class HotkeyService {
       }
       return
     }
+    engine.closeListenerAdmission()
     ingress.close()
     listenerInstallFailures += 1
     listenerFailuresSinceInstall += 1
@@ -1665,7 +1668,7 @@ public final class HotkeyService {
     case HotkeyID.toggle.rawValue:
       if recordingMode == .toggle {
         guard !isRelease else { return }
-        Task { await onToggleRecording?() }
+        queueToggleRecording(listenerInstallation: nil)
         emitHotkeyPressed(.toggle, trigger: .toggle)
       } else {
         // Push-to-talk mode with hands-free support
@@ -1744,12 +1747,32 @@ public final class HotkeyService {
           "Modifier-only toggle: keyCode=\(edge.keyCode)", level: .info, category: "HotkeyService"
         )
       }
-      Task { await onToggleRecording?() }
+      queueToggleRecording(listenerInstallation: edge.installation)
       emitHotkeyPressed(.toggle, trigger: .toggle)
 
     case .cancel:
       // Decided by the engine in input order (`executeListenerCancel`), never here.
       return
+    }
+  }
+
+  /// Run a toggle-mode record press after any listener cancel decided before it (see
+  /// `listenerCancellationTask`), so the toggle sees the cancelled session gone instead of
+  /// stopping or ignoring it. A toggle that waited is dropped if the service stopped, suspended or
+  /// left toggle mode meanwhile, or, for a listener press (`listenerInstallation`), if that
+  /// listener was replaced. With no cancel pending it runs at once, as before.
+  private func queueToggleRecording(listenerInstallation: UInt64?) {
+    guard let pendingCancellation = listenerCancellationTask else {
+      Task { await onToggleRecording?() }
+      return
+    }
+    Task { [weak self] in
+      self?.onListenerCancellationWaitForTesting?()
+      await pendingCancellation.value
+      guard let self, self.isEnabled, !self.isSuspended, self.recordingMode == .toggle,
+        listenerInstallation.map({ $0 == self.listenerGeneration }) ?? true
+      else { return }
+      await self.onToggleRecording?()
     }
   }
 

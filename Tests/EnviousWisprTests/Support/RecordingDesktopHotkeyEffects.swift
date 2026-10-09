@@ -73,6 +73,10 @@ final class RecordingDesktopHotkeyEffects: DesktopHotkeyEffects {
   private(set) var keyboardListenerSink: (@Sendable (KeyEventValue) -> ListenerVerdict)?
   /// Make the next listener installs return nil, as a tap creation without Accessibility does.
   var failKeyboardListenerInstall = false
+  /// Runs with the sink before a successful install returns, as a live tap can deliver an event
+  /// before `installKeyboardListener` returns to its caller.
+  var beforeKeyboardListenerInstallReturns:
+    ((@escaping @Sendable (KeyEventValue) -> ListenerVerdict) -> Void)?
 
   func installKeyboardListener(
     _ sink: @escaping @Sendable (KeyEventValue) -> ListenerVerdict
@@ -82,6 +86,7 @@ final class RecordingDesktopHotkeyEffects: DesktopHotkeyEffects {
     let token = DesktopEffectToken()
     keyboardListenerToken = token
     keyboardListenerSink = sink
+    beforeKeyboardListenerInstallReturns?(sink)
     return token
   }
 

@@ -1,6 +1,6 @@
+import AppKit
 import EnviousWisprCore
 import EnviousWisprServices
-import AppKit
 import Foundation
 import Testing
 import os
@@ -226,7 +226,6 @@ struct KeyboardListenerIntegrationTests {
     rig.service.stop()
   }
 
-
   // MARK: - The listener as the record key's path (#3544 P3)
 
   /// A push-to-talk service on bare Right Option, started, with its keyboard.
@@ -364,6 +363,78 @@ struct KeyboardListenerIntegrationTests {
     await handled.wait(until: 1)
     #expect(judged == [false], "an edge from the replaced installation was judged current")
     #expect(toggles == 0)
+  }
+
+  /// A live tap can deliver a press before `installKeyboardListener` returns; the engine must
+  /// already admit that installation, or the hold records nothing and its release is unowned.
+  @Test("a press delivered while the listener is still being installed is recorded")
+  func pressDuringInstallIsRecorded() async {
+    let ptt = PTT()
+    defer { ptt.service.stop() }
+    ptt.service.suspend()
+    let option = ListenerKeyboard.rawFlags([ModifierKeyCodes.rightOption])
+    let clock = ptt.clock
+    ptt.effects.beforeKeyboardListenerInstallReturns = { sink in
+      Self.onWorkerWhileMainWaits {
+        clock.now = 500
+        _ = sink(KeyEventValue(kind: .flagsChanged, keyCode: 61, rawFlags: option, timestamp: 500))
+      }
+    }
+    ptt.service.resume()
+    ptt.effects.beforeKeyboardListenerInstallReturns = nil
+    await ListenerKeyboard.mainTurn()
+    await ptt.service.awaitInFlightStartForTesting()
+    #expect(ptt.starts == 1)
+    ptt.at(1.5)
+    await ptt.keys.deliver(ModifierKeyCodes.rightOption, raw: 0, at: 501.5)
+    await ptt.service.awaitInFlightStartForTesting()
+    #expect(ptt.stops == 1)
+    #expect(ptt.service.isModifierHeld == false)
+  }
+
+  /// Toggle mode, bare Right Command as cancel: cancel, then the record key at once (listener) or
+  /// the record chord (Carbon). The toggle must wait until the cancel has finished, or it finds the
+  /// cancelled session still active and stops or ignores it instead of starting a new one.
+  @Test(
+    "a toggle press after a listener cancel waits for the cancel to finish",
+    arguments: [false, true])
+  func toggleWaitsForTheCancel(viaCarbon: Bool) async throws {
+    let ptt = PTT()
+    defer { ptt.service.stop() }
+    ptt.service.recordingMode = .toggle
+    ptt.service.cancelKeyCode = ModifierKeyCodes.rightCommand
+    ptt.service.cancelModifiers = []
+    var toggles = 0
+    var cancels = 0
+    var cancelGate: CheckedContinuation<Void, Never>?
+    let cancelled = HotkeyGlobeKeyTests.CallbackWaiter()
+    let reachedWait = HotkeyGlobeKeyTests.CallbackWaiter()
+    let toggled = HotkeyGlobeKeyTests.CallbackWaiter()
+    ptt.service.onToggleRecording = {
+      toggles += 1
+      toggled.note()
+    }
+    ptt.service.onCancelRecording = {
+      cancels += 1
+      cancelled.note()
+      await withCheckedContinuation { cancelGate = $0 }
+    }
+    ptt.service.onListenerCancellationWaitForTesting = { reachedWait.note() }
+    ptt.service.setCancelHotkeyEnabled(true)
+    await ptt.keys.press(ModifierKeyCodes.rightCommand)
+    await cancelled.wait(until: 1)
+    #expect(cancels == 1)
+    if viaCarbon {
+      ptt.service.handleCarbonHotkey(id: 1, isRelease: false)
+    } else {
+      await ptt.keys.press(ModifierKeyCodes.rightOption)
+    }
+    await reachedWait.wait(until: 1)
+    #expect(toggles == 0, "the toggle ran while the cancel was still tearing down")
+    try #require(cancelGate).resume()
+    cancelGate = nil
+    await toggled.wait(until: 1)
+    #expect(toggles == 1)
   }
 
   @Test("our own marked events and key code 179 change nothing")
