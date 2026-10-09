@@ -37,17 +37,19 @@ trigger secret in `x-trigger-secret`; do not put it in a URL. Invalid modes or
 platforms refuse before external work. Android's missing destination fails,
 never falls back to the Mac channel.
 
-`.github/workflows/daily-report-ping.yml` keeps the existing `12 13 * * *` slot
-and dispatches three jobs independently. GitHub can delay scheduled runs, so
-that slot is not a delivery guarantee. A PostHog failure cannot prevent a
-Sentry job. Reports have one delivery attempt and no outer blind retry.
+QStash schedules the three daily reports independently at 09:12
+America/New_York (#3570). The schedule IDs and recovery contract live in
+`../daily-report/README.md`; GitHub is manual recovery only and was disabled
+at cutover. A PostHog failure cannot prevent a Sentry job. Reports keep zero
+outer retries because errors can follow Discord delivery.
 
 Daily Sentry policy includes older and developer builds, with separate verified
 customer-release, developer and unknown cohorts. It uses window occurrence
 counts, genuine issue `firstSeen`, build labels and links. Sentry identity counts
 are exact only when supported by complete grouping; otherwise they are lower
 bounds. Missing measurements never become zero. Weekly keeps its existing
-production/release recap and Monday cron.
+production/release recap; QStash owns its Monday 09:00 Eastern trigger
+(see `../weekly-digest/README.md`). Immediate native Sentry alerts are unchanged.
 
 ## Verification and rollout state
 

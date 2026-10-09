@@ -1,9 +1,8 @@
 /**
  * EnviousWispr Daily Report - Cloudflare Worker (issues #1433, #1838)
  *
- * Runs once a day via a secret-gated HTTP trigger (scheduling lives in
- * .github/workflows/daily-report-ping.yml, not a Cloudflare cron - the CF
- * account is at its 5-cron free-plan limit, see #1092) and posts ONE Discord
+ * Runs once a day via a secret-gated HTTP trigger (QStash schedules at
+ * 09:12 America/New_York; see README.md and #3570) and posts ONE Discord
  * message with two sections:
  *
  *   Adoption          - yesterday's installs, onboarding, activation, engine
