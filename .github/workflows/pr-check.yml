@@ -471,15 +471,10 @@ jobs:
       - name: Worker unit tests
         run: |
           set -euo pipefail
-          # sentry-triage joined this list in #1965. Its 60 tests had existed
-          # since #1586 and had never run in CI, which nobody noticed because a
-          # test that is never executed reports nothing at all. #1965 added 26
-          # more, so the silence would have covered the whole spike-card path.
-          # It has no package.json and needs none; `node --test` finds test/.
           # download-counter and shared joined in #2953: the counter's 36 tests
           # had never run here either, and shared/ gained its first test file
           # (the download-intent contract both workers import).
-          for w in daily-report weekly-digest sentry-triage download-counter shared; do
+          for w in daily-report weekly-digest download-counter shared; do
             echo "==> $w"
             ( cd "workers/$w" && node --test )
           done

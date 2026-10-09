@@ -1,7 +1,7 @@
 /**
  * Sentry read transport, shared by every worker that queries Sentry (issue #1965).
  *
- * CONSUMERS: workers/daily-report, workers/weekly-digest, workers/sentry-triage.
+ * CONSUMERS: workers/daily-report, workers/weekly-digest.
  *
  * DEPLOY RULE: Cloudflare bundles each worker separately, so editing this file
  * changes NOTHING in production until EVERY consumer above is redeployed
@@ -14,8 +14,8 @@
  * NOT here, deliberately: which window to ask about, which releases count, what
  * an `error.category` MEANS, how to word a section, or when something is worth
  * buzzing about. Every one of those is a product judgement and belongs to the
- * worker that owns the report - `workers/reporting/sentry-section.js` for the
- * two digests, `workers/sentry-triage/src/index.js` for the spike card. This is
+ * report policy owners: `workers/reporting/sentry-section.js` for weekly/shared
+ * labels and `workers/reporting/sentry-writeup.js` for independent daily reports. This is
  * the same line `workers/shared/README.md` draws for posthog.js and discord.js.
  *
  * WHY THIS IS NOT AN EXTENSION OF posthog.js: different vendor, different
@@ -53,11 +53,12 @@ const RETRYABLE_SENTRY_STATUSES = new Set([429, 500, 502, 503, 504]);
  * than anything about Sentry.
  *
  * Cloudflare allows 50 subrequests per Worker invocation. The daily report's
- * designed worst case - every request retrying to exhaustion - is
+ * historical pre-#3547 combined-report worst case - every request retrying - was
  * (1 preflight + 7 adoption + 2 scorecard + 1 GitHub) x 3 + Sentry + 1 Discord.
- * At three Sentry attempts that is 49, one below the cap, so a single future
+ * At three Sentry attempts that was 49, one below the cap, so a single future
  * query anywhere in the worker would silently push the whole report over. At
- * two it is 44.
+ * two it was 44. Current daily Sentry invocations have a separate 21-request
+ * budget; the bounded two-attempt transport contract stays unchanged.
  *
  * The trade is one-sided. Sentry's per-window limit resets fast, the digest
  * runs again tomorrow, and losing the Sentry section for one day costs a
@@ -158,7 +159,7 @@ function requireConfig(env) {
 }
 
 /** One HTTP attempt, bounded by BOTH a per-request timeout and the caller's
- * absolute deadline. Modelled on sentry-triage's `fetchBefore`, which already
+ * absolute deadline. Derived from the former relay's `fetchBefore`, which
  * had to solve this for the webhook path. */
 async function fetchBounded(url, token, { fetchFn, deadlineAt, requestTimeoutMs, queryName }, consume) {
   const remainingMs = deadlineAt === null ? requestTimeoutMs : deadlineAt - Date.now();

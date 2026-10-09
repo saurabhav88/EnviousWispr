@@ -222,12 +222,9 @@ security find-generic-password -w -a m4pro_sv -s enviouswispr.discord-webhook-se
 # not exist on the machine (verified 2026-07-18, #1655).
 ~/.claude/bin/get-key launch daily-report-trigger-secret V -- sh -c 'printf "%s" "$V" | npx wrangler secret put TRIGGER_SECRET'
 
-# SENTRY_AUTH_TOKEN goes on ALL THREE Sentry workers, not just this one (#1965).
-# sentry-triage needs it for the rate-alert breakdown; its older token reads
-# per-issue events fine but 403s on the aggregate endpoint, so leaving that one
-# in place degrades every spike card while the error path keeps working and
-# hides the gap.
-for w in daily-report weekly-digest sentry-triage; do
+# SENTRY_AUTH_TOKEN goes on both surviving reporting Workers (#3547).
+# Use the worker read-only credential; the retired relay is not a consumer.
+for w in daily-report weekly-digest; do
   (cd "../$w" && ~/.claude/bin/get-key launch sentry-workers-readonly-token V -- \
      sh -c 'printf "%s" "$V" | npx wrangler secret put SENTRY_AUTH_TOKEN')
 done
@@ -393,3 +390,5 @@ When a change touches that directory, deploy **weekly-digest first** and this
 worker second: a broken shared change then lands on the worker already being
 modified rather than on this one, which is the higher-value report and the one
 that should not have changed at all. Full rule: `workers/shared/README.md`.
+
+Native immediate-alert configuration and rollback: [NATIVE-SENTRY.md](../reporting/NATIVE-SENTRY.md).
