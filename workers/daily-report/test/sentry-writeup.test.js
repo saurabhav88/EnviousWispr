@@ -222,6 +222,8 @@ test("both real readers distinguish explicit terminal pages from absent or previ
 
 test("foreign or ambiguous cursor metadata is refused before a second request", async () => {
   for (const link of ["garbage", "<https://evil.invalid/events/?cursor=x>; rel=\"next\"; results=\"true\"", "<https://us.sentry.io/wrong/?cursor=x>; rel=\"next\"; results=\"true\"",
+    "<not-a-url>; rel=\"next\"; results=\"false\"",
+    "<https://evil.invalid/events/>; rel=\"next\"; results=\"false\"",
     "<https://us.sentry.io/api/0/organizations/envious-labs-llc/events/>; rel=\"next\"",
     "<https://us.sentry.io/api/0/organizations/envious-labs-llc/events/>; rel=\"next\"; results=\"false\", <https://us.sentry.io/api/0/organizations/envious-labs-llc/events/>; rel=\"next\"; results=\"false\"",
     "<https://us.sentry.io/api/0/organizations/envious-labs-llc/events/?cursor=x&cursor=y>; rel=\"next\"; results=\"true\"",

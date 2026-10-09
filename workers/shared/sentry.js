@@ -310,19 +310,21 @@ function nextPageMetadata(headers, expectedUrl, queryName) {
     if (attributes.get("rel") !== "next") continue;
     if (seenNext) throw new SentryShapeError(queryName, "ambiguous next page");
     seenNext = true;
-    if (attributes.get("results") === "false") {
-      terminalPage = true;
-      continue;
-    }
-    if (attributes.get("results") !== "true" || next !== null) {
-      throw new SentryShapeError(queryName, "ambiguous next page");
-    }
+    // A terminal link certifies completeness even though it is never followed,
+    // so validate its endpoint before trusting that signal too.
     let target;
     try { target = new URL(match[1]); } catch (_) {
       throw new SentryShapeError(queryName, "invalid next-page URL");
     }
     if (target.origin !== expectedUrl.origin || target.pathname !== expectedUrl.pathname) {
       throw new SentryShapeError(queryName, "next page changed query endpoint");
+    }
+    if (attributes.get("results") === "false") {
+      terminalPage = true;
+      continue;
+    }
+    if (attributes.get("results") !== "true" || next !== null) {
+      throw new SentryShapeError(queryName, "ambiguous next page");
     }
     const values = target.searchParams.getAll("cursor");
     const cursor = values.length === 1 ? values[0] : null;
