@@ -88,6 +88,9 @@ package struct GestureObservation: Sendable, Equatable {
   /// made, never when it is reported.
   package var generation: UInt64 = 0
   package var sequence: UInt64 = 0
+  /// False when the decision was made under a record binding the flagsChanged-only listener
+  /// cannot see (a Carbon chord), captured at decision time.
+  package var listenerScope = true
 
   package init(
     kind: Kind, keyCode: UInt16, outcome: GestureOutcome, handled: TimeInterval,
@@ -122,8 +125,6 @@ package struct ShadowRecord: Sendable, Equatable {
     case decision
     /// A lone-tap timer's resolution; it refers to its quick release, never a new physical edge.
     case timer
-    /// What the live executor did with a decision (refused, published). Live only; not paired.
-    case execution
   }
 
   package enum Outcome: Sendable, Equatable {
@@ -161,6 +162,11 @@ package struct ShadowRecord: Sendable, Equatable {
   package let evidence: KeyStateTracker.Evidence?
   /// Aggregate-only evidence left this key's state unproven.
   package let ambiguous: Bool
+  /// False for a decision the listener cannot see (a Carbon chord record binding).
+  package var listenerScope = true
+  /// The arming and action availability a non-record role was decided under (bit per role),
+  /// captured at decision time. Different contexts make a difference unexplained by mapping.
+  package var context: UInt8 = 0
 
   package init(
     lane: Lane, generation: UInt64, sequence: UInt64, category: Category, keyCode: UInt16,
@@ -211,6 +217,21 @@ package struct ShadowRecord: Sendable, Equatable {
       attemptStartOccurred: o.attemptStartOccurred, afterStopTimerMs: o.afterStopTimerMs,
       deadline: o.deadline, markerOrigin: o.markerOrigin, stopRequestedAt: o.stopRequestedAt,
       evidence: evidence)
+    listenerScope = o.listenerScope
+  }
+
+  /// The `context` bits for a decision made under `armed` roles and `available` actions: one bit
+  /// per role armed, then one per action available (Quick Add, Paste Last, Copy Last).
+  package static func context(armed: Set<ShortcutRole>, available: Set<ShortcutRole>) -> UInt8 {
+    var bits: UInt8 = 0
+    for (i, role) in ShortcutRole.allCases.enumerated() where armed.contains(role) {
+      bits |= 1 << UInt8(i)
+    }
+    for (i, role) in [ShortcutRole.quickAdd, .pasteLast, .copyLast].enumerated()
+    where available.contains(role) {
+      bits |= 1 << UInt8(5 + i)
+    }
+    return bits
   }
 
   /// What identifies the physical event (or, for a timer, its quick release) across lanes. Role,
@@ -249,6 +270,9 @@ package enum ShadowComparison: Sendable, Equatable {
     /// After a proven race the two lanes are in different attempts on that key; a pair where the
     /// shadow is still in the race's first attempt, or live in its second, follows from the race.
     case divergedAfterTiming(live: ShadowRecord, shadow: ShadowRecord)
+    /// The lanes decided under different arming or availability (a recording transition between
+    /// them), so a different role or outcome is not a mapping error.
+    case contextDiffered(live: ShadowRecord, shadow: ShadowRecord)
   }
 
   package struct Incomplete: Sendable, Equatable {
@@ -277,22 +301,22 @@ package enum ShadowComparison: Sendable, Equatable {
 /// captured times), never on the order the two lanes' records arrive in; evidence that is not yet
 /// complete is held, bounded, and reported incomplete if it never completes.
 ///
-/// Exits, in the order `classify` takes them:
-/// 1. execution records: not paired (live only).
-/// 2. no identity anchor: ambiguity.missingIdentity.
-/// 3. a same-lane twin, several counterparts, or an identity already settled (paired or rejected,
+/// Exits, in the order `add` and `classify` take them:
+/// 1. no identity anchor: ambiguity.missingIdentity.
+/// 2. a same-lane twin, several counterparts, or an identity already settled (paired or rejected,
 ///    kept for the last `pendingLimit` identities): ambiguity.competingCounterparts. A record whose
 ///    producer sequence is at or below what left that history fails closed as
 ///    incomplete.outsideHistory.
-/// 4. either side aggregate-ambiguous or reconciled: ambiguity.uncertainKeyState.
-/// 5. different role or phase: mappingError.
-/// 6. equal outcome: agreement.
-/// 7. either side retired by the executor: ambiguity.executorRetired.
-/// 8. a half of the #3534 race (see `raceHalf`): held until both halves exist and the joined
+/// 3. either side aggregate-ambiguous or reconciled: ambiguity.uncertainKeyState.
+/// 4. different role or phase: ambiguity.contextDiffered when the two were decided under different
+///    arming or availability, otherwise mappingError.
+/// 5. equal outcome: agreement.
+/// 6. either side retired by the executor: ambiguity.executorRetired.
+/// 7. a half of the #3534 race (see `raceHalf`): held until both halves exist and the joined
 ///    evidence checks out, then two expectedTiming; never approved alone.
-/// 9. the two lanes are in different attempts (attempt origins differ): a consequence of a race;
+/// 8. the two lanes are in different attempts (attempt origins differ): a consequence of a race;
 ///    ambiguity.divergedAfterTiming once that race's lineage is proven, held until then.
-/// 10. anything else: mappingError.
+/// 9. anything else: ambiguity.contextDiffered under different contexts, otherwise mappingError.
 /// Held evidence (pending records, race halves, dependent pairs, proven lineages) is each bounded
 /// by `pendingLimit`; eviction and `flush` report what was lost as incomplete.
 package final class KeyboardShadowComparator: Sendable {
@@ -341,6 +365,9 @@ package final class KeyboardShadowComparator: Sendable {
     /// Per lane, the highest producer sequence among records whose identity left `settled`. A
     /// record at or below it is older than the history and cannot be checked, so it fails closed.
     var watermark: [ShadowRecord.Lane: UInt64] = [:]
+    /// Generations below this were closed by `flush(generationsBefore:)`; a later record from one
+    /// can never reopen their comparison.
+    var closedBefore: UInt64 = 0
   }
 
   private struct Settled: Sendable {
@@ -354,10 +381,17 @@ package final class KeyboardShadowComparator: Sendable {
 
   /// Add one record; returns every verdict it settles.
   package func add(_ record: ShadowRecord) -> [ShadowComparison] {
-    guard record.category != .execution else { return [] }
-    return state.withLock { s in
+    state.withLock { s in
       guard let identity = record.identity else {
         return [.ambiguity(.missingIdentity(record))]
+      }
+      if record.generation < s.closedBefore {
+        return [
+          .incomplete(
+            .init(
+              reason: .outsideHistory, liveUnmatched: record.lane == .live ? 1 : 0,
+              shadowUnmatched: record.lane == .shadow ? 1 : 0, unprovenTiming: 0))
+        ]
       }
       if let w = s.watermark[record.lane], record.sequence <= w {
         return [
@@ -430,6 +464,45 @@ package final class KeyboardShadowComparator: Sendable {
     }
   }
 
+  /// Up to `limit` still-unmatched records per lane from generations older than `generation`, for
+  /// the log line that lets a timestamp or identity mismatch be diagnosed, not only counted.
+  package func pendingSamples(generationsBefore generation: UInt64, limit: Int) -> [ShadowRecord] {
+    state.withLock { s in
+      let live = s.pending[.live, default: []].filter { $0.generation < generation }.prefix(limit)
+      let shadow = s.pending[.shadow, default: []].filter { $0.generation < generation }
+        .prefix(limit)
+      return Array(live) + Array(shadow)
+    }
+  }
+
+  /// Close every configuration generation older than `generation`: what is still unmatched,
+  /// unproven or unexplained there is reported as one incomplete verdict and dropped; newer
+  /// generations and the identity history are kept.
+  package func flush(generationsBefore generation: UInt64) -> [ShadowComparison] {
+    state.withLock { s in
+      let old = { (r: ShadowRecord) in r.generation < generation }
+      let live = s.pending[.live, default: []].filter(old).count
+      let shadow = s.pending[.shadow, default: []].filter(old).count
+      s.pending[.live]?.removeAll(where: old)
+      s.pending[.shadow]?.removeAll(where: old)
+      let oldRaces = s.raceOrder.filter { $0.generation < generation }
+      for key in oldRaces { s.races.removeValue(forKey: key) }
+      s.raceOrder.removeAll { $0.generation < generation }
+      let dependents = s.dependents.filter { $0.live.generation < generation }.count
+      s.dependents.removeAll { $0.live.generation < generation }
+      s.lineages.removeAll { $0.generation < generation }
+      let unproven = oldRaces.count + dependents
+      s.closedBefore = max(s.closedBefore, generation)
+      guard live + shadow + unproven > 0 else { return [] }
+      return [
+        .incomplete(
+          .init(
+            reason: .flush, liveUnmatched: live, shadowUnmatched: shadow,
+            unprovenTiming: unproven))
+      ]
+    }
+  }
+
   private static func overflow(live: Int = 0, shadow: Int = 0, unproven: Int = 0)
     -> ShadowComparison
   {
@@ -449,6 +522,9 @@ package final class KeyboardShadowComparator: Sendable {
     // The same physical event read as a different role or phase is a mapping error, whatever the
     // outcomes and timing say.
     guard live.role == shadow.role, live.phase == shadow.phase else {
+      if live.context != shadow.context {
+        return [.ambiguity(.contextDiffered(live: live, shadow: shadow))]
+      }
       return [.mappingError(live: live, shadow: shadow)]
     }
     if live.outcome == shadow.outcome {
@@ -470,6 +546,9 @@ package final class KeyboardShadowComparator: Sendable {
         return [overflow(unproven: 1)]
       }
       return []
+    }
+    if live.context != shadow.context {
+      return [.ambiguity(.contextDiffered(live: live, shadow: shadow))]
     }
     return [.mappingError(live: live, shadow: shadow)]
   }

@@ -174,14 +174,14 @@ struct ShadowKeyboardPolicyTests {
     #expect(rig.timers.pendingCount == 0)
   }
 
-  @Test("refusing an attempt retires only that attempt's wait")
+  @Test("refusing an attempt by its first press retires only that attempt's wait")
   func refusalRetiresOnlyItsAttempt() {
     let rig = Rig()
     rig.press(at: 0)
     rig.release(at: 0.125)
-    rig.policy.refuse(attempt: 99)
+    rig.policy.refuse(attemptOrigin: 499)  // another attempt's first press
     #expect(rig.timers.pendingCount == 1)
-    rig.policy.refuse(attempt: 1)
+    rig.policy.refuse(attemptOrigin: 500)
     #expect(rig.timers.pendingCount == 0)
     #expect(rig.decisions.last == "loneTapRetired")
     // The physical hold was already released; a new press starts a fresh attempt.
@@ -209,7 +209,7 @@ struct ShadowKeyboardPolicyTests {
     rig.press(at: 0)
     rig.release(at: 0.125)
     rig.key(54, Self.rightCommandDown, at: 0.2)
-    #expect(rig.decisions == ["start", "quickRelease", "loneTapRetired", "cancel rolePress"])
+    #expect(rig.decisions == ["start", "quickRelease", "cancel rolePress", "loneTapRetired"])
     #expect(rig.timers.pendingCount == 0)
     // The next record press starts fresh: the cancelled attempt is gone.
     rig.press(at: 0.3)

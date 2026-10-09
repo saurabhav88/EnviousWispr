@@ -298,16 +298,6 @@ struct KeyboardShadowComparatorTests {
       ])
   }
 
-  @Test("execution records are live-only and never paired")
-  func executionRecordsAreNotPaired() {
-    let comparator = KeyboardShadowComparator()
-    let execution = ShadowRecord(
-      lane: .live, generation: 1, sequence: 0, category: .execution, keyCode: 61, role: .record,
-      phase: .press, outcome: .noDecision, rawOccurred: nil, acceptedOccurred: 10, handled: 10)
-    #expect(comparator.add(execution).isEmpty)
-    #expect(comparator.flush().isEmpty)
-  }
-
   /// `records` with lane-local producer sequences 1, 2, ... in the given order.
   private static func sequenced(_ records: [ShadowRecord]) -> [ShadowRecord] {
     var next: [ShadowRecord.Lane: UInt64] = [:]

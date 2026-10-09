@@ -1,5 +1,6 @@
 import EnviousWisprCore
 import EnviousWisprServices
+import AppKit
 import Foundation
 import Testing
 import os
@@ -229,4 +230,319 @@ struct HotkeyShadowIntegrationTests {
     #expect(rig.failures.last?.shape == "chord")
     rig.service.stop()
   }
+
+  #if DEBUG
+    /// Both lanes fed the same physical events: the listener sink (shadow) and the monitor path
+    /// (live), with the same event times.
+    private func both(_ rig: Rig, _ flags: UInt64, at t: TimeInterval) throws {
+      rig.clock.now = 500 + t
+      let sink = try #require(rig.effects.keyboardListenerSink)
+      _ = sink(KeyEventValue(kind: .flagsChanged, keyCode: 61, rawFlags: flags, timestamp: 500 + t))
+      rig.service.handleInstalledMonitorFlagsChangedValues(
+        keyCode: 61, flags: NSEvent.ModifierFlags(rawValue: UInt(flags)),
+        generation: rig.service.monitorGeneration, timestamp: 500 + t)
+    }
+
+    @Test("a calm push-to-talk double tap agrees on every record in both lanes")
+    func calmDoubleTapAgrees() throws {
+      let rig = Rig()
+      rig.service.recordingMode = .pushToTalk
+      rig.service.onStartRecording = { .recording("s1") }
+      rig.service.onLockRequested = { _ in .published }
+      rig.service.start()
+      try both(rig, 0x80040, at: 0)
+      try both(rig, 0, at: 0.125)
+      try both(rig, 0x80040, at: 0.25)
+      try both(rig, 0, at: 0.375)
+      let tally = rig.service.shadowDiagnostics.drainForTesting()
+      #expect(tally.mappingErrors == 0)
+      #expect(tally.ambiguities == 0)
+      #expect(tally.incomplete == 0)
+      #expect(tally.droppedRecords == 0)
+      // 4 edges plus start, quick release, lock, the cancelled wait and the suppressed release.
+      #expect(tally.agreements == 9)
+      rig.service.stop()
+    }
+
+    @Test("listener events after stop never reach the shadow policy")
+    func eventsAfterStopAreIgnored() throws {
+      let rig = Rig()
+      rig.service.recordingMode = .pushToTalk
+      rig.service.start()
+      let sink = try #require(rig.effects.keyboardListenerSink)
+      rig.service.stop()
+      _ = sink(KeyEventValue(kind: .flagsChanged, keyCode: 61, rawFlags: 0x80040, timestamp: 501))
+      let tally = rig.service.shadowDiagnostics.drainForTesting()
+      #expect(tally == HotkeyShadowDiagnostics.Tally())
+    }
+
+    @Test("a binding change starts a comparison generation; arming a recording does not")
+    func generationFollowsMeaningNotArming() {
+      let rig = Rig()
+      rig.service.start()
+      let first = rig.service.shadowComparisonGenerationForTesting
+      rig.service.setCancelHotkeyEnabled(true)
+      rig.service.setCancelHotkeyEnabled(false)
+      #expect(rig.service.shadowComparisonGenerationForTesting == first)
+      rig.service.quickAddKeyCode = 14
+      #expect(rig.service.shadowComparisonGenerationForTesting == first + 1)
+      rig.service.quickAddKeyCode = 14  // unchanged assignment
+      #expect(rig.service.shadowComparisonGenerationForTesting == first + 1)
+      rig.service.stop()
+    }
+
+    @Test("a Carbon chord on a modifier key is counted out of scope, never compared")
+    func chordRecordsAreOutOfScope() {
+      let rig = Rig()
+      rig.service.recordingMode = .pushToTalk
+      // Right Option + Command: a modifier key code, but a chord that Carbon delivers.
+      rig.service.toggleKeyCode = ModifierKeyCodes.rightOption
+      rig.service.toggleModifiers = [.command]
+      rig.service.start()
+      rig.clock.now = 500
+      rig.service.handleCarbonHotkey(id: 1, isRelease: false, timestamp: 500)
+      let tally = rig.service.shadowDiagnostics.drainForTesting()
+      #expect(tally.outOfScope >= 1)
+      #expect(tally.agreements == 0)
+      #expect(tally.mappingErrors == 0)
+      rig.service.stop()
+    }
+
+    private static let snapshot = ShadowKeyboardPolicy.Snapshot(
+      generation: 1, bindings: .shipped, mode: .pushToTalk, enabled: true, suspended: false,
+      armed: [.record], available: [])
+
+    private static func ingress(
+      _ lane: ShadowRecord.Lane, _ i: Int, generation: UInt64 = 1
+    ) -> ShadowRecord {
+      ShadowRecord(
+        lane: lane, generation: generation, sequence: UInt64(i + 1), category: .ingress,
+        keyCode: 61, role: .record, phase: .press, outcome: .edge,
+        rawOccurred: 500 + Double(i), acceptedOccurred: nil, handled: 500)
+    }
+
+    /// A diagnostics object with one active segment.
+    private static func activeSegment(
+      log: @escaping @Sendable (String) async -> Void = { _ in }, logCapacity: Int = 256
+    ) -> (HotkeyShadowDiagnostics, HotkeyShadowDiagnostics.Segment) {
+      let diagnostics = HotkeyShadowDiagnostics(
+        clock: { 500 }, log: log, logCapacity: logCapacity)
+      let segment = diagnostics.makeSegment(installation: 1, generation: 1, snapshot: snapshot)
+      diagnostics.activate(segment)
+      return (diagnostics, segment)
+    }
+
+    @Test("a full handoff drops and counts records, and the segment is no longer clean")
+    func handoffOverflowIsReported() {
+      let (diagnostics, segment) = Self.activeSegment()
+      let extra = 76
+      for i in 0..<(HotkeyShadowDiagnostics.Segment.handoffCapacity + extra) {
+        diagnostics.submit(Self.ingress(.live, i))
+      }
+      let tally = segment.drainForTesting()
+      #expect(tally.droppedRecords == extra)
+      #expect(tally.clean == false)
+    }
+
+    @Test("records submitted while the worker holds a taken buffer are never lost")
+    func submissionsDuringAHeldDrainAreKept() {
+      let (diagnostics, segment) = Self.activeSegment()
+      let entered = DispatchSemaphore(value: 0)
+      let release = DispatchSemaphore(value: 0)
+      let first = OSAllocatedUnfairLock(initialState: true)
+      segment.setDrainGateForTesting {
+        guard first.withLock({ f in defer { f = false }; return f }) else { return }
+        entered.signal()
+        // deadline-fallback: bound the test's own release signal so a regression fails, not hangs.
+        _ = release.wait(timeout: .now() + 5)
+      }
+      diagnostics.submit(Self.ingress(.live, 0))
+      diagnostics.submit(Self.ingress(.shadow, 0))
+      let drained = DispatchSemaphore(value: 0)
+      DispatchQueue.global(qos: .userInitiated).async {
+        _ = segment.drainForTesting()
+        drained.signal()
+      }
+      // deadline-fallback: bound the worker's own signal.
+      #expect(entered.wait(timeout: .now() + 5) == .success)
+      // The producer finishes entirely while the worker holds the detached buffer.
+      let pairs = 400
+      for i in 1...pairs {
+        diagnostics.submit(Self.ingress(.live, i))
+        diagnostics.submit(Self.ingress(.shadow, i))
+      }
+      release.signal()
+      #expect(drained.wait(timeout: .now() + 5) == .success)
+      let total = segment.drainForTesting()
+      #expect(total.droppedRecords == 0)
+      #expect(total.agreements == pairs + 1)
+    }
+
+    @Test("a slow logger's overflow is counted, and releasing diagnostics cancels the logger")
+    func slowLoggerOverflowIsReported() throws {
+      let entered = DispatchSemaphore(value: 0)
+      let cancelled = DispatchSemaphore(value: 0)
+      let (parked, continuation) = AsyncStream<Void>.makeStream(
+        bufferingPolicy: .bufferingOldest(1))
+      defer { continuation.finish() }
+      let log: @Sendable (String) async -> Void = { _ in
+        entered.signal()
+        for await _ in parked {}
+        if Task.isCancelled { cancelled.signal() }
+      }
+      do {
+        let (diagnostics, segment) = Self.activeSegment(log: log, logCapacity: 1)
+        // Three same-attempt mapping errors: three lines for a channel that holds one.
+        for i in 0..<3 {
+          let t = 500 + Double(i)
+          diagnostics.submit(
+            ShadowRecord(
+              lane: .live, generation: 1, sequence: UInt64(i + 1), category: .decision,
+              keyCode: 61, role: .record, phase: .release, outcome: .gesture(.quickRelease),
+              rawOccurred: nil, acceptedOccurred: t, handled: t, attemptStartOccurred: 499))
+          diagnostics.submit(
+            ShadowRecord(
+              lane: .shadow, generation: 1, sequence: UInt64(i + 1), category: .decision,
+              keyCode: 61, role: .record, phase: .release, outcome: .gesture(.holdStop),
+              rawOccurred: nil, acceptedOccurred: t, handled: t, attemptStartOccurred: 499))
+        }
+        let tally = segment.drainForTesting()
+        #expect(tally.mappingErrors == 3)
+        #expect(tally.suppressedLines >= 1)
+        #expect(tally.clean == false)
+        // deadline-fallback: require the logger's own entry signal.
+        try #require(entered.wait(timeout: .now() + 5) == .success)
+      }
+      // deadline-fallback: bound the logger's own cancellation signal.
+      #expect(cancelled.wait(timeout: .now() + 5) == .success)
+    }
+
+    @Test("a segment's final lines refused by a finished channel make it unclean")
+    func terminatedChannelIsNotClean() throws {
+      let entered = DispatchSemaphore(value: 0)
+      let release = DispatchSemaphore(value: 0)
+      let first = OSAllocatedUnfairLock(initialState: true)
+      var held: HotkeyShadowDiagnostics.Segment?
+      do {
+        let (diagnostics, segment) = Self.activeSegment()
+        held = segment
+        segment.setDrainGateForTesting {
+          guard first.withLock({ f in defer { f = false }; return f }) else { return }
+          entered.signal()
+          // deadline-fallback: bound the test's own release signal.
+          _ = release.wait(timeout: .now() + 5)
+        }
+        diagnostics.close(reason: "test")
+        // deadline-fallback: require the worker's own entry signal.
+        try #require(entered.wait(timeout: .now() + 5) == .success)
+      }
+      // The diagnostics owner is gone and its channel finished; the closing worker resumes.
+      release.signal()
+      let segment = try #require(held)
+      let tally = segment.settledTallyForTesting()
+      #expect(tally.suppressedLines >= 1)
+      #expect(tally.clean == false)
+    }
+
+    @Test("one segment's loss is never charged to, or hidden by, another")
+    func lossStaysInItsSegment() {
+      let diagnostics = HotkeyShadowDiagnostics(clock: { 500 }, log: { _ in })
+      let first = diagnostics.makeSegment(installation: 1, generation: 1, snapshot: Self.snapshot)
+      diagnostics.activate(first)
+      diagnostics.submit(Self.ingress(.live, 0))
+      diagnostics.submit(Self.ingress(.shadow, 0))
+      diagnostics.close(reason: "stop")
+      let second = diagnostics.makeSegment(installation: 2, generation: 2, snapshot: Self.snapshot)
+      diagnostics.activate(second)
+      for i in 0..<(HotkeyShadowDiagnostics.Segment.handoffCapacity + 10) {
+        diagnostics.submit(Self.ingress(.live, i, generation: 2))
+      }
+      // A late live record from the first installation's generation.
+      diagnostics.submit(Self.ingress(.live, 9999, generation: 1))
+      let closed = first.settledTallyForTesting()
+      let open = second.drainForTesting()
+      #expect(closed.clean)
+      #expect(closed.agreements == 1)
+      #expect(open.droppedRecords == 10)
+      #expect(open.earlierGeneration == 1)
+      #expect(open.clean == false)
+    }
+
+    @Test("a callback from an earlier installation never feeds the next one")
+    func earlierInstallationCallbackIsIgnored() throws {
+      let rig = Rig()
+      rig.service.recordingMode = .pushToTalk
+      rig.service.start()
+      let oldSink = try #require(rig.effects.keyboardListenerSink)
+      rig.service.stop()
+      rig.service.start()
+      _ = oldSink(KeyEventValue(kind: .flagsChanged, keyCode: 61, rawFlags: 0x80040, timestamp: 501))
+      let tally = rig.service.shadowDiagnostics.drainForTesting()
+      #expect(tally.agreements == 0)
+      #expect(tally.mappingErrors == 0)
+      // The live lane alone, for a press the shadow never admitted, is unmatched, not compared.
+      try both(rig, 0x80040, at: 2)
+      try both(rig, 0, at: 2.75)
+      let after = rig.service.shadowDiagnostics.drainForTesting()
+      #expect(after.mappingErrors == 0)
+      #expect(after.agreements >= 4)
+      rig.service.stop()
+    }
+
+    @Test("a key released while suspended does not swallow the next press")
+    func releaseWhileSuspended() throws {
+      let rig = Rig()
+      rig.service.recordingMode = .pushToTalk
+      rig.service.onStartRecording = { .recording("s") }
+      rig.service.start()
+      try both(rig, 0x80040, at: 0)  // held
+      rig.service.suspend()  // released while suspended: neither lane sees it
+      rig.service.resume()
+      try both(rig, 0x80040, at: 2)
+      try both(rig, 0, at: 2.75)
+      let tally = rig.service.shadowDiagnostics.drainForTesting()
+      #expect(tally.mappingErrors == 0)
+      #expect(tally.ambiguities == 0)
+      #expect(tally.agreements >= 4)
+      rig.service.stop()
+    }
+
+    @Test("stop retires both lanes' pending lone-tap waits")
+    func stopRetiresPendingWaits() throws {
+      let rig = Rig()
+      rig.service.recordingMode = .pushToTalk
+      rig.service.onStartRecording = { .recording("s") }
+      rig.service.start()
+      try both(rig, 0x80040, at: 0)
+      try both(rig, 0, at: 0.125)
+      // Live's wait is on the test scheduler; the shadow's runs on its segment's worker.
+      #expect(rig.timers.pendingCount == 1)
+      let segment = try #require(rig.service.shadowDiagnostics.currentSegmentForTesting)
+      rig.service.stop()
+      #expect(rig.timers.pendingCount == 0)
+      // The closed segment compared the press and release and was left with nothing pending.
+      let closed = segment.settledTallyForTesting()
+      #expect(closed.incomplete == 0)
+      #expect(closed.mappingErrors == 0)
+    }
+
+    @Test("a push-to-talk press reads the clock once, for the decision and its record")
+    func oneClockReadPerPress() {
+      let reads = OSAllocatedUnfairLock(initialState: 0)
+      let effects = RecordingDesktopHotkeyEffects()
+      let service = HotkeyService(
+        effects: effects, telemetry: .noop,
+        uptime: {
+          reads.withLock { $0 += 1 }
+          return 500
+        }, scheduler: HotkeyTestScheduler(clock: HotkeyTestClock(500)).scheduler)
+      service.recordingMode = .pushToTalk
+      service.start()
+      let before = reads.withLock { $0 }
+      service.handleInstalledMonitorFlagsChangedValues(
+        keyCode: 61, flags: .option, generation: service.monitorGeneration, timestamp: 500)
+      #expect(reads.withLock { $0 } - before == 1)
+      service.stop()
+    }
+  #endif
 }

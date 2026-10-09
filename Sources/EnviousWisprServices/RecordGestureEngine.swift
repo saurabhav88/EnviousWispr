@@ -135,6 +135,8 @@ package final class RecordGestureEngine: Sendable {
       /// The record key this wait was scheduled under, so its observation names that key even
       /// after a rebind.
       var observedKeyCode: UInt16 = 0
+      /// Whether that binding was a bare modifier the listener can see.
+      var observedBareModifier = true
     #endif
   }
 
@@ -209,13 +211,50 @@ package final class RecordGestureEngine: Sendable {
       state.withLock { $0.observationGeneration = generation }
     }
 
+    /// Record binding, mode and observation generation in one critical section, so no decision
+    /// can be stamped with one generation under the other configuration.
+    package func configure(
+      binding: ShortcutBinding, mode: RecordingMode, observationGeneration: UInt64
+    ) {
+      state.withLock {
+        $0.binding = binding
+        $0.mode = mode
+        $0.observationGeneration = observationGeneration
+      }
+    }
+
+    /// The next stamp in this engine's observation order, for live records the service makes
+    /// itself (ingress, non-record roles), so the whole live lane shares one sequence domain.
+    package func nextObservationStamp() -> (generation: UInt64, sequence: UInt64) {
+      state.withLock { s in
+        s.observationSequence &+= 1
+        return (s.observationGeneration, s.observationSequence)
+      }
+    }
+
     /// Stamp an observation with the generation and order current when it was decided.
-    private static func stamped(_ s: inout State, _ o: GestureObservation) -> GestureObservation {
+    private static func stamped(
+      _ s: inout State, _ o: GestureObservation, bareModifier: Bool? = nil
+    ) -> GestureObservation {
       var o = o
       s.observationSequence &+= 1
       o.generation = s.observationGeneration
       o.sequence = s.observationSequence
+      o.listenerScope = bareModifier ?? s.binding.isBareModifier
       return o
+    }
+
+    /// The first press of `attemptID` while it is the gesture's live attempt, read before a
+    /// refusal resets it, so the shadow can end the same physical attempt.
+    /// The first press of the gesture's live attempt, whatever its number.
+    package func currentAttemptOrigin() -> TimeInterval? {
+      state.withLock { $0.gesture.start?.occurred }
+    }
+
+    package func liveAttemptOrigin(_ attemptID: UInt64) -> TimeInterval? {
+      state.withLock { s in
+        s.gesture.isLiveAttempt(attemptID) ? s.gesture.start?.occurred : nil
+      }
     }
 
     private func report(_ observations: [GestureObservation]) {
@@ -407,7 +446,8 @@ package final class RecordGestureEngine: Sendable {
           s.timer = PendingTimer(
             token: token, attemptID: s.gesture.attemptID,
             capturedGeneration: quick.capturedGeneration, trace: trace,
-            attemptStartOccurred: s.gesture.start?.occurred, handle: nil, observedKeyCode: keyCode)
+            attemptStartOccurred: s.gesture.start?.occurred, handle: nil, observedKeyCode: keyCode,
+            observedBareModifier: s.binding.isBareModifier)
         #else
           s.timer = PendingTimer(
             token: token, attemptID: s.gesture.attemptID,
@@ -444,7 +484,8 @@ package final class RecordGestureEngine: Sendable {
             kind: .timer, keyCode: timer.observedKeyCode,
             outcome: retired ? .loneTapRetired : .loneTapCancelled,
             handled: timer.trace.release.handled, occurred: timer.trace.release.occurred,
-            attemptStartOccurred: timer.attemptStartOccurred, deadline: timer.trace.deadline)))
+            attemptStartOccurred: timer.attemptStartOccurred, deadline: timer.trace.deadline),
+          bareModifier: timer.observedBareModifier))
     #endif
   }
 
@@ -509,7 +550,8 @@ package final class RecordGestureEngine: Sendable {
             kind: .timer, keyCode: timer.observedKeyCode, outcome: GestureOutcome(check),
             handled: timer.trace.release.handled, occurred: timer.trace.release.occurred,
             attemptStartOccurred: timer.attemptStartOccurred, deadline: timer.trace.deadline,
-            stopRequestedAt: requestedAt))
+            stopRequestedAt: requestedAt),
+          bareModifier: timer.observedBareModifier)
       #else
         let observation: GestureObservation? = nil
         _ = requestedAt

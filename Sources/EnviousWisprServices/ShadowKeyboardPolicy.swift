@@ -72,6 +72,8 @@ package final class ShadowKeyboardPolicy: Sendable {
     var inputSequence: UInt64 = 0
     var nextTimerToken: UInt64 = 0
     var timer: PendingTimer?
+    /// The listener installation whose events this policy admits; nil admits none when gated.
+    var installation: UInt64?
   }
 
   private struct Work {
@@ -81,6 +83,10 @@ package final class ShadowKeyboardPolicy: Sendable {
   }
 
   private let state: OSAllocatedUnfairLock<State>
+  /// Held from admission through emission by every operation that can emit, and by
+  /// `endInstallation`, so once that returns no record of the ended installation can still be on
+  /// its way out. Always taken before `state`, never inside it.
+  private let barrier = OSAllocatedUnfairLock()
   private let clock: RecordGestureEngine.Clock
   private let scheduler: RecordGestureEngine.Scheduler
   private let emit: @Sendable (ShadowRecord) -> Void
@@ -113,99 +119,156 @@ package final class ShadowKeyboardPolicy: Sendable {
   // MARK: - Input
 
   /// One listener event, on the listener's thread or any other.
-  package func ingest(_ event: KeyEventValue, handled: TimeInterval) {
-    let work = state.withLock { s -> Work in
-      var work = Work()
-      s.inputSequence &+= 1
-      if event.kind == .flagsChanged, !event.isOurs,
-        ModifierKeyCodes.flag(for: event.keyCode) != nil
-      {
-        let cleared = s.consumed.filter { key in
-          guard let flag = ModifierKeyCodes.flag(for: key) else { return false }
-          return event.rawFlags & UInt64(flag.rawValue) == 0
+  /// One listener event. With `installation`, admitted only while that installation is current,
+  /// checked in the same critical section as the ingestion, so a callback from an earlier
+  /// installation can never feed a later one. Without it (tests), ungated.
+  package func ingest(
+    _ event: KeyEventValue, handled: TimeInterval, installation: UInt64? = nil
+  ) {
+    barrier.withLock {
+      let work = state.withLock { s -> Work in
+        var work = Work()
+        if let installation, s.installation != installation { return work }
+        s.inputSequence &+= 1
+        if event.kind == .flagsChanged, !event.isOurs,
+          ModifierKeyCodes.flag(for: event.keyCode) != nil
+        {
+          let cleared = s.consumed.filter { key in
+            guard let flag = ModifierKeyCodes.flag(for: key) else { return false }
+            return event.rawFlags & UInt64(flag.rawValue) == 0
+          }
+          for key in cleared { s.consumed.remove(key) }
         }
-        for key in cleared { s.consumed.remove(key) }
-      }
-      let config = KeyStateTracker.Configuration(
-        bindings: s.snapshot.bindings, armed: s.snapshot.armed)
-      let update = s.tracker.ingest(event, handled: handled, configuration: config)
-      if update.edges.isEmpty, let key = update.ambiguousKey {
-        // An unproven release: recorded as ambiguous so its live counterpart is not unmatched.
-        for category in [ShadowRecord.Category.ingress, .decision] {
+        let config = KeyStateTracker.Configuration(
+          bindings: s.snapshot.bindings, armed: s.snapshot.armed)
+        let update = s.tracker.ingest(event, handled: handled, configuration: config)
+        if update.edges.isEmpty, let key = update.ambiguousKey {
+          // An unproven release: recorded as ambiguous so its live counterpart is not unmatched.
+          for category in [ShadowRecord.Category.ingress, .decision] {
+            work.records.append(
+              Self.record(
+                &s, category: category, keyCode: key, role: nil, phase: nil, outcome: .noDecision,
+                raw: event.timestamp,
+                accepted: RecordGesture.InputTime.accepting(stamp: event.timestamp, handled: handled)
+                  .occurred, handled: handled, ambiguous: true))
+          }
+        }
+        for edge in update.edges {
           work.records.append(
             Self.record(
-              &s, category: category, keyCode: key, role: nil, phase: nil, outcome: .noDecision,
-              raw: event.timestamp,
-              accepted: RecordGesture.InputTime.accepting(stamp: event.timestamp, handled: handled)
-                .occurred, handled: handled, ambiguous: true))
+              &s, category: .ingress, keyCode: edge.keyCode, role: edge.role, phase: edge.phase,
+              outcome: .edge, raw: edge.occurred, accepted: nil, handled: edge.handled,
+              evidence: edge.evidence, ambiguous: s.tracker.ambiguous.contains(edge.keyCode)))
+          Self.decide(&s, edge: edge, into: &work)
         }
+        return work
       }
-      for edge in update.edges {
-        work.records.append(
-          Self.record(
-            &s, category: .ingress, keyCode: edge.keyCode, role: edge.role, phase: edge.phase,
-            outcome: .edge, raw: edge.occurred, accepted: nil, handled: edge.handled,
-            evidence: edge.evidence, ambiguous: s.tracker.ambiguous.contains(edge.keyCode)))
-        Self.decide(&s, edge: edge, into: &work)
-      }
-      return work
+      perform(work)
     }
-    perform(work)
   }
 
   /// Reconcile held keys against an injected reader (no OS call here).
   package func reconcile(
     handled: TimeInterval, reader: (Set<UInt16>) -> [UInt16: KeyStateTracker.Reading]
   ) {
-    // The reader runs outside the lock. Its answers apply only if nothing moved meanwhile; an
+    // The reader runs outside both locks. Its answers apply only if nothing moved meanwhile; an
     // input or a new snapshot in between makes them stale, and a later read retries.
     let captured = state.withLock {
       (sequence: $0.inputSequence, snapshot: $0.snapshot, keys: Set($0.tracker.held.keys))
     }
     let answers = reader(captured.keys)
-    let work = state.withLock { s -> Work in
-      guard s.inputSequence == captured.sequence, s.snapshot == captured.snapshot else {
-        return Work()
+    barrier.withLock {
+      let work = state.withLock { s -> Work in
+        guard s.inputSequence == captured.sequence, s.snapshot == captured.snapshot else {
+          return Work()
+        }
+        var work = Work()
+        let config = KeyStateTracker.Configuration(
+          bindings: s.snapshot.bindings, armed: s.snapshot.armed)
+        let edges = s.tracker.reconcile(handled: handled, configuration: config) { _ in answers }
+        for edge in edges {
+          work.records.append(
+            Self.record(
+              &s, category: .ingress, keyCode: edge.keyCode, role: edge.role, phase: edge.phase,
+              outcome: .edge, raw: nil, accepted: nil, handled: edge.handled,
+              evidence: edge.evidence))
+          Self.decide(&s, edge: edge, into: &work)
+        }
+        return work
       }
-      var work = Work()
-      let config = KeyStateTracker.Configuration(
-        bindings: s.snapshot.bindings, armed: s.snapshot.armed)
-      let edges = s.tracker.reconcile(handled: handled, configuration: config) { _ in answers }
-      for edge in edges {
-        work.records.append(
-          Self.record(
-            &s, category: .ingress, keyCode: edge.keyCode, role: edge.role, phase: edge.phase,
-            outcome: .edge, raw: nil, accepted: nil, handled: edge.handled,
-            evidence: edge.evidence))
-        Self.decide(&s, edge: edge, into: &work)
-      }
-      return work
+      perform(work)
     }
-    perform(work)
   }
 
   /// The live executor's unconditional reset (explicit cancel, stop, resume): end the attempt and
   /// retire its wait. Physical holds stay.
   package func reset() {
-    let work = state.withLock { s -> Work in
-      var work = Work()
-      s.gesture.cleanup()
-      Self.cancelTimer(&s, into: &work, retired: true)
-      return work
+    barrier.withLock {
+      let work = state.withLock { s -> Work in
+        var work = Work()
+        s.gesture.cleanup()
+        Self.cancelTimer(&s, into: &work, retired: true)
+        return work
+      }
+      perform(work)
     }
-    perform(work)
   }
 
   /// The live executor refused one attempt: end it if it is still the live one and retire only
   /// its wait. A newer attempt and its wait are untouched; physical holds stay.
-  package func refuse(attempt: UInt64) {
-    let work = state.withLock { s -> Work in
-      var work = Work()
-      if s.gesture.isLiveAttempt(attempt) { s.gesture.cleanup() }
-      if s.timer?.attemptID == attempt { Self.cancelTimer(&s, into: &work, retired: true) }
-      return work
+  /// The live executor refused the attempt whose first press happened at `attemptOrigin`
+  /// (captured from the live engine before its reset). The shadow ends its attempt only when it
+  /// is the same physical attempt, and retires only that attempt's wait; a newer attempt and
+  /// physical holds stay. Live attempt numbers are never used: the two lanes count differently.
+  package func refuse(attemptOrigin: TimeInterval?) {
+    barrier.withLock {
+      guard let attemptOrigin else { return }
+      let work = state.withLock { s -> Work in
+        var work = Work()
+        if s.gesture.start?.occurred == attemptOrigin { s.gesture.cleanup() }
+        if s.timer?.attemptStartOccurred == attemptOrigin {
+          Self.cancelTimer(&s, into: &work, retired: true)
+        }
+        return work
+      }
+      perform(work)
     }
-    perform(work)
+  }
+
+  /// A listener installation went live: start a fresh observation model for it. Nothing from an
+  /// earlier installation carries over, and no release is invented for keys it thought held.
+  package func beginInstallation(_ installation: UInt64) {
+    barrier.withLock {
+      let cancel = state.withLock { s -> RecordGestureEngine.TimerHandle? in
+        let handle = Self.forgetEverything(&s)
+        s.installation = installation
+        return handle
+      }
+      cancel?.cancel()
+    }
+  }
+
+  /// The installation ended (stop, suspend): admit nothing more and drop the model silently.
+  package func endInstallation() {
+    barrier.withLock {
+      let cancel = state.withLock { s -> RecordGestureEngine.TimerHandle? in
+        s.installation = nil
+        return Self.forgetEverything(&s)
+      }
+      cancel?.cancel()
+    }
+  }
+
+  /// Reset the observation model without emitting anything; returns the retired wait's handle.
+  private static func forgetEverything(_ s: inout State) -> RecordGestureEngine.TimerHandle? {
+    let handle = s.timer?.handle
+    s.timer = nil
+    s.tracker = KeyStateTracker()
+    s.gesture = RecordGesture()
+    s.owners = [:]
+    s.consumed = []
+    s.inputSequence &+= 1
+    return handle
   }
 
   // MARK: - Decisions (under the lock)
@@ -237,11 +300,12 @@ package final class ShadowKeyboardPolicy: Sendable {
       case .cancel:
         // Live cancel cleans up the attempt and disarms itself; its key is consumed until its
         // family flag drops.
+        // Recorded first, under the context the press was decided in, as live records it.
+        decision(role, .rolePress)
         s.consumed.insert(edge.keyCode)
         s.snapshot.armed.remove(.cancel)
         s.gesture.cleanup()
         cancelTimer(&s, into: &work, retired: true)
-        decision(role, .rolePress)
       case .record, .quickAdd, .copyLast:
         decision(
           role, snapshot.available.contains(role) || role == .record ? .rolePress : .noDecision)
@@ -368,10 +432,12 @@ package final class ShadowKeyboardPolicy: Sendable {
     ambiguous: Bool = false
   ) -> ShadowRecord {
     s.sequence &+= 1
-    return ShadowRecord(
+    var record = ShadowRecord(
       lane: .shadow, generation: s.snapshot.generation, sequence: s.sequence, category: category,
       keyCode: keyCode, role: role, phase: phase, outcome: outcome, rawOccurred: raw,
       acceptedOccurred: accepted, handled: handled, evidence: evidence, ambiguous: ambiguous)
+    record.context = ShadowRecord.context(armed: s.snapshot.armed, available: s.snapshot.available)
+    return record
   }
 
   // MARK: - Timer and emission (outside the lock)
@@ -391,21 +457,23 @@ package final class ShadowKeyboardPolicy: Sendable {
   }
 
   private func timerFired(_ token: UInt64) {
-    let record = state.withLock { s -> ShadowRecord? in
-      guard let timer = s.timer, timer.token == token else { return nil }
-      s.timer = nil
-      let check = s.gesture.checkLoneTap(
-        capturedGeneration: timer.capturedGeneration, binding: s.snapshot.bindings.record,
-        mode: s.snapshot.mode)
-      var requestedAt: TimeInterval?
-      if case .stop(let stop) = check {
-        s.gesture.cleanup()
-        let stoppedAt = clock()
-        requestedAt = stoppedAt
-        s.gesture.recordQuickTapStop(stop, stoppedAt: stoppedAt)
+    barrier.withLock {
+      let record = state.withLock { s -> ShadowRecord? in
+        guard let timer = s.timer, timer.token == token else { return nil }
+        s.timer = nil
+        let check = s.gesture.checkLoneTap(
+          capturedGeneration: timer.capturedGeneration, binding: s.snapshot.bindings.record,
+          mode: s.snapshot.mode)
+        var requestedAt: TimeInterval?
+        if case .stop(let stop) = check {
+          s.gesture.cleanup()
+          let stoppedAt = clock()
+          requestedAt = stoppedAt
+          s.gesture.recordQuickTapStop(stop, stoppedAt: stoppedAt)
+        }
+        return Self.timerRecord(&s, timer, GestureOutcome(check), stopRequestedAt: requestedAt)
       }
-      return Self.timerRecord(&s, timer, GestureOutcome(check), stopRequestedAt: requestedAt)
+      if let record { emit(record) }
     }
-    if let record { emit(record) }
   }
 }
