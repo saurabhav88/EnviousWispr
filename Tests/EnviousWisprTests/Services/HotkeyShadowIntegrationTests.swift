@@ -264,16 +264,17 @@ struct HotkeyShadowIntegrationTests {
       rig.service.stop()
     }
 
-    @Test("listener events after stop never reach the shadow policy")
+    @Test("listener events after stop never reach the stopped installation's shadow policy")
     func eventsAfterStopAreIgnored() throws {
       let rig = Rig()
       rig.service.recordingMode = .pushToTalk
       rig.service.start()
       let sink = try #require(rig.effects.keyboardListenerSink)
+      let segment = try #require(rig.service.shadowDiagnostics.currentSegmentForTesting)
       rig.service.stop()
+      let before = segment.settledTallyForTesting()
       _ = sink(KeyEventValue(kind: .flagsChanged, keyCode: 61, rawFlags: 0x80040, timestamp: 501))
-      let tally = rig.service.shadowDiagnostics.drainForTesting()
-      #expect(tally == HotkeyShadowDiagnostics.Tally())
+      #expect(segment.drainForTesting() == before)
     }
 
     @Test("a binding change starts a comparison generation; arming a recording does not")
@@ -711,6 +712,25 @@ struct HotkeyShadowIntegrationTests {
       let closing = try #require(rig.service.shadowDiagnostics.currentSegmentForTesting)
       rig.service.stop()
       #expect(closing.settledTallyForTesting().incomplete == 0)
+    }
+
+    @Test("a removal refused at suspend is retried, and resume then installs a fresh listener")
+    func refusedRemovalIsRetriedOnResume() throws {
+      let rig = Rig()
+      rig.service.start()
+      let first = try #require(rig.effects.keyboardListenerToken)
+      let firstSegment = try #require(rig.service.shadowDiagnostics.currentSegmentForTesting)
+      rig.effects.refuseRemovals = true
+      rig.service.suspend()  // the old listener's cleanup ran late: removal refused
+      rig.effects.refuseRemovals = false  // its cleanup has finished
+      rig.service.resume()
+      #expect(rig.effects.removed.filter { $0 == first }.count == 2)
+      #expect(rig.effects.keyboardListenerInstalls == 2)
+      let second = try #require(rig.effects.keyboardListenerToken)
+      #expect(second != first)
+      let secondSegment = try #require(rig.service.shadowDiagnostics.currentSegmentForTesting)
+      #expect(secondSegment !== firstSegment)
+      rig.service.stop()
     }
   #endif
 }

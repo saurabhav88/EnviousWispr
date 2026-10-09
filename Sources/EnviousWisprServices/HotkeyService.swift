@@ -1418,11 +1418,18 @@ public final class HotkeyService {
   /// already polls a missing Accessibility grant (`TimingConstants.accessibilityPollIntervalSec`),
   /// since that is the usual cause.
   private func installKeyboardListener() {
-    guard isEnabled, !isSuspended, keyboardListenerToken == nil else { return }
+    guard isEnabled, !isSuspended else { return }
     listenerRetry?.cancel()
     listenerRetry = nil
     listenerGeneration &+= 1
     let generation = listenerGeneration
+    // A listener whose earlier removal was refused (its cleanup ran late) is removed now; until
+    // that succeeds no second listener is installed, and the removal is retried.
+    if keyboardListenerToken != nil { release(&keyboardListenerToken) }
+    guard keyboardListenerToken == nil else {
+      scheduleListenerRetry(generation)
+      return
+    }
     #if DEBUG
       // The sink holds its own installation's segment, never "the current one".
       let segment = shadowDiagnostics.makeSegment(
@@ -1449,6 +1456,11 @@ public final class HotkeyService {
         "event_tap", ShortcutRole.record.telemetryKind, nil,
         recordBinding.isBareModifier ? "modifier_only" : "chord")
     }
+    scheduleListenerRetry(generation)
+  }
+
+  /// Try the install again later, for this installation attempt only.
+  private func scheduleListenerRetry(_ generation: UInt64) {
     // Weak at every level: a pending retry must not keep a released service alive.
     listenerRetry = listenerRetryScheduler(TimingConstants.accessibilityPollIntervalSec) {
       [weak self] in
