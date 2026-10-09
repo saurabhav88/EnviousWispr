@@ -11,9 +11,6 @@ enum SettingsSearchCopy {
   static let findSettings = LocalizedStringResource(
     "Find Settings",
     comment: "Edit menu: moves the cursor into the Settings search field (Command-F).")
-  static let unavailable = LocalizedStringResource(
-    "Search is not available right now.",
-    comment: "Settings search: the search data could not be loaded; shown instead of results.")
   static let returnHint = LocalizedStringResource(
     "Return", comment: "Settings search: key hint on the selected result; Return opens it.")
 
@@ -59,6 +56,9 @@ enum SettingsSearchCopy {
   /// (orchestrator-approved table, docs/audits/2026-10-07-settings-search-chunk4-labels.md).
   /// `SettingsSearchPresentationTests` requires every such place to have one.
   enum Label {
+    static let dictationLanguage = LocalizedStringResource(
+      "Dictation language",
+      comment: "The language dictation is locked to: the language sheet's title and a Settings search result.")
     static let currentEngine = LocalizedStringResource(
       "Current dictation engine",
       comment: "Settings search result: the heading that names the speech engine in use.")

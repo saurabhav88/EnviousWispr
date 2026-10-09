@@ -1374,3 +1374,71 @@ enum SettingsMap {
   private static let recordedFaults = OSAllocatedUnfairLock<[String]>(initialState: [])
 }
 
+
+// MARK: - Where a chosen result can land (#3545)
+
+/// Which rung of a result's landing ladder an arrival reached.
+enum SettingsArrivalLandingKind: Equatable, Sendable {
+  /// The result's own row or card.
+  case target
+  /// One of the node's declared fallbacks.
+  case fallback
+  /// The section heading the row sits under.
+  case section
+  /// The tab (or, on a page without tabs, its always-shown first heading or row).
+  case landing
+}
+
+/// One place a chosen entry can land, and which rung it is.
+struct SettingsArrivalRung: Equatable, Sendable {
+  let id: SettingsMapID
+  let kind: SettingsArrivalLandingKind
+}
+
+extension SettingsMap {
+  /// Headings that hold rows: the map's sections, and the headings drawn as items. The rendering
+  /// tests read this same set to check each row sits under the heading the map names.
+  static let headingIDs: Set<SettingsMapID> = Set(
+    nodes.filter { $0.structure == .section }.map(\.id)
+  ).union([.currentEngineSection, .aiPolishProviderSection, .yourSnippets])
+
+  /// A visible place that is on screen whenever `destination` is: its tab in the tab strip, or on
+  /// a page without tabs an unconditional heading or row of that page (#3545 plan §3.1). Nil for
+  /// pages no search result opens.
+  static func landing(for destination: SettingsDestination, dictionaryTab: DictionaryTab?)
+    -> SettingsMapID?
+  {
+    switch destination {
+    case .dictation(let tab): tab.mapID
+    case .appSettings(let tab): tab.mapID
+    case .dictionary: dictionaryTab?.mapID ?? .sectionDictionary
+    case .keybinds: .sectionKeybindsRecording
+    case .transcribeFile: .transcribeFileSteps
+    case .aiPolish: .enableAIPolish
+    case .snippets: .snippets
+    case .history: nil
+    #if DEBUG
+      case .diagnostics: nil
+    #endif
+    }
+  }
+
+  /// Where a chosen entry can land, best first: its target, its declared fallbacks, the section
+  /// heading it sits under, then its destination's landing. Built once from the node, so the map
+  /// stays the only authority on where an entry lives.
+  static func arrivalLadder(for id: SettingsMapID) -> [SettingsArrivalRung] {
+    guard let node = byID[id], let target = node.target else { return [] }
+    var rungs = [SettingsArrivalRung(id: target, kind: .target)]
+    rungs += node.fallbacks.map { SettingsArrivalRung(id: $0, kind: .fallback) }
+    var parent = node.parent
+    while let current = parent, !headingIDs.contains(current) { parent = byID[current]?.parent }
+    if let section = parent { rungs.append(SettingsArrivalRung(id: section, kind: .section)) }
+    if let destination = node.destination,
+      let landing = landing(for: destination, dictionaryTab: node.dictionaryTab)
+    {
+      rungs.append(SettingsArrivalRung(id: landing, kind: .landing))
+    }
+    var seen: Set<SettingsMapID> = []
+    return rungs.filter { seen.insert($0.id).inserted }
+  }
+}

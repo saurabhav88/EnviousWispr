@@ -87,6 +87,10 @@ enum SettingsMapRef: Sendable {
   /// The visible title, resolved through the node's own owner.
   var title: String { SettingsMap.title(of: self) }
 
+  /// The API key reveal button's title while the key is hidden; also its Settings search label.
+  static let showKeyTitle = LocalizedStringResource(
+    "Show key", comment: "AI Polish: shows the API key text.")
+
   /// The short line a row shows under its title, from the node's description owner. A node
   /// without a static line is a wiring mistake the row cannot hide.
   var shortLine: String {
@@ -196,7 +200,7 @@ extension SettingsMap {
     case (.dynamic(.apiKeyReveal), .dynamic(_, .apiKeyReveal(let revealed))):
       return revealed
         ? String(localized: "Hide key", comment: "AI Polish: hides the API key text.")
-        : String(localized: "Show key", comment: "AI Polish: shows the API key text.")
+        : String(localized: SettingsMapRef.showKeyTitle)
     case (.dynamic(.appLanguageName), .dynamic(_, .appLanguage(let code))):
       return AppLanguagePreference.name(of: code)
     default:

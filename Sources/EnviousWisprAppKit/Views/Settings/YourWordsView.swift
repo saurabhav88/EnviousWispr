@@ -148,6 +148,9 @@ struct YourWordsView: View {
   /// The tab on screen. Owned by `SettingsNavigationState` (#3482), so a search result can open
   /// one; the page only reads and sets it, as `AppSettingsView(selection:)` does.
   @Binding var selection: DictionaryTab
+  /// The Your Words list's search on opening; empty in the app. Lets the render tests reach the
+  /// searching state through the real page (#3545).
+  var initialSearchQuery = ""
   @State private var sheetRoute: YourWordsSheetRoute?
   // Outcome-to-message mapping is shared with `BulkDeleteConfirmSheet` so both
   // export entry points present the identical copy (#1703).
@@ -213,6 +216,8 @@ struct YourWordsView: View {
             ) {
               selectedTabContent
             }
+            // #3545: the tab drawn here, carried by every control inside it.
+            .environment(\.settingsArrivalContent, drawnTab)
             .padding(.bottom, SettingsLayout.contentBottom)
             // The anchor the action scrolls to. Zero-height and behind
             // everything, so it changes nothing about the layout.
@@ -222,7 +227,11 @@ struct YourWordsView: View {
           }
           .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
           .settingsArrivalViewport()
-          .preference(key: SettingsArrivalLazyTopKey.self, value: Self.topAnchor)
+          // Tagged with the same rendered tab as the content it tops, never the page-only tag
+          // this scroll view inherits (#3545).
+          .preference(
+            key: SettingsArrivalLazyTopKey.self,
+            value: SettingsArrivalLazyTop(scrollID: Self.topAnchor, content: drawnTab))
           .background(
             GeometryReader { proxy in
               Color.clear.onAppear { paneHeight = proxy.size.height }
@@ -287,6 +296,11 @@ struct YourWordsView: View {
     }
   }
 
+  /// The tab this view draws, as arrival identifies content (#3545).
+  private var drawnTab: SettingsArrivalContent {
+    SettingsArrivalContent(page: .dictionary, dictionaryTab: selection)
+  }
+
   @ViewBuilder
   private var selectedTabContent: some View {
     switch selection {
@@ -301,7 +315,7 @@ struct YourWordsView: View {
       // to it.
       // Not wrapped in a stack: the section inside must be a direct child of
       // the pane's `LazyVStack` for its header to pin.
-      CustomTermsSection { actionButtons }
+      CustomTermsSection(initialSearchQuery: initialSearchQuery) { actionButtons }
     case .vocabularyPacks:
       VocabPacksSection()
     case .learnFrom:

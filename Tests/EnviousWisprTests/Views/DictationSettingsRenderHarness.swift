@@ -225,6 +225,8 @@ struct DictationSettingsRenderHarness {
             .padding(.horizontal, SettingsLayout.contentH - 4)
             .padding(.top, SettingsLayout.contentTop - 6)
           content.frame(width: pane.size.width)
+            // As DictationSettingsView tags the tab it draws (#3545).
+            .environment(\.settingsArrivalContent, SettingsArrivalContent(page: .dictation, dictationTab: tab))
         }.frame(width: pane.size.width, height: pane.size.height)
       }.background(Color.stPageBg).environment(\.settingsPR1Density, true))
     } else {

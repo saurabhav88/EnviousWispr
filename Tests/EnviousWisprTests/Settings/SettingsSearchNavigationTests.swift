@@ -110,7 +110,7 @@ struct SettingsSearchNavigationTests {
       ("enableDictionary", [.enableDictionary], .enableDictionary),
       ("selfLearningDictionary", [.selfLearningDictionary], .selfLearningDictionary),
       ("theme", [.theme], .theme),
-      // nothing mounted, primary or fallback: no arrival (an implementation failure upstream)
+      // nothing mounted: no rung yet (the arrival owner waits for the destination's content)
       ("pauseDuration", [], nil),
     ] as [(String, Set<SettingsMapID>, SettingsMapID?)])
   func arrivalTarget(entryID: String, mounted: Set<SettingsMapID>, expected: SettingsMapID?) throws
@@ -129,16 +129,19 @@ struct SettingsSearchNavigationTests {
     state.perform(.search(try Self.request("theme")))
     #expect(state.selectedPage == .appSettings)
     #expect(state.appSettingsTab == .appearance)
-    #expect(
-      state.reveal
-        == SettingsReveal(entryID: "theme", anchor: .theme, fallbacks: [], token: 1))
+    #expect(state.reveal?.entryID == "theme")
+    #expect(state.reveal?.anchor == .theme)
+    #expect(state.reveal?.fallbacks == [])
+    #expect(state.reveal?.token == 1)
+    #expect(state.reveal?.ladder.first == SettingsArrivalRung(id: .theme, kind: .target))
 
     state.perform(.search(try Self.request("inputDevice")))
     #expect(state.selectedPage == .dictation)
     #expect(state.dictationTab == .microphone)
-    #expect(
-      state.reveal
-        == SettingsReveal(entryID: "inputDevice", anchor: .inputDevice, fallbacks: [], token: 2))
+    #expect(state.reveal?.entryID == "inputDevice")
+    #expect(state.reveal?.anchor == .inputDevice)
+    #expect(state.reveal?.fallbacks == [])
+    #expect(state.reveal?.token == 2)
   }
 
   @Test("choosing the same result again reveals again")
@@ -186,10 +189,10 @@ struct SettingsSearchNavigationTests {
   }
 
   @Test("the reveal reaches pages through the environment, and a bare page sees none")
-  func environmentDefaultIsNoReveal() {
+  func environmentDefaultIsNoReveal() throws {
     #expect(EnvironmentValues().settingsReveal == nil)
     var values = EnvironmentValues()
-    let reveal = SettingsReveal(entryID: "theme", anchor: .theme, fallbacks: [], token: 1)
+    let reveal = SettingsReveal(request: try #require(SettingsSearchRequest(entryID: "theme")), token: 1)
     values.settingsReveal = reveal
     #expect(values.settingsReveal == reveal)
   }

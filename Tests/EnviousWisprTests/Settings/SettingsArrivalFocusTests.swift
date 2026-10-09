@@ -118,18 +118,16 @@ struct SettingsArrivalFocusTests {
     @ViewBuilder content: () -> some View, until done: (Event) -> Bool
   ) async throws {
     let request = try #require(SettingsSearchRequest(entryID: entryID))
-    let reveal = SettingsReveal(
-      entryID: entryID, anchor: request.target, fallbacks: request.fallbacks, token: 1)
+    let reveal = SettingsReveal(request: request, token: 1)
     // Built as the window's `page { }` builds it: the page's one arrival owner above the page.
     let page = SettingsContentView {
       content()
       Probe(recorder: recorder)
     }
+    // As `page { }` and a tabbed page tag what they draw (#3545): this content is the reveal's.
+    .environment(\.settingsArrivalContent, reveal.content)
     .modifier(SettingsArrivalModifier())
     .environment(\.settingsReveal, reveal)
-    .environment(\.settingsRevealIsShowing) { [recorder] reveal in
-      recorder.showing && recorder.revealToken == reveal.token
-    }
     .environment(\.settingsArrivalStillCurrent) { [recorder] reveal in
       recorder.showing && reveal.token == 1
     }

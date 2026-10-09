@@ -149,6 +149,10 @@ struct SettingsSearchIndex: Sendable {
   struct Copy: Sendable {
     let title: @Sendable (SettingsMapTitle, String) -> String?
     let description: @Sendable (SettingsMapDescription, String) -> String?
+    /// The reviewed result label of a place whose title is only known at run time, in a
+    /// language; the title-only index and a place that lost vocabulary blocks read it (#3545).
+    /// nil: no label.
+    var dynamicLabel: @Sendable (SettingsMapID, String) -> String? = { _, _ in nil }
 
     static let interface = Copy(
       title: { title, language in
@@ -164,6 +168,9 @@ struct SettingsSearchIndex: Sendable {
         case .resource(let resource): resolve(resource, language)
         case .runtime: nil
         }
+      },
+      dynamicLabel: { id, language in
+        SettingsSearchPresentation.dynamicTitle(of: id, language: language)
       })
 
     private static func resolve(_ resource: LocalizedStringResource, _ language: String) -> String {
@@ -227,21 +234,25 @@ struct SettingsSearchIndex: Sendable {
   let appLanguage: String
   let stop: Set<String>
   let markers: Set<String>
+  /// The vocabulary problems whose data this index left out, for the DEBUG log.
+  var leftOut: [String] = []
 
-  /// Loads the bundled vocabulary and builds the index. Missing or invalid data is a typed
-  /// failure, never an empty index (plan §3.2a).
+  /// Loads the bundled vocabulary and builds the index. A broken block or entry is left out and
+  /// its place keeps its title (#3545 plan §3.5); a document that cannot be used at all is a
+  /// typed failure, never an empty index (plan §3.2a), and the window searches by title.
   static func load(
     appLanguage: String, preferredLanguages: [String], bundle: Bundle = .module,
     copy: Copy = .interface
   ) -> Result<SettingsSearchIndex, SettingsSearchVocabularyError> {
-    SettingsSearchVocabulary.load(bundle: bundle).flatMap { vocabulary in
-      SettingsSearchCatalog.join(vocabulary).map { joined in
-        SettingsSearchIndex(
-          joined: joined, vocabulary: vocabulary, appLanguage: appLanguage,
-          languages: SettingsSearchLanguages.active(
-            appLanguage: appLanguage, preferred: preferredLanguages),
-          copy: copy)
-      }
+    SettingsSearchVocabulary.loadForSearch(bundle: bundle).map { usable in
+      var index = SettingsSearchIndex(
+        joined: SettingsSearchCatalog.joinAvailable(usable.vocabulary),
+        vocabulary: usable.vocabulary, appLanguage: appLanguage,
+        languages: SettingsSearchLanguages.active(
+          appLanguage: appLanguage, preferred: preferredLanguages),
+        copy: copy)
+      index.leftOut = usable.dropped
+      return index
     }
   }
 
@@ -261,28 +272,66 @@ struct SettingsSearchIndex: Sendable {
     let bias: Double
   }
 
+  /// The map's searchable places as index documents, with their interface text in each of
+  /// `interface`. `dynamicTitle` names a place whose title is only known at run time, in the
+  /// language asked; nil leaves it untitled (the vocabulary's block title names it instead).
+  static func documents(
+    _ entries: [SettingsSearchCatalog.Entry], interface: [String], copy: Copy,
+    dynamicTitle: ((SettingsMapID, String) -> String?)? = nil
+  ) -> [Document] {
+    entries.map { entry in
+      let node = entry.node
+      let ancestors = Self.ancestors(of: node)
+      var titles: [String: String] = [:]
+      var descriptions: [String: String] = [:]
+      var context: [String: [String]] = [:]
+      for language in interface {
+        titles[language] = copy.title(node.title, language) ?? dynamicTitle?(node.id, language)
+        descriptions[language] = node.description.flatMap { copy.description($0, language) }
+        context[language] = ancestors.compactMap { copy.title($0.title, language) }
+      }
+      return Document(
+        id: entry.id, kind: entry.kind, parentID: node.parent?.rawValue,
+        titles: titles, descriptions: descriptions, context: context,
+        bias: node.destination == .transcribeFile ? Weight.transcribeFilePage : 0)
+    }
+  }
+
+  /// The index search answers from before the vocabulary has loaded, or when it cannot be used
+  /// (#3545 plan §3.5): every searchable place by its interface title, description and page, built
+  /// synchronously from the Settings Map and the app's own strings. No vocabulary words, no
+  /// meaning model. A place whose title is only known at run time uses its reviewed result label.
+  static func titleOnly(
+    appLanguage: String, preferredLanguages: [String], copy: Copy = .interface
+  ) -> SettingsSearchIndex {
+    let languages = SettingsSearchLanguages.active(
+      appLanguage: appLanguage, preferred: preferredLanguages)
+    let interface = languages.filter(SettingsSearchVocabulary.interfaceLanguages.contains)
+    let places = Self.documents(
+      SettingsSearchCatalog.entries, interface: interface, copy: copy,
+      dynamicTitle: copy.dynamicLabel)
+    return SettingsSearchIndex(
+      documents: places, blocks: [:], appLanguage: appLanguage, interface: interface,
+      languages: languages, stop: [], markers: baseMarkers)
+  }
+
   /// The Settings window's index: the map's searchable places in the active languages.
   init(
     joined: [SettingsSearchCatalog.JoinedEntry], vocabulary: SettingsSearchVocabulary,
     appLanguage: String, languages: [String], copy: Copy
   ) {
     let interface = languages.filter(SettingsSearchVocabulary.interfaceLanguages.contains)
-    let documents = joined.map { joinedEntry in
-      let node = joinedEntry.entry.node
-      let ancestors = Self.ancestors(of: node)
-      var titles: [String: String] = [:]
-      var descriptions: [String: String] = [:]
-      var context: [String: [String]] = [:]
-      for language in interface {
-        titles[language] = copy.title(node.title, language)
-        descriptions[language] = node.description.flatMap { copy.description($0, language) }
-        context[language] = ancestors.compactMap { copy.title($0.title, language) }
-      }
-      return Document(
-        id: joinedEntry.entry.id, kind: joinedEntry.entry.kind, parentID: node.parent?.rawValue,
-        titles: titles, descriptions: descriptions, context: context,
-        bias: node.destination == .transcribeFile ? Weight.transcribeFilePage : 0)
-    }
+    // A place that lost vocabulary blocks may have lost the only words that name it (a run-time
+    // title has no interface text), so it takes its reviewed result label, as in the title-only
+    // index. A complete place keeps exactly the reviewed fields.
+    let complete = SettingsSearchVocabulary.declaredLanguages.count
+    let degraded = Set(joined.filter { $0.blocks.count < complete }.map(\.entry.id))
+    let documents = Self.documents(
+      joined.map(\.entry), interface: interface, copy: copy,
+      dynamicTitle: degraded.isEmpty
+        ? nil
+        : { id, language in degraded.contains(id.rawValue) ? copy.dynamicLabel(id, language) : nil }
+    )
     // One language's filler can be another's setting word or marker; the active union loses both.
     var markers = Self.baseMarkers
     var stop: Set<String> = []
@@ -559,4 +608,3 @@ struct SettingsSearchIndex: Sendable {
     }
   }
 }
-

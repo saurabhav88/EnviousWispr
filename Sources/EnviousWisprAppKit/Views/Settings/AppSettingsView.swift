@@ -16,6 +16,10 @@ struct AppSettingsView: View {
         .padding(.horizontal, SettingsLayout.contentH - 4)
         .padding(.top, SettingsLayout.contentTop - 6)
         tabContent.frame(width: pane.size.width)
+          // #3545: the tab drawn here, carried by every control inside it.
+          .environment(
+            \.settingsArrivalContent,
+            SettingsArrivalContent(page: .appSettings, appSettingsTab: selection))
       }
       .frame(width: pane.size.width, height: pane.size.height)
     }

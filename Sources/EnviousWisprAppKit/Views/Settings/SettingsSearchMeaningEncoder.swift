@@ -90,10 +90,12 @@ struct CoreMLQueryEncoder: SettingsSearchQueryEncoding {
 /// - **Loads once, lazily.** The first `ensureLoaded()` verifies the assets, loads the encoder, checks
 ///   it against the manifest's reference vectors, and reads the place vectors. Later calls return
 ///   the same outcome.
-/// - **Skipped for the window session.** Missing or wrong assets, a failed load or self-test, or a
-///   load slower than the budget (measured on the slowest Mac on hand, never on this one) disable
-///   the pass for the life of this worker; the caller keeps word results only. A later encode
-///   failure does the same.
+/// - **Kept however long it took.** A slow load is never discarded (founder 2026-10-09, #3545):
+///   the caller answers by words while it loads and uses meaning once it is ready.
+/// - **Skipped for the window session.** Wrong assets or a failed load or self-test disable the
+///   pass; the caller keeps word results only. A later encode failure does the same.
+///   `resetTransientFailure()` (a window close) lets the next session retry any of those; missing
+///   assets stay off for the worker's life, because retrying cannot add them (#3545 plan §3.5).
 /// - **Generations.** Every request carries the caller's query generation. A request the caller
 ///   has since superseded, or whose task was cancelled, returns `.stale` without encoding, and a
 ///   result is stamped with its generation so the caller can drop one that finished late.
@@ -102,7 +104,6 @@ actor SettingsSearchMeaningWorker {
     case assetsMissing = "assets_missing"
     case assetsInvalid = "assets_invalid"
     case loadFailed = "load_failed"
-    case loadTooSlow = "load_too_slow"
     case selfTestFailed = "self_test_failed"
     case encodeFailed = "encode_failed"
   }
@@ -130,14 +131,10 @@ actor SettingsSearchMeaningWorker {
 
   typealias Loader = @Sendable () async throws -> sending Loaded
 
-  /// The model + tokenizer + vectors budget from `queries/budgets.json` (recorded before the
-  /// locked final set was opened): 1000 ms on the M4 MacBook Air, the slowest Mac on hand.
-  static let defaultLoadBudgetMilliseconds = 1_000.0
   /// The reference vectors must agree with the encoder at least this closely (cosine).
   static let selfTestCosine: Float = 0.999
 
   private let loader: Loader
-  private let loadBudgetMilliseconds: Double
   private let nowNanoseconds: @Sendable () -> UInt64
   private var latestGeneration = 0
   private var preparation: Task<Readiness, Never>?
@@ -146,11 +143,9 @@ actor SettingsSearchMeaningWorker {
   private var skipped: SkipReason?
 
   init(
-    loadBudgetMilliseconds: Double = SettingsSearchMeaningWorker.defaultLoadBudgetMilliseconds,
     nowNanoseconds: @escaping @Sendable () -> UInt64 = { DispatchTime.now().uptimeNanoseconds },
     loader: @escaping Loader
   ) {
-    self.loadBudgetMilliseconds = loadBudgetMilliseconds
     self.nowNanoseconds = nowNanoseconds
     self.loader = loader
   }
@@ -158,10 +153,9 @@ actor SettingsSearchMeaningWorker {
   /// The production worker over the app's bundled assets. With no assets in the bundle the first
   /// `ensureLoaded()` reports `.skipped(.assetsMissing)`.
   static func bundled(
-    assets: SettingsSearchMeaningAssets? = .bundled(),
-    loadBudgetMilliseconds: Double = SettingsSearchMeaningWorker.defaultLoadBudgetMilliseconds
+    assets: SettingsSearchMeaningAssets? = .bundled()
   ) -> SettingsSearchMeaningWorker {
-    SettingsSearchMeaningWorker(loadBudgetMilliseconds: loadBudgetMilliseconds) { [assets] in
+    SettingsSearchMeaningWorker { [assets] in
       guard let assets else { throw LoadFailure(reason: .assetsMissing) }
       return try await Self.loadProduction(assets: assets)
     }
@@ -199,6 +193,26 @@ actor SettingsSearchMeaningWorker {
     let task = Task { await self.load() }
     preparation = task
     return await task.value
+  }
+
+  /// A window closed: a transient failure is cleared, so the next `ensureLoaded()` loads again.
+  /// A load still running is kept and shared, never started twice: the reset waits for it first,
+  /// so a load that fails after the window closed is cleared too, not inherited by the next
+  /// window (the next pass waits for this reset, bounded by the model's deadline).
+  /// `willAwaitPreparation` is a test seam: it runs just before the reset waits for a running load.
+  func resetTransientFailure(willAwaitPreparation: @Sendable () -> Void = {}) async {
+    if let preparation {
+      willAwaitPreparation()
+      _ = await preparation.value
+    }
+    guard let reason = skipped else { return }
+    switch reason {
+    case .loadFailed, .assetsInvalid, .encodeFailed, .selfTestFailed:
+      skipped = nil
+      preparation = nil
+    case .assetsMissing:
+      return
+    }
   }
 
   /// The place vectors, once the pass is ready. Nil while loading or after a skip.
@@ -241,10 +255,9 @@ actor SettingsSearchMeaningWorker {
     } catch {
       return disable(.loadFailed)
     }
+    // However long loading takes, keep the model. The first measured load after a restart took
+    // 11.5 s (#3545); searches answer by words meanwhile.
     let elapsed = Double(nowNanoseconds() &- started) / 1_000_000
-    // A model that needs longer than the budget on this Mac is not worth the memory it holds:
-    // release it and stay on word results for the rest of the window session.
-    if elapsed > loadBudgetMilliseconds { return disable(.loadTooSlow) }
     guard Self.passesSelfTest(loaded) else { return disable(.selfTestFailed) }
     encoder = loaded.encoder
     places = loaded.placeVectors

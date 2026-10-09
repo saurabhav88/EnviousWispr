@@ -90,9 +90,7 @@ struct SettingsSearchPanel: View {
 
   var body: some View {
     Group {
-      if model.isUnavailable {
-        message(String(localized: SettingsSearchCopy.unavailable))
-      } else if model.showsNoResults {
+      if model.showsNoResults {
         message(SettingsSearchCopy.noResults(model.query.trimmingCharacters(in: .whitespaces)))
       } else if !model.results.isEmpty {
         ScrollViewReader { proxy in

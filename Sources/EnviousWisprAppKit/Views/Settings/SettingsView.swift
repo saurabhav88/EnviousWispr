@@ -345,24 +345,24 @@ struct UnifiedWindowView: View {
       // History owns its own list/detail split layout, no page header.
       HistoryContentView()
     case .dictation:
-      page {
+      page(.dictation) {
         DictationSettingsView(selection: $navigationState.dictationTab, packs: livePreviewPacks)
       }
     case .transcribeFile:
-      page { TranscribeFileView() }
+      page(.transcribeFile) { TranscribeFileView() }
     case .keybinds:
-      page { KeybindsSettingsView() }
+      page(.keybinds) { KeybindsSettingsView() }
     case .aiPolish:
-      page { AIPolishSettingsView() }
+      page(.aiPolish) { AIPolishSettingsView() }
     case .dictionary:
-      page { YourWordsView(selection: $navigationState.dictionaryTab) }
+      page(.dictionary) { YourWordsView(selection: $navigationState.dictionaryTab) }
     case .snippets:
-      page { SnippetsView() }
+      page(.snippets) { SnippetsView() }
     case .appSettings:
-      page { AppSettingsView(selection: $navigationState.appSettingsTab) }
+      page(.appSettings) { AppSettingsView(selection: $navigationState.appSettingsTab) }
     #if DEBUG
       case .diagnostics:
-        page { DiagnosticsSettingsView() }
+        page(.diagnostics) { DiagnosticsSettingsView() }
     #endif
     }
   }
@@ -449,8 +449,11 @@ struct UnifiedWindowView: View {
   /// #3385: superseded; pages have no header (tracker A5). What remains is the
   /// window-navigation action every page can call.
   @ViewBuilder
-  private func page(@ViewBuilder content: () -> some View) -> some View {
+  private func page(_ drawn: SettingsPage, @ViewBuilder content: () -> some View) -> some View {
     content()
+      // #3545: every control on the page carries the page it was drawn in; a tabbed page overrides
+      // this around the tab it draws, so the tab strip and fixed headings keep the page-only tag.
+      .environment(\.settingsArrivalContent, SettingsArrivalContent(page: drawn))
       // #3482 §3.4: the page's one search-arrival owner, above every scroll view on the page.
       .modifier(SettingsArrivalModifier())
       // The only place `navigationState` is in scope, so the only place this can
@@ -460,14 +463,6 @@ struct UnifiedWindowView: View {
       .environment(\.settingsReveal, navigationState.reveal)
       .environment(\.settingsRevealAcknowledge) { navigationState.acknowledgeReveal(token: $0) }
       .environment(\.settingsNavigationEpoch, navigationState.epoch)
-      .environment(\.settingsRevealIsShowing) { reveal in
-        // Only the current reveal: queued work for an overtaken one never acts (§3.4).
-        guard navigationState.reveal?.token == reveal.token,
-          let id = SettingsMapID(rawValue: reveal.entryID)
-        else { return false }
-        let node = SettingsMap.node(id)
-        return navigationState.isShowing(node.destination, dictionaryTab: node.dictionaryTab)
-      }
       .environment(\.settingsArrivalStillCurrent) { reveal in
         navigationState.arrivalIsCurrent(token: reveal.token, entryID: reveal.entryID)
       }

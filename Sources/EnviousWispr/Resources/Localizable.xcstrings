@@ -14967,17 +14967,6 @@
         }
       }
     },
-    "Search is not available right now." : {
-      "comment" : "Settings search: the search data could not be loaded; shown instead of results.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Die Suche ist derzeit nicht verfügbar."
-          }
-        }
-      }
-    },
     "Search languages" : {
       "localizations" : {
         "de" : {
