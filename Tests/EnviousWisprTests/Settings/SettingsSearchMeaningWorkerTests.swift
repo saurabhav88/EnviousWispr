@@ -259,25 +259,64 @@ struct SettingsSearchMeaningWorkerTests {
     }
   }
 
-  @Test("a window close while the load runs keeps that load: one load serves both sessions")
-  func resetKeepsARunningLoad() async {
+  /// A loader held at `gate` whose first load ends with `firstFails` (then loads normally).
+  static func heldWorker(
+    _ gate: Gate, loads: OSAllocatedUnfairLock<Int>, firstFails: Bool
+  ) -> SettingsSearchMeaningWorker {
     let log = OSAllocatedUnfairLock(initialState: [String]())
-    let loads = OSAllocatedUnfairLock(initialState: 0)
-    let gate = Gate()
-    let worker = SettingsSearchMeaningWorker {
-      loads.withLock { $0 += 1 }
-      gate.startedContinuation.yield()
-      for await _ in gate.released { break }
+    return SettingsSearchMeaningWorker {
+      let call = loads.withLock { $0 += 1; return $0 }
+      if call == 1 {
+        gate.startedContinuation.yield()
+        for await _ in gate.released { break }
+        if firstFails { throw SettingsSearchMeaningWorker.LoadFailure(reason: .loadFailed) }
+      }
       return Self.loaded(log)
     }
+  }
+
+  @Test("a window close while the load runs keeps that load: one load serves both sessions")
+  func resetKeepsARunningLoad() async {
+    let loads = OSAllocatedUnfairLock(initialState: 0)
+    let gate = Gate()
+    let worker = Self.heldWorker(gate, loads: loads, firstFails: false)
     let first = Task { await worker.ensureLoaded() }
     for await _ in gate.started { break }
-    await worker.resetTransientFailure()
+    // The reset waits for the running load; the next session's caller shares it.
+    let entered = Latch()
+    let reset = Task {
+      await worker.resetTransientFailure(willAwaitPreparation: { Task { await entered.open() } })
+    }
+    // Bounded: a reset that never waits records a failure and still lets the load go.
+    #expect(await entered.wait(), "the reset did not wait for the running load")
     let second = Task { await worker.ensureLoaded() }
     gate.releaseContinuation.yield()
-    let readiness = [await first.value, await second.value]
+    await reset.value
+    let readiness = [await first.value, await second.value, await worker.ensureLoaded()]
     #expect(readiness.allSatisfy { if case .ready = $0 { true } else { false } }, "\(readiness)")
     #expect(loads.withLock { $0 } == 1)
+  }
+
+  @Test("a load that fails after the window closed is retried by the next window, not inherited")
+  func failureAfterCloseIsCleared() async {
+    let loads = OSAllocatedUnfairLock(initialState: 0)
+    let gate = Gate()
+    let worker = Self.heldWorker(gate, loads: loads, firstFails: true)
+    let first = Task { await worker.ensureLoaded() }
+    for await _ in gate.started { break }
+    // The reset is waiting on the running load before the load is allowed to fail.
+    let entered = Latch()
+    let reset = Task {
+      await worker.resetTransientFailure(willAwaitPreparation: { Task { await entered.open() } })
+    }
+    // Bounded: a reset that never waits records a failure and still lets the load go.
+    #expect(await entered.wait(), "the reset did not wait for the running load")
+    gate.releaseContinuation.yield()
+    #expect(await first.value == .skipped(.loadFailed))
+    await reset.value
+    let next = await worker.ensureLoaded()
+    if case .ready = next {} else { Issue.record("the next window inherited the failure: \(next)") }
+    #expect(loads.withLock { $0 } == 2)
   }
 
   @Test("several callers share one load")

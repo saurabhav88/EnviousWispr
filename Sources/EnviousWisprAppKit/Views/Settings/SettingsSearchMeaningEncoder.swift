@@ -203,10 +203,16 @@ actor SettingsSearchMeaningWorker {
     return await task.value
   }
 
-  /// A window closed: a COMPLETED transient failure is cleared, so the next `ensureLoaded()` loads
-  /// again. A load still running is kept and shared, never started twice (a failure is only
-  /// recorded once its load has returned, so `skipped` set means no load is running).
-  func resetTransientFailure() {
+  /// A window closed: a transient failure is cleared, so the next `ensureLoaded()` loads again.
+  /// A load still running is kept and shared, never started twice: the reset waits for it first,
+  /// so a load that fails after the window closed is cleared too, not inherited by the next
+  /// window (the next pass waits for this reset, bounded by the model's deadline).
+  /// `willAwaitPreparation` is a test seam: it runs just before the reset waits for a running load.
+  func resetTransientFailure(willAwaitPreparation: @Sendable () -> Void = {}) async {
+    if let preparation {
+      willAwaitPreparation()
+      _ = await preparation.value
+    }
     guard let reason = skipped else { return }
     switch reason {
     case .loadFailed, .assetsInvalid, .encodeFailed, .selfTestFailed:

@@ -416,11 +416,15 @@ def cmd_run(args):
                              "--expect; it speaks its own sentences")
         if not run_dir:
             raise SystemExit(f"REFUSED: recipe {args.recipe!r} writes its receipts into --run-dir; pass an existing directory")
-        if not args.export:
-            raise SystemExit(f"REFUSED: recipe {args.recipe!r} needs --export <locked candidate fp32 directory>")
-        script = os.path.join(HERE, recipe["script"])
+        command = [sys.executable, "-u", os.path.join(HERE, recipe["script"]), "--run-dir", run_dir]
+        if recipe.get("export"):
+            if not args.export:
+                raise SystemExit(f"REFUSED: recipe {args.recipe!r} needs --export <locked candidate fp32 directory>")
+            command += ["--export", args.export]
+        elif args.export:
+            raise SystemExit(f"REFUSED: recipe {args.recipe!r} takes no --export")
         print(f"== RUN {args.recipe} -> {recipe['script']} (run dir {run_dir}) ==", flush=True)
-        completed = subprocess.run([sys.executable, "-u", script, "--run-dir", run_dir, "--export", args.export])
+        completed = subprocess.run(command)
         return completed.returncode
 
     import wispr_eyes as w

@@ -53,6 +53,7 @@ RECIPES = {
         # wispr_eyes call. `uat.py run learn-from-edits --run-dir D --export E`
         # delegates to the script and returns its exit code.
         "script": "learn_from_edits_uat.py",
+        "export": True,
         "purpose": "Learn-from-edits end to end on the real Debug app: dictate into TextEdit, fix a misheard word "
                    "through accessibility, card Accept / Reject / expiry into Pending, Pending Accept, the learned "
                    "word on the next take, a negative control, toggle off, and a new recording cancelling a watch.",
@@ -61,6 +62,20 @@ RECIPES = {
         "audio": True,
         "needs": "screen unlocked and hands off; one debug instance of THIS worktree's build or none; BlackHole 2ch "
                  "installed (the drill routes audio through it and restores); --export <locked candidate fp32 dir>",
+    },
+    "settings-search": {
+        # Script-backed (#3545): seven searches from plan section 11.1, each typed into the
+        # sidebar field and pressed, with the arrival read from the log.
+        "script": "settings_search_uat.py",
+        "purpose": "Settings search end to end on the real Debug app: from a starting page, type a search, press "
+                   "the result, and confirm the app stays up, a new `arrival landed=` line names that result and the "
+                   "selected page and tab are its destination. Includes the Self-Learning Dictionary search that "
+                   "crashed the dev build (#3545). Navigation only: nothing is switched or saved.",
+        "verdict": "app.log `[SettingsMap] arrival landed=<kind> entry=<id>` per probe plus the selected sidebar page "
+                   "and tab; exit 0 PASS, 1 FAIL, 2 INSTRUMENT",
+        "audio": False,
+        "needs": "one debug instance of THIS worktree's build with Debug Mode on (the arrival line is DEBUG-only); "
+                 "Settings window reachable; Accessibility",
     },
     "quality": {
         "function": "record_tts",
@@ -280,6 +295,9 @@ def _self_test():
     check("every script-backed recipe names a script beside this catalog",
           all(os.path.isfile(os.path.join(HERE, r["script"])) for r in RECIPES.values() if "script" in r))
     check("learn-from-edits is script-backed", RECIPES["learn-from-edits"].get("script") == "learn_from_edits_uat.py")
+    check("only learn-from-edits needs --export",
+          [rid for rid, r in RECIPES.items() if r.get("export")] == ["learn-from-edits"])
+    check("settings-search is script-backed", RECIPES["settings-search"].get("script") == "settings_search_uat.py")
     check("recipe ids are shell-safe", all(re.fullmatch(r"[a-z][a-z0-9-]*", rid) for rid in RECIPES))
     check("test_hands_free is broken (#2409)", HARNESS_STATUS["test_hands_free"]["status"] == "broken")
 
