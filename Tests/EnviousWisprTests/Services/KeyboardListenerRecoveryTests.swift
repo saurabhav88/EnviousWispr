@@ -151,8 +151,12 @@ struct KeyboardListenerRecoveryTests {
     #expect(starts == 1, "the check started a recording")
   }
 
-  @Test("a record key let go during the storm cooldown stops the recording before the replacement")
-  func releaseDuringStormCooldownStops() async {
+  /// `refused`: the OS refused the stormed listener's removal, so its token is still held; its
+  /// input is no longer admitted, so the check must run all the same.
+  @Test(
+    "a record key let go during the storm cooldown stops the recording before the replacement",
+    arguments: [false, true])
+  func releaseDuringStormCooldownStops(refused: Bool) async {
     let rig = Rig()
     rig.service.recordingMode = .pushToTalk
     rig.service.toggleKeyCode = ModifierKeyCodes.rightOption
@@ -170,13 +174,16 @@ struct KeyboardListenerRecoveryTests {
     await keys.press(ModifierKeyCodes.rightOption, at: 500)
     await rig.service.awaitInFlightStartForTesting()
     rig.stormHealth()
+    rig.effects.refuseRemovals = refused
     await rig.storm(through: rig.effects.keyboardListenerSink)
+    #expect((rig.effects.keyboardListenerToken != nil) == refused)
     rig.effects.keyStates.withLock { $0[ModifierKeyCodes.rightOption] = .up }
     rig.clock.now = 505
     rig.timers.fireDue()
     await stopped.wait(until: 1)
     #expect(stops == 1)
     #expect(rig.effects.keyboardListenerInstalls == 1, "ended only by the replacement")
+    rig.effects.refuseRemovals = false
   }
 
   @Test("stopping during the cooldown cancels the replacement")

@@ -1306,11 +1306,12 @@ public final class HotkeyService {
     armOrphanedHoldCheck()
   }
 
-  /// Arm the orphaned-hold check: with no listener installed, nothing else can see the record
+  /// Arm the orphaned-hold check: with no listener ingress (none installed, or a removal the OS
+  /// refused, whose input is no longer admitted), nothing else can see the record
   /// key come up, so a push-to-talk recording would run on until a replacement's first sweep
   /// (after the storm cooldown) or, while installs keep failing, until the recording cap.
   private func armOrphanedHoldCheck() {
-    guard orphanedHoldCheck == nil, keyboardListenerToken == nil, isEnabled, !isSuspended,
+    guard orphanedHoldCheck == nil, keyboardListenerIngress == nil, isEnabled, !isSuspended,
       engine.ownedListenerKey != nil
     else { return }
     orphanedHoldCheckToken &+= 1
@@ -1332,7 +1333,7 @@ public final class HotkeyService {
     // Cancelled since it was armed (an install succeeded, or a stop or suspend removed it).
     guard token == orphanedHoldCheckToken, orphanedHoldCheck != nil else { return }
     orphanedHoldCheck = nil
-    guard keyboardListenerToken == nil, isEnabled, !isSuspended,
+    guard keyboardListenerIngress == nil, isEnabled, !isSuspended,
       let key = engine.ownedListenerKey
     else { return }
     if effects.keyStateReader([key])[key] == .up {
