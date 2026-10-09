@@ -384,6 +384,7 @@ struct SettingsArrivalTests {
       .environment(\.settingsArrivalDecided) { box.record($0) }
       .environment(\.settingsArrivalRingDrawn) { id, rect, clip in box.rings.append((id, rect, clip)) }
       .environment(\.settingsArrivalReduceMotion, reduceMotion)
+      .environment(\.settingsKeyMonitor, box.keyMonitor)
       .frame(width: 700, height: 500)
     }
   }
@@ -524,6 +525,10 @@ struct SettingsArrivalTests {
           timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: window.windowNumber,
           context: nil, characters: key, charactersIgnoringModifiers: key, isARepeat: false,
           keyCode: 0))
+      // The monitor sees the key first, as a real local monitor does; the window then dispatches
+      // it to the field.
+      try #require(box.keyMonitor.installedCount > 0, "the arrival owner installed no key watcher")
+      box.keyMonitor.deliver(event)
       NSApp.sendEvent(event)
       host.layoutSubtreeIfNeeded()
     }
@@ -946,8 +951,31 @@ struct SettingsArrivalTests {
 
   /// What a hosted page reports back: the acknowledged token (also as an event the test awaits)
   /// and what it published beside the arrival owner.
+  /// Stands in for the process key monitor without touching the desktop: `deliver` hands a key
+  /// to every installed watcher, as AppKit does before the window dispatches it.
+  @MainActor final class RecordingKeyMonitor: SettingsKeyMonitoring {
+    private var handlers: [Int: @MainActor (NSEvent) -> Void] = [:]
+    private var next = 0
+    var installedCount: Int { handlers.count }
+
+    func install(_ handler: @escaping @MainActor (NSEvent) -> Void) -> Any? {
+      next += 1
+      handlers[next] = handler
+      return next
+    }
+
+    func remove(_ token: Any) {
+      if let id = token as? Int { handlers[id] = nil }
+    }
+
+    func deliver(_ event: NSEvent) {
+      for handler in handlers.values { handler(event) }
+    }
+  }
+
   @MainActor final class RevealBox {
     var acknowledged: Int?
+    let keyMonitor = RecordingKeyMonitor()
     var mounted: Set<SettingsMapID> = []
     /// Every decision the arrival owner made, in order, and the same as events to wait on.
     var decisions: [SettingsArrivalDecision] = []

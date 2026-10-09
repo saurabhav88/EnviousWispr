@@ -712,33 +712,55 @@ struct SettingsArrivalModifier: ViewModifier {
   }
 }
 
+/// Registers and removes one window's key-down watcher (#3545). The live conformer is
+/// `LiveSettingsKeyMonitor` in `EnviousWisprDesktopEffects`, the only module allowed to call
+/// `NSEvent.addLocalMonitorForEvents` (`scripts/check-dependency-direction.sh`); tests pass one
+/// that never touches the desktop.
+@MainActor
+package protocol SettingsKeyMonitoring: AnyObject {
+  /// Calls `handler` with every key-down in the process before any control handles it, and
+  /// passes the key on unchanged. Returns the framework's token, or nil when AppKit refused.
+  func install(_ handler: @escaping @MainActor (NSEvent) -> Void) -> Any?
+  func remove(_ token: Any)
+}
+
+extension EnvironmentValues {
+  /// The key watcher's monitor, injected at the main window's root. Nil (a preview, a test that
+  /// does not exercise keys): arrival does not watch keys.
+  @Entry var settingsKeyMonitor: (any SettingsKeyMonitoring)? = nil
+}
+
 /// Calls `onKey` for every key pressed in the window it is in, before the window dispatches it to
-/// any control, and passes the key on unchanged (#3545). A local event monitor, installed while
-/// the view is in a window and removed when it leaves.
+/// any control, and passes the key on unchanged (#3545). Watches through the injected monitor
+/// while the view is in a window, and stops when it leaves.
 struct SettingsArrivalKeyWatcher: NSViewRepresentable {
   let onKey: @MainActor () -> Void
+  @Environment(\.settingsKeyMonitor) private var monitor
 
   final class WatcherView: NSView {
     var onKey: (@MainActor () -> Void)?
-    private var monitor: Any?
+    var monitor: (any SettingsKeyMonitoring)?
+    private var installed: (monitor: any SettingsKeyMonitoring, token: Any)?
 
     override func viewDidMoveToWindow() {
       super.viewDidMoveToWindow()
-      if let monitor { NSEvent.removeMonitor(monitor) }
-      monitor = nil
-      guard window != nil else { return }
-      monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
-        MainActor.assumeIsolated {
-          if let self, event.window === self.window { self.onKey?() }
-        }
-        return event
+      stopWatching()
+      guard window != nil, let monitor else { return }
+      if let token = monitor.install({ [weak self] event in
+        if let self, event.window === self.window { self.onKey?() }
+      }) {
+        installed = (monitor, token)
       }
     }
 
     override func removeFromSuperview() {
-      if let monitor { NSEvent.removeMonitor(monitor) }
-      monitor = nil
+      stopWatching()
       super.removeFromSuperview()
+    }
+
+    private func stopWatching() {
+      if let installed { installed.monitor.remove(installed.token) }
+      installed = nil
     }
 
     override func hitTest(_ point: NSPoint) -> NSView? { nil }
@@ -747,6 +769,7 @@ struct SettingsArrivalKeyWatcher: NSViewRepresentable {
   func makeNSView(context: Context) -> WatcherView {
     let view = WatcherView()
     view.onKey = onKey
+    view.monitor = monitor
     return view
   }
 
