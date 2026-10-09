@@ -233,7 +233,7 @@ package final class RecordGestureEngine: Sendable {
     let work = state.withLock { s -> TimerWork in
       s.refused.insert(attempt)
       var work = TimerWork()
-      if s.gesture.attemptID == attempt, s.gesture.start != nil {
+      if s.gesture.isLiveAttempt(attempt) {
         s.gesture.cleanup()
       }
       if s.timer?.attemptID == attempt { Self.cancelTimer(&s, into: &work) }

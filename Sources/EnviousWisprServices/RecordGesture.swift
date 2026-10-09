@@ -6,8 +6,7 @@ import Foundation
 ///
 /// A pure value. It reads no clock, starts no task, calls no callback and logs nothing: every
 /// input carries the times it needs, and every decision comes back as a value the caller acts on.
-/// That is what lets a later phase run it off the main thread; in this phase `HotkeyService`
-/// still drives it synchronously on its own turn, exactly as before.
+/// `RecordGestureEngine` drives this value under its lock from key ingress and its timer queue.
 package struct RecordGesture: Sendable {
 
   // MARK: - Hands-Free (Double-Press Lock) State
@@ -28,11 +27,14 @@ package struct RecordGesture: Sendable {
   /// #1631 — identifies one start attempt, incremented only when a fresh press
   /// stamps a new one, so a late result can prove which press it belongs to.
   ///
+  /// (#3544: `stateGeneration` below is now `generation`.)
   /// Deliberately NOT `stateGeneration`: that is bumped by every unlocked release
   /// too, so a generation captured at press time is already stale in exactly the
   /// press → release → press sequence this fix exists for.
   package private(set) var attemptID: UInt64 = 0
 
+  /// #3544: the Task cancellation rationale below is historical; token and generation checks
+  /// now protect the one-shot timer.
   /// Monotonically increasing counter incremented on every state-changing event
   /// (press, release, cleanup). Debounce callbacks compare their captured
   /// generation to the current value — if they differ, the callback is stale
@@ -169,7 +171,7 @@ package struct RecordGesture: Sendable {
     isHeld = false
   }
 
-  /// #1631: whether a start result for `attemptID` still belongs to live state.
+  /// Whether this identity names the gesture's live attempt; used by attempt-scoped reset.
   package func isLiveAttempt(_ id: UInt64) -> Bool {
     id == attemptID && start != nil
   }
@@ -194,11 +196,6 @@ package struct RecordGesture: Sendable {
     guard !isHeld else { return .duplicate }
     isHeld = true
     return .admitted(afterStopTimerMs: consumeQuickTapStop(input, binding: binding, mode: mode))
-  }
-
-  /// Anti-spam Layer 1 refused the press: block new recordings while pipeline is processing.
-  package mutating func refuseForProcessing() {
-    isHeld = false
   }
 
   /// What an admitted, unrefused press means.
@@ -241,7 +238,8 @@ package struct RecordGesture: Sendable {
         return .tripleCancel
       } else {
         // Double press → lock into hands-free
-        // #3534: computed BEFORE publication, whose rejection cleanup clears `recordingStart`.
+        // #3534: computed BEFORE publication, whose rejection cleanup clears `recordingStart`
+        // (#3544: now `start`).
         let windowTiming = Self.lockWindowTiming(from: start, to: input)
         let pair = Self.clockPair(from: start, to: input)
         isLocked = true
@@ -329,8 +327,8 @@ package struct RecordGesture: Sendable {
   package enum LoneTapCheck: Sendable {
     /// Stale or no longer applicable: do nothing.
     case stale
-    /// Timer fired — user didn't double-press. Stop as normal PTT. The caller logs, cleans up,
-    /// calls `recordQuickTapStop` and queues the stop, in that order (#3534 §3.3).
+    /// Timer fired: the engine cleans up and records the stop marker before queuing delivery.
+    /// Main logs the request and queues the recording stop.
     case stop(LoneTapStop)
   }
 

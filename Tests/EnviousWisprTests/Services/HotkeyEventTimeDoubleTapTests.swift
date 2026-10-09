@@ -17,9 +17,8 @@ import Testing
 /// stop path because its release or second press was handled more than 500 ms
 /// after the first press.
 ///
-/// The lone-tap stop waits through the injected `sleep`, which parks until the
-/// test calls `fireDueTimers()`, so "the second press is handled before the due
-/// timer" and "the timer runs first" are both driven deterministically. The test
+/// The injected scheduler retains lone-tap requests until `fireDueTimers()` is called,
+/// allowing event-first and timer-first ordering to be driven deterministically. The test
 /// learns the timer finished from the service's own
 /// `onDebounceResolvedForTesting`, and that a start reconciled from
 /// `onStartResolvedForTesting`; no wall-clock waits.
@@ -101,7 +100,7 @@ struct HotkeyEventTimeDoubleTapTests {
         "expected \(count) lone-tap waits, got \(requestedDelays.count)")
     }
 
-    /// Park until the service reports `count` finished lone-tap stop tasks.
+    /// Park until the service reports `count` resolved lone-tap timers.
     func waitForDebounce(count: Int) async {
       await debounceWaiter.wait(until: count)
     }
@@ -239,7 +238,7 @@ struct HotkeyEventTimeDoubleTapTests {
     #expect(rig.actions == ["start"])
   }
 
-  @Test("A stop task that starts late still stops at the release deadline, not 500 ms after it ran")
+  @Test("The lone-tap stop is scheduled at the release and ends at the release deadline")
   func lateStartingTimerKeepsTheDeadline() async throws {
     let rig = Rig()
     let (service, _) = makeService(rig)
@@ -263,7 +262,7 @@ struct HotkeyEventTimeDoubleTapTests {
     #expect(rig.stops == 1)
   }
 
-  @Test("A stop task that starts after its deadline waits no longer and stops once")
+  @Test("A lone-tap timer that fires after its deadline stops exactly once")
   func timerStartingAfterDeadlineStopsAtOnce() async throws {
     let rig = Rig()
     let (service, _) = makeService(rig)

@@ -139,7 +139,7 @@ public final class HotkeyService {
   private var localModifierMonitorToken: DesktopEffectToken?
 
   public private(set) var isEnabled = false
-  /// The record key is held, as the push-to-talk gesture last saw it (#3544 P1: owned by `gesture`).
+  /// The record key is held, as the engine's synchronized gesture snapshot reports.
   public var isModifierHeld: Bool { engine.snapshot.isHeld }
 
   /// Tracks the in-flight recording Task so we can cancel zombie Tasks from
