@@ -405,7 +405,7 @@ struct RecordGestureEngineTests {
   func pressCarriesItsDecisionConfiguration() {
     let rig = Rig()
     rig.background(true, 0)  // decided under Right Option, push-to-talk
-    rig.engine.configure(binding: .keyboard(keyCode: 0, modifiers: [.control]), mode: .toggle)
+    rig.engine.configure(bindings: Self.bindings(record: .keyboard(keyCode: 0, modifiers: [.control])), mode: .toggle)
     var captured: (UInt16, RecordingMode)?
     rig.sink.onBatch = { batch in
       for case .press(let press) in batch.effects { captured = (press.keyCode, press.mode) }
@@ -444,83 +444,20 @@ struct RecordGestureEngineTests {
     #expect(engine.snapshot.isLocked)
   }
 
-  #if DEBUG
-    @Test("the debug observer reports the decisions made and changes none of them")
-    @MainActor
-    func observerReportsWithoutChangingDecisions() {
-      let seen = OSAllocatedUnfairLock<[GestureOutcome]>(initialState: [])
-      let observed = Rig()
-      observed.engine.setObserver { o in seen.withLock { $0.append(o.outcome) } }
-      let plain = Rig()
-      for rig in [observed, plain] {
-        rig.main(true, 0)
-        rig.main(false, 0.125)
-        rig.main(true, 0.25)
-        rig.main(false, 0.375)
-      }
-      #expect(
-        seen.withLock { $0 } == [
-          .start, .quickRelease, .lockIntent, .loneTapCancelled, .releaseSuppressedLocked,
-        ])
-      #expect(observed.sink.validNames == plain.sink.validNames)
-      #expect(observed.sink.validNames == ["start", "quickRelease", "resolved", "lockIntent"])
-    }
-
-    @Test("the debug observer reports a timer's stop with its quick release and first press")
-    @MainActor
-    func observerReportsTimerStop() {
-      let seen = OSAllocatedUnfairLock<[GestureObservation]>(initialState: [])
-      let rig = Rig()
-      rig.engine.setObserver { o in seen.withLock { $0.append(o) } }
-      rig.main(true, 0)
-      rig.main(false, 0.125)
-      rig.clock.now = 500.625
-      rig.fireDueOffMain()
-      let timer = seen.withLock { $0 }.last
-      #expect(timer?.kind == .timer)
-      #expect(timer?.outcome == .loneTapStop)
-      #expect(timer?.occurred == 500.125)
-      #expect(timer?.attemptStartOccurred == 500)
-      #expect(timer?.deadline == 500.625)
-    }
-
-    @Test("a reset's retired wait is reported as retired, not as a press cancelling it")
-    @MainActor
-    func observerReportsRetiredWait() {
-      let seen = OSAllocatedUnfairLock<[GestureOutcome]>(initialState: [])
-      let rig = Rig()
-      rig.engine.setObserver { o in seen.withLock { $0.append(o.outcome) } }
-      rig.main(true, 0)
-      rig.main(false, 0.125)
-      rig.engine.reset()
-      #expect(seen.withLock { $0 }.last == .loneTapRetired)
-    }
-
-    @Test("a wait scheduled before a rebind is reported under the key it was scheduled for")
-    @MainActor
-    func observerKeepsTheTimersOwnKey() {
-      let seen = OSAllocatedUnfairLock<[GestureObservation]>(initialState: [])
-      let rig = Rig()
-      rig.engine.setObservationGeneration(7)
-      rig.engine.setObserver { o in seen.withLock { $0.append(o) } }
-      rig.main(true, 0)
-      rig.main(false, 0.125)
-      rig.engine.configure(
-        binding: .keyboard(keyCode: ModifierKeyCodes.leftOption, modifiers: []), mode: .pushToTalk)
-      rig.engine.setObservationGeneration(8)
-      rig.clock.now = 500.625
-      rig.fireDueOffMain()
-      let all = seen.withLock { $0 }
-      let timer = all.last
-      #expect(timer?.kind == .timer)
-      #expect(timer?.keyCode == ModifierKeyCodes.rightOption)
-      #expect(timer?.generation == 8)
-      #expect(all.first?.generation == 7)
-      #expect(all.map(\.sequence) == [1, 2, 3])
-    }
-  #endif
 
   // MARK: - Listener admission (#3544 P3)
+
+  /// The shipped bindings with record on `record` (bare Right Option, the rig's engine, unless
+  /// given) and `cancel`.
+  private static func bindings(
+    record: ShortcutBinding = .keyboard(keyCode: ModifierKeyCodes.rightOption, modifiers: []),
+    cancel: ShortcutBinding = ShortcutRole.cancel.defaultBinding
+  ) -> ShortcutBindings {
+    var b = ShortcutBindings.shipped
+    b.record = record
+    b.cancel = cancel
+    return b
+  }
 
   private static let rightCommand: UInt16 = 54
 
@@ -563,18 +500,16 @@ struct RecordGestureEngineTests {
     let rig = Rig()
     rig.engine.openListenerAdmission(installation: 7)
     let before = rig.engine.listenerConfigurationGeneration
-    rig.engine.configure(
-      binding: .keyboard(keyCode: ModifierKeyCodes.leftOption, modifiers: []), mode: .pushToTalk)
+    rig.engine.configure(bindings: Self.bindings(record: .keyboard(keyCode: ModifierKeyCodes.leftOption, modifiers: [])), mode: .pushToTalk)
     #expect(rig.engine.listenerConfigurationGeneration != before)
     #expect(
       Self.listener(rig, true, 0, key: ModifierKeyCodes.leftOption, generation: before)
         == .staleGeneration)
     #expect(Self.listener(rig, true, 0, key: ModifierKeyCodes.rightOption) == .wrongKey)
-    rig.engine.configure(
-      binding: .keyboard(keyCode: ModifierKeyCodes.leftOption, modifiers: []), mode: .toggle)
+    rig.engine.configure(bindings: Self.bindings(record: .keyboard(keyCode: ModifierKeyCodes.leftOption, modifiers: [])), mode: .toggle)
     #expect(
       Self.listener(rig, true, 0, key: ModifierKeyCodes.leftOption) == .notListenerBinding)
-    rig.engine.configure(binding: .keyboard(keyCode: 15, modifiers: [.command]), mode: .pushToTalk)
+    rig.engine.configure(bindings: Self.bindings(record: .keyboard(keyCode: 15, modifiers: [.command])), mode: .pushToTalk)
     #expect(Self.listener(rig, true, 0, key: 15) == .notListenerBinding)
     rig.engine.drainForTesting()
     #expect(rig.sink.delivered.isEmpty)
@@ -599,9 +534,8 @@ struct RecordGestureEngineTests {
     rig.engine.openListenerAdmission(installation: 7)
     let generation = rig.engine.listenerConfigurationGeneration
     #expect(Self.listener(rig, true, 0) == nil)
-    rig.engine.configure(
-      binding: .keyboard(keyCode: ModifierKeyCodes.rightOption, modifiers: []), mode: .pushToTalk)
-    rig.engine.configureCancel(.init(binding: ShortcutRole.cancel.defaultBinding))
+    rig.engine.configure(bindings: Self.bindings(record: .keyboard(keyCode: ModifierKeyCodes.rightOption, modifiers: [])), mode: .pushToTalk)
+    rig.engine.configure(bindings: Self.bindings(cancel: ShortcutRole.cancel.defaultBinding), mode: .pushToTalk)
     #expect(rig.engine.listenerConfigurationGeneration == generation)
     #expect(Self.listener(rig, false, 1, generation: generation) == nil)
     rig.engine.drainForTesting()
@@ -614,8 +548,7 @@ struct RecordGestureEngineTests {
     rig.engine.openListenerAdmission(installation: 7)
     #expect(Self.listener(rig, true, 0) == nil)
     let old = rig.engine.listenerConfigurationGeneration
-    rig.engine.configure(
-      binding: .keyboard(keyCode: ModifierKeyCodes.leftOption, modifiers: []), mode: .pushToTalk)
+    rig.engine.configure(bindings: Self.bindings(record: .keyboard(keyCode: ModifierKeyCodes.leftOption, modifiers: [])), mode: .pushToTalk)
     #expect(Self.listener(rig, false, 1, generation: old) == nil)
     rig.engine.drainForTesting()
     #expect(rig.sink.validNames == ["start", "holdStop"])
@@ -626,7 +559,7 @@ struct RecordGestureEngineTests {
   func cancelAdmission() {
     let rig = Rig()
     rig.engine.openListenerAdmission(installation: 7)
-    rig.engine.configureCancel(.init(binding: .keyboard(keyCode: Self.rightCommand, modifiers: [])))
+    rig.engine.configure(bindings: Self.bindings(cancel: .keyboard(keyCode: Self.rightCommand, modifiers: [])), mode: .pushToTalk)
     let g = rig.engine.listenerConfigurationGeneration
     #expect(
       rig.engine.cancelFromListener(keyCode: Self.rightCommand, generation: g, installation: 7)
@@ -639,8 +572,7 @@ struct RecordGestureEngineTests {
       rig.engine.cancelFromListener(keyCode: Self.rightCommand, generation: g &- 1, installation: 7)
         == .staleGeneration)
     // Record wins a tie: cancel bound to the record key is never cancel.
-    rig.engine.configureCancel(
-      .init(binding: .keyboard(keyCode: ModifierKeyCodes.rightOption, modifiers: [])))
+    rig.engine.configure(bindings: Self.bindings(cancel: .keyboard(keyCode: ModifierKeyCodes.rightOption, modifiers: [])), mode: .pushToTalk)
     #expect(
       rig.engine.cancelFromListener(
         keyCode: ModifierKeyCodes.rightOption, generation: rig.engine.listenerConfigurationGeneration,
@@ -802,7 +734,7 @@ struct RecordGestureEngineTests {
   func cancelSurvivesItsAttemptsRefusal() {
     let rig = Rig()
     rig.engine.openListenerAdmission(installation: 7)
-    rig.engine.configureCancel(.init(binding: .keyboard(keyCode: Self.rightCommand, modifiers: [])))
+    rig.engine.configure(bindings: Self.bindings(cancel: .keyboard(keyCode: Self.rightCommand, modifiers: [])), mode: .pushToTalk)
     #expect(Self.listener(rig, true, 0) == nil)
     rig.engine.drainForTesting()
     let attempt = rig.sink.delivered.first { $0.name == "start" }?.attempt ?? 0
@@ -814,5 +746,100 @@ struct RecordGestureEngineTests {
     rig.engine.reset(attempt: attempt)
     rig.engine.drainForTesting()
     #expect(rig.sink.validNames.filter { $0 == "cancel" }.count == 1)
+  }
+
+  // MARK: - Which lone-tap waits hop to main (#3544 P3)
+
+  /// An engine as the service builds it: waits armed by main-thread input hop to main.
+  private func hoppingEngine(_ clock: HotkeyTestClock, _ timers: HotkeyTestScheduler, _ sink: Sink)
+    -> RecordGestureEngine
+  {
+    let engine = RecordGestureEngine(
+      binding: .keyboard(keyCode: ModifierKeyCodes.rightOption, modifiers: []),
+      mode: .pushToTalk, clock: clock.uptime, scheduler: timers.scheduler, hopsMainInput: true)
+    engine.setSink { @MainActor batch, valid in sink.record(batch, valid: valid) }
+    engine.openListenerAdmission(installation: 7)
+    return engine
+  }
+
+  @Test("a listener-fed lone tap's wait decides on the timer queue, never waiting for main")
+  func listenerWaitDoesNotHop() {
+    let clock = HotkeyTestClock(500)
+    let timers = HotkeyTestScheduler(clock: clock)
+    let sink = Sink()
+    let engine = hoppingEngine(clock, timers, sink)
+    let generation = engine.listenerConfigurationGeneration
+    engine.ingestFromListener(
+      keyCode: ModifierKeyCodes.rightOption, isPress: true,
+      input: .accepting(stamp: 500, handled: 500), generation: generation, installation: 7)
+    clock.now = 500.125
+    engine.ingestFromListener(
+      keyCode: ModifierKeyCodes.rightOption, isPress: false,
+      input: .accepting(stamp: 500.125, handled: 500.125), generation: generation,
+      installation: 7)
+    clock.now = 500.625
+    Self.offMain { timers.fireDue() }
+    // Main has run nothing since the fire: the stop is already decided and queued.
+    engine.drainForTesting()
+    #expect(sink.validNames.contains("loneTapStop"))
+  }
+
+  @Test("a main-fed lone tap's wait still queues behind main (Carbon chords until P5)")
+  func mainWaitHops() async {
+    let clock = HotkeyTestClock(500)
+    let timers = HotkeyTestScheduler(clock: clock)
+    let sink = Sink()
+    let engine = hoppingEngine(clock, timers, sink)
+    engine.ingestOnMain(isPress: true, input: .accepting(stamp: 500, handled: 500))
+    clock.now = 500.125
+    engine.ingestOnMain(isPress: false, input: .accepting(stamp: 500.125, handled: 500.125))
+    clock.now = 500.625
+    Self.offMain { timers.fireDue() }
+    engine.drainForTesting()
+    #expect(sink.validNames.contains("loneTapStop") == false, "decided before main's turn")
+    await ListenerKeyboard.mainTurn()
+    engine.drainForTesting()
+    #expect(sink.validNames.contains("loneTapStop"))
+  }
+
+  // MARK: - Configuration and ownership (#3544 P3)
+
+  @Test("the listener never reads half of a configuration change")
+  func classificationIsNeverHalfConfigured() {
+    let rig = Rig()
+    let a = Self.bindings(
+      record: .keyboard(keyCode: ModifierKeyCodes.rightOption, modifiers: []),
+      cancel: .keyboard(keyCode: Self.rightCommand, modifiers: []))
+    let b = Self.bindings(
+      record: .keyboard(keyCode: ModifierKeyCodes.leftOption, modifiers: []),
+      cancel: .keyboard(keyCode: 53, modifiers: []))
+    let engine = rig.engine
+    let seen = OSAllocatedUnfairLock<[RecordGestureEngine.ListenerClassification]>(initialState: [])
+    let done = DispatchSemaphore(value: 0)
+    DispatchQueue.global(qos: .userInteractive).async {
+      for _ in 0..<2000 { seen.withLock { $0.append(engine.listenerClassification()) } }
+      done.signal()
+    }
+    for i in 0..<2000 {
+      engine.configure(bindings: i.isMultiple(of: 2) ? a : b, mode: i.isMultiple(of: 2) ? .pushToTalk : .toggle)
+    }
+    // deadline-fallback: bound the reader's own completion signal so a regression fails, not hangs.
+    #expect(done.wait(timeout: .now() + 5) == .success)
+    for c in seen.withLock({ $0 }) {
+      let pair = (c.configuration.bindings, c.mode)
+      #expect((pair.0 == a && pair.1 == .pushToTalk) || (pair.0 == b && pair.1 == .toggle)
+        || (pair.0 == Self.bindings() && pair.1 == .pushToTalk))
+    }
+  }
+
+  @Test("a chord press admitted through main is never the listener's to release")
+  func carbonPressIsNotListenerOwned() {
+    let rig = Rig()
+    rig.engine.openListenerAdmission(installation: 7)
+    rig.main(true, 0)
+    #expect(rig.engine.snapshot.isHeld)
+    #expect(rig.engine.ownedListenerKey == nil, "the watchdog would release a Carbon chord")
+    #expect(Self.listener(rig, false, 1) == .unownedRelease)
+    #expect(rig.engine.snapshot.isHeld)
   }
 }

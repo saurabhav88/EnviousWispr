@@ -6,10 +6,10 @@ import Testing
 
 /// #1987 — the Globe / Fn key behaves exactly like Right Option.
 ///
-/// Every case drives the REAL modifier dispatch path, `handleFlagsChangedValues`,
-/// with the physical event shape measured on hardware (probe, 2026-08-08): press
-/// carries `.function`, release does not, and both arrive as `.flagsChanged` with
-/// key code 63. A suite that asserted set membership instead would prove the key
+/// Every case drives the REAL modifier dispatch path, the installed keyboard listener
+/// (`ListenerKeyboard`, #3544 P3), with the physical event shape measured on hardware
+/// (probe, 2026-08-08): press carries `.function`, release does not, and both arrive
+/// as `.flagsChanged` with key code 63. A suite that asserted set membership instead would prove the key
 /// is *accepted* and nothing at all about what pressing it does.
 ///
 /// THREE MECHANISMS THIS SUITE GOT WRONG FIRST, recorded because each produced a
@@ -114,9 +114,9 @@ import Testing
 
   private func makeService(
     _ spy: Spy, clock: ManualClock, mode: RecordingMode = .pushToTalk
-  ) -> HotkeyService {
-    let service = HotkeyService(
-      effects: RecordingDesktopHotkeyEffects(), telemetry: spy.sink, uptime: { clock.now })
+  ) -> (HotkeyService, ListenerKeyboard) {
+    let effects = RecordingDesktopHotkeyEffects()
+    let service = HotkeyService(effects: effects, telemetry: spy.sink, uptime: { clock.now })
     service.recordingMode = mode
     service.toggleKeyCode = ModifierKeyCodes.globe
     service.onStartRecording = { [weak spy] in
@@ -136,17 +136,9 @@ import Testing
       spy?.toggles += 1
       spy?.toggleWaiter.note()
     }
-    return service
-  }
-
-  /// The measured press shape. `.function` present means held.
-  private func press(_ service: HotkeyService, keyCode: UInt16 = ModifierKeyCodes.globe) {
-    service.handleFlagsChangedValues(keyCode: keyCode, flags: [.function])
-  }
-
-  /// The measured release shape. The flag is gone.
-  private func release(_ service: HotkeyService, keyCode: UInt16 = ModifierKeyCodes.globe) {
-    service.handleFlagsChangedValues(keyCode: keyCode, flags: [])
+    // The keyboard listener, the only reader of bare modifiers, is installed by `start()`.
+    service.start()
+    return (service, ListenerKeyboard(effects))
   }
 
   /// The service's own deterministic seam (`HotkeyService.swift:378`). Start,
@@ -164,15 +156,15 @@ import Testing
   func pushToTalkHoldAndRelease() async {
     let spy = Spy()
     let clock = ManualClock()
-    let service = makeService(spy, clock: clock)
+    let (service, keys) = makeService(spy, clock: clock)
 
-    press(service)
+    await keys.press(ModifierKeyCodes.globe)
     await settle(service)
     #expect(spy.starts == 1)
     #expect(spy.stops == 0, "recording must not stop while the key is still held")
 
     clock.advance(ms: 800)  // a genuine hold, past the double-press window
-    release(service)
+    await keys.release(ModifierKeyCodes.globe)
     await settle(service)
 
     #expect(spy.starts == 1)
@@ -187,13 +179,13 @@ import Testing
   func doublePressEntersHandsFree() async {
     let spy = Spy()
     let clock = ManualClock()
-    let service = makeService(spy, clock: clock)
+    let (service, keys) = makeService(spy, clock: clock)
 
-    press(service)
+    await keys.press(ModifierKeyCodes.globe)
     await settle(service)
-    release(service)  // quick release, arms the debounce
+    await keys.release(ModifierKeyCodes.globe)  // quick release, arms the debounce
     clock.advance(ms: 120)
-    press(service)  // inside the window
+    await keys.press(ModifierKeyCodes.globe)  // inside the window
     await settle(service)
 
     #expect(spy.actions.contains("lock"), "second press did not request hands-free")
@@ -207,19 +199,19 @@ import Testing
   func pressInsideCooldownIsIgnored() async {
     let spy = Spy()
     let clock = ManualClock()
-    let service = makeService(spy, clock: clock)
+    let (service, keys) = makeService(spy, clock: clock)
 
-    press(service)
+    await keys.press(ModifierKeyCodes.globe)
     await settle(service)
-    release(service)
+    await keys.release(ModifierKeyCodes.globe)
     clock.advance(ms: 450)
-    press(service)  // locks, still inside the 500 ms start window
+    await keys.press(ModifierKeyCodes.globe)  // locks, still inside the 500 ms start window
     await settle(service)
-    release(service)
+    await keys.release(ModifierKeyCodes.globe)
 
     // Past the start window, but inside the 500 ms cooldown that follows the lock.
     clock.advance(ms: 150)
-    press(service)
+    await keys.press(ModifierKeyCodes.globe)
     await settle(service)
 
     #expect(spy.actions.contains("ignored_cooldown"))
@@ -233,18 +225,18 @@ import Testing
   func singlePressAfterCooldownStops() async {
     let spy = Spy()
     let clock = ManualClock()
-    let service = makeService(spy, clock: clock)
+    let (service, keys) = makeService(spy, clock: clock)
 
-    press(service)
+    await keys.press(ModifierKeyCodes.globe)
     await settle(service)
-    release(service)
+    await keys.release(ModifierKeyCodes.globe)
     clock.advance(ms: 450)
-    press(service)  // locks
+    await keys.press(ModifierKeyCodes.globe)  // locks
     await settle(service)
-    release(service)
+    await keys.release(ModifierKeyCodes.globe)
 
     clock.advance(ms: 900)  // past both the start window and the lock cooldown
-    press(service)
+    await keys.press(ModifierKeyCodes.globe)
     await settle(service)
 
     #expect(spy.stops == 1)
@@ -258,17 +250,17 @@ import Testing
   func triplePressCancels() async {
     let spy = Spy()
     let clock = ManualClock()
-    let service = makeService(spy, clock: clock)
+    let (service, keys) = makeService(spy, clock: clock)
 
-    press(service)
+    await keys.press(ModifierKeyCodes.globe)
     await settle(service)
-    release(service)
+    await keys.release(ModifierKeyCodes.globe)
     clock.advance(ms: 100)
-    press(service)  // locks
+    await keys.press(ModifierKeyCodes.globe)  // locks
     await settle(service)
-    release(service)
+    await keys.release(ModifierKeyCodes.globe)
     clock.advance(ms: 100)
-    press(service)  // third press, still inside the start window
+    await keys.press(ModifierKeyCodes.globe)  // third press, still inside the start window
     await settle(service)
 
     #expect(spy.cancels == 1)
@@ -281,18 +273,18 @@ import Testing
   @Test("Toggle mode acts on press and ignores release")
   func toggleModeActsOnPressOnly() async {
     let spy = Spy()
-    let service = makeService(spy, clock: ManualClock(), mode: .toggle)
+    let (service, keys) = makeService(spy, clock: ManualClock(), mode: .toggle)
 
     // Toggle mode never creates a recording task, so the start seam is not the
     // signal here; the toggle callback itself is.
-    press(service)
+    await keys.press(ModifierKeyCodes.globe)
     await spy.toggleWaiter.wait(until: 1)
     #expect(spy.toggles == 1)
 
-    release(service)
+    await keys.release(ModifierKeyCodes.globe)
     #expect(spy.toggles == 1, "release must not toggle a second time")
 
-    press(service)
+    await keys.press(ModifierKeyCodes.globe)
     await spy.toggleWaiter.wait(until: 2)
     #expect(spy.toggles == 2, "a second tap must toggle recording off")
   }
@@ -303,9 +295,9 @@ import Testing
   func globePressReportsIdentity() async {
     let spy = Spy()
     let clock = ManualClock()
-    let service = makeService(spy, clock: clock)
+    let (service, keys) = makeService(spy, clock: clock)
 
-    press(service)
+    await keys.press(ModifierKeyCodes.globe)
     await settle(service)
 
     #expect(spy.identities == ["globe"])
@@ -318,10 +310,10 @@ import Testing
   func rightOptionReportsDistinctIdentity() async {
     let spy = Spy()
     let clock = ManualClock()
-    let service = makeService(spy, clock: clock)
+    let (service, keys) = makeService(spy, clock: clock)
     service.toggleKeyCode = ModifierKeyCodes.rightOption
 
-    service.handleFlagsChangedValues(keyCode: ModifierKeyCodes.rightOption, flags: [.option])
+    await keys.press(ModifierKeyCodes.rightOption)
     await settle(service)
 
     #expect(spy.identities == ["right_option"])
@@ -331,13 +323,13 @@ import Testing
   func identitiesAreAlwaysClassified() async {
     let spy = Spy()
     let clock = ManualClock()
-    let service = makeService(spy, clock: clock)
+    let (service, keys) = makeService(spy, clock: clock)
 
-    press(service)
+    await keys.press(ModifierKeyCodes.globe)
     await settle(service)
-    release(service)
+    await keys.release(ModifierKeyCodes.globe)
     clock.advance(ms: 120)
-    press(service)  // lock
+    await keys.press(ModifierKeyCodes.globe)  // lock
 
     #expect(!spy.identities.isEmpty)
     for identity in spy.identities {
@@ -357,9 +349,9 @@ import Testing
     arguments: [UInt16(123), 124, 125, 126])
   func arrowKeysCannotTrigger(code: UInt16) async {
     let spy = Spy()
-    let service = makeService(spy, clock: ManualClock())
+    let (service, keys) = makeService(spy, clock: ManualClock())
 
-    service.handleFlagsChangedValues(keyCode: code, flags: [.function])
+    await keys.deliver(code, raw: UInt64(NSEvent.ModifierFlags.function.rawValue))
     await settle(service)
 
     #expect(spy.starts == 0)
@@ -374,9 +366,9 @@ import Testing
     arguments: [UInt16(122), 120, 99, 118, 96, 97])
   func fRowKeysCannotTrigger(code: UInt16) async {
     let spy = Spy()
-    let service = makeService(spy, clock: ManualClock())
+    let (service, keys) = makeService(spy, clock: ManualClock())
 
-    service.handleFlagsChangedValues(keyCode: code, flags: [.function])
+    await keys.deliver(code, raw: UInt64(NSEvent.ModifierFlags.function.rawValue))
 
     #expect(spy.starts == 0)
     #expect(spy.actions.isEmpty)
@@ -385,9 +377,9 @@ import Testing
   @Test("A different standalone modifier cannot drive the Globe binding")
   func otherModifierDoesNotTrigger() async {
     let spy = Spy()
-    let service = makeService(spy, clock: ManualClock())
+    let (service, keys) = makeService(spy, clock: ManualClock())
 
-    service.handleFlagsChangedValues(keyCode: ModifierKeyCodes.rightOption, flags: [.option])
+    await keys.press(ModifierKeyCodes.rightOption)
     await settle(service)
 
     #expect(spy.starts == 0, "a key that is not the bound shortcut must do nothing")
@@ -399,92 +391,75 @@ import Testing
   func rightOptionParity() async {
     let spy = Spy()
     let clock = ManualClock()
-    let service = makeService(spy, clock: clock)
+    let (service, keys) = makeService(spy, clock: clock)
     service.toggleKeyCode = ModifierKeyCodes.rightOption
 
-    service.handleFlagsChangedValues(keyCode: ModifierKeyCodes.rightOption, flags: [.option])
+    await keys.press(ModifierKeyCodes.rightOption)
     await settle(service)
     clock.advance(ms: 800)
-    service.handleFlagsChangedValues(keyCode: ModifierKeyCodes.rightOption, flags: [])
+    await keys.release(ModifierKeyCodes.rightOption)
     await settle(service)
 
     #expect(spy.starts == 1)
     #expect(spy.stops == 1)
   }
 
-  // MARK: - #1993: an event queued by a torn-down monitor must not act
+  // MARK: - #1993: an event from a removed listener installation must not act
 
-  /// Removing an `NSEvent` monitor stops NEW callbacks but cannot recall one the
-  /// global monitor already queued with `DispatchQueue.main.async`. These four
-  /// drive `handleInstalledMonitorFlagsChangedValues`, the delivery boundary the
-  /// installed closures actually call, rather than the seam above it.
+  /// Removing the listener stops NEW callbacks but cannot recall an event already delivered to its
+  /// sink or an edge already queued to main. These deliver through a sink the service handed out
+  /// and then replaced, the boundary the event tap actually calls.
   ///
-  /// They call the real `start()` / `stop()` because the generation is stamped by
-  /// the product, not by the test — a test-only setter would prove the comparison
-  /// works and nothing about whether the lifecycle arms it
+  /// They call the real `start()` / `stop()` because the installation identity is stamped by the
+  /// product, not by the test: a test-only setter would prove the comparison works and nothing
+  /// about whether the lifecycle arms it
   /// (validation-discipline.md RULE: a-guard-nothing-arms-is-not-a-guard).
-  ///
-  /// EVERY case that calls `start()` MUST unwind with `stop()`. The Carbon event
-  /// handler stores the service as an UNRETAINED pointer
-  /// (`HotkeyService.swift`, `carbonHotkeyHandler` / `takeUnretainedValue()`), so
-  /// a handler left installed past the service's lifetime dereferences freed
-  /// memory in whatever test runs next.
 
   @Test("An event from the current installation is delivered — the two-way control")
   func currentGenerationIsDelivered() async {
     let spy = Spy()
-    let service = makeService(spy, clock: ManualClock())
-    service.start()
+    let (service, keys) = makeService(spy, clock: ManualClock())
     defer { service.stop() }
 
-    service.handleInstalledMonitorFlagsChangedValues(
-      keyCode: ModifierKeyCodes.globe, flags: [.function],
-      generation: service.monitorGeneration, timestamp: nil)
+    await keys.press(ModifierKeyCodes.globe)
     await settle(service)
 
     #expect(spy.starts == 1, "the guard refused a live event — the shortcut is dead for everyone")
   }
 
-  @Test("An event queued by a monitor that was torn down does nothing")
+  @Test("An event from a listener that was removed does nothing")
   func staleGenerationAfterStopIsRefused() async {
     let spy = Spy()
-    let service = makeService(spy, clock: ManualClock())
-    service.start()
-    let installed = service.monitorGeneration
+    let (service, keys) = makeService(spy, clock: ManualClock())
+    let removed = keys.effects.keyboardListenerSink
     service.stop()
 
-    service.handleInstalledMonitorFlagsChangedValues(
-      keyCode: ModifierKeyCodes.globe, flags: [.function], generation: installed, timestamp: nil)
+    await Self.deliver(removed, ModifierKeyCodes.globe)
     await settle(service)
 
     #expect(spy.starts == 0)
     #expect(spy.actions.isEmpty)
   }
 
-  /// The case that decides the whole design. Changing your shortcut runs
-  /// `stop(); start()` (`PipelineSettingsSync.reregisterHotkeys()`), so by the
-  /// time a queued press lands, `isEnabled` is back to `true`. A guard reading
-  /// that flag would admit this event; a guard reading installation identity
-  /// refuses it. The `isEnabled` assertion below is what pins that distinction —
-  /// without it, this case looks identical to the one above.
-  @Test("An event queued before a rebind is refused even though hotkeys are enabled again")
+  /// The case that decides the whole design. Changing your shortcut runs `stop(); start()`
+  /// (`PipelineSettingsSync.reregisterHotkeys()`), so by the time an earlier installation's event
+  /// lands, `isEnabled` is back to `true`. A guard reading that flag would admit this event; a guard
+  /// reading installation identity refuses it. The `isEnabled` assertion below pins that.
+  @Test("An event from before a rebind is refused even though hotkeys are enabled again")
   func staleGenerationSurvivesStopStartRebind() async {
     let spy = Spy()
-    let service = makeService(spy, clock: ManualClock())
-    service.start()
-    let firstInstallation = service.monitorGeneration
+    let (service, keys) = makeService(spy, clock: ManualClock())
+    let firstInstallation = keys.effects.keyboardListenerSink
     service.stop()
     service.start()
     defer { service.stop() }
 
     #expect(service.isEnabled, "precondition: the rebind re-enabled hotkeys")
 
-    service.handleInstalledMonitorFlagsChangedValues(
-      keyCode: ModifierKeyCodes.globe, flags: [.function], generation: firstInstallation,
-      timestamp: nil)
+    await Self.deliver(firstInstallation, ModifierKeyCodes.globe)
     await settle(service)
 
-    #expect(spy.starts == 0, "an event from the pre-rebind monitor started a dictation")
+    #expect(spy.starts == 0, "an event from the pre-rebind listener started a dictation")
   }
 
   /// Asserts ADJACENT values differ, not that the counter rises forever: it is a
@@ -492,23 +467,35 @@ import Testing
   /// is worse than none (#1993 grounded review r1).
   @Test("Every lifecycle transition changes the installation identity")
   func everyLifecycleTransitionChangesGeneration() {
-    let service = makeService(Spy(), clock: ManualClock())
+    let (service, _) = makeService(Spy(), clock: ManualClock())
+    service.stop()
     defer { service.stop() }
 
-    var seen: [UInt64] = [service.monitorGeneration]
+    var seen: [UInt64] = [service.listenerGeneration]
     service.start()
-    seen.append(service.monitorGeneration)
+    seen.append(service.listenerGeneration)
     service.suspend()
-    seen.append(service.monitorGeneration)
+    seen.append(service.listenerGeneration)
     service.resume()
-    seen.append(service.monitorGeneration)
+    seen.append(service.listenerGeneration)
     service.stop()
-    seen.append(service.monitorGeneration)
+    seen.append(service.listenerGeneration)
     service.start()
-    seen.append(service.monitorGeneration)
+    seen.append(service.listenerGeneration)
 
     for (index, pair) in zip(seen, seen.dropFirst()).enumerated() {
       #expect(pair.0 != pair.1, "transition \(index) reused generation \(pair.0)")
     }
+  }
+
+  /// A Globe press through a sink the service may have replaced since, as a late tap callback.
+  private static func deliver(
+    _ sink: (@Sendable (KeyEventValue) -> ListenerVerdict)?, _ key: UInt16
+  ) async {
+    let event = KeyEventValue(
+      kind: .flagsChanged, keyCode: key,
+      rawFlags: UInt64(NSEvent.ModifierFlags.function.rawValue), timestamp: nil)
+    await Task.detached { _ = sink?(event) }.value
+    await ListenerKeyboard.mainTurn()
   }
 }

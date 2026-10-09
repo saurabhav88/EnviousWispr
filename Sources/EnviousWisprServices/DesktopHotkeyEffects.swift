@@ -54,23 +54,6 @@ package struct DesktopHotkeyEvent: Sendable {
   }
 }
 
-/// A modifier-flags change, already decoded from `NSEvent`.
-///
-/// `rawFlags` rather than `NSEvent.ModifierFlags` so this file needs no AppKit
-/// import; `HotkeyService` rebuilds the option set at the edge.
-package struct DesktopModifierEvent: Sendable {
-  package let keyCode: UInt16
-  package let rawFlags: UInt64
-  /// When the event happened, seconds since startup (`NSEvent.timestamp`), or nil
-  /// when unknown (#3534).
-  package let timestamp: TimeInterval?
-  package init(keyCode: UInt16, rawFlags: UInt64, timestamp: TimeInterval? = nil) {
-    self.keyCode = keyCode
-    self.rawFlags = rawFlags
-    self.timestamp = timestamp
-  }
-}
-
 /// One keyboard event as the listener's event tap saw it, already decoded (#3544 P2).
 ///
 /// Primitive values only, for the same reason as the rest of this file: no `CGEvent` or
@@ -217,18 +200,6 @@ package protocol DesktopHotkeyEffects: AnyObject {
   ) -> DesktopEffectToken?
 
   func registerHotkey(id: UInt32, keyCode: UInt16, rawModifiers: UInt64) -> HotkeyRegistration
-
-  func installGlobalModifierMonitor(
-    _ callback: @escaping @MainActor (DesktopModifierEvent) -> Void
-  ) -> DesktopEffectToken?
-
-  /// Contractual: the local monitor must return the `NSEvent` it received after
-  /// scheduling the callback. Swallowing it would eat the keystroke for the rest
-  /// of the app — a bug with no test-visible symptom, since the callback still
-  /// fires.
-  func installLocalModifierMonitor(
-    _ callback: @escaping @MainActor (DesktopModifierEvent) -> Void
-  ) -> DesktopEffectToken?
 
   /// Install the keyboard listener: one active session event tap on its own thread (#3544 P2).
   ///

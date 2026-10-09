@@ -578,49 +578,30 @@ struct HotkeyEventTimeDoubleTapTests {
 
   // MARK: - Every path that delivers a key carries its OS time
 
-  @Test("A bare-modifier double tap handled late locks through the modifier path")
-  func modifierPathReplayLocks() async {
+  /// The keyboard listener is the only bare-modifier path (#3544 P3): it must carry each event's
+  /// OS time to the engine, so a second press handled late but pressed inside the window locks.
+  @Test("A bare-modifier double tap handled late locks through the installed keyboard listener")
+  func listenerForwardsTimestamp() async {
     let rig = Rig()
-    let (service, _) = makeService(rig, keyCode: ModifierKeyCodes.rightOption)
+    let (service, effects) = makeService(rig, keyCode: ModifierKeyCodes.rightOption)
+    service.start()
     defer { service.stop() }
-    func flags(_ down: Bool, _ occurred: TimeInterval, _ handled: TimeInterval) {
+    let keys = ListenerKeyboard(effects)
+    func flags(_ down: Bool, _ occurred: TimeInterval, _ handled: TimeInterval) async {
       rig.now = handled
-      service.handleFlagsChangedValues(
-        keyCode: ModifierKeyCodes.rightOption, flags: down ? [.option] : [], timestamp: occurred)
+      if down {
+        await keys.press(ModifierKeyCodes.rightOption, at: occurred)
+      } else {
+        await keys.release(ModifierKeyCodes.rightOption, at: occurred)
+      }
     }
-    flags(true, 1000, 1000)
-    flags(false, 1000.092, 1000.092)
-    flags(true, 1000.244, 1000.528)
+    await flags(true, 1000, 1000)
+    await flags(false, 1000.092, 1000.092)
+    await flags(true, 1000.244, 1000.528)
     await settle(service)
 
     #expect(rig.actions == ["start", "lock"])
     #expect(rig.presses.last?.windowTiming == "rescued")
-  }
-
-  @Test("The installed global and local modifier monitors forward the OS time")
-  func installedModifierMonitorsForwardTimestamp() async throws {
-    for useGlobal in [true, false] {
-      let rig = Rig()
-      let (service, effects) = makeService(rig, keyCode: ModifierKeyCodes.rightOption)
-      service.start()
-      defer { service.stop() }
-      let callback = try #require(
-        useGlobal ? effects.globalMonitorCallback : effects.localMonitorCallback)
-      let option = UInt64(NSEvent.ModifierFlags.option.rawValue)
-      func send(_ raw: UInt64, _ occurred: TimeInterval, _ handled: TimeInterval) {
-        rig.now = handled
-        callback(
-          DesktopModifierEvent(
-            keyCode: ModifierKeyCodes.rightOption, rawFlags: raw, timestamp: occurred))
-      }
-      send(option, 1000, 1000)
-      send(0, 1000.092, 1000.092)
-      send(option, 1000.244, 1000.528)
-      await settle(service)
-
-      #expect(rig.actions == ["start", "lock"], "monitor: \(useGlobal ? "global" : "local")")
-      #expect(rig.presses.last?.windowTiming == "rescued")
-    }
   }
 
   @Test("The installed Carbon handler forwards the OS time")
@@ -643,22 +624,22 @@ struct HotkeyEventTimeDoubleTapTests {
     #expect(rig.presses.last?.windowTiming == "rescued")
   }
 
-  @Test("A timestamped event from a torn-down monitor is ignored")
+  @Test("A timestamped event from a removed listener installation is ignored")
   func staleInstalledCallbackIgnored() async throws {
     let rig = Rig()
     let (service, effects) = makeService(rig, keyCode: ModifierKeyCodes.rightOption)
-    defer { service.stop() }
     service.start()
-    let stale = try #require(effects.globalMonitorCallback)
+    let stale = try #require(effects.keyboardListenerSink)
     service.stop()
     service.start()
     defer { service.stop() }
 
     rig.now = 1000
-    stale(
-      DesktopModifierEvent(
-        keyCode: ModifierKeyCodes.rightOption,
-        rawFlags: UInt64(NSEvent.ModifierFlags.option.rawValue), timestamp: 1000))
+    let event = KeyEventValue(
+      kind: .flagsChanged, keyCode: ModifierKeyCodes.rightOption,
+      rawFlags: ListenerKeyboard.rawFlags([ModifierKeyCodes.rightOption]), timestamp: 1000)
+    await Task.detached { _ = stale(event) }.value
+    await ListenerKeyboard.mainTurn()
     await settle(service)
     #expect(rig.starts == 0)
     #expect(rig.actions.isEmpty)

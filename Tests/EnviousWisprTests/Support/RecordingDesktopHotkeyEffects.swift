@@ -29,14 +29,10 @@ final class RecordingDesktopHotkeyEffects: DesktopHotkeyEffects {
   private(set) var registrations: [Request] = []
   private(set) var removed: [DesktopEffectToken] = []
   private(set) var carbonHandlerInstalls = 0
-  private(set) var globalMonitorInstalls = 0
-  private(set) var localMonitorInstalls = 0
 
   /// Callbacks the service handed over, so a test can drive an event as the OS
   /// would rather than calling the service's internals.
   private(set) var carbonCallback: (@MainActor (DesktopHotkeyEvent) -> Void)?
-  private(set) var globalMonitorCallback: (@MainActor (DesktopModifierEvent) -> Void)?
-  private(set) var localMonitorCallback: (@MainActor (DesktopModifierEvent) -> Void)?
 
   /// Queued results for the next registrations, oldest first. Empty means
   /// "accept everything", which is what almost every existing suite wants.
@@ -47,9 +43,8 @@ final class RecordingDesktopHotkeyEffects: DesktopHotkeyEffects {
   /// whether Carbon would actually refuse that chord is proven only by live UAT.
   var nextResults: [HotkeyRegistration] = []
 
-  /// Make an install return nil, for the paths where the real frameworks can:
-  /// `InstallEventHandler` failing, and a monitor install returning nothing.
-  var failMonitorInstalls = false
+  /// Make an install return nil, for the path where the real framework can:
+  /// `InstallEventHandler` failing.
   var failCarbonHandlerInstall = false
 
   // MARK: - DesktopHotkeyEffects
@@ -66,22 +61,6 @@ final class RecordingDesktopHotkeyEffects: DesktopHotkeyEffects {
     registrations.append(Request(id: id, keyCode: keyCode, rawModifiers: rawModifiers))
     if nextResults.isEmpty { return .registered(DesktopEffectToken()) }
     return nextResults.removeFirst()
-  }
-
-  func installGlobalModifierMonitor(
-    _ callback: @escaping @MainActor (DesktopModifierEvent) -> Void
-  ) -> DesktopEffectToken? {
-    globalMonitorInstalls += 1
-    globalMonitorCallback = callback
-    return failMonitorInstalls ? nil : DesktopEffectToken()
-  }
-
-  func installLocalModifierMonitor(
-    _ callback: @escaping @MainActor (DesktopModifierEvent) -> Void
-  ) -> DesktopEffectToken? {
-    localMonitorInstalls += 1
-    localMonitorCallback = callback
-    return failMonitorInstalls ? nil : DesktopEffectToken()
   }
 
   // MARK: - Keyboard listener (#3544 P2)

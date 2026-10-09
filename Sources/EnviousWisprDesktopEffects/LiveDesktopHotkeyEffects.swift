@@ -3,7 +3,7 @@ import Carbon
 import EnviousWisprServices
 import Foundation
 
-/// The Carbon and `NSEvent` calls that actually reach the desktop (#2455 C2).
+/// The Carbon and event-tap calls that actually reach the desktop (#2455 C2, #3544).
 ///
 /// **This module exists to be out of the unit suite's reach — enforced by a
 /// CHECK, not by the compiler.** `EnviousWisprTests` declares no dependency on
@@ -36,7 +36,6 @@ package final class LiveDesktopHotkeyEffects: DesktopHotkeyEffects {
   private enum Resource {
     case hotkey(EventHotKeyRef)
     case handler(EventHandlerRef, Unmanaged<CarbonHandlerBox>)
-    case monitor(Any)
     case keyboardListener(LiveKeyboardListener)
   }
 
@@ -140,45 +139,6 @@ package final class LiveDesktopHotkeyEffects: DesktopHotkeyEffects {
     return result
   }()
 
-  // MARK: - Modifier monitors
-
-  package func installGlobalModifierMonitor(
-    _ callback: @escaping @MainActor (DesktopModifierEvent) -> Void
-  ) -> DesktopEffectToken? {
-    // Apple delivers monitor handlers on the main thread, but the handler is not
-    // typed `@MainActor` and `NSEvent` is not Sendable, so the event is decoded to
-    // plain values HERE and only those cross the hop. The timestamp is decoded too:
-    // a busy main thread handles this event late, and only the OS time says when
-    // the key actually moved (#3534).
-    let monitor = NSEvent.addGlobalMonitorForEvents(matching: .flagsChanged) { event in
-      let value = DesktopModifierEvent(
-        keyCode: event.keyCode, rawFlags: UInt64(event.modifierFlags.rawValue),
-        timestamp: event.timestamp)
-      DispatchQueue.main.async {
-        MainActor.assumeIsolated { callback(value) }
-      }
-    }
-    return store(monitor)
-  }
-
-  package func installLocalModifierMonitor(
-    _ callback: @escaping @MainActor (DesktopModifierEvent) -> Void
-  ) -> DesktopEffectToken? {
-    let monitor = NSEvent.addLocalMonitorForEvents(matching: .flagsChanged) { event in
-      MainActor.assumeIsolated {
-        callback(
-          DesktopModifierEvent(
-            keyCode: event.keyCode, rawFlags: UInt64(event.modifierFlags.rawValue),
-            timestamp: event.timestamp))
-      }
-      // Pass the event through. Returning nil here would swallow the keystroke
-      // for the rest of the app while the callback still fired, so nothing in a
-      // test would notice.
-      return event
-    }
-    return store(monitor)
-  }
-
   // MARK: - Keyboard listener
 
   /// The keyboard listener's event tap on its own thread (#3544 P2). Nil when the tap could not be
@@ -221,13 +181,6 @@ package final class LiveDesktopHotkeyEffects: DesktopHotkeyEffects {
     }
   }
 
-  private func store(_ monitor: Any?) -> DesktopEffectToken? {
-    guard let monitor else { return nil }
-    let token = DesktopEffectToken()
-    resources[token] = .monitor(monitor)
-    return token
-  }
-
   // MARK: - Teardown
 
   @discardableResult
@@ -254,8 +207,6 @@ package final class LiveDesktopHotkeyEffects: DesktopHotkeyEffects {
         return false
       }
       box.release()
-    case .monitor(let monitor):
-      NSEvent.removeMonitor(monitor)
     case .keyboardListener(let listener):
       // Same contract as the handler: until the worker confirms its cleanup the callback context
       // is still live, so the caller keeps its token and can retry.
