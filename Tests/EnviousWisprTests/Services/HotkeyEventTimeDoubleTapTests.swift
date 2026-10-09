@@ -17,9 +17,8 @@ import Testing
 /// stop path because its release or second press was handled more than 500 ms
 /// after the first press.
 ///
-/// The lone-tap stop waits through the injected `sleep`, which parks until the
-/// test calls `fireDueTimers()`, so "the second press is handled before the due
-/// timer" and "the timer runs first" are both driven deterministically. The test
+/// The injected scheduler retains lone-tap requests until `fireDueTimers()` is called,
+/// allowing event-first and timer-first ordering to be driven deterministically. The test
 /// learns the timer finished from the service's own
 /// `onDebounceResolvedForTesting`, and that a start reconciled from
 /// `onStartResolvedForTesting`; no wall-clock waits.
@@ -46,14 +45,16 @@ struct HotkeyEventTimeDoubleTapTests {
 
   /// The service's clock, waits and callbacks, all under test control.
   @MainActor final class Rig {
-    var now: TimeInterval = 1000
-
-    // Parked lone-tap waits: the uptime each one ends at.
-    private var timers: [Int: (deadline: TimeInterval, wake: CheckedContinuation<Void, Never>)] =
-      [:]
-    private var nextTimerID = 0
-    private(set) var requestedDeadlines: [TimeInterval] = []
-    private(set) var requestedDelays: [TimeInterval] = []
+    /// #3544: the engine reads the clock and schedules its lone-tap wait off the main actor, so
+    /// both are the thread-safe test fixtures; the test still moves time and fires waits by hand.
+    let clock = HotkeyTestClock(1000)
+    lazy var timerRig = HotkeyTestScheduler(clock: clock)
+    var now: TimeInterval {
+      get { clock.now }
+      set { clock.now = newValue }
+    }
+    var requestedDeadlines: [TimeInterval] { timerRig.requestedDeadlines }
+    var requestedDelays: [TimeInterval] { timerRig.requestedDelays }
 
     private(set) var starts = 0
     private(set) var stops = 0
@@ -65,7 +66,6 @@ struct HotkeyEventTimeDoubleTapTests {
     private(set) var lockDecisions: [(committed: Bool, reason: String)] = []
 
     // Bounded waits: a missing signal records an issue after 5 s instead of hanging.
-    private let sleepRequestWaiter = HotkeyGlobeKeyTests.CallbackWaiter()
     private let debounceWaiter = HotkeyGlobeKeyTests.CallbackWaiter()
     private let startWaiter = HotkeyGlobeKeyTests.CallbackWaiter()
 
@@ -82,50 +82,25 @@ struct HotkeyEventTimeDoubleTapTests {
 
     var actions: [String] { presses.map(\.action) }
 
-    // test-fixture-timer: a fake wait; it parks until the test calls fireDueTimers(), never on a clock.
-    func sleep(_ seconds: TimeInterval) async {
-      let id = nextTimerID
-      nextTimerID += 1
-      let deadline = now + seconds
-      requestedDeadlines.append(deadline)
-      requestedDelays.append(seconds)
-      await withTaskCancellationHandler {
-        await withCheckedContinuation { continuation in
-          if Task.isCancelled {
-            continuation.resume()
-          } else {
-            timers[id] = (deadline, continuation)
-          }
-          // After the timer is parked, so a test that fires next finds it.
-          sleepRequestWaiter.note()
-        }
-      } onCancel: {
-        Task { @MainActor in self.wake(id) }
-      }
-    }
-
-    private func wake(_ id: Int) {
-      timers.removeValue(forKey: id)?.wake.resume()
-    }
-
-    /// Wake every parked wait whose deadline has passed at `now`.
+    /// Fire every lone-tap wait whose deadline has passed at `now`. The engine queues the stop
+    /// for the main thread; `waitForDebounce` learns it was applied from the service's signal.
     func fireDueTimers() {
-      for (id, timer) in timers where timer.deadline <= now + 1e-9 {
-        timers.removeValue(forKey: id)
-        timer.wake.resume()
-      }
+      timerRig.fireDue()
     }
 
     func noteDebounceResolved() { debounceWaiter.note() }
     func noteStartResolved() { startWaiter.note() }
 
-    /// Park until the service has asked for `count` lone-tap waits. The stop
-    /// task asks from inside its own Task, so the request lands after `drive`.
+    /// The service has asked for `count` lone-tap waits. #3544: the engine schedules on the
+    /// release's own turn, so the request has landed by the time `drive` returns; a shortfall is
+    /// recorded instead of waited for.
     func waitForSleepRequests(count: Int) async {
-      await sleepRequestWaiter.wait(until: count)
+      #expect(
+        requestedDelays.count >= count,
+        "expected \(count) lone-tap waits, got \(requestedDelays.count)")
     }
 
-    /// Park until the service reports `count` finished lone-tap stop tasks.
+    /// Park until the service reports `count` resolved lone-tap timers.
     func waitForDebounce(count: Int) async {
       await debounceWaiter.wait(until: count)
     }
@@ -159,9 +134,9 @@ struct HotkeyEventTimeDoubleTapTests {
     let effects = RecordingDesktopHotkeyEffects()
     let service = HotkeyService(
       effects: effects, telemetry: rig.sink,
-      // Strong: a stop task can outlive the test body; the rig holds no service.
-      uptime: { rig.now },
-      sleep: { await rig.sleep($0) })
+      // Strong: a stop can outlive the test body; the rig holds no service.
+      uptime: rig.clock.uptime,
+      scheduler: rig.timerRig.scheduler)
     service.recordingMode = .pushToTalk
     // keyCode 0 ('A') is a chord, delivered through Carbon; Right Option is a bare modifier.
     service.toggleKeyCode = keyCode
@@ -263,18 +238,21 @@ struct HotkeyEventTimeDoubleTapTests {
     #expect(rig.actions == ["start"])
   }
 
-  @Test("A stop task that starts late still stops at the release deadline, not 500 ms after it ran")
+  @Test("The lone-tap stop is scheduled at the release and ends at the release deadline")
   func lateStartingTimerKeepsTheDeadline() async throws {
     let rig = Rig()
     let (service, _) = makeService(rig)
     defer { service.stop() }
     drive(service, rig, [.press(1000), .release(1000.08)])
-    // The busy main thread runs the stop task 320 ms after the release was handled.
+    // #3544: the engine schedules the stop on the release's own turn, so there is no stop task
+    // left to start late; the wait is asked for at once and ends at the release deadline. The
+    // promise this test guards (the deadline is the release's, not 500 ms after something
+    // later) is unchanged.
     rig.now = 1000.40
     await rig.waitForSleepRequests(count: 1)
 
     let delay = try #require(rig.requestedDelays.last)
-    #expect(abs(delay - 0.18) < 1e-9)
+    #expect(abs(delay - 0.5) < 1e-9)
     let deadline = try #require(rig.requestedDeadlines.last)
     #expect(abs(deadline - 1000.58) < 1e-9)
     rig.now = 1000.58
@@ -284,17 +262,18 @@ struct HotkeyEventTimeDoubleTapTests {
     #expect(rig.stops == 1)
   }
 
-  @Test("A stop task that starts after its deadline waits no longer and stops once")
+  @Test("A lone-tap timer that fires after its deadline stops exactly once")
   func timerStartingAfterDeadlineStopsAtOnce() async throws {
     let rig = Rig()
     let (service, _) = makeService(rig)
     defer { service.stop() }
     drive(service, rig, [.press(1000), .release(1000.08)])
+    // #3544: the wait is requested on the release's turn (500 ms); the timer then runs late,
+    // 120 ms past its deadline, and must still stop exactly once.
+    let delay = try #require(rig.requestedDelays.last)
+    #expect(abs(delay - 0.5) < 1e-9)
     rig.now = 1000.70
     await rig.waitForSleepRequests(count: 1)
-
-    let delay = try #require(rig.requestedDelays.last)
-    #expect(delay == 0)
     rig.fireDueTimers()
     await rig.waitForDebounce(count: 1)
     await settle(service)
@@ -345,9 +324,11 @@ struct HotkeyEventTimeDoubleTapTests {
     await rig.waitForSleepRequests(count: 1)
     let deadline = try #require(rig.requestedDeadlines.last)
     #expect(abs(deadline - 1000.95) < 1e-9)
-    rig.now = 1000.58
+    // #3544: the timer falls due at its deadline while the second press is still queued on main
+    // and is handled after it.
+    rig.now = deadline
     rig.fireDueTimers()
-    drive(service, rig, .press(1000.20, handled: 1000.60))
+    drive(service, rig, .press(1000.20, handled: 1001.00))
     await rig.waitForDebounce(count: 1)
     await rig.waitForStarts(count: 1)
     await settle(service)

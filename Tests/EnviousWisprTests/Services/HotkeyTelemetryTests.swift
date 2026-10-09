@@ -203,6 +203,39 @@ import Testing
     #expect(returned == token)
   }
 
+  @Test("A lock-cooldown press reports while the key still reads as held, then releases it (#3544)")
+  func cooldownPressReportsWhileHeld() {
+    // #3544 P1: the base emitted `ignored_cooldown` before clearing the held flag; the gesture
+    // extraction must keep that order, because the sink runs synchronously on the press turn.
+    final class Box {
+      weak var service: HotkeyService?
+      var heldAtEmit: [Bool] = []
+    }
+    let box = Box()
+    let clock = HotkeyTestClock(100)
+    let sink = HotkeyTelemetrySink(
+      registrationFailed: { _, _, _, _ in },
+      pressed: { _, _, _, _, action, _ in
+        if action == "ignored_cooldown" { box.heldAtEmit.append(box.service?.isModifierHeld ?? false) }
+      })
+    let service = HotkeyService(
+      effects: RecordingDesktopHotkeyEffects(), telemetry: sink, uptime: clock.uptime)
+    box.service = service
+    service.recordingMode = .pushToTalk
+    service.toggleKeyCode = 0
+    service.handleCarbonHotkey(id: toggleID, isRelease: false, timestamp: 100)
+    clock.now = 100.125
+    service.handleCarbonHotkey(id: toggleID, isRelease: true, timestamp: 100.125)
+    clock.now = 100.25
+    service.handleCarbonHotkey(id: toggleID, isRelease: false, timestamp: 100.25)  // lock
+    clock.now = 100.375
+    service.handleCarbonHotkey(id: toggleID, isRelease: true, timestamp: 100.375)
+    clock.now = 100.625
+    service.handleCarbonHotkey(id: toggleID, isRelease: false, timestamp: 100.625)  // cooldown
+    #expect(box.heldAtEmit == [true])
+    #expect(service.isModifierHeld == false)
+  }
+
   @Test("default .noop sink stays inert — press still processed, nothing emitted")
   func defaultNoopIsInert() {
     // Codex r3: the default `HotkeyService()` (no telemetry param) must stay inert

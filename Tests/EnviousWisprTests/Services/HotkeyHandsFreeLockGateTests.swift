@@ -128,9 +128,11 @@ import EnviousWisprServices
   /// second press silently takes the stop or fresh-start branch instead of the
   /// lock branch. Every case here pins the clock so the branch under test is the
   /// branch that runs, regardless of machine load.
-  @MainActor final class ManualClock {
-    private(set) var now: TimeInterval = 1_000_000
-    func advance(ms: Int) { now += Double(ms) / 1000.0 }
+  /// #3544: the engine reads this clock off the main actor, so it is the thread-safe test clock.
+  final class ManualClock: Sendable {
+    private let clock = HotkeyTestClock(1_000_000)
+    var now: TimeInterval { clock.now }
+    func advance(ms: Int) { clock.advance(ms: ms) }
   }
 
   private func makeService(
