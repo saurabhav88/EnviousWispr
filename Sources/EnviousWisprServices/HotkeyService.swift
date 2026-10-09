@@ -112,10 +112,18 @@ public final class HotkeyService {
   /// is the one the user set; `carbonEventIsCurrent` compares this with the current binding.
   private var appShortcutRegisteredBindings: [ShortcutRole: ShortcutBinding] = [:]
 
-  /// App shortcuts whose current physical press has been seen and not yet released (#3106). Paste
-  /// Last fires on the release and Copy Last on the first press; either way a held key or an
-  /// auto-repeat acts once. Cleared on stop and suspend, where a release may never arrive.
-  private var appShortcutsHeld: Set<ShortcutRole> = []
+  /// App shortcuts whose current physical press has been seen and not yet released (#3106), with
+  /// the press that owns each hold. Paste Last fires on the release and Copy Last on the first
+  /// press; either way a held key or an auto-repeat acts once. Only a release from the owning press
+  /// ends a hold, so the release of a key from before a rebind cannot end the new shortcut's hold.
+  /// Cleared on stop and suspend, where a release may never arrive.
+  private var appShortcutsHeld: [ShortcutRole: AppShortcutHold] = [:]
+
+  /// The press that owns an app shortcut hold: a Carbon chord, or one modifier key the listener saw.
+  private enum AppShortcutHold: Equatable {
+    case chord
+    case modifier(keyCode: UInt16)
+  }
 
   /// Whether the cancel role is currently armed.
   ///
@@ -1360,7 +1368,7 @@ public final class HotkeyService {
     // A bare-modifier action held now (Paste Last, Copy Last) can no longer see its release: the
     // next installation's tracker starts empty. Retire the hold without firing it, so the next
     // press acts (and Paste takes a fresh target); Carbon chord holds are not the listener's.
-    appShortcutsHeld.subtract(appShortcutsHeld.filter { binding(for: $0).isBareModifier })
+    appShortcutsHeld = appShortcutsHeld.filter { $0.value == .chord }
     // #3534 §3.3: an ingress teardown voids the stop-timer measurement (diagnostic only).
     invalidateQuickTapDiagnostics()
     #if DEBUG
@@ -1453,7 +1461,7 @@ public final class HotkeyService {
       releaseAppShortcut(role)
       // A press already seen belongs to a registration this role no longer holds; its release must
       // not fire into a chord another role now owns.
-      appShortcutsHeld.remove(role)
+      appShortcutsHeld[role] = nil
     }
     for (role, may) in decisions where may { registerAppShortcut(role) }
   }
@@ -1550,7 +1558,7 @@ public final class HotkeyService {
   package func reapplyAppShortcutBinding(_ role: ShortcutRole) {
     // The old chord's registration must go first: the token still holds it.
     releaseAppShortcut(role)
-    appShortcutsHeld.remove(role)
+    appShortcutsHeld[role] = nil
     // The reconciler owns both questions the two guards below used to ask separately — may we
     // register at all, and may we hold THIS chord. Rebinding Quick Add onto the cancel chord during
     // a recording is exactly the case a bare `registerQuickAddHotkey()` here would get wrong.
@@ -1690,11 +1698,11 @@ public final class HotkeyService {
 
     case HotkeyID.pasteLast.rawValue:
       guard carbonEventIsCurrent(for: .pasteLast) else { return }
-      handleLastDictationShortcut(.pasteLast, isPress: !isRelease)
+      handleLastDictationShortcut(.pasteLast, isPress: !isRelease, hold: .chord)
 
     case HotkeyID.copyLast.rawValue:
       guard carbonEventIsCurrent(for: .copyLast) else { return }
-      handleLastDictationShortcut(.copyLast, isPress: !isRelease)
+      handleLastDictationShortcut(.copyLast, isPress: !isRelease, hold: .chord)
 
     default:
       break
@@ -1730,7 +1738,8 @@ public final class HotkeyService {
     switch edge.role {
     case .pasteLast, .copyLast:
       // A bare-modifier rebind: the modifier's own press and release are the gesture.
-      handleLastDictationShortcut(edge.role, isPress: edge.isPress)
+      handleLastDictationShortcut(
+        edge.role, isPress: edge.isPress, hold: .modifier(keyCode: edge.keyCode))
 
     case .quickAdd:
       // Press only: a modifier RELEASE is not a gesture. A stray second fire opens the panel twice,
@@ -1802,16 +1811,18 @@ public final class HotkeyService {
   /// second press, and a release with no press seen is ignored.
   ///
   /// No `performCleanup()`, as with Quick Add: these never touch the recording path.
-  private func handleLastDictationShortcut(_ role: ShortcutRole, isPress: Bool) {
+  private func handleLastDictationShortcut(_ role: ShortcutRole, isPress: Bool, hold: AppShortcutHold) {
     switch role {
     case .pasteLast:
       if isPress {
-        if appShortcutsHeld.insert(.pasteLast).inserted, onPasteLast != nil {
-          onPasteLastPressed?()
-        }
+        guard appShortcutsHeld[.pasteLast] == nil else { return }
+        appShortcutsHeld[.pasteLast] = hold
+        if onPasteLast != nil { onPasteLastPressed?() }
         return
       }
-      guard appShortcutsHeld.remove(.pasteLast) != nil, let action = onPasteLast else { return }
+      guard appShortcutsHeld[.pasteLast] == hold else { return }
+      appShortcutsHeld[.pasteLast] = nil
+      guard let action = onPasteLast else { return }
       // Synchronous, not a queued Task: a second gesture arriving before a queued task ran could
       // replace this one's press-time target (final review, #3106). The owner spawns its own work.
       action()
@@ -1819,10 +1830,12 @@ public final class HotkeyService {
 
     case .copyLast:
       guard isPress else {
-        appShortcutsHeld.remove(.copyLast)
+        if appShortcutsHeld[.copyLast] == hold { appShortcutsHeld[.copyLast] = nil }
         return
       }
-      guard appShortcutsHeld.insert(.copyLast).inserted, let action = onCopyLast else { return }
+      guard appShortcutsHeld[.copyLast] == nil else { return }
+      appShortcutsHeld[.copyLast] = hold
+      guard let action = onCopyLast else { return }
       action()  // synchronous: the row copied is the one present at this press
       emitHotkeyPressed(.copyLast, trigger: .copyLast)
 

@@ -367,4 +367,33 @@ struct KeyboardListenerRecoveryTests {
     await after.release(ModifierKeyCodes.leftOption)
     #expect(pastes == 1)
   }
+
+  /// Paste Last on bare Right Command is held, reset to its default chord without suspending, and
+  /// the chord pressed before Right Command comes up. The old key's release keeps its listener route,
+  /// so it reaches main; it must not end the chord's hold and paste before V is released.
+  @Test("the release of a key from before a rebind does not end the new shortcut's hold")
+  func oldKeyReleaseDoesNotEndANewHold() async {
+    let rig = Rig()
+    var pastePresses = 0
+    var pastes = 0
+    rig.service.pasteLastKeyCode = ModifierKeyCodes.rightCommand
+    rig.service.pasteLastModifiers = []
+    rig.service.onPasteLast = { pastes += 1 }
+    rig.service.onPasteLastPressed = { pastePresses += 1 }
+    rig.service.start()
+    defer { rig.service.stop() }
+    let keys = ListenerKeyboard(rig.effects)
+    await keys.press(ModifierKeyCodes.rightCommand)
+    #expect(pastePresses == 1)
+    rig.service.pasteLastKeyCode = ShortcutRole.pasteLast.defaultKeyCode
+    rig.service.pasteLastModifiers = ShortcutRole.pasteLast.defaultModifiers
+    rig.service.reapplyAppShortcutBinding(.pasteLast)
+    let pasteLastID: UInt32 = 5
+    rig.service.handleCarbonHotkey(id: pasteLastID, isRelease: false)
+    #expect(pastePresses == 2, "the new chord's press did not take a fresh target")
+    await keys.release(ModifierKeyCodes.rightCommand)
+    #expect(pastes == 0, "the old key's release pasted before the chord was released")
+    rig.service.handleCarbonHotkey(id: pasteLastID, isRelease: true)
+    #expect(pastes == 1)
+  }
 }
