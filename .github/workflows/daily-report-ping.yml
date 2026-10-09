@@ -53,9 +53,9 @@ jobs:
           TRIGGER_SECRET: ${{ secrets.DAILY_REPORT_TRIGGER_SECRET }}
           DATE_OVERRIDE: ${{ github.event.inputs.date }}
         run: |
-          URL="https://enviouswispr-daily-report.saurabhav.workers.dev/"
+          URL="https://enviouswispr-daily-report.saurabhav.workers.dev/?report=performance"
           if [ -n "$DATE_OVERRIDE" ]; then
-            URL="${URL}?date=${DATE_OVERRIDE}"
+            URL="${URL}&date=${DATE_OVERRIDE}"
           fi
           # No --retry here (the retired product-health ping dropped its own
           # --retry 3 for the identical reason, issue #1589): this
@@ -93,6 +93,36 @@ jobs:
             # webhook. So cap, then mask any URL. Capping FIRST is deliberate: it
             # keeps a long body from SIGPIPE-ing the masker under pipefail, and
             # a URL starting inside the kept prefix is still matched at its scheme.
+            head -c 2000 "$BODY_FILE" \
+              | sed -E 's#[a-zA-Z][a-zA-Z0-9+.-]*://[^[:space:]]*#<redacted-url>#g'
+            echo
+            exit "$RC"
+          fi
+
+  sentry:
+    name: Sentry write-up (${{ matrix.platform }})
+    runs-on: ubuntu-latest
+    strategy:
+      # No needs dependency or sibling cancellation: failures are independent.
+      fail-fast: false
+      matrix:
+        platform: [mac, android]
+    steps:
+      - name: Trigger Sentry write-up
+        env:
+          TRIGGER_SECRET: ${{ secrets.DAILY_REPORT_TRIGGER_SECRET }}
+          DATE_OVERRIDE: ${{ github.event.inputs.date }}
+          PLATFORM: ${{ matrix.platform }}
+        run: |
+          URL="https://enviouswispr-daily-report.saurabhav.workers.dev/?report=sentry&platform=${PLATFORM}"
+          if [ -n "$DATE_OVERRIDE" ]; then URL="${URL}&date=${DATE_OVERRIDE}"; fi
+          BODY_FILE="$(mktemp)"
+          RC=0
+          # No retry: delivery may have occurred. Keep response diagnostics
+          # capped and URL-masked just like the performance job.
+          curl -sS --fail-with-body -H "x-trigger-secret: ${TRIGGER_SECRET}" \
+            "$URL" -o "$BODY_FILE" -w "worker responded HTTP %{http_code}\n" || RC=$?
+          if [ "$RC" -ne 0 ]; then
             head -c 2000 "$BODY_FILE" \
               | sed -E 's#[a-zA-Z][a-zA-Z0-9+.-]*://[^[:space:]]*#<redacted-url>#g'
             echo

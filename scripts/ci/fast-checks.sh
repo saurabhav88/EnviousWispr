@@ -281,7 +281,7 @@ member_third_party_notices() {
 # CI home: the worker-tests job (pr-check.yml), which sets up Node 22 and runs
 # exactly this loop unconditionally. Here so the Mac runs it before a push.
 member_worker_tests() {
-  for w in daily-report weekly-digest sentry-triage download-counter shared; do
+  for w in daily-report weekly-digest download-counter shared; do
     echo "==> $w"
     ( cd "workers/$w" && node --test )
   done

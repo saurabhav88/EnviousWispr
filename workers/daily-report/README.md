@@ -1,7 +1,7 @@
 # Daily Report Worker (issue #1433)
 
-A daily Cloudflare Worker that posts a plain-English usage summary to Discord.
-Read-only: it consumes events that already emit to PostHog. It gates nothing,
+A daily Cloudflare Worker with independent performance and per-platform Sentry write-ups (#3547).
+Read-only: it consumes events already received by PostHog or Sentry. It gates nothing,
 alerts on nothing — purely a digest for the founder's morning read.
 
 Plan + full metric-definition rationale (including the two real bugs caught
@@ -37,7 +37,7 @@ noise on a genuinely empty day).
 
 ## Reading the version check and the error section (#2621)
 
-The two lower embeds print numbers and one footnote, nothing that explains method. The founder read
+The version check prints measurements and a footnote; separate Sentry write-ups report recorded error activity. The founder read
 the earlier shape ("Covering 80.7% of measured dictations across 2 releases", "People counts are
 non-additive", "Ranked against this measure's median week-to-week movement") as noise he could not
 decode, so the explanations live here instead.
@@ -68,15 +68,21 @@ when nothing has been measured on it. A release out the whole week is just its v
   where enough history exists, otherwise by size of change; the sample counts behind each are in
   `ranking.movers`. A measure that did not move between the two releases is never a mover.
 
-**Errors, yesterday.** One headline: people who hit an error on the release line and newer, and the
-direction against the previous period. The error and problem counts are still measured (`data.events`, `data.rows.length`) and no
-longer printed. No rate is ever shown: Sentry and PostHog join only per install and only partially
-(`sentry-operations.md` RULE: join-sentry-to-posthog-by-install), so dividing one system's people by
-the other's would be arithmetic across two identity systems. `Lost the dictation` and `Worked, but
-worse` are the two severity groups; `delivery not proven` marks a row whose producer cannot confirm
-the text was lost; `NEW` marks a problem first seen in the window. The tail line `Up to N people hit an
-error on builds older than X` is an upper bound because per-release people counts are not additive, and
-it can overlap the headline: one person can hit errors on a current build and an old one.
+**Sentry morning write-ups.** Separate Mac and Android messages cover recorded
+crash/error activity in yesterday's Eastern calendar day, including known
+problems and older builds. Customer-release, developer-build and unknown-build
+cohorts use environment and `app.build_type` together; debug evidence overrides
+a contradictory production tag.
+
+Complete headline aggregates provide event totals and the change from the
+previous Eastern day. Problem rows show occurrences, Sentry-reported identities,
+safe version labels and issue links. Identity counts are exact only under
+the complete zero/one-row rule; otherwise they are explicit lower bounds.
+Incomplete problem lists disclose their limits and omit unsupported changes.
+No affected-person rate or crash-free claim is made.
+
+The performance message contains only adoption and version scorecard sections.
+The weekly digest retains its existing production/release-scoped Sentry recap.
 
 ## Release list source (the appcast, not GitHub)
 
@@ -105,6 +111,10 @@ a format drift in the release job fails at PR time rather than one morning.
 
 ## Correctness guardrail (why this worker trusts nothing on faith)
 
+The bucket-completeness guard below belongs to performance mode. Sentry uses
+its independent complete headlines, bounded problem rows and joint build-tag
+projection; missing/malformed data is not a zero report.
+
 An early planning-time bug: a naive PostHog query silently truncated at 100
 rows while the real population was 110. The fix that survived into this
 worker: every per-user bucket count (engine, polish) is checked against an
@@ -120,14 +130,16 @@ cd workers/daily-report
 node --test                     # pure query-shape/bucketing/formatting logic, no network
 ```
 
-Pre-deploy live-query smoke (runs the real HogQL against production
-PostHog **and the real Sentry queries**, asserts the completeness check
-passes, prints the would-be message, posts nothing):
+Pre-deploy smokes drive the actual selected mode, intercept only Discord delivery,
+and fail on unavailable/incomplete data. No report is posted:
 
 ```bash
 ~/.claude/bin/get-key launch posthog-personal-api-key POSTHOG_KEY -- \
-  ~/.claude/bin/get-key launch sentry-workers-readonly-token SENTRY_KEY -- \
-  node workers/daily-report/live-query-smoke.mjs [YYYY-MM-DD]
+  node workers/daily-report/live-query-smoke.mjs --report performance [YYYY-MM-DD]
+~/.claude/bin/get-key launch sentry-workers-readonly-token SENTRY_KEY -- \
+  node workers/daily-report/live-query-smoke.mjs --report sentry --platform mac [YYYY-MM-DD]
+~/.claude/bin/get-key launch sentry-workers-readonly-token SENTRY_KEY -- \
+  node workers/daily-report/live-query-smoke.mjs --report sentry --platform android [YYYY-MM-DD]
 ```
 
 `SENTRY_KEY` is the same least-privilege token the deployed Worker holds
@@ -172,7 +184,10 @@ Deploy, then verify the LIVE worker, before calling any worker change done:
 cd workers/daily-report
 npx wrangler deploy
 
-# 3. verify the deployed code actually runs (this DOES post a real report).
+# 3. verify each deployed mode (these DO post real reports).
+# The default request is performance only; also check both Sentry modes with
+# ?report=sentry&platform=mac&date=YYYY-MM-DD and
+# ?report=sentry&platform=android&date=YYYY-MM-DD under the same header secret.
 # -f is load-bearing: without it curl exits 0 on a 401/500, so a failed verify
 # reads as a passed one - the exact false-success this section exists to stop.
 # Matches daily-report-ping.yml, which also uses -fsS.
@@ -207,12 +222,9 @@ security find-generic-password -w -a m4pro_sv -s enviouswispr.discord-webhook-se
 # not exist on the machine (verified 2026-07-18, #1655).
 ~/.claude/bin/get-key launch daily-report-trigger-secret V -- sh -c 'printf "%s" "$V" | npx wrangler secret put TRIGGER_SECRET'
 
-# SENTRY_AUTH_TOKEN goes on ALL THREE Sentry workers, not just this one (#1965).
-# sentry-triage needs it for the rate-alert breakdown; its older token reads
-# per-issue events fine but 403s on the aggregate endpoint, so leaving that one
-# in place degrades every spike card while the error path keeps working and
-# hides the gap.
-for w in daily-report weekly-digest sentry-triage; do
+# SENTRY_AUTH_TOKEN goes on both surviving reporting Workers (#3547).
+# Use the worker read-only credential; the retired relay is not a consumer.
+for w in daily-report weekly-digest; do
   (cd "../$w" && ~/.claude/bin/get-key launch sentry-workers-readonly-token V -- \
      sh -c 'printf "%s" "$V" | npx wrangler secret put SENTRY_AUTH_TOKEN')
 done
@@ -232,6 +244,15 @@ so the public `workers.dev` URL cannot be crawled into spamming Discord.
   recovery after a missed scheduled run (see Failure visibility below). The
   DATA reported is always for the literal date given, computed the same way
   as the default "yesterday" path.
+- Missing `report` selects `performance`; `report=performance` sends adoption and
+  version scorecard only, without Sentry queries/credentials.
+- `report=sentry&platform=mac|android` sends a separate broader crash/error
+  write-up for that fixed project/channel. It has no PostHog/appcast dependency.
+  Missing Android binding refuses delivery; it never falls back to Mac.
+- Unsupported/empty report modes and invalid Sentry platforms return 400 before
+  outbound work; `platform` is invalid for performance mode.
+- Morning workflow has independent performance and Mac/Android Sentry jobs;
+  matrix fail-fast is false and no vendor job depends on another's success.
 - 401 body: `"unauthorized\n"`. Request body is ignored. Never logs the
   trigger secret, a PostHog response body, or a Discord response body —
   only counts, labels, and HTTP status codes.
@@ -254,6 +275,16 @@ cron trigger time. Same secret lives as repo secret
 ```
 
 ## Failure visibility (how you'd know if this breaks)
+
+The section-local failure behavior below applies to performance mode.
+Sentry query/render failures attempt one unavailable report and fail that
+platform's job. Missing destination configuration or an invalid date fails
+before queries or delivery. A rejected delivery causes no second post.
+Other mode jobs remain independent.
+
+Default recovery requests run performance only. Recover each Sentry write-up
+separately with `report=sentry` and the appropriate `platform=mac` or
+`platform=android`, retaining the requested date and authentication.
 
 Three independent signals:
 
@@ -334,18 +365,24 @@ deliberate, spaced-out action.
 
 ## Rollback
 
-Delete the GitHub workflow to stop the daily run; `npx wrangler delete
-enviouswispr-daily-report` removes the worker entirely. Revert the PR to
-remove the code. A bad metric definition is a source-level fix + redeploy —
-no data migration involved, this worker is stateless (reads PostHog,
-writes only to Discord).
+For #3547 rollback, pause the morning workflow and drain scheduled and
+recorded direct invocations. Restore the pinned previous reporting deployment
+while paused, restore its matching one-job workflow, then resume scheduling.
+Preserve the Worker, credentials and existing reporting service. A source
+revert alone does not restore the deployed version.
+
+Coordinate native-alert rollback separately: disable replacement Discord
+actions before restoring old consumers, restore the relay and bindings before
+enabling those consumers, and restore its heartbeat last. The approved plan's
+§3.4 and the operation receipts record the complete ordering and pinned versions.
 
 ## Shared infrastructure (#1589)
 
 The PostHog transport and Discord delivery this worker uses now live in
 `workers/shared/`, because `workers/weekly-digest` became a second consumer.
-This worker's behaviour is unchanged: the same retry policy, the same
-concurrency cap, the same `daily_report_*` query names.
+That extraction preserved the performance retry policy, concurrency cap and
+`daily_report_*` query names. The separate #3547 Sentry modes have their own
+bounded query names and budget over the same shared transport.
 
 **Deploy consequence.** Each worker bundles its own snapshot at deploy time, so
 a change under `workers/shared/` is live only in the workers redeployed since.
@@ -353,3 +390,5 @@ When a change touches that directory, deploy **weekly-digest first** and this
 worker second: a broken shared change then lands on the worker already being
 modified rather than on this one, which is the higher-value report and the one
 that should not have changed at all. Full rule: `workers/shared/README.md`.
+
+Native immediate-alert configuration and rollback: [NATIVE-SENTRY.md](../reporting/NATIVE-SENTRY.md).

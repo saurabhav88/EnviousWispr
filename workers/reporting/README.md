@@ -1,72 +1,45 @@
 # workers/reporting
 
-Report POLICY shared by more than one digest Worker. Product judgement lives
-here; transport lives in `workers/shared`.
+Reporting policy lives here; HTTP and protocol live in `workers/shared`.
 
-## Consumers
+| Module | Runtime consumers |
+|---|---|
+| `sentry-writeup.js` | daily-report, independent Mac/Android Sentry modes |
+| `sentry-section.js` | weekly-digest recap; daily-report uses its shared category labels and window/version helpers |
+| `workers/shared/sentry.js` | daily-report, weekly-digest |
 
-- `workers/daily-report` (yesterday)
-- `workers/weekly-digest` (the last seven whole days)
+The daily performance mode reads PostHog only. The daily Sentry modes cover all
+recorded builds and separate customer releases, developer builds and unknown
+builds. They include occurrence trends, build labels, genuine first-seen status
+and issue links. Identity counts are exact or explicitly lower bounds;
+feedback correspondence is excluded. Weekly retains its production/release
+recap policy. Those scopes differ by purpose, not by duplicated transport.
 
-Keep that list accurate. It is the deploy checklist.
+Native Sentry owns immediate first/return/feedback notifications. The custom
+relay retired in #3547. Configuration, verification and rollback:
+[NATIVE-SENTRY.md](NATIVE-SENTRY.md).
 
-## THE RULE THAT BITES: editing a file here changes nothing in production
+## Deployment
 
-Identical to `workers/shared/README.md`, and it applies for the same reason:
-each Worker is bundled separately at `wrangler deploy` time and carries its own
-snapshot of this code.
+Each Worker bundles its own snapshot. A merge or git revert changes no live
+Worker. Redeploy all consumers of the module changed, using the pinned-account
+credential wrapper in `workers/daily-report/README.md`.
 
-- **A merged PR deploys nothing.** No CI workflow runs `wrangler deploy`.
-- **A change here is live only in the Workers you have redeployed since.**
-- **`git revert` does not roll back production.** Rolling back means reverting
-  *and* redeploying every consumer.
-
-After changing a file **in this directory** (two consumers — read the next
-paragraph before assuming that covers you):
+For `sentry-writeup.js`, deploy daily-report. For `sentry-section.js` or the
+shared Sentry transport, deploy both reporting consumers:
 
 ```bash
-cd workers/daily-report  && npx wrangler deploy    # deploy the CHANGED consumer first
-cd ../weekly-digest      && npx wrangler deploy
+cd workers/daily-report && npx wrangler deploy
+cd ../weekly-digest     && npx wrangler deploy
 ```
 
-There are **two deployment sets, and they are not the same set**:
-
-| Module | Consumers |
-|---|---|
-| `workers/reporting/sentry-section.js` | daily-report, weekly-digest |
-| `workers/shared/sentry.js` | daily-report, weekly-digest, **sentry-triage** |
-
-A digest-policy change needs the two digests redeployed. A change to the Sentry
-transport underneath it needs all three, including the triage Worker, which
-consumes the transport and none of the policy.
-
-## Why this directory exists at all
-
-`workers/shared/README.md` says, in its own words: transport and protocol only,
-and "metric SQL, report windows, section failure policy, degrade wording, and
-anything a reader would recognise as a product judgement" must not come here.
-
-The Sentry section is exactly that forbidden half. It decides which releases
-count, whether an `error.category` means the person lost their dictation or
-merely got a worse one, and how to say so in a sentence the founder reads. Both
-digests need the identical answer to all three, and duplicating it would let the
-classification and the wording drift apart silently.
-
-So the split is: `workers/shared/sentry.js` owns HTTP, auth, retry and
-response-shape validation; `workers/reporting/sentry-section.js` owns the
-queries, the classification and every word.
-
-## What must NOT come here
-
-- Anything a THIRD Worker with a different contract needs. `sentry-triage` is
-  webhook-driven and deadline-bound (20s lookup, 28s operation); the digests are
-  scheduled and tolerant. It imports the shared transport and keeps its own
-  query, formatter and throttle, deliberately.
-- Transport concerns. They belong one directory over.
+The Daily Report cron workflow only invokes the deployed service. It must use
+modes supported by that service. The default request remains performance.
 
 ## Tests
 
-There is no test package here. `workers/daily-report/test/sentry-section.test.js`
-covers this module and the transport, and both digest suites cover the
-integration. All three run in CI via the `worker-tests` job feeding the required
-`build-check`, so a change here that breaks either consumer blocks the PR.
+Daily `test/sentry-writeup.test.js` covers broader daily policy and cursor
+contracts; `test/sentry-section.test.js` covers the weekly recap/shared helpers;
+`test/report-modes.test.js` covers strict mode routing and vendor independence. Daily
+and weekly suites cover their real entrypoints, and `worker-tests` runs them in
+CI. A valid empty result differs from a missing/degraded measurement.

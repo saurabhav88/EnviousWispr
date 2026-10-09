@@ -11,12 +11,10 @@ the module you changed, not every worker in this table.
 |---|---|
 | `posthog.js` | `workers/daily-report`, `workers/weekly-digest` |
 | `discord.js` | `workers/daily-report`, `workers/weekly-digest` |
-| `sentry.js` | `workers/daily-report`, `workers/weekly-digest`, `workers/sentry-triage` |
+| `sentry.js` | `workers/daily-report`, `workers/weekly-digest` |
 
-Keep that table accurate. It is the deploy checklist. A single flat list was
-enough until `sentry.js` arrived with a third consumer that uses only it
-(#1965), and a flat list would now over-report the blast radius of a
-posthog.js change and under-report a sentry.js one.
+Keep that table accurate. It is the deploy checklist. The custom Sentry relay
+retired in #3547; its routines remain separate from these runtime consumers.
 
 ## THE RULE THAT BITES: editing a file here changes nothing in production
 
@@ -41,15 +39,11 @@ cd workers/weekly-digest && npx wrangler deploy    # deploy the CHANGED consumer
 cd ../daily-report      && npx wrangler deploy     # then the one that should not change
 ```
 
-Changed `sentry.js` (**three** consumers — `sentry-triage` uses the transport
-and none of the reporting policy, so it is easy to forget and its failure is
-quiet: rate-alert cards silently lose their breakdown while ordinary error posts
-keep working):
+Changed `sentry.js` (both reporting consumers):
 
 ```bash
-cd workers/sentry-triage && npx wrangler deploy    # the CHANGED consumer first
-cd ../daily-report       && npx wrangler deploy
-cd ../weekly-digest      && npx wrangler deploy
+cd workers/daily-report && npx wrangler deploy
+cd ../weekly-digest     && npx wrangler deploy
 ```
 
 Deploy the worker whose behaviour is meant to change **first**. If the shared
@@ -72,8 +66,8 @@ Transport and protocol only:
 - `sentry.js` — Sentry's HTTP, authentication, retryable-status set, bounded
   retry, deadline enforcement, response-shape validation and row normalization.
   Which window to ask about, which releases count, and what an error category
-  MEANS are all product judgement and live in `workers/reporting/sentry-section.js`
-  instead.
+  MEANS are all product judgement and live in `workers/reporting/sentry-section.js` (weekly recap and shared labels/helpers)
+  and `workers/reporting/sentry-writeup.js` (independent daily write-up).
 
 ## What must NOT come here
 
