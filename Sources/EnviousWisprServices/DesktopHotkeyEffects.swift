@@ -90,6 +90,10 @@ package struct KeyEventValue: Sendable, Equatable {
     /// does not disable the tap (#3544 P0: `flagsChanged` keeps arriving, key events stop).
     /// Same non-key payload as `tapReenabled`.
     case secureInputChanged
+    /// The OS disabled the tap too often (the listener's storm rule) and this installation has
+    /// stopped for good (#3544 P3). Sent once, from the listener's thread, before its cleanup;
+    /// the owner removes it and installs a replacement after a cooldown. Same non-key payload.
+    case stormStopped
   }
 
   package let kind: Kind
@@ -232,8 +236,8 @@ package protocol DesktopHotkeyEffects: AnyObject {
     _ sink: @escaping @Sendable (KeyEventValue) -> ListenerVerdict
   ) -> DesktopEffectToken?
 
-  /// The listener's state: the installed one's, or, in DEBUG builds, the last removed one's final
-  /// state (read after its removal, so its last callback is counted). Nil otherwise.
+  /// The listener's state: the installed one's, or the last removed one's final state (read after
+  /// its removal, so its last callback is counted). Nil otherwise.
   func keyboardListenerHealth(_ token: DesktopEffectToken) -> KeyboardListenerHealth?
 
   /// Reads whether keys are down right now, for reconciling after the tap was off. Callable from

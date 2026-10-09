@@ -193,20 +193,17 @@ package final class LiveDesktopHotkeyEffects: DesktopHotkeyEffects {
     return token
   }
 
-  #if DEBUG
-    /// The last removed listener's final state, kept so a report read after removal includes its
-    /// final callback. One slot.
-    private var lastRemovedListenerHealth:
-      (token: DesktopEffectToken, health: KeyboardListenerHealth)?
-  #endif
+  /// The last removed listener's final state, kept so a report read after removal includes its
+  /// final callback. One slot, in every build: the owner accounts each installation's final
+  /// health once, after its removal (#3544 P3).
+  private var lastRemovedListenerHealth:
+    (token: DesktopEffectToken, health: KeyboardListenerHealth)?
 
   package func keyboardListenerHealth(_ token: DesktopEffectToken) -> KeyboardListenerHealth? {
     if case .keyboardListener(let listener) = resources[token] {
       return listener.health()
     }
-    #if DEBUG
-      if let last = lastRemovedListenerHealth, last.token == token { return last.health }
-    #endif
+    if let last = lastRemovedListenerHealth, last.token == token { return last.health }
     return nil
   }
 
@@ -266,9 +263,7 @@ package final class LiveDesktopHotkeyEffects: DesktopHotkeyEffects {
         resources[token] = .keyboardListener(listener)
         return false
       }
-      #if DEBUG
-        lastRemovedListenerHealth = (token, listener.health())
-      #endif
+      lastRemovedListenerHealth = (token, listener.health())
     }
     return true
   }

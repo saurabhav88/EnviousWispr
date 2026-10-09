@@ -252,6 +252,9 @@
           policy.reconcile(handled: clock(), reader: keyStateReader)
         case .flagsChanged, .keyDown, .keyUp, .secureInputChanged:
           policy.ingest(event, handled: clock(), installation: installation)
+        case .stormStopped:
+          // The installation is ending; its segment closes when the owner removes it.
+          break
         }
       }
 

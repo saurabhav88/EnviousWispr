@@ -1,0 +1,271 @@
+import AppKit
+import EnviousWisprCore
+import EnviousWisprServices
+import Foundation
+import Testing
+import os
+
+/// #3544 P3: the keyboard listener recovers from a disable storm on its own, and reports its
+/// health only when something went wrong.
+///
+/// Product Outcome: when this fails, a listener the OS kept disabling stays dead until the app
+/// is relaunched (the record key goes silent), a replacement is installed while the old tap may
+/// still be live (two listeners), a storm floods reinstalls, or listener health never reaches the
+/// weekly release review.
+@MainActor
+@Suite(.tags(.productOutcome), .timeLimit(.minutes(1)))
+struct KeyboardListenerRecoveryTests {
+
+  @MainActor private final class Rig {
+    let clock = HotkeyTestClock(500)
+    let timers: HotkeyTestScheduler
+    let effects = RecordingDesktopHotkeyEffects()
+    let service: HotkeyService
+    var health: [HotkeyListenerHealthReport] = []
+    let retries = HotkeyGlobeKeyTests.CallbackWaiter()
+
+    init() {
+      timers = HotkeyTestScheduler(clock: clock)
+      final class Box { weak var rig: Rig? }
+      let box = Box()
+      service = HotkeyService(
+        effects: effects,
+        telemetry: HotkeyTelemetrySink(
+          registrationFailed: { _, _, _, _ in }, pressed: { _, _, _, _, _, _ in },
+          listenerHealth: { report in box.rig?.health.append(report) }),
+        uptime: clock.uptime, scheduler: timers.scheduler)
+      box.rig = self
+      let retries = self.retries
+      service.onListenerRetryResolvedForTesting = { retries.note() }
+    }
+
+    var engine: RecordGestureEngine { service.recordGestureEngineForTesting }
+
+    func stormHealth() {
+      effects.keyboardListenerHealthAnswer = KeyboardListenerHealth(
+        terminal: .disableStorm, disableEpisodes: 5, reenables: 4, cost: nil)
+    }
+
+    /// The listener's own storm notice, from its thread, then the main turn it hops to.
+    func storm(through sink: (@Sendable (KeyEventValue) -> ListenerVerdict)?) async {
+      let sink = sink
+      await Task.detached {
+        _ = sink?(KeyEventValue(kind: .stormStopped, keyCode: 0, rawFlags: 0, timestamp: nil))
+      }.value
+      await Self.mainTurn()
+    }
+
+    /// Wait for main to run everything queued on it before this call (FIFO).
+    static func mainTurn() async {
+      await withCheckedContinuation { continuation in
+        DispatchQueue.main.async { continuation.resume() }
+      }
+    }
+  }
+
+  @Test("a storm removes the listener at once and installs a fresh one after the cooldown")
+  func stormIsReplacedAfterTheCooldown() async throws {
+    let rig = Rig()
+    rig.service.start()
+    defer { rig.service.stop() }
+    let first = try #require(rig.effects.keyboardListenerToken)
+    let firstInstallation = try #require(rig.engine.listenerInstallation)
+    rig.stormHealth()
+    await rig.storm(through: rig.effects.keyboardListenerSink)
+    #expect(rig.effects.removed.contains(first))
+    #expect(rig.effects.keyboardListenerToken == nil)
+    #expect(rig.engine.listenerInstallation == nil)
+    #expect(rig.health.count == 1)
+    #expect(rig.health.first?.terminal == "disable_storm")
+    #expect(rig.health.first?.reason == "storm")
+    #expect(rig.health.first?.disableEpisodes == 5)
+    // The reviewed bound, as an independent literal.
+    #expect(rig.timers.requestedDelays.last == 60)
+    // Not before the cooldown.
+    rig.clock.now = 559.9
+    rig.timers.fireDue()
+    await Rig.mainTurn()
+    #expect(rig.effects.keyboardListenerInstalls == 1)
+    // At the cooldown, a fresh installation with a fresh identity, without any key event.
+    rig.effects.keyboardListenerHealthAnswer = KeyboardListenerHealth(
+      terminal: nil, disableEpisodes: 0, reenables: 0, cost: nil)
+    rig.clock.now = 560
+    rig.timers.fireDue()
+    await rig.retries.wait(until: 1)
+    #expect(rig.effects.keyboardListenerInstalls == 2)
+    let second = try #require(rig.effects.keyboardListenerToken)
+    #expect(second != first)
+    let secondInstallation = try #require(rig.engine.listenerInstallation)
+    #expect(secondInstallation != firstInstallation)
+  }
+
+  @Test("stopping during the cooldown cancels the replacement")
+  func stopDuringCooldownInstallsNothing() async {
+    let rig = Rig()
+    rig.service.start()
+    rig.stormHealth()
+    await rig.storm(through: rig.effects.keyboardListenerSink)
+    rig.service.stop()
+    rig.clock.now = 560
+    rig.timers.fireDue()
+    await Rig.mainTurn()
+    #expect(rig.effects.keyboardListenerInstalls == 1)
+    #expect(rig.effects.keyboardListenerToken == nil)
+    #expect(rig.engine.listenerInstallation == nil)
+  }
+
+  @Test("suspending during the cooldown cancels it, and resuming installs at once")
+  func suspendDuringCooldownThenResume() async throws {
+    let rig = Rig()
+    rig.service.start()
+    defer { rig.service.stop() }
+    rig.stormHealth()
+    await rig.storm(through: rig.effects.keyboardListenerSink)
+    rig.service.suspend()
+    rig.clock.now = 560
+    rig.timers.fireDue()
+    await Rig.mainTurn()
+    #expect(rig.effects.keyboardListenerInstalls == 1)
+    rig.service.resume()
+    #expect(rig.effects.keyboardListenerInstalls == 2)
+    _ = try #require(rig.effects.keyboardListenerToken)
+  }
+
+  @Test("a storm notice from an installation already replaced does nothing")
+  func staleStormNoticeIsIgnored() async throws {
+    let rig = Rig()
+    rig.service.start()
+    defer { rig.service.stop() }
+    let oldSink = rig.effects.keyboardListenerSink
+    rig.service.suspend()
+    rig.service.resume()
+    let current = try #require(rig.effects.keyboardListenerToken)
+    let delays = rig.timers.requestedDelays.count
+    rig.stormHealth()
+    await rig.storm(through: oldSink)
+    #expect(rig.effects.keyboardListenerToken == current)
+    #expect(rig.effects.removed.contains(current) == false)
+    #expect(rig.timers.requestedDelays.count == delays)
+    #expect(rig.health.isEmpty)
+  }
+
+  @Test("a refused removal after a storm installs nothing until the old listener is gone")
+  func refusedStormRemovalWaitsForTheOldListener() async throws {
+    let rig = Rig()
+    rig.service.start()
+    defer { rig.service.stop() }
+    let first = try #require(rig.effects.keyboardListenerToken)
+    rig.stormHealth()
+    rig.effects.refuseRemovals = true
+    await rig.storm(through: rig.effects.keyboardListenerSink)
+    // Still owned, so not yet accounted and not replaced.
+    #expect(rig.effects.keyboardListenerToken == first)
+    #expect(rig.health.isEmpty)
+    #expect(rig.engine.listenerInstallation == nil)
+    rig.effects.refuseRemovals = false
+    rig.clock.now = 560
+    rig.timers.fireDue()
+    await rig.retries.wait(until: 1)
+    #expect(rig.effects.removed.filter { $0 == first }.count == 2)
+    #expect(rig.effects.keyboardListenerInstalls == 2)
+    // Its final health is accounted once, when its removal finally succeeded.
+    #expect(rig.health.count == 1)
+    #expect(rig.health.first?.terminal == "disable_storm")
+    #expect(rig.health.first?.reason == "reinstall")
+  }
+
+  @Test("a healthy installation reports nothing; one the OS disabled reports once at its end")
+  func healthIsReportedOnlyForTroubledInstallations() {
+    let rig = Rig()
+    rig.service.start()
+    rig.service.stop()
+    #expect(rig.health.isEmpty)
+    rig.service.start()
+    rig.effects.keyboardListenerHealthAnswer = KeyboardListenerHealth(
+      terminal: .removed, disableEpisodes: 2, reenables: 2, cost: nil)
+    rig.service.stop()
+    rig.service.stop()
+    #expect(rig.health.count == 1)
+    #expect(rig.health.first?.terminal == "removed")
+    #expect(rig.health.first?.reason == "stop")
+    #expect(rig.health.first?.disableEpisodes == 2)
+    #expect(rig.health.first?.reenables == 2)
+  }
+
+  @Test("failed installs are counted, and the success after them reports once with the totals")
+  func failedInstallsThenSuccessAreCounted() async {
+    let rig = Rig()
+    rig.effects.failKeyboardListenerInstall = true
+    rig.service.start()
+    defer { rig.service.stop() }
+    // Two retries at the Accessibility poll cadence fail; nothing reported yet.
+    for retry in 1...2 {
+      rig.clock.now += TimingConstants.accessibilityPollIntervalSec
+      rig.timers.fireDue()
+      await rig.retries.wait(until: retry)
+    }
+    #expect(rig.effects.keyboardListenerInstalls == 3)
+    #expect(rig.health.isEmpty)
+    // Access granted: the next retry installs, with no key input at all.
+    rig.effects.failKeyboardListenerInstall = false
+    rig.clock.now += TimingConstants.accessibilityPollIntervalSec
+    rig.timers.fireDue()
+    await rig.retries.wait(until: 3)
+    #expect(
+      rig.health == [
+        HotkeyListenerHealthReport(
+          terminal: "none", reason: "installed_after_failures", disableEpisodes: 0, reenables: 0,
+          installAttempts: 4, installFailures: 3, installs: 1)
+      ])
+    // A later healthy reinstall reports nothing more.
+    rig.service.suspend()
+    rig.service.resume()
+    #expect(rig.health.count == 1)
+  }
+
+  @Test("installs that never succeed report once when shortcuts stop, and only once")
+  func failuresReportedAtStop() async {
+    let rig = Rig()
+    rig.effects.failKeyboardListenerInstall = true
+    rig.service.start()
+    for retry in 1...2 {
+      rig.clock.now += TimingConstants.accessibilityPollIntervalSec
+      rig.timers.fireDue()
+      await rig.retries.wait(until: retry)
+    }
+    #expect(rig.effects.keyboardListenerInstalls == 3)
+    #expect(rig.health.isEmpty)
+    rig.service.stop()
+    rig.service.stop()
+    #expect(
+      rig.health == [
+        HotkeyListenerHealthReport(
+          terminal: "start_failed", reason: "stop", disableEpisodes: 0, reenables: 0,
+          installAttempts: 3, installFailures: 3, installs: 0)
+      ])
+  }
+
+  @Test("each failure episode reports once: one ended by success, a later one by suspend")
+  func successiveFailureEpisodes() async {
+    let rig = Rig()
+    rig.effects.failKeyboardListenerInstall = true
+    rig.service.start()
+    defer { rig.service.stop() }
+    rig.effects.failKeyboardListenerInstall = false
+    rig.clock.now += TimingConstants.accessibilityPollIntervalSec
+    rig.timers.fireDue()
+    await rig.retries.wait(until: 1)
+    #expect(rig.health.map(\.reason) == ["installed_after_failures"])
+    // Access lost later: a reinstall fails, then the recorder suspends shortcuts.
+    rig.effects.failKeyboardListenerInstall = true
+    rig.service.suspend()
+    rig.service.resume()
+    rig.service.suspend()
+    #expect(rig.health.map(\.reason) == ["installed_after_failures", "suspend"])
+    #expect(rig.health.last?.terminal == "start_failed")
+    #expect(rig.health.last?.installAttempts == 3)
+    #expect(rig.health.last?.installFailures == 2)
+    #expect(rig.health.last?.installs == 1)
+    rig.service.resume()
+  }
+}

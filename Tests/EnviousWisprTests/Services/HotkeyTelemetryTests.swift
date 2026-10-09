@@ -354,6 +354,31 @@ import Testing
       #expect(event?.boolProps.isEmpty == true)
     }
 
+    @Test("hotkey.listener_health wire payload is closed strings and counts, never a key")
+    func listenerHealthWirePayload() {
+      let box = EventBox()
+      let previousHook = TelemetryService.shared.testEventHook
+      TelemetryService.shared.testEventHook = { event in
+        if event.name == "hotkey.listener_health" { box.set(event) }
+      }
+      defer { TelemetryService.shared.testEventHook = previousHook }
+
+      TelemetryService.shared.hotkeyListenerHealth(
+        HotkeyListenerHealthReport(
+          terminal: "disable_storm", reason: "storm", disableEpisodes: 5, reenables: 4,
+          installAttempts: 2, installFailures: 0, installs: 2))
+
+      let event = box.value
+      #expect(event?.stringProps == ["terminal": "disable_storm", "reason": "storm"])
+      #expect(
+        event?.intProps == [
+          "disable_episodes": 5, "reenables": 4, "install_attempts": 2, "install_failures": 0,
+          "installs": 2,
+        ])
+      #expect(event?.doubleProps.isEmpty == true)
+      #expect(event?.boolProps.isEmpty == true)
+    }
+
     /// #3534: a lock intent carries `window_timing`; the case above, with none, carries no
     /// such key at all.
     @Test("hotkey.pressed wire payload carries window_timing only when given")

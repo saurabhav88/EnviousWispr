@@ -395,6 +395,18 @@ public final class HotkeyService {
 
   /// One `registrationFailed(event_tap)` per run of failed installs, not one per retry.
   private var listenerFailureReported = false
+  /// How long after a disable storm stopped the listener before a fresh one is installed
+  /// (#3544 P3). An engineering backoff bound, reviewed in the P3 build: it reuses the storm window
+  /// so replacements can never themselves storm faster than the rule that detects storms. It is
+  /// not a P2 measurement and not a responsiveness promise.
+  package static let listenerStormCooldown: TimeInterval = 60
+  /// This launch's listener installs: adapter calls, the ones that returned no listener, and the
+  /// ones that did. Reported with every `hotkey.listener_health` row.
+  private var listenerInstallAttempts = 0
+  private var listenerInstallFailures = 0
+  private var listenerInstalls = 0
+  /// Failed attempts since the last successful install; a success after any reports once.
+  private var listenerFailuresSinceInstall = 0
   private var listenerRetry: RecordGestureEngine.TimerHandle?
   /// Schedules the install retry off main; the fire hops to main to re-check the lifecycle.
   private let listenerRetryScheduler: RecordGestureEngine.Scheduler
@@ -1474,10 +1486,16 @@ public final class HotkeyService {
     let generation = listenerGeneration
     // A listener whose earlier removal was refused (its cleanup ran late) is removed now; until
     // that succeeds no second listener is installed, and the removal is retried.
-    if keyboardListenerToken != nil { release(&keyboardListenerToken) }
+    if keyboardListenerToken != nil { releaseKeyboardListener(reason: "reinstall") }
     guard keyboardListenerToken == nil else {
       scheduleListenerRetry(generation)
       return
+    }
+    // A storm stops the installation from the listener's thread; main replaces it.
+    let stormed: @Sendable () -> Void = { [weak self] in
+      DispatchQueue.main.async { [weak self] in
+        MainActor.assumeIsolated { self?.listenerStormed(installation: generation) }
+      }
     }
     #if DEBUG
       // The sink holds its own installation's segment, never "the current one".
@@ -1485,21 +1503,34 @@ public final class HotkeyService {
         installation: generation, generation: comparisonGeneration,
         snapshot: currentShadowSnapshot, keyStateReader: effects.keyStateReader)
       let sink: @Sendable (KeyEventValue) -> ListenerVerdict = { event in
+        if event.kind == .stormStopped { stormed() }
         segment.listenerEvent(event)
         return .passThrough
       }
     #else
-      let sink: @Sendable (KeyEventValue) -> ListenerVerdict = { _ in .passThrough }
+      let sink: @Sendable (KeyEventValue) -> ListenerVerdict = { event in
+        if event.kind == .stormStopped { stormed() }
+        return .passThrough
+      }
     #endif
+    listenerInstallAttempts += 1
     if let token = effects.installKeyboardListener(sink) {
       keyboardListenerToken = token
       listenerFailureReported = false
+      listenerInstalls += 1
       engine.openListenerAdmission(installation: generation)
+      if listenerFailuresSinceInstall > 0 {
+        listenerFailuresSinceInstall = 0
+        reportListenerHealth(
+          terminal: "none", reason: "installed_after_failures", disableEpisodes: 0, reenables: 0)
+      }
       #if DEBUG
         shadowDiagnostics.activate(segment)
       #endif
       return
     }
+    listenerInstallFailures += 1
+    listenerFailuresSinceInstall += 1
     if !listenerFailureReported {
       listenerFailureReported = true
       telemetry.registrationFailed(
@@ -1509,10 +1540,60 @@ public final class HotkeyService {
     scheduleListenerRetry(generation)
   }
 
+  /// The listener `installation` stopped itself after a disable storm. Remove it (its final health
+  /// is accounted then) and install a fresh one after the cooldown. Ignored for an installation
+  /// that is no longer current: a stop, suspend or reinstall already replaced it.
+  private func listenerStormed(installation: UInt64) {
+    guard installation == listenerGeneration, keyboardListenerToken != nil else { return }
+    removeKeyboardListener(reason: "storm")
+    // Validated when it fires: a stop, suspend or reinstall in between moves the generation on.
+    scheduleListenerRetry(listenerGeneration, after: Self.listenerStormCooldown)
+  }
+
+  /// Release the listener's token. When the removal is confirmed, its final health is read and
+  /// accounted, once: a refused removal keeps the token, and is accounted when a later release
+  /// succeeds. Returns that final health.
+  @discardableResult
+  private func releaseKeyboardListener(reason: String) -> KeyboardListenerHealth? {
+    guard let token = keyboardListenerToken else {
+      // No listener to release, but a failure episode still open (installs kept failing and
+      // shortcuts are now stopping or suspending): report it once, so the totals leave the app.
+      if listenerFailuresSinceInstall > 0 {
+        listenerFailuresSinceInstall = 0
+        reportListenerHealth(
+          terminal: "start_failed", reason: reason, disableEpisodes: 0, reenables: 0)
+      }
+      return nil
+    }
+    release(&keyboardListenerToken)
+    guard keyboardListenerToken == nil, let health = effects.keyboardListenerHealth(token) else {
+      return nil
+    }
+    // Rare failure only: a healthy installation reports nothing.
+    if health.disableEpisodes > 0 || health.terminal == .disableStorm {
+      reportListenerHealth(
+        terminal: health.terminal == .disableStorm ? "disable_storm" : "removed", reason: reason,
+        disableEpisodes: health.disableEpisodes, reenables: health.reenables)
+    }
+    return health
+  }
+
+  private func reportListenerHealth(
+    terminal: String, reason: String, disableEpisodes: Int, reenables: Int
+  ) {
+    telemetry.listenerHealth(
+      HotkeyListenerHealthReport(
+        terminal: terminal, reason: reason, disableEpisodes: disableEpisodes,
+        reenables: reenables, installAttempts: listenerInstallAttempts,
+        installFailures: listenerInstallFailures, installs: listenerInstalls))
+  }
+
   /// Try the install again later, for this installation attempt only.
-  private func scheduleListenerRetry(_ generation: UInt64) {
+  private func scheduleListenerRetry(
+    _ generation: UInt64, after delay: TimeInterval = TimingConstants.accessibilityPollIntervalSec
+  ) {
     // Weak at every level: a pending retry must not keep a released service alive.
-    listenerRetry = listenerRetryScheduler(TimingConstants.accessibilityPollIntervalSec) {
+    listenerRetry = listenerRetryScheduler(delay) {
       [weak self] in
       DispatchQueue.main.async { [weak self] in
         MainActor.assumeIsolated {
@@ -1539,12 +1620,15 @@ public final class HotkeyService {
       let removing = keyboardListenerToken
     #endif
     // Remove first: once the adapter confirms, no callback for this installation is running.
-    release(&keyboardListenerToken)
+    let finalHealth = releaseKeyboardListener(reason: reason)
+    #if !DEBUG
+      _ = finalHealth
+    #endif
     #if DEBUG
       if let removing {
         // Read after removal, so the final callback is counted; complete only when the removal
         // was confirmed (a refused one leaves the listener running).
-        let health = effects.keyboardListenerHealth(removing)
+        let health = finalHealth ?? effects.keyboardListenerHealth(removing)
         let healthComplete = keyboardListenerToken == nil
         // A new comparison generation from here on: whatever live decides after this boundary
         // is never compared with the closing installation's records.

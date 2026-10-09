@@ -18,9 +18,9 @@ import os
 /// **Recovery.** The OS disables a tap whose callback runs too long, or on some user input. The
 /// callback and a 2 s watchdog both notice; the listener re-enables and reports `.tapReenabled`
 /// only once the tap is confirmed enabled again. Five disable episodes within 60 s is a storm: the
-/// installation stops for good and reports why (`terminalReason`); a replacement and its cooldown
-/// belong to the owner (plan §7, cooldown still to be measured). Both numbers are the plan's
-/// provisional baselines (§14), to be checked against P2 live measurements.
+/// installation stops for good, reports why (`terminalReason`) and tells the sink once
+/// (`.stormStopped`), with no key event needed; the replacement and its cooldown belong to the
+/// owner (`HotkeyService`, #3544 P3). Both numbers are the plan's provisional baselines (§14).
 ///
 /// **Not produced yet.** `.secureInputChanged` (detection and policy are P3, plan §3.5; a disable
 /// is never read as Secure Input, #3544 P0). `isOurs` is read from the shared
@@ -279,6 +279,11 @@ final class LiveKeyboardListener: @unchecked Sendable {
     }
     guard let storm else { return }
     if storm {
+      // Told once, before cleanup: the owner replaces this installation after its cooldown.
+      _ = sink(
+        KeyEventValue(
+          kind: .stormStopped, keyCode: 0, rawFlags: 0,
+          timestamp: ProcessInfo.processInfo.systemUptime))
       CFRunLoopStop(CFRunLoopGetCurrent())
       return
     }

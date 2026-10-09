@@ -165,8 +165,17 @@ struct TelemetryEmitterRegistryTests {
   /// (kept whole by policy 6), omitted otherwise, no content; the new `late_after_window`
   /// press_action is one more value on the same row for a second press just past the window (one
   /// row per such press); reader named on the (still ungraded) registry row.
+  /// #3544 P3: new `hotkey.listener_health` site (`hotkeyListenerHealth`). Checklist: rare_failure;
+  /// one row per completed troubled listener installation (ended after an OS disable) and one per
+  /// install that succeeded after failed attempts; a healthy launch sends none. Rows can occur
+  /// without any dictation: volume follows listener lifecycle, not takes. Bound: installations end
+  /// at stop/quit, suspend (shortcut recorder opened), a storm (at most one per 60 s cooldown) or a
+  /// reinstall, and only troubled ones report, so a launch sends 0 in the normal case and at most
+  /// about one per minute in a pathological storm loop. Launch-scoped, no take_id; counts and
+  /// closed terminal/reason strings only, Int on the wire; no existing row ends with an
+  /// installation; reader named on its graded registry row.
   static let sitesFingerprint =
-    "6b3e50adc7eba1d323edf006903909a02cc860db5ba1938c4f29374876d22ff8"
+    "448af263db49fd5bbe5a86f4ccfd650fc20077639130445c25605abc4708f9df"
   static let ungradedFingerprint =
     "8c5e46c2f2f7fb59004bb2eb5ea1ac210ef32dbb79fdcb68b3eff70a28cc133f"
 
