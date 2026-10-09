@@ -332,6 +332,14 @@ struct SettingsArrivalTests {
     var lazy = false
     /// The tab the lazy marker says it tops (default: the drawn tab).
     var lazyTab: DictationTab?
+    /// Pins Reduce Motion for the arrival owner and its ring.
+    var reduceMotion: Bool?
+    /// Space above the rows, so they start below the fold and arrival has to scroll.
+    var spacer: CGFloat = 0
+    /// Space after each row, so later rows sit below the fold.
+    var rowGap: CGFloat = 0
+    /// A text field in the page, which consumes the keys typed into it.
+    var textField = false
 
     var body: some View {
       let drawn = SettingsArrivalContent(page: .dictation, dictationTab: tab)
@@ -344,11 +352,15 @@ struct SettingsArrivalTests {
         }
         SettingsContentView {
           Color.clear.frame(height: 0).id("lazyTop")
+          FocusRequestProbe(box: box)
+          if textField { TextField("Typing", text: .constant("")) }
+          Color.clear.frame(height: spacer)
           if late {
             LateRows(ids: rows)
           } else {
             ForEach(rows, id: \.self) { id in
               Toggle(id.rawValue, isOn: .constant(false)).settingsMapRegistration(id)
+                .padding(.bottom, rowGap)
             }
           }
         }
@@ -370,7 +382,24 @@ struct SettingsArrivalTests {
       }
       .environment(\.settingsArrivalStillCurrent) { _ in box.current }
       .environment(\.settingsArrivalDecided) { box.record($0) }
+      .environment(\.settingsArrivalRingDrawn) { id, rect, clip in box.rings.append((id, rect, clip)) }
+      .environment(\.settingsArrivalReduceMotion, reduceMotion)
       .frame(width: 700, height: 500)
+    }
+  }
+
+  /// Records every focus request the arrival owner publishes to the page's adapters.
+  struct FocusRequestProbe: View {
+    let box: RevealBox
+    @Environment(\.settingsArrivalFocusRequest) private var request
+    var body: some View {
+      Color.clear.frame(width: 1, height: 1)
+        .onChange(of: request, initial: true) { _, new in
+          if let new {
+            box.focusRequests.append(new)
+            box.focusSink.yield(new)
+          }
+        }
     }
   }
 
@@ -469,6 +498,91 @@ struct SettingsArrivalTests {
     }
 
     func close() { window.contentView = nil }
+
+    /// The host's current paint.
+    func paint() throws -> NSBitmapImageRep {
+      host.layoutSubtreeIfNeeded()
+      window.displayIfNeeded()
+      let rep = try #require(host.bitmapImageRepForCachingDisplay(in: host.bounds), "no bitmap")
+      host.cacheDisplay(in: host.bounds, to: rep)
+      return rep
+    }
+
+    /// Types `key` into the first text field in the page, through the application's own event
+    /// dispatch (the path a real key takes), with that field holding keyboard focus.
+    func type(_ key: String) throws {
+      window.setFrameOrigin(NSPoint(x: -20_000, y: -20_000))
+      window.orderFrontRegardless()
+      func fields(_ view: NSView) -> [NSTextField] {
+        (view as? NSTextField).map { [$0] } ?? [] + view.subviews.flatMap(fields)
+      }
+      let field = try #require(fields(host).first { $0.isEditable }, "no text field in the page")
+      try #require(window.makeFirstResponder(field), "the text field did not take keyboard focus")
+      let event = try #require(
+        NSEvent.keyEvent(
+          with: .keyDown, location: .zero, modifierFlags: [],
+          timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: window.windowNumber,
+          context: nil, characters: key, charactersIgnoringModifiers: key, isARepeat: false,
+          keyCode: 0))
+      NSApp.sendEvent(event)
+      host.layoutSubtreeIfNeeded()
+    }
+
+    /// The next focus request the owner publishes, or nil when none came before the hang guard.
+    func focusRequest() async -> SettingsArrivalFocusRequest? {
+      if let first = box.focusRequests.first { return first }
+      let pump = Task { @MainActor [host, window] in
+        while !Task.isCancelled {
+          host.layoutSubtreeIfNeeded()
+          window.displayIfNeeded()
+          try? await Task.sleep(for: .milliseconds(20))
+        }
+      }
+      let guardTask = Task { @MainActor [box] in
+        // deadline-fallback: a hang guard around the focus events; the wait is the event.
+        try? await Task.sleep(for: .seconds(5))
+        guard !Task.isCancelled else { return }
+        box.focusSink.finish()
+      }
+      defer {
+        pump.cancel()
+        guardTask.cancel()
+      }
+      for await request in box.focusEvents { return request }
+      return nil
+    }
+
+    /// A click at `point` (host coordinates, top-left origin), as the person's tap in the page. The
+    /// window is ordered in far off screen so the click is hit-tested like a real one.
+    func click(at point: CGPoint) {
+      window.setFrameOrigin(NSPoint(x: -20_000, y: -20_000))
+      window.orderFrontRegardless()
+      let location = NSPoint(x: point.x, y: host.bounds.height - point.y)
+      for type in [NSEvent.EventType.leftMouseDown, .leftMouseUp] {
+        if let event = NSEvent.mouseEvent(
+          with: type, location: location, modifierFlags: [],
+          timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: window.windowNumber,
+          context: nil, eventNumber: 0, clickCount: 1, pressure: 1)
+        {
+          window.sendEvent(event)
+        }
+      }
+      host.layoutSubtreeIfNeeded()
+    }
+  }
+
+  /// How many pixels differ between two paints inside `rect` (host points).
+  static func changedPixels(_ before: NSBitmapImageRep, _ after: NSBitmapImageRep, in rect: CGRect) -> Int {
+    let scale = CGFloat(before.pixelsWide) / max(1, before.size.width)
+    let box = rect.intersection(CGRect(origin: .zero, size: before.size))
+    guard !box.isNull else { return 0 }
+    var changed = 0
+    for y in stride(from: Int(box.minY * scale), to: Int(box.maxY * scale), by: 1) {
+      for x in stride(from: Int(box.minX * scale), to: Int(box.maxX * scale), by: 1) {
+        if before.colorAt(x: x, y: y) != after.colorAt(x: x, y: y) { changed += 1 }
+      }
+    }
+    return changed
   }
 
   @Test(
@@ -586,6 +700,248 @@ struct SettingsArrivalTests {
     #expect(SettingsMap.takeRecordedFaults().isEmpty)
   }
 
+  // MARK: - Moving up once (#3545 T5, T11)
+
+  /// A row of pauseDuration's tab that is no rung of its ladder.
+  static func unrelatedRow(for reveal: SettingsReveal) throws -> SettingsMapID {
+    let rungs = Set(reveal.ladder.map(\.id))
+    let destination = SettingsMap.node(.pauseDuration).destination
+    return try #require(
+      SettingsMap.nodes.first {
+        $0.structure == .item && $0.destination == destination && !rungs.contains($0.id)
+      }?.id)
+  }
+
+  @Test("a late target lifts an arrival from its section once, keeps focus and the ring's deadline")
+  func lateTargetUpgradesOnce() async throws {
+    let reveal = try Self.reveal("pauseDuration", token: 11)
+    let tab = try #require(reveal.content.dictationTab)
+    let section = try #require(reveal.ladder.first { $0.kind == .section }?.id)
+    let other = try Self.unrelatedRow(for: reveal)
+    let box = RevealBox()
+    let stepper = Stepper(TaggedPage(box: box, reveal: nil, tab: tab, rows: [other]))
+    defer { stepper.close() }
+    // Only an unrelated row: the arrival lands on the tab.
+    let onTab = await stepper.show(TaggedPage(box: box, reveal: reveal, tab: tab, rows: [other]))
+    #expect(onTab?.action == .arrive(tab.mapID, kind: .landing))
+    // The section renders: one move up.
+    let toSection = await stepper.show(TaggedPage(box: box, reveal: reveal, tab: tab, rows: [other, section]))
+    #expect(toSection?.action == .arrive(section, kind: .section))
+    // The target renders after that: no second move.
+    let after = await stepper.show(
+      TaggedPage(box: box, reveal: reveal, tab: tab, rows: [other, section, .pauseDuration]))
+    #expect(after != nil, "the owner never looked at the rendered target")
+    #expect(after?.action != .arrive(.pauseDuration, kind: .target), "moved up twice")
+    #expect(box.landings.map(\.id) == [tab.mapID, section])
+    // Focus was asked only for where the arrival first landed; the upgrade asked nothing.
+    #expect(!box.focusRequests.isEmpty, "the arrival asked no focus at all")
+    #expect(
+      box.focusRequests.allSatisfy { $0.target == tab.mapID },
+      "an upgrade moved focus: \(box.focusRequests.map(\.target.rawValue))")
+    #expect(box.acknowledged == 11)
+  }
+
+  @Test("the target lifts an arrival straight from its section")
+  func sectionToTarget() async throws {
+    let reveal = try Self.reveal("pauseDuration", token: 12)
+    let tab = try #require(reveal.content.dictationTab)
+    let section = try #require(reveal.ladder.first { $0.kind == .section }?.id)
+    let box = RevealBox()
+    let stepper = Stepper(TaggedPage(box: box, reveal: nil, tab: tab, rows: [section]))
+    defer { stepper.close() }
+    let first = await stepper.show(TaggedPage(box: box, reveal: reveal, tab: tab, rows: [section]))
+    #expect(first?.action == .arrive(section, kind: .section))
+    // As the window does, the page no longer carries the reveal once it was acknowledged.
+    let since = box.decisions.count
+    stepper.host.rootView = TaggedPage(box: box, reveal: nil, tab: tab, rows: [section, .pauseDuration])
+    let up = await stepper.decision(after: since) {
+      if case .arrive = $0.action { true } else { false }
+    }
+    #expect(up?.action == .arrive(.pauseDuration, kind: .target))
+    #expect(up?.reveal == reveal, "the upgrade lost the reveal it belongs to")
+    #expect(box.rings.last?.id == .pauseDuration, "the ring did not move to the target")
+    #expect(box.acknowledged == 12)
+  }
+
+  @Test("a click in the page ends the chance to move up")
+  func clickEndsUpgrade() async throws {
+    let reveal = try Self.reveal("pauseDuration", token: 13)
+    let tab = try #require(reveal.content.dictationTab)
+    let section = try #require(reveal.ladder.first { $0.kind == .section }?.id)
+    let box = RevealBox()
+    let stepper = Stepper(TaggedPage(box: box, reveal: nil, tab: tab, rows: [section]))
+    defer { stepper.close() }
+    let first = await stepper.show(TaggedPage(box: box, reveal: reveal, tab: tab, rows: [section]))
+    #expect(first?.action == .arrive(section, kind: .section))
+    try #require(box.rings.last?.id == section, "no ring to end")
+    // The person clicks an empty part of the page.
+    stepper.click(at: CGPoint(x: 650, y: 450))
+    let after = await stepper.show(TaggedPage(box: box, reveal: reveal, tab: tab, rows: [section, .pauseDuration]))
+    #expect(after != nil, "the owner never looked at the rendered target")
+    #expect(after?.action != .arrive(.pauseDuration, kind: .target), "moved up after the person clicked")
+  }
+
+  @Test("a click after the arrival and before its focus move cancels the move; navigation is still current")
+  func clickBeforeFocusDelivery() async throws {
+    let reveal = try Self.reveal("autoCopyToClipboard", token: 17)
+    let box = RevealBox()
+    let stepper = Stepper(TaggedPage(box: box, reveal: nil, tab: .clipboard, rows: [.autoCopyToClipboard]))
+    defer { stepper.close() }
+    // The click lands inside the owner's own decision report: after the arrival queued its focus
+    // move, before that queued move can run.
+    var clicked = false
+    box.afterDecision = { decision in
+      guard decision.action == .arrive(.autoCopyToClipboard, kind: .target) else { return }
+      box.afterDecision = nil
+      stepper.click(at: CGPoint(x: 650, y: 450))
+      clicked = true
+    }
+    let arrived = await stepper.show(
+      TaggedPage(box: box, reveal: reveal, tab: .clipboard, rows: [.autoCopyToClipboard]))
+    #expect(arrived?.action == .arrive(.autoCopyToClipboard, kind: .target))
+    try #require(clicked, "the click did not happen inside the decision")
+    #expect(box.current, "navigation stays current: only the person's click can cancel")
+    // The queued move runs (or not) on the next main-queue turn; this observes a negative, so a
+    // drain is the instrument, weaker than the event waits elsewhere.
+    await SettingsArrivalFocusTests.afterQueuedMainWork()
+    stepper.host.layoutSubtreeIfNeeded()
+    #expect(box.focusRequests.isEmpty, "focus moved after the person clicked: \(box.focusRequests)")
+  }
+
+  @Test("without a click, the same arrival does move focus to its place")
+  func focusMovesWithoutClick() async throws {
+    let reveal = try Self.reveal("autoCopyToClipboard", token: 18)
+    let box = RevealBox()
+    let stepper = Stepper(TaggedPage(box: box, reveal: nil, tab: .clipboard, rows: [.autoCopyToClipboard]))
+    defer { stepper.close() }
+    _ = await stepper.show(TaggedPage(box: box, reveal: reveal, tab: .clipboard, rows: [.autoCopyToClipboard]))
+    let request = await stepper.focusRequest()
+    #expect(request?.target == .autoCopyToClipboard)
+  }
+
+  @Test("a key typed into a text field that takes it still ends the chance to move up")
+  func consumedKeyEndsUpgrade() async throws {
+    let reveal = try Self.reveal("pauseDuration", token: 19)
+    let tab = try #require(reveal.content.dictationTab)
+    let section = try #require(reveal.ladder.first { $0.kind == .section }?.id)
+    let box = RevealBox()
+    let stepper = Stepper(TaggedPage(box: box, reveal: nil, tab: tab, rows: [section], textField: true))
+    defer { stepper.close() }
+    let first = await stepper.show(TaggedPage(box: box, reveal: reveal, tab: tab, rows: [section], textField: true))
+    #expect(first?.action == .arrive(section, kind: .section))
+    #expect(box.current, "navigation stays current")
+    // The person types into the field; the field takes the key.
+    try stepper.type("a")
+    let after = await stepper.show(
+      TaggedPage(box: box, reveal: reveal, tab: tab, rows: [section, .pauseDuration], textField: true))
+    #expect(after != nil, "the owner never looked at the rendered target")
+    #expect(after?.action != .arrive(.pauseDuration, kind: .target), "moved up after the person typed")
+  }
+
+  @Test("each rung is visible in its own clip and the ring is painted there; Reduce Motion too")
+  func ringPaintedOnEveryRung() async throws {
+    let reveal = try Self.reveal("pauseDuration", token: 14)
+    let tab = try #require(reveal.content.dictationTab)
+    let ladder = reveal.ladder
+    let other = try Self.unrelatedRow(for: reveal)
+    for reduceMotion in [false, true] {
+      for (index, rung) in ladder.enumerated() {
+        // Every rung from this one down is drawn; the tab rung is the strip itself. The rows are
+        // in view (an offscreen host does not run a scroll animation; the scroll policy has its
+        // own test below).
+        let rows = ladder[index...].map(\.id).filter { $0 != tab.mapID } + [other]
+        let box = RevealBox()
+        let page = { (reveal: SettingsReveal?) in
+          TaggedPage(box: box, reveal: reveal, tab: tab, rows: rows, reduceMotion: reduceMotion)
+        }
+        let stepper = Stepper(page(nil))
+        defer { stepper.close() }
+        _ = await stepper.decision(after: 0) { _ in true }
+        let before = try stepper.paint()
+        let control = try stepper.paint()
+        let decision = await stepper.show(page(reveal))
+        #expect(decision?.action == .arrive(rung.id, kind: rung.kind), "\(rung) motion=\(reduceMotion)")
+        let drawn = try #require(box.rings.last { $0.id == rung.id }, "no ring drawn on \(rung)")
+        #expect(
+          SettingsArrivalVisibility.partly(drawn.rect, in: drawn.clip),
+          "\(rung) is not visible in its clip: \(drawn.rect) in \(drawn.clip)")
+        let after = try stepper.paint()
+        let region = drawn.rect.insetBy(dx: -4, dy: -4)
+        // Same input, no arrival: nothing in that region changes.
+        #expect(
+          Self.changedPixels(before, control, in: region) == 0,
+          "\(rung): the region changed without an arrival")
+        let changed = Self.changedPixels(control, after, in: region)
+        #expect(changed > 50, "\(rung): the ring changed \(changed) pixels")
+      }
+    }
+  }
+
+  @Test("an arrival scrolls without animation under Reduce Motion, and with it otherwise")
+  func arrivalFollowsReduceMotion() async throws {
+    for reduceMotion in [false, true] {
+      let reveal = try Self.reveal("pauseDuration", token: 16)
+      let tab = try #require(reveal.content.dictationTab)
+      let box = RevealBox()
+      // The target sits far below the fold.
+      let page = { (reveal: SettingsReveal?) in
+        TaggedPage(
+          box: box, reveal: reveal, tab: tab, rows: [.pauseDuration], reduceMotion: reduceMotion,
+          spacer: 900)
+      }
+      let stepper = Stepper(page(nil))
+      defer { stepper.close() }
+      let decision = await stepper.show(page(reveal))
+      #expect(decision?.action == .arrive(.pauseDuration, kind: .target))
+      let animated = try #require(decision?.scrolledAnimated, "the arrival did not scroll")
+      #expect(animated == !reduceMotion, "Reduce Motion \(reduceMotion): animated \(animated)")
+    }
+  }
+
+  @Test("an upgrade scrolls without animation under Reduce Motion, and with it otherwise")
+  func upgradeFollowsReduceMotion() async throws {
+    let section: SettingsMapID = try #require(
+      try Self.reveal("pauseDuration").ladder.first { $0.kind == .section }?.id)
+    for reduceMotion in [false, true] {
+      let reveal = try Self.reveal("pauseDuration", token: 15)
+      let tab = try #require(reveal.content.dictationTab)
+      let box = RevealBox()
+      // The section sits at the top; the target renders later, far below it.
+      let stepper = Stepper(TaggedPage(box: box, reveal: nil, tab: tab, rows: [section], reduceMotion: reduceMotion))
+      defer { stepper.close() }
+      let first = await stepper.show(
+        TaggedPage(box: box, reveal: reveal, tab: tab, rows: [section], reduceMotion: reduceMotion))
+      #expect(first?.action == .arrive(section, kind: .section))
+      let since = box.decisions.count
+      stepper.host.rootView = TaggedPage(
+        box: box, reveal: reveal, tab: tab, rows: [section, .pauseDuration], reduceMotion: reduceMotion,
+        rowGap: 900)
+      let up = await stepper.decision(after: since) {
+        if case .arrive = $0.action { true } else { false }
+      }
+      #expect(up?.action == .arrive(.pauseDuration, kind: .target))
+      // Far below the visible section: the upgrade scrolls, animated exactly when motion is allowed.
+      let animated = try #require(up?.scrolledAnimated, "the upgrade did not scroll")
+      #expect(animated == !reduceMotion, "Reduce Motion \(reduceMotion): animated \(animated)")
+    }
+  }
+
+  @Test("the Reduce Motion pin is read only by arrival; the app never sets it")
+  func reduceMotionPinIsTestOnly() throws {
+    let source = try String(
+      contentsOf: RepoRoot.sourceURL("Sources/EnviousWisprAppKit/Views/Settings/SettingsArrival.swift"),
+      encoding: .utf8)
+    let settingsDir = RepoRoot.sourceURL("Sources")
+    let files = try #require(FileManager.default.enumerator(at: settingsDir, includingPropertiesForKeys: nil))
+    var setters: [String] = []
+    for case let url as URL in files where url.pathExtension == "swift" {
+      let text = try String(contentsOf: url, encoding: .utf8)
+      if text.contains("\\.settingsArrivalReduceMotion,") { setters.append(url.lastPathComponent) }
+    }
+    #expect(setters.isEmpty, "the app sets the Reduce Motion pin: \(setters)")
+    #expect(source.contains("pinnedReduceMotion ?? systemReduceMotion"))
+  }
+
   // MARK: - The real Dictionary page (#3545 T7)
 
   /// What a hosted page reports back: the acknowledged token (also as an event the test awaits)
@@ -603,10 +959,19 @@ struct SettingsArrivalTests {
         if case .arrive(let id, let kind) = $0.action { SettingsArrivalRung(id: id, kind: kind) } else { nil }
       }
     }
+    /// Runs synchronously inside the owner's decision report, before the test's await resumes.
+    var afterDecision: ((SettingsArrivalDecision) -> Void)?
     func record(_ decision: SettingsArrivalDecision) {
       decisions.append(decision)
+      afterDecision?(decision)
       decisionSink.yield(decision)
     }
+    let focusEvents: AsyncStream<SettingsArrivalFocusRequest>
+    let focusSink: AsyncStream<SettingsArrivalFocusRequest>.Continuation
+    /// Where the owner said it drew the ring: place, frame and clip, latest last.
+    var rings: [(id: SettingsMapID, rect: CGRect, clip: CGRect)] = []
+    /// Every focus request the owner published, in order.
+    var focusRequests: [SettingsArrivalFocusRequest] = []
     /// Set by a stepper's hang guard when no matching decision came.
     var hangGuardFired = false
     /// What `settingsArrivalStillCurrent` answers: false once another navigation happened.
@@ -616,6 +981,7 @@ struct SettingsArrivalTests {
     init() {
       (acknowledgements, acknowledgementSink) = AsyncStream<Int>.makeStream()
       (decisionEvents, decisionSink) = AsyncStream<SettingsArrivalDecision>.makeStream()
+      (focusEvents, focusSink) = AsyncStream<SettingsArrivalFocusRequest>.makeStream()
     }
   }
 

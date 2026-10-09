@@ -1,3 +1,4 @@
+import AppKit
 import EnviousWisprCore
 import SwiftUI
 
@@ -117,6 +118,14 @@ extension EnvironmentValues {
   /// Told every decision the arrival owner makes, with the inputs it decided on (#3545). No-op in
   /// the app; hosted tests wait on the owner's own decisions through it.
   @Entry var settingsArrivalDecided: @MainActor (SettingsArrivalDecision) -> Void = { _ in }
+  /// Told where the ring is drawn: the place, its frame and its clip, in the owner's space
+  /// (#3545). No-op in the app; hosted tests read the paint at that frame.
+  @Entry var settingsArrivalRingDrawn: @MainActor (SettingsMapID, CGRect, CGRect) -> Void = {
+    _, _, _ in
+  }
+  /// Reduce Motion, when a test pins it; nil reads the system setting, which is get-only. The app
+  /// never sets it.
+  @Entry var settingsArrivalReduceMotion: Bool? = nil
 }
 
 extension View {
@@ -198,6 +207,9 @@ struct SettingsArrivalDecision {
   let action: SettingsArrivalPlanner.Action?
   let places: [SettingsMapID: SettingsArrivalContent?]
   let lazyTop: SettingsArrivalLazyTop?
+  /// Whether the decision scrolled, and how: true animated, false without animation (Reduce
+  /// Motion), nil when it did not scroll (no arrival, or the place was already in full view).
+  var scrolledAnimated: Bool? = nil
 }
 
 /// The arrival decision, pure so every case is tested without a window (#3545 plan §3.2).
@@ -259,7 +271,9 @@ enum SettingsArrivalPlanner {
 /// twice (steady under Reduce Motion), never hit-testable or visible to VoiceOver.
 struct SettingsArrivalRing: View {
   let rect: CGRect
-  @Environment(\.accessibilityReduceMotion) private var reduceMotion
+  @Environment(\.accessibilityReduceMotion) private var systemReduceMotion
+  @Environment(\.settingsArrivalReduceMotion) private var pinnedReduceMotion
+  private var reduceMotion: Bool { pinnedReduceMotion ?? systemReduceMotion }
   @State private var pulse = false
 
   var body: some View {
@@ -299,7 +313,10 @@ struct SettingsArrivalModifier: ViewModifier {
   @Environment(\.settingsNavigationEpoch) private var navigationEpoch
   @Environment(\.settingsArrivalStillCurrent) private var stillCurrent
   @Environment(\.settingsArrivalDecided) private var decided
-  @Environment(\.accessibilityReduceMotion) private var reduceMotion
+  @Environment(\.accessibilityReduceMotion) private var systemReduceMotion
+  @Environment(\.settingsArrivalReduceMotion) private var pinnedReduceMotion
+  @Environment(\.settingsArrivalRingDrawn) private var ringDrawn
+  private var reduceMotion: Bool { pinnedReduceMotion ?? systemReduceMotion }
   @State private var proxy: ScrollViewProxy?
   /// The scroll id at the top of the page's lazy content (Dictionary), nil for an eager page.
   /// The top of the page's lazy content (Dictionary) and its content, nil for an eager page.
@@ -324,6 +341,10 @@ struct SettingsArrivalModifier: ViewModifier {
   /// An arrival scrolled toward but not yet seen on screen: the ring is not dismissed for being
   /// out of view while the reveal scroll runs.
   @State private var arriving: Arriving?
+  /// An arrival that landed below its target and may still move up once (#3545 plan §3.3): while
+  /// its ring is up and before any tap or key in the page. Never moves focus: focus stays where
+  /// the arrival put it, so an upgrade cannot take focus from the person.
+  @State private var upgrade: Upgrade?
   @State private var ring: (id: SettingsMapID, token: Int)?
   @State private var ringExpiry: Task<Void, Never>?
   @State private var deciding = false
@@ -340,6 +361,12 @@ struct SettingsArrivalModifier: ViewModifier {
   /// A focus request nobody took (no adapter mounted for it) is dropped, so a control that mounts
   /// much later is never given focus by an arrival that is long over.
   static let focusRequestLifetime: Duration = .seconds(1)
+
+  struct Upgrade: Equatable {
+    let reveal: SettingsReveal
+    /// The ladder position the arrival landed on; only a higher rung upgrades.
+    let landedIndex: Int
+  }
 
   struct Arriving: Equatable {
     let target: SettingsMapID
@@ -383,11 +410,21 @@ struct SettingsArrivalModifier: ViewModifier {
           .accessibilityHidden(true)
       }
       // A later tap or key in the page dismisses the ring without consuming it.
-      .simultaneousGesture(TapGesture().onEnded { dismissRing() })
-      .onKeyPress(phases: .down) { _ in
-        if arriving == nil { dismissRing() }
-        return .ignored
-      }
+      .simultaneousGesture(
+        TapGesture().onEnded {
+          personActed()
+          dismissRing()
+        })
+      // Any key in this window, seen before any control handles it (a text field or a picker
+      // consumes keys an `onKeyPress` here would never see): the person is acting, so arrival
+      // stops moving the ring or focus for them, even while the reveal scroll still runs.
+      .background(
+        SettingsArrivalKeyWatcher {
+          personActed()
+          if arriving == nil { dismissRing() }
+        }
+        .allowsHitTesting(false)
+        .accessibilityHidden(true))
       .onAppear { reconcile() }
       .onChange(of: reveal, initial: true) { _, new in
         liveReveal = new
@@ -407,6 +444,7 @@ struct SettingsArrivalModifier: ViewModifier {
       }
       .onDisappear {
         isMounted = false
+        upgrade = nil
         liveReveal = nil
         proxy = nil
         decideAgain = false
@@ -446,6 +484,9 @@ struct SettingsArrivalModifier: ViewModifier {
       if let ring, let place = placed[ring.id] {
         if SettingsArrivalVisibility.partly(place.rect, in: place.clip) {
           SettingsArrivalRing(rect: place.rect)
+            .onChange(of: place.rect, initial: true) { _, rect in
+              ringDrawn(ring.id, rect, place.clip)
+            }
             .mask {
               // The ring's own 4pt outset, and no further: it never paints past the scroll view.
               let edge = place.clip.insetBy(dx: -4, dy: -4)
@@ -480,15 +521,23 @@ struct SettingsArrivalModifier: ViewModifier {
 
   private func decideNow() {
     // The inputs this decision reads, frozen at entry and reported once it has acted.
-    let observedReveal = liveReveal
+    var observedReveal = liveReveal
     let observedPlaces = places
     let observedLazyTop = lazyTop
     var observedAction: SettingsArrivalPlanner.Action?
+    var observedScroll: Bool?
     defer {
       decided(
         SettingsArrivalDecision(
           reveal: observedReveal, action: observedAction, places: observedPlaces,
-          lazyTop: observedLazyTop))
+          lazyTop: observedLazyTop, scrolledAnimated: observedScroll))
+    }
+    // A landed arrival whose reveal has been acknowledged may still move up once.
+    if let pending = upgrade, observedReveal == nil || observedReveal?.token == pending.reveal.token {
+      // The window cleared the reveal at acknowledgement; this decision is still that reveal's.
+      observedReveal = pending.reveal
+      (observedAction, observedScroll) = considerUpgrade(pending, places: observedPlaces)
+      return
     }
     // No scroll owner yet: deciding now would arrive without scrolling. The reader's onAppear
     // reconciles again once it is stored.
@@ -515,7 +564,13 @@ struct SettingsArrivalModifier: ViewModifier {
       #endif
       dropFocusRequest()
       arriving = Arriving(target: target, kind: kind, reveal: current)
-      scroll(to: target)
+      upgrade =
+        kind == .target
+        ? nil
+        : current.ladder.firstIndex { $0.id == target }.map {
+          Upgrade(reveal: current, landedIndex: $0)
+        }
+      observedScroll = scroll(to: target)
       showRing(target, token: current.token)
       // Announced and acknowledged now (#3545 plan §3.4), not when the place becomes visible:
       // scrolling and the ring follow visibility; finishing the arrival never waits on it.
@@ -524,6 +579,46 @@ struct SettingsArrivalModifier: ViewModifier {
       startFocus(current, target: target)
       completeArrivalIfVisible()
     }
+  }
+
+  /// The person tapped or pressed a key in the page: arrival no longer moves focus or the ring for
+  /// them. A focus move still queued, or asked of the adapters and not yet taken, is dropped.
+  private func personActed() {
+    upgrade = nil
+    pendingFocus = nil
+    dropFocusRequest()
+  }
+
+  /// Moves a landed arrival up once to a higher rung that has since mounted (a late row), while its
+  /// ring is up, the page is here and no navigation has happened. Returns the upgrade it made, or
+  /// nil when none was possible yet. The ring keeps its original deadline; focus does not move.
+  private func considerUpgrade(
+    _ pending: Upgrade, places: [SettingsMapID: SettingsArrivalContent?]
+  ) -> (SettingsArrivalPlanner.Action?, scrolledAnimated: Bool?) {
+    guard isMounted, proxy != nil, stillCurrent(pending.reveal),
+      ring?.token == pending.reveal.token
+    else {
+      upgrade = nil
+      return (nil, nil)
+    }
+    let destination = pending.reveal.content
+    let higher = pending.reveal.ladder.prefix(pending.landedIndex).first { rung in
+      places[rung.id] == .some(destination) || places[rung.id] == .some(destination.pageOnly)
+    }
+    guard let higher else { return (nil, nil) }
+    upgrade = nil
+    #if DEBUG
+      let message =
+        "arrival landed=\(higher.kind) entry=\(pending.reveal.entryID) at=\(higher.id.rawValue) upgrade=true"
+      Task { await AppLogger.shared.log(message, level: .info, category: "SettingsMap") }
+    #endif
+    arriving = Arriving(target: higher.id, kind: higher.kind, reveal: pending.reveal)
+    let scrolled = scroll(to: higher.id)
+    // The same ring, moved: its deadline is the original arrival's.
+    ring = (higher.id, pending.reveal.token)
+    if higher.kind == .target { announce(entryID: pending.reveal.entryID, landed: nil) }
+    completeArrivalIfVisible()
+    return (.arrive(higher.id, kind: higher.kind), scrolled)
   }
 
   /// The arrival's place is on screen: the reveal scroll is over, so the ring may now be dismissed
@@ -571,14 +666,18 @@ struct SettingsArrivalModifier: ViewModifier {
     focusReveal = nil
   }
 
-  private func scroll(to target: SettingsMapID) {
-    guard !fullyVisible.contains(target) else { return }
+  /// Scrolls the place into view unless it already is; returns whether it animated, nil when it
+  /// did not scroll.
+  @discardableResult
+  private func scroll(to target: SettingsMapID) -> Bool? {
+    guard !fullyVisible.contains(target) else { return nil }
     let id = SettingsRevealScrollID(id: target)
     if reduceMotion {
       proxy?.scrollTo(id, anchor: .center)
-    } else {
-      withAnimation(.easeInOut(duration: 0.3)) { proxy?.scrollTo(id, anchor: .center) }
+      return false
     }
+    withAnimation(.easeInOut(duration: 0.3)) { proxy?.scrollTo(id, anchor: .center) }
+    return true
   }
 
   private func showRing(_ target: SettingsMapID, token: Int) {
@@ -588,6 +687,7 @@ struct SettingsArrivalModifier: ViewModifier {
       try? await Task.sleep(for: Self.ringDuration)
       guard !Task.isCancelled, ring?.token == token else { return }
       ring = nil
+      upgrade = nil
     }
   }
 
@@ -595,6 +695,7 @@ struct SettingsArrivalModifier: ViewModifier {
     ringExpiry?.cancel()
     ringExpiry = nil
     ring = nil
+    upgrade = nil
   }
 
   /// "Showing Pause duration", or with a fallback "Showing Stop recording on silence for
@@ -609,4 +710,45 @@ struct SettingsArrivalModifier: ViewModifier {
       } ?? SettingsSearchCopy.arrived(chosenTitle)
     AccessibilityNotification.Announcement(message).post()
   }
+}
+
+/// Calls `onKey` for every key pressed in the window it is in, before the window dispatches it to
+/// any control, and passes the key on unchanged (#3545). A local event monitor, installed while
+/// the view is in a window and removed when it leaves.
+struct SettingsArrivalKeyWatcher: NSViewRepresentable {
+  let onKey: @MainActor () -> Void
+
+  final class WatcherView: NSView {
+    var onKey: (@MainActor () -> Void)?
+    private var monitor: Any?
+
+    override func viewDidMoveToWindow() {
+      super.viewDidMoveToWindow()
+      if let monitor { NSEvent.removeMonitor(monitor) }
+      monitor = nil
+      guard window != nil else { return }
+      monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+        MainActor.assumeIsolated {
+          if let self, event.window === self.window { self.onKey?() }
+        }
+        return event
+      }
+    }
+
+    override func removeFromSuperview() {
+      if let monitor { NSEvent.removeMonitor(monitor) }
+      monitor = nil
+      super.removeFromSuperview()
+    }
+
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+  }
+
+  func makeNSView(context: Context) -> WatcherView {
+    let view = WatcherView()
+    view.onKey = onKey
+    return view
+  }
+
+  func updateNSView(_ view: WatcherView, context: Context) { view.onKey = onKey }
 }
