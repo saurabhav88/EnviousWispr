@@ -442,4 +442,80 @@ struct RecordGestureEngineTests {
     #expect(sink.validNames == ["start", "quickRelease", "resolved", "lockIntent"])
     #expect(engine.snapshot.isLocked)
   }
+
+  #if DEBUG
+    @Test("the debug observer reports the decisions made and changes none of them")
+    @MainActor
+    func observerReportsWithoutChangingDecisions() {
+      let seen = OSAllocatedUnfairLock<[GestureOutcome]>(initialState: [])
+      let observed = Rig()
+      observed.engine.setObserver { o in seen.withLock { $0.append(o.outcome) } }
+      let plain = Rig()
+      for rig in [observed, plain] {
+        rig.main(true, 0)
+        rig.main(false, 0.125)
+        rig.main(true, 0.25)
+        rig.main(false, 0.375)
+      }
+      #expect(
+        seen.withLock { $0 } == [
+          .start, .quickRelease, .lockIntent, .loneTapCancelled, .releaseSuppressedLocked,
+        ])
+      #expect(observed.sink.validNames == plain.sink.validNames)
+      #expect(observed.sink.validNames == ["start", "quickRelease", "resolved", "lockIntent"])
+    }
+
+    @Test("the debug observer reports a timer's stop with its quick release and first press")
+    @MainActor
+    func observerReportsTimerStop() {
+      let seen = OSAllocatedUnfairLock<[GestureObservation]>(initialState: [])
+      let rig = Rig()
+      rig.engine.setObserver { o in seen.withLock { $0.append(o) } }
+      rig.main(true, 0)
+      rig.main(false, 0.125)
+      rig.clock.now = 500.625
+      rig.fireDueOffMain()
+      let timer = seen.withLock { $0 }.last
+      #expect(timer?.kind == .timer)
+      #expect(timer?.outcome == .loneTapStop)
+      #expect(timer?.occurred == 500.125)
+      #expect(timer?.attemptStartOccurred == 500)
+      #expect(timer?.deadline == 500.625)
+    }
+
+    @Test("a reset's retired wait is reported as retired, not as a press cancelling it")
+    @MainActor
+    func observerReportsRetiredWait() {
+      let seen = OSAllocatedUnfairLock<[GestureOutcome]>(initialState: [])
+      let rig = Rig()
+      rig.engine.setObserver { o in seen.withLock { $0.append(o.outcome) } }
+      rig.main(true, 0)
+      rig.main(false, 0.125)
+      rig.engine.reset()
+      #expect(seen.withLock { $0 }.last == .loneTapRetired)
+    }
+
+    @Test("a wait scheduled before a rebind is reported under the key it was scheduled for")
+    @MainActor
+    func observerKeepsTheTimersOwnKey() {
+      let seen = OSAllocatedUnfairLock<[GestureObservation]>(initialState: [])
+      let rig = Rig()
+      rig.engine.setObservationGeneration(7)
+      rig.engine.setObserver { o in seen.withLock { $0.append(o) } }
+      rig.main(true, 0)
+      rig.main(false, 0.125)
+      rig.engine.configure(
+        binding: .keyboard(keyCode: ModifierKeyCodes.leftOption, modifiers: []), mode: .pushToTalk)
+      rig.engine.setObservationGeneration(8)
+      rig.clock.now = 500.625
+      rig.fireDueOffMain()
+      let all = seen.withLock { $0 }
+      let timer = all.last
+      #expect(timer?.kind == .timer)
+      #expect(timer?.keyCode == ModifierKeyCodes.rightOption)
+      #expect(timer?.generation == 8)
+      #expect(all.first?.generation == 7)
+      #expect(all.map(\.sequence) == [1, 2, 3])
+    }
+  #endif
 }

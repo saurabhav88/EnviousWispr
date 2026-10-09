@@ -37,6 +37,7 @@ package final class LiveDesktopHotkeyEffects: DesktopHotkeyEffects {
     case hotkey(EventHotKeyRef)
     case handler(EventHandlerRef, Unmanaged<CarbonHandlerBox>)
     case monitor(Any)
+    case keyboardListener(LiveKeyboardListener)
   }
 
   private var resources: [DesktopEffectToken: Resource] = [:]
@@ -178,6 +179,51 @@ package final class LiveDesktopHotkeyEffects: DesktopHotkeyEffects {
     return store(monitor)
   }
 
+  // MARK: - Keyboard listener
+
+  /// The keyboard listener's event tap on its own thread (#3544 P2). Nil when the tap could not be
+  /// created or its thread did not start in time; `HotkeyService` reports that.
+  package func installKeyboardListener(
+    _ sink: @escaping @Sendable (KeyEventValue) -> ListenerVerdict
+  ) -> DesktopEffectToken? {
+    let listener = LiveKeyboardListener(sink: sink)
+    guard listener.start() else { return nil }
+    let token = DesktopEffectToken()
+    resources[token] = .keyboardListener(listener)
+    return token
+  }
+
+  #if DEBUG
+    /// The last removed listener's final state, kept so a report read after removal includes its
+    /// final callback. One slot.
+    private var lastRemovedListenerHealth:
+      (token: DesktopEffectToken, health: KeyboardListenerHealth)?
+  #endif
+
+  package func keyboardListenerHealth(_ token: DesktopEffectToken) -> KeyboardListenerHealth? {
+    if case .keyboardListener(let listener) = resources[token] {
+      return listener.health()
+    }
+    #if DEBUG
+      if let last = lastRemovedListenerHealth, last.token == token { return last.health }
+    #endif
+    return nil
+  }
+
+  /// `CGEventSource.keyState` on the HID system state: the physical keyboard as the system last
+  /// saw it. Which state table reports a release made under Secure Input is not yet verified
+  /// (#3544 P0 item 3, real-hand probe pending), so this is used only to reconcile after a
+  /// re-enable, where an unread or wrong answer leaves the shadow model uncertain, never acting.
+  package var keyStateReader: @Sendable (Set<UInt16>) -> [UInt16: KeyStateTracker.Reading] {
+    { keys in
+      var answers: [UInt16: KeyStateTracker.Reading] = [:]
+      for key in keys {
+        answers[key] = CGEventSource.keyState(.hidSystemState, key: CGKeyCode(key)) ? .down : .up
+      }
+      return answers
+    }
+  }
+
   private func store(_ monitor: Any?) -> DesktopEffectToken? {
     guard let monitor else { return nil }
     let token = DesktopEffectToken()
@@ -213,6 +259,16 @@ package final class LiveDesktopHotkeyEffects: DesktopHotkeyEffects {
       box.release()
     case .monitor(let monitor):
       NSEvent.removeMonitor(monitor)
+    case .keyboardListener(let listener):
+      // Same contract as the handler: until the worker confirms its cleanup the callback context
+      // is still live, so the caller keeps its token and can retry.
+      guard listener.stop() else {
+        resources[token] = .keyboardListener(listener)
+        return false
+      }
+      #if DEBUG
+        lastRemovedListenerHealth = (token, listener.health())
+      #endif
     }
     return true
   }

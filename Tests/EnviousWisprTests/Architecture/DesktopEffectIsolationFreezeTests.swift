@@ -48,7 +48,64 @@ struct DesktopEffectIsolationFreezeTests {
     // #1413: the output-volume writer and the Music/Spotify scripter.
     "LiveOutputVolumeEffects",
     "LiveMediaPlaybackEffects",
+    // #3544 P2: the keyboard event tap.
+    "LiveKeyboardListener",
   ]
+
+  /// #3544 P2: keyboard event taps and event posting. A tap sees every keystroke system-wide and
+  /// a post types into the front app, so a unit test must reach neither. Built by concatenation so
+  /// this file's own text does not trip `check-dependency-direction.sh`, which reads strings.
+  private static let bannedTapPostNames: Set<String> = {
+    let cg = "CGEvent"
+    let c = ["TapCreate", "TapCreateForPid", "TapCreateForPSN", "TapEnable", "Post", "PostToPid",
+      "PostToPSN", "TapPostEvent"].map { cg + $0 }
+    let swift = ["tap" + "Create", "tap" + "CreateForPid", "tap" + "CreateForPSN", "tap" + "Enable",
+      "tap" + "PostEvent", "post" + "ToPid", "post" + "ToPSN"]
+    return Set(c + swift)
+  }()
+
+  /// The tap and post references a file makes, read from its syntax tree: the name and the whole
+  /// statement it sits in, whitespace collapsed, so a call split across lines is one statement.
+  fileprivate static func tapPostReferences(in text: String) -> [TapPostCollector.Hit] {
+    TapPostCollector.references(in: Parser.parse(source: text), banned: bannedTapPostNames)
+  }
+
+  /// The existing posting sites, each permitted as its exact statement in its own file, as in
+  /// `check-dependency-direction.sh`: paste's Cmd+V pair and the synthetic Copy chord.
+  private static let permittedTapPost: Set<String> = {
+    let paste = "Sources/EnviousWisprServices/PasteService.swift|"
+    let copy = "Sources/EnviousWisprPipeline/SyntheticCopyChord.swift|"
+    let sessionPost = ".post" + "(tap: .cgAnnotatedSessionEventTap)"
+    let pidPost = ".post" + "ToPid(pid)"
+    return [
+      paste + "keyDown" + sessionPost, paste + "keyUp" + sessionPost,
+      copy + "commandDown" + pidPost, copy + "keyDown" + pidPost,
+      copy + "keyUp" + pidPost, copy + "commandUp" + pidPost,
+    ]
+  }()
+
+  /// Whether a file may make raw tap and post calls: only the owning desktop module, the same
+  /// scope `check-dependency-direction.sh` exempts. `EnviousWisprDesktopEffectsTests` may import
+  /// live adapters but may not make raw tap or post calls itself.
+  fileprivate static func ownsTapAndPost(_ path: String) -> Bool {
+    path.hasPrefix("Sources/EnviousWisprDesktopEffects/")
+  }
+
+  /// Every Swift file in `Sources/` and `Tests/` except the owning desktop module.
+  private static func nonOwnerSwiftSources() throws -> [(path: String, text: String)] {
+    var found: [(String, String)] = []
+    for top in ["Sources", "Tests"] {
+      let root = RepoRoot.sourceURL(top)
+      let e = FileManager.default.enumerator(at: root, includingPropertiesForKeys: nil)
+      while let url = e?.nextObject() as? URL {
+        guard url.pathExtension == "swift" else { continue }
+        let path = top + url.path.dropFirst(root.path.count)
+        if ownsTapAndPost(path) { continue }
+        found.append((path, try String(contentsOf: url, encoding: .utf8)))
+      }
+    }
+    return found
+  }
 
   private static let bannedModule = "EnviousWisprDesktopEffects"
 
@@ -95,6 +152,145 @@ struct DesktopEffectIsolationFreezeTests {
       holds three. Adding it here instead puts a real window, hotkey or activation \
       back into the run that must not have one.
       """)
+  }
+  @Test("only the desktop module taps or posts keyboard events, apart from the permitted statements")
+  func onlyTheDesktopModuleTapsOrPosts() throws {
+    let sources = try Self.nonOwnerSwiftSources()
+    #expect(sources.count > 500, "the sweep found almost nothing — it is pointed at the wrong tree")
+    #expect(
+      sources.contains { $0.path.hasPrefix("Tests/EnviousWisprDesktopEffectsTests/") },
+      "the tap/post sweep must include the live-adapter test target")
+    var offenders: [String] = []
+    var permittedSeen: Set<String> = []
+    for (path, text) in sources {
+      for hit in Self.tapPostReferences(in: text) {
+        let key = path + "|" + hit.statement
+        if Self.permittedTapPost.contains(key) {
+          permittedSeen.insert(key)
+        } else {
+          offenders.append("\(path): \(hit.name) in `\(hit.statement)`")
+        }
+      }
+    }
+    #expect(
+      offenders.isEmpty,
+      """
+      \(offenders.sorted()) create an event tap or post an event outside \
+      EnviousWisprDesktopEffects. Either one reaches the user's real keyboard; put the call in the \
+      desktop module behind DesktopHotkeyEffects, and drive it in tests through \
+      RecordingDesktopHotkeyEffects.
+      """)
+    // A permitted statement that no longer exists is a stale exception someone could reuse.
+    #expect(permittedSeen == Self.permittedTapPost)
+  }
+
+  @Test("the tap and post scope exempts only the desktop module itself")
+  func tapPostScopeControls() {
+    let split = "e.post" + "(\n  tap: .cghidEventTap)"
+    #expect(Self.tapPostReferences(in: split).isEmpty == false)
+    #expect(Self.ownsTapAndPost("Sources/EnviousWisprDesktopEffects/LiveKeyboardListener.swift"))
+    #expect(Self.ownsTapAndPost("Tests/EnviousWisprDesktopEffectsTests/X.swift") == false)
+    #expect(Self.ownsTapAndPost("Tests/EnviousWisprASRTests/X.swift") == false)
+    #expect(Self.ownsTapAndPost("Sources/EnviousWisprServices/X.swift") == false)
+  }
+
+  /// Sources for the reader's controls and whether each should be found.
+  private static let tapPostControls: [(source: String, hit: Bool)] = {
+    let cg = "CGEvent"
+    let post = "post"
+    var rows: [(String, Bool)] = []
+    rows.append(("let t = \(cg).tap" + "Create(tap: a, place: b, options: c, eventsOfInterest: d, callback: e, userInfo: nil)", true))
+    rows.append(("let f = \(cg).tap" + "Create", true))
+    rows.append(("\(cg)Post(.cghidEventTap, e)", true))
+    rows.append(("let g = \(cg)TapEnable", true))
+    rows.append(("e.\(post)(tap: .cghidEventTap)", true))
+    rows.append(("let h = \(cg).\(post)(tap:)", true))
+    rows.append(("e.\(post)ToPid(pid)", true))
+    rows.append(("NotificationCenter.default.post(name: .x, object: nil)", false))
+    rows.append(("service.post(message)", false))
+    rows.append(("// e.\(post)(tap: .cghidEventTap)", false))
+    rows.append(("let s = \"\(cg)Post\"", false))
+    rows.append(("e.\(post)(\n  tap: .cghidEventTap)", true))
+    rows.append(("e\n  .\(post)ToPid(pid)", true))
+    rows.append(("let t = \(cg).`tap" + "Create`(tap: a)", true))
+    rows.append(("e.`\(post)`(`tap`: .cghidEventTap)", true))
+    return rows
+  }()
+
+  /// The collector's own controls, parsed in memory and never compiled. Sources are assembled at
+  /// run time for the reason given on `bannedTapPostNames`.
+  @Test("the tap and post reader finds calls and references and ignores look-alikes")
+  func tapPostReaderControls() {
+    #expect(Self.tapPostControls.count == 15)
+    for (source, hit) in Self.tapPostControls {
+      #expect(Self.tapPostReferences(in: source).isEmpty == (hit == false), "\(source)")
+    }
+  }
+}
+
+/// Collects the tap and post references a file makes (#3544 P2): a banned name used as a call or
+/// a reference, and `post` called or referenced with a `tap:` label. Comments and string literals
+/// are trivia or literal segments in the tree, so they never match.
+private final class TapPostCollector: SyntaxVisitor {
+  struct Hit {
+    let name: String
+    /// The enclosing statement, whitespace collapsed to single spaces.
+    let statement: String
+  }
+
+  private let banned: Set<String>
+  private var found: [Hit] = []
+
+  private init(banned: Set<String>) {
+    self.banned = banned
+    super.init(viewMode: .sourceAccurate)
+  }
+
+  static func references(in tree: SourceFileSyntax, banned: Set<String>) -> [Hit] {
+    let c = TapPostCollector(banned: banned)
+    c.walk(tree)
+    return c.found
+  }
+
+  /// The name without backticks: `identifier?.name` reads `` `tapCreate` `` and `tapCreate` alike.
+  private static func name(_ token: TokenSyntax) -> String {
+    token.identifier?.name ?? token.text
+  }
+
+  private func record(_ name: String, at node: some SyntaxProtocol) {
+    var statement: Syntax = Syntax(node)
+    var cursor: Syntax? = Syntax(node)
+    while let current = cursor {
+      if current.is(CodeBlockItemSyntax.self) || current.is(MemberBlockItemSyntax.self) {
+        statement = current
+        break
+      }
+      cursor = current.parent
+    }
+    let text = statement.trimmedDescription.split(whereSeparator: \.isWhitespace).joined(separator: " ")
+    found.append(Hit(name: name, statement: text))
+  }
+
+  override func visit(_ node: DeclReferenceExprSyntax) -> SyntaxVisitorContinueKind {
+    let name = Self.name(node.baseName)
+    if banned.contains(name) { record(name, at: node) }
+    // A function reference: `CGEvent.post(tap:)`.
+    if name == "post", let labels = node.argumentNames?.arguments,
+      labels.first.map({ Self.name($0.name) }) == "tap"
+    {
+      record("post(tap:)", at: node)
+    }
+    return .visitChildren
+  }
+
+  override func visit(_ node: FunctionCallExprSyntax) -> SyntaxVisitorContinueKind {
+    if let member = node.calledExpression.as(MemberAccessExprSyntax.self),
+      Self.name(member.declName.baseName) == "post",
+      node.arguments.first?.label.map(Self.name) == "tap"
+    {
+      record("post(tap:)", at: node)
+    }
+    return .visitChildren
   }
 }
 
