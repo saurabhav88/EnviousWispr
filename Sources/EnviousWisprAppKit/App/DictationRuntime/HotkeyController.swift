@@ -120,10 +120,10 @@ final class HotkeyController {
     hotkeyService.onSecureInputPausedKeyFeatures = { [weak starter, weak finalizer] sessionID in
       guard let starter, let finalizer else {
         Self.reportNilCollaborator(callback: "onSecureInputPausedKeyFeatures")
-        return
+        return false
       }
-      guard starter.activeDriver.continuingSessionID == sessionID else { return }
-      finalizer.recordingOverlay.update(.inPanelNotice(.secureInputActive, dismissAfter: 5.0))
+      guard starter.activeDriver.continuingSessionID == sessionID else { return false }
+      return finalizer.recordingOverlay.showInPanelNotice(.secureInputActive, dismissAfter: 5.0)
     }
     hotkeyService.onIsProcessing = { [weak starter] in
       starter?.isProcessing ?? false

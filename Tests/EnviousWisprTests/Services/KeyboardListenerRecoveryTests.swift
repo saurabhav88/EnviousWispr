@@ -440,6 +440,8 @@ struct KeyboardListenerRecoveryTests {
     let rig = Rig()
     var notices: [String] = []
     var starts = 0
+    /// What the presentation answers (false: the session was no longer running).
+    var accept = true
     let keys: ListenerKeyboard
     init(mode: RecordingMode = .pushToTalk) {
       keys = ListenerKeyboard(rig.effects)
@@ -452,7 +454,10 @@ struct KeyboardListenerRecoveryTests {
       }
       rig.service.onToggleRecording = {}
       rig.service.onStopRecording = {}
-      rig.service.onSecureInputPausedKeyFeatures = { [unowned self] in notices.append($0) }
+      rig.service.onSecureInputPausedKeyFeatures = { [unowned self] in
+        notices.append($0)
+        return accept
+      }
       rig.service.start()
     }
     func dictate(at t: TimeInterval) async {
@@ -487,6 +492,78 @@ struct KeyboardListenerRecoveryTests {
     await n.dictate(at: 50)
     #expect(n.notices == ["s2", "s6"], "notices \(n.notices), starts \(n.starts)")
     #expect(n.starts == 6, "a notice changed what was recorded")
+  }
+
+  @Test("a notice the presentation refused leaves the period's notice for the next valid take")
+  func refusedNoticeIsNotCounted() async {
+    let n = NoticeRig()
+    defer { n.rig.service.stop() }
+    await secureInput(n.rig.effects.keyboardListenerSink, enabled: true, pid: nil)
+    n.accept = false
+    await n.dictate(at: 0)
+    n.accept = true
+    await n.dictate(at: 10)
+    #expect(n.notices == ["s1", "s2"], "a refused notice consumed the period")
+    await n.dictate(at: 20)
+    #expect(n.notices == ["s1", "s2"])
+  }
+
+  @Test("Secure Input observed inside a take's first second notices it; later in the take it does not")
+  func secureInputEnteredDuringATake() async {
+    let n = NoticeRig()
+    defer { n.rig.service.stop() }
+    // Observed 0.5 s into the hold: the other-key rule still applies to this take.
+    n.rig.clock.now = 500
+    await n.keys.press(ModifierKeyCodes.rightOption, at: 500)
+    await n.rig.service.awaitInFlightStartForTesting()
+    n.rig.clock.now = 500.5
+    await secureInput(n.rig.effects.keyboardListenerSink, enabled: true, pid: nil)
+    #expect(n.notices == ["s1"])
+    n.rig.clock.now = 502
+    await n.keys.release(ModifierKeyCodes.rightOption, at: 502)
+    await secureInput(n.rig.effects.keyboardListenerSink, enabled: false, pid: nil)
+    // Observed 2 s into a hold: the rule no longer applies, so nothing is paused for this take.
+    n.rig.clock.now = 510
+    await n.keys.press(ModifierKeyCodes.rightOption, at: 510)
+    await n.rig.service.awaitInFlightStartForTesting()
+    n.rig.clock.now = 512
+    await secureInput(n.rig.effects.keyboardListenerSink, enabled: true, pid: nil)
+    #expect(n.notices == ["s1"], "a notice for a take the rule no longer protects")
+    n.rig.clock.now = 513
+    await n.keys.release(ModifierKeyCodes.rightOption, at: 513)
+    // The period's notice is still owed: the next start tells it.
+    await n.dictate(at: 20)
+    #expect(n.notices == ["s1", "s3"])
+  }
+
+  @Test("a start superseded while pending never notices; the take that replaced it does")
+  func supersededStartNeverNotices() async throws {
+    let n = NoticeRig()
+    defer { n.rig.service.stop() }
+    var gate: CheckedContinuation<Void, Never>?
+    let entered = HotkeyGlobeKeyTests.CallbackWaiter()
+    var calls = 0
+    n.rig.service.onStartRecording = {
+      calls += 1
+      if calls == 1 {
+        entered.note()
+        await withCheckedContinuation { gate = $0 }
+        return .recording("stale")
+      }
+      return .recording("fresh")
+    }
+    await secureInput(n.rig.effects.keyboardListenerSink, enabled: true, pid: nil)
+    n.rig.clock.now = 500
+    await n.keys.press(ModifierKeyCodes.rightOption, at: 500)
+    await entered.wait(until: 1)
+    n.rig.clock.now = 501.5
+    await n.keys.release(ModifierKeyCodes.rightOption, at: 501.5)
+    n.rig.clock.now = 505
+    await n.keys.press(ModifierKeyCodes.rightOption, at: 505)
+    await n.rig.service.awaitInFlightStartForTesting()
+    try #require(gate).resume()
+    await Rig.mainTurn()
+    #expect(n.notices == ["fresh"], "the superseded start's session was noticed")
   }
 
   @Test("no Secure Input notice where the other-key rule does not apply, or from a replaced listener")

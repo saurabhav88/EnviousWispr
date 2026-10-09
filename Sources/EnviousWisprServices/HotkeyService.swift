@@ -834,6 +834,7 @@ public final class HotkeyService {
       acceptedStartPressID = pressID
       acceptedSessionID = sessionID
       publishLockIfReady()
+      noticeSecureInputIfRelevant(sessionID)
     case .noRecording:
       // Only a press that already recorded hands-free intent has a decision to
       // report; a refusal landing before the second tap has nothing to resolve.
@@ -1036,9 +1037,7 @@ public final class HotkeyService {
           self.resolveStart(pressID: pressID, outcome: .noRecording)
           return
         }
-        let outcome = await handler()
-        self.resolveStart(pressID: pressID, outcome: outcome)
-        if case .recording(let sessionID) = outcome { self.noticeSecureInputIfRelevant(sessionID) }
+        self.resolveStart(pressID: pressID, outcome: await handler())
       }
       // #1175 (C3): emit AFTER the recording Task is created; the `.live` sink
       // defers the actual write off this turn so it never delays the callback.
@@ -1334,6 +1333,13 @@ public final class HotkeyService {
     secureInputOn = observation.enabled
     // A Secure Input period ends here: the next one may tell the user again.
     if !observation.enabled { secureInputNoticeShown = false }
+    // Entered during an accepted take whose other-key rule still applies: the same policy as a
+    // start. Later in a take the rule no longer applies, so nothing is paused for it.
+    if observation.enabled, let sessionID = acceptedSessionID,
+      engine.otherKeyRuleApplies(at: uptime())
+    {
+      noticeSecureInputIfRelevant(sessionID)
+    }
     let owner = observation.ownerPID.map { "pid=\($0)" } ?? "owner=unknown"
     let line = observation.enabled ? "Secure Input on (\(owner))" : "Secure Input off"
     Task {
@@ -1350,13 +1356,15 @@ public final class HotkeyService {
     guard secureInputOn, !secureInputNoticeShown, recordBinding.isBareModifier,
       recordingMode == .pushToTalk, isEnabled, !isSuspended
     else { return }
-    secureInputNoticeShown = true
-    onSecureInputPausedKeyFeatures?(sessionID)
+    // Counted as told only when the presentation accepted it, so a refused one (a session no
+    // longer running) leaves the period's notice for the next valid take.
+    if onSecureInputPausedKeyFeatures?(sessionID) == true { secureInputNoticeShown = true }
   }
 
   /// #3544 P4: show the Secure Input notice on the recording session `String` started, if it is
-  /// still the one running. The `String` is the opaque token `onLockRequested` receives.
-  package var onSecureInputPausedKeyFeatures: (@MainActor (String) -> Void)?
+  /// still the one running; returns whether it was shown. The `String` is the opaque token
+  /// `onLockRequested` receives.
+  package var onSecureInputPausedKeyFeatures: (@MainActor (String) -> Bool)?
 
   /// Test seam: a main-thread listener edge was judged current (true) or refused (false), before
   /// it acts. Production never sets it.

@@ -1739,6 +1739,18 @@ extension OverlayDirector: OverlayPresenting {
     return PillReceipt(presentationID: current.id)
   }
 
+  /// Show an in-panel notice on the live recording pill, returning whether one was there to show
+  /// it on (#3544 P4). A caller that tells the user something once uses this answer to know the
+  /// notice was actually shown; `update(.inPanelNotice)` is a silent no-op without a recording.
+  @discardableResult
+  func showInPanelNotice(_ reason: RecordingNoticeReason, dismissAfter: Double?) -> Bool {
+    guard let current = reducer.state.current, case .recording = current.content else {
+      return false
+    }
+    update(.inPanelNotice(reason, dismissAfter: dismissAfter))
+    return true
+  }
+
   func update(_ update: PillUpdate) {
     switch update {
     case .recordingLock(let isLocked):

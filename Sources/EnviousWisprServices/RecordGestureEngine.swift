@@ -532,6 +532,20 @@ package final class RecordGestureEngine: Sendable {
     return dismissed
   }
 
+  /// Whether the other-key rule would still dismiss the current take at handling time `now`
+  /// (#3544 P4): a listener-owned push-to-talk press of the live attempt, held, not locked, and
+  /// less than `otherKeyDismissalWindow` old by handling time. Read by the Secure Input notice,
+  /// which may only say keyboard features are paused while one is.
+  package func otherKeyRuleApplies(at now: TimeInterval) -> Bool {
+    state.withLock { s in
+      guard s.mode == .pushToTalk, let owned = s.owned, !owned.fromMain,
+        owned.attemptID == s.gesture.attemptID, s.gesture.isHeld, !s.gesture.isLocked,
+        let start = s.gesture.start
+      else { return false }
+      return now - start.handled < Self.otherKeyDismissalWindow
+    }
+  }
+
   /// Seconds from `start` to `input`, by the events' own times when both carry one, otherwise by
   /// handling time (the accepted #3534 domain).
   private static func elapsed(
