@@ -154,11 +154,23 @@ package final class ShadowKeyboardPolicy: Sendable {
           }
         }
         for edge in update.edges {
+          // The edge's role as live reads it: a release belongs to the role its press was
+          // admitted for, and a consumed cancel key stays cancel's tail, even after cancel
+          // disarmed itself and the matcher would now answer another role or none.
+          let ingressRole: ShortcutRole?
+          if edge.phase == .release, let owner = s.owners[edge.keyCode] {
+            ingressRole = owner
+          } else if s.consumed.contains(edge.keyCode) {
+            ingressRole = .cancel
+          } else {
+            ingressRole = edge.role
+          }
           work.records.append(
             Self.record(
-              &s, category: .ingress, keyCode: edge.keyCode, role: edge.role, phase: edge.phase,
-              outcome: .edge, raw: edge.occurred, accepted: nil, handled: edge.handled,
-              evidence: edge.evidence, ambiguous: s.tracker.ambiguous.contains(edge.keyCode)))
+              &s, category: .ingress, keyCode: edge.keyCode, role: ingressRole,
+              phase: edge.phase, outcome: .edge, raw: edge.occurred, accepted: nil,
+              handled: edge.handled, evidence: edge.evidence,
+              ambiguous: s.tracker.ambiguous.contains(edge.keyCode)))
           Self.decide(&s, edge: edge, into: &work)
         }
         return work

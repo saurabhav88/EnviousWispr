@@ -654,5 +654,49 @@ struct HotkeyShadowIntegrationTests {
       #expect(settled.suppressedLines >= before + 2)
       #expect(settled.clean == false)
     }
+
+    private func cancelGesture(_ rig: Rig) throws {
+      let sink = try #require(rig.effects.keyboardListenerSink)
+      for (flags, t) in [(UInt64(0x100010), 501.0), (0, 501.1)] {
+        rig.clock.now = t
+        _ = sink(KeyEventValue(kind: .flagsChanged, keyCode: 54, rawFlags: flags, timestamp: t))
+        rig.service.handleInstalledMonitorFlagsChangedValues(
+          keyCode: 54, flags: NSEvent.ModifierFlags(rawValue: UInt(flags)),
+          generation: rig.service.monitorGeneration, timestamp: t)
+      }
+    }
+
+    @Test("a consumed cancel release agrees after cancel disarms")
+    func cancelTailAgrees() throws {
+      let rig = Rig()
+      rig.service.cancelKeyCode = ModifierKeyCodes.rightCommand
+      rig.service.cancelModifiers = []
+      rig.service.start()
+      rig.service.setCancelHotkeyEnabled(true)
+      try cancelGesture(rig)
+      let tally = rig.service.shadowDiagnostics.drainForTesting()
+      #expect(tally.agreements == 4)
+      #expect(tally.mappingErrors == 0)
+      #expect(tally.ambiguities == 0)
+      rig.service.stop()
+    }
+
+    @Test("cancel and Quick Add on one bare key: the consumed release is cancel's in both lanes")
+    func sharedCancelQuickAddKeyAgrees() throws {
+      let rig = Rig()
+      rig.service.cancelKeyCode = ModifierKeyCodes.rightCommand
+      rig.service.cancelModifiers = []
+      rig.service.quickAddKeyCode = ModifierKeyCodes.rightCommand
+      rig.service.quickAddModifiers = []
+      rig.service.onQuickAdd = {}
+      rig.service.start()
+      rig.service.setCancelHotkeyEnabled(true)
+      try cancelGesture(rig)
+      let tally = rig.service.shadowDiagnostics.drainForTesting()
+      #expect(tally.agreements == 4)
+      #expect(tally.mappingErrors == 0)
+      #expect(tally.ambiguities == 0)
+      rig.service.stop()
+    }
   #endif
 }
