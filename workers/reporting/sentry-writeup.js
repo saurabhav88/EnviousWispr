@@ -86,9 +86,12 @@ async function pages(reader, env, params, opts, field) {
   for (let page = 0; page < PAGE_LIMIT; page += 1) {
     const data = await reader(env, { ...params, cursor, includeCursor: true }, opts);
     rows.push(...data[field]);
-    // The validated cursor is authoritative even when the legacy truncation
-    // hint misses a short page whose Link attributes use a different order.
-    if (!data.truncated && !data.nextCursor) { complete = true; break; }
+    // Parsed metadata distinguishes an explicit end from an absent header,
+    // while the legacy full-page hint remains conservative for old readers.
+    if (data.terminalPage === true || (!data.truncated && !data.nextCursor)) {
+      complete = true;
+      break;
+    }
     if (!data.nextCursor) break;
     if (cursors.has(data.nextCursor)) throw new SentryShapeError(params.queryName, "pagination cursor repeated");
     cursors.add(data.nextCursor);

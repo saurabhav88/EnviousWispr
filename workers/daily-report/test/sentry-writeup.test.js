@@ -137,6 +137,32 @@ test("bounded pagination keeps the same query and follows only cursor metadata",
   assert.equal(second.searchParams.get("cursor"), "100:1:0");
 });
 
+test("explicit terminal full pages keep exact counts and newness at both page boundaries", async () => {
+  const terminal = (url) => next(url).replace('results="true"', 'results="false"');
+  for (const total of [100, 200]) {
+    const rows = Array.from({ length: total }, (_, i) => problem(i + 1, 1, 1));
+    const matrix = rows.map((row) => detail(row["issue.id"], 1));
+    const fresh = rows.map((row) => ({ shortId: row.issue, firstSeen: "2026-10-07T04:01:00Z" }));
+    const r = rig({
+      current: rows.slice(0, 100), currentLink: total === 100 ? terminal : next,
+      currentPage2: rows.slice(100), currentPage2Link: terminal,
+      matrix: matrix.slice(0, 100), matrixLink: total === 100 ? terminal : next,
+      matrixPage2: matrix.slice(100), matrixPage2Link: terminal,
+      firstSeen: fresh.slice(0, 100), firstSeenLink: total === 100 ? terminal : next,
+      firstSeenPage2: fresh.slice(100), firstSeenPage2Link: terminal,
+      currentHead: [head(total, 1)], prior: [], priorHead: [],
+    });
+    const data = await read(r);
+    assert.equal(data.issuesComplete, true, `${total}: issue completeness`);
+    assert.equal(data.buildsComplete, true, `${total}: build completeness`);
+    assert.equal(data.newnessComplete, true, `${total}: newness completeness`);
+    assert.equal(data.sections[0].problems.length, total);
+    assert.equal(data.sections[0].current.events, total);
+    assert.equal(data.sections[0].problems.every((p) => p.isNew && p.eventsExact), true);
+    assert.equal(r.requests.length, total === 100 ? 6 : 9);
+  }
+});
+
 test("a capped issue with one visible row stays bounded; hidden prior rows are not zero", async () => {
   const current = Array.from({ length: 100 }, (_, i) => problem(i + 1, 1, 1, "development", "debug"));
   const prior = Array.from({ length: 100 }, (_, i) => problem(i + 201, 1, 1, "development", "debug"));
@@ -171,8 +197,33 @@ test("cursor protocol is opt-in, preserving old response shape", async () => {
   assert.deepEqual(Object.keys(list).sort(), ["issues", "truncated"]);
 });
 
+test("both real readers distinguish explicit terminal pages from absent or previous-only metadata", async () => {
+  const terminal = (url) => next(url).replace('results="true"', 'results="false"');
+  const previous = (url) => terminal(url).replace('rel="next"', 'rel="previous"');
+  for (const link of [terminal, previous, undefined]) {
+    const r = rig({ current: Array.from({ length: 100 }, (_, i) => problem(i + 1, 1, 1)), currentLink: link,
+      firstSeen: Array.from({ length: 100 }, (_, i) => ({ shortId: "ENVIOUSWISPR-" + (i + 1), firstSeen: "2026-10-07T04:01:00Z" })), firstSeenLink: link });
+    const params = { queryName: "terminal_contract", fields: ["issue", "count()"], requiredFields: ["issue.id", "count()"],
+      start: WINDOW.startISO, end: WINDOW.endISO, perPage: 100 };
+    const listParams = { queryName: "terminal_contract", limit: 100, start: WINDOW.startISO, end: WINDOW.endISO };
+    for (const data of [await discoverAggregate(ENV, { ...params, includeCursor: true }, r.opts),
+      await issueList(ENV, { ...listParams, includeCursor: true }, r.opts)]) {
+      assert.equal(data.terminalPage, link === terminal);
+      assert.equal(data.nextCursor, null);
+      assert.equal(data.truncated, true); // Legacy weekly hint is unchanged.
+    }
+    for (const data of [await discoverAggregate(ENV, params, r.opts), await issueList(ENV, listParams, r.opts)]) {
+      assert.equal(Object.hasOwn(data, "terminalPage"), false);
+      assert.equal(Object.hasOwn(data, "nextCursor"), false);
+      assert.equal(data.truncated, true);
+    }
+  }
+});
+
 test("foreign or ambiguous cursor metadata is refused before a second request", async () => {
   for (const link of ["garbage", "<https://evil.invalid/events/?cursor=x>; rel=\"next\"; results=\"true\"", "<https://us.sentry.io/wrong/?cursor=x>; rel=\"next\"; results=\"true\"",
+    "<https://us.sentry.io/api/0/organizations/envious-labs-llc/events/>; rel=\"next\"",
+    "<https://us.sentry.io/api/0/organizations/envious-labs-llc/events/>; rel=\"next\"; results=\"false\", <https://us.sentry.io/api/0/organizations/envious-labs-llc/events/>; rel=\"next\"; results=\"false\"",
     "<https://us.sentry.io/api/0/organizations/envious-labs-llc/events/?cursor=x&cursor=y>; rel=\"next\"; results=\"true\"",
     "<https://us.sentry.io/api/0/organizations/envious-labs-llc/events/?cursor=x>; rel=\"next\"; results=\"false\", <https://us.sentry.io/api/0/organizations/envious-labs-llc/events/?cursor=y>; rel=\"next\"; results=\"true\""] ) {
     const r = rig({ currentLink: link });

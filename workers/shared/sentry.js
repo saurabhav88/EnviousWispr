@@ -290,10 +290,11 @@ function hasMorePages(headers, rowCount, perPage) {
 
 // Opt-in metadata: old readers keep their response contract. Follow an opaque
 // cursor, never the supplied URL; retain fixed project/query/fields (#3547).
-function nextPageCursor(headers, expectedUrl, queryName) {
+function nextPageMetadata(headers, expectedUrl, queryName) {
   const link = headers?.get?.("link") || "";
-  if (!link) return null;
+  if (!link) return { nextCursor: null, terminalPage: false };
   let next = null;
+  let terminalPage = false;
   let seenNext = false;
   for (const entry of link.split(/,\s*(?=<)/)) {
     const match = /^\s*<([^>]+)>\s*;(.+)$/.exec(entry);
@@ -309,7 +310,10 @@ function nextPageCursor(headers, expectedUrl, queryName) {
     if (attributes.get("rel") !== "next") continue;
     if (seenNext) throw new SentryShapeError(queryName, "ambiguous next page");
     seenNext = true;
-    if (attributes.get("results") === "false") continue;
+    if (attributes.get("results") === "false") {
+      terminalPage = true;
+      continue;
+    }
     if (attributes.get("results") !== "true" || next !== null) {
       throw new SentryShapeError(queryName, "ambiguous next page");
     }
@@ -327,7 +331,7 @@ function nextPageCursor(headers, expectedUrl, queryName) {
     }
     next = cursor;
   }
-  return next;
+  return { nextCursor: next, terminalPage };
 }
 
 function validCursor(cursor) {
@@ -442,7 +446,7 @@ export async function discoverAggregate(env, params, opts = {}) {
     rows,
     fields: Object.keys(metaFields),
     truncated: hasMorePages(headers, rows.length, perPage),
-    ...(includeCursor ? { nextCursor: nextPageCursor(headers, url, queryName) } : {}),
+    ...(includeCursor ? nextPageMetadata(headers, url, queryName) : {}),
   };
 }
 
@@ -541,7 +545,7 @@ export async function issueList(env, params, opts = {}) {
   return {
     issues,
     truncated: hasMorePages(headers, issues.length, limit),
-    ...(includeCursor ? { nextCursor: nextPageCursor(headers, url, queryName) } : {}),
+    ...(includeCursor ? nextPageMetadata(headers, url, queryName) : {}),
   };
 }
 
