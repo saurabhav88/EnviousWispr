@@ -236,6 +236,9 @@ struct KeyboardListenerIntegrationTests {
     let service: HotkeyService
     let keys: ListenerKeyboard
     var starts = 0
+    var joins = 0
+    /// What a join finds: the running session's id, or nil once that session has ended.
+    var joinable: String? = "menu"
     var stops = 0
     var published = 0
     init() {
@@ -248,6 +251,10 @@ struct KeyboardListenerIntegrationTests {
       service.onStartRecording = { [unowned self] in
         starts += 1
         return .recording("s\(starts)")
+      }
+      service.onJoinRecording = { [unowned self] in
+        joins += 1
+        return joinable.map { .recording($0) } ?? .noRecording
       }
       service.onStopRecording = { [unowned self] in stops += 1 }
       service.onLockRequested = { [unowned self] _ in
@@ -495,6 +502,26 @@ struct KeyboardListenerIntegrationTests {
     await ListenerKeyboard.mainTurn()
     #expect(dismissed.isEmpty, "interference ended a recording the press did not start")
     #expect(ptt.stops == 1, "the joined press lost its stop")
+    #expect(ptt.joins == 1 && ptt.starts == 0, "a joining press asked to create a session")
+  }
+
+  /// The session a press found may end before main runs that press: the press only ever joins,
+  /// so it creates nothing (a new take would start with an ordinary key held and no protection).
+  @Test("a joining press whose session ended before it ran starts nothing")
+  func expiredJoinStartsNothing() async {
+    let ptt = PTT()
+    defer { ptt.service.stop() }
+    ptt.service.setRecordingActive(true)
+    ptt.joinable = nil  // the menu take concluded before main ran the press
+    ptt.at(0)
+    await ptt.keys.press(ModifierKeyCodes.rightOption, at: 500)
+    await ptt.service.awaitInFlightStartForTesting()
+    ptt.at(1)
+    await ptt.keys.release(ModifierKeyCodes.rightOption, at: 501)
+    await ListenerKeyboard.mainTurn()
+    #expect(ptt.joins == 1)
+    #expect(ptt.starts == 0, "an expired join created a new session")
+    #expect(ptt.stops == 0, "a refused join's release stopped something")
   }
 
   @Test("a dismissal during a pending start waits for that start and ends its session")

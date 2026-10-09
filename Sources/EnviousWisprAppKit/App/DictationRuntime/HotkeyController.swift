@@ -98,6 +98,17 @@ final class HotkeyController {
       }
       return outcome
     }
+    hotkeyService.onJoinRecording = { [weak self, weak starter] in
+      guard let starter else {
+        Self.reportNilCollaborator(callback: "onJoinRecording")
+        return .noRecording
+      }
+      // The session this press found may have ended before main ran it: never start a new one.
+      guard starter.activeDriver.state.isActive else { return .noRecording }
+      let outcome = await starter.start()
+      if case .recording(let sessionID) = outcome { self?.joinedSessionID = sessionID }
+      return outcome
+    }
     hotkeyService.onStopRecording = { [weak finalizer] in
       guard let finalizer else {
         Self.reportNilCollaborator(callback: "onStopRecording")

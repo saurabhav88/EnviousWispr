@@ -107,6 +107,9 @@ package final class RecordGestureEngine: Sendable {
     package let input: RecordGesture.InputTime
     package let afterStopTimerMs: Int?
     package let decision: RecordGesture.PressDecision
+    /// A `.start` made while a session was running (#3544 P4): it may only join that session,
+    /// never create one, so main calls `onJoinRecording` for it.
+    package var joinsRecording = false
   }
 
   package struct Cancel: Sendable {
@@ -718,7 +721,8 @@ package final class RecordGestureEngine: Sendable {
         .press(
           Press(
             inputSequence: sequence, mode: s.mode, keyCode: keyCode, input: input,
-            afterStopTimerMs: afterStopTimerMs, decision: decision)))
+            afterStopTimerMs: afterStopTimerMs, decision: decision,
+            joinsRecording: joinsRecording)))
     } else {
       s.owned = nil
       let decision = s.gesture.release(input)

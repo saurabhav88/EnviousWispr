@@ -200,6 +200,10 @@ public final class HotkeyService {
   /// #1631: returns whether a session is genuinely continuing when the start path
   /// finishes, and if so its id. `HotkeyService` reconciles its own state on that.
   package var onStartRecording: (@MainActor () async -> RecordingStartOutcome)?
+  /// #3544 P4: a press made while a session was running joins it and must never create one: if
+  /// that session has ended by the time this runs, it returns `.noRecording`. The engine marks
+  /// such a press; nil refuses it.
+  package var onJoinRecording: (@MainActor () async -> RecordingStartOutcome)?
   public var onStopRecording: (@MainActor () async -> Void)?
   public var onCancelRecording: (@MainActor () async -> Void)?
 
@@ -1038,7 +1042,8 @@ public final class HotkeyService {
           await pendingCancellation.value
           guard !Task.isCancelled, self.executingAttemptID == pressID else { return }
         }
-        guard let handler = self.onStartRecording else {
+        guard let handler = press.joinsRecording ? self.onJoinRecording : self.onStartRecording
+        else {
           // No callback wired means nothing was recorded, so the optimistic
           // bookkeeping is exactly as wrong here as on any other refusal.
           self.resolveStart(pressID: pressID, outcome: .noRecording)
