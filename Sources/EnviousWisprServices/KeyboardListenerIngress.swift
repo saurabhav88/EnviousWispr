@@ -110,6 +110,9 @@ package final class KeyboardListenerIngress: Sendable {
     /// one leaves it pending.
     var ordinaryResyncNeeded = true
     var resyncEpoch: UInt64 = 0
+    /// Advanced by every ordinary key event. A reading of ordinary keys applies only if no ordinary
+    /// event was handled while it was out: otherwise it could undo a newer keyDown.
+    var ordinarySequence: UInt64 = 0
   }
 
   package let installation: UInt64
@@ -237,17 +240,18 @@ package final class KeyboardListenerIngress: Sendable {
   /// as held for any event that occurred before it (`KeyStateTracker.isOrdinaryKeyHeld`). `except`
   /// is the key of an ordinary event being handled, which applies itself.
   private func resyncOrdinaryIfNeeded(except: UInt16?) {
-    let epoch = state.withLock { s -> UInt64? in
+    let captured = state.withLock { s -> (epoch: UInt64, sequence: UInt64)? in
       guard !s.closed, s.ordinaryResyncNeeded else { return nil }
-      return s.resyncEpoch
+      return (s.resyncEpoch, s.ordinarySequence)
     }
-    guard let epoch else { return }
+    guard let captured else { return }
     let answers = reader(Self.ordinaryKeyCodes)
     let readAt = clock()
     state.withLock { s in
-      guard !s.closed else { return }
+      // A stale reading leaves the resync pending: the next event asks again.
+      guard !s.closed, s.ordinarySequence == captured.sequence else { return }
       s.tracker.resyncOrdinary(answers, at: readAt, except: except)
-      if s.resyncEpoch == epoch { s.ordinaryResyncNeeded = false }
+      if s.resyncEpoch == captured.epoch { s.ordinaryResyncNeeded = false }
     }
     armSweepIfNeeded()
   }
@@ -265,6 +269,7 @@ package final class KeyboardListenerIngress: Sendable {
     resyncOrdinaryIfNeeded(except: event.keyCode)
     state.withLock { s in
       guard !s.closed else { return }
+      s.ordinarySequence &+= 1
       let fresh = s.tracker.ingestOrdinary(event)
       guard fresh, !isChord else { return }
       s.pending.append(
@@ -448,12 +453,15 @@ package final class KeyboardListenerIngress: Sendable {
   /// is removed, remembered with the reading time so no event that occurred earlier is affected.
   /// One reading suffices: ordinary keys read reliably, and a wrong answer can only allow a start.
   private func reconcileOrdinary() {
-    let keys = state.withLock { s -> Set<UInt16> in s.closed ? [] : s.tracker.ordinaryDown }
-    guard !keys.isEmpty else { return }
-    let answers = reader(keys)
+    let captured = state.withLock { s -> (keys: Set<UInt16>, sequence: UInt64) in
+      (s.closed ? [] : s.tracker.ordinaryDown, s.ordinarySequence)
+    }
+    guard !captured.keys.isEmpty else { return }
+    let answers = reader(captured.keys)
     let readAt = clock()
     state.withLock { s in
-      guard !s.closed else { return }
+      // A stale reading is dropped, never applied: the next sweep asks again.
+      guard !s.closed, s.ordinarySequence == captured.sequence else { return }
       s.tracker.resyncOrdinary(answers.filter { $0.value == .up }, at: readAt)
     }
   }

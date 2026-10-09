@@ -429,6 +429,26 @@ struct KeyboardListenerIngressTests {
     #expect(rig.effects == ["start"], "a hidden keyUp kept blocking starts after the sweep")
   }
 
+  /// The user releases and presses the key again while the sweep's reading is out: that reading is
+  /// stale and must not remove the key held now.
+  @Test("a sweep reading that raced an ordinary key event is dropped")
+  func staleOrdinaryReadingIsDropped() async {
+    let rig = Rig()
+    await ordinary(rig, .keyDown, Self.letterA, at: 0)
+    rig.readings.withLock { $0[Self.letterA] = .up }  // read between the release and the press
+    let ingress = rig.ingress!
+    rig.duringRead.withLock {
+      $0 = {
+        ingress.receive(KeyEventValue(kind: .keyUp, keyCode: 0, rawFlags: 0, timestamp: 505.0))
+        ingress.receive(KeyEventValue(kind: .keyDown, keyCode: 0, rawFlags: 0, timestamp: 505.05))
+      }
+    }
+    await rig.fireSweeps(at: 5.1)
+    await rig.key(Self.option, held: [Self.option], at: 8)
+    await rig.key(Self.option, held: [], at: 8.2)
+    #expect(rig.effects.isEmpty, "a stale reading removed a key the user holds again")
+  }
+
   /// A reading is the present: a record press that OCCURRED before the reading may have happened
   /// while the key was still down, so the key still counts for it.
   @Test("a key a reading removed still counts for a record press that occurred before the reading")
