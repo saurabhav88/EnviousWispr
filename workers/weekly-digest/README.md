@@ -4,8 +4,9 @@ Posts one Discord digest every Monday: website traffic, tracked visitor
 activity, downloads, and app usage for the previous seven days.
 
 - Endpoint: `https://enviouswispr-weekly-digest.saurabhav.workers.dev`
-- Schedule: Cloudflare cron `0 13 * * 1` (Monday 13:00 UTC). This worker holds
-  one of the account's five free-plan cron slots (#1092).
+- Schedule: QStash `enviouswispr-weekly-digest`,
+  `CRON_TZ=America/New_York 0 9 * * 1` (Monday 09:00 Eastern, DST-aware).
+  The old Cloudflare timer was removed in #3570. Keep Wrangler `crons = []`.
 - Source of truth for behaviour: `src/index.js`. Shared transport and delivery:
   `../shared/`.
 
@@ -23,8 +24,28 @@ in a URL survives in browser and shell history, proxies and request logs, and
 leaking it restores the unauthenticated posting this gate closes.
 
 An unset `TRIGGER_SECRET` refuses every request, so a half-configured deploy
-cannot be triggered at all. The cron path is unaffected. `-f` is required:
+cannot be triggered at all. QStash forwards this header. `-f` is required:
 plain `curl -sS` exits 0 on an HTTP 401 or 500.
+
+## QStash operation (#3570)
+
+Use the existing EU account (`https://qstash-eu-central-1.upstash.io`) with
+GCP `qstash-token`. This schedule uses POST, zero retries, 15-minute timeout,
+and GCP `weekly-digest-trigger-key` forwarded as `x-trigger-secret`.
+No report content or seven-complete-UTC-day data window changed.
+
+The account is shared with EnviousStaging/marketing: only modify this exact
+schedule ID. Never alter their schedules, queues, credentials or global settings.
+On trigger-secret rotation update this schedule's forwarded header too.
+For a failed delivery, inspect this schedule's QStash Logs/DLQ and Discord before
+manual recovery. A report can post before returning an error; never blindly retry.
+No exactly-once delivery, automatic backfill or missing-report alarm is promised.
+
+Cutover proof on 2026-10-09: one QStash POST returned 200/DELIVERED and its weekly
+report was observed in Discord. The production schedule's next time was checked
+as Monday October 12 at 09:00 Eastern. This does not prove that future run yet.
+The old Cloudflare schedule list was read back empty. Do not deploy a pre-#3570
+Wrangler file that would restore the old timer and duplicate reports.
 
 ## Pre-deploy smoke, which posts nothing
 

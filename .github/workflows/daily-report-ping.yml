@@ -1,16 +1,9 @@
 name: Daily Report
 
-# Triggers the daily-report Cloudflare Worker once a day. The worker
-# (workers/daily-report/) posts a plain-English usage summary to Discord.
-# Scheduling lives here (GitHub Actions) rather than a Cloudflare cron
-# because the CF account is at its 5-cron free-plan limit (#1092). The
-# worker computes the Eastern calendar day from its own clock at run time,
-# not from when this cron fires, so a late-running scheduled job still
-# reports the correct day.
-
+# Manual recovery only. QStash owns the daily 09:12 America/New_York
+# schedule (#3570); see workers/daily-report/README.md. Keep the explicit
+# date override and no-retry policy for deliberate recovery after inspection.
 on:
-  schedule:
-    - cron: "12 13 * * *"  # ~9:12am EDT / ~8:12am EST daily. Offset minute (not :00): GitHub flags top-of-hour as a high-load window where scheduled runs are delayed/dropped (#1131).
   workflow_dispatch:
     inputs:
       date:

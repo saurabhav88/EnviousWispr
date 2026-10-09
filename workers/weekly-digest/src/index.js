@@ -1,7 +1,7 @@
 /**
  * EnviousWispr Weekly Digest - Cloudflare Worker (issues #1243, #1589)
  *
- * Runs Monday 13:00 UTC via a Cloudflare cron trigger and posts ONE Discord
+ * Runs Monday 09:00 America/New_York via QStash HTTP trigger (#3570) and posts ONE Discord
  * message with five sections: all website traffic (Cloudflare), tracked visitor
  * activity (PostHog), downloads (GitHub + PostHog), app usage (PostHog), and
  * the week's errors on the current release line (Sentry, #1965).
