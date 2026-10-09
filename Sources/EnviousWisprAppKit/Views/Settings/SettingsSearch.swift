@@ -150,7 +150,8 @@ struct SettingsSearchIndex: Sendable {
     let title: @Sendable (SettingsMapTitle, String) -> String?
     let description: @Sendable (SettingsMapDescription, String) -> String?
     /// The reviewed result label of a place whose title is only known at run time, in a
-    /// language; read only by the title-only index (#3545). nil: no label.
+    /// language; the title-only index and a place that lost vocabulary blocks read it (#3545).
+    /// nil: no label.
     var dynamicLabel: @Sendable (SettingsMapID, String) -> String? = { _, _ in nil }
 
     static let interface = Copy(
@@ -233,21 +234,25 @@ struct SettingsSearchIndex: Sendable {
   let appLanguage: String
   let stop: Set<String>
   let markers: Set<String>
+  /// The vocabulary problems whose data this index left out, for the DEBUG log.
+  var leftOut: [String] = []
 
-  /// Loads the bundled vocabulary and builds the index. Missing or invalid data is a typed
-  /// failure, never an empty index (plan §3.2a).
+  /// Loads the bundled vocabulary and builds the index. A broken block or entry is left out and
+  /// its place keeps its title (#3545 plan §3.5); a document that cannot be used at all is a
+  /// typed failure, never an empty index (plan §3.2a), and the window searches by title.
   static func load(
     appLanguage: String, preferredLanguages: [String], bundle: Bundle = .module,
     copy: Copy = .interface
   ) -> Result<SettingsSearchIndex, SettingsSearchVocabularyError> {
-    SettingsSearchVocabulary.load(bundle: bundle).flatMap { vocabulary in
-      SettingsSearchCatalog.join(vocabulary).map { joined in
-        SettingsSearchIndex(
-          joined: joined, vocabulary: vocabulary, appLanguage: appLanguage,
-          languages: SettingsSearchLanguages.active(
-            appLanguage: appLanguage, preferred: preferredLanguages),
-          copy: copy)
-      }
+    SettingsSearchVocabulary.loadForSearch(bundle: bundle).map { usable in
+      var index = SettingsSearchIndex(
+        joined: SettingsSearchCatalog.joinAvailable(usable.vocabulary),
+        vocabulary: usable.vocabulary, appLanguage: appLanguage,
+        languages: SettingsSearchLanguages.active(
+          appLanguage: appLanguage, preferred: preferredLanguages),
+        copy: copy)
+      index.leftOut = usable.dropped
+      return index
     }
   }
 
@@ -316,7 +321,17 @@ struct SettingsSearchIndex: Sendable {
     appLanguage: String, languages: [String], copy: Copy
   ) {
     let interface = languages.filter(SettingsSearchVocabulary.interfaceLanguages.contains)
-    let documents = Self.documents(joined.map(\.entry), interface: interface, copy: copy)
+    // A place that lost vocabulary blocks may have lost the only words that name it (a run-time
+    // title has no interface text), so it takes its reviewed result label, as in the title-only
+    // index. A complete place keeps exactly the reviewed fields.
+    let complete = SettingsSearchVocabulary.declaredLanguages.count
+    let degraded = Set(joined.filter { $0.blocks.count < complete }.map(\.entry.id))
+    let documents = Self.documents(
+      joined.map(\.entry), interface: interface, copy: copy,
+      dynamicTitle: degraded.isEmpty
+        ? nil
+        : { id, language in degraded.contains(id.rawValue) ? copy.dynamicLabel(id, language) : nil }
+    )
     // One language's filler can be another's setting word or marker; the active union loses both.
     var markers = Self.baseMarkers
     var stop: Set<String> = []
@@ -593,4 +608,3 @@ struct SettingsSearchIndex: Sendable {
     }
   }
 }
-

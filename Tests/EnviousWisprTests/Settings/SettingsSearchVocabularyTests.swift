@@ -672,5 +672,68 @@ struct SettingsSearchVocabularyTests {
         == .failure(.missingResource))
   }
 
+  // MARK: - One broken block (#3545 T9)
+
+  @MainActor
+  @Test("one broken block fails validation, and search leaves out only that block")
+  func brokenBlockIsLeftOutAlone() throws {
+    let shipped = try Self.shipped()
+    var object = try #require(
+      try JSONSerialization.jsonObject(with: try Self.shippedData()) as? [String: Any])
+    let id = "lockedLanguage"
+    var entries = try #require(object["entries"] as? [[String: Any]])
+    let entryIndex = try #require(entries.firstIndex { $0["id"] as? String == id })
+    var blocks = try #require(entries[entryIndex]["blocks"] as? [[String: Any]])
+    let blockIndex = try #require(blocks.firstIndex { $0["language"] as? String == "fr" })
+    blocks[blockIndex]["words"] = "langue fixe"
+    entries[entryIndex]["blocks"] = blocks
+    object["entries"] = entries
+    let data = try JSONSerialization.data(withJSONObject: object)
+    let problem = "lockedLanguage/fr.words: not an array of strings"
+
+    // The required tests still fail on it.
+    #expect(
+      SettingsSearchVocabulary.validate(data, expectedIDs: SettingsSearchCatalog.searchableIDs)
+        == .failure(.invalid([problem])))
+
+    // Search drops exactly that block; every other block, entry and language list is unchanged.
+    let usable = try SettingsSearchVocabulary.usable(
+      data, expectedIDs: SettingsSearchCatalog.searchableIDs
+    ).get()
+    #expect(usable.dropped == [problem])
+    var expected = shipped.entries
+    expected[id]?["fr"] = nil
+    #expect(usable.vocabulary.entries[id]?.count == Self.languages.count - 1)
+    #expect(usable.vocabulary.entries == expected)
+    #expect(usable.vocabulary.languageData == shipped.languageData)
+
+    // Through the production index loader: the place is still found by its title, its healthy
+    // blocks still answer, and only the broken block's words are gone.
+    let folder = try SettingsSearchModelTests.vocabularyBundle(data)
+    defer { try? FileManager.default.removeItem(at: folder) }
+    let copy = SettingsSearchModelTests.builtCatalogWithLabels
+    let index = try SettingsSearchIndex.load(
+      appLanguage: "en", preferredLanguages: ["en-US", "fr-FR"],
+      bundle: try #require(Bundle(url: folder)), copy: copy
+    ).get()
+    #expect(index.leftOut == [problem])
+    #expect(index.places.map(\.id) == SettingsSearchCatalog.entries.map(\.id))
+    let place = try #require(index.places.first { $0.id == id })
+    #expect(place.visibleTitle["dictation"] != nil, "no title fallback: \(place.visibleTitle)")
+    #expect(index.results(for: "dictation language").contains { $0.entryID == id })
+    #expect(index.results(for: "fixed").contains { $0.entryID == id }, "English block lost")
+    #expect(place.meaning["verrouillee"] == nil, "the broken French block's words were kept")
+    #expect(index.results(for: "couleurs").first?.entryID == "theme", "another place's French lost")
+
+    // A complete place keeps exactly its reviewed fields: no fallback label is added.
+    let healthy = try SettingsSearchIndex.load(
+      appLanguage: "en", preferredLanguages: ["en-US", "fr-FR"], copy: copy
+    ).get()
+    #expect(healthy.leftOut.isEmpty)
+    let complete = try #require(healthy.places.first { $0.id == id })
+    #expect(complete.visibleTitle.isEmpty, "\(complete.visibleTitle)")
+    #expect(complete.meaning["verrouillee"] != nil, "control: the French word is searchable")
+  }
+
   private final class BundleMarker {}
 }

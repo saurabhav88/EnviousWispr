@@ -55,4 +55,11 @@ enum SettingsSearchCatalog {
     }
     return problems.isEmpty ? .success(joined) : .failure(.invalid(problems))
   }
+
+  /// The search window's join (#3545 plan §3.5): every catalog entry, in catalog order, with
+  /// whatever blocks the usable vocabulary kept for it. An entry with no blocks is still
+  /// searchable by its interface title.
+  static func joinAvailable(_ vocabulary: SettingsSearchVocabulary) -> [JoinedEntry] {
+    entries.map { JoinedEntry(entry: $0, blocks: vocabulary.entries[$0.id] ?? [:]) }
+  }
 }

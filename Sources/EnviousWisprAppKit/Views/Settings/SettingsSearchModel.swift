@@ -88,7 +88,8 @@ final class SettingsSearchModel {
   /// be used. `announce` speaks the result count after typing pauses.
   init(
     loadIndex: @escaping @Sendable () async -> SettingsSearchIndex?,
-    titleIndex: @escaping @MainActor () -> SettingsSearchIndex = SettingsSearchModel.windowTitleIndex,
+    titleIndex: @escaping @MainActor () -> SettingsSearchIndex = SettingsSearchModel
+      .windowTitleIndex,
     meaningWorker: SettingsSearchMeaningWorker? = nil,
     usageMetricsOn: @escaping @MainActor () -> Bool = { false },
     emitFinished: @escaping @MainActor (SettingsSearchFinished) -> Void = { _ in },
@@ -124,6 +125,16 @@ final class SettingsSearchModel {
           appLanguage: appLanguage, preferredLanguages: Locale.preferredLanguages)
         {
         case .success(let index):
+          #if DEBUG
+            if !index.leftOut.isEmpty {
+              let leftOut = index.leftOut
+              Task {
+                await AppLogger.shared.log(
+                  "Settings search vocabulary: left out \(leftOut.count) broken part(s): \(leftOut.joined(separator: "; "))",
+                  level: .info, category: "SettingsSearch")
+              }
+            }
+          #endif
           return index
         case .failure(let error):
           #if DEBUG
@@ -295,7 +306,8 @@ final class SettingsSearchModel {
     case .ready, .titleOnly: current.meaningPending = meaningPass == .pending
     case .notLoaded, .loading: current.meaningPending = true
     }
-    current.meaningElapsedMilliseconds = meaningPass == .completed ? meaningElapsedMilliseconds : nil
+    current.meaningElapsedMilliseconds =
+      meaningPass == .completed ? meaningElapsedMilliseconds : nil
     attempt = current
   }
 
@@ -440,11 +452,13 @@ final class SettingsSearchModel {
   ) -> [SettingsSearchResult] {
     let byID = Dictionary(words.map { ($0.entryID, $0) }, uniquingKeysWith: { first, _ in first })
     let kinds = Dictionary(
-      SettingsSearchCatalog.entries.map { ($0.id, $0.kind) }, uniquingKeysWith: { first, _ in first })
+      SettingsSearchCatalog.entries.map { ($0.id, $0.kind) },
+      uniquingKeysWith: { first, _ in first })
     return fused.compactMap { item in
       if let word = byID[item.entryID] { return word }
       guard let kind = kinds[item.entryID] else { return nil }
-      return SettingsSearchResult(entryID: item.entryID, kind: kind, coverage: 0, score: 0, hint: nil)
+      return SettingsSearchResult(
+        entryID: item.entryID, kind: kind, coverage: 0, score: 0, hint: nil)
     }
   }
 

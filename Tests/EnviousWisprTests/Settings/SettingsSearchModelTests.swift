@@ -170,7 +170,9 @@ struct SettingsSearchModelTests {
   // #3545 T8. Replaces #3482's "a search typed while the index loads ... never 'no results'
   // first": the panel now answers from titles at once instead of showing nothing while the full
   // index loads, so an unmatched search says "No settings match" from its title-only answer.
-  @Test("a search typed while the full index loads is answered from titles; the full index reruns the current one")
+  @Test(
+    "a search typed while the full index loads is answered from titles; the full index reruns the current one"
+  )
   func titleAnswersWhileLoading() async throws {
     let gate = AsyncGate()
     let loads = LoadCounter()
@@ -184,7 +186,10 @@ struct SettingsSearchModelTests {
     #expect(model.results.map(\.entryID) == ["theme"])
     #expect(model.selectedEntryID == "theme")
     #expect(model.requestForSelection()?.entryID == "theme")
-    if case .loading = model.indexState {} else { Issue.record("not answering from titles: \(model.indexState)") }
+    if case .loading = model.indexState {
+    } else {
+      Issue.record("not answering from titles: \(model.indexState)")
+    }
     // A later search during the same load also answers at once, from titles.
     model.setQuery("beta")
     #expect(model.results.map(\.entryID) == ["inputDevice"])
@@ -213,12 +218,14 @@ struct SettingsSearchModelTests {
     #expect(model.selectedEntryID == "inputDevice")
     await gate.open()
     #expect(await Self.waitUntil { model.results.first?.entryID == "showInDock" })
-    #expect(model.selectedEntryID == "inputDevice", "the full index took back the person's selection")
+    #expect(
+      model.selectedEntryID == "inputDevice", "the full index took back the person's selection")
 
     // A closed panel stays closed when the full index arrives.
     let closedGate = AsyncGate()
     let closed = Self.gatedModel(
-      closedGate, titles: Self.fixture([(.theme, "beta")]), full: Self.fixture([(.showInDock, "beta")]))
+      closedGate, titles: Self.fixture([(.theme, "beta")]),
+      full: Self.fixture([(.showInDock, "beta")]))
     closed.setQuery("beta")
     closed.dismissPanel()
     await closedGate.open()
@@ -229,7 +236,8 @@ struct SettingsSearchModelTests {
     // A search cleared while loading stays cleared.
     let resetGate = AsyncGate()
     let reset = Self.gatedModel(
-      resetGate, titles: Self.fixture([(.theme, "beta")]), full: Self.fixture([(.showInDock, "beta")]))
+      resetGate, titles: Self.fixture([(.theme, "beta")]),
+      full: Self.fixture([(.showInDock, "beta")]))
     reset.setQuery("beta")
     reset.reset()
     await resetGate.open()
@@ -237,22 +245,62 @@ struct SettingsSearchModelTests {
     #expect(reset.query.isEmpty && reset.results.isEmpty && reset.isPanelPresented == false)
   }
 
-  @Test("a vocabulary that cannot be used leaves search answering by title, and the attempt final")
+  /// A folder that loads as a bundle holding `vocabulary` as the search vocabulary resource.
+  static func vocabularyBundle(_ vocabulary: Data) throws -> URL {
+    let folder = FileManager.default.temporaryDirectory
+      .appendingPathComponent("settings-search-vocabulary-\(UUID().uuidString)")
+    try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+    try vocabulary.write(
+      to: folder.appendingPathComponent("\(SettingsSearchVocabulary.resourceName).json"))
+    return folder
+  }
+
+  // #3545 T9: the file goes through the production index loader, not a stubbed nil.
+  @Test(
+    "a vocabulary file that cannot be used leaves search answering by title, and the attempt final")
   func unusableVocabularyKeepsTitleSearch() async throws {
+    let folder = try Self.vocabularyBundle(Data("{\"schema\": \"settings-search-voc".utf8))
+    defer { try? FileManager.default.removeItem(at: folder) }
+    let bundle = try #require(Bundle(url: folder))
+    #expect(
+      SettingsSearchVocabulary.resourceURL(bundle: bundle) != nil,
+      "the fixture bundle has no resource")
+    guard
+      case .failure(.invalid(let problems)) = SettingsSearchIndex.load(
+        appLanguage: "en", preferredLanguages: ["en-US"], bundle: bundle)
+    else {
+      Issue.record("an undecodable file must fail the full index")
+      return
+    }
+    #expect(problems.count == 1 && problems[0].hasPrefix("not JSON"), "\(problems)")
+
     let finished = FinishedLog()
     let gate = AsyncGate()
-    let model = Self.gatedModel(
-      gate, titles: Self.fixture([(.theme, "beta")]), full: nil, usageMetricsOn: { true },
-      emitFinished: { finished.rows.append($0) })
+    let model = SettingsSearchModel(
+      loadIndex: {
+        await gate.wait()
+        return try? SettingsSearchIndex.load(
+          appLanguage: "en", preferredLanguages: ["en-US"], bundle: Bundle(url: folder) ?? .main
+        ).get()
+      },
+      titleIndex: {
+        SettingsSearchIndex.titleOnly(
+          appLanguage: "en", preferredLanguages: ["en-US"], copy: Self.builtCatalogWithLabels)
+      },
+      usageMetricsOn: { true }, emitFinished: { finished.rows.append($0) }, announce: { _ in },
+      announcementDelay: .milliseconds(20))
     model.setQuery("zzqx")
     #expect(model.attempt?.meaningPending == true, "titles answer while the full index loads")
     await gate.open()
     #expect(await Self.ready(model))
-    if case .titleOnly = model.indexState {} else { Issue.record("expected title-only: \(model.indexState)") }
+    if case .titleOnly = model.indexState {
+    } else {
+      Issue.record("expected title-only: \(model.indexState)")
+    }
     #expect(model.attempt?.meaningPending == false, "the title-only answer is final now")
     #expect(model.showsNoResults)
-    model.setQuery("beta")
-    #expect(model.results.map(\.entryID) == ["theme"])
+    model.setQuery("theme")
+    #expect(model.results.first?.entryID == "theme", "\(model.results.map(\.entryID))")
     model.setQuery("zzqx")
     model.reset(endedBy: .escape)
     #expect(finished.rows.map(\.outcome) == [.zeroResults])
@@ -289,7 +337,8 @@ struct SettingsSearchModelTests {
     let de = try #require(german.places.first { $0.id == id })
     let en = try #require(english.places.first { $0.id == id })
     #expect(de.visibleTitle["diktiersprache"] != nil, "German label missing: \(de.visibleTitle)")
-    #expect(de.otherTitle["dictation"] != nil, "English label missing under German: \(de.otherTitle)")
+    #expect(
+      de.otherTitle["dictation"] != nil, "English label missing under German: \(de.otherTitle)")
     #expect(en.visibleTitle["dictation"] != nil, "English label missing: \(en.visibleTitle)")
     #expect(en.visibleTitle["diktiersprache"] == nil)
     // A German search finds it by its German name.

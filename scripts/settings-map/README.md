@@ -1,6 +1,6 @@
 # Settings search vocabulary (#3482)
 
-`Sources/EnviousWisprAppKit/Resources/SettingsSearchVocabulary.json` holds, for every searchable Settings Map id and each of the 32 declared languages, the words and everyday phrases people type for that place, plus each language's filler (stop) list and protected markers. The schema authority is `SettingsSearchVocabulary.validate` in `Sources/EnviousWisprAppKit/Views/Settings/SettingsSearchVocabulary.swift`; the required `build-and-test` lane runs it through `SettingsSearchVocabularyTests` and `SettingsSearchCatalogTests`. A new, renamed or removed searchable id fails those tests and names the draft command.
+`Sources/EnviousWisprAppKit/Resources/SettingsSearchVocabulary.json` holds, for every searchable Settings Map id and each of the 32 declared languages, the words and everyday phrases people type for that place, plus each language's filler (stop) list and protected markers. The schema authority is `SettingsSearchVocabulary.validate` in `Sources/EnviousWisprAppKit/Views/Settings/SettingsSearchVocabulary.swift`; the required `build-and-test` lane runs it through `SettingsSearchVocabularyTests` and `SettingsSearchCatalogTests`. A new, renamed or removed searchable id fails those tests and names the draft command. The app reads the file through `SettingsSearchVocabulary.usable`, which runs the same checks but leaves out only a broken block (one id, one language) or entry, so a gap that reached a build degrades one place's words, never the whole search (#3545).
 
 ## Draft a new place
 
