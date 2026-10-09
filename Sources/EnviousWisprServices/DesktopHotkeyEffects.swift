@@ -71,6 +71,60 @@ package struct DesktopModifierEvent: Sendable {
   }
 }
 
+/// One keyboard event as the listener's event tap saw it, already decoded (#3544 P2).
+///
+/// Primitive values only, for the same reason as the rest of this file: no `CGEvent` or
+/// `CGEventTapProxy` crosses into Services, so nothing a test can hold is a framework handle.
+/// Delivered on the listener's own thread, never main.
+package struct KeyEventValue: Sendable, Equatable {
+  package enum Kind: Sendable, Equatable {
+    case flagsChanged
+    case keyDown
+    case keyUp
+    /// The listener re-enabled its tap after the OS disabled it (callback timeout or user input).
+    /// A recovery notice, not a key transition: `keyCode` and `rawFlags` are 0, `isAutorepeat`
+    /// and `isOurs` are false, and `timestamp` is when the listener noticed, or nil. Keys may
+    /// have changed while the tap was off, so policy reconciles held state on this.
+    case tapReenabled
+    /// Secure Event Input turned on or off. Reported on its own because entering Secure Input
+    /// does not disable the tap (#3544 P0: `flagsChanged` keeps arriving, key events stop).
+    /// Same non-key payload as `tapReenabled`.
+    case secureInputChanged
+  }
+
+  package let kind: Kind
+  package let keyCode: UInt16
+  /// `CGEventFlags` raw value, device-dependent side bits included.
+  package let rawFlags: UInt64
+  /// When the event happened, seconds since startup (`CGEvent.timestamp` / 1e9, which agrees
+  /// with `systemUptime` within about 1 ms, #3544 P0), or nil when unknown. Lifecycle notices
+  /// may carry the listener's observation time instead.
+  package let timestamp: TimeInterval?
+  package let isAutorepeat: Bool
+  /// Posted by this app and marked as ours, so policy can pass it through untouched.
+  package let isOurs: Bool
+
+  package init(
+    kind: Kind, keyCode: UInt16, rawFlags: UInt64, timestamp: TimeInterval?,
+    isAutorepeat: Bool = false, isOurs: Bool = false
+  ) {
+    self.kind = kind
+    self.keyCode = keyCode
+    self.rawFlags = rawFlags
+    self.timestamp = timestamp
+    self.isAutorepeat = isAutorepeat
+    self.isOurs = isOurs
+  }
+}
+
+/// What the listener does with the event after the sink has seen it (#3544 P2).
+package enum ListenerVerdict: Sendable, Equatable {
+  /// Return the event unchanged. The only verdict before P5.
+  case passThrough
+  /// Remove the event from the stream (P5: owned chords, Escape during dictation).
+  case swallow
+}
+
 /// What asking the OS to register a hotkey produced.
 ///
 /// Three cases, not two, because the third is REACHABLE and was the trap the
@@ -113,6 +167,16 @@ package protocol DesktopHotkeyEffects: AnyObject {
   /// fires.
   func installLocalModifierMonitor(
     _ callback: @escaping @MainActor (DesktopModifierEvent) -> Void
+  ) -> DesktopEffectToken?
+
+  /// Install the keyboard listener: one active session event tap on its own thread (#3544 P2).
+  ///
+  /// Installation and removal stay main-isolated like every other resource here. The `sink` is
+  /// NOT: it runs synchronously on the listener's thread while the OS holds the event, so it must
+  /// never wait on main, and its verdict decides whether the event continues. Nil when the tap
+  /// could not be created (for example without Accessibility); the caller reports that.
+  func installKeyboardListener(
+    _ sink: @escaping @Sendable (KeyEventValue) -> ListenerVerdict
   ) -> DesktopEffectToken?
 
   /// Release whatever this token identifies.

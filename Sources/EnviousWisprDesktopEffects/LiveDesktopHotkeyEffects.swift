@@ -178,6 +178,16 @@ package final class LiveDesktopHotkeyEffects: DesktopHotkeyEffects {
     return store(monitor)
   }
 
+  // MARK: - Keyboard listener
+
+  /// Incomplete scaffolding (#3544 P2 Chunk 1): nothing calls this yet, and it installs nothing.
+  /// Chunk 3 replaces it with the event tap on its own thread.
+  package func installKeyboardListener(
+    _ sink: @escaping @Sendable (KeyEventValue) -> ListenerVerdict
+  ) -> DesktopEffectToken? {
+    nil
+  }
+
   private func store(_ monitor: Any?) -> DesktopEffectToken? {
     guard let monitor else { return nil }
     let token = DesktopEffectToken()

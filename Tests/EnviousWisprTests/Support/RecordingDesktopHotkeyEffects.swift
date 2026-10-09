@@ -83,6 +83,28 @@ final class RecordingDesktopHotkeyEffects: DesktopHotkeyEffects {
     return failMonitorInstalls ? nil : DesktopEffectToken()
   }
 
+  // MARK: - Keyboard listener (#3544 P2)
+
+  private(set) var keyboardListenerInstalls = 0
+  /// The installed listener's token, nil when none is installed or the install failed.
+  private(set) var keyboardListenerToken: DesktopEffectToken?
+  /// The sink the service handed over. `@Sendable`, so a test can call it from a worker thread
+  /// as the listener's own thread would. Nil once its token is removed, or after a failed install.
+  private(set) var keyboardListenerSink: (@Sendable (KeyEventValue) -> ListenerVerdict)?
+  /// Make the next listener installs return nil, as a tap creation without Accessibility does.
+  var failKeyboardListenerInstall = false
+
+  func installKeyboardListener(
+    _ sink: @escaping @Sendable (KeyEventValue) -> ListenerVerdict
+  ) -> DesktopEffectToken? {
+    keyboardListenerInstalls += 1
+    guard !failKeyboardListenerInstall else { return nil }
+    let token = DesktopEffectToken()
+    keyboardListenerToken = token
+    keyboardListenerSink = sink
+    return token
+  }
+
   /// When set, every removal is refused, as Carbon can refuse `UnregisterEventHotKey`. Off by
   /// default so no suite has to reason about a failure the OS rarely produces.
   var refuseRemovals = false
@@ -90,7 +112,13 @@ final class RecordingDesktopHotkeyEffects: DesktopHotkeyEffects {
   @discardableResult
   func remove(_ token: DesktopEffectToken) -> Bool {
     removed.append(token)
-    return !refuseRemovals
+    if refuseRemovals { return false }
+    // A removed listener stops delivering, as the live tap does; a refused removal keeps it.
+    if token == keyboardListenerToken {
+      keyboardListenerToken = nil
+      keyboardListenerSink = nil
+    }
+    return true
   }
 
   // MARK: - Assertions helpers
