@@ -99,6 +99,86 @@ struct KeyboardListenerRecoveryTests {
     #expect(secondInstallation != firstInstallation)
   }
 
+  /// A push-to-talk hold is live when the OS storms the listener. With no listener, only key state
+  /// can show the key came up: the hold must end then, through the cooldown and through installs
+  /// that keep failing, not at the replacement's first sweep or never.
+  @Test("a record key let go while no listener is installed still stops the recording")
+  func releaseDuringListenerDowntimeStops() async {
+    let rig = Rig()
+    rig.service.recordingMode = .pushToTalk
+    rig.service.toggleKeyCode = ModifierKeyCodes.rightOption
+    rig.service.toggleModifiers = []
+    var starts = 0
+    var stops = 0
+    let stopped = HotkeyGlobeKeyTests.CallbackWaiter()
+    rig.service.onStartRecording = {
+      starts += 1
+      return .recording("s\(starts)")
+    }
+    rig.service.onStopRecording = {
+      stops += 1
+      stopped.note()
+    }
+    rig.service.start()
+    defer { rig.service.stop() }
+    let keys = ListenerKeyboard(rig.effects)
+    await keys.press(ModifierKeyCodes.rightOption, at: 500)
+    await rig.service.awaitInFlightStartForTesting()
+    #expect(starts == 1)
+    rig.effects.keyStates.withLock { $0[ModifierKeyCodes.rightOption] = .down }
+    rig.stormHealth()
+    await rig.storm(through: rig.effects.keyboardListenerSink)
+    // Still held at the first check: nothing ends.
+    rig.clock.now = 505
+    rig.timers.fireDue()
+    await Rig.mainTurn()
+    #expect(stops == 0)
+    // The replacement fails (Accessibility gone); the key is still held.
+    rig.effects.failKeyboardListenerInstall = true
+    rig.clock.now = 560
+    rig.timers.fireDue()
+    await rig.retries.wait(until: 1)
+    await Rig.mainTurn()
+    #expect(rig.effects.keyboardListenerToken == nil)
+    #expect(stops == 0)
+    // The key comes up unseen: the next check ends the hold.
+    rig.effects.keyStates.withLock { $0[ModifierKeyCodes.rightOption] = .up }
+    rig.clock.now = 566
+    rig.timers.fireDue()
+    await stopped.wait(until: 1)
+    #expect(stops == 1)
+    #expect(rig.service.isModifierHeld == false)
+    #expect(starts == 1, "the check started a recording")
+  }
+
+  @Test("a record key let go during the storm cooldown stops the recording before the replacement")
+  func releaseDuringStormCooldownStops() async {
+    let rig = Rig()
+    rig.service.recordingMode = .pushToTalk
+    rig.service.toggleKeyCode = ModifierKeyCodes.rightOption
+    rig.service.toggleModifiers = []
+    var stops = 0
+    let stopped = HotkeyGlobeKeyTests.CallbackWaiter()
+    rig.service.onStartRecording = { .recording("s") }
+    rig.service.onStopRecording = {
+      stops += 1
+      stopped.note()
+    }
+    rig.service.start()
+    defer { rig.service.stop() }
+    let keys = ListenerKeyboard(rig.effects)
+    await keys.press(ModifierKeyCodes.rightOption, at: 500)
+    await rig.service.awaitInFlightStartForTesting()
+    rig.stormHealth()
+    await rig.storm(through: rig.effects.keyboardListenerSink)
+    rig.effects.keyStates.withLock { $0[ModifierKeyCodes.rightOption] = .up }
+    rig.clock.now = 505
+    rig.timers.fireDue()
+    await stopped.wait(until: 1)
+    #expect(stops == 1)
+    #expect(rig.effects.keyboardListenerInstalls == 1, "ended only by the replacement")
+  }
+
   @Test("stopping during the cooldown cancels the replacement")
   func stopDuringCooldownInstallsNothing() async {
     let rig = Rig()

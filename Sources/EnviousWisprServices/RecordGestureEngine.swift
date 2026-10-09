@@ -321,7 +321,6 @@ package final class RecordGestureEngine: Sendable {
     state.withLock { $0.gesture.invalidateDiagnostics() }
   }
 
-
   package var snapshot: Snapshot {
     state.withLock { Snapshot(isHeld: $0.gesture.isHeld, isLocked: $0.gesture.isLocked) }
   }
@@ -364,7 +363,8 @@ package final class RecordGestureEngine: Sendable {
     installation: UInt64
   ) -> ListenerRefusal? {
     let (refusal, work, submit) = state.withLock { s -> (ListenerRefusal?, TimerWork, Bool) in
-      if let refusal = Self.refusal(&s, keyCode: keyCode, isPress: isPress,
+      if let refusal = Self.refusal(
+        &s, keyCode: keyCode, isPress: isPress,
         generation: generation, installation: installation)
       {
         s.refusals[refusal, default: 0] += 1
@@ -376,6 +376,25 @@ package final class RecordGestureEngine: Sendable {
     perform(work)
     if submit { submitAsyncDrain() }
     return refusal
+  }
+
+  /// The release of the listener-owned record press `keyCode`, read from key state while no
+  /// listener is installed (storm cooldown, failed installs). It ends only the hold a removed
+  /// listener left behind, so it needs no installation; it can never start anything. Returns
+  /// whether that press was owned and is now released.
+  @discardableResult
+  package func releaseOrphanedListenerPress(keyCode: UInt16, input: RecordGesture.InputTime) -> Bool
+  {
+    let (released, work, submit) = state.withLock { s -> (Bool, TimerWork, Bool) in
+      guard s.listenerInstallation == nil, let owned = s.owned, !owned.fromMain,
+        owned.keyCode == keyCode
+      else { return (false, TimerWork(), false) }
+      let work = Self.admit(&s, isPress: false, input: input, fromMain: false)
+      return (true, work, Self.claimAsyncDrain(&s))
+    }
+    perform(work)
+    if submit { submitAsyncDrain() }
+    return released
   }
 
   /// The listener's bare cancel key (#3544 P3), in the same order as record input: the attempt
@@ -524,8 +543,9 @@ package final class RecordGestureEngine: Sendable {
     case .keyboard(let code, _): keyCode = code
     }
     if isPress {
-      guard case .admitted(let afterStopTimerMs) = s.gesture.admitPress(
-        input, binding: s.binding, mode: s.mode)
+      guard
+        case .admitted(let afterStopTimerMs) = s.gesture.admitPress(
+          input, binding: s.binding, mode: s.mode)
       else {
         // A duplicate leaves the earlier press's ownership in place.
         return work
@@ -682,7 +702,8 @@ package final class RecordGestureEngine: Sendable {
     }
     guard start else { return }
     while true {
-      let next = state.withLock { s -> (Batch, Bool, (@MainActor @Sendable (Batch, Bool) -> Void)?)? in
+      let next = state.withLock {
+        s -> (Batch, Bool, (@MainActor @Sendable (Batch, Bool) -> Void)?)? in
         guard !s.outbox.isEmpty else {
           s.draining = false
           return nil

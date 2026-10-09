@@ -376,6 +376,12 @@ public final class HotkeyService {
   /// Failed attempts since the last successful install; a success after any reports once.
   private var listenerFailuresSinceInstall = 0
   private var listenerRetry: RecordGestureEngine.TimerHandle?
+  /// While no listener is installed (storm cooldown, failed installs), the check that ends a
+  /// listener-owned record hold whose key came up unseen. Nil when none is pending. Install
+  /// attempts do not reset it (they retry every five seconds too); a successful install, a stop, a
+  /// suspend or a reinstall cancels it.
+  private var orphanedHoldCheck: RecordGestureEngine.TimerHandle?
+  private var orphanedHoldCheckToken: UInt64 = 0
   /// Schedules the install retry off main; the fire hops to main to re-check the lifecycle.
   private let listenerRetryScheduler: RecordGestureEngine.Scheduler
   /// Test seam: invoked once each time a scheduled install retry runs on main, on every exit
@@ -1244,6 +1250,8 @@ public final class HotkeyService {
       listenerFailureReported = false
       listenerInstalls += 1
       keyboardListenerIngress = ingress
+      // The new installation's own watchdog covers a hold it never saw down.
+      cancelOrphanedHoldCheck()
       ingress.start()
       if listenerFailuresSinceInstall > 0 {
         listenerFailuresSinceInstall = 0
@@ -1263,6 +1271,7 @@ public final class HotkeyService {
         recordBinding.isBareModifier ? "modifier_only" : "chord")
     }
     scheduleListenerRetry(generation)
+    armOrphanedHoldCheck()
   }
 
   /// A Secure Input change the listener `installation` observed (plan A2). Logged only; no take is
@@ -1294,7 +1303,49 @@ public final class HotkeyService {
     removeKeyboardListener(reason: "storm")
     // Validated when it fires: a stop, suspend or reinstall in between moves the generation on.
     scheduleListenerRetry(listenerGeneration, after: Self.listenerStormCooldown)
+    armOrphanedHoldCheck()
   }
+
+  /// Arm the orphaned-hold check: with no listener installed, nothing else can see the record
+  /// key come up, so a push-to-talk recording would run on until a replacement's first sweep
+  /// (after the storm cooldown) or, while installs keep failing, until the recording cap.
+  private func armOrphanedHoldCheck() {
+    guard orphanedHoldCheck == nil, keyboardListenerToken == nil, isEnabled, !isSuspended,
+      engine.ownedListenerKey != nil
+    else { return }
+    orphanedHoldCheckToken &+= 1
+    let token = orphanedHoldCheckToken
+    orphanedHoldCheck = listenerRetryScheduler(KeyboardListenerIngress.sweepInterval) {
+      [weak self] in
+      DispatchQueue.main.async { [weak self] in
+        MainActor.assumeIsolated { self?.orphanedHoldCheckFired(token: token) }
+      }
+    }
+  }
+
+  private func cancelOrphanedHoldCheck() {
+    orphanedHoldCheck?.cancel()
+    orphanedHoldCheck = nil
+  }
+
+  private func orphanedHoldCheckFired(token: UInt64) {
+    // Cancelled since it was armed (an install succeeded, or a stop or suspend removed it).
+    guard token == orphanedHoldCheckToken, orphanedHoldCheck != nil else { return }
+    orphanedHoldCheck = nil
+    guard keyboardListenerToken == nil, isEnabled, !isSuspended,
+      let key = engine.ownedListenerKey
+    else { return }
+    if effects.keyStateReader([key])[key] == .up {
+      engine.releaseOrphanedListenerPress(
+        keyCode: key, input: RecordGesture.InputTime(handled: uptime(), occurred: nil))
+      onOrphanedHoldReleasedForTesting?()
+      return
+    }
+    armOrphanedHoldCheck()
+  }
+
+  /// Test seam: the orphaned-hold check ended a hold. Production never sets it.
+  package var onOrphanedHoldReleasedForTesting: (@MainActor () -> Void)?
 
   /// Release the listener's token. When the removal is confirmed, its final health is read and
   /// accounted, once: a refused removal keeps the token, and is accounted when a later release
@@ -1359,6 +1410,7 @@ public final class HotkeyService {
   private func removeKeyboardListener(reason: String) {
     listenerRetry?.cancel()
     listenerRetry = nil
+    cancelOrphanedHoldCheck()
     listenerGeneration &+= 1
     // No input from this installation is admitted from now on, even a callback still finishing:
     // the engine refuses it, and its ingress stops acting and retires its sweep.
