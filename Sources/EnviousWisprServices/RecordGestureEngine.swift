@@ -546,13 +546,12 @@ package final class RecordGestureEngine: Sendable {
     }
   }
 
-  /// Seconds from `start` to `input`, by the events' own times when both carry one, otherwise by
-  /// handling time (the accepted #3534 domain).
+  /// Seconds from `start` to `input` under the gesture's own clock policy (#3534): event times
+  /// when both carry one and they run forward, otherwise handling times.
   private static func elapsed(
     from start: RecordGesture.InputTime, to input: RecordGesture.InputTime
   ) -> TimeInterval {
-    if let a = start.occurred, let b = input.occurred { return b - a }
-    return input.handled - start.handled
+    RecordGesture.elapsed(from: start, to: input)
   }
 
   /// Why a listener record input is refused, or nil to admit it.

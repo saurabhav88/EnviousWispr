@@ -371,6 +371,33 @@ struct KeyboardListenerIngressTests {
     #expect(rig.effects == ["start"])
   }
 
+  /// A reading is the present and the event being handled may be older: a key that moved under
+  /// a second ago is trusted as the events say, never overruled by an up reading.
+  @Test("a reading never overrules an ordinary key that moved less than a second ago")
+  func recentOrdinaryKeyIsNotOverruled() async {
+    let rig = Rig()
+    await ordinary(rig, .keyDown, Self.letterA, at: 0)
+    rig.readings.withLock { $0[Self.letterA] = .up }
+    await rig.key(Self.option, held: [Self.option], at: 0.5)
+    await rig.key(Self.option, held: [], at: 0.7)
+    #expect(rig.effects.isEmpty, "an up reading overruled a key that went down 0.5 s earlier")
+    await rig.key(Self.option, held: [Self.option], at: 2)
+    #expect(rig.effects == ["start"], "a quiet key's missed keyUp still blocked the start")
+  }
+
+  @Test("an ordinary key held across a listener replacement still refuses a start")
+  func ordinaryKeyHeldAcrossReplacementIsSeeded() async {
+    let rig = Rig()
+    rig.readings.withLock { $0[Self.letterA] = .down }
+    rig.replace(8)
+    await rig.key(Self.option, held: [Self.option], at: 0.2)
+    await rig.key(Self.option, held: [], at: 0.4)
+    #expect(rig.effects.isEmpty, "a key held across the replacement was forgotten")
+    rig.readings.withLock { $0[Self.letterA] = .up }
+    await rig.key(Self.option, held: [Self.option], at: 1)
+    #expect(rig.effects == ["start"])
+  }
+
   @Test("a held ordinary key never blocks a locked take's stop")
   func ordinaryKeyNeverBlocksALockedStop() async {
     let rig = Rig()

@@ -1335,9 +1335,7 @@ public final class HotkeyService {
     if !observation.enabled { secureInputNoticeShown = false }
     // Entered during an accepted take whose other-key rule still applies: the same policy as a
     // start. Later in a take the rule no longer applies, so nothing is paused for it.
-    if observation.enabled, let sessionID = acceptedSessionID,
-      engine.otherKeyRuleApplies(at: uptime())
-    {
+    if observation.enabled, let sessionID = acceptedSessionID {
       noticeSecureInputIfRelevant(sessionID)
     }
     let owner = observation.ownerPID.map { "pid=\($0)" } ?? "owner=unknown"
@@ -1353,8 +1351,11 @@ public final class HotkeyService {
   /// produced. State comes from the listener's own sampling (at install, then every 5 s), never
   /// from a hidden key or a guessed app; a period younger than one sample is not yet known.
   private func noticeSecureInputIfRelevant(_ sessionID: String) {
+    // Only while the take's other-key rule still applies: a start that resolved late, or a take
+    // already locked, has nothing paused.
     guard secureInputOn, !secureInputNoticeShown, recordBinding.isBareModifier,
-      recordingMode == .pushToTalk, isEnabled, !isSuspended
+      recordingMode == .pushToTalk, isEnabled, !isSuspended,
+      engine.otherKeyRuleApplies(at: uptime())
     else { return }
     // Counted as told only when the presentation accepted it, so a refused one (a session no
     // longer running) leaves the period's notice for the next valid take.

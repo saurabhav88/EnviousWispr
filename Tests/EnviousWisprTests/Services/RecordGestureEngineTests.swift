@@ -536,6 +536,16 @@ struct RecordGestureEngineTests {
     #expect(!stale.engine.otherKeyFromListener(input: stale.at(0.2), installation: 6))
   }
 
+  @Test("an other key whose event time runs backwards is judged by handling time")
+  func otherKeyBackwardsTimestampUsesHandlingTime() {
+    let rig = Rig()
+    rig.engine.openListenerAdmission(installation: 7)
+    _ = Self.listener(rig, true, 0)
+    // Handled 1.2 s after the press, stamped 0.5 s before it.
+    let late = RecordGesture.InputTime.accepting(stamp: 499.5, handled: 501.2)
+    #expect(!rig.engine.otherKeyFromListener(input: late, installation: 7))
+  }
+
   @Test("after a dismissal the record key's next press starts a fresh attempt")
   func dismissalThenFreshStart() {
     let rig = Rig()

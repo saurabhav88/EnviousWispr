@@ -494,6 +494,25 @@ struct KeyboardListenerRecoveryTests {
     #expect(n.starts == 6, "a notice changed what was recorded")
   }
 
+  @Test("a start that resolves after the other-key window shows no notice and keeps it owed")
+  func lateStartGetsNoNotice() async {
+    let n = NoticeRig()
+    defer { n.rig.service.stop() }
+    await secureInput(n.rig.effects.keyboardListenerSink, enabled: true, pid: nil)
+    let clock = n.rig.clock
+    var slow = true
+    n.rig.service.onStartRecording = { [unowned n] in
+      n.starts += 1
+      if slow { clock.now += 2 }  // the start took two seconds
+      return .recording("s\(n.starts)")
+    }
+    await n.dictate(at: 0)
+    #expect(n.notices.isEmpty, "a notice after the other-key window had passed")
+    slow = false
+    await n.dictate(at: 10)
+    #expect(n.notices == ["s2"])
+  }
+
   @Test("a notice the presentation refused leaves the period's notice for the next valid take")
   func refusedNoticeIsNotCounted() async {
     let n = NoticeRig()

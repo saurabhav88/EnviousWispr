@@ -137,8 +137,20 @@ package final class KeyboardListenerIngress: Sendable {
   /// The installation is live: start the watchdog if the engine already owns a record press (a
   /// hold that began under an earlier installation).
   package func start() {
+    // Ordinary keys already down (held across a listener replacement) have no keyDown to come;
+    // read them once so the exact-set start rule still sees them. Outside every lock.
+    let answers = reader(Self.ordinaryKeyCodes)
+    let now = clock()
+    state.withLock { s in
+      guard !s.closed else { return }
+      s.tracker.seedOrdinary(answers, at: now)
+    }
     armSweepIfNeeded()
   }
+
+  /// Every virtual key code that is not a standalone modifier, for the start-of-installation read.
+  private static let ordinaryKeyCodes: Set<UInt16> = Set(
+    (0..<128).map(UInt16.init).filter { ModifierKeyCodes.flag(for: $0) == nil })
 
   /// The installation ended: no further input or sweep acts, and a pending sweep is cancelled.
   package func close() {
@@ -181,11 +193,11 @@ package final class KeyboardListenerIngress: Sendable {
     let classification = engine.listenerClassification()
     // An ordinary key the listener still thinks is held would refuse a record start (#3544 P4):
     // confirm it first, outside every lock, so a keyUp the listener never saw cannot block one.
-    let ordinary = state.withLock { $0.tracker.ordinaryDown }
+    let ordinary = state.withLock { $0.tracker.ordinaryKeysToConfirm(at: handled) }
     let ordinaryAnswers = ordinary.isEmpty ? [:] : reader(ordinary)
     state.withLock { s in
       guard !s.closed else { return }
-      s.tracker.confirmOrdinary(ordinaryAnswers)
+      s.tracker.confirmOrdinary(ordinaryAnswers, at: handled)
       s.inputSequence &+= 1
       let update = s.tracker.ingest(
         event, handled: handled, configuration: classification.configuration)
@@ -223,7 +235,7 @@ package final class KeyboardListenerIngress: Sendable {
       keyCode: event.keyCode, rawFlags: event.rawFlags, armed: configuration.armed)
     state.withLock { s in
       guard !s.closed else { return }
-      let fresh = s.tracker.ingestOrdinary(event)
+      let fresh = s.tracker.ingestOrdinary(event, handled: handled)
       guard fresh, !isChord else { return }
       s.pending.append(
         .otherKey(input: .accepting(stamp: event.timestamp, handled: handled)))

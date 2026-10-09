@@ -30,6 +30,10 @@ final class HotkeyController {
   let starter: RecordingStarter
   let finalizer: RecordingFinalizer
   let settings: SettingsManager
+  /// The session a hotkey start joined rather than created (a recording already running from the
+  /// menu or the main window), if any (#3544 P4). Other-key interference may only end a recording
+  /// its own press started, never one it joined.
+  private var joinedSessionID: String?
 
   var hotkeyDescription: String { hotkeyService.hotkeyDescription }
 
@@ -79,12 +83,18 @@ final class HotkeyController {
       }
       await starter.toggle(source: .toggleHotkey)
     }
-    hotkeyService.onStartRecording = { [weak starter] in
+    hotkeyService.onStartRecording = { [weak self, weak starter] in
       guard let starter else {
         Self.reportNilCollaborator(callback: "onStartRecording")
         return .noRecording
       }
-      return await starter.start()
+      // A start while a recording is already running joins that session (`RecordingStarter.start`).
+      let alreadyRunning = starter.activeDriver.state.isActive
+      let outcome = await starter.start()
+      if case .recording(let sessionID) = outcome {
+        self?.joinedSessionID = alreadyRunning ? sessionID : nil
+      }
+      return outcome
     }
     hotkeyService.onStopRecording = { [weak finalizer] in
       guard let finalizer else {
@@ -107,12 +117,14 @@ final class HotkeyController {
     // the recording's own ending disarms cancel as for any stop. Only the session that press
     // started, and only while it is still the one running, as for the lock (#1631): a dismissal
     // must never end a newer take or one still transcribing.
-    hotkeyService.onDismissRecording = { [weak starter, weak finalizer] sessionID in
+    hotkeyService.onDismissRecording = { [weak self, weak starter, weak finalizer] sessionID in
       guard let starter, let finalizer else {
         Self.reportNilCollaborator(callback: "onDismissRecording")
         return
       }
-      guard starter.activeDriver.continuingSessionID == sessionID else { return }
+      guard starter.activeDriver.continuingSessionID == sessionID,
+        self?.joinedSessionID != sessionID
+      else { return }
       await finalizer.cancel(trigger: .otherKeyInterference)
     }
     // #3544 P4 (D4): Secure Input paused the other-key rule for this dictation. Shown inside the
