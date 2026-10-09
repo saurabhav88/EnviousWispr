@@ -153,7 +153,9 @@ export async function fetchSentryWriteup(env, window, opts = {}) {
     const category = row["error.category"];
     const safeCategory = typeof category === "string" && Object.hasOwn(ERROR_CATEGORIES, category) ? category : "";
     info.labels.add(classifyProblem({ category: safeCategory, level: row.level }).label);
-    const version = parseReleaseVersion(row.release);
+    // Android emits package@versionName+numericBuild. Normalize only that
+    // suffix here; weekly Mac release-line selection keeps its strict parser.
+    const version = parseReleaseVersion(typeof row.release === "string" ? row.release.replace(/\+\d+$/, "") : row.release);
     info.versions.add(version ? version.join(".") : "unknown version");
     info.fatal ||= row.level === "fatal";
     metadata.set(bucketKey, info);

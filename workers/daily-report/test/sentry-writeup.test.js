@@ -78,6 +78,20 @@ test("older version activity and missing version detail remain in the counts", a
   assert.match(render(data).embeds[0].description, /2\.1\.2, unknown version/);
 });
 
+test("Android numeric build metadata renders the app version while malformed suffixes stay unknown", async () => {
+  // TelemetryConfig.release emits package@versionName+appBuild. When this
+  // fails, the morning report hides the affected Android app version.
+  const r = rig({ matrix: [
+    detail(1, 2, "production", "release", "com.envi.wispr@0.1.0+256"),
+    detail(1, 3, "production", "release", "com.envi.wispr@0.1.0+bad"),
+  ] });
+  const data = await read(r);
+  assert.deepEqual(data.sections[0].problems[0].versions, ["0.1.0", "unknown version"]);
+  const payload = formatSentryWriteup(data, { platform: "android", date: "2026-10-07" });
+  assert.match(payload.embeds[0].description, /0\.1\.0, unknown version/);
+  assert.equal(data.sections[0].current.events, 5);
+});
+
 test("invalid numeric responses never turn into zero or plausible rounded values", async () => {
   for (const value of [null, "5", false, [], 1.5, -1, Number.MAX_SAFE_INTEGER + 1]) {
     const r = rig({ current: [{ ...problem(1, 5, 2), "count()": value }] });
