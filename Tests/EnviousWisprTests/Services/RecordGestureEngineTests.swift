@@ -236,9 +236,15 @@ struct RecordGestureEngineTests {
     carbon(true, 0)
     await service.awaitInFlightStartForTesting()
     carbon(false, 0.125)
+    let resolved = HotkeyGlobeKeyTests.CallbackWaiter()
+    service.onDebounceResolvedForTesting = { resolved.note() }
     clock.now = 500.625
-    timers.fireDue()  // the lone-tap stop is decided and queued for main
-    carbon(true, 1.0)  // attempt 2: its drain applies the queued stop first, then the start
+    // P1: the timer's decision is queued on main (H); it decides the stop and queues its delivery
+    // (D). A key event main already holds (P) runs between them: attempt 2 is decided before the
+    // stop is executed, so the stop is executed LATE, inside attempt 2's drain.
+    timers.fireDue()  // enqueues H
+    DispatchQueue.main.async { carbon(true, 1.0) }  // P, after H and before D
+    await resolved.wait(until: 1)
     await service.awaitInFlightStartForTesting()
     #expect(counts.stops == 1)
     #expect(counts.starts == 2)

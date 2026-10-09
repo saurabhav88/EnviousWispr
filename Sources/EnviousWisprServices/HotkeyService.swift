@@ -422,7 +422,15 @@ public final class HotkeyService {
     self.engine = RecordGestureEngine(
       binding: .keyboard(
         keyCode: ShortcutRole.record.defaultKeyCode, modifiers: ShortcutRole.record.defaultModifiers),
-      mode: .toggle, clock: uptime, scheduler: scheduler)
+      mode: .toggle, clock: uptime,
+      // #3544 P1: key input still reaches the engine through the main thread (Carbon and NSEvent
+      // monitors), so the lone-tap decision must queue BEHIND any key event main already holds,
+      // exactly as the old main-actor timer task did. Deciding on the timer queue would stop a
+      // valid double tap whose second press is still waiting on a busy main thread. P3 moves key
+      // ingress to the listener thread and removes this hop.
+      scheduler: { delay, fire in
+        scheduler(delay) { DispatchQueue.main.async(execute: fire) }
+      })
     engine.setSink { @MainActor [weak self] batch, valid in self?.execute(batch, valid: valid) }
     configureEngine()
   }

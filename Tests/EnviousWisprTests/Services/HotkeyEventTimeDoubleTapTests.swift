@@ -324,9 +324,11 @@ struct HotkeyEventTimeDoubleTapTests {
     await rig.waitForSleepRequests(count: 1)
     let deadline = try #require(rig.requestedDeadlines.last)
     #expect(abs(deadline - 1000.95) < 1e-9)
-    rig.now = 1000.58
+    // #3544: the timer falls due at its deadline while the second press is still queued on main
+    // and is handled after it.
+    rig.now = deadline
     rig.fireDueTimers()
-    drive(service, rig, .press(1000.20, handled: 1000.60))
+    drive(service, rig, .press(1000.20, handled: 1001.00))
     await rig.waitForDebounce(count: 1)
     await rig.waitForStarts(count: 1)
     await settle(service)
