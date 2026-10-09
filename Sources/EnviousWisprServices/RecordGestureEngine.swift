@@ -128,7 +128,14 @@ package final class RecordGestureEngine: Sendable {
     let attemptID: UInt64
     let capturedGeneration: UInt64
     let trace: QuickReleaseTrace
+    /// The attempt's first press, for the DEBUG decision observer (#3544 P2). Not read otherwise.
+    let attemptStartOccurred: TimeInterval?
     var handle: TimerHandle?
+    #if DEBUG
+      /// The record key this wait was scheduled under, so its observation names that key even
+      /// after a rebind.
+      var observedKeyCode: UInt16 = 0
+    #endif
   }
 
   private struct State: Sendable {
@@ -145,6 +152,14 @@ package final class RecordGestureEngine: Sendable {
     var draining = false
     var sink: (@MainActor @Sendable (Batch, _ valid: Bool) -> Void)?
     var onAsyncDrainResolvedForTesting: (@MainActor @Sendable () -> Void)?
+    #if DEBUG
+      var observer: (@Sendable (GestureObservation) -> Void)?
+      var observationGeneration: UInt64 = 0
+      var observationSequence: UInt64 = 0
+      /// First press of the attempt the last attributable lone-tap stop ended: the origin of the
+      /// marker the next admitted press may consume.
+      var lastStopOrigin: TimeInterval?
+    #endif
   }
 
   private let state: OSAllocatedUnfairLock<State>
@@ -181,6 +196,34 @@ package final class RecordGestureEngine: Sendable {
     state.withLock { $0.gesture.invalidateDiagnostics() }
   }
 
+  #if DEBUG
+    /// #3544 P2 shadow comparison: report each decision this engine already made, captured under
+    /// the lock with the decision and delivered outside it, after the lock is released. Nil is
+    /// inert. The observer changes no admission, outbox, validity, scheduling or drain.
+    package func setObserver(_ observer: (@Sendable (GestureObservation) -> Void)?) {
+      state.withLock { $0.observer = observer }
+    }
+
+    /// The configuration generation stamped on every later observation, at decision time.
+    package func setObservationGeneration(_ generation: UInt64) {
+      state.withLock { $0.observationGeneration = generation }
+    }
+
+    /// Stamp an observation with the generation and order current when it was decided.
+    private static func stamped(_ s: inout State, _ o: GestureObservation) -> GestureObservation {
+      var o = o
+      s.observationSequence &+= 1
+      o.generation = s.observationGeneration
+      o.sequence = s.observationSequence
+      return o
+    }
+
+    private func report(_ observations: [GestureObservation]) {
+      guard !observations.isEmpty, let observer = state.withLock({ $0.observer }) else { return }
+      for observation in observations { observer(observation) }
+    }
+  #endif
+
   package var snapshot: Snapshot {
     state.withLock { Snapshot(isHeld: $0.gesture.isHeld, isLocked: $0.gesture.isLocked) }
   }
@@ -195,6 +238,9 @@ package final class RecordGestureEngine: Sendable {
       return (work, Self.claimAsyncDrain(&s))
     }
     perform(work)
+    #if DEBUG
+      report(work.observations)
+    #endif
     if submit { submitAsyncDrain() }
   }
 
@@ -206,6 +252,9 @@ package final class RecordGestureEngine: Sendable {
       Self.admit(&s, isPress: isPress, input: input)
     }
     perform(work)
+    #if DEBUG
+      report(work.observations)
+    #endif
     drainOnMain()
   }
 
@@ -223,6 +272,9 @@ package final class RecordGestureEngine: Sendable {
       return work
     }
     perform(work)
+    #if DEBUG
+      report(work.observations)
+    #endif
     drainOnMain()
   }
 
@@ -240,6 +292,9 @@ package final class RecordGestureEngine: Sendable {
       return work
     }
     perform(work)
+    #if DEBUG
+      report(work.observations)
+    #endif
     drainOnMain()
   }
 
@@ -262,6 +317,9 @@ package final class RecordGestureEngine: Sendable {
   private struct TimerWork {
     var cancel: [TimerHandle] = []
     var schedule: (token: UInt64, delay: TimeInterval)?
+    #if DEBUG
+      var observations: [GestureObservation] = []
+    #endif
   }
 
   private static func admit(
@@ -271,11 +329,41 @@ package final class RecordGestureEngine: Sendable {
     let sequence = s.inputSequence
     var work = TimerWork()
     var effects: [Effect] = []
+    let keyCode: UInt16
+    switch s.binding {
+    case .keyboard(let code, _): keyCode = code
+    }
+    #if DEBUG
+      let attemptStart = s.gesture.start?.occurred
+    #endif
     if isPress {
       guard case .admitted(let afterStopTimerMs) = s.gesture.admitPress(
         input, binding: s.binding, mode: s.mode)
-      else { return work }
+      else {
+        #if DEBUG
+          work.observations.append(
+            stamped(
+              &s,
+              GestureObservation(
+                kind: .press, keyCode: keyCode, outcome: .duplicate, handled: input.handled,
+                occurred: input.occurred, attemptStartOccurred: attemptStart)))
+        #endif
+        return work
+      }
       let decision = s.gesture.classifyPress(input, binding: s.binding, mode: s.mode)
+      #if DEBUG
+        // The admitted press consumed whatever marker there was; its origin goes with it.
+        let markerOrigin = afterStopTimerMs == nil ? nil : s.lastStopOrigin
+        s.lastStopOrigin = nil
+        work.observations.append(
+          stamped(
+            &s,
+            GestureObservation(
+              kind: .press, keyCode: keyCode, outcome: GestureOutcome(decision),
+              handled: input.handled, occurred: input.occurred,
+              attemptStartOccurred: attemptStart, afterStopTimerMs: afterStopTimerMs,
+              markerOrigin: markerOrigin)))
+      #endif
       switch decision {
       case .start, .lockIntent:
         // A fresh attempt or a lock: the pending lone-tap stop no longer applies.
@@ -287,17 +375,25 @@ package final class RecordGestureEngine: Sendable {
       case .ignoredCooldown, .lateAfterWindow:
         break
       }
-      let keyCode: UInt16
-      switch s.binding {
-      case .keyboard(let code, _): keyCode = code
-      }
       effects.append(
         .press(
           Press(
             inputSequence: sequence, mode: s.mode, keyCode: keyCode, input: input,
             afterStopTimerMs: afterStopTimerMs, decision: decision)))
     } else {
-      switch s.gesture.release(input) {
+      let decision = s.gesture.release(input)
+      #if DEBUG
+        var deadline: TimeInterval?
+        if case .quick(let quick) = decision { deadline = quick.deadline }
+        work.observations.append(
+          stamped(
+            &s,
+            GestureObservation(
+              kind: .release, keyCode: keyCode, outcome: GestureOutcome(decision),
+              handled: input.handled, occurred: input.occurred,
+              attemptStartOccurred: attemptStart, deadline: deadline)))
+      #endif
+      switch decision {
       case .ignored, .suppressedLocked:
         return work
       case .quick(let quick):
@@ -307,9 +403,17 @@ package final class RecordGestureEngine: Sendable {
           usesOccurrence: quick.usesOccurrence, eventDeadline: quick.eventDeadline)
         s.nextTimerToken &+= 1
         let token = s.nextTimerToken
-        s.timer = PendingTimer(
-          token: token, attemptID: s.gesture.attemptID,
-          capturedGeneration: quick.capturedGeneration, trace: trace, handle: nil)
+        #if DEBUG
+          s.timer = PendingTimer(
+            token: token, attemptID: s.gesture.attemptID,
+            capturedGeneration: quick.capturedGeneration, trace: trace,
+            attemptStartOccurred: s.gesture.start?.occurred, handle: nil, observedKeyCode: keyCode)
+        #else
+          s.timer = PendingTimer(
+            token: token, attemptID: s.gesture.attemptID,
+            capturedGeneration: quick.capturedGeneration, trace: trace,
+            attemptStartOccurred: s.gesture.start?.occurred, handle: nil)
+        #endif
         work.schedule = (token, quick.deadline)
         effects.append(.quickRelease(trace))
       case .hold:
@@ -325,19 +429,30 @@ package final class RecordGestureEngine: Sendable {
   /// Retire the pending timer: its handle is cancelled outside the lock, and its resolution is
   /// reported with the batch being built.
   private static func cancelTimer(
-    _ s: inout State, into work: inout TimerWork, effects: inout [Effect]
+    _ s: inout State, into work: inout TimerWork, effects: inout [Effect],
+    retired: Bool = false
   ) {
     guard let timer = s.timer else { return }
     s.timer = nil
     if let handle = timer.handle { work.cancel.append(handle) }
     effects.append(.loneTapResolved)
+    #if DEBUG
+      work.observations.append(
+        stamped(
+          &s,
+          GestureObservation(
+            kind: .timer, keyCode: timer.observedKeyCode,
+            outcome: retired ? .loneTapRetired : .loneTapCancelled,
+            handled: timer.trace.release.handled, occurred: timer.trace.release.occurred,
+            attemptStartOccurred: timer.attemptStartOccurred, deadline: timer.trace.deadline)))
+    #endif
   }
 
   /// Retire the pending timer from a reset: its resolution travels in its own batch, stamped
   /// with the CURRENT epoch so it is delivered.
   private static func cancelTimer(_ s: inout State, into work: inout TimerWork) {
     var effects: [Effect] = []
-    cancelTimer(&s, into: &work, effects: &effects)
+    cancelTimer(&s, into: &work, effects: &effects, retired: true)
     if !effects.isEmpty {
       s.outbox.append(Batch(epoch: s.epoch, attemptID: s.gesture.attemptID, effects: effects))
     }
@@ -365,27 +480,49 @@ package final class RecordGestureEngine: Sendable {
   }
 
   private func timerFired(_ token: UInt64) {
-    let submit = state.withLock { s -> Bool in
-      guard let timer = s.timer, timer.token == token else { return false }
+    let (submit, observation) = state.withLock { s -> (Bool, GestureObservation?) in
+      guard let timer = s.timer, timer.token == token else { return (false, nil) }
       s.timer = nil
       var effects: [Effect] = []
-      if case .stop(let stop) = s.gesture.checkLoneTap(
+      let check = s.gesture.checkLoneTap(
         capturedGeneration: timer.capturedGeneration, binding: s.binding, mode: s.mode)
-      {
+      var requestedAt: TimeInterval?
+      if case .stop(let stop) = check {
         // #3534 §3.3, in this order: (1) snapshot (in checkLoneTap), (2) cleanup, (3) marker
         // with the post-cleanup epoch and the time read after cleanup.
         s.gesture.cleanup()
-        let requestedAt = clock()
-        s.gesture.recordQuickTapStop(stop, stoppedAt: requestedAt)
+        let stoppedAt = clock()
+        requestedAt = stoppedAt
+        s.gesture.recordQuickTapStop(stop, stoppedAt: stoppedAt)
         effects.append(
           .loneTapStop(
             LoneTapStopTrace(
-              quick: timer.trace, requestedAt: requestedAt, attributable: stop.attributable)))
+              quick: timer.trace, requestedAt: stoppedAt, attributable: stop.attributable)))
+        #if DEBUG
+          s.lastStopOrigin = stop.attributable ? timer.attemptStartOccurred : nil
+        #endif
       }
+      #if DEBUG
+        let observation: GestureObservation? = Self.stamped(
+          &s,
+          GestureObservation(
+            kind: .timer, keyCode: timer.observedKeyCode, outcome: GestureOutcome(check),
+            handled: timer.trace.release.handled, occurred: timer.trace.release.occurred,
+            attemptStartOccurred: timer.attemptStartOccurred, deadline: timer.trace.deadline,
+            stopRequestedAt: requestedAt))
+      #else
+        let observation: GestureObservation? = nil
+        _ = requestedAt
+      #endif
       effects.append(.loneTapResolved)
       s.outbox.append(Batch(epoch: s.epoch, attemptID: timer.attemptID, effects: effects))
-      return Self.claimAsyncDrain(&s)
+      return (Self.claimAsyncDrain(&s), observation)
     }
+    #if DEBUG
+      if let observation { report([observation]) }
+    #else
+      _ = observation
+    #endif
     if submit { submitAsyncDrain() }
   }
 
