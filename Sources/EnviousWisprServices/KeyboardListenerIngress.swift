@@ -257,6 +257,12 @@ package final class KeyboardListenerIngress: Sendable {
   /// interference). Nothing about the key leaves this function.
   private func ingestOrdinary(_ event: KeyEventValue) {
     guard !event.isOurs else { return }
+    // An ordinary event arriving proves Secure Input no longer hides them, whatever the last
+    // five-second sample said: stop resyncing on every modifier event. A pending boundary resync
+    // still runs once, for this event.
+    state.withLock { s in
+      if !s.closed { s.secureInputOn = false }
+    }
     let handled = clock()
     let configuration = engine.listenerClassification().configuration
     let isChord = configuration.bindings.matchesChord(

@@ -550,7 +550,7 @@ struct RecordGestureEngineTests {
   func otherKeyNeverDismissesAJoinedRecording() {
     let rig = Rig()
     rig.engine.openListenerAdmission(installation: 7)
-    rig.engine.setCancelArmed(true)  // a recording started from the menu is running
+    rig.engine.setRecordingActive(true)  // a recording started from the menu is running
     #expect(Self.listener(rig, true, 0) == nil)
     #expect(!rig.engine.otherKeyFromListener(input: rig.at(0.2), installation: 7))
     #expect(!rig.engine.otherKeyRuleApplies(at: 500.2))
@@ -563,7 +563,7 @@ struct RecordGestureEngineTests {
   func ordinaryKeyNeverRefusesAJoiningPress() {
     let rig = Rig()
     rig.engine.openListenerAdmission(installation: 7)
-    rig.engine.setCancelArmed(true)
+    rig.engine.setRecordingActive(true)
     #expect(Self.listener(rig, true, 0, ordinaryKeyHeld: true) == nil)
   }
 

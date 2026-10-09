@@ -469,13 +469,22 @@ struct KeyboardListenerIntegrationTests {
     #expect(ptt.stops == 0, "the dismissed hold's release stopped a recording")
   }
 
-  @Test("an early other key during a recording started elsewhere ends nothing; the release still stops it")
-  func joinedRecordingSurvivesInterference() async {
+  /// The session may be loading its model (cancel not armed yet), and the listener may have just
+  /// been reinstalled by a resume: the running-session signal survives both.
+  @Test(
+    "an early other key during a recording started elsewhere ends nothing; the release still stops it",
+    arguments: [false, true])
+  func joinedRecordingSurvivesInterference(resumed: Bool) async {
     let ptt = PTT()
     defer { ptt.service.stop() }
     var dismissed: [String] = []
     ptt.service.onDismissRecording = { dismissed.append($0) }
-    ptt.service.registerCancelHotkey()  // a recording from the menu is running
+    ptt.service.setRecordingActive(true)  // a recording from the menu is running, cancel unarmed
+    if resumed {
+      ptt.service.suspend()
+      ptt.service.resume()
+      await ListenerKeyboard.mainTurn()
+    }
     ptt.at(0)
     await ptt.keys.press(ModifierKeyCodes.rightOption, at: 500)
     await ptt.service.awaitInFlightStartForTesting()

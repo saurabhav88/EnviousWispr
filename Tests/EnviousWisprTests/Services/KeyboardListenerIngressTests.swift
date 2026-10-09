@@ -401,6 +401,19 @@ struct KeyboardListenerIngressTests {
     }
   }
 
+  /// A stale "Secure Input on" sample must not keep resyncing once ordinary events arrive again:
+  /// the first ordinary event proves they are delivered, so later modifier events keep event order.
+  @Test("ordinary events after a stale Secure Input sample restore event-ordered state")
+  func ordinaryEventEndsSecureInputResync() async {
+    let rig = Rig()
+    await rig.notice(.secureInputChanged, secureInputOn: true, at: 0)
+    await ordinary(rig, .keyDown, Self.letterA, at: 1)  // Secure Input already ended
+    rig.readings.withLock { $0[Self.letterA] = .up }  // released after Option, keyUp still queued
+    await rig.key(Self.option, held: [Self.option], at: 2)
+    await rig.key(Self.option, held: [], at: 2.2)
+    #expect(rig.effects.isEmpty, "a stale Secure Input sample let a reading overrule event order")
+  }
+
   /// A key held across a listener replacement has no keyDown to come: the new installation reads
   /// every ordinary key before its first event acts, even before `start()` runs.
   @Test("an ordinary key held across a listener replacement refuses a start from the first event")

@@ -214,9 +214,9 @@ package final class RecordGestureEngine: Sendable {
     /// Whether a key-state reading may end this hold (#3544 P4 C2). Kept with the attempt, so it
     /// survives listener replacement and absence.
     let recovery: ListenerPressRecovery
-    /// Whether this attempt's press found a recording already running (cancel armed: one started
-    /// from the menu, the main window or an earlier take), so its start joins that recording rather
-    /// than making one (#3544 P4). Other-key interference never ends a recording this press did
+    /// Whether this attempt's press found a session already running (one started from the menu, the
+    /// main window or an earlier take), so its start joins that session rather than making one
+    /// (#3544 P4). Other-key interference never ends a recording this press did
     /// not start; the press keeps its stop and lock.
     let joinsRecording: Bool
   }
@@ -237,6 +237,10 @@ package final class RecordGestureEngine: Sendable {
     /// `bindings.record`, written together by `configure(bindings:mode:)`.
     var bindings: ShortcutBindings
     var cancelArmed = false
+    /// Whether the active pipeline is running a session now (`PipelineState.isActive`, the same
+    /// test `RecordingStarter.start()` uses to join one), as the dictation lifecycle reports it.
+    /// Not cleared by suspend, resume, restart or reset: it is the pipeline's, not the shortcuts'.
+    var recordingActive = false
     /// Bumped on every ACTUAL change of record binding, mode or any role's binding, and by the
     /// unconditional `reset()`. Distinct from `HotkeyService`'s installation counter.
     var listenerConfigurationGeneration: UInt64 = 0
@@ -335,6 +339,11 @@ package final class RecordGestureEngine: Sendable {
   /// before must not be refused for it.
   package func setCancelArmed(_ armed: Bool) {
     state.withLock { $0.cancelArmed = armed }
+  }
+
+  /// Whether a session is running now (#3544 P4): a fresh record press made while one is joins it.
+  package func setRecordingActive(_ active: Bool) {
+    state.withLock { $0.recordingActive = active }
   }
 
   /// Start admitting listener input from `installation`. Every earlier installation's input is
@@ -568,7 +577,7 @@ package final class RecordGestureEngine: Sendable {
   private static func startWhileTyping(
     _ s: State, isPress: Bool, ordinaryKeyHeld: Bool
   ) -> ListenerRefusal? {
-    guard isPress, ordinaryKeyHeld, s.gesture.start == nil, !s.gesture.isLocked, !s.cancelArmed
+    guard isPress, ordinaryKeyHeld, s.gesture.start == nil, !s.gesture.isLocked, !s.recordingActive
     else { return nil }
     return .ordinaryKeyHeld
   }
@@ -689,7 +698,7 @@ package final class RecordGestureEngine: Sendable {
       }
       let decision = s.gesture.classifyPress(input, binding: s.binding, mode: s.mode)
       let joinsRecording: Bool =
-        if case .start = decision { s.cancelArmed } else { s.owned?.joinsRecording ?? false }
+        if case .start = decision { s.recordingActive } else { s.owned?.joinsRecording ?? false }
       // The held key's release follows this press, whatever the configuration is by then.
       s.owned = OwnedPress(
         keyCode: keyCode, attemptID: s.gesture.attemptID, fromMain: fromMain, recovery: recovery,

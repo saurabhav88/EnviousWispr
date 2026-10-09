@@ -678,6 +678,13 @@ public final class HotkeyService {
     reconcileAppShortcutRegistrations()
   }
 
+  /// Whether the pipeline is running a session now (`PipelineState.isActive`), reported on every
+  /// lifecycle transition (#3544 P4). A record press made while one runs joins it, so other-key
+  /// interference never ends it and the press keeps its stop and lock.
+  public func setRecordingActive(_ active: Bool) {
+    engine.setRecordingActive(active)
+  }
+
   /// Arm or disarm the cancel hotkey from a single decision (#2087).
   ///
   /// The lifecycle used to call `registerCancelHotkey()` / `unregisterCancelHotkey()`
