@@ -1497,6 +1497,14 @@ public final class HotkeyService {
         MainActor.assumeIsolated { self?.listenerStormed(installation: generation) }
       }
     }
+    // Secure Input changes are logged on main, never on the listener's thread (plan A2).
+    let secureInputSeen: @Sendable (SecureInputObservation) -> Void = { [weak self] observation in
+      DispatchQueue.main.async { [weak self] in
+        MainActor.assumeIsolated {
+          self?.listenerSawSecureInput(observation, installation: generation)
+        }
+      }
+    }
     #if DEBUG
       // The sink holds its own installation's segment, never "the current one".
       let segment = shadowDiagnostics.makeSegment(
@@ -1504,12 +1512,14 @@ public final class HotkeyService {
         snapshot: currentShadowSnapshot, keyStateReader: effects.keyStateReader)
       let sink: @Sendable (KeyEventValue) -> ListenerVerdict = { event in
         if event.kind == .stormStopped { stormed() }
+        if let observation = event.secureInput { secureInputSeen(observation) }
         segment.listenerEvent(event)
         return .passThrough
       }
     #else
       let sink: @Sendable (KeyEventValue) -> ListenerVerdict = { event in
         if event.kind == .stormStopped { stormed() }
+        if let observation = event.secureInput { secureInputSeen(observation) }
         return .passThrough
       }
     #endif
@@ -1539,6 +1549,22 @@ public final class HotkeyService {
     }
     scheduleListenerRetry(generation)
   }
+
+  /// A Secure Input change the listener `installation` observed (plan A2). Logged only; no take is
+  /// ended, cancelled or locked by it (bare modifiers keep arriving under Secure Input, #3544 P0).
+  /// Ignored for an installation that is no longer current.
+  private func listenerSawSecureInput(_ observation: SecureInputObservation, installation: UInt64) {
+    guard installation == listenerGeneration else { return }
+    onSecureInputLoggedForTesting?(observation)
+    let owner = observation.ownerPID.map { "pid=\($0)" } ?? "owner=unknown"
+    let line = observation.enabled ? "Secure Input on (\(owner))" : "Secure Input off"
+    Task {
+      await AppLogger.shared.log(line, level: .info, category: "HotkeyService")
+    }
+  }
+
+  /// Test seam: a Secure Input observation was accepted for logging. Production never sets it.
+  package var onSecureInputLoggedForTesting: (@MainActor (SecureInputObservation) -> Void)?
 
   /// The listener `installation` stopped itself after a disable storm. Remove it (its final health
   /// is accounted then) and install a fresh one after the cooldown. Ignored for an installation

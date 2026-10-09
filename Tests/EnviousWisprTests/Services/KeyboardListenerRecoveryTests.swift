@@ -268,4 +268,65 @@ struct KeyboardListenerRecoveryTests {
     #expect(rig.health.last?.installs == 1)
     rig.service.resume()
   }
+
+  // MARK: - Secure Input (plan A2)
+
+  /// A Secure Input change from the listener's thread, through the given sink.
+  private func secureInput(
+    _ sink: (@Sendable (KeyEventValue) -> ListenerVerdict)?, enabled: Bool, pid: Int32?
+  ) async {
+    let sink = sink
+    await Task.detached {
+      _ = sink?(
+        KeyEventValue(
+          kind: .secureInputChanged, keyCode: 0, rawFlags: 0, timestamp: nil,
+          secureInput: SecureInputObservation(enabled: enabled, ownerPID: pid)))
+    }.value
+    await Rig.mainTurn()
+  }
+
+  @Test("a Secure Input change is logged and changes no recording or gesture state")
+  func secureInputIsLoggedOnly() async throws {
+    let rig = Rig()
+    rig.service.recordingMode = .pushToTalk
+    rig.service.start()
+    defer { rig.service.stop() }
+    var logged: [SecureInputObservation] = []
+    rig.service.onSecureInputLoggedForTesting = { logged.append($0) }
+    var actions = 0
+    rig.service.onStartRecording = {
+      actions += 1
+      return .recording("s")
+    }
+    rig.service.onCancelRecording = { actions += 1 }
+    await secureInput(rig.effects.keyboardListenerSink, enabled: true, pid: 812)
+    await secureInput(rig.effects.keyboardListenerSink, enabled: false, pid: nil)
+    #expect(logged == [.init(enabled: true, ownerPID: 812), .init(enabled: false, ownerPID: nil)])
+    #expect(actions == 0)
+    #expect(rig.service.isModifierHeld == false)
+    #expect(rig.service.isRecordingLocked == false)
+    #expect(rig.effects.keyboardListenerToken != nil)
+  }
+
+  @Test("a Secure Input change from a replaced installation is not logged")
+  func staleSecureInputIsIgnored() async {
+    let rig = Rig()
+    rig.service.start()
+    defer { rig.service.stop() }
+    var logged: [SecureInputObservation] = []
+    rig.service.onSecureInputLoggedForTesting = { logged.append($0) }
+    let oldSink = rig.effects.keyboardListenerSink
+    rig.service.suspend()
+    rig.service.resume()
+    await secureInput(oldSink, enabled: true, pid: 812)
+    #expect(logged.isEmpty)
+  }
+
+  @Test("an ordinary key event carries no Secure Input payload")
+  func keyEventsCarryNoSecureInput() {
+    let event = KeyEventValue(
+      kind: .flagsChanged, keyCode: 61, rawFlags: 0x80040, timestamp: 1,
+      secureInput: SecureInputObservation(enabled: true, ownerPID: 812))
+    #expect(event.secureInput == nil)
+  }
 }

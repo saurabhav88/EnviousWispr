@@ -86,9 +86,10 @@ package struct KeyEventValue: Sendable, Equatable {
     /// and `isOurs` are false, and `timestamp` is when the listener noticed, or nil. Keys may
     /// have changed while the tap was off, so policy reconciles held state on this.
     case tapReenabled
-    /// Secure Event Input turned on or off. Reported on its own because entering Secure Input
-    /// does not disable the tap (#3544 P0: `flagsChanged` keeps arriving, key events stop).
-    /// Same non-key payload as `tapReenabled`.
+    /// Secure Event Input turned on or off, or changed owner while on; also the first state an
+    /// installation sees. Reported on its own because entering Secure Input does not disable the
+    /// tap (#3544 P0: `flagsChanged` keeps arriving, key events stop). Same non-key payload as
+    /// `tapReenabled`, with the state in `secureInput`.
     case secureInputChanged
     /// The OS disabled the tap too often (the listener's storm rule) and this installation has
     /// stopped for good (#3544 P3). Sent once, from the listener's thread, before its cleanup;
@@ -107,10 +108,12 @@ package struct KeyEventValue: Sendable, Equatable {
   package let isAutorepeat: Bool
   /// Posted by this app and marked as ours, so policy can pass it through untouched.
   package let isOurs: Bool
+  /// The observed Secure Input state, on `.secureInputChanged` only; nil on every other kind.
+  package let secureInput: SecureInputObservation?
 
   package init(
     kind: Kind, keyCode: UInt16, rawFlags: UInt64, timestamp: TimeInterval?,
-    isAutorepeat: Bool = false, isOurs: Bool = false
+    isAutorepeat: Bool = false, isOurs: Bool = false, secureInput: SecureInputObservation? = nil
   ) {
     self.kind = kind
     self.keyCode = keyCode
@@ -118,6 +121,7 @@ package struct KeyEventValue: Sendable, Equatable {
     self.timestamp = timestamp
     self.isAutorepeat = isAutorepeat
     self.isOurs = isOurs
+    self.secureInput = kind == .secureInputChanged ? secureInput : nil
   }
 }
 
