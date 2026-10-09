@@ -9,13 +9,11 @@ import Testing
 @MainActor
 @Suite("Settings search with the meaning pass (#3482)", .tags(.productOutcome))
 struct SettingsSearchBothLegsTests {
-  /// The committed assets, with a load budget wide enough for a Debug test process (the shipped
-  /// budget is measured in Release; SettingsSearchMeaningWorkerTests owns that rule).
+  /// The committed assets.
   static func worker() -> SettingsSearchMeaningWorker {
     SettingsSearchMeaningWorker.bundled(
       assets: SettingsSearchMeaningAssets(
-        directory: RepoRoot.sourceURL("Sources/EnviousWispr/Resources/SettingsSearchMeaning")),
-      loadBudgetMilliseconds: 60_000)
+        directory: RepoRoot.sourceURL("Sources/EnviousWispr/Resources/SettingsSearchMeaning")))
   }
 
   /// A deadline no Debug test process reaches: these rows judge the ranking a completed pass
@@ -35,12 +33,14 @@ struct SettingsSearchBothLegsTests {
       announcementDelay: .seconds(60))
   }
 
-  /// Types `query` and waits for the meaning pass to finish (or be skipped).
+  /// Types `query` and waits for the meaning pass to finish (or be skipped). The first search
+  /// answers by words while the model loads and runs again with meaning once it is ready, so the
+  /// wait is for a ready model and an ended pass.
   static func search(_ model: SettingsSearchModel, _ query: String) async -> [String] {
     model.setQuery(query)
     _ = await SettingsSearchModelTests.waitUntil(seconds: 60) {
       guard case .ready = model.indexState else { return false }
-      return model.meaningPass != .pending
+      return model.meaningModel == .ready && model.meaningPass != .pending
     }
     return model.results.map(\.entryID)
   }
@@ -100,7 +100,7 @@ struct SettingsSearchBothLegsTests {
     let assets = SettingsSearchMeaningAssets(
       directory: RepoRoot.sourceURL("Sources/EnviousWispr/Resources/SettingsSearchMeaning"))
     // The load is held back three seconds on purpose; the first search pays for it.
-    let worker = SettingsSearchMeaningWorker(loadBudgetMilliseconds: 60_000) {
+    let worker = SettingsSearchMeaningWorker {
       try await Task.sleep(for: .seconds(3))  // test-fixture-timer: the delayed load is the control
       return try await SettingsSearchMeaningWorker.loadProduction(assets: assets)
     }
@@ -137,8 +137,8 @@ struct SettingsSearchBothLegsTests {
 /// one unmeasured warm-up and 30 measured warm passes) and `TEST_RUNNER_EW_MEANING_OUT` (a JSONL
 /// file each measured pass is appended to). `scripts/settings-map/meaning-deadline-campaign.sh`
 /// drives it. A pass is timed from the moment its search reaches the full index until the model
-/// says the pass ended, through the window's own model and the production worker over the
-/// committed assets, with a deadline and load budget it never reaches, so no sample is cut short.
+/// says meaning answered, through the window's own model and the production worker over the
+/// committed assets, with a deadline it never reaches, so no sample is cut short.
 @MainActor
 @Suite(
   "Settings search meaning deadline campaign (#3545, opt-in)", .tags(.harnessContract),
@@ -184,11 +184,13 @@ struct SettingsSearchMeaningCampaignTests {
     }
   }
 
-  /// Waits until the model's pass for the current query has ended; false at the bound.
+  /// Waits until the meaning model is ready and the pass for the current query has ended; false
+  /// at the bound. A first search answers by words while the model loads, then runs again with
+  /// meaning, so a cold sample is the time until meaning answered.
   static func passEnded(_ model: SettingsSearchModel) async -> Bool {
     await SettingsSearchModelTests.waitUntil(seconds: 120) {
       guard case .ready = model.indexState else { return false }
-      return model.meaningPass != .pending
+      return model.meaningModel == .ready && model.meaningPass != .pending
     }
   }
 

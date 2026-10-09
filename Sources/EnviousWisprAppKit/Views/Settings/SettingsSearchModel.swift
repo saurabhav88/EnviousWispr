@@ -41,17 +41,14 @@ final class SettingsSearchModel {
     case abandoned
   }
 
-  /// The longest a meaning pass (waiting for the model load, encoding, the vector view and
-  /// scoring) may hold "No settings match" and the result-count announcement (#3545 plan §3.5).
-  /// An explicit wait cap (founder 2026-10-09, plan §3.5 revised): the p99 of 29 ordinary
-  /// process-cold first passes, 713.4 ms, measured on an M5 Max in a Debug test process by
+  /// The longest a meaning pass (encoding, the vector view and scoring, once the model is loaded)
+  /// may hold "No settings match" and the result-count announcement (#3545 plan §3.5). An explicit
+  /// wait cap (founder 2026-10-09): the p99 of 29 ordinary process-cold passes that included the
+  /// model load, 713.4 ms, measured on an M5 Max in a Debug test process by
   /// `scripts/settings-map/meaning-deadline-campaign.sh`
-  /// (`.validation/runs/20261009-003707-3545-meaning-deadline`). The same campaign's 30th cold
-  /// pass, the first model load after a restart, took 11.6 s, and 30 warm passes had p99 11.0 ms;
-  /// the cap bounds that slow case rather than being set by it. The 8 GB M1 floor is unmeasured.
-  /// After the cap, meaning stays off for that window session; a load that finishes within the
-  /// worker's budget serves the next one, and a slower load is `loadTooSlow`, off for the app's
-  /// life, as before. Re-measure if the model or its load changes.
+  /// (`.validation/runs/20261009-003707-3545-meaning-deadline`; 30 warm passes p99 11.0 ms). A
+  /// pass no longer waits for the load (see `MeaningModel`), so the cap guards an encoder that
+  /// stalls; after it, meaning stays off for that window session. The 8 GB M1 floor is unmeasured.
   static let meaningDeadline: Duration = .milliseconds(714)
 
   private(set) var query = ""
@@ -62,6 +59,21 @@ final class SettingsSearchModel {
   private(set) var isPanelPresented = false
   private(set) var indexState: IndexState = .notLoaded
   private(set) var meaningPass: MeaningPass = .skipped
+
+  /// The meaning model's load (founder 2026-10-09, #3545): a search never waits for it. While it
+  /// loads, searches answer by words alone; when it is ready, the search on screen runs again
+  /// with meaning. However long the load takes, it is never given up, so nobody has to reopen the
+  /// window or the app to get meaning back.
+  enum MeaningModel: Equatable {
+    case notLoaded
+    case loading
+    case ready
+  }
+
+  private(set) var meaningModel: MeaningModel = .notLoaded
+  /// Identifies the current load request; a window close moves it on, so an older request's
+  /// answer never writes this window session's state.
+  private var meaningLoadAttempt = 0
   /// Increments on every query change and reset; work for an older generation is dropped.
   private(set) var generation = 0
 
@@ -388,6 +400,12 @@ final class SettingsSearchModel {
       meaningPass = .skipped
       return
     }
+    guard meaningModel == .ready else {
+      // The words answer now; meaning joins when its model is ready.
+      meaningPass = .skipped
+      startMeaningLoad(worker)
+      return
+    }
     meaningPassID &+= 1
     let pass = meaningPassID
     meaningPass = .pending
@@ -480,6 +498,40 @@ final class SettingsSearchModel {
           fused.map { Self.results(from: $0, words: wordResults) }, skipped: false, view: view,
           elapsed: elapsed, pass: pass)
       }
+    }
+  }
+
+  /// Starts the meaning model's load once per window session; a load already running is shared.
+  private func startMeaningLoad(_ worker: SettingsSearchMeaningWorker) {
+    guard meaningModel == .notLoaded else { return }
+    meaningModel = .loading
+    meaningLoadAttempt &+= 1
+    let attempt = meaningLoadAttempt
+    let workerReset = workerReset
+    Task { [weak self] in
+      await workerReset?.value
+      let readiness = await worker.ensureLoaded()
+      self?.meaningLoadFinished(readiness, attempt: attempt)
+    }
+  }
+
+  /// The load ended. Ready: the search on screen runs again with meaning (a cleared search stays
+  /// cleared, a closed panel stays closed). Failed: words only for this window session.
+  private func meaningLoadFinished(
+    _ readiness: SettingsSearchMeaningWorker.Readiness, attempt: Int
+  ) {
+    guard attempt == meaningLoadAttempt, meaningModel == .loading else { return }
+    switch readiness {
+    case .ready:
+      meaningModel = .ready
+      guard case .ready(let index) = indexState,
+        !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+      else { return }
+      cancelMeaning()
+      deliver(index.results(for: query), for: generation)
+    case .skipped:
+      meaningModel = .notLoaded
+      meaningSkipped = true
     }
   }
 
@@ -582,6 +634,10 @@ final class SettingsSearchModel {
   /// the next pass waits for. A load still running is kept, never started twice.
   private func startNewWindowSession() {
     meaningSkipped = false
+    // A load still running is asked again by the next session (the worker shares it), and the
+    // old request's answer is ignored.
+    if meaningModel == .loading { meaningModel = .notLoaded }
+    meaningLoadAttempt &+= 1
     guard let worker = meaningWorker else { return }
     let previous = workerReset
     workerReset = Task {

@@ -446,53 +446,51 @@ struct SettingsSearchModelTests {
     return model
   }
 
-  /// Types `query` into a model whose full index is (or becomes) ready, and waits until the pass
-  /// for it is running and its deadline is waiting.
+  /// Types `query` into a model whose full index and meaning model are (or become) ready, and
+  /// waits until the meaning pass for it is running and its deadline is waiting.
   static func typeWithPassRunning(
     _ model: SettingsSearchModel, _ query: String, clock: DeadlineClock
   ) async -> Bool {
     let before = await clock.registered
     model.setQuery(query)
-    guard await ready(model) else { return false }
-    guard model.meaningPass == .pending else { return false }
+    guard await waitUntil({ model.meaningModel == .ready && model.meaningPass == .pending }) else {
+      return false
+    }
     return await clock.waitForRegistration(after: before)
   }
 
-  @Test("a meaning load that never ends cannot hold the answer past the deadline; the next window session uses it")
-  func loadThatNeverEnds() async throws {
+  // Founder 2026-10-09: a search never waits for the meaning model to load; words answer, and the
+  // search on screen runs again with meaning once the model is ready, however long that took.
+  @Test("while the meaning model loads, words answer at once; when it is ready the search gets meaning")
+  func loadNeverHoldsTheAnswer() async throws {
     let clock = DeadlineClock()
     let load = AsyncGate()
     let started = Latch()
     let calls = LoadCounter()
     let spoken = SpokenLog()
-    let returns = ReturnLog()
-    let worker = SettingsSearchMeaningWorker(loadBudgetMilliseconds: 600_000) {
+    let worker = SettingsSearchMeaningWorker {
       await calls.count()
       await started.open()
       await load.wait()
       return Self.loaded()
     }
-    let model = Self.meaningModel(worker, clock: clock, spoken: spoken, returns: returns)
-    #expect(await Self.typeWithPassRunning(model, "zzqx", clock: clock))
+    let model = Self.meaningModel(worker, clock: clock, spoken: spoken)
+    model.setQuery("zzqx")
+    #expect(await Self.ready(model))
     #expect(await started.wait(), "the load never started")
-    #expect(model.showsNoResults == false, "no-results shown while the pass may still answer")
-    await clock.fire()
-    #expect(await Self.waitUntil { model.meaningPass == .abandoned })
+    // Loading: the word answer is final now, nothing waits for the model.
+    #expect(model.meaningModel == .loading)
+    #expect(model.meaningPass == .skipped)
     #expect(model.showsNoResults)
-    #expect(model.meaningElapsedMilliseconds == nil)
     #expect(model.attempt?.meaningPending == false)
     #expect(await Self.waitUntil { spoken.lines == [SettingsSearchCopy.resultCount(0)] })
-    // The load finishes late: its pass is gone, so nothing changes.
+    model.setQuery("alpha")
+    #expect(model.results.map(\.entryID) == ["theme"] && model.meaningPass == .skipped)
+    // The load ends: the search on screen runs again with meaning, in the same window.
     await load.open()
-    #expect(await Self.waitUntil { returns.values == [false] }, "\(returns.values)")
-    #expect(model.meaningPass == .abandoned && model.results.isEmpty)
-    // The rest of this window session answers by words only, at once.
-    model.setQuery("alpha")
-    #expect(model.meaningPass == .skipped, "retried in the same window session")
-    // The next window session uses the load that finished, without loading again.
-    model.reset(endedBy: .windowClose)
-    model.setQuery("alpha")
     #expect(await Self.waitUntil { model.meaningPass == .completed }, "\(model.meaningPass)")
+    #expect(model.meaningModel == .ready && model.query == "alpha")
+    #expect(model.meaningElapsedMilliseconds != nil)
     #expect(await calls.value == 1)
     await clock.fire()
   }
@@ -502,23 +500,30 @@ struct SettingsSearchModelTests {
     let clock = DeadlineClock()
     let encoder = BlockingEncoder()
     let returns = ReturnLog()
-    let worker = SettingsSearchMeaningWorker(loadBudgetMilliseconds: 600_000) {
-      Self.loaded(encoder)
-    }
+    let worker = SettingsSearchMeaningWorker { Self.loaded(encoder) }
     let model = Self.meaningModel(worker, clock: clock, returns: returns)
     #expect(await Self.typeWithPassRunning(model, "alpha", clock: clock))
     #expect(await encoder.blocked.wait(), "the encoder never started")
     let words = model.results.map(\.entryID)
     #expect(words == ["theme"])
+    #expect(model.showsNoResults == false)
     await clock.fire()
     #expect(await Self.waitUntil { model.meaningPass == .abandoned })
     #expect(model.results.map(\.entryID) == words)
+    #expect(model.attempt?.meaningPending == false)
     // The encoder ignored the cancellation and answers now; the answer is dropped.
     encoder.release()
     #expect(await Self.waitUntil { returns.values == [false] }, "\(returns.values)")
     #expect(model.meaningPass == .abandoned)
     #expect(model.results.map(\.entryID) == words, "a late meaning answer replaced the results")
     #expect(model.meaningElapsedMilliseconds == nil)
+    // The rest of this window session answers by words only; the next session uses meaning.
+    model.setQuery("alpha theme")
+    #expect(model.meaningPass == .skipped, "retried in the same window session")
+    model.reset(endedBy: .windowClose)
+    model.setQuery("alpha")
+    #expect(await Self.waitUntil { model.meaningPass == .completed }, "\(model.meaningPass)")
+    await clock.fire()
   }
 
   @Test("a meaning load that fails leaves the word answer final at once")
@@ -530,8 +535,9 @@ struct SettingsSearchModelTests {
     let model = Self.meaningModel(worker, clock: clock)
     model.setQuery("alpha")
     #expect(await Self.ready(model))
-    #expect(await Self.waitUntil { model.meaningPass == .skipped })
+    #expect(model.meaningPass == .skipped)
     #expect(model.results.map(\.entryID) == ["theme"])
+    #expect(await Self.waitUntil { model.meaningModel == .notLoaded }, "the failed load never ended")
     await clock.fire()
   }
 
@@ -539,7 +545,7 @@ struct SettingsSearchModelTests {
   func failedLoadRecoversAfterClose() async throws {
     let clock = DeadlineClock()
     let calls = LoadCounter()
-    let worker = SettingsSearchMeaningWorker(loadBudgetMilliseconds: 600_000) {
+    let worker = SettingsSearchMeaningWorker {
       await calls.count()
       if await calls.value == 1 { throw SettingsSearchMeaningWorker.LoadFailure(reason: .loadFailed) }
       return Self.loaded()
@@ -547,9 +553,10 @@ struct SettingsSearchModelTests {
     let model = Self.meaningModel(worker, clock: clock)
     model.setQuery("alpha")
     #expect(await Self.ready(model))
-    #expect(await Self.waitUntil { model.meaningPass == .skipped })
+    #expect(await Self.waitUntil { model.meaningModel == .notLoaded }, "the failed load never ended")
     model.setQuery("alpha theme")
-    #expect(model.meaningPass == .skipped, "retried inside the same window session")
+    #expect(model.meaningPass == .skipped && model.meaningModel == .notLoaded,
+            "retried inside the same window session")
     #expect(await calls.value == 1)
     model.reset(endedBy: .windowClose)
     model.setQuery("alpha")
@@ -558,64 +565,48 @@ struct SettingsSearchModelTests {
     await clock.fire()
   }
 
-  nonisolated static let sticky: [SettingsSearchMeaningWorker.SkipReason] = [.loadTooSlow, .assetsMissing]
-
-  @Test("a too-slow load and missing assets stay off after the window closes", arguments: sticky)
-  func stickyReasonsStayOff(reason: SettingsSearchMeaningWorker.SkipReason) async throws {
+  @Test("missing meaning assets stay off after the window closes")
+  func missingAssetsStayOff() async throws {
     let clock = DeadlineClock()
     let calls = LoadCounter()
-    let worker: SettingsSearchMeaningWorker
-    if reason == .loadTooSlow {
-      // Two clock readings one second apart: just over the one-second budget.
-      worker = SettingsSearchMeaningWorker(
-        loadBudgetMilliseconds: 999, nowNanoseconds: SettingsSearchMeaningWorkerTests.clock([0, 1_000_000_000])
-      ) {
-        await calls.count()
-        return Self.loaded()
-      }
-    } else {
-      worker = SettingsSearchMeaningWorker {
-        await calls.count()
-        throw SettingsSearchMeaningWorker.LoadFailure(reason: .assetsMissing)
-      }
+    let worker = SettingsSearchMeaningWorker {
+      await calls.count()
+      throw SettingsSearchMeaningWorker.LoadFailure(reason: .assetsMissing)
     }
     let model = Self.meaningModel(worker, clock: clock)
     model.setQuery("alpha")
     #expect(await Self.ready(model))
-    #expect(await Self.waitUntil { model.meaningPass == .skipped })
-    #expect(await worker.ensureLoaded() == .skipped(reason))
+    #expect(await Self.waitUntil { model.meaningModel == .notLoaded }, "the load never ended")
     model.reset(endedBy: .windowClose)
     model.setQuery("alpha")
-    #expect(await Self.waitUntil { model.meaningPass == .skipped }, "\(model.meaningPass)")
-    #expect(await worker.ensureLoaded() == .skipped(reason))
-    #expect(await calls.value == 1, "a \(reason) load was tried again")
+    #expect(model.meaningPass == .skipped)
+    #expect(await Self.waitUntil { model.meaningModel == .notLoaded }, "the second ask never ended")
+    #expect(await worker.ensureLoaded() == .skipped(.assetsMissing))
+    #expect(await calls.value == 1, "missing assets were loaded again")
     await clock.fire()
   }
 
-  @Test("closing and reopening during a load shares that load and keeps only the new answer")
+  @Test("closing and reopening during a load shares that load, and the reopened window gets meaning")
   func closeDuringLoadSharesIt() async throws {
     let clock = DeadlineClock()
     let load = AsyncGate()
     let calls = LoadCounter()
-    let returns = ReturnLog()
     let started = Latch()
-    let worker = SettingsSearchMeaningWorker(loadBudgetMilliseconds: 600_000) {
+    let worker = SettingsSearchMeaningWorker {
       await calls.count()
       await started.open()
       await load.wait()
       return Self.loaded()
     }
-    let model = Self.meaningModel(worker, clock: clock, returns: returns)
-    #expect(await Self.typeWithPassRunning(model, "alpha", clock: clock))
+    let model = Self.meaningModel(worker, clock: clock)
+    model.setQuery("alpha")
+    #expect(await Self.ready(model))
     #expect(await started.wait(), "the load never started")
     model.reset(endedBy: .windowClose)
-    #expect(await Self.typeWithPassRunning(model, "zzqx", clock: clock))
+    model.setQuery("zzqx")
+    #expect(model.meaningModel == .loading && model.meaningPass == .skipped)
     await load.open()
     #expect(await Self.waitUntil { model.meaningPass == .completed }, "\(model.meaningPass)")
-    // The closed window's pass returned unused; only the reopened window's pass was used.
-    #expect(
-      await Self.waitUntil { returns.values.count == 2 }, "\(returns.values)")
-    #expect(returns.values.filter { $0 }.count == 1 && returns.values.filter { !$0 }.count == 1)
     #expect(await calls.value == 1, "the reopened window started a second load")
     #expect(model.query == "zzqx")
     #expect(model.meaningElapsedMilliseconds != nil)

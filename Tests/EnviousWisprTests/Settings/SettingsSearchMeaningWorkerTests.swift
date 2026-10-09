@@ -6,7 +6,7 @@ import os
 
 /// #3482 chunk 3: the worker that owns the meaning pass for one Settings window session.
 /// **When this fails, typing in the Settings search either freezes, shows a result for an older
-/// search, or keeps using a model that is too slow or broken instead of falling back to the word
+/// search, or keeps using a broken model instead of falling back to the word
 /// results.** The Core ML encoder is replaced by scripted ones; the real encoder is covered by
 /// `SettingsSearchMeaningEncoderTests`.
 @Suite("Settings search meaning worker (#3482)", .tags(.productOutcome))
@@ -70,23 +70,19 @@ struct SettingsSearchMeaningWorkerTests {
     #expect(log.withLock { $0 } == ["reference", "hello"])
   }
 
-  @Test("a load exactly at the budget is kept, one nanosecond over is skipped")
-  func loadBudgetBoundary() async {
+  // #3545 (founder 2026-10-09) removed the one-second load budget: a slow load was discarded and
+  // meaning stayed off until the app restarted. This replaces its boundary test.
+  @Test("a slow load is kept and serves the searches after it")
+  func slowLoadIsKept() async {
     let log = OSAllocatedUnfairLock(initialState: [String]())
-    let atBudget = SettingsSearchMeaningWorker(
-      loadBudgetMilliseconds: 1_000, nowNanoseconds: Self.clock([0, 1_000_000_000])
-    ) { Self.loaded(log) }
-    #expect(await atBudget.ensureLoaded() == .ready(loadMilliseconds: 1_000))
-
-    let over = SettingsSearchMeaningWorker(
-      loadBudgetMilliseconds: 1_000, nowNanoseconds: Self.clock([0, 1_000_000_001])
-    ) { Self.loaded(log) }
-    #expect(await over.ensureLoaded() == .skipped(.loadTooSlow))
-    // Skipped for the session: nothing is encoded, the model and vectors are released.
-    log.withLock { $0.removeAll() }
-    #expect(await over.encode("hello", generation: 1) == .skipped(.loadTooSlow))
-    #expect(await over.placeVectors == nil)
-    #expect(log.withLock { $0.isEmpty })
+    // 11.5 s, the first load measured after a restart.
+    let worker = SettingsSearchMeaningWorker(nowNanoseconds: Self.clock([0, 11_500_000_000])) {
+      Self.loaded(log)
+    }
+    #expect(await worker.ensureLoaded() == .ready(loadMilliseconds: 11_500))
+    #expect(
+      await worker.encode("hello", generation: 1) == .vector(generation: 1, values: [1, 0, 0]))
+    #expect(await worker.placeVectors != nil)
   }
 
   @Test("a load that fails is skipped once and never retried in this session")
@@ -232,14 +228,14 @@ struct SettingsSearchMeaningWorkerTests {
   /// Every skip reason, written out: true when a window close lets the next session retry it.
   static let retried: [(SettingsSearchMeaningWorker.SkipReason, Bool)] = [
     (.loadFailed, true), (.assetsInvalid, true), (.encodeFailed, true), (.selfTestFailed, true),
-    (.loadTooSlow, false), (.assetsMissing, false),
+    (.assetsMissing, false),
   ]
 
-  @Test("a window close retries a failed load, self-test, bad assets or encode; never a slow load or missing assets",
+  @Test("a window close retries a failed load, self-test, bad assets or encode; never missing assets",
     arguments: retried.indices)
   func resetRetriesOnlyTransientFailures(row: Int) async {
     let (reason, retries) = Self.retried[row]
-    #expect(Set(Self.retried.map(\.0.rawValue)).count == 6)
+    #expect(Set(Self.retried.map(\.0.rawValue)).count == 5)
     let log = OSAllocatedUnfairLock(initialState: [String]())
     let calls = OSAllocatedUnfairLock(initialState: 0)
     let worker = SettingsSearchMeaningWorker {
