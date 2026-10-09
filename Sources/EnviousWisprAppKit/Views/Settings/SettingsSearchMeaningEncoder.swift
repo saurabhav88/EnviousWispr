@@ -92,8 +92,10 @@ struct CoreMLQueryEncoder: SettingsSearchQueryEncoding {
 ///   the same outcome.
 /// - **Skipped for the window session.** Missing or wrong assets, a failed load or self-test, or a
 ///   load slower than the budget (measured on the slowest Mac on hand, never on this one) disable
-///   the pass for the life of this worker; the caller keeps word results only. A later encode
-///   failure does the same.
+///   the pass; the caller keeps word results only. A later encode failure does the same.
+///   `resetTransientFailure()` (a window close) lets the next session retry a failed load,
+///   self-test, damaged assets or encode; missing assets and a too-slow load stay off for the
+///   worker's life, because retrying cannot change them on this Mac (#3545 plan §3.5).
 /// - **Generations.** Every request carries the caller's query generation. A request the caller
 ///   has since superseded, or whose task was cancelled, returns `.stale` without encoding, and a
 ///   result is stamped with its generation so the caller can drop one that finished late.
@@ -199,6 +201,20 @@ actor SettingsSearchMeaningWorker {
     let task = Task { await self.load() }
     preparation = task
     return await task.value
+  }
+
+  /// A window closed: a COMPLETED transient failure is cleared, so the next `ensureLoaded()` loads
+  /// again. A load still running is kept and shared, never started twice (a failure is only
+  /// recorded once its load has returned, so `skipped` set means no load is running).
+  func resetTransientFailure() {
+    guard let reason = skipped else { return }
+    switch reason {
+    case .loadFailed, .assetsInvalid, .encodeFailed, .selfTestFailed:
+      skipped = nil
+      preparation = nil
+    case .loadTooSlow, .assetsMissing:
+      return
+    }
   }
 
   /// The place vectors, once the pass is ready. Nil while loading or after a skip.

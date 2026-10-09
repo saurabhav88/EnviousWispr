@@ -227,6 +227,59 @@ struct SettingsSearchMeaningWorkerTests {
     #expect(log.withLock { $0.contains("old") } == false)
   }
 
+  // MARK: - Window-session reset (#3545 T8)
+
+  /// Every skip reason, written out: true when a window close lets the next session retry it.
+  static let retried: [(SettingsSearchMeaningWorker.SkipReason, Bool)] = [
+    (.loadFailed, true), (.assetsInvalid, true), (.encodeFailed, true), (.selfTestFailed, true),
+    (.loadTooSlow, false), (.assetsMissing, false),
+  ]
+
+  @Test("a window close retries a failed load, self-test, bad assets or encode; never a slow load or missing assets",
+    arguments: retried.indices)
+  func resetRetriesOnlyTransientFailures(row: Int) async {
+    let (reason, retries) = Self.retried[row]
+    #expect(Set(Self.retried.map(\.0.rawValue)).count == 6)
+    let log = OSAllocatedUnfairLock(initialState: [String]())
+    let calls = OSAllocatedUnfairLock(initialState: 0)
+    let worker = SettingsSearchMeaningWorker {
+      let call = calls.withLock { $0 += 1; return $0 }
+      if call == 1 { throw SettingsSearchMeaningWorker.LoadFailure(reason: reason) }
+      return Self.loaded(log)
+    }
+    #expect(await worker.ensureLoaded() == .skipped(reason))
+    await worker.resetTransientFailure()
+    let after = await worker.ensureLoaded()
+    if retries {
+      if case .ready = after {} else { Issue.record("\(reason) stayed off: \(after)") }
+      #expect(calls.withLock { $0 } == 2, "\(reason) was not loaded again")
+    } else {
+      #expect(after == .skipped(reason), "\(reason): \(after)")
+      #expect(calls.withLock { $0 } == 1, "\(reason) was loaded again")
+    }
+  }
+
+  @Test("a window close while the load runs keeps that load: one load serves both sessions")
+  func resetKeepsARunningLoad() async {
+    let log = OSAllocatedUnfairLock(initialState: [String]())
+    let loads = OSAllocatedUnfairLock(initialState: 0)
+    let gate = Gate()
+    let worker = SettingsSearchMeaningWorker {
+      loads.withLock { $0 += 1 }
+      gate.startedContinuation.yield()
+      for await _ in gate.released { break }
+      return Self.loaded(log)
+    }
+    let first = Task { await worker.ensureLoaded() }
+    for await _ in gate.started { break }
+    await worker.resetTransientFailure()
+    let second = Task { await worker.ensureLoaded() }
+    gate.releaseContinuation.yield()
+    let readiness = [await first.value, await second.value]
+    #expect(readiness.allSatisfy { if case .ready = $0 { true } else { false } }, "\(readiness)")
+    #expect(loads.withLock { $0 } == 1)
+  }
+
   @Test("several callers share one load")
   func oneLoadForConcurrentCallers() async {
     let log = OSAllocatedUnfairLock(initialState: [String]())

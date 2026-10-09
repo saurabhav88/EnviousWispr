@@ -409,6 +409,301 @@ struct SettingsSearchModelTests {
     #expect(crumb.hasSuffix("Theme"), "\(crumb)")
     #expect(SettingsSearchPresentation.title(of: .apiKeyReveal) == "Show key")
   }
+
+  // MARK: - The meaning pass's deadline and recovery (#3545 T8)
+
+  /// Place vectors for every searchable place, so a scripted pass completes: one row each.
+  nonisolated static func catalogPlaces() -> SettingsSearchPlaceVectors {
+    let ids = SettingsSearchCatalog.entries.map(\.id)
+    var entries: [String: SettingsSearchPlaceVectors.EntryRows] = [:]
+    for (row, id) in ids.enumerated() { entries[id] = .init(main: ["en": row], languages: [:]) }
+    return SettingsSearchPlaceVectors(
+      dimension: 3, rowCount: ids.count, textsSHA256: "t", entries: entries,
+      rows: ids.flatMap { _ in [1, 0, 0] as [Float16] })
+  }
+
+  nonisolated static func loaded(
+    _ encoder: any SettingsSearchQueryEncoding = SettingsSearchMeaningWorkerTests.ScriptedEncoder(
+      log: .init(initialState: []))
+  ) -> SettingsSearchMeaningWorker.Loaded {
+    .init(
+      encoder: encoder, placeVectors: catalogPlaces(),
+      selfTest: SettingsSearchMeaningWorkerTests.selfTest)
+  }
+
+  /// A model on a small full index with `worker`, whose pass deadline passes only when `clock`
+  /// fires. It reports every return of meaning work to `returns`.
+  static func meaningModel(
+    _ worker: SettingsSearchMeaningWorker, clock: DeadlineClock, spoken: SpokenLog = SpokenLog(),
+    returns: ReturnLog = ReturnLog()
+  ) -> SettingsSearchModel {
+    let full = fixture([(.theme, "alpha")])
+    let model = SettingsSearchModel(
+      loadIndex: { full }, titleIndex: { full }, meaningWorker: worker,
+      meaningDeadlineElapses: { await clock.wait() }, announce: { spoken.lines.append($0) },
+      announcementDelay: .milliseconds(20))
+    model.meaningWorkReturned = { returns.values.append($0) }
+    return model
+  }
+
+  /// Types `query` into a model whose full index is (or becomes) ready, and waits until the pass
+  /// for it is running and its deadline is waiting.
+  static func typeWithPassRunning(
+    _ model: SettingsSearchModel, _ query: String, clock: DeadlineClock
+  ) async -> Bool {
+    let before = await clock.registered
+    model.setQuery(query)
+    guard await ready(model) else { return false }
+    guard model.meaningPass == .pending else { return false }
+    return await clock.waitForRegistration(after: before)
+  }
+
+  @Test("a meaning load that never ends cannot hold the answer past the deadline; the next window session uses it")
+  func loadThatNeverEnds() async throws {
+    let clock = DeadlineClock()
+    let load = AsyncGate()
+    let started = Latch()
+    let calls = LoadCounter()
+    let spoken = SpokenLog()
+    let returns = ReturnLog()
+    let worker = SettingsSearchMeaningWorker(loadBudgetMilliseconds: 600_000) {
+      await calls.count()
+      await started.open()
+      await load.wait()
+      return Self.loaded()
+    }
+    let model = Self.meaningModel(worker, clock: clock, spoken: spoken, returns: returns)
+    #expect(await Self.typeWithPassRunning(model, "zzqx", clock: clock))
+    #expect(await started.wait(), "the load never started")
+    #expect(model.showsNoResults == false, "no-results shown while the pass may still answer")
+    await clock.fire()
+    #expect(await Self.waitUntil { model.meaningPass == .abandoned })
+    #expect(model.showsNoResults)
+    #expect(model.meaningElapsedMilliseconds == nil)
+    #expect(model.attempt?.meaningPending == false)
+    #expect(await Self.waitUntil { spoken.lines == [SettingsSearchCopy.resultCount(0)] })
+    // The load finishes late: its pass is gone, so nothing changes.
+    await load.open()
+    #expect(await Self.waitUntil { returns.values == [false] }, "\(returns.values)")
+    #expect(model.meaningPass == .abandoned && model.results.isEmpty)
+    // The rest of this window session answers by words only, at once.
+    model.setQuery("alpha")
+    #expect(model.meaningPass == .skipped, "retried in the same window session")
+    // The next window session uses the load that finished, without loading again.
+    model.reset(endedBy: .windowClose)
+    model.setQuery("alpha")
+    #expect(await Self.waitUntil { model.meaningPass == .completed }, "\(model.meaningPass)")
+    #expect(await calls.value == 1)
+    await clock.fire()
+  }
+
+  @Test("an encoder that never returns, then returns late, changes nothing after the deadline")
+  func encodeThatEndsLate() async throws {
+    let clock = DeadlineClock()
+    let encoder = BlockingEncoder()
+    let returns = ReturnLog()
+    let worker = SettingsSearchMeaningWorker(loadBudgetMilliseconds: 600_000) {
+      Self.loaded(encoder)
+    }
+    let model = Self.meaningModel(worker, clock: clock, returns: returns)
+    #expect(await Self.typeWithPassRunning(model, "alpha", clock: clock))
+    #expect(await encoder.blocked.wait(), "the encoder never started")
+    let words = model.results.map(\.entryID)
+    #expect(words == ["theme"])
+    await clock.fire()
+    #expect(await Self.waitUntil { model.meaningPass == .abandoned })
+    #expect(model.results.map(\.entryID) == words)
+    // The encoder ignored the cancellation and answers now; the answer is dropped.
+    encoder.release()
+    #expect(await Self.waitUntil { returns.values == [false] }, "\(returns.values)")
+    #expect(model.meaningPass == .abandoned)
+    #expect(model.results.map(\.entryID) == words, "a late meaning answer replaced the results")
+    #expect(model.meaningElapsedMilliseconds == nil)
+  }
+
+  @Test("a meaning load that fails leaves the word answer final at once")
+  func failedLoadFallsBack() async throws {
+    let clock = DeadlineClock()
+    let worker = SettingsSearchMeaningWorker {
+      throw SettingsSearchMeaningWorker.LoadFailure(reason: .loadFailed)
+    }
+    let model = Self.meaningModel(worker, clock: clock)
+    model.setQuery("alpha")
+    #expect(await Self.ready(model))
+    #expect(await Self.waitUntil { model.meaningPass == .skipped })
+    #expect(model.results.map(\.entryID) == ["theme"])
+    await clock.fire()
+  }
+
+  @Test("a failed meaning load is retried in the next window session, and only then")
+  func failedLoadRecoversAfterClose() async throws {
+    let clock = DeadlineClock()
+    let calls = LoadCounter()
+    let worker = SettingsSearchMeaningWorker(loadBudgetMilliseconds: 600_000) {
+      await calls.count()
+      if await calls.value == 1 { throw SettingsSearchMeaningWorker.LoadFailure(reason: .loadFailed) }
+      return Self.loaded()
+    }
+    let model = Self.meaningModel(worker, clock: clock)
+    model.setQuery("alpha")
+    #expect(await Self.ready(model))
+    #expect(await Self.waitUntil { model.meaningPass == .skipped })
+    model.setQuery("alpha theme")
+    #expect(model.meaningPass == .skipped, "retried inside the same window session")
+    #expect(await calls.value == 1)
+    model.reset(endedBy: .windowClose)
+    model.setQuery("alpha")
+    #expect(await Self.waitUntil { model.meaningPass == .completed }, "\(model.meaningPass)")
+    #expect(await calls.value == 2)
+    await clock.fire()
+  }
+
+  nonisolated static let sticky: [SettingsSearchMeaningWorker.SkipReason] = [.loadTooSlow, .assetsMissing]
+
+  @Test("a too-slow load and missing assets stay off after the window closes", arguments: sticky)
+  func stickyReasonsStayOff(reason: SettingsSearchMeaningWorker.SkipReason) async throws {
+    let clock = DeadlineClock()
+    let calls = LoadCounter()
+    let worker: SettingsSearchMeaningWorker
+    if reason == .loadTooSlow {
+      // Two clock readings one second apart: just over the one-second budget.
+      worker = SettingsSearchMeaningWorker(
+        loadBudgetMilliseconds: 999, nowNanoseconds: SettingsSearchMeaningWorkerTests.clock([0, 1_000_000_000])
+      ) {
+        await calls.count()
+        return Self.loaded()
+      }
+    } else {
+      worker = SettingsSearchMeaningWorker {
+        await calls.count()
+        throw SettingsSearchMeaningWorker.LoadFailure(reason: .assetsMissing)
+      }
+    }
+    let model = Self.meaningModel(worker, clock: clock)
+    model.setQuery("alpha")
+    #expect(await Self.ready(model))
+    #expect(await Self.waitUntil { model.meaningPass == .skipped })
+    #expect(await worker.ensureLoaded() == .skipped(reason))
+    model.reset(endedBy: .windowClose)
+    model.setQuery("alpha")
+    #expect(await Self.waitUntil { model.meaningPass == .skipped }, "\(model.meaningPass)")
+    #expect(await worker.ensureLoaded() == .skipped(reason))
+    #expect(await calls.value == 1, "a \(reason) load was tried again")
+    await clock.fire()
+  }
+
+  @Test("closing and reopening during a load shares that load and keeps only the new answer")
+  func closeDuringLoadSharesIt() async throws {
+    let clock = DeadlineClock()
+    let load = AsyncGate()
+    let calls = LoadCounter()
+    let returns = ReturnLog()
+    let started = Latch()
+    let worker = SettingsSearchMeaningWorker(loadBudgetMilliseconds: 600_000) {
+      await calls.count()
+      await started.open()
+      await load.wait()
+      return Self.loaded()
+    }
+    let model = Self.meaningModel(worker, clock: clock, returns: returns)
+    #expect(await Self.typeWithPassRunning(model, "alpha", clock: clock))
+    #expect(await started.wait(), "the load never started")
+    model.reset(endedBy: .windowClose)
+    #expect(await Self.typeWithPassRunning(model, "zzqx", clock: clock))
+    await load.open()
+    #expect(await Self.waitUntil { model.meaningPass == .completed }, "\(model.meaningPass)")
+    // The closed window's pass returned unused; only the reopened window's pass was used.
+    #expect(
+      await Self.waitUntil { returns.values.count == 2 }, "\(returns.values)")
+    #expect(returns.values.filter { $0 }.count == 1 && returns.values.filter { !$0 }.count == 1)
+    #expect(await calls.value == 1, "the reopened window started a second load")
+    #expect(model.query == "zzqx")
+    #expect(model.meaningElapsedMilliseconds != nil)
+    await clock.fire()
+  }
+}
+
+/// Every return of meaning work, in order: true when the panel used it.
+@MainActor @Observable final class ReturnLog { var values: [Bool] = [] }
+
+/// Opens once; a waiter gives up after its bound and says so.
+actor Latch {
+  private var isOpen = false
+  private var waiters: [Int: CheckedContinuation<Bool, Never>] = [:]
+  private var nextID = 0
+
+  func open() {
+    isOpen = true
+    for waiter in waiters.values { waiter.resume(returning: true) }
+    waiters = [:]
+  }
+
+  func wait(seconds: Double = 5) async -> Bool {
+    if isOpen { return true }
+    let id = nextID
+    nextID += 1
+    return await withCheckedContinuation { continuation in
+      waiters[id] = continuation
+      Task {
+        try? await Task.sleep(for: .seconds(seconds))  // deadline-fallback: bounds a signal wait
+        self.giveUp(id)
+      }
+    }
+  }
+
+  private func giveUp(_ id: Int) {
+    waiters.removeValue(forKey: id)?.resume(returning: false)
+  }
+}
+
+/// The meaning pass's deadline under the test's control: each pass's deadline waits here until
+/// `fire()`, which passes every deadline waiting now and none that start later.
+actor DeadlineClock {
+  private var waiting: [CheckedContinuation<Void, Never>] = []
+  private(set) var registered = 0
+  private var registration = Latch()
+
+  func wait() async {
+    await withCheckedContinuation { continuation in
+      waiting.append(continuation)
+      registered += 1
+      let latch = registration
+      registration = Latch()
+      Task { await latch.open() }
+    }
+  }
+
+  /// Returns once more than `count` deadlines have started waiting (false at its bound).
+  func waitForRegistration(after count: Int) async -> Bool {
+    if registered > count { return true }
+    let latch = registration
+    return await latch.wait()
+  }
+
+  func fire() {
+    let due = waiting
+    waiting = []
+    for deadline in due { deadline.resume() }
+  }
+}
+
+/// An encoder that blocks its thread on every search (never on the self-test) until released,
+/// and ignores cancellation, like a Core ML call.
+struct BlockingEncoder: SettingsSearchQueryEncoding, Sendable {
+  let blocked = Latch()
+  private let gate = DispatchSemaphore(value: 0)
+
+  func encode(_ text: String) throws -> [Float] {
+    if text != "reference" {
+      let blocked = blocked
+      Task { await blocked.open() }
+      gate.wait()
+      gate.signal()
+    }
+    return [1, 0, 0]
+  }
+
+  func release() { gate.signal() }
 }
 
 /// Resumes a continuation once, whichever of the change or the deadline comes first.

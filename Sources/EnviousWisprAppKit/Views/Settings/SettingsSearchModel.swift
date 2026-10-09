@@ -31,12 +31,28 @@ final class SettingsSearchModel {
   }
 
   /// The meaning pass (plan §3.7 item 8): word results show at once; a final "no results" waits
-  /// until the pass completes or is skipped. Until the pass is wired it is always skipped.
+  /// until the pass completes, is skipped or is abandoned at its deadline (#3545).
   enum MeaningPass: Equatable {
     case pending
     case completed
     case skipped
+    /// The pass ran past `meaningDeadline`: the word results are final for this search, and the
+    /// work still running can no longer change them.
+    case abandoned
   }
+
+  /// The longest a meaning pass (waiting for the model load, encoding, the vector view and
+  /// scoring) may hold "No settings match" and the result-count announcement (#3545 plan §3.5).
+  /// An explicit wait cap (founder 2026-10-09, plan §3.5 revised): the p99 of 29 ordinary
+  /// process-cold first passes, 713.4 ms, measured on an M5 Max in a Debug test process by
+  /// `scripts/settings-map/meaning-deadline-campaign.sh`
+  /// (`.validation/runs/20261009-003707-3545-meaning-deadline`). The same campaign's 30th cold
+  /// pass, the first model load after a restart, took 11.6 s, and 30 warm passes had p99 11.0 ms;
+  /// the cap bounds that slow case rather than being set by it. The 8 GB M1 floor is unmeasured.
+  /// After the cap, meaning stays off for that window session; a load that finishes within the
+  /// worker's budget serves the next one, and a slower load is `loadTooSlow`, off for the app's
+  /// life, as before. Re-measure if the model or its load changes.
+  static let meaningDeadline: Duration = .milliseconds(714)
 
   private(set) var query = ""
   private(set) var results: [SettingsSearchResult] = []
@@ -60,6 +76,18 @@ final class SettingsSearchModel {
   private var meaningSkipped = false
   private var meaningView: SettingsSearchPlaceVectors.View?
   private var meaningTask: Task<Void, Never>?
+  /// Identifies the running pass. A query change, a reset, an index swap or a new pass moves it
+  /// on, so work for an older pass never writes state, even for the same query generation.
+  private var meaningPassID = 0
+  private var meaningDeadlineTask: Task<Void, Never>?
+  /// Returns when a pass's deadline has passed; tests pass a gate they open.
+  private let meaningDeadlineElapses: @Sendable () async -> Void
+  /// The worker reset a window close asked for; the next pass waits for it, so a reopened window
+  /// never asks the worker before its transient failure is cleared.
+  private var workerReset: Task<Void, Never>?
+  /// Test seam (#3545 T8): called each time a pass's work returns, with whether it was used. A
+  /// pass abandoned at its deadline still reports here when its late work ends.
+  @ObservationIgnored var meaningWorkReturned: (@MainActor (_ used: Bool) -> Void)?
   /// Encoding plus scoring time of the last completed meaning pass, for `meaning_elapsed_ms`.
   private(set) var meaningElapsedMilliseconds: Double?
 
@@ -91,6 +119,9 @@ final class SettingsSearchModel {
     titleIndex: @escaping @MainActor () -> SettingsSearchIndex = SettingsSearchModel
       .windowTitleIndex,
     meaningWorker: SettingsSearchMeaningWorker? = nil,
+    meaningDeadlineElapses: @escaping @Sendable () async -> Void = {
+      try? await Task.sleep(for: SettingsSearchModel.meaningDeadline)
+    },
     usageMetricsOn: @escaping @MainActor () -> Bool = { false },
     emitFinished: @escaping @MainActor (SettingsSearchFinished) -> Void = { _ in },
     announce: @escaping @MainActor (String) -> Void,
@@ -101,6 +132,7 @@ final class SettingsSearchModel {
     self.usageMetricsOn = usageMetricsOn
     self.emitFinished = emitFinished
     self.meaningWorker = meaningWorker
+    self.meaningDeadlineElapses = meaningDeadlineElapses
     meaningPass = meaningWorker == nil ? .skipped : .completed
     self.announce = announce
     self.announcementDelay = announcementDelay
@@ -356,17 +388,44 @@ final class SettingsSearchModel {
       meaningPass = .skipped
       return
     }
+    meaningPassID &+= 1
+    let pass = meaningPassID
     meaningPass = .pending
     meaningElapsedMilliseconds = nil
     let text = query
     let languages = Self.meaningLanguages(index)
     let appLanguage = index.appLanguage
     let cachedView = meaningView
+    let workerReset = workerReset
+    // The deadline is the model's own task: it never waits on the worker, so an encoder that does
+    // not return cannot hold the panel.
+    let deadline = meaningDeadlineElapses
+    meaningDeadlineTask = Task { [weak self] in
+      guard !Task.isCancelled else { return }
+      await deadline()
+      guard !Task.isCancelled else { return }
+      self?.meaningExpired(pass)
+    }
     meaningTask = Task { [weak self] in
+      // A cancelled task still enters; work for a pass that is no longer wanted stops before
+      // each costly stage (the load, the encoder, the vector view, scoring) and says so once.
+      guard !Task.isCancelled, self?.isCurrent(pass) == true else {
+        self?.meaningWorkReturned?(false)
+        return
+      }
+      await workerReset?.value
+      guard !Task.isCancelled, self?.isCurrent(pass) == true else {
+        self?.meaningWorkReturned?(false)
+        return
+      }
       // §8.1 meaning_elapsed_ms is query encoding plus scoring only: the model load and the
       // vector view's construction are excluded.
       if case .skipped = await worker.ensureLoaded() {
-        self?.meaningFinished(nil, skipped: true, for: generation)
+        self?.meaningFinished(nil, skipped: true, pass: pass)
+        return
+      }
+      guard !Task.isCancelled, self?.isCurrent(pass) == true else {
+        self?.meaningWorkReturned?(false)
         return
       }
       let encodeStart = ContinuousClock.now
@@ -374,12 +433,20 @@ final class SettingsSearchModel {
       let encodeTime = encodeStart.duration(to: .now)
       switch outcome {
       case .stale:
-        return
+        self?.meaningWorkReturned?(false)
       case .skipped:
-        self?.meaningFinished(nil, skipped: true, for: generation)
+        self?.meaningFinished(nil, skipped: true, pass: pass)
       case .vector(_, let values):
+        guard !Task.isCancelled, self?.isCurrent(pass) == true else {
+          self?.meaningWorkReturned?(false)
+          return
+        }
         var view = cachedView
         if view == nil, let places = await worker.placeVectors {
+          guard !Task.isCancelled, self?.isCurrent(pass) == true else {
+            self?.meaningWorkReturned?(false)
+            return
+          }
           view = await Task.detached {
             places.view(
               entryIDs: SettingsSearchCatalog.entries.map(\.id), appLanguage: appLanguage,
@@ -387,13 +454,17 @@ final class SettingsSearchModel {
           }.value
         }
         guard let view else {
-          self?.meaningFinished(nil, skipped: true, for: generation)
+          self?.meaningFinished(nil, skipped: true, pass: pass)
+          return
+        }
+        guard !Task.isCancelled, self?.isCurrent(pass) == true else {
+          self?.meaningWorkReturned?(false)
           return
         }
         let hits = wordResults.map {
           SettingsSearchWordHit(entryID: $0.entryID, coverage: $0.coverage, score: $0.score)
         }
-        // Scoring and fusion off the main actor; the generation is checked again on return.
+        // Scoring and fusion off the main actor; the pass is checked again on return.
         let scoreStart = ContinuousClock.now
         let scored = await Task.detached { () -> [SettingsSearchFusedResult]?? in
           guard let similarities = view.similarities(query: values) else { return .none }
@@ -402,22 +473,32 @@ final class SettingsSearchModel {
         let elapsed = encodeTime + scoreStart.duration(to: .now)
         guard let fused = scored else {
           // A bad vector: words only for this window.
-          self?.meaningFinished(nil, skipped: true, for: generation)
+          self?.meaningFinished(nil, skipped: true, pass: pass)
           return
         }
-        self?.meaningView = view
         self?.meaningFinished(
-          fused.map { Self.results(from: $0, words: wordResults) }, skipped: false,
-          elapsed: elapsed, for: generation)
+          fused.map { Self.results(from: $0, words: wordResults) }, skipped: false, view: view,
+          elapsed: elapsed, pass: pass)
       }
     }
   }
 
+  /// Whether `pass` is the pass the panel is waiting on. Every write a pass makes checks this.
+  private func isCurrent(_ pass: Int) -> Bool {
+    pass == meaningPassID && meaningPass == .pending
+  }
+
   private func meaningFinished(
-    _ fused: [SettingsSearchResult]?, skipped: Bool, elapsed: Duration? = nil, for generation: Int
+    _ fused: [SettingsSearchResult]?, skipped: Bool, view: SettingsSearchPlaceVectors.View? = nil,
+    elapsed: Duration? = nil, pass: Int
   ) {
+    let used = isCurrent(pass)
+    defer { meaningWorkReturned?(used) }
+    guard used else { return }
+    meaningDeadlineTask?.cancel()
+    meaningDeadlineTask = nil
     if skipped { meaningSkipped = true }
-    guard generation == self.generation else { return }
+    if let view { meaningView = view }
     meaningElapsedMilliseconds = elapsed.map {
       Double($0.components.seconds) * 1_000 + Double($0.components.attoseconds) / 1e15
     }
@@ -431,9 +512,28 @@ final class SettingsSearchModel {
     }
   }
 
-  private func cancelMeaning() {
+  /// The pass ran past its deadline: the word results are final now, and the meaning pass is off
+  /// for the rest of this window session, like any other transient failure (#3545 plan §3.5,
+  /// G6); a window close clears it. A load still running goes on and serves the next session.
+  /// The work stops at its next check, and nothing it returns is used.
+  private func meaningExpired(_ pass: Int) {
+    guard isCurrent(pass) else { return }
+    meaningSkipped = true
+    meaningDeadlineTask = nil
     meaningTask?.cancel()
     meaningTask = nil
+    meaningPass = .abandoned
+    meaningElapsedMilliseconds = nil
+    recordSnapshot()
+    scheduleAnnouncement(for: generation)
+  }
+
+  private func cancelMeaning() {
+    meaningPassID &+= 1
+    meaningTask?.cancel()
+    meaningTask = nil
+    meaningDeadlineTask?.cancel()
+    meaningDeadlineTask = nil
     let next = generation
     if let worker = meaningWorker { Task { await worker.advance(to: next) } }
     if !meaningSkipped, meaningWorker != nil { meaningPass = .completed }
@@ -474,6 +574,20 @@ final class SettingsSearchModel {
     generation &+= 1
     cancelAnnouncement()
     cancelMeaning()
+    if endedBy == .windowClose { startNewWindowSession() }
+  }
+
+  /// A closed window's transient meaning failure is retried in the next window session (#3545
+  /// plan §3.5): the skip clears here, and the worker's after the reset task this queues, which
+  /// the next pass waits for. A load still running is kept, never started twice.
+  private func startNewWindowSession() {
+    meaningSkipped = false
+    guard let worker = meaningWorker else { return }
+    let previous = workerReset
+    workerReset = Task {
+      await previous?.value
+      await worker.resetTransientFailure()
+    }
   }
 
   // MARK: - Announcement
