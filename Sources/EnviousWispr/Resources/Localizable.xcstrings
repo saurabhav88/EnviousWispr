@@ -14301,12 +14301,12 @@
         }
       }
     },
-    "Required to paste your dictation" : {
+    "Required for your shortcut and for pasting" : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
-            "state" : "translated",
-            "value" : "Zum Einfügen deines Diktats erforderlich"
+            "state" : "needs_review",
+            "value" : "Für dein Tastenkürzel und zum Einfügen erforderlich"
           }
         }
       }
@@ -15481,6 +15481,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Kurze Diktate: Zeichensetzung, Großschreibung und Füllwörter. Für längere Aufnahmen, Listen oder Code eignet sich EG-1 oder ein Cloud-Modell besser. Verarbeitet Diktate bis etwa 8 Minuten."
+          }
+        }
+      }
+    },
+    "Shortcut recognition happens on your Mac. Shortcut-health reports do not contain typed text or a history of key presses." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Tastenkürzel werden auf deinem Mac erkannt. Berichte zum Zustand der Tastenkürzel enthalten keinen getippten Text und keinen Verlauf deiner Tastendrücke."
           }
         }
       }
@@ -19574,16 +19584,6 @@
         }
       }
     },
-    "We only use Accessibility at the moment we paste your dictation. Never to read your keystrokes, never to watch what happens in other apps." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Wir nutzen den Zugriff auf Bedienungshilfen nur, wenn wir dein Diktat einfügen. Wir lesen damit keine Tastatureingaben und beobachten keine anderen Apps."
-          }
-        }
-      }
-    },
     "We value your privacy. We never collect your audio, dictated or transcribed text, history, snippets, dictionary words, API keys, or any text on your screen. The only words that reach us are what you type into the feedback form, once you click Send." : {
       "comment" : "Permissions settings, Privacy: the section's privacy promise, above both switches.",
       "localizations" : {
@@ -21075,6 +21075,23 @@
         }
       }
     },
+    "feedback.category.typingOrShortcut" : {
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Typing or a keyboard shortcut isn't working as expected"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Tippen oder ein Tastenkürzel funktioniert nicht wie erwartet"
+          }
+        }
+      }
+    },
     "feedback.diagnostics.excluded" : {
       "extractionState" : "extracted_with_value",
       "localizations" : {
@@ -22485,12 +22502,12 @@
         }
       }
     },
-    "macOS calls this permission \"Accessibility,\" but EnviousWispr uses it for exactly one thing: pasting your dictation into the app you're typing in. Without it, every dictation lands in the clipboard and you'd have to paste manually." : {
+    "macOS calls this permission \"Accessibility.\" It lets EnviousWispr recognize modifier keys such as Right Option and paste your dictation into other apps. Without it, a modifier key used on its own does not respond. Other supported keybinds can still start dictation, and you paste the finished text from the clipboard." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
-            "state" : "translated",
-            "value" : "macOS nennt diese Berechtigung „Bedienungshilfen“. EnviousWispr nutzt sie ausschließlich, um dein Diktat in die App einzufügen, in der du gerade schreibst. Ohne sie landet jedes Diktat in der Zwischenablage und du musst es selbst einfügen."
+            "state" : "needs_review",
+            "value" : "macOS nennt diese Berechtigung „Bedienungshilfen“. Damit erkennt EnviousWispr Sondertasten wie die rechte Wahltaste und fügt dein Diktat in andere Apps ein. Ohne sie reagiert eine allein genutzte Sondertaste nicht. Andere unterstützte Tastenkürzel können das Diktat weiterhin starten, und du fügst den fertigen Text aus der Zwischenablage ein."
           }
         }
       }

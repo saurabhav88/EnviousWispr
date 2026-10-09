@@ -25,6 +25,8 @@ struct FeedbackRecord: Codable, Equatable, Sendable {
   var rejectedStatus: Int?
   /// What the in-app help check did (#3275), frozen at Send; nil when no check ran. Never rebuilt.
   let helpOutcome: FeedbackHelpOutcome?
+  /// What the user said the report is about (#3544 P3), frozen at Send; nil when they did not say.
+  let category: FeedbackCategory?
   /// The usage-link id this report carries as its `analytics.distinct_id` tag, decided once at
   /// Send by `FeedbackReporter.usageLinkID` (#3382); nil for no tag from this field. Always
   /// canonical: the initializer drops anything else, so a hand-edited outbox cannot inject one.
@@ -33,7 +35,8 @@ struct FeedbackRecord: Codable, Equatable, Sendable {
   init(
     id: UUID, submittedAt: Date, message: String, email: String?, attachment: Data?,
     context: Context, attempts: Int, nextAttemptAt: Date?, state: State, rejectedStatus: Int?,
-    helpOutcome: FeedbackHelpOutcome? = nil, usageLinkID: String? = nil
+    helpOutcome: FeedbackHelpOutcome? = nil, category: FeedbackCategory? = nil,
+    usageLinkID: String? = nil
   ) {
     self.id = id
     self.submittedAt = submittedAt
@@ -46,12 +49,14 @@ struct FeedbackRecord: Codable, Equatable, Sendable {
     self.state = state
     self.rejectedStatus = rejectedStatus
     self.helpOutcome = helpOutcome
+    self.category = category
     self.usageLinkID = usageLinkID.flatMap(ObservabilityBootstrap.canonicalAnonymousPostHogID)
   }
 
-  /// Help metadata and the usage-link id are limbs: a record written before they existed decodes
-  /// with nil, and one whose value no longer decodes keeps the report and drops only that value,
-  /// because a record that fails to decode blocks the whole outbox (FeedbackOutbox.load).
+  /// Help metadata, the category and the usage-link id are limbs: a record written before they
+  /// existed decodes with nil, and one whose value no longer decodes keeps the report and drops
+  /// only that value, because a record that fails to decode blocks the whole outbox
+  /// (FeedbackOutbox.load).
   init(from decoder: Decoder) throws {
     let c = try decoder.container(keyedBy: CodingKeys.self)
     self.init(
@@ -66,6 +71,7 @@ struct FeedbackRecord: Codable, Equatable, Sendable {
       state: try c.decode(State.self, forKey: .state),
       rejectedStatus: try c.decodeIfPresent(Int.self, forKey: .rejectedStatus),
       helpOutcome: (try? c.decodeIfPresent(FeedbackHelpOutcome.self, forKey: .helpOutcome)) ?? nil,
+      category: (try? c.decodeIfPresent(FeedbackCategory.self, forKey: .category)) ?? nil,
       usageLinkID: (try? c.decodeIfPresent(String.self, forKey: .usageLinkID)) ?? nil)
   }
 
@@ -220,6 +226,7 @@ struct FeedbackSender: Sendable {
       ],
     ]
     var tags = record.helpOutcome?.sentryTags ?? [:]
+    if let category = record.category { tags[FeedbackCategory.sentryTagKey] = category.rawValue }
     if let id = record.usageLinkID
       ?? record.attachment.flatMap(FeedbackDiagnosticsSnapshot.joinKey(in:))
     {
