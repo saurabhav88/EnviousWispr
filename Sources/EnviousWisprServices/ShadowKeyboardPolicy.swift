@@ -460,6 +460,9 @@ package final class ShadowKeyboardPolicy: Sendable {
       keyCode: keyCode, role: role, phase: phase, outcome: outcome, rawOccurred: raw,
       acceptedOccurred: accepted, handled: handled, evidence: evidence, ambiguous: ambiguous)
     record.context = ShadowRecord.context(armed: s.snapshot.armed, available: s.snapshot.available)
+    // With no role on a bare modifier, live installs no modifier monitors
+    // (`HotkeyService.shouldInstallModifierMonitors`), so no live record can pair with this one.
+    record.listenerScope = s.snapshot.bindings.bareModifierRoleAtRisk != nil
     return record
   }
 

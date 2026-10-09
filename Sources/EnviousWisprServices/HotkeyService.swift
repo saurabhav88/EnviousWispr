@@ -1264,7 +1264,7 @@ public final class HotkeyService {
   /// order and its doc comment says so. Read by both the install decision and the failure label, so
   /// the two cannot come to disagree about which roles matter.
   package var bareModifierRoleAtRisk: ShortcutRole? {
-    ShortcutRole.allCases.first { binding(for: $0).isBareModifier }
+    bindings.bareModifierRoleAtRisk
   }
 
   /// The binding a role is currently bound to. A switch, so a new role must be given one.

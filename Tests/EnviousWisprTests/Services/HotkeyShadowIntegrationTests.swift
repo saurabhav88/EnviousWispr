@@ -774,5 +774,24 @@ struct HotkeyShadowIntegrationTests {
       #expect(tally.clean)
       rig.service.stop()
     }
+
+    @Test("with no shortcut on a bare modifier, Shift taps stay out of the comparison")
+    func modifierTapsWithoutModifierShortcutsAreOutOfScope() throws {
+      let rig = Rig()
+      rig.service.recordingMode = .pushToTalk
+      rig.service.toggleKeyCode = 15  // R
+      rig.service.toggleModifiers = [.command]
+      try #require(rig.service.shouldInstallModifierMonitors == false)
+      rig.service.start()
+      let sink = try #require(rig.effects.keyboardListenerSink)
+      // Left Shift down and up: live has no modifier monitor, so only the listener sees it.
+      _ = sink(KeyEventValue(kind: .flagsChanged, keyCode: 56, rawFlags: 0x20002, timestamp: 500))
+      _ = sink(KeyEventValue(kind: .flagsChanged, keyCode: 56, rawFlags: 0, timestamp: 500.1))
+      let tally = rig.service.shadowDiagnostics.drainForTesting()
+      #expect(tally.outOfScope == 4)  // each edge: its ingress and its decision record
+      #expect(tally.incomplete == 0)
+      #expect(tally.clean)
+      rig.service.stop()
+    }
   #endif
 }

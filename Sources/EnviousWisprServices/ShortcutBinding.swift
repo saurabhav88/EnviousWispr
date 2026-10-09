@@ -198,6 +198,12 @@ package struct ShortcutBindings: Equatable, Sendable {
     case .copyLast: copyLast
     }
   }
+
+  /// The most severe role bound to a bare modifier (`ShortcutRole`'s declaration order is the
+  /// severity order), or nil when no role is and modifier events reach no shortcut at all.
+  package var bareModifierRoleAtRisk: ShortcutRole? {
+    ShortcutRole.allCases.first { self[$0].isBareModifier }
+  }
 }
 
 /// The single authority for what an input means.
