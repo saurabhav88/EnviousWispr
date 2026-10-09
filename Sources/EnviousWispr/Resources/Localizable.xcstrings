@@ -14305,7 +14305,7 @@
       "localizations" : {
         "de" : {
           "stringUnit" : {
-            "state" : "needs_review",
+            "state" : "translated",
             "value" : "Für dein Tastenkürzel und zum Einfügen erforderlich"
           }
         }
@@ -15489,7 +15489,7 @@
       "localizations" : {
         "de" : {
           "stringUnit" : {
-            "state" : "needs_review",
+            "state" : "translated",
             "value" : "Tastenkürzel werden auf deinem Mac erkannt. Berichte zum Zustand der Tastenkürzel enthalten keinen getippten Text und keinen Verlauf deiner Tastendrücke."
           }
         }
@@ -21086,7 +21086,7 @@
         },
         "de" : {
           "stringUnit" : {
-            "state" : "needs_review",
+            "state" : "translated",
             "value" : "Tippen oder ein Tastenkürzel funktioniert nicht wie erwartet"
           }
         }
@@ -22506,8 +22506,8 @@
       "localizations" : {
         "de" : {
           "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "macOS nennt diese Berechtigung „Bedienungshilfen“. Damit erkennt EnviousWispr Sondertasten wie die rechte Wahltaste und fügt dein Diktat in andere Apps ein. Ohne sie reagiert eine allein genutzte Sondertaste nicht. Andere unterstützte Tastenkürzel können das Diktat weiterhin starten, und du fügst den fertigen Text aus der Zwischenablage ein."
+            "state" : "translated",
+            "value" : "macOS nennt diese Berechtigung „Bedienungshilfen“. Damit kann EnviousWispr Sondertasten wie die rechte Wahltaste erkennen und dein Diktat in andere Apps einfügen. Ohne sie reagiert eine allein genutzte Sondertaste nicht. Andere unterstützte Tastenkürzel können das Diktat weiterhin starten, und du fügst den fertigen Text aus der Zwischenablage ein."
           }
         }
       }
