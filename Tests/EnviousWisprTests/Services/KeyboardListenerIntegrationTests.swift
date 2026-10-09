@@ -469,6 +469,25 @@ struct KeyboardListenerIntegrationTests {
     #expect(ptt.stops == 0, "the dismissed hold's release stopped a recording")
   }
 
+  @Test("an early other key during a recording started elsewhere ends nothing; the release still stops it")
+  func joinedRecordingSurvivesInterference() async {
+    let ptt = PTT()
+    defer { ptt.service.stop() }
+    var dismissed: [String] = []
+    ptt.service.onDismissRecording = { dismissed.append($0) }
+    ptt.service.registerCancelHotkey()  // a recording from the menu is running
+    ptt.at(0)
+    await ptt.keys.press(ModifierKeyCodes.rightOption, at: 500)
+    await ptt.service.awaitInFlightStartForTesting()
+    ptt.at(0.3)
+    await letterDown(ptt, at: 0.3)
+    ptt.at(1.5)
+    await ptt.keys.release(ModifierKeyCodes.rightOption, at: 501.5)
+    await ListenerKeyboard.mainTurn()
+    #expect(dismissed.isEmpty, "interference ended a recording the press did not start")
+    #expect(ptt.stops == 1, "the joined press lost its stop")
+  }
+
   @Test("a dismissal during a pending start waits for that start and ends its session")
   func dismissalDuringPendingStart() async throws {
     let ptt = PTT()

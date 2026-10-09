@@ -214,6 +214,11 @@ package final class RecordGestureEngine: Sendable {
     /// Whether a key-state reading may end this hold (#3544 P4 C2). Kept with the attempt, so it
     /// survives listener replacement and absence.
     let recovery: ListenerPressRecovery
+    /// Whether this attempt's press found a recording already running (cancel armed: one started
+    /// from the menu, the main window or an earlier take), so its start joins that recording rather
+    /// than making one (#3544 P4). Other-key interference never ends a recording this press did
+    /// not start; the press keeps its stop and lock.
+    let joinsRecording: Bool
   }
 
   /// The listener-owned record press a held-record check may ask about: its key, its attempt, and
@@ -510,7 +515,8 @@ package final class RecordGestureEngine: Sendable {
   ) -> Bool {
     let (dismissed, work, submit) = state.withLock { s -> (Bool, TimerWork, Bool) in
       guard s.listenerInstallation == installation, s.mode == .pushToTalk,
-        let owned = s.owned, !owned.fromMain, owned.attemptID == s.gesture.attemptID,
+        let owned = s.owned, !owned.fromMain, !owned.joinsRecording,
+        owned.attemptID == s.gesture.attemptID,
         s.gesture.isHeld, !s.gesture.isLocked, let start = s.gesture.start,
         Self.elapsed(from: start, to: input) < Self.otherKeyDismissalWindow
       else { return (false, TimerWork(), false) }
@@ -538,7 +544,7 @@ package final class RecordGestureEngine: Sendable {
   /// which may only say keyboard features are paused while one is.
   package func otherKeyRuleApplies(at now: TimeInterval) -> Bool {
     state.withLock { s in
-      guard s.mode == .pushToTalk, let owned = s.owned, !owned.fromMain,
+      guard s.mode == .pushToTalk, let owned = s.owned, !owned.fromMain, !owned.joinsRecording,
         owned.attemptID == s.gesture.attemptID, s.gesture.isHeld, !s.gesture.isLocked,
         let start = s.gesture.start
       else { return false }
@@ -555,14 +561,15 @@ package final class RecordGestureEngine: Sendable {
   }
 
   /// Why a listener record input is refused, or nil to admit it.
-  /// A press that would START a dictation (no live attempt, nothing locked) while an ordinary key
-  /// is held is refused before it touches the gesture (#3544 P4). A press of a live take (the
-  /// second tap of a double tap, the stop of a locked take) is never refused, so a held key can
-  /// never trap a recording.
+  /// A press that would START a dictation (no live attempt, nothing locked, no recording already
+  /// running) while an ordinary key is held is refused before it touches the gesture (#3544 P4). A
+  /// press of a live take (the second tap of a double tap, the stop of a locked take, a press that
+  /// joins a running recording) is never refused, so a held key can never trap a recording.
   private static func startWhileTyping(
     _ s: State, isPress: Bool, ordinaryKeyHeld: Bool
   ) -> ListenerRefusal? {
-    guard isPress, ordinaryKeyHeld, s.gesture.start == nil, !s.gesture.isLocked else { return nil }
+    guard isPress, ordinaryKeyHeld, s.gesture.start == nil, !s.gesture.isLocked, !s.cancelArmed
+    else { return nil }
     return .ordinaryKeyHeld
   }
 
@@ -681,9 +688,12 @@ package final class RecordGestureEngine: Sendable {
         return work
       }
       let decision = s.gesture.classifyPress(input, binding: s.binding, mode: s.mode)
+      let joinsRecording: Bool =
+        if case .start = decision { s.cancelArmed } else { s.owned?.joinsRecording ?? false }
       // The held key's release follows this press, whatever the configuration is by then.
       s.owned = OwnedPress(
-        keyCode: keyCode, attemptID: s.gesture.attemptID, fromMain: fromMain, recovery: recovery)
+        keyCode: keyCode, attemptID: s.gesture.attemptID, fromMain: fromMain, recovery: recovery,
+        joinsRecording: joinsRecording)
       switch decision {
       case .start, .lockIntent:
         // A fresh attempt or a lock: the pending lone-tap stop no longer applies.

@@ -466,7 +466,7 @@ struct RecordGestureEngineTests {
   /// generation unless one is given.
   private static func listener(
     _ rig: Rig, _ isPress: Bool, _ t: TimeInterval, key: UInt16 = ModifierKeyCodes.rightOption,
-    generation: UInt64? = nil, installation: UInt64 = 7
+    generation: UInt64? = nil, installation: UInt64 = 7, ordinaryKeyHeld: Bool = false
   ) -> RecordGestureEngine.ListenerRefusal? {
     let engine = rig.engine
     let input = rig.at(t)
@@ -476,7 +476,7 @@ struct RecordGestureEngineTests {
       rig.clock.now = 500 + t
       let refusal = engine.ingestFromListener(
         keyCode: key, isPress: isPress, input: input, generation: generation,
-        installation: installation)
+        installation: installation, ordinaryKeyHeld: ordinaryKeyHeld)
       result.withLock { $0 = refusal }
     }
     return result.withLock { $0 }
@@ -544,6 +544,27 @@ struct RecordGestureEngineTests {
     // Handled 1.2 s after the press, stamped 0.5 s before it.
     let late = RecordGesture.InputTime.accepting(stamp: 499.5, handled: 501.2)
     #expect(!rig.engine.otherKeyFromListener(input: late, installation: 7))
+  }
+
+  @Test("another key never dismisses a press that joined a running recording; it keeps its stop")
+  func otherKeyNeverDismissesAJoinedRecording() {
+    let rig = Rig()
+    rig.engine.openListenerAdmission(installation: 7)
+    rig.engine.setCancelArmed(true)  // a recording started from the menu is running
+    #expect(Self.listener(rig, true, 0) == nil)
+    #expect(!rig.engine.otherKeyFromListener(input: rig.at(0.2), installation: 7))
+    #expect(!rig.engine.otherKeyRuleApplies(at: 500.2))
+    #expect(Self.listener(rig, false, 3) == nil)
+    rig.engine.drainForTesting()
+    #expect(rig.sink.validNames == ["start", "holdStop"])
+  }
+
+  @Test("a held ordinary key never refuses a press that joins a running recording")
+  func ordinaryKeyNeverRefusesAJoiningPress() {
+    let rig = Rig()
+    rig.engine.openListenerAdmission(installation: 7)
+    rig.engine.setCancelArmed(true)
+    #expect(Self.listener(rig, true, 0, ordinaryKeyHeld: true) == nil)
   }
 
   @Test("after a dismissal the record key's next press starts a fresh attempt")

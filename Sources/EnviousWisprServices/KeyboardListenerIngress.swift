@@ -103,6 +103,15 @@ package final class KeyboardListenerIngress: Sendable {
     /// key only when two consecutive sweeps read it up with no input between them, so a single wrong
     /// reading can never end a dictation (#3544 P3 hotfix). Cleared by any sign of missed events.
     var sweepReadUp: (sequence: UInt64, keys: Set<UInt16>) = (0, [])
+    /// Ordinary-key state must be read before the next event acts (#3544 P4): set for a new
+    /// installation (keys held across a replacement have no keyDown to come), a tap re-enable and
+    /// Secure Input changing (keyDown and keyUp may have been lost). `resyncEpoch` advances with
+    /// each such boundary, so a resync that raced a newer one leaves it pending.
+    var ordinaryResyncNeeded = true
+    var resyncEpoch: UInt64 = 0
+    /// While Secure Input is on the listener receives no keyDown or keyUp, so no ordinary event can
+    /// be queued behind a reading: every modifier event resyncs.
+    var secureInputOn = false
   }
 
   package let installation: UInt64
@@ -137,18 +146,10 @@ package final class KeyboardListenerIngress: Sendable {
   /// The installation is live: start the watchdog if the engine already owns a record press (a
   /// hold that began under an earlier installation).
   package func start() {
-    // Ordinary keys already down (held across a listener replacement) have no keyDown to come;
-    // read them once so the exact-set start rule still sees them. Outside every lock.
-    let answers = reader(Self.ordinaryKeyCodes)
-    let now = clock()
-    state.withLock { s in
-      guard !s.closed else { return }
-      s.tracker.seedOrdinary(answers, at: now)
-    }
     armSweepIfNeeded()
   }
 
-  /// Every virtual key code that is not a standalone modifier, for the start-of-installation read.
+  /// Every virtual key code that is not a standalone modifier, for an ordinary-key resync.
   private static let ordinaryKeyCodes: Set<UInt16> = Set(
     (0..<128).map(UInt16.init).filter { ModifierKeyCodes.flag(for: $0) == nil })
 
@@ -174,9 +175,13 @@ package final class KeyboardListenerIngress: Sendable {
     case .tapReenabled:
       // Keys may have moved while the tap was off: the next two sweeps decide.
       restartConfirmation()
+      requestOrdinaryResync()
     case .secureInputChanged:
-      // Leaving Secure Input: key-ups may have been hidden (plan A2). Entering changes nothing.
-      if event.secureInput?.enabled == false { restartConfirmation() }
+      // Leaving Secure Input: key-ups may have been hidden (plan A2). Entering changes nothing
+      // for modifiers; for ordinary keys both edges are boundaries.
+      guard let enabled = event.secureInput?.enabled else { return }
+      if !enabled { restartConfirmation() }
+      requestOrdinaryResync(secureInputOn: enabled)
     case .keyDown, .keyUp:
       ingestOrdinary(event)
     case .stormStopped:
@@ -191,13 +196,9 @@ package final class KeyboardListenerIngress: Sendable {
     guard !event.isOurs, event.keyCode != Self.ignoredGlobeKeyCode else { return }
     let handled = clock()
     let classification = engine.listenerClassification()
-    // An ordinary key the listener still thinks is held would refuse a record start (#3544 P4):
-    // confirm it first, outside every lock, so a keyUp the listener never saw cannot block one.
-    let ordinary = state.withLock { $0.tracker.ordinaryKeysToConfirm(at: handled) }
-    let ordinaryAnswers = ordinary.isEmpty ? [:] : reader(ordinary)
+    resyncOrdinaryIfNeeded(except: nil)
     state.withLock { s in
       guard !s.closed else { return }
-      s.tracker.confirmOrdinary(ordinaryAnswers, at: handled)
       s.inputSequence &+= 1
       let update = s.tracker.ingest(
         event, handled: handled, configuration: classification.configuration)
@@ -223,6 +224,33 @@ package final class KeyboardListenerIngress: Sendable {
     armSweepIfNeeded()
   }
 
+  /// Mark a recovery boundary for ordinary keys; the next event reads them before it acts.
+  private func requestOrdinaryResync(secureInputOn: Bool? = nil) {
+    state.withLock { s in
+      s.ordinaryResyncNeeded = true
+      s.resyncEpoch &+= 1
+      if let secureInputOn { s.secureInputOn = secureInputOn }
+    }
+  }
+
+  /// At a recovery boundary only, replace ordinary-key state with a reading of every ordinary key,
+  /// outside every lock, before the event being handled acts (#3544 P4). Between boundaries the
+  /// events are the truth: a reading is the present and could overrule a keyUp still queued behind
+  /// this event. `except` is the key of an ordinary event being handled, which applies itself.
+  private func resyncOrdinaryIfNeeded(except: UInt16?) {
+    let epoch = state.withLock { s -> UInt64? in
+      guard !s.closed, s.ordinaryResyncNeeded || s.secureInputOn else { return nil }
+      return s.resyncEpoch
+    }
+    guard let epoch else { return }
+    let answers = reader(Self.ordinaryKeyCodes)
+    state.withLock { s in
+      guard !s.closed else { return }
+      s.tracker.resyncOrdinary(answers, except: except)
+      if s.resyncEpoch == epoch { s.ordinaryResyncNeeded = false }
+    }
+  }
+
   /// One ordinary key event (#3544 P4). Updates the local ordinary-key state, and queues a fresh
   /// press for the engine's dismissal decision in input order with modifier events, unless the key
   /// and its modifiers match a configured, eligible chord shortcut (the user reaching for it, not
@@ -233,9 +261,10 @@ package final class KeyboardListenerIngress: Sendable {
     let configuration = engine.listenerClassification().configuration
     let isChord = configuration.bindings.matchesChord(
       keyCode: event.keyCode, rawFlags: event.rawFlags, armed: configuration.armed)
+    resyncOrdinaryIfNeeded(except: event.keyCode)
     state.withLock { s in
       guard !s.closed else { return }
-      let fresh = s.tracker.ingestOrdinary(event, handled: handled)
+      let fresh = s.tracker.ingestOrdinary(event)
       guard fresh, !isChord else { return }
       s.pending.append(
         .otherKey(input: .accepting(stamp: event.timestamp, handled: handled)))

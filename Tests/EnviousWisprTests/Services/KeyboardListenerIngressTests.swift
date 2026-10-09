@@ -71,7 +71,11 @@ struct KeyboardListenerIngressTests {
       return KeyboardListenerIngress(
         installation: installation, engine: engine,
         reader: { keys in
-          reads.withLock { $0 += 1 }
+          // Sweeps ask about modifiers; an ordinary-key resync asks about ordinary keys only and
+          // is not a sweep read.
+          if keys.contains(where: { ModifierKeyCodes.flag(for: $0) != nil }) {
+            reads.withLock { $0 += 1 }
+          }
           // Once: a hook runs during the first read only.
           duringRead.withLock { hook -> (@Sendable () -> Void)? in
             defer { hook = nil }
@@ -84,12 +88,12 @@ struct KeyboardListenerIngressTests {
         afterReconcileCommitForTesting: { afterCommit.withLock { $0 }?() })
     }
 
-    func replace(_ installation: UInt64) {
+    func replace(_ installation: UInt64, start: Bool = true) {
       ingress.close()
       engine.closeListenerAdmission()
       ingress = makeIngress(installation: installation)
       engine.openListenerAdmission(installation: installation)
-      ingress.start()
+      if start { ingress.start() }
     }
 
     /// One event from a worker thread, as the tap delivers it, then main's turn.
@@ -356,46 +360,70 @@ struct KeyboardListenerIngressTests {
     #expect(rig.effects == ["start"])
   }
 
-  /// Age never releases an ordinary key; a reading does. A key held without autorepeat blocks a
-  /// start for as long as it reads down; a keyUp the listener missed is cleared by its up reading.
-  @Test("a held ordinary key blocks a start however long it is held; a missed keyUp is cleared by a reading")
-  func ordinaryKeyHeldIsConfirmedByReading() async {
+  /// Between recovery boundaries the events are the truth: a present-time reading never
+  /// overrules an ordinary key whose keyUp may still be queued behind the record press, however
+  /// long that key has been held (no autorepeat).
+  @Test("a reading never overrules ordered ordinary-key state between recovery boundaries")
+  func readingNeverOverrulesOrderedState() async {
     let rig = Rig()
-    await ordinary(rig, .keyDown, Self.letterA, at: 0)
-    rig.readings.withLock { $0[Self.letterA] = .down }
-    await rig.key(Self.option, held: [Self.option], at: 4)
-    await rig.key(Self.option, held: [], at: 4.2)
-    #expect(rig.effects.isEmpty, "an ordinary key held 4 s stopped blocking a start")
-    rig.readings.withLock { $0[Self.letterA] = .up }  // its keyUp was never delivered
-    await rig.key(Self.option, held: [Self.option], at: 5)
+    await rig.key(Self.command, held: [Self.command], at: 0)  // the installation's first event
+    await rig.key(Self.command, held: [], at: 0.1)
+    await ordinary(rig, .keyDown, Self.letterA, at: 0.2)
+    // A is released at 2.1, after Option went down at 2.0; its keyUp is still queued.
+    rig.readings.withLock { $0[Self.letterA] = .up }
+    await rig.key(Self.option, held: [Self.option], at: 2.2)
+    await rig.key(Self.option, held: [], at: 2.4)
+    #expect(rig.effects.isEmpty, "a present-time reading let a start through an ordinary-key chord")
+    await ordinary(rig, .keyUp, Self.letterA, at: 2.5)
+    await rig.key(Self.option, held: [Self.option], at: 3)
     #expect(rig.effects == ["start"])
   }
 
-  /// A reading is the present and the event being handled may be older: a key that moved under
-  /// a second ago is trusted as the events say, never overruled by an up reading.
-  @Test("a reading never overrules an ordinary key that moved less than a second ago")
-  func recentOrdinaryKeyIsNotOverruled() async {
-    let rig = Rig()
-    await ordinary(rig, .keyDown, Self.letterA, at: 0)
-    rig.readings.withLock { $0[Self.letterA] = .up }
-    await rig.key(Self.option, held: [Self.option], at: 0.5)
-    await rig.key(Self.option, held: [], at: 0.7)
-    #expect(rig.effects.isEmpty, "an up reading overruled a key that went down 0.5 s earlier")
-    await rig.key(Self.option, held: [Self.option], at: 2)
-    #expect(rig.effects == ["start"], "a quiet key's missed keyUp still blocked the start")
+  /// A keyUp lost while the tap was off or Secure Input hid it is recovered at that boundary: the
+  /// next event reads every ordinary key first.
+  @Test("a keyUp lost at a recovery boundary is recovered by the next event's reading")
+  func lostKeyUpRecoveredAtBoundary() async {
+    for boundary in [KeyEventValue.Kind.tapReenabled, .secureInputChanged] {
+      let rig = Rig()
+      await ordinary(rig, .keyDown, Self.letterA, at: 0)
+      rig.readings.withLock { $0[Self.letterA] = .down }
+      await rig.key(Self.option, held: [Self.option], at: 4)
+      await rig.key(Self.option, held: [], at: 4.2)
+      #expect(rig.effects.isEmpty, "\(boundary): a held ordinary key stopped blocking a start")
+      rig.readings.withLock { $0[Self.letterA] = .up }  // its keyUp was never delivered
+      if boundary == .secureInputChanged {
+        await rig.notice(boundary, secureInputOn: true, at: 4.5)
+      } else {
+        await rig.notice(boundary, at: 4.5)
+      }
+      await rig.key(Self.option, held: [Self.option], at: 5)
+      #expect(rig.effects == ["start"], "\(boundary): the lost keyUp still blocked the start")
+    }
   }
 
-  @Test("an ordinary key held across a listener replacement still refuses a start")
+  /// A key held across a listener replacement has no keyDown to come: the new installation reads
+  /// every ordinary key before its first event acts, even before `start()` runs.
+  @Test("an ordinary key held across a listener replacement refuses a start from the first event")
   func ordinaryKeyHeldAcrossReplacementIsSeeded() async {
     let rig = Rig()
     rig.readings.withLock { $0[Self.letterA] = .down }
-    rig.replace(8)
+    rig.replace(8, start: false)
     await rig.key(Self.option, held: [Self.option], at: 0.2)
     await rig.key(Self.option, held: [], at: 0.4)
     #expect(rig.effects.isEmpty, "a key held across the replacement was forgotten")
-    rig.readings.withLock { $0[Self.letterA] = .up }
+    await ordinary(rig, .keyUp, Self.letterA, at: 0.6)
     await rig.key(Self.option, held: [Self.option], at: 1)
     #expect(rig.effects == ["start"])
+  }
+
+  @Test("an ordinary key's first event after a boundary is still a fresh press")
+  func resyncKeepsTheEventsOwnKey() async {
+    let rig = Rig()
+    await rig.key(Self.option, held: [Self.option], at: 0)
+    await rig.notice(.tapReenabled, at: 0.1)
+    rig.readings.withLock { $0[Self.letterA] = .down }  // the reader already sees it down
+    await ordinary(rig, .keyDown, Self.letterA, at: 0.2)
+    #expect(rig.effects == ["start", "dismiss"], "the resync swallowed the key's own press")
   }
 
   @Test("a held ordinary key never blocks a locked take's stop")
@@ -444,8 +472,8 @@ struct KeyboardListenerIngressTests {
   @Test("a fresh ordinary key early in a hold dismisses it once; repeats, our own and shortcut keys never")
   func earlyOrdinaryKeyDismisses() async {
     let rig = Rig()
-    rig.engine.setCancelArmed(true)
     await rig.key(Self.option, held: [Self.option], at: 0)
+    rig.engine.setCancelArmed(true)  // the take's recording armed cancel
     await ordinary(rig, .keyDown, Self.escape, at: 0.1)  // the armed cancel chord
     await ordinary(rig, .keyDown, Self.letterA, at: 0.2, ours: true)  // our own paste or copy
     await ordinary(rig, .keyDown, Self.letterA, at: 0.3, autorepeat: true)

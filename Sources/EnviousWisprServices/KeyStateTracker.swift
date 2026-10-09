@@ -85,18 +85,9 @@ package struct KeyStateTracker: Equatable, Sendable {
   package private(set) var held: [UInt16: Hold] = [:]
   /// Held keys whose release could not be proven from aggregate-only evidence.
   package private(set) var ambiguous: Set<UInt16> = []
-  /// Ordinary (non-modifier) keys seen down and not yet up, each with when its last keyDown
-  /// (autorepeat included) was handled (#3544 P4). Local state only: never logged, never sent. Age
-  /// never releases one; `confirmOrdinary` drops a key only on a reading.
-  package private(set) var ordinaryDownSince: [UInt16: TimeInterval] = [:]
-
-  /// The ordinary keys the listener holds.
-  package var ordinaryDown: Set<UInt16> { Set(ordinaryDownSince.keys) }
-
-  /// A key-state reading is the present, and the event being handled may be older, so a reading
-  /// only confirms a key whose last keyDown is at least this old: one that has been quiet long
-  /// enough that a missed keyUp is the likely story, never a key that just moved.
-  package static let ordinaryConfirmationAge: TimeInterval = 1.0
+  /// Ordinary (non-modifier) keys seen down and not yet up, in event order (#3544 P4). Local state
+  /// only: never logged, never sent. Age never releases one; only its keyUp or a resync does.
+  package private(set) var ordinaryDown: Set<UInt16> = []
 
   package init() {}
 
@@ -142,14 +133,14 @@ package struct KeyStateTracker: Equatable, Sendable {
 
   /// One ordinary keyDown or keyUp (#3544 P4). Returns whether it is a fresh press: a keyDown that
   /// is not autorepeat. Modifier keys, our own events and every other kind change nothing.
-  package mutating func ingestOrdinary(_ event: KeyEventValue, handled: TimeInterval) -> Bool {
+  package mutating func ingestOrdinary(_ event: KeyEventValue) -> Bool {
     guard !event.isOurs, ModifierKeyCodes.flag(for: event.keyCode) == nil else { return false }
     switch event.kind {
     case .keyDown:
-      ordinaryDownSince[event.keyCode] = handled
+      ordinaryDown.insert(event.keyCode)
       return !event.isAutorepeat
     case .keyUp:
-      ordinaryDownSince[event.keyCode] = nil
+      ordinaryDown.remove(event.keyCode)
       return false
     case .flagsChanged, .tapReenabled, .secureInputChanged, .stormStopped:
       return false
@@ -157,35 +148,20 @@ package struct KeyStateTracker: Equatable, Sendable {
   }
 
   /// Whether an ordinary key is held, as far as the listener has seen.
-  package var isOrdinaryKeyHeld: Bool { !ordinaryDownSince.isEmpty }
+  package var isOrdinaryKeyHeld: Bool { !ordinaryDown.isEmpty }
 
-  /// The held ordinary keys old enough for a reading to confirm at `now`.
-  package func ordinaryKeysToConfirm(at now: TimeInterval) -> Set<UInt16> {
-    Set(
-      ordinaryDownSince.compactMap { key, since in
-        now - since >= Self.ordinaryConfirmationAge ? key : nil
-      })
-  }
-
-  /// Drop every ordinary key `answers` reads up (a keyUp the listener never saw, e.g. hidden by
-  /// Secure Input), provided it is still as old as when it was read. Down and unknown keep the
-  /// key. Only ever widens what may start.
-  package mutating func confirmOrdinary(_ answers: [UInt16: Reading], at now: TimeInterval) {
-    for (key, answer) in answers where answer == .up {
-      guard let since = ordinaryDownSince[key], now - since >= Self.ordinaryConfirmationAge else {
-        continue
+  /// Replace ordinary-key state with a present-time reading, at a recovery boundary only (an
+  /// installation's first event, a tap re-enable, Secure Input changing): the events in between
+  /// may have been lost, so the reading is the best account. Never between boundaries, where a
+  /// reading could overrule a queued event the listener has not handled yet. `except` keeps the key
+  /// of the event being handled, which its own event then applies. Unknown changes nothing.
+  package mutating func resyncOrdinary(_ answers: [UInt16: Reading], except: UInt16? = nil) {
+    for (key, answer) in answers where key != except && ModifierKeyCodes.flag(for: key) == nil {
+      switch answer {
+      case .down: ordinaryDown.insert(key)
+      case .up: ordinaryDown.remove(key)
+      case .unknown: break
       }
-      ordinaryDownSince[key] = nil
-    }
-  }
-
-  /// Seed ordinary keys a reading says are down when an installation starts (#3544 P4): a key held
-  /// across a listener replacement has no keyDown for the new tracker to see. Seeded as already
-  /// old, so a later up reading can clear it.
-  package mutating func seedOrdinary(_ answers: [UInt16: Reading], at now: TimeInterval) {
-    for (key, answer) in answers
-    where answer == .down && ModifierKeyCodes.flag(for: key) == nil && ordinaryDownSince[key] == nil {
-      ordinaryDownSince[key] = now - Self.ordinaryConfirmationAge
     }
   }
 
