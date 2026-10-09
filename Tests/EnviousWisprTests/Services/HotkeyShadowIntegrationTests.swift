@@ -734,5 +734,45 @@ struct HotkeyShadowIntegrationTests {
       #expect(secondSegment !== firstSegment)
       rig.service.stop()
     }
+
+    @Test("input seen while the listener failed to install makes the next segment unclean")
+    func inputWithoutAListenerIsUnclean() throws {
+      let rig = Rig()
+      rig.service.recordingMode = .pushToTalk
+      rig.effects.failKeyboardListenerInstall = true
+      rig.service.start()
+      // Today's path still works and sees the key; no listener heard it.
+      rig.clock.now = 500
+      rig.service.handleInstalledMonitorFlagsChangedValues(
+        keyCode: 61, flags: .option, generation: rig.service.monitorGeneration, timestamp: 500)
+      rig.service.handleInstalledMonitorFlagsChangedValues(
+        keyCode: 61, flags: [], generation: rig.service.monitorGeneration, timestamp: 500.1)
+      // The listener is granted later: its install is retried and succeeds.
+      rig.effects.failKeyboardListenerInstall = false
+      rig.service.suspend()
+      rig.service.resume()
+      let segment = try #require(rig.service.shadowDiagnostics.currentSegmentForTesting)
+      let tally = segment.drainForTesting()
+      #expect(tally.uncoveredInput == 2)
+      #expect(tally.clean == false)
+      rig.service.stop()
+    }
+
+    @Test("a stop's teardown records alone never make the next segment unclean")
+    func teardownRecordsStayClean() throws {
+      let rig = Rig()
+      rig.service.recordingMode = .pushToTalk
+      rig.service.onStartRecording = { .recording("s") }
+      rig.service.start()
+      try both(rig, 0x80040, at: 0)
+      try both(rig, 0, at: 0.125)  // a pending lone-tap wait, retired by stop's reset
+      rig.service.stop()
+      rig.service.start()
+      let segment = try #require(rig.service.shadowDiagnostics.currentSegmentForTesting)
+      let tally = segment.drainForTesting()
+      #expect(tally.uncoveredInput == 0)
+      #expect(tally.clean)
+      rig.service.stop()
+    }
   #endif
 }

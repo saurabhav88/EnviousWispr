@@ -19,7 +19,10 @@
 
     private let current = OSAllocatedUnfairLock<Segment?>(initialState: nil)
     /// Live records made while no installation was live; reported by the next segment.
-    private let outsideInstallation = OSAllocatedUnfairLock(initialState: 0)
+    /// Live records made while no installation was live, reported by the next segment: physical
+    /// input (uncovered: the listener should have seen it) and decisions (teardown, informational).
+    private let outsideInstallation = OSAllocatedUnfairLock(
+      initialState: (uncoveredInput: 0, otherRecords: 0))
     private let clock: RecordGestureEngine.Clock
     private let lines: AsyncStream<String>.Continuation
     private let logTask: Task<Void, Never>
@@ -84,11 +87,12 @@
         return previous
       }
       previous?.close(reason: "replaced")
-      let outside = outsideInstallation.withLock { n -> Int in
-        defer { n = 0 }
+      let outside = outsideInstallation.withLock { n -> (uncoveredInput: Int, otherRecords: Int) in
+        defer { n = (0, 0) }
         return n
       }
-      segment.noteOutsideInstallation(outside)
+      segment.noteOutsideInstallation(
+        uncoveredInput: outside.uncoveredInput, otherRecords: outside.otherRecords)
       segment.start()
     }
 
@@ -110,7 +114,13 @@
     /// A live record for the current segment; nothing while none is live.
     package func submit(_ record: ShadowRecord) {
       guard let segment = current.withLock({ $0 }) else {
-        outsideInstallation.withLock { $0 += 1 }
+        // Physical input with no live listener (it failed to install, or is being retried) is
+        // input the comparison never saw: it makes the next segment unclean. Decision records
+        // here come from teardown (an engine reset at stop) and are only counted.
+        let isInput = record.category == .ingress
+        outsideInstallation.withLock { n in
+          if isInput { n.uncoveredInput += 1 } else { n.otherRecords += 1 }
+        }
         return
       }
       segment.submit(record)
@@ -158,8 +168,12 @@
       package var outOfScope = 0
       /// Live records stamped with a generation from before this segment began.
       package var earlierGeneration = 0
-      /// Live records made while no installation was live, before this segment began.
+      /// Live decision records made while no installation was live, before this segment began
+      /// (teardown); informational.
       package var outsideInstallation = 0
+      /// Live physical input seen while no installation was live, before this segment began: the
+      /// listener missed it, so the session is not a clean comparison.
+      package var uncoveredInput = 0
       /// What the live executor did with decisions (refusals, publication), by kind.
       package var executions: [String: Int] = [:]
 
@@ -168,7 +182,7 @@
       /// True while nothing was lost and nothing is unexplained.
       package var clean: Bool {
         mappingErrors == 0 && ambiguities == 0 && incomplete == 0 && droppedRecords == 0
-          && suppressedLines == 0
+          && suppressedLines == 0 && uncoveredInput == 0
       }
     }
 
@@ -249,9 +263,12 @@
         handoff.submit(record)
       }
 
-      fileprivate func noteOutsideInstallation(_ count: Int) {
-        guard count > 0 else { return }
-        tally.withLock { $0.outsideInstallation += count }
+      fileprivate func noteOutsideInstallation(uncoveredInput: Int, otherRecords: Int) {
+        guard uncoveredInput + otherRecords > 0 else { return }
+        tally.withLock { t in
+          t.uncoveredInput += uncoveredInput
+          t.outsideInstallation += otherRecords
+        }
       }
 
       fileprivate func recordExecution(_ kind: String) {
@@ -373,7 +390,8 @@
           + "incomplete=\(t.incomplete) dropped=\(t.droppedRecords) "
           + "suppressed_lines=\(t.suppressedLines) out_of_scope=\(t.outOfScope) "
           + "earlier_generation=\(t.earlierGeneration) "
-          + "outside_installation=\(t.outsideInstallation) executions=[\(executions)]"
+          + "outside_installation=\(t.outsideInstallation) uncovered_input=\(t.uncoveredInput) "
+          + "executions=[\(executions)]"
       }
 
       /// The listener's own record for this installation: storm or not, re-enables, and the
