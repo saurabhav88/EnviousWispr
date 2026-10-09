@@ -195,6 +195,8 @@ package struct KeyStateTracker: Equatable, Sendable {
   /// Ask `reader` about every held key, then apply its answers: up releases (`reconciled`), down
   /// keeps and clears any ambiguity, unknown changes nothing. The reader is called once, before
   /// any state changes, and never asked about keys that are not held; nothing here can start a hold.
+  /// A hold whose press was aggregate-only evidence is never released by an up answer (#3544 P4
+  /// C2): the reader cannot see such input, so only observed events end it.
   package mutating func reconcile(
     handled: TimeInterval, configuration: Configuration,
     reader: (Set<UInt16>) -> [UInt16: Reading]
@@ -205,6 +207,8 @@ package struct KeyStateTracker: Equatable, Sendable {
     var edges: [Edge] = []
     for key in keys.sorted() {
       switch answers[key] ?? .unknown {
+      case .up where held[key]?.evidence == .aggregateOnly:
+        continue
       case .up:
         held.removeValue(forKey: key)
         ambiguous.remove(key)

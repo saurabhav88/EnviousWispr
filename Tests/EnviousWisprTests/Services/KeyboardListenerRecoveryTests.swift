@@ -194,6 +194,36 @@ struct KeyboardListenerRecoveryTests {
     rig.effects.refuseRemovals = false
   }
 
+  /// #3544 P4 C2: a record press with no side bits cannot be vouched for by the flags reader, so
+  /// the orphaned-hold check never ends it, however often it reads up.
+  @Test("the orphaned-hold check never ends an aggregate-only hold")
+  func orphanedCheckSparesAggregateOnlyHold() async {
+    let rig = Rig()
+    rig.service.recordingMode = .pushToTalk
+    rig.service.toggleKeyCode = ModifierKeyCodes.rightOption
+    rig.service.toggleModifiers = []
+    var stops = 0
+    rig.service.onStartRecording = { .recording("s") }
+    rig.service.onStopRecording = { stops += 1 }
+    rig.service.start()
+    defer { rig.service.stop() }
+    let keys = ListenerKeyboard(rig.effects)
+    let family = UInt64(NSEvent.ModifierFlags.option.rawValue)
+    await keys.deliver(ModifierKeyCodes.rightOption, raw: family, at: 500)
+    await rig.service.awaitInFlightStartForTesting()
+    #expect(rig.engine.ownedListenerPress?.recovery == .notReadable)
+    rig.stormHealth()
+    await rig.storm(through: rig.effects.keyboardListenerSink)
+    rig.effects.keyStates.withLock { $0[ModifierKeyCodes.rightOption] = .up }
+    for t in [505.0, 510, 515, 520] {
+      rig.clock.now = t
+      rig.timers.fireDue()
+      await Rig.mainTurn()
+    }
+    #expect(stops == 0, "a reading ended an aggregate-only hold while no listener was installed")
+    #expect(rig.engine.ownedListenerKey == ModifierKeyCodes.rightOption)
+  }
+
   @Test("stopping during the cooldown cancels the replacement")
   func stopDuringCooldownInstallsNothing() async {
     let rig = Rig()

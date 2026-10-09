@@ -762,6 +762,56 @@ struct RecordGestureEngineTests {
     return engine
   }
 
+  /// #3544 P4 C2: a press admitted without stated evidence must not authorize a reading to end
+  /// it, and a release decided from a reading about one attempt never ends a newer attempt.
+  @Test("unstated press evidence never authorizes a reading release, and stale readings miss newer attempts")
+  func pressRecoveryEvidenceGuardsReadingReleases() {
+    let clock = HotkeyTestClock(500)
+    let timers = HotkeyTestScheduler(clock: clock)
+    let sink = Sink()
+    let engine = hoppingEngine(clock, timers, sink)
+    let generation = engine.listenerConfigurationGeneration
+    let key = ModifierKeyCodes.rightOption
+    // Omitted evidence: not readable, and the orphaned-hold release refuses it.
+    engine.ingestFromListener(
+      keyCode: key, isPress: true, input: .accepting(stamp: 500, handled: 500),
+      generation: generation, installation: 7)
+    let unstated = engine.ownedListenerPress
+    #expect(unstated?.recovery == .notReadable)
+    engine.closeListenerAdmission()
+    #expect(
+      engine.releaseOrphanedListenerPress(
+        unstated!, input: .accepting(stamp: 501, handled: 501)) == false)
+    #expect(engine.ownedListenerKey == key)
+    engine.forgetHeld()
+    // A readable press, read about, then replaced by a newer press of the same key.
+    engine.openListenerAdmission(installation: 7)
+    engine.ingestFromListener(
+      keyCode: key, isPress: true, input: .accepting(stamp: 502, handled: 502),
+      generation: generation, installation: 7, recovery: .readable)
+    let first = engine.ownedListenerPress!
+    #expect(first.recovery == .readable)
+    engine.ingestFromListener(
+      keyCode: key, isPress: false, input: .accepting(stamp: 503, handled: 503),
+      generation: generation, installation: 7)
+    clock.now = 510
+    engine.ingestFromListener(
+      keyCode: key, isPress: true, input: .accepting(stamp: 510, handled: 510),
+      generation: generation, installation: 7, recovery: .readable)
+    let second = engine.ownedListenerPress!
+    #expect(second.attemptID != first.attemptID)
+    // The stale reading's release, through the listener path and the orphaned path: both refused.
+    #expect(
+      engine.ingestFromListener(
+        keyCode: key, isPress: false, input: .accepting(stamp: nil, handled: 511),
+        generation: generation, installation: 7, onlyAttempt: first.attemptID) == .unownedRelease)
+    engine.closeListenerAdmission()
+    #expect(
+      engine.releaseOrphanedListenerPress(first, input: .accepting(stamp: nil, handled: 512))
+        == false)
+    #expect(engine.ownedListenerPress == second)
+  }
+
   @Test("a listener-fed lone tap's wait decides on the timer queue, never waiting for main")
   func listenerWaitDoesNotHop() {
     let clock = HotkeyTestClock(500)

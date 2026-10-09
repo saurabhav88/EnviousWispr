@@ -382,9 +382,10 @@ public final class HotkeyService {
   /// suspend or a reinstall cancels it.
   private var orphanedHoldCheck: RecordGestureEngine.TimerHandle?
   private var orphanedHoldCheckToken: UInt64 = 0
-  /// The key the previous orphaned-hold check read up, if any: a hold ends only on two consecutive
-  /// up readings, as with the listener's own sweep (#3544 P3 hotfix).
-  private var orphanedHoldReadUp: UInt16?
+  /// The press the previous orphaned-hold check read up, if any: a hold ends only on two
+  /// consecutive up readings about the same attempt, as with the listener's own sweep (#3544 P3
+  /// hotfix, P4 C2).
+  private var orphanedHoldReadUp: RecordGestureEngine.OwnedListenerPress?
   /// Schedules the install retry off main; the fire hops to main to re-check the lifecycle.
   private let listenerRetryScheduler: RecordGestureEngine.Scheduler
   /// Test seam: invoked once each time a scheduled install retry runs on main, on every exit
@@ -1314,8 +1315,10 @@ public final class HotkeyService {
   /// key come up, so a push-to-talk recording would run on until a replacement's first sweep
   /// (after the storm cooldown) or, while installs keep failing, until the recording cap.
   private func armOrphanedHoldCheck() {
+    // Only a press a reading may end is worth watching (#3544 P4 C2): an aggregate-only hold ends
+    // on observed input, an explicit stop or cancel, or the recording cap.
     guard orphanedHoldCheck == nil, keyboardListenerIngress == nil, isEnabled, !isSuspended,
-      engine.ownedListenerKey != nil
+      engine.ownedListenerPress?.recovery == .readable
     else { return }
     orphanedHoldCheckToken &+= 1
     let token = orphanedHoldCheckToken
@@ -1338,14 +1341,15 @@ public final class HotkeyService {
     guard token == orphanedHoldCheckToken, orphanedHoldCheck != nil else { return }
     orphanedHoldCheck = nil
     guard keyboardListenerIngress == nil, isEnabled, !isSuspended,
-      let key = engine.ownedListenerKey
+      let press = engine.ownedListenerPress, press.recovery == .readable
     else { return }
-    let readUp = effects.keyStateReader([key])[key] == .up
-    let confirmed = readUp && orphanedHoldReadUp == key
-    orphanedHoldReadUp = readUp && !confirmed ? key : nil
+    // Two consecutive up readings about the SAME attempt; a newer press of the key starts over.
+    let readUp = effects.keyStateReader([press.keyCode])[press.keyCode] == .up
+    let confirmed = readUp && orphanedHoldReadUp == press
+    orphanedHoldReadUp = readUp && !confirmed ? press : nil
     if confirmed {
       engine.releaseOrphanedListenerPress(
-        keyCode: key, input: RecordGesture.InputTime(handled: uptime(), occurred: nil))
+        press, input: RecordGesture.InputTime(handled: uptime(), occurred: nil))
       onOrphanedHoldReleasedForTesting?()
       return
     }

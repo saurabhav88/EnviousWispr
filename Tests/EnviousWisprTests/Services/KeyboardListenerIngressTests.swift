@@ -270,9 +270,9 @@ struct KeyboardListenerIngressTests {
 
   /// Input with no side bits (synthetic or assistive keyboards): Right Option is the record key and
   /// Left Option stays held. Right Option's release leaves the Option family on, so the tracker
-  /// cannot tell it from a press. It must never become a new press (a second recording); the
-  /// sweeps end the hold once they read the key up twice.
-  @Test("an aggregate-only release while the other side is held starts nothing; the sweeps stop it")
+  /// cannot tell it from a press. It must never become a new press (a second recording), and no
+  /// reading ends the hold (#3544 P4 C2): it ends when the family clears.
+  @Test("an aggregate-only release while the other side is held starts nothing; the family clearing stops it")
   func ambiguousReleaseIsNotRetriedAsAPress() async {
     let rig = Rig()
     let family = UInt64(NSEvent.ModifierFlags.option.rawValue)
@@ -295,8 +295,12 @@ struct KeyboardListenerIngressTests {
     #expect(rig.effects == ["start"])
     await rig.fireSweeps(at: 6)
     await rig.fireSweeps(at: 11)
+    #expect(rig.effects == ["start"], "a reading ended an aggregate-only hold")
+    await rig.send(
+      KeyEventValue(kind: .flagsChanged, keyCode: leftOption, rawFlags: 0, timestamp: 512),
+      at: 12)
     #expect(rig.effects == ["start", "holdStop"])
-    #expect(rig.ingress.heldKeysForTesting == [leftOption])
+    #expect(rig.ingress.heldKeysForTesting.isEmpty)
   }
 
   /// A re-enable that lands while a sweep's reader is out voids that sweep's answer too: only
@@ -359,6 +363,41 @@ struct KeyboardListenerIngressTests {
     await rig.fireSweeps(at: 10)
     #expect(rig.effects == ["start", "holdStop"])
     #expect(rig.engine.ownedListenerKey == nil)
+  }
+
+  /// A record press with no side bits (synthetic or assistive input) may be read up while still
+  /// held (#3544 P4 C1 probe): neither the sweep nor the watchdog after a replacement ends it.
+  @Test("an aggregate-only record hold is never ended by up readings, by the sweep or the watchdog")
+  func aggregateOnlyHoldSurvivesUpReadings() async {
+    let rig = Rig()
+    let family = UInt64(NSEvent.ModifierFlags.option.rawValue)
+    await rig.send(
+      KeyEventValue(kind: .flagsChanged, keyCode: Self.option, rawFlags: family, timestamp: 500),
+      at: 0)
+    #expect(rig.effects == ["start"])
+    #expect(rig.engine.ownedListenerPress?.recovery == .notReadable)
+    rig.readings.withLock { $0[Self.option] = .up }
+    await rig.fireSweeps(at: 5)
+    await rig.fireSweeps(at: 10)
+    await rig.fireSweeps(at: 15)
+    #expect(rig.effects == ["start"], "the sweep ended an aggregate-only hold from a reading")
+    rig.replace(8)  // the new tracker holds nothing; only the watchdog could act
+    await rig.fireSweeps(at: 20)
+    await rig.fireSweeps(at: 25)
+    await rig.fireSweeps(at: 30)
+    #expect(rig.effects == ["start"], "the watchdog ended an aggregate-only hold from a reading")
+    #expect(rig.engine.ownedListenerKey == Self.option)
+  }
+
+  /// The same attempt's evidence survives a replacement: a side-bit press stays recoverable.
+  @Test("a side-bit press keeps its recovery across a listener replacement")
+  func recoveryEvidenceSurvivesReplacement() async {
+    let rig = Rig()
+    await rig.key(Self.option, held: [Self.option], at: 0)
+    let before = rig.engine.ownedListenerPress
+    #expect(before?.recovery == .readable)
+    rig.replace(8)
+    #expect(rig.engine.ownedListenerPress == before)
   }
 
   @Test("the watchdog never stops a record key the OS still reads down")

@@ -196,10 +196,12 @@ struct KeyStateTrackerTests {
   func reconciliation() {
     var tracker = KeyStateTracker()
     _ = tracker.ingest(Self.flags(58, Self.optionFlag), handled: 1, configuration: Self.config)
-    _ = tracker.ingest(Self.flags(61, Self.optionFlag), handled: 2, configuration: Self.config)
+    // Right Option pressed with its own side bit (a real keyboard), then aggregate-only evidence.
+    _ = tracker.ingest(
+      Self.flags(61, Self.optionFlag | 0x40), handled: 2, configuration: Self.config)
     _ = tracker.ingest(Self.flags(61, Self.optionFlag), handled: 3, configuration: Self.config)
     _ = tracker.ingest(
-      Self.flags(55, Self.commandFlag | Self.optionFlag | 0x8), handled: 4,
+      Self.flags(55, Self.commandFlag | Self.optionFlag | 0x40 | 0x8), handled: 4,
       configuration: Self.config)
     #expect(tracker.ambiguous == [61])
 
@@ -215,6 +217,23 @@ struct KeyStateTrackerTests {
     #expect(edges.first?.occurred == nil)
     #expect(Set(tracker.held.keys) == [55, 58])
     #expect(tracker.ambiguous.isEmpty)
+  }
+
+  /// The modifier-flags reader cannot see input without side bits, and can read such a key up
+  /// while it is still held (#3544 P4 C1 probe): no reading ends a hold that began that way.
+  @Test("a hold that began from aggregate-only evidence is never released by an up reading")
+  func aggregateOnlyHoldIgnoresUpReadings() {
+    var tracker = KeyStateTracker()
+    _ = tracker.ingest(Self.flags(61, Self.optionFlag), handled: 1, configuration: Self.config)
+    #expect(tracker.held[61]?.evidence == .aggregateOnly)
+    for handled in [5.0, 10, 15] {
+      let edges = tracker.reconcile(handled: handled, configuration: Self.config) { _ in [61: .up] }
+      #expect(edges.isEmpty)
+    }
+    #expect(Set(tracker.held.keys) == [61])
+    // Its observed release (the family clearing) still ends it.
+    let up = tracker.ingest(Self.flags(61, 0), handled: 20, configuration: Self.config)
+    #expect(Self.phases(up) == ["up 61 aggregateCleared"])
   }
 
   @Test("a release of a key never seen down makes no edge and holds nothing")
