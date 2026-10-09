@@ -4,7 +4,7 @@ description: "Change the keys that start, stop and cancel dictation, and fix a k
 category: "recording-and-keybinds"
 section: "Recording"
 order: 4
-keywords: ["keybind", "keybinds", "hotkey", "shortcut", "keyboard shortcut", "change the key", "how do i change the key", "key combo", "keybinding", "remap", "different key", "globe key", "fn key", "caps lock", "conflicts with another app", "quick add shortcut", "control shift w", "paste last dictation", "copy last dictation", "control command v", "control command c", "keybind not working", "not active", "key already in use"]
+keywords: ["keybind", "dictation stopped when i typed", "other key cancels", "secure input", "keybinds", "hotkey", "shortcut", "keyboard shortcut", "change the key", "how do i change the key", "key combo", "keybinding", "remap", "different key", "globe key", "fn key", "caps lock", "conflicts with another app", "quick add shortcut", "control shift w", "paste last dictation", "copy last dictation", "control command v", "control command c", "keybind not working", "not active", "key already in use"]
 related: ["adding-a-word-from-your-selection", "escape-recovery", "transcript-history"]
 updated: 2026-10-09
 deflection: "can_resolve"
@@ -38,6 +38,16 @@ Your Globe key stays set as your dictation keybind either way. This only stops m
 No. The recording keybind stays the same in [push to talk](/help/push-to-talk-mode/) and [toggle mode](/help/toggle-mode/). Switching modes changes what a press does to your recording, never which key you press.
 
 If holding a key down is uncomfortable, toggle mode asks less of your hand. One press starts recording and the next press stops it, so nothing has to be held.
+
+### Pressing another key right after your keybind
+
+In push to talk, if you press another key within the first second after your keybind goes down, EnviousWispr treats it as typing, not dictation. It throws that recording away: nothing is pasted and nothing is kept, even with Escape Recovery on. This lets you keep using a modifier such as Option for typing special characters or for other shortcuts.
+
+After the first second, extra keys are ignored and your dictation carries on as usual. A locked dictation (double tap) and toggle mode are not affected.
+
+If another key is already down when you press your keybind, no dictation starts. Let go of the other key and press your keybind again.
+
+When macOS Secure Input is on, often because a password field is active, EnviousWispr cannot see other keys, so this rule pauses. A short notice in the recording panel tells you, and your dictation still works.
 
 ### Change the cancel key
 
