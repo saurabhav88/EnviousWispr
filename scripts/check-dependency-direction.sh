@@ -298,6 +298,53 @@ while IFS= read -r line; do
   fi
 done < <(grep -rEn --include='*.swift' "$live_effect_pattern" Sources Tests || true)
 
+# #3544 P2: keyboard event taps and event posting. A tap sees and can hold every
+# keystroke system-wide, and a post types into whatever app is in front, so both
+# belong to EnviousWisprDesktopEffects like the calls above. Kept as its own
+# pattern so a narrow posting exception cannot widen the live-effect rule.
+# C forms: `CGEventPost` also covers `CGEventPostToPid`/`CGEventPostToPSN`.
+# Swift forms are matched by member name: `.tapCreate` (and `ForPid`/`ForPSN`),
+# `.tapEnable`, `tapPostEvent`, `.postToPid`, `.postToPSN`, and `.post(tap:`.
+# A reference stored under another name (`let f = CGEvent.tapCreate`) is still
+# caught at the store; a value reached through a helper or typealias declared
+# elsewhere is not, because this is text, not type resolution. Comments are
+# stripped as above; string literals are not, so a sentence naming one of these
+# inside a string must be reworded. `NotificationCenter.post(name:)` and app
+# methods named `post` do not match: the Swift form needs the `tap:` label.
+# Backticked names (`CGEvent.`tapCreate``) match. A call split across lines
+# (`e.post(` then `tap: x)`) does not, since grep reads one line: the syntax
+# sweep in `DesktopEffectIsolationFreezeTests` reads whole statements over the
+# same Sources and Tests scope and is the layer that catches it.
+tap_post_pattern='CGEventTapCreate|CGEventTapEnable|CGEventPost|CGEventTapPostEvent|tapPostEvent|[.][[:space:]]*`?(tapCreate|tapEnable|postToPid|postToPSN)|[.][[:space:]]*`?post`?[[:space:]]*[(][[:space:]]*`?tap`?[[:space:]]*:'
+
+# The existing posting sites, each permitted as its exact statement in its own
+# file, not by file: paste's Cmd+V pair and the synthetic Copy chord. A new
+# post, a changed target or any tap call in these files still fails.
+tap_post_permitted() {
+  case "$1|$2" in
+    "Sources/EnviousWisprServices/PasteService.swift|keyDown.post(tap: .cgAnnotatedSessionEventTap)") return 0 ;;
+    "Sources/EnviousWisprServices/PasteService.swift|keyUp.post(tap: .cgAnnotatedSessionEventTap)") return 0 ;;
+    "Sources/EnviousWisprPipeline/SyntheticCopyChord.swift|commandDown.postToPid(pid)") return 0 ;;
+    "Sources/EnviousWisprPipeline/SyntheticCopyChord.swift|keyDown.postToPid(pid)") return 0 ;;
+    "Sources/EnviousWisprPipeline/SyntheticCopyChord.swift|keyUp.postToPid(pid)") return 0 ;;
+    "Sources/EnviousWisprPipeline/SyntheticCopyChord.swift|commandUp.postToPid(pid)") return 0 ;;
+  esac
+  return 1
+}
+
+while IFS= read -r line; do
+  file=${line%%:*}
+  case "$file" in
+    Sources/EnviousWisprDesktopEffects/*) continue ;;
+  esac
+  strip_comment "$line"; code=$REPLY
+  [[ $code =~ $tap_post_pattern ]] || continue
+  trimmed=$(printf '%s' "$code" | sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//')
+  if tap_post_permitted "$file" "$trimmed"; then continue; fi
+  echo "DEP-DIRECTION: $file: event tap or event post outside Sources/EnviousWisprDesktopEffects/"
+  violations=$((violations + 1))
+done < <(grep -rEn --include='*.swift' "$tap_post_pattern" Sources Tests || true)
+
 if [ "$violations" -gt 0 ]; then
   echo "FAIL: $violations dep-direction violation(s)" >&2
   exit 1
