@@ -71,7 +71,7 @@ struct LevelRailDesignTests {
   /// screen with nothing reporting it.
   @Test(
     "the shipped in-panel notices fit the box the level rail reserves",
-    arguments: [RecordingNoticeReason.approachingCap, .autoStopUnavailable])
+    arguments: [RecordingNoticeReason.approachingCap, .autoStopUnavailable, .secureInputActive])
   func inPanelNoticesFitTheReservedBox(reason: RecordingNoticeReason) throws {
     let budget = try #require(RecordingPillDesign.levelRail.reservedHeight)
     for locked in [false, true] {

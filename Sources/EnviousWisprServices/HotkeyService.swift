@@ -188,6 +188,11 @@ public final class HotkeyService {
   /// press replaced the attempt's execution state.
   private var pendingDismissals: Set<UInt64> = []
   private var dismissedSessions: [UInt64: String] = [:]
+  /// Secure Input as the current listener installation last observed it (#3544 P4); false while
+  /// no listener is installed. Logged and noticed only; it never ends, cancels or locks a take.
+  private var secureInputOn = false
+  /// Whether this Secure Input period has already been told to the user.
+  private var secureInputNoticeShown = false
 
   // MARK: - Callbacks (wired by the former root state)
 
@@ -1031,7 +1036,9 @@ public final class HotkeyService {
           self.resolveStart(pressID: pressID, outcome: .noRecording)
           return
         }
-        self.resolveStart(pressID: pressID, outcome: await handler())
+        let outcome = await handler()
+        self.resolveStart(pressID: pressID, outcome: outcome)
+        if case .recording(let sessionID) = outcome { self.noticeSecureInputIfRelevant(sessionID) }
       }
       // #1175 (C3): emit AFTER the recording Task is created; the `.live` sink
       // defers the actual write off this turn so it never delays the callback.
@@ -1324,12 +1331,32 @@ public final class HotkeyService {
   private func listenerSawSecureInput(_ observation: SecureInputObservation, installation: UInt64) {
     guard installation == listenerGeneration else { return }
     onSecureInputLoggedForTesting?(observation)
+    secureInputOn = observation.enabled
+    // A Secure Input period ends here: the next one may tell the user again.
+    if !observation.enabled { secureInputNoticeShown = false }
     let owner = observation.ownerPID.map { "pid=\($0)" } ?? "owner=unknown"
     let line = observation.enabled ? "Secure Input on (\(owner))" : "Secure Input off"
     Task {
       await AppLogger.shared.log(line, level: .info, category: "HotkeyService")
     }
   }
+
+  /// #3544 P4 (D4, founder 2026-10-09): a bare push-to-talk dictation just started while Secure
+  /// Input is on, so the listener cannot see ordinary keys and the other-key rule (D2) is paused.
+  /// Told once per Secure Input period (until it is observed off), for the session that start
+  /// produced. State comes from the listener's own sampling (at install, then every 5 s), never
+  /// from a hidden key or a guessed app; a period younger than one sample is not yet known.
+  private func noticeSecureInputIfRelevant(_ sessionID: String) {
+    guard secureInputOn, !secureInputNoticeShown, recordBinding.isBareModifier,
+      recordingMode == .pushToTalk, isEnabled, !isSuspended
+    else { return }
+    secureInputNoticeShown = true
+    onSecureInputPausedKeyFeatures?(sessionID)
+  }
+
+  /// #3544 P4: show the Secure Input notice on the recording session `String` started, if it is
+  /// still the one running. The `String` is the opaque token `onLockRequested` receives.
+  package var onSecureInputPausedKeyFeatures: (@MainActor (String) -> Void)?
 
   /// Test seam: a main-thread listener edge was judged current (true) or refused (false), before
   /// it acts. Production never sets it.
@@ -1469,6 +1496,8 @@ public final class HotkeyService {
     engine.closeListenerAdmission()
     keyboardListenerIngress?.close()
     keyboardListenerIngress = nil
+    // Unknown until the next installation's first sample.
+    secureInputOn = false
     // A bare-modifier action held now (Paste Last, Copy Last) can no longer see its release: the
     // next installation's tracker starts empty. Retire the hold without firing it, so the next
     // press acts (and Paste takes a fresh target); Carbon chord holds are not the listener's.

@@ -433,6 +433,83 @@ struct KeyboardListenerRecoveryTests {
     #expect(rig.effects.keyboardListenerToken != nil)
   }
 
+  // MARK: - Secure Input notice (#3544 P4, D4)
+
+  /// A push-to-talk service on bare Right Option whose starts record, counting notices.
+  @MainActor private final class NoticeRig {
+    let rig = Rig()
+    var notices: [String] = []
+    var starts = 0
+    let keys: ListenerKeyboard
+    init(mode: RecordingMode = .pushToTalk) {
+      keys = ListenerKeyboard(rig.effects)
+      rig.service.recordingMode = mode
+      rig.service.toggleKeyCode = ModifierKeyCodes.rightOption
+      rig.service.toggleModifiers = []
+      rig.service.onStartRecording = { [unowned self] in
+        starts += 1
+        return .recording("s\(starts)")
+      }
+      rig.service.onToggleRecording = {}
+      rig.service.onStopRecording = {}
+      rig.service.onSecureInputPausedKeyFeatures = { [unowned self] in notices.append($0) }
+      rig.service.start()
+    }
+    func dictate(at t: TimeInterval) async {
+      rig.clock.now = 500 + t
+      await keys.press(ModifierKeyCodes.rightOption, at: 500 + t)
+      await rig.service.awaitInFlightStartForTesting()
+      rig.clock.now = 501.5 + t
+      await keys.release(ModifierKeyCodes.rightOption, at: 501.5 + t)
+      await rig.service.awaitInFlightStartForTesting()
+    }
+  }
+
+  @Test("a bare push-to-talk start under Secure Input is told once per Secure Input period")
+  func secureInputNoticeOncePerPeriod() async {
+    let n = NoticeRig()
+    defer { n.rig.service.stop() }
+    await n.dictate(at: 0)
+    #expect(n.notices.isEmpty, "a notice without Secure Input")
+    await secureInput(n.rig.effects.keyboardListenerSink, enabled: true, pid: nil)
+    #expect(n.notices.isEmpty, "Secure Input alone, with no dictation, produced a notice")
+    await n.dictate(at: 10)
+    await n.dictate(at: 20)
+    #expect(n.notices == ["s2"], "not exactly once, on the start that met Secure Input")
+    // A repeated on sample is not a new period.
+    await secureInput(n.rig.effects.keyboardListenerSink, enabled: true, pid: nil)
+    await n.dictate(at: 30)
+    #expect(n.notices == ["s2"])
+    // Off, then on again: a new period, told again.
+    await secureInput(n.rig.effects.keyboardListenerSink, enabled: false, pid: nil)
+    await n.dictate(at: 40)
+    await secureInput(n.rig.effects.keyboardListenerSink, enabled: true, pid: nil)
+    await n.dictate(at: 50)
+    #expect(n.notices == ["s2", "s6"], "notices \(n.notices), starts \(n.starts)")
+    #expect(n.starts == 6, "a notice changed what was recorded")
+  }
+
+  @Test("no Secure Input notice where the other-key rule does not apply, or from a replaced listener")
+  func secureInputNoticeOnlyWhereItMatters() async {
+    // Toggle mode: the other-key rule is push-to-talk only.
+    let toggle = NoticeRig(mode: .toggle)
+    defer { toggle.rig.service.stop() }
+    await secureInput(toggle.rig.effects.keyboardListenerSink, enabled: true, pid: nil)
+    await toggle.keys.press(ModifierKeyCodes.rightOption, at: 500)
+    await toggle.keys.release(ModifierKeyCodes.rightOption, at: 500.1)
+    await Rig.mainTurn()
+    #expect(toggle.notices.isEmpty)
+    // A stale installation's observation: replaced by suspend and resume, then a dictation.
+    let stale = NoticeRig()
+    defer { stale.rig.service.stop() }
+    let oldSink = stale.rig.effects.keyboardListenerSink
+    stale.rig.service.suspend()
+    stale.rig.service.resume()
+    await secureInput(oldSink, enabled: true, pid: nil)
+    await stale.dictate(at: 0)
+    #expect(stale.notices.isEmpty, "a replaced listener's Secure Input produced a notice")
+  }
+
   @Test("a Secure Input change from a replaced installation is not logged")
   func staleSecureInputIsIgnored() async {
     let rig = Rig()

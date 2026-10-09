@@ -115,6 +115,16 @@ final class HotkeyController {
       guard starter.activeDriver.continuingSessionID == sessionID else { return }
       await finalizer.cancel(trigger: .otherKeyInterference)
     }
+    // #3544 P4 (D4): Secure Input paused the other-key rule for this dictation. Shown inside the
+    // live recording panel (no focus change, no sound), only on the session that start produced.
+    hotkeyService.onSecureInputPausedKeyFeatures = { [weak starter, weak finalizer] sessionID in
+      guard let starter, let finalizer else {
+        Self.reportNilCollaborator(callback: "onSecureInputPausedKeyFeatures")
+        return
+      }
+      guard starter.activeDriver.continuingSessionID == sessionID else { return }
+      finalizer.recordingOverlay.update(.inPanelNotice(.secureInputActive, dismissAfter: 5.0))
+    }
     hotkeyService.onIsProcessing = { [weak starter] in
       starter?.isProcessing ?? false
     }

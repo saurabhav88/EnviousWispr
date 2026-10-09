@@ -15031,6 +15031,17 @@
         }
       }
     },
+    "Secure Input is on, so some keyboard features are paused" : {
+      "comment" : "Banner inside the recording panel: macOS Secure Input (often a password field) is on, so some of the app's keyboard features are paused. The dictation itself keeps recording. Names no app on purpose.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sichere Tastatureingabe aktiv: einige Tastaturfunktionen pausiert"
+          }
+        }
+      }
+    },
     "Secure. Private. Local." : {
       "comment" : "Transcribe a File: the footer's lead words.",
       "localizations" : {

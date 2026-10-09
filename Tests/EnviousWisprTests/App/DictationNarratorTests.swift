@@ -215,6 +215,10 @@ import Testing
     #expect(
       DictationNarrator.copy(for: RecordingNoticeReason.autoStopUnavailable)
         == "Auto-stop on silence is unavailable right now")
+    // #3544 P4: names no app, and does not claim a password field was observed.
+    #expect(
+      DictationNarrator.copy(for: RecordingNoticeReason.secureInputActive)
+        == "Secure Input is on, so some keyboard features are paused")
   }
 
   // MARK: - Spoken announcements + fixed status copy (E4, #1569)
