@@ -71,6 +71,20 @@ test("firstSeen is absolute, and a genuinely new issue is distinct from a repeat
   assert.match(render(data).embeds[0].description, /new; 5 events/);
 });
 
+test("short first-seen pages follow validated cursors regardless of Link attribute order", async () => {
+  const reorderedNext = (url) => next(url).replace('rel="next"; results="true"', 'results="true"; rel="next"');
+  const r = rig({
+    firstSeen: [{ shortId: "ENVIOUSWISPR-2", firstSeen: "2026-10-07T04:01:00Z" }],
+    firstSeenLink: reorderedNext,
+    firstSeenPage2: [{ shortId: "ENVIOUSWISPR-1", firstSeen: "2026-10-07T04:02:00Z" }],
+  });
+  const data = await read(r);
+  assert.equal(r.requests.filter((u) => u.pathname.includes("/projects/")).length, 2);
+  assert.equal(data.newnessComplete, true);
+  assert.equal(data.sections[0].problems[0].isNew, true);
+  assert.match(render(data).embeds[0].description, /ENVIOUSWISPR-1.*new; 5 events/);
+});
+
 test("older version activity and missing version detail remain in the counts", async () => {
   const r = rig({ matrix: [detail(1, 2, "production", "release", "com.enviouswispr.app@2.1.2"), detail(1, 3, "production", "release", null)] });
   const data = await read(r);

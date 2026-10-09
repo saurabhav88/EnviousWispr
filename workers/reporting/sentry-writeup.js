@@ -86,7 +86,9 @@ async function pages(reader, env, params, opts, field) {
   for (let page = 0; page < PAGE_LIMIT; page += 1) {
     const data = await reader(env, { ...params, cursor, includeCursor: true }, opts);
     rows.push(...data[field]);
-    if (!data.truncated) { complete = true; break; }
+    // The validated cursor is authoritative even when the legacy truncation
+    // hint misses a short page whose Link attributes use a different order.
+    if (!data.truncated && !data.nextCursor) { complete = true; break; }
     if (!data.nextCursor) break;
     if (cursors.has(data.nextCursor)) throw new SentryShapeError(params.queryName, "pagination cursor repeated");
     cursors.add(data.nextCursor);
