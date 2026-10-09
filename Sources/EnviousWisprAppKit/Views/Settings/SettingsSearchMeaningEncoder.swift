@@ -255,8 +255,8 @@ actor SettingsSearchMeaningWorker {
     } catch {
       return disable(.loadFailed)
     }
-    // However long the load took, the model is kept: a slow first load (a cold disk after a
-    // restart took 11.5 s, #3545) serves every later search; searches answer by words meanwhile.
+    // However long loading takes, keep the model. The first measured load after a restart took
+    // 11.5 s (#3545); searches answer by words meanwhile.
     let elapsed = Double(nowNanoseconds() &- started) / 1_000_000
     guard Self.passesSelfTest(loaded) else { return disable(.selfTestFailed) }
     encoder = loaded.encoder

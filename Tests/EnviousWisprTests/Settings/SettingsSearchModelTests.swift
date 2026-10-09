@@ -586,6 +586,58 @@ struct SettingsSearchModelTests {
     await clock.fire()
   }
 
+  @Test("after an encoding failure, the next window reloads without holding the answer, then gets meaning")
+  func reloadAfterEncodeFailureNeverWaits() async throws {
+    let clock = DeadlineClock()
+    let calls = LoadCounter()
+    let secondLoad = AsyncGate()
+    let reloading = Latch()
+    let worker = SettingsSearchMeaningWorker {
+      await calls.count()
+      if await calls.value == 1 {
+        return Self.loaded(
+          SettingsSearchMeaningWorkerTests.ScriptedEncoder(log: .init(initialState: []), failing: ["alpha"]))
+      }
+      await reloading.open()
+      await secondLoad.wait()
+      return Self.loaded()
+    }
+    let model = Self.meaningModel(worker, clock: clock)
+    model.setQuery("alpha")
+    #expect(await Self.waitUntil { model.meaningModel == .ready && model.meaningPass == .skipped },
+            "the encoding failure did not end the pass: \(model.meaningPass)")
+    model.reset(endedBy: .windowClose)
+    let deadlines = await clock.registered
+    model.setQuery("alpha")
+    #expect(await reloading.wait(), "the next window did not load again")
+    // Reloading: the word answer is final and no meaning pass is waiting on a deadline.
+    #expect(model.meaningModel == .loading && model.meaningPass == .skipped)
+    #expect(model.showsNoResults == false && model.results.map(\.entryID) == ["theme"])
+    #expect(await clock.registered == deadlines, "a pass waited on the reload")
+    await secondLoad.open()
+    #expect(await Self.waitUntil { model.meaningPass == .completed }, "\(model.meaningPass)")
+    #expect(await calls.value == 2)
+    await clock.fire()
+  }
+
+  @Test("a healthy close and reopen asks the loaded model again and loads nothing")
+  func healthyReopenLoadsNothing() async throws {
+    let clock = DeadlineClock()
+    let calls = LoadCounter()
+    let worker = SettingsSearchMeaningWorker {
+      await calls.count()
+      return Self.loaded()
+    }
+    let model = Self.meaningModel(worker, clock: clock)
+    model.setQuery("alpha")
+    #expect(await Self.waitUntil { model.meaningPass == .completed }, "\(model.meaningPass)")
+    model.reset(endedBy: .windowClose)
+    model.setQuery("alpha")
+    #expect(await Self.waitUntil { model.meaningPass == .completed && model.meaningModel == .ready })
+    #expect(await calls.value == 1)
+    await clock.fire()
+  }
+
   @Test("closing and reopening during a load shares that load, and the reopened window gets meaning")
   func closeDuringLoadSharesIt() async throws {
     let clock = DeadlineClock()

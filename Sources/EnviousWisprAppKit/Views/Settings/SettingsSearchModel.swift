@@ -634,9 +634,10 @@ final class SettingsSearchModel {
   /// the next pass waits for. A load still running is kept, never started twice.
   private func startNewWindowSession() {
     meaningSkipped = false
-    // A load still running is asked again by the next session (the worker shares it), and the
-    // old request's answer is ignored.
-    if meaningModel == .loading { meaningModel = .notLoaded }
+    // Readiness is checked again after the queued worker reset: a transient failure may have
+    // discarded the encoder, and any reload must leave word answers final. A load still running
+    // is shared by the worker, and the old request's answer is ignored.
+    meaningModel = .notLoaded
     meaningLoadAttempt &+= 1
     guard let worker = meaningWorker else { return }
     let previous = workerReset
