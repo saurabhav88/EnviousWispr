@@ -326,8 +326,9 @@ struct HotkeyShadowIntegrationTests {
     private static func activeSegment(
       log: @escaping @Sendable (String) async -> Void = { _ in }, logCapacity: Int = 256
     ) -> (HotkeyShadowDiagnostics, HotkeyShadowDiagnostics.Segment) {
+      // No periodic drain: each test decides when the handoff is emptied.
       let diagnostics = HotkeyShadowDiagnostics(
-        clock: { 500 }, log: log, logCapacity: logCapacity)
+        clock: { 500 }, log: log, logCapacity: logCapacity, drainInterval: nil)
       let segment = diagnostics.makeSegment(installation: 1, generation: 1, snapshot: snapshot)
       diagnostics.activate(segment)
       return (diagnostics, segment)
@@ -447,7 +448,8 @@ struct HotkeyShadowIntegrationTests {
 
     @Test("one segment's loss is never charged to, or hidden by, another")
     func lossStaysInItsSegment() {
-      let diagnostics = HotkeyShadowDiagnostics(clock: { 500 }, log: { _ in })
+      let diagnostics = HotkeyShadowDiagnostics(
+        clock: { 500 }, log: { _ in }, drainInterval: nil)
       let first = diagnostics.makeSegment(installation: 1, generation: 1, snapshot: Self.snapshot)
       diagnostics.activate(first)
       diagnostics.submit(Self.ingress(.live, 0))

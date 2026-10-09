@@ -23,6 +23,9 @@
     private let clock: RecordGestureEngine.Clock
     private let lines: AsyncStream<String>.Continuation
     private let logTask: Task<Void, Never>
+    /// How often a live segment drains on its own; nil leaves draining to explicit calls, so a
+    /// test that fills the handoff controls exactly when it is emptied.
+    private let drainInterval: TimeInterval?
 
     /// - Parameters:
     ///   - log: one owned consumer awaits each line before taking the next. Cancellation stops it
@@ -31,9 +34,11 @@
     package init(
       clock: @escaping RecordGestureEngine.Clock,
       log: @escaping @Sendable (String) async -> Void = HotkeyShadowDiagnostics.appLog,
-      logCapacity: Int = 256
+      logCapacity: Int = 256,
+      drainInterval: TimeInterval? = 0.25
     ) {
       self.clock = clock
+      self.drainInterval = drainInterval
       let (stream, continuation) = AsyncStream.makeStream(
         of: String.self, bufferingPolicy: .bufferingOldest(logCapacity))
       lines = continuation
@@ -67,7 +72,8 @@
     ) -> Segment {
       Segment(
         installation: installation, firstGeneration: generation, snapshot: snapshot,
-        clock: clock, lines: lines, keyStateReader: keyStateReader)
+        clock: clock, lines: lines, keyStateReader: keyStateReader,
+        drainInterval: drainInterval)
     }
 
     /// The installation went live: `segment` receives live records from now on.
@@ -173,7 +179,6 @@
       package static let handoffCapacity = 1024
       package static let linesPerDrain = 64
       package static let samplesPerClose = 8
-      static let drainInterval: TimeInterval = 0.25
 
       package let installation: UInt64
       package let firstGeneration: UInt64
@@ -185,6 +190,7 @@
       private let clock: RecordGestureEngine.Clock
       private let lines: AsyncStream<String>.Continuation
       private let keyStateReader: @Sendable (Set<UInt16>) -> [UInt16: KeyStateTracker.Reading]
+      private let drainInterval: TimeInterval?
       /// `DispatchSourceTimer` is not `Sendable`; it is created, cancelled and released only
       /// under this lock.
       private let timer = OSAllocatedUnfairLock<DispatchSourceTimer?>(uncheckedState: nil)
@@ -194,10 +200,12 @@
       fileprivate init(
         installation: UInt64, firstGeneration: UInt64, snapshot: ShadowKeyboardPolicy.Snapshot,
         clock: @escaping RecordGestureEngine.Clock, lines: AsyncStream<String>.Continuation,
-        keyStateReader: @escaping @Sendable (Set<UInt16>) -> [UInt16: KeyStateTracker.Reading]
+        keyStateReader: @escaping @Sendable (Set<UInt16>) -> [UInt16: KeyStateTracker.Reading],
+        drainInterval: TimeInterval?
       ) {
         self.installation = installation
         self.keyStateReader = keyStateReader
+        self.drainInterval = drainInterval
         self.firstGeneration = firstGeneration
         self.clock = clock
         self.lines = lines
@@ -251,11 +259,12 @@
       }
 
       fileprivate func start() {
+        guard let interval = drainInterval else { return }
         timer.withLockUnchecked { current in
           guard current == nil else { return }
           let source = DispatchSource.makeTimerSource(queue: worker)
           source.setEventHandler { [weak self] in self?.drain() }
-          source.schedule(deadline: .now() + Self.drainInterval, repeating: Self.drainInterval)
+          source.schedule(deadline: .now() + interval, repeating: interval)
           source.activate()
           current = source
         }
