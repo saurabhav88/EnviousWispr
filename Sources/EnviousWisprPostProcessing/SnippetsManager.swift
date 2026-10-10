@@ -94,6 +94,8 @@ public final class SnippetsManager: @unchecked Sendable {
   private static let logger = Logger(subsystem: "com.enviouswispr.app", category: "Snippets")
 
   private let fileURL: URL
+  /// Immutable observation for the lock-ordering fixture (#3414), without syscall authority.
+  private let lockObserver: (@Sendable (Int32, Int32?, Int32?) -> Void)?
   /// Bumped on every successful save, and deliberately NOT persisted.
   ///
   /// A generation exists so a cross-actor reader can notice "I am holding an older snapshot
@@ -119,6 +121,7 @@ public final class SnippetsManager: @unchecked Sendable {
   }
 
   public init() {
+    lockObserver = nil
     let base =
       FileManager.default
       .urls(for: .applicationSupportDirectory, in: .userDomainMask).first
@@ -131,8 +134,14 @@ public final class SnippetsManager: @unchecked Sendable {
 
   /// Test seam: a per-test temp file instead of the production Application Support path.
   // periphery:ignore - test seam
-  package init(fileURL: URL) {
+  package convenience init(fileURL: URL) {
+    self.init(fileURL: fileURL, lockObserver: nil)
+  }
+
+  // periphery:ignore - lock-ordering test observation; no descriptor or replacement result.
+  init(fileURL: URL, lockObserver: (@Sendable (Int32, Int32?, Int32?) -> Void)?) {
     self.fileURL = fileURL
+    self.lockObserver = lockObserver
     DurableJSONFile.prepareDirectory(at: fileURL.deletingLastPathComponent())
     DurableJSONFile.tightenFileIfPresent(at: fileURL)
   }
@@ -393,7 +402,16 @@ public final class SnippetsManager: @unchecked Sendable {
 
   private func withLock<T>(blocking: Bool = false, _ body: () throws -> T) throws -> T {
     do {
-      return try DurableJSONFile.withExclusiveLock(on: fileURL, blocking: blocking, body)
+      return try DurableJSONFile.withExclusiveLock(
+        on: fileURL, blocking: blocking,
+        lockSyscall: { fd, flags in
+          self.lockObserver?(flags, nil, nil)
+          let result = flock(fd, flags)
+          let failure = errno
+          self.lockObserver?(flags, result, failure)
+          errno = failure
+          return result
+        }, body)
     } catch DurableJSONFile.LockFailure.busy {
       throw SnippetStoreError.busy
     } catch DurableJSONFile.LockFailure.unavailable {

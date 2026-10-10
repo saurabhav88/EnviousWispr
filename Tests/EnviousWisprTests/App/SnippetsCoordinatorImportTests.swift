@@ -217,30 +217,46 @@ struct SnippetsCoordinatorImportTests {
     #expect(published == 1)
   }
 
-  @Test("An explicit refresh waits for a writer that holds the lock rather than answering stale")
-  func refreshWaitsForAWriter() async throws {
-    let (coordinator, manager) = makeCoordinator()
+  @Test("A contended refresh adopts the writer's fresh disk state and publishes it")
+  func refreshWaitsForAWriter() throws {
+    let url = FileManager.default.temporaryDirectory
+      .appendingPathComponent("ew-refresh-\(UUID().uuidString)", isDirectory: true)
+      .appendingPathComponent("snippets.json")
+    let fixture = RefreshLockFixture(url: url)
+    let manager = SnippetsManager(fileURL: url, lockObserver: { flags, result, error in
+      fixture.observe(flags: flags, result: result, error: error)
+    })
+    let coordinator = SnippetsCoordinator(manager: manager)
+    for starter in coordinator.snippets { coordinator.delete(starter) }
     let before = Snippet(trigger: "before", expansion: "x")
-    #expect(coordinator.save(before))
-    // Another holder (its own descriptor, as another process would be) keeps the lock for
-    // 400 ms. A blocking refresh must WAIT for it; a non-blocking one answers at once with
-    // the published list, which is the stale-backup shape the cloud review named.
-    let url = manager.storageURL
-    let holder = Task.detached {
-      try DurableJSONFile.withExclusiveLock(on: url, blocking: true) {
-        Thread.sleep(forTimeInterval: 0.4)
-      }
+    try #require(coordinator.save(before))
+    let after = Snippet(trigger: "added by writer", expansion: "y")
+    let data = try JSONEncoder().encode(SnippetsManager.StoredFile(
+      version: SnippetsManager.currentVersion, keyword: "backslash", snippets: [after, before]))
+    var published: [SnippetVocabulary] = []
+    coordinator.onVocabularyChanged = { published.append($0) }
+    // This binds the stale-backup outcome, not elapsed time inside the kernel syscall.
+    // The observer releases the writer before acquisition; actual syscall blocking is not measured.
+    fixture.arm()
+    fixture.startWriter(data: data)
+    var joined = false
+    defer {
+      fixture.release.signal()
+      if joined == false { #expect(RefreshLockFixture.wait(fixture.finished)) }
     }
-    try await Task.sleep(for: .milliseconds(80))
-    let started = ContinuousClock.now
+    try #require(RefreshLockFixture.wait(fixture.acquired), "holder acquisition never arrived")
+    try #require(fixture.errors.isEmpty, "holder setup failed: \(fixture.errors)")
+
     let refreshed = coordinator.refreshFromDisk()
-    let waited = ContinuousClock.now - started
-    #expect(refreshed.snippets.map(\.trigger) == ["before"])
-    #expect(waited >= .milliseconds(200), "the refresh answered in \(waited) without waiting for the holder")
-    _ = try await holder.value
-    let other = SnippetsManager(fileURL: url)
-    try other.upsert(Snippet(trigger: "added after", expansion: "y"))
-    #expect(coordinator.refreshFromDisk().snippets.map(\.trigger) == ["added after", "before"])
+    fixture.record("returned")
+    joined = RefreshLockFixture.wait(fixture.finished)
+    #expect(joined, "holder completion never arrived")
+    #expect(fixture.errors.isEmpty, "fixture failures: \(fixture.errors)")
+    #expect(refreshed.snippets.map(\.id) == [after.id, before.id])
+    #expect(coordinator.snippets.map(\.id) == [after.id, before.id])
+    #expect(published.count == 1)
+    #expect(published.first?.snippets.map(\.id) == [after.id, before.id])
+    #expect(fixture.trace == ["holder", "contended", "written", "acquired", "returned"])
   }
 
   @Test("Every store error has a sentence, including the stale one")
@@ -248,5 +264,89 @@ struct SnippetsCoordinatorImportTests {
     let sentence = SnippetsCoordinator.message(for: SnippetStoreError.listChangedDuringReview)
     #expect(sentence.contains("changed while you were reviewing"))
     #expect(sentence.contains("Nothing was imported"))
+  }
+}
+
+/// Real lock orchestration: the observer receives no descriptor and cannot replace flock.
+private final class RefreshLockFixture: @unchecked Sendable {
+  let url: URL
+  let acquired = DispatchSemaphore(value: 0)
+  let release = DispatchSemaphore(value: 0)
+  let finished = DispatchSemaphore(value: 0)
+  private let state = NSLock()
+  private var armed = false
+  private var events: [String] = []
+  private var failures: [String] = []
+
+  init(url: URL) { self.url = url }
+
+  func arm() { state.withLock { armed = true } }
+  func record(_ event: String) { state.withLock { events.append(event) } }
+  func fail(_ message: String) { state.withLock { failures.append(message) } }
+  var trace: [String] { state.withLock { events } }
+  var errors: [String] { state.withLock { failures } }
+
+  // deadline-fallback: same five-second signal guard as CustomWordsManagerLockingTests.
+  static func wait(_ signal: DispatchSemaphore, seconds: Double = 5) -> Bool {
+    signal.wait(timeout: .now() + seconds) == .success
+  }
+
+  func startWriter(data: Data) {
+    DispatchQueue.global().async { [self] in
+      defer { finished.signal() }
+      do {
+        try DurableJSONFile.withExclusiveLock(on: url, blocking: true) {
+          record("holder")
+          acquired.signal()
+          guard Self.wait(release) else {
+            fail("writer release signal never arrived")
+            return
+          }
+          try DurableJSONFile.write(data: data, to: url, tempPrefix: ".refresh-fixture")
+          record("written")
+        }
+      } catch {
+        fail("writer failed: \(error)")
+        acquired.signal() // wake the caller so the setup error is reported, never hidden as a hang.
+      }
+    }
+  }
+
+  func observe(flags: Int32, result: Int32?, error: Int32?) {
+    guard state.withLock({ armed }) else { return }
+    if let result {
+      if result == 0 { record("acquired") }
+      else if flags & LOCK_NB != 0 {
+        if result != -1 || error != EWOULDBLOCK { fail("unexpected nonblocking result") }
+        release.signal()
+      }
+      return
+    }
+    let fd = Foundation.open(url.appendingPathExtension("lock").path, O_RDWR | O_CLOEXEC)
+    guard fd >= 0 else {
+      fail("could not open contention probe")
+      release.signal()
+      return
+    }
+    defer { close(fd) }
+    let probe = flock(fd, LOCK_EX | LOCK_NB)
+    let probeError = errno
+    if probe == 0 { _ = flock(fd, LOCK_UN) }
+    guard probe == -1, probeError == EWOULDBLOCK else {
+      fail("writer did not actually hold the companion lock")
+      release.signal()
+      return
+    }
+    record("contended")
+    // A nonblocking mutation must try while the holder remains locked; only its result releases it.
+    if flags & LOCK_NB == 0 { release.signal() }
+  }
+}
+
+@Suite("Refresh lock fixture deadlines (#3414)", .tags(.harnessContract))
+struct RefreshLockFixtureDeadlineTests {
+  @Test("An absent fixture signal expires rather than hanging")
+  func missingSignalExpires() {
+    #expect(RefreshLockFixture.wait(DispatchSemaphore(value: 0), seconds: 0.05) == false)
   }
 }
