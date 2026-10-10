@@ -122,16 +122,22 @@ struct ManifestFetchTask {
       retryAfter: retryable ? retryAfterSeconds(from: response) : nil)
   }
 
+  /// State one attempt carries ACROSS files: the progress numerator, the
+  /// downloaded-bytes counter, and the sticky failover position (D3).
+  private struct AttemptState {
+    var completedBytes: Int64
+    var bytesDownloaded: Int64 = 0
+    var sourceIndex = 0
+    var sourcesUsed = 1
+    var sawHTMLInterception = false
+  }
+
   func run() async throws -> Outcome {
     let fm = FileManager.default
     try fm.createDirectory(at: stagingDirectory, withIntermediateDirectories: true)
 
     let fetchFiles = manifest.files.filter { componentsToFetch.contains($0.component) }
-    var completedBytes = verifiedInPlaceBytes
-    var bytesDownloaded: Int64 = 0
-    var sourceIndex = 0
-    var sourcesUsed = 1
-    var sawHTMLInterception = false
+    var state = AttemptState(completedBytes: verifiedInPlaceBytes)
 
     for file in fetchFiles {
       try Task.checkCancellation()
@@ -140,126 +146,134 @@ struct ManifestFetchTask {
       let stagedURL = stagingDirectory.appendingPathComponent(file.resolvedInstallPath)
       try fm.createDirectory(
         at: stagedURL.deletingLastPathComponent(), withIntermediateDirectories: true)
-
-      // Already fully staged + verified (resumed attempt): skip.
-      if CacheAdmission.sizeMatches(url: stagedURL, expected: file.sizeBytes),
-        await CacheAdmission.streamingSHA256(of: stagedURL) == file.sha256
-      {
-        discardResumeIdentity(at: stagedURL)
-        completedBytes += file.sizeBytes
-        onProgress(completedBytes, manifest.totalBytes)
-        continue
-      }
-
-      // Per-file fetch with ordered failover. Failover is STICKY: once a
-      // source is abandoned the remainder of the attempt stays on the next
-      // source (D3: failover is inside one attempt; sources_used 1|2).
-      // LOCAL problems never blame the source: any outcome tainted by
-      // pre-existing staged bytes (complete-corrupt fast path, resumed-onto-
-      // corrupt-prefix hash fail, 416 on a stale range) gets ONE clean
-      // same-source retry after discarding the partial (r6 P2 + exhaustive
-      // r7 findings 1/2).
-      var fetched = false
-      var localRetryUsed = false
-      // Phase 2 (#1405): per-file network-retry budget, independent of the
-      // local-byte retry above (a 416-local retry never consumes it).
-      var networkRetriesUsed = 0
-      while !fetched {
-        let source = sources[sourceIndex]
-        do {
-          let result = try await fetchOneFile(
-            file, from: source, to: stagedURL,
-            progressBase: completedBytes)
-          // Accepted P3 (code-diff review): on the transient-retry-then-resume
-          // path a FAILED attempt's partial bytes are staged but not added here
-          // (only the successful tail's `bytesReceived` counts), so
-          // `attemptCompleted(bytesDownloadedBucket:)` can under-count on a
-          // mid-file recovery. This is coarse telemetry only (4 buckets spanning
-          // 50MB–600MB+); a lost mid-file partial almost never crosses a bucket
-          // boundary on the ~470MB model, and it never affects the download
-          // itself. Not worth per-attempt byte plumbing on the hot fetch path.
-          bytesDownloaded += result.bytesReceived
-
-          // Hash gate BEFORE this file counts (invariant 1).
-          try Task.checkCancellation()
-          guard await CacheAdmission.streamingSHA256(of: stagedURL) == file.sha256 else {
-            discardPartial(at: stagedURL)
-            if result.usedLocalBytes, !localRetryUsed {
-              localRetryUsed = true
-              continue
-            }
-            throw DeliveryFailure(
-              reason: .integrityMismatch, detail: "sha256:\(file.component)",
-              failingSourceID: source.id)
-          }
-          fetched = true
-          // The resume identity's job ends when the file verifies — clearing
-          // it here keeps sidecars out of the promoted cache (the manifest
-          // stays the exhaustive truth for the install dir).
-          discardResumeIdentity(at: stagedURL)
-          completedBytes += file.sizeBytes
-          onProgress(completedBytes, manifest.totalBytes)
-        } catch let failure as DeliveryFailure where failure.reason != .cancelled {
-          if failure.detail == "http_416_local", !localRetryUsed {
-            // Stale-range 416: the partial is already discarded; one clean
-            // same-source retry from byte zero (exhaustive r7 finding 2).
-            localRetryUsed = true
-            continue
-          }
-          if failure.detail?.hasPrefix("length_mismatch_html") == true {
-            sawHTMLInterception = true
-          }
-          // Phase 2 (#1405): bounded same-source retry for transient network/
-          // HTTP failures BEFORE advancing the source — keep the staged partial
-          // so `fetchOneFile` resumes via Range (same source ⇒ same ETag ⇒
-          // valid). Honor `Retry-After` up to a bounded cap so a broken/hostile
-          // server-directed delay cannot park the download indefinitely; a
-          // longer delay falls through to failover instead.
-          let retryAfterTooLong = (failure.retryAfter ?? 0) > Self.retryAfterCapSeconds
-          if failure.retryableTransient, networkRetriesUsed < Self.maxNetworkRetries,
-            !retryAfterTooLong
-          {
-            let delay =
-              failure.retryAfter
-              ?? Self.backoffDelay(attempt: networkRetriesUsed, jitter: jitterFraction())
-            networkRetriesUsed += 1
-            do {
-              try await backoffSleep(delay)
-            } catch is CancellationError {
-              // A cancel during backoff unwinds as .cancelled — never a retry
-              // or failover (cooperative cancel, invariant 5).
-              throw DeliveryFailure(reason: .cancelled, failingSourceID: source.id)
-            }
-            continue
-          }
-          guard sourceIndex + 1 < sources.count else {
-            // All sources exhausted: terminal. The captive-portal signature
-            // (both sources length/hash-failed with HTML observed) gets the
-            // intercepted_network detail hint (grounded r1 revision 6).
-            if failure.reason == .integrityMismatch, sawHTMLInterception {
-              throw DeliveryFailure(
-                reason: .integrityMismatch, detail: "intercepted_network",
-                failingSourceID: failure.failingSourceID)
-            }
-            throw failure
-          }
-          let fromSourceID = sources[sourceIndex].id
-          sourceIndex += 1
-          sourcesUsed = 2
-          // Retry budget is PER SOURCE (#1405 §6): the backup gets its own N
-          // transient retries, so reset the counter on failover (Codex r1 P2).
-          networkRetriesUsed = 0
-          // In bounds: the guard above returns unless `sourceIndex + 1` is a
-          // valid index, so reading AFTER the increment is safe (#2135).
-          await onSourceFailover(failure.reason, fromSourceID, sources[sourceIndex].id)
-        }
-      }
+      try await fetchVerified(file, to: stagedURL, state: &state)
     }
 
     return Outcome(
-      sourcesUsed: sourcesUsed,
-      finalSourceID: sources[sourceIndex].id,
-      bytesDownloaded: bytesDownloaded)
+      sourcesUsed: state.sourcesUsed,
+      finalSourceID: sources[state.sourceIndex].id,
+      bytesDownloaded: state.bytesDownloaded)
+  }
+
+  /// One file to a verified staged copy: skip when already staged and
+  /// verified, else fetch with local/network retry and ordered failover,
+  /// hash-gating before the file counts (invariant 1).
+  private func fetchVerified(
+    _ file: DeliveryManifest.File, to stagedURL: URL, state: inout AttemptState
+  ) async throws {
+    // Already fully staged + verified (resumed attempt): skip.
+    if CacheAdmission.sizeMatches(url: stagedURL, expected: file.sizeBytes),
+      await CacheAdmission.streamingSHA256(of: stagedURL) == file.sha256
+    {
+      discardResumeIdentity(at: stagedURL)
+      state.completedBytes += file.sizeBytes
+      onProgress(state.completedBytes, manifest.totalBytes)
+      return
+    }
+
+    // Per-file fetch with ordered failover. Failover is STICKY: once a
+    // source is abandoned the remainder of the attempt stays on the next
+    // source (D3: failover is inside one attempt; sources_used 1|2).
+    // LOCAL problems never blame the source: any outcome tainted by
+    // pre-existing staged bytes (complete-corrupt fast path, resumed-onto-
+    // corrupt-prefix hash fail, 416 on a stale range) gets ONE clean
+    // same-source retry after discarding the partial (r6 P2 + exhaustive
+    // r7 findings 1/2).
+    var fetched = false
+    var localRetryUsed = false
+    // Phase 2 (#1405): per-file network-retry budget, independent of the
+    // local-byte retry above (a 416-local retry never consumes it).
+    var networkRetriesUsed = 0
+    while !fetched {
+      let source = sources[state.sourceIndex]
+      do {
+        let result = try await fetchOneFile(
+          file, from: source, to: stagedURL,
+          progressBase: state.completedBytes)
+        // Accepted P3 (code-diff review): on the transient-retry-then-resume
+        // path a FAILED attempt's partial bytes are staged but not added here
+        // (only the successful tail's `bytesReceived` counts), so
+        // `attemptCompleted(bytesDownloadedBucket:)` can under-count on a
+        // mid-file recovery. This is coarse telemetry only (4 buckets spanning
+        // 50MB–600MB+); a lost mid-file partial almost never crosses a bucket
+        // boundary on the ~470MB model, and it never affects the download
+        // itself. Not worth per-attempt byte plumbing on the hot fetch path.
+        state.bytesDownloaded += result.bytesReceived
+
+        // Hash gate BEFORE this file counts (invariant 1).
+        try Task.checkCancellation()
+        guard await CacheAdmission.streamingSHA256(of: stagedURL) == file.sha256 else {
+          discardPartial(at: stagedURL)
+          if result.usedLocalBytes, !localRetryUsed {
+            localRetryUsed = true
+            continue
+          }
+          throw DeliveryFailure(
+            reason: .integrityMismatch, detail: "sha256:\(file.component)",
+            failingSourceID: source.id)
+        }
+        fetched = true
+        // The resume identity's job ends when the file verifies — clearing
+        // it here keeps sidecars out of the promoted cache (the manifest
+        // stays the exhaustive truth for the install dir).
+        discardResumeIdentity(at: stagedURL)
+        state.completedBytes += file.sizeBytes
+        onProgress(state.completedBytes, manifest.totalBytes)
+      } catch let failure as DeliveryFailure where failure.reason != .cancelled {
+        if failure.detail == "http_416_local", !localRetryUsed {
+          // Stale-range 416: the partial is already discarded; one clean
+          // same-source retry from byte zero (exhaustive r7 finding 2).
+          localRetryUsed = true
+          continue
+        }
+        if failure.detail?.hasPrefix("length_mismatch_html") == true {
+          state.sawHTMLInterception = true
+        }
+        // Phase 2 (#1405): bounded same-source retry for transient network/
+        // HTTP failures BEFORE advancing the source — keep the staged partial
+        // so `fetchOneFile` resumes via Range (same source ⇒ same ETag ⇒
+        // valid). Honor `Retry-After` up to a bounded cap so a broken/hostile
+        // server-directed delay cannot park the download indefinitely; a
+        // longer delay falls through to failover instead.
+        let retryAfterTooLong = (failure.retryAfter ?? 0) > Self.retryAfterCapSeconds
+        if failure.retryableTransient, networkRetriesUsed < Self.maxNetworkRetries,
+          !retryAfterTooLong
+        {
+          let delay =
+            failure.retryAfter
+            ?? Self.backoffDelay(attempt: networkRetriesUsed, jitter: jitterFraction())
+          networkRetriesUsed += 1
+          do {
+            try await backoffSleep(delay)
+          } catch is CancellationError {
+            // A cancel during backoff unwinds as .cancelled — never a retry
+            // or failover (cooperative cancel, invariant 5).
+            throw DeliveryFailure(reason: .cancelled, failingSourceID: source.id)
+          }
+          continue
+        }
+        guard state.sourceIndex + 1 < sources.count else {
+          // All sources exhausted: terminal. The captive-portal signature
+          // (both sources length/hash-failed with HTML observed) gets the
+          // intercepted_network detail hint (grounded r1 revision 6).
+          if failure.reason == .integrityMismatch, state.sawHTMLInterception {
+            throw DeliveryFailure(
+              reason: .integrityMismatch, detail: "intercepted_network",
+              failingSourceID: failure.failingSourceID)
+          }
+          throw failure
+        }
+        let fromSourceID = sources[state.sourceIndex].id
+        state.sourceIndex += 1
+        state.sourcesUsed = 2
+        // Retry budget is PER SOURCE (#1405 §6): the backup gets its own N
+        // transient retries, so reset the counter on failover (Codex r1 P2).
+        networkRetriesUsed = 0
+        // In bounds: the guard above returns unless `sourceIndex + 1` is a
+        // valid index, so reading AFTER the increment is safe (#2135).
+        await onSourceFailover(failure.reason, fromSourceID, sources[state.sourceIndex].id)
+      }
+    }
   }
 
   // MARK: - One file
