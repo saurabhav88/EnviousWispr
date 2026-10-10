@@ -126,8 +126,10 @@ public struct HotkeyTelemetrySink: Sendable {
 /// `disableEpisodes` and confirmed `reenables`); when an install succeeds after failed
 /// attempts (`terminal` `none`, `reason` `installed_after_failures`, episode counts 0); and when
 /// shortcuts stop or suspend while installs are still failing (`terminal` `start_failed`,
-/// `reason` `stop` / `suspend`, episode counts 0). Each failure episode reports once. P6 adds two
-/// event-time rows, both `terminal` `none` with episode counts 0: `reason` `stale_key_cleared` with
+/// `reason` `stop` / `suspend`, episode counts 0). Each failure episode reports once. P6 adds three
+/// event-time rows, all `terminal` `none` with episode counts 0: `reason` `tap_reenabled`, at most
+/// once per installation, when macOS disabled its tap and it was re-enabled (the teardown row above
+/// is often produced only at quit, when its capture may not leave); `reason` `stale_key_cleared` with
 /// `staleKind` `modifier` / `ordinary`, at most once per installation per kind, when a key-state
 /// reading removed a key the events still held; and `reason` `secure_input_notice`, when the
 /// Secure Input notice was shown (at most once per observed Secure Input period). They are sent

@@ -69,6 +69,10 @@ package final class KeyboardListenerIngress: Sendable {
     /// A key-state reading removed a key the events still held, the first time this installation
     /// for that kind.
     case staleKeyCleared(StaleKind)
+    /// macOS disabled this installation's tap and it was re-enabled, the first time this
+    /// installation. Sent when it happens: the teardown row that totals disable episodes is often
+    /// produced only at quit, when its capture is not guaranteed to leave.
+    case tapReenabled
   }
 
   /// Which kind of held key a reading removed. Raw values are the telemetry strings.
@@ -132,6 +136,8 @@ package final class KeyboardListenerIngress: Sendable {
     var ordinarySequence: UInt64 = 0
     /// Stale-key kinds this installation already reported (#3544 P6): one observation per kind.
     var staleReported: Set<StaleKind> = []
+    /// Whether this installation already reported a tap re-enable (#3544 P6): one per installation.
+    var reenableReported = false
   }
 
   package let installation: UInt64
@@ -200,6 +206,12 @@ package final class KeyboardListenerIngress: Sendable {
       restartConfirmation()
       requestOrdinaryResync()
       resyncOrdinaryIfNeeded(except: nil)
+      let first = state.withLock { s -> Bool in
+        guard !s.closed, !s.reenableReported else { return false }
+        s.reenableReported = true
+        return true
+      }
+      if first { observe(.tapReenabled) }
     case .secureInputChanged:
       // Leaving Secure Input: key-ups may have been hidden (plan A2). Entering changes nothing
       // for modifiers; for ordinary keys both edges are boundaries, read now.

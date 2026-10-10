@@ -526,7 +526,22 @@ struct KeyboardListenerIngressTests {
     await ordinary(rig, .keyDown, Self.letterA, at: 0)
     rig.readings.withLock { $0[Self.letterA] = .up }
     await rig.notice(.tapReenabled, at: 1)
-    #expect(rig.observations.withLock { $0 } == [.staleKeyCleared(.ordinary)])
+    #expect(rig.observations.withLock { $0 } == [.staleKeyCleared(.ordinary), .tapReenabled])
+  }
+
+  @Test("a tap re-enable is observed once per installation")
+  func tapReenableObservedOncePerInstallation() async {
+    let rig = Rig()
+    await rig.notice(.tapReenabled, at: 1)
+    await rig.notice(.tapReenabled, at: 2)
+    #expect(rig.observations.withLock { $0 } == [.tapReenabled])
+    rig.replace(8)
+    await rig.notice(.tapReenabled, at: 3)
+    #expect(rig.observations.withLock { $0 } == [.tapReenabled, .tapReenabled])
+    // A closed installation reports nothing more.
+    rig.ingress.close()
+    await rig.notice(.tapReenabled, at: 4)
+    #expect(rig.observations.withLock { $0 } == [.tapReenabled, .tapReenabled])
   }
 
   @Test("a stale reading that is dropped is never observed")

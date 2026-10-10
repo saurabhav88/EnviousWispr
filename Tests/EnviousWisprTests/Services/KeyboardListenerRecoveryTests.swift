@@ -548,6 +548,22 @@ struct KeyboardListenerRecoveryTests {
     #expect(row?.installs == 1, "launch totals ride the row")
   }
 
+  @Test("the first tap re-enable of an installation sends one tap_reenabled row at once")
+  func tapReenableIsReported() async {
+    let rig = Rig()
+    rig.service.start()
+    defer { rig.service.stop() }
+    let sink = rig.effects.keyboardListenerSink
+    for _ in 0..<2 {
+      await Task.detached {
+        _ = sink?(KeyEventValue(kind: .tapReenabled, keyCode: 0, rawFlags: 0, timestamp: nil))
+      }.value
+      await Rig.mainTurn()
+    }
+    #expect(rig.health.map { [$0.terminal, $0.reason] } == [["none", "tap_reenabled"]])
+    #expect(rig.health.first?.disableEpisodes == 0 && rig.health.first?.staleKind == nil)
+  }
+
   @Test("a start that resolves after the other-key window shows no notice and keeps it owed")
   func lateStartGetsNoNotice() async {
     let n = NoticeRig()

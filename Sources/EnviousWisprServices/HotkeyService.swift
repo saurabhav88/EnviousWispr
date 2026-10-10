@@ -1377,6 +1377,9 @@ public final class HotkeyService {
       reportListenerHealth(
         terminal: "none", reason: "stale_key_cleared", disableEpisodes: 0, reenables: 0,
         staleKind: kind.rawValue)
+    case .tapReenabled:
+      reportListenerHealth(
+        terminal: "none", reason: "tap_reenabled", disableEpisodes: 0, reenables: 0)
     }
   }
 
