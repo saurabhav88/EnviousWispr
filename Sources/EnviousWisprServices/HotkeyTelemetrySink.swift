@@ -28,10 +28,14 @@ public struct HotkeyTelemetrySink: Sendable {
   /// press: `globe` / `right_option` / `other_modifier` / `chord`. String-typed
   /// deliberately, because this sink is `public` and `HotkeyKeyIdentity` is
   /// `package`; callers pass `.rawValue`. Never a raw key code.
+  ///
+  /// `windowTiming` (#3534) is `rescued` / `on_time` on a hands-free lock intent,
+  /// `after_stop_timer` on a Push-to-Talk `start` or `ignored_processing` press that was
+  /// physically pressed before the lone-tap stop it lost to, and nil on every other row.
   public var pressed:
     @MainActor (
       _ triggerSource: String, _ inputMode: String, _ keyShape: String, _ keyIdentity: String,
-      _ pressAction: String
+      _ pressAction: String, _ windowTiming: String?
     ) -> Void
 
   /// #1631 — a recorded hands-free intent reached a publication decision.
@@ -41,20 +45,25 @@ public struct HotkeyTelemetrySink: Sendable {
   /// / `publication_unavailable`. Metadata only — no session id, no key codes.
   public var lockResolved: @MainActor (_ committed: Bool, _ reason: String) -> Void
 
+  /// #3544 P3 — the keyboard listener had trouble; a healthy launch sends nothing. Metadata only.
+  public var listenerHealth: @MainActor (HotkeyListenerHealthReport) -> Void
+
   public init(
     registrationFailed: @escaping @MainActor (String, String, Int32?, String) -> Void,
-    pressed: @escaping @MainActor (String, String, String, String, String) -> Void,
-    lockResolved: @escaping @MainActor (Bool, String) -> Void = { _, _ in }
+    pressed: @escaping @MainActor (String, String, String, String, String, String?) -> Void,
+    lockResolved: @escaping @MainActor (Bool, String) -> Void = { _, _ in },
+    listenerHealth: @escaping @MainActor (HotkeyListenerHealthReport) -> Void = { _ in }
   ) {
     self.registrationFailed = registrationFailed
     self.pressed = pressed
     self.lockResolved = lockResolved
+    self.listenerHealth = listenerHealth
   }
 
   /// Inert sink — the default for tests and any non-app construction.
   public static let noop = HotkeyTelemetrySink(
-    registrationFailed: { _, _, _, _ in }, pressed: { _, _, _, _, _ in },
-    lockResolved: { _, _ in })
+    registrationFailed: { _, _, _, _ in }, pressed: { _, _, _, _, _, _ in },
+    lockResolved: { _, _ in }, listenerHealth: { _ in })
 
   /// Production sink. Registration failure → PostHog breakdown + Sentry handled
   /// error (synchronous, durable). Press → PostHog, deferred to the next run loop
@@ -76,7 +85,7 @@ public struct HotkeyTelemetrySink: Sendable {
         // toggle conflict and a dead NSEvent monitor are distinct issues.
         fingerprintDetail: "\(mechanism)/\(hotkeyKind)")
     },
-    pressed: { triggerSource, inputMode, keyShape, keyIdentity, pressAction in
+    pressed: { triggerSource, inputMode, keyShape, keyIdentity, pressAction, windowTiming in
       // `DispatchQueue.main.async` (NOT `Task { @MainActor }`, which may run on the
       // current cycle — gotchas-audio `dispatch-main-for-runloop-deferral`) defers
       // the PostHog enqueue-write to the next run loop so the input-press turn does
@@ -86,7 +95,8 @@ public struct HotkeyTelemetrySink: Sendable {
         MainActor.assumeIsolated {
           TelemetryService.shared.hotkeyPressed(
             triggerSource: triggerSource, inputMode: inputMode,
-            keyShape: keyShape, keyIdentity: keyIdentity, pressAction: pressAction)
+            keyShape: keyShape, keyIdentity: keyIdentity, pressAction: pressAction,
+            windowTiming: windowTiming)
         }
       }
     },
@@ -98,7 +108,59 @@ public struct HotkeyTelemetrySink: Sendable {
           TelemetryService.shared.hotkeyLockResolved(committed: committed, reason: reason)
         }
       }
+    },
+    listenerHealth: { report in
+      // Deferred like the others: reported from listener install or teardown on main, which may
+      // be a stop or resume on the input turn.
+      DispatchQueue.main.async {
+        MainActor.assumeIsolated { TelemetryService.shared.hotkeyListenerHealth(report) }
+      }
     })
+}
+
+/// One `hotkey.listener_health` row (#3544 P3, P6).
+///
+/// Sent only when something happened, so a quiet launch sends none: when an installation
+/// ends after the OS disabled its tap at least once (`terminal` `removed` / `disable_storm`,
+/// `reason` `stop` / `suspend` / `storm` / `reinstall`, with that installation's
+/// `disableEpisodes` and confirmed `reenables`); when an install succeeds after failed
+/// attempts (`terminal` `none`, `reason` `installed_after_failures`, episode counts 0); and when
+/// shortcuts stop or suspend while installs are still failing (`terminal` `start_failed`,
+/// `reason` `stop` / `suspend`, episode counts 0). Each failure episode reports once. P6 adds three
+/// event-time rows, all `terminal` `none` with episode counts 0: `reason` `tap_reenabled`, at most
+/// once per installation, when macOS disabled its tap and it was re-enabled (the teardown row above
+/// is often produced only at quit, when its capture may not leave); `reason` `stale_key_cleared` with
+/// `staleKind` `modifier` / `ordinary`, at most once per installation per kind, when a key-state
+/// reading removed a key the events still held; and `reason` `secure_input_notice`, when the
+/// Secure Input notice was shown (at most once per observed Secure Input period). They are sent
+/// when they happen, not at teardown: a capture queued at quit is not guaranteed to leave.
+/// `installAttempts`, `installFailures` and `installs` are this launch's totals so far: adapter
+/// install calls, the ones that returned no listener, and the ones that did. Counts and closed
+/// strings only; never a key.
+public struct HotkeyListenerHealthReport: Sendable, Equatable {
+  public var terminal: String
+  public var reason: String
+  public var disableEpisodes: Int
+  public var reenables: Int
+  public var installAttempts: Int
+  public var installFailures: Int
+  public var installs: Int
+  /// `modifier` or `ordinary` on a `stale_key_cleared` row; nil (omitted) on every other row.
+  public var staleKind: String?
+
+  public init(
+    terminal: String, reason: String, disableEpisodes: Int, reenables: Int,
+    installAttempts: Int, installFailures: Int, installs: Int, staleKind: String? = nil
+  ) {
+    self.terminal = terminal
+    self.reason = reason
+    self.disableEpisodes = disableEpisodes
+    self.reenables = reenables
+    self.installAttempts = installAttempts
+    self.installFailures = installFailures
+    self.installs = installs
+    self.staleKind = staleKind
+  }
 }
 
 /// The error captured to Sentry when a hotkey registration fails. Carries only

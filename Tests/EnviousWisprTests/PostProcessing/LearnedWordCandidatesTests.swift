@@ -273,4 +273,313 @@ struct LearnedWordCandidatesTests {
     let text = Array(repeating: "a toast", count: 200).joined(separator: " and ")
     #expect(LearnedWordCandidates.questions(for: text, learned: learned).count == 16)
   }
+
+  // MARK: - #3518: a learned phrase that contains another learned word
+
+  /// The founder's dictionary on 2026-10-07: `Saurabh` learned from several misspellings, then
+  /// `Saurabhav` learned from `Saurabh A V`, the text the word check itself had produced.
+  private static let founder = [
+    LearnedWord(canonical: "Saurabh", observedMisspellings: ["Sarab", "Sarub", "Sorob"]),
+    LearnedWord(canonical: "Saurabhav", observedMisspellings: ["Saurabh A V", "Sarov A V"]),
+  ]
+  private static let founderKnown = ["Saurabh", "Saurabhav"]
+
+  private static func spots(_ text: String, _ questions: [LearnedWordCheckQuestion]) -> [String] {
+    questions.map { "\(text[$0.range])->\($0.word)" }
+  }
+
+  @Test("#3518: a misspelling of the inner word inside a learned phrase is asked about")
+  func composedAliasIsAsked() {
+    let text = "My username is Sarab A V."
+    let questions = LearnedWordCandidates.questions(
+      for: text, learned: Self.founder, knownSpellings: Self.founderKnown)
+    #expect(Self.spots(text, questions) == ["Sarab A V->Saurabhav", "Sarab->Saurabh"])
+  }
+
+  @Test("#3518: the learned phrase spelled with the user's own word is asked about")
+  func literalPhraseContainingKnownWord() {
+    let text = "My username is Saurabh A V."
+    let questions = LearnedWordCandidates.questions(
+      for: text, learned: Self.founder, knownSpellings: Self.founderKnown)
+    #expect(Self.spots(text, questions) == ["Saurabh A V->Saurabhav"])
+  }
+
+  @Test("#3518: the inner word alone still gets only its own fix")
+  func innerWordAlone() {
+    let text = "Sarab will review it."
+    let questions = LearnedWordCandidates.questions(
+      for: text, learned: Self.founder, knownSpellings: Self.founderKnown)
+    #expect(Self.spots(text, questions) == ["Sarab->Saurabh"])
+    #expect(
+      LearnedWordCandidates.questions(
+        for: "Saurabh will review it.", learned: Self.founder, knownSpellings: Self.founderKnown
+      ).isEmpty)
+  }
+
+  @Test("#3518: different spacing around the phrase is not the learned phrase")
+  func spacingMustMatch() {
+    let text = "My username is Sarab AV."
+    let questions = LearnedWordCandidates.questions(
+      for: text, learned: Self.founder, knownSpellings: Self.founderKnown)
+    #expect(Self.spots(text, questions) == ["Sarab->Saurabh"])
+  }
+
+  @Test("#3518: punctuation and repeated spaces inside the phrase are kept exactly")
+  func punctuationAndSpacingKept() {
+    let learned = [
+      LearnedWord(canonical: "Saurabh", observedMisspellings: ["Sarab"]),
+      LearnedWord(canonical: "SaurabhTeam", observedMisspellings: ["Saurabh, team", "Saurabh  crew"]),
+    ]
+    let comma = "Thanks Sarab, team."
+    #expect(
+      Self.spots(comma, LearnedWordCandidates.questions(for: comma, learned: learned))
+        == ["Sarab, team->SaurabhTeam", "Sarab->Saurabh"])
+    let doubled = "Thanks Sarab  crew."
+    #expect(
+      Self.spots(doubled, LearnedWordCandidates.questions(for: doubled, learned: learned))
+        == ["Sarab  crew->SaurabhTeam", "Sarab->Saurabh"])
+    let single = "Thanks Sarab crew."
+    #expect(
+      Self.spots(single, LearnedWordCandidates.questions(for: single, learned: learned))
+        == ["Sarab->Saurabh"])
+  }
+
+  @Test("#3518: a two-word learned word inside a phrase works, overlapping words never both change")
+  func multiWordAndOverlappingInnerWords() {
+    let learned = [
+      LearnedWord(canonical: "Envious", observedMisspellings: ["envy us"]),
+      LearnedWord(canonical: "Envious Labs", observedMisspellings: ["envious laps"]),
+      LearnedWord(canonical: "EnviousLabsStudio", observedMisspellings: ["Envious Labs studio"]),
+    ]
+    let multi = "Made by envious laps studio."
+    #expect(
+      Self.spots(multi, LearnedWordCandidates.questions(for: multi, learned: learned))
+        == ["envious laps studio->EnviousLabsStudio", "envious laps->Envious Labs"])
+    let inner = "Made by envy us Labs studio."
+    #expect(
+      Self.spots(inner, LearnedWordCandidates.questions(for: inner, learned: learned))
+        == ["envy us Labs studio->EnviousLabsStudio", "envy us->Envious"])
+    let both = "Made by envy us laps studio."
+    #expect(
+      Self.spots(both, LearnedWordCandidates.questions(for: both, learned: learned))
+        == ["envy us laps->Envious Labs", "envy us->Envious"],
+      "the phrase needs both words changed at once, which never happens; Envious Labs' own alias composes")
+  }
+
+  @Test("#3518: text the expansion put there earns no exemption, and partial overlaps stay blocked")
+  func exemptionNeedsTheRetainedInnerWord() {
+    // Replacing Alpha by its learned alias Beta must not exempt a settled Beta.
+    let learned = [
+      LearnedWord(canonical: "Alpha", observedMisspellings: ["Beta"]),
+      LearnedWord(canonical: "AlphaX", observedMisspellings: ["Alpha X"]),
+    ]
+    #expect(
+      LearnedWordCandidates.questions(
+        for: "We ship Beta X today.", learned: learned, knownSpellings: ["Beta"]
+      ).isEmpty)
+    #expect(
+      Self.spots(
+        "We ship Beta X today.",
+        LearnedWordCandidates.questions(for: "We ship Beta X today.", learned: learned))
+        == ["Beta X->AlphaX", "Beta->Alpha"],
+      "control: without the settled Beta the composed phrase is asked")
+    // A known word that only partly overlaps the phrase still blocks it.
+    let partial = "My username is Saurabh A V Corp."
+    #expect(
+      Self.spots(
+        partial,
+        LearnedWordCandidates.questions(
+          for: partial, learned: Self.founder, knownSpellings: Self.founderKnown + ["V Corp"]))
+        == [])
+    // The whole phrase spelled as a known word is final, as before (#3105).
+    #expect(
+      LearnedWordCandidates.questions(
+        for: "My username is Saurabh A V.", learned: Self.founder,
+        knownSpellings: Self.founderKnown + ["Saurabh A V"]
+      ).isEmpty)
+  }
+
+  @Test("#3518: with a budget of one the longer fix is the one asked")
+  func budgetPrefersTheLongerFix() {
+    let text = "My username is Sarab A V."
+    let questions = LearnedWordCandidates.questions(
+      for: text, learned: Self.founder, maxSpots: 1, knownSpellings: Self.founderKnown)
+    #expect(Self.spots(text, questions) == ["Sarab A V->Saurabhav"])
+    let search = LearnedWordCandidates.search(
+      for: text, learned: Self.founder, maxSpots: 1, knownSpellings: Self.founderKnown)
+    #expect(search.composed == 1)
+    #expect(search.truncated == 1)
+  }
+
+  @Test("#3518: at most 32 spellings per phrase, chosen the same way whatever the word order")
+  func variantCapIsDeterministic() {
+    let aliases = (0..<40).map { String(format: "a%02d", $0) }
+    let inner = LearnedWord(canonical: "Inner", observedMisspellings: aliases.reversed())
+    let outer = LearnedWord(canonical: "InnerX", observedMisspellings: ["Inner X"])
+    for learned in [[inner, outer], [outer, inner]] {
+      // The phrase as taught, then 31 replacements in byte order: a00 ... a30.
+      #expect(
+        LearnedWordCandidates.questions(for: "say a30 X now", learned: learned)
+          .contains { $0.word == "InnerX" })
+      #expect(
+        !LearnedWordCandidates.questions(for: "say a31 X now", learned: learned)
+          .contains { $0.word == "InnerX" })
+    }
+  }
+
+  @Test("#3518: two entries for one word pool their misspellings")
+  func duplicateCanonicalsMerge() {
+    let learned = [
+      LearnedWord(canonical: "Saurabh", observedMisspellings: ["Sarab"]),
+      LearnedWord(canonical: "saurabh", observedMisspellings: ["Sorob"]),
+      LearnedWord(canonical: "Saurabhav", observedMisspellings: ["Saurabh A V"]),
+    ]
+    for text in ["Hi Sarab A V.", "Hi Sorob A V."] {
+      #expect(
+        LearnedWordCandidates.questions(for: text, learned: learned)
+          .contains { $0.word == "Saurabhav" })
+    }
+  }
+
+  @Test("#3518: a phrase found only as taught counts as not composed")
+  func composedCount() {
+    let search = LearnedWordCandidates.search(
+      for: "Hi Saurabh A V and Sarab A V.", learned: Self.founder,
+      knownSpellings: Self.founderKnown)
+    #expect(search.questions.filter { $0.word == "Saurabhav" }.count == 2)
+    #expect(search.composed == 1)
+    #expect(search.truncated == 0)
+  }
+
+  @Test("#3518: a learned word with punctuation inside a learned phrase is found (Codex diff review r1)")
+  func punctuatedInnerWord() {
+    let learned = [
+      LearnedWord(canonical: "C++", observedMisspellings: ["see plus plus"]),
+      LearnedWord(canonical: "cppav", observedMisspellings: ["C++ A V"]),
+    ]
+    let misheard = "Ping see plus plus A V today."
+    #expect(
+      Self.spots(misheard, LearnedWordCandidates.questions(for: misheard, learned: learned))
+        == ["see plus plus A V->cppav", "see plus plus->C++"])
+    let literal = "Ping C++ A V today."
+    #expect(
+      Self.spots(
+        literal, LearnedWordCandidates.questions(for: literal, learned: learned, knownSpellings: ["C++"]))
+        == ["C++ A V->cppav"])
+  }
+
+  @Test("#3518: a phrase of many overlapping learned words builds at most 32 spellings (Codex diff review r1)")
+  func overlappingWordsStayBounded() {
+    let phrase = Array(repeating: "ha", count: 28).joined(separator: " ")
+    let variants = LearnedWordCandidates.variants(
+      of: phrase, owner: "Laugh", misspellings: ["ha ha": ["ha"], "laugh": [phrase]])
+    #expect(variants.count == 32)
+    #expect(variants.first?.text == phrase)
+  }
+
+  @Test("#3518: inner learned words are found by the matcher's own word edges (Codex diff review r2)")
+  func innerWordsUseTheMatchersWordEdges() {
+    // A word joined to the next by punctuation, not a space.
+    let slash = [
+      LearnedWord(canonical: "Saurabh", observedMisspellings: ["Sarab"]),
+      LearnedWord(canonical: "TeamHandle", observedMisspellings: ["Saurabh/team A V"]),
+    ]
+    let misheard = "Ping Sarab/team A V now."
+    #expect(
+      Self.spots(misheard, LearnedWordCandidates.questions(for: misheard, learned: slash))
+        == ["Sarab/team A V->TeamHandle", "Sarab->Saurabh"])
+    let literal = "Ping Saurabh/team A V now."
+    #expect(
+      Self.spots(
+        literal,
+        LearnedWordCandidates.questions(for: literal, learned: slash, knownSpellings: ["Saurabh"]))
+        == ["Saurabh/team A V->TeamHandle"])
+    // Two learned words that overlap inside the phrase: both are kept, so both settled
+    // spellings are exempt where the phrase holds them as written.
+    let overlap = [
+      LearnedWord(canonical: "C", observedMisspellings: ["see"]),
+      LearnedWord(canonical: "C++", observedMisspellings: ["see plus plus"]),
+      LearnedWord(canonical: "cppav", observedMisspellings: ["C++ A V"]),
+    ]
+    let text = "Ping C++ A V today."
+    #expect(
+      Self.spots(
+        text,
+        LearnedWordCandidates.questions(for: text, learned: overlap, knownSpellings: ["C", "C++"]))
+        == ["C++ A V->cppav"])
+  }
+
+  @Test("#3518: a phrase that is itself another learned word is not rebuilt from that word")
+  func wholePhraseIsNotAnInnerWord() {
+    let learned = [
+      LearnedWord(canonical: "Envious Labs", observedMisspellings: ["envious laps"]),
+      LearnedWord(canonical: "EnviousSales", observedMisspellings: ["Envious Labs"]),
+    ]
+    let text = "Invoices for envious laps today."
+    #expect(
+      Self.spots(text, LearnedWordCandidates.questions(for: text, learned: learned))
+        == ["envious laps->Envious Labs"])
+    #expect(
+      LearnedWordCandidates.questions(
+        for: "Invoices for Envious Labs today.", learned: learned,
+        knownSpellings: ["Envious Labs", "EnviousSales"]
+      ).isEmpty)
+  }
+
+  @Test("#3518: a phrase with no space expands; a phrase holding its own word does not (second-pass review)")
+  func phrasesWithoutSpacesAndSelfWords() {
+    let slash = [
+      LearnedWord(canonical: "Saurabh", observedMisspellings: ["Sarab"]),
+      LearnedWord(canonical: "TeamName", observedMisspellings: ["Saurabh/team"]),
+    ]
+    #expect(
+      Self.spots("Ping Sarab/team.", LearnedWordCandidates.questions(for: "Ping Sarab/team.", learned: slash))
+        == ["Sarab/team->TeamName", "Sarab->Saurabh"])
+    // Two fixes to one word keep the shorter span (#3105), so the phrase taught for its own
+    // word is not rebuilt: the answer does not depend on the question budget.
+    let selfWord = [LearnedWord(canonical: "Saurabh", observedMisspellings: ["Sarab", "Saurabh A V"])]
+    for budget in [1, 16] {
+      #expect(
+        Self.spots(
+          "Hi Sarab A V.",
+          LearnedWordCandidates.questions(for: "Hi Sarab A V.", learned: selfWord, maxSpots: budget))
+          == ["Sarab->Saurabh"])
+    }
+  }
+
+  @Test("#3518: a spot reachable as taught counts as taught whatever the alias order (second-pass review)")
+  func composedCountIgnoresAliasOrder() {
+    for outer in [["Saurabh A V", "Sarab A V"], ["Sarab A V", "Saurabh A V"]] {
+      let learned = [
+        LearnedWord(canonical: "Saurabh", observedMisspellings: ["Sarab"]),
+        LearnedWord(canonical: "Saurabhav", observedMisspellings: outer),
+      ]
+      let search = LearnedWordCandidates.search(for: "Hi Sarab A V.", learned: learned)
+      #expect(search.questions.contains { $0.word == "Saurabhav" })
+      #expect(search.composed == 0)
+    }
+  }
+
+  @Test("#3518: at the budget, a same-word phrase never displaces that word's shorter fix (Codex diff review r4)")
+  func sameWordShorterFixKeepsItsPlace() {
+    let learned = [LearnedWord(canonical: "Saurabh", observedMisspellings: ["Sarab", "Sarab A V"])]
+    let text = "Hi Sarab A V."
+    for budget in [1, 16] {
+      #expect(
+        Self.spots(text, LearnedWordCandidates.questions(for: text, learned: learned, maxSpots: budget))
+          .first == "Sarab->Saurabh")
+    }
+  }
+
+  @Test("#3518: a word's discarded longer alias never crowds out a containing fix (Codex diff review r5)")
+  func wordsRankBySurvivingSpan() {
+    let learned = [
+      LearnedWord(canonical: "Saurabh", observedMisspellings: ["Sarab", "Sarab A V account"]),
+      LearnedWord(canonical: "Handle", observedMisspellings: ["Sarab A V"]),
+    ]
+    let text = "Hi Sarab A V account."
+    #expect(
+      Self.spots(text, LearnedWordCandidates.questions(for: text, learned: learned, maxSpots: 1))
+        == ["Sarab A V->Handle"])
+  }
 }

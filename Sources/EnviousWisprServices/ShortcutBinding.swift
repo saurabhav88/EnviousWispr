@@ -70,8 +70,9 @@ extension ShortcutRole {
     //
     // **SHIFT, not the Option this shipped with in #2381, because Option is RECORD'S OWN KEY.**
     // Record above is bare Right Option, so the two shipped defaults collided out of the box: the
-    // Option half of Control-Option-W is dispatched by the modifier monitor before the W ever
-    // reaches Carbon (`HotkeyService.handleFlagsChangedValues`), so on the right-hand Option key a
+    // Option half of Control-Option-W is dispatched as a bare modifier (then by the modifier
+    // monitor, since #3544 P3 by the keyboard listener) before the W ever reaches Carbon, so on
+    // the right-hand Option key a
     // user following our own hint started a push-to-talk recording instead of opening the panel.
     // `quickAddOwnsItsBinding` saw the collision and correctly refused to advertise the chord, so
     // every fresh install read "Currently unavailable" on the Quick Add tab (founder report,
@@ -182,6 +183,26 @@ package struct ShortcutBindings: Equatable, Sendable {
     self.copyLast = copyLast
   }
 
+  /// Whether a key going down with `rawFlags` is one of the configured chord shortcuts Carbon
+  /// currently holds (#3544 P4): its key AND its effective modifiers match a role whose chord
+  /// survives the existing arbitration (`ShortcutMatcher.mayHoldCarbonChord`: armed, registrable,
+  /// not displaced by a higher role's equal chord or bare-modifier prefix). Such a key while
+  /// dictating is the user reaching for that shortcut, never interference. Matching only; Carbon
+  /// still owns dispatch, and nothing is swallowed.
+  package func matchesChord(
+    keyCode: UInt16, rawFlags: UInt64, armed: Set<ShortcutRole>
+  ) -> Bool {
+    let held = NSEvent.ModifierFlags(rawValue: UInt(truncatingIfNeeded: rawFlags))
+      .intersection(ShortcutMatcher.carbonEffectiveModifiers)
+    return armed.contains { role in
+      guard ShortcutMatcher.mayHoldCarbonChord(role, in: self, armed: armed),
+        case .keyboard(let code, let modifiers) = self[role]
+      else { return false }
+      return code == keyCode
+        && modifiers.intersection(ShortcutMatcher.carbonEffectiveModifiers) == held
+    }
+  }
+
   /// What a fresh install has, read from `ShortcutRole.defaultBinding`.
   package static let shipped = ShortcutBindings(
     record: ShortcutRole.record.defaultBinding, cancel: ShortcutRole.cancel.defaultBinding,
@@ -197,6 +218,12 @@ package struct ShortcutBindings: Equatable, Sendable {
     case .pasteLast: pasteLast
     case .copyLast: copyLast
     }
+  }
+
+  /// The most severe role bound to a bare modifier (`ShortcutRole`'s declaration order is the
+  /// severity order), or nil when no role is and modifier events reach no shortcut at all.
+  package var bareModifierRoleAtRisk: ShortcutRole? {
+    ShortcutRole.allCases.first { self[$0].isBareModifier }
   }
 }
 
@@ -259,10 +286,10 @@ package enum ShortcutMatcher {
         == role
     }
     // **A CHORD IS NOT DISPATCHED ONLY BY CARBON, WHICH IS WHERE THE PREVIOUS VERSION OF THIS WAS
-    // WRONG.** Pressing Command-W emits the Command press FIRST, and the modifier monitor routes
+    // WRONG.** Pressing Command-W emits the Command press FIRST, and the keyboard listener routes
     // every bare modifier press through `role(forBareModifierKeyCode:)` before the W ever reaches
-    // Carbon (`HotkeyService.installModifierMonitors`, and the dispatch at its
-    // `ShortcutMatcher.role` call). So a chord whose modifier is a higher-priority role's BARE
+    // Carbon (`KeyboardListenerIngress`, through `KeyStateTracker`'s call to
+    // `ShortcutMatcher.role`). So a chord whose modifier is a higher-priority role's BARE
     // binding is intercepted: Record on bare Command and Quick Add on Command-W means the user
     // starts a recording while following this hint.
     //
@@ -556,5 +583,16 @@ extension ShortcutMatcher {
       }
     }
     return nil
+  }
+}
+
+extension ShortcutRole {
+  /// The roles whose shortcut may act now (#3544 P3): Quick Add, Paste Last and Copy Last are
+  /// unconditional (they belong to the app, not to a recording), record always, cancel only while a
+  /// recording has armed it. One owner for the service and the listener's classification.
+  package static func armedRoles(cancelArmed: Bool) -> Set<ShortcutRole> {
+    cancelArmed
+      ? [.record, .cancel, .quickAdd, .pasteLast, .copyLast]
+      : [.record, .quickAdd, .pasteLast, .copyLast]
   }
 }

@@ -165,20 +165,4 @@ struct EscapeRecoveryRowConnectorTests {
       "control: it still routes through the lapse guard, which IS in scope")
   }
 
-  /// Control: the assertions above must be capable of failing.
-  ///
-  /// Every check here is `contains` against a real file, so a wrong path returns
-  /// a file that exists but says nothing, and every expectation would report a
-  /// missing connector rather than a broken test. This pins that the files being
-  /// read are the ones being asserted about.
-  @Test("the sources under test are the real view files")
-  func sourcesAreTheRealFiles() throws {
-    let detail = try source(Self.detailPath)
-    let history = try source(Self.historyPath)
-
-    #expect(detail.contains("struct TranscriptDetailView"), "wrong file, or it was renamed")
-    #expect(history.contains("struct TranscriptRowView"), "wrong file, or it was renamed")
-    #expect(detail.count > 1_000, "a truncated read would pass every `contains` == false check")
-    #expect(history.count > 1_000)
-  }
 }

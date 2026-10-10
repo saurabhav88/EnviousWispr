@@ -1,0 +1,50 @@
+{
+  "ru": {
+    "verdict": "changed",
+    "markers": ["не", "нет", "без", "никогда", "ничего", "никакой", "никакая", "никаких", "ни", "включить", "включи", "включён", "выключить", "выключи", "выключен", "отключить", "отключи", "запустить", "начать", "остановить", "останови", "стоп", "показать", "покажи", "скрыть", "скрой", "выключено", "пауза", "продолжить", "больше", "меньше", "громче", "тише", "быстрее", "медленнее", "вверх", "вниз", "снова", "увеличить", "уменьшить"],
+    "stop": ["в", "и", "на", "с", "что", "я", "по", "а", "как", "из", "это", "за", "для", "о", "к", "но", "то", "у", "его", "он", "от", "так", "же", "мы", "ты", "был", "было", "мне", "меня", "бы", "или", "их", "они", "будет", "кто", "чтобы", "есть", "она", "во", "вы", "может", "были", "со", "была", "также", "вот", "её", "быть", "где", "этом", "вас", "можно", "того", "этого", "том", "ну", "нас", "об", "которые", "себя", "этот", "который", "ли", "тебя", "надо", "ему", "них", "тоже", "почему", "тем", "эти", "им", "этой", "потому", "нужно", "себе", "такой", "тебе", "него", "однако", "свою", "нам", "своей", "вам", "мой", "которых", "свои", "какой", "тот", "сделать", "конечно", "которая", "которой", "такое", "хотя", "чего", "ведь", "будут", "спасибо", "эта", "могут", "пожалуйста"],
+    "notes": "Added common state forms and politeness, corrected spelling, and removed meaningful quantities, timing, restrictions, directions and content words from stop."
+  },
+  "sk": {
+    "verdict": "changed",
+    "markers": ["nie", "ani", "bez", "nikdy", "nič", "žiadny", "žiadna", "žiadne", "väčšie", "zapnúť", "zapni", "vypnúť", "vypni", "zapnutý", "vypnutý", "povoliť", "zakázať", "spustiť", "spusti", "zastaviť", "zastav", "zobraziť", "menšie", "skryť", "stlmiť", "pozastaviť", "pokračovať", "viac", "menej", "hlasnejšie", "tichšie", "rýchlejšie", "pomalšie", "väčší", "menší", "hore", "dole", "znova", "zvýšiť", "znížiť"],
+    "stop": ["v", "sa", "na", "je", "že", "ako", "aj", "o", "si", "som", "ale", "za", "tak", "od", "čo", "bol", "pre", "sú", "k", "alebo", "sme", "ich", "vo", "aby", "ktorý", "ktoré", "ma", "jeho", "bola", "bude", "ktorá", "bolo", "byť", "vám", "jej", "so", "ho", "i", "zo", "mi", "však", "ste", "kde", "boli", "môže", "nás", "vás", "no", "tiež", "tým", "toho", "tom", "či", "ju", "ja", "tento", "nám", "niečo", "preto", "možno", "pretože", "tomu", "mať", "mu", "mali", "teda", "ten", "toto", "u", "svoje", "asi", "ktorú", "tejto", "takže", "ktorej", "lebo", "mám", "tie", "svoju", "nich", "ktorých", "máte", "môžete", "kto", "majú", "mala", "ktorí", "budú", "musí", "tieto", "mňa", "svoj", "vaše", "prečo", "máme", "túto", "ku", "tohto", "tomto", "budete", "naše", "svojho", "táto", "prosím", "ďakujem"],
+    "notes": "Removed Czech není, added Slovak negation and common inflections, restored diacritics, and excluded meaningful restrictions, quantities, timing and alternatives from stop."
+  },
+  "sl": {
+    "verdict": "changed",
+    "markers": ["ne", "ni", "niso", "brez", "nikoli", "nič", "noben", "nobena", "nobeno", "vklopi", "vklopiti", "izklopi", "izklopiti", "omogoči", "onemogoči", "začni", "zaženi", "ustavi", "povečaj", "prekini", "pokaži", "prikaži", "skrij", "utišaj", "premor", "nadaljuj", "več", "manj", "glasneje", "tišje", "hitreje", "počasneje", "večji", "manjši", "gor", "dol", "bolj", "zmanjšaj", "znova", "spet"],
+    "stop": ["je", "v", "na", "se", "da", "so", "za", "pa", "tudi", "lahko", "kot", "iz", "bi", "bo", "od", "tako", "ali", "o", "bil", "jih", "kar", "ga", "si", "smo", "bila", "sem", "saj", "ta", "tega", "jo", "bilo", "bodo", "ker", "kjer", "sta", "kaj", "naj", "vam", "kako", "nas", "mi", "te", "k", "boste", "nam", "vendar", "bomo", "vas", "mu", "bili", "seveda", "ti", "ste", "jim", "mora", "biti", "me", "sicer", "tam", "prosim", "hvala"],
+    "notes": "Added comparison and size commands, corrected diacritics, and removed quantities, restrictions, timing, positioning and content words from stop."
+  },
+  "sv": {
+    "verdict": "changed",
+    "markers": ["inte", "bort", "nej", "utan", "aldrig", "inget", "ingen", "inga", "ingenting", "på", "av", "slå", "sätt", "aktivera", "inaktivera", "avaktivera", "starta", "stoppa", "stäng", "visa", "dölj", "tysta", "pausa", "fortsätt", "återuppta", "mer", "mindre", "högre", "lägre", "tystare", "snabbare", "långsammare", "större", "upp", "ner", "ned", "igen", "öka", "minska", "sluta"],
+    "stop": ["är", "det", "att", "och", "i", "jag", "en", "som", "med", "har", "om", "så", "till", "de", "ett", "kan", "vi", "men", "man", "var", "ska", "vad", "från", "mig", "eller", "han", "hur", "kommer", "vill", "sig", "vara", "där", "får", "finns", "ha", "skulle", "min", "dig", "hade", "ju", "gör", "få", "blir", "göra", "detta", "ni", "också", "hon", "måste", "även", "någon", "något", "bli", "kanske", "vid", "varför", "din", "sin", "väl", "fick", "oss", "varit", "mitt", "blev", "dom", "själv", "några", "denna", "tack", "mina", "vilket", "genom", "hans", "dessa", "er", "sina", "sitt", "gjort", "kunna", "kunde", "ditt", "fått", "gjorde", "honom", "vem", "snälla"],
+    "notes": "Added removal and stopping commands, replaced formal ej within the cap, restored diacritics, and excluded meaningful amounts, timing, directions and feature-related words from stop."
+  },
+  "tr": {
+    "verdict": "changed",
+    "markers": ["hayır", "değil", "yok", "olmadan", "asla", "hiç", "hiçbir", "aç", "açma", "açık", "kapat", "kapatma", "kapalı", "etkinleştir", "dışı", "devre", "başlat", "tekrar", "durdur", "yeniden", "dur", "göster", "artır", "gizle", "azalt", "sustur", "sessize", "duraklat", "devam", "daha", "fazla", "az", "yüksek", "düşük", "hızlı", "yavaş", "büyük", "küçük", "yukarı", "aşağı"],
+    "stop": ["ve", "bir", "bu", "için", "de", "da", "ile", "ne", "gibi", "olarak", "o", "olan", "ben", "ama", "ya", "sen", "ise", "oldu", "bile", "nasıl", "şey", "benim", "böyle", "mı", "seni", "beni", "bana", "tarafından", "veya", "biz", "olduğunu", "diye", "kendi", "olduğu", "olur", "şu", "sana", "neden", "olmak", "çünkü", "ancak", "biri", "bunu", "işte", "olsun", "öyle", "senin", "siz", "bizim", "bunun", "eden", "onu", "hem", "yani", "ayrıca", "etti", "ilgili", "yapılan", "bize", "fakat", "kim", "mu", "sizin", "ediyor", "lütfen", "burada", "onun", "üzere", "bizi", "gerek", "sizi", "mi", "mü", "teşekkürler"],
+    "notes": "Added negative commands, repetition and adjustment words, protected devre dışı, restored spelling, and removed meaningful quantities, timing, restrictions and absence from stop."
+  },
+  "uk": {
+    "verdict": "changed",
+    "markers": ["не", "ні", "немає", "нема", "без", "ніколи", "нічого", "жоден", "жодна", "жодних", "увімкнути", "увімкни", "увімкнено", "вимкнути", "вимкни", "вимкнено", "відключити", "запустити", "почати", "зупинити", "зупини", "стоп", "показати", "покажи", "приховати", "приховай", "пауза", "продовжити", "більше", "менше", "гучніше", "тихіше", "швидше", "повільніше", "вгору", "вниз", "знову", "повторно", "збільшити", "зменшити"],
+    "stop": ["з", "що", "та", "це", "як", "про", "для", "від", "так", "але", "він", "є", "ви", "ми", "і", "було", "вони", "із", "чи", "який", "ти", "був", "її", "також", "їх", "де", "б", "вона", "те", "бути", "цей", "була", "були", "вас", "вам", "навіть", "от", "нам", "чого", "такий", "в", "у", "на", "й", "я", "мені", "будь", "ласка", "дякую"],
+    "notes": "Added common state forms and obvious fillers, corrected Ukrainian spelling, and removed timing, positioning, totality and alternatives from stop."
+  },
+  "vi": {
+    "verdict": "changed",
+    "markers": ["không", "ko", "k", "chẳng", "chả", "chưa", "đừng", "thiếu", "bật", "tắt", "mở", "đóng", "dừng", "ngừng", "hiện", "ẩn", "im", "ngắt", "tiếp", "thêm", "bớt", "nhiều", "ít", "hơn", "to", "nhỏ", "lớn", "nhanh", "chậm", "tăng", "giảm", "lên", "xuống", "lại", "nữa", "khỏi"],
+    "stop": ["là", "và", "của", "được", "này", "với", "ở", "để", "như", "nhưng", "làm", "sẽ", "họ", "tại", "đó", "cũng", "sự", "tôi", "bị", "phải", "ông", "mà", "thì", "việc", "điều", "mình", "bạn", "theo", "anh", "đây", "nên", "vì", "nó", "cần", "đang", "biết", "do", "nào", "vậy", "hoặc", "rằng", "gì", "muốn", "cái", "em", "xin", "vui", "lòng"],
+    "notes": "Removed formal or unnatural command markers, added khỏi, restored unambiguous fillers, and excluded accent-ambiguous words and meaningful quantities, timing, directions and dictation terms from stop."
+  },
+  "zh": {
+    "verdict": "changed",
+    "markers": ["不", "没", "没有", "别", "不是", "无", "不要", "不用", "从不", "再", "关闭", "开启", "打开", "关", "开", "启用", "禁用", "启动", "开始", "停止", "停", "又", "显示", "隐藏", "静音", "取消", "暂停", "继续", "恢复", "多", "少", "更", "大", "小", "快", "慢", "上", "下", "增加", "减少"],
+    "stop": ["的", "是", "在", "了", "我", "和", "也", "你", "为", "他", "这", "与", "对", "就", "个", "说", "吗", "我们", "会", "要", "来", "被", "他们", "而", "可以", "但", "于", "什么", "这个", "将", "并", "能", "让", "从", "以", "她", "着", "自己", "给", "把", "去", "或", "因为", "之", "做", "及", "地", "由", "怎么", "用", "就是", "这些", "得", "所", "这样", "它", "那", "可", "吧", "其", "该", "啊", "们", "却", "但是", "谁", "以及", "你们", "为了", "所以", "跟", "请", "为什么", "呢", "如何", "其中", "谢谢"],
+    "notes": "Protected negation and repetition within the cap, added politeness, and removed meaningful quantities, restrictions, timing, directions, numerals and content words from stop."
+  }
+}

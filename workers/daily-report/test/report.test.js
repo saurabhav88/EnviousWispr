@@ -39,8 +39,6 @@ import {
   releaseAgeInWindow,
 } from "../src/version-scorecard.js";
 import { formatScorecard, formatScorecardUnavailable } from "../src/report-format.js";
-import { SENTRY_CALLS_PER_DIGEST } from "../../reporting/sentry-section.js";
-import { SENTRY_MAX_ATTEMPTS } from "../../shared/sentry.js";
 import { sentryWindowFor } from "../src/index.js";
 // #1838 chunk 1: the PostHog transport/concurrency/production-filter
 // infrastructure now has ONE owner. Tests import it from there directly - a
@@ -1145,66 +1143,6 @@ const PUBLISHED_APPCAST = appcastXml([
 ]);
 const SENTRY_HOST = "https://us.sentry.io";
 
-/** Answers the five Sentry calls the digest section makes (#1965).
- *
- * The aggregate bodies carry `meta.fields`, because the REAL endpoint returns
- * it on an EMPTY response too - a double thinner than production would slip
- * straight past the shape check that exists to stop a malformed empty body
- * reading as "no errors today". Measured against live Sentry 2026-08-06.
- *
- * The release rows are the real 2026-08-05 production split, so the resolved
- * release line in these tests is the one the rule actually produces rather than
- * a shape invented to match it. */
-const SENTRY_RELEASE_ROWS = [
-  { release: "com.enviouswispr.app@2.4.3", "count_unique(user)": 8, "count()": 19 },
-  { release: "com.enviouswispr.app@2.4.1", "count_unique(user)": 3, "count()": 12 },
-  { release: "com.enviouswispr.app@2.3.1", "count_unique(user)": 2, "count()": 5 },
-];
-// `error.type`, not `title`: #2023 changed the field the section requests and
-// validates, so a double still carrying `title` describes a response the live
-// endpoint no longer returns. Empty on handled errors, which both of these are.
-const SENTRY_PROBLEM_ROWS = [
-  {
-    issue: "ENVIOUSWISPR-2C", "issue.id": 1, "error.type": [],
-    "error.category": "audio_capture_stalled", level: "error",
-    "count_unique(user)": 7, "count()": 19,
-  },
-  {
-    issue: "ENVIOUSWISPR-24", "issue.id": 2, "error.type": [],
-    "error.category": "paste_failed", level: "error",
-    "count_unique(user)": 1, "count()": 1,
-  },
-];
-
-function sentryMeta(names) {
-  return { fields: Object.fromEntries(names.map((n) => [n, "integer"])) };
-}
-
-function sentryAnswer(target) {
-  if (target.includes("/issues/")) {
-    return fakeResponse(200, [{ shortId: "ENVIOUSWISPR-4P", firstSeen: "2026-07-17T12:00:00Z" }]);
-  }
-  if (target.includes("field=release")) {
-    return fakeResponse(200, {
-      data: SENTRY_RELEASE_ROWS,
-      meta: sentryMeta(["release", "count_unique(user)", "count()"]),
-    });
-  }
-  if (target.includes("field=issue")) {
-    return fakeResponse(200, {
-      data: SENTRY_PROBLEM_ROWS,
-      meta: sentryMeta(["error.type", "issue.id", "error.category", "level", "count_unique(user)", "count()"]),
-    });
-  }
-  // The two headline aggregates differ only by window; the prior one starts a
-  // day earlier than the reported day.
-  const isPrior = target.includes(encodeURIComponent("2026-07-16T04:00:00"));
-  return fakeResponse(200, {
-    data: [{ "count_unique(user)": isPrior ? 6 : 8, "count()": 20 }],
-    meta: sentryMeta(["count_unique(user)", "count()"]),
-  });
-}
-
 function appcastResponse(status, xml, { onCancel } = {}) {
   return {
     ok: status >= 200 && status < 300,
@@ -1215,12 +1153,7 @@ function appcastResponse(status, xml, { onCancel } = {}) {
   };
 }
 
-/** Installs a global fetch that lets every query (including the dev_ids
- * preflight, both scorecard queries, the GitHub release list and the Discord
- * post) succeed, and lets the caller redirect any one of them. `seen` records
- * every PostHog query name in order; `requests` records every outbound call so
- * a test can count what actually left the worker. Returns a restore fn. */
-function mockPostHog({ failQuery, failWith, appcast, discordStatus, onDiscord, sentry } = {}) {
+function mockPostHog({ failQuery, failWith, appcast, discordStatus, onDiscord } = {}) {
   const realFetch = globalThis.fetch;
   const seen = [];
   const requests = [];
@@ -1230,11 +1163,8 @@ function mockPostHog({ failQuery, failWith, appcast, discordStatus, onDiscord, s
   // before answering, so two tasks genuinely coexist and a raised ceiling shows
   // up here instead of being invisible to an instantly-resolving mock.
   let inFlight = 0;
-  // Counted PER VENDOR since #1965. The ceiling this worker is scarce against
-  // is PostHog's 3-concurrent PROJECT limit, and Sentry deliberately runs
-  // OUTSIDE that limiter because it is a different vendor with its own limits.
-  // A single combined counter would measure a ceiling nobody ever promised, and
-  // "fix" it by relaxing the one real invariant this test exists to hold.
+  // Keep vendor-specific instrumentation: PostHog concurrency remains a
+  // constraint, while any Sentry call from performance is now a defect (#3547).
   let posthogInFlight = 0;
   let sentryInFlight = 0;
   const state = { maxInFlight: 0, maxPostHogInFlight: 0, maxSentryInFlight: 0 };
@@ -1266,9 +1196,7 @@ function mockPostHog({ failQuery, failWith, appcast, discordStatus, onDiscord, s
       return appcastResponse(200, appcast ?? PUBLISHED_APPCAST);
     }
     if (target.startsWith(SENTRY_HOST)) {
-      if (sentry instanceof Error) throw sentry;
-      if (typeof sentry === "number") return fakeResponse(sentry, {});
-      return sentryAnswer(target);
+      throw new Error("Performance mode must not request Sentry");
     }
 
     const body = init?.body ? JSON.parse(init.body) : {};
@@ -1327,13 +1255,7 @@ const TEST_ENV = {
   POSTHOG_PERSONAL_API_KEY: "k",
   APPCAST_URL,
   DISCORD_WEBHOOK_URL: "https://discord.example/webhook",
-  // #1965. Present in the base env so a "clean run" test exercises the Sentry
-  // section for real. An env WITHOUT these is a legitimate deployment state
-  // (the secret has not been installed yet) and is covered by its own test.
-  SENTRY_ORG: "envious-labs-llc",
-  SENTRY_PROJECT_ID: "4511097112428544",
-  SENTRY_PROJECT_SLUG: "enviouswispr",
-  SENTRY_AUTH_TOKEN: "sentry-test-token",
+
 };
 const TEST_WIN = "timestamp >= '2026-07-17 04:00:00' AND timestamp < '2026-07-18 04:00:00'";
 const TEST_END = new Date("2026-07-18T04:00:00Z");
@@ -1684,30 +1606,16 @@ test("worst-case explicit fetch count stays under Cloudflare's 50-subrequest cap
   const ADOPTION_QUERIES = 7; // installs, onboard_activate, totals, engine_and_tier_b, geo, top5, tier_a
   const SCORECARD_QUERIES = 2; // additive (day grain) + non-additive (window grain)
   const GITHUB_REQUESTS = 1; // the published release list
-  // #1965. FIVE fixed Sentry calls, and the number that matters is that it is
-  // FIXED: releases, problems, the new-issue set, and two headline aggregates.
-  // No Sentry path fans out per issue, so this does not move with error volume.
-  const SENTRY_REQUESTS = SENTRY_CALLS_PER_DIGEST;
   const MAX_ATTEMPTS_PER_REQUEST = 3;
-  // READ FROM THE TRANSPORT, never restated. A literal 2 here would keep this
-  // assertion green while the real retry budget changed underneath it, which is
-  // precisely the drift that makes a subrequest-cap check worthless.
-  // Sentry retries twice, not three times, so this arithmetic keeps headroom
-  // under the 50 cap: at three it lands on 49, and the next query added
-  // anywhere in this worker would take the WHOLE report over.
-  const SENTRY_ATTEMPTS = SENTRY_MAX_ATTEMPTS;
-  assert.equal(SENTRY_ATTEMPTS, 2, "the Sentry retry budget changed; re-check the 50-subrequest cap");
+  // #3547: Sentry has independent invocations; zero Sentry requests here.
   const DISCORD_POSTS = 1; // one atomic payload, one attempt, never a retry
 
-  assert.equal(SENTRY_REQUESTS, 5, "the Sentry call budget is five fixed requests");
 
   const worstCase =
     (PREFLIGHT_QUERIES + ADOPTION_QUERIES + SCORECARD_QUERIES + GITHUB_REQUESTS) *
-      MAX_ATTEMPTS_PER_REQUEST +
-    SENTRY_REQUESTS * SENTRY_ATTEMPTS +
-    DISCORD_POSTS;
+      MAX_ATTEMPTS_PER_REQUEST + DISCORD_POSTS;
 
-  assert.equal(worstCase, 44, "the designed worst case is exactly 44 outbound requests");
+  assert.equal(worstCase, 34, "performance worst case is exactly 34 outbound requests");
   assert.ok(worstCase <= 50 - 5, "keep at least one section's worth of headroom under the cap");
   assert.ok(worstCase < 50, "worst-case fetch count must stay under Cloudflare's 50-subrequest-per-request cap");
 
@@ -1716,7 +1624,7 @@ test("worst-case explicit fetch count stays under Cloudflare's 50-subrequest cap
   const mock = mockPostHog({});
   try {
     await runReport(TEST_ENV, "2026-07-17", { hogqlOpts: { sleepFn: async () => {} } });
-    assert.equal(mock.requests.length, 17, `expected 17 clean-run requests, got ${mock.requests.length}`);
+    assert.equal(mock.requests.length, 12, `expected 12 performance requests, got ${mock.requests.length}`);
     assert.deepEqual(
       [...mock.seen].sort(),
       ["dev_ids", "engine_and_tier_b", "geo", "installs", "onboard_activate",
@@ -3369,7 +3277,7 @@ test("ranked-change formatting freezes normalized raw-fallback and unavailable c
 // limiter, one payload, one request. Every test below exists because the
 // alternative is a report that looks entirely reasonable and is not.
 
-test("a clean run resolves ONE context and posts ONE payload carrying all three sections", async () => {
+test("a clean performance run resolves ONE context and posts ONE payload carrying its two sections", async () => {
   const mock = mockPostHog({});
   try {
     const content = await runReport(TEST_ENV, "2026-07-17", { hogqlOpts: { sleepFn: async () => {} } });
@@ -3378,21 +3286,13 @@ test("a clean run resolves ONE context and posts ONE payload carrying all three 
     const payload = mock.discordPayloads[0];
     assert.equal(payload.content, content);
     assert.equal(payload.content, reportHeader("2026-07-17"));
-    assert.equal(payload.embeds.length, 3, "exactly three embeds");
+    assert.equal(payload.embeds.length, 2, "exactly two performance embeds");
     assert.equal(payload.embeds[0].title, "Adoption");
     assert.match(payload.embeds[1].title, /^Version check/);
-    assert.equal(payload.embeds[2].title, "Errors, yesterday");
     // Real sections, not the unavailable copy.
     assert.match(payload.embeds[0].description, /Total users: 1 people used the app that day\./);
     // Both releases out the whole week: bare versions in the header, no age.
     assert.match(payload.embeds[1].description, /^2\.4\.1 vs 2\.4\.0$/m);
-    // The Sentry section is REAL here, not the unavailable copy: the release
-    // line resolves to 2.4.0 from the fixture's own per-release split, and both
-    // groups render.
-    assert.match(payload.embeds[2].description, /^\d+ (person|people) hit an error on 2\.4\.0 or newer, /m);
-    assert.match(payload.embeds[2].description, /Lost the dictation:/);
-    assert.match(payload.embeds[2].description, /7 people: microphone capture stalled/);
-    assert.match(payload.embeds[2].description, /Worked, but worse:/);
     for (const embed of payload.embeds) {
       assert.doesNotMatch(embed.description, /unavailable today/);
     }
@@ -3405,19 +3305,19 @@ test("a clean run resolves ONE context and posts ONE payload carrying all three 
   }
 });
 
-test("a clean run's seventeen requests go to the expected queries, repository, Sentry and webhook", async () => {
+test("a clean performance run's twelve requests contain no Sentry dependency", async () => {
   const mock = mockPostHog({});
   try {
     await runReport(TEST_ENV, "2026-07-17", { hogqlOpts: { sleepFn: async () => {} } });
 
-    assert.equal(mock.requests.length, 17);
+    assert.equal(mock.requests.length, 12);
     const posthog = mock.requests.filter((u) => u.includes("posthog.com"));
     const appcast = mock.requests.filter((u) => u === APPCAST_URL);
     const sentry = mock.requests.filter((u) => u.startsWith(SENTRY_HOST));
     const discord = mock.requests.filter((u) => u === TEST_ENV.DISCORD_WEBHOOK_URL);
     assert.equal(posthog.length, 10, "1 dev-ID + 7 adoption + 2 scorecard");
     assert.equal(appcast.length, 1, "the release list is fetched exactly once");
-    assert.equal(sentry.length, SENTRY_CALLS_PER_DIGEST, "the fixed Sentry budget, never a per-issue fan-out");
+    assert.equal(sentry.length, 0, "performance never queries Sentry");
     assert.equal(discord.length, 1, "one delivery");
     assert.equal(posthog.length + appcast.length + sentry.length + discord.length, mock.requests.length,
       "no unaccounted outbound request");
@@ -3510,22 +3410,16 @@ test("PostHog concurrency never exceeds two ACROSS both sections, not two per se
   }
 });
 
-test("Sentry runs alongside PostHog, not inside its limiter, and stays well under its own ceiling", async () => {
-  // The point of running outside: a Sentry read must never occupy a PostHog
-  // slot. The evidence is that the two overlap - total in-flight exceeds
-  // PostHog's own ceiling - while Sentry stays far below its 15-concurrent
-  // limit. Both directions matter: if these were serialised, the Sentry section
-  // would add its full latency to every report.
+test("performance does not read Sentry credentials or contact that vendor", async () => {
   const mock = mockPostHog({});
+  const env = { ...TEST_ENV };
+  Object.defineProperty(env, "SENTRY_AUTH_TOKEN", { get() { throw new Error("performance read a Sentry credential"); } });
   try {
-    await runReport(TEST_ENV, "2026-07-17", { hogqlOpts: { sleepFn: async () => {} } });
-    assert.ok(mock.state.maxSentryInFlight >= 2, "the Sentry stages must run concurrently");
-    assert.ok(mock.state.maxSentryInFlight <= 3, "no Sentry stage exceeds three in flight");
-    assert.ok(mock.state.maxInFlight > mock.state.maxPostHogInFlight,
-      "Sentry must overlap PostHog rather than queue behind it");
-  } finally {
-    mock.restore();
-  }
+    await runReport(env, "2026-07-17", { hogqlOpts: { sleepFn: async () => {} } });
+    assert.equal(mock.state.maxSentryInFlight, 0);
+    assert.equal(mock.requests.filter((u) => u.startsWith(SENTRY_HOST)).length, 0);
+    assert.equal(mock.discordPayloads.length, 1);
+  } finally { mock.restore(); }
 });
 
 test("an adoption rejection releases its slot and the scorecard still runs and renders", async () => {
@@ -3589,22 +3483,13 @@ test("every section failing still posts exactly one message, with each marked un
     const res = await trigger("&date=2026-07-17");
     assert.equal(res.status, 500);
     assert.equal(mock.discordPayloads.length, 1, "one message, never one per failure");
-    const [adoption, scorecard, sentry] = mock.discordPayloads[0].embeds;
+    const [adoption, scorecard] = mock.discordPayloads[0].embeds;
     assert.match(adoption.title, /unavailable today/);
     assert.match(scorecard.title, /unavailable today/);
-    // Sentry is unaffected by a PostHog 401 and must still render for real.
-    // A section that failed BECAUSE a different vendor failed would be a
-    // coupling this design does not have.
-    assert.equal(sentry.title, "Errors, yesterday");
-    // Checked against the unavailable COPY, not the word "unavailable", so a
-    // healthy section that happens to use the word is never confused with a
-    // broken one.
-    assert.doesNotMatch(sentry.title, /unavailable today/);
-    assert.doesNotMatch(sentry.description, /could not be measured/);
-    assert.match(sentry.description, /^\d+ (person|people) hit an error on 2\.4\.0 or newer, /m);
-    // Still a report, still three embeds: the founder learns that nothing was
-    // measured, which is not the same as learning that everything was zero.
-    assert.equal(mock.discordPayloads[0].embeds.length, 3);
+    // Both performance sections report their own failure; Sentry is a
+    // separate invocation and receives no calls from this failing mode.
+    assert.equal(mock.discordPayloads[0].embeds.length, 2);
+    assert.equal(mock.requests.filter((u) => u.startsWith(SENTRY_HOST)).length, 0);
     // Neither half may reassure the founder about the other. Both failed, so a
     // cross-reference would print two calm, mutually contradicting sentences.
     assert.doesNotMatch(adoption.description, /unaffected/);

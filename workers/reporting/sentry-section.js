@@ -1,7 +1,7 @@
 /**
  * The Sentry digest section (issue #1965).
  *
- * CONSUMERS: workers/daily-report (yesterday), workers/weekly-digest (7 days).
+ * CONSUMERS: weekly-digest recap; daily-report shared labels/version/window helpers.
  *
  * DEPLOY RULE: each worker bundles its own copy at deploy time, so editing this
  * file changes nothing in production until BOTH consumers are redeployed. See
@@ -13,16 +13,10 @@
  * The Sentry HTTP transport those judgements sit on top of IS in
  * workers/shared/sentry.js, which is the correct half to share.
  *
- * WHY THE SPIKE CARD DOES NOT IMPORT THIS: workers/sentry-triage renders a
- * different thing from a different query - dev AND production rather than
- * production only, a trailing hour rather than a day or a week, and no
- * lost/degraded grouping at all. It shares the transport and nothing else.
- *
- * REPORTS, NEVER ALERTS. No thresholds, no colours, no healthy/unhealthy verdict.
- * The digest that this section joins replaced a threshold-alarm worker, and that
- * shape is exactly what made the old health check useless to its one reader
- * (workers/daily-report/src/index.js header). Spike alerting is owned by
- * sentry-triage, which is a different contract with a different deadline.
+ * REPORTS, NEVER ALERTS. No thresholds, colours or healthy/unhealthy verdict.
+ * Native Sentry owns immediate notifications after #3547. Daily occurrence
+ * reporting has its own broader policy in sentry-writeup.js; it reuses this
+ * file's label catalog and helpers without inheriting the weekly release scope.
  *
  * Privacy: counts, category labels and version numbers only. Never a stack
  * trace, a user id, a message body or anything a user dictated.

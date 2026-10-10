@@ -42,7 +42,8 @@ struct RecordingChimeWiringTests {
   static func cardShape(in tree: SourceFileSyntax) -> CardShape? {
     guard let card = structDecl("RecordingChimeCard", in: tree) else { return nil }
     var shape = CardShape()
-    if let body = property("body", of: card),
+    // #3482: `body` adds the card's Settings Map registration to `card`, which holds the layout.
+    if let body = property("card", of: card) ?? property("body", of: card),
       let stack = firstCall(named: "ZStack", in: body),
       let children = stack.trailingClosure?.statements
     {

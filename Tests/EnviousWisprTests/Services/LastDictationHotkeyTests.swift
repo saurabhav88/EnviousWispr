@@ -65,7 +65,7 @@ struct LastDictationHotkeyTests {
     let (service, effects) = makeHotkeyService(
       telemetry: HotkeyTelemetrySink(
         registrationFailed: { _, _, _, _ in },
-        pressed: { trigger, _, keyShape, _, action in
+        pressed: { trigger, _, keyShape, _, action, _ in
           spy.presses.append((trigger, keyShape, action))
         }))
     if installCallbacks {
@@ -299,14 +299,15 @@ struct LastDictationHotkeyTests {
 
   @Test("Rebound to a bare modifier, Paste fires on that key's release")
   func bareModifierPaste() async {
-    let (service, _, spy) = makeService()
+    let (service, effects, spy) = makeService()
+    let keys = ListenerKeyboard(effects)
     service.pasteLastKeyCode = ModifierKeyCodes.rightCommand
     service.pasteLastModifiers = []
     service.reapplyAppShortcutBinding(.pasteLast)
 
-    service.handleFlagsChangedValues(keyCode: ModifierKeyCodes.rightCommand, flags: [.command])
+    await keys.press(ModifierKeyCodes.rightCommand)
     #expect(fired(spy, "paste_last") == 0)
-    service.handleFlagsChangedValues(keyCode: ModifierKeyCodes.rightCommand, flags: [])
+    await keys.release(ModifierKeyCodes.rightCommand)
     #expect(fired(spy, "paste_last") == 1)
     #expect(await spy.wait(until: { spy.pastes == 1 }))
     service.stop()
@@ -314,26 +315,28 @@ struct LastDictationHotkeyTests {
 
   /// The physical sequence the aggregate flag hides: Left Command held throughout, Right Command
   /// pressed and released. Right Command's release still carries `.command`, so a reading of the
-  /// flag alone calls it a second press and Paste never fires.
+  /// flag alone (the retired `NSEvent` path) called it a second press and Paste never fired. The
+  /// listener reads Right Command's own side bit.
   @Test("Bare Right Command Paste still fires on its release while Left Command is held")
   func bareModifierReleaseWithOtherSideHeld() async {
-    let (service, _, spy) = makeService()
+    let (service, effects, spy) = makeService()
+    let keys = ListenerKeyboard(effects)
     service.pasteLastKeyCode = ModifierKeyCodes.rightCommand
     service.pasteLastModifiers = []
     service.reapplyAppShortcutBinding(.pasteLast)
 
-    service.handleFlagsChangedValues(keyCode: ModifierKeyCodes.leftCommand, flags: [.command])
-    service.handleFlagsChangedValues(keyCode: ModifierKeyCodes.rightCommand, flags: [.command])
+    await keys.press(ModifierKeyCodes.leftCommand)
+    await keys.press(ModifierKeyCodes.rightCommand)
     #expect(fired(spy, "paste_last") == 0)
-    service.handleFlagsChangedValues(keyCode: ModifierKeyCodes.rightCommand, flags: [.command])
-    #expect(fired(spy, "paste_last") == 1, "Right Command's release, read as a transition")
-    service.handleFlagsChangedValues(keyCode: ModifierKeyCodes.leftCommand, flags: [])
+    await keys.release(ModifierKeyCodes.rightCommand)
+    #expect(fired(spy, "paste_last") == 1, "Right Command's release, read from its side bit")
+    await keys.release(ModifierKeyCodes.leftCommand)
     #expect(fired(spy, "paste_last") == 1, "Left Command coming up is not this shortcut")
     #expect(await spy.wait(until: { spy.pastes == 1 }))
 
     // And the next ordinary press and release still works: nothing was left latched.
-    service.handleFlagsChangedValues(keyCode: ModifierKeyCodes.rightCommand, flags: [.command])
-    service.handleFlagsChangedValues(keyCode: ModifierKeyCodes.rightCommand, flags: [])
+    await keys.press(ModifierKeyCodes.rightCommand)
+    await keys.release(ModifierKeyCodes.rightCommand)
     #expect(fired(spy, "paste_last") == 2)
     service.stop()
   }

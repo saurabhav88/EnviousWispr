@@ -24,7 +24,7 @@ Weak audio lowers accuracy. Try a headset microphone, or move nearer to your Mac
 
 ### It is using the wrong microphone
 
-1. **Open the microphone settings.** Open EnviousWispr **Settings** and go to **Microphone**.
+1. **Open the microphone settings.** Open EnviousWispr and go to **Dictation Settings** > **Microphone**.
 2. **Pick your device.** The **Input device** list starts on **Auto**, which records from whatever input your Mac is set to. That may not be the one you are speaking into. Pick your microphone from the list. The picker then shows its name in place of Auto.
 
 ### The same name or word comes out wrong every time
@@ -38,8 +38,8 @@ This is the fix for a colleague's name that is spelled wrong every single time. 
 
 ### My language comes out wrong
 
-The **Fast** engine (Parakeet), which you start with, covers 25 European languages. For any other language, go to **Settings** > **Transcription**, click the **All Languages** card (WhisperKit), and pick your language. On All Languages, naming your language is more accurate than leaving it on auto-detect. See [Multi-Language Dictation](/help/multi-language-dictation/).
+The **Fast** engine (Parakeet), which you start with, covers 25 European languages. For any other language, go to **Dictation Settings** > **Engine**, click **Change**, pick the **All Languages** card (WhisperKit), set up its model, then pick your language. On All Languages, naming your language is more accurate than leaving it on auto-detect. See [Multi-Language Dictation](/help/multi-language-dictation/).
 
 ### Faster Transcription is making mistakes
 
-If you switched **Faster Transcription** on, switch it back off under **Settings** > **Transcription**. On the Fast engine, it roughly doubled the number of wrong words in our tests. See [Faster Transcription](/help/live-transcription-streaming-asr/).
+If you switched **Faster Transcription** on, switch it back off under **Dictation Settings** > **Engine**. On the Fast engine, it roughly doubled the number of wrong words in our tests. See [Faster Transcription](/help/live-transcription-streaming-asr/).

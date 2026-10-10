@@ -109,6 +109,7 @@ struct LocalEngineStatusCard<Middle: View>: View {
       // update ships one. Promising a single download was true only while EG-1 could never be
       // replaced, and that stopped being true the moment the automatic upgrade path existed.
       PolishRow(
+        notInSettingsMap: .statusLine,
         icon: "arrow.down.circle",
         title: presentation.primaryAction ?? engine.name,
         subtitle: String(
@@ -119,18 +120,19 @@ struct LocalEngineStatusCard<Middle: View>: View {
         )
       ) {
         SettingsActionButton(
-          title: LocalizedStringResource(
-            "Download", comment: "AI Polish, local model: starts the model download."),
+          verbatimTitle: SettingsMapRef.id(.localModelDownload).title,
           isEnabled: true, emphasis: .filled, size: .medium
         ) {
           runtime.startDownload()
         }
+        .settingsMapRegistration(.localModelDownload)
       }
     case .downloading(let fraction, let upgrade):
       // An UPGRADE says so and names the version arriving; a first install keeps the
       // original sentence (founder, 2026-08-17, from Live UAT). The version comes from
       // `presentation.versionLabel`, composed from the manifest, never a literal here.
       PolishRow(
+        notInSettingsMap: .statusLine,
         icon: "arrow.down.circle",
         title: EGOneRowPresentation.downloadingLine(
           engine: engine.name, upgrade: upgrade, downloadSize: engine.downloadSize),
@@ -148,8 +150,11 @@ struct LocalEngineStatusCard<Middle: View>: View {
               .font(.stHelper)
               .monospacedDigit()
               .foregroundStyle(Color.stTextSecondary)
-            if let action = presentation.primaryAction {
-              PolishTextAction(title: action) { runtime.cancelDownload() }
+            if presentation.primaryAction != nil {
+              PolishTextAction(title: SettingsMapRef.id(.localModelCancel).title) {
+                runtime.cancelDownload()
+              }
+              .settingsMapRegistration(.localModelCancel)
             }
           }
         })
@@ -157,35 +162,39 @@ struct LocalEngineStatusCard<Middle: View>: View {
     // already shipped for Parakeet and WhisperKit: paused, Resume anytime. No percentage:
     // the paused state carries no progress, so any number would be invented.
     case .paused:
-      PolishRow(icon: "pause.circle", title: presentation.message) {
-        if let action = presentation.primaryAction {
+      PolishRow(notInSettingsMap: .statusLine, icon: "pause.circle", title: presentation.message) {
+        if presentation.primaryAction != nil {
           SettingsActionButton(
-            title: LocalizedStringResource(stringLiteral: action), isEnabled: true,
-            emphasis: .filled, size: .medium
+            verbatimTitle: SettingsMapRef.id(.localModelResume).title, isEnabled: true, emphasis: .filled,
+            size: .medium
           ) {
             runtime.startDownload()
           }
+          .settingsMapRegistration(.localModelResume)
         }
       }
     // A working older EG-1 is installed and the pinned one is not, so AI cleanup is off until
     // this finishes. The old revision is deliberately NOT named: this app bundle does not
     // contain its manifest, so any name for it would be invented.
-    case .updatePaused:
+    case .updatePaused(let resumable, _):
       PolishRow(
+        notInSettingsMap: .statusLine,
         icon: "exclamationmark.triangle", iconTint: .stWarning, title: presentation.message,
         adaptsTrailing: true
       ) {
-        if let action = presentation.primaryAction {
+        if presentation.primaryAction != nil {
+          let action = SettingsMapRef.id(resumable ? .localModelResumeUpgrade : .localModelFinishUpgrade)
           SettingsActionButton(
-            title: LocalizedStringResource(stringLiteral: action), isEnabled: true,
-            emphasis: .filled, size: .medium
+            verbatimTitle: action.title, isEnabled: true, emphasis: .filled, size: .medium
           ) {
             runtime.startDownload()
           }
+          .settingsMapRegistration(action.id)
         }
       }
     case .verifying:
       PolishRow(
+        notInSettingsMap: .statusLine,
         icon: "checkmark.shield", showsSpinner: true,
         title: String(
           localized: "Verifying download integrity",
@@ -198,16 +207,18 @@ struct LocalEngineStatusCard<Middle: View>: View {
       }
     case .failed(let failure):
       PolishRow(
+        notInSettingsMap: .statusLine,
         icon: "xmark.octagon", iconTint: .stError, title: failureCopy(failure),
         adaptsTrailing: true
       ) {
-        if let action = presentation.primaryAction {
+        if presentation.primaryAction != nil {
           SettingsActionButton(
-            title: LocalizedStringResource(stringLiteral: action), isEnabled: true,
-            emphasis: .filled, size: .medium
+            verbatimTitle: SettingsMapRef.id(.localModelTryAgain).title, isEnabled: true, emphasis: .filled,
+            size: .medium
           ) {
             runtime.startDownload()
           }
+          .settingsMapRegistration(.localModelTryAgain)
         }
       }
     case .installed:
@@ -219,6 +230,7 @@ struct LocalEngineStatusCard<Middle: View>: View {
       // above already says Installed, and saying it twice was noise (founder review,
       // 2026-10-03).
       PolishRow(
+        notInSettingsMap: .statusLine,
         icon: "checkmark.circle",
         title: presentation.versionLabel ?? engine.name,
         subtitle: [engine.downloadSize, installedHealthLine]
@@ -229,12 +241,12 @@ struct LocalEngineStatusCard<Middle: View>: View {
             healthLabel
             PolishIconButton(
               systemName: "arrow.clockwise",
-              help: String(
-                localized: "Test that \(engine.name) is live",
-                comment: "AI Polish, local model: re-checks that the model answers. %@ is its name.")
+              help: SettingsMapRef.dynamic(.localModelTestLive, .localEngine(name: engine.name))
+                .title
             ) {
               runtime.activateAndProbe()
             }
+            .settingsMapRegistration(.localModelTestLive)
           }
         } else {
           // Installed and ready to be used BY A RUN. Deliberately not a health reading: this
@@ -251,6 +263,7 @@ struct LocalEngineStatusCard<Middle: View>: View {
     if engine.showsLowMemoryNote, isLowMemoryMac {
       PolishRowDivider()
       PolishRow(
+        notInSettingsMap: .statusLine,
         icon: "exclamationmark.triangle", iconTint: .stWarning,
         title: String(
           localized:

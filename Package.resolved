@@ -1,5 +1,5 @@
 {
-  "originHash" : "5f9f57adfbd11d253dcb1ce85ccf7b4c2a7be7dac53a1f4a6ad7af7dfdd63f74",
+  "originHash" : "432c5820c26bdf5f4855b6419e281846739577debaa6dd53e54d50d8e36be33d",
   "pins" : [
     {
       "identity" : "argmax-oss-swift",
@@ -32,6 +32,15 @@
       "location" : "https://github.com/saurabhav88/mlx-swift-lm.git",
       "state" : {
         "revision" : "644680cddf080bc3bfd1318798735646b184e127"
+      }
+    },
+    {
+      "identity" : "phonenumberkit",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/PhoneNumberKit/PhoneNumberKit.git",
+      "state" : {
+        "revision" : "faf1703e6fc71c699e911ff0e306c58ad7c756c0",
+        "version" : "5.0.11"
       }
     },
     {

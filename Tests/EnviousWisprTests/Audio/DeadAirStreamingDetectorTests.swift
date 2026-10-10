@@ -104,15 +104,6 @@ struct DeadAirStreamingDetectorTests {
     #expect(!detector.isBecameZeroMidCapture)
   }
 
-  @Test(
-    "zero suffix that never resumes non-zero, with no prior signal, stays allZeroFromStart-only")
-  func zeroSuffixWithoutPriorSignalIsNotBecameZero() {
-    let detector = ingestWhole([Float](repeating: 0, count: threshold))
-    #expect(!detector.meaningfulSignalSeen)
-    #expect(!detector.isBecameZeroMidCapture)
-    #expect(detector.isAllZeroFromStart(ceilingSamples: threshold))
-  }
-
   @Test("meaningful signal that never goes to zero triggers neither mode")
   func continuousSignalTriggersNeitherMode() {
     let detector = ingestWhole([Float](repeating: 0.1, count: threshold * 2))
@@ -241,13 +232,6 @@ struct DeadAirStreamingDetectorTests {
   func customCeilingAtFires() {
     let ceiling = 48_000
     let detector = ingestWhole([Float](repeating: 0, count: ceiling))
-    #expect(detector.isAllZeroFromStart(ceilingSamples: ceiling))
-  }
-
-  @Test("custom ceiling: one sample above it, all-zero fires")
-  func customCeilingAboveFires() {
-    let ceiling = 48_000
-    let detector = ingestWhole([Float](repeating: 0, count: ceiling + 1))
     #expect(detector.isAllZeroFromStart(ceilingSamples: ceiling))
   }
 

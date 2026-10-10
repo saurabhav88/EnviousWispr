@@ -6,10 +6,10 @@ section: "Permissions"
 order: 1
 keywords: ["accessibility not working", "permission wont stick", "toggle keeps turning off", "already allowed but still broken", "granted but not working", "reset permission", "auto-paste needs accessibility", "accessibility warning", "switch is on but nothing pastes"]
 related: ["granting-permissions-microphone-accessibility-and-automation", "paste-not-working"]
-updated: 2026-09-29
+updated: 2026-10-09
 deflection: "show_but_always_send"
 ---
-EnviousWispr uses the Accessibility permission to put your finished text into whatever app you are working in. Without it, your words are transcribed but nothing is pasted.
+EnviousWispr uses the Accessibility permission to recognize a modifier key used on its own as a keybind, such as Right Option or Globe, and to put your finished text into whatever app you are working in. Without it, such a keybind does not respond, and with any other keybind your words are transcribed but nothing is pasted.
 
 ### Turn on the Accessibility permission
 
@@ -17,7 +17,7 @@ EnviousWispr uses the Accessibility permission to put your finished text into wh
 2. Click **+** and add EnviousWispr from your Applications folder.
 3. Make sure the switch beside it is on.
 
-You do not need to restart EnviousWispr. The app notices within a few seconds. You will know it worked when your next dictation lands in the text box on its own.
+You do not need to restart EnviousWispr. The app notices within a few seconds. You will know it worked when your keybind starts a recording and your next dictation lands in the text box on its own.
 
 ### Accessibility stopped working after it was on
 

@@ -24,6 +24,7 @@ struct CustomWordSchemaTests {
     let word = try JSONDecoder().decode(CustomWord.self, from: json)
     #expect(word.frequencyUsed == 0, "Missing frequencyUsed defaults to 0")
     #expect(word.lastUsed == nil, "Missing lastUsed defaults to nil")
+    #expect(word.enrichmentPending == false, "Missing enrichmentPending defaults to false")
   }
 
   @Test("Encode writes frequencyUsed always; lastUsed only when present")
@@ -79,31 +80,6 @@ struct CustomWordSchemaTests {
     #expect(decoded.lastUsed == original.lastUsed)
     // Source flips to .user across persist boundary (Phase 0 §3.6, bible §19 Q12 documented scope reduction)
     #expect(decoded.source == .user)
-  }
-
-  @Test("Default init has frequencyUsed=0 and lastUsed=nil")
-  func defaultInitDefaults() {
-    let word = CustomWord(canonical: "Default")
-    #expect(word.frequencyUsed == 0)
-    #expect(word.lastUsed == nil)
-  }
-
-  @Test("Decode pre-#1701 JSON (no enrichmentPending) defaults to false")
-  func decodePreEnrichmentJSONDefaultsToFalse() throws {
-    let json = """
-      {
-        "id": "550e8400-e29b-41d4-a716-446655440000",
-        "canonical": "EnviousWispr",
-        "aliases": ["envious wispr"],
-        "category": "brand",
-        "priority": 0,
-        "forceReplace": false,
-        "caseSensitive": false
-      }
-      """.data(using: .utf8)!
-
-    let word = try JSONDecoder().decode(CustomWord.self, from: json)
-    #expect(word.enrichmentPending == false, "Missing enrichmentPending defaults to false")
   }
 
   @Test("Round-trip preserves enrichmentPending")

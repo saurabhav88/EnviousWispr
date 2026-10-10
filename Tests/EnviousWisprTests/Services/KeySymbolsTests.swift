@@ -54,15 +54,6 @@ import Testing
     #expect(ModifierKeyCodes.all.contains(ModifierKeyCodes.globe))
   }
 
-  @Test("Characterization: every member has a non-nil flag, by construction")
-  func everyMemberHasAFlag() {
-    for code in ModifierKeyCodes.all {
-      #expect(
-        ModifierKeyCodes.flag(for: code) != nil,
-        "member \(code) has no flag; press and release would be indistinguishable")
-    }
-  }
-
   /// The measured trap. Arrow keys really do carry `.function` in their event
   /// flags (probe, 2026-08-08: `keyCode=123 raw=0xa00100 numericPad+FUNCTION`),
   /// so an implementation that matched on the FLAG rather than the KEY CODE would

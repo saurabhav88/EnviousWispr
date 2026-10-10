@@ -42,6 +42,8 @@ package final class LiveApplication {
         application: presentation, panels: presentation),
       // #3062: the one place the real scroll-wheel monitor is chosen.
       scrollWheelMonitor: LiveScrollWheelMonitor(),
+      // #3545: the one place the real Settings key monitor is chosen.
+      settingsKeyMonitor: LiveSettingsKeyMonitor(),
       relocationRelauncher: LiveRelocationRelauncher(),
       // #2455 C4: the pill. `makePanel` is a factory rather than an instance
       // because the host builds its panel lazily, on first presentation.
@@ -60,6 +62,9 @@ package final class LiveApplication {
   package var onboardingWindowID: String { bootstrapper.onboardingWindowID }
 
   package func mainWindowContent() -> some View { bootstrapper.mainWindowContent() }
+  /// The main window's menu commands: Edit › Find Settings (#3482). Built here, not on the
+  /// bootstrapper, whose public surface stays the lifecycle forwards and view factories.
+  package func mainWindowCommands() -> some Commands { FindSettingsCommand() }
   package func onboardingWindowContent() -> some View {
     bootstrapper.onboardingWindowContent()
   }

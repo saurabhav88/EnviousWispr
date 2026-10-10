@@ -48,9 +48,9 @@ enum BluetoothTipsCopy {
   static let iconHeadphones = "headphones"
 
   // Microphone-settings guide
-  static let settingsHeader = String(
-    localized: "Using a Bluetooth microphone?",
+  static let settingsHeaderResource = LocalizedStringResource("Using a Bluetooth microphone?",
     comment: "Heading of the Bluetooth guide in Microphone settings.")
+  static var settingsHeader: String { String(localized: settingsHeaderResource) }
   static let settingsIntro = String(
     localized:
       "Bluetooth mics may take 1 to 2 seconds to wake after being idle. Keeping your mic ready reduces the delay.",

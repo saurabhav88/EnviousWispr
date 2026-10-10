@@ -60,22 +60,6 @@ struct ClipboardSettingsCopyTests {
     }
   }
 
-  @Test("the three explanations the page showed before move behind \"?\" unchanged")
-  func retainedExplanations() {
-    // Typed from the pre-#3385 page (f485f2e8), British "capitalisation" included.
-    #expect(
-      String(localized: Copy.restoreHelp)
-        == "Saves and restores whatever was on your clipboard before pasting your dictation.")
-    #expect(
-      String(localized: Copy.smartInsertionHelp)
-        == "Matches spacing and capitalisation to the text around your cursor when you dictate into the middle of a sentence."
-    )
-    #expect(
-      String(localized: Copy.quickAddHelp)
-        == "Some apps will not tell other apps what you have highlighted. In those, adding a word from your selection briefly copies it and then puts your clipboard back."
-    )
-  }
-
   @Test("the test lists every Clipboard string, and the page shows every one")
   func everyStringIsCoveredAndUsed() throws {
     let copySource = try String(
@@ -90,8 +74,15 @@ struct ClipboardSettingsCopyTests {
       source: try String(
         contentsOf: RepoRoot.url.appending(path: ClipboardSettingsWiringTests.path), encoding: .utf8
       ))
+    // #3482: the row titles and headings reach the page through the Settings Map.
+    let map = Parser.parse(
+      source: try String(
+        contentsOf: RepoRoot.url.appending(
+          path: "Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift"),
+        encoding: .utf8))
     let used = RecordingChimeCopyTests.members(
       of: ["Copy", "DictationSettingsCopy.Clipboard"], in: page)
+      .union(RecordingChimeCopyTests.members(of: ["DictationSettingsCopy.Clipboard"], in: map))
     #expect(used.count > 0, "no Clipboard copy read from the page; the reader has stopped matching")
     let unused = declared.subtracting(used).sorted()
     #expect(unused.isEmpty, "declared but not shown on the page: \(unused)")

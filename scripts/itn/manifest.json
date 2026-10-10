@@ -1,0 +1,963 @@
+{
+  "schema": 1,
+  "generator": "scripts/itn/generate.py",
+  "language": "de",
+  "output": "Sources/EnviousWisprPostProcessing/Generated/GermanNumberData.swift",
+  "sources": [
+    {
+      "id": "cldr-de-rbnf",
+      "kind": "cldr-rbnf",
+      "repo": "unicode-org/cldr",
+      "tag": "release-48-2",
+      "commit": "11299982335beb974c1c63c45265184e759c0f41",
+      "path": "common/rbnf/de.xml",
+      "url": "https://raw.githubusercontent.com/unicode-org/cldr/11299982335beb974c1c63c45265184e759c0f41/common/rbnf/de.xml",
+      "file": "sources/cldr/de.xml",
+      "sha256": "e582561fe0301f52a8cd5bbdb6b6227f5cc4f57983427452a510358255c02980",
+      "license": "Unicode-3.0",
+      "licenseFile": "sources/cldr/LICENSE",
+      "licenseSha256": "b49d0e9f8ead51ca8b7df6fec89cc3ae6809198b4b9d43c74216da0118f23f5b",
+      "licenseUrl": "https://raw.githubusercontent.com/unicode-org/cldr/11299982335beb974c1c63c45265184e759c0f41/LICENSE",
+      "rulesets": [
+        "%spellout-numbering",
+        "%spellout-cardinal-masculine",
+        "%spellout-cardinal-feminine"
+      ],
+      "note": "Canonical <rbnfRules> text block of rulesetGrouping SpelloutRules; the deprecated per-rule <ruleset> elements are not read.",
+      "ordinal": {
+        "base": "%spellout-ordinal",
+        "irregularBelow": 9,
+        "inflectionRulesets": [
+          "%spellout-ordinal-n",
+          "%spellout-ordinal-r"
+        ],
+        "excludedRulesets": [
+          "%spellout-ordinal-s",
+          "%spellout-ordinal-m"
+        ],
+        "note": "Bounded ordinal extraction: irregular forms below 9, the regular suffix rules below 100 and the -n and -r inflections. Every other ordinal rule (negative, decimal, scale, -s, -m) is counted as deliberately excluded."
+      }
+    },
+    {
+      "id": "nemo-de-zero",
+      "kind": "nemo-tsv",
+      "nemoKind": "zero",
+      "repo": "NVIDIA/NeMo-text-processing",
+      "tag": "r1.2.0",
+      "commit": "7efa127d968c081793ebf11fa94dfb4257302d48",
+      "path": "nemo_text_processing/text_normalization/de/data/numbers/zero.tsv",
+      "url": "https://raw.githubusercontent.com/NVIDIA/NeMo-text-processing/7efa127d968c081793ebf11fa94dfb4257302d48/nemo_text_processing/text_normalization/de/data/numbers/zero.tsv",
+      "file": "sources/nemo/zero.tsv",
+      "sha256": "b6d5aabac2fa999374156d00ef7d5d845eab256a0a2ecb622cb568b7a78300a9",
+      "license": "Apache-2.0",
+      "licenseFile": "sources/nemo/LICENSE",
+      "licenseSha256": "43070e2d4e532684de521b885f385d0841030efa2b1a20bafb76133a5e1379c1",
+      "licenseUrl": "https://raw.githubusercontent.com/NVIDIA/NeMo-text-processing/7efa127d968c081793ebf11fa94dfb4257302d48/LICENSE",
+      "columns": "column 1 spoken form; column 2 value 0"
+    },
+    {
+      "id": "nemo-de-digit",
+      "kind": "nemo-tsv",
+      "nemoKind": "digit",
+      "repo": "NVIDIA/NeMo-text-processing",
+      "tag": "r1.2.0",
+      "commit": "7efa127d968c081793ebf11fa94dfb4257302d48",
+      "path": "nemo_text_processing/text_normalization/de/data/numbers/digit.tsv",
+      "url": "https://raw.githubusercontent.com/NVIDIA/NeMo-text-processing/7efa127d968c081793ebf11fa94dfb4257302d48/nemo_text_processing/text_normalization/de/data/numbers/digit.tsv",
+      "file": "sources/nemo/digit.tsv",
+      "sha256": "eb84c6b83536d509fe6692c4823025f32266997c898f77d6b1c0f77dee6d7431",
+      "license": "Apache-2.0",
+      "licenseFile": "sources/nemo/LICENSE",
+      "licenseSha256": "43070e2d4e532684de521b885f385d0841030efa2b1a20bafb76133a5e1379c1",
+      "licenseUrl": "https://raw.githubusercontent.com/NVIDIA/NeMo-text-processing/7efa127d968c081793ebf11fa94dfb4257302d48/LICENSE",
+      "columns": "column 1 spoken form; column 2 unit digit 2..9 (ones.tsv carries 1)"
+    },
+    {
+      "id": "nemo-de-ones",
+      "kind": "nemo-tsv",
+      "nemoKind": "ones",
+      "repo": "NVIDIA/NeMo-text-processing",
+      "tag": "r1.2.0",
+      "commit": "7efa127d968c081793ebf11fa94dfb4257302d48",
+      "path": "nemo_text_processing/text_normalization/de/data/numbers/ones.tsv",
+      "url": "https://raw.githubusercontent.com/NVIDIA/NeMo-text-processing/7efa127d968c081793ebf11fa94dfb4257302d48/nemo_text_processing/text_normalization/de/data/numbers/ones.tsv",
+      "file": "sources/nemo/ones.tsv",
+      "sha256": "cfc4e743ad26b98c5b14aac064ff37bbacd78c5f1012d1f153512779730e2824",
+      "license": "Apache-2.0",
+      "licenseFile": "sources/nemo/LICENSE",
+      "licenseSha256": "43070e2d4e532684de521b885f385d0841030efa2b1a20bafb76133a5e1379c1",
+      "licenseUrl": "https://raw.githubusercontent.com/NVIDIA/NeMo-text-processing/7efa127d968c081793ebf11fa94dfb4257302d48/LICENSE",
+      "columns": "column 1 spoken form; column 2 value 1 with an optional third column FST weight (ignored)"
+    },
+    {
+      "id": "nemo-de-teen",
+      "kind": "nemo-tsv",
+      "nemoKind": "teen",
+      "repo": "NVIDIA/NeMo-text-processing",
+      "tag": "r1.2.0",
+      "commit": "7efa127d968c081793ebf11fa94dfb4257302d48",
+      "path": "nemo_text_processing/text_normalization/de/data/numbers/teen.tsv",
+      "url": "https://raw.githubusercontent.com/NVIDIA/NeMo-text-processing/7efa127d968c081793ebf11fa94dfb4257302d48/nemo_text_processing/text_normalization/de/data/numbers/teen.tsv",
+      "file": "sources/nemo/teen.tsv",
+      "sha256": "9ce69f570bc0565c23f17ad1baedee0d88bf125c04153c2fa3c1d1cccf5b30f6",
+      "license": "Apache-2.0",
+      "licenseFile": "sources/nemo/LICENSE",
+      "licenseSha256": "43070e2d4e532684de521b885f385d0841030efa2b1a20bafb76133a5e1379c1",
+      "licenseUrl": "https://raw.githubusercontent.com/NVIDIA/NeMo-text-processing/7efa127d968c081793ebf11fa94dfb4257302d48/LICENSE",
+      "columns": "column 1 spoken form; column 2 value 10..19"
+    },
+    {
+      "id": "nemo-de-ties",
+      "kind": "nemo-tsv",
+      "nemoKind": "ties",
+      "repo": "NVIDIA/NeMo-text-processing",
+      "tag": "r1.2.0",
+      "commit": "7efa127d968c081793ebf11fa94dfb4257302d48",
+      "path": "nemo_text_processing/text_normalization/de/data/numbers/ties.tsv",
+      "url": "https://raw.githubusercontent.com/NVIDIA/NeMo-text-processing/7efa127d968c081793ebf11fa94dfb4257302d48/nemo_text_processing/text_normalization/de/data/numbers/ties.tsv",
+      "file": "sources/nemo/ties.tsv",
+      "sha256": "11488cc9fb175a85ecd426327560782e429bbf1e90b8b037c3d25f065640e394",
+      "license": "Apache-2.0",
+      "licenseFile": "sources/nemo/LICENSE",
+      "licenseSha256": "43070e2d4e532684de521b885f385d0841030efa2b1a20bafb76133a5e1379c1",
+      "licenseUrl": "https://raw.githubusercontent.com/NVIDIA/NeMo-text-processing/7efa127d968c081793ebf11fa94dfb4257302d48/LICENSE",
+      "columns": "column 1 spoken form; column 2 TENS DIGIT 2..9; the generator multiplies by ten"
+    },
+    {
+      "id": "nemo-de-quantities",
+      "kind": "nemo-tsv",
+      "nemoKind": "quantities",
+      "repo": "NVIDIA/NeMo-text-processing",
+      "tag": "r1.2.0",
+      "commit": "7efa127d968c081793ebf11fa94dfb4257302d48",
+      "path": "nemo_text_processing/text_normalization/de/data/numbers/quantities.tsv",
+      "url": "https://raw.githubusercontent.com/NVIDIA/NeMo-text-processing/7efa127d968c081793ebf11fa94dfb4257302d48/nemo_text_processing/text_normalization/de/data/numbers/quantities.tsv",
+      "file": "sources/nemo/quantities.tsv",
+      "sha256": "7a5b0981709ddfe88f0d5498c75084c5830bdc608e7478863fd9caafc18e5f56",
+      "license": "Apache-2.0",
+      "licenseFile": "sources/nemo/LICENSE",
+      "licenseSha256": "43070e2d4e532684de521b885f385d0841030efa2b1a20bafb76133a5e1379c1",
+      "licenseUrl": "https://raw.githubusercontent.com/NVIDIA/NeMo-text-processing/7efa127d968c081793ebf11fa94dfb4257302d48/LICENSE",
+      "columns": "one column: scale words with no stated value"
+    },
+    {
+      "id": "cldr-nl-rbnf",
+      "kind": "cldr-rbnf-lexicon",
+      "language": "nl",
+      "repo": "unicode-org/cldr",
+      "tag": "release-48-2",
+      "commit": "11299982335beb974c1c63c45265184e759c0f41",
+      "path": "common/rbnf/nl.xml",
+      "url": "https://raw.githubusercontent.com/unicode-org/cldr/11299982335beb974c1c63c45265184e759c0f41/common/rbnf/nl.xml",
+      "file": "sources/cldr/nl.xml",
+      "sha256": "37e0dcdaec869cc4f50978761077283eebadc861cadfa486fd354b4d00dae482",
+      "license": "Unicode-3.0",
+      "licenseFile": "sources/cldr/LICENSE",
+      "licenseSha256": "b49d0e9f8ead51ca8b7df6fec89cc3ae6809198b4b9d43c74216da0118f23f5b",
+      "licenseUrl": "https://raw.githubusercontent.com/unicode-org/cldr/11299982335beb974c1c63c45265184e759c0f41/LICENSE",
+      "lexicon": {
+        "cardinalRuleset": "%spellout-cardinal",
+        "stressedRuleset": "%spellout-cardinal-stressed",
+        "compoundRuleset": "%%number-en",
+        "articleForms": [
+          "een"
+        ]
+      },
+      "note": "Cardinal lexicon 0..99 for Dutch clock idioms: the literal atoms 0..19 of %spellout-cardinal, its tens rules of the exact form [>%%number-en>]<word>, the compound prefixes of %%number-en (literal for 1..3, the redirect =%spellout-cardinal=en for 4..9) and the stressed one of %spellout-cardinal-stressed. articleForms names the number words that are also the indefinite article (een): alone they are not number evidence, and as a clock hour they must end the phrase. Every other rule (negative, decimal, scale, ordinal, year) is counted as excluded."
+    }
+  ],
+  "phonePrefix": {
+    "category": "phone_country_prefix",
+    "refusalsFile": "refusals/de.json",
+    "schemaFile": "review-data.schema.json",
+    "requiredEntries": [
+      "ref-phone-001",
+      "ref-phone-002",
+      "ref-phone-003",
+      "ref-phone-004"
+    ],
+    "replacement": "+",
+    "note": "Lowers ONLY the reviewed phone-prefix refusal entries (typed shapes, ids, versions, hashes). Pending entries and other categories are never emitted.",
+    "unsignedContext": {
+      "linkersBefore": [
+        "ist",
+        "sind",
+        "lautet",
+        "lauten",
+        "war",
+        "wäre",
+        "jetzt",
+        "nämlich",
+        "also",
+        "bitte",
+        "unter",
+        "neue",
+        "neu",
+        "die",
+        "der",
+        "dem",
+        "meine",
+        "seine",
+        "ihre",
+        "unsere"
+      ],
+      "phoneWords": [
+        "nummer",
+        "nummern",
+        "telefonnummer",
+        "telefonnummern",
+        "handynummer",
+        "handynummern",
+        "festnetznummer",
+        "festnetznummern",
+        "mobilnummer",
+        "mobilnummern",
+        "mobilfunknummer",
+        "rufnummer",
+        "rufnummern",
+        "faxnummer",
+        "rückrufnummer",
+        "durchwahl",
+        "telefon",
+        "handy",
+        "festnetz",
+        "mobiltelefon",
+        "hotline",
+        "whatsapp"
+      ],
+      "nonNounWords": [
+        "sie",
+        "ihnen",
+        "ihr",
+        "ihre",
+        "ihrer",
+        "ich",
+        "wir",
+        "er",
+        "es",
+        "du",
+        "man",
+        "ruf",
+        "rufen",
+        "rufe",
+        "schreib",
+        "schreiben",
+        "notier",
+        "notiere",
+        "unter",
+        "bei",
+        "die",
+        "der",
+        "das",
+        "den",
+        "dem",
+        "meine",
+        "mein",
+        "seine",
+        "unsere",
+        "bitte",
+        "erreichen",
+        "melden",
+        "hier",
+        "also",
+        "und",
+        "oder",
+        "nämlich",
+        "kurz"
+      ],
+      "valueVerbs": [
+        "kostet",
+        "kosten",
+        "beträgt",
+        "betragen",
+        "wiegt",
+        "wiegen",
+        "misst",
+        "messen",
+        "zählt",
+        "zählen",
+        "zahlen",
+        "zahlt",
+        "summiert",
+        "ergibt",
+        "ergeben",
+        "umfasst"
+      ],
+      "possessorArticles": [
+        "der",
+        "des",
+        "vom",
+        "von"
+      ],
+      "fieldSuffixes": [
+        "nummer",
+        "nummern"
+      ],
+      "localQualifiers": [
+        "lokal",
+        "lokale",
+        "lokalen",
+        "lokaler",
+        "lokales",
+        "national",
+        "nationale",
+        "nationalen",
+        "nationaler",
+        "nationales",
+        "inländisch",
+        "inländische",
+        "inländischen",
+        "inländischer",
+        "ortsnetz",
+        "ortsnummer",
+        "intern",
+        "interne",
+        "internen",
+        "interner",
+        "hausintern",
+        "nebenstelle"
+      ],
+      "possessiveSuffix": "s",
+      "provenance": "Founder direction for #1677 evolution: a phone number by default, refused only when the number belongs to something else. Word classes for the shared unsigned-number gates: words that may stand between a label and the number, phone words that do not make the number another field, capitalised words that are not nouns, value verbs that make the number an amount, possessor articles, number-field suffixes, and explicit local or national qualifiers. Chosen from the failure analysis of the fresh German acceptance run; not reviewed refusals."
+    }
+  },
+  "ordinalRefusals": {
+    "category": "ordinal",
+    "refusalsFile": "refusals/de.json",
+    "schemaFile": "review-data.schema.json",
+    "requiredEntries": [
+      "ref-ordinal-001",
+      "ref-ordinal-002",
+      "ref-ordinal-003",
+      "ref-ordinal-004",
+      "ref-ordinal-005",
+      "ref-ordinal-006"
+    ],
+    "allowedShapes": [
+      "ordinal_word_without_following_noun",
+      "ordinal_word_before_fraction_noun",
+      "ordinal_word_in_fixed_phrase",
+      "ordinal_word_in_proper_name",
+      "ordinal_word_in_date_phrase",
+      "ordinal_adverb"
+    ],
+    "writtenSuffix": ".",
+    "note": "Lowers ONLY the reviewed ordinal refusal entries (context shapes and literal phrases with their ids, versions, hashes). Pending entries and other categories are never emitted; the entries are not a context lexicon."
+  },
+  "clockIdiom": {
+    "de": {
+      "category": "clock_idiom",
+      "refusalsFile": "refusals/de.json",
+      "schemaFile": "review-data.schema.json",
+      "requiredEntries": [
+        "ref-clock-002",
+        "ref-clock-003",
+        "ref-clock-004"
+      ],
+      "templates": [
+        {
+          "id": "half",
+          "tokens": [
+            "halb"
+          ],
+          "hourOffset": -1,
+          "minute": 30,
+          "inputHours": [
+            2,
+            12
+          ]
+        },
+        {
+          "id": "quarterAfter",
+          "tokens": [
+            "viertel",
+            "nach"
+          ],
+          "hourOffset": 0,
+          "minute": 15,
+          "inputHours": [
+            1,
+            11
+          ]
+        },
+        {
+          "id": "quarterTo",
+          "tokens": [
+            "viertel",
+            "vor"
+          ],
+          "hourOffset": -1,
+          "minute": 45,
+          "inputHours": [
+            2,
+            12
+          ]
+        },
+        {
+          "id": "minutesAfter",
+          "tokens": [
+            "nach"
+          ],
+          "hourOffset": 0,
+          "minute": 0,
+          "inputHours": [
+            1,
+            11
+          ],
+          "minuteSlot": {
+            "sign": 1,
+            "max": 29
+          }
+        },
+        {
+          "id": "minutesBefore",
+          "tokens": [
+            "vor"
+          ],
+          "hourOffset": -1,
+          "minute": 60,
+          "inputHours": [
+            2,
+            12
+          ],
+          "minuteSlot": {
+            "sign": -1,
+            "max": 29
+          }
+        },
+        {
+          "id": "minutesAfterHalf",
+          "tokens": [
+            "nach",
+            "halb"
+          ],
+          "hourOffset": -1,
+          "minute": 30,
+          "inputHours": [
+            2,
+            12
+          ],
+          "minuteSlot": {
+            "sign": 1,
+            "max": 14
+          }
+        },
+        {
+          "id": "minutesBeforeHalf",
+          "tokens": [
+            "vor",
+            "halb"
+          ],
+          "hourOffset": -1,
+          "minute": 30,
+          "inputHours": [
+            2,
+            12
+          ],
+          "minuteSlot": {
+            "sign": -1,
+            "max": 14
+          }
+        }
+      ],
+      "anchors": [
+        "um",
+        "gegen",
+        "bis",
+        "ab",
+        "für"
+      ],
+      "trailingMarker": "uhr",
+      "outputSeparator": ":",
+      "syntaxProvenance": "Implementation admission and template data for the bounded clock scope, grounded in the approved plan, the frozen development expectations and the 2026-10-06 engine measurement (docs/audits/2026-10-06-1677-de-clock-minutes-shapes: both engines write spoken minutes as digits, '5 nach 2', '20 vor 5', '10 nach halb 8', and keep 'viertel vor acht' as words). Templates: halb H, viertel nach H, viertel vor H, M nach H, M vor H, M nach halb H, M vor halb H. The input-hour ranges exclude every hour whose written result needs a noon/midnight face choice (halb eins, viertel nach zwoelf, viertel vor eins, M nach zwoelf, M vor eins). This is not a reviewed refusal and not a general German clock grammar; bare viertel H, dreiviertel H (Parakeet garbles it) and the pending noon/midnight entry are neither converted nor lowered.",
+      "note": "Lowers ONLY the reviewed clock refusal entries (literal phrases with their ids, versions, hashes). Pending entries and other categories are never emitted.",
+      "requiresReviewedRefusals": true,
+      "capitalizedNounGate": true
+    },
+    "nl": {
+      "category": "clock_idiom",
+      "requiresReviewedRefusals": false,
+      "requiredEntries": [],
+      "capitalizedNounGate": false,
+      "templates": [
+        {
+          "id": "half",
+          "tokens": [
+            "half"
+          ],
+          "hourOffset": -1,
+          "minute": 30,
+          "inputHours": [
+            2,
+            12
+          ]
+        },
+        {
+          "id": "quarterAfter",
+          "tokens": [
+            "kwart",
+            "over"
+          ],
+          "hourOffset": 0,
+          "minute": 15,
+          "inputHours": [
+            1,
+            11
+          ]
+        },
+        {
+          "id": "quarterTo",
+          "tokens": [
+            "kwart",
+            "voor"
+          ],
+          "hourOffset": -1,
+          "minute": 45,
+          "inputHours": [
+            2,
+            12
+          ]
+        },
+        {
+          "id": "minutesAfter",
+          "tokens": [
+            "over"
+          ],
+          "hourOffset": 0,
+          "minute": 0,
+          "inputHours": [
+            1,
+            11
+          ],
+          "minuteSlot": {
+            "sign": 1,
+            "max": 29
+          }
+        },
+        {
+          "id": "minutesBefore",
+          "tokens": [
+            "voor"
+          ],
+          "hourOffset": -1,
+          "minute": 60,
+          "inputHours": [
+            2,
+            11
+          ],
+          "minuteSlot": {
+            "sign": -1,
+            "max": 29
+          }
+        },
+        {
+          "id": "minutesAfterHalf",
+          "tokens": [
+            "over",
+            "half"
+          ],
+          "hourOffset": -1,
+          "minute": 30,
+          "inputHours": [
+            2,
+            12
+          ],
+          "minuteSlot": {
+            "sign": 1,
+            "max": 14
+          }
+        },
+        {
+          "id": "minutesBeforeHalf",
+          "tokens": [
+            "voor",
+            "half"
+          ],
+          "hourOffset": -1,
+          "minute": 30,
+          "inputHours": [
+            2,
+            12
+          ],
+          "minuteSlot": {
+            "sign": -1,
+            "max": 14
+          }
+        }
+      ],
+      "anchors": [
+        "om",
+        "tegen",
+        "tot",
+        "vanaf",
+        "rond",
+        "het is",
+        "het is nu",
+        "is het",
+        "is het nu",
+        "het is inmiddels",
+        "is inmiddels"
+      ],
+      "trailingMarker": "uur",
+      "outputSeparator": ".",
+      "syntaxProvenance": "Implementation admission and template data for Dutch clock idioms (#1677, 2026-10-06), grounded in the measured engine shapes (docs/audits/2026-10-06-1677-pl-ru-nl-shapes, 2026-10-06-1677-full-list-eval) and real speech (2026-10-06-1677-pl-ru-nl-youtube, 2026-10-06-1677-podcast-speech: 'het is kwart over tien', 'het is nu 10 voor half 2', 'om half twee', 'tot half 4'), with the arithmetic of Taaladvies 'Kloktijden'. Templates: half H, kwart over H, kwart voor H, M over H, M voor H, M over half H, M voor half H. Input hours exclude every hour whose written result needs a noon/midnight face choice, and minutesBefore excludes twaalf so the idiom 'vijf voor twaalf' (almost too late) never converts. Output style 8.30 (Taaladvies; the engines' own Dutch style). This is not a reviewed refusal and not a general Dutch clock grammar.",
+      "note": "Dutch declares no reviewed refusals; the pass runs with none."
+    }
+  },
+  "numberStyle": {
+    "unitSymbols": {
+      "prozent": "%"
+    },
+    "postcodeLabels": [
+      "postleitzahl",
+      "plz"
+    ],
+    "streetSuffixes": [
+      "straße",
+      "strasse",
+      "str",
+      "weg",
+      "platz",
+      "allee",
+      "gasse",
+      "ring",
+      "damm",
+      "ufer",
+      "markt",
+      "chaussee",
+      "pfad",
+      "steig",
+      "stieg",
+      "hof",
+      "berg",
+      "park",
+      "brücke",
+      "kai",
+      "promenade",
+      "zeile",
+      "graben",
+      "winkel",
+      "feld",
+      "garten",
+      "tor",
+      "anger",
+      "weiler"
+    ],
+    "postcodeDigits": 5,
+    "provenance": "Founder direction for #1677 evolution (addresses, numbers, percentages, dates). Measured engine output: both engines already write cardinals, decimals, money, dates and house numbers as digits; they write a five-digit postcode with a thousands dot after a street address or a postcode label ('Hauptstraße 12 10.115 Berlin', 'Postleitzahl 50.667 Köln'), and WhisperKit sometimes keeps the word 'Prozent' after a number. Not a reviewed refusal."
+  },
+  "phoneTriggers": {
+    "fr": {
+      "triggerTokens": [
+        "plus"
+      ],
+      "replacement": "+",
+      "provenance": "French spoken plus. Measured 2026-10-06 on Azure TTS through Parakeet and WhisperKit: every international number keeps the spoken plus word before the digits; word from the language's own telephone usage."
+    },
+    "es": {
+      "triggerTokens": [
+        "más",
+        "mas"
+      ],
+      "replacement": "+",
+      "provenance": "Spanish spoken plus ('más', unaccented 'mas' as engines also write). Measured 2026-10-06 on Azure TTS through Parakeet and WhisperKit: every international number keeps the spoken plus word before the digits; word from the language's own telephone usage."
+    },
+    "it": {
+      "triggerTokens": [
+        "più",
+        "piu"
+      ],
+      "replacement": "+",
+      "provenance": "Italian spoken plus ('più', unaccented 'piu'). Measured 2026-10-06 on Azure TTS through Parakeet and WhisperKit: every international number keeps the spoken plus word before the digits; word from the language's own telephone usage."
+    },
+    "pt": {
+      "triggerTokens": [
+        "mais"
+      ],
+      "replacement": "+",
+      "provenance": "Portuguese spoken plus. Measured 2026-10-06 on Azure TTS through Parakeet and WhisperKit: every international number keeps the spoken plus word before the digits; word from the language's own telephone usage."
+    },
+    "nl": {
+      "triggerTokens": [
+        "plus"
+      ],
+      "replacement": "+",
+      "provenance": "Dutch spoken plus. Measured 2026-10-06 on Azure TTS through Parakeet and WhisperKit: every international number keeps the spoken plus word before the digits (WhisperKit writes Polish 'PLUS'; matching folds case); word from the language's own telephone usage."
+    },
+    "pl": {
+      "triggerTokens": [
+        "plus"
+      ],
+      "replacement": "+",
+      "provenance": "Polish spoken plus. Measured 2026-10-06 on Azure TTS through Parakeet and WhisperKit: every international number keeps the spoken plus word before the digits (WhisperKit writes Polish 'PLUS'; matching folds case); word from the language's own telephone usage."
+    },
+    "sv": {
+      "triggerTokens": [
+        "plus"
+      ],
+      "replacement": "+",
+      "provenance": "Swedish spoken plus. Measured 2026-10-06 on Azure TTS through Parakeet and WhisperKit (docs/audits/2026-10-06-1677-sv-uk-eval): every international number keeps the spoken plus word before the digits; word from the language's own telephone usage."
+    },
+    "uk": {
+      "triggerTokens": [
+        "плюс"
+      ],
+      "replacement": "+",
+      "provenance": "Ukrainian spoken plus. Measured 2026-10-06 on Azure TTS through Parakeet and WhisperKit (docs/audits/2026-10-06-1677-sv-uk-eval): every international number keeps the spoken plus word before the digits; word from the language's own telephone usage."
+    }
+  },
+  "hourFirstClock": {
+    "fr": {
+      "style": "h",
+      "hourAnchors": [
+        "à",
+        "vers",
+        "jusqu'à",
+        "dès",
+        "avant",
+        "après"
+      ],
+      "gluedAnchors": [],
+      "hours": {
+        "une": 1,
+        "deux": 2,
+        "trois": 3,
+        "quatre": 4,
+        "cinq": 5,
+        "six": 6,
+        "sept": 7,
+        "huit": 8,
+        "neuf": 9,
+        "dix": 10,
+        "onze": 11,
+        "douze": 12
+      },
+      "hourMarkers": [
+        "heure",
+        "heures"
+      ],
+      "noon": [
+        "midi"
+      ],
+      "midnight": [
+        "minuit"
+      ],
+      "noonAnchors": [
+        "à",
+        "vers",
+        "jusqu'à",
+        "dès",
+        "avant",
+        "après"
+      ],
+      "connector": "et",
+      "fractions": {
+        "demie": 30,
+        "demi": 30,
+        "quart": 15
+      },
+      "minus": "moins",
+      "minusFractions": {
+        "le quart": 15
+      },
+      "before": null,
+      "minuteFirstAnchors": [],
+      "provenance": "Measured 2026-10-06 (Azure TTS, two voices, Parakeet and WhisperKit file runners; docs/audits/2026-10-06-1677-fr-shapes): the engines write the hour as digits or words and keep the half, quarter and 'to' words. Anchor and fraction words from the language's own clock usage; minute-first and digit-minute rules per the #1677 clock plan review."
+    },
+    "es": {
+      "style": "colon",
+      "hourAnchors": [
+        "a las",
+        "a la",
+        "hasta las",
+        "hasta la",
+        "desde las",
+        "desde la",
+        "sobre las",
+        "sobre la",
+        "para las",
+        "para la",
+        "de las",
+        "de la",
+        "son las",
+        "es la"
+      ],
+      "gluedAnchors": [],
+      "hours": {
+        "una": 1,
+        "dos": 2,
+        "tres": 3,
+        "cuatro": 4,
+        "cinco": 5,
+        "seis": 6,
+        "siete": 7,
+        "ocho": 8,
+        "nueve": 9,
+        "diez": 10,
+        "once": 11,
+        "doce": 12
+      },
+      "hourMarkers": [],
+      "noon": [],
+      "midnight": [],
+      "noonAnchors": [],
+      "connector": "y",
+      "fractions": {
+        "media": 30,
+        "cuarto": 15,
+        "un cuarto": 15
+      },
+      "minus": "menos",
+      "minusFractions": {
+        "cuarto": 15,
+        "un cuarto": 15
+      },
+      "before": {
+        "word": "para",
+        "articles": [
+          "las",
+          "la"
+        ],
+        "articleBeforeTime": true
+      },
+      "minuteFirstAnchors": [
+        "a",
+        "son",
+        "es"
+      ],
+      "provenance": "Measured 2026-10-06 (Azure TTS, two voices, Parakeet and WhisperKit file runners; docs/audits/2026-10-06-1677-es-shapes): the engines write the hour as digits or words and keep the half, quarter and 'to' words. Anchor and fraction words from the language's own clock usage; minute-first and digit-minute rules per the #1677 clock plan review."
+    },
+    "it": {
+      "style": "colon",
+      "hourAnchors": [
+        "alle",
+        "dalle",
+        "verso le",
+        "fino alle",
+        "entro le",
+        "per le",
+        "sono le"
+      ],
+      "gluedAnchors": [
+        "all'",
+        "dall'",
+        "l'"
+      ],
+      "hours": {
+        "una": 1,
+        "due": 2,
+        "tre": 3,
+        "quattro": 4,
+        "cinque": 5,
+        "sei": 6,
+        "sette": 7,
+        "otto": 8,
+        "nove": 9,
+        "dieci": 10,
+        "undici": 11,
+        "dodici": 12
+      },
+      "hourMarkers": [],
+      "noon": [
+        "mezzogiorno"
+      ],
+      "midnight": [
+        "mezzanotte"
+      ],
+      "noonAnchors": [
+        "a",
+        "per",
+        "verso",
+        "entro",
+        "dopo",
+        "è"
+      ],
+      "connector": "e",
+      "fractions": {
+        "mezza": 30,
+        "mezzo": 30,
+        "un quarto": 15,
+        "tre quarti": 45,
+        "3 quarti": 45
+      },
+      "minus": "meno",
+      "minusFractions": {
+        "un quarto": 15,
+        "1 quarto": 15
+      },
+      "before": null,
+      "minuteFirstAnchors": [],
+      "provenance": "Measured 2026-10-06 (Azure TTS, two voices, Parakeet and WhisperKit file runners; docs/audits/2026-10-06-1677-it-shapes): the engines write the hour as digits or words and keep the half, quarter and 'to' words. Anchor and fraction words from the language's own clock usage; minute-first and digit-minute rules per the #1677 clock plan review."
+    },
+    "pt": {
+      "style": "h",
+      "hourAnchors": [
+        "às",
+        "à",
+        "para as",
+        "para a",
+        "até às",
+        "até à",
+        "até as",
+        "desde as",
+        "pelas",
+        "pela"
+      ],
+      "gluedAnchors": [],
+      "hours": {
+        "uma": 1,
+        "duas": 2,
+        "três": 3,
+        "quatro": 4,
+        "cinco": 5,
+        "seis": 6,
+        "sete": 7,
+        "oito": 8,
+        "nove": 9,
+        "dez": 10,
+        "onze": 11,
+        "doze": 12
+      },
+      "hourMarkers": [],
+      "noon": [
+        "meio-dia"
+      ],
+      "midnight": [
+        "meia-noite"
+      ],
+      "noonAnchors": [
+        "ao",
+        "à",
+        "até ao",
+        "até à",
+        "pelo",
+        "pela"
+      ],
+      "connector": "e",
+      "fractions": {
+        "meia": 30,
+        "um quarto": 15,
+        "1 quarto": 15
+      },
+      "minus": "menos",
+      "minusFractions": {
+        "um quarto": 15,
+        "1 quarto": 15
+      },
+      "before": {
+        "word": "para",
+        "articles": [
+          "as",
+          "a",
+          "às"
+        ],
+        "articleBeforeTime": false
+      },
+      "minuteFirstAnchors": [
+        "às",
+        "à"
+      ],
+      "provenance": "Measured 2026-10-06 (Azure TTS, two voices, Parakeet and WhisperKit file runners; docs/audits/2026-10-06-1677-pt-shapes): the engines write the hour as digits or words and keep the half, quarter and 'to' words. Anchor and fraction words from the language's own clock usage; minute-first and digit-minute rules per the #1677 clock plan review."
+    }
+  }
+}

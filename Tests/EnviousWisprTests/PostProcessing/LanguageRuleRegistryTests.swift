@@ -59,8 +59,17 @@ struct LanguageRuleRegistryTests {
     }
   }
 
-  @Test("the production registry lists no language yet")
-  func productionIsEmpty() {
-    #expect(LanguageRuleRegistry.production.count == 0)
+  @Test("the production registry lists exactly de, fr, es, it, pt, nl, pl, sv and uk")
+  func productionMembers() {
+    #expect(LanguageRuleRegistry.production.count == 9)
+    #expect(LanguageRuleRegistry.production.ruleSet(forLanguage: "de-DE")?.baseCode == "de")
+    #expect(LanguageRuleRegistry.production.ruleSet(forLanguage: "fr")?.baseCode == "fr")
+    #expect(LanguageRuleRegistry.production.ruleSet(forLanguage: "pt_BR")?.baseCode == "pt")
+    #expect(LanguageRuleRegistry.production.ruleSet(forLanguage: "nl-NL")?.baseCode == "nl")
+    #expect(LanguageRuleRegistry.production.ruleSet(forLanguage: "pl")?.baseCode == "pl")
+    #expect(LanguageRuleRegistry.production.ruleSet(forLanguage: "sv-SE")?.baseCode == "sv")
+    #expect(LanguageRuleRegistry.production.ruleSet(forLanguage: "uk")?.baseCode == "uk")
+    #expect(LanguageRuleRegistry.production.ruleSet(forLanguage: "fi") == nil)
+    #expect(LanguageRuleRegistry.production.ruleSet(forLanguage: "en") == nil)
   }
 }

@@ -54,7 +54,11 @@ struct AudioSettingsView: View {
       resolvedAutoInputDeviceID: AudioDeviceEnumerator.resolvedAutoInputDeviceID)
     let inputDeviceSelection = Binding<String>(
       get: { settingsManager.preferredInputDeviceIDOverride },
-      set: { settingsManager.chooseInputDevice(uid: $0) }
+      // #3486: a mic unplugged while the dropdown was open must not be saved.
+      set: { uid in
+        guard MicrophoneChoiceValidation.isSelectable(uid: uid) else { return }
+        settingsManager.chooseInputDevice(uid: uid)
+      }
     )
     // #2664: the socket control sits on the SAME line as the device picker,
     // sized to its own text (founder, 2026-09-05: a full-width segmented bar
@@ -85,7 +89,7 @@ struct AudioSettingsView: View {
       // lives once here rather than inside each card. #3385: it is the
       // heading's note now, as on the Engine tab, instead of a tip line at the
       // bottom (which replaced a boxed banner at the top, mockup 2026-09-16).
-      SettingsSectionHeading(title: DictationSettingsCopy.Microphone.sectionHeading, icon: "mic") {
+      SettingsSectionHeading(map: .id(.sectionMicrophone), icon: "mic") {
         Text(DictationSettingsCopy.Engine.nextRecordingNote)
           .font(.stHelper)
           .foregroundStyle(.stTextSecondary)
@@ -102,9 +106,8 @@ struct AudioSettingsView: View {
             // made the card contradict itself on exactly the machines the divert exists for.
             // (#3385: the dropdown card now carries that name, with "Auto" beside it.)
             SettingsRow(
+              map: .id(.inputDevice),
               icon: "waveform",
-              title: DictationSettingsCopy.Microphone.inputDeviceTitle,
-              short: DictationSettingsCopy.Microphone.inputDeviceShort,
               help: DictationSettingsCopy.Microphone.inputDeviceHelp
             ) {
               MicrophoneDevicePicker(
@@ -130,16 +133,16 @@ struct AudioSettingsView: View {
                 }
               )
               SettingsRow(
+                map: .id(.inputSocket),
                 icon: "cable.connector",
-                resolvedTitle: InputSocketCopy.label,
-                resolvedShort: String(localized: DictationSettingsCopy.Microphone.socketShort),
                 resolvedHelp: String(localized: DictationSettingsCopy.Microphone.socketHelp)
               ) {
                 if device.inputChannelCount <= 6 {
                   BrandedSegmentedPicker(
                     options: (0..<device.inputChannelCount).map { index in
                       (
-                        label: InputSocketCopy.optionLabel(index: index), systemImage: nil,
+                        label: SettingsMapRef.dynamic(.inputSocketInput, .inputSocket(index: index))
+                          .title, systemImage: nil,
                         value: index
                       )
                     },
@@ -151,10 +154,13 @@ struct AudioSettingsView: View {
                 } else {
                   Picker("", selection: socketSelection) {
                     ForEach(0..<device.inputChannelCount, id: \.self) { index in
-                      Text(InputSocketCopy.optionLabel(index: index)).tag(index)
+                      Text(
+                        SettingsMapRef.dynamic(.inputSocketInput, .inputSocket(index: index)).title
+                      ).tag(index)
                     }
                   }
                   .labelsHidden()
+                  .settingsArrivalFocusControl()
                   .fixedSize()
                 }
               }
@@ -175,45 +181,12 @@ struct AudioSettingsView: View {
         BrandedRow {
           VStack(alignment: .leading, spacing: 8) {
             SettingsRow(
+              map: .id(.micReadiness),
               icon: "timer",
-              title: DictationSettingsCopy.Microphone.readinessTitle,
-              short: DictationSettingsCopy.Microphone.readinessShort,
               help: DictationSettingsCopy.Microphone.readinessHelp
             ) {
               BrandedSegmentedPicker(
-                options: [
-                  (
-                    String(
-                      localized: "Off",
-                      comment:
-                        "Microphone settings: readiness option; the microphone is released at once."
-                    ), nil, WarmEnginePolicy.off
-                  ),
-                  (
-                    String(
-                      localized: "10 sec",
-                      comment: "Microphone settings: readiness option, 10 seconds."), nil,
-                    WarmEnginePolicy.seconds10
-                  ),
-                  (
-                    String(
-                      localized: "30 sec",
-                      comment: "Microphone settings: readiness option, 30 seconds."), nil,
-                    WarmEnginePolicy.seconds30
-                  ),
-                  (
-                    String(
-                      localized: "60 sec",
-                      comment: "Microphone settings: readiness option, 60 seconds."), nil,
-                    WarmEnginePolicy.seconds60
-                  ),
-                  (
-                    String(
-                      localized: "Always",
-                      comment: "Microphone settings: readiness option; the microphone stays ready."),
-                    nil, WarmEnginePolicy.always
-                  ),
-                ],
+                options: SettingsChoicePresentation.micReadiness.map(\.pickerOption),
                 selection: $settings.warmEnginePolicy,
                 comfortable: true
               )
@@ -259,17 +232,18 @@ private struct BluetoothGuideRow: View {
 
   var body: some View {
     SettingsRow(
-      icon: "dot.radiowaves.left.and.right",
-      resolvedTitle: BluetoothTipsCopy.settingsHeader,
-      resolvedShort: String(localized: DictationSettingsCopy.Microphone.bluetoothShort)
+      map: .id(.bluetoothGuide),
+      icon: "dot.radiowaves.left.and.right"
     ) {
       BluetoothGuidePopoverContent(showBluetoothTips: $showBluetoothTips)
     } control: {
       SettingsActionButton(
-        title: "Learn more", isEnabled: true, size: .large, trailingSystemImage: "chevron.right"
+        title: SettingsItemCopy.Microphone.bluetoothLearnMore, isEnabled: true, size: .large,
+        trailingSystemImage: "chevron.right"
       ) {
         showGuide = true
       }
+      .settingsMapRegistration(.bluetoothGuideLearnMore)
       .popover(isPresented: $showGuide, arrowEdge: .bottom) {
         BluetoothGuidePopoverContent(showBluetoothTips: $showBluetoothTips)
       }
@@ -315,6 +289,7 @@ private struct BluetoothGuidePopoverContent: View {
       Divider().overlay(Color.stDivider)
 
       SettingsRow(
+        notInSettingsMap: .sheetOrPopoverContent,
         icon: "bell.badge",
         resolvedTitle: BluetoothTipsCopy.showTipsToggle,
         resolvedShort: String(localized: DictationSettingsCopy.Microphone.bluetoothTipsShort),

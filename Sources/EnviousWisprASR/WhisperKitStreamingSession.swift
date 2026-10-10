@@ -54,50 +54,17 @@ import os
 // 10-min benchmark. The base decode options force `.none`; the session never
 // re-derives options per cycle (which would flip to `.vad` above 30s).
 
-// MARK: - Tail-finalization benchmark instrumentation (#1276 PR-2, rulebook §5.0)
-//
-// These types + the `benchmarkCaptureAndStop()` method exist ONLY to let the
-// local tail-finalization replay runner (`scripts/eval/tail_runner`) freeze the
-// session's state at the certified checkpoint so all four candidate finish
-// strategies replay from ONE identical starting point. The shipped `finalize`
-// path never touches them. No behavior change to the live pipeline.
-
-/// One retained (held-back / unconfirmed) hypothesis segment — the words the
-/// stream was still holding back at stop. This is exactly what a "release-only"
-/// finish (arm S1) would emit; retaining it here is what makes that arm
-/// measurable (Codex r1: the shipped code discards these, so there was nothing
-/// to release).
-package struct BenchmarkSegment: Sendable, Equatable {
+/// One retained (held-back / unconfirmed) hypothesis segment: the words the
+/// stream was still holding back at the latest decode. The UFAL-mode finalize
+/// releases these as the transcript tail and uses the last one's `end` as the
+/// release hypothesis's audio coverage (#1308).
+package struct HeldBackSegment: Sendable, Equatable {
   package let text: String
-  package let start: Float
   package let end: Float
-  package init(text: String, start: Float, end: Float) {
+  package init(text: String, end: Float) {
     self.text = text
-    self.start = start
     self.end = end
   }
-}
-
-/// The frozen record captured at the certified checkpoint: after the loop is
-/// stopped and awaited, BEFORE any arm-specific finalization / provider drop /
-/// `streamingPCM` clear. Carries the actual sample payload (not just a hash) so
-/// arms that re-decode (S2/S3/S4) can run from it, plus the confirmed prefix and
-/// the retained unconfirmed hypothesis (arm S1's material). `contentHash` +
-/// `sampleCount` back the §5.3 replay-fidelity gate.
-package struct BenchmarkSnapshot: Sendable {
-  package let samples: [Float]
-  package let sampleCount: Int
-  package let contentHash: UInt64
-  package let confirmedText: String
-  package let lastConfirmedSec: Float
-  package let lastDecodeSampleCount: Int
-  package let decodeCount: Int
-  package let totalDecodeTimeMs: Int
-  package let unconfirmedSegments: [BenchmarkSegment]
-  /// UFAL buffer-mode state (zero/"" in segment-lag mode): decode-window origin
-  /// and the committed text scrolled out of the buffer (arm S5's prompt).
-  package let bufferStartSec: Float
-  package let scrolledOutText: String
 }
 
 /// The authoritative WhisperKit streaming session. Conforms to the existing
@@ -172,12 +139,11 @@ package actor WhisperKitStreamingSession: WhisperKitIncrementalSession {
   private var totalDecodeTimeMs: Int = 0
 
   /// The most recent cycle's held-back (unconfirmed) hypothesis tail.
-  /// Overwritten every cycle so it always reflects the latest decode. Read by
-  /// TWO consumers: the UFAL-mode finalize releases it as the transcript tail
-  /// on the caught-up fast path, and the benchmark replay runner reads it as
-  /// arm S1's "release-only" material (rulebook §5.0). The segment-lag
-  /// finalize ignores it. Empty until the first decode.
-  private var retainedUnconfirmedSegments: [BenchmarkSegment] = []
+  /// Overwritten every cycle so it always reflects the latest decode. The
+  /// UFAL-mode finalize releases it as the transcript tail on the caught-up
+  /// fast path. The segment-lag finalize ignores it. Empty until the first
+  /// decode.
+  private var retainedUnconfirmedSegments: [HeldBackSegment] = []
 
   /// #2108. Optional observer of the DISPLAY text after each successful
   /// confirmation, for the Live Preview limb. Nil on the heart path, which is
@@ -571,7 +537,7 @@ package actor WhisperKitStreamingSession: WhisperKitIncrementalSession {
       text: trimmed.isEmpty ? nil : confirmedText,
       samplesCovered: 0, decodeCount: decodeCount,
       totalDecodeTimeMs: totalDecodeTimeMs,
-      accepted: false, mode: "streaming",
+      accepted: false,
       strategy: strategy, tailDecodeMs: tailMs,
       stopWhileDecodeInFlight: stoppedMidDecode)
   }
@@ -618,61 +584,6 @@ package actor WhisperKitStreamingSession: WhisperKitIncrementalSession {
     // still returns on its own schedule — one token step later rather than one
     // full cycle later (#2108).
     await loop?.value
-  }
-
-  // MARK: - Benchmark capture (rulebook §5.0 / §5.3) — replay runner ONLY.
-
-  /// Freeze the session at the certified checkpoint and return the snapshot.
-  /// Mirrors `finalize`'s stop sequence EXACTLY (stop the loop, then
-  /// `await loop?.value` so any in-flight decode fully exits before the capture —
-  /// no second transcribe races it) but runs NO finalization arm and does NOT
-  /// drop the provider: the replay runner runs all four candidate finishes from
-  /// the returned snapshot. Because this awaits the loop's exit, an in-flight
-  /// decode at stop is DROPPED (the loop sees `finished` and discards its result
-  /// without mutating confirmed state), so the snapshot's confirmed prefix and
-  /// retained tail are exactly the pre-stop state — never over-advanced. Returns
-  /// nil if `start` was never called (or a prior capture/finalize dropped the
-  /// provider). Benchmark-only; the shipped pipeline never calls this.
-  package func benchmarkCaptureAndStop() async -> BenchmarkSnapshot? {
-    running = false
-    finished = true
-    // Kept in step with `finalize` so this really does mirror it: the in-flight
-    // decode's result is dropped either way, so aborting changes the snapshot's
-    // timing and never its content.
-    loopDecodeAborted.withLock { $0 = true }
-    let loop = loopTask
-    loopTask?.cancel()
-    loopTask = nil
-    await loop?.value
-
-    guard let provider = audioSamplesProvider else { return nil }
-    let (samples, count) = await provider()
-    return BenchmarkSnapshot(
-      samples: samples,
-      sampleCount: count,
-      contentHash: Self.fnv1a(samples),
-      confirmedText: confirmedText,
-      lastConfirmedSec: lastConfirmedSec,
-      lastDecodeSampleCount: lastDecodeSampleCount,
-      decodeCount: decodeCount,
-      totalDecodeTimeMs: totalDecodeTimeMs,
-      unconfirmedSegments: retainedUnconfirmedSegments,
-      bufferStartSec: bufferStartSec,
-      scrolledOutText: scrolledOutText)
-  }
-
-  /// Stable content hash over the raw sample bits (FNV-1a) — backs the §5.3
-  /// replay-fidelity gate (a replayed snapshot's payload must equal a live run's).
-  private static func fnv1a(_ samples: [Float]) -> UInt64 {
-    var hash: UInt64 = 0xcbf2_9ce4_8422_2325
-    for s in samples {
-      var bits = s.bitPattern
-      for _ in 0..<4 {
-        hash = (hash ^ UInt64(bits & 0xff)) &* 0x0000_0100_0000_01b3
-        bits >>= 8
-      }
-    }
-    return hash
   }
 
   // MARK: - Private
@@ -825,12 +736,11 @@ package actor WhisperKitStreamingSession: WhisperKitIncrementalSession {
       confirmCount += 1
     }
 
-    // Retain the held-back tail (everything not confirmed this cycle) for the
-    // benchmark's release-only arm. Set BEFORE the confirmCount>0 guard so a
-    // cycle that confirms nothing still records all segments as held back
-    // (rulebook §5.0). Shipped finalize never reads this.
+    // Retain the held-back tail (everything not confirmed this cycle). Set
+    // BEFORE the confirmCount>0 guard so a cycle that confirms nothing still
+    // records all segments as held back.
     retainedUnconfirmedSegments = segments[confirmCount...].map {
-      BenchmarkSegment(text: $0.text, start: $0.start, end: $0.end)
+      HeldBackSegment(text: $0.text, end: $0.end)
     }
 
     guard confirmCount > 0 else { return true }
@@ -947,7 +857,7 @@ package actor WhisperKitStreamingSession: WhisperKitIncrementalSession {
     // which was false and was quoted as evidence in the #1308 plan before the
     // grep caught it.
     retainedUnconfirmedSegments = words[commitCount...].map {
-      BenchmarkSegment(text: $0.word, start: $0.start, end: $0.end)
+      HeldBackSegment(text: $0.word, end: $0.end)
     }
     previousHypothesisWords = Array(words[commitCount...])
 
@@ -1064,7 +974,7 @@ package actor WhisperKitStreamingSession: WhisperKitIncrementalSession {
       text: trimmed.isEmpty ? nil : trimmed,
       samplesCovered: samplesCovered, decodeCount: decodeCount,
       totalDecodeTimeMs: totalDecodeTimeMs,
-      accepted: !trimmed.isEmpty, mode: "streaming",
+      accepted: !trimmed.isEmpty,
       strategy: "streaming", tailDecodeMs: tailDecodeMs,
       stopWhileDecodeInFlight: stoppedMidDecode)
   }

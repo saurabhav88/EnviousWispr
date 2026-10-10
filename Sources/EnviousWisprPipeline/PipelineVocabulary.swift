@@ -326,6 +326,10 @@ public enum UserCancelTrigger: Equatable, Sendable {
   case shortcut
   /// The explicit Cancel button in the main window.
   case cancelButton
+  /// Not a control at all (#3544 P4, D2): another key pressed within 1000 ms of a bare push-to-talk
+  /// press, an unlocked take, which reads as the user reaching for a different shortcut or typing.
+  /// Always destructive: never Escape Recovery, never an abandonment.
+  case otherKeyInterference
 }
 
 /// The narrow PUBLIC projection of a recording's terminal `RecordingOutcome` that

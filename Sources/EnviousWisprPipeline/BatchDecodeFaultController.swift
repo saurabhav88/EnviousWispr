@@ -192,7 +192,7 @@ package final class BatchDecodeFaultController {
     /// leak into the next. Both backends: WhisperKit in-process, Parakeet
     /// across XPC via `ASRManagerProxy` — a Parakeet-only trial that skipped
     /// this call would stay held until the 30-second safety release.
-    package func clearBatchDecodeFault(trialID: String) async {
+    package func clearBatchDecodeFault() async {
       kernelTimestamps = KernelTimestamps()
       await whisperKitBackend?.clearBatchDecodeFault()
       await asrManager?.clearBatchDecodeFault()

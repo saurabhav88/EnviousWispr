@@ -6,16 +6,19 @@ import SwiftUI
 // MARK: - Leaving AI Polish with an unfinished setup (#3438)
 
 /// Where a person asked to go: a sidebar row (that page's remembered tab) or an explicit
-/// destination (a link or the menu, with its own tab). Kept apart through a pending dialog, so
+/// destination (a link or the menu, with its own tab), or a chosen Settings search result (#3482,
+/// carried whole so the entry survives a pending dialog). Kept apart through a pending dialog, so
 /// a sidebar click never turns into a default tab.
 enum SettingsNavigationIntent: Equatable {
   case sidebar(SettingsPage)
   case destination(SettingsDestination)
+  case search(SettingsSearchRequest)
 
   var page: SettingsPage {
     switch self {
     case .sidebar(let page): page
     case .destination(let destination): destination.page
+    case .search(let request): request.destination.page
     }
   }
 }
@@ -25,6 +28,7 @@ extension SettingsNavigationState {
     switch intent {
     case .sidebar(let page): selectSidebar(page)
     case .destination(let destination): apply(destination)
+    case .search(let request): apply(request)
     }
   }
 }
@@ -358,6 +362,17 @@ enum PolishSetupLeaveGuard {
     return PolishSetupLeaveRequest(
       intent: intent, episode: episode, problem: problem, provider: subject.provider,
       goBackProvider: goBack, keyNotSaved: keyIsMissing && keyNotSaved)
+  }
+
+  /// Another request arriving while a question is open: the latest destination replaces the
+  /// pending one's, and the question keeps its episode, problem and offers. The window shell and
+  /// the tests both go through here, so neither can drift from the other.
+  static func replacingPendingDestination(
+    of pending: PolishSetupLeaveRequest, with intent: SettingsNavigationIntent
+  ) -> PolishSetupLeaveRequest {
+    var latest = pending
+    latest.intent = intent
+    return latest
   }
 
   /// What pressing `action` on `request` does now. Every button is validated against the live

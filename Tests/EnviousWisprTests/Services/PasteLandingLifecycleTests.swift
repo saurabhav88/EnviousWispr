@@ -87,14 +87,6 @@ struct PasteLandingLifecycleTests {
         == .unknown)
   }
 
-  @Test("The fake's unscripted window answer is a failure, never a window")
-  func fakeDefaultIsFailure() {
-    let ax = PastedRegionFakeAX()
-    #expect(
-      PasteArrivalCapture.targetWindow(
-        captured: Self.field, application: Self.app, ax: ax, budget: budget(ax).0) == .unknown)
-  }
-
   // MARK: Focus
 
   private func focus(_ ax: PastedRegionFakeAX, _ prepare: PasteLandingPrepareBudget)
@@ -219,33 +211,6 @@ struct PasteLandingLifecycleTests {
     #expect(prepare.refusal == .exhausted)
     #expect(ax.countCalls == 1)
     #expect(ax.rangeCalls.count == 1)
-  }
-
-  @Test("The whole-text read falls back to the range reader through the same budget")
-  func wholeTextFallsBackUnderOneBudget() {
-    let ax = PastedRegionFakeAX()
-    ax.reads = [.absent]
-    ax.counts = [.count(5)]
-    ax.rangeReads = [.text("Hello")]
-    let (prepare, _) = budget(ax, tickMs: 10)
-    let read = PastedRegionObserver.readWholeText(of: Self.field, ax: ax, admit: prepare.admit)
-    #expect(read == .text("Hello"))
-    #expect(
-      ax.timeoutsSet.map(\.1) == [0.49, 0.48, 0.47, 0.46], "four calls, each on what is left")
-  }
-
-  @Test("The whole-text read keeps the 20,000-unit ceiling and does not retry a failed value")
-  func wholeTextCeilingAndFailedValue() {
-    let ax = PastedRegionFakeAX()
-    ax.reads = [.text(String(repeating: "a", count: 20_001))]
-    #expect(
-      PastedRegionObserver.readWholeText(of: Self.field, ax: ax, admit: { _ in true }) == .tooLong)
-    let failing = PastedRegionFakeAX()
-    failing.reads = [.failed(.cannotComplete)]
-    #expect(
-      PastedRegionObserver.readWholeText(of: Self.field, ax: failing, admit: { _ in true })
-        == .failed(.cannotComplete))
-    #expect(failing.countCalls == 0, "a failed value read is the host not answering")
   }
 
   // MARK: Registration

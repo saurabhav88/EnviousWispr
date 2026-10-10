@@ -56,7 +56,10 @@ struct ClipboardSettingsLayoutTests {
     width: CGFloat
   ) -> (toggle: CGRect, row: CGRect)? {
     let box = Box()
-    let view = SettingsRow(icon: "doc.on.clipboard", title: row.0, short: row.1, help: row.2) {
+    let view = SettingsRow(
+      fixtureTitle: String(localized: row.0), icon: "doc.on.clipboard",
+      resolvedShort: String(localized: row.1), resolvedHelp: String(localized: row.2)
+    ) {
       Toggle("", isOn: .constant(true))
         .labelsHidden()
         .toggleStyle(BrandedToggleStyle())
@@ -83,7 +86,7 @@ struct ClipboardSettingsLayoutTests {
   @Test("the Clipboard recording note stays visible at the minimum width")
   func recordingNoteVisible() throws {
     let frame = try LivePreviewSettingsLayoutTests.frame(width: 460) { probe in
-      SettingsSectionHeading(resolvedTitle: "CLIPBOARD") {
+      SettingsSectionHeading(fixtureTitle: "CLIPBOARD") {
         Text(DictationSettingsCopy.Engine.nextRecordingNote).font(.stHelper)
           .foregroundStyle(.stTextSecondary).fixedSize(horizontal: false, vertical: true)
           .background(probe)

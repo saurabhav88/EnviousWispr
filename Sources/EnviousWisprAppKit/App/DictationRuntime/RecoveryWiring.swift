@@ -2,11 +2,9 @@ import Foundation
 
 /// How the recovery seams are bound to the coordinator that answers them.
 ///
-/// **Its own namespace rather than a method on `DictationRuntime`, and that is a
-/// constraint rather than taste.** `DictationRuntimeCeilingsTests` caps the
-/// runtime's non-private `func` count at 8, and raising it requires an
-/// architecture entry. The wiring needed to be reachable from a test (#2356);
-/// the ceiling is what decided it should not live on the runtime to get there.
+/// **Its own namespace rather than a method on `DictationRuntime`.** The wiring
+/// needed to be reachable from a test (#2356) without widening the runtime's
+/// surface to get there.
 enum RecoveryWiring {
 
   /// The five recovery seams, bound to one collaborator.

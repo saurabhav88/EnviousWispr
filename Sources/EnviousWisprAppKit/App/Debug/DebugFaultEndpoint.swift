@@ -293,6 +293,17 @@
         // Order is load-bearing and documented on the seam: `resetForTesting`
         // CLEARS any override, so it must run first.
         SeamCasingOracleRuntime.resetForTesting()
+        // The reset cannot stop a preparation already running (launch prewarm, or
+        // another language), and keeps its claim (#3417); while it runs every
+        // snapshot answers `oracleWarming`. Answer `OK` only once it has left, so
+        // the promise below holds; refuse rather than acknowledge early. 3 s, under
+        // the 5 s socket timeout in `Tests/RuntimeUAT/faultInjection.py`, so a
+        // driver reads `ERR busy` rather than an empty reply. Commands are assumed
+        // to arrive one at a time from one driver: a `clear_oracle_delay` sent
+        // while this waits is undone when it resumes.
+        guard await SeamCasingOracleRuntime.waitUntilNoBuilderForTesting(timeout: .seconds(3)) else {
+          return "ERR busy"
+        }
         let slow = SeamCasingOracle.delayingDictionaryForFaultInjection(milliseconds: ms)
         // The override alone is NOT enough, and the first version of this command
         // shipped that bug: `resetForTesting` clears every prepared phase, so the
@@ -414,15 +425,15 @@
           return "OK"
         }
         // `clear_batch_decode_fault(<backend>,<trialID>)` clears BOTH the
-        // adapter-boundary pending-failure state for `backend` and the
-        // oracle/trial state for `trialID`, so a forgotten trial from one
-        // Live UAT scenario cannot leak into the next.
-        if let (backend, trialID) = parseBackendAndTrialArgCommand(
+        // adapter-boundary pending-failure state for `backend` and ALL
+        // oracle/trial state (the trial ID is accepted but not needed), so a
+        // forgotten trial from one Live UAT scenario cannot leak into the next.
+        if let (backend, _) = parseBackendAndTrialArgCommand(
           cmd, prefix: "clear_batch_decode_fault(")
         {
           guard let batchDecodeFaultController else { return "ERR no_dependency" }
           batchDecodeFaultController.clearBatchDecodeFault(backend: backend)
-          await batchDecodeFaultController.clearBatchDecodeFault(trialID: trialID)
+          await batchDecodeFaultController.clearBatchDecodeFault()
           return "OK"
         }
         if let (backend, trialID) = parseBackendAndTrialArgCommand(

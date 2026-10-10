@@ -167,8 +167,7 @@ final class FakeAudioCapture: AudioCaptureInterface {
   // #1578: the categorical replacements for the old boolean saw-ineligible
   // seam, which is deleted here rather than kept. The kernel no longer
   // reads the legacy Boolean at all, so stubbing it here would model a path
-  // production does not take. `zeroSignalDiscriminatorSawIneligible` now comes
-  // from the protocol's own compatibility default.
+  // production does not take.
 
   /// The reason the reactive producer froze for the current run, if any. Read by
   /// the production snapshot closure when the run was classified reactively.

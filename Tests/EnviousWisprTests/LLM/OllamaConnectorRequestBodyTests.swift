@@ -34,20 +34,6 @@ struct OllamaConnectorRequestBodyTests {
     #expect(body["think"] == nil)
   }
 
-  @Test func thinkingModelSendsLowAsAString() {
-    let body = makeBody(thinking: .level("low"))
-    #expect(body["think"] as? String == "low")
-  }
-
-  /// The value must never be a boolean on any path, in either direction. A
-  /// `Bool` and a `String` both answer `!= nil`, so the type is asserted
-  /// explicitly — this is the assertion that would catch a regression to
-  /// `think: false`.
-  @Test func thinkValueIsNeverABoolean() {
-    #expect(makeBody(thinking: .level("low"))["think"] as? Bool == nil)
-    #expect(makeBody(thinking: nil)["think"] as? Bool == nil)
-  }
-
   /// `think` is a TOP-LEVEL key on `/api/chat`, not an `options` entry. Placing
   /// it under `options` would be silently accepted by the daemon and silently
   /// ignored, which is indistinguishable from working.
@@ -66,46 +52,19 @@ struct OllamaConnectorRequestBodyTests {
     #expect(makeBody(thinking: .effort("high"))["think"] == nil)
   }
 
-  @Test func requestBodyDisablesStreaming() {
-    let body = makeBody()
+  @Test func requestBodyMapsOptions() {
+    let body = makeBody(temperature: 0.42, maxTokens: 777)
+    let options = body["options"] as? [String: Any]
+    #expect(options?["num_predict"] as? Int == 777)
+    #expect(options?["temperature"] as? Double == 0.42)
     #expect(body["stream"] as? Bool == false)
-  }
-
-  @Test func requestBodyPassesModelAndMessages() {
-    let body = makeBody()
     #expect(body["model"] as? String == "gemma4:latest")
     let messages = body["messages"] as? [[String: String]]
     #expect(messages?.count == 2)
     #expect(messages?.first?["role"] == "system")
   }
 
-  @Test func requestBodyMapsOptions() {
-    let body = makeBody(temperature: 0.42, maxTokens: 777)
-    let options = body["options"] as? [String: Any]
-    #expect(options?["num_predict"] as? Int == 777)
-    #expect(options?["temperature"] as? Double == 0.42)
-  }
-
   // MARK: - Eviction body (#295)
-
-  @Test func evictRequestBodyCarriesModel() {
-    let body = OllamaConnector.makeEvictRequestBody(model: "gemma4:latest")
-    #expect(body["model"] as? String == "gemma4:latest")
-  }
-
-  /// `keep_alive: 0` is the documented Ollama unload trigger. Must be an
-  /// integer 0, not the string "0" — Ollama parses these differently.
-  @Test func evictRequestBodyUsesKeepAliveZero() {
-    let body = OllamaConnector.makeEvictRequestBody(model: "gemma4:latest")
-    #expect(body["keep_alive"] as? Int == 0)
-  }
-
-  /// Empty prompt is included explicitly. Some Ollama builds 400 on missing
-  /// `prompt` key even for unload calls, so we always emit it.
-  @Test func evictRequestBodyIncludesEmptyPrompt() {
-    let body = OllamaConnector.makeEvictRequestBody(model: "gemma4:latest")
-    #expect(body["prompt"] as? String == "")
-  }
 
   /// Nothing else should be in the unload body — no streaming, no options,
   /// no messages. Keeps the call as narrow as possible.
@@ -113,6 +72,9 @@ struct OllamaConnectorRequestBodyTests {
     let body = OllamaConnector.makeEvictRequestBody(model: "gemma4:latest")
     let keys = Set(body.keys)
     #expect(keys == Set(["model", "prompt", "keep_alive"]))
+    #expect(body["model"] as? String == "gemma4:latest")
+    #expect(body["keep_alive"] as? Int == 0)
+    #expect(body["prompt"] as? String == "")
   }
 
   // MARK: - effectiveOllamaModel classifier (#295)

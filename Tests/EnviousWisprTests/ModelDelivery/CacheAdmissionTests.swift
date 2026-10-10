@@ -143,18 +143,6 @@ import Testing
     #expect(result.failedComponents == ["Encoder.mlmodelc"])
   }
 
-  @Test func exactComponentContentsStayVerified() async throws {
-    // Two-way control for the test above: EXACTLY the manifest-listed files,
-    // nothing extra — the new check must not false-positive on the common case.
-    let (install, metadata, _) = try makeDirs()
-    let files = ManifestFixture.smallFiles
-    for f in files { try write(f.content, under: install, path: f.path) }
-    let gate = try admission(files: files, dirs: (install, metadata))
-    let result = await gate.validateExistingCache()
-    #expect(result.failedComponents.isEmpty)
-    #expect(result.verifiedComponents.contains("Encoder.mlmodelc"))
-  }
-
   @Test func looseComponentHasNoExtraFilesCheck() {
     // A loose (non-directory) component has nothing to recurse into.
     let (path:path, content:_, component:component) = ManifestFixture.smallFiles[2]

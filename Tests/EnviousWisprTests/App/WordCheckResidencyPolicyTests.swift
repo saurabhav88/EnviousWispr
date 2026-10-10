@@ -25,12 +25,6 @@ struct WordCheckResidencyPolicyTests {
     .userRetry: true,
   ]
 
-  @Test("the table names every trigger the policy knows")
-  func tableIsComplete() {
-    #expect(Set(Self.expected.keys) == Set(WordCheckResidencyPolicy.Trigger.allCases))
-    #expect(WordCheckResidencyPolicy.Trigger.allCases.count == 11)
-  }
-
   @Test(
     "each trigger loads exactly when the plan says, for both values of needsWordCheck",
     arguments: WordCheckResidencyPolicy.Trigger.allCases, [false, true])

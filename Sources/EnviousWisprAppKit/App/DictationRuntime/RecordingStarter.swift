@@ -732,7 +732,6 @@ final class RecordingStarter {
     ColdPressGuard.reconcileSelectedBackend(
       overlay: recordingOverlay,
       selectedDriver: selected == .whisperKit ? whisperKitKernelDriver : kernelDriver,
-      selected: selected,
       ensureSelectedReady: ensureSelectedReadyForPress)
     return true
   }

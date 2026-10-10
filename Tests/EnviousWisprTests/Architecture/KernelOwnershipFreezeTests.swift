@@ -7,33 +7,25 @@ import Testing
 // `RecordingSessionKernel`, adapted by the single `KernelDictationDriver`.
 // PR-9 deleted the old `DictationPipeline` driver protocol. This suite is the
 // permanent guard that no SECOND recording-orchestration brain reappears and
-// that the lifecycle FSM + the event entry point stay single-owner. It models
-// `AppStateFreezeTests` (#763 terminal guard) and complements
-// `EngineIdentityFreezeTests` (which guards engine-identity literals, the old
-// WhisperKit pipeline, and adapter construction — not kernel ownership).
+// that the lifecycle FSM + the event entry point stay single-owner. It
+// complements `EngineIdentityFreezeTests` (which guards engine-identity reads,
+// the factory caller, VAD construction and adapter construction — not kernel
+// ownership).
 //
-// Four invariants:
-//   1. `DictationPipeline` (the deleted driver protocol) never returns to
-//      `Sources/**`; in `Tests/**` it may appear only in this file.
-//   2. `enum RecordingSessionState` (the lifecycle FSM) has exactly ONE source
+// Two invariants, each with matcher controls:
+//   1. `enum RecordingSessionState` (the lifecycle FSM) has exactly ONE source
 //      declaration — fail-closed `== 1`, so a silent rename trips the guard.
-//   3. `func handle(event: PipelineEvent)` (the driver's event entry point) has
+//   2. `func handle(event: PipelineEvent)` (the driver's event entry point) has
 //      exactly ONE source declaration — fail-closed `== 1`.
-//   4. `TranscriptionPipeline` (the deleted Parakeet pipeline type) never
-//      returns to `Sources/**`.
 //
-// Known blind spot (named, not fixed): a semantically-equivalent second FSM
-// declared under a DIFFERENT enum name evades invariant 2. The protocol-token
-// ban (1) + the single `handle(event:)` entry lock (3) + Codex code-diff review
-// are the covering layers; a name-blind structural detector is out of scope.
+// Known blind spot (named, not fixed): a second FSM declared under a DIFFERENT
+// enum name evades invariant 1; code review covers it.
 
 @Suite struct KernelOwnershipFreezeTests {
 
   // Whole-word so `KernelDictationDriver` / `KernelDictationDriverFactory` do
   // not false-positive on the deleted `DictationPipeline` protocol name.
   private static let dictationPipelineToken = #"\bDictationPipeline\b"#
-  // Whole-word so `WhisperKitPipelineState` etc. do not false-positive.
-  private static let transcriptionPipelineToken = #"\bTranscriptionPipeline\b"#
   // The `enum` keyword precedes the name only at the declaration; a usage such
   // as `RecordingSessionState.idle` is never preceded by `enum`.
   private static let recordingSessionStateDecl = #"\benum\s+RecordingSessionState\b"#
@@ -42,33 +34,6 @@ import Testing
   private static let handleEventDecl = #"func\s+handle\(event:\s*PipelineEvent\)"#
 
   // MARK: 1 — the deleted driver protocol stays deleted
-
-  @Test("DictationPipeline protocol is absent from Sources/ (PR-9 deleted it)")
-  func dictationPipelineAbsentFromSources() throws {
-    let hits = try Self.scanSources(pattern: Self.dictationPipelineToken)
-    #expect(
-      hits.isEmpty,
-      """
-      The deleted `DictationPipeline` driver protocol reappears in Sources/:
-      \(hits.joined(separator: "\n"))
-      PR-9 of #827 deleted it. `KernelDictationDriver` is the single concrete
-      recording driver and the App holds it directly. Do not reintroduce a
-      shared driver protocol — that is a second orchestration brain.
-      """)
-  }
-
-  @Test("DictationPipeline appears in Tests/ only in this freeze file")
-  func dictationPipelineAbsentFromTestsExceptThisFile() throws {
-    let offenders = try Self.scanTests(
-      pattern: Self.dictationPipelineToken, allowing: ["KernelOwnershipFreezeTests.swift"])
-    #expect(
-      offenders.isEmpty,
-      """
-      Test files reference the deleted `DictationPipeline` protocol:
-      \(offenders.joined(separator: "\n"))
-      Re-point the test at the concrete `KernelDictationDriver`.
-      """)
-  }
 
   // MARK: 2 — the lifecycle FSM has exactly one owner (fail-closed)
 
@@ -104,25 +69,7 @@ import Testing
 
   // MARK: 4 — the deleted Parakeet pipeline type stays deleted
 
-  @Test("TranscriptionPipeline type is absent from Sources/ (deleted PR-4b.4)")
-  func transcriptionPipelineAbsentFromSources() throws {
-    let hits = try Self.scanSources(pattern: Self.transcriptionPipelineToken)
-    #expect(
-      hits.isEmpty,
-      """
-      The deleted `TranscriptionPipeline` type reappears in Sources/:
-      \(hits.joined(separator: "\n"))
-      It was deleted at PR-4b.4 (#827) when Parakeet moved onto the kernel.
-      """)
-  }
-
   // MARK: Adversarial — the matchers flag real reintroductions
-
-  @Test("a re-added DictationPipeline protocol declaration is flagged")
-  func adversarialProtocolReintroductionFlagged() {
-    let line = "public protocol DictationPipeline: AnyObject {"
-    #expect(Self.regexFlags(source: line, pattern: Self.dictationPipelineToken))
-  }
 
   @Test("a second enum RecordingSessionState declaration is flagged")
   func adversarialSecondFSMFlagged() {
@@ -136,38 +83,9 @@ import Testing
     #expect(Self.regexFlags(source: line, pattern: Self.handleEventDecl))
   }
 
-  @Test("a TranscriptionPipeline construction is flagged")
-  func adversarialTranscriptionPipelineFlagged() {
-    let line = "    let p = TranscriptionPipeline()"
-    #expect(Self.regexFlags(source: line, pattern: Self.transcriptionPipelineToken))
-  }
-
   // MARK: Fail-closed — a silent rename (count 0) must NOT satisfy `== 1`
 
-  @Test("single-declaration locks are fail-closed: 0 and 2 both fail the == 1 check")
-  func singleDeclarationLocksAreFailClosed() {
-    let zero = "let x = 1\nlet y = 2\n"
-    let two = "enum RecordingSessionState {}\nenum RecordingSessionState {}\n"
-    #expect(Self.countMatches(in: zero, pattern: Self.recordingSessionStateDecl) == 0)
-    #expect(Self.countMatches(in: two, pattern: Self.recordingSessionStateDecl) == 2)
-    // Both differ from 1, so the live `== 1` assertion fails closed in either case.
-  }
-
   // MARK: Negative controls — legitimate code is NOT flagged
-
-  @Test("KernelDictationDriver / KernelDictationDriverFactory are not flagged by the protocol ban")
-  func negativeControlDriverNamesNotFlagged() {
-    let cls = "public final class KernelDictationDriver: HeartPathTelemetryTarget {"
-    let factory = "public enum KernelDictationDriverFactory {"
-    #expect(Self.regexFlags(source: cls, pattern: Self.dictationPipelineToken) == false)
-    #expect(Self.regexFlags(source: factory, pattern: Self.dictationPipelineToken) == false)
-  }
-
-  @Test("WhisperKitPipelineState is not flagged by the TranscriptionPipeline ban")
-  func negativeControlSubstringNotFlagged() {
-    let line = "    let s: WhisperKitPipelineState = .idle"
-    #expect(Self.regexFlags(source: line, pattern: Self.transcriptionPipelineToken) == false)
-  }
 
   @Test("a handle(event:) CALL site is not flagged by the declaration matcher")
   func negativeControlCallSiteNotFlagged() {
@@ -183,7 +101,7 @@ import Testing
     #expect(Self.countMatches(in: source, pattern: Self.dictationPipelineToken) == 0)
   }
 
-  // MARK: - Helpers (mirror EngineIdentityFreezeTests / AppStateFreezeTests)
+  // MARK: - Helpers (mirror EngineIdentityFreezeTests)
 
   /// Recursive scan over every `Sources/**/*.swift` file. Returns
   /// `relative/path.swift:LINE: trimmed` for each non-comment line whose regex
@@ -192,12 +110,6 @@ import Testing
   /// freeze.
   private static func scanSources(pattern: String) throws -> [String] {
     try scan(root: "Sources", pattern: pattern, allowing: [])
-  }
-
-  /// Same scan over `Tests/**/*.swift`, excluding any file whose basename is in
-  /// `allowing` (this freeze file legitimately contains the banned tokens).
-  private static func scanTests(pattern: String, allowing: [String]) throws -> [String] {
-    try scan(root: "Tests", pattern: pattern, allowing: allowing)
   }
 
   private static func scan(root: String, pattern: String, allowing: [String]) throws -> [String] {

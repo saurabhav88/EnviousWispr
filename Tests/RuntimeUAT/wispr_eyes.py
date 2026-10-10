@@ -2595,9 +2595,9 @@ def instances_stayed_single(before, window_start, samples):
 def double_press_record_key(attempts=3):
     """Two presses inside the app's chain window — the hands-free gesture (#2410).
 
-    The window is measured from the moment RECORDING STARTS, not from the first
-    press, so the gap here is deliberately well inside 500ms rather than close to
-    it.
+    The window is measured from the FIRST PRESS (`HotkeyService.recordingStart`),
+    when each key event happened if the OS stamped it (#3534), so the gap here is
+    deliberately well inside 500ms rather than close to it.
 
     NO PRECONDITION ON FOCUS. Measured 2026-08-25, macOS 26.4, dev build from
     `main` at `d8cfd3b9`, two arms against one instance:
@@ -2636,6 +2636,13 @@ def double_press_record_key(attempts=3):
     # So the first four are one population around 80% and 0.30s is outside the
     # window entirely. Tuning the number is not available - it was tried first,
     # and the measurement is what stopped it.
+    #
+    # LIKELY CAUSE, NOT VERIFIED (#3534): before #3534 the app judged the window by
+    # when it HANDLED each event, and the main thread lags 100-700 ms right after a
+    # recording starts, so a fast second press could be handled outside the window.
+    # The same miss hit real double taps under load. #3534 judges by when the
+    # events happened; whether that lifts this synthetic rate is unverified until
+    # the #3534 Live UAT measures it. Keep the retry until then.
     #
     # A SIGNAL-BASED WAIT WAS TRIED AND IS WORSE, which is why this is a retry and
     # not the seam fix the flake rules would otherwise ask for. Waiting for the

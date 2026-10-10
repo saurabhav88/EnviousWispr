@@ -299,9 +299,10 @@ final class InverseTextNormalizationStep: TextProcessingStep {
     let routeLabel: String
     let requestRoute: ITNWorkRequest.Route
     let punctuationLanguage: String?
-    // #2450: the start-word pass belongs to the NEUTRAL route, and to the ENGLISH route only while the
-    // user has given English a start word (its default is none: bare words, no pass, no status). A
-    // vetted language route (none in production yet) owns its own passes.
+    // #2450: the start-word pass belongs to the NEUTRAL route and to a vetted LANGUAGE route (German,
+    // #1677: it runs after that language's passes, inside the same deadline), and to the ENGLISH route
+    // only while the user has given English a start word (its default is none: bare words, no pass,
+    // no status).
     let plan: PunctuationPlan?
     switch route {
     case .english:
@@ -319,7 +320,9 @@ final class InverseTextNormalizationStep: TextProcessingStep {
       routeLabel = "language:\(code)"
       requestRoute = .language(code)
       punctuationLanguage = code
-      plan = nil
+      plan = Self.punctuationPlan(
+        language: context.language, englishVetoed: context.englishRulesVetoed,
+        settings: spokenPunctuationSnapshot)
     case .neutral(let reason):
       rules = nil
       admitted = false
@@ -362,7 +365,7 @@ final class InverseTextNormalizationStep: TextProcessingStep {
         let text = InverseTextNormalizationGate.execute(
           request.input, route: route, rules: rules, normalizer: normalizer,
           spokenPunctuation: request.spokenPunctuation.enabled)
-        // #2450: when this take has a plan (neutral route, or English with a start word), the
+        // #2450: when this take has a plan (neutral or language route, or English with a start word), the
         // start-word pass runs INSIDE the same closure, so one deadline covers both and a timeout
         // discards both, returning the whole pre-ITN text.
         guard let language = request.punctuationLanguage,

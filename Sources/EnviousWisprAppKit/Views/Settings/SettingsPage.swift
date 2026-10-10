@@ -24,6 +24,21 @@ extension EnvironmentValues {
   }
 }
 
+/// The arrival a Settings search navigation asked for, if one is pending (#3482 plan §3.4).
+/// Injected by `UnifiedWindowView.page` next to `settingsNavigate`. Defaults to nil, so a preview
+/// or a test that hosts a page on its own reveals nothing.
+private struct SettingsRevealKey: EnvironmentKey {
+  static let defaultValue: SettingsReveal? = nil
+}
+
+extension EnvironmentValues {
+  // periphery:ignore - read by the reveal handler in a later PR B chunk (#3482)
+  var settingsReveal: SettingsReveal? {
+    get { self[SettingsRevealKey.self] }
+    set { self[SettingsRevealKey.self] = newValue }
+  }
+}
+
 /// The final sidebar pages. History is ungrouped; Diagnostics is development only.
 enum SettingsPage: String, CaseIterable, Identifiable {
   case history
@@ -40,20 +55,26 @@ enum SettingsPage: String, CaseIterable, Identifiable {
 
   var id: String { rawValue }
 
-  var label: String {
+  /// The page's name as a resource, so the sidebar and the Settings Map (#3482) share one
+  /// owner. Diagnostics is a DEBUG-only developer page with no catalog entry, so it has none.
+  var labelResource: LocalizedStringResource? {
     switch self {
-    case .history: String(localized: "History")
-    case .dictation: String(localized: "Dictation Settings")
-    case .keybinds: String(localized: "Keybinds")
-    case .transcribeFile: String(localized: "Transcribe a File")
-    case .aiPolish: String(localized: "AI Polish")
-    case .dictionary: String(localized: "Dictionary")
-    case .snippets: String(localized: "Snippets")
-    case .appSettings: String(localized: "App Settings")
+    case .history: "History"
+    case .dictation: "Dictation Settings"
+    case .keybinds: "Keybinds"
+    case .transcribeFile: "Transcribe a File"
+    case .aiPolish: "AI Polish"
+    case .dictionary: "Dictionary"
+    case .snippets: "Snippets"
+    case .appSettings: "App Settings"
     #if DEBUG
-      case .diagnostics: "Diagnostics"
+      case .diagnostics: nil
     #endif
     }
+  }
+
+  var label: String {
+    labelResource.map { String(localized: $0) } ?? "Diagnostics"
   }
 
   var icon: String {
@@ -116,6 +137,18 @@ enum DictationTab: String, CaseIterable, Hashable, Identifiable {
   case clipboard
 
   var id: Self { self }
+
+  /// The tab's Settings Map identity (#3482). Exhaustive, so a new tab must be given a node.
+  var mapID: SettingsMapID {
+    switch self {
+    case .engine: .dictationTabEngine
+    case .microphone: .dictationTabMicrophone
+    case .livePreview: .dictationTabLivePreview
+    case .pill: .dictationTabPill
+    case .chimes: .dictationTabChimes
+    case .clipboard: .dictationTabClipboard
+    }
+  }
 
   var label: LocalizedStringResource {
     switch self {
@@ -189,13 +222,85 @@ enum SettingsDestination: Equatable {
 struct SettingsNavigationState: Equatable {
   var selectedPage: SettingsPage = .history
   var dictationTab: DictationTab = .engine
+  /// Lifted out of the Dictionary page's own state (#3482) so a search result can open a tab;
+  /// the page binds to it the way Dictation Settings binds `dictationTab`.
+  var dictionaryTab: DictionaryTab = .yourWords
   var appSettingsTab: AppSettingsTab = .appearance
+  /// The arrival a search navigation asked for. Every other commit clears it, so a reveal never
+  /// outlives the navigation that asked for it.
+  var reveal: SettingsReveal?
+  /// The token of the latest reveal, kept after `reveal` clears so tokens never repeat.
+  private(set) var lastRevealToken = 0
+  /// Increments on every committed navigation and when the window closes (#3482 §3.4).
+  private(set) var epoch = 0
+  /// The epoch the latest reveal was committed in: any later navigation, even to the same page
+  /// and tab, or a window close, makes that arrival history.
+  private(set) var lastRevealEpoch = 0
 
   mutating func selectSidebar(_ page: SettingsPage) {
+    epoch += 1
+    reveal = nil
     selectedPage = page
   }
 
+  /// A chosen search result: its page and tab, then its arrival. Choosing the same entry again
+  /// publishes a new token.
+  mutating func apply(_ request: SettingsSearchRequest) {
+    apply(request.destination)
+    if let tab = request.dictionaryTab { dictionaryTab = tab }
+    lastRevealToken += 1
+    lastRevealEpoch = epoch
+    reveal = SettingsReveal(request: request, token: lastRevealToken)
+  }
+
+  /// Whether the arrival for `token` still belongs to what the window shows, after its reveal was
+  /// acknowledged and cleared: it is the latest search, nothing has navigated since it was
+  /// committed, and its page and tab are on screen.
+  func arrivalIsCurrent(token: Int, entryID: String) -> Bool {
+    guard token == lastRevealToken, epoch == lastRevealEpoch,
+      let id = SettingsMapID(rawValue: entryID)
+    else { return false }
+    let node = SettingsMap.node(id)
+    return isShowing(node.destination, dictionaryTab: node.dictionaryTab)
+  }
+
+  /// The arrival for `token` finished (#3482 §3.4): clear it, so a remount never replays it.
+  /// A newer reveal is left alone.
+  mutating func acknowledgeReveal(token: Int) {
+    if reveal?.token == token { reveal = nil }
+  }
+
+  /// Whether `destination` (and, on Dictionary, `dictionaryTab`) is what the window shows now.
+  func isShowing(_ destination: SettingsDestination?, dictionaryTab: DictionaryTab?) -> Bool {
+    guard let destination, destination.page == selectedPage else { return false }
+    switch destination {
+    case .dictation(let tab): return tab == dictationTab
+    case .appSettings(let tab): return tab == appSettingsTab
+    case .dictionary: return dictionaryTab.map { $0 == self.dictionaryTab } ?? true
+    default: return true
+    }
+  }
+
+  /// A tab changed. When the person changed it directly (no pending reveal on that tab), it ends
+  /// any arrival and ring in progress; the tab a search request opened keeps its own arrival.
+  mutating func noteTabChange() {
+    if let reveal, let id = SettingsMapID(rawValue: reveal.entryID) {
+      let node = SettingsMap.node(id)
+      if isShowing(node.destination, dictionaryTab: node.dictionaryTab) { return }
+    }
+    epoch += 1
+    reveal = nil
+  }
+
+  /// The window closed: no arrival or ring survives it.
+  mutating func endWindowSession() {
+    epoch += 1
+    reveal = nil
+  }
+
   mutating func apply(_ destination: SettingsDestination) {
+    epoch += 1
+    reveal = nil
     selectedPage = destination.page
     switch destination {
     case .dictation(let tab): dictationTab = tab

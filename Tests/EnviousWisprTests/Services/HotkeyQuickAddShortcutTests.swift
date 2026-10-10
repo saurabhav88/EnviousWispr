@@ -81,16 +81,17 @@ struct HotkeyQuickAddShortcutTests {
     cancelKey: UInt16,
     quickAddKey: UInt16,
     quickAddModifiers: NSEvent.ModifierFlags = []
-  ) -> (HotkeyService, Sink, Waiter, Waiter, Waiter) {
+  ) -> (HotkeyService, Sink, Waiter, Waiter, Waiter, ListenerKeyboard) {
     let sink = Sink()
     let quickAddWaiter = Waiter()
     let cancelWaiter = Waiter()
     let toggleWaiter = Waiter()
+    let effects = RecordingDesktopHotkeyEffects()
     let service = HotkeyService(
-      effects: RecordingDesktopHotkeyEffects(),
+      effects: effects,
       telemetry: HotkeyTelemetrySink(
         registrationFailed: { _, _, _, _ in },
-        pressed: { trigger, _, keyShape, _, action in
+        pressed: { trigger, _, keyShape, _, action, _ in
           sink.presses.append((trigger, keyShape, action))
         }))
     service.recordingMode = .toggle
@@ -112,22 +113,11 @@ struct HotkeyQuickAddShortcutTests {
       sink.toggles += 1
       toggleWaiter.note()
     }
-    return (service, sink, quickAddWaiter, cancelWaiter, toggleWaiter)
-  }
-
-  /// A modifier press: the flag is PRESENT on press and ABSENT on release, the shape real hardware
-  /// produces (measured for #1987). Asserting on set membership instead would prove the key is
-  /// accepted and nothing about what pressing it does.
-  private func press(_ service: HotkeyService, _ keyCode: UInt16) {
-    guard let flag = ModifierKeyCodes.flag(for: keyCode) else {
-      Issue.record("\(keyCode) is not a modifier key code")
-      return
-    }
-    service.handleFlagsChangedValues(keyCode: keyCode, flags: flag)
-  }
-
-  private func release(_ service: HotkeyService, _ keyCode: UInt16) {
-    service.handleFlagsChangedValues(keyCode: keyCode, flags: [])
+    // The keyboard listener, the only reader of bare modifiers, is installed by `start()`. Every
+    // modifier below goes through it with the shape real hardware produces: family flag and the
+    // key's own side bit present on press, absent on release.
+    service.start()
+    return (service, sink, quickAddWaiter, cancelWaiter, toggleWaiter, ListenerKeyboard(effects))
   }
 
   // MARK: - The fall-through
@@ -136,10 +126,10 @@ struct HotkeyQuickAddShortcutTests {
   func bareModifierQuickAddDoesNotStartARecording() async {
     // The defect this suite exists for. With the dispatch written as `if role == .cancel`, this
     // press fell through to the record path and began dictating.
-    let (service, sink, quickAdd, _, _) = makeService(
+    let (service, sink, quickAdd, _, _, keys) = makeService(
       recordKey: chordKeyCode, cancelKey: 53, quickAddKey: rightCommand)
 
-    press(service, rightCommand)
+    await keys.press(rightCommand)
     await quickAdd.wait()
 
     #expect(sink.quickAdds == 1)
@@ -149,10 +139,10 @@ struct HotkeyQuickAddShortcutTests {
 
   @Test("A modifier RELEASE is not a Quick Add gesture")
   func releaseDoesNotFireQuickAdd() async {
-    let (service, sink, _, _, _) = makeService(
+    let (service, sink, _, _, _, keys) = makeService(
       recordKey: chordKeyCode, cancelKey: 53, quickAddKey: rightCommand)
 
-    release(service, rightCommand)
+    await keys.release(rightCommand)
     await Task.yield()
 
     #expect(sink.quickAdds == 0)
@@ -164,11 +154,11 @@ struct HotkeyQuickAddShortcutTests {
   func cancelOutranksQuickAddWhileArmed() async {
     // Quick Add is armed at ALL times and cancel only during a recording, so ordering Quick Add
     // first would take the stop key away for the whole of every recording.
-    let (service, sink, _, cancel, _) = makeService(
+    let (service, sink, _, cancel, _, keys) = makeService(
       recordKey: chordKeyCode, cancelKey: rightCommand, quickAddKey: rightCommand)
     service.registerCancelHotkey()
 
-    press(service, rightCommand)
+    await keys.press(rightCommand)
     await cancel.wait()
 
     #expect(sink.cancels == 1)
@@ -179,10 +169,10 @@ struct HotkeyQuickAddShortcutTests {
   func quickAddWinsWhenCancelIsNotArmed() async {
     // The other half of the ordering: behind cancel, Quick Add still gets every moment cancel is
     // not armed, so a shared binding costs the user nothing they had before.
-    let (service, sink, quickAdd, _, _) = makeService(
+    let (service, sink, quickAdd, _, _, keys) = makeService(
       recordKey: chordKeyCode, cancelKey: rightCommand, quickAddKey: rightCommand)
 
-    press(service, rightCommand)
+    await keys.press(rightCommand)
     await quickAdd.wait()
 
     #expect(sink.quickAdds == 1)
@@ -192,28 +182,28 @@ struct HotkeyQuickAddShortcutTests {
   @Test("One cancel gesture does not also open Quick Add when the other side is held")
   func aConsumedCancelGestureDoesNotFallThroughToQuickAdd() async {
     // `.command` is AGGREGATE and device-independent: with Left Command held, releasing Right
-    // Command leaves it set, so the release re-enters reading exactly like a press. Cancel closes
-    // its own double-fire by disarming — correct, and precisely what lets the NEXT claimant of this
-    // key take the re-entry. With both bound to it, one cancel gesture discarded the recording and
-    // opened the panel on the way out.
-    let (service, sink, quickAdd, cancel, _) = makeService(
+    // Command leaves it set. The retired `NSEvent` path read only that flag, so the release
+    // re-entered reading exactly like a press; cancel had disarmed itself, so the next claimant of
+    // the key took it, and one cancel gesture discarded the recording and opened the panel on the
+    // way out (#2381). The listener reads side bits and sends a release where its press went.
+    let (service, sink, quickAdd, cancel, _, keys) = makeService(
       recordKey: chordKeyCode, cancelKey: rightCommand, quickAddKey: rightCommand)
     service.registerCancelHotkey()
 
-    service.handleFlagsChangedValues(keyCode: rightCommand, flags: .command)
+    await keys.press(ModifierKeyCodes.leftCommand)
+    await keys.press(rightCommand)
     await cancel.wait()
     #expect(sink.cancels == 1)
 
-    // Right Command physically UP, Left still down, so the flag survives.
-    service.handleFlagsChangedValues(keyCode: rightCommand, flags: .command)
+    // Right Command physically UP, Left still down, so the aggregate flag survives.
+    await keys.release(rightCommand)
 
     #expect(sink.quickAdds == 0, "the tail of a consumed cancel is not a Quick Add gesture")
     #expect(sink.cancels == 1, "and it is not a second cancel either")
 
-    // PAIRED POSITIVE, and without it "swallow this key forever" passes everything above. The
-    // aggregate flag dropping is the only evidence the gesture is over; after that the key is live.
-    service.handleFlagsChangedValues(keyCode: rightCommand, flags: [])
-    service.handleFlagsChangedValues(keyCode: rightCommand, flags: .command)
+    // PAIRED POSITIVE, and without it "swallow this key forever" passes everything above: the
+    // next real press of the key, cancel now disarmed, is Quick Add's.
+    await keys.press(rightCommand)
     await quickAdd.wait()
 
     #expect(sink.quickAdds == 1, "swallowing is bounded to the one gesture, not to the key")
@@ -224,11 +214,11 @@ struct HotkeyQuickAddShortcutTests {
     // Accepting would open a panel that TAKES KEY FOCUS the instant the user pressed the first
     // half of their record chord, so the rest of the chord lands in the panel and the recording
     // never happens. The same refusal cancel makes, for the same reason one step over.
-    let (service, sink, _, _, _) = makeService(
+    let (service, sink, _, _, _, keys) = makeService(
       recordKey: chordKeyCode, recordModifiers: [.command], cancelKey: 53,
       quickAddKey: rightCommand)
 
-    press(service, rightCommand)
+    await keys.press(rightCommand)
     await Task.yield()
 
     #expect(sink.quickAdds == 0, "ambiguous with starting the record chord")
@@ -239,7 +229,7 @@ struct HotkeyQuickAddShortcutTests {
 
   @Test("The Carbon hotkey fires Quick Add on press and not on release")
   func carbonDispatchFiresQuickAdd() async {
-    let (service, sink, quickAdd, _, _) = makeService(
+    let (service, sink, quickAdd, _, _, _) = makeService(
       recordKey: rightOption, cancelKey: 53, quickAddKey: wKeyCode,
       quickAddModifiers: [.control, .option])
 
@@ -254,54 +244,37 @@ struct HotkeyQuickAddShortcutTests {
     #expect(sink.cancels == 0)
   }
 
-  // MARK: - Installation, which every dispatch test above is blind to
+  // MARK: - The role a missing listener would silence
 
-  @Test("A bare-modifier Quick Add installs the modifier monitors")
-  func bareModifierQuickAddInstallsMonitors() {
-    // #1991 BLOCKER 2, REPRODUCED BY #2381 AND CAUGHT HERE. The install condition was a hand-written
-    // disjunction over record and cancel, so this exact configuration — a bare-modifier Quick Add
-    // paired with a chord record key and a chord cancel key, which is the DEFAULT shape for both —
-    // installed no monitor at all and left the shortcut stored, displayed, and completely inert.
-    //
-    // Every dispatch case in this suite drives `handleFlagsChangedValues` directly and so passes
-    // against that build, which is precisely why #1991's original tests could not see it either.
-    // This asserts the DECISION, not the `NSEvent` objects: the monitor objects say nothing about
-    // whether the right question was asked.
-    let (service, _, _, _, _) = makeService(
-      recordKey: chordKeyCode, recordModifiers: [.command],
-      cancelKey: 53, quickAddKey: rightCommand)
-
-    #expect(service.recordBinding.isBareModifier == false)
-    #expect(service.cancelBinding.isBareModifier == false)
-    #expect(service.quickAddBinding.isBareModifier == true)
-    #expect(service.shouldInstallModifierMonitors, "no monitor means the shortcut is inert")
-  }
-
-  @Test("Chords everywhere install no monitors")
-  func chordsEverywhereInstallNoMonitors() {
-    // The paired negative. Without it, a condition returning true for everything would look clean.
-    let (service, _, _, _, _) = makeService(
+  /// #1991 blocker 2, reproduced by #2381: a hand-written install condition over record and cancel
+  /// left a bare-modifier Quick Add (chord record, chord cancel: the default shape) unobserved. The
+  /// keyboard listener now installs whatever the shapes, and `bareModifierQuickAddDoesNotStartARecording`
+  /// drives exactly that configuration through it. What remains of the question is which role a
+  /// missing listener silences, which labels its failure telemetry.
+  @Test("Chords everywhere leave no bare-modifier role at risk")
+  func chordsEverywhereLeaveNoRoleAtRisk() {
+    // The paired negative of the case below.
+    let (service, _, _, _, _, _) = makeService(
       recordKey: chordKeyCode, recordModifiers: [.command],
       cancelKey: 53, quickAddKey: wKeyCode, quickAddModifiers: [.control, .option])
 
-    #expect(service.shouldInstallModifierMonitors == false)
     #expect(service.bareModifierRoleAtRisk == nil)
   }
 
-  @Test("The role that dies without monitors is the most severe one bound to a bare modifier")
+  @Test("The role a missing listener silences is the most severe one bound to a bare modifier")
   func theRoleAtRiskIsTheMostSevereOne() {
     // The field holds ONE value and it labels the failure telemetry, so the answer must be the
     // biggest loss: record kills dictation, cancel kills aborting one, Quick Add is a limb.
-    let (allThree, _, _, _, _) = makeService(
+    let (allThree, _, _, _, _, _) = makeService(
       recordKey: rightOption, cancelKey: rightCommand, quickAddKey: ModifierKeyCodes.rightShift)
     #expect(allThree.bareModifierRoleAtRisk == .record)
 
-    let (cancelAndQuickAdd, _, _, _, _) = makeService(
+    let (cancelAndQuickAdd, _, _, _, _, _) = makeService(
       recordKey: chordKeyCode, recordModifiers: [.command],
       cancelKey: rightCommand, quickAddKey: ModifierKeyCodes.rightShift)
     #expect(cancelAndQuickAdd.bareModifierRoleAtRisk == .cancel)
 
-    let (quickAddOnly, _, _, _, _) = makeService(
+    let (quickAddOnly, _, _, _, _, _) = makeService(
       recordKey: chordKeyCode, recordModifiers: [.command],
       cancelKey: 53, quickAddKey: rightCommand)
     #expect(
@@ -337,7 +310,7 @@ struct HotkeyQuickAddShortcutTests {
     // The binary collapse this change removed: `trigger == .cancel ? cancelKeyCode : toggleKeyCode`
     // absorbed any new member into the toggle branch, so a Quick Add press reported the RECORD
     // key's shape. Record is modifier-only here and Quick Add is a chord, so the two disagree.
-    let (service, sink, quickAdd, _, _) = makeService(
+    let (service, sink, quickAdd, _, _, _) = makeService(
       recordKey: rightOption, cancelKey: 53, quickAddKey: wKeyCode,
       quickAddModifiers: [.control, .option])
 
@@ -353,11 +326,11 @@ struct HotkeyQuickAddShortcutTests {
   @Test("A record press still reports the record key's shape")
   func telemetryStillReportsTheRecordKeyShape() async {
     // The paired case. A switch that answered "chord" for everything would satisfy the test above.
-    let (service, sink, _, _, toggle) = makeService(
+    let (service, sink, _, _, toggle, keys) = makeService(
       recordKey: rightOption, cancelKey: 53, quickAddKey: wKeyCode,
       quickAddModifiers: [.control, .option])
 
-    press(service, rightOption)
+    await keys.press(rightOption)
     await toggle.wait()
 
     #expect(sink.presses.last?.trigger == "toggle_hotkey")

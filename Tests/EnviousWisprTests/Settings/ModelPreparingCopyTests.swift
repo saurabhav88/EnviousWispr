@@ -42,11 +42,4 @@ struct ModelPreparingCopyTests {
     #expect(ModelPreparingCopy.label(warmInFlight: .parakeet) == ModelPreparingCopy.ready)
   }
 
-  /// A missing coordinator (previews, tests without the environment) arrives as `nil` and
-  /// must fail toward the shipped copy. A stuck "preparing" would be a new lie with no exit.
-  @Test("a missing coordinator falls back to Model Ready")
-  func missingCoordinatorFallsBackToReady() {
-    let absent: ASRBackendType? = nil
-    #expect(ModelPreparingCopy.label(warmInFlight: absent) == "Model Ready")
-  }
 }

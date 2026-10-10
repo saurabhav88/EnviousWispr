@@ -162,7 +162,7 @@ final class PipelineSettingsSync {
   private let checkerSelectionProvider:
     (@MainActor (LLMProvider, String?) async -> LearnedWordCheckerSelection)?
 
-  private func syncEGOneLearnedWordChecker(provider: LLMProvider) {
+  private func syncEGOneLearnedWordChecker() {
     kernelDriver.learnedWordCheck.selectionProvider = checkerSelectionProvider
     whisperKitKernelDriver.learnedWordCheck.selectionProvider = checkerSelectionProvider
   }
@@ -173,7 +173,7 @@ final class PipelineSettingsSync {
   /// Custom words are NOT seeded here — `CustomWordsPropagator` (registered
   /// in the former root state init) owns that fanout. See Phase D (#496).
   func applyInitialSettings(_ settings: SettingsManager) {
-    syncEGOneLearnedWordChecker(provider: settings.llmProvider)
+    syncEGOneLearnedWordChecker()
     kernelDriver.wordCorrection.wordCorrectionEnabled = settings.wordCorrectionEnabled
     kernelDriver.fillerRemoval.fillerRemovalEnabled = settings.fillerRemovalEnabled
     kernelDriver.emojiFormatter.emojiFormatterEnabled = settings.emojiFormatterEnabled
@@ -241,7 +241,7 @@ final class PipelineSettingsSync {
       hotkeyService.recordingMode = settings.recordingMode
     case .llmProvider:
       onWordCheckInputsChanged()
-      syncEGOneLearnedWordChecker(provider: settings.llmProvider)
+      syncEGOneLearnedWordChecker()
       // Eviction fires for RAM management (#295). Pipeline polish uses the
       // frozen value from `DictationSessionConfig`; live steps are seeded per
       // recording, so nothing to mirror here since #1106 removed re-polish.
@@ -483,7 +483,7 @@ final class PipelineSettingsSync {
     guard deselectFirst else { return }
     // The guard is about the RECORDING, not about which engine it froze:
     // stopping ANY local server underneath a session that froze a local
-    // provider degrades that take's polish to raw. `isEGOnePinnedInFlight`
+    // provider degrades that take's polish to raw. `pinnedLocalProvider()`
     // reads the frozen provider, so it already answers for both — but the
     // reconciliation must return BEFORE starting the incoming model too,
     // otherwise the coordinator evicts the frozen one anyway on the caller's
@@ -531,13 +531,6 @@ final class PipelineSettingsSync {
   /// this class owns both drivers, so it owns the read.
   func isWhisperKitDictationInFlight() -> Bool {
     whisperKitKernelDriver.currentSessionConfig != nil
-  }
-
-  /// True if either pipeline's frozen `DictationSessionConfig` targets EG-1.
-  /// Single authority (#1271 matrix gap 3) — the runtime's Remove Model
-  /// defer reads it through the closure the bootstrapper wires.
-  func isEGOnePinnedInFlight() -> Bool {
-    pinnedLocalProvider() == .egOne
   }
 
   /// #2649: which LOCAL engine an in-flight recording froze, if any.

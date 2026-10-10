@@ -988,6 +988,29 @@
         }
       }
     },
+    "%lld settings found" : {
+      "comment" : "Settings search, VoiceOver: how many results the search shows.",
+      "localizations" : {
+        "de" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld Einstellung gefunden"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld Einstellungen gefunden"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "%lld words" : {
       "localizations" : {
         "de" : {
@@ -1460,6 +1483,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "KI-Nachbearbeitung"
+          }
+        }
+      }
+    },
+    "AI Polish provider" : {
+      "comment" : "Settings search result: the model card that chooses who polishes the text.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Anbieter für KI-Nachbearbeitung"
           }
         }
       }
@@ -2007,12 +2041,12 @@
         }
       }
     },
-    "Accessibility access required for paste" : {
+    "Accessibility needed for modifier keys used on their own and for pasting" : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Zum Einfügen ist Zugriff auf Bedienungshilfen nötig"
+            "value" : "Bedienungshilfen nötig für allein genutzte Sondertasten und zum Einfügen"
           }
         }
       }
@@ -2692,12 +2726,12 @@
         }
       }
     },
-    "Allow Accessibility access so EnviousWispr can paste your dictation into other apps." : {
+    "Allow Accessibility access so a modifier key used on its own works as a keybind and EnviousWispr can paste your dictation into other apps." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Erlaube den Zugriff auf Bedienungshilfen, damit EnviousWispr dein Diktat in andere Apps einfügen kann."
+            "value" : "Erlaube den Zugriff auf Bedienungshilfen, damit eine allein genutzte Sondertaste als Tastenkürzel funktioniert und EnviousWispr dein Diktat in andere Apps einfügen kann."
           }
         }
       }
@@ -3244,6 +3278,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Apple Intelligence erfordert macOS 26 oder neuer."
+          }
+        }
+      }
+    },
+    "Apple Intelligence status" : {
+      "comment" : "Settings search result: whether Apple Intelligence is available on this Mac.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Status von Apple Intelligence"
           }
         }
       }
@@ -5669,6 +5714,17 @@
         }
       }
     },
+    "Current dictation engine" : {
+      "comment" : "Settings search result: the heading that names the speech engine in use.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aktuelle Diktier-Engine"
+          }
+        }
+      }
+    },
     "Current step" : {
       "comment" : "VoiceOver: the Ollama setup step to do now.",
       "localizations" : {
@@ -6089,6 +6145,7 @@
       }
     },
     "Dictation language" : {
+      "comment" : "The language dictation is locked to: the language sheet's title and a Settings search result.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -6365,6 +6422,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Ein Modell laden"
+          }
+        }
+      }
+    },
+    "Download a model for Ollama" : {
+      "comment" : "Settings search result: downloads a model for the Ollama provider.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Modell für Ollama herunterladen"
           }
         }
       }
@@ -6842,6 +6910,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Englisch (UK)"
+          }
+        }
+      }
+    },
+    "English or German" : {
+      "comment" : "Settings search result: the languages the app itself can be shown in.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Englisch oder Deutsch"
           }
         }
       }
@@ -7421,6 +7500,28 @@
         }
       }
     },
+    "File transcription steps" : {
+      "comment" : "Settings search result: the steps of Transcribe a File.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Schritte für „Datei transkribieren“"
+          }
+        }
+      }
+    },
+    "Find Settings" : {
+      "comment" : "Edit menu: moves the cursor into the Settings search field (Command-F).",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Einstellungen suchen"
+          }
+        }
+      }
+    },
     "Finding snippets" : {
       "comment" : "Snippets, import snippets: sheet title while reading the source.",
       "localizations" : {
@@ -7933,12 +8034,34 @@
         }
       }
     },
+    "German, French, Spanish and Italian use a start word by default. You can change it or leave it blank. Say the start word first, then the mark. With a start word, a command word on its own stays an ordinary word." : {
+      "comment" : "Speech engine settings, spoken punctuation help: how the start word works.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Deutsch, Französisch, Spanisch und Italienisch nutzen standardmäßig ein Startwort. Du kannst es ändern oder leer lassen. Sag zuerst das Startwort und dann das Zeichen. Mit Startwort bleibt ein Befehlswort allein ein gewöhnliches Wort."
+          }
+        }
+      }
+    },
     "Get Started" : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Loslegen"
+          }
+        }
+      }
+    },
+    "Get an API key" : {
+      "comment" : "Settings search result: link to the chosen cloud provider's API key page.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "API-Schlüssel abrufen"
           }
         }
       }
@@ -8665,17 +8788,6 @@
         }
       }
     },
-    "German, French, Spanish and Italian use a start word by default. You can change it or leave it blank. Say the start word first, then the mark. With a start word, a command word on its own stays an ordinary word." : {
-      "comment" : "Speech engine settings, spoken punctuation help: how the start word works.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Deutsch, Französisch, Spanisch und Italienisch nutzen standardmäßig ein Startwort. Du kannst es ändern oder leer lassen. Sag zuerst das Startwort und dann das Zeichen. Mit Startwort bleibt ein Befehlswort allein ein gewöhnliches Wort."
-          }
-        }
-      }
-    },
     "In a hurry? Skip ahead" : {
       "localizations" : {
         "de" : {
@@ -8726,6 +8838,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Eingang %lld"
+          }
+        }
+      }
+    },
+    "Input 1, Input 2…" : {
+      "comment" : "Settings search result: the inputs of a microphone with several inputs.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Eingang 1, Eingang 2 …"
           }
         }
       }
@@ -9576,6 +9699,17 @@
         }
       }
     },
+    "Leaving this blank means no start word. Command words become marks wherever you say them, even inside a normal sentence." : {
+      "comment" : "Speech engine settings, Start word row: shown while the field is blank or its draft is blank, because every command word then becomes a mark.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wenn du das Feld leer lässt, gibt es kein Startwort. Befehlswörter werden überall dort zu Satzzeichen, wo du sie sagst, auch mitten in einem normalen Satz."
+          }
+        }
+      }
+    },
     "Legal" : {
       "comment" : "Your Words, vocabulary packs: a pack's name.",
       "localizations" : {
@@ -9687,6 +9821,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Liste"
+          }
+        }
+      }
+    },
+    "Listen to the sound" : {
+      "comment" : "Settings search result: plays a recording chime so you can hear it.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ton anhören"
           }
         }
       }
@@ -10187,6 +10332,17 @@
         }
       }
     },
+    "Matches “%@”" : {
+      "comment" : "Settings search result: the word that found this setting. %@ is that word.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Treffer: „%@“"
+          }
+        }
+      }
+    },
     "May need a paid Ollama plan" : {
       "comment" : "AI Polish, Ollama model list: heading for hosted models that may need a paid Ollama plan.",
       "localizations" : {
@@ -10358,6 +10514,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Mikrofon getrennt. Wörter könnten fehlen."
+          }
+        }
+      }
+    },
+    "Microphone in the list" : {
+      "comment" : "Settings search result: one microphone in the Input device list.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mikrofon in der Liste"
           }
         }
       }
@@ -11122,6 +11289,17 @@
         }
       }
     },
+    "No settings match “%@”." : {
+      "comment" : "Settings search: shown when nothing matches. %@ is what the person typed.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Keine passenden Einstellungen für „%@“ gefunden."
+          }
+        }
+      }
+    },
     "No snippets found. Each line needs a trigger and some text." : {
       "comment" : "Snippets, import snippets: paste count, none found.",
       "localizations" : {
@@ -11181,17 +11359,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Keine gesprochenen Varianten"
-          }
-        }
-      }
-    },
-    "Leaving this blank means no start word. Command words become marks wherever you say them, even inside a normal sentence." : {
-      "comment" : "Speech engine settings, Start word row: shown while the field is blank or its draft is blank, because every command word then becomes a mark.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Wenn du das Feld leer lässt, gibt es kein Startwort. Befehlswörter werden überall dort zu Satzzeichen, wo du sie sagst, auch mitten in einem normalen Satz."
           }
         }
       }
@@ -14134,12 +14301,12 @@
         }
       }
     },
-    "Required to paste your dictation" : {
+    "For modifier keybinds and pasting" : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Zum Einfügen deines Diktats erforderlich"
+            "value" : "Für Sondertasten als Tastenkürzel und zum Einfügen"
           }
         }
       }
@@ -14268,6 +14435,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Erneut versuchen"
+          }
+        }
+      }
+    },
+    "Return" : {
+      "comment" : "Settings search: key hint on the selected result; Return opens it.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Return"
           }
         }
       }
@@ -14810,6 +14988,17 @@
         }
       }
     },
+    "Search settings" : {
+      "comment" : "Settings sidebar: placeholder in the search field.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Einstellungen suchen"
+          }
+        }
+      }
+    },
     "Search snippets" : {
       "localizations" : {
         "de" : {
@@ -14838,6 +15027,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Nachbearbeitete Abschnitte"
+          }
+        }
+      }
+    },
+    "Secure Input is on, so some keyboard features are paused" : {
+      "comment" : "Banner inside the recording panel: macOS Secure Input (often a password field) is on, so some of the app's keyboard features are paused. The dictation itself keeps recording. Names no app on purpose.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sichere Tastatureingabe aktiv: einige Tastaturfunktionen pausiert"
           }
         }
       }
@@ -15154,6 +15354,17 @@
         }
       }
     },
+    "Settings for the chosen provider" : {
+      "comment" : "Settings search result: the setup section of the chosen AI Polish provider.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Einstellungen für den gewählten Anbieter"
+          }
+        }
+      }
+    },
     "Setup" : {
       "comment" : "Title of the first-run setup window.",
       "localizations" : {
@@ -15274,6 +15485,16 @@
         }
       }
     },
+    "Shortcut recognition happens on your Mac. Shortcut-health reports do not contain typed text or a history of key presses." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tastenkürzel werden auf deinem Mac erkannt. Berichte zum Zustand der Tastenkürzel enthalten keinen getippten Text und keinen Verlauf deiner Tastendrücke."
+          }
+        }
+      }
+    },
     "Show" : {
       "localizations" : {
         "de" : {
@@ -15355,6 +15576,34 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Wörter beim Sprechen anzeigen"
+          }
+        }
+      }
+    },
+    "Showing %@" : {
+      "comment" : "Settings search, VoiceOver: the place the chosen result opened. %@ is its name.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ wird angezeigt"
+          }
+        }
+      }
+    },
+    "Showing %@ for %@" : {
+      "comment" : "Settings search, VoiceOver: the chosen setting is hidden right now, so the setting that shows it opened. The first %@ is the place opened, the second the chosen result.",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Showing %1$@ for %2$@"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ wird für %@ angezeigt"
           }
         }
       }
@@ -16350,6 +16599,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Prüfen, ob %@ läuft"
+          }
+        }
+      }
+    },
+    "Test that the model is live" : {
+      "comment" : "Settings search result: re-checks that the local polish model answers.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Prüfen, ob das Modell läuft"
           }
         }
       }
@@ -18043,13 +18303,13 @@
         }
       }
     },
-    "To paste your transcribed text into any app." : {
+    "For a modifier key used on its own and to paste your text into other apps." : {
       "comment" : "Setup permissions: why Accessibility is needed.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Um deinen transkribierten Text in eine beliebige App einzufügen."
+            "value" : "Für eine allein genutzte Sondertaste und zum Einfügen deines Texts in andere Apps."
           }
         }
       }
@@ -19320,16 +19580,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Wir haben dich gehört. Das Feld war nicht ausgewählt, deshalb wurden deine Wörter in die Zwischenablage kopiert.\nKlicke in das Feld und halte %@ erneut gedrückt."
-          }
-        }
-      }
-    },
-    "We only use Accessibility at the moment we paste your dictation. Never to read your keystrokes, never to watch what happens in other apps." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Wir nutzen den Zugriff auf Bedienungshilfen nur, wenn wir dein Diktat einfügen. Wir lesen damit keine Tastatureingaben und beobachten keine anderen Apps."
           }
         }
       }
@@ -20825,6 +21075,23 @@
         }
       }
     },
+    "feedback.category.typingOrShortcut" : {
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Typing or a keyboard shortcut isn't working as expected"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tippen oder ein Tastenkürzel funktioniert nicht wie erwartet"
+          }
+        }
+      }
+    },
     "feedback.diagnostics.excluded" : {
       "extractionState" : "extracted_with_value",
       "localizations" : {
@@ -22235,12 +22502,12 @@
         }
       }
     },
-    "macOS calls this permission \"Accessibility,\" but EnviousWispr uses it for exactly one thing: pasting your dictation into the app you're typing in. Without it, every dictation lands in the clipboard and you'd have to paste manually." : {
+    "macOS calls this permission \"Accessibility.\" It lets EnviousWispr recognize modifier keys such as Right Option and paste your dictation into other apps. Without it, a modifier key used on its own does not respond. Other supported keybinds can still start dictation, and you paste the finished text from the clipboard." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "macOS nennt diese Berechtigung „Bedienungshilfen“. EnviousWispr nutzt sie ausschließlich, um dein Diktat in die App einzufügen, in der du gerade schreibst. Ohne sie landet jedes Diktat in der Zwischenablage und du musst es selbst einfügen."
+            "value" : "macOS nennt diese Berechtigung „Bedienungshilfen“. Damit kann EnviousWispr Sondertasten wie die rechte Wahltaste erkennen und dein Diktat in andere Apps einfügen. Ohne sie reagiert eine allein genutzte Sondertaste nicht. Andere unterstützte Tastenkürzel können das Diktat weiterhin starten, und du fügst den fertigen Text aus der Zwischenablage ein."
           }
         }
       }
@@ -22918,13 +23185,13 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Settings are easier to find"
+            "value" : "Streamlined Settings with Instant Search"
           }
         },
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Einstellungen sind leichter zu finden"
+            "value" : "Übersichtlichere Einstellungen mit Sofortsuche"
           }
         }
       }
@@ -22936,247 +23203,13 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Settings now puts related controls together, with shorter explanations and help beside each row. Keybinds, AI Polish and Snippets have a clearer layout too. Here is where each moved setting lives now:"
+            "value" : "Completely redesigned the settings UI to eliminate clutter, featuring a new search bar to quickly jump to any configuration option."
           }
         },
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Die Einstellungen fassen zusammengehörige Optionen jetzt zusammen, mit kürzeren Erklärungen und Hilfe neben jeder Zeile. Auch Tastenkürzel, KI-Nachbearbeitung und Textbausteine sind übersichtlicher. Hier findest du jede verschobene Einstellung jetzt:"
-          }
-        }
-      }
-    },
-    "whatsNew.settings-easier-to-find.bullet.0" : {
-      "comment" : "Settings > What's New: point 1 of the list under one feature announcement (entry settings-easier-to-find).",
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Transcription -> Dictation Settings > Engine"
-          }
-        },
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Transkription -> Diktateinstellungen > Engine"
-          }
-        }
-      }
-    },
-    "whatsNew.settings-easier-to-find.bullet.1" : {
-      "comment" : "Settings > What's New: point 2 of the list under one feature announcement (entry settings-easier-to-find).",
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Microphone -> Dictation Settings > Microphone"
-          }
-        },
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Mikrofon -> Diktateinstellungen > Mikrofon"
-          }
-        }
-      }
-    },
-    "whatsNew.settings-easier-to-find.bullet.2" : {
-      "comment" : "Settings > What's New: point 3 of the list under one feature announcement (entry settings-easier-to-find).",
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Live Preview -> Dictation Settings > Live Preview"
-          }
-        },
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Live-Vorschau -> Diktateinstellungen > Live-Vorschau"
-          }
-        }
-      }
-    },
-    "whatsNew.settings-easier-to-find.bullet.3" : {
-      "comment" : "Settings > What's New: point 4 of the list under one feature announcement (entry settings-easier-to-find).",
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Sounds -> Dictation Settings > Chimes"
-          }
-        },
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Töne -> Diktateinstellungen > Signaltöne"
-          }
-        }
-      }
-    },
-    "whatsNew.settings-easier-to-find.bullet.4" : {
-      "comment" : "Settings > What's New: point 5 of the list under one feature announcement (entry settings-easier-to-find).",
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Clipboard -> Dictation Settings > Clipboard"
-          }
-        },
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Zwischenablage -> Diktateinstellungen > Zwischenablage"
-          }
-        }
-      }
-    },
-    "whatsNew.settings-easier-to-find.bullet.5" : {
-      "comment" : "Settings > What's New: point 6 of the list under one feature announcement (entry settings-easier-to-find).",
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Appearance recording pill controls -> Dictation Settings > Recording Pill"
-          }
-        },
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Optionen der Aufnahmeanzeige unter Erscheinungsbild -> Diktateinstellungen > Aufnahmeanzeige"
-          }
-        }
-      }
-    },
-    "whatsNew.settings-easier-to-find.bullet.6" : {
-      "comment" : "Settings > What's New: point 7 of the list under one feature announcement (entry settings-easier-to-find).",
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Appearance -> App Settings > Appearance"
-          }
-        },
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Erscheinungsbild -> App-Einstellungen > Erscheinungsbild"
-          }
-        }
-      }
-    },
-    "whatsNew.settings-easier-to-find.bullet.7" : {
-      "comment" : "Settings > What's New: point 8 of the list under one feature announcement (entry settings-easier-to-find).",
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Permissions -> App Settings > Permissions"
-          }
-        },
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Berechtigungen -> App-Einstellungen > Berechtigungen"
-          }
-        }
-      }
-    },
-    "whatsNew.settings-easier-to-find.bullet.8" : {
-      "comment" : "Settings > What's New: point 9 of the list under one feature announcement (entry settings-easier-to-find).",
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Permissions privacy controls -> App Settings > Privacy"
-          }
-        },
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Datenschutzoptionen unter Berechtigungen -> App-Einstellungen > Datenschutz"
-          }
-        }
-      }
-    },
-    "whatsNew.settings-easier-to-find.bullet.9" : {
-      "comment" : "Settings > What's New: point 10 of the list under one feature announcement (entry settings-easier-to-find).",
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Open Source Licenses -> App Settings > Licenses"
-          }
-        },
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Open-Source-Lizenzen -> App-Einstellungen > Lizenzen"
-          }
-        }
-      }
-    },
-    "whatsNew.settings-easier-to-find.bullet.10" : {
-      "comment" : "Settings > What's New: point 11 of the list under one feature announcement (entry settings-easier-to-find).",
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "What's New and Check for Updates -> the gift button, What's New & Updates"
-          }
-        },
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Neuigkeiten und Nach Updates suchen -> die Geschenk-Schaltfläche „Neuigkeiten & Updates“"
-          }
-        }
-      }
-    },
-    "whatsNew.spoken-punctuation-more-languages.title" : {
-      "comment" : "Settings > What's New: the title of one feature announcement (entry spoken-punctuation-more-languages).",
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Spoken punctuation in German, French, Spanish and Italian"
-          }
-        },
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Gesprochene Satzzeichen auf Deutsch, Französisch, Spanisch und Italienisch"
-          }
-        }
-      }
-    },
-    "whatsNew.spoken-punctuation-more-languages.description" : {
-      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry spoken-punctuation-more-languages).",
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Turn on Spoken punctuation in Dictation Settings > Engine, then say a start word before the mark. In German say \"Diktiere Punkt\", in French \"Place point\", in Spanish \"Añade punto\" and in Italian \"Metti punto\". You can change the start word for each language. English works as before, and you can give English a start word too."
-          }
-        },
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Schalte „Gesprochene Satzzeichen“ unter Diktateinstellungen > Engine ein und sag dann vor dem Zeichen ein Startwort. Auf Deutsch sagst du „Diktiere Punkt“, auf Französisch „Place point“, auf Spanisch „Añade punto“ und auf Italienisch „Metti punto“. Du kannst das Startwort für jede Sprache ändern. Englisch funktioniert wie bisher, und du kannst auch für Englisch ein Startwort festlegen."
+            "value" : "Die Einstellungen wurden komplett neu gestaltet und aufgeräumt. Über die neue Suchleiste springst du schnell zu jeder Option."
           }
         }
       }
@@ -23188,13 +23221,13 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "A quicker menu bar menu"
+            "value" : "Modernized Menu Bar"
           }
         },
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Ein schnelleres Menü in der Menüleiste"
+            "value" : "Modernisierte Menüleiste"
           }
         }
       }
@@ -23206,67 +23239,301 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "The menu bar menu now has a few shortcuts:"
+            "value" : "Refreshed the menu bar interface with a cleaner layout and faster access to primary controls."
           }
         },
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Das Menü in der Menüleiste bietet jetzt ein paar Schnellzugriffe:"
+            "value" : "Das Menü in der Menüleiste ist aufgeräumter und bietet schnelleren Zugriff auf die wichtigsten Funktionen."
           }
         }
       }
     },
-    "whatsNew.menu-bar-menu-shortcuts.bullet.0" : {
-      "comment" : "Settings > What's New: point 1 of the list under one feature announcement (entry menu-bar-menu-shortcuts).",
+    "whatsNew.launcher-dictation.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry launcher-dictation).",
       "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Microphone: switch microphones without opening the app"
+            "value" : "Launcher Support (Raycast)"
           }
         },
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "„Mikrofon“: Mikrofon wechseln, ohne die App zu öffnen"
+            "value" : "Unterstützung für Launcher (Raycast)"
           }
         }
       }
     },
-    "whatsNew.menu-bar-menu-shortcuts.bullet.1" : {
-      "comment" : "Settings > What's New: point 2 of the list under one feature announcement (entry menu-bar-menu-shortcuts).",
+    "whatsNew.launcher-dictation.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry launcher-dictation).",
       "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Open EnviousWispr: replaces Settings and opens on your History"
+            "value" : "Dictation now works inside Raycast."
           }
         },
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "„EnviousWispr öffnen“: ersetzt „Einstellungen“ und öffnet die App auf der Seite „Verlauf“"
+            "value" : "Diktieren funktioniert jetzt in Raycast."
           }
         }
       }
     },
-    "whatsNew.menu-bar-menu-shortcuts.bullet.2" : {
-      "comment" : "Settings > What's New: point 3 of the list under one feature announcement (entry menu-bar-menu-shortcuts).",
+    "whatsNew.menu-bar-update-alert-switch.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry menu-bar-update-alert-switch).",
       "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Help Center: opens the help website"
+            "value" : "Quiet Update Notifications"
           }
         },
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "„Hilfe-Center“: öffnet die Hilfe-Website"
+            "value" : "Dezente Update-Hinweise"
+          }
+        }
+      }
+    },
+    "whatsNew.menu-bar-update-alert-switch.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry menu-bar-update-alert-switch).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Added a toggle to prevent the menu bar icon from changing states when an update is available."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ein neuer Schalter verhindert, dass sich das Symbol in der Menüleiste ändert, wenn ein Update verfügbar ist."
+          }
+        }
+      }
+    },
+    "whatsNew.spoken-punctuation-more-languages.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry spoken-punctuation-more-languages).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Spoken Punctuation (DE, FR, ES, IT)"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gesprochene Satzzeichen (DE, FR, ES, IT)"
+          }
+        }
+      }
+    },
+    "whatsNew.spoken-punctuation-more-languages.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry spoken-punctuation-more-languages).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Added spoken punctuation support for German, French, Spanish, and Italian using localized trigger words (e.g., \"Diktiere Punkt\" in German)."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gesprochene Satzzeichen gibt es jetzt auf Deutsch, Französisch, Spanisch und Italienisch, mit Startwörtern in der jeweiligen Sprache (z. B. „Diktiere Punkt“ auf Deutsch)."
+          }
+        }
+      }
+    },
+    "whatsNew.regional-formatting.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry regional-formatting).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Expanded Regional Formatting"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Erweiterte regionale Formatierung"
+          }
+        }
+      }
+    },
+    "whatsNew.regional-formatting.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry regional-formatting).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dictated phone numbers, timestamps, and email addresses now format accurately in more European languages."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Diktierte Telefonnummern, Uhrzeiten und E-Mail-Adressen werden jetzt in weiteren europäischen Sprachen korrekt formatiert."
+          }
+        }
+      }
+    },
+    "whatsNew.eg1-faster-long-dictations.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry eg1-faster-long-dictations).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Faster Local Polishing with EG-1"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Schnellere lokale Nachbearbeitung mit EG-1"
+          }
+        }
+      }
+    },
+    "whatsNew.eg1-faster-long-dictations.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry eg1-faster-long-dictations).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Reduced latency when cleaning up and formatting longer dictations using the on-device EG-1 engine."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Längere Diktate werden mit EG-1 direkt auf dem Gerät jetzt schneller bereinigt und formatiert."
+          }
+        }
+      }
+    },
+    "whatsNew.newer-ai-models.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry newer-ai-models).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Updated Model Support"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Neue unterstützte Modelle"
+          }
+        }
+      }
+    },
+    "whatsNew.newer-ai-models.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry newer-ai-models).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Added support for Claude 5.5 and OpenAI gpt-6, alongside significant speed improvements when using Gemini 3.8 Flash."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Neu unterstützt werden Claude 5.5 und OpenAI gpt-6. Außerdem wurde die Geschwindigkeit bei der Nutzung von Gemini 3.8 Flash deutlich verbessert."
+          }
+        }
+      }
+    },
+    "whatsNew.self-learning-phrases.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry self-learning-phrases).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Smarter Self-Learning Dictionary"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Selbstlernendes Wörterbuch: jetzt intelligenter"
+          }
+        }
+      }
+    },
+    "whatsNew.self-learning-phrases.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry self-learning-phrases).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tuned phrase detection to apply learned vocabulary fixes more consistently."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Erkennung von Wortgruppen wurde verbessert, damit gelernte Korrekturen zuverlässiger angewendet werden."
+          }
+        }
+      }
+    },
+    "whatsNew.undo-after-escape.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry undo-after-escape).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Escape Recovery & Undo"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wiederherstellung bei Escape und Rückgängig"
+          }
+        }
+      }
+    },
+    "whatsNew.undo-after-escape.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry undo-after-escape).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Undo after Escape now pastes your words into the field you were in, or copies them to your clipboard if it can't paste."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "„Rückgängig“ nach Escape fügt deine Wörter jetzt in das Feld ein, in dem du warst, oder kopiert sie in die Zwischenablage, wenn das Einfügen nicht möglich ist."
           }
         }
       }

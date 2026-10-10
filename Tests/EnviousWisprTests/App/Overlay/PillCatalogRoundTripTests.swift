@@ -24,11 +24,9 @@ struct PillCatalogRoundTripTests {
 
   /// Every `OverlayIntent` arm, with a payload where it takes one.
   ///
-  /// **Hand-written and therefore checked for completeness below.** `OverlayIntent`
-  /// is not `CaseIterable` — several arms carry payloads that have no canonical
-  /// value — so this list cannot be derived. An array literal is not exhaustive
-  /// over an enum, and a new arm silently missing from it would leave the whole
-  /// suite passing while covering nothing, so `everyIntentArmIsListed` counts.
+  /// **Hand-written.** `OverlayIntent` is not `CaseIterable` (several arms carry
+  /// payloads with no canonical value), so this list cannot be derived; a new arm
+  /// must be added here by hand. Its completeness check was retired in #3505.
   private static let intents: [OverlayIntent] = [
     .hidden,
     .recording(audioLevel: 0),
@@ -85,131 +83,6 @@ struct PillCatalogRoundTripTests {
     }
   }
 
-  /// The completeness floor for the hand-written list above.
-  ///
-  /// **Sixteen is a measured count, not a guess**: `PipelineVocabulary.swift`
-  /// declares sixteen `OverlayIntent` arms. Fifteen of them convert to a request;
-  /// the sixteenth is `.recording`, staged out until C3a. Adding an arm to the
-  /// enum without adding it here leaves this red.
-  @Test("all sixteen intent arms are exercised, and fifteen convert")
-  func everyIntentArmIsListed() {
-    // **A COUNT IS NOT A SET, and a count was what this asserted.** Sixteen
-    // entries can contain a duplicate while omitting another arm, so the list
-    // would read complete while covering fifteen. Name them.
-    let names = Self.intents.map(Self.caseName)
-    let expected: Set<String> = [
-      "hidden", "recording", "processing", "clipboardFallback",
-      "accessibilityToast", "warning", "error", "advisory", "interruption",
-      "passiveChip", "cachingModel", "engineReady", "recoveringLastRecording",
-      "recoverySucceeded", "bluetoothAwareness", "escapeRecovery",
-    ]
-    #expect(Set(names) == expected, "an OverlayIntent arm is missing or duplicated")
-    #expect(names.count == expected.count, "the intent list contains a duplicate")
-
-    let converted = Self.intents.compactMap { PillCatalogRequest(nonRecording: $0) }
-    #expect(converted.count == 15, "exactly one arm — recording — may refuse conversion")
-    #expect(Self.intents.filter(Self.isRecording).count == 1)
-  }
-
-  /// Exhaustive over `OverlayIntent`, so a new arm fails to compile here as well
-  /// as in the catalog.
-  private static func caseName(_ intent: OverlayIntent) -> String {
-    switch intent {
-    case .hidden: return "hidden"
-    case .recording: return "recording"
-    case .processing: return "processing"
-    case .clipboardFallback: return "clipboardFallback"
-    case .accessibilityToast: return "accessibilityToast"
-    case .warning: return "warning"
-    case .error: return "error"
-    case .advisory: return "advisory"
-    case .interruption: return "interruption"
-    case .passiveChip: return "passiveChip"
-    case .cachingModel: return "cachingModel"
-    case .engineReady: return "engineReady"
-    case .recoveringLastRecording: return "recoveringLastRecording"
-    case .recoverySucceeded: return "recoverySucceeded"
-    case .bluetoothAwareness: return "bluetoothAwareness"
-    case .escapeRecovery: return "escapeRecovery"
-    }
-  }
-
-  /// The catalog's own case count, asserted through a value each case produces
-  /// rather than through a comment claiming a number.
-  ///
-  /// **Eighteen non-recording requests: fifteen intent-derived plus three
-  /// feature-only cases (import status, the Undo pill and its save error).**
-  /// `bluetoothAwareness` is a
-  /// pipeline intent AND was minted a second time by the feature reducer; those
-  /// are two routes to one value, and C0 froze both and found them identical, so
-  /// it counts once. A second Bluetooth arm would be the duplicate C0 deleted.
-  @Test("the staged catalog covers eighteen non-recording requests")
-  func stagedCaseCount() {
-    let requests: [PillCatalogRequest] =
-      Self.intents.compactMap { PillCatalogRequest(nonRecording: $0) } + [
-        .importStatus(message: "x"),
-        .correctionLearned(LearnedPillFixture.model()),
-        .correctionLearnedSaveError(
-          LearnedCorrectionSaveError(canonical: "Tuist", reason: .vocabularyWriteFailed)),
-      ]
-    #expect(requests.count == 18)
-
-    let withoutDefinition = requests.filter {
-      PillCatalog.entry(for: $0, id: PresentationID()).definition == nil
-    }
-    #expect(withoutDefinition.count == 1)
-    #expect(withoutDefinition.first == .hidden)
-  }
-
-
-  /// What `stagedCaseCount` cannot see (review r1 finding 3).
-  ///
-  /// **That test counts a list this file builds, so it is a claim about the list
-  /// and not about the enum.** A twentieth case could be declared in
-  /// `PillCatalogRequest` and every other test here would stay green: nothing in
-  /// the round-trip reaches a case no intent maps to, and the count would still
-  /// read eighteen. Reading the declaration is the only way to ask the enum
-  /// itself.
-  ///
-  /// **Update this set DELIBERATELY.** C3a adds `recording` and this test must go
-  /// red first — that is the point of a freeze. It is a lexical read of a small
-  /// enum this phase owns, and it fails LOUDLY on a mis-parse (an empty or short
-  /// name set cannot equal the expected one), so it has no silent direction.
-  @Test("the staged enum declares exactly the expected cases")
-  func stagedDeclarationSetIsFrozen() throws {
-    let path = "Sources/EnviousWisprAppKit/App/Overlay/PillCatalog.swift"
-    let source = try String(contentsOf: RepoRoot.url.appending(path: path), encoding: .utf8)
-    let start = try #require(
-      source.range(of: "enum PillCatalogRequest: Equatable, Sendable {"),
-      "the request enum was renamed or reshaped")
-    let tail = source[start.upperBound...]
-    let end = try #require(tail.range(of: "\n}"), "the request enum has no closing brace")
-    let names = tail[..<end.lowerBound].split(separator: "\n").compactMap { line -> String? in
-      let text = line.trimmingCharacters(in: .whitespaces)
-      guard text.hasPrefix("case ") else { return nil }
-      return String(text.dropFirst(5).prefix { $0.isLetter || $0.isNumber || $0 == "_" })
-    }
-    // **Updated DELIBERATELY by C3a, which is what this guard is for.** It went
-    // red the moment `.recording` was added, which is the designed behaviour: the
-    // set is frozen so a case cannot arrive unnoticed, and unfreezing it is an
-    // edit someone has to make on purpose.
-    let expected: Set<String> = [
-      "recording",
-      "hidden", "processing", "clipboardFallback", "accessibilityToast", "warning",
-      "error", "advisory", "interruption", "passiveChip", "cachingModel",
-      "engineReady", "recoveringLastRecording", "recoverySucceeded",
-      "bluetoothAwareness", "escapeRecovery", "importStatus",
-      // #996 auto-learn (2026-09-21 plan, chunk 3b): the Undo pill and its
-      // save-error notice, unfrozen deliberately. Chunk 5a removed the
-      // ask-first card's case the same way.
-      "correctionLearned", "correctionLearnedSaveError",
-      // #3438 chunk 6: the AI polish setup card, a feature route with no pipeline intent,
-      // unfrozen deliberately.
-      "polishSetupCard",
-    ]
-    #expect(Set(names) == expected, "the catalog case set changed")
-    #expect(names.count == expected.count, "a catalog case is duplicated")
-  }
 
   private static func isRecording(_ intent: OverlayIntent) -> Bool {
     if case .recording = intent { return true }

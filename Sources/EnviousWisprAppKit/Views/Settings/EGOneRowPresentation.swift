@@ -1,3 +1,4 @@
+import Foundation
 import EnviousWisprLLM
 
 /// What the EG-1 settings row SAYS and OFFERS for a given install state (#2109).
@@ -13,6 +14,18 @@ import EnviousWisprLLM
 /// `egOneFailureCopy` precedent in the same file: copy decisions are data, not
 /// view code.
 struct EGOneRowPresentation: Equatable {
+  /// The row's action buttons. The buttons and their Settings Map nodes (#3482) read these.
+  static let resumeAction = LocalizedStringResource(
+    "Resume", comment: "Settings > AI Polish, local model row: button that resumes the download.")
+  static let resumeUpgradeAction = LocalizedStringResource(
+    "Resume upgrade", comment: "Settings > AI Polish, local model row: button.")
+  static let finishUpgradeAction = LocalizedStringResource(
+    "Finish upgrade", comment: "Settings > AI Polish, local model row: button.")
+  static let cancelAction = LocalizedStringResource(
+    "Cancel", comment: "Settings > AI Polish, local model row: button that stops the download.")
+  static let tryAgainAction = LocalizedStringResource(
+    "Try Again", comment: "Settings > AI Polish, local model row: button after a failed download.")
+
   /// The sentence shown under the row. Empty for states whose copy is owned by
   /// the view's own progress or status chrome (downloading, verifying,
   /// installed, failed).
@@ -76,9 +89,7 @@ struct EGOneRowPresentation: Equatable {
         message: String(
           localized: "Download paused. Resume anytime.",
           comment: "Settings > AI Polish, local model row: the user paused the model download."),
-        primaryAction: String(
-          localized: "Resume",
-          comment: "Settings > AI Polish, local model row: button that resumes the download."),
+        primaryAction: String(localized: Self.resumeAction),
         showsRemove: false, versionLabel: nil)
     case .updatePaused(let resumable, let targetVersion):
       // Composed from the manifest's version, never a literal. A new revision
@@ -117,10 +128,8 @@ struct EGOneRowPresentation: Equatable {
       return .init(
         message: message,
         primaryAction: resumable
-          ? String(
-            localized: "Resume upgrade", comment: "Settings > AI Polish, local model row: button.")
-          : String(
-            localized: "Finish upgrade", comment: "Settings > AI Polish, local model row: button."),
+          ? String(localized: Self.resumeUpgradeAction)
+          : String(localized: Self.finishUpgradeAction),
         // NO Remove button here, and this reverses an earlier decision of mine.
         // I added it arguing the help centre promises users can remove models
         // to reclaim storage. That promise is real, but `remove()` deletes the
@@ -147,9 +156,7 @@ struct EGOneRowPresentation: Equatable {
       // renders nothing" for this state too rather than only for installed.
       return .init(
         message: "",
-        primaryAction: String(
-          localized: "Cancel",
-          comment: "Settings > AI Polish, local model row: button that stops the download."),
+        primaryAction: String(localized: Self.cancelAction),
         showsRemove: false,
         versionLabel: upgrade.map {
           // `.unnamed` reuses the SAME fallback the paused row uses rather than
@@ -187,9 +194,7 @@ struct EGOneRowPresentation: Equatable {
     case .failed:
       return .init(
         message: "",
-        primaryAction: String(
-          localized: "Try Again",
-          comment: "Settings > AI Polish, local model row: button after a failed download."),
+        primaryAction: String(localized: Self.tryAgainAction),
         showsRemove: false, versionLabel: nil)
     }
   }

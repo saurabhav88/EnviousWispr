@@ -39,7 +39,7 @@ This button always discards, whatever your settings say. The floating recording 
 
 1. Click the EnviousWispr icon in your menu bar and choose **Open EnviousWispr**.
 2. Open **Keybinds**.
-3. Under **Cancel Recording**, switch **Escape Recovery** off.
+3. Switch off **Escape Recovery**, the row below **Cancel recording**.
 
 After that, pressing Escape discards the recording immediately, the same as the **Cancel** button.
 
@@ -47,4 +47,4 @@ After that, pressing Escape discards the recording immediately, the same as the 
 
 1. Click the EnviousWispr icon in your menu bar and choose **Open EnviousWispr**.
 2. Open **Keybinds**.
-3. Under **Cancel Recording**, use the **Cancel keybind** row to choose a different key.
+3. Click the keys field in the **Cancel recording** row and press a different key.

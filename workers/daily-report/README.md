@@ -1,7 +1,7 @@
 # Daily Report Worker (issue #1433)
 
-A daily Cloudflare Worker that posts a plain-English usage summary to Discord.
-Read-only: it consumes events that already emit to PostHog. It gates nothing,
+A daily Cloudflare Worker with independent performance and per-platform Sentry write-ups (#3547).
+Read-only: it consumes events already received by PostHog or Sentry. It gates nothing,
 alerts on nothing — purely a digest for the founder's morning read.
 
 Plan + full metric-definition rationale (including the two real bugs caught
@@ -37,7 +37,7 @@ noise on a genuinely empty day).
 
 ## Reading the version check and the error section (#2621)
 
-The two lower embeds print numbers and one footnote, nothing that explains method. The founder read
+The version check prints measurements and a footnote; separate Sentry write-ups report recorded error activity. The founder read
 the earlier shape ("Covering 80.7% of measured dictations across 2 releases", "People counts are
 non-additive", "Ranked against this measure's median week-to-week movement") as noise he could not
 decode, so the explanations live here instead.
@@ -68,15 +68,21 @@ when nothing has been measured on it. A release out the whole week is just its v
   where enough history exists, otherwise by size of change; the sample counts behind each are in
   `ranking.movers`. A measure that did not move between the two releases is never a mover.
 
-**Errors, yesterday.** One headline: people who hit an error on the release line and newer, and the
-direction against the previous period. The error and problem counts are still measured (`data.events`, `data.rows.length`) and no
-longer printed. No rate is ever shown: Sentry and PostHog join only per install and only partially
-(`sentry-operations.md` RULE: join-sentry-to-posthog-by-install), so dividing one system's people by
-the other's would be arithmetic across two identity systems. `Lost the dictation` and `Worked, but
-worse` are the two severity groups; `delivery not proven` marks a row whose producer cannot confirm
-the text was lost; `NEW` marks a problem first seen in the window. The tail line `Up to N people hit an
-error on builds older than X` is an upper bound because per-release people counts are not additive, and
-it can overlap the headline: one person can hit errors on a current build and an old one.
+**Sentry morning write-ups.** Separate Mac and Android messages cover recorded
+crash/error activity in yesterday's Eastern calendar day, including known
+problems and older builds. Customer-release, developer-build and unknown-build
+cohorts use environment and `app.build_type` together; debug evidence overrides
+a contradictory production tag.
+
+Complete headline aggregates provide event totals and the change from the
+previous Eastern day. Problem rows show occurrences, Sentry-reported identities,
+safe version labels and issue links. Identity counts are exact only under
+the complete zero/one-row rule; otherwise they are explicit lower bounds.
+Incomplete problem lists disclose their limits and omit unsupported changes.
+No affected-person rate or crash-free claim is made.
+
+The performance message contains only adoption and version scorecard sections.
+The weekly digest retains its existing production/release-scoped Sentry recap.
 
 ## Release list source (the appcast, not GitHub)
 
@@ -105,6 +111,10 @@ a format drift in the release job fails at PR time rather than one morning.
 
 ## Correctness guardrail (why this worker trusts nothing on faith)
 
+The bucket-completeness guard below belongs to performance mode. Sentry uses
+its independent complete headlines, bounded problem rows and joint build-tag
+projection; missing/malformed data is not a zero report.
+
 An early planning-time bug: a naive PostHog query silently truncated at 100
 rows while the real population was 110. The fix that survived into this
 worker: every per-user bucket count (engine, polish) is checked against an
@@ -120,14 +130,16 @@ cd workers/daily-report
 node --test                     # pure query-shape/bucketing/formatting logic, no network
 ```
 
-Pre-deploy live-query smoke (runs the real HogQL against production
-PostHog **and the real Sentry queries**, asserts the completeness check
-passes, prints the would-be message, posts nothing):
+Pre-deploy smokes drive the actual selected mode, intercept only Discord delivery,
+and fail on unavailable/incomplete data. No report is posted:
 
 ```bash
 ~/.claude/bin/get-key launch posthog-personal-api-key POSTHOG_KEY -- \
-  ~/.claude/bin/get-key launch sentry-workers-readonly-token SENTRY_KEY -- \
-  node workers/daily-report/live-query-smoke.mjs [YYYY-MM-DD]
+  node workers/daily-report/live-query-smoke.mjs --report performance [YYYY-MM-DD]
+~/.claude/bin/get-key launch sentry-workers-readonly-token SENTRY_KEY -- \
+  node workers/daily-report/live-query-smoke.mjs --report sentry --platform mac [YYYY-MM-DD]
+~/.claude/bin/get-key launch sentry-workers-readonly-token SENTRY_KEY -- \
+  node workers/daily-report/live-query-smoke.mjs --report sentry --platform android [YYYY-MM-DD]
 ```
 
 `SENTRY_KEY` is the same least-privilege token the deployed Worker holds
@@ -159,8 +171,8 @@ declare a fix "proven" from repeated manual endpoint hits.
 ## Deploy — REQUIRED after every source change
 
 **Merging to `main` does NOT deploy this worker.** There is no deploy workflow;
-`.github/workflows/daily-report-ping.yml` only *triggers* the already-deployed
-script on a schedule. A merged-but-undeployed fix looks exactly like a fix that
+QStash only *triggers* the already-deployed script on a schedule;
+`.github/workflows/daily-report-ping.yml` is retained for deliberate manual recovery. A merged-but-undeployed fix looks exactly like a fix that
 did not work — verified live on 2026-07-18 (#1655), where the worker had to be
 deployed by hand after the PR merged and CI went green.
 
@@ -172,10 +184,13 @@ Deploy, then verify the LIVE worker, before calling any worker change done:
 cd workers/daily-report
 npx wrangler deploy
 
-# 3. verify the deployed code actually runs (this DOES post a real report).
+# 3. verify each deployed mode (these DO post real reports).
+# The default request is performance only; also check both Sentry modes with
+# ?report=sentry&platform=mac&date=YYYY-MM-DD and
+# ?report=sentry&platform=android&date=YYYY-MM-DD under the same header secret.
 # -f is load-bearing: without it curl exits 0 on a 401/500, so a failed verify
 # reads as a passed one - the exact false-success this section exists to stop.
-# Matches daily-report-ping.yml, which also uses -fsS.
+# Operational triggers use the header; never put the secret in a URL.
 ~/.claude/bin/get-key launch daily-report-trigger-secret TOK -- sh -c \
   'curl -fsS -H "x-trigger-secret: $TOK" "https://enviouswispr-daily-report.saurabhav.workers.dev/?date=YYYY-MM-DD"' \
   && echo "VERIFIED: live worker ran the deployed code"
@@ -202,17 +217,15 @@ cd workers/daily-report
 ~/.claude/bin/get-key launch posthog-personal-api-key V -- sh -c 'printf "%s" "$V" | npx wrangler secret put POSTHOG_PERSONAL_API_KEY'
 security find-generic-password -w -a m4pro_sv -s enviouswispr.discord-webhook-session-logs | npx wrangler secret put DISCORD_WEBHOOK_URL
 # TRIGGER_SECRET gates the public trigger. Source of truth is GCP Secret
-# Manager (`daily-report-trigger-secret`) + the GitHub repo secret - NOT the
+# Manager (`daily-report-trigger-secret`); deployed copies in QStash and the
+# GitHub manual-recovery secret must follow rotations. NOT the
 # local Keychain. An earlier version of this file said Keychain; that item does
 # not exist on the machine (verified 2026-07-18, #1655).
 ~/.claude/bin/get-key launch daily-report-trigger-secret V -- sh -c 'printf "%s" "$V" | npx wrangler secret put TRIGGER_SECRET'
 
-# SENTRY_AUTH_TOKEN goes on ALL THREE Sentry workers, not just this one (#1965).
-# sentry-triage needs it for the rate-alert breakdown; its older token reads
-# per-issue events fine but 403s on the aggregate endpoint, so leaving that one
-# in place degrades every spike card while the error path keeps working and
-# hides the gap.
-for w in daily-report weekly-digest sentry-triage; do
+# SENTRY_AUTH_TOKEN goes on both surviving reporting Workers (#3547).
+# Use the worker read-only credential; the retired relay is not a consumer.
+for w in daily-report weekly-digest; do
   (cd "../$w" && ~/.claude/bin/get-key launch sentry-workers-readonly-token V -- \
      sh -c 'printf "%s" "$V" | npx wrangler secret put SENTRY_AUTH_TOKEN')
 done
@@ -232,28 +245,65 @@ so the public `workers.dev` URL cannot be crawled into spamming Discord.
   recovery after a missed scheduled run (see Failure visibility below). The
   DATA reported is always for the literal date given, computed the same way
   as the default "yesterday" path.
+- Missing `report` selects `performance`; `report=performance` sends adoption and
+  version scorecard only, without Sentry queries/credentials.
+- `report=sentry&platform=mac|android` sends a separate broader crash/error
+  write-up for that fixed project/channel. It has no PostHog/appcast dependency.
+  Missing Android binding refuses delivery; it never falls back to Mac.
+- Unsupported/empty report modes and invalid Sentry platforms return 400 before
+  outbound work; `platform` is invalid for performance mode.
+- QStash has independent performance and Mac/Android Sentry schedules;
+  no report depends on another report succeeding.
 - 401 body: `"unauthorized\n"`. Request body is ignored. Never logs the
   trigger secret, a PostHog response body, or a Discord response body —
   only counts, labels, and HTTP status codes.
 
-## Scheduling (GitHub Actions, not a Cloudflare cron)
+## Scheduling (QStash, #3570)
 
-The Cloudflare account is at its 5-cron free-plan limit (#1092), so the
-daily run is driven by `.github/workflows/daily-report-ping.yml`, which
-curls the secret-gated endpoint. The wall-clock POSTING time drifts by up
-to ~1 hour across the two DST transitions each year (GitHub Actions cron is
-fixed-UTC and cannot itself DST-adjust) — the DATA is unaffected, since the
-Eastern day boundary is computed from `Intl` at run time, never from the
-cron trigger time. Same secret lives as repo secret
-`DAILY_REPORT_TRIGGER_SECRET`:
+Three independent schedules run daily at **09:12 America/New_York**, following
+Eastern daylight saving automatically. Their IDs are:
 
-```bash
-~/.claude/bin/get-key launch daily-report-trigger-secret V -- sh -c \
-  'printf "%s" "$V" | gh secret set DAILY_REPORT_TRIGGER_SECRET --repo saurabhav88/EnviousWispr'
-# run on demand: gh workflow run "Daily Report" --repo saurabhav88/EnviousWispr
-```
+- `enviouswispr-daily-performance`: `?report=performance`
+- `enviouswispr-daily-sentry-mac`: `?report=sentry&platform=mac`
+- `enviouswispr-daily-sentry-android`: `?report=sentry&platform=android`
+
+All call `https://enviouswispr-daily-report.saurabhav.workers.dev/` using POST,
+`CRON_TZ=America/New_York 12 9 * * *`, zero retries and a 15-minute timeout.
+QStash EU (`https://qstash-eu-central-1.upstash.io`) authenticates with the
+GCP `qstash-token`; forward the GCP `daily-report-trigger-secret` as
+`Upstash-Forward-x-trigger-secret`. Never put either value in a file or URL.
+Rotate the forwarded header on all three schedule IDs when rotating the secret.
+
+The account is shared with EnviousStaging/marketing. Only edit these exact
+EnviousWispr IDs; never bulk-delete schedules or change shared queues, keys,
+plan or account limits. Each daily report is one request, with no outer retry.
+Current account limits and usage must be read live before adding more schedules.
+
+The old GitHub Daily Report workflow was disabled at cutover. This source
+removes its cron and preserves manual recovery. Keep it disabled until the
+cron removal is merged; do not re-enable a revision containing the old cron.
+For recovery use an authenticated direct request with the explicit report,
+platform (Sentry only) and date after inspecting QStash logs and Discord.
+
+Validation on 2026-10-09: a one-off scheduled QStash request reached the real
+daily Worker within about one second of its specified UTC minute. Its invalid
+report selector returned the expected 400 after authentication, before outbound
+queries or Discord delivery. This proves scheduling/authentication, not a new
+full report run. All three production URLs, secrets, retry settings and next
+09:12 Eastern timestamps were independently checked. First ordinary morning
+execution remains separate evidence; #3552's performance-data failure is unchanged.
 
 ## Failure visibility (how you'd know if this breaks)
+
+The section-local failure behavior below applies to performance mode.
+Sentry query/render failures attempt one unavailable report and fail that
+platform's job. Missing destination configuration or an invalid date fails
+before queries or delivery. A rejected delivery causes no second post.
+Other mode jobs remain independent.
+
+Default recovery requests run performance only. Recover each Sentry write-up
+separately with `report=sentry` and the appropriate `platform=mac` or
+`platform=android`, retaining the requested date and authentication.
 
 Three independent signals:
 
@@ -262,7 +312,7 @@ Three independent signals:
    completeness-check mismatch inside adoption loses THAT SECTION only: the
    message is still posted, with "Adoption, unavailable today" in place of the
    figures and the version scorecard intact beside it, and then the worker
-   returns non-2xx so the GitHub Actions job goes red. The scorecard behaves
+   returns non-2xx so QStash records a failed delivery. The scorecard behaves
    the same way in reverse, including when the appcast (the release list;
    see § Release list source) is unreachable after its retries. If both sections fail you get one message
    with both marked unavailable — never two messages, and never silence.
@@ -306,46 +356,40 @@ Three independent signals:
    response shape, or any ordinary programming error still fails the whole
    report loudly, because a silently "approximate" report that hides a real
    defect is worse than no report at all.
-2. **If Discord itself is unreachable/erroring**, the GitHub Actions job
-   still goes red (the one failure mode with no Discord-side notice —
-   GitHub's own failure-run email is the signal here).
-3. **A missed scheduled run entirely** (GitHub outage, workflow disabled)
-   has no automatic backfill. Recover manually with the `?date=` override
-   once you notice the gap:
-   ```bash
-   curl -fsS "https://enviouswispr-daily-report.saurabhav.workers.dev/?token=<TRIGGER_SECRET>&date=2026-07-08"
-   ```
+2. **If Discord itself is unreachable/erroring**, QStash records the failed
+   delivery in Logs/DLQ. GitHub failure emails are no longer the signal for
+   scheduled reports. This migration adds no automatic missing-report alert.
+3. **A missed scheduled run entirely** has no automatic backfill. Inspect
+   QStash Logs by the exact schedule ID and inspect Discord before making one
+   deliberate recovery request with the `?date=` override.
 
-**Duplicate posts remain possible for a genuinely separate trigger, not a
-bug.** A manual `workflow_dispatch` on a day the scheduled run already
-posted will still post a second, real, duplicate report — same accepted
-tradeoff the retired product-health runbook carried. No
-idempotency/dedup mechanism is built (would need new stateful infrastructure
-— a Workers KV namespace — for a low-stakes internal report). What #1720
-DOES prevent: `daily-report-ping.yml`'s own `concurrency: {group:
-daily-report, cancel-in-progress: false, queue: max}` stops the scheduled
-cron and a manual dispatch from overlapping or silently cancelling each
-other's pending run within GitHub Actions — GitHub's default behavior
-(`queue: single`) would otherwise let a new pending run silently replace an
-already-queued one, which could drop a queued manual recovery run entirely.
-This does not cover a direct `curl` to the public Worker endpoint; see the
-verification-methodology note above for why that path stays a manual,
-deliberate, spaced-out action.
+**No automatic retries:** a 500 can follow partial or complete Discord delivery.
+QStash must keep `retries: 0`; do not blindly replay a failed message. The Worker
+has no durable deduplication, so separately triggered or transport-duplicated
+requests can still post twice. GitHub's manual-recovery concurrency group does
+not serialize QStash or direct HTTP requests. Avoid overlapping recovery calls.
 
 ## Rollback
 
-Delete the GitHub workflow to stop the daily run; `npx wrangler delete
-enviouswispr-daily-report` removes the worker entirely. Revert the PR to
-remove the code. A bad metric definition is a source-level fix + redeploy —
-no data migration involved, this worker is stateless (reads PostHog,
-writes only to Discord).
+For #3547 rollback, pause the three EnviousWispr QStash morning schedules and
+inspect/drain their queued messages plus recorded direct invocations. Restore
+the pinned previous reporting deployment while paused, restore its matching
+report mode/trigger contract, then resume exactly one scheduling owner.
+Preserve the Worker, credentials and existing reporting service. A source
+revert alone does not restore the deployed version.
+
+Coordinate native-alert rollback separately: disable replacement Discord
+actions before restoring old consumers, restore the relay and bindings before
+enabling those consumers, and restore its heartbeat last. The approved plan's
+§3.4 and the operation receipts record the complete ordering and pinned versions.
 
 ## Shared infrastructure (#1589)
 
 The PostHog transport and Discord delivery this worker uses now live in
 `workers/shared/`, because `workers/weekly-digest` became a second consumer.
-This worker's behaviour is unchanged: the same retry policy, the same
-concurrency cap, the same `daily_report_*` query names.
+That extraction preserved the performance retry policy, concurrency cap and
+`daily_report_*` query names. The separate #3547 Sentry modes have their own
+bounded query names and budget over the same shared transport.
 
 **Deploy consequence.** Each worker bundles its own snapshot at deploy time, so
 a change under `workers/shared/` is live only in the workers redeployed since.
@@ -353,3 +397,5 @@ When a change touches that directory, deploy **weekly-digest first** and this
 worker second: a broken shared change then lands on the worker already being
 modified rather than on this one, which is the higher-value report and the one
 that should not have changed at all. Full rule: `workers/shared/README.md`.
+
+Native immediate-alert configuration and rollback: [NATIVE-SENTRY.md](../reporting/NATIVE-SENTRY.md).

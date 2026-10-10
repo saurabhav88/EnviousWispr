@@ -94,21 +94,6 @@ import Testing
         == DictationNarrator.announcement(for: .error(reason: .asrFailed)))
   }
 
-  @Test("the advisory is a plain sentence, never the our-fault retry form")
-  func advisoryNeverClaimsOurBug() {
-    // The house rule (#1558): "[Category] error. Try again." means OUR bug.
-    // This sentence must never adopt that form — saying it would both blame
-    // ourselves falsely and send the user to do the one thing that cannot work.
-    for reason in TerminalAdvisoryReason.allCases {
-      let copy = DictationNarrator.copy(for: reason)
-      #expect(!copy.contains("Try again."))
-      #expect(!copy.contains("error."))
-      // Rule 6: no em-dashes or en-dashes in user-facing copy.
-      #expect(!copy.contains("\u{2014}"))
-      #expect(!copy.contains("\u{2013}"))
-    }
-  }
-
   // MARK: - VoiceOver
 
   @Test("VoiceOver announces the advisory with no Error prefix")

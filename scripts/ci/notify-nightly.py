@@ -5,9 +5,9 @@ Runs from nightly-battery.yml's `report` job on schedule/dispatch failures only,
 never on a pull request (the workflow gates that; this script does not carry the
 gate because a gate that lives in two places lives in neither).
 
-Delivery contract, same as scripts/ci/check-alerting-heartbeat.py: `post_discord`
-is IMPORTED from there, so the payload shape (`{"content": …}`, urllib) has one
-owner. A failed delivery is printed and does not mask the verdict: the workflow
+Delivery contract: `post_discord` owns the payload shape (`{"content": …}`,
+urllib HTTP behavior. It moved here verbatim when the Sentry relay watchdog
+retired (#3547), leaving this reporter as its sole caller. A failed delivery is printed and does not mask the verdict: the workflow
 is already red, this only says so where the founder reads.
 
 Issue tracking: one open issue labelled `ci-nightly`. If it exists, comment; else
@@ -21,24 +21,24 @@ Usage:
 from __future__ import annotations
 
 import argparse
-import importlib.util
 import json
 import os
 import subprocess
 import sys
 from functools import partial
+import urllib.request
 from urllib.request import urlopen
 
 LABEL = "ci-nightly"
 
 
-def _load_poster():
-    here = os.path.dirname(os.path.abspath(__file__))
-    spec = importlib.util.spec_from_file_location(
-        "check_alerting_heartbeat", os.path.join(here, "check-alerting-heartbeat.py"))
-    mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)  # type: ignore[union-attr]
-    return mod.post_discord
+def post_discord(webhook_url, message, *, opener=None):
+    payload = json.dumps({"content": message}).encode()
+    req = urllib.request.Request(
+        webhook_url, data=payload, headers={"Content-Type": "application/json"}
+    )
+    resp = (opener or urllib.request.urlopen)(req)
+    return getattr(resp, "status", None) or resp.getcode()
 
 
 def message(result: str, run_url: str) -> str:
@@ -85,8 +85,13 @@ def self_test() -> int:
     m = message("failure", "https://x/runs/1")
     ok = "failure" in m and "https://x/runs/1" in m and len(m) < 2000
     print(("ok   " if ok else "FAIL ") + "[message names the result and the run, under the Discord limit]"); fails += 0 if ok else 1
-    ok = callable(_load_poster())
-    print(("ok   " if ok else "FAIL ") + "[poster imported from check-alerting-heartbeat.py]"); fails += 0 if ok else 1
+    def fake_opener(req):
+        fake_opener.request = req
+        return type("Response", (), {"status": 204})()
+    got = post_discord("https://fixture.invalid/discord", "owned fixture", opener=fake_opener)
+    ok = (got == 204 and fake_opener.request.full_url == "https://fixture.invalid/discord"
+          and json.loads(fake_opener.request.data) == {"content": "owned fixture"})
+    print(("ok   " if ok else "FAIL ") + "[poster preserves payload and target]"); fails += 0 if ok else 1
     print("== notify-nightly self-test PASS ==" if not fails else f"== notify-nightly self-test FAIL ({fails}) ==")
     return 1 if fails else 0
 
@@ -108,7 +113,7 @@ def main(argv: list[str]) -> int:
         try:
             # A webhook that accepts the connection and never answers would
             # otherwise eat the whole job timeout before issue tracking runs.
-            status = _load_poster()(webhook, text, opener=partial(urlopen, timeout=30))
+            status = post_discord(webhook, text, opener=partial(urlopen, timeout=30))
             print(f"==> Discord delivery status {status}")
         except Exception as exc:  # noqa: BLE001 - delivery failure is reported, never hidden
             print(f"DISCORD DELIVERY FAILED: {exc}", file=sys.stderr); rc = 1

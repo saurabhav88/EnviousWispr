@@ -55,6 +55,7 @@ struct TranscribeFileView: View {
   @State private var copiedAt: Date?
 
   var body: some View {
+    // #3482 §3.4: the step bar is a fixed search target; the window's page owner arrives there.
     VStack(spacing: 0) {
       stepBar
       if coordinator.step == .done {
@@ -217,6 +218,7 @@ struct TranscribeFileView: View {
       stepBarRow(compact: false)
       stepBarRow(compact: true)
     }
+    .settingsMapRegistration(.transcribeFileSteps)
   }
 
   private func stepBarRow(compact: Bool) -> some View {
@@ -227,7 +229,8 @@ struct TranscribeFileView: View {
         if step == .working {
           stepChip(step, compact: compact)
             .accessibilityElement(children: .ignore)
-            .accessibilityLabel(step.title)
+            .accessibilityLabel(
+              SettingsMapRef.dynamic(.transcribeFileSteps, .transcribeFileStep(step)).title)
             .accessibilityAddTraits(.isStaticText)
         } else {
           Button {
@@ -236,7 +239,8 @@ struct TranscribeFileView: View {
             stepChip(step, compact: compact)
           }
           .buttonStyle(.plain)
-          .accessibilityLabel(step.title)
+          .accessibilityLabel(
+            SettingsMapRef.dynamic(.transcribeFileSteps, .transcribeFileStep(step)).title)
           .disabled(!coordinator.canGo(to: step))
         }
       }
@@ -269,7 +273,7 @@ struct TranscribeFileView: View {
         }
       }
       if !compact || current {
-        Text(step.title)
+        Text(SettingsMapRef.dynamic(.transcribeFileSteps, .transcribeFileStep(step)).title)
           .font(.system(size: 14, weight: .semibold))
           .foregroundStyle(tint)
           .lineLimit(1)
@@ -350,18 +354,35 @@ struct TranscribeFileView: View {
     note: String, showBack: Bool = true, forwardTitle: String, forwardEnabled: Bool = true,
     forward: @escaping () -> Void
   ) -> some View {
-    BrandedSection {
-      HStack(spacing: 10) {
-        Text(note).foregroundStyle(Color.stTextSecondary)
-        Spacer(minLength: 12)
-        if showBack, coordinator.canGoBack {
-          wizardSecondary(
-            String(
-              localized: "Back",
-              comment: "Transcribe a File: button that returns to the previous step.")
-          ) { coordinator.goBack() }
+    // #3399: the note and both buttons share one line only while they fit at their own sizes.
+    // Narrower, the note goes above a button row, so no button title wraps or turns vertical.
+    let buttons = HStack(spacing: 10) {
+      if showBack, coordinator.canGoBack {
+        wizardSecondary(
+          String(
+            localized: "Back",
+            comment: "Transcribe a File: button that returns to the previous step.")
+        ) { coordinator.goBack() }
+      }
+      wizardPrimary(forwardTitle, isEnabled: forwardEnabled, action: forward)
+    }
+    .fixedSize()
+    return BrandedSection {
+      ViewThatFits(in: .horizontal) {
+        HStack(spacing: 10) {
+          Text(note).foregroundStyle(Color.stTextSecondary)
+            .lineLimit(1).fixedSize(horizontal: true, vertical: false)
+          Spacer(minLength: 12)
+          buttons
         }
-        wizardPrimary(forwardTitle, isEnabled: forwardEnabled, action: forward)
+        VStack(alignment: .leading, spacing: 10) {
+          Text(note).foregroundStyle(Color.stTextSecondary)
+            .fixedSize(horizontal: false, vertical: true)
+          HStack(spacing: 0) {
+            Spacer(minLength: 0)
+            buttons
+          }
+        }
       }
       .padding(.horizontal, SettingsLayout.rowPaddingH)
       .padding(.vertical, SettingsLayout.rowPaddingV)
@@ -1029,9 +1050,8 @@ struct TranscribeFileView: View {
     let provider: LLMProvider
     let detail: String
 
-    /// Read from the provider, never restated here. `LLMProviderDisplayNameFreezeTests`
-    /// enforces it, and it is right to: a licence-bound spelling or a rename has
-    /// to change in one place, not in every screen that happens to list them.
+    /// Read from the provider, never restated here: a licence-bound spelling or a
+    /// rename has to change in one place, not in every screen that lists them.
     var title: String { provider.displayName }
   }
 

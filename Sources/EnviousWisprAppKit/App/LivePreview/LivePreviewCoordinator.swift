@@ -1000,7 +1000,7 @@ final class LivePreviewCoordinator: CorrectorVocabularyConsumer {
 /// is a conscious act. No em-dashes or en-dashes (brand rule).
 /// The type name keeps "LivePreview" because that is what the feature is called
 /// internally; the STRINGS avoid "live" for the reason given on
-/// `LivePreviewSettingsCopy.sectionHeader`, and a test enforces it.
+/// `LivePreviewSettingsCopy.sectionHeaderResource`, and a test enforces it.
 enum LivePreviewCopy {
   static let needsNewerMacOS = String(
     localized: "On-screen preview needs macOS 26.",

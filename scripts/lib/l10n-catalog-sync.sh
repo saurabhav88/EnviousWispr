@@ -11,11 +11,16 @@
 #   l10n-catalog-sync.sh --check  --derived-data <dir> --configuration Release
 #       syncs a scratch copy and fails (exit 1) if it differs from the committed
 #       catalog, printing the added, removed and changed keys. Exit 2: could not run.
+#   l10n-catalog-sync.sh --list-inputs --derived-data <dir> --configuration Release|Dev
+#       prints the `.stringsdata` files this script would read, relative to <dir>,
+#       NUL-separated, and changes nothing (#3524: scripts/lib/l10n-build-receipt.py
+#       fingerprints exactly this set, so the eligibility rules have one owner).
 #
-# Release is the only accepted configuration: the catalog holds the text that
-# SHIPS. A Debug build also extracts copy from `#if DEBUG` screens (13 keys when
-# measured 2026-09-24), which would then read as drift against the Release check
-# CI runs, and would hand translators text no customer sees.
+# Dev --check and --update require --expect-inputs and a matching build receipt.
+# Dev updates are partial repairs: they never remove committed keys or translations.
+# Release remains the authority for shipped text, removals and configuration differences:
+# the catalog holds the text that SHIPS, and a Dev build also extracts copy from
+# `#if DEBUG` screens (DEV_ONLY_KEYS), which no customer sees.
 #
 # Inputs are an EXPLICIT production-target list, never a directory sweep: the same
 # derived-data tree also holds third-party and test-target `.stringsdata`, and a test
@@ -59,7 +64,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
 exec python3 - "$REPO_ROOT" "$@" <<'PY'
-import argparse, copy, json, pathlib, plistlib, re, subprocess, sys, tempfile
+import argparse, copy, json, pathlib, plistlib, re, shutil, subprocess, sys, tempfile
 
 REPO = pathlib.Path(sys.argv[1])
 PINNED_XCODE_BUILD = "27A266a"  # Xcode 27.0; keep equal to .github/actions/xcode-ci-setup/action.yml and .github/workflows/release.yml
@@ -83,6 +88,11 @@ NON_PRODUCTION = {
 GENERATED_RESOURCE_TARGETS = {
     "EnviousWispr_EnviousWisprAppKit", "EnviousWispr_EnviousWisprPostProcessing",
 }
+# Retired targets whose stale `.build` folder can survive in an old derived-data tree. Accepted
+# only while every `.stringsdata` it holds is Xcode's ExtractedAppShortcutsMetadata (written even
+# with extraction off); an empty folder or any real extraction still stops the run.
+# EnviousWisprASRService: the XPC ASR helper, removed by #1908 (e7a9317c).
+RETIRED_METADATA_ONLY_TARGETS = {"EnviousWisprASRService"}
 # Phase 1 semantic keys: kept manual (curated translator comments). Their English
 # lives in the code only; InterfaceCatalogSourceTests pins it.
 MANUAL_KEYS = {
@@ -90,6 +100,51 @@ MANUAL_KEYS = {
     "menu.setupRequired.continue",
     "notification.update.ready.body",
 }
+# Keys a Dev build extracts and a Release build does not: copy inside `#if DEBUG` (#3524). Measured
+# 2026-10-08 from Dev and Release builds of one commit (input tree feb9da81, Xcode 27A266a): 35
+# keys only in Dev, 0 only in Release, 0 with different English; each literal sits inside
+# `#if DEBUG` in DiagnosticsSettingsView.swift or ProviderSetup.swift. Provenance:
+# docs/audits/2026-10-07-ci-failure-audit/pr3-c2-dev-vs-release.txt and pr3-c2-dev-only-provenance.txt
+# (main checkout). A Dev check ignores these keys only while they are absent from the committed
+# catalog; the Release check fails if one of them is ever extracted for Release.
+DEV_ONLY_KEYS = frozenset({
+    '%lldms',
+    'All log events are also sent to the macOS unified logging system. View them in Console.app by filtering for subsystem: com.enviouswispr.app',
+    'Audio duration:',
+    'Batch ASR:',
+    'Clear Logs',
+    'Copy Diagnostics',
+    'Copy Log Path',
+    'Debug Mode',
+    'Debug builds only. ON routes Apple Intelligence polish through the local .fmadapter at EW_AFM_ADAPTER_PATH; OFF uses the stock model. Flips live on the next dictation. %@',
+    'Diagnostics',
+    'Enable debug mode',
+    'Forces the onboarding Apple Intelligence note. Pair with "Restart Onboarding…" to see each state. Debug builds only.',
+    'HW: %@',
+    'Log Files',
+    'Log Level',
+    'Logs are stored at ~/Library/Logs/EnviousWispr/. Maximum 10 MB per file, 5 files retained.',
+    'Model status:',
+    'OS: %@',
+    'OSLog',
+    'Open Console.app',
+    'Open Log Directory',
+    'Performance',
+    'Persists across relaunches. Toggle with Cmd+Shift+D from anywhere.',
+    'Pipeline Benchmark Results',
+    'Re-runs the onboarding flow without wiping app state. Disabled during recording.',
+    'Restart Onboarding…',
+    'Run ASR Benchmark',
+    'Run Pipeline Benchmark',
+    'Save dictation audio for debugging',
+    "Saves a local copy of each dictation's audio for diagnosing transcription issues. Stored only on this Mac, newest 500 recordings kept. Persists across rebuilds. Applies starting with your very next dictation.",
+    'Simulate AI polish state',
+    'Streaming finalize:',
+    'Streaming vs Batch WER:',
+    'Total: %lldms',
+    'Use tuned on-device adapter (PoC)',
+})
+RECEIPT_HELPER = REPO / "scripts/lib/l10n-build-receipt.py"
 CATALOG = REPO / "Sources/EnviousWispr/Resources/Localizable.xcstrings"
 WHATS_NEW_SOURCE = REPO / "Sources/EnviousWisprAppKit/Views/Settings/WhatsNewContent.swift"
 RENDERER = REPO / "scripts/ci/render-release-notes.py"
@@ -122,6 +177,10 @@ def collect_inputs(derived, configuration):
         raise Refused(f"no build intermediates at {base}")
     present = {p.name[: -len(".build")] for p in base.glob("*.build") if p.is_dir()}
     unknown = sorted(present - set(PRODUCTION_TARGETS) - NON_PRODUCTION - GENERATED_RESOURCE_TARGETS)
+    for name in [u for u in unknown if u in RETIRED_METADATA_ONLY_TARGETS]:
+        found = sorted((base / f"{name}.build").rglob("*.stringsdata"))
+        if found and all(p.name == "ExtractedAppShortcutsMetadata.stringsdata" for p in found):
+            unknown.remove(name)
     if unknown:
         raise Refused(f"project targets the target lists do not know: {unknown}")
     files, missing = [], []
@@ -138,6 +197,197 @@ def collect_inputs(derived, configuration):
     if missing:
         raise Refused(f"production targets with no .stringsdata (extraction off or not built): {missing}")
     return files
+
+
+def verified_dev_snapshot(derived, receipt, expected, work):
+    """Copy the eligible Dev extraction into work, verify the COPY against the receipt, and return
+    the copied files. The catalogs are then judged from bytes the receipt certifies, so a build
+    rewriting the originals meanwhile cannot produce a defect; a change during the copy fails
+    verification (could not run)."""
+    mirror = work / "dev-extraction"
+    for f in collect_inputs(derived, "Dev"):
+        dest = mirror / f.relative_to(derived)
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(f, dest)
+    proof = subprocess.run([sys.executable, str(RECEIPT_HELPER), "verify", "--receipt", str(receipt),
+                            "--expect-inputs", expected, "--derived-data", str(mirror), "--configuration", "Dev"],
+                           capture_output=True, text=True)
+    if proof.returncode != 0:
+        raise Refused(f"could not run: could not verify the Dev build receipt against the pushed code. "
+                      f"{(proof.stderr or proof.stdout).strip()}")
+    print(proof.stdout.strip())
+    return collect_inputs(mirror, "Dev")
+
+
+# --- New debug-only text in a Dev check (#3524 PR 3, Codex-adopted safeguards) ---
+# A NEW key the Dev build extracts and the committed catalog lacks is a defect, unless the compiler's
+# own record proves every occurrence sits inside `#if DEBUG`: then it is reported as a warning
+# (add it to DEV_ONLY_KEYS before any Dev repair) and the Release check in CI stays the authority.
+# The proof is conservative: an unresolved source path, an ambiguous one, a directive the scanner
+# cannot read, malformed nesting, a line the scanner cannot classify, or any condition other than
+# exactly `DEBUG` gives no exemption, so the key stays a defect.
+class Unsupported(Exception):
+    pass
+
+
+def directive_frames(text):
+    """{line number: [(kind, condition), ...]} of the `#if` frames active on each line, where kind is
+    "if"/"elseif"/"else". Directives inside block comments and multi-line strings are ignored.
+    Raises Unsupported on raw strings, interpolation containing quotes, or malformed nesting."""
+    frames, out = [], {}
+    block, multi = 0, False
+    for number, line in enumerate(text.split("\n"), 1):
+        out[number] = list(frames)
+        stripped = line.lstrip()
+        if not block and not multi and stripped.startswith("#") and not stripped.startswith('#"'):
+            if "/*" in stripped or "*/" in stripped:
+                raise Unsupported("block comment on a directive line")
+            word, _, rest = stripped.partition(" ")
+            rest = rest.split("//")[0].strip()
+            if word.startswith("#sourceLocation"):
+                raise Unsupported("source location remapping")
+            if word == "#if":
+                frames.append(("if", rest))
+            elif word == "#elseif":
+                if not frames:
+                    raise Unsupported("#elseif without #if")
+                frames[-1] = ("elseif", rest)
+            elif word == "#else":
+                if not frames:
+                    raise Unsupported("#else without #if")
+                frames[-1] = ("else", frames[-1][1])
+            elif word == "#endif":
+                if not frames:
+                    raise Unsupported("#endif without #if")
+                frames.pop()
+            elif word in ("#warning", "#error", "#available", "#unavailable", "#selector",
+                          "#keyPath", "#file", "#fileID", "#filePath", "#line", "#column", "#function",
+                          "#dsohandle", "#Preview", "#expect", "#require"):
+                pass
+            elif word.startswith("#if") or word.startswith("#else"):
+                raise Unsupported(f"directive {word!r}")
+            continue
+        i = 0
+        while i < len(line):
+            if block:
+                if line.startswith("*/", i):
+                    block -= 1
+                    i += 2
+                elif line.startswith("/*", i):
+                    block += 1
+                    i += 2
+                else:
+                    i += 1
+                continue
+            if multi:
+                if line[i] == "\\":
+                    raise Unsupported("escape in multi-line string")
+                if line.startswith('"""', i):
+                    multi = False
+                    i += 3
+                else:
+                    i += 1
+                continue
+            if line.startswith("//", i):
+                break
+            if line.startswith("/*", i):
+                block += 1
+                i += 2
+            elif line.startswith('#"', i) or line.startswith('#"""', i):
+                raise Unsupported("raw string literal")
+            elif line.startswith('"""', i):
+                multi = True
+                i += 3
+            elif line[i] == '"':
+                j = i + 1
+                while j < len(line) and line[j] != '"':
+                    if line.startswith("\\(", j):
+                        depth, k = 1, j + 2
+                        while k < len(line) and depth:
+                            if line[k] == '"':
+                                raise Unsupported("interpolation containing a string")
+                            depth += {"(": 1, ")": -1}.get(line[k], 0)
+                            k += 1
+                        j = k
+                    elif line[j] == "\\":
+                        j += 2
+                    else:
+                        j += 1
+                if j >= len(line):
+                    raise Unsupported("unterminated string literal")
+                i = j + 1
+            else:
+                i += 1
+    if frames or block or multi:
+        raise Unsupported("unclosed #if, comment or string at end of file")
+    return out
+
+
+def resolve_source(source, source_root):
+    """The one file under source_root/Sources/ that an absolute build-time path names, or None."""
+    marker = "/Sources/"
+    found, start = [], source.find(marker)
+    while start != -1:
+        rel = "Sources/" + source[start + len(marker):]
+        candidate = source_root / rel
+        if ".." not in pathlib.Path(rel).parts and candidate.is_file() and not candidate.is_symlink():
+            try:
+                candidate.resolve().relative_to((source_root / "Sources").resolve())
+            except ValueError:
+                pass
+            else:
+                found.append(rel)
+        start = source.find(marker, start + 1)
+    return found[0] if len(found) == 1 else None
+
+
+def source_root_is_receipt_code(source_root, expected):
+    """True when the working bytes under source_root have the input digest the receipt names, so
+    the `#if DEBUG` proof reads the code that was built; otherwise prints why and grants nothing."""
+    digest = subprocess.run([sys.executable, str(RECEIPT_HELPER), "input-digest", "--repo", str(source_root),
+                             "--configuration", "Dev"], capture_output=True, text=True)
+    try:
+        actual = json.loads(digest.stdout)["input_digest"] if digest.returncode == 0 else None
+    except (ValueError, KeyError, TypeError):
+        actual = None
+    if actual != expected:
+        why = (digest.stderr or digest.stdout).strip()[:300] if actual is None else f"its input digest is {actual[:12]}"
+        print(f"NOTE: no #if DEBUG exemption: {source_root} is not the code the Dev build receipt names ({why}).")
+        return False
+    return True
+
+
+def debug_only_proof(key, files, source_root):
+    """[(rel path, line)] when every extraction record of key sits inside an `#if DEBUG` (or
+    `#elseif DEBUG`) branch of a resolvable source file; None otherwise."""
+    records = []
+    for f in files:
+        data = json.loads(f.read_text())
+        for entry in data.get("tables", {}).get("Localizable", []):
+            if entry.get("key") == key:
+                records.append((data.get("source"), (entry.get("location") or {}).get("startingLine")))
+    if not records:
+        return None
+    proof, scanned = [], {}
+    for source, line in records:
+        if not isinstance(source, str) or not isinstance(line, int):
+            return None
+        rel = resolve_source(source, source_root)
+        if rel is None:
+            return None
+        if rel not in scanned:
+            try:
+                scanned[rel] = directive_frames((source_root / rel).read_text())
+            except (Unsupported, OSError, UnicodeDecodeError):
+                scanned[rel] = None
+        frames = scanned[rel]
+        if frames is None or line not in frames:
+            return None
+        active = frames[line]
+        if not any(kind in ("if", "elseif") and cond.strip().strip("()").strip() == "DEBUG" for kind, cond in active):
+            return None
+        proof.append((rel, line))
+    return proof
 
 
 def extracted_defaults(files):
@@ -286,6 +536,20 @@ def keep_translated_removals(committed_strings, kept, source_language):
             continue
         stale[key] = copy.deepcopy(entry) | {"extractionState": "stale"}
     return stale
+
+
+def keep_every_committed_key(committed_strings, synced_strings):
+    """Dev --update never removes (#3524): a Dev build cannot show that a key is gone from the
+    Release app (a `#if !DEBUG` literal is absent from it), so every committed key the sync would
+    drop, or would newly mark `stale`, gets its complete committed entry back, translations and
+    all. Returns the keys kept that way. Removal stays a Release-mode operation."""
+    kept = []
+    for key, entry in committed_strings.items():
+        now = synced_strings.get(key)
+        if now is None or (now.get("extractionState") == "stale" and entry.get("extractionState") != "stale"):
+            synced_strings[key] = copy.deepcopy(entry)
+            kept.append(key)
+    return sorted(kept)
 
 
 def xcstringstool_sync(start, files, work):
@@ -564,25 +828,95 @@ def main(argv):
     mode = parser.add_mutually_exclusive_group(required=True)
     mode.add_argument("--update", action="store_true")
     mode.add_argument("--check", action="store_true")
+    mode.add_argument("--list-inputs", action="store_true")
     parser.add_argument("--derived-data", required=True, type=pathlib.Path)
-    parser.add_argument("--configuration", required=True, choices=["Release"])
+    parser.add_argument("--configuration", required=True, choices=["Release", "Dev"])
+    parser.add_argument("--expect-inputs", help="Dev --check: the pushed code's input digest "
+                        "(l10n-build-receipt.py input-digest --commit <sha>)")
+    parser.add_argument("--receipt", type=pathlib.Path, help="Dev --check: default <derived-data>/ew-l10n-receipt.json")
+    parser.add_argument("--source-root", type=pathlib.Path, default=REPO,
+                        help="Dev --check: the checkout whose Sources/ the extraction's source paths are read "
+                             "from (default: this script's checkout, the pushed snapshot in the hook)")
+    parser.add_argument("--dev-derived-data", type=pathlib.Path,
+                        help="Release --check only: a Dev build of the same code (its receipt must match "
+                             "--expect-inputs); enables the warning for DEV_ONLY_KEYS found in neither build")
     parser.add_argument("--catalog", type=pathlib.Path, default=CATALOG)
     parser.add_argument("--whats-new-source", type=pathlib.Path, default=WHATS_NEW_SOURCE)
     parser.add_argument("--info-plist", type=pathlib.Path, default=INFO_PLIST)
     parser.add_argument("--infoplist-catalog", type=pathlib.Path, default=INFOPLIST_CATALOG)
     parser.add_argument("--servicesmenu-catalog", type=pathlib.Path, default=SERVICESMENU_CATALOG)
     args = parser.parse_args(argv)
+    snapshot = None
     try:
+        if args.list_inputs:
+            files = collect_inputs(args.derived_data, args.configuration)
+            sys.stdout.write("".join(f"{p.relative_to(args.derived_data)}\0" for p in files))
+            return 0
+        dev = args.configuration == "Dev"
+        if dev and not args.expect_inputs:
+            raise Refused("--configuration Dev needs --expect-inputs <the input digest of the code the Dev build is of>")
+        if args.dev_derived_data and (dev or not args.check or not args.expect_inputs):
+            raise Refused("--dev-derived-data goes with --check --configuration Release and --expect-inputs")
         build = xcode_build()
         if build != PINNED_XCODE_BUILD:
             raise Refused(f"Xcode build {build} is not the pinned {PINNED_XCODE_BUILD}")
-        files = collect_inputs(args.derived_data, args.configuration)
+        dev_keys = None
+        if dev or args.dev_derived_data:
+            snapshot = tempfile.TemporaryDirectory(prefix="l10n-dev-snapshot-")
+        if dev:
+            # The Dev extraction may be judged only when its receipt says it is of the pushed code,
+            # and only from the copy that was verified.
+            receipt = args.receipt or args.derived_data / "ew-l10n-receipt.json"
+            files = verified_dev_snapshot(args.derived_data, receipt, args.expect_inputs, pathlib.Path(snapshot.name))
+            dev_keys = set(extracted_defaults(files))
+        else:
+            files = collect_inputs(args.derived_data, args.configuration)
+            if args.dev_derived_data:
+                receipt = args.receipt or args.dev_derived_data / "ew-l10n-receipt.json"
+                dev_keys = set(extracted_defaults(verified_dev_snapshot(
+                    args.dev_derived_data, receipt, args.expect_inputs, pathlib.Path(snapshot.name))))
+        extracted_keys = set(extracted_defaults(files))
         seed = whats_new_seed(args.whats_new_source)
         info_seed, services_seed = info_plist_seeds(args.info_plist)
         # Every catalog is computed and validated before any is written, so a seed, parse or
         # validation refusal leaves all three untouched.
         with tempfile.TemporaryDirectory() as tmp:
             committed, synced = sync(args.catalog, files, pathlib.Path(tmp), seed)
+        dev_only_leak = sorted(DEV_ONLY_KEYS & extracted_keys) if not dev else []
+        if not dev and dev_keys is not None:
+            neither = sorted(DEV_ONLY_KEYS - dev_keys - extracted_keys)
+            if neither:
+                print(f"WARNING: {len(neither)} DEV_ONLY_KEYS member(s) found in neither this Release extraction "
+                      "nor the given Dev build of the same code; the list may be stale:")
+                for k in neither:
+                    print(f"  {k!r}")
+        if dev:
+            # Debug-only copy a Dev build adds: ignored only while the committed catalog lacks it.
+            # Changed English, removed keys and German gaps on every other key are judged as usual.
+            ignored = sorted(k for k in DEV_ONLY_KEYS if k in synced["strings"] and k not in committed["strings"])
+            for k in ignored:
+                del synced["strings"][k]
+            print(f"Dev-only keys ignored: {len(ignored)} of {len(DEV_ONLY_KEYS)} listed")
+            new_keys = sorted(k for k in synced["strings"] if k not in committed["strings"] and k not in DEV_ONLY_KEYS)
+            proofs = {}
+            if args.check:
+                proofs = {k: proof for k in new_keys if (proof := debug_only_proof(k, files, args.source_root))}
+            # The source digest is read AFTER every proof read, so an edit made before or during the
+            # reads moves the digest and grants nothing.
+            if proofs and not source_root_is_receipt_code(args.source_root, args.expect_inputs):
+                proofs = {}
+            for k, proof in proofs.items():
+                del synced["strings"][k]
+                where = ", ".join(f"{rel}:{line}" for rel, line in proof)
+                print(f"WARNING: new text inside #if DEBUG, judged as Dev-only: {k!r} ({where}). Add it to "
+                      "DEV_ONLY_KEYS in scripts/lib/l10n-catalog-sync.sh before any Dev repair; CI's Release "
+                      "check stays the authority.")
+            unseen = sorted(DEV_ONLY_KEYS - extracted_keys)
+            if unseen:
+                print(f"WARNING: {len(unseen)} DEV_ONLY_KEYS member(s) not extracted by this Dev build "
+                      "(and the Release check fails if one is extracted there), so the list may be stale:")
+                for k in unseen:
+                    print(f"  {k!r}")
         tables = [
             (args.catalog, committed, synced),
             (args.infoplist_catalog, *sync_seeded_table(args.infoplist_catalog, info_seed, info_plist_comment)),
@@ -594,6 +928,14 @@ def main(argv):
                 args.servicesmenu_catalog,
                 *sync_seeded_table(args.servicesmenu_catalog, services_seed, services_menu_comment),
             ))
+        retained = []
+        if dev and args.update:
+            # A partial repair: add and update from the Dev extraction, remove nothing, and leave a
+            # committed Dev-only entry exactly as committed (Dev extraction is not its authority).
+            for k in DEV_ONLY_KEYS & set(committed["strings"]):
+                synced["strings"][k] = copy.deepcopy(committed["strings"][k])
+            for path, before, after in tables:
+                retained += [(path, k) for k in keep_every_committed_key(before["strings"], after["strings"])]
         print(f"inputs: {len(files)} .stringsdata from {len(PRODUCTION_TARGETS)} production targets")
         print(f"What's New: {len(seed)} keys from {args.whats_new_source.name}")
         print(f"{args.info_plist.name}: {len(info_seed)} InfoPlist keys, {len(services_seed)} ServicesMenu keys")
@@ -637,12 +979,27 @@ def main(argv):
             print("translations: no language beyond English yet")
         elif not incomplete:
             print(f"translations complete: {', '.join(sorted(languages))}")
+        if dev_only_leak:
+            print(f"DEV_ONLY_KEYS LEAK: {len(dev_only_leak)} key(s) listed as Dev-only are in this Release "
+                  "extraction; remove them from DEV_ONLY_KEYS in scripts/lib/l10n-catalog-sync.sh:")
+            for k in dev_only_leak:
+                print(f"  {k!r}")
         if args.update:
             for path, after in drifted:
                 write_catalog(path, after)
                 print(f"updated {path}")
             if not drifted:
                 print("catalog already in sync")
+            if dev:
+                if retained:
+                    print(f"KEPT: {len(retained)} committed key(s) this Dev build does not extract, left unchanged "
+                          "with their translations; a Dev update never removes (CI's Release check reports removals):")
+                    for path, key in retained[:50]:
+                        print(f"  {path.name}: {key!r}")
+                    if len(retained) > 50:
+                        print(f"  ... and {len(retained) - 50} more")
+                print("This was a partial repair from a Dev build: it does not show Release equivalence; "
+                      "CI's Release check stays the authority.")
             if incomplete:
                 print("the translations above are incomplete; --update never supplies them, and --check fails until they are added")
             return 0
@@ -650,13 +1007,18 @@ def main(argv):
             print("INCOMPLETE: add or review the translations listed above and mark them translated "
                   "(interface-localization.md RULE: new-or-changed-ui-text-updates-the-catalog).")
         if drifted:
-            print(f"DRIFT: {len(added)} added, {len(removed)} removed, {len(changed)} changed. To fix, on Xcode "
-                  f"{PINNED_XCODE_BUILD}: xcodebuild build -project EnviousWispr.xcodeproj -scheme EnviousWispr-Release "
-                  "-configuration Release -derivedDataPath .derivedData/L10n -destination 'generic/platform=macOS', "
-                  "then scripts/lib/l10n-catalog-sync.sh --update --derived-data .derivedData/L10n "
-                  "--configuration Release, and commit the changed catalogs in Sources/EnviousWispr/Resources/.")
+            print(f"DRIFT: {len(added)} added, {len(removed)} removed, {len(changed)} changed. To add and update "
+                  "keys from your Dev build (scripts/build-dev-app.sh writes .derivedData/Dev/ew-l10n-receipt.json), "
+                  "run scripts/lib/l10n-catalog-sync.sh --update --configuration Dev --derived-data .derivedData/Dev "
+                  "--expect-inputs \"$(python3 scripts/lib/l10n-build-receipt.py input-digest --repo . "
+                  "--configuration Dev | python3 -c 'import json,sys; print(json.load(sys.stdin)[\"input_digest\"])')\" "
+                  "and commit the changed catalogs in Sources/EnviousWispr/Resources/. A Dev update never removes a key: "
+                  f"removals come from CI's Release report, or, on Xcode {PINNED_XCODE_BUILD}: xcodebuild build "
+                  "-project EnviousWispr.xcodeproj -scheme EnviousWispr-Release -configuration Release "
+                  "-derivedDataPath .derivedData/L10n -destination 'generic/platform=macOS', then "
+                  "scripts/lib/l10n-catalog-sync.sh --update --derived-data .derivedData/L10n --configuration Release.")
             return 1
-        if incomplete:
+        if incomplete or dev_only_leak:
             return 1
         print("catalog in sync")
         return 0
@@ -666,6 +1028,9 @@ def main(argv):
     except (OSError, ValueError, KeyError, TypeError) as error:
         print(f"REFUSED: {error}", file=sys.stderr)
         return 2
+    finally:
+        if snapshot is not None:
+            snapshot.cleanup()
 
 
 sys.exit(main(sys.argv[2:]))

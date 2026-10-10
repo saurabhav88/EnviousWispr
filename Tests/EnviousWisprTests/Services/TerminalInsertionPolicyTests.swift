@@ -66,14 +66,6 @@ struct TerminalInsertionPolicyTests {
     #expect(original != scrolled)
   }
 
-  @Test("A terminal context's right window is empty by construction")
-  func rightWindowIsEmptyByConstruction() {
-    // This is what keeps the drop-our-full-stop rule inert in a terminal: that
-    // rule needs a character to the RIGHT, and under the founder's end-of-line
-    // assumption there is none.
-    #expect(terminalContext(line: "some text").rightWindow.isEmpty)
-  }
-
   // MARK: - The rules that DO run
 
   @Test("The leading capital is lowered when continuing a sentence in a terminal")

@@ -185,9 +185,19 @@ struct PillCatalogParityTests {
         Issue.record("no frozen row labelled \(label) — the oracle and this table disagree")
         continue
       }
-      let observed = Self.project(
-        PillCatalog.entry(for: request, id: PresentationID()), label: label)
+      let entry = PillCatalog.entry(for: request, id: PresentationID())
+      let observed = Self.project(entry, label: label)
       #expect(observed == expected, "\(label) drifted from the frozen capture")
+      // Two rows also checked against literal expectations, independent of the frozen capture.
+      if case .hidden = request {
+        #expect(entry.definition == nil, "hidden must empty the slot")
+        #expect(entry.announcement?.text == "Recording complete")
+        #expect(entry.announcement?.isHighPriority == false)
+      }
+      if case .importStatus = request {
+        #expect(entry.definition != nil, "import status must occupy the slot")
+        #expect(entry.announcement == nil, "import status announces nothing")
+      }
     }
   }
 
@@ -247,13 +257,12 @@ struct PillCatalogParityTests {
   /// The two frozen rows an entry-by-entry table cannot reach (review r1 finding 1).
   ///
   /// **`reduceAccessibilityNotice` is a COMPOSITION of two catalog requests, and
-  /// its whole point is that the halves come from different ones.** When
-  /// eligibility refuses the toast it draws the CLIPBOARD definition and retains
-  /// the ACCESSIBILITY announcement — the only place in the system where that is
-  /// legitimate. Asserting the toast entry and the clipboard entry separately
-  /// proves each is right and says nothing about the substitution, so C0 froze
-  /// the composed outcome in both eligibility states and this is where those two
-  /// rows are spent.
+  /// it composes the clipboard picture and its spoken sentence itself.** When
+  /// eligibility refuses the toast it draws the CLIPBOARD definition and speaks the
+  /// pill's own sentence (#2321). Asserting the toast entry and the clipboard entry
+  /// separately proves each is right and says nothing about the substitution, so C0
+  /// froze the composed outcome in both eligibility states and this is where those
+  /// two rows are spent.
   @Test("both accessibility outcomes reproduce their frozen rows")
   func accessibilityCompositionParity() throws {
     for (label, showsToast) in Self.accessibilityCompositionCases {
@@ -291,25 +300,6 @@ struct PillCatalogParityTests {
     let observed = Self.project(
       PillCatalog.entry(for: .bluetoothAwareness, id: PresentationID()), label: row.label)
     #expect(observed == row, "the feature route is not what the single catalog arm produces")
-  }
-
-  /// `.hidden` is the shape a definition-only return could not have carried.
-  @Test("hidden empties the slot and still announces")
-  func hiddenAnnouncesWithoutDefinition() {
-    let entry = PillCatalog.entry(for: .hidden, id: PresentationID())
-    #expect(entry.definition == nil, "hidden must empty the slot")
-    #expect(entry.announcement?.text == "Recording complete")
-    #expect(entry.announcement?.isHighPriority == false)
-  }
-
-  /// Import status is the one silent request, and the fixture asserts nil rather
-  /// than omitting the row.
-  @Test("import status has a definition and says nothing")
-  func importStatusIsSilent() {
-    let entry = PillCatalog.entry(
-      for: .importStatus(message: "Imported 12 words"), id: PresentationID())
-    #expect(entry.definition != nil, "import status must occupy the slot")
-    #expect(entry.announcement == nil, "import status announces nothing")
   }
 
   /// The id travels onto the definition rather than being looked up afterwards.

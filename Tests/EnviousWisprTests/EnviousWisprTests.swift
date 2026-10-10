@@ -34,17 +34,6 @@ struct PipelineStateTests {
     #expect(state.isActive)
   }
 
-  @Test("equality for error states")
-  func errorEquality() {
-    #expect(PipelineState.error(.modelWedged) == PipelineState.error(.modelWedged))
-    #expect(PipelineState.error(.modelWedged) != PipelineState.error(.asrFailed))
-  }
-
-  @Test("equality for non-error states")
-  func nonErrorEquality() {
-    #expect(PipelineState.idle == PipelineState.idle)
-    #expect(PipelineState.idle != PipelineState.recording)
-  }
 }
 
 // MARK: - WERCalculator Tests

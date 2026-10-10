@@ -79,7 +79,8 @@ file_import_turns_displayed	ungraded	ungraded	-	pre-#2987
 file_import_turns_rename	ungraded	ungraded	-	pre-#2987
 file_import_turns_retry	ungraded	ungraded	-	pre-#2987
 hotkey.lock_resolved	ungraded	ungraded	-	pre-#2987
-hotkey.pressed	ungraded	ungraded	-	pre-#2987
+hotkey.listener_health	per_change	keep	analytics-operations.md FACT: app-posthog-events (#3544: per app version at the weekly release review, the share of app installs (distinct_id over app.launched) with any disable_storm row, the disable_episodes distribution over troubled listener installations, install_failures before success over installed_after_failures rows, and the share of app installs with a start_failed row; a reproduced storm rise is a release-stop signal. P6: share of app installs with a tap_reenabled row (sent at the first re-enable; the teardown disable_episodes row is often lost at quit, so read tap_reenabled for prevalence); share of app installs with a stale_key_cleared row by stale_kind (a rise triggers a key-state recovery investigation); share of installs with dictation.started that have a secure_input_notice row (education or typing-protection work))	#3544
+hotkey.pressed	ungraded	ungraded	analytics-operations.md FACT: app-posthog-events (#3534: rescue share = window_timing rescued / lock rows; any after_stop_timer row, kept whole from telemetry_policy_version 6, triggers the race-defense follow-up; late_after_window counts presses just past the window; #3544 P6: refused_key_held over refused_key_held plus weighted start, bare-modifier push-to-talk rows only, a rise triggers a stale-tracking investigation)	pre-#2987
 hotkey.registration	ungraded	ungraded	-	pre-#2987
 install_cancelled	ungraded	ungraded	-	pre-#2987
 language.detected	ungraded	ungraded	-	pre-#2987
@@ -118,6 +119,7 @@ recovery.press_blocked	ungraded	ungraded	-	pre-#2987
 recovery.press_unblocked	ungraded	ungraded	-	pre-#2987
 settings.change_applied	ungraded	ungraded	-	pre-#2987
 settings.change_blocked	ungraded	ungraded	-	pre-#2987
+settings.search_finished	per_user_action	keep	analytics-operations.md FACT: app-posthog-events (Settings search gaps: founder reviews distinct-install query gaps and sidebar destinations weekly for four weeks after release, then monthly)	#3482
 settings.changed	ungraded	ungraded	-	pre-#2987
 settings.model_preparing_impression	ungraded	ungraded	-	pre-#2987
 settings.snapshot	ungraded	ungraded	-	pre-#2987

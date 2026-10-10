@@ -20,10 +20,8 @@ import Foundation
 /// reference solely to wire `onPipelineStateChange` (icon updates).
 @MainActor
 final class DictationLifecycleCoordinator {
-  // MARK: - Collaborators (let-counted by CeilingsTestSupport)
+  // MARK: - Collaborators
   //
-  // Ceiling 11 (raised from parent migration plan's 10; see
-  // `DictationLifecycleCoordinatorCeilingsTests` Bible-changelog comment).
   // The 11th slot is `recordingLockedAccess`, a get/set closure-pair struct
   // that lets the coordinator read AND write the hands-free `isRecordingLocked`
   // flag without storing a reference to its owner. PR-C.3 of #763 rehomed that
@@ -45,11 +43,7 @@ final class DictationLifecycleCoordinator {
   /// terminal state.
   ///
   /// A bare closure, not a package: it is ONE capability, matching how
-  /// `RecordingStarter` stores `beginMinting` / `endMinting`. It is also not a
-  /// collaborator by the ceiling parser's definition, so this home's
-  /// collaborator cap is unchanged at 12 — said out loud rather than left for a
-  /// reader to notice, because the method cap in the same suite DID have to be
-  /// raised for `acceptEngineToken` below.
+  /// `RecordingStarter` stores `beginMinting` / `endMinting`.
   let releaseEngineClaim: @MainActor (EngineLease.Token) -> Void
 
   /// Bidirectional accessor for the hands-free `isRecordingLocked` flag (rehomed
@@ -79,16 +73,15 @@ final class DictationLifecycleCoordinator {
   private var prevParakeetActive: Bool = false
   private var prevWhisperKitActive: Bool = false
 
-  /// #1342: exact-once start/stop sound cue, tracked per backend. `var`, not
-  /// `let` — excluded from the collaborator ceiling by design.
+  /// #1342: exact-once start/stop sound cue, tracked per backend. Owned state,
+  /// not an injected collaborator.
   private var recordingSoundCue = RecordingSoundCue()
 
   /// #1413: the other-audio hold, the same per-transition slot as the cue. ONE
   /// instance shared with `DictationRuntime`, which exposes it to the app shell
   /// for the launch-time orphan adoption and the quit-time finish; this home
   /// drives it per transition. Held as a `var` like the cue: it is owned
-  /// take-scoped state, not an injected collaborator, and the ceiling counts
-  /// `let`s. nil only in tests that construct the coordinator without one.
+  /// take-scoped state, not an injected collaborator. nil only in tests that construct the coordinator without one.
   private var otherAudioHold: OtherAudioHold?
 
   /// #2648 — the running session's claim on the shared ASR-and-polish resource,
@@ -99,7 +92,7 @@ final class DictationLifecycleCoordinator {
   /// RETURN while the recording is still running
   /// (`RecordingStarter.swift:437-497`, `:610-626`), so a release on the way out
   /// of `start()` would admit a file import into the middle of a live dictation.
-  /// Owned mutable state, so it is excluded from the collaborator ceiling.
+  /// Owned mutable state, not an injected collaborator.
   ///
   /// **The backend is stored because both handlers below read the same slot.**
   /// Without it, a terminal transition published by the backend that is NOT
@@ -255,8 +248,8 @@ final class DictationLifecycleCoordinator {
       self?.showOverlayIntent(intent)
     }
     // #1060: approaching-cap warning — display-only banner, no lifecycle authority.
-    let onApproaching: (TimeInterval, String) -> Void = { [weak self] r, takeID in
-      self?.showApproachingCapWarning(remainingSeconds: r, takeID: takeID)
+    let onApproaching: (TimeInterval, String) -> Void = { [weak self] _, takeID in
+      self?.showApproachingCapWarning(takeID: takeID)
     }
     kernelDriver.onApproachingMaxDuration = onApproaching
     whisperKitKernelDriver.onApproachingMaxDuration = onApproaching
@@ -345,7 +338,7 @@ final class DictationLifecycleCoordinator {
   /// #1846: `takeID` arrives from the kernel's warning stream, already validated
   /// against the recording session that produced it — the coordinator forwards it
   /// and never re-derives one from an active driver.
-  private func showApproachingCapWarning(remainingSeconds: TimeInterval, takeID: String) {
+  private func showApproachingCapWarning(takeID: String) {
     recordingOverlay.update(.inPanelNotice(.approachingCap, dismissAfter: nil))
     TelemetryService.shared.recordingCapWarningShown(
       backend: lastCapturingBackend == .whisperKit ? "whisperKit" : "parakeet",
@@ -377,6 +370,7 @@ final class DictationLifecycleCoordinator {
     // affordance question.
     hotkeyService.setCancelHotkeyEnabled(
       CancelAffordancePolicy.isShortcutEnabled(state: newState))
+    hotkeyService.setRecordingActive(newState.isActive)
     switch newState {
     case .recording:
       // PR7 of #763 — clear the prior recording's polish error on every new
@@ -448,6 +442,7 @@ final class DictationLifecycleCoordinator {
     // #2087: see `handleParakeet` — one affordance decision, both backends.
     hotkeyService.setCancelHotkeyEnabled(
       CancelAffordancePolicy.isShortcutEnabled(state: newState))
+    hotkeyService.setRecordingActive(newState.isActive)
     switch newState {
     case .recording:
       lastRecordingResult.polishError = nil

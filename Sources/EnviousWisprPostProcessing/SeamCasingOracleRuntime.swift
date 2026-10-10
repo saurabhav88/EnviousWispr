@@ -187,16 +187,22 @@ package enum SeamCasingOracleRuntime {
   @concurrent
   private static func drain() async {
     while true {
-      let next: (String, Int)? = state.withLock { state in
-        guard state.latched == nil else { return nil }
+      // For `drainDecisionForTesting` only: the observer is read BEFORE the
+      // decision, so a pass that decided under an earlier case can never report
+      // to an observer a later case installed; `waiting` is read in the same
+      // critical section as the decision.
+      let observe = drainDecisionForTesting.withLock { $0 }
+      let (next, waiting): ((String, Int)?, [String]) = state.withLock { state in
+        guard state.latched == nil else { return (nil, state.pending) }
         // Wait for in-flight decisions. Their `NSSpellChecker` calls were
         // authorised before we got here and must finish before we start ours.
-        guard state.decisionLeases == 0, !state.preparing else { return nil }
-        guard let base = state.pending.first else { return nil }
+        guard state.decisionLeases == 0, !state.preparing else { return (nil, state.pending) }
+        guard let base = state.pending.first else { return (nil, state.pending) }
         state.pending.removeFirst()
         state.preparing = true
-        return (base, state.epoch)
+        return ((base, state.epoch), state.pending)
       }
+      observe?(next?.0, waiting)
       guard let (base, startedEpoch) = next else {
         // Either nothing to do, or a lease is out. A lease holder re-pokes the
         // drain on release, so returning here cannot strand pending work.
@@ -577,7 +583,17 @@ package enum SeamCasingOracleRuntime {
     // helper resets on the way out, which makes this the backstop.
     preparationOverride.withLock { $0 = nil }
     state.withLock { state in
+      // `preparing` survives the reset because it records a PHYSICAL fact: a
+      // builder is inside the shared checker right now, and a reset cannot stop
+      // it (the builder is synchronous; cancellation is cooperative). Clearing it
+      // let the next case's drain start a second builder beside the stale one,
+      // which then cleared the new claim on return and took the next language
+      // too: two builders at once, #3417's `saw 2` on CI. Kept, the stale drain
+      // finishes, discards its result on the epoch check, clears its own flag and
+      // drains the new case's languages one at a time.
+      let builderInside = state.preparing
       state = State(prewarmStarted: prewarmStarted, epoch: state.epoch + 1)
+      state.preparing = builderInside
     }
   }
 
@@ -594,6 +610,21 @@ package enum SeamCasingOracleRuntime {
 
   private static let preparationOverride =
     OSAllocatedUnfairLock<(@Sendable (String) -> SeamCasingOracle)?>(initialState: nil)
+
+  /// Observe each drain pass's decision: the language it claimed (nil when it found
+  /// the drain busy, a lease out or nothing pending) and the languages still
+  /// pending, both read in the decision's own critical section. Test-only and
+  /// observation-only.
+  ///
+  /// Exists because a drain is a DETACHED task with no handle (`pokeDrain()`), so a
+  /// test cannot otherwise know that a drain has looked at the state and declined.
+  /// #3417's reset test needs exactly that: it must tell "the new drain refused
+  /// because the old builder still owns the checker" from "the new drain has not
+  /// run yet", or it cannot fail on the parent commit deterministically. The
+  /// pending list lets it ignore a stray drain from an earlier case that decided
+  /// before its own language was even requested.
+  package static let drainDecisionForTesting =
+    OSAllocatedUnfairLock<(@Sendable (String?, [String]) -> Void)?>(initialState: nil)
 
   /// Install a fixed phase for one language without touching a system service.
   ///
@@ -621,11 +652,12 @@ package enum SeamCasingOracleRuntime {
   /// a helper whose only job is to save state so it can hand it back.
   ///
   /// Using `snapshot(for:)` for that started a REAL `NSSpellChecker` preparation
-  /// which `resetForTesting()` then could not cancel — it clears `preparing`
-  /// without stopping the builder — so the test's own preparation could overlap
-  /// the stray one. That is precisely the concurrent access these tests exist to
-  /// prove cannot happen, manufactured by the observation itself. Confirming
-  /// whole-diff review, P2.
+  /// which `resetForTesting()` then could not cancel, so the stray builder was
+  /// still inside the checker when the test began its own preparation (then
+  /// overlapping it, because reset also cleared `preparing`; since #3417 it keeps
+  /// the flag, so the test's preparation waits instead). Starting a real
+  /// preparation from an observation helper is still wrong. Confirming whole-diff
+  /// review, P2.
   ///
   /// Returns nil when the language is absent, warming, or unavailable; all three
   /// recompute safely on next request, so only a READY oracle is worth restoring.
@@ -634,6 +666,26 @@ package enum SeamCasingOracleRuntime {
       guard case .ready(let oracle)? = state.phases[base] else { return nil }
       return oracle
     }
+  }
+
+  /// Wait until no builder is inside the shared checker. Returns false if one is
+  /// still inside when `timeout` elapses. Test and fault-injection only.
+  ///
+  /// A reset cannot stop a builder that is already running, and since #3417 it
+  /// keeps that builder's claim, so every reset caller that then promises a state
+  /// waits here first: the test exclusion helper before handing over, and
+  /// `DebugFaultEndpoint`'s `force_oracle_delay` before it answers `OK` (otherwise
+  /// the next dictation would answer `oracleWarming` instead of stalling). The
+  /// published flag IS the signal; the interval samples it and the deadline only
+  /// stops a defect hanging the caller.
+  package static func waitUntilNoBuilderForTesting(timeout: Duration) async -> Bool {
+    let deadline = ContinuousClock.now + timeout
+    while state.withLock({ $0.preparing }) {
+      guard ContinuousClock.now < deadline else { return false }
+      // settle: poll interval for the published-state signal, not a fixed wait
+      try? await Task.sleep(for: .milliseconds(2))
+    }
+    return true
   }
 
   /// Leases outstanding right now. Test-only.

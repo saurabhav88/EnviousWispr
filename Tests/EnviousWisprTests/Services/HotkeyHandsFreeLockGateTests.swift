@@ -35,7 +35,7 @@ import EnviousWisprServices
     var sink: HotkeyTelemetrySink {
       HotkeyTelemetrySink(
         registrationFailed: { _, _, _, _ in },
-        pressed: { [weak self] _, _, _, _, action in self?.presses.append(action) },
+        pressed: { [weak self] _, _, _, _, action, _ in self?.presses.append(action) },
         lockResolved: { [weak self] committed, reason in
           self?.lockDecisions.append((committed, reason))
         })
@@ -128,16 +128,18 @@ import EnviousWisprServices
   /// second press silently takes the stop or fresh-start branch instead of the
   /// lock branch. Every case here pins the clock so the branch under test is the
   /// branch that runs, regardless of machine load.
-  @MainActor final class ManualClock {
-    private(set) var now = Date(timeIntervalSince1970: 1_000_000)
-    func advance(ms: Int) { now = now.addingTimeInterval(Double(ms) / 1000.0) }
+  /// #3544: the engine reads this clock off the main actor, so it is the thread-safe test clock.
+  final class ManualClock: Sendable {
+    private let clock = HotkeyTestClock(1_000_000)
+    var now: TimeInterval { clock.now }
+    func advance(ms: Int) { clock.advance(ms: ms) }
   }
 
   private func makeService(
     _ spy: Spy, driver: StartDriver? = nil, clock: ManualClock
   ) -> HotkeyService {
     let service = HotkeyService(
-      effects: RecordingDesktopHotkeyEffects(), telemetry: spy.sink, now: { clock.now })
+      effects: RecordingDesktopHotkeyEffects(), telemetry: spy.sink, uptime: { clock.now })
     service.onStartResolvedForTesting = { driver?.noteServiceResolved() }
     service.recordingMode = .pushToTalk
     // keyCode 0 ('A') is a chord key, so no NSEvent monitor is involved.
@@ -423,24 +425,4 @@ import EnviousWisprServices
     #expect(spy.presses == ["start", "start"], "no callback means nothing recorded")
   }
 
-  @Test("the accepted session id is carried unchanged to the publication query")
-  func acceptedSessionIDIsCarried() async {
-    let spy = Spy()
-    let clock = ManualClock()
-    let driver = StartDriver()
-    let service = makeService(spy, driver: driver, clock: clock)
-    var askedAbout: [String] = []
-    service.onStartRecording = driver.handler
-    service.onLockRequested = { sessionID in
-      askedAbout.append(sessionID)
-      return .published
-    }
-
-    down(service)
-    up(service)
-    down(service)
-    await driver.resolve(.recording("A5A0C0DE-1631"))
-
-    #expect(askedAbout == ["A5A0C0DE-1631"], "the id must not be recomputed at publication")
-  }
 }

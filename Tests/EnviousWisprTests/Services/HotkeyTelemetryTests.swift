@@ -11,8 +11,8 @@ import Testing
 /// asserts the emitted `press_action` / `trigger_source` / `key_shape` and the
 /// registration-failure path. `press_action` is derived entirely from
 /// HotkeyService's own state — no pipeline read — so every value is reachable
-/// here. The modifier-only `handleFlagsChangedValues` toggle site shares the same
-/// helper and is covered by Live UAT (the shipped default).
+/// here. The keyboard listener's modifier-only toggle site shares the same
+/// helper and is covered by `HotkeyGlobeKeyTests` and Live UAT (the shipped default).
 @MainActor
 // `.serialized` (#1987): the wire-payload case installs and restores the
 // process-global `testEventHook`, so no sibling case may run beside it.
@@ -30,6 +30,9 @@ import Testing
       /// this suite is unchanged.
       let keyIdentity: String
       let pressAction: String
+      /// #3534 — `rescued` / `on_time` on a lock intent, `after_stop_timer` on a press that lost
+      /// to the lone-tap stop, nil elsewhere.
+      var windowTiming: String? = nil
     }
     struct Registration: Equatable {
       let mechanism: String
@@ -46,10 +49,11 @@ import Testing
           self?.registrations.append(
             Registration(mechanism: mechanism, hotkeyKind: kind, osStatus: status, keyShape: shape))
         },
-        pressed: { [weak self] ts, im, ks, ki, pa in
+        pressed: { [weak self] ts, im, ks, ki, pa, wt in
           self?.presses.append(
             Press(
-              triggerSource: ts, inputMode: im, keyShape: ks, keyIdentity: ki, pressAction: pa))
+              triggerSource: ts, inputMode: im, keyShape: ks, keyIdentity: ki, pressAction: pa,
+              windowTiming: wt))
         })
     }
   }
@@ -172,31 +176,37 @@ import Testing
     #expect(spy.presses.first?.pressAction == "start")
   }
 
-  @Test("monitor nil-install reports a registration failure")
-  func monitorNilReportsFailure() {
-    let spy = Spy()
-    let service = makeService(spy, mode: .toggle, modifierOnly: true)
-    _ = service.recordMonitorInstall(nil, scope: "global")
-    #expect(
-      spy.registrations == [
-        .init(
-          mechanism: "nsevent_global", hotkeyKind: "toggle", osStatus: nil,
-          keyShape: "modifier_only")
-      ])
-  }
-
-  @Test("non-nil monitor install reports nothing and returns the token")
-  func monitorOkReportsNothing() {
-    let spy = Spy()
-    let service = makeService(spy, mode: .toggle, modifierOnly: true)
-    // #2455 C2: an opaque `DesktopEffectToken` rather than a raw `NSObject`
-    // monitor. The chokepoint's contract is unchanged — report a nil install,
-    // pass anything else through untouched — but no `NSEvent` value reaches this
-    // module any more.
-    let token = DesktopEffectToken()
-    let returned = service.recordMonitorInstall(token, scope: "local")
-    #expect(spy.registrations.isEmpty)
-    #expect(returned == token)
+  @Test("A lock-cooldown press reports while the key still reads as held, then releases it (#3544)")
+  func cooldownPressReportsWhileHeld() {
+    // #3544 P1: the base emitted `ignored_cooldown` before clearing the held flag; the gesture
+    // extraction must keep that order, because the sink runs synchronously on the press turn.
+    final class Box {
+      weak var service: HotkeyService?
+      var heldAtEmit: [Bool] = []
+    }
+    let box = Box()
+    let clock = HotkeyTestClock(100)
+    let sink = HotkeyTelemetrySink(
+      registrationFailed: { _, _, _, _ in },
+      pressed: { _, _, _, _, action, _ in
+        if action == "ignored_cooldown" { box.heldAtEmit.append(box.service?.isModifierHeld ?? false) }
+      })
+    let service = HotkeyService(
+      effects: RecordingDesktopHotkeyEffects(), telemetry: sink, uptime: clock.uptime)
+    box.service = service
+    service.recordingMode = .pushToTalk
+    service.toggleKeyCode = 0
+    service.handleCarbonHotkey(id: toggleID, isRelease: false, timestamp: 100)
+    clock.now = 100.125
+    service.handleCarbonHotkey(id: toggleID, isRelease: true, timestamp: 100.125)
+    clock.now = 100.25
+    service.handleCarbonHotkey(id: toggleID, isRelease: false, timestamp: 100.25)  // lock
+    clock.now = 100.375
+    service.handleCarbonHotkey(id: toggleID, isRelease: true, timestamp: 100.375)
+    clock.now = 100.625
+    service.handleCarbonHotkey(id: toggleID, isRelease: false, timestamp: 100.625)  // cooldown
+    #expect(box.heldAtEmit == [true])
+    #expect(service.isModifierHeld == false)
   }
 
   @Test("default .noop sink stays inert — press still processed, nothing emitted")
@@ -209,7 +219,6 @@ import Testing
     service.recordingMode = .pushToTalk
     service.toggleKeyCode = 0
     service.handleCarbonHotkey(id: toggleID, isRelease: false)
-    _ = service.recordMonitorInstall(nil, scope: "global")
     #expect(service.isModifierHeld)  // press was processed normally
   }
 
@@ -315,6 +324,104 @@ import Testing
       #expect(event?.intProps.isEmpty == true)
       #expect(event?.doubleProps.isEmpty == true)
       #expect(event?.boolProps.isEmpty == true)
+    }
+
+    @Test("hotkey.listener_health wire payload is closed strings and counts, never a key")
+    func listenerHealthWirePayload() {
+      let box = EventBox()
+      let previousHook = TelemetryService.shared.testEventHook
+      TelemetryService.shared.testEventHook = { event in
+        if event.name == "hotkey.listener_health" { box.set(event) }
+      }
+      defer { TelemetryService.shared.testEventHook = previousHook }
+
+      TelemetryService.shared.hotkeyListenerHealth(
+        HotkeyListenerHealthReport(
+          terminal: "disable_storm", reason: "storm", disableEpisodes: 5, reenables: 4,
+          installAttempts: 2, installFailures: 0, installs: 2))
+
+      let event = box.value
+      #expect(event?.stringProps == ["terminal": "disable_storm", "reason": "storm"])
+      #expect(
+        event?.intProps == [
+          "disable_episodes": 5, "reenables": 4, "install_attempts": 2, "install_failures": 0,
+          "installs": 2,
+        ])
+      #expect(event?.doubleProps.isEmpty == true)
+      #expect(event?.boolProps.isEmpty == true)
+    }
+
+    /// #3544 P6: `stale_kind` rides only a `stale_key_cleared` row.
+    @Test("hotkey.listener_health carries stale_kind only on a stale_key_cleared row")
+    func listenerHealthStaleKind() {
+      let box = EventBox()
+      let previousHook = TelemetryService.shared.testEventHook
+      TelemetryService.shared.testEventHook = { event in
+        if event.name == "hotkey.listener_health" { box.set(event) }
+      }
+      defer { TelemetryService.shared.testEventHook = previousHook }
+
+      TelemetryService.shared.hotkeyListenerHealth(
+        HotkeyListenerHealthReport(
+          terminal: "none", reason: "stale_key_cleared", disableEpisodes: 0, reenables: 0,
+          installAttempts: 1, installFailures: 0, installs: 1, staleKind: "ordinary"))
+      #expect(
+        box.value?.stringProps == [
+          "terminal": "none", "reason": "stale_key_cleared", "stale_kind": "ordinary",
+        ])
+
+      TelemetryService.shared.hotkeyListenerHealth(
+        HotkeyListenerHealthReport(
+          terminal: "none", reason: "secure_input_notice", disableEpisodes: 0, reenables: 0,
+          installAttempts: 1, installFailures: 0, installs: 1))
+      #expect(box.value?.stringProps == ["terminal": "none", "reason": "secure_input_notice"])
+    }
+
+    /// #3534: a lock intent carries `window_timing`; the case above, with none, carries no
+    /// such key at all.
+    @Test("hotkey.pressed wire payload carries window_timing only when given")
+    func wirePayloadCarriesWindowTiming() {
+      let box = EventBox()
+      let previousHook = TelemetryService.shared.testEventHook
+      TelemetryService.shared.testEventHook = { event in
+        if event.name == "hotkey.pressed" { box.set(event) }
+      }
+      defer { TelemetryService.shared.testEventHook = previousHook }
+
+      TelemetryService.shared.hotkeyPressed(
+        triggerSource: "ptt_hotkey", inputMode: "pushToTalk", keyShape: "modifier_only",
+        keyIdentity: "right_option", pressAction: "lock", windowTiming: "rescued")
+
+      #expect(
+        box.value?.stringProps == [
+          "trigger_source": "ptt_hotkey", "input_mode": "pushToTalk",
+          "key_shape": "modifier_only", "key_identity": "right_option", "press_action": "lock",
+          "window_timing": "rescued",
+        ])
+      #expect(box.value?.intProps.isEmpty == true)
+    }
+
+    /// #3534: the race signal rides an ordinary `start` row with the same closed shape.
+    @Test("hotkey.pressed wire payload carries after_stop_timer on a start row")
+    func wirePayloadCarriesAfterStopTimer() {
+      let box = EventBox()
+      let previousHook = TelemetryService.shared.testEventHook
+      TelemetryService.shared.testEventHook = { event in
+        if event.name == "hotkey.pressed" { box.set(event) }
+      }
+      defer { TelemetryService.shared.testEventHook = previousHook }
+
+      TelemetryService.shared.hotkeyPressed(
+        triggerSource: "ptt_hotkey", inputMode: "pushToTalk", keyShape: "modifier_only",
+        keyIdentity: "right_option", pressAction: "start", windowTiming: "after_stop_timer")
+
+      #expect(
+        box.value?.stringProps == [
+          "trigger_source": "ptt_hotkey", "input_mode": "pushToTalk",
+          "key_shape": "modifier_only", "key_identity": "right_option", "press_action": "start",
+          "window_timing": "after_stop_timer",
+        ])
+      #expect(box.value?.intProps.isEmpty == true)
     }
   #endif
 

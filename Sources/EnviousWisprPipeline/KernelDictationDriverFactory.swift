@@ -537,10 +537,9 @@ public enum KernelDictationDriverFactory {
     // `@MainActor` caller inherits that actor and would run the setup on it,
     // moving the stall from paste to launch rather than removing it.
     //
-    // Owned HERE, not in the app shell: both `WisprBootstrapper` and
-    // `AppLifecycleCoordinator` have import ceilings that exclude
-    // PostProcessing, and their doctrine is right — the layer that consumes the
-    // oracle should be the layer that prepares it. Both ceilings caught this.
+    // Owned HERE, not in the app shell: neither `WisprBootstrapper` nor
+    // `AppLifecycleCoordinator` should import PostProcessing — the layer that
+    // consumes the oracle should be the layer that prepares it.
     Task { await SeamCasingOracleRuntime.prewarm() }
 
     // 1. LimbSteps — same instances driver + wiring hold by reference.
@@ -880,10 +879,7 @@ public enum KernelDictationDriverFactory {
       emitLifecycleEvent: { [lifecycleSink] event in lifecycleSink.emit(event) }
     )
 
-    // 10. Driver. Pass the unified sink so the driver's direct
-    //     `.asrInterrupted` captureError emit (XPC crash fallback) also routes
-    //     through the injected sink — full parity with the old global delegate
-    //     spy for tests (Codex review #875).
+    // 10. Driver.
     let driver = KernelDictationDriver(
       kernel: kernel,
       observer: observer,
@@ -891,8 +887,7 @@ public enum KernelDictationDriverFactory {
       context: context,
       steps: limbSteps,
       adapter: adapter,
-      engineMutationScope: engineMutationScope,
-      captureErrorSink: captureErrorSink
+      engineMutationScope: engineMutationScope
     )
     driver.start()  // arms driver-side state observation (PR-4a)
 

@@ -28,12 +28,6 @@ struct RecordingSessionKernelDeadAirFloorTests {
 
   // MARK: Peak threshold (0.006)
 
-  @Test("uniform sub-floor buffer is dead air")
-  func uniformSubFloorIsDeadAir() {
-    // 0.001 < every threshold → dead air.
-    #expect(isDeadAir([Float](repeating: 0.001, count: 16_000)))
-  }
-
   @Test("a single sample just above the peak floor is NOT dead air")
   func peakJustAboveIsNotDeadAir() {
     // One loud sample (0.0061 ≥ 0.006) in otherwise-silent audio → recover.

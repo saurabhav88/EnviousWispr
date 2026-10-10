@@ -859,6 +859,9 @@ final class MenuBarController: NSObject {
   /// owner Settings uses.
   @objc private func setMicrophoneAction(_ sender: NSMenuItem) {
     guard let uid = sender.representedObject as? String else { return }
+    // #3479: a mic unplugged while the menu was open leaves a clickable row. Auto ("") is always
+    // valid; any other UID must still be plugged in, or nothing would ever correct the write.
+    guard uid.isEmpty || actions.isMicrophoneConnected(uid) else { return }
     settings.chooseInputDevice(uid: uid)
   }
 
@@ -996,6 +999,10 @@ struct MenuBarActions: Sendable {
   /// The inputs for the Microphone submenu, in the Settings dropdown's order, read when the menu
   /// is built (#3454). Plain values: this file may not import the Audio module.
   let microphoneChoices: @MainActor () -> [MicrophoneMenuChoice]
+  /// Whether this input is plugged in RIGHT NOW (#3479), asked of the system at click time. The
+  /// cached list behind `microphoneChoices` is refreshed on a separately scheduled task, so it can
+  /// still hold a mic unplugged while the menu was open.
+  let isMicrophoneConnected: @MainActor (String) -> Bool
   /// Open the unified window on the Transcribe a File page (#2772).
   let openTranscribeFile: @MainActor () -> Void
   let openPermissions: @MainActor () -> Void

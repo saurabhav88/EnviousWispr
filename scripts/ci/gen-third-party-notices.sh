@@ -102,6 +102,18 @@ COMPONENTS=(
   # committed data asset; VarCon's copyright and permission notices are vendored verbatim
   # beside the table.
   "VarCon (American/British spelling data, bundled as british-spelling.json)|2020.12.07|Permissive (Atkinson and Titze permission notices; Ispell BSD-style licence)|repo:Sources/EnviousWisprPostProcessing/Resources/varcon-LICENSE.txt|http://wordlist.aspell.net/|"
+  # #1677: the German number data in Sources/EnviousWisprPostProcessing/Generated/GermanNumberData.swift
+  # is generated offline by scripts/itn/generate.py from these two pinned upstream data sets. Not
+  # SwiftPM deps, committed data (no code from either is included); each upstream licence is kept
+  # verbatim beside its pinned source files under scripts/itn/sources/.
+  # #1677: phone-number validation and formatting for the language cleanup passes. The metadata
+  # is Google libphonenumber's, shipped inside PhoneNumberKit and copied byte for byte into
+  # EnviousWisprPostProcessing/Resources (LanguagePhoneMetadata); its Apache-2.0 text is vendored
+  # beside that copy, hence the repo: path.
+  "PhoneNumberKit|5.0.11|MIT|PhoneNumberKit/LICENSE|https://github.com/PhoneNumberKit/PhoneNumberKit|phonenumberkit"
+  "libphonenumber phone-number metadata (bundled in PhoneNumberKit, copied into the app's cleanup resources)|v9.0.40 (9d77a671)|Apache-2.0|repo:Sources/EnviousWisprPostProcessing/Resources/libphonenumber-LICENSE.txt|https://github.com/google/libphonenumber|"
+  "NeMo text-processing (German number word lists, lexical data only)|r1.2.0 (7efa127d)|Apache-2.0|repo:scripts/itn/sources/nemo/LICENSE|https://github.com/NVIDIA/NeMo-text-processing|"
+  "Unicode CLDR (German rule-based number format data, lexical data only)|release-48-2 (11299982)|Unicode-3.0 (Unicode License v3)|repo:scripts/itn/sources/cldr/LICENSE|https://github.com/unicode-org/cldr|"
 )
 
 # --- Cross-check the DIRECT-dep coverage against Package.resolved (Codex #2) ---
@@ -183,8 +195,8 @@ if [[ "$MODE" == "check" ]]; then
   # that exact capitalisation wherever it appears. Checked here so regenerating
   # without it fails the release gate rather than shipping quietly.
   # #996 phase D: mmBERT-small's attribution is appended after the S1 section
-  # (same reason), so the gate names it too.
-  for needle in 'S1-mini by Superwhisper' '"S1-mini" by "Superwhisper"' 'mmBERT-small by JHU CLSP'; do
+  # (same reason), so the gate names it too; #3482 adds multilingual-e5-small's.
+  for needle in 'S1-mini by Superwhisper' '"S1-mini" by "Superwhisper"' 'mmBERT-small by JHU CLSP' 'multilingual-e5-small by Microsoft Corporation'; do
     if ! grep -qF "$needle" "$NOTICES"; then
       echo "error: THIRD-PARTY-NOTICES.txt is missing '$needle' — regenerate it (scripts/ci/gen-third-party-notices.sh > THIRD-PARTY-NOTICES.txt)." >&2
       stale=1
@@ -313,3 +325,37 @@ printf 'the file is served from models.enviouswispr.com and is not distributed\n
 printf 'inside this disk image. mmBERT-small is Copyright the Johns Hopkins\n'
 printf 'Center for Language and Speech Processing, licensed under the Apache\n'
 printf 'License, Version 2.0, reproduced in full in the S1-mini section above.\n'
+
+# #3482: the Settings search meaning model. Envious Labs fine-tuned it on the Settings search
+# keywords, but its base is multilingual-e5-small (Microsoft; MIT), and its tokenizer vocabulary,
+# normalizer table and segmentation scores ship inside this disk image (the compact tokenizer.unigram
+# is built from the model's own tokenizer.json). The MIT text is reproduced here in full: the
+# model card's license field is `mit` and the project that releases the E5 models
+# (https://github.com/microsoft/unilm) carries this exact text and copyright line.
+printf '\n'
+printf -- '--------------------------------------------------------------------------------\n'
+printf 'multilingual-e5-small by Microsoft Corporation (base of the Settings search encoder and its tokenizer, bundled in this disk image)\n'
+printf '  License: MIT\n'
+printf '  Source:  https://huggingface.co/intfloat/multilingual-e5-small\n'
+printf -- '--------------------------------------------------------------------------------\n\n'
+printf 'EnviousWispr bundles a small on-device model that matches what you type in\n'
+printf 'Settings search to the right setting. Envious Labs fine-tuned it from\n'
+printf 'multilingual-e5-small and converted it to Core ML; its tokenizer data (the\n'
+printf 'vocabulary and normalization table) comes from the same model.\n\n'
+printf 'The MIT License (MIT)\n\n'
+printf 'Copyright (c) Microsoft Corporation\n\n'
+printf 'Permission is hereby granted, free of charge, to any person obtaining a copy\n'
+printf 'of this software and associated documentation files (the "Software"), to deal\n'
+printf 'in the Software without restriction, including without limitation the rights\n'
+printf 'to use, copy, modify, merge, publish, distribute, sublicense, and/or sell\n'
+printf 'copies of the Software, and to permit persons to whom the Software is\n'
+printf 'furnished to do so, subject to the following conditions:\n\n'
+printf 'The above copyright notice and this permission notice shall be included in all\n'
+printf 'copies or substantial portions of the Software.\n\n'
+printf 'THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\n'
+printf 'IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\n'
+printf 'FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\n'
+printf 'AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\n'
+printf 'LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,\n'
+printf 'OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE\n'
+printf 'SOFTWARE.\n'

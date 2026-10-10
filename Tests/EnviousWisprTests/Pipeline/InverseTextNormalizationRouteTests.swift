@@ -89,9 +89,15 @@ struct InverseTextNormalizationRouteTests {
             language: row.language, englishVetoed: veto, backendSupportsLID: lid)
           let route = InverseTextNormalizationGate.route(
             language: row.language, englishVetoed: veto, backendSupportsLID: lid)
-          // The production registry is EMPTY, so no row may ever route to `.language`.
+          // The production registry lists de, fr, es, it, pt, nl, pl, sv and uk: the rows for those languages
+          // (literal labels to literal codes, not the subject's canonicaliser) route to
+          // `.language`; every other row is unchanged.
+          let registeredRows: [String: String] = [
+            "de": "de", "DE": "de", "de-DE": "de", "pt-BR": "pt", "es": "es",
+          ]
           let expectedRoute: InverseTextNormalizationGate.Route =
-            expected.map { .neutral($0) } ?? .english
+            expected == Self.nonEnglish && registeredRows[row.label] != nil
+            ? .language(registeredRows[row.label]!) : (expected.map { .neutral($0) } ?? .english)
           checked += 1
           table.append(
             "\(row.label.debugDescription) | \(veto) | \(lid) | \(expected ?? "run") | \(legacy ?? "run") | \(route)"
@@ -156,12 +162,15 @@ struct InverseTextNormalizationRouteTests {
     #expect(route("", lid: true) == .neutral("lid_backend_nil"))
   }
 
-  /// A drift guard, not product coverage: the shipped registry lists no language until the
-  /// generator PR adds vetted rows, so today no take can reach `.language`.
-  @Test("the production registry is empty", .tags(.driftGuard))
-  func productionRegistryIsEmpty() {
-    #expect(LanguageRuleRegistry.production.count == 0)
-    for code in ["de", "es", "fr", "ru", "nl", "pt", "it", "pl", "no", "zh"] {
+  /// A drift guard, not product coverage: the shipped registry lists de, fr, es, it, pt, nl, pl,
+  /// sv, uk (#1677).
+  @Test("the production registry lists exactly de, fr, es, it, pt, nl, pl, sv and uk", .tags(.driftGuard))
+  func productionRegistryMembers() {
+    #expect(LanguageRuleRegistry.production.count == 9)
+    for code in ["de", "fr", "es", "it", "pt", "nl", "pl", "sv", "uk"] {
+      #expect(LanguageRuleRegistry.production.ruleSet(forLanguage: code)?.baseCode == code, "\(code)")
+    }
+    for code in ["ru", "fi", "da", "no", "zh"] {
       #expect(LanguageRuleRegistry.production.ruleSet(forLanguage: code) == nil, "\(code)")
     }
   }
@@ -207,7 +216,9 @@ struct InverseTextNormalizationRouteTests {
   @Test("each skip bucket runs the neutral subset and never the English time rule")
   func everySkipBucketRunsNeutralOnly() async throws {
     let cases: [(String, String?, Bool, Bool, String)] = [
-      ("non_english", "de", false, true, "non_english"),
+      // Finnish: a non-English language with no registered rule set (#1677 registers
+      // de/fr/es/it/pt/nl/pl/sv/uk).
+      ("non_english", "fi", false, true, "non_english"),
       ("language_vetoed", nil, true, true, "language_vetoed"),
       ("lid_backend_nil", nil, false, true, "lid_backend_nil"),
     ]
@@ -228,7 +239,7 @@ struct InverseTextNormalizationRouteTests {
   func skippedNoOpIsByteIdentical() async throws {
     // Leading/trailing whitespace, CRLF and DECOMPOSED Unicode (e + U+0301), all untouched.
     let input = "  Ruhe\u{0301} bitte,\r\num sieben am Abend.\n  "
-    for (language, vetoed, lid) in [("de", false, true), (nil, true, true), (nil, false, true)]
+    for (language, vetoed, lid) in [("fi", false, true), (nil, true, true), (nil, false, true)]
       as [(String?, Bool, Bool)]
     {
       let step = InverseTextNormalizationStep()
@@ -248,7 +259,7 @@ struct InverseTextNormalizationRouteTests {
     let neutral = InverseTextNormalizationStep()
     neutral.backendSupportsLID = true
     let n = try await neutral.process(
-      ctx("mandalo a marco arroba esempio punto com", language: "es"))
+      ctx("mandalo a marco arroba esempio punto com", language: "fi"))
     #expect(n.text == "mandalo a marco@esempio.com")
     #expect(neutral.lastRun?.ran == false)
 

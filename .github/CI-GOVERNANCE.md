@@ -29,13 +29,19 @@ Actions updates are grouped into a single PR per week to reduce noise.
 `main` is protected via the `main-protection` ruleset (active). The ruleset
 requires exactly one status check:
 
-- `build-check` — the required aggregate gate (from `pr-check.yml`). It depends on
-  three macOS lanes and three Ubuntu lanes and is green only when all six pass:
-  - `build-debug` — debug build, XPC error hygiene, debug-config logic tests
-  - `build-release` — release build, FoundationModels compile probe
-  - plus `eval-packages`, `worker-tests`, `website-check`, and `recipe-check` (#2868: a PR adding
-    more than 100 lines under `Tests/` must carry one `Recipe:` line the job can accept; see
-    `scripts/ci/check-test-recipe.py`)
+- `build-check`: the required aggregate gate (from `pr-check.yml`). It runs
+  `scripts/ci/fast-checks.sh --ci`, the pre-push hook's quick-check list minus the members
+  another job covers (#3524), and is green only when those pass with none skipped and all
+  four lanes it needs succeed:
+  - `build-and-test`: the macOS lane, a Release-configuration build and the full logic
+    suite when the change needs a build (`scripts/ci/classify-changes.sh` decides)
+  - `worker-tests`: the worker unit suites
+  - `website-check`: the website build and help checks when `scripts/ci/classify-changes.sh`
+    requires website validation
+  - `recipe-check`: #2868, when the PR adds more than 100 lines under `Tests/`, the newest
+    first-parent commit in the PR's `base..head` range carrying a `Recipe:` trailer decides
+    and must carry exactly one valid value (`scripts/ci/check-test-recipe.py --trailers`;
+    the PR template lists the shapes)
 - Restrict deletions and block force pushes enabled
 
 `ci-drift-check.yml` is NOT a required PR check — it runs weekly (Monday noon UTC)

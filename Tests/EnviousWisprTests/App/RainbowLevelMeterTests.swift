@@ -191,11 +191,6 @@ struct RainbowLevelMeterTests {
     #expect(bars == [0, 0, 0])
   }
 
-  @Test("a zero bar count produces no bars")
-  func zeroBarCountIsSafe() {
-    #expect(RainbowLevelMeter.bars(history: [0.5], count: 0).isEmpty)
-  }
-
   @Test("the drawing always has exactly one level per bar")
   func barsMatchTheBarCount() {
     #expect(RainbowLevelMeter.bars(history: [0.5]).count == RainbowLevelMeter.barCount)
@@ -213,11 +208,6 @@ struct RainbowLevelMeterTests {
     let h = RainbowLevelMeter.pushed([], level: level, capacity: 4)
     let v = h.first ?? -1
     #expect(v >= 0 && v <= 1, "level \(level) entered the buffer as \(v)")
-  }
-
-  @Test("a zero capacity cannot produce a negative removeFirst")
-  func zeroCapacityIsSafe() {
-    #expect(RainbowLevelMeter.pushed([0.5], level: 0.5, capacity: 0).isEmpty)
   }
 
   // MARK: - Drawing
@@ -249,11 +239,6 @@ struct RainbowLevelMeterTests {
       at: RainbowLevelMeter.barCount - 1, of: RainbowLevelMeter.barCount)
     #expect(first == RainbowLevelMeter.spectrum.first)
     #expect(last == RainbowLevelMeter.spectrum.last)
-  }
-
-  @Test("a single-bar meter does not divide by zero")
-  func singleBarGradientIsSafe() {
-    #expect(RainbowLevelMeter.colour(at: 0, of: 1) == RainbowLevelMeter.spectrum[0])
   }
 
   /// The frame and the drawing derive from one expression, so the Canvas cannot

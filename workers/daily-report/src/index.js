@@ -1,9 +1,8 @@
 /**
  * EnviousWispr Daily Report - Cloudflare Worker (issues #1433, #1838)
  *
- * Runs once a day via a secret-gated HTTP trigger (scheduling lives in
- * .github/workflows/daily-report-ping.yml, not a Cloudflare cron - the CF
- * account is at its 5-cron free-plan limit, see #1092) and posts ONE Discord
+ * Runs once a day via a secret-gated HTTP trigger (QStash schedules at
+ * 09:12 America/New_York; see README.md and #3570) and posts ONE Discord
  * message with two sections:
  *
  *   Adoption          - yesterday's installs, onboarding, activation, engine
@@ -11,20 +10,19 @@
  *   Version scorecard - the last complete Eastern week, per release, with the
  *                       two largest ranked changes against each measure's own
  *                       normal week-to-week movement (#1838).
- *   Sentry            - yesterday's errors on the current release line, split
- *                       into dictations LOST and dictations that still worked
- *                       but worse, with the change in affected people against
- *                       the day before (#1965).
+ * Sentry morning write-ups use independent authenticated invocations (#3547)
+ * so neither vendor's failure prevents delivery from the other.
  *
  * Gates nothing and alerts on nothing. Defect detection belongs to the Sentry
  * triage routines; this is a digest, and the threshold-alarm shape it replaced
  * is exactly what made the old separate health check useless to its one reader.
  *
- * ORCHESTRATION OWNERSHIP. This file resolves the report window ONCE, resolves
- * the dev-ID exclusion ONCE, builds ONE production predicate, schedules every
- * outbound query itself, assembles ONE payload, and decides whether the run was
- * clean. The two section modules own their own SQL, calculations and results,
- * and cannot reach the clock, the raw dev IDs, or a scheduler of their own.
+ * ORCHESTRATION OWNERSHIP. Each mode resolves one calendar snapshot here.
+ * Performance resolves the PostHog dev-ID exclusion and production predicate
+ * once, schedules its section queries, then delivers its own atomic payload.
+ * Sentry owns a separate vendor budget over that supplied window; it never
+ * enters the PostHog preflight or limiter. Domain modules own calculations and
+ * never read the clock or raw PostHog dev IDs.
  *
  * Plan: docs/feature-requests/issue-1838-2026-07-29-daily-report-version-scorecard.md
  *
@@ -47,11 +45,7 @@ import {
   formatScorecard,
   formatScorecardUnavailable,
 } from "./report-format.js";
-import {
-  fetchSentrySection,
-  formatSentrySection,
-  formatSentryUnavailable,
-} from "../../reporting/sentry-section.js";
+import { fetchSentryWriteup, formatSentryWriteup } from "../../reporting/sentry-writeup.js";
 
 export default {
   async fetch(request, env) {
@@ -63,14 +57,22 @@ export default {
     if (!env.TRIGGER_SECRET || provided !== env.TRIGGER_SECRET) {
       return new Response("unauthorized\n", { status: 401 });
     }
-    const dateOverride = url.searchParams.get("date"); // optional YYYY-MM-DD Eastern-date recovery override
+    const dateOverride = url.searchParams.get("date"); // optional Eastern-date recovery override
+    const report = url.searchParams.has("report") ? url.searchParams.get("report") : "performance";
+    const platform = url.searchParams.get("platform");
+    if (report !== "performance" && report !== "sentry") return new Response("unsupported report\n", { status: 400 });
+    if ((report === "performance" && url.searchParams.has("platform"))
+        || (report === "sentry" && !Object.hasOwn(SENTRY_PLATFORMS, platform))) {
+      return new Response("unsupported platform\n", { status: 400 });
+    }
     try {
-      const message = await runReport(env, dateOverride);
-      return new Response(message + "\n", { status: 200 });
+      const result = report === "performance"
+        ? { message: await runReport(env, dateOverride) }
+        : await runSentryReport(env, platform, dateOverride);
+      return new Response(result.message + "\n", { status: 200 });
     } catch (err) {
-      // Deliberately does NOT post here. runReport owns every Discord request;
-      // a second post from this layer is how a failed run ends up telling the
-      // founder twice, or telling him after he already has the report.
+      // The selected runner owns delivery. Posting here would duplicate its
+      // failure notice or tell the founder twice after a rejected delivery.
       return new Response("daily report failed: " + err.message + "\n", { status: 500 });
     }
   },
@@ -541,19 +543,14 @@ async function postFailureNotice(env, dateStr) {
   }
 }
 
-/** Just "Sentry, yesterday": the day is on the message's content line, and this
- * section always reports the day the rest of the report is about. */
-const SENTRY_TITLE = "Errors, yesterday";
-
-/** Sentry's window, derived from the ONE resolved report context and nothing
- * else - this file's orchestration rule, applied to a third vendor. Sentry's
+/** Sentry's window derives from the selected mode's resolved calendar context.
+ * It does not depend on PostHog's production population or clock. Sentry's
  * `start`/`end` are naive ISO instants interpreted as UTC, so the Eastern day
  * boundary already computed in `context` converts directly with no second
  * timezone calculation.
  *
  * `statsPeriod` is deliberately NOT used. It cannot express "the day before
- * yesterday", which the people delta needs, and mixing the two forms across
- * five calls is how a report ends up comparing windows that do not abut. */
+ * yesterday", and mixing window forms would compare periods that do not abut. */
 export function sentryWindowFor(context) {
   const naiveISO = (date) => date.toISOString().slice(0, 19);
   // The prior window is the PREVIOUS EASTERN CALENDAR DAY, resolved through the
@@ -572,26 +569,44 @@ export function sentryWindowFor(context) {
   };
 }
 
-/** Runs the Sentry section and converts every failure into a settled record.
- *
- * NEVER whole-run fatal, deliberately. A Sentry outage must not cost the
- * founder the adoption numbers, which are measured from an entirely different
- * vendor and are perfectly good. The trigger still fails afterwards, so a
- * section that quietly stopped working cannot look healthy forever.
- */
-async function settleSentrySection(env, context, deps) {
-  try {
-    const opts = { ...(deps.sentryOpts || {}), workerLabel: "daily_report" };
-    const data = await fetchSentrySection(env, sentryWindowFor(context), opts);
-    // Rendering AND its shape check both sit inside the settled outcome, for
-    // the same reason driveSections puts them there: a section that computes
-    // cleanly and renders badly is an unavailable section, and validating it
-    // later at delivery would fail the whole payload and cost the OTHER
-    // sections their place in the report.
-    return { status: "fulfilled", value: toEmbed(formatSentrySection(data, { title: SENTRY_TITLE })) };
-  } catch (reason) {
-    return { status: "rejected", reason: asError(reason, "sentry section") };
+// Fixed server-side identities; URL parameters and event tags cannot select a
+// destination or project. Missing Android configuration never falls back to Mac.
+const SENTRY_PLATFORMS = Object.freeze({
+  mac: Object.freeze({ id: "4511097112428544", slug: "enviouswispr", webhook: "DISCORD_WEBHOOK_URL", label: "Mac" }),
+  android: Object.freeze({ id: "4512117176795136", slug: "enviouswispr-android", webhook: "DISCORD_ANDROID_WEBHOOK_URL", label: "Android" }),
+});
+
+export async function runSentryReport(env, platform, dateOverride = null, deps = {}) {
+  if (!Object.hasOwn(SENTRY_PLATFORMS, platform)) throw new TypeError("unsupported Sentry platform");
+  const profile = SENTRY_PLATFORMS[platform];
+  const webhook = env[profile.webhook];
+  if (typeof webhook !== "string" || webhook.trim().length === 0) {
+    throw new TypeError(profile.label + " report destination is not configured");
   }
+  // Resolve before any vendor work. Sentry never enters the PostHog preflight.
+  const context = resolveReportWindow(new Date(), dateOverride);
+  let data;
+  let payload;
+  try {
+    data = await fetchSentryWriteup({ SENTRY_AUTH_TOKEN: env.SENTRY_AUTH_TOKEN, SENTRY_ORG: env.SENTRY_ORG,
+      SENTRY_PROJECT_ID: profile.id, SENTRY_PROJECT_SLUG: profile.slug },
+      sentryWindowFor(context), { ...(deps.sentryOpts || {}), workerLabel: "daily_sentry_" + platform });
+    payload = formatSentryWriteup(data, { platform, date: context.dateStr });
+  } catch (err) {
+    // One truthful unavailable report, then a failed invocation. Delivery itself
+    // sits outside this catch so a rejected post cannot trigger a second post.
+    await deliverReport(webhook, {
+      content: "Sentry morning review | " + profile.label + " | " + context.dateStr,
+      embeds: [{ title: "Crash/error reporting unavailable today",
+        description: "This is not a report of zero events. Check the failed report job before drawing conclusions." }],
+    });
+    throw err;
+  }
+  await deliverReport(webhook, payload);
+  return { message: payload.content, dataQuality: {
+    issuesComplete: data.issuesComplete, priorComplete: data.priorComplete,
+    buildsComplete: data.buildsComplete, newnessComplete: data.newnessComplete,
+  } };
 }
 
 // `deps` is a test-only injection seam (production passes nothing, every
@@ -639,15 +654,9 @@ export async function runReport(env, dateOverride = null, deps = {}) {
     },
   ];
 
-  // Sentry runs ALONGSIDE the PostHog work, not inside its limiter. The limiter
-  // exists for PostHog's 3-query project ceiling; Sentry is a different vendor
-  // with its own limits (30 per window, 15 concurrent), so a Sentry read that
-  // waited for a PostHog slot would block a PostHog query for ~1.8s while doing
-  // no PostHog work at all.
-  const [outcomes, sentryOutcome] = await Promise.all([
-    driveSections(sections, CONCURRENCY_LIMIT),
-    settleSentrySection(env, context, deps),
-  ]);
+  // Performance mode has no Sentry dependency; that vendor is an independent
+  // invocation, not another section that could be lost to this preflight.
+  const outcomes = await driveSections(sections, CONCURRENCY_LIMIT);
 
   // A release-resolution CONTRACT failure - misconfiguration, a malformed
   // response, no eligible release - means we cannot know which releases this
@@ -676,9 +685,6 @@ export async function runReport(env, dateOverride = null, deps = {}) {
       ...sections.map((s, i) =>
         outcomes[i].status === "fulfilled" ? outcomes[i].value : toEmbed(s.unavailable())
       ),
-      sentryOutcome.status === "fulfilled"
-        ? sentryOutcome.value
-        : toEmbed(formatSentryUnavailable(SENTRY_TITLE)),
     ],
   };
 
@@ -689,10 +695,7 @@ export async function runReport(env, dateOverride = null, deps = {}) {
 
   // The founder has the report; the trigger still has to fail, or a section
   // that silently stopped working would look like a healthy run forever. The
-  // Sentry outcome is checked with the others, not separately: it is exactly as
-  // capable of failing quietly, and a missing Sentry section for months is the
-  // shape this whole issue exists to prevent.
-  const failed = [...outcomes, sentryOutcome].find((o) => o.status === "rejected");
+  const failed = outcomes.find((o) => o.status === "rejected");
   if (failed) throw failed.reason;
   return payload.content;
 }

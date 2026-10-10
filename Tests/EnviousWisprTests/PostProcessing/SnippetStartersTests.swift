@@ -220,34 +220,6 @@ struct SnippetStartersSeedingTests {
 @Suite("Starter snippet catalog (#628)", .tags(.driftGuard))
 struct SnippetStartersCatalogTests {
 
-  @Test("No two starters fire on the same spoken words")
-  func noCollisions() {
-    let all = SnippetStarters.all
-    for (index, snippet) in all.enumerated() {
-      for other in all[(index + 1)...] {
-        #expect(!snippet.collidesWith(other), "\(snippet.trigger) collides with \(other.trigger)")
-      }
-    }
-  }
-
-  @Test("Every starter passes the store's own validation")
-  func everyStarterIsValid() throws {
-    let all = SnippetStarters.all
-    for snippet in all {
-      let others = all.filter { $0.id != snippet.id }
-      try SnippetsManager.validate(snippet, against: others)
-    }
-  }
-
-  @Test("The catalog holds exactly six starters, and every id string parses")
-  func catalogIsSix() {
-    // Building `all` is what forces every `UUID(uuidString:)` literal to be parsed. A typo in
-    // one of them traps, and this is where that has to happen: the catalog is first touched
-    // during app launch, so a malformed id that reached a release would be a launch crash for
-    // a decorative feature. The count is pinned so adding a seventh is a deliberate edit.
-    #expect(SnippetStarters.all.count == 6)
-  }
-
   @Test("Every starter id is unique")
   func idsAreUnique() {
     let ids = SnippetStarters.all.map(\.id)

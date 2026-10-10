@@ -1,7 +1,7 @@
 /**
  * Sentry read transport, shared by every worker that queries Sentry (issue #1965).
  *
- * CONSUMERS: workers/daily-report, workers/weekly-digest, workers/sentry-triage.
+ * CONSUMERS: workers/daily-report, workers/weekly-digest.
  *
  * DEPLOY RULE: Cloudflare bundles each worker separately, so editing this file
  * changes NOTHING in production until EVERY consumer above is redeployed
@@ -14,8 +14,8 @@
  * NOT here, deliberately: which window to ask about, which releases count, what
  * an `error.category` MEANS, how to word a section, or when something is worth
  * buzzing about. Every one of those is a product judgement and belongs to the
- * worker that owns the report - `workers/reporting/sentry-section.js` for the
- * two digests, `workers/sentry-triage/src/index.js` for the spike card. This is
+ * report policy owners: `workers/reporting/sentry-section.js` for weekly/shared
+ * labels and `workers/reporting/sentry-writeup.js` for independent daily reports. This is
  * the same line `workers/shared/README.md` draws for posthog.js and discord.js.
  *
  * WHY THIS IS NOT AN EXTENSION OF posthog.js: different vendor, different
@@ -53,11 +53,12 @@ const RETRYABLE_SENTRY_STATUSES = new Set([429, 500, 502, 503, 504]);
  * than anything about Sentry.
  *
  * Cloudflare allows 50 subrequests per Worker invocation. The daily report's
- * designed worst case - every request retrying to exhaustion - is
+ * historical pre-#3547 combined-report worst case - every request retrying - was
  * (1 preflight + 7 adoption + 2 scorecard + 1 GitHub) x 3 + Sentry + 1 Discord.
- * At three Sentry attempts that is 49, one below the cap, so a single future
+ * At three Sentry attempts that was 49, one below the cap, so a single future
  * query anywhere in the worker would silently push the whole report over. At
- * two it is 44.
+ * two it was 44. Current daily Sentry invocations have a separate 21-request
+ * budget; the bounded two-attempt transport contract stays unchanged.
  *
  * The trade is one-sided. Sentry's per-window limit resets fast, the digest
  * runs again tomorrow, and losing the Sentry section for one day costs a
@@ -158,7 +159,7 @@ function requireConfig(env) {
 }
 
 /** One HTTP attempt, bounded by BOTH a per-request timeout and the caller's
- * absolute deadline. Modelled on sentry-triage's `fetchBefore`, which already
+ * absolute deadline. Derived from the former relay's `fetchBefore`, which
  * had to solve this for the webhook path. */
 async function fetchBounded(url, token, { fetchFn, deadlineAt, requestTimeoutMs, queryName }, consume) {
   const remainingMs = deadlineAt === null ? requestTimeoutMs : deadlineAt - Date.now();
@@ -287,6 +288,64 @@ function hasMorePages(headers, rowCount, perPage) {
   return /rel="next"[^,]*results="true"/.test(link);
 }
 
+// Opt-in metadata: old readers keep their response contract. Follow an opaque
+// cursor, never the supplied URL; retain fixed project/query/fields (#3547).
+function nextPageMetadata(headers, expectedUrl, queryName) {
+  const link = headers?.get?.("link") || "";
+  if (!link) return { nextCursor: null, terminalPage: false };
+  let next = null;
+  let terminalPage = false;
+  let seenNext = false;
+  for (const entry of link.split(/,\s*(?=<)/)) {
+    const match = /^\s*<([^>]+)>\s*;(.+)$/.exec(entry);
+    if (!match) throw new SentryShapeError(queryName, "invalid pagination header");
+    const attributes = new Map();
+    for (const item of match[2].split(";")) {
+      const pair = /^\s*([a-z]+)\s*=\s*"([^\"]*)"\s*$/.exec(item);
+      if (!pair || attributes.has(pair[1])) {
+        throw new SentryShapeError(queryName, "invalid pagination attributes");
+      }
+      attributes.set(pair[1], pair[2]);
+    }
+    if (attributes.get("rel") !== "next") continue;
+    if (seenNext) throw new SentryShapeError(queryName, "ambiguous next page");
+    seenNext = true;
+    // A terminal link certifies completeness even though it is never followed,
+    // so validate its endpoint before trusting that signal too.
+    let target;
+    try { target = new URL(match[1]); } catch (_) {
+      throw new SentryShapeError(queryName, "invalid next-page URL");
+    }
+    // US API responses advertise canonical sentry.io links (live #3547
+    // receipt). Accept only this fixed service pair; follow only the cursor
+    // while the next request retains its configured region/project/query.
+    const serviceOrigins = [SENTRY_REGION_URL, "https://sentry.io"];
+    const sameService = serviceOrigins.includes(expectedUrl.origin) && serviceOrigins.includes(target.origin);
+    if ((target.origin !== expectedUrl.origin && !sameService) || target.pathname !== expectedUrl.pathname) {
+      throw new SentryShapeError(queryName, "next page changed query endpoint");
+    }
+    if (attributes.get("results") === "false") {
+      terminalPage = true;
+      continue;
+    }
+    if (attributes.get("results") !== "true" || next !== null) {
+      throw new SentryShapeError(queryName, "ambiguous next page");
+    }
+    const values = target.searchParams.getAll("cursor");
+    const cursor = values.length === 1 ? values[0] : null;
+    if (!validCursor(cursor) || (attributes.has("cursor") && attributes.get("cursor") !== cursor)) {
+      throw new SentryShapeError(queryName, "invalid next-page cursor");
+    }
+    next = cursor;
+  }
+  return { nextCursor: next, terminalPage };
+}
+
+function validCursor(cursor) {
+  return typeof cursor === "string" && cursor.length > 0 && cursor.length <= 512
+    && !/[\u0000-\u001f\u007f]/.test(cursor);
+}
+
 /**
  * Runs ONE Discover aggregate against `/organizations/<org>/events/`.
  *
@@ -323,6 +382,8 @@ export async function discoverAggregate(env, params, opts = {}) {
     end = null,
     statsPeriod = null,
     environment = null,
+    cursor = null,
+    includeCursor = false,
   } = params;
 
   if (typeof queryName !== "string" || queryName.length === 0) {
@@ -330,6 +391,9 @@ export async function discoverAggregate(env, params, opts = {}) {
   }
   if (!Array.isArray(fields) || fields.length === 0) {
     throw new TypeError(`${queryName}: discoverAggregate requires at least one field`);
+  }
+  if ((cursor !== null && !validCursor(cursor)) || typeof includeCursor !== "boolean") {
+    throw new TypeError(`${queryName}: invalid pagination options`);
   }
   // Exactly one window form. Sending both lets Sentry choose, and which one it
   // honours is not something this code should be guessing about when the answer
@@ -352,6 +416,7 @@ export async function discoverAggregate(env, params, opts = {}) {
     url.searchParams.set("statsPeriod", statsPeriod);
   }
   url.searchParams.set("per_page", String(perPage));
+  if (cursor !== null) url.searchParams.set("cursor", cursor);
 
   const { body, headers } = await requestJson(url.toString(), queryName, config, opts);
 
@@ -388,6 +453,7 @@ export async function discoverAggregate(env, params, opts = {}) {
     rows,
     fields: Object.keys(metaFields),
     truncated: hasMorePages(headers, rows.length, perPage),
+    ...(includeCursor ? nextPageMetadata(headers, url, queryName) : {}),
   };
 }
 
@@ -411,10 +477,16 @@ export async function discoverAggregate(env, params, opts = {}) {
  */
 export async function issueList(env, params, opts = {}) {
   const config = requireConfig(env);
-  const { queryName, query = "", environment = null, limit = 100, start = null, end = null } = params;
+  const {
+    queryName, query = "", environment = null, limit = 100, start = null, end = null,
+    cursor = null, includeCursor = false,
+  } = params;
 
   if (typeof queryName !== "string" || queryName.length === 0) {
     throw new TypeError("issueList requires a queryName");
+  }
+  if ((cursor !== null && !validCursor(cursor)) || typeof includeCursor !== "boolean") {
+    throw new TypeError(`${queryName}: invalid pagination options`);
   }
   // Both or neither. One alone silently falls back to the relative form, which
   // is the exact confusion this parameter was added to remove.
@@ -429,6 +501,7 @@ export async function issueList(env, params, opts = {}) {
   const url = new URL(`${config.regionUrl}/api/0/projects/${config.org}/${project}/issues/`);
   url.searchParams.set("query", query);
   url.searchParams.set("limit", String(limit));
+  if (cursor !== null) url.searchParams.set("cursor", cursor);
   if (start !== null) {
     url.searchParams.set("start", start);
     url.searchParams.set("end", end);
@@ -476,7 +549,11 @@ export async function issueList(env, params, opts = {}) {
     });
   }
 
-  return { issues, truncated: hasMorePages(headers, issues.length, limit) };
+  return {
+    issues,
+    truncated: hasMorePages(headers, issues.length, limit),
+    ...(includeCursor ? nextPageMetadata(headers, url, queryName) : {}),
+  };
 }
 
 /** Exported so a caller's subrequest-budget arithmetic reads the REAL retry

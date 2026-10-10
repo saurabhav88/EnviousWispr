@@ -14,7 +14,7 @@ struct LearnedWordCheckStepTests {
   private struct Checker: LearnedWordChecking {
     enum Mode {
       case approveWord(String)
-      case approveNone, fail, dropOne, cancelled, hangIgnoringCancellation
+      case approveNone, approveAll, fail, dropOne, cancelled, hangIgnoringCancellation
     }
     let mode: Mode
     var armName: String { "fake" }
@@ -31,6 +31,7 @@ struct LearnedWordCheckStepTests {
         while Date() < end { await Task.yield() }
         return questions.map { .init(questionID: $0.id, approved: true) }
       case .approveNone: return questions.map { .init(questionID: $0.id, approved: false) }
+      case .approveAll: return questions.map { .init(questionID: $0.id, approved: true) }
       case .dropOne: return questions.dropFirst().map { .init(questionID: $0.id, approved: true) }
       case .approveWord(let spot):
         return questions.map {
@@ -244,5 +245,27 @@ struct LearnedWordCheckStepTests {
     #expect(await s.boundedSelection(for: .egOne, language: "de")?.absence == .serverUnavailable)
     s.selectionProvider = nil
     #expect(await s.boundedSelection(for: .egOne, language: "en") == nil)
+  }
+
+  /// #3518 (founder live test 2026-10-07): the word check turned "Sarab A V" into
+  /// "Saurabh A V", the founder fixed it to "Saurabhav", and that fix never fired again
+  /// because the recogniser keeps writing "Sarab A V".
+  @Test("#3518: a learned phrase fires through a misspelling of the learned word inside it")
+  func composedPhraseThroughTheStep() async throws {
+    let learnedAt = Date(timeIntervalSince1970: 1_790_000_000)
+    let words = [
+      CustomWord(
+        canonical: "Saurabh", aliases: ["Sarab", "Sarub"], learnedAliases: ["Sarab", "Sarub"],
+        learnedAt: learnedAt),
+      CustomWord(
+        canonical: "Saurabhav", aliases: ["Saurabh A V"], learnedAliases: ["Saurabh A V"],
+        learnedAt: learnedAt),
+    ]
+    let s = step(.approveAll, words: words)
+    #expect(try await run(s, "My username is Sarab A V.") == "My username is Saurabhav.")
+    #expect(s.lastOutcome?.applied == 1)
+    #expect(s.lastOutcome?.composed == 1)
+    #expect(try await run(s, "My username is Saurabh A V.") == "My username is Saurabhav.")
+    #expect(try await run(s, "Sarab will review it.") == "Saurabh will review it.")
   }
 }

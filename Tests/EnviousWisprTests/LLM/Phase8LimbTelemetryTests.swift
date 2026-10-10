@@ -7,27 +7,6 @@ import Testing
 
 #if DEBUG
 
-  /// Helper spy for the LLM-module telemetry seam.
-  private final class SinkSpy: @unchecked Sendable {
-    private let lock = NSLock()
-    private var _limbs: [String] = []
-    private var _cleanups: [String] = []
-    var limbs: [String] { lock.withLock { _limbs } }
-    var cleanups: [String] { lock.withLock { _cleanups } }
-    func makeSink() -> LLMTelemetrySink {
-      LLMTelemetrySink(
-        limbFailure: { limb, _, _, _, _ in self.lock.withLock { self._limbs.append(limb) } },
-        legacyKeyCleanupFailed: { _, account in
-          self.lock.withLock { self._cleanups.append(account) }
-        },
-        // #2093: this spy does not assert pre-warm counting; that lives in
-        // LLMWarmupGateTests. Required rather than defaulted at the type so a
-        // production factory cannot silently forget to wire it.
-        prewarmStarted: { _, _ in },
-        retryCompleted: { _, _, _, _, _ in })
-    }
-  }
-
   /// #1177 (Telemetry Bible Phase 8): the shared `limb.failure_observed` event, the
   /// LLM-module telemetry seam (`LLMTelemetrySink`), and the Ollama eviction outcome.
   /// Synchronous set-hook → act → read → restore (serialized for the process-global hook).
@@ -75,16 +54,6 @@ import Testing
         LLMTelemetrySink.noop.legacyKeyCleanupFailed(TestStableSentryError(), "acct")
       }
       #expect(box.named("limb.failure_observed").isEmpty)
-    }
-
-    @Test("a spy LLMTelemetrySink captures both callbacks")
-    func spySinkCaptures() {
-      let spy = SinkSpy()
-      let sink = spy.makeSink()
-      sink.limbFailure("llm_prewarm", "prewarm", "failed", "openAI_-1001", 10)
-      sink.legacyKeyCleanupFailed(TestStableSentryError(), "openai-api-key")
-      #expect(spy.limbs == ["llm_prewarm"])
-      #expect(spy.cleanups == ["openai-api-key"])
     }
 
     @Test("evictModel reports failed on a transport error")

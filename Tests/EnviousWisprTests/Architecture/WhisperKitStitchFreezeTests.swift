@@ -8,7 +8,7 @@ import Testing
 /// produced the mid-phrase-duplication and wrong-ending bugs #1276 replaced
 /// with the UFAL streaming architecture (#1313). This suite blocks its return:
 /// the file must not exist, and no source file may reference the deleted
-/// symbols by name. Mirrors `AppStateFreezeTests` (the #763 precedent).
+/// symbols by name.
 ///
 /// Scope: `Sources/**/*.swift` must contain none of the tokens; `Tests/**` may
 /// contain them only in this file. `.claude/` and `docs/` are out of scope.
@@ -63,7 +63,7 @@ import Testing
     }
   }
 
-  // MARK: - Helpers (shape shared with AppStateFreezeTests)
+  // MARK: - Helpers
 
   private func filesReferencing(
     pattern: String, under directory: String, allowing allowlist: [String]

@@ -294,7 +294,9 @@ let project = Project(
     firstPartyLibrary(
       "EnviousWisprPostProcessing",
       dependencies: [
-        .target(name: "EnviousWisprCore")
+        .target(name: "EnviousWisprCore"),
+        // #1677: phone-number metadata for the language cleanup passes (pinned in Package.swift).
+        .package(product: "PhoneNumberKit"),
       ], hasResources: true),
     firstPartyLibrary(
       "EnviousWisprAudio",
@@ -628,6 +630,12 @@ let project = Project(
         ),
         "Sources/EnviousWispr/Resources/speaker-plda-parameters.json",
         "Sources/EnviousWispr/Resources/speaker-models-LICENSE.txt",
+        // #3482 PR B chunk 3: the Settings search meaning assets (precompiled Core ML query
+        // encoder, its tokenizer, the place vectors and manifest.json). A folder reference, so
+        // the folder lands as Contents/Resources/SettingsSearchMeaning verbatim. They cannot ride
+        // EnviousWisprAppKit's resource bundle: its glob would recurse into the model (see the
+        // output classifier above). Read through Bundle.main by SettingsSearchMeaningAssets.
+        .folderReference(path: "Sources/EnviousWispr/Resources/SettingsSearchMeaning"),
         // #1413 v1.1: the perl half of the community mediaremote-adapter (BSD-3;
         // provenance and the fragility statement in the PROVENANCE file). A
         // script is a resource; its framework is nested CODE and rides

@@ -22,7 +22,8 @@ struct SettingsTabStripLayoutTests {
   static func items(german: Bool) -> [SettingsTabItem<DictationTab>] {
     DictationTab.allCases.enumerated().map { index, tab in
       SettingsTabItem(id: tab, icon: tab.icon,
-        label: german ? LocalizedStringResource(stringLiteral: germanDraft[index]) : tab.label)
+        label: german ? LocalizedStringResource(stringLiteral: germanDraft[index]) : tab.label,
+        map: tab.mapID)
     }
   }
 

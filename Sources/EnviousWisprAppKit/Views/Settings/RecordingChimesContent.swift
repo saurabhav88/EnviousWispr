@@ -18,7 +18,7 @@ struct RecordingChimesContent: View {
 
   var body: some View {
     SettingsContentView {
-      SettingsSectionHeading(title: Copy.sectionHeading)
+      SettingsSectionHeading(map: .id(.sectionChimes))
 
       // Its own card, unchanged from before Preview existed — nesting the
       // Preview row inside this same card read as one control bleeding into
@@ -26,9 +26,8 @@ struct RecordingChimesContent: View {
       BrandedSection {
         BrandedRow(showDivider: false) {
           SettingsRow(
+            map: .id(.recordingChimes),
             icon: "bell.and.waveform",
-            title: Copy.toggleTitle,
-            short: Copy.toggleShort,
             help: Copy.toggleHelp
           ) {
             Toggle("", isOn: $playsChimes)
@@ -91,6 +90,7 @@ struct RecordingChimesContent: View {
               onPreview: { onPreview(pairing) })
           }
         }
+        .settingsMapRegistration(.recordingChime)
       }
     }
   }
@@ -195,7 +195,29 @@ struct RecordingChimeCard: View {
   static let previewDiameter: CGFloat = 32
   static let previewRegionSide: CGFloat = 44
 
+  /// The chime's Settings Map choice (#3482). Exhaustive, so a new chime must be given a node.
+  nonisolated static func mapID(for pairing: RecordingSoundPairing) -> SettingsMapID {
+    switch pairing {
+    case .dustMote: .recordingChimeDustMote
+    case .velvetHush: .recordingChimeVelvetHush
+    case .mutedConfirm: .recordingChimeMutedConfirm
+    case .whisperTick: .recordingChimeWhisperTick
+    case .roundPebble: .recordingChimeRoundPebble
+    case .paperTap: .recordingChimePaperTap
+    case .softHush: .recordingChimeSoftHush
+    case .lowNod: .recordingChimeLowNod
+    case .cloudPop: .recordingChimeCloudPop
+    case .velvetTap: .recordingChimeVelvetTap
+    case .satinShift: .recordingChimeSatinShift
+    case .airGlint: .recordingChimeAirGlint
+    }
+  }
+
   var body: some View {
+    card.settingsMapRegistration(Self.mapID(for: pairing))
+  }
+
+  private var card: some View {
     ZStack(alignment: .topLeading) {
       selectButton
       previewButton
@@ -255,7 +277,8 @@ struct RecordingChimeCard: View {
     .help(
       isPreviewEnabled ? "" : String(localized: DictationSettingsCopy.Chimes.previewUnavailable)
     )
-    .accessibilityLabel("Preview \(name)")
+    .accessibilityLabel(
+      SettingsMapRef.dynamic(.recordingChimePreview, .chime(name: name)).title)
   }
 
   private var selectButton: some View {
@@ -277,6 +300,7 @@ struct RecordingChimeCard: View {
       .contentShape(RecordingChimeSelectRegion())
     }
     .buttonStyle(.plain)
+    .settingsArrivalFocusControl()
     .accessibilityLabel(name)
     .accessibilityValue(isSelected ? SettingsCopy.selectedValue : "")
     .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)

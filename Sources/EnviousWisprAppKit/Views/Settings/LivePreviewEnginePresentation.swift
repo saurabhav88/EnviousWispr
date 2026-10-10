@@ -183,9 +183,9 @@ enum LivePreviewEnginePresentation {
 /// sentences are read while DECIDING, not while dictating, and the two audiences
 /// want different lengths.
 enum LivePreviewEngineCopy {
-  static let sectionHeader = String(
-    localized: "Preview engine",
+  static let sectionHeaderResource = LocalizedStringResource("Preview engine",
     comment: "Live Preview settings, preview engine: section header.")
+  static var sectionHeader: String { String(localized: sectionHeaderResource) }
 
   /// #2154. The two engines differ in OS floor, language coverage and download
   /// size; a card cannot carry that comparison without becoming the article.
@@ -193,33 +193,33 @@ enum LivePreviewEngineCopy {
   /// destination has to exist before the link ships — it does, added in the same
   /// change (#2134).
   /// #3385: "Compare engines", the founder design's name for the same link.
-  static let learnMoreLabel = String(
-    localized: "Compare engines",
+  static let learnMoreLabelResource = LocalizedStringResource("Compare engines",
     comment: "Live Preview settings, preview engine: learn more label.")
+  static var learnMoreLabel: String { String(localized: learnMoreLabelResource) }
   static let learnMoreURL = "https://enviouswispr.com/help/live-preview-words-on-screen/"
 
   /// Apple's brand name, deliberately not localized.
   static let appleTitle = "Apple"
-  static let appleDescription =
-    String(
-      localized:
-        "Uses Apple's speech recognition. No separate preview-model download; some languages may need an Apple language download. Needs macOS 26.",
+  static let appleDescriptionResource =
+    LocalizedStringResource(
+      "Uses Apple's speech recognition. No separate preview-model download; some languages may need an Apple language download. Needs macOS 26.",
       comment: "Live Preview settings, preview engine: apple description.")
+  static var appleDescription: String { String(localized: appleDescriptionResource) }
   static let appleNeedsNewerMacOS = String(
     localized: "Needs macOS 26 or later.",
     comment: "Live Preview settings, preview engine: apple needs newer mac os.")
 
-  static let universalTitle = String(
-    localized: "Universal",
+  static let universalTitleResource = LocalizedStringResource("Universal",
     comment:
       "Live Preview settings, preview engine: universal title. Universal is the name of the preview engine that works on any macOS 14+ Mac."
   )
-  static let universalDescription =
-    String(
-      localized:
-        "Works on macOS 14 and later, in more languages. Needs one optional 217 MB download.",
+  static var universalTitle: String { String(localized: universalTitleResource) }
+  static let universalDescriptionResource =
+    LocalizedStringResource(
+      "Works on macOS 14 and later, in more languages. Needs one optional 217 MB download.",
       comment:
         "Live Preview settings, preview engine: universal description. 217 MB is a download size.")
+  static var universalDescription: String { String(localized: universalDescriptionResource) }
   static let notDownloadedYet = String(
     localized: "Not downloaded yet.",
     comment: "Live Preview settings, preview engine: not downloaded yet.")

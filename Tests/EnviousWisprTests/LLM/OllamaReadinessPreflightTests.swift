@@ -237,7 +237,7 @@ struct OllamaReadinessPreflightTests {
     #expect(decoded.thinks == nil)
 
     let policy = LLMPolishStep.outputTokenPolicy(
-      provider: .ollama, model: "qwen3:0.6b", textCount: 300, thinks: decoded.thinks)
+      provider: .ollama, textCount: 300, thinks: decoded.thinks)
     #expect(policy == .capped(LLMConstants.ollamaThinkingMaxTokens))
 
     // And no `think` key, because we cannot know the model understands levels.

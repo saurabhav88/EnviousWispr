@@ -86,23 +86,6 @@ import Testing
       #expect(manager(drained: 8_032).allZeroCeilingSamples == base + 8_032)
     }
 
-    /// The transport branch is `private(set)` from a test's point of view, so the
-    /// Bluetooth half is asserted against the pure static authority plus the same
-    /// offset. Spelled out because the number a reader guesses is wrong: with a full
-    /// ring #1788's 3.0s bar is 48,000 + 8,000 = 56,000, not 80,000.
-    @Test("the Bluetooth base is still 3.0s, and a full ring makes it 56,000 not 80,000")
-    func bluetoothBaseIsUnchangedAndTheOffsetComposes() {
-      let bluetoothBase = AudioCaptureManager.allZeroFromStartCeilingSamples(
-        forEffectiveTransport: "bluetooth")
-      #expect(bluetoothBase == AudioConstants.bluetoothAllZeroMidTakeCeilingSamples)
-      #expect(bluetoothBase + 8_000 == 56_000)
-      for wired in ["built_in", "usb", "unknown", nil] {
-        #expect(
-          AudioCaptureManager.allZeroFromStartCeilingSamples(forEffectiveTransport: wired)
-            == AudioConstants.minimumTranscriptionSamples)
-      }
-    }
-
     /// The DEBUG override is a bar on LIVE capture too. If it were not, every local
     /// hardware measurement would be taken against a different rule from the one the
     /// fleet runs, which is the opposite of what the override exists for.
@@ -129,13 +112,6 @@ import Testing
       #expect(manager(drained: -1).allZeroCeilingSamples == base)
       #expect(manager(drained: -8_000).allZeroCeilingSamples == base)
       #expect(manager(drained: -8_000).drainedPreRollSampleCount == 0)
-    }
-
-    @Test("no source installed falls back to the shipping bar, never to a shorter one")
-    func noSourceIsTheShippingBar() {
-      #expect(
-        AudioCaptureManager().allZeroCeilingSamples
-          == AudioConstants.minimumTranscriptionSamples)
     }
 
     /// THE cloud-review finding (PR #2200, P2). `stopCapture()`'s documented

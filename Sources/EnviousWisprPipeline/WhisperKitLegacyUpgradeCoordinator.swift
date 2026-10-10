@@ -352,11 +352,11 @@ public final class WhisperKitLegacyUpgradeCoordinator {
         return
       case .mismatch:
         emit(.legacyRetirementRefused(reason: .mismatch))
-        writeDeclinedRecord(verdicts: verdicts)
+        writeDeclinedRecord()
         return
       case .unreadable:
         emit(.legacyRetirementFailed(reason: .unreadable))
-        writeDeclinedRecord(verdicts: verdicts)
+        writeDeclinedRecord()
         return
       case .match:
         break
@@ -461,9 +461,7 @@ public final class WhisperKitLegacyUpgradeCoordinator {
     return true
   }
 
-  private func writeDeclinedRecord(
-    verdicts: [String: LegacyRetirement.EntryVerdict]? = nil
-  ) {
+  private func writeDeclinedRecord() {
     let live = LegacyRetirement.snapshotIdentities(
       root: foreignVariantDirectory, relativePaths: trustedFiles.map(\.relativePath))
     let record = DeclinedRecord(

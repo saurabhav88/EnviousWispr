@@ -65,18 +65,6 @@ import Testing
           == .discarded(.releasedBeforeRecording))
     }
 
-    @Test(".asrInterrupted preserves the was_recording flag the outcome carries (matrix #3)")
-    func asrInterruptedPreservesWasRecording() {
-      // The kernel derives the flag from `.live` (true) vs `.delivering(.transcribing)`
-      // (false) and `isLegalConclusion` rejects a mismatched flag; the OBSERVER's
-      // only job is a lossless pass-through, which is what this pins. The
-      // where-the-flag-comes-from coverage lives in the kernel external-entry tests.
-      #expect(
-        terminalEvent(.asrInterrupted(wasRecording: true)) == .asrInterrupted(wasRecording: true))
-      #expect(
-        terminalEvent(.asrInterrupted(wasRecording: false)) == .asrInterrupted(wasRecording: false))
-    }
-
     @Test("the noSpeech event carries the source (r7)")
     func noSpeechCarriesSource() {
       #expect(terminalEvent(.noSpeech(.vadGate)) == .noSpeech(.vadGate))

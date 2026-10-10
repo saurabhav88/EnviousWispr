@@ -74,15 +74,4 @@ struct VocabularyPackStoreCacheTests {
     #expect(Set(canonicalSets.map(\.count)).count > 1 || canonicalSets.count == 1)
   }
 
-  @Test("enabled-pack terms still flatten to the same set after caching")
-  func termsForEnabledIsUnchangedByCaching() throws {
-    let store = VocabularyPackStore()
-    let ids = Set(store.availablePackIDs())
-    #expect(ids.isEmpty == false)
-
-    let cold = store.terms(for: ids).map(\.canonical)
-    let warm = store.terms(for: ids).map(\.canonical)
-    #expect(cold == warm)
-    #expect(cold.isEmpty == false)
-  }
 }

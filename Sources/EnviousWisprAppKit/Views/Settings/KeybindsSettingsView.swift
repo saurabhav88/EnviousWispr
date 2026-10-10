@@ -9,22 +9,18 @@ struct KeybindsSettingsView: View {
   var body: some View {
     @Bindable var settings = settings
     SettingsContentView {
-      SettingsSectionHeading(resolvedTitle: String(
-        localized: "keybinds.section.recording", defaultValue: "Recording",
-        comment: "Keybinds page: section heading for the recording keys. Shown in capitals.").localizedUppercase)
+      SettingsSectionHeading(map: .id(.sectionKeybindsRecording), casing: .localizedUppercase)
       BrandedSection {
         BrandedRow {
           SettingsRow(
-            icon: "hand.tap", title: KeybindsSettingsCopy.modeTitle,
-            short: KeybindsSettingsCopy.modeShort,
+            map: .id(.recordingMode),
+            icon: "hand.tap",
             help: settings.isPushToTalk
               ? KeybindsSettingsCopy.pushToTalkHelp : KeybindsSettingsCopy.toggleHelp
           ) {
             BrandedSegmentedPicker(
-              options: [
-                (String(localized: "Push to Talk"), nil, RecordingMode.pushToTalk),
-                (String(localized: "Toggle"), nil, RecordingMode.toggle),
-              ], selection: $settings.recordingMode
+              options: SettingsChoicePresentation.recordingMode.map(\.pickerOption),
+              selection: $settings.recordingMode
             )
             // As wide as the keybind fields below, two equal halves (founder, 2026-10-03).
             .frame(width: HotkeyRecorderView.Style.prominent.fieldWidth)
@@ -36,24 +32,25 @@ struct KeybindsSettingsView: View {
         }
         BrandedRow {
           KeybindSettingsRow(
-            icon: "mic", title: KeybindsSettingsCopy.recordTitle,
-            short: KeybindsSettingsCopy.recordShort, help: KeybindsSettingsCopy.recordHelp,
+            map: .id(.recordKeybind), icon: "mic",
+            help: KeybindsSettingsCopy.recordHelp,
             keyCode: $settings.toggleKeyCode,
             modifiers: $settings.toggleModifiers, role: .record
           )
         }
         BrandedRow {
           KeybindSettingsRow(
-            icon: "xmark", title: KeybindsSettingsCopy.cancelTitle,
-            short: KeybindsSettingsCopy.cancelShort, help: KeybindsSettingsCopy.cancelHelp,
+            map: .id(.cancelKeybind), icon: "xmark",
+            help: KeybindsSettingsCopy.cancelHelp,
             keyCode: $settings.cancelKeyCode,
             modifiers: $settings.cancelModifiers, role: .cancel
           )
         }
         BrandedRow(showDivider: false) {
           SettingsRow(
-            icon: "arrow.uturn.backward", title: KeybindsSettingsCopy.recoveryTitle,
-            short: KeybindsSettingsCopy.recoveryShort, help: KeybindsSettingsCopy.recoveryHelp
+            map: .id(.escapeRecovery),
+            icon: "arrow.uturn.backward",
+            help: KeybindsSettingsCopy.recoveryHelp
           ) {
             Toggle("", isOn: $settings.escapeRecoveryEnabled)
               .labelsHidden()
@@ -63,30 +60,28 @@ struct KeybindsSettingsView: View {
           }
         }
       }
-      SettingsSectionHeading(resolvedTitle: String(
-        localized: "keybinds.section.shortcuts", defaultValue: "Shortcuts",
-        comment: "Keybinds page: section heading for paste, copy and add-a-word keys. Shown in capitals.").localizedUppercase)
+      SettingsSectionHeading(map: .id(.sectionKeybindsShortcuts), casing: .localizedUppercase)
       BrandedSection {
         BrandedRow {
           KeybindSettingsRow(
-            icon: "character.book.closed", title: KeybindsSettingsCopy.addTitle,
-            short: KeybindsSettingsCopy.addShort, help: KeybindsSettingsCopy.addHelp,
+            map: .id(.quickAddKeybind), icon: "character.book.closed",
+            help: KeybindsSettingsCopy.addHelp,
             keyCode: $settings.quickAddKeyCode,
             modifiers: $settings.quickAddModifiers, role: .quickAdd
           )
         }
         BrandedRow {
           KeybindSettingsRow(
-            icon: "clipboard", title: KeybindsSettingsCopy.pasteTitle,
-            short: KeybindsSettingsCopy.pasteShort, help: KeybindsSettingsCopy.pasteHelp,
+            map: .id(.pasteLastKeybind), icon: "clipboard",
+            help: KeybindsSettingsCopy.pasteHelp,
             keyCode: $settings.pasteLastKeyCode,
             modifiers: $settings.pasteLastModifiers, role: .pasteLast
           )
         }
         BrandedRow(showDivider: false) {
           KeybindSettingsRow(
-            icon: "doc.on.doc", title: KeybindsSettingsCopy.copyTitle,
-            short: KeybindsSettingsCopy.copyShort, help: KeybindsSettingsCopy.copyHelp,
+            map: .id(.copyLastKeybind), icon: "doc.on.doc",
+            help: KeybindsSettingsCopy.copyHelp,
             keyCode: $settings.copyLastKeyCode,
             modifiers: $settings.copyLastModifiers, role: .copyLast
           )
@@ -141,9 +136,9 @@ enum KeybindsSettingsCopy {
 
 /// Role owns Reset defaults; warnings remain visible below the short line.
 private struct KeybindSettingsRow: View {
+  /// The row's Settings Map identity; its title comes from the map node (#3482).
+  let map: SettingsMapRef
   let icon: String
-  let title: LocalizedStringResource
-  let short: LocalizedStringResource
   let help: LocalizedStringResource
   @Binding var keyCode: UInt16
   @Binding var modifiers: NSEvent.ModifierFlags
@@ -198,7 +193,7 @@ private struct KeybindSettingsRow: View {
   }
 
   var body: some View {
-    SettingsRow(icon: icon, title: title, short: short, help: help) {
+    SettingsRow(map: map, icon: icon, help: help) {
       HotkeyRecorderView(
         keyCode: $keyCode, modifiers: $modifiers,
         defaultKeyCode: defaultKeyCode, defaultModifiers: defaultModifiers,
@@ -216,6 +211,11 @@ private struct KeybindSettingsRow: View {
         accessibilityFocus: $guidanceReturnFocus
       )
       .frame(width: HotkeyRecorderView.Style.prominent.fieldWidth)
+      // A search arrival lands in the recorder through the focus states it already owns.
+      .settingsArrivalFocusControl(voiceOver: false, textEntry: true) {
+        recordingKeybindFocused = true
+        if NSWorkspace.shared.isVoiceOverEnabled { guidanceReturnFocus = true }
+      }
       .popover(isPresented: $showGlobeGuidance, arrowEdge: .bottom) {
         GlobeGuidancePopover(onDismiss: dismissGlobeGuidance)
           .onExitCommand(perform: dismissGlobeGuidance)

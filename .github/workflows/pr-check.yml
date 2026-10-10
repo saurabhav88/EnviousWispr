@@ -74,6 +74,25 @@ jobs:
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: scripts/ci/classify-changes.sh "$BASE_SHA" "$HEAD_SHA"
 
+      # #3505: the eval-package compile (last step of this job) took 669 s of a
+      # 33-minute check on every app-code PR. It runs only when the PR changes one
+      # of the packages' inputs, which scripts/ci/eval-package-inputs.py DERIVES
+      # from the manifests (root targets reachable from the products the packages
+      # use, plus manifests, lockfile and these scripts) rather than a hand list
+      # that could miss a new dependency. Every doubt (empty SHA, failed diff,
+      # unreadable manifest) answers true. The self-test runs here, not in the
+      # ubuntu aggregator, because the derivation needs `swift package`.
+      - name: Detect eval-package input changes
+        id: eval_inputs
+        if: steps.changes.outputs.needs_build == 'true'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          scripts/ci/needs-eval-packages.sh --self-test
+          scripts/ci/needs-eval-packages.sh "$BASE_SHA" "$HEAD_SHA"
+
       # #1778: the notices gate used to run ONLY during release packaging, so a
       # dependency bump that forgot the generator sat green on main until someone
       # tried to ship - v2.4.1 lost two release runs to exactly that (Sparkle
@@ -94,6 +113,15 @@ jobs:
         with:
           derived-data-path: ${{ env.DERIVED_DATA_PATH }}
           configuration: release
+
+      # #3524 PR 3: the Dev-build catalog receipt wrapper (scripts/lib/l10n-build-with-receipt.sh)
+      # and its two callers, on owned git fixtures with a stub build; it asks the real Xcode
+      # for its build version, so it lives here, after Xcode setup and before the costly build.
+      - name: Catalog receipt wrapper self-test
+        if: steps.changes.outputs.needs_build == 'true'
+        run: |
+          set -euo pipefail
+          python3 scripts/lib/l10n-build-with-receipt-test.py
 
       # #3019: every build/test phase runs through `ew_phase`
       # (scripts/lib/ci-phase.sh): same command, same exit status, plus a named
@@ -140,11 +168,14 @@ jobs:
 
       # #3142: the committed String Catalog must equal what the compiler extracts
       # from the Release build that just ran. Exit 1 prints the added, removed and
-      # changed keys; the fix is `scripts/lib/l10n-catalog-sync.sh --update` on a
-      # local Release build, then commit the catalog. Exit 2 means the check could
+      # changed keys (and fails if a DEV_ONLY_KEYS member is ever extracted here,
+      # #3524); the printed repair names the Dev partial repair first and this
+      # Release check stays the authority for removals. Exit 2 means the check could
       # not run (toolchain, missing inputs), never "in sync". The sync reads only
       # production-target .stringsdata, so the test targets this build adds are
-      # not extracted (and an unknown target folder is refused, not included).
+      # not extracted (and an unknown target folder is refused, not included). No
+      # Dev build runs here (founder 2026-10-08, plan §3.3 amendment): the pre-push
+      # hook checks the Dev extraction on the Mac.
       - name: Check String Catalog is in sync (release)
         if: steps.changes.outputs.needs_build == 'true'
         run: |
@@ -232,12 +263,25 @@ jobs:
           set -euo pipefail
           . "$GITHUB_WORKSPACE/scripts/lib/xcode-test-run.sh"
           . "$GITHUB_WORKSPACE/scripts/lib/ci-phase.sh"
+          # #3482: the same run also executes the opt-in SettingsMapExportTests, which writes
+          # the Settings Map export here; the next step compares it with reference/. A fresh
+          # folder, so a file there can only come from this run.
+          rm -rf "$RUNNER_TEMP/settings-map-export"
+          mkdir "$RUNNER_TEMP/settings-map-export"
+          TEST_RUNNER_EW_SETTINGS_MAP_EXPORT="$RUNNER_TEMP/settings-map-export/settings-map.json" \
           TEST_RUNNER_CI="$TEST_RUNNER_CI" ew_phase tests_release /dev/null -- ew_run_tests \
             "$DERIVED_DATA_PATH/Build/Products" \
             "$XCODE_RELEASE_SCHEME" \
             "$GITHUB_WORKSPACE/xcode-test-release" \
             "PR Release lane" \
             "EnviousWisprTests EnviousWisprDesktopEffectsTests EnviousWisprASRTests"
+
+      # #3482: reference/settings-map.json and .md must equal the export the step above
+      # just wrote from the compiled map and vocabulary (no second build or test run). A
+      # missing export (the opt-in test did not run) fails here instead of passing.
+      - name: Check the Settings Map export is in sync
+        if: steps.changes.outputs.needs_build == 'true'
+        run: scripts/settings-map/export.sh --from "$RUNNER_TEMP/settings-map-export/settings-map.json" --check
 
       # #2162: a red lane was undiagnosable from CI because `gh run view --log`
       # truncates at roughly 6 MB and a failing run and a passing run produced an
@@ -299,7 +343,7 @@ jobs:
       # files), so the suite's build is freed first. `find -xdev -delete`, not
       # `rm -rf`, and only after proving the directory is not its own mount.
       - name: Free DerivedData before the eval packages
-        if: steps.changes.outputs.needs_build == 'true'
+        if: steps.changes.outputs.needs_build == 'true' && steps.eval_inputs.outputs.needs_eval_packages != 'false'
         run: |
           set -euo pipefail
           echo "==> disk before: $(df -h "$GITHUB_WORKSPACE" | tail -1)"
@@ -314,7 +358,7 @@ jobs:
           echo "==> disk after:  $(df -h "$GITHUB_WORKSPACE" | tail -1)"
 
       - name: Compile standalone eval packages
-        if: steps.changes.outputs.needs_build == 'true'
+        if: steps.changes.outputs.needs_build == 'true' && steps.eval_inputs.outputs.needs_eval_packages != 'false'
         run: |
           set -euo pipefail
           . "$GITHUB_WORKSPACE/scripts/lib/ci-phase.sh"
@@ -427,15 +471,10 @@ jobs:
       - name: Worker unit tests
         run: |
           set -euo pipefail
-          # sentry-triage joined this list in #1965. Its 60 tests had existed
-          # since #1586 and had never run in CI, which nobody noticed because a
-          # test that is never executed reports nothing at all. #1965 added 26
-          # more, so the silence would have covered the whole spike-card path.
-          # It has no package.json and needs none; `node --test` finds test/.
           # download-counter and shared joined in #2953: the counter's 36 tests
           # had never run here either, and shared/ gained its first test file
           # (the download-intent contract both workers import).
-          for w in daily-report weekly-digest sentry-triage download-counter shared; do
+          for w in daily-report weekly-digest download-counter shared; do
             echo "==> $w"
             ( cd "workers/$w" && node --test )
           done
@@ -500,10 +539,12 @@ jobs:
   # or one of the two substitutes testing-philosophy.md's ship condition names.
   # Measured 2026-09-13: 8 of 18 such PRs since 2026-09-10 carried none. Runs
   # on every PR (the count decides whether anything more is asked) and needs no
-  # Xcode. The body is read live with gh rather than from the event payload, so
-  # a body edited after the push is what the check sees on a re-run; an edit
-  # alone does not re-trigger (pull_request `edited` would cancel the macOS
-  # lanes for a typo fix), the failure message says to re-run the job or push.
+  # Xcode. The declaration is a `Recipe:` commit trailer (#3524): the newest
+  # first-parent commit in the PR's base..head range that carries one decides,
+  # so the pre-push hook can run the same check before the push. The range
+  # comes from the event's PR SHAs, never the merge checkout's HEAD; the issue
+  # recipe is validated against the merge checkout. A correction is a new
+  # commit (`git commit --allow-empty --trailer "Recipe: #N"`), then push.
   recipe-check:
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -524,11 +565,12 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
           set -euo pipefail
           python3 scripts/ci/check-test-recipe.py --self-test
-          python3 scripts/ci/check-test-recipe.py --base "$BASE_SHA" --head "$HEAD_SHA" --pr "$PR_NUMBER" --checkout "$PWD"
+          python3 scripts/ci/check-test-recipe.py \
+            --trailers --base "$BASE_SHA" --head "$HEAD_SHA" \
+            --repo "$PWD" --checkout "$PWD"
 
   # Required aggregate gate. This is the ONLY required status check on main
   # (ruleset main-protection, context "build-check"); keeping the job id
@@ -545,183 +587,21 @@ jobs:
       - name: Checkout
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
 
-      - name: CI self-tests (classify-changes + fetch-depth + compile cache + cache paths + schedule guard + metrics)
+      - name: Quick checks (#3524)
         run: |
           set -euo pipefail
-          scripts/ci/classify-changes.sh --self-test
-          scripts/ci/check-pr-check-fetch-depth.sh
-          python3 scripts/ci/check-test-recipe.py --self-test
-          # #3019: the schedule guard decides whether a macOS matrix runs at
-          # all, and it now waits for an in-flight push run; its verdict matrix
-          # (mocked gh, no network) had no CI caller before this. The metrics
-          # instrument is advisory in every lane, so a broken parser would be
-          # invisible there; here it is red.
-          scripts/ci/post-merge-should-run.sh --self-test
-          python3 scripts/ci/ci-metrics.py --self-test
-          # #2580. `actions/cache` hashes the PATH LIST into a cache version, and
-          # a restore matches on version BEFORE key — so two lists that differ in
-          # any way describe caches that can never see each other, with nothing
-          # red and every lane simply rebuilding forever. Measured: eight lines of
-          # prose written inside a `path: |` block scalar became eight paths,
-          # because YAML block scalars have no comments. Verified to fail against
-          # that exact commit.
-          python3 scripts/ci/check-cache-paths.py --self-test
-          python3 scripts/ci/check-cache-paths.py
-          # #2580. Runs here because the failure it catches is SILENT: a config
-          # missing a setting, or written and never exported, leaves every lane
-          # building correctly and slowly with nothing red. Needs no Xcode, so
-          # this ubuntu aggregator can hold it.
-          scripts/ci/configure-compilation-cache.sh --self-test
-
-      - name: Dependency direction (#3095)
-        run: |
-          set -euo pipefail
-          # The module graph does not enforce itself under Xcode (measured
-          # 2026-08-26, recorded in the script): this grep IS the wall between
-          # modules and between the unit suite and the desktop. PR #508 moved it
-          # out of CI into the local push hook so the catch happens before the
-          # push, with CI as the backstop; the backstop never landed. Measured
-          # cost of that: the script was red on main from #2707 (2026-09-08)
-          # until #3095, unnoticed: the hook only sees pushes made from one
-          # tool on one machine, and its audit log holds none of the four
-          # source PRs that landed last. Runs here, in the required aggregator,
-          # because it needs only bash and grep and finishes in under a second.
-          bash scripts/check-dependency-direction.sh
-
-      - name: Lane verdict self-test (#2401)
-        run: |
-          set -euo pipefail
-          # The owner that decides whether a test lane counts as passing is
-          # itself only as good as its own suite, and a suite nothing invokes
-          # first fires in someone else's run. It lives HERE, inside the
-          # required aggregator, because that is the gate this owner protects.
-          #
-          # Runs on Linux deliberately: every case either drives the judge
-          # directly on a JSON payload or exercises a shell path that
-          # short-circuits before `xcrun`, so it needs no Xcode. The sibling
-          # scripts/lib suites are NOT wired in yet — a real gap, stated rather
-          # than papered over by adding suites whose macOS assumptions have not
-          # been checked on this runner.
-          bash scripts/lib/lane-verdict-test.sh
-
-      - name: Dev-app lock self-test (#3400)
-        run: |
-          set -euo pipefail
-          # The shared dev-app claim every build takes. Its test runs a private
-          # copy against a temp folder, so it touches no real lock, and needs
-          # only python3, ps and flock, which this Linux runner has. This step
-          # is the first Linux run of it; the suite was written on macOS.
-          python3 scripts/lib/dev-app-lock-test.py
-
-      - name: Download-link lint (doorway tagging + on-site /#download)
-        run: |
-          set -euo pipefail
-          scripts/ci/check-download-link-utms.sh --self-test
-          scripts/ci/check-download-link-utms.sh
-
-      - name: RuntimeUAT PTT binding policy + Swift/Python key parity + instance guard
-        run: |
-          set -euo pipefail
-          # #1997. The UAT harness resolves which key to hold for push-to-talk.
-          # When it cannot, it must REFUSE — a harness that presses a guessed key
-          # reports the resulting silence as a product failure, which is what
-          # happened on 2026-08-10. These self-tests lock that policy, and the
-          # parity case fails if Swift's standalone-modifier set and Python's
-          # MODIFIER_KEYS drift apart in EITHER direction: an app-only key makes
-          # the harness refuse (safe), but a Python-only key makes it post a
-          # modifier event at a Carbon-registered hotkey and produce exactly that
-          # false product FAIL.
-          #
-          # #2426 adds the third. The membership rule for this step is that a
-          # module here imports nothing heavy: no Quartz, no PyObjC, so it can be
-          # imported on the hosted runner without an untested assumption about
-          # what that runner has. `ptt_binding` and `faultInjection` already met
-          # it. `wispr_eyes` does not — it reaches ApplicationServices through
-          # `ui_helpers` — so its single-instance guard was MOVED to
-          # `instance_guard.py`, which imports only `os`, `subprocess` and `sys`.
-          # That is what makes the third line safe to add: the rule was satisfied
-          # rather than waived. The guard refuses a UAT verdict when a second
-          # EnviousWispr is running, because every instance answers the same
-          # global hotkey and writes the same `app.log`, so a marker count drawn
-          # from that log is unattributable — measured 2026-08-25 as two real
-          # recordings from one gesture, reading as the app double-counting.
-          python3 Tests/RuntimeUAT/ptt_binding.py --self-test
-          python3 Tests/RuntimeUAT/faultInjection.py --self-test
-          python3 Tests/RuntimeUAT/instance_guard.py --self-test
-          # #2775 UAT front door. These three are PyObjC-free by design (like the
-          # instance guard, #2426) so they run on the hosted runner. uat_catalog's
-          # self-test fails if a public wispr_eyes function has no trust-status row.
-          python3 Tests/RuntimeUAT/uat_catalog.py --self-test
-          python3 Tests/RuntimeUAT/log_verdict.py --self-test
-          python3 Tests/RuntimeUAT/preflight.py --self-test
-          # uat.py imports no PyObjC at module level, so its verdict-classifier
-          # self-test (the contract Codex diff review hammered) runs here too.
-          python3 Tests/RuntimeUAT/uat.py --self-test
-
-      - name: Judge receipt + billing contracts (#2007/#2008)
-        run: |
-          set -euo pipefail
-          # Also carries the judge BILLING gate: grading on a personal vendor API key is
-          # banned. Routing and the billing classification both derive from one route
-          # table, and an unrecognised id is refused before either funded transport can
-          # run — the personal-key transports were deleted outright, so there is nothing
-          # for a typo to fall through to.
-          #
-          # A judge run that dropped work must never read as a complete receipt.
-          # Three layers have to agree: behavior_judge.py detects the gap,
-          # judge_ollama_bench.sh refuses to cache a partial receipt, and
-          # report_ollama_bench.py refuses to rank one. Before #2007 an
-          # adjudication pass that returned NOTHING produced a CLEAR receipt
-          # advertising a recheck it never ran, and the benchmark then cached that
-          # receipt and skipped the model forever while the report refused it.
-          #
-          # Wired into build-check because that is the only REQUIRED check — a
-          # suite no gate invokes reports nothing, so nothing ever looks wrong
-          # (#1965, #2013). Pure stdlib, no network, no judge calls; the suite
-          # asserts its own exact test count, because the runner it borrows from
-          # exits 0 when it discovers zero tests.
-          python3 scripts/eval/behavior_judge_test.py
-
-      - name: Eval harness self-tests (#2013)
-        run: |
-          set -euo pipefail
-          # These two suites were TRACKED and had NEVER been executed by any CI
-          # job — 25 cases whose green status meant nothing, and which anyone
-          # reading the repo would reasonably assume were guarding something.
-          # Same class as #1965: a suite no gate invokes reports nothing, so
-          # nothing ever looks wrong. Worse than `0 tests`, which prints a zero.
-          #
-          # Neither subject imports outside the stdlib (alias_suggestion_gate:
-          # argparse difflib json os re subprocess sys; v4_adversarial_runner:
-          # argparse json os sys time datetime pathlib), so both run here under
-          # bare python3 with no pytest install. Each asserts its own exact test
-          # count, because both runners exit 0 on ZERO discovered tests.
-          #
-          # test_custom_vocab_mirror (#2609) joins them under the same rule: it
-          # pins the gate's CUSTOM VOCABULARY block to production's
-          # (priority, canonical) sort order. Importing acceptance_gate pulls in
-          # only the stdlib and reads no key, so it runs here on the same terms.
-          python3 scripts/eval/tests/test_alias_scorer.py
-          python3 scripts/eval/tests/test_v4_adversarial_runner.py
-          # The registry rebuild's history-loss guards (#2581): a deleted or
-          # renamed ARMS row must be REFUSED, not silently dropped. Same runner
-          # shape and exact-count assertion as the two above.
-          python3 scripts/eval/tests/test_rebuild_model_registry.py
-          python3 scripts/eval/tests/test_custom_vocab_mirror.py
-          # #2851 phase 2: the pack-mode section envelope (wrap/unwrap/accept mirror)
-          # and the runner's --pack/--dry-run plumbing, driven with a fake call_once.
-          # Same runner shape and exact-count assertion; imports nothing outside the
-          # stdlib and reads no key.
-          python3 scripts/eval/tests/test_section_envelope.py
-          # #996: the eval-package pin seeding (compile-eval-packages.sh) merges
-          # a runner's tracked runner-only pins into the app's pins and refuses
-          # a pin that would shadow an app pin. Stdlib only; same count rule.
-          python3 scripts/eval/tests/test_seed_eval_package_pins.py
-          # #2789: the one key-free check the retired cloud polish workflow carried.
-          # Compares the canonical cloud prompt file, its Python mirror and the Swift
-          # builder's text after stripping outer whitespace; exit 2 on drift. Imports
-          # only the stdlib and reads no key, so it runs here on the same terms.
-          python3 scripts/eval/acceptance_gate.py --mode selftest
+          # One list, run by this job and by the local pre-push hook
+          # (scripts/githooks/pre-push), so the Mac checks what this job would
+          # fail on before a push. Every member, with the reason it runs here, is
+          # in scripts/ci/fast-checks.sh; members run in parallel and each
+          # prints PASS, FAIL or SKIP. The runner's own self-test runs first.
+          # Notices and worker tests stay in their own jobs (--ci leaves them out).
+          bash scripts/ci/fast-checks.sh --self-test
+          bash scripts/ci/fast-checks.sh --ci | tee "$RUNNER_TEMP/fast-checks.out"
+          # A SKIP (missing tool) passes on a Mac by design; here it would hide a
+          # check the inline steps used to fail on, so this job requires none.
+          grep -Eq '^==> fast-checks: [1-9][0-9]* members, 0 failed, 0 skipped$' "$RUNNER_TEMP/fast-checks.out" \
+            || { echo "::error::fast-checks skipped a member or printed no summary; every tool must exist on this runner"; exit 1; }
 
       - name: Require every lane
         env:

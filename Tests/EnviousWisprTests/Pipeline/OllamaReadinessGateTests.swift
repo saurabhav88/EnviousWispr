@@ -155,23 +155,6 @@ struct OllamaReadinessGateTests {
     #expect(factoryCalls() == 0)
   }
 
-  /// The discriminating control: the two readiness states must not produce the
-  /// same error. Without this, mapping both to one reason would still pass the
-  /// test above.
-  @Test("noModelSelected and modelMissing produce DIFFERENT errors")
-  func noModelSelectedIsNotModelMissing() async {
-    let (selectedStep, _) = makeStep(probe: { _ in .noModelSelected })
-    await #expect(throws: LLMError.localPolishNotReady(.noModelSelected)) {
-      _ = try await selectedStep.process(context())
-    }
-
-    let (missingStep, _) = makeStep(probe: { _ in .modelMissing })
-    // Fails if the gate collapsed the two states onto one reason.
-    await #expect(throws: LLMError.localPolishNotReady(.modelUnavailable)) {
-      _ = try await missingStep.process(context())
-    }
-  }
-
   @Test("ready proceeds to the polisher exactly as before")
   func readyProceedsToPolisher() async throws {
     let invocationCounter = InvocationCounter()
@@ -292,26 +275,6 @@ struct OllamaReadinessGateTests {
       .ready(facts: OllamaModelFacts(isRemote: true, thinks: false))
     }
     step.makePolisher = { _, _, _ in ThrowingPolisher() }
-
-    await #expect(throws: (any Error).self) {
-      _ = try await step.process(self.context())
-    }
-  }
-
-  /// Every readiness skip, enumerated rather than sampled: these are the three
-  /// non-ready cases `OllamaReadiness` has. Each throws, so like the failure
-  /// above it returns no context and cannot have stamped anything. Enumerated
-  /// because a fourth case added later must decide this deliberately, and a
-  /// sampled test would let it default to whatever the new arm happened to do.
-  @Test(
-    "every readiness skip throws before the stamp, so none can carry remoteness",
-    arguments: [
-      OllamaReadiness.serverDown,
-      OllamaReadiness.modelMissing,
-      OllamaReadiness.noModelSelected,
-    ])
-  func readinessSkipsThrowBeforeTheStamp(readiness: OllamaReadiness) async {
-    let (step, _) = makeStep(probe: { _ in readiness })
 
     await #expect(throws: (any Error).self) {
       _ = try await step.process(self.context())

@@ -144,6 +144,14 @@ EnviousWispr.app/
 !Sources/EnviousWispr/Resources/SpeakerModels/
 !Sources/EnviousWispr/Resources/SpeakerModels/**
 
+# #3482: the Settings search meaning assets are COMMITTED (embed, never download; same rationale
+# as the models above): the precompiled query encoder, its tokenizer, the place vectors and
+# manifest.json. Re-include the folder, overriding the broad *.bin glob above. The encoder's
+# weights/weight.bin is ~88 MB (< GitHub's 100 MB per-file limit), so normal git. Regenerate with
+# scripts/settings-map/meaning-assets.py; every change adds this much to the repository's history.
+!Sources/EnviousWispr/Resources/SettingsSearchMeaning/
+!Sources/EnviousWispr/Resources/SettingsSearchMeaning/**
+
 # Dolt database files (added by bd init)
 .dolt/
 *.db
@@ -183,12 +191,24 @@ scripts/lib/*
 !scripts/lib/xcode-test-run.sh
 !scripts/lib/ci-phase.sh
 !scripts/lib/mic-in-use.swift
+# #1677: the offline German number-data generator, its pinned upstream sources (with their
+# licences), manifest and tests are tracked; the committed generated Swift is what ships.
+!scripts/itn/
+# #3482: the Settings search vocabulary draft command, its review receipts and authoring notes
+# (plan §3.6 item 3). Unreviewed drafts stay local (build/settings-map-drafts/).
+!scripts/settings-map/
+# #3524: the tracked git hooks every checkout runs (core.hooksPath = scripts/githooks).
+!scripts/githooks/
 # #3400: the machine-wide claim on the shared dev app, read by build-dev-app.sh.
 !scripts/lib/dev-app-lock.py
 !scripts/lib/dev-app-lock-test.py
 # #3142: the single writer of the interface String Catalog, and its self-test.
 !scripts/lib/l10n-catalog-sync.sh
 !scripts/lib/l10n-catalog-sync-test.sh
+# #3524 PR 3: which code a Dev build's catalog extraction belongs to (input-digest receipt).
+!scripts/lib/l10n-build-receipt.py
+!scripts/lib/l10n-build-with-receipt.sh
+!scripts/lib/l10n-build-with-receipt-test.py
 # #3013: the hardware battery for a physical Mac and its launchd job.
 !scripts/nightly-local-battery.sh
 !scripts/launchd/

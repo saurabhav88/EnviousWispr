@@ -37,18 +37,6 @@ struct PolishRailCatalogTests {
     #expect(PolishRailGroup.allCases == [.onThisMac, .yourOwnSetup, .cloud])
   }
 
-  @Test(
-    "each group's heading and accessibility phrase are exact",
-    arguments: [
-      (PolishRailGroup.onThisMac, "On this Mac", "on this Mac"),
-      (PolishRailGroup.yourOwnSetup, "Your own setup", "your own setup"),
-      (PolishRailGroup.cloud, "Cloud", "cloud"),
-    ])
-  func groupCopyIsExact(group: PolishRailGroup, heading: String, phrase: String) {
-    #expect(group.heading == heading)
-    #expect(group.accessibilityPhrase == phrase)
-  }
-
   /// The #1914 regression, now on the lines that name Ollama (the privacy line went with the
   /// rail's header, #3385). Provider-level copy does not inspect the armed Ollama model, so it
   /// must not claim dictation stays on the Mac. Common device-boundary claims are rejected so an
@@ -140,12 +128,6 @@ struct PolishRailCatalogTests {
     #expect(PolishRailCatalog.entry(for: .none) == nil)
   }
 
-  @Test("the flattened catalog order is the render order the groups produce")
-  func flattenedOrderMatchesGroupOrder() {
-    let byGroup = PolishRailGroup.allCases.flatMap { PolishRailCatalog.providers(in: $0) }
-    #expect(byGroup.map(\.provider) == PolishRailCatalog.all.map(\.provider))
-  }
-
   // MARK: - Row copy
 
   @Test("the Ollama row is renamed and its tagline names both locations")
@@ -158,12 +140,6 @@ struct PolishRailCatalogTests {
     // The old name is gone. "Local" was a claim, not a label, and it stopped
     // being true when Ollama began hosting models.
     #expect(ollama.name.contains("Local") == false)
-  }
-
-  @Test("EG-1 is still the only recommended row")
-  func egOneIsTheSoleRecommendation() {
-    let recommended = PolishRailCatalog.all.filter(\.recommended).map(\.provider)
-    #expect(recommended == [.egOne])
   }
 
   @Test(

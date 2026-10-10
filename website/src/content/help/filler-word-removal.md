@@ -37,7 +37,7 @@ Some of these sounds are real words in other languages, so EnviousWispr keeps th
 
 EnviousWispr works out the language of the dictation in one of these ways:
 
-- The language you picked under **Settings** > **Transcription**.
+- The language you picked under **Dictation Settings** > **Engine**.
 - On Auto-detect, the language the speech engine reports, or the language the app recognises from the text.
 
 If the app can tell the dictation is not in English but cannot tell which language it is, it keeps all of these words to be safe.

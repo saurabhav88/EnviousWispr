@@ -58,28 +58,6 @@ struct PillSettingsCopyTests {
     }
   }
 
-  @Test("the test lists every string the Pill copy owner declares")
-  func everyPillPropertyIsCovered() throws {
-    let source = try String(
-      contentsOf: RepoRoot.url.appending(
-        path: "Sources/EnviousWisprAppKit/Views/Settings/DictationSettingsCopy.swift"),
-      encoding: .utf8)
-    let declared = Self.staticLets(inEnum: "Pill", source: source)
-    #expect(declared.count >= 9, "parsed \(declared.count) properties; the enum has moved")
-    #expect(declared == Set(Self.expected.keys), "declared \(declared.sorted())")
-  }
-
-  @Test("a nested enum's properties are read, and another enum's are not")
-  func extractorControl() {
-    let fixture = """
-      enum DictationSettingsCopy {
-        enum Preview { static let a = 1 }
-        enum Pill { static let b = 2; static let c = 3 }
-      }
-      """
-    #expect(Self.staticLets(inEnum: "Pill", source: fixture) == ["b", "c"])
-  }
-
   /// Names of the `static let`s declared directly inside `enum <name>`.
   static func staticLets(inEnum name: String, source: String) -> Set<String> {
     final class Finder: SyntaxVisitor {

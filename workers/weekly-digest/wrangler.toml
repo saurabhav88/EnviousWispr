@@ -3,7 +3,7 @@ main = "src/index.js"
 compatibility_date = "2026-03-27"
 
 [triggers]
-crons = ["0 13 * * 1"]  # Every Monday at 1pm UTC = 9am ET
+crons = []  # QStash owns Monday 09:00 America/New_York (#3570).
 
 [vars]
 CF_ZONE_ID = "b4416a0f0ebd699e96969a331c7ad7ff"
@@ -21,9 +21,8 @@ SENTRY_PROJECT_SLUG = "enviouswispr"
 #     reasoning as workers/daily-report/wrangler.toml, which owns the detail:
 #     neither `sentry-triage-worker-token` nor `sentry-auth-token` can make this
 #     call (both 403 on `/organizations/<org>/events/`, measured 2026-08-06).
-#     The same token also goes on sentry-triage, which needs it for the
-#     rate-alert breakdown. Absent, the section renders "unavailable today" and
-#     the other four sections are unaffected.
+#     The same read-only token serves daily-report's independent Sentry modes.
+#     Absent here, the Sentry recap is unavailable and other sections survive.
 #   DISCORD_WEBHOOK_URL       - the session-logs webhook
 #   CF_EMAIL / CF_API_KEY     - Cloudflare Analytics GraphQL auth
 #   GITHUB_TOKEN              - optional; raises the releases rate limit
@@ -32,10 +31,10 @@ SENTRY_PROJECT_SLUG = "enviouswispr"
 #                               could post a real digest to Discord. The trigger
 #                               now fails CLOSED: an unset secret refuses every
 #                               request, so a half-configured deploy cannot be
-#                               triggered at all. The cron path is unaffected.
+#                               triggered at all. QStash sends this header.
 #
-# This worker holds one of the account's five free-plan Cloudflare cron slots
-# (#1092), which is why scheduling lives here and not in a GitHub Action.
+# Keep the explicit empty cron list so deployments cannot restore the retired
+# Cloudflare timer alongside QStash and send duplicate weekly reports.
 #
 # `src/index.js` imports from `../../shared/`. Wrangler's esbuild follows that
 # relative path above the worker root with no config change, and a deploy of

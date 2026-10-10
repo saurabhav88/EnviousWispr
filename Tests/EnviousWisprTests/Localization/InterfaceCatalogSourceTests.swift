@@ -41,6 +41,28 @@ struct InterfaceCatalogSourceTests {
     "notification.update.ready.body": "Version %@ ist bereit. Klicke zum Installieren.",
     "feedback.title": "Feedback senden",
     "feedback.send": "Senden",
+    // #3482: the Theme picker's choices, now owned by ThemeChoicePresentation.
+    "System": "System",
+    "Light": "Hell",
+    "Dark": "Dunkel",
+    // #3482: the engine cards' copy, now owned by EngineChoicePresentation (German as shipped
+    // at cdd03bf9, including its range dash).
+    "Fast": "Schnell",
+    "All Languages": "Alle Sprachen",
+    "Pick this for everyday English and European dictation.":
+      "Wähle dies für alltägliche Diktate auf Englisch und in europäischen Sprachen.",
+    "Pick this for other languages or the toughest audio.":
+      "Wähle dies für andere Sprachen oder besonders schwierige Aufnahmen.",
+    "Model": "Modell",
+    "Languages": "Sprachen",
+    "Runs on": "Läuft auf",
+    "Transcribe time": "Transkriptionsdauer",
+    "25 European languages": "25 europäische Sprachen",
+    "99+ languages": "Über 99 Sprachen",
+    "Apple Neural Engine": "Apple Neural Engine",
+    "Apple GPU": "Apple GPU",
+    "Usually ~0.1s after you speak": "Meist ~0,1 Sek. nach dem Sprechen",
+    "Usually 1-2s after you speak": "Meist 1\u{2013}2 Sek. nach dem Sprechen",
     // #3271: the model download host moved; the sentence gives IT allowlist guidance.
     "Could not download the model. Check your connection. On a managed network, ask IT whether models.enviouswispr.com is allowed.":
       "Das Modell konnte nicht heruntergeladen werden. Prüfe deine Verbindung. Frage in einem verwalteten Netzwerk die IT, ob models.enviouswispr.com freigegeben ist.",
@@ -72,6 +94,50 @@ struct InterfaceCatalogSourceTests {
     #expect(languages.isSubset(of: ["en", "de"]), "languages present: \(languages.sorted())")
     #expect(languages.contains("de"), "German is gone from \(catalog)")
     #expect(withoutGerman.isEmpty, "keys without German: \(withoutGerman.sorted().prefix(10))")
+  }
+
+  /// #3482: the Settings item names moved from inline literals into `SettingsItemCopy`. Each
+  /// constant keeps its key, default English and comment, so it reads the catalog entry the
+  /// literal read, and the app ships its German. Read from the source text (the constants are
+  /// not enumerable at run time); a line the reader cannot parse fails the count. Arguments may
+  /// wrap onto new lines, as the formatter leaves them.
+  @Test("Settings item copy keeps its catalog entries, English, comments and shipped German")
+  func settingsItemCopyKeepsItsEntries() throws {
+    let source = try String(
+      contentsOf: Self.repoRoot.appendingPathComponent(
+        "Sources/EnviousWisprAppKit/Views/Settings/SettingsItemCopy.swift"), encoding: .utf8)
+    let pattern = try Regex(
+      #"LocalizedStringResource\(\s*"((?:[^"\\]|\\\([^)]*\)|\\u\{[0-9A-Fa-f]+\})*)"(?:,\s*defaultValue:\s*"([^"\\]*)")?(?:,\s*comment:\s*"([^"\\]*)")?\s*\)"#)
+    let constants = source.matches(of: pattern)
+    let calls = source.components(separatedBy: "LocalizedStringResource(").count - 1
+    #expect(constants.count == calls, "parsed \(constants.count) of \(calls) constants")
+    #expect(calls >= 100, "only \(calls) constants; the file moved or the reader broke")
+    let strings = try Self.strings()
+    let compiled = try Self.compiledTable(
+      in: try Self.builtApp(), language: "de", table: "Localizable")
+    for match in constants {
+      // An interpolated key is catalogued with `%@` in place of each interpolation.
+      // An interpolated key is catalogued with `%@` in place of each interpolation; a `\u{…}`
+      // escape is the character it names.
+      var key = String(try #require(match.output[1].substring)).replacing(
+        try Regex(#"\\\([^)]*\)"#), with: "%@")
+      for escape in key.matches(of: try Regex(#"\\u\{([0-9A-Fa-f]+)\}"#)).reversed() {
+        let hex = try #require(escape.output[1].substring)
+        let scalar = try #require(UInt32(hex, radix: 16).flatMap(Unicode.Scalar.init))
+        key.replaceSubrange(escape.range, with: String(Character(scalar)))
+      }
+      let english = match.output[2].substring.map(String.init) ?? key
+      let entry = try #require(strings[key] as? [String: Any], "\(key) is not in the catalog")
+      #expect((Self.value(of: entry, language: "en") ?? key) == english, "\(key): English changed")
+      if let comment = match.output[3].substring {
+        // A key shared by several controls carries each of their comments, one per line.
+        let lines = (entry["comment"] as? String ?? "").components(separatedBy: "\n")
+        #expect(lines.contains(String(comment)), "\(key): comment changed")
+      }
+      let german = Self.value(of: entry, language: "de")
+      #expect(german != nil && Self.state(of: entry, language: "de") == "translated", "\(key)")
+      #expect(compiled[key] == german, "\(key): the shipped German differs from the catalog")
+    }
   }
 
   /// The unit-test process's `Bundle.main` is not the app, but the same build places the app
@@ -129,7 +195,8 @@ struct InterfaceCatalogSourceTests {
         == "EnviousWispr benötigt Zugriff auf dein Mikrofon, um deine Sprache in Text umzuwandeln.")
   }
 
-  private static func builtApp() throws -> URL {
+  /// The app built beside the test bundle (shared with SettingsMapExportTests).
+  static func builtApp() throws -> URL {
     let products = Bundle(for: BuildProductsMarker.self).bundleURL.deletingLastPathComponent()
     // The product name is per configuration: Debug and Release build `EnviousWispr.app`, Dev
     // builds `EnviousWispr Local.app` (Project.swift Dev settings). Exactly one lives beside the

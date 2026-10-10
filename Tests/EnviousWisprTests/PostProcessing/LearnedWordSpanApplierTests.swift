@@ -160,4 +160,67 @@ struct LearnedWordSpanApplierTests {
     #expect(result.applied == 0)
     #expect(result.contested == 0)
   }
+
+  // MARK: - #3518: the longer fix wins over a fix it contains
+
+  private static func founderPair(_ text: String) throws -> [LearnedWordCheckQuestion] {
+    let long = try #require(text.range(of: "Sarab A V"))
+    let short = try #require(text.range(of: "Sarab"))
+    let all = text.startIndex..<text.endIndex
+    return [
+      LearnedWordCheckQuestion(id: 0, sentence: text, range: long, contextRange: all, word: "Saurabhav"),
+      LearnedWordCheckQuestion(id: 1, sentence: text, range: short, contextRange: all, word: "Saurabh"),
+    ]
+  }
+
+  @Test("#3518: both approved, the containing fix wins whatever the scores")
+  func longerDifferentWordWins() throws {
+    let text = "My username is Sarab A V."
+    let questions = try Self.founderPair(text)
+    for (comparable, scores) in [(false, (0.9, 0.9)), (true, (0.6, 0.99)), (true, (0.99, 0.6))] {
+      for order in [questions, questions.reversed()] {
+        let result = LearnedWordSpanApplier.apply(
+          text: text, questions: order,
+          decisions: [
+            LearnedWordCheckDecision(questionID: 0, approved: true, score: scores.0),
+            LearnedWordCheckDecision(questionID: 1, approved: true, score: scores.1),
+          ], scoresComparable: comparable)
+        #expect(result.text == "My username is Saurabhav.")
+        #expect(result.applied == 1)
+        #expect(result.contested == 0)
+      }
+    }
+  }
+
+  @Test("#3518: only the short fix approved, the short fix applies")
+  func onlyShortApproved() throws {
+    let text = "My username is Sarab A V."
+    let result = LearnedWordSpanApplier.apply(
+      text: text, questions: try Self.founderPair(text),
+      decisions: [
+        LearnedWordCheckDecision(questionID: 0, approved: false, score: 0.1),
+        LearnedWordCheckDecision(questionID: 1, approved: true, score: 0.9),
+      ], scoresComparable: true)
+    #expect(result.text == "My username is Saurabh A V.")
+    #expect(result.applied == 1)
+  }
+
+  @Test("#3518: a third fix that partly overlaps the winner is still contested")
+  func threeWayOverlap() throws {
+    let text = "Sarab A V Corp"
+    let all = text.startIndex..<text.endIndex
+    let questions = try Self.founderPair(text) + [
+      LearnedWordCheckQuestion(
+        id: 2, sentence: text, range: try #require(text.range(of: "V Corp")), contextRange: all,
+        word: "Vcorp")
+    ]
+    let decisions = (0..<3).map { LearnedWordCheckDecision(questionID: $0, approved: true) }
+    for order in [questions, questions.reversed(), [questions[2], questions[0], questions[1]]] {
+      let result = LearnedWordSpanApplier.apply(
+        text: text, questions: order, decisions: decisions, scoresComparable: false)
+      #expect(result.text == text)
+      #expect(result.applied == 0)
+      #expect(result.contested == 2)
+    }
+  }
 }

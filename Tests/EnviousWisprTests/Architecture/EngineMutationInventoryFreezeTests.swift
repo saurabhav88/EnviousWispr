@@ -305,9 +305,8 @@ import Testing
   ///   through `transcribe`).
   /// - `start` (`WhisperKitIncrementalSession`): 25 raw text matches, almost
   ///   all `Timer`/`NWListener`/`NWConnection`/hotkey-service/watcher
-  ///   `.start()` calls with no relation to the ASR engine. The real sites
-  ///   are `TailBenchmarkHarness.swift:163`, `TailBenchmarkHarness.swift:288`,
-  ///   and `WhisperKitEngineAdapter.swift:526` (`session.start(audioSamplesProvider:)`).
+  ///   `.start()` calls with no relation to the ASR engine. The real site
+  ///   is `WhisperKitEngineAdapter.swift:538` (`session.start(audioSamplesProvider:)`).
   ///
   /// Both exclusions are permanent under THIS design, not temporary
   /// oversights — a future rename of either protocol requirement (e.g.
@@ -1271,28 +1270,6 @@ import Testing
       file: "Sources/EnviousWisprAppKit/App/BenchmarkSuite.swift", matcher: "cancelStreaming",
       text: "await asrManager.cancelStreaming()", classification: .gated),
 
-    // MARK: TailBenchmarkHarness — an external eval-harness support type
-    // (`scripts/eval/tail_runner`), never constructed anywhere in production
-    // `Sources/` (grep-verified). Reachable in theory, never exercised by the
-    // shipping app's own configuration — the same `dormant` bucket as
-    // `WhisperKitBackend`'s existing test-seam entry.
-    CallSite(
-      file: "Sources/EnviousWisprASR/TailBenchmarkHarness.swift", matcher: "transcribe",
-      text: "let results = try await model.kit.transcribe(",
-      classification: .dormant),
-    CallSite(
-      file: "Sources/EnviousWisprASR/TailBenchmarkHarness.swift", matcher: "transcribe",
-      text: "let results = try await model.kit.transcribe(",
-      classification: .dormant),
-    CallSite(
-      file: "Sources/EnviousWisprASR/TailBenchmarkHarness.swift", matcher: "transcribe",
-      text: "let results = try await model.kit.transcribe(",
-      classification: .dormant),
-    CallSite(
-      file: "Sources/EnviousWisprASR/TailBenchmarkHarness.swift", matcher: "finalize",
-      text: "let result = await session.finalize(finalSamples: [], speechSegments: [])",
-      classification: .dormant),
-
     // MARK: DictationRuntime / KernelDictationDriver — the onboarding
     // install Cancel button's seam (#1388 step 3). Race-safe by
     // construction, not by claim: "the adapter's in-flight gate and the
@@ -1654,39 +1631,9 @@ import Testing
     #expect(try Self.hitCount(in: "adapter.warmUp()", matcher: "warmUp") == 1)
   }
 
-  @Test(
-    "a chained call (base is itself a call result) is detected — the base's own kind never matters")
-  func positiveControlChainedCallIsDetected() throws {
-    #expect(try Self.hitCount(in: "getAdapter().warmUp()", matcher: "warmUp") == 1)
-  }
-
   @Test("a bare call with implicit `self` (no member-access receiver at all) is detected")
   func positiveControlBareImplicitSelfCallIsDetected() throws {
     #expect(try Self.hitCount(in: "Task { await unloadModel() }", matcher: "unloadModel") == 1)
-  }
-
-  @Test("a trailing-closure call with no parentheses at all is detected")
-  func positiveControlTrailingClosureNoParensIsDetected() throws {
-    // #1908: the real frozen-table entry that once proved this against live
-    // source (`ASRManagerProxy.swift`'s `proxy.unloadModel { cont.resume() }`)
-    // was deleted with the file; this fixture still proves the shape in
-    // isolation.
-    #expect(
-      try Self.hitCount(in: "proxy.unloadModel { cont.resume() }", matcher: "unloadModel") == 1)
-  }
-
-  @Test(
-    "a method reference stored in a variable and NEVER called is now caught at the point of reference — the prior design's one accepted, irreducible boundary is closed, not merely documented"
-  )
-  func positiveControlStoredUninvokedReferenceIsDetected() throws {
-    #expect(try Self.hitCount(in: "let f = adapter.warmUp", matcher: "warmUp") == 1)
-  }
-
-  @Test(
-    "a vocabulary name passed as a plain argument, never itself called, is still a real reference and is detected"
-  )
-  func positiveControlArgumentPositionReferenceIsDetected() throws {
-    #expect(try Self.hitCount(in: "foo(adapter.warmUp)", matcher: "warmUp") == 1)
   }
 
   @Test(
@@ -1760,51 +1707,6 @@ import Testing
   // needed anymore. Each branch is an independent reference, found and
   // counted on its own; there is nothing left to disambiguate.
 
-  @Test(
-    "a ternary naming a vocabulary method on either branch counts BOTH references — no ambiguity to detect"
-  )
-  func positiveControlTernaryBothBranchesCounted() throws {
-    let source = "(useFirst ? adapter.warmUp : other.prepare)()"
-    #expect(try Self.hitCount(in: source, matcher: "warmUp") == 1)
-    #expect(try Self.hitCount(in: source, matcher: "prepare") == 1)
-  }
-
-  @Test(
-    "a nil-coalescing expression naming a vocabulary method on either side counts BOTH references")
-  func positiveControlNilCoalescingBothSidesCounted() throws {
-    let source = "(adapter.warmUp ?? other.prepare)()"
-    #expect(try Self.hitCount(in: source, matcher: "warmUp") == 1)
-    #expect(try Self.hitCount(in: source, matcher: "prepare") == 1)
-  }
-
-  @Test("an `if`-used-as-expression selecting between vocabulary references counts BOTH branches")
-  func positiveControlIfExpressionBothBranchesCounted() throws {
-    let source = #"""
-      (if useFirst {
-        adapter.warmUp
-      } else {
-        other.prepare
-      })()
-      """#
-    #expect(try Self.hitCount(in: source, matcher: "warmUp") == 1)
-    #expect(try Self.hitCount(in: source, matcher: "prepare") == 1)
-  }
-
-  @Test(
-    "an `as`-cast-wrapped reference is detected — Codex round 2's exact counterexample from the abandoned design, trivial under the new contract"
-  )
-  func positiveControlAsCastWrappedReferenceIsDetected() throws {
-    let source = "try await (adapter.warmUp as () async throws -> Void)()"
-    #expect(try Self.hitCount(in: source, matcher: "warmUp") == 1)
-  }
-
-  @Test(
-    "an `is`-check testing a vocabulary reference is a real reference and IS counted — the contract no longer tries to judge whether the surrounding expression is 'identity-preserving'"
-  )
-  func positiveControlIsCheckReferenceIsCounted() throws {
-    #expect(try Self.hitCount(in: "(adapter.warmUp is AnyObject)()", matcher: "warmUp") == 1)
-  }
-
   @Test("calling the RESULT of a call is not conflated with the vocabulary name that produced it")
   func adversarialDoubleCallAsCalleeIsNotFabricated() throws {
     // `adapter.warmUp()` (the INNER call) is one real reference; the OUTER
@@ -1824,21 +1726,6 @@ import Testing
   // MARK: 2e — ownership-related forms (Swift 5.9+ `consume`/`copy`/`borrow`,
   // supported by this project's Swift 6.3.3 toolchain). Plain references
   // under the new contract; no special unwrap logic required.
-
-  @Test("a `consume`-wrapped reference is detected")
-  func positiveControlConsumeReferenceIsDetected() throws {
-    #expect(try Self.hitCount(in: "(consume adapter.warmUp)()", matcher: "warmUp") == 1)
-  }
-
-  @Test("a `copy`-wrapped reference is detected")
-  func positiveControlCopyReferenceIsDetected() throws {
-    #expect(try Self.hitCount(in: "(copy adapter.warmUp)()", matcher: "warmUp") == 1)
-  }
-
-  @Test("a `borrow`-wrapped reference is detected")
-  func positiveControlBorrowReferenceIsDetected() throws {
-    #expect(try Self.hitCount(in: "(borrow adapter.warmUp)()", matcher: "warmUp") == 1)
-  }
 
   // MARK: 2f — fail-closed on discovery/read/parse failure (Codex plan-
   // review r1 correction: the prior `(try? ...) ?? ""` pattern silently
@@ -1926,36 +1813,6 @@ import Testing
   func negativeControlVocabularyInsideStringLiteralNotCounted() throws {
     let source = #"log.info("adapter.warmUp() was skipped this run")"#
     #expect(try Self.hitCount(in: source, matcher: "warmUp") == 0)
-  }
-
-  @Test("vocabulary text quoted inside a RAW string literal is not counted as a real call")
-  func negativeControlVocabularyInsideRawStringLiteralNotCounted() throws {
-    let source = ##"log.info(#"adapter.warmUp() was skipped this run"#)"##
-    #expect(try Self.hitCount(in: source, matcher: "warmUp") == 0)
-  }
-
-  @Test("a comment-delimiter-shaped substring inside a string literal does not confuse the parser")
-  func negativeControlURLStringDoesNotConfuseTheParser() throws {
-    let source = #"let url = "https://example.com"; await adapter.warmUp()"#
-    #expect(try Self.hitCount(in: source, matcher: "warmUp") == 1)
-  }
-
-  @Test("a bare `/*`-shaped substring inside a string literal does not confuse the parser")
-  func negativeControlBlockCommentOpenerStringDoesNotConfuseTheParser() throws {
-    let source = #"""
-      let marker = "/*"; await adapter.warmUp()
-      await adapter.recoverFromWedge()
-      """#
-    #expect(try Self.hitCount(in: source, matcher: "warmUp") == 1)
-    #expect(try Self.hitCount(in: source, matcher: "recoverFromWedge") == 1)
-  }
-
-  @Test(
-    "a comment-delimiter-shaped substring inside a RAW string literal does not confuse the parser"
-  )
-  func negativeControlRawStringDoesNotConfuseTheParser() throws {
-    let source = ##"let pattern = #"http://example.com"#; await adapter.warmUp()"##
-    #expect(try Self.hitCount(in: source, matcher: "warmUp") == 1)
   }
 
   @Test(

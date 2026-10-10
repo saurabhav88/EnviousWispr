@@ -14,7 +14,6 @@
       let c = DebugZeroFillController()
       #expect(c.zeroRange(count: 640, context: .live) == nil)
       #expect(c.zeroRange(count: 640, context: .preRollDrain) == nil)
-      #expect(c.zeroesPreRoll == false)
       #expect(c.status().hit == false)
     }
 
@@ -22,7 +21,6 @@
     func zeroFromStart() {
       let c = DebugZeroFillController()
       c.arm(mode: .zeroFromStart, trialID: "t1")
-      #expect(c.zeroesPreRoll == true)
       #expect(c.zeroRange(count: 640, context: .preRollDrain) == 0..<640)
       #expect(c.zeroRange(count: 640, context: .live) == 0..<640)
       let s = c.status()
@@ -36,7 +34,6 @@
     func zeroAfterPreRollAndLead() {
       let c = DebugZeroFillController()
       c.arm(mode: .zeroAfter(threshold: 1000), trialID: "t2")
-      #expect(c.zeroesPreRoll == false)
       // pre-roll always passes through for zero_after
       #expect(c.zeroRange(count: 5000, context: .preRollDrain) == nil)
       // first 640 live (seen 0→640, < 1000) → untouched

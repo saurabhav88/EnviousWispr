@@ -96,14 +96,6 @@ import Testing
         "a session committed to exiting must not be publishable as hands-free")
     }
 
-    @Test("a reported id always equals the kernel's current session id")
-    func reportedIDMatchesCurrentSession() {
-      let kernel = makeKernel()
-      kernel.testForceState(.live)
-      let reported = kernel.continuingSessionID
-      #expect(reported != nil)
-      #expect(reported == kernel.currentSessionID.raw.uuidString)
-    }
   }
 
 #endif

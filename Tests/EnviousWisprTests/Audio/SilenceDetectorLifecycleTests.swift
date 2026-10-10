@@ -5,8 +5,8 @@ import Testing
 @testable import EnviousWisprAudio
 
 /// #1224: retention-lifecycle tests for the audio-service's now-persistent
-/// `SilenceDetector` — `updateSilenceTimeout` taking effect without
-/// reconstruction, and `reset()` preserving the loaded model across sessions.
+/// `SilenceDetector`: the silence timeout's hangover length, and `reset()`
+/// preserving the loaded model across sessions.
 /// Reuses the `#905` `FakeStreamingVad` seam (declared in
 /// `SilenceDetectorBoundaryTests.swift`) so no real CoreML model is needed.
 @Suite("SilenceDetector lifecycle")
@@ -42,38 +42,27 @@ struct SilenceDetectorTests {
     return -1
   }
 
-  @Test(
-    "updateSilenceTimeout changes hangover behavior on a retained instance, no reconstruction needed"
-  )
-  func silenceTimeoutUpdateTakesEffect() async throws {
-    let fake = FakeStreamingVad()
+  @Test("the silence timeout sets how many quiet chunks pass before auto-stop")
+  func silenceTimeoutSetsHangover() async throws {
     // silenceTimeout picked mid-interval (2.5 and 5.5 chunk-widths) so
     // ceil()'s result is unambiguous under floating-point error.
-    let detector = SilenceDetector(
-      silenceTimeout: 0.256 * 2.5, vadConfig: Self.lockingConfig(),
-      makeStreamingVad: { fake }
-    )
-    try await detector.prepare()
+    func stopAt(timeout: TimeInterval) async throws -> Int {
+      let fake = FakeStreamingVad()
+      let detector = SilenceDetector(
+        silenceTimeout: timeout, vadConfig: Self.lockingConfig(),
+        makeStreamingVad: { fake }
+      )
+      try await detector.prepare()
+      return await quietChunksUntilAutoStop(detector)
+    }
 
     // effectiveHangoverChunks = max(3, ceil(0.64/0.256)) = 3 -> stop on the
     // 4th quiet chunk (3 countdown chunks + the one that hits zero).
-    let firstStopAt = await quietChunksUntilAutoStop(detector)
-    #expect(firstStopAt == 4)
-
-    // Reset per-session state (a "new recording") and push a LONGER timeout
-    // onto the SAME retained instance -- the #1224 retention contract this
-    // detector must satisfy once it survives across recordings.
-    await detector.reset()
-    await detector.updateSilenceTimeout(0.256 * 5.5)
-    #expect(await detector.silenceTimeout == 0.256 * 5.5)
-
+    #expect(try await stopAt(timeout: 0.256 * 2.5) == 4)
     // effectiveHangoverChunks = max(3, ceil(1.408/0.256)) = 6 -> stop on the
-    // 7th quiet chunk. A stale `effectiveHangoverChunks` (still reading the
-    // OLD value) would instead stop at 4 again, proving the update was a
-    // no-op -- exactly the staleness bug retention would introduce without
-    // `updateSilenceTimeout`.
-    let secondStopAt = await quietChunksUntilAutoStop(detector)
-    #expect(secondStopAt == 7)
+    // 7th quiet chunk. A changed timeout reaches production through a NEW
+    // detector: CaptureVADSignalSource.configureSession drops the retained one.
+    #expect(try await stopAt(timeout: 0.256 * 5.5) == 7)
   }
 
   @Test("reset() clears streaming state but leaves the loaded model intact")

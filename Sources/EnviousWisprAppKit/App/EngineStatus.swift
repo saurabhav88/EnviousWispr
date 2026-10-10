@@ -35,10 +35,6 @@ struct EngineStatus: Sendable {
   let active: ASRBackendType
   let selectedReadiness: ASREngineReadiness
   let activeReadiness: ASREngineReadiness
-  /// Per-engine pipeline activity (recording/transcribing/polishing) — drives
-  /// status display without the consumer reading either driver directly.
-  let parakeetActive: Bool
-  let whisperKitActive: Bool
   let switchPhase: SwitchPhase
   /// Whether the SELECTED engine's model is on disk (Parakeet is always true;
   /// WhisperKit is true only once downloaded).

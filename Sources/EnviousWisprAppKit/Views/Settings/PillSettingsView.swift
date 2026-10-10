@@ -16,7 +16,7 @@ struct PillSettingsView: View {
     SettingsContentView {
       // #3385: the tab's own name, in capitals, heads its one section, as on the
       // other Dictation tabs; no second "Recording Pill" string.
-      SettingsSectionHeading(resolvedTitle: String(localized: DictationTab.pill.label).localizedUppercase)
+      SettingsSectionHeading(map: .id(.sectionPill), casing: .localizedUppercase)
 
       BrandedSection {
         BrandedRow {
@@ -29,27 +29,12 @@ struct PillSettingsView: View {
           // short line under its title and a help sentence behind "?", like every
           // shared row; the segments are unchanged and still write the one setting.
           SettingsRow(
+            map: .id(.pillPosition),
             icon: "rectangle.portrait.and.arrow.right",
-            title: DictationSettingsCopy.Pill.positionTitle,
-            short: DictationSettingsCopy.Pill.positionShort,
             help: DictationSettingsCopy.Pill.positionHelp
           ) {
             BrandedSegmentedPicker(
-              options: [
-                (
-                  String(
-                    localized: "Top",
-                    comment: "Recording Pill settings, position on screen: the top of the screen."),
-                  nil, OverlayPillPosition.top
-                ),
-                (
-                  String(
-                    localized: "Bottom",
-                    comment:
-                      "Recording Pill settings, position on screen: the bottom of the screen."),
-                  nil, OverlayPillPosition.bottom
-                ),
-              ],
+              options: SettingsChoicePresentation.pillPosition.map(\.pickerOption),
               selection: $settings.overlayPillPosition
             )
             // The mockup's control: two equal halves, no arrows, a fixed width so

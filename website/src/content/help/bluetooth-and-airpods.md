@@ -19,12 +19,12 @@ The quality stays low until EnviousWispr lets go of the microphone. With **Micro
 
 To get your music back right away:
 
-1. Go to **Settings** \> **Microphone**.
+1. Go to **Dictation Settings** \> **Microphone**.
 2. Set **Microphone readiness** to **Off**.
 
 With readiness off, the first word of your next dictation is more likely to go missing. Read [_First Word Gets Cut Off_](/help/first-word-gets-cut-off/) if that happens.
 
-You can also record from your Mac's built-in microphone. Your headset then stays in music mode the whole time. Choose the built-in microphone under **Settings** > **Microphone**.
+You can also record from your Mac's built-in microphone. Your headset then stays in music mode the whole time. Choose the built-in microphone under **Dictation Settings** > **Microphone**.
 
 ### Use my Mac's microphone instead of my AirPods
 
@@ -33,7 +33,7 @@ With **Auto** selected, EnviousWispr records from whatever input your Mac is set
 To use the built-in microphone instead, do either of these:
 
 - Change the input in **System Settings** \> **Sound**.
-- Choose the built-in microphone in **Settings** \> **Microphone** in EnviousWispr.
+- Choose the built-in microphone in **Dictation Settings** \> **Microphone** in EnviousWispr.
 
 Read [_Choosing Your Microphone_](/help/choosing-your-microphone/) for more on how the choice works.
 
@@ -49,11 +49,11 @@ Keeping **Microphone readiness** on its default of 30 sec (or setting it to 60 s
 
 When a Bluetooth microphone is your input, EnviousWispr shows a short reminder of these tips once per launch. To stop it:
 
-1. Go to **Settings** \> **Microphone**.
+1. Go to **Dictation Settings** \> **Microphone**.
 2. Under **Using a Bluetooth microphone?**, click **Learn more**.
 3. Switch off **Show Bluetooth tips**.
 
-The guide itself stays on the **Microphone** page.
+The guide itself stays on the **Microphone** tab.
 
 ### My headset disconnected during a recording
 

@@ -128,15 +128,6 @@
       }
     }
 
-    /// True when this armed mode zeroes the pre-roll drain (only `.zeroFromStart`).
-    var zeroesPreRoll: Bool {
-      lock.withLock { s in
-        guard s.armed, let mode = s.mode else { return false }
-        if case .zeroFromStart = mode { return true }
-        return false
-      }
-    }
-
     static func modeTag(_ m: Mode) -> String {
       switch m {
       case .zeroFromStart: return "zero_from_start"

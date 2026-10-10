@@ -44,22 +44,38 @@ enum DictionaryTab: String, CaseIterable, Identifiable {
 
   var id: Self { self }
 
-  var label: String {
+  /// The tab's Settings Map identity (#3482). Exhaustive, so a new tab must be given a node.
+  var mapID: SettingsMapID {
+    switch self {
+    case .yourWords: .dictionaryTabYourWords
+    case .vocabularyPacks: .dictionaryTabVocabularyPacks
+    case .learnFrom: .dictionaryTabLearnFrom
+    case .quickAdd: .dictionaryTabQuickAdd
+    }
+  }
+
+  /// The tab's name as a resource, so the side rail and the Settings Map (#3482) share one owner.
+  var labelResource: LocalizedStringResource {
     switch self {
     case .yourWords:
-      return String(localized: "Your Words", comment: "Your Words: a tab in the side rail.")
+      return LocalizedStringResource("Your Words", comment: "Your Words: a tab in the side rail.")
     case .vocabularyPacks:
-      return String(localized: "Vocabulary Packs", comment: "Your Words: a tab in the side rail.")
+      return LocalizedStringResource(
+        "Vocabulary Packs", comment: "Your Words: a tab in the side rail.")
     case .learnFrom:
-      return String(
-        localized: "Learn from...",
+      return LocalizedStringResource(
+        "Learn from...",
         comment: "Your Words: a tab in the side rail, for learning words from contacts and edits.")
     case .quickAdd:
-      return String(
-        localized: "Quick Add",
+      return LocalizedStringResource(
+        "Quick Add",
         comment:
           "Your Words: a tab in the side rail, the feature that adds a selected word from any app.")
     }
+  }
+
+  var label: String {
+    String(localized: labelResource)
   }
 
   var icon: String {
@@ -83,34 +99,32 @@ enum DictionaryTab: String, CaseIterable, Identifiable {
   /// measured 2026-08-29, when "Ready-made word lists" rendered as "Ready-made
   /// word l...". The shorter phrasing is just as true, so there is no reason to
   /// live with a truncated line.
-  var tagline: String {
+  var taglineResource: LocalizedStringResource {
     switch self {
     case .yourWords:
-      return String(
-        localized: "Words you added",
+      return LocalizedStringResource("Words you added",
         comment:
           "Your Words: a tab in the side rail: the line under Your Words. Keep it short, about 16 characters."
       )
     case .vocabularyPacks:
-      return String(
-        localized: "Ready-made lists",
+      return LocalizedStringResource("Ready-made lists",
         comment:
           "Your Words: a tab in the side rail: the line under Vocabulary Packs. Keep it short, about 16 characters."
       )
     case .learnFrom:
-      return String(
-        localized: "Learn as you go",
+      return LocalizedStringResource("Learn as you go",
         comment:
           "Your Words: a tab in the side rail: the line under Learn from. Keep it short, about 16 characters."
       )
     case .quickAdd:
-      return String(
-        localized: "Add from any app",
+      return LocalizedStringResource("Add from any app",
         comment:
           "Your Words: a tab in the side rail: the line under Quick Add. Keep it short, about 16 characters."
       )
     }
   }
+
+    var tagline: String { String(localized: taglineResource) }
 }
 
 /// #2492 — the Dictionary page (was "Your Words"). Rebuilt onto a fixed
@@ -131,7 +145,12 @@ struct YourWordsView: View {
 
   @Environment(SettingsManager.self) private var settings
   @Environment(CustomWordsCoordinator.self) private var customWordsCoordinator
-  @State private var selectedTab: DictionaryTab = .yourWords
+  /// The tab on screen. Owned by `SettingsNavigationState` (#3482), so a search result can open
+  /// one; the page only reads and sets it, as `AppSettingsView(selection:)` does.
+  @Binding var selection: DictionaryTab
+  /// The Your Words list's search on opening; empty in the app. Lets the render tests reach the
+  /// searching state through the real page (#3545).
+  var initialSearchQuery = ""
   @State private var sheetRoute: YourWordsSheetRoute?
   // Outcome-to-message mapping is shared with `BulkDeleteConfirmSheet` so both
   // export entry points present the identical copy (#1703).
@@ -154,12 +173,14 @@ struct YourWordsView: View {
   var body: some View {
     @Bindable var settings = settings
 
+    // #3482 §3.4: the window's page owner arrives at the heading (a fixed target) and in the
+    // scrolled pane; lazy rows are reached by scrolling the pane to its top first.
     VStack(alignment: .leading, spacing: SettingsLayout.sectionSpacing) {
       // #3385: the banner became the shared heading and row (tracker A5).
       DictionarySettingsHeading(isEnabled: $settings.wordCorrectionEnabled)
 
       HStack(alignment: .top, spacing: DictionaryRailMetrics.columnGap) {
-        DictionaryTabRail(selection: $selectedTab)
+        DictionaryTabRail(selection: $selection)
           // 216pt, the width the AI Polish rail used (until #3385 made that
           // list a dropdown), because these rows carry the same content it
           // did: a 32pt tile, a name, and a tagline. The previous 168pt was chosen
@@ -195,6 +216,8 @@ struct YourWordsView: View {
             ) {
               selectedTabContent
             }
+            // #3545: the tab drawn here, carried by every control inside it.
+            .environment(\.settingsArrivalContent, drawnTab)
             .padding(.bottom, SettingsLayout.contentBottom)
             // The anchor the action scrolls to. Zero-height and behind
             // everything, so it changes nothing about the layout.
@@ -203,6 +226,12 @@ struct YourWordsView: View {
             }
           }
           .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+          .settingsArrivalViewport()
+          // Tagged with the same rendered tab as the content it tops, never the page-only tag
+          // this scroll view inherits (#3545).
+          .preference(
+            key: SettingsArrivalLazyTopKey.self,
+            value: SettingsArrivalLazyTop(scrollID: Self.topAnchor, content: drawnTab))
           .background(
             GeometryReader { proxy in
               Color.clear.onAppear { paneHeight = proxy.size.height }
@@ -267,9 +296,14 @@ struct YourWordsView: View {
     }
   }
 
+  /// The tab this view draws, as arrival identifies content (#3545).
+  private var drawnTab: SettingsArrivalContent {
+    SettingsArrivalContent(page: .dictionary, dictionaryTab: selection)
+  }
+
   @ViewBuilder
   private var selectedTabContent: some View {
-    switch selectedTab {
+    switch selection {
     case .yourWords:
       yourWordsBanners
       // The three page actions are handed to the list card rather than drawn
@@ -281,7 +315,7 @@ struct YourWordsView: View {
       // to it.
       // Not wrapped in a stack: the section inside must be a direct child of
       // the pane's `LazyVStack` for its header to pin.
-      CustomTermsSection { actionButtons }
+      CustomTermsSection(initialSearchQuery: initialSearchQuery) { actionButtons }
     case .vocabularyPacks:
       VocabPacksSection()
     case .learnFrom:
@@ -338,19 +372,23 @@ struct YourWordsView: View {
     // and gives no hover of its own. Add word is the primary, so it is the
     // one that fills.
     SettingsActionButton(
-      title: "Add word", isEnabled: true, emphasis: .filled, systemImage: "plus"
+      title: SettingsItemCopy.Dictionary.addWord, isEnabled: true, emphasis: .filled,
+      systemImage: "plus"
     ) {
       sheetRoute = .addTerm
     }
+    .settingsMapRegistration(.yourWordsAdd)
     // The ONLY doorway into Custom Words import (epic #1619). Shipped to
     // release users from v2.4.1 by founder decision, 2026-07-24; every
     // import PR still carries "adds no second entry point" in its
     // definition of done, so this stays the single doorway.
     SettingsActionButton(
-      title: "Import", isEnabled: true, systemImage: "square.and.arrow.down"
+      title: SettingsItemCopy.Dictionary.importWords, isEnabled: true,
+      systemImage: "square.and.arrow.down"
     ) {
       sheetRoute = .importWords
     }
+    .settingsMapRegistration(.yourWordsImport)
     // Export (#1680). ONE body-render snapshot drives both the count shown
     // in the save dialog and the array handed to the action, so the number
     // the user reads and the bytes written cannot come from different
@@ -360,11 +398,12 @@ struct YourWordsView: View {
     let proposed = CustomWordsExportAction.exportableWords(
       from: customWordsCoordinator.customWords)
     SettingsActionButton(
-      title: "Export your words", isEnabled: true,
+      title: SettingsItemCopy.Dictionary.exportWords, isEnabled: true,
       systemImage: "square.and.arrow.up"
     ) {
       exportWords(proposed: proposed)
     }
+    .settingsMapRegistration(.yourWordsExport)
   }
 
   /// Export the user's own words (#1680).
@@ -436,6 +475,7 @@ private struct DictionaryTabRail: View {
             selection = tab
           }
         }
+        .settingsMapRegistration(tab.mapID)
       }
     }
     .padding(10)
@@ -517,6 +557,7 @@ private struct DictionaryTabRow: View {
       .contentShape(Rectangle())
     }
     .buttonStyle(.plain)
+    .settingsArrivalFocusControl()
     .accessibilityElement(children: .combine)
     .accessibilityLabel(tab.label)
     .accessibilityValue(

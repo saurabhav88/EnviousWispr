@@ -505,7 +505,7 @@ struct RenderedPillFreezeTests {
   /// rather than left as a number in a doc comment.
   @Test(
     "the shipped in-panel notices fit the box the classic pill reserves",
-    arguments: [RecordingNoticeReason.approachingCap, .autoStopUnavailable])
+    arguments: [RecordingNoticeReason.approachingCap, .autoStopUnavailable, .secureInputActive])
   func inPanelNoticesFitTheReservedBox(reason: RecordingNoticeReason) throws {
     let budget = try #require(RecordingPillDesign.classic.reservedHeight)
     for locked in [false, true] {
@@ -521,6 +521,20 @@ struct RenderedPillFreezeTests {
         overflow is CLIPPED on screen with nothing reporting it. Shorten the copy \
         or raise the reserved height; do not raise this expectation.
         """)
+    }
+  }
+
+  /// #3544 P4: the German Secure Input banner is the longest notice copy shipped (65 characters
+  /// against the English 56), so it is measured too. The literal is the catalog's German value.
+  @Test("the German Secure Input notice fits the box the classic pill reserves")
+  func germanSecureInputNoticeFits() throws {
+    let budget = try #require(RecordingPillDesign.classic.reservedHeight)
+    for locked in [false, true] {
+      let height = try RenderedPillHarness.recordingContentHeight(
+        design: .classic, locked: locked,
+        notice: "Sichere Tastatureingabe aktiv: einige Tastaturfunktionen pausiert",
+        width: RecordingPillDesign.classic.width)
+      #expect(height <= budget, "the German banner made the capsule \(height)pt against \(budget)pt")
     }
   }
 

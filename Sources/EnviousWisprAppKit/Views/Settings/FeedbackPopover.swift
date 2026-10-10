@@ -84,6 +84,9 @@ struct FeedbackForm: View {
 
   @State private var message = ""
   @State private var email = ""
+  /// "Typing or a keyboard shortcut isn't working as expected" (#3544 P3): asked fresh each opening, like the
+  /// diagnostics box, and frozen into the report at Send.
+  @State private var aboutTypingOrShortcut = false
   @State private var status: Status = .editing
   /// A saved report Sentry refused stays on this Mac; say so once when the form opens (#3269).
   @State private var hasUndeliverable = false
@@ -151,6 +154,7 @@ struct FeedbackForm: View {
       showsUnsentNote = false
       message = draftStore.message
       email = draftStore.email
+      aboutTypingOrShortcut = false
       focus = .message
       diagnosticsModel.open(usageMetrics: settings.shareUsageMetrics)
     }
@@ -192,6 +196,7 @@ struct FeedbackForm: View {
       if showsUnsentNote { unsentNote.transition(.move(edge: .top).combined(with: .opacity)) }
       messageEditor
       emailField
+      categoryToggle
       diagnosticsSection
       footer
     }
@@ -308,6 +313,21 @@ struct FeedbackForm: View {
     .onTapGesture { focus = .email }
     .help(Text(verbatim: issue == .invalidEmail ? Self.invalidEmailText : ""))
     .accessibilityHint(Text(verbatim: issue == .invalidEmail ? Self.invalidEmailText : ""))
+  }
+
+  // MARK: - Category (#3544 P3)
+
+  private var categoryToggle: some View {
+    Toggle(isOn: $aboutTypingOrShortcut) {
+      Text(
+        String(
+          localized: "feedback.category.typingOrShortcut",
+          defaultValue: "Typing or a keyboard shortcut isn't working as expected")
+      )
+      .font(.stBody)
+      .foregroundStyle(.stTextPrimary)
+    }
+    .toggleStyle(.checkbox)
   }
 
   // MARK: - Diagnostics (#3269)
@@ -471,7 +491,9 @@ struct FeedbackForm: View {
 
   private func send() {
     guard status != .sending, !isSent, !submission.isSaving,
-      let draft = FeedbackDraft(message: message, email: email)
+      let draft = FeedbackDraft(
+        message: message, email: email,
+        category: aboutTypingOrShortcut ? .typingOrShortcutInterference : nil)
     else { return }
     // Rechecks the live switch: a change the observer has not delivered yet resets the box and
     // preview instead of sending, so a new click is needed (#3269).

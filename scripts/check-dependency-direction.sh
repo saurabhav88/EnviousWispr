@@ -96,6 +96,34 @@ import_access='(public|package|internal|fileprivate|private)'
 import_attr='(@[A-Za-z_][A-Za-z0-9_]*(\([^)]*\))?[[:space:]]+)*'
 import_grep_pattern="^[[:space:]]*${import_attr}(${import_access}[[:space:]]+)?import[[:space:]]+(${import_kinds}[[:space:]]+)?EnviousWispr"
 
+# Per-line helpers, all bash builtins: the loops below handle every import line
+# in Sources/ and Tests/ (1,631 on 2026-10-07), and the earlier `echo | cut |
+# sed` and `echo | grep` pipelines spawned about eight processes per line, 32 s
+# on the Mac, enough to keep this out of a pre-push hook (#3524). Each helper
+# matches the pipeline it replaced exactly; the results land in REPLY.
+#
+# strip_comment: `cut -d: -f3- | sed -E 's|//.*$||; s|/\*.*$||'`. Drops grep's
+# `path:lineno:` prefix, then any line or block comment tail.
+strip_comment() {
+  local rest=${1#*:}
+  rest=${rest#*:}
+  rest=${rest%%//*}
+  REPLY=${rest%%/\**}
+}
+# imported_module: `sed -E "s/^.*import[[:space:]]+(KINDS[[:space:]]+)?(EnviousWispr[A-Za-z_]*).*/\3/"`.
+# POSIX ERE takes the leftmost-longest `(.*)`, so the LAST `import` on the line
+# wins, as sed's greedy `^.*` does; no match returns the input unchanged, as sed
+# does. Group 4 because KINDS carries its own parentheses.
+imported_module() {
+  local re="^(.*)import[[:space:]]+(${import_kinds}[[:space:]]+)?(EnviousWispr[A-Za-z_]*)"
+  if [[ $1 =~ $re ]]; then REPLY=${BASH_REMATCH[4]}; else REPLY=$1; fi
+}
+# is_permitted: `echo " $permitted " | grep -q " $imp "`.
+is_permitted() {
+  case " $1 " in *" $2 "*) return 0 ;; esac
+  return 1
+}
+
 for module_dir in Sources/*/; do
   module=$(basename "$module_dir")
   if ! permitted=$(permitted_imports_for "$module"); then
@@ -105,22 +133,20 @@ for module_dir in Sources/*/; do
   fi
   modules_scanned=$((modules_scanned + 1))
   while IFS= read -r line; do
-    file=$(echo "$line" | cut -d: -f1)
+    file=${line%%:*}
     # Strip the leading `path:lineno:` prefix from grep + any line/block comment
     # tail before extracting the module. Stripping comments matters because an
     # inline `// EnviousWisprCore` after a forbidden `import EnviousWisprPipeline`
-    # would otherwise be picked up by the greedy sed below.
-    code=$(echo "$line" | cut -d: -f3- | sed -E 's|//.*$||; s|/\*.*$||')
+    # would otherwise be picked up by the greedy match below.
+    strip_comment "$line"; code=$REPLY
     # Extract the imported module name. Handles plain (`import EnviousWisprX`)
     # and scoped (`import struct EnviousWisprX.Foo`) forms by anchoring the
     # capture to the first `EnviousWispr<rest>` token AFTER the `import` keyword.
-    # `${import_kinds}` already wraps the alternation in `(...)`, so the outer
-    # `(${import_kinds}[[:space:]]+)?` is group 1 and the inner alternation is
-    # group 2. The EnviousWispr capture is group 3.
-    imp=$(echo "$code" | sed -E "s/^.*import[[:space:]]+(${import_kinds}[[:space:]]+)?(EnviousWispr[A-Za-z_]*).*/\\3/")
+    # `imported_module` (above) owns the capture-group arithmetic.
+    imported_module "$code"; imp=$REPLY
     case "$imp" in
       EnviousWispr*)
-        if ! echo " $permitted " | grep -q " $imp "; then
+        if ! is_permitted "$permitted" "$imp"; then
           echo "DEP-DIRECTION: $file: '$module' imports '$imp' (not in allowed: $permitted)"
           violations=$((violations + 1))
         fi
@@ -229,12 +255,12 @@ for test_dir in Tests/*/; do
   fi
   modules_scanned=$((modules_scanned + 1))
   while IFS= read -r line; do
-    file=$(echo "$line" | cut -d: -f1)
-    code=$(echo "$line" | cut -d: -f3- | sed -E 's|//.*$||; s|/\*.*$||')
-    imp=$(echo "$code" | sed -E "s/^.*import[[:space:]]+(${import_kinds}[[:space:]]+)?(EnviousWispr[A-Za-z_]*).*/\\3/")
+    file=${line%%:*}
+    strip_comment "$line"; code=$REPLY
+    imported_module "$code"; imp=$REPLY
     case "$imp" in
       EnviousWispr*)
-        if ! echo " $permitted " | grep -q " $imp "; then
+        if ! is_permitted "$permitted" "$imp"; then
           echo "DEP-DIRECTION: $file: test target '$target' imports '$imp' (not in allowed: $permitted)"
           violations=$((violations + 1))
         fi
@@ -258,19 +284,66 @@ done
 # purpose — that is what Live UAT is. Those scripts are the sanctioned way to reach
 # the OS; this rule governs compiled code, which is not.
 while IFS= read -r line; do
-  file=$(echo "$line" | cut -d: -f1)
+  file=${line%%:*}
   case "$file" in
     Sources/EnviousWisprDesktopEffects/*) continue ;;
     # Standalone launcher executable (#3423), built by its sibling build.sh.
     # Package.swift and Project.swift exclude it from test targets.
     Tests/Fixtures/launcher-panel/LauncherPanel.swift) continue ;;
   esac
-  code=$(echo "$line" | cut -d: -f3- | sed -E 's|//.*$||; s|/\*.*$||')
-  if echo "$code" | grep -Eq "$live_effect_pattern"; then
+  strip_comment "$line"; code=$REPLY
+  if [[ $code =~ $live_effect_pattern ]]; then
     echo "DEP-DIRECTION: $file: live desktop call outside Sources/EnviousWisprDesktopEffects/"
     violations=$((violations + 1))
   fi
 done < <(grep -rEn --include='*.swift' "$live_effect_pattern" Sources Tests || true)
+
+# #3544 P2: keyboard event taps and event posting. A tap sees and can hold every
+# keystroke system-wide, and a post types into whatever app is in front, so both
+# belong to EnviousWisprDesktopEffects like the calls above. Kept as its own
+# pattern so a narrow posting exception cannot widen the live-effect rule.
+# C forms: `CGEventPost` also covers `CGEventPostToPid`/`CGEventPostToPSN`.
+# Swift forms are matched by member name: `.tapCreate` (and `ForPid`/`ForPSN`),
+# `.tapEnable`, `tapPostEvent`, `.postToPid`, `.postToPSN`, and `.post(tap:`.
+# A reference stored under another name (`let f = CGEvent.tapCreate`) is still
+# caught at the store; a value reached through a helper or typealias declared
+# elsewhere is not, because this is text, not type resolution. Comments are
+# stripped as above; string literals are not, so a sentence naming one of these
+# inside a string must be reworded. `NotificationCenter.post(name:)` and app
+# methods named `post` do not match: the Swift form needs the `tap:` label.
+# Backticked names (`CGEvent.`tapCreate``) match. A call split across lines
+# (`e.post(` then `tap: x)`) does not, since grep reads one line: the syntax
+# sweep in `DesktopEffectIsolationFreezeTests` reads whole statements over the
+# same Sources and Tests scope and is the layer that catches it.
+tap_post_pattern='CGEventTapCreate|CGEventTapEnable|CGEventPost|CGEventTapPostEvent|tapPostEvent|[.][[:space:]]*`?(tapCreate|tapEnable|postToPid|postToPSN)|[.][[:space:]]*`?post`?[[:space:]]*[(][[:space:]]*`?tap`?[[:space:]]*:'
+
+# The existing posting sites, each permitted as its exact statement in its own
+# file, not by file: paste's Cmd+V pair and the synthetic Copy chord. A new
+# post, a changed target or any tap call in these files still fails.
+tap_post_permitted() {
+  case "$1|$2" in
+    "Sources/EnviousWisprServices/PasteService.swift|keyDown.post(tap: .cgAnnotatedSessionEventTap)") return 0 ;;
+    "Sources/EnviousWisprServices/PasteService.swift|keyUp.post(tap: .cgAnnotatedSessionEventTap)") return 0 ;;
+    "Sources/EnviousWisprPipeline/SyntheticCopyChord.swift|commandDown.postToPid(pid)") return 0 ;;
+    "Sources/EnviousWisprPipeline/SyntheticCopyChord.swift|keyDown.postToPid(pid)") return 0 ;;
+    "Sources/EnviousWisprPipeline/SyntheticCopyChord.swift|keyUp.postToPid(pid)") return 0 ;;
+    "Sources/EnviousWisprPipeline/SyntheticCopyChord.swift|commandUp.postToPid(pid)") return 0 ;;
+  esac
+  return 1
+}
+
+while IFS= read -r line; do
+  file=${line%%:*}
+  case "$file" in
+    Sources/EnviousWisprDesktopEffects/*) continue ;;
+  esac
+  strip_comment "$line"; code=$REPLY
+  [[ $code =~ $tap_post_pattern ]] || continue
+  trimmed=$(printf '%s' "$code" | sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//')
+  if tap_post_permitted "$file" "$trimmed"; then continue; fi
+  echo "DEP-DIRECTION: $file: event tap or event post outside Sources/EnviousWisprDesktopEffects/"
+  violations=$((violations + 1))
+done < <(grep -rEn --include='*.swift' "$tap_post_pattern" Sources Tests || true)
 
 if [ "$violations" -gt 0 ]; then
   echo "FAIL: $violations dep-direction violation(s)" >&2

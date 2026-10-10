@@ -1,0 +1,682 @@
+{
+ "version": 1,
+ "note": "Settings Map id to product-catalog ui_surface slug (#3482). One explicit compatibility mapping; several map ids may share one physical control. Edit by hand when a map id is added, renamed or retired; publish-catalog.py refuses an unmapped or unknown id.",
+ "surfaces": {
+  "mac-window-main": [
+   "window.settings"
+  ],
+  "mac-ctl-settings-search": [
+   "window.search"
+  ],
+  "mac-page-ai-polish": [
+   "page.aiPolish"
+  ],
+  "mac-page-app-settings": [
+   "page.appSettings"
+  ],
+  "mac-page-dictation": [
+   "page.dictation"
+  ],
+  "mac-page-dictionary": [
+   "page.dictionary"
+  ],
+  "mac-page-keybinds": [
+   "page.keybinds"
+  ],
+  "mac-page-snippets": [
+   "page.snippets"
+  ],
+  "mac-page-transcribe-file": [
+   "page.transcribeFile",
+   "transcribeFile.steps"
+  ],
+  "mac-sec-engine-transcription": [
+   "section.transcriptionEngine"
+  ],
+  "mac-sec-engine-shared": [
+   "section.engineShared"
+  ],
+  "mac-sec-mic-input": [
+   "section.microphone"
+  ],
+  "mac-sec-lp-status": [
+   "section.livePreview"
+  ],
+  "mac-sec-lp-engine": [
+   "section.previewEngine"
+  ],
+  "mac-sec-pill": [
+   "section.pill",
+   "pillStyle"
+  ],
+  "mac-sec-chimes": [
+   "section.chimes",
+   "recordingChime"
+  ],
+  "mac-sec-clipboard": [
+   "section.clipboard"
+  ],
+  "mac-sec-clipboard-quick-add": [
+   "section.quickAddClipboard"
+  ],
+  "mac-sec-kb-recording": [
+   "section.keybindsRecording"
+  ],
+  "mac-sec-kb-shortcuts": [
+   "section.keybindsShortcuts"
+  ],
+  "mac-sec-polish-model-heading": [
+   "section.aiPolishModel"
+  ],
+  "mac-sec-dict-heading": [
+   "section.dictionary"
+  ],
+  "mac-sec-appearance": [
+   "section.appearance"
+  ],
+  "mac-sec-permissions": [
+   "section.permissions"
+  ],
+  "mac-sec-privacy": [
+   "section.privacy"
+  ],
+  "mac-sec-licenses": [
+   "section.about"
+  ],
+  "mac-tab-engine": [
+   "dictation.tab.engine"
+  ],
+  "mac-tab-microphone": [
+   "dictation.tab.microphone"
+  ],
+  "mac-tab-live-preview": [
+   "dictation.tab.livePreview"
+  ],
+  "mac-tab-pill": [
+   "dictation.tab.pill"
+  ],
+  "mac-tab-chimes": [
+   "dictation.tab.chimes"
+  ],
+  "mac-tab-clipboard": [
+   "dictation.tab.clipboard"
+  ],
+  "mac-ctl-engine-change": [
+   "transcriptionEngine",
+   "transcriptionEngine.change",
+   "transcriptionEngine.keepCurrent"
+  ],
+  "mac-ctl-fast-recheck": [
+   "transcriptionEngine.recheckFast"
+  ],
+  "mac-ctl-parakeet-cancel": [
+   "fastModel.cancelDownload"
+  ],
+  "mac-ctl-parakeet-resume": [
+   "fastModel.resume",
+   "fastModel.tryAgain"
+  ],
+  "mac-ctl-wk-setup": [
+   "whisperModel.setUp"
+  ],
+  "mac-ctl-wk-cancel": [
+   "whisperModel.cancelDownload"
+  ],
+  "mac-ctl-wk-resume": [
+   "whisperModel.resume"
+  ],
+  "mac-ctl-wk-remove": [
+   "whisperModel.remove"
+  ],
+  "mac-ctl-wk-recheck": [
+   "whisperModel.recheck"
+  ],
+  "mac-ctl-wk-try-again": [
+   "whisperModel.tryAgain"
+  ],
+  "mac-sec-engine-current": [
+   "currentEngineSection"
+  ],
+  "mac-ctl-auto-detect-language": [
+   "autoDetectLanguage"
+  ],
+  "mac-ctl-language-suggestions-reset": [
+   "autoDetectLanguage.resetSuggestions"
+  ],
+  "mac-ctl-language-change": [
+   "lockedLanguage",
+   "lockedLanguage.change"
+  ],
+  "mac-ctl-faster-transcription": [
+   "fasterTranscription"
+  ],
+  "mac-ctl-vad-auto-stop": [
+   "stopOnSilence"
+  ],
+  "mac-ctl-vad-pause-duration": [
+   "pauseDuration"
+  ],
+  "mac-ctl-filler-removal": [
+   "fillerRemoval"
+  ],
+  "mac-ctl-spoken-emoji": [
+   "spokenEmoji"
+  ],
+  "mac-ctl-spoken-punctuation": [
+   "spokenPunctuation"
+  ],
+  "mac-ctl-spoken-punctuation-start-word": [
+   "startWordLanguage",
+   "startWordField",
+   "startWord.save",
+   "startWord.reset",
+   "startWordLanguage.en",
+   "startWordLanguage.de",
+   "startWordLanguage.fr",
+   "startWordLanguage.es",
+   "startWordLanguage.it"
+  ],
+  "mac-ctl-unload-model": [
+   "unloadModel",
+   "unloadModel.never",
+   "unloadModel.immediately",
+   "unloadModel.twoMinutes",
+   "unloadModel.fiveMinutes",
+   "unloadModel.tenMinutes",
+   "unloadModel.fifteenMinutes",
+   "unloadModel.oneHour"
+  ],
+  "mac-ctl-input-device": [
+   "inputDevice",
+   "inputDevice.auto",
+   "inputDevice.device"
+  ],
+  "mac-ctl-input-socket": [
+   "inputSocket",
+   "inputSocket.input"
+  ],
+  "mac-ctl-media-during-dictation": [
+   "mediaDuringDictation",
+   "mediaDuringDictation.continue",
+   "mediaDuringDictation.lower",
+   "mediaDuringDictation.mute",
+   "mediaDuringDictation.pause"
+  ],
+  "mac-ctl-mic-readiness": [
+   "micReadiness",
+   "micReadiness.off",
+   "micReadiness.10s",
+   "micReadiness.30s",
+   "micReadiness.60s",
+   "micReadiness.always"
+  ],
+  "mac-ctl-bt-learn-more": [
+   "bluetoothGuide",
+   "bluetoothGuide.learnMore"
+  ],
+  "mac-ctl-lp-toggle": [
+   "livePreview"
+  ],
+  "mac-ctl-lp-language": [
+   "livePreview.language"
+  ],
+  "mac-ctl-lp-browse-downloads": [
+   "livePreview.browseDownloads"
+  ],
+  "mac-ctl-lp-engine-change": [
+   "previewEngine",
+   "previewEngine.change",
+   "previewEngine.keepCurrent"
+  ],
+  "mac-ctl-lp-learn-more": [
+   "previewEngine.compare"
+  ],
+  "mac-ctl-lp-engine-action": [
+   "previewEngine.universal.download",
+   "previewEngine.universal.cancel",
+   "previewEngine.universal.resume",
+   "previewEngine.universal.retry",
+   "previewEngine.universal.remove"
+  ],
+  "mac-sec-lp-languages": [
+   "previewLanguages"
+  ],
+  "mac-ctl-lp-install-languages": [
+   "previewLanguages.install"
+  ],
+  "mac-ctl-pill-position": [
+   "pillPosition",
+   "pillPosition.top",
+   "pillPosition.bottom"
+  ],
+  "mac-ctl-pill-configure-lp": [
+   "pillStyle.configureLivePreview"
+  ],
+  "mac-ctl-play-sounds": [
+   "recordingChimes"
+  ],
+  "mac-ctl-sound-preview": [
+   "recordingChime.preview"
+  ],
+  "mac-ctl-auto-copy": [
+   "autoCopyToClipboard"
+  ],
+  "mac-ctl-restore-clipboard": [
+   "restoreClipboard"
+  ],
+  "mac-ctl-smart-insertion": [
+   "smartInsertion"
+  ],
+  "mac-ctl-read-selections-clipboard": [
+   "quickAddClipboardFallback"
+  ],
+  "mac-ctl-recording-mode": [
+   "recordingMode",
+   "recordingMode.pushToTalk",
+   "recordingMode.toggle"
+  ],
+  "mac-ctl-recording-keybind": [
+   "recordKeybind"
+  ],
+  "mac-ctl-cancel-keybind": [
+   "cancelKeybind"
+  ],
+  "mac-ctl-escape-recovery": [
+   "escapeRecovery"
+  ],
+  "mac-ctl-quick-add-keybind": [
+   "quickAddKeybind"
+  ],
+  "mac-ctl-paste-last-keybind": [
+   "pasteLastKeybind"
+  ],
+  "mac-ctl-copy-last-keybind": [
+   "copyLastKeybind"
+  ],
+  "mac-ctl-keybind-reset-default": [
+   "keybind.resetToDefault"
+  ],
+  "mac-ctl-polish-enable": [
+   "enableAIPolish"
+  ],
+  "mac-ctl-polish-provider-card": [
+   "aiPolishProvider"
+  ],
+  "mac-sec-polish-setup": [
+   "aiPolish.providerSection",
+   "localModel.download",
+   "localModel.cancel",
+   "localModel.resume",
+   "localModel.resumeUpgrade",
+   "localModel.finishUpgrade",
+   "localModel.tryAgain",
+   "localModel.testLive"
+  ],
+  "mac-sec-polish-why": [
+   "aiPolish.whyUse.egOne",
+   "aiPolish.whyUse.s1Mini",
+   "aiPolish.whyUse.appleIntelligence",
+   "aiPolish.whyUse.ollama",
+   "aiPolish.whyUse.openAI",
+   "aiPolish.whyUse.gemini",
+   "aiPolish.whyUse.claude"
+  ],
+  "mac-ctl-polish-why-link-apple-intelligence": [
+   "aiPolish.link.aboutAppleIntelligence"
+  ],
+  "mac-ctl-polish-why-link-ollama-library": [
+   "aiPolish.link.ollamaLibrary"
+  ],
+  "mac-ctl-polish-why-link-openai-rate-limits": [
+   "aiPolish.link.openAIRateLimits"
+  ],
+  "mac-ctl-polish-why-link-gemini-rate-limits": [
+   "aiPolish.link.geminiRateLimits"
+  ],
+  "mac-ctl-polish-why-link-claude-rate-limits": [
+   "aiPolish.link.claudeRateLimits"
+  ],
+  "mac-ctl-s1-tone": [
+   "s1Tone",
+   "s1Tone.casual",
+   "s1Tone.semiCasual",
+   "s1Tone.semiFormal",
+   "s1Tone.formal"
+  ],
+  "mac-ctl-s1-structure": [
+   "s1Structure",
+   "s1Structure.prose",
+   "s1Structure.lists"
+  ],
+  "mac-ctl-s1-context": [
+   "s1Context",
+   "s1Context.general",
+   "s1Context.email"
+  ],
+  "mac-ctl-apple-recheck": [
+   "appleIntelligence.status",
+   "appleIntelligence.recheck"
+  ],
+  "mac-ctl-ollama-setup": [
+   "ollama.downloadOllama",
+   "ollama.start",
+   "ollama.downloadModel",
+   "ollama.cancelPull",
+   "ollama.tryAgain"
+  ],
+  "mac-ctl-ollama-server": [
+   "ollama.server",
+   "ollama.recheck"
+  ],
+  "mac-ctl-ollama-more-models": [
+   "ollama.browseModels"
+  ],
+  "mac-ctl-ollama-prepare": [
+   "ollama.prepareModel"
+  ],
+  "mac-ctl-polish-key-openai": [
+   "apiKey.openAI"
+  ],
+  "mac-ctl-polish-key-gemini": [
+   "apiKey.gemini"
+  ],
+  "mac-ctl-polish-key-claude": [
+   "apiKey.claude"
+  ],
+  "mac-ctl-polish-key-save": [
+   "apiKey.save"
+  ],
+  "mac-ctl-polish-key-clear": [
+   "apiKey.clear"
+  ],
+  "mac-ctl-polish-key-reveal": [
+   "apiKey.reveal"
+  ],
+  "mac-ctl-polish-key-get-link": [
+   "apiKey.getKeyLink"
+  ],
+  "mac-ctl-polish-model": [
+   "polishModel"
+  ],
+  "mac-ctl-polish-model-refresh": [
+   "polishModel.refresh"
+  ],
+  "mac-ctl-enable-dictionary": [
+   "enableDictionary"
+  ],
+  "mac-sec-dict-your-words": [
+   "dictionary.tab.yourWords"
+  ],
+  "mac-sec-dict-vocab-packs": [
+   "dictionary.tab.vocabularyPacks"
+  ],
+  "mac-sec-dict-learn-from": [
+   "dictionary.tab.learnFrom",
+   "learnFrom"
+  ],
+  "mac-sec-dict-quick-add": [
+   "dictionary.tab.quickAdd",
+   "quickAdd.step1",
+   "quickAdd.step2",
+   "quickAdd.step3",
+   "quickAdd.menuBar"
+  ],
+  "mac-ctl-dict-add-word": [
+   "yourWords.add"
+  ],
+  "mac-ctl-dict-import": [
+   "yourWords.import"
+  ],
+  "mac-ctl-dict-export": [
+   "yourWords.export"
+  ],
+  "mac-ctl-dict-search": [
+   "yourWords.search",
+   "yourWords.clearSearch"
+  ],
+  "mac-ctl-dict-category-filter": [
+   "yourWords.categoryFilter",
+   "yourWords.category.all",
+   "yourWords.category.general",
+   "yourWords.category.person",
+   "yourWords.category.brand",
+   "yourWords.category.acronym",
+   "yourWords.category.domain",
+   "yourWords.category.autoLearned"
+  ],
+  "mac-ctl-dict-select": [
+   "yourWords.massEdit"
+  ],
+  "mac-ctl-self-learning": [
+   "selfLearningDictionary"
+  ],
+  "mac-ctl-self-learning-learn-more": [
+   "selfLearningDictionary.learnMore"
+  ],
+  "mac-ctl-contacts-import": [
+   "importContacts"
+  ],
+  "mac-ctl-contacts-sync": [
+   "contactsSyncOnLaunch"
+  ],
+  "mac-ctl-quick-add-shortcut-callout": [
+   "quickAdd.shortcut"
+  ],
+  "mac-sec-snippets-keyword": [
+   "snippets"
+  ],
+  "mac-ctl-snippet-keyword": [
+   "snippetKeyword"
+  ],
+  "mac-sec-snippets-list": [
+   "yourSnippets"
+  ],
+  "mac-ctl-snippets-search": [
+   "snippets.search",
+   "snippets.clearSearch"
+  ],
+  "mac-ctl-snippets-import": [
+   "snippets.import"
+  ],
+  "mac-ctl-snippets-export": [
+   "snippets.export"
+  ],
+  "mac-ctl-snippets-add": [
+   "snippets.add"
+  ],
+  "mac-ctl-snippets-add-first": [
+   "snippets.addFirst"
+  ],
+  "mac-tab-appearance": [
+   "appSettings.tab.appearance"
+  ],
+  "mac-tab-permissions": [
+   "appSettings.tab.permissions"
+  ],
+  "mac-tab-privacy": [
+   "appSettings.tab.privacy"
+  ],
+  "mac-tab-licenses": [
+   "appSettings.tab.licenses"
+  ],
+  "mac-ctl-theme": [
+   "theme",
+   "theme.system",
+   "theme.light",
+   "theme.dark"
+  ],
+  "mac-ctl-appearance-language": [
+   "appLanguage",
+   "appLanguage.systemDefault",
+   "appLanguage.shipped"
+  ],
+  "mac-ctl-appearance-relaunch": [
+   "appLanguage.relaunch"
+  ],
+  "mac-ctl-show-in-dock": [
+   "showInDock"
+  ],
+  "mac-ctl-menu-bar-update-alert": [
+   "updateAlertInMenuBar"
+  ],
+  "mac-ctl-perm-mic-request": [
+   "permission.microphone",
+   "permission.microphone.request"
+  ],
+  "mac-ctl-perm-ax-open": [
+   "permission.accessibility",
+   "permission.accessibility.openSettings"
+  ],
+  "mac-ctl-share-usage-metrics": [
+   "shareUsageMetrics"
+  ],
+  "mac-ctl-send-crash-reports": [
+   "sendCrashReports"
+  ],
+  "mac-ctl-crash-restart-now": [
+   "sendCrashReports.restart"
+  ],
+  "mac-ctl-privacy-learn-more": [
+   "whatWeCollect",
+   "whatWeCollect.seeDetails"
+  ],
+  "mac-ctl-licenses-view-license": [
+   "license.gpl",
+   "license.gpl.view"
+  ],
+  "mac-ctl-licenses-view-notices": [
+   "license.notices",
+   "license.notices.view"
+  ],
+  "mac-ctl-engine-fast": [
+   "transcriptionEngine.fast"
+  ],
+  "mac-ctl-engine-all-languages": [
+   "transcriptionEngine.allLanguages"
+  ],
+  "mac-ctl-lp-engine-apple": [
+   "previewEngine.apple"
+  ],
+  "mac-ctl-lp-engine-universal": [
+   "previewEngine.universal"
+  ],
+  "mac-ctl-pill-capsule": [
+   "pillStyle.capsule"
+  ],
+  "mac-ctl-pill-level-rail": [
+   "pillStyle.levelRail"
+  ],
+  "mac-ctl-pill-reading-well": [
+   "pillStyle.readingWell"
+  ],
+  "mac-ctl-sound-dust-mote": [
+   "recordingChime.dustMote"
+  ],
+  "mac-ctl-sound-velvet-hush": [
+   "recordingChime.velvetHush"
+  ],
+  "mac-ctl-sound-muted-confirm": [
+   "recordingChime.mutedConfirm"
+  ],
+  "mac-ctl-sound-whisper-tick": [
+   "recordingChime.whisperTick"
+  ],
+  "mac-ctl-sound-round-pebble": [
+   "recordingChime.roundPebble"
+  ],
+  "mac-ctl-sound-paper-tap": [
+   "recordingChime.paperTap"
+  ],
+  "mac-ctl-sound-soft-hush": [
+   "recordingChime.softHush"
+  ],
+  "mac-ctl-sound-low-nod": [
+   "recordingChime.lowNod"
+  ],
+  "mac-ctl-sound-cloud-pop": [
+   "recordingChime.cloudPop"
+  ],
+  "mac-ctl-sound-velvet-tap": [
+   "recordingChime.velvetTap"
+  ],
+  "mac-ctl-sound-satin-shift": [
+   "recordingChime.satinShift"
+  ],
+  "mac-ctl-sound-air-glint": [
+   "recordingChime.airGlint"
+  ],
+  "mac-ctl-provider-eg1": [
+   "aiPolishProvider.egOne"
+  ],
+  "mac-ctl-provider-s1mini": [
+   "aiPolishProvider.s1Mini"
+  ],
+  "mac-ctl-provider-apple": [
+   "aiPolishProvider.appleIntelligence"
+  ],
+  "mac-ctl-provider-ollama": [
+   "aiPolishProvider.ollama"
+  ],
+  "mac-ctl-provider-openai": [
+   "aiPolishProvider.openAI"
+  ],
+  "mac-ctl-provider-gemini": [
+   "aiPolishProvider.gemini"
+  ],
+  "mac-ctl-provider-claude": [
+   "aiPolishProvider.claude"
+  ]
+ },
+ "newSurfaces": {
+  "mac-ctl-keybind-reset-default": {
+   "kind": "control",
+   "parent": "mac-sec-kb-recording",
+   "label": "Reset to default [restores the recording keybinds]"
+  },
+  "mac-ctl-polish-why-link-apple-intelligence": {
+   "kind": "control",
+   "parent": "mac-sec-polish-why",
+   "label": "About Apple Intelligence [link; Apple Intelligence selected]"
+  },
+  "mac-ctl-polish-why-link-ollama-library": {
+   "kind": "control",
+   "parent": "mac-sec-polish-why",
+   "label": "Ollama model library [link; Ollama selected]"
+  },
+  "mac-ctl-polish-why-link-openai-rate-limits": {
+   "kind": "control",
+   "parent": "mac-sec-polish-why",
+   "label": "OpenAI rate limits by tier [link; OpenAI selected]"
+  },
+  "mac-ctl-polish-why-link-gemini-rate-limits": {
+   "kind": "control",
+   "parent": "mac-sec-polish-why",
+   "label": "Gemini API rate limits by tier [link; Gemini selected]"
+  },
+  "mac-ctl-polish-why-link-claude-rate-limits": {
+   "kind": "control",
+   "parent": "mac-sec-polish-why",
+   "label": "Claude API rate limits [link; Claude selected]"
+  },
+  "mac-ctl-ollama-server": {
+   "kind": "control",
+   "parent": "mac-sec-polish-setup",
+   "label": "Server [Ollama selected; with Re-check Ollama status]"
+  },
+  "mac-ctl-polish-key-get-link": {
+   "kind": "control",
+   "parent": "mac-sec-polish-setup",
+   "label": "Get a {provider} API key [link; cloud providers]"
+  },
+  "mac-ctl-snippets-add-first": {
+   "kind": "control",
+   "parent": "mac-sec-snippets-list",
+   "label": "Add your first snippet [only when there are no snippets]"
+  },
+  "mac-ctl-settings-search": {
+   "kind": "control",
+   "parent": "mac-window-main",
+   "label": "Search settings [Cmd+F; finds a page, setting or choice]"
+  }
+ }
+}

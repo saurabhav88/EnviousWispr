@@ -55,119 +55,32 @@ struct SpeechEngineSettingsView: View {
   private var engineCards: some View {
     // ── Transcription Engine (card selector) ─────────────────────────
     // A primary choice with meaningful trade-offs, so it reads as two
-    // selectable cards rather than a segmented pill (#3). Copy advertises
-    // Parakeet's 25 European languages, not just English (founder, 2026-07-03).
+    // selectable cards rather than a segmented pill (#3).
     // (#3385: the cards now open under the summary's Change button.)
     // Two equal flexible columns so the pair always spans the full content
     // width (an adaptive grid left-packs them and strands empty space on the
     // right). Each card carries a "pick this when" tagline plus a four-row spec
-    // table. Every value is grounded: Parakeet's 25-language support is
-    // confirmed by the NVIDIA model card AND a live in-app test (French/Spanish/
-    // German, 2026-07-03); transcribe times come from our own benchmark data
-    // (asr-landscape-2026.md). The "Runs on" values are read from the actual
-    // compute-unit config: Parakeet loads `.cpuAndNeuralEngine` (FluidAudio
-    // AsrModels.defaultConfiguration), WhisperKit is pinned `.cpuAndGPU` and
-    // explicitly avoids the Neural Engine (WhisperKitBackend dictationCompute-
-    // Options, #879). Both run entirely on-device.
-    LazyVGrid(
-      columns: [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)],
-      spacing: 12
-    ) {
-      EngineCard(
-        icon: "bolt.fill",
-        title: String(
-          localized: "Fast", comment: "Speech engine settings, engine card: the fast engine's name."
-        ),
-        tagline: String(
-          localized: "Pick this for everyday English and European dictation.",
-          comment: "Speech engine settings, engine card: when to pick the fast engine."),
-        specs: [
-          (
-            String(
-              localized: "Model",
-              comment: "Speech engine settings, engine card: a row label in the card's spec table."),
-            "Parakeet v3"
-          ),
-          (
-            String(
-              localized: "Languages",
-              comment: "Speech engine settings, engine card: a row label in the card's spec table."),
-            String(
-              localized: "25 European languages",
-              comment: "Speech engine settings, engine card: how many languages it covers.")
-          ),
-          (
-            String(
-              localized: "Runs on",
-              comment: "Speech engine settings, engine card: a row label in the card's spec table."),
-            String(
-              localized: "Apple Neural Engine",
-              comment:
-                "Speech engine settings, engine card: the chip it runs on. Use Apple's own name for the Neural Engine in your language."
-            )
-          ),
-          (
-            String(
-              localized: "Transcribe time",
-              comment: "Speech engine settings, engine card: a row label in the card's spec table."),
-            String(
-              localized: "Usually ~0.1s after you speak",
-              comment:
-                "Speech engine settings, engine card: how quickly text appears. 0.1s is a tenth of a second."
-            )
-          ),
-        ],
-        isSelected: settings.selectedBackend == .parakeet
-      ) {
-        settings.selectedBackend = .parakeet
-        // #3385: picking, including the engine already chosen, closes the choices.
-        showEngineChoices = false
-      }
-      EngineCard(
-        icon: "globe",
-        title: String(
-          localized: "All Languages",
-          comment: "Speech engine settings, engine card: the multilingual engine's name."),
-        tagline: String(
-          localized: "Pick this for other languages or the toughest audio.",
-          comment: "Speech engine settings, engine card: when to pick the multilingual engine."),
-        specs: [
-          (
-            String(
-              localized: "Model",
-              comment: "Speech engine settings, engine card: a row label in the card's spec table."),
-            "Whisper Large v3 Turbo"
-          ),
-          (
-            String(
-              localized: "Languages",
-              comment: "Speech engine settings, engine card: a row label in the card's spec table."),
-            String(
-              localized: "99+ languages",
-              comment: "Speech engine settings, engine card: how many languages it covers.")
-          ),
-          (
-            String(
-              localized: "Runs on",
-              comment: "Speech engine settings, engine card: a row label in the card's spec table."),
-            String(
-              localized: "Apple GPU",
-              comment:
-                "Speech engine settings, engine card: the chip it runs on, the graphics processor.")
-          ),
-          (
-            String(
-              localized: "Transcribe time",
-              comment: "Speech engine settings, engine card: a row label in the card's spec table."),
-            String(
-              localized: "Usually 1-2s after you speak",
-              comment: "Speech engine settings, engine card: how quickly text appears, in seconds.")
-          ),
-        ],
-        isSelected: settings.selectedBackend == .whisperKit
-      ) {
-        settings.selectedBackend = .whisperKit
-        showEngineChoices = false
+    // table, owned by EngineChoicePresentation (#3482), where the grounding for
+    // every value lives beside it.
+    // Eager (`Grid`, not `LazyVGrid`): a lazy grid below the fold has no cards, so a Settings
+    // search for an engine could not arrive at one (#3482). Two cards gain nothing from laziness;
+    // flexible frames split the row evenly, as the flexible columns did.
+    Grid(horizontalSpacing: 12, verticalSpacing: 12) {
+      GridRow(alignment: .top) {
+        ForEach(EngineChoicePresentation.choices, id: \.backend) { choice in
+          EngineCard(
+            icon: choice.icon,
+            map: .id(choice.mapID),
+            tagline: String(localized: choice.tagline),
+            specs: choice.specs.map { (String(localized: $0.label), $0.value.resolved) },
+            isSelected: settings.selectedBackend == choice.backend
+          ) {
+            settings.selectedBackend = choice.backend
+            // #3385: picking, including the engine already chosen, closes the choices.
+            showEngineChoices = false
+          }
+          .frame(maxWidth: .infinity, alignment: .top)
+        }
       }
     }
   }
@@ -182,16 +95,18 @@ struct SpeechEngineSettingsView: View {
       // One page-level notice instead of the footnote repeated under every
       // section: these settings freeze at recording start, stated once (#2).
       VStack(alignment: .leading, spacing: SettingsPR1Layout.headingGap) {
-      SettingsSectionHeading(title: Copy.sectionHeading) {
+      SettingsSectionHeading(map: .id(.sectionTranscriptionEngine)) {
         Text(Copy.nextRecordingNote)
           .font(.stHelper)
           .foregroundStyle(.stTextSecondary)
       }
 
       SettingsSummaryCard(
+        map: .id(.transcriptionEngine),
         isExpanded: $showEngineChoices,
         changeAccessibilityLabel: Copy.changeEngine,
-        keepCurrentTitle: Copy.keepCurrent
+        change: .transcriptionEngineChange,
+        keepCurrent: .transcriptionEngineKeepCurrent
       ) {
         engineSummary
       } status: {
@@ -215,7 +130,7 @@ struct SpeechEngineSettingsView: View {
       // (`languageMode`, `useStreamingASR`); only the explanations differ. The
       // heading names the engine, so no note sits beside it (founder, 2026-10-03).
       VStack(alignment: .leading, spacing: SettingsPR1Layout.headingGap) {
-      SettingsSectionHeading(resolvedTitle: currentEngineHeading, icon: currentEngineIcon)
+      SettingsSectionHeading(map: currentEngineRef, icon: currentEngineIcon)
 
       BrandedSection {
         // ── Section 3: Language Selection ──
@@ -230,9 +145,9 @@ struct SpeechEngineSettingsView: View {
         if languageSectionIsAvailable {
           BrandedRow {
             SettingsRow(
+              map: .id(.autoDetectLanguage),
               icon: "globe",
-              resolvedTitle: String(localized: Copy.autoDetectTitle),
-              resolvedShort: String(
+              runtimeShort: String(
                 localized: settings.selectedBackend == .parakeet
                   ? Copy.autoDetectFastShort : Copy.autoDetectMultilingualShort),
               resolvedHelp: languageSectionCopy + "\n\n" + String(localized: Copy.suggestionsHelp)
@@ -242,7 +157,9 @@ struct SpeechEngineSettingsView: View {
                 // three-strike state machine (dismissal counts, suppression set,
                 // last-shown lang) so the chip can surface fresh for previously
                 // dismissed/suppressed languages.
-                Button("Reset suggestions") { languageSuggestionPresenter.resetAllChipState() }
+                Button(SettingsItemCopy.Engine.resetSuggestions) { languageSuggestionPresenter.resetAllChipState() }
+                  .settingsArrivalFocusControl()
+                  .settingsMapRegistration(.autoDetectLanguageResetSuggestions)
                   .buttonStyle(.plain)
                   .font(.stHelper)
                   .foregroundStyle(Color.stAccent)
@@ -269,21 +186,22 @@ struct SpeechEngineSettingsView: View {
           if case .locked(let code) = settings.languageMode {
             BrandedRow {
               VStack(alignment: .leading, spacing: 6) {
-                // #3124: names English (UK) when British spelling is chosen.
-                let entry = LanguageCatalog.entry(
-                  forLockedCode: code, spelling: settings.englishSpelling)
+                // #3124: names English (UK) when British spelling is chosen; the map's
+                // locked-language resolver reads the same catalog entry (#3482).
                 SettingsRow(
+                  map: .dynamic(
+                    .lockedLanguage, .lockedLanguage(code: code, spelling: settings.englishSpelling)),
                   icon: "character.bubble",
-                  resolvedTitle: LanguageCatalog.lockDisplayName(for: entry),
-                  resolvedShort: String(localized: Copy.lockedLanguageShort),
                   resolvedHelp: String(localized: Copy.lockedLanguageHelp)
                 ) {
-                  Button("Change") {
+                  Button(SettingsItemCopy.Engine.lockedLanguageChange) {
                     showLanguageLockSheet = true
                   }
                   .controlSize(.small)
                   .font(.stHelper)
                   .accessibilityLabel(String(localized: Copy.changeLanguage))
+                  .settingsArrivalFocusControl()
+                  .settingsMapRegistration(.lockedLanguageChange)
                 }
                 // #1678: a lock can outlive the engine that could honour it.
                 // Someone locked to Japanese on the multilingual engine who
@@ -322,9 +240,9 @@ struct SpeechEngineSettingsView: View {
           BrandedRow(showDivider: false) {
             VStack(alignment: .leading, spacing: 6) {
               SettingsRow(
+                map: .id(.fasterTranscription),
                 icon: "waveform",
-                resolvedTitle: LiveTranscriptionCopy.toggleLabel,
-                resolvedShort: String(
+                runtimeShort: String(
                   localized: settings.selectedBackend == .parakeet
                     ? Copy.fasterFastShort : Copy.fasterMultilingualShort)
               ) {
@@ -361,14 +279,13 @@ struct SpeechEngineSettingsView: View {
       // before #3385, gathered under one heading because none of them
       // behaves differently by engine.
       VStack(alignment: .leading, spacing: SettingsPR1Layout.headingGap) {
-      SettingsSectionHeading(title: Copy.sharedHeading)
+      SettingsSectionHeading(map: .id(.sectionEngineShared))
 
       BrandedSection {
         BrandedRow {
           SettingsRow(
+            map: .id(.stopOnSilence),
             icon: "stopwatch",
-            title: Copy.stopOnSilenceTitle,
-            short: Copy.stopOnSilenceShort,
             help: Copy.stopOnSilenceHelp
           ) {
             Toggle("", isOn: $settings.vadAutoStop)
@@ -382,11 +299,7 @@ struct SpeechEngineSettingsView: View {
           BrandedRow {
             VStack(alignment: .leading, spacing: 6) {
               BrandedSlider(
-                String(
-                  localized: "Pause duration",
-                  comment:
-                    "Speech engine settings, Auto-Stop: slider for how long a silence ends the recording."
-                ),
+                String(localized: SettingsItemCopy.Engine.pauseDuration),
                 value: $settings.vadSilenceTimeout, in: 0.5...3.0,
                 step: 0.25, low: "0.5s", high: "3.0s", format: "%.1fs")
               HStack(spacing: 6) {
@@ -395,24 +308,20 @@ struct SpeechEngineSettingsView: View {
                   .foregroundStyle(.stTextSecondary)
                   .fixedSize(horizontal: false, vertical: true)
                 SettingsInfoButton(
-                  rowTitle: String(
-                    localized: "Pause duration",
-                    comment:
-                      "Speech engine settings, Auto-Stop: slider for how long a silence ends the recording."
-                  ),
+                  rowTitle: String(localized: SettingsItemCopy.Engine.pauseDuration),
                   tooltip: String(localized: Copy.pauseHelp)
                 ) {
                   SettingsHelpText(text: String(localized: Copy.pauseHelp))
                 }
               }
             }
+            .settingsMapRegistration(.pauseDuration)
           }
         }
         BrandedRow {
           SettingsRow(
+            map: .id(.fillerRemoval),
             icon: "sparkles",
-            title: Copy.fillerTitle,
-            short: Copy.fillerShort,
             help: Copy.fillerShort
           ) {
             Toggle("", isOn: $settings.fillerRemovalEnabled)
@@ -424,9 +333,8 @@ struct SpeechEngineSettingsView: View {
         }
         BrandedRow {
           SettingsRow(
+            map: .id(.spokenEmoji),
             icon: "face.smiling",
-            title: Copy.emojiTitle,
-            short: Copy.emojiShort,
             help: Copy.emojiHelp
           ) {
             Toggle("", isOn: $settings.emojiFormatterEnabled)
@@ -438,9 +346,8 @@ struct SpeechEngineSettingsView: View {
         }
         BrandedRow {
           SettingsRow(
-            icon: "text.quote",
-            resolvedTitle: SpokenPunctuationCopy.toggleLabel,
-            resolvedShort: String(localized: Copy.punctuationShort)
+            map: .id(.spokenPunctuation),
+            icon: "text.quote"
           ) {
             SpokenPunctuationHelpPanel()
           } control: {
@@ -459,9 +366,8 @@ struct SpeechEngineSettingsView: View {
         BrandedRow(showDivider: false) {
           VStack(alignment: .leading, spacing: 6) {
             SettingsRow(
+              map: .id(.unloadModelAfter),
               icon: "memorychip",
-              title: Copy.unloadTitle,
-              short: Copy.unloadShort,
               help: Copy.unloadHelp
             ) {
               Picker(String(localized: Copy.unloadTitle), selection: $settings.modelUnloadPolicy) {
@@ -470,6 +376,7 @@ struct SpeechEngineSettingsView: View {
                 }
               }
               .labelsHidden()
+              .settingsArrivalFocusControl()
               .fixedSize()
             }
             // Kept visible as well as behind "?": it says what the chosen
@@ -515,34 +422,26 @@ struct SpeechEngineSettingsView: View {
 
   private var isParakeet: Bool { settings.selectedBackend == .parakeet }
 
-  private var currentEngineIcon: String { isParakeet ? "bolt.fill" : "globe" }
-
-  private var currentEngineName: String {
-    isParakeet
-      ? String(
-        localized: "Fast", comment: "Speech engine settings, engine card: the fast engine's name.")
-      : String(
-        localized: "All Languages",
-        comment: "Speech engine settings, engine card: the multilingual engine's name.")
+  private var currentEngine: EngineChoicePresentation.Choice {
+    EngineChoicePresentation.choice(for: settings.selectedBackend)
   }
 
-  private var currentEngineModel: String {
-    isParakeet ? "Parakeet v3" : "Whisper Large v3 Turbo"
-  }
+  private var currentEngineIcon: String { currentEngine.icon }
 
-  /// "FAST · PARAKEET V3": the heading names the engine these explanations describe.
-  private var currentEngineHeading: String {
-    String(
-      localized: "\(currentEngineName) · \(currentEngineModel)",
-      comment:
-        "Speech engine settings: heading naming the current engine, then its model. Shown in capitals."
-    ).uppercased()
+  private var currentEngineName: String { String(localized: currentEngine.title) }
+
+  private var currentEngineModel: String { currentEngine.model }
+
+  /// "FAST · PARAKEET V3": the heading names the engine these explanations describe. The
+  /// Settings Map owns the composition (#3482).
+  private var currentEngineRef: SettingsMapRef {
+    .dynamic(.currentEngineSection, .currentEngine(currentEngine))
   }
 
   private var engineSummary: some View {
     EngineSummaryContent(icon: currentEngineIcon, name: currentEngineName,
       model: currentEngineModel,
-      short: String(localized: isParakeet ? Copy.fastSummary : Copy.allLanguagesSummary))
+      short: String(localized: currentEngine.summary))
   }
 
   private func requestFastRecheck() {
@@ -619,6 +518,8 @@ struct SpeechEngineSettingsView: View {
         .disabled(fastAdmission == nil)
         .help(String(localized: EngineSummaryCopy.recheckFast))
         .accessibilityLabel(Text(EngineSummaryCopy.recheckFast))
+        .settingsArrivalFocusControl()
+        .settingsMapRegistration(.transcriptionEngineRecheckFast)
       }
       .fixedSize(horizontal: true, vertical: false)
       .task(id: modelDelivery.parakeetState) { await recheckFastAdmission() }
@@ -656,14 +557,16 @@ struct SpeechEngineSettingsView: View {
             // colour as each other and as this app's disabled treatment, with
             // no hover to contradict it.
             if row.showsCancel {
-              SettingsActionButton(title: "Cancel", isEnabled: true, emphasis: .quiet, shape: .roundedRect, size: .medium) {
+              SettingsActionButton(title: SettingsItemCopy.Engine.fastCancel, isEnabled: true, emphasis: .quiet, shape: .roundedRect, size: .medium) {
                 modelDelivery.cancelParakeetDownload()
               }
+              .settingsMapRegistration(.fastModelCancelDownload)
             }
-            if let action = row.actionLabel {
-              SettingsActionButton(verbatimTitle: action, isEnabled: true, emphasis: .filled, shape: .roundedRect, size: .medium) {
+            if let action = row.action {
+              SettingsActionButton(verbatimTitle: SettingsMapRef.id(action).title, isEnabled: true, emphasis: .filled, shape: .roundedRect, size: .medium) {
                 modelDelivery.resumeParakeetDownload()
               }
+              .settingsMapRegistration(action)
             }
           }
     }
@@ -744,7 +647,7 @@ struct SpeechEngineSettingsView: View {
   /// D6 row model for the delivery state; nil = render nothing (notReady /
   /// admitted are silent in settings).
   private func parakeetDeliveryRow(_ state: DeliveryState) -> (
-    title: String, detail: String?, showsCancel: Bool, actionLabel: String?
+    title: String, detail: String?, showsCancel: Bool, action: SettingsMapID?
   )? {
     switch state {
     case .notReady, .admitted:
@@ -788,9 +691,7 @@ struct SpeechEngineSettingsView: View {
           localized: "Download paused. Resume anytime.",
           comment: "Speech engine settings, speech model download: the user paused it."),
         nil, false,
-        String(
-          localized: "Resume",
-          comment: "Speech engine settings, speech model download: button that resumes it.")
+        .fastModelResume
       )
     case .failed(let failure):
       return (
@@ -799,9 +700,7 @@ struct SpeechEngineSettingsView: View {
           comment: "Speech engine settings, speech model download: failed."),
         ModelDeliveryCopy.message(reason: failure.reason, detail: failure.detail),
         false,
-        String(
-          localized: "Try Again",
-          comment: "Speech engine settings, speech model download: button after a failure.")
+        .fastModelTryAgain
       )
     }
   }
@@ -875,6 +774,7 @@ struct SpeechEngineSettingsView: View {
       // #3385: the download explanation moved behind "?"; the action and the
       // re-check stay beside the row.
       SettingsRow(
+        notInSettingsMap: .statusLine,
         icon: "arrow.down.circle",
         title: Copy.modelNotSetUp,
         short: Copy.modelSetupShort,
@@ -886,6 +786,7 @@ struct SpeechEngineSettingsView: View {
           ) {
             setup.whisperKitSetup.downloadModel()
           }
+          .settingsMapRegistration(.whisperModelSetUp)
 
           whisperKitRefreshButton
         }
@@ -916,11 +817,13 @@ struct SpeechEngineSettingsView: View {
           Button {
             setup.whisperKitSetup.cancelDownload()
           } label: {
-            Text("Cancel").font(.stHelper).settingsHoverQuiet(tint: .stError)
+            Text(SettingsItemCopy.Engine.whisperCancel).font(.stHelper).settingsHoverQuiet(tint: .stError)
           }
           .controlSize(.small)
           .buttonStyle(.borderless)
           .foregroundStyle(.stError)
+          .settingsArrivalFocusControl()
+          .settingsMapRegistration(.whisperModelCancelDownload)
         }
       }
 
@@ -933,9 +836,10 @@ struct SpeechEngineSettingsView: View {
         Text("Download paused. Resume anytime.")
           .settingsReadingCopy()
         HStack {
-          SettingsActionButton(title: "Resume", isEnabled: true, emphasis: .filled, shape: .roundedRect, size: .medium) {
+          SettingsActionButton(title: SettingsItemCopy.Engine.whisperResume, isEnabled: true, emphasis: .filled, shape: .roundedRect, size: .medium) {
             setup.whisperKitSetup.downloadModel()
           }
+          .settingsMapRegistration(.whisperModelResume)
           whisperKitRefreshButton
         }
       }
@@ -999,11 +903,13 @@ struct SpeechEngineSettingsView: View {
             Button {
               setup.whisperKitSetup.removeModel()
             } label: {
-              Text("Remove Model").font(.stHelper).settingsHoverQuiet(tint: .stError)
+              Text(SettingsItemCopy.Engine.whisperRemove).font(.stHelper).settingsHoverQuiet(tint: .stError)
             }
             .controlSize(.small)
             .buttonStyle(.borderless)
             .foregroundStyle(.stError)
+            .settingsArrivalFocusControl()
+            .settingsMapRegistration(.whisperModelRemove)
             whisperKitRefreshButton
           }
         }
@@ -1020,11 +926,13 @@ struct SpeechEngineSettingsView: View {
           .foregroundStyle(.stTextSecondary)
           .fixedSize(horizontal: false, vertical: true)
 
-        Button("Try Again") {
+        Button(SettingsItemCopy.Engine.whisperTryAgain) {
           Task { await setup.whisperKitSetup.detectState() }
         }
         .controlSize(.small)
         .font(.stHelper)
+        .settingsArrivalFocusControl()
+        .settingsMapRegistration(.whisperModelTryAgain)
       }
     }
   }
@@ -1045,8 +953,10 @@ struct SpeechEngineSettingsView: View {
         .settingsHoverQuiet()
     }
     .buttonStyle(.borderless)
-    .help("Re-check model status")
-    .accessibilityLabel("Re-check model status")
+    .help(Text(SettingsItemCopy.Engine.whisperRecheck))
+    .accessibilityLabel(Text(SettingsItemCopy.Engine.whisperRecheck))
+    .settingsArrivalFocusControl()
+    .settingsMapRegistration(.whisperModelRecheck)
   }
 
   // MARK: - Faster Transcription help (#1337)

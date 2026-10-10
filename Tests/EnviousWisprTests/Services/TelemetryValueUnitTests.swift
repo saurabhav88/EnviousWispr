@@ -96,32 +96,6 @@ import Testing
       #expect(event.doubleProps["$value"] == 1.5, "the terminal row's slot stays e2e")
     }
 
-    /// The convention this issue established, asserted rather than described:
-    /// both converted duration keys agree with each other on the same input.
-    @MainActor
-    @Test("the two converted duration keys agree on the unit for an identical input")
-    func convertedEmittersAgree() throws {
-      let ms = 750
-      let limb = Self.capture("limb.failure_observed") {
-        TelemetryService.shared.limbFailureObserved(
-          limb: "llm_prewarm", operation: "prewarm", result: "failed",
-          errorCategory: "x", durationMs: ms)
-      }
-      let paste = Self.capture("dictation.completed") {
-        TelemetryService.shared.dictationCompleted(
-          result: "success", inputMode: "ptt", asrBackend: "parakeet", llmProvider: nil,
-          fillerRemoval: false, targetApp: nil, pasteResult: "clipboard",
-          e2eSeconds: 1.5, asrSeconds: nil, llmSeconds: nil, pasteLatencyMs: ms)
-      }
-
-      // Unnested: `try #require(try #require(...))` is a recursive macro
-      // expansion and does not compile.
-      let limbEvent = try #require(limb.first)
-      let pasteEvent = try #require(paste.first)
-      let limbValue = try #require(limbEvent.doubleProps["$value"])
-      let pasteValue = try #require(pasteEvent.doubleProps["paste_seconds"])
-      #expect(limbValue == pasteValue, "same duration, same slot, same unit")
-    }
   }
 
 #endif

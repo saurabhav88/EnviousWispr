@@ -919,17 +919,44 @@ public final class TelemetryService {
     PostHogSDK.shared.capture("hotkey.registration", properties: props)
   }
 
+  /// #3544 P3, P6: the keyboard listener had trouble (an installation ended after an OS disable,
+  /// an install succeeded after failed attempts), recovered a stale key, or the Secure Input notice
+  /// was shown. Counts and closed-set strings.
+  public func hotkeyListenerHealth(_ report: HotkeyListenerHealthReport) {
+    var props: [String: Any] = [
+      "terminal": report.terminal, "reason": report.reason,
+      "disable_episodes": report.disableEpisodes, "reenables": report.reenables,
+      "install_attempts": report.installAttempts, "install_failures": report.installFailures,
+      "installs": report.installs,
+    ]
+    if let staleKind = report.staleKind { props["stale_kind"] = staleKind }
+    #if DEBUG
+      // Derived from `props`, every typed bucket, as `hotkeyPressed` does.
+      testEventHook?(
+        CapturedTelemetryEvent(
+          name: "hotkey.listener_health",
+          stringProps: props.compactMapValues { $0 as? String },
+          intProps: props.compactMapValues { $0 as? Int },
+          doubleProps: props.compactMapValues { $0 as? Double },
+          boolProps: props.compactMapValues { $0 as? Bool }))
+    #endif
+    PostHogSDK.shared.capture("hotkey.listener_health", properties: props)
+  }
+
   /// A raw accepted hotkey keydown was routed to a recording action — the C3
   /// denominator for `dictation.invoked` (which fires post-commit and under-fires
   /// raw presses). Metadata only (low-cardinality enums; never the key codes).
   public func hotkeyPressed(
     triggerSource: String, inputMode: String, keyShape: String, keyIdentity: String,
-    pressAction: String
+    pressAction: String, windowTiming: String? = nil
   ) {
-    let props: [String: Any] = [
+    var props: [String: Any] = [
       "trigger_source": triggerSource, "input_mode": inputMode,
       "key_shape": keyShape, "key_identity": keyIdentity, "press_action": pressAction,
     ]
+    // #3534: present only on hands-free lock intents (`rescued` / `on_time`) and on a press
+    // that came before the lone-tap stop it lost to (`after_stop_timer`); absent otherwise.
+    if let windowTiming { props["window_timing"] = windowTiming }
     #if DEBUG
       // #1987: DERIVED from `props`, never re-listed. The previous shape built the
       // test projection independently of the real payload, so a test could assert a
@@ -1169,6 +1196,34 @@ public final class TelemetryService {
           boolProps: ["committed": committed]))
     #endif
     PostHogSDK.shared.capture("hotkey.lock_resolved", properties: props)
+  }
+
+  /// #3482: one finished Settings search attempt (plan §8.1). Closed values and counts; the
+  /// typed text only when the search found nothing or was bypassed with the sidebar, already
+  /// passed through `SettingsSearchQueryFilter`. Never sent to Sentry or any log. The caller
+  /// checks "Share usage metrics" at the terminal; PostHog itself runs only while it is on.
+  public func settingsSearchFinished(_ finished: SettingsSearchFinished) {
+    var strings: [String: String] = [
+      "outcome": finished.outcome.rawValue, "ended_by": finished.endedBy.rawValue,
+      "app_language": finished.appLanguage,
+    ]
+    if let page = finished.sidebarPage { strings["page"] = page }
+    if let tab = finished.sidebarTab { strings["tab"] = tab }
+    if let query = finished.query { strings["query"] = query }
+    let ints: [String: Int] = ["result_count": finished.resultCount]
+    var doubles: [String: Double] = [:]
+    if let elapsed = finished.meaningElapsedMilliseconds { doubles["meaning_elapsed_ms"] = elapsed }
+    var props: [String: Any] = [:]
+    for (k, v) in strings { props[k] = v }
+    for (k, v) in ints { props[k] = v }
+    for (k, v) in doubles { props[k] = v }
+    #if DEBUG
+      testEventHook?(
+        CapturedTelemetryEvent(
+          name: "settings.search_finished", stringProps: strings, intProps: ints,
+          doubleProps: doubles, boolProps: [:]))
+    #endif
+    PostHogSDK.shared.capture("settings.search_finished", properties: props)
   }
 
   /// #3275: how one in-app help check ended, once per check, from `FeedbackSubmission`. Counts,

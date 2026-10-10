@@ -1,0 +1,420 @@
+{
+  "dictation.tab.engine": {
+    "en": {"words": [], "phrases": ["show me the engine settings tab", "open the dictation engine page"]},
+    "de": {"words": [], "phrases": ["zeig mir den Tab mit den Engine-Einstellungen", "öffne die Engine-Seite in den Diktiereinstellungen"]}
+  },
+  "dictation.tab.microphone": {
+    "en": {"words": [], "phrases": ["open the microphone settings tab", "show me the microphone settings page"]},
+    "de": {"words": [], "phrases": ["öffne den Tab mit den Mikrofoneinstellungen", "zeig mir die Einstellungsseite fürs Mikrofon"]}
+  },
+  "dictation.tab.livePreview": {
+    "en": {"words": [], "phrases": ["open the Live Preview tab", "show me the Live Preview settings page"]},
+    "de": {"words": [], "phrases": ["öffne den Tab für die Live-Vorschau", "zeig mir die Einstellungsseite für die Live-Vorschau"]}
+  },
+  "dictation.tab.pill": {
+    "en": {"words": ["overlay", "widget"], "phrases": ["open the Recording Pill settings tab", "show me the floating recording indicator settings page"]}
+  ,
+    "de": {"words": ["Overlay", "Widget", "Aufnahmefenster"], "phrases": ["öffne den Tab für die Aufnahmeanzeige", "zeig mir die Einstellungsseite für die schwebende Aufnahmeanzeige"]}
+  },
+  "dictation.tab.chimes": {
+    "en": {"words": [], "phrases": ["open the Chimes settings tab", "show me the recording sounds settings page"]},
+    "de": {"words": [], "phrases": ["öffne den Tab für die Signaltöne", "zeig mir die Einstellungsseite für die Aufnahmetöne"]}
+  },
+  "dictation.tab.clipboard": {
+    "en": {"words": ["pasteboard", "copy", "paste", "copied"], "phrases": ["where are the settings for copied text", "show me the clipboard settings"]},
+    "de": {"words": ["Clipboard", "kopieren", "einfügen", "kopiert"], "phrases": ["wo sind die Einstellungen für kopierten Text", "zeig mir die Einstellungen für die Zwischenablage"]}
+  },
+  "transcriptionEngine": {
+    "en": {"words": ["transcriber"], "phrases": ["which model turns my dictation into the finished text", "where do I choose the dictation model"]},
+    "de": {"words": ["Diktiermodell"], "phrases": ["welches Modell macht aus meinem Diktat den fertigen Text", "wo wähle ich das Modell fürs Diktieren aus"]}
+  },
+  "transcriptionEngine.change": {
+    "en": {"words": [], "phrases": ["switch to a different dictation model", "change the speech engine for my finished dictation"]},
+    "de": {"words": [], "phrases": ["wechsle das Modell fürs Diktieren", "wähle eine andere Engine für mein fertiges Diktat"]}
+  },
+  "transcriptionEngine.fast": {
+    "en": {"words": ["Parakeet", "European", "ANE"], "phrases": ["use Parakeet for dictation", "choose the dictation model that uses the Apple Neural Engine"]},
+    "de": {"words": ["Parakeet", "europäisch", "ANE"], "phrases": ["nimm Parakeet fürs Diktieren", "wähle das Diktiermodell für europäische Sprachen"]}
+  },
+  "transcriptionEngine.allLanguages": {
+    "en": {"words": ["Whisper", "Turbo", "GPU"], "phrases": ["use Whisper for dictation", "choose the dictation model for difficult audio", "I need to dictate in a language outside Europe"]},
+    "de": {"words": ["Whisper", "Turbo", "GPU"], "phrases": ["nimm Whisper fürs Diktieren", "wähle das Diktiermodell für schwierige Aufnahmen", "ich möchte in einer außereuropäischen Sprache diktieren"]}
+  },
+  "transcriptionEngine.keepCurrent": {
+    "en": {"words": [], "phrases": ["keep my current dictation model", "leave the speech engine unchanged"]},
+    "de": {"words": [], "phrases": ["behalte mein bisheriges Diktiermodell", "lass die Engine fürs Diktieren unverändert"]}
+  },
+  "transcriptionEngine.recheckFast": {
+    "en": {"words": [], "phrases": ["check whether the Fast model is ready", "check Parakeet model status again"]},
+    "de": {"words": [], "phrases": ["prüfe erneut, ob das schnelle Modell bereit ist", "prüfe den Status von Parakeet noch einmal"]}
+  },
+  "fastModel.cancelDownload": {
+    "en": {"words": [], "phrases": ["cancel the Parakeet download", "stop downloading the Fast dictation model"]},
+    "de": {"words": [], "phrases": ["brich den Download von Parakeet ab", "stoppe den Download des schnellen Diktiermodells"]}
+  },
+  "fastModel.resume": {
+    "en": {"words": [], "phrases": ["resume the paused Parakeet download", "continue downloading the Fast dictation model"]},
+    "de": {"words": [], "phrases": ["setze den pausierten Parakeet-Download fort", "lade das schnelle Diktiermodell weiter herunter"]}
+  },
+  "fastModel.tryAgain": {
+    "en": {"words": [], "phrases": ["retry the failed Parakeet download", "try downloading the Fast dictation model again"]},
+    "de": {"words": [], "phrases": ["versuche den fehlgeschlagenen Parakeet-Download noch einmal", "lade das schnelle Diktiermodell erneut herunter"]}
+  },
+  "whisperModel.setUp": {
+    "en": {"words": [], "phrases": ["set up Whisper on my Mac", "install the All Languages dictation model"]},
+    "de": {"words": [], "phrases": ["richte Whisper auf meinem Mac ein", "installiere das Diktiermodell für alle Sprachen"]}
+  },
+  "whisperModel.cancelDownload": {
+    "en": {"words": [], "phrases": ["cancel the Whisper download", "stop downloading the All Languages dictation model"]},
+    "de": {"words": [], "phrases": ["brich den Whisper-Download ab", "stoppe den Download des Diktiermodells für alle Sprachen"]}
+  },
+  "whisperModel.resume": {
+    "en": {"words": [], "phrases": ["resume the paused Whisper download", "continue downloading the All Languages dictation model"]},
+    "de": {"words": [], "phrases": ["setze den pausierten Whisper-Download fort", "lade das Diktiermodell für alle Sprachen weiter herunter"]}
+  },
+  "whisperModel.remove": {
+    "en": {"words": [], "phrases": ["delete the installed Whisper model", "remove the All Languages dictation model from my Mac"]},
+    "de": {"words": [], "phrases": ["lösche das installierte Whisper-Modell", "entferne das Diktiermodell für alle Sprachen von meinem Mac"]}
+  },
+  "whisperModel.recheck": {
+    "en": {"words": [], "phrases": ["check whether Whisper is ready", "check the All Languages model status again"]},
+    "de": {"words": [], "phrases": ["prüfe, ob Whisper bereit ist", "prüfe den Status des Modells für alle Sprachen erneut"]}
+  },
+  "whisperModel.tryAgain": {
+    "en": {"words": [], "phrases": ["retry the failed Whisper setup", "try setting up the All Languages dictation model again"]},
+    "de": {"words": [], "phrases": ["versuche die Einrichtung von Whisper noch einmal", "richte das Diktiermodell für alle Sprachen erneut ein"]}
+  },
+  "currentEngineSection": {
+    "en": {"words": [], "phrases": ["show the settings for my active dictation engine", "where are the options for the dictation model I am using"]},
+    "de": {"words": [], "phrases": ["zeig mir die Einstellungen für meine aktive Diktierengine", "wo sind die Optionen für das Diktiermodell, das ich gerade nutze"]}
+  },
+  "autoDetectLanguage": {
+    "en": {"words": ["autodetect", "detection"], "phrases": ["detect which language I am speaking", "recognize my language automatically", "I do not want to choose my dictation language manually"]},
+    "de": {"words": ["Spracherkennung", "Spracherkennungautomatik"], "phrases": ["erkenne automatisch, welche Sprache ich spreche", "finde meine Diktiersprache selbst heraus", "ich möchte die Diktiersprache nicht von Hand auswählen"]}
+  },
+  "autoDetectLanguage.resetSuggestions": {
+    "en": {"words": [], "phrases": ["suggest locking a detected language again", "reset the suggestions to fix my dictation language"]},
+    "de": {"words": [], "phrases": ["schlage mir wieder vor, die erkannte Sprache festzulegen", "setze die Vorschläge zum Festlegen der Diktiersprache zurück"]}
+  },
+  "lockedLanguage": {
+    "en": {"words": ["lock", "fixed"], "phrases": ["always use the same language for dictation", "set a fixed language for dictation and preview", "stop guessing which language I am speaking"]},
+    "de": {"words": ["Diktiersprache", "festlegen", "fest"], "phrases": ["verwende fürs Diktieren immer dieselbe Sprache", "lege die Sprache für Diktat und Vorschau fest", "erkenne meine Diktiersprache nicht automatisch"]}
+  },
+  "lockedLanguage.change": {
+    "en": {"words": [], "phrases": ["change my fixed dictation language from the Engine tab"]},
+    "de": {"words": [], "phrases": ["ändere meine festgelegte Diktiersprache im Engine-Tab"]}
+  },
+  "fasterTranscription": {
+    "en": {"words": ["processing", "latency"], "phrases": ["process my dictation while I am still recording", "reduce the wait for the finished transcription", "start transcribing before I stop recording"]},
+    "de": {"words": ["Verarbeitung", "Wartezeit", "Latenz"], "phrases": ["verarbeite mein Diktat schon während der Aufnahme", "verkürze die Wartezeit auf den fertigen Text", "beginne mit der Transkription, bevor ich die Aufnahme beende"]}
+  },
+  "stopOnSilence": {
+    "en": {"words": ["silence", "autostop"], "phrases": ["stop recording when I stop talking", "end my dictation automatically when I go quiet", "I want recording to stop without pressing a key"]},
+    "de": {"words": ["Stille", "Autostopp", "Sprechpause"], "phrases": ["stoppe die Aufnahme, wenn ich nicht mehr spreche", "beende mein Diktat automatisch bei Stille", "beende die Aufnahme, ohne dass ich eine Taste drücken muss"]}
+  },
+  "pauseDuration": {
+    "en": {"words": ["timeout", "delay"], "phrases": ["how long can I stay quiet before recording stops", "wait longer before stopping on silence", "change the length of the pause that ends recording"]},
+    "de": {"words": ["Zeitlimit", "Verzögerung", "Pausenlänge"], "phrases": ["wie lange darf ich still sein, bevor die Aufnahme endet", "warte bei Stille länger, bevor du die Aufnahme stoppst", "ändere, wie lang die Pause zum Beenden der Aufnahme sein muss"]}
+  },
+  "fillerRemoval": {
+    "en": {"words": ["um", "uh", "hmm", "ums", "hesitations", "fillers"], "phrases": ["remove ums and uhs from my text", "leave out my hesitation sounds", "remove filler words from my dictation"]},
+    "de": {"words": ["ähm", "äh", "hm", "Ähms", "Fülllaute"], "phrases": ["lass die Ähms aus meinem Text weg", "entferne meine Füllwörter beim Diktieren", "schreib meine Ähs und Ähms nicht mit"]}
+  },
+  "spokenEmoji": {
+    "en": {"words": ["smiley", "smileys", "👍"], "phrases": ["turn spoken emoji names into symbols", "insert a thumbs up when I say thumbs up emoji", "let me dictate smileys by saying their name and emoji"]},
+    "de": {"words": ["Smiley", "Smileys", "👍"], "phrases": ["mach aus gesprochenen Emoji-Namen die passenden Symbole", "füge einen Daumen hoch ein, wenn ich Daumen hoch Emoji sage", "ich möchte Smileys mit ihrem Namen und dem Wort Emoji diktieren"]}
+  },
+  "spokenPunctuation": {
+    "en": {"words": ["comma", "period", "paragraph", "colon", "semicolon"], "phrases": ["insert punctuation by speaking a command", "start a new paragraph with a spoken command", "let me dictate commas and periods"]},
+    "de": {"words": ["Komma", "Punkt", "Absatz", "Doppelpunkt", "Semikolon"], "phrases": ["füge Satzzeichen mit einem gesprochenen Befehl ein", "beginne mit einem Sprachbefehl einen neuen Absatz", "ich möchte Kommas und Punkte diktieren"]}
+  },
+  "startWordLanguage": {
+    "en": {"words": [], "phrases": ["choose which language I am editing the punctuation start word for", "select the language for the punctuation trigger settings"]},
+    "de": {"words": [], "phrases": ["wähle, für welche Sprache ich das Startwort für Satzzeichen bearbeite", "für welche Sprache stelle ich den Satzzeichenauslöser ein"]}
+  },
+  "startWordLanguage.en": {
+    "en": {"words": [], "phrases": ["select English for the punctuation start word", "show the English punctuation trigger"]},
+    "de": {"words": [], "phrases": ["wähle Englisch für das Startwort vor Satzzeichen", "zeig mir das Auslösewort für englische Satzzeichen"]}
+  },
+  "startWordLanguage.de": {
+    "en": {"words": [], "phrases": ["select German for the punctuation start word", "show the German punctuation trigger"]},
+    "de": {"words": [], "phrases": ["wähle Deutsch für das Startwort vor Satzzeichen", "zeig mir das Auslösewort für deutsche Satzzeichen"]}
+  },
+  "startWordLanguage.fr": {
+    "en": {"words": [], "phrases": ["select French for the punctuation start word", "show the French punctuation trigger"]},
+    "de": {"words": [], "phrases": ["wähle Französisch für das Startwort vor Satzzeichen", "zeig mir das Auslösewort für französische Satzzeichen"]}
+  },
+  "startWordLanguage.es": {
+    "en": {"words": [], "phrases": ["select Spanish for the punctuation start word", "show the Spanish punctuation trigger"]},
+    "de": {"words": [], "phrases": ["wähle Spanisch für das Startwort vor Satzzeichen", "zeig mir das Auslösewort für spanische Satzzeichen"]}
+  },
+  "startWordLanguage.it": {
+    "en": {"words": [], "phrases": ["select Italian for the punctuation start word", "show the Italian punctuation trigger"]},
+    "de": {"words": [], "phrases": ["wähle Italienisch für das Startwort vor Satzzeichen", "zeig mir das Auslösewort für italienische Satzzeichen"]}
+  },
+  "startWordField": {
+    "en": {"words": ["prefix", "trigger"], "phrases": ["set the word I say before a punctuation mark", "enter my own punctuation trigger word", "change the spoken prefix for punctuation"]},
+    "de": {"words": ["Auslösewort", "Befehlswort", "Signalwort"], "phrases": ["lege fest, welches Wort ich vor einem Satzzeichen sagen muss", "gib mein eigenes Auslösewort für Satzzeichen ein", "ändere das Wort vor dem Satzzeichenbefehl"]}
+  },
+  "startWord.save": {
+    "en": {"words": [], "phrases": ["save the punctuation start word I entered", "apply my new punctuation trigger"]},
+    "de": {"words": [], "phrases": ["speichere mein eingegebenes Startwort für Satzzeichen", "übernimm mein neues Auslösewort für Satzzeichen"]}
+  },
+  "startWord.reset": {
+    "en": {"words": [], "phrases": ["restore the default punctuation start word", "reset my custom punctuation trigger"]},
+    "de": {"words": [], "phrases": ["stell das voreingestellte Startwort für Satzzeichen wieder her", "setze mein eigenes Auslösewort für Satzzeichen zurück"]}
+  },
+  "unloadModel": {
+    "en": {"words": ["RAM", "memory", "unloading"], "phrases": ["free the dictation model memory when I am not using it", "choose how long the speech model stays in memory", "change when the dictation model is unloaded"]},
+    "de": {"words": ["RAM", "Arbeitsspeicher", "Speicher", "entladen"], "phrases": ["gib den Arbeitsspeicher frei, wenn ich nicht diktiere", "wie lange soll das Diktiermodell im Speicher bleiben", "ändere, wann das Diktiermodell aus dem Speicher entfernt wird"]}
+  },
+  "unloadModel.never": {
+    "en": {"words": [], "phrases": ["keep the dictation model loaded all the time", "never unload the speech model"]},
+    "de": {"words": [], "phrases": ["lass das Diktiermodell dauerhaft geladen", "entferne das Diktiermodell nie aus dem Speicher"]}
+  },
+  "unloadModel.immediately": {
+    "en": {"words": [], "phrases": ["unload the model after every transcription", "free model memory as soon as the dictation is finished"]},
+    "de": {"words": [], "phrases": ["entlade das Modell nach jedem Diktat", "gib den Modellspeicher frei, sobald der Text fertig ist"]}
+  },
+  "unloadModel.twoMinutes": {
+    "en": {"words": [], "phrases": ["unload the dictation model after two idle minutes", "keep the speech model loaded for 2 minutes"]}
+  ,
+    "de": {"words": [], "phrases": ["entlade das Diktiermodell nach zwei Minuten ohne Diktat", "lass das Diktiermodell 2 Minuten im Speicher"]}
+  },
+  "unloadModel.fiveMinutes": {
+    "en": {"words": [], "phrases": ["unload the dictation model after five idle minutes", "keep the speech model loaded for 5 minutes"]},
+    "de": {"words": [], "phrases": ["entlade das Diktiermodell nach fünf Minuten ohne Diktat", "lass das Diktiermodell 5 Minuten im Speicher"]}
+  },
+  "unloadModel.tenMinutes": {
+    "en": {"words": [], "phrases": ["unload the dictation model after ten idle minutes", "keep the speech model loaded for 10 minutes"]},
+    "de": {"words": [], "phrases": ["entlade das Diktiermodell nach zehn Minuten ohne Diktat", "lass das Diktiermodell 10 Minuten im Speicher"]}
+  },
+  "unloadModel.fifteenMinutes": {
+    "en": {"words": ["quarter-hour"], "phrases": ["unload the dictation model after a quarter of an hour", "keep the speech model loaded for 15 idle minutes"]},
+    "de": {"words": ["Viertelstunde"], "phrases": ["entlade das Diktiermodell nach einer Viertelstunde ohne Diktat", "lass das Diktiermodell 15 Minuten im Speicher"]}
+  },
+  "unloadModel.oneHour": {
+    "en": {"words": ["hour"], "phrases": ["unload the dictation model after an hour without dictation", "keep the speech model loaded for 60 idle minutes"]},
+    "de": {"words": ["Stunde"], "phrases": ["entlade das Diktiermodell nach einer Stunde ohne Diktat", "lass das Diktiermodell 60 Minuten im Speicher"]}
+  },
+  "inputDevice": {
+    "en": {"words": ["mic", "source"], "phrases": ["choose which microphone records my voice", "select the microphone I dictate into", "where do I choose my recording device"]},
+    "de": {"words": ["Mikro", "Mikroauswahl", "Aufnahmegerät"], "phrases": ["wähle das Mikrofon, das meine Stimme aufnimmt", "welches Mikro soll ich fürs Diktieren benutzen", "wo wähle ich mein Aufnahmegerät aus"]}
+  },
+  "inputDevice.auto": {
+    "en": {"words": ["default", "system"], "phrases": ["use the microphone selected in macOS", "follow the Mac sound input setting"]},
+    "de": {"words": ["Standardmikrofon", "Systemmikrofon"], "phrases": ["nimm das Mikrofon, das in macOS ausgewählt ist", "verwende die Toneingabe aus den Mac-Einstellungen"]}
+  },
+  "inputDevice.device": {
+    "en": {"words": ["USB", "headset", "internal", "external"], "phrases": ["select a specific microphone from the device list", "use my USB microphone", "use my headset microphone instead of the built-in mic"]},
+    "de": {"words": ["USB", "Headset", "intern", "extern"], "phrases": ["wähle ein bestimmtes Mikrofon aus der Geräteliste", "nimm mein USB-Mikrofon", "nimm das Mikrofon meines Headsets statt des eingebauten Mikros"]}
+  },
+  "inputSocket": {
+    "en": {"words": ["socket", "port", "channel", "interface"], "phrases": ["choose the socket my microphone is plugged into", "select the microphone channel on my audio interface"]},
+    "de": {"words": ["Buchse", "Anschluss", "Kanal", "Audiointerface"], "phrases": ["wähle die Buchse, an der mein Mikrofon steckt", "stelle den Mikrofonkanal an meinem Audiointerface ein"]}
+  },
+  "inputSocket.input": {
+    "en": {"words": [], "phrases": ["use input 1 for this microphone", "use input 2 for this microphone", "select the numbered input my microphone is connected to"]},
+    "de": {"words": [], "phrases": ["nimm Eingang 1 für dieses Mikrofon", "nimm Eingang 2 für dieses Mikrofon", "wähle den nummerierten Eingang, an dem mein Mikrofon steckt"]}
+  },
+  "mediaDuringDictation": {
+    "en": {"words": ["music", "video", "podcast", "playback", "media"], "phrases": ["what should happen to my music while I dictate", "choose how videos behave during recording", "change what happens to background audio during dictation"]},
+    "de": {"words": ["Musik", "Video", "Podcast", "Wiedergabe", "Hintergrundton"], "phrases": ["was soll mit meiner Musik beim Diktieren passieren", "stelle ein, was Videos während der Aufnahme machen", "ändere, was beim Diktieren mit dem Hintergrundton passiert"]}
+  },
+  "mediaDuringDictation.continue": {
+    "en": {"words": ["uninterrupted", "unchanged"], "phrases": ["keep my music playing at its normal volume while I dictate", "leave background audio unchanged during recording"]},
+    "de": {"words": ["unverändert", "weiterlaufen"], "phrases": ["lass meine Musik beim Diktieren mit normaler Lautstärke weiterlaufen", "lass den Hintergrundton während der Aufnahme unverändert"]}
+  },
+  "mediaDuringDictation.lower": {
+    "en": {"words": ["ducking", "quieter", "quieten", "halve"], "phrases": ["turn playback volume down while I dictate", "lower my speaker volume during recording and restore it afterward"]},
+    "de": {"words": ["absenken", "runterdrehen", "halbieren", "Ducking"], "phrases": ["dreh die Wiedergabe beim Diktieren leiser", "senke die Lautsprecherlautstärke während der Aufnahme ab und stell sie danach wieder her"]}
+  },
+  "mediaDuringDictation.mute": {
+    "en": {"words": ["silent", "silence", "speakers", "headphones"], "phrases": ["mute my speakers while I dictate", "turn off headphone sound during recording", "silence call audio while I am dictating"]},
+    "de": {"words": ["stumm", "lautlos", "Lautsprecher", "Kopfhörer"], "phrases": ["schalte meine Lautsprecher beim Diktieren stumm", "mach den Kopfhörerton während der Aufnahme aus", "schalte den Ton von Anrufen beim Diktieren stumm"]}
+  },
+  "mediaDuringDictation.pause": {
+    "en": {"words": ["suspend", "pausing"], "phrases": ["pause my podcast while I dictate and resume it afterward", "pause the video until I finish recording", "stop music playback temporarily during dictation"]},
+    "de": {"words": ["anhalten", "unterbrechen"], "phrases": ["halte meinen Podcast beim Diktieren an und spiel danach weiter", "pausiere das Video, bis die Aufnahme fertig ist", "unterbrich die Musikwiedergabe während des Diktierens"]}
+  },
+  "micReadiness": {
+    "en": {"words": ["standby", "warmup", "readiness"], "phrases": ["choose how long the microphone stays ready after recording", "keep the mic ready between recordings", "change the microphone standby time"]},
+    "de": {"words": ["Standby", "Bereitschaft", "warmhalten"], "phrases": ["wie lange soll das Mikro nach der Aufnahme bereit bleiben", "halte das Mikrofon zwischen Aufnahmen bereit", "ändere die Bereitschaftszeit des Mikrofons"]}
+  },
+  "micReadiness.off": {
+    "en": {"words": [], "phrases": ["disable microphone standby after recording", "release the microphone as soon as recording ends"]},
+    "de": {"words": [], "phrases": ["schalte die Mikrofonbereitschaft nach der Aufnahme aus", "gib das Mikrofon direkt nach der Aufnahme frei"]}
+  },
+  "micReadiness.10s": {
+    "en": {"words": [], "phrases": ["keep the microphone ready for ten seconds after recording", "set microphone standby to 10 seconds"]},
+    "de": {"words": [], "phrases": ["halte das Mikrofon nach der Aufnahme zehn Sekunden bereit", "stelle die Mikrofonbereitschaft auf 10 Sekunden"]}
+  },
+  "micReadiness.30s": {
+    "en": {"words": [], "phrases": ["keep the microphone ready for half a minute after recording", "set microphone standby to 30 seconds"]},
+    "de": {"words": [], "phrases": ["halte das Mikrofon nach der Aufnahme eine halbe Minute bereit", "stelle die Mikrofonbereitschaft auf 30 Sekunden"]}
+  },
+  "micReadiness.60s": {
+    "en": {"words": [], "phrases": ["keep the microphone ready for a minute after recording", "set microphone standby to 60 seconds"]},
+    "de": {"words": [], "phrases": ["halte das Mikrofon nach der Aufnahme eine Minute bereit", "stelle die Mikrofonbereitschaft auf 60 Sekunden"]}
+  },
+  "micReadiness.always": {
+    "en": {"words": [], "phrases": ["keep the microphone engine active all the time", "keep the microphone permanently ready between recordings", "why might the microphone indicator stay visible with Always selected"]},
+    "de": {"words": [], "phrases": ["halte das Mikrofon dauerhaft bereit", "lass die Mikrofonengine zwischen allen Aufnahmen aktiv", "warum kann bei Immer die Mikrofonanzeige anbleiben"]}
+  },
+  "bluetoothGuide": {
+    "en": {"words": ["Bluetooth", "startup"], "phrases": ["why does my Bluetooth mic take so long to start", "how can I reduce Bluetooth microphone startup delay", "explain how keeping my Bluetooth mic ready helps"]},
+    "de": {"words": ["Bluetooth", "Startverzögerung", "Anlaufzeit"], "phrases": ["warum braucht mein Bluetooth-Mikro so lange zum Starten", "wie startet mein Bluetooth-Mikro schneller", "erkläre mir, warum ein bereites Mikro bei Bluetooth hilft"]}
+  },
+  "bluetoothGuide.learnMore": {
+    "en": {"words": [], "phrases": ["open the Bluetooth microphone startup guide", "read the help about keeping a Bluetooth mic ready"]},
+    "de": {"words": [], "phrases": ["öffne die Hilfe zur Startverzögerung von Bluetooth-Mikros", "zeig mir den Ratgeber zur Bereitschaft von Bluetooth-Mikrofonen"]}
+  },
+  "livePreview": {
+    "en": {"words": ["realtime", "interim", "live"], "phrases": ["show my words before I finish dictating", "let me see my text while I speak", "turn the live text preview on or off"]},
+    "de": {"words": ["Echtzeit", "mitlesen", "Zwischentext"], "phrases": ["zeig mir meinen Text, bevor ich fertig diktiert habe", "ich möchte meine Wörter beim Sprechen mitlesen", "schalte die Live-Vorschau ein oder aus"]}
+  },
+  "livePreview.language": {
+    "en": {"words": [], "phrases": ["change the dictation language from Live Preview settings", "change the preview language and dictation language together here"]},
+    "de": {"words": [], "phrases": ["ändere die Diktiersprache in den Einstellungen der Live-Vorschau", "ändere hier die Sprache für Vorschau und Diktat zusammen"]}
+  },
+  "livePreview.browseDownloads": {
+    "en": {"words": [], "phrases": ["browse the downloads from Live Preview settings", "open the download list for the live text preview"]},
+    "de": {"words": [], "phrases": ["öffne die Downloadliste in den Einstellungen der Live-Vorschau", "zeig mir die Downloads für die laufende Textvorschau"]}
+  },
+  "previewEngine": {
+    "en": {"words": [], "phrases": ["choose which engine recognizes the live preview text", "which model powers the words shown while I speak", "where do I choose the preview engine"]},
+    "de": {"words": ["Vorschaumodell"], "phrases": ["wähle die Engine für die Wörter in der Live-Vorschau", "welches Modell erkennt den Text, den ich beim Sprechen sehe", "wo wähle ich die Vorschau-Engine aus"]}
+  },
+  "previewEngine.change": {
+    "en": {"words": [], "phrases": ["switch to a different live preview engine", "change the model that shows words while I speak"]},
+    "de": {"words": [], "phrases": ["wechsle die Engine für die Live-Vorschau", "wähle ein anderes Modell für den Text beim Sprechen"]}
+  },
+  "previewEngine.compare": {
+    "en": {"words": ["comparison", "differences"], "phrases": ["compare Apple and Universal preview engines", "show me how the live preview engines differ"]},
+    "de": {"words": ["Vergleich", "Unterschiede"], "phrases": ["vergleiche Apple und Universal für die Live-Vorschau", "zeig mir die Unterschiede zwischen den Vorschau-Engines"]}
+  },
+  "previewEngine.apple": {
+    "en": {"words": [], "phrases": ["use Apple's speech recognition for live preview", "choose the preview engine that needs macOS 26", "use the preview engine without a separate preview model download"]},
+    "de": {"words": [], "phrases": ["nimm Apples Spracherkennung für die Live-Vorschau", "wähle die Vorschau-Engine, die macOS 26 braucht", "nimm die Vorschau ohne separaten Download eines Vorschaumodells"]}
+  },
+  "previewEngine.universal": {
+    "en": {"words": ["217MB"], "phrases": ["choose Universal for the live preview", "use the preview engine that works on macOS 14", "choose the preview engine with more languages"]},
+    "de": {"words": ["217MB"], "phrases": ["nimm Universal für die Live-Vorschau", "wähle die Vorschau-Engine, die auf macOS 14 läuft", "nimm die Vorschau-Engine mit mehr Sprachen"]}
+  },
+  "previewEngine.keepCurrent": {
+    "en": {"words": [], "phrases": ["keep my current live preview engine", "leave the preview model unchanged"]},
+    "de": {"words": [], "phrases": ["behalte meine bisherige Vorschau-Engine", "lass das Modell für die Live-Vorschau unverändert"]}
+  },
+  "previewEngine.universal.download": {
+    "en": {"words": [], "phrases": ["download the Universal live preview model", "install Universal for the text preview"]},
+    "de": {"words": [], "phrases": ["lade das Universal-Modell für die Live-Vorschau herunter", "installiere Universal für die Textvorschau"]}
+  },
+  "previewEngine.universal.cancel": {
+    "en": {"words": [], "phrases": ["cancel the Universal preview download", "stop downloading the Universal live preview model"]},
+    "de": {"words": [], "phrases": ["brich den Download des Universal-Vorschaumodells ab", "stoppe den Universal-Download für die Live-Vorschau"]}
+  },
+  "previewEngine.universal.resume": {
+    "en": {"words": [], "phrases": ["resume the paused Universal preview download", "continue downloading Universal where it stopped"]},
+    "de": {"words": [], "phrases": ["setze den pausierten Download des Universal-Vorschaumodells fort", "lade Universal an der unterbrochenen Stelle weiter"]}
+  },
+  "previewEngine.universal.retry": {
+    "en": {"words": [], "phrases": ["retry the failed Universal preview download", "try downloading the Universal preview model again"]},
+    "de": {"words": [], "phrases": ["versuche den fehlgeschlagenen Universal-Download erneut", "lade das Universal-Vorschaumodell noch einmal herunter"]}
+  },
+  "previewEngine.universal.remove": {
+    "en": {"words": [], "phrases": ["delete the installed Universal preview model", "remove the Universal live preview download from my Mac"]},
+    "de": {"words": [], "phrases": ["lösche das installierte Universal-Vorschaumodell", "entferne das heruntergeladene Universal-Modell von meinem Mac"]}
+  },
+  "previewLanguages": {
+    "en": {"words": ["installed", "inventory"], "phrases": ["which preview languages are installed on my Mac", "show the installed language packs for live preview", "how many preview languages are already installed"]},
+    "de": {"words": ["Sprachpakete", "installiert"], "phrases": ["welche Vorschausprachen sind auf meinem Mac installiert", "zeig mir die installierten Sprachpakete für die Live-Vorschau", "wie viele Sprachen sind für die Vorschau schon installiert"]}
+  },
+  "previewLanguages.install": {
+    "en": {"words": [], "phrases": ["download another macOS language for live preview", "install a new Apple language pack for the text preview"]},
+    "de": {"words": [], "phrases": ["lade eine weitere macOS-Sprache für die Live-Vorschau herunter", "installiere ein neues Apple-Sprachpaket für die Textvorschau"]}
+  },
+  "pillPosition": {
+    "en": {"words": ["placement", "location", "move"], "phrases": ["change where the recording pill appears on screen", "move the floating recording indicator", "choose the recording widget's screen position"]},
+    "de": {"words": ["verschieben", "Anzeigeort", "Platzierung"], "phrases": ["ändere, wo die Aufnahmeanzeige auf dem Bildschirm erscheint", "verschiebe die schwebende Aufnahmeanzeige", "stelle die Position des Aufnahmefensters ein"]}
+  },
+  "pillPosition.top": {
+    "en": {"words": ["upper", "above"], "phrases": ["put the recording pill at the top of the screen", "show the recording indicator at the upper screen edge"]},
+    "de": {"words": ["oberhalb"], "phrases": ["setz die Aufnahmeanzeige oben auf den Bildschirm", "zeig die Aufnahmeanzeige am oberen Bildschirmrand"]}
+  },
+  "pillPosition.bottom": {
+    "en": {"words": ["lower", "below"], "phrases": ["put the recording pill at the bottom of the screen", "show the recording indicator at the lower screen edge"]},
+    "de": {"words": ["unterhalb"], "phrases": ["setz die Aufnahmeanzeige unten auf den Bildschirm", "zeig die Aufnahmeanzeige am unteren Bildschirmrand"]}
+  },
+  "pillStyle": {
+    "en": {"words": ["appearance", "design", "layout"], "phrases": ["change what the recording pill looks like", "choose what the floating recording indicator displays", "change the recording widget design"]},
+    "de": {"words": ["Aussehen", "Design", "Layout"], "phrases": ["ändere das Aussehen der Aufnahmeanzeige", "wähle, was die schwebende Aufnahmeanzeige zeigt", "stelle das Design des Aufnahmefensters ein"]}
+  },
+  "pillStyle.capsule": {
+    "en": {"words": ["dot", "compact"], "phrases": ["use the small recording pill with a dot and level meter", "choose the compact dot and meter recording indicator"]},
+    "de": {"words": ["Aufnahmepunkt", "kompakt"], "phrases": ["nimm die kleine Aufnahmeanzeige mit Punkt und Pegel", "wähle die kompakte Anzeige mit Punkt und Lautstärkemesser"]}
+  },
+  "pillStyle.levelRail": {
+    "en": {"words": ["bar", "strip", "rail", "slim"], "phrases": ["use a thin recording bar that follows my voice volume", "choose the slim level rail as the recording indicator"]},
+    "de": {"words": ["Balken", "Leiste", "Streifen", "schmal"], "phrases": ["nimm einen schmalen Aufnahmebalken, der meiner Lautstärke folgt", "wähle die dünne Pegelleiste als Aufnahmeanzeige"]}
+  },
+  "pillStyle.readingWell": {
+    "en": {"words": ["panel"], "phrases": ["choose the recording pill style that displays my words", "use a floating text panel as the recording indicator", "choose the Reading Well style and turn on Live Preview"]},
+    "de": {"words": ["Textfeld"], "phrases": ["wähle den Stil der Aufnahmeanzeige, der meine Wörter zeigt", "nimm ein schwebendes Textfeld als Aufnahmeanzeige", "wähle das Lesefeld und schalte damit die Live-Vorschau ein"]}
+  },
+  "pillStyle.configureLivePreview": {
+    "en": {"words": [], "phrases": ["open Live Preview settings from the recording pill style options"]},
+    "de": {"words": [], "phrases": ["öffne die Live-Vorschau-Einstellungen bei den Stilen der Aufnahmeanzeige"]}
+  },
+  "recordingChimes": {
+    "en": {"words": ["beep", "beeps", "cues", "chiming"], "phrases": ["turn recording start and stop sounds on or off", "play a sound when recording begins and ends", "disable the beeps at the start and end of recording"]},
+    "de": {"words": ["piepen", "Piepton", "Pieptöne", "Aufnahmetöne"], "phrases": ["schalte die Töne für Aufnahmestart und Aufnahmeende ein oder aus", "spiel einen Ton, wenn die Aufnahme beginnt und endet", "schalte das Piepen beim Starten und Stoppen der Aufnahme aus"]}
+  },
+  "recordingChime": {
+    "en": {"words": ["audition", "sample", "listen"], "phrases": ["let me hear this recording sound before choosing it", "play a chime sample without changing my selection", "test this recording sound"]},
+    "de": {"words": ["probehören", "Klangprobe", "anhören", "Tonprobe"], "phrases": ["spiel mir diesen Aufnahmeton zur Probe vor", "lass mich den Ton hören, ohne meine Auswahl zu ändern", "ich möchte diesen Ton erst einmal anhören"]}
+  },
+  "recordingChime.dustMote": {
+    "en": {"words": ["toneless", "pitchless", "air"], "phrases": ["choose the filtered air sound with no tone", "use the soft recording sound without a musical pitch"]},
+    "de": {"words": ["tonlos", "Luftrauschen", "Luftgeräusch"], "phrases": ["nimm das sanfte Luftrauschen ohne Tonhöhe", "wähle das gefilterte Luftgeräusch ohne hörbaren Ton"]}
+  },
+  "recordingChime.velvetHush": {
+    "en": {"words": [], "phrases": ["choose the warm chime with two closely pitched tones", "use the gentle pair of tones with similar pitches"]},
+    "de": {"words": [], "phrases": ["nimm den warmen Klang mit zwei ähnlichen Tonhöhen", "wähle das sanfte Tonpaar mit dicht beieinanderliegenden Tönen"]}
+  },
+  "recordingChime.mutedConfirm": {
+    "en": {"words": ["plain", "matching"], "phrases": ["use the same chime pitch for recording start and stop", "choose the plain sound with matching pitches both ways"]},
+    "de": {"words": ["schlicht", "gleich"], "phrases": ["nimm beim Aufnahmestart und Aufnahmeende dieselbe Tonhöhe", "wähle den schlichten Ton, der beim Starten und Stoppen gleich klingt"]}
+  },
+  "recordingChime.whisperTick": {
+    "en": {"words": ["tick", "ticking", "faint"], "phrases": ["choose the recording tick that is barely audible", "use the very faint ticking sound"]},
+    "de": {"words": ["Ticken", "Tick", "Tickgeräusch"], "phrases": ["nimm das Ticken, das kaum zu hören ist", "wähle das ganz leise Tickgeräusch"]}
+  },
+  "recordingChime.roundPebble": {
+    "en": {"words": ["rounded", "round", "edgeless"], "phrases": ["choose the rounded recording sound without a sharp edge", "use the chime described as rounded with no edge"]},
+    "de": {"words": ["rund", "abgerundet"], "phrases": ["nimm den rund klingenden Aufnahmeton ohne scharfe Kante", "wähle den Klang, der als abgerundet beschrieben wird"]}
+  },
+  "recordingChime.paperTap": {
+    "en": {"words": ["papery", "paper"], "phrases": ["choose the recording sound like a soft tap on paper", "use the gentle paper-like tapping sound"]},
+    "de": {"words": ["Papier", "Papiergeräusch"], "phrases": ["nimm den Aufnahmeton, der wie sanftes Tippen auf Papier klingt", "wähle das leise papierartige Klopfgeräusch"]}
+  },
+  "recordingChime.softHush": {
+    "en": {"words": ["breath", "breathy", "fade", "exhale"], "phrases": ["choose the breath-like recording sound that fades slowly", "use the chime that sounds like a slowly fading breath"]},
+    "de": {"words": ["Atem", "Atemzug", "Ausatmen", "ausklingen"], "phrases": ["nimm den Klang, der wie ein Atemzug langsam ausklingt", "wähle das langsam verklingende Atemgeräusch"]}
+  },
+  "recordingChime.lowNod": {
+    "en": {"words": ["deep", "low", "unhurried"], "phrases": ["choose the low warm recording sound", "use the deep chime with an unhurried feel"]},
+    "de": {"words": ["tief", "dunkel", "gemächlich"], "phrases": ["nimm den tiefen warmen Aufnahmeton", "wähle den dunklen Klang, der ruhig und gemächlich klingt"]}
+  },
+  "recordingChime.cloudPop": {
+    "en": {"words": ["pop", "popping"], "phrases": ["choose the tiny filtered air pop", "use the little airy popping recording sound"]},
+    "de": {"words": ["Plopp", "ploppen", "Luftplopp"], "phrases": ["nimm den kleinen gefilterten Luftplopp", "wähle das kurze luftige Ploppgeräusch"]}
+  },
+  "recordingChime.velvetTap": {
+    "en": {"words": ["muted", "damped"], "phrases": ["choose the compact muted tapping sound", "use the short damped tap as my recording chime"]},
+    "de": {"words": ["gedämpft"], "phrases": ["nimm das kurze gedämpfte Tippgeräusch", "wähle den kompakten gedämpften Klopfton"]}
+  },
+  "recordingChime.satinShift": {
+    "en": {"words": ["transition", "shift"], "phrases": ["choose the recording sound with a smooth two-tone shift", "use the chime with a smooth change between two tones"]},
+    "de": {"words": ["Tonwechsel", "Tonübergang"], "phrases": ["nimm den sanften Wechsel zwischen zwei Tönen", "wähle den Aufnahmeton mit dem fließenden Tonübergang"]}
+  }
+}

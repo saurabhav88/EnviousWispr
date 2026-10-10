@@ -718,22 +718,14 @@ final class OverlayDirector {
   }
 
   /// Present the accessibility notice, showing the toast or falling back to the
-  /// clipboard hint — **and announcing the accessibility sentence either way.**
+  /// clipboard hint — **and announcing what is drawn.**
   ///
-  /// That last part is the whole reason this is one method rather than a
-  /// conditional at the call site. The shipped panel posts the accessibility
-  /// announcement BEFORE its eligibility branch, so a user on VoiceOver hears
-  /// "Accessibility permission needed for auto-paste" even on the runs where the
-  /// toast is suppressed and the clipboard hint is drawn instead. Routing the
-  /// suppressed case through `.pipeline(.clipboardFallback)` would announce
-  /// "Text copied to clipboard" — a different sentence, and a silent change in
-  /// what a blind user is told, smuggled in by a refactor.
-  ///
-  /// **Preserved deliberately, not endorsed.** Whether it is right that the
-  /// spoken sentence keeps explaining the permission while the visible one
-  /// switches to the actionable hint is a real question, and it is filed rather
-  /// than answered here: a migration that quietly changes behaviour is a worse
-  /// defect than the behaviour.
+  /// VoiceOver says the permission sentence only when the toast is drawn. When the
+  /// toast is suppressed and the clipboard hint is drawn instead, it says the hint's
+  /// own sentence (#2321, founder 2026-10-04), so a blind user is never told about a
+  /// permission the screen no longer mentions. The reducer composes both halves in
+  /// one transition, which is why this is one method rather than a conditional at
+  /// the call site.
   /// Eligibility is asked through a CLOSURE so the reducer's dedup guard runs
   /// FIRST. Asking eagerly spends the session's one showing on a push that is
   /// then dropped, and the next genuine ask is refused.
@@ -1745,6 +1737,18 @@ extension OverlayDirector: OverlayPresenting {
     }
     guard current.id != incumbentID else { return nil }
     return PillReceipt(presentationID: current.id)
+  }
+
+  /// Show an in-panel notice on the live recording pill, returning whether one was there to show
+  /// it on (#3544 P4). A caller that tells the user something once uses this answer to know the
+  /// notice was actually shown; `update(.inPanelNotice)` is a silent no-op without a recording.
+  @discardableResult
+  func showInPanelNotice(_ reason: RecordingNoticeReason, dismissAfter: Double?) -> Bool {
+    guard let current = reducer.state.current, case .recording = current.content else {
+      return false
+    }
+    update(.inPanelNotice(reason, dismissAfter: dismissAfter))
+    return true
   }
 
   func update(_ update: PillUpdate) {

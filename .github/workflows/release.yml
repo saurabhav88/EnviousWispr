@@ -280,6 +280,38 @@ jobs:
             exit 1
           fi
 
+      # v2.5.3 (run 37720545748): the first Apple notary call was `notarytool submit`, about 16
+      # minutes in, and it failed with HTTP 403 "A required agreement is missing or has expired"
+      # (an updated Apple Developer agreement waited for the account holder). Ask the notary
+      # service once, with the same key, before the build: `notarytool history` is a read that
+      # Apple refuses with the same 403 while an agreement is pending (reported on the Apple
+      # Developer Forums; our own account could not reproduce it once the agreement was signed).
+      # Only that refusal stops the release here; any other failure warns, and the Notarize step
+      # stays the authority.
+      - name: Check the Apple notary service accepts our key (agreements signed)
+        env:
+          APPLE_API_KEY_BASE64: ${{ secrets.APPLE_API_KEY_BASE64 }}
+          APPLE_API_ISSUER_ID: ${{ secrets.APPLE_API_ISSUER_ID }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+        run: |
+          set -euo pipefail
+          KEY_PATH="${RUNNER_TEMP}/AuthKey_${APPLE_API_KEY_ID}.p8"
+          trap 'rm -f "${KEY_PATH}"' EXIT
+          echo -n "${APPLE_API_KEY_BASE64}" | base64 --decode -o "${KEY_PATH}"
+          if OUT=$(xcrun notarytool history --key "${KEY_PATH}" --key-id "${APPLE_API_KEY_ID}" \
+              --issuer "${APPLE_API_ISSUER_ID}" --output-format json 2>&1); then rc=0; else rc=$?; fi
+          rm -f "${KEY_PATH}"
+          if [ "$rc" -eq 0 ]; then
+            echo "==> Apple notary service: key accepted, no agreement pending."
+          elif printf '%s' "$OUT" | grep -qiE 'required agreement|REQUIRED_AGREEMENTS'; then
+            printf '%s\n' "$OUT"
+            echo "::error::Apple refuses notarization until the account holder accepts the pending agreement at developer.apple.com (Account) or App Store Connect (Business). Accept it, wait a few minutes, then rerun this release."
+            exit 1
+          else
+            printf '%s\n' "$OUT"
+            echo "::warning::Could not confirm the Apple notary service (exit $rc); continuing. The Notarize step will report the real result."
+          fi
+
       # #3242: MLX (the word check) compiles Metal shaders; hosted images do not always carry the
       # Metal toolchain component. Same owner as .github/actions/xcode-ci-setup.
       - name: Ensure Metal toolchain
@@ -412,6 +444,7 @@ jobs:
           DMG_PATH="build/EnviousWispr-${VERSION}.dmg"
 
           KEY_PATH="${RUNNER_TEMP}/AuthKey_${APPLE_API_KEY_ID}.p8"
+          trap 'rm -f "${KEY_PATH}"' EXIT
           echo -n "${APPLE_API_KEY_BASE64}" | base64 --decode -o "${KEY_PATH}"
 
           echo "==> Submitting ${DMG_PATH} for notarization (--wait, 5h timeout) ..."
@@ -422,7 +455,9 @@ jobs:
             --wait --timeout 18000 2>&1) || true
 
           echo "${SUBMIT_OUTPUT}"
-          SUBMISSION_ID=$(echo "${SUBMIT_OUTPUT}" | grep "id:" | head -1 | awk '{print $2}')
+          # awk, not grep: an output with no "id:" line (v2.5.3's 403) must reach the branches
+          # below; under pipefail a grep with no match ended the step with no explanation.
+          SUBMISSION_ID=$(printf '%s\n' "${SUBMIT_OUTPUT}" | awk '/id:/ { print $2; exit }')
 
           if echo "${SUBMIT_OUTPUT}" | grep -q "status: Accepted"; then
             echo "==> Notarization accepted. Stapling ..."
@@ -437,6 +472,10 @@ jobs:
               --key "${KEY_PATH}" \
               --key-id "${APPLE_API_KEY_ID}" \
               --issuer "${APPLE_API_ISSUER_ID}" 2>&1 || true
+            rm -f "${KEY_PATH}"
+            exit 1
+          elif echo "${SUBMIT_OUTPUT}" | grep -qiE 'required agreement|REQUIRED_AGREEMENTS'; then
+            echo "::error::Apple refuses notarization until the account holder accepts the pending agreement at developer.apple.com (Account) or App Store Connect (Business). Accept it, wait a few minutes, then rerun the failed jobs."
             rm -f "${KEY_PATH}"
             exit 1
           else

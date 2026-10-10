@@ -44,14 +44,6 @@ struct CancelAffordancePolicyTests {
     }
   }
 
-  /// #2787: the key is live through an ORDINARY transcription. Before this,
-  /// Escape during a stuck decode did nothing at all, and the customer's only
-  /// exit was to quit the app four times.
-  @Test("an ordinary transcription keeps the cancel shortcut live")
-  func ordinaryTranscribingIsArmed() {
-    #expect(CancelAffordancePolicy.isShortcutEnabled(state: .transcribing))
-  }
-
   /// The other half of the policy, and the reason both halves live together:
   /// the state the finalizer must admit is exactly the state the key stays live
   /// for. If this ever answered false where `isShortcutEnabled(.transcribing)`

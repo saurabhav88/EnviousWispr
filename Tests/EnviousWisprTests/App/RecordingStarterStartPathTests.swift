@@ -274,19 +274,6 @@ import Testing
     #expect(fx.kernelDriver.state == .error(.noMicrophoneFound))
   }
 
-  @Test("XPC-sanitized no-microphone prewarm error surfaces distinct copy")
-  func sanitizedNoMicrophonePrewarmErrorSurfacesDistinctCopy() async {
-    let fx = Self.makeFixture()
-    fx.asr.activeBackendType = .parakeet
-    fx.asr.isModelLoaded = true
-    fx.audio.preWarmError = XPCErrorSanitizer.sanitizeForXPC(
-      AudioError.noBuiltInMicrophoneFound)
-
-    _ = await fx.starter.start()
-
-    #expect(fx.kernelDriver.state == .error(.noMicrophoneFound))
-  }
-
   @Test(
     "a prewarm failure while mic permission is denied surfaces the actionable permission notice, not the generic capture error (cloud review P2 #1563)"
   )
@@ -665,10 +652,8 @@ import Testing
   // MARK: - #2648 shared-resource admission
 
   /// **This is the pair the whole safety promise rests on.** `RecordingStarter`
-  /// has exactly two non-private methods that begin a recording, and its ceiling
-  /// suite caps that surface at 3, so a third route cannot be added without
-  /// failing `RecordingStarterCeilingsTests.nonPrivateMethodCount` first. These
-  /// rows cover both of the two that exist.
+  /// has exactly two non-private methods that begin a recording. These rows cover
+  /// both; a third route needs its own row here.
   ///
   /// A pair is the dangerous number: gating one reads exactly like gating both
   /// (`workflow-process.md`

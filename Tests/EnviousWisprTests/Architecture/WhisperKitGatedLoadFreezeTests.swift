@@ -38,10 +38,6 @@ import Testing
   /// The exact production set. Two members, each frozen to one construction.
   private static var productionMapSites: [String] { [gatedMapSite, previewMapSite] }
 
-  /// Benchmark-only, caller-supplied folder, never linked into an app flow.
-  private static let benchmarkException =
-    "Sources/EnviousWisprASR/TailBenchmarkHarness.swift"
-
   /// Matches a CONSTRUCTION of the toolkit type — `WhisperKit(` or
   /// `WhisperKit.init(` as a whole identifier. The lookbehind is the point: a
   /// naive `contains("WhisperKit(")` also matches `makeForWhisperKit(`, which is
@@ -76,13 +72,12 @@ import Testing
     url.path.replacingOccurrences(of: RepoRoot.url.path + "/", with: "")
   }
 
-  @Test("only the gated backend may construct a WhisperKit — plus the named benchmark")
+  @Test("only the gated backend may construct a WhisperKit")
   func whisperKitConstructionIsConfinedToTheGatedSite() throws {
     var offenders: [String] = []
     for file in try swiftFiles(under: "Sources") {
       let path = repoRelative(file)
-      guard !Self.productionMapSites.contains(path), path != Self.benchmarkException
-      else { continue }
+      guard !Self.productionMapSites.contains(path) else { continue }
       let source = try String(contentsOf: file, encoding: .utf8)
       for (index, line) in source.split(separator: "\n", omittingEmptySubsequences: false)
         .enumerated()

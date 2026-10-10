@@ -1,0 +1,2827 @@
+{
+ "schema": "settings-search-vocabulary-review",
+ "canonicalization": "length-prefixed-v1",
+ "addedIDs": [],
+ "retiredIDs": [],
+ "resource": {
+  "path": "Sources/EnviousWisprAppKit/Resources/SettingsSearchVocabulary.json",
+  "sha256": "1d9af94e6eb6a759ef03b3c5a1222fbe4533818ae790fea63f11639519cc732d",
+  "bytes": 1592186
+ },
+ "sources": [
+  {
+   "name": "multilingual-v2.json",
+   "benchPath": "/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr-settings-search-bench/scripts/eval/settings_search_bench/vocabulary/multilingual-v2.json",
+   "sha256": "811e1b21fc30edfdf5d109e712997f80f074debaa52f025b806aa7a821f30ae3",
+   "bytes": 2386721,
+   "note": "Phase 0 vocabulary, all 310 ids; its status line says the German council review was still owed, which council/digest.md now records"
+  },
+  {
+   "name": "reviewed-v2.json",
+   "benchPath": "/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr-settings-search-bench/scripts/eval/settings_search_bench/vocabulary/reviewed-v2.json",
+   "sha256": "1ffe28f6c47c5491cd941ca27c461171776765b60e4865c9bc16799e64188d56",
+   "note": "Phase 0 reviewed English and German; equal to the English and German blocks of multilingual-v2.json"
+  },
+  {
+   "name": "reviewed-edits.json",
+   "path": "scripts/settings-map/receipts/reviewed-edits.json",
+   "sha256": "b18cd547ff5520178c90ce2fd626beced2157cd84a4ef4e4578be2d839f4d2e3"
+  }
+ ],
+ "excludedIDs": [
+  {
+   "id": "apiKey.checkAgain",
+   "reason": "savedKeyRetry"
+  },
+  {
+   "id": "importContacts.import",
+   "reason": "learningSetupAction"
+  },
+  {
+   "id": "importContacts.openSettings",
+   "reason": "learningSetupAction"
+  },
+  {
+   "id": "importContacts.removeImported",
+   "reason": "learningSetupAction"
+  },
+  {
+   "id": "localModel.remove",
+   "reason": "bundledModelRemove"
+  },
+  {
+   "id": "selfLearningDictionary.cancel",
+   "reason": "learningSetupAction"
+  },
+  {
+   "id": "selfLearningDictionary.download",
+   "reason": "learningSetupAction"
+  },
+  {
+   "id": "selfLearningDictionary.removeAndDownload",
+   "reason": "learningSetupAction"
+  },
+  {
+   "id": "selfLearningDictionary.retryChecker",
+   "reason": "learningSetupAction"
+  },
+  {
+   "id": "selfLearningDictionary.retryLoad",
+   "reason": "learningSetupAction"
+  },
+  {
+   "id": "snippets.editRow",
+   "reason": "userContent"
+  },
+  {
+   "id": "transcribeFile.changePolisher",
+   "reason": "transcribeFileWizard"
+  },
+  {
+   "id": "transcribeFile.chooseDifferentFile",
+   "reason": "transcribeFileWizard"
+  },
+  {
+   "id": "transcribeFile.chooseFile",
+   "reason": "transcribeFileWizard"
+  },
+  {
+   "id": "transcribeFile.continue",
+   "reason": "transcribeFileWizard"
+  },
+  {
+   "id": "transcribeFile.copy",
+   "reason": "transcribeFileWizard"
+  },
+  {
+   "id": "transcribeFile.engine",
+   "reason": "transcribeFileWizard"
+  },
+  {
+   "id": "transcribeFile.engine.allLanguages",
+   "reason": "transcribeFileWizard"
+  },
+  {
+   "id": "transcribeFile.engine.fast",
+   "reason": "transcribeFileWizard"
+  },
+  {
+   "id": "transcribeFile.feature.engines",
+   "reason": "transcribeFileWizard"
+  },
+  {
+   "id": "transcribeFile.feature.original",
+   "reason": "transcribeFileWizard"
+  },
+  {
+   "id": "transcribeFile.feature.polish",
+   "reason": "transcribeFileWizard"
+  },
+  {
+   "id": "transcribeFile.feature.privacy",
+   "reason": "transcribeFileWizard"
+  },
+  {
+   "id": "transcribeFile.newTranscription",
+   "reason": "transcribeFileWizard"
+  },
+  {
+   "id": "transcribeFile.polish",
+   "reason": "transcribeFileWizard"
+  },
+  {
+   "id": "transcribeFile.polish.appleIntelligence",
+   "reason": "transcribeFileWizard"
+  },
+  {
+   "id": "transcribeFile.polish.claude",
+   "reason": "transcribeFileWizard"
+  },
+  {
+   "id": "transcribeFile.polish.egOne",
+   "reason": "transcribeFileWizard"
+  },
+  {
+   "id": "transcribeFile.polish.gemini",
+   "reason": "transcribeFileWizard"
+  },
+  {
+   "id": "transcribeFile.polish.ollama",
+   "reason": "transcribeFileWizard"
+  },
+  {
+   "id": "transcribeFile.polish.openAI",
+   "reason": "transcribeFileWizard"
+  },
+  {
+   "id": "transcribeFile.polishSetup",
+   "reason": "transcribeFileWizard"
+  },
+  {
+   "id": "transcribeFile.removeFile",
+   "reason": "transcribeFileWizard"
+  },
+  {
+   "id": "transcribeFile.retrySpeakers",
+   "reason": "transcribeFileWizard"
+  },
+  {
+   "id": "transcribeFile.save",
+   "reason": "transcribeFileWizard"
+  },
+  {
+   "id": "transcribeFile.share",
+   "reason": "transcribeFileWizard"
+  },
+  {
+   "id": "transcribeFile.start",
+   "reason": "transcribeFileWizard"
+  },
+  {
+   "id": "transcribeFile.stopSpeakers",
+   "reason": "transcribeFileWizard"
+  },
+  {
+   "id": "transcribeFile.times",
+   "reason": "transcribeFileWizard"
+  },
+  {
+   "id": "transcribeFile.useDictationPolish",
+   "reason": "transcribeFileWizard"
+  },
+  {
+   "id": "transcribeFile.view",
+   "reason": "transcribeFileWizard"
+  },
+  {
+   "id": "transcribeFile.view.cleaned",
+   "reason": "transcribeFileWizard"
+  },
+  {
+   "id": "transcribeFile.view.markedUp",
+   "reason": "transcribeFileWizard"
+  },
+  {
+   "id": "transcribeFile.view.original",
+   "reason": "transcribeFileWizard"
+  },
+  {
+   "id": "vocabularyPack.brands",
+   "reason": "vocabularyPackContent"
+  },
+  {
+   "id": "vocabularyPack.detail.addMishearing",
+   "reason": "vocabularyPackContent"
+  },
+  {
+   "id": "vocabularyPack.detail.back",
+   "reason": "vocabularyPackContent"
+  },
+  {
+   "id": "vocabularyPack.detail.mishearing",
+   "reason": "vocabularyPackContent"
+  },
+  {
+   "id": "vocabularyPack.detail.packOn",
+   "reason": "vocabularyPackContent"
+  },
+  {
+   "id": "vocabularyPack.detail.restore",
+   "reason": "vocabularyPackContent"
+  },
+  {
+   "id": "vocabularyPack.detail.search",
+   "reason": "vocabularyPackContent"
+  },
+  {
+   "id": "vocabularyPack.detail.wordToggle",
+   "reason": "vocabularyPackContent"
+  },
+  {
+   "id": "vocabularyPack.legal",
+   "reason": "vocabularyPackContent"
+  },
+  {
+   "id": "vocabularyPack.medical",
+   "reason": "vocabularyPackContent"
+  },
+  {
+   "id": "vocabularyPack.names",
+   "reason": "vocabularyPackContent"
+  },
+  {
+   "id": "vocabularyPack.seeAll",
+   "reason": "vocabularyPackContent"
+  },
+  {
+   "id": "vocabularyPack.tech",
+   "reason": "vocabularyPackContent"
+  },
+  {
+   "id": "vocabularyPacks",
+   "reason": "vocabularyPackContent"
+  },
+  {
+   "id": "yourWords.cancelSelection",
+   "reason": "userContent"
+  },
+  {
+   "id": "yourWords.delete",
+   "reason": "userContent"
+  },
+  {
+   "id": "yourWords.edit",
+   "reason": "userContent"
+  },
+  {
+   "id": "yourWords.nextPage",
+   "reason": "userContent"
+  },
+  {
+   "id": "yourWords.previousPage",
+   "reason": "userContent"
+  },
+  {
+   "id": "yourWords.selectAll",
+   "reason": "userContent"
+  }
+ ],
+ "emptyWords": "An empty words array is valid when the title and phrases carry the place (orchestrator answer Q2, 2026-10-06); no per-block record.",
+ "languages": [
+  {
+   "language": "ar",
+   "contentSHA256": "538a8472b481010f8b49eb4d45d7016f76f14c39e8c9ede1845c5f66b743be00",
+   "reviews": [
+    {
+     "kind": "phase0-content",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions)",
+     "date": "2026-10-06",
+     "brief": "phase0/vocab-review-brief.md",
+     "output": {
+      "path": "phase0/intl/review-ar.txt",
+      "sha256": "60f26af4d0a3b9bd9c2bfb87b03d1793338ebb7cc18541fa84e9d109545102b7"
+     },
+     "notCopied": {
+      "reviewPrompt": {
+       "path": "/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr/docs/audits/2026-10-06-settings-search-vocab-phase0/intl/review-ar.md",
+       "sha256": "8b4f13166434a72c2e414e840819a100359c9dbcbd991861b605134416dbace9"
+      },
+      "draft": {
+       "path": "/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr/docs/audits/2026-10-06-settings-search-vocab-phase0/intl/v-ar.txt.last",
+       "sha256": "904926ba4b172434c584afa64cf3b99429f3d11632997c5a27bdc535107e2eac"
+      }
+     },
+     "disposition": "content identical to the reviewed output for the 246 searchable ids after the Phase 0 merge rule (a word folding equal to its title dropped); the 64 exempt ids removed (verify-phase0.py)"
+    },
+    {
+     "kind": "stop-and-markers",
+     "method": "Codex, fresh isolated session, list review group 0",
+     "date": "2026-10-06",
+     "prompt": "lists/review-prompt-0.md",
+     "output": {
+      "path": "lists/review-0.txt",
+      "sha256": "590789d3a73521cc023958168000c9a09e54c4b4dfcfc74157a542b404827fa0"
+     },
+     "disposition": "stop list adopted as returned; markers superseded by rounds 2 and 3"
+    },
+    {
+     "kind": "markers",
+     "method": "Codex, fresh isolated sessions, marker review rounds 2 and 3, group 0",
+     "date": "2026-10-06",
+     "reason": "chunk 4 review: required intent and negation forms (change, never, every negative determiner form) were missing; no length limit",
+     "round2": {
+      "prompt": "lists/markers-r2-prompt-0.md",
+      "output": {
+       "path": "lists/markers-r2-0.txt",
+       "sha256": "27ee31e4fa3b2f19679d5a4457094d8f8889354742d3bb353680d800ef6da19c"
+      },
+      "disposition": "not adopted: it protected ordinary setting words (for example English setting, speed, silence)"
+     },
+     "round3": {
+      "prompt": "lists/markers-r3-prompt-0.md",
+      "output": {
+       "path": "lists/markers-r3-0.txt",
+       "sha256": "fa3639a89431b723d615013bde7f91677b2089d15e87343fef1f977aecba19fb"
+      },
+      "disposition": "adopted as returned; exact repeated words removed (fi 3, hr 1) and canonically equal spellings (hi 3)"
+     }
+    },
+    {
+     "kind": "founder-edit",
+     "method": "Founder decision 2026-10-07 (#3482 plan §18, ranking option 1a): add the product name \"WhisperKit\", untranslated, to transcriptionEngine.allLanguages in every language so a search for the engine's own name finds it",
+     "date": "2026-10-07",
+     "ids": [
+      "transcriptionEngine.allLanguages"
+     ],
+     "disposition": "the word appended to the reviewed words; nothing else changed"
+    }
+   ],
+   "phraseExemptions": []
+  },
+  {
+   "language": "bg",
+   "contentSHA256": "5ca50d08700e95a12769d3253a2d1542599dbdaf0f84b69bcf797292a190c68f",
+   "reviews": [
+    {
+     "kind": "phase0-content",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions)",
+     "date": "2026-10-06",
+     "brief": "phase0/vocab-review-brief.md",
+     "output": {
+      "path": "phase0/intl/review-bg.txt",
+      "sha256": "c4552dcb3736c0860fdac82576bd610e16e747957200a9f39eecd62f3baefed5"
+     },
+     "notCopied": {
+      "reviewPrompt": {
+       "path": "/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr/docs/audits/2026-10-06-settings-search-vocab-phase0/intl/review-bg.md",
+       "sha256": "aeabf3ed635693ee7989095d007b837edde47d7ab3e32967eddccc78038d8d38"
+      },
+      "draft": {
+       "path": "/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr/docs/audits/2026-10-06-settings-search-vocab-phase0/intl/v-bg.txt.last",
+       "sha256": "f7223aeb04e92d3abb126cc2d34145fb2133c50cb3942201ca4ada19bf835b2a"
+      }
+     },
+     "disposition": "content identical to the reviewed output for the 246 searchable ids after the Phase 0 merge rule (a word folding equal to its title dropped); the 64 exempt ids removed (verify-phase0.py)"
+    },
+    {
+     "kind": "stop-and-markers",
+     "method": "Codex, fresh isolated session, list review group 0",
+     "date": "2026-10-06",
+     "prompt": "lists/review-prompt-0.md",
+     "output": {
+      "path": "lists/review-0.txt",
+      "sha256": "590789d3a73521cc023958168000c9a09e54c4b4dfcfc74157a542b404827fa0"
+     },
+     "disposition": "stop list adopted as returned; markers superseded by rounds 2 and 3"
+    },
+    {
+     "kind": "markers",
+     "method": "Codex, fresh isolated sessions, marker review rounds 2 and 3, group 0",
+     "date": "2026-10-06",
+     "reason": "chunk 4 review: required intent and negation forms (change, never, every negative determiner form) were missing; no length limit",
+     "round2": {
+      "prompt": "lists/markers-r2-prompt-0.md",
+      "output": {
+       "path": "lists/markers-r2-0.txt",
+       "sha256": "27ee31e4fa3b2f19679d5a4457094d8f8889354742d3bb353680d800ef6da19c"
+      },
+      "disposition": "not adopted: it protected ordinary setting words (for example English setting, speed, silence)"
+     },
+     "round3": {
+      "prompt": "lists/markers-r3-prompt-0.md",
+      "output": {
+       "path": "lists/markers-r3-0.txt",
+       "sha256": "fa3639a89431b723d615013bde7f91677b2089d15e87343fef1f977aecba19fb"
+      },
+      "disposition": "adopted as returned; exact repeated words removed (fi 3, hr 1) and canonically equal spellings (hi 3)"
+     }
+    },
+    {
+     "kind": "founder-edit",
+     "method": "Founder decision 2026-10-07 (#3482 plan §18, ranking option 1a): add the product name \"WhisperKit\", untranslated, to transcriptionEngine.allLanguages in every language so a search for the engine's own name finds it",
+     "date": "2026-10-07",
+     "ids": [
+      "transcriptionEngine.allLanguages"
+     ],
+     "disposition": "the word appended to the reviewed words; nothing else changed"
+    }
+   ],
+   "phraseExemptions": []
+  },
+  {
+   "language": "cs",
+   "contentSHA256": "d7edf33d079b46a13c3e8f9fd03632adaa4ad6411016e4b9e571d91bfc8a698e",
+   "reviews": [
+    {
+     "kind": "phase0-content",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions)",
+     "date": "2026-10-06",
+     "brief": "phase0/vocab-review-brief.md",
+     "output": {
+      "path": "phase0/intl/review-cs.txt",
+      "sha256": "33c41dddc412381d1c98f6e5cfd407034d3ff7bfb767f51139638d3749e714eb"
+     },
+     "notCopied": {
+      "reviewPrompt": {
+       "path": "/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr/docs/audits/2026-10-06-settings-search-vocab-phase0/intl/review-cs.md",
+       "sha256": "628589d20ccf4a042aafa6d4fef6fd6fcec0c2cc41f053c10c16e58f2449ead4"
+      },
+      "draft": {
+       "path": "/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr/docs/audits/2026-10-06-settings-search-vocab-phase0/intl/v-cs.txt.last",
+       "sha256": "8df5c996b35ca69794a9c47a952495ef25c3624b3f1dcbb881869e8319e9b347"
+      }
+     },
+     "disposition": "content identical to the reviewed output for the 246 searchable ids after the Phase 0 merge rule (a word folding equal to its title dropped); the 64 exempt ids removed (verify-phase0.py)"
+    },
+    {
+     "kind": "stop-and-markers",
+     "method": "Codex, fresh isolated session, list review group 0",
+     "date": "2026-10-06",
+     "prompt": "lists/review-prompt-0.md",
+     "output": {
+      "path": "lists/review-0.txt",
+      "sha256": "590789d3a73521cc023958168000c9a09e54c4b4dfcfc74157a542b404827fa0"
+     },
+     "disposition": "stop list adopted as returned; markers superseded by rounds 2 and 3"
+    },
+    {
+     "kind": "markers",
+     "method": "Codex, fresh isolated sessions, marker review rounds 2 and 3, group 0",
+     "date": "2026-10-06",
+     "reason": "chunk 4 review: required intent and negation forms (change, never, every negative determiner form) were missing; no length limit",
+     "round2": {
+      "prompt": "lists/markers-r2-prompt-0.md",
+      "output": {
+       "path": "lists/markers-r2-0.txt",
+       "sha256": "27ee31e4fa3b2f19679d5a4457094d8f8889354742d3bb353680d800ef6da19c"
+      },
+      "disposition": "not adopted: it protected ordinary setting words (for example English setting, speed, silence)"
+     },
+     "round3": {
+      "prompt": "lists/markers-r3-prompt-0.md",
+      "output": {
+       "path": "lists/markers-r3-0.txt",
+       "sha256": "fa3639a89431b723d615013bde7f91677b2089d15e87343fef1f977aecba19fb"
+      },
+      "disposition": "adopted as returned; exact repeated words removed (fi 3, hr 1) and canonically equal spellings (hi 3)"
+     }
+    },
+    {
+     "kind": "founder-edit",
+     "method": "Founder decision 2026-10-07 (#3482 plan §18, ranking option 1a): add the product name \"WhisperKit\", untranslated, to transcriptionEngine.allLanguages in every language so a search for the engine's own name finds it",
+     "date": "2026-10-07",
+     "ids": [
+      "transcriptionEngine.allLanguages"
+     ],
+     "disposition": "the word appended to the reviewed words; nothing else changed"
+    }
+   ],
+   "phraseExemptions": []
+  },
+  {
+   "language": "da",
+   "contentSHA256": "273d9c86b24394e6c796feb87f2f154cedb0b292d200ea651722af0197b2b155",
+   "reviews": [
+    {
+     "kind": "phase0-content",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions)",
+     "date": "2026-10-06",
+     "brief": "phase0/vocab-review-brief.md",
+     "output": {
+      "path": "phase0/intl/review-da.txt",
+      "sha256": "dd2e7bb909b59b6754836fdc65e33bef9a9fa74ff6f7dc30d24ef4f83d8fa9a1"
+     },
+     "notCopied": {
+      "reviewPrompt": {
+       "path": "/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr/docs/audits/2026-10-06-settings-search-vocab-phase0/intl/review-da.md",
+       "sha256": "0f0fe0113b847e654a6a3baf43e04647bd5e14a6da3690799d791ad2e6531e65"
+      },
+      "draft": {
+       "path": "/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr/docs/audits/2026-10-06-settings-search-vocab-phase0/intl/v-da.txt.last",
+       "sha256": "ba1493eeca796bb4a919681a91bea2d1c0a6ea703733a19afc864d02bb4b8d5c"
+      }
+     },
+     "disposition": "content identical to the reviewed output for the 246 searchable ids after the Phase 0 merge rule (a word folding equal to its title dropped); the 64 exempt ids removed (verify-phase0.py)"
+    },
+    {
+     "kind": "stop-and-markers",
+     "method": "Codex, fresh isolated session, list review group 0",
+     "date": "2026-10-06",
+     "prompt": "lists/review-prompt-0.md",
+     "output": {
+      "path": "lists/review-0.txt",
+      "sha256": "590789d3a73521cc023958168000c9a09e54c4b4dfcfc74157a542b404827fa0"
+     },
+     "disposition": "stop list adopted as returned; markers superseded by rounds 2 and 3"
+    },
+    {
+     "kind": "markers",
+     "method": "Codex, fresh isolated sessions, marker review rounds 2 and 3, group 0",
+     "date": "2026-10-06",
+     "reason": "chunk 4 review: required intent and negation forms (change, never, every negative determiner form) were missing; no length limit",
+     "round2": {
+      "prompt": "lists/markers-r2-prompt-0.md",
+      "output": {
+       "path": "lists/markers-r2-0.txt",
+       "sha256": "27ee31e4fa3b2f19679d5a4457094d8f8889354742d3bb353680d800ef6da19c"
+      },
+      "disposition": "not adopted: it protected ordinary setting words (for example English setting, speed, silence)"
+     },
+     "round3": {
+      "prompt": "lists/markers-r3-prompt-0.md",
+      "output": {
+       "path": "lists/markers-r3-0.txt",
+       "sha256": "fa3639a89431b723d615013bde7f91677b2089d15e87343fef1f977aecba19fb"
+      },
+      "disposition": "adopted as returned; exact repeated words removed (fi 3, hr 1) and canonically equal spellings (hi 3)"
+     }
+    },
+    {
+     "kind": "founder-edit",
+     "method": "Founder decision 2026-10-07 (#3482 plan §18, ranking option 1a): add the product name \"WhisperKit\", untranslated, to transcriptionEngine.allLanguages in every language so a search for the engine's own name finds it",
+     "date": "2026-10-07",
+     "ids": [
+      "transcriptionEngine.allLanguages"
+     ],
+     "disposition": "the word appended to the reviewed words; nothing else changed"
+    }
+   ],
+   "phraseExemptions": []
+  },
+  {
+   "language": "de",
+   "contentSHA256": "4671dcf2490714effd576b86b9065cb58078975e1d38620e207b2065b0dfad82",
+   "reviews": [
+    {
+     "kind": "phase0-content",
+     "method": "Codex, three fresh isolated sessions covering all 310 ids in English and German (accuracy, collisions, reach, German)",
+     "date": "2026-10-06",
+     "brief": "phase0/vocab-review-brief.md",
+     "prompts": [
+      "phase0/ende/review-prompt-aa.md",
+      "phase0/ende/review-prompt-ab.md",
+      "phase0/ende/review-prompt-ac.md"
+     ],
+     "outputs": [
+      {
+       "path": "phase0/ende/review-aa.txt",
+       "sha256": "7c5abafdc82ee8d5558f11f09acc4c4c4b891adbc4407644fc44f28db183ffde"
+      },
+      {
+       "path": "phase0/ende/review-ab.txt",
+       "sha256": "cc9174b93c76abd509655186247d861f1e09fb8099e64d72b0897342c439baeb"
+      },
+      {
+       "path": "phase0/ende/review-ac.txt",
+       "sha256": "e588753631f79b294ca7e8d2d92b6fe66ac9183d63360abf19caa8138b588772"
+      }
+     ],
+     "disposition": "content identical to the reviewed outputs for the 246 searchable ids; the 64 exempt ids removed (verify-phase0.py)"
+    },
+    {
+     "kind": "stop-and-markers",
+     "method": "Codex, fresh isolated session, list review group 0",
+     "date": "2026-10-06",
+     "prompt": "lists/review-prompt-0.md",
+     "output": {
+      "path": "lists/review-0.txt",
+      "sha256": "590789d3a73521cc023958168000c9a09e54c4b4dfcfc74157a542b404827fa0"
+     },
+     "disposition": "stop list adopted as returned then changed by the German council review; markers superseded by rounds 2 and 3"
+    },
+    {
+     "kind": "markers",
+     "method": "Codex, fresh isolated sessions, marker review rounds 2 and 3, group 0",
+     "date": "2026-10-06",
+     "reason": "chunk 4 review: required intent and negation forms (change, never, every negative determiner form) were missing; no length limit",
+     "round2": {
+      "prompt": "lists/markers-r2-prompt-0.md",
+      "output": {
+       "path": "lists/markers-r2-0.txt",
+       "sha256": "27ee31e4fa3b2f19679d5a4457094d8f8889354742d3bb353680d800ef6da19c"
+      },
+      "disposition": "not adopted: it protected ordinary setting words (for example English setting, speed, silence)"
+     },
+     "round3": {
+      "prompt": "lists/markers-r3-prompt-0.md",
+      "output": {
+       "path": "lists/markers-r3-0.txt",
+       "sha256": "fa3639a89431b723d615013bde7f91677b2089d15e87343fef1f977aecba19fb"
+      },
+      "disposition": "adopted as returned; exact repeated words removed (fi 3, hr 1) and canonically equal spellings (hi 3); German then corrected by the council round 3 (3 removed, 4 added)"
+     }
+    },
+    {
+     "kind": "phrases",
+     "scope": [
+      "dictionary.tab.learnFrom",
+      "dictionary.tab.vocabularyPacks"
+     ],
+     "method": "drafted in a fresh isolated Codex session (lists/phrases-draft-prompt.md), reviewed in list review group 0",
+     "date": "2026-10-06",
+     "disposition": "adopted as the review returned them"
+    },
+    {
+     "kind": "german-council",
+     "method": "Council: GPT gpt-6-sol and Gemini gemini-3.8-flash, session settings-search-german-2026-10-06, two rounds",
+     "date": "2026-10-06",
+     "scope": "every German block of the 246 ids, the stop list and the markers",
+     "digest": "council/digest.md",
+     "disposition": "round 1: 7 findings adopted, 4 rejected with evidence; round 2: no changes; round 3 (markers): 3 removals and 4 additions adopted, see council/digest.md"
+    },
+    {
+     "kind": "founder-edit",
+     "method": "Founder decision 2026-10-07 (#3482 plan §18, ranking option 1a): add the product name \"WhisperKit\", untranslated, to transcriptionEngine.allLanguages in every language so a search for the engine's own name finds it",
+     "date": "2026-10-07",
+     "ids": [
+      "transcriptionEngine.allLanguages"
+     ],
+     "disposition": "the word appended to the reviewed words; nothing else changed"
+    }
+   ],
+   "phraseExemptions": []
+  },
+  {
+   "language": "el",
+   "contentSHA256": "60557f1af6e60c09cdf200ef52686009057d177d7b39b2c2b765101c1f52792e",
+   "reviews": [
+    {
+     "kind": "phase0-content",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions)",
+     "date": "2026-10-06",
+     "brief": "phase0/vocab-review-brief.md",
+     "output": {
+      "path": "phase0/intl/review-el.txt",
+      "sha256": "9c48cd56d6e9455b4e9426de72db4d9188213e165d33c1746bc5dcd5157c972b"
+     },
+     "notCopied": {
+      "reviewPrompt": {
+       "path": "/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr/docs/audits/2026-10-06-settings-search-vocab-phase0/intl/review-el.md",
+       "sha256": "8f47917947f40960edbfb0779be7fdb4ba4c939e0231734250c3cdb8e35093ed"
+      },
+      "draft": {
+       "path": "/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr/docs/audits/2026-10-06-settings-search-vocab-phase0/intl/v-el.txt.last",
+       "sha256": "d5ba7473391ed8863d9dff0ae6a0b556f73e474126d1cdf24feee749865140da"
+      }
+     },
+     "disposition": "content identical to the reviewed output for the 246 searchable ids after the Phase 0 merge rule (a word folding equal to its title dropped); the 64 exempt ids removed (verify-phase0.py)"
+    },
+    {
+     "kind": "stop-and-markers",
+     "method": "Codex, fresh isolated session, list review group 0",
+     "date": "2026-10-06",
+     "prompt": "lists/review-prompt-0.md",
+     "output": {
+      "path": "lists/review-0.txt",
+      "sha256": "590789d3a73521cc023958168000c9a09e54c4b4dfcfc74157a542b404827fa0"
+     },
+     "disposition": "stop list adopted as returned; markers superseded by rounds 2 and 3"
+    },
+    {
+     "kind": "markers",
+     "method": "Codex, fresh isolated sessions, marker review rounds 2 and 3, group 0",
+     "date": "2026-10-06",
+     "reason": "chunk 4 review: required intent and negation forms (change, never, every negative determiner form) were missing; no length limit",
+     "round2": {
+      "prompt": "lists/markers-r2-prompt-0.md",
+      "output": {
+       "path": "lists/markers-r2-0.txt",
+       "sha256": "27ee31e4fa3b2f19679d5a4457094d8f8889354742d3bb353680d800ef6da19c"
+      },
+      "disposition": "not adopted: it protected ordinary setting words (for example English setting, speed, silence)"
+     },
+     "round3": {
+      "prompt": "lists/markers-r3-prompt-0.md",
+      "output": {
+       "path": "lists/markers-r3-0.txt",
+       "sha256": "fa3639a89431b723d615013bde7f91677b2089d15e87343fef1f977aecba19fb"
+      },
+      "disposition": "adopted as returned; exact repeated words removed (fi 3, hr 1) and canonically equal spellings (hi 3)"
+     }
+    },
+    {
+     "kind": "founder-edit",
+     "method": "Founder decision 2026-10-07 (#3482 plan §18, ranking option 1a): add the product name \"WhisperKit\", untranslated, to transcriptionEngine.allLanguages in every language so a search for the engine's own name finds it",
+     "date": "2026-10-07",
+     "ids": [
+      "transcriptionEngine.allLanguages"
+     ],
+     "disposition": "the word appended to the reviewed words; nothing else changed"
+    }
+   ],
+   "phraseExemptions": []
+  },
+  {
+   "language": "en",
+   "contentSHA256": "5cf21f2ada93737a12b28f9adc34fb4aaac660559a3bbf30b875dc6b4c8f817c",
+   "reviews": [
+    {
+     "kind": "phase0-content",
+     "method": "Codex, three fresh isolated sessions covering all 310 ids in English and German (accuracy, collisions, reach, German)",
+     "date": "2026-10-06",
+     "brief": "phase0/vocab-review-brief.md",
+     "prompts": [
+      "phase0/ende/review-prompt-aa.md",
+      "phase0/ende/review-prompt-ab.md",
+      "phase0/ende/review-prompt-ac.md"
+     ],
+     "outputs": [
+      {
+       "path": "phase0/ende/review-aa.txt",
+       "sha256": "7c5abafdc82ee8d5558f11f09acc4c4c4b891adbc4407644fc44f28db183ffde"
+      },
+      {
+       "path": "phase0/ende/review-ab.txt",
+       "sha256": "cc9174b93c76abd509655186247d861f1e09fb8099e64d72b0897342c439baeb"
+      },
+      {
+       "path": "phase0/ende/review-ac.txt",
+       "sha256": "e588753631f79b294ca7e8d2d92b6fe66ac9183d63360abf19caa8138b588772"
+      }
+     ],
+     "disposition": "content identical to the reviewed outputs for the 246 searchable ids; the 64 exempt ids removed (verify-phase0.py)"
+    },
+    {
+     "kind": "stop-and-markers",
+     "method": "Codex, fresh isolated session, list review group 0",
+     "date": "2026-10-06",
+     "prompt": "lists/review-prompt-0.md",
+     "output": {
+      "path": "lists/review-0.txt",
+      "sha256": "590789d3a73521cc023958168000c9a09e54c4b4dfcfc74157a542b404827fa0"
+     },
+     "disposition": "stop list adopted as returned; markers superseded by rounds 2 and 3"
+    },
+    {
+     "kind": "markers",
+     "method": "Codex, fresh isolated sessions, marker review rounds 2 and 3, group 0",
+     "date": "2026-10-06",
+     "reason": "chunk 4 review: required intent and negation forms (change, never, every negative determiner form) were missing; no length limit",
+     "round2": {
+      "prompt": "lists/markers-r2-prompt-0.md",
+      "output": {
+       "path": "lists/markers-r2-0.txt",
+       "sha256": "27ee31e4fa3b2f19679d5a4457094d8f8889354742d3bb353680d800ef6da19c"
+      },
+      "disposition": "not adopted: it protected ordinary setting words (for example English setting, speed, silence)"
+     },
+     "round3": {
+      "prompt": "lists/markers-r3-prompt-0.md",
+      "output": {
+       "path": "lists/markers-r3-0.txt",
+       "sha256": "fa3639a89431b723d615013bde7f91677b2089d15e87343fef1f977aecba19fb"
+      },
+      "disposition": "adopted as returned; exact repeated words removed (fi 3, hr 1) and canonically equal spellings (hi 3)"
+     }
+    },
+    {
+     "kind": "phrases",
+     "scope": [
+      "dictionary.tab.learnFrom",
+      "dictionary.tab.vocabularyPacks"
+     ],
+     "method": "drafted in a fresh isolated Codex session (lists/phrases-draft-prompt.md), reviewed in list review group 0",
+     "date": "2026-10-06",
+     "disposition": "adopted as the review returned them"
+    },
+    {
+     "kind": "founder-edit",
+     "method": "Founder decision 2026-10-07 (#3482 plan §18, ranking option 1a): add the product name \"WhisperKit\", untranslated, to transcriptionEngine.allLanguages in every language so a search for the engine's own name finds it",
+     "date": "2026-10-07",
+     "ids": [
+      "transcriptionEngine.allLanguages"
+     ],
+     "disposition": "the word appended to the reviewed words; nothing else changed"
+    }
+   ],
+   "phraseExemptions": []
+  },
+  {
+   "language": "es",
+   "contentSHA256": "b82cca956c08e0f0b599768d458f171da1bd3197615500c32e81bc9555975b9c",
+   "reviews": [
+    {
+     "kind": "phase0-content",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions)",
+     "date": "2026-10-06",
+     "brief": "phase0/vocab-review-brief.md",
+     "output": {
+      "path": "phase0/intl/review-es.txt",
+      "sha256": "d0e331bc8177a7c19d6d86878e61527296381e8fcec30c78730f3c6b32f8c4a4"
+     },
+     "notCopied": {
+      "reviewPrompt": {
+       "path": "/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr/docs/audits/2026-10-06-settings-search-vocab-phase0/intl/review-es.md",
+       "sha256": "80d6090f122cc177905aeea4412949e7b9928658ad680dfa43af6dfa67c31a65"
+      },
+      "draft": {
+       "path": "/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr/docs/audits/2026-10-06-settings-search-vocab-phase0/intl/v-es.txt.last",
+       "sha256": "5aa5147f55034cfd577d9865dbfd2556a92ab81b8765923560976241d687fdee"
+      }
+     },
+     "disposition": "content identical to the reviewed output for the 246 searchable ids after the Phase 0 merge rule (a word folding equal to its title dropped); the 64 exempt ids removed (verify-phase0.py)"
+    },
+    {
+     "kind": "stop-and-markers",
+     "method": "Codex, fresh isolated session, list review group 0",
+     "date": "2026-10-06",
+     "prompt": "lists/review-prompt-0.md",
+     "output": {
+      "path": "lists/review-0.txt",
+      "sha256": "590789d3a73521cc023958168000c9a09e54c4b4dfcfc74157a542b404827fa0"
+     },
+     "disposition": "stop list adopted as returned; markers superseded by rounds 2 and 3"
+    },
+    {
+     "kind": "markers",
+     "method": "Codex, fresh isolated sessions, marker review rounds 2 and 3, group 0",
+     "date": "2026-10-06",
+     "reason": "chunk 4 review: required intent and negation forms (change, never, every negative determiner form) were missing; no length limit",
+     "round2": {
+      "prompt": "lists/markers-r2-prompt-0.md",
+      "output": {
+       "path": "lists/markers-r2-0.txt",
+       "sha256": "27ee31e4fa3b2f19679d5a4457094d8f8889354742d3bb353680d800ef6da19c"
+      },
+      "disposition": "not adopted: it protected ordinary setting words (for example English setting, speed, silence)"
+     },
+     "round3": {
+      "prompt": "lists/markers-r3-prompt-0.md",
+      "output": {
+       "path": "lists/markers-r3-0.txt",
+       "sha256": "fa3639a89431b723d615013bde7f91677b2089d15e87343fef1f977aecba19fb"
+      },
+      "disposition": "adopted as returned; exact repeated words removed (fi 3, hr 1) and canonically equal spellings (hi 3)"
+     }
+    },
+    {
+     "kind": "founder-edit",
+     "method": "Founder decision 2026-10-07 (#3482 plan §18, ranking option 1a): add the product name \"WhisperKit\", untranslated, to transcriptionEngine.allLanguages in every language so a search for the engine's own name finds it",
+     "date": "2026-10-07",
+     "ids": [
+      "transcriptionEngine.allLanguages"
+     ],
+     "disposition": "the word appended to the reviewed words; nothing else changed"
+    }
+   ],
+   "phraseExemptions": []
+  },
+  {
+   "language": "et",
+   "contentSHA256": "3da04bf4f6714465119fa269dc25a0fb4e7ceacdcfd07d0a6217a929e76c948b",
+   "reviews": [
+    {
+     "kind": "phase0-content",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions)",
+     "date": "2026-10-06",
+     "brief": "phase0/vocab-review-brief.md",
+     "output": {
+      "path": "phase0/intl/review-et.txt",
+      "sha256": "3cc9b7ea658e504a800dd75dae17bde02459573cd31560c6656cfa5c16e45a72"
+     },
+     "notCopied": {
+      "reviewPrompt": {
+       "path": "/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr/docs/audits/2026-10-06-settings-search-vocab-phase0/intl/review-et.md",
+       "sha256": "38d1de4cc88e9d403c5c4a31d8e0ea0eeeca24df2601dfebad410e1743b59469"
+      },
+      "draft": {
+       "path": "/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr/docs/audits/2026-10-06-settings-search-vocab-phase0/intl/v-et.txt.last",
+       "sha256": "9d68cbc2ed553ba9b26dca379dfb40f5d6bc58e0c23a127705fc8c0d6d25073d"
+      }
+     },
+     "disposition": "content identical to the reviewed output for the 246 searchable ids after the Phase 0 merge rule (a word folding equal to its title dropped); the 64 exempt ids removed (verify-phase0.py)"
+    },
+    {
+     "kind": "stop-and-markers",
+     "method": "Codex, fresh isolated session, list review group 1",
+     "date": "2026-10-06",
+     "prompt": "lists/review-prompt-1.md",
+     "output": {
+      "path": "lists/review-1.txt",
+      "sha256": "9cc531ed3598381732d165e2b20502af9dafef466a7338ade5a76c60486f67e7"
+     },
+     "disposition": "stop list adopted as returned; markers superseded by rounds 2 and 3"
+    },
+    {
+     "kind": "markers",
+     "method": "Codex, fresh isolated sessions, marker review rounds 2 and 3, group 1",
+     "date": "2026-10-06",
+     "reason": "chunk 4 review: required intent and negation forms (change, never, every negative determiner form) were missing; no length limit",
+     "round2": {
+      "prompt": "lists/markers-r2-prompt-1.md",
+      "output": {
+       "path": "lists/markers-r2-1.txt",
+       "sha256": "655ae39d0296ff8fef16d1adcb1c3ccd3f0b0019fbefef5c717bd70d63a49b8f"
+      },
+      "disposition": "not adopted: it protected ordinary setting words (for example English setting, speed, silence)"
+     },
+     "round3": {
+      "prompt": "lists/markers-r3-prompt-1.md",
+      "output": {
+       "path": "lists/markers-r3-1.txt",
+       "sha256": "5dceef7d746e6ee3d56883b415db61b8f7ee2165ee30c23ef1bd520758b0d2f8"
+      },
+      "disposition": "adopted as returned; exact repeated words removed (fi 3, hr 1) and canonically equal spellings (hi 3)"
+     }
+    },
+    {
+     "kind": "founder-edit",
+     "method": "Founder decision 2026-10-07 (#3482 plan §18, ranking option 1a): add the product name \"WhisperKit\", untranslated, to transcriptionEngine.allLanguages in every language so a search for the engine's own name finds it",
+     "date": "2026-10-07",
+     "ids": [
+      "transcriptionEngine.allLanguages"
+     ],
+     "disposition": "the word appended to the reviewed words; nothing else changed"
+    }
+   ],
+   "phraseExemptions": []
+  },
+  {
+   "language": "fi",
+   "contentSHA256": "429007a636c615cf2c0c8554d8dd09121fcf1ca1a1a6b7c741fea9854b9fa282",
+   "reviews": [
+    {
+     "kind": "phase0-content",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions)",
+     "date": "2026-10-06",
+     "brief": "phase0/vocab-review-brief.md",
+     "output": {
+      "path": "phase0/intl/review-fi.txt",
+      "sha256": "454c19e69c25f454fb15bcec5a2462b40a4e877307ccb9f71e6588c03268b843"
+     },
+     "notCopied": {
+      "reviewPrompt": {
+       "path": "/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr/docs/audits/2026-10-06-settings-search-vocab-phase0/intl/review-fi.md",
+       "sha256": "9de5681871063447c8ff1218d00171b94a0dbcf31c580250535651ef60651f96"
+      },
+      "draft": {
+       "path": "/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr/docs/audits/2026-10-06-settings-search-vocab-phase0/intl/v-fi.txt.last",
+       "sha256": "7f87c87f41ae3df3419f5078ec5d7c456320ada2ccf00041801d252bfb4ffd14"
+      }
+     },
+     "disposition": "content identical to the reviewed output for the 246 searchable ids after the Phase 0 merge rule (a word folding equal to its title dropped); the 64 exempt ids removed (verify-phase0.py)"
+    },
+    {
+     "kind": "stop-and-markers",
+     "method": "Codex, fresh isolated session, list review group 1",
+     "date": "2026-10-06",
+     "prompt": "lists/review-prompt-1.md",
+     "output": {
+      "path": "lists/review-1.txt",
+      "sha256": "9cc531ed3598381732d165e2b20502af9dafef466a7338ade5a76c60486f67e7"
+     },
+     "disposition": "stop list adopted as returned; markers superseded by rounds 2 and 3"
+    },
+    {
+     "kind": "markers",
+     "method": "Codex, fresh isolated sessions, marker review rounds 2 and 3, group 1",
+     "date": "2026-10-06",
+     "reason": "chunk 4 review: required intent and negation forms (change, never, every negative determiner form) were missing; no length limit",
+     "round2": {
+      "prompt": "lists/markers-r2-prompt-1.md",
+      "output": {
+       "path": "lists/markers-r2-1.txt",
+       "sha256": "655ae39d0296ff8fef16d1adcb1c3ccd3f0b0019fbefef5c717bd70d63a49b8f"
+      },
+      "disposition": "not adopted: it protected ordinary setting words (for example English setting, speed, silence)"
+     },
+     "round3": {
+      "prompt": "lists/markers-r3-prompt-1.md",
+      "output": {
+       "path": "lists/markers-r3-1.txt",
+       "sha256": "5dceef7d746e6ee3d56883b415db61b8f7ee2165ee30c23ef1bd520758b0d2f8"
+      },
+      "disposition": "adopted as returned; exact repeated words removed (fi 3, hr 1) and canonically equal spellings (hi 3)"
+     }
+    },
+    {
+     "kind": "founder-edit",
+     "method": "Founder decision 2026-10-07 (#3482 plan §18, ranking option 1a): add the product name \"WhisperKit\", untranslated, to transcriptionEngine.allLanguages in every language so a search for the engine's own name finds it",
+     "date": "2026-10-07",
+     "ids": [
+      "transcriptionEngine.allLanguages"
+     ],
+     "disposition": "the word appended to the reviewed words; nothing else changed"
+    }
+   ],
+   "phraseExemptions": []
+  },
+  {
+   "language": "fr",
+   "contentSHA256": "c16af05edd6eed63f27e104b78bfe675bd4ef2a6a8d3ca40b86f71a166d5a481",
+   "reviews": [
+    {
+     "kind": "phase0-content",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions)",
+     "date": "2026-10-06",
+     "brief": "phase0/vocab-review-brief.md",
+     "output": {
+      "path": "phase0/intl/review-fr.txt",
+      "sha256": "60c6501507179fe4a826d5e434cc62ccf6cad0e2715430fafb005e94c8006690"
+     },
+     "notCopied": {
+      "reviewPrompt": {
+       "path": "/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr/docs/audits/2026-10-06-settings-search-vocab-phase0/intl/review-fr.md",
+       "sha256": "f52c69771ba936b608bb596c3c2a848bd69075bfc1929463efc79e4f800d0a66"
+      },
+      "draft": {
+       "path": "/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr/docs/audits/2026-10-06-settings-search-vocab-phase0/intl/v-fr.txt.last",
+       "sha256": "1e40cdd00b480e90fff71982c9875037d742515f395627f1e2a8a3c4e6783bd4"
+      }
+     },
+     "disposition": "content identical to the reviewed output for the 246 searchable ids after the Phase 0 merge rule (a word folding equal to its title dropped); the 64 exempt ids removed (verify-phase0.py)"
+    },
+    {
+     "kind": "stop-and-markers",
+     "method": "Codex, fresh isolated session, list review group 1",
+     "date": "2026-10-06",
+     "prompt": "lists/review-prompt-1.md",
+     "output": {
+      "path": "lists/review-1.txt",
+      "sha256": "9cc531ed3598381732d165e2b20502af9dafef466a7338ade5a76c60486f67e7"
+     },
+     "disposition": "stop list adopted as returned; markers superseded by rounds 2 and 3"
+    },
+    {
+     "kind": "markers",
+     "method": "Codex, fresh isolated sessions, marker review rounds 2 and 3, group 1",
+     "date": "2026-10-06",
+     "reason": "chunk 4 review: required intent and negation forms (change, never, every negative determiner form) were missing; no length limit",
+     "round2": {
+      "prompt": "lists/markers-r2-prompt-1.md",
+      "output": {
+       "path": "lists/markers-r2-1.txt",
+       "sha256": "655ae39d0296ff8fef16d1adcb1c3ccd3f0b0019fbefef5c717bd70d63a49b8f"
+      },
+      "disposition": "not adopted: it protected ordinary setting words (for example English setting, speed, silence)"
+     },
+     "round3": {
+      "prompt": "lists/markers-r3-prompt-1.md",
+      "output": {
+       "path": "lists/markers-r3-1.txt",
+       "sha256": "5dceef7d746e6ee3d56883b415db61b8f7ee2165ee30c23ef1bd520758b0d2f8"
+      },
+      "disposition": "adopted as returned; exact repeated words removed (fi 3, hr 1) and canonically equal spellings (hi 3)"
+     }
+    },
+    {
+     "kind": "founder-edit",
+     "method": "Founder decision 2026-10-07 (#3482 plan §18, ranking option 1a): add the product name \"WhisperKit\", untranslated, to transcriptionEngine.allLanguages in every language so a search for the engine's own name finds it",
+     "date": "2026-10-07",
+     "ids": [
+      "transcriptionEngine.allLanguages"
+     ],
+     "disposition": "the word appended to the reviewed words; nothing else changed"
+    }
+   ],
+   "phraseExemptions": []
+  },
+  {
+   "language": "hi",
+   "contentSHA256": "f7ea387f60a1634d8218fa1b5017ff9b7e87fb6b9c635e13fe4a3ae46a9c8862",
+   "reviews": [
+    {
+     "kind": "phase0-content",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions)",
+     "date": "2026-10-06",
+     "brief": "phase0/vocab-review-brief.md",
+     "output": {
+      "path": "phase0/intl/review-hi.txt",
+      "sha256": "ae275034ca610f5ed437cfb33cb688ad8aa3cb5b638febe7ae67ff83ab3463b7"
+     },
+     "notCopied": {
+      "reviewPrompt": {
+       "path": "/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr/docs/audits/2026-10-06-settings-search-vocab-phase0/intl/review-hi.md",
+       "sha256": "f3f3d6da6950aa218aa38509b0b8005e8fd0c2bae52a94b960c83145be62e0d8"
+      },
+      "draft": {
+       "path": "/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr/docs/audits/2026-10-06-settings-search-vocab-phase0/intl/v-hi.txt.last",
+       "sha256": "d501490efea7bbb3a9f4053fc304d462ab33e8c30f2ecbff705ceb8becb04af8"
+      }
+     },
+     "disposition": "content identical to the reviewed output for the 246 searchable ids after the Phase 0 merge rule (a word folding equal to its title dropped); the 64 exempt ids removed (verify-phase0.py)"
+    },
+    {
+     "kind": "stop-and-markers",
+     "method": "Codex, fresh isolated session, list review group 1",
+     "date": "2026-10-06",
+     "prompt": "lists/review-prompt-1.md",
+     "output": {
+      "path": "lists/review-1.txt",
+      "sha256": "9cc531ed3598381732d165e2b20502af9dafef466a7338ade5a76c60486f67e7"
+     },
+     "disposition": "stop list adopted as returned; markers superseded by rounds 2 and 3"
+    },
+    {
+     "kind": "markers",
+     "method": "Codex, fresh isolated sessions, marker review rounds 2 and 3, group 1",
+     "date": "2026-10-06",
+     "reason": "chunk 4 review: required intent and negation forms (change, never, every negative determiner form) were missing; no length limit",
+     "round2": {
+      "prompt": "lists/markers-r2-prompt-1.md",
+      "output": {
+       "path": "lists/markers-r2-1.txt",
+       "sha256": "655ae39d0296ff8fef16d1adcb1c3ccd3f0b0019fbefef5c717bd70d63a49b8f"
+      },
+      "disposition": "not adopted: it protected ordinary setting words (for example English setting, speed, silence)"
+     },
+     "round3": {
+      "prompt": "lists/markers-r3-prompt-1.md",
+      "output": {
+       "path": "lists/markers-r3-1.txt",
+       "sha256": "5dceef7d746e6ee3d56883b415db61b8f7ee2165ee30c23ef1bd520758b0d2f8"
+      },
+      "disposition": "adopted as returned; exact repeated words removed (fi 3, hr 1) and canonically equal spellings (hi 3)"
+     }
+    },
+    {
+     "kind": "founder-edit",
+     "method": "Founder decision 2026-10-07 (#3482 plan §18, ranking option 1a): add the product name \"WhisperKit\", untranslated, to transcriptionEngine.allLanguages in every language so a search for the engine's own name finds it",
+     "date": "2026-10-07",
+     "ids": [
+      "transcriptionEngine.allLanguages"
+     ],
+     "disposition": "the word appended to the reviewed words; nothing else changed"
+    }
+   ],
+   "phraseExemptions": []
+  },
+  {
+   "language": "hr",
+   "contentSHA256": "4d3ba8c0f74d755b048142b110ec6766be65a2707836f46a1d411f287d0856ef",
+   "reviews": [
+    {
+     "kind": "phase0-content",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions)",
+     "date": "2026-10-06",
+     "brief": "phase0/vocab-review-brief.md",
+     "output": {
+      "path": "phase0/intl/review-hr.txt",
+      "sha256": "a4cff2a86eb7fea7f67938558e00cef8881ae377901ef51267875abfcec4619f"
+     },
+     "notCopied": {
+      "reviewPrompt": {
+       "path": "/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr/docs/audits/2026-10-06-settings-search-vocab-phase0/intl/review-hr.md",
+       "sha256": "8935492f5be8d41aca55e745a9f47971f05c3ce10080bc7515efd3c3bbd65d39"
+      },
+      "draft": {
+       "path": "/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr/docs/audits/2026-10-06-settings-search-vocab-phase0/intl/v-hr.txt.last",
+       "sha256": "63e942100a72168f536aae0eec1931aea8c6ddf3b290f9f334e7c24fd2f74122"
+      }
+     },
+     "disposition": "content identical to the reviewed output for the 246 searchable ids after the Phase 0 merge rule (a word folding equal to its title dropped); the 64 exempt ids removed (verify-phase0.py)"
+    },
+    {
+     "kind": "stop-and-markers",
+     "method": "Codex, fresh isolated session, list review group 1",
+     "date": "2026-10-06",
+     "prompt": "lists/review-prompt-1.md",
+     "output": {
+      "path": "lists/review-1.txt",
+      "sha256": "9cc531ed3598381732d165e2b20502af9dafef466a7338ade5a76c60486f67e7"
+     },
+     "disposition": "stop list adopted as returned; markers superseded by rounds 2 and 3"
+    },
+    {
+     "kind": "markers",
+     "method": "Codex, fresh isolated sessions, marker review rounds 2 and 3, group 1",
+     "date": "2026-10-06",
+     "reason": "chunk 4 review: required intent and negation forms (change, never, every negative determiner form) were missing; no length limit",
+     "round2": {
+      "prompt": "lists/markers-r2-prompt-1.md",
+      "output": {
+       "path": "lists/markers-r2-1.txt",
+       "sha256": "655ae39d0296ff8fef16d1adcb1c3ccd3f0b0019fbefef5c717bd70d63a49b8f"
+      },
+      "disposition": "not adopted: it protected ordinary setting words (for example English setting, speed, silence)"
+     },
+     "round3": {
+      "prompt": "lists/markers-r3-prompt-1.md",
+      "output": {
+       "path": "lists/markers-r3-1.txt",
+       "sha256": "5dceef7d746e6ee3d56883b415db61b8f7ee2165ee30c23ef1bd520758b0d2f8"
+      },
+      "disposition": "adopted as returned; exact repeated words removed (fi 3, hr 1) and canonically equal spellings (hi 3)"
+     }
+    },
+    {
+     "kind": "founder-edit",
+     "method": "Founder decision 2026-10-07 (#3482 plan §18, ranking option 1a): add the product name \"WhisperKit\", untranslated, to transcriptionEngine.allLanguages in every language so a search for the engine's own name finds it",
+     "date": "2026-10-07",
+     "ids": [
+      "transcriptionEngine.allLanguages"
+     ],
+     "disposition": "the word appended to the reviewed words; nothing else changed"
+    }
+   ],
+   "phraseExemptions": []
+  },
+  {
+   "language": "hu",
+   "contentSHA256": "d4d6577e02dfc265c6e264abdd17a8a7184d802be5dff2bc28dd730d6807f44f",
+   "reviews": [
+    {
+     "kind": "phase0-content",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions)",
+     "date": "2026-10-06",
+     "brief": "phase0/vocab-review-brief.md",
+     "output": {
+      "path": "phase0/intl/review-hu.txt",
+      "sha256": "ad7fbfc91c4fa563c047d87b3dcd2dda82f435615a61e143928afc682be153e5"
+     },
+     "notCopied": {
+      "reviewPrompt": {
+       "path": "/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr/docs/audits/2026-10-06-settings-search-vocab-phase0/intl/review-hu.md",
+       "sha256": "4c225b17543cb6d35254dfd4a3c8ca60894d6e97d029a1acbbe19ecbebee844e"
+      },
+      "draft": {
+       "path": "/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr/docs/audits/2026-10-06-settings-search-vocab-phase0/intl/v-hu.txt.last",
+       "sha256": "0b34b1c75dc362aaea3957a3c64b6bbe38bc710d428f88661395ba72e2494f80"
+      }
+     },
+     "disposition": "content identical to the reviewed output for the 246 searchable ids after the Phase 0 merge rule (a word folding equal to its title dropped); the 64 exempt ids removed (verify-phase0.py)"
+    },
+    {
+     "kind": "stop-and-markers",
+     "method": "Codex, fresh isolated session, list review group 1",
+     "date": "2026-10-06",
+     "prompt": "lists/review-prompt-1.md",
+     "output": {
+      "path": "lists/review-1.txt",
+      "sha256": "9cc531ed3598381732d165e2b20502af9dafef466a7338ade5a76c60486f67e7"
+     },
+     "disposition": "stop list adopted as returned; markers superseded by rounds 2 and 3"
+    },
+    {
+     "kind": "markers",
+     "method": "Codex, fresh isolated sessions, marker review rounds 2 and 3, group 1",
+     "date": "2026-10-06",
+     "reason": "chunk 4 review: required intent and negation forms (change, never, every negative determiner form) were missing; no length limit",
+     "round2": {
+      "prompt": "lists/markers-r2-prompt-1.md",
+      "output": {
+       "path": "lists/markers-r2-1.txt",
+       "sha256": "655ae39d0296ff8fef16d1adcb1c3ccd3f0b0019fbefef5c717bd70d63a49b8f"
+      },
+      "disposition": "not adopted: it protected ordinary setting words (for example English setting, speed, silence)"
+     },
+     "round3": {
+      "prompt": "lists/markers-r3-prompt-1.md",
+      "output": {
+       "path": "lists/markers-r3-1.txt",
+       "sha256": "5dceef7d746e6ee3d56883b415db61b8f7ee2165ee30c23ef1bd520758b0d2f8"
+      },
+      "disposition": "adopted as returned; exact repeated words removed (fi 3, hr 1) and canonically equal spellings (hi 3)"
+     }
+    },
+    {
+     "kind": "founder-edit",
+     "method": "Founder decision 2026-10-07 (#3482 plan §18, ranking option 1a): add the product name \"WhisperKit\", untranslated, to transcriptionEngine.allLanguages in every language so a search for the engine's own name finds it",
+     "date": "2026-10-07",
+     "ids": [
+      "transcriptionEngine.allLanguages"
+     ],
+     "disposition": "the word appended to the reviewed words; nothing else changed"
+    }
+   ],
+   "phraseExemptions": []
+  },
+  {
+   "language": "it",
+   "contentSHA256": "0aa8f2b38665ccd381771d7cdfed41d99007ad10723b6bb20306e340f6f1b14c",
+   "reviews": [
+    {
+     "kind": "phase0-content",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions)",
+     "date": "2026-10-06",
+     "brief": "phase0/vocab-review-brief.md",
+     "output": {
+      "path": "phase0/intl/review-it.txt",
+      "sha256": "5db2c744179a9275f46b86e04ae4b6bf5d8e49ffcd0ed5fe7d5de06e0a0c90ed"
+     },
+     "notCopied": {
+      "reviewPrompt": {
+       "path": "/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr/docs/audits/2026-10-06-settings-search-vocab-phase0/intl/review-it.md",
+       "sha256": "076bc564b22af8eae5acb098edcf88ac7245ffb00eabaee235323c7044828485"
+      },
+      "draft": {
+       "path": "/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr/docs/audits/2026-10-06-settings-search-vocab-phase0/intl/v-it.txt.last",
+       "sha256": "e5e112d5b64f9a94a3ef9df8041adad18ff4bdb50855016d3e1f2ed16f91c4d0"
+      }
+     },
+     "disposition": "content identical to the reviewed output for the 246 searchable ids after the Phase 0 merge rule (a word folding equal to its title dropped); the 64 exempt ids removed (verify-phase0.py)"
+    },
+    {
+     "kind": "stop-and-markers",
+     "method": "Codex, fresh isolated session, list review group 1",
+     "date": "2026-10-06",
+     "prompt": "lists/review-prompt-1.md",
+     "output": {
+      "path": "lists/review-1.txt",
+      "sha256": "9cc531ed3598381732d165e2b20502af9dafef466a7338ade5a76c60486f67e7"
+     },
+     "disposition": "stop list adopted as returned; markers superseded by rounds 2 and 3"
+    },
+    {
+     "kind": "markers",
+     "method": "Codex, fresh isolated sessions, marker review rounds 2 and 3, group 1",
+     "date": "2026-10-06",
+     "reason": "chunk 4 review: required intent and negation forms (change, never, every negative determiner form) were missing; no length limit",
+     "round2": {
+      "prompt": "lists/markers-r2-prompt-1.md",
+      "output": {
+       "path": "lists/markers-r2-1.txt",
+       "sha256": "655ae39d0296ff8fef16d1adcb1c3ccd3f0b0019fbefef5c717bd70d63a49b8f"
+      },
+      "disposition": "not adopted: it protected ordinary setting words (for example English setting, speed, silence)"
+     },
+     "round3": {
+      "prompt": "lists/markers-r3-prompt-1.md",
+      "output": {
+       "path": "lists/markers-r3-1.txt",
+       "sha256": "5dceef7d746e6ee3d56883b415db61b8f7ee2165ee30c23ef1bd520758b0d2f8"
+      },
+      "disposition": "adopted as returned; exact repeated words removed (fi 3, hr 1) and canonically equal spellings (hi 3)"
+     }
+    },
+    {
+     "kind": "founder-edit",
+     "method": "Founder decision 2026-10-07 (#3482 plan §18, ranking option 1a): add the product name \"WhisperKit\", untranslated, to transcriptionEngine.allLanguages in every language so a search for the engine's own name finds it",
+     "date": "2026-10-07",
+     "ids": [
+      "transcriptionEngine.allLanguages"
+     ],
+     "disposition": "the word appended to the reviewed words; nothing else changed"
+    }
+   ],
+   "phraseExemptions": []
+  },
+  {
+   "language": "ja",
+   "contentSHA256": "6e7c0fd17dcd3ddf312db811c6a451c396cfe3b9438586bcf70095dcd879cf84",
+   "reviews": [
+    {
+     "kind": "phase0-content",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions)",
+     "date": "2026-10-06",
+     "brief": "phase0/vocab-review-brief.md",
+     "output": {
+      "path": "phase0/intl/review-ja.txt",
+      "sha256": "84430a4a7187d1c2395b7e63ed0fbdcee426d6d81ec13cf821c3a1841896aea7"
+     },
+     "notCopied": {
+      "reviewPrompt": {
+       "path": "/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr/docs/audits/2026-10-06-settings-search-vocab-phase0/intl/review-ja.md",
+       "sha256": "4a5ef7016c6ad2df8aca56831516d3f3410ff1d4342f3f87078d6e9201215b46"
+      },
+      "draft": {
+       "path": "/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr/docs/audits/2026-10-06-settings-search-vocab-phase0/intl/v-ja.txt.last",
+       "sha256": "b24eb8cd77a2cee984a5be7952e9b131dc5a5876f928d43980bf34bb703e9652"
+      }
+     },
+     "disposition": "content identical to the reviewed output for the 246 searchable ids after the Phase 0 merge rule (a word folding equal to its title dropped); the 64 exempt ids removed (verify-phase0.py)"
+    },
+    {
+     "kind": "stop-and-markers",
+     "method": "Codex, fresh isolated session, list review group 1",
+     "date": "2026-10-06",
+     "prompt": "lists/review-prompt-1.md",
+     "output": {
+      "path": "lists/review-1.txt",
+      "sha256": "9cc531ed3598381732d165e2b20502af9dafef466a7338ade5a76c60486f67e7"
+     },
+     "disposition": "stop list adopted as returned; markers superseded by rounds 2 and 3"
+    },
+    {
+     "kind": "markers",
+     "method": "Codex, fresh isolated sessions, marker review rounds 2 and 3, group 1",
+     "date": "2026-10-06",
+     "reason": "chunk 4 review: required intent and negation forms (change, never, every negative determiner form) were missing; no length limit",
+     "round2": {
+      "prompt": "lists/markers-r2-prompt-1.md",
+      "output": {
+       "path": "lists/markers-r2-1.txt",
+       "sha256": "655ae39d0296ff8fef16d1adcb1c3ccd3f0b0019fbefef5c717bd70d63a49b8f"
+      },
+      "disposition": "not adopted: it protected ordinary setting words (for example English setting, speed, silence)"
+     },
+     "round3": {
+      "prompt": "lists/markers-r3-prompt-1.md",
+      "output": {
+       "path": "lists/markers-r3-1.txt",
+       "sha256": "5dceef7d746e6ee3d56883b415db61b8f7ee2165ee30c23ef1bd520758b0d2f8"
+      },
+      "disposition": "adopted as returned; exact repeated words removed (fi 3, hr 1) and canonically equal spellings (hi 3)"
+     }
+    },
+    {
+     "kind": "founder-edit",
+     "method": "Founder decision 2026-10-07 (#3482 plan §18, ranking option 1a): add the product name \"WhisperKit\", untranslated, to transcriptionEngine.allLanguages in every language so a search for the engine's own name finds it",
+     "date": "2026-10-07",
+     "ids": [
+      "transcriptionEngine.allLanguages"
+     ],
+     "disposition": "the word appended to the reviewed words; nothing else changed"
+    }
+   ],
+   "phraseExemptions": []
+  },
+  {
+   "language": "ko",
+   "contentSHA256": "52555daf2e84b35315e0fb817195d4caa2d3955db9fc87da47c8e40b0a8cbcb6",
+   "reviews": [
+    {
+     "kind": "phase0-content",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions)",
+     "date": "2026-10-06",
+     "brief": "phase0/vocab-review-brief.md",
+     "output": {
+      "path": "phase0/intl/review-ko.txt",
+      "sha256": "31df4e614250373ec282937b2b8c16dd7498a64072db95b3072b094b9a00f5e4"
+     },
+     "notCopied": {
+      "reviewPrompt": {
+       "path": "/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr/docs/audits/2026-10-06-settings-search-vocab-phase0/intl/review-ko.md",
+       "sha256": "140d56b52a7f5721b695c290911eeac35f7b6837439dad72de03bab8741a4fe3"
+      },
+      "draft": {
+       "path": "/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr/docs/audits/2026-10-06-settings-search-vocab-phase0/intl/v-ko.txt.last",
+       "sha256": "dc7e36ad0b711d121011bcaf21ed59525a1d714f8c8c30c4bc32eaa86885d2d6"
+      }
+     },
+     "disposition": "content identical to the reviewed output for the 246 searchable ids after the Phase 0 merge rule (a word folding equal to its title dropped); the 64 exempt ids removed (verify-phase0.py)"
+    },
+    {
+     "kind": "stop-and-markers",
+     "method": "Codex, fresh isolated session, list review group 2",
+     "date": "2026-10-06",
+     "prompt": "lists/review-prompt-2.md",
+     "output": {
+      "path": "lists/review-2.txt",
+      "sha256": "9dbdc33cc9b2413880294c9bae44f9775ba4eee79c84aa735612d762cbcea50b"
+     },
+     "disposition": "stop list adopted as returned; markers superseded by rounds 2 and 3"
+    },
+    {
+     "kind": "markers",
+     "method": "Codex, fresh isolated sessions, marker review rounds 2 and 3, group 2",
+     "date": "2026-10-06",
+     "reason": "chunk 4 review: required intent and negation forms (change, never, every negative determiner form) were missing; no length limit",
+     "round2": {
+      "prompt": "lists/markers-r2-prompt-2.md",
+      "output": {
+       "path": "lists/markers-r2-2.txt",
+       "sha256": "aa9bda6265d31fa7fe4fc9fc977da1cb68892ab053844c8e9593e6742d77d90e"
+      },
+      "disposition": "not adopted: it protected ordinary setting words (for example English setting, speed, silence)"
+     },
+     "round3": {
+      "prompt": "lists/markers-r3-prompt-2.md",
+      "output": {
+       "path": "lists/markers-r3-2.txt",
+       "sha256": "4da23cb504a8dafc0fabba3cc6137fa6a50df005e945be37af7c541d338009cd"
+      },
+      "disposition": "adopted as returned; exact repeated words removed (fi 3, hr 1) and canonically equal spellings (hi 3)"
+     }
+    },
+    {
+     "kind": "founder-edit",
+     "method": "Founder decision 2026-10-07 (#3482 plan §18, ranking option 1a): add the product name \"WhisperKit\", untranslated, to transcriptionEngine.allLanguages in every language so a search for the engine's own name finds it",
+     "date": "2026-10-07",
+     "ids": [
+      "transcriptionEngine.allLanguages"
+     ],
+     "disposition": "the word appended to the reviewed words; nothing else changed"
+    }
+   ],
+   "phraseExemptions": []
+  },
+  {
+   "language": "lt",
+   "contentSHA256": "352bd2312aca0322fe07f952dfd4d19c429c795a606a81b727658160e339d4d5",
+   "reviews": [
+    {
+     "kind": "phase0-content",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions)",
+     "date": "2026-10-06",
+     "brief": "phase0/vocab-review-brief.md",
+     "output": {
+      "path": "phase0/intl/review-lt.txt",
+      "sha256": "a91232185815dd7caf002f20138848f3ca004bae785713d60c3fa5f0b66d16d6"
+     },
+     "notCopied": {
+      "reviewPrompt": {
+       "path": "/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr/docs/audits/2026-10-06-settings-search-vocab-phase0/intl/review-lt.md",
+       "sha256": "811a996ec3ed36d5678aa70b7f35571b50980a232b4354efd8a5ce925e6ca4c6"
+      },
+      "draft": {
+       "path": "/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr/docs/audits/2026-10-06-settings-search-vocab-phase0/intl/v-lt.txt.last",
+       "sha256": "e4ea2b071096599a8ad36f32f33e0e326a00c8559dbbf3f106bd61917260af29"
+      }
+     },
+     "disposition": "content identical to the reviewed output for the 246 searchable ids after the Phase 0 merge rule (a word folding equal to its title dropped); the 64 exempt ids removed (verify-phase0.py)"
+    },
+    {
+     "kind": "stop-and-markers",
+     "method": "Codex, fresh isolated session, list review group 2",
+     "date": "2026-10-06",
+     "prompt": "lists/review-prompt-2.md",
+     "output": {
+      "path": "lists/review-2.txt",
+      "sha256": "9dbdc33cc9b2413880294c9bae44f9775ba4eee79c84aa735612d762cbcea50b"
+     },
+     "disposition": "stop list adopted as returned; markers superseded by rounds 2 and 3"
+    },
+    {
+     "kind": "markers",
+     "method": "Codex, fresh isolated sessions, marker review rounds 2 and 3, group 2",
+     "date": "2026-10-06",
+     "reason": "chunk 4 review: required intent and negation forms (change, never, every negative determiner form) were missing; no length limit",
+     "round2": {
+      "prompt": "lists/markers-r2-prompt-2.md",
+      "output": {
+       "path": "lists/markers-r2-2.txt",
+       "sha256": "aa9bda6265d31fa7fe4fc9fc977da1cb68892ab053844c8e9593e6742d77d90e"
+      },
+      "disposition": "not adopted: it protected ordinary setting words (for example English setting, speed, silence)"
+     },
+     "round3": {
+      "prompt": "lists/markers-r3-prompt-2.md",
+      "output": {
+       "path": "lists/markers-r3-2.txt",
+       "sha256": "4da23cb504a8dafc0fabba3cc6137fa6a50df005e945be37af7c541d338009cd"
+      },
+      "disposition": "adopted as returned; exact repeated words removed (fi 3, hr 1) and canonically equal spellings (hi 3)"
+     }
+    },
+    {
+     "kind": "founder-edit",
+     "method": "Founder decision 2026-10-07 (#3482 plan §18, ranking option 1a): add the product name \"WhisperKit\", untranslated, to transcriptionEngine.allLanguages in every language so a search for the engine's own name finds it",
+     "date": "2026-10-07",
+     "ids": [
+      "transcriptionEngine.allLanguages"
+     ],
+     "disposition": "the word appended to the reviewed words; nothing else changed"
+    }
+   ],
+   "phraseExemptions": []
+  },
+  {
+   "language": "lv",
+   "contentSHA256": "d01b09e7ff9d1c70bd68383ae719f017ace5921bfd2f656c79e1ba72d2f775d7",
+   "reviews": [
+    {
+     "kind": "phase0-content",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions)",
+     "date": "2026-10-06",
+     "brief": "phase0/vocab-review-brief.md",
+     "output": {
+      "path": "phase0/intl/review-lv.txt",
+      "sha256": "0f5c1b3b5c3fcbc7053fc500c3642280f1d05b482385d965dc31a2676f41032d"
+     },
+     "notCopied": {
+      "reviewPrompt": {
+       "path": "/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr/docs/audits/2026-10-06-settings-search-vocab-phase0/intl/review-lv.md",
+       "sha256": "3d196455c53138ef4b913169d3e0f1a60a4d25226bccbf2b03fc29004d002bd5"
+      },
+      "draft": {
+       "path": "/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr/docs/audits/2026-10-06-settings-search-vocab-phase0/intl/v-lv.txt.last",
+       "sha256": "2f524bba9e2b14b398207c0d9bb1a08b34a0a6c6015237b2514ff8deb35e8df6"
+      }
+     },
+     "disposition": "content identical to the reviewed output for the 246 searchable ids after the Phase 0 merge rule (a word folding equal to its title dropped); the 64 exempt ids removed (verify-phase0.py)"
+    },
+    {
+     "kind": "stop-and-markers",
+     "method": "Codex, fresh isolated session, list review group 2",
+     "date": "2026-10-06",
+     "prompt": "lists/review-prompt-2.md",
+     "output": {
+      "path": "lists/review-2.txt",
+      "sha256": "9dbdc33cc9b2413880294c9bae44f9775ba4eee79c84aa735612d762cbcea50b"
+     },
+     "disposition": "stop list adopted as returned; markers superseded by rounds 2 and 3"
+    },
+    {
+     "kind": "markers",
+     "method": "Codex, fresh isolated sessions, marker review rounds 2 and 3, group 2",
+     "date": "2026-10-06",
+     "reason": "chunk 4 review: required intent and negation forms (change, never, every negative determiner form) were missing; no length limit",
+     "round2": {
+      "prompt": "lists/markers-r2-prompt-2.md",
+      "output": {
+       "path": "lists/markers-r2-2.txt",
+       "sha256": "aa9bda6265d31fa7fe4fc9fc977da1cb68892ab053844c8e9593e6742d77d90e"
+      },
+      "disposition": "not adopted: it protected ordinary setting words (for example English setting, speed, silence)"
+     },
+     "round3": {
+      "prompt": "lists/markers-r3-prompt-2.md",
+      "output": {
+       "path": "lists/markers-r3-2.txt",
+       "sha256": "4da23cb504a8dafc0fabba3cc6137fa6a50df005e945be37af7c541d338009cd"
+      },
+      "disposition": "adopted as returned; exact repeated words removed (fi 3, hr 1) and canonically equal spellings (hi 3)"
+     }
+    },
+    {
+     "kind": "founder-edit",
+     "method": "Founder decision 2026-10-07 (#3482 plan §18, ranking option 1a): add the product name \"WhisperKit\", untranslated, to transcriptionEngine.allLanguages in every language so a search for the engine's own name finds it",
+     "date": "2026-10-07",
+     "ids": [
+      "transcriptionEngine.allLanguages"
+     ],
+     "disposition": "the word appended to the reviewed words; nothing else changed"
+    }
+   ],
+   "phraseExemptions": []
+  },
+  {
+   "language": "mt",
+   "contentSHA256": "c98e70782f9f89f9183defb24ac251611dcb827c98bc6313a077b95c7f0cfb82",
+   "reviews": [
+    {
+     "kind": "phase0-content",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions)",
+     "date": "2026-10-06",
+     "brief": "phase0/vocab-review-brief.md",
+     "output": {
+      "path": "phase0/intl/review-mt.txt",
+      "sha256": "5831a63ed7703b8c6a8ba8944a0d27f7f34c54650ce080df3b4b4f869b1dc437"
+     },
+     "notCopied": {
+      "reviewPrompt": {
+       "path": "/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr/docs/audits/2026-10-06-settings-search-vocab-phase0/intl/review-mt.md",
+       "sha256": "6735fbc89b418c27c8bbd29d6d7d179fcd7a31d08feba9f25cf5b39d26a5bd32"
+      },
+      "draft": {
+       "path": "/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr/docs/audits/2026-10-06-settings-search-vocab-phase0/intl/v-mt.txt.last",
+       "sha256": "51db0a1f767d6af4cd4db5cd4219548b0ae1f674f5c636e42f9ccb652295bf35"
+      }
+     },
+     "disposition": "content identical to the reviewed output for the 246 searchable ids after the Phase 0 merge rule (a word folding equal to its title dropped); the 64 exempt ids removed (verify-phase0.py)"
+    },
+    {
+     "kind": "stop-and-markers",
+     "method": "Codex, fresh isolated session, list review group 2",
+     "date": "2026-10-06",
+     "prompt": "lists/review-prompt-2.md",
+     "output": {
+      "path": "lists/review-2.txt",
+      "sha256": "9dbdc33cc9b2413880294c9bae44f9775ba4eee79c84aa735612d762cbcea50b"
+     },
+     "disposition": "stop list adopted as returned; markers superseded by rounds 2 and 3"
+    },
+    {
+     "kind": "markers",
+     "method": "Codex, fresh isolated sessions, marker review rounds 2 and 3, group 2",
+     "date": "2026-10-06",
+     "reason": "chunk 4 review: required intent and negation forms (change, never, every negative determiner form) were missing; no length limit",
+     "round2": {
+      "prompt": "lists/markers-r2-prompt-2.md",
+      "output": {
+       "path": "lists/markers-r2-2.txt",
+       "sha256": "aa9bda6265d31fa7fe4fc9fc977da1cb68892ab053844c8e9593e6742d77d90e"
+      },
+      "disposition": "not adopted: it protected ordinary setting words (for example English setting, speed, silence)"
+     },
+     "round3": {
+      "prompt": "lists/markers-r3-prompt-2.md",
+      "output": {
+       "path": "lists/markers-r3-2.txt",
+       "sha256": "4da23cb504a8dafc0fabba3cc6137fa6a50df005e945be37af7c541d338009cd"
+      },
+      "disposition": "adopted as returned; exact repeated words removed (fi 3, hr 1) and canonically equal spellings (hi 3)"
+     }
+    },
+    {
+     "kind": "founder-edit",
+     "method": "Founder decision 2026-10-07 (#3482 plan §18, ranking option 1a): add the product name \"WhisperKit\", untranslated, to transcriptionEngine.allLanguages in every language so a search for the engine's own name finds it",
+     "date": "2026-10-07",
+     "ids": [
+      "transcriptionEngine.allLanguages"
+     ],
+     "disposition": "the word appended to the reviewed words; nothing else changed"
+    }
+   ],
+   "phraseExemptions": []
+  },
+  {
+   "language": "nl",
+   "contentSHA256": "afbc26ee78064a4878f316bc0dc5849dfa97ba25ecfd04c2e517c6e4a3a894b8",
+   "reviews": [
+    {
+     "kind": "phase0-content",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions)",
+     "date": "2026-10-06",
+     "brief": "phase0/vocab-review-brief.md",
+     "output": {
+      "path": "phase0/intl/review-nl.txt",
+      "sha256": "762169df89a9bad6d6e3ffb963f6021f75850211ee314dd7efe44d3a38bab13a"
+     },
+     "notCopied": {
+      "reviewPrompt": {
+       "path": "/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr/docs/audits/2026-10-06-settings-search-vocab-phase0/intl/review-nl.md",
+       "sha256": "c43c9cdd3f1fca2d4b7d2c9bcf5144a259158ee84929495c1ad8bec9ee2e5f8d"
+      },
+      "draft": {
+       "path": "/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr/docs/audits/2026-10-06-settings-search-vocab-phase0/intl/v-nl.txt.last",
+       "sha256": "9552bd5b94b0a067f24b108252611617493b52f6c8a82e209080e4a2fde2272e"
+      }
+     },
+     "disposition": "content identical to the reviewed output for the 246 searchable ids after the Phase 0 merge rule (a word folding equal to its title dropped); the 64 exempt ids removed (verify-phase0.py)"
+    },
+    {
+     "kind": "stop-and-markers",
+     "method": "Codex, fresh isolated session, list review group 2",
+     "date": "2026-10-06",
+     "prompt": "lists/review-prompt-2.md",
+     "output": {
+      "path": "lists/review-2.txt",
+      "sha256": "9dbdc33cc9b2413880294c9bae44f9775ba4eee79c84aa735612d762cbcea50b"
+     },
+     "disposition": "stop list adopted as returned; markers superseded by rounds 2 and 3"
+    },
+    {
+     "kind": "markers",
+     "method": "Codex, fresh isolated sessions, marker review rounds 2 and 3, group 2",
+     "date": "2026-10-06",
+     "reason": "chunk 4 review: required intent and negation forms (change, never, every negative determiner form) were missing; no length limit",
+     "round2": {
+      "prompt": "lists/markers-r2-prompt-2.md",
+      "output": {
+       "path": "lists/markers-r2-2.txt",
+       "sha256": "aa9bda6265d31fa7fe4fc9fc977da1cb68892ab053844c8e9593e6742d77d90e"
+      },
+      "disposition": "not adopted: it protected ordinary setting words (for example English setting, speed, silence)"
+     },
+     "round3": {
+      "prompt": "lists/markers-r3-prompt-2.md",
+      "output": {
+       "path": "lists/markers-r3-2.txt",
+       "sha256": "4da23cb504a8dafc0fabba3cc6137fa6a50df005e945be37af7c541d338009cd"
+      },
+      "disposition": "adopted as returned; exact repeated words removed (fi 3, hr 1) and canonically equal spellings (hi 3)"
+     }
+    },
+    {
+     "kind": "founder-edit",
+     "method": "Founder decision 2026-10-07 (#3482 plan §18, ranking option 1a): add the product name \"WhisperKit\", untranslated, to transcriptionEngine.allLanguages in every language so a search for the engine's own name finds it",
+     "date": "2026-10-07",
+     "ids": [
+      "transcriptionEngine.allLanguages"
+     ],
+     "disposition": "the word appended to the reviewed words; nothing else changed"
+    }
+   ],
+   "phraseExemptions": []
+  },
+  {
+   "language": "pl",
+   "contentSHA256": "47de5d699ccf18f3eeb2cdcf2166ddd7d7bc23ee43e049bd74d0deced1adb1b3",
+   "reviews": [
+    {
+     "kind": "phase0-content",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions)",
+     "date": "2026-10-06",
+     "brief": "phase0/vocab-review-brief.md",
+     "output": {
+      "path": "phase0/intl/review-pl.txt",
+      "sha256": "c644ab3a36226ad545dd204ca78ef149a13b4aeea9d25169d3ff1dd0601c20d5"
+     },
+     "notCopied": {
+      "reviewPrompt": {
+       "path": "/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr/docs/audits/2026-10-06-settings-search-vocab-phase0/intl/review-pl.md",
+       "sha256": "fe51577b9240d76841cccb3b83a8a67b08082f534e78091475c51d237aeb553b"
+      },
+      "draft": {
+       "path": "/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr/docs/audits/2026-10-06-settings-search-vocab-phase0/intl/v-pl.txt.last",
+       "sha256": "122c3d98d14e354546dc6028b29059e2e16e51b6dc27bc49157093adbb7f146f"
+      }
+     },
+     "disposition": "content identical to the reviewed output for the 246 searchable ids after the Phase 0 merge rule (a word folding equal to its title dropped); the 64 exempt ids removed (verify-phase0.py)"
+    },
+    {
+     "kind": "stop-and-markers",
+     "method": "Codex, fresh isolated session, list review group 2",
+     "date": "2026-10-06",
+     "prompt": "lists/review-prompt-2.md",
+     "output": {
+      "path": "lists/review-2.txt",
+      "sha256": "9dbdc33cc9b2413880294c9bae44f9775ba4eee79c84aa735612d762cbcea50b"
+     },
+     "disposition": "stop list adopted as returned; markers superseded by rounds 2 and 3"
+    },
+    {
+     "kind": "markers",
+     "method": "Codex, fresh isolated sessions, marker review rounds 2 and 3, group 2",
+     "date": "2026-10-06",
+     "reason": "chunk 4 review: required intent and negation forms (change, never, every negative determiner form) were missing; no length limit",
+     "round2": {
+      "prompt": "lists/markers-r2-prompt-2.md",
+      "output": {
+       "path": "lists/markers-r2-2.txt",
+       "sha256": "aa9bda6265d31fa7fe4fc9fc977da1cb68892ab053844c8e9593e6742d77d90e"
+      },
+      "disposition": "not adopted: it protected ordinary setting words (for example English setting, speed, silence)"
+     },
+     "round3": {
+      "prompt": "lists/markers-r3-prompt-2.md",
+      "output": {
+       "path": "lists/markers-r3-2.txt",
+       "sha256": "4da23cb504a8dafc0fabba3cc6137fa6a50df005e945be37af7c541d338009cd"
+      },
+      "disposition": "adopted as returned; exact repeated words removed (fi 3, hr 1) and canonically equal spellings (hi 3)"
+     }
+    },
+    {
+     "kind": "founder-edit",
+     "method": "Founder decision 2026-10-07 (#3482 plan §18, ranking option 1a): add the product name \"WhisperKit\", untranslated, to transcriptionEngine.allLanguages in every language so a search for the engine's own name finds it",
+     "date": "2026-10-07",
+     "ids": [
+      "transcriptionEngine.allLanguages"
+     ],
+     "disposition": "the word appended to the reviewed words; nothing else changed"
+    }
+   ],
+   "phraseExemptions": []
+  },
+  {
+   "language": "pt",
+   "contentSHA256": "4158a038947d2a1499f62aefdbb42f3c913642a8b498c0fbccbfe80a8326e963",
+   "reviews": [
+    {
+     "kind": "phase0-content",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions)",
+     "date": "2026-10-06",
+     "brief": "phase0/vocab-review-brief.md",
+     "output": {
+      "path": "phase0/intl/review-pt.txt",
+      "sha256": "7e04ca37a2e4e96749bfbe5bb127562be324741ec5fbd7efd6adc1dfb9d1921c"
+     },
+     "notCopied": {
+      "reviewPrompt": {
+       "path": "/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr/docs/audits/2026-10-06-settings-search-vocab-phase0/intl/review-pt.md",
+       "sha256": "1de6c6a399d99e29263b33ceddb0e40b00265dc49b6d980060af357d1ac0f623"
+      },
+      "draft": {
+       "path": "/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr/docs/audits/2026-10-06-settings-search-vocab-phase0/intl/v-pt.txt.last",
+       "sha256": "f471742e4519933241317e6b5df06d2f9bfdd4147e3fdd77d0319909368cf1d6"
+      }
+     },
+     "disposition": "content identical to the reviewed output for the 246 searchable ids after the Phase 0 merge rule (a word folding equal to its title dropped); the 64 exempt ids removed (verify-phase0.py)"
+    },
+    {
+     "kind": "stop-and-markers",
+     "method": "Codex, fresh isolated session, list review group 2",
+     "date": "2026-10-06",
+     "prompt": "lists/review-prompt-2.md",
+     "output": {
+      "path": "lists/review-2.txt",
+      "sha256": "9dbdc33cc9b2413880294c9bae44f9775ba4eee79c84aa735612d762cbcea50b"
+     },
+     "disposition": "stop list adopted as returned; markers superseded by rounds 2 and 3"
+    },
+    {
+     "kind": "markers",
+     "method": "Codex, fresh isolated sessions, marker review rounds 2 and 3, group 2",
+     "date": "2026-10-06",
+     "reason": "chunk 4 review: required intent and negation forms (change, never, every negative determiner form) were missing; no length limit",
+     "round2": {
+      "prompt": "lists/markers-r2-prompt-2.md",
+      "output": {
+       "path": "lists/markers-r2-2.txt",
+       "sha256": "aa9bda6265d31fa7fe4fc9fc977da1cb68892ab053844c8e9593e6742d77d90e"
+      },
+      "disposition": "not adopted: it protected ordinary setting words (for example English setting, speed, silence)"
+     },
+     "round3": {
+      "prompt": "lists/markers-r3-prompt-2.md",
+      "output": {
+       "path": "lists/markers-r3-2.txt",
+       "sha256": "4da23cb504a8dafc0fabba3cc6137fa6a50df005e945be37af7c541d338009cd"
+      },
+      "disposition": "adopted as returned; exact repeated words removed (fi 3, hr 1) and canonically equal spellings (hi 3)"
+     }
+    },
+    {
+     "kind": "guard-edit",
+     "scope": [
+      "fillerRemoval"
+     ],
+     "date": "2026-10-06",
+     "disposition": "removed the word \"um\" (Portuguese \"a\", a reviewed stop word) so the filler list cannot make it unsearchable; no new content"
+    },
+    {
+     "kind": "founder-edit",
+     "method": "Founder decision 2026-10-07 (#3482 plan §18, ranking option 1a): add the product name \"WhisperKit\", untranslated, to transcriptionEngine.allLanguages in every language so a search for the engine's own name finds it",
+     "date": "2026-10-07",
+     "ids": [
+      "transcriptionEngine.allLanguages"
+     ],
+     "disposition": "the word appended to the reviewed words; nothing else changed"
+    }
+   ],
+   "phraseExemptions": []
+  },
+  {
+   "language": "ro",
+   "contentSHA256": "575441506c091ea095a4562d876841b35462cfe9e112a3f31ae819c90112a7aa",
+   "reviews": [
+    {
+     "kind": "phase0-content",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions)",
+     "date": "2026-10-06",
+     "brief": "phase0/vocab-review-brief.md",
+     "output": {
+      "path": "phase0/intl/review-ro.txt",
+      "sha256": "07020d391c526bc2e8cd26ef0b390e20e3a49ba6ebdf8abc07f76912503ea954"
+     },
+     "notCopied": {
+      "reviewPrompt": {
+       "path": "/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr/docs/audits/2026-10-06-settings-search-vocab-phase0/intl/review-ro.md",
+       "sha256": "d8a570eb34c10c5f0994c5d2d63a78d25e71eac1df0904fa62e3f56867362017"
+      },
+      "draft": {
+       "path": "/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr/docs/audits/2026-10-06-settings-search-vocab-phase0/intl/v-ro.txt.last",
+       "sha256": "4c792e0a5f0f3f4a9596d1188622e59cb4f2b43b6c93b9f4161af063287c07c3"
+      }
+     },
+     "disposition": "content identical to the reviewed output for the 246 searchable ids after the Phase 0 merge rule (a word folding equal to its title dropped); the 64 exempt ids removed (verify-phase0.py)"
+    },
+    {
+     "kind": "stop-and-markers",
+     "method": "Codex, fresh isolated session, list review group 2",
+     "date": "2026-10-06",
+     "prompt": "lists/review-prompt-2.md",
+     "output": {
+      "path": "lists/review-2.txt",
+      "sha256": "9dbdc33cc9b2413880294c9bae44f9775ba4eee79c84aa735612d762cbcea50b"
+     },
+     "disposition": "stop list adopted as returned; markers superseded by rounds 2 and 3"
+    },
+    {
+     "kind": "markers",
+     "method": "Codex, fresh isolated sessions, marker review rounds 2 and 3, group 2",
+     "date": "2026-10-06",
+     "reason": "chunk 4 review: required intent and negation forms (change, never, every negative determiner form) were missing; no length limit",
+     "round2": {
+      "prompt": "lists/markers-r2-prompt-2.md",
+      "output": {
+       "path": "lists/markers-r2-2.txt",
+       "sha256": "aa9bda6265d31fa7fe4fc9fc977da1cb68892ab053844c8e9593e6742d77d90e"
+      },
+      "disposition": "not adopted: it protected ordinary setting words (for example English setting, speed, silence)"
+     },
+     "round3": {
+      "prompt": "lists/markers-r3-prompt-2.md",
+      "output": {
+       "path": "lists/markers-r3-2.txt",
+       "sha256": "4da23cb504a8dafc0fabba3cc6137fa6a50df005e945be37af7c541d338009cd"
+      },
+      "disposition": "adopted as returned; exact repeated words removed (fi 3, hr 1) and canonically equal spellings (hi 3)"
+     }
+    },
+    {
+     "kind": "founder-edit",
+     "method": "Founder decision 2026-10-07 (#3482 plan §18, ranking option 1a): add the product name \"WhisperKit\", untranslated, to transcriptionEngine.allLanguages in every language so a search for the engine's own name finds it",
+     "date": "2026-10-07",
+     "ids": [
+      "transcriptionEngine.allLanguages"
+     ],
+     "disposition": "the word appended to the reviewed words; nothing else changed"
+    }
+   ],
+   "phraseExemptions": []
+  },
+  {
+   "language": "ru",
+   "contentSHA256": "9fb200712fd0f9fd902223d1fc27014dc2ca5675a02a02383ec2f6d013ff42ab",
+   "reviews": [
+    {
+     "kind": "phase0-content",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions)",
+     "date": "2026-10-06",
+     "brief": "phase0/vocab-review-brief.md",
+     "output": {
+      "path": "phase0/intl/review-ru.txt",
+      "sha256": "86da978c5f3c82172598551619d386c0b5351df5c21871930bf3fe874331938b"
+     },
+     "notCopied": {
+      "reviewPrompt": {
+       "path": "/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr/docs/audits/2026-10-06-settings-search-vocab-phase0/intl/review-ru.md",
+       "sha256": "2daf76e12924ff16291e3007eb6e832a6a8b4c3d33c674e44ed0f27571725769"
+      },
+      "draft": {
+       "path": "/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr/docs/audits/2026-10-06-settings-search-vocab-phase0/intl/v-ru.txt.last",
+       "sha256": "e4a8836036413065350622fcc92fa92e79aba609787b7172ef83040b0fa4c0c2"
+      }
+     },
+     "disposition": "content identical to the reviewed output for the 246 searchable ids after the Phase 0 merge rule (a word folding equal to its title dropped); the 64 exempt ids removed (verify-phase0.py)"
+    },
+    {
+     "kind": "stop-and-markers",
+     "method": "Codex, fresh isolated session, list review group 3",
+     "date": "2026-10-06",
+     "prompt": "lists/review-prompt-3.md",
+     "output": {
+      "path": "lists/review-3.txt",
+      "sha256": "bf57f868d0d71261e56f7c39b84ff8c6addd1686c75a067794d5bb5ee40ae570"
+     },
+     "disposition": "stop list adopted as returned; markers superseded by rounds 2 and 3"
+    },
+    {
+     "kind": "markers",
+     "method": "Codex, fresh isolated sessions, marker review rounds 2 and 3, group 3",
+     "date": "2026-10-06",
+     "reason": "chunk 4 review: required intent and negation forms (change, never, every negative determiner form) were missing; no length limit",
+     "round2": {
+      "prompt": "lists/markers-r2-prompt-3.md",
+      "output": {
+       "path": "lists/markers-r2-3.txt",
+       "sha256": "3bfaed2e599d44e7f487b22e1c56d1bec745c1859d3f49c8df5da69e6973f5ae"
+      },
+      "disposition": "not adopted: it protected ordinary setting words (for example English setting, speed, silence)"
+     },
+     "round3": {
+      "prompt": "lists/markers-r3-prompt-3.md",
+      "output": {
+       "path": "lists/markers-r3-3.txt",
+       "sha256": "eccec85586a59aaca0badca75868f7f35364bf9507b8757d6e3f2499ddd4bf1b"
+      },
+      "disposition": "adopted as returned; exact repeated words removed (fi 3, hr 1) and canonically equal spellings (hi 3)"
+     }
+    },
+    {
+     "kind": "founder-edit",
+     "method": "Founder decision 2026-10-07 (#3482 plan §18, ranking option 1a): add the product name \"WhisperKit\", untranslated, to transcriptionEngine.allLanguages in every language so a search for the engine's own name finds it",
+     "date": "2026-10-07",
+     "ids": [
+      "transcriptionEngine.allLanguages"
+     ],
+     "disposition": "the word appended to the reviewed words; nothing else changed"
+    }
+   ],
+   "phraseExemptions": []
+  },
+  {
+   "language": "sk",
+   "contentSHA256": "566f6e32ac829a5898b55d44de74562a047e559611ce348d2df8d97e1f4ae3cd",
+   "reviews": [
+    {
+     "kind": "phase0-content",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions)",
+     "date": "2026-10-06",
+     "brief": "phase0/vocab-review-brief.md",
+     "output": {
+      "path": "phase0/intl/review-sk.txt",
+      "sha256": "18b03759976958671537947f03d8d2c843980287ba4cb224ae21f998e326b3b2"
+     },
+     "notCopied": {
+      "reviewPrompt": {
+       "path": "/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr/docs/audits/2026-10-06-settings-search-vocab-phase0/intl/review-sk.md",
+       "sha256": "bb6dc151022d001dc6bbb9424b3dc61d1279b096976ac8321351e6b5070f6a7a"
+      },
+      "draft": {
+       "path": "/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr/docs/audits/2026-10-06-settings-search-vocab-phase0/intl/v-sk.txt.last",
+       "sha256": "58effa88f88eb85bfe8bf04ae27cbbba0739dc3a446aed8e38c88fcc1083a555"
+      }
+     },
+     "disposition": "content identical to the reviewed output for the 246 searchable ids after the Phase 0 merge rule (a word folding equal to its title dropped); the 64 exempt ids removed (verify-phase0.py)"
+    },
+    {
+     "kind": "stop-and-markers",
+     "method": "Codex, fresh isolated session, list review group 3",
+     "date": "2026-10-06",
+     "prompt": "lists/review-prompt-3.md",
+     "output": {
+      "path": "lists/review-3.txt",
+      "sha256": "bf57f868d0d71261e56f7c39b84ff8c6addd1686c75a067794d5bb5ee40ae570"
+     },
+     "disposition": "stop list adopted as returned; markers superseded by rounds 2 and 3"
+    },
+    {
+     "kind": "markers",
+     "method": "Codex, fresh isolated sessions, marker review rounds 2 and 3, group 3",
+     "date": "2026-10-06",
+     "reason": "chunk 4 review: required intent and negation forms (change, never, every negative determiner form) were missing; no length limit",
+     "round2": {
+      "prompt": "lists/markers-r2-prompt-3.md",
+      "output": {
+       "path": "lists/markers-r2-3.txt",
+       "sha256": "3bfaed2e599d44e7f487b22e1c56d1bec745c1859d3f49c8df5da69e6973f5ae"
+      },
+      "disposition": "not adopted: it protected ordinary setting words (for example English setting, speed, silence)"
+     },
+     "round3": {
+      "prompt": "lists/markers-r3-prompt-3.md",
+      "output": {
+       "path": "lists/markers-r3-3.txt",
+       "sha256": "eccec85586a59aaca0badca75868f7f35364bf9507b8757d6e3f2499ddd4bf1b"
+      },
+      "disposition": "adopted as returned; exact repeated words removed (fi 3, hr 1) and canonically equal spellings (hi 3)"
+     }
+    },
+    {
+     "kind": "founder-edit",
+     "method": "Founder decision 2026-10-07 (#3482 plan §18, ranking option 1a): add the product name \"WhisperKit\", untranslated, to transcriptionEngine.allLanguages in every language so a search for the engine's own name finds it",
+     "date": "2026-10-07",
+     "ids": [
+      "transcriptionEngine.allLanguages"
+     ],
+     "disposition": "the word appended to the reviewed words; nothing else changed"
+    }
+   ],
+   "phraseExemptions": []
+  },
+  {
+   "language": "sl",
+   "contentSHA256": "22f439abcf9d155cea6a8ba77d5072854b796d23416f0892a222368fe03209b6",
+   "reviews": [
+    {
+     "kind": "phase0-content",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions)",
+     "date": "2026-10-06",
+     "brief": "phase0/vocab-review-brief.md",
+     "output": {
+      "path": "phase0/intl/review-sl.txt",
+      "sha256": "4bf748eb5623d6c5c3f2a4cdc64f28df5a938ada5cc2e3c221a7fbffdbb0b5f1"
+     },
+     "notCopied": {
+      "reviewPrompt": {
+       "path": "/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr/docs/audits/2026-10-06-settings-search-vocab-phase0/intl/review-sl.md",
+       "sha256": "510e5f54d52ceada77e990032d1d49a3b35f8be7332593aed5d50a615afa27b2"
+      },
+      "draft": {
+       "path": "/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr/docs/audits/2026-10-06-settings-search-vocab-phase0/intl/v-sl.txt.last",
+       "sha256": "ec7d8e225dbe74008a9e088cca5797bf25112ce15deb2497d2dd743113941b33"
+      }
+     },
+     "disposition": "content identical to the reviewed output for the 246 searchable ids after the Phase 0 merge rule (a word folding equal to its title dropped); the 64 exempt ids removed (verify-phase0.py)"
+    },
+    {
+     "kind": "stop-and-markers",
+     "method": "Codex, fresh isolated session, list review group 3",
+     "date": "2026-10-06",
+     "prompt": "lists/review-prompt-3.md",
+     "output": {
+      "path": "lists/review-3.txt",
+      "sha256": "bf57f868d0d71261e56f7c39b84ff8c6addd1686c75a067794d5bb5ee40ae570"
+     },
+     "disposition": "stop list adopted as returned; markers superseded by rounds 2 and 3"
+    },
+    {
+     "kind": "markers",
+     "method": "Codex, fresh isolated sessions, marker review rounds 2 and 3, group 3",
+     "date": "2026-10-06",
+     "reason": "chunk 4 review: required intent and negation forms (change, never, every negative determiner form) were missing; no length limit",
+     "round2": {
+      "prompt": "lists/markers-r2-prompt-3.md",
+      "output": {
+       "path": "lists/markers-r2-3.txt",
+       "sha256": "3bfaed2e599d44e7f487b22e1c56d1bec745c1859d3f49c8df5da69e6973f5ae"
+      },
+      "disposition": "not adopted: it protected ordinary setting words (for example English setting, speed, silence)"
+     },
+     "round3": {
+      "prompt": "lists/markers-r3-prompt-3.md",
+      "output": {
+       "path": "lists/markers-r3-3.txt",
+       "sha256": "eccec85586a59aaca0badca75868f7f35364bf9507b8757d6e3f2499ddd4bf1b"
+      },
+      "disposition": "adopted as returned; exact repeated words removed (fi 3, hr 1) and canonically equal spellings (hi 3)"
+     }
+    },
+    {
+     "kind": "founder-edit",
+     "method": "Founder decision 2026-10-07 (#3482 plan §18, ranking option 1a): add the product name \"WhisperKit\", untranslated, to transcriptionEngine.allLanguages in every language so a search for the engine's own name finds it",
+     "date": "2026-10-07",
+     "ids": [
+      "transcriptionEngine.allLanguages"
+     ],
+     "disposition": "the word appended to the reviewed words; nothing else changed"
+    }
+   ],
+   "phraseExemptions": []
+  },
+  {
+   "language": "sv",
+   "contentSHA256": "db4687b60fc4ed90917634dedda2a07860d98d0fe92b84d81851ab6abdc0c6fa",
+   "reviews": [
+    {
+     "kind": "phase0-content",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions)",
+     "date": "2026-10-06",
+     "brief": "phase0/vocab-review-brief.md",
+     "output": {
+      "path": "phase0/intl/review-sv.txt",
+      "sha256": "e5eff32e564af8668d890d5eedab36b8566031fc1636a74e2c77e0a948a6bf72"
+     },
+     "notCopied": {
+      "reviewPrompt": {
+       "path": "/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr/docs/audits/2026-10-06-settings-search-vocab-phase0/intl/review-sv.md",
+       "sha256": "b0f633be4416cbec96e28895edc8b60f449377519f0058212b7d50bef65e7648"
+      },
+      "draft": {
+       "path": "/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr/docs/audits/2026-10-06-settings-search-vocab-phase0/intl/v-sv.txt.last",
+       "sha256": "30a4836381275a1c551281b1cc095f3b52a03bd0a9918ab0e6ea53a3b197921e"
+      }
+     },
+     "disposition": "content identical to the reviewed output for the 246 searchable ids after the Phase 0 merge rule (a word folding equal to its title dropped); the 64 exempt ids removed (verify-phase0.py)"
+    },
+    {
+     "kind": "stop-and-markers",
+     "method": "Codex, fresh isolated session, list review group 3",
+     "date": "2026-10-06",
+     "prompt": "lists/review-prompt-3.md",
+     "output": {
+      "path": "lists/review-3.txt",
+      "sha256": "bf57f868d0d71261e56f7c39b84ff8c6addd1686c75a067794d5bb5ee40ae570"
+     },
+     "disposition": "stop list adopted as returned; markers superseded by rounds 2 and 3"
+    },
+    {
+     "kind": "markers",
+     "method": "Codex, fresh isolated sessions, marker review rounds 2 and 3, group 3",
+     "date": "2026-10-06",
+     "reason": "chunk 4 review: required intent and negation forms (change, never, every negative determiner form) were missing; no length limit",
+     "round2": {
+      "prompt": "lists/markers-r2-prompt-3.md",
+      "output": {
+       "path": "lists/markers-r2-3.txt",
+       "sha256": "3bfaed2e599d44e7f487b22e1c56d1bec745c1859d3f49c8df5da69e6973f5ae"
+      },
+      "disposition": "not adopted: it protected ordinary setting words (for example English setting, speed, silence)"
+     },
+     "round3": {
+      "prompt": "lists/markers-r3-prompt-3.md",
+      "output": {
+       "path": "lists/markers-r3-3.txt",
+       "sha256": "eccec85586a59aaca0badca75868f7f35364bf9507b8757d6e3f2499ddd4bf1b"
+      },
+      "disposition": "adopted as returned; exact repeated words removed (fi 3, hr 1) and canonically equal spellings (hi 3)"
+     }
+    },
+    {
+     "kind": "founder-edit",
+     "method": "Founder decision 2026-10-07 (#3482 plan §18, ranking option 1a): add the product name \"WhisperKit\", untranslated, to transcriptionEngine.allLanguages in every language so a search for the engine's own name finds it",
+     "date": "2026-10-07",
+     "ids": [
+      "transcriptionEngine.allLanguages"
+     ],
+     "disposition": "the word appended to the reviewed words; nothing else changed"
+    }
+   ],
+   "phraseExemptions": []
+  },
+  {
+   "language": "tr",
+   "contentSHA256": "24b0311dc94889c263b9206817d27d19571c83f5cd0a60a80866f783bffc00c5",
+   "reviews": [
+    {
+     "kind": "phase0-content",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions)",
+     "date": "2026-10-06",
+     "brief": "phase0/vocab-review-brief.md",
+     "output": {
+      "path": "phase0/intl/review-tr.txt",
+      "sha256": "772136fa33c40bf4520884d832329680521908d8b18a13e73c9ded42f2e3fb8c"
+     },
+     "notCopied": {
+      "reviewPrompt": {
+       "path": "/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr/docs/audits/2026-10-06-settings-search-vocab-phase0/intl/review-tr.md",
+       "sha256": "29bb6137e65855d9c219fa6bf5ad74ae2b34b29f906a7be042fe43ab4b6bab46"
+      },
+      "draft": {
+       "path": "/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr/docs/audits/2026-10-06-settings-search-vocab-phase0/intl/v-tr.txt.last",
+       "sha256": "e82673c2e94684e110da7bce6b87159ebe6b48d22dd42532c4bdf39a3dd93595"
+      }
+     },
+     "disposition": "content identical to the reviewed output for the 246 searchable ids after the Phase 0 merge rule (a word folding equal to its title dropped); the 64 exempt ids removed (verify-phase0.py)"
+    },
+    {
+     "kind": "stop-and-markers",
+     "method": "Codex, fresh isolated session, list review group 3",
+     "date": "2026-10-06",
+     "prompt": "lists/review-prompt-3.md",
+     "output": {
+      "path": "lists/review-3.txt",
+      "sha256": "bf57f868d0d71261e56f7c39b84ff8c6addd1686c75a067794d5bb5ee40ae570"
+     },
+     "disposition": "stop list adopted as returned; markers superseded by rounds 2 and 3"
+    },
+    {
+     "kind": "markers",
+     "method": "Codex, fresh isolated sessions, marker review rounds 2 and 3, group 3",
+     "date": "2026-10-06",
+     "reason": "chunk 4 review: required intent and negation forms (change, never, every negative determiner form) were missing; no length limit",
+     "round2": {
+      "prompt": "lists/markers-r2-prompt-3.md",
+      "output": {
+       "path": "lists/markers-r2-3.txt",
+       "sha256": "3bfaed2e599d44e7f487b22e1c56d1bec745c1859d3f49c8df5da69e6973f5ae"
+      },
+      "disposition": "not adopted: it protected ordinary setting words (for example English setting, speed, silence)"
+     },
+     "round3": {
+      "prompt": "lists/markers-r3-prompt-3.md",
+      "output": {
+       "path": "lists/markers-r3-3.txt",
+       "sha256": "eccec85586a59aaca0badca75868f7f35364bf9507b8757d6e3f2499ddd4bf1b"
+      },
+      "disposition": "adopted as returned; exact repeated words removed (fi 3, hr 1) and canonically equal spellings (hi 3)"
+     }
+    },
+    {
+     "kind": "founder-edit",
+     "method": "Founder decision 2026-10-07 (#3482 plan §18, ranking option 1a): add the product name \"WhisperKit\", untranslated, to transcriptionEngine.allLanguages in every language so a search for the engine's own name finds it",
+     "date": "2026-10-07",
+     "ids": [
+      "transcriptionEngine.allLanguages"
+     ],
+     "disposition": "the word appended to the reviewed words; nothing else changed"
+    }
+   ],
+   "phraseExemptions": []
+  },
+  {
+   "language": "uk",
+   "contentSHA256": "dcea70b623554f7a708ab7dfc17d74c69cfc5a125d6233cdc2c742a1ed146036",
+   "reviews": [
+    {
+     "kind": "phase0-content",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions)",
+     "date": "2026-10-06",
+     "brief": "phase0/vocab-review-brief.md",
+     "output": {
+      "path": "phase0/intl/review-uk.txt",
+      "sha256": "69869d41ff79c215136c5d1262900c6ad2259045483fd6584579271a077a368f"
+     },
+     "notCopied": {
+      "reviewPrompt": {
+       "path": "/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr/docs/audits/2026-10-06-settings-search-vocab-phase0/intl/review-uk.md",
+       "sha256": "48ae17f6635a2ca18110aeae23bd7dd62761d5e52a121552f01e97556603c0d4"
+      },
+      "draft": {
+       "path": "/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr/docs/audits/2026-10-06-settings-search-vocab-phase0/intl/v-uk.txt.last",
+       "sha256": "78a1f7a724960947cddc777ea50ccbf12ceddb93b384f97ef6a4dfd13ba21d24"
+      }
+     },
+     "disposition": "content identical to the reviewed output for the 246 searchable ids after the Phase 0 merge rule (a word folding equal to its title dropped); the 64 exempt ids removed (verify-phase0.py)"
+    },
+    {
+     "kind": "stop-and-markers",
+     "method": "Codex, fresh isolated session, list review group 3",
+     "date": "2026-10-06",
+     "prompt": "lists/review-prompt-3.md",
+     "output": {
+      "path": "lists/review-3.txt",
+      "sha256": "bf57f868d0d71261e56f7c39b84ff8c6addd1686c75a067794d5bb5ee40ae570"
+     },
+     "disposition": "stop list adopted as returned; markers superseded by rounds 2 and 3"
+    },
+    {
+     "kind": "markers",
+     "method": "Codex, fresh isolated sessions, marker review rounds 2 and 3, group 3",
+     "date": "2026-10-06",
+     "reason": "chunk 4 review: required intent and negation forms (change, never, every negative determiner form) were missing; no length limit",
+     "round2": {
+      "prompt": "lists/markers-r2-prompt-3.md",
+      "output": {
+       "path": "lists/markers-r2-3.txt",
+       "sha256": "3bfaed2e599d44e7f487b22e1c56d1bec745c1859d3f49c8df5da69e6973f5ae"
+      },
+      "disposition": "not adopted: it protected ordinary setting words (for example English setting, speed, silence)"
+     },
+     "round3": {
+      "prompt": "lists/markers-r3-prompt-3.md",
+      "output": {
+       "path": "lists/markers-r3-3.txt",
+       "sha256": "eccec85586a59aaca0badca75868f7f35364bf9507b8757d6e3f2499ddd4bf1b"
+      },
+      "disposition": "adopted as returned; exact repeated words removed (fi 3, hr 1) and canonically equal spellings (hi 3)"
+     }
+    },
+    {
+     "kind": "founder-edit",
+     "method": "Founder decision 2026-10-07 (#3482 plan §18, ranking option 1a): add the product name \"WhisperKit\", untranslated, to transcriptionEngine.allLanguages in every language so a search for the engine's own name finds it",
+     "date": "2026-10-07",
+     "ids": [
+      "transcriptionEngine.allLanguages"
+     ],
+     "disposition": "the word appended to the reviewed words; nothing else changed"
+    }
+   ],
+   "phraseExemptions": []
+  },
+  {
+   "language": "vi",
+   "contentSHA256": "8284ecb3eb7afc2095ed20a19f6c5d4b2dc36bb60f5b3a62d5da3ebd5d9f7358",
+   "reviews": [
+    {
+     "kind": "phase0-content",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions)",
+     "date": "2026-10-06",
+     "brief": "phase0/vocab-review-brief.md",
+     "output": {
+      "path": "phase0/intl/review-vi.txt",
+      "sha256": "e2a0ae2870e60fe44955070f703aeefb2953bc7acee37c23ad9458b1015f8456"
+     },
+     "notCopied": {
+      "reviewPrompt": {
+       "path": "/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr/docs/audits/2026-10-06-settings-search-vocab-phase0/intl/review-vi.md",
+       "sha256": "47db870666657ece987e7ddec637857ba45c299bbd66275307ca14cfe20cab09"
+      },
+      "draft": {
+       "path": "/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr/docs/audits/2026-10-06-settings-search-vocab-phase0/intl/v-vi.txt.last",
+       "sha256": "b14773d92487443f4cb71fd36edeba943dcf2d8c18a0e90b740de1bb0aaf1474"
+      }
+     },
+     "disposition": "content identical to the reviewed output for the 246 searchable ids after the Phase 0 merge rule (a word folding equal to its title dropped); the 64 exempt ids removed (verify-phase0.py)"
+    },
+    {
+     "kind": "stop-and-markers",
+     "method": "Codex, fresh isolated session, list review group 3",
+     "date": "2026-10-06",
+     "prompt": "lists/review-prompt-3.md",
+     "output": {
+      "path": "lists/review-3.txt",
+      "sha256": "bf57f868d0d71261e56f7c39b84ff8c6addd1686c75a067794d5bb5ee40ae570"
+     },
+     "disposition": "stop list adopted as returned; markers superseded by rounds 2 and 3"
+    },
+    {
+     "kind": "markers",
+     "method": "Codex, fresh isolated sessions, marker review rounds 2 and 3, group 3",
+     "date": "2026-10-06",
+     "reason": "chunk 4 review: required intent and negation forms (change, never, every negative determiner form) were missing; no length limit",
+     "round2": {
+      "prompt": "lists/markers-r2-prompt-3.md",
+      "output": {
+       "path": "lists/markers-r2-3.txt",
+       "sha256": "3bfaed2e599d44e7f487b22e1c56d1bec745c1859d3f49c8df5da69e6973f5ae"
+      },
+      "disposition": "not adopted: it protected ordinary setting words (for example English setting, speed, silence)"
+     },
+     "round3": {
+      "prompt": "lists/markers-r3-prompt-3.md",
+      "output": {
+       "path": "lists/markers-r3-3.txt",
+       "sha256": "eccec85586a59aaca0badca75868f7f35364bf9507b8757d6e3f2499ddd4bf1b"
+      },
+      "disposition": "adopted as returned; exact repeated words removed (fi 3, hr 1) and canonically equal spellings (hi 3)"
+     }
+    },
+    {
+     "kind": "founder-edit",
+     "method": "Founder decision 2026-10-07 (#3482 plan §18, ranking option 1a): add the product name \"WhisperKit\", untranslated, to transcriptionEngine.allLanguages in every language so a search for the engine's own name finds it",
+     "date": "2026-10-07",
+     "ids": [
+      "transcriptionEngine.allLanguages"
+     ],
+     "disposition": "the word appended to the reviewed words; nothing else changed"
+    }
+   ],
+   "phraseExemptions": []
+  },
+  {
+   "language": "zh",
+   "contentSHA256": "c124deb2c3d37ea35e7b971eb6e38481bbccec27eca32e82d8330974246c12d1",
+   "reviews": [
+    {
+     "kind": "phase0-content",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions)",
+     "date": "2026-10-06",
+     "brief": "phase0/vocab-review-brief.md",
+     "output": {
+      "path": "phase0/intl/review-zh.txt",
+      "sha256": "45844f8c1a4680356019a4d7631d9bf85e839ad188ce566a6d4ad9f965f59110"
+     },
+     "notCopied": {
+      "reviewPrompt": {
+       "path": "/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr/docs/audits/2026-10-06-settings-search-vocab-phase0/intl/review-zh.md",
+       "sha256": "98941ecd30defad39ae225737f27af2ee65bfa1d68922f6e603290bcca163747"
+      },
+      "draft": {
+       "path": "/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr/docs/audits/2026-10-06-settings-search-vocab-phase0/intl/v-zh.txt.last",
+       "sha256": "ee0b04a624c2eed85e700868bc80d1556f1a428144f8750b9ce3e1359d2b75ba"
+      }
+     },
+     "disposition": "content identical to the reviewed output for the 246 searchable ids after the Phase 0 merge rule (a word folding equal to its title dropped); the 64 exempt ids removed (verify-phase0.py)"
+    },
+    {
+     "kind": "stop-and-markers",
+     "method": "Codex, fresh isolated session, list review group 3",
+     "date": "2026-10-06",
+     "prompt": "lists/review-prompt-3.md",
+     "output": {
+      "path": "lists/review-3.txt",
+      "sha256": "bf57f868d0d71261e56f7c39b84ff8c6addd1686c75a067794d5bb5ee40ae570"
+     },
+     "disposition": "stop list adopted as returned; markers superseded by rounds 2 and 3"
+    },
+    {
+     "kind": "markers",
+     "method": "Codex, fresh isolated sessions, marker review rounds 2 and 3, group 3",
+     "date": "2026-10-06",
+     "reason": "chunk 4 review: required intent and negation forms (change, never, every negative determiner form) were missing; no length limit",
+     "round2": {
+      "prompt": "lists/markers-r2-prompt-3.md",
+      "output": {
+       "path": "lists/markers-r2-3.txt",
+       "sha256": "3bfaed2e599d44e7f487b22e1c56d1bec745c1859d3f49c8df5da69e6973f5ae"
+      },
+      "disposition": "not adopted: it protected ordinary setting words (for example English setting, speed, silence)"
+     },
+     "round3": {
+      "prompt": "lists/markers-r3-prompt-3.md",
+      "output": {
+       "path": "lists/markers-r3-3.txt",
+       "sha256": "eccec85586a59aaca0badca75868f7f35364bf9507b8757d6e3f2499ddd4bf1b"
+      },
+      "disposition": "adopted as returned; exact repeated words removed (fi 3, hr 1) and canonically equal spellings (hi 3)"
+     }
+    },
+    {
+     "kind": "founder-edit",
+     "method": "Founder decision 2026-10-07 (#3482 plan §18, ranking option 1a): add the product name \"WhisperKit\", untranslated, to transcriptionEngine.allLanguages in every language so a search for the engine's own name finds it",
+     "date": "2026-10-07",
+     "ids": [
+      "transcriptionEngine.allLanguages"
+     ],
+     "disposition": "the word appended to the reviewed words; nothing else changed"
+    }
+   ],
+   "phraseExemptions": []
+  }
+ ],
+ "reviewedSourceSHA256": {
+  "aiPolish.link.aboutAppleIntelligence": "53cdd9affa4a1285725e853ed91a647ae061dd4492a04b4890cdc8ba65252874",
+  "aiPolish.link.claudeRateLimits": "02bfa06e28a49b07e75b903e46c8fc0bf119476c147c9829e50af801fb100ffd",
+  "aiPolish.link.geminiRateLimits": "85790cb55c0a64e0d1726a407bbdcfa659539c93e1b36a52ee934394574775b2",
+  "aiPolish.link.ollamaLibrary": "16d7472303ca5ceff24caf8b875b286ec44dceded061e6f13a701f6a4449b2da",
+  "aiPolish.link.openAIRateLimits": "9687ea9cb799e365c8cf5c718468a71d929d20951f46d529be47d8b3980d2abd",
+  "aiPolish.providerSection": "a3debd1427cff3c575c6f4a86c5355e2de5211b0cfdb80443a205984d1d8b573",
+  "aiPolish.whyUse.appleIntelligence": "385d8de21aa939e8137f28c3d1b2cea6bcdefa2e43d80f5f1cdfc96f98175617",
+  "aiPolish.whyUse.claude": "42b048498dee1ab48316b527ad05311208aabd34b394c43aed6f09f6fe817ac2",
+  "aiPolish.whyUse.egOne": "6f5370006e2cdb86f8d9ab9f6fda2ee0e81fdefc0124905799c0588955e21fc9",
+  "aiPolish.whyUse.gemini": "df08e1454f8d69961c6c37ff49eeb75372f537a01711648c00c7f88bdf1dff09",
+  "aiPolish.whyUse.ollama": "35e4998adf78df626f695075ee57fff5b313f8d6b9d5b4bd056d823836f7751c",
+  "aiPolish.whyUse.openAI": "69110fa3f85d410557ae4ab3cef453898928959db7cf77e3bd91abeda5fe7a15",
+  "aiPolish.whyUse.s1Mini": "84581c824b6eea4365332bdad9c4de63f9aebab00cc8f6d2f8a5ff0ddba14bdc",
+  "aiPolishProvider": "8cf1100f8c7988bc7d9b11191ea88b3415d0af299ed3997ea90ec9398e293b34",
+  "aiPolishProvider.appleIntelligence": "4a675c19b5e9a651ad1407b4c3b412b182f4cca7941d8dcb36e2fe6c91031cac",
+  "aiPolishProvider.claude": "e8a0b7febe8605369534864b9ff6d1e8c87751d7bbc652b63886b944668940e6",
+  "aiPolishProvider.egOne": "038a9eb31f30c85ecd40779a89346a748639e0250eb1608d4d6fd56f9fab2e79",
+  "aiPolishProvider.gemini": "d19e105333f436b8c10b7945b0b5ccbafbd32fe58220eca58799e3c2e713f651",
+  "aiPolishProvider.ollama": "71857fbfa93c5e2c3dafe344e851680eacdcc66124b9e656ed0f92c906ce9d5d",
+  "aiPolishProvider.openAI": "5d4532bb919e39ebe3e94209fbcdd256ee815b48531232bc4acc3b46865698cd",
+  "aiPolishProvider.s1Mini": "9c34e2ff2b0b441c737176eeff07f875f200267dd923138d1834e8a80fd31ac0",
+  "apiKey.claude": "c26e3cbf7f1017fe971520156d0ec3b5611cd6f94509dd7a70bade69bc012d7b",
+  "apiKey.clear": "cf7cab63c6d890a12fd0693fe4bc8ddb54dc40dd8369548e27c95b374a2b7980",
+  "apiKey.gemini": "4f362b22b4daf878ec221e7bf5b1d1b98111ade80943064145df9e94edd307f7",
+  "apiKey.getKeyLink": "cf1e8c47ae407d852bbd8e1791a7e7757fb8b55a62f041d9ace2af63ae857bfa",
+  "apiKey.openAI": "3853cdaa8799361123617b59d286261e4cbf15001027a30c2750111b176f8d83",
+  "apiKey.reveal": "7d8cbacc3622189081e0c30984802e57a0826825f213e12114dbcb44a61dc491",
+  "apiKey.save": "d413617d53f587c8e123ac9c7676bdb16ef6f3a7bd8fadfb5802e20219e15ab2",
+  "appLanguage": "4247bbedd0f0313160886d1c670484eca6574c1adb4cbf848923ebe73d87e714",
+  "appLanguage.relaunch": "1f92071801448f42b9ef3e8425d8dec22908f9987ae6d5eb424688238b6637a7",
+  "appLanguage.shipped": "cf64410bd3e7e260414e3fc7beff34373f2722a575c3b2cad021fd2076ee0f94",
+  "appLanguage.systemDefault": "ede116d7a28ff0f2b4671b5d27edc15b105655a186e7d4f63c97364d23de1328",
+  "appSettings.tab.appearance": "c556556fd088e240060b06cfd6107659180bccbff33270afd6eff3a284aa649b",
+  "appSettings.tab.licenses": "cfc14a32ff5dc47b5517b7e21420ac5708cdea8be7221d1ea6a2a6d0f3d7e7b1",
+  "appSettings.tab.permissions": "659b60cb068e578a1d1dad89d85db0622749e04467fcbbd65dbb456c912351f6",
+  "appSettings.tab.privacy": "8e464e9327bd3bfa87b3aeb0c81c8e65f545fdc2f1cbc02248399b4767407ab5",
+  "appleIntelligence.recheck": "eec7ad42218237b24ff14188f7a600f0bca66b5e030be71b8d2961947a140375",
+  "appleIntelligence.status": "77b70c96cbf39f586a2efbee749aff59f2366f35bed9ddcc72491ed396df9c26",
+  "autoCopyToClipboard": "a79e49f63eb9f51103413a33d246930ecb0d2be70a5974ec7a83661b3d0bc6f4",
+  "autoDetectLanguage": "ae4d80aeca2c3acbaed28e1eeab1b16876224090a7ac994dfc2f566dbcc80a67",
+  "autoDetectLanguage.resetSuggestions": "acd2a3a42acddd72cddac4fed0cde27604103aca16fa45485137a86be4ce52bf",
+  "bluetoothGuide": "445ed828d0133e5a218c100eb2df93a59830fe4d69da484e25869c4425145a79",
+  "bluetoothGuide.learnMore": "4d312e93ce5f0565e9506db62ecc1c6a42894567ec5476e1abbce81f4b47cd16",
+  "cancelKeybind": "d82570c24238ed8c67c1c190172fc861780259d58cb6ec5fdfe3b1643c5dec92",
+  "contactsSyncOnLaunch": "41f77f2ec9b9c551568bc1ded19f36e24b7d844e9f406a7ee519cc6c26939817",
+  "copyLastKeybind": "3ff3f188f9d78c347cab688632896ab567441680766f5314ff72f6a7eed13a33",
+  "currentEngineSection": "76daf8b646e233495d835a44f589ce2ace17612e55d4614c5478aaa740b5601e",
+  "dictation.tab.chimes": "b53a2626ef3c31b1717016622c2a9ac0cec8607cb9ffc5fa5a9fc3871165c2ca",
+  "dictation.tab.clipboard": "9f32997b7590e008d8d6c57565e061bdf110e3cfbb9d0e7959cd47bfcb64d866",
+  "dictation.tab.engine": "d1d8e08b1e101d5b5fa037998dc8d50c2002a3b537fc2f33608f95664c323dec",
+  "dictation.tab.livePreview": "77a8928ba6b1bded6ac4e7ca91903f69570e119a807c6a1c06f6b506cf7d7405",
+  "dictation.tab.microphone": "de630504481bebf1bcefc10165160c78c47b1d714b243e5c4bfa41455b521613",
+  "dictation.tab.pill": "ac8eb7bb71f80fe1b1f7d2956f4a5583b225c58cdb0373a0d248db4e375b02ac",
+  "dictionary.tab.learnFrom": "a110a0c8cec8fa7178830d6be79544649518ca8aee2aed64502e01b7e0b8157a",
+  "dictionary.tab.quickAdd": "507afd49c9f5b7397fcbc0dc30e8292bb0b323ce71b8a84a2904adf3b6ad81a2",
+  "dictionary.tab.vocabularyPacks": "401bfbf8999761b42550fcfb8b1ed731bd9141fa3241473f95b7628b862cfc8f",
+  "dictionary.tab.yourWords": "0b2564b622300db7cec729a5e82eb2be580be1252e56d1c87a48c017a8ee910e",
+  "enableAIPolish": "fb1a22e6f3a7c668a31d4b9f0fa3717e347b9cdefc6f541aef4138c1589536ae",
+  "enableDictionary": "f1a4c559ffd63fc2899a74e7ad688fd8b88482cf449c25853e610036675cdf97",
+  "escapeRecovery": "9b39d29714c68af02ff9a055f55e93590a917e9bdbbf829448a3f02ccc63ccee",
+  "fastModel.cancelDownload": "cf3bc0a960fd6592ebaa1466fa205ceea971a9dd1c29671293de17aaf7a1efa8",
+  "fastModel.resume": "4b4e0928e468c915332c086442064c6ee82044c3f4d37acd3eff3b0773dff9f7",
+  "fastModel.tryAgain": "a88ec339bac021ca409ffd2cb8d7db62f1346f2cc55c0d029844705c740b3c2c",
+  "fasterTranscription": "4d6f99017de5e7ad13a3ed2ca0e6280f30bc94171cb7a2e6f20988dcb2d69da4",
+  "fillerRemoval": "7008e29d3b1dda21236631518a5cd0fe64f645dc451fcc10362ebdde45740977",
+  "importContacts": "b99c0c0311f740a3d2f8ff9de06982759ad4282c95780e61d034383b9d665281",
+  "inputDevice": "d3c15300c0b4ff3591eee60e4ea386cb5b62494ced79e01c011a4e02f4d1ea4e",
+  "inputDevice.auto": "2ddd5e16524529d1cc4ab03962034666919d1282c188f11d3a40eecaad44f5e4",
+  "inputDevice.device": "d20e838b00653dfa7a7cb319b55a27dcfca81ca8715148ea19d9bcba856c489f",
+  "inputSocket": "cda24a6f89cc814e3bb1bca9cd81b09c4b5cb58292a9804225d4d4a621ca4d60",
+  "inputSocket.input": "d0dc92af4c11b261bb8523ee339d31ed5bd602f6388f49037ceb6b3157c23258",
+  "keybind.resetToDefault": "765eac97bf622e1ddb30d0dace76ef3b942c0e0f72be5b6a7b56ca42ae14405e",
+  "learnFrom": "132dbd5d38d7d6a1fd18907912195b6d47bfb9fc25556e31f49b081286f3d2ed",
+  "license.gpl": "0b55c18a302405e180a46395765c7a2c5f6e5b6bb9d8e69a8e21530109fdbf77",
+  "license.gpl.view": "9fdc7e7e5d7a2cb53e42bb5438ce939b58e3050ef2975a03206cfff566d6aea7",
+  "license.notices": "1b34797de589398abeb2682c96c3a481e032dde8fbeb9a0d96582fc0b5a39d93",
+  "license.notices.view": "e1ee833087cb30b109391128844cc030045e8a024865a088b930ced3b28753ef",
+  "livePreview": "ea52a7e8912e83c44a725bf69ef53adf00be50b0fa40c8c659642ae18ba97a67",
+  "livePreview.browseDownloads": "502908468fdd0c5660d92a0504a588c6e1b7445d65ededb9f04b0c3e5d5fd0af",
+  "livePreview.language": "c1cfcebfc7b4b629b871a7659f37cf0f8acba9cca715e97cec6f677c4940ffdd",
+  "localModel.cancel": "b25d89341f20223e97f3f27d7fbc82e02b1cdabd24a9f16b73f0d3f782a6ad11",
+  "localModel.download": "a165a4f63dae4c064ff6da68344cd6f7a860accb3ee414db4ce949321bc9c693",
+  "localModel.finishUpgrade": "08bd520bbc08b0c0a627c1dfdc566c2765c94e4442b6bf45637f5d7229136f5c",
+  "localModel.resume": "4b4e0928e468c915332c086442064c6ee82044c3f4d37acd3eff3b0773dff9f7",
+  "localModel.resumeUpgrade": "0ddadce99b7d60353db24388c372eb7283f7c0230ae68a34db1441f98bb7dbf5",
+  "localModel.testLive": "a719759db5246cf096954e29d455a57e744d155276e9458acdd6c1759a7f7a5d",
+  "localModel.tryAgain": "a88ec339bac021ca409ffd2cb8d7db62f1346f2cc55c0d029844705c740b3c2c",
+  "lockedLanguage": "6965877166f51eb120eaaafde9a0468650b1dbfee240099062645f60c62025c2",
+  "lockedLanguage.change": "e1ca508730be536a4a9e5ea18c8da092f8556ed27d487e446e3af43add2f1121",
+  "mediaDuringDictation": "c805af4f0ba84e2bb7cf3ca08db41bbc5f7fc7db0b4d4396c2701c967b4f0f86",
+  "mediaDuringDictation.continue": "2ded3437c6b7fe735816f8270fab4c926a727ca7701f26d42171fed26d22dd6f",
+  "mediaDuringDictation.lower": "34e795b0f1b000510093889c5f0784476cd1a64f9c7a2ae0af97642c206a391d",
+  "mediaDuringDictation.mute": "61261da87a72f323e1b6155942feab4029e1fa0616b1a692784408f2ffcfbc21",
+  "mediaDuringDictation.pause": "1c2af924f376aed17cb6889b9607e4da0671f99c506481509e2ec708850a1323",
+  "micReadiness": "bf8b4b6cae2085a1dff902e99abf148a5adb4f508c89ef195283d205992f0472",
+  "micReadiness.10s": "0d73303cda6cd2ac7f0a6bb3fdaefe248a5c8598d6d9a17a54656bae7504919d",
+  "micReadiness.30s": "03d945b51c78cadcbfd1a4d6bd83aeec1e24bb5a293ef69f43dfe68c49147d49",
+  "micReadiness.60s": "708ddde944c307dd4377dc623f7c2741223b7879339378e5e673ee5d8318d90e",
+  "micReadiness.always": "ebe26a1f1cdf77f9768c35cee5a0d1962671a1d0f940fb287f73b1480b2cbeee",
+  "micReadiness.off": "8ee47ee4477b87f78eb503001085899cc0ba1ddc61301c8c000da4969d29a385",
+  "ollama.browseModels": "d23506cd9b7bbed3e9a507cd7102ff7904e20938e3987160697e9422e1c9324f",
+  "ollama.cancelPull": "cf3bc0a960fd6592ebaa1466fa205ceea971a9dd1c29671293de17aaf7a1efa8",
+  "ollama.downloadModel": "19aa474777aa4c47c56981a7dc06c34e9355b45475001d1ddd9dd39a40e0c7b0",
+  "ollama.downloadOllama": "424f3373b729d72eab247d4866be3971f879cd465e4ef53c5adafa98c05c3974",
+  "ollama.prepareModel": "672b0149e87be21fb6baefbc9db99d63ca14b9211c1cebb36c1cb0fbad9ab449",
+  "ollama.recheck": "16cbe459f5ef6d2a45aad3e691498106772142ef351951660fd33133188637ff",
+  "ollama.server": "a84cc3fe155c4b2dee98786be8b29d7ec48c289bd323de60636d55fb1945c221",
+  "ollama.start": "164ba0438aa26adfa903e0c689a69cb297b9bae18347bbc7fc4ae12873d78649",
+  "ollama.tryAgain": "a88ec339bac021ca409ffd2cb8d7db62f1346f2cc55c0d029844705c740b3c2c",
+  "pasteLastKeybind": "9379684fb80ff4bacca9fb0e5910c893394aea51f271f933921f472021bba2d4",
+  "pauseDuration": "3ff2978618c195cc7ad52ed516cd299074a79893e746ebe6d74ea7ac809c0776",
+  "permission.accessibility": "14cd5f451effcd49b994a374cfa0c602a3d3fa84e861af82d099f0b0468949bb",
+  "permission.accessibility.openSettings": "daabea69950028f6fc0bdd05ffa6692514af8a1ff6efc6fcc7c993ea95df0815",
+  "permission.microphone": "73d7fc843c0525b401853d836cc8eeec34cd57ba9d528db65e0a00f1b2117945",
+  "permission.microphone.request": "b06ab02ef820387351b379b86d86d3815f0a6be699bd48265cc9c58cad34334f",
+  "pillPosition": "e019fbae4e957f08cceab34ca9ce4585cc5dd3716574a8f2393fbbae39124209",
+  "pillPosition.bottom": "8047320d2787cfd3d8356b77a487e463886ac7786022a9d78a93cf61acc3719d",
+  "pillPosition.top": "bd0f2cb308e4cd0b321354b17627487c89b3484f0e7064dcac8a43c514543287",
+  "pillStyle": "575e0f405dbdfae1971cb4786700e60e0427ccfa6eda5476472d27a796ff8339",
+  "pillStyle.capsule": "c2f455d27706d986c4759780b1a9c24bedaac4ba73ee1d97fcb5ab2d3bba1da5",
+  "pillStyle.configureLivePreview": "b7531aca00e7b1f89e52cd2d8ce6267f0ac80b2424ae2df53167a58e5b86dd26",
+  "pillStyle.levelRail": "f24c4c999b38c4e02bcbe73a9920e959d6d569537fe2b3463cc30606d1b364c9",
+  "pillStyle.readingWell": "35345d961d61584b13cda10488c8f7e647cf9bda981bfd3e3318b4650c5c2e7a",
+  "polishModel": "349c68e96e24b91f1e24dffdb792034fab12f51d6f68b08f2a70d014758b3bb4",
+  "polishModel.refresh": "03ba836dac7f2b5c59e2c92fdace81a9b8a07b1d09c7219d475dde45289585c1",
+  "previewEngine": "4d851a9669b62307fd570bc05ef9ea814f9cda61703a72792b0ce549e87f1632",
+  "previewEngine.apple": "3b1859fde87442e13aa860ae62fbafd2b47812ca0d2b587f7f2960e27e0a8c2d",
+  "previewEngine.change": "e1ca508730be536a4a9e5ea18c8da092f8556ed27d487e446e3af43add2f1121",
+  "previewEngine.compare": "51255700352d1ac83a90858c40a09e25afc80aa373b5fa780202eccfd052a8bc",
+  "previewEngine.keepCurrent": "89bd5abb64c773362022361e159be58d86bfffaeaf5d6752f2f219a6d6b10916",
+  "previewEngine.universal": "2a798a523246dc5e3fe4f86b8234e727921008a6c5283edfdee89f45506c7dda",
+  "previewEngine.universal.cancel": "cf3bc0a960fd6592ebaa1466fa205ceea971a9dd1c29671293de17aaf7a1efa8",
+  "previewEngine.universal.download": "9f673c469631296b34d3ced272dea22cba3d7ceebb7da68e7f881d87f6e141b9",
+  "previewEngine.universal.remove": "805be96782daae8133c5da939388f7786b6253dcc18c5e9e0b19449fa49eb7cd",
+  "previewEngine.universal.resume": "4b4e0928e468c915332c086442064c6ee82044c3f4d37acd3eff3b0773dff9f7",
+  "previewEngine.universal.retry": "a88ec339bac021ca409ffd2cb8d7db62f1346f2cc55c0d029844705c740b3c2c",
+  "previewLanguages": "bb80e1edaf9ed23a1b52be8cd0accf1f85dceaa8039f5a61da89a319e0178bc5",
+  "previewLanguages.install": "e3808dd61764d81f5b2db4fa15c7945d608cebef71b4dceb9c7083a37b4fc529",
+  "quickAdd.menuBar": "30e095ce026a3a399099303d4b42547d85024c1445b9a8e79291575a94038801",
+  "quickAdd.shortcut": "120f9bf249b926e759dd6434a5a2d27d0af7a15b034b61d41cc1efeecddc7bc4",
+  "quickAdd.step1": "d5abc5986d9978a94817ce497353543b9c866a4d15e94da75f6c7d9534331b75",
+  "quickAdd.step2": "660a95a9b04b72645d92fd3c47f8c5893290c53de4f492991ce3a1147c222221",
+  "quickAdd.step3": "d2dc6891fbc8085f3dfa04838dd50fe76720e9ca75d781d9ac04304e1b78f722",
+  "quickAddClipboardFallback": "4f2689a0c7de167f85115b21f331f7cb7561d25ffa5854de85df2ae4c398eb02",
+  "quickAddKeybind": "2358cc5e806b39f658aecb9e7c3e3ebf851121787c3e33387defb4c59b18c2b6",
+  "recordKeybind": "ef34c279d293bca87e1730a3fdebdec2b793bf4651739aaed2a4ee51ec361ed8",
+  "recordingChime": "f934dd94f0427b06764a34b39033f06d6e0db52c7be787a07749a31aad7f8307",
+  "recordingChime.airGlint": "5c886c07c049563f9ca89ef7794f50c949295e16759b675ed69bf4a297b1d9db",
+  "recordingChime.cloudPop": "5609af537a2820bc238f2ccc25b2c15aa29a69bb54039bc41dc10dc1ae143114",
+  "recordingChime.dustMote": "5d7de9e4d26fa3c6ae11ee2b17751cf47b0a5e33b8c4f64e62996b2fa6e1c9be",
+  "recordingChime.lowNod": "052e9846c957987355734e2b5d6ac86783551fc05e188032f80f6f570b403bb8",
+  "recordingChime.mutedConfirm": "259576c49712128113ff96666238404ea9e91d540516202b065f5d4be2c05f1e",
+  "recordingChime.paperTap": "1e4c37338773500f08aa7e9ee04db0feade14494ee01248ea04dfdb80c76fa14",
+  "recordingChime.preview": "0497d7764e7f4f77fa74034ae17118efb84fdb0ea8b742aeeb48747cb43b4123",
+  "recordingChime.roundPebble": "41f36ddfb283edab85c903897b7e653a37e309737feae209aa7addb261d57901",
+  "recordingChime.satinShift": "bbec6da20e8020e7759e9c0a5c484152737b448f7b3d92a62736162be28e43ab",
+  "recordingChime.softHush": "8a03431f32e10a375a62eda8de12d4adaa46b6ac563c16eb666cdeda2041e597",
+  "recordingChime.velvetHush": "9f8c5b35f159a941c42873a5e9641c16912875b71968c740f36422baad06ab44",
+  "recordingChime.velvetTap": "809f22adb7eaa4fb583d45614afbad79d49ad5f7f98cfee5fa332260106f45a5",
+  "recordingChime.whisperTick": "eaf9ad1b232d097781e840754575cb6555d5d410c74200c9b9de9048e0213a69",
+  "recordingChimes": "498b2d969b5ec68c170c1bb75ef139dc6198986ce587886039050659d92dfc02",
+  "recordingMode": "cbf4b1b486a8197a54377454cfa94f48ba2c6a399d036169f5f89c8097c6c9fa",
+  "recordingMode.pushToTalk": "0efcf017d5b1c701e79b2ee80e469b27bbf8ccad15ff3c6e499721f340f69826",
+  "recordingMode.toggle": "80bbb2f2cf09f64a6eef01f5f5c3b94277075750dff8fad1581d1f8817d4f3a0",
+  "restoreClipboard": "782991e80ddc9a976b8b7a8a4f2adfbf86546daa4e09004a08e8032df58c40c3",
+  "s1Context": "c33b98cb2169bce9a11a9919c55d92216ab70384e307dd9a3eb5db3423c28245",
+  "s1Context.email": "066a2a85cb401ebaf72f3bc8cc0d257ea09a3aafc39bcfddb0e6be8d6bee0f25",
+  "s1Context.general": "eb61dcc5ade549cbc95f3534cb1266185805c18a5a4bc409678408f601e8cce6",
+  "s1Structure": "8c58a7dbedbbe4f15fac5ee04464e2064f3cdfa97dcb3e6e811fe2ec71cadff6",
+  "s1Structure.lists": "00ed5f95bae1ea11d1d972637a049f4816d1b2e0a3125a60261b49b84e937057",
+  "s1Structure.prose": "9c6315652fe32052eaf48a2bb581785d97d6222b884ca1f55c697c507ce0e28a",
+  "s1Tone": "186e76d4985baf8848bfc577223d886058e6dbfdf60a2af65bc78d86e86fd03b",
+  "s1Tone.casual": "f75c1ff4f099712df96874be41a7321b297129222bdfa2506895b67111904aca",
+  "s1Tone.formal": "8b1761ddec33a303628a3535d90a6cfeefe275beddcf73326375e03ca75ac731",
+  "s1Tone.semiCasual": "062153676d7f17313d101d61ab2d6b69134b61f1f28d224e85655a10c41f32f4",
+  "s1Tone.semiFormal": "1502974d8ccf74f594f04a3000e8a3166aaadb5daac96b6e37153d5541318fe2",
+  "selfLearningDictionary": "d54352d0295d20d0cb9d405b8b9c23ebdda33d3eeecdea50180d9fbd0969a784",
+  "selfLearningDictionary.learnMore": "4d312e93ce5f0565e9506db62ecc1c6a42894567ec5476e1abbce81f4b47cd16",
+  "sendCrashReports": "c0168c94a0fd2fe7a8ad8ea4a9eab87da62cb17aff262fc0b1eeb01fb71a3210",
+  "sendCrashReports.restart": "911ab31429bc7eb2356eb03182acba8cdb51e0da68f9babbcd0dc043fadb35b9",
+  "shareUsageMetrics": "88936d8c74fdd8f951596d6a2dfd0832cc213f40af48fecde642b6e4aef1255b",
+  "showInDock": "91d874f84f77ea2f3b56545f717f3c89650d9c4b90e2b88539b7d91e08ad8696",
+  "smartInsertion": "5be37d3e8bf84fb768bf634705329f6518cbfdc7b767979f221a75cf1f1ec8ed",
+  "snippetKeyword": "f5af256a35ad6a750e84f6258a4464a1b4f60570b28eb20eb50a339a2ab07b5e",
+  "snippets": "4ad7eb841a5a2025eafede63e75aaed354504a6b7155313c3e2f8d987328dcc9",
+  "snippets.add": "5d5aca96594908e0cac72ec9223df728afa564660185f1a78b1a767f69df06c6",
+  "snippets.addFirst": "0b88c28a00b0c024c46bbc8c2c5c01455dc4ec2fe7c997479fd7d679a81bc0f5",
+  "snippets.clearSearch": "9f2cefb6fdc584722e9134380f074d36815a8e6ce87ee84cbf6f21f5f3ba71e3",
+  "snippets.export": "a7c5c02d18014a3b67ed7901a60a681477cd8068bcb9b93de169680a46c263ad",
+  "snippets.import": "9d9c4a63e66f3bb7799bdd48927c19066f99dab2b41c973d15eebcf19ec1b136",
+  "snippets.search": "9cc69eabb3f1e71fcd0238d89a4e5c78582d580d9d3cfc972aaae9e1d90fb365",
+  "spokenEmoji": "f55913483e0af6972991eaa4e421e95a4b6a0b38441b9e9f16cc97b72272e144",
+  "spokenPunctuation": "8bc4b053e4f5e1b847453d342c73ee2f78999cc26635cb0841b37a886e013934",
+  "startWord.reset": "ca35dd873804ceeaea91655220f0df51a1487aa75c8ad13a178cc6a0a7e32a38",
+  "startWord.save": "75dc29e1f975870449b86be9dde9609a30914d95ac7c133b1f114cbb1e6c0ca7",
+  "startWordField": "fe511ed6fad05269861ed39d1cee243628111d9ad24044c44bf0108edfb3adbb",
+  "startWordLanguage": "531a550bf6de6b3596927a62a680487d1a9963f33f9dde30bd2d736bfbc17e35",
+  "startWordLanguage.de": "7eaded7d0e470f09bf1bba06a5d144f33cb260c14ea4caa0f71dfb6154d632b9",
+  "startWordLanguage.en": "7eaded7d0e470f09bf1bba06a5d144f33cb260c14ea4caa0f71dfb6154d632b9",
+  "startWordLanguage.es": "7eaded7d0e470f09bf1bba06a5d144f33cb260c14ea4caa0f71dfb6154d632b9",
+  "startWordLanguage.fr": "7eaded7d0e470f09bf1bba06a5d144f33cb260c14ea4caa0f71dfb6154d632b9",
+  "startWordLanguage.it": "7eaded7d0e470f09bf1bba06a5d144f33cb260c14ea4caa0f71dfb6154d632b9",
+  "stopOnSilence": "f5f903eb76fb6d02c99bff23889c4f05660644eea8e74068ae113adb2fc93666",
+  "theme": "319c3ff571caa2431792fe5d6d9dde2dd93fa04348b44db0d6c5bd32700ed53d",
+  "theme.dark": "2f0c1a25e288e68489589b4f011dc3dcedec57760d5a92663974bd04467e04cc",
+  "theme.light": "70febc19180da84aee8ef6bf4944d227c61a0496a681448d7eeec61e280282bc",
+  "theme.system": "11c97136032fb94fecb8f3c4400342ff39f9f3b69f8aa485ab690f418d922840",
+  "transcribeFile.steps": "69070954f3133150ac51aeb80ba0e6341272aa12bcb816d4b20b2871622ccb23",
+  "transcriptionEngine": "a2b97106321916d148d15f792aba7126c76eb7af1e78035a7baa69b3b7a32c5d",
+  "transcriptionEngine.allLanguages": "87d32f1e3c89c955b556e85d6ffc50b5abd8cd4f0a4ed86fc7f6b75e06acc079",
+  "transcriptionEngine.change": "e1ca508730be536a4a9e5ea18c8da092f8556ed27d487e446e3af43add2f1121",
+  "transcriptionEngine.fast": "36fe0c552cff71f35c7bb9e651fa614cbe2991c3b86e716a7b29452a5dd85ce5",
+  "transcriptionEngine.keepCurrent": "78ed7ba6005691c71ada0809476aab5d4c5099b4a5383a48fff540715797bb2a",
+  "transcriptionEngine.recheckFast": "178e21cd9b88bd5da3fe345d029312e583fab69dab7ebbbedb8ca6509c38681c",
+  "unloadModel": "164a581fe831bb9cf79aad2aa335aa5b6d5f8bda5664c4062fd75582915c6901",
+  "unloadModel.fifteenMinutes": "2cb52811de2c70c38a9f0f9c8d6f2c1dd3ae81af44e105b57587777276d8cb17",
+  "unloadModel.fiveMinutes": "b121e837b5608cf69ce624794373389f93664cde3bc81daa6c5bedc374014022",
+  "unloadModel.immediately": "6e212d5e64693304c1a229ca47318dda098a9101729acec4dd51f5ff0abf234d",
+  "unloadModel.never": "85a20521cb8350d88c3f74cf6b8ce0463dc31bc12974376bd7307427f0b56fac",
+  "unloadModel.oneHour": "c11199edb99d5c1e76481169a9aa231aedcfda664f08deaa68a4b1fb88596afe",
+  "unloadModel.tenMinutes": "b7a0941e864bff62da072c0a8af80ca8d5b418cc5ba5fb7922ed4693628ade2a",
+  "unloadModel.twoMinutes": "290e7be3f9c1fc6b19c8f30f05019c078524be8bd23e09e65893812e89b0218a",
+  "updateAlertInMenuBar": "0924b9964a6893062db6ae8f834f53e491b41bef35006f6072c47191090d1096",
+  "whatWeCollect": "29c9a652cb34adfc14e305b04700f4f9e57ccf9f7dd053cd3aadd5b4c41c9b00",
+  "whatWeCollect.seeDetails": "6568dd444b02e076aaddc7908e4591710d6fa8dfad1ff19f52b5e29edfee3865",
+  "whisperModel.cancelDownload": "cf3bc0a960fd6592ebaa1466fa205ceea971a9dd1c29671293de17aaf7a1efa8",
+  "whisperModel.recheck": "01b4cb87fe06ff70e47d5c0f7fe0c87ac34150ea85bb6422b22d77522ebc85fa",
+  "whisperModel.remove": "d48ce2038923833023b6203f47a324e74b297e7cff95df4f8fbae115a342e5f3",
+  "whisperModel.resume": "4b4e0928e468c915332c086442064c6ee82044c3f4d37acd3eff3b0773dff9f7",
+  "whisperModel.setUp": "ae77c2714c0cb506303b7122823599f1af67135cd7ce1fb0cac4e782dab4f7ee",
+  "whisperModel.tryAgain": "a88ec339bac021ca409ffd2cb8d7db62f1346f2cc55c0d029844705c740b3c2c",
+  "yourSnippets": "0f33b15dd30f250b357ce924ed301f5fa22b30ad531855320b09682a7a58c554",
+  "yourWords.add": "d4e5ece7ba07b2ad91c4c90416192d6e1d1ecc9cdb1dbf3c427ef382a38aef07",
+  "yourWords.category.acronym": "18a3cd2bf417ab874540323bb86290fcf4f9e881702adf297d4bf0823d94da23",
+  "yourWords.category.all": "dce1378e2e84fd0845dd4a4137d2b8af01a55c717ee0ade349aed29ed97a069e",
+  "yourWords.category.autoLearned": "c9ce1e6611ab63885ed7683d5fe4843205ddbaea1da63449e2db3292121ecc92",
+  "yourWords.category.brand": "f741c0dd9bd4ec770ef242cab9cc263554aeb4e41fb7d8d10675ada8a916af5c",
+  "yourWords.category.domain": "69f0f2194ab12519a81300c4edcfcc03af0d6fd13b22b467f7549ebf44aae8e4",
+  "yourWords.category.general": "eb61dcc5ade549cbc95f3534cb1266185805c18a5a4bc409678408f601e8cce6",
+  "yourWords.category.person": "b81b10b506dbb0cd8658fa10917a05ab21846c47d700eaa0ad98027161c796a6",
+  "yourWords.categoryFilter": "dce1378e2e84fd0845dd4a4137d2b8af01a55c717ee0ade349aed29ed97a069e",
+  "yourWords.clearSearch": "9f2cefb6fdc584722e9134380f074d36815a8e6ce87ee84cbf6f21f5f3ba71e3",
+  "yourWords.export": "d28e07ce3afffe4cb87d63ae1280d03854e7c90d3da8c047b593b356f77121ef",
+  "yourWords.import": "9d9c4a63e66f3bb7799bdd48927c19066f99dab2b41c973d15eebcf19ec1b136",
+  "yourWords.massEdit": "a3f4fe070d5e6fc8cf78e3122bc299db26a3c139c8b7b0ad6aff1bbae9d5ce03",
+  "yourWords.search": "e2edb884f10d397e3e04823d498a44c3c820f9115d7192febdf86633014248e0"
+ },
+ "reviewedSourceNote": "Per searchable id, the SHA-256 of the English title and description its translations were reviewed against (reference/settings-map.json; SettingsSearchVocabularyTests.sourceFingerprint). First recorded 2026-10-07 at be0086b6 from the export the Phase 0 and council reviews covered. When a test names an id here, re-review that id's translated blocks, then record the hash the test prints. Limit: dynamic titles are bound by resolver name, not template wording."
+}

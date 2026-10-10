@@ -528,8 +528,6 @@ final class EngineCoordinator {
       active: act,
       selectedReadiness: deps.readiness(sel),
       activeReadiness: deps.readiness(act),
-      parakeetActive: deps.isEngineActive(.parakeet),
-      whisperKitActive: deps.isEngineActive(.whisperKit),
       switchPhase: switchPhase,
       selectedInstalled: deps.isInstalled(sel),
       blockedReason: blockedReason,

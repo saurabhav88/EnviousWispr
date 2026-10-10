@@ -13,8 +13,8 @@ EnviousWispr can end a recording by itself once you stop talking, so you do not 
 
 ### Turn on auto-stop
 
-1. Go to **Settings** \> **Transcription**.
-2. Under **Auto-Stop**, switch on **Stop recording on silence**.
+1. Go to **Dictation Settings** \> **Engine**.
+2. Under **Applies to both engines**, switch on **Stop recording on silence**.
 3. Use the **Pause duration** slider to set how long a pause has to be, from half a second to three seconds. The default is one and a half seconds.
 
 A pause shorter than your setting is ignored. A longer silence ends the recording.
@@ -29,7 +29,7 @@ A pause shorter than your setting is ignored. A longer silence ends the recordin
 
 ### Recording stops while I am still thinking
 
-Raise **Pause duration** on the **Transcription** page, up to three seconds. Or switch **Stop recording on silence** off and end every recording yourself with your keybind.
+Raise **Pause duration** on the **Engine** tab of **Dictation Settings**, up to three seconds. Or switch **Stop recording on silence** off and end every recording yourself with your keybind.
 
 ### Recording does not stop by itself
 

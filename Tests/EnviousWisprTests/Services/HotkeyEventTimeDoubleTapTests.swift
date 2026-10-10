@@ -1,0 +1,949 @@
+import AppKit
+import EnviousWisprCore
+import EnviousWisprServices
+import Foundation
+import Testing
+
+/// #3534 — a fast double tap of the record key locks hands-free even when the Mac
+/// is busy.
+///
+/// When this fails, a fast double tap on a busy Mac does not lock hands-free, a
+/// fast tap is treated as a hold, or a lone tap stops at the wrong time.
+///
+/// Every key event is driven with the two times the bug is about: when the OS
+/// says it HAPPENED (`timestamp`) and when the service HANDLED it (the injected
+/// `uptime` at the call). The eight replays are the misses captured on
+/// 2026-10-08 with the diagnostic build (plan §1); before #3534 each one took the
+/// stop path because its release or second press was handled more than 500 ms
+/// after the first press.
+///
+/// The injected scheduler retains lone-tap requests until `fireDueTimers()` is called,
+/// allowing event-first and timer-first ordering to be driven deterministically. The test
+/// learns the timer finished from the service's own
+/// `onDebounceResolvedForTesting`, and that a start reconciled from
+/// `onStartResolvedForTesting`; no wall-clock waits.
+@MainActor
+// A broken wait fails in a minute instead of hanging the run.
+@Suite(.tags(.productOutcome), .timeLimit(.minutes(1)))
+struct HotkeyEventTimeDoubleTapTests {
+
+  /// `HotkeyID.toggle` is private to `HotkeyService`; mirrored here.
+  private static let toggleID: UInt32 = 1
+
+  /// One key event: when it happened (nil = no OS time) and when it was handled.
+  struct Event {
+    let isPress: Bool
+    let occurred: TimeInterval?
+    let handled: TimeInterval
+    static func press(_ occurred: TimeInterval?, handled: TimeInterval? = nil) -> Event {
+      Event(isPress: true, occurred: occurred, handled: handled ?? occurred ?? 0)
+    }
+    static func release(_ occurred: TimeInterval?, handled: TimeInterval? = nil) -> Event {
+      Event(isPress: false, occurred: occurred, handled: handled ?? occurred ?? 0)
+    }
+  }
+
+  /// The service's clock, waits and callbacks, all under test control.
+  @MainActor final class Rig {
+    /// #3544: the engine reads the clock and schedules its lone-tap wait off the main actor, so
+    /// both are the thread-safe test fixtures; the test still moves time and fires waits by hand.
+    let clock = HotkeyTestClock(1000)
+    lazy var timerRig = HotkeyTestScheduler(clock: clock)
+    var now: TimeInterval {
+      get { clock.now }
+      set { clock.now = newValue }
+    }
+    var requestedDeadlines: [TimeInterval] { timerRig.requestedDeadlines }
+    var requestedDelays: [TimeInterval] { timerRig.requestedDelays }
+
+    private(set) var starts = 0
+    private(set) var stops = 0
+    private(set) var cancels = 0
+    private(set) var published = 0
+    var lockAnswer: HandsFreeLockRequestResult = .published
+    var startAnswer: RecordingStartOutcome = .recording("event-time-session")
+    private(set) var presses: [(action: String, windowTiming: String?)] = []
+    private(set) var lockDecisions: [(committed: Bool, reason: String)] = []
+
+    // Bounded waits: a missing signal records an issue after 5 s instead of hanging.
+    private let debounceWaiter = HotkeyGlobeKeyTests.CallbackWaiter()
+    private let startWaiter = HotkeyGlobeKeyTests.CallbackWaiter()
+
+    var sink: HotkeyTelemetrySink {
+      HotkeyTelemetrySink(
+        registrationFailed: { _, _, _, _ in },
+        pressed: { [weak self] _, _, _, _, action, timing in
+          self?.presses.append((action, timing))
+        },
+        lockResolved: { [weak self] committed, reason in
+          self?.lockDecisions.append((committed, reason))
+        })
+    }
+
+    var actions: [String] { presses.map(\.action) }
+
+    /// Fire every lone-tap wait whose deadline has passed at `now`. The engine queues the stop
+    /// for the main thread; `waitForDebounce` learns it was applied from the service's signal.
+    func fireDueTimers() {
+      timerRig.fireDue()
+    }
+
+    func noteDebounceResolved() { debounceWaiter.note() }
+    func noteStartResolved() { startWaiter.note() }
+
+    /// The service has asked for `count` lone-tap waits. #3544: the engine schedules on the
+    /// release's own turn, so the request has landed by the time `drive` returns; a shortfall is
+    /// recorded instead of waited for.
+    func waitForSleepRequests(count: Int) async {
+      #expect(
+        requestedDelays.count >= count,
+        "expected \(count) lone-tap waits, got \(requestedDelays.count)")
+    }
+
+    /// Park until the service reports `count` resolved lone-tap timers.
+    func waitForDebounce(count: Int) async {
+      await debounceWaiter.wait(until: count)
+    }
+
+    /// Park until the service reports `count` reconciled starts.
+    func waitForStarts(count: Int) async {
+      await startWaiter.wait(until: count)
+    }
+
+    func wire(_ service: HotkeyService) {
+      service.onStartRecording = { [weak self] in
+        guard let self else { return .noRecording }
+        self.starts += 1
+        return self.startAnswer
+      }
+      service.onStopRecording = { [weak self] in self?.stops += 1 }
+      service.onCancelRecording = { [weak self] in self?.cancels += 1 }
+      service.onLockRequested = { [weak self] _ in
+        guard let self else { return .unavailable }
+        if case .published = self.lockAnswer { self.published += 1 }
+        return self.lockAnswer
+      }
+      service.onStartResolvedForTesting = { [weak self] in self?.noteStartResolved() }
+      service.onDebounceResolvedForTesting = { [weak self] in self?.noteDebounceResolved() }
+    }
+  }
+
+  private func makeService(_ rig: Rig, keyCode: UInt16 = 0)
+    -> (HotkeyService, RecordingDesktopHotkeyEffects)
+  {
+    let effects = RecordingDesktopHotkeyEffects()
+    let service = HotkeyService(
+      effects: effects, telemetry: rig.sink,
+      // Strong: a stop can outlive the test body; the rig holds no service.
+      uptime: rig.clock.uptime,
+      scheduler: rig.timerRig.scheduler)
+    service.recordingMode = .pushToTalk
+    // keyCode 0 ('A') is a chord, delivered through Carbon; Right Option is a bare modifier.
+    service.toggleKeyCode = keyCode
+    rig.wire(service)
+    return (service, effects)
+  }
+
+  /// Deliver one event through the Carbon entry point at its handling time.
+  private func drive(_ service: HotkeyService, _ rig: Rig, _ event: Event) {
+    rig.now = event.handled
+    service.handleCarbonHotkey(
+      id: Self.toggleID, isRelease: !event.isPress, timestamp: event.occurred)
+  }
+
+  private func drive(_ service: HotkeyService, _ rig: Rig, _ events: [Event]) {
+    for event in events { drive(service, rig, event) }
+  }
+
+  /// Let every queued recording task (start, stop or cancel) finish.
+  private func settle(_ service: HotkeyService) async {
+    await service.awaitInFlightStartForTesting()
+  }
+
+  // MARK: - The eight captured misses
+
+  struct Replay: CustomTestStringConvertible, Sendable {
+    let name: String
+    let events: [(isPress: Bool, occurred: TimeInterval, handled: TimeInterval)]
+    var testDescription: String { name }
+  }
+
+  /// Plan §1 and §11, in handling order. Times are seconds after a base of 1000.
+  nonisolated static let replays: [Replay] = [
+    Replay(
+      name: "00:43:30 press 2 handled 284 ms late",
+      events: [(true, 1000, 1000), (false, 1000.092, 1000.092), (true, 1000.244, 1000.528)]),
+    Replay(
+      name: "00:48:09 press 2 handled 429 ms late",
+      events: [(true, 1000, 1000), (false, 1000.069, 1000.069), (true, 1000.168, 1000.596)]),
+    Replay(
+      name: "00:48:18 press 2 handled 191 ms late",
+      events: [(true, 1000, 1000), (false, 1000.068, 1000.068), (true, 1000.345, 1000.534)]),
+    Replay(
+      name: "01:13:10 press 2 handled 613 ms late",
+      events: [(true, 1000, 1000.125), (false, 1000.092, 1000.147), (true, 1000.187, 1000.800)]),
+    Replay(
+      name: "01:14:22 release handled 633 ms late",
+      events: [(true, 1000, 1000), (false, 1000.056, 1000.689), (true, 1000.186, 1000.689)]),
+    Replay(
+      name: "01:14:57 press 2 handled 347 ms late",
+      events: [(true, 1000, 1000.002), (false, 1000.054, 1000.124), (true, 1000.171, 1000.518)]),
+    Replay(
+      name: "01:15:25 release handled 695 ms late",
+      events: [(true, 1000, 1000), (false, 1000.109, 1000.804), (true, 1000.450, 1000.804)]),
+    Replay(
+      name: "01:16:16 press 2 handled 82 ms late",
+      events: [(true, 1000, 1000.001), (false, 1000.066, 1000.102), (true, 1000.465, 1000.547)]),
+  ]
+
+  @Test(
+    "A captured fast double tap locks hands-free although its events were handled late",
+    .bug("https://github.com/saurabhav88/EnviousWispr/issues/3534", "double tap missed under load"),
+    arguments: replays)
+  func capturedMissLocks(replay: Replay) async {
+    let rig = Rig()
+    let (service, _) = makeService(rig)
+    defer { service.stop() }
+    drive(
+      service, rig,
+      replay.events.map { Event(isPress: $0.isPress, occurred: $0.occurred, handled: $0.handled) })
+    await rig.waitForStarts(count: 1)
+    await settle(service)
+
+    #expect(rig.actions == ["start", "lock"])
+    #expect(rig.presses.last?.windowTiming == "rescued")
+    #expect(service.isRecordingLocked)
+    #expect(rig.published == 1, "the lock intent was recorded but never shown")
+    #expect(rig.stops == 0, "the double tap stopped the recording")
+  }
+
+  // MARK: - The lone-tap stop deadline
+
+  @Test("A lone quick tap stops 500 ms after its release happened, once")
+  func loneTapStopsOnce() async throws {
+    let rig = Rig()
+    let (service, _) = makeService(rig)
+    defer { service.stop() }
+    drive(service, rig, [.press(1000), .release(1000.08)])
+    await rig.waitForSleepRequests(count: 1)
+
+    let deadline = try #require(rig.requestedDeadlines.last)
+    #expect(abs(deadline - 1000.58) < 1e-9)
+    rig.now = 1000.58
+    rig.fireDueTimers()
+    await rig.waitForDebounce(count: 1)
+    await settle(service)
+
+    #expect(rig.stops == 1)
+    #expect(rig.actions == ["start"])
+  }
+
+  @Test("The lone-tap stop is scheduled at the release and ends at the release deadline")
+  func lateStartingTimerKeepsTheDeadline() async throws {
+    let rig = Rig()
+    let (service, _) = makeService(rig)
+    defer { service.stop() }
+    drive(service, rig, [.press(1000), .release(1000.08)])
+    // #3544: the engine schedules the stop on the release's own turn, so there is no stop task
+    // left to start late; the wait is asked for at once and ends at the release deadline. The
+    // promise this test guards (the deadline is the release's, not 500 ms after something
+    // later) is unchanged.
+    rig.now = 1000.40
+    await rig.waitForSleepRequests(count: 1)
+
+    let delay = try #require(rig.requestedDelays.last)
+    #expect(abs(delay - 0.5) < 1e-9)
+    let deadline = try #require(rig.requestedDeadlines.last)
+    #expect(abs(deadline - 1000.58) < 1e-9)
+    rig.now = 1000.58
+    rig.fireDueTimers()
+    await rig.waitForDebounce(count: 1)
+    await settle(service)
+    #expect(rig.stops == 1)
+  }
+
+  @Test("A lone-tap timer that fires after its deadline stops exactly once")
+  func timerStartingAfterDeadlineStopsAtOnce() async throws {
+    let rig = Rig()
+    let (service, _) = makeService(rig)
+    defer { service.stop() }
+    drive(service, rig, [.press(1000), .release(1000.08)])
+    // #3544: the wait is requested on the release's turn (500 ms); the timer then runs late,
+    // 120 ms past its deadline, and must still stop exactly once.
+    let delay = try #require(rig.requestedDelays.last)
+    #expect(abs(delay - 0.5) < 1e-9)
+    rig.now = 1000.70
+    await rig.waitForSleepRequests(count: 1)
+    rig.fireDueTimers()
+    await rig.waitForDebounce(count: 1)
+    await settle(service)
+    #expect(rig.stops == 1)
+    #expect(rig.actions == ["start"])
+  }
+
+  @Test(
+    "A release handled late still waits 500 ms after it was handled, and a press handled meanwhile locks"
+  )
+  func lateReleaseKeepsTheHandlingGrace() async throws {
+    let rig = Rig()
+    let (service, _) = makeService(rig)
+    defer { service.stop() }
+    drive(service, rig, [.press(1000), .release(1000.056, handled: 1000.689)])
+    await rig.waitForSleepRequests(count: 1)
+
+    // 500 ms after the release HAPPENED would be 1000.556, already past when it was handled
+    // at 1000.689. The handling-time floor keeps 500 ms after handling: 1000.689 + 0.5.
+    let delay = try #require(rig.requestedDelays.last)
+    #expect(abs(delay - 0.5) < 1e-9)
+    let deadline = try #require(rig.requestedDeadlines.last)
+    #expect(abs(deadline - Self.lateReleaseStop) < 1e-9)
+
+    drive(service, rig, .press(1000.186, handled: 1000.689))
+    rig.fireDueTimers()
+    await rig.waitForDebounce(count: 1)
+    await rig.waitForStarts(count: 1)
+    await settle(service)
+
+    #expect(rig.actions == ["start", "lock"])
+    #expect(rig.published == 1)
+    #expect(rig.stops == 0)
+  }
+
+  @Test(
+    "A timer that falls due while a valid second press is still queued does not stop the recording"
+  )
+  func timerDueBeforeQueuedPressStillLocks() async throws {
+    let rig = Rig()
+    let (service, _) = makeService(rig)
+    defer { service.stop() }
+    // Every event handled about 400 ms late. By event time the stop would be due at 1000.58,
+    // before the second press is handled at 1000.60; the old timer stopped at 1000.95.
+    drive(
+      service, rig,
+      [.press(1000, handled: 1000.40), .release(1000.08, handled: 1000.45)])
+    await rig.waitForSleepRequests(count: 1)
+    let deadline = try #require(rig.requestedDeadlines.last)
+    #expect(abs(deadline - 1000.95) < 1e-9)
+    // #3544: the timer falls due at its deadline while the second press is still queued on main
+    // and is handled after it.
+    rig.now = deadline
+    rig.fireDueTimers()
+    drive(service, rig, .press(1000.20, handled: 1001.00))
+    await rig.waitForDebounce(count: 1)
+    await rig.waitForStarts(count: 1)
+    await settle(service)
+
+    #expect(rig.actions == ["start", "lock"])
+    #expect(rig.published == 1)
+    #expect(rig.stops == 0)
+  }
+
+  @Test(
+    "When the timer runs before the second press is handled, it stops once and the press starts fresh"
+  )
+  func timerFirstStopsOnce() async {
+    let rig = Rig()
+    let (service, _) = makeService(rig)
+    defer { service.stop() }
+    await stopByTimer(service, rig)
+    #expect(rig.stops == 1)
+
+    drive(service, rig, .press(1000.186, handled: 1001.2))
+    await settle(service)
+
+    #expect(rig.stops == 1, "the stop was requested twice")
+    #expect(rig.actions == ["start", "start"])
+    #expect(service.isRecordingLocked == false)
+    // Pressed at +186 ms, before the stop was requested at 1001.189: the race is recorded.
+    #expect(rig.presses.last?.windowTiming == "after_stop_timer")
+  }
+
+  // MARK: - Gestures that must not change
+
+  @Test("An ordinary fast double tap locks and is marked on time")
+  func ordinaryLockIsOnTime() async {
+    let rig = Rig()
+    let (service, _) = makeService(rig)
+    defer { service.stop() }
+    drive(service, rig, [.press(1000), .release(1000.08), .press(1000.15)])
+    await settle(service)
+
+    #expect(rig.actions == ["start", "lock"])
+    #expect(rig.presses.last?.windowTiming == "on_time")
+    #expect(rig.published == 1)
+  }
+
+  @Test("A second press exactly 500 ms after the first locks")
+  func pressAtWindowEdgeLocks() async {
+    let rig = Rig()
+    let (service, _) = makeService(rig)
+    defer { service.stop() }
+    drive(service, rig, [.press(1000), .release(1000.125), .press(1000.5)])
+    await settle(service)
+    #expect(rig.actions == ["start", "lock"])
+  }
+
+  @Test(
+    "A second press 501 ms after the first is late: no lock, logged, and its release stops once")
+  func latePressKeepsTodaysOutcome() async {
+    let rig = Rig()
+    let (service, _) = makeService(rig)
+    defer { service.stop() }
+    drive(service, rig, [.press(1000), .release(1000.07), .press(1000.501)])
+    #expect(rig.actions == ["start", "late_after_window"])
+    #expect(rig.presses.last?.windowTiming == nil)
+    #expect(service.isRecordingLocked == false)
+
+    drive(service, rig, .release(1000.6))
+    await rig.waitForDebounce(count: 1)
+    await settle(service)
+    #expect(rig.stops == 1)
+  }
+
+  @Test("A genuinely slow second press stays a miss, exactly as before")
+  func genuinelyLatePress() async {
+    let rig = Rig()
+    let (service, _) = makeService(rig)
+    defer { service.stop() }
+    drive(service, rig, [.press(1000), .release(1000.07), .press(1000.62), .release(1000.7)])
+    await rig.waitForDebounce(count: 1)
+    await settle(service)
+
+    #expect(rig.actions == ["start", "late_after_window"])
+    #expect(rig.published == 0)
+    #expect(rig.stops == 1)
+  }
+
+  @Test("A held press stops on release, without waiting")
+  func heldPressStopsImmediately() async {
+    let rig = Rig()
+    let (service, _) = makeService(rig)
+    defer { service.stop() }
+    drive(service, rig, [.press(1000), .release(1000.9)])
+    await settle(service)
+
+    #expect(rig.stops == 1)
+    #expect(rig.requestedDeadlines.isEmpty)
+  }
+
+  @Test("A triple tap cancels")
+  func tripleTapCancels() async {
+    let rig = Rig()
+    let (service, _) = makeService(rig)
+    defer { service.stop() }
+    drive(
+      service, rig,
+      [.press(1000), .release(1000.1), .press(1000.2), .release(1000.3), .press(1000.4)])
+    await settle(service)
+
+    #expect(rig.actions == ["start", "lock", "cancel"])
+    #expect(rig.cancels == 1)
+  }
+
+  @Test("A third press exactly 500 ms after the first still cancels, before the lock cooldown")
+  func thirdPressAtWindowEdgeCancels() async {
+    let rig = Rig()
+    let (service, _) = makeService(rig)
+    defer { service.stop() }
+    drive(
+      service, rig,
+      [.press(1000), .release(1000.1), .press(1000.2), .release(1000.3), .press(1000.5)])
+    await settle(service)
+    #expect(rig.actions == ["start", "lock", "cancel"])
+  }
+
+  @Test("A finger bounce right after a rescued lock is ignored by the cooldown")
+  func cooldownAfterRescuedLock() async {
+    let rig = Rig()
+    let (service, _) = makeService(rig)
+    defer { service.stop() }
+    drive(
+      service, rig,
+      [
+        .press(1000), .release(1000.1), .press(1000.2, handled: 1000.7),
+        .release(1000.25, handled: 1000.75), .press(1000.6, handled: 1000.8),
+      ])
+    await settle(service)
+
+    #expect(rig.actions == ["start", "lock", "ignored_cooldown"])
+    #expect(rig.presses.count == 3)
+    #expect(rig.presses.dropFirst().first?.windowTiming == "rescued")
+    #expect(rig.stops == 0)
+    #expect(rig.cancels == 0)
+  }
+
+  // MARK: - Missing or implausible OS times fall back to handling time
+
+  @Test("With no OS times at all, a late-handled second press is a miss, as before")
+  func missingTimestampsBehaveAsBefore() async throws {
+    let rig = Rig()
+    let (service, _) = makeService(rig)
+    defer { service.stop() }
+    drive(
+      service, rig,
+      [
+        Event(isPress: true, occurred: nil, handled: 1000),
+        Event(isPress: false, occurred: nil, handled: 1000.092),
+      ])
+    // Read the wait before the next press moves the clock: the rig stamps it at `now`.
+    await rig.waitForSleepRequests(count: 1)
+    let deadline = try #require(rig.requestedDeadlines.last)
+    #expect(abs(deadline - 1000.592) < 1e-9)
+
+    drive(service, rig, Event(isPress: true, occurred: nil, handled: 1000.528))
+    #expect(rig.actions == ["start", "late_after_window"])
+  }
+
+  @Test("A zero release time is ignored: the pair uses handling time and never goes negative")
+  func zeroReleaseTimeUsesHandlingPair() async {
+    let rig = Rig()
+    let (service, _) = makeService(rig)
+    defer { service.stop() }
+    drive(service, rig, [.press(1000), Event(isPress: false, occurred: 0, handled: 1000.6)])
+    await settle(service)
+
+    #expect(rig.stops == 1, "a 600 ms handled hold must stop at once")
+    #expect(rig.requestedDeadlines.isEmpty)
+  }
+
+  @Test("A zero start time with a valid release uses handling time for both, never a mixed pair")
+  func zeroStartTimeUsesHandlingPair() async {
+    let rig = Rig()
+    let (service, _) = makeService(rig)
+    defer { service.stop() }
+    // Handling pair: 600 ms, a hold, so it stops at once. A mixed pair (start handled 1000,
+    // release happened 1000.3) would read 300 ms, a quick tap, and schedule a timer instead.
+    drive(
+      service, rig,
+      [Event(isPress: true, occurred: 0, handled: 1000), .release(1000.3, handled: 1000.6)])
+    await settle(service)
+    #expect(rig.stops == 1)
+    #expect(rig.requestedDeadlines.isEmpty)
+  }
+
+  @Test("A release time earlier than the press time uses handling time for both")
+  func reversedOccurrencePairUsesHandlingPair() async {
+    let rig = Rig()
+    let (service, _) = makeService(rig)
+    defer { service.stop() }
+    // Handling pair: 600 ms, a hold. The reversed occurrence pair would read -100 ms, a quick tap.
+    drive(service, rig, [.press(1000.2), .release(1000.1, handled: 1000.8)])
+    await settle(service)
+    #expect(rig.stops == 1)
+    #expect(rig.requestedDeadlines.isEmpty)
+  }
+
+  @Test("An OS time exactly 2 s old is used; 2.001 s old is not")
+  func ageAcceptanceEdge() async throws {
+    let accepted = Rig()
+    let (service, _) = makeService(accepted)
+    defer { service.stop() }
+    drive(service, accepted, [.press(1000), .release(1000, handled: 1000 + 2.0)])
+    await accepted.waitForSleepRequests(count: 1)
+    // Accepted: the release happened at the press, so it is a quick tap; its stop waits
+    // 500 ms after the release was handled, as before.
+    let delay = try #require(accepted.requestedDelays.last)
+    #expect(abs(delay - 0.5) < 1e-9)
+    #expect(accepted.stops == 0)
+
+    let rejected = Rig()
+    let (other, _) = makeService(rejected)
+    defer { other.stop() }
+    drive(other, rejected, [.press(1000), .release(1000, handled: 1000 + 2.001)])
+    await settle(other)
+    // Rejected: judged by handling time, a 2 s hold, so it stops at once.
+    #expect(rejected.requestedDeadlines.isEmpty)
+    #expect(rejected.stops == 1)
+  }
+
+  @Test("An OS time up to 50 ms in the future is used; 51 ms is not")
+  func futureAcceptanceEdge() async throws {
+    let handled: TimeInterval = 1000.1875
+    let accepted = Rig()
+    let (service, _) = makeService(accepted)
+    defer { service.stop() }
+    drive(service, accepted, [.press(1000), .release(handled + 0.05, handled: handled)])
+    await accepted.waitForSleepRequests(count: 1)
+    let acceptedDeadline = try #require(accepted.requestedDeadlines.last)
+    #expect(abs(acceptedDeadline - (handled + 0.05 + 0.5)) < 1e-9)
+
+    let rejected = Rig()
+    let (other, _) = makeService(rejected)
+    defer { other.stop() }
+    drive(other, rejected, [.press(1000), .release(handled + 0.051, handled: handled)])
+    await rejected.waitForSleepRequests(count: 1)
+    let rejectedDeadline = try #require(rejected.requestedDeadlines.last)
+    #expect(abs(rejectedDeadline - (handled + 0.5)) < 1e-9)
+  }
+
+  // MARK: - Every path that delivers a key carries its OS time
+
+  /// The keyboard listener is the only bare-modifier path (#3544 P3): it must carry each event's
+  /// OS time to the engine, so a second press handled late but pressed inside the window locks.
+  @Test("A bare-modifier double tap handled late locks through the installed keyboard listener")
+  func listenerForwardsTimestamp() async {
+    let rig = Rig()
+    let (service, effects) = makeService(rig, keyCode: ModifierKeyCodes.rightOption)
+    service.start()
+    defer { service.stop() }
+    let keys = ListenerKeyboard(effects)
+    func flags(_ down: Bool, _ occurred: TimeInterval, _ handled: TimeInterval) async {
+      rig.now = handled
+      if down {
+        await keys.press(ModifierKeyCodes.rightOption, at: occurred)
+      } else {
+        await keys.release(ModifierKeyCodes.rightOption, at: occurred)
+      }
+    }
+    await flags(true, 1000, 1000)
+    await flags(false, 1000.092, 1000.092)
+    await flags(true, 1000.244, 1000.528)
+    await settle(service)
+
+    #expect(rig.actions == ["start", "lock"])
+    #expect(rig.presses.last?.windowTiming == "rescued")
+  }
+
+  @Test("The installed Carbon handler forwards the OS time")
+  func installedCarbonHandlerForwardsTimestamp() async throws {
+    let rig = Rig()
+    let (service, effects) = makeService(rig)
+    service.start()
+    defer { service.stop() }
+    let callback = try #require(effects.carbonCallback)
+    func send(_ release: Bool, _ occurred: TimeInterval, _ handled: TimeInterval) {
+      rig.now = handled
+      callback(DesktopHotkeyEvent(id: Self.toggleID, isRelease: release, timestamp: occurred))
+    }
+    send(false, 1000, 1000)
+    send(true, 1000.092, 1000.092)
+    send(false, 1000.244, 1000.528)
+    await settle(service)
+
+    #expect(rig.actions == ["start", "lock"])
+    #expect(rig.presses.last?.windowTiming == "rescued")
+  }
+
+  @Test("A timestamped event from a removed listener installation is ignored")
+  func staleInstalledCallbackIgnored() async throws {
+    let rig = Rig()
+    let (service, effects) = makeService(rig, keyCode: ModifierKeyCodes.rightOption)
+    service.start()
+    let stale = try #require(effects.keyboardListenerSink)
+    service.stop()
+    service.start()
+    defer { service.stop() }
+
+    rig.now = 1000
+    let event = KeyEventValue(
+      kind: .flagsChanged, keyCode: ModifierKeyCodes.rightOption,
+      rawFlags: ListenerKeyboard.rawFlags([ModifierKeyCodes.rightOption]), timestamp: 1000)
+    await Task.detached { _ = stale(event) }.value
+    await ListenerKeyboard.mainTurn()
+    await settle(service)
+    #expect(rig.starts == 0)
+    #expect(rig.actions.isEmpty)
+  }
+
+  // MARK: - Measuring the timer-first race (plan §3.3)
+
+  /// Toggle id is 1; the cancel and Quick Add Carbon ids, mirrored like `toggleID`.
+  private static let cancelID: UInt32 = 3
+  private static let quickAddID: UInt32 = 4
+
+  /// A lone tap whose release was handled 633 ms late. The stop is due 500 ms after the release
+  /// was handled (1001.189, the handling-time floor); the timer runs before any second
+  /// press and requests the stop then.
+  private static let lateReleaseStop: TimeInterval = 1001.189
+
+  private func stopByTimer(_ service: HotkeyService, _ rig: Rig) async {
+    drive(service, rig, [.press(1000), .release(1000.056, handled: 1000.689)])
+    await rig.waitForSleepRequests(count: 1)
+    rig.now = Self.lateReleaseStop
+    rig.fireDueTimers()
+    await rig.waitForDebounce(count: 1)
+    await settle(service)
+  }
+
+  @Test("A press that came before the timer's stop, refused while processing, still carries the race")
+  func afterStopTimerOnIgnoredProcessing() async {
+    let rig = Rig()
+    let (service, _) = makeService(rig)
+    defer { service.stop() }
+    await stopByTimer(service, rig)
+    service.onIsProcessing = { true }
+    drive(service, rig, .press(1000.186, handled: 1001.2))
+
+    #expect(rig.actions == ["start", "ignored_processing"])
+    #expect(rig.presses.last?.windowTiming == "after_stop_timer")
+    #expect(rig.stops == 1)
+
+    // Claimed once: a second qualifying press finds no marker.
+    drive(service, rig, .press(1000.20, handled: 1001.21))
+    #expect(rig.actions == ["start", "ignored_processing", "ignored_processing"])
+    #expect(rig.presses.map(\.windowTiming) == [nil, "after_stop_timer", nil])
+    #expect(rig.stops == 1)
+  }
+
+  @Test("An unstamped first press cannot support a stop-timer race claim")
+  func unstampedFirstPressMakesNoClaim() async {
+    let rig = Rig()
+    let (service, _) = makeService(rig)
+    defer { service.stop() }
+    drive(
+      service, rig,
+      [
+        Event(isPress: true, occurred: nil, handled: 1000),
+        .release(1000.08),
+      ])
+    await rig.waitForSleepRequests(count: 1)
+    rig.now = 1000.58
+    rig.fireDueTimers()
+    await rig.waitForDebounce(count: 1)
+    await settle(service)
+
+    drive(service, rig, .press(1000.30, handled: 1000.70))
+    await settle(service)
+    #expect(rig.actions == ["start", "start"])
+    #expect(rig.presses.last?.windowTiming == nil)
+    #expect(rig.stops == 1)
+  }
+
+  @Test("Cancel after the timer stop clears its race marker")
+  func cancelAfterTheStopClearsMarker() async {
+    let rig = Rig()
+    let (service, _) = makeService(rig)
+    defer { service.stop() }
+    await stopByTimer(service, rig)
+
+    service.handleCarbonHotkey(id: Self.cancelID, isRelease: false, timestamp: 1000.69)
+    drive(service, rig, .press(1000.186, handled: 1001.2))
+    await settle(service)
+    #expect(rig.actions == ["start", "cancel", "start"])
+    #expect(rig.presses.last?.windowTiming == nil)
+    #expect(rig.stops == 1)
+  }
+
+  enum NotARace: String, CaseIterable, Sendable {
+    case noPressTime = "no OS time on the press"
+    case pressBeforeFirst = "press happened before the first press"
+    case outsideWindow = "press happened 600 ms after the first"
+  }
+
+  @Test("A press that is not provably before the stop and inside the window makes no claim",
+    arguments: NotARace.allCases)
+  func noClaimWithoutProof(notARace: NotARace) async {
+    let rig = Rig()
+    let (service, _) = makeService(rig)
+    defer { service.stop() }
+    await stopByTimer(service, rig)
+    let occurred: TimeInterval? =
+      switch notARace {
+      case .noPressTime: nil
+      case .pressBeforeFirst: 999.9
+      case .outsideWindow: 1000.6
+      }
+    drive(service, rig, Event(isPress: true, occurred: occurred, handled: 1001.2))
+
+    #expect(rig.actions == ["start", "start"])
+    #expect(rig.presses.last?.windowTiming == nil)
+    #expect(rig.stops == 1)
+  }
+
+  @Test("A press that happened after the stop was requested is not the race; just before it is")
+  func pressAfterTheStopRequestIsNotTheRace() async {
+    for (occurred, expected) in [(1000.52, nil), (1000.49, "after_stop_timer")] as [(TimeInterval, String?)] {
+      let rig = Rig()
+      let (service, _) = makeService(rig)
+      defer { service.stop() }
+      // First press stamped 40 ms in the future (accepted); the release has no OS time, so the
+      // deadline is its handling time + 500 ms = 1000.5, which is when the stop is requested.
+      drive(
+        service, rig,
+        [Event(isPress: true, occurred: 1000.04, handled: 1000), Event(isPress: false, occurred: nil, handled: 1000)])
+      await rig.waitForSleepRequests(count: 1)
+      rig.now = 1000.5
+      rig.fireDueTimers()
+      await rig.waitForDebounce(count: 1)
+      await settle(service)
+      drive(service, rig, .press(occurred, handled: 1000.53))
+      #expect(rig.presses.last?.windowTiming == expected, "pressed at \(occurred)")
+    }
+  }
+
+  @Test("The race is claimed once: not by a release, not by Quick Add, and never on the later lock")
+  func claimedOnceAndNeverCarried() async {
+    let rig = Rig()
+    let (service, _) = makeService(rig)
+    defer { service.stop() }
+    await stopByTimer(service, rig)
+    // A stray release and another shortcut leave the marker for the record press.
+    drive(service, rig, .release(1000.69, handled: 1001.19))
+    rig.now = 1001.195
+    service.handleCarbonHotkey(id: Self.quickAddID, isRelease: false, timestamp: 1000.1)
+    drive(service, rig, .press(1000.186, handled: 1001.2))
+    // The new recording's own double tap: its lock carries its own timing, not the race.
+    drive(service, rig, [.release(1000.25, handled: 1001.25), .press(1000.30, handled: 1001.30)])
+    await settle(service)
+
+    #expect(rig.actions == ["start", "quick_add", "start", "lock"])
+    #expect(rig.presses.map(\.windowTiming) == [nil, nil, "after_stop_timer", "on_time"])
+  }
+
+  @Test("A toggle-mode press never carries the race")
+  func togglePressNeverCarriesTheRace() async {
+    let rig = Rig()
+    let (service, _) = makeService(rig)
+    defer { service.stop() }
+    await stopByTimer(service, rig)
+    service.recordingMode = .toggle
+    drive(service, rig, .press(1000.186, handled: 1001.2))
+    #expect(rig.actions == ["start", "toggle"])
+    #expect(rig.presses.last?.windowTiming == nil)
+  }
+
+  enum Invalidation: String, CaseIterable, Sendable {
+    case modeRoundTrip = "mode PTT to toggle and back"
+    case recordKeyRoundTrip = "record key A to B to A"
+    case recordModifierChange = "record modifiers changed"
+    case cancelRebind = "cancel key rebound"
+    case quickAddRebind = "Quick Add rebound"
+    case pasteLastRebind = "Paste Last rebound"
+    case copyLastRebind = "Copy Last rebound"
+    case monitorRemoval = "suspend, which removes the monitors"
+  }
+
+  private func invalidate(_ change: Invalidation, _ service: HotkeyService) {
+    switch change {
+    case .modeRoundTrip:
+      service.recordingMode = .toggle
+      service.recordingMode = .pushToTalk
+    case .recordKeyRoundTrip:
+      service.toggleKeyCode = 1
+      service.toggleKeyCode = 0
+    case .recordModifierChange:
+      service.toggleModifiers = [.command]
+      service.toggleModifiers = []
+    case .cancelRebind:
+      service.cancelKeyCode = 50
+      service.reapplyCancelBinding()
+    case .quickAddRebind:
+      service.quickAddKeyCode = 51
+      service.reapplyAppShortcutBinding(.quickAdd)
+    case .pasteLastRebind:
+      service.pasteLastKeyCode = 51
+      service.reapplyAppShortcutBinding(.pasteLast)
+    case .copyLastRebind:
+      service.copyLastKeyCode = 51
+      service.reapplyAppShortcutBinding(.copyLast)
+    case .monitorRemoval:
+      // Suspend alone: `resume()` also cleans up, which would void the claim by another route.
+      service.suspend()
+    }
+  }
+
+  @Test("A change after the stop voids the race claim; the stop itself is unchanged",
+    arguments: Invalidation.allCases)
+  func invalidatedAfterTheStop(change: Invalidation) async {
+    let rig = Rig()
+    let (service, _) = makeService(rig)
+    defer { service.stop() }
+    service.start()
+    await stopByTimer(service, rig)
+    invalidate(change, service)
+    drive(service, rig, .press(1000.186, handled: 1001.2))
+
+    #expect(rig.stops == 1)
+    #expect(rig.presses.last?.action == "start")
+    #expect(rig.presses.last?.windowTiming == nil, Comment(rawValue: change.rawValue))
+  }
+
+  @Test("A change while the stop is pending voids the claim; the pending stop still runs once",
+    arguments: Invalidation.allCases.filter { $0 != .monitorRemoval })
+  func invalidatedBeforeTheStop(change: Invalidation) async {
+    let rig = Rig()
+    let (service, _) = makeService(rig)
+    defer { service.stop() }
+    service.start()
+    drive(service, rig, [.press(1000), .release(1000.056, handled: 1000.689)])
+    await rig.waitForSleepRequests(count: 1)
+    invalidate(change, service)
+    rig.now = Self.lateReleaseStop
+    rig.fireDueTimers()
+    await rig.waitForDebounce(count: 1)
+    await settle(service)
+    drive(service, rig, .press(1000.186, handled: 1001.2))
+
+    #expect(rig.stops == 1, "a diagnostic change must not change the stop")
+    #expect(rig.presses.last?.windowTiming == nil, Comment(rawValue: change.rawValue))
+  }
+
+  @Test("Suspending while the stop is pending keeps the stop and voids the claim")
+  func suspendBeforeTheStop() async {
+    let rig = Rig()
+    let (service, _) = makeService(rig)
+    defer { service.stop() }
+    service.start()
+    drive(service, rig, [.press(1000), .release(1000.056, handled: 1000.689)])
+    await rig.waitForSleepRequests(count: 1)
+    service.suspend()
+    rig.now = Self.lateReleaseStop
+    rig.fireDueTimers()
+    await rig.waitForDebounce(count: 1)
+    await settle(service)
+    #expect(rig.stops == 1, "suspend preserves the pending stop, as before")
+    drive(service, rig, .press(1000.186, handled: 1001.2))
+    #expect(rig.presses.last?.windowTiming == nil)
+    service.resume()
+  }
+
+  @Test("Stopping and restarting the service after the stop voids the claim")
+  func stopAndRestartAfterTheStop() async {
+    let rig = Rig()
+    let (service, _) = makeService(rig)
+    defer { service.stop() }
+    service.start()
+    await stopByTimer(service, rig)
+    service.stop()
+    service.start()
+    drive(service, rig, .press(1000.186, handled: 1001.2))
+    #expect(rig.stops == 1)
+    #expect(rig.presses.last?.windowTiming == nil)
+  }
+
+  // MARK: - Start and publication decisions are unchanged
+
+  @Test("A start the app refused, during the pending stop, leaves the next press a fresh start")
+  func refusedStartThenPressStartsFresh() async {
+    let rig = Rig()
+    rig.startAnswer = .noRecording
+    let (service, _) = makeService(rig)
+    defer { service.stop() }
+    drive(service, rig, [.press(1000), .release(1000.08)])
+    await rig.waitForStarts(count: 1)
+    await rig.waitForDebounce(count: 1)
+    drive(service, rig, .press(1000.2, handled: 1000.6))
+    await rig.waitForStarts(count: 2)
+
+    #expect(rig.actions == ["start", "start"])
+    #expect(rig.published == 0)
+    #expect(rig.stops == 0)
+  }
+
+  @Test("A lock the app refused to show keeps the timing it was recorded with")
+  func rejectedPublicationKeepsWindowTiming() async {
+    let rig = Rig()
+    rig.lockAnswer = .notLockable
+    let (service, _) = makeService(rig)
+    defer { service.stop() }
+    drive(service, rig, [.press(1000), .release(1000.092)])
+    await rig.waitForStarts(count: 1)  // accepted before the second press, so it publishes inline
+    drive(service, rig, .press(1000.244, handled: 1000.528))
+    await rig.waitForDebounce(count: 1)
+
+    #expect(rig.actions == ["start", "lock"])
+    #expect(rig.presses.last?.windowTiming == "rescued")
+    #expect(rig.lockDecisions.map(\.reason) == ["not_lockable_at_publication"])
+    #expect(service.isRecordingLocked == false)
+  }
+}

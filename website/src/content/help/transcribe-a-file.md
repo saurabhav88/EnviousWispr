@@ -48,7 +48,7 @@ Both engines run entirely on this Mac. **This choice also changes the engine you
 | Languages | 25 European | 99+ |
 | An hour of audio takes | About 7 seconds | About 2 minutes |
 
-An engine that is not downloaded yet says so; get it in Transcription settings. More on the two engines, including how their language counts compare, is in [choosing a speech engine](/help/choosing-a-speech-engine-parakeet-vs-whisperkit/).
+An engine that is not downloaded yet says so; set it up in **Dictation Settings** > **Engine**. More on the two engines, including how their language counts compare, is in [choosing a speech engine](/help/choosing-a-speech-engine-parakeet-vs-whisperkit/).
 
 ### Which polisher should I pick?
 
@@ -73,7 +73,7 @@ The automatic fixes run first, whichever polisher you pick, including none:
 
 - Numbers and dates are written as figures.
 - Your custom words are applied when **Enable Dictionary** is on under **Settings** \> **Dictionary**.
-- Filler words are removed when **Remove filler words** is on under **Settings** \> **Transcription**. Spoken emoji has its own switch there.
+- Filler words are removed when **Remove filler words** is on under **Dictation Settings** \> **Engine**. Spoken emoji has its own switch there.
 
 ### How long will it take?
 

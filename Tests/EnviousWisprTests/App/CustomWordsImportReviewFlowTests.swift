@@ -498,10 +498,11 @@ struct CustomWordsImportReviewFlowTests {
     model.confirm()
     #expect(model.step == .result(.failed(message: "disk full")))
 
-    model.reset()
-    await Self.runToReview(model, candidates: [Self.candidate("GitHub")])
-    model.confirm()
-    #expect(model.step == .result(.nothingApproved))
+    // A second import opens a fresh model, as the sheet does; the reporter is shared.
+    let second = Self.makeModel(compare: compare, commit: commit, report: report)
+    await Self.runToReview(second, candidates: [Self.candidate("GitHub")])
+    second.confirm()
+    #expect(second.step == .result(.nothingApproved))
 
     #expect(report.reports.isEmpty)
   }

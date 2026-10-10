@@ -27,11 +27,11 @@ Four things happen while EnviousWispr works. Knowing them saves you wondering wh
 
 **A recording pill appears.** A small pill shows up while you are recording, with a meter that moves as you talk. On a Mac that can show it, your words appear in the pill as you speak. That is only a preview: the text that gets pasted comes from the main engine after you let go. The pill does not take focus away from the app you were typing in. Read [_Live Preview_](/help/live-preview-words-on-screen/).
 
-**A short sound plays.** A quiet tick confirms when recording starts and stops. Switch it off under **Settings** > **Sounds**.
+**A short sound plays.** A quiet tick confirms when recording starts and stops. Switch it off under **Dictation Settings** > **Chimes**.
 
 **The menu bar icon changes.** The icon goes from grey to colour while you record, then turns into a spinning wheel while EnviousWispr works out what you said.
 
-**The text is pasted for you.** By default, whatever was on your clipboard beforehand is put back afterwards, so you do not lose what you had copied. This is the **Restore clipboard after paste** setting, under **Settings** > **Clipboard**.
+**The text is pasted for you.** By default, whatever was on your clipboard beforehand is put back afterwards, so you do not lose what you had copied. This is the **Restore clipboard after paste** setting, under **Dictation Settings** > **Clipboard**.
 
 ### Tips for a good first result
 

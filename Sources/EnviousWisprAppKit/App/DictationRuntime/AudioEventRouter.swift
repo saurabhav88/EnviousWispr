@@ -15,7 +15,6 @@ import Foundation
 /// fresh spy mocks, so test-side cleanup is not required either.
 @MainActor
 final class AudioEventRouter {
-  let audioCapture: any AudioCaptureInterface
   let kernelDriver: KernelDictationDriver
   let whisperKitKernelDriver: KernelDictationDriver
 
@@ -29,7 +28,6 @@ final class AudioEventRouter {
     resolveActiveCaptureBackend: @escaping @MainActor () -> DictationLifecycleCoordinator
       .LastCapturingBackend?
   ) {
-    self.audioCapture = audioCapture
     self.kernelDriver = kernelDriver
     self.whisperKitKernelDriver = whisperKitKernelDriver
     self.resolveActiveCaptureBackend = resolveActiveCaptureBackend

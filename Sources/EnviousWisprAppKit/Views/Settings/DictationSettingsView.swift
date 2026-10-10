@@ -18,7 +18,7 @@ struct DictationSettingsView: View {
       VStack(spacing: 0) {
         SettingsTabStrip(
           items: DictationTab.allCases.map {
-            SettingsTabItem(id: $0, icon: $0.icon, label: $0.label)
+            SettingsTabItem(id: $0, icon: $0.icon, label: $0.label, map: $0.mapID)
           },
           selection: $selection
         )
@@ -28,6 +28,10 @@ struct DictationSettingsView: View {
 
         // Each tab keeps its own page's scroll view, so no outer one here.
         tabContent.frame(width: pane.size.width)
+          // #3545: the tab drawn here, carried by every control inside it.
+          .environment(
+            \.settingsArrivalContent,
+            SettingsArrivalContent(page: .dictation, dictationTab: selection))
       }
       .frame(width: pane.size.width, height: pane.size.height)
     }

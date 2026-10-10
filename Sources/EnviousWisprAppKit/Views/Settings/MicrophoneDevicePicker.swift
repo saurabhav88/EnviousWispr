@@ -57,6 +57,7 @@ struct MicrophoneDevicePicker: View {
       .contentShape(Rectangle())
     }
     .buttonStyle(.plain)
+    .settingsArrivalFocusControl()
     .fixedSize()
     .accessibilityLabel(String(localized: DictationSettingsCopy.Microphone.inputDeviceTitle))
     .accessibilityValue([presentation.deviceName ?? placeholder, detail].compactMap { $0 }.joined(separator: ", "))
@@ -67,16 +68,14 @@ struct MicrophoneDevicePicker: View {
 
   @ViewBuilder private var menu: some View {
       choice(
-        tag: "", icon: "arrow.triangle.2.circlepath", title: String(localized: "Auto"),
-        subtitle: String(
-          localized: "Follows macOS",
-          comment: "Microphone menu: the line under Auto. Auto uses the Mac's input microphone."),
-        spokenTitle: String(localized: "Auto"))
+        tag: "", icon: "arrow.triangle.2.circlepath", title: String(localized: SettingsItemCopy.Microphone.auto),
+        subtitle: String(localized: SettingsItemCopy.Microphone.followsMacOS),
+        spokenTitle: String(localized: SettingsItemCopy.Microphone.auto))
       ForEach(devices) { device in
         let token = transportTokens[device.id]
         choice(
           tag: device.uid, icon: MicrophoneDevicePresentation.deviceIcon(for: token),
-          title: device.name,
+          title: SettingsMapRef.dynamic(.inputDeviceDevice, .inputDevice(device)).title,
           subtitle: MicrophoneDevicePresentation.transportBadge(for: token),
           spokenTitle: Self.optionTitle(for: device, transportToken: token))
       }
@@ -123,10 +122,10 @@ struct MicrophoneDevicePicker: View {
     switch (presentation.isAutomatic, presentation.transportBadge) {
     case (true, let badge?):
       return String(
-        localized: "\(String(localized: "Auto")) · \(badge)",
+        localized: "\(String(localized: SettingsItemCopy.Microphone.auto)) · \(badge)",
         comment: "Microphone settings: Auto, then how the chosen microphone is connected.")
     case (true, nil):
-      return String(localized: "Auto")
+      return String(localized: SettingsItemCopy.Microphone.auto)
     case (false, let badge?):
       return badge
     case (false, nil):
@@ -144,10 +143,11 @@ struct MicrophoneDevicePicker: View {
   }
 
   static func optionTitle(for device: AudioInputDevice, transportToken: String?) -> String {
+    let name = SettingsMapRef.dynamic(.inputDeviceDevice, .inputDevice(device)).title
     guard let badge = MicrophoneDevicePresentation.transportBadge(for: transportToken)
-    else { return device.name }
+    else { return name }
     return String(
-      localized: "\(device.name) · \(badge)",
+      localized: "\(name) · \(badge)",
       comment: "Microphone settings: a microphone's name, then how it is connected.")
   }
 }

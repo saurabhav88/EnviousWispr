@@ -461,7 +461,7 @@ import Testing
       return
     }
     #expect(result.text == "hello world")
-    #expect(adapter.lastResult != nil)
+    #expect(adapter.lastResult?.text == "hello world")
   }
 
   @Test("finalize with segments + empty decode returns .empty(hadSpeechEvidence: true)")
@@ -1468,13 +1468,6 @@ import Testing
   }
 
   // MARK: Production-unwired sanity
-
-  @Test("WhisperKitEngineAdapter exists at Sources/EnviousWisprPipeline/")
-  func productionFileExists() throws {
-    let path = "Sources/EnviousWisprPipeline/WhisperKitEngineAdapter.swift"
-    let url = RepoRoot.url.appending(path: path)
-    #expect(FileManager.default.fileExists(atPath: url.path))
-  }
 
   @Test(
     "#1707 Codex r8/r9: retryDecodeTimeoutSeconds(forSampleCount:) scales with audio length, not a flat constant"

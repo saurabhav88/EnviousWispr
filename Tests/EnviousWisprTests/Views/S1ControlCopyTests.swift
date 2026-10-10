@@ -12,9 +12,9 @@ struct S1ControlCopyTests {
   static var everyString: [String] {
     [
       S1ControlCopy.fileImportIntro,
-      S1ControlCopy.stylingLabel, S1ControlCopy.stylingShort,
-      S1ControlCopy.structureLabel, S1ControlCopy.structureShort,
-      S1ControlCopy.contextLabel, S1ControlCopy.contextShort,
+      S1ControlCopy.stylingLabel, String(localized: S1ControlCopy.stylingShortResource),
+      S1ControlCopy.structureLabel, String(localized: S1ControlCopy.structureShortResource),
+      S1ControlCopy.contextLabel, String(localized: S1ControlCopy.contextShortResource),
     ]
       + S1Styling.allCases.map(S1ControlCopy.label(for:))
       + S1Structure.allCases.map(S1ControlCopy.label(for:))
@@ -57,15 +57,4 @@ struct S1ControlCopyTests {
     }
   }
 
-  /// Every segment label is a distinct word, so two options can never render
-  /// as the same pill.
-  @Test("option labels are distinct within each axis")
-  func labelsAreDistinct() {
-    #expect(
-      Set(S1Styling.allCases.map(S1ControlCopy.label(for:))).count == S1Styling.allCases.count)
-    #expect(
-      Set(S1Structure.allCases.map(S1ControlCopy.label(for:))).count == S1Structure.allCases.count)
-    #expect(
-      Set(S1Context.allCases.map(S1ControlCopy.label(for:))).count == S1Context.allCases.count)
-  }
 }

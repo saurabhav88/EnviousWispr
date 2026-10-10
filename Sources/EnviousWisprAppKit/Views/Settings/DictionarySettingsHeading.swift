@@ -11,16 +11,14 @@ struct DictionarySettingsHeading: View {
 
   private typealias Copy = SettingsShellCopy.Dictionary
 
-  private var title: String { String(localized: Copy.heading).localizedUppercase }
-
   var body: some View {
     VStack(alignment: .leading, spacing: 6) {
       // The heading and its control on one line where they fit; at a narrow
       // window the control drops under the heading rather than squeezing it.
       ViewThatFits(in: .horizontal) {
-        SettingsSectionHeading(resolvedTitle: title) { enableControl }
+        SettingsSectionHeading(map: .id(.sectionDictionary), casing: .localizedUppercase) { enableControl }
         VStack(alignment: .leading, spacing: 8) {
-          SettingsSectionHeading(resolvedTitle: title)
+          SettingsSectionHeading(map: .id(.sectionDictionary), casing: .localizedUppercase)
           enableControl
         }
       }
@@ -56,5 +54,6 @@ struct DictionarySettingsHeading: View {
         .fixedSize()
         .accessibilityLabel(Text(Copy.enableTitle))
     }
+    .settingsMapRegistration(.enableDictionary)
   }
 }

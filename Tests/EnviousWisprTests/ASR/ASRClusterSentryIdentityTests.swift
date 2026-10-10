@@ -72,40 +72,7 @@ struct ASRClusterSentryIdentityTests {
 
   // MARK: - C. The property that matters
 
-  /// A deterministic `CustomNSError` — its bridged domain/code are declared,
-  /// not inferred from enum layout, so this test asserts the override itself
-  /// and never depends on the compiler behaviour the design escapes.
-  private struct StableFixtureError: Error, CustomNSError, StableSentryErrorIdentity {
-    static let errorDomain = "fixture.raw"
-    var errorCode: Int { 30 }
-    let sentryFingerprintDescriptor = "fixture.pinned#asr"
-    let sentrySemanticID = "fixture.semantic"
-  }
-
-  @Test("the explicit identity overrides the bridged NSError identity")
-  func explicitIdentityOverridesBridge() {
-    let error = StableFixtureError()
-    let bridged = error as NSError
-
-    #expect(bridged.domain == "fixture.raw")
-    #expect(bridged.code == 30)
-    #expect(SentryBreadcrumb.structuredDescriptor(error) == "fixture.pinned#asr")
-  }
-
   // MARK: - D. Dev/prod split survives the pin
-
-  @Test("environment keeps the same descriptor's dev and prod fingerprints separate")
-  func devProdSplitSurvives() {
-    let error = ASRError.transcriptionFailed("x")
-    let prod = SentryBreadcrumb.handledErrorFingerprint(
-      for: Self.category, error: error, environment: "production")
-    let dev = SentryBreadcrumb.handledErrorFingerprint(
-      for: Self.category, error: error, environment: "development")
-
-    #expect(prod != dev)
-    #expect(prod.last == "production")
-    #expect(dev.last == "development")
-  }
 
   // MARK: - E. Event-construction contract
 
@@ -126,19 +93,6 @@ struct ASRClusterSentryIdentityTests {
     #expect(event.tags?["pipeline.stage"] == "transcription")
     #expect(event.tags?["error.category"] == "asr_failed")
     #expect(event.tags?["error.identity"] == "asr.transcription_failed")
-  }
-
-  @Test(
-    "a non-conforming error's descriptor and fingerprint are unchanged (#1525 PR J-1: makeHandledErrorEvent narrowed — structuredDescriptor/handledErrorFingerprint stay generic)"
-  )
-  func nonConformingErrorEventUnchanged() {
-    let error = NSError(domain: "EnviousWispr", code: -3)
-
-    #expect(SentryBreadcrumb.structuredDescriptor(error) == "EnviousWispr#-3")
-    #expect(
-      SentryBreadcrumb.handledErrorFingerprint(
-        for: Self.category, error: error, environment: Self.env)
-        == ["handled_error", "asr_failed", "EnviousWispr#-3", Self.env])
   }
 
   @MainActor

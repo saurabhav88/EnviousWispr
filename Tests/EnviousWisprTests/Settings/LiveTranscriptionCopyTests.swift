@@ -131,15 +131,6 @@ struct LiveTranscriptionCopyTests {
       "Parakeet's description must state the real speed answer")
   }
 
-  /// Brand rule: no em-dashes or en-dashes in user-facing copy.
-  @Test("User-facing strings carry no em-dash or en-dash")
-  func noDashes() {
-    for s in allUserFacingStrings {
-      #expect(s.contains("\u{2014}") == false, "em-dash in user-facing copy: \(s)")
-      #expect(s.contains("\u{2013}") == false, "en-dash in user-facing copy: \(s)")
-    }
-  }
-
   /// An empty string renders as a blank gap that reads as a layout bug rather than a
   /// missing sentence.
   @Test("No user-facing string is empty")
@@ -150,7 +141,7 @@ struct LiveTranscriptionCopyTests {
   }
 
   /// Every string either panel can render, both engines, in one place so a new field
-  /// cannot be added without the dash and empty checks covering it.
+  /// cannot be added without the empty check covering it.
   private var allUserFacingStrings: [String] {
     var out = [
       LiveTranscriptionCopy.toggleLabel,

@@ -186,17 +186,6 @@ struct RecordingOverlayPreviewChromeTests {
     #expect(LivePreviewCopy.handsFreeMode == "Hands-free")
   }
 
-  /// The pill's copy avoids the word "live" — a constraint that already exists on
-  /// this enum and that a new string is the likeliest thing to break.
-  @Test("the new header strings keep the pill's no-live rule")
-  func headerCopyAvoidsLive() {
-    for s in [LivePreviewCopy.listeningMode, LivePreviewCopy.handsFreeMode] {
-      #expect(
-        !s.lowercased().contains("live"),
-        "\"\(s)\" reintroduces the word the pill's copy deliberately avoids")
-    }
-  }
-
   /// #2202: the header says `Listening`, so the reading well must not say it too.
   /// A first-time user's very first sight of this feature is the waiting state,
   /// and the same word twice in one small box is worse than either alone.

@@ -14,8 +14,8 @@ import Foundation
 /// them an inner error's own description). So the string a reader sees is written here,
 /// and the identity is the case.
 ///
-/// **The inner cause rides the `errorCode`, and it has to.** `XPCErrorSanitizer` rebuilds
-/// every error crossing the boundary with `userInfo` reduced to exactly one key
+/// **The inner cause rides the `errorCode`, and it has to.** The retired XPC boundary's
+/// sanitizer (removed in #3505) rebuilt every error crossing the boundary with `userInfo` reduced to exactly one key
 /// (`NSLocalizedDescriptionKey`) — that is a stated invariant of that type, not an
 /// accident — so domain, code and description are the ONLY channels that survive. The
 /// inner cause is the whole diagnostic point of `allWindowsFailed`, and Sentry emission
@@ -61,15 +61,8 @@ enum ParakeetStreamingSentryError: Error, LocalizedError, CustomNSError, Sendabl
     /// `allWindowsFailed` with no recognised inner cause. Recognised causes are
     /// `allWindowsFailedBase + innerOffset`.
     static let allWindowsFailedBase = 100
-    /// The block is bounded so that a code from some FUTURE block cannot be misread as
-    /// an `allWindowsFailed` with an unknown inner cause. An unbounded `> base` test
-    /// would silently absorb every code we later allocate above it — including the
-    /// `startFailed` block directly below, which is what makes the bound load-bearing
-    /// rather than theoretical.
-    static let allWindowsFailedBlockEnd = 199
     /// Same shape, separate block: `startFailed` with no recognised inner cause.
     static let startFailedBase = 200
-    static let startFailedBlockEnd = 299
   }
 
   /// Pinned offset for each inner cause inside the `allWindowsFailed` block.
@@ -87,22 +80,6 @@ enum ParakeetStreamingSentryError: Error, LocalizedError, CustomNSError, Sendabl
     case .fileAccessFailed: return 8
     case .encoderInstantiationFailed: return 9
     case .unknownFutureCase: return 10
-    }
-  }
-
-  private static func innerCause(fromOffset offset: Int) -> FluidAudioStreamingInnerCause? {
-    switch offset {
-    case 1: return .notInitialized
-    case 2: return .invalidAudioData
-    case 3: return .modelLoadFailed
-    case 4: return .processingFailed
-    case 5: return .modelCompilationFailed
-    case 6: return .unsupportedPlatform
-    case 7: return .streamingConversionFailed
-    case 8: return .fileAccessFailed
-    case 9: return .encoderInstantiationFailed
-    case 10: return .unknownFutureCase
-    default: return nil
     }
   }
 
@@ -198,33 +175,6 @@ enum ParakeetStreamingSentryError: Error, LocalizedError, CustomNSError, Sendabl
   init?(mappingStartFailure error: any Error) {
     guard let cause = fluidAudioStreamingInnerCause(error) else { return nil }
     self = .startFailed(inner: cause)
-  }
-
-  /// Reconstructs the typed, conforming error from an NSError that survived the XPC
-  /// round-trip. Returns `nil` for a foreign domain — a genuinely unrelated XPC-layer
-  /// error, which must keep its own identity rather than acquire this one.
-  init?(reconstructingFrom error: NSError) {
-    guard error.domain == Self.errorDomain else { return nil }
-    switch error.code {
-    case Code.modelsNotLoaded: self = .modelsNotLoaded
-    case Code.streamAlreadyExists: self = .streamAlreadyExists
-    case Code.audioBufferProcessingFailed: self = .audioBufferProcessingFailed
-    case Code.audioConversionFailed: self = .audioConversionFailed
-    case Code.bufferOverflow: self = .bufferOverflow
-    case Code.invalidConfiguration: self = .invalidConfiguration
-    case Code.unknownStreamingFailure: self = .unknownStreamingFailure
-    case Code.allWindowsFailedBase...Code.allWindowsFailedBlockEnd:
-      // An offset this build does not know maps to nil rather than to a wrong cause:
-      // a newer service reporting a newer inner case must not be read as an older one.
-      // (`allWindowsFailedBase` itself yields nil through the same path, since offset 0
-      // is deliberately unallocated.)
-      self = .allWindowsFailed(
-        inner: Self.innerCause(fromOffset: error.code - Code.allWindowsFailedBase))
-    case Code.startFailedBase...Code.startFailedBlockEnd:
-      self = .startFailed(
-        inner: Self.innerCause(fromOffset: error.code - Code.startFailedBase))
-    default: return nil
-    }
   }
 }
 

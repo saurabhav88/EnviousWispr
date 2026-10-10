@@ -13,24 +13,21 @@ import Testing
 /// TWO INDEPENDENT BLOCKERS, and a suite that exercised only one would pass a
 /// build that is still broken for every real user:
 ///
-/// 1. **Dispatch.** `handleFlagsChangedValues` compared the incoming key code
+/// 1. **Dispatch.** The old modifier handler compared the incoming key code
 ///    against the *record* key only, so a modifier bound to cancel returned
 ///    early and no cancel ever fired.
-/// 2. **Installation.** The `NSEvent` modifier monitors were installed only when
-///    the RECORD key was modifier-only. The affected users pair a bare-modifier
-///    cancel with a chord record key — the default shape — so no monitor existed
-///    to observe the cancel key in the first place. Fixing (1) alone would leave
-///    them exactly as broken, and every test that drives the dispatch seam
-///    directly would still pass.
+/// 2. **Installation.** The retired `NSEvent` modifier monitors were installed
+///    only when the RECORD key was modifier-only, so for a bare-modifier cancel
+///    with a chord record key (the default shape) nothing observed the cancel
+///    key at all. Since #3544 P3 the keyboard listener is installed whenever the
+///    service runs, whatever the binding shapes, so the chord-record cases below
+///    are the installation cases: they fail if nothing observes the cancel key.
 ///
-/// So the install cases below go through `shouldInstallModifierMonitors`, the
-/// same expression the installer guards on, rather than the dispatch seam.
-///
-/// Every dispatch case drives the REAL seam, `handleFlagsChangedValues`, with
-/// the physical event shape a modifier produces: the flag is PRESENT on press
-/// and ABSENT on release (measured on hardware for #1987). Asserting on set
-/// membership instead would prove the key is accepted and nothing about what
-/// pressing it does.
+/// Every dispatch case drives the REAL boundary, the installed keyboard
+/// listener (`ListenerKeyboard`), with the physical event shape a modifier
+/// produces: its family flag and its own side bit PRESENT on press and ABSENT on
+/// release. Asserting on set membership instead would prove the key is accepted
+/// and nothing about what pressing it does.
 @MainActor
 @Suite struct HotkeyCancelShortcutTests {
 
@@ -93,11 +90,12 @@ import Testing
     recordKey: UInt16,
     cancelKey: UInt16,
     mode: RecordingMode = .toggle
-  ) -> (HotkeyService, Sink, Waiter, Waiter) {
+  ) -> (HotkeyService, Sink, Waiter, Waiter, ListenerKeyboard) {
     let sink = Sink()
     let cancelWaiter = Waiter()
     let toggleWaiter = Waiter()
-    let service = HotkeyService(effects: RecordingDesktopHotkeyEffects())
+    let effects = RecordingDesktopHotkeyEffects()
+    let service = HotkeyService(effects: effects)
     service.recordingMode = mode
     service.toggleKeyCode = recordKey
     service.toggleModifiers = []
@@ -111,19 +109,21 @@ import Testing
       sink.toggles += 1
       toggleWaiter.note()
     }
-    return (service, sink, cancelWaiter, toggleWaiter)
+    // The listener is installed by `start()`; it is the only reader of bare modifiers.
+    service.start()
+    return (service, sink, cancelWaiter, toggleWaiter, ListenerKeyboard(effects))
   }
 
   // MARK: - Blocker 1: dispatch
 
   @Test("a bare-modifier cancel key cancels while cancel is armed")
   func bareModifierCancelFires() async {
-    let (service, sink, cancelWaiter, _) = makeService(
+    let (service, sink, cancelWaiter, _, keys) = makeService(
       recordKey: chordKeyCode, cancelKey: rightCommand)
     // Cancel is armed only during a recording, exactly as the lifecycle does it.
     service.registerCancelHotkey()
 
-    service.handleFlagsChangedValues(keyCode: rightCommand, flags: [.command])
+    await keys.press(rightCommand)
     await cancelWaiter.wait()
 
     #expect(sink.cancels == 1)
@@ -134,10 +134,10 @@ import Testing
   /// on every press of the key — including while idle — passes the case above.
   @Test("a bare-modifier cancel key does nothing while cancel is NOT armed")
   func bareModifierCancelSilentWhenUnarmed() async {
-    let (service, sink, _, _) = makeService(recordKey: chordKeyCode, cancelKey: rightCommand)
+    let (service, sink, _, _, keys) = makeService(recordKey: chordKeyCode, cancelKey: rightCommand)
     // No registerCancelHotkey: no recording is in flight.
 
-    service.handleFlagsChangedValues(keyCode: rightCommand, flags: [.command])
+    await keys.press(rightCommand)
     await Task.yield()
 
     #expect(sink.cancels == 0)
@@ -145,15 +145,16 @@ import Testing
 
   @Test("cancel stops firing once the recording ends")
   func cancelDisarmsAfterRecording() async {
-    let (service, sink, cancelWaiter, _) = makeService(
+    let (service, sink, cancelWaiter, _, keys) = makeService(
       recordKey: chordKeyCode, cancelKey: rightCommand)
     service.registerCancelHotkey()
-    service.handleFlagsChangedValues(keyCode: rightCommand, flags: [.command])
+    await keys.press(rightCommand)
     await cancelWaiter.wait()
     #expect(sink.cancels == 1)
 
     service.unregisterCancelHotkey()
-    service.handleFlagsChangedValues(keyCode: rightCommand, flags: [.command])
+    await keys.release(rightCommand)
+    await keys.press(rightCommand)
     await Task.yield()
 
     #expect(sink.cancels == 1, "a disarmed cancel key must not fire again")
@@ -163,11 +164,11 @@ import Testing
   /// ignores the flag would cancel twice per physical press.
   @Test("releasing the cancel modifier does not cancel")
   func cancelIgnoresRelease() async {
-    let (service, sink, _, _) = makeService(recordKey: chordKeyCode, cancelKey: rightCommand)
+    let (service, sink, _, _, keys) = makeService(recordKey: chordKeyCode, cancelKey: rightCommand)
     service.registerCancelHotkey()
 
     // Release: the key code arrives with its flag ABSENT.
-    service.handleFlagsChangedValues(keyCode: rightCommand, flags: [])
+    await keys.release(rightCommand)
     await Task.yield()
 
     #expect(sink.cancels == 0)
@@ -176,10 +177,10 @@ import Testing
   /// The record key must keep working unchanged while a cancel binding exists.
   @Test("a bare-modifier record key still toggles when cancel is also a modifier")
   func recordStillWorksAlongsideModifierCancel() async {
-    let (service, sink, _, toggleWaiter) = makeService(
+    let (service, sink, _, toggleWaiter, keys) = makeService(
       recordKey: rightOption, cancelKey: rightCommand)
 
-    service.handleFlagsChangedValues(keyCode: rightOption, flags: [.option])
+    await keys.press(rightOption)
     await toggleWaiter.wait()
 
     #expect(sink.toggles == 1)
@@ -189,45 +190,14 @@ import Testing
   /// An unrelated modifier must reach neither role.
   @Test("an unbound modifier does nothing")
   func unboundModifierIsInert() async {
-    let (service, sink, _, _) = makeService(recordKey: chordKeyCode, cancelKey: rightCommand)
+    let (service, sink, _, _, keys) = makeService(recordKey: chordKeyCode, cancelKey: rightCommand)
     service.registerCancelHotkey()
 
-    service.handleFlagsChangedValues(
-      keyCode: ModifierKeyCodes.leftControl, flags: [.control])
+    await keys.press(ModifierKeyCodes.leftControl)
     await Task.yield()
 
     #expect(sink.cancels == 0)
     #expect(sink.toggles == 0)
-  }
-
-  // MARK: - Blocker 2: installation
-
-  /// This is the case the six affected users are actually in, and the one a
-  /// dispatch-only suite cannot see.
-  @Test("monitors install when only the CANCEL key is a bare modifier")
-  func installsForModifierCancelWithChordRecord() {
-    let (service, _, _, _) = makeService(recordKey: chordKeyCode, cancelKey: rightCommand)
-    #expect(service.shouldInstallModifierMonitors)
-  }
-
-  @Test("monitors install when only the RECORD key is a bare modifier")
-  func installsForModifierRecordWithChordCancel() {
-    let (service, _, _, _) = makeService(recordKey: rightOption, cancelKey: 53)
-    #expect(service.shouldInstallModifierMonitors)
-  }
-
-  @Test("monitors install when BOTH keys are bare modifiers")
-  func installsForBothModifiers() {
-    let (service, _, _, _) = makeService(recordKey: rightOption, cancelKey: rightCommand)
-    #expect(service.shouldInstallModifierMonitors)
-  }
-
-  /// The negative control. Without it, an implementation that always installs
-  /// passes all three cases above while doing unnecessary work on every launch.
-  @Test("monitors do NOT install when neither key is a bare modifier")
-  func doesNotInstallForTwoChords() {
-    let (service, _, _, _) = makeService(recordKey: chordKeyCode, cancelKey: 53)
-    #expect(!service.shouldInstallModifierMonitors)
   }
 
   // MARK: - Arming across suspend / resume
@@ -238,7 +208,7 @@ import Testing
   /// and nothing said so.
   @Test("cancel survives the recorder opening and closing mid-recording")
   func cancelSurvivesSuspendResume() async {
-    let (service, sink, cancelWaiter, _) = makeService(
+    let (service, sink, cancelWaiter, _, keys) = makeService(
       recordKey: chordKeyCode, cancelKey: rightCommand)
     service.start()
     service.registerCancelHotkey()
@@ -246,7 +216,7 @@ import Testing
     service.suspend()
     service.resume()
 
-    service.handleFlagsChangedValues(keyCode: rightCommand, flags: [.command])
+    await keys.press(rightCommand)
     await cancelWaiter.wait()
 
     #expect(sink.cancels == 1)
@@ -258,14 +228,14 @@ import Testing
   /// the previous test while arming cancel for a recording that never started.
   @Test("resume does NOT arm cancel when no recording was in flight")
   func resumeDoesNotArmCancelWhenIdle() async {
-    let (service, sink, _, _) = makeService(recordKey: chordKeyCode, cancelKey: rightCommand)
+    let (service, sink, _, _, keys) = makeService(recordKey: chordKeyCode, cancelKey: rightCommand)
     service.start()
     // No registerCancelHotkey: nothing is recording.
 
     service.suspend()
     service.resume()
 
-    service.handleFlagsChangedValues(keyCode: rightCommand, flags: [.command])
+    await keys.press(rightCommand)
     await Task.yield()
 
     #expect(sink.cancels == 0)
@@ -280,7 +250,7 @@ import Testing
   /// again to the one user most likely to hit it.
   @Test("a cancel key changed during suspension takes effect on resume")
   func cancelKeyChangedWhileSuspendedTakesEffect() async {
-    let (service, sink, cancelWaiter, _) = makeService(
+    let (service, sink, cancelWaiter, _, keys) = makeService(
       recordKey: chordKeyCode, cancelKey: rightCommand)
     service.start()
     service.registerCancelHotkey()
@@ -291,13 +261,12 @@ import Testing
     service.resume()
 
     // The OLD key must be inert.
-    service.handleFlagsChangedValues(keyCode: rightCommand, flags: [.command])
+    await keys.press(rightCommand)
     await Task.yield()
     #expect(sink.cancels == 0, "the previous cancel key must stop working")
 
     // The NEW key must cancel.
-    service.handleFlagsChangedValues(
-      keyCode: ModifierKeyCodes.rightControl, flags: [.control])
+    await keys.press(ModifierKeyCodes.rightControl)
     await cancelWaiter.wait()
     #expect(sink.cancels == 1)
     service.stop()
@@ -312,7 +281,7 @@ import Testing
   /// their recording AFTER resume, so neither could reach this ordering.
   @Test("a recording ending during suspension does not leave cancel armed")
   func recordingEndingWhileSuspendedDoesNotRearmCancel() async {
-    let (service, sink, _, _) = makeService(recordKey: chordKeyCode, cancelKey: rightCommand)
+    let (service, sink, _, _, keys) = makeService(recordKey: chordKeyCode, cancelKey: rightCommand)
     service.start()
     service.registerCancelHotkey()
 
@@ -321,7 +290,7 @@ import Testing
     service.unregisterCancelHotkey()
     service.resume()
 
-    service.handleFlagsChangedValues(keyCode: rightCommand, flags: [.command])
+    await keys.press(rightCommand)
     await Task.yield()
 
     #expect(sink.cancels == 0, "cancel must not be armed once its recording has ended")
@@ -339,7 +308,7 @@ import Testing
   /// in a neighbouring branch; review caught it, not me.
   @Test("changing the record key while the editor is open keeps cancel alive")
   func recordKeyChangedWhileSuspendedKeepsCancelArmed() async {
-    let (service, sink, cancelWaiter, _) = makeService(
+    let (service, sink, cancelWaiter, _, keys) = makeService(
       recordKey: chordKeyCode, cancelKey: rightCommand)
     service.start()
     service.registerCancelHotkey()
@@ -350,7 +319,7 @@ import Testing
     service.restartPreservingCancelArming()
     service.resume()
 
-    service.handleFlagsChangedValues(keyCode: rightCommand, flags: [.command])
+    await keys.press(rightCommand)
     await cancelWaiter.wait()
 
     #expect(sink.cancels == 1, "cancel must survive a record-key change made in the editor")
@@ -361,7 +330,7 @@ import Testing
   /// simply disabled the path rather than scoped it.
   @Test("changing the record key while idle still preserves cancel arming")
   func recordKeyChangedWhileRunningKeepsCancelArmed() async {
-    let (service, sink, cancelWaiter, _) = makeService(
+    let (service, sink, cancelWaiter, _, keys) = makeService(
       recordKey: chordKeyCode, cancelKey: rightCommand)
     service.start()
     service.registerCancelHotkey()
@@ -369,32 +338,31 @@ import Testing
     service.toggleKeyCode = ModifierKeyCodes.rightOption
     service.restartPreservingCancelArming()
 
-    service.handleFlagsChangedValues(keyCode: rightCommand, flags: [.command])
+    await keys.press(rightCommand)
     await cancelWaiter.wait()
 
     #expect(sink.cancels == 1)
     service.stop()
   }
 
-  /// `.command` is an AGGREGATE device-independent flag: with Left Command held,
-  /// releasing Right Command leaves `.command` set, so the release reads as a
-  /// press and the same physical tap cancels twice. The `guard isPress` alone
-  /// does not stop it — an earlier comment claimed it did, and cloud review
-  /// showed the two-key case defeats it.
+  /// `.command` is an AGGREGATE device-independent flag: with Left Command held, releasing Right
+  /// Command leaves `.command` set. The retired `NSEvent` path read only that flag, so the release
+  /// read as a press and one physical tap cancelled twice. The listener reads side bits: the
+  /// release is a release, and its route (cancel) ends nowhere.
   @Test("a cancel modifier released while its twin is held does not cancel twice")
   func cancelDoesNotFireTwiceWhenOppositeSideKeyIsHeld() async {
-    let (service, sink, cancelWaiter, _) = makeService(
+    let (service, sink, cancelWaiter, _, keys) = makeService(
       recordKey: chordKeyCode, cancelKey: rightCommand)
     service.registerCancelHotkey()
 
-    // Down: Right Command pressed while Left Command is already held.
-    service.handleFlagsChangedValues(keyCode: rightCommand, flags: [.command])
+    // Left Command already held (no role), then Right Command down: one cancel.
+    await keys.press(ModifierKeyCodes.leftCommand)
+    await keys.press(rightCommand)
     await cancelWaiter.wait()
     #expect(sink.cancels == 1)
 
-    // Up: Right Command released, but Left Command still holds `.command` set,
-    // so the aggregate flag still reads as pressed.
-    service.handleFlagsChangedValues(keyCode: rightCommand, flags: [.command])
+    // Right Command up while Left Command still holds `.command` set.
+    await keys.release(rightCommand)
     await Task.yield()
 
     #expect(sink.cancels == 1, "one physical tap must cancel exactly once")
@@ -413,16 +381,19 @@ import Testing
   @Test("a cancel modifier required by the record chord does not cancel")
   func cancelModifierShadowedByRecordChordIsRefused() async {
     let sink = Sink()
-    let service = HotkeyService(effects: RecordingDesktopHotkeyEffects())
+    let effects = RecordingDesktopHotkeyEffects()
+    let keys = ListenerKeyboard(effects)
+    let service = HotkeyService(effects: effects)
     service.recordingMode = .toggle
     service.toggleKeyCode = chordKeyCode  // D
     service.toggleModifiers = [.command]  // record is ⌘D
     service.cancelKeyCode = rightCommand
     service.cancelModifiers = []
     service.onCancelRecording = { sink.cancels += 1 }
+    service.start()
     service.registerCancelHotkey()
 
-    service.handleFlagsChangedValues(keyCode: rightCommand, flags: [.command])
+    await keys.press(rightCommand)
     await Task.yield()
 
     #expect(sink.cancels == 0, "pressing ⌘ to stop must not discard the recording")
@@ -435,7 +406,9 @@ import Testing
   func cancelModifierUnrelatedToRecordChordStillWorks() async {
     let sink = Sink()
     let waiter = Waiter()
-    let service = HotkeyService(effects: RecordingDesktopHotkeyEffects())
+    let effects = RecordingDesktopHotkeyEffects()
+    let keys = ListenerKeyboard(effects)
+    let service = HotkeyService(effects: effects)
     service.recordingMode = .toggle
     service.toggleKeyCode = chordKeyCode
     service.toggleModifiers = [.command]  // record is ⌘D
@@ -445,9 +418,10 @@ import Testing
       sink.cancels += 1
       waiter.note()
     }
+    service.start()
     service.registerCancelHotkey()
 
-    service.handleFlagsChangedValues(keyCode: ModifierKeyCodes.rightOption, flags: [.option])
+    await keys.press(ModifierKeyCodes.rightOption)
     await waiter.wait()
 
     #expect(sink.cancels == 1)
@@ -463,11 +437,11 @@ import Testing
   /// capture time with user-visible copy, and is the next slice's work.
   @Test("a conflicting pair still dispatches to record, not cancel")
   func conflictingPairPrefersRecord() async {
-    let (service, sink, _, toggleWaiter) = makeService(
+    let (service, sink, _, toggleWaiter, keys) = makeService(
       recordKey: rightCommand, cancelKey: rightCommand)
     service.registerCancelHotkey()
 
-    service.handleFlagsChangedValues(keyCode: rightCommand, flags: [.command])
+    await keys.press(rightCommand)
     await toggleWaiter.wait()
 
     #expect(sink.toggles == 1)

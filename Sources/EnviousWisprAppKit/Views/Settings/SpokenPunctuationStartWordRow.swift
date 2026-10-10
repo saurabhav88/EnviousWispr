@@ -18,9 +18,8 @@ struct SpokenPunctuationStartWordRow: View {
   var body: some View {
     VStack(alignment: .leading, spacing: 8) {
       SettingsRow(
-        icon: "text.cursor",
-        resolvedTitle: SpokenPunctuationCopy.startWordTitle,
-        resolvedShort: SpokenPunctuationCopy.startWordShort
+        map: .id(.startWordLanguage),
+        icon: "text.cursor"
       ) {
         SpokenPunctuationStartWordHelpPanel()
       } control: {
@@ -47,6 +46,7 @@ struct SpokenPunctuationStartWordRow: View {
           .foregroundStyle(.stTextPrimary)
           .accessibilityHidden(true)
         field
+          .settingsMapRegistration(.startWordField)
         // Clicking elsewhere in the window does not always take focus off the field, so a typed word
         // needs a button that saves it; Return and focus loss still save it too.
         SettingsActionButton(
@@ -54,10 +54,12 @@ struct SpokenPunctuationStartWordRow: View {
           emphasis: .filled
         ) { editor.commitDraft() }
         .accessibilityLabel(Text(SpokenPunctuationCopy.saveAccessibilityLabel))
+        .settingsMapRegistration(.startWordSave)
         SettingsActionButton(
           verbatimTitle: SpokenPunctuationCopy.resetLabel, isEnabled: editor.canReset
         ) { editor.reset() }
         .accessibilityLabel(Text(SpokenPunctuationCopy.resetAccessibilityLabel))
+        .settingsMapRegistration(.startWordReset)
       }
       if let example = editor.exampleCommand {
         Text(SpokenPunctuationCopy.example(command: example))
@@ -88,6 +90,7 @@ struct SpokenPunctuationStartWordRow: View {
       prompt: Text(SpokenPunctuationCopy.noStartWordPlaceholder)
     )
     .focused($fieldFocused)
+    .settingsArrivalFocusControl(textEntry: true) { fieldFocused = true }
     .settingsFieldChrome(focused: $fieldFocused)
     .frame(width: 160)
     .onSubmit { editor.commitDraft() }

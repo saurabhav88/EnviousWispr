@@ -8,9 +8,7 @@ import Foundation
 /// `DictationLifecycleCoordinator`, for two reasons that are not style: that
 /// type's terminal-handling area is already saturated (plan §3e says extract
 /// rather than squeeze), and holding a reference to something that owns this
-/// would spend one of its collaborator slots on a pure mapping with no state.
-/// The collaborator ceiling is still live and still the one that matters here;
-/// the line ceiling this note used to cite was deleted in #2292 C6.
+/// would add a collaborator for a pure mapping with no state.
 ///
 /// **Reads the ROW, not the driver.** Every number here already lives on the
 /// transcript that was just written. Asking the driver instead would read

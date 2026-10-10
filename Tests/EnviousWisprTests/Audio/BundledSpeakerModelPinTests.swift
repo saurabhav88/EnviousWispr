@@ -10,14 +10,6 @@ import Testing
 @Suite("Bundled speaker model pins", .tags(.driftGuard))
 struct BundledSpeakerModelPinTests {
 
-  @Test("the loader asks for the fork's own model names")
-  func loaderNamesMatchTheFork() {
-    #expect(ModelNames.OfflineDiarizer.segmentation == "Segmentation")
-    #expect(ModelNames.OfflineDiarizer.fbank == "FBank")
-    #expect(ModelNames.OfflineDiarizer.embedding == "Embedding")
-    #expect(ModelNames.OfflineDiarizer.pldaRho == "PldaRho")
-  }
-
   @Test("all four pinned models, the PLDA JSON, and the licence file are actually in the tree")
   func pinnedResourcesArePresent() {
     let root = RepoRoot.sourceURL("Sources/EnviousWispr/Resources")

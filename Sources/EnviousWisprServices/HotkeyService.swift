@@ -50,9 +50,8 @@ package enum HandsFreeLockRequestResult: Equatable, Sendable {
 /// Uses Carbon RegisterEventHotKey for system-wide hotkeys without
 /// requiring Accessibility permission.
 ///
-/// For modifier-only hotkeys (e.g., bare Option key), NSEvent global and local
-/// monitors for .flagsChanged are used so events fire even when the app is in
-/// the background.
+/// For modifier-only hotkeys (e.g., bare Option key), the keyboard listener (one session event
+/// tap on its own thread, #3544) is the only reader, so they fire whichever app is in front.
 @MainActor
 @Observable
 public final class HotkeyService {
@@ -113,10 +112,18 @@ public final class HotkeyService {
   /// is the one the user set; `carbonEventIsCurrent` compares this with the current binding.
   private var appShortcutRegisteredBindings: [ShortcutRole: ShortcutBinding] = [:]
 
-  /// App shortcuts whose current physical press has been seen and not yet released (#3106). Paste
-  /// Last fires on the release and Copy Last on the first press; either way a held key or an
-  /// auto-repeat acts once. Cleared on stop and suspend, where a release may never arrive.
-  private var appShortcutsHeld: Set<ShortcutRole> = []
+  /// App shortcuts whose current physical press has been seen and not yet released (#3106), with
+  /// the press that owns each hold. Paste Last fires on the release and Copy Last on the first
+  /// press; either way a held key or an auto-repeat acts once. Only a release from the owning press
+  /// ends a hold, so the release of a key from before a rebind cannot end the new shortcut's hold.
+  /// Cleared on stop and suspend, where a release may never arrive.
+  private var appShortcutsHeld: [ShortcutRole: AppShortcutHold] = [:]
+
+  /// The press that owns an app shortcut hold: a Carbon chord, or one modifier key the listener saw.
+  private enum AppShortcutHold: Equatable {
+    case chord
+    case modifier(keyCode: UInt16)
+  }
 
   /// Whether the cancel role is currently armed.
   ///
@@ -127,43 +134,48 @@ public final class HotkeyService {
   /// Whether the cancel role is armed. `package private(set)` so #2087's
   /// disarm-on-abandonment can be OBSERVED by a test — the alternative was
   /// asserting on a spy for a call the production code might simply not make.
-  package private(set) var isCancelArmed = false
+  package private(set) var isCancelArmed = false {
+    didSet { engine.setCancelArmed(isCancelArmed) }
+  }
 
   /// Cancel's armed state at the moment `suspend()` ran, so `resume()` can put a
   /// still-running recording back where it was.
   private var cancelArmedBeforeSuspend = false
 
-  // MARK: - NSEvent Modifier Monitors
-
-  private var globalModifierMonitorToken: DesktopEffectToken?
-  private var localModifierMonitorToken: DesktopEffectToken?
-
   public private(set) var isEnabled = false
-  public private(set) var isModifierHeld = false
+  /// The record key is held, as the engine's synchronized gesture snapshot reports.
+  public var isModifierHeld: Bool { engine.snapshot.isHeld }
 
   /// Tracks the in-flight recording Task so we can cancel zombie Tasks from
   /// previous press/release events before starting new ones. This serializes
   /// recording commands — only one start or stop operation runs at a time.
   private var recordingTask: Task<Void, Never>?
+  /// The listener cancel's callback, kept apart from `recordingTask` so the next start can wait for
+  /// it: a start that ran while the cancel was still tearing the old session down would find that
+  /// session active and resume it instead of starting a new one (#3544 P3).
+  private var listenerCancellationTask: Task<Void, Never>?
+  /// Test seam: a start is about to wait for a listener cancel's teardown. Production never sets it.
+  package var onListenerCancellationWaitForTesting: (@MainActor () -> Void)?
 
   // MARK: - Hands-Free (Double-Press Lock) State
+
+  /// The push-to-talk record gesture and its lone-tap timer (#3544 P1). The engine decides under
+  /// its own lock and hands each decision to `execute(_:valid:)` on the main thread, in order.
+  private let engine: RecordGestureEngine
+
+  /// #3544 P1: main's own record of which attempt it is executing, and which attempt recorded a
+  /// hands-free intent. #1631 reconciliation and publication read THESE, never the engine's newer
+  /// gesture state, so a late start result is judged against the attempt it belongs to.
+  private var executingAttemptID: UInt64?
+  private var lockIntentAttemptID: UInt64?
 
   /// True when recording is locked into hands-free mode.
   /// When locked, key releases are suppressed and recording continues
   /// until the next key press or cancel.
-  public private(set) var isRecordingLocked: Bool = false
+  public var isRecordingLocked: Bool { engine.snapshot.isLocked }
 
-  /// Timestamp of the key-down that started the current recording session.
-  /// Used for the 500ms double-press detection window.
-  private var recordingStartTime: Date? = nil
-
-  /// #1631 — identifies one start attempt, incremented only when a fresh press
-  /// stamps a new one, so a late result can prove which press it belongs to.
-  ///
-  /// Deliberately NOT `stateGeneration`: that is bumped by every unlocked release
-  /// too, so a generation captured at press time is already stale in exactly the
-  /// press → release → press sequence this fix exists for.
-  private var startPressID: UInt64 = 0
+  /// Test seam: the record gesture engine, for driving listener admission directly (#3544 P3).
+  package var recordGestureEngineForTesting: RecordGestureEngine { engine }
 
   /// #1631 — the press whose start confirmed a continuing session, and that
   /// session's opaque id. Together they gate publication: hands-free intent is
@@ -171,22 +183,16 @@ public final class HotkeyService {
   /// start has confirmed a session that is still running.
   private var acceptedStartPressID: UInt64?
   private var acceptedSessionID: String?
-
-  /// Debounce timer: on quick PTT release (< 500ms), waits for a possible
-  /// second press before stopping. Cancelled on double-press or new recording.
-  private var debounceTask: Task<Void, Never>? = nil
-
-  /// Monotonically increasing counter incremented on every state-changing event
-  /// (press, release, cleanup). Debounce callbacks compare their captured
-  /// generation to the current value — if they differ, the callback is stale
-  /// and must not fire. This is the primary guard against Task.isCancelled
-  /// races where cancellation hasn't propagated before the closure executes.
-  private var stateGeneration: UInt64 = 0
-
-  /// Timestamp when hands-free lock was activated. Used as a cooldown guard:
-  /// presses within 500ms of locking are ignored to prevent accidental
-  /// finger-bounce from immediately stopping the locked recording.
-  private var lockTime: Date? = nil
+  /// Attempts the engine dismissed whose start main may still be resolving (#3544 P4), and the
+  /// session each start produced, so the dismissal ends exactly that session even after a newer
+  /// press replaced the attempt's execution state.
+  private var pendingDismissals: Set<UInt64> = []
+  private var dismissedSessions: [UInt64: String] = [:]
+  /// Secure Input as the current listener installation last observed it (#3544 P4); false while
+  /// no listener is installed. Logged and noticed only; it never ends, cancels or locks a take.
+  private var secureInputOn = false
+  /// Whether this Secure Input period has already been told to the user.
+  private var secureInputNoticeShown = false
 
   // MARK: - Callbacks (wired by the former root state)
 
@@ -194,6 +200,10 @@ public final class HotkeyService {
   /// #1631: returns whether a session is genuinely continuing when the start path
   /// finishes, and if so its id. `HotkeyService` reconciles its own state on that.
   package var onStartRecording: (@MainActor () async -> RecordingStartOutcome)?
+  /// #3544 P4: a press made while a session was running joins it and must never create one: if
+  /// that session has ended by the time this runs, it returns `.noRecording`. The engine marks
+  /// such a press; nil refuses it.
+  package var onJoinRecording: (@MainActor () async -> RecordingStartOutcome)?
   public var onStopRecording: (@MainActor () async -> Void)?
   public var onCancelRecording: (@MainActor () async -> Void)?
 
@@ -209,6 +219,11 @@ public final class HotkeyService {
   /// The `String` is an opaque token, compared for equality only — Services never
   /// interprets it.
   package var onLockRequested: (@MainActor (String) -> HandsFreeLockRequestResult)?
+
+  /// #3544 P4 (D2): end the recording session `String` started by a dismissed push-to-talk press,
+  /// destructively, if that session is still the one running. The `String` is the same opaque
+  /// session token `onLockRequested` receives.
+  package var onDismissRecording: (@MainActor (String) async -> Void)?
 
   /// Returns true if the pipeline is in a processing state (transcribing, polishing, etc.).
   /// Used by the processing state gate to block new recordings during processing.
@@ -239,7 +254,14 @@ public final class HotkeyService {
 
   // MARK: - Configuration
 
-  public var recordingMode: RecordingMode = .toggle
+  // #3534: every binding and the mode below void the stop-timer measurement when they ACTUALLY
+  // change (diagnostic state only; the settings sync assigns unchanged values freely).
+  public var recordingMode: RecordingMode = .toggle {
+    didSet {
+      if recordingMode != oldValue { invalidateQuickTapDiagnostics() }
+      configureEngine()
+    }
+  }
 
   // Every fallback below reads `ShortcutRole.defaultBinding`, the one owner of what a shortcut ships
   // as. These are the value a service carries before `HotkeyController` pushes the user's settings,
@@ -251,68 +273,144 @@ public final class HotkeyService {
   // shim and a follow-up.
 
   /// Toggle-mode hotkey key code. Right Option, a bare modifier.
-  public var toggleKeyCode: UInt16 = ShortcutRole.record.defaultKeyCode
+  public var toggleKeyCode: UInt16 = ShortcutRole.record.defaultKeyCode {
+    didSet {
+      if toggleKeyCode != oldValue { invalidateQuickTapDiagnostics() }
+      configureEngine()
+    }
+  }
 
   /// Toggle-mode required modifiers — none, because a bare modifier stores empty modifiers.
-  public var toggleModifiers: NSEvent.ModifierFlags = ShortcutRole.record.defaultModifiers
+  public var toggleModifiers: NSEvent.ModifierFlags = ShortcutRole.record.defaultModifiers {
+    didSet {
+      if toggleModifiers != oldValue { invalidateQuickTapDiagnostics() }
+      configureEngine()
+    }
+  }
 
   /// Key code for the cancel hotkey. Escape.
-  public var cancelKeyCode: UInt16 = ShortcutRole.cancel.defaultKeyCode
+  public var cancelKeyCode: UInt16 = ShortcutRole.cancel.defaultKeyCode {
+    didSet {
+      if cancelKeyCode != oldValue { invalidateQuickTapDiagnostics() }
+      configureEngine()
+    }
+  }
 
   /// Required modifiers for cancel hotkey — none, bare Escape.
-  public var cancelModifiers: NSEvent.ModifierFlags = ShortcutRole.cancel.defaultModifiers
+  public var cancelModifiers: NSEvent.ModifierFlags = ShortcutRole.cancel.defaultModifiers {
+    didSet {
+      if cancelModifiers != oldValue { invalidateQuickTapDiagnostics() }
+      configureEngine()
+    }
+  }
 
   /// Key code for the Quick Add hotkey (#2381). The shipped value, read from its one owner.
-  public var quickAddKeyCode: UInt16 = ShortcutRole.quickAdd.defaultKeyCode
+  public var quickAddKeyCode: UInt16 = ShortcutRole.quickAdd.defaultKeyCode {
+    didSet {
+      if quickAddKeyCode != oldValue { invalidateQuickTapDiagnostics() }
+      configureEngine()
+    }
+  }
 
   /// Required modifiers for the Quick Add hotkey, read from the same owner.
-  public var quickAddModifiers: NSEvent.ModifierFlags = ShortcutRole.quickAdd.defaultModifiers
+  public var quickAddModifiers: NSEvent.ModifierFlags = ShortcutRole.quickAdd.defaultModifiers {
+    didSet {
+      if quickAddModifiers != oldValue { invalidateQuickTapDiagnostics() }
+      configureEngine()
+    }
+  }
 
   /// Paste Last Dictation's key code (#3106), read from the same owner.
-  public var pasteLastKeyCode: UInt16 = ShortcutRole.pasteLast.defaultKeyCode
+  public var pasteLastKeyCode: UInt16 = ShortcutRole.pasteLast.defaultKeyCode {
+    didSet {
+      if pasteLastKeyCode != oldValue { invalidateQuickTapDiagnostics() }
+      configureEngine()
+    }
+  }
 
   /// Paste Last Dictation's required modifiers.
-  public var pasteLastModifiers: NSEvent.ModifierFlags = ShortcutRole.pasteLast.defaultModifiers
+  public var pasteLastModifiers: NSEvent.ModifierFlags = ShortcutRole.pasteLast.defaultModifiers {
+    didSet {
+      if pasteLastModifiers != oldValue { invalidateQuickTapDiagnostics() }
+      configureEngine()
+    }
+  }
 
   /// Copy Last Dictation's key code (#3106), read from the same owner.
-  public var copyLastKeyCode: UInt16 = ShortcutRole.copyLast.defaultKeyCode
+  public var copyLastKeyCode: UInt16 = ShortcutRole.copyLast.defaultKeyCode {
+    didSet {
+      if copyLastKeyCode != oldValue { invalidateQuickTapDiagnostics() }
+      configureEngine()
+    }
+  }
 
   /// Copy Last Dictation's required modifiers.
-  public var copyLastModifiers: NSEvent.ModifierFlags = ShortcutRole.copyLast.defaultModifiers
+  public var copyLastModifiers: NSEvent.ModifierFlags = ShortcutRole.copyLast.defaultModifiers {
+    didSet {
+      if copyLastModifiers != oldValue { invalidateQuickTapDiagnostics() }
+      configureEngine()
+    }
+  }
 
   // MARK: - Lifecycle
 
   public private(set) var isSuspended = false
 
-  /// Which modifier-monitor installation the currently installed closures belong to.
+
+  // MARK: - Keyboard listener (#3544 P2, the only modifier ingress from P3)
+
+  /// The keyboard listener's resource. Kept when its removal is refused, like every other token
+  /// here, and a new listener is never installed while it is still owned.
+  private var keyboardListenerToken: DesktopEffectToken?
+
+  /// The listener's installation identity: bumped on every install attempt and every removal, so
+  /// a retry scheduled for an earlier installation never installs one after a stop, suspend or newer
+  /// install, and a delivery stamped by an earlier installation is refused.
   ///
-  /// Neither lifecycle flag can identify an installation, because both are LEVEL
-  /// signals that return to their permissive value. `stop()` then `start()` —
-  /// exactly what `PipelineSettingsSync.reregisterHotkeys()` does when the user
-  /// changes their shortcut — puts `isEnabled` back to `true` inside one
-  /// main-thread turn, so a press the global monitor queued before that turn is
-  /// delivered after both and sees a permissive flag. `suspend()`/`resume()` has
-  /// the same shape for `isSuspended`.
-  ///
-  /// This token changes on every teardown instead, so a delivery stamped by an
-  /// earlier installation is refused. A wrapping `UInt64` could collide only
-  /// after 2^64 bumps, which is unreachable during a queued event's lifetime —
-  /// stated as a bound rather than as "never repeats", which is false for a
-  /// wrapping counter (#1993 grounded review r1).
-  ///
-  /// `package private(set)`: tests read the real generation the product stamped;
-  /// nothing outside this file can write it.
-  ///
-  /// PORTED, NOT INVENTED — and the closest precedent carries the same name.
-  /// `CaptureVADSignalSource.monitorGeneration` (#1780) solves the identical
-  /// problem for the VAD monitor task, bumped from its single cancellation site
-  /// (`invalidateMonitor()`) and compared before every emit; its comment makes
-  /// the same argument this one does, that an identity which can be REUSED is
-  /// not a staleness guard. `OllamaSetupService.pullEpoch` / `hostedAddEpoch`
-  /// are the same shape again. Non-trapping `&+=` follows those two rather than
-  /// `CaptureVADSignalSource`'s `+= 1`, since wrapping is defined behaviour and
-  /// a trap in a teardown path would be worse than a collision that cannot occur.
-  package private(set) var monitorGeneration: UInt64 = 0
+  /// Neither lifecycle flag can identify an installation, because both are LEVEL signals that
+  /// return to their permissive value: `stop()` then `start()` (what the settings sync does when the
+  /// user changes a shortcut) puts `isEnabled` back to true inside one main-thread turn, so an event
+  /// queued before that turn arrives after both and sees a permissive flag; `suspend()`/`resume()`
+  /// has the same shape for `isSuspended` (#1993, ported from the retired modifier monitors'
+  /// `monitorGeneration`). A wrapping `UInt64` could collide only after 2^64 bumps, unreachable
+  /// within a queued event's lifetime.
+  package private(set) var listenerGeneration: UInt64 = 0
+
+  /// This installation's ingress (tracker, routes, reconciliation, watchdog); nil while none is
+  /// installed.
+  private var keyboardListenerIngress: KeyboardListenerIngress?
+
+  /// One `registrationFailed(event_tap)` per run of failed installs, not one per retry.
+  private var listenerFailureReported = false
+  /// How long after a disable storm stopped the listener before a fresh one is installed
+  /// (#3544 P3). An engineering backoff bound, reviewed in the P3 build: it reuses the storm window
+  /// so replacements can never themselves storm faster than the rule that detects storms. It is
+  /// not a P2 measurement and not a responsiveness promise.
+  package static let listenerStormCooldown: TimeInterval = 60
+  /// This launch's listener installs: adapter calls, the ones that returned no listener, and the
+  /// ones that did. Reported with every `hotkey.listener_health` row.
+  private var listenerInstallAttempts = 0
+  private var listenerInstallFailures = 0
+  private var listenerInstalls = 0
+  /// Failed attempts since the last successful install; a success after any reports once.
+  private var listenerFailuresSinceInstall = 0
+  private var listenerRetry: RecordGestureEngine.TimerHandle?
+  /// While no listener is installed (storm cooldown, failed installs), the check that ends a
+  /// listener-owned record hold whose key came up unseen. Nil when none is pending. Install
+  /// attempts do not reset it (they retry every five seconds too); a successful install, a stop, a
+  /// suspend or a reinstall cancels it.
+  private var orphanedHoldCheck: RecordGestureEngine.TimerHandle?
+  private var orphanedHoldCheckToken: UInt64 = 0
+  /// The press the previous orphaned-hold check read up, if any: a hold ends only on two
+  /// consecutive up readings about the same attempt, as with the listener's own sweep (#3544 P3
+  /// hotfix, P4 C2).
+  private var orphanedHoldReadUp: RecordGestureEngine.OwnedListenerPress?
+  /// Schedules the install retry off main; the fire hops to main to re-check the lifecycle.
+  private let listenerRetryScheduler: RecordGestureEngine.Scheduler
+  /// Test seam: invoked once each time a scheduled install retry runs on main, on every exit
+  /// path. Production never sets it.
+  package var onListenerRetryResolvedForTesting: (@MainActor () -> Void)?
+
 
   // MARK: - Telemetry (Telemetry Bible Phase 6, #1175)
 
@@ -331,6 +429,13 @@ public final class HotkeyService {
     case copyLast = "copy_last"
     case ignoredProcessing = "ignored_processing"
     case ignoredCooldown = "ignored_cooldown"
+    /// #3534: a second press that came after the 500 ms window while a lone-tap stop was
+    /// pending. Its outcome is unchanged (the pending stop runs; its release stops); before
+    /// this it took no branch at all and left no row.
+    case lateAfterWindow = "late_after_window"
+    /// #3544 P6: a bare-modifier push-to-talk press the listener refused because an ordinary key
+    /// was held (P4 exact-set start). Nothing started.
+    case refusedKeyHeld = "refused_key_held"
   }
 
   /// Which hotkey delivered the press.
@@ -344,7 +449,10 @@ public final class HotkeyService {
   }
 
   /// Injected clock for the 500ms double-press window and the lock cooldown.
-  /// Defaults to the real clock, so production is unchanged.
+  /// Uses system uptime for handling time (#3534). OS stamps are nominally
+  /// startup-relative; sleep/wake compatibility is not verified. Acceptance
+  /// bounds reject implausible stamps, and comparisons fall back as a pair.
+  /// Defaults to the real clock.
   ///
   /// Tests MUST inject: the window is measured in real elapsed time, so a test
   /// that awaits anything between the two presses can be pushed outside the
@@ -353,7 +461,16 @@ public final class HotkeyService {
   /// `swift-patterns.md` RULE: tests-no-real-time-scheduling-precision forbids —
   /// found by the independent whole-diff review, which reproduced eight failures
   /// running this suite alongside its siblings while it passed alone.
-  private let now: @MainActor () -> Date
+  private let uptime: @Sendable () -> TimeInterval
+
+
+  private typealias InputTime = RecordGesture.InputTime
+
+  /// Stamp one record-key input with this service's clock, keeping the OS time
+  /// only if it is plausible.
+  private func capture(_ stamp: TimeInterval?) -> InputTime {
+    InputTime.accepting(stamp: stamp, handled: uptime())
+  }
 
   /// The OS calls this service is allowed to make (#2455 C2).
   ///
@@ -378,11 +495,25 @@ public final class HotkeyService {
   package init(
     effects: any DesktopHotkeyEffects,
     telemetry: HotkeyTelemetrySink = .noop,
-    now: @escaping @MainActor () -> Date = { Date() }
+    uptime: @escaping @Sendable () -> TimeInterval = { ProcessInfo.processInfo.systemUptime },
+    // Injected one-shot scheduler for the lone-tap stop (#3534, #3544). Same reason as `uptime`:
+    // the stop deadline is computed from the release's own time, so a test must control when the
+    // wait ends rather than race a real timer.
+    scheduler: @escaping RecordGestureEngine.Scheduler = RecordGestureEngine.liveScheduler
   ) {
     self.effects = effects
     self.telemetry = telemetry
-    self.now = now
+    self.uptime = uptime
+    self.listenerRetryScheduler = scheduler
+    self.engine = RecordGestureEngine(
+      binding: .keyboard(
+        keyCode: ShortcutRole.record.defaultKeyCode, modifiers: ShortcutRole.record.defaultModifiers),
+      mode: .toggle, clock: uptime, scheduler: scheduler,
+      // Carbon chords reach the engine through main, so their lone-tap waits keep the main hop
+      // (#3544 P1, P5 D5); the listener's bare-modifier input does not wait on main (P3).
+      hopsMainInput: true)
+    engine.setSink { @MainActor [weak self] batch, valid in self?.execute(batch, valid: valid) }
+    configureEngine()
   }
 
   /// The single release path for anything this service installed.
@@ -418,8 +549,15 @@ public final class HotkeyService {
   /// two strings, invokes the injected closure); the `.live` sink defers the
   /// actual PostHog write off the input turn (heart path). The args ARE the
   /// snapshot — no shared-state re-read.
-  private func emitHotkeyPressed(_ action: PressAction, trigger: PressTrigger) {
-    let inputMode = recordingMode.rawValue
+  private func emitHotkeyPressed(
+    _ action: PressAction, trigger: PressTrigger, windowTiming: String? = nil,
+    decidedUnder press: RecordGestureEngine.Press? = nil,
+    frozen: (keyCode: UInt16, mode: RecordingMode)? = nil
+  ) {
+    // #3544: a record press decided by the engine (or refused by the listener, `frozen`) reports
+    // the mode and key it was decided under, not whatever the configuration is when main runs.
+    let frozen = press.map { (keyCode: $0.keyCode, mode: $0.mode) } ?? frozen
+    let inputMode = (frozen?.mode ?? recordingMode).rawValue
     // key_shape reflects the TRIGGERING hotkey: the cancel hotkey (Escape, a chord
     // by default) vs the toggle/PTT hotkey (modifier-only by default). The PTT
     // hands-free actions all ride the toggle key. (Codex code-diff #1.)
@@ -432,14 +570,15 @@ public final class HotkeyService {
       case .quickAdd: quickAddKeyCode
       case .pasteLast: pasteLastKeyCode
       case .copyLast: copyLastKeyCode
-      case .toggle, .ptt: toggleKeyCode
+      case .toggle, .ptt: frozen?.keyCode ?? toggleKeyCode
       }
     let keyShape = ModifierKeyCodes.isModifierOnly(keyCode) ? "modifier_only" : "chord"
     // #1987: same key as key_shape, one level finer. `key_shape` cannot separate
     // Globe from Right Option because both are modifier-only. Content-free class,
     // never the key code itself.
     let keyIdentity = HotkeyKeyIdentity.classify(keyCode: keyCode).rawValue
-    telemetry.pressed(trigger.rawValue, inputMode, keyShape, keyIdentity, action.rawValue)
+    telemetry.pressed(
+      trigger.rawValue, inputMode, keyShape, keyIdentity, action.rawValue, windowTiming)
   }
 
   public func start() {
@@ -451,7 +590,7 @@ public final class HotkeyService {
     // running would refuse the registration it was called to make.
     isEnabled = true
     reconcileAppShortcutRegistrations()
-    installModifierMonitors()
+    installKeyboardListener()
     // Cancel hotkey is NOT registered here — only during recording
   }
 
@@ -460,9 +599,9 @@ public final class HotkeyService {
     unregisterAppShortcuts()
     unregisterToggleHotkey()
     removeCarbonEventHandler()
-    removeModifierMonitors()
+    removeKeyboardListener(reason: "stop")
     isEnabled = false
-    isModifierHeld = false
+    engine.forgetHeld()
     performCleanup()
   }
 
@@ -484,14 +623,14 @@ public final class HotkeyService {
     cancelArmedBeforeSuspend = wasArmed
     unregisterAppShortcuts()
     unregisterToggleHotkey()
-    removeModifierMonitors()
+    removeKeyboardListener(reason: "suspend")
     isSuspended = true
   }
 
   /// Re-register hotkeys after the recorder is done.
   public func resume() {
     guard isEnabled, isSuspended else { return }
-    isModifierHeld = false
+    engine.forgetHeld()
     performCleanup()
     registerToggleHotkey()
     // No armed-state snapshot, unlike cancel: Quick Add is armed whenever the service is, so
@@ -500,7 +639,7 @@ public final class HotkeyService {
     // flight and cancel may own that chord — `resume()` re-arms cancel two lines below.
     isSuspended = false
     reconcileAppShortcutRegistrations()
-    installModifierMonitors()
+    installKeyboardListener()
     if cancelArmedBeforeSuspend { registerCancelHotkey() }
     cancelArmedBeforeSuspend = false
   }
@@ -509,8 +648,8 @@ public final class HotkeyService {
   ///
   /// Arms the role for BOTH dispatch mechanisms. A chord goes to Carbon exactly
   /// as before; a bare modifier cannot be registered with Carbon at all, so for
-  /// that shape arming is the flag alone and the already-installed `NSEvent`
-  /// monitors do the observing. Before #1991 this called `registerHotkey`
+  /// that shape arming is the flag alone and the already-installed keyboard
+  /// listener does the observing. Before #1991 this called `registerHotkey`
   /// unconditionally, so a bare-modifier cancel key was handed to Carbon, failed,
   /// reported a registration failure, and left the user with a key that is
   /// stored, displayed, and inert.
@@ -546,6 +685,21 @@ public final class HotkeyService {
     // guarded on a collision: the reconciler decides, and asking the question here as well would be
     // the same rule written twice.
     reconcileAppShortcutRegistrations()
+  }
+
+  /// Whether the pipeline is running a session now (`PipelineState.isActive`), reported on every
+  /// lifecycle transition (#3544 P4). A record press made while one runs joins it, so other-key
+  /// interference never ends it and the press keeps its stop and lock.
+  public func setRecordingActive(_ active: Bool) {
+    engine.setRecordingActive(active)
+  }
+
+  /// The start running now found a session already running and joined it (#3544 P4), although its
+  /// press was classified before that session began: called by `onStartRecording` before it
+  /// returns, so interference from here on spares the joined session and the press keeps its stop.
+  package func markExecutingStartJoined() {
+    guard let attempt = executingAttemptID else { return }
+    engine.markJoined(attempt: attempt)
   }
 
   /// Arm or disarm the cancel hotkey from a single decision (#2087).
@@ -596,9 +750,9 @@ public final class HotkeyService {
   ///
   /// The cancel key can change while a recording is in flight (the Settings
   /// window is reachable then), and it can change shape — chord to bare modifier
-  /// or back — which moves it between Carbon and the monitors. Re-registering
-  /// without re-installing the monitors would leave the new shape unobserved, so
-  /// both are redone together.
+  /// or back — which moves it between Carbon and the keyboard listener. The
+  /// listener needs nothing redone: it classifies every key under the bindings
+  /// `configureEngine()` already published.
   ///
   /// Safe while idle: it preserves `isCancelArmed`, so this cannot arm a cancel
   /// key for a recording that is not running.
@@ -606,24 +760,69 @@ public final class HotkeyService {
     guard isEnabled, !isSuspended else { return }
     let wasArmed = isCancelArmed
     unregisterCancelHotkey()
-    installModifierMonitors()
     if wasArmed { registerCancelHotkey() }
   }
 
   /// Reset all hands-free state. Called before every stop/cancel callback
   /// and on service stop/resume.
+  ///
+  /// #3544 P1: the unconditional engine reset belongs to MAIN-originated endings only (the
+  /// explicit cancel hotkey, `stop()`, `resume()`); it drops every decision queued before it.
+  /// Endings the engine decided itself (triple cancel, locked stop, lone-tap stop, hold stop)
+  /// already cleaned the gesture and call `clearExecutionState()` alone, so a stop executed late
+  /// can never erase a newer gesture.
   private func performCleanup() {
-    stateGeneration &+= 1
-    isRecordingLocked = false
-    recordingStartTime = nil
-    lockTime = nil
+    // Main state first: `reset()` drains synchronously, and a decision applied by that drain
+    // (a fresh attempt ingested from a callback) must not be cleared after it.
+    clearExecutionState()
+    engine.reset()
+  }
+
+  /// Main's half of a cleanup.
+  private func clearExecutionState() {
     // #1631: acceptance must never outlive the attempt that earned it, or a later
     // press could inherit it and publish on a session it never started.
     acceptedStartPressID = nil
     acceptedSessionID = nil
-    debounceTask?.cancel()
-    debounceTask = nil
+    executingAttemptID = nil
+    lockIntentAttemptID = nil
   }
+
+  /// Refuse one attempt (#1631 `.noRecording`, publication rejected, processing): its queued
+  /// decisions are dropped; a newer attempt is untouched.
+  private func refuseAttempt(_ attemptID: UInt64) {
+    if executingAttemptID == attemptID { clearExecutionState() }
+    engine.reset(attempt: attemptID)
+  }
+
+  /// Push the record binding, mode and every role's binding to the engine (#3544): the gesture reads
+  /// the first two, the listener classifies keys under all of them. Every assignment, changed or
+  /// not; the engine starts a new listener generation only on an actual change.
+  private func configureEngine() {
+    engine.configure(bindings: bindings, mode: recordingMode)
+  }
+
+  /// #3534 §3.3: the one place the stop-timer measurement is voided. Called from
+  /// `performCleanup`, actual mode and binding changes, and `removeKeyboardListener` (which
+  /// every stop, suspend, storm and reinstall passes through).
+  private func invalidateQuickTapDiagnostics() {
+    engine.invalidateDiagnostics()
+  }
+
+  #if DEBUG
+    /// #3534 §10 DEBUG timing trace. Every value is captured by the caller before this
+    /// returns; the log write is asynchronous, so line order is not event order: read the
+    /// captured times. A stop REQUEST and a lock INTENT are not a finished recording.
+    private func traceTiming(_ line: String) {
+      Task {
+        await AppLogger.shared.log("[timing] \(line)", level: .info, category: "HotkeyService")
+      }
+    }
+
+    private static func traceSeconds(_ value: TimeInterval?) -> String {
+      value.map { String(format: "%.3f", $0) } ?? "nil"
+    }
+  #endif
 
   // MARK: - #1631 Start reconciliation and hands-free publication
 
@@ -649,19 +848,24 @@ public final class HotkeyService {
     // guessing from a scheduling turn. A signal fired inside the start callback
     // cannot serve: this method runs AFTER that callback returns.
     defer { onStartResolvedForTesting?() }
-    guard pressID == startPressID, recordingStartTime != nil else { return }
+    // A dismissed attempt's session is remembered whatever replaced its execution state since.
+    if pendingDismissals.contains(pressID), case .recording(let sessionID) = outcome {
+      dismissedSessions[pressID] = sessionID
+    }
+    guard pressID == executingAttemptID else { return }
     switch outcome {
     case .recording(let sessionID):
       acceptedStartPressID = pressID
       acceptedSessionID = sessionID
       publishLockIfReady()
+      noticeSecureInputIfRelevant(sessionID)
     case .noRecording:
       // Only a press that already recorded hands-free intent has a decision to
       // report; a refusal landing before the second tap has nothing to resolve.
-      if isRecordingLocked {
+      if lockIntentAttemptID == pressID {
         emitLockResolved(committed: false, reason: .startProducedNoRecording)
       }
-      performCleanup()
+      refuseAttempt(pressID)
     }
   }
 
@@ -673,19 +877,30 @@ public final class HotkeyService {
   /// replaced by one a toolbar press started — before the second tap arrives.
   /// Asking at the moment of use is the whole design; see the plan's class table.
   private func publishLockIfReady() {
-    guard isRecordingLocked,
-      acceptedStartPressID == startPressID,
+    guard let attemptID = executingAttemptID,
+      lockIntentAttemptID == attemptID,
+      acceptedStartPressID == attemptID,
       let sessionID = acceptedSessionID
     else { return }
-    switch onLockRequested?(sessionID) ?? .unavailable {
+    let result = onLockRequested?(sessionID) ?? .unavailable
+    #if DEBUG
+      let traced: String =
+        switch result {
+        case .published: "published"
+        case .notLockable: "not_lockable"
+        case .unavailable: "unavailable"
+        }
+      traceTiming("lock_publication press=\(attemptID) result=\(traced)")
+    #endif
+    switch result {
     case .published:
       emitLockResolved(committed: true, reason: .published)
     case .notLockable:
       emitLockResolved(committed: false, reason: .notLockableAtPublication)
-      performCleanup()
+      refuseAttempt(attemptID)
     case .unavailable:
       emitLockResolved(committed: false, reason: .publicationUnavailable)
-      performCleanup()
+      refuseAttempt(attemptID)
     }
   }
 
@@ -700,30 +915,116 @@ public final class HotkeyService {
   /// path. Test-only; production never sets it.
   package var onStartResolvedForTesting: (@MainActor () -> Void)?
 
+  /// #3534 test seam — invoked once per lone-tap wait, on every exit path
+  /// (cancelled, stale, locked, stopped), so a test learns the timer finished
+  /// from the subject rather than from a guess. Test-only; production never sets it.
+  /// #3544: delivered through the engine's ordered outbox, after any stop it decided.
+  package var onDebounceResolvedForTesting: (@MainActor () -> Void)?
+
   // periphery:ignore - test seam
   package func awaitInFlightStartForTesting() async {
     await recordingTask?.value
   }
 
+  /// #3544 test seam: apply every decision the engine has queued (a lone-tap stop the timer
+  /// decided), through the production application path.
+  package func drainGestureForTesting() {
+    engine.drainForTesting()
+  }
+
   // MARK: - Hands-Free State Machine
 
   /// Unified PTT + hands-free state machine.
-  /// Called by both `handleCarbonHotkey` and `handleFlagsChangedValues` for
-  /// push-to-talk mode press/release events.
-  private func handleRecordAction(isPress: Bool) {
-    if isPress {
-      handleRecordPress()
-    } else {
-      handleRecordRelease()
+  /// Called by `handleCarbonHotkey` for push-to-talk chord press/release events; the listener feeds
+  /// bare-modifier record input to the engine directly (`ingestFromListener`).
+  /// #3544 P1: the engine decides; `execute(_:valid:)` runs the decisions on this turn (A1).
+  private func handleRecordAction(isPress: Bool, input: RecordGesture.InputTime) {
+    engine.ingestOnMain(isPress: isPress, input: input)
+  }
+
+  /// Execute one batch of engine decisions on the main thread, in order (#3544 P1).
+  private func execute(_ batch: RecordGestureEngine.Batch, valid: Bool) {
+    for effect in batch.effects {
+      if case .loneTapResolved = effect {
+        onDebounceResolvedForTesting?()
+        continue
+      }
+      // The one invalidation rule (plan §3.4): an older epoch or a refused attempt, re-read per
+      // effect because an earlier effect in this batch may have reset or refused.
+      guard valid, engine.isValid(batch) else { continue }
+      switch effect {
+      case .press(let press): executePress(press, attemptID: batch.attemptID)
+      case .holdStop: executeHoldStop()
+      case .quickRelease(let trace): executeQuickRelease(trace)
+      case .loneTapStop(let trace): executeLoneTapStop(trace)
+      case .cancel(let cancel): executeListenerCancel(cancel)
+      case .dismiss(let dismiss): executeListenerDismiss(dismiss)
+      case .loneTapResolved: break
+      }
     }
   }
 
-  private func handleRecordPress() {
-    // Guard: if already held (duplicate press event), ignore
-    guard !isModifierHeld else { return }
-    isModifierHeld = true
+  /// The listener's bare cancel, decided by the engine in input order (#3544 P3). The engine
+  /// already ended the attempt it captured; main runs the same cancel as the Carbon cancel chord,
+  /// except that it clears execution state only for that attempt, so a newer attempt decided
+  /// after the cancel keeps its start. Disarming here is what lets the key's next press belong to
+  /// a lower role; the key's own release never re-enters (its route in `KeyboardListenerIngress`
+  /// is cancel, which ends nowhere).
+  private func executeListenerCancel(_ cancel: RecordGestureEngine.Cancel) {
+    // The recording that armed it may have ended since the key was pressed; then there is
+    // nothing to cancel, and the engine's ending of an attempt that no longer records is moot.
+    guard isCancelArmed else { return }
+    isCancelArmed = false
+    if executingAttemptID == cancel.attemptID { clearExecutionState() }
+    listenerCancellationTask = Task { [weak self] in
+      guard let self else { return }
+      await self.onCancelRecording?()
+    }
+    emitHotkeyPressed(.cancel, trigger: .cancel)
+  }
+
+  /// Other-key interference ended this attempt in the engine (#3544 P4, D2). Main ends the
+  /// recording that attempt's start produced, once that start has resolved, and nothing else: a
+  /// start main never issued (refused, replaced) has nothing to end, and the session check in
+  /// `onDismissRecording` keeps a newer take safe. A press after this waits for it, as after a
+  /// listener cancel (`listenerCancellationTask`).
+  private func executeListenerDismiss(_ dismiss: RecordGestureEngine.Dismiss) {
+    let attempt = dismiss.attemptID
+    guard executingAttemptID == attempt else { return }
+    pendingDismissals.insert(attempt)
+    if acceptedStartPressID == attempt, let sessionID = acceptedSessionID {
+      dismissedSessions[attempt] = sessionID
+    }
+    clearExecutionState()
+    let start = recordingTask
+    let earlier = listenerCancellationTask
+    listenerCancellationTask = Task { [weak self] in
+      await earlier?.value
+      await start?.value
+      guard let self else { return }
+      self.pendingDismissals.remove(attempt)
+      guard let sessionID = self.dismissedSessions.removeValue(forKey: attempt) else { return }
+      await self.onDismissRecording?(sessionID)
+    }
+  }
+
+  private func executePress(_ press: RecordGestureEngine.Press, attemptID: UInt64) {
+    let input = press.input
+    if let pressedMs = press.afterStopTimerMs {
+      Task {
+        await AppLogger.shared.log(
+          "Second press arrived after the lone-tap stop (pressed \(pressedMs)ms after first)",
+          level: .info, category: "HotkeyService"
+        )
+      }
+    }
+    // #3534 §3.3: offered once, BEFORE the processing guard, so a refused press can carry it.
+    // Only the `start` and `ignored_processing` rows below attach it; any other role drops it.
+    let afterStopTimer: String? = press.afterStopTimerMs != nil ? "after_stop_timer" : nil
 
     // Anti-spam Layer 1: Block new recordings while pipeline is processing.
+    // #3544 P1 (plan §3.5, D3): checked when each press-derived decision EXECUTES; a refusal
+    // refuses that attempt, so its later decisions are dropped and a newer attempt is untouched.
     if let isProcessing = onIsProcessing, isProcessing() {
       Task {
         await AppLogger.shared.log(
@@ -732,162 +1033,173 @@ public final class HotkeyService {
         )
       }
       // #1175 (C3): a press that never commits is exactly an under-fire case.
-      emitHotkeyPressed(.ignoredProcessing, trigger: .ptt)
-      isModifierHeld = false
+      emitHotkeyPressed(.ignoredProcessing, trigger: .ptt, windowTiming: afterStopTimer, decidedUnder: press)
+      refuseAttempt(attemptID)
+      engine.forgetHeld(ifNoInputAfter: press.inputSequence)
       return
     }
 
-    let isRecording = recordingStartTime != nil
-
-    if !isRecording {
-      // Not recording → start fresh
-      stateGeneration &+= 1
-      isRecordingLocked = false
-      recordingStartTime = now()
+    switch press.decision {
+    case .start(let pressID):
       // #1631: a fresh attempt owns a fresh identity, and inherits no acceptance.
-      startPressID &+= 1
-      acceptedStartPressID = nil
-      acceptedSessionID = nil
-      let pressID = startPressID
-      debounceTask?.cancel()
-      debounceTask = nil
+      clearExecutionState()
+      executingAttemptID = pressID
       recordingTask?.cancel()
+      let pendingCancellation = listenerCancellationTask
       recordingTask = Task { [weak self] in
         guard let self else { return }
-        guard let handler = self.onStartRecording else {
+        // A listener cancel decided before this press finishes first (see
+        // `listenerCancellationTask`); if this start was replaced meanwhile, the newer one owns it.
+        if let pendingCancellation {
+          self.onListenerCancellationWaitForTesting?()
+          await pendingCancellation.value
+          guard !Task.isCancelled, self.executingAttemptID == pressID else { return }
+        }
+        guard let handler = press.joinsRecording ? self.onJoinRecording : self.onStartRecording
+        else {
           // No callback wired means nothing was recorded, so the optimistic
           // bookkeeping is exactly as wrong here as on any other refusal.
           self.resolveStart(pressID: pressID, outcome: .noRecording)
           return
         }
-        self.resolveStart(pressID: pressID, outcome: await handler())
+        var outcome = await handler()
+        // #3544 P4: the session this press was to join ended before main ran it (a stop the engine
+        // never saw: menu, window, auto-stop, cap). With no ordinary key held at the press, a
+        // fresh take is what the press would have been, so start one rather than drop it.
+        if press.joinsRecording, press.mayStartIfJoinFails, outcome == .noRecording,
+          !Task.isCancelled, self.executingAttemptID == pressID,
+          let start = self.onStartRecording
+        {
+          self.engine.unmarkJoined(attempt: pressID)
+          outcome = await start()
+        }
+        self.resolveStart(pressID: pressID, outcome: outcome)
       }
       // #1175 (C3): emit AFTER the recording Task is created; the `.live` sink
       // defers the actual write off this turn so it never delays the callback.
-      emitHotkeyPressed(.start, trigger: .ptt)
-    } else if let startTime = recordingStartTime,
-      now().timeIntervalSince(startTime) <= Double(TimingConstants.handsFreeDebounceDelayMs)
-        / 1000.0
-    {
-      // Within 500ms window
-      if isRecordingLocked {
-        // Triple press → cancel
-        Task {
-          await AppLogger.shared.log(
-            "Triple press — cancelling hands-free recording",
-            level: .info, category: "HotkeyService"
-          )
-        }
-        performCleanup()
-        isModifierHeld = false
-        recordingTask?.cancel()
-        recordingTask = Task { await onCancelRecording?() }
-        // #1175 (Codex code-diff #2): hands-free triple-press cancel is an
-        // accepted keydown too — distinguished from the Escape cancel by trigger.
-        emitHotkeyPressed(.cancel, trigger: .ptt)
-      } else {
-        // Double press → lock into hands-free
-        Task {
-          await AppLogger.shared.log(
-            // #1631: this records the REQUEST. Whether it becomes a lock is not
-            // known yet — `Hands-free mode activated` is logged by the publisher.
-            "Double press — requesting hands-free mode",
-            level: .info, category: "HotkeyService"
-          )
-        }
-        debounceTask?.cancel()
-        debounceTask = nil
-        isRecordingLocked = true
-        lockTime = now()
-        // DO NOT cancel recordingTask here — the pipeline startup must
-        // continue running. Cancelling it aborts preWarm/toggleRecording,
-        // leaving the UI locked but no actual recording happening.
-        // #1631: intent is recorded above; publication happens only if this
-        // press's start has already confirmed a session that is still running.
-        // If it has not yet, `resolveStart` publishes when it does.
-        publishLockIfReady()
-        emitHotkeyPressed(.lock, trigger: .ptt)
+      emitHotkeyPressed(.start, trigger: .ptt, windowTiming: afterStopTimer, decidedUnder: press)
+
+    case .tripleCancel:
+      Task {
+        await AppLogger.shared.log(
+          "Triple press — cancelling hands-free recording",
+          level: .info, category: "HotkeyService"
+        )
       }
-    } else if isRecordingLocked {
-      // Lock cooldown: ignore presses within 500ms of locking.
-      // Prevents accidental finger-bounce on modifier keys from
-      // immediately stopping a just-locked recording.
-      if let lt = lockTime,
-        now().timeIntervalSince(lt) <= Double(TimingConstants.handsFreeDebounceDelayMs) / 1000.0
-      {
-        Task {
-          await AppLogger.shared.log(
-            "Press ignored — lock cooldown (\(Int(now().timeIntervalSince(lt) * 1000))ms since lock)",
-            level: .info, category: "HotkeyService"
-          )
-        }
-        // #1175 (Codex code-diff #2): a cooldown finger-bounce is an accepted
-        // keydown that produces no recording action.
-        emitHotkeyPressed(.ignoredCooldown, trigger: .ptt)
-        isModifierHeld = false
-        return
+      clearExecutionState()
+      recordingTask?.cancel()
+      recordingTask = Task { await onCancelRecording?() }
+      // #1175 (Codex code-diff #2): hands-free triple-press cancel is an
+      // accepted keydown too — distinguished from the Escape cancel by trigger.
+      emitHotkeyPressed(.cancel, trigger: .ptt, decidedUnder: press)
+
+    case .lockIntent(let windowTiming, let elapsedMs, let usesOccurrence):
+      Task {
+        await AppLogger.shared.log(
+          // #1631: this records the REQUEST. Whether it becomes a lock is not
+          // known yet — `Hands-free mode activated` is logged by the publisher.
+          "Double press — requesting hands-free mode",
+          level: .info, category: "HotkeyService"
+        )
       }
-      // Single press while locked (after cooldown) → stop
+      #if DEBUG
+        traceTiming(
+          "lock_intent press=\(attemptID) press_handled=\(Self.traceSeconds(input.handled)) "
+            + "press_occurred=\(Self.traceSeconds(input.occurred)) "
+            + "clock=\(usesOccurrence ? "occurrence" : "handling") "
+            + "elapsed_ms=\(elapsedMs) window_timing=\(windowTiming)")
+      #endif
+      lockIntentAttemptID = attemptID
+      // DO NOT cancel recordingTask here — the pipeline startup must
+      // continue running. Cancelling it aborts preWarm/toggleRecording,
+      // leaving the UI locked but no actual recording happening.
+      // #1631: intent is recorded above; publication happens only if this
+      // press's start has already confirmed a session that is still running.
+      // If it has not yet, `resolveStart` publishes when it does.
+      publishLockIfReady()
+      emitHotkeyPressed(.lock, trigger: .ptt, windowTiming: windowTiming, decidedUnder: press)
+
+    case .ignoredCooldown(let sinceLockMs):
+      Task {
+        await AppLogger.shared.log(
+          "Press ignored — lock cooldown (\(sinceLockMs)ms since lock)",
+          level: .info, category: "HotkeyService"
+        )
+      }
+      // #1175 (Codex code-diff #2): a cooldown finger-bounce is an accepted
+      // keydown that produces no recording action.
+      emitHotkeyPressed(.ignoredCooldown, trigger: .ptt, decidedUnder: press)
+      // D2: the base cleared the held key after this row; skip it if a later input already moved
+      // the key.
+      engine.forgetHeld(ifNoInputAfter: press.inputSequence)
+
+    case .stopLocked:
       Task {
         await AppLogger.shared.log(
           "Single press while locked — stopping hands-free recording",
           level: .info, category: "HotkeyService"
         )
       }
-      performCleanup()
-      isModifierHeld = false
+      clearExecutionState()
       recordingTask?.cancel()
       recordingTask = Task { await onStopRecording?() }
       // #1175 (Codex code-diff #2): single press while locked stops the session.
-      emitHotkeyPressed(.stop, trigger: .ptt)
-    }
-  }
+      emitHotkeyPressed(.stop, trigger: .ptt, decidedUnder: press)
 
-  private func handleRecordRelease() {
-    guard isModifierHeld else { return }
-    isModifierHeld = false
-
-    let isRecording = recordingStartTime != nil
-
-    // Not recording → ignore
-    guard isRecording else { return }
-
-    // Locked → suppress release entirely
-    if isRecordingLocked { return }
-
-    // Quick release (within 500ms) → debounce, wait for double-press
-    if let startTime = recordingStartTime,
-      now().timeIntervalSince(startTime) <= Double(TimingConstants.handsFreeDebounceDelayMs)
-        / 1000.0
-    {
-      stateGeneration &+= 1
-      let capturedGeneration = stateGeneration
-      debounceTask?.cancel()
-      debounceTask = Task { @MainActor [weak self] in
-        try? await Task.sleep(for: .milliseconds(TimingConstants.handsFreeDebounceDelayMs))
-        guard !Task.isCancelled, let self else { return }
-        // Stale check: if any state-changing event occurred during sleep,
-        // this callback is outdated and must not fire.
-        guard self.stateGeneration == capturedGeneration else { return }
-        // Timer fired — user didn't double-press. Stop as normal PTT.
-        guard self.recordingStartTime != nil, !self.isRecordingLocked else { return }
-        Task {
-          await AppLogger.shared.log(
-            "Debounce timer fired — stopping PTT (no double-press detected)",
-            level: .info, category: "HotkeyService"
-          )
-        }
-        self.performCleanup()
-        self.recordingTask?.cancel()
-        self.recordingTask = Task { await self.onStopRecording?() }
+    case .lateAfterWindow(let afterFirstMs):
+      Task {
+        await AppLogger.shared.log(
+          "Second press after the double-tap window (\(afterFirstMs)ms after first)",
+          level: .info, category: "HotkeyService"
+        )
       }
-    } else {
-      // Normal PTT release (held > 500ms) → stop immediately
-      performCleanup()  // increments stateGeneration
-      recordingTask?.cancel()
-      recordingTask = Task { await onStopRecording?() }
+      emitHotkeyPressed(.lateAfterWindow, trigger: .ptt, decidedUnder: press)
     }
   }
+
+  /// Normal PTT release (held > 500ms) → stop immediately.
+  private func executeHoldStop() {
+    clearExecutionState()
+    recordingTask?.cancel()
+    recordingTask = Task { await onStopRecording?() }
+  }
+
+  private func executeQuickRelease(_ trace: RecordGestureEngine.QuickReleaseTrace) {
+    #if DEBUG
+      traceTiming(
+        "quick_release \(Self.quickTracePrefix(trace)) "
+          + "release_occurred=\(Self.traceSeconds(trace.release.occurred)) "
+          + "event_deadline=\(Self.traceSeconds(trace.eventDeadline))")
+    #endif
+  }
+
+  private func executeLoneTapStop(_ trace: RecordGestureEngine.LoneTapStopTrace) {
+    Task {
+      await AppLogger.shared.log(
+        "Debounce timer fired — stopping PTT (no double-press detected)",
+        level: .info, category: "HotkeyService"
+      )
+    }
+    // (2) Cleanup, which itself voids the measurement (bumps the epoch): done by the engine.
+    clearExecutionState()
+    #if DEBUG
+      traceTiming(
+        "stop_request \(Self.quickTracePrefix(trace.quick)) "
+          + "requested_at=\(Self.traceSeconds(trace.requestedAt)) "
+          + "attributable=\(trace.attributable) (a stop request, not a finished recording)")
+    #endif
+    // (4) Queue the normal stop, attributable or not.
+    recordingTask?.cancel()
+    recordingTask = Task { await onStopRecording?() }
+  }
+
+  #if DEBUG
+    private static func quickTracePrefix(_ trace: RecordGestureEngine.QuickReleaseTrace) -> String {
+      "press=\(trace.attemptID) release_handled=\(traceSeconds(trace.release.handled)) "
+        + "deadline=\(traceSeconds(trace.deadline)) "
+        + "clock=\(trace.usesOccurrence ? "occurrence" : "handling")"
+    }
+  #endif
 
   // MARK: - Carbon Event Handler
 
@@ -906,45 +1218,22 @@ public final class HotkeyService {
     // `[weak self]` because the adapter retains this callback for the life of the
     // handler; a strong capture would be service -> adapter -> callback -> service.
     eventHandlerToken = effects.installCarbonHandler { [weak self] event in
-      self?.handleCarbonHotkey(id: event.id, isRelease: event.isRelease)
+      self?.handleCarbonHotkey(id: event.id, isRelease: event.isRelease, timestamp: event.timestamp)
     }
   }
 
-  // MARK: - NSEvent Modifier Monitors
+  // MARK: - Bindings
 
-  /// Whether either role needs the `NSEvent` modifier monitors.
-  ///
-  /// #1991, blocker 2. This was `isModifierOnly(toggleKeyCode)` — the RECORD key
-  /// only — so a user pairing a bare-modifier CANCEL key with a chord record key
-  /// got no monitor at all, and nothing could observe their cancel key. That is
-  /// the default record shape, so it is the configuration the affected users are
-  /// actually in. Fixing the dispatch comparison alone would have left them
-  /// exactly as broken while every dispatch-level test passed.
-  ///
-  /// `package` so the install condition is testable directly. Testing it through
-  /// `installModifierMonitors()` would assert on `NSEvent` monitor objects, which
-  /// says nothing about the decision being made here.
-  /// #2381 reproduced #1991's blocker 2 before this was written. The condition was
-  /// `recordBinding.isBareModifier || cancelBinding.isBareModifier` — a hand-written disjunction over
-  /// the roles that existed when it was authored — so a user pairing a bare-modifier QUICK ADD with a
-  /// chord record key and a chord cancel key got no monitor at all, and their shortcut was stored,
-  /// displayed, and completely inert. Exactly the defect the comment above describes, one role over,
-  /// added by the change that quotes it.
-  ///
-  /// It now asks the CLOSED SET rather than a list of the roles someone remembered, so a fourth role
-  /// is included by construction instead of by whoever adds it noticing this line.
-  package var shouldInstallModifierMonitors: Bool {
-    bareModifierRoleAtRisk != nil
-  }
-
-  /// Which role loses its dispatch if the modifier monitors are missing, or nil when none is a bare
-  /// modifier and the monitors are not needed at all.
+  /// Which bare-modifier role loses its dispatch if the keyboard listener is missing, or nil when
+  /// none is a bare modifier.
   ///
   /// One value, so the most SEVERE loss wins — `ShortcutRole`'s declaration order is that severity
-  /// order and its doc comment says so. Read by both the install decision and the failure label, so
-  /// the two cannot come to disagree about which roles matter.
+  /// order and its doc comment says so. It asks the CLOSED SET (`ShortcutBindings`) rather than a
+  /// list of the roles someone remembered: #1991 and #2381 each shipped a hand-written disjunction
+  /// that missed a role (bare-modifier cancel, then Quick Add) and left that shortcut stored,
+  /// displayed and inert.
   package var bareModifierRoleAtRisk: ShortcutRole? {
-    ShortcutRole.allCases.first { binding(for: $0).isBareModifier }
+    bindings.bareModifierRoleAtRisk
   }
 
   /// The binding a role is currently bound to. A switch, so a new role must be given one.
@@ -980,119 +1269,361 @@ public final class HotkeyService {
     .keyboard(keyCode: quickAddKeyCode, modifiers: quickAddModifiers)
   }
 
-  /// Which roles a press may currently trigger.
-  ///
-  /// Record is live whenever the service is; cancel only between
-  /// `registerCancelHotkey()` and `unregisterCancelHotkey()`, which the lifecycle
-  /// drives on `.recording` entry and exit. The Carbon path gets this for free —
-  /// an unregistered hotkey delivers no event — but the modifier monitors stay
-  /// installed the whole time, so the modifier path has to ask.
-  /// The bare-modifier keyCode whose press cancel consumed, until its aggregate flag drops.
-  ///
-  /// Exists because `isPress` is derived from a device-INDEPENDENT flag: with Left Option held,
-  /// releasing Right Option leaves `.option` set, so the release is indistinguishable from a press
-  /// at this layer. Cancel closes its own double-fire by disarming, which is correct and is exactly
-  /// what lets a second role claim the re-entry — see the note at the disarm.
-  ///
-  /// **Deliberately NOT cleared by `unregisterCancelHotkey()`, and that is load-bearing rather than
-  /// an omission.** That teardown runs on the way out of a cancel, which is inside the window this
-  /// marker exists to cover, so clearing it there would make the whole thing dead code that still
-  /// reads as a fix. The aggregate flag dropping is the only signal that the gesture is actually
-  /// over, so it is the only thing that clears this.
-  private var keyCodeConsumedByCancel: UInt16?
-
+  /// Which roles a press may currently trigger: record whenever the service is, cancel only between
+  /// `registerCancelHotkey()` and `unregisterCancelHotkey()`, the app shortcuts always. One owner,
+  /// `ShortcutRole.armedRoles(cancelArmed:)`, also read by the listener's classification.
   private var armedRoles: Set<ShortcutRole> {
-    // Quick Add, Paste Last and Copy Last are unconditional: they belong to the app, not to a
-    // recording.
-    isCancelArmed
-      ? [.record, .cancel, .quickAdd, .pasteLast, .copyLast]
-      : [.record, .quickAdd, .pasteLast, .copyLast]
-  }
-
-  private func installModifierMonitors() {
-    removeModifierMonitors()
-
-    guard shouldInstallModifierMonitors else { return }
-
-    // Read AFTER the teardown above, so both closures carry the identity of the
-    // installation being created here rather than the one it replaced. Both
-    // monitors are stamped with the same value on purpose: the generation
-    // identifies the INSTALLATION, and these two closures are that installation.
-    let generation = monitorGeneration
-
-    // The off-main-thread hop, the `NSEvent` decoding and the local monitor's
-    // pass-through return all moved into the adapter with the calls that owned
-    // them (#2455 C2). What stays is policy: which installation a callback
-    // belongs to, and what a nil install means.
-    globalModifierMonitorToken = recordMonitorInstall(
-      effects.installGlobalModifierMonitor { [weak self] event in
-        self?.handleInstalledMonitorFlagsChangedValues(
-          keyCode: event.keyCode,
-          flags: NSEvent.ModifierFlags(rawValue: UInt(event.rawFlags)),
-          generation: generation)
-      }, scope: "global")
-
-    localModifierMonitorToken = recordMonitorInstall(
-      effects.installLocalModifierMonitor { [weak self] event in
-        self?.handleInstalledMonitorFlagsChangedValues(
-          keyCode: event.keyCode,
-          flags: NSEvent.ModifierFlags(rawValue: UInt(event.rawFlags)),
-          generation: generation)
-      }, scope: "local")
-  }
-
-  /// #1175 (C2): the single chokepoint for an `NSEvent` modifier-monitor install.
-  /// A `nil` return means a modifier-only hotkey is silently dead → report it.
-  /// Returns the monitor unchanged so the call site assigns it as before.
-  /// `internal` (not `private`) so the nil path is unit-testable without
-  /// abstracting the whole `NSEvent` stack.
-  /// #2455 C2: takes and returns a `DesktopEffectToken?` rather than a raw `Any?`
-  /// monitor. The telemetry contract is unchanged — a nil install still reports
-  /// the role at risk — but no `NSEvent` value reaches this module any more.
-  func recordMonitorInstall(_ monitor: DesktopEffectToken?, scope: String) -> DesktopEffectToken? {
-    if monitor == nil {
-      // Which ROLE dies if this monitor is missing. It used to hard-code
-      // "toggle", which was true while the monitors only ever existed for a
-      // modifier-only RECORD key. Now they also install when only CANCEL is a
-      // bare modifier, so a hard-coded kind would report a dead cancel shortcut
-      // as a toggle failure — mislabelling the telemetry for exactly the users
-      // this change is for, in the one signal that would tell us it broke.
-      //
-      // Record wins when several are bare modifiers: it is armed for the whole
-      // session while cancel is armed only during a recording, so it is the
-      // more severe loss and the field holds one value.
-      //
-      // #2381: this was `recordBinding.isBareModifier ? "toggle" : "cancel"`, a THIRD two-role
-      // ternary alongside the two the switch repairs elsewhere in this file, and it reported a dead
-      // bare-modifier Quick Add as a dead CANCEL shortcut. It now reads the same closed enumeration
-      // the install decision does.
-      let kind = bareModifierRoleAtRisk?.telemetryKind ?? "unknown"
-      telemetry.registrationFailed("nsevent_\(scope)", kind, nil, "modifier_only")
-    }
-    return monitor
-  }
-
-  private func removeModifierMonitors() {
-    release(&globalModifierMonitorToken)
-    release(&localModifierMonitorToken)
-    // Bump on EVERY teardown, including one that removed nothing. This is the
-    // single writer of `monitorGeneration`, and it is the only NSEvent-monitor
-    // teardown path: `stop()` and `suspend()` call it directly, and
-    // `installModifierMonitors()` calls it first, so `stop(); start()` and
-    // `suspend(); resume()` each burn two generations. An event queued against
-    // any earlier installation can therefore never match again.
-    monitorGeneration &+= 1
+    ShortcutRole.armedRoles(cancelArmed: isCancelArmed)
   }
 
   private func removeCarbonEventHandler() {
     release(&eventHandlerToken)
   }
 
+  /// Install the keyboard listener (#3544): the only reader of bare-modifier shortcuts (P3). Every
+  /// event passes through to the system. A failure leaves bare-modifier shortcuts silent, as
+  /// without Accessibility (plan Architecture DoD); it is reported once and retried while the
+  /// service is running and not suspended, at the cadence the app already polls a missing
+  /// Accessibility grant (`TimingConstants.accessibilityPollIntervalSec`), the usual cause.
+  private func installKeyboardListener() {
+    guard isEnabled, !isSuspended else { return }
+    listenerRetry?.cancel()
+    listenerRetry = nil
+    listenerGeneration &+= 1
+    let generation = listenerGeneration
+    // A listener whose earlier removal was refused (its cleanup ran late) is removed now; until
+    // that succeeds no second listener is installed, and the removal is retried.
+    if keyboardListenerToken != nil { releaseKeyboardListener(reason: "reinstall") }
+    guard keyboardListenerToken == nil else {
+      scheduleListenerRetry(generation)
+      return
+    }
+    // A storm stops the installation from the listener's thread; main replaces it.
+    let stormed: @Sendable () -> Void = { [weak self] in
+      DispatchQueue.main.async { [weak self] in
+        MainActor.assumeIsolated { self?.listenerStormed(installation: generation) }
+      }
+    }
+    // Secure Input changes are logged on main, never on the listener's thread (plan A2).
+    let secureInputSeen: @Sendable (SecureInputObservation) -> Void = { [weak self] observation in
+      DispatchQueue.main.async { [weak self] in
+        MainActor.assumeIsolated {
+          self?.listenerSawSecureInput(observation, installation: generation)
+        }
+      }
+    }
+    // The ingress belongs to this installation alone: its own tracker, routes and sweep.
+    let ingress = KeyboardListenerIngress(
+      installation: generation, engine: engine, reader: effects.keyStateReader, clock: uptime,
+      scheduler: listenerRetryScheduler,
+      toMain: { [weak self] edge in
+        DispatchQueue.main.async { [weak self] in
+          MainActor.assumeIsolated { self?.handleListenerEdge(edge) }
+        }
+      },
+      observe: { [weak self] observation in
+        DispatchQueue.main.async { [weak self] in
+          MainActor.assumeIsolated { self?.reportListenerObservation(observation) }
+        }
+      })
+    let sink: @Sendable (KeyEventValue) -> Void = { event in
+      ingress.receive(event)
+      if event.kind == .stormStopped { stormed() }
+      if let observation = event.secureInput { secureInputSeen(observation) }
+    }
+    listenerInstallAttempts += 1
+    // Admission opens before the adapter call: the tap can deliver a press before the call
+    // returns, and the engine must own that press or its hold records nothing.
+    engine.openListenerAdmission(installation: generation)
+    if let token = effects.installKeyboardListener(sink) {
+      keyboardListenerToken = token
+      listenerFailureReported = false
+      listenerInstalls += 1
+      keyboardListenerIngress = ingress
+      // The new installation's own watchdog covers a hold it never saw down.
+      cancelOrphanedHoldCheck()
+      ingress.start()
+      if listenerFailuresSinceInstall > 0 {
+        listenerFailuresSinceInstall = 0
+        reportListenerHealth(
+          terminal: "none", reason: "installed_after_failures", disableEpisodes: 0, reenables: 0)
+      }
+      return
+    }
+    engine.closeListenerAdmission()
+    ingress.close()
+    listenerInstallFailures += 1
+    listenerFailuresSinceInstall += 1
+    if !listenerFailureReported {
+      listenerFailureReported = true
+      telemetry.registrationFailed(
+        "event_tap", ShortcutRole.record.telemetryKind, nil,
+        recordBinding.isBareModifier ? "modifier_only" : "chord")
+    }
+    scheduleListenerRetry(generation)
+    armOrphanedHoldCheck()
+  }
+
+  /// Field health for a decision the listener already committed (#3544 P6). Telemetry only, and
+  /// deliberately not checked against the current installation or configuration: the decision was
+  /// true when it was made, and its row carries the key and mode it was made under.
+  private func reportListenerObservation(_ observation: KeyboardListenerIngress.Observation) {
+    switch observation {
+    case .startRefusedKeyHeld(let keyCode):
+      // Only bare-modifier push-to-talk presses reach the engine's listener path.
+      emitHotkeyPressed(.refusedKeyHeld, trigger: .ptt, frozen: (keyCode, .pushToTalk))
+    case .staleKeyCleared(let kind):
+      reportListenerHealth(
+        terminal: "none", reason: "stale_key_cleared", disableEpisodes: 0, reenables: 0,
+        staleKind: kind.rawValue)
+    case .tapReenabled:
+      reportListenerHealth(
+        terminal: "none", reason: "tap_reenabled", disableEpisodes: 0, reenables: 0)
+    }
+  }
+
+  /// A Secure Input change the listener `installation` observed (plan A2). Logged only; no take is
+  /// ended, cancelled or locked by it (bare modifiers keep arriving under Secure Input, #3544 P0).
+  /// Ignored for an installation that is no longer current.
+  private func listenerSawSecureInput(_ observation: SecureInputObservation, installation: UInt64) {
+    guard installation == listenerGeneration else { return }
+    onSecureInputLoggedForTesting?(observation)
+    secureInputOn = observation.enabled
+    // A Secure Input period ends here: the next one may tell the user again.
+    if !observation.enabled { secureInputNoticeShown = false }
+    // Entered during an accepted take whose other-key rule still applies: the same policy as a
+    // start. Later in a take the rule no longer applies, so nothing is paused for it.
+    if observation.enabled, let sessionID = acceptedSessionID {
+      noticeSecureInputIfRelevant(sessionID)
+    }
+    let owner = observation.ownerPID.map { "pid=\($0)" } ?? "owner=unknown"
+    let line = observation.enabled ? "Secure Input on (\(owner))" : "Secure Input off"
+    Task {
+      await AppLogger.shared.log(line, level: .info, category: "HotkeyService")
+    }
+  }
+
+  /// #3544 P4 (D4, founder 2026-10-09): a bare push-to-talk dictation just started while Secure
+  /// Input is on, so the listener cannot see ordinary keys and the other-key rule (D2) is paused.
+  /// Told once per Secure Input period (until it is observed off), for the session that start
+  /// produced. State comes from the listener's own sampling (at install, then every 5 s), never
+  /// from a hidden key or a guessed app; a period younger than one sample is not yet known.
+  private func noticeSecureInputIfRelevant(_ sessionID: String) {
+    // Only while the take's other-key rule still applies: a start that resolved late, or a take
+    // already locked, has nothing paused.
+    guard secureInputOn, !secureInputNoticeShown, recordBinding.isBareModifier,
+      recordingMode == .pushToTalk, isEnabled, !isSuspended,
+      engine.otherKeyRuleApplies(at: uptime())
+    else { return }
+    // Counted as told only when the presentation accepted it, so a refused one (a session no
+    // longer running) leaves the period's notice for the next valid take.
+    if onSecureInputPausedKeyFeatures?(sessionID) == true {
+      secureInputNoticeShown = true
+      // #3544 P6: one row per notice shown, so at most one per observed Secure Input period.
+      reportListenerHealth(
+        terminal: "none", reason: "secure_input_notice", disableEpisodes: 0, reenables: 0)
+    }
+  }
+
+  /// #3544 P4: show the Secure Input notice on the recording session `String` started, if it is
+  /// still the one running; returns whether it was shown. The `String` is the opaque token
+  /// `onLockRequested` receives.
+  package var onSecureInputPausedKeyFeatures: (@MainActor (String) -> Bool)?
+
+  /// Test seam: a main-thread listener edge was judged current (true) or refused (false), before
+  /// it acts. Production never sets it.
+  package var onListenerEdgeHandledForTesting:
+    (@MainActor (KeyboardListenerIngress.MainEdge, Bool) -> Void)?
+
+  /// Test seam: a Secure Input observation was accepted for logging. Production never sets it.
+  package var onSecureInputLoggedForTesting: (@MainActor (SecureInputObservation) -> Void)?
+
+  /// The listener `installation` stopped itself after a disable storm. Remove it (its final health
+  /// is accounted then) and install a fresh one after the cooldown. Ignored for an installation
+  /// that is no longer current: a stop, suspend or reinstall already replaced it.
+  private func listenerStormed(installation: UInt64) {
+    guard installation == listenerGeneration, keyboardListenerToken != nil else { return }
+    removeKeyboardListener(reason: "storm")
+    // Validated when it fires: a stop, suspend or reinstall in between moves the generation on.
+    scheduleListenerRetry(listenerGeneration, after: Self.listenerStormCooldown)
+    armOrphanedHoldCheck()
+  }
+
+  /// Arm the orphaned-hold check: with no listener ingress (none installed, or a removal the OS
+  /// refused, whose input is no longer admitted), nothing else can see the record
+  /// key come up, so a push-to-talk recording would run on until a replacement's first sweep
+  /// (after the storm cooldown) or, while installs keep failing, until the recording cap.
+  private func armOrphanedHoldCheck() {
+    // Only a press a reading may end is worth watching (#3544 P4 C2): an aggregate-only hold ends
+    // on observed input, an explicit stop or cancel, or the recording cap.
+    guard orphanedHoldCheck == nil, keyboardListenerIngress == nil, isEnabled, !isSuspended,
+      engine.ownedListenerPress?.recovery == .readable
+    else { return }
+    orphanedHoldCheckToken &+= 1
+    let token = orphanedHoldCheckToken
+    orphanedHoldCheck = listenerRetryScheduler(KeyboardListenerIngress.sweepInterval) {
+      [weak self] in
+      DispatchQueue.main.async { [weak self] in
+        MainActor.assumeIsolated { self?.orphanedHoldCheckFired(token: token) }
+      }
+    }
+  }
+
+  private func cancelOrphanedHoldCheck() {
+    orphanedHoldCheck?.cancel()
+    orphanedHoldCheck = nil
+    orphanedHoldReadUp = nil
+  }
+
+  private func orphanedHoldCheckFired(token: UInt64) {
+    // Cancelled since it was armed (an install succeeded, or a stop or suspend removed it).
+    guard token == orphanedHoldCheckToken, orphanedHoldCheck != nil else { return }
+    orphanedHoldCheck = nil
+    guard keyboardListenerIngress == nil, isEnabled, !isSuspended,
+      let press = engine.ownedListenerPress, press.recovery == .readable
+    else { return }
+    // Two consecutive up readings about the SAME attempt; a newer press of the key starts over.
+    let readUp = effects.keyStateReader([press.keyCode])[press.keyCode] == .up
+    let confirmed = readUp && orphanedHoldReadUp == press
+    orphanedHoldReadUp = readUp && !confirmed ? press : nil
+    if confirmed {
+      engine.releaseOrphanedListenerPress(
+        press, input: RecordGesture.InputTime(handled: uptime(), occurred: nil))
+      onOrphanedHoldReleasedForTesting?()
+      return
+    }
+    armOrphanedHoldCheck()
+  }
+
+  /// Test seam: the orphaned-hold check ended a hold. Production never sets it.
+  package var onOrphanedHoldReleasedForTesting: (@MainActor () -> Void)?
+
+  /// Release the listener's token. When the removal is confirmed, its final health is read and
+  /// accounted, once: a refused removal keeps the token, and is accounted when a later release
+  /// succeeds. Returns that final health.
+  @discardableResult
+  private func releaseKeyboardListener(reason: String) -> KeyboardListenerHealth? {
+    guard let token = keyboardListenerToken else {
+      // No listener to release, but a failure episode still open (installs kept failing and
+      // shortcuts are now stopping or suspending): report it once, so the totals leave the app.
+      if listenerFailuresSinceInstall > 0 {
+        listenerFailuresSinceInstall = 0
+        reportListenerHealth(
+          terminal: "start_failed", reason: reason, disableEpisodes: 0, reenables: 0)
+      }
+      return nil
+    }
+    release(&keyboardListenerToken)
+    guard keyboardListenerToken == nil, let health = effects.keyboardListenerHealth(token) else {
+      return nil
+    }
+    // Rare failure only: a healthy installation reports nothing.
+    if health.disableEpisodes > 0 || health.terminal == .disableStorm {
+      reportListenerHealth(
+        terminal: health.terminal == .disableStorm ? "disable_storm" : "removed", reason: reason,
+        disableEpisodes: health.disableEpisodes, reenables: health.reenables)
+    }
+    return health
+  }
+
+  private func reportListenerHealth(
+    terminal: String, reason: String, disableEpisodes: Int, reenables: Int,
+    staleKind: String? = nil
+  ) {
+    telemetry.listenerHealth(
+      HotkeyListenerHealthReport(
+        terminal: terminal, reason: reason, disableEpisodes: disableEpisodes,
+        reenables: reenables, installAttempts: listenerInstallAttempts,
+        installFailures: listenerInstallFailures, installs: listenerInstalls,
+        staleKind: staleKind))
+  }
+
+  /// Try the install again later, for this installation attempt only.
+  private func scheduleListenerRetry(
+    _ generation: UInt64, after delay: TimeInterval = TimingConstants.accessibilityPollIntervalSec
+  ) {
+    // Weak at every level: a pending retry must not keep a released service alive.
+    listenerRetry = listenerRetryScheduler(delay) {
+      [weak self] in
+      DispatchQueue.main.async { [weak self] in
+        MainActor.assumeIsolated {
+          guard let self else { return }
+          // Test seam: signalled on every exit of a retry that reached main.
+          defer { self.onListenerRetryResolvedForTesting?() }
+          guard self.listenerGeneration == generation else { return }
+          self.listenerRetry = nil
+          self.installKeyboardListener()
+        }
+      }
+    }
+  }
+
+  /// Remove the keyboard listener and retire any pending retry. A refused removal keeps the
+  /// token, so no replacement is installed while the old tap may still be live.
+  private func removeKeyboardListener(reason: String) {
+    listenerRetry?.cancel()
+    listenerRetry = nil
+    cancelOrphanedHoldCheck()
+    listenerGeneration &+= 1
+    // No input from this installation is admitted from now on, even a callback still finishing:
+    // the engine refuses it, and its ingress stops acting and retires its sweep.
+    engine.closeListenerAdmission()
+    keyboardListenerIngress?.close()
+    keyboardListenerIngress = nil
+    // Unknown until the next installation's first sample.
+    secureInputOn = false
+    // A bare-modifier action held now (Paste Last, Copy Last) can no longer see its release: the
+    // next installation's tracker starts empty. Retire the hold without firing it, so the next
+    // press acts (and Paste takes a fresh target); Carbon chord holds are not the listener's.
+    appShortcutsHeld = appShortcutsHeld.filter { $0.value == .chord }
+    // #3534 §3.3: an ingress teardown voids the stop-timer measurement (diagnostic only).
+    invalidateQuickTapDiagnostics()
+    #if DEBUG
+      let removing = keyboardListenerToken
+    #endif
+    // Remove first: once the adapter confirms, no callback for this installation is running.
+    let finalHealth = releaseKeyboardListener(reason: reason)
+    #if DEBUG
+      // Callback cost, read after removal so the final callback is counted; complete only when the
+      // removal was confirmed (a refused one leaves the listener running).
+      if let removing, let health = finalHealth ?? effects.keyboardListenerHealth(removing) {
+        let line = Self.listenerHealthLine(
+          reason: reason, health, complete: keyboardListenerToken == nil)
+        Task { await AppLogger.shared.log(line, level: .info, category: "HotkeyService") }
+      }
+    #else
+      _ = finalHealth
+    #endif
+  }
+
+  #if DEBUG
+    /// One `[listener] health` line per removed installation: whole-callback cost from entry to
+    /// return, excluding the one histogram increment that records it.
+    package static func listenerHealthLine(
+      reason: String, _ h: KeyboardListenerHealth, complete: Bool
+    ) -> String {
+      let terminal = h.terminal.map { "\($0)" } ?? "running"
+      var line =
+        "[listener] health reason=\(reason) terminal=\(terminal) "
+        + "disable_episodes=\(h.disableEpisodes) reenables=\(h.reenables)"
+      if let c = h.cost {
+        line +=
+          " cost_subject=callback_entry_to_return_excluding_recording cost_unit=ns "
+          + "samples=\(c.samples) max=\(c.maxNanoseconds) "
+          + "p99_bucket=[\(c.p99LowerNanoseconds),\(c.p99UpperNanoseconds)) "
+          + "recording_uncontended_mean=\(c.recordingNanoseconds) complete=\(complete)"
+      } else {
+        line += " cost=no_samples"
+      }
+      return line
+    }
+  #endif
+
   // MARK: - Registration Helpers
 
   private func registerToggleHotkey() {
     unregisterToggleHotkey()
-    // Modifier-only hotkeys are handled via NSEvent flagsChanged monitors —
+    // Modifier-only hotkeys are handled by the keyboard listener —
     // Carbon RegisterEventHotKey cannot register a bare modifier key. Asked
     // through the binding, the same way the cancel path asks it: two spellings
     // of one question is how the record and cancel paths drifted apart in the
@@ -1115,7 +1646,7 @@ public final class HotkeyService {
   /// The ONE place that decides which app shortcuts hold their Carbon chords (#2381, #3106).
   ///
   /// Asked through the BINDING, exactly as the toggle and cancel paths ask it — a bare modifier
-  /// cannot go to Carbon, and for that shape the already-installed `NSEvent` monitors observe it
+  /// cannot go to Carbon, and for that shape the already-installed keyboard listener observes it
   /// instead. Two spellings of that question is how the record and cancel paths drifted apart.
   ///
   /// **A shared chord is a policy question, and the event-tap path already answered it while the
@@ -1137,7 +1668,7 @@ public final class HotkeyService {
       releaseAppShortcut(role)
       // A press already seen belongs to a registration this role no longer holds; its release must
       // not fire into a chord another role now owns.
-      appShortcutsHeld.remove(role)
+      appShortcutsHeld[role] = nil
     }
     for (role, may) in decisions where may { registerAppShortcut(role) }
   }
@@ -1227,20 +1758,18 @@ public final class HotkeyService {
   /// Re-apply an app shortcut's binding after the user changes it (#2381 for Quick Add; #3106 for
   /// Paste Last and Copy Last).
   ///
-  /// Both halves, because the binding can change SHAPE — chord to bare modifier or back — which
-  /// moves it between Carbon and the monitors. Re-registering without re-installing the monitors
-  /// would leave the new shape unobserved, which is #1991's exact failure: a shortcut that is
-  /// stored, displayed, and inert.
+  /// The binding can change SHAPE — chord to bare modifier or back — which moves it between Carbon
+  /// and the keyboard listener. Carbon needs re-registering here; the listener already classifies
+  /// every key under the bindings `configureEngine()` published, so a new bare-modifier shape is
+  /// observed at once (#1991's failure was a shortcut stored, displayed and inert).
   package func reapplyAppShortcutBinding(_ role: ShortcutRole) {
     // The old chord's registration must go first: the token still holds it.
     releaseAppShortcut(role)
-    appShortcutsHeld.remove(role)
+    appShortcutsHeld[role] = nil
     // The reconciler owns both questions the two guards below used to ask separately — may we
     // register at all, and may we hold THIS chord. Rebinding Quick Add onto the cancel chord during
     // a recording is exactly the case a bare `registerQuickAddHotkey()` here would get wrong.
     reconcileAppShortcutRegistrations()
-    guard isEnabled, !isSuspended else { return }
-    installModifierMonitors()
   }
 
   /// A Carbon key chord, stored in CARBON's own modifier representation
@@ -1340,7 +1869,10 @@ public final class HotkeyService {
   // MARK: - Event Dispatch
 
   /// Called from the Carbon event handler on the main thread for RegisterEventHotKey events.
-  public func handleCarbonHotkey(id: UInt32, isRelease: Bool) {
+  ///
+  /// `timestamp`: the OS time the event happened, seconds since startup (#3534);
+  /// nil when unknown, which keeps handling-time behavior.
+  public func handleCarbonHotkey(id: UInt32, isRelease: Bool, timestamp: TimeInterval? = nil) {
     Task {
       await AppLogger.shared.log(
         "Carbon hotkey event: id=\(id), isRelease=\(isRelease), mode=\(recordingMode)",
@@ -1351,11 +1883,11 @@ public final class HotkeyService {
     case HotkeyID.toggle.rawValue:
       if recordingMode == .toggle {
         guard !isRelease else { return }
-        Task { await onToggleRecording?() }
+        queueToggleRecording(listenerInstallation: nil)
         emitHotkeyPressed(.toggle, trigger: .toggle)
       } else {
         // Push-to-talk mode with hands-free support
-        handleRecordAction(isPress: !isRelease)
+        handleRecordAction(isPress: !isRelease, input: capture(timestamp))
       }
 
     case HotkeyID.cancel.rawValue:
@@ -1373,172 +1905,90 @@ public final class HotkeyService {
 
     case HotkeyID.pasteLast.rawValue:
       guard carbonEventIsCurrent(for: .pasteLast) else { return }
-      handleLastDictationShortcut(.pasteLast, isPress: !isRelease)
+      handleLastDictationShortcut(.pasteLast, isPress: !isRelease, hold: .chord)
 
     case HotkeyID.copyLast.rawValue:
       guard carbonEventIsCurrent(for: .copyLast) else { return }
-      handleLastDictationShortcut(.copyLast, isPress: !isRelease)
+      handleLastDictationShortcut(.copyLast, isPress: !isRelease, hold: .chord)
 
     default:
       break
     }
   }
 
-  /// The lifecycle gate for a modifier event arriving from an INSTALLED monitor.
+  /// A bare-modifier shortcut edge from the keyboard listener that runs on main (#3544 P3): Quick
+  /// Add, Paste Last, Copy Last, and the record key in toggle mode. Push-to-talk record and cancel
+  /// never come here; the listener hands them to the engine on its own thread.
   ///
-  /// Removing a monitor stops NEW callbacks; it cannot recall one the global
-  /// monitor has already queued with `DispatchQueue.main.async`. Such an event is
-  /// refused here on arrival rather than trusted to have been prevented by the
-  /// teardown — removing an event source does not un-queue what it emitted.
+  /// **Refused unless it belongs to the CURRENT installation.** Removing the listener stops new
+  /// callbacks; it cannot recall an edge already queued to main. `listenerGeneration` changes on
+  /// every install and removal, so an edge from before a `stop(); start()` or `suspend(); resume()`
+  /// never acts after it (#1993). A PRESS must also have been classified under the current listener
+  /// configuration (a rebind or an explicit reset since then refuses it); a RELEASE needs only its
+  /// installation, because it ends the press its route remembers, whatever the binding is now.
   ///
-  /// Deliberately separate from `handleFlagsChangedValues`: this answers "is this
-  /// event from the monitor installation we currently have", while the seam below
-  /// answers "a modifier changed, what gesture is that". Folding the generation
-  /// check into the seam would silently re-scope every existing test that drives
-  /// it, none of which installs a monitor.
-  ///
-  /// `isSuspended` is NOT re-checked here — the seam owns it, and duplicating it
-  /// would not help anyway, because `suspend()`/`resume()` leaves it permissive
-  /// for exactly the delivery this guard exists to refuse (#1993).
-  package func handleInstalledMonitorFlagsChangedValues(
-    keyCode: UInt16, flags: NSEvent.ModifierFlags, generation: UInt64
-  ) {
-    guard generation == monitorGeneration else { return }
-    handleFlagsChangedValues(keyCode: keyCode, flags: flags)
-  }
+  /// The edge is explicit: the listener's tracker reads side bits, so a release is a release. The
+  /// deleted `NSEvent` path had to infer "a second event for a held key is its release" from
+  /// aggregate flags; nothing here infers.
+  private func handleListenerEdge(_ edge: KeyboardListenerIngress.MainEdge) {
+    let current =
+      edge.installation == listenerGeneration && isEnabled && !isSuspended
+      && (!edge.isPress || edge.generation == engine.listenerConfigurationGeneration)
+    onListenerEdgeHandledForTesting?(edge, current)
+    guard current else { return }
 
-  /// Processes modifier key changes from pre-extracted values.
-  /// Reached from both NSEvent modifier monitors through
-  /// `handleInstalledMonitorFlagsChangedValues`, which owns the installation
-  /// check; this function assumes that has already passed.
-  /// Test seam (#1987): `package` rather than `private` so tests drive the REAL
-  /// modifier dispatch path on a plain import. `internal` would work only through
-  /// `@testable`, which couples the seam to a compilation mode.
-  package func handleFlagsChangedValues(keyCode: UInt16, flags: NSEvent.ModifierFlags) {
-    guard !isSuspended else { return }
-
-    let currentFlags = flags.intersection(.deviceIndependentFlagsMask)
-
-    // Only known standalone modifier key codes; this also supplies the flag, so a
-    // member can never reach the press/release test without one (#1987).
-    guard let flag = ModifierKeyCodes.flag(for: keyCode) else { return }
-
-    // Determine press vs. release by checking whether the flag is present
-    let isPress = currentFlags.contains(flag)
-
-    // **Swallow the tail of a gesture cancel already consumed.** With the opposite-side modifier
-    // held, `isPress` stays true through this key's physical release (the mask is aggregate and
-    // device-independent), so the release re-enters looking exactly like a press — and cancel has
-    // disarmed itself by then, so the matcher hands the same key to the next role that claims it.
-    //
-    // Cleared when the aggregate flag finally drops, which is the only signal available that the
-    // whole gesture is over. Swallowing a genuine second tap of this key while the other side is
-    // still held is the accepted cost and it is the safe direction: the recording is already gone,
-    // and the alternative is opening a panel the user did not ask for on the way out of losing it.
-    if keyCodeConsumedByCancel == keyCode {
-      if !isPress { keyCodeConsumedByCancel = nil }
-      return
-    }
-
-    // #1991, blocker 1. This was `guard keyCode == toggleKeyCode`, which asked
-    // "is this the RECORD key" and returned early for everything else — so a
-    // bare modifier bound to CANCEL reached here and was dropped on the floor.
-    // The comparison now goes through the matcher, which is the single authority
-    // both dispatch paths consult, so a role cannot be handled by one mechanism
-    // and silently omitted from the other again.
-    guard
-      let role = ShortcutMatcher.role(
-        forBareModifierKeyCode: keyCode,
-        bindings: bindings,
-        armed: armedRoles)
-    else { return }
-
-    // #2381. This was `if role == .cancel { … return }` followed by the record path, so a role the
-    // matcher resolved and this site did not name FELL THROUGH AND STARTED A RECORDING — and it
-    // compiled perfectly, because an `if` over an enum asserts nothing about the members it omits.
-    // A bare-modifier Quick Add would have begun dictating instead of opening the panel. The switch
-    // below is what makes the compiler name every member, which is the entire reason `ShortcutRole`
-    // was made a closed set.
-    switch role {
+    // #2381. The old modifier path was `if role == .cancel { … return }` followed by the record
+    // path, so a role the matcher resolved and that site did not name FELL THROUGH AND STARTED A
+    // RECORDING, and it compiled perfectly, because an `if` over an enum asserts nothing about the
+    // members it omits. A switch makes the compiler name every member, which is why `ShortcutRole`
+    // is a closed set.
+    switch edge.role {
     case .pasteLast, .copyLast:
       // A bare-modifier rebind: the modifier's own press and release are the gesture.
-      //
-      // **`isPress` cannot see this key's release while the OTHER side's modifier is held** (the
-      // aggregate-flag hazard described under `.cancel` below): Right Command coming up with Left
-      // Command still down reads as a second press. But a flags-changed event for one key code is
-      // always a TRANSITION of that key, so a second event for a key already held is its release,
-      // whatever the aggregate flag says. Without this, Paste Last on bare Right Command would
-      // never fire for a user who rests on Left Command, and would stay latched until the next
-      // press.
-      handleLastDictationShortcut(role, isPress: isPress && !appShortcutsHeld.contains(role))
-      return
+      handleLastDictationShortcut(
+        edge.role, isPress: edge.isPress, hold: .modifier(keyCode: edge.keyCode))
 
     case .quickAdd:
-      // Press only: a modifier RELEASE is not a gesture. Quick Add carries none of cancel's
-      // aggregate-flag hazard, because it disarms nothing and destroys nothing — a stray second
-      // fire opens the panel twice, and the panel reuses its own window.
-      guard isPress else { return }
+      // Press only: a modifier RELEASE is not a gesture. A stray second fire opens the panel twice,
+      // and the panel reuses its own window.
+      guard edge.isPress else { return }
       Task { await onQuickAdd?() }
       emitHotkeyPressed(.quickAdd, trigger: .quickAdd)
-      return
-
-    case .cancel:
-      // A modifier RELEASE is not a press, on the common path.
-      guard isPress else { return }
-
-      // But `isPress` is NOT proof of a key-down, and this guard alone is not
-      // enough. `.command` / `.option` / `.shift` / `.control` are AGGREGATE,
-      // device-independent flags: with Left Command held, releasing Right
-      // Command leaves `.command` set, so the release reads as a press and the
-      // same physical tap cancels twice. An earlier version of this comment
-      // claimed the guard above prevented exactly that, which was wrong — the
-      // two-key case defeats it, and cloud review caught the claim.
-      //
-      // Disarming here closes it: cancelling ENDS the recording, so the role is
-      // no longer armed the instant it fires, and the stray release finds
-      // nothing to cancel. The lifecycle still calls `unregisterCancelHotkey()`
-      // on the way down; doing it synchronously here also closes the async
-      // window that call leaves open, since `onCancelRecording` is awaited in a
-      // Task that has not run yet when the release arrives.
-      //
-      // Residual, stated rather than engineered around: the aggregate-flag
-      // imprecision is pre-existing and still governs the RECORD path, which
-      // computes `isPress` the same way. Narrowing that needs the device-
-      // dependent left/right masks and would change heart-path dispatch, so it
-      // is not folded into a cancel-key fix.
-      isCancelArmed = false
-      // **AND DISARMING IS WHAT MAKES THE STRAY RELEASE DANGEROUS RATHER THAN HARMLESS, once a
-      // SECOND role can claim this key.** The comment above is right that the release "finds nothing
-      // to cancel" — it then falls through to the `.quickAdd` arm, which #2381 added, matches the
-      // same bare modifier when the user has bound both to it, and fires on `isPress`. So one cancel
-      // gesture discarded the recording AND opened the panel.
-      //
-      // Not a pre-existing residual: this branch introduced the second claimant. Marking the key is
-      // what lets the TAIL of a consumed gesture be swallowed instead of reinterpreted as a
-      // lower-priority role, and it is per-key rather than a flag because the aggregate mask cannot
-      // tell us which physical key came up.
-      keyCodeConsumedByCancel = keyCode
-      performCleanup()
-      Task { await onCancelRecording?() }
-      emitHotkeyPressed(.cancel, trigger: .cancel)
-      return
 
     case .record:
-      break
-    }
-
-    if recordingMode == .toggle {
-      guard isPress else { return }
+      // Toggle mode only; push-to-talk record goes to the engine on the listener's thread.
+      guard edge.isPress, recordingMode == .toggle else { return }
       Task {
         await AppLogger.shared.log(
-          "Modifier-only toggle: keyCode=\(keyCode)", level: .info, category: "HotkeyService"
+          "Modifier-only toggle: keyCode=\(edge.keyCode)", level: .info, category: "HotkeyService"
         )
       }
-      Task { await onToggleRecording?() }
+      queueToggleRecording(listenerInstallation: edge.installation)
       emitHotkeyPressed(.toggle, trigger: .toggle)
-    } else {
-      // Push-to-talk mode with hands-free support
-      handleRecordAction(isPress: isPress)
+
+    case .cancel:
+      // Decided by the engine in input order (`executeListenerCancel`), never here.
+      return
+    }
+  }
+
+  /// Run a toggle-mode record press after any listener cancel decided before it (see
+  /// `listenerCancellationTask`), so the toggle sees the cancelled session gone instead of
+  /// stopping or ignoring it. A toggle that waited is dropped if the service stopped, suspended or
+  /// left toggle mode meanwhile, or, for a listener press (`listenerInstallation`), if that
+  /// listener was replaced. With no cancel pending it runs at once, as before.
+  private func queueToggleRecording(listenerInstallation: UInt64?) {
+    guard let pendingCancellation = listenerCancellationTask else {
+      Task { await onToggleRecording?() }
+      return
+    }
+    Task { [weak self] in
+      self?.onListenerCancellationWaitForTesting?()
+      await pendingCancellation.value
+      guard let self, self.isEnabled, !self.isSuspended, self.recordingMode == .toggle,
+        listenerInstallation.map({ $0 == self.listenerGeneration }) ?? true
+      else { return }
+      await self.onToggleRecording?()
     }
   }
 
@@ -1568,16 +2018,18 @@ public final class HotkeyService {
   /// second press, and a release with no press seen is ignored.
   ///
   /// No `performCleanup()`, as with Quick Add: these never touch the recording path.
-  private func handleLastDictationShortcut(_ role: ShortcutRole, isPress: Bool) {
+  private func handleLastDictationShortcut(_ role: ShortcutRole, isPress: Bool, hold: AppShortcutHold) {
     switch role {
     case .pasteLast:
       if isPress {
-        if appShortcutsHeld.insert(.pasteLast).inserted, onPasteLast != nil {
-          onPasteLastPressed?()
-        }
+        guard appShortcutsHeld[.pasteLast] == nil else { return }
+        appShortcutsHeld[.pasteLast] = hold
+        if onPasteLast != nil { onPasteLastPressed?() }
         return
       }
-      guard appShortcutsHeld.remove(.pasteLast) != nil, let action = onPasteLast else { return }
+      guard appShortcutsHeld[.pasteLast] == hold else { return }
+      appShortcutsHeld[.pasteLast] = nil
+      guard let action = onPasteLast else { return }
       // Synchronous, not a queued Task: a second gesture arriving before a queued task ran could
       // replace this one's press-time target (final review, #3106). The owner spawns its own work.
       action()
@@ -1585,10 +2037,12 @@ public final class HotkeyService {
 
     case .copyLast:
       guard isPress else {
-        appShortcutsHeld.remove(.copyLast)
+        if appShortcutsHeld[.copyLast] == hold { appShortcutsHeld[.copyLast] = nil }
         return
       }
-      guard appShortcutsHeld.insert(.copyLast).inserted, let action = onCopyLast else { return }
+      guard appShortcutsHeld[.copyLast] == nil else { return }
+      appShortcutsHeld[.copyLast] = hold
+      guard let action = onCopyLast else { return }
       action()  // synchronous: the row copied is the one present at this press
       emitHotkeyPressed(.copyLast, trigger: .copyLast)
 

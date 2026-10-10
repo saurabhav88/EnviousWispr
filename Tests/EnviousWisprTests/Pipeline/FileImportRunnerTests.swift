@@ -131,7 +131,7 @@ struct FileImportRunnerTests {
   @Test("an unpolished part reports itself as unpolished and still carries text")
   func unpolishedPartKeepsItsText() {
     let outcome = FileImportRunner.PartOutcome(
-      text: "the deterministic floor", polishedText: nil, polishError: "provider unavailable")
+      text: "the deterministic floor", polishedText: nil)
 
     #expect(outcome.displayText == "the deterministic floor")
     #expect(outcome.isUnpolished)
@@ -140,7 +140,7 @@ struct FileImportRunnerTests {
   @Test("a polished part shows the polished text")
   func polishedPartShowsPolish() {
     let outcome = FileImportRunner.PartOutcome(
-      text: "the floor", polishedText: "The polished sentence.", polishError: nil)
+      text: "the floor", polishedText: "The polished sentence.")
 
     #expect(outcome.displayText == "The polished sentence.")
     #expect(!outcome.isUnpolished)
@@ -160,7 +160,7 @@ struct FileImportRunnerTests {
   @Test("a part nobody asked to polish is not reported as a failure")
   func skippedPolishIsNotAFailure() {
     let skipped = FileImportRunner.PartOutcome(
-      text: "the deterministic floor", polishedText: nil, polishError: nil,
+      text: "the deterministic floor", polishedText: nil,
       polishAttempted: false)
 
     #expect(skipped.displayText == "the deterministic floor")
@@ -173,7 +173,7 @@ struct FileImportRunnerTests {
   @Test("a polish that was asked for and did not answer is still a failure")
   func attemptedPolishThatFailedIsStillMarked() {
     let failed = FileImportRunner.PartOutcome(
-      text: "the deterministic floor", polishedText: nil, polishError: "provider unavailable",
+      text: "the deterministic floor", polishedText: nil,
       polishAttempted: true)
 
     #expect(failed.isUnpolished, "a real polish failure stopped being marked")

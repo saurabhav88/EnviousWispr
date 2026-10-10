@@ -228,15 +228,6 @@ public actor SilenceDetector {
     vadConfig = config
   }
 
-  /// Update the silence timeout on a retained instance (#1224). Needed once
-  /// the detector survives across recordings — the old per-recording
-  /// reconstruction picked up a changed value for free at init time.
-  /// `effectiveHangoverChunks` reads `silenceTimeout` live, so this takes
-  /// effect on the very next chunk processed.
-  public func updateSilenceTimeout(_ newValue: TimeInterval) {
-    silenceTimeout = newValue
-  }
-
   /// Process a chunk of 4096 audio samples (16kHz mono).
   /// Returns `true` if silence after speech is detected (auto-stop should trigger).
   public func processChunk(_ samples: [Float]) async -> Bool {

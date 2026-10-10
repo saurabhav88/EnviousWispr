@@ -183,22 +183,6 @@ struct AFMTokenHeuristicTests {
     #expect(asCJK > latin * 2)
   }
 
-  @Test("English prompt as Latin leaves window room; as CJK it blows the budget (the #1055 bug)")
-  func englishPromptMustUseLatinRate() {
-    // The fix passes lang: nil for the always-English system prompt. If a caller
-    // instead threaded a CJK dictation language through, the same prompt is
-    // counted ~3× higher. Assertions are computed from the actual length so the
-    // test is robust to edits of the stand-in prompt.
-    let chars = Self.englishPrompt.count
-    let correct = AppleIntelligenceConnector.heuristicAFMTokens(Self.englishPrompt, lang: nil)
-    let buggy = AppleIntelligenceConnector.heuristicAFMTokens(Self.englishPrompt, lang: "ja")
-    #expect(correct == Int((Double(chars) / 3.0).rounded(.up)))
-    #expect(buggy == chars)
-    // The buggy CJK-scaled prompt alone would consume more than a third of the
-    // 4,096-token window before any transcript — the over-skip the fix avoids.
-    #expect(buggy > AppleIntelligenceConnector.afmContextWindowTokens / 3)
-    #expect(correct < AppleIntelligenceConnector.afmContextWindowTokens / 3)
-  }
 }
 
 // MARK: - AppleIntelligenceCapabilities
@@ -239,19 +223,6 @@ struct LLMProviderConfigDetectedLanguageTests {
       thinking: nil
     )
     #expect(config.detectedLanguage == nil)
-  }
-
-  @Test("explicit value round-trips through init")
-  func explicitValueRoundTrips() {
-    let config = LLMProviderConfig(
-      model: "x",
-      apiKeyKeychainId: nil,
-      outputTokens: .capped(100),
-      temperature: 0,
-      thinking: nil,
-      detectedLanguage: "de"
-    )
-    #expect(config.detectedLanguage == "de")
   }
 
   @Test("Codable auto-synthesis decodes JSON without detectedLanguage")

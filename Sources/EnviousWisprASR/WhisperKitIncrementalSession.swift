@@ -54,7 +54,6 @@ package struct IncrementalResult: Sendable {
   package let decodeCount: Int
   package let totalDecodeTimeMs: Int  // periphery:ignore - telemetry field, populated for diagnostics
   package let accepted: Bool
-  package let mode: String
   package let strategy: String
   package let tailDecodeMs: Int
   /// #1309: a loop decode was still in flight when finalize/stop arrived.

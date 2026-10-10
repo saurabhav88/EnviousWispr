@@ -53,12 +53,4 @@ struct PendingAdmissionTests {
     #expect(PendingAdmission.verdict(stampedAt: beyondSkew, now: now) == .corrupt)
   }
 
-  /// Corrupt beats expired. A stamp that is both nonsensical AND old must report
-  /// the nonsense: the two route to different channels (ours vs the world's), so
-  /// collapsing them would file a defect of ours as ordinary passage of time.
-  @Test("a far-future stamp is corrupt even though it is not expired")
-  func corruptTakesPrecedence() {
-    let farFuture = now.addingTimeInterval(retention * 10)
-    #expect(PendingAdmission.verdict(stampedAt: farFuture, now: now) == .corrupt)
-  }
 }

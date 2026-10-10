@@ -12,9 +12,9 @@ import Foundation
 ///
 /// No em-dashes or en-dashes (brand rule).
 enum SpokenPunctuationCopy {
-  static let toggleLabel = String(
-    localized: "Spoken punctuation",
+  static let toggleLabelResource = LocalizedStringResource("Spoken punctuation",
     comment: "Speech engine settings, spoken punctuation: the toggle's name.")
+  static var toggleLabel: String { String(localized: toggleLabelResource) }
   static let toggleDescription =
     String(
       localized:
@@ -56,12 +56,9 @@ enum SpokenPunctuationCopy {
 
   // MARK: - Start word row
 
-  static let startWordTitle = String(
-    localized: "Start word",
+  static let startWordTitleResource = LocalizedStringResource("Start word",
     comment: "Speech engine settings, spoken punctuation: the Start word row's name.")
-  static let startWordShort = String(
-    localized:
-      "The word you say before a mark.",
+  static let startWordShortResource = LocalizedStringResource("The word you say before a mark.",
     comment: "Speech engine settings, Start word row: the short line under the row's name.")
   static let startWordHelp = String(
     localized:
@@ -76,26 +73,26 @@ enum SpokenPunctuationCopy {
   static let noStartWordPlaceholder = String(
     localized: "No start word",
     comment: "Speech engine settings, Start word row: the blank field's placeholder, meaning no start word.")
-  static let languagePickerLabel = String(
-    localized: "Start word for",
+  static let languagePickerLabelResource = LocalizedStringResource("Start word for",
     comment:
       "Speech engine settings, Start word row: label of the picker that chooses which language's start word is edited."
   )
+  static var languagePickerLabel: String { String(localized: languagePickerLabelResource) }
   static let pickerIsNotDictationLanguage = String(
     localized:
       "This only picks which start word you edit. It does not change your dictation language.",
     comment:
       "Speech engine settings, Start word row: the language picker does not set the dictation language."
   )
-  static let saveLabel = String(
-    localized: "Save word",
+  static let saveLabelResource = LocalizedStringResource("Save word",
     comment: "Speech engine settings, Start word row: button that saves the typed start word.")
+  static var saveLabel: String { String(localized: saveLabelResource) }
   static let saveAccessibilityLabel = String(
     localized: "Save start word",
     comment: "Speech engine settings, Start word row: spoken name of the Save button.")
-  static let resetLabel = String(
-    localized: "Reset",
+  static let resetLabelResource = LocalizedStringResource("Reset",
     comment: "Speech engine settings, Start word row: button that restores the default start word.")
+  static var resetLabel: String { String(localized: resetLabelResource) }
   static let resetAccessibilityLabel = String(
     localized: "Reset start word to the default",
     comment: "Speech engine settings, Start word row: spoken name of the Reset button.")

@@ -150,7 +150,7 @@ struct SettingsShellEnglishTests {
     #expect(
       String(localized: Copy.bluetoothTipsHelp)
         == "Shows the reminder popover once per launch. This guide always stays.")
-    #expect(InputSocketCopy.label == "Mic is on")
+    #expect(String(localized: InputSocketCopy.labelResource) == "Mic is on")
     for short in [
       Copy.inputDeviceShort, Copy.mediaShort, Copy.readinessShort, Copy.socketShort,
       Copy.bluetoothShort, Copy.bluetoothTipsShort,
@@ -202,7 +202,7 @@ struct SettingsShellEnglishTests {
 
   @Test("the input socket control keeps its English")
   func inputSocket() {
-    #expect(InputSocketCopy.label == "Mic is on")
+    #expect(String(localized: InputSocketCopy.labelResource) == "Mic is on")
     #expect(InputSocketCopy.optionLabel(index: 0) == "Input 1")
     #expect(InputSocketCopy.helper(deviceName: "Studio") == "Remembered for Studio.")
   }

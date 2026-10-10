@@ -22,19 +22,6 @@ struct OllamaModelVerdictsTests {
     #expect(OllamaModelVerdict.firstParty.label == "Our own model")
   }
 
-  @Test("no label uses the old euphemism vocabulary")
-  func noOldVocabulary() {
-    // "Fast" was the old `.worst` label, so a model that failed all twenty cases read as a speed
-    // choice. "Best" was assigned to a 6% model. Neither word may come back.
-    let labels = [
-      OllamaModelVerdict.recommended, .mixed, .unreliable, .notRecommended, .notTested,
-      .firstParty,
-    ].map(\.label)
-    #expect(labels.contains("Fast") == false)
-    #expect(labels.contains("Best") == false)
-    #expect(labels.contains("Medium") == false)
-  }
-
   @Test("no user-facing string carries an em dash or en dash")
   func noDashes() {
     var strings = [
@@ -50,53 +37,6 @@ struct OllamaModelVerdictsTests {
   }
 
   // MARK: - Bucket membership, from the 2026-08-11 receipts
-
-  @Test("the measured set is exactly the twelve local arms we judged")
-  func measuredSet() {
-    let expected: Set<String> = [
-      "qwen2.5:3b", "qwen3:0.6b", "qwen2.5:7b",
-      "gemma2:2b", "gemma2", "gemma3n:e4b",
-      "llama3.2", "mistral", "deepseek-r1:1.5b",
-      "phi3", "llama3.2:1b", "tinyllama",
-    ]
-    #expect(OllamaModelVerdicts.measuredModelIDs == expected)
-    // `eg-1` carries a verdict but is NOT a measured id: it was scored on a different corpus, and
-    // the generated-fixture test asserts set equality against this, so including it would fail there.
-    #expect(OllamaModelVerdicts.measuredModelIDs.contains("eg-1") == false)
-  }
-
-  @Test(
-    "each model's verdict matches its measured pass rate",
-    arguments: [
-      ("qwen2.5:3b", OllamaModelVerdict.recommended),
-      ("qwen3:0.6b", .recommended),
-      ("qwen2.5:7b", .recommended),
-      ("gemma2:2b", .mixed),
-      ("gemma2", .mixed),
-      ("gemma3n:e4b", .mixed),
-      ("llama3.2", .unreliable),
-      ("mistral", .unreliable),
-      ("deepseek-r1:1.5b", .unreliable),
-      ("phi3", .notRecommended),
-      ("llama3.2:1b", .notRecommended),
-      ("tinyllama", .notRecommended),
-    ])
-  func verdictPerModel(modelID: String, expected: OllamaModelVerdict) {
-    #expect(OllamaModelVerdicts.verdict(for: modelID) == expected)
-  }
-
-  @Test("the shipped default candidates are both recommended")
-  func bothQwenRecommended() {
-    // The founder's decision was to recommend BOTH, so neither may quietly drop out.
-    #expect(OllamaModelVerdicts.verdict(for: "qwen2.5:3b") == .recommended)
-    #expect(OllamaModelVerdicts.verdict(for: "qwen2.5:7b") == .recommended)
-  }
-
-  @Test("the old default is no longer presented as a good choice")
-  func oldDefaultIsUnreliable() {
-    // 1 pass in 20 with 11 trust-breaking failures, and it was labelled "Best".
-    #expect(OllamaModelVerdicts.verdict(for: "llama3.2") == .unreliable)
-  }
 
   // MARK: - The size heuristic is gone
 

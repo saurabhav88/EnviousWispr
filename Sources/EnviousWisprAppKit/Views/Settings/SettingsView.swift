@@ -26,6 +26,11 @@ struct UnifiedWindowView: View {
   @State private var providerWhenVisitBegan: LLMProvider?
   @State private var hasUnsavedKeyDraft = false
   @FocusState private var focusedSidebarPage: SettingsPage?
+  /// #3482: this window's Settings search, and whether its field has keyboard focus.
+  @State private var search = SettingsSearchModel.live { message in
+    AccessibilityNotification.Announcement(message).post()
+  }
+  @FocusState private var searchFocused: Bool
 
   /// Owned HERE so a language download survives the user navigating to another section: this view
   /// is retained, the pages inside `detailContent` are not. See
@@ -48,6 +53,26 @@ struct UnifiedWindowView: View {
         detailCard
       }
       .padding(SettingsLayout.windowFrameInset)
+      // #3482 §3.3: the dropdown floats above both cards, outside their clip shapes.
+      .overlayPreferenceValue(SettingsSearchFieldAnchorKey.self) { anchor in
+        searchDropdown(anchor)
+      }
+      .background(
+        SettingsWindowCloseObserver {
+          search.reset(endedBy: .windowClose)
+          navigationState.endWindowSession()
+        })
+      // #3482 §3.4: a direct tab change drops an arrival meant for another tab.
+      .onChange(of: navigationState.dictationTab) { _, _ in navigationState.noteTabChange() }
+      // #3482 §8.1: the failed-search row follows "Share usage metrics", read at every terminal.
+      .onAppear { search.usageMetricsOn = { settings.shareUsageMetrics } }
+      .onChange(of: settings.shareUsageMetrics) { _, isOn in search.usageMetricsChanged(isOn: isOn) }
+      .onChange(of: navigationState.appSettingsTab) { _, _ in navigationState.noteTabChange() }
+      .onChange(of: navigationState.dictionaryTab) { _, _ in navigationState.noteTabChange() }
+      .focusedSceneValue(\.settingsFind) {
+        search.reopenPanel()
+        searchFocused = true
+      }
       .frame(maxWidth: .infinity, maxHeight: .infinity)
       .background(Color.stWindowBg)
       // Keep the app name as the window title (Window menu / VoiceOver) but hide
@@ -56,6 +81,8 @@ struct UnifiedWindowView: View {
       .toolbar { SettingsWindowToolbar() }
     }
     .tint(.stAccentSolid)
+    // #3482: an arrival that moves focus to a setting first lets go of the search field.
+    .environment(\.settingsArrivalReleaseSearchFocus) { searchFocused = false }
     // `initial: true`: a request made before this window existed (the menu's
     // Settings item opens the window and asks in the same breath) still lands.
     .onChange(of: navigationCoordinator.pendingDestination, initial: true) { _, destination in
@@ -112,10 +139,9 @@ struct UnifiedWindowView: View {
   /// request from the menu or elsewhere. Leaving AI Polish while the chosen model is not set up
   /// asks first; while that question is open, the latest request replaces the pending one.
   private func navigate(_ intent: SettingsNavigationIntent) {
-    if var pending = pendingLeave {
+    if let pending = pendingLeave {
       // The latest request wins; the question on screen keeps its identity.
-      pending.intent = intent
-      pendingLeave = pending
+      pendingLeave = PolishSetupLeaveGuard.replacingPendingDestination(of: pending, with: intent)
       return
     }
     if let request = PolishSetupLeaveGuard.request(
@@ -134,6 +160,18 @@ struct UnifiedWindowView: View {
   private func commit(_ intent: SettingsNavigationIntent) {
     let wasOnAIPolish = navigationState.selectedPage == .aiPolish
     navigationState.perform(intent)
+    // #3482 §3.4, §8.1: every committed navigation ends the search (a Stay never reaches here),
+    // reporting how it ended after the navigation committed.
+    switch intent {
+    case .search:
+      search.finish(endedBy: .searchResult)
+    case .sidebar(let page):
+      search.finish(
+        endedBy: .sidebar, sidebarPage: page.rawValue, sidebarTab: openTab(on: page))
+    case .destination:
+      search.finish(endedBy: .externalDestination)
+    }
+    search.reset()
     // A new AI Polish visit begins: remember what was chosen before the person changes it.
     if intent.page == .aiPolish, !wasOnAIPolish { providerWhenVisitBegan = settings.llmProvider }
   }
@@ -177,8 +215,20 @@ struct UnifiedWindowView: View {
     }
   }
 
+  /// The tab a page shows now, as a raw value, for the sidebar-bypass row (§8.1).
+  private func openTab(on page: SettingsPage) -> String? {
+    switch page {
+    case .dictation: return navigationState.dictationTab.rawValue
+    case .appSettings: return navigationState.appSettingsTab.rawValue
+    case .dictionary: return navigationState.dictionaryTab.rawValue
+    default: return nil
+    }
+  }
+
   private func leave(to intent: SettingsNavigationIntent) {
     commit(intent)
+    // #3482 §3.4: a search arrival owns focus (the reveal moves it to the chosen control).
+    if case .search = intent { return }
     focusedSidebarPage = intent.page
   }
 
@@ -208,7 +258,14 @@ struct UnifiedWindowView: View {
       }
       .padding(.horizontal, 14)
       .padding(.top, 12)
-      .padding(.bottom, 12)
+      .padding(.bottom, 10)
+
+      // #3482 §3.3: Settings search, between the identity header and the divider.
+      SettingsSearchField(model: search, isFocused: $searchFocused) { request in
+        navigate(.search(request))
+      }
+      .padding(.horizontal, 10)
+      .padding(.bottom, 10)
 
       Divider().overlay(Color.stDivider)
 
@@ -241,6 +298,7 @@ struct UnifiedWindowView: View {
         .padding(.vertical, 8)
       }
       .scrollContentBackground(.hidden)
+      .searchPanelBlocksBackground(search.isPanelPresented)
 
       // Issue #343: in-app update banner. Fixed sibling of the scroll (NOT a
       // scrolling row) so it stays pinned to the bottom of the sidebar card.
@@ -269,6 +327,7 @@ struct UnifiedWindowView: View {
   /// equally-inset panels on the canvas.
   private var detailCard: some View {
     detailContent
+      .searchPanelBlocksBackground(search.isPanelPresented)
       .frame(maxWidth: .infinity, maxHeight: .infinity)
       .clipShape(
         RoundedRectangle(cornerRadius: SettingsLayout.windowCardRadius, style: .continuous)
@@ -286,25 +345,55 @@ struct UnifiedWindowView: View {
       // History owns its own list/detail split layout, no page header.
       HistoryContentView()
     case .dictation:
-      page {
+      page(.dictation) {
         DictationSettingsView(selection: $navigationState.dictationTab, packs: livePreviewPacks)
       }
     case .transcribeFile:
-      page { TranscribeFileView() }
+      page(.transcribeFile) { TranscribeFileView() }
     case .keybinds:
-      page { KeybindsSettingsView() }
+      page(.keybinds) { KeybindsSettingsView() }
     case .aiPolish:
-      page { AIPolishSettingsView() }
+      page(.aiPolish) { AIPolishSettingsView() }
     case .dictionary:
-      page { YourWordsView() }
+      page(.dictionary) { YourWordsView(selection: $navigationState.dictionaryTab) }
     case .snippets:
-      page { SnippetsView() }
+      page(.snippets) { SnippetsView() }
     case .appSettings:
-      page { AppSettingsView(selection: $navigationState.appSettingsTab) }
+      page(.appSettings) { AppSettingsView(selection: $navigationState.appSettingsTab) }
     #if DEBUG
       case .diagnostics:
-        page { DiagnosticsSettingsView() }
+        page(.diagnostics) { DiagnosticsSettingsView() }
     #endif
+    }
+  }
+
+  /// #3482 §3.3, §3.4: the dropdown under the search field, above both cards, and the surface
+  /// that turns an outside click into closing it (the field and the panel stay clickable).
+  @ViewBuilder
+  private func searchDropdown(_ anchor: Anchor<CGRect>?) -> some View {
+    if search.isPanelPresented, let anchor {
+      GeometryReader { proxy in
+        let field = proxy[anchor]
+        let width = max(0, min(440, proxy.size.width - field.minX - 8))
+        let top = field.maxY + 6
+        ZStack(alignment: .topLeading) {
+          Color.clear
+            .contentShape(
+              Path { path in
+                path.addRect(CGRect(origin: .zero, size: proxy.size))
+                path.addRect(field)
+              }, eoFill: true
+            )
+            .onTapGesture { search.dismissPanel() }
+            .accessibilityHidden(true)
+          SettingsSearchPanel(
+            model: search, availableHeight: max(0, proxy.size.height - top - 8)
+          ) { request in navigate(.search(request)) }
+            .frame(width: width)
+            .frame(maxHeight: max(0, proxy.size.height - top - 8), alignment: .top)
+            .offset(x: field.minX, y: top)
+        }
+      }
     }
   }
 
@@ -360,11 +449,23 @@ struct UnifiedWindowView: View {
   /// #3385: superseded; pages have no header (tracker A5). What remains is the
   /// window-navigation action every page can call.
   @ViewBuilder
-  private func page(@ViewBuilder content: () -> some View) -> some View {
+  private func page(_ drawn: SettingsPage, @ViewBuilder content: () -> some View) -> some View {
     content()
+      // #3545: every control on the page carries the page it was drawn in; a tabbed page overrides
+      // this around the tab it draws, so the tab strip and fixed headings keep the page-only tag.
+      .environment(\.settingsArrivalContent, SettingsArrivalContent(page: drawn))
+      // #3482 §3.4: the page's one search-arrival owner, above every scroll view on the page.
+      .modifier(SettingsArrivalModifier())
       // The only place `navigationState` is in scope, so the only place this can
       // be supplied without threading a binding through every page.
       .environment(\.settingsNavigate) { navigate(.destination($0)) }
+      // #3482: the arrival a search navigation asked for, nil for every other navigation.
+      .environment(\.settingsReveal, navigationState.reveal)
+      .environment(\.settingsRevealAcknowledge) { navigationState.acknowledgeReveal(token: $0) }
+      .environment(\.settingsNavigationEpoch, navigationState.epoch)
+      .environment(\.settingsArrivalStillCurrent) { reveal in
+        navigationState.arrivalIsCurrent(token: reveal.token, entryID: reveal.entryID)
+      }
   }
 }
 

@@ -64,6 +64,12 @@ let package = Package(
     // target below — SwiftPM links a dependency only into targets that
     // import it, so this never reaches the shipped app or the XPC helper.
     .package(url: "https://github.com/swiftlang/swift-syntax.git", from: "603.0.2"),
+    // #1677: international phone-number validation and formatting for the language cleanup
+    // passes (country calling-code split, national-number patterns, metadata grouping). Pinned
+    // EXACTLY: the metadata copy in EnviousWisprPostProcessing/Resources must be the bytes this
+    // version ships (LanguagePhoneMetadataTests pins the hash). The library's own bundled loader
+    // is never used; LanguagePhoneMetadata hands it that copy.
+    .package(url: "https://github.com/PhoneNumberKit/PhoneNumberKit.git", exact: "5.0.11"),
   ],
   targets: [
     .target(
@@ -96,7 +102,10 @@ let package = Package(
     ),
     .target(
       name: "EnviousWisprPostProcessing",
-      dependencies: ["EnviousWisprCore"],
+      dependencies: [
+        "EnviousWisprCore",
+        .product(name: "PhoneNumberKit", package: "PhoneNumberKit"),
+      ],
       path: "Sources/EnviousWisprPostProcessing",
       resources: [.process("Resources")]
     ),

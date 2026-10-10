@@ -233,17 +233,6 @@ final class CustomWordsImportFlowModel {
     }
   }
 
-  /// Fresh model state: back to the picker with no method selected.
-  func reset() {
-    abandonWork()
-    rows = []
-    staleNotice = nil
-    droppedAliasCollisionCount = 0
-    pasteDraft = ""
-    selectedMethod = nil
-    step = .methodPicker
-  }
-
   /// Sheet dismissal. Nothing is written on the way out; any in-flight stage
   /// is cancelled and can no longer publish. Clears the draft so a confirmed
   /// discard is final and idempotent, whether this runs from an explicit

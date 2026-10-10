@@ -107,7 +107,7 @@ struct ReadinessRetryTelemetryContractTests {
       asrManager: manager, whisperKitBackend: WhisperKitBackend(admittedModelFolder: { nil }))
     let suite = BenchmarkSuite(engineMutationScope: .alwaysAllowedForTesting)
 
-    await suite.run(using: manager, activeEngine: engine)
+    await suite.run(activeEngine: engine)
     #expect(suite.lastFailure != nil, "a load that returns unready must SAY so")
 
     // Now let the engine come good and drive the OTHER entry point.

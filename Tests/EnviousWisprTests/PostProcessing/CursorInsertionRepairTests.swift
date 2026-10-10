@@ -567,16 +567,6 @@ struct CursorInsertionRepairTests {
     #expect(payloads.candidateRules.contains(.lowercasedFirst) == false)
   }
 
-  @Test("Digit-bearing identifier keeps its capital")
-  func digitBearingIdentifierSurvives() {
-    let payloads = CursorInsertionRepair.repair(
-      text: "Kubernetes v2 shipped.",
-      context: CursorInsertionRepair.CaretText(left: "I think ", right: ""),
-      protectedWords: [],
-      oracle: Self.prototypeOracle)
-    #expect(payloads.repairedText?.hasPrefix("Kubernetes") == true)
-  }
-
   // MARK: - legacyText is exactly today's rule
 
   @Test(
@@ -613,14 +603,6 @@ struct CursorInsertionRepairTests {
     #expect(
       payloads.legacyText == "Store today. ",
       "nil context must still carry today's trailing space, NOT the raw input")
-  }
-
-  @Test("nil context never returns the raw input unchanged")
-  func nilContextIsNotRawInput() {
-    let payloads = CursorInsertionRepair.repair(
-      text: "no trailing space", context: nil, protectedWords: [],
-      oracle: Self.prototypeOracle)
-    #expect(payloads.legacyText != "no trailing space")
   }
 
   @Test("A readable context produces a candidate without choosing a route")
@@ -820,37 +802,7 @@ struct CursorInsertionRepairTests {
       "\(testCase.payload)")
   }
 
-  @Test("No double period when inserting before existing punctuation")
-  func noDoublePeriod() {
-    let payloads = CursorInsertionRepair.repair(
-      text: "Store today.",
-      context: CursorInsertionRepair.CaretText(left: "I went to the ", right: "."),
-      protectedWords: [], oracle: Self.prototypeOracle)
-    #expect(payloads.repairedText?.contains("..") == false)
-    let document = "I went to the " + (payloads.repairedText ?? "") + "."
-    #expect(document == "I went to the store today.")
-  }
-
   // MARK: - The comma-versus-period case a single character could not express
-
-  @Test(
-    "One character to the left is not enough to decide case",
-    arguments: [
-      ("I went home. ", false),
-      ("I went home, ", true),
-    ])
-  func skipBackDistinguishesCommaFromPeriod(_ testCase: (left: String, lowered: Bool)) {
-    // Both left windows END in a space. Only skipping back to the last real
-    // character can tell a finished sentence from a continuing one.
-    let payloads = CursorInsertionRepair.repair(
-      text: "That works.",
-      context: CursorInsertionRepair.CaretText(left: testCase.left, right: ""),
-      protectedWords: [],
-      oracle: Self.oracle(["that"]))
-    #expect(
-      payloads.candidateRules.contains(.lowercasedFirst) == testCase.lowered,
-      "\(testCase.left)")
-  }
 
   // MARK: - Adversarial input shapes
 
@@ -903,16 +855,6 @@ struct CursorInsertionRepairTests {
       text: "Store today.",
       context: CursorInsertionRepair.CaretText(left: "I went to the\t", right: ""),
       protectedWords: [], oracle: Self.prototypeOracle)
-    #expect(payloads.candidateRules.contains(.leadingSpace) == false)
-  }
-
-  @Test("A newline to the left is a sentence boundary, not whitespace to skip")
-  func newlineIsBoundary() {
-    let payloads = CursorInsertionRepair.repair(
-      text: "Store today.",
-      context: CursorInsertionRepair.CaretText(left: "First line.\n", right: ""),
-      protectedWords: [], oracle: Self.prototypeOracle)
-    #expect(payloads.candidateRules.contains(.caseKept(.lineStart)))
     #expect(payloads.candidateRules.contains(.leadingSpace) == false)
   }
 

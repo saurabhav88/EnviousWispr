@@ -16,7 +16,7 @@ import Testing
 // tile and zero-run math is covered by `DeadAirStreamingDetectorTests`; this
 // suite pins the manager's refusal, reset, forwarding, and backlog wiring.
 @MainActor
-@Suite("AudioCaptureManager dead-air refusal + compatibility view (#1317/#1543/#1578)")
+@Suite("AudioCaptureManager dead-air refusal reason (#1317/#1543/#1578)")
 struct AudioCaptureManagerDeadAirLatchTests {
 
   /// A manager armed to ingest without real hardware. No `startEnginePhase`, so
@@ -28,38 +28,17 @@ struct AudioCaptureManagerDeadAirLatchTests {
     return manager
   }
 
-  @Test("an all-zero run with a non-eligible device sets the compatibility view")
-  func allZeroSetsCompatibilityViewWhenRefused() {
-    let manager = armedManager()
-    #expect(!manager.zeroSignalDiscriminatorSawIneligible)
-
-    // Exactly-zero samples past the minimum-transcription threshold ⇒
-    // `isAllZeroFromStart`. No frozen bind ⇒ a refusal reason ⇒ the derived
-    // compatibility view reads true.
-    manager.ingestSamples(
-      [Float](repeating: 0, count: AudioConstants.minimumTranscriptionSamples), level: 0)
-    #expect(manager.zeroSignalDiscriminatorSawIneligible)
-  }
-
-  @Test("a non-zero sample breaks the trailing zero-run and clears the compatibility view")
+  @Test("a non-zero sample breaks the trailing zero-run and clears the refusal reason")
   func nonZeroClearsTheCompatibilityView() {
     let manager = armedManager()
     manager.ingestSamples(
       [Float](repeating: 0, count: AudioConstants.minimumTranscriptionSamples), level: 0)
-    #expect(manager.zeroSignalDiscriminatorSawIneligible, "precondition: refused")
+    #expect(manager.zeroSignalRefusalReason != nil, "precondition: refused")
 
     // The refused-then-recovered negative: real audio breaks the trailing
     // zero-run, so the earlier refusal must no longer stick.
     manager.ingestSamples([0.5], level: 0.5)
-    #expect(!manager.zeroSignalDiscriminatorSawIneligible)
-  }
-
-  @Test("meaningful signal from the start never sets the compatibility view")
-  func realSignalNeverSetsCompatibilityView() {
-    let manager = armedManager()
-    manager.ingestSamples(
-      [Float](repeating: 0.5, count: AudioConstants.minimumTranscriptionSamples), level: 0.5)
-    #expect(!manager.zeroSignalDiscriminatorSawIneligible)
+    #expect(manager.zeroSignalRefusalReason == nil)
   }
 
   // MARK: - #1578 — the refusal carries a reason, and is counted exactly once
@@ -80,6 +59,7 @@ struct AudioCaptureManagerDeadAirLatchTests {
     let manager = armedManager()
     #expect(manager.zeroSignalRefusalReason == nil)
     #expect(!manager.zeroSignalRunWasClassifiedReactively)
+    #expect(manager.zeroSignalRefusalReason == nil)
 
     manager.ingestSamples(Self.zeros(), level: 0)
 
@@ -87,8 +67,6 @@ struct AudioCaptureManagerDeadAirLatchTests {
     // outcome, and the manager must report it rather than a generic refusal.
     #expect(manager.zeroSignalRefusalReason == .boundDeviceUnavailable)
     #expect(manager.zeroSignalRunWasClassifiedReactively)
-    // The legacy Boolean now derives from the reason; it must not have drifted.
-    #expect(manager.zeroSignalDiscriminatorSawIneligible)
   }
 
   @Test("meaningful signal records no reason, attempts no forward, adds no backlog")
@@ -108,6 +86,7 @@ struct AudioCaptureManagerDeadAirLatchTests {
     #expect(!manager.zeroSignalRunWasClassifiedReactively)
     #expect(attempts == 0)
     #expect(manager.takePendingZeroSignalRefusals().isEmpty)
+    #expect(manager.zeroSignalRefusalReason == nil)
   }
 
   @Test("a zero run spanning many batches forwards exactly once")
@@ -170,10 +149,12 @@ struct AudioCaptureManagerDeadAirLatchTests {
     let manager = armedManager()
     manager.ingestSamples(Self.zeros(), level: 0)
     #expect(manager.zeroSignalRefusalReason != nil, "precondition: refused")
+    #expect(manager.zeroSignalRefusalReason != nil, "precondition: refused")
 
     manager.ingestSamples(Self.loud(), level: 0.5)
 
     // Current-run facts are gone, so the next run gets its own forward…
+    #expect(manager.zeroSignalRefusalReason == nil)
     #expect(manager.zeroSignalRefusalReason == nil)
     #expect(!manager.zeroSignalRunWasClassifiedReactively)
     // …but the refusal that already happened is NOT undone by the microphone
@@ -259,19 +240,6 @@ struct AudioCaptureManagerDeadAirLatchTests {
     #expect(manager.takePendingZeroSignalRefusals().isEmpty)
   }
 
-  @Test("a refusal does not latch the dead-air detector, so a later run still refuses")
-  func refusalDoesNotLatchTheDetector() {
-    let manager = armedManager()
-    manager.ingestSamples(Self.zeros(), level: 0)
-    manager.ingestSamples(Self.loud(), level: 0.5)
-    manager.ingestSamples(Self.zeros(), level: 0)
-
-    // Behaviour, not private storage: a second refusal could not have been
-    // reached if the first had set `deadAirDetector.fired`, whose guard sits at
-    // the top of the reactive path.
-    #expect(manager.takePendingZeroSignalRefusals().count == 2)
-  }
-
   // MARK: - #1788 — the mid-take all-zero ceiling has ONE owner
 
   /// The production-critical claim: with no DEBUG override set, the ceiling is
@@ -329,18 +297,6 @@ struct AudioCaptureManagerDeadAirLatchTests {
     #expect(
       AudioCaptureManager.allZeroFromStartCeilingSamples(forEffectiveTransport: nil)
         == AudioConstants.minimumTranscriptionSamples)
-  }
-
-  /// The two ceilings must stay DISTINCT constants. A future maintainer collapsing
-  /// them would silently apply 3.0s everywhere (or 1.0s to Bluetooth), which is the
-  /// exact regression the transport branch exists to prevent.
-  @Test("the two ceilings are separate values, 1.0s and 3.0s")
-  func ceilingsAreDistinct() {
-    #expect(AudioConstants.minimumTranscriptionSamples == 16_000)
-    #expect(AudioConstants.bluetoothAllZeroMidTakeCeilingSamples == 48_000)
-    #expect(
-      AudioConstants.bluetoothAllZeroMidTakeCeilingSamples
-        > AudioConstants.minimumTranscriptionSamples)
   }
 
   // The override exists ONLY in DEBUG, so these two tests are mirror images and

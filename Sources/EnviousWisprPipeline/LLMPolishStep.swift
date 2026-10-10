@@ -935,7 +935,7 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
         control: provider.modelCapabilities(model: model).thinkingControl
       )
     let outputTokens = Self.outputTokenPolicy(
-      provider: provider, model: model, textCount: context.text.count,
+      provider: provider, textCount: context.text.count,
       thinks: ollamaThinks)
 
     // Prefer live LID but fall back to the context's persisted language so
@@ -1482,7 +1482,7 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
   /// polish. Local engines and Claude keep explicit caps. Static and pure
   /// for fixture testing.
   nonisolated static func outputTokenPolicy(
-    provider: LLMProvider, model: String, textCount: Int, thinks: Bool?
+    provider: LLMProvider, textCount: Int, thinks: Bool?
   ) -> OutputTokenPolicy {
     switch provider {
     case .ollama:

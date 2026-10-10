@@ -60,14 +60,36 @@ struct InverseTextNormalizationExecutionTests {
         spokenPunctuation: false) == Self.germanNeutral)
   }
 
+  @Test("a German take runs the German phone and clock passes after the neutral subset (#1677)")
+  func germanTakeRunsTheGermanPasses() async throws {
+    let step = InverseTextNormalizationStep()
+    step.backendSupportsLID = true
+    let out = try await step.process(
+      ctx("Ruf mich unter plus 49 176 9087654 um halb acht an, Frage B Bindestrich 2.", language: "de"))
+    #expect(out.text == "Ruf mich unter +49 176 9087654 um 7:30 an, Frage B-2.")
+    #expect(step.lastRun?.ran == true)
+    #expect(step.lastRun?.changed == true)
+    // The engine dropped the spoken plus: the number is still international.
+    let dropped = try await step.process(ctx("Meine Handynummer ist 49 176 9087654.", language: "de"))
+    #expect(dropped.text == "Meine Handynummer ist +49 176 9087654.")
+    // A domestic number follows the Mac's region, passed explicitly here.
+    let engine = InverseTextNormalizer()
+    let rules = try #require(LanguageRuleRegistry.production.ruleSet(forLanguage: "de"))
+    #expect(engine.normalize("Ruf 030 86 0800 an.", language: rules, homeRegion: "DE") == "Ruf 030 860800 an.")
+    #expect(engine.normalize("Ruf 030 86 0800 an.", language: rules, homeRegion: nil) == "Ruf 030 86 0800 an.")
+    // The English time rule never runs on the German route.
+    let german = try await step.process(ctx("Ruf mich bitte um 7 am Abend an.", language: "de"))
+    #expect(german.text == "Ruf mich bitte um 7 am Abend an.")
+  }
+
   @Test("a language route with no vetted snapshot fails closed to neutral, never to English")
   func missingOrForgedSnapshotFailsClosed() {
     let engine = InverseTextNormalizer()
     let german = "Ruf mich bitte um 7 am Abend an. " + Self.germanInput
     let neutralExpected = "Ruf mich bitte um 7 am Abend an. " + Self.germanNeutral
-    // Public facade: the production registry is empty, so a `.language` route has no snapshot.
+    // Public facade: French has no production snapshot, so its `.language` route runs neutral.
     let viaFacade = Gate.normalize(
-      german, route: .language("de"), normalizer: engine, spokenPunctuation: false)
+      german, route: .language("fr"), normalizer: engine, spokenPunctuation: false)
     #expect(viaFacade == neutralExpected)
     // Shared execution: a missing snapshot, and a snapshot for a DIFFERENT language.
     let fr = LanguageRuleSet(language: "fr")!
@@ -178,7 +200,7 @@ struct InverseTextNormalizationExecutionTests {
     let cases:
       [(label: String, language: String?, vetoed: Bool, route: String, ran: Bool, reason: String?)] =
         [
-          ("neutral non_english", "de", false, "neutral", false, "non_english"),
+          ("neutral non_english", "fi", false, "neutral", false, "non_english"),
           ("neutral vetoed", nil, true, "neutral", false, "language_vetoed"),
           ("english", "en", false, "english", true, nil),
         ]

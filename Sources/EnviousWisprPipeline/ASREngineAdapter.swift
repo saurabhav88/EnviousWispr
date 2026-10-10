@@ -23,10 +23,10 @@ import Foundation
 /// Distinct from the capture layer's `AudioCaptureInterface.currentCaptureSessionID`
 /// (`UInt64`), which is an unrelated per-source capture counter. A `SessionID`
 /// is never reused.
-public struct SessionID: Hashable, Sendable {
-  public let raw: UUID
+package struct SessionID: Hashable, Sendable {
+  let raw: UUID
 
-  public init(_ raw: UUID = UUID()) {
+  init(_ raw: UUID = UUID()) {
     self.raw = raw
   }
 }
@@ -98,7 +98,7 @@ public enum ASREngineReadiness: Sendable {
 /// A closed, normalized engine-failure enum. The kernel never branches on
 /// engine-specific error types (PR-1 §B.2.1, epic §3.4) — each adapter maps
 /// its internal errors into one of these cases.
-public enum ASREngineError: Error, Sendable {
+package enum ASREngineError: Error, Sendable {
   /// Model warm-up / load failed.
   case loadFailed
   /// The decoder failed to produce a result.
@@ -119,8 +119,9 @@ public enum ASREngineError: Error, Sendable {
 /// production adapter today — both `ParakeetEngineAdapter` and
 /// `WhisperKitEngineAdapter` return `nil` for `finalizeProgress`, the signal
 /// the detector requires (only the test-only `FakeEngine` exposes it). All
-/// 4 cases are pinned defensively. `public` matches this type's own public
-/// visibility. NEVER change any of these strings once shipped.
+/// 4 cases are pinned defensively. The members say `public` to satisfy the
+/// public protocol; the type's `package` visibility caps them. NEVER change any
+/// of these strings once shipped.
 extension ASREngineError: StableSentryErrorIdentity {
   public var sentryFingerprintDescriptor: String {
     switch self {

@@ -9,7 +9,7 @@ related: ["bluetooth-and-airpods", "empty-or-missing-transcription"]
 updated: 2026-09-29
 deflection: "can_resolve"
 ---
-EnviousWispr follows whichever microphone your Mac is set to, or uses a specific device you choose. Both choices live under **Settings** \> **Microphone**.
+EnviousWispr follows whichever microphone your Mac is set to, or uses a specific device you choose. Both choices live under **Dictation Settings** \> **Microphone**.
 
 ### Use whichever microphone my Mac is set to
 
@@ -17,7 +17,7 @@ EnviousWispr follows whichever microphone your Mac is set to, or uses a specific
 
 To change what Auto follows, set your input in **System Settings** \> **Sound**.
 
-The **Microphone** page shows which device Auto is using.
+The **Microphone** tab shows which device Auto is using.
 
 ### Auto picked a virtual device and records silence
 
@@ -54,7 +54,7 @@ If your AirPods are your Mac's input, EnviousWispr records from them, and the he
 
 ### Music keeps playing while I dictate
 
-EnviousWispr can move music, a podcast or a video out of the way when you start talking and put it back when you stop. Go to **Settings** \> **Microphone** and choose an option under **Media during dictation**, directly above **Microphone readiness**. It starts on **Continue**, which leaves your audio playing.
+EnviousWispr can move music, a podcast or a video out of the way when you start talking and put it back when you stop. Go to **Dictation Settings** \> **Microphone** and choose an option under **Media during dictation**, directly above **Microphone readiness**. It starts on **Continue**, which leaves your audio playing.
 
 - **Continue.** Music and other audio keep playing as they are.
 - **Lower.** Lowers what plays through your current speakers or headphones to about half for the whole take, then puts it back exactly where it was.
@@ -65,7 +65,7 @@ The start and stop sounds still play. The output is lowered a moment after the s
 
 ### Lower or Mute is not available
 
-Some speakers and headphones, such as a display over HDMI, do not let apps change their volume. The **Microphone** page tells you when **Lower** or **Mute** is not available on your current output.
+Some speakers and headphones, such as a display over HDMI, do not let apps change their volume. The **Microphone** tab tells you when **Lower** or **Mute** is not available on your current output.
 
 ### My volume did not come back after dictating
 
@@ -80,4 +80,4 @@ Some speakers and headphones, such as a display over HDMI, do not let apps chang
 
 **Pause** resumes only what it paused, and only if that item is still paused. If you switch to another song, tab or app during a take, or press play yourself, EnviousWispr leaves things as you left them.
 
-**Pause** reaches every player through a part of macOS that Apple has not opened up to apps. If a macOS update turns that off, EnviousWispr falls back to pausing Music and Spotify only, and the **Microphone** page says so. On that fallback, macOS asks the first time whether EnviousWispr may control Music or Spotify. That first take is not paused, and every take after you allow it is.
+**Pause** reaches every player through a part of macOS that Apple has not opened up to apps. If a macOS update turns that off, EnviousWispr falls back to pausing Music and Spotify only, and the **Microphone** tab says so. On that fallback, macOS asks the first time whether EnviousWispr may control Music or Spotify. That first take is not paused, and every take after you allow it is.

@@ -3,7 +3,7 @@ import CoreAudio
 /// #1408. What Core Audio told us when we asked whether an input device is still
 /// there. The third case is the one that matters: "we could not find out" is not
 /// the same answer as "it is gone," and only the latter may reach the user.
-public enum DeviceLiveness: Sendable, Equatable {
+package enum DeviceLiveness: Sendable, Equatable {
   /// `DeviceIsAlive` answered yes. A Bluetooth codec switch, not a disconnect.
   case alive
 
@@ -79,7 +79,7 @@ package enum CoreAudioDeviceLiveness {
 /// zero-fills its stream while muted — this is the discriminator that keeps
 /// the #1317 harness-glitch detector from misfiring on a genuinely muted mic
 /// (out of scope; no hardware-mute UX is built here, §3.0).
-public enum DeviceMuteState: Sendable, Equatable {
+package enum DeviceMuteState: Sendable, Equatable {
   /// `Mute` answered yes — a running device zero-filling by design, not a
   /// harness glitch.
   case muted
@@ -202,26 +202,15 @@ public enum ZeroSignalEligibility: String, Sendable, CaseIterable {
 /// and the kernel's STOP-time classification use this type, so identity,
 /// liveness, and input-scope mute precedence cannot drift between callers.
 public enum ZeroSignalDeviceDiscriminator {
-  /// Production entry point. Public, with no default arguments or injected seams
-  /// — a `public` function's default argument cannot reference the internal
-  /// `AudioDeviceEnumerator.inputDeviceUID(for:)`, so the injected form is a
-  /// separate `package` overload below rather than defaults on this one.
-  ///
-  /// Fails closed: an unverifiable identity, any non-`.alive` liveness, or any
-  /// non-`.unmuted` mute state returns false. `classify` below preserves the
-  /// categorical reason. #1317 adds no hardware-mute UX; ambiguity must never
-  /// be read as "safe to run harness recovery."
-  ///
-  /// Callers must pass the FROZEN bind (`prepare()`'s return value, #1844), never
-  /// a freshly resolved device.
-  public static func isEligible(bound: BoundInputDevice) -> Bool {
-    classify(bound: bound) == .eligible
-  }
-
   /// #1578: the reason-bearing production entry point, and the sole owner of all
   /// SIX outcomes — including the missing-bind case, which both call sites used
   /// to manufacture independently (the very scatter this type's doc comment
   /// forbids). Takes the OPTIONAL bind for exactly that reason.
+  ///
+  /// Fails closed: an unverifiable identity, any non-`.alive` liveness, or any
+  /// non-`.unmuted` mute state is a refusal reason, never `.eligible`. Callers
+  /// must pass the FROZEN bind (`prepare()`'s return value, #1844), never a
+  /// freshly resolved device.
   public static func classify(bound: BoundInputDevice?) -> ZeroSignalEligibility {
     classify(
       bound: bound,

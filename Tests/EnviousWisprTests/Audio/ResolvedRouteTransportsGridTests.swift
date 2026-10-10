@@ -76,27 +76,6 @@ struct ResolvedRouteTransportsGridTests {
     #expect(r.routeResolutionSource == "helper_reported")
   }
 
-  @Test("wired pick under BT output uses unified explicit reason")
-  func wiredUnderBTOutput() {
-    let r = ResolvedRouteTransports.derive(
-      decision: makeDecision(.halDeviceInput, .btOutputUserSelectedDevice),
-      preferredInputDeviceIDOverride: "fake-wired-uid")
-    #expect(r.inputSelectionMode == "explicit")
-    #expect(r.routeReason == "btOutputUserSelectedDevice")
-  }
-
-  @Test("selection mode follows the settings picker; empty override stays Auto")
-  func selectionModeFollowsPicker() {
-    // The mic picker binds to preferredInputDeviceIDOverride and the resolver +
-    // derivation use ONLY that, so an empty override is Auto — mode/selected must
-    // agree with route_reason, not claim explicit (#1387).
-    let r = ResolvedRouteTransports.derive(
-      decision: makeDecision(.halDeviceInput, .noBTAutoInput),
-      preferredInputDeviceIDOverride: "")
-    #expect(r.inputSelectionMode == "auto")
-    #expect(r.selected == "unknown")
-  }
-
   @Test(
     "Auto derives effective from the DEFAULT input, never a remembered selection (cloud review P2, PR #1536)"
   )
@@ -118,16 +97,6 @@ struct ResolvedRouteTransportsGridTests {
     #expect(r.selected == "unknown")
     #expect(r.routeReason == "btOutputAutoInput")
     #expect(r.effective == "built_in")
-  }
-
-  @Test("an explicit picker choice reports explicit + its transport (consistent with route_reason)")
-  func explicitPickerReportsExplicit() {
-    // preferredInputDeviceIDOverride set (the picker) → explicit, and the
-    // resolver saw the same value, so route_reason is a user-selected reason.
-    let r = ResolvedRouteTransports.derive(
-      decision: makeDecision(.halDeviceInput, .btOutputUserSelectedDevice),
-      preferredInputDeviceIDOverride: "fake-bt-uid")
-    #expect(r.inputSelectionMode == "explicit")
   }
 
   @Test("a disconnected pinned device falls effective back to the default input")

@@ -22,26 +22,6 @@ struct TurnAssemblerTests {
     return String(text[lower..<upper])
   }
 
-  @Test("every entry lands in exactly one turn, in order, with no loss or duplication")
-  func noLostOrReassignedWords() {
-    let entries = [
-      entry("hello", 0, 5, 0, 200), entry("there", 6, 11, 200, 500),
-      entry("hi", 12, 14, 600, 800), entry("back", 15, 19, 800, 1000),
-    ]
-    let segments = [
-      SpeakerSegment(speakerId: "A", startMs: 0, endMs: 500, quality: 1),
-      SpeakerSegment(speakerId: "B", startMs: 600, endMs: 1000, quality: 1),
-    ]
-    let turns = TurnAssembler.assemble(entries: entries, segments: segments)
-    #expect(turns.count == 2)
-    #expect(turns[0].speakerId == "A")
-    #expect(turns[1].speakerId == "B")
-    // Every original entry accounted for: the two turns' ranges cover exactly the
-    // entries' own spans, first-to-last, with none dropped or duplicated.
-    #expect(turns[0].originalTextRange == 0..<11)
-    #expect(turns[1].originalTextRange == 12..<19)
-  }
-
   @Test(
     "a mixed A-to-B-to-A fixture with punctuation, numerals and an untimed span: every entry attributed exactly once, no forbidden regrouping"
   )

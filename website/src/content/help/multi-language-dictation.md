@@ -13,7 +13,7 @@ EnviousWispr handles dozens of languages. The **Fast** engine (Parakeet), which 
 
 ### Lock or auto-detect my language
 
-Under **Settings** > **Transcription** > **Language**, you can lock one language or leave **Auto-detect language** on. Both engines offer this. This is the language you speak. The language of EnviousWispr's own menus is a separate setting: see [the app's language](/help/sounds-and-appearance/).
+Under **Dictation Settings** > **Engine**, you can lock one language or leave **Auto-detect language** on. Both engines offer this. This is the language you speak. The language of EnviousWispr's own menus is a separate setting: see [the app's language](/help/sounds-and-appearance/).
 
 - **On Fast (Parakeet)**, locking a language narrows the text to your own alphabet. A German dictation stops coming back with stray Greek or Cyrillic characters. A lock cannot tell apart two languages that share an alphabet, so it will not separate German from Dutch.
 - **On All Languages (WhisperKit)**, locking a language is more accurate than auto-detect.
@@ -25,7 +25,7 @@ To lock a language, switch off **Auto-detect language**, then click **Change** a
 If your language is not one of the 25 the Fast engine covers, switch to All Languages.
 
 1. **Open the engine settings.** Click the EnviousWispr icon in your menu bar, choose **Open EnviousWispr**, and go to **Dictation Settings** > **Engine**.
-2. **Select All Languages.** Click the **All Languages** card. If you have not downloaded its model yet, click **Download WhisperKit Model**.
+2. **Select All Languages.** Click **Change**, then the **All Languages** card. If its model is not set up yet, click **Set up model**.
 3. **Choose your language.** Switch off **Auto-detect language**, then click **Change** and pick your language. You can also leave auto-detect on.
 
 Your next dictation should come back in the language you spoke.
@@ -34,7 +34,7 @@ Your next dictation should come back in the language you spoke.
 
 Both engines write English with American spelling, so "organisation" comes out as "organization". Choose **English (UK)** to get British spelling instead: colour, centre, organise, travelled, favourite. It applies to dictation and to Transcribe a File, with AI Polish on or off.
 
-1. **Turn off auto-detect.** Go to **Settings** > **Transcription** > **Language** and switch off **Auto-detect language**.
+1. **Turn off auto-detect.** Go to **Dictation Settings** > **Engine** and switch off **Auto-detect language**.
 2. **Choose English (UK).** Click **Change** and pick **English (UK)**, directly under **English**. Its line reads "British spelling: colour, organise, centre".
 
 Your next dictation says "colour" where it used to say "color".

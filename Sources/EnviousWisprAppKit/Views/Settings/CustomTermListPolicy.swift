@@ -144,9 +144,9 @@ enum MatchStrictness: String, CaseIterable {
 /// learned chips, and the helper line under the alias list. The views and
 /// the tests read this table; nothing restates it.
 enum CustomTermProvenanceCopy {
-  static let filterPill = String(
-    localized: "Auto-learned",
+  static let filterPillResource = LocalizedStringResource("Auto-learned",
     comment: "Your Words: filter that shows only words learned automatically.")
+  static var filterPill: String { String(localized: filterPillResource) }
   static let noAutoLearnedWordsYet = String(
     localized: "No auto-learned words yet.",
     comment: "Your Words: empty list with the Auto-learned filter.")
@@ -167,22 +167,21 @@ enum CustomTermProvenanceCopy {
 /// A category's name on screen (#3142). The raw value is the stored identity and stays English;
 /// the English name is the raw value capitalized, as before.
 extension WordCategory {
-  var displayName: String {
+  var displayNameResource: LocalizedStringResource {
     switch self {
     // Its own key: "General" is also an S1-mini writing context, a different meaning (#3142).
     case .general:
-      return String(
-        localized: "wordCategory.general", defaultValue: "General",
+      return LocalizedStringResource("wordCategory.general", defaultValue: "General",
         comment: "Your Words: the category for words without a specific field.")
     case .person:
-      return String(localized: "Person", comment: "Your Words: a word category, a person's name.")
+      return LocalizedStringResource("Person", comment: "Your Words: a word category, a person's name.")
     case .brand:
-      return String(
-        localized: "Brand", comment: "Your Words: a word category, a brand or product name.")
-    case .acronym: return String(localized: "Acronym", comment: "Your Words: a word category.")
+      return LocalizedStringResource("Brand", comment: "Your Words: a word category, a brand or product name.")
+    case .acronym: return LocalizedStringResource("Acronym", comment: "Your Words: a word category.")
     case .domain:
-      return String(
-        localized: "Domain", comment: "Your Words: a word category, a subject area's jargon.")
+      return LocalizedStringResource("Domain", comment: "Your Words: a word category, a subject area's jargon.")
     }
   }
+
+    var displayName: String { String(localized: displayNameResource) }
 }

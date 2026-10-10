@@ -1,114 +1,68 @@
-// Pre-deploy live-query smoke: runs the REAL report against production
-// PostHog and the appcast, prints the exact message that would be sent, and posts
-// NOTHING to Discord.
-//
-// Usage (with POSTHOG_KEY already injected):
-//   node workers/daily-report/live-query-smoke.mjs [YYYY-MM-DD]
-// See workers/daily-report/README.md for the secret-safe launcher.
-//
-// An optional date argument overrides "yesterday" (the same override the
-// deployed worker's ?date= param uses) for testing against a known day.
-//
-// Deliberately drives `runReport` rather than reassembling the report from
-// parts. A smoke script with its own copy of the orchestration proves only
-// that the copy works, and it was exactly that shape - importing `buildMessage`
-// and `fetchReportData` directly - that left this file broken and unnoticed
-// when the report gained its scorecard, because nothing exercised it. The
-// Discord call is intercepted, so the ONLY difference from a production run is
-// that the payload is printed instead of delivered.
-
-import { runReport } from "./src/index.js";
-
-const CAPTURED_WEBHOOK = "https://smoke.invalid/never-posted";
-
+// Drives the REAL selected entrypoint; only Discord delivery is intercepted.
+// Do not rapid-fire live triggers: read-only smoke, then one actual backfill.
+// Print rendered counts/labels, never raw vendor bodies, IDs or credentials.
+import { runReport, runSentryReport } from "./src/index.js";
+let report = "performance", platform = null, dateOverride = null;
+for (let i = 2; i < process.argv.length; i += 1) {
+  const arg = process.argv[i];
+  if (arg === "--report") report = process.argv[++i];
+  else if (arg === "--platform") platform = process.argv[++i];
+  else if (/^\d{4}-\d{2}-\d{2}$/.test(arg) && dateOverride === null) dateOverride = arg;
+  else throw new Error("unsupported smoke argument");
+}
+if (!["performance", "sentry"].includes(report)
+    || (report === "sentry" && !["mac", "android"].includes(platform))
+    || (report === "performance" && platform !== null)) throw new Error("invalid smoke mode");
+const MAC_CAPTURE = "https://smoke.invalid/mac";
+const ANDROID_CAPTURE = "https://smoke.invalid/android";
 const env = {
-  POSTHOG_PROJECT_ID: "354235",
-  POSTHOG_PERSONAL_API_KEY: process.env.POSTHOG_KEY,
+  POSTHOG_PROJECT_ID: "354235", POSTHOG_PERSONAL_API_KEY: process.env.POSTHOG_KEY,
   APPCAST_URL: "https://enviouswispr.com/appcast.xml",
-  DISCORD_WEBHOOK_URL: CAPTURED_WEBHOOK,
-  SENTRY_ORG: "envious-labs-llc",
-  SENTRY_PROJECT_ID: "4511097112428544",
-  SENTRY_PROJECT_SLUG: "enviouswispr",
+  DISCORD_WEBHOOK_URL: MAC_CAPTURE, DISCORD_ANDROID_WEBHOOK_URL: ANDROID_CAPTURE,
+  SENTRY_ORG: "envious-labs-llc", SENTRY_PROJECT_ID: "4511097112428544", SENTRY_PROJECT_SLUG: "enviouswispr",
   SENTRY_AUTH_TOKEN: process.env.SENTRY_KEY,
 };
-if (!env.POSTHOG_PERSONAL_API_KEY) {
-  console.error("POSTHOG_KEY not set - run via get-key launch posthog-personal-api-key POSTHOG_KEY -- ...");
-  process.exit(1);
-}
-// Sentry is REQUIRED here, not optional. The whole point of a pre-deploy
-// smoke is to prove the section answers against live Sentry before the
-// worker is deployed; skipping it on a missing key would print "Smoke OK"
-// for a run that never exercised the new section at all.
-if (!env.SENTRY_AUTH_TOKEN) {
-  console.error("SENTRY_KEY not set - the Sentry section would not be exercised, so this smoke proves nothing about it");
-  process.exit(1);
-}
-
+if (report === "performance" && !env.POSTHOG_PERSONAL_API_KEY) throw new Error("POSTHOG_KEY required for performance smoke");
+if (report === "sentry" && !env.SENTRY_AUTH_TOKEN) throw new Error("SENTRY_KEY required for Sentry smoke");
 const realFetch = globalThis.fetch;
-const requests = [];
-let captured = null;
-
-globalThis.fetch = async (url, init) => {
-  const target = String(url);
-  requests.push(
-    target.startsWith("https://us.posthog.com")
-      ? `posthog:${JSON.parse(init.body).name}`
-      : target === env.APPCAST_URL
-        ? "appcast"
-        : target.startsWith("https://us.sentry.io")
-          ? `sentry:${new URL(target).pathname}`
-          : target
-  );
-  if (target === CAPTURED_WEBHOOK) {
-    captured = JSON.parse(init.body);
+const requests = [], captured = [];
+globalThis.fetch = async (target, init) => {
+  const text = String(target), url = new URL(text);
+  if (text === MAC_CAPTURE || text === ANDROID_CAPTURE) {
+    requests.push("captured-discord:" + (text === MAC_CAPTURE ? "mac" : "android"));
+    captured.push(JSON.parse(init.body));
     return { status: 204 };
   }
-  return realFetch(url, init);
-};
-
-const dateOverride = process.argv[2] || null;
-console.log(`Target: ${dateOverride ? `${dateOverride} (override)` : "yesterday, Eastern"}`);
-
-let failure = null;
-try {
-  await runReport(env, dateOverride);
-} catch (err) {
-  failure = err;
-}
-
-console.log(`\n=== ${requests.length} outbound requests ===`);
-console.log(requests.join("\n"));
-
-if (captured) {
-  // Counts, labels and rates only - the same posture the deployed worker holds
-  // to. A rendered report contains no per-user rows by construction, so
-  // printing it whole is safe in a way that dumping raw query results was not
-  // (a Codex cloud review catch on PR #1437).
-  console.log("\n=== would-be Discord message ===");
-  console.log(captured.content);
-  for (const embed of captured.embeds ?? []) {
-    console.log(`\n--- ${embed.title} ---\n${embed.description}`);
+  if (url.hostname === "discord.com" || url.hostname.endsWith(".discord.com") || url.hostname === "discordapp.com") {
+    throw new Error("unexpected Discord destination in read-only smoke");
   }
+  requests.push(url.hostname === "us.posthog.com" ? "posthog:" + JSON.parse(init.body).name
+    : url.hostname === "us.sentry.io" ? "sentry:" + url.pathname
+      : text === env.APPCAST_URL ? "appcast" : "other:" + url.hostname);
+  return realFetch(target, init);
+};
+console.log("Mode: " + report + (platform ? "/" + platform : "") + "; date: " + (dateOverride || "yesterday, Eastern"));
+let failure = null, quality = null;
+try {
+  if (report === "performance") await runReport(env, dateOverride);
+  else quality = (await runSentryReport(env, platform, dateOverride)).dataQuality;
+} catch (err) { failure = err; }
+finally { globalThis.fetch = realFetch; }
+console.log(requests.length + " outbound requests: " + requests.join(", "));
+for (const payload of captured) {
+  console.log(payload.content);
+  for (const embed of payload.embeds || []) console.log(embed.title + "\n" + embed.description);
 }
-
-// A missing or unavailable section means PostHog, the appcast or a calculation did
-// not answer DURING this smoke run - the exact thing a pre-deploy check exists
-// to prove did not happen. Printing "Smoke OK" regardless would let a real
-// degradation pass silently, so this fails loud and lets the caller decide
-// whether to retry rather than deploy on unproven data (#1720).
 const problems = [];
-if (failure) problems.push(`run failed: ${failure.message}`);
-if (!captured) problems.push("no payload was assembled");
-for (const embed of captured?.embeds ?? []) {
-  if (/unavailable today/.test(embed.title)) problems.push(`section unavailable: ${embed.title}`);
-  if (/temporarily unavailable/.test(embed.description)) problems.push(`degraded subsection in ${embed.title}`);
+if (failure) problems.push("run failed: " + failure.message);
+if (captured.length !== 1) problems.push("expected exactly one captured report");
+if (quality && Object.values(quality).some((v) => v !== true)) problems.push("Sentry detail query incomplete");
+for (const payload of captured) for (const embed of payload.embeds || []) {
+  if (/unavailable today/.test(embed.title) || /temporarily unavailable/.test(embed.description)) problems.push("required section degraded");
 }
-
+if (report === "performance" && requests.some((r) => r.startsWith("sentry:"))) problems.push("performance unexpectedly queried Sentry");
+if (report === "sentry" && requests.some((r) => r.startsWith("posthog:") || r === "appcast")) problems.push("Sentry queried a performance dependency");
 if (problems.length) {
-  console.error(
-    `\nSMOKE FAILED (${problems.length}):\n  ${problems.join("\n  ")}\n` +
-      "Nothing posted; retry later, spaced out (see README verification-methodology note)."
-  );
-  process.exit(1);
-}
-console.log("\nSmoke OK: every section rendered from live data, nothing posted.");
+  console.error("SMOKE FAILED: " + problems.join("; ") + ". Nothing posted.");
+  process.exitCode = 1;
+} else console.log("Smoke OK: selected mode rendered from real data; nothing posted.");

@@ -8,19 +8,23 @@ struct PermissionsSettingsView: View {
   var body: some View {
     SettingsContentView {
       VStack(alignment: .leading, spacing: 10) {
-        SettingsSectionHeading(title: "PERMISSIONS")
+        SettingsSectionHeading(map: .id(.sectionPermissions))
         BrandedSection {
           BrandedRow {
             SettingsRow(
-              icon: "mic", title: "Microphone", short: "Needed to record your voice.",
-              help: "Allow microphone access so EnviousWispr can record your voice. If access was denied, Request Access opens System Settings."
+              map: .id(.permissionMicrophone),
+              icon: "mic", help: "Allow microphone access so EnviousWispr can record your voice. If access was denied, Request Access opens System Settings."
             ) {
               if permissions.hasMicrophonePermission {
                 grantedStatus(
                   LocalizedStringResource(
                     "Microphone access granted", comment: "Permissions settings: status when granted."))
               } else {
-                SettingsActionButton(title: "Request Access", isEnabled: true, action: requestMicrophone)
+                SettingsActionButton(
+                  title: SettingsItemCopy.AppSettings.requestAccess, isEnabled: true,
+                  action: requestMicrophone
+                )
+                .settingsMapRegistration(.permissionMicrophoneRequest)
               }
             }
             .rowStatus {
@@ -31,23 +35,24 @@ struct PermissionsSettingsView: View {
           }
           BrandedRow(showDivider: false) {
             SettingsRow(
-              icon: "hand.raised", title: "Accessibility",
-              short: "Needed to paste text into other apps.",
-              help: "Allow Accessibility access so EnviousWispr can paste your dictation into other apps."
+              map: .id(.permissionAccessibility),
+              icon: "hand.raised",
+              help: "Allow Accessibility access so a modifier key used on its own works as a keybind and EnviousWispr can paste your dictation into other apps."
             ) {
               if permissions.hasAccessibilityPermission {
                 grantedStatus(
                   LocalizedStringResource(
                     "Accessibility access granted", comment: "Permissions settings: status when granted."))
               } else {
-                SettingsActionButton(title: "Open System Settings", isEnabled: true) {
+                SettingsActionButton(title: SettingsItemCopy.AppSettings.openSystemSettings, isEnabled: true) {
                   _ = permissions.requestAccessibilityAccess()
                 }
+                .settingsMapRegistration(.permissionAccessibilityOpenSettings)
               }
             }
             .rowStatus {
               if !permissions.hasAccessibilityPermission {
-                Text("Accessibility access required for paste").settingsHelperCopy()
+                Text("Accessibility needed for modifier keys used on their own and for pasting").settingsHelperCopy()
                 Text("After rebuilding the app you may need to re-grant this permission.")
                   .font(.stRowHelper)
                   .foregroundStyle(.stTextSecondary)

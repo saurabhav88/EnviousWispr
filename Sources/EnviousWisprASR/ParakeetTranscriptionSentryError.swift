@@ -6,8 +6,7 @@ import Foundation
 /// path), built from `FluidAudioASRErrorKind` — never from `FluidAudio.ASRError` directly
 /// (see `EnviousWisprFluidAudioBridge`'s naming-trap doc comment). `CustomNSError`
 /// conforms so the app-owned domain/code automatically applies the moment anything
-/// downstream does `error as NSError` (exactly what `XPCErrorSanitizer.sanitizeForXPC`
-/// already does) — no manual bridging call needed.
+/// downstream does `error as NSError` — no manual bridging call needed.
 enum ParakeetTranscriptionSentryError: Error, LocalizedError, CustomNSError, Sendable, Equatable {
   case notInitialized(String)
   case invalidAudioData(String)
@@ -75,27 +74,6 @@ enum ParakeetTranscriptionSentryError: Error, LocalizedError, CustomNSError, Sen
     case .fileAccessFailed(let d): self = .fileAccessFailed(d)
     case .encoderInstantiationFailed(let d): self = .encoderInstantiationFailed(d)
     case .unknownFutureCase(let d): self = .unknownTranscriptionFailure(d)
-    }
-  }
-
-  /// Reconstructs the typed, conforming error from an NSError that survived the XPC
-  /// round-trip (domain/code preserved by `XPCErrorSanitizer.sanitizeForXPC`). Returns
-  /// `nil` if the domain doesn't match — a genuinely unrelated XPC-layer error.
-  init?(reconstructingFrom error: NSError) {
-    guard error.domain == Self.errorDomain else { return nil }
-    let d = error.localizedDescription
-    switch error.code {
-    case 0: self = .notInitialized(d)
-    case 1: self = .invalidAudioData(d)
-    case 2: self = .modelLoadFailed(d)
-    case 3: self = .processingFailed(d)
-    case 4: self = .modelCompilationFailed(d)
-    case 5: self = .unsupportedPlatform(d)
-    case 6: self = .streamingConversionFailed(d)
-    case 7: self = .fileAccessFailed(d)
-    case 8: self = .unknownTranscriptionFailure(d)
-    case 9: self = .encoderInstantiationFailed(d)
-    default: return nil
     }
   }
 }

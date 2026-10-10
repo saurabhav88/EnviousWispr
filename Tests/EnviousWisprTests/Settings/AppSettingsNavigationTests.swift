@@ -7,27 +7,7 @@ import Testing
 @MainActor
 @Suite("App Settings binding contract (#3385)", .tags(.driftGuard))
 struct AppSettingsNavigationTests {
-  @Test("The host binding writes through to its owner", arguments: AppSettingsTab.allCases)
-  func rememberedTab(tab: AppSettingsTab) {
-    var remembered = tab
-    let binding = Binding(get: { remembered }, set: { remembered = $0 })
-    let firstVisit = AppSettingsView(selection: binding)
-    #expect(firstVisit.selection == tab)
-    firstVisit.selection = .licenses
-    let returned = AppSettingsView(selection: binding)
-    #expect(remembered == .licenses)
-    #expect(returned.selection == .licenses)
-  }
 
-  @Test("The host binding reads its owner's changes")
-  func explicitSelection() {
-    var remembered = AppSettingsTab.appearance
-    let host = AppSettingsView(selection: Binding(get: { remembered }, set: { remembered = $0 }))
-    remembered = .permissions
-    #expect(host.selection == .permissions)
-    host.selection = .privacy
-    #expect(remembered == .privacy)
-  }
   @Test("App Settings destinations override and remember each tab independently", arguments: AppSettingsTab.allCases)
   func destinations(tab: AppSettingsTab) {
     var state = SettingsNavigationState()

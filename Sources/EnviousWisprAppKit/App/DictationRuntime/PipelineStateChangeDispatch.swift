@@ -14,8 +14,7 @@ import Foundation
 ///
 /// It shrinks the coordinator by REMOVING code rather than relocating a
 /// symptom, and it adds no collaborator (a namespace with one static method
-/// holds no state) and no import the coordinator did not already have — the
-/// collaborator and import ceilings both still hold.
+/// holds no state) and no import the coordinator did not already have.
 @MainActor
 enum PipelineStateChangeDispatch {
 

@@ -809,7 +809,6 @@ public struct AppleIntelligenceConnector: TranscriptPolisher {
       /// Owned by `countLifetime`: dropping the last copy of this carrier, on ANY path
       /// (unused slot, key mismatch, a preflight throw, an injected polisher), cancels it.
       let countLifetime: AFMCountLifetime
-      var systemPromptTokens: Task<Int, Error> { countLifetime.task }
     }
 
     /// Cancels a background count when the last carrier holding it goes away, so no exit

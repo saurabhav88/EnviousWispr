@@ -189,6 +189,30 @@ struct FeedbackReporterTests {
       .appendingPathComponent("ew-3269-reporter-\(UUID().uuidString)", isDirectory: true)
   }
 
+  @Test("A draft's category is frozen into the saved report; no choice saves none")
+  func sendFreezesTheCategory() async throws {
+    let directory = Self.tempDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let outbox = Self.outbox(directory: directory)
+    let chosen = try #require(
+      FeedbackDraft(message: "Shift stuck", email: "", category: .typingOrShortcutInterference))
+    let plain = try #require(FeedbackDraft(message: "love it", email: ""))
+    #expect(plain.category == nil, "ordinary feedback needs no category")
+    for (draft, id) in [
+      (chosen, UUID(uuidString: "5D1E6A2B-9C3F-4E7A-8B10-2F4C6D8E0A1B")!),
+      (plain, UUID(uuidString: "6D1E6A2B-9C3F-4E7A-8B10-2F4C6D8E0A1B")!),
+    ] {
+      let outcome = await FeedbackReporter.send(
+        draft, diagnostics: nil, outbox: outbox, now: Date(timeIntervalSince1970: 1_790_000_000),
+        id: id, context: Self.context)
+      #expect(outcome == .saved(offline: false))
+    }
+    let saved = try FeedbackOutboxTests.records(in: directory)
+    #expect(Set(saved.map(\.category)) == [.typingOrShortcutInterference, nil])
+    #expect(saved.first { $0.message == "Shift stuck" }?.category == .typingOrShortcutInterference)
+    #expect(saved.first { $0.message == "love it" }?.category == nil)
+  }
+
   @Test("Send freezes exactly the form's choices into the saved report")
   func sendFreezesTheReport() async throws {
     let directory = Self.tempDirectory()

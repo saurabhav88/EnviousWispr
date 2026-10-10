@@ -3,6 +3,8 @@ import SwiftParser
 import SwiftSyntax
 import Testing
 
+@testable import EnviousWisprAppKit
+
 /// #3385: the Clipboard tab's four switches are shared rows, each wired to its own setting,
 /// in two headed sections: the three recording-scoped settings under CLIPBOARD with the
 /// next-recording note, and Quick Add under its own heading with no note. Read from the source
@@ -42,7 +44,8 @@ struct ClipboardSettingsWiringTests {
     calls(named: "SettingsRow", in: tree).map { call in
       var row = Row()
       row.icon = argument("icon", of: call) ?? ""
-      row.title = argument("title", of: call) ?? ""
+      // #3482: a mapped row names itself by its Settings Map id; fixtures may still use title:.
+      row.title = argument("map", of: call) ?? argument("title", of: call) ?? ""
       row.short = argument("short", of: call) ?? ""
       row.help = argument("help", of: call) ?? ""
       let toggles = call.trailingClosure.map { calls(named: "Toggle", in: $0) } ?? []
@@ -85,7 +88,9 @@ struct ClipboardSettingsWiringTests {
             heading.calledExpression.as(DeclReferenceExprSyntax.self)?.baseName.text
               == "SettingsSectionHeading"
           else { continue }
-          let title = argument("resolvedTitle", of: heading) ?? argument("title", of: heading) ?? ""
+          let title =
+            argument("map", of: heading) ?? argument("resolvedTitle", of: heading)
+            ?? argument("title", of: heading) ?? ""
           let note =
             heading.trailingClosure.flatMap { calls(named: "Text", in: $0).first }?
             .arguments.first?.expression.trimmedDescription ?? ""
@@ -107,20 +112,21 @@ struct ClipboardSettingsWiringTests {
   }
 
   static let toggleModifiers = ["labelsHidden", "toggleStyle", "fixedSize", "accessibilityLabel"]
-  static let clipboardHeading = "String(localized: Copy.clipboardHeading).localizedUppercase"
+  static let clipboardHeading = ".id(.sectionClipboard)"
   static let note = "DictationSettingsCopy.Engine.nextRecordingNote"
 
   static func expectedRow(
-    _ icon: String, _ name: String, binding: String, quickAdd: Bool = false
+    _ icon: String, _ name: String, map: String, binding: String, quickAdd: Bool = false
   ) -> Row {
     Row(
-      icon: "\"\(icon)\"", title: "Copy.\(name)Title", short: "Copy.\(name)Short",
+      // #3482: the short line is the map node's description, checked in `shortLinesFromTheMap`.
+      icon: "\"\(icon)\"", title: ".id(.\(map))", short: "",
       help: "Copy.\(name)Help", toggles: 1, toggleTitle: "\"\"", binding: binding,
       modifiers: toggleModifiers,
       modifierArguments: [[], ["BrandedToggleStyle()"], [], ["Text(Copy.\(name)Title)"]],
       accessibilityLabel: "Text(Copy.\(name)Title)",
       sectionHeading: quickAdd
-        ? "String(localized: Copy.quickAddHeading).localizedUppercase" : clipboardHeading,
+        ? ".id(.sectionQuickAddClipboard)" : clipboardHeading,
       sectionNote: quickAdd ? "" : note)
   }
 
@@ -128,12 +134,17 @@ struct ClipboardSettingsWiringTests {
   func fourRowsWiredToTheirOwnSettings() throws {
     let rows = Self.rows(in: try Self.tree())
     let expected = [
-      Self.expectedRow("doc.on.clipboard", "autoCopy", binding: "$settings.autoCopyToClipboard"),
       Self.expectedRow(
-        "arrow.uturn.backward", "restore", binding: "$settings.restoreClipboardAfterPaste"),
-      Self.expectedRow("text.cursor", "smartInsertion", binding: "$settings.smartInsertion"),
+        "doc.on.clipboard", "autoCopy", map: "autoCopyToClipboard",
+        binding: "$settings.autoCopyToClipboard"),
       Self.expectedRow(
-        "text.viewfinder", "quickAdd", binding: "$settings.quickAddClipboardFallback",
+        "arrow.uturn.backward", "restore", map: "restoreClipboard",
+        binding: "$settings.restoreClipboardAfterPaste"),
+      Self.expectedRow(
+        "text.cursor", "smartInsertion", map: "smartInsertion", binding: "$settings.smartInsertion"),
+      Self.expectedRow(
+        "text.viewfinder", "quickAdd", map: "quickAddClipboardFallback",
+        binding: "$settings.quickAddClipboardFallback",
         quickAdd: true),
     ]
     #expect(rows.count == 4, "\(rows.count) rows: \(rows)")
@@ -145,6 +156,19 @@ struct ClipboardSettingsWiringTests {
         ], "the page holds a switch outside the four rows, or lost one")
     for (row, want) in zip(rows, expected) {
       #expect(row == want, "got \(row)\nwant \(want)")
+    }
+  }
+
+  @Test("each row's short line is its own copy, read from its Settings Map node")
+  func shortLinesFromTheMap() {
+    let expected: [(SettingsMapID, LocalizedStringResource)] = [
+      (.autoCopyToClipboard, DictationSettingsCopy.Clipboard.autoCopyShort),
+      (.restoreClipboard, DictationSettingsCopy.Clipboard.restoreShort),
+      (.smartInsertion, DictationSettingsCopy.Clipboard.smartInsertionShort),
+      (.quickAddClipboardFallback, DictationSettingsCopy.Clipboard.quickAddShort),
+    ]
+    for (id, copy) in expected {
+      #expect(SettingsMapRef.id(id).shortLine == String(localized: copy), "\(id.rawValue)")
     }
   }
 

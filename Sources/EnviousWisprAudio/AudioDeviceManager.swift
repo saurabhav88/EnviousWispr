@@ -328,19 +328,6 @@ public enum AudioDeviceEnumerator {
     return deviceID
   }
 
-  /// Returns true if the device's I/O cycle is active (audio is flowing somewhere).
-  public static func isDeviceRunningSomewhere(_ deviceID: AudioDeviceID) -> Bool {
-    var isRunning: UInt32 = 0
-    var size = UInt32(MemoryLayout<UInt32>.size)
-    var addr = AudioObjectPropertyAddress(
-      mSelector: kAudioDevicePropertyDeviceIsRunningSomewhere,
-      mScope: kAudioObjectPropertyScopeGlobal,
-      mElement: kAudioObjectPropertyElementMain
-    )
-    AudioObjectGetPropertyData(deviceID, &addr, 0, nil, &size, &isRunning)
-    return isRunning != 0
-  }
-
   // MARK: - Transport labels (#1376 single authority)
 
   /// Maps a CoreAudio transport-type constant to the app's low-cardinality

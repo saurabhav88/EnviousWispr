@@ -568,27 +568,28 @@ struct OverlayReducer {
     let showToast = showingToast()
     let toast = reducePipeline(.accessibilityToast)
     guard !showToast, let shown = toast.presentation,
-      // The SECOND catalog request of this transition, with the SAME id.
-      // Stated rather than left to be rediscovered: this path substitutes the
-      // clipboard DEFINITION while retaining the accessibility entry's
-      // ANNOUNCEMENT, which is the one place the two halves of an entry
-      // legitimately come from different requests. Neither request carries or
-      // resolves a recording design.
+      // The SECOND catalog request of this transition, with the SAME id. Neither
+      // request carries or resolves a recording design.
       let fallback = PillCatalog.entry(for: .clipboardFallback, id: shown.id).definition
     else {
       return toast
     }
 
-    // Only the picture changes. `reducePipeline` has already set the intent to
-    // `.accessibilityToast` and that is the intent this IS; the fallback merely
-    // draws in its place.
+    // The picture AND the spoken sentence change (#2321, founder 2026-10-04): VoiceOver says
+    // what the pill shows, "Copied. Press \u{2318}V to paste", and the permission sentence is
+    // spoken only when the permission toast is really drawn. `reducePipeline` has already set
+    // the intent to `.accessibilityToast` and that is the intent this IS; the fallback merely
+    // draws in its place. Priority stays what the toast announced.
     state.set(current: fallback)
 
     return OverlayPlan(
       presentation: fallback, didChange: toast.didChange,
       expiryCommand: Self.command(for: fallback),
       deliverAction: toast.deliverAction, effects: toast.effects,
-      announcement: toast.announcement)
+      announcement: toast.announcement.map {
+        OverlayAnnouncement(
+          text: DictationNarrator.clipboardFallbackText, isHighPriority: $0.isHighPriority)
+      })
   }
 
   // MARK: - Features
@@ -717,10 +718,10 @@ struct OverlayReducer {
       guard case .learned = shown.phase else {
         // A result still on screen gives way: a fresh learn is newer news than
         // an old result, and a result owes no end report.
-        return replaceLearnedPill(with: model, outgoing: current, effects: [])
+        return replaceLearnedPill(with: model, effects: [])
       }
       return replaceLearnedPill(
-        with: model, outgoing: current,
+        with: model,
         effects: [.correctionLearnedEnded(pillID: shown.id, presentation: current.id)])
     }
     guard state.featureSlotIsAvailable else { return .noChange }
@@ -730,7 +731,7 @@ struct OverlayReducer {
   /// A different learned pill takes the slot with its own identity and a fresh
   /// learned dwell; the outgoing `.learned` offer is reported ended.
   private mutating func replaceLearnedPill(
-    with model: LearnedCorrectionPillModel, outgoing: PillDefinition, effects: [PillEffect]
+    with model: LearnedCorrectionPillModel, effects: [PillEffect]
   ) -> OverlayPlan {
     let entry = PillCatalog.entry(for: .correctionLearned(model), id: makeID())
     guard let definition = entry.definition else {

@@ -51,13 +51,6 @@ struct FakeClockTests {
     #expect(woke.value == true)
   }
 
-  @Test("sleep of non-positive ticks returns immediately")
-  func sleepZeroReturnsImmediately() async {
-    let clock = FakeClock()
-    await clock.sleep(ticks: 0)
-    #expect(clock.hasPendingWaiters == false)
-  }
-
   @Test("drainPending resumes a straggler without advancing the clock")
   func drainPendingResumesStraggler() async {
     let clock = FakeClock()
@@ -140,6 +133,7 @@ struct FakeClockTests {
     await clock.sleep(ticks: 0)
     await clock.sleep(ticks: -5)
     #expect(clock.unrunResumedWaiters == 0)
+    #expect(clock.hasPendingWaiters == false)
   }
 
   @Test("many waiters resumed by one advance are all counted")

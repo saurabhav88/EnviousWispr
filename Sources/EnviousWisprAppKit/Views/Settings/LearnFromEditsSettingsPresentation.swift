@@ -60,9 +60,9 @@ struct LearnFromEditsSettingsPresentation: Equatable, Sendable {
   /// what reaches a cloud polish provider live in the help article behind
   /// `learnMoreURL`, so the row never has to carry a privacy claim that a
   /// settings change elsewhere could make untrue.
-  static let rowTitle = String(
-    localized: "Self-Learning Dictionary",
+  static let rowTitleResource = LocalizedStringResource("Self-Learning Dictionary",
     comment: "Your Words, Learn from: the self-learning dictionary row: the feature's name.")
+  static var rowTitle: String { String(localized: rowTitleResource) }
   /// #3338 (founder 2026-10-01): a badge after the name so people know the
   /// feature is still improving.
   static let betaBadge = String(
@@ -70,16 +70,16 @@ struct LearnFromEditsSettingsPresentation: Equatable, Sendable {
     comment:
       "Your Words, Learn from: the self-learning dictionary row: a small badge after the feature's name saying the feature is still improving."
   )
-  static let rowCopy =
-    String(
-      localized:
-        "Automatically detects when you correct a dictation and adds the corrected word to your dictionary. Undo it from the notification, or remove it later in Your Words.",
+  static let rowCopyResource =
+    LocalizedStringResource(
+      "Automatically detects when you correct a dictation and adds the corrected word to your dictionary. Undo it from the notification, or remove it later in Your Words.",
       comment:
         "Your Words, Learn from: the self-learning dictionary row: what the feature does. Your Words is a page name."
     )
-  static let learnMoreLabel = String(
-    localized: "Learn more",
+  static var rowCopy: String { String(localized: rowCopyResource) }
+  static let learnMoreLabelResource = LocalizedStringResource("Learn more",
     comment: "Your Words, Learn from: the self-learning dictionary row: link to the help article.")
+  static var learnMoreLabel: String { String(localized: learnMoreLabelResource) }
   static let learnMoreURL = "https://enviouswispr.com/help/self-learning-dictionary/"
 
   init(selection: CorrectionJudgeArmSelection, judge: JudgePhase = .none) {

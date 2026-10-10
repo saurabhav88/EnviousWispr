@@ -80,8 +80,8 @@ struct PrivacySettingsTests {
 
   @Test("The Privacy words are the founder-approved English")
   func copy() {
-    #expect(PrivacySettingsCopy.metricsShort == "Help us catch broken updates.")
-    #expect(PrivacySettingsCopy.crashShort == "Help us fix crashes and errors.")
+    #expect(String(localized: PrivacySettingsCopy.metricsShortResource) == "Help us catch broken updates.")
+    #expect(String(localized: PrivacySettingsCopy.crashShortResource) == "Help us fix crashes and errors.")
     #expect(PrivacySettingsCopy.metricsLabel == "Share usage metrics")
     #expect(
       PrivacySettingsCopy.metricsHelp

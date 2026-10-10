@@ -4,9 +4,9 @@ description: "Change the keys that start, stop and cancel dictation, and fix a k
 category: "recording-and-keybinds"
 section: "Recording"
 order: 4
-keywords: ["keybind", "keybinds", "hotkey", "shortcut", "keyboard shortcut", "change the key", "how do i change the key", "key combo", "keybinding", "remap", "different key", "globe key", "fn key", "caps lock", "conflicts with another app", "quick add shortcut", "control shift w", "paste last dictation", "copy last dictation", "control command v", "control command c", "keybind not working", "not active", "key already in use"]
+keywords: ["keybind", "dictation stopped when i typed", "other key cancels", "secure input", "keybinds", "hotkey", "shortcut", "keyboard shortcut", "change the key", "how do i change the key", "key combo", "keybinding", "remap", "different key", "globe key", "fn key", "caps lock", "conflicts with another app", "quick add shortcut", "control shift w", "paste last dictation", "copy last dictation", "control command v", "control command c", "keybind not working", "not active", "key already in use"]
 related: ["adding-a-word-from-your-selection", "escape-recovery", "transcript-history"]
-updated: 2026-09-29
+updated: 2026-10-09
 deflection: "can_resolve"
 ---
 Your keybind is the key you hold or press to record, and you can change it to whatever suits your hands. EnviousWispr arrives set to the right Option key.
@@ -14,7 +14,7 @@ Your keybind is the key you hold or press to record, and you can change it to wh
 ### Change the key that starts dictation
 
 1. **Open Keybinds.** Click the EnviousWispr icon in your menu bar, choose **Open EnviousWispr**, and go to **Keybinds**.
-2. **Select the keybind box.** Click the **Recording keybind** box.
+2. **Select the keybind box.** Click the keys field in the **Start / stop recording** row.
 3. **Press your new keys.** Press the keys you want to use.
 
 The new combination saves immediately and appears in the box. Click into any text field and try it to confirm it works.
@@ -39,19 +39,29 @@ No. The recording keybind stays the same in [push to talk](/help/push-to-talk-mo
 
 If holding a key down is uncomfortable, toggle mode asks less of your hand. One press starts recording and the next press stops it, so nothing has to be held.
 
+### Pressing another key right after your keybind
+
+When your push-to-talk keybind is a modifier key used on its own, pressing another ordinary key during the first second can dismiss the recording. Keys matching an eligible configured shortcut are exempt. A dismissed recording is thrown away: nothing is pasted or kept, even with Escape Recovery on.
+
+After the first second, extra keys do not cause this dismissal. A locked recording and toggle mode are not affected.
+
+For this kind of push-to-talk keybind, an ordinary key already down prevents a new recording from starting. Release that key, then press your keybind again.
+
+Secure Input prevents the listener from seeing ordinary keys, so this typing protection is unavailable while it is active. When the app detects that this affects a qualifying dictation, it can show a short notice. The app checks about every five seconds, so a very short Secure Input period may go unnoticed. Bare-modifier dictation can continue.
+
 ### Change the cancel key
 
-Pressing Escape ends the current recording without pasting anything. To use a different cancel key, open **Settings** > **Keybinds** and change **Cancel Recording**.
+Pressing Escape ends the current recording without pasting anything. To use a different cancel key, open **Keybinds** and change the **Cancel recording** row.
 
 **Escape Recovery** is on unless you switch it off. With it on, your cancel keybind keeps the recording and offers to paste it back rather than discarding it. Keep that in mind before you reassign the key. See [Escape Recovery](/help/escape-recovery/).
 
-### Change the Add a Word key
+### Change the Quick Add key
 
-The **Keybinds** page has a keybind under **Add a Word**. Highlight a misheard word anywhere on your Mac, press it, and a small panel offers to add the right spelling to your dictionary. It is **Control Shift W** unless you change it. See [Adding a Word From Your Selection](/help/adding-a-word-from-your-selection/).
+The **Keybinds** page has an **Add selected word to Dictionary** row under **Shortcuts**. Highlight a misheard word anywhere on your Mac, press it, and a small panel offers to add the right spelling to your dictionary. It is **Control Shift W** unless you change it. See [Adding a Word From Your Selection](/help/adding-a-word-from-your-selection/).
 
 ### Paste or copy my last dictation
 
-Two more keybinds sit under **Last Dictation**. They reuse the last thing you dictated, so you never have to say it twice.
+Two more keybinds sit under **Shortcuts**: **Paste last dictation** and **Copy last dictation**. They reuse the last thing you dictated, so you never have to say it twice.
 
 - **Paste last dictation** is **Control Command V** unless you change it. It pastes into the app you were in when you pressed the keys.
 - **Copy last dictation** is **Control Command C** unless you change it. It puts your last dictation on your clipboard, ready for Cmd+V anywhere.
@@ -80,3 +90,5 @@ The recording keybind wins. The other row then says **Not active** and names the
 If **Keybinds** warns that macOS reports your combination as already taken, pick a different combination there.
 
 If a keybind does nothing and no warning appears, another app or a macOS feature may be using the same combination. Try a different one.
+
+A modifier key used on its own as a keybind, such as Right Option or Globe, also needs the Accessibility permission. If it does nothing, see [_Accessibility Permission Not Working_](/help/accessibility-permission-not-working/).

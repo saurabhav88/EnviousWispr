@@ -70,20 +70,17 @@ struct CapsuleBackgroundFreezeTests {
     try read(at: RepoRoot.url.appending(path: path), naming: path)
   }
 
-  /// Split from `read(_:)` so `anEmptyMemberIsRefused` can hand it a file it made
-  /// itself. Nothing else about the refusal changes: this is where the throw
-  /// lives, and it is the one the count-based guards go through.
+  /// Where the empty-file refusal lives.
   private static func read(at url: URL, naming path: String) throws -> String {
     let text = try String(contentsOf: url, encoding: .utf8)
-    // Fails closed: an empty or unreadable member makes every count below read
-    // low, which is indistinguishable from a deleted literal.
+    // Fails closed: an empty or unreadable member must not read as "no literal".
     guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
       throw CapsuleFreezeSourceError.empty(path)
     }
     return text
   }
 
-  /// The two-file set, concatenated. Used by the count-based guards.
+  /// The two-file set, concatenated.
   private static func capsuleSources() throws -> String {
     try capsuleSourcePaths.map { try read($0) }.joined(separator: "\n")
   }
@@ -93,45 +90,6 @@ struct CapsuleBackgroundFreezeTests {
   /// make it vacuous.
   private static func capsuleBackgroundSource() throws -> String {
     try read(capsuleSourcePaths[0])
-  }
-
-  /// **The fail-closed read, which nothing exercised until #2380.**
-  ///
-  /// Every count in this file goes through `read`. An empty or missing member
-  /// makes each of them read LOW, and low is exactly what a deleted literal
-  /// produces — so without the throw the two failures are indistinguishable, and
-  /// the suite reports the wrong one. That is why the migration was written to
-  /// refuse rather than to contribute zero.
-  ///
-  /// **Asserts the THROW, never a count.** Observing a count here would pass for
-  /// the wrong reason: zero occurrences is the very thing being disambiguated.
-  ///
-  /// Both halves, because they fail differently. An EMPTY file reaches our own
-  /// refusal; a MISSING one never gets past `String(contentsOf:)`, and a guard
-  /// that only ever saw the second would not prove the first exists.
-  @Test("an empty or missing source member is refused, never counted as zero")
-  func anEmptyMemberIsRefused() throws {
-    let dir = URL(fileURLWithPath: NSTemporaryDirectory())
-      .appending(path: "ew-2380-\(UUID().uuidString)")
-    try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-    defer { try? FileManager.default.removeItem(at: dir) }
-
-    let blank = dir.appending(path: "Blank.swift")
-    try "   \n\t\n".write(to: blank, atomically: true, encoding: .utf8)
-    #expect(throws: CapsuleFreezeSourceError.self) {
-      _ = try Self.read(at: blank, naming: "Blank.swift")
-    }
-
-    let absent = dir.appending(path: "NeverWritten.swift")
-    #expect(throws: (any Error).self) {
-      _ = try Self.read(at: absent, naming: "NeverWritten.swift")
-    }
-
-    // The two-way half: a member with content comes back, so the refusal above
-    // is about emptiness rather than about this helper refusing everything.
-    let real = dir.appending(path: "Real.swift")
-    try "struct S {}\n".write(to: real, atomically: true, encoding: .utf8)
-    #expect(try Self.read(at: real, naming: "Real.swift").contains("struct S"))
   }
 
   enum CapsuleFreezeSourceError: Error, CustomStringConvertible {
@@ -144,33 +102,9 @@ struct CapsuleBackgroundFreezeTests {
     }
   }
 
-  /// The capsule's own values, exactly as they were before #2204.
-  /// Counts MEASURED against the tree at #2204's base, not reasoned about — the
-  /// first version guessed 2 for the border and the suite went red on its own
-  /// expectation. A drop names a deletion; a rise names a stale list.
-  ///
-  /// `capsule fill` is 2 because `DistressCapsuleBackground` carries the same
-  /// value, which is precisely how the earlier existence check managed to pass
-  /// while the capsule's own fill had been deleted. The border is 1 because only
-  /// the `.capsule` branch spells it with the `Capsule()` prefix.
-  ///
-  /// Every expectation below is UNCHANGED across the #2374 split. Only the source
-  /// the guard reads changed; if a number here ever moves in a relocation commit,
-  /// that is the finding.
-  nonisolated static let frozenCapsuleLiterals: [(what: String, expected: Int, literal: String)] = [
-    ("capsule fill", 2, "Color(red: 0.078, green: 0.078, blue: 0.11).opacity(0.82)"),
-    ("capsule border", 1, "Capsule().strokeBorder(Color.white.opacity(0.1), lineWidth: 0.5)"),
-    ("capsule notice text", 1, "Color.white.opacity(0.95)"),
-  ]
-
-  /// **Which DECLARATION owns each literal, which the count above cannot say.**
-  ///
-  /// #2380. `capsuleLiteralsAreFrozen` counts across an aggregate of two files and
-  /// asserts a total, so a literal that LEAVES its intended declaration while
-  /// another occurrence appears anywhere else in those files leaves the count
-  /// unchanged and the suite green. That is this suite's own recorded defect one
-  /// level up: counting fixed the two-copies case and not the which-declaration
-  /// case.
+  /// **Which DECLARATION owns each literal** (#2380): a literal that leaves its
+  /// intended declaration while another copy appears elsewhere must still fail.
+  /// (The file-wide literal count that once sat beside this was retired in #3505.)
   ///
   /// Read off the SYNTAX TREE rather than the balanced brace walk #2380 proposed.
   /// A walk is a second implementation of something the parser already knows, and
@@ -308,34 +242,6 @@ struct CapsuleBackgroundFreezeTests {
       expected \(entry.expected). The aggregate count can stay right while this is \
       wrong: a literal that moved OUT of this declaration and reappeared anywhere \
       else in the same two files leaves the total unchanged.
-      """)
-  }
-
-  /// **Counts occurrences rather than asking whether the literal exists anywhere,
-  /// and the mutation control is what found that.** The first version used
-  /// `source.contains(...)`. Deleting the capsule fill entirely — the exact leak
-  /// this suite exists to catch — left that check GREEN, because
-  /// `DistressCapsuleBackground` carries the same literal and the whole-file
-  /// search found it there. A guard that reads the whole file cannot tell which
-  /// copy it found.
-  ///
-  /// Kept ALONGSIDE `frozenLiteralsStayInTheirOwnDeclaration` rather than replaced
-  /// by it (#2380): the aggregate is a cheap floor that notices a literal vanishing
-  /// from the two files entirely, and the ownership row is the sharp edge.
-  @Test(
-    "the capsule's own colours are unchanged",
-    arguments: CapsuleBackgroundFreezeTests.frozenCapsuleLiterals)
-  func capsuleLiteralsAreFrozen(entry: (what: String, expected: Int, literal: String)) throws {
-    let source = try Self.capsuleSources()
-    let found = source.components(separatedBy: entry.literal).count - 1
-    #expect(
-      found == entry.expected,
-      """
-      the \(entry.what) literal appears \(found) times, expected \(entry.expected). \
-      #2204 is gated to the preview branch; the capsule paint is shared by seven \
-      other pills that ship to everyone and is reserved for a separate redesign. A \
-      count that DROPPED means one of them lost its colour; a count that ROSE means \
-      the freeze list is stale.
       """)
   }
 

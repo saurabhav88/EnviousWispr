@@ -33,7 +33,7 @@ Anywhere you can type. You can dictate into Slack, Mail, Notion, VS Code, Google
 
 ### Where is the app once it is running?
 
-EnviousWispr keeps running in the background with an icon in your menu bar, so there is no window to keep open while you dictate. It also shows in the Dock like any Mac app. To hide the Dock icon when no EnviousWispr window is open, turn off **Show app in Dock** under **Settings** > **Appearance**.
+EnviousWispr keeps running in the background with an icon in your menu bar, so there is no window to keep open while you dictate. It also shows in the Dock like any Mac app. To hide the Dock icon when no EnviousWispr window is open, turn off **Show app in Dock** under **App Settings** > **Appearance**.
 
 ### Can AI tidy up what I said?
 

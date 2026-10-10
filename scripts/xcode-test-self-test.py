@@ -126,6 +126,29 @@ print(json.dumps({'testNodes': [{'nodeType': 'Test Plan', 'children': nodes}]}))
         self.assertIn('verdict:Debug lane:required=unset', (self.root / 'trace').read_text())
         self.assertFalse((self.root / 'xcrun-calls').exists())  # no selections to confirm
 
+    def stub_hook_installer(self):
+        hooks = self.root / 'scripts/githooks'
+        hooks.mkdir(parents=True)
+        installer = hooks / 'install.sh'
+        installer.write_text('#!/usr/bin/env bash\necho "hooks:$*" >> "$TRACE"\nexit "${HOOKS_RC:-0}"\n')
+        installer.chmod(0o755)
+
+    def test_hook_check_runs_before_setup(self):
+        self.stub_hook_installer()
+        result = self.run_runner()
+        trace = (self.root / 'trace').read_text().splitlines()
+        self.assertEqual(trace[0], 'hooks:--ensure')
+        self.assertEqual(trace.count('hooks:--ensure'), 1)
+        self.assertNotIn('git hooks: not active', result.stdout)
+        self.assertEqual(self.configurations(), ['Debug'])
+
+    def test_hook_problem_is_reported_and_never_stops_the_run(self):
+        self.stub_hook_installer()
+        result = self.run_runner(HOOKS_RC='3')
+        self.assertIn('git hooks: not active for this checkout', result.stdout)
+        self.assertEqual(self.configurations(), ['Debug'])
+        self.assertIn('verdict:Debug lane:required=unset', (self.root / 'trace').read_text())
+
     def test_selection_missing_from_result_bundle_fails(self):
         result = self.run_runner('--filter', 'Target/SuiteA', '--filter', 'Target/Typo', rc=1,
                                  OMIT_SELECTION='Target/Typo')
@@ -198,6 +221,55 @@ print(json.dumps({'testNodes': [{'nodeType': 'Test Plan', 'children': nodes}]}))
         self.run_runner('--release', rc=1, VERDICT_RC='1')
         self.assertEqual(self.configurations(), ['Debug'])
         self.assertFalse((self.root / 'published-state').exists())
+
+
+
+class BuildEntrypointHookContract(unittest.TestCase):
+    """The real build-dev-app.sh up to its signing preflight, which a stub `security`
+    fails on purpose, so nothing is locked, quit, built or launched."""
+
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory(prefix='ew-build-contract-')
+        self.addCleanup(self.temp.cleanup)
+        self.root = Path(self.temp.name)
+        lib = self.root / 'scripts/lib'
+        lib.mkdir(parents=True)
+        shutil.copyfile(RUNNER.with_name('build-dev-app.sh'), self.root / 'scripts/build-dev-app.sh')
+        (lib / 'ensure-generated.sh').write_text('ew_ensure_generated() { echo generate >> "$TRACE"; }\n')
+        (lib / 'launch-check.sh').write_text(':\n')
+        (lib / 'spm-seed.sh').write_text('ew_seed_release_all() { :; }\n')
+        (lib / 'l10n-build-with-receipt.sh').write_text(':\n')
+        hooks = self.root / 'scripts/githooks'
+        hooks.mkdir()
+        installer = hooks / 'install.sh'
+        installer.write_text('#!/usr/bin/env bash\necho "hooks:$*" >> "$TRACE"\nexit "${HOOKS_RC:-0}"\n')
+        installer.chmod(0o755)
+        bin_dir = self.root / 'bin'
+        bin_dir.mkdir()
+        security = bin_dir / 'security'
+        security.write_text('#!/usr/bin/env bash\necho security >> "$TRACE"\n')
+        security.chmod(0o755)
+        self.env = dict(os.environ, PATH=str(bin_dir) + os.pathsep + os.environ['PATH'],
+                        TRACE=str(self.root / 'trace'))
+        self.env.pop('HOOKS_RC', None)
+
+    def run_build(self, **env):
+        result = subprocess.run(['bash', str(self.root / 'scripts/build-dev-app.sh')],
+                                env=dict(self.env, **env), text=True,
+                                stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=15)
+        # The stub preflight finds no signing identity, so the script stops there.
+        self.assertEqual(result.returncode, 1, result.stdout)
+        self.assertIn("no 'EnviousWispr Dev' code-signing identity", result.stdout)
+        self.assertEqual((self.root / 'trace').read_text().splitlines(), ['hooks:--ensure', 'security'])
+        return result
+
+    def test_hook_check_runs_once_before_the_preflight(self):
+        result = self.run_build()
+        self.assertNotIn('git hooks: not active', result.stdout)
+
+    def test_hook_problem_is_reported_and_the_build_continues(self):
+        result = self.run_build(HOOKS_RC='3')
+        self.assertIn('git hooks: not active for this checkout', result.stdout)
 
 
 if __name__ == '__main__':

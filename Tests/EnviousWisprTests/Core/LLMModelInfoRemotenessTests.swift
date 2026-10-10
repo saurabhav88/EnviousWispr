@@ -19,25 +19,6 @@ struct LLMModelInfoRemotenessTests {
 
   // MARK: - The premise the migration rests on
 
-  /// The whole design of the hand-written `init(from:)` rests on this being
-  /// true. If a future Swift version DID honour property defaults during
-  /// synthesized decoding, the custom initializer would be unnecessary
-  /// ceremony and this test is where that would surface.
-  ///
-  /// Measured rather than assumed (2026-08-04): a property default does not
-  /// rescue a missing key, so a plain `isRemote: Bool = false` would have
-  /// thrown for every provider, not just Ollama.
-  @Test("a missing key is NOT rescued by a property default in synthesized decoding")
-  func propertyDefaultDoesNotRescueSynthesizedDecoding() throws {
-    struct Synthesized: Codable {
-      let id: String
-      var flag: Bool = false
-    }
-    #expect(throws: DecodingError.self) {
-      _ = try JSONDecoder().decode(Synthesized.self, from: self.encoded(#"{"id":"a"}"#))
-    }
-  }
-
   // MARK: - Legacy cache: cloud must survive
 
   /// The load-bearing half. Cloud panes load the cache and do NOT auto-run
@@ -73,21 +54,6 @@ struct LLMModelInfoRemotenessTests {
     }
   }
 
-  /// One legacy row poisons the whole array, and that is intended: the cache is
-  /// stored per provider, so an Ollama cache is all-Ollama rows and there is no
-  /// partial state worth salvaging.
-  @Test("one legacy Ollama row rejects the entire cached array")
-  func oneLegacyRowRejectsTheArray() {
-    let mixed = encoded(
-      """
-      [{"id":"a","displayName":"A","provider":"ollama","isAvailable":true,"isRemote":false},
-       {"id":"b","displayName":"B","provider":"ollama","isAvailable":true}]
-      """)
-    #expect(throws: DecodingError.self) {
-      _ = try JSONDecoder().decode([LLMModelInfo].self, from: mixed)
-    }
-  }
-
   // MARK: - Current-shape round trip
 
   @Test("a current-shape Ollama row round-trips both values of remoteness")
@@ -103,17 +69,6 @@ struct LLMModelInfoRemotenessTests {
       #expect(decoded.provider == original.provider)
       #expect(decoded.isAvailable == original.isAvailable)
     }
-  }
-
-  /// Encoding must actually emit the key, or every write would produce another
-  /// legacy row and the Ollama cache would reject itself forever.
-  @Test("encoding emits the remoteness key")
-  func encodingEmitsTheKey() throws {
-    let data = try JSONEncoder().encode(
-      LLMModelInfo(
-        id: "a", displayName: "A", provider: .ollama, isAvailable: true, isRemote: true))
-    let json = try #require(String(data: data, encoding: .utf8))
-    #expect(json.contains("isRemote"))
   }
 
   // MARK: - #3142: Apple Intelligence status

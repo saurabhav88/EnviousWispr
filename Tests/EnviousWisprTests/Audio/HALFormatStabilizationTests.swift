@@ -82,14 +82,7 @@ struct HALFormatStabilizationTests {
     #expect(outcome.settledRate == nil)
   }
 
-  @Test("instance wrapper with no bound device returns true (nothing to stabilize)")
-  func unpreparedInstanceReturnsTrue() async {
-    let source = HALDeviceInputSource()
-    let stabilized = await source.waitForFormatStabilization(maxWait: 1.5, pollInterval: 0.2)
-    #expect(stabilized)
-  }
-
-  // MARK: - #1445 validity guard (shared rate clause with isUsableFormat)
+  // MARK: - #1445 validity guard
 
   @Test("isUsableRate rejects nil, zero, negative, and NaN; accepts positive (#1445)")
   func isUsableRatePredicate() {

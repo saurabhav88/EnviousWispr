@@ -215,14 +215,14 @@ struct AppearanceRenderHarness {
     let appRows = VStack(alignment: .leading, spacing: 10) {
       Text(verbatim: "App Settings: catalog German").font(.stRowHelper)
       SettingsTabStrip(items: [
-        SettingsTabItem(id: AppSettingsTab.appearance, icon: "circle.lefthalf.filled", label: LocalizedStringResource(stringLiteral: de["Appearance"]!)),
-        SettingsTabItem(id: .permissions, icon: "hand.raised", label: LocalizedStringResource(stringLiteral: de["Permissions"]!)),
-        SettingsTabItem(id: .privacy, icon: "lock.shield", label: LocalizedStringResource(stringLiteral: de["Privacy"]!)),
-        SettingsTabItem(id: .licenses, icon: "doc.text", label: LocalizedStringResource(stringLiteral: de["Licenses"]!)),
+        SettingsTabItem(id: AppSettingsTab.appearance, icon: "circle.lefthalf.filled", label: LocalizedStringResource(stringLiteral: de["Appearance"]!), map: .appSettingsTabAppearance),
+        SettingsTabItem(id: .permissions, icon: "hand.raised", label: LocalizedStringResource(stringLiteral: de["Permissions"]!), map: .appSettingsTabPermissions),
+        SettingsTabItem(id: .privacy, icon: "lock.shield", label: LocalizedStringResource(stringLiteral: de["Privacy"]!), map: .appSettingsTabPrivacy),
+        SettingsTabItem(id: .licenses, icon: "doc.text", label: LocalizedStringResource(stringLiteral: de["Licenses"]!), map: .appSettingsTabLicenses),
       ], selection: .constant(.appearance))
       BrandedSection {
         BrandedRow {
-          SettingsRow(icon: "circle.lefthalf.filled", resolvedTitle: de["Theme"]!,
+          SettingsRow(fixtureTitle: de["Theme"]!, icon: "circle.lefthalf.filled",
             resolvedShort: de["Choose how EnviousWispr looks."]!,
             resolvedHelp: de["Choose System to follow your Mac, or choose Light or Dark."]!) {
             BrandedSegmentedPicker(options: [
@@ -232,7 +232,7 @@ struct AppearanceRenderHarness {
           }
         }
         BrandedRow {
-          SettingsRow(icon: "globe", resolvedTitle: de["Language"]!,
+          SettingsRow(fixtureTitle: de["Language"]!, icon: "globe",
             resolvedShort: de["The language of the app interface."]!,
             resolvedHelp: de["This changes only EnviousWispr. The new language applies after relaunch. System default follows your Mac."]!) {
             Picker(de["Language"]!, selection: .constant("")) {
@@ -245,7 +245,7 @@ struct AppearanceRenderHarness {
           }
         }
         BrandedRow(showDivider: false) {
-          SettingsRow(icon: "dock.rectangle", resolvedTitle: de["Show app in Dock"]!,
+          SettingsRow(fixtureTitle: de["Show app in Dock"]!, icon: "dock.rectangle",
             resolvedShort: de["Keep EnviousWispr in your Dock."]!,
             resolvedHelp: de["When off, the Dock icon appears only while an EnviousWispr window is open. The menu bar icon always stays."]!) {
             Toggle("", isOn: .constant(true)).toggleStyle(BrandedToggleStyle()).fixedSize()

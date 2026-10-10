@@ -3,7 +3,7 @@ import Carbon
 import EnviousWisprServices
 import Foundation
 
-/// The Carbon and `NSEvent` calls that actually reach the desktop (#2455 C2).
+/// The Carbon and event-tap calls that actually reach the desktop (#2455 C2, #3544).
 ///
 /// **This module exists to be out of the unit suite's reach — enforced by a
 /// CHECK, not by the compiler.** `EnviousWisprTests` declares no dependency on
@@ -36,7 +36,7 @@ package final class LiveDesktopHotkeyEffects: DesktopHotkeyEffects {
   private enum Resource {
     case hotkey(EventHotKeyRef)
     case handler(EventHandlerRef, Unmanaged<CarbonHandlerBox>)
-    case monitor(Any)
+    case keyboardListener(LiveKeyboardListener)
   }
 
   private var resources: [DesktopEffectToken: Resource] = [:]
@@ -139,46 +139,52 @@ package final class LiveDesktopHotkeyEffects: DesktopHotkeyEffects {
     return result
   }()
 
-  // MARK: - Modifier monitors
+  // MARK: - Keyboard listener
 
-  package func installGlobalModifierMonitor(
-    _ callback: @escaping @MainActor (DesktopModifierEvent) -> Void
+  /// The keyboard listener's event tap on its own thread (#3544 P2). Nil when the tap could not be
+  /// created or its thread did not start in time; `HotkeyService` reports that.
+  package func installKeyboardListener(
+    _ sink: @escaping @Sendable (KeyEventValue) -> Void
   ) -> DesktopEffectToken? {
-    // Global monitor callbacks may arrive off the main thread, and `NSEvent` is
-    // not Sendable — so the event is decoded to plain values HERE and only those
-    // cross the hop.
-    let monitor = NSEvent.addGlobalMonitorForEvents(matching: .flagsChanged) { event in
-      let value = DesktopModifierEvent(
-        keyCode: event.keyCode, rawFlags: UInt64(event.modifierFlags.rawValue))
-      DispatchQueue.main.async {
-        MainActor.assumeIsolated { callback(value) }
-      }
-    }
-    return store(monitor)
-  }
-
-  package func installLocalModifierMonitor(
-    _ callback: @escaping @MainActor (DesktopModifierEvent) -> Void
-  ) -> DesktopEffectToken? {
-    let monitor = NSEvent.addLocalMonitorForEvents(matching: .flagsChanged) { event in
-      MainActor.assumeIsolated {
-        callback(
-          DesktopModifierEvent(
-            keyCode: event.keyCode, rawFlags: UInt64(event.modifierFlags.rawValue)))
-      }
-      // Pass the event through. Returning nil here would swallow the keystroke
-      // for the rest of the app while the callback still fired, so nothing in a
-      // test would notice.
-      return event
-    }
-    return store(monitor)
-  }
-
-  private func store(_ monitor: Any?) -> DesktopEffectToken? {
-    guard let monitor else { return nil }
+    let listener = LiveKeyboardListener(sink: sink)
+    guard listener.start() else { return nil }
     let token = DesktopEffectToken()
-    resources[token] = .monitor(monitor)
+    resources[token] = .keyboardListener(listener)
     return token
+  }
+
+  /// The last removed listener's final state, kept so a report read after removal includes its
+  /// final callback. One slot, in every build: the owner accounts each installation's final
+  /// health once, after its removal (#3544 P3).
+  private var lastRemovedListenerHealth:
+    (token: DesktopEffectToken, health: KeyboardListenerHealth)?
+
+  package func keyboardListenerHealth(_ token: DesktopEffectToken) -> KeyboardListenerHealth? {
+    if case .keyboardListener(let listener) = resources[token] {
+      return listener.health()
+    }
+    if let last = lastRemovedListenerHealth, last.token == token { return last.health }
+    return nil
+  }
+
+  /// Modifier keys: the system's modifier flags on the HID system state, read once per call and
+  /// interpreted per key by `KeyStateTracker.reading`. Ordinary keys: `CGEventSource.keyState`.
+  /// Reconciliation releases a hold only on an `.up` answer, so an unclear reading keeps the hold.
+  package var keyStateReader: @Sendable (Set<UInt16>) -> [UInt16: KeyStateTracker.Reading] {
+    { keys in
+      // One read of the system's modifier flags answers every key (see `KeyStateTracker.reading`).
+      let flags = CGEventSource.flagsState(.hidSystemState).rawValue
+      var answers: [UInt16: KeyStateTracker.Reading] = [:]
+      for key in keys {
+        // An ordinary key (#3544 P4): `keyState` reads it correctly (P4 C3 probe: down 10 ms into a
+        // held key, up after). It is the modifier read that is broken, so modifiers use the flags.
+        answers[key] =
+          ModifierKeyCodes.flag(for: key) == nil
+          ? (CGEventSource.keyState(.hidSystemState, key: CGKeyCode(key)) ? .down : .up)
+          : KeyStateTracker.reading(forKey: key, flags: flags)
+      }
+      return answers
+    }
   }
 
   // MARK: - Teardown
@@ -207,8 +213,14 @@ package final class LiveDesktopHotkeyEffects: DesktopHotkeyEffects {
         return false
       }
       box.release()
-    case .monitor(let monitor):
-      NSEvent.removeMonitor(monitor)
+    case .keyboardListener(let listener):
+      // Same contract as the handler: until the worker confirms its cleanup the callback context
+      // is still live, so the caller keeps its token and can retry.
+      guard listener.stop() else {
+        resources[token] = .keyboardListener(listener)
+        return false
+      }
+      lastRemovedListenerHealth = (token, listener.health())
     }
     return true
   }
@@ -249,7 +261,8 @@ private func liveCarbonHotkeyHandler(
 
   let value = DesktopHotkeyEvent(
     id: hotkeyID.id,
-    isRelease: GetEventKind(event) == UInt32(kEventHotKeyReleased))
+    isRelease: GetEventKind(event) == UInt32(kEventHotKeyReleased),
+    timestamp: GetEventTime(event))
 
   let box = Unmanaged<CarbonHandlerBox>.fromOpaque(userData).takeUnretainedValue()
   MainActor.assumeIsolated { box.callback(value) }
