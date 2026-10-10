@@ -72,6 +72,9 @@ struct DeliverableTextTests {
   @Test("Unavailable share text throws instead of exporting empty bytes")
   func unavailableTextRefusesExport() async {
     let item = DeliverableText { nil }
+    #expect(throws: DeliverableText.ExpiredError.self) {
+      try item.exportData()
+    }
     await #expect(throws: (any Error).self) {
       try await Self.exportInBackground(item)
     }
