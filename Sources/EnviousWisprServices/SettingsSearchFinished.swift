@@ -57,8 +57,10 @@ public struct SettingsSearchFinished: Equatable, Sendable {
 /// 3 to 80 characters and at most 320 UTF-8 bytes; the WHOLE query is dropped (never a shortened
 /// prefix) when it looks like an email address (also spelled out with "at" and "dot"), a web,
 /// IP or hardware address, a home-folder path, a bank account number, has seven or more digits,
-/// or looks like a credential or token. "API key" itself is fine. Arbitrary personal text (a name,
-/// a password with no label) cannot be recognised; the privacy policy discloses failed-search text.
+/// or looks like a credential or token. "API key" itself is fine. Labelled passwords are dropped
+/// with colon/equal, listed word separators, or a digit in the first token after the label (#3526).
+/// Arbitrary personal text, unlabelled values, and a later value without a listed separator cannot be
+/// recognised; the privacy policy discloses failed-search text.
 public enum SettingsSearchQueryFilter {
   public static func reportable(_ text: String) -> String? {
     let query = text.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
@@ -95,10 +97,20 @@ public enum SettingsSearchQueryFilter {
     return String(out)
   }
 
-  /// A password written after its label ("password: ...", "pwd=...") in a few languages.
+  /// #3526: drop the whole query for the reviewed labelled-password forms. Dropping harmless
+  /// "password is wrong" or "pin 2 settings" is the accepted safe direction. No separator and no
+  /// digit ("password hunter", "password !!!"), a later value ("password hint hunter2"), and Polish
+  /// "hasło to x" remain outside this check; "to" would also hide ordinary "password to reset".
   private static func looksLikeLabelledPassword(_ query: String) -> Bool {
-    let pattern = #"\b(?:password|passwd|pwd|passwort|kennwort|mot de passe|contraseña|senha|wachtwoord|hasło)\s*[:=]"#
-    return query.range(of: pattern, options: .regularExpression) != nil
+    let labels = "password|passwd|pwd|passwort|kennwort|mot de passe|contraseña|senha|wachtwoord|hasło|pass|passcode|passphrase|pw|pin|secret"
+    let gap = #"[\s,;:=.\-"'“”‘’()\[\]]+"#
+    let separators = "is|was|are|ist|war|lautet|est|c'est|c’est|es|era|é|jest"
+    let patterns = [
+      #"\b(?:\#(labels))\s*[:=]"#,
+      #"\b(?:\#(labels))\#(gap)(?:\#(separators))\#(gap)\S"#,
+      #"\b(?:\#(labels))\#(gap)[^\s]*\p{Nd}"#,
+    ]
+    return patterns.contains { query.range(of: $0, options: .regularExpression) != nil }
   }
 
   private static func looksLikeWebAddress(_ query: String) -> Bool {
