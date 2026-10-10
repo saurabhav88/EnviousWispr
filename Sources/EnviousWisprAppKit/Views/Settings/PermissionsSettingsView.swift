@@ -37,7 +37,7 @@ struct PermissionsSettingsView: View {
             SettingsRow(
               map: .id(.permissionAccessibility),
               icon: "hand.raised",
-              help: "Allow Accessibility access so EnviousWispr can paste your dictation into other apps."
+              help: "Allow Accessibility access so a modifier key used on its own works as a keybind and EnviousWispr can paste your dictation into other apps."
             ) {
               if permissions.hasAccessibilityPermission {
                 grantedStatus(
@@ -52,7 +52,7 @@ struct PermissionsSettingsView: View {
             }
             .rowStatus {
               if !permissions.hasAccessibilityPermission {
-                Text("Accessibility access required for paste").settingsHelperCopy()
+                Text("Accessibility needed for modifier keys used on their own and for pasting").settingsHelperCopy()
                 Text("After rebuilding the app you may need to re-grant this permission.")
                   .font(.stRowHelper)
                   .foregroundStyle(.stTextSecondary)

@@ -171,17 +171,24 @@ package struct KeyStateTracker: Equatable, Sendable {
   /// for the keys still held. A key read up is removed but remembered with `readAt`, so an event
   /// that occurred before the reading still sees it held (`isOrdinaryKeyHeld`). `except` keeps the
   /// key of the event being handled, which its own event then applies. Unknown changes nothing.
+  /// Returns how many held keys the reading removed.
+  @discardableResult
   package mutating func resyncOrdinary(
     _ answers: [UInt16: Reading], at readAt: TimeInterval, except: UInt16? = nil
-  ) {
+  ) -> Int {
+    var removed = 0
     for (key, answer) in answers where key != except && ModifierKeyCodes.flag(for: key) == nil {
       switch answer {
       case .down: ordinaryDown.insert(key)
       case .up:
-        if ordinaryDown.remove(key) != nil { ordinaryReadUpAt[key] = readAt }
+        if ordinaryDown.remove(key) != nil {
+          ordinaryReadUpAt[key] = readAt
+          removed += 1
+        }
       case .unknown: break
       }
     }
+    return removed
   }
 
   /// Apply one listener event. Ignores everything but an unmarked `flagsChanged` from a standalone

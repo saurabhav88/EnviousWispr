@@ -22,6 +22,8 @@ struct KeyboardListenerRecoveryTests {
     let effects = RecordingDesktopHotkeyEffects()
     let service: HotkeyService
     var health: [HotkeyListenerHealthReport] = []
+    /// Every `hotkey.pressed` row: trigger, mode, shape, identity, action.
+    var pressed: [[String]] = []
     let retries = HotkeyGlobeKeyTests.CallbackWaiter()
 
     init() {
@@ -31,7 +33,10 @@ struct KeyboardListenerRecoveryTests {
       service = HotkeyService(
         effects: effects,
         telemetry: HotkeyTelemetrySink(
-          registrationFailed: { _, _, _, _ in }, pressed: { _, _, _, _, _, _ in },
+          registrationFailed: { _, _, _, _ in },
+          pressed: { trigger, mode, shape, identity, action, _ in
+            box.rig?.pressed.append([trigger, mode, shape, identity, action])
+          },
           listenerHealth: { report in box.rig?.health.append(report) }),
         uptime: clock.uptime, scheduler: timers.scheduler)
       box.rig = self
@@ -492,6 +497,71 @@ struct KeyboardListenerRecoveryTests {
     await n.dictate(at: 50)
     #expect(n.notices == ["s2", "s6"], "notices \(n.notices), starts \(n.starts)")
     #expect(n.starts == 6, "a notice changed what was recorded")
+    // #3544 P6: one health row per notice shown, and nothing else.
+    let rows = n.rig.health.map { [$0.terminal, $0.reason] }
+    #expect(rows == [["none", "secure_input_notice"], ["none", "secure_input_notice"]])
+    #expect(n.rig.health.allSatisfy { $0.disableEpisodes == 0 && $0.staleKind == nil })
+  }
+
+  // MARK: - Field health (#3544 P6)
+
+  @Test("a start refused for a held key sends one pressed row with the press's key and mode")
+  func refusedStartIsReported() async {
+    let n = NoticeRig()
+    defer { n.rig.service.stop() }
+    let sink = n.rig.effects.keyboardListenerSink
+    n.rig.clock.now = 500
+    await Task.detached {
+      _ = sink?(KeyEventValue(kind: .keyDown, keyCode: 0, rawFlags: 0, timestamp: 500))
+    }.value
+    await n.keys.press(ModifierKeyCodes.rightOption, at: 500.2)
+    await n.keys.release(ModifierKeyCodes.rightOption, at: 500.4)
+    await Rig.mainTurn()
+    #expect(n.starts == 0)
+    #expect(
+      n.rig.pressed == [
+        ["ptt_hotkey", "pushToTalk", "modifier_only", "right_option", "refused_key_held"]
+      ], "\(n.rig.pressed)")
+    #expect(n.rig.health.isEmpty, "a refusal sent a health row")
+  }
+
+  @Test("a held record key two sweeps release sends one stale_key_cleared modifier row")
+  func staleModifierIsReported() async {
+    let n = NoticeRig()
+    defer { n.rig.service.stop() }
+    n.rig.clock.now = 500
+    await n.keys.press(ModifierKeyCodes.rightOption, at: 500)
+    await n.rig.service.awaitInFlightStartForTesting()
+    n.rig.effects.keyStates.withLock { $0[ModifierKeyCodes.rightOption] = .up }
+    for t in [505.0, 510.0] {
+      n.rig.clock.now = t
+      n.rig.timers.fireDue()
+      await Rig.mainTurn()
+    }
+    await Rig.mainTurn()
+    #expect(n.rig.health.count == 1, "\(n.rig.health)")
+    let row = n.rig.health.first
+    #expect(row?.terminal == "none")
+    #expect(row?.reason == "stale_key_cleared")
+    #expect(row?.staleKind == "modifier")
+    #expect(row?.disableEpisodes == 0 && row?.reenables == 0)
+    #expect(row?.installs == 1, "launch totals ride the row")
+  }
+
+  @Test("the first tap re-enable of an installation sends one tap_reenabled row at once")
+  func tapReenableIsReported() async {
+    let rig = Rig()
+    rig.service.start()
+    defer { rig.service.stop() }
+    let sink = rig.effects.keyboardListenerSink
+    for _ in 0..<2 {
+      await Task.detached {
+        _ = sink?(KeyEventValue(kind: .tapReenabled, keyCode: 0, rawFlags: 0, timestamp: nil))
+      }.value
+      await Rig.mainTurn()
+    }
+    #expect(rig.health.map { [$0.terminal, $0.reason] } == [["none", "tap_reenabled"]])
+    #expect(rig.health.first?.disableEpisodes == 0 && rig.health.first?.staleKind == nil)
   }
 
   @Test("a start that resolves after the other-key window shows no notice and keeps it owed")
@@ -525,6 +595,8 @@ struct KeyboardListenerRecoveryTests {
     #expect(n.notices == ["s1", "s2"], "a refused notice consumed the period")
     await n.dictate(at: 20)
     #expect(n.notices == ["s1", "s2"])
+    // #3544 P6: only the notice that was shown is reported.
+    #expect(n.rig.health.map(\.reason) == ["secure_input_notice"])
   }
 
   @Test("Secure Input observed inside a take's first second notices it; later in the take it does not")

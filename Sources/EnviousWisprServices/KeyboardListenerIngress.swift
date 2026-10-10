@@ -59,6 +59,27 @@ package final class KeyboardListenerIngress: Sendable {
     package let generation: UInt64
   }
 
+  /// A decision already committed on the listener's side that field health reports (#3544 P6).
+  /// Telemetry only: an observation never executes a shortcut, and it describes the moment it was
+  /// made, so it is reported even after a rebind or a newer installation.
+  package enum Observation: Sendable, Equatable {
+    /// A push-to-talk press of the bare-modifier record key `keyCode` was refused because an
+    /// ordinary key was held (`RecordGestureEngine.ListenerRefusal.ordinaryKeyHeld`).
+    case startRefusedKeyHeld(keyCode: UInt16)
+    /// A key-state reading removed a key the events still held, the first time this installation
+    /// for that kind.
+    case staleKeyCleared(StaleKind)
+    /// macOS disabled this installation's tap and it was re-enabled, the first time this
+    /// installation. Sent when it happens: the teardown row that totals disable episodes is often
+    /// produced only at quit, when its capture is not guaranteed to leave.
+    case tapReenabled
+  }
+
+  /// Which kind of held key a reading removed. Raw values are the telemetry strings.
+  package enum StaleKind: String, Sendable, Equatable {
+    case modifier, ordinary
+  }
+
   /// How often held state is verified while anything is held.
   package static let sweepInterval: TimeInterval = 5
   /// Key code 179: a second code some keyboards send for Globe; never a shortcut.
@@ -113,6 +134,10 @@ package final class KeyboardListenerIngress: Sendable {
     /// Advanced by every ordinary key event. A reading of ordinary keys applies only if no ordinary
     /// event was handled while it was out: otherwise it could undo a newer keyDown.
     var ordinarySequence: UInt64 = 0
+    /// Stale-key kinds this installation already reported (#3544 P6): one observation per kind.
+    var staleReported: Set<StaleKind> = []
+    /// Whether this installation already reported a tap re-enable (#3544 P6): one per installation.
+    var reenableReported = false
   }
 
   package let installation: UInt64
@@ -124,6 +149,7 @@ package final class KeyboardListenerIngress: Sendable {
   private let clock: RecordGestureEngine.Clock
   private let scheduler: RecordGestureEngine.Scheduler
   private let toMain: @Sendable (MainEdge) -> Void
+  private let observe: @Sendable (Observation) -> Void
   private let state = OSAllocatedUnfairLock(initialState: State())
 
   package init(
@@ -131,6 +157,7 @@ package final class KeyboardListenerIngress: Sendable {
     reader: @escaping @Sendable (Set<UInt16>) -> [UInt16: KeyStateTracker.Reading],
     clock: @escaping RecordGestureEngine.Clock, scheduler: @escaping RecordGestureEngine.Scheduler,
     toMain: @escaping @Sendable (MainEdge) -> Void,
+    observe: @escaping @Sendable (Observation) -> Void = { _ in },
     afterReconcileCommitForTesting: (@Sendable () -> Void)? = nil
   ) {
     self.installation = installation
@@ -140,6 +167,7 @@ package final class KeyboardListenerIngress: Sendable {
     self.clock = clock
     self.scheduler = scheduler
     self.toMain = toMain
+    self.observe = observe
   }
 
   // MARK: - Lifecycle
@@ -178,6 +206,12 @@ package final class KeyboardListenerIngress: Sendable {
       restartConfirmation()
       requestOrdinaryResync()
       resyncOrdinaryIfNeeded(except: nil)
+      let first = state.withLock { s -> Bool in
+        guard !s.closed, !s.reenableReported else { return false }
+        s.reenableReported = true
+        return true
+      }
+      if first { observe(.tapReenabled) }
     case .secureInputChanged:
       // Leaving Secure Input: key-ups may have been hidden (plan A2). Entering changes nothing
       // for modifiers; for ordinary keys both edges are boundaries, read now.
@@ -247,12 +281,14 @@ package final class KeyboardListenerIngress: Sendable {
     guard let captured else { return }
     let answers = reader(Self.ordinaryKeyCodes)
     let readAt = clock()
-    state.withLock { s in
+    let stale = state.withLock { s -> Observation? in
       // A stale reading leaves the resync pending: the next event asks again.
-      guard !s.closed, s.ordinarySequence == captured.sequence else { return }
-      s.tracker.resyncOrdinary(answers, at: readAt, except: except)
+      guard !s.closed, s.ordinarySequence == captured.sequence else { return nil }
+      let removed = s.tracker.resyncOrdinary(answers, at: readAt, except: except)
       if s.resyncEpoch == captured.epoch { s.ordinaryResyncNeeded = false }
+      return Self.firstStale(&s, .ordinary, removed: removed)
     }
+    if let stale { observe(stale) }
     armSweepIfNeeded()
   }
 
@@ -376,10 +412,11 @@ package final class KeyboardListenerIngress: Sendable {
     case .engine(
       let keyCode, let isPress, let input, let generation, let recovery, let onlyAttempt,
       let ordinaryKeyHeld):
-      engine.ingestFromListener(
+      let refusal = engine.ingestFromListener(
         keyCode: keyCode, isPress: isPress, input: input, generation: generation,
         installation: installation, recovery: recovery, onlyAttempt: onlyAttempt,
         ordinaryKeyHeld: ordinaryKeyHeld)
+      if isPress, refusal == .ordinaryKeyHeld { observe(.startRefusedKeyHeld(keyCode: keyCode)) }
     case .cancel(let keyCode, let generation):
       engine.cancelFromListener(
         keyCode: keyCode, generation: generation, installation: installation)
@@ -410,14 +447,14 @@ package final class KeyboardListenerIngress: Sendable {
     // Outside every lock: the reader is an OS call in production.
     let answers = reader(keys)
     let handled = clock()
-    state.withLock { s in
+    let stale = state.withLock { s -> Observation? in
       // Stale answers are dropped, never applied: the next sweep asks again.
       guard !s.closed, s.inputSequence == captured.sequence,
         engine.listenerConfigurationGeneration == classification.generation
       else {
         // A rejected sweep breaks the run of consecutive readings too.
         s.sweepReadUp.keys.removeAll()
-        return
+        return nil
       }
       var answers = answers
       let previous =
@@ -443,7 +480,11 @@ package final class KeyboardListenerIngress: Sendable {
             generation: classification.generation, onlyAttempt: owned.attemptID))
       }
       s.pending.append(contentsOf: actions)
+      // Every tracker edge here is a held modifier a reading removed (`.reconciled`); the
+      // watchdog's release above is an engine hold the tracker never had, so it does not count.
+      return Self.firstStale(&s, .modifier, removed: edges.count)
     }
+    if let stale { observe(stale) }
     afterReconcileCommitForTesting?()
     drain()
   }
@@ -459,11 +500,20 @@ package final class KeyboardListenerIngress: Sendable {
     guard !captured.keys.isEmpty else { return }
     let answers = reader(captured.keys)
     let readAt = clock()
-    state.withLock { s in
+    let stale = state.withLock { s -> Observation? in
       // A stale reading is dropped, never applied: the next sweep asks again.
-      guard !s.closed, s.ordinarySequence == captured.sequence else { return }
-      s.tracker.resyncOrdinary(answers.filter { $0.value == .up }, at: readAt)
+      guard !s.closed, s.ordinarySequence == captured.sequence else { return nil }
+      let removed = s.tracker.resyncOrdinary(answers.filter { $0.value == .up }, at: readAt)
+      return Self.firstStale(&s, .ordinary, removed: removed)
     }
+    if let stale { observe(stale) }
+  }
+
+  /// The observation for the first `removed` > 0 of `kind` in this installation, marking it
+  /// reported; nil otherwise.
+  private static func firstStale(_ s: inout State, _ kind: StaleKind, removed: Int) -> Observation? {
+    guard removed > 0, s.staleReported.insert(kind).inserted else { return nil }
+    return .staleKeyCleared(kind)
   }
 
   // MARK: - Sweep

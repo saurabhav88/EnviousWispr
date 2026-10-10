@@ -118,15 +118,22 @@ public struct HotkeyTelemetrySink: Sendable {
     })
 }
 
-/// One `hotkey.listener_health` row (#3544 P3).
+/// One `hotkey.listener_health` row (#3544 P3, P6).
 ///
-/// Sent only when the listener had trouble, so a healthy launch sends none: when an installation
+/// Sent only when something happened, so a quiet launch sends none: when an installation
 /// ends after the OS disabled its tap at least once (`terminal` `removed` / `disable_storm`,
 /// `reason` `stop` / `suspend` / `storm` / `reinstall`, with that installation's
 /// `disableEpisodes` and confirmed `reenables`); when an install succeeds after failed
 /// attempts (`terminal` `none`, `reason` `installed_after_failures`, episode counts 0); and when
 /// shortcuts stop or suspend while installs are still failing (`terminal` `start_failed`,
-/// `reason` `stop` / `suspend`, episode counts 0). Each failure episode reports once.
+/// `reason` `stop` / `suspend`, episode counts 0). Each failure episode reports once. P6 adds three
+/// event-time rows, all `terminal` `none` with episode counts 0: `reason` `tap_reenabled`, at most
+/// once per installation, when macOS disabled its tap and it was re-enabled (the teardown row above
+/// is often produced only at quit, when its capture may not leave); `reason` `stale_key_cleared` with
+/// `staleKind` `modifier` / `ordinary`, at most once per installation per kind, when a key-state
+/// reading removed a key the events still held; and `reason` `secure_input_notice`, when the
+/// Secure Input notice was shown (at most once per observed Secure Input period). They are sent
+/// when they happen, not at teardown: a capture queued at quit is not guaranteed to leave.
 /// `installAttempts`, `installFailures` and `installs` are this launch's totals so far: adapter
 /// install calls, the ones that returned no listener, and the ones that did. Counts and closed
 /// strings only; never a key.
@@ -138,10 +145,12 @@ public struct HotkeyListenerHealthReport: Sendable, Equatable {
   public var installAttempts: Int
   public var installFailures: Int
   public var installs: Int
+  /// `modifier` or `ordinary` on a `stale_key_cleared` row; nil (omitted) on every other row.
+  public var staleKind: String?
 
   public init(
     terminal: String, reason: String, disableEpisodes: Int, reenables: Int,
-    installAttempts: Int, installFailures: Int, installs: Int
+    installAttempts: Int, installFailures: Int, installs: Int, staleKind: String? = nil
   ) {
     self.terminal = terminal
     self.reason = reason
@@ -150,6 +159,7 @@ public struct HotkeyListenerHealthReport: Sendable, Equatable {
     self.installAttempts = installAttempts
     self.installFailures = installFailures
     self.installs = installs
+    self.staleKind = staleKind
   }
 }
 

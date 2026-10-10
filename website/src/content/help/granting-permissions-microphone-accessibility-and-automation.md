@@ -43,4 +43,4 @@ Declining is fine, because most apps never need it.
 
 ### Does my keybind need a permission?
 
-No. The key you hold to record works everywhere on its own. Microphone lets EnviousWispr hear you, and Accessibility and Automation let it deliver your text.
+A modifier key used on its own, such as Right Option or Globe, needs Accessibility. Other supported recording keybinds can start dictation without it. Pasting the finished text into another app still needs Accessibility.

@@ -351,6 +351,32 @@ import Testing
       #expect(event?.boolProps.isEmpty == true)
     }
 
+    /// #3544 P6: `stale_kind` rides only a `stale_key_cleared` row.
+    @Test("hotkey.listener_health carries stale_kind only on a stale_key_cleared row")
+    func listenerHealthStaleKind() {
+      let box = EventBox()
+      let previousHook = TelemetryService.shared.testEventHook
+      TelemetryService.shared.testEventHook = { event in
+        if event.name == "hotkey.listener_health" { box.set(event) }
+      }
+      defer { TelemetryService.shared.testEventHook = previousHook }
+
+      TelemetryService.shared.hotkeyListenerHealth(
+        HotkeyListenerHealthReport(
+          terminal: "none", reason: "stale_key_cleared", disableEpisodes: 0, reenables: 0,
+          installAttempts: 1, installFailures: 0, installs: 1, staleKind: "ordinary"))
+      #expect(
+        box.value?.stringProps == [
+          "terminal": "none", "reason": "stale_key_cleared", "stale_kind": "ordinary",
+        ])
+
+      TelemetryService.shared.hotkeyListenerHealth(
+        HotkeyListenerHealthReport(
+          terminal: "none", reason: "secure_input_notice", disableEpisodes: 0, reenables: 0,
+          installAttempts: 1, installFailures: 0, installs: 1))
+      #expect(box.value?.stringProps == ["terminal": "none", "reason": "secure_input_notice"])
+    }
+
     /// #3534: a lock intent carries `window_timing`; the case above, with none, carries no
     /// such key at all.
     @Test("hotkey.pressed wire payload carries window_timing only when given")

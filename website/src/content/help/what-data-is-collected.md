@@ -49,8 +49,6 @@ The app records how you use it, never what you said. There is no account, and no
 
 The Mac app’s keyboard listener processes key-down and key-up events locally to recognize shortcuts and avoid interfering with typing. This listener does not collect typed text or send ordinary-key identities or a history of key presses to Envious Labs. If the listener has trouble, usage data may include counts of what happened and whether it recovered. Shortcut-health reports never contain typed text or individual key presses.
 
-If the part of the app that listens for your keybind has trouble, for example macOS keeps switching it off, usage data includes counts of how often that happened and whether it recovered. These shortcut-health reports never include which keys you pressed.
-
 ### Does the app send what I type in Settings search?
 
 In recent versions, yes, in two cases only: when a search in Settings finds no setting, or when you skip its results and pick a page from the sidebar instead. The app then sends the last search you typed, in lower case, so we can teach the search the words people use. It never sends each keystroke. It does this only if **Share usage metrics** was on when you started typing and stayed on.

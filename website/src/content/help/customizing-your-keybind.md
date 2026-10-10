@@ -47,7 +47,7 @@ After the first second, extra keys do not cause this dismissal. A locked recordi
 
 For this kind of push-to-talk keybind, an ordinary key already down prevents a new recording from starting. Release that key, then press your keybind again.
 
-Secure Input prevents the listener from seeing ordinary keys, so this typing protection is unavailable while it is active. When the app detects that this affects a qualifying dictation, it can show a short notice. Detection can take up to five seconds. Bare-modifier dictation can continue.
+Secure Input prevents the listener from seeing ordinary keys, so this typing protection is unavailable while it is active. When the app detects that this affects a qualifying dictation, it can show a short notice. The app checks about every five seconds, so a very short Secure Input period may go unnoticed. Bare-modifier dictation can continue.
 
 ### Change the cancel key
 
