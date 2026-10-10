@@ -57,8 +57,10 @@ public struct SettingsSearchFinished: Equatable, Sendable {
 /// 3 to 80 characters and at most 320 UTF-8 bytes; the WHOLE query is dropped (never a shortened
 /// prefix) when it looks like an email address (also spelled out with "at" and "dot"), a web,
 /// IP or hardware address, a home-folder path, a bank account number, has seven or more digits,
-/// or looks like a credential or token. "API key" itself is fine. Arbitrary personal text (a name,
-/// a password with no label) cannot be recognised; the privacy policy discloses failed-search text.
+/// or looks like a credential or token. "API key" itself is fine. Labelled passwords are dropped
+/// with colon/equal, listed word separators, or a digit in the first token after the label (#3526).
+/// Arbitrary personal text, unlabelled values, and a later value without a listed separator cannot be
+/// recognised; the privacy policy discloses failed-search text.
 public enum SettingsSearchQueryFilter {
   public static func reportable(_ text: String) -> String? {
     let query = text.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
@@ -68,22 +70,23 @@ public enum SettingsSearchQueryFilter {
     if looksLikeWebAddress(checked) { return nil }
     if checked.unicodeScalars.filter(CharacterSet.decimalDigits.contains).count >= 7 { return nil }
     if looksLikePersonalAddress(checked) { return nil }
-    if looksLikeLabelledPassword(checked) { return nil }
+    if looksLikeLabelledPassword(query) { return nil }
     if looksLikeCredential(checked) { return nil }
     return query
   }
 
-  /// What the checks read; the sent text stays the query itself. Invisible format characters
-  /// (zero-width spaces and joiners) are removed, so one hidden inside a key or an address cannot
-  /// split it, compatibility forms (full-width punctuation) become plain ones, and every kind of
-  /// whitespace (a non-breaking space too) becomes one plain space, so the patterns below match
-  /// whatever spacing was typed.
-  static func detectionCopy(_ query: String) -> String {
+  /// Checks read compatibility-folded, whitespace-collapsed copies; sent text is unchanged.
+  /// The default removes format characters so copied keys and addresses remain detectable.
+  /// Password matching also reads a format-preserving view for embedded characters and gaps.
+  static func detectionCopy(_ query: String, preservingFormat: Bool = false) -> String {
     var out = String.UnicodeScalarView()
     var lastWasSpace = false
-    // Compatibility forms first (a full-width colon or letter reads as the plain one).
     let folded = query.precomposedStringWithCompatibilityMapping
-    for scalar in folded.unicodeScalars where scalar.properties.generalCategory != .format {
+    for scalar in folded.unicodeScalars {
+      if scalar.properties.generalCategory == .format {
+        if preservingFormat { out.append("\u{200B}") }
+        continue
+      }
       if CharacterSet.whitespacesAndNewlines.contains(scalar) {
         if !lastWasSpace { out.append(" ") }
         lastWasSpace = true
@@ -95,10 +98,51 @@ public enum SettingsSearchQueryFilter {
     return String(out)
   }
 
-  /// A password written after its label ("password: ...", "pwd=...") in a few languages.
+  /// #3526: drop the whole query for the reviewed labelled-password forms. Dropping harmless
+  /// "password is wrong" or "pin 2 settings" is the accepted safe direction. No separator and no
+  /// digit ("password hunter", "password !!!"), a later value ("password hint hunter2"), and Polish
+  /// "hasło to x" remain outside this check; "to" would also hide ordinary "password to reset".
   private static func looksLikeLabelledPassword(_ query: String) -> Bool {
-    let pattern = #"\b(?:password|passwd|pwd|passwort|kennwort|mot de passe|contraseña|senha|wachtwoord|hasło)\s*[:=]"#
-    return query.range(of: pattern, options: .regularExpression) != nil
+    let labels = "password|passwd|pwd|passwort|kennwort|mot de passe|contraseña|senha|wachtwoord|hasło|pass|passcode|passphrase|pw|pin|secret"
+    let gapCharacters = #"\s,;:=.\-"'“”‘’()\[\]"#
+    let gap = "[\(gapCharacters)]+"
+    let separators = "is|was|are|ist|war|lautet|est|c'est|c’est|es|era|é|jest"
+    let checked = detectionCopy(query)
+    let patterns = [
+      #"\b(?:\#(labels))\s*[:=]"#,
+      #"\b(?:\#(labels))\#(gap)(?:\#(separators))\#(gap)\S"#,
+      #"\b(?:\#(labels))\#(gap)[^\s]*\p{Nd}"#,
+    ]
+    if patterns.contains(where: {
+      checked.range(of: $0, options: .regularExpression) != nil
+    }) { return true }
+
+    let formatted = detectionCopy(query, preservingFormat: true)
+    guard formatted.unicodeScalars.contains(where: { $0.value == 0x200B }) else {
+      return false
+    }
+    let f = "\u{200B}"
+    func embedded(_ alternatives: String) -> String {
+      alternatives.split(separator: "|").map { literal in
+        literal.unicodeScalars.map { scalar in
+          scalar == " " ? "[ \(f)]+"
+            : NSRegularExpression.escapedPattern(for: String(scalar))
+        }.joined(separator: "\(f)*")
+      }.joined(separator: "|")
+    }
+    // Format characters cannot create a word boundary inside "bypass"/"passport".
+    let boundary = #"(?<![\w\#(f)])\#(f)*"#
+    let l = embedded(labels)
+    let s = embedded(separators)
+    let g = "[\(gapCharacters)\(f)]+"
+    let tolerant = [
+      #"\#(boundary)(?:\#(l))[\s\#(f)]*[:=]"#,
+      #"\#(boundary)(?:\#(l))\#(g)(?:\#(s))\#(g)[^\s\#(f)]"#,
+      #"\#(boundary)(?:\#(l))\#(g)[^\s]*\p{Nd}"#,
+    ]
+    return tolerant.contains {
+      formatted.range(of: $0, options: .regularExpression) != nil
+    }
   }
 
   private static func looksLikeWebAddress(_ query: String) -> Bool {

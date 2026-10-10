@@ -78,6 +78,141 @@ struct SettingsSearchTelemetryTests {
     }
   }
 
+  @Test("naturally labelled passwords never enter failed-search reports (#3526)")
+  func labelledPasswordRegression() {
+    #expect(SettingsSearchQueryFilter.reportable("password is hunter2") == nil)
+    #expect(SettingsSearchQueryFilter.reportable("Passwort ist geheim") == nil)
+  }
+
+  @Test("approved labelled-password forms are dropped (#3526)")
+  func labelledPasswordForms() {
+    // Independent literals: do not read the production matcher lists for expectations.
+    let labels = [
+      "password", "passwd", "pwd", "passwort", "kennwort", "mot de passe", "contraseña", "senha",
+      "wachtwoord", "hasło", "pass", "passcode", "passphrase", "pw", "pin", "secret",
+    ]
+    for label in labels {
+      for text in ["\(label) is !value", "\(label):!value", "\(label)=!value", "\(label) value2"] {
+        #expect(SettingsSearchQueryFilter.reportable(text) == nil, "kept \(text)")
+      }
+      #expect(SettingsSearchQueryFilter.reportable("\(label) manager") == "\(label) manager")
+    }
+    let separators = [
+      "is", "was", "are", "ist", "war", "lautet", "est", "c'est", "c’est", "es", "era", "é", "jest",
+    ]
+    for separator in separators {
+      let sensitive = "password \(separator) !value"
+      let ordinary = "bypass \(separator) !value"
+      #expect(SettingsSearchQueryFilter.reportable(sensitive) == nil, "kept \(sensitive)")
+      #expect(SettingsSearchQueryFilter.reportable(ordinary) == ordinary, "dropped \(ordinary)")
+    }
+    let gaps = [" ", ",", ";", ":", "=", ".", "-", "\"", "'", "“", "”", "‘", "’", "(", ")", "[", "]"]
+    for gap in gaps {
+      // c'est leaves only a one-letter domain part before the apostrophe, so the dot-gap
+      // example is not swallowed by the earlier domain filter. Pre-separator colon/equal
+      // cases also match Form 1; their post-separator twins independently reach Form 2.
+      for (sensitive, ordinary) in [
+        ("password\(gap)c'est !value", "bypass\(gap)c'est !value"),
+        ("password c'est\(gap)!value", "bypass c'est\(gap)!value"),
+      ] {
+        #expect(SettingsSearchQueryFilter.reportable(sensitive) == nil, "kept \(sensitive)")
+        #expect(SettingsSearchQueryFilter.reportable(ordinary) == ordinary, "dropped \(ordinary)")
+      }
+    }
+    for text in [
+      "my password is hunter2", "password  is   hunter2", "password\u{00A0}is\u{00A0}hunter2",
+      "password, is hunter2", "password is: hunter2", "password is=hunter2", "password is !secret",
+      "password is \"hunter2\"", "PASSWORD IS HUNTER2", "mot de passe est secret",
+      "mot de passe c'est secret", "mot de passe c’est secret", "contraseña es secreta",
+      "senha é secreta", "wachtwoord is geheim", "hasło jest tajne", "pw is x9k2m",
+      "passcode is 1234", "secret is abc123", "password hunter2", "password \"hunter2\"",
+      "password 2024 reset", "pin 1234", "pin 1234 is it", "password hunter٢",
+    ] {
+      #expect(SettingsSearchQueryFilter.reportable(text) == nil, "kept \(text)")
+    }
+  }
+
+  @Test("ordinary near-misses and documented residuals are kept (#3526)")
+  func labelledPasswordControls() {
+    for text in [
+      "password manager", "reset password", "what is the password", "password reset is broken",
+      "password is", "forgot password is", "password island", "pin isolation", "pass the butter",
+      "passport is expired", "bypass is on", "spin is enabled", "pin code settings", "pin to taskbar",
+      "secret sauce", "login is broken", "password to reset", "password hunter",
+      "my password hint hunter2", "hasło to x", "pass the hunter", "password !!!",
+    ] {
+      #expect(SettingsSearchQueryFilter.reportable(text) == text, "dropped \(text)")
+    }
+    #expect(SettingsSearchQueryFilter.reportable("password is ") == "password is")
+  }
+
+  @Test("documented labelled-password over-drops are intentional (#3526)")
+  func labelledPasswordOverDrops() {
+    for text in [
+      "password is wrong", "password is the", "reset password is broken", "pin 2 settings",
+      "password 2024", "pin: 2 cups", "password is !!!",
+    ] {
+      #expect(SettingsSearchQueryFilter.reportable(text) == nil, "kept \(text)")
+    }
+  }
+
+  @Test("filtered passwords are omitted from every finished-search outcome (#3526)")
+  func labelledPasswordOutcomeRows() {
+    for outcome in [SettingsSearchFinished.Outcome.zeroResults, .sidebarBypass, .resultChosen, .abandoned] {
+      for sensitive in ["password is hunter2", "Passwort ist geheim", "pin 1234"] {
+        let row = SettingsSearchFinished(
+          outcome: outcome, endedBy: .escape, resultCount: 0, appLanguage: "en", typedQuery: sensitive)
+        #expect(row.query == nil, "password reached \(outcome.rawValue)")
+      }
+      let control = SettingsSearchFinished(
+        outcome: outcome, endedBy: .escape, resultCount: 0, appLanguage: "en", typedQuery: "dark mode")
+      let expected = outcome == .zeroResults || outcome == .sidebarBypass ? "dark mode" : nil
+      #expect(control.query == expected)
+    }
+  }
+
+  @Test("copied invisible password gaps never enter reports (#3526)")
+  func passwordFormatRegression() {
+    #expect(SettingsSearchQueryFilter.reportable("password\u{200B}is\u{200B}hunter2") == nil)
+    #expect(SettingsSearchQueryFilter.reportable("Passwort\u{200B}ist\u{200B}geheim") == nil)
+  }
+
+  @Test("every Unicode format member can separate a labelled password (#3526)")
+  func passwordFormatClass() {
+    let formats = (0...0x10FFFF).compactMap { Unicode.Scalar($0) }
+      .filter { $0.properties.generalCategory == .format }
+    #expect(formats.isEmpty == false)
+    print("Settings search password format members: \(formats.count)")
+    for scalar in formats {
+      let f = String(scalar)
+      #expect(SettingsSearchQueryFilter.reportable("password\(f)is\(f)hunter2") == nil)
+      let ordinary = "password\(f)manager"
+      #expect(SettingsSearchQueryFilter.reportable(ordinary) == ordinary)
+    }
+  }
+
+  @Test("format locations preserve password detection and ordinary controls (#3526)")
+  func passwordFormatLocations() {
+    for text in [
+      "pas\u{200B}sword is hunter2", "password i\u{200B}s hunter2",
+      "password\u{200B}is hunter2", "password is\u{200B}hunter2", "password\u{200B}hunter2",
+      "password is hun\u{200B}ter2", "pas\u{200B}sword\u{2060}i\u{200D}s\u{FEFF}hunter2",
+      "Pass\u{200C}wort\u{2060}i\u{200D}st\u{FEFF}geheim",
+      "pass\u{200B}word\u{2060}:hunter2", "pass\u{200B}word\u{2060}=hunter2",
+      "mot\u{200B}de\u{200B}passe est secret",
+    ] {
+      #expect(SettingsSearchQueryFilter.reportable(text) == nil, "kept \(text)")
+    }
+    for text in [
+      "by\u{200B}pass is enabled", "pass\u{200B}port is expired",
+      "password\u{200B}hunter", "password hint hunter2", "hasło\u{200B}to x", "dark\u{200B}mode",
+    ] {
+      #expect(SettingsSearchQueryFilter.reportable(text) == text, "dropped \(text)")
+    }
+    // Foundation's existing whitespace trim removes a trailing U+200B before detection.
+    #expect(SettingsSearchQueryFilter.reportable("password is\u{200B}") == "password is")
+  }
+
   @Test("the query rides only on zero_results and sidebar_bypass")
   func queryOnlyOnGaps() {
     func query(_ outcome: SettingsSearchFinished.Outcome) -> String? {
