@@ -2113,7 +2113,130 @@ else:
     print("  ok  a documented return shape matches the code")
 
 # --- filing-time validator accepts exactly the schemas the runner accepts ------------------------
-def check_validator(name, row=None, *, document=None, expected_rc, expected_text):
+def make_validator_tree(root):
+    """Own the input corpus: app refactors must not change a harness-contract verdict.
+
+    Like check-test-recipe.py's _landing_tree, the filler satisfies the real
+    oracle floors. The named declarations below, not the filler, drive each case.
+    """
+    make_tree(root)
+    sources = root / "Sources" / "EnviousWisprAppKit" / "Views" / "Settings"
+    sources.mkdir(parents=True)
+    # Exactly 55 substring matches for "  }\n", with one unique +10-space
+    # line-start match. Keep this geometry independent of the repair algorithm.
+    (sources / "AIPolishProviderRail.swift").write_text(
+        "func fixture() {\n"
+        "    // progress is kept, so this is a setup state, never an error.\n"
+        + "  if true {\n  }\n" * 54
+        + "            if true {\n            }\n}\n")
+    core = root / "Sources" / "EnviousWisprCore"
+    core.mkdir(parents=True)
+    (core / "AppSettings.swift").write_text(
+        "enum FixtureState {\n"
+        "  case loadingModel, recording, transcribing, polishing, complete\n"
+        "  var isActive: Bool {\n    switch self {\n"
+        "    case .loadingModel, .recording, .transcribing, .polishing:\n"
+        "      return true\n    case .complete:\n      return false\n    }\n  }\n}\n")
+    tests = root / "Tests" / "EnviousWisprTests"
+    tests.mkdir(parents=True)
+    declarations = {
+        "ProviderStatusMappingTests.swift": '''import Testing
+@Suite struct ProviderStatusMappingTests {
+  @Test("EG-1 not installed → Not installed / needs-setup") func egOneNotInstalled() {}
+  @Test("EG-1 paused → Paused / needs-setup") func egOnePaused() {}
+  @Test("update paused", arguments: [true]) func egOneUpdatePausedReadsAsNeedingAttention(_ value: Bool) {}
+}
+''',
+        "LaunchAvailabilitySnapshotTests.swift": r'''import Testing
+@Suite struct LaunchAvailabilitySnapshotTests {
+  @Test("hardware class is real, never \"unknown\"") func hardwareClass() {}
+}
+''',
+        "OpenAIRequestBodyTests.swift": '''import Testing
+@Suite struct OpenAIRequestBodyTests {
+  @Test("the request body", arguments: ["gpt-5.6-sol"]) func requestBody(_ model: String) {}
+}
+''',
+        "AppLoggerCompileOutTests.swift": '''import Testing
+@Suite struct AppLoggerCompileOutTests {
+#if DEBUG
+  @Test("Debug build: log() emits the marker into the file sink") func debugLog() {}
+#else
+  @Test("Release build: log() does NOT emit the marker (sink is dead code)") func releaseLog() {}
+#endif
+}
+''',
+        "EmbeddedSwiftFixture.swift": '''import Testing
+let fixture = #"""
+@Suite struct NotReal {
+  @Test func notReal() {}
+}
+"""#
+''',
+        "OpenAILiveSweepTests.swift": '''import Testing
+@Suite(.enabled(if: false)) struct OpenAILiveSweepTests {
+  @Test func everyOfferedModelPolishesSuccessfully() {}
+}
+''',
+        "TerminalProcessScannerTests.swift": '''import Testing
+@Suite struct TerminalProcessScannerTests {
+  @Test func ordinaryScan() {}
+  @Test(.enabled(if: false)) func filteredSweepFindsWhatTheFullSweepFinds() {}
+}
+''',
+        "OnboardingPracticeStepSuite.swift": '''import Testing
+@Suite struct OnboardingPracticeStepSuite {
+  @Suite struct OnboardingWarmingGateTests {
+    @Test("the gate stays shut while the warm-up is still running") func gateHoldsUntilTheEngineAnswers() {}
+  }
+  @Suite struct OnboardingWarmingGateTelemetryTests {
+    @Test("a warmed gate completes the step once, with a duration") func gateCompletes() {}
+  }
+}
+''',
+        "PipelineStateTests.swift": '''import Testing
+@Suite struct PipelineStateTests {
+  @Test("complete is not active") func completeIsNotActive() {}
+  @Test("error is not active") func errorIsNotActive() {}
+  @Test("errors compare equally") func errorEquality() {}
+}
+''',
+    }
+    for name, source in declarations.items():
+        (tests / name).write_text(source)
+    asr = root / "Tests" / "EnviousWisprASRTests"
+    asr.mkdir()
+    (asr / "ParakeetDeliveryModeTests.swift").write_text('''import Testing
+@Suite struct ParakeetDeliveryModeTests {
+  @Test func firstCase() {}
+  @Test func progressMappingCoversAllVendorPhases() {}
+}
+''')
+    runtime = root / "Tests" / "RuntimeUAT"
+    runtime.mkdir()
+    (runtime / "wispr_eyes.py").write_text(
+        'import sys\nif "--self-test" in sys.argv:\n    print("self-test")\n')
+    (runtime / "ptt_binding.py").write_text(
+        'import argparse\nparser = argparse.ArgumentParser()\n'
+        'parser.add_argument("--self-test", action="store_true")\n')
+    (runtime / "ui_helpers.py").write_text('def helper():\n    return True\n')
+    for index in range(100):
+        cases = "".join(
+            f'  @Test("filler {index} case {case}") func case{case}() {{}}\n'
+            for case in range(11))
+        (tests / f"Filler{index}Tests.swift").write_text(
+            "import Testing\n" + "// padding for the oracle size floor\n" * 30
+            + f"@Suite struct Filler{index}Tests {{\n{cases}}}\n")
+    return root
+
+
+# This owner outlives repair subprocesses AND corrected-recipe revalidation.
+_validator_tmp = tempfile.TemporaryDirectory(prefix="mutation-validator-selftest-")
+_validator_root = make_validator_tree(Path(_validator_tmp.name))
+
+
+def check_validator(name, row=None, *, document=None, expected_rc, expected_text,
+                    checkout=_validator_root):
     global ran
     ran += 1
     with tempfile.TemporaryDirectory() as td:
@@ -2121,7 +2244,7 @@ def check_validator(name, row=None, *, document=None, expected_rc, expected_text
         recipe.write_text(json.dumps(document if document is not None else {"rows": [row]}))
         result = subprocess.run(
             [sys.executable, str(VALIDATOR), "--recipes", str(recipe),
-             "--checkout", str(BATTERY.parent.parent)],
+             "--checkout", str(checkout)],
             capture_output=True, text=True,
         )
     output = result.stdout + result.stderr
@@ -2188,12 +2311,8 @@ check_validator("the filing validator decodes escaped Swift display names",
                      expect_fail='hardware class is real, never "unknown"',
                      suite="EnviousWisprTests/LaunchAvailabilitySnapshotTests"),
                 expected_rc=0, expected_text="1/1 rows runnable")
-# Re-aimed 2026-09-09. It named `proxyErrorRecyclesConnection()`, which went away with the
-# ASR XPC boundary in #1908 — nothing in `Tests/` carries that name any more, so this case
-# had been asserting `1/1 rows runnable` about a test that does not exist and had been red
-# for anyone who ran the file. Nothing runs it: no workflow invokes
-# `scripts/mutation-battery-test.py`, which is why a stale oracle here is silent. The claim
-# is preserved by naming the LATER of the two surviving cases in the same file.
+# The owned ASR fixture has two declarations; name the later one to exercise
+# the enclosing-suite parser without depending on today's app test inventory.
 check_validator("the filing validator keeps later tests in their enclosing suite",
                 dict(_validator_base, expect_fail="progressMappingCoversAllVendorPhases()",
                      suite="EnviousWisprASRTests/ParakeetDeliveryModeTests"),
@@ -2240,6 +2359,37 @@ check_validator("the filing validator rejects a runtime-gated individual test",
                      expect_fail="filteredSweepFindsWhatTheFullSweepFinds()",
                      suite="EnviousWisprTests/TerminalProcessScannerTests"),
                 expected_rc=1, expected_text="DOES NOT EXIST")
+
+# Expose the SAME rejected declaration, not a similarly named sibling. Otherwise
+# accidentally omitting the negative fixture could leave the rejection green.
+for _control_name, _fixture_file, _old_mask, _new_mask, _suite, _expectation in (
+    ("a release-only test exists when its Debug condition is inverted",
+     "AppLoggerCompileOutTests.swift", "#if DEBUG", "#if !DEBUG",
+     "EnviousWisprTests/AppLoggerCompileOutTests",
+     "Release build: log() does NOT emit the marker (sink is dead code)"),
+    ("embedded Swift exists when the raw string wrapper is removed",
+     "EmbeddedSwiftFixture.swift", 'let fixture = #"""\n', "",
+     "EnviousWisprTests/NotReal", "notReal()"),
+    ("a suite-gated test exists when its gate is removed",
+     "OpenAILiveSweepTests.swift", "@Suite(.enabled(if: false))", "@Suite",
+     "EnviousWisprTests/OpenAILiveSweepTests", "everyOfferedModelPolishesSuccessfully()"),
+    ("an individually gated test exists when its gate is removed",
+     "TerminalProcessScannerTests.swift", "@Test(.enabled(if: false))", "@Test",
+     "EnviousWisprTests/TerminalProcessScannerTests", "filteredSweepFindsWhatTheFullSweepFinds()"),
+):
+    with tempfile.TemporaryDirectory() as _control_td:
+        _control_root = make_validator_tree(Path(_control_td))
+        _control_path = _control_root / "Tests" / "EnviousWisprTests" / _fixture_file
+        _control_source = _control_path.read_text()
+        assert _control_source.count(_old_mask) == 1
+        _control_source = _control_source.replace(_old_mask, _new_mask)
+        if _fixture_file == "EmbeddedSwiftFixture.swift":
+            assert _control_source.count('"""#\n') == 1
+            _control_source = _control_source.replace('"""#\n', "")
+        _control_path.write_text(_control_source)
+        check_validator(_control_name,
+                        dict(_validator_base, suite=_suite, expect_fail=_expectation),
+                        expected_rc=0, expected_text="1/1 rows runnable", checkout=_control_root)
 
 # #2525: a @Suite nested inside another @Suite is addressed by its whole declaration chain,
 # `Outer/Inner`, which is the path the test filter accepts. The oracle used to key every
@@ -2360,7 +2510,7 @@ def _fail_one_test_source(path, *args, **kwargs):
 Path.read_text = _fail_one_test_source
 try:
     try:
-        validator.test_oracle(BATTERY.parent.parent)
+        validator.test_oracle(_validator_root)
         failures.append("an unreadable test source refuses the entire filing-time oracle")
     except RuntimeError as error:
         if "cannot read test source" not in str(error):
@@ -2376,7 +2526,7 @@ ran += 1
 # `extension Outer.Inner { @Test ... }`, and `swift test list` files them under
 # `Outer/Inner/...`. The declaration regex captured only `Outer`, so the oracle filed the
 # test one level up and the validator rejected a valid recipe for it. Two-way against a
-# copy of the real corpus plus one fixture file: the test is under the qualified path, and
+# test-owned corpus plus one fixture file: the test is under the qualified path, and
 # NOT under the bare outer name it used to land on.
 _qualified_fixture = """
 import Testing
@@ -2419,7 +2569,7 @@ extension CrossFileGatedOuter.CrossFileGatedInner {
 """
 with tempfile.TemporaryDirectory() as _qtd:
     _qroot = Path(_qtd)
-    shutil.copytree(BATTERY.parent.parent / "Tests", _qroot / "Tests")
+    make_validator_tree(_qroot)
     (_qroot / "Tests" / "EnviousWisprTests" / "QualifiedExtensionFixture.swift").write_text(
         _qualified_fixture)
     (_qroot / "Tests" / "EnviousWisprTests" / "CrossFileGateDeclaration.swift").write_text(
@@ -2521,7 +2671,7 @@ extension SharedNameCollision {
 """
 with tempfile.TemporaryDirectory() as _ptd:
     _proot = Path(_ptd)
-    shutil.copytree(BATTERY.parent.parent / "Tests", _proot / "Tests")
+    make_validator_tree(_proot)
     _pdir = _proot / "Tests" / "EnviousWisprTests"
     (_pdir / "PrivateGateDeclaration.swift").write_text(_private_gated)
     (_pdir / "PrivateGateLiveTest.swift").write_text(_private_ungated)
@@ -2566,7 +2716,7 @@ else:
 ran += 1
 result = subprocess.run(
     [sys.executable, str(VALIDATOR), "--issue", "0",
-     "--checkout", str(BATTERY.parent.parent)],
+     "--checkout", str(_validator_root)],
     capture_output=True, text=True,
 )
 _zero_issue_output = result.stdout + result.stderr
@@ -2592,7 +2742,7 @@ with tempfile.TemporaryDirectory() as td:
     env["PATH"] = str(fake_bin) + ":" + env.get("PATH", "")
     result = subprocess.run(
         [sys.executable, str(VALIDATOR), "--issue", "1",
-         "--checkout", str(BATTERY.parent.parent)],
+         "--checkout", str(_validator_root)],
         capture_output=True, text=True, env=env,
     )
 _issue_output = result.stdout + result.stderr
@@ -2610,8 +2760,8 @@ else:
 # must RUN, which is the only thing that makes the repair worth printing.
 
 
-def check_fix(name, row=None, *, document=None, expect_text, expect_no_block=False,
-              expect_runnable=None):
+def check_fix(name, row=None, *, document=None, expected_rc, expect_text,
+              expect_no_block=False, expect_runnable=None, expected_rows=()):
     """`expect_runnable` re-validates `--fix`'s own output as a recipe.
 
     Asserting the printed block PARSES would pass against a repair that produces a
@@ -2626,7 +2776,7 @@ def check_fix(name, row=None, *, document=None, expect_text, expect_no_block=Fal
         recipe.write_text(payload)
         result = subprocess.run(
             [sys.executable, str(VALIDATOR), "--recipes", str(recipe), "--fix",
-             "--checkout", str(BATTERY.parent.parent)],
+             "--checkout", str(_validator_root)],
             capture_output=True, text=True,
         )
         # `--fix` PRINTS. A repairer that edited the recipe under the author would be
@@ -2634,11 +2784,28 @@ def check_fix(name, row=None, *, document=None, expect_text, expect_no_block=Fal
         untouched = recipe.read_text() == payload
     output = result.stdout + result.stderr
     problems = []
+    if result.returncode != expected_rc:
+        problems.append(f"exit {result.returncode}, wanted {expected_rc}")
     if not untouched:
         problems.append("the recipe file was modified")
     expected = (expect_text,) if isinstance(expect_text, str) else tuple(expect_text)
     problems += [f"missing {text!r}" for text in expected if text not in output]
     block = output.partition("```json")[2].partition("```")[0]
+    if expected_rows:
+        expected_document = {"rows": [
+            dict(expected, label=f"re-cut from row {index} of {recipe}: {expected['label']}")
+            for index, expected in expected_rows
+        ]}
+        try:
+            corrected_document = json.loads(block)
+        except json.JSONDecodeError as error:
+            problems.append(f"corrected block is not JSON: {error}")
+        else:
+            if corrected_document != expected_document:
+                problems.append(f"corrected rows differ: {corrected_document!r}; "
+                                f"wanted {expected_document!r}")
+    elif block.strip():
+        problems.append("printed corrected rows without independently expected rows")
     if expect_no_block and block.strip():
         problems.append("printed a corrected block when nothing was repairable")
     if expect_runnable is not None:
@@ -2650,19 +2817,20 @@ def check_fix(name, row=None, *, document=None, expect_text, expect_no_block=Fal
                 fixed.write_text(block)
                 again = subprocess.run(
                     [sys.executable, str(VALIDATOR), "--recipes", str(fixed),
-                     "--checkout", str(BATTERY.parent.parent)],
+                     "--checkout", str(_validator_root)],
                     capture_output=True, text=True,
                 )
-            if expect_runnable not in again.stdout + again.stderr:
+            if again.returncode != 0 or expect_runnable not in again.stdout + again.stderr:
                 problems.append(
-                    f"corrected rows did not re-validate: {(again.stdout + again.stderr)[-200:]!r}")
+                    f"corrected rows did not re-validate (exit {again.returncode}): "
+                    f"{(again.stdout + again.stderr)[-200:]!r}")
     if problems:
         failures.append(f"{name}: {'; '.join(problems)} in {output[-400:]!r}")
     else:
         print(f"  ok  {name}")
 
 
-# The shipped line sits at FOUR spaces, so this fixture is written at SIX: the file no
+# The owned source line sits at FOUR spaces, so this recipe is written at SIX: the file no
 # longer contains the text at all, and exactly one offset (-2) brings it back. Six rather
 # than the obvious two, because `load_recipes` counts a plain SUBSTRING — at two the
 # shifted text is still found inside the real line's own indentation and the row stays
@@ -2672,24 +2840,34 @@ _drifted = dict(
     anchor="      " + _validator_base["anchor"].lstrip(" "),
     replacement="      " + _validator_base["replacement"].lstrip(" "),
     expect_fail=_guard_name)
+_fixed_indentation_row = dict(
+    _validator_base,
+    anchor="    // progress is kept, so this is a setup state, never an error.",
+    replacement="    // progress remains, so this is a setup state, never an error.",
+    expect_fail=_guard_name)
 check_fix("--fix re-cuts an anchor that only moved in indentation, and the row then runs",
           _drifted,
+          expected_rc=1, expected_rows=[(1, _fixed_indentation_row)],
           expect_text=["anchor re-cut at -2 spaces", "Nothing was written"],
           expect_runnable="1/1 rows runnable")
 
 check_fix("--fix completes an expectation naming a prefix of exactly one test",
           dict(_validator_base, expect_fail="egOneNotInstalled"),
+          expected_rc=1,
+          expected_rows=[(1, dict(_validator_base, expect_fail="egOneNotInstalled()"))],
           expect_text="repairable — must_fire: 'egOneNotInstalled' -> 'egOneNotInstalled()'",
           expect_runnable="1/1 rows runnable")
 
 check_fix("--fix refuses an anchor no offset recovers, and prints no block",
           dict(_validator_base, anchor="this text is in no file in this repository at all",
                expect_fail=_guard_name),
+          expected_rc=1,
           expect_text=["NOT mechanically repairable", "no offset matches"],
           expect_no_block=True)
 
 check_fix("--fix on a healthy row repairs nothing",
           dict(_validator_base, expect_fail=_guard_name),
+          expected_rc=0,
           expect_text="Nothing was written",
           expect_no_block=True)
 
@@ -2699,11 +2877,13 @@ _drifted_no_suite = {k: v for k, v in _drifted.items() if k != "suite"}
 check_fix("--fix carries the suite_default onto a corrected row",
           document={"suite_default": _validator_base["suite"],
                     "rows": [_drifted_no_suite]},
+          expected_rc=1, expected_rows=[(1, _fixed_indentation_row)],
           expect_text="anchor re-cut at -2 spaces",
           expect_runnable="1/1 rows runnable")
 
 check_fix("--fix refuses a row whose OTHER defect survives the mechanical repair",
           dict(_drifted, expect_fail="noSuchTestExistsAnywhere()"),
+          expected_rc=1,
           expect_text=["the mechanical part repairs", "still does not validate",
                        "DOES NOT EXIST"],
           expect_no_block=True)
@@ -2716,12 +2896,15 @@ check_fix("--fix refuses a row whose OTHER defect survives the mechanical repair
 check_fix("--fix refuses an ambiguous anchor rather than shifting it into a unique one",
           dict(_validator_base, anchor="  }\n", replacement="  } // shifted\n",
                expect_fail=_guard_name),
+          expected_rc=1,
           expect_text="matches 55 times, so it is AMBIGUOUS rather than moved",
           expect_no_block=True)
 
 check_fix("--fix combines both repair classes on one row",
           document={"suite_default": _validator_base["suite"],
                     "rows": [dict(_drifted_no_suite, expect_fail="egOneNotInstalled")]},
+          expected_rc=1,
+          expected_rows=[(1, dict(_fixed_indentation_row, expect_fail="egOneNotInstalled()"))],
           expect_text="anchor re-cut at -2 spaces; must_fire: 'egOneNotInstalled' -> "
                       "'egOneNotInstalled()'",
           expect_runnable="1/1 rows runnable")
@@ -2729,6 +2912,7 @@ check_fix("--fix combines both repair classes on one row",
 check_fix("a malformed row is refused without stopping the rows behind it",
           document={"rows": [dict(_validator_base, anchor=42, expect_fail=_guard_name),
                              _drifted]},
+          expected_rc=1, expected_rows=[(2, _fixed_indentation_row)],
           expect_text=["row 1: NOT mechanically repairable — the row's anchor is not a string",
                        "row 2: repairable — anchor re-cut at -2 spaces"],
           expect_runnable="1/1 rows runnable")
@@ -2746,10 +2930,13 @@ _pipeline_state_row = {
 }
 check_fix("--fix completes a prefix shared by two spellings of the SAME test",
           dict(_pipeline_state_row, expect_fail="compl"),
+          expected_rc=1,
+          expected_rows=[(1, dict(_pipeline_state_row, expect_fail="completeIsNotActive()"))],
           expect_text="repairable — must_fire: 'compl' -> 'completeIsNotActive()'",
           expect_runnable="1/1 rows runnable")
 check_fix("--fix refuses a prefix shared by two DIFFERENT tests, and names them",
           dict(_pipeline_state_row, expect_fail="error"),
+          expected_rc=1,
           expect_text=["PREFIX of 2 different tests",
                        "'PipelineStateTests/errorEquality()', "
                        "'PipelineStateTests/errorIsNotActive()'",
@@ -2763,10 +2950,12 @@ check_fix("--fix refuses a prefix shared by two DIFFERENT tests, and names them"
 # the control, already asserted repairable above.
 check_fix("--fix refuses a drifted row whose label is missing, rather than inventing one",
           {k: v for k, v in _drifted.items() if k != "label"},
+          expected_rc=1,
           expect_text="NOT mechanically repairable — the row's label is missing",
           expect_no_block=True)
 check_fix("--fix refuses a drifted row whose label is not a string",
           dict(_drifted, label=42),
+          expected_rc=1,
           expect_text="NOT mechanically repairable — the row's label is missing",
           expect_no_block=True)
 
@@ -2875,6 +3064,9 @@ if _bare != "python3 Tests/RuntimeUAT/probe.py --self-test":
 else:
     print("  ok  an unanchored call still returns the bare relative command")
 
+_validator_tmp.cleanup()
+if ran == 0:
+    failures.append("the self-test executed zero cases")
 print()
 if failures:
     print(f"{len(failures)} of {ran} FAILED:")
