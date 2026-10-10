@@ -1,3 +1,4 @@
+import CryptoKit
 import EnviousWisprCore
 import Foundation
 
@@ -57,6 +58,12 @@ struct ManifestFetchTask {
   /// deterministic backoff-bound tests. `var` for the same memberwise-init
   /// reason as `backoffSleep`.
   var jitterFraction: @Sendable () -> Double = { Double.random(in: 0...1) }
+  /// #3546: the assembly write, injectable so tests can produce a disk-full
+  /// error or a cancellation at the real assembly step. `var` for the same
+  /// memberwise-init reason as `backoffSleep`.
+  var assemblyWrite: @Sendable (_ handle: FileHandle, _ chunk: Data) async throws -> Void = {
+    try $0.write(contentsOf: $1)
+  }
 
   /// EG-1's shipped transport dials (`EGOneModelStore.swift:398,465`) — idle
   /// transport timeouts with shipped precedent, not new wall-clock deadlines.
@@ -137,6 +144,12 @@ struct ManifestFetchTask {
     try fm.createDirectory(at: stagingDirectory, withIntermediateDirectories: true)
 
     let fetchFiles = manifest.files.filter { componentsToFetch.contains($0.component) }
+    // #3546: the §4d transport root must never be a component, or promotion
+    // could carry parts into the install directory. Bundled manifests cannot
+    // collide today; refuse rather than assume.
+    guard !manifest.files.contains(where: { $0.component == TransportLayout.rootName }) else {
+      throw DeliveryFailure(reason: .cacheRepairFailed, detail: "transport_root_collision")
+    }
     var state = AttemptState(completedBytes: verifiedInPlaceBytes)
 
     for file in fetchFiles {
@@ -148,6 +161,11 @@ struct ManifestFetchTask {
         at: stagedURL.deletingLastPathComponent(), withIntermediateDirectories: true)
       try await fetchVerified(file, to: stagedURL, state: &state)
     }
+
+    // #3546: every file verified, so nothing in the transport area is needed.
+    // Transport residue must be removed before promotion; a cleanup failure
+    // ends the attempt without admission.
+    try removeTransportItem(at: TransportLayout.root(in: stagingDirectory))
 
     return Outcome(
       sourcesUsed: state.sourcesUsed,
@@ -187,30 +205,40 @@ struct ManifestFetchTask {
     while !fetched {
       let source = sources[state.sourceIndex]
       do {
-        let result = try await fetchOneFile(
-          file, from: source, to: stagedURL,
-          progressBase: state.completedBytes)
-        // Accepted P3 (code-diff review): on the transient-retry-then-resume
-        // path a FAILED attempt's partial bytes are staged but not added here
-        // (only the successful tail's `bytesReceived` counts), so
-        // `attemptCompleted(bytesDownloadedBucket:)` can under-count on a
-        // mid-file recovery. This is coarse telemetry only (4 buckets spanning
-        // 50MB–600MB+); a lost mid-file partial almost never crosses a bucket
-        // boundary on the ~470MB model, and it never affects the download
-        // itself. Not worth per-attempt byte plumbing on the hot fetch path.
-        state.bytesDownloaded += result.bytesReceived
+        if source.deliversParts(of: file), let parts = file.parts {
+          // Contract §4d: this source serves the file as verified parts that
+          // are assembled into the staged install file; local-byte retries
+          // are per part inside, and any failure that blames the source
+          // lands in the shared catch below (retry, then whole-file failover).
+          try await fetchParts(
+            file, parts, from: source, assembleInto: stagedURL,
+            progressBase: state.completedBytes, bytesDownloaded: &state.bytesDownloaded)
+        } else {
+          let result = try await fetchOneFile(
+            locator: file.path, sizeBytes: file.sizeBytes, from: source, to: stagedURL,
+            progressBase: state.completedBytes)
+          // Accepted P3 (code-diff review): on the transient-retry-then-resume
+          // path a FAILED attempt's partial bytes are staged but not added here
+          // (only the successful tail's `bytesReceived` counts), so
+          // `attemptCompleted(bytesDownloadedBucket:)` can under-count on a
+          // mid-file recovery. This is coarse telemetry only (4 buckets spanning
+          // 50MB–600MB+); a lost mid-file partial almost never crosses a bucket
+          // boundary on the ~470MB model, and it never affects the download
+          // itself. Not worth per-attempt byte plumbing on the hot fetch path.
+          state.bytesDownloaded += result.bytesReceived
 
-        // Hash gate BEFORE this file counts (invariant 1).
-        try Task.checkCancellation()
-        guard await CacheAdmission.streamingSHA256(of: stagedURL) == file.sha256 else {
-          discardPartial(at: stagedURL)
-          if result.usedLocalBytes, !localRetryUsed {
-            localRetryUsed = true
-            continue
+          // Hash gate BEFORE this file counts (invariant 1).
+          try Task.checkCancellation()
+          guard await CacheAdmission.streamingSHA256(of: stagedURL) == file.sha256 else {
+            discardPartial(at: stagedURL)
+            if result.usedLocalBytes, !localRetryUsed {
+              localRetryUsed = true
+              continue
+            }
+            throw DeliveryFailure(
+              reason: .integrityMismatch, detail: "sha256:\(file.component)",
+              failingSourceID: source.id)
           }
-          throw DeliveryFailure(
-            reason: .integrityMismatch, detail: "sha256:\(file.component)",
-            failingSourceID: source.id)
         }
         fetched = true
         // The resume identity's job ends when the file verifies — clearing
@@ -289,20 +317,22 @@ struct ManifestFetchTask {
     let usedLocalBytes: Bool
   }
 
+  /// One transport object (a whole file, or one §4d part) from `locator` on
+  /// `source` into `stagedURL`, resuming any partial there.
   private func fetchOneFile(
-    _ file: DeliveryManifest.File, from source: DeliveryManifest.Source, to stagedURL: URL,
+    locator: String, sizeBytes: Int64, from source: DeliveryManifest.Source, to stagedURL: URL,
     progressBase: Int64
   ) async throws -> FileFetchResult {
     let fm = FileManager.default
-    let fileURL = source.baseURL.appendingPathComponent(file.path)
-    let identityURL = resumeIdentityURL(for: file)
+    let fileURL = source.baseURL.appendingPathComponent(locator)
+    let identityURL = resumeIdentityURL(for: stagedURL)
     var existingBytes =
       ((try? fm.attributesOfItem(atPath: stagedURL.path)[.size] as? Int64) ?? nil) ?? 0
 
     // A COMPLETE partial goes straight back to the caller's verify — a
     // `bytes=<size>-` request answers 416 and would strand retries (EG-1
     // Codex r1 P2; the checksum is the authority for a complete file).
-    if existingBytes == file.sizeBytes {
+    if existingBytes == sizeBytes {
       return FileFetchResult(bytesReceived: 0, usedLocalBytes: true)
     }
 
@@ -315,7 +345,7 @@ struct ManifestFetchTask {
       if shouldDiscardPartial(
         recordedETag: recorded?.etag, recordedLength: recorded?.contentLength,
         headETag: head.etag, headLength: head.contentLength,
-        existingBytes: existingBytes, expectedSize: file.sizeBytes)
+        existingBytes: existingBytes, expectedSize: sizeBytes)
       {
         discardPartial(at: stagedURL)
         existingBytes = 0
@@ -335,7 +365,7 @@ struct ManifestFetchTask {
     defer { try? handle.close() }
     try handle.seekToEnd()
 
-    let expectedSize = file.sizeBytes
+    let expectedSize = sizeBytes
     let onProgressCallback = onProgress
     let totalBytes = manifest.totalBytes
     let delegate = ChunkAppendDelegate(
@@ -393,14 +423,233 @@ struct ManifestFetchTask {
     return FileFetchResult(bytesReceived: outcome.bytesReceived, usedLocalBytes: existingBytes > 0)
   }
 
+  // MARK: - Parts (contract §4d)
+
+  /// Fetches every part of `file` from a parts-serving `source` into the
+  /// transport area, verifying each before it counts, then assembles them into
+  /// `stagedURL`. Progress is reported in the file's logical bytes, so parts and
+  /// the assembled output are never counted twice.
+  private func fetchParts(
+    _ file: DeliveryManifest.File, _ parts: [DeliveryManifest.Part],
+    from source: DeliveryManifest.Source, assembleInto stagedURL: URL,
+    progressBase: Int64, bytesDownloaded: inout Int64
+  ) async throws {
+    try FileManager.default.createDirectory(
+      at: TransportLayout.root(in: stagingDirectory), withIntermediateDirectories: true)
+    var partBase = progressBase
+    for (index, part) in parts.enumerated() {
+      try Task.checkCancellation()
+      let partURL = TransportLayout.partURL(in: stagingDirectory, file: file, index: index)
+      var localRetryUsed = false
+      var verified = await Self.isVerified(
+        partURL, sizeBytes: part.sizeBytes, sha256: part.sha256)
+      while !verified {
+        let result: FileFetchResult
+        do {
+          result = try await fetchOneFile(
+            locator: part.path, sizeBytes: part.sizeBytes, from: source, to: partURL,
+            progressBase: partBase)
+        } catch let failure as DeliveryFailure
+          where failure.detail == "http_416_local" && !localRetryUsed
+        {
+          // Same stale-range rule as a whole file: one clean retry from zero.
+          localRetryUsed = true
+          continue
+        }
+        bytesDownloaded += result.bytesReceived
+        try Task.checkCancellation()
+        if await CacheAdmission.streamingSHA256(of: partURL) != part.sha256 {
+          discardPartial(at: partURL)
+          if result.usedLocalBytes, !localRetryUsed {
+            localRetryUsed = true
+            continue
+          }
+          throw DeliveryFailure(
+            reason: .integrityMismatch, detail: "sha256:\(file.component):part\(index + 1)",
+            failingSourceID: source.id)
+        }
+        verified = true
+      }
+      discardResumeIdentity(at: partURL)
+      partBase += part.sizeBytes
+      onProgress(partBase, manifest.totalBytes)
+    }
+    try await assemble(file, parts, into: stagedURL, sourceID: source.id)
+  }
+
+  /// Concatenates verified parts, in declared order, into a freshly truncated
+  /// temporary output; only an output of the exact size and whole-file SHA-256
+  /// replaces the staged install file. An interrupted assembly therefore never
+  /// leaves a suffix behind: the next attempt truncates and starts at byte zero,
+  /// reusing the parts that already verified.
+  private func assemble(
+    _ file: DeliveryManifest.File, _ parts: [DeliveryManifest.Part], into stagedURL: URL,
+    sourceID: String
+  ) async throws {
+    let fm = FileManager.default
+    let output = TransportLayout.assemblyURL(in: stagingDirectory, file: file)
+    do {
+      try? fm.removeItem(at: output)
+      guard fm.createFile(atPath: output.path, contents: nil) else {
+        throw CocoaError(.fileWriteUnknown)
+      }
+      let writer = try FileHandle(forWritingTo: output)
+      defer { try? writer.close() }
+      for index in parts.indices {
+        let reader = try FileHandle(
+          forReadingFrom: TransportLayout.partURL(in: stagingDirectory, file: file, index: index))
+        defer { try? reader.close() }
+        while true {
+          try Task.checkCancellation()
+          guard let chunk = try reader.read(upToCount: Self.assemblyChunkBytes), !chunk.isEmpty
+          else { break }
+          try await assemblyWrite(writer, chunk)
+        }
+      }
+    } catch is CancellationError {
+      try? fm.removeItem(at: output)
+      throw DeliveryFailure(reason: .cancelled, failingSourceID: sourceID)
+    } catch {
+      try? fm.removeItem(at: output)
+      throw Self.classifyTransportError(error, sourceID: sourceID)
+    }
+    guard await Self.isVerified(output, sizeBytes: file.sizeBytes, sha256: file.sha256) else {
+      // Every part verified yet the whole does not: none of these bytes can be
+      // trusted together, so the output, the parts and their sidecars all go.
+      try removeTransportItem(at: output)
+      for index in parts.indices {
+        let partURL = TransportLayout.partURL(in: stagingDirectory, file: file, index: index)
+        try removeTransportItem(at: partURL)
+        try removeTransportItem(at: resumeIdentityURL(for: partURL))
+      }
+      throw DeliveryFailure(
+        reason: .integrityMismatch, detail: "sha256:\(file.component):assembled",
+        failingSourceID: sourceID)
+    }
+    do {
+      discardPartial(at: stagedURL)
+      try fm.moveItem(at: output, to: stagedURL)
+    } catch {
+      try? fm.removeItem(at: output)
+      throw Self.classifyTransportError(error, sourceID: sourceID)
+    }
+    for index in parts.indices {
+      discardPartial(at: TransportLayout.partURL(in: stagingDirectory, file: file, index: index))
+    }
+  }
+
+  private static func isVerified(_ url: URL, sizeBytes: Int64, sha256: String) async -> Bool {
+    guard CacheAdmission.sizeMatches(url: url, expected: sizeBytes) else { return false }
+    return await CacheAdmission.streamingSHA256(of: url) == sha256
+  }
+
+  /// Copy granularity for assembly: bounded memory, with a cancellation check
+  /// between chunks.
+  static let assemblyChunkBytes = 4 * 1024 * 1024
+
+  /// Contract §4d transport layout: the ONE authority for where a file's parts,
+  /// their resume sidecars and its assembly output live, read by the fetcher
+  /// and by the controller's disk accounting. Everything sits under one root
+  /// that is never a manifest component; promotion moves component roots only,
+  /// so transport bytes can never reach the install directory.
+  enum TransportLayout {
+    static let rootName = ".ew-transport"
+
+    static func root(in staging: URL) -> URL {
+      staging.appendingPathComponent(rootName, isDirectory: true)
+    }
+
+    /// Keyed by a digest of the file's resolved install path (unique per
+    /// manifest, contract §4b) plus the part index, so no two parts of any
+    /// files can share a name.
+    static func partURL(in staging: URL, file: DeliveryManifest.File, index: Int) -> URL {
+      root(in: staging).appendingPathComponent("\(key(file)).part\(index + 1)")
+    }
+
+    static func assemblyURL(in staging: URL, file: DeliveryManifest.File) -> URL {
+      root(in: staging).appendingPathComponent("\(key(file)).assembling")
+    }
+
+    private static func key(_ file: DeliveryManifest.File) -> String {
+      SHA256.hash(data: Data(file.resolvedInstallPath.utf8)).map { String(format: "%02x", $0) }
+        .joined()
+    }
+  }
+
+  /// Disk accounting for one file across every source this attempt may use
+  /// (contract §4d), read by the controller's preflight. `logicalStaged` is what
+  /// progress will report as already present on the FIRST source's path;
+  /// `diskNeeded` is the worst case over the representations the permitted
+  /// sources can serve (a parts source needs the remaining parts PLUS a whole
+  /// assembly output; a whole-file source needs only the remaining file);
+  /// `assemblyFloor` is the assembly output a parts-capable file can still
+  /// allocate after its network bytes land.
+  ///
+  /// Whole-file-only sources retain their existing size-based accounting.
+  /// For a parts-capable file, full-size staging skips allocation only after
+  /// its whole-file hash verifies; corrupt staging still needs a parts budget.
+  static func stagedAccounting(
+    of file: DeliveryManifest.File, sources: [DeliveryManifest.Source], in staging: URL
+  ) async -> (logicalStaged: Int64, diskNeeded: Int64, assemblyFloor: Int64) {
+    // Staged files live under the resolved install path (contract §4b).
+    let wholeURL = staging.appendingPathComponent(file.resolvedInstallPath)
+    let whole = min(stagedSize(wholeURL), file.sizeBytes)
+    guard let parts = file.parts, sources.contains(where: { $0.deliversParts(of: file) }) else {
+      return (whole, file.sizeBytes - whole, 0)
+    }
+    if whole == file.sizeBytes,
+      await isVerified(wholeURL, sizeBytes: file.sizeBytes, sha256: file.sha256)
+    {
+      return (whole, 0, 0)
+    }
+    let wholeStaged = whole == file.sizeBytes ? 0 : whole
+    let wholeNeed = file.sizeBytes - wholeStaged
+    let partStaged = parts.indices.reduce(Int64(0)) { sum, index in
+      sum
+        + min(
+          stagedSize(TransportLayout.partURL(in: staging, file: file, index: index)),
+          parts[index].sizeBytes)
+    }
+    let partsNeed = (file.sizeBytes - partStaged) + file.sizeBytes
+    let startsWithParts = sources.first?.deliversParts(of: file) == true
+    return (
+      startsWithParts ? partStaged : wholeStaged, max(wholeNeed, partsNeed), file.sizeBytes
+    )
+  }
+
+  private static func stagedSize(_ url: URL) -> Int64 {
+    ((try? FileManager.default.attributesOfItem(atPath: url.path)[.size] as? Int64) ?? nil) ?? 0
+  }
+
   // MARK: - Helpers
 
-  private func resumeIdentityURL(for file: DeliveryManifest.File) -> URL {
+  /// Removes a transport-area item; an item that is already gone is not a
+  /// failure, any other error is (contract §4d: residue never reaches promotion).
+  private func removeTransportItem(at url: URL) throws {
+    do {
+      try FileManager.default.removeItem(at: url)
+    } catch {
+      let ns = error as NSError
+      if ns.domain == NSCocoaErrorDomain,
+        ns.code == NSFileNoSuchFileError || ns.code == NSFileReadNoSuchFileError
+      {
+        return
+      }
+      throw DeliveryFailure(
+        reason: .cacheRepairFailed, detail: "transport_cleanup:\(url.lastPathComponent)")
+    }
+  }
+
+  private func resumeIdentityURL(for stagedURL: URL) -> URL {
     // Key the resume sidecar off the resolved install path so it sits beside
     // the staged file (which stages under resolvedInstallPath, contract §4b).
     // `discardResumeIdentity(at: stagedURL)` below is already stagedURL-relative
     // and needs no change.
-    stagingDirectory.appendingPathComponent(file.resolvedInstallPath + ".resume.json")
+    // #3546: keyed off the staged URL itself, which for a whole file IS
+    // `stagingDirectory/resolvedInstallPath` (the same sidecar path as before)
+    // and for a §4d part is its transport file, so a part's sidecar sits beside
+    // the part, outside every promotable component root.
+    URL(fileURLWithPath: stagedURL.path + ".resume.json")
   }
 
   private func discardPartial(at stagedURL: URL) {

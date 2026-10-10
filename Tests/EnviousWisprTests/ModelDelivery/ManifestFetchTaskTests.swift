@@ -36,13 +36,23 @@ final class DeliveryStubProtocol: URLProtocol {
 
   nonisolated(unsafe) static var stubs: [String: [Stub]] = [:]
   nonisolated(unsafe) static var seenRangeHeaders: [String] = []
+  /// #3546: every request as "METHOD absoluteURL", in arrival order, so a test
+  /// can prove which source and which representation (part or whole) was asked for.
+  nonisolated(unsafe) static var seenRequests: [String] = []
   static let lock = NSLock()
 
   static func reset() {
     lock.lock()
     stubs = [:]
     seenRangeHeaders = []
+    seenRequests = []
     lock.unlock()
+  }
+
+  static var requests: [String] {
+    lock.lock()
+    defer { lock.unlock() }
+    return seenRequests
   }
 
   /// Keyed by URL PATH (host-agnostic and immune to encoding drift).
@@ -65,6 +75,7 @@ final class DeliveryStubProtocol: URLProtocol {
     if let range = request.value(forHTTPHeaderField: "Range") {
       Self.seenRangeHeaders.append(range)
     }
+    Self.seenRequests.append("\(request.httpMethod ?? "GET") \(request.url!.absoluteString)")
     let key = request.url!.path
     let stub = Self.stubs[key]?.isEmpty == false ? Self.stubs[key]!.removeFirst() : nil
     Self.lock.unlock()
@@ -106,7 +117,7 @@ final class DeliveryStubProtocol: URLProtocol {
 /// the EG-1-inherited behaviors (200-ignores-Range truncate, 416 discard,
 /// non-success stop) plus the Phase 2 length gate. Signal-based — the stub
 /// responds immediately; no clock waits (test-timing rule).
-@Suite(.serialized) struct ManifestFetchTaskTests {
+@Suite(.serialized, .tags(.productOutcome)) struct ManifestFetchTaskTests {
   private func makeStaging() throws -> URL {
     let dir = FileManager.default.temporaryDirectory
       .appendingPathComponent("fetch-\(UUID().uuidString)", isDirectory: true)
@@ -184,7 +195,8 @@ final class DeliveryStubProtocol: URLProtocol {
           backoffSleep: { _ in
             announced.yield(())
             try await Task.sleep(nanoseconds: .max)  // deadline-fallback: cancellation is the signal
-          }).run()
+          }
+        ).run()
       }
       let reachedBackoff = await withTaskGroup(of: Bool.self) { group in
         group.addTask {
@@ -885,4 +897,527 @@ private final class DelayBox: @unchecked Sendable {
   private var delays: [TimeInterval] = []
   func record(_ delay: TimeInterval) { lock.withLock { delays.append(delay) } }
   var all: [TimeInterval] { lock.withLock { delays } }
+}
+
+// MARK: - Contract §4d parts delivery (#3546)
+
+extension ManifestFetchTaskTests {
+  /// One 10-byte file. `our_copy` serves it as two 5-byte parts; `backup`
+  /// serves it whole. Expected bytes and hashes are literal, independent of
+  /// the fetcher.
+  fileprivate static let partsContent = Data("0123456789".utf8)
+  fileprivate static let partsFile = "weights.bin"
+  fileprivate static let mirrorBase = "https://mirror.invalid.example/base/"
+  fileprivate static let backupBase = "https://upstream.invalid.example/base/"
+
+  fileprivate static func partsManifest(
+    parts: [Data] = [Data("01234".utf8), Data("56789".utf8)],
+    fileContent: Data = partsContent, withBackup: Bool = true, family: String = "parakeet",
+    name: String = "fixture-model"
+  ) throws -> DeliveryManifest {
+    var sources = [["id": "our_copy", "baseURL": mirrorBase]]
+    if withBackup { sources.append(["id": "backup", "baseURL": backupBase]) }
+    return try DeliveryManifest.load(
+      from: ManifestFixture.manifestJSON(
+        files: [(partsFile, fileContent, partsFile)], sources: sources, family: family
+      ) { object in
+        var identity = object["identity"] as! [String: Any]
+        identity["name"] = name
+        object["identity"] = identity
+        var files = object["files"] as! [[String: Any]]
+        files[0]["parts"] = parts.enumerated().map {
+          [
+            "path": "\(partsFile).part-\($0.offset + 1)", "sizeBytes": $0.element.count,
+            "sha256": ManifestFixture.sha256($0.element),
+          ] as [String: Any]
+        }
+        object["files"] = files
+        var list = object["sources"] as! [[String: Any]]
+        list[0]["servesParts"] = true
+        object["sources"] = list
+      })
+  }
+
+  private func servePart(_ index: Int, _ body: Data, hang: Bool = false) {
+    DeliveryStubProtocol.enqueue(
+      url: "\(Self.mirrorBase)\(Self.partsFile).part-\(index)",
+      .init(
+        status: 200, headers: ["Content-Length": String(body.count), "ETag": "\"p\(index)\""],
+        body: body, hangAfterBody: hang))
+  }
+
+  private func stagePart(_ manifest: DeliveryManifest, staging: URL, index: Int, _ body: Data)
+    throws -> URL
+  {
+    let url = ManifestFetchTask.TransportLayout.partURL(
+      in: staging, file: manifest.files[0], index: index)
+    try FileManager.default.createDirectory(
+      at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+    try body.write(to: url)
+    return url
+  }
+
+  private final class ProgressLog: @unchecked Sendable {
+    private let lock = NSLock()
+    private var values: [Int64] = []
+    func append(_ value: Int64) {
+      lock.lock()
+      values.append(value)
+      lock.unlock()
+    }
+    var all: [Int64] {
+      lock.lock()
+      defer { lock.unlock() }
+      return values
+    }
+  }
+
+  private func partsTask(
+    manifest: DeliveryManifest, staging: URL, progress: ProgressLog? = nil,
+    assemblyWrite: (@Sendable (FileHandle, Data) async throws -> Void)? = nil
+  ) -> ManifestFetchTask {
+    var fetch = ManifestFetchTask(
+      manifest: manifest, stagingDirectory: staging, sources: manifest.sources,
+      componentsToFetch: Set(manifest.files.map(\.component)), verifiedInPlaceBytes: 0,
+      onProgress: { bytes, _ in progress?.append(bytes) }, onSourceFailover: { _, _, _ in },
+      backoffSleep: { _ in }, jitterFraction: { 1.0 })
+    if let assemblyWrite { fetch.assemblyWrite = assemblyWrite }
+    return fetch
+  }
+
+  private func stagedFile(_ staging: URL) -> URL {
+    staging.appendingPathComponent(Self.partsFile)
+  }
+
+  private func transportRoot(_ staging: URL) -> URL {
+    ManifestFetchTask.TransportLayout.root(in: staging)
+  }
+
+  @Test func partsAreFetchedVerifiedAssembledAndLeaveNoResidueAfterPromotion() async throws {
+    let manifest = try Self.partsManifest()
+    let staging = try makeStaging()
+    let progress = ProgressLog()
+    try await withStubs {
+      servePart(1, Data("01234".utf8))
+      servePart(2, Data("56789".utf8))
+      let outcome = try await partsTask(manifest: manifest, staging: staging, progress: progress)
+        .run()
+      #expect(outcome.finalSourceID == "our_copy")
+      #expect(outcome.sourcesUsed == 1)
+      #expect(outcome.bytesDownloaded == 10)
+      #expect(try Data(contentsOf: stagedFile(staging)) == Self.partsContent)
+      #expect(
+        DeliveryStubProtocol.requests == [
+          "GET https://mirror.invalid.example/base/weights.bin.part-1",
+          "GET https://mirror.invalid.example/base/weights.bin.part-2",
+        ])
+      #expect(FileManager.default.fileExists(atPath: transportRoot(staging).path) == false)
+      // Logical progress: never above the file's size, and ends exactly on it.
+      #expect(progress.all.allSatisfy { $0 <= 10 })
+      #expect(progress.all.last == 10)
+
+      let install = staging.deletingLastPathComponent().appendingPathComponent(
+        "parts-install-\(UUID().uuidString)")
+      let metadata = staging.deletingLastPathComponent().appendingPathComponent(
+        "parts-metadata-\(UUID().uuidString)")
+      let gate = CacheAdmission(
+        manifest: manifest, installDirectory: install, metadataDirectory: metadata)
+      try gate.promoteAndAdmit(
+        stagedComponents: [Self.partsFile], stagingDirectory: staging, untouchedComponents: [])
+      #expect(gate.isAdmitted())
+      #expect(try FileManager.default.contentsOfDirectory(atPath: install.path) == [Self.partsFile])
+      #expect(
+        try Data(contentsOf: install.appendingPathComponent(Self.partsFile)) == Self.partsContent)
+    }
+  }
+
+  @Test func aFailingPartsSourceFailsOverToTheWholeFileOnBackup() async throws {
+    let manifest = try Self.partsManifest()
+    let staging = try makeStaging()
+    let progress = ProgressLog()
+    try await withStubs {
+      DeliveryStubProtocol.enqueue(
+        url: "\(Self.mirrorBase)\(Self.partsFile).part-1",
+        .init(status: 404, headers: [:], body: Data()))
+      DeliveryStubProtocol.enqueue(
+        url: "\(Self.backupBase)\(Self.partsFile)",
+        .init(status: 200, headers: ["Content-Length": "10"], body: Self.partsContent))
+      let outcome = try await partsTask(manifest: manifest, staging: staging, progress: progress)
+        .run()
+      #expect(outcome.sourcesUsed == 2)
+      #expect(outcome.finalSourceID == "backup")
+      #expect(
+        DeliveryStubProtocol.requests == [
+          "GET https://mirror.invalid.example/base/weights.bin.part-1",
+          "GET https://upstream.invalid.example/base/weights.bin",
+        ])
+      #expect(try Data(contentsOf: stagedFile(staging)) == Self.partsContent)
+      #expect(progress.all.allSatisfy { $0 <= 10 })
+      #expect(progress.all.last == 10)
+    }
+  }
+
+  @Test func aCorruptPartIsNeverAssembled() async throws {
+    let manifest = try Self.partsManifest(withBackup: false)
+    let staging = try makeStaging()
+    try await withStubs {
+      servePart(1, Data("01234".utf8))
+      servePart(2, Data("5678X".utf8))
+      do {
+        _ = try await partsTask(manifest: manifest, staging: staging).run()
+        Issue.record("a corrupt part completed the fetch")
+      } catch let failure as DeliveryFailure {
+        #expect(failure.reason == .integrityMismatch)
+        #expect(failure.detail == "sha256:weights.bin:part2")
+      }
+      #expect(FileManager.default.fileExists(atPath: stagedFile(staging).path) == false)
+    }
+  }
+
+  @Test func anAssemblyThatDoesNotMatchTheWholeFileIsNeverStaged() async throws {
+    // Each part matches its own hash, but together they are not the file the
+    // manifest names: the whole-file check must refuse the result.
+    let manifest = try Self.partsManifest(
+      parts: [Data("01234".utf8), Data("5678X".utf8)], withBackup: false)
+    let staging = try makeStaging()
+    try await withStubs {
+      servePart(1, Data("01234".utf8))
+      servePart(2, Data("5678X".utf8))
+      do {
+        _ = try await partsTask(manifest: manifest, staging: staging).run()
+        Issue.record("a mismatched assembly completed the fetch")
+      } catch let failure as DeliveryFailure {
+        #expect(failure.reason == .integrityMismatch)
+        #expect(failure.detail == "sha256:weights.bin:assembled")
+      }
+      #expect(FileManager.default.fileExists(atPath: stagedFile(staging).path) == false)
+      let assembling = ManifestFetchTask.TransportLayout.assemblyURL(
+        in: staging, file: manifest.files[0])
+      #expect(FileManager.default.fileExists(atPath: assembling.path) == false)
+      // Parts that cannot be trusted together are not kept for a later attempt.
+      for index in 0..<2 {
+        let part = ManifestFetchTask.TransportLayout.partURL(
+          in: staging, file: manifest.files[0], index: index)
+        #expect(FileManager.default.fileExists(atPath: part.path) == false)
+      }
+    }
+  }
+
+  @Test func aTransportCleanupFailureEndsTheAttemptWithoutSuccess() async throws {
+    let manifest = try Self.partsManifest()
+    let staging = try makeStaging()
+    try await withStubs {
+      _ = try stagePart(manifest, staging: staging, index: 0, Data("01234".utf8))
+      _ = try stagePart(manifest, staging: staging, index: 1, Data("56789".utf8))
+      // An undeletable item in the transport area makes its removal fail.
+      let stuck = transportRoot(staging).appendingPathComponent("stuck")
+      try Data("x".utf8).write(to: stuck)
+      try FileManager.default.setAttributes([.immutable: true], ofItemAtPath: stuck.path)
+      defer {
+        try? FileManager.default.setAttributes([.immutable: false], ofItemAtPath: stuck.path)
+      }
+      do {
+        _ = try await partsTask(manifest: manifest, staging: staging).run()
+        Issue.record("a failed transport cleanup reported success")
+      } catch let failure as DeliveryFailure {
+        #expect(failure.reason == .cacheRepairFailed)
+        #expect(failure.detail == "transport_cleanup:.ew-transport")
+      }
+    }
+  }
+
+  @Test func accountingBudgetsEveryPermittedRepresentation() async throws {
+    // Literal expectations for a 10-byte file served as 5 + 5 by our_copy.
+    let manifest = try Self.partsManifest()
+    let file = manifest.files[0]
+    let ourCopy = manifest.sources[0]
+    let backup = manifest.sources[1]
+    let staging = try makeStaging()
+    // Backup first, 4 whole bytes staged: progress starts at 4, but a failover
+    // to parts could still need 10 parts + 10 assembly.
+    try Data("0123".utf8).write(to: stagedFile(staging))
+    let backupFirst = await ManifestFetchTask.stagedAccounting(
+      of: file, sources: [backup, ourCopy], in: staging)
+    #expect(backupFirst.logicalStaged == 4)
+    #expect(backupFirst.diskNeeded == 20)
+    #expect(backupFirst.assemblyFloor == 10)
+    // Backup only: the whole file is the only representation.
+    let backupOnly = await ManifestFetchTask.stagedAccounting(
+      of: file, sources: [backup], in: staging)
+    #expect(backupOnly.logicalStaged == 4)
+    #expect(backupOnly.diskNeeded == 6)
+    #expect(backupOnly.assemblyFloor == 0)
+    // Parts first with both parts staged: only the assembly output is left.
+    try FileManager.default.removeItem(at: stagedFile(staging))
+    _ = try stagePart(manifest, staging: staging, index: 0, Data("01234".utf8))
+    _ = try stagePart(manifest, staging: staging, index: 1, Data("56789".utf8))
+    let partsFirst = await ManifestFetchTask.stagedAccounting(
+      of: file, sources: [ourCopy, backup], in: staging)
+    #expect(partsFirst.logicalStaged == 10)
+    #expect(partsFirst.diskNeeded == 10)
+    #expect(partsFirst.assemblyFloor == 10)
+  }
+
+  @Test func fullSizePartsStagingSkipsBudgetOnlyWhenVerified() async throws {
+    let manifest = try Self.partsManifest()
+    let file = manifest.files[0]
+    let staging = try makeStaging()
+
+    try Data("XXXXXXXXXX".utf8).write(to: stagedFile(staging))
+    let corrupt = await ManifestFetchTask.stagedAccounting(
+      of: file, sources: manifest.sources, in: staging)
+    #expect(corrupt.logicalStaged == 0)
+    #expect(corrupt.diskNeeded == 20)
+    #expect(corrupt.assemblyFloor == 10)
+
+    try Self.partsContent.write(to: stagedFile(staging))
+    let verified = await ManifestFetchTask.stagedAccounting(
+      of: file, sources: manifest.sources, in: staging)
+    #expect(verified.logicalStaged == 10)
+    #expect(verified.diskNeeded == 0)
+    #expect(verified.assemblyFloor == 0)
+  }
+
+  @Test func aPartResumesMidwayWithARangeRequest() async throws {
+    let manifest = try Self.partsManifest()
+    let staging = try makeStaging()
+    try await withStubs {
+      _ = try stagePart(manifest, staging: staging, index: 0, Data("01234".utf8))
+      let partial = try stagePart(manifest, staging: staging, index: 1, Data("56".utf8))
+      let identity = ["etag": "\"p2\"", "contentLength": 5] as [String: Any]
+      try JSONSerialization.data(withJSONObject: identity)
+        .write(to: URL(fileURLWithPath: partial.path + ".resume.json"))
+      let url = "\(Self.mirrorBase)\(Self.partsFile).part-2"
+      DeliveryStubProtocol.enqueue(
+        url: url,
+        .init(status: 200, headers: ["Content-Length": "5", "ETag": "\"p2\""], body: Data()))
+      DeliveryStubProtocol.enqueue(
+        url: url, .init(status: 206, headers: ["Content-Length": "3"], body: Data("789".utf8)))
+      let outcome = try await partsTask(manifest: manifest, staging: staging).run()
+      #expect(outcome.bytesDownloaded == 3)
+      #expect(DeliveryStubProtocol.seenRangeHeaders == ["bytes=2-"])
+      #expect(try Data(contentsOf: stagedFile(staging)) == Self.partsContent)
+    }
+  }
+
+  @Test func anInterruptedAssemblyRestartsFromZeroAndReusesVerifiedParts() async throws {
+    let manifest = try Self.partsManifest()
+    let staging = try makeStaging()
+    try await withStubs {
+      _ = try stagePart(manifest, staging: staging, index: 0, Data("01234".utf8))
+      _ = try stagePart(manifest, staging: staging, index: 1, Data("56789".utf8))
+      // A previous assembly died after writing more than the whole file.
+      let assembling = ManifestFetchTask.TransportLayout.assemblyURL(
+        in: staging, file: manifest.files[0])
+      try Data("STALE-STALE-STALE".utf8).write(to: assembling)
+      let outcome = try await partsTask(manifest: manifest, staging: staging).run()
+      #expect(outcome.bytesDownloaded == 0)
+      #expect(DeliveryStubProtocol.requests.isEmpty)
+      #expect(try Data(contentsOf: stagedFile(staging)) == Self.partsContent)
+      #expect(FileManager.default.fileExists(atPath: transportRoot(staging).path) == false)
+    }
+  }
+
+  @Test func cancellingDuringAssemblyStopsWithoutFailoverOrStagedFile() async throws {
+    let manifest = try Self.partsManifest()
+    let staging = try makeStaging()
+    try await withStubs {
+      _ = try stagePart(manifest, staging: staging, index: 0, Data("01234".utf8))
+      _ = try stagePart(manifest, staging: staging, index: 1, Data("56789".utf8))
+      let fetch = partsTask(
+        manifest: manifest, staging: staging,
+        assemblyWrite: { handle, chunk in
+          // Cancel at the real assembly step, then let the write land: the
+          // next cooperative check must stop the assembly.
+          withUnsafeCurrentTask { $0?.cancel() }
+          try handle.write(contentsOf: chunk)
+        })
+      do {
+        _ = try await Task { try await fetch.run() }.value
+        Issue.record("a cancelled assembly completed the fetch")
+      } catch let failure as DeliveryFailure {
+        #expect(failure.reason == .cancelled)
+      }
+      #expect(DeliveryStubProtocol.requests.isEmpty, "cancellation must not reach the backup")
+      #expect(FileManager.default.fileExists(atPath: stagedFile(staging).path) == false)
+      let assembling = ManifestFetchTask.TransportLayout.assemblyURL(
+        in: staging, file: manifest.files[0])
+      #expect(FileManager.default.fileExists(atPath: assembling.path) == false)
+    }
+  }
+
+  @Test func aFullDiskDuringAssemblyIsReportedAsInsufficientDisk() async throws {
+    let manifest = try Self.partsManifest(withBackup: false)
+    let staging = try makeStaging()
+    try await withStubs {
+      _ = try stagePart(manifest, staging: staging, index: 0, Data("01234".utf8))
+      _ = try stagePart(manifest, staging: staging, index: 1, Data("56789".utf8))
+      let fetch = partsTask(
+        manifest: manifest, staging: staging,
+        assemblyWrite: { _, _ in throw NSError(domain: NSPOSIXErrorDomain, code: Int(ENOSPC)) })
+      do {
+        _ = try await fetch.run()
+        Issue.record("a full disk completed the fetch")
+      } catch let failure as DeliveryFailure {
+        #expect(failure.reason == .insufficientDisk)
+      }
+      #expect(FileManager.default.fileExists(atPath: stagedFile(staging).path) == false)
+    }
+  }
+
+  @Test func aVerifiedStagedWholeFileSkipsTransportAndAssembly() async throws {
+    let manifest = try Self.partsManifest()
+    let staging = try makeStaging()
+    try await withStubs {
+      try Self.partsContent.write(to: stagedFile(staging))
+      let outcome = try await partsTask(manifest: manifest, staging: staging).run()
+      #expect(outcome.bytesDownloaded == 0)
+      #expect(DeliveryStubProtocol.requests.isEmpty)
+      #expect(FileManager.default.fileExists(atPath: transportRoot(staging).path) == false)
+    }
+  }
+
+  // MARK: Controller accounting for parts
+
+  private func partsRegistration(
+    _ manifest: DeliveryManifest
+  ) throws -> DeliveryRegistration {
+    let root = FileManager.default.temporaryDirectory
+      .appendingPathComponent("parts-controller-\(UUID().uuidString)", isDirectory: true)
+    let install = root.appendingPathComponent("install", isDirectory: true)
+    let metadata = root.appendingPathComponent("metadata", isDirectory: true)
+    try FileManager.default.createDirectory(at: install, withIntermediateDirectories: true)
+    try FileManager.default.createDirectory(at: metadata, withIntermediateDirectories: true)
+    return DeliveryRegistration(
+      manifest: manifest, installDirectory: install, metadataDirectory: metadata)
+  }
+
+  private func freshDefaults() -> UserDefaults {
+    let suite = "test.parts.\(UUID().uuidString)"
+    let defaults = TestDefaults.suite(suite)!
+    defaults.removePersistentDomain(forName: suite)
+    return defaults
+  }
+
+  @Test(
+    "preflight counts the missing parts plus the whole assembly output",
+    arguments: [(Int64(32), true), (Int64(33), false)])
+  func preflightCountsPartsAndAssembly(available: Int64, refused: Bool) async throws {
+    // 10-byte file, part 1 (5 bytes) already staged: (10 - 5) parts + 10
+    // assembly = 15 bytes, x 2.2 headroom = 33. Literal, not derived.
+    let manifest = try Self.partsManifest()
+    let registration = try partsRegistration(manifest)
+    let staging = ModelDeliveryController.stagingDirectoryURL(for: registration)
+    try await withStubs {
+      _ = try stagePart(manifest, staging: staging, index: 0, Data("01234".utf8))
+      // Past preflight, both sources answer 404 at once (no retry backoff).
+      DeliveryStubProtocol.enqueue(
+        url: "\(Self.mirrorBase)\(Self.partsFile).part-2",
+        .init(status: 404, headers: [:], body: Data()))
+      DeliveryStubProtocol.enqueue(
+        url: "\(Self.backupBase)\(Self.partsFile)", .init(status: 404, headers: [:], body: Data()))
+      let controller = ModelDeliveryController(
+        defaults: freshDefaults(), availableDiskBytes: { _ in available })
+      let outcome = await controller.ensureModelAvailable(registration)
+      guard case .failed(let failure) = outcome else {
+        Issue.record("expected a failure (no stubs are served), got \(outcome)")
+        return
+      }
+      if refused {
+        #expect(failure.reason == .insufficientDisk)
+        #expect(failure.detail == "preflight:33")
+      } else {
+        #expect(failure.reason == .source4xx, "accepted by preflight, then failed on the 404s")
+      }
+    }
+  }
+
+  @Test(arguments: [false, true])
+  func theAssemblyReservationOutlivesNetworkProgress(wholeFirst: Bool) async throws {
+    // A: 10-byte parts file. When its network bytes reach the total, assembly
+    // is still owed: 10 x 2.2 = 22 stays reserved. B: a 20-byte whole file needs
+    // 44. Disk 60: B fits only if A's reservation dropped to zero.
+    // Parts-first retains assembly space in the disk base.
+    // Whole-first with verified parts already staged needs only the assembly
+    // output; after failover, logical progress would erase that reservation
+    // without the explicit floor. B needs 44 bytes; A must retain 22.
+    let manifestA = try Self.partsManifest()
+    let regA = try partsRegistration(manifestA)
+    let manifestB = try DeliveryManifest.load(
+      from: ManifestFixture.manifestJSON(
+        files: [("other-model.bin", Data(repeating: 7, count: 20), "other-model.bin")],
+        sources: [["id": "our_copy", "baseURL": "https://other.invalid.example/b/"]]
+      ) { object in
+        var identity = object["identity"] as! [String: Any]
+        identity["family"] = "eg_one"
+        identity["name"] = "fixture-b"
+        object["identity"] = identity
+      })
+    let regB = try partsRegistration(manifestB)
+    try await withStubs {
+      let defaults = freshDefaults()
+      if wholeFirst {
+        defaults.set(
+          "backup,our_copy", forKey: DeliveryFlags.key("sourceOrder", family: .parakeet))
+        let staging = ModelDeliveryController.stagingDirectoryURL(for: regA)
+        _ = try stagePart(manifestA, staging: staging, index: 0, Data("01234".utf8))
+        _ = try stagePart(manifestA, staging: staging, index: 1, Data("56789".utf8))
+        DeliveryStubProtocol.enqueue(
+          url: "\(Self.backupBase)\(Self.partsFile)",
+          .init(status: 404, headers: [:], body: Data()))
+      } else {
+        servePart(1, Data("01234".utf8))
+        servePart(2, Data("56789".utf8))
+      }
+      let controller = ModelDeliveryController(defaults: defaults, availableDiskBytes: { _ in 60 })
+      // Hold A inside assembly, after its network bytes landed, until B has
+      // preflighted. The gate is the subject's own assembly step.
+      let (gate, open) = AsyncStream<Void>.makeStream()
+      await controller.setAssemblyWriteForTesting { handle, chunk in
+        for await _ in gate { break }
+        try handle.write(contentsOf: chunk)
+      }
+      let (networkDone, signal) = AsyncStream<Void>.makeStream()
+      await controller.addStateObserver { identity, state in
+        if identity == manifestA.identity, case .downloading(_, let written, let total) = state,
+          written == total
+        {
+          signal.yield(())
+        }
+      }
+      let a = Task { await controller.ensureModelAvailable(regA) }
+      let reached = await withTaskGroup(of: Bool.self) { group in
+        group.addTask {
+          for await _ in networkDone { return true }
+          return false
+        }
+        group.addTask {
+          try? await Task.sleep(for: .seconds(5))  // deadline-fallback: bounded signal wait
+          return false
+        }
+        let result = await group.next() ?? false
+        group.cancelAll()
+        signal.finish()
+        return result
+      }
+      guard reached else {
+        open.finish()
+        _ = await controller.cancel(manifestA.identity)
+        _ = await a.value
+        Issue.record("A never reported its network bytes complete")
+        return
+      }
+      let b = await controller.ensureModelAvailable(regB)
+      open.yield(())
+      open.finish()
+      let outcomeA = await a.value
+      #expect(outcomeA == .admitted, "A finishes its assembly once released")
+      guard case .failed(let failure) = b else {
+        Issue.record("B got past preflight while A still owed its assembly: \(b)")
+        return
+      }
+      #expect(failure.reason == .insufficientDisk)
+      #expect(failure.detail == "preflight:44")
+    }
+  }
 }
