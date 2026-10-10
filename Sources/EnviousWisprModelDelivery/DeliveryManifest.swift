@@ -28,6 +28,13 @@ public struct DeliveryManifest: Codable, Sendable, Equatable {
     /// install `eg-1-v1.gguf`). ABSENT ⇒ defaults to `path`, so every v1
     /// manifest is byte-identical and its digest is unchanged.
     public let installPath: String?
+    /// Contract §4d (v1.5, #3546), optional and additive: the ordered TRANSPORT
+    /// objects a parts-serving source delivers instead of the whole file, so
+    /// an object over the edge-cache ceiling can still be served cached. The
+    /// whole-file `path`/`sizeBytes`/`sha256` above stay the install identity;
+    /// parts never reach the install directory. ABSENT ⇒ fetched whole from
+    /// every source, and existing manifests and digests are unchanged.
+    public let parts: [Part]?
 
     /// The single authority for every LOCAL operation (staging, marker,
     /// validation, admission, promotion, orphan roots, removal, runtime load).
@@ -35,9 +42,32 @@ public struct DeliveryManifest: Codable, Sendable, Equatable {
     public var resolvedInstallPath: String { installPath ?? path }
   }
 
+  /// One transport object of a `File` (contract §4d). `path` is a fetch
+  /// locator like `File.path`: never trusted; the sha256 is.
+  public struct Part: Codable, Sendable, Equatable {
+    public let path: String
+    public let sizeBytes: Int64
+    public let sha256: String
+  }
+
   public struct Source: Codable, Sendable, Equatable {
     public let id: String
     public let baseURL: URL
+    /// Contract §4d (v1.5, #3546), optional and additive: true when this
+    /// source delivers a file's declared `parts`; ABSENT ⇒ false, so the
+    /// source delivers every file whole, as before.
+    public let servesParts: Bool?
+
+    init(id: String, baseURL: URL, servesParts: Bool? = nil) {
+      self.id = id
+      self.baseURL = baseURL
+      self.servesParts = servesParts
+    }
+
+    /// Whether this source delivers `file` as its parts rather than whole.
+    func deliversParts(of file: File) -> Bool {
+      servesParts == true && file.parts != nil
+    }
   }
 
   public struct Admission: Codable, Sendable, Equatable {
@@ -141,7 +171,9 @@ public struct DeliveryManifest: Codable, Sendable, Equatable {
         !checkerContract.base.promptTemplateID.isEmpty,
         checkerContract.base.runtimeABI == identity.runtimeABI,
         !checkerContract.base.shardSHA256.isEmpty,
-        checkerContract.base.shardSHA256.allSatisfy({ $0.count == 64 && $0.allSatisfy({ "0123456789abcdef".contains($0) }) })
+        checkerContract.base.shardSHA256.allSatisfy({
+          $0.count == 64 && $0.allSatisfy({ "0123456789abcdef".contains($0) })
+        })
       else { throw ManifestError.structurallyInvalid("invalid learned-word checker contract") }
     } else if checkerContract != nil {
       throw ManifestError.structurallyInvalid("checker contract on non-checker model")
@@ -150,8 +182,11 @@ public struct DeliveryManifest: Codable, Sendable, Equatable {
       // ASCII only: `Character.isHexDigit` also accepts full-width digits, a
       // documented failure class in this repository (round 17).
       let lowercaseHex = Set("0123456789abcdef")
-      guard runtimeIdentityDigest.count == 64, runtimeIdentityDigest.allSatisfy(lowercaseHex.contains) else {
-        throw ManifestError.structurallyInvalid("runtimeIdentityDigest is not 64 lowercase ASCII hex characters")
+      guard runtimeIdentityDigest.count == 64,
+        runtimeIdentityDigest.allSatisfy(lowercaseHex.contains)
+      else {
+        throw ManifestError.structurallyInvalid(
+          "runtimeIdentityDigest is not 64 lowercase ASCII hex characters")
       }
     }
     guard totalBytes == files.reduce(0, { $0 + $1.sizeBytes }) else {
@@ -203,6 +238,7 @@ public struct DeliveryManifest: Codable, Sendable, Equatable {
           "component \(file.component) != install root \(installRoot) for \(installPath)")
       }
     }
+    try validateParts()
     for source in sources {
       guard source.baseURL.scheme == "https", source.baseURL.absoluteString.hasSuffix("/") else {
         throw ManifestError.structurallyInvalid("source \(source.id) must be https ending in /")
@@ -220,6 +256,46 @@ public struct DeliveryManifest: Codable, Sendable, Equatable {
         throw ManifestError.structurallyInvalid(
           "admission.entrypointFile \(entrypointFile) does not match any files[].resolvedInstallPath"
         )
+      }
+    }
+  }
+
+  /// Contract §4d: every declared `parts` list, on required AND optional
+  /// files, is non-empty, ordered as listed, made of positive sizes and
+  /// lowercase-hex SHA-256 values at safe locators unique across the
+  /// manifest's fetch locators, and sums exactly (overflow-checked) to its
+  /// file's size. A malformed declaration throws; it never traps.
+  private func validateParts() throws {
+    let lowercaseHex = Set("0123456789abcdef")
+    let allFiles = files + optionalFiles
+    var seenLocators = Set(allFiles.map(\.path))
+    for file in allFiles {
+      guard let parts = file.parts else { continue }
+      guard !parts.isEmpty else {
+        throw ManifestError.structurallyInvalid("empty parts for \(file.path)")
+      }
+      var sum: Int64 = 0
+      for part in parts {
+        guard part.sizeBytes > 0 else {
+          throw ManifestError.structurallyInvalid("non-positive part size \(part.path)")
+        }
+        guard part.sha256.count == 64, part.sha256.allSatisfy(lowercaseHex.contains) else {
+          throw ManifestError.structurallyInvalid("bad part sha256 \(part.path)")
+        }
+        guard !part.path.isEmpty, !part.path.hasPrefix("/"),
+          !part.path.split(separator: "/").contains("..")
+        else { throw ManifestError.structurallyInvalid("unsafe part path \(part.path)") }
+        guard seenLocators.insert(part.path).inserted else {
+          throw ManifestError.structurallyInvalid("duplicate part locator \(part.path)")
+        }
+        let (next, overflow) = sum.addingReportingOverflow(part.sizeBytes)
+        guard !overflow else {
+          throw ManifestError.structurallyInvalid("part sizes overflow for \(file.path)")
+        }
+        sum = next
+      }
+      guard sum == file.sizeBytes else {
+        throw ManifestError.structurallyInvalid("parts sum \(sum) != sizeBytes for \(file.path)")
       }
     }
   }
