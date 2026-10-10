@@ -147,7 +147,13 @@ struct ManifestFetchTask {
     // #3546: the §4d transport root must never be a component, or promotion
     // could carry parts into the install directory. Bundled manifests cannot
     // collide today; refuse rather than assume.
-    guard !manifest.files.contains(where: { $0.component == TransportLayout.rootName }) else {
+    // Compared case-insensitively: on the default Mac volume `.EW-TRANSPORT`
+    // IS the transport directory.
+    guard
+      !(manifest.files + manifest.optionalFiles).contains(where: {
+        $0.component.lowercased() == TransportLayout.rootName
+      })
+    else {
       throw DeliveryFailure(reason: .cacheRepairFailed, detail: "transport_root_collision")
     }
     var state = AttemptState(completedBytes: verifiedInPlaceBytes)
@@ -248,6 +254,16 @@ struct ManifestFetchTask {
         state.completedBytes += file.sizeBytes
         onProgress(state.completedBytes, manifest.totalBytes)
       } catch let failure as DeliveryFailure where failure.reason != .cancelled {
+        // #3546: a LOCAL failure (disk full, no permission, staging that cannot
+        // be kept clean) is not the source's fault and another source cannot
+        // fix it; failing over would only replace the true reason with the
+        // backup's answer.
+        switch failure.reason {
+        case .insufficientDisk, .permissionDenied, .cacheRepairFailed:
+          throw failure
+        default:
+          break
+        }
         if failure.detail == "http_416_local", !localRetryUsed {
           // Stale-range 416: the partial is already discarded; one clean
           // same-source retry from byte zero (exhaustive r7 finding 2).
@@ -434,13 +450,22 @@ struct ManifestFetchTask {
     from source: DeliveryManifest.Source, assembleInto stagedURL: URL,
     progressBase: Int64, bytesDownloaded: inout Int64
   ) async throws {
-    try FileManager.default.createDirectory(
-      at: TransportLayout.root(in: stagingDirectory), withIntermediateDirectories: true)
+    // A whole-file partial from an earlier source would sit on disk beside the
+    // parts and the assembly output for the whole transfer, beyond what the
+    // preflight budgets; the parts path never resumes it, so it goes first.
+    discardPartial(at: stagedURL)
+    let transportRoot = TransportLayout.root(in: stagingDirectory)
+    try checkTransportDestination(transportRoot)
+    try FileManager.default.createDirectory(at: transportRoot, withIntermediateDirectories: true)
+    try checkTransportDestination(transportRoot)
     var partBase = progressBase
     for (index, part) in parts.enumerated() {
       try Task.checkCancellation()
       let partURL = TransportLayout.partURL(in: stagingDirectory, file: file, index: index)
       var localRetryUsed = false
+      // Each part gets the ordinary per-object network budget (contract §4d);
+      // one part's transient trouble never spends another part's retries.
+      var networkRetriesUsed = 0
       var verified = await Self.isVerified(
         partURL, sizeBytes: part.sizeBytes, sha256: part.sha256)
       while !verified {
@@ -454,6 +479,28 @@ struct ManifestFetchTask {
         {
           // Same stale-range rule as a whole file: one clean retry from zero.
           localRetryUsed = true
+          continue
+        } catch let failure as DeliveryFailure
+          where failure.reason != .cancelled && failure.retryableTransient
+        {
+          let retryAfterTooLong = (failure.retryAfter ?? 0) > Self.retryAfterCapSeconds
+          guard networkRetriesUsed < Self.maxNetworkRetries, !retryAfterTooLong else {
+            // This part's budget is spent: abandon the source. Rethrown as
+            // non-transient so the file-level loop fails over instead of
+            // retrying the same source a second time.
+            throw DeliveryFailure(
+              reason: failure.reason, detail: failure.detail,
+              failingSourceID: failure.failingSourceID)
+          }
+          let delay =
+            failure.retryAfter
+            ?? Self.backoffDelay(attempt: networkRetriesUsed, jitter: jitterFraction())
+          networkRetriesUsed += 1
+          do {
+            try await backoffSleep(delay)
+          } catch is CancellationError {
+            throw DeliveryFailure(reason: .cancelled, failingSourceID: source.id)
+          }
           continue
         }
         bytesDownloaded += result.bytesReceived
@@ -489,10 +536,11 @@ struct ManifestFetchTask {
     let fm = FileManager.default
     let output = TransportLayout.assemblyURL(in: stagingDirectory, file: file)
     do {
-      try? fm.removeItem(at: output)
-      guard fm.createFile(atPath: output.path, contents: nil) else {
-        throw CocoaError(.fileWriteUnknown)
-      }
+      try checkTransportDestination(output)
+      try removeTransportItem(at: output)
+      // `write` (not `createFile`) so a quota or permission failure keeps its
+      // real error for classification.
+      try Data().write(to: output)
       let writer = try FileHandle(forWritingTo: output)
       defer { try? writer.close() }
       for index in parts.indices {
@@ -509,6 +557,9 @@ struct ManifestFetchTask {
     } catch is CancellationError {
       try? fm.removeItem(at: output)
       throw DeliveryFailure(reason: .cancelled, failingSourceID: sourceID)
+    } catch let failure as DeliveryFailure {
+      try? fm.removeItem(at: output)
+      throw failure
     } catch {
       try? fm.removeItem(at: output)
       throw Self.classifyTransportError(error, sourceID: sourceID)
@@ -622,6 +673,15 @@ struct ManifestFetchTask {
   }
 
   // MARK: - Helpers
+
+  /// The transport area must resolve inside this attempt's staging directory
+  /// (the controller already proved staging itself safe): a symlink planted at
+  /// `.ew-transport` must not redirect part writes or cleanup deletes.
+  private func checkTransportDestination(_ url: URL) throws {
+    guard PathSafety.resolvesInside(url, root: stagingDirectory) else {
+      throw DeliveryFailure(reason: .cacheRepairFailed, detail: "unsafe_transport")
+    }
+  }
 
   /// Removes a transport-area item; an item that is already gone is not a
   /// failure, any other error is (contract §4d: residue never reaches promotion).

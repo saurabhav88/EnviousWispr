@@ -1178,6 +1178,69 @@ extension ManifestFetchTaskTests {
     #expect(verified.assemblyFloor == 0)
   }
 
+  @Test func eachPartHasItsOwnNetworkRetryBudget() async throws {
+    // Two transient failures per part: within each part's own budget of three,
+    // but over a single shared budget. No failover may happen.
+    let manifest = try Self.partsManifest()
+    let staging = try makeStaging()
+    try await withStubs {
+      for index in 1...2 {
+        let url = "\(Self.mirrorBase)\(Self.partsFile).part-\(index)"
+        for _ in 0..<2 {
+          DeliveryStubProtocol.enqueue(
+            url: url, .init(status: 200, headers: [:], body: Data(), error: URLError(.timedOut)))
+        }
+      }
+      servePart(1, Data("01234".utf8))
+      servePart(2, Data("56789".utf8))
+      let outcome = try await partsTask(manifest: manifest, staging: staging).run()
+      #expect(outcome.sourcesUsed == 1)
+      #expect(outcome.finalSourceID == "our_copy")
+      #expect(try Data(contentsOf: stagedFile(staging)) == Self.partsContent)
+    }
+  }
+
+  @Test func aWholeFilePartialIsDiscardedBeforePartsAreFetched() async throws {
+    let manifest = try Self.partsManifest()
+    let staging = try makeStaging()
+    try await withStubs {
+      try Data("0123".utf8).write(to: stagedFile(staging))
+      servePart(1, Data("01234".utf8))
+      servePart(2, Data("56789".utf8))
+      let staged = stagedFile(staging)
+      let observed = ProgressLog()
+      let fetch = partsTask(
+        manifest: manifest, staging: staging,
+        assemblyWrite: { handle, chunk in
+          observed.append(FileManager.default.fileExists(atPath: staged.path) ? 1 : 0)
+          try handle.write(contentsOf: chunk)
+        })
+      _ = try await fetch.run()
+      #expect(observed.all.isEmpty == false)
+      #expect(observed.all.allSatisfy { $0 == 0 }, "the stale partial was still on disk")
+      #expect(try Data(contentsOf: staged) == Self.partsContent)
+    }
+  }
+
+  @Test func aTransportAreaThatResolvesOutsideStagingIsRefused() async throws {
+    let manifest = try Self.partsManifest()
+    let staging = try makeStaging()
+    let elsewhere = try makeStaging()
+    try await withStubs {
+      try FileManager.default.createSymbolicLink(
+        at: transportRoot(staging), withDestinationURL: elsewhere)
+      do {
+        _ = try await partsTask(manifest: manifest, staging: staging).run()
+        Issue.record("a redirected transport area was used")
+      } catch let failure as DeliveryFailure {
+        #expect(failure.reason == .cacheRepairFailed)
+        #expect(failure.detail == "unsafe_transport")
+      }
+      #expect(try FileManager.default.contentsOfDirectory(atPath: elsewhere.path).isEmpty)
+      #expect(DeliveryStubProtocol.requests.isEmpty)
+    }
+  }
+
   @Test func aPartResumesMidwayWithARangeRequest() async throws {
     let manifest = try Self.partsManifest()
     let staging = try makeStaging()
@@ -1247,11 +1310,15 @@ extension ManifestFetchTaskTests {
   }
 
   @Test func aFullDiskDuringAssemblyIsReportedAsInsufficientDisk() async throws {
-    let manifest = try Self.partsManifest(withBackup: false)
+    // Backup kept and answering 404: a local failure must stay local, with no
+    // failover that would replace it with the backup's answer.
+    let manifest = try Self.partsManifest(withBackup: true)
     let staging = try makeStaging()
     try await withStubs {
       _ = try stagePart(manifest, staging: staging, index: 0, Data("01234".utf8))
       _ = try stagePart(manifest, staging: staging, index: 1, Data("56789".utf8))
+      DeliveryStubProtocol.enqueue(
+        url: "\(Self.backupBase)\(Self.partsFile)", .init(status: 404, headers: [:], body: Data()))
       let fetch = partsTask(
         manifest: manifest, staging: staging,
         assemblyWrite: { _, _ in throw NSError(domain: NSPOSIXErrorDomain, code: Int(ENOSPC)) })
@@ -1261,6 +1328,7 @@ extension ManifestFetchTaskTests {
       } catch let failure as DeliveryFailure {
         #expect(failure.reason == .insufficientDisk)
       }
+      #expect(DeliveryStubProtocol.requests.isEmpty)
       #expect(FileManager.default.fileExists(atPath: stagedFile(staging).path) == false)
     }
   }
