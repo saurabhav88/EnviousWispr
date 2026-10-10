@@ -17,13 +17,13 @@ final class DeliveryStubProtocol: URLProtocol {
     /// Phase 2 (#1405): script a transport-level failure (e.g. a timeout) so
     /// same-source retry can be exercised. When set, the stub fails instead of
     /// responding.
-    var error: URLError?
+    var error: (any Error)?
     /// Phase 2 (#1371): after sending the response + body, leave the request
     /// in-flight (never finish) so an in-flight-download cancel can be exercised.
     var hangAfterBody: Bool
 
     init(
-      status: Int, headers: [String: String], body: Data, error: URLError? = nil,
+      status: Int, headers: [String: String], body: Data, error: (any Error)? = nil,
       hangAfterBody: Bool = false
     ) {
       self.status = status
@@ -1209,14 +1209,25 @@ extension ManifestFetchTaskTests {
       servePart(2, Data("56789".utf8))
       let staged = stagedFile(staging)
       let observed = ProgressLog()
-      let fetch = partsTask(
-        manifest: manifest, staging: staging,
+      let assemblyDone = ProgressLog()
+      // Observed while transport bytes land AND during assembly. The file's
+      // own completion report (after assembly put the new file in place) is
+      // not an observation of the stale partial, so it is excluded.
+      let fetch = ManifestFetchTask(
+        manifest: manifest, stagingDirectory: staging, sources: manifest.sources,
+        componentsToFetch: Set(manifest.files.map(\.component)), verifiedInPlaceBytes: 0,
+        onProgress: { _, _ in
+          guard assemblyDone.all.isEmpty else { return }
+          observed.append(FileManager.default.fileExists(atPath: staged.path) ? 1 : 0)
+        },
+        onSourceFailover: { _, _, _ in }, backoffSleep: { _ in },
         assemblyWrite: { handle, chunk in
           observed.append(FileManager.default.fileExists(atPath: staged.path) ? 1 : 0)
           try handle.write(contentsOf: chunk)
+          assemblyDone.append(1)
         })
       _ = try await fetch.run()
-      #expect(observed.all.isEmpty == false)
+      #expect(observed.all.count >= 3, "both part reports and the assembly step were observed")
       #expect(observed.all.allSatisfy { $0 == 0 }, "the stale partial was still on disk")
       #expect(try Data(contentsOf: staged) == Self.partsContent)
     }
@@ -1238,6 +1249,67 @@ extension ManifestFetchTaskTests {
       }
       #expect(try FileManager.default.contentsOfDirectory(atPath: elsewhere.path).isEmpty)
       #expect(DeliveryStubProtocol.requests.isEmpty)
+    }
+  }
+
+  @Test(
+    "a part or sidecar that leads outside staging is refused before any request",
+    arguments: [("part, existing target", true, false), ("sidecar, dangling target", false, true)])
+  func transportLeavesThatLeaveStagingAreRefused(
+    label: String, redirectPart: Bool, dangling: Bool
+  ) async throws {
+    let manifest = try Self.partsManifest()
+    let staging = try makeStaging()
+    let outside = try makeStaging()
+    let outsideFile = outside.appendingPathComponent("victim.bin")
+    try Data("UNTOUCHED".utf8).write(to: outsideFile)
+    try await withStubs {
+      let partURL = ManifestFetchTask.TransportLayout.partURL(
+        in: staging, file: manifest.files[0], index: 0)
+      try FileManager.default.createDirectory(
+        at: partURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+      let leaf = redirectPart ? partURL : URL(fileURLWithPath: partURL.path + ".resume.json")
+      let target = dangling ? outside.appendingPathComponent("missing.json") : outsideFile
+      try FileManager.default.createSymbolicLink(at: leaf, withDestinationURL: target)
+      do {
+        _ = try await partsTask(manifest: manifest, staging: staging).run()
+        Issue.record("\(label): a redirected transport leaf was used")
+      } catch let failure as DeliveryFailure {
+        #expect(failure.reason == .cacheRepairFailed, "\(label)")
+        #expect(failure.detail == "unsafe_transport", "\(label)")
+      }
+      #expect(DeliveryStubProtocol.requests.isEmpty, "\(label)")
+      #expect(try Data(contentsOf: outsideFile) == Data("UNTOUCHED".utf8), "\(label)")
+      #expect(
+        FileManager.default.fileExists(atPath: outside.appendingPathComponent("missing.json").path)
+          == false, "\(label)")
+    }
+  }
+
+  @Test func aWholeFileDiskFailureDoesNotTryBackup() async throws {
+    let manifest = try ManifestFixture.manifest(
+      files: [("weights.bin", Self.partsContent, "weights.bin")])
+    let staging = try makeStaging()
+    let failovers = FailoverBox()
+    try await withStubs {
+      DeliveryStubProtocol.enqueue(
+        url: "\(Self.mirrorBase)weights.bin",
+        .init(
+          status: 200, headers: [:], body: Data(),
+          error: NSError(domain: NSPOSIXErrorDomain, code: Int(ENOSPC))))
+      DeliveryStubProtocol.enqueue(
+        url: "\(Self.backupBase)weights.bin", .init(status: 404, headers: [:], body: Data()))
+      do {
+        _ = try await task(
+          manifest: manifest, staging: staging, onFailover: { failovers.record($0, $1, $2) }
+        ).run()
+        Issue.record("a whole-file disk failure completed the fetch")
+      } catch let failure as DeliveryFailure {
+        #expect(failure.reason == .insufficientDisk)
+      }
+      #expect(failovers.all.isEmpty)
+      #expect(
+        DeliveryStubProtocol.requests == ["GET https://mirror.invalid.example/base/weights.bin"])
     }
   }
 

@@ -337,11 +337,15 @@ struct ManifestFetchTask {
   /// `source` into `stagedURL`, resuming any partial there.
   private func fetchOneFile(
     locator: String, sizeBytes: Int64, from source: DeliveryManifest.Source, to stagedURL: URL,
-    progressBase: Int64
+    progressBase: Int64, transportObject: Bool = false
   ) async throws -> FileFetchResult {
     let fm = FileManager.default
     let fileURL = source.baseURL.appendingPathComponent(locator)
     let identityURL = resumeIdentityURL(for: stagedURL)
+    if transportObject {
+      try checkTransportDestination(stagedURL)
+      try checkTransportDestination(identityURL)
+    }
     var existingBytes =
       ((try? fm.attributesOfItem(atPath: stagedURL.path)[.size] as? Int64) ?? nil) ?? 0
 
@@ -368,6 +372,11 @@ struct ManifestFetchTask {
       }
     }
 
+    // Re-checked after the awaited HEAD: the transport area may have changed.
+    if transportObject {
+      try checkTransportDestination(stagedURL)
+      try checkTransportDestination(identityURL)
+    }
     var request = URLRequest(url: fileURL)
     if existingBytes > 0 {
       request.setValue("bytes=\(existingBytes)-", forHTTPHeaderField: "Range")
@@ -462,6 +471,8 @@ struct ManifestFetchTask {
     for (index, part) in parts.enumerated() {
       try Task.checkCancellation()
       let partURL = TransportLayout.partURL(in: stagingDirectory, file: file, index: index)
+      try checkTransportDestination(partURL)
+      try checkTransportDestination(resumeIdentityURL(for: partURL))
       var localRetryUsed = false
       // Each part gets the ordinary per-object network budget (contract §4d);
       // one part's transient trouble never spends another part's retries.
@@ -473,7 +484,7 @@ struct ManifestFetchTask {
         do {
           result = try await fetchOneFile(
             locator: part.path, sizeBytes: part.sizeBytes, from: source, to: partURL,
-            progressBase: partBase)
+            progressBase: partBase, transportObject: true)
         } catch let failure as DeliveryFailure
           where failure.detail == "http_416_local" && !localRetryUsed
         {
@@ -677,7 +688,22 @@ struct ManifestFetchTask {
   /// The transport area must resolve inside this attempt's staging directory
   /// (the controller already proved staging itself safe): a symlink planted at
   /// `.ew-transport` must not redirect part writes or cleanup deletes.
+  /// Every transport write and delete destination passes through here: the
+  /// root, each part, each part's resume sidecar and the assembly output. An
+  /// item that exists must resolve (a dangling symlink is refused, because
+  /// `fileExists` would call it absent and a write would follow it), and it
+  /// must resolve inside staging.
   private func checkTransportDestination(_ url: URL) throws {
+    switch PathSafety.reachability(of: url) {
+    case .absent?:
+      break
+    case nil:
+      guard PathSafety.resolvedPath(url) != nil else {
+        throw DeliveryFailure(reason: .cacheRepairFailed, detail: "unsafe_transport")
+      }
+    case .unreadable?, .indeterminate?:
+      throw DeliveryFailure(reason: .cacheRepairFailed, detail: "unsafe_transport")
+    }
     guard PathSafety.resolvesInside(url, root: stagingDirectory) else {
       throw DeliveryFailure(reason: .cacheRepairFailed, detail: "unsafe_transport")
     }
