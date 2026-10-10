@@ -12,9 +12,8 @@ import os
 /// `userInteractive` thread whose run loop does nothing else.
 ///
 /// **What the callback may do.** Decode primitive fields, call the sink synchronously, return the
-/// event. Nothing that can wait: no main hop, no `Task`, no logging, no formatting. In P2 the event
-/// is always returned unchanged whatever the sink says (shadow mode, plan §3.4); `.swallow` is
-/// honoured from P5. Mask: `flagsChanged`, plus `keyDown` and `keyUp` from P4 (plan §3.1) for the
+/// event. Nothing that can wait: no main hop, no `Task`, no logging, no formatting. The event is
+/// always returned unchanged: Carbon owns registered chords (#3544 P5 D5). Mask: `flagsChanged`, plus `keyDown` and `keyUp` from P4 (plan §3.1) for the
 /// other-key rule; an ordinary key's code and flags reach the sink and go no further than the
 /// ingress's local key state.
 ///
@@ -74,7 +73,7 @@ final class LiveKeyboardListener: @unchecked Sendable {
     #endif
   }
 
-  private let sink: @Sendable (KeyEventValue) -> ListenerVerdict
+  private let sink: @Sendable (KeyEventValue) -> Void
   private let state = OSAllocatedUnfairLock(uncheckedState: State())
   private let startedSignal = DispatchSemaphore(value: 0)
   private let finishedSignal = DispatchSemaphore(value: 0)
@@ -87,7 +86,7 @@ final class LiveKeyboardListener: @unchecked Sendable {
   private var secureInput = SecureInputChangeDetector()
   private var context: Unmanaged<CallbackContext>?
 
-  init(sink: @escaping @Sendable (KeyEventValue) -> ListenerVerdict) {
+  init(sink: @escaping @Sendable (KeyEventValue) -> Void) {
     self.sink = sink
   }
 
@@ -267,7 +266,7 @@ final class LiveKeyboardListener: @unchecked Sendable {
       isAutorepeat: event.getIntegerValueField(.keyboardEventAutorepeat) != 0,
       isOurs: event.getIntegerValueField(.eventSourceUserData)
         == SyntheticKeyboardEventMarker.userData)
-    _ = sink(value)
+    sink(value)
   }
 
   #if DEBUG
@@ -301,7 +300,7 @@ final class LiveKeyboardListener: @unchecked Sendable {
     guard let storm else { return }
     if storm {
       // Told once, before cleanup: the owner replaces this installation after its cooldown.
-      _ = sink(
+      sink(
         KeyEventValue(
           kind: .stormStopped, keyCode: 0, rawFlags: 0,
           timestamp: ProcessInfo.processInfo.systemUptime))
@@ -319,7 +318,7 @@ final class LiveKeyboardListener: @unchecked Sendable {
       return s.delivering
     }
     if report {
-      _ = sink(
+      sink(
         KeyEventValue(
           kind: .tapReenabled, keyCode: 0, rawFlags: 0,
           timestamp: ProcessInfo.processInfo.systemUptime))
@@ -333,7 +332,7 @@ final class LiveKeyboardListener: @unchecked Sendable {
       enabled: enabled, ownerPID: enabled ? Self.secureInputOwnerPID() : nil)
     else { return }
     guard state.withLock({ $0.delivering && !$0.stopRequested }) else { return }
-    _ = sink(
+    sink(
       KeyEventValue(
         kind: .secureInputChanged, keyCode: 0, rawFlags: 0,
         timestamp: ProcessInfo.processInfo.systemUptime, secureInput: observation))
@@ -485,6 +484,6 @@ private func keyboardTapCallback(
   default:
     break
   }
-  // P2: always pass the event through, whatever the sink said (shadow mode).
+  // Always pass the event through; Carbon owns registered chords (#3544 P5 D5).
   return Unmanaged.passUnretained(event)
 }

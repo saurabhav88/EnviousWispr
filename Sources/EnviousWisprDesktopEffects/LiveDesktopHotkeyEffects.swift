@@ -144,7 +144,7 @@ package final class LiveDesktopHotkeyEffects: DesktopHotkeyEffects {
   /// The keyboard listener's event tap on its own thread (#3544 P2). Nil when the tap could not be
   /// created or its thread did not start in time; `HotkeyService` reports that.
   package func installKeyboardListener(
-    _ sink: @escaping @Sendable (KeyEventValue) -> ListenerVerdict
+    _ sink: @escaping @Sendable (KeyEventValue) -> Void
   ) -> DesktopEffectToken? {
     let listener = LiveKeyboardListener(sink: sink)
     guard listener.start() else { return nil }

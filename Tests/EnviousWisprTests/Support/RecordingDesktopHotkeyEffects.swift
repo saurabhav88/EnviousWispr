@@ -70,16 +70,16 @@ final class RecordingDesktopHotkeyEffects: DesktopHotkeyEffects {
   private(set) var keyboardListenerToken: DesktopEffectToken?
   /// The sink the service handed over. `@Sendable`, so a test can call it from a worker thread
   /// as the listener's own thread would. Nil once its token is removed, or after a failed install.
-  private(set) var keyboardListenerSink: (@Sendable (KeyEventValue) -> ListenerVerdict)?
+  private(set) var keyboardListenerSink: (@Sendable (KeyEventValue) -> Void)?
   /// Make the next listener installs return nil, as a tap creation without Accessibility does.
   var failKeyboardListenerInstall = false
   /// Runs with the sink before a successful install returns, as a live tap can deliver an event
   /// before `installKeyboardListener` returns to its caller.
   var beforeKeyboardListenerInstallReturns:
-    ((@escaping @Sendable (KeyEventValue) -> ListenerVerdict) -> Void)?
+    ((@escaping @Sendable (KeyEventValue) -> Void) -> Void)?
 
   func installKeyboardListener(
-    _ sink: @escaping @Sendable (KeyEventValue) -> ListenerVerdict
+    _ sink: @escaping @Sendable (KeyEventValue) -> Void
   ) -> DesktopEffectToken? {
     keyboardListenerInstalls += 1
     guard !failKeyboardListenerInstall else { return nil }

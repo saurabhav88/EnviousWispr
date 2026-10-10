@@ -509,8 +509,8 @@ public final class HotkeyService {
       binding: .keyboard(
         keyCode: ShortcutRole.record.defaultKeyCode, modifiers: ShortcutRole.record.defaultModifiers),
       mode: .toggle, clock: uptime, scheduler: scheduler,
-      // Carbon chords still reach the engine through main until P5, so their lone-tap waits keep
-      // the main hop (#3544 P1); the listener's bare-modifier input does not wait on main (P3).
+      // Carbon chords reach the engine through main, so their lone-tap waits keep the main hop
+      // (#3544 P1, P5 D5); the listener's bare-modifier input does not wait on main (P3).
       hopsMainInput: true)
     engine.setSink { @MainActor [weak self] batch, valid in self?.execute(batch, valid: valid) }
     configureEngine()
@@ -1326,11 +1326,10 @@ public final class HotkeyService {
           MainActor.assumeIsolated { self?.reportListenerObservation(observation) }
         }
       })
-    let sink: @Sendable (KeyEventValue) -> ListenerVerdict = { event in
+    let sink: @Sendable (KeyEventValue) -> Void = { event in
       ingress.receive(event)
       if event.kind == .stormStopped { stormed() }
       if let observation = event.secureInput { secureInputSeen(observation) }
-      return .passThrough
     }
     listenerInstallAttempts += 1
     // Admission opens before the adapter call: the tap can deliver a press before the call

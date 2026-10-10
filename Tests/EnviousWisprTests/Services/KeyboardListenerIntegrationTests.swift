@@ -156,20 +156,6 @@ struct KeyboardListenerIntegrationTests {
     rig.service.stop()
   }
 
-  @Test("the listener passes every event through, its own shortcut presses included")
-  func listenerPassesEverythingThrough() throws {
-    let rig = Rig()
-    rig.service.recordingMode = .pushToTalk
-    rig.service.start()
-    let sink = try #require(rig.effects.keyboardListenerSink)
-    for (flags, t) in [(UInt64(0x80040), 0.0), (0, 0.1), (0x80040, 0.2), (0, 0.3)] {
-      let verdict = sink(
-        KeyEventValue(kind: .flagsChanged, keyCode: 61, rawFlags: flags, timestamp: 500 + t))
-      #expect(verdict == .passThrough)
-    }
-    rig.service.stop()
-  }
-
   @Test("Carbon still serves chords beside the listener")
   func carbonServesChords() {
     let rig = Rig()
@@ -299,9 +285,9 @@ struct KeyboardListenerIntegrationTests {
     let clock = ptt.clock
     Self.onWorkerWhileMainWaits {
       clock.now = 500.125
-      _ = sink(KeyEventValue(kind: .flagsChanged, keyCode: 61, rawFlags: 0, timestamp: 500.125))
+      sink(KeyEventValue(kind: .flagsChanged, keyCode: 61, rawFlags: 0, timestamp: 500.125))
       clock.now = 500.25
-      _ = sink(
+      sink(
         KeyEventValue(kind: .flagsChanged, keyCode: 61, rawFlags: option, timestamp: 500.25))
     }
     #expect(ptt.service.isRecordingLocked, "locked by the engine before main ran")
@@ -361,7 +347,7 @@ struct KeyboardListenerIntegrationTests {
     let option = ListenerKeyboard.rawFlags([ModifierKeyCodes.rightOption])
     // Live installation: the press is classified and its edge queued to main.
     Self.onWorkerWhileMainWaits {
-      _ = sink(KeyEventValue(kind: .flagsChanged, keyCode: 61, rawFlags: option, timestamp: nil))
+      sink(KeyEventValue(kind: .flagsChanged, keyCode: 61, rawFlags: option, timestamp: nil))
     }
     // The settings sync's re-registration, before main delivers the edge: enabled again at once.
     ptt.service.stop()
@@ -384,7 +370,7 @@ struct KeyboardListenerIntegrationTests {
     ptt.effects.beforeKeyboardListenerInstallReturns = { sink in
       Self.onWorkerWhileMainWaits {
         clock.now = 500
-        _ = sink(KeyEventValue(kind: .flagsChanged, keyCode: 61, rawFlags: option, timestamp: 500))
+        sink(KeyEventValue(kind: .flagsChanged, keyCode: 61, rawFlags: option, timestamp: 500))
       }
     }
     ptt.service.resume()
@@ -451,7 +437,7 @@ struct KeyboardListenerIntegrationTests {
   {
     let sink = ptt.effects.keyboardListenerSink
     let event = KeyEventValue(kind: kind, keyCode: 0, rawFlags: 0, timestamp: 500 + t)
-    await Task.detached { _ = sink?(event) }.value
+    await Task.detached { sink?(event) }.value
     await ListenerKeyboard.mainTurn()
   }
 

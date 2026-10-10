@@ -52,10 +52,10 @@ struct KeyboardListenerRecoveryTests {
     }
 
     /// The listener's own storm notice, from its thread, then the main turn it hops to.
-    func storm(through sink: (@Sendable (KeyEventValue) -> ListenerVerdict)?) async {
+    func storm(through sink: (@Sendable (KeyEventValue) -> Void)?) async {
       let sink = sink
       await Task.detached {
-        _ = sink?(KeyEventValue(kind: .stormStopped, keyCode: 0, rawFlags: 0, timestamp: nil))
+        sink?(KeyEventValue(kind: .stormStopped, keyCode: 0, rawFlags: 0, timestamp: nil))
       }.value
       await Self.mainTurn()
     }
@@ -403,11 +403,11 @@ struct KeyboardListenerRecoveryTests {
 
   /// A Secure Input change from the listener's thread, through the given sink.
   private func secureInput(
-    _ sink: (@Sendable (KeyEventValue) -> ListenerVerdict)?, enabled: Bool, pid: Int32?
+    _ sink: (@Sendable (KeyEventValue) -> Void)?, enabled: Bool, pid: Int32?
   ) async {
     let sink = sink
     await Task.detached {
-      _ = sink?(
+      sink?(
         KeyEventValue(
           kind: .secureInputChanged, keyCode: 0, rawFlags: 0, timestamp: nil,
           secureInput: SecureInputObservation(enabled: enabled, ownerPID: pid)))
@@ -512,7 +512,7 @@ struct KeyboardListenerRecoveryTests {
     let sink = n.rig.effects.keyboardListenerSink
     n.rig.clock.now = 500
     await Task.detached {
-      _ = sink?(KeyEventValue(kind: .keyDown, keyCode: 0, rawFlags: 0, timestamp: 500))
+      sink?(KeyEventValue(kind: .keyDown, keyCode: 0, rawFlags: 0, timestamp: 500))
     }.value
     await n.keys.press(ModifierKeyCodes.rightOption, at: 500.2)
     await n.keys.release(ModifierKeyCodes.rightOption, at: 500.4)
@@ -556,7 +556,7 @@ struct KeyboardListenerRecoveryTests {
     let sink = rig.effects.keyboardListenerSink
     for _ in 0..<2 {
       await Task.detached {
-        _ = sink?(KeyEventValue(kind: .tapReenabled, keyCode: 0, rawFlags: 0, timestamp: nil))
+        sink?(KeyEventValue(kind: .tapReenabled, keyCode: 0, rawFlags: 0, timestamp: nil))
       }.value
       await Rig.mainTurn()
     }
