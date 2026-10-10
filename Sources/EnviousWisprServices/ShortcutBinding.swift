@@ -183,6 +183,26 @@ package struct ShortcutBindings: Equatable, Sendable {
     self.copyLast = copyLast
   }
 
+  /// Whether a key going down with `rawFlags` is one of the configured chord shortcuts Carbon
+  /// currently holds (#3544 P4): its key AND its effective modifiers match a role whose chord
+  /// survives the existing arbitration (`ShortcutMatcher.mayHoldCarbonChord`: armed, registrable,
+  /// not displaced by a higher role's equal chord or bare-modifier prefix). Such a key while
+  /// dictating is the user reaching for that shortcut, never interference. Matching only; Carbon
+  /// still owns dispatch, and nothing is swallowed.
+  package func matchesChord(
+    keyCode: UInt16, rawFlags: UInt64, armed: Set<ShortcutRole>
+  ) -> Bool {
+    let held = NSEvent.ModifierFlags(rawValue: UInt(truncatingIfNeeded: rawFlags))
+      .intersection(ShortcutMatcher.carbonEffectiveModifiers)
+    return armed.contains { role in
+      guard ShortcutMatcher.mayHoldCarbonChord(role, in: self, armed: armed),
+        case .keyboard(let code, let modifiers) = self[role]
+      else { return false }
+      return code == keyCode
+        && modifiers.intersection(ShortcutMatcher.carbonEffectiveModifiers) == held
+    }
+  }
+
   /// What a fresh install has, read from `ShortcutRole.defaultBinding`.
   package static let shipped = ShortcutBindings(
     record: ShortcutRole.record.defaultBinding, cancel: ShortcutRole.cancel.defaultBinding,

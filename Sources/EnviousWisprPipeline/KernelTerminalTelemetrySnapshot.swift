@@ -126,6 +126,12 @@ struct KernelTerminalTelemetrySnapshot: Sendable {
   /// added because a mutation hardcoding `.ordinary` survived every other test.
   var deliveryDisposition: DeliveryDisposition = .ordinary
 
+  /// #3544 P4: why a `.cancelled` take was cancelled, when that is not a user's cancel control.
+  /// Nil for every other terminal and every ordinary cancel. Defaulted like `deliveryDisposition`,
+  /// with the same trade; `OtherKeyDismissalTerminalTests` drives the real kernel so a construction
+  /// site that omits it fails.
+  var cancelReason: TerminalCancelReason?
+
   /// #2184. Nil when the take concluded before conditioning ran. Defaulted so
   /// every existing construction site is unchanged; the default is honest here
   /// in a way `deliveryDisposition`'s is not, because "no conditioning happened"
@@ -140,6 +146,12 @@ struct KernelTerminalTelemetrySnapshot: Sendable {
 /// existing eight-label vocabulary is what every shipped chart reads, so adding
 /// to it breaks them, while adding a NEW dimension leaves them working and lets
 /// a new query disaggregate.
+/// The `reason` of a `cancelled` terminal row (#3544 P4). A closed set; a user's own cancel
+/// control carries none, so every existing `cancelled` row keeps `reason=nil`.
+enum TerminalCancelReason: String, Sendable, CaseIterable {
+  case otherKeyDismissed = "other_key_dismissed"
+}
+
 enum DeliveryDisposition: String, Sendable, CaseIterable {
   case ordinary
   case escapeRecovery = "escape_recovery"

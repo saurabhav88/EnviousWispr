@@ -12,6 +12,10 @@ enum RecordingNoticeReason: Equatable, Sendable {
   case approachingCap
   /// The VAD model can't load, so silence auto-stop is off. Timed (4 s dismiss).
   case autoStopUnavailable
+  /// #3544 P4 (D4): a bare push-to-talk dictation started while Secure Input is on, so some
+  /// keyboard features (the other-key rule) are paused. Timed (5 s dismiss). Names no app: macOS
+  /// gives no reliable way to tell which app turned it on.
+  case secureInputActive
 }
 
 /// #1558 (E1) / #1564 (E2). The single, stateless authority that turns the
@@ -304,6 +308,11 @@ enum DictationNarrator {
         localized: "Auto-stop on silence is unavailable right now",
         comment:
           "Banner inside the recording panel: stopping automatically on silence is not available.")
+    case .secureInputActive:
+      return String(
+        localized: "Secure Input is on, so some keyboard features are paused",
+        comment:
+          "Banner inside the recording panel: macOS Secure Input (often a password field) is on, so some of the app's keyboard features are paused. The dictation itself keeps recording. Names no app on purpose.")
     }
   }
 

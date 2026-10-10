@@ -370,6 +370,7 @@ final class DictationLifecycleCoordinator {
     // affordance question.
     hotkeyService.setCancelHotkeyEnabled(
       CancelAffordancePolicy.isShortcutEnabled(state: newState))
+    hotkeyService.setRecordingActive(newState.isActive)
     switch newState {
     case .recording:
       // PR7 of #763 — clear the prior recording's polish error on every new
@@ -441,6 +442,7 @@ final class DictationLifecycleCoordinator {
     // #2087: see `handleParakeet` — one affordance decision, both backends.
     hotkeyService.setCancelHotkeyEnabled(
       CancelAffordancePolicy.isShortcutEnabled(state: newState))
+    hotkeyService.setRecordingActive(newState.isActive)
     switch newState {
     case .recording:
       lastRecordingResult.polishError = nil

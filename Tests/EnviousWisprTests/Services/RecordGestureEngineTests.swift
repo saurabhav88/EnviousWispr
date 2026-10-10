@@ -47,6 +47,7 @@ struct RecordGestureEngineTests {
       case .loneTapStop: return "loneTapStop"
       case .loneTapResolved: return "resolved"
       case .cancel: return "cancel"
+      case .dismiss: return "dismiss"
       }
     }
   }
@@ -465,7 +466,7 @@ struct RecordGestureEngineTests {
   /// generation unless one is given.
   private static func listener(
     _ rig: Rig, _ isPress: Bool, _ t: TimeInterval, key: UInt16 = ModifierKeyCodes.rightOption,
-    generation: UInt64? = nil, installation: UInt64 = 7
+    generation: UInt64? = nil, installation: UInt64 = 7, ordinaryKeyHeld: Bool = false
   ) -> RecordGestureEngine.ListenerRefusal? {
     let engine = rig.engine
     let input = rig.at(t)
@@ -475,10 +476,156 @@ struct RecordGestureEngineTests {
       rig.clock.now = 500 + t
       let refusal = engine.ingestFromListener(
         keyCode: key, isPress: isPress, input: input, generation: generation,
-        installation: installation)
+        installation: installation, ordinaryKeyHeld: ordinaryKeyHeld)
       result.withLock { $0 = refusal }
     }
     return result.withLock { $0 }
+  }
+
+  // MARK: - Other-key dismissal (#3544 P4, D2)
+
+  /// Another key at `t` after an unlocked push-to-talk press at 0, both by their own event times.
+  private static func dismissOutcome(at t: TimeInterval) -> (dismissed: Bool, names: [String]) {
+    let rig = Rig()
+    rig.engine.openListenerAdmission(installation: 7)
+    #expect(Self.listener(rig, true, 0) == nil)
+    let dismissed = rig.engine.otherKeyFromListener(input: rig.at(t), installation: 7)
+    #expect(Self.listener(rig, false, 3) == (dismissed ? .unownedRelease : nil))
+    rig.engine.drainForTesting()
+    return (dismissed, rig.sink.validNames)
+  }
+
+  @Test("another key below 1000 ms dismisses; at or above 1000 ms it is ignored and release stops")
+  func otherKeyWindowBoundary() {
+    let below = Self.dismissOutcome(at: 0.999)
+    #expect(below.dismissed)
+    #expect(below.names == ["start", "dismiss"], "the dismissed hold's release still stopped")
+    for late in [1.0, 1.5] {
+      let outcome = Self.dismissOutcome(at: late)
+      #expect(!outcome.dismissed, "a key at \(late) s dismissed")
+      #expect(outcome.names == ["start", "holdStop"])
+    }
+  }
+
+  @Test("another key never dismisses a locked take, a toggle-mode take or a released key")
+  func otherKeyOnlyDismissesAnUnlockedHeldPress() {
+    // Locked: a double tap, then another key 0.3 s after the first press.
+    let locked = Rig()
+    locked.engine.openListenerAdmission(installation: 7)
+    _ = Self.listener(locked, true, 0)
+    _ = Self.listener(locked, false, 0.1)
+    _ = Self.listener(locked, true, 0.2)
+    #expect(locked.engine.snapshot.isLocked)
+    #expect(!locked.engine.otherKeyFromListener(input: locked.at(0.3), installation: 7))
+    // Toggle mode: the listener owns no press at all.
+    let toggle = Rig()
+    toggle.engine.configure(
+      bindings: ShortcutBindings.shipped, mode: .toggle)
+    toggle.engine.openListenerAdmission(installation: 7)
+    #expect(!toggle.engine.otherKeyFromListener(input: toggle.at(0.1), installation: 7))
+    // Released before the other key: nothing held to dismiss.
+    let released = Rig()
+    released.engine.openListenerAdmission(installation: 7)
+    _ = Self.listener(released, true, 0)
+    _ = Self.listener(released, false, 0.6)
+    #expect(!released.engine.otherKeyFromListener(input: released.at(0.7), installation: 7))
+    // A stale installation's key changes nothing.
+    let stale = Rig()
+    stale.engine.openListenerAdmission(installation: 7)
+    _ = Self.listener(stale, true, 0)
+    #expect(!stale.engine.otherKeyFromListener(input: stale.at(0.2), installation: 6))
+  }
+
+  @Test("an other key whose event time runs backwards is judged by handling time")
+  func otherKeyBackwardsTimestampUsesHandlingTime() {
+    let rig = Rig()
+    rig.engine.openListenerAdmission(installation: 7)
+    _ = Self.listener(rig, true, 0)
+    // Handled 1.2 s after the press, stamped 0.5 s before it.
+    let late = RecordGesture.InputTime.accepting(stamp: 499.5, handled: 501.2)
+    #expect(!rig.engine.otherKeyFromListener(input: late, installation: 7))
+  }
+
+  @Test("another key never dismisses a press that joined a running recording; it keeps its stop")
+  func otherKeyNeverDismissesAJoinedRecording() {
+    let rig = Rig()
+    rig.engine.openListenerAdmission(installation: 7)
+    rig.engine.setRecordingActive(true)  // a recording started from the menu is running
+    #expect(Self.listener(rig, true, 0) == nil)
+    #expect(!rig.engine.otherKeyFromListener(input: rig.at(0.2), installation: 7))
+    #expect(!rig.engine.otherKeyRuleApplies(at: 500.2))
+    #expect(Self.listener(rig, false, 3) == nil)
+    rig.engine.drainForTesting()
+    #expect(rig.sink.validNames == ["start", "holdStop"])
+  }
+
+  @Test("a joining attempt's second tap is still joining after a quick release")
+  func joinSurvivesAQuickRelease() {
+    let rig = Rig()
+    rig.engine.openListenerAdmission(installation: 7)
+    rig.engine.setRecordingActive(true)
+    #expect(Self.listener(rig, true, 0) == nil)
+    #expect(Self.listener(rig, false, 0.1) == nil)
+    #expect(Self.listener(rig, true, 0.55) == nil)
+    #expect(!rig.engine.otherKeyFromListener(input: rig.at(0.56), installation: 7))
+  }
+
+  @Test("a press after this engine ended the running session's attempt is a fresh start")
+  func pressAfterOwnEndingIsFresh() {
+    let rig = Rig()
+    rig.engine.openListenerAdmission(installation: 7)
+    _ = Self.listener(rig, true, 0)
+    rig.engine.setRecordingActive(true)  // this take's session is running
+    #expect(rig.engine.otherKeyFromListener(input: rig.at(0.2), installation: 7))
+    // The session is still tearing down when the next press arrives.
+    #expect(Self.listener(rig, true, 2) == nil)
+    #expect(rig.engine.otherKeyFromListener(input: rig.at(2.2), installation: 7),
+      "the fresh take was treated as joining the dismissed session")
+  }
+
+  @Test("a held ordinary key still refuses a fresh start while a dismissed session is ending")
+  func typingProtectionHoldsWhileADismissalEnds() {
+    let rig = Rig()
+    rig.engine.openListenerAdmission(installation: 7)
+    _ = Self.listener(rig, true, 0)
+    rig.engine.setRecordingActive(true)
+    #expect(rig.engine.otherKeyFromListener(input: rig.at(0.2), installation: 7))
+    _ = Self.listener(rig, false, 0.4)
+    #expect(Self.listener(rig, true, 1, ordinaryKeyHeld: true) == .ordinaryKeyHeld)
+  }
+
+  @Test("a press after this engine stopped the running session's attempt is a fresh start")
+  func pressAfterOwnStopIsFresh() {
+    let rig = Rig()
+    rig.engine.openListenerAdmission(installation: 7)
+    _ = Self.listener(rig, true, 0)
+    rig.engine.setRecordingActive(true)
+    _ = Self.listener(rig, false, 2)  // a hold stop; the session is still ending
+    #expect(Self.listener(rig, true, 3) == nil)
+    #expect(rig.engine.otherKeyFromListener(input: rig.at(3.2), installation: 7),
+      "the fresh take was treated as joining the stopped session")
+  }
+
+  @Test("a held ordinary key never refuses a press that joins a running recording")
+  func ordinaryKeyNeverRefusesAJoiningPress() {
+    let rig = Rig()
+    rig.engine.openListenerAdmission(installation: 7)
+    rig.engine.setRecordingActive(true)
+    #expect(Self.listener(rig, true, 0, ordinaryKeyHeld: true) == nil)
+  }
+
+  @Test("after a dismissal the record key's next press starts a fresh attempt")
+  func dismissalThenFreshStart() {
+    let rig = Rig()
+    rig.engine.openListenerAdmission(installation: 7)
+    _ = Self.listener(rig, true, 0)
+    #expect(rig.engine.otherKeyFromListener(input: rig.at(0.2), installation: 7))
+    #expect(Self.listener(rig, false, 0.4) == .unownedRelease)
+    #expect(Self.listener(rig, true, 2) == nil)
+    rig.engine.drainForTesting()
+    let starts = rig.sink.delivered.filter { $0.name == "start" && $0.valid }.map(\.attempt)
+    #expect(starts.count == 2, "delivered: \(rig.sink.delivered)")
+    #expect(Set(starts).count == 2, "the fresh press reused the dismissed attempt")
   }
 
   @Test("listener input from a closed or earlier installation is refused and changes nothing")
@@ -760,6 +907,56 @@ struct RecordGestureEngineTests {
     engine.setSink { @MainActor batch, valid in sink.record(batch, valid: valid) }
     engine.openListenerAdmission(installation: 7)
     return engine
+  }
+
+  /// #3544 P4 C2: a press admitted without stated evidence must not authorize a reading to end
+  /// it, and a release decided from a reading about one attempt never ends a newer attempt.
+  @Test("unstated press evidence never authorizes a reading release, and stale readings miss newer attempts")
+  func pressRecoveryEvidenceGuardsReadingReleases() {
+    let clock = HotkeyTestClock(500)
+    let timers = HotkeyTestScheduler(clock: clock)
+    let sink = Sink()
+    let engine = hoppingEngine(clock, timers, sink)
+    let generation = engine.listenerConfigurationGeneration
+    let key = ModifierKeyCodes.rightOption
+    // Omitted evidence: not readable, and the orphaned-hold release refuses it.
+    engine.ingestFromListener(
+      keyCode: key, isPress: true, input: .accepting(stamp: 500, handled: 500),
+      generation: generation, installation: 7)
+    let unstated = engine.ownedListenerPress
+    #expect(unstated?.recovery == .notReadable)
+    engine.closeListenerAdmission()
+    #expect(
+      engine.releaseOrphanedListenerPress(
+        unstated!, input: .accepting(stamp: 501, handled: 501)) == false)
+    #expect(engine.ownedListenerKey == key)
+    engine.forgetHeld()
+    // A readable press, read about, then replaced by a newer press of the same key.
+    engine.openListenerAdmission(installation: 7)
+    engine.ingestFromListener(
+      keyCode: key, isPress: true, input: .accepting(stamp: 502, handled: 502),
+      generation: generation, installation: 7, recovery: .readable)
+    let first = engine.ownedListenerPress!
+    #expect(first.recovery == .readable)
+    engine.ingestFromListener(
+      keyCode: key, isPress: false, input: .accepting(stamp: 503, handled: 503),
+      generation: generation, installation: 7)
+    clock.now = 510
+    engine.ingestFromListener(
+      keyCode: key, isPress: true, input: .accepting(stamp: 510, handled: 510),
+      generation: generation, installation: 7, recovery: .readable)
+    let second = engine.ownedListenerPress!
+    #expect(second.attemptID != first.attemptID)
+    // The stale reading's release, through the listener path and the orphaned path: both refused.
+    #expect(
+      engine.ingestFromListener(
+        keyCode: key, isPress: false, input: .accepting(stamp: nil, handled: 511),
+        generation: generation, installation: 7, onlyAttempt: first.attemptID) == .unownedRelease)
+    engine.closeListenerAdmission()
+    #expect(
+      engine.releaseOrphanedListenerPress(first, input: .accepting(stamp: nil, handled: 512))
+        == false)
+    #expect(engine.ownedListenerPress == second)
   }
 
   @Test("a listener-fed lone tap's wait decides on the timer queue, never waiting for main")

@@ -117,7 +117,7 @@ struct DictationTerminalTelemetryTests {
   /// until the whole-diff review caught it: it projects to
   /// `.failed(.noAudioCaptured)`, so an outcome-side match labelled it `failed`
   /// and then found no reason to attach, hiding it from every reason-keyed count.
-  @Test("a failed row always carries a reason, and only failed rows do")
+  @Test("a failed row always carries a reason, and among the rest only an interference cancel does")
   func failedAlwaysCarriesItsReason() {
     let cases: [(RecordingOutcome, String, String?)] = [
       (.completed, "completed", nil),
@@ -143,6 +143,14 @@ struct DictationTerminalTelemetryTests {
           == (recorder.terminals.first?.reason != nil),
         "\(outcome): a failed row without a reason is unqueryable")
     }
+    // #3544 P4: the one non-failed reason. A cancel from other-key interference names itself; an
+    // ordinary cancel (above) stays reason-less, so every shipped cancel chart is unchanged.
+    let recorder = Recorder()
+    var interference = snapshot(.cancelled)
+    interference.cancelReason = .otherKeyDismissed
+    makeSink(recorder).emitTerminal(interference)
+    #expect(recorder.terminals.first?.result == "cancelled")
+    #expect(recorder.terminals.first?.reason == "other_key_dismissed")
   }
 
   /// `reason` exists only on `failed`. A reason on `cancelled` would invite a

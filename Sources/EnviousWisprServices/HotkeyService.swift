@@ -183,6 +183,16 @@ public final class HotkeyService {
   /// start has confirmed a session that is still running.
   private var acceptedStartPressID: UInt64?
   private var acceptedSessionID: String?
+  /// Attempts the engine dismissed whose start main may still be resolving (#3544 P4), and the
+  /// session each start produced, so the dismissal ends exactly that session even after a newer
+  /// press replaced the attempt's execution state.
+  private var pendingDismissals: Set<UInt64> = []
+  private var dismissedSessions: [UInt64: String] = [:]
+  /// Secure Input as the current listener installation last observed it (#3544 P4); false while
+  /// no listener is installed. Logged and noticed only; it never ends, cancels or locks a take.
+  private var secureInputOn = false
+  /// Whether this Secure Input period has already been told to the user.
+  private var secureInputNoticeShown = false
 
   // MARK: - Callbacks (wired by the former root state)
 
@@ -190,6 +200,10 @@ public final class HotkeyService {
   /// #1631: returns whether a session is genuinely continuing when the start path
   /// finishes, and if so its id. `HotkeyService` reconciles its own state on that.
   package var onStartRecording: (@MainActor () async -> RecordingStartOutcome)?
+  /// #3544 P4: a press made while a session was running joins it and must never create one: if
+  /// that session has ended by the time this runs, it returns `.noRecording`. The engine marks
+  /// such a press; nil refuses it.
+  package var onJoinRecording: (@MainActor () async -> RecordingStartOutcome)?
   public var onStopRecording: (@MainActor () async -> Void)?
   public var onCancelRecording: (@MainActor () async -> Void)?
 
@@ -205,6 +219,11 @@ public final class HotkeyService {
   /// The `String` is an opaque token, compared for equality only — Services never
   /// interprets it.
   package var onLockRequested: (@MainActor (String) -> HandsFreeLockRequestResult)?
+
+  /// #3544 P4 (D2): end the recording session `String` started by a dismissed push-to-talk press,
+  /// destructively, if that session is still the one running. The `String` is the same opaque
+  /// session token `onLockRequested` receives.
+  package var onDismissRecording: (@MainActor (String) async -> Void)?
 
   /// Returns true if the pipeline is in a processing state (transcribing, polishing, etc.).
   /// Used by the processing state gate to block new recordings during processing.
@@ -382,9 +401,10 @@ public final class HotkeyService {
   /// suspend or a reinstall cancels it.
   private var orphanedHoldCheck: RecordGestureEngine.TimerHandle?
   private var orphanedHoldCheckToken: UInt64 = 0
-  /// The key the previous orphaned-hold check read up, if any: a hold ends only on two consecutive
-  /// up readings, as with the listener's own sweep (#3544 P3 hotfix).
-  private var orphanedHoldReadUp: UInt16?
+  /// The press the previous orphaned-hold check read up, if any: a hold ends only on two
+  /// consecutive up readings about the same attempt, as with the listener's own sweep (#3544 P3
+  /// hotfix, P4 C2).
+  private var orphanedHoldReadUp: RecordGestureEngine.OwnedListenerPress?
   /// Schedules the install retry off main; the fire hops to main to re-check the lifecycle.
   private let listenerRetryScheduler: RecordGestureEngine.Scheduler
   /// Test seam: invoked once each time a scheduled install retry runs on main, on every exit
@@ -662,6 +682,21 @@ public final class HotkeyService {
     reconcileAppShortcutRegistrations()
   }
 
+  /// Whether the pipeline is running a session now (`PipelineState.isActive`), reported on every
+  /// lifecycle transition (#3544 P4). A record press made while one runs joins it, so other-key
+  /// interference never ends it and the press keeps its stop and lock.
+  public func setRecordingActive(_ active: Bool) {
+    engine.setRecordingActive(active)
+  }
+
+  /// The start running now found a session already running and joined it (#3544 P4), although its
+  /// press was classified before that session began: called by `onStartRecording` before it
+  /// returns, so interference from here on spares the joined session and the press keeps its stop.
+  package func markExecutingStartJoined() {
+    guard let attempt = executingAttemptID else { return }
+    engine.markJoined(attempt: attempt)
+  }
+
   /// Arm or disarm the cancel hotkey from a single decision (#2087).
   ///
   /// The lifecycle used to call `registerCancelHotkey()` / `unregisterCancelHotkey()`
@@ -808,12 +843,17 @@ public final class HotkeyService {
     // guessing from a scheduling turn. A signal fired inside the start callback
     // cannot serve: this method runs AFTER that callback returns.
     defer { onStartResolvedForTesting?() }
+    // A dismissed attempt's session is remembered whatever replaced its execution state since.
+    if pendingDismissals.contains(pressID), case .recording(let sessionID) = outcome {
+      dismissedSessions[pressID] = sessionID
+    }
     guard pressID == executingAttemptID else { return }
     switch outcome {
     case .recording(let sessionID):
       acceptedStartPressID = pressID
       acceptedSessionID = sessionID
       publishLockIfReady()
+      noticeSecureInputIfRelevant(sessionID)
     case .noRecording:
       // Only a press that already recorded hands-free intent has a decision to
       // report; a refusal landing before the second tap has nothing to resolve.
@@ -913,6 +953,7 @@ public final class HotkeyService {
       case .quickRelease(let trace): executeQuickRelease(trace)
       case .loneTapStop(let trace): executeLoneTapStop(trace)
       case .cancel(let cancel): executeListenerCancel(cancel)
+      case .dismiss(let dismiss): executeListenerDismiss(dismiss)
       case .loneTapResolved: break
       }
     }
@@ -935,6 +976,31 @@ public final class HotkeyService {
       await self.onCancelRecording?()
     }
     emitHotkeyPressed(.cancel, trigger: .cancel)
+  }
+
+  /// Other-key interference ended this attempt in the engine (#3544 P4, D2). Main ends the
+  /// recording that attempt's start produced, once that start has resolved, and nothing else: a
+  /// start main never issued (refused, replaced) has nothing to end, and the session check in
+  /// `onDismissRecording` keeps a newer take safe. A press after this waits for it, as after a
+  /// listener cancel (`listenerCancellationTask`).
+  private func executeListenerDismiss(_ dismiss: RecordGestureEngine.Dismiss) {
+    let attempt = dismiss.attemptID
+    guard executingAttemptID == attempt else { return }
+    pendingDismissals.insert(attempt)
+    if acceptedStartPressID == attempt, let sessionID = acceptedSessionID {
+      dismissedSessions[attempt] = sessionID
+    }
+    clearExecutionState()
+    let start = recordingTask
+    let earlier = listenerCancellationTask
+    listenerCancellationTask = Task { [weak self] in
+      await earlier?.value
+      await start?.value
+      guard let self else { return }
+      self.pendingDismissals.remove(attempt)
+      guard let sessionID = self.dismissedSessions.removeValue(forKey: attempt) else { return }
+      await self.onDismissRecording?(sessionID)
+    }
   }
 
   private func executePress(_ press: RecordGestureEngine.Press, attemptID: UInt64) {
@@ -984,13 +1050,25 @@ public final class HotkeyService {
           await pendingCancellation.value
           guard !Task.isCancelled, self.executingAttemptID == pressID else { return }
         }
-        guard let handler = self.onStartRecording else {
+        guard let handler = press.joinsRecording ? self.onJoinRecording : self.onStartRecording
+        else {
           // No callback wired means nothing was recorded, so the optimistic
           // bookkeeping is exactly as wrong here as on any other refusal.
           self.resolveStart(pressID: pressID, outcome: .noRecording)
           return
         }
-        self.resolveStart(pressID: pressID, outcome: await handler())
+        var outcome = await handler()
+        // #3544 P4: the session this press was to join ended before main ran it (a stop the engine
+        // never saw: menu, window, auto-stop, cap). With no ordinary key held at the press, a
+        // fresh take is what the press would have been, so start one rather than drop it.
+        if press.joinsRecording, press.mayStartIfJoinFails, outcome == .noRecording,
+          !Task.isCancelled, self.executingAttemptID == pressID,
+          let start = self.onStartRecording
+        {
+          self.engine.unmarkJoined(attempt: pressID)
+          outcome = await start()
+        }
+        self.resolveStart(pressID: pressID, outcome: outcome)
       }
       // #1175 (C3): emit AFTER the recording Task is created; the `.live` sink
       // defers the actual write off this turn so it never delays the callback.
@@ -1283,12 +1361,42 @@ public final class HotkeyService {
   private func listenerSawSecureInput(_ observation: SecureInputObservation, installation: UInt64) {
     guard installation == listenerGeneration else { return }
     onSecureInputLoggedForTesting?(observation)
+    secureInputOn = observation.enabled
+    // A Secure Input period ends here: the next one may tell the user again.
+    if !observation.enabled { secureInputNoticeShown = false }
+    // Entered during an accepted take whose other-key rule still applies: the same policy as a
+    // start. Later in a take the rule no longer applies, so nothing is paused for it.
+    if observation.enabled, let sessionID = acceptedSessionID {
+      noticeSecureInputIfRelevant(sessionID)
+    }
     let owner = observation.ownerPID.map { "pid=\($0)" } ?? "owner=unknown"
     let line = observation.enabled ? "Secure Input on (\(owner))" : "Secure Input off"
     Task {
       await AppLogger.shared.log(line, level: .info, category: "HotkeyService")
     }
   }
+
+  /// #3544 P4 (D4, founder 2026-10-09): a bare push-to-talk dictation just started while Secure
+  /// Input is on, so the listener cannot see ordinary keys and the other-key rule (D2) is paused.
+  /// Told once per Secure Input period (until it is observed off), for the session that start
+  /// produced. State comes from the listener's own sampling (at install, then every 5 s), never
+  /// from a hidden key or a guessed app; a period younger than one sample is not yet known.
+  private func noticeSecureInputIfRelevant(_ sessionID: String) {
+    // Only while the take's other-key rule still applies: a start that resolved late, or a take
+    // already locked, has nothing paused.
+    guard secureInputOn, !secureInputNoticeShown, recordBinding.isBareModifier,
+      recordingMode == .pushToTalk, isEnabled, !isSuspended,
+      engine.otherKeyRuleApplies(at: uptime())
+    else { return }
+    // Counted as told only when the presentation accepted it, so a refused one (a session no
+    // longer running) leaves the period's notice for the next valid take.
+    if onSecureInputPausedKeyFeatures?(sessionID) == true { secureInputNoticeShown = true }
+  }
+
+  /// #3544 P4: show the Secure Input notice on the recording session `String` started, if it is
+  /// still the one running; returns whether it was shown. The `String` is the opaque token
+  /// `onLockRequested` receives.
+  package var onSecureInputPausedKeyFeatures: (@MainActor (String) -> Bool)?
 
   /// Test seam: a main-thread listener edge was judged current (true) or refused (false), before
   /// it acts. Production never sets it.
@@ -1314,8 +1422,10 @@ public final class HotkeyService {
   /// key come up, so a push-to-talk recording would run on until a replacement's first sweep
   /// (after the storm cooldown) or, while installs keep failing, until the recording cap.
   private func armOrphanedHoldCheck() {
+    // Only a press a reading may end is worth watching (#3544 P4 C2): an aggregate-only hold ends
+    // on observed input, an explicit stop or cancel, or the recording cap.
     guard orphanedHoldCheck == nil, keyboardListenerIngress == nil, isEnabled, !isSuspended,
-      engine.ownedListenerKey != nil
+      engine.ownedListenerPress?.recovery == .readable
     else { return }
     orphanedHoldCheckToken &+= 1
     let token = orphanedHoldCheckToken
@@ -1338,14 +1448,15 @@ public final class HotkeyService {
     guard token == orphanedHoldCheckToken, orphanedHoldCheck != nil else { return }
     orphanedHoldCheck = nil
     guard keyboardListenerIngress == nil, isEnabled, !isSuspended,
-      let key = engine.ownedListenerKey
+      let press = engine.ownedListenerPress, press.recovery == .readable
     else { return }
-    let readUp = effects.keyStateReader([key])[key] == .up
-    let confirmed = readUp && orphanedHoldReadUp == key
-    orphanedHoldReadUp = readUp && !confirmed ? key : nil
+    // Two consecutive up readings about the SAME attempt; a newer press of the key starts over.
+    let readUp = effects.keyStateReader([press.keyCode])[press.keyCode] == .up
+    let confirmed = readUp && orphanedHoldReadUp == press
+    orphanedHoldReadUp = readUp && !confirmed ? press : nil
     if confirmed {
       engine.releaseOrphanedListenerPress(
-        keyCode: key, input: RecordGesture.InputTime(handled: uptime(), occurred: nil))
+        press, input: RecordGesture.InputTime(handled: uptime(), occurred: nil))
       onOrphanedHoldReleasedForTesting?()
       return
     }
@@ -1425,6 +1536,8 @@ public final class HotkeyService {
     engine.closeListenerAdmission()
     keyboardListenerIngress?.close()
     keyboardListenerIngress = nil
+    // Unknown until the next installation's first sample.
+    secureInputOn = false
     // A bare-modifier action held now (Paste Last, Copy Last) can no longer see its release: the
     // next installation's tracker starts empty. Retire the hold without firing it, so the next
     // press acts (and Paste takes a fresh target); Carbon chord holds are not the listener's.

@@ -4,7 +4,7 @@ description: "Change the keys that start, stop and cancel dictation, and fix a k
 category: "recording-and-keybinds"
 section: "Recording"
 order: 4
-keywords: ["keybind", "keybinds", "hotkey", "shortcut", "keyboard shortcut", "change the key", "how do i change the key", "key combo", "keybinding", "remap", "different key", "globe key", "fn key", "caps lock", "conflicts with another app", "quick add shortcut", "control shift w", "paste last dictation", "copy last dictation", "control command v", "control command c", "keybind not working", "not active", "key already in use"]
+keywords: ["keybind", "dictation stopped when i typed", "other key cancels", "secure input", "keybinds", "hotkey", "shortcut", "keyboard shortcut", "change the key", "how do i change the key", "key combo", "keybinding", "remap", "different key", "globe key", "fn key", "caps lock", "conflicts with another app", "quick add shortcut", "control shift w", "paste last dictation", "copy last dictation", "control command v", "control command c", "keybind not working", "not active", "key already in use"]
 related: ["adding-a-word-from-your-selection", "escape-recovery", "transcript-history"]
 updated: 2026-10-09
 deflection: "can_resolve"
@@ -38,6 +38,16 @@ Your Globe key stays set as your dictation keybind either way. This only stops m
 No. The recording keybind stays the same in [push to talk](/help/push-to-talk-mode/) and [toggle mode](/help/toggle-mode/). Switching modes changes what a press does to your recording, never which key you press.
 
 If holding a key down is uncomfortable, toggle mode asks less of your hand. One press starts recording and the next press stops it, so nothing has to be held.
+
+### Pressing another key right after your keybind
+
+When your push-to-talk keybind is a modifier key used on its own, pressing another ordinary key during the first second can dismiss the recording. Keys matching an eligible configured shortcut are exempt. A dismissed recording is thrown away: nothing is pasted or kept, even with Escape Recovery on.
+
+After the first second, extra keys do not cause this dismissal. A locked recording and toggle mode are not affected.
+
+For this kind of push-to-talk keybind, an ordinary key already down prevents a new recording from starting. Release that key, then press your keybind again.
+
+Secure Input prevents the listener from seeing ordinary keys, so this typing protection is unavailable while it is active. When the app detects that this affects a qualifying dictation, it can show a short notice. Detection can take up to five seconds. Bare-modifier dictation can continue.
 
 ### Change the cancel key
 

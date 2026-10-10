@@ -85,6 +85,15 @@ package struct KeyStateTracker: Equatable, Sendable {
   package private(set) var held: [UInt16: Hold] = [:]
   /// Held keys whose release could not be proven from aggregate-only evidence.
   package private(set) var ambiguous: Set<UInt16> = []
+  /// Ordinary (non-modifier) keys seen down and not yet up, in event order (#3544 P4). Local state
+  /// only: never logged, never sent. Age never releases one; only its keyUp or a reading does.
+  package private(set) var ordinaryDown: Set<UInt16> = []
+  /// Ordinary keys a reading (not a keyUp) removed, and when that reading was taken. A reading is
+  /// the present: an event that OCCURRED before it may have happened while the key was still down
+  /// (its keyUp then queued behind that event), so for such an event the key still counts as held.
+  private var ordinaryReadUpAt: [UInt16: TimeInterval] = [:]
+  /// How long a read-up key is remembered for that comparison; events are handled well inside it.
+  package static let ordinaryReadUpMemory: TimeInterval = 2
 
   package init() {}
 
@@ -127,6 +136,53 @@ package struct KeyStateTracker: Equatable, Sendable {
   }()
 
   // MARK: - Input
+
+  /// One ordinary keyDown or keyUp (#3544 P4). Returns whether it is a fresh press: a keyDown that
+  /// is not autorepeat. Modifier keys, our own events and every other kind change nothing.
+  package mutating func ingestOrdinary(_ event: KeyEventValue) -> Bool {
+    guard !event.isOurs, ModifierKeyCodes.flag(for: event.keyCode) == nil else { return false }
+    switch event.kind {
+    case .keyDown:
+      ordinaryDown.insert(event.keyCode)
+      ordinaryReadUpAt[event.keyCode] = nil
+      return !event.isAutorepeat
+    case .keyUp:
+      ordinaryDown.remove(event.keyCode)
+      ordinaryReadUpAt[event.keyCode] = nil
+      return false
+    case .flagsChanged, .tapReenabled, .secureInputChanged, .stormStopped:
+      return false
+    }
+  }
+
+  /// Whether an ordinary key was held when an event that occurred at `occurred` (handled at
+  /// `handled`) happened: one the events say is down, or one a reading removed after that moment.
+  /// An event with no usable occurrence time is compared from `ordinaryReadUpMemory` / 2 before it
+  /// was handled.
+  package mutating func isOrdinaryKeyHeld(occurred: TimeInterval?, handled: TimeInterval) -> Bool {
+    ordinaryReadUpAt = ordinaryReadUpAt.filter { handled - $0.value < Self.ordinaryReadUpMemory }
+    if !ordinaryDown.isEmpty { return true }
+    let moment = occurred ?? handled - Self.ordinaryReadUpMemory / 2
+    return ordinaryReadUpAt.values.contains { $0 > moment }
+  }
+
+  /// Apply a present-time reading taken at `readAt`: at a recovery boundary (an installation's
+  /// first event, a tap re-enable, Secure Input changing) for every ordinary key, and on the sweep
+  /// for the keys still held. A key read up is removed but remembered with `readAt`, so an event
+  /// that occurred before the reading still sees it held (`isOrdinaryKeyHeld`). `except` keeps the
+  /// key of the event being handled, which its own event then applies. Unknown changes nothing.
+  package mutating func resyncOrdinary(
+    _ answers: [UInt16: Reading], at readAt: TimeInterval, except: UInt16? = nil
+  ) {
+    for (key, answer) in answers where key != except && ModifierKeyCodes.flag(for: key) == nil {
+      switch answer {
+      case .down: ordinaryDown.insert(key)
+      case .up:
+        if ordinaryDown.remove(key) != nil { ordinaryReadUpAt[key] = readAt }
+      case .unknown: break
+      }
+    }
+  }
 
   /// Apply one listener event. Ignores everything but an unmarked `flagsChanged` from a standalone
   /// modifier key.
@@ -195,6 +251,8 @@ package struct KeyStateTracker: Equatable, Sendable {
   /// Ask `reader` about every held key, then apply its answers: up releases (`reconciled`), down
   /// keeps and clears any ambiguity, unknown changes nothing. The reader is called once, before
   /// any state changes, and never asked about keys that are not held; nothing here can start a hold.
+  /// A hold whose press was aggregate-only evidence is never released by an up answer (#3544 P4
+  /// C2): the reader cannot see such input, so only observed events end it.
   package mutating func reconcile(
     handled: TimeInterval, configuration: Configuration,
     reader: (Set<UInt16>) -> [UInt16: Reading]
@@ -205,6 +263,8 @@ package struct KeyStateTracker: Equatable, Sendable {
     var edges: [Edge] = []
     for key in keys.sorted() {
       switch answers[key] ?? .unknown {
+      case .up where held[key]?.evidence == .aggregateOnly:
+        continue
       case .up:
         held.removeValue(forKey: key)
         ambiguous.remove(key)

@@ -1293,6 +1293,15 @@ final class RecordingSessionKernel {
   /// gap between accepting a keypress and draining an exit.
   ///
   /// - Returns: whether Escape Recovery may proceed.
+  /// The terminal row's cancel reason (#3544 P4): only a cancelled take whose accepted cancel came
+  /// from other-key interference has one.
+  static func cancelReason(
+    outcome: RecordingOutcome, origin: RecordingCancelOrigin
+  ) -> TerminalCancelReason? {
+    guard case .cancelled = outcome, origin == .user(.otherKeyInterference) else { return nil }
+    return .otherKeyDismissed
+  }
+
   private func prepareEscapeRecoveryIfNeeded(triggeredAt: Date) -> Bool {
     guard let recoverySessionID = sessionConfig?.recoverySessionID else { return true }
     return prepareEscapeRecovery(recoverySessionID, triggeredAt, telemetryState.takeID)
@@ -4407,6 +4416,9 @@ final class RecordingSessionKernel {
       // decided whether to hold the text. Deriving it here from the outcome
       // would be a second opinion that can disagree with the first.
       deliveryDisposition: finalizationDisposition.isEscapeRecovery ? .escapeRecovery : .ordinary,
+      // #3544 P4: read from the first-wins cancel-origin latch, the same field that decides Escape
+      // Recovery, so the reason cannot disagree with how the take was handled.
+      cancelReason: Self.cancelReason(outcome: outcome, origin: lastCancelOrigin),
       // #2184: COPIED like `signalAttribution` above, never recomputed. Nil for
       // every take that concluded before the conditioner ran.
       vadConditioning: telemetryState.vadConditioning

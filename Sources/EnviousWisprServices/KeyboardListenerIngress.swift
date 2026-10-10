@@ -37,6 +37,14 @@ import os
 /// when this installation never saw it (a listener replaced mid-hold), and releases it on the same
 /// two consecutive up readings, so a lost key-up cannot leave push-to-talk recording forever.
 ///
+/// **Which holds a reading may end** (#3544 P4 C2). Only a hold whose press carried its own side
+/// bit (or Globe's function flag): the modifier-flags reader cannot see input without side bits,
+/// and can read such a key up while it is still held. That evidence travels with the engine's
+/// owned press (`ListenerPressRecovery`), so it survives listener replacement and absence, and a
+/// release decided from a reading names its attempt, so it can never end a newer press. An
+/// aggregate-only hold ends only on observed input, an explicit stop or cancel, or the recording
+/// cap.
+///
 /// Our own synthetic events (`isOurs`) and key code 179 (a second Globe code some keyboards send,
 /// Wispr Flow ignores it too) change nothing. Every event passes through to the system in P3.
 package final class KeyboardListenerIngress: Sendable {
@@ -63,9 +71,17 @@ package final class KeyboardListenerIngress: Sendable {
   }
 
   private enum Action: Sendable {
-    case engine(keyCode: UInt16, isPress: Bool, input: RecordGesture.InputTime, generation: UInt64)
+    /// `recovery`: for a press, whether a key-state reading may end it. `onlyAttempt`: for the
+    /// watchdog's release, the attempt its reading was about.
+    case engine(
+      keyCode: UInt16, isPress: Bool, input: RecordGesture.InputTime, generation: UInt64,
+      recovery: RecordGestureEngine.ListenerPressRecovery = .notReadable,
+      onlyAttempt: UInt64? = nil, ordinaryKeyHeld: Bool = false)
     case cancel(keyCode: UInt16, generation: UInt64)
     case main(MainEdge)
+    /// A fresh ordinary key press, for the engine's other-key dismissal (#3544 P4, D2). Carries
+    /// no key identity: the engine needs only when it happened.
+    case otherKey(input: RecordGesture.InputTime)
   }
 
   private struct State: Sendable {
@@ -87,6 +103,16 @@ package final class KeyboardListenerIngress: Sendable {
     /// key only when two consecutive sweeps read it up with no input between them, so a single wrong
     /// reading can never end a dictation (#3544 P3 hotfix). Cleared by any sign of missed events.
     var sweepReadUp: (sequence: UInt64, keys: Set<UInt16>) = (0, [])
+    /// Ordinary-key state must be read before the next event acts (#3544 P4): set for a new
+    /// installation (keys held across a replacement have no keyDown to come), and requested at a
+    /// tap re-enable and Secure Input changing (keyDown and keyUp may have been lost), where the
+    /// read runs at once. `resyncEpoch` advances with each request, so a resync that raced a newer
+    /// one leaves it pending.
+    var ordinaryResyncNeeded = true
+    var resyncEpoch: UInt64 = 0
+    /// Advanced by every ordinary key event. A reading of ordinary keys applies only if no ordinary
+    /// event was handled while it was out: otherwise it could undo a newer keyDown.
+    var ordinarySequence: UInt64 = 0
   }
 
   package let installation: UInt64
@@ -124,6 +150,10 @@ package final class KeyboardListenerIngress: Sendable {
     armSweepIfNeeded()
   }
 
+  /// Every virtual key code that is not a standalone modifier, for an ordinary-key resync.
+  private static let ordinaryKeyCodes: Set<UInt16> = Set(
+    (0..<128).map(UInt16.init).filter { ModifierKeyCodes.flag(for: $0) == nil })
+
   /// The installation ended: no further input or sweep acts, and a pending sweep is cancelled.
   package func close() {
     let sweep = state.withLock { s -> RecordGestureEngine.TimerHandle? in
@@ -146,10 +176,18 @@ package final class KeyboardListenerIngress: Sendable {
     case .tapReenabled:
       // Keys may have moved while the tap was off: the next two sweeps decide.
       restartConfirmation()
+      requestOrdinaryResync()
+      resyncOrdinaryIfNeeded(except: nil)
     case .secureInputChanged:
-      // Leaving Secure Input: key-ups may have been hidden (plan A2). Entering changes nothing.
-      if event.secureInput?.enabled == false { restartConfirmation() }
-    case .keyDown, .keyUp, .stormStopped:
+      // Leaving Secure Input: key-ups may have been hidden (plan A2). Entering changes nothing
+      // for modifiers; for ordinary keys both edges are boundaries, read now.
+      guard let enabled = event.secureInput?.enabled else { return }
+      if !enabled { restartConfirmation() }
+      requestOrdinaryResync()
+      resyncOrdinaryIfNeeded(except: nil)
+    case .keyDown, .keyUp:
+      ingestOrdinary(event)
+    case .stormStopped:
       break
     }
   }
@@ -161,6 +199,7 @@ package final class KeyboardListenerIngress: Sendable {
     guard !event.isOurs, event.keyCode != Self.ignoredGlobeKeyCode else { return }
     let handled = clock()
     let classification = engine.listenerClassification()
+    resyncOrdinaryIfNeeded(except: nil)
     state.withLock { s in
       guard !s.closed else { return }
       s.inputSequence &+= 1
@@ -185,6 +224,58 @@ package final class KeyboardListenerIngress: Sendable {
       s.inputSequence &+= 1
       s.sweepReadUp.keys.removeAll()
     }
+    armSweepIfNeeded()
+  }
+
+  /// Mark a recovery boundary for ordinary keys; the next event reads them before it acts.
+  private func requestOrdinaryResync() {
+    state.withLock { s in
+      s.ordinaryResyncNeeded = true
+      s.resyncEpoch &+= 1
+    }
+  }
+
+  /// At a recovery boundary, read every ordinary key outside every lock and apply it before the
+  /// event being handled acts (#3544 P4). The reading is the present: a key it removes still counts
+  /// as held for any event that occurred before it (`KeyStateTracker.isOrdinaryKeyHeld`). `except`
+  /// is the key of an ordinary event being handled, which applies itself.
+  private func resyncOrdinaryIfNeeded(except: UInt16?) {
+    let captured = state.withLock { s -> (epoch: UInt64, sequence: UInt64)? in
+      guard !s.closed, s.ordinaryResyncNeeded else { return nil }
+      return (s.resyncEpoch, s.ordinarySequence)
+    }
+    guard let captured else { return }
+    let answers = reader(Self.ordinaryKeyCodes)
+    let readAt = clock()
+    state.withLock { s in
+      // A stale reading leaves the resync pending: the next event asks again.
+      guard !s.closed, s.ordinarySequence == captured.sequence else { return }
+      s.tracker.resyncOrdinary(answers, at: readAt, except: except)
+      if s.resyncEpoch == captured.epoch { s.ordinaryResyncNeeded = false }
+    }
+    armSweepIfNeeded()
+  }
+
+  /// One ordinary key event (#3544 P4). Updates the local ordinary-key state, and queues a fresh
+  /// press for the engine's dismissal decision in input order with modifier events, unless the key
+  /// and its modifiers match a configured, eligible chord shortcut (the user reaching for it, not
+  /// interference). Nothing about the key leaves this function.
+  private func ingestOrdinary(_ event: KeyEventValue) {
+    guard !event.isOurs else { return }
+    let handled = clock()
+    let configuration = engine.listenerClassification().configuration
+    let isChord = configuration.bindings.matchesChord(
+      keyCode: event.keyCode, rawFlags: event.rawFlags, armed: configuration.armed)
+    resyncOrdinaryIfNeeded(except: event.keyCode)
+    state.withLock { s in
+      guard !s.closed else { return }
+      s.ordinarySequence &+= 1
+      let fresh = s.tracker.ingestOrdinary(event)
+      guard fresh, !isChord else { return }
+      s.pending.append(
+        .otherKey(input: .accepting(stamp: event.timestamp, handled: handled)))
+    }
+    drain()
     armSweepIfNeeded()
   }
 
@@ -215,8 +306,18 @@ package final class KeyboardListenerIngress: Sendable {
       s.routes[edge.keyCode] = route
       switch route {
       case .engine?:
+        // Only a press with its own side bit (or Globe's function flag) can be vouched for by the
+        // modifier-flags reader later (#3544 P4 C2).
+        let recovery: RecordGestureEngine.ListenerPressRecovery =
+          edge.evidence == .aggregateOnly ? .notReadable : .readable
+        // Exact-set start (#3544 P4): the engine refuses a press that would START a dictation while
+        // an ordinary key is held; a stop, lock or second tap of a live take is never refused.
         actions.append(
-          .engine(keyCode: edge.keyCode, isPress: true, input: input, generation: generation))
+          .engine(
+            keyCode: edge.keyCode, isPress: true, input: input, generation: generation,
+            recovery: recovery,
+            ordinaryKeyHeld: s.tracker.isOrdinaryKeyHeld(
+              occurred: edge.occurred, handled: edge.handled)))
       case .cancel?:
         actions.append(.cancel(keyCode: edge.keyCode, generation: generation))
       case .main(let role)?:
@@ -272,15 +373,20 @@ package final class KeyboardListenerIngress: Sendable {
 
   private func perform(_ action: Action) {
     switch action {
-    case .engine(let keyCode, let isPress, let input, let generation):
+    case .engine(
+      let keyCode, let isPress, let input, let generation, let recovery, let onlyAttempt,
+      let ordinaryKeyHeld):
       engine.ingestFromListener(
         keyCode: keyCode, isPress: isPress, input: input, generation: generation,
-        installation: installation)
+        installation: installation, recovery: recovery, onlyAttempt: onlyAttempt,
+        ordinaryKeyHeld: ordinaryKeyHeld)
     case .cancel(let keyCode, let generation):
       engine.cancelFromListener(
         keyCode: keyCode, generation: generation, installation: installation)
     case .main(let edge):
       toMain(edge)
+    case .otherKey(let input):
+      engine.otherKeyFromListener(input: input, installation: installation)
     }
   }
 
@@ -289,15 +395,17 @@ package final class KeyboardListenerIngress: Sendable {
   /// One sweep: verify held state against the reader. An up answer releases a key only when the
   /// previous sweep read it up too, with no input and no sign of missed events between them.
   private func reconcile() {
+    reconcileOrdinary()
     let classification = engine.listenerClassification()
-    let owned = engine.ownedListenerKey
+    // The watchdog asks only about an owned press a reading may end (#3544 P4 C2).
+    let owned = engine.ownedListenerPress.flatMap { $0.recovery == .readable ? $0 : nil }
     guard
       let captured = state.withLock({ s -> (sequence: UInt64, held: Set<UInt16>)? in
         s.closed ? nil : (s.inputSequence, Set(s.tracker.held.keys))
       })
     else { return }
     var keys = captured.held
-    if let owned { keys.insert(owned) }
+    if let owned { keys.insert(owned.keyCode) }
     guard !keys.isEmpty else { return }
     // Outside every lock: the reader is an OS call in production.
     let answers = reader(keys)
@@ -327,17 +435,35 @@ package final class KeyboardListenerIngress: Sendable {
       ) { _ in answers }
       for edge in edges { route(&s, edge, classification, into: &actions) }
       // The watchdog: a record press the engine owns that this installation never saw down.
-      if let owned, !captured.held.contains(owned), answers[owned] == .up {
+      if let owned, !captured.held.contains(owned.keyCode), answers[owned.keyCode] == .up {
         actions.append(
           .engine(
-            keyCode: owned, isPress: false,
+            keyCode: owned.keyCode, isPress: false,
             input: RecordGesture.InputTime(handled: handled, occurred: nil),
-            generation: classification.generation))
+            generation: classification.generation, onlyAttempt: owned.attemptID))
       }
       s.pending.append(contentsOf: actions)
     }
     afterReconcileCommitForTesting?()
     drain()
+  }
+
+  /// The sweep's ordinary-key part (#3544 P4): a key the events still say is down but that reads
+  /// up lost its keyUp (Secure Input that came and went between samples, a tap that was off); it
+  /// is removed, remembered with the reading time so no event that occurred earlier is affected.
+  /// One reading suffices: ordinary keys read reliably, and a wrong answer can only allow a start.
+  private func reconcileOrdinary() {
+    let captured = state.withLock { s -> (keys: Set<UInt16>, sequence: UInt64) in
+      (s.closed ? [] : s.tracker.ordinaryDown, s.ordinarySequence)
+    }
+    guard !captured.keys.isEmpty else { return }
+    let answers = reader(captured.keys)
+    let readAt = clock()
+    state.withLock { s in
+      // A stale reading is dropped, never applied: the next sweep asks again.
+      guard !s.closed, s.ordinarySequence == captured.sequence else { return }
+      s.tracker.resyncOrdinary(answers.filter { $0.value == .up }, at: readAt)
+    }
   }
 
   // MARK: - Sweep
@@ -346,7 +472,9 @@ package final class KeyboardListenerIngress: Sendable {
   private func armSweepIfNeeded() {
     let ownedByEngine = engine.ownedListenerKey != nil
     let token = state.withLock { s -> UInt64? in
-      guard !s.closed, s.sweepPending == nil, !s.tracker.held.isEmpty || ownedByEngine else {
+      guard !s.closed, s.sweepPending == nil,
+        !s.tracker.held.isEmpty || ownedByEngine || !s.tracker.ordinaryDown.isEmpty
+      else {
         return nil
       }
       s.nextSweepToken &+= 1

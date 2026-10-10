@@ -99,8 +99,12 @@ final class RecordingFinalizer {
   /// disarm on that, and `CancelAffordancePolicy.isAbandonment` owns why.
   @discardableResult
   func cancel(trigger: UserCancelTrigger) async -> Bool {
+    // #3544 P4: other-key interference is not the user's cancel control; it carries its own reason,
+    // the same one its terminal row carries.
     TelemetryService.shared.dictationCanceled(
-      stage: "recording", reason: "user_cancel", durationSeconds: nil)
+      stage: "recording",
+      reason: trigger == .otherKeyInterference ? "other_key_dismissed" : "user_cancel",
+      durationSeconds: nil)
     // Prologue: an ignored cancel still unlocks (RecordingFinalizerCancelPathTests).
     recordingLockedAccess.set(false)
     lastUserStopRequest = ContinuousClock.now

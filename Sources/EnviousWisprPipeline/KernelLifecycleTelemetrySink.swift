@@ -360,7 +360,9 @@ final class KernelLifecycleTelemetrySink {
       if case .failed(let failureReason) = event {
         failureReason.terminalNoticeReason.rawValue
       } else {
-        nil
+        // #3544 P4: a cancelled row names a non-control cancel (other-key interference); every
+        // other terminal, and an ordinary cancel, keeps no reason.
+        snapshot.cancelReason?.rawValue
       }
     let attribution = snapshot.signalAttribution
     // #2184: read from the SNAPSHOT, never from `telemetryState` — take B may

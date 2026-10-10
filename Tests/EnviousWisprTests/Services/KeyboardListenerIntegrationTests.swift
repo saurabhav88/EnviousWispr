@@ -236,6 +236,9 @@ struct KeyboardListenerIntegrationTests {
     let service: HotkeyService
     let keys: ListenerKeyboard
     var starts = 0
+    var joins = 0
+    /// What a join finds: the running session's id, or nil once that session has ended.
+    var joinable: String? = "menu"
     var stops = 0
     var published = 0
     init() {
@@ -248,6 +251,10 @@ struct KeyboardListenerIntegrationTests {
       service.onStartRecording = { [unowned self] in
         starts += 1
         return .recording("s\(starts)")
+      }
+      service.onJoinRecording = { [unowned self] in
+        joins += 1
+        return joinable.map { .recording($0) } ?? .noRecording
       }
       service.onStopRecording = { [unowned self] in stops += 1 }
       service.onLockRequested = { [unowned self] _ in
@@ -435,6 +442,182 @@ struct KeyboardListenerIntegrationTests {
     cancelGate = nil
     await toggled.wait(until: 1)
     #expect(toggles == 1)
+  }
+
+  // MARK: - Other-key dismissal on main (#3544 P4, D2)
+
+  private func letterDown(_ ptt: PTT, at t: TimeInterval, kind: KeyEventValue.Kind = .keyDown)
+    async
+  {
+    let sink = ptt.effects.keyboardListenerSink
+    let event = KeyEventValue(kind: kind, keyCode: 0, rawFlags: 0, timestamp: 500 + t)
+    await Task.detached { _ = sink?(event) }.value
+    await ListenerKeyboard.mainTurn()
+  }
+
+  @Test("an early other key dismisses exactly the session its press started, once, and stops nothing")
+  func dismissalEndsTheStartedSession() async {
+    let ptt = PTT()
+    defer { ptt.service.stop() }
+    var dismissed: [String] = []
+    let done = HotkeyGlobeKeyTests.CallbackWaiter()
+    ptt.service.onDismissRecording = { sessionID in
+      dismissed.append(sessionID)
+      done.note()
+    }
+    ptt.at(0)
+    await ptt.keys.press(ModifierKeyCodes.rightOption, at: 500)
+    await ptt.service.awaitInFlightStartForTesting()
+    ptt.at(0.3)
+    await letterDown(ptt, at: 0.3)
+    await done.wait(until: 1)
+    ptt.at(1.5)
+    await ptt.keys.release(ModifierKeyCodes.rightOption, at: 501.5)
+    await ListenerKeyboard.mainTurn()
+    #expect(dismissed == ["s1"])
+    #expect(ptt.stops == 0, "the dismissed hold's release stopped a recording")
+  }
+
+  /// The session may be loading its model (cancel not armed yet), and the listener may have just
+  /// been reinstalled by a resume: the running-session signal survives both.
+  @Test(
+    "an early other key during a recording started elsewhere ends nothing; the release still stops it",
+    arguments: [false, true])
+  func joinedRecordingSurvivesInterference(resumed: Bool) async {
+    let ptt = PTT()
+    defer { ptt.service.stop() }
+    var dismissed: [String] = []
+    ptt.service.onDismissRecording = { dismissed.append($0) }
+    ptt.service.setRecordingActive(true)  // a recording from the menu is running, cancel unarmed
+    if resumed {
+      ptt.service.suspend()
+      ptt.service.resume()
+      await ListenerKeyboard.mainTurn()
+    }
+    ptt.at(0)
+    await ptt.keys.press(ModifierKeyCodes.rightOption, at: 500)
+    await ptt.service.awaitInFlightStartForTesting()
+    ptt.at(0.3)
+    await letterDown(ptt, at: 0.3)
+    ptt.at(1.5)
+    await ptt.keys.release(ModifierKeyCodes.rightOption, at: 501.5)
+    await ListenerKeyboard.mainTurn()
+    #expect(dismissed.isEmpty, "interference ended a recording the press did not start")
+    #expect(ptt.stops == 1, "the joined press lost its stop")
+    #expect(ptt.joins == 1 && ptt.starts == 0, "a joining press asked to create a session")
+  }
+
+  /// A menu recording began after the press was classified, so the press looked fresh; its start
+  /// joined that session. From then on interference spares it and the release still stops it.
+  @Test("a start that finds it joined a session marks the attempt joined")
+  func lateDiscoveredJoinKeepsItsStop() async {
+    let ptt = PTT()
+    defer { ptt.service.stop() }
+    var dismissed: [String] = []
+    ptt.service.onDismissRecording = { dismissed.append($0) }
+    ptt.service.onStartRecording = { [unowned ptt] in
+      ptt.service.markExecutingStartJoined()
+      return .recording("menu")
+    }
+    ptt.at(0)
+    await ptt.keys.press(ModifierKeyCodes.rightOption, at: 500)
+    await ptt.service.awaitInFlightStartForTesting()
+    ptt.at(0.3)
+    await letterDown(ptt, at: 0.3)
+    ptt.at(1.5)
+    await ptt.keys.release(ModifierKeyCodes.rightOption, at: 501.5)
+    await ListenerKeyboard.mainTurn()
+    #expect(dismissed.isEmpty, "interference ended a session the start only joined")
+    #expect(ptt.stops == 1, "the late-discovered join lost its stop")
+  }
+
+  @Test("a press while a dismissed session is still ending starts a fresh take, not a join")
+  func pressDuringDismissalTeardownStarts() async {
+    let ptt = PTT()
+    defer { ptt.service.stop() }
+    let done = HotkeyGlobeKeyTests.CallbackWaiter()
+    ptt.service.onDismissRecording = { _ in done.note() }
+    ptt.at(0)
+    await ptt.keys.press(ModifierKeyCodes.rightOption, at: 500)
+    await ptt.service.awaitInFlightStartForTesting()
+    ptt.service.setRecordingActive(true)  // the take's session is running
+    ptt.at(0.3)
+    await letterDown(ptt, at: 0.3)
+    await done.wait(until: 1)
+    ptt.at(0.5)
+    await ptt.keys.release(ModifierKeyCodes.rightOption, at: 500.5)
+    ptt.at(0.6)
+    await letterDown(ptt, at: 0.6, kind: .keyUp)
+    ptt.joinable = nil  // the dismissed session is ending
+    ptt.at(2)
+    await ptt.keys.press(ModifierKeyCodes.rightOption, at: 502)
+    await ptt.service.awaitInFlightStartForTesting()
+    #expect(ptt.starts == 2 && ptt.joins == 0, "starts \(ptt.starts), joins \(ptt.joins)")
+  }
+
+  /// The session a press found may end before main runs that press (a stop the engine never
+  /// saw). With no ordinary key held the press becomes the fresh take it would have been; with one
+  /// held it creates nothing (a new take would start during typing, past typing protection).
+  @Test("a joining press whose session ended before it ran starts fresh only with no key held",
+    arguments: [false, true])
+  func expiredJoin(ordinaryKeyHeld: Bool) async {
+    let ptt = PTT()
+    defer { ptt.service.stop() }
+    ptt.service.setRecordingActive(true)
+    ptt.joinable = nil  // the menu take concluded before main ran the press
+    if ordinaryKeyHeld {
+      ptt.at(-0.2)
+      await letterDown(ptt, at: -0.2)
+    }
+    ptt.at(0)
+    await ptt.keys.press(ModifierKeyCodes.rightOption, at: 500)
+    await ptt.service.awaitInFlightStartForTesting()
+    #expect(ptt.joins == 1)
+    #expect(ptt.starts == (ordinaryKeyHeld ? 0 : 1), "starts \(ptt.starts)")
+  }
+
+  @Test("a dismissal during a pending start waits for that start and ends its session")
+  func dismissalDuringPendingStart() async throws {
+    let ptt = PTT()
+    defer { ptt.service.stop() }
+    var gate: CheckedContinuation<Void, Never>?
+    let startEntered = HotkeyGlobeKeyTests.CallbackWaiter()
+    ptt.service.onStartRecording = {
+      startEntered.note()
+      await withCheckedContinuation { gate = $0 }
+      return .recording("slow")
+    }
+    var dismissed: [String] = []
+    let done = HotkeyGlobeKeyTests.CallbackWaiter()
+    ptt.service.onDismissRecording = { sessionID in
+      dismissed.append(sessionID)
+      done.note()
+    }
+    ptt.at(0)
+    await ptt.keys.press(ModifierKeyCodes.rightOption, at: 500)
+    await startEntered.wait(until: 1)
+    ptt.at(0.2)
+    await letterDown(ptt, at: 0.2)
+    #expect(dismissed.isEmpty, "dismissed before its start produced a session")
+    try #require(gate).resume()
+    await done.wait(until: 1)
+    #expect(dismissed == ["slow"])
+  }
+
+  @Test("a dismissed press whose start produced no recording dismisses nothing")
+  func dismissalOfARefusedStartDoesNothing() async {
+    let ptt = PTT()
+    defer { ptt.service.stop() }
+    ptt.service.onStartRecording = { .noRecording }
+    var dismissed: [String] = []
+    ptt.service.onDismissRecording = { dismissed.append($0) }
+    ptt.at(0)
+    await ptt.keys.press(ModifierKeyCodes.rightOption, at: 500)
+    await ptt.service.awaitInFlightStartForTesting()
+    ptt.at(0.2)
+    await letterDown(ptt, at: 0.2)
+    await ListenerKeyboard.mainTurn()
+    #expect(dismissed.isEmpty, "a refused attempt's dismissal reached the app")
   }
 
   @Test("our own marked events and key code 179 change nothing")

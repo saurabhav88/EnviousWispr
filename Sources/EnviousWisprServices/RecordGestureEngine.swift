@@ -89,6 +89,10 @@ package final class RecordGestureEngine: Sendable {
     /// the attempt it captured and retired its wait, so a record press after it starts fresh; main
     /// runs the cancel and clears only that attempt's execution state.
     case cancel(Cancel)
+    /// Another key went down within `otherKeyDismissalWindow` of an unlocked push-to-talk press
+    /// (#3544 P4, D2). The engine already ended the attempt; main dismisses that attempt's
+    /// recording only, destructively.
+    case dismiss(Dismiss)
     /// One scheduled lone-tap wait finished, on any path (stopped, stale, locked, cancelled).
     /// A completion signal for tests; always applied, even in an invalidated batch.
     case loneTapResolved
@@ -103,12 +107,23 @@ package final class RecordGestureEngine: Sendable {
     package let input: RecordGesture.InputTime
     package let afterStopTimerMs: Int?
     package let decision: RecordGesture.PressDecision
+    /// A `.start` made while a session was running (#3544 P4): main calls `onJoinRecording` for it.
+    package var joinsRecording = false
+    /// For a joining `.start`: whether it may make a fresh take if that session has already ended
+    /// by the time main runs it. True only when no ordinary key was held at the press, so typing
+    /// protection (which a joining press skips) would not have refused it either.
+    package var mayStartIfJoinFails = false
   }
 
   package struct Cancel: Sendable {
     package let keyCode: UInt16
     /// The attempt that was live when the cancel arrived, or nil when none was.
     package let attemptID: UInt64?
+  }
+
+  package struct Dismiss: Sendable, Equatable {
+    /// The attempt the dismissed press started.
+    package let attemptID: UInt64
   }
 
   package struct QuickReleaseTrace: Sendable {
@@ -146,6 +161,16 @@ package final class RecordGestureEngine: Sendable {
   }
 
   /// Why the engine refused a listener input. A refused input changes no state.
+  /// Whether a key-state reading may end a listener press (#3544 P4 C2). The production reader
+  /// is the system's modifier flags, which can vouch only for a key whose press carried its own
+  /// side bit (or Globe's function flag); a press seen only as aggregate family evidence
+  /// (synthetic or no-side-bit input) reads unknown while held and can read up while still held,
+  /// so no reading ends it.
+  package enum ListenerPressRecovery: Sendable, Equatable {
+    case readable
+    case notReadable
+  }
+
   package enum ListenerRefusal: Hashable, Sendable, CaseIterable {
     /// No listener installation is admitting input, or the input came from an earlier one.
     case staleInstallation
@@ -158,6 +183,9 @@ package final class RecordGestureEngine: Sendable {
     case wrongKey
     /// A release whose press this engine never admitted from that key.
     case unownedRelease
+    /// A press that would start a new dictation while an ordinary key is held (#3544 P4,
+    /// exact-set start). Never refuses a press of a live take (second tap, locked stop).
+    case ordinaryKeyHeld
     /// A cancel while cancel is not armed.
     case cancelNotArmed
   }
@@ -189,6 +217,17 @@ package final class RecordGestureEngine: Sendable {
     /// Admitted through main (Carbon chords until P5): never the listener's to release, so the
     /// held-record watchdog leaves it alone.
     let fromMain: Bool
+    /// Whether a key-state reading may end this hold (#3544 P4 C2). Kept with the attempt, so it
+    /// survives listener replacement and absence.
+    let recovery: ListenerPressRecovery
+  }
+
+  /// The listener-owned record press a held-record check may ask about: its key, its attempt, and
+  /// whether a key-state reading may end it.
+  package struct OwnedListenerPress: Sendable, Equatable {
+    package let keyCode: UInt16
+    package let attemptID: UInt64
+    package let recovery: ListenerPressRecovery
   }
 
   private struct State: Sendable {
@@ -199,6 +238,22 @@ package final class RecordGestureEngine: Sendable {
     /// `bindings.record`, written together by `configure(bindings:mode:)`.
     var bindings: ShortcutBindings
     var cancelArmed = false
+    /// Whether the active pipeline is running a session now (`PipelineState.isActive`, the same
+    /// test `RecordingStarter.start()` uses to join one), as the dictation lifecycle reports it.
+    /// Not cleared by suspend, resume, restart or reset: it is the pipeline's, not the shortcuts'.
+    var recordingActive = false
+    /// The attempt whose `.start` found a session running (one started from the menu, the main
+    /// window or an earlier take), so it only joins it (#3544 P4): other-key interference never
+    /// ends it, and its press keeps its stop and lock. Kept by attempt, not by press: a quick
+    /// release clears `owned`, and the attempt's second tap must still be joining. Also set by
+    /// `markJoined` when main finds a start joined a session that began after the press.
+    var joinedAttempt: UInt64?
+    /// This engine has already decided the running session's ending (a hold stop, a lone-tap stop,
+    /// a locked stop, a triple-press cancel, a listener cancel or an other-key dismissal), so that
+    /// session is on its way out: the next `.start` is a fresh take,
+    /// not a join, even if the pipeline has not reported the session over yet. Cleared when it
+    /// does, or consumed by that next `.start`.
+    var endingRequested = false
     /// Bumped on every ACTUAL change of record binding, mode or any role's binding, and by the
     /// unconditional `reset()`. Distinct from `HotkeyService`'s installation counter.
     var listenerConfigurationGeneration: UInt64 = 0
@@ -275,12 +330,20 @@ package final class RecordGestureEngine: Sendable {
     }
   }
 
-  /// The key of the press whose release the listener may still deliver, or nil. Read by the
-  /// held-record watchdog, which must cover a hold the listener's own state has lost.
+  /// The key of the press whose release the listener may still deliver, or nil: whether a
+  /// held-record check has anything to watch.
   package var ownedListenerKey: UInt16? {
+    ownedListenerPress?.keyCode
+  }
+
+  /// The press whose release the listener may still deliver, or nil. Read by the held-record
+  /// watchdog and the orphaned-hold check, which must cover a hold the listener's own state has
+  /// lost; they may release it from a reading only when `recovery` is `.readable`.
+  package var ownedListenerPress: OwnedListenerPress? {
     state.withLock { s in
       guard let owned = s.owned, !owned.fromMain else { return nil }
-      return owned.keyCode
+      return OwnedListenerPress(
+        keyCode: owned.keyCode, attemptID: owned.attemptID, recovery: owned.recovery)
     }
   }
 
@@ -289,6 +352,32 @@ package final class RecordGestureEngine: Sendable {
   /// before must not be refused for it.
   package func setCancelArmed(_ armed: Bool) {
     state.withLock { $0.cancelArmed = armed }
+  }
+
+  /// Main found that `attempt`'s start joined a session that began after its press (#3544 P4): it
+  /// is a joining attempt from now on. A dismissal already decided for it stands; the controller
+  /// still refuses to cancel the joined session.
+  package func markJoined(attempt: UInt64) {
+    state.withLock { s in
+      guard s.gesture.attemptID == attempt else { return }
+      s.joinedAttempt = attempt
+    }
+  }
+
+  /// Main found the session `attempt` was to join already over and is starting a fresh take for
+  /// it instead (#3544 P4): it is that take's own attempt now, so interference applies again.
+  package func unmarkJoined(attempt: UInt64) {
+    state.withLock { s in
+      if s.joinedAttempt == attempt { s.joinedAttempt = nil }
+    }
+  }
+
+  /// Whether a session is running now (#3544 P4): a fresh record press made while one is joins it.
+  package func setRecordingActive(_ active: Bool) {
+    state.withLock { s in
+      s.recordingActive = active
+      if !active { s.endingRequested = false }
+    }
   }
 
   /// Start admitting listener input from `installation`. Every earlier installation's input is
@@ -331,7 +420,8 @@ package final class RecordGestureEngine: Sendable {
   /// the pending async drain.
   package func ingest(isPress: Bool, input: RecordGesture.InputTime) {
     let (work, submit) = state.withLock { s -> (TimerWork, Bool) in
-      let work = Self.admit(&s, isPress: isPress, input: input, fromMain: false)
+      let work = Self.admit(
+        &s, isPress: isPress, input: input, fromMain: false, recovery: .notReadable)
       return (work, Self.claimAsyncDrain(&s))
     }
     perform(work)
@@ -343,7 +433,7 @@ package final class RecordGestureEngine: Sendable {
   @MainActor
   package func ingestOnMain(isPress: Bool, input: RecordGesture.InputTime) {
     let work = state.withLock { s in
-      Self.admit(&s, isPress: isPress, input: input, fromMain: true)
+      Self.admit(&s, isPress: isPress, input: input, fromMain: true, recovery: .notReadable)
     }
     perform(work)
     drainOnMain()
@@ -358,19 +448,28 @@ package final class RecordGestureEngine: Sendable {
   /// key. A release needs only the press this engine admitted from the same key: it follows its
   /// press, so a release after a rebind still ends the hold it belongs to and is never rematched.
   @discardableResult
+  ///
+  /// `recovery`: for a press, whether a key-state reading may later end it; omitted, it may not.
+  /// `onlyAttempt`: for a release decided from a reading, the attempt that reading was about; a
+  /// newer attempt of the same key refuses it.
   package func ingestFromListener(
     keyCode: UInt16, isPress: Bool, input: RecordGesture.InputTime, generation: UInt64,
-    installation: UInt64
+    installation: UInt64, recovery: ListenerPressRecovery = .notReadable,
+    onlyAttempt: UInt64? = nil, ordinaryKeyHeld: Bool = false
   ) -> ListenerRefusal? {
     let (refusal, work, submit) = state.withLock { s -> (ListenerRefusal?, TimerWork, Bool) in
       if let refusal = Self.refusal(
         &s, keyCode: keyCode, isPress: isPress,
         generation: generation, installation: installation)
+        ?? Self.staleAttempt(s, onlyAttempt)
+        ?? Self.startWhileTyping(s, isPress: isPress, ordinaryKeyHeld: ordinaryKeyHeld)
       {
         s.refusals[refusal, default: 0] += 1
         return (refusal, TimerWork(), false)
       }
-      let work = Self.admit(&s, isPress: isPress, input: input, fromMain: false)
+      let work = Self.admit(
+        &s, isPress: isPress, input: input, fromMain: false, recovery: recovery,
+        ordinaryKeyHeld: ordinaryKeyHeld)
       return (nil, work, Self.claimAsyncDrain(&s))
     }
     perform(work)
@@ -383,13 +482,15 @@ package final class RecordGestureEngine: Sendable {
   /// listener left behind, so it needs no installation; it can never start anything. Returns
   /// whether that press was owned and is now released.
   @discardableResult
-  package func releaseOrphanedListenerPress(keyCode: UInt16, input: RecordGesture.InputTime) -> Bool
-  {
+  package func releaseOrphanedListenerPress(
+    _ press: OwnedListenerPress, input: RecordGesture.InputTime
+  ) -> Bool {
     let (released, work, submit) = state.withLock { s -> (Bool, TimerWork, Bool) in
       guard s.listenerInstallation == nil, let owned = s.owned, !owned.fromMain,
-        owned.keyCode == keyCode
+        owned.keyCode == press.keyCode, owned.attemptID == press.attemptID,
+        owned.recovery == .readable
       else { return (false, TimerWork(), false) }
-      let work = Self.admit(&s, isPress: false, input: input, fromMain: false)
+      let work = Self.admit(&s, isPress: false, input: input, fromMain: false, recovery: .notReadable)
       return (true, work, Self.claimAsyncDrain(&s))
     }
     perform(work)
@@ -427,6 +528,7 @@ package final class RecordGestureEngine: Sendable {
       }
       // Disarmed here, as main's cancel does, so a second cancel event cannot act twice.
       s.cancelArmed = false
+      s.endingRequested = true
       let attempt: UInt64? = s.gesture.start != nil ? s.gesture.attemptID : nil
       var work = TimerWork()
       var effects: [Effect] = []
@@ -443,7 +545,96 @@ package final class RecordGestureEngine: Sendable {
     return refusal
   }
 
+  /// How long after an unlocked push-to-talk press another key still dismisses it (#3544 P4, D2;
+  /// Wispr Flow's 1000 ms). Measured between the two events' own times, from the record press.
+  package static let otherKeyDismissalWindow: TimeInterval = 1.0
+
+  /// Another (non-shortcut) key went down, as the listener observed it (#3544 P4, D2). When the
+  /// bare push-to-talk record press this installation's listener admitted is still held, not
+  /// locked, and less than `otherKeyDismissalWindow` old at `input` (strictly below: a key at
+  /// exactly 1000 ms is late), its attempt is ended here, in input order, and a `.dismiss` effect
+  /// queued. Its later release is then unowned and inert. Returns whether it dismissed.
+  @discardableResult
+  package func otherKeyFromListener(
+    input: RecordGesture.InputTime, installation: UInt64
+  ) -> Bool {
+    let (dismissed, work, submit) = state.withLock { s -> (Bool, TimerWork, Bool) in
+      guard s.listenerInstallation == installation, s.mode == .pushToTalk,
+        let owned = s.owned, !owned.fromMain, s.joinedAttempt != owned.attemptID,
+        owned.attemptID == s.gesture.attemptID,
+        s.gesture.isHeld, !s.gesture.isLocked, let start = s.gesture.start,
+        Self.elapsed(from: start, to: input) < Self.otherKeyDismissalWindow
+      else { return (false, TimerWork(), false) }
+      let attempt = s.gesture.attemptID
+      var work = TimerWork()
+      var effects: [Effect] = []
+      s.endingRequested = true
+      s.gesture.cleanup()
+      // The record key is still physically down, but its release is now unowned and refused, so
+      // the gesture must stop counting it as held: otherwise the next press reads as a duplicate.
+      s.gesture.forgetHeld()
+      s.owned = nil
+      Self.cancelTimer(&s, into: &work, effects: &effects, retired: true)
+      effects.append(.dismiss(Dismiss(attemptID: attempt)))
+      s.outbox.append(Batch(epoch: s.epoch, attemptID: attempt, effects: effects))
+      return (true, work, Self.claimAsyncDrain(&s))
+    }
+    perform(work)
+    if submit { submitAsyncDrain() }
+    return dismissed
+  }
+
+  /// Whether the other-key rule would still dismiss the current take at handling time `now`
+  /// (#3544 P4): a listener-owned push-to-talk press of the live attempt, held, not locked, and
+  /// less than `otherKeyDismissalWindow` old by handling time. Read by the Secure Input notice,
+  /// which may only say keyboard features are paused while one is.
+  package func otherKeyRuleApplies(at now: TimeInterval) -> Bool {
+    state.withLock { s in
+      guard s.mode == .pushToTalk, let owned = s.owned, !owned.fromMain,
+        s.joinedAttempt != owned.attemptID,
+        owned.attemptID == s.gesture.attemptID, s.gesture.isHeld, !s.gesture.isLocked,
+        let start = s.gesture.start
+      else { return false }
+      return now - start.handled < Self.otherKeyDismissalWindow
+    }
+  }
+
+  /// Seconds from `start` to `input` under the gesture's own clock policy (#3534): event times
+  /// when both carry one and they run forward, otherwise handling times.
+  private static func elapsed(
+    from start: RecordGesture.InputTime, to input: RecordGesture.InputTime
+  ) -> TimeInterval {
+    RecordGesture.elapsed(from: start, to: input)
+  }
+
   /// Why a listener record input is refused, or nil to admit it.
+  /// A press that would START a dictation (no live attempt, nothing locked, no recording already
+  /// running) while an ordinary key is held is refused before it touches the gesture (#3544 P4). A
+  /// press of a live take (the second tap of a double tap, the stop of a locked take, a press that
+  /// joins a running recording) is never refused, so a held key can never trap a recording.
+  private static func startWhileTyping(
+    _ s: State, isPress: Bool, ordinaryKeyHeld: Bool
+  ) -> ListenerRefusal? {
+    guard isPress, ordinaryKeyHeld, s.gesture.start == nil, !s.gesture.isLocked,
+      !startWouldJoin(s)
+    else { return nil }
+    return .ordinaryKeyHeld
+  }
+
+  /// Whether a fresh start now would join a running session rather than make one (#3544 P4): a
+  /// session is running and it is not one this engine already ended. The one test for both the
+  /// join classification and the typing-protection exemption, so they cannot disagree.
+  private static func startWouldJoin(_ s: State) -> Bool {
+    s.recordingActive && !s.endingRequested
+  }
+
+  /// A release decided from a reading about `onlyAttempt`, arriving after a newer attempt took the
+  /// key: refused, so a stale reading can never end the newer press.
+  private static func staleAttempt(_ s: State, _ onlyAttempt: UInt64?) -> ListenerRefusal? {
+    guard let onlyAttempt else { return nil }
+    return s.owned?.attemptID == onlyAttempt ? nil : .unownedRelease
+  }
+
   private static func refusal(
     _ s: inout State, keyCode: UInt16, isPress: Bool, generation: UInt64, installation: UInt64
   ) -> ListenerRefusal? {
@@ -532,7 +723,8 @@ package final class RecordGestureEngine: Sendable {
   }
 
   private static func admit(
-    _ s: inout State, isPress: Bool, input: RecordGesture.InputTime, fromMain: Bool
+    _ s: inout State, isPress: Bool, input: RecordGesture.InputTime, fromMain: Bool,
+    recovery: ListenerPressRecovery, ordinaryKeyHeld: Bool = false
   ) -> TimerWork {
     s.inputSequence &+= 1
     let sequence = s.inputSequence
@@ -551,14 +743,21 @@ package final class RecordGestureEngine: Sendable {
         return work
       }
       let decision = s.gesture.classifyPress(input, binding: s.binding, mode: s.mode)
+      if case .start = decision {
+        s.joinedAttempt = Self.startWouldJoin(s) ? s.gesture.attemptID : nil
+        s.endingRequested = false
+      }
+      let joinsRecording = s.joinedAttempt == s.gesture.attemptID
       // The held key's release follows this press, whatever the configuration is by then.
-      s.owned = OwnedPress(keyCode: keyCode, attemptID: s.gesture.attemptID, fromMain: fromMain)
+      s.owned = OwnedPress(
+        keyCode: keyCode, attemptID: s.gesture.attemptID, fromMain: fromMain, recovery: recovery)
       switch decision {
       case .start, .lockIntent:
         // A fresh attempt or a lock: the pending lone-tap stop no longer applies.
         cancelTimer(&s, into: &work, effects: &effects)
       case .tripleCancel, .stopLocked:
         // The engine applies its own cleanup; main clears only its execution state.
+        s.endingRequested = true
         s.gesture.cleanup()
         cancelTimer(&s, into: &work, effects: &effects)
       case .ignoredCooldown, .lateAfterWindow:
@@ -568,7 +767,8 @@ package final class RecordGestureEngine: Sendable {
         .press(
           Press(
             inputSequence: sequence, mode: s.mode, keyCode: keyCode, input: input,
-            afterStopTimerMs: afterStopTimerMs, decision: decision)))
+            afterStopTimerMs: afterStopTimerMs, decision: decision,
+            joinsRecording: joinsRecording, mayStartIfJoinFails: !ordinaryKeyHeld)))
     } else {
       s.owned = nil
       let decision = s.gesture.release(input)
@@ -589,6 +789,7 @@ package final class RecordGestureEngine: Sendable {
         work.schedule = (token, quick.deadline, fromMain)
         effects.append(.quickRelease(trace))
       case .hold:
+        s.endingRequested = true
         s.gesture.cleanup()
         cancelTimer(&s, into: &work, effects: &effects)
         effects.append(.holdStop)
@@ -660,6 +861,7 @@ package final class RecordGestureEngine: Sendable {
       if case .stop(let stop) = check {
         // #3534 §3.3, in this order: (1) snapshot (in checkLoneTap), (2) cleanup, (3) marker
         // with the post-cleanup epoch and the time read after cleanup.
+        s.endingRequested = true
         s.gesture.cleanup()
         let stoppedAt = clock()
         s.gesture.recordQuickTapStop(stop, stoppedAt: stoppedAt)
