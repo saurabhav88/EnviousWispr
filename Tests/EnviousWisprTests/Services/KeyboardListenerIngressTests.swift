@@ -30,6 +30,9 @@ struct KeyboardListenerIngressTests {
     let mainEdges = OSAllocatedUnfairLock<[KeyboardListenerIngress.MainEdge]>(initialState: [])
     /// Runs between a reconciliation's commit and its drain.
     let afterCommit = OSAllocatedUnfairLock<(@Sendable () -> Void)?>(initialState: nil)
+    /// Field-health observations (#3544 P6), in the order the ingress made them.
+    let observations = OSAllocatedUnfairLock<[KeyboardListenerIngress.Observation]>(
+      initialState: [])
     var effects: [String] = []
     private(set) var ingress: KeyboardListenerIngress!
 
@@ -68,6 +71,7 @@ struct KeyboardListenerIngressTests {
       let duringRead = self.duringRead
       let mainEdges = self.mainEdges
       let afterCommit = self.afterCommit
+      let observations = self.observations
       return KeyboardListenerIngress(
         installation: installation, engine: engine,
         reader: { keys in
@@ -85,6 +89,7 @@ struct KeyboardListenerIngressTests {
         },
         clock: clock.uptime, scheduler: timers.scheduler,
         toMain: { edge in mainEdges.withLock { $0.append(edge) } },
+        observe: { observation in observations.withLock { $0.append(observation) } },
         afterReconcileCommitForTesting: { afterCommit.withLock { $0 }?() })
     }
 
@@ -467,6 +472,95 @@ struct KeyboardListenerIngressTests {
     #expect(rig.effects.isEmpty, "a later reading let a start through an ordinary-key chord")
     await rig.key(Self.option, held: [Self.option], at: 6)
     #expect(rig.effects == ["start"])
+  }
+
+  // MARK: - Field health observations (#3544 P6)
+
+  @Test("a start refused for a held key is observed once; an admitted start and its release never")
+  func refusedStartIsObserved() async {
+    let rig = Rig()
+    await ordinary(rig, .keyDown, Self.letterA, at: 0)
+    await rig.key(Self.option, held: [Self.option], at: 0.2)
+    await rig.key(Self.option, held: [], at: 0.4)
+    #expect(rig.effects.isEmpty)
+    #expect(rig.observations.withLock { $0 } == [.startRefusedKeyHeld(keyCode: Self.option)])
+    await ordinary(rig, .keyUp, Self.letterA, at: 0.5)
+    await rig.key(Self.option, held: [Self.option], at: 1)
+    await rig.key(Self.option, held: [], at: 3)
+    #expect(rig.effects == ["start", "holdStop"])
+    #expect(
+      rig.observations.withLock { $0 } == [.startRefusedKeyHeld(keyCode: Self.option)],
+      "an admitted press or a release was observed as a refusal")
+  }
+
+  @Test("an ordinary key a reading removed is observed once per installation; a key-up never is")
+  func staleOrdinaryRemovalObservedOncePerInstallation() async {
+    let rig = Rig()
+    await ordinary(rig, .keyDown, Self.letterA, at: 0)
+    await ordinary(rig, .keyUp, Self.letterA, at: 0.1)
+    #expect(rig.observations.withLock { $0 }.isEmpty, "an ordinary key-up counted as a recovery")
+    await ordinary(rig, .keyDown, Self.letterA, at: 1)
+    await ordinary(rig, .keyDown, Self.letterW, at: 1.1)
+    rig.readings.withLock {
+      $0[Self.letterA] = .up
+      $0[Self.letterW] = .up
+    }
+    await rig.fireSweeps(at: 5)  // removes both keys at once: one observation
+    #expect(rig.observations.withLock { $0 } == [.staleKeyCleared(.ordinary)])
+    await ordinary(rig, .keyDown, Self.letterA, at: 6)
+    await rig.fireSweeps(at: 11)  // a second removal in the same installation
+    #expect(rig.observations.withLock { $0 } == [.staleKeyCleared(.ordinary)])
+    // A new installation reports its own first removal.
+    rig.replace(8)
+    await ordinary(rig, .keyDown, Self.letterA, at: 12)
+    await rig.fireSweeps(at: 17)
+    #expect(
+      rig.observations.withLock { $0 } == [
+        .staleKeyCleared(.ordinary), .staleKeyCleared(.ordinary),
+      ])
+  }
+
+  @Test("a recovery-boundary reading that removes a held ordinary key is observed")
+  func boundaryRemovalIsObserved() async {
+    let rig = Rig()
+    await ordinary(rig, .keyDown, Self.letterA, at: 0)
+    rig.readings.withLock { $0[Self.letterA] = .up }
+    await rig.notice(.tapReenabled, at: 1)
+    #expect(rig.observations.withLock { $0 } == [.staleKeyCleared(.ordinary)])
+  }
+
+  @Test("a stale reading that is dropped is never observed")
+  func droppedReadingIsNotObserved() async {
+    let rig = Rig()
+    await ordinary(rig, .keyDown, Self.letterA, at: 0)
+    rig.readings.withLock { $0[Self.letterA] = .up }
+    let ingress = rig.ingress!
+    rig.duringRead.withLock {
+      $0 = {
+        ingress.receive(KeyEventValue(kind: .keyUp, keyCode: 0, rawFlags: 0, timestamp: 505.0))
+        ingress.receive(KeyEventValue(kind: .keyDown, keyCode: 0, rawFlags: 0, timestamp: 505.05))
+      }
+    }
+    await rig.fireSweeps(at: 5.1)
+    #expect(rig.observations.withLock { $0 }.isEmpty, "a dropped reading counted as a recovery")
+  }
+
+  @Test("a held modifier two sweeps release is observed once per installation; one sweep never")
+  func staleModifierRemovalObservedOnce() async {
+    let rig = Rig()
+    await rig.key(Self.option, held: [Self.option], at: 0)
+    rig.readings.withLock { $0[Self.option] = .up }
+    await rig.fireSweeps(at: 5)
+    #expect(rig.observations.withLock { $0 }.isEmpty, "a single up reading counted as a recovery")
+    await rig.fireSweeps(at: 10)
+    #expect(rig.effects == ["start", "holdStop"])
+    #expect(rig.observations.withLock { $0 } == [.staleKeyCleared(.modifier)])
+    rig.readings.withLock { $0[Self.option] = .down }
+    await rig.key(Self.option, held: [Self.option], at: 20)
+    rig.readings.withLock { $0[Self.option] = .up }
+    await rig.fireSweeps(at: 25)
+    await rig.fireSweeps(at: 30)
+    #expect(rig.observations.withLock { $0 } == [.staleKeyCleared(.modifier)])
   }
 
   /// A key held across a listener replacement has no keyDown to come: the new installation reads

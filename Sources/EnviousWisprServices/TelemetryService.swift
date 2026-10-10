@@ -919,15 +919,17 @@ public final class TelemetryService {
     PostHogSDK.shared.capture("hotkey.registration", properties: props)
   }
 
-  /// #3544 P3: the keyboard listener had trouble (an installation ended after an OS disable, or
-  /// an install succeeded after failed attempts). Rare failure; counts and closed-set strings.
+  /// #3544 P3, P6: the keyboard listener had trouble (an installation ended after an OS disable,
+  /// an install succeeded after failed attempts), recovered a stale key, or the Secure Input notice
+  /// was shown. Counts and closed-set strings.
   public func hotkeyListenerHealth(_ report: HotkeyListenerHealthReport) {
-    let props: [String: Any] = [
+    var props: [String: Any] = [
       "terminal": report.terminal, "reason": report.reason,
       "disable_episodes": report.disableEpisodes, "reenables": report.reenables,
       "install_attempts": report.installAttempts, "install_failures": report.installFailures,
       "installs": report.installs,
     ]
+    if let staleKind = report.staleKind { props["stale_kind"] = staleKind }
     #if DEBUG
       // Derived from `props`, every typed bucket, as `hotkeyPressed` does.
       testEventHook?(

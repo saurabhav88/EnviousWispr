@@ -1706,7 +1706,7 @@ private struct PermissionsPhaseView: View {
             localized: "Accessibility",
             comment: "Setup permissions: title of the macOS Accessibility permission row."),
           subtitle: String(
-            localized: "To paste your transcribed text into any app.",
+            localized: "For a modifier key used on its own and to paste your text into other apps.",
             comment: "Setup permissions: why Accessibility is needed."),
           isGranted: viewModel.accessibilityGranted,
           onGrant: { viewModel.openAccessibilitySettings(permissions: permissions) }
@@ -1724,7 +1724,7 @@ private struct PermissionsPhaseView: View {
                 .foregroundStyle(Color.obWarning)
                 .font(.system(size: 16, weight: .semibold))
               VStack(alignment: .leading, spacing: 6) {
-                Text("Required for your shortcut and for pasting")
+                Text("For modifier keybinds and pasting")
                   .font(.obLabel)
                   .foregroundStyle(Color.obTextPrimary)
                 Text(

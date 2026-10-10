@@ -174,6 +174,12 @@ struct TelemetryEmitterRegistryTests {
   /// about one per minute in a pathological storm loop. Launch-scoped, no take_id; counts and
   /// closed terminal/reason strings only, Int on the wire; no existing row ends with an
   /// installation; reader named on its graded registry row.
+  /// #3544 P6: no new site or event. `hotkey.listener_health` gains two event-time reasons
+  /// (`stale_key_cleared` with an optional closed `stale_kind`, at most one per listener installation
+  /// per kind; `secure_input_notice`, at most one per observed Secure Input period), so its cadence
+  /// moves to per_change; `hotkey.pressed` gains `press_action=refused_key_held`, one row per
+  /// refused bare-modifier push-to-talk press, kept whole. No content, no ordinary-key identity;
+  /// readers named on both registry rows.
   static let sitesFingerprint =
     "448af263db49fd5bbe5a86f4ccfd650fc20077639130445c25605abc4708f9df"
   static let ungradedFingerprint =

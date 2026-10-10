@@ -2041,12 +2041,12 @@
         }
       }
     },
-    "Accessibility access required for paste" : {
+    "Accessibility needed for modifier keys used on their own and for pasting" : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Zum Einfügen ist Zugriff auf Bedienungshilfen nötig"
+            "value" : "Bedienungshilfen nötig für allein genutzte Sondertasten und zum Einfügen"
           }
         }
       }
@@ -2726,12 +2726,12 @@
         }
       }
     },
-    "Allow Accessibility access so EnviousWispr can paste your dictation into other apps." : {
+    "Allow Accessibility access so a modifier key used on its own works as a keybind and EnviousWispr can paste your dictation into other apps." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Erlaube den Zugriff auf Bedienungshilfen, damit EnviousWispr dein Diktat in andere Apps einfügen kann."
+            "value" : "Erlaube den Zugriff auf Bedienungshilfen, damit eine allein genutzte Sondertaste als Tastenkürzel funktioniert und EnviousWispr dein Diktat in andere Apps einfügen kann."
           }
         }
       }
@@ -14301,12 +14301,12 @@
         }
       }
     },
-    "Required for your shortcut and for pasting" : {
+    "For modifier keybinds and pasting" : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Für dein Tastenkürzel und zum Einfügen erforderlich"
+            "value" : "Für Sondertasten als Tastenkürzel und zum Einfügen"
           }
         }
       }
@@ -18303,13 +18303,13 @@
         }
       }
     },
-    "To paste your transcribed text into any app." : {
+    "For a modifier key used on its own and to paste your text into other apps." : {
       "comment" : "Setup permissions: why Accessibility is needed.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Um deinen transkribierten Text in eine beliebige App einzufügen."
+            "value" : "Für eine allein genutzte Sondertaste und zum Einfügen deines Texts in andere Apps."
           }
         }
       }

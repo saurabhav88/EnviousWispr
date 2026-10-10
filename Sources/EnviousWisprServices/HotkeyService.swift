@@ -433,6 +433,9 @@ public final class HotkeyService {
     /// pending. Its outcome is unchanged (the pending stop runs; its release stops); before
     /// this it took no branch at all and left no row.
     case lateAfterWindow = "late_after_window"
+    /// #3544 P6: a bare-modifier push-to-talk press the listener refused because an ordinary key
+    /// was held (P4 exact-set start). Nothing started.
+    case refusedKeyHeld = "refused_key_held"
   }
 
   /// Which hotkey delivered the press.
@@ -548,11 +551,13 @@ public final class HotkeyService {
   /// snapshot — no shared-state re-read.
   private func emitHotkeyPressed(
     _ action: PressAction, trigger: PressTrigger, windowTiming: String? = nil,
-    decidedUnder press: RecordGestureEngine.Press? = nil
+    decidedUnder press: RecordGestureEngine.Press? = nil,
+    frozen: (keyCode: UInt16, mode: RecordingMode)? = nil
   ) {
-    // #3544: a record press decided by the engine reports the mode and key it was decided under,
-    // not whatever the configuration is when main executes it.
-    let inputMode = (press?.mode ?? recordingMode).rawValue
+    // #3544: a record press decided by the engine (or refused by the listener, `frozen`) reports
+    // the mode and key it was decided under, not whatever the configuration is when main runs.
+    let frozen = press.map { (keyCode: $0.keyCode, mode: $0.mode) } ?? frozen
+    let inputMode = (frozen?.mode ?? recordingMode).rawValue
     // key_shape reflects the TRIGGERING hotkey: the cancel hotkey (Escape, a chord
     // by default) vs the toggle/PTT hotkey (modifier-only by default). The PTT
     // hands-free actions all ride the toggle key. (Codex code-diff #1.)
@@ -565,7 +570,7 @@ public final class HotkeyService {
       case .quickAdd: quickAddKeyCode
       case .pasteLast: pasteLastKeyCode
       case .copyLast: copyLastKeyCode
-      case .toggle, .ptt: press?.keyCode ?? toggleKeyCode
+      case .toggle, .ptt: frozen?.keyCode ?? toggleKeyCode
       }
     let keyShape = ModifierKeyCodes.isModifierOnly(keyCode) ? "modifier_only" : "chord"
     // #1987: same key as key_shape, one level finer. `key_shape` cannot separate
@@ -1315,6 +1320,11 @@ public final class HotkeyService {
         DispatchQueue.main.async { [weak self] in
           MainActor.assumeIsolated { self?.handleListenerEdge(edge) }
         }
+      },
+      observe: { [weak self] observation in
+        DispatchQueue.main.async { [weak self] in
+          MainActor.assumeIsolated { self?.reportListenerObservation(observation) }
+        }
       })
     let sink: @Sendable (KeyEventValue) -> ListenerVerdict = { event in
       ingress.receive(event)
@@ -1355,6 +1365,21 @@ public final class HotkeyService {
     armOrphanedHoldCheck()
   }
 
+  /// Field health for a decision the listener already committed (#3544 P6). Telemetry only, and
+  /// deliberately not checked against the current installation or configuration: the decision was
+  /// true when it was made, and its row carries the key and mode it was made under.
+  private func reportListenerObservation(_ observation: KeyboardListenerIngress.Observation) {
+    switch observation {
+    case .startRefusedKeyHeld(let keyCode):
+      // Only bare-modifier push-to-talk presses reach the engine's listener path.
+      emitHotkeyPressed(.refusedKeyHeld, trigger: .ptt, frozen: (keyCode, .pushToTalk))
+    case .staleKeyCleared(let kind):
+      reportListenerHealth(
+        terminal: "none", reason: "stale_key_cleared", disableEpisodes: 0, reenables: 0,
+        staleKind: kind.rawValue)
+    }
+  }
+
   /// A Secure Input change the listener `installation` observed (plan A2). Logged only; no take is
   /// ended, cancelled or locked by it (bare modifiers keep arriving under Secure Input, #3544 P0).
   /// Ignored for an installation that is no longer current.
@@ -1390,7 +1415,12 @@ public final class HotkeyService {
     else { return }
     // Counted as told only when the presentation accepted it, so a refused one (a session no
     // longer running) leaves the period's notice for the next valid take.
-    if onSecureInputPausedKeyFeatures?(sessionID) == true { secureInputNoticeShown = true }
+    if onSecureInputPausedKeyFeatures?(sessionID) == true {
+      secureInputNoticeShown = true
+      // #3544 P6: one row per notice shown, so at most one per observed Secure Input period.
+      reportListenerHealth(
+        terminal: "none", reason: "secure_input_notice", disableEpisodes: 0, reenables: 0)
+    }
   }
 
   /// #3544 P4: show the Secure Input notice on the recording session `String` started, if it is
@@ -1495,13 +1525,15 @@ public final class HotkeyService {
   }
 
   private func reportListenerHealth(
-    terminal: String, reason: String, disableEpisodes: Int, reenables: Int
+    terminal: String, reason: String, disableEpisodes: Int, reenables: Int,
+    staleKind: String? = nil
   ) {
     telemetry.listenerHealth(
       HotkeyListenerHealthReport(
         terminal: terminal, reason: reason, disableEpisodes: disableEpisodes,
         reenables: reenables, installAttempts: listenerInstallAttempts,
-        installFailures: listenerInstallFailures, installs: listenerInstalls))
+        installFailures: listenerInstallFailures, installs: listenerInstalls,
+        staleKind: staleKind))
   }
 
   /// Try the install again later, for this installation attempt only.
