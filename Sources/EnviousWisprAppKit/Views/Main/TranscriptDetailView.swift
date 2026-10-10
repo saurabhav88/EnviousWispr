@@ -556,10 +556,15 @@ struct DeliverableText: Transferable, Sendable {
   /// exists to prevent.
   struct ExpiredError: Error {}
 
+  @MainActor
+  func exportData() throws -> Data {
+    guard let text = resolve() else { throw ExpiredError() }
+    return Data(text.utf8)
+  }
+
   static var transferRepresentation: some TransferRepresentation {
     DataRepresentation(exportedContentType: .plainText) { deliverable in
-      guard let text = await deliverable.resolve() else { throw ExpiredError() }
-      return Data(text.utf8)
+      try await deliverable.exportData()
     }
   }
 }
