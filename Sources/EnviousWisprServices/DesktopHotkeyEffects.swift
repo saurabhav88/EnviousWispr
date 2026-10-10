@@ -108,14 +108,6 @@ package struct KeyEventValue: Sendable, Equatable {
   }
 }
 
-/// What the listener does with the event after the sink has seen it (#3544 P2).
-package enum ListenerVerdict: Sendable, Equatable {
-  /// Return the event unchanged. The only verdict before P5.
-  case passThrough
-  /// Remove the event from the stream (P5: owned chords, Escape during dictation).
-  case swallow
-}
-
 /// What the keyboard listener can say about itself, content-free (#3544 P2).
 package struct KeyboardListenerHealth: Sendable, Equatable {
   package enum Terminal: Sendable, Equatable {
@@ -205,10 +197,11 @@ package protocol DesktopHotkeyEffects: AnyObject {
   ///
   /// Installation and removal stay main-isolated like every other resource here. The `sink` is
   /// NOT: it runs synchronously on the listener's thread while the OS holds the event, so it must
-  /// never wait on main, and its verdict decides whether the event continues. Nil when the tap
+  /// never wait on main. The event always continues unchanged; Carbon owns registered chords
+  /// (#3544 P5 D5). Nil when the tap
   /// could not be created (for example without Accessibility); the caller reports that.
   func installKeyboardListener(
-    _ sink: @escaping @Sendable (KeyEventValue) -> ListenerVerdict
+    _ sink: @escaping @Sendable (KeyEventValue) -> Void
   ) -> DesktopEffectToken?
 
   /// The listener's state: the installed one's, or the last removed one's final state (read after

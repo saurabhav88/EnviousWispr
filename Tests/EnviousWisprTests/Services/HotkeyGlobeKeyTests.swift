@@ -490,12 +490,12 @@ import Testing
 
   /// A Globe press through a sink the service may have replaced since, as a late tap callback.
   private static func deliver(
-    _ sink: (@Sendable (KeyEventValue) -> ListenerVerdict)?, _ key: UInt16
+    _ sink: (@Sendable (KeyEventValue) -> Void)?, _ key: UInt16
   ) async {
     let event = KeyEventValue(
       kind: .flagsChanged, keyCode: key,
       rawFlags: UInt64(NSEvent.ModifierFlags.function.rawValue), timestamp: nil)
-    await Task.detached { _ = sink?(event) }.value
+    await Task.detached { sink?(event) }.value
     await ListenerKeyboard.mainTurn()
   }
 }

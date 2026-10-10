@@ -204,7 +204,7 @@ package final class RecordGestureEngine: Sendable {
     let capturedGeneration: UInt64
     let trace: QuickReleaseTrace
     /// Whether the wait's fire is delivered through the main queue: true when the release that
-    /// armed it came through main (Carbon chords until P5), so the decision queues behind key events
+    /// armed it came through main (Carbon chords), so the decision queues behind key events
     /// main already holds (#3544 P1). Captured when armed, so a later rebind cannot change it.
     let viaMain: Bool
     var handle: TimerHandle?
@@ -214,7 +214,7 @@ package final class RecordGestureEngine: Sendable {
   private struct OwnedPress: Sendable {
     let keyCode: UInt16
     let attemptID: UInt64
-    /// Admitted through main (Carbon chords until P5): never the listener's to release, so the
+    /// Admitted through main (Carbon chords): never the listener's to release, so the
     /// held-record watchdog leaves it alone.
     let fromMain: Bool
     /// Whether a key-state reading may end this hold (#3544 P4 C2). Kept with the attempt, so it
@@ -533,7 +533,7 @@ package final class RecordGestureEngine: Sendable {
       var work = TimerWork()
       var effects: [Effect] = []
       s.gesture.cleanup()
-      Self.cancelTimer(&s, into: &work, effects: &effects, retired: true)
+      Self.cancelTimer(&s, into: &work, effects: &effects)
       effects.append(.cancel(Cancel(keyCode: keyCode, attemptID: attempt)))
       var batch = Batch(epoch: s.epoch, attemptID: attempt ?? s.gesture.attemptID, effects: effects)
       batch.attemptScoped = false
@@ -574,7 +574,7 @@ package final class RecordGestureEngine: Sendable {
       // the gesture must stop counting it as held: otherwise the next press reads as a duplicate.
       s.gesture.forgetHeld()
       s.owned = nil
-      Self.cancelTimer(&s, into: &work, effects: &effects, retired: true)
+      Self.cancelTimer(&s, into: &work, effects: &effects)
       effects.append(.dismiss(Dismiss(attemptID: attempt)))
       s.outbox.append(Batch(epoch: s.epoch, attemptID: attempt, effects: effects))
       return (true, work, Self.claimAsyncDrain(&s))
@@ -802,8 +802,7 @@ package final class RecordGestureEngine: Sendable {
   /// Retire the pending timer: its handle is cancelled outside the lock, and its resolution is
   /// reported with the batch being built.
   private static func cancelTimer(
-    _ s: inout State, into work: inout TimerWork, effects: inout [Effect],
-    retired: Bool = false
+    _ s: inout State, into work: inout TimerWork, effects: inout [Effect]
   ) {
     guard let timer = s.timer else { return }
     s.timer = nil
@@ -815,7 +814,7 @@ package final class RecordGestureEngine: Sendable {
   /// with the CURRENT epoch so it is delivered.
   private static func cancelTimer(_ s: inout State, into work: inout TimerWork) {
     var effects: [Effect] = []
-    cancelTimer(&s, into: &work, effects: &effects, retired: true)
+    cancelTimer(&s, into: &work, effects: &effects)
     if !effects.isEmpty {
       s.outbox.append(Batch(epoch: s.epoch, attemptID: s.gesture.attemptID, effects: effects))
     }
@@ -834,7 +833,7 @@ package final class RecordGestureEngine: Sendable {
     guard let (token, deadline, viaMain) = work.schedule else { return }
     // #3534: compute the remaining wait now; request no further wait if the deadline has passed.
     let fire: @Sendable () -> Void = { [weak self] in self?.timerFired(token) }
-    // #3544 P1: a wait armed by input that came through main (Carbon chords until P5) delivers its
+    // #3544 P1: a wait armed by input that came through main (Carbon chords) delivers its
     // decision through the main queue, so it queues BEHIND any key event main already holds, as
     // the old main-actor timer task did; deciding on the timer queue would stop a valid double
     // tap whose second press is still waiting on a busy main thread. Listener-fed input (P3)

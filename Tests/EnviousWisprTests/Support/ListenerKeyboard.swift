@@ -59,7 +59,7 @@ final class ListenerKeyboard {
     #expect(sink != nil, "no keyboard listener installed: start the service first")
     let event = KeyEventValue(
       kind: .flagsChanged, keyCode: key, rawFlags: raw, timestamp: timestamp, isOurs: isOurs)
-    await Task.detached { _ = sink?(event) }.value
+    await Task.detached { sink?(event) }.value
     await Self.mainTurn()
   }
 
