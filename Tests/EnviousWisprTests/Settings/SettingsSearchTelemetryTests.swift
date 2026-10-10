@@ -171,6 +171,48 @@ struct SettingsSearchTelemetryTests {
     }
   }
 
+  @Test("copied invisible password gaps never enter reports (#3526)")
+  func passwordFormatRegression() {
+    #expect(SettingsSearchQueryFilter.reportable("password\u{200B}is\u{200B}hunter2") == nil)
+    #expect(SettingsSearchQueryFilter.reportable("Passwort\u{200B}ist\u{200B}geheim") == nil)
+  }
+
+  @Test("every Unicode format member can separate a labelled password (#3526)")
+  func passwordFormatClass() {
+    let formats = (0...0x10FFFF).compactMap { Unicode.Scalar($0) }
+      .filter { $0.properties.generalCategory == .format }
+    #expect(formats.isEmpty == false)
+    print("Settings search password format members: \(formats.count)")
+    for scalar in formats {
+      let f = String(scalar)
+      #expect(SettingsSearchQueryFilter.reportable("password\(f)is\(f)hunter2") == nil)
+      let ordinary = "password\(f)manager"
+      #expect(SettingsSearchQueryFilter.reportable(ordinary) == ordinary)
+    }
+  }
+
+  @Test("format locations preserve password detection and ordinary controls (#3526)")
+  func passwordFormatLocations() {
+    for text in [
+      "pas\u{200B}sword is hunter2", "password i\u{200B}s hunter2",
+      "password\u{200B}is hunter2", "password is\u{200B}hunter2", "password\u{200B}hunter2",
+      "password is hun\u{200B}ter2", "pas\u{200B}sword\u{2060}i\u{200D}s\u{FEFF}hunter2",
+      "Pass\u{200C}wort\u{2060}i\u{200D}st\u{FEFF}geheim",
+      "pass\u{200B}word\u{2060}:hunter2", "pass\u{200B}word\u{2060}=hunter2",
+      "mot\u{200B}de\u{200B}passe est secret",
+    ] {
+      #expect(SettingsSearchQueryFilter.reportable(text) == nil, "kept \(text)")
+    }
+    for text in [
+      "by\u{200B}pass is enabled", "pass\u{200B}port is expired",
+      "password\u{200B}hunter", "password hint hunter2", "hasło\u{200B}to x", "dark\u{200B}mode",
+    ] {
+      #expect(SettingsSearchQueryFilter.reportable(text) == text, "dropped \(text)")
+    }
+    // Foundation's existing whitespace trim removes a trailing U+200B before detection.
+    #expect(SettingsSearchQueryFilter.reportable("password is\u{200B}") == "password is")
+  }
+
   @Test("the query rides only on zero_results and sidebar_bypass")
   func queryOnlyOnGaps() {
     func query(_ outcome: SettingsSearchFinished.Outcome) -> String? {

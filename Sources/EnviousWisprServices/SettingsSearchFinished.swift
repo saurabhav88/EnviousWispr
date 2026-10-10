@@ -70,22 +70,23 @@ public enum SettingsSearchQueryFilter {
     if looksLikeWebAddress(checked) { return nil }
     if checked.unicodeScalars.filter(CharacterSet.decimalDigits.contains).count >= 7 { return nil }
     if looksLikePersonalAddress(checked) { return nil }
-    if looksLikeLabelledPassword(checked) { return nil }
+    if looksLikeLabelledPassword(query) { return nil }
     if looksLikeCredential(checked) { return nil }
     return query
   }
 
-  /// What the checks read; the sent text stays the query itself. Invisible format characters
-  /// (zero-width spaces and joiners) are removed, so one hidden inside a key or an address cannot
-  /// split it, compatibility forms (full-width punctuation) become plain ones, and every kind of
-  /// whitespace (a non-breaking space too) becomes one plain space, so the patterns below match
-  /// whatever spacing was typed.
-  static func detectionCopy(_ query: String) -> String {
+  /// Checks read compatibility-folded, whitespace-collapsed copies; sent text is unchanged.
+  /// The default removes format characters so copied keys and addresses remain detectable.
+  /// Password matching also reads a format-preserving view for embedded characters and gaps.
+  static func detectionCopy(_ query: String, preservingFormat: Bool = false) -> String {
     var out = String.UnicodeScalarView()
     var lastWasSpace = false
-    // Compatibility forms first (a full-width colon or letter reads as the plain one).
     let folded = query.precomposedStringWithCompatibilityMapping
-    for scalar in folded.unicodeScalars where scalar.properties.generalCategory != .format {
+    for scalar in folded.unicodeScalars {
+      if scalar.properties.generalCategory == .format {
+        if preservingFormat { out.append("\u{200B}") }
+        continue
+      }
       if CharacterSet.whitespacesAndNewlines.contains(scalar) {
         if !lastWasSpace { out.append(" ") }
         lastWasSpace = true
@@ -103,14 +104,45 @@ public enum SettingsSearchQueryFilter {
   /// "hasło to x" remain outside this check; "to" would also hide ordinary "password to reset".
   private static func looksLikeLabelledPassword(_ query: String) -> Bool {
     let labels = "password|passwd|pwd|passwort|kennwort|mot de passe|contraseña|senha|wachtwoord|hasło|pass|passcode|passphrase|pw|pin|secret"
-    let gap = #"[\s,;:=.\-"'“”‘’()\[\]]+"#
+    let gapCharacters = #"\s,;:=.\-"'“”‘’()\[\]"#
+    let gap = "[\(gapCharacters)]+"
     let separators = "is|was|are|ist|war|lautet|est|c'est|c’est|es|era|é|jest"
+    let checked = detectionCopy(query)
     let patterns = [
       #"\b(?:\#(labels))\s*[:=]"#,
       #"\b(?:\#(labels))\#(gap)(?:\#(separators))\#(gap)\S"#,
       #"\b(?:\#(labels))\#(gap)[^\s]*\p{Nd}"#,
     ]
-    return patterns.contains { query.range(of: $0, options: .regularExpression) != nil }
+    if patterns.contains(where: {
+      checked.range(of: $0, options: .regularExpression) != nil
+    }) { return true }
+
+    let formatted = detectionCopy(query, preservingFormat: true)
+    guard formatted.unicodeScalars.contains(where: { $0.value == 0x200B }) else {
+      return false
+    }
+    let f = "\u{200B}"
+    func embedded(_ alternatives: String) -> String {
+      alternatives.split(separator: "|").map { literal in
+        literal.unicodeScalars.map { scalar in
+          scalar == " " ? "[ \(f)]+"
+            : NSRegularExpression.escapedPattern(for: String(scalar))
+        }.joined(separator: "\(f)*")
+      }.joined(separator: "|")
+    }
+    // Format characters cannot create a word boundary inside "bypass"/"passport".
+    let boundary = #"(?<![\w\#(f)])\#(f)*"#
+    let l = embedded(labels)
+    let s = embedded(separators)
+    let g = "[\(gapCharacters)\(f)]+"
+    let tolerant = [
+      #"\#(boundary)(?:\#(l))[\s\#(f)]*[:=]"#,
+      #"\#(boundary)(?:\#(l))\#(g)(?:\#(s))\#(g)[^\s\#(f)]"#,
+      #"\#(boundary)(?:\#(l))\#(g)[^\s]*\p{Nd}"#,
+    ]
+    return tolerant.contains {
+      formatted.range(of: $0, options: .regularExpression) != nil
+    }
   }
 
   private static func looksLikeWebAddress(_ query: String) -> Bool {
