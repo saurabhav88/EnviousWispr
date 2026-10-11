@@ -336,7 +336,7 @@ import Testing
     #expect(fx.kernelDriver.state == .idle)
     // The honest cold-boot pill is shown (engine-named), not a recording pill.
     #expect(
-      Self.showsColdBoot(fx.overlay, engine: "Parakeet v3"),
+      Self.showsColdBoot(fx.overlay, engine: "Parakeet"),
       "the honest cold-boot pill, naming the engine, is what the user must see")
   }
 
@@ -466,7 +466,7 @@ import Testing
 
     #expect(fx.kernelDriver.state == .idle)
     #expect(
-      Self.showsColdBoot(fx.overlay, engine: "Parakeet v3"),
+      Self.showsColdBoot(fx.overlay, engine: "Parakeet"),
       "the honest cold-boot pill, naming the engine, is what the user must see")
   }
 

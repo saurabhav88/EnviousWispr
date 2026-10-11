@@ -236,6 +236,12 @@ struct SettingsMapTests {
     }
     #expect(
       title(.currentEngineSection, .currentEngine(EngineChoicePresentation.fast))
+        == "FAST · PARAKEET ULTRA")
+    // #3546: screens pass the model this Mac presents.
+    #expect(
+      title(
+        .currentEngineSection,
+        .currentEngine(EngineChoicePresentation.fast(parakeetModel: "Parakeet v3")))
         == "FAST · PARAKEET V3")
     #expect(
       title(.appleIntelligenceStatus, .appleIntelligenceStatus(unavailable: true))

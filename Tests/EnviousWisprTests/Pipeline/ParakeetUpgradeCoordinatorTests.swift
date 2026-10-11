@@ -1868,6 +1868,110 @@ struct ParakeetUpgradePolicyTests {
     #expect(await read.value == false)
   }
 
+
+  // MARK: 8b: what Settings presents
+
+  @Test("Settings names the serving model, else the pending one; fallback names v3")
+  func presentedModelFollowsServing() async throws {
+    let rig = try await Self.rig(v3: true, ultra: true)
+    #expect(rig.coordinator.presentedModel == nil, "nothing selected yet")
+    let prepared = try await rig.coordinator.prepareLoad()
+    #expect(rig.coordinator.presentedModel == .ultra, "row A: Ultra is pending")
+    #expect(Self.physicalLoad(rig, succeeds: false) == .loaded)
+    #expect(await rig.coordinator.handleLoadFailure(prepared, error: VendorLoadFailed()) == .reload)
+    #expect(rig.coordinator.presentedModel == .v3, "A-fail serves v3")
+    #expect(Self.physicalLoad(rig) == .loaded)
+    #expect(rig.coordinator.presentedModel == .v3)
+  }
+
+  @Test("v3 is named while Ultra is missing, before and after v3 loads")
+  func presentedModelWhileUltraIsMissing() async throws {
+    let rig = try await Self.rig(v3: true, ultra: false)
+    _ = try await rig.coordinator.prepareLoad()
+    #expect(rig.coordinator.presentedModel == .v3, "row B: v3 while Ultra is missing")
+    #expect(Self.physicalLoad(rig) == .loaded)
+    #expect(rig.coordinator.presentedModel == .v3)
+  }
+
+  @Test("Settings asks for an explicit Retry only after the policy stops loading")
+  func explicitRetryPresentation() async throws {
+    let rig = try await Self.rig(
+      v3: false, ultra: true,
+      state: .init(attempts: 2, refetchSpent: true, exhausted: true, declined: false))
+    var changes = 0
+    rig.coordinator.onPresentationChanged = { changes += 1 }
+    #expect(rig.coordinator.needsExplicitRetry == false)
+    await #expect(throws: ParakeetUpgradeUnavailableError(reason: "exhausted")) {
+      _ = try await rig.coordinator.prepareLoad()
+    }
+    #expect(rig.coordinator.needsExplicitRetry)
+    #expect(changes > 0, "Settings is told to re-read")
+    try rig.coordinator.retry()
+    #expect(rig.coordinator.needsExplicitRetry == false)
+  }
+
+  @Test("a refused frozen Ultra reload also asks for the explicit Retry")
+  func budgetRefusalAsksForRetry() async throws {
+    let rig = try await Self.rig(v3: false, ultra: true)
+    _ = try await rig.coordinator.prepareLoad()
+    #expect(Self.physicalLoad(rig, succeeds: false) == .loaded)
+    _ = try await rig.coordinator.prepareLoad()
+    #expect(Self.physicalLoad(rig, succeeds: false) == .loaded)
+    _ = try await rig.coordinator.prepareLoad()
+    #expect(Self.physicalLoad(rig, succeeds: false) == .refused)
+    #expect(rig.coordinator.needsExplicitRetry)
+  }
+
+  @Test("the Model ready read follows the presented identity and its permission")
+  func currentAdmissionFollowsPresented() async throws {
+    let v3Serving = try await Self.rig(v3: true, ultra: false)
+    _ = try await v3Serving.coordinator.prepareLoad()
+    #expect(await v3Serving.coordinator.currentAdmission(), "v3 is admitted and accepted")
+
+    let rejected = try await Self.rig(v3: true, ultra: false, enabled: false)
+    let v3Load = try await rejected.coordinator.prepareLoad()
+    #expect(await rejected.coordinator.handleLoadFailure(v3Load, error: VendorLoadFailed()) == .reload)
+    #expect(await rejected.coordinator.currentAdmission() == false, "rejected v3 is not ready")
+
+    let exhausted = try await Self.rig(
+      v3: false, ultra: true,
+      state: .init(attempts: 0, refetchSpent: true, exhausted: true, declined: false))
+    #expect(await exhausted.coordinator.currentAdmission() == false, "retained, not permitted")
+
+    let fresh = try await Self.rig(v3: false, ultra: true)
+    #expect(await fresh.coordinator.currentAdmission())
+  }
+
+  @Test("Settings' foreground fetch is counted, so its Cancel reaches it")
+  func settingsForegroundFetchCancels() async throws {
+    let rig = try await Self.rig(v3: false, ultra: false)
+    Self.enqueueHangingUltra(rig)
+    let task = Task { await rig.coordinator.fetchInForeground() }
+    await rig.ultraProgress.waitForAny()
+    await rig.coordinator.cancelActiveFetch()
+    let outcome = await task.value
+    guard case .cancelled? = outcome else {
+      Issue.record("the Settings fetch was not cancelled: \(String(describing: outcome))")
+      return
+    }
+    #expect(Self.state(rig)?.declined == false, "a foreground Cancel is not a decline")
+  }
+
+  @Test("the background download state carries its own byte counts")
+  func backgroundStateCarriesCounts() async throws {
+    let rig = try await Self.rig(v3: true, ultra: false, onboarding: true)
+    Self.enqueueHangingUltra(rig)
+    let started = OutcomeSignal(.backgroundStarted)
+    rig.coordinator.onOutcome = { started.observe($0) }
+    _ = try await rig.coordinator.prepareLoad()
+    await started.wait()
+    guard case .downloading(_, _, let total) = rig.coordinator.backgroundUpgrade else {
+      Issue.record("not downloading: \(rig.coordinator.backgroundUpgrade)")
+      return
+    }
+    #expect(total == rig.ultra.modelTotalBytes)
+    try await rig.coordinator.cancelBackgroundUpgrade()
+  }
 }
 
 /// Waits for one coordinator outcome, fired by the subject. Deadline-bounded so

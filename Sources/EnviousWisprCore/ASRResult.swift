@@ -7,7 +7,10 @@ public enum ASRBackendType: String, Codable, Sendable {
 
   public var displayName: String {
     switch self {
-    case .parakeet: return "Parakeet v3"
+    // #3546: the backend, not a model version. History rows were produced by
+    // v3 or by Ultra, and this label is stored-row-agnostic; the model name
+    // comes from `ParakeetModel.displayName` where a serving model is known.
+    case .parakeet: return "Parakeet"
     case .whisperKit: return "WhisperKit"
     }
   }

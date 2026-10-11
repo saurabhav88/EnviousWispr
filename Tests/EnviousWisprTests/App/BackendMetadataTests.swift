@@ -16,11 +16,13 @@ struct BackendMetadataTests {
 
   // MARK: - modelLabel
 
-  @Test("modelLabel: Parakeet backend returns 'Parakeet v3'")
-  func modelLabelParakeet() {
-    let bm = makeBackendMetadata()
+  @Test("modelLabel: Parakeet backend names the presented Parakeet model", arguments: [
+    "Parakeet v3", "Parakeet Ultra",
+  ])
+  func modelLabelParakeet(model: String) {
+    let bm = makeBackendMetadata(parakeetModel: model)
     bm.settings.selectedBackend = .parakeet
-    #expect(bm.modelLabel == "Parakeet v3")
+    #expect(bm.modelLabel == model)
   }
 
   @Test("modelLabel: WhisperKit backend returns 'WhisperKit'")
@@ -231,13 +233,16 @@ struct BackendMetadataTests {
 
   /// `modelLoaded` drives the engine-health label, which is what `.loadingModel`
   /// used to be mistaken for on the non-WhisperKit path (#2065).
-  private func makeBackendMetadata(modelLoaded: Bool = false) -> BackendMetadata {
+  private func makeBackendMetadata(
+    modelLoaded: Bool = false, parakeetModel: String = "Parakeet v3"
+  ) -> BackendMetadata {
     let settings = SettingsManager()
     let llmDiscovery = LLMModelDiscoveryCoordinator(keychainManager: KeychainManager())
     return BackendMetadata(
       settings: settings,
       llmDiscovery: llmDiscovery,
-      activeModelLoaded: { modelLoaded }
+      activeModelLoaded: { modelLoaded },
+      parakeetModelLabel: { parakeetModel }
     )
   }
 }

@@ -836,7 +836,7 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
   /// in-process backend, so the shared ASR manager's flag does not reflect it.
   public var engineReadiness: ASREngineReadiness { adapter.readiness }
 
-  /// The active engine's user-facing display name (e.g. "Parakeet v3" /
+  /// The active engine's user-facing display name (e.g. "Parakeet" /
   /// "WhisperKit"). Exposed read-only so the App layer can label the cold-boot
   /// warm-up pill (#879) without reaching into the package-scoped `adapter`.
   public var engineDisplayName: String { adapter.engineIdentity.displayName }

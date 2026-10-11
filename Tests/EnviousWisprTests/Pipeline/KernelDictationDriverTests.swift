@@ -537,9 +537,9 @@ import Testing
       var pushed: [OverlayIntent] = []
       h.driver.onOverlayIntentChange = { pushed.append($0) }
       try await h.driver.handle(event: .toggleRecording(.testDefault()))
-      await drainUntil { pushed.contains(.cachingModel(engineLabel: "Parakeet v3")) }
+      await drainUntil { pushed.contains(.cachingModel(engineLabel: "Parakeet")) }
       #expect(
-        pushed.contains(.cachingModel(engineLabel: "Parakeet v3")),
+        pushed.contains(.cachingModel(engineLabel: "Parakeet")),
         "the cold load must surface the caching pill through onOverlayIntentChange")
     }
 
@@ -555,7 +555,7 @@ import Testing
       #expect(h.kernel.testForceTransition(to: .arming))
       // #879: the bare "Preparing dictation…" wall is unreachable on a cold
       // path; the honest cold-boot pill (engine-named) replaces it.
-      #expect(h.driver.overlayIntent == .cachingModel(engineLabel: "Parakeet v3"))
+      #expect(h.driver.overlayIntent == .cachingModel(engineLabel: "Parakeet"))
     }
   #endif
 

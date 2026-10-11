@@ -16,6 +16,9 @@ final class BackendMetadata {
   /// covering WhisperKit when #1386 made it Parakeet-only (cloud review P2:
   /// a warmed multilingual model rendered "Unloaded").
   let activeModelLoaded: @MainActor () -> Bool
+  /// #3546: the Parakeet model this Mac presents (`ModelDeliveryHome.parakeetModelLabel`):
+  /// "Parakeet v3" while v3 serves, "Parakeet Ultra" once Ultra does.
+  let parakeetModelLabel: @MainActor () -> String
 
   /// #2065 dropped the `asrManager` collaborator: its only reader was the
   /// per-engine branch in `statusText(for:)`, so collapsing that left it
@@ -23,15 +26,17 @@ final class BackendMetadata {
   init(
     settings: SettingsManager,
     llmDiscovery: LLMModelDiscoveryCoordinator,
-    activeModelLoaded: @escaping @MainActor () -> Bool
+    activeModelLoaded: @escaping @MainActor () -> Bool,
+    parakeetModelLabel: @escaping @MainActor () -> String
   ) {
     self.settings = settings
     self.llmDiscovery = llmDiscovery
     self.activeModelLoaded = activeModelLoaded
+    self.parakeetModelLabel = parakeetModelLabel
   }
 
   var modelLabel: String {
-    settings.selectedBackend == .parakeet ? "Parakeet v3" : "WhisperKit"
+    settings.selectedBackend == .parakeet ? parakeetModelLabel() : "WhisperKit"
   }
 
   /// Sidebar AI Polish row label. Reads the CONFIGURED polish target

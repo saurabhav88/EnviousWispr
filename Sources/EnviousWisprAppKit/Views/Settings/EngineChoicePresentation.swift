@@ -39,17 +39,27 @@ enum EngineChoicePresentation {
     let specs: [Spec]
   }
 
+  /// The canonical list the Settings Map derives its engine choices from. It reads only each
+  /// choice's id, title and tagline, so it never depends on which Parakeet model this Mac runs.
   static let choices: [Choice] = [fast, allLanguages]
 
+  /// #3546: the list the cards render, naming the Parakeet model this Mac presents (the
+  /// serving model, or the pending one; `ModelDeliveryHome.parakeetModelLabel`).
+  static func choices(parakeetModel: String) -> [Choice] {
+    [fast(parakeetModel: parakeetModel), allLanguages]
+  }
+
   /// The presentation for a backend. Exhaustive, so a new backend must be given a card here.
-  static func choice(for backend: ASRBackendType) -> Choice {
+  static func choice(for backend: ASRBackendType, parakeetModel: String) -> Choice {
     switch backend {
-    case .parakeet: fast
+    case .parakeet: fast(parakeetModel: parakeetModel)
     case .whisperKit: allLanguages
     }
   }
 
-  private static let fastModelName = "Parakeet v3"
+  /// #3546: the shipped Parakeet model, for the canonical list only. Screens name the model
+  /// the Mac presents through `choices(parakeetModel:)`.
+  private static let fastModelName = ParakeetModel.ultra.displayName
   private static let allLanguagesModelName = "Whisper Large v3 Turbo"
 
   private static let modelLabel = LocalizedStringResource(
@@ -72,42 +82,46 @@ enum EngineChoicePresentation {
   // the Neural Engine (WhisperKitBackend dictationComputeOptions, #879). Both run entirely
   // on-device. Copy advertises Parakeet's 25 European languages, not just English (founder,
   // 2026-07-03).
-  static let fast = Choice(
-    backend: .parakeet,
-    mapID: .transcriptionEngineFast,
-    icon: "bolt.fill",
-    title: LocalizedStringResource(
-      "Fast", comment: "Speech engine settings, engine card: the fast engine's name."),
-    tagline: LocalizedStringResource(
-      "Pick this for everyday English and European dictation.",
-      comment: "Speech engine settings, engine card: when to pick the fast engine."),
-    model: fastModelName,
-    summary: DictationSettingsCopy.Engine.fastSummary,
-    specs: [
-      Spec(label: modelLabel, value: .verbatim(fastModelName)),
-      Spec(
-        label: languagesLabel,
-        value: .localized(
-          LocalizedStringResource(
-            "25 European languages",
-            comment: "Speech engine settings, engine card: how many languages it covers."))),
-      Spec(
-        label: runsOnLabel,
-        value: .localized(
-          LocalizedStringResource(
-            "Apple Neural Engine",
-            comment:
-              "Speech engine settings, engine card: the chip it runs on. Use Apple's own name for the Neural Engine in your language."
-          ))),
-      Spec(
-        label: transcribeTimeLabel,
-        value: .localized(
-          LocalizedStringResource(
-            "Usually ~0.1s after you speak",
-            comment:
-              "Speech engine settings, engine card: how quickly text appears. 0.1s is a tenth of a second."
-          ))),
-    ])
+  static let fast = fast(parakeetModel: fastModelName)
+
+  static func fast(parakeetModel: String) -> Choice {
+    Choice(
+      backend: .parakeet,
+      mapID: .transcriptionEngineFast,
+      icon: "bolt.fill",
+      title: LocalizedStringResource(
+        "Fast", comment: "Speech engine settings, engine card: the fast engine's name."),
+      tagline: LocalizedStringResource(
+        "Pick this for everyday English and European dictation.",
+        comment: "Speech engine settings, engine card: when to pick the fast engine."),
+      model: parakeetModel,
+      summary: DictationSettingsCopy.Engine.fastSummary,
+      specs: [
+        Spec(label: modelLabel, value: .verbatim(parakeetModel)),
+        Spec(
+          label: languagesLabel,
+          value: .localized(
+            LocalizedStringResource(
+              "25 European languages",
+              comment: "Speech engine settings, engine card: how many languages it covers."))),
+        Spec(
+          label: runsOnLabel,
+          value: .localized(
+            LocalizedStringResource(
+              "Apple Neural Engine",
+              comment:
+                "Speech engine settings, engine card: the chip it runs on. Use Apple's own name for the Neural Engine in your language."
+            ))),
+        Spec(
+          label: transcribeTimeLabel,
+          value: .localized(
+            LocalizedStringResource(
+              "Usually ~0.1s after you speak",
+              comment:
+                "Speech engine settings, engine card: how quickly text appears. 0.1s is a tenth of a second."
+            ))),
+      ])
+  }
 
   static let allLanguages = Choice(
     backend: .whisperKit,

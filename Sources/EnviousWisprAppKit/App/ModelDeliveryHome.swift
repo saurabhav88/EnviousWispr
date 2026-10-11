@@ -34,6 +34,39 @@ final class ModelDeliveryHome {
   /// the Parakeet observer setup, so a test can wait for what construction
   /// started without starting either itself. Production never reads them.
   private(set) var retiredV3LaunchMigrationForTesting: Task<URL?, Never>?
+
+  /// #3546: what Settings presents for Parakeet, mirrored from the upgrade
+  /// coordinator (it owns every decision; this only re-reads on its signal).
+  private(set) var parakeetPresentedModel: ParakeetModel?
+  private(set) var parakeetBackgroundUpgrade: ParakeetUpgradeCoordinator.BackgroundUpgradeState = .idle
+  private(set) var parakeetNeedsExplicitRetry = false
+  /// Before any selection: accepted v3 when the retired v3 is admitted on disk,
+  /// otherwise the new Ultra default. Read once at construction.
+  private(set) var parakeetFallbackModel: ParakeetModel = .ultra
+
+  /// The verbatim model name Settings, the sidebar and Transcribe a File show.
+  /// Without an upgrade target (the shipped manifest is unavailable) the
+  /// no-handle route serves v3, so it is named. A name never implies the
+  /// model is loaded.
+  var parakeetModelLabel: String {
+    guard parakeetUpgrade?.hasUpgradeTarget == true else { return ParakeetModel.v3.displayName }
+    return (parakeetPresentedModel ?? parakeetFallbackModel).displayName
+  }
+
+  /// Whether the background upgrade, not the serving model, owns the Settings
+  /// download row: a target exists and the presented (or fallback) model is v3,
+  /// so dictation works while Ultra downloads, pauses or waits.
+  var parakeetRowIsBackgroundUpgrade: Bool {
+    parakeetUpgrade?.hasUpgradeTarget == true
+      && (parakeetPresentedModel ?? parakeetFallbackModel) == .v3
+  }
+
+  private func refreshParakeetPresentation() {
+    guard let parakeetUpgrade else { return }
+    parakeetPresentedModel = parakeetUpgrade.presentedModel
+    parakeetBackgroundUpgrade = parakeetUpgrade.backgroundUpgrade
+    parakeetNeedsExplicitRetry = parakeetUpgrade.needsExplicitRetry
+  }
   private(set) var parakeetObserverSetupForTesting: Task<Void, Never>?
 
   func firstRunForTesting(_ identity: ModelIdentity) -> Bool? {
@@ -64,7 +97,9 @@ final class ModelDeliveryHome {
       target: parakeetUpgradeTarget,
       isOnboardingComplete: isOnboardingComplete)
     coordinator.onUsabilityMayHaveChanged = { [weak self] in self?.notifyParakeetUsable() }
+    coordinator.onPresentationChanged = { [weak self] in self?.refreshParakeetPresentation() }
     parakeetUpgrade = coordinator
+    refreshParakeetPresentation()
     return coordinator
   }
 
@@ -184,9 +219,49 @@ final class ModelDeliveryHome {
   /// #3385: Settings re-checks the current marker and file stamps. Never trust
   /// the admitted mirror: files may have been removed since it was published.
   /// This read neither ensures availability nor takes an engine mutation claim.
+  /// #3546: with an upgrade target, the identity that serves or will serve
+  /// answers, with rejection and load permission applied, so Ultra's raw
+  /// marker never makes a working v3 look unavailable (or the reverse).
   func currentParakeetAdmission() async -> Bool {
+    if let parakeetUpgrade, parakeetUpgrade.hasUpgradeTarget {
+      return await parakeetUpgrade.currentAdmission()
+    }
     guard let registration = parakeetRegistration else { return false }
     return await controller.isAdmitted(registration)
+  }
+
+  /// #3546 E12/E13: Settings' Cancel and Resume for the BACKGROUND upgrade.
+  func cancelParakeetUpgradeDownload() {
+    Task { [weak self] in try? await self?.parakeetUpgrade?.cancelBackgroundUpgrade() }
+  }
+
+  func resumeParakeetUpgradeDownload() {
+    Task { [weak self] in try? await self?.parakeetUpgrade?.resumeBackgroundUpgrade() }
+  }
+
+  /// #3546 row T: the explicit Retry. The coordinator must persist a fresh
+  /// bounded cycle first; if that write fails nothing starts and the failure
+  /// row stays. It is not gated on the owned-download kill switch: with
+  /// delivery off the next load goes through the permitted vendor route.
+  /// The next warm-up (selection point) then loads.
+  /// Onboarding's warming retry: the explicit Retry only when the policy is
+  /// the reason loading stopped; every other failure retries as before.
+  func retryParakeetUpgradeIfBlocked() {
+    guard parakeetNeedsExplicitRetry else { return }
+    retryParakeetUpgrade()
+  }
+
+  func retryParakeetUpgrade() {
+    guard let parakeetUpgrade else { return }
+    do {
+      try parakeetUpgrade.retry()
+    } catch {
+      Task {
+        await AppLogger.shared.log(
+          "Parakeet Retry refused: the upgrade state could not be written (\(error))",
+          level: .info, category: "Delivery")
+      }
+    }
   }
 
   /// #996 phase D: whether Parakeet is usable NOW, from the persisted marker,
@@ -944,7 +1019,10 @@ final class ModelDeliveryHome {
       if let registration {
         // #3546: a user upgrading from an admitted v3 is not on a first run.
         var admitted = await controller.isAdmitted(registration)
-        if !admitted, let retiredV3 { admitted = await controller.isAdmitted(retiredV3) }
+        var v3Admitted = false
+        if let retiredV3 { v3Admitted = await controller.isAdmitted(retiredV3) }
+        if !admitted, retiredV3 != nil { admitted = v3Admitted }
+        await MainActor.run { home.parakeetFallbackModel = v3Admitted ? .v3 : .ultra }
         await MainActor.run { home.firstRunByIdentity[identity] = !admitted }
       }
       await controller.addStateObserver { observedIdentity, state in
@@ -1004,7 +1082,13 @@ final class ModelDeliveryHome {
       // #1707 Phase 3 (§3.2, row 17): hold a mutation claim for the FULL
       // cancel-drain.
       _ = await self.engineMutationScope.withClaim(site: "parakeetCancelDownload") {
-        _ = await self.controller.cancel(identity)
+        // #3546: with an upgrade target the foreground fetch is the
+        // coordinator's, so its foreground Cancel owns the drain (no decline).
+        if let upgrade = self.parakeetUpgrade, upgrade.hasUpgradeTarget {
+          await upgrade.cancelActiveFetch()
+        } else {
+          _ = await self.controller.cancel(identity)
+        }
       }
     }
   }
@@ -1289,7 +1373,13 @@ final class ModelDeliveryHome {
         // for that run rather than racing it, and `nil` from it is a refusal
         // this path must honour like any other.
         guard await handle.ensureModelLocationReady() != nil else { return }
-        _ = await handle.ensureAvailable()
+        // #3546: with an upgrade target the coordinator runs the fetch as a
+        // counted foreground operation (progress, location, budget, Cancel).
+        if let upgrade = self.parakeetUpgrade, upgrade.hasUpgradeTarget {
+          _ = await upgrade.fetchInForeground()
+        } else {
+          _ = await handle.ensureAvailable()
+        }
       }
     }
   }

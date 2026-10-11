@@ -46,11 +46,12 @@ import Testing
     #expect(adapter.engineIdentity.rawValue == "parakeet")
   }
 
-  @Test("engineIdentity: Parakeet displayName == Parakeet v3")
+  @Test("engineIdentity: Parakeet displayName == Parakeet")
   func engineIdentityDisplayName() {
     let adapter = ParakeetEngineAdapter(
       asrManager: StubParakeetASRManager(), parakeetUpgrade: .legacyForTesting())
-    #expect(adapter.engineIdentity.displayName == "Parakeet v3")
+    // #3546: the backend label, not a model version (v3 or Ultra may serve).
+    #expect(adapter.engineIdentity.displayName == "Parakeet")
   }
 
   // MARK: Capabilities + readiness

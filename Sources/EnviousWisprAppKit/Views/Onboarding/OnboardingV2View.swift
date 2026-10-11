@@ -341,6 +341,12 @@ final class OnboardingV2ViewModel {
   /// fresh attempt — the same shape `retryCount` gives the checklist.
   var warmingRetryCount = 0
 
+  /// #3546 row T: run before a retried warm-up. When the Parakeet upgrade
+  /// policy stopped loading for its budget, this grants the explicit bounded
+  /// cycle first (`ModelDeliveryHome.retryParakeetUpgradeIfBlocked`); for any
+  /// other failure it does nothing. Set by the view.
+  var beforeWarmingRetry: (@MainActor () -> Void)?
+
   /// Owned HERE rather than in the view's `.task`, for the reason #1388
   /// established for `setupTask`: window churn cancels a view task, and an
   /// outcome landing in a cancelled context is dropped in silence.
@@ -482,6 +488,7 @@ final class OnboardingV2ViewModel {
   /// deliberately untouched: retrying is not leaving, and a person who retries
   /// and then skips must still produce exactly one completion.
   func retryWarming() {
+    beforeWarmingRetry?()
     warmingAnswerReported = false
     warmingOutcome = .waiting
     warmingRetryCount += 1
@@ -1090,6 +1097,8 @@ struct OnboardingV2View: View {
   // `ensureEngineWarm` via `DictationRuntime` (injected by OnboardingWindowRoot),
   // replacing the prior direct `asrManager.loadModel()`.
   @Environment(DictationRuntime.self) private var dictationRuntime
+  /// #3546: the explicit Retry for a Parakeet load the upgrade policy stopped.
+  @Environment(ModelDeliveryHome.self) private var modelDelivery: ModelDeliveryHome?
   var onComplete: () -> Void
   /// #1176: in-flight onboarding session + its single terminal abandon emit,
   /// bootstrapper-owned and shared with the App-layer window-close / app-quit paths.
@@ -1165,6 +1174,11 @@ struct OnboardingV2View: View {
       id:
         "\(viewModel.currentScreen)-\(viewModel.retryCount)-\(viewModel.warmingRetryCount)"
     ) {
+      // #3546: a retry after the Parakeet upgrade policy stopped loading grants
+      // its explicit bounded cycle first (a no-op for any other failure).
+      viewModel.beforeWarmingRetry = { [modelDelivery] in
+        modelDelivery?.retryParakeetUpgradeIfBlocked()
+      }
       viewModel.kickSetupIfNeeded(
         warmUp: { await dictationRuntime.ensureActiveEngineWarmForOnboarding() },
         settings: settings)
@@ -1525,7 +1539,8 @@ private struct ChecklistPhaseView: View {
   }
 
   /// Returns live status text for the model setup row.
-  /// During download: "Downloading model files... X MB of 483 MB"
+  /// During download: "Downloading model files... X MB of N MB", N from the
+  /// shipped manifest's measured total (#3546: Parakeet Ultra)
   /// During compilation: cycles through quirky installation quips
   private func downloadSubtitle(for index: Int, fallback: String) -> String {
     guard index == 0, viewModel.checklistStatuses[0].isInProgress else { return fallback }

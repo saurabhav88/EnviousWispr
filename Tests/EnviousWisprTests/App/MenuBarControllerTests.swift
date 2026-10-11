@@ -1037,7 +1037,8 @@ struct MenuBarControllerTests {
     let backendMetadata = BackendMetadata(
       settings: settings,
       llmDiscovery: LLMModelDiscoveryCoordinator(keychainManager: KeychainManager()),
-      activeModelLoaded: { [weak asrManager] in asrManager?.isModelLoaded ?? false })
+      activeModelLoaded: { [weak asrManager] in asrManager?.isModelLoaded ?? false },
+      parakeetModelLabel: { "Parakeet v3" })
     // Nil-fake updater factory — no real Sparkle boot in the test process.
     let sparkle = SparkleUpdateController(
       holder: UpdateCoordinatorHolder(),

@@ -1,6 +1,7 @@
 import EnviousWisprASR
 import EnviousWisprCore
 import EnviousWisprModelDelivery
+import EnviousWisprPipeline
 import EnviousWisprServices
 import SwiftUI
 
@@ -67,7 +68,7 @@ struct SpeechEngineSettingsView: View {
     // flexible frames split the row evenly, as the flexible columns did.
     Grid(horizontalSpacing: 12, verticalSpacing: 12) {
       GridRow(alignment: .top) {
-        ForEach(EngineChoicePresentation.choices, id: \.backend) { choice in
+        ForEach(EngineChoicePresentation.choices(parakeetModel: parakeetModelLabel), id: \.backend) { choice in
           EngineCard(
             icon: choice.icon,
             map: .id(choice.mapID),
@@ -115,7 +116,7 @@ struct SpeechEngineSettingsView: View {
         engineCards
       }
       .statusAlongsideChange(isParakeet && engineSwitchDeferredNotice == nil
-        && modelDelivery.map { parakeetDeliveryRow($0.parakeetState) == nil } == true)
+        && modelDelivery.map { parakeetRow($0) == nil } == true)
       // An engine change made elsewhere (onboarding, a fallback) leaves the
       // summary describing the new engine; close choices it made obsolete.
       .onChange(of: settings.selectedBackend) { _, _ in
@@ -423,7 +424,14 @@ struct SpeechEngineSettingsView: View {
   private var isParakeet: Bool { settings.selectedBackend == .parakeet }
 
   private var currentEngine: EngineChoicePresentation.Choice {
-    EngineChoicePresentation.choice(for: settings.selectedBackend)
+    EngineChoicePresentation.choice(for: settings.selectedBackend, parakeetModel: parakeetModelLabel)
+  }
+
+  /// #3546: the Parakeet model this Mac presents (serving, or pending), never
+  /// one that is merely downloading or admitted. No delivery home means the
+  /// no-handle route, which serves v3.
+  private var parakeetModelLabel: String {
+    modelDelivery?.parakeetModelLabel ?? ParakeetModel.v3.displayName
   }
 
   private var currentEngineIcon: String { currentEngine.icon }
@@ -432,7 +440,7 @@ struct SpeechEngineSettingsView: View {
 
   private var currentEngineModel: String { currentEngine.model }
 
-  /// "FAST · PARAKEET V3": the heading names the engine these explanations describe. The
+  /// "FAST · PARAKEET ULTRA": the heading names the engine these explanations describe. The
   /// Settings Map owns the composition (#3482).
   private var currentEngineRef: SettingsMapRef {
     .dynamic(.currentEngineSection, .currentEngine(currentEngine))
@@ -539,8 +547,11 @@ struct SpeechEngineSettingsView: View {
     // state. #3385 founder supersedes D6's silent admitted presentation with
     // a fresh read-only Model ready cue above; these action states stay intact.
     // Same state stream onboarding renders; second renderer.
+    // #3546: the row is the serving model's (foreground), the background
+    // Ultra upgrade's while v3 serves, or the explicit Retry after the policy
+    // stopped loading Ultra (row T); `parakeetRow` picks one, never two.
     if settings.selectedBackend == .parakeet, let modelDelivery,
-      let row = parakeetDeliveryRow(modelDelivery.parakeetState)
+      let row = parakeetRow(modelDelivery)
     {
           HStack(alignment: .top, spacing: 11) {
             SettingsRowIcon(systemName: "arrow.down.circle")
@@ -558,13 +569,20 @@ struct SpeechEngineSettingsView: View {
             // no hover to contradict it.
             if row.showsCancel {
               SettingsActionButton(title: SettingsItemCopy.Engine.fastCancel, isEnabled: true, emphasis: .quiet, shape: .roundedRect, size: .medium) {
-                modelDelivery.cancelParakeetDownload()
+                switch row.owner {
+                case .foreground, .retry: modelDelivery.cancelParakeetDownload()
+                case .backgroundUpgrade: modelDelivery.cancelParakeetUpgradeDownload()
+                }
               }
               .settingsMapRegistration(.fastModelCancelDownload)
             }
             if let action = row.action {
               SettingsActionButton(verbatimTitle: SettingsMapRef.id(action).title, isEnabled: true, emphasis: .filled, shape: .roundedRect, size: .medium) {
-                modelDelivery.resumeParakeetDownload()
+                switch row.owner {
+                case .foreground: modelDelivery.resumeParakeetDownload()
+                case .backgroundUpgrade: modelDelivery.resumeParakeetUpgradeDownload()
+                case .retry: modelDelivery.retryParakeetUpgrade()
+                }
               }
               .settingsMapRegistration(action)
             }
@@ -646,7 +664,90 @@ struct SpeechEngineSettingsView: View {
   /// Toggle binding stays trivially readable.
   /// D6 row model for the delivery state; nil = render nothing (notReady /
   /// admitted are silent in settings).
-  private func parakeetDeliveryRow(_ state: DeliveryState) -> (
+  /// Which owner a Parakeet row's buttons act on (#3546).
+  enum ParakeetRowOwner { case foreground, backgroundUpgrade, retry }
+
+  struct ParakeetRow: Equatable {
+    let title: String
+    let detail: String?
+    let showsCancel: Bool
+    let action: SettingsMapID?
+    let owner: ParakeetRowOwner
+  }
+
+  /// #3546: the one Parakeet row Settings shows, or none. Row T's explicit
+  /// Retry first; then, while v3 serves under an upgrade target, the background
+  /// Ultra download (downloading or declined; idle, deferred and failed stay
+  /// silent because dictation works); otherwise the serving model's own
+  /// delivery states, unchanged.
+  func parakeetRow(_ delivery: ModelDeliveryHome) -> ParakeetRow? {
+    Self.parakeetRow(
+      needsExplicitRetry: delivery.parakeetNeedsExplicitRetry,
+      rowIsBackgroundUpgrade: delivery.parakeetRowIsBackgroundUpgrade,
+      background: delivery.parakeetBackgroundUpgrade,
+      foreground: delivery.parakeetState)
+  }
+
+  /// The pure chooser behind `parakeetRow(_:)`, so every state is testable.
+  static func parakeetRow(
+    needsExplicitRetry: Bool, rowIsBackgroundUpgrade: Bool,
+    background: ParakeetUpgradeCoordinator.BackgroundUpgradeState, foreground: DeliveryState
+  ) -> ParakeetRow? {
+    if needsExplicitRetry {
+      return ParakeetRow(
+        title: String(
+          localized: "Speech model couldn't load.",
+          comment:
+            "Speech engine settings, speech model: the downloaded model could not be loaded after several tries; Try again starts another attempt."
+        ),
+        detail: nil, showsCancel: false, action: .fastModelTryAgain, owner: .retry)
+    }
+    if rowIsBackgroundUpgrade {
+      switch background {
+      case .downloading(_, let bytesWritten, let totalBytes):
+        let row = Self.downloadingRow(bytesWritten: bytesWritten, totalBytes: totalBytes)
+        return ParakeetRow(
+          title: row.title, detail: row.detail, showsCancel: true, action: nil,
+          owner: .backgroundUpgrade)
+      case .declined:
+        return ParakeetRow(
+          title: Self.pausedTitle, detail: nil, showsCancel: false, action: .fastModelResume,
+          owner: .backgroundUpgrade)
+      case .idle, .deferredDisk, .failed:
+        return nil
+      }
+    }
+    return parakeetDeliveryRow(foreground).map {
+      ParakeetRow(
+        title: $0.title, detail: $0.detail, showsCancel: $0.showsCancel, action: $0.action,
+        owner: .foreground)
+    }
+  }
+
+  private static func downloadingRow(bytesWritten: Int64, totalBytes: Int64) -> (
+    title: String, detail: String
+  ) {
+    let mb = Int(Double(bytesWritten) / 1_048_576)
+    let totalMB = Int(Double(totalBytes) / 1_048_576)
+    return (
+      String(
+        localized: "Downloading speech model...",
+        comment: "Speech engine settings, speech model download: in progress."),
+      String(
+        localized: "\(String(mb)) MB of \(String(totalMB)) MB",
+        comment:
+          "Speech engine settings, speech model download: progress. The first number is megabytes done, the second the total."
+      )
+    )
+  }
+
+  private static var pausedTitle: String {
+    String(
+      localized: "Download paused. Resume anytime.",
+      comment: "Speech engine settings, speech model download: the user paused it.")
+  }
+
+  private static func parakeetDeliveryRow(_ state: DeliveryState) -> (
     title: String, detail: String?, showsCancel: Bool, action: SettingsMapID?
   )? {
     switch state {
@@ -665,19 +766,8 @@ struct SpeechEngineSettingsView: View {
         nil, false, nil
       )
     case .downloading(_, let bytesWritten, let totalBytes):
-      let mb = Int(Double(bytesWritten) / 1_048_576)
-      let totalMB = Int(Double(totalBytes) / 1_048_576)
-      return (
-        String(
-          localized: "Downloading speech model...",
-          comment: "Speech engine settings, speech model download: in progress."),
-        String(
-          localized: "\(String(mb)) MB of \(String(totalMB)) MB",
-          comment:
-            "Speech engine settings, speech model download: progress. The first number is megabytes done, the second the total."
-        ),
-        true, nil
-      )
+      let row = Self.downloadingRow(bytesWritten: bytesWritten, totalBytes: totalBytes)
+      return (row.title, row.detail, true, nil)
     case .verifying:
       return (
         String(
@@ -687,9 +777,7 @@ struct SpeechEngineSettingsView: View {
       )
     case .cancelled:
       return (
-        String(
-          localized: "Download paused. Resume anytime.",
-          comment: "Speech engine settings, speech model download: the user paused it."),
+        Self.pausedTitle,
         nil, false,
         .fastModelResume
       )

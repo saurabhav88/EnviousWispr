@@ -107,6 +107,23 @@ struct ModelDeliveryHomeTests {
     }
   }
 
+  @Test("before any selection, Settings names v3 for an upgrade and Ultra for a fresh install",
+    arguments: [false, true])
+  func fallbackModelLabel(admittedV3: Bool) async throws {
+    let fixture = try ParakeetHomeFixture.make()
+    if admittedV3 { try await ParakeetHomeFixture.seedAdmittedV3(fixture) }
+    let home = ModelDeliveryHome(
+      engineMutationScope: .live(
+        tryBegin: { true }, end: { true }, wake: {}, onRefused: { _ in }),
+      manifestBundle: fixture.bundle, appSupportOverride: fixture.root,
+      retiredV3Progress: .init(write: { _, _, _ in }, clear: {}))
+    _ = home.installParakeetUpgrade(
+      parakeetSelection: ParakeetSelectionProvider(), isOnboardingComplete: { true })
+    try await Self.awaitBounded(home.parakeetObserverSetupForTesting)
+    #expect(home.parakeetModelLabel == (admittedV3 ? "Parakeet v3" : "Parakeet Ultra"))
+    #expect(home.parakeetRowIsBackgroundUpgrade == admittedV3, "v3 serves while Ultra arrives")
+  }
+
   @Test("the upgrade coordinator's usability changes reach the companion observers")
   func upgradeUsabilityReachesCompanions() async throws {
     let home = ModelDeliveryHome(
@@ -1151,6 +1168,20 @@ private enum ParakeetHomeFixture {
     return Made(
       root: root, appSupport: appSupport, dataDirectory: storage.dataDirectory,
       bundle: try #require(Bundle(url: bundleURL)), ultra: ultra, retired: retired)
+  }
+
+  /// An admitted retired-v3 install, written before Home is constructed.
+  static func seedAdmittedV3(_ fixture: Made) async throws {
+    let seedController = ModelDeliveryController(
+      defaults: TestDefaults.suite("test.home-seed.\(UUID().uuidString)")!,
+      availableDiskBytes: { _ in .max })
+    let registration = DeliveryRegistration(
+      manifest: fixture.retired,
+      installDirectory: ParakeetInstallLocation.directory(
+        for: .v3, dataDirectory: fixture.dataDirectory),
+      metadataDirectory: fixture.dataDirectory.appendingPathComponent("ModelDelivery"))
+    try writeBytes(into: registration.installDirectory)
+    #expect(await seedController.admitIfComplete(registration))
   }
 
   static func writeBytes(into directory: URL) throws {

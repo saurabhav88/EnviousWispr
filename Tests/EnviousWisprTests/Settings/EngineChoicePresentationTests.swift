@@ -15,8 +15,8 @@ struct EngineChoicePresentationTests {
   @Test("engines are Fast then All Languages, and every backend has a card")
   func orderAndLookup() {
     #expect(Presentation.choices.map(\.backend) == [.parakeet, .whisperKit])
-    #expect(Presentation.choice(for: .parakeet).backend == .parakeet)
-    #expect(Presentation.choice(for: .whisperKit).backend == .whisperKit)
+    #expect(Presentation.choice(for: .parakeet, parakeetModel: "Parakeet v3").backend == .parakeet)
+    #expect(Presentation.choice(for: .whisperKit, parakeetModel: "Parakeet v3").backend == .whisperKit)
     #expect(Presentation.choices.map(\.icon) == ["bolt.fill", "globe"])
   }
 
@@ -38,8 +38,8 @@ struct EngineChoicePresentationTests {
       "Model", "Whisper Large v3 Turbo", "Languages", "99+ languages",
       "Runs on", "Apple GPU", "Transcribe time", "Usually 1-2s after you speak",
     ].map { Array($0.utf8) }
-    #expect(card(Presentation.choice(for: .parakeet)) == fast)
-    #expect(card(Presentation.choice(for: .whisperKit)) == all)
+    #expect(card(Presentation.choice(for: .parakeet, parakeetModel: "Parakeet v3")) == fast)
+    #expect(card(Presentation.choice(for: .whisperKit, parakeetModel: "Parakeet v3")) == all)
   }
 
   @Test("titles and taglines keep their catalog keys; model names stay verbatim")
@@ -50,7 +50,9 @@ struct EngineChoicePresentationTests {
         "Pick this for everyday English and European dictation.",
         "Pick this for other languages or the toughest audio.",
       ])
-    #expect(Presentation.choices.map(\.model) == ["Parakeet v3", "Whisper Large v3 Turbo"])
+    // #3546: the canonical list the Settings Map reads names the shipped model; screens pass
+    // the model this Mac presents.
+    #expect(Presentation.choices.map(\.model) == ["Parakeet Ultra", "Whisper Large v3 Turbo"])
     for choice in Presentation.choices {
       guard case .verbatim(let model) = choice.specs.first?.value else {
         Issue.record("the Model row of \(choice.model) is not a verbatim product name")
@@ -60,10 +62,24 @@ struct EngineChoicePresentationTests {
     }
   }
 
+  @Test("the Fast card and summary name the Parakeet model the Mac presents", arguments: [
+    "Parakeet v3", "Parakeet Ultra",
+  ])
+  func fastNamesThePresentedModel(model: String) {
+    let fast = Presentation.choice(for: .parakeet, parakeetModel: model)
+    #expect(fast.model == model)
+    guard case .verbatim(let row) = fast.specs.first?.value else {
+      Issue.record("the Model row is not a verbatim product name")
+      return
+    }
+    #expect(row == model)
+    #expect(Presentation.choices(parakeetModel: model).first?.model == model)
+  }
+
   @Test("the selected-engine summary reads the same choice and its existing short line")
   func summaryCorrespondence() {
-    let fast = Presentation.choice(for: .parakeet)
-    let all = Presentation.choice(for: .whisperKit)
+    let fast = Presentation.choice(for: .parakeet, parakeetModel: "Parakeet v3")
+    let all = Presentation.choice(for: .whisperKit, parakeetModel: "Parakeet v3")
     #expect(String(localized: fast.summary) == "For everyday English and European dictation")
     #expect(String(localized: all.summary) == "For other languages or the toughest audio")
     #expect(fast.summary.key == "For everyday English and European dictation")

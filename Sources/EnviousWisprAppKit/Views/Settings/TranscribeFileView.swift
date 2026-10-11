@@ -34,6 +34,8 @@ struct TranscribeFileView: View {
   // than trusting the editor to report readiness back up.
   @Environment(SetupCoordinator.self) private var setup
   @Environment(AIAvailabilityCoordinator.self) private var aiAvailability
+  /// #3546: names the Parakeet model this Mac presents on the Fast card.
+  @Environment(ModelDeliveryHome.self) private var modelDelivery: ModelDeliveryHome?
   @Environment(LLMModelDiscoveryCoordinator.self) private var llmDiscovery
   @Environment(SavedKeyPresence.self) private var savedKeyPresence
   @Environment(LocalPolishRuntimeSet.self) private var localPolishRuntimes
@@ -721,7 +723,7 @@ struct TranscribeFileView: View {
           localized: "Best for everyday English and European recordings.",
           comment: "Transcribe a File, Transcription step: the Fast engine's card."),
         specs: [
-          (Self.specModel, "Parakeet v3"),
+          (Self.specModel, modelDelivery?.parakeetModelLabel ?? ParakeetModel.v3.displayName),
           (
             Self.specLanguages,
             String(

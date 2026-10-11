@@ -93,7 +93,9 @@ package final class ParakeetUpgradeCoordinator {
   /// readiness keeps its own channel; this never describes the model in use.
   package enum BackgroundUpgradeState: Equatable, Sendable {
     case idle
-    case downloading(fraction: Double)
+    /// Carried together from one generation-qualified delivery state, so the
+    /// counts shown always belong to the same attempt.
+    case downloading(fraction: Double, bytesWritten: Int64, totalBytes: Int64)
     case declined
     case deferredDisk
     case failed
@@ -108,7 +110,9 @@ package final class ParakeetUpgradeCoordinator {
   private let delivery: ParakeetDeliveryHandle?
   private let target: UpgradeTarget?
   /// The request the last selection point chose, kept until the next one.
-  private var frozen: ParakeetModelSelection?
+  private var frozen: ParakeetModelSelection? {
+    didSet { onPresentationChanged?() }
+  }
   /// Set at a selection point: whether the owned v3 install is accepted, and
   /// whether v3 genuinely failed to load in this launch (E19).
   private var v3Accepted = false
@@ -129,7 +133,20 @@ package final class ParakeetUpgradeCoordinator {
   /// bootstrapper; nil reads as not ready.
   package var servingReadiness: (@MainActor () -> Bool)?
   /// The last request a READY load published for the current selection.
-  private var servingRequest: ParakeetModelSelection?
+  private var servingRequest: ParakeetModelSelection? {
+    didSet { onPresentationChanged?() }
+  }
+  /// Told whenever something Settings presents may have changed: the serving
+  /// or frozen model, the background download, or whether an explicit Retry is
+  /// needed. Observers re-read; it carries no state.
+  package var onPresentationChanged: (@MainActor () -> Void)?
+  /// True after the policy refused Ultra for its budget, exhaustion or an
+  /// unreadable store (row T and the load-time refusals), until a ready
+  /// publish, a new selection or a successful Retry. Settings shows the
+  /// explicit Retry only from this, never from the persisted flags alone.
+  package private(set) var needsExplicitRetry = false {
+    didSet { if needsExplicitRetry != oldValue { onPresentationChanged?() } }
+  }
 
   package private(set) var backgroundUpgrade: BackgroundUpgradeState = .idle
   package var onBackgroundUpgradeChanged: (@MainActor (BackgroundUpgradeState) -> Void)?
@@ -500,14 +517,17 @@ extension ParakeetUpgradeCoordinator {
     guard request.model == .ultra, let target else { return }
     switch target.store.read() {
     case .unreadable(let reason):
+      needsExplicitRetry = true
       emit(.storeUnavailable(reason))
       throw ParakeetUpgradeUnavailableError(reason: "state_unreadable")
     case .state(var state):
       guard !state.exhausted, state.attempts < Self.attemptBudget else {
+        needsExplicitRetry = true
         throw ParakeetUpgradeUnavailableError(reason: "budget_spent")
       }
       state.attempts += 1
       try target.store.write(state)
+      onPresentationChanged?()
     }
   }
 
@@ -519,6 +539,7 @@ extension ParakeetUpgradeCoordinator {
   func loadPublished(_ request: ParakeetModelSelection) {
     guard isCurrentLoad(request) else { return }
     servingRequest = request
+    needsExplicitRetry = false
     guard request.model == .ultra, let target else {
       onUsabilityMayHaveChanged?()
       return
@@ -604,6 +625,7 @@ extension ParakeetUpgradeCoordinator {
     var state = ParakeetUpgradeState.fresh
     if case .state(let current) = target.store.read() { state.declined = current.declined }
     try target.store.write(state)
+    needsExplicitRetry = false
     emit(.retryGranted)
     markSelectionPoint()
   }
@@ -752,6 +774,7 @@ extension ParakeetUpgradeCoordinator {
     guard case .state(let state) = target.store.read(),
       !state.exhausted, state.attempts < Self.attemptBudget
     else {
+      needsExplicitRetry = true
       throw ParakeetUpgradeUnavailableError(reason: "budget_spent")
     }
     switch await foreground({ await target.delivery.ensureAvailableInForeground() }) {
@@ -810,6 +833,7 @@ extension ParakeetUpgradeCoordinator {
   }
 
   private func selected(_ request: ParakeetModelSelection, row: String) -> PreparedLoad {
+    needsExplicitRetry = false
     if frozen != request { cancelCleanupTasks() }
     frozenSelectionPoint = selectionPointsMarked
     frozen = request
@@ -818,6 +842,7 @@ extension ParakeetUpgradeCoordinator {
   }
 
   private func rowT() -> ParakeetUpgradeUnavailableError {
+    needsExplicitRetry = true
     emit(.exhausted)
     parakeetSelection.clear()
     frozen = nil
@@ -869,6 +894,7 @@ extension ParakeetUpgradeCoordinator {
   /// `isParakeetUsable()` answers, so companions are invited to re-read.
   func emit(_ outcome: Outcome) {
     onOutcome?(outcome)
+    onPresentationChanged?()
     if case .selected = outcome { return }
     if case .backgroundStarted = outcome { return }
     onUsabilityMayHaveChanged?()
@@ -968,6 +994,62 @@ extension ParakeetUpgradeCoordinator {
     return true
   }
 
+  /// The model Settings names: the confirmed serving model while it is still
+  /// the published request, otherwise the frozen model of the pending load or
+  /// reload. Nil before any selection; the caller then falls back. A name
+  /// never implies the model is loaded.
+  package var presentedModel: ParakeetModel? {
+    if let servingRequest, servingRequest == parakeetSelection.current {
+      return servingRequest.model
+    }
+    return frozen?.model
+  }
+
+  /// Settings' "Model ready" read (#3385) with a target: whether the identity
+  /// that serves, or will serve, is admitted and still permitted, from fresh
+  /// marker and file-stamp reads. Never fetches. Rejection and load permission
+  /// are applied after the awaited reads, so retained exhausted Ultra or a
+  /// rejected v3 is not "ready" merely because its marker exists.
+  package func currentAdmission() async -> Bool {
+    guard let target else { return false }
+    func v3Ready() async -> Bool {
+      guard let delivery, delivery.locationIsUsable, !v3RejectedThisLaunch else { return false }
+      let admitted = await delivery.isAdmitted()
+      return admitted && !v3RejectedThisLaunch && delivery.locationIsUsable
+    }
+    func ultraReady() async -> Bool {
+      guard target.delivery.locationIsUsable else { return false }
+      let admitted = await target.delivery.isAdmitted()
+      guard admitted, target.delivery.locationIsUsable,
+        case .state(let state) = target.store.read(),
+        !state.exhausted, state.attempts < Self.attemptBudget
+      else { return false }
+      return true
+    }
+    switch presentedModel {
+    case .v3?: return await v3Ready()
+    case .ultra?: return await ultraReady()
+    case nil:
+      if await v3Ready() { return true }
+      return await ultraReady()
+    }
+  }
+
+  /// Settings' Resume / Try again for the shipped download while nothing else
+  /// serves (fresh install, no v3): a FOREGROUND fetch of the target, counted
+  /// so the foreground Cancel reaches it, and only where the location, the
+  /// store and the budget allow a later load. Waits for a Cancel's drain.
+  /// Nil when refused before any work.
+  package func fetchInForeground() async -> ModelDeliveryController.DeliveryOutcome? {
+    guard let target, target.delivery.locationIsUsable,
+      case .state(let state) = target.store.read(),
+      !state.exhausted, state.attempts < Self.attemptBudget
+    else { return nil }
+    if let cancelDrain { await cancelDrain.value }
+    guard !Task.isCancelled else { return nil }
+    return await foreground({ await target.delivery.ensureAvailableInForeground() })
+  }
+
   private func hasReadyServingRequest() -> Bool {
     guard let servingRequest else { return false }
     return servingRequest == parakeetSelection.current && servingReadiness?() == true
@@ -1039,7 +1121,8 @@ extension ParakeetUpgradeCoordinator {
     let admitted = await target.delivery.isAdmitted()
     guard isCurrentBackground(generation), !admitted, backgroundEligible(target) else { return }
     emit(.backgroundStarted)
-    setBackgroundUpgrade(.downloading(fraction: 0))
+    setBackgroundUpgrade(
+      .downloading(fraction: 0, bytesWritten: 0, totalBytes: target.delivery.modelTotalBytes))
     // E3/E14: the outcome is recorded only; activation waits for the next
     // selection point, and failure leaves v3 serving until then.
     let outcome = await target.delivery.ensureAvailable()
@@ -1065,15 +1148,17 @@ extension ParakeetUpgradeCoordinator {
   func targetStateChanged(_ state: DeliveryState, generation: UInt64?) {
     guard let generation, backgroundFetch?.generation == generation,
       backgroundGeneration == generation, foregroundFetches == 0,
-      case .downloading(let fraction, _, _) = state
+      case .downloading(let fraction, let bytesWritten, let totalBytes) = state
     else { return }
-    setBackgroundUpgrade(.downloading(fraction: fraction))
+    setBackgroundUpgrade(
+      .downloading(fraction: fraction, bytesWritten: bytesWritten, totalBytes: totalBytes))
   }
 
   private func setBackgroundUpgrade(_ state: BackgroundUpgradeState) {
     guard backgroundUpgrade != state else { return }
     backgroundUpgrade = state
     onBackgroundUpgradeChanged?(state)
+    onPresentationChanged?()
   }
 }
 

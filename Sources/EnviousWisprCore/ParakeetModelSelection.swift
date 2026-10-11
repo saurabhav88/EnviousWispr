@@ -8,6 +8,14 @@ package enum ParakeetModel: String, Sendable, Equatable, CaseIterable {
   case v3
   case ultra
 
+  /// The verbatim product name Settings shows for this model (not translated).
+  package var displayName: String {
+    switch self {
+    case .v3: "Parakeet v3"
+    case .ultra: "Parakeet Ultra"
+    }
+  }
+
   /// The shipped v3 set's byte total, for the one caller with no manifest to
   /// read it from: the engine adapter when the bundled manifest failed to load.
   /// A test pins it to the bundled manifest's `totalBytes`.

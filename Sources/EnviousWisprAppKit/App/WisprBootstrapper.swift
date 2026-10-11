@@ -1451,7 +1451,8 @@ package final class WisprBootstrapper {
       llmDiscovery: llmDiscovery,
       // The coordinator's published snapshot covers BOTH engines; the manager's
       // own flag is Parakeet-only since #1386 (cloud review P2).
-      activeModelLoaded: { [engineCoordinator] in engineCoordinator.status.activeModelLoaded }
+      activeModelLoaded: { [engineCoordinator] in engineCoordinator.status.activeModelLoaded },
+      parakeetModelLabel: { [modelDelivery] in modelDelivery.parakeetModelLabel }
     )
     // PR9 of #763: construct the lifecycle home BEFORE DictationRuntime.
     // PR-C.3: the hands-free lock flag is rehomed onto `LiveRecordingState`.
@@ -2581,6 +2582,8 @@ private struct OnboardingWindowRoot: View {
     .environment(b.navigationCoordinator)
     .environment(b.languageSuggestionPresenter)
     .environment(b.dictationRuntime)
+    // #3546: the warming screen's retry reaches the Parakeet upgrade policy.
+    .environment(b.modelDelivery)
     // #2196 — the practice screen reads BOTH of these, and a type-based
     // `@Environment` with no default TRAPS AT RUNTIME rather than failing to
     // compile. Cloud review caught this as a P1: `liveRecordingState` was added
