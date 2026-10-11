@@ -824,8 +824,22 @@ _MENU_ROLES = ("AXMenu", "AXPopover")
 _ITEM_ROLES = ("AXMenuItem", "AXButton")
 
 
-def _own_menu(ax, control):
-    return next((k for k in (ax.children(control) or []) if ax.role(k) in _MENU_ROLES), None)
+def _own_menu(ax, control, root=None):
+    """The control's open list of choices, or None when it is closed.
+
+    A native menu is the control's own child. A SwiftUI `.popover` (`settingsDropdown`) is
+    NOT: on macOS 27 it is published inside the window, three levels down, away from the
+    button that opened it (#3606, measured 2026-10-10: AXPress opened it, a lookup among the
+    button's children never saw it, and every microphone read timed out). With `root`, a
+    popover anywhere in the window counts only when it is the ONLY one, so another open
+    popover (a "Learn more" guide) is never taken for this control's list."""
+    own = next((k for k in (ax.children(control) or []) if ax.role(k) in _MENU_ROLES), None)
+    if own is not None or root is None:
+        return own
+    popovers = [e for e in ax.walk(root) if ax.role(e) == "AXPopover"]
+    if len(popovers) > 1:
+        raise NavigationError(f"{len(popovers)} popovers are open; refusing to choose one")
+    return popovers[0] if popovers else None
 
 
 def _item_title(ax, item):
@@ -837,15 +851,15 @@ def _open_menu(ax, root_of, timeout, cancel):
     """Open the control's OWN menu and return (menu, item elements). A stale open menu is
     cancelled through AX first, never with an Escape key that would reach the front app."""
     control = input_control(ax, root_of())
-    stale = _own_menu(ax, control)
+    stale = _own_menu(ax, control, root_of())
     if stale is not None:
         if cancel is None:
             raise NavigationError("a menu is already open on the Input device control")
         cancel(stale)
     ax.press(control)
-    wait_until(ax, lambda: _own_menu(ax, input_control(ax, root_of())) is not None, timeout,
-               "the input menu open")
-    menu = _own_menu(ax, input_control(ax, root_of()))
+    wait_until(ax, lambda: _own_menu(ax, input_control(ax, root_of()), root_of()) is not None,
+               timeout, "the input menu open")
+    menu = _own_menu(ax, input_control(ax, root_of()), root_of())
     return menu, [i for i in ax.walk(menu) if ax.role(i) in _ITEM_ROLES]
 
 
@@ -860,8 +874,8 @@ def _menu_titles(ax, root_of, timeout, cancel):
         return [_item_title(ax, i) for i in items]
     finally:
         cancel(menu)
-        wait_until(ax, lambda: _own_menu(ax, input_control(ax, root_of())) is None, timeout,
-                   "the input menu closing")
+        wait_until(ax, lambda: _own_menu(ax, input_control(ax, root_of()), root_of()) is None,
+                   timeout, "the input menu closing")
 
 
 def read_input(ax, root_of, read_uid, cancel=None, timeout=5.0):
@@ -1399,11 +1413,12 @@ def select_provider(ax, root_of, name, timeout=3.0):
     card = provider_card(ax, root_of())
     if card is None:
         raise ControlError(f"provider {name!r}: no AI polish model card (AI Polish may be off)")
-    if _own_menu(ax, card) is None:
+    if _own_menu(ax, card, root_of()) is None:
         ax.press(card)
-        wait_until(ax, lambda: _own_menu(ax, provider_card(ax, root_of())) is not None, timeout,
-                   "the provider list open")
-    menu = _own_menu(ax, provider_card(ax, root_of()))
+        wait_until(
+            ax, lambda: _own_menu(ax, provider_card(ax, root_of()), root_of()) is not None,
+            timeout, "the provider list open")
+    menu = _own_menu(ax, provider_card(ax, root_of()), root_of())
     row = _one([e for e in ax.walk(menu) if ax.role(e) == "AXButton"
                 and _names_match(ax, e, name, prefix=True)], f"provider {name!r}")
     if row is None:

@@ -69,6 +69,10 @@ class FakeSettings:
                         ("AppleUSBAudioEngine:Studio", "Studio Mic", "USB")]
         self.uid_unreadable = False
         self.menu_open = False
+        # #3606: the shipping dropdown is a SwiftUI popover the window publishes away from
+        # the button; `extra_popover` is a second popover open at the same time.
+        self.menu_in_window = False
+        self.extra_popover = False
         self.presses = []
         self.scrolls = 0
         self.cancels = 0
@@ -175,7 +179,7 @@ class FakeSettings:
     def root(self):
         window_children = []
         if self.open:
-            window_children = [self.sidebar_tree(), self.content_tree()]
+            window_children = [self.sidebar_tree(), self.content_tree()] + self.window_popovers()
             if self.long_list_rows:
                 decoy = [self.named("AXButton", page, value=self.sel(False)) for page in sn.PAGES]
                 rows = [el("AXRow", children=[el("AXCell", children=decoy)])]
@@ -287,9 +291,29 @@ class FakeSettings:
             raise sn.PreferenceError("preferredInputDeviceIDOverride: defaults exited 1")
         return self.input_uid
 
+    def input_items(self, role):
+        items = [el(role, title=self.t("Auto"), press=self._act(
+            "input:Auto", lambda: self._set_input("")))]
+        for uid, name, badge in self.devices:
+            title = name + (f" · {self.t(badge)}" if badge else "")
+            items.append(el(role, title=title, press=self._act(
+                f"input:{name}", lambda uid=uid: self._set_input(uid))))
+        return items
+
+    def window_popovers(self):
+        """Popovers the window publishes outside their controls (#3606), nested the way
+        macOS 27 nests the microphone dropdown: three levels below the window."""
+        pops = []
+        if self.menu_open and self.menu_in_window:
+            pops.append(el("AXGroup", children=[el("AXGroup", children=[
+                el("AXPopover", children=self.input_items("AXButton"))])]))
+        if self.extra_popover:
+            pops.append(el("AXPopover", children=[el("AXStaticText", value="Learn more")]))
+        return pops
+
     def input_tree(self):
         menu_children = []
-        if self.menu_open:
+        if self.menu_open and not self.menu_in_window:
             items = [el("AXMenuItem", title=self.t("Auto"), press=self._act(
                 "input:Auto", lambda: self._set_input("")))]
             for uid, name, badge in self.devices:
@@ -409,6 +433,12 @@ def raising_cases():
         f, ax = mic()
         f.devices.append(("Studio2", "Studio Mic", None))   # two items read "Studio Mic[ · …]"
         sn.select_input(ax, f.root, f.read_uid, auto=False, name="Studio Mic", cancel=ax.cancel)
+
+    def input_two_popovers():
+        f, ax = mic()
+        f.menu_in_window = True
+        f.extra_popover = True   # an open "Learn more" guide beside the dropdown
+        sn.select_input(ax, f.root, f.read_uid, auto=False, name="BlackHole 2ch", cancel=ax.cancel)
 
     def input_missing():
         f = FakeSettings()
@@ -563,6 +593,8 @@ def raising_cases():
         ("two 'Change speech engine' buttons refuse", change_ambiguous, sn.NavigationError),
         ("two menu items matching one device refuse", input_ambiguous, sn.NavigationError),
         ("a missing Input device control refuses", input_missing, sn.NavigationError),
+        ("two open popovers refuse rather than take one for the microphone list (#3606)",
+         input_two_popovers, sn.NavigationError),
         ("an unreadable stored microphone UID refuses before any change",
          uid_unreadable_capture, sn.PreferenceError),
         ("a chosen device that is not connected (placeholder shown) refuses",
@@ -841,6 +873,22 @@ def valued_cases():
         rows.append(("German Auto ('Automatisch · Integriert') reads as Auto",
                      sn.read_input(ax, f.root, f.read_uid, cancel=ax.cancel),
                      sn.InputChoice("", "MacBook Pro Microphone")))
+
+        # #3606: the shipping dropdown is a popover published in the WINDOW, not under the
+        # button. Reading, choosing and restoring must all work through it.
+        f = FakeSettings()
+        f.page, f.remembered_tab = "Dictation Settings", "Microphone"
+        f.menu_in_window = True
+        ax = f.ax()
+        got = sn.read_input(ax, f.root, f.read_uid, cancel=ax.cancel)
+        picked = sn.select_input(ax, f.root, f.read_uid, auto=False, name="BlackHole 2ch",
+                                 cancel=ax.cancel)
+        sn.restore_input(ax, f.root, f.read_uid, got, cancel=ax.cancel)
+        rows.append(("a dropdown published in the window (not under the button) is read, "
+                     "chosen from and restored",
+                     (got, picked, f.input_uid, f.menu_open),
+                     (sn.InputChoice("", "MacBook Pro Microphone"),
+                      sn.InputChoice("BlackHole2ch_UID", "BlackHole 2ch"), "", False)))
 
     blocks.append(('Microphone: the stored UID is the choice; the display only names it', block_10))
 
