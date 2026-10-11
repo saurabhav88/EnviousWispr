@@ -58,25 +58,32 @@ struct ModelDeliveryHomeTests {
     }
   }
 
-  /// Waits for a task construction started, with a deadline so a task that
-  /// never ends fails loudly instead of hanging the lane.
-  private static func awaitBounded<T: Sendable>(
-    _ task: Task<T, Never>?, sourceLocation: SourceLocation = #_sourceLocation
+  /// Waits for a task construction started. The deadline releases the caller
+  /// even if the subject never ends, so a hung task fails instead of hanging.
+  fileprivate static func awaitBounded<T: Sendable>(
+    _ task: Task<T, Never>?,
+    deadline: Duration = .seconds(30),
+    sourceLocation: SourceLocation = #_sourceLocation
   ) async throws -> T {
     let task = try #require(task, sourceLocation: sourceLocation)
-    return try await withThrowingTaskGroup(of: T?.self) { group in
-      group.addTask { await task.value }
-      group.addTask {
-        // deadline-fallback: fail loudly instead of hanging.
-        try await Task.sleep(for: .seconds(30))
-        return nil
+    return try await withCheckedThrowingContinuation {
+      (continuation: CheckedContinuation<T, any Error>) in
+      let result = TaskWaitResult(continuation)
+      Task {
+        let value = await task.value
+        result.take()?.resume(returning: value)
       }
-      defer { group.cancelAll() }
-      guard let first = try await group.next(), let value = first else {
+      Task {
+        do {
+          // deadline-fallback: release the caller even if the subject never ends.
+          try await Task.sleep(for: deadline)
+        } catch {
+          return
+        }
+        guard let continuation = result.take() else { return }
         Issue.record("construction's task never finished", sourceLocation: sourceLocation)
-        throw CancellationError()
+        continuation.resume(throwing: CancellationError())
       }
-      return value
     }
   }
 
@@ -98,30 +105,6 @@ struct ModelDeliveryHomeTests {
         try Data(contentsOf: donor.appendingPathComponent(file.path)) == file.content,
         "the donor is read only")
     }
-  }
-
-  @Test("an upgrade from admitted v3 is not a first run", arguments: [false, true])
-  func upgradeUsersAreNotFirstRun(admittedV3: Bool) async throws {
-    let fixture = try ParakeetHomeFixture.make()
-    if admittedV3 {
-      let seedController = ModelDeliveryController(
-        defaults: TestDefaults.suite("test.home-seed.\(UUID().uuidString)")!,
-        availableDiskBytes: { _ in .max })
-      let registration = DeliveryRegistration(
-        manifest: fixture.retired,
-        installDirectory: ParakeetInstallLocation.directory(
-          for: .v3, dataDirectory: fixture.dataDirectory),
-        metadataDirectory: fixture.dataDirectory.appendingPathComponent("ModelDelivery"))
-      try ParakeetHomeFixture.writeBytes(into: registration.installDirectory)
-      #expect(await seedController.admitIfComplete(registration))
-    }
-    let home = ModelDeliveryHome(
-      engineMutationScope: .live(
-        tryBegin: { true }, end: { true }, wake: {}, onRefused: { _ in }),
-      manifestBundle: fixture.bundle, appSupportOverride: fixture.root,
-      retiredV3Progress: .init(write: { _, _, _ in }, clear: {}))
-    try await Self.awaitBounded(home.parakeetObserverSetupForTesting)
-    #expect(home.firstRunForTesting(fixture.ultra.identity) == !admittedV3)
   }
 
   @Test("the upgrade coordinator's usability changes reach the companion observers")
@@ -1177,5 +1160,79 @@ private enum ParakeetHomeFixture {
         at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
       try file.content.write(to: url)
     }
+  }
+}
+
+/// Releases a waiter exactly once, whichever of the subject or the deadline
+/// arrives first.
+private final class TaskWaitResult<Value: Sendable>: @unchecked Sendable {
+  private let lock = NSLock()
+  private var continuation: CheckedContinuation<Value, any Error>?
+
+  init(_ continuation: CheckedContinuation<Value, any Error>) {
+    self.continuation = continuation
+  }
+
+  func take() -> CheckedContinuation<Value, any Error>? {
+    lock.withLock {
+      defer { continuation = nil }
+      return continuation
+    }
+  }
+}
+
+/// #3546: when this fails, `first_run` telemetry misreports an upgrading user.
+@MainActor
+@Suite(.tags(.observabilityContract))
+struct ParakeetUpgradeFirstRunTests {
+  @Test("an upgrade from admitted v3 is not a first run", arguments: [false, true])
+  func upgradeUsersAreNotFirstRun(admittedV3: Bool) async throws {
+    let fixture = try ParakeetHomeFixture.make()
+    if admittedV3 {
+      let seedController = ModelDeliveryController(
+        defaults: TestDefaults.suite("test.home-seed.\(UUID().uuidString)")!,
+        availableDiskBytes: { _ in .max })
+      let registration = DeliveryRegistration(
+        manifest: fixture.retired,
+        installDirectory: ParakeetInstallLocation.directory(
+          for: .v3, dataDirectory: fixture.dataDirectory),
+        metadataDirectory: fixture.dataDirectory.appendingPathComponent("ModelDelivery"))
+      try ParakeetHomeFixture.writeBytes(into: registration.installDirectory)
+      #expect(await seedController.admitIfComplete(registration))
+    }
+    let home = ModelDeliveryHome(
+      engineMutationScope: .live(
+        tryBegin: { true }, end: { true }, wake: {}, onRefused: { _ in }),
+      manifestBundle: fixture.bundle, appSupportOverride: fixture.root,
+      retiredV3Progress: .init(write: { _, _, _ in }, clear: {}))
+    try await ModelDeliveryHomeTests.awaitBounded(home.parakeetObserverSetupForTesting)
+    #expect(home.firstRunForTesting(fixture.ultra.identity) == !admittedV3)
+  }
+}
+
+@MainActor
+@Suite(.tags(.harnessContract))
+struct ParakeetHomeTaskWaitTests {
+  @Test func deadlineReleasesCallerBeforeSubjectFinishes() async {
+    let (stream, continuation) = AsyncStream<Void>.makeStream()
+    var finished = false
+    let subject = Task { @MainActor in
+      for await _ in stream {}
+      finished = true
+    }
+    let fallback = Task { @MainActor in
+      // deadline-fallback: release the fake even with a broken waiter.
+      try? await Task.sleep(for: .seconds(1))
+      continuation.finish()
+    }
+    await withKnownIssue("The unfinished subject must trigger the waiter deadline") {
+      await #expect(throws: CancellationError.self) {
+        try await ModelDeliveryHomeTests.awaitBounded(subject, deadline: .milliseconds(1))
+      }
+    }
+    #expect(finished == false, "the waiter depended on subject completion")
+    continuation.finish()
+    await subject.value
+    fallback.cancel()
   }
 }
