@@ -526,6 +526,7 @@ struct SettingsSearchModelTests {
     let gate = AsyncGate()
     model.beforeMeaningCompletionForTesting = {
       await entered.open()
+      // Ignore cancellation: explicit open forces late completion.
       #expect(await gate.waitBounded())
     }
     #expect(await Self.typeWithPassRunning(model, "alpha", clock: clock))
@@ -720,33 +721,63 @@ struct SettingsSearchModelTests {
 /// Every return of meaning work, in order: true when the panel used it.
 @MainActor @Observable final class ReturnLog { var values: [Bool] = [] }
 
-/// Opens once; a waiter gives up after its bound and says so.
+/// Opens once; waits ignore cancellation unless explicitly enabled.
 actor Latch {
+  private typealias Completion = (Bool, Task<Void, Never>?)
+  private struct Waiter {
+    let continuation: CheckedContinuation<Completion, Never>
+    let timeout: Task<Void, Never>
+  }
+
   private var isOpen = false
-  private var waiters: [Int: CheckedContinuation<Bool, Never>] = [:]
+  private var waiters: [Int: Waiter] = [:]
   private var nextID = 0
 
   func open() {
     isOpen = true
-    for waiter in waiters.values { waiter.resume(returning: true) }
-    waiters = [:]
+    for id in Array(waiters.keys) { settle(id, opened: true) }
   }
 
-  func wait(seconds: Double = 5) async -> Bool {
-    if isOpen { return true }
+  func wait(
+    seconds: Double = 5, cancellable: Bool = false
+  ) async -> Bool {
     let id = nextID
     nextID += 1
-    return await withCheckedContinuation { continuation in
-      waiters[id] = continuation
-      Task {
-        try? await Task.sleep(for: .seconds(seconds))  // deadline-fallback: bounds a signal wait
-        self.giveUp(id)
+    let completion: Completion = await withTaskCancellationHandler {
+      await withCheckedContinuation { continuation in
+        guard cancellable == false || Task.isCancelled == false else {
+          continuation.resume(returning: (false, nil))
+          return
+        }
+        guard isOpen == false else {
+          continuation.resume(returning: (true, nil))
+          return
+        }
+        let timeout = Task {
+          do {
+            // deadline-fallback: bounds an absent signal.
+            try await Task.sleep(for: .seconds(seconds))
+          } catch {
+            return
+          }
+          self.settle(id, opened: false)
+        }
+        waiters[id] = Waiter(
+          continuation: continuation, timeout: timeout)
+      }
+    } onCancel: {
+      if cancellable {
+        Task { await self.settle(id, opened: false) }
       }
     }
+    await completion.1?.value
+    return completion.0
   }
 
-  private func giveUp(_ id: Int) {
-    waiters.removeValue(forKey: id)?.resume(returning: false)
+  private func settle(_ id: Int, opened: Bool) {
+    guard let waiter = waiters.removeValue(forKey: id) else { return }
+    waiter.timeout.cancel()
+    waiter.continuation.resume(returning: (opened, waiter.timeout))
   }
 }
 
@@ -764,7 +795,9 @@ actor DeadlineClock {
     let notice = registration
     registration = Latch()
     await notice.open()
-    let fired = await deadline.wait(seconds: seconds)
+    let fired = await deadline.wait(
+      seconds: seconds, cancellable: true)
+    waiting.removeAll { $0 === deadline }
     if fired == false && Task.isCancelled == false {
       Issue.record("DeadlineClock was not fired", sourceLocation: sourceLocation)
     }
@@ -862,14 +895,41 @@ struct SettingsSearchSignalHarnessTests {
     try #require(registered)
   }
 
-  @Test("cancellation does not masquerade as a missing clock fire")
+  @Test("cancellation completes without firing or expiring the clock")
   func cancelledClockIsQuiet() async throws {
     let clock = DeadlineClock()
-    let pending = Task { await clock.wait(seconds: 5) }
+    let finished = Latch()
+    let pending = Task {
+      await clock.wait(seconds: 60)
+      await finished.open()
+    }
     let registered = await clock.waitForRegistration(after: 0)
     pending.cancel()
+    let completed = await finished.wait(seconds: 5)
+
+    // Failure-only cleanup; never supplies a successful observation.
+    if completed == false { await clock.fire() }
     await pending.value
-    await clock.fire()
     try #require(registered)
+    #expect(completed, "cancellation needed a fire or deadline expiry")
+  }
+
+  @Test("cancellation before registration leaves the latch closed")
+  func alreadyCancelledLatchIsQuiet() async {
+    let latch = Latch()
+    let finished = Latch()
+    let pending = Task {
+      withUnsafeCurrentTask { $0?.cancel() }
+      let result = await latch.wait(seconds: 60, cancellable: true)
+      await finished.open()
+      return result
+    }
+    let completed = await finished.wait(seconds: 5)
+    if completed == false { await latch.open() }
+    let result = await pending.value
+    #expect(completed)
+    #expect(result == false)
+    await latch.open()
+    #expect(await latch.wait())
   }
 }
