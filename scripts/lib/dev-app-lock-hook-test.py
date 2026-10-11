@@ -53,6 +53,8 @@ class HookTests(unittest.TestCase):
                 'bash /tmp/build-dev-app.sh',
                 'source /tmp/build-dev-app.sh',
                 '. /tmp/build-dev-app.sh',
+                'source -- /tmp/build-dev-app.sh',
+                '. -- /tmp/build-dev-app.sh',
                 'python3.12 /tmp/Tests/RuntimeUAT/uat.py run',
                 'env FOO=x python3 -B /tmp/Tests/RuntimeUAT/uat.py run',
                 'command open "/tmp/build/EnviousWispr Local.app"',

@@ -99,7 +99,8 @@ def dev_path(text):
 def script_argument(argv):
     """Parse interpreter options before the script; never inspect script data."""
     if argv[0] == '.' or Path(argv[0]).name == 'source':
-        return (argv[1], argv[2:]) if len(argv) > 1 else (None, [])
+        rest = argv[2:] if argv[1:2] == ['--'] else argv[1:]
+        return (rest[0], rest[1:]) if rest else (None, [])
     python = re.fullmatch(r'python(?:3(?:\.[0-9]+)?)?', Path(argv[0]).name) is not None
     if python or Path(argv[0]).name in ('bash', 'sh', 'zsh'):
         short = 'bBdEhiIOPqRsSuVvxW:X:c:m:' if python else 'abefhklmnptuvxBCEHPTc:o:O:'
