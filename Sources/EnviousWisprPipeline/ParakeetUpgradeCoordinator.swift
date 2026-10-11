@@ -189,6 +189,9 @@ package final class ParakeetUpgradeCoordinator {
   /// delivery awaits exactly as it did when the adapter ran them inline; later
   /// callers wait for its result.
   private var preparing = false
+  // Handoff only. Fresh invocations still run a stage.
+  // Cleared at stage start; published before resuming waiters.
+  private var completedPreparation: Result<PreparedLoad, any Error>?
   private var waiters: [UUID: CheckedContinuation<PreparedLoad, any Error>] = [:]
 
   /// Test seams (internal): awaited at the start of every delivery stage, and
@@ -265,7 +268,15 @@ package final class ParakeetUpgradeCoordinator {
 
       if preparing {
         do {
-          let prepared = try await waitForPreparation()
+          let joined: Result<PreparedLoad, any Error>
+          do {
+            joined = .success(try await waitForPreparation())
+          } catch {
+            joined = .failure(error)
+          }
+          try Task.checkCancellation()
+          if preparing { continue }
+          let prepared = try (completedPreparation ?? joined).get()
           // A selection point marked while that preparation ran is not
           // settled by it: prepare again before returning.
           if hasPendingSelectionPoint { continue }
@@ -279,6 +290,7 @@ package final class ParakeetUpgradeCoordinator {
       }
 
       preparing = true
+      completedPreparation = nil
       let marked = selectionPointsMarked
       let result: Result<PreparedLoad, any Error>
       do {
@@ -291,6 +303,7 @@ package final class ParakeetUpgradeCoordinator {
         result = .failure(error)
       }
 
+      completedPreparation = result
       preparing = false
       let joined = waiters
       waiters = [:]

@@ -83,8 +83,9 @@ struct ParakeetUpgradeCoordinatorTests {
   func markDuringPreparationIsSettledBeforeReturn() async throws {
     for withJoiner in [false, true] {
       let gate = StageGate(maximumEntries: 2)
+      let selection = ParakeetSelectionProvider()
       let coordinator = ParakeetUpgradeCoordinator(
-        parakeetSelection: ParakeetSelectionProvider(), delivery: nil)
+        parakeetSelection: selection, delivery: nil)
       coordinator.deliveryStageGateForTesting = { await gate.pass() }
       coordinator.markSelectionPoint()
       let runner = Task { try await coordinator.prepareLoad() }
@@ -98,8 +99,14 @@ struct ParakeetUpgradeCoordinatorTests {
       gate.open()
       let runnerResult = await runner.result
       let joinerResult = await joiner?.result
-      _ = try runnerResult.get()
-      _ = try joinerResult?.get()
+      let prepared = try runnerResult.get()
+      #expect(prepared.isSelectionLoad == true)
+      #expect(prepared.selection == selection.current)
+      if let joinerResult {
+        let joined = try joinerResult.get()
+        #expect(joined.isSelectionLoad == prepared.isSelectionLoad)
+        #expect(joined.selection == selection.current)
+      }
       #expect(
         gate.entries == 2,
         "the stage ran again for the point marked during it")
@@ -126,9 +133,10 @@ struct ParakeetUpgradeCoordinatorTests {
 
   @Test("a cancelled runner lets an uncancelled waiter run the stage itself")
   func cancelledRunnerHandsOverToAWaiter() async throws {
-    let gate = StageGate()
+    let gate = StageGate(maximumEntries: 2)
+    let selection = ParakeetSelectionProvider()
     let coordinator = ParakeetUpgradeCoordinator(
-      parakeetSelection: ParakeetSelectionProvider(), delivery: nil)
+      parakeetSelection: selection, delivery: nil)
     coordinator.deliveryStageGateForTesting = { await gate.pass() }
     let runner = Task { try await coordinator.prepareLoad() }
     await gate.waitForEntry(1)
@@ -136,9 +144,14 @@ struct ParakeetUpgradeCoordinatorTests {
     await gate.waitForParked(coordinator, 1)
     runner.cancel()
     gate.open()
-    await #expect(throws: CancellationError.self) { _ = try await runner.value }
-    _ = try await joiner.value
-    #expect(gate.entries == 2, "the waiter ran the stage after the runner's cancel")
+    let ownerResult = await runner.result
+    let joinedResult = await joiner.result
+    #expect(throws: CancellationError.self) { _ = try ownerResult.get() }
+    let prepared = try joinedResult.get()
+    #expect(prepared.selection == selection.current)
+    #expect(prepared.isSelectionLoad == true)
+    #expect(coordinator.hasPendingSelectionPoint == false)
+    #expect(gate.entries == 2)
   }
 }
 
@@ -271,6 +284,65 @@ struct ParakeetUpgradeStageGateTests {
 @MainActor
 @Suite("Parakeet upgrade policy", .serialized, .tags(.productOutcome))
 struct ParakeetUpgradePolicyTests {
+
+  @Test("a delayed joiner receives the newer failure without a third stage")
+  func delayedJoinerReceivesNewerFailure() async throws {
+    let rig = try await Self.rig(v3: false, ultra: true, enabled: false)
+    defer { try? FileManager.default.removeItem(at: rig.root) }
+    // No v3 handle: these delivery-off decisions contain no transport await.
+    let coordinator = ParakeetUpgradeCoordinator(
+      parakeetSelection: rig.selection, delivery: nil,
+      target: .init(
+        delivery: rig.ultra, store: rig.store, ownedModelsRoot: rig.models))
+    let gate = StageGate(maximumEntries: 2)
+    coordinator.deliveryStageGateForTesting = {
+      await gate.pass()
+      if gate.entries == 2 {
+        do {
+          try rig.store.write(.init(
+            attempts: 0, refetchSpent: false, exhausted: true, declined: false))
+        } catch {
+          Issue.record(error)
+        }
+      }
+    }
+    coordinator.markSelectionPoint()
+    let runner = Task { try await coordinator.prepareLoad() }
+    await gate.waitForEntry(1)
+    let joiner = Task { try await coordinator.prepareLoad() }
+    await gate.waitForParked(coordinator, 1)
+    coordinator.markSelectionPoint()
+    gate.open()
+    let ownerResult = await runner.result
+    let joinedResult = await joiner.result
+    let expected = ParakeetUpgradeUnavailableError(reason: "exhausted")
+    #expect(throws: expected) { _ = try ownerResult.get() }
+    #expect(throws: expected) { _ = try joinedResult.get() }
+    #expect(gate.entries == 2)
+    #expect(coordinator.hasPendingSelectionPoint)
+    #expect(rig.selection.current == nil)
+
+    // A later fresh invocation must not reuse the retained failure.
+    coordinator.deliveryStageGateForTesting = nil
+    try coordinator.retry()
+    let recovered = try await coordinator.prepareLoad()
+    #expect(recovered.selection == rig.selection.current)
+    #expect(recovered.selection?.model == .ultra)
+    #expect(recovered.isSelectionLoad == true)
+    #expect(coordinator.hasPendingSelectionPoint == false)
+  }
+
+  @Test("a fresh preparation retains frozen reload semantics")
+  func completedPreparationPreservesFrozenReload() async throws {
+    let rig = try await Self.rig(v3: false, ultra: true)
+    defer { try? FileManager.default.removeItem(at: rig.root) }
+    let initial = try await rig.coordinator.prepareLoad()
+    #expect(initial.isSelectionLoad == true)
+    let reload = try await rig.coordinator.prepareLoad()
+    #expect(reload.selection == initial.selection)
+    #expect(reload.selection == rig.selection.current)
+    #expect(reload.isSelectionLoad == false)
+  }
   final class WriteSwitch: @unchecked Sendable {
     var failing = false
     private var failCall: Int?
