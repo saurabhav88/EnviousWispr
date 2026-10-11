@@ -57,6 +57,14 @@ struct RecognizerMarksTests {
     ("period period", ".."),
     ("wait... period", "wait...."),
     ("example dot com period", "example.com."),
+    // Abbreviation dots stay (cloud review of #3625); an ordinary word's pause-made period does not.
+    ("Meet John Jr. comma and Jane", "Meet John Jr., and Jane"),
+    ("Use tools, etc. comma and supplies", "Use tools, etc., and supplies"),
+    ("Ask J. comma next", "Ask J., next"),
+    ("Maple Ave. comma", "Maple Ave.,"),
+    ("Acme Inc. comma", "Acme Inc.,"),
+    ("I said no. comma but", "I said no, but"),
+    ("Tell Ed. comma now", "Tell Ed, now"),
   ]
 
   @Test(
@@ -138,6 +146,8 @@ struct RecognizerMarksTests {
     ("de", "z.B. Diktiere Komma", "z.B.,"),
     ("de", "am 2. Diktiere Komma", "am 2.,"),
     ("de", "Es kostet 5. Diktiere Punkt", "Es kostet 5."),
+    ("de", "Siehe Nr. Diktiere Komma weiter", "Siehe Nr., weiter"),
+    ("de", "Er sagt so. Diktiere Komma weiter", "Er sagt so, weiter"),
     ("de", "Moment\u{2026} Diktiere Punkt", "Moment\u{2026}."),
     ("de", "Wirklich?! Diktiere Punkt", "Wirklich?!."),
     ("de", "Erste Zeile. Diktiere neue Zeile zweite", "Erste Zeile.\nZweite"),

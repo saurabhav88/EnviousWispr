@@ -143,7 +143,9 @@ extension InverseTextNormalizer {
         let prefix = ns.substring(to: run.location)
         // English has no ordinal dot, and the number passes leave the engine's sentence mark after a
         // number (`$25., and`, measured on Parakeet), so a digit does not protect a dot on this route.
-        if isProtectedDotToken(precedingToken(of: prefix), digitIsOrdinal: false) { return nil }
+        if isProtectedDotToken(precedingToken(of: prefix), digitIsOrdinal: false, language: "en") {
+          return nil
+        }
       }
       return ""
     }
@@ -207,7 +209,8 @@ extension InverseTextNormalizer {
       let isSentinel = protectedSentinels.contains { !$0.isEmpty && token.hasSuffix($0) }
       // English (with a start word too) has no ordinal dot, as on the bare-word route.
       if !isSentinel,
-        isProtectedDotToken(token, digitIsOrdinal: LanguageNormalizer.baseCode(language) != "en")
+        isProtectedDotToken(
+          token, digitIsOrdinal: LanguageNormalizer.baseCode(language) != "en", language: language)
       {
         return
       }
@@ -223,24 +226,55 @@ extension InverseTextNormalizer {
 
   // MARK: - Protected dots
 
-  private static let honorifics: Set<String> = [
-    "mr", "mrs", "ms", "dr", "prof", "hr", "fr", "sr", "sra", "sig", "dott",
+  /// Abbreviation tokens (lowercased, without their dot) whose dot is part of the word, so a spoken mark
+  /// command right after them keeps it: `John Jr. comma` -> `John Jr.,`. The list is a bounded protective set,
+  /// not a dictionary. A word that is also an ordinary word of the language (`no`, `ed`, `al`, `sat`, `ago`,
+  /// `art` in English; `so`, `art` in German; `me`, `sa` in French) is left OUT: a pause before a spoken mark
+  /// makes the engine write its own period after exactly such a word, which is the mark this feature removes.
+  /// Honorifics, name suffixes and prose abbreviations that no language uses as a plain word are shared; the
+  /// rest is per language, because a token ordinary in one language can be an abbreviation in another.
+  private static let commonDotAbbreviations: Set<String> = words(
+    "mr mrs ms dr prof hr fr sr sra sig dott jr st mt vs etc ii iii iv")
+
+  private static let languageDotAbbreviations: [String: Set<String>] = [
+    "en": words(
+      """
+      rev hon capt col lt sgt cmdr adm esq ave blvd rd ln hwy ste ft dept inc ltd corp co llc llp plc \
+      approx est fig vol pp cf viz
+      """),
+    "de": words("str pl ca bzw usw vgl evtl inkl zzgl nr abs abb aufl bd gmbh"),
+    "fr": words("mme mlle mm av bd rte env approx réf fig vol éd sarl sas"),
+    "es": words("srta dra ud uds av avda ctra aprox pág págs núm fig"),
+    "it": words("sig.ra sig.na dott.ssa ing avv arch rag geom ecc cfr pag pagg num art fig srl spa"),
   ]
 
-  /// The whitespace-delimited token that ends `prefix`, without the dot that follows it.
-  private static func precedingToken(of prefix: String) -> String {
-    String(prefix.reversed().prefix { !$0.isWhitespace }.reversed())
+  private static func words(_ text: String) -> Set<String> {
+    Set(text.split(whereSeparator: { $0.isWhitespace }).map(String.init))
   }
 
-  /// A dot after a digit (German ordinal `2.`), a letter-dot-letter initialism (`p.m.`, `z.B.`, `U.S.`), or
-  /// an honorific (`Dr.`) is not a sentence mark. English has no ordinal dot: `$25. Comma` is the
-  /// engine's sentence mark after a number, so the English route passes `digitIsOrdinal: false`.
-  private static func isProtectedDotToken(_ token: String, digitIsOrdinal: Bool) -> Bool {
+  /// The whitespace-delimited token that ends `prefix`, without the dot that follows it. Horizontal padding
+  /// the number passes leave before the mark (` 10 .`) is skipped first.
+  private static func precedingToken(of prefix: String) -> String {
+    let end = prefix.trimmingCharacters(in: .whitespaces)
+    return String(end.reversed().prefix { !$0.isWhitespace }.reversed())
+  }
+
+  /// A dot that is not a sentence mark: after a digit (German ordinal `2.`), a single capital initial
+  /// (`J.`), a dotted initialism (`p.m.`, `z.B.`, `U.S.`), or a listed abbreviation for the route's language
+  /// (`Dr.`, `Jr.`, `etc.`, `Ave.`). English has no ordinal dot: `$25. Comma` is the engine's sentence mark
+  /// after a number, so the English route passes `digitIsOrdinal: false`.
+  private static func isProtectedDotToken(_ token: String, digitIsOrdinal: Bool, language: String) -> Bool {
     guard let last = token.last else { return false }
     if last.isNumber { return digitIsOrdinal }
     let trimmed = String(token.drop { !$0.isLetter && !$0.isNumber })
-    if honorifics.contains(trimmed.lowercased()) { return true }
-    return firstMatch(#"[A-Za-z]\.[A-Za-z]$"#, trimmed, caseInsensitive: false) != nil
+      .precomposedStringWithCanonicalMapping
+    let key = trimmed.lowercased()
+    if commonDotAbbreviations.contains(key) { return true }
+    if languageDotAbbreviations[LanguageNormalizer.baseCode(language) ?? ""]?.contains(key) == true {
+      return true
+    }
+    if firstMatch(#"^\p{Lu}$"#, trimmed, caseInsensitive: false) != nil { return true }
+    return firstMatch(#"\p{L}\.\p{L}$"#, trimmed, caseInsensitive: false) != nil
   }
 
   private static func isPeriodCommand(_ phrase: String) -> Bool {
