@@ -516,8 +516,8 @@ struct SettingsSearchModelTests {
     }
     let model = Self.meaningModel(worker, clock: clock, returns: returns)
     model.setQuery("alpha")
-    try #require(await Self.waitUntil { model.meaningPass == .completed })
-    try #require(model.results.contains { $0.entryID == "showInDock" && $0.coverage == 0 })
+    #expect(await Self.waitUntil { model.meaningPass == .completed })
+    #expect(model.results.contains { $0.entryID == "showInDock" && $0.coverage == 0 })
     await clock.fire()
     model.reset(endedBy: .windowClose)
     returns.values = []
@@ -528,25 +528,22 @@ struct SettingsSearchModelTests {
       await entered.open()
       #expect(await gate.waitBounded())
     }
-    defer {
-      Task {
-        await gate.open()
-        await clock.fire()
-      }
-    }
-    try #require(await Self.typeWithPassRunning(model, "alpha", clock: clock))
-    try #require(await entered.wait())
+    #expect(await Self.typeWithPassRunning(model, "alpha", clock: clock))
+    #expect(await entered.wait())
     let words = model.results.map(\.entryID)
-    try #require(words == ["theme"])
+    #expect(words == ["theme"])
     await clock.fire()
-    try #require(await Self.waitUntil { model.meaningPass == .abandoned })
+    #expect(await Self.waitUntil { model.meaningPass == .abandoned })
     await gate.open()
-    try #require(await Self.waitUntil { returns.values.count == 1 })
+    #expect(await Self.waitUntil { returns.values.count == 1 })
     #expect(returns.values == [false])
     #expect(model.meaningPass == .abandoned)
     #expect(model.results.map(\.entryID) == words)
     #expect(model.meaningElapsedMilliseconds == nil)
     #expect(model.results.contains { $0.coverage == 0 } == false)
+    model.beforeMeaningCompletionForTesting = nil
+    model.reset(endedBy: .windowClose)
+    await clock.fire()
   }
 
   @Test("an encoder that never returns, then returns late, changes nothing after the deadline")
@@ -859,24 +856,20 @@ struct SettingsSearchSignalHarnessTests {
   func clockFireIsQuiet() async throws {
     let clock = DeadlineClock()
     let pending = Task { await clock.wait() }
-    try #require(await clock.waitForRegistration(after: 0))
+    let registered = await clock.waitForRegistration(after: 0)
     await clock.fire()
     await pending.value
+    try #require(registered)
   }
 
   @Test("cancellation does not masquerade as a missing clock fire")
   func cancelledClockIsQuiet() async throws {
-    let entered = Latch()
-    let release = AsyncGate()
     let clock = DeadlineClock()
-    let pending = Task {
-      await entered.open()
-      await release.wait()
-      await clock.wait(seconds: 0.001)
-    }
-    try #require(await entered.wait())
+    let pending = Task { await clock.wait(seconds: 5) }
+    let registered = await clock.waitForRegistration(after: 0)
     pending.cancel()
-    await release.open()
     await pending.value
+    await clock.fire()
+    try #require(registered)
   }
 }
