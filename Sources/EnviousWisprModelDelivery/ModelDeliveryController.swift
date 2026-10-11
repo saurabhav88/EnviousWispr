@@ -132,6 +132,9 @@ public actor ModelDeliveryController {
     /// tick — never decremented repeatedly (code-diff r1 P2).
     var reservationRemainingBase: Int64 = 0
     var reservationProgressBaseline: Int64 = 0
+    /// #3546: assembly output a parts-capable file may still allocate after its
+    /// network bytes land; the reservation never shrinks below it.
+    var reservationAssemblyFloor: Int64 = 0
     var reservationHeadroom: Double = 1.0
     /// First-wins cancel latch: ties the cancel EVENT to the winning exit so
     /// a racing failure can't double-emit (audit-all-terminal-paths rule).
@@ -139,6 +142,18 @@ public actor ModelDeliveryController {
   }
 
   private var entries: [ModelIdentity: Entry] = [:]
+  /// #3546 test seam: replaces the §4d assembly write for every attempt this
+  /// controller starts, so a test can hold an attempt INSIDE assembly (after its
+  /// network bytes landed) and observe the reservation ledger there. Internal;
+  /// nothing in production sets it.
+  private(set) var assemblyWriteForTesting:
+    (@Sendable (_ handle: FileHandle, _ chunk: Data) async throws -> Void)?
+
+  func setAssemblyWriteForTesting(
+    _ write: (@Sendable (_ handle: FileHandle, _ chunk: Data) async throws -> Void)?
+  ) {
+    assemblyWriteForTesting = write
+  }
   private var stateObservers: [@Sendable (ModelIdentity, DeliveryState) -> Void] = []
   private var eventObservers: [@Sendable (ModelIdentity, DeliveryEvent) -> Void] = []
   /// Events emitted before the first event observer attaches (see
@@ -748,7 +763,29 @@ public actor ModelDeliveryController {
     // WITHOUT attempt_started (D3).
     let staging = stagingDirectory(for: registration)
     let fetchFiles = manifest.files.filter { componentsToFetch.contains($0.component) }
-    let stagedBytes = stagedByteCount(of: fetchFiles, in: staging)
+    // #3546 (contract §4d): one accounting per file, from the transport layout
+    // the fetcher writes. `logicalStaged` feeds progress; `diskNeeded` feeds the
+    // refusal and the reservation as the worst case over every permitted
+    // source, which for a parts-capable file includes the whole assembly output
+    // on top of the missing parts.
+    let sources = flags.orderedSources(from: manifest)
+    var accounting:
+      [(
+        file: DeliveryManifest.File,
+        staged: (logicalStaged: Int64, diskNeeded: Int64, assemblyFloor: Int64)
+      )] =
+        []
+    for file in fetchFiles {
+      let staged = await ManifestFetchTask.stagedAccounting(
+        of: file, sources: sources, in: staging)
+      accounting.append((file: file, staged: staged))
+    }
+    // The accounting may hash a full-size staged parts file: a cancel or a
+    // superseding attempt that landed meanwhile wins, before any reservation.
+    guard entries[identity]?.generation == generation, !Task.isCancelled else {
+      return finishCancelled(identity, generation: generation)
+    }
+    let stagedBytes = accounting.reduce(Int64(0)) { $0 + $1.staged.logicalStaged }
     let verifiedInPlaceBytes = manifest.totalBytes - fetchFiles.reduce(0) { $0 + $1.sizeBytes }
     // #2697: bytes the DONOR can supply are not bytes we have to make room to
     // download. This is a stat-only reckoning — nothing is read, copied or
@@ -761,10 +798,12 @@ public actor ModelDeliveryController {
     // the defect this issue opened on.
     let donorSuppliableBytes: Int64 = {
       guard let donor = registration.legacyDonorDirectory else { return 0 }
-      return fetchFiles.reduce(Int64(0)) { sum, file in
-        let candidate = donor.appendingPathComponent(file.resolvedInstallPath)
-        return CacheAdmission.sizeMatches(url: candidate, expected: file.sizeBytes)
-          ? sum + file.sizeBytes : sum
+      // #3546: a donor-suppliable file saves ALL of its disk need, which for a
+      // parts file includes the assembly output, not just its size.
+      return accounting.reduce(Int64(0)) { sum, entry in
+        let candidate = donor.appendingPathComponent(entry.file.resolvedInstallPath)
+        return CacheAdmission.sizeMatches(url: candidate, expected: entry.file.sizeBytes)
+          ? sum + entry.staged.diskNeeded : sum
       }
     }()
     // Cloud review P2: the donor subtraction decides the REFUSAL and must not
@@ -785,7 +824,7 @@ public actor ModelDeliveryController {
     // pessimistic refusal would have stopped earlier with a cleaner message.
     // That trade is deliberate — the optimistic half is common and the stale
     // half is rare, and today's code refuses the common one.
-    let missingBytes = fetchFiles.reduce(Int64(0)) { $0 + $1.sizeBytes } - stagedBytes
+    let missingBytes = accounting.reduce(Int64(0)) { $0 + $1.staged.diskNeeded }
     let remainingBytes = max(0, missingBytes - donorSuppliableBytes)
     let required = Int64(Double(remainingBytes) * manifest.admission.headroomFactor)
     let reservedRequirement = Int64(
@@ -809,6 +848,12 @@ public actor ModelDeliveryController {
       // donor file turns out to be stale.
       entry.reservedBytes = reservedRequirement
       entry.reservationRemainingBase = max(0, missingBytes)
+      // #3546: the assembly output stays reserved after the network reaches its
+      // total (`applyProgress` never shrinks below this floor) until the
+      // attempt's ordinary success/failure/cancel release.
+      entry.reservationAssemblyFloor = accounting.reduce(Int64(0)) {
+        $0 + $1.staged.assemblyFloor
+      }
       entry.reservationProgressBaseline = verifiedInPlaceBytes + stagedBytes
       entry.reservationHeadroom = manifest.admission.headroomFactor
       entries[identity] = entry
@@ -878,7 +923,7 @@ public actor ModelDeliveryController {
       ifGeneration: generation)
 
     let controller = self
-    let fetchTask = ManifestFetchTask(
+    var fetchTask = ManifestFetchTask(
       manifest: manifest, stagingDirectory: staging,
       sources: flags.orderedSources(from: manifest),
       componentsToFetch: componentsToFetch,
@@ -900,6 +945,7 @@ public actor ModelDeliveryController {
           identity, reason: reason, fromSourceID: fromSourceID, toSourceID: toSourceID,
           generation: generation)
       })
+    if let assemblyWriteForTesting { fetchTask.assemblyWrite = assemblyWriteForTesting }
 
     do {
       let outcome = try await fetchTask.run()
@@ -1008,7 +1054,8 @@ public actor ModelDeliveryController {
     // base - landed, reserved = remaining x headroom.
     if var entry = entries[identity] {
       let landed = max(0, bytes - entry.reservationProgressBaseline)
-      let remaining = max(0, entry.reservationRemainingBase - landed)
+      let remaining = max(
+        entry.reservationAssemblyFloor, max(0, entry.reservationRemainingBase - landed))
       entry.reservedBytes = Int64(Double(remaining) * entry.reservationHeadroom)
       entries[identity] = entry
     }
@@ -1420,16 +1467,6 @@ public actor ModelDeliveryController {
     // state 5 / D3 r2 finding 4); verify-phase cancels report verifying.
     if case .verifying = entries[identity]?.state { return "verifying" }
     return "downloading"
-  }
-
-  private func stagedByteCount(of files: [DeliveryManifest.File], in staging: URL) -> Int64 {
-    let fm = FileManager.default
-    return files.reduce(Int64(0)) { sum, file in
-      // Staged files live under the resolved install path (contract §4b).
-      let path = staging.appendingPathComponent(file.resolvedInstallPath).path
-      let size = ((try? fm.attributesOfItem(atPath: path)[.size] as? Int64) ?? nil) ?? 0
-      return sum + min(size, file.sizeBytes)
-    }
   }
 
   /// Production disk probe — same key EG-1 ships (`EGOneModelStore`), but
