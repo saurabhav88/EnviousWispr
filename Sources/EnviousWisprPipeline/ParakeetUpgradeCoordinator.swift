@@ -272,9 +272,13 @@ package final class ParakeetUpgradeCoordinator {
         return
       } catch {
         if target != nil { try checkCaller() }
-        guard loads < maxLoads, await handleLoadFailure(current, error: error) == .reload else {
-          throw error
-        }
+        // Without a target the second failure is terminal before any plan, as
+        // before. With one, every failure, the last included, reaches the plan
+        // so its outcome is reported; the persisted budget keeps a terminal
+        // plan from repairing.
+        if target == nil, loads >= maxLoads { throw error }
+        let plan = await handleLoadFailure(current, error: error)
+        guard loads < maxLoads, plan == .reload else { throw error }
         try checkCaller()
         if target != nil {
           current = PreparedLoad(selection: frozen, isSelectionLoad: current.isSelectionLoad)

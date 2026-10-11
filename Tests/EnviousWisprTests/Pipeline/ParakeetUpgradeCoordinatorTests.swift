@@ -318,6 +318,8 @@ struct ParakeetUpgradePolicyTests {
     v3Donor: Bool = false, ultraLocationRefused: Bool = false
   ) async throws -> Rig {
     let tag = UUID().uuidString
+    DeliveryStubProtocol.beginScope(pathPrefix: "/\(tag)/")
+    ChunkAppendDelegate.protocolClassesForTesting = [DeliveryStubProtocol.self]
     let root = FileManager.default.temporaryDirectory
       .appendingPathComponent("ew-upgrade-\(UUID().uuidString)", isDirectory: true)
     let data = root.appendingPathComponent("EnviousWispr", isDirectory: true)
@@ -866,10 +868,7 @@ struct ParakeetUpgradePolicyTests {
   }
 
   static func ultraRequests(_ rig: Rig) -> Int {
-    DeliveryStubProtocol.requests.filter {
-      $0.contains(rig.ultraBase.deletingLastPathComponent().path)
-    }
-    .count
+    DeliveryStubProtocol.requests(in: rig.ultraBase.deletingLastPathComponent().path + "/").count
   }
 
   static func enqueueUltra(_ rig: Rig) {
@@ -893,10 +892,13 @@ struct ParakeetUpgradePolicyTests {
     Self.enqueueUltra(rig)
     let log = LoadLog([false, false, false])
     let manager = Self.scriptedManager(rig, log)
+    var failed: [ParakeetModel] = []
+    rig.coordinator.onOutcome = { if case .loadFailed(let model) = $0 { failed.append(model) } }
     await #expect(throws: VendorLoadFailed.self) {
       try await Self.load(through: door, rig, manager)
     }
     #expect(log.order == [.v3, .ultra, .ultra], "E19 to Ultra, then its one repair and reload")
+    #expect(failed == log.order, "every failure, the last included, is reported")
     #expect(Self.state(rig)?.attempts == 2)
   }
 
@@ -907,10 +909,13 @@ struct ParakeetUpgradePolicyTests {
     let rig = try await Self.rig(v3: true, ultra: true)
     let log = LoadLog([false, false, false])
     let manager = Self.scriptedManager(rig, log)
+    var failed: [ParakeetModel] = []
+    rig.coordinator.onOutcome = { if case .loadFailed(let model) = $0 { failed.append(model) } }
     await #expect(throws: VendorLoadFailed.self) {
       try await Self.load(through: door, rig, manager)
     }
     #expect(log.order == [.ultra, .v3, .ultra], "A-fail to v3, then E19 back to Ultra")
+    #expect(failed == log.order, "every failure, the last included, is reported")
     #expect(Self.state(rig)?.attempts == 2)
   }
 
@@ -936,7 +941,8 @@ struct ParakeetUpgradePolicyTests {
     let prepared = try await rig.coordinator.prepareLoad()
     #expect(prepared.selection?.repairable == true)
     #expect(Self.physicalLoad(rig, succeeds: false) == .loaded)
-    // Damage the bytes: a repair now would have to fetch.
+    // Damage the bytes, and serve good ones: a forbidden repair would fetch and succeed.
+    Self.enqueueUltra(rig)
     try Data("damaged".utf8).write(
       to: rig.ultraRegistration.installDirectory.appendingPathComponent(Self.ultraFiles[1].path))
     #expect(await rig.coordinator.handleLoadFailure(prepared, error: VendorLoadFailed()) == .fail)
@@ -1087,6 +1093,43 @@ struct ParakeetUpgradePolicyTests {
     task.cancel()
     #expect(await task.value == .fail)
     #expect(Self.ultraRequests(rig) == 0)
+  }
+
+  @Test("Retry during the retirement drain prevents deletion")
+  func retryDuringDrainDeletesNothing() async throws {
+    let rig = try await Self.rig(
+      v3: true, ultra: true,
+      state: .init(attempts: 0, refetchSpent: true, exhausted: true, declined: false))
+    let gate = StageGate()
+    await rig.controller.setRetirementDrainGateForTesting { await gate.pass() }
+    let ended = CleanupEnded()
+    rig.coordinator.onCleanupEndedForTesting = { _ in ended.fire() }
+    var outcomes: [ParakeetUpgradeCoordinator.Outcome] = []
+    rig.coordinator.onOutcome = { outcomes.append($0) }
+    let prepared = try await rig.coordinator.prepareLoad()
+    #expect(prepared.selection?.model == .v3)
+    await gate.waitForEntry(1)
+    try rig.coordinator.retry()
+    gate.open()
+    await ended.wait()
+    await rig.controller.setRetirementDrainGateForTesting(nil)
+    #expect(await rig.controller.isAdmitted(rig.ultraRegistration))
+    #expect(await rig.controller.isAdmitted(rig.v3Registration))
+    #expect(outcomes.contains(.removedTarget) == false)
+    #expect(outcomes.contains(.retirementFailed(.ultra)) == false)
+  }
+
+  @Test("a rig's scoped stubs and request records survive a shared stub reset")
+  func scopedStubsSurviveReset() async throws {
+    let rig = try await Self.rig(v3: false, ultra: false)
+    Self.enqueueUltra(rig)
+    DeliveryStubProtocol.reset()
+    let prepared = try await rig.coordinator.prepareLoad()
+    #expect(prepared.selection?.model == .ultra, "the queued responses were still served")
+    let fetched = Self.ultraRequests(rig)
+    #expect(fetched > 0)
+    DeliveryStubProtocol.reset()
+    #expect(Self.ultraRequests(rig) == fetched, "the scoped record is not cleared")
   }
 
   @Test("Retry cancels a queued target removal: nothing is deleted or reported")

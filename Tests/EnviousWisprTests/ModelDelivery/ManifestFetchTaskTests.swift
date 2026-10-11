@@ -41,13 +41,31 @@ final class DeliveryStubProtocol: URLProtocol {
   /// can prove which source and which representation (part or whole) was asked for.
   nonisolated(unsafe) static var seenRequests: [String] = []
   static let lock = NSLock()
+  /// #3546: path prefixes owned by one test rig. Their stubs survive a
+  /// `reset()` from a suite running concurrently, and their requests are
+  /// recorded apart from the shared list, so that rig counts only its own.
+  nonisolated(unsafe) static var scopedPrefixes: Set<String> = []
+  nonisolated(unsafe) static var scopedRequests: [String: [String]] = [:]
 
   static func reset() {
     lock.lock()
-    stubs = [:]
+    defer { lock.unlock() }
+    stubs = stubs.filter { entry in scopedPrefixes.contains { entry.key.hasPrefix($0) } }
     seenRangeHeaders = []
     seenRequests = []
-    lock.unlock()
+  }
+
+  static func beginScope(pathPrefix: String) {
+    lock.lock()
+    defer { lock.unlock() }
+    scopedPrefixes.insert(pathPrefix)
+    scopedRequests[pathPrefix] = []
+  }
+
+  static func requests(in pathPrefix: String) -> [String] {
+    lock.lock()
+    defer { lock.unlock() }
+    return scopedRequests[pathPrefix, default: []]
   }
 
   static var requests: [String] {
@@ -73,11 +91,16 @@ final class DeliveryStubProtocol: URLProtocol {
 
   override func startLoading() {
     Self.lock.lock()
-    if let range = request.value(forHTTPHeaderField: "Range") {
-      Self.seenRangeHeaders.append(range)
-    }
-    Self.seenRequests.append("\(request.httpMethod ?? "GET") \(request.url!.absoluteString)")
     let key = request.url!.path
+    let recorded = "\(request.httpMethod ?? "GET") \(request.url!.absoluteString)"
+    if let scope = Self.scopedPrefixes.first(where: { key.hasPrefix($0) }) {
+      Self.scopedRequests[scope, default: []].append(recorded)
+    } else {
+      if let range = request.value(forHTTPHeaderField: "Range") {
+        Self.seenRangeHeaders.append(range)
+      }
+      Self.seenRequests.append(recorded)
+    }
     let stub = Self.stubs[key]?.isEmpty == false ? Self.stubs[key]!.removeFirst() : nil
     Self.lock.unlock()
     guard let stub else {

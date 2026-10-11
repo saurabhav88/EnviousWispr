@@ -617,10 +617,19 @@ public actor ModelDeliveryController {
     }
   }
 
+  /// Test seam (internal): awaited inside the deletion drain, so a test can act
+  /// while a deletion is held there.
+  private var retirementDrainGateForTesting: (@Sendable () async -> Void)?
+
+  func setRetirementDrainGateForTesting(_ gate: (@Sendable () async -> Void)?) {
+    retirementDrainGateForTesting = gate
+  }
+
   /// The drain both deleters share: a live attempt (the cancel drain barrier; a
   /// nothing-in-flight cancel is a no-op), then a live migration.
   private func drainForDeletion(_ identity: ModelIdentity) async {
     _ = await cancel(identity)
+    if let retirementDrainGateForTesting { await retirementDrainGateForTesting() }
     if let live = migrationsInFlight[identity] {
       live.cancel()
       _ = await live.value
