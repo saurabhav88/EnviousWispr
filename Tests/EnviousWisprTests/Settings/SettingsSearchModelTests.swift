@@ -495,6 +495,60 @@ struct SettingsSearchModelTests {
     await clock.fire()
   }
 
+  @Test("post-score work cannot replace words after its deadline")
+  func scoreThatEndsLate() async throws {
+    let clock = DeadlineClock()
+    let returns = ReturnLog()
+    // Two aligned places among orthogonal controls create an actual meaning-only result.
+    // Identical vectors for every place would have no outlier and mask the final guard.
+    let ids = SettingsSearchCatalog.entries.map(\.id)
+    var entries: [String: SettingsSearchPlaceVectors.EntryRows] = [:]
+    for (row, id) in ids.enumerated() { entries[id] = .init(main: ["en": row], languages: [:]) }
+    let places = SettingsSearchPlaceVectors(
+      dimension: 3, rowCount: ids.count, textsSHA256: "t", entries: entries,
+      rows: ids.flatMap { id in
+        (["theme", "showInDock"].contains(id) ? [1, 0, 0] : [0, 1, 0]) as [Float16]
+      })
+    let worker = SettingsSearchMeaningWorker {
+      .init(
+        encoder: SettingsSearchMeaningWorkerTests.ScriptedEncoder(log: .init(initialState: [])),
+        placeVectors: places, selfTest: SettingsSearchMeaningWorkerTests.selfTest)
+    }
+    let model = Self.meaningModel(worker, clock: clock, returns: returns)
+    model.setQuery("alpha")
+    try #require(await Self.waitUntil { model.meaningPass == .completed })
+    try #require(model.results.contains { $0.entryID == "showInDock" && $0.coverage == 0 })
+    await clock.fire()
+    model.reset(endedBy: .windowClose)
+    returns.values = []
+
+    let entered = Latch()
+    let gate = AsyncGate()
+    model.beforeMeaningCompletionForTesting = {
+      await entered.open()
+      #expect(await gate.waitBounded())
+    }
+    defer {
+      Task {
+        await gate.open()
+        await clock.fire()
+      }
+    }
+    try #require(await Self.typeWithPassRunning(model, "alpha", clock: clock))
+    try #require(await entered.wait())
+    let words = model.results.map(\.entryID)
+    try #require(words == ["theme"])
+    await clock.fire()
+    try #require(await Self.waitUntil { model.meaningPass == .abandoned })
+    await gate.open()
+    try #require(await Self.waitUntil { returns.values.count == 1 })
+    #expect(returns.values == [false])
+    #expect(model.meaningPass == .abandoned)
+    #expect(model.results.map(\.entryID) == words)
+    #expect(model.meaningElapsedMilliseconds == nil)
+    #expect(model.results.contains { $0.coverage == 0 } == false)
+  }
+
   @Test("an encoder that never returns, then returns late, changes nothing after the deadline")
   func encodeThatEndsLate() async throws {
     let clock = DeadlineClock()
@@ -702,31 +756,32 @@ actor Latch {
 /// The meaning pass's deadline under the test's control: each pass's deadline waits here until
 /// `fire()`, which passes every deadline waiting now and none that start later.
 actor DeadlineClock {
-  private var waiting: [CheckedContinuation<Void, Never>] = []
+  private var waiting: [Latch] = []
   private(set) var registered = 0
   private var registration = Latch()
 
-  func wait() async {
-    await withCheckedContinuation { continuation in
-      waiting.append(continuation)
-      registered += 1
-      let latch = registration
-      registration = Latch()
-      Task { await latch.open() }
+  func wait(seconds: Double = 5, sourceLocation: SourceLocation = #_sourceLocation) async {
+    let deadline = Latch()
+    waiting.append(deadline)
+    registered += 1
+    let notice = registration
+    registration = Latch()
+    await notice.open()
+    let fired = await deadline.wait(seconds: seconds)
+    if fired == false && Task.isCancelled == false {
+      Issue.record("DeadlineClock was not fired", sourceLocation: sourceLocation)
     }
   }
 
-  /// Returns once more than `count` deadlines have started waiting (false at its bound).
   func waitForRegistration(after count: Int) async -> Bool {
     if registered > count { return true }
-    let latch = registration
-    return await latch.wait()
+    return await registration.wait()
   }
 
-  func fire() {
+  func fire() async {
     let due = waiting
     waiting = []
-    for deadline in due { deadline.resume() }
+    for deadline in due { await deadline.open() }
   }
 }
 
@@ -766,17 +821,62 @@ actor LoadCounter {
 }
 
 actor AsyncGate {
-  private var isOpen = false
-  private var waiters: [CheckedContinuation<Void, Never>] = []
+  private let released = Latch()
 
-  func wait() async {
-    if isOpen { return }
-    await withCheckedContinuation { waiters.append($0) }
+  func wait(seconds: Double = 5, sourceLocation: SourceLocation = #_sourceLocation) async {
+    if await waitBounded(seconds: seconds) == false {
+      Issue.record("AsyncGate signal was not received", sourceLocation: sourceLocation)
+    }
   }
 
-  func open() {
-    isOpen = true
-    waiters.forEach { $0.resume() }
-    waiters = []
+  func waitBounded(seconds: Double = 5) async -> Bool {
+    await released.wait(seconds: seconds)
+  }
+
+  func open() async { await released.open() }
+}
+
+@Suite(.tags(.harnessContract))
+struct SettingsSearchSignalHarnessTests {
+  @Test("a missing gate signal gives up; an opened gate answers true")
+  func gateHasABound() async {
+    let gate = AsyncGate()
+    #expect(await gate.waitBounded(seconds: 0.001) == false)
+    await gate.open()
+    #expect(await gate.waitBounded(seconds: 0.001))
+  }
+
+  @Test("an unfired clock reports the missing manual signal")
+  func missingClockIsAFailure() async {
+    await withKnownIssue("The fixture must report its missing fire") {
+      await DeadlineClock().wait(seconds: 0.001)
+    } matching: { issue in
+      issue.comments.contains { $0.rawValue == "DeadlineClock was not fired" }
+    }
+  }
+
+  @Test("a fired clock completes without a missing-signal issue")
+  func clockFireIsQuiet() async throws {
+    let clock = DeadlineClock()
+    let pending = Task { await clock.wait() }
+    try #require(await clock.waitForRegistration(after: 0))
+    await clock.fire()
+    await pending.value
+  }
+
+  @Test("cancellation does not masquerade as a missing clock fire")
+  func cancelledClockIsQuiet() async throws {
+    let entered = Latch()
+    let release = AsyncGate()
+    let clock = DeadlineClock()
+    let pending = Task {
+      await entered.open()
+      await release.wait()
+      await clock.wait(seconds: 0.001)
+    }
+    try #require(await entered.wait())
+    pending.cancel()
+    await release.open()
+    await pending.value
   }
 }

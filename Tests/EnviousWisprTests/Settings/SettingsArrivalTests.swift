@@ -66,6 +66,14 @@ struct SettingsArrivalTests {
     #expect(
       Self.decide(reveal, Self.places(Self.clipboard, .autoCopyToClipboard))
         == .arrive(.autoCopyToClipboard, kind: .target))
+    let witness = try #require(SettingsMapID(rawValue: "restoreClipboard"))
+    for stale: SettingsArrivalContent? in [Self.engine, nil] {
+      var mixed = Self.places(Self.clipboard, witness)
+      mixed[.dictationTabClipboard] = Self.dictation
+      mixed[.autoCopyToClipboard] = .some(stale)
+      #expect(
+        Self.decide(reveal, mixed) == .arrive(.dictationTabClipboard, kind: .landing))
+    }
   }
 
   @Test("a fixed target, such as a tab, arrives before the tab's content renders")
@@ -1150,5 +1158,15 @@ struct SettingsArrivalTests {
     #expect(learn.acknowledged == 9, "a Learn From row")
     #expect(learn.landed == SettingsArrivalRung(id: .selfLearningDictionary, kind: .target))
     #expect(SettingsMap.takeRecordedFaults().isEmpty)
+  }
+}
+
+/// The test-only pin must leave the operating system's preference in charge by default.
+@MainActor
+@Suite(.tags(.driftGuard))
+struct SettingsArrivalDefaultTests {
+  @Test("the arrival motion override defaults to unset")
+  func reduceMotionDefaultIsNil() {
+    #expect(EnvironmentValues().settingsArrivalReduceMotion == nil)
   }
 }

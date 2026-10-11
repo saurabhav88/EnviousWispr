@@ -100,6 +100,7 @@ final class SettingsSearchModel {
   /// Test seam (#3545 T8): called each time a pass's work returns, with whether it was used. A
   /// pass abandoned at its deadline still reports here when its late work ends.
   @ObservationIgnored var meaningWorkReturned: (@MainActor (_ used: Bool) -> Void)?
+  @ObservationIgnored var beforeMeaningCompletionForTesting: (@MainActor () async -> Void)? = nil
   /// Encoding plus scoring time of the last completed meaning pass, for `meaning_elapsed_ms`.
   private(set) var meaningElapsedMilliseconds: Double?
 
@@ -489,6 +490,7 @@ final class SettingsSearchModel {
           return .some(SettingsSearchMeaningFusion.rank(wordHits: hits, similarities: similarities))
         }.value
         let elapsed = encodeTime + scoreStart.duration(to: .now)
+        if let before = self?.beforeMeaningCompletionForTesting { await before() }
         guard let fused = scored else {
           // A bad vector: words only for this window.
           self?.meaningFinished(nil, skipped: true, pass: pass)
