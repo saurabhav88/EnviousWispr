@@ -935,6 +935,25 @@ extension ManifestFetchTaskTests {
   }
 }
 
+/// #3546: per-rig stub scopes survive this suite's shared `reset()`. Lives in
+/// the reset-owning suite so no other suite becomes a competing reset caller.
+extension ManifestFetchTaskTests {
+  @MainActor
+  @Test("a rig's scoped stubs and request records survive a shared stub reset")
+  func scopedStubsSurviveReset() async throws {
+    let rig = try await ParakeetUpgradePolicyTests.rig(v3: false, ultra: false)
+    ParakeetUpgradePolicyTests.enqueueUltra(rig)
+    DeliveryStubProtocol.reset()
+    let prepared = try await rig.coordinator.prepareLoad()
+    #expect(prepared.selection?.model == .ultra, "the queued responses were still served")
+    let fetched = ParakeetUpgradePolicyTests.ultraRequests(rig)
+    #expect(fetched > 0)
+    DeliveryStubProtocol.reset()
+    #expect(
+      ParakeetUpgradePolicyTests.ultraRequests(rig) == fetched, "the scoped record is not cleared")
+  }
+}
+
 /// Minimal async signal for the #1371 in-flight-cancel test.
 private actor WedgeSignal {
   private var fired = false

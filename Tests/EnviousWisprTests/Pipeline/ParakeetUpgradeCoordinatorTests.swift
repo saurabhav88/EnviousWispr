@@ -1119,19 +1119,6 @@ struct ParakeetUpgradePolicyTests {
     #expect(outcomes.contains(.retirementFailed(.ultra)) == false)
   }
 
-  @Test("a rig's scoped stubs and request records survive a shared stub reset")
-  func scopedStubsSurviveReset() async throws {
-    let rig = try await Self.rig(v3: false, ultra: false)
-    Self.enqueueUltra(rig)
-    DeliveryStubProtocol.reset()
-    let prepared = try await rig.coordinator.prepareLoad()
-    #expect(prepared.selection?.model == .ultra, "the queued responses were still served")
-    let fetched = Self.ultraRequests(rig)
-    #expect(fetched > 0)
-    DeliveryStubProtocol.reset()
-    #expect(Self.ultraRequests(rig) == fetched, "the scoped record is not cleared")
-  }
-
   @Test("Retry cancels a queued target removal: nothing is deleted or reported")
   func retryCancelsQueuedRemoval() async throws {
     let rig = try await Self.rig(
