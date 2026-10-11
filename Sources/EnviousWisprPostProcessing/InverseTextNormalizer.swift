@@ -635,6 +635,7 @@ public struct InverseTextNormalizer: Sendable {
     t = reSub(#"\b(\d[\d,]*\.\d+)\s+(?:percent|per\s+cent)\b"#, t) { m in "\(m.g(1) ?? "")% " }
 
     t = keepMagnitude(t)  // '$80,000,000'->'$80 million' (founder house style), keep the word
+    if spokenPunctuation { t = Self.reconcileEnglishRecognizerMarks(t) }  // #3594
     t = applyPunct(t, spokenPunctuation: spokenPunctuation)
 
     // restore register-preserved spans verbatim

@@ -78,6 +78,11 @@ extension InverseTextNormalizer {
     }
 
     let pattern = Self.startWordPattern(start: start, breakForms: breakForms, markForms: markForms)
+    // #3594: a command the engine wrote twice ("Diktiere Punkt. Diktiere Punkt.") is one command.
+    let text = Self.mergeRepeatedCommand(
+      in: text,
+      forms: Self.alternation(breakForms + markForms),
+      startWord: start.isEmpty ? "" : Self.literal(start))
     let matches = reMatches(pattern, text)
     guard !matches.isEmpty else { return unchanged }
 
@@ -104,16 +109,18 @@ extension InverseTextNormalizer {
         continue
       }
       // A recogniser that heard a question or a sentence end before the command may already have
-      // written the SAME mark on the word before the start word ("Wie geht es dir? Diktiere
-      // Fragezeichen", measured with Parakeet v3 on spoken German, Spanish, Italian and French).
-      // One mark is what the user asked for, so the duplicate is dropped. Only an IDENTICAL mark
-      // is dropped, and only when it follows a letter or digit: a different mark ("z.B. Diktiere
-      // Komma", "1. Diktiere Komma") is kept, because the pass cannot tell whether the recogniser or
-      // the user wrote it. Never a break command, an ellipsis, a `?!` run, or the mark the
-      // previous command wrote: after a directly adjacent command the gap is empty and `out` ends
-      // with that replacement, so consecutive commands still stack.
-      if rule.command != .lineBreak, rule.command != .paragraphBreak, fired == 0 || !gap.isEmpty {
-        Self.dropDuplicateRecogniserMark(&out, duplicating: rule.replacement)
+      // written a mark on the word before the start word ("Wie geht es dir? Diktiere Fragezeichen",
+      // measured with Parakeet v3 on spoken German, Spanish, Italian and French). The command writes the
+      // mark the user asked for, so that mark is dropped (#2450 dropped only an IDENTICAL one; #3594
+      // drops a different sentence mark too, because a mark command right behind it makes the two a
+      // collision whoever wrote the first: measured on Parakeet and WhisperKit in four languages). Kept:
+      // a protected dot ("z.B. Diktiere Komma", "1. Diktiere Komma"), an ellipsis, a `?!` run, and
+      // anything in front of a break command. Never the mark the previous command wrote: after a
+      // directly adjacent command the gap is empty and `out` ends with that replacement, so
+      // consecutive commands still stack.
+      if fired == 0 || !gap.isEmpty {
+        Self.dropRecogniserMark(
+          &out, before: rule, startWord: start, protectedSentinels: protectedSentinels)
       }
       out += rule.replacement
       fired += 1
@@ -147,20 +154,22 @@ extension InverseTextNormalizer {
     let trailingMark = #"(?:(?:[.,!?]|[ \t\x{00A0}\x{202F}][!?])(?=\s|$))?"#
     let breaks = alternation(breakForms)
     let marks = alternation(markForms)
-    let lead = start.isEmpty ? "" : literal(start) + ws + "+"
+    // A pause can split the start word from its command and leave a mark between them
+    // ("Diktiere. Punkt", "Place, virgule"); one `.` or `,` there is part of the command (#3594).
+    let lead = start.isEmpty ? "" : literal(start) + "[.,]?" + ws + "+"
     return ws + #"*\b"# + lead + "(?:(" + breaks + #")\b"# + trailingMark + ws
       + "*|(" + marks + #")\b"# + trailingMark + ")"
   }
 
   /// Longest form first; `(?!)` (never matches) for an empty set so the group numbering stays fixed.
-  private static func alternation(_ forms: [String]) -> String {
+  static func alternation(_ forms: [String]) -> String {
     guard !forms.isEmpty else { return "(?!)" }
     return forms.sorted { $0.count > $1.count }.map(literal).joined(separator: "|")
   }
 
   /// A literal as a regex: metacharacters escaped, runs of spaces accept runs of horizontal
   /// whitespace, and an apostrophe accepts the typographic one the engine may write instead.
-  private static func literal(_ text: String) -> String {
+  static func literal(_ text: String) -> String {
     var pattern = ""
     var previousWasSpace = false
     for character in text {
@@ -203,24 +212,6 @@ extension InverseTextNormalizer {
       }
     }
     return key
-  }
-
-  /// Remove ONE mark at the end of `out` that equals `replacement` (the single mark character the
-  /// command is about to write), with the space French writes before `? ! : ;`, when it sits directly
-  /// after a letter or digit. Anything else, including a different mark, an ellipsis and a `?!` run,
-  /// is left alone.
-  private static func dropDuplicateRecogniserMark(_ out: inout String, duplicating replacement: String) {
-    guard replacement.count == 1, let mark = out.last, ".,!?;:".contains(mark),
-      String(mark) == replacement
-    else { return }
-    var rest = Substring(out).dropLast()
-    if "?!:;".contains(mark), let space = rest.last,
-      space == " " || space == "\u{00A0}" || space == "\u{202F}"
-    {
-      rest = rest.dropLast()
-    }
-    guard let previous = rest.last, previous.isLetter || previous.isNumber else { return }
-    out = String(rest)
   }
 
   // MARK: - Capitalisation

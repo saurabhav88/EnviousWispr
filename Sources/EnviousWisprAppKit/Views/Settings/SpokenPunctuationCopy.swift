@@ -18,7 +18,7 @@ enum SpokenPunctuationCopy {
   static let toggleDescription =
     String(
       localized:
-        "Say punctuation out loud to insert it. EnviousWispr already adds punctuation for you, so this can compete with it.",
+        "Say punctuation out loud to insert it. EnviousWispr removes extra marks the speech engine adds next to the ones you say.",
       comment: "Speech engine settings, spoken punctuation: description under the toggle.")
 
   // MARK: - "?" help for the toggle

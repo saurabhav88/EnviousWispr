@@ -7745,6 +7745,17 @@
         }
       }
     },
+    "For a modifier key used on its own and to paste your text into other apps." : {
+      "comment" : "Setup permissions: why Accessibility is needed.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Für eine allein genutzte Sondertaste und zum Einfügen deines Texts in andere Apps."
+          }
+        }
+      }
+    },
     "For dictation cleanup, look for Flash in the name. Those are tuned for fast, light tasks." : {
       "comment" : "AI Polish, Why use Gemini: which model to pick. Keep Flash as written.",
       "localizations" : {
@@ -7790,6 +7801,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Sag zum Beispiel „%1$@ %2$@“, um den Textbaustein einzufügen."
+          }
+        }
+      }
+    },
+    "For modifier keybinds and pasting" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Für Sondertasten als Tastenkürzel und zum Einfügen"
           }
         }
       }
@@ -14301,16 +14322,6 @@
         }
       }
     },
-    "For modifier keybinds and pasting" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Für Sondertasten als Tastenkürzel und zum Einfügen"
-          }
-        }
-      }
-    },
     "Reset" : {
       "comment" : "Speech engine settings, Start word row: button that restores the default start word.",
       "localizations" : {
@@ -14884,13 +14895,13 @@
         }
       }
     },
-    "Say punctuation out loud to insert it. EnviousWispr already adds punctuation for you, so this can compete with it." : {
+    "Say punctuation out loud to insert it. EnviousWispr removes extra marks the speech engine adds next to the ones you say." : {
       "comment" : "Speech engine settings, spoken punctuation: description under the toggle.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Sprich Satzzeichen aus, um sie einzufügen. EnviousWispr setzt Satzzeichen bereits selbst. Beides kann sich in die Quere kommen."
+            "value" : "Sprich Satzzeichen aus, um sie einzufügen. EnviousWispr entfernt zusätzliche Satzzeichen, die die Spracherkennung direkt neben die von dir gesprochenen setzt."
           }
         }
       }
@@ -18299,17 +18310,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Um deine Stimme für die Transkription aufzunehmen."
-          }
-        }
-      }
-    },
-    "For a modifier key used on its own and to paste your text into other apps." : {
-      "comment" : "Setup permissions: why Accessibility is needed.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Für eine allein genutzte Sondertaste und zum Einfügen deines Texts in andere Apps."
           }
         }
       }
