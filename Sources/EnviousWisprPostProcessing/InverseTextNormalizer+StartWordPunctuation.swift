@@ -118,7 +118,9 @@ extension InverseTextNormalizer {
       // anything in front of a break command. Never the mark the previous command wrote: after a
       // directly adjacent command the gap is empty and `out` ends with that replacement, so
       // consecutive commands still stack.
-      if fired == 0 || !gap.isEmpty {
+      // Between two commands a gap of only whitespace and closing quotes or brackets holds nothing the
+      // engine wrote: the mark in front of it is the previous command's own and is never dropped.
+      if fired == 0 || firstMatch(#"^[\s\x{201D}\x{2019}"')\]}\x{00BB}]*$"#, gap) == nil {
         Self.dropRecogniserMark(
           &out, before: rule, startWord: start, language: language,
           protectedSentinels: protectedSentinels)

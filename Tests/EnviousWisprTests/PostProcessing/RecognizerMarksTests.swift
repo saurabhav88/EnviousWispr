@@ -252,6 +252,12 @@ struct RecognizerMarksTests {
     #expect(Self.startWord("Diktiere Punkt. Diktiere Punkt.", "de") == ".")
   }
 
+  @Test("Start word: a closing quote between two commands never costs the first command its mark")
+  func closerBetweenCommandsKeepsTheFirstMark() {
+    #expect(Self.startWord("Hallo Diktiere Fragezeichen\" Diktiere Komma", "de") == "Hallo?\",")
+    #expect(Self.startWord("Hallo Diktiere Punkt) Diktiere Komma", "de") == "Hallo.),")
+  }
+
   @Test("Start word: English with a start word has no ordinal dot, like the bare-word route")
   func englishStartWordHasNoOrdinalDot() {
     #expect(Self.startWord("It costs 5. Dictate comma next", "en", start: "Dictate") == "It costs 5, next")
