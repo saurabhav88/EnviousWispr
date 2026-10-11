@@ -1328,6 +1328,31 @@ extension ManifestFetchTaskTests {
     }
   }
 
+  @Test func aStagedFileThatLeadsOutsideStagingIsNeitherDeletedNorPublishedInto() async throws {
+    // The parts path deletes the staged file and later moves the assembled
+    // output onto it; both must refuse a path that resolves outside staging.
+    let manifest = try Self.partsManifest()
+    let staging = try makeStaging()
+    let outside = try makeStaging()
+    let victim = outside.appendingPathComponent("victim.bin")
+    try Data("UNTOUCHED".utf8).write(to: victim)
+    try FileManager.default.createSymbolicLink(at: stagedFile(staging), withDestinationURL: victim)
+    try await withStubs {
+      do {
+        _ = try await partsTask(manifest: manifest, staging: staging).run()
+        Issue.record("a staged file that leads outside staging was used")
+      } catch let failure as DeliveryFailure {
+        #expect(failure.reason == .cacheRepairFailed)
+        #expect(failure.detail == "unsafe_transport")
+      }
+      #expect(DeliveryStubProtocol.requests.isEmpty)
+      #expect(try Data(contentsOf: victim) == Data("UNTOUCHED".utf8))
+      #expect(
+        try FileManager.default.destinationOfSymbolicLink(atPath: stagedFile(staging).path)
+          == victim.path)
+    }
+  }
+
   @Test func aWholeFileDiskFailureDoesNotTryBackup() async throws {
     let manifest = try ManifestFixture.manifest(
       files: [("weights.bin", Self.partsContent, "weights.bin")])

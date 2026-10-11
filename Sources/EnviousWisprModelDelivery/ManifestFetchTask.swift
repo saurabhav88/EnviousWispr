@@ -592,8 +592,13 @@ struct ManifestFetchTask {
         failingSourceID: sourceID)
     }
     do {
-      discardPartial(at: stagedURL)
+      // Checked removals: the publish destination must resolve inside staging.
+      try removeTransportItem(at: stagedURL)
+      try removeTransportItem(at: resumeIdentityURL(for: stagedURL))
       try fm.moveItem(at: output, to: stagedURL)
+    } catch let failure as DeliveryFailure {
+      try? fm.removeItem(at: output)
+      throw failure
     } catch {
       try? fm.removeItem(at: output)
       throw Self.classifyTransportError(error, sourceID: sourceID)
@@ -699,7 +704,8 @@ struct ManifestFetchTask {
   /// (the controller already proved staging itself safe): a symlink planted at
   /// `.ew-transport` must not redirect part writes or cleanup deletes.
   /// Every transport write and delete destination passes through here: the
-  /// root, each part, each part's resume sidecar and the assembly output. An
+  /// root, each part, each part's resume sidecar, the assembly output and the
+  /// staged file the parts path deletes and publishes into. An
   /// item that exists must resolve (a dangling symlink is refused, because
   /// `fileExists` would call it absent and a write would follow it), and it
   /// must resolve inside staging.
@@ -726,7 +732,9 @@ struct ManifestFetchTask {
 
   /// Removes a transport-area item; an item that is already gone is not a
   /// failure, any other error is (contract §4d: residue never reaches promotion).
+  /// The path must resolve inside staging first, so no delete follows a link out.
   private func removeTransportItem(at url: URL) throws {
+    try checkTransportDestination(url)
     do {
       try FileManager.default.removeItem(at: url)
     } catch {
