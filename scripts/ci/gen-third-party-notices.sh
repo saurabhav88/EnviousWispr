@@ -37,7 +37,7 @@ COMPONENTS=(
   # text too, not just Argmax's MIT LICENSE (Codex audit 2026-07-10). Empty
   # identity — it is vendored inside argmax-oss-swift, not its own SwiftPM pin.
   "swift-transformers (incorporated into Argmax OSS)|n/a|Apache-2.0|argmax-oss-swift/NOTICES|https://github.com/huggingface/swift-transformers|"
-  "FluidAudio|b29591ad (fork saurabhav88/FluidAudio)|Apache-2.0|FluidAudio/LICENSE|https://github.com/saurabhav88/FluidAudio|fluidaudio"
+  "FluidAudio|6efc52ec (fork saurabhav88/FluidAudio)|Apache-2.0|FluidAudio/LICENSE|https://github.com/saurabhav88/FluidAudio|fluidaudio"
   "PostHog iOS|3.68.2|MIT|posthog-ios/LICENSE|https://github.com/PostHog/posthog-ios|posthog-ios"
   "Sentry Cocoa|9.26.1|MIT|sentry-cocoa/LICENSE.md|https://github.com/getsentry/sentry-cocoa|sentry-cocoa"
   "Sparkle|2.9.6|MIT (with bundled BSD/MIT components)|Sparkle/LICENSE|https://github.com/sparkle-project/Sparkle|sparkle"
@@ -65,7 +65,9 @@ COMPONENTS=(
   # aggregate license file carries the NVIDIA NeMo Text Processing, rustfst,
   # and Rust-crate attributions the binary embeds. Empty identity — a binary
   # target inside FluidAudio, not its own SwiftPM pin.
-  "NemoTextProcessing / text-processing-rs (bundled in FluidAudio)|v0.3.0|Apache-2.0 (aggregating Apache-2.0/MIT components)|FluidAudio/ThirdPartyLicenses/NemoTextProcessing-LICENSE.md|https://github.com/FluidInference/text-processing-rs|"
+  # #3546: no longer linked. Package.swift declares FluidAudio with `traits: []`,
+  # which drops the `NemoTextProcessing` trait and its binary target, so the row
+  # is removed. The guard below fails if that opt-out disappears.
   "PLCrashReporter + protobuf-c (bundled in PostHog)|n/a|MIT / Apache-2.0 / BSD-2-Clause|posthog-ios/vendor/PHPLCrashReporter/LICENSE|https://github.com/microsoft/plcrashreporter|"
   "libwebp (bundled in PostHog)|n/a|BSD-3-Clause|posthog-ios/vendor/libwebp/COPYING|https://chromium.googlesource.com/webm/libwebp|"
   # llama.cpp is NOT a SwiftPM dep — the bundled llama-server binary is built
@@ -166,6 +168,18 @@ for entry in "${COMPONENTS[@]}"; do
     miss=1
   fi
 done
+# #3546: the NemoTextProcessing row was removed because Package.swift opts out of
+# FluidAudio's default trait. If that opt-out is gone, the binary is linked again
+# and would ship without its attribution.
+if ! python3 -c "
+import re,sys
+src=open('${PROJ_ROOT}/Package.swift').read()
+m=re.search(r'url: \"https://github.com/saurabhav88/FluidAudio.git\",[^)]*\)', src)
+sys.exit(0 if m and 'traits: []' in m.group(0) else 1)
+"; then
+  echo "error: Package.swift no longer declares FluidAudio with traits: [] — NemoTextProcessing would be linked without attribution. Restore its generator row and regenerate the notices." >&2
+  miss=1
+fi
 [[ "$miss" -eq 1 ]] && exit 1
 
 # --check (release gate): verify the COMMITTED notices file actually carries each

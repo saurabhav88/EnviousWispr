@@ -1,4 +1,4 @@
-// swift-tools-version: 6.0
+// swift-tools-version: 6.2
 
 import PackageDescription
 
@@ -37,9 +37,19 @@ let package = Package(
   ],
   dependencies: [
     .package(url: "https://github.com/argmaxinc/argmax-oss-swift", from: "1.0.0"),
+    // #3546: branch `ew/3546-ultra-v0.17.7` = upstream v0.17.7 (503b4bd) plus the
+    // two carries (terminal-token protection with dormant vocabulary policy, and
+    // the outer-window fresh-state invariant). Keep that branch: SPM fetches this
+    // exact commit, so it must stay reachable (parakeet-supply-chain.md).
+    //
+    // `traits: []` opts out of FluidAudio's default `NemoTextProcessing` trait: a
+    // prebuilt Rust text-normalization engine used only by FluidAudio's TTS and
+    // `TextNormalizer`, never by our ASR, VAD or speaker paths. Its v0.3.1 build
+    // nests its module map one folder deeper, which Xcode's explicit-module build
+    // cannot find. Trait syntax needs tools 6.2 (see the first line).
     .package(
       url: "https://github.com/saurabhav88/FluidAudio.git",
-      revision: "b29591ada1f70510c12c13b50ffae02052ff75c3"),
+      revision: "6efc52ec8a9b6f4a560979166e1d8083bc132ce0", traits: []),
     // #3242: the learned-word check for engines without their own (Kev, a Qwen3.5 decision model) runs on
     // MLX, through two forks each carrying the smallest change on top of upstream:
     // - mlx-swift-lm (upstream ee673d6): two access changes in Qwen35.swift so the final-norm hidden

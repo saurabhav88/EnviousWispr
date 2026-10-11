@@ -1,4 +1,4 @@
-// swift-tools-version: 5.9
+// swift-tools-version: 6.2
 import PackageDescription
 
 // Standalone eval runner: loads Parakeet ONCE and transcribes a manifest of
@@ -6,7 +6,7 @@ import PackageDescription
 // and reloads the model each time, which is unusable for 1,890 cases.
 //
 // Depends on the SAME git URL + exact immutable revision the app pins in the
-// root Package.swift (saurabhav88/FluidAudio @ b29591ad) rather than a local
+// root Package.swift (saurabhav88/FluidAudio @ 6efc52ec) rather than a local
 // path, so this provably runs the same pinned engine the app resolves. Do not
 // repoint at a local checkout — a path dependency floats with whatever that
 // checkout happens to hold, while this remote revision cannot drift.
@@ -16,9 +16,13 @@ let package = Package(
   dependencies: [
     .package(
       url: "https://github.com/saurabhav88/FluidAudio.git",
-      revision: "b29591ada1f70510c12c13b50ffae02052ff75c3")
+      // Same `traits: []` as the app: the NeMo text engine stays unlinked.
+      revision: "6efc52ec8a9b6f4a560979166e1d8083bc132ce0", traits: [])
   ],
   targets: [
     .executableTarget(name: "ParakeetRunner", dependencies: ["FluidAudio"])
-  ]
+  ],
+  // Tools 6.2 is only for `traits:`; keep the Swift 5 language mode the 5.9
+  // manifest compiled this runner with.
+  swiftLanguageModes: [.v5]
 )
