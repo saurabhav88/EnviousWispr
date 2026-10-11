@@ -369,7 +369,7 @@ def cmd_release(args):
 def cmd_check(args):
     """Read-only ownership check; a free slot still requires a separate claim."""
     me = find_session(args.native_session_id)
-    with Store() as store:
+    with NonBlockingStore() as store:
         card = store.read()
         if card is not None and same_session(card, me):
             print(f"dev-app-lock: yours ({describe(card, time.time())})")

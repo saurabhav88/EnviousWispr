@@ -86,6 +86,13 @@ class HookTests(unittest.TestCase):
                 'python3 /tmp/Tests/RuntimeUAT/uat.py verdict']:
             with self.subTest(command=command):
                 self.assertFalse(self.denied(command))
+        for command in ('bash /tmp/validate-pr.sh --self-test -c',
+                        'bash /tmp/validate-pr.sh --self-test -c \'open "EnviousWispr Local.app"\'',
+                        'bash -n /tmp/build-dev-app.sh',
+                        'sh -n /tmp/build-dev-app.sh',
+                        'zsh -n /tmp/build-dev-app.sh',
+                        'bash -nc \'open "EnviousWispr Local.app"\''):
+            self.assertFalse(self.denied(command))
         self.assertFalse(self.denied('/tmp/validate-pr.sh --self-test'))
         for script in ('uat.py', 'uat_catalog.py', 'log_verdict.py', 'preflight.py'):
             self.assertFalse(self.denied(f'python3 /tmp/Tests/RuntimeUAT/{script} --self-test'))

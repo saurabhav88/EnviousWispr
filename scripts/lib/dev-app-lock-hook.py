@@ -67,11 +67,12 @@ def commands(command, depth=0):
             continue
         yield argv
         if Path(argv[0]).name in ('bash', 'sh', 'zsh'):
-            for i, arg in enumerate(argv[1:], 1):
-                if arg.startswith('-') and not arg.startswith('--') and 'c' in arg[1:]:
-                    if i + 1 >= len(argv):
-                        raise ValueError('missing shell -c command')
-                    yield from commands(argv[i + 1], depth + 1)
+            _, opts, _ = interpreter_options(argv)
+            if any(key == '-n' for key, _ in opts):
+                continue
+            for key, payload in opts:
+                if key == '-c':
+                    yield from commands(payload, depth + 1)
                     break
 
 
@@ -96,16 +97,27 @@ def dev_path(text):
     return ('EnviousWispr Local.app' in text or 'com.enviouswispr.app.dev' in text)
 
 
-def script_argument(argv):
-    """Parse interpreter options before the script; never inspect script data."""
-    if argv[0] == '.' or Path(argv[0]).name == 'source':
-        rest = argv[2:] if argv[1:2] == ['--'] else argv[1:]
-        return (rest[0], rest[1:]) if rest else (None, [])
+def interpreter_options(argv):
+    """One grammar for script location and executed shell payloads."""
     python = re.fullmatch(r'python(?:3(?:\.[0-9]+)?)?', Path(argv[0]).name) is not None
     if python or Path(argv[0]).name in ('bash', 'sh', 'zsh'):
         short = 'bBdEhiIOPqRsSuVvxW:X:c:m:' if python else 'abefhklmnptuvxBCEHPTc:o:O:'
         long = ['help', 'version', 'check-hash-based-pycs='] if python else ['noprofile', 'norc', 'posix', 'rcfile=']
         opts, rest = getopt.getopt(argv[1:], short, long)
+        return python, opts, rest
+    return None
+
+
+def script_argument(argv):
+    """Parse interpreter options before the script; never inspect script data."""
+    if argv[0] == '.' or Path(argv[0]).name == 'source':
+        rest = argv[2:] if argv[1:2] == ['--'] else argv[1:]
+        return (rest[0], rest[1:]) if rest else (None, [])
+    parsed = interpreter_options(argv)
+    if parsed is not None:
+        python, opts, rest = parsed
+        if not python and any(key == '-n' for key, _ in opts):
+            return None, []
         # Inline code/modules are outside this guard's direct-script scope.
         if any(key in ('-c', '-m', '-h', '--help', '-V', '--version') for key, _ in opts):
             return None, []

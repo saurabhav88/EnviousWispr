@@ -147,6 +147,21 @@ class CodexOwnershipTests(unittest.TestCase):
         self.assertEqual([r.returncode for r in results].count(3), 7)
         self.assertEqual(json.loads((self.lock_dir / "holder.json").read_text())["pid"], os.getpid())
 
+    def test_check_refuses_busy_mutex_without_waiting_for_release(self):
+        ps = Path(self.tmp.name) / "ps"
+        ps.write_text('#!/bin/sh\nprintf "%s\\n" "1 Sun Oct 11 10:00:00 2026 S codex"\n')
+        ps.chmod(0o755)
+        source = self.copy.read_text()
+        self.assertEqual(source.count('PS = "/bin/ps"'), 1)
+        self.copy.write_text(source.replace('PS = "/bin/ps"', f"PS = {str(ps)!r}"))
+        with self.lock.Store():
+            # deadline-fallback: the subject must refuse while the lock stays held
+            result = subprocess.run([os.sys.executable, '-B', str(self.copy), 'check'],
+                env=dict(os.environ, CODEX_THREAD_ID='chat-a'), capture_output=True,
+                text=True, timeout=2)
+        self.assertEqual(result.returncode, 2)
+        self.assertIn('BlockingIOError', result.stderr)
+
 
 if __name__ == "__main__":
     unittest.main()
