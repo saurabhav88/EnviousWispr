@@ -171,13 +171,58 @@ done
 # #3546: the NemoTextProcessing row was removed because Package.swift opts out of
 # FluidAudio's default trait. If that opt-out is gone, the binary is linked again
 # and would ship without its attribution.
-if ! python3 -c "
-import re,sys
-src=open('${PROJ_ROOT}/Package.swift').read()
-m=re.search(r'url: \"https://github.com/saurabhav88/FluidAudio.git\",[^)]*\)', src)
-sys.exit(0 if m and 'traits: []' in m.group(0) else 1)
-"; then
-  echo "error: Package.swift no longer declares FluidAudio with traits: [] — NemoTextProcessing would be linked without attribution. Restore its generator row and regenerate the notices." >&2
+if ! python3 - "$PROJ_ROOT" <<'PY'
+import json
+import subprocess
+import sys
+
+root = sys.argv[1]
+result = subprocess.run(
+    ["swift", "package", "dump-package", "--package-path", root],
+    check=True,
+    capture_output=True,
+    text=True,
+)
+package = json.loads(result.stdout)
+
+def strings(value):
+    if isinstance(value, str):
+        yield value
+    elif isinstance(value, dict):
+        for child in value.values():
+            yield from strings(child)
+    elif isinstance(value, list):
+        for child in value:
+            yield from strings(child)
+
+def trait_fields(value):
+    if isinstance(value, dict):
+        for key, child in value.items():
+            if key == "traits":
+                yield child
+            else:
+                yield from trait_fields(child)
+    elif isinstance(value, list):
+        for child in value:
+            yield from trait_fields(child)
+
+urls = {
+    "https://github.com/saurabhav88/FluidAudio",
+    "https://github.com/saurabhav88/FluidAudio.git",
+}
+dependencies = package["dependencies"]
+matches = [
+    dependency for dependency in dependencies
+    if urls.intersection(strings(dependency))
+]
+if len(matches) != 1:
+    raise SystemExit("expected exactly one FluidAudio fork dependency")
+fields = list(trait_fields(matches[0]))
+if fields != [[]]:
+    raise SystemExit("FluidAudio must explicitly disable all traits")
+PY
+then
+  echo "error: cannot verify FluidAudio's trait opt-out. Restore the opt-out or its notices attribution." >&2
   miss=1
 fi
 [[ "$miss" -eq 1 ]] && exit 1

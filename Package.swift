@@ -39,14 +39,14 @@ let package = Package(
     .package(url: "https://github.com/argmaxinc/argmax-oss-swift", from: "1.0.0"),
     // #3546: branch `ew/3546-ultra-v0.17.7` = upstream v0.17.7 (503b4bd) plus the
     // two carries (terminal-token protection with dormant vocabulary policy, and
-    // the outer-window fresh-state invariant). Keep that branch: SPM fetches this
-    // exact commit, so it must stay reachable (parakeet-supply-chain.md).
+    // the outer-window fresh-state invariant). Keep that branch permanently:
+    // SPM fetches this exact commit, which must remain reachable.
     //
-    // `traits: []` opts out of FluidAudio's default `NemoTextProcessing` trait: a
-    // prebuilt Rust text-normalization engine used only by FluidAudio's TTS and
-    // `TextNormalizer`, never by our ASR, VAD or speaker paths. Its v0.3.1 build
-    // nests its module map one folder deeper, which Xcode's explicit-module build
-    // cannot find. Trait syntax needs tools 6.2 (see the first line).
+    // `traits: []` opts out of FluidAudio's default `NemoTextProcessing` trait.
+    // The app does not use that text-normalization engine. Its v0.3.1 module-map
+    // layout breaks our Xcode explicit-module build.
+    // Tools 6.2 selects FluidAudio's trait-aware manifest; its older manifest
+    // always links the engine.
     .package(
       url: "https://github.com/saurabhav88/FluidAudio.git",
       revision: "6efc52ec8a9b6f4a560979166e1d8083bc132ce0", traits: []),
