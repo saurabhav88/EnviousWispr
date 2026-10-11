@@ -47,13 +47,18 @@ struct ParakeetUpgradeCoordinatorTests {
   func settlePreparesThePendingSelectionOnce() async throws {
     let selection = ParakeetSelectionProvider()
     let coordinator = ParakeetUpgradeCoordinator(parakeetSelection: selection, delivery: nil)
+    let gate = StageGate(maximumEntries: 1)
+    gate.open()
+    coordinator.deliveryStageGateForTesting = { await gate.pass() }
     coordinator.markSelectionPoint()
     coordinator.markSelectionPoint()  // a second launch poke coalesces
     #expect(coordinator.hasPendingSelectionPoint)
     try await coordinator.settlePendingSelection()
+    #expect(gate.entries == 1)
     #expect(coordinator.hasPendingSelectionPoint == false)
     let afterSettle = selection.current
     try await coordinator.settlePendingSelection()
+    #expect(gate.entries == 1)
     #expect(selection.current == afterSettle, "a settled point is not prepared again")
     if ParakeetInstallLocation.directoryFromSystemApplicationSupport() != nil {
       #expect(afterSettle?.generation == 1)
@@ -64,15 +69,19 @@ struct ParakeetUpgradeCoordinatorTests {
   func laterSelectionPointIsNotConsumedEarly() async throws {
     let selection = ParakeetSelectionProvider()
     let coordinator = ParakeetUpgradeCoordinator(parakeetSelection: selection, delivery: nil)
+    let gate = StageGate(maximumEntries: 1)
+    gate.open()
+    coordinator.deliveryStageGateForTesting = { await gate.pass() }
     coordinator.markSelectionPoint()
     _ = try await coordinator.prepareLoad()
+    #expect(gate.entries == 1)
     coordinator.markSelectionPoint()
     #expect(coordinator.hasPendingSelectionPoint)
   }
 
   @Test("a selection point marked DURING a preparation is settled before any caller returns")
   func markDuringPreparationIsSettledBeforeReturn() async throws {
-    let gate = StageGate()
+    let gate = StageGate(maximumEntries: 2)
     let coordinator = ParakeetUpgradeCoordinator(
       parakeetSelection: ParakeetSelectionProvider(), delivery: nil)
     coordinator.deliveryStageGateForTesting = { await gate.pass() }
@@ -83,8 +92,10 @@ struct ParakeetUpgradeCoordinatorTests {
     await gate.waitForParked(coordinator, 1)
     coordinator.markSelectionPoint()  // arrives while the first stage runs
     gate.open()
-    _ = try await runner.value
-    _ = try await joiner.value
+    let runnerResult = await runner.result
+    let joinerResult = await joiner.result
+    _ = try runnerResult.get()
+    _ = try joinerResult.get()
     #expect(gate.entries == 2, "the stage ran again for the point marked during it")
     #expect(coordinator.hasPendingSelectionPoint == false)
   }
@@ -137,11 +148,16 @@ private final class StageGate {
   private var entryWaiters: [(Int, CheckedContinuation<Void, Never>)] = []
   private var parkWaiters: [(Int, CheckedContinuation<Void, Never>)] = []
   private var deadlineTask: Task<Void, Never>?
+  private let maximumEntries: Int?
+  private let sourceLocation: SourceLocation
 
   init(
     deadline: Duration = .seconds(5),
+    maximumEntries: Int? = nil,
     sourceLocation: SourceLocation = #_sourceLocation
   ) {
+    self.maximumEntries = maximumEntries
+    self.sourceLocation = sourceLocation
     deadlineTask = Task { @MainActor [weak self] in
       do {
         // deadline-fallback: fail loudly and release a missing-signal wait.
@@ -177,6 +193,13 @@ private final class StageGate {
   func pass() async {
     entries += 1
     resumeReached(&entryWaiters, entries)
+    if let maximumEntries, entries > maximumEntries {
+      Issue.record(
+        "Repeated preparation: StageGate entered \(entries) times; maximum is \(maximumEntries)",
+        sourceLocation: sourceLocation)
+      withUnsafeCurrentTask { $0?.cancel() }
+      return
+    }
     if isOpen { return }
     await withCheckedContinuation { held.append($0) }
   }
