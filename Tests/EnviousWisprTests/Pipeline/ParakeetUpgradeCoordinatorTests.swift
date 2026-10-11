@@ -133,6 +133,43 @@ private final class StageGate {
   private var held: [CheckedContinuation<Void, Never>] = []
   private var entryWaiters: [(Int, CheckedContinuation<Void, Never>)] = []
   private var parkWaiters: [(Int, CheckedContinuation<Void, Never>)] = []
+  private var deadlineTask: Task<Void, Never>?
+
+  init(
+    deadline: Duration = .seconds(5),
+    sourceLocation: SourceLocation = #_sourceLocation
+  ) {
+    deadlineTask = Task { @MainActor [weak self] in
+      do {
+        // deadline-fallback: fail loudly and release a missing-signal wait.
+        try await Task.sleep(for: deadline)
+      } catch {
+        return
+      }
+      self?.failAndRelease(sourceLocation: sourceLocation)
+    }
+  }
+
+  private func failAndRelease(sourceLocation: SourceLocation) {
+    guard !held.isEmpty || !entryWaiters.isEmpty || !parkWaiters.isEmpty else {
+      return
+    }
+    Issue.record(
+      "StageGate deadline expired while waiting for the subject",
+      sourceLocation: sourceLocation)
+
+    open()
+    let entriesWaiting = entryWaiters
+    let parksWaiting = parkWaiters
+    entryWaiters = []
+    parkWaiters = []
+    for (_, continuation) in entriesWaiting {
+      continuation.resume()
+    }
+    for (_, continuation) in parksWaiting {
+      continuation.resume()
+    }
+  }
 
   func pass() async {
     entries += 1
@@ -169,5 +206,16 @@ private final class StageGate {
     let ready = waiters.filter { $0.0 <= value }
     waiters.removeAll { $0.0 <= value }
     for (_, continuation) in ready { continuation.resume() }
+  }
+}
+
+@MainActor
+@Suite(.tags(.harnessContract))
+struct ParakeetUpgradeStageGateTests {
+  @Test func missingSignalRecordsAnIssueAndReleasesTheWaiter() async {
+    await withKnownIssue("The missing subject signal must fail instead of hanging") {
+      let gate = StageGate(deadline: .milliseconds(1))
+      await gate.waitForEntry(1)
+    }
   }
 }
