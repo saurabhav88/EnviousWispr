@@ -383,10 +383,12 @@ final class ParakeetEngineAdapter: ASREngineAdapter, @unchecked Sendable {
     do {
       try await asrManager.loadModel()
     } catch let error
-      // #3546: `repairable` is true exactly when delivery is active (the old
-      // local `deliveryActive`), read from THIS warm-up's request.
-      where prepared.selection?.repairable == true
-      && !(error is ASRLoadSupersededError)
+      // #3546: the failure plan (repair, or a fallback identity at the initial
+      // load) is the upgrade coordinator's; it excludes cancellation,
+      // supersession and budget refusals itself. With no target, `repairable`
+      // is true exactly when delivery is active (the old local
+      // `deliveryActive`), read from THIS warm-up's request.
+      where !(error is ASRLoadSupersededError)
       // #1388 (Codex r3 P1): a user Cancel must NOT fall into the repair
       // retry — repairing an intact cache succeeds and silently restarts the
       // install the user just cancelled (the founder watched exactly this
@@ -403,8 +405,10 @@ final class ParakeetEngineAdapter: ASREngineAdapter, @unchecked Sendable {
       // Composed AROUND the transport recovery (exhaustive r7 finding 6) so
       // a stale-helper retry that then misses the cache still gets its
       // repair pass. (#3546: the handle check and the repair call moved into
-      // `repairAfterLoadFailure`, with their reason.)
-      guard await parakeetUpgrade.repairAfterLoadFailure(prepared) else { throw error }
+      // `repairAfterLoadFailure`, with their reason, behind `handleLoadFailure`.)
+      guard await parakeetUpgrade.handleLoadFailure(prepared, error: error) == .reload else {
+        throw error
+      }
       // Same staleness window as the guard above, at `delivery.repair()`'s
       // own long, separately-owned await instead of `ensureAvailable()`'s —
       // same two-signal reasoning (r10): cancellation first, then generation.

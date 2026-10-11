@@ -117,8 +117,18 @@ struct ActiveEngineOperation {
         if asrManager.activeBackendType == .whisperKit {
           try await whisperKitBackend.prepare()
         } else {
-          try await parakeetUpgrade.settlePendingSelection()
-          try await asrManager.loadModel()
+          // #3546: an initial load this door settled may take the same failure
+          // plan a warm-up would (A-fail, E19); a frozen reload never changes
+          // the identity already serving.
+          let prepared = try await parakeetUpgrade.settlePendingSelection()
+          do {
+            try await asrManager.loadModel()
+          } catch {
+            guard let prepared,
+              await parakeetUpgrade.handleLoadFailure(prepared, error: error) == .reload
+            else { throw error }
+            try await asrManager.loadModel()
+          }
         }
         if let afterLoadForTesting { await afterLoadForTesting() }
         // The SAME projection `isLoaded` vends, deliberately: a postcondition

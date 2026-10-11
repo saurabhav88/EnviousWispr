@@ -416,6 +416,16 @@ import Testing
         reason:
           "recovery's claim does not wait for a just-ended ordinary session's unawaited termination cleanup to finish before this call proceeds"
       )),
+    // #3546: the same door's reload after the upgrade coordinator's failure plan
+    // (an initial load's A-fail or E19 fallback). Same claim, same gap.
+    CallSite(
+      file: "Sources/EnviousWisprAppKit/App/ActiveEngineOperation.swift", matcher: "loadModel",
+      text: "try await asrManager.loadModel()",
+      classification: .knownGap(
+        issue: 1749,
+        reason:
+          "recovery's claim does not wait for a just-ended ordinary session's unawaited termination cleanup to finish before this call proceeds"
+      )),
     // #2648 — Transcribe a File. All three sites are reached only while
     // `EngineLease` is held by `.fileImport` for the whole run, and recovery's
     // per-item handshake now takes that same claim, so a replay cannot begin
@@ -1980,8 +1990,10 @@ import Testing
       // #1908: was 18 (2 for #1745, 16 for #1749) — 2 of the #1749 entries
       // were `ASRManagerProxy.swift`'s and `ASRServiceHandler.swift`'s own
       // fire-and-forget `cancelStreaming` forwards, deleted with those files.
-      gaps.count == 16,
-      "expected exactly 16 `knownGap` entries (2 for #1745, 14 for #1749), found \(gaps.count)"
+      // #3546: 17 — `ActiveEngineOperation`'s reload after the upgrade
+      // coordinator's failure plan is a second #1749 site of the same door.
+      gaps.count == 17,
+      "expected exactly 17 `knownGap` entries (2 for #1745, 15 for #1749), found \(gaps.count)"
     )
     for gap in gaps {
       #expect(

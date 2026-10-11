@@ -110,6 +110,45 @@ public final class ParakeetDeliveryHandle {
     return registration.installDirectory
   }
 
+  /// #3546: read-only facts and non-fetching operations the upgrade policy
+  /// needs for THIS handle's registration (the v3 identity it accepts, or the
+  /// Ultra target it upgrades to).
+  package var installDirectory: URL { registration.installDirectory }
+  package var cacheKey: String { registration.manifest.identity.cacheKey }
+  package var metadataDirectory: URL { registration.metadataDirectory }
+  /// The same two refusals `ensureModelLocationReady` makes before it acts:
+  /// unavailable storage, or an install location inside the donor.
+  package var locationIsUsable: Bool {
+    !StorageRoot.live.isUnavailable && ModelDeliveryController.installLocationIsSafe(registration)
+  }
+
+  /// The admission marker fast path (digest, sizes, recorded mtimes); no hashing.
+  package func isAdmitted() async -> Bool {
+    await controller.isAdmitted(registration)
+  }
+
+  /// Full validation of the owned install and a marker refresh when it is
+  /// complete; never fetches (`ModelDeliveryController.admitIfComplete`).
+  package func admitIfComplete() async -> Bool {
+    await controller.admitIfComplete(registration)
+  }
+
+  /// Read-only donor recovery that a completed migration record does not
+  /// suppress (a declined one still does). Ticks the shared progress file like
+  /// `ensureModelLocationReady`, for the same wedge-guard reason.
+  package func recoverFromDonor() async {
+    await controller.recoverFromDonor(registration, onProgress: {
+      ProgressFile.shared.write(
+        fraction: 0, phase: ModelLoadStallPolicy.validatingCachePhase, detail: "")
+    })
+  }
+
+  /// Deletes this registration's whole owned install, marker and staging,
+  /// recording no decline (`ModelDeliveryController.retireOwnedInstall`).
+  package func retireOwnedInstall(ownedModelsRoot: URL) async -> Bool {
+    await controller.retireOwnedInstall(registration, ownedModelsRoot: ownedModelsRoot)
+  }
+
   /// One-shot repair after a cache-only load failure (grounded r1 revision 7;
   /// bounded to a single retry by the adapter).
   public func repair() async -> ModelDeliveryController.DeliveryOutcome {

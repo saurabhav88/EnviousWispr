@@ -1,3 +1,4 @@
+import EnviousWisprASR
 import EnviousWisprCore
 import EnviousWisprModelDelivery
 import Foundation
@@ -17,8 +18,10 @@ import Foundation
 /// Cold presses, recovery, idle reloads and in-session warm-ups never create
 /// one.
 ///
-/// No upgrade target is configured yet (chunk 7a): every preparation is
-/// exactly the v3 delivery route the adapter ran before this type existed.
+/// With no upgrade target (production until the Ultra manifest ships), every
+/// preparation is exactly the v3 delivery route the adapter ran before this
+/// type existed. With a target, a selection point runs the plan §3.4 table
+/// (rows K V A A-fail X T B C) and freezes its choice until the next one.
 @MainActor
 package final class ParakeetUpgradeCoordinator {
   /// One prepared load: the request it published (nil when the request was
@@ -26,12 +29,71 @@ package final class ParakeetUpgradeCoordinator {
   /// get the delivery repair pass.
   package struct PreparedLoad: Sendable {
     package let selection: ParakeetModelSelection?
+    /// True when this load is the one a selection point chose (the initial
+    /// load). Only an initial load may fall back to another identity; frozen
+    /// reloads (recovery, idle reload, file import) never change it.
+    package var isSelectionLoad: Bool = false
   }
+
+  /// The upgrade a configured target enables (plan §3.4). Nil in production
+  /// until the Ultra manifest ships; tests inject fixture registrations.
+  package struct UpgradeTarget {
+    /// The Ultra registration's handle: admission, foreground fetch, repair.
+    package let delivery: ParakeetDeliveryHandle
+    /// The target's persisted budget.
+    package let store: ParakeetUpgradeStateStore
+    /// The app-owned `Models` directory every retired install must sit inside.
+    package let ownedModelsRoot: URL
+
+    package init(
+      delivery: ParakeetDeliveryHandle, store: ParakeetUpgradeStateStore, ownedModelsRoot: URL
+    ) {
+      self.delivery = delivery
+      self.store = store
+      self.ownedModelsRoot = ownedModelsRoot
+    }
+  }
+
+  /// What a failed load should do next.
+  package enum FailurePlan: Equatable, Sendable {
+    /// A new request was published (repaired cache or fallback identity); load
+    /// once more.
+    case reload
+    /// Surface the original error.
+    case fail
+  }
+
+  /// Observable transitions (tests now, §3.7 telemetry later). No telemetry.
+  package enum Outcome: Equatable, Sendable {
+    case selected(ParakeetModel, row: String)
+    case activated
+    case loadFailed(ParakeetModel)
+    case fellBackToV3
+    case exhausted
+    case refetchStarted
+    case retiredV3
+    case retirementFailed(ParakeetModel)
+    case removedTarget
+    case storeUnavailable(String)
+    case retryGranted
+  }
+
+  /// Ultra loads per bounded cycle before the refetch / exhaustion rows (X).
+  package static let attemptBudget = 2
 
   private let parakeetSelection: ParakeetSelectionProvider
   /// #1348 Phase 2: the delivery stage that runs before any Parakeet load —
   /// nil means the legacy in-service download path (tests, or the flag off).
   private let delivery: ParakeetDeliveryHandle?
+  private let target: UpgradeTarget?
+  /// The request the last selection point chose, kept until the next one.
+  private var frozen: ParakeetModelSelection?
+  /// Set at a selection point: whether the owned v3 install is accepted, and
+  /// whether v3 genuinely failed to load in this launch (E19).
+  private var v3Accepted = false
+  private var v3RejectedThisLaunch = false
+  /// Observed transitions.
+  package var onOutcome: (@MainActor (Outcome) -> Void)?
 
   /// Selection points recorded and consumed (#3546). A token, not a flag, so a
   /// second launch poke while the first preparation is still running is
@@ -52,9 +114,21 @@ package final class ParakeetUpgradeCoordinator {
   var deliveryStageGateForTesting: (@MainActor () async -> Void)?
   var onWaiterParkedForTesting: (@MainActor () -> Void)?
 
-  package init(parakeetSelection: ParakeetSelectionProvider, delivery: ParakeetDeliveryHandle?) {
+  package init(
+    parakeetSelection: ParakeetSelectionProvider, delivery: ParakeetDeliveryHandle?,
+    target: UpgradeTarget? = nil
+  ) {
     self.parakeetSelection = parakeetSelection
     self.delivery = delivery
+    self.target = target
+    if target != nil {
+      parakeetSelection.beforePhysicalLoad = { [weak self] request in
+        try self?.countPhysicalLoad(request)
+      }
+      parakeetSelection.didPublishLoad = { [weak self] request in
+        self?.loadPublished(request)
+      }
+    }
   }
 
   /// Records a selection point (launch, or an actual switch into Parakeet).
@@ -70,9 +144,10 @@ package final class ParakeetUpgradeCoordinator {
   /// (`ActiveEngineOperation`): when a selection point is pending, its request
   /// is prepared and published before the load reads one, so a direct load
   /// never consumes the request an earlier selection published.
-  package func settlePendingSelection() async throws {
-    guard hasPendingSelectionPoint else { return }
-    _ = try await prepareLoad()
+  @discardableResult
+  package func settlePendingSelection() async throws -> PreparedLoad? {
+    guard hasPendingSelectionPoint else { return nil }
+    return try await prepareLoad()
   }
 
   /// Runs the delivery stage and publishes the request the next physical load
@@ -100,7 +175,8 @@ package final class ParakeetUpgradeCoordinator {
       let marked = selectionPointsMarked
       let result: Result<PreparedLoad, any Error>
       do {
-        let prepared = try await runDeliveryStage()
+        let prepared = try await runDeliveryStage(
+          selectionPoint: hasPendingSelectionPoint || frozen == nil)
         try Task.checkCancellation()
         selectionPointsConsumed = marked
         result = .success(prepared)
@@ -161,8 +237,11 @@ package final class ParakeetUpgradeCoordinator {
     await delivery?.cancelActiveFetch()
   }
 
-  private func runDeliveryStage() async throws -> PreparedLoad {
+  private func runDeliveryStage(selectionPoint: Bool) async throws -> PreparedLoad {
     if let deliveryStageGateForTesting { await deliveryStageGateForTesting() }
+    if let target {
+      return try await runTargetStage(target, selectionPoint: selectionPoint)
+    }
     // #1348 Phase 2: delivery stage BEFORE any load. The host admits a
     // verified cache (fetch/validate/repair as needed); the service then
     // loads cache-only and can never download. Flag off (or no handle) =
@@ -249,6 +328,291 @@ package final class ParakeetUpgradeCoordinator {
       // already had — and, offline, could not warm up at all.
       delivery?.noteLegacyPathActive()
     }
-    return PreparedLoad(selection: selection)
+    return PreparedLoad(selection: selection, isSelectionLoad: selectionPoint)
+  }
+}
+
+/// Thrown when the upgrade policy will not start an Ultra load: the target's
+/// budget is spent (row T), or its persisted state cannot be read. Never a
+/// loader failure, so it never triggers repair or fallback.
+package struct ParakeetUpgradeUnavailableError: Error, Equatable {
+  package let reason: String
+  package init(reason: String) { self.reason = reason }
+}
+
+// MARK: - Upgrade policy with a configured target (plan §3.4)
+
+extension ParakeetUpgradeCoordinator {
+  /// The load accounting hook (`ParakeetSelectionProvider.beforePhysicalLoad`):
+  /// once per PHYSICAL Ultra load, after offline-mode admission and before the
+  /// vendor. Checks the budget BEFORE spending it, so a frozen reload cannot
+  /// exceed it either, and persists the attempt before returning.
+  func countPhysicalLoad(_ request: ParakeetModelSelection) throws {
+    guard request.model == .ultra, let target else { return }
+    switch target.store.read() {
+    case .unreadable(let reason):
+      onOutcome?(.storeUnavailable(reason))
+      throw ParakeetUpgradeUnavailableError(reason: "state_unreadable")
+    case .state(var state):
+      guard !state.exhausted, state.attempts < Self.attemptBudget else {
+        throw ParakeetUpgradeUnavailableError(reason: "budget_spent")
+      }
+      state.attempts += 1
+      try target.store.write(state)
+    }
+  }
+
+  /// The success hook (`didPublishLoad`): a READY Ultra publish for the frozen
+  /// generation activates Ultra. The state reset is checked: if it cannot be
+  /// written, Ultra keeps serving, the failure is reported as a store failure,
+  /// and v3 is kept until a later activation resets cleanly. Only then is v3
+  /// retired, off the main actor, after readiness was published.
+  func loadPublished(_ request: ParakeetModelSelection) {
+    guard request.model == .ultra, let target, request.generation == frozen?.generation else {
+      return
+    }
+    do {
+      try target.store.write(.fresh)
+    } catch {
+      onOutcome?(.storeUnavailable("reset"))
+      return
+    }
+    onOutcome?(.activated)
+    guard let delivery else { return }
+    let root = target.ownedModelsRoot
+    Task { @MainActor [weak self] in
+      let retired = await delivery.retireOwnedInstall(ownedModelsRoot: root)
+      self?.onOutcome?(retired ? .retiredV3 : .retirementFailed(.v3))
+    }
+  }
+
+  /// What a failed load should do next. Cancellation, supersession, store and
+  /// budget refusals are never loader failures: no repair, fallback, refetch or
+  /// deletion follows them (E23), and an attempt already counted stays spent.
+  package func handleLoadFailure(_ prepared: PreparedLoad, error: any Error) async -> FailurePlan {
+    if error is CancellationError || error is ASRLoadCancelledError
+      || error is ASRLoadSupersededError || error is ParakeetUpgradeStoreWriteError
+      || error is ParakeetUpgradeUnavailableError || error is ParakeetLoadAccountingUnavailableError
+    {
+      return .fail
+    }
+    guard let target else {
+      // No target: the one-shot load-miss repair, unchanged.
+      return await repairAfterLoadFailure(prepared) ? .reload : .fail
+    }
+    guard let request = prepared.selection else { return .fail }
+    onOutcome?(.loadFailed(request.model))
+    switch request.model {
+    case .ultra:
+      // A-fail: accepted v3 serves now, in the same selection attempt.
+      if prepared.isSelectionLoad, v3Accepted, let v3 = v3Request() {
+        freeze(v3)
+        onOutcome?(.fellBackToV3)
+        return .reload
+      }
+      // No v3: the existing bounded repair of Ultra; the budget hook bounds it.
+      if request.repairable, case .admitted = await target.delivery.repair() {
+        return .reload
+      }
+      return .fail
+    case .v3:
+      // E19: v3 is rejected for this launch and is never repaired through the
+      // Ultra handle. Only the initial load may move on, within the budget.
+      v3RejectedThisLaunch = true
+      v3Accepted = false
+      guard prepared.isSelectionLoad else { return .fail }
+      do {
+        guard try await chooseUltraWithoutV3(target) != nil else { return .fail }
+        return .reload
+      } catch {
+        return .fail
+      }
+    }
+  }
+
+  /// Explicit Retry: proves the store can be written, then grants one new
+  /// bounded recovery cycle (attempts, refetch and exhaustion reset; a decline
+  /// stays) and marks a selection point. Never automatic.
+  package func retry() throws {
+    guard let target else { return }
+    try target.store.probeWritable()
+    var state = ParakeetUpgradeState.fresh
+    if case .state(let current) = target.store.read() { state.declined = current.declined }
+    try target.store.write(state)
+    onOutcome?(.retryGranted)
+    markSelectionPoint()
+  }
+
+  // MARK: Selection
+
+  func runTargetStage(_ target: UpgradeTarget, selectionPoint: Bool) async throws -> PreparedLoad {
+    guard selectionPoint || frozen == nil else {
+      // Frozen: cold presses, recovery, idle reloads and file import reload the
+      // identity the last selection point chose, without re-deciding.
+      if let frozen, parakeetSelection.current != frozen { freeze(frozen) }
+      return PreparedLoad(selection: frozen, isSelectionLoad: false)
+    }
+    let enabled = (delivery ?? target.delivery).isEnabled()
+    var state = ParakeetUpgradeState.fresh
+    var exhausted = false
+    switch target.store.read() {
+    case .state(let current):
+      state = current
+      exhausted = current.exhausted
+    case .unreadable(let reason):
+      onOutcome?(.storeUnavailable(reason))
+      exhausted = true
+    }
+    v3Accepted = v3RejectedThisLaunch ? false : await acceptV3()
+
+    // K: delivery off. No owned Ultra fetch, repair or admission.
+    if !enabled {
+      if v3Accepted, let v3 = v3Request() { return selected(v3, row: "K") }
+      if exhausted { throw rowT() }
+      return selected(ultraRequest(target, cacheOnly: false, repairable: false), row: "K")
+    }
+    // V / T: exhausted.
+    if exhausted {
+      if v3Accepted, let v3 = v3Request() {
+        removeTargetBytes(target)
+        return selected(v3, row: "V")
+      }
+      throw rowT()
+    }
+    if await target.delivery.isAdmitted() {
+      // A: admitted, within budget.
+      if state.attempts < Self.attemptBudget {
+        return selected(
+          ultraRequest(target, cacheOnly: true, repairable: !v3Accepted), row: "A")
+      }
+      // X: the budget is spent on these bytes.
+      do {
+        if !state.refetchSpent {
+          state.refetchSpent = true
+          try target.store.write(state)  // refetch intent BEFORE deleting
+          onOutcome?(.refetchStarted)
+          if await target.delivery.retireOwnedInstall(ownedModelsRoot: target.ownedModelsRoot) {
+            onOutcome?(.removedTarget)
+          } else {
+            onOutcome?(.retirementFailed(.ultra))
+          }
+          state.attempts = 0
+          try target.store.write(state)
+        } else {
+          state.exhausted = true
+          try target.store.write(state)
+          onOutcome?(.exhausted)
+          if v3Accepted, let v3 = v3Request() {
+            removeTargetBytes(target)
+            return selected(v3, row: "X")
+          }
+          throw rowT()  // no v3: Ultra bytes are retained
+        }
+      } catch let failure as ParakeetUpgradeStoreWriteError {
+        // Store failure: no Ultra work and no row C. Accepted v3 still serves.
+        onOutcome?(.storeUnavailable(failure.field))
+        if v3Accepted, let v3 = v3Request() { return selected(v3, row: "store") }
+        throw failure
+      }
+    }
+    // B: Ultra not admitted, v3 accepted (background fetch arrives with 7b-2).
+    if v3Accepted, let v3 = v3Request() { return selected(v3, row: "B") }
+    // C: neither available: foreground Ultra fetch and load within budget.
+    return try await foregroundUltra(target)
+  }
+
+  /// E19's continuation when v3 failed at its initial load: Ultra within the
+  /// budget (A or C), never by repairing v3. Nil when nothing is allowed.
+  private func chooseUltraWithoutV3(
+    _ target: UpgradeTarget
+  ) async throws -> ParakeetModelSelection? {
+    guard case .state(let state) = target.store.read(), !state.exhausted,
+      state.attempts < Self.attemptBudget
+    else { return nil }
+    let enabled = (delivery ?? target.delivery).isEnabled()
+    if !enabled {
+      return freeze(ultraRequest(target, cacheOnly: false, repairable: false))
+    }
+    if await target.delivery.isAdmitted() {
+      return freeze(ultraRequest(target, cacheOnly: true, repairable: true))
+    }
+    return try await foregroundUltra(target).selection
+  }
+
+  private func foregroundUltra(_ target: UpgradeTarget) async throws -> PreparedLoad {
+    let request = selected(ultraRequest(target, cacheOnly: true, repairable: true), row: "C")
+    switch await target.delivery.ensureAvailable() {
+    case .admitted:
+      return request
+    case .failed(let failure):
+      throw ParakeetDeliveryError(failure)
+    case .cancelled:
+      throw CancellationError()
+    }
+  }
+
+  /// v3 accepted (plan §3.4): the admission fast path, then a full validation
+  /// of the owned install with a marker refresh, then read-only donor recovery
+  /// (a completed migration record does not stop it; a deliberate decline
+  /// does) followed by validation again. Never fetches.
+  private func acceptV3() async -> Bool {
+    guard let delivery, delivery.locationIsUsable else { return false }
+    if await delivery.isAdmitted() { return true }
+    if await delivery.admitIfComplete() { return true }
+    await delivery.recoverFromDonor()
+    return await delivery.admitIfComplete()
+  }
+
+  private func v3Request() -> ParakeetModelSelection? {
+    guard let delivery else { return nil }
+    return parakeetSelection.select(
+      model: .v3, revision: delivery.modelRevision, directory: delivery.installDirectory,
+      cacheOnly: true, displayBytes: delivery.modelTotalBytes, repairable: false)
+  }
+
+  private func ultraRequest(
+    _ target: UpgradeTarget, cacheOnly: Bool, repairable: Bool
+  ) -> ParakeetModelSelection {
+    parakeetSelection.select(
+      model: .ultra, revision: target.delivery.modelRevision,
+      directory: target.delivery.installDirectory, cacheOnly: cacheOnly,
+      displayBytes: target.delivery.modelTotalBytes, repairable: repairable)
+  }
+
+  @discardableResult
+  private func freeze(_ request: ParakeetModelSelection) -> ParakeetModelSelection {
+    let published =
+      parakeetSelection.current == request
+      ? request
+      : parakeetSelection.select(
+        model: request.model, revision: request.revision, directory: request.directory,
+        cacheOnly: request.cacheOnly, displayBytes: request.displayBytes,
+        repairable: request.repairable)
+    frozen = published
+    return published
+  }
+
+  private func selected(_ request: ParakeetModelSelection, row: String) -> PreparedLoad {
+    frozen = request
+    onOutcome?(.selected(request.model, row: row))
+    return PreparedLoad(selection: request, isSelectionLoad: true)
+  }
+
+  private func rowT() -> ParakeetUpgradeUnavailableError {
+    onOutcome?(.exhausted)
+    parakeetSelection.clear()
+    frozen = nil
+    return ParakeetUpgradeUnavailableError(reason: "exhausted")
+  }
+
+  /// Rows V and X with v3: the exhausted target's bytes go, off the main actor,
+  /// without making v3 service wait on the deletion or depend on it.
+  private func removeTargetBytes(_ target: UpgradeTarget) {
+    let handle = target.delivery
+    let root = target.ownedModelsRoot
+    Task { @MainActor [weak self] in
+      let removed = await handle.retireOwnedInstall(ownedModelsRoot: root)
+      self?.onOutcome?(removed ? .removedTarget : .retirementFailed(.ultra))
+    }
   }
 }
