@@ -8,6 +8,7 @@ Run with the reviewed .codex/hooks/.venv Python (tree-sitter Bash parser).
 """
 import contextlib
 import getopt
+import hashlib
 import importlib.util
 import io
 import json
@@ -18,9 +19,26 @@ import subprocess
 import sys
 
 LOCK_TOOL = Path('/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr/scripts/lib/dev-app-lock.py')
-spec = importlib.util.spec_from_file_location('dev_app_lock', LOCK_TOOL)
-lock = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(lock)
+OWNER_SHA256 = None
+lock = None
+
+
+def get_lock():
+    """Check the reviewed dependency only when ownership is actually consulted.
+
+Ordinary readers and canonical claim/release remain available to repair a
+changed owner. The native trusted definition binds the expected digest.
+"""
+    global lock
+    if not isinstance(OWNER_SHA256, str) or re.fullmatch('[0-9a-f]{64}', OWNER_SHA256) is None:
+        raise ValueError('missing reviewed lock-owner digest')
+    if hashlib.sha256(LOCK_TOOL.read_bytes()).hexdigest() != OWNER_SHA256:
+        raise ValueError('lock owner changed; review and trust its new native definition')
+    if lock is None:
+        spec = importlib.util.spec_from_file_location('dev_app_lock', LOCK_TOOL)
+        lock = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(lock)
+    return lock
 
 
 def deny(reason):
@@ -35,7 +53,7 @@ def context(name, text):
 def invoke(session_id, *argv):
     out = io.StringIO()
     with contextlib.redirect_stdout(out), contextlib.redirect_stderr(out):
-        result = lock.main(list(argv), native_session_id=session_id)
+        result = get_lock().main(list(argv), native_session_id=session_id)
     return result, out.getvalue().strip()
 
 
@@ -182,7 +200,6 @@ def handle(event):
     # Every action/ownership query needs real native event identity.
     if not isinstance(session_id, str):
         raise ValueError('missing native event session_id')
-    lock.codex_chat_id(session_id)
     if name == 'PreToolUse':
         if event.get('tool_name') != 'Bash':
             return {}
@@ -200,7 +217,7 @@ def handle(event):
         return json.loads(text) if text else {}
     if name in ('Stop', 'SessionEnd', 'Interrupt'):
         result, text = invoke(session_id, 'check')
-        if result == lock.EXIT_UNDECIDED:
+        if result == get_lock().EXIT_UNDECIDED:
             return {'systemMessage': text}
         if result:
             return {}
@@ -213,13 +230,19 @@ def handle(event):
 
 
 def main():
+    global OWNER_SHA256
     event = {}
     try:
+        if len(sys.argv) == 3 and sys.argv[1] == '--owner-sha256':
+            OWNER_SHA256 = sys.argv[2]
         event = json.load(sys.stdin)
         if not isinstance(event, dict):
             raise ValueError('invalid native hook event')
         result = handle(event)
     except Exception:
+        if not isinstance(event, dict) or not event.get('hook_event_name'):
+            print('Dev-app lock hook could not decode its native event.', file=sys.stderr)
+            sys.exit(2)
         result = (deny('Dev-app lock hook could not verify this action; use a direct command and inspect the hook.')
                   if isinstance(event, dict) and event.get('hook_event_name') == 'PreToolUse'
                   else {'systemMessage': 'Dev-app lock hook could not complete its ownership check; hold retained.'})

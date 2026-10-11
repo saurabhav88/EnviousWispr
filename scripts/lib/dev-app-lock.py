@@ -114,13 +114,11 @@ def process_info(pid):
 
 def codex_chat_id(native_session_id=None):
     """Native thread identity wins over an inherited legacy session ID."""
-    values = ([native_session_id] if native_session_id is not None else
-              [os.environ.get("CODEX_THREAD_ID", os.environ.get("CODEX_SESSION_ID"))])
-    if not values or any(not isinstance(value, str) or
-                        re.fullmatch(r"[A-Za-z0-9_-]{1,128}", value) is None
-                        for value in values) or len(set(values)) != 1:
+    value = (native_session_id if native_session_id is not None else
+             os.environ.get("CODEX_THREAD_ID", os.environ.get("CODEX_SESSION_ID")))
+    if not isinstance(value, str) or re.fullmatch(r"[A-Za-z0-9_-]{1,128}", value) is None:
         raise Undecided("Codex chat identity is missing or invalid")
-    return values[0]
+    return value
 
 
 def find_session(native_session_id=None):

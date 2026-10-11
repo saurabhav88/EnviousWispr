@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Harness contracts: native lock routing against an isolated real lock owner."""
 import importlib.util
+import hashlib
 import json
 from pathlib import Path
 import tempfile
@@ -25,10 +26,15 @@ class HookTests(unittest.TestCase):
         anchor = "LOCK_TOOL = Path('/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr/scripts/lib/dev-app-lock.py')"
         self.assertEqual(hook_source.count(anchor), 1)
         hook_path = root / 'hook.py'
-        hook_path.write_text(hook_source.replace(anchor, f'LOCK_TOOL = Path({str(lock_path)!r})'))
+        hook_source = hook_source.replace(anchor, f'LOCK_TOOL = Path({str(lock_path)!r})')
+        self.assertEqual(hook_source.count('OWNER_SHA256 = None'), 1)
+        hook_source = hook_source.replace('OWNER_SHA256 = None',
+            f'OWNER_SHA256 = {hashlib.sha256(lock_path.read_bytes()).hexdigest()!r}')
+        hook_path.write_text(hook_source)
         spec = importlib.util.spec_from_file_location('private_hook', hook_path)
         self.hook = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(self.hook)
+        self.hook.get_lock()
         probe = patch.object(self.hook.lock, 'process_info', return_value=(1, 'host-start', 'codex'))
         probe.start()
         self.addCleanup(probe.stop)
@@ -163,10 +169,17 @@ class HookTests(unittest.TestCase):
 
     def test_malformed_native_identity_and_shell_are_refused(self):
         for event in (self.event(chat=None, command='echo ok'),
-                      self.event(chat='bad id', command='echo ok'),
                       self.event(command='open "')):
             with self.subTest(event=event), self.assertRaises((ValueError, self.hook.lock.Undecided)):
                 self.hook.handle(event)
+        self.assertTrue(self.denied('/tmp/build-dev-app.sh', chat='bad id'))
+
+    def test_changed_owner_blocks_actions_but_not_repair_or_readers(self):
+        self.hook.LOCK_TOOL.write_text(self.hook.LOCK_TOOL.read_text() + '\n# changed dependency\n')
+        self.assertFalse(self.denied('git status --short'))
+        self.assertFalse(self.denied(f'python3 {self.hook.LOCK_TOOL} release'))
+        with self.assertRaises(ValueError):
+            self.hook.handle(self.event(command='/tmp/build-dev-app.sh'))
 
 
 if __name__ == '__main__':
