@@ -1139,7 +1139,8 @@ extension ManifestFetchTaskTests {
     let backupFirst = await ManifestFetchTask.stagedAccounting(
       of: file, sources: [backup, ourCopy], in: staging)
     #expect(backupFirst.logicalStaged == 4)
-    #expect(backupFirst.diskNeeded == 20)
+    // Parts would first delete the 4 staged whole bytes: 10 + 10 - 4.
+    #expect(backupFirst.diskNeeded == 16)
     #expect(backupFirst.assemblyFloor == 10)
     // Backup only: the whole file is the only representation.
     let backupOnly = await ManifestFetchTask.stagedAccounting(
@@ -1167,7 +1168,8 @@ extension ManifestFetchTaskTests {
     let corrupt = await ManifestFetchTask.stagedAccounting(
       of: file, sources: manifest.sources, in: staging)
     #expect(corrupt.logicalStaged == 0)
-    #expect(corrupt.diskNeeded == 20)
+    // The corrupt 10 bytes are deleted before the parts land: 10 + 10 - 10.
+    #expect(corrupt.diskNeeded == 10)
     #expect(corrupt.assemblyFloor == 10)
 
     try Self.partsContent.write(to: stagedFile(staging))
@@ -1176,6 +1178,19 @@ extension ManifestFetchTaskTests {
     #expect(verified.logicalStaged == 10)
     #expect(verified.diskNeeded == 0)
     #expect(verified.assemblyFloor == 0)
+
+    // A staged whole file that is a link outside staging is never read and
+    // counts as nothing staged.
+    try FileManager.default.removeItem(at: stagedFile(staging))
+    let outside = try makeStaging()
+    let outsideFile = outside.appendingPathComponent("elsewhere.bin")
+    try Self.partsContent.write(to: outsideFile)
+    try FileManager.default.createSymbolicLink(
+      at: stagedFile(staging), withDestinationURL: outsideFile)
+    let escaping = await ManifestFetchTask.stagedAccounting(
+      of: file, sources: manifest.sources, in: staging)
+    #expect(escaping.logicalStaged == 0)
+    #expect(escaping.diskNeeded == 20)
   }
 
   @Test func eachPartHasItsOwnNetworkRetryBudget() async throws {
@@ -1283,6 +1298,33 @@ extension ManifestFetchTaskTests {
       #expect(
         FileManager.default.fileExists(atPath: outside.appendingPathComponent("missing.json").path)
           == false, "\(label)")
+    }
+  }
+
+  @Test func aWholeFilePartialThatCannotBeDeletedEndsThePartsFetch() async throws {
+    // The preflight credits staged whole-file bytes because the parts path
+    // deletes them first; if that deletion fails, nothing may be downloaded
+    // beside them.
+    let manifest = try Self.partsManifest()
+    let staging = try makeStaging()
+    try Data("0123".utf8).write(to: stagedFile(staging))
+    try FileManager.default.createDirectory(
+      at: transportRoot(staging), withIntermediateDirectories: true)
+    try FileManager.default.setAttributes([.posixPermissions: 0o555], ofItemAtPath: staging.path)
+    defer {
+      try? FileManager.default.setAttributes(
+        [.posixPermissions: 0o755], ofItemAtPath: staging.path)
+    }
+    try await withStubs {
+      do {
+        _ = try await partsTask(manifest: manifest, staging: staging).run()
+        Issue.record("a parts fetch ran beside an undeletable whole-file partial")
+      } catch let failure as DeliveryFailure {
+        #expect(failure.reason == .cacheRepairFailed)
+        #expect(failure.detail == "transport_cleanup:\(Self.partsFile)")
+      }
+      #expect(DeliveryStubProtocol.requests.isEmpty)
+      #expect(try Data(contentsOf: stagedFile(staging)) == Data("0123".utf8))
     }
   }
 
@@ -1469,6 +1511,35 @@ extension ManifestFetchTaskTests {
       } else {
         #expect(failure.reason == .source4xx, "accepted by preflight, then failed on the 404s")
       }
+    }
+  }
+
+  @Test func unsafeStagingIsRefusedBeforeAnyStagedFileIsRead() async throws {
+    // Staging is a link to a directory outside metadata, holding a full-size
+    // parts file. The refusal must come first: with a 1-byte disk, an attempt
+    // that read or budgeted staging first would report insufficient_disk.
+    let manifest = try Self.partsManifest()
+    let registration = try partsRegistration(manifest)
+    let staging = ModelDeliveryController.stagingDirectoryURL(for: registration)
+    let outside = try makeStaging()
+    // Full-size but corrupt: the old order hashed it, found it corrupt and
+    // budgeted a download a 1-byte disk refuses.
+    try Data(repeating: 0, count: Self.partsContent.count)
+      .write(to: outside.appendingPathComponent(Self.partsFile))
+    try FileManager.default.createDirectory(
+      at: staging.deletingLastPathComponent(), withIntermediateDirectories: true)
+    try FileManager.default.createSymbolicLink(at: staging, withDestinationURL: outside)
+    try await withStubs {
+      let controller = ModelDeliveryController(
+        defaults: freshDefaults(), availableDiskBytes: { _ in 1 })
+      let outcome = await controller.ensureModelAvailable(registration)
+      guard case .failed(let failure) = outcome else {
+        Issue.record("expected a refusal, got \(outcome)")
+        return
+      }
+      #expect(failure.reason == .cacheRepairFailed)
+      #expect(failure.detail == "unsafe_staging:outside_metadata")
+      #expect(DeliveryStubProtocol.requests.isEmpty)
     }
   }
 

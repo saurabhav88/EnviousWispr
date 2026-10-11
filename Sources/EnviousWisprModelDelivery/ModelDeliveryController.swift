@@ -763,6 +763,24 @@ public actor ModelDeliveryController {
     // WITHOUT attempt_started (D3).
     let staging = stagingDirectory(for: registration)
     let fetchFiles = manifest.files.filter { componentsToFetch.contains($0.component) }
+
+    // #2697: the staging directory a fetch writes THROUGH must be somewhere we
+    // own. This check used to be a side effect of the donor importer that ran
+    // here; the importer moved out (`LegacyDonorMigration`, which runs before an
+    // attempt and writes into the install directory, not staging), and the check
+    // had to survive on its own terms rather than as somebody else's by-product.
+    // `ManifestFetchTask` below writes into staging with no containment check of
+    // its own, and promotion then moves component roots out of whatever staging
+    // resolves to.
+    // #3546: checked BEFORE the disk accounting below, which reads (and may
+    // hash) staged files; an unsafe staging path is never read.
+    guard StagingSafety.isSafe(staging: staging, metadataDirectory: registration.metadataDirectory)
+    else {
+      let failure = DeliveryFailure(
+        reason: .cacheRepairFailed, detail: "unsafe_staging:outside_metadata")
+      return await finishFailed(identity, failure, generation: generation)
+    }
+
     // #3546 (contract §4d): one accounting per file, from the transport layout
     // the fetcher writes. `logicalStaged` feeds progress; `diskNeeded` feeds the
     // refusal and the reservation as the worst case over every permitted
@@ -857,21 +875,6 @@ public actor ModelDeliveryController {
       entry.reservationProgressBaseline = verifiedInPlaceBytes + stagedBytes
       entry.reservationHeadroom = manifest.admission.headroomFactor
       entries[identity] = entry
-    }
-
-    // #2697: the staging directory a fetch writes THROUGH must be somewhere we
-    // own. This check used to be a side effect of the donor importer that ran
-    // here; the importer moved out (`LegacyDonorMigration`, which runs before an
-    // attempt and writes into the install directory, not staging), and the check
-    // had to survive on its own terms rather than as somebody else's by-product.
-    // `ManifestFetchTask` below writes into staging with no containment check of
-    // its own, and promotion then moves component roots out of whatever staging
-    // resolves to.
-    guard StagingSafety.isSafe(staging: staging, metadataDirectory: registration.metadataDirectory)
-    else {
-      let failure = DeliveryFailure(
-        reason: .cacheRepairFailed, detail: "unsafe_staging:outside_metadata")
-      return await finishFailed(identity, failure, generation: generation)
     }
 
     // #2697: REPAIR FROM THE DONOR BEFORE THE NETWORK, and it is a plain read

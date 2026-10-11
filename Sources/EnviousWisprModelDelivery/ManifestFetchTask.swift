@@ -462,7 +462,10 @@ struct ManifestFetchTask {
     // A whole-file partial from an earlier source would sit on disk beside the
     // parts and the assembly output for the whole transfer, beyond what the
     // preflight budgets; the parts path never resumes it, so it goes first.
-    discardPartial(at: stagedURL)
+    // The preflight credits these bytes, so a deletion that fails ends the
+    // attempt rather than downloading beside them.
+    try removeTransportItem(at: stagedURL)
+    try removeTransportItem(at: resumeIdentityURL(for: stagedURL))
     let transportRoot = TransportLayout.root(in: stagingDirectory)
     try checkTransportDestination(transportRoot)
     try FileManager.default.createDirectory(at: transportRoot, withIntermediateDirectories: true)
@@ -654,8 +657,11 @@ struct ManifestFetchTask {
     of file: DeliveryManifest.File, sources: [DeliveryManifest.Source], in staging: URL
   ) async -> (logicalStaged: Int64, diskNeeded: Int64, assemblyFloor: Int64) {
     // Staged files live under the resolved install path (contract §4b).
+    // A path that leads outside staging is never read here (not even a stat or
+    // a hash); it counts as nothing staged, and the fetcher refuses it later.
     let wholeURL = staging.appendingPathComponent(file.resolvedInstallPath)
-    let whole = min(stagedSize(wholeURL), file.sizeBytes)
+    let whole =
+      isContained(wholeURL, in: staging) ? min(stagedSize(wholeURL), file.sizeBytes) : 0
     guard let parts = file.parts, sources.contains(where: { $0.deliversParts(of: file) }) else {
       return (whole, file.sizeBytes - whole, 0)
     }
@@ -664,15 +670,19 @@ struct ManifestFetchTask {
     {
       return (whole, 0, 0)
     }
+    // `wholeStaged` is for progress only (a corrupt full-size file is not
+    // progress); disk accounting credits every staged whole byte.
     let wholeStaged = whole == file.sizeBytes ? 0 : whole
-    let wholeNeed = file.sizeBytes - wholeStaged
+    let wholeNeed = file.sizeBytes - whole
     let partStaged = parts.indices.reduce(Int64(0)) { sum, index in
-      sum
-        + min(
-          stagedSize(TransportLayout.partURL(in: staging, file: file, index: index)),
-          parts[index].sizeBytes)
+      let partURL = TransportLayout.partURL(in: staging, file: file, index: index)
+      guard isContained(partURL, in: staging) else { return sum }
+      return sum + min(stagedSize(partURL), parts[index].sizeBytes)
     }
-    let partsNeed = (file.sizeBytes - partStaged) + file.sizeBytes
+    // The parts path deletes whatever whole-file bytes are staged before it
+    // downloads (`fetchParts`), and the volume's free space already excludes
+    // them, so they are credited back.
+    let partsNeed = max(0, (file.sizeBytes - partStaged) + file.sizeBytes - whole)
     let startsWithParts = sources.first?.deliversParts(of: file) == true
     return (
       startsWithParts ? partStaged : wholeStaged, max(wholeNeed, partsNeed), file.sizeBytes
@@ -694,19 +704,24 @@ struct ManifestFetchTask {
   /// `fileExists` would call it absent and a write would follow it), and it
   /// must resolve inside staging.
   private func checkTransportDestination(_ url: URL) throws {
+    guard Self.isContained(url, in: stagingDirectory) else {
+      throw DeliveryFailure(reason: .cacheRepairFailed, detail: "unsafe_transport")
+    }
+  }
+
+  /// The one containment answer for staged and transport paths: absent is
+  /// fine; an existing item must resolve (a dangling link is refused) and must
+  /// resolve inside `staging`.
+  static func isContained(_ url: URL, in staging: URL) -> Bool {
     switch PathSafety.reachability(of: url) {
     case .absent?:
       break
     case nil:
-      guard PathSafety.resolvedPath(url) != nil else {
-        throw DeliveryFailure(reason: .cacheRepairFailed, detail: "unsafe_transport")
-      }
+      guard PathSafety.resolvedPath(url) != nil else { return false }
     case .unreadable?, .indeterminate?:
-      throw DeliveryFailure(reason: .cacheRepairFailed, detail: "unsafe_transport")
+      return false
     }
-    guard PathSafety.resolvesInside(url, root: stagingDirectory) else {
-      throw DeliveryFailure(reason: .cacheRepairFailed, detail: "unsafe_transport")
-    }
+    return PathSafety.resolvesInside(url, root: staging)
   }
 
   /// Removes a transport-area item; an item that is already gone is not a
