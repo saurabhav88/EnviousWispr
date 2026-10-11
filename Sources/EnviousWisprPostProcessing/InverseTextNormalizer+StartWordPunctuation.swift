@@ -120,7 +120,8 @@ extension InverseTextNormalizer {
       // consecutive commands still stack.
       if fired == 0 || !gap.isEmpty {
         Self.dropRecogniserMark(
-          &out, before: rule, startWord: start, protectedSentinels: protectedSentinels)
+          &out, before: rule, startWord: start, language: language,
+          protectedSentinels: protectedSentinels)
       }
       out += rule.replacement
       fired += 1

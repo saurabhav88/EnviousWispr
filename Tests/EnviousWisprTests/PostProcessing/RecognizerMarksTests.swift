@@ -224,6 +224,28 @@ struct RecognizerMarksTests {
         in: "3. comma", markForms: "comma", breakForms: "new line") == "3 comma")
   }
 
+  @Test("English: a command inside a hyphenated word, and an ellipsis or mixed run after a command, keep their marks")
+  func commandBoundariesAndRuns() {
+    // `semi-colon` holds no command (conversion needs whitespace before it), so its full stop stays.
+    #expect(Self.english("It is a semi-colon.") == "It is a semi-colon.")
+    // One or two engine marks after a command are the engine's; an ellipsis or a mixed run is not.
+    #expect(Self.english("Wait comma...") == "Wait,...")
+    #expect(Self.english("Wait comma?!") == "Wait,?!")
+    #expect(Self.english("Wait comma.. Next") == "Wait, Next")
+  }
+
+  @Test("Start word: two different commands the engine separated by a mark are not a repeat")
+  func differentCommandsAreNotARepeat() {
+    // `point` is a prefix of `point d'interrogation`; the second is its own, complete command.
+    #expect(Self.startWord("Salut Place point. Place point d'interrogation", "fr") == "Salut.?")
+  }
+
+  @Test("Start word: English with a start word has no ordinal dot, like the bare-word route")
+  func englishStartWordHasNoOrdinalDot() {
+    #expect(Self.startWord("It costs 5. Dictate comma next", "en", start: "Dictate") == "It costs 5, next")
+    #expect(Self.startWord("am 2. Diktiere Komma weiter", "de") == "am 2., weiter")
+  }
+
   // MARK: - Aligned scoring (independent of the code under test)
 
   /// Delete the CONVERTED spans from both sides before scoring: with a start word only a complete

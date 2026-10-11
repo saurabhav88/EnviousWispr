@@ -29,7 +29,7 @@ extension InverseTextNormalizer {
       for form in rule.spokenForms {
         let pattern = form.split(separator: " ")
           .map { NSRegularExpression.escapedPattern(for: String($0)) }
-          .joined(separator: #"\s+"#)
+          .joined(separator: " ")  // a literal space, exactly as the `punct` rows write a command
         if isBreak { breaks.append(pattern) } else { marks.append(pattern) }
       }
     }
@@ -60,19 +60,49 @@ extension InverseTextNormalizer {
   /// the LAST copy stays for the absorb rules to judge. Two copies with no mark between them
   /// (`period period`, `Diktiere Punkt Diktiere Punkt`) are two commands the user spoke and stay two.
   ///
+  /// Copies are compared as COMPLETE commands: `forms` is an alternation sorted longest form first, so
+  /// `Place point d'interrogation` is read as that one command and never as a repeat of `Place point`.
+  ///
   /// - Parameters:
-  ///   - forms: a regex alternation of every command form (marks and breaks). Spaces inside a form are
-  ///     already whitespace runs.
-  ///   - startWord: the start word of a start-word route (`""` for English bare words). A copy may repeat
-  ///     the start word or leave it out; the first copy's text is the one kept.
+  ///   - forms: a regex alternation of every command form (marks and breaks), longest first.
+  ///   - startWord: the start word of a start-word route as a regex literal (`""` for English bare words).
+  ///     A copy may repeat the start word or leave it out; the first copy's text is the one kept. English
+  ///     bare words must stand after whitespace or at the start (`semi-colon` holds no command).
   static func mergeRepeatedCommand(in text: String, forms: String, startWord: String) -> String {
-    let lead = startWord.isEmpty ? "" : startWord + #"[.,]?"# + separatorSpace + "+"
-    let repeatLead = startWord.isEmpty ? "" : "(?:" + startWord + #"[.,]?"# + separatorSpace + "+)?"
-    let pattern =
-      #"\b("# + lead + "(" + forms + #"))\b(?:"# + separatorSpace + #"*[.,;:!?]+"# + separatorSpace
-      + "*"
-      + repeatLead + #"\2\b)+"#
-    return reSub(pattern, text) { $0.g(1) }
+    let lead = startWord.isEmpty ? "" : "(?:" + startWord + #"[.,]?"# + separatorSpace + "+)"
+    let anchor = startWord.isEmpty ? #"(?<!\S)"# : #"\b"#
+    let primary = anchor + lead + "(" + forms + #")\b"#
+    let repeated =
+      #"\A"# + separatorSpace + #"*[.,;:!?]+"# + separatorSpace + "*"
+      + (startWord.isEmpty ? "" : "(?:" + startWord + #"[.,]?"# + separatorSpace + "+)?")
+      + "(" + forms + #")\b"#
+    let ns = text as NSString
+    var out = ""
+    var cursor = 0
+    for match in reMatches(primary, text) {
+      let start = match.result.range.location
+      guard start >= cursor else { continue }
+      var end = NSMaxRange(match.result.range)
+      let key = commandKey(match.g(1) ?? "")
+      while end < ns.length,
+        let next = reMatches(repeated, ns.substring(from: end)).first,
+        commandKey(next.g(1) ?? "") == key
+      {
+        end += next.result.range.length
+      }
+      if end > NSMaxRange(match.result.range) {
+        out += ns.substring(with: NSRange(location: cursor, length: NSMaxRange(match.result.range) - cursor))
+        cursor = end
+      }
+    }
+    guard cursor > 0 else { return text }
+    return out + ns.substring(from: cursor)
+  }
+
+  /// Lowercase, whitespace runs collapsed, typographic apostrophe folded: the identity of a command.
+  private static func commandKey(_ phrase: String) -> String {
+    phrase.lowercased().replacingOccurrences(of: "\u{2019}", with: "'")
+      .split(whereSeparator: { $0.isWhitespace }).joined(separator: " ")
   }
 
   /// Rules R1 to R3, English bare-word route (the start-word route does the equivalent inside its own match
@@ -82,9 +112,11 @@ extension InverseTextNormalizer {
   ///   on each side (`ten.` reaches this point as ` 10 .`) and a shielded span is an opaque `\0N\0` token, so a
   ///   mark after a number's horizontal padding, or after such a token, counts as glued too. Ordinary
   ///   whitespace after a letter, and a line break before a mark, do not.
-  /// - R2: remove the engine's marks glued after a MARK command (`period.` -> `period`).
+  /// - R2: remove the engine's mark glued after a MARK command that stands after whitespace (`period.` ->
+  ///   `period`, never `semi-colon.`): one mark, or the same mark twice.
   /// - R3: remove the `.` or `,` glued after a LINE-BREAK command that follows a MARK command or an engine
-  ///   pause mark (`Comma. New paragraph.` -> the break keeps its meaning). After a sentence end the
+  ///   pause mark (`Comma. New paragraph.` -> the break keeps its meaning); one mark, or the same mark
+  ///   twice. After a sentence end the
   ///   `punct` rows already do this (#3041).
   /// Never touched: a mark before a line break, an ellipsis (`…` or three or more dots), a mixed run such
   /// as `?!`, a mark glued to the next token (`period.com`), and a protected dot (digit, honorific,
@@ -110,14 +142,15 @@ extension InverseTextNormalizer {
       }
       return ""
     }
-    // R2
-    t = reSub(#"\b("# + markForms + #")\b[.,;:!?]+(?=\s|$)"#, t) { $0.g(1) }
+    // R2: the command must stand after whitespace or at the start, exactly as the conversion needs it
+    // (`semi-colon.` holds no command), and only one mark or the same mark twice is the engine's.
+    t = reSub(#"(?<!\S)("# + markForms + #")\b([.,;:!?])\2?(?=\s|$)"#, t) { $0.g(1) }
     // R3, after a MARK command and after an engine pause mark
     t = reSub(
-      #"(\b(?:"# + markForms + #")\s+(?:"# + breakForms + #"))\b[.,]+(?=\s|$)"#, t
+      #"((?<!\S)(?:"# + markForms + #")\s+(?:"# + breakForms + #"))\b([.,])\2?(?=\s|$)"#, t
     ) { $0.g(1) }
     t = reSub(
-      #"(\S[,;:]"# + closerClass + #"{0,3}\s+(?:"# + breakForms + #"))\b[.,]+(?=\s|$)"#, t
+      #"(\S[,;:]"# + closerClass + #"{0,3}\s+(?:"# + breakForms + #"))\b([.,])\2?(?=\s|$)"#, t
     ) { $0.g(1) }
     return t
   }
@@ -136,7 +169,7 @@ extension InverseTextNormalizer {
   /// before `? ! : ;`.
   static func dropRecogniserMark(
     _ out: inout String, before rule: SpokenPunctuationRule, startWord: String,
-    protectedSentinels: [String]
+    language: String, protectedSentinels: [String]
   ) {
     guard rule.command != .lineBreak, rule.command != .paragraphBreak else { return }
     var chars = Array(out)
@@ -167,7 +200,12 @@ extension InverseTextNormalizer {
       let token = precedingToken(of: String(chars[..<before]))
       // A snippet sentinel is `EWSNIP` plus hex and often ends in a digit; it is not an ordinal.
       let isSentinel = protectedSentinels.contains { !$0.isEmpty && token.hasSuffix($0) }
-      if !isSentinel, isProtectedDotToken(token, digitIsOrdinal: true) { return }
+      // English (with a start word too) has no ordinal dot, as on the bare-word route.
+      if !isSentinel,
+        isProtectedDotToken(token, digitIsOrdinal: LanguageNormalizer.baseCode(language) != "en")
+      {
+        return
+      }
     }
     out = String(chars[..<before]) + String(chars[end...])
   }
