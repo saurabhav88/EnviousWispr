@@ -380,42 +380,36 @@ final class ParakeetEngineAdapter: ASREngineAdapter, @unchecked Sendable {
     try Task.checkCancellation()
     guard warmUpGeneration == myWarmUpGeneration else { throw CancellationError() }
 
-    do {
-      try await asrManager.loadModel()
-    } catch let error
-      // #3546: the failure plan (repair, or a fallback identity at the initial
-      // load) is the upgrade coordinator's; it excludes cancellation,
-      // supersession and budget refusals itself. With no target, `repairable`
-      // is true exactly when delivery is active (the old local
-      // `deliveryActive`), read from THIS warm-up's request.
-      where !(error is ASRLoadSupersededError)
-      // #1388 (Codex r3 P1): a user Cancel must NOT fall into the repair
-      // retry — repairing an intact cache succeeds and silently restarts the
-      // install the user just cancelled (the founder watched exactly this
-      // ~2s resurrection live). Same policy as the transport-recovery catch:
-      // cancellation propagates untouched.
-      && !(error is ASRLoadCancelledError)
-      && !(error is CancellationError)
-    {
-      // One-shot load-miss repair (#1348 grounded r1 revision 7): a
-      // cache-only load failure (raced deletion, missed corruption) gets ONE
-      // revalidate/repair pass and ONE retry; a second failure is terminal.
-      // Owner is THIS warm-up sequence (a local, not stored state) — callers
-      // cannot duplicate it because warm-up is single-flighted upstream.
-      // Composed AROUND the transport recovery (exhaustive r7 finding 6) so
-      // a stale-helper retry that then misses the cache still gets its
-      // repair pass. (#3546: the handle check and the repair call moved into
-      // `repairAfterLoadFailure`, with their reason, behind `handleLoadFailure`.)
-      guard await parakeetUpgrade.handleLoadFailure(prepared, error: error) == .reload else {
-        throw error
-      }
-      // Same staleness window as the guard above, at `delivery.repair()`'s
-      // own long, separately-owned await instead of `ensureAvailable()`'s —
-      // same two-signal reasoning (r10): cancellation first, then generation.
-      try Task.checkCancellation()
-      guard warmUpGeneration == myWarmUpGeneration else { throw CancellationError() }
-      try await asrManager.loadModel()
-    }
+    // #3546: the load and its failure plan (repair, or a fallback identity at
+    // the initial load) run in the upgrade coordinator's one sequence, shared
+    // with `ActiveEngineOperation`. The plan excludes cancellation,
+    // supersession and budget refusals itself. With no target, `repairable` is
+    // true exactly when delivery is active (the old local `deliveryActive`),
+    // read from THIS warm-up's request.
+    // #1388 (Codex r3 P1): a user Cancel must NOT fall into the repair
+    // retry — repairing an intact cache succeeds and silently restarts the
+    // install the user just cancelled (the founder watched exactly this
+    // ~2s resurrection live). Same policy as the transport-recovery catch:
+    // cancellation propagates untouched.
+    // One-shot load-miss repair (#1348 grounded r1 revision 7): a
+    // cache-only load failure (raced deletion, missed corruption) gets ONE
+    // revalidate/repair pass and ONE retry; a second failure is terminal.
+    // Owner is THIS warm-up sequence (a local, not stored state) — callers
+    // cannot duplicate it because warm-up is single-flighted upstream.
+    // Composed AROUND the transport recovery (exhaustive r7 finding 6) so
+    // a stale-helper retry that then misses the cache still gets its
+    // repair pass. (#3546: the handle check and the repair call moved into
+    // `repairAfterLoadFailure`, with their reason, behind `handleLoadFailure`.)
+    try await parakeetUpgrade.loadPrepared(
+      prepared,
+      checkCaller: {
+        // Same staleness window as the guard above, at `delivery.repair()`'s
+        // own long, separately-owned await instead of `ensureAvailable()`'s —
+        // same two-signal reasoning (r10): cancellation first, then generation.
+        try Task.checkCancellation()
+        guard self.warmUpGeneration == myWarmUpGeneration else { throw CancellationError() }
+      },
+      load: { try await self.asrManager.loadModel() })
     // #959: a superseded load throws from `loadModel()`, but recheck readiness
     // anyway so any "returned but not actually loaded" path reports failure to
     // `ensureEngineWarm()` instead of a false "warm-up succeeded".

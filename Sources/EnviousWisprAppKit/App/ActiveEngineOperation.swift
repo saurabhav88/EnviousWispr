@@ -117,16 +117,15 @@ struct ActiveEngineOperation {
         if asrManager.activeBackendType == .whisperKit {
           try await whisperKitBackend.prepare()
         } else {
-          // #3546: an initial load this door settled may take the same failure
-          // plan a warm-up would (A-fail, E19); a frozen reload never changes
-          // the identity already serving.
-          let prepared = try await parakeetUpgrade.settlePendingSelection()
-          do {
-            try await asrManager.loadModel()
-          } catch {
-            guard let prepared,
-              await parakeetUpgrade.handleLoadFailure(prepared, error: error) == .reload
-            else { throw error }
+          // #3546: an initial load this door settled runs the same load and
+          // failure sequence a warm-up does (A-fail, E19, bounded repair); a
+          // frozen reload never changes the identity already serving.
+          if let prepared = try await parakeetUpgrade.settlePendingSelection() {
+            try await parakeetUpgrade.loadPrepared(
+              prepared,
+              checkCaller: { try Task.checkCancellation() },
+              load: { try await asrManager.loadModel() })
+          } else {
             try await asrManager.loadModel()
           }
         }

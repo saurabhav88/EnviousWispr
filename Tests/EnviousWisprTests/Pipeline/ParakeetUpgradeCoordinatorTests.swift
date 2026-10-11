@@ -3,6 +3,7 @@ import EnviousWisprCore
 import Foundation
 import Testing
 
+@testable import EnviousWisprAppKit
 @testable import EnviousWisprModelDelivery
 @testable import EnviousWisprPipeline
 
@@ -236,6 +237,22 @@ struct ParakeetUpgradeStageGateTests {
 struct ParakeetUpgradePolicyTests {
   final class WriteSwitch: @unchecked Sendable {
     var failing = false
+    private var failCall: Int?
+    private var calls = 0
+
+    /// Fails only the `n`th store write or removal from now (1-based), so a
+    /// test can fail a write between two fields.
+    func failCall(_ n: Int) {
+      calls = 0
+      failCall = n
+    }
+
+    func check() throws {
+      if failing { throw CocoaError(.fileWriteNoPermission) }
+      guard let failCall else { return }
+      calls += 1
+      if calls == failCall { throw CocoaError(.fileWriteNoPermission) }
+    }
   }
 
   struct Rig {
@@ -251,6 +268,9 @@ struct ParakeetUpgradePolicyTests {
     let selection: ParakeetSelectionProvider
     let defaults: UserDefaults
     let writes: WriteSwitch
+    /// The Ultra fixture's download source; unique per rig, so a test counts
+    /// only its own requests.
+    let ultraBase: URL
     var coordinator: ParakeetUpgradeCoordinator
     var outcomes: [ParakeetUpgradeCoordinator.Outcome] = []
   }
@@ -265,14 +285,14 @@ struct ParakeetUpgradePolicyTests {
   ]
 
   static func manifest(
-    _ files: [(path: String, content: Data, component: String)], name: String
+    _ files: [(path: String, content: Data, component: String)], name: String, tag: String
   ) throws -> DeliveryManifest {
     try DeliveryManifest.load(
       from: ManifestFixture.manifestJSON(
         files: files,
         sources: [
-          ["id": "our_copy", "baseURL": "https://upgrade.invalid.example/\(name)/"],
-          ["id": "backup", "baseURL": "https://upgrade.invalid.example/\(name)-b/"],
+          ["id": "our_copy", "baseURL": "https://upgrade.invalid.example/\(tag)/\(name)/"],
+          ["id": "backup", "baseURL": "https://upgrade.invalid.example/\(tag)/\(name)-b/"],
         ]
       ) { object in
         var identity = object["identity"] as! [String: Any]
@@ -295,8 +315,9 @@ struct ParakeetUpgradePolicyTests {
   /// A rig with the owned v3 and Ultra installs present (and admitted) or not.
   static func rig(
     v3: Bool, ultra: Bool, enabled: Bool = true, state: ParakeetUpgradeState? = nil,
-    v3Donor: Bool = false
+    v3Donor: Bool = false, ultraLocationRefused: Bool = false
   ) async throws -> Rig {
+    let tag = UUID().uuidString
     let root = FileManager.default.temporaryDirectory
       .appendingPathComponent("ew-upgrade-\(UUID().uuidString)", isDirectory: true)
     let data = root.appendingPathComponent("EnviousWispr", isDirectory: true)
@@ -306,13 +327,15 @@ struct ParakeetUpgradePolicyTests {
     try FileManager.default.createDirectory(at: metadata, withIntermediateDirectories: true)
     let donor = root.appendingPathComponent("FluidAudio/Models/parakeet-tdt-0.6b-v3")
     let v3Registration = DeliveryRegistration(
-      manifest: try manifest(v3Files, name: "v3-fixture"),
+      manifest: try manifest(v3Files, name: "v3-fixture", tag: tag),
       installDirectory: ParakeetInstallLocation.directory(for: .v3, dataDirectory: data),
       metadataDirectory: metadata, legacyDonorDirectory: v3Donor ? donor : nil)
     let ultraRegistration = DeliveryRegistration(
-      manifest: try manifest(ultraFiles, name: "ultra-fixture"),
+      manifest: try manifest(ultraFiles, name: "ultra-fixture", tag: tag),
       installDirectory: ParakeetInstallLocation.directory(for: .ultra, dataDirectory: data),
-      metadataDirectory: metadata)
+      metadataDirectory: metadata,
+      // A donor that contains the install is the location refusal (#2697).
+      legacyDonorDirectory: ultraLocationRefused ? data : nil)
     let suite = "test.upgrade.\(UUID().uuidString)"
     let defaults = TestDefaults.suite(suite)!
     defaults.set(enabled, forKey: DeliveryFlags.key("enabled", family: .parakeet))
@@ -331,11 +354,11 @@ struct ParakeetUpgradePolicyTests {
       metadataDirectory: metadata,
       targetCacheKey: ultraRegistration.manifest.identity.cacheKey,
       writeData: { data, url in
-        if writes.failing { throw CocoaError(.fileWriteNoPermission) }
+        try writes.check()
         try data.write(to: url, options: .atomic)
       },
       removeItem: { url in
-        if writes.failing { throw CocoaError(.fileWriteNoPermission) }
+        try writes.check()
         try LegacyRetirement.clearMarker(url)
       })
     if let state { try store.write(state) }
@@ -349,6 +372,7 @@ struct ParakeetUpgradePolicyTests {
       v3Registration: v3Registration, ultraRegistration: ultraRegistration, v3: v3Handle,
       ultra: ultraHandle, store: store, selection: selection, defaults: defaults,
       writes: writes,
+      ultraBase: URL(string: "https://upgrade.invalid.example/\(tag)/ultra-fixture/")!,
       coordinator: ParakeetUpgradeCoordinator(
         parakeetSelection: selection, delivery: v3Handle,
         target: .init(delivery: ultraHandle, store: store, ownedModelsRoot: models)))
@@ -369,7 +393,7 @@ struct ParakeetUpgradePolicyTests {
       controller: next.controller, v3Registration: next.v3Registration,
       ultraRegistration: next.ultraRegistration, v3: next.v3, ultra: next.ultra,
       store: next.store, selection: selection, defaults: next.defaults, writes: next.writes,
-      coordinator: next.coordinator)
+      ultraBase: next.ultraBase, coordinator: next.coordinator)
   }
 
   /// The vendor boundary, as `ASRManager.performLoad` reaches it: the count
@@ -598,7 +622,10 @@ struct ParakeetUpgradePolicyTests {
     var outcomes: [ParakeetUpgradeCoordinator.Outcome] = []
     rig.coordinator.onOutcome = { outcomes.append($0) }
     _ = try await rig.coordinator.prepareLoad()
-    guard let request = rig.selection.current else { Issue.record("no request"); return }
+    guard let request = rig.selection.current else {
+      Issue.record("no request")
+      return
+    }
     try rig.selection.beforePhysicalLoad?(request)
     rig.writes.failing = true
     rig.selection.didPublishLoad?(request)
@@ -690,14 +717,17 @@ struct ParakeetUpgradePolicyTests {
     let rig = try await Self.rig(v3: false, ultra: false, enabled: false, v3Donor: true)
     let donor = try #require(rig.v3Registration.legacyDonorDirectory)
     try Self.install(Self.v3Files, into: donor)
-    #expect(LegacyDonorMigration.record(
-      .completed, metadataDirectory: rig.metadata, manifest: rig.v3Registration.manifest))
+    #expect(
+      LegacyDonorMigration.record(
+        .completed, metadataDirectory: rig.metadata, manifest: rig.v3Registration.manifest))
     let prepared = try await rig.coordinator.prepareLoad()
     #expect(prepared.selection?.model == .v3, "recovered from the donor despite the record")
     let declined = try await Self.rig(v3: false, ultra: false, enabled: false, v3Donor: true)
     try Self.install(Self.v3Files, into: try #require(declined.v3Registration.legacyDonorDirectory))
-    #expect(LegacyDonorMigration.record(
-      .declined, metadataDirectory: declined.metadata, manifest: declined.v3Registration.manifest))
+    #expect(
+      LegacyDonorMigration.record(
+        .declined, metadataDirectory: declined.metadata, manifest: declined.v3Registration.manifest)
+    )
     let vendor = try await declined.coordinator.prepareLoad()
     #expect(vendor.selection?.model == .ultra, "a deliberate decline is honoured")
   }
@@ -716,7 +746,9 @@ struct ParakeetUpgradePolicyTests {
   @Test("retirement refuses an install outside the owned models root and deletes nothing")
   func retirementRefusesOutsideRoot() async throws {
     let rig = try await Self.rig(v3: true, ultra: false)
+    // A root that EXISTS, so only containment can refuse.
     let elsewhere = rig.root.appendingPathComponent("NotModels", isDirectory: true)
+    try FileManager.default.createDirectory(at: elsewhere, withIntermediateDirectories: true)
     let ok = await rig.v3.retireOwnedInstall(ownedModelsRoot: elsewhere)
     #expect(ok == false)
     #expect(FileManager.default.fileExists(atPath: rig.v3Registration.installDirectory.path))
@@ -726,6 +758,8 @@ struct ParakeetUpgradePolicyTests {
   @Test("retirement removes unlisted remnants, the marker and staging, and records no decline")
   func retirementRemovesEverything() async throws {
     let rig = try await Self.rig(v3: true, ultra: false, v3Donor: true)
+    let donor = try #require(rig.v3Registration.legacyDonorDirectory)
+    try Self.install(Self.v3Files, into: donor)
     let stray = rig.v3Registration.installDirectory.appendingPathComponent("stray.bin")
     try Data("x".utf8).write(to: stray)
     let staging = ModelDeliveryController.stagingDirectoryURL(for: rig.v3Registration)
@@ -738,6 +772,426 @@ struct ParakeetUpgradePolicyTests {
     #expect(
       LegacyDonorMigration.recordedState(
         metadataDirectory: rig.metadata, manifest: rig.v3Registration.manifest) != .declined)
+    for file in Self.v3Files {
+      #expect(
+        try Data(contentsOf: donor.appendingPathComponent(file.path)) == file.content,
+        "the donor is never touched")
+    }
+  }
+  @Test("retirement refuses an install it cannot look up, and deletes nothing")
+  func retirementRefusesUnreadablePath() async throws {
+    let rig = try await Self.rig(v3: true, ultra: false)
+    try FileManager.default.setAttributes([.posixPermissions: 0o000], ofItemAtPath: rig.models.path)
+    let ok = await rig.v3.retireOwnedInstall(ownedModelsRoot: rig.models)
+    try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: rig.models.path)
+    #expect(ok == false, "a failed lookup is not absence")
+    #expect(FileManager.default.fileExists(atPath: rig.v3Registration.installDirectory.path))
+    #expect(await rig.controller.isAdmitted(rig.v3Registration))
+  }
+
+  @Test("retirement removes a dangling link left where staging was")
+  func retirementRemovesDanglingResidue() async throws {
+    let rig = try await Self.rig(v3: true, ultra: false)
+    let staging = ModelDeliveryController.stagingDirectoryURL(for: rig.v3Registration)
+    try FileManager.default.createDirectory(
+      at: staging.deletingLastPathComponent(), withIntermediateDirectories: true)
+    try FileManager.default.createSymbolicLink(
+      at: staging, withDestinationURL: rig.root.appendingPathComponent("gone"))
+    #expect(await rig.v3.retireOwnedInstall(ownedModelsRoot: rig.models))
+    #expect(PathSafety.reachability(of: staging) == .absent, "the link itself is gone")
+  }
+
+  @Test("retirement that cannot delete reports failure and leaves the donor intact")
+  func retirementFailureIsTruthful() async throws {
+    let rig = try await Self.rig(v3: true, ultra: false, v3Donor: true)
+    let donor = try #require(rig.v3Registration.legacyDonorDirectory)
+    try Self.install(Self.v3Files, into: donor)
+    let locked = rig.v3Registration.installDirectory.appendingPathComponent(Self.v3Files[0].path)
+    try FileManager.default.setAttributes([.immutable: true], ofItemAtPath: locked.path)
+    defer { try? FileManager.default.setAttributes([.immutable: false], ofItemAtPath: locked.path) }
+    #expect(await rig.v3.retireOwnedInstall(ownedModelsRoot: rig.models) == false)
+    for file in Self.v3Files {
+      #expect(try Data(contentsOf: donor.appendingPathComponent(file.path)) == file.content)
+    }
+  }
+
+  @Test("a cancelled retirement caller deletes nothing")
+  func cancelledRetirementDeletesNothing() async throws {
+    let rig = try await Self.rig(v3: true, ultra: false)
+    let task = Task { await rig.v3.retireOwnedInstall(ownedModelsRoot: rig.models) }
+    task.cancel()
+    #expect(await task.value == false)
+    #expect(FileManager.default.fileExists(atPath: rig.v3Registration.installDirectory.path))
+    #expect(await rig.controller.isAdmitted(rig.v3Registration))
+  }
+
+  // MARK: Both load doors run the whole failure sequence
+
+  /// What the scripted manager loaded, and whether each load succeeds.
+  @MainActor final class LoadLog {
+    var order: [ParakeetModel] = []
+    var results: [Bool]
+    init(_ results: [Bool]) { self.results = results }
+  }
+
+  /// A manager whose loads run the provider hooks as `ASRManager.performLoad`
+  /// does, record the model, and fail while the log says so.
+  static func scriptedManager(_ rig: Rig, _ log: LoadLog) -> StubParakeetASRManager {
+    let manager = StubParakeetASRManager()
+    let selection = rig.selection
+    manager.loadModelScript = {
+      guard let request = selection.current else { throw ParakeetModelDirectoryUnsetError() }
+      try selection.beforePhysicalLoad?(request)
+      log.order.append(request.model)
+      let succeeds = log.results.isEmpty ? true : log.results.removeFirst()
+      guard succeeds else { throw VendorLoadFailed() }
+      selection.didPublishLoad?(request)
+    }
+    return manager
+  }
+
+  enum Door: String, CaseIterable, Sendable { case warmUp, directLoad }
+
+  static func load(through door: Door, _ rig: Rig, _ manager: StubParakeetASRManager) async throws {
+    switch door {
+    case .warmUp:
+      try await ParakeetEngineAdapter(asrManager: manager, parakeetUpgrade: rig.coordinator)
+        .warmUp()
+    case .directLoad:
+      try await ActiveEngineOperation.live(
+        asrManager: manager, parakeetUpgrade: rig.coordinator,
+        whisperKitBackend: WhisperKitBackend(admittedModelFolder: { nil })
+      ).load()
+    }
+  }
+
+  static func ultraRequests(_ rig: Rig) -> Int {
+    DeliveryStubProtocol.requests.filter {
+      $0.contains(rig.ultraBase.deletingLastPathComponent().path)
+    }
+    .count
+  }
+
+  static func enqueueUltra(_ rig: Rig) {
+    ChunkAppendDelegate.protocolClassesForTesting = [DeliveryStubProtocol.self]
+    for f in ultraFiles {
+      DeliveryStubProtocol.enqueue(
+        url: rig.ultraBase.appendingPathComponent(f.path).absoluteString,
+        .init(
+          status: 200, headers: ["Content-Length": String(f.content.count), "ETag": "\"u\""],
+          body: f.content))
+    }
+  }
+
+  @Test(
+    "v3 fails, then Ultra fails: the bounded Ultra repair still runs, through either door",
+    arguments: Door.allCases)
+  func v3ThenUltraFailureRepairs(door: Door) async throws {
+    let rig = try await Self.rig(v3: true, ultra: false)
+    // Complete Ultra bytes without admission: v3 serves first (B); E19 admits them.
+    try Self.install(Self.ultraFiles, into: rig.ultraRegistration.installDirectory)
+    Self.enqueueUltra(rig)
+    let log = LoadLog([false, false, false])
+    let manager = Self.scriptedManager(rig, log)
+    await #expect(throws: VendorLoadFailed.self) {
+      try await Self.load(through: door, rig, manager)
+    }
+    #expect(log.order == [.v3, .ultra, .ultra], "E19 to Ultra, then its one repair and reload")
+    #expect(Self.state(rig)?.attempts == 2)
+  }
+
+  @Test(
+    "Ultra fails, then accepted v3 fails: E19 still runs, through either door",
+    arguments: Door.allCases)
+  func ultraThenV3FailureRunsE19(door: Door) async throws {
+    let rig = try await Self.rig(v3: true, ultra: true)
+    let log = LoadLog([false, false, false])
+    let manager = Self.scriptedManager(rig, log)
+    await #expect(throws: VendorLoadFailed.self) {
+      try await Self.load(through: door, rig, manager)
+    }
+    #expect(log.order == [.ultra, .v3, .ultra], "A-fail to v3, then E19 back to Ultra")
+    #expect(Self.state(rig)?.attempts == 2)
+  }
+
+  @Test(
+    "Ultra fails, v3 fails, Ultra loads: Ultra activates through either door",
+    arguments: Door.allCases)
+  func thirdLoadActivates(door: Door) async throws {
+    let rig = try await Self.rig(v3: true, ultra: true)
+    let log = LoadLog([false, false, true])
+    let manager = Self.scriptedManager(rig, log)
+    try await Self.load(through: door, rig, manager)
+    #expect(log.order == [.ultra, .v3, .ultra])
+    #expect(Self.state(rig) == .fresh, "the ready Ultra publish reset the target")
+  }
+
+  // MARK: Budget bounds repair and cleanup
+
+  @Test("after the last permitted Ultra attempt fails, nothing is repaired or fetched")
+  func noRepairAfterTheBudget() async throws {
+    let rig = try await Self.rig(
+      v3: false, ultra: true,
+      state: .init(attempts: 1, refetchSpent: false, exhausted: false, declined: false))
+    let prepared = try await rig.coordinator.prepareLoad()
+    #expect(prepared.selection?.repairable == true)
+    #expect(Self.physicalLoad(rig, succeeds: false) == .loaded)
+    // Damage the bytes: a repair now would have to fetch.
+    try Data("damaged".utf8).write(
+      to: rig.ultraRegistration.installDirectory.appendingPathComponent(Self.ultraFiles[1].path))
+    #expect(await rig.coordinator.handleLoadFailure(prepared, error: VendorLoadFailed()) == .fail)
+    #expect(Self.ultraRequests(rig) == 0)
+    #expect(Self.state(rig)?.attempts == 2)
+  }
+
+  enum Residue: String, CaseIterable, Sendable { case marker, install, staging }
+
+  /// Makes one retirement step fail by locking a file it must delete.
+  static func lock(_ residue: Residue, _ rig: Rig) throws -> URL {
+    let fm = FileManager.default
+    let url: URL
+    switch residue {
+    case .marker:
+      url = rig.metadata.appendingPathComponent(
+        "\(rig.ultraRegistration.manifest.identity.cacheKey).admission.json")
+    case .install:
+      url = rig.ultraRegistration.installDirectory.appendingPathComponent(
+        Self.ultraFiles[0].path)
+    case .staging:
+      let staging = ModelDeliveryController.stagingDirectoryURL(for: rig.ultraRegistration)
+      try fm.createDirectory(at: staging, withIntermediateDirectories: true)
+      url = staging.appendingPathComponent("part")
+      try Data("p".utf8).write(to: url)
+    }
+    #expect(fm.fileExists(atPath: url.path))
+    try fm.setAttributes([.immutable: true], ofItemAtPath: url.path)
+    return url
+  }
+
+  @Test(
+    "X: bytes that cannot be removed exhaust the target; attempts never reset, no row C",
+    arguments: Residue.allCases)
+  func failedRefetchCleanupExhausts(residue: Residue) async throws {
+    let rig = try await Self.rig(
+      v3: false, ultra: true,
+      state: .init(attempts: 2, refetchSpent: false, exhausted: false, declined: false))
+    let locked = try Self.lock(residue, rig)
+    defer { try? FileManager.default.setAttributes([.immutable: false], ofItemAtPath: locked.path) }
+    await #expect(throws: ParakeetUpgradeUnavailableError(reason: "exhausted")) {
+      _ = try await rig.coordinator.prepareLoad()
+    }
+    #expect(
+      Self.state(rig) == .init(attempts: 2, refetchSpent: true, exhausted: true, declined: false))
+    #expect(Self.ultraRequests(rig) == 0, "no foreground fetch")
+  }
+
+  @Test("X: failed cleanup with accepted v3 serves v3")
+  func failedRefetchCleanupServesV3() async throws {
+    let rig = try await Self.rig(
+      v3: true, ultra: true,
+      state: .init(attempts: 2, refetchSpent: false, exhausted: false, declined: false))
+    let locked = try Self.lock(.install, rig)
+    defer { try? FileManager.default.setAttributes([.immutable: false], ofItemAtPath: locked.path) }
+    let prepared = try await rig.coordinator.prepareLoad()
+    #expect(prepared.selection?.model == .v3)
+    #expect(Self.state(rig)?.exhausted == true)
+    #expect(Self.state(rig)?.attempts == 2)
+  }
+
+  @Test("X: a refetch-intent write that fails between fields deletes nothing; v3 serves")
+  func refetchIntentFailsBetweenFields() async throws {
+    let rig = try await Self.rig(
+      v3: true, ultra: true,
+      state: .init(attempts: 2, refetchSpent: false, exhausted: false, declined: false))
+    rig.writes.failCall(2)  // `attempts` is written, `refetchSpent` is not
+    let prepared = try await rig.coordinator.prepareLoad()
+    #expect(prepared.selection?.model == .v3)
+    #expect(await rig.controller.isAdmitted(rig.ultraRegistration), "the Ultra bytes stay")
+  }
+
+  @Test("X: a reset that fails between fields after deletion never starts a fetch")
+  func refetchResetFailsBetweenFields() async throws {
+    var rig = try await Self.rig(
+      v3: false, ultra: true,
+      state: .init(attempts: 2, refetchSpent: false, exhausted: false, declined: false))
+    rig.writes.failCall(5)  // the refetch intent (4 fields) lands; the reset's first field fails
+    await #expect(throws: ParakeetUpgradeStoreWriteError(field: "attempts")) {
+      _ = try await rig.coordinator.prepareLoad()
+    }
+    #expect(Self.state(rig)?.attempts == 2)
+    #expect(Self.state(rig)?.refetchSpent == true)
+    rig = Self.relaunch(rig)
+    await #expect(throws: ParakeetUpgradeUnavailableError(reason: "budget_spent")) {
+      _ = try await rig.coordinator.prepareLoad()
+    }
+    #expect(Self.ultraRequests(rig) == 0)
+  }
+
+  // MARK: Stale loads and queued cleanup
+
+  @Test("a failure reported after a newer selection point changes nothing")
+  func staleFailureIsIgnored() async throws {
+    let rig = try await Self.rig(v3: true, ultra: true)
+    var outcomes: [ParakeetUpgradeCoordinator.Outcome] = []
+    rig.coordinator.onOutcome = { outcomes.append($0) }
+    let prepared = try await rig.coordinator.prepareLoad()
+    #expect(Self.physicalLoad(rig, succeeds: false) == .loaded)
+    rig.coordinator.markSelectionPoint()
+    #expect(await rig.coordinator.handleLoadFailure(prepared, error: VendorLoadFailed()) == .fail)
+    #expect(rig.selection.current?.model == .ultra, "no v3 fallback was published")
+    #expect(outcomes.contains(.fellBackToV3) == false)
+  }
+
+  @Test("a stale v3 failure does not reject v3 for the launch")
+  func staleV3FailureKeepsV3() async throws {
+    let rig = try await Self.rig(v3: true, ultra: false)
+    let prepared = try await rig.coordinator.prepareLoad()
+    rig.coordinator.markSelectionPoint()
+    #expect(await rig.coordinator.handleLoadFailure(prepared, error: VendorLoadFailed()) == .fail)
+    let next = try await rig.coordinator.prepareLoad()
+    #expect(next.selection?.model == .v3)
+  }
+
+  @Test("a stale success neither resets the target nor retires v3")
+  func staleSuccessIsIgnored() async throws {
+    let rig = try await Self.rig(v3: true, ultra: true)
+    var outcomes: [ParakeetUpgradeCoordinator.Outcome] = []
+    rig.coordinator.onOutcome = { outcomes.append($0) }
+    _ = try await rig.coordinator.prepareLoad()
+    let request = try #require(rig.selection.current)
+    try rig.selection.beforePhysicalLoad?(request)
+    rig.coordinator.markSelectionPoint()
+    rig.selection.didPublishLoad?(request)
+    #expect(Self.state(rig)?.attempts == 1)
+    #expect(outcomes.contains(.activated) == false)
+    #expect(FileManager.default.fileExists(atPath: rig.v3Registration.installDirectory.path))
+  }
+
+  @Test("a load of a stale request is refused before it spends anything")
+  func staleLoadIsNotCounted() async throws {
+    let rig = try await Self.rig(v3: true, ultra: true)
+    _ = try await rig.coordinator.prepareLoad()
+    rig.coordinator.markSelectionPoint()
+    #expect(Self.physicalLoad(rig) == .refused)
+    #expect(Self.state(rig) == .fresh)
+  }
+
+  @Test("a cancelled failure handler repairs nothing")
+  func cancelledFailureHandlerRepairsNothing() async throws {
+    let rig = try await Self.rig(v3: false, ultra: true)
+    let prepared = try await rig.coordinator.prepareLoad()
+    #expect(Self.physicalLoad(rig, succeeds: false) == .loaded)
+    try Data("damaged".utf8).write(
+      to: rig.ultraRegistration.installDirectory.appendingPathComponent(Self.ultraFiles[1].path))
+    let task = Task { await rig.coordinator.handleLoadFailure(prepared, error: VendorLoadFailed()) }
+    task.cancel()
+    #expect(await task.value == .fail)
+    #expect(Self.ultraRequests(rig) == 0)
+  }
+
+  @Test("Retry cancels a queued target removal: nothing is deleted or reported")
+  func retryCancelsQueuedRemoval() async throws {
+    let rig = try await Self.rig(
+      v3: true, ultra: true,
+      state: .init(attempts: 0, refetchSpent: true, exhausted: true, declined: false))
+    var outcomes: [ParakeetUpgradeCoordinator.Outcome] = []
+    rig.coordinator.onOutcome = { outcomes.append($0) }
+    let ended = CleanupEnded()
+    rig.coordinator.onCleanupEndedForTesting = { _ in ended.fire() }
+    let prepared = try await rig.coordinator.prepareLoad()
+    #expect(prepared.selection?.model == .v3, "row V queued the removal")
+    try rig.coordinator.retry()
+    await ended.wait()
+    #expect(await rig.controller.isAdmitted(rig.ultraRegistration))
+    #expect(outcomes.contains(.removedTarget) == false)
+    #expect(outcomes.contains(.retirementFailed(.ultra)) == false)
+  }
+
+  // MARK: Row C: foreground fetch
+
+  @Test("C: Ultra is admitted before it is published, and only then loads")
+  func rowCAdmitsBeforePublishing() async throws {
+    let rig = try await Self.rig(v3: false, ultra: false)
+    Self.enqueueUltra(rig)
+    var filesPresentAtPublish: Bool?
+    rig.coordinator.onOutcome = { outcome in
+      guard outcome == .selected(.ultra, row: "C") else { return }
+      filesPresentAtPublish = Self.ultraFiles.allSatisfy {
+        FileManager.default.fileExists(
+          atPath: rig.ultraRegistration.installDirectory.appendingPathComponent($0.path).path)
+      }
+    }
+    let prepared = try await rig.coordinator.prepareLoad()
+    #expect(filesPresentAtPublish == true)
+    #expect(prepared.selection?.model == .ultra)
+    #expect(prepared.selection?.cacheOnly == true)
+    #expect(await rig.controller.isAdmitted(rig.ultraRegistration))
+    #expect(Self.physicalLoad(rig) == .loaded)
+  }
+
+  @Test("C: a failed fetch publishes nothing, and the next preparation fetches again")
+  func rowCFailureLeavesNothingFrozen() async throws {
+    let rig = try await Self.rig(v3: false, ultra: false)
+    ChunkAppendDelegate.protocolClassesForTesting = [DeliveryStubProtocol.self]
+    await #expect(throws: ParakeetDeliveryError.self) {
+      _ = try await rig.coordinator.prepareLoad()
+    }
+    #expect(rig.selection.current == nil)
+    let failedRequests = Self.ultraRequests(rig)
+    #expect(failedRequests > 0)
+    Self.enqueueUltra(rig)
+    let prepared = try await rig.coordinator.prepareLoad()
+    #expect(prepared.selection?.model == .ultra)
+    #expect(Self.ultraRequests(rig) > failedRequests)
+  }
+
+  @Test("C: a cancelled preparation fetches and publishes nothing")
+  func rowCCancelled() async throws {
+    let rig = try await Self.rig(v3: false, ultra: false)
+    let gate = StageGate()
+    rig.coordinator.deliveryStageGateForTesting = { await gate.pass() }
+    let task = Task { try await rig.coordinator.prepareLoad() }
+    await gate.waitForEntry(1)
+    task.cancel()
+    gate.open()
+    await #expect(throws: CancellationError.self) { _ = try await task.value }
+    #expect(rig.selection.current == nil)
+    #expect(Self.ultraRequests(rig) == 0)
+  }
+
+  @Test("C: a spent budget fetches nothing")
+  func rowCBudgetSpent() async throws {
+    let rig = try await Self.rig(
+      v3: false, ultra: false,
+      state: .init(attempts: 2, refetchSpent: true, exhausted: false, declined: false))
+    await #expect(throws: ParakeetUpgradeUnavailableError(reason: "budget_spent")) {
+      _ = try await rig.coordinator.prepareLoad()
+    }
+    #expect(rig.selection.current == nil)
+    #expect(Self.ultraRequests(rig) == 0)
+  }
+
+  @Test("a refused Ultra location fetches nothing; accepted v3 still serves")
+  func refusedUltraLocation() async throws {
+    let refused = try await Self.rig(v3: false, ultra: false, ultraLocationRefused: true)
+    await #expect(throws: ParakeetDeliveryError.self) {
+      _ = try await refused.coordinator.prepareLoad()
+    }
+    #expect(refused.selection.current == nil)
+    #expect(Self.ultraRequests(refused) == 0)
+    let withV3 = try await Self.rig(v3: true, ultra: false, ultraLocationRefused: true)
+    let prepared = try await withV3.coordinator.prepareLoad()
+    #expect(prepared.selection?.model == .v3)
+  }
+
+  @Test("a refused Ultra location is never loaded, even through the vendor branch")
+  func refusedUltraLocationWithDeliveryOff() async throws {
+    let rig = try await Self.rig(
+      v3: false, ultra: false, enabled: false, ultraLocationRefused: true)
+    await #expect(throws: ParakeetDeliveryError.self) {
+      _ = try await rig.coordinator.prepareLoad()
+    }
+    #expect(rig.selection.current == nil)
   }
 }
 
@@ -765,6 +1219,34 @@ private final class OutcomeSignal {
       try? await Task.sleep(for: .seconds(5))
       guard let self, !self.seen, let waiting = self.waiting else { return }
       Issue.record("outcome \(self.want) never arrived", sourceLocation: sourceLocation)
+      self.waiting = nil
+      waiting.resume()
+    }
+    await withCheckedContinuation { waiting = $0 }
+    deadline.cancel()
+  }
+}
+
+/// Fired by the coordinator's cleanup-ended seam. Deadline-bounded so a
+/// missing signal fails loudly instead of hanging.
+@MainActor
+private final class CleanupEnded {
+  private var fired = false
+  private var waiting: CheckedContinuation<Void, Never>?
+
+  func fire() {
+    fired = true
+    waiting?.resume()
+    waiting = nil
+  }
+
+  func wait(sourceLocation: SourceLocation = #_sourceLocation) async {
+    if fired { return }
+    let deadline = Task { @MainActor [weak self] in
+      // deadline-fallback: fail loudly and release a missing-signal wait.
+      try? await Task.sleep(for: .seconds(5))
+      guard let self, !self.fired, let waiting = self.waiting else { return }
+      Issue.record("cleanup never ended", sourceLocation: sourceLocation)
       self.waiting = nil
       waiting.resume()
     }

@@ -92,6 +92,13 @@ package final class ParakeetUpgradeCoordinator {
   /// whether v3 genuinely failed to load in this launch (E19).
   private var v3Accepted = false
   private var v3RejectedThisLaunch = false
+  /// The selection-point token `frozen` was chosen under; queued cleanup is
+  /// valid only while it still matches.
+  private var frozenSelectionPoint: UInt64 = 0
+  /// Queued deletions (v3 retirement, target removal), one per model. A new
+  /// selection point or a changed identity cancels them, so bytes are never
+  /// deleted on behalf of a decision that no longer holds.
+  private var cleanupTasks: [ParakeetModel: (id: UUID, task: Task<Void, Never>)] = [:]
   /// Observed transitions.
   package var onOutcome: (@MainActor (Outcome) -> Void)?
 
@@ -113,6 +120,9 @@ package final class ParakeetUpgradeCoordinator {
   /// preparation open and act inside that window without timing guesses.
   var deliveryStageGateForTesting: (@MainActor () async -> Void)?
   var onWaiterParkedForTesting: (@MainActor () -> Void)?
+  /// Told when a queued cleanup task ends, whether it deleted, refused or was
+  /// cancelled, so tests can wait for it without timing guesses.
+  var onCleanupEndedForTesting: (@MainActor (ParakeetModel) -> Void)?
 
   package init(
     parakeetSelection: ParakeetSelectionProvider, delivery: ParakeetDeliveryHandle?,
@@ -123,7 +133,9 @@ package final class ParakeetUpgradeCoordinator {
     self.target = target
     if target != nil {
       parakeetSelection.beforePhysicalLoad = { [weak self] request in
-        try self?.countPhysicalLoad(request)
+        // No owner means no accounting: refuse rather than load uncounted.
+        guard let self else { throw ParakeetLoadAccountingUnavailableError() }
+        try self.countPhysicalLoad(request)
       }
       parakeetSelection.didPublishLoad = { [weak self] request in
         self?.loadPublished(request)
@@ -133,6 +145,7 @@ package final class ParakeetUpgradeCoordinator {
 
   /// Records a selection point (launch, or an actual switch into Parakeet).
   package func markSelectionPoint() {
+    cancelCleanupTasks()
     selectionPointsMarked &+= 1
   }
 
@@ -230,6 +243,44 @@ package final class ParakeetUpgradeCoordinator {
       case .admitted = await delivery.repair()
     else { return false }
     return true
+  }
+
+  /// The one load-and-recover sequence both load doors run (the engine
+  /// adapter's warm-up and `ActiveEngineOperation`), so neither door can skip
+  /// a step of the failure plan on its second load.
+  ///
+  /// No target, or a frozen reload: one load and at most one reload (the
+  /// one-shot repair, unchanged). An initial load under a target may also take
+  /// A-fail or E19, which allows at most two Ultra loads and one v3 load; the
+  /// persisted Ultra budget stays the authoritative limit.
+  ///
+  /// `checkCaller` throws when the calling warm-up or operation is stale. With
+  /// a target it runs before the failure plan too, because that plan can
+  /// publish a new identity; without one the plan only repairs, as before.
+  package func loadPrepared(
+    _ prepared: PreparedLoad,
+    checkCaller: @MainActor () throws -> Void,
+    load: @MainActor () async throws -> Void
+  ) async throws {
+    let maxLoads = target != nil && prepared.isSelectionLoad ? 3 : 2
+    var current = prepared
+    var loads = 0
+    while true {
+      do {
+        loads += 1
+        try await load()
+        return
+      } catch {
+        if target != nil { try checkCaller() }
+        guard loads < maxLoads, await handleLoadFailure(current, error: error) == .reload else {
+          throw error
+        }
+        try checkCaller()
+        if target != nil {
+          current = PreparedLoad(selection: frozen, isSelectionLoad: current.isSelectionLoad)
+        }
+      }
+    }
   }
 
   /// #1388 step 3: the onboarding install Cancel's download half.
@@ -343,11 +394,21 @@ package struct ParakeetUpgradeUnavailableError: Error, Equatable {
 // MARK: - Upgrade policy with a configured target (plan §3.4)
 
 extension ParakeetUpgradeCoordinator {
+  /// Whether `request` is still the load this coordinator wants: no newer
+  /// selection point is pending, and it is both the frozen choice and the
+  /// published request. A stale load may not spend, publish, fall back, reset
+  /// or delete anything.
+  func isCurrentLoad(_ request: ParakeetModelSelection) -> Bool {
+    !hasPendingSelectionPoint && frozen == request && parakeetSelection.current == request
+  }
+
   /// The load accounting hook (`ParakeetSelectionProvider.beforePhysicalLoad`):
-  /// once per PHYSICAL Ultra load, after offline-mode admission and before the
-  /// vendor. Checks the budget BEFORE spending it, so a frozen reload cannot
-  /// exceed it either, and persists the attempt before returning.
+  /// once per PHYSICAL load, after offline-mode admission and before the
+  /// vendor. A stale load is refused as superseded. For Ultra it checks the
+  /// budget BEFORE spending it, so a frozen reload cannot exceed it either, and
+  /// persists the attempt before returning.
   func countPhysicalLoad(_ request: ParakeetModelSelection) throws {
+    guard isCurrentLoad(request), !Task.isCancelled else { throw ASRLoadSupersededError() }
     guard request.model == .ultra, let target else { return }
     switch target.store.read() {
     case .unreadable(let reason):
@@ -362,15 +423,13 @@ extension ParakeetUpgradeCoordinator {
     }
   }
 
-  /// The success hook (`didPublishLoad`): a READY Ultra publish for the frozen
-  /// generation activates Ultra. The state reset is checked: if it cannot be
+  /// The success hook (`didPublishLoad`): a READY Ultra publish for the current
+  /// load activates Ultra. The state reset is checked: if it cannot be
   /// written, Ultra keeps serving, the failure is reported as a store failure,
   /// and v3 is kept until a later activation resets cleanly. Only then is v3
-  /// retired, off the main actor, after readiness was published.
+  /// retirement queued, off the main actor, after readiness was published.
   func loadPublished(_ request: ParakeetModelSelection) {
-    guard request.model == .ultra, let target, request.generation == frozen?.generation else {
-      return
-    }
+    guard request.model == .ultra, let target, isCurrentLoad(request) else { return }
     do {
       try target.store.write(.fresh)
     } catch {
@@ -378,12 +437,8 @@ extension ParakeetUpgradeCoordinator {
       return
     }
     onOutcome?(.activated)
-    guard let delivery else { return }
-    let root = target.ownedModelsRoot
-    Task { @MainActor [weak self] in
-      let retired = await delivery.retireOwnedInstall(ownedModelsRoot: root)
-      self?.onOutcome?(retired ? .retiredV3 : .retirementFailed(.v3))
-    }
+    guard let delivery, isCurrentLoad(request) else { return }
+    scheduleCleanup(delivery, model: .v3, selection: request, root: target.ownedModelsRoot)
   }
 
   /// What a failed load should do next. Cancellation, supersession, store and
@@ -400,7 +455,15 @@ extension ParakeetUpgradeCoordinator {
       // No target: the one-shot load-miss repair, unchanged.
       return await repairAfterLoadFailure(prepared) ? .reload : .fail
     }
-    guard let request = prepared.selection else { return .fail }
+    // An offline-mode refusal happens before the vendor, so under a target it
+    // is no loader failure either. (Without a target it keeps the one-shot
+    // repair it always had.)
+    if error is ParakeetOfflineModeConflictError { return .fail }
+    // A stale load (a newer selection point, or a request no longer frozen)
+    // may not reject v3 or publish a fallback over the newer choice.
+    guard let request = prepared.selection, isCurrentLoad(request), !Task.isCancelled else {
+      return .fail
+    }
     onOutcome?(.loadFailed(request.model))
     switch request.model {
     case .ultra:
@@ -410,8 +473,15 @@ extension ParakeetUpgradeCoordinator {
         onOutcome?(.fellBackToV3)
         return .reload
       }
-      // No v3: the existing bounded repair of Ultra; the budget hook bounds it.
-      if request.repairable, case .admitted = await target.delivery.repair() {
+      // No v3: the existing bounded repair of Ultra, only while the budget
+      // allows another load; a repair after the last permitted attempt would
+      // fetch bytes nothing may load.
+      if request.repairable,
+        case .state(let state) = target.store.read(),
+        !state.exhausted, state.attempts < Self.attemptBudget,
+        case .admitted = await target.delivery.repair()
+      {
+        guard isCurrentLoad(request), !Task.isCancelled else { return .fail }
         return .reload
       }
       return .fail
@@ -422,7 +492,9 @@ extension ParakeetUpgradeCoordinator {
       v3Accepted = false
       guard prepared.isSelectionLoad else { return .fail }
       do {
-        guard try await chooseUltraWithoutV3(target) != nil else { return .fail }
+        guard try await chooseUltraWithoutV3(target, replacing: request) != nil else {
+          return .fail
+        }
         return .reload
       } catch {
         return .fail
@@ -465,6 +537,14 @@ extension ParakeetUpgradeCoordinator {
     }
     v3Accepted = v3RejectedThisLaunch ? false : await acceptV3()
 
+    // The legacy route's location refusal (#2697) holds for the target too:
+    // nothing reads, fetches into or deletes from a refused Ultra location.
+    guard target.delivery.locationIsUsable else {
+      if v3Accepted, let v3 = v3Request() { return selected(v3, row: "location_refused") }
+      throw ParakeetDeliveryError(
+        DeliveryFailure(reason: .cacheRepairFailed, detail: "location_refused"))
+    }
+
     // K: delivery off. No owned Ultra fetch, repair or admission.
     if !enabled {
       if v3Accepted, let v3 = v3Request() { return selected(v3, row: "K") }
@@ -474,8 +554,9 @@ extension ParakeetUpgradeCoordinator {
     // V / T: exhausted.
     if exhausted {
       if v3Accepted, let v3 = v3Request() {
-        removeTargetBytes(target)
-        return selected(v3, row: "V")
+        let prepared = selected(v3, row: "V")
+        removeTargetBytes(target, selection: v3)
+        return prepared
       }
       throw rowT()
     }
@@ -491,11 +572,22 @@ extension ParakeetUpgradeCoordinator {
           state.refetchSpent = true
           try target.store.write(state)  // refetch intent BEFORE deleting
           onOutcome?(.refetchStarted)
-          if await target.delivery.retireOwnedInstall(ownedModelsRoot: target.ownedModelsRoot) {
-            onOutcome?(.removedTarget)
-          } else {
+          guard
+            await target.delivery.retireOwnedInstall(ownedModelsRoot: target.ownedModelsRoot)
+          else {
+            // A cancelled preparation decides nothing; the next selection
+            // point continues from the persisted state.
+            try Task.checkCancellation()
+            // Bytes that cannot be removed cannot be refetched: the spent
+            // count and the refetch intent stay, and the target is exhausted.
             onOutcome?(.retirementFailed(.ultra))
+            state.exhausted = true
+            try target.store.write(state)
+            if v3Accepted, let v3 = v3Request() { return selected(v3, row: "V") }
+            throw rowT()
           }
+          try Task.checkCancellation()
+          onOutcome?(.removedTarget)
           state.attempts = 0
           try target.store.write(state)
         } else {
@@ -503,8 +595,9 @@ extension ParakeetUpgradeCoordinator {
           try target.store.write(state)
           onOutcome?(.exhausted)
           if v3Accepted, let v3 = v3Request() {
-            removeTargetBytes(target)
-            return selected(v3, row: "X")
+            let prepared = selected(v3, row: "X")
+            removeTargetBytes(target, selection: v3)
+            return prepared
           }
           throw rowT()  // no v3: Ultra bytes are retained
         }
@@ -524,26 +617,50 @@ extension ParakeetUpgradeCoordinator {
   /// E19's continuation when v3 failed at its initial load: Ultra within the
   /// budget (A or C), never by repairing v3. Nil when nothing is allowed.
   private func chooseUltraWithoutV3(
-    _ target: UpgradeTarget
+    _ target: UpgradeTarget,
+    replacing request: ParakeetModelSelection
   ) async throws -> ParakeetModelSelection? {
-    guard case .state(let state) = target.store.read(), !state.exhausted,
-      state.attempts < Self.attemptBudget
+    guard isCurrentLoad(request), !Task.isCancelled,
+      case .state(let state) = target.store.read(),
+      !state.exhausted, state.attempts < Self.attemptBudget
     else { return nil }
-    let enabled = (delivery ?? target.delivery).isEnabled()
-    if !enabled {
+    guard target.delivery.locationIsUsable else {
+      throw ParakeetDeliveryError(
+        DeliveryFailure(reason: .cacheRepairFailed, detail: "location_refused"))
+    }
+    if !(delivery ?? target.delivery).isEnabled() {
       return freeze(ultraRequest(target, cacheOnly: false, repairable: false))
     }
-    if await target.delivery.isAdmitted() {
+    let admitted = await target.delivery.isAdmitted()
+    guard isCurrentLoad(request), !Task.isCancelled else { return nil }
+    if admitted {
       return freeze(ultraRequest(target, cacheOnly: true, repairable: true))
     }
-    return try await foregroundUltra(target).selection
+    return try await foregroundUltra(target, replacing: request).selection
   }
 
-  private func foregroundUltra(_ target: UpgradeTarget) async throws -> PreparedLoad {
-    let request = selected(ultraRequest(target, cacheOnly: true, repairable: true), row: "C")
+  /// Row C: fetch and admit Ultra in the foreground, and only then publish it,
+  /// so a failed or cancelled fetch leaves nothing frozen. Within the budget and
+  /// the location refusal, like every other Ultra route.
+  private func foregroundUltra(
+    _ target: UpgradeTarget,
+    replacing request: ParakeetModelSelection? = nil
+  ) async throws -> PreparedLoad {
+    try Task.checkCancellation()
+    guard target.delivery.locationIsUsable else {
+      throw ParakeetDeliveryError(
+        DeliveryFailure(reason: .cacheRepairFailed, detail: "location_refused"))
+    }
+    guard case .state(let state) = target.store.read(),
+      !state.exhausted, state.attempts < Self.attemptBudget
+    else {
+      throw ParakeetUpgradeUnavailableError(reason: "budget_spent")
+    }
     switch await target.delivery.ensureAvailable() {
     case .admitted:
-      return request
+      try Task.checkCancellation()
+      if let request, !isCurrentLoad(request) { throw ASRLoadSupersededError() }
+      return selected(ultraRequest(target, cacheOnly: true, repairable: true), row: "C")
     case .failed(let failure):
       throw ParakeetDeliveryError(failure)
     case .cancelled:
@@ -588,11 +705,15 @@ extension ParakeetUpgradeCoordinator {
         model: request.model, revision: request.revision, directory: request.directory,
         cacheOnly: request.cacheOnly, displayBytes: request.displayBytes,
         repairable: request.repairable)
+    if frozen != published { cancelCleanupTasks() }
+    frozenSelectionPoint = selectionPointsMarked
     frozen = published
     return published
   }
 
   private func selected(_ request: ParakeetModelSelection, row: String) -> PreparedLoad {
+    if frozen != request { cancelCleanupTasks() }
+    frozenSelectionPoint = selectionPointsMarked
     frozen = request
     onOutcome?(.selected(request.model, row: row))
     return PreparedLoad(selection: request, isSelectionLoad: true)
@@ -607,12 +728,42 @@ extension ParakeetUpgradeCoordinator {
 
   /// Rows V and X with v3: the exhausted target's bytes go, off the main actor,
   /// without making v3 service wait on the deletion or depend on it.
-  private func removeTargetBytes(_ target: UpgradeTarget) {
-    let handle = target.delivery
-    let root = target.ownedModelsRoot
-    Task { @MainActor [weak self] in
+  private func removeTargetBytes(_ target: UpgradeTarget, selection: ParakeetModelSelection) {
+    scheduleCleanup(
+      target.delivery, model: .ultra, selection: selection, root: target.ownedModelsRoot)
+  }
+
+  /// Queues one deletion that runs only while the decision that queued it
+  /// still holds: the same selection point and the same frozen request, before
+  /// and after the delivery drain. A new selection point (including Retry) or
+  /// a changed identity cancels it; the controller checks cancellation around
+  /// its drain, so a cancelled cleanup deletes nothing and reports nothing.
+  private func scheduleCleanup(
+    _ handle: ParakeetDeliveryHandle, model: ParakeetModel,
+    selection: ParakeetModelSelection, root: URL
+  ) {
+    let point = frozenSelectionPoint
+    let id = UUID()
+    cleanupTasks[model]?.task.cancel()
+    let task = Task { @MainActor [weak self] in
+      guard let self else { return }
+      defer { self.onCleanupEndedForTesting?(model) }
+      guard !Task.isCancelled, self.selectionPointsMarked == point, self.frozen == selection
+      else { return }
       let removed = await handle.retireOwnedInstall(ownedModelsRoot: root)
-      self?.onOutcome?(removed ? .removedTarget : .retirementFailed(.ultra))
+      guard !Task.isCancelled, self.selectionPointsMarked == point, self.frozen == selection
+      else { return }
+      self.onOutcome?(
+        model == .v3
+          ? (removed ? .retiredV3 : .retirementFailed(.v3))
+          : (removed ? .removedTarget : .retirementFailed(.ultra)))
+      if self.cleanupTasks[model]?.id == id { self.cleanupTasks[model] = nil }
     }
+    cleanupTasks[model] = (id, task)
+  }
+
+  private func cancelCleanupTasks() {
+    for cleanup in cleanupTasks.values { cleanup.task.cancel() }
+    cleanupTasks.removeAll()
   }
 }

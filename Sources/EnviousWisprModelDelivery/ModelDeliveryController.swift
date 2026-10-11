@@ -541,12 +541,15 @@ public actor ModelDeliveryController {
   /// resolves strictly inside `ownedModelsRoot`, the marker and staging resolve
   /// inside the metadata directory, and the install directory neither is nor
   /// contains the legacy donor. Checked at deletion time. Drains a live attempt
-  /// and a live migration first, as `remove` does.
+  /// and a live migration first, as `remove` does. A cancelled caller deletes
+  /// nothing, before or after that drain: its decision may no longer hold.
   package func retireOwnedInstall(
     _ registration: DeliveryRegistration, ownedModelsRoot: URL
   ) async -> Bool {
     let identity = registration.manifest.identity
+    guard !Task.isCancelled else { return false }
     await drainForDeletion(identity)
+    guard !Task.isCancelled else { return false }
     let admission = admission(for: registration)
     let staging = stagingDirectory(for: registration)
     let install = registration.installDirectory
@@ -567,11 +570,19 @@ public actor ModelDeliveryController {
       return false
     }
     do {
-      if fm.fileExists(atPath: admission.markerURL.path) {
-        try fm.removeItem(at: admission.markerURL)
+      // Remove, then treat only "no such file" as already gone: an existence
+      // probe first would read a failed lookup as absence and skip a dangling
+      // link, and the retirement would report success over residue.
+      for url in [admission.markerURL, install, staging] {
+        do {
+          try fm.removeItem(at: url)
+        } catch {
+          let ns = error as NSError
+          guard ns.domain == NSCocoaErrorDomain,
+            ns.code == NSFileNoSuchFileError || ns.code == NSFileReadNoSuchFileError
+          else { throw error }
+        }
       }
-      if fm.fileExists(atPath: install.path) { try fm.removeItem(at: install) }
-      if fm.fileExists(atPath: staging.path) { try fm.removeItem(at: staging) }
     } catch {
       await AppLogger.shared.log(
         "Model delivery could not retire \(identity.cacheKey): \(error.localizedDescription)",
@@ -589,15 +600,21 @@ public actor ModelDeliveryController {
   /// must resolve strictly inside it. Unlike `PathSafety.resolvesInside`, a
   /// root that does not exist yet is not answered by its nearest ancestor:
   /// nothing gets deleted against a root that is not really there.
+  /// Only a real absence counts as absent: an install that cannot be looked
+  /// up, or that exists but does not resolve, refuses.
   nonisolated static func ownedStrictly(_ install: URL, by ownedRoot: URL) -> Bool {
     guard let rootPath = PathSafety.resolvedPath(ownedRoot) else { return false }
-    if let installPath = PathSafety.resolvedPath(install) {
+    switch PathSafety.reachability(of: install) {
+    case nil:
+      guard let installPath = PathSafety.resolvedPath(install) else { return false }
       return installPath != rootPath && PathSafety.contained(installPath, in: rootPath)
-    }
-    guard let parentPath = PathSafety.resolvedPath(install.deletingLastPathComponent()) else {
+    case .absent?:
+      guard let parentPath = PathSafety.resolvedPath(install.deletingLastPathComponent())
+      else { return false }
+      return parentPath == rootPath || PathSafety.contained(parentPath, in: rootPath)
+    case .unreadable?, .indeterminate?:
       return false
     }
-    return parentPath == rootPath || PathSafety.contained(parentPath, in: rootPath)
   }
 
   /// The drain both deleters share: a live attempt (the cancel drain barrier; a

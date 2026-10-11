@@ -1051,6 +1051,10 @@ final class StubParakeetASRManager: ASRManagerInterface {
   /// then clears itself — lets a test exercise `loadModelWithTransportRecovery`'s
   /// one-shot retry (a retry that SUCCEEDS second time) without looping forever.
   var loadModelError: (any Error)?
+  /// #3546: when set, runs on every `loadModel()` after `loadModelError`, as
+  /// the manager's load body would (the upgrade policy tests drive the
+  /// selection provider's hooks and script failures here); a throw fails the load.
+  var loadModelScript: (@MainActor () throws -> Void)?
 
   func loadModel() async throws {
     loadModelCount += 1
@@ -1063,6 +1067,7 @@ final class StubParakeetASRManager: ASRManagerInterface {
       loadModelError = nil
       throw error
     }
+    try loadModelScript?()
     isModelLoaded = true
   }
 

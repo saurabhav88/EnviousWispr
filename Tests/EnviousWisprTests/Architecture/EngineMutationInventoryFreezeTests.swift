@@ -416,11 +416,12 @@ import Testing
         reason:
           "recovery's claim does not wait for a just-ended ordinary session's unawaited termination cleanup to finish before this call proceeds"
       )),
-    // #3546: the same door's reload after the upgrade coordinator's failure plan
-    // (an initial load's A-fail or E19 fallback). Same claim, same gap.
+    // #3546: the same door's load closure for a load it settled, which
+    // `ParakeetUpgradeCoordinator.loadPrepared` calls for the load and every
+    // reload of the failure plan. Same claim, same gap.
     CallSite(
       file: "Sources/EnviousWisprAppKit/App/ActiveEngineOperation.swift", matcher: "loadModel",
-      text: "try await asrManager.loadModel()",
+      text: "load: { try await asrManager.loadModel() })",
       classification: .knownGap(
         issue: 1749,
         reason:
@@ -830,15 +831,14 @@ import Testing
       file: "Sources/EnviousWisprPipeline/ParakeetEngineAdapter.swift",
       matcher: "cancelInFlightLoad", text: "self.asrManager.cancelInFlightLoad()",
       classification: .structurallySafe),
-    // `loadModelWithTransportRecovery()`'s primary + one-shot-retry loads —
-    // reached only via `warmUp()`, itself both gated- and
-    // structurally-safe-reachable.
+    // `warmUp()`'s load closure — #3546: the primary load and every reload
+    // of the failure plan run through `ParakeetUpgradeCoordinator.loadPrepared`,
+    // which calls this one closure. Reached only via `warmUp()`, itself both
+    // gated- and structurally-safe-reachable.
     CallSite(
       file: "Sources/EnviousWisprPipeline/ParakeetEngineAdapter.swift", matcher: "loadModel",
-      text: "try await asrManager.loadModel()", classification: .transitivelyCoveredByCaller),
-    CallSite(
-      file: "Sources/EnviousWisprPipeline/ParakeetEngineAdapter.swift", matcher: "loadModel",
-      text: "try await asrManager.loadModel()", classification: .transitivelyCoveredByCaller),
+      text: "load: { try await self.asrManager.loadModel() })",
+      classification: .transitivelyCoveredByCaller),
     // #1908 round 11: a deadline can outlive `beginSession()`'s own minting
     // window (a caller-abandoned attempt's vendor call keeps running in the
     // background). `ASRManager` now holds start admission until the attempt
@@ -2037,6 +2037,9 @@ import Testing
       SiteKey(
         file: "Sources/EnviousWisprAppKit/App/ActiveEngineOperation.swift", matcher: "loadModel",
         text: "try await asrManager.loadModel()"),
+      SiteKey(
+        file: "Sources/EnviousWisprAppKit/App/ActiveEngineOperation.swift", matcher: "loadModel",
+        text: "load: { try await asrManager.loadModel() })"),
       SiteKey(
         file: "Sources/EnviousWisprAppKit/App/ActiveEngineOperation.swift", matcher: "transcribe",
         text:
