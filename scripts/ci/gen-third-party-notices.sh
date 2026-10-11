@@ -38,9 +38,9 @@ COMPONENTS=(
   # identity — it is vendored inside argmax-oss-swift, not its own SwiftPM pin.
   "swift-transformers (incorporated into Argmax OSS)|n/a|Apache-2.0|argmax-oss-swift/NOTICES|https://github.com/huggingface/swift-transformers|"
   "FluidAudio|b29591ad (fork saurabhav88/FluidAudio)|Apache-2.0|FluidAudio/LICENSE|https://github.com/saurabhav88/FluidAudio|fluidaudio"
-  "PostHog iOS|3.68.2|MIT|posthog-ios/LICENSE|https://github.com/PostHog/posthog-ios|posthog-ios"
-  "Sentry Cocoa|9.26.1|MIT|sentry-cocoa/LICENSE.md|https://github.com/getsentry/sentry-cocoa|sentry-cocoa"
-  "Sparkle|2.9.6|MIT (with bundled BSD/MIT components)|Sparkle/LICENSE|https://github.com/sparkle-project/Sparkle|sparkle"
+  "PostHog iOS|3.89.0|MIT|posthog-ios/LICENSE|https://github.com/PostHog/posthog-ios|posthog-ios"
+  "Sentry Cocoa|9.30.0|MIT|sentry-cocoa/LICENSE.md|https://github.com/getsentry/sentry-cocoa|sentry-cocoa"
+  "Sparkle|2.10.0|MIT (with bundled BSD/MIT components)|Sparkle/LICENSE|https://github.com/sparkle-project/Sparkle|sparkle"
   "swift-argument-parser|1.7.1|Apache-2.0|swift-argument-parser/LICENSE.txt|https://github.com/apple/swift-argument-parser|swift-argument-parser"
   # #3242: the word check runs on MLX. Both pins are Envious Labs forks carrying one small change each
   # (see Package.swift); the license texts are upstream's, unchanged. MLX core, mlx-c, nlohmann/json
