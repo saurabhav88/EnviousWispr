@@ -190,6 +190,8 @@ private final class StageGate {
     }
   }
 
+  var heldCountForTesting: Int { held.count }
+
   func waitForDeadlineForTesting() async {
     await deadlineTask?.value
   }
@@ -306,6 +308,7 @@ struct ParakeetUpgradeStageGateTests {
   }
 
   @Test func heldExpiryPropagatesThroughCoordinator() async throws {
+    var observedHeld = false
     var result: Result<ParakeetUpgradeCoordinator.PreparedLoad, any Error>?
     await withKnownIssue("Held subject expires") {
       let gate = StageGate(deadline: .milliseconds(1))
@@ -318,9 +321,11 @@ struct ParakeetUpgradeStageGateTests {
       }
       let subject = Task { try await c.prepareLoad() }
       await gate.waitForEntry(1)
+      observedHeld = gate.heldCountForTesting == 1
       await gate.waitForDeadlineForTesting()
       result = await subject.result
     }
+    #expect(observedHeld == true)
     let completed = try #require(result)
     #expect(throws: CancellationError.self) { _ = try completed.get() }
     #expect(Task.isCancelled == false)
