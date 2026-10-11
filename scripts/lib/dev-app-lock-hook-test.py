@@ -87,6 +87,9 @@ class HookTests(unittest.TestCase):
             with self.subTest(command=command):
                 self.assertFalse(self.denied(command))
         self.assertFalse(self.denied('/tmp/validate-pr.sh --self-test'))
+        for script in ('uat.py', 'uat_catalog.py', 'log_verdict.py', 'preflight.py'):
+            self.assertFalse(self.denied(f'python3 /tmp/Tests/RuntimeUAT/{script} --self-test'))
+        self.assertTrue(self.denied('python3 /tmp/Tests/RuntimeUAT/unknown.py --self-test'))
 
     def test_release_and_protected_action_never_share_call(self):
         self.hook.invoke('chat-a', 'claim')

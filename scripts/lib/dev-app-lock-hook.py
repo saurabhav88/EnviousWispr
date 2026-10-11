@@ -131,6 +131,8 @@ def route(argv):
         if '/RuntimeUAT/' in '/' + script:
             reader = (Path(script).name == 'uat.py' and
                       arguments[:1] in (["recipes"], ["preflight"], ["verdict"], ["--help"]))
+            reader = reader or (arguments[:1] == ['--self-test'] and Path(script).name in
+                                {'uat.py', 'uat_catalog.py', 'log_verdict.py', 'preflight.py'})
             return not reader, False, False
         if dev_path(script) and script.endswith('/Contents/MacOS/EnviousWispr'):
             return True, False, False

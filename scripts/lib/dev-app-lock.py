@@ -19,7 +19,8 @@ Exit status: 0 done, 3 held by someone else (the holder card is printed),
 WHO THE HOLDER IS. The nearest ancestor process named `claude` or `codex` is
 the host (see `agent_kind` for name forms). PID/start time binds its process
 incarnation. Codex also requires its native chat ID, since desktop chats share
-one host. Hook session_id is authoritative; shell native IDs must agree.
+one host. Hook session_id and shell CODEX_THREAD_ID identify the current chat.
+CODEX_SESSION_ID is a legacy fallback, and can differ in nested CLI sessions.
 The holder stays the holder after the
 command that claimed exits, for as long as that session process lives.
 
@@ -112,14 +113,13 @@ def process_info(pid):
 
 
 def codex_chat_id(native_session_id=None):
-    """Hook identity is authoritative; shell identity must not be ambiguous."""
+    """Native thread identity wins over an inherited legacy session ID."""
     values = ([native_session_id] if native_session_id is not None else
-              [os.environ[k] for k in ("CODEX_THREAD_ID", "CODEX_SESSION_ID")
-               if k in os.environ])
+              [os.environ.get("CODEX_THREAD_ID", os.environ.get("CODEX_SESSION_ID"))])
     if not values or any(not isinstance(value, str) or
                         re.fullmatch(r"[A-Za-z0-9_-]{1,128}", value) is None
                         for value in values) or len(set(values)) != 1:
-        raise Undecided("Codex chat identity is missing, invalid or conflicting")
+        raise Undecided("Codex chat identity is missing or invalid")
     return values[0]
 
 

@@ -64,7 +64,8 @@ class CodexOwnershipTests(unittest.TestCase):
                 ({"CODEX_THREAD_ID": "a"}, "a"),
                 ({"CODEX_SESSION_ID": "b"}, "b"),
                 ({"CODEX_THREAD_ID": "a", "CODEX_SESSION_ID": "a"}, "a"),
-                ({"CODEX_THREAD_ID": "a", "CODEX_SESSION_ID": "b"}, None),
+                ({"CODEX_THREAD_ID": "a", "CODEX_SESSION_ID": "b"}, "a"),
+                ({"CODEX_THREAD_ID": "a", "CODEX_SESSION_ID": "invalid legacy id"}, "a"),
                 ({"CODEX_THREAD_ID": ""}, None),
                 ({"CODEX_THREAD_ID": "a b"}, None),
                 ({"CODEX_THREAD_ID": "a" * 129}, None)]:
