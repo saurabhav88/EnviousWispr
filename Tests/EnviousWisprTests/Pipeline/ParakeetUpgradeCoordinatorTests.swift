@@ -81,23 +81,30 @@ struct ParakeetUpgradeCoordinatorTests {
 
   @Test("a selection point marked DURING a preparation is settled before any caller returns")
   func markDuringPreparationIsSettledBeforeReturn() async throws {
-    let gate = StageGate(maximumEntries: 2)
-    let coordinator = ParakeetUpgradeCoordinator(
-      parakeetSelection: ParakeetSelectionProvider(), delivery: nil)
-    coordinator.deliveryStageGateForTesting = { await gate.pass() }
-    coordinator.markSelectionPoint()
-    let runner = Task { try await coordinator.prepareLoad() }
-    await gate.waitForEntry(1)
-    let joiner = Task { try await coordinator.prepareLoad() }
-    await gate.waitForParked(coordinator, 1)
-    coordinator.markSelectionPoint()  // arrives while the first stage runs
-    gate.open()
-    let runnerResult = await runner.result
-    let joinerResult = await joiner.result
-    _ = try runnerResult.get()
-    _ = try joinerResult.get()
-    #expect(gate.entries == 2, "the stage ran again for the point marked during it")
-    #expect(coordinator.hasPendingSelectionPoint == false)
+    for withJoiner in [false, true] {
+      let gate = StageGate(maximumEntries: 2)
+      let coordinator = ParakeetUpgradeCoordinator(
+        parakeetSelection: ParakeetSelectionProvider(), delivery: nil)
+      coordinator.deliveryStageGateForTesting = { await gate.pass() }
+      coordinator.markSelectionPoint()
+      let runner = Task { try await coordinator.prepareLoad() }
+      await gate.waitForEntry(1)
+      let joiner = withJoiner
+        ? Task { try await coordinator.prepareLoad() } : nil
+      if withJoiner {
+        await gate.waitForParked(coordinator, 1)
+      }
+      coordinator.markSelectionPoint()
+      gate.open()
+      let runnerResult = await runner.result
+      let joinerResult = await joiner?.result
+      _ = try runnerResult.get()
+      _ = try joinerResult?.get()
+      #expect(
+        gate.entries == 2,
+        "the stage ran again for the point marked during it")
+      #expect(coordinator.hasPendingSelectionPoint == false)
+    }
   }
 
   @Test("cancelling a waiting caller cancels only that caller")
