@@ -309,7 +309,11 @@ struct SettingsSearchMatchingTests {
 
   /// Plan §3.2a: under 50 ms per keystroke for match and rank on this Mac. This Mac only; it
   /// says nothing about an M1.
-  @Test("one keystroke's search takes under 50 ms on this Mac")
+  @Test(
+    "one keystroke's search takes under 50 ms on this Mac",
+    .enabled(
+      if: (ProcessInfo.processInfo.environment["CI"] ?? "").isEmpty,
+      "Plan §3.2a is a local benchmark; hosted runs do not measure this Mac."))
   func keystrokeTiming() throws {
     let index = try Self.index("de", preferred: ["de-DE", "fr-FR", "ja-JP", "en-US"])
     let typed = "ein anderes Mikrofon verwenden"
