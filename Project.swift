@@ -333,6 +333,7 @@ let project = Project(
         .target(name: "EnviousWisprServices"),
         .package(product: "WhisperKit"),
         .package(product: "FluidAudio"),
+        .package(product: "PostHog"),
       ]),
     firstPartyLibrary(
       "EnviousWisprLLM",
@@ -373,6 +374,12 @@ let project = Project(
         // propagate them transitively, so any module importing Audio/ASR must
         // re-declare FluidAudio for the .swiftmodule import-closure to resolve.
         .package(product: "FluidAudio"),
+        // Same for PostHog: EnviousWisprServices imports it, and at 3.89.0 its
+        // PHPLCrashReporter and PostHogObjCExceptionSupport C modules only reach a
+        // DIRECT depender (a clean Dev build failed in EnviousWisprASR without
+        // this). Every library and test target above Services re-declares it; the
+        // app shell does not, because it reaches Services only through AppLive.
+        .package(product: "PostHog"),
       ]),
 
     // App-layer-scoped leaf (Core only): the Contacts-framework shim for #636.
@@ -421,6 +428,7 @@ let project = Project(
         // `FastClusterWrapper` and `MachTaskSelfWrapper` — which fail to resolve
         // without this. SwiftPM needs no such edge; only the Xcode graph does.
         .package(product: "FluidAudio"),
+        .package(product: "PostHog"),
         // NO `.package(product: "WhisperKit")`. Every WhisperKit type stays
         // behind `WhisperPreviewRuntime` in ASR, and removing this edge was
         // verified not to be the cause of the wrapper-module failure above.
@@ -439,6 +447,7 @@ let project = Project(
         .target(name: "EnviousWisprWhisperPreviewAdapter"),
         .package(product: "WhisperKit"),
         .package(product: "FluidAudio"),
+        .package(product: "PostHog"),
         .package(product: "MLX"),  // #3242: Cmlx/_NumericsShims via EnviousWisprWordCheck, as FluidAudio above
         .package(product: "Sparkle"),
       ],
@@ -476,6 +485,7 @@ let project = Project(
         .target(name: "EnviousWisprCore"),
         .package(product: "WhisperKit"),
         .package(product: "FluidAudio"),
+        .package(product: "PostHog"),
         .package(product: "MLX"),  // #3242: Cmlx/_NumericsShims via EnviousWisprWordCheck, as FluidAudio above
         .package(product: "Sparkle"),
       ],
@@ -489,6 +499,7 @@ let project = Project(
         // Same transitive-propagation reason as AppLive below.
         .package(product: "WhisperKit"),
         .package(product: "FluidAudio"),
+        .package(product: "PostHog"),
         .package(product: "MLX"),  // #3242: Cmlx/_NumericsShims via EnviousWisprWordCheck, as FluidAudio above
         .package(product: "Sparkle"),
       ]),
@@ -506,6 +517,7 @@ let project = Project(
         // FluidAudio internal named nowhere in this project's source.
         .package(product: "WhisperKit"),
         .package(product: "FluidAudio"),
+        .package(product: "PostHog"),
         .package(product: "MLX"),  // #3242: Cmlx/_NumericsShims via EnviousWisprWordCheck, as FluidAudio above
         .package(product: "Sparkle"),
       ]),
@@ -702,6 +714,7 @@ let project = Project(
         .target(name: "EnviousWisprDesktopEffects"),
         .package(product: "WhisperKit"),
         .package(product: "FluidAudio"),
+        .package(product: "PostHog"),
         .package(product: "MLX"),  // #3242: Cmlx/_NumericsShims via EnviousWisprWordCheck, as FluidAudio above
         .package(product: "Sparkle"),
       ],
@@ -731,6 +744,7 @@ let project = Project(
         // ParakeetModelLoadSentryErrorTests import this directly.
         .target(name: "EnviousWisprFluidAudioBridge"),
         .package(product: "FluidAudio"),
+        .package(product: "PostHog"),
         .package(product: "MLX"),  // #3242: Cmlx/_NumericsShims via EnviousWisprWordCheck, as FluidAudio above
         .package(product: "Sparkle"),
         // #1741 Chunk 10: EngineMutationInventoryFreezeTests's real Swift
@@ -762,6 +776,7 @@ let project = Project(
         // static framework that uses FluidAudio), so its symbols must be
         // resolved here too (Xcode doesn't propagate transitive static-link).
         .package(product: "FluidAudio"),
+        .package(product: "PostHog"),
       ],
       settings: testTargetSettings
     ),
