@@ -159,6 +159,11 @@ public enum KernelDictationDriverFactory {
     /// bundled-manifest load, which a unit test makes can't-happen in
     /// release) means the legacy in-service download path.
     package let parakeetDelivery: ParakeetDeliveryHandle?
+    /// #3546: the Parakeet load request the adapter writes and `ASRManager`
+    /// reads. Required, no default: it must be the SAME instance the manager
+    /// was built with, so a missing wiring fails to compile rather than making
+    /// every load throw `ParakeetModelDirectoryUnsetError`.
+    package let parakeetSelection: ParakeetSelectionProvider
     /// #1707 Phase 2: DEBUG fault-injection oracle (§11.1/§3.2a-i) — nil in
     /// every existing test call site.
     package let batchDecodeFaultController: BatchDecodeFaultController?
@@ -196,6 +201,7 @@ public enum KernelDictationDriverFactory {
     package init(
       audioCapture: any AudioCaptureInterface,
       asrManager: any ASRManagerInterface,
+      parakeetSelection: ParakeetSelectionProvider,
       vadSignalSource: CaptureVADSignalSource,
       transcriptStore: TranscriptStore,
       keychainManager: KeychainManager,
@@ -217,6 +223,7 @@ public enum KernelDictationDriverFactory {
     ) {
       self.audioCapture = audioCapture
       self.asrManager = asrManager
+      self.parakeetSelection = parakeetSelection
       self.vadSignalSource = vadSignalSource
       self.transcriptStore = transcriptStore
       self.keychainManager = keychainManager
@@ -425,7 +432,8 @@ public enum KernelDictationDriverFactory {
     // longer names a concrete adapter type in code (EngineIdentityFreezeTests
     // Test B); it assembles around the opaque `any ASREngineAdapter` returned.
     let adapter = KernelAdapterFactory.makeParakeetAdapter(
-      asrManager: inputs.asrManager, delivery: inputs.parakeetDelivery,
+      asrManager: inputs.asrManager, parakeetSelection: inputs.parakeetSelection,
+      delivery: inputs.parakeetDelivery,
       batchDecodeFaultController: inputs.batchDecodeFaultController)
     return assembleDriver(
       adapter: adapter,

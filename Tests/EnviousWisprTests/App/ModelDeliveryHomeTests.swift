@@ -313,6 +313,26 @@ struct ModelDeliveryHomeTests {
     #expect(home.whisperPreviewHandle != nil)
   }
 
+  /// #3546: the Parakeet load request takes its revision and byte total from
+  /// the bundled manifest through the handle, and the no-manifest fallback size
+  /// must be the same shipped total, so a missing manifest never changes the
+  /// "N MB of 483 MB" text. Literal 483,256,769 is the independent oracle.
+  @Test("the Parakeet request facts match the bundled manifest")
+  func parakeetRequestFactsMatchTheBundledManifest() throws {
+    let manifest = try DeliveryManifest.loadBundled(
+      resource: "parakeet-delivery-manifest", bundle: Self.manifestBundle())
+    #expect(manifest.totalBytes == 483_256_769)
+    #expect(ParakeetModel.v3ShippedBytes == manifest.totalBytes)
+    let home = ModelDeliveryHome(
+      engineMutationScope: .live(
+        tryBegin: { true }, end: { true }, wake: {}, onRefused: { _ in }),
+      manifestBundle: try Self.manifestBundle(),
+      appSupportOverride: try Self.tempAppSupport())
+    let handle = try #require(home.parakeetHandle)
+    #expect(handle.modelTotalBytes == manifest.totalBytes)
+    #expect(handle.modelRevision == manifest.identity.revision)
+  }
+
   static func writeFastAdmissionFixture(home: ModelDeliveryHome) throws ->
     (manifest: DeliveryManifest, directory: URL, admission: CacheAdmission, marker: Data) {
     let manifest = try DeliveryManifest.loadBundled(resource: "parakeet-delivery-manifest", bundle: Self.manifestBundle())

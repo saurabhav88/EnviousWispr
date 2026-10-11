@@ -1,3 +1,4 @@
+import EnviousWisprCore
 import Foundation
 import Testing
 import WhisperKit
@@ -192,7 +193,8 @@ struct VendorDecodeOccupancyTests {
     let parakeet = FakeASRBackend(initiallyReady: true)
     await parakeet.gateTranscribe()
     let manager = ASRManager(
-      engineMutationScope: .alwaysAllowedForTesting, parakeetBackendFactory: { parakeet })
+      engineMutationScope: .alwaysAllowedForTesting,
+      parakeetSelection: ParakeetSelectionProvider(), parakeetBackendFactory: { parakeet })
     manager.setInitialBackendType(.parakeet)
     try await manager.loadModel()
     #expect(manager.vendorDecodeOccupancy.isIdle)
@@ -246,6 +248,7 @@ struct VendorDecodeOccupancyTests {
   func refusedTranscribeNotCounted() async {
     let manager = ASRManager(
       engineMutationScope: .alwaysAllowedForTesting,
+      parakeetSelection: ParakeetSelectionProvider(),
       parakeetBackendFactory: { FakeASRBackend(initiallyReady: true) })
     manager.setInitialBackendType(.whisperKit)
     await #expect(throws: ASRManagerNotOwnedError(backend: .whisperKit)) {

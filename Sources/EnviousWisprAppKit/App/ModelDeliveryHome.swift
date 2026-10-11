@@ -1101,7 +1101,8 @@ final class ModelDeliveryHome {
   ///
   /// **What the flag does NOT do**, so nobody reads this guard as more than it is:
   /// it stands owned delivery down and hands Parakeet back to the legacy
-  /// FluidAudio path, which fetches on its own (`parakeetCacheOnly = false`). It
+  /// FluidAudio path, which fetches on its own (a load request with `cacheOnly`
+  /// false; before #3546, `parakeetCacheOnly = false`). It
   /// also does not stop an attempt already in flight — the controller snapshots
   /// flags once per attempt — so flipping it mid-download leaves the Settings row
   /// showing progress and Cancel, exactly as before.

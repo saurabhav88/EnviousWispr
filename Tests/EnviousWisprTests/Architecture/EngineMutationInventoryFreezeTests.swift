@@ -100,7 +100,7 @@ import Testing
 // `EngineProtocolSurfaceFreezeTests` for all ten's frozen signatures) plus
 // two concrete-only method surfaces not declared by any of the ten frozen
 // protocols (`WhisperKitEngineAdapter.unloadForRemoval()`, reached via a
-// type-cast at one call site; `ParakeetBackend.prepare(cacheOnly:progressCallback:)`,
+// type-cast at one call site; `ParakeetBackend.prepare(selection:progressCallback:)`,
 // reached via a type-cast at one call site AND via direct, uncast
 // construction/ownership at another — `ASRServiceHandler.swift` builds and
 // holds a concrete `ParakeetBackend` natively, so "reached only via a cast"
@@ -253,7 +253,7 @@ import Testing
   /// for their frozen signatures) plus two concrete-only method surfaces not
   /// declared by any of the ten frozen protocols
   /// (`WhisperKitEngineAdapter.unloadForRemoval()`, reached via a type-cast;
-  /// `ParakeetBackend.prepare(cacheOnly:progressCallback:)`, reached via a
+  /// `ParakeetBackend.prepare(selection:progressCallback:)`, reached via a
   /// type-cast at one call site and via direct, uncast construction/ownership
   /// in `ASRServiceHandler`; both are already caught here because their names
   /// match an existing/added entry below. Only their EXISTENCE and signature
@@ -545,7 +545,8 @@ import Testing
     // `retryDecode`/row-22 warmUp) callers alike.
     CallSite(
       file: "Sources/EnviousWisprASR/ASRManager.swift", matcher: "prepare",
-      text: "try await parakeet.prepare(",
+      // #3546: the same call, now taking one load request.
+      text: "try await parakeet.prepare(selection: selection, progressCallback: progress)",
       classification: .transitivelyCoveredByCaller),
     // #1908: this generic-protocol prepare call now runs against the
     // attempt-scoped `candidate` rather than the stored `self.parakeetBackend`

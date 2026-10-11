@@ -57,6 +57,11 @@ public final class ParakeetDeliveryHandle {
     }
   }
 
+  /// #3546: the bundled manifest's revision and byte total, for the load
+  /// request the adapter writes. Read-only facts of this handle's registration.
+  package var modelRevision: String { registration.manifest.identity.revision }
+  package var modelTotalBytes: Int64 { registration.manifest.totalBytes }
+
   /// The D5 kill-switch, read fresh per warm-up (relaunch-free legacy
   /// fallback; the service's offline switch follows via `cacheOnly`).
   public func isEnabled() -> Bool {

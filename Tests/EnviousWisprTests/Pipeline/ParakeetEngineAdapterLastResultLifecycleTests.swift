@@ -22,7 +22,8 @@ import Testing
   func lastResultNilAfterBeginSession() async throws {
     let manager = StubParakeetASRManager()
     manager.finalizeStreamingResult = makeResult("first")
-    let adapter = ParakeetEngineAdapter(asrManager: manager)
+    let adapter = ParakeetEngineAdapter(
+      asrManager: manager, parakeetSelection: ParakeetSelectionProvider())
     let sid = SessionID()
     try await adapter.beginSession(sid, options: .default, streaming: true)
     feed(adapter, samples: [0.1], session: sid)
@@ -37,7 +38,8 @@ import Testing
   func lastResultSetAfterSuccessfulFinalize() async throws {
     let manager = StubParakeetASRManager()
     manager.finalizeStreamingResult = makeResult("streamed text")
-    let adapter = ParakeetEngineAdapter(asrManager: manager)
+    let adapter = ParakeetEngineAdapter(
+      asrManager: manager, parakeetSelection: ParakeetSelectionProvider())
     try await adapter.beginSession(SessionID(), options: .default, streaming: true)
     let outcome = await adapter.finalize(batchSamples: nil)
     guard case .transcript = outcome else {
@@ -53,7 +55,8 @@ import Testing
   func lastResultNilAfterCancel() async throws {
     let manager = StubParakeetASRManager()
     manager.finalizeStreamingResult = makeResult("done")
-    let adapter = ParakeetEngineAdapter(asrManager: manager)
+    let adapter = ParakeetEngineAdapter(
+      asrManager: manager, parakeetSelection: ParakeetSelectionProvider())
     let sid = SessionID()
     try await adapter.beginSession(sid, options: .default, streaming: true)
     _ = await adapter.finalize(batchSamples: nil)
@@ -68,7 +71,8 @@ import Testing
     // `.empty(hadSpeechEvidence: true)` branch (ParakeetEngineAdapter.swift:455-460).
     let manager = StubParakeetASRManager()
     manager.transcribeResult = makeResult("")  // empty -> .empty
-    let adapter = ParakeetEngineAdapter(asrManager: manager)
+    let adapter = ParakeetEngineAdapter(
+      asrManager: manager, parakeetSelection: ParakeetSelectionProvider())
     let sid = SessionID()
     try await adapter.beginSession(sid, options: .default, streaming: false)
     feed(adapter, samples: [0.1, 0.2], session: sid)

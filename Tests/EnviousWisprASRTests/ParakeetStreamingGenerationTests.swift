@@ -45,7 +45,9 @@ struct ParakeetStreamingGenerationTests {
       let backend = ParakeetBackend()
       do {
         try await backend.prepare(
-          cacheOnly: true, modelDirectory: ParakeetRealBoundaryFixture.installDirectory,
+          selection: ParakeetModelSelection(
+            model: .v3, revision: nil, directory: ParakeetRealBoundaryFixture.installDirectory, cacheOnly: true,
+            displayBytes: ParakeetModel.v3ShippedBytes, repairable: false, generation: 1),
           progressCallback: nil)
 
         // Reserve two attempts, A then B, and hand STALE A to the internal entry directly — the
@@ -90,7 +92,9 @@ struct ParakeetStreamingGenerationTests {
       let backend = ParakeetBackend()
       do {
         try await backend.prepare(
-          cacheOnly: true, modelDirectory: ParakeetRealBoundaryFixture.installDirectory,
+          selection: ParakeetModelSelection(
+            model: .v3, revision: nil, directory: ParakeetRealBoundaryFixture.installDirectory, cacheOnly: true,
+            displayBytes: ParakeetModel.v3ShippedBytes, repairable: false, generation: 1),
           progressCallback: nil)
 
         // The closure `ASRManager.cancelInFlightStreamingStart()` triggers: abandon an attempt

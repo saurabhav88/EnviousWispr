@@ -1017,7 +1017,8 @@ struct MenuBarControllerTests {
     spy: ActionSpy = ActionSpy(), settings: SettingsManager = SettingsManager(),
     connectedMicrophones: Set<String> = []
   ) -> MenuBarController {
-    let asrManager = ASRManager(engineMutationScope: .alwaysAllowedForTesting)
+    let asrManager = ASRManager(
+      engineMutationScope: .alwaysAllowedForTesting, parakeetSelection: ParakeetSelectionProvider())
     // Shared lightweight audio fake from DictationRuntimeTestSupport (same
     // test target). MenuBarController never reads `audioLevel` in these tests
     // (the icon animator's level closure is only wired by `installStatusItem`,

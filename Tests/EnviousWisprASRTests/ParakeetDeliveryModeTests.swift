@@ -45,7 +45,12 @@ import Testing
       }
     }
     let box = Box()
-    let handler = ParakeetBackend.makeLoadProgressHandler { fraction, phase, detail in
+    // #3546: the size now comes from the load request's bytes. The shipped v3
+    // total must still read as 483 MB (literal oracle, not the conversion).
+    let totalMB = ParakeetBackend.totalDownloadMB(displayBytes: ParakeetModel.v3ShippedBytes)
+    #expect(totalMB == 483)
+    let handler = ParakeetBackend.makeLoadProgressHandler(totalDownloadMB: totalMB) {
+      fraction, phase, detail in
       box.append((fraction, phase, detail))
     }
     guard let handler else {
@@ -53,7 +58,7 @@ import Testing
       return
     }
     // nil callback maps to nil handler (skip the closure allocation entirely).
-    #expect(ParakeetBackend.makeLoadProgressHandler(nil) == nil)
+    #expect(ParakeetBackend.makeLoadProgressHandler(totalDownloadMB: totalMB, nil) == nil)
 
     // The four real ProgressReporter shapes for a repo load (downloadPhaseWeight 0.5):
     handler(DownloadProgress(fractionCompleted: 0.0, phase: .listing))

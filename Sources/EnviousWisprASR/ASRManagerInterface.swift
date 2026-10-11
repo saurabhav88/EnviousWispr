@@ -145,26 +145,11 @@ public protocol ASRManagerInterface: AnyObject {
   var downloadDetail: String { get }
 
   // Model lifecycle
-  /// #1348 Phase 2: when true, Parakeet loads are delivery-managed cache-only
-  /// (the host admits verified bytes first; the load layer may never
-  /// download). Set by `ParakeetEngineAdapter` from the delivery flag before
-  /// each warm-up. Both conformers honor it on their Parakeet prepare path.
-  var parakeetCacheOnly: Bool { get set }
-  /// #2483: the Parakeet install directory the HOST selected. Set by
-  /// `ParakeetEngineAdapter` alongside `parakeetCacheOnly` before each warm-up.
-  /// Both conformers pass it to their Parakeet prepare path; neither resolves a
-  /// directory of its own, because every default they could reach is
-  /// FluidAudio's shared cache, which EnviousWispr does not own.
-  ///
-  /// **OPTIONAL, and that is the enforcement (#2697).** It was non-optional with
-  /// a default, and the default silently answered an assumed location — so a
-  /// caller that never reached the host's assignment got a working-looking path
-  /// instead of an error, and a REFUSAL by the location seam was indistinguishable
-  /// from a missing manifest. `nil` means nobody has said where the model is, and
-  /// both conformers refuse to load rather than guess. A non-optional URL would
-  /// only have forced initialisation, not prevented initialisation with another
-  /// guess.
-  var parakeetModelDirectory: URL? { get set }
+  // #3546: the Parakeet load request (cache-only mode and install directory)
+  // is no longer two settable members here. It is one package-visible
+  // `ParakeetModelSelection` read from the `ParakeetSelectionProvider` injected
+  // into `ASRManager`; the reasons these two members carried moved with them to
+  // `ASRManager.parakeetSelection`.
   func loadModel() async throws
   func unloadModel() async  // periphery:ignore - called via existential type (ASRManager idle timer)
   func setInitialBackendType(_ type: ASRBackendType)
@@ -305,16 +290,6 @@ extension ASRManagerInterface {
     public func releaseBatchDecode(trialID: String) async {}
     public func clearBatchDecodeFault() async {}
   #endif
-
-  /// #1348 safe default for test doubles: no delivery mode. BOTH production
-  /// conformers (`ASRManager`, `ASRManagerProxy`) declare real storage, so
-  /// their witnesses win; a mock that ignores writes is semantically correct
-  /// (mocks never download).
-  public var parakeetCacheOnly: Bool {
-    get { false }
-    set {}
-  }
-
 }
 
 /// Thrown when a Parakeet load is asked for before anything has said WHERE the

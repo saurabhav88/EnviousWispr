@@ -123,6 +123,8 @@ public enum ParakeetInstallLocation {
   // default, both `loadModel()` implementations throw
   // `ParakeetModelDirectoryUnsetError` on `nil`, and
   // `ParakeetDeliveryHandle.ensureModelLocationReady()` is the only producer.
+  // (#3546: that member is now `ParakeetSelectionProvider.current`, still
+  // optional; `ASRManager.loadModel()` still throws on `nil`.)
   //
   // It also blocked a second workstream: a self-resolving root cannot be
   // redirected, and #2695 has to move the data root for users whose Application

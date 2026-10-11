@@ -123,7 +123,8 @@ struct LiveRecordingStateTests {
 
   private func makeState(
     audioCapture: any AudioCaptureInterface = SettableAudioCapture(),
-    asrManager: any ASRManagerInterface = ASRManager(engineMutationScope: .alwaysAllowedForTesting)
+    asrManager: any ASRManagerInterface = ASRManager(
+      engineMutationScope: .alwaysAllowedForTesting, parakeetSelection: ParakeetSelectionProvider())
   ) -> LiveRecordingState {
     // Codex code-diff revision: use the internal `init(directory:)` overload
     // with a temp directory so the test does not write into the user's

@@ -28,14 +28,41 @@ public final class ASRManager: ASRManagerInterface {
   /// trip already uses — never a fixed cadence (#1908: forwarding a timer
   /// tick here would manufacture progress the kernel counts as real).
   public var loadProgressTickReporter: (@MainActor @Sendable (Date?, String) -> Void)?
-  /// #1348 Phase 2: delivery-managed Parakeet loads are cache-only (see
-  /// `ASRManagerInterface.parakeetCacheOnly`).
-  public var parakeetCacheOnly = false
+  /// #3546: the Parakeet load request, one snapshot per physical load. It
+  /// replaced the two settable members below (reasons kept verbatim):
+  ///
+  /// `parakeetCacheOnly`, from `ASRManagerInterface`:
+  /// #1348 Phase 2: when true, Parakeet loads are delivery-managed cache-only
+  /// (the host admits verified bytes first; the load layer may never
+  /// download). Set by `ParakeetEngineAdapter` from the delivery flag before
+  /// each warm-up. Both conformers honor it on their Parakeet prepare path.
+  ///
+  /// `parakeetModelDirectory`, from `ASRManagerInterface`:
+  /// #2483: the Parakeet install directory the HOST selected. Set by
+  /// `ParakeetEngineAdapter` alongside `parakeetCacheOnly` before each warm-up.
+  /// Both conformers pass it to their Parakeet prepare path; neither resolves a
+  /// directory of its own, because every default they could reach is
+  /// FluidAudio's shared cache, which EnviousWispr does not own.
+  ///
+  /// **OPTIONAL, and that is the enforcement (#2697).** It was non-optional with
+  /// a default, and the default silently answered an assumed location — so a
+  /// caller that never reached the host's assignment got a working-looking path
+  /// instead of an error, and a REFUSAL by the location seam was indistinguishable
+  /// from a missing manifest. `nil` means nobody has said where the model is, and
+  /// both conformers refuse to load rather than guess. A non-optional URL would
+  /// only have forced initialisation, not prevented initialisation with another
+  /// guess.
+  ///
+  /// `parakeetModelDirectory`, from this class:
   /// #2483: see `ASRManagerProxy.parakeetModelDirectory`. The default is OUR
   /// directory, never the vendor's, so an entry point that loads without going
   /// through `ParakeetEngineAdapter` — `ActiveEngineOperation.load` does exactly
   /// that — cannot reach FluidAudio's shared tree by omission.
-  public var parakeetModelDirectory: URL?
+  ///
+  /// The provider is the same instance the adapter writes, so that entry point
+  /// reads the same request the adapter's warm-up chose. `package`, not
+  /// `public`, for the same reason as `engineMutationScope`.
+  package let parakeetSelection: ParakeetSelectionProvider
   /// #1908: this manager's `loadModel()` progress also lands in the shared
   /// file, matching `ASRManagerProxy`'s existing opt-in — the sessionless
   /// warm-up wedge guard depends on it regardless of transport.
@@ -174,9 +201,11 @@ public final class ASRManager: ASRManagerInterface {
 
   package init(
     engineMutationScope: EngineMutationScope,
+    parakeetSelection: ParakeetSelectionProvider,
     parakeetBackendFactory: @escaping () -> any ASRBackend = { ParakeetBackend() }
   ) {
     self.engineMutationScope = engineMutationScope
+    self.parakeetSelection = parakeetSelection
     self.parakeetBackendFactory = parakeetBackendFactory
     self.parakeetBackend = parakeetBackendFactory()
   }
@@ -411,21 +440,22 @@ public final class ASRManager: ASRManagerInterface {
     // hole because the proxy passes the directory on every load. Only a
     // non-`ParakeetBackend` backend (an injected mock, which loads nothing)
     // takes the protocol overload now.
+    // (#3546: `parakeetCacheOnly` is now the request's `cacheOnly`.)
     if let parakeet = candidate as? ParakeetBackend {
       // #2697: refuse rather than resolve one of our own. `nil` means the
       // location seam either has not run or REFUSED, and both must fail
       // loudly here instead of loading from an assumed directory.
-      guard let directory = parakeetModelDirectory else {
+      // #3546: ONE snapshot. Mode and directory below both come from it, so
+      // they cannot disagree.
+      guard let selection = parakeetSelection.current else {
         throw ParakeetModelDirectoryUnsetError()
       }
       // #1908: process-global offline-mode exclusion — see the property docs
       // above. Refuses a conflicting-mode attempt BEFORE `prepare()` ever
       // reaches FluidAudio's shared static; a same-mode attempt proceeds.
-      try admitOfflineMode(cacheOnly: parakeetCacheOnly)
+      try admitOfflineMode(cacheOnly: selection.cacheOnly)
       defer { releaseOfflineModeAdmission() }
-      try await parakeet.prepare(
-        cacheOnly: parakeetCacheOnly, modelDirectory: directory,
-        progressCallback: progress)
+      try await parakeet.prepare(selection: selection, progressCallback: progress)
     } else {
       try await candidate.prepare(progressCallback: progress)
     }

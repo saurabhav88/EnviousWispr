@@ -21,7 +21,7 @@ import Testing
 // protocols and TWO known concrete-only method surfaces not declared by any
 // of the ten protocols (one, `WhisperKitEngineAdapter.unloadForRemoval()`,
 // is reached only via a type-cast; the other,
-// `ParakeetBackend.prepare(cacheOnly:progressCallback:)`, is reached via a
+// `ParakeetBackend.prepare(selection:progressCallback:)`, is reached via a
 // type-cast at one call site AND via direct, uncast construction/ownership
 // at another — `ASRServiceHandler.swift` builds and holds a concrete
 // `ParakeetBackend` natively), all grounded as of 2026-07-23. It
@@ -479,9 +479,8 @@ import Testing
         MemberSignature(condition: nil, signature: "var downloadProgress: Double { get }"),
         MemberSignature(condition: nil, signature: "var downloadPhase: String { get }"),
         MemberSignature(condition: nil, signature: "var downloadDetail: String { get }"),
-        MemberSignature(condition: nil, signature: "var parakeetCacheOnly: Bool { get set }"),
-        MemberSignature(
-          condition: nil, signature: "var parakeetModelDirectory: URL? { get set }"),
+        // #3546: `parakeetCacheOnly` and `parakeetModelDirectory` removed; the
+        // Parakeet load request is a package `ParakeetModelSelection`.
         MemberSignature(condition: nil, signature: "func loadModel() async throws"),
         MemberSignature(condition: nil, signature: "func unloadModel() async"),
         MemberSignature(
@@ -552,9 +551,6 @@ import Testing
         MemberSignature(
           condition: nil,
           signature: "public var feedsSharedProgressFile: Bool { false }"),
-        MemberSignature(
-          condition: nil,
-          signature: "public var parakeetCacheOnly: Bool {\n    get { false }\n    set {}\n  }"),
         MemberSignature(
           condition: nil,
           signature: "public func attemptWedgeRecoveryUnload() async"),
@@ -739,7 +735,7 @@ import Testing
         MemberSignature(
           condition: nil,
           signature:
-            "public func prepare(\n    cacheOnly: Bool, modelDirectory: URL, progressCallback: ProgressCallback?\n  ) async throws"
+            "package func prepare(\n    selection: ParakeetModelSelection, progressCallback: ProgressCallback?\n  ) async throws"
         ),
       ]),
   ]

@@ -1,4 +1,5 @@
 import EnviousWisprASR
+import EnviousWisprCore
 import Foundation
 import Testing
 
@@ -801,7 +802,9 @@ final class DeliveryStubProtocol: URLProtocol {
     let handle = ParakeetDeliveryHandle(
       controller: controller, registration: registration,
       defaults: TestDefaults.suite(suite)!)
-    let adapter = ParakeetEngineAdapter(asrManager: StubParakeetASRManager(), delivery: handle)
+    let selection = ParakeetSelectionProvider()
+    let adapter = ParakeetEngineAdapter(
+      asrManager: StubParakeetASRManager(), parakeetSelection: selection, delivery: handle)
 
     DeliveryStubProtocol.reset()
     ChunkAppendDelegate.protocolClassesForTesting = [DeliveryStubProtocol.self]
@@ -839,6 +842,17 @@ final class DeliveryStubProtocol: URLProtocol {
     // Cleanup: the stub hangs forever, so cancel explicitly to unblock warmUp.
     _ = await controller.cancel(registration.manifest.identity)
     _ = await warm.value
+
+    // #3546: with delivery on, the warm-up wrote ONE cache-only request for our
+    // install directory before the download began, carrying this manifest's
+    // revision and byte total. A cancel does not clear it.
+    let request = try #require(selection.current)
+    #expect(request.model == .v3)
+    #expect(request.directory == install)
+    #expect(request.cacheOnly)
+    #expect(request.repairable)
+    #expect(request.revision == manifest.identity.revision)
+    #expect(request.displayBytes == manifest.totalBytes)
   }
 }
 

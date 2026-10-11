@@ -151,7 +151,21 @@ public actor ParakeetBackend: ASRBackend {
   /// 483,256,769 bytes — byte-verified in `workers/parakeet-mirror/
   /// expected-manifest.json` (in-repo since #1348 PR-2a; the bundled
   /// `parakeet-delivery-manifest.json` derives from it).
-  static let totalDownloadMB = 483
+  /// #3546: no longer a literal 483. The figure comes from the load request's
+  /// `displayBytes` (the manifest's `totalBytes`, or
+  /// `ParakeetModel.v3ShippedBytes` when no manifest loaded), in decimal MB,
+  /// so 483,256,769 bytes still reads "483 MB".
+  static func totalDownloadMB(displayBytes: Int64) -> Int {
+    Int(displayBytes / 1_000_000)
+  }
+
+  /// #3546: the ONLY place a `ParakeetModel` becomes a FluidAudio version, so
+  /// Pipeline never needs to import FluidAudio.
+  static func vendorVersion(for model: ParakeetModel) -> AsrModelVersion {
+    switch model {
+    case .v3: return .v3
+    }
+  }
 
   public init() {}
 
@@ -173,7 +187,7 @@ public actor ParakeetBackend: ASRBackend {
   ///
   /// They used to resolve a location themselves, which is how a caller that
   /// never passed one still got a model — from a directory nobody had verified.
-  /// `ASRManager` reaches the real `prepare(cacheOnly:modelDirectory:)` for every
+  /// `ASRManager` reaches the real `prepare(selection:progressCallback:)` for every
   /// production load, so these two are only reachable by a caller that has not
   /// said where the model lives, and the honest answer to that is an error.
   public func prepare() async throws {
@@ -223,10 +237,16 @@ public actor ParakeetBackend: ASRBackend {
   ///   path identically (`AsrModels.load(from:)` re-derives it through
   ///   `repoPath`, and `download(to:)` derives its own parent), so passing
   ///   a repo-shaped path here behaves identically either way.
-  public func prepare(
-    cacheOnly: Bool, modelDirectory: URL, progressCallback: ProgressCallback?
+  /// #3546: both now arrive in ONE request, `selection.cacheOnly` and
+  /// `selection.directory`, with the model version and the progress size.
+  package func prepare(
+    selection: ParakeetModelSelection, progressCallback: ProgressCallback?
   ) async throws {
-    let handler = Self.makeLoadProgressHandler(progressCallback)
+    let cacheOnly = selection.cacheOnly
+    let modelDirectory = selection.directory
+    let version = Self.vendorVersion(for: selection.model)
+    let handler = Self.makeLoadProgressHandler(
+      totalDownloadMB: Self.totalDownloadMB(displayBytes: selection.displayBytes), progressCallback)
 
     Self.configureOfflineMode(cacheOnly: cacheOnly)
     do {
@@ -236,10 +256,10 @@ public actor ParakeetBackend: ASRBackend {
         // gate before this call; offlineMode (armed above) turns any gap
         // into a typed throw the host maps to its repair path.
         loadedModels = try await AsrModels.load(
-          from: modelDirectory, version: .v3, progressHandler: handler)
+          from: modelDirectory, version: version, progressHandler: handler)
       } else {
         loadedModels = try await AsrModels.downloadAndLoad(
-          to: modelDirectory, version: .v3, progressHandler: handler)
+          to: modelDirectory, version: version, progressHandler: handler)
       }
       self.fluidModels = loadedModels
 
@@ -273,7 +293,7 @@ public actor ParakeetBackend: ASRBackend {
   /// owner, identical control flow (#1981 chunk 2; the test feeds real
   /// `DownloadProgress` values through THIS function, not a copy).
   static func makeLoadProgressHandler(
-    _ progressCallback: ProgressCallback?
+    totalDownloadMB: Int, _ progressCallback: ProgressCallback?
   ) -> ProgressHandler? {
     progressCallback.map {
       callback -> ProgressHandler in
@@ -294,9 +314,9 @@ public actor ParakeetBackend: ASRBackend {
           // old "23 MB" label was the decoder file alone. Fraction [0, 0.5]
           // is FluidAudio's byte-weighted download half.
           let downloadPct = min(progress.fractionCompleted * 2.0, 1.0)
-          let downloadedMB = Int(downloadPct * Double(Self.totalDownloadMB))
+          let downloadedMB = Int(downloadPct * Double(totalDownloadMB))
           detail =
-            "\(downloadedMB) MB of \(Self.totalDownloadMB) MB (\(Int(downloadPct * 100))%)"
+            "\(downloadedMB) MB of \(totalDownloadMB) MB (\(Int(downloadPct * 100))%)"
         case .compiling(let modelName):
           // Single authority for this token too (#1388): the host-side
           // watcher's install OBSERVATION keys on it for the warm-up success

@@ -302,7 +302,12 @@ package final class WisprBootstrapper {
     // `EnviousWisprASRService`) is deleted; macOS can no longer reclaim it
     // out from under an idle dictation. The `useXPCASRService` selector and
     // its `defaults write` escape hatch are retired along with it.
-    let asrManager: any ASRManagerInterface = ASRManager(engineMutationScope: engineMutationScope)
+    // #3546: ONE Parakeet load-request provider, handed to the manager here and
+    // to the Parakeet adapter through `ParakeetInputs` below, so every load
+    // reads the request the adapter's warm-up wrote.
+    let parakeetSelection = ParakeetSelectionProvider()
+    let asrManager: any ASRManagerInterface = ASRManager(
+      engineMutationScope: engineMutationScope, parakeetSelection: parakeetSelection)
     // #2787: owns the engine AFTER a session ends with its decode still running.
     let abandonedDecodeHold = AbandonedDecodeHold(
       lease: engineLease, occupancy: asrManager.vendorDecodeOccupancy)
@@ -570,6 +575,7 @@ package final class WisprBootstrapper {
       inputs: KernelDictationDriverFactory.ParakeetInputs(
         audioCapture: audioCapture,
         asrManager: asrManager,
+        parakeetSelection: parakeetSelection,
         vadSignalSource: vadSource,
         transcriptStore: transcriptStore,
         keychainManager: keychainManager,
