@@ -163,6 +163,7 @@ struct ParakeetUpgradeCoordinatorTests {
 private final class StageGate {
   private(set) var entries = 0
   private var isOpen = false
+  private var expired = false
   private var parked = 0
   private var held: [CheckedContinuation<Void, Never>] = []
   private var entryWaiters: [(Int, CheckedContinuation<Void, Never>)] = []
@@ -189,7 +190,22 @@ private final class StageGate {
     }
   }
 
+  func waitForDeadlineForTesting() async {
+    await deadlineTask?.value
+  }
+
+  private func rejectExpired(_ operation: String) -> Bool {
+    guard expired else { return false }
+    Issue.record(
+      "StageGate \(operation) arrived after deadline",
+      sourceLocation: sourceLocation)
+    return true
+  }
+
   private func failAndRelease(sourceLocation: SourceLocation) {
+    // Retain terminal expiry even when no waiter existed when the deadline fired.
+    guard expired == false else { return }
+    expired = true
     guard !held.isEmpty || !entryWaiters.isEmpty || !parkWaiters.isEmpty else {
       return
     }
@@ -221,6 +237,10 @@ private final class StageGate {
       return
     }
     if isOpen { return }
+    if rejectExpired("pass") {
+      withUnsafeCurrentTask { $0?.cancel() }
+      return
+    }
     await withCheckedContinuation { held.append($0) }
   }
 
@@ -233,6 +253,7 @@ private final class StageGate {
 
   func waitForEntry(_ count: Int) async {
     if entries >= count { return }
+    if rejectExpired("waitForEntry") { return }
     await withCheckedContinuation { entryWaiters.append((count, $0)) }
   }
 
@@ -243,6 +264,7 @@ private final class StageGate {
       self.resumeReached(&self.parkWaiters, self.parked)
     }
     if parked >= count { return }
+    if rejectExpired("waitForParked") { return }
     await withCheckedContinuation { parkWaiters.append((count, $0)) }
   }
 
@@ -258,6 +280,39 @@ private final class StageGate {
 @MainActor
 @Suite(.tags(.harnessContract))
 struct ParakeetUpgradeStageGateTests {
+  @Test func idleExpiryRejectsLateEntryWait() async {
+    let gate = StageGate(deadline: .milliseconds(1))
+    await gate.waitForDeadlineForTesting()
+    await withKnownIssue("Late entry wait must fail without hanging") {
+      await gate.waitForEntry(1)
+    }
+  }
+
+  @Test func idleExpiryRejectsLateParkWait() async {
+    let gate = StageGate(deadline: .milliseconds(1))
+    let coordinator = ParakeetUpgradeCoordinator(
+      parakeetSelection: ParakeetSelectionProvider(), delivery: nil)
+    defer { coordinator.onWaiterParkedForTesting = nil }
+    await gate.waitForDeadlineForTesting()
+    await withKnownIssue("Late park wait must fail without hanging") {
+      await gate.waitForParked(coordinator, 1)
+    }
+  }
+
+  @Test func idleExpiryCancelsLatePassSubject() async {
+    let gate = StageGate(deadline: .milliseconds(1))
+    await gate.waitForDeadlineForTesting()
+    var cancelled = false
+    await withKnownIssue("Late pass must fail and cancel its subject") {
+      cancelled = await Task {
+        await gate.pass()
+        return Task.isCancelled
+      }.value
+    }
+    #expect(cancelled == true)
+    #expect(Task.isCancelled == false)
+  }
+
   @Test func missingProgressRecordsAnIssueAndReleasesTheWaiter() async {
     await withKnownIssue("A missing progress signal must fail instead of hanging") {
       await ParakeetUpgradePolicyTests.ProgressRecorder().waitForAny(deadline: .milliseconds(1))
