@@ -70,9 +70,10 @@ class FakeSettings:
         self.uid_unreadable = False
         self.menu_open = False
         # #3606: the shipping dropdown is a SwiftUI popover the window publishes away from
-        # the button; `extra_popover` is a second popover open at the same time.
+        # the button. `extra_popover`: None, "guide" (an unrelated "Learn more" popover open
+        # at the same time) or "list" (a second popover that also offers the choices).
         self.menu_in_window = False
-        self.extra_popover = False
+        self.extra_popover = None
         self.presses = []
         self.scrolls = 0
         self.cancels = 0
@@ -307,8 +308,11 @@ class FakeSettings:
         if self.menu_open and self.menu_in_window:
             pops.append(el("AXGroup", children=[el("AXGroup", children=[
                 el("AXPopover", children=self.input_items("AXButton"))])]))
-        if self.extra_popover:
-            pops.append(el("AXPopover", children=[el("AXStaticText", value="Learn more")]))
+        if self.extra_popover == "guide":
+            pops.append(el("AXPopover", children=[el("AXStaticText", value="Bluetooth tips"),
+                                                  el("AXButton", title="Done")]))
+        elif self.extra_popover == "list":
+            pops.append(el("AXPopover", children=self.input_items("AXButton")))
         return pops
 
     def input_tree(self):
@@ -437,7 +441,7 @@ def raising_cases():
     def input_two_popovers():
         f, ax = mic()
         f.menu_in_window = True
-        f.extra_popover = True   # an open "Learn more" guide beside the dropdown
+        f.extra_popover = "list"   # a second popover that also offers the choices
         sn.select_input(ax, f.root, f.read_uid, auto=False, name="BlackHole 2ch", cancel=ax.cancel)
 
     def input_missing():
@@ -593,7 +597,7 @@ def raising_cases():
         ("two 'Change speech engine' buttons refuse", change_ambiguous, sn.NavigationError),
         ("two menu items matching one device refuse", input_ambiguous, sn.NavigationError),
         ("a missing Input device control refuses", input_missing, sn.NavigationError),
-        ("two open popovers refuse rather than take one for the microphone list (#3606)",
+        ("two open popovers that both offer the choices refuse (#3606)",
          input_two_popovers, sn.NavigationError),
         ("an unreadable stored microphone UID refuses before any change",
          uid_unreadable_capture, sn.PreferenceError),
@@ -889,6 +893,16 @@ def valued_cases():
                      (got, picked, f.input_uid, f.menu_open),
                      (sn.InputChoice("", "MacBook Pro Microphone"),
                       sn.InputChoice("BlackHole2ch_UID", "BlackHole 2ch"), "", False)))
+        # An unrelated popover already open (a "Learn more" guide) is never taken for the
+        # microphone list: the dropdown is still pressed open, and only it is cancelled.
+        f = FakeSettings()
+        f.page, f.remembered_tab = "Dictation Settings", "Microphone"
+        f.menu_in_window, f.extra_popover = True, "guide"
+        ax = f.ax()
+        got = sn.read_input(ax, f.root, f.read_uid, cancel=ax.cancel)
+        rows.append(("an unrelated open popover is ignored: the dropdown is pressed and read",
+                     (got, f.presses.count("input-open"), f.cancels),
+                     (sn.InputChoice("", "MacBook Pro Microphone"), 1, 1)))
 
     blocks.append(('Microphone: the stored UID is the choice; the display only names it', block_10))
 
