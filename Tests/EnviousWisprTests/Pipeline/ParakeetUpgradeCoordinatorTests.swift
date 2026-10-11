@@ -1972,6 +1972,81 @@ struct ParakeetUpgradePolicyTests {
     #expect(total == rig.ultra.modelTotalBytes)
     try await rig.coordinator.cancelBackgroundUpgrade()
   }
+
+  // MARK: 8b round 2: stale reads and a Resume parked behind a Cancel's drain
+
+  @Test("a Model ready read whose request changed answers false, not the old answer")
+  func currentAdmissionDropsAStaleIdentity() async throws {
+    for changeRequest in [false, true] {
+      let rig = try await Self.rig(v3: true, ultra: false)
+      _ = try await rig.coordinator.prepareLoad()
+      #expect(Self.physicalLoad(rig) == .loaded)
+      #expect(rig.coordinator.presentedModel == .v3)
+      let gate = StageGate()
+      rig.coordinator.usabilityReadGateForTesting = { await gate.pass() }
+      let read = Task { await rig.coordinator.currentAdmission() }
+      await gate.waitForEntry(1)
+      rig.coordinator.usabilityReadGateForTesting = nil
+      if changeRequest { rig.selection.clear() }
+      gate.open()
+      #expect(
+        await read.value == !changeRequest,
+        changeRequest ? "v3's answer must not reach the new request" : "control: v3 is ready")
+    }
+  }
+
+  /// Which newer fact lands while a foreground Resume waits for a held Cancel
+  /// drain.
+  enum ParkedResumeChange: CaseIterable { case none, foregroundCancel, backgroundCancel, exhaustion }
+
+  @Test("a foreground Resume parked behind a drain re-checks before it fetches",
+    arguments: ParkedResumeChange.allCases)
+  func parkedForegroundResume(_ change: ParkedResumeChange) async throws {
+    let (rig, gate) = try await Self.heldBackgroundFetch()
+    let declined = OutcomeSignal(.declined)
+    rig.coordinator.onOutcome = { declined.observe($0) }
+    let cancel = Task { try await rig.coordinator.cancelBackgroundUpgrade() }
+    await declined.wait()
+    let waiting = CleanupEnded()
+    rig.coordinator.onResumeWaitingForTesting = { waiting.fire() }
+    let resume = Task { await rig.coordinator.fetchInForeground() }
+    await waiting.wait()
+    rig.coordinator.onResumeWaitingForTesting = nil
+    // Each newer command bumps its generation before its first suspension,
+    // and `started` fires on the same actor just before the call, so the
+    // change has landed when the wait returns.
+    var newer: Task<Void, any Error>?
+    switch change {
+    case .none: break
+    case .foregroundCancel:
+      let started = CleanupEnded()
+      newer = Task {
+        started.fire()
+        await rig.coordinator.cancelActiveFetch()
+      }
+      await started.wait()
+    case .backgroundCancel:
+      let started = CleanupEnded()
+      newer = Task {
+        started.fire()
+        try await rig.coordinator.cancelBackgroundUpgrade()
+      }
+      await started.wait()
+    case .exhaustion:
+      try rig.store.write(.init(attempts: 0, refetchSpent: true, exhausted: true, declined: true))
+    }
+    gate.open()
+    try await cancel.value
+    try await newer?.value
+    let outcome = await resume.value
+    await rig.controller.setBeforeExistingCacheValidationForTesting(nil)
+    if change == .none {
+      #expect(outcome != nil, "control: an unchanged Resume fetches")
+    } else {
+      #expect(outcome == nil, "the newer \(change) wins over the waiting Resume")
+    }
+    #expect(rig.coordinator.needsExplicitRetry == (change == .exhaustion))
+  }
 }
 
 /// Waits for one coordinator outcome, fired by the subject. Deadline-bounded so

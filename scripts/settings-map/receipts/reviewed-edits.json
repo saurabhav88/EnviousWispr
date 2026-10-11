@@ -6886,6 +6886,32 @@
     ]
    }
   },
+  "currentEngineSection": {
+   "ar": {
+    "title": "سريع · Parakeet"
+   },
+   "el": {
+    "title": "Γρήγορο · Parakeet"
+   },
+   "es": {
+    "title": "Rápido · Parakeet"
+   },
+   "it": {
+    "title": "Veloce · Parakeet"
+   },
+   "lt": {
+    "title": "Greitasis · Parakeet"
+   },
+   "mt": {
+    "title": "Magna attwali · Parakeet"
+   },
+   "sl": {
+    "title": "Hitri · Parakeet"
+   },
+   "uk": {
+    "title": "Поточний рушій · Швидкий · Parakeet"
+   }
+  },
   "dictionary.tab.learnFrom": {
    "en": {
     "phrases": [

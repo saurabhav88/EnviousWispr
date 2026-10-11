@@ -1171,6 +1171,16 @@ package final class WisprBootstrapper {
     // cold-start delay. Parakeet: shared warm-up via the active driver.
     // WhisperKit: observation-based (waits for setupState to become .ready
     // first, then `preloadAction` → `ensureEngineWarm`).
+    // #3546 row T: Settings' Try again loads right after the granted cycle,
+    // through the same guarded warm-up, only while Parakeet is selected and
+    // active.
+    modelDelivery.warmParakeetAfterExplicitRetry = { [weak kernelDriver, asrManager] in
+      guard settings.selectedBackend == .parakeet,
+        asrManager.activeBackendType == .parakeet
+      else { return }
+      _ = await kernelDriver?.ensureEngineWarm(reason: .explicitRetry)
+    }
+
     if settings.selectedBackend == .parakeet {
       // #3546: launch is a model-selection point.
       parakeetUpgrade.markSelectionPoint()

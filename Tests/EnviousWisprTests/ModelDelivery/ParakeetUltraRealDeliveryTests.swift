@@ -79,8 +79,7 @@ struct ParakeetUltraRealDeliveryTests {
       metadataDirectory: data.appendingPathComponent("ModelDelivery", isDirectory: true))
     let suite = "test.ultra-real.\(UUID().uuidString)"
     let controller = ModelDeliveryController(
-      defaults: try #require(UserDefaults(suiteName: suite)))
-    defer { UserDefaults().removePersistentDomain(forName: suite) }
+      defaults: try #require(TestDefaults.suite(suite)))
 
     final class Events: @unchecked Sendable {
       let lock = NSLock()

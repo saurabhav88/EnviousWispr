@@ -546,6 +546,39 @@ enum ManifestFixture {
       "Sources/EnviousWispr/Resources/parakeet-delivery-manifest.json")
   }
 
+  /// #3546: the v3 manifest, kept byte-identical so an installed v3 can still
+  /// be accepted while Ultra arrives.
+  static var retiredV3ManifestURL: URL {
+    repoRoot.appendingPathComponent(
+      "Sources/EnviousWispr/Resources/parakeet-v3-retired-manifest.json")
+  }
+
+  /// #3546 (2026-10-11): the shipped Parakeet is Ultra at the pinned upstream
+  /// revision, served from our copy (the encoder in two parts) with the
+  /// pinned Hugging Face revision as backup. The bytes were verified against
+  /// the public copy (`docs/audits/3546-ship/chunk8-public-verify.json`).
+  static let shippedUltraGoldenDigest =
+    "0beeb0ad89e743738dacb9326d981497357fa6207128a5c6b1c4931eab13fbb5"
+
+  @Test func shippedManifestIsUltraAndMatchesGoldenDigest() throws {
+    let data = try Data(contentsOf: Self.shippedManifestURL)
+    let manifest = try DeliveryManifest.load(from: data)
+    #expect(manifest.manifestDigest == Self.shippedUltraGoldenDigest)
+    #expect(try DeliveryManifest.canonicalDigest(of: data) == Self.shippedUltraGoldenDigest)
+    #expect(manifest.identity.name == "parakeet-ultra-coreml")
+    #expect(manifest.identity.revision == "95eaa59a39d4394f047a4dc5cce480388a60d1b6")
+    #expect(manifest.files.count == 20)
+    #expect(manifest.totalBytes == 632_314_500)
+    #expect(manifest.sources.map(\.id) == ["our_copy", "backup"])
+    let components = Set(manifest.files.map(\.component))
+    for required in [
+      "Encoder.mlmodelc", "Decoder.mlmodelc", "JointDecisionv3.mlmodelc",
+      "Preprocessor.mlmodelc", "parakeet_vocab.json",
+    ] {
+      #expect(components.contains(required), "missing component \(required)")
+    }
+  }
+
   /// The committed golden digest: the Python authoring validator and the
   /// Swift loader MUST both reproduce it (one canonicalization, two
   /// implementations — a drift here would reject a valid manifest at
@@ -579,10 +612,12 @@ enum ManifestFixture {
   // chunk-text assembly half of the fresh-state carry retired). Identical model bytes
   // (`identity.revision` unchanged) — the same re-admission-without-re-download case.
   // Regenerated with `scripts/regen-delivery-manifest-digest.py --write`, control OK.
+  // Updated 2026-10-11 (#3546): this digest now pins the retired v3 manifest,
+  // a byte-identical copy of the last shipped v3 manifest.
   static let goldenDigest = "2564836e6f6e1eaffda0485d2bef49cc9bbcfb654a49737ae820320a9d3bdcc6"
 
-  @Test func shippedManifestLoadsAndMatchesGoldenDigest() throws {
-    let data = try Data(contentsOf: Self.shippedManifestURL)
+  @Test func retiredV3ManifestLoadsAndMatchesGoldenDigest() throws {
+    let data = try Data(contentsOf: Self.retiredV3ManifestURL)
     let manifest = try DeliveryManifest.load(from: data)
     #expect(manifest.manifestDigest == Self.goldenDigest)
     #expect(try DeliveryManifest.canonicalDigest(of: data) == Self.goldenDigest)
@@ -610,12 +645,17 @@ enum ManifestFixture {
     #expect(
       project.contains("Sources/EnviousWispr/Resources/parakeet-delivery-manifest.json"),
       "parakeet-delivery-manifest.json must be listed in the app target's resources")
+    #expect(
+      project.contains("Sources/EnviousWispr/Resources/parakeet-v3-retired-manifest.json"),
+      "parakeet-v3-retired-manifest.json must be listed in the app target's resources")
   }
 
   /// Cross-artifact gate (PR-2a/PR-2b): every (path, size, sha256) in the
-  /// shipped manifest matches the mirror Worker's byte-verified seed.
-  @Test func shippedManifestMatchesWorkerSeed() throws {
-    let manifest = try DeliveryManifest.load(from: Data(contentsOf: Self.shippedManifestURL))
+  /// v3 manifest matches the mirror Worker's byte-verified seed. #3546: the
+  /// Worker still serves v3 to released builds and is unchanged, so its seed
+  /// is checked against the retired v3 manifest, not the shipped Ultra one.
+  @Test func retiredV3ManifestMatchesWorkerSeed() throws {
+    let manifest = try DeliveryManifest.load(from: Data(contentsOf: Self.retiredV3ManifestURL))
     let seedData = try Data(
       contentsOf: Self.repoRoot.appendingPathComponent(
         "workers/parakeet-mirror/expected-manifest.json"))

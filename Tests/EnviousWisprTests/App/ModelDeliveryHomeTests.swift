@@ -124,6 +124,100 @@ struct ModelDeliveryHomeTests {
     #expect(home.parakeetRowIsBackgroundUpgrade == admittedV3, "v3 serves while Ultra arrives")
   }
 
+  /// A Home with the fixture's Ultra target and its observers wired.
+  fileprivate static func upgradeHome(
+    _ fixture: ParakeetHomeFixture.Made, enabled: Bool = true, onboarding: Bool = true
+  ) async throws -> (ModelDeliveryHome, ParakeetUpgradeCoordinator) {
+    let flags = TestDefaults.suite("test.home-upgrade.\(UUID().uuidString)")!
+    flags.set(enabled, forKey: DeliveryFlags.key("enabled", family: .parakeet))
+    let home = ModelDeliveryHome(
+      engineMutationScope: .live(
+        tryBegin: { true }, end: { true }, wake: {}, onRefused: { _ in }),
+      manifestBundle: fixture.bundle, appSupportOverride: fixture.root,
+      deliveryFlagDefaults: flags,
+      retiredV3Progress: .init(write: { _, _, _ in }, clear: {}))
+    let coordinator = home.installParakeetUpgrade(
+      parakeetSelection: ParakeetSelectionProvider(), isOnboardingComplete: { onboarding })
+    try await Self.awaitBounded(home.parakeetObserverSetupForTesting)
+    return (home, coordinator)
+  }
+
+  @Test("Settings' Try again warms once after a granted cycle, never after a refused one",
+    arguments: [(true, true), (true, false), (false, true)])
+  func explicitRetryWarms(writable: Bool, enabled: Bool) async throws {
+    let fixture = try ParakeetHomeFixture.make()
+    let (home, _) = try await Self.upgradeHome(fixture, enabled: enabled)
+    var warms = 0
+    home.warmParakeetAfterExplicitRetry = { warms += 1 }
+    let metadata = fixture.dataDirectory.appendingPathComponent("ModelDelivery")
+    try FileManager.default.createDirectory(at: metadata, withIntermediateDirectories: true)
+    if !writable {
+      try FileManager.default.setAttributes([.posixPermissions: 0o555], ofItemAtPath: metadata.path)
+    }
+    defer {
+      try? FileManager.default.setAttributes(
+        [.posixPermissions: 0o755], ofItemAtPath: metadata.path)
+    }
+    let warm = home.retryParakeetUpgradeAndWarm()
+    if writable {
+      _ = try await Self.awaitBounded(warm)
+      #expect(warms == 1, "the granted cycle loads now, also with delivery off (\(enabled))")
+    } else {
+      #expect(warm == nil, "a refused grant starts no warm-up")
+      #expect(warms == 0)
+    }
+  }
+
+  @Test("a policy change Settings must re-read bumps the presentation revision")
+  func presentationRevisionFollowsThePolicy() async throws {
+    let fixture = try ParakeetHomeFixture.make()
+    let (home, _) = try await Self.upgradeHome(fixture)
+    let state = home.parakeetState
+    let before = home.parakeetPresentationRevision
+    #expect(home.retryParakeetUpgrade())
+    #expect(home.parakeetState == state, "the delivery state did not move")
+    #expect(home.parakeetPresentationRevision != before, "so the revision must")
+  }
+
+  @Test("E19: while Ultra's foreground fetch runs after v3 failed, its rows show under v3's name")
+  func rejectedV3HandsTheRowToUltra() async throws {
+    let fixture = try ParakeetHomeFixture.make()
+    try await ParakeetHomeFixture.seedAdmittedV3(fixture)
+    // Onboarding open: no background fetch starts, so only the foreground owns Ultra.
+    let (home, coordinator) = try await Self.upgradeHome(fixture, onboarding: false)
+    let prepared = try await coordinator.prepareLoad()
+    #expect(home.parakeetModelLabel == "Parakeet v3")
+    #expect(home.parakeetRowIsBackgroundUpgrade, "control: v3 serves while Ultra arrives")
+    // The rejection is published before Ultra's foreground fetch awaits, so
+    // the checks below run while that fetch (to an unreachable fixture host)
+    // is in flight.
+    let rejected = RejectionSignal()
+    let refresh = coordinator.onPresentationChanged
+    coordinator.onPresentationChanged = {
+      refresh?()
+      if home.parakeetV3Rejected { rejected.fire() }
+    }
+    struct VendorLoadFailed: Error {}
+    let failure = Task { await coordinator.handleLoadFailure(prepared, error: VendorLoadFailed()) }
+    await rejected.wait()
+    #expect(home.parakeetModelLabel == "Parakeet v3", "the frozen name is still v3")
+    #expect(home.parakeetRowIsBackgroundUpgrade == false)
+    let downloading = SpeechEngineSettingsView.parakeetRow(
+      needsExplicitRetry: home.parakeetNeedsExplicitRetry,
+      rowIsBackgroundUpgrade: home.parakeetRowIsBackgroundUpgrade,
+      background: home.parakeetBackgroundUpgrade,
+      foreground: .downloading(fractionCompleted: 0.5, bytesWritten: 2_097_152, totalBytes: 4_194_304))
+    #expect(downloading?.owner == .foreground, "Ultra's download shows with its own Cancel")
+    #expect(downloading?.showsCancel == true)
+    let failed = SpeechEngineSettingsView.parakeetRow(
+      needsExplicitRetry: home.parakeetNeedsExplicitRetry,
+      rowIsBackgroundUpgrade: home.parakeetRowIsBackgroundUpgrade,
+      background: home.parakeetBackgroundUpgrade,
+      foreground: .failed(DeliveryFailure(reason: .sourceUnreachable)))
+    #expect(failed?.owner == .foreground, "Ultra's failure is not hidden")
+    _ = try await Self.awaitBounded(failure)
+  }
+
   @Test("the upgrade coordinator's usability changes reach the companion observers")
   func upgradeUsabilityReachesCompanions() async throws {
     let home = ModelDeliveryHome(
@@ -1191,6 +1285,34 @@ private enum ParakeetHomeFixture {
         at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
       try file.content.write(to: url)
     }
+  }
+}
+
+/// Fired by the subject when Home mirrors a v3 rejection. Deadline-bounded,
+/// so a missing rejection fails loudly instead of hanging.
+@MainActor
+private final class RejectionSignal {
+  private var fired = false
+  private var waiting: CheckedContinuation<Void, Never>?
+
+  func fire() {
+    fired = true
+    waiting?.resume()
+    waiting = nil
+  }
+
+  func wait(sourceLocation: SourceLocation = #_sourceLocation) async {
+    if fired { return }
+    let deadline = Task { @MainActor [weak self] in
+      // deadline-fallback: fail loudly and release a missing-signal wait.
+      try? await Task.sleep(for: .seconds(5))
+      guard let self, !self.fired, let waiting = self.waiting else { return }
+      Issue.record("v3 was never rejected", sourceLocation: sourceLocation)
+      self.waiting = nil
+      waiting.resume()
+    }
+    await withCheckedContinuation { waiting = $0 }
+    deadline.cancel()
   }
 }
 

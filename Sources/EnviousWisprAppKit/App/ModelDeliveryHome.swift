@@ -40,6 +40,12 @@ final class ModelDeliveryHome {
   private(set) var parakeetPresentedModel: ParakeetModel?
   private(set) var parakeetBackgroundUpgrade: ParakeetUpgradeCoordinator.BackgroundUpgradeState = .idle
   private(set) var parakeetNeedsExplicitRetry = false
+  /// v3 failed to load in this launch (E19): its name may still show, but the
+  /// download row belongs to the serving Ultra.
+  private(set) var parakeetV3Rejected = false
+  /// Bumped on every coordinator presentation signal, so Settings re-reads
+  /// "Model ready" when the policy changed but no mirrored value did.
+  private(set) var parakeetPresentationRevision: UInt64 = 0
   /// Before any selection: accepted v3 when the retired v3 is admitted on disk,
   /// otherwise the new Ultra default. Read once at construction.
   private(set) var parakeetFallbackModel: ParakeetModel = .ultra
@@ -54,10 +60,11 @@ final class ModelDeliveryHome {
   }
 
   /// Whether the background upgrade, not the serving model, owns the Settings
-  /// download row: a target exists and the presented (or fallback) model is v3,
-  /// so dictation works while Ultra downloads, pauses or waits.
+  /// download row: a target exists and the presented (or fallback) model is an
+  /// unrejected v3, so dictation works while Ultra downloads, pauses or waits.
   var parakeetRowIsBackgroundUpgrade: Bool {
     parakeetUpgrade?.hasUpgradeTarget == true
+      && !parakeetV3Rejected
       && (parakeetPresentedModel ?? parakeetFallbackModel) == .v3
   }
 
@@ -66,6 +73,8 @@ final class ModelDeliveryHome {
     parakeetPresentedModel = parakeetUpgrade.presentedModel
     parakeetBackgroundUpgrade = parakeetUpgrade.backgroundUpgrade
     parakeetNeedsExplicitRetry = parakeetUpgrade.needsExplicitRetry
+    parakeetV3Rejected = parakeetUpgrade.v3RejectedForPresentation
+    parakeetPresentationRevision &+= 1
   }
   private(set) var parakeetObserverSetupForTesting: Task<Void, Never>?
 
@@ -240,28 +249,47 @@ final class ModelDeliveryHome {
   }
 
   /// #3546 row T: the explicit Retry. The coordinator must persist a fresh
-  /// bounded cycle first; if that write fails nothing starts and the failure
-  /// row stays. It is not gated on the owned-download kill switch: with
-  /// delivery off the next load goes through the permitted vendor route.
-  /// The next warm-up (selection point) then loads.
+  /// bounded cycle first; if that write fails nothing starts, the failure row
+  /// stays and this returns false. It is not gated on the owned-download kill
+  /// switch: with delivery off the load goes through the permitted vendor
+  /// route. Two callers load after a granted cycle: Settings' Try again warms
+  /// through `retryParakeetUpgradeAndWarm`, and onboarding's warming retry
+  /// re-runs its own warm-up.
   /// Onboarding's warming retry: the explicit Retry only when the policy is
   /// the reason loading stopped; every other failure retries as before.
-  func retryParakeetUpgradeIfBlocked() {
-    guard parakeetNeedsExplicitRetry else { return }
-    retryParakeetUpgrade()
+  @discardableResult
+  func retryParakeetUpgradeIfBlocked() -> Bool {
+    guard parakeetNeedsExplicitRetry else { return true }
+    return retryParakeetUpgrade()
   }
 
-  func retryParakeetUpgrade() {
-    guard let parakeetUpgrade else { return }
+  @discardableResult
+  func retryParakeetUpgrade() -> Bool {
+    guard let parakeetUpgrade else { return false }
     do {
       try parakeetUpgrade.retry()
+      return true
     } catch {
       Task {
         await AppLogger.shared.log(
           "Parakeet Retry refused: the upgrade state could not be written (\(error))",
           level: .info, category: "Delivery")
       }
+      return false
     }
+  }
+
+  /// #3546 row T: the warm-up Settings' Try again runs after a granted cycle.
+  /// Set by the bootstrapper to the Parakeet driver's guarded warm-up.
+  var warmParakeetAfterExplicitRetry: (@MainActor () async -> Void)?
+
+  /// Settings' Try again: grant the bounded cycle, then load now, so the row
+  /// does not clear into a model that waits for the next dictation to load.
+  /// Returns the warm-up it started, nil when nothing started.
+  @discardableResult
+  func retryParakeetUpgradeAndWarm() -> Task<Void, Never>? {
+    guard let warm = warmParakeetAfterExplicitRetry, retryParakeetUpgrade() else { return nil }
+    return Task { await warm() }
   }
 
   /// #996 phase D: whether Parakeet is usable NOW, from the persisted marker,

@@ -34,6 +34,9 @@ public enum EngineWarmupReason: Sendable {
   case onboarding
   case engineSwap
   case coldPress
+  /// #3546 row T: Settings' Try again after the Parakeet upgrade policy
+  /// stopped loading.
+  case explicitRetry
 
   var telemetryToken: String {
     switch self {
@@ -41,6 +44,7 @@ public enum EngineWarmupReason: Sendable {
     case .onboarding: return "onboarding"
     case .engineSwap: return "engine_swap"
     case .coldPress: return "cold_press"
+    case .explicitRetry: return "explicit_retry"
     }
   }
 }

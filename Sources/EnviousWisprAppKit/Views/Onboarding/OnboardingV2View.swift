@@ -344,8 +344,10 @@ final class OnboardingV2ViewModel {
   /// #3546 row T: run before a retried warm-up. When the Parakeet upgrade
   /// policy stopped loading for its budget, this grants the explicit bounded
   /// cycle first (`ModelDeliveryHome.retryParakeetUpgradeIfBlocked`); for any
-  /// other failure it does nothing. Set by the view.
-  var beforeWarmingRetry: (@MainActor () -> Void)?
+  /// other failure it does nothing and answers true. False means the grant
+  /// could not be written, so the retry does not start and the failure panel
+  /// stays. Set by the view.
+  var beforeWarmingRetry: (@MainActor () -> Bool)?
 
   /// Owned HERE rather than in the view's `.task`, for the reason #1388
   /// established for `setupTask`: window churn cancels a view task, and an
@@ -488,7 +490,7 @@ final class OnboardingV2ViewModel {
   /// deliberately untouched: retrying is not leaving, and a person who retries
   /// and then skips must still produce exactly one completion.
   func retryWarming() {
-    beforeWarmingRetry?()
+    guard beforeWarmingRetry?() != false else { return }
     warmingAnswerReported = false
     warmingOutcome = .waiting
     warmingRetryCount += 1
@@ -1177,7 +1179,7 @@ struct OnboardingV2View: View {
       // #3546: a retry after the Parakeet upgrade policy stopped loading grants
       // its explicit bounded cycle first (a no-op for any other failure).
       viewModel.beforeWarmingRetry = { [modelDelivery] in
-        modelDelivery?.retryParakeetUpgradeIfBlocked()
+        modelDelivery?.retryParakeetUpgradeIfBlocked() ?? true
       }
       viewModel.kickSetupIfNeeded(
         warmUp: { await dictationRuntime.ensureActiveEngineWarmForOnboarding() },

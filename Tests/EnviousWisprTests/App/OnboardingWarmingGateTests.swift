@@ -164,6 +164,30 @@ import Testing
         #expect(calls.value == 2)
       }
 
+      @Test("#3546: a refused Parakeet Retry grant leaves the failure panel as it was")
+      func refusedRetryGrantStartsNothing() async {
+        let vm = makeGatedViewModel()
+        struct Boom: Error {}
+        vm.kickWarmingIfNeeded(warmUp: { .failed(Boom()) }, displayFloor: 0)
+        await vm.warmingTask?.value
+        let failed = vm.warmingOutcome
+        #expect(failed != .ready && failed != .waiting)
+        var asked = 0
+        vm.beforeWarmingRetry = {
+          asked += 1
+          return false
+        }
+        vm.retryWarming()
+        #expect(asked == 1)
+        #expect(vm.warmingOutcome == failed, "the failure panel stays")
+        #expect(vm.warmingRetryCount == 0, "no new attempt is keyed")
+
+        vm.beforeWarmingRetry = { true }
+        vm.retryWarming()
+        #expect(vm.warmingOutcome == .waiting, "control: a granted retry re-arms")
+        #expect(vm.warmingRetryCount == 1)
+      }
+
       @Test("a re-kick while an attempt is live is a no-op (window churn)")
       func reKickIsSingleFlight() async {
         let vm = makeGatedViewModel()

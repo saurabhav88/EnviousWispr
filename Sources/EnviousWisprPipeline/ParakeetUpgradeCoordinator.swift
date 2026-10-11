@@ -116,7 +116,12 @@ package final class ParakeetUpgradeCoordinator {
   /// Set at a selection point: whether the owned v3 install is accepted, and
   /// whether v3 genuinely failed to load in this launch (E19).
   private var v3Accepted = false
-  private var v3RejectedThisLaunch = false
+  private var v3RejectedThisLaunch = false {
+    didSet { if v3RejectedThisLaunch != oldValue { onPresentationChanged?() } }
+  }
+  /// Whether v3 failed to load in this launch (E19). Settings then shows the
+  /// serving Ultra's foreground rows even while the frozen name is still v3.
+  package var v3RejectedForPresentation: Bool { v3RejectedThisLaunch }
   /// The selection-point token `frozen` was chosen under; queued cleanup is
   /// valid only while it still matches.
   private var frozenSelectionPoint: UInt64 = 0
@@ -169,6 +174,9 @@ package final class ParakeetUpgradeCoordinator {
   private let backgroundPublication = BackgroundPublicationToken()
   /// Foreground Ultra operations (row C fetch, repair) in flight.
   private var foregroundFetches = 0
+  /// Bumped by every foreground or background Cancel, so a foreground Resume
+  /// that waited on a drain does not fetch after a newer Cancel.
+  private var foregroundCancelGeneration: UInt64 = 0
 
   /// Selection points recorded and consumed (#3546). A token, not a flag, so a
   /// second launch poke while the first preparation is still running is
@@ -191,8 +199,8 @@ package final class ParakeetUpgradeCoordinator {
   /// Told when a queued cleanup task ends, whether it deleted, refused or was
   /// cancelled, so tests can wait for it without timing guesses.
   var onCleanupEndedForTesting: (@MainActor (ParakeetModel) -> Void)?
-  /// Awaited after each admission read in `isParakeetUsable()`, so a test can
-  /// change the facts inside that await.
+  /// Awaited after each admission read in `isParakeetUsable()` and
+  /// `currentAdmission()`, so a test can change the facts inside that await.
   var usabilityReadGateForTesting: (@MainActor () async -> Void)?
   /// Told when Resume starts waiting for a Cancel's drain.
   var onResumeWaitingForTesting: (@MainActor () -> Void)?
@@ -323,8 +331,9 @@ package final class ParakeetUpgradeCoordinator {
   /// revision 7). Returns true when the repair admitted the cache again and the
   /// caller may retry the load once.
   package func repairAfterLoadFailure(_ prepared: PreparedLoad) async -> Bool {
-    // deliveryActive guarantees the handle exists; a nil here
-    // would be a logic error, so fail the warm-up rather than crash.
+    // A repairable request exists only on the delivery path, which has the
+    // handle; a nil here would be a logic error, so fail the warm-up rather
+    // than crash.
     guard prepared.selection?.repairable == true, let delivery,
       case .admitted = await delivery.repair()
     else { return false }
@@ -386,6 +395,7 @@ package final class ParakeetUpgradeCoordinator {
       return
     }
     guard foregroundFetches > 0 else { return }
+    foregroundCancelGeneration &+= 1
     if backgroundFetch != nil {
       invalidateBackgroundFetch()
       setBackgroundUpgrade(.idle)
@@ -927,6 +937,7 @@ extension ParakeetUpgradeCoordinator {
   package func cancelBackgroundUpgrade() async throws {
     guard let target else { return }
     backgroundCommandGeneration &+= 1
+    foregroundCancelGeneration &+= 1
     var storeError: (any Error)?
     do {
       try target.store.writeDeclined(true)
@@ -1015,39 +1026,70 @@ extension ParakeetUpgradeCoordinator {
     func v3Ready() async -> Bool {
       guard let delivery, delivery.locationIsUsable, !v3RejectedThisLaunch else { return false }
       let admitted = await delivery.isAdmitted()
+      if let usabilityReadGateForTesting { await usabilityReadGateForTesting() }
       return admitted && !v3RejectedThisLaunch && delivery.locationIsUsable
     }
     func ultraReady() async -> Bool {
       guard target.delivery.locationIsUsable else { return false }
       let admitted = await target.delivery.isAdmitted()
+      if let usabilityReadGateForTesting { await usabilityReadGateForTesting() }
       guard admitted, target.delivery.locationIsUsable,
         case .state(let state) = target.store.read(),
         !state.exhausted, state.attempts < Self.attemptBudget
       else { return false }
       return true
     }
-    switch presentedModel {
-    case .v3?: return await v3Ready()
-    case .ultra?: return await ultraReady()
+    // The answer belongs to the identity it was read for: a request or
+    // presented model that changed during the reads answers false, never the
+    // previous identity's readiness.
+    let request = parakeetSelection.current
+    let model = presentedModel
+    let admitted: Bool
+    switch model {
+    case .v3?: admitted = await v3Ready()
+    case .ultra?: admitted = await ultraReady()
     case nil:
-      if await v3Ready() { return true }
-      return await ultraReady()
+      if await v3Ready() {
+        admitted = true
+      } else {
+        admitted = await ultraReady()
+      }
     }
+    guard !Task.isCancelled, request == parakeetSelection.current, model == presentedModel
+    else { return false }
+    return admitted
   }
 
   /// Settings' Resume / Try again for the shipped download while nothing else
   /// serves (fresh install, no v3): a FOREGROUND fetch of the target, counted
   /// so the foreground Cancel reaches it, and only where the location, the
-  /// store and the budget allow a later load. Waits for a Cancel's drain.
-  /// Nil when refused before any work.
+  /// store and the budget allow a later load. Counted BEFORE it waits for a
+  /// Cancel's drain, so a foreground Cancel reaches the waiting command; after
+  /// the wait, a newer Cancel or a changed location, store or budget refuses.
+  /// A store or budget refusal needs the explicit Retry. Nil when refused.
   package func fetchInForeground() async -> ModelDeliveryController.DeliveryOutcome? {
-    guard let target, target.delivery.locationIsUsable,
-      case .state(let state) = target.store.read(),
-      !state.exhausted, state.attempts < Self.attemptBudget
+    guard let target, target.delivery.locationIsUsable else { return nil }
+    func permitted() -> Bool {
+      guard case .state(let state) = target.store.read(),
+        !state.exhausted, state.attempts < Self.attemptBudget
+      else {
+        needsExplicitRetry = true
+        return false
+      }
+      return true
+    }
+    guard permitted(), !Task.isCancelled else { return nil }
+    foregroundFetches += 1
+    defer { foregroundFetches -= 1 }
+    let command = foregroundCancelGeneration
+    if let cancelDrain {
+      onResumeWaitingForTesting?()
+      await cancelDrain.value
+    }
+    guard !Task.isCancelled, command == foregroundCancelGeneration,
+      target.delivery.locationIsUsable, permitted()
     else { return nil }
-    if let cancelDrain { await cancelDrain.value }
-    guard !Task.isCancelled else { return nil }
-    return await foreground({ await target.delivery.ensureAvailableInForeground() })
+    return await target.delivery.ensureAvailableInForeground()
   }
 
   private func hasReadyServingRequest() -> Bool {

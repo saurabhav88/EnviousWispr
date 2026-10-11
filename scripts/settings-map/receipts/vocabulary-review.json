@@ -5,8 +5,8 @@
  "retiredIDs": [],
  "resource": {
   "path": "Sources/EnviousWisprAppKit/Resources/SettingsSearchVocabulary.json",
-  "sha256": "1d9af94e6eb6a759ef03b3c5a1222fbe4533818ae790fea63f11639519cc732d",
-  "bytes": 1592186
+  "sha256": "44690e53406ddb9730e98263a800ef9b9e34e7829dd5823bf7b46c14198bead8",
+  "bytes": 1592162
  },
  "sources": [
   {
@@ -290,7 +290,7 @@
  "languages": [
   {
    "language": "ar",
-   "contentSHA256": "538a8472b481010f8b49eb4d45d7016f76f14c39e8c9ede1845c5f66b743be00",
+   "contentSHA256": "380ea2f3ed4d4a92b4627343e9c3f27e266ed22877d8debcf9b6ed6585f10191",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -354,6 +354,15 @@
       "transcriptionEngine.allLanguages"
      ],
      "disposition": "the word appended to the reviewed words; nothing else changed"
+    },
+    {
+     "kind": "model-name-edit",
+     "scope": [
+      "currentEngineSection"
+     ],
+     "date": "2026-10-11",
+     "method": "#3546 chunk 8b orchestrator review (Codex, repo access), finding F5: the current-engine title names whichever Parakeet model serves, so the fixed version token is wrong once Ultra ships",
+     "disposition": "removed the version token \" v3\" from the reviewed title; no other word changed and no new translated content"
     }
    ],
    "phraseExemptions": []
@@ -663,7 +672,7 @@
   },
   {
    "language": "el",
-   "contentSHA256": "60557f1af6e60c09cdf200ef52686009057d177d7b39b2c2b765101c1f52792e",
+   "contentSHA256": "6b05ff49a20a3229ba4f9c13dd2bcb82101650ee632cefdd1a8603a5b67828c4",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -727,6 +736,15 @@
       "transcriptionEngine.allLanguages"
      ],
      "disposition": "the word appended to the reviewed words; nothing else changed"
+    },
+    {
+     "kind": "model-name-edit",
+     "scope": [
+      "currentEngineSection"
+     ],
+     "date": "2026-10-11",
+     "method": "#3546 chunk 8b orchestrator review (Codex, repo access), finding F5: the current-engine title names whichever Parakeet model serves, so the fixed version token is wrong once Ultra ships",
+     "disposition": "removed the version token \" v3\" from the reviewed title; no other word changed and no new translated content"
     }
    ],
    "phraseExemptions": []
@@ -818,7 +836,7 @@
   },
   {
    "language": "es",
-   "contentSHA256": "b82cca956c08e0f0b599768d458f171da1bd3197615500c32e81bc9555975b9c",
+   "contentSHA256": "18c4bb65ca1042dacd88d9b7913e8d2ed100be53961bb26baa95866e045ea200",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -882,6 +900,15 @@
       "transcriptionEngine.allLanguages"
      ],
      "disposition": "the word appended to the reviewed words; nothing else changed"
+    },
+    {
+     "kind": "model-name-edit",
+     "scope": [
+      "currentEngineSection"
+     ],
+     "date": "2026-10-11",
+     "method": "#3546 chunk 8b orchestrator review (Codex, repo access), finding F5: the current-engine title names whichever Parakeet model serves, so the fixed version token is wrong once Ultra ships",
+     "disposition": "removed the version token \" v3\" from the reviewed title; no other word changed and no new translated content"
     }
    ],
    "phraseExemptions": []
@@ -1308,7 +1335,7 @@
   },
   {
    "language": "it",
-   "contentSHA256": "0aa8f2b38665ccd381771d7cdfed41d99007ad10723b6bb20306e340f6f1b14c",
+   "contentSHA256": "a7b873cf44ec35ba70c9b8e3221ff7f6218e9516fa504d752d2b7370dbe0217a",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -1372,6 +1399,15 @@
       "transcriptionEngine.allLanguages"
      ],
      "disposition": "the word appended to the reviewed words; nothing else changed"
+    },
+    {
+     "kind": "model-name-edit",
+     "scope": [
+      "currentEngineSection"
+     ],
+     "date": "2026-10-11",
+     "method": "#3546 chunk 8b orchestrator review (Codex, repo access), finding F5: the current-engine title names whichever Parakeet model serves, so the fixed version token is wrong once Ultra ships",
+     "disposition": "removed the version token \" v3\" from the reviewed title; no other word changed and no new translated content"
     }
    ],
    "phraseExemptions": []
@@ -1518,7 +1554,7 @@
   },
   {
    "language": "lt",
-   "contentSHA256": "352bd2312aca0322fe07f952dfd4d19c429c795a606a81b727658160e339d4d5",
+   "contentSHA256": "de77b5e49680d11a5cdeb0d5885d0a723c33fc0f97f4a3ae90b533907ba8e338",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -1582,6 +1618,15 @@
       "transcriptionEngine.allLanguages"
      ],
      "disposition": "the word appended to the reviewed words; nothing else changed"
+    },
+    {
+     "kind": "model-name-edit",
+     "scope": [
+      "currentEngineSection"
+     ],
+     "date": "2026-10-11",
+     "method": "#3546 chunk 8b orchestrator review (Codex, repo access), finding F5: the current-engine title names whichever Parakeet model serves, so the fixed version token is wrong once Ultra ships",
+     "disposition": "removed the version token \" v3\" from the reviewed title; no other word changed and no new translated content"
     }
    ],
    "phraseExemptions": []
@@ -1658,7 +1703,7 @@
   },
   {
    "language": "mt",
-   "contentSHA256": "c98e70782f9f89f9183defb24ac251611dcb827c98bc6313a077b95c7f0cfb82",
+   "contentSHA256": "7fdfafb9180b5c8a125c19f21ee49a0f0d73bd4217c92e135b97b2df2ab6923f",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -1722,6 +1767,15 @@
       "transcriptionEngine.allLanguages"
      ],
      "disposition": "the word appended to the reviewed words; nothing else changed"
+    },
+    {
+     "kind": "model-name-edit",
+     "scope": [
+      "currentEngineSection"
+     ],
+     "date": "2026-10-11",
+     "method": "#3546 chunk 8b orchestrator review (Codex, repo access), finding F5: the current-engine title names whichever Parakeet model serves, so the fixed version token is wrong once Ultra ships",
+     "disposition": "removed the version token \" v3\" from the reviewed title; no other word changed and no new translated content"
     }
    ],
    "phraseExemptions": []
@@ -2156,7 +2210,7 @@
   },
   {
    "language": "sl",
-   "contentSHA256": "22f439abcf9d155cea6a8ba77d5072854b796d23416f0892a222368fe03209b6",
+   "contentSHA256": "88907fa8cd82db71f8fe01d7d7664b56386dd030b7e6c7fd56a2990d97200643",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -2220,6 +2274,15 @@
       "transcriptionEngine.allLanguages"
      ],
      "disposition": "the word appended to the reviewed words; nothing else changed"
+    },
+    {
+     "kind": "model-name-edit",
+     "scope": [
+      "currentEngineSection"
+     ],
+     "date": "2026-10-11",
+     "method": "#3546 chunk 8b orchestrator review (Codex, repo access), finding F5: the current-engine title names whichever Parakeet model serves, so the fixed version token is wrong once Ultra ships",
+     "disposition": "removed the version token \" v3\" from the reviewed title; no other word changed and no new translated content"
     }
    ],
    "phraseExemptions": []
@@ -2366,7 +2429,7 @@
   },
   {
    "language": "uk",
-   "contentSHA256": "dcea70b623554f7a708ab7dfc17d74c69cfc5a125d6233cdc2c742a1ed146036",
+   "contentSHA256": "87de513f5147aed2519b54a5fe7fd27db5a2d32f6cd7b0f622367f905e1cb237",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -2430,6 +2493,15 @@
       "transcriptionEngine.allLanguages"
      ],
      "disposition": "the word appended to the reviewed words; nothing else changed"
+    },
+    {
+     "kind": "model-name-edit",
+     "scope": [
+      "currentEngineSection"
+     ],
+     "date": "2026-10-11",
+     "method": "#3546 chunk 8b orchestrator review (Codex, repo access), finding F5: the current-engine title names whichever Parakeet model serves, so the fixed version token is wrong once Ultra ships",
+     "disposition": "removed the version token \" v3\" from the reviewed title; no other word changed and no new translated content"
     }
    ],
    "phraseExemptions": []

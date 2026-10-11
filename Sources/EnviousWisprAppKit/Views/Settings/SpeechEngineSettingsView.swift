@@ -452,6 +452,14 @@ struct SpeechEngineSettingsView: View {
       short: String(localized: currentEngine.summary))
   }
 
+  /// #3546: "Model ready" re-reads when the delivery state or the upgrade
+  /// policy changed (budget spent, v3 rejected, identity switched, Retry),
+  /// even if the mirrored delivery state stayed the same.
+  private struct FastAdmissionReadKey: Equatable {
+    let state: DeliveryState
+    let revision: UInt64
+  }
+
   private func requestFastRecheck() {
     Task { await recheckFastAdmission() }
   }
@@ -469,6 +477,7 @@ struct SpeechEngineSettingsView: View {
     fastAdmission = nil
     guard let modelDelivery else { return }
     let state = modelDelivery.parakeetState
+    let revision = modelDelivery.parakeetPresentationRevision
     let admitted: Bool
     #if DEBUG
     if let hooks = fastAdmissionTestHooks {
@@ -480,7 +489,8 @@ struct SpeechEngineSettingsView: View {
     admitted = await modelDelivery.currentParakeetAdmission()
     #endif
     guard isParakeet, Task.isCancelled == false, request == fastAdmissionRequest,
-      state == modelDelivery.parakeetState else { return }
+      state == modelDelivery.parakeetState,
+      revision == modelDelivery.parakeetPresentationRevision else { return }
     fastAdmission = admitted
   }
 
@@ -530,7 +540,11 @@ struct SpeechEngineSettingsView: View {
         .settingsMapRegistration(.transcriptionEngineRecheckFast)
       }
       .fixedSize(horizontal: true, vertical: false)
-      .task(id: modelDelivery.parakeetState) { await recheckFastAdmission() }
+      .task(
+        id: FastAdmissionReadKey(
+          state: modelDelivery.parakeetState,
+          revision: modelDelivery.parakeetPresentationRevision)
+      ) { await recheckFastAdmission() }
       .onAppear {
         #if DEBUG
         fastAdmissionTestHooks?.captureRecheck(requestFastRecheck)
@@ -581,7 +595,7 @@ struct SpeechEngineSettingsView: View {
                 switch row.owner {
                 case .foreground: modelDelivery.resumeParakeetDownload()
                 case .backgroundUpgrade: modelDelivery.resumeParakeetUpgradeDownload()
-                case .retry: modelDelivery.retryParakeetUpgrade()
+                case .retry: modelDelivery.retryParakeetUpgradeAndWarm()
                 }
               }
               .settingsMapRegistration(action)

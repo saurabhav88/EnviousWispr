@@ -8,7 +8,7 @@
     "mapSHA256" : "3ec2032ed9a46f013dffdceacf0933126b939d65047a33e9ecf9c7c0df38b6b6",
     "uiCatalogSHA256" : "72888045ebae98191486bb88e0b4f03b8642a458f5e536a275bddf8195c9b02c",
     "vocabularyCanonicalization" : "length-prefixed-v1",
-    "vocabularySHA256" : "1d9af94e6eb6a759ef03b3c5a1222fbe4533818ae790fea63f11639519cc732d"
+    "vocabularySHA256" : "44690e53406ddb9730e98263a800ef9b9e34e7829dd5823bf7b46c14198bead8"
   },
   "interfaceLanguages" : [
     "en",
@@ -14194,7 +14194,7 @@
           "phrases" : [
             "وين خيارات محرك الإملاء اللي أستخدمه الآن"
           ],
-          "title" : "سريع · Parakeet v3",
+          "title" : "سريع · Parakeet",
           "words" : [
             "المحرك الحالي",
             "النموذج النشط"
@@ -14243,7 +14243,7 @@
           "phrases" : [
             "δείξε τις ρυθμίσεις του μοντέλου υπαγόρευσης που χρησιμοποιώ τώρα"
           ],
-          "title" : "Γρήγορο · Parakeet v3",
+          "title" : "Γρήγορο · Parakeet",
           "words" : [
             "ενεργή μηχανή",
             "τρέχουσα μηχανή"
@@ -14262,7 +14262,7 @@
           "phrases" : [
             "ver las opciones del motor de dictado que estoy usando"
           ],
-          "title" : "Rápido · Parakeet v3",
+          "title" : "Rápido · Parakeet",
           "words" : [
             "motor activo",
             "modelo actual"
@@ -14332,7 +14332,7 @@
           "phrases" : [
             "mostra le opzioni del motore di dettatura che sto usando"
           ],
-          "title" : "Veloce · Parakeet v3",
+          "title" : "Veloce · Parakeet",
           "words" : [
             "motore dettatura attivo",
             "modello dettatura attuale"
@@ -14362,7 +14362,7 @@
           "phrases" : [
             "rodyti dabar naudojamo diktavimo variklio parinktis"
           ],
-          "title" : "Greitasis · Parakeet v3",
+          "title" : "Greitasis · Parakeet",
           "words" : [
             "aktyvaus variklio parinktys",
             "naudojamo modelio nustatymai"
@@ -14382,7 +14382,7 @@
           "phrases" : [
             "urini l-għażliet tal-magna tad-dettatura li qed nuża"
           ],
-          "title" : "Magna attwali · Parakeet v3",
+          "title" : "Magna attwali · Parakeet",
           "words" : [
             "magna attwali",
             "magna attiva"
@@ -14452,7 +14452,7 @@
           "phrases" : [
             "pokaži možnosti pogona za narekovanje, ki ga trenutno uporabljam"
           ],
-          "title" : "Hitri · Parakeet v3",
+          "title" : "Hitri · Parakeet",
           "words" : [
             "aktivni pogon",
             "trenutni pogon"
@@ -14481,7 +14481,7 @@
           "phrases" : [
             "показати параметри моделі диктування, якою я зараз користуюся"
           ],
-          "title" : "Поточний рушій · Швидкий · Parakeet v3",
+          "title" : "Поточний рушій · Швидкий · Parakeet",
           "words" : [
             "параметри поточного рушія",
             "активний рушій"
