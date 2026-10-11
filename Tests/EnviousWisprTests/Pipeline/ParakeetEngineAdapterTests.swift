@@ -106,8 +106,8 @@ import Testing
     #expect(request.model == .v3)
     #expect(request.directory == expected)
     #expect(request.directory.lastPathComponent == "parakeet-tdt-0.6b-v3")
-    #expect(!request.cacheOnly)
-    #expect(!request.repairable)
+    #expect(request.cacheOnly == false)
+    #expect(request.repairable == false)
     #expect(request.revision == nil)
     #expect(request.displayBytes == 483_256_769)
   }
