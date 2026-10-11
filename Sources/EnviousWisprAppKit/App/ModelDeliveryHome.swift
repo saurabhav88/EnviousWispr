@@ -21,6 +21,15 @@ final class ModelDeliveryHome {
   private(set) var parakeetHandle: ParakeetDeliveryHandle?
   private var parakeetIdentity: ModelIdentity?
   private var parakeetRegistration: DeliveryRegistration?
+  /// #3546: the retired v3 manifest's handle. It never fetches; it accepts an
+  /// existing v3 install (fast path, validation, read-only donor migration) so
+  /// v3 keeps serving until Ultra activates. Nil when the shipped (Ultra)
+  /// manifest or the retired one is unavailable: a missing retired manifest
+  /// means no v3 acceptance, never an invented one.
+  private(set) var parakeetRetiredV3Handle: ParakeetDeliveryHandle?
+  private var parakeetRetiredV3Registration: DeliveryRegistration?
+  /// #3546: the Ultra target the upgrade coordinator is built with.
+  private var parakeetUpgradeTarget: ParakeetUpgradeCoordinator.UpgradeTarget?
   /// #3546: the Parakeet selection-policy owner, built here because this home
   /// owns the Parakeet registration and handle (plan §3b, the
   /// `WhisperKitLegacyUpgradeCoordinator` precedent). Set once by
@@ -36,8 +45,14 @@ final class ModelDeliveryHome {
     isOnboardingComplete: @escaping @MainActor () -> Bool
   ) -> ParakeetUpgradeCoordinator {
     if let parakeetUpgrade { return parakeetUpgrade }
+    // With the Ultra target, `delivery` is the retired v3 handle (acceptance
+    // only, or nil). Without one (the shipped manifest failed to load), the
+    // no-handle legacy route, unchanged: the retired manifest is never
+    // substituted for the shipped one.
     let coordinator = ParakeetUpgradeCoordinator(
-      parakeetSelection: parakeetSelection, delivery: parakeetHandle,
+      parakeetSelection: parakeetSelection,
+      delivery: parakeetUpgradeTarget == nil ? parakeetHandle : parakeetRetiredV3Handle,
+      target: parakeetUpgradeTarget,
       isOnboardingComplete: isOnboardingComplete)
     coordinator.onUsabilityMayHaveChanged = { [weak self] in self?.notifyParakeetUsable() }
     parakeetUpgrade = coordinator
@@ -371,29 +386,15 @@ final class ModelDeliveryHome {
       let manifest = try DeliveryManifest.loadBundled(
         resource: "parakeet-delivery-manifest", bundle: manifestBundle)
       let identity = manifest.identity
+      let metadataDirectory = storage.dataDirectory
+        .appendingPathComponent("ModelDelivery", isDirectory: true)
+      // #3546: the shipped manifest is Parakeet Ultra, in its own owned
+      // directory beside v3's. No shared donor exists for it.
       let registration = DeliveryRegistration(
         manifest: manifest,
-        // #2483: our own directory, a sibling of `Models/whisper` below. This
-        // was `AsrModels.defaultCacheDirectory(for: .v3)` — FluidAudio's SHARED
-        // per-repo cache — from #1348 Phase 2 until now, which is what deleted
-        // other apps' files (#2483) and blocked installs we could not sweep
-        // (#2690). `ParakeetInstallLocation` owns the name, including why the
-        // last path component must stay `parakeet-tdt-0.6b-v3-coreml`.
         installDirectory: ParakeetInstallLocation.directory(
-          dataDirectory: storage.dataDirectory),
-        metadataDirectory: storage.dataDirectory
-          .appendingPathComponent("ModelDelivery", isDirectory: true),
-        // #2483: where this model USED to live, offered read-only so an existing
-        // copy — ours from before the move, or another FluidAudio app's — is
-        // reproduced instead of re-downloaded. Rooted at `appSupportRoot` so a
-        // suite passing an override never reads the real shared directory.
-        // The donor is resolved from the SYSTEM lookup every time, independently
-        // of which candidate won for our data. `nil` means there is no such
-        // directory — never "could not ask" — which is what makes recording its
-        // absence safe.
-        legacyDonorDirectory: storage.systemApplicationSupport.map {
-          ParakeetInstallLocation.legacySharedDonor(appSupport: $0)
-        })
+          for: .ultra, dataDirectory: storage.dataDirectory),
+        metadataDirectory: metadataDirectory)
       parakeetIdentity = identity
       parakeetRegistration = registration
       // #2119: reclaim staging abandoned by a superseded revision of THIS model.
@@ -405,37 +406,23 @@ final class ModelDeliveryHome {
       // could exercise the family flag without writing a live delivery kill
       // switch onto a developer's machine (#2139). Production is unchanged:
       // the only caller that passes a non-nil value is the test suite.
+      // #3546: `.scoped`, because background upgrade work on this identity
+      // must never write the foreground warm-up's progress.
       let handle = ParakeetDeliveryHandle(
-        controller: controller, registration: registration, defaults: deliveryFlagDefaults)
+        controller: controller, registration: registration, defaults: deliveryFlagDefaults,
+        progressOwnership: .scoped, progress: .shared)
       parakeetHandle = handle
-      // #2697: START THE MIGRATION AT LAUNCH, not at the first dictation.
-      //
-      // The seam that guarantees it has run lives in the engine adapter's
-      // warm-up, and warm-up is driven by a recording session — so without this
-      // the whole migration, including a hash of 483 MB, is paid by the user's
-      // FIRST TAKE after updating. Starting it here moves that cost to launch,
-      // where nobody is waiting on it. Measured on the founder's machine: the
-      // migration itself is ~1s.
-      //
-      // Through the HANDLE rather than the controller (review A, P2). The handle
-      // supplies the progress tick; the controller call takes one and launch had
-      // none to give, so a warm-up that JOINED the launch migration inherited a
-      // run reporting nothing — and the sessionless wedge guard reads silence as
-      // a wedge. One door, one tick, whoever arrives first.
-      //
-      // It does not race the seam: every migration now goes through the
-      // controller's single-flight coordinator, so a warm-up arriving mid-run
-      // joins this task rather than starting a second on the same candidate.
-      //
-      // THE RESULT IS DISCARDED HERE, AND ONLY HERE, DELIBERATELY. Every other
-      // caller of this seam ACTS on the location and must honour a refusal:
-      // `resumeParakeetDownload` below guards on it, and
-      // `ParakeetEngineAdapter` throws on it. This call acts on nothing — a
-      // refusal means the migration inside simply did not run, which is the
-      // outcome we want. Enumerated rather than assumed:
-      // `/usr/bin/grep -rn "ensureModelLocationReady" Sources/` returns three
-      // call sites, and this is the only one with nothing to refuse.
-      Task { _ = await handle.ensureModelLocationReady() }
+      parakeetUpgradeTarget = ParakeetUpgradeCoordinator.UpgradeTarget(
+        delivery: handle,
+        store: ParakeetUpgradeStateStore(
+          metadataDirectory: metadataDirectory, targetCacheKey: identity.cacheKey),
+        ownedModelsRoot: storage.dataDirectory.appendingPathComponent("Models", isDirectory: true))
+      installRetiredV3(
+        dataDirectory: storage.dataDirectory, metadataDirectory: metadataDirectory,
+        legacyDonorDirectory: storage.systemApplicationSupport.map {
+          ParakeetInstallLocation.legacySharedDonor(appSupport: $0)
+        },
+        manifestBundle: manifestBundle, deliveryFlagDefaults: deliveryFlagDefaults)
       wireObservers(identity: identity)
     } catch {
       Task {
@@ -860,13 +847,89 @@ final class ModelDeliveryHome {
     }
   }
 
+  /// #3546: the retired v3 manifest, for acceptance only (plan §3.4 "v3
+  /// accepted"). Built only after the shipped manifest loaded, so a failure of
+  /// either never substitutes one identity for the other.
+  private func installRetiredV3(
+    dataDirectory: URL, metadataDirectory: URL, legacyDonorDirectory: URL?,
+    manifestBundle: Bundle, deliveryFlagDefaults: UserDefaults?
+  ) {
+    do {
+      let manifest = try DeliveryManifest.loadBundled(
+        resource: "parakeet-v3-retired-manifest", bundle: manifestBundle)
+      let registration = DeliveryRegistration(
+        manifest: manifest,
+        // #2483: our own directory, a sibling of `Models/whisper` below. This
+        // was `AsrModels.defaultCacheDirectory(for: .v3)` — FluidAudio's SHARED
+        // per-repo cache — from #1348 Phase 2 until now, which is what deleted
+        // other apps' files (#2483) and blocked installs we could not sweep
+        // (#2690). `ParakeetInstallLocation` owns the name, including why the
+        // last path component must stay `parakeet-tdt-0.6b-v3-coreml`.
+        installDirectory: ParakeetInstallLocation.directory(dataDirectory: dataDirectory),
+        metadataDirectory: metadataDirectory,
+        // #2483: where this model USED to live, offered read-only so an existing
+        // copy — ours from before the move, or another FluidAudio app's — is
+        // reproduced instead of re-downloaded. Rooted at `appSupportRoot` so a
+        // suite passing an override never reads the real shared directory.
+        // The donor is resolved from the SYSTEM lookup every time, independently
+        // of which candidate won for our data. `nil` means there is no such
+        // directory — never "could not ask" — which is what makes recording its
+        // absence safe.
+        legacyDonorDirectory: legacyDonorDirectory)
+      parakeetRetiredV3Registration = registration
+      // Acceptance never fetches, so it never owns download progress; its
+      // validation and migration ticks are the foreground's (selection points).
+      let handle = ParakeetDeliveryHandle(
+        controller: controller, registration: registration, defaults: deliveryFlagDefaults)
+      parakeetRetiredV3Handle = handle
+      // #2697: START THE MIGRATION AT LAUNCH, not at the first dictation.
+      //
+      // The seam that guarantees it has run lives in the engine adapter's
+      // warm-up, and warm-up is driven by a recording session — so without this
+      // the whole migration, including a hash of 483 MB, is paid by the user's
+      // FIRST TAKE after updating. Starting it here moves that cost to launch,
+      // where nobody is waiting on it. Measured on the founder's machine: the
+      // migration itself is ~1s.
+      //
+      // Through the HANDLE rather than the controller (review A, P2). The handle
+      // supplies the progress tick; the controller call takes one and launch had
+      // none to give, so a warm-up that JOINED the launch migration inherited a
+      // run reporting nothing — and the sessionless wedge guard reads silence as
+      // a wedge. One door, one tick, whoever arrives first.
+      //
+      // It does not race the seam: every migration now goes through the
+      // controller's single-flight coordinator, so a warm-up arriving mid-run
+      // joins this task rather than starting a second on the same candidate.
+      //
+      // THE RESULT IS DISCARDED HERE, AND ONLY HERE, DELIBERATELY. Every other
+      // caller of this seam ACTS on the location and must honour a refusal:
+      // `resumeParakeetDownload` below guards on it, and
+      // `ParakeetUpgradeCoordinator`'s no-target delivery stage throws on it
+      // (#3546: moved there from `ParakeetEngineAdapter`). This call acts on
+      // nothing — a refusal means the migration inside simply did not run,
+      // which is the outcome we want. Enumerated rather than assumed:
+      // `/usr/bin/grep -rn "ensureModelLocationReady" Sources/` returns three
+      // call sites, and this is the only one with nothing to refuse.
+      Task { _ = await handle.ensureModelLocationReady() }
+    } catch {
+      Task {
+        await AppLogger.shared.log(
+          "Retired Parakeet v3 manifest unavailable — an existing v3 install is not accepted: \(error)",
+          level: .info, category: "Delivery")
+      }
+    }
+  }
+
   private func wireObservers(identity: ModelIdentity) {
     let home = self
     let registration = parakeetRegistration
+    let retiredV3 = parakeetRetiredV3Registration
     let sequencer = DeliveryStateSequencer()
     Task {
       if let registration {
-        let admitted = await controller.isAdmitted(registration)
+        // #3546: a user upgrading from an admitted v3 is not on a first run.
+        var admitted = await controller.isAdmitted(registration)
+        if !admitted, let retiredV3 { admitted = await controller.isAdmitted(retiredV3) }
         await MainActor.run { home.firstRunByIdentity[identity] = !admitted }
       }
       await controller.addStateObserver { observedIdentity, state in

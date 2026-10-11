@@ -30,7 +30,9 @@ enum ShippedModelNames {
     .editJudge: ["xenc-mmbert-small"],
     .egOne: ["eg-1"],
     .egOneChecker: ["eg1c"],
-    .parakeet: ["parakeet-tdt-0.6b-v3-coreml"],
+    // #3546: Ultra is the shipped model; v3 stays bundled as the retired
+    // manifest that accepts an existing install, so both names are current.
+    .parakeet: ["parakeet-tdt-0.6b-v3-coreml", "parakeet-ultra-coreml"],
     .s1Mini: ["s1-mini"],
     .s1MiniChecker: ["s1c"],
     .whisperKit: ["whisperkit-coreml"],
@@ -70,6 +72,7 @@ enum ShippedModelNames {
     "eg_one|eg-1": ["q5km"],
     "eg_one_checker|eg1c": ["f16"],
     "parakeet|parakeet-tdt-0.6b-v3-coreml": ["int8"],
+    "parakeet|parakeet-ultra-coreml": ["int8"],
     "s1_mini|s1-mini": ["q4km"],
     "s1_mini_checker|s1c": ["f16"],
     "whisper_kit|whisperkit-coreml": [

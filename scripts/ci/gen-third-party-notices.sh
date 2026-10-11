@@ -324,14 +324,34 @@ done
 printf -- '--------------------------------------------------------------------------------\n'
 printf 'Speech recognition model (downloaded at runtime, NOT bundled in this DMG)\n'
 printf -- '--------------------------------------------------------------------------------\n\n'
-printf 'EnviousWispr downloads the Parakeet TDT speech model (CoreML) from Hugging\n'
-printf 'Face on first use; it is not distributed inside this disk image. The model\n'
-printf 'is provided under CC-BY-4.0 (https://creativecommons.org/licenses/by/4.0/).\n'
-printf 'Source: https://huggingface.co/FluidInference/parakeet-tdt-0.6b-v3-coreml\n'
+# #3546: Parakeet Ultra is CC-BY-4.0 and we SERVE its bytes (models.enviouswispr.com,
+# Hugging Face as backup), so the attribution names every contributor in the chain,
+# their sources and the licence, and says what our transport does to the bytes.
+printf 'Parakeet Ultra (CoreML)\n'
+printf '  Version: Hugging Face revision 95eaa59a (FluidInference/parakeet-ultra-coreml)\n'
+printf '  License: CC-BY-4.0 (https://creativecommons.org/licenses/by/4.0/)\n'
+printf '  Source:  https://huggingface.co/FluidInference/parakeet-ultra-coreml\n\n'
+printf 'EnviousWispr downloads this speech model on first use, or in the background\n'
+printf 'for existing users; it is not distributed inside this disk image. The files\n'
+printf 'are served from models.enviouswispr.com, with the Hugging Face revision above\n'
+printf 'as a backup source. Attribution:\n'
+printf '  - Base model: nvidia/parakeet-tdt-0.6b-v3 by NVIDIA, CC-BY-4.0\n'
+printf '    (https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3)\n'
+printf '  - Post-training: moondream/parakeet-ultra by moondream, CC-BY-4.0\n'
+printf '    (https://huggingface.co/moondream/parakeet-ultra)\n'
+printf '  - Core ML conversion: FluidInference/parakeet-ultra-coreml by FluidInference,\n'
+printf '    CC-BY-4.0 (https://huggingface.co/FluidInference/parakeet-ultra-coreml)\n'
+printf 'Envious Labs did not modify the model. To fit our download cache, the encoder\n'
+printf 'weights file is transferred in two pieces that the app joins back together;\n'
+printf 'the installed file is byte-identical to the publisher'"'"'s file and is checked\n'
+printf 'against its published SHA-256 before use.\n\n'
+printf 'Earlier versions used Parakeet TDT 0.6B v3 (CoreML), CC-BY-4.0, from\n'
+printf 'https://huggingface.co/FluidInference/parakeet-tdt-0.6b-v3-coreml (base model\n'
+printf 'nvidia/parakeet-tdt-0.6b-v3 by NVIDIA). An existing copy keeps working until\n'
+printf 'Parakeet Ultra is ready, and is then removed.\n'
 
-# S1-mini differs from Parakeet above in the one way that changes our
-# obligations: we SERVE its bytes from models.enviouswispr.com rather than
-# pointing the app at the publisher, which makes us a redistributor under
+# S1-mini is, like Parakeet Ultra above, SERVED by us from models.enviouswispr.com
+# rather than by its publisher, which makes us a redistributor under
 # Apache-2.0 section 4. That owes recipients a copy of the licence (4a) and the
 # NOTICE attributions (4d). The text is CAT'd from the same bundled resources
 # the app ships, never restated, so this section cannot drift away from them.

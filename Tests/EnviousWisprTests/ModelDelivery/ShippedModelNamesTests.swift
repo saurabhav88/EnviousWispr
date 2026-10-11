@@ -46,6 +46,7 @@ import Testing
 
     for resource in [
       "edit-judge-delivery-manifest", "eg1-checker-delivery-manifest", "eg1-delivery-manifest", "parakeet-delivery-manifest",
+      "parakeet-v3-retired-manifest",
       "s1-checker-delivery-manifest", "s1-delivery-manifest", "whisperkit-delivery-manifest",
       "whisperkit-preview-delivery-manifest", "word-check-delivery-manifest",
     ] {
@@ -70,7 +71,7 @@ import Testing
       .editJudge: ["xenc-mmbert-small"],
       .egOne: ["eg-1"],
       .egOneChecker: ["eg1c"],
-      .parakeet: ["parakeet-tdt-0.6b-v3-coreml"],
+      .parakeet: ["parakeet-tdt-0.6b-v3-coreml", "parakeet-ultra-coreml"],
       .s1Mini: ["s1-mini"],
       .s1MiniChecker: ["s1c"],
       .whisperKit: ["whisperkit-coreml"],
@@ -134,6 +135,7 @@ import Testing
     var keys: [String] = []
     for resource in [
       "edit-judge-delivery-manifest", "eg1-checker-delivery-manifest", "eg1-delivery-manifest", "parakeet-delivery-manifest",
+      "parakeet-v3-retired-manifest",
       "s1-checker-delivery-manifest", "s1-delivery-manifest", "whisperkit-delivery-manifest",
       "whisperkit-preview-delivery-manifest", "word-check-delivery-manifest",
     ] {
@@ -145,7 +147,7 @@ import Testing
     #expect(
       Self.firstCollision(keys) == nil,
       "two bundled manifests share family+name+variant, so the staging sweep would treat one as a superseded revision of the other and delete a live download")
-    #expect(keys.count == 9, "expected nine bundled registrations, got \(keys.count)")
+    #expect(keys.count == 10, "expected ten bundled registrations, got \(keys.count)")
   }
 
   /// Two-way control that drives the REAL detector. Every set we ship is
@@ -209,6 +211,7 @@ import Testing
     let resourceDir = repoRoot.appendingPathComponent("Sources/EnviousWispr/Resources")
     for resource in [
       "edit-judge-delivery-manifest", "eg1-checker-delivery-manifest", "eg1-delivery-manifest", "parakeet-delivery-manifest",
+      "parakeet-v3-retired-manifest",
       "s1-checker-delivery-manifest", "s1-delivery-manifest", "whisperkit-delivery-manifest",
       "whisperkit-preview-delivery-manifest", "word-check-delivery-manifest",
     ] {

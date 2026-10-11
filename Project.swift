@@ -570,6 +570,8 @@ let project = Project(
         // #1348 Phase 2: Parakeet delivery manifest — the bundled trust root
         // (contract 4a). Same Bundle.main route as eg1-manifest.json.
         "Sources/EnviousWispr/Resources/parakeet-delivery-manifest.json",
+        // #3546: the retired v3 manifest, for accepting an existing v3 install only.
+        "Sources/EnviousWispr/Resources/parakeet-v3-retired-manifest.json",
         "Sources/EnviousWispr/Resources/whisperkit-delivery-manifest.json",
         // #2102 (epic #2077 chunk 3): the SECOND WhisperKit-family artifact —
         // the small multilingual model Live Preview offers as the universal

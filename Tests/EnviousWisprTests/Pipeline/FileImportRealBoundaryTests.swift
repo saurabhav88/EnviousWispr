@@ -24,13 +24,17 @@ import Testing
 struct FileImportRealBoundaryTests {
 
   private enum Fixture {
-    static var installDirectory: URL {
-      ParakeetInstallLocation.directory(dataDirectory: StorageRoot.live.dataDirectory)
+    /// #3546: either Parakeet model, in the directory the app installs it into.
+    static func installDirectory(_ model: ParakeetModel) -> URL {
+      ParakeetInstallLocation.directory(for: model, dataDirectory: StorageRoot.live.dataDirectory)
     }
 
-    static var shippedModelIsInstalled: Bool {
-      AsrModels.modelsExist(at: installDirectory, version: .v3)
+    static func isInstalled(_ model: ParakeetModel) -> Bool {
+      AsrModels.modelsExist(at: installDirectory(model), version: model == .ultra ? .ultra : .v3)
     }
+
+    static var shippedModelIsInstalled: Bool { isInstalled(.v3) }
+    static var ultraIsInstalled: Bool { isInstalled(.ultra) }
 
     /// Written at test time with the system voice rather than committed as a binary. Three minutes of
     /// real speech, and deliberately more than 500 words, because a recording that fits in one part
@@ -81,6 +85,20 @@ struct FileImportRealBoundaryTests {
     .tags(.realBoundary)
   )
   func aRealRecordingBecomesParts() async throws {
+    try await realRecordingBecomesParts(model: .v3)
+  }
+
+  /// #3546: the same receipt on Parakeet Ultra, the shipped model.
+  @Test(
+    "a real multi-minute recording decodes, transcribes on Ultra, and splits into parts",
+    .enabled(if: Fixture.ultraIsInstalled),
+    .tags(.realBoundary)
+  )
+  func aRealRecordingBecomesPartsOnUltra() async throws {
+    try await realRecordingBecomesParts(model: .ultra)
+  }
+
+  private func realRecordingBecomesParts(model: ParakeetModel) async throws {
     let (audioURL, spokenWords) = try Fixture.writeSpokenRecording()
     defer { try? FileManager.default.removeItem(at: audioURL.deletingLastPathComponent()) }
 
@@ -95,7 +113,7 @@ struct FileImportRealBoundaryTests {
     do {
       try await backend.prepare(
         selection: ParakeetModelSelection(
-          model: .v3, revision: nil, directory: Fixture.installDirectory, cacheOnly: true,
+          model: model, revision: nil, directory: Fixture.installDirectory(model), cacheOnly: true,
           displayBytes: ParakeetModel.v3ShippedBytes, repairable: false, generation: 1),
         progressCallback: nil)
       transcript = try await backend.transcribe(audioSamples: samples, options: .default).text

@@ -13,6 +13,51 @@ import EnviousWisprCore
 @Suite("ModelDeliveryHome — engine mutation gate refusal", .tags(.productOutcome))
 struct ModelDeliveryHomeTests {
 
+  /// A bundle holding only the named manifests (and nothing else).
+  private static func bundle(with resources: [String]) throws -> Bundle {
+    let dir = URL(fileURLWithPath: NSTemporaryDirectory())
+      .appendingPathComponent("ew-3546-bundle-\(UUID().uuidString)", isDirectory: true)
+    try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+    let source = try manifestBundle()
+    for name in resources {
+      let url = try #require(source.url(forResource: name, withExtension: "json"))
+      try FileManager.default.copyItem(at: url, to: dir.appendingPathComponent("\(name).json"))
+    }
+    return try #require(Bundle(url: dir))
+  }
+
+  @Test(
+    "the Ultra target needs the shipped manifest; v3 acceptance needs the retired one",
+    arguments: [
+      (["parakeet-delivery-manifest", "parakeet-v3-retired-manifest"], true, true),
+      (["parakeet-delivery-manifest"], true, false),
+      (["parakeet-v3-retired-manifest"], false, false),
+    ])
+  func upgradeTargetFollowsTheBundledManifests(
+    resources: [String], expectTarget: Bool, expectV3Acceptance: Bool
+  ) throws {
+    let home = ModelDeliveryHome(
+      engineMutationScope: .live(
+        tryBegin: { true }, end: { true }, wake: {}, onRefused: { _ in }),
+      manifestBundle: try Self.bundle(with: resources),
+      appSupportOverride: try Self.tempAppSupport())
+    let coordinator = home.installParakeetUpgrade(
+      parakeetSelection: ParakeetSelectionProvider(), isOnboardingComplete: { true })
+    #expect(coordinator.hasUpgradeTarget == expectTarget)
+    #expect((home.parakeetRetiredV3Handle != nil) == expectV3Acceptance)
+    if expectTarget {
+      let handle = try #require(home.parakeetHandle)
+      #expect(handle.progressOwnership == .scoped, "background work must not own progress")
+      #expect(handle.installDirectory.lastPathComponent == "parakeet-ultra")
+    } else {
+      // The retired manifest is never substituted for the shipped one.
+      #expect(home.parakeetHandle == nil)
+    }
+    if let v3 = home.parakeetRetiredV3Handle {
+      #expect(v3.installDirectory.lastPathComponent == "parakeet-tdt-0.6b-v3")
+    }
+  }
+
   @Test("the upgrade coordinator's usability changes reach the companion observers")
   func upgradeUsabilityReachesCompanions() async throws {
     let home = ModelDeliveryHome(
@@ -26,7 +71,7 @@ struct ModelDeliveryHomeTests {
       parakeetSelection: ParakeetSelectionProvider(), isOnboardingComplete: { true })
     coordinator.onUsabilityMayHaveChanged?()
     #expect(invited == 1)
-    #expect(coordinator.hasUpgradeTarget == false, "production configures no target yet")
+    #expect(coordinator.hasUpgradeTarget, "the shipped Ultra manifest configures the target")
   }
 
   @Test(
@@ -331,15 +376,21 @@ struct ModelDeliveryHomeTests {
   }
 
   /// #3546: the Parakeet load request takes its revision and byte total from
-  /// the bundled manifest through the handle, and the no-manifest fallback size
-  /// must be the same shipped total, so a missing manifest never changes the
-  /// "N MB of 483 MB" text. Literal 483,256,769 is the independent oracle.
+  /// the bundled manifest through the handle. The shipped manifest is Ultra
+  /// (632,314,500 bytes); the no-manifest fallback loads v3 through the vendor,
+  /// so its size is the retired v3 manifest's total. Literals are the
+  /// independent oracles.
   @Test("the Parakeet request facts match the bundled manifest")
   func parakeetRequestFactsMatchTheBundledManifest() throws {
     let manifest = try DeliveryManifest.loadBundled(
       resource: "parakeet-delivery-manifest", bundle: Self.manifestBundle())
-    #expect(manifest.totalBytes == 483_256_769)
-    #expect(ParakeetModel.v3ShippedBytes == manifest.totalBytes)
+    #expect(manifest.identity.name == "parakeet-ultra-coreml")
+    #expect(manifest.totalBytes == 632_314_500)
+    let retired = try DeliveryManifest.loadBundled(
+      resource: "parakeet-v3-retired-manifest", bundle: Self.manifestBundle())
+    #expect(retired.identity.name == "parakeet-tdt-0.6b-v3-coreml")
+    #expect(retired.totalBytes == 483_256_769)
+    #expect(ParakeetModel.v3ShippedBytes == retired.totalBytes)
     let home = ModelDeliveryHome(
       engineMutationScope: .live(
         tryBegin: { true }, end: { true }, wake: {}, onRefused: { _ in }),
@@ -354,7 +405,8 @@ struct ModelDeliveryHomeTests {
     (manifest: DeliveryManifest, directory: URL, admission: CacheAdmission, marker: Data) {
     let manifest = try DeliveryManifest.loadBundled(resource: "parakeet-delivery-manifest", bundle: Self.manifestBundle())
     let metadata = try #require(home.whisperKitRegistration).metadataDirectory
-    let directory = ParakeetInstallLocation.directory(dataDirectory: metadata.deletingLastPathComponent())
+    let directory = ParakeetInstallLocation.directory(
+      for: .ultra, dataDirectory: metadata.deletingLastPathComponent())
     let admission = CacheAdmission(manifest: manifest, installDirectory: directory, metadataDirectory: metadata)
     // Sparse fixture files match stamps without allocating the real model's bytes.
     var stamps: [CacheAdmission.AdmissionMarker.FileStamp] = []

@@ -3160,10 +3160,30 @@ SPDX-License-Identifier: Unicode-3.0
 Speech recognition model (downloaded at runtime, NOT bundled in this DMG)
 --------------------------------------------------------------------------------
 
-EnviousWispr downloads the Parakeet TDT speech model (CoreML) from Hugging
-Face on first use; it is not distributed inside this disk image. The model
-is provided under CC-BY-4.0 (https://creativecommons.org/licenses/by/4.0/).
-Source: https://huggingface.co/FluidInference/parakeet-tdt-0.6b-v3-coreml
+Parakeet Ultra (CoreML)
+  Version: Hugging Face revision 95eaa59a (FluidInference/parakeet-ultra-coreml)
+  License: CC-BY-4.0 (https://creativecommons.org/licenses/by/4.0/)
+  Source:  https://huggingface.co/FluidInference/parakeet-ultra-coreml
+
+EnviousWispr downloads this speech model on first use, or in the background
+for existing users; it is not distributed inside this disk image. The files
+are served from models.enviouswispr.com, with the Hugging Face revision above
+as a backup source. Attribution:
+  - Base model: nvidia/parakeet-tdt-0.6b-v3 by NVIDIA, CC-BY-4.0
+    (https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3)
+  - Post-training: moondream/parakeet-ultra by moondream, CC-BY-4.0
+    (https://huggingface.co/moondream/parakeet-ultra)
+  - Core ML conversion: FluidInference/parakeet-ultra-coreml by FluidInference,
+    CC-BY-4.0 (https://huggingface.co/FluidInference/parakeet-ultra-coreml)
+Envious Labs did not modify the model. To fit our download cache, the encoder
+weights file is transferred in two pieces that the app joins back together;
+the installed file is byte-identical to the publisher's file and is checked
+against its published SHA-256 before use.
+
+Earlier versions used Parakeet TDT 0.6B v3 (CoreML), CC-BY-4.0, from
+https://huggingface.co/FluidInference/parakeet-tdt-0.6b-v3-coreml (base model
+nvidia/parakeet-tdt-0.6b-v3 by NVIDIA). An existing copy keeps working until
+Parakeet Ultra is ready, and is then removed.
 
 --------------------------------------------------------------------------------
 S1-mini by Superwhisper (polish model, downloaded at runtime from Envious Labs)
