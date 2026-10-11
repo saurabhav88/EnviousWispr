@@ -179,7 +179,9 @@ public final class ASRManager: ASRManagerInterface {
   private var offlineModeAdmittedValue: Bool?
   private var offlineModeAdmissionCount = 0
 
-  private func admitOfflineMode(cacheOnly: Bool) throws {
+  /// `internal`, not `private`, only so a test can hold a conflicting mode
+  /// (#3546: a refused attempt must spend no Ultra load attempt).
+  func admitOfflineMode(cacheOnly: Bool) throws {
     if let admitted = offlineModeAdmittedValue {
       guard admitted == cacheOnly else {
         throw ParakeetOfflineModeConflictError()
@@ -191,7 +193,7 @@ public final class ASRManager: ASRManagerInterface {
     offlineModeAdmissionCount = 1
   }
 
-  private func releaseOfflineModeAdmission() {
+  func releaseOfflineModeAdmission() {
     guard offlineModeAdmissionCount > 0 else { return }
     offlineModeAdmissionCount -= 1
     if offlineModeAdmissionCount == 0 {
@@ -451,21 +453,23 @@ public final class ASRManager: ASRManagerInterface {
       guard let selection = parakeetSelection.current else {
         throw ParakeetModelDirectoryUnsetError()
       }
-      // #3546: one call per PHYSICAL load (joined callers never get here),
-      // before the vendor loader: the upgrade policy counts an Ultra attempt
-      // here, so a crash inside the loader still leaves the attempt spent. An
-      // Ultra request with nothing to count it fails closed.
+      // #1908: process-global offline-mode exclusion — see the property docs
+      // above. Refuses a conflicting-mode attempt BEFORE `prepare()` ever
+      // reaches FluidAudio's shared static; a same-mode attempt proceeds.
+      try admitOfflineMode(cacheOnly: selection.cacheOnly)
+      defer { releaseOfflineModeAdmission() }
+      // #3546: one count per PHYSICAL load (joined callers never get here),
+      // after admission and immediately before the vendor boundary, so a
+      // refused attempt spends nothing and a crash inside the loader still
+      // leaves the attempt spent. A persistence failure releases admission
+      // through the defer and enters no vendor code. An Ultra request with
+      // nothing to count it fails closed.
       if let beforePhysicalLoad = parakeetSelection.beforePhysicalLoad {
         try beforePhysicalLoad(selection)
       } else if selection.model != .v3 {
         throw ParakeetLoadAccountingUnavailableError()
       }
       loadedSelection = selection
-      // #1908: process-global offline-mode exclusion — see the property docs
-      // above. Refuses a conflicting-mode attempt BEFORE `prepare()` ever
-      // reaches FluidAudio's shared static; a same-mode attempt proceeds.
-      try admitOfflineMode(cacheOnly: selection.cacheOnly)
-      defer { releaseOfflineModeAdmission() }
       try await parakeet.prepare(selection: selection, progressCallback: progress)
     } else {
       try await candidate.prepare(progressCallback: progress)

@@ -44,7 +44,13 @@ package final class ParakeetUpgradeCoordinator {
   /// delivery awaits exactly as it did when the adapter ran them inline; later
   /// callers wait for its result.
   private var preparing = false
-  private var waiters: [CheckedContinuation<PreparedLoad, any Error>] = []
+  private var waiters: [UUID: CheckedContinuation<PreparedLoad, any Error>] = [:]
+
+  /// Test seams (internal): awaited at the start of every delivery stage, and
+  /// told when a caller parks behind a running one, so tests can hold a
+  /// preparation open and act inside that window without timing guesses.
+  var deliveryStageGateForTesting: (@MainActor () async -> Void)?
+  var onWaiterParkedForTesting: (@MainActor () -> Void)?
 
   package init(parakeetSelection: ParakeetSelectionProvider, delivery: ParakeetDeliveryHandle?) {
     self.parakeetSelection = parakeetSelection
@@ -72,29 +78,70 @@ package final class ParakeetUpgradeCoordinator {
   /// Runs the delivery stage and publishes the request the next physical load
   /// reads. Joins an in-flight preparation instead of starting a second.
   package func prepareLoad() async throws -> PreparedLoad {
-    if preparing {
+    while true {
+      try Task.checkCancellation()
+
+      if preparing {
+        do {
+          let prepared = try await waitForPreparation()
+          // A selection point marked while that preparation ran is not
+          // settled by it: prepare again before returning.
+          if hasPendingSelectionPoint { continue }
+          return prepared
+        } catch is CancellationError where !Task.isCancelled {
+          // The caller that ran the stage was cancelled; this caller was not,
+          // so it runs the stage itself rather than inherit someone else's
+          // cancel.
+          continue
+        }
+      }
+
+      preparing = true
+      let marked = selectionPointsMarked
+      let result: Result<PreparedLoad, any Error>
       do {
-        return try await withCheckedThrowingContinuation { waiters.append($0) }
-      } catch is CancellationError where !Task.isCancelled {
-        // The caller that ran the stage was cancelled; this caller was not, so
-        // it runs the stage itself rather than inherit someone else's cancel.
-        return try await prepareLoad()
+        let prepared = try await runDeliveryStage()
+        try Task.checkCancellation()
+        selectionPointsConsumed = marked
+        result = .success(prepared)
+      } catch {
+        result = .failure(error)
+      }
+
+      preparing = false
+      let joined = waiters
+      waiters = [:]
+      for waiter in joined.values {
+        waiter.resume(with: result)
+      }
+
+      let prepared = try result.get()
+      if hasPendingSelectionPoint { continue }
+      return prepared
+    }
+  }
+
+  /// Parks behind the running preparation. Cancelling THIS caller removes
+  /// only its own wait and never cancels the runner.
+  private func waitForPreparation() async throws -> PreparedLoad {
+    let id = UUID()
+    return try await withTaskCancellationHandler {
+      try Task.checkCancellation()
+      let prepared: PreparedLoad = try await withCheckedThrowingContinuation { continuation in
+        if Task.isCancelled {
+          continuation.resume(throwing: CancellationError())
+        } else {
+          waiters[id] = continuation
+          onWaiterParkedForTesting?()
+        }
+      }
+      try Task.checkCancellation()
+      return prepared
+    } onCancel: {
+      Task { @MainActor [weak self] in
+        self?.waiters.removeValue(forKey: id)?.resume(throwing: CancellationError())
       }
     }
-    preparing = true
-    let marked = selectionPointsMarked
-    let result: Result<PreparedLoad, any Error>
-    do {
-      result = .success(try await runDeliveryStage())
-      selectionPointsConsumed = marked
-    } catch {
-      result = .failure(error)
-    }
-    preparing = false
-    let joined = waiters
-    waiters = []
-    for waiter in joined { waiter.resume(with: result) }
-    return try result.get()
   }
 
   /// The one-shot load-miss repair for a prepared load (#1348 grounded r1
@@ -115,6 +162,7 @@ package final class ParakeetUpgradeCoordinator {
   }
 
   private func runDeliveryStage() async throws -> PreparedLoad {
+    if let deliveryStageGateForTesting { await deliveryStageGateForTesting() }
     // #1348 Phase 2: delivery stage BEFORE any load. The host admits a
     // verified cache (fetch/validate/repair as needed); the service then
     // loads cache-only and can never download. Flag off (or no handle) =

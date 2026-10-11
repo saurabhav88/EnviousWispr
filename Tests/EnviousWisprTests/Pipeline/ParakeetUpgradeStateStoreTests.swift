@@ -127,4 +127,40 @@ struct ParakeetUpgradeStateStoreTests {
     }
     #expect(try String(contentsOf: target, encoding: .utf8) == "1")
   }
+
+  @Test("an attempts file that cannot be read is unreadable, never a fresh budget")
+  func unreadableAttemptsBlock() throws {
+    let directory = try makeDirectory()
+    let file = directory.appendingPathComponent("parakeet-upgrade-attempts-\(Self.key)")
+    try Data("1".utf8).write(to: file)
+    try FileManager.default.setAttributes([.posixPermissions: 0o000], ofItemAtPath: file.path)
+    defer {
+      try? FileManager.default.setAttributes(
+        [.posixPermissions: 0o644], ofItemAtPath: file.path)
+    }
+    let store = ParakeetUpgradeStateStore(metadataDirectory: directory, targetCacheKey: Self.key)
+    #expect(store.read() == .unreadable(reason: "attempts:unreadable"))
+  }
+
+  @Test("a state directory that cannot be looked into is unreadable, never a fresh budget")
+  func failedLookupBlocks() throws {
+    let directory = try makeDirectory()
+    try FileManager.default.setAttributes([.posixPermissions: 0o000], ofItemAtPath: directory.path)
+    defer {
+      try? FileManager.default.setAttributes(
+        [.posixPermissions: 0o755], ofItemAtPath: directory.path)
+    }
+    let store = ParakeetUpgradeStateStore(metadataDirectory: directory, targetCacheKey: Self.key)
+    #expect(store.read() == .unreadable(reason: "attempts:lookup_\(EACCES)"))
+  }
+
+  @Test("a dangling link where a state file belongs is unreadable")
+  func danglingLinkIsUnreadable() throws {
+    let directory = try makeDirectory()
+    try FileManager.default.createSymbolicLink(
+      at: directory.appendingPathComponent("parakeet-upgrade-exhausted-\(Self.key)"),
+      withDestinationURL: directory.appendingPathComponent("missing"))
+    let store = ParakeetUpgradeStateStore(metadataDirectory: directory, targetCacheKey: Self.key)
+    #expect(store.read() == .unreadable(reason: "exhausted:not_a_file"))
+  }
 }

@@ -85,19 +85,29 @@ package struct ParakeetUpgradeStateStore: Sendable {
       guard LegacyRetirement.isContained(url, within: metadataDirectory) else {
         return .unreadable(reason: "\(field.rawValue):outside_metadata")
       }
-      var isDirectory: ObjCBool = false
-      guard FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory) else {
-        continue
+      // Absent is the only "no state"; a lookup that FAILS is unreadable, never
+      // a fresh budget, and a flag must be a regular file (not a directory or
+      // a link of any kind).
+      var info = stat()
+      if lstat(url.path, &info) != 0 {
+        let code = errno
+        if code == ENOENT { continue }
+        return .unreadable(reason: "\(field.rawValue):lookup_\(code)")
       }
-      guard !isDirectory.boolValue else {
+      guard (info.st_mode & mode_t(S_IFMT)) == mode_t(S_IFREG) else {
         return .unreadable(reason: "\(field.rawValue):not_a_file")
       }
       switch field {
       case .attempts:
-        guard let data = FileManager.default.contents(atPath: url.path),
-          let text = String(data: data, encoding: .utf8),
-          let count = Int(text.trimmingCharacters(in: .whitespacesAndNewlines)), count >= 0
-        else { return .unreadable(reason: "attempts:corrupt") }
+        guard let data = FileManager.default.contents(atPath: url.path) else {
+          return .unreadable(reason: "attempts:unreadable")
+        }
+        guard let text = String(data: data, encoding: .utf8),
+          let count = Int(text.trimmingCharacters(in: .whitespacesAndNewlines)),
+          count >= 0
+        else {
+          return .unreadable(reason: "attempts:corrupt")
+        }
         state.attempts = count
       case .refetchSpent: state.refetchSpent = true
       case .exhausted: state.exhausted = true

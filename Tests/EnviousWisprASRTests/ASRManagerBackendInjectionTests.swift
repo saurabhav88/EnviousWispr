@@ -101,6 +101,28 @@ struct ASRManagerBackendInjectionTests {
     #expect(manager.isModelLoaded == false)
   }
 
+  /// #3546: offline-mode admission comes FIRST. A load refused for a conflicting
+  /// mode never reaches the vendor, so it must not spend an Ultra attempt.
+  @Test("a load refused for a conflicting offline mode is not counted")
+  func conflictingModeRefusalSpendsNoAttempt() async throws {
+    let selection = ParakeetSelectionProvider()
+    let manager = ASRManager(
+      engineMutationScope: .alwaysAllowedForTesting, parakeetSelection: selection,
+      parakeetBackendFactory: { ParakeetBackend() })
+    var counted = 0
+    selection.beforePhysicalLoad = { _ in counted += 1 }
+    selection.select(
+      model: .ultra, revision: nil,
+      directory: URL(fileURLWithPath: "/nonexistent/parakeet-ultra"), cacheOnly: true,
+      displayBytes: 1, repairable: false)
+    try manager.admitOfflineMode(cacheOnly: false)  // another load holds the other mode
+    await #expect(throws: ParakeetOfflineModeConflictError.self) {
+      try await manager.loadModel()
+    }
+    manager.releaseOfflineModeAdmission()
+    #expect(counted == 0)
+  }
+
   /// `clear()` removes the request but never rewinds the generation.
   @Test("the provider stamps increasing generations and clear keeps counting")
   func providerGenerationsIncrease() {
