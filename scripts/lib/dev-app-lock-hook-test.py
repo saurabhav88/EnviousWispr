@@ -51,6 +51,9 @@ class HookTests(unittest.TestCase):
     def test_executed_routes_and_wrappers(self):
         for command in [
                 'bash /tmp/build-dev-app.sh',
+                'source /tmp/build-dev-app.sh',
+                '. /tmp/build-dev-app.sh',
+                'python3.12 /tmp/Tests/RuntimeUAT/uat.py run',
                 'env FOO=x python3 -B /tmp/Tests/RuntimeUAT/uat.py run',
                 'command open "/tmp/build/EnviousWispr Local.app"',
                 'open -a "EnviousWispr Local"',
@@ -89,7 +92,8 @@ class HookTests(unittest.TestCase):
         launch = 'open "EnviousWispr Local.app"'
         for command in [f'{release}; {launch}', f'{launch} && {release}',
                         f'{release} & {launch}', f'bash -c \'{release}; {launch}\'',
-                        f'echo "$({release})"; {launch}']:
+                        f'echo "$({release})"; {launch}',
+                        f'python3 -X utf8 {self.hook.LOCK_TOOL} release; {launch}']:
             with self.subTest(command=command):
                 self.assertTrue(self.denied(command))
         self.assertFalse(self.denied(release))
