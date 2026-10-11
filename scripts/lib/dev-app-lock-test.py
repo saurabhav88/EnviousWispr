@@ -116,9 +116,13 @@ def blocked_dir(tmp):
     return path
 
 
-def run_tool(tool, *args):
+def run_tool(tool, *args, env=None):
     """Run the copy directly from this test (no bash session ancestor)."""
-    p = subprocess.run([sys.executable, tool, *args], capture_output=True, text=True)
+    # A simulated founder has no native Codex context. The codex fixture opts in.
+    clean = {k: v for k, v in os.environ.items()
+             if k not in ("CODEX_THREAD_ID", "CODEX_SESSION_ID")}
+    p = subprocess.run([sys.executable, tool, *args], capture_output=True, text=True,
+                       env=clean if env is None else dict(clean, **env))
     return p.returncode, p.stdout + p.stderr
 
 
@@ -421,7 +425,8 @@ def main():
                 ('LOCK_DIR = os.path.expanduser("~/Library/Caches/EnviousWispr/dev-app-lock")',
                  f"LOCK_DIR = {n_lock!r}"),
                 ('PS = "/bin/ps"', f"PS = {name_ps!r}")])
-            rc, out = run_tool(n_tool, "claim", "--label", "n")
+            rc, out = run_tool(n_tool, "claim", "--label", "n",
+                               env={"CODEX_THREAD_ID": "fixture-codex"} if want == "codex" else None)
             if want == "undecided":
                 ok = rc == 2 and "without a session process" in out
             elif want:
