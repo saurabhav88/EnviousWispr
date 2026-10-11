@@ -165,7 +165,9 @@ public final class ParakeetDeliveryHandle {
     _ operation: () async -> ModelDeliveryController.DeliveryOutcome
   ) async -> ModelDeliveryController.DeliveryOutcome {
     await progressObservation?.value
-    guard !Task.isCancelled else { return .cancelled(resumable: true) }
+    guard !Task.isCancelled else {
+      return .cancelled(resumable: await controller.hasStagedPartials(registration))
+    }
     owners.acquire()
     let outcome = await operation()
     if progressOwnership == .scoped {
@@ -198,8 +200,12 @@ public final class ParakeetDeliveryHandle {
   }
 
   public func ensureAvailable() async -> ModelDeliveryController.DeliveryOutcome {
-    await controller.ensureModelAvailable(registration)
+    await controller.ensureModelAvailable(registration, onFetchDecision: onFetchDecisionForTesting)
   }
+
+  /// Test seam (internal): told whether each `ensureAvailable()` started an
+  /// attempt or joined a running one.
+  var onFetchDecisionForTesting: (@Sendable (ModelDeliveryController.FetchDecision) -> Void)?
 
   /// The install directory, once it is safe to read and once anything the user
   /// already has on disk has been brought into it (#2697).

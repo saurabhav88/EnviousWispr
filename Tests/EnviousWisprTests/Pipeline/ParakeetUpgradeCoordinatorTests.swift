@@ -1663,8 +1663,10 @@ struct ParakeetUpgradePolicyTests {
     }
     let cancel = Task { try await rig.coordinator.cancelBackgroundUpgrade() }
     await declined.wait()
+    let waiting = CleanupEnded()
+    rig.coordinator.onResumeWaitingForTesting = { waiting.fire() }
     let resume = Task { try await rig.coordinator.resumeBackgroundUpgrade() }
-    await Task.yield()
+    await waiting.wait()
     #expect(outcomes.contains(.resumed) == false, "Resume is held behind the drain")
     #expect(Self.state(rig)?.declined == true)
     gate.open()
@@ -1680,16 +1682,24 @@ struct ParakeetUpgradePolicyTests {
     let (rig, gate) = try await Self.heldBackgroundFetch()
     var outcomes: [ParakeetUpgradeCoordinator.Outcome] = []
     let declined = OutcomeSignal(.declined)
+    let secondDeclined = CleanupEnded()
+    var declineCount = 0
     rig.coordinator.onOutcome = {
       outcomes.append($0)
       declined.observe($0)
+      if $0 == .declined {
+        declineCount += 1
+        if declineCount == 2 { secondDeclined.fire() }
+      }
     }
     let first = Task { try await rig.coordinator.cancelBackgroundUpgrade() }
     await declined.wait()
+    let waiting = CleanupEnded()
+    rig.coordinator.onResumeWaitingForTesting = { waiting.fire() }
     let resume = Task { try await rig.coordinator.resumeBackgroundUpgrade() }
-    await Task.yield()
+    await waiting.wait()
     let second = Task { try await rig.coordinator.cancelBackgroundUpgrade() }
-    await Task.yield()
+    await secondDeclined.wait()
     gate.open()
     try await first.value
     await #expect(throws: CancellationError.self) { try await resume.value }
@@ -1707,7 +1717,10 @@ struct ParakeetUpgradePolicyTests {
     rig.coordinator.onOutcome = { declined.observe($0) }
     let cancel = Task { try await rig.coordinator.cancelBackgroundUpgrade() }
     await declined.wait()
+    let waiting = CleanupEnded()
+    rig.coordinator.onResumeWaitingForTesting = { waiting.fire() }
     let resume = Task { try await rig.coordinator.resumeBackgroundUpgrade() }
+    await waiting.wait()
     resume.cancel()
     gate.open()
     try await cancel.value
@@ -1716,22 +1729,50 @@ struct ParakeetUpgradePolicyTests {
     await rig.controller.setBeforeExistingCacheValidationForTesting(nil)
   }
 
-  @Test("E12: background Cancel also cancels a foreground caller sharing the attempt")
+  @Test("E12 cancels a foreground continuation sharing the background attempt")
   func cancelReachesForegroundJoiner() async throws {
     let (rig, gate) = try await Self.heldBackgroundFetch()
-    let joiner = Task { await rig.ultra.ensureAvailableInForeground() }
-    await Task.yield()
+    let prepared = ParakeetUpgradeCoordinator.PreparedLoad(
+      selection: rig.selection.current, isSelectionLoad: true)
+    let joined = CleanupEnded()
+    rig.ultra.onFetchDecisionForTesting = { decision in
+      guard decision == .joined else { return }
+      Task { @MainActor in joined.fire() }
+    }
+    let moved = CleanupEnded()
+    await rig.controller.setAfterMovedToDrainingForTesting {
+      Task { @MainActor in moved.fire() }
+    }
+    // E19 on the v3 load: the coordinator's own foreground Ultra fetch (row C)
+    // joins the held background attempt.
+    let foreground = Task {
+      await rig.coordinator.handleLoadFailure(prepared, error: VendorLoadFailed())
+    }
+    await joined.wait()
     let cancel = Task { try await rig.coordinator.cancelBackgroundUpgrade() }
-    await Task.yield()
+    await moved.wait()
     gate.open()
     try await cancel.value
-    let outcome = await joiner.value
-    guard case .cancelled = outcome else {
-      Issue.record("the joined foreground caller was not cancelled: \(outcome)")
-      return
-    }
+    #expect(await foreground.value == .fail)
     #expect(Self.state(rig)?.declined == true)
+    #expect(await rig.controller.isAdmitted(rig.ultraRegistration) == false)
+    rig.ultra.onFetchDecisionForTesting = nil
+    await rig.controller.setAfterMovedToDrainingForTesting(nil)
     await rig.controller.setBeforeExistingCacheValidationForTesting(nil)
+  }
+
+  @Test("a foreground operation cancelled before it starts reports staged bytes truthfully")
+  func cancelledBeforeAcquiringReportsStaging() async throws {
+    let rig = try await Self.rig(v3: false, ultra: false)
+    let fresh = Task { await rig.ultra.ensureAvailableInForeground() }
+    fresh.cancel()
+    #expect(await fresh.value == .cancelled(resumable: false), "nothing staged")
+    let staging = ModelDeliveryController.stagingDirectoryURL(for: rig.ultraRegistration)
+    try FileManager.default.createDirectory(at: staging, withIntermediateDirectories: true)
+    try Data("part".utf8).write(to: staging.appendingPathComponent("part"))
+    let staged = Task { await rig.ultra.ensureAvailableInForeground() }
+    staged.cancel()
+    #expect(await staged.value == .cancelled(resumable: true), "a non-empty staged file")
   }
 
   @Test("progress: two foreground joiners see nothing after the first load starts")

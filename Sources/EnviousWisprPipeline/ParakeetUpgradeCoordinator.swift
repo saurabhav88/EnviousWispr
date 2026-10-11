@@ -177,6 +177,8 @@ package final class ParakeetUpgradeCoordinator {
   /// Awaited after each admission read in `isParakeetUsable()`, so a test can
   /// change the facts inside that await.
   var usabilityReadGateForTesting: (@MainActor () async -> Void)?
+  /// Told when Resume starts waiting for a Cancel's drain.
+  var onResumeWaitingForTesting: (@MainActor () -> Void)?
 
   /// `isOnboardingComplete` gates background work only (E22 starts it later);
   /// it defaults closed.
@@ -922,7 +924,10 @@ extension ParakeetUpgradeCoordinator {
     guard let target else { return }
     backgroundCommandGeneration &+= 1
     let command = backgroundCommandGeneration
-    if let cancelDrain { await cancelDrain.value }
+    if let cancelDrain {
+      onResumeWaitingForTesting?()
+      await cancelDrain.value
+    }
     try Task.checkCancellation()
     guard command == backgroundCommandGeneration else { throw CancellationError() }
     try target.store.writeDeclined(false)
