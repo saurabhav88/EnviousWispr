@@ -129,6 +129,8 @@ extension InverseTextNormalizer {
   static func absorbRecognizerMarks(in text: String, markForms: String, breakForms: String)
     -> String
   {
+    // The one/two-mark bound and following closer/whitespace boundary also reject ellipses.
+    // #3615 row 2 therefore does not bind this check alone; #3635 tests the quantifier instead.
     let notMark = #"[.,;:!?…]"#
     // R1: one mark, or the same mark twice, directly after a letter or digit, then optional closers,
     // whitespace and a MARK command.
