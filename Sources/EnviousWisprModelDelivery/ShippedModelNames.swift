@@ -24,26 +24,25 @@ import Foundation
 /// freeze test. Making it a lookup consulted at runtime would turn it into a
 /// second source of truth that could drift from the manifests themselves.
 enum ShippedModelNames {
-  /// Currently shipped. Must stay in step with the bundled manifests; a test
-  /// asserts every bundled identity appears here.
+  /// Currently offered for delivery. Must stay in step with the bundled
+  /// delivery manifests; a test asserts every bundled identity appears here or,
+  /// for a validation-only manifest, in `retired`.
   static let current: [ModelFamily: Set<String>] = [
     .editJudge: ["xenc-mmbert-small"],
     .egOne: ["eg-1"],
     .egOneChecker: ["eg1c"],
-    // #3546: Ultra is the shipped model; v3 stays bundled as the retired
-    // manifest that accepts an existing install, so both names are current.
-    .parakeet: ["parakeet-tdt-0.6b-v3-coreml", "parakeet-ultra-coreml"],
+    .parakeet: ["parakeet-ultra-coreml"],
     .s1Mini: ["s1-mini"],
     .s1MiniChecker: ["s1c"],
     .whisperKit: ["whisperkit-coreml"],
     .wordCheck: ["kev-wc"],
   ]
 
-  /// Names shipped by an earlier build and no longer bundled. Empty today —
-  /// no model name has ever been retired. It is declared anyway so that
-  /// retiring one has an obvious home, rather than the name simply vanishing
-  /// from `current` and taking its guard with it.
-  static let retired: [ModelFamily: Set<String>] = [:]
+  /// Historical models no longer offered for delivery. Their validation-only
+  /// manifests may remain bundled for migration and acceptance.
+  static let retired: [ModelFamily: Set<String>] = [
+    .parakeet: ["parakeet-tdt-0.6b-v3-coreml"],
+  ]
 
   /// The union, which is what the prefix-safety guard must reason over.
   static func everShipped(in family: ModelFamily) -> Set<String> {

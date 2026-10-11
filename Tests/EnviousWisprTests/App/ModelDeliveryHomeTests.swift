@@ -1,6 +1,6 @@
+import EnviousWisprCore
 import Foundation
 import Testing
-import EnviousWisprCore
 
 @testable import EnviousWisprASR
 @testable import EnviousWisprAppKit
@@ -58,6 +58,72 @@ struct ModelDeliveryHomeTests {
     }
   }
 
+  /// Waits for a task construction started, with a deadline so a task that
+  /// never ends fails loudly instead of hanging the lane.
+  private static func awaitBounded<T: Sendable>(
+    _ task: Task<T, Never>?, sourceLocation: SourceLocation = #_sourceLocation
+  ) async throws -> T {
+    let task = try #require(task, sourceLocation: sourceLocation)
+    return try await withThrowingTaskGroup(of: T?.self) { group in
+      group.addTask { await task.value }
+      group.addTask {
+        // deadline-fallback: fail loudly instead of hanging.
+        try await Task.sleep(for: .seconds(30))
+        return nil
+      }
+      defer { group.cancelAll() }
+      guard let first = try await group.next(), let value = first else {
+        Issue.record("construction's task never finished", sourceLocation: sourceLocation)
+        throw CancellationError()
+      }
+      return value
+    }
+  }
+
+  @Test("construction migrates an existing v3 donor copy into our v3 directory")
+  func launchMigratesTheRetiredV3Donor() async throws {
+    let fixture = try ParakeetHomeFixture.make()
+    let donor = ParakeetInstallLocation.legacySharedDonor(appSupport: fixture.appSupport)
+    try ParakeetHomeFixture.writeBytes(into: donor)
+    let home = ModelDeliveryHome(
+      engineMutationScope: .live(
+        tryBegin: { true }, end: { true }, wake: {}, onRefused: { _ in }),
+      manifestBundle: fixture.bundle, appSupportOverride: fixture.root,
+      retiredV3Progress: .init(write: { _, _, _ in }, clear: {}))
+    _ = try await Self.awaitBounded(home.retiredV3LaunchMigrationForTesting)
+    let owned = ParakeetInstallLocation.directory(for: .v3, dataDirectory: fixture.dataDirectory)
+    for file in ManifestFixture.smallFiles {
+      #expect(try Data(contentsOf: owned.appendingPathComponent(file.path)) == file.content)
+      #expect(
+        try Data(contentsOf: donor.appendingPathComponent(file.path)) == file.content,
+        "the donor is read only")
+    }
+  }
+
+  @Test("an upgrade from admitted v3 is not a first run", arguments: [false, true])
+  func upgradeUsersAreNotFirstRun(admittedV3: Bool) async throws {
+    let fixture = try ParakeetHomeFixture.make()
+    if admittedV3 {
+      let seedController = ModelDeliveryController(
+        defaults: TestDefaults.suite("test.home-seed.\(UUID().uuidString)")!,
+        availableDiskBytes: { _ in .max })
+      let registration = DeliveryRegistration(
+        manifest: fixture.retired,
+        installDirectory: ParakeetInstallLocation.directory(
+          for: .v3, dataDirectory: fixture.dataDirectory),
+        metadataDirectory: fixture.dataDirectory.appendingPathComponent("ModelDelivery"))
+      try ParakeetHomeFixture.writeBytes(into: registration.installDirectory)
+      #expect(await seedController.admitIfComplete(registration))
+    }
+    let home = ModelDeliveryHome(
+      engineMutationScope: .live(
+        tryBegin: { true }, end: { true }, wake: {}, onRefused: { _ in }),
+      manifestBundle: fixture.bundle, appSupportOverride: fixture.root,
+      retiredV3Progress: .init(write: { _, _, _ in }, clear: {}))
+    try await Self.awaitBounded(home.parakeetObserverSetupForTesting)
+    #expect(home.firstRunForTesting(fixture.ultra.identity) == !admittedV3)
+  }
+
   @Test("the upgrade coordinator's usability changes reach the companion observers")
   func upgradeUsabilityReachesCompanions() async throws {
     let home = ModelDeliveryHome(
@@ -109,11 +175,13 @@ struct ModelDeliveryHomeTests {
     let prefix = engine.hostPathPrefix
     // #3271: the literal is the oracle; the constant is what the gate reads.
     #expect(ModelDeliveryHome.ownedModelHost == "models.enviouswispr.com")
-    #expect(ModelDeliveryHome.checkerHostIsConfigured(
-      try hosted("https://models.enviouswispr.com\(prefix)checker/next/"), engine: engine))
+    #expect(
+      ModelDeliveryHome.checkerHostIsConfigured(
+        try hosted("https://models.enviouswispr.com\(prefix)checker/next/"), engine: engine))
     for refused in [
       "https://models.enviouswispr.com/edit-judge/x/", "http://models.enviouswispr.com\(prefix)x/",
-      "https://models.enviouswispr.com.evil.test\(prefix)x/", "https://adapter-host-pending.invalid\(prefix)",
+      "https://models.enviouswispr.com.evil.test\(prefix)x/",
+      "https://adapter-host-pending.invalid\(prefix)",
       // The pre-#3271 host: installed older builds still use it, new builds must not.
       "https://models.enviouslabs.co\(prefix)x/",
     ] {
@@ -121,32 +189,40 @@ struct ModelDeliveryHomeTests {
         ModelDeliveryHome.checkerHostIsConfigured(try hosted(refused), engine: engine) == false,
         "\(refused)")
     }
-    #expect(ModelDeliveryHome.checkerHostIsConfigured(
-      try hosted("https://models.enviouswispr.com\(prefix)x/", id: "backup"), engine: engine) == false)
+    #expect(
+      ModelDeliveryHome.checkerHostIsConfigured(
+        try hosted("https://models.enviouswispr.com\(prefix)x/", id: "backup"), engine: engine)
+        == false)
 
     let root = URL(fileURLWithPath: #filePath)
       .deletingLastPathComponent().deletingLastPathComponent()
       .deletingLastPathComponent().deletingLastPathComponent()
     let baseName = engine == .egOne ? "eg1-delivery-manifest" : "s1-delivery-manifest"
-    let baseManifest = try DeliveryManifest.load(from: Data(contentsOf: root.appendingPathComponent(
-      "Sources/EnviousWispr/Resources/\(baseName).json")))
+    let baseManifest = try DeliveryManifest.load(
+      from: Data(
+        contentsOf: root.appendingPathComponent(
+          "Sources/EnviousWispr/Resources/\(baseName).json")))
     let base = DeliveryRegistration(
       manifest: baseManifest,
       installDirectory: checker.installDirectory.deletingLastPathComponent()
         .appendingPathComponent("base"),
       metadataDirectory: checker.metadataDirectory)
     let prompt = try #require(checker.manifest.checkerContract?.base.promptTemplateID)
-    #expect(await home.ensureCheckerAdapter(
-      engine: engine, baseRegistration: base, promptTemplateID: prompt) == .baseNotAdmitted)
-    #expect(await home.admittedCompatibleCheckerURL(
-      engine: engine, baseRegistration: base, promptTemplateID: prompt) == nil)
+    #expect(
+      await home.ensureCheckerAdapter(
+        engine: engine, baseRegistration: base, promptTemplateID: prompt) == .baseNotAdmitted)
+    #expect(
+      await home.admittedCompatibleCheckerURL(
+        engine: engine, baseRegistration: base, promptTemplateID: prompt) == nil)
     #expect(FileManager.default.fileExists(atPath: checker.installDirectory.path) == false)
     #expect(await home.removeCheckerAdapter(engine) == .removed, "nothing on disk removes cleanly")
   }
 
   /// The family's delivery switch gates every mutation, deletion included, as
   /// `EGOneDeliveryAdapter.remove` does for the base (cloud review of #3227).
-  @Test("a switched-off checker family refuses removal and leaves its bytes", arguments: LearnedWordCheckerEngine.allCases)
+  @Test(
+    "a switched-off checker family refuses removal and leaves its bytes",
+    arguments: LearnedWordCheckerEngine.allCases)
   func checkerRemovalHonoursTheDeliverySwitch(engine: LearnedWordCheckerEngine) async throws {
     let suite = try #require(TestDefaults.suite("ew-3105-checker-switch-\(UUID().uuidString)"))
     suite.set(false, forKey: "modelDelivery.\(engine.checkerFamily.rawValue).enabled")
@@ -157,7 +233,8 @@ struct ModelDeliveryHomeTests {
       appSupportOverride: try Self.tempAppSupport(),
       deliveryFlagDefaults: suite)
     let checker = try #require(home.checkerRegistrations[engine])
-    try FileManager.default.createDirectory(at: checker.installDirectory, withIntermediateDirectories: true)
+    try FileManager.default.createDirectory(
+      at: checker.installDirectory, withIntermediateDirectories: true)
     let adapter = checker.installDirectory.appendingPathComponent(
       try #require(checker.manifest.checkerContract?.adapterFileName))
     try Data("adapter".utf8).write(to: adapter)
@@ -165,10 +242,13 @@ struct ModelDeliveryHomeTests {
     #expect(
       await home.removeCheckerAdapter(engine)
         == .failed(DeliveryFailure(reason: .unknown, detail: "delivery_disabled")))
-    #expect(FileManager.default.fileExists(atPath: adapter.path), "switched off, nothing is deleted")
+    #expect(
+      FileManager.default.fileExists(atPath: adapter.path), "switched off, nothing is deleted")
     suite.set(true, forKey: "modelDelivery.\(engine.checkerFamily.rawValue).enabled")
     #expect(await home.removeCheckerAdapter(engine) == .removed)
-    #expect(FileManager.default.fileExists(atPath: adapter.path) == false, "switched on, removal proceeds")
+    #expect(
+      FileManager.default.fileExists(atPath: adapter.path) == false, "switched on, removal proceeds"
+    )
   }
 
   /// Production's trust root is the signed app's own `Bundle.main` (contract
@@ -401,36 +481,46 @@ struct ModelDeliveryHomeTests {
     #expect(handle.modelRevision == manifest.identity.revision)
   }
 
-  static func writeFastAdmissionFixture(home: ModelDeliveryHome) throws ->
-    (manifest: DeliveryManifest, directory: URL, admission: CacheAdmission, marker: Data) {
-    let manifest = try DeliveryManifest.loadBundled(resource: "parakeet-delivery-manifest", bundle: Self.manifestBundle())
+  static func writeFastAdmissionFixture(home: ModelDeliveryHome) throws -> (
+    manifest: DeliveryManifest, directory: URL, admission: CacheAdmission, marker: Data
+  ) {
+    let manifest = try DeliveryManifest.loadBundled(
+      resource: "parakeet-delivery-manifest", bundle: Self.manifestBundle())
     let metadata = try #require(home.whisperKitRegistration).metadataDirectory
     let directory = ParakeetInstallLocation.directory(
       for: .ultra, dataDirectory: metadata.deletingLastPathComponent())
-    let admission = CacheAdmission(manifest: manifest, installDirectory: directory, metadataDirectory: metadata)
+    let admission = CacheAdmission(
+      manifest: manifest, installDirectory: directory, metadataDirectory: metadata)
     // Sparse fixture files match stamps without allocating the real model's bytes.
     var stamps: [CacheAdmission.AdmissionMarker.FileStamp] = []
     for file in manifest.files {
       let url = directory.appendingPathComponent(file.resolvedInstallPath)
-      try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+      try FileManager.default.createDirectory(
+        at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
       try #require(FileManager.default.createFile(atPath: url.path, contents: Data()))
       let handle = try FileHandle(forWritingTo: url)
-      try handle.truncate(atOffset: UInt64(file.sizeBytes)); try handle.close()
+      try handle.truncate(atOffset: UInt64(file.sizeBytes))
+      try handle.close()
       let attrs = try FileManager.default.attributesOfItem(atPath: url.path)
       let mtime = try #require(attrs[.modificationDate] as? Date).timeIntervalSince1970
       stamps.append(.init(path: file.resolvedInstallPath, sizeBytes: file.sizeBytes, mtime: mtime))
     }
     try FileManager.default.createDirectory(at: metadata, withIntermediateDirectories: true)
-    let marker = try JSONEncoder().encode(CacheAdmission.AdmissionMarker(
-      manifestDigest: manifest.manifestDigest, admittedAt: Date(), files: stamps))
+    let marker = try JSONEncoder().encode(
+      CacheAdmission.AdmissionMarker(
+        manifestDigest: manifest.manifestDigest, admittedAt: Date(), files: stamps))
     try marker.write(to: admission.markerURL)
     return (manifest, directory, admission, marker)
   }
 
   static func fastRenderFixture() throws -> (home: ModelDeliveryHome, directory: URL) {
-    let home = ModelDeliveryHome(engineMutationScope: .live(
-      tryBegin: { Issue.record("render attempted engine mutation"); return false },
-      end: { false }, wake: {}, onRefused: { _ in }),
+    let home = ModelDeliveryHome(
+      engineMutationScope: .live(
+        tryBegin: {
+          Issue.record("render attempted engine mutation")
+          return false
+        },
+        end: { false }, wake: {}, onRefused: { _ in }),
       manifestBundle: try manifestBundle(), appSupportOverride: try tempAppSupport())
     let fixture = try writeFastAdmissionFixture(home: home)
     return (home, fixture.directory)
@@ -440,17 +530,23 @@ struct ModelDeliveryHomeTests {
   func freshSettingsAdmission() async throws {
     final class Box { var claims = 0 }
     let box = Box()
-    let home = ModelDeliveryHome(engineMutationScope: .live(
-      tryBegin: { box.claims += 1; return false }, end: { false }, wake: {}, onRefused: { _ in }),
+    let home = ModelDeliveryHome(
+      engineMutationScope: .live(
+        tryBegin: {
+          box.claims += 1
+          return false
+        }, end: { false }, wake: {}, onRefused: { _ in }),
       manifestBundle: try Self.manifestBundle(), appSupportOverride: try Self.tempAppSupport())
     #expect(await home.currentParakeetAdmission() == false)
     let (manifest, directory, admission, marker) = try Self.writeFastAdmissionFixture(home: home)
     #expect(await home.currentParakeetAdmission())
-    try FileManager.default.removeItem(at: directory.appendingPathComponent(try #require(manifest.files.first).resolvedInstallPath))
+    try FileManager.default.removeItem(
+      at: directory.appendingPathComponent(try #require(manifest.files.first).resolvedInstallPath))
     #expect(await home.currentParakeetAdmission() == false)
     #expect(try Data(contentsOf: admission.markerURL) == marker, "a read changed the marker")
     #expect(box.claims == 0, "a read attempted an engine mutation")
-    #expect(await home.controller.state(of: manifest.identity) == .notReady, "a read started delivery")
+    #expect(
+      await home.controller.state(of: manifest.identity) == .notReady, "a read started delivery")
   }
 
   // MARK: - #2123: removal frees the disk, which means releasing first
@@ -1029,5 +1125,57 @@ struct ModelDeliveryHomeTests {
     #expect(
       home.parakeetStateUpdatesForTests == parakeetBaseline,
       "a preview state reached Parakeet's mirror, so the identity filter is wrong")
+  }
+}
+
+/// #3546: a fixture bundle holding tiny Ultra and retired-v3 Parakeet manifests
+/// (the shared `ManifestFixture` files), under a throwaway root, so Home's
+/// construction can be observed without the real 483 MB v3 bytes.
+private enum ParakeetHomeFixture {
+  struct Made {
+    let root: URL
+    let appSupport: URL
+    let dataDirectory: URL
+    let bundle: Bundle
+    let ultra: DeliveryManifest
+    let retired: DeliveryManifest
+  }
+
+  static func make() throws -> Made {
+    let root = FileManager.default.temporaryDirectory
+      .appendingPathComponent("ew-home-upgrade-\(UUID().uuidString)")
+    try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+    let appSupport = root.appendingPathComponent("AppSupport", isDirectory: true)
+    // The same resolver Home runs over the same override.
+    let storage = StorageRoot.resolve(
+      systemApplicationSupport: appSupport,
+      home: root.appendingPathComponent("Home", isDirectory: true))
+    let bundleURL = root.appendingPathComponent("Fixture.bundle")
+    try FileManager.default.createDirectory(at: bundleURL, withIntermediateDirectories: true)
+
+    func write(_ resource: String, name: String) throws -> DeliveryManifest {
+      let data = try ManifestFixture.manifestJSON(files: ManifestFixture.smallFiles) {
+        var identity = $0["identity"] as! [String: Any]
+        identity["name"] = name
+        $0["identity"] = identity
+      }
+      try data.write(to: bundleURL.appendingPathComponent(resource + ".json"))
+      return try DeliveryManifest.load(from: data)
+    }
+
+    let ultra = try write("parakeet-delivery-manifest", name: "parakeet-ultra-coreml")
+    let retired = try write("parakeet-v3-retired-manifest", name: "parakeet-tdt-0.6b-v3-coreml")
+    return Made(
+      root: root, appSupport: appSupport, dataDirectory: storage.dataDirectory,
+      bundle: try #require(Bundle(url: bundleURL)), ultra: ultra, retired: retired)
+  }
+
+  static func writeBytes(into directory: URL) throws {
+    for file in ManifestFixture.smallFiles {
+      let url = directory.appendingPathComponent(file.path)
+      try FileManager.default.createDirectory(
+        at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+      try file.content.write(to: url)
+    }
   }
 }

@@ -30,6 +30,15 @@ final class ModelDeliveryHome {
   private var parakeetRetiredV3Registration: DeliveryRegistration?
   /// #3546: the Ultra target the upgrade coordinator is built with.
   private var parakeetUpgradeTarget: ParakeetUpgradeCoordinator.UpgradeTarget?
+  /// #3546 test observations (internal): the launch donor migration's task and
+  /// the Parakeet observer setup, so a test can wait for what construction
+  /// started without starting either itself. Production never reads them.
+  private(set) var retiredV3LaunchMigrationForTesting: Task<URL?, Never>?
+  private(set) var parakeetObserverSetupForTesting: Task<Void, Never>?
+
+  func firstRunForTesting(_ identity: ModelIdentity) -> Bool? {
+    firstRunByIdentity[identity]
+  }
   /// #3546: the Parakeet selection-policy owner, built here because this home
   /// owns the Parakeet registration and handle (plan §3b, the
   /// `WhisperKitLegacyUpgradeCoordinator` precedent). Set once by
@@ -318,7 +327,8 @@ final class ModelDeliveryHome {
   ///   store on a developer's machine.
   init(
     engineMutationScope: EngineMutationScope, manifestBundle: Bundle,
-    appSupportOverride: URL? = nil, deliveryFlagDefaults: UserDefaults? = nil
+    appSupportOverride: URL? = nil, deliveryFlagDefaults: UserDefaults? = nil,
+    retiredV3Progress: ParakeetDeliveryHandle.ProgressSink = .shared
   ) {
     self.engineMutationScope = engineMutationScope
     self.checkerDeliveryDefaults = deliveryFlagDefaults
@@ -422,7 +432,8 @@ final class ModelDeliveryHome {
         legacyDonorDirectory: storage.systemApplicationSupport.map {
           ParakeetInstallLocation.legacySharedDonor(appSupport: $0)
         },
-        manifestBundle: manifestBundle, deliveryFlagDefaults: deliveryFlagDefaults)
+        manifestBundle: manifestBundle, deliveryFlagDefaults: deliveryFlagDefaults,
+        progress: retiredV3Progress)
       wireObservers(identity: identity)
     } catch {
       Task {
@@ -852,7 +863,8 @@ final class ModelDeliveryHome {
   /// either never substitutes one identity for the other.
   private func installRetiredV3(
     dataDirectory: URL, metadataDirectory: URL, legacyDonorDirectory: URL?,
-    manifestBundle: Bundle, deliveryFlagDefaults: UserDefaults?
+    manifestBundle: Bundle, deliveryFlagDefaults: UserDefaults?,
+    progress: ParakeetDeliveryHandle.ProgressSink
   ) {
     do {
       let manifest = try DeliveryManifest.loadBundled(
@@ -880,7 +892,8 @@ final class ModelDeliveryHome {
       // Acceptance never fetches, so it never owns download progress; its
       // validation and migration ticks are the foreground's (selection points).
       let handle = ParakeetDeliveryHandle(
-        controller: controller, registration: registration, defaults: deliveryFlagDefaults)
+        controller: controller, registration: registration, defaults: deliveryFlagDefaults,
+        progressOwnership: .always, progress: progress)
       parakeetRetiredV3Handle = handle
       // #2697: START THE MIGRATION AT LAUNCH, not at the first dictation.
       //
@@ -910,7 +923,9 @@ final class ModelDeliveryHome {
       // which is the outcome we want. Enumerated rather than assumed:
       // `/usr/bin/grep -rn "ensureModelLocationReady" Sources/` returns three
       // call sites, and this is the only one with nothing to refuse.
-      Task { _ = await handle.ensureModelLocationReady() }
+      // (#3546: the task is kept only so a test can wait for the migration
+      // construction started; nothing in production reads it or its result.)
+      retiredV3LaunchMigrationForTesting = Task { await handle.ensureModelLocationReady() }
     } catch {
       Task {
         await AppLogger.shared.log(
@@ -925,7 +940,7 @@ final class ModelDeliveryHome {
     let registration = parakeetRegistration
     let retiredV3 = parakeetRetiredV3Registration
     let sequencer = DeliveryStateSequencer()
-    Task {
+    parakeetObserverSetupForTesting = Task {
       if let registration {
         // #3546: a user upgrading from an admitted v3 is not on a first run.
         var admitted = await controller.isAdmitted(registration)

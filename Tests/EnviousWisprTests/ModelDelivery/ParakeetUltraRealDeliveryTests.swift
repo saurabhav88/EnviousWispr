@@ -100,7 +100,11 @@ struct ParakeetUltraRealDeliveryTests {
     #expect(
       seen.contains { if case .attemptCompleted(_, _, 1, "our_copy", _) = $0 { true } else { false } },
       "events: \(seen)")
-    #expect(!seen.contains { if case .sourceFailover = $0 { true } else { false } })
+    #expect(
+      seen.contains {
+        if case .sourceFailover = $0 { return true }
+        return false
+      } == false)
     #expect(await controller.isAdmitted(registration))
 
     // The installed encoder is the publisher's whole file, and no transport

@@ -55,10 +55,14 @@ import Testing
       let identity = manifest.identity
       // Checks `current`, deliberately, not `everShipped`: a still-bundled
       // name wrongly moved to `retired` would pass the looser check while the
-      // registry claimed we no longer ship it.
+      // registry claimed we no longer ship it. #3546: the one validation-only
+      // manifest (the retired v3 Parakeet) is checked against `retired`.
+      let registry =
+        resource == "parakeet-v3-retired-manifest"
+        ? ShippedModelNames.retired : ShippedModelNames.current
       #expect(
-        ShippedModelNames.current[identity.family]?.contains(identity.name) == true,
-        "\(resource) ships \(identity.family.rawValue)/\(identity.name), which is not in current")
+        registry[identity.family]?.contains(identity.name) == true,
+        "\(resource) is absent from its delivery/retired registry")
     }
   }
 
