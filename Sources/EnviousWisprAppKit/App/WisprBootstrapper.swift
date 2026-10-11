@@ -358,7 +358,12 @@ package final class WisprBootstrapper {
     // #3546: the one Parakeet selection-policy owner, sharing the request
     // provider `asrManager` was built with above.
     let parakeetUpgrade = modelDelivery.installParakeetUpgrade(
-      parakeetSelection: parakeetSelection)
+      parakeetSelection: parakeetSelection,
+      isOnboardingComplete: { [weak settings] in settings?.onboardingState == .completed })
+    // Usability counts a ready serving Parakeet model, not just its request.
+    parakeetUpgrade.servingReadiness = { [asrManager] in
+      asrManager.activeBackendType == .parakeet && asrManager.isModelLoaded
+    }
 
     // #1707 Phase 2: `whisperKitBackend` is hoisted here (only these two
     // lines — NOT the full `whisperKitKernelDriver`, which still needs
@@ -1140,6 +1145,8 @@ package final class WisprBootstrapper {
         }
         // #996 phase D: the judge downloads after first-run setup, never during it.
         learnFromEdits?.onboardingDidComplete()
+        // #3546 E22: a held background Parakeet upgrade starts now.
+        parakeetUpgrade.onboardingDidComplete()
       }
       // #1480: tips on/off, input-device change, and onboarding completion each
       // re-evaluate the Bluetooth card (dismiss/suppress, route re-check, or first

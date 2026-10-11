@@ -255,6 +255,51 @@ struct ParakeetUpgradePolicyTests {
     }
   }
 
+  /// Records what a handle writes to its progress channel, instead of the
+  /// shared file the dev app and other suites use.
+  final class ProgressRecorder: @unchecked Sendable {
+    private let lock = NSLock()
+    private var events: [String] = []
+    private var firstWrite: [CheckedContinuation<Void, Never>] = []
+
+    var sink: ParakeetDeliveryHandle.ProgressSink {
+      .init(
+        write: { [self] _, phase, _ in record("write:\(phase)") },
+        clear: { [self] in record("clear") })
+    }
+
+    var recorded: [String] { lock.withLock { events } }
+
+    private func record(_ event: String) {
+      let waiting = lock.withLock {
+        events.append(event)
+        let waiting = firstWrite
+        firstWrite = []
+        return waiting
+      }
+      for continuation in waiting { continuation.resume() }
+    }
+
+    /// Returns once anything has been recorded (the foreground fetch is live).
+    func waitForAny() async {
+      await withCheckedContinuation { continuation in
+        let ready = lock.withLock {
+          if events.isEmpty {
+            firstWrite.append(continuation)
+            return false
+          }
+          return true
+        }
+        if ready { continuation.resume() }
+      }
+    }
+  }
+
+  final class Flag: @unchecked Sendable {
+    var value: Bool
+    init(_ value: Bool) { self.value = value }
+  }
+
   struct Rig {
     let root: URL
     let models: URL
@@ -271,6 +316,8 @@ struct ParakeetUpgradePolicyTests {
     /// The Ultra fixture's download source; unique per rig, so a test counts
     /// only its own requests.
     let ultraBase: URL
+    let ultraProgress: ProgressRecorder
+    let onboarding: Flag
     var coordinator: ParakeetUpgradeCoordinator
     var outcomes: [ParakeetUpgradeCoordinator.Outcome] = []
   }
@@ -315,7 +362,8 @@ struct ParakeetUpgradePolicyTests {
   /// A rig with the owned v3 and Ultra installs present (and admitted) or not.
   static func rig(
     v3: Bool, ultra: Bool, enabled: Bool = true, state: ParakeetUpgradeState? = nil,
-    v3Donor: Bool = false, ultraLocationRefused: Bool = false
+    v3Donor: Bool = false, ultraLocationRefused: Bool = false, onboarding: Bool = false,
+    diskBytes: Int64 = .max
   ) async throws -> Rig {
     let tag = UUID().uuidString
     DeliveryStubProtocol.beginScope(pathPrefix: "/\(tag)/")
@@ -342,7 +390,7 @@ struct ParakeetUpgradePolicyTests {
     let defaults = TestDefaults.suite(suite)!
     defaults.set(enabled, forKey: DeliveryFlags.key("enabled", family: .parakeet))
     let controller = ModelDeliveryController(
-      defaults: TestDefaults.suite(suite)!, availableDiskBytes: { _ in .max })
+      defaults: TestDefaults.suite(suite)!, availableDiskBytes: { _ in diskBytes })
     if v3 {
       try install(v3Files, into: v3Registration.installDirectory)
       #expect(await controller.admitIfComplete(v3Registration))
@@ -365,9 +413,13 @@ struct ParakeetUpgradePolicyTests {
       })
     if let state { try store.write(state) }
     let v3Handle = ParakeetDeliveryHandle(
-      controller: controller, registration: v3Registration, defaults: defaults)
+      controller: controller, registration: v3Registration, defaults: defaults,
+      progressOwnership: .always, progress: ProgressRecorder().sink)
+    let ultraProgress = ProgressRecorder()
     let ultraHandle = ParakeetDeliveryHandle(
-      controller: controller, registration: ultraRegistration, defaults: defaults)
+      controller: controller, registration: ultraRegistration, defaults: defaults,
+      progressOwnership: .scoped, progress: ultraProgress.sink)
+    let onboardingFlag = Flag(onboarding)
     let selection = ParakeetSelectionProvider()
     var rig = Rig(
       root: root, models: models, metadata: metadata, controller: controller,
@@ -375,9 +427,11 @@ struct ParakeetUpgradePolicyTests {
       ultra: ultraHandle, store: store, selection: selection, defaults: defaults,
       writes: writes,
       ultraBase: URL(string: "https://upgrade.invalid.example/\(tag)/ultra-fixture/")!,
+      ultraProgress: ultraProgress, onboarding: onboardingFlag,
       coordinator: ParakeetUpgradeCoordinator(
         parakeetSelection: selection, delivery: v3Handle,
-        target: .init(delivery: ultraHandle, store: store, ownedModelsRoot: models)))
+        target: .init(delivery: ultraHandle, store: store, ownedModelsRoot: models),
+        isOnboardingComplete: { onboardingFlag.value }))
     rig.coordinator.markSelectionPoint()
     return rig
   }
@@ -388,14 +442,16 @@ struct ParakeetUpgradePolicyTests {
     let selection = ParakeetSelectionProvider()
     next.coordinator = ParakeetUpgradeCoordinator(
       parakeetSelection: selection, delivery: rig.v3,
-      target: .init(delivery: rig.ultra, store: rig.store, ownedModelsRoot: rig.models))
+      target: .init(delivery: rig.ultra, store: rig.store, ownedModelsRoot: rig.models),
+      isOnboardingComplete: { [onboarding = rig.onboarding] in onboarding.value })
     next.coordinator.markSelectionPoint()
     return Rig(
       root: next.root, models: next.models, metadata: next.metadata,
       controller: next.controller, v3Registration: next.v3Registration,
       ultraRegistration: next.ultraRegistration, v3: next.v3, ultra: next.ultra,
       store: next.store, selection: selection, defaults: next.defaults, writes: next.writes,
-      ultraBase: next.ultraBase, coordinator: next.coordinator)
+      ultraBase: next.ultraBase, ultraProgress: next.ultraProgress, onboarding: next.onboarding,
+      coordinator: next.coordinator)
   }
 
   /// The vendor boundary, as `ASRManager.performLoad` reaches it: the count
@@ -1223,20 +1279,356 @@ struct ParakeetUpgradePolicyTests {
     }
     #expect(rig.selection.current == nil)
   }
+  // MARK: 7b-2: background fetch, Cancel/Resume, progress ownership, usability
+
+  /// Serves the first Ultra file's headers and part of its body, then holds the
+  /// request open until it is cancelled.
+  static func enqueueHangingUltra(_ rig: Rig) {
+    let f = ultraFiles[0]
+    DeliveryStubProtocol.enqueue(
+      url: rig.ultraBase.appendingPathComponent(f.path).absoluteString,
+      .init(
+        status: 200, headers: ["Content-Length": String(f.content.count), "ETag": "\"u\""],
+        body: f.content.prefix(2), hangAfterBody: true))
+  }
+
+  @Test("B: the background fetch starts after v3 is published and never changes the choice")
+  func rowBBackgroundAdmitsWithoutSwitching() async throws {
+    var rig = try await Self.rig(v3: true, ultra: false, onboarding: true)
+    Self.enqueueUltra(rig)
+    let admitted = OutcomeSignal(.backgroundAdmitted)
+    rig.coordinator.onOutcome = { admitted.observe($0) }
+    let prepared = try await rig.coordinator.prepareLoad()
+    #expect(prepared.selection?.model == .v3)
+    let published = try #require(rig.selection.current)
+    await admitted.wait()
+    #expect(await rig.controller.isAdmitted(rig.ultraRegistration))
+    #expect(rig.selection.current == published, "admission mid-session is recorded only")
+    let frozen = try await rig.coordinator.prepareLoad()
+    #expect(frozen.selection?.model == .v3)
+    #expect(rig.ultraProgress.recorded.isEmpty, "background work never touches progress")
+    rig = Self.relaunch(rig)
+    let next = try await rig.coordinator.prepareLoad()
+    #expect(next.selection?.model == .ultra, "the next selection point activates it (row A)")
+  }
+
+  @Test("E22: a row-B launch before onboarding holds the fetch until onboarding completes")
+  func onboardingHoldsThenStarts() async throws {
+    let rig = try await Self.rig(v3: true, ultra: false, onboarding: false)
+    Self.enqueueUltra(rig)
+    let admitted = OutcomeSignal(.backgroundAdmitted)
+    rig.coordinator.onOutcome = { admitted.observe($0) }
+    _ = try await rig.coordinator.prepareLoad()
+    #expect(rig.coordinator.hasBackgroundFetchForTesting == false, "held for onboarding")
+    rig.onboarding.value = true
+    rig.coordinator.onboardingDidComplete()
+    await admitted.wait()
+    #expect(await rig.controller.isAdmitted(rig.ultraRegistration))
+  }
+
+  enum Ineligible: String, CaseIterable, Sendable { case declined, deliveryOff, noSelection }
+
+  @Test(
+    "no background fetch when declined, delivery is off, or nothing chose row B",
+    arguments: Ineligible.allCases)
+  func backgroundIneligible(_ reason: Ineligible) async throws {
+    let rig = try await Self.rig(
+      v3: true, ultra: false, enabled: reason != .deliveryOff,
+      state: reason == .declined
+        ? .init(attempts: 0, refetchSpent: false, exhausted: false, declined: true) : nil,
+      onboarding: true)
+    var started = false
+    rig.coordinator.onOutcome = { if $0 == .backgroundStarted { started = true } }
+    if reason == .noSelection {
+      // A WhisperKit-only launch: no Parakeet selection was ever settled.
+      rig.coordinator.onboardingDidComplete()
+    } else {
+      let prepared = try await rig.coordinator.prepareLoad()
+      #expect(prepared.selection?.model == .v3)
+      rig.coordinator.onboardingDidComplete()
+    }
+    #expect(rig.coordinator.hasBackgroundFetchForTesting == false)
+    #expect(rig.coordinator.backgroundUpgrade == .idle)
+    #expect(started == false)
+    #expect(Self.ultraRequests(rig) == 0)
+  }
+
+  @Test("E3: insufficient disk defers silently; v3 keeps serving")
+  func insufficientDiskDefers() async throws {
+    let rig = try await Self.rig(v3: true, ultra: false, onboarding: true, diskBytes: 1)
+    let deferred = OutcomeSignal(.deferredDisk)
+    rig.coordinator.onOutcome = { deferred.observe($0) }
+    _ = try await rig.coordinator.prepareLoad()
+    await deferred.wait()
+    #expect(rig.coordinator.backgroundUpgrade == .deferredDisk)
+    #expect(rig.selection.current?.model == .v3)
+    #expect(Self.state(rig)?.declined == false)
+  }
+
+  @Test("E3: another fetch failure is recorded and v3 keeps serving")
+  func backgroundFailureRecorded() async throws {
+    let rig = try await Self.rig(v3: true, ultra: false, onboarding: true)
+    let failed = OutcomeSignal("backgroundFetchFailed") {
+      if case .backgroundFetchFailed = $0 { return true }
+      return false
+    }
+    rig.coordinator.onOutcome = { failed.observe($0) }
+    // Both sources answer 404 for the first file: the fetch fails at once.
+    let first = Self.ultraFiles[0].path
+    for base in [
+      rig.ultraBase,
+      rig.ultraBase.deletingLastPathComponent().appendingPathComponent("ultra-fixture-b/"),
+    ] {
+      DeliveryStubProtocol.enqueue(
+        url: base.appendingPathComponent(first).absoluteString,
+        .init(status: 404, headers: [:], body: Data()))
+    }
+    _ = try await rig.coordinator.prepareLoad()
+    await failed.wait()
+    #expect(rig.coordinator.backgroundUpgrade == .failed)
+    #expect(rig.selection.current?.model == .v3)
+  }
+
+  @Test("E12: Cancel persists the decline, then stops the download")
+  func cancelPersistsThenStops() async throws {
+    let rig = try await Self.rig(
+      v3: true, ultra: false,
+      state: .init(attempts: 1, refetchSpent: false, exhausted: false, declined: false),
+      onboarding: true)
+    Self.enqueueHangingUltra(rig)
+    var outcomes: [ParakeetUpgradeCoordinator.Outcome] = []
+    let started = OutcomeSignal(.backgroundStarted)
+    rig.coordinator.onOutcome = {
+      outcomes.append($0)
+      started.observe($0)
+    }
+    _ = try await rig.coordinator.prepareLoad()
+    await started.wait()
+    try await rig.coordinator.cancelBackgroundUpgrade()
+    #expect(
+      Self.state(rig) == .init(attempts: 1, refetchSpent: false, exhausted: false, declined: true),
+      "only the decline field changed")
+    #expect(rig.coordinator.backgroundUpgrade == .declined)
+    #expect(outcomes.contains(.declined))
+    #expect(outcomes.contains(.backgroundAdmitted) == false)
+    #expect(await rig.controller.isAdmitted(rig.ultraRegistration) == false)
+  }
+
+  @Test("E12: a decline that cannot be persisted still stops this process's background work")
+  func cancelWithoutPersistenceStillStops() async throws {
+    let rig = try await Self.rig(v3: true, ultra: false, onboarding: true)
+    Self.enqueueHangingUltra(rig)
+    var outcomes: [ParakeetUpgradeCoordinator.Outcome] = []
+    let started = OutcomeSignal(.backgroundStarted)
+    rig.coordinator.onOutcome = {
+      outcomes.append($0)
+      started.observe($0)
+    }
+    _ = try await rig.coordinator.prepareLoad()
+    await started.wait()
+    rig.writes.failing = true
+    await #expect(throws: ParakeetUpgradeStoreWriteError(field: "declined")) {
+      try await rig.coordinator.cancelBackgroundUpgrade()
+    }
+    rig.writes.failing = false
+    #expect(outcomes.contains(.storeUnavailable("declined")))
+    #expect(rig.coordinator.backgroundUpgrade == .declined)
+    rig.coordinator.onboardingDidComplete()
+    #expect(
+      rig.coordinator.hasBackgroundFetchForTesting == false, "no automatic restart until Resume")
+  }
+
+  @Test("E13: Resume clears only the decline and starts the fetch again")
+  func resumeClearsAndStarts() async throws {
+    let rig = try await Self.rig(
+      v3: true, ultra: false,
+      state: .init(attempts: 1, refetchSpent: true, exhausted: false, declined: true),
+      onboarding: true)
+    Self.enqueueUltra(rig)
+    let admitted = OutcomeSignal(.backgroundAdmitted)
+    var outcomes: [ParakeetUpgradeCoordinator.Outcome] = []
+    rig.coordinator.onOutcome = {
+      outcomes.append($0)
+      admitted.observe($0)
+    }
+    _ = try await rig.coordinator.prepareLoad()
+    #expect(rig.coordinator.hasBackgroundFetchForTesting == false, "declined")
+    try await rig.coordinator.resumeBackgroundUpgrade()
+    #expect(outcomes.contains(.resumed))
+    #expect(
+      Self.state(rig) == .init(attempts: 1, refetchSpent: true, exhausted: false, declined: false))
+    await admitted.wait()
+  }
+
+  @Test("E13: Resume that cannot write starts nothing")
+  func resumeWriteFailureStartsNothing() async throws {
+    let rig = try await Self.rig(
+      v3: true, ultra: false,
+      state: .init(attempts: 0, refetchSpent: false, exhausted: false, declined: true),
+      onboarding: true)
+    var outcomes: [ParakeetUpgradeCoordinator.Outcome] = []
+    rig.coordinator.onOutcome = { outcomes.append($0) }
+    _ = try await rig.coordinator.prepareLoad()
+    rig.writes.failing = true
+    await #expect(throws: ParakeetUpgradeStoreWriteError(field: "declined")) {
+      try await rig.coordinator.resumeBackgroundUpgrade()
+    }
+    rig.writes.failing = false
+    #expect(outcomes.contains(.resumed) == false)
+    #expect(rig.coordinator.hasBackgroundFetchForTesting == false)
+    #expect(Self.state(rig)?.declined == true)
+  }
+
+  @Test("E14: a later selection point does not stop a background fetch")
+  func selectionPointKeepsBackgroundFetch() async throws {
+    let rig = try await Self.rig(v3: true, ultra: false, onboarding: true)
+    Self.enqueueUltra(rig)
+    let admitted = OutcomeSignal(.backgroundAdmitted)
+    let started = OutcomeSignal(.backgroundStarted)
+    rig.coordinator.onOutcome = {
+      admitted.observe($0)
+      started.observe($0)
+    }
+    _ = try await rig.coordinator.prepareLoad()
+    await started.wait()
+    rig.coordinator.markSelectionPoint()
+    await admitted.wait()
+    #expect(await rig.controller.isAdmitted(rig.ultraRegistration))
+    #expect(await rig.controller.isAdmitted(rig.v3Registration), "nothing is deleted")
+  }
+
+  @Test("progress: a foreground Ultra fetch owns the channel and clears it before loading")
+  func foregroundFetchOwnsProgress() async throws {
+    let rig = try await Self.rig(v3: false, ultra: false)
+    Self.enqueueUltra(rig)
+    _ = try await rig.coordinator.prepareLoad()
+    let events = rig.ultraProgress.recorded
+    #expect(events.contains { $0.hasPrefix("write:") })
+    #expect(events.last == "clear", "the download boundary is cleared before the load")
+  }
+
+  @Test("foreground Cancel stops row C's fetch without a decline")
+  func foregroundCancelDuringRowC() async throws {
+    let rig = try await Self.rig(v3: false, ultra: false)
+    Self.enqueueHangingUltra(rig)
+    let task = Task { try await rig.coordinator.prepareLoad() }
+    await rig.ultraProgress.waitForAny()
+    await rig.coordinator.cancelActiveFetch()
+    await #expect(throws: CancellationError.self) { _ = try await task.value }
+    #expect(Self.state(rig)?.declined == false)
+    #expect(rig.selection.current == nil)
+  }
+
+  @Test("foreground Cancel with only background work in flight does nothing")
+  func foregroundCancelLeavesBackgroundAlone() async throws {
+    let rig = try await Self.rig(v3: true, ultra: false, onboarding: true)
+    Self.enqueueHangingUltra(rig)
+    let started = OutcomeSignal(.backgroundStarted)
+    rig.coordinator.onOutcome = { started.observe($0) }
+    _ = try await rig.coordinator.prepareLoad()
+    await started.wait()
+    await rig.coordinator.cancelActiveFetch()
+    guard case .downloading = rig.coordinator.backgroundUpgrade else {
+      Issue.record("the background download stopped")
+      return
+    }
+    #expect(Self.state(rig)?.declined == false)
+    try await rig.coordinator.cancelBackgroundUpgrade()  // release the held request
+  }
+
+  // MARK: Usability
+
+  @Test("usable: accepted v3, or admitted Ultra whose state still permits a load")
+  func usabilityTruthTable() async throws {
+    let v3Only = try await Self.rig(v3: true, ultra: false)
+    #expect(await v3Only.coordinator.isParakeetUsable())
+    let ultraFresh = try await Self.rig(v3: false, ultra: true)
+    #expect(await ultraFresh.coordinator.isParakeetUsable())
+    let ultraExhausted = try await Self.rig(
+      v3: false, ultra: true,
+      state: .init(attempts: 0, refetchSpent: true, exhausted: true, declined: false))
+    #expect(await ultraExhausted.coordinator.isParakeetUsable() == false, "retained, not usable")
+    let ultraSpent = try await Self.rig(
+      v3: false, ultra: true,
+      state: .init(attempts: 2, refetchSpent: false, exhausted: false, declined: false))
+    #expect(await ultraSpent.coordinator.isParakeetUsable() == false)
+    let nothing = try await Self.rig(v3: false, ultra: false)
+    #expect(await nothing.coordinator.isParakeetUsable() == false)
+  }
+
+  @Test("usable: a ready serving model counts, including the K vendor branch")
+  func usabilityCountsServing() async throws {
+    let rig = try await Self.rig(v3: false, ultra: false, enabled: false)
+    var ready = false
+    rig.coordinator.servingReadiness = { ready }
+    _ = try await rig.coordinator.prepareLoad()
+    #expect(Self.physicalLoad(rig) == .loaded)
+    #expect(await rig.coordinator.isParakeetUsable() == false, "a request alone proves nothing")
+    ready = true
+    #expect(await rig.coordinator.isParakeetUsable())
+  }
+
+  @Test("usable: v3 rejected by E19 no longer counts")
+  func usabilityAfterE19() async throws {
+    let rig = try await Self.rig(v3: true, ultra: false, enabled: false)
+    let v3Load = try await rig.coordinator.prepareLoad()
+    #expect(await rig.coordinator.isParakeetUsable())
+    #expect(await rig.coordinator.handleLoadFailure(v3Load, error: VendorLoadFailed()) == .reload)
+    #expect(await rig.coordinator.isParakeetUsable() == false)
+  }
+
+  @Test("companions are invited to re-read on fallback, rejection, exhaustion, Retry and Resume")
+  func usabilityNotifications() async throws {
+    let rig = try await Self.rig(v3: true, ultra: true)
+    var invitations = 0
+    rig.coordinator.onUsabilityMayHaveChanged = { invitations += 1 }
+    let prepared = try await rig.coordinator.prepareLoad()
+    #expect(Self.physicalLoad(rig, succeeds: false) == .loaded)
+    let before = invitations
+    #expect(await rig.coordinator.handleLoadFailure(prepared, error: VendorLoadFailed()) == .reload)
+    #expect(invitations > before, "A-fail fallback")
+    let exhausted = try await Self.rig(
+      v3: false, ultra: true,
+      state: .init(attempts: 2, refetchSpent: true, exhausted: false, declined: false))
+    var exhaustInvites = 0
+    exhausted.coordinator.onUsabilityMayHaveChanged = { exhaustInvites += 1 }
+    _ = try? await exhausted.coordinator.prepareLoad()
+    #expect(exhaustInvites > 0, "exhaustion")
+    let retried = exhaustInvites
+    try exhausted.coordinator.retry()
+    #expect(exhaustInvites > retried, "Retry")
+    let declined = try await Self.rig(
+      v3: true, ultra: false,
+      state: .init(attempts: 0, refetchSpent: false, exhausted: false, declined: true))
+    var resumeInvites = 0
+    declined.coordinator.onUsabilityMayHaveChanged = { resumeInvites += 1 }
+    try await declined.coordinator.resumeBackgroundUpgrade()
+    #expect(resumeInvites > 0, "Resume")
+  }
+
 }
 
 /// Waits for one coordinator outcome, fired by the subject. Deadline-bounded so
 /// a missing outcome fails loudly instead of hanging.
 @MainActor
 private final class OutcomeSignal {
-  private let want: ParakeetUpgradeCoordinator.Outcome
+  private let matches: (ParakeetUpgradeCoordinator.Outcome) -> Bool
+  private let want: String
   private var seen = false
   private var waiting: CheckedContinuation<Void, Never>?
 
-  init(_ want: ParakeetUpgradeCoordinator.Outcome) { self.want = want }
+  init(_ want: ParakeetUpgradeCoordinator.Outcome) {
+    self.matches = { $0 == want }
+    self.want = "\(want)"
+  }
+
+  init(_ label: String, matching: @escaping (ParakeetUpgradeCoordinator.Outcome) -> Bool) {
+    self.matches = matching
+    self.want = label
+  }
 
   func observe(_ outcome: ParakeetUpgradeCoordinator.Outcome) {
-    guard outcome == want else { return }
+    guard matches(outcome) else { return }
     seen = true
     waiting?.resume()
     waiting = nil

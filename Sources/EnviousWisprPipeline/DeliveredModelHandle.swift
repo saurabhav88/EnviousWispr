@@ -111,8 +111,8 @@ public final class DeliveredModelHandle {
 }
 
 /// MainActor-serialized "apply only if newer" gate for the sequenced state
-/// projection above.
-@MainActor private final class AppliedStateGate {
+/// projection above (and `ParakeetDeliveryHandle.observeState`, #3546).
+@MainActor final class AppliedStateGate {
   private var last: UInt64 = 0
 
   func admit(_ seq: UInt64) -> Bool {

@@ -38,7 +38,9 @@ package final class ParakeetUpgradeCoordinator {
   /// The upgrade a configured target enables (plan §3.4). Nil in production
   /// until the Ultra manifest ships; tests inject fixture registrations.
   package struct UpgradeTarget {
-    /// The Ultra registration's handle: admission, foreground fetch, repair.
+    /// The Ultra registration's handle: admission, foreground fetch, repair,
+    /// and the background fetch. Built with `.scoped` progress ownership, so
+    /// background work never writes the foreground warm-up's progress.
     package let delivery: ParakeetDeliveryHandle
     /// The target's persisted budget.
     package let store: ParakeetUpgradeStateStore
@@ -48,6 +50,9 @@ package final class ParakeetUpgradeCoordinator {
     package init(
       delivery: ParakeetDeliveryHandle, store: ParakeetUpgradeStateStore, ownedModelsRoot: URL
     ) {
+      precondition(
+        delivery.progressOwnership == .scoped,
+        "the upgrade target's handle must not own the foreground progress channel")
       self.delivery = delivery
       self.store = store
       self.ownedModelsRoot = ownedModelsRoot
@@ -76,6 +81,22 @@ package final class ParakeetUpgradeCoordinator {
     case removedTarget
     case storeUnavailable(String)
     case retryGranted
+    case backgroundStarted
+    case backgroundAdmitted
+    case deferredDisk
+    case backgroundFetchFailed(String)
+    case declined
+    case resumed
+  }
+
+  /// The background Ultra download, for Settings (chunk 8). Serving-model
+  /// readiness keeps its own channel; this never describes the model in use.
+  package enum BackgroundUpgradeState: Equatable, Sendable {
+    case idle
+    case downloading(fraction: Double)
+    case declined
+    case deferredDisk
+    case failed
   }
 
   /// Ultra loads per bounded cycle before the refetch / exhaustion rows (X).
@@ -101,6 +122,29 @@ package final class ParakeetUpgradeCoordinator {
   private var cleanupTasks: [ParakeetModel: (id: UUID, task: Task<Void, Never>)] = [:]
   /// Observed transitions.
   package var onOutcome: (@MainActor (Outcome) -> Void)?
+  /// Invites companion policies to re-read `isParakeetUsable()`; it never
+  /// grants usability itself.
+  package var onUsabilityMayHaveChanged: (@MainActor () -> Void)?
+  /// Whether the manager has a Parakeet model loaded right now. Set by the
+  /// bootstrapper; nil reads as not ready.
+  package var servingReadiness: (@MainActor () -> Bool)?
+  /// The last request a READY load published for the current selection.
+  private var servingRequest: ParakeetModelSelection?
+
+  package private(set) var backgroundUpgrade: BackgroundUpgradeState = .idle
+  package var onBackgroundUpgradeChanged: (@MainActor (BackgroundUpgradeState) -> Void)?
+  private let isOnboardingComplete: @MainActor () -> Bool
+  /// One background fetch at a time. The slot is reserved before any await;
+  /// only its own generation may clear it, report state or emit an outcome.
+  private var backgroundFetch: (generation: UInt64, task: Task<Void, Never>)?
+  private var backgroundGeneration: UInt64 = 0
+  /// A Cancel in this process stops automatic background work until Resume
+  /// succeeds, even when the decline could not be persisted.
+  private var backgroundSuppressed = false
+  /// Cancel's transport drain; Resume waits for it.
+  private var cancelDrain: Task<Void, Never>?
+  /// Foreground Ultra operations (row C fetch, repair) in flight.
+  private var foregroundFetches = 0
 
   /// Selection points recorded and consumed (#3546). A token, not a flag, so a
   /// second launch poke while the first preparation is still running is
@@ -124,14 +168,21 @@ package final class ParakeetUpgradeCoordinator {
   /// cancelled, so tests can wait for it without timing guesses.
   var onCleanupEndedForTesting: (@MainActor (ParakeetModel) -> Void)?
 
+  /// `isOnboardingComplete` gates background work only (E22 starts it later);
+  /// it defaults closed.
   package init(
     parakeetSelection: ParakeetSelectionProvider, delivery: ParakeetDeliveryHandle?,
-    target: UpgradeTarget? = nil
+    target: UpgradeTarget? = nil,
+    isOnboardingComplete: @escaping @MainActor () -> Bool = { false }
   ) {
     self.parakeetSelection = parakeetSelection
     self.delivery = delivery
     self.target = target
-    if target != nil {
+    self.isOnboardingComplete = isOnboardingComplete
+    if let target {
+      target.delivery.observeState { [weak self] state in
+        self?.targetStateChanged(state)
+      }
       parakeetSelection.beforePhysicalLoad = { [weak self] request in
         // No owner means no accounting: refuse rather than load uncounted.
         guard let self else { throw ParakeetLoadAccountingUnavailableError() }
@@ -288,8 +339,24 @@ package final class ParakeetUpgradeCoordinator {
   }
 
   /// #1388 step 3: the onboarding install Cancel's download half.
+  ///
+  /// With a target, only a FOREGROUND Ultra fetch (row C, a repair) is
+  /// cancelled, and never as a decline; nothing foreground in flight makes
+  /// this a no-op. A foreground caller that joined background work shares its
+  /// one controller attempt, so that attempt is cancelled too, and the
+  /// background observation is invalidated so no stale completion reports.
   package func cancelActiveFetch() async {
-    await delivery?.cancelActiveFetch()
+    guard let target else {
+      await delivery?.cancelActiveFetch()
+      return
+    }
+    guard foregroundFetches > 0 else { return }
+    if backgroundFetch != nil {
+      backgroundGeneration &+= 1
+      backgroundFetch = nil
+      setBackgroundUpgrade(.idle)
+    }
+    await target.delivery.cancelActiveFetch()
   }
 
   private func runDeliveryStage(selectionPoint: Bool) async throws -> PreparedLoad {
@@ -416,7 +483,7 @@ extension ParakeetUpgradeCoordinator {
     guard request.model == .ultra, let target else { return }
     switch target.store.read() {
     case .unreadable(let reason):
-      onOutcome?(.storeUnavailable(reason))
+      emit(.storeUnavailable(reason))
       throw ParakeetUpgradeUnavailableError(reason: "state_unreadable")
     case .state(var state):
       guard !state.exhausted, state.attempts < Self.attemptBudget else {
@@ -433,14 +500,19 @@ extension ParakeetUpgradeCoordinator {
   /// and v3 is kept until a later activation resets cleanly. Only then is v3
   /// retirement queued, off the main actor, after readiness was published.
   func loadPublished(_ request: ParakeetModelSelection) {
-    guard request.model == .ultra, let target, isCurrentLoad(request) else { return }
+    guard isCurrentLoad(request) else { return }
+    servingRequest = request
+    guard request.model == .ultra, let target else {
+      onUsabilityMayHaveChanged?()
+      return
+    }
     do {
       try target.store.write(.fresh)
     } catch {
-      onOutcome?(.storeUnavailable("reset"))
+      emit(.storeUnavailable("reset"))
       return
     }
-    onOutcome?(.activated)
+    emit(.activated)
     guard let delivery, isCurrentLoad(request) else { return }
     scheduleCleanup(delivery, model: .v3, selection: request, root: target.ownedModelsRoot)
   }
@@ -468,13 +540,13 @@ extension ParakeetUpgradeCoordinator {
     guard let request = prepared.selection, isCurrentLoad(request), !Task.isCancelled else {
       return .fail
     }
-    onOutcome?(.loadFailed(request.model))
+    emit(.loadFailed(request.model))
     switch request.model {
     case .ultra:
       // A-fail: accepted v3 serves now, in the same selection attempt.
       if prepared.isSelectionLoad, v3Accepted, let v3 = v3Request() {
         freeze(v3)
-        onOutcome?(.fellBackToV3)
+        emit(.fellBackToV3)
         return .reload
       }
       // No v3: the existing bounded repair of Ultra, only while the budget
@@ -483,7 +555,7 @@ extension ParakeetUpgradeCoordinator {
       if request.repairable,
         case .state(let state) = target.store.read(),
         !state.exhausted, state.attempts < Self.attemptBudget,
-        case .admitted = await target.delivery.repair()
+        case .admitted = await foreground({ await target.delivery.repairInForeground() })
       {
         guard isCurrentLoad(request), !Task.isCancelled else { return .fail }
         return .reload
@@ -515,7 +587,7 @@ extension ParakeetUpgradeCoordinator {
     var state = ParakeetUpgradeState.fresh
     if case .state(let current) = target.store.read() { state.declined = current.declined }
     try target.store.write(state)
-    onOutcome?(.retryGranted)
+    emit(.retryGranted)
     markSelectionPoint()
   }
 
@@ -536,7 +608,7 @@ extension ParakeetUpgradeCoordinator {
       state = current
       exhausted = current.exhausted
     case .unreadable(let reason):
-      onOutcome?(.storeUnavailable(reason))
+      emit(.storeUnavailable(reason))
       exhausted = true
     }
     v3Accepted = v3RejectedThisLaunch ? false : await acceptV3()
@@ -575,7 +647,7 @@ extension ParakeetUpgradeCoordinator {
         if !state.refetchSpent {
           state.refetchSpent = true
           try target.store.write(state)  // refetch intent BEFORE deleting
-          onOutcome?(.refetchStarted)
+          emit(.refetchStarted)
           guard
             await target.delivery.retireOwnedInstall(ownedModelsRoot: target.ownedModelsRoot)
           else {
@@ -584,20 +656,20 @@ extension ParakeetUpgradeCoordinator {
             try Task.checkCancellation()
             // Bytes that cannot be removed cannot be refetched: the spent
             // count and the refetch intent stay, and the target is exhausted.
-            onOutcome?(.retirementFailed(.ultra))
+            emit(.retirementFailed(.ultra))
             state.exhausted = true
             try target.store.write(state)
             if v3Accepted, let v3 = v3Request() { return selected(v3, row: "V") }
             throw rowT()
           }
           try Task.checkCancellation()
-          onOutcome?(.removedTarget)
+          emit(.removedTarget)
           state.attempts = 0
           try target.store.write(state)
         } else {
           state.exhausted = true
           try target.store.write(state)
-          onOutcome?(.exhausted)
+          emit(.exhausted)
           if v3Accepted, let v3 = v3Request() {
             let prepared = selected(v3, row: "X")
             removeTargetBytes(target, selection: v3)
@@ -607,13 +679,18 @@ extension ParakeetUpgradeCoordinator {
         }
       } catch let failure as ParakeetUpgradeStoreWriteError {
         // Store failure: no Ultra work and no row C. Accepted v3 still serves.
-        onOutcome?(.storeUnavailable(failure.field))
+        emit(.storeUnavailable(failure.field))
         if v3Accepted, let v3 = v3Request() { return selected(v3, row: "store") }
         throw failure
       }
     }
-    // B: Ultra not admitted, v3 accepted (background fetch arrives with 7b-2).
-    if v3Accepted, let v3 = v3Request() { return selected(v3, row: "B") }
+    // B: Ultra not admitted, v3 accepted. v3 is published first; the
+    // background fetch starts after, so v3's load never waits on it.
+    if v3Accepted, let v3 = v3Request() {
+      let prepared = selected(v3, row: "B")
+      scheduleBackgroundFetch()
+      return prepared
+    }
     // C: neither available: foreground Ultra fetch and load within budget.
     return try await foregroundUltra(target)
   }
@@ -660,7 +737,7 @@ extension ParakeetUpgradeCoordinator {
     else {
       throw ParakeetUpgradeUnavailableError(reason: "budget_spent")
     }
-    switch await target.delivery.ensureAvailable() {
+    switch await foreground({ await target.delivery.ensureAvailableInForeground() }) {
     case .admitted:
       try Task.checkCancellation()
       if let request, !isCurrentLoad(request) { throw ASRLoadSupersededError() }
@@ -719,12 +796,12 @@ extension ParakeetUpgradeCoordinator {
     if frozen != request { cancelCleanupTasks() }
     frozenSelectionPoint = selectionPointsMarked
     frozen = request
-    onOutcome?(.selected(request.model, row: row))
+    emit(.selected(request.model, row: row))
     return PreparedLoad(selection: request, isSelectionLoad: true)
   }
 
   private func rowT() -> ParakeetUpgradeUnavailableError {
-    onOutcome?(.exhausted)
+    emit(.exhausted)
     parakeetSelection.clear()
     frozen = nil
     return ParakeetUpgradeUnavailableError(reason: "exhausted")
@@ -757,7 +834,7 @@ extension ParakeetUpgradeCoordinator {
       let removed = await handle.retireOwnedInstall(ownedModelsRoot: root)
       guard !Task.isCancelled, self.selectionPointsMarked == point, self.frozen == selection
       else { return }
-      self.onOutcome?(
+      self.emit(
         model == .v3
           ? (removed ? .retiredV3 : .retirementFailed(.v3))
           : (removed ? .removedTarget : .retirementFailed(.ultra)))
@@ -769,5 +846,175 @@ extension ParakeetUpgradeCoordinator {
   private func cancelCleanupTasks() {
     for cleanup in cleanupTasks.values { cleanup.task.cancel() }
     cleanupTasks.removeAll()
+  }
+
+  /// Every outcome is reported here, and each may change what
+  /// `isParakeetUsable()` answers, so companions are invited to re-read.
+  func emit(_ outcome: Outcome) {
+    onOutcome?(outcome)
+    if case .selected = outcome { return }
+    if case .backgroundStarted = outcome { return }
+    onUsabilityMayHaveChanged?()
+  }
+
+  /// A foreground Ultra operation: counted, so a foreground Cancel knows it
+  /// has something to cancel.
+  private func foreground(
+    _ operation: () async -> ModelDeliveryController.DeliveryOutcome
+  ) async -> ModelDeliveryController.DeliveryOutcome {
+    foregroundFetches += 1
+    defer { foregroundFetches -= 1 }
+    return await operation()
+  }
+}
+
+// MARK: - Background upgrade, Cancel/Resume and usability (plan §3.4 B, E3, E12-E14, E22)
+
+extension ParakeetUpgradeCoordinator {
+  /// E22: first-run setup finished; a row-B launch that held its background
+  /// fetch for onboarding starts it now.
+  package func onboardingDidComplete() {
+    scheduleBackgroundFetch()
+  }
+
+  /// E12: the user cancelled the background download. The decline is written
+  /// FIRST (that field only); whether or not it persisted, this download stops
+  /// and automatic background work stays off in this process until Resume.
+  /// A shared attempt a foreground operation is waiting on is not cancelled.
+  package func cancelBackgroundUpgrade() async throws {
+    guard let target else { return }
+    var storeError: (any Error)?
+    do {
+      try target.store.writeDeclined(true)
+    } catch {
+      storeError = error
+    }
+    backgroundSuppressed = true
+    backgroundGeneration &+= 1
+    backgroundFetch?.task.cancel()
+    backgroundFetch = nil
+    setBackgroundUpgrade(.declined)
+    if storeError != nil { emit(.storeUnavailable("declined")) } else { emit(.declined) }
+    if foregroundFetches == 0 {
+      let handle = target.delivery
+      let drain = Task { @MainActor in await handle.cancelActiveFetch() }
+      cancelDrain = drain
+      await drain.value
+    }
+    if let storeError { throw storeError }
+  }
+
+  /// E13: the user resumed. Waits for a Cancel's transport drain, clears the
+  /// decline field only (attempts, refetch and exhaustion are untouched), and
+  /// starts the background fetch if the current choice still allows it. A
+  /// write failure starts nothing.
+  package func resumeBackgroundUpgrade() async throws {
+    guard let target else { return }
+    if let cancelDrain { await cancelDrain.value }
+    try target.store.writeDeclined(false)
+    backgroundSuppressed = false
+    setBackgroundUpgrade(.idle)
+    emit(.resumed)
+    scheduleBackgroundFetch()
+  }
+
+  /// Whether Parakeet can serve with a target configured: a confirmed ready
+  /// serving request (Ultra whose reset failed and the K vendor branch
+  /// included), else accepted, unrejected v3, else admitted Ultra whose
+  /// readable state still permits a load. Retained exhausted Ultra that is not
+  /// serving is not usable. Without a target the caller answers (the v3 mirror
+  /// and marker, unchanged).
+  package var hasUpgradeTarget: Bool { target != nil }
+
+  package func isParakeetUsable() async -> Bool {
+    guard let target else { return false }
+    if let servingRequest, servingRequest == parakeetSelection.current,
+      servingReadiness?() == true
+    {
+      return true
+    }
+    if !v3RejectedThisLaunch, let delivery, await delivery.isAdmitted() { return true }
+    guard case .state(let state) = target.store.read(), !state.exhausted,
+      state.attempts < Self.attemptBudget
+    else { return false }
+    return await target.delivery.isAdmitted()
+  }
+
+  /// Row B's background fetch, when the CURRENT choice is row B: accepted,
+  /// unrejected v3 frozen; the owned transport on; onboarding complete; the
+  /// target's state readable, not declined, not exhausted; its location
+  /// usable; no Cancel this process. A WhisperKit-only launch has no frozen
+  /// choice, so it starts nothing; work already running survives E14.
+  private func backgroundEligible(_ target: UpgradeTarget) -> Bool {
+    guard !backgroundSuppressed, isOnboardingComplete(),
+      (delivery ?? target.delivery).isEnabled(), target.delivery.locationIsUsable,
+      v3Accepted, !v3RejectedThisLaunch, frozen?.model == .v3,
+      case .state(let state) = target.store.read(), !state.declined, !state.exhausted
+    else { return false }
+    return true
+  }
+
+  private func scheduleBackgroundFetch() {
+    guard let target, backgroundFetch == nil, backgroundEligible(target) else { return }
+    backgroundGeneration &+= 1
+    let generation = backgroundGeneration
+    let task = Task { @MainActor [weak self] in
+      guard let self else { return }
+      await self.runBackgroundFetch(generation: generation)
+    }
+    backgroundFetch = (generation: generation, task: task)
+  }
+
+  /// Test seam (internal): whether the background slot is taken. It is
+  /// reserved synchronously, so a test can tell "not scheduled" without
+  /// waiting.
+  var hasBackgroundFetchForTesting: Bool { backgroundFetch != nil }
+
+  private func isCurrentBackground(_ generation: UInt64) -> Bool {
+    backgroundGeneration == generation && !Task.isCancelled
+  }
+
+  private func runBackgroundFetch(generation: UInt64) async {
+    defer {
+      if backgroundFetch?.generation == generation { backgroundFetch = nil }
+    }
+    guard let target, isCurrentBackground(generation), backgroundEligible(target) else { return }
+    let admitted = await target.delivery.isAdmitted()
+    guard isCurrentBackground(generation), !admitted, backgroundEligible(target) else { return }
+    emit(.backgroundStarted)
+    setBackgroundUpgrade(.downloading(fraction: 0))
+    // E3/E14: the outcome is recorded only; activation waits for the next
+    // selection point, and failure leaves v3 serving until then.
+    let outcome = await target.delivery.ensureAvailable()
+    guard isCurrentBackground(generation) else { return }
+    switch outcome {
+    case .admitted:
+      setBackgroundUpgrade(.idle)
+      emit(.backgroundAdmitted)
+    case .failed(let failure) where failure.reason == .insufficientDisk:
+      setBackgroundUpgrade(.deferredDisk)
+      emit(.deferredDisk)
+    case .failed(let failure):
+      setBackgroundUpgrade(.failed)
+      emit(.backgroundFetchFailed(failure.reason.rawValue))
+    case .cancelled:
+      setBackgroundUpgrade(.idle)
+    }
+  }
+
+  /// The target identity's delivery states (publication order): download
+  /// progress is the background's only while background work owns it and no
+  /// foreground operation does.
+  func targetStateChanged(_ state: DeliveryState) {
+    guard backgroundFetch != nil, foregroundFetches == 0,
+      case .downloading(let fraction, _, _) = state
+    else { return }
+    setBackgroundUpgrade(.downloading(fraction: fraction))
+  }
+
+  private func setBackgroundUpgrade(_ state: BackgroundUpgradeState) {
+    guard backgroundUpgrade != state else { return }
+    backgroundUpgrade = state
+    onBackgroundUpgradeChanged?(state)
   }
 }

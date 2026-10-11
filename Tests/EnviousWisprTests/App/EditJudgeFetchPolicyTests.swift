@@ -18,7 +18,7 @@ struct EditJudgeFetchPolicyTests {
   ) -> EditJudgeFetchPolicy.Inputs {
     EditJudgeFetchPolicy.Inputs(
       classifierQualifiedSomewhere: qualified, onboardingComplete: onboarding,
-      parakeetAdmitted: parakeet, debugDoorPresent: door, killSwitchOn: killSwitch,
+      parakeetUsable: parakeet, debugDoorPresent: door, killSwitchOn: killSwitch,
       judgeState: state, userInitiated: userInitiated)
   }
 
@@ -34,7 +34,7 @@ struct EditJudgeFetchPolicyTests {
   func gates() {
     #expect(EditJudgeFetchPolicy.decide(inputs(qualified: false)) == .hold(.notQualified))
     #expect(EditJudgeFetchPolicy.decide(inputs(onboarding: false)) == .hold(.onboardingIncomplete))
-    #expect(EditJudgeFetchPolicy.decide(inputs(parakeet: false)) == .hold(.parakeetNotAdmitted))
+    #expect(EditJudgeFetchPolicy.decide(inputs(parakeet: false)) == .hold(.parakeetNotUsable))
     #expect(EditJudgeFetchPolicy.decide(inputs(door: true)) == .hold(.debugDoorPresent))
     #expect(EditJudgeFetchPolicy.decide(inputs(killSwitch: false)) == .hold(.killSwitchOff))
     // Qualification is the FIRST gate: an unqualified package never downloads
@@ -84,6 +84,6 @@ struct EditJudgeFetchPolicyTests {
     #expect(EditJudgeFetchPolicy.decide(inputs(qualified: qualified)) == .start)
     // The other gates still hold a qualified package.
     #expect(EditJudgeFetchPolicy.decide(inputs(qualified: qualified, onboarding: false)) == .hold(.onboardingIncomplete))
-    #expect(EditJudgeFetchPolicy.decide(inputs(qualified: qualified, parakeet: false)) == .hold(.parakeetNotAdmitted))
+    #expect(EditJudgeFetchPolicy.decide(inputs(qualified: qualified, parakeet: false)) == .hold(.parakeetNotUsable))
   }
 }

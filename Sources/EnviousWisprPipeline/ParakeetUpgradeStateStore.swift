@@ -126,6 +126,13 @@ package struct ParakeetUpgradeStateStore: Sendable {
     try set(.declined, present: state.declined)
   }
 
+  /// Writes ONLY the decline field (E12 Cancel, E13 Resume): the budget fields
+  /// are never rewritten from a read, so unreadable state can never be
+  /// reconstructed as a fresh budget on the way past.
+  package func writeDeclined(_ declined: Bool) throws {
+    try set(.declined, present: declined)
+  }
+
   /// Proves the store can be written, without changing what it holds: an
   /// explicit Retry calls this before granting a recovery cycle.
   package func probeWritable() throws {

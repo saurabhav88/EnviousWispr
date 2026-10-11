@@ -15,7 +15,7 @@ struct WordCheckResidencyPolicyTests {
     .launch: false,
     .settingsChanged: false,
     .onboardingChanged: false,
-    .parakeetAdmitted: false,
+    .parakeetUsable: false,
     .deliveryAdmitted: nil,
     .appCancelFinished: false,
     .recordingStarted: nil,
@@ -41,7 +41,7 @@ struct WordCheckResidencyPolicyTests {
     #expect(WordCheckResidencyPolicy.Trigger.launch.rawValue == "launch")
     #expect(WordCheckResidencyPolicy.Trigger.settingsChanged.rawValue == "settings")
     #expect(WordCheckResidencyPolicy.Trigger.onboardingChanged.rawValue == "onboarding_changed")
-    #expect(WordCheckResidencyPolicy.Trigger.parakeetAdmitted.rawValue == "parakeet_admitted")
+    #expect(WordCheckResidencyPolicy.Trigger.parakeetUsable.rawValue == "parakeet_admitted")
     #expect(WordCheckResidencyPolicy.Trigger.appCancelFinished.rawValue == "app_cancel_finished")
     #expect(WordCheckResidencyPolicy.Trigger.takeSelection.rawValue == "take")
     #expect(WordCheckResidencyPolicy.Trigger.userRetry.rawValue == "settings_retry")

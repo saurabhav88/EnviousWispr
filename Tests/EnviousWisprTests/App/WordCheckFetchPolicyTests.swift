@@ -17,7 +17,7 @@ struct WordCheckFetchPolicyTests {
   ) -> WordCheckFetchPolicy.Inputs {
     .init(
       dictionaryEnabled: dictionary, someEngineLacksOwnChecker: needed,
-      onboardingComplete: onboarding, parakeetAdmitted: parakeet, killSwitchOn: killSwitch,
+      onboardingComplete: onboarding, parakeetUsable: parakeet, killSwitchOn: killSwitch,
       state: state, userInitiated: userInitiated)
   }
 
@@ -34,7 +34,7 @@ struct WordCheckFetchPolicyTests {
     #expect(WordCheckFetchPolicy.decide(inputs(dictionary: false)) == .hold(.dictionaryOff))
     #expect(WordCheckFetchPolicy.decide(inputs(needed: false)) == .hold(.notNeeded))
     #expect(WordCheckFetchPolicy.decide(inputs(onboarding: false)) == .hold(.onboardingIncomplete))
-    #expect(WordCheckFetchPolicy.decide(inputs(parakeet: false)) == .hold(.parakeetNotAdmitted))
+    #expect(WordCheckFetchPolicy.decide(inputs(parakeet: false)) == .hold(.parakeetNotUsable))
     #expect(WordCheckFetchPolicy.decide(inputs(killSwitch: false)) == .hold(.killSwitchOff))
     // The Dictionary switch is the founder's one off-switch: it wins over every other reason.
     #expect(

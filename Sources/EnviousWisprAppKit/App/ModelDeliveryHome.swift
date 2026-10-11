@@ -24,17 +24,22 @@ final class ModelDeliveryHome {
   /// #3546: the Parakeet selection-policy owner, built here because this home
   /// owns the Parakeet registration and handle (plan §3b, the
   /// `WhisperKitLegacyUpgradeCoordinator` precedent). Set once by
-  /// `installParakeetUpgrade(parakeetSelection:)`.
+  /// `installParakeetUpgrade(parakeetSelection:isOnboardingComplete:)`.
   private(set) var parakeetUpgrade: ParakeetUpgradeCoordinator?
 
   /// #3546: builds the Parakeet upgrade coordinator around THIS home's Parakeet
   /// handle and the request provider the caller also gives `ASRManager`.
+  /// Its usability changes reach the same companion observers v3 admission
+  /// does.
   func installParakeetUpgrade(
-    parakeetSelection: ParakeetSelectionProvider
+    parakeetSelection: ParakeetSelectionProvider,
+    isOnboardingComplete: @escaping @MainActor () -> Bool
   ) -> ParakeetUpgradeCoordinator {
     if let parakeetUpgrade { return parakeetUpgrade }
     let coordinator = ParakeetUpgradeCoordinator(
-      parakeetSelection: parakeetSelection, delivery: parakeetHandle)
+      parakeetSelection: parakeetSelection, delivery: parakeetHandle,
+      isOnboardingComplete: isOnboardingComplete)
+    coordinator.onUsabilityMayHaveChanged = { [weak self] in self?.notifyParakeetUsable() }
     parakeetUpgrade = coordinator
     return coordinator
   }
@@ -138,11 +143,18 @@ final class ModelDeliveryHome {
   /// run "after Parakeet" without polling the mirror. A list because two owners
   /// wait on it (`LearnFromEditsWiring` for the edit judge, `WordCheckRuntime` for
   /// the word check, #3242); a single slot let the later assignment silently
-  /// replace the earlier one.
-  private var parakeetAdmittedObservers: [@MainActor () -> Void] = []
+  /// replace the earlier one. #3546: also fired when the upgrade coordinator
+  /// reports that usability may have changed (admission, activation,
+  /// fallback, rejection, exhaustion, Retry, Resume). Observers re-read
+  /// `isParakeetUsable()`; a notification grants nothing.
+  private var parakeetUsableObservers: [@MainActor () -> Void] = []
 
-  func addParakeetAdmittedObserver(_ observer: @escaping @MainActor () -> Void) {
-    parakeetAdmittedObservers.append(observer)
+  func addParakeetUsableObserver(_ observer: @escaping @MainActor () -> Void) {
+    parakeetUsableObservers.append(observer)
+  }
+
+  private func notifyParakeetUsable() {
+    for observer in parakeetUsableObservers { observer() }
   }
 
   /// #3385: Settings re-checks the current marker and file stamps. Never trust
@@ -153,12 +165,17 @@ final class ModelDeliveryHome {
     return await controller.isAdmitted(registration)
   }
 
-  /// #996 phase D: whether Parakeet is admitted NOW, from the persisted marker,
+  /// #996 phase D: whether Parakeet is usable NOW, from the persisted marker,
   /// not the in-process mirror. A returning user's Parakeet was admitted in a
   /// previous process, and `parakeetState` stays `.notReady` until the first
   /// dictation calls `ensureAvailable()` (cloud review P2); the judge's "after
-  /// Parakeet" gate must not wait for that.
-  func isParakeetAdmitted() async -> Bool {
+  /// Parakeet" gate must not wait for that. #3546: with an upgrade target the
+  /// coordinator answers (serving readiness, accepted v3, or loadable Ultra);
+  /// without one the answer is the v3 mirror and marker, as before.
+  func isParakeetUsable() async -> Bool {
+    if let parakeetUpgrade, parakeetUpgrade.hasUpgradeTarget {
+      return await parakeetUpgrade.isParakeetUsable()
+    }
     if case .admitted = parakeetState { return true }
     guard let registration = parakeetRegistration else { return false }
     return await controller.isAdmitted(registration)
@@ -864,7 +881,7 @@ final class ModelDeliveryHome {
           home.parakeetStateUpdatesForTests += 1
           if case .admitted = state {
             home.firstRunByIdentity[observedIdentity] = false
-            for observer in home.parakeetAdmittedObservers { observer() }
+            home.notifyParakeetUsable()
           }
         }
       }

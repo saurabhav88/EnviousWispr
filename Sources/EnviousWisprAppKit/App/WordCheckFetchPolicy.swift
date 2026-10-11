@@ -22,7 +22,7 @@ struct WordCheckFetchPolicy: Equatable, Sendable {
     var dictionaryEnabled: Bool
     var someEngineLacksOwnChecker: Bool
     var onboardingComplete: Bool
-    var parakeetAdmitted: Bool
+    var parakeetUsable: Bool
     var killSwitchOn: Bool
     var state: DeliveryState
     /// "Try again" in the Dictionary row. Automatic triggers pass false.
@@ -37,7 +37,8 @@ struct WordCheckFetchPolicy: Equatable, Sendable {
       case dictionaryOff
       case notNeeded
       case onboardingIncomplete
-      case parakeetNotAdmitted
+      /// Raw value kept: the serialized spelling predates #3546.
+      case parakeetNotUsable = "parakeetNotAdmitted"
       case killSwitchOff
       case alreadyAdmitted
       case inFlight
@@ -49,7 +50,7 @@ struct WordCheckFetchPolicy: Equatable, Sendable {
     guard inputs.dictionaryEnabled else { return .hold(.dictionaryOff) }
     guard inputs.someEngineLacksOwnChecker else { return .hold(.notNeeded) }
     guard inputs.onboardingComplete else { return .hold(.onboardingIncomplete) }
-    guard inputs.parakeetAdmitted else { return .hold(.parakeetNotAdmitted) }
+    guard inputs.parakeetUsable else { return .hold(.parakeetNotUsable) }
     guard inputs.killSwitchOn else { return .hold(.killSwitchOff) }
     switch inputs.state {
     case .admitted: return .hold(.alreadyAdmitted)

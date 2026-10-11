@@ -106,8 +106,8 @@ final class WordCheckRuntime {
     guard let handle = delivery.wordCheckHandle else { return }
     // The controller replays each identity's current state to a late observer.
     handle.observeState { [weak self] state in self?.deliveryStateChanged(state) }
-    delivery.addParakeetAdmittedObserver { [weak self] in
-      self?.refresh(trigger: .parakeetAdmitted)
+    delivery.addParakeetUsableObserver { [weak self] in
+      self?.refresh(trigger: .parakeetUsable)
     }
     delivery.onWordCheckLaunchProbeFinished = { [weak self] in
       self?.launchProbeFinished = true
@@ -134,20 +134,20 @@ final class WordCheckRuntime {
     guard userInitiated || launchProbeFinished else { return }
     Task { [weak self] in
       guard let self else { return }
-      let parakeetAdmitted = await self.delivery.isParakeetAdmitted()
+      let parakeetUsable = await self.delivery.isParakeetUsable()
       self.decideFetch(
-        trigger: trigger, userInitiated: userInitiated, parakeetAdmitted: parakeetAdmitted)
+        trigger: trigger, userInitiated: userInitiated, parakeetUsable: parakeetUsable)
     }
   }
 
-  private func decideFetch(trigger: WordCheckResidencyPolicy.Trigger, userInitiated: Bool, parakeetAdmitted: Bool) {
+  private func decideFetch(trigger: WordCheckResidencyPolicy.Trigger, userInitiated: Bool, parakeetUsable: Bool) {
     guard let handle = delivery.wordCheckHandle else { return }
     let decision = WordCheckFetchPolicy.decide(
       .init(
         dictionaryEnabled: isDictionaryEnabled(),
         someEngineLacksOwnChecker: someEngineLacksOwnChecker(),
         onboardingComplete: isOnboardingComplete(),
-        parakeetAdmitted: parakeetAdmitted,
+        parakeetUsable: parakeetUsable,
         killSwitchOn: handle.isEnabled(),
         state: deliveryState,
         userInitiated: userInitiated || cancelledBecauseUnwanted))

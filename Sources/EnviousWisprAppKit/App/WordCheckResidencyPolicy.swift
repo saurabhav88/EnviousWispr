@@ -12,7 +12,7 @@ enum WordCheckResidencyPolicy {
     case launch
     case settingsChanged = "settings"
     case onboardingChanged = "onboarding_changed"
-    case parakeetAdmitted = "parakeet_admitted"
+    case parakeetUsable = "parakeet_admitted"
     case deliveryAdmitted = "delivery_admitted"
     case appCancelFinished = "app_cancel_finished"
     case recordingStarted = "recording_started"
@@ -27,7 +27,7 @@ enum WordCheckResidencyPolicy {
   /// flight needs it. The other triggers ignore it.
   static func shouldLoad(_ trigger: Trigger, needsWordCheck: Bool) -> Bool {
     switch trigger {
-    case .launch, .settingsChanged, .onboardingChanged, .parakeetAdmitted, .appCancelFinished:
+    case .launch, .settingsChanged, .onboardingChanged, .parakeetUsable, .appCancelFinished:
       // Background: nobody is dictating or transcribing yet. The download may still run
       // (`WordCheckFetchPolicy`), because disk is not memory.
       return false

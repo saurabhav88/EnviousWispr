@@ -37,24 +37,118 @@ extension ParakeetDeliveryError: StableSentryErrorIdentity {
 /// controller calls. Built once by `WisprBootstrapper`.
 @MainActor
 public final class ParakeetDeliveryHandle {
+  /// #3546: where this handle's progress goes. Production writes the shared
+  /// progress file; tests inject a recording sink so nothing touches the file
+  /// the dev app and other suites share.
+  package struct ProgressSink: Sendable {
+    package let write: @Sendable (_ fraction: Double, _ phase: String, _ detail: String) -> Void
+    package let clear: @Sendable () -> Void
+
+    package init(
+      write: @escaping @Sendable (Double, String, String) -> Void,
+      clear: @escaping @Sendable () -> Void
+    ) {
+      self.write = write
+      self.clear = clear
+    }
+
+    package static let shared = ProgressSink(
+      write: { ProgressFile.shared.write(fraction: $0, phase: $1, detail: $2) },
+      clear: { ProgressFile.shared.clear() })
+  }
+
+  /// #3546: who owns the shared progress channel for this handle's attempts.
+  /// `.always`: every attempt is the foreground's (the serving model's handle,
+  /// exactly as before). `.scoped`: only while a foreground operation holds it
+  /// (the Ultra target, whose background fetch must never write or clear the
+  /// foreground warm-up's progress).
+  package enum ProgressOwnership: Sendable { case always, scoped }
+
   private let controller: ModelDeliveryController
   private let registration: DeliveryRegistration
   private let defaults: UserDefaults
+  private let progress: ProgressSink
+  private let owners: ForegroundProgressOwners
+  package let progressOwnership: ProgressOwnership
 
-  public init(
+  public convenience init(
     controller: ModelDeliveryController, registration: DeliveryRegistration,
     defaults: UserDefaults? = nil
+  ) {
+    self.init(
+      controller: controller, registration: registration, defaults: defaults,
+      progressOwnership: .always, progress: .shared)
+  }
+
+  package init(
+    controller: ModelDeliveryController, registration: DeliveryRegistration,
+    defaults: UserDefaults? = nil, progressOwnership: ProgressOwnership,
+    progress: ProgressSink
   ) {
     self.controller = controller
     self.registration = registration
     self.defaults = defaults ?? UserDefaults(suiteName: DeliveryFlags.suiteName) ?? .standard
+    self.progress = progress
+    self.progressOwnership = progressOwnership
+    let owners = ForegroundProgressOwners(always: progressOwnership == .always)
+    self.owners = owners
     let identity = registration.manifest.identity
     Task {
       await controller.addStateObserver { [identity] observedIdentity, state in
         guard observedIdentity == identity else { return }
-        Task { @MainActor in Self.bridgeToProgressFile(state) }
+        // Ownership is captured HERE, in publication order on the controller
+        // actor, not when the queued event reaches the main actor: an event
+        // published by background work must never be attributed to a
+        // foreground operation that started after it.
+        guard let epoch = owners.ownedEpoch() else { return }
+        Task { @MainActor in
+          guard owners.isCurrent(epoch) else { return }
+          Self.bridgeToProgressFile(state, progress)
+        }
       }
     }
+  }
+
+  /// #3546: this registration's delivery states, in publication order, for an
+  /// owner that reports them itself (the background upgrade's state).
+  package func observeState(_ handler: @escaping @MainActor @Sendable (DeliveryState) -> Void) {
+    let identity = registration.manifest.identity
+    let sequencer = DeliveryStateSequencer()
+    let gate = AppliedStateGate()
+    Task {
+      await controller.addStateObserver { [identity] observedIdentity, state in
+        guard observedIdentity == identity else { return }
+        let seq = sequencer.next()
+        Task { @MainActor in
+          guard gate.admit(seq) else { return }
+          handler(state)
+        }
+      }
+    }
+  }
+
+  /// #3546: `ensureAvailable()` and `repair()` as a FOREGROUND operation of a
+  /// `.scoped` handle: the progress channel is this caller's for the duration,
+  /// including when it joins an attempt background work started. On admission
+  /// the download boundary is cleared here, before the caller enters the
+  /// loader, rather than by the queued `.admitted` event, which is dropped once
+  /// ownership ends.
+  package func ensureAvailableInForeground() async -> ModelDeliveryController.DeliveryOutcome {
+    await inForeground { await self.ensureAvailable() }
+  }
+
+  package func repairInForeground() async -> ModelDeliveryController.DeliveryOutcome {
+    await inForeground { await self.repair() }
+  }
+
+  private func inForeground(
+    _ operation: () async -> ModelDeliveryController.DeliveryOutcome
+  ) async -> ModelDeliveryController.DeliveryOutcome {
+    owners.acquire()
+    let outcome = await operation()
+    if case .admitted = outcome { progress.clear() }
+    owners.release()
+    return outcome
   }
 
   /// #3546: the bundled manifest's revision and byte total, for the load
@@ -101,9 +195,9 @@ public final class ParakeetDeliveryHandle {
     // stuck while it is working. The validating phase is the right one: the
     // guard PARKS on it rather than judging it, which is exactly the contract
     // for a multi-second hash the user did not ask for.
+    let progress = self.progress
     let tick: @Sendable () -> Void = {
-      ProgressFile.shared.write(
-        fraction: 0, phase: ModelLoadStallPolicy.validatingCachePhase, detail: "")
+      progress.write(0, ModelLoadStallPolicy.validatingCachePhase, "")
       onProgress?()
     }
     await controller.ensureLegacyMigration(registration, onProgress: tick)
@@ -137,10 +231,12 @@ public final class ParakeetDeliveryHandle {
   /// suppress (a declined one still does). Ticks the shared progress file like
   /// `ensureModelLocationReady`, for the same wedge-guard reason.
   package func recoverFromDonor() async {
-    await controller.recoverFromDonor(registration, onProgress: {
-      ProgressFile.shared.write(
-        fraction: 0, phase: ModelLoadStallPolicy.validatingCachePhase, detail: "")
-    })
+    let progress = self.progress
+    await controller.recoverFromDonor(
+      registration,
+      onProgress: {
+        progress.write(0, ModelLoadStallPolicy.validatingCachePhase, "")
+      })
   }
 
   /// Deletes this registration's whole owned install, marker and staging,
@@ -179,28 +275,27 @@ public final class ParakeetDeliveryHandle {
   /// timer and stall policy key off it), so onboarding, the settings row, and
   /// the sessionless wedge guard need no new plumbing. Validation writes tick
   /// the file's mtime (liveness for the guard) without moving the fraction.
-  private static func bridgeToProgressFile(_ state: DeliveryState) {
-    let file = ProgressFile.shared
+  private static func bridgeToProgressFile(_ state: DeliveryState, _ file: ProgressSink) {
     switch state {
     case .preparing(let validating):
       file.write(
-        fraction: 0,
+        0,
         // Single authority for both literals: the wedge guard PARKS on the
         // validating phase and JUDGES the listing phase (#1388 Codex r4).
-        phase: validating
+        validating
           ? ModelLoadStallPolicy.validatingCachePhase : ModelLoadStallPolicy.listingPhase,
-        detail: "")
+        "")
     case .downloading(let fraction, let bytesWritten, let totalBytes):
       let mb = Int(Double(bytesWritten) / 1_048_576)
       let totalMB = Int(Double(totalBytes) / 1_048_576)
       file.write(
-        fraction: fraction * 0.5,
+        fraction * 0.5,
         // Single authority for this literal (the wedge guard parks on it, #1405).
-        phase: ModelLoadStallPolicy.downloadingPhase,
-        detail: "\(mb) MB of \(totalMB) MB (\(Int(fraction * 100))%)")
+        ModelLoadStallPolicy.downloadingPhase,
+        "\(mb) MB of \(totalMB) MB (\(Int(fraction * 100))%)")
     case .verifying:
       // Single authority for the literal (the wedge guard parks on it, #1388).
-      file.write(fraction: 0.5, phase: ModelLoadStallPolicy.verifyingDownloadPhase, detail: "")
+      file.write(0.5, ModelLoadStallPolicy.verifyingDownloadPhase, "")
     case .admitted:
       // #1405 download->load boundary: CLEAR the progress file the instant
       // delivery completes. This moves the phase off the download phase so the
@@ -212,9 +307,42 @@ public final class ParakeetDeliveryHandle {
       // phantom signal here would be the ONLY signal and would defeat that
       // deadline (cloud-review P1). The load's own progress repopulates the
       // file; onboarding's checklist advances off warm-up readiness, not this.
-      ProgressFile.shared.clear()
+      file.clear()
     case .notReady, .cancelled, .failed:
       break
+    }
+  }
+}
+
+/// #3546: foreground ownership of a handle's progress channel. Read on the
+/// controller actor when a state is published, so it is lock-protected.
+/// `ownedEpoch()` is nil when no foreground operation owns the channel; the
+/// epoch moves each time ownership ends, so an event captured under an ended
+/// ownership is dropped when it reaches the main actor.
+final class ForegroundProgressOwners: @unchecked Sendable {
+  private let lock = NSLock()
+  private let always: Bool
+  private var count = 0
+  private var epoch: UInt64 = 0
+
+  init(always: Bool) { self.always = always }
+
+  func ownedEpoch() -> UInt64? {
+    lock.withLock { always || count > 0 ? epoch : nil }
+  }
+
+  func isCurrent(_ captured: UInt64) -> Bool {
+    lock.withLock { captured == epoch && (always || count > 0) }
+  }
+
+  func acquire() {
+    lock.withLock { count += 1 }
+  }
+
+  func release() {
+    lock.withLock {
+      count -= 1
+      if count == 0 { epoch &+= 1 }
     }
   }
 }

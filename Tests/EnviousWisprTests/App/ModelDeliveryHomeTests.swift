@@ -5,12 +5,29 @@ import EnviousWisprCore
 @testable import EnviousWisprASR
 @testable import EnviousWisprAppKit
 @testable import EnviousWisprModelDelivery
+@testable import EnviousWisprPipeline
 
 /// #1741 Chunk 6 — pins the gate-refusal contract for `ModelDeliveryHome`'s
 /// two Settings-row mutation sites (Parakeet Cancel/Resume).
 @MainActor
 @Suite("ModelDeliveryHome — engine mutation gate refusal", .tags(.productOutcome))
 struct ModelDeliveryHomeTests {
+
+  @Test("the upgrade coordinator's usability changes reach the companion observers")
+  func upgradeUsabilityReachesCompanions() async throws {
+    let home = ModelDeliveryHome(
+      engineMutationScope: .live(
+        tryBegin: { true }, end: { true }, wake: {}, onRefused: { _ in }),
+      manifestBundle: try Self.manifestBundle(),
+      appSupportOverride: try Self.tempAppSupport())
+    var invited = 0
+    home.addParakeetUsableObserver { invited += 1 }
+    let coordinator = home.installParakeetUpgrade(
+      parakeetSelection: ParakeetSelectionProvider(), isOnboardingComplete: { true })
+    coordinator.onUsabilityMayHaveChanged?()
+    #expect(invited == 1)
+    #expect(coordinator.hasUpgradeTarget == false, "production configures no target yet")
+  }
 
   @Test(
     "each engine's checker has its own registration, host rule and removal; an unadmitted base fetches nothing",

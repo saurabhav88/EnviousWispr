@@ -30,7 +30,7 @@ struct EditJudgeFetchPolicy: Equatable, Sendable {
   struct Inputs: Equatable, Sendable {
     var classifierQualifiedSomewhere: Bool
     var onboardingComplete: Bool
-    var parakeetAdmitted: Bool
+    var parakeetUsable: Bool
     var debugDoorPresent: Bool
     var killSwitchOn: Bool
     var judgeState: DeliveryState
@@ -46,7 +46,8 @@ struct EditJudgeFetchPolicy: Equatable, Sendable {
     enum Reason: String, Equatable, Sendable, CaseIterable {
       case notQualified
       case onboardingIncomplete
-      case parakeetNotAdmitted
+      /// Raw value kept: the serialized spelling predates #3546.
+      case parakeetNotUsable = "parakeetNotAdmitted"
       case debugDoorPresent
       case killSwitchOff
       case alreadyAdmitted
@@ -61,7 +62,7 @@ struct EditJudgeFetchPolicy: Equatable, Sendable {
   static func decide(_ inputs: Inputs) -> Decision {
     guard inputs.classifierQualifiedSomewhere else { return .hold(.notQualified) }
     guard inputs.onboardingComplete else { return .hold(.onboardingIncomplete) }
-    guard inputs.parakeetAdmitted else { return .hold(.parakeetNotAdmitted) }
+    guard inputs.parakeetUsable else { return .hold(.parakeetNotUsable) }
     guard !inputs.debugDoorPresent else { return .hold(.debugDoorPresent) }
     guard inputs.killSwitchOn else { return .hold(.killSwitchOff) }
     switch inputs.judgeState {

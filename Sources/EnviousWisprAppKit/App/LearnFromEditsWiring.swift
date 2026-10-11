@@ -379,7 +379,7 @@ final class LearnFromEditsWiring {
     home.drainEditJudgeHoldersBeforeRemoval = { [weak self] in
       await self?.releaseDeliveredJudge() ?? true
     }
-    home.addParakeetAdmittedObserver { [weak self] in self?.startFetch(trigger: "parakeet_admitted") }
+    home.addParakeetUsableObserver { [weak self] in self?.startFetch(trigger: "parakeet_admitted") }
     // The controller replays each identity's current state to a late observer,
     // so an `.admitted` published by the launch probe before this line is still
     // delivered (`ModelDeliveryController.addStateObserver`).
@@ -412,18 +412,18 @@ final class LearnFromEditsWiring {
     // decision is made after one async read; the policy itself stays pure.
     Task { [weak self] in
       guard let self, let home = self.deliveryHome else { return }
-      let parakeetAdmitted = await home.isParakeetAdmitted()
-      self.decideFetch(trigger: trigger, userInitiated: userInitiated, parakeetAdmitted: parakeetAdmitted)
+      let parakeetUsable = await home.isParakeetUsable()
+      self.decideFetch(trigger: trigger, userInitiated: userInitiated, parakeetUsable: parakeetUsable)
     }
   }
 
-  private func decideFetch(trigger: String, userInitiated: Bool, parakeetAdmitted: Bool) {
+  private func decideFetch(trigger: String, userInitiated: Bool, parakeetUsable: Bool) {
     guard let home = deliveryHome, let handle = home.editJudgeHandle else { return }
     let inputs = EditJudgeFetchPolicy.Inputs(
       classifierQualifiedSomewhere: CorrectionJudgeArmSelection.classifierIsQualifiedSomewhere(
         digest: home.editJudgeRegistration?.manifest.runtimeIdentityDigest, osMajor: osMajor),
       onboardingComplete: isOnboardingComplete(),
-      parakeetAdmitted: parakeetAdmitted,
+      parakeetUsable: parakeetUsable,
       debugDoorPresent: debugDoorPresent,
       killSwitchOn: handle.isEnabled(),
       judgeState: lastDeliveryState,
@@ -442,7 +442,7 @@ final class LearnFromEditsWiring {
       publishPhase(.none)
     case .hold(.onboardingIncomplete):
       publishPhase(.waitingForOnboarding)
-    case .hold(.parakeetNotAdmitted):
+    case .hold(.parakeetNotUsable):
       publishPhase(.waitingForSpeechModel)
     case .hold(.debugDoorPresent):
       break  // the door's own load publishes `.debugLoading` / `.ready` / `.debugFailed`
