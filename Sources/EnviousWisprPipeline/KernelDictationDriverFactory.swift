@@ -155,15 +155,14 @@ public enum KernelDictationDriverFactory {
     /// that is not the resident one — sharing a handle would throw that answer
     /// away and let a polish be served by other weights.
     package let s1MiniRuntime: (any EGOneEndpointProviding)?
-    /// #1348 Phase 2: Parakeet delivery handle — nil (tests, or a failed
-    /// bundled-manifest load, which a unit test makes can't-happen in
-    /// release) means the legacy in-service download path.
-    package let parakeetDelivery: ParakeetDeliveryHandle?
-    /// #3546: the Parakeet load request the adapter writes and `ASRManager`
-    /// reads. Required, no default: it must be the SAME instance the manager
-    /// was built with, so a missing wiring fails to compile rather than making
-    /// every load throw `ParakeetModelDirectoryUnsetError`.
-    package let parakeetSelection: ParakeetSelectionProvider
+    /// #3546: the Parakeet selection-policy owner. It holds the #1348 Phase 2
+    /// delivery handle (nil inside it — tests, or a failed bundled-manifest
+    /// load, which a unit test makes can't-happen in release — means the
+    /// legacy in-service download path) and writes the request provider that
+    /// MUST be the same instance `ASRManager` was built with. Required, no
+    /// default, so a missing wiring fails to compile rather than making every
+    /// load throw `ParakeetModelDirectoryUnsetError`.
+    package let parakeetUpgrade: ParakeetUpgradeCoordinator
     /// #1707 Phase 2: DEBUG fault-injection oracle (§11.1/§3.2a-i) — nil in
     /// every existing test call site.
     package let batchDecodeFaultController: BatchDecodeFaultController?
@@ -201,7 +200,7 @@ public enum KernelDictationDriverFactory {
     package init(
       audioCapture: any AudioCaptureInterface,
       asrManager: any ASRManagerInterface,
-      parakeetSelection: ParakeetSelectionProvider,
+      parakeetUpgrade: ParakeetUpgradeCoordinator,
       vadSignalSource: CaptureVADSignalSource,
       transcriptStore: TranscriptStore,
       keychainManager: KeychainManager,
@@ -214,7 +213,6 @@ public enum KernelDictationDriverFactory {
       microphonePermissionIsDenied: @escaping @MainActor () -> Bool = { false },
       egOneRuntime: (any EGOneEndpointProviding)? = nil,
       s1MiniRuntime: (any EGOneEndpointProviding)? = nil,
-      parakeetDelivery: ParakeetDeliveryHandle? = nil,
       batchDecodeFaultController: BatchDecodeFaultController? = nil,
       escapeRecovery: @escaping PrepareEscapeRecovery = { _, _, _ in false },
       transcriptionCheckpoint: @escaping @MainActor (TranscriptionCheckpointEvent) -> Void = { _ in },
@@ -223,7 +221,7 @@ public enum KernelDictationDriverFactory {
     ) {
       self.audioCapture = audioCapture
       self.asrManager = asrManager
-      self.parakeetSelection = parakeetSelection
+      self.parakeetUpgrade = parakeetUpgrade
       self.vadSignalSource = vadSignalSource
       self.transcriptStore = transcriptStore
       self.keychainManager = keychainManager
@@ -236,7 +234,6 @@ public enum KernelDictationDriverFactory {
       self.microphonePermissionIsDenied = microphonePermissionIsDenied
       self.egOneRuntime = egOneRuntime
       self.s1MiniRuntime = s1MiniRuntime
-      self.parakeetDelivery = parakeetDelivery
       self.batchDecodeFaultController = batchDecodeFaultController
       self.escapeRecovery = escapeRecovery
       self.transcriptionCheckpoint = transcriptionCheckpoint
@@ -432,8 +429,7 @@ public enum KernelDictationDriverFactory {
     // longer names a concrete adapter type in code (EngineIdentityFreezeTests
     // Test B); it assembles around the opaque `any ASREngineAdapter` returned.
     let adapter = KernelAdapterFactory.makeParakeetAdapter(
-      asrManager: inputs.asrManager, parakeetSelection: inputs.parakeetSelection,
-      delivery: inputs.parakeetDelivery,
+      asrManager: inputs.asrManager, parakeetUpgrade: inputs.parakeetUpgrade,
       batchDecodeFaultController: inputs.batchDecodeFaultController)
     return assembleDriver(
       adapter: adapter,

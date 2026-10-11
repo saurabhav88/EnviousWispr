@@ -441,6 +441,7 @@ public final class ASRManager: ASRManagerInterface {
     // non-`ParakeetBackend` backend (an injected mock, which loads nothing)
     // takes the protocol overload now.
     // (#3546: `parakeetCacheOnly` is now the request's `cacheOnly`.)
+    var loadedSelection: ParakeetModelSelection?
     if let parakeet = candidate as? ParakeetBackend {
       // #2697: refuse rather than resolve one of our own. `nil` means the
       // location seam either has not run or REFUSED, and both must fail
@@ -450,6 +451,16 @@ public final class ASRManager: ASRManagerInterface {
       guard let selection = parakeetSelection.current else {
         throw ParakeetModelDirectoryUnsetError()
       }
+      // #3546: one call per PHYSICAL load (joined callers never get here),
+      // before the vendor loader: the upgrade policy counts an Ultra attempt
+      // here, so a crash inside the loader still leaves the attempt spent. An
+      // Ultra request with nothing to count it fails closed.
+      if let beforePhysicalLoad = parakeetSelection.beforePhysicalLoad {
+        try beforePhysicalLoad(selection)
+      } else if selection.model != .v3 {
+        throw ParakeetLoadAccountingUnavailableError()
+      }
+      loadedSelection = selection
       // #1908: process-global offline-mode exclusion — see the property docs
       // above. Refuses a conflicting-mode attempt BEFORE `prepare()` ever
       // reaches FluidAudio's shared static; a same-mode attempt proceeds.
@@ -479,6 +490,11 @@ public final class ASRManager: ASRManagerInterface {
     isModelLoaded = ready
     if !(retiring === (candidate as AnyObject)) {
       Task { await retiring.unload() }
+    }
+    // #3546: only a READY publish for the current generation (the superseded
+    // case threw above) reports success, whoever asked for the load.
+    if ready, let loadedSelection {
+      parakeetSelection.didPublishLoad?(loadedSelection)
     }
   }
 

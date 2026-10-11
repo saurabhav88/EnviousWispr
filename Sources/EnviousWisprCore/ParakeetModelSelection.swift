@@ -2,11 +2,11 @@ import Foundation
 
 /// The Parakeet model a load request names (#3546).
 ///
-/// Only `v3` exists until the shipping FluidAudio pin can load another model,
-/// so no request can name a model the loader would quietly replace with v3.
-/// `EnviousWisprASR` is the only module that maps this to a FluidAudio version.
-package enum ParakeetModel: String, Sendable, Equatable {
+/// `EnviousWisprASR` is the only module that maps this to a FluidAudio version
+/// (`ParakeetBackend.vendorVersion`); the shipping pin loads both.
+package enum ParakeetModel: String, Sendable, Equatable, CaseIterable {
   case v3
+  case ultra
 
   /// The shipped v3 set's byte total, for the one caller with no manifest to
   /// read it from: the engine adapter when the bundled manifest failed to load.
@@ -50,6 +50,13 @@ package struct ParakeetModelSelection: Sendable, Equatable {
   }
 }
 
+/// Thrown before the vendor loader when a request names a model whose loads
+/// must be counted (Ultra) and nothing is installed to count them (#3546).
+/// Fails closed: an uncounted Ultra load could loop past its retry budget.
+package struct ParakeetLoadAccountingUnavailableError: Error, Equatable {
+  package init() {}
+}
+
 /// Holds the current Parakeet load request (#3546).
 ///
 /// One instance is shared by the engine adapter, which writes it, and the ASR
@@ -64,6 +71,19 @@ package struct ParakeetModelSelection: Sendable, Equatable {
 package final class ParakeetSelectionProvider {
   package private(set) var current: ParakeetModelSelection?
   private var lastGeneration: UInt64 = 0
+
+  /// Called by `ASRManager` once per PHYSICAL load, right before the vendor
+  /// loader, with the request that load reads. Joined callers never reach it.
+  /// The upgrade policy uses it to persist an Ultra attempt before the load
+  /// starts; a throw stops the load before the vendor is entered. An Ultra
+  /// request with no hook installed fails closed
+  /// (`ParakeetLoadAccountingUnavailableError`).
+  package var beforePhysicalLoad: (@MainActor (ParakeetModelSelection) throws -> Void)?
+
+  /// Called by `ASRManager` after a physical load published a READY backend for
+  /// the current load generation (never for a stale or superseded completion),
+  /// with the request it loaded. Direct manager loads report here too.
+  package var didPublishLoad: (@MainActor (ParakeetModelSelection) -> Void)?
 
   package init() {}
 

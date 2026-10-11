@@ -23,7 +23,7 @@ import Testing
     let manager = StubParakeetASRManager()
     manager.finalizeStreamingResult = makeResult("first")
     let adapter = ParakeetEngineAdapter(
-      asrManager: manager, parakeetSelection: ParakeetSelectionProvider())
+      asrManager: manager, parakeetUpgrade: .legacyForTesting())
     let sid = SessionID()
     try await adapter.beginSession(sid, options: .default, streaming: true)
     feed(adapter, samples: [0.1], session: sid)
@@ -39,7 +39,7 @@ import Testing
     let manager = StubParakeetASRManager()
     manager.finalizeStreamingResult = makeResult("streamed text")
     let adapter = ParakeetEngineAdapter(
-      asrManager: manager, parakeetSelection: ParakeetSelectionProvider())
+      asrManager: manager, parakeetUpgrade: .legacyForTesting())
     try await adapter.beginSession(SessionID(), options: .default, streaming: true)
     let outcome = await adapter.finalize(batchSamples: nil)
     guard case .transcript = outcome else {
@@ -56,7 +56,7 @@ import Testing
     let manager = StubParakeetASRManager()
     manager.finalizeStreamingResult = makeResult("done")
     let adapter = ParakeetEngineAdapter(
-      asrManager: manager, parakeetSelection: ParakeetSelectionProvider())
+      asrManager: manager, parakeetUpgrade: .legacyForTesting())
     let sid = SessionID()
     try await adapter.beginSession(sid, options: .default, streaming: true)
     _ = await adapter.finalize(batchSamples: nil)
@@ -72,7 +72,7 @@ import Testing
     let manager = StubParakeetASRManager()
     manager.transcribeResult = makeResult("")  // empty -> .empty
     let adapter = ParakeetEngineAdapter(
-      asrManager: manager, parakeetSelection: ParakeetSelectionProvider())
+      asrManager: manager, parakeetUpgrade: .legacyForTesting())
     let sid = SessionID()
     try await adapter.beginSession(sid, options: .default, streaming: false)
     feed(adapter, samples: [0.1, 0.2], session: sid)

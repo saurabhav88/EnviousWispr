@@ -355,6 +355,10 @@ package final class WisprBootstrapper {
     // own bundle stays the manifest trust root (contract §4a), unchanged.
     let modelDelivery = ModelDeliveryHome(
       engineMutationScope: engineMutationScope, manifestBundle: .main)
+    // #3546: the one Parakeet selection-policy owner, sharing the request
+    // provider `asrManager` was built with above.
+    let parakeetUpgrade = modelDelivery.installParakeetUpgrade(
+      parakeetSelection: parakeetSelection)
 
     // #1707 Phase 2: `whisperKitBackend` is hoisted here (only these two
     // lines — NOT the full `whisperKitKernelDriver`, which still needs
@@ -575,7 +579,7 @@ package final class WisprBootstrapper {
       inputs: KernelDictationDriverFactory.ParakeetInputs(
         audioCapture: audioCapture,
         asrManager: asrManager,
-        parakeetSelection: parakeetSelection,
+        parakeetUpgrade: parakeetUpgrade,
         vadSignalSource: vadSource,
         transcriptStore: transcriptStore,
         keychainManager: keychainManager,
@@ -587,7 +591,6 @@ package final class WisprBootstrapper {
         microphonePermissionIsDenied: { permissions.microphonePermissionIsDenied },
         egOneRuntime: egOneRuntime,
         s1MiniRuntime: s1MiniRuntime,
-        parakeetDelivery: modelDelivery.parakeetHandle,
         batchDecodeFaultController: batchDecodeFaultController,
         escapeRecovery: EscapeRecoveryWiring.wire(transcriptCoordinator),
         transcriptionCheckpoint: transcriptionCheckpoint,
@@ -1162,6 +1165,8 @@ package final class WisprBootstrapper {
     // WhisperKit: observation-based (waits for setupState to become .ready
     // first, then `preloadAction` → `ensureEngineWarm`).
     if settings.selectedBackend == .parakeet {
+      // #3546: launch is a model-selection point.
+      parakeetUpgrade.markSelectionPoint()
       Task { [weak kernelDriver] in
         // Discard the outcome so the Task's Success type stays Void
         // (`EngineWarmupOutcome` does not declare Sendable conformance).
@@ -1186,7 +1191,8 @@ package final class WisprBootstrapper {
     // and since #2648 file import, which needs the engine the user picked on the
     // Transcription step rather than the one the manager happens to own.
     let activeEngine = ActiveEngineOperation.live(
-      asrManager: asrManager, whisperKitBackend: whisperKitBackend)
+      asrManager: asrManager, parakeetUpgrade: parakeetUpgrade,
+      whisperKitBackend: whisperKitBackend)
 
     // The benchmark is a FOURTH workload on the one inference slot, so it takes
     // the same claim a dictation, a replay and an import take. Built here rather
@@ -1360,7 +1366,12 @@ package final class WisprBootstrapper {
         stateLabel: { [kernelDriver, whisperKitKernelDriver] backend in
           (backend == .whisperKit ? whisperKitKernelDriver : kernelDriver).state.telemetryLabel
         },
-        performSwitch: { [asrManager] backend in
+        performSwitch: { [asrManager, parakeetUpgrade] backend in
+          // #3546 E21: an actual transition INTO Parakeet is a selection point;
+          // re-selecting the already-active Parakeet is not.
+          if backend == .parakeet, asrManager.activeBackendType != .parakeet {
+            parakeetUpgrade.markSelectionPoint()
+          }
           await asrManager.switchBackend(to: backend)
           SentryBreadcrumb.updateASRBackend(backend.rawValue)
         },

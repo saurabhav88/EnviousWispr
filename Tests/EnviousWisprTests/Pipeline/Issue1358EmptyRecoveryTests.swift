@@ -245,7 +245,7 @@ struct Issue1358EmptyRecoveryTests {
       outcome: outcome,
       context: context,
       adapter: ParakeetEngineAdapter(
-      asrManager: StubParakeetASRManager(), parakeetSelection: ParakeetSelectionProvider()),
+      asrManager: StubParakeetASRManager(), parakeetUpgrade: .legacyForTesting()),
       steps: steps ?? makeSteps(),
       textProcessingRunner: TextProcessingRunner(
         timeoutExecutor: FakeTimeoutExecutor(throwBelowSeconds: 0).run),

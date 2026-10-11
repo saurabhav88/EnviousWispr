@@ -106,7 +106,7 @@ struct HeartPathTelemetryWiringTests {
       inputs: .init(
         audioCapture: audio,
         asrManager: makeASR(),
-        parakeetSelection: ParakeetSelectionProvider(),
+        parakeetUpgrade: .legacyForTesting(),
         vadSignalSource: vad,
         transcriptStore: TranscriptStore(),
         keychainManager: KeychainManager(),
@@ -221,7 +221,7 @@ struct HeartPathTelemetryWiringTests {
       inputs: .init(
         audioCapture: audioCapture,
         asrManager: asrManager,
-        parakeetSelection: ParakeetSelectionProvider(),
+        parakeetUpgrade: .legacyForTesting(),
         vadSignalSource: vad,
         transcriptStore: TranscriptStore(),
         keychainManager: KeychainManager(),
@@ -299,7 +299,7 @@ struct HeartPathTelemetryWiringTests {
         inputs: .init(
           audioCapture: audioCapture,
           asrManager: asrManager,
-          parakeetSelection: ParakeetSelectionProvider(),
+          parakeetUpgrade: .legacyForTesting(),
           vadSignalSource: vad,
           transcriptStore: TranscriptStore(),
           keychainManager: KeychainManager(),
@@ -479,7 +479,7 @@ struct HeartPathTelemetryWiringTests {
               ASRResult(
                 text: "hello", language: "en", duration: 1,
                 processingTime: 0.01, backendType: .parakeet))),
-          parakeetSelection: ParakeetSelectionProvider(),
+          parakeetUpgrade: .legacyForTesting(),
           vadSignalSource: KernelDictationDriverFactory.makeSharedVADSignalSource(
             audioCapture: audioCapture),
           transcriptStore: TranscriptStore(),

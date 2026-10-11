@@ -164,7 +164,15 @@ public actor ParakeetBackend: ASRBackend {
   static func vendorVersion(for model: ParakeetModel) -> AsrModelVersion {
     switch model {
     case .v3: return .v3
+    case .ultra: return .ultra
     }
+  }
+
+  /// The folder FluidAudio reconstructs for `model` (#3546): the ORACLE for
+  /// `ParakeetInstallLocation.folderName(for:)`, read from the vendor at
+  /// runtime, exactly as `vendorSharedDirectory` is for v3. Never a location.
+  package static func vendorFolderName(for model: ParakeetModel) -> String {
+    AsrModels.defaultCacheDirectory(for: vendorVersion(for: model)).lastPathComponent
   }
 
   public init() {}

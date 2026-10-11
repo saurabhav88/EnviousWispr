@@ -86,4 +86,37 @@ struct ParakeetRealBoundaryTests {
       "Parakeet returned: \(result.text)"
     )
   }
+
+  /// #3546: the manager's load hooks fire once per PHYSICAL load, on the real
+  /// shipped model. Two loads asked for together join one physical load, so
+  /// the upgrade policy counts one attempt and hears one success, carrying the
+  /// request that load read.
+  @Test(
+    "a joined load counts one physical load and reports one ready publish",
+    .enabled(if: ParakeetRealBoundaryFixture.shippedModelIsInstalled),
+    .tags(.realBoundary)
+  )
+  @MainActor
+  func joinedLoadFiresEachHookOnce() async throws {
+    try await withParakeetOfflineModeExclusion {
+      let selection = ParakeetSelectionProvider()
+      var before: [ParakeetModelSelection] = []
+      var published: [ParakeetModelSelection] = []
+      selection.beforePhysicalLoad = { before.append($0) }
+      selection.didPublishLoad = { published.append($0) }
+      let request = selection.select(
+        model: .v3, revision: nil, directory: ParakeetRealBoundaryFixture.installDirectory,
+        cacheOnly: true, displayBytes: ParakeetModel.v3ShippedBytes, repairable: false)
+      let manager = ASRManager(
+        engineMutationScope: .alwaysAllowedForTesting, parakeetSelection: selection)
+      manager.setInitialBackendType(.parakeet)
+      async let first: Void = manager.loadModel()
+      async let second: Void = manager.loadModel()
+      _ = try await (first, second)
+      #expect(manager.isModelLoaded)
+      #expect(before == [request])
+      #expect(published == [request])
+      await manager.unloadModel()
+    }
+  }
 }

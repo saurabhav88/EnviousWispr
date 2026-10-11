@@ -30,13 +30,10 @@ final class ParakeetEngineAdapter: ASREngineAdapter, @unchecked Sendable {
   // MARK: Injected dependency
 
   private let asrManager: any ASRManagerInterface
-  /// #1348 Phase 2: the delivery stage that runs before any Parakeet load —
-  /// nil means the legacy in-service download path (tests, or the flag off).
-  private let delivery: ParakeetDeliveryHandle?
-  /// #3546: where this adapter writes the Parakeet load request. The SAME
-  /// instance `ASRManager` reads at every load (`WisprBootstrapper` passes one
-  /// to both), so a direct manager load reads what this warm-up chose.
-  private let parakeetSelection: ParakeetSelectionProvider
+  /// #3546: the one owner of Parakeet selection policy. It runs the delivery
+  /// stage (the delivery handle and the request the manager reads now live
+  /// there, with their reasons) and hands back a prepared load.
+  private let parakeetUpgrade: ParakeetUpgradeCoordinator
   /// #1707 Phase 2: DEBUG fault-injection oracle (§11.1) — `nil` in every
   /// production/test path that doesn't explicitly construct one.
   private let batchDecodeFaultController: BatchDecodeFaultController?
@@ -237,16 +234,14 @@ final class ParakeetEngineAdapter: ASREngineAdapter, @unchecked Sendable {
   // MARK: Init
 
   init(
-    asrManager: any ASRManagerInterface, parakeetSelection: ParakeetSelectionProvider,
-    delivery: ParakeetDeliveryHandle? = nil,
+    asrManager: any ASRManagerInterface, parakeetUpgrade: ParakeetUpgradeCoordinator,
     asrInterruptionRecoveryDeadlineSec: Double = 8.0,
     // #1707 Phase 2: DEBUG fault-injection oracle (§11.1). Defaulted `nil`
     // so every existing test construction site is unaffected.
     batchDecodeFaultController: BatchDecodeFaultController? = nil
   ) {
     self.asrManager = asrManager
-    self.delivery = delivery
-    self.parakeetSelection = parakeetSelection
+    self.parakeetUpgrade = parakeetUpgrade
     self.asrInterruptionRecoveryDeadlineSec = asrInterruptionRecoveryDeadlineSec
     self.batchDecodeFaultController = batchDecodeFaultController
     (loadStream, loadContinuation) = AsyncStream.makeStream(of: ASRLoadProgressTick.self)
@@ -358,94 +353,12 @@ final class ParakeetEngineAdapter: ASREngineAdapter, @unchecked Sendable {
       }
     }
 
-    // #1348 Phase 2: delivery stage BEFORE any load. The host admits a
-    // verified cache (fetch/validate/repair as needed); the service then
-    // loads cache-only and can never download. Flag off (or no handle) =
-    // legacy path, bit-for-bit.
-    // #2697: ONE awaited door, taken before the branch rather than inside it.
-    // Migration used to live inside `ensureAvailable()`, so the kill-switch
-    // branch below never got it. Whatever the flag says, the location is made
-    // ready first, and a REFUSAL arrives as `nil` rather than as a path that
-    // looks fine.
-    // Review B4: a missing HANDLE is not a refusal and must not be treated as
-    // one. It means the bundled manifest failed to load, so there is no
-    // registration and nothing has judged anything — while the user may still
-    // have a perfectly good model in our own directory. Assigning `nil` there
-    // made an existing installation unloadable to fix a problem it does not
-    // have. A handle that EXISTS and returns `nil` has genuinely refused, and
-    // that still travels to `loadModel()` as a refusal.
-    //
-    // #3546: the directory and the cache-only mode are written TOGETHER, as one
-    // `ParakeetModelSelection`, once both are known. A refusal (or a no-handle
-    // branch with no resolvable directory) CLEARS the request, which is what
-    // assigning `nil` to the directory used to do, so no later direct load can
-    // reuse a refused location.
-    var locationRefused = false
-    let directory: URL?
-    if let delivery {
-      let ready = await delivery.ensureModelLocationReady()
-      locationRefused = ready == nil
-      directory = ready
-    } else {
-      directory = ParakeetInstallLocation.directoryFromSystemApplicationSupport()
-    }
-    if directory == nil { parakeetSelection.clear() }
-    // Cloud review P1: A REFUSAL STOPS THE ATTEMPT, not just the load.
-    //
-    // `nil` from the seam means the location was judged unusable — it resolves
-    // into the donor, or storage is unavailable. Letting `ensureAvailable()` run
-    // anyway sends an attempt at that location, and an attempt DELETES failed
-    // components and promotes into it. Refusing at `loadModel()` alone is a
-    // refusal that arrives after the writes it was supposed to prevent.
-    //
-    // This is the same defect the reviewer found at Settings Resume one round
-    // earlier. I fixed that door and left this one, which is the MAIN path —
-    // so the fix is stated here as a rule rather than a patch: every caller that
-    // acts on the location must check the refusal, and there are now three.
-    if locationRefused {
-      throw ParakeetDeliveryError(
-        DeliveryFailure(reason: .cacheRepairFailed, detail: "location_refused"))
-    }
-    let selection: ParakeetModelSelection?
-    if let delivery, delivery.isEnabled() {
-      // `directory` is non-nil here: a handle that returned nil refused above.
-      selection = directory.map {
-        parakeetSelection.select(
-          model: .v3, revision: delivery.modelRevision, directory: $0, cacheOnly: true,
-          displayBytes: delivery.modelTotalBytes, repairable: true)
-      }
-      switch await delivery.ensureAvailable() {
-      case .admitted:
-        break
-      case .failed(let failure):
-        throw ParakeetDeliveryError(failure)
-      case .cancelled:
-        throw CancellationError()
-      }
-    } else {
-      // No handle and no resolvable directory leaves the request cleared, and
-      // the load below throws `ParakeetModelDirectoryUnsetError`, as before.
-      selection = directory.map {
-        parakeetSelection.select(
-          model: .v3, revision: delivery?.modelRevision, directory: $0, cacheOnly: false,
-          displayBytes: delivery?.modelTotalBytes ?? ParakeetModel.v3ShippedBytes,
-          repairable: false)
-      }
-      // #2483: the legacy branch uses our directory TOO, and this is the half
-      // that closes the vendor's own deletion. With `cacheOnly` false,
-      // FluidAudio's offline switch is off, so `ModelHub.loadModels` may purge
-      // the whole repo directory after a failed load and may write a vocabulary
-      // file into it. Both are acceptable inside a directory we own and were
-      // never acceptable inside FluidAudio's shared one.
-      //
-      // #2697: the directory is assigned above, before this branch, and it has
-      // already been migrated. This branch used to resolve its own fallback,
-      // which is why a user on the kill switch re-downloaded a model they
-      // already had — and, offline, could not warm up at all.
-      delivery?.noteLegacyPathActive()
-    }
+    // #3546: the delivery stage (location, admission, the request the manager
+    // reads) moved, with its reasons, into `ParakeetUpgradeCoordinator`.
+    let prepared = try await parakeetUpgrade.prepareLoad()
 
-    // #1707 Codex code-diff r9/r10: `delivery.ensureAvailable()` above is a
+    // #1707 Codex code-diff r9/r10: `delivery.ensureAvailable()` above (inside
+    // `prepareLoad()` since #3546) is a
     // long, separately-owned await (cache fetch/validate/repair, epic #1348)
     // whose own internal cancellation responsiveness this call has no
     // visibility into. If a timeout's `operationTask.cancel()` fires while
@@ -472,7 +385,7 @@ final class ParakeetEngineAdapter: ASREngineAdapter, @unchecked Sendable {
     } catch let error
       // #3546: `repairable` is true exactly when delivery is active (the old
       // local `deliveryActive`), read from THIS warm-up's request.
-      where selection?.repairable == true
+      where prepared.selection?.repairable == true
       && !(error is ASRLoadSupersededError)
       // #1388 (Codex r3 P1): a user Cancel must NOT fall into the repair
       // retry — repairing an intact cache succeeds and silently restarts the
@@ -489,9 +402,9 @@ final class ParakeetEngineAdapter: ASREngineAdapter, @unchecked Sendable {
       // cannot duplicate it because warm-up is single-flighted upstream.
       // Composed AROUND the transport recovery (exhaustive r7 finding 6) so
       // a stale-helper retry that then misses the cache still gets its
-      // repair pass. deliveryActive guarantees the handle exists; a nil here
-      // would be a logic error, so fail the warm-up rather than crash.
-      guard let delivery, case .admitted = await delivery.repair() else { throw error }
+      // repair pass. (#3546: the handle check and the repair call moved into
+      // `repairAfterLoadFailure`, with their reason.)
+      guard await parakeetUpgrade.repairAfterLoadFailure(prepared) else { throw error }
       // Same staleness window as the guard above, at `delivery.repair()`'s
       // own long, separately-owned await instead of `ensureAvailable()`'s —
       // same two-signal reasoning (r10): cancellation first, then generation.
@@ -953,7 +866,7 @@ final class ParakeetEngineAdapter: ASREngineAdapter, @unchecked Sendable {
   /// the delivery — a cancelled recording must not kill a first-run download
   /// running in the background.
   func cancelSessionlessWarmup() async {
-    await delivery?.cancelActiveFetch()
+    await parakeetUpgrade.cancelActiveFetch()
     await cancel()
   }
 

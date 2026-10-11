@@ -23,7 +23,7 @@ import Testing
   func vendorChunkReportBecomesObservationTick() async throws {
     let manager = StubParakeetASRManager()
     let adapter = ParakeetEngineAdapter(
-      asrManager: manager, parakeetSelection: ParakeetSelectionProvider())
+      asrManager: manager, parakeetUpgrade: .legacyForTesting())
     let stream = try #require(adapter.finalizeProgress)
     var iterator = stream.makeAsyncIterator()
     manager.onVendorDecodeChunkScheduled?()
@@ -41,7 +41,7 @@ import Testing
   @Test("engineIdentity: Parakeet declares .parakeet backend")
   func engineIdentityBackend() {
     let adapter = ParakeetEngineAdapter(
-      asrManager: StubParakeetASRManager(), parakeetSelection: ParakeetSelectionProvider())
+      asrManager: StubParakeetASRManager(), parakeetUpgrade: .legacyForTesting())
     #expect(adapter.engineIdentity.backendType == .parakeet)
     #expect(adapter.engineIdentity.rawValue == "parakeet")
   }
@@ -49,7 +49,7 @@ import Testing
   @Test("engineIdentity: Parakeet displayName == Parakeet v3")
   func engineIdentityDisplayName() {
     let adapter = ParakeetEngineAdapter(
-      asrManager: StubParakeetASRManager(), parakeetSelection: ParakeetSelectionProvider())
+      asrManager: StubParakeetASRManager(), parakeetUpgrade: .legacyForTesting())
     #expect(adapter.engineIdentity.displayName == "Parakeet v3")
   }
 
@@ -58,7 +58,7 @@ import Testing
   @Test("capabilities: Parakeet streams, detects no language, decodes conditioned batch")
   func capabilities() {
     let adapter = ParakeetEngineAdapter(
-      asrManager: StubParakeetASRManager(), parakeetSelection: ParakeetSelectionProvider())
+      asrManager: StubParakeetASRManager(), parakeetUpgrade: .legacyForTesting())
     #expect(adapter.capabilities.supportsStreaming)
     #expect(!adapter.capabilities.supportsLanguageDetection)
     // #950 — Parakeet decodes the kernel-conditioned (VAD-trimmed) batch buffer,
@@ -70,7 +70,7 @@ import Testing
   func readiness() {
     let manager = StubParakeetASRManager()
     let adapter = ParakeetEngineAdapter(
-      asrManager: manager, parakeetSelection: ParakeetSelectionProvider())
+      asrManager: manager, parakeetUpgrade: .legacyForTesting())
     #expect(adapter.readiness == .notReady)
     manager.isModelLoaded = true
     #expect(adapter.readiness == .ready)
@@ -82,7 +82,7 @@ import Testing
   func warmUpLoads() async throws {
     let manager = StubParakeetASRManager()
     let adapter = ParakeetEngineAdapter(
-      asrManager: manager, parakeetSelection: ParakeetSelectionProvider())
+      asrManager: manager, parakeetUpgrade: .legacyForTesting())
     try await adapter.warmUp()
     #expect(manager.loadModelCount == 1)
   }
@@ -96,7 +96,8 @@ import Testing
   func warmUpWithoutHandleWritesLegacyRequest() async throws {
     let manager = StubParakeetASRManager()
     let selection = ParakeetSelectionProvider()
-    let adapter = ParakeetEngineAdapter(asrManager: manager, parakeetSelection: selection)
+    let adapter = ParakeetEngineAdapter(
+      asrManager: manager, parakeetUpgrade: .legacyForTesting(selection: selection))
     try await adapter.warmUp()
     guard let expected = ParakeetInstallLocation.directoryFromSystemApplicationSupport() else {
       #expect(selection.current == nil)
@@ -117,7 +118,8 @@ import Testing
   func secondWarmUpPublishesNewerRequest() async throws {
     let manager = StubParakeetASRManager()
     let selection = ParakeetSelectionProvider()
-    let adapter = ParakeetEngineAdapter(asrManager: manager, parakeetSelection: selection)
+    let adapter = ParakeetEngineAdapter(
+      asrManager: manager, parakeetUpgrade: .legacyForTesting(selection: selection))
     try await adapter.warmUp()
     let first = try #require(selection.current)
     manager.isModelLoaded = false
@@ -132,7 +134,7 @@ import Testing
     let manager = StubParakeetASRManager()
     manager.isModelLoaded = true
     let adapter = ParakeetEngineAdapter(
-      asrManager: manager, parakeetSelection: ParakeetSelectionProvider())
+      asrManager: manager, parakeetUpgrade: .legacyForTesting())
     try await adapter.warmUp()
     #expect(manager.loadModelCount == 0)
   }
@@ -146,7 +148,7 @@ import Testing
     let manager = StubParakeetASRManager()
     manager.gateLoadModel = true
     let adapter = ParakeetEngineAdapter(
-      asrManager: manager, parakeetSelection: ParakeetSelectionProvider())
+      asrManager: manager, parakeetUpgrade: .legacyForTesting())
     let stream = try #require(
       adapter.loadProgress, "Parakeet always exposes a load-progress stream (D5)")
     let warmTask = Task { @MainActor in try? await adapter.warmUp() }
@@ -184,7 +186,7 @@ import Testing
     let manager = StubParakeetASRManager()
     manager.startStreamingDelay = .milliseconds(300)
     let adapter = ParakeetEngineAdapter(
-      asrManager: manager, parakeetSelection: ParakeetSelectionProvider(),
+      asrManager: manager, parakeetUpgrade: .legacyForTesting(),
       asrInterruptionRecoveryDeadlineSec: 0.05)
     try await adapter.warmUp()
     let sid = SessionID()
@@ -217,7 +219,7 @@ import Testing
     let manager = StubParakeetASRManager()
     manager.finalizeStreamingResult = makeResult("streamed text")
     let adapter = ParakeetEngineAdapter(
-      asrManager: manager, parakeetSelection: ParakeetSelectionProvider())
+      asrManager: manager, parakeetUpgrade: .legacyForTesting())
     try await adapter.beginSession(SessionID(), options: .default, streaming: true)
     let outcome = await adapter.finalize(batchSamples: nil)
     guard case .transcript(let result) = outcome else {
@@ -234,7 +236,7 @@ import Testing
     manager.finalizeStreamingResult = makeResult("")  // streaming returns empty
     manager.transcribeResult = makeResult("rescued text")
     let adapter = ParakeetEngineAdapter(
-      asrManager: manager, parakeetSelection: ParakeetSelectionProvider())
+      asrManager: manager, parakeetUpgrade: .legacyForTesting())
     let sid = SessionID()
     try await adapter.beginSession(sid, options: .default, streaming: true)
     feed(adapter, samples: [0.1, 0.2, 0.3], session: sid)
@@ -257,7 +259,7 @@ import Testing
     manager.finalizeStreamingThrows = true
     manager.transcribeResult = makeResult("rescued after throw")
     let adapter = ParakeetEngineAdapter(
-      asrManager: manager, parakeetSelection: ParakeetSelectionProvider())
+      asrManager: manager, parakeetUpgrade: .legacyForTesting())
     let sid = SessionID()
     try await adapter.beginSession(sid, options: .default, streaming: true)
     feed(adapter, samples: [0.7], session: sid)
@@ -275,7 +277,7 @@ import Testing
     manager.finalizeStreamingResult = makeResult("")
     manager.transcribeResult = makeResult("")
     let adapter = ParakeetEngineAdapter(
-      asrManager: manager, parakeetSelection: ParakeetSelectionProvider())
+      asrManager: manager, parakeetUpgrade: .legacyForTesting())
     let sid = SessionID()
     try await adapter.beginSession(sid, options: .default, streaming: true)
     feed(adapter, samples: [0.1], session: sid)
@@ -292,7 +294,7 @@ import Testing
     let manager = StubParakeetASRManager()
     manager.transcribeResult = makeResult("batch decoded")
     let adapter = ParakeetEngineAdapter(
-      asrManager: manager, parakeetSelection: ParakeetSelectionProvider())
+      asrManager: manager, parakeetUpgrade: .legacyForTesting())
     let sid = SessionID()
     // The user disabled live transcription — the kernel passes streaming: false.
     try await adapter.beginSession(sid, options: .default, streaming: false)
@@ -319,7 +321,7 @@ import Testing
     manager.finalizeStreamingResult = makeResult("")
     manager.transcribeResult = makeResult("x")
     let adapter = ParakeetEngineAdapter(
-      asrManager: manager, parakeetSelection: ParakeetSelectionProvider())
+      asrManager: manager, parakeetUpgrade: .legacyForTesting())
     let sid = SessionID()
     try await adapter.beginSession(sid, options: .default, streaming: true)
     feed(adapter, samples: [0.1, 0.2], session: sid)
@@ -341,7 +343,7 @@ import Testing
   func pcmClearedOnCancel() async throws {
     let manager = StubParakeetASRManager()
     let adapter = ParakeetEngineAdapter(
-      asrManager: manager, parakeetSelection: ParakeetSelectionProvider())
+      asrManager: manager, parakeetUpgrade: .legacyForTesting())
     let sid = SessionID()
     try await adapter.beginSession(sid, options: .default, streaming: true)
     feed(adapter, samples: [0.1, 0.2], session: sid)
@@ -362,7 +364,7 @@ import Testing
   func cancelPreservesLoadedModel() async throws {
     let manager = StubParakeetASRManager()
     let adapter = ParakeetEngineAdapter(
-      asrManager: manager, parakeetSelection: ParakeetSelectionProvider())
+      asrManager: manager, parakeetUpgrade: .legacyForTesting())
     try await adapter.warmUp()
     #expect(adapter.readiness == .ready)
     let sid = SessionID()
@@ -380,7 +382,7 @@ import Testing
   func recoverFromWedgeTearsDownEngine() async throws {
     let manager = StubParakeetASRManager()
     let adapter = ParakeetEngineAdapter(
-      asrManager: manager, parakeetSelection: ParakeetSelectionProvider())
+      asrManager: manager, parakeetUpgrade: .legacyForTesting())
     try await adapter.warmUp()
     await adapter.recoverFromWedge()
     #expect(
@@ -392,7 +394,7 @@ import Testing
   func cancelStillCancelsStreaming() async throws {
     let manager = StubParakeetASRManager()
     let adapter = ParakeetEngineAdapter(
-      asrManager: manager, parakeetSelection: ParakeetSelectionProvider())
+      asrManager: manager, parakeetUpgrade: .legacyForTesting())
     let sid = SessionID()
     try await adapter.beginSession(sid, options: .default, streaming: true)
     await adapter.cancel()
@@ -405,7 +407,7 @@ import Testing
     let manager = StubParakeetASRManager()
     manager.gateLoadModel = true
     let adapter = ParakeetEngineAdapter(
-      asrManager: manager, parakeetSelection: ParakeetSelectionProvider())
+      asrManager: manager, parakeetUpgrade: .legacyForTesting())
     let warmTask = Task { @MainActor in try? await adapter.warmUp() }
     // Wait until warmUp() has entered loadModel() (parked on the gate) — now a
     // load is genuinely in flight (`isLoadInFlight == true`).
@@ -424,7 +426,7 @@ import Testing
     manager.slowFeed = true  // feedAudio tasks are still in flight at finalize
     manager.finalizeStreamingResult = makeResult("streamed text")
     let adapter = ParakeetEngineAdapter(
-      asrManager: manager, parakeetSelection: ParakeetSelectionProvider())
+      asrManager: manager, parakeetUpgrade: .legacyForTesting())
     let sid = SessionID()
     try await adapter.beginSession(sid, options: .default, streaming: true)
     feed(adapter, samples: [0.1], session: sid)
@@ -446,7 +448,7 @@ import Testing
     manager.feedAudioThrows = true  // every feed fails (transient ASR/XPC)
     manager.finalizeStreamingResult = makeResult("streamed text")
     let adapter = ParakeetEngineAdapter(
-      asrManager: manager, parakeetSelection: ParakeetSelectionProvider())
+      asrManager: manager, parakeetUpgrade: .legacyForTesting())
     let sid = SessionID()
     try await adapter.beginSession(sid, options: .default, streaming: true)
     feed(adapter, samples: [0.1], session: sid)
@@ -466,7 +468,7 @@ import Testing
     // feedAudioThrows stays false — every feed succeeds.
     manager.finalizeStreamingResult = makeResult("streamed text")
     let adapter = ParakeetEngineAdapter(
-      asrManager: manager, parakeetSelection: ParakeetSelectionProvider())
+      asrManager: manager, parakeetUpgrade: .legacyForTesting())
     let sid = SessionID()
     try await adapter.beginSession(sid, options: .default, streaming: true)
     feed(adapter, samples: [0.1], session: sid)
@@ -485,7 +487,7 @@ import Testing
   func staleFeedGuardOnCancel() async throws {
     let manager = StubParakeetASRManager()
     let adapter = ParakeetEngineAdapter(
-      asrManager: manager, parakeetSelection: ParakeetSelectionProvider())
+      asrManager: manager, parakeetUpgrade: .legacyForTesting())
     let sid = SessionID()
     try await adapter.beginSession(sid, options: .default, streaming: true)
     feed(adapter, samples: [0.1], session: sid)  // dispatches a feed task
@@ -506,7 +508,7 @@ import Testing
     manager.slowFinalizeStreaming = true
     manager.finalizeStreamingResult = makeResult("session A text")
     let adapter = ParakeetEngineAdapter(
-      asrManager: manager, parakeetSelection: ParakeetSelectionProvider())
+      asrManager: manager, parakeetUpgrade: .legacyForTesting())
     let sidA = SessionID()
     try await adapter.beginSession(sidA, options: .default, streaming: true)
     feed(adapter, samples: [0.1], session: sidA)
@@ -530,7 +532,7 @@ import Testing
     let manager = StubParakeetASRManager()
     manager.finalizeStreamingResult = makeResult("done")
     let adapter = ParakeetEngineAdapter(
-      asrManager: manager, parakeetSelection: ParakeetSelectionProvider())
+      asrManager: manager, parakeetUpgrade: .legacyForTesting())
     let sid = SessionID()
     try await adapter.beginSession(sid, options: .default, streaming: true)
     _ = await adapter.finalize(batchSamples: nil)
@@ -544,7 +546,7 @@ import Testing
     let manager = StubParakeetASRManager()
     manager.finalizeStreamingResult = makeResult("would-be text")
     let adapter = ParakeetEngineAdapter(
-      asrManager: manager, parakeetSelection: ParakeetSelectionProvider())
+      asrManager: manager, parakeetUpgrade: .legacyForTesting())
     try await adapter.beginSession(SessionID(), options: .default, streaming: true)
     await adapter.cancel()
     let outcome = await adapter.finalize(batchSamples: nil)
@@ -558,7 +560,7 @@ import Testing
   func cancelIdempotent() async throws {
     let manager = StubParakeetASRManager()
     let adapter = ParakeetEngineAdapter(
-      asrManager: manager, parakeetSelection: ParakeetSelectionProvider())
+      asrManager: manager, parakeetUpgrade: .legacyForTesting())
     try await adapter.beginSession(SessionID(), options: .default, streaming: true)
     await adapter.cancel()
     await adapter.cancel()
@@ -575,7 +577,7 @@ import Testing
   func beginSessionCancelsIdleTimer() async throws {
     let manager = StubParakeetASRManager()
     let adapter = ParakeetEngineAdapter(
-      asrManager: manager, parakeetSelection: ParakeetSelectionProvider())
+      asrManager: manager, parakeetUpgrade: .legacyForTesting())
     // A prior session armed a delayed unload.
     adapter.applyUnloadPolicy(.fiveMinutes)
     try await adapter.beginSession(SessionID(), options: .default, streaming: true)
@@ -588,7 +590,7 @@ import Testing
   func applyUnloadPolicy() {
     let manager = StubParakeetASRManager()
     let adapter = ParakeetEngineAdapter(
-      asrManager: manager, parakeetSelection: ParakeetSelectionProvider())
+      asrManager: manager, parakeetUpgrade: .legacyForTesting())
     adapter.applyUnloadPolicy(.fiveMinutes)
     #expect(manager.lastUnloadPolicy == .fiveMinutes)
   }
@@ -597,7 +599,7 @@ import Testing
   func engineInterruptedCallbackOwnership() async throws {
     let manager = StubParakeetASRManager()
     let adapter = ParakeetEngineAdapter(
-      asrManager: manager, parakeetSelection: ParakeetSelectionProvider())
+      asrManager: manager, parakeetUpgrade: .legacyForTesting())
     var fired = false
     adapter.onEngineInterrupted = { fired = true }
     // Fixer item #7 made ASREventRouter the sole owner of onServiceInterrupted;
@@ -612,7 +614,7 @@ import Testing
   func recoverFromASRInterruptionSucceeds() async {
     let manager = StubParakeetASRManager()
     let adapter = ParakeetEngineAdapter(
-      asrManager: manager, parakeetSelection: ParakeetSelectionProvider(),
+      asrManager: manager, parakeetUpgrade: .legacyForTesting(),
       asrInterruptionRecoveryDeadlineSec: 2.0)
     let outcome = await adapter.recoverFromASRInterruption()
     #expect(outcome == .readyForBatchDecode)
@@ -625,7 +627,7 @@ import Testing
     let manager = StubParakeetASRManager()
     manager.loadModelError = SimulatedReloadFailure()
     let adapter = ParakeetEngineAdapter(
-      asrManager: manager, parakeetSelection: ParakeetSelectionProvider(),
+      asrManager: manager, parakeetUpgrade: .legacyForTesting(),
       asrInterruptionRecoveryDeadlineSec: 2.0)
     let outcome = await adapter.recoverFromASRInterruption()
     #expect(outcome == .failed)
@@ -642,7 +644,7 @@ import Testing
     let manager = StubParakeetASRManager()
     manager.gateLoadModel = true  // never released — forces the deadline to win
     let adapter = ParakeetEngineAdapter(
-      asrManager: manager, parakeetSelection: ParakeetSelectionProvider(),
+      asrManager: manager, parakeetUpgrade: .legacyForTesting(),
       asrInterruptionRecoveryDeadlineSec: 0.05)
     let outcome = await adapter.recoverFromASRInterruption()
     #expect(outcome == .failed)
@@ -656,7 +658,7 @@ import Testing
     let manager = StubParakeetASRManager()
     manager.gateLoadModel = true
     let adapter = ParakeetEngineAdapter(
-      asrManager: manager, parakeetSelection: ParakeetSelectionProvider(),
+      asrManager: manager, parakeetUpgrade: .legacyForTesting(),
       asrInterruptionRecoveryDeadlineSec: 2.0)
     let task = Task { await adapter.recoverFromASRInterruption() }
     while manager.loadModelCount == 0 { await Task.yield() }
@@ -677,7 +679,7 @@ import Testing
     let manager = StubParakeetASRManager()
     manager.gateLoadModel = true
     let adapter = ParakeetEngineAdapter(
-      asrManager: manager, parakeetSelection: ParakeetSelectionProvider(),
+      asrManager: manager, parakeetUpgrade: .legacyForTesting(),
       asrInterruptionRecoveryDeadlineSec: 2.0)
     let task = Task { await adapter.recoverFromASRInterruption() }
     while manager.loadModelCount == 0 { await Task.yield() }
@@ -701,7 +703,7 @@ import Testing
     let manager = StubParakeetASRManager()
     manager.gateLoadModel = true
     let adapter = ParakeetEngineAdapter(
-      asrManager: manager, parakeetSelection: ParakeetSelectionProvider(),
+      asrManager: manager, parakeetUpgrade: .legacyForTesting(),
       asrInterruptionRecoveryDeadlineSec: 0.05)
 
     // Attempt #1 (stale): times out, but its own `warmUp()` Task stays parked
@@ -744,7 +746,7 @@ import Testing
     let manager = StubParakeetASRManager()
     manager.finalizeStreamingResult = makeResult("streamed text")
     let adapter = ParakeetEngineAdapter(
-      asrManager: manager, parakeetSelection: ParakeetSelectionProvider())
+      asrManager: manager, parakeetUpgrade: .legacyForTesting())
     let sid = SessionID()
     try await adapter.beginSession(sid, options: .default, streaming: true)
     feed(adapter, samples: [0.1, 0.2, 0.3], session: sid)
@@ -770,7 +772,7 @@ import Testing
     let manager = StubParakeetASRManager()
     manager.transcribeResult = makeResult("retried text")
     let adapter = ParakeetEngineAdapter(
-      asrManager: manager, parakeetSelection: ParakeetSelectionProvider())
+      asrManager: manager, parakeetUpgrade: .legacyForTesting())
     let sid = SessionID()
     try await adapter.beginSession(sid, options: .default, streaming: false)
 
@@ -797,7 +799,7 @@ import Testing
     // condition that makes the KERNEL spend its one Phase-2 retry.
     manager.transcribeThrows = true
     let adapter = ParakeetEngineAdapter(
-      asrManager: manager, parakeetSelection: ParakeetSelectionProvider())
+      asrManager: manager, parakeetUpgrade: .legacyForTesting())
     let sid = SessionID()
     try await adapter.beginSession(sid, options: .default, streaming: true)
     feed(adapter, samples: [0.1], session: sid)
@@ -833,7 +835,7 @@ import Testing
     let manager = StubParakeetASRManager()
     manager.isModelLoaded = true
     let adapter = ParakeetEngineAdapter(
-      asrManager: manager, parakeetSelection: ParakeetSelectionProvider())
+      asrManager: manager, parakeetUpgrade: .legacyForTesting())
     let sidA = SessionID()
     try await adapter.beginSession(sidA, options: .default, streaming: false)
 
@@ -864,7 +866,7 @@ import Testing
   func bumpRetryGenerationSupersedesInFlightRetry() async throws {
     let manager = StubParakeetASRManager()
     let adapter = ParakeetEngineAdapter(
-      asrManager: manager, parakeetSelection: ParakeetSelectionProvider())
+      asrManager: manager, parakeetUpgrade: .legacyForTesting())
     let sid = SessionID()
     try await adapter.beginSession(sid, options: .default, streaming: false)
 
@@ -899,7 +901,7 @@ import Testing
     let manager = StubParakeetASRManager()
     manager.isModelLoaded = true
     let adapter = ParakeetEngineAdapter(
-      asrManager: manager, parakeetSelection: ParakeetSelectionProvider())
+      asrManager: manager, parakeetUpgrade: .legacyForTesting())
     let sid = SessionID()
     try await adapter.beginSession(sid, options: .default, streaming: false)
 
@@ -937,7 +939,7 @@ import Testing
     // readiness-gated repair calls warmUp() before the second decode, and
     // the whole call (repair included) is bounded by this ONE deadline.
     let adapter = ParakeetEngineAdapter(
-      asrManager: manager, parakeetSelection: ParakeetSelectionProvider())
+      asrManager: manager, parakeetUpgrade: .legacyForTesting())
     // 16kHz mono — 16_000 samples/sec (AudioConstants.sampleRate).
     let zero = adapter.retryDecodeTimeoutSeconds(forSampleCount: 0)
     let oneMinute = adapter.retryDecodeTimeoutSeconds(forSampleCount: 16_000 * 60)

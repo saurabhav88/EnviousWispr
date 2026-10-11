@@ -804,7 +804,8 @@ final class DeliveryStubProtocol: URLProtocol {
       defaults: TestDefaults.suite(suite)!)
     let selection = ParakeetSelectionProvider()
     let adapter = ParakeetEngineAdapter(
-      asrManager: StubParakeetASRManager(), parakeetSelection: selection, delivery: handle)
+      asrManager: StubParakeetASRManager(),
+      parakeetUpgrade: ParakeetUpgradeCoordinator(parakeetSelection: selection, delivery: handle))
 
     DeliveryStubProtocol.reset()
     ChunkAppendDelegate.protocolClassesForTesting = [DeliveryStubProtocol.self]
@@ -853,6 +854,61 @@ final class DeliveryStubProtocol: URLProtocol {
     #expect(request.repairable)
     #expect(request.revision == manifest.identity.revision)
     #expect(request.displayBytes == manifest.totalBytes)
+  }
+}
+
+extension ManifestFetchTaskTests {
+  /// #3546: two Parakeet preparations asked for together (a launch warm-up and a
+  /// direct load) run the delivery stage ONCE and share its request; the
+  /// selection point they were asked for is consumed. Lives in this serialized
+  /// suite because it drives the shared `DeliveryStubProtocol`.
+  @MainActor
+  @Test func concurrentPreparationsShareOneDeliveryStage() async throws {
+    let root = FileManager.default.temporaryDirectory
+      .appendingPathComponent("prepare-\(UUID().uuidString)", isDirectory: true)
+    let install = root.appendingPathComponent("install", isDirectory: true)
+    let metadata = root.appendingPathComponent("metadata", isDirectory: true)
+    try FileManager.default.createDirectory(at: install, withIntermediateDirectories: true)
+    try FileManager.default.createDirectory(at: metadata, withIntermediateDirectories: true)
+    let host = "https://prepare.invalid.example/\(UUID().uuidString)/"
+    let files = ManifestFixture.smallFiles
+    let manifest = try DeliveryManifest.load(
+      from: ManifestFixture.manifestJSON(
+        files: files,
+        sources: [["id": "our_copy", "baseURL": host], ["id": "backup", "baseURL": host]]))
+    let registration = DeliveryRegistration(
+      manifest: manifest, installDirectory: install, metadataDirectory: metadata)
+    let suite = "test.prepare.\(UUID().uuidString)"
+    let controller = ModelDeliveryController(
+      defaults: TestDefaults.suite(suite)!, availableDiskBytes: { _ in .max })
+    let handle = ParakeetDeliveryHandle(
+      controller: controller, registration: registration, defaults: TestDefaults.suite(suite)!)
+    let selection = ParakeetSelectionProvider()
+    let coordinator = ParakeetUpgradeCoordinator(parakeetSelection: selection, delivery: handle)
+
+    DeliveryStubProtocol.reset()
+    ChunkAppendDelegate.protocolClassesForTesting = [DeliveryStubProtocol.self]
+    for f in files {
+      DeliveryStubProtocol.enqueue(
+        url: URL(string: host)!.appendingPathComponent(f.path).absoluteString,
+        .init(
+          status: 200, headers: ["Content-Length": String(f.content.count), "ETag": "\"e\""],
+          body: f.content))
+    }
+
+    coordinator.markSelectionPoint()
+    #expect(coordinator.hasPendingSelectionPoint)
+    async let first = coordinator.prepareLoad()
+    async let second = coordinator.prepareLoad()
+    let (a, b) = try await (first, second)
+    #expect(a.selection == b.selection)
+    let request = try #require(selection.current)
+    #expect(request.generation == 1, "one delivery stage published one request")
+    #expect(request.directory == install)
+    #expect(request.cacheOnly)
+    #expect(DeliveryStubProtocol.requests.filter { $0.hasPrefix("GET ") }.count == files.count)
+    #expect(coordinator.hasPendingSelectionPoint == false)
+    #expect(await controller.isAdmitted(registration))
   }
 }
 

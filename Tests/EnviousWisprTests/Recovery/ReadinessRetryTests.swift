@@ -41,7 +41,8 @@ struct ActiveEngineLoadPostconditionTests {
     manager.readyAfterLoad = false
 
     let op = ActiveEngineOperation.live(
-      asrManager: manager, whisperKitBackend: Self.unusedBackend())
+      asrManager: manager, parakeetUpgrade: .legacyForTesting(),
+      whisperKitBackend: Self.unusedBackend())
 
     await #expect(throws: ASREngineNotReadyAfterLoadError.self) {
       try await op.load()
@@ -59,7 +60,8 @@ struct ActiveEngineLoadPostconditionTests {
     #expect(manager.isModelLoaded == false, "cold: a pre-load guard would refuse here")
 
     let op = ActiveEngineOperation.live(
-      asrManager: manager, whisperKitBackend: Self.unusedBackend())
+      asrManager: manager, parakeetUpgrade: .legacyForTesting(),
+      whisperKitBackend: Self.unusedBackend())
 
     try await op.load()
     #expect(manager.isModelLoaded, "the loader made it ready and the postcondition agreed")
@@ -104,7 +106,8 @@ struct ReadinessRetryTelemetryContractTests {
     let manager = RecoverySpoolReplayerTests.FakeBatchASR()
     manager.readyAfterLoad = false
     let engine = ActiveEngineOperation.live(
-      asrManager: manager, whisperKitBackend: WhisperKitBackend(admittedModelFolder: { nil }))
+      asrManager: manager, parakeetUpgrade: .legacyForTesting(),
+      whisperKitBackend: WhisperKitBackend(admittedModelFolder: { nil }))
     let suite = BenchmarkSuite(engineMutationScope: .alwaysAllowedForTesting)
 
     await suite.run(activeEngine: engine)

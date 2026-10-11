@@ -132,7 +132,7 @@ enum DictationRuntimeFixtures {
       inputs: .init(
         audioCapture: audioCapture,
         asrManager: asrManager,
-        parakeetSelection: ParakeetSelectionProvider(),
+        parakeetUpgrade: .legacyForTesting(),
         vadSignalSource: vad,
         transcriptStore: store,
         keychainManager: KeychainManager(),
@@ -196,4 +196,17 @@ enum DictationRuntimeFixtures {
     )
   }
 
+}
+
+/// #3546: a Parakeet upgrade coordinator with no delivery handle (the legacy
+/// route), for fixtures that build a Parakeet adapter around a mock manager.
+/// Production builds one in `ModelDeliveryHome.installParakeetUpgrade`.
+extension ParakeetUpgradeCoordinator {
+  @MainActor
+  static func legacyForTesting(
+    selection: ParakeetSelectionProvider = ParakeetSelectionProvider(),
+    delivery: ParakeetDeliveryHandle? = nil
+  ) -> ParakeetUpgradeCoordinator {
+    ParakeetUpgradeCoordinator(parakeetSelection: selection, delivery: delivery)
+  }
 }

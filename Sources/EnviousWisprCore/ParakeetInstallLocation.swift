@@ -50,6 +50,23 @@ public enum ParakeetInstallLocation {
   /// runtime rather than restating it here, which is what caught that.
   public static let repoFolderName = "parakeet-tdt-0.6b-v3"
 
+  /// #3546: the same load-bearing folder name, per model. FluidAudio's
+  /// `Repo.folderName` for `parakeet-ultra-coreml` strips `-coreml` the same
+  /// way, giving `parakeet-ultra`; the vendor-oracle test checks every case.
+  package static func folderName(for model: ParakeetModel) -> String {
+    switch model {
+    case .v3: return repoFolderName
+    case .ultra: return "parakeet-ultra"
+    }
+  }
+
+  /// #3546: `directory(dataDirectory:)` for a given model, a sibling of v3's.
+  package static func directory(for model: ParakeetModel, dataDirectory: URL) -> URL {
+    dataDirectory
+      .appendingPathComponent("Models", isDirectory: true)
+      .appendingPathComponent(folderName(for: model), isDirectory: true)
+  }
+
   /// Our owned install directory beneath a given Application Support root.
   ///
   /// A sibling of `EnviousWispr/Models/whisper`, which the multilingual family
@@ -61,9 +78,7 @@ public enum ParakeetInstallLocation {
   /// and under the home fallback there is no parent to append to that means
   /// anything.
   public static func directory(dataDirectory: URL) -> URL {
-    dataDirectory
-      .appendingPathComponent("Models", isDirectory: true)
-      .appendingPathComponent(repoFolderName, isDirectory: true)
+    directory(for: .v3, dataDirectory: dataDirectory)
   }
 
   /// The directory Parakeet used to install into, kept ONLY as a read-only

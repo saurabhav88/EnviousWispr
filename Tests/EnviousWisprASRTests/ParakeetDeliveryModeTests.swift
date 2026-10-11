@@ -89,4 +89,25 @@ import Testing
     #expect(emissions[3].1 == ModelLoadStallPolicy.installPhase)
     #expect(emissions[3].2 == "")
   }
+
+  /// #3546: our install folder for each model must be the folder FluidAudio
+  /// rebuilds for it (`AsrModels.load(from:)` drops the last component and
+  /// re-appends the vendor's folder name), read from the vendor at runtime, and
+  /// v3's must stay the name existing installs already use.
+  @Test(arguments: ParakeetModel.allCases)
+  func installFolderMatchesTheVendorReconstruction(model: ParakeetModel) {
+    #expect(
+      ParakeetInstallLocation.folderName(for: model)
+        == ParakeetBackend.vendorFolderName(for: model))
+    let data = URL(fileURLWithPath: "/tmp/ew-folder-oracle/EnviousWispr")
+    #expect(
+      ParakeetInstallLocation.directory(for: model, dataDirectory: data).lastPathComponent
+        == ParakeetInstallLocation.folderName(for: model))
+    if model == .v3 {
+      #expect(ParakeetInstallLocation.folderName(for: model) == "parakeet-tdt-0.6b-v3")
+      #expect(
+        ParakeetInstallLocation.directory(dataDirectory: data)
+          == ParakeetInstallLocation.directory(for: .v3, dataDirectory: data))
+    }
+  }
 }

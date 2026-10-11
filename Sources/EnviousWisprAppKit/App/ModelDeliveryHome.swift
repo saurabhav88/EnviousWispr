@@ -21,6 +21,23 @@ final class ModelDeliveryHome {
   private(set) var parakeetHandle: ParakeetDeliveryHandle?
   private var parakeetIdentity: ModelIdentity?
   private var parakeetRegistration: DeliveryRegistration?
+  /// #3546: the Parakeet selection-policy owner, built here because this home
+  /// owns the Parakeet registration and handle (plan §3b, the
+  /// `WhisperKitLegacyUpgradeCoordinator` precedent). Set once by
+  /// `installParakeetUpgrade(parakeetSelection:)`.
+  private(set) var parakeetUpgrade: ParakeetUpgradeCoordinator?
+
+  /// #3546: builds the Parakeet upgrade coordinator around THIS home's Parakeet
+  /// handle and the request provider the caller also gives `ASRManager`.
+  func installParakeetUpgrade(
+    parakeetSelection: ParakeetSelectionProvider
+  ) -> ParakeetUpgradeCoordinator {
+    if let parakeetUpgrade { return parakeetUpgrade }
+    let coordinator = ParakeetUpgradeCoordinator(
+      parakeetSelection: parakeetSelection, delivery: parakeetHandle)
+    parakeetUpgrade = coordinator
+    return coordinator
+  }
 
   /// #1386 PR-2. Nil when the bundled multilingual manifest failed to load —
   /// unlike Parakeet there is NO legacy fallback behind it (PR-2 retired

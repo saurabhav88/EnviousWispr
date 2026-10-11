@@ -39,7 +39,7 @@ struct DedupSurvivesStallTests {
       inputs: .init(
         audioCapture: audioCapture,
         asrManager: asrManager,
-        parakeetSelection: ParakeetSelectionProvider(),
+        parakeetUpgrade: .legacyForTesting(),
         vadSignalSource: vad,
         transcriptStore: TranscriptStore(),
         keychainManager: KeychainManager(),

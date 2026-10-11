@@ -105,7 +105,7 @@ struct HeartPathIntegrationTests {
       inputs: .init(
         audioCapture: audioCapture,
         asrManager: asrManager,
-        parakeetSelection: ParakeetSelectionProvider(),
+        parakeetUpgrade: .legacyForTesting(),
         vadSignalSource: vad,
         transcriptStore: TranscriptStore(),
         keychainManager: KeychainManager(),
@@ -322,7 +322,7 @@ private final class HeartPathHarness {
     // test asserts. Transcribing separately and handing the wiring a different
     // adapter silently disconnects that metadata.
     let adapter = ParakeetEngineAdapter(
-      asrManager: asrManager, parakeetSelection: ParakeetSelectionProvider())
+      asrManager: asrManager, parakeetUpgrade: .legacyForTesting())
     try await adapter.beginSession(SessionID(), options: .default, streaming: false)
     let asrResult: ASRResult
     switch await adapter.finalize(batchSamples: captureResult.samples) {

@@ -71,6 +71,36 @@ struct ASRManagerBackendInjectionTests {
     #expect(manager.isModelLoaded == false)
   }
 
+  /// #3546: an Ultra load is counted before the vendor loader. With nothing
+  /// installed to count it, the load fails closed before the vendor; and a
+  /// counting hook that throws (the store could not persist the attempt) stops
+  /// the load with that error, still before the vendor.
+  @Test("an uncounted Ultra load fails closed, and a throwing count stops the load")
+  func ultraLoadIsCountedOrRefused() async throws {
+    struct StoreDown: Error {}
+    let selection = ParakeetSelectionProvider()
+    let manager = ASRManager(
+      engineMutationScope: .alwaysAllowedForTesting, parakeetSelection: selection,
+      parakeetBackendFactory: { ParakeetBackend() })
+    selection.select(
+      model: .ultra, revision: nil,
+      directory: URL(fileURLWithPath: "/nonexistent/parakeet-ultra"), cacheOnly: true,
+      displayBytes: 1, repairable: false)
+    await #expect(throws: ParakeetLoadAccountingUnavailableError.self) {
+      try await manager.loadModel()
+    }
+    var counted: [ParakeetModel] = []
+    selection.beforePhysicalLoad = { request in
+      counted.append(request.model)
+      throw StoreDown()
+    }
+    await #expect(throws: StoreDown.self) {
+      try await manager.loadModel()
+    }
+    #expect(counted == [.ultra])
+    #expect(manager.isModelLoaded == false)
+  }
+
   /// `clear()` removes the request but never rewinds the generation.
   @Test("the provider stamps increasing generations and clear keeps counting")
   func providerGenerationsIncrease() {

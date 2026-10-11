@@ -27,18 +27,18 @@ import Foundation
 package enum KernelAdapterFactory {
 
   /// The single Parakeet adapter construction site in `Sources/`.
-  /// `delivery` (#1348 Phase 2): nil = legacy in-service download path.
-  /// `parakeetSelection` (#3546): required; the same provider `ASRManager` reads.
+  /// `parakeetUpgrade` (#3546): required; the Parakeet selection-policy owner,
+  /// which holds the delivery handle (#1348 Phase 2) and the request provider
+  /// `ASRManager` reads.
   /// `batchDecodeFaultController` (#1707 Phase 2): DEBUG fault-injection
   /// oracle, defaulted `nil` so every existing test call site is unaffected.
   package static func makeParakeetAdapter(
     asrManager: any ASRManagerInterface,
-    parakeetSelection: ParakeetSelectionProvider,
-    delivery: ParakeetDeliveryHandle? = nil,
+    parakeetUpgrade: ParakeetUpgradeCoordinator,
     batchDecodeFaultController: BatchDecodeFaultController? = nil
   ) -> any ASREngineAdapter {
     ParakeetEngineAdapter(
-      asrManager: asrManager, parakeetSelection: parakeetSelection, delivery: delivery,
+      asrManager: asrManager, parakeetUpgrade: parakeetUpgrade,
       batchDecodeFaultController: batchDecodeFaultController)
   }
 

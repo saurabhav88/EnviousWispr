@@ -90,7 +90,7 @@ struct AudioEventRouterTests {
     let inputs = KernelDictationDriverFactory.ParakeetInputs(
       audioCapture: audio,
       asrManager: asr,
-      parakeetSelection: ParakeetSelectionProvider(),
+      parakeetUpgrade: .legacyForTesting(),
       vadSignalSource: vad,
       transcriptStore: TranscriptStore(),
       keychainManager: KeychainManager(),

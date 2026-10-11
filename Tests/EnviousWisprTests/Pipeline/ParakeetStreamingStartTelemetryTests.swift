@@ -48,7 +48,7 @@ struct ParakeetStreamingStartTelemetryTests {
       let stub = StubParakeetASRManager()
       stub.startStreamingThrows = true
       let adapter = ParakeetEngineAdapter(
-      asrManager: stub, parakeetSelection: ParakeetSelectionProvider())
+      asrManager: stub, parakeetUpgrade: .legacyForTesting())
 
       try await adapter.beginSession(SessionID(), options: .default, streaming: true)
       let event = try await waiter.waitForEvent(
@@ -90,7 +90,7 @@ struct ParakeetStreamingStartTelemetryTests {
       let stub = StubParakeetASRManager()
       stub.startStreamingThrows = true
       let adapter = ParakeetEngineAdapter(
-      asrManager: stub, parakeetSelection: ParakeetSelectionProvider())
+      asrManager: stub, parakeetUpgrade: .legacyForTesting())
 
       try await adapter.beginSession(SessionID(), options: .default, streaming: true)
 
@@ -119,7 +119,7 @@ struct ParakeetStreamingStartTelemetryTests {
       let stub = StubParakeetASRManager()
       stub.startStreamingThrows = false
       let adapter = ParakeetEngineAdapter(
-      asrManager: stub, parakeetSelection: ParakeetSelectionProvider())
+      asrManager: stub, parakeetUpgrade: .legacyForTesting())
 
       try await adapter.beginSession(SessionID(), options: .default, streaming: true)
 

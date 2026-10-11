@@ -1,6 +1,7 @@
 import Foundation
 import EnviousWisprASR
 import EnviousWisprCore
+import EnviousWisprPipeline
 
 /// The ONE door for callers that need to load or transcribe on whichever speech
 /// engine is currently active, without knowing which one that is (#1386 PR-2).
@@ -98,8 +99,12 @@ struct ActiveEngineOperation {
   ///   a seam the test would either race a concurrent unload — timing-dependent,
   ///   which this repo forbids — or substitute a fake loader, which would stop
   ///   testing this factory at all.
+  /// - Parameter parakeetUpgrade: #3546, the Parakeet selection-policy owner.
+  ///   A Parakeet load here first settles a pending selection point through it,
+  ///   so this door never loads the request an earlier selection published.
   static func live(
-    asrManager: any ASRManagerInterface, whisperKitBackend: WhisperKitBackend,
+    asrManager: any ASRManagerInterface, parakeetUpgrade: ParakeetUpgradeCoordinator,
+    whisperKitBackend: WhisperKitBackend,
     afterLoadForTesting: (@MainActor () async -> Void)? = nil
   ) -> ActiveEngineOperation {
     let readiness: @MainActor () async -> Bool = {
@@ -112,6 +117,7 @@ struct ActiveEngineOperation {
         if asrManager.activeBackendType == .whisperKit {
           try await whisperKitBackend.prepare()
         } else {
+          try await parakeetUpgrade.settlePendingSelection()
           try await asrManager.loadModel()
         }
         if let afterLoadForTesting { await afterLoadForTesting() }

@@ -25,7 +25,7 @@ import Testing
   @Test("makeParakeetAdapter returns a .parakeet-identity adapter")
   func makeParakeetAdapterHasParakeetIdentity() {
     let adapter = KernelAdapterFactory.makeParakeetAdapter(
-      asrManager: MinimalASRManager(), parakeetSelection: ParakeetSelectionProvider())
+      asrManager: MinimalASRManager(), parakeetUpgrade: .legacyForTesting())
     #expect(adapter.engineIdentity.backendType == .parakeet)
   }
 
