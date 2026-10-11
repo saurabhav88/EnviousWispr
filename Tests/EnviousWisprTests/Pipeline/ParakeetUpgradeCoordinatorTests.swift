@@ -236,16 +236,19 @@ private final class StageGate {
       withUnsafeCurrentTask { $0?.cancel() }
       return
     }
-    if isOpen { return }
     if rejectExpired("pass") {
       withUnsafeCurrentTask { $0?.cancel() }
       return
     }
+    if isOpen { return }
     await withCheckedContinuation { held.append($0) }
+    if expired {
+      withUnsafeCurrentTask { $0?.cancel() }
+    }
   }
 
   func open() {
-    isOpen = true
+    if expired == false { isOpen = true }
     let released = held
     held = []
     for continuation in released { continuation.resume() }
@@ -280,6 +283,57 @@ private final class StageGate {
 @MainActor
 @Suite(.tags(.harnessContract))
 struct ParakeetUpgradeStageGateTests {
+  @Test func pendingWaitExpiryCannotBeReopened() async {
+    for park in [false, true] {
+      var cancelled = false
+      await withKnownIssue("Pending expiry rejects reopening and its late pass") {
+        let gate = StageGate(deadline: .milliseconds(1))
+        let c = ParakeetUpgradeCoordinator(
+          parakeetSelection: ParakeetSelectionProvider(), delivery: nil)
+        defer { c.onWaiterParkedForTesting = nil }
+        if park { await gate.waitForParked(c, 1) }
+        else { await gate.waitForEntry(1) }
+        await gate.waitForDeadlineForTesting()
+        gate.open()
+        cancelled = await Task {
+          await gate.pass()
+          return Task.isCancelled
+        }.value
+      }
+      #expect(cancelled == true)
+      #expect(Task.isCancelled == false)
+    }
+  }
+
+  @Test func heldExpiryPropagatesThroughCoordinator() async throws {
+    var result: Result<ParakeetUpgradeCoordinator.PreparedLoad, any Error>?
+    await withKnownIssue("Held subject expires") {
+      let gate = StageGate(deadline: .milliseconds(1))
+      let c = ParakeetUpgradeCoordinator(
+        parakeetSelection: ParakeetSelectionProvider(), delivery: nil)
+      c.deliveryStageGateForTesting = { await gate.pass() }
+      defer {
+        gate.open()
+        c.deliveryStageGateForTesting = nil
+      }
+      let subject = Task { try await c.prepareLoad() }
+      await gate.waitForEntry(1)
+      await gate.waitForDeadlineForTesting()
+      result = await subject.result
+    }
+    let completed = try #require(result)
+    #expect(throws: CancellationError.self) { _ = try completed.get() }
+    #expect(Task.isCancelled == false)
+  }
+
+  @Test func explicitOpenBeforeExpiryPermitsPass() async {
+    let gate = StageGate()
+    gate.open()
+    await gate.pass()
+    #expect(gate.entries == 1)
+    #expect(Task.isCancelled == false)
+  }
+
   @Test func idleExpiryRejectsLateEntryWait() async {
     let gate = StageGate(deadline: .milliseconds(1))
     await gate.waitForDeadlineForTesting()
