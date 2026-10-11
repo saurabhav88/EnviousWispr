@@ -192,6 +192,8 @@ package final class ParakeetUpgradeCoordinator {
   // Handoff only. Fresh invocations still run a stage.
   // Cleared at stage start; published before resuming waiters.
   private var completedPreparation: Result<PreparedLoad, any Error>?
+  /// Holds a resumed waiter before reconciliation; nil adds no suspension.
+  package var preparationWakeGateForTesting: (@MainActor () async -> Void)?
   private var waiters: [UUID: CheckedContinuation<PreparedLoad, any Error>] = [:]
 
   /// Test seams (internal): awaited at the start of every delivery stage, and
@@ -263,6 +265,7 @@ package final class ParakeetUpgradeCoordinator {
   /// Runs the delivery stage and publishes the request the next physical load
   /// reads. Joins an in-flight preparation instead of starting a second.
   package func prepareLoad() async throws -> PreparedLoad {
+    var joinedSelectionLoad: ParakeetModelSelection?
     while true {
       try Task.checkCancellation()
 
@@ -270,13 +273,23 @@ package final class ParakeetUpgradeCoordinator {
         do {
           let joined: Result<PreparedLoad, any Error>
           do {
-            joined = .success(try await waitForPreparation())
+            let previous = try await waitForPreparation()
+            if previous.isSelectionLoad {
+              joinedSelectionLoad = previous.selection
+            }
+            joined = .success(previous)
           } catch {
             joined = .failure(error)
           }
+          if let preparationWakeGateForTesting {
+            await preparationWakeGateForTesting()
+          }
           try Task.checkCancellation()
           if preparing { continue }
-          let prepared = try (completedPreparation ?? joined).get()
+          var prepared = try (completedPreparation ?? joined).get()
+          if let initial = joinedSelectionLoad, prepared.selection == initial {
+            prepared.isSelectionLoad = true
+          }
           // A selection point marked while that preparation ran is not
           // settled by it: prepare again before returning.
           if hasPendingSelectionPoint { continue }
@@ -311,7 +324,10 @@ package final class ParakeetUpgradeCoordinator {
         waiter.resume(with: result)
       }
 
-      let prepared = try result.get()
+      var prepared = try result.get()
+      if let initial = joinedSelectionLoad, prepared.selection == initial {
+        prepared.isSelectionLoad = true
+      }
       if hasPendingSelectionPoint { continue }
       return prepared
     }

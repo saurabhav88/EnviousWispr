@@ -285,6 +285,131 @@ struct ParakeetUpgradeStageGateTests {
 @Suite("Parakeet upgrade policy", .serialized, .tags(.productOutcome))
 struct ParakeetUpgradePolicyTests {
 
+  @Test("initial eligibility survives only identical-request frozen handoffs")
+  func initialEligibilitySurvivesFrozenHandoff() async throws {
+    for (newPoint, rejoin) in [(false, false), (true, false), (false, true)] {
+      let rig = try await Self.rig(v3: true, ultra: true)
+      let c = rig.coordinator
+      let stages = StageGate(maximumEntries: 3)
+      let wake1 = StageGate(maximumEntries: 1)
+      let wake2 = StageGate(maximumEntries: 1)
+      let reloadGate = StageGate(maximumEntries: 1)
+      var wakes = 0
+      c.deliveryStageGateForTesting = {
+        await stages.pass()
+        if rejoin, stages.entries == 2 { await reloadGate.pass() }
+      }
+      c.preparationWakeGateForTesting = {
+        wakes += 1
+        if wakes == 1 { await wake1.pass() }
+        else { await wake2.pass() }
+      }
+      defer {
+        stages.open()
+        wake1.open()
+        wake2.open()
+        reloadGate.open()
+        c.deliveryStageGateForTesting = nil
+        c.preparationWakeGateForTesting = nil
+        c.onWaiterParkedForTesting = nil
+        try? FileManager.default.removeItem(at: rig.root)
+      }
+      let owner = Task { try await c.prepareLoad() }
+      await stages.waitForEntry(1)
+      let waiter = Task { try await c.prepareLoad() }
+      await stages.waitForParked(c, 1)
+      stages.open()
+      let ownerResult = await owner.result
+      await wake1.waitForEntry(1)
+
+      var intermediate: [Result<ParakeetUpgradeCoordinator.PreparedLoad, any Error>] = []
+      if newPoint {
+        c.markSelectionPoint()
+        intermediate.append(await Task { try await c.prepareLoad() }.result)
+      }
+      if rejoin {
+        let reload = Task { try await c.prepareLoad() }
+        await reloadGate.waitForEntry(1)
+        wake1.open()
+        await stages.waitForParked(c, 2)
+        reloadGate.open()
+        intermediate.append(await reload.result)
+        await wake2.waitForEntry(1)
+      }
+      let freshResult = await Task { try await c.prepareLoad() }.result
+      wake1.open()
+      wake2.open()
+      let joinedResult = await waiter.result
+
+      let initial = try ownerResult.get()
+      for result in intermediate { _ = try result.get() }
+      let fresh = try freshResult.get()
+      let joined = try joinedResult.get()
+      #expect(initial.isSelectionLoad == true)
+      #expect(fresh.isSelectionLoad == false)
+      #expect(joined.selection == rig.selection.current)
+      #expect(joined.selection == fresh.selection)
+      #expect(joined.isSelectionLoad == (newPoint == false))
+      if newPoint {
+        #expect(joined.selection != initial.selection)
+      } else {
+        #expect(joined.selection == initial.selection)
+      }
+      #expect(stages.entries == (newPoint || rejoin ? 3 : 2))
+      #expect(c.hasPendingSelectionPoint == false)
+      #expect(Self.physicalLoad(rig, succeeds: false) == .loaded)
+      let plan = await c.handleLoadFailure(joined, error: VendorLoadFailed())
+      #expect(plan == (newPoint ? .fail : .reload))
+      #expect(rig.selection.current?.model == (newPoint ? .ultra : .v3))
+    }
+  }
+
+  @Test("cancelling a wake-held waiter preserves the owner request")
+  func cancellationWhileWakeHeld() async throws {
+    let rig = try await Self.rig(v3: true, ultra: true)
+    let c = rig.coordinator
+    let stage = StageGate(maximumEntries: 1)
+    let wake = StageGate(maximumEntries: 1)
+    var outcomes: [ParakeetUpgradeCoordinator.Outcome] = []
+    c.onOutcome = { outcomes.append($0) }
+    c.deliveryStageGateForTesting = { await stage.pass() }
+    c.preparationWakeGateForTesting = { await wake.pass() }
+    defer {
+      stage.open()
+      wake.open()
+      c.deliveryStageGateForTesting = nil
+      c.preparationWakeGateForTesting = nil
+      c.onWaiterParkedForTesting = nil
+      c.onOutcome = nil
+      try? FileManager.default.removeItem(at: rig.root)
+    }
+
+    let owner = Task { try await c.prepareLoad() }
+    await stage.waitForEntry(1)
+    let joiner = Task { try await c.prepareLoad() }
+    await stage.waitForParked(c, 1)
+    stage.open()
+    let ownerResult = await owner.result
+    await wake.waitForEntry(1)
+    let beforeCancel = rig.selection.current
+    joiner.cancel()
+    wake.open()
+    let joinedResult = await joiner.result
+
+    let prepared = try ownerResult.get()
+    #expect(throws: CancellationError.self) {
+      _ = try joinedResult.get()
+    }
+    #expect(prepared.selection == beforeCancel)
+    #expect(prepared.isSelectionLoad == true)
+    #expect(rig.selection.current == beforeCancel)
+    #expect(rig.selection.current?.model == .ultra)
+    #expect(c.hasPendingSelectionPoint == false)
+    #expect(stage.entries == 1)
+    #expect(wake.entries == 1)
+    #expect(outcomes.contains(.fellBackToV3) == false)
+  }
+
   @Test("a delayed joiner receives the newer failure without a third stage")
   func delayedJoinerReceivesNewerFailure() async throws {
     let rig = try await Self.rig(v3: false, ultra: true, enabled: false)
