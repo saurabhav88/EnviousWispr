@@ -285,6 +285,70 @@ struct ParakeetUpgradeStageGateTests {
 @Suite("Parakeet upgrade policy", .serialized, .tags(.productOutcome))
 struct ParakeetUpgradePolicyTests {
 
+  @Test("initial eligibility survives cancelled frozen successor takeover")
+  func initialEligibilitySurvivesOwnerTakeover() async throws {
+    let rig = try await Self.rig(v3: true, ultra: true)
+    let c = rig.coordinator
+    let stages = StageGate(maximumEntries: 3)
+    let wake1 = StageGate(maximumEntries: 1)
+    let reloadGate = StageGate(maximumEntries: 1)
+    var wakes = 0
+    c.deliveryStageGateForTesting = {
+      await stages.pass()
+      if stages.entries == 2 { await reloadGate.pass() }
+    }
+    c.preparationWakeGateForTesting = {
+      wakes += 1
+      if wakes == 1 { await wake1.pass() }
+    }
+    defer {
+      stages.open()
+      wake1.open()
+      reloadGate.open()
+      c.deliveryStageGateForTesting = nil
+      c.preparationWakeGateForTesting = nil
+      c.onWaiterParkedForTesting = nil
+      try? FileManager.default.removeItem(at: rig.root)
+    }
+
+    let owner = Task { try await c.prepareLoad() }
+    await stages.waitForEntry(1)
+    let waiter = Task { try await c.prepareLoad() }
+    await stages.waitForParked(c, 1)
+    stages.open()
+    let ownerResult = await owner.result
+    await wake1.waitForEntry(1)
+
+    let successor = Task { try await c.prepareLoad() }
+    await reloadGate.waitForEntry(1)
+    wake1.open()
+    await stages.waitForParked(c, 2)
+    successor.cancel()
+    reloadGate.open()
+    let successorResult = await successor.result
+    let waiterResult = await waiter.result
+
+    let initial = try ownerResult.get()
+    #expect(throws: CancellationError.self) {
+      _ = try successorResult.get()
+    }
+    let prepared = try waiterResult.get()
+    let request = try #require(initial.selection)
+    #expect(initial.isSelectionLoad == true)
+    #expect(prepared.selection == request)
+    #expect(rig.selection.current == request)
+    #expect(prepared.isSelectionLoad == true)
+    #expect(c.hasPendingSelectionPoint == false)
+    #expect(stages.entries == 3)
+    #expect(reloadGate.entries == 1)
+    #expect(wakes == 2)
+    #expect(Self.physicalLoad(rig, succeeds: false) == .loaded)
+    let plan = await c.handleLoadFailure(
+      prepared, error: VendorLoadFailed())
+    #expect(plan == .reload)
+    #expect(rig.selection.current?.model == .v3)
+  }
+
   @Test("initial eligibility survives only identical-request frozen handoffs")
   func initialEligibilitySurvivesFrozenHandoff() async throws {
     for (newPoint, rejoin) in [(false, false), (true, false), (false, true)] {
