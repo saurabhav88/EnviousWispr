@@ -90,7 +90,8 @@ fi
 # session ancestor) is never blocked. Exit 2 means the tool could not decide:
 # refuse rather than quit an app that may be in use.
 # EW_DEV_APP_LABEL is display text on the holder card only.
-DEV_APP_LOCK="$PROJECT_ROOT/scripts/lib/dev-app-lock.py"
+# One live owner across worktrees, including older checkouts after migration.
+DEV_APP_LOCK="$(git -C "$PROJECT_ROOT" rev-parse --path-format=absolute --git-common-dir)/../scripts/lib/dev-app-lock.py"
 echo "==> Step 1b: Claiming the shared dev app..."
 if ! python3 "$DEV_APP_LOCK" claim --worktree "$PROJECT_ROOT" \
     --label "${EW_DEV_APP_LABEL:-build-dev-app}"; then

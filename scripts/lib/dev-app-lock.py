@@ -10,14 +10,18 @@ machine-wide claim that every checkout reads instead.
     dev-app-lock.py status
     dev-app-lock.py claim   [--label TEXT] [--worktree PATH]
     dev-app-lock.py release
-    dev-app-lock.py remind  --event NAME   (Claude Code hook; always exit 0)
+    dev-app-lock.py check                 (requires the caller's existing hold)
+    dev-app-lock.py remind  --event NAME   (Claude/Codex hook; always exit 0)
 
 Exit status: 0 done, 3 held by someone else (the holder card is printed),
 2 could not decide (fail closed: treat the app as busy and say why).
 
 WHO THE HOLDER IS. The nearest ancestor process named `claude` or `codex` is
-the session (see `agent_kind` for the name forms seen in practice). Its pid plus start time is the identity, because pids are
-recycled and a start time is not. The holder stays the holder after the
+the host (see `agent_kind` for name forms). PID/start time binds its process
+incarnation. Codex also requires its native chat ID, since desktop chats share
+one host. Hook session_id and shell CODEX_THREAD_ID identify the current chat.
+CODEX_SESSION_ID is a legacy fallback, and can differ in nested CLI sessions.
+The holder stays the holder after the
 command that claimed exits, for as long as that session process lives.
 
 WHEN A HOLD ENDS. Only two ways: the holder runs `release`, or the holder
@@ -30,7 +34,7 @@ every REMIND_SECONDS so a forgotten hold is noticed by its own session. A
 process check that fails is "cannot tell", never "gone": treating it as gone
 is how a live holder loses the app.
 
-NO SESSION FOUND. A run with no `claude`/`codex` ancestor is the founder by
+NO SESSION FOUND. A run with no agent ancestor AND no Codex context is the founder by
 hand. The founder is never blocked (`tools-and-apps.md` RULE:
 act-immediately-never-ask-saurabh-permission-for-app-actions), so that run
 writes nothing and only prints who holds the app, if anyone.
@@ -57,8 +61,8 @@ import sys
 import time
 import uuid
 
-# 2: `started` is UTC; 3: no idle timer, `reminded_at` replaces `last_action_at`.
-VERSION = 3
+# 2: UTC starts; 3: no idle timer; 4: Codex chat identity. Old readers refuse v4.
+VERSION = 4
 LOCK_DIR = os.path.expanduser("~/Library/Caches/EnviousWispr/dev-app-lock")
 AGENT_NAMES = ("claude", "codex")
 REMIND_SECONDS = 30 * 60
@@ -108,8 +112,17 @@ def process_info(pid):
     return int(parts[0]), " ".join(parts[1:6]), parts[7]
 
 
-def find_session():
-    """The nearest `claude`/`codex` ancestor as {kind, pid, started}, or None."""
+def codex_chat_id(native_session_id=None):
+    """Native thread identity wins over an inherited legacy session ID."""
+    value = (native_session_id if native_session_id is not None else
+             os.environ.get("CODEX_THREAD_ID", os.environ.get("CODEX_SESSION_ID")))
+    if not isinstance(value, str) or re.fullmatch(r"[A-Za-z0-9_-]{1,128}", value) is None:
+        raise Undecided("Codex chat identity is missing or invalid")
+    return value
+
+
+def find_session(native_session_id=None):
+    """Nearest agent process, plus native chat identity for Codex."""
     pid = os.getppid()
     seen = 0
     while pid > 1 and seen < 64:
@@ -123,12 +136,18 @@ def find_session():
             raise Undecided(f"invalid parent pid {ppid} for pid {pid}")
         kind = agent_kind(comm)
         if kind is not None:
-            return {"kind": kind, "pid": pid, "started": started}
+            me = {"kind": kind, "pid": pid, "started": started}
+            if kind == "codex":
+                me["session_id"] = codex_chat_id(native_session_id)
+            return me
         pid, seen = ppid, seen + 1
     if pid != 1:
         # The walk stopped before reaching pid 1 (launchd/init): the chain was
         # not fully read, so "no session" is unproven and must not skip the lock.
         raise Undecided("ancestor chain did not reach pid 1")
+    if native_session_id is not None or any(
+            k in os.environ for k in ("CODEX_THREAD_ID", "CODEX_SESSION_ID")):
+        raise Undecided("Codex context found without a recognized agent process")
     return None
 
 
@@ -177,7 +196,8 @@ def holder_alive(card):
 
 def describe(card, now):
     held = int(now - card["claimed_at"])
-    return (f"{card['kind']} session pid {card['pid']}, "
+    chat = f", chat {card['session_id']}" if card.get("session_id") else ""
+    return (f"{card['kind']} session pid {card['pid']}{chat}, "
             f"label \"{card.get('label') or '-'}\", "
             f"worktree {card.get('worktree') or '-'}, "
             f"held {held // 60}m{held % 60:02d}s")
@@ -209,7 +229,7 @@ class Store:
         except (OSError, ValueError) as e:
             raise Undecided(f"unreadable holder card {self.card_path}: {e}. "
                             "Delete that file by hand if no session holds the app.")
-        if not isinstance(card, dict) or card.get("version") != VERSION:
+        if not isinstance(card, dict) or card.get("version") not in (3, VERSION):
             raise Undecided(
                 f"holder card {self.card_path} has version "
                 f"{card.get('version') if isinstance(card, dict) else '?'}, "
@@ -225,6 +245,10 @@ class Store:
             value = card.get(key)
             if type(value) not in (int, float) or not math.isfinite(value):
                 raise Undecided(f"holder card {self.card_path} has an invalid {key}")
+        if card["version"] == VERSION and card["kind"] == "codex":
+            value = card.get("session_id")
+            if not isinstance(value, str) or re.fullmatch(r"[A-Za-z0-9_-]{1,128}", value) is None:
+                raise Undecided(f"holder card {self.card_path} has an invalid Codex chat ID")
         return card
 
     def write(self, card):
@@ -255,8 +279,10 @@ class NonBlockingStore(Store):
 
 
 def same_session(card, me):
-    return me is not None and card["pid"] == me["pid"] \
-        and card["started"] == me["started"]
+    return me is not None and card["kind"] == me["kind"] \
+        and card["pid"] == me["pid"] and card["started"] == me["started"] \
+        and (me["kind"] != "codex" or
+             bool(card.get("session_id")) and card["session_id"] == me.get("session_id"))
 
 
 def cmd_status(_args):
@@ -276,7 +302,7 @@ def cmd_status(_args):
 
 def cmd_claim(args):
     now = time.time()
-    me = find_session()
+    me = find_session(args.native_session_id)
     if me is None:
         # The founder is never blocked, so nothing below may wait on the
         # mutex or fail on a bad card. The heads-up is best effort.
@@ -315,25 +341,39 @@ def cmd_claim(args):
             "reminded_at": now,
             "nonce": uuid.uuid4().hex,
         }
+        if me["kind"] == "codex":
+            new["session_id"] = me["session_id"]
         store.write(new)
     print(f"dev-app-lock: {note} by {describe(new, now)}")
     return EXIT_OK
 
 
-def cmd_release(_args):
+def cmd_release(args):
     now = time.time()
-    me = find_session()
+    me = find_session(args.native_session_id)
     with Store() as store:
         card = store.read()
         if card is None:
             print("dev-app-lock: already free")
             return EXIT_OK
-        if not same_session(card, me):
+        if not same_session(card, me) or (args.nonce is not None and args.nonce != card["nonce"]):
             print(f"dev-app-lock: not yours to release. Held by {describe(card, now)}")
             return EXIT_HELD
         store.clear()
     print("dev-app-lock: released")
     return EXIT_OK
+
+
+def cmd_check(args):
+    """Read-only ownership check; a free slot still requires a separate claim."""
+    me = find_session(args.native_session_id)
+    with NonBlockingStore() as store:
+        card = store.read()
+        if card is not None and same_session(card, me):
+            print(f"dev-app-lock: yours ({describe(card, time.time())})")
+            return EXIT_OK
+    print("dev-app-lock: claim the shared dev app in a separate tool call first")
+    return EXIT_HELD
 
 
 def cmd_remind(args):
@@ -352,7 +392,7 @@ def cmd_remind(args):
             peek = json.load(f)
         if now - peek.get("reminded_at", now) < REMIND_SECONDS:
             return EXIT_OK
-        me = find_session()
+        me = find_session(args.native_session_id)
         if me is None or not same_session(peek, me):
             return EXIT_OK
         with NonBlockingStore() as store:
@@ -380,22 +420,25 @@ def default_worktree():
     return out.stdout.strip() if out.returncode == 0 else os.getcwd()
 
 
-def main(argv):
+def main(argv, native_session_id=None):
     parser = argparse.ArgumentParser(prog="dev-app-lock.py")
     sub = parser.add_subparsers(dest="command", required=True)
     sub.add_parser("status")
+    sub.add_parser("check")
     claim = sub.add_parser("claim")
     claim.add_argument("--label", default="")
     claim.add_argument("--worktree", default=None)
-    sub.add_parser("release")
+    release = sub.add_parser("release")
+    release.add_argument("--nonce", default=None)
     remind = sub.add_parser("remind")
     remind.add_argument("--event", default="PostToolUse")
     args = parser.parse_args(argv)
+    args.native_session_id = native_session_id
     try:
         if args.command == "claim" and args.worktree is None:
             args.worktree = default_worktree()
         return {"status": cmd_status, "claim": cmd_claim, "release": cmd_release,
-                "remind": cmd_remind}[args.command](args)
+                "remind": cmd_remind, "check": cmd_check}[args.command](args)
     except (Undecided, OSError, KeyError, TypeError, ValueError,
             OverflowError, RecursionError) as e:
         # OSError: the lock folder cannot be made or opened (a Codex sandbox
