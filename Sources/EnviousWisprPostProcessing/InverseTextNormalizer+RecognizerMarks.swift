@@ -66,15 +66,20 @@ extension InverseTextNormalizer {
   /// - Parameters:
   ///   - forms: a regex alternation of every command form (marks and breaks), longest first.
   ///   - startWord: the start word of a start-word route as a regex literal (`""` for English bare words).
-  ///     A copy may repeat the start word or leave it out; the first copy's text is the one kept. English
-  ///     bare words must stand after whitespace or at the start (`semi-colon` holds no command).
+  ///     Every copy repeats the start word (a bare command word is an ordinary word); the first copy's text
+  ///     is the one kept. English bare words must stand after whitespace or at the start (`semi-colon` holds
+  ///     no command).
   static func mergeRepeatedCommand(in text: String, forms: String, startWord: String) -> String {
     let lead = startWord.isEmpty ? "" : "(?:" + startWord + #"[.,]?"# + separatorSpace + "+)"
     let anchor = startWord.isEmpty ? #"(?<!\S)"# : #"\b"#
     let primary = anchor + lead + "(" + forms + #")\b"#
+    // The separator is the engine's: one mark, or the same mark twice, never an ellipsis or a mixed run. A
+    // start-word route needs the start word again before the copy: a bare `Punkt` is an ordinary word.
+    let separator =
+      separatorSpace + #"*(?:[.,;:!?]|[.]{2}|,{2}|;{2}|:{2}|!{2}|[?]{2})(?![.,;:!?…])"# + separatorSpace + "*"
     let repeated =
-      #"\A"# + separatorSpace + #"*[.,;:!?]+"# + separatorSpace + "*"
-      + (startWord.isEmpty ? "" : "(?:" + startWord + #"[.,]?"# + separatorSpace + "+)?")
+      #"\A"# + separator
+      + (startWord.isEmpty ? "" : "(?:" + startWord + #"[.,]?"# + separatorSpace + "+)")
       + "(" + forms + #")\b"#
     let ns = text as NSString
     var out = ""

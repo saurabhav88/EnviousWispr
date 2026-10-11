@@ -240,6 +240,18 @@ struct RecognizerMarksTests {
     #expect(Self.startWord("Salut Place point. Place point d'interrogation", "fr") == "Salut.?")
   }
 
+  @Test("Start word: a repeat needs the start word again, and an ellipsis or mixed run between copies stays")
+  func repeatNeedsTheStartWord() {
+    // `Punkt` after the first command is an ordinary noun ("Punkt zwei"), not an engine copy.
+    #expect(
+      Self.startWord("Das ist erledigt Diktiere Punkt. Punkt zwei folgt", "de")
+        == "Das ist erledigt. Punkt zwei folgt")
+    #expect(Self.startWord("Diktiere Punkt. Punkt.com", "de") == ". Punkt.com")
+    // Between two copies of a command, a mixed run or a three-dot ellipsis is not the engine's mark.
+    #expect(Self.startWord("Warte Diktiere Punkt?! Diktiere Punkt", "de") == "Warte.?!.")
+    #expect(Self.startWord("Diktiere Punkt. Diktiere Punkt.", "de") == ".")
+  }
+
   @Test("Start word: English with a start word has no ordinal dot, like the bare-word route")
   func englishStartWordHasNoOrdinalDot() {
     #expect(Self.startWord("It costs 5. Dictate comma next", "en", start: "Dictate") == "It costs 5, next")
@@ -417,12 +429,9 @@ struct RecognizerMarksTests {
       if now.marks > before.marks || now.breaks > before.breaks {
         problems.append("worse than today: \(take.engine) \(take.id) marks \(now.marks) vs \(before.marks), breaks \(now.breaks) vs \(before.breaks) -> \(out.debugDescription)")
       }
-      // Words are preserved: what the pre-change output said, minus the copies the fixture annotates as
-      // engine-repeated commands (read off the raw text), equals what the new output says.
-      var expectedWords = words(today, take)
-      for copy in take.droppedCopies ?? [] {
-        if let index = expectedWords.firstIndex(of: copy) { expectedWords.remove(at: index) }
-      }
+      // Words are preserved: what the pre-change output said (minus the converted spans) is what the new
+      // output says.
+      let expectedWords = words(today, take)
       if expectedWords != words(out, take) {
         problems.append("words changed: \(take.engine) \(take.id) \(today.debugDescription) -> \(out.debugDescription)")
       }
@@ -449,7 +458,6 @@ struct RecognizerMarksTests {
     let expected: String
     let todayMissing: Int?
     let todayOutput: String?
-    let droppedCopies: [String]?
   }
 
   private static let fixtureURL: URL = URL(filePath: #filePath)
