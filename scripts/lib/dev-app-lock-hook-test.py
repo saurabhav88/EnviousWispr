@@ -53,6 +53,11 @@ class HookTests(unittest.TestCase):
                 'bash /tmp/build-dev-app.sh',
                 'env FOO=x python3 -B /tmp/Tests/RuntimeUAT/uat.py run',
                 'command open "/tmp/build/EnviousWispr Local.app"',
+                'open -a "EnviousWispr Local"',
+                'python3 -X utf8 /tmp/Tests/RuntimeUAT/uat.py run',
+                'python3 -W ignore /tmp/Tests/RuntimeUAT/uat.py run',
+                '/tmp/validate-pr.sh --help',
+                '/tmp/validate-pr.sh ignored --self-test',
                 'nohup "/tmp/build/EnviousWispr Local.app/Contents/MacOS/EnviousWispr"',
                 'bash -lc \'open "/tmp/build/EnviousWispr Local.app"\'',
                 'echo "$(/tmp/build-dev-app.sh)"',
@@ -76,6 +81,7 @@ class HookTests(unittest.TestCase):
                 'python3 /tmp/Tests/RuntimeUAT/uat.py verdict']:
             with self.subTest(command=command):
                 self.assertFalse(self.denied(command))
+        self.assertFalse(self.denied('/tmp/validate-pr.sh --self-test'))
 
     def test_release_and_protected_action_never_share_call(self):
         self.hook.invoke('chat-a', 'claim')
@@ -96,6 +102,8 @@ class HookTests(unittest.TestCase):
 
     def test_old_copy_mutation_refused_after_release(self):
         for command in ('python3 /tmp/old/dev-app-lock.py claim',
+                        'python3 -X utf8 /tmp/old/dev-app-lock.py claim',
+                        'python3 -W ignore /tmp/old/dev-app-lock.py release',
                         'python3 scripts/lib/dev-app-lock.py claim'):
             with self.subTest(command=command), self.assertRaises(ValueError):
                 self.hook.handle(self.event(command=command))
@@ -134,6 +142,8 @@ class HookTests(unittest.TestCase):
             with self.subTest(path=path), patch.object(self.hook.subprocess, 'run',
                     return_value=CompletedProcess([], 0, path + '\n', '')):
                 self.assertEqual(self.denied('kill -TERM 123'), expected)
+                for probe in ('kill -0 123', 'kill -s 0 123', 'kill --signal=0 123', 'kill -n 0 123'):
+                    self.assertFalse(self.denied(probe))
 
     def test_malformed_native_identity_and_shell_are_refused(self):
         for event in (self.event(chat=None, command='echo ok'),

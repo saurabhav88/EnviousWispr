@@ -97,43 +97,55 @@ def dev_path(text):
 
 
 def script_argument(argv):
-    if Path(argv[0]).name in ('python', 'python3', 'bash', 'sh', 'zsh'):
-        # Inline code is outside this guard's declared direct-script scope.
-        if any(arg in ('-c', '-m') or
-               (arg.startswith('-') and not arg.startswith('--') and 'c' in arg[1:])
-               for arg in argv[1:]):
-            return None
-        return next((arg for arg in argv[1:] if not arg.startswith('-')), None)
-    return argv[0]
+    """Parse interpreter options before the script; never inspect script data."""
+    python = re.fullmatch(r'python(?:3(?:\.[0-9]+)?)?', Path(argv[0]).name) is not None
+    if python or Path(argv[0]).name in ('bash', 'sh', 'zsh'):
+        short = 'bBdEhiIOPqRsSuVvxW:X:c:m:' if python else 'abefhklmnptuvxBCEHPTc:o:O:'
+        long = ['help', 'version', 'check-hash-based-pycs='] if python else ['noprofile', 'norc', 'posix', 'rcfile=']
+        opts, rest = getopt.getopt(argv[1:], short, long)
+        # Inline code/modules are outside this guard's direct-script scope.
+        if any(key in ('-c', '-m', '-h', '--help', '-V', '--version') for key, _ in opts):
+            return None, []
+        return (rest[0], rest[1:]) if rest else (None, [])
+    return argv[0], argv[1:]
 
 
 def route(argv):
     """Return (protected action, lock mutation, release). Readers stay readers."""
     name = Path(argv[0]).name
-    script = script_argument(argv)
+    script, arguments = script_argument(argv)
     if script is not None and Path(script).name == 'dev-app-lock.py':
-        mutation = any(arg in ('claim', 'release') for arg in argv[1:])
+        mutation = arguments[:1] in (['claim'], ['release'])
         if mutation and (not Path(script).is_absolute() or Path(script).resolve() != LOCK_TOOL.resolve()):
             raise ValueError('use the main-checkout lock owner by absolute path')
-        return False, mutation, 'release' in argv[1:]
+        return False, mutation, arguments[:1] == ['release']
     if script is not None:
         if Path(script).name == 'build-dev-app.sh':
             return True, False, False  # It has no help/self-test argument contract.
         if Path(script).name == 'validate-pr.sh':
-            return '--self-test' not in argv and '--help' not in argv, False, False
+            # Its only reader entrypoint is literal first argument --self-test.
+            return arguments[:1] != ['--self-test'], False, False
         if '/RuntimeUAT/' in '/' + script:
-            index = argv.index(script)
             reader = (Path(script).name == 'uat.py' and
-                      argv[index + 1:index + 2] in (["list"], ["recipes"], ["preflight"], ["verdict"], ["--help"]))
+                      arguments[:1] in (["recipes"], ["preflight"], ["verdict"], ["--help"]))
             return not reader, False, False
         if dev_path(script) and script.endswith('/Contents/MacOS/EnviousWispr'):
             return True, False, False
     if name == 'open':
-        return any(dev_path(arg) for arg in argv[1:]), False, False
+        return any(dev_path(arg) or arg == 'EnviousWispr Local' for arg in argv[1:]), False, False
     if name in ('pkill', 'killall', 'osascript'):
         # Production ambiguity remains refused by the existing safety owners.
         return any(dev_path(arg) or 'EnviousWispr' in arg for arg in argv[1:]), False, False
     if name == 'kill':
+        args = argv[1:]
+        if args[:1] in (['-0'], ['--signal=0']):
+            rest = args[1:]
+        elif args[:2] in (['-s', '0'], ['-n', '0'], ['--signal', '0']):
+            rest = args[2:]
+        else:
+            rest = []
+        if rest and all(arg == '--' or re.fullmatch(r'-?[0-9]+', arg) for arg in rest):
+            return False, False, False  # signal zero probes; no signal is sent
         targets = [arg for arg in argv[1:] if re.fullmatch(r'[0-9]+', arg)]
         for target in targets:
             probe = subprocess.run(['/bin/ps', '-o', 'comm=', '-p', target],
