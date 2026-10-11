@@ -30,6 +30,7 @@ struct KeyboardListenerIngressTests {
     let mainEdges = OSAllocatedUnfairLock<[KeyboardListenerIngress.MainEdge]>(initialState: [])
     /// Runs between a reconciliation's commit and its drain.
     let afterCommit = OSAllocatedUnfairLock<(@Sendable () -> Void)?>(initialState: nil)
+    let beforeMain = OSAllocatedUnfairLock<(@Sendable () -> Void)?>(initialState: nil)
     /// Field-health observations (#3544 P6), in the order the ingress made them.
     let observations = OSAllocatedUnfairLock<[KeyboardListenerIngress.Observation]>(
       initialState: [])
@@ -71,6 +72,7 @@ struct KeyboardListenerIngressTests {
       let duringRead = self.duringRead
       let mainEdges = self.mainEdges
       let afterCommit = self.afterCommit
+      let beforeMain = self.beforeMain
       let observations = self.observations
       return KeyboardListenerIngress(
         installation: installation, engine: engine,
@@ -88,7 +90,10 @@ struct KeyboardListenerIngressTests {
           return readings.withLock { r in keys.reduce(into: [:]) { $0[$1] = r[$1] ?? .unknown } }
         },
         clock: clock.uptime, scheduler: timers.scheduler,
-        toMain: { edge in mainEdges.withLock { $0.append(edge) } },
+        toMain: { edge in
+          beforeMain.withLock { $0 }?()
+          mainEdges.withLock { $0.append(edge) }
+        },
         observe: { observation in observations.withLock { $0.append(observation) } },
         afterReconcileCommitForTesting: { afterCommit.withLock { $0 }?() })
     }
@@ -593,7 +598,7 @@ struct KeyboardListenerIngressTests {
     #expect(rig.effects == ["start"])
   }
 
-  @Test("an ordinary key's first event after a boundary is still a fresh press")
+  @Test("a non-repeat ordinary key after a boundary dismisses an early hold")
   func resyncKeepsTheEventsOwnKey() async {
     let rig = Rig()
     await rig.key(Self.option, held: [Self.option], at: 0)
@@ -681,19 +686,26 @@ struct KeyboardListenerIngressTests {
     await rig.key(Self.option, held: [Self.option], at: 0)
     rig.readings.withLock { $0[Self.option] = .up }
     // Input arrives while the reader is out: the answer describes a world that has moved on.
+    await rig.fireSweeps(at: 5)
+    #expect(rig.effects == ["start"])
     let ingress = rig.ingress!
     rig.duringRead.withLock {
       $0 = {
         ingress.receive(
           KeyEventValue(
             kind: .flagsChanged, keyCode: Self.shift,
-            rawFlags: ListenerKeyboard.rawFlags([Self.option, Self.shift]), timestamp: 501.9))
+            rawFlags: ListenerKeyboard.rawFlags([Self.option, Self.shift]), timestamp: 509.9))
       }
     }
-    await rig.fireSweeps(at: 5)
-    #expect(rig.reads.withLock { $0 } == 1)
+    await rig.fireSweeps(at: 10)
+    #expect(rig.reads.withLock { $0 } == 2)
     #expect(rig.effects == ["start"])
     #expect(rig.ingress.heldKeysForTesting.contains(Self.option))
+    await rig.fireSweeps(at: 15)
+    #expect(rig.effects == ["start"], "the stale answer counted toward a release")
+    await rig.fireSweeps(at: 20)
+    #expect(rig.effects == ["start", "holdStop"])
+    rig.ingress.close()
   }
 
   // MARK: - Held-record watchdog
@@ -774,24 +786,69 @@ struct KeyboardListenerIngressTests {
 
   // MARK: - Ordering and unmatched presses
 
+  /// Same bounded synchronous worker rendezvous used by the integration rig.
+  /// Waits for the independent worker's subject-drainer entry signal.
+  /// Main opens the worker's release gate after reconciliation, then joins its task.
+  private static func waitForDrainer(_ signal: DispatchSemaphore) -> Bool {
+    signal.wait(timeout: .now() + 5) == .success
+  }
+
   @Test("a reconciled release reaches the engine before a newer press committed after it")
-  func reconciledReleaseIsOrderedBeforeANewerPress() async {
-    let rig = Rig()
-    await rig.key(Self.option, held: [Self.option], at: 0)
-    rig.readings.withLock { $0[Self.option] = .up }  // its key-up was missed
-    await rig.fireSweeps(at: 5)  // the first up reading ends nothing
-    // In the window between the second sweep's commit and its drain, the user presses again.
+  func reconciledReleaseIsOrderedBeforeANewerPress() async throws {
+    var bindings = ShortcutBindings.shipped
+    bindings.record = .keyboard(keyCode: Self.option, modifiers: [])
+    bindings.quickAdd = .keyboard(keyCode: Self.shift, modifiers: [])
+    let rig = Rig(bindings: bindings)
     let ingress = rig.ingress!
-    rig.afterCommit.withLock {
+    let entered = DispatchSemaphore(value: 0)
+    let release = DispatchSemaphore(value: 0)
+    let released = OSAllocatedUnfairLock(initialState: false)
+    let pending = OSAllocatedUnfairLock<[Bool]>(initialState: [])
+    defer {
+      release.signal()
+      rig.beforeMain.withLock { $0 = nil }
+      rig.afterCommit.withLock { $0 = nil }
+      ingress.close()
+      rig.engine.reset()
+    }
+    await rig.key(Self.option, held: [Self.option], at: 0)
+    rig.beforeMain.withLock {
       $0 = {
-        ingress.receive(
-          KeyEventValue(
-            kind: .flagsChanged, keyCode: Self.option,
-            rawFlags: ListenerKeyboard.rawFlags([Self.option]), timestamp: 510.5))
+        entered.signal()
+        // deadline-fallback: bound the parked drainer's release signal.
+        let ok = release.wait(timeout: .now() + 5) == .success
+        released.withLock { $0 = ok }
       }
     }
-    await rig.fireSweeps(at: 10)
-    #expect(rig.effects == ["start", "holdStop", "start"], "the new press was read as a duplicate")
+    rig.clock.now = 500.1
+    let flags = ListenerKeyboard.rawFlags([Self.option, Self.shift])
+    // A plain Task inherits MainActor and cannot park this worker while main drives
+    // reconciliation. A group restructures its independent lifetime; @concurrent alone
+    // supplies no retained task handle. Main must release and join this worker.
+    let blocked = Task.detached {
+      ingress.receive(KeyEventValue(
+        kind: .flagsChanged, keyCode: Self.shift, rawFlags: flags, timestamp: 500.1))
+    }
+    // deadline-fallback: wait for the subject's active drainer to enter delivery.
+    let arrived = Self.waitForDrainer(entered)
+    if arrived {
+      rig.readings.withLock { $0[Self.option] = .up }
+      await rig.fireSweeps(at: 5)
+      rig.afterCommit.withLock {
+        $0 = {
+          ingress.receive(KeyEventValue(
+            kind: .flagsChanged, keyCode: Self.option, rawFlags: flags, timestamp: 510))
+          pending.withLock { $0 = ingress.pendingRecordEdgesForTesting }
+        }
+      }
+      await rig.fireSweeps(at: 10)
+    }
+    release.signal()
+    await blocked.value
+    rig.engine.drainForTesting()
+    try #require(arrived && released.withLock { $0 })
+    try #require(pending.withLock { $0 } == [false, true])
+    #expect(rig.effects == ["start", "holdStop", "start"])
   }
 
   @Test("a press of a key no shortcut owns ends nothing and reads nothing")

@@ -990,6 +990,10 @@ public final class HotkeyService {
   /// listener cancel (`listenerCancellationTask`).
   private func executeListenerDismiss(_ dismiss: RecordGestureEngine.Dismiss) {
     let attempt = dismiss.attemptID
+    // A noRecording result already clears the gesture and invalidates this attempt's
+    // queued batches. That regression does not bind this identity check.
+    // Reopen its mutation recipe if a producer can deliver a valid dismissal for an
+    // attempt main is no longer executing.
     guard executingAttemptID == attempt else { return }
     pendingDismissals.insert(attempt)
     if acceptedStartPressID == attempt, let sessionID = acceptedSessionID {
@@ -1411,6 +1415,9 @@ public final class HotkeyService {
   private func noticeSecureInputIfRelevant(_ sessionID: String) {
     // Only while the take's other-key rule still applies: a start that resolved late, or a take
     // already locked, has nothing paused.
+    // The mode predicate repeats otherKeyRuleApplies' pushToTalk requirement.
+    // Removing this predicate alone cannot produce a toggle-mode notice.
+    // Reassess that redundancy if the engine predicate or notice callers change.
     guard secureInputOn, !secureInputNoticeShown, recordBinding.isBareModifier,
       recordingMode == .pushToTalk, isEnabled, !isSuspended,
       engine.otherKeyRuleApplies(at: uptime())
