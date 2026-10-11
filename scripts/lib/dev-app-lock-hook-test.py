@@ -173,6 +173,10 @@ class HookTests(unittest.TestCase):
             with self.subTest(event=event), self.assertRaises((ValueError, self.hook.lock.Undecided)):
                 self.hook.handle(event)
         self.assertTrue(self.denied('/tmp/build-dev-app.sh', chat='bad id'))
+        for command in ('bash +x /tmp/validate-pr.sh',
+                        'bash -n +n /tmp/validate-pr.sh'):
+            with self.subTest(command=command), self.assertRaises(ValueError):
+                self.hook.handle(self.event(command=command))
 
     def test_changed_owner_blocks_actions_but_not_repair_or_readers(self):
         self.hook.LOCK_TOOL.write_text(self.hook.LOCK_TOOL.read_text() + '\n# changed dependency\n')

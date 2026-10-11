@@ -122,6 +122,8 @@ def interpreter_options(argv):
         short = 'bBdEhiIOPqRsSuVvxW:X:c:m:' if python else 'abefhklmnptuvxBCEHPTc:o:O:'
         long = ['help', 'version', 'check-hash-based-pycs='] if python else ['noprofile', 'norc', 'posix', 'rcfile=']
         opts, rest = getopt.getopt(argv[1:], short, long)
+        if not python and rest and rest[0].startswith('+'):
+            raise ValueError('unsupported shell +option; use a direct script invocation')
         return python, opts, rest
     return None
 
