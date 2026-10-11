@@ -70,6 +70,12 @@ public final class ParakeetDeliveryHandle {
   private let progress: ProgressSink
   private let owners: ForegroundProgressOwners
   package let progressOwnership: ProgressOwnership
+  /// `.scoped` only: progress events applied strictly in publication order,
+  /// so a foreground caller can wait for every event up to its outcome.
+  private let progressDelivery = ForegroundProgressDelivery()
+  /// The progress observer's registration; a foreground operation waits for
+  /// it so no early state of its own attempt is missed.
+  private var progressObservation: Task<Void, Never>?
 
   public convenience init(
     controller: ModelDeliveryController, registration: DeliveryRegistration,
@@ -93,7 +99,9 @@ public final class ParakeetDeliveryHandle {
     let owners = ForegroundProgressOwners(always: progressOwnership == .always)
     self.owners = owners
     let identity = registration.manifest.identity
-    Task {
+    let delivery = progressDelivery
+    let scoped = progressOwnership == .scoped
+    progressObservation = Task {
       await controller.addStateObserver { [identity] observedIdentity, state in
         guard observedIdentity == identity else { return }
         // Ownership is captured HERE, in publication order on the controller
@@ -101,27 +109,37 @@ public final class ParakeetDeliveryHandle {
         // published by background work must never be attributed to a
         // foreground operation that started after it.
         guard let epoch = owners.ownedEpoch() else { return }
-        Task { @MainActor in
+        let apply: @MainActor @Sendable () -> Void = {
           guard owners.isCurrent(epoch) else { return }
           Self.bridgeToProgressFile(state, progress)
+        }
+        if scoped {
+          delivery.enqueue(apply)
+        } else {
+          Task { @MainActor in apply() }
         }
       }
     }
   }
 
-  /// #3546: this registration's delivery states, in publication order, for an
-  /// owner that reports them itself (the background upgrade's state).
-  package func observeState(_ handler: @escaping @MainActor @Sendable (DeliveryState) -> Void) {
+  /// #3546: this registration's delivery states, in publication order, each
+  /// with a token `capture` reads AT PUBLICATION on the controller actor, so
+  /// an owner can tell which of its operations an event belongs to.
+  package func observeState<Token: Sendable>(
+    capture: @escaping @Sendable () -> Token,
+    _ handler: @escaping @MainActor @Sendable (DeliveryState, Token) -> Void
+  ) {
     let identity = registration.manifest.identity
     let sequencer = DeliveryStateSequencer()
     let gate = AppliedStateGate()
     Task {
       await controller.addStateObserver { [identity] observedIdentity, state in
         guard observedIdentity == identity else { return }
+        let token = capture()
         let seq = sequencer.next()
         Task { @MainActor in
           guard gate.admit(seq) else { return }
-          handler(state)
+          handler(state, token)
         }
       }
     }
@@ -129,10 +147,12 @@ public final class ParakeetDeliveryHandle {
 
   /// #3546: `ensureAvailable()` and `repair()` as a FOREGROUND operation of a
   /// `.scoped` handle: the progress channel is this caller's for the duration,
-  /// including when it joins an attempt background work started. On admission
-  /// the download boundary is cleared here, before the caller enters the
-  /// loader, rather than by the queued `.admitted` event, which is dropped once
-  /// ownership ends.
+  /// including when it joins an attempt background work started. The download
+  /// boundary is the `.admitted` event's clear, delivered through the ordered
+  /// publication stream; the caller waits for that stream before returning,
+  /// so nothing from this attempt writes or clears progress once it starts
+  /// loading. (`.always` handles keep the queued clear they always had, plus
+  /// this direct one.)
   package func ensureAvailableInForeground() async -> ModelDeliveryController.DeliveryOutcome {
     await inForeground { await self.ensureAvailable() }
   }
@@ -144,11 +164,26 @@ public final class ParakeetDeliveryHandle {
   private func inForeground(
     _ operation: () async -> ModelDeliveryController.DeliveryOutcome
   ) async -> ModelDeliveryController.DeliveryOutcome {
+    await progressObservation?.value
+    guard !Task.isCancelled else { return .cancelled(resumable: true) }
     owners.acquire()
     let outcome = await operation()
-    if case .admitted = outcome { progress.clear() }
+    if progressOwnership == .scoped {
+      await progressDelivery.drain()
+    } else if case .admitted = outcome {
+      progress.clear()
+    }
     owners.release()
     return outcome
+  }
+
+  /// Test seams (internal): wait for every queued progress event; delay each.
+  func drainProgressForTesting() async {
+    await progressDelivery.drain()
+  }
+
+  func setProgressDelayForTesting(_ delay: (@MainActor @Sendable () async -> Void)?) {
+    progressDelivery.setDelayForTesting(delay)
   }
 
   /// #3546: the bundled manifest's revision and byte total, for the load
@@ -344,5 +379,37 @@ final class ForegroundProgressOwners: @unchecked Sendable {
       count -= 1
       if count == 0 { epoch &+= 1 }
     }
+  }
+}
+
+/// #3546: applies a `.scoped` handle's progress events on the main actor in
+/// publication order (each waits for the one before), so `drain()` returns
+/// only after every event published so far has been applied.
+final class ForegroundProgressDelivery: @unchecked Sendable {
+  private let lock = NSLock()
+  private var tail: Task<Void, Never>?
+  /// Test seam (internal): awaited before each event is applied, so a test can
+  /// deliver progress late and prove callers wait for it.
+  private var delayForTesting: (@MainActor @Sendable () async -> Void)?
+
+  func setDelayForTesting(_ delay: (@MainActor @Sendable () async -> Void)?) {
+    lock.withLock { delayForTesting = delay }
+  }
+
+  func enqueue(_ apply: @escaping @MainActor @Sendable () -> Void) {
+    lock.withLock {
+      let previous = tail
+      let delay = delayForTesting
+      tail = Task { @MainActor in
+        if let previous { await previous.value }
+        if let delay { await delay() }
+        apply()
+      }
+    }
+  }
+
+  func drain() async {
+    let pending = lock.withLock { tail }
+    if let pending { await pending.value }
   }
 }

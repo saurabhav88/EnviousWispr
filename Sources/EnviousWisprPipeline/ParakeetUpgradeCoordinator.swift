@@ -143,6 +143,13 @@ package final class ParakeetUpgradeCoordinator {
   private var backgroundSuppressed = false
   /// Cancel's transport drain; Resume waits for it.
   private var cancelDrain: Task<Void, Never>?
+  /// Bumped by every Cancel and Resume, so a Resume that waited on a drain
+  /// does nothing if a newer command arrived meanwhile.
+  private var backgroundCommandGeneration: UInt64 = 0
+  /// The background generation that owns the target's delivery events, read
+  /// at publication so an old attempt's progress is never attributed to a
+  /// newer one.
+  private let backgroundPublication = BackgroundPublicationToken()
   /// Foreground Ultra operations (row C fetch, repair) in flight.
   private var foregroundFetches = 0
 
@@ -167,6 +174,9 @@ package final class ParakeetUpgradeCoordinator {
   /// Told when a queued cleanup task ends, whether it deleted, refused or was
   /// cancelled, so tests can wait for it without timing guesses.
   var onCleanupEndedForTesting: (@MainActor (ParakeetModel) -> Void)?
+  /// Awaited after each admission read in `isParakeetUsable()`, so a test can
+  /// change the facts inside that await.
+  var usabilityReadGateForTesting: (@MainActor () async -> Void)?
 
   /// `isOnboardingComplete` gates background work only (E22 starts it later);
   /// it defaults closed.
@@ -180,8 +190,14 @@ package final class ParakeetUpgradeCoordinator {
     self.target = target
     self.isOnboardingComplete = isOnboardingComplete
     if let target {
-      target.delivery.observeState { [weak self] state in
-        self?.targetStateChanged(state)
+      // A persisted decline is shown after relaunch (Settings' Resume row).
+      if case .state(let state) = target.store.read(), state.declined {
+        backgroundUpgrade = .declined
+      }
+      let publication = backgroundPublication
+      target.delivery.observeState(capture: { publication.read() }) {
+        [weak self] state, generation in
+        self?.targetStateChanged(state, generation: generation)
       }
       parakeetSelection.beforePhysicalLoad = { [weak self] request in
         // No owner means no accounting: refuse rather than load uncounted.
@@ -352,11 +368,10 @@ package final class ParakeetUpgradeCoordinator {
     }
     guard foregroundFetches > 0 else { return }
     if backgroundFetch != nil {
-      backgroundGeneration &+= 1
-      backgroundFetch = nil
+      invalidateBackgroundFetch()
       setBackgroundUpgrade(.idle)
     }
-    await target.delivery.cancelActiveFetch()
+    await enqueueCancelDrain(target.delivery).value
   }
 
   private func runDeliveryStage(selectionPoint: Bool) async throws -> PreparedLoad {
@@ -878,11 +893,12 @@ extension ParakeetUpgradeCoordinator {
   }
 
   /// E12: the user cancelled the background download. The decline is written
-  /// FIRST (that field only); whether or not it persisted, this download stops
+  /// FIRST (that field only); whether or not it persisted, the download is
+  /// cancelled (plan §3.4 E12, including an attempt a foreground caller joined)
   /// and automatic background work stays off in this process until Resume.
-  /// A shared attempt a foreground operation is waiting on is not cancelled.
   package func cancelBackgroundUpgrade() async throws {
     guard let target else { return }
+    backgroundCommandGeneration &+= 1
     var storeError: (any Error)?
     do {
       try target.store.writeDeclined(true)
@@ -890,17 +906,11 @@ extension ParakeetUpgradeCoordinator {
       storeError = error
     }
     backgroundSuppressed = true
-    backgroundGeneration &+= 1
     backgroundFetch?.task.cancel()
-    backgroundFetch = nil
+    invalidateBackgroundFetch()
     setBackgroundUpgrade(.declined)
     if storeError != nil { emit(.storeUnavailable("declined")) } else { emit(.declined) }
-    if foregroundFetches == 0 {
-      let handle = target.delivery
-      let drain = Task { @MainActor in await handle.cancelActiveFetch() }
-      cancelDrain = drain
-      await drain.value
-    }
+    await enqueueCancelDrain(target.delivery).value
     if let storeError { throw storeError }
   }
 
@@ -910,7 +920,11 @@ extension ParakeetUpgradeCoordinator {
   /// write failure starts nothing.
   package func resumeBackgroundUpgrade() async throws {
     guard let target else { return }
+    backgroundCommandGeneration &+= 1
+    let command = backgroundCommandGeneration
     if let cancelDrain { await cancelDrain.value }
+    try Task.checkCancellation()
+    guard command == backgroundCommandGeneration else { throw CancellationError() }
     try target.store.writeDeclined(false)
     backgroundSuppressed = false
     setBackgroundUpgrade(.idle)
@@ -926,18 +940,51 @@ extension ParakeetUpgradeCoordinator {
   /// and marker, unchanged).
   package var hasUpgradeTarget: Bool { target != nil }
 
+  ///
+  /// Every fact is re-read AFTER the admission awaits, so a rejection,
+  /// exhaustion or spent budget that lands during them is honoured.
   package func isParakeetUsable() async -> Bool {
     guard let target else { return false }
-    if let servingRequest, servingRequest == parakeetSelection.current,
-      servingReadiness?() == true
-    {
-      return true
+    if hasReadyServingRequest() { return true }
+    if let delivery, delivery.locationIsUsable, !v3RejectedThisLaunch {
+      let admitted = await delivery.isAdmitted()
+      if let usabilityReadGateForTesting { await usabilityReadGateForTesting() }
+      if hasReadyServingRequest() { return true }
+      if admitted, !v3RejectedThisLaunch, delivery.locationIsUsable { return true }
     }
-    if !v3RejectedThisLaunch, let delivery, await delivery.isAdmitted() { return true }
-    guard case .state(let state) = target.store.read(), !state.exhausted,
-      state.attempts < Self.attemptBudget
+    guard target.delivery.locationIsUsable else { return false }
+    let admitted = await target.delivery.isAdmitted()
+    if let usabilityReadGateForTesting { await usabilityReadGateForTesting() }
+    if hasReadyServingRequest() { return true }
+    guard admitted, target.delivery.locationIsUsable,
+      case .state(let state) = target.store.read(),
+      !state.exhausted, state.attempts < Self.attemptBudget
     else { return false }
-    return await target.delivery.isAdmitted()
+    return true
+  }
+
+  private func hasReadyServingRequest() -> Bool {
+    guard let servingRequest else { return false }
+    return servingRequest == parakeetSelection.current && servingReadiness?() == true
+  }
+
+  /// One serial transport drain: each Cancel's drain waits for the one before.
+  private func enqueueCancelDrain(_ handle: ParakeetDeliveryHandle) -> Task<Void, Never> {
+    let previous = cancelDrain
+    let drain = Task { @MainActor in
+      if let previous { await previous.value }
+      await handle.cancelActiveFetch()
+    }
+    cancelDrain = drain
+    return drain
+  }
+
+  /// Ends the current background fetch's ownership: its slot, its generation
+  /// and its claim on the target's delivery events.
+  private func invalidateBackgroundFetch() {
+    backgroundGeneration &+= 1
+    backgroundPublication.set(nil)
+    backgroundFetch = nil
   }
 
   /// Row B's background fetch, when the CURRENT choice is row B: accepted,
@@ -963,12 +1010,14 @@ extension ParakeetUpgradeCoordinator {
       await self.runBackgroundFetch(generation: generation)
     }
     backgroundFetch = (generation: generation, task: task)
+    backgroundPublication.set(generation)
   }
 
   /// Test seam (internal): whether the background slot is taken. It is
   /// reserved synchronously, so a test can tell "not scheduled" without
   /// waiting.
   var hasBackgroundFetchForTesting: Bool { backgroundFetch != nil }
+  var backgroundGenerationForTesting: UInt64? { backgroundFetch?.generation }
 
   private func isCurrentBackground(_ generation: UInt64) -> Bool {
     backgroundGeneration == generation && !Task.isCancelled
@@ -976,7 +1025,10 @@ extension ParakeetUpgradeCoordinator {
 
   private func runBackgroundFetch(generation: UInt64) async {
     defer {
-      if backgroundFetch?.generation == generation { backgroundFetch = nil }
+      if backgroundFetch?.generation == generation {
+        backgroundPublication.set(nil)
+        backgroundFetch = nil
+      }
     }
     guard let target, isCurrentBackground(generation), backgroundEligible(target) else { return }
     let admitted = await target.delivery.isAdmitted()
@@ -1005,8 +1057,9 @@ extension ParakeetUpgradeCoordinator {
   /// The target identity's delivery states (publication order): download
   /// progress is the background's only while background work owns it and no
   /// foreground operation does.
-  func targetStateChanged(_ state: DeliveryState) {
-    guard backgroundFetch != nil, foregroundFetches == 0,
+  func targetStateChanged(_ state: DeliveryState, generation: UInt64?) {
+    guard let generation, backgroundFetch?.generation == generation,
+      backgroundGeneration == generation, foregroundFetches == 0,
       case .downloading(let fraction, _, _) = state
     else { return }
     setBackgroundUpgrade(.downloading(fraction: fraction))
@@ -1017,4 +1070,14 @@ extension ParakeetUpgradeCoordinator {
     backgroundUpgrade = state
     onBackgroundUpgradeChanged?(state)
   }
+}
+
+/// #3546: the background generation that owns the target's delivery events,
+/// readable on the controller actor at publication.
+final class BackgroundPublicationToken: @unchecked Sendable {
+  private let lock = NSLock()
+  private var generation: UInt64?
+
+  func read() -> UInt64? { lock.withLock { generation } }
+  func set(_ value: UInt64?) { lock.withLock { generation = value } }
 }

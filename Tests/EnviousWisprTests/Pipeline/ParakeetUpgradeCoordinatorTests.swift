@@ -215,6 +215,12 @@ private final class StageGate {
 @MainActor
 @Suite(.tags(.harnessContract))
 struct ParakeetUpgradeStageGateTests {
+  @Test func missingProgressRecordsAnIssueAndReleasesTheWaiter() async {
+    await withKnownIssue("A missing progress signal must fail instead of hanging") {
+      await ParakeetUpgradePolicyTests.ProgressRecorder().waitForAny(deadline: .milliseconds(1))
+    }
+  }
+
   @Test func missingSignalRecordsAnIssueAndReleasesTheWaiter() async {
     await withKnownIssue("The missing subject signal must fail instead of hanging") {
       let gate = StageGate(deadline: .milliseconds(1))
@@ -280,8 +286,32 @@ struct ParakeetUpgradePolicyTests {
       for continuation in waiting { continuation.resume() }
     }
 
+    /// Records a test marker (e.g. "LOAD") in the same sequence as the events.
+    func mark(_ label: String) { record(label) }
+
     /// Returns once anything has been recorded (the foreground fetch is live).
-    func waitForAny() async {
+    /// Deadline-bounded so a missing signal fails instead of hanging the lane.
+    func waitForAny(
+      deadline: Duration = .seconds(5),
+      sourceLocation: SourceLocation = #_sourceLocation
+    ) async {
+      let deadlineTask = Task { [weak self] in
+        do {
+          // deadline-fallback: fail loudly and release a missing-signal wait.
+          try await Task.sleep(for: deadline)
+        } catch {
+          return
+        }
+        guard let self else { return }
+        let waiting = self.lock.withLock {
+          let waiting = self.firstWrite
+          self.firstWrite = []
+          return waiting
+        }
+        guard !waiting.isEmpty else { return }
+        Issue.record("foreground progress never arrived", sourceLocation: sourceLocation)
+        for continuation in waiting { continuation.resume() }
+      }
       await withCheckedContinuation { continuation in
         let ready = lock.withLock {
           if events.isEmpty {
@@ -292,6 +322,7 @@ struct ParakeetUpgradePolicyTests {
         }
         if ready { continuation.resume() }
       }
+      deadlineTask.cancel()
     }
   }
 
@@ -1348,7 +1379,7 @@ struct ParakeetUpgradePolicyTests {
       rig.coordinator.onboardingDidComplete()
     }
     #expect(rig.coordinator.hasBackgroundFetchForTesting == false)
-    #expect(rig.coordinator.backgroundUpgrade == .idle)
+    #expect(rig.coordinator.backgroundUpgrade == (reason == .declined ? .declined : .idle))
     #expect(started == false)
     #expect(Self.ultraRequests(rig) == 0)
   }
@@ -1604,6 +1635,196 @@ struct ParakeetUpgradePolicyTests {
     declined.coordinator.onUsabilityMayHaveChanged = { resumeInvites += 1 }
     try await declined.coordinator.resumeBackgroundUpgrade()
     #expect(resumeInvites > 0, "Resume")
+  }
+
+  // MARK: 7b-2 round 2: command ordering, ordered progress, attribution, decline, fresh reads
+
+  /// A background fetch held inside existing-cache validation (complete
+  /// unmarked Ultra bytes), so a Cancel's transport drain stays held until
+  /// the gate opens.
+  fileprivate static func heldBackgroundFetch() async throws -> (Rig, StageGate) {
+    let rig = try await Self.rig(v3: true, ultra: false, onboarding: true)
+    try Self.install(Self.ultraFiles, into: rig.ultraRegistration.installDirectory)
+    let gate = StageGate()
+    await rig.controller.setBeforeExistingCacheValidationForTesting { await gate.pass() }
+    _ = try await rig.coordinator.prepareLoad()
+    await gate.waitForEntry(1)
+    return (rig, gate)
+  }
+
+  @Test("E13: Resume waits for Cancel's drain before clearing the decline")
+  func resumeWaitsForCancelDrain() async throws {
+    let (rig, gate) = try await Self.heldBackgroundFetch()
+    var outcomes: [ParakeetUpgradeCoordinator.Outcome] = []
+    let declined = OutcomeSignal(.declined)
+    rig.coordinator.onOutcome = {
+      outcomes.append($0)
+      declined.observe($0)
+    }
+    let cancel = Task { try await rig.coordinator.cancelBackgroundUpgrade() }
+    await declined.wait()
+    let resume = Task { try await rig.coordinator.resumeBackgroundUpgrade() }
+    await Task.yield()
+    #expect(outcomes.contains(.resumed) == false, "Resume is held behind the drain")
+    #expect(Self.state(rig)?.declined == true)
+    gate.open()
+    try await cancel.value
+    try await resume.value
+    #expect(outcomes.contains(.resumed))
+    #expect(Self.state(rig)?.declined == false)
+    await rig.controller.setBeforeExistingCacheValidationForTesting(nil)
+  }
+
+  @Test("Cancel, Resume, Cancel while the drain is held: the last Cancel wins")
+  func newerCancelBeatsWaitingResume() async throws {
+    let (rig, gate) = try await Self.heldBackgroundFetch()
+    var outcomes: [ParakeetUpgradeCoordinator.Outcome] = []
+    let declined = OutcomeSignal(.declined)
+    rig.coordinator.onOutcome = {
+      outcomes.append($0)
+      declined.observe($0)
+    }
+    let first = Task { try await rig.coordinator.cancelBackgroundUpgrade() }
+    await declined.wait()
+    let resume = Task { try await rig.coordinator.resumeBackgroundUpgrade() }
+    await Task.yield()
+    let second = Task { try await rig.coordinator.cancelBackgroundUpgrade() }
+    await Task.yield()
+    gate.open()
+    try await first.value
+    await #expect(throws: CancellationError.self) { try await resume.value }
+    try await second.value
+    #expect(outcomes.contains(.resumed) == false)
+    #expect(Self.state(rig)?.declined == true)
+    #expect(rig.coordinator.backgroundUpgrade == .declined)
+    await rig.controller.setBeforeExistingCacheValidationForTesting(nil)
+  }
+
+  @Test("a cancelled waiting Resume clears nothing")
+  func cancelledResumeClearsNothing() async throws {
+    let (rig, gate) = try await Self.heldBackgroundFetch()
+    let declined = OutcomeSignal(.declined)
+    rig.coordinator.onOutcome = { declined.observe($0) }
+    let cancel = Task { try await rig.coordinator.cancelBackgroundUpgrade() }
+    await declined.wait()
+    let resume = Task { try await rig.coordinator.resumeBackgroundUpgrade() }
+    resume.cancel()
+    gate.open()
+    try await cancel.value
+    await #expect(throws: CancellationError.self) { try await resume.value }
+    #expect(Self.state(rig)?.declined == true)
+    await rig.controller.setBeforeExistingCacheValidationForTesting(nil)
+  }
+
+  @Test("E12: background Cancel also cancels a foreground caller sharing the attempt")
+  func cancelReachesForegroundJoiner() async throws {
+    let (rig, gate) = try await Self.heldBackgroundFetch()
+    let joiner = Task { await rig.ultra.ensureAvailableInForeground() }
+    await Task.yield()
+    let cancel = Task { try await rig.coordinator.cancelBackgroundUpgrade() }
+    await Task.yield()
+    gate.open()
+    try await cancel.value
+    let outcome = await joiner.value
+    guard case .cancelled = outcome else {
+      Issue.record("the joined foreground caller was not cancelled: \(outcome)")
+      return
+    }
+    #expect(Self.state(rig)?.declined == true)
+    await rig.controller.setBeforeExistingCacheValidationForTesting(nil)
+  }
+
+  @Test("progress: two foreground joiners see nothing after the first load starts")
+  func orderedForegroundProgress() async throws {
+    let rig = try await Self.rig(v3: false, ultra: false)
+    Self.enqueueUltra(rig)
+    let recorder = rig.ultraProgress
+    let handle = rig.ultra
+    // Deliver every progress event late: callers must still wait for them.
+    handle.setProgressDelayForTesting {
+      for _ in 0..<50 { await Task.yield() }
+    }
+    let a = Task {
+      _ = await handle.ensureAvailableInForeground()
+      recorder.mark("LOAD")
+    }
+    let b = Task {
+      _ = await handle.ensureAvailableInForeground()
+      recorder.mark("LOAD")
+    }
+    await a.value
+    await b.value
+    await rig.ultra.drainProgressForTesting()
+    let events = recorder.recorded
+    let firstLoad = try #require(events.firstIndex(of: "LOAD"))
+    #expect(
+      events[firstLoad...].allSatisfy { $0 == "LOAD" },
+      "a progress event landed after a caller started loading: \(events)")
+    #expect(events[..<firstLoad].last == "clear", "the boundary is cleared before loading")
+  }
+
+  @Test("an old attempt's progress never updates a newer background download")
+  func oldProgressIsNotAttributed() async throws {
+    let (rig, gate) = try await Self.heldBackgroundFetch()
+    let old = try #require(rig.coordinator.backgroundGenerationForTesting)
+    let cancel = Task { try await rig.coordinator.cancelBackgroundUpgrade() }
+    gate.open()
+    try await cancel.value
+    await rig.controller.setBeforeExistingCacheValidationForTesting(nil)
+    let newGate = StageGate()
+    await rig.controller.setBeforeExistingCacheValidationForTesting { await newGate.pass() }
+    try await rig.coordinator.resumeBackgroundUpgrade()
+    await newGate.waitForEntry(1)
+    let before = rig.coordinator.backgroundUpgrade
+    rig.coordinator.targetStateChanged(
+      .downloading(fractionCompleted: 0.5, bytesWritten: 1, totalBytes: 2), generation: old)
+    #expect(rig.coordinator.backgroundUpgrade == before)
+    newGate.open()
+    await rig.controller.setBeforeExistingCacheValidationForTesting(nil)
+  }
+
+  @Test("a persisted decline is shown after relaunch without starting or rewriting anything")
+  func declineSurvivesRelaunch() async throws {
+    let rig = try await Self.rig(
+      v3: true, ultra: false,
+      state: .init(attempts: 1, refetchSpent: true, exhausted: false, declined: true),
+      onboarding: true)
+    #expect(rig.coordinator.backgroundUpgrade == .declined)
+    _ = try await rig.coordinator.prepareLoad()
+    #expect(rig.coordinator.hasBackgroundFetchForTesting == false)
+    #expect(
+      Self.state(rig) == .init(attempts: 1, refetchSpent: true, exhausted: false, declined: true))
+  }
+
+  @Test("usable: a v3 rejection that lands during the admission read is honoured")
+  func usabilityRereadsRejection() async throws {
+    let rig = try await Self.rig(v3: true, ultra: false, enabled: false)
+    let v3Load = try await rig.coordinator.prepareLoad()
+    let gate = StageGate()
+    rig.coordinator.usabilityReadGateForTesting = { await gate.pass() }
+    let read = Task { await rig.coordinator.isParakeetUsable() }
+    await gate.waitForEntry(1)
+    rig.coordinator.usabilityReadGateForTesting = nil
+    #expect(await rig.coordinator.handleLoadFailure(v3Load, error: VendorLoadFailed()) == .reload)
+    gate.open()
+    #expect(await read.value == false)
+  }
+
+  @Test("usable: exhaustion that lands during the Ultra admission read is honoured")
+  func usabilityRereadsExhaustion() async throws {
+    let rig = try await Self.rig(v3: false, ultra: true)
+    let gate = StageGate()
+    var reads = 0
+    // Hold only the second read (the Ultra admission); the v3 read passes.
+    rig.coordinator.usabilityReadGateForTesting = {
+      reads += 1
+      if reads == 2 { await gate.pass() }
+    }
+    let read = Task { await rig.coordinator.isParakeetUsable() }
+    await gate.waitForEntry(1)
+    try rig.store.write(.init(attempts: 0, refetchSpent: true, exhausted: true, declined: false))
+    gate.open()
+    #expect(await read.value == false)
   }
 
 }
