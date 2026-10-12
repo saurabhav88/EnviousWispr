@@ -287,28 +287,6 @@ public actor ModelDeliveryController {
     return outcome
   }
 
-  /// #3546 (plan §3.4 "v3 accepted"): donor recovery for an owned install whose
-  /// bytes are incomplete, even when an earlier run recorded the migration as
-  /// `completed`. A completed record says "nothing to bring over at the time";
-  /// it must not stop recovery after the owned bytes went missing. A `declined`
-  /// record is a deliberate removal and still stops it. Only the completed
-  /// record is forgotten, then the ordinary single-flight migration runs.
-  @discardableResult
-  package func recoverFromDonor(
-    _ registration: DeliveryRegistration, onProgress: (@Sendable () -> Void)? = nil
-  ) async -> LegacyDonorMigration.Outcome {
-    let metadata = registration.metadataDirectory
-    let manifest = registration.manifest
-    if migrationsInFlight[registration.manifest.identity] == nil,
-      LegacyDonorMigration.recordedState(metadataDirectory: metadata, manifest: manifest)
-        == .completed
-    {
-      try? FileManager.default.removeItem(
-        at: LegacyDonorMigration.recordURL(metadataDirectory: metadata, manifest: manifest))
-    }
-    return await ensureLegacyMigration(registration, onProgress: onProgress)
-  }
-
   /// One live migration per identity. See `ensureLegacyMigration`.
   private var migrationsInFlight: [ModelIdentity: Task<LegacyDonorMigration.Outcome, Never>] = [:]
 
@@ -533,8 +511,9 @@ public actor ModelDeliveryController {
 
   /// #3546: automatic retirement of an owned install (v3 after Ultra activated,
   /// or an Ultra target the upgrade policy gave up on). Unlike `remove`, it
-  /// records NO deliberate decline (nobody asked for it, so donor recovery must
-  /// stay possible), and it removes EVERY byte in the exact install directory,
+  /// records NO deliberate decline (nobody asked for it); the migration record
+  /// is left as it is, so a completed one keeps the donor from being copied
+  /// again (founder 2026-10-12). It removes EVERY byte in the exact install directory,
   /// including unlisted or invalid remnants, plus the marker and staging.
   ///
   /// Refuses (returns false, deletes nothing) unless the install directory

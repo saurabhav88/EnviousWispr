@@ -546,6 +546,71 @@ struct ParakeetUpgradePolicyTests {
     #expect(FileManager.default.fileExists(atPath: rig.v3Registration.installDirectory.path))
   }
 
+  /// Founder 2026-10-12: once Ultra has worked, v3 is gone and is never a fallback. The
+  /// first migration leaves a completed record, and retiring the owned v3 keeps it. When this
+  /// fails, every launch re-creates v3 from the donor only to retire it again.
+  @Test("after activation retired v3, a launch does not copy v3 back from the donor")
+  func retiredV3StaysRetired() async throws {
+    let rig = try await Self.rig(v3: false, ultra: true, v3Donor: true)
+    let donor = try #require(rig.v3Registration.legacyDonorDirectory)
+    try Self.install(Self.v3Files, into: donor)
+    #expect(
+      LegacyDonorMigration.record(
+        .completed, metadataDirectory: rig.metadata, manifest: rig.v3Registration.manifest))
+    let prepared = try await rig.coordinator.prepareLoad()
+    #expect(prepared.selection?.model == .ultra)
+    #expect(prepared.selection?.repairable == true, "no v3: Ultra failures get the bounded repair")
+    #expect(
+      FileManager.default.fileExists(atPath: rig.v3Registration.installDirectory.path) == false)
+    #expect(await rig.controller.isAdmitted(rig.v3Registration) == false)
+  }
+
+  /// The launch migration may start after Ultra already activated. Acceptance joins it even
+  /// for an accepted owned v3, so its completed record exists before retirement. When this
+  /// fails, a late launch migration with no record copies the donor's v3 back.
+  @Test("a launch migration that runs after activation does not copy v3 back")
+  func lateLaunchMigrationAfterActivation() async throws {
+    let rig = try await Self.rig(v3: true, ultra: true, v3Donor: true)
+    let donor = try #require(rig.v3Registration.legacyDonorDirectory)
+    try Self.install(Self.v3Files, into: donor)
+    let retired = OutcomeSignal(.retiredV3)
+    rig.coordinator.onOutcome = { retired.observe($0) }
+    _ = try await rig.coordinator.prepareLoad()
+    #expect(Self.physicalLoad(rig) == .loaded)
+    await retired.wait()
+    #expect(await rig.v3.ensureModelLocationReady() != nil)
+    #expect(
+      FileManager.default.fileExists(atPath: rig.v3Registration.installDirectory.path) == false)
+    for file in Self.v3Files {
+      #expect(
+        try Data(contentsOf: donor.appendingPathComponent(file.path)) == file.content,
+        "the donor is never touched")
+    }
+  }
+
+  /// Founder 2026-10-12: no v3 fallback after Ultra has worked. When this fails, a broken
+  /// Ultra silently serves an old v3 from the shared donor.
+  @Test("an Ultra failure after activation does not fall back to the donor's v3")
+  func noDonorFallbackAfterActivation() async throws {
+    let rig = try await Self.rig(v3: false, ultra: true, v3Donor: true)
+    let donor = try #require(rig.v3Registration.legacyDonorDirectory)
+    try Self.install(Self.v3Files, into: donor)
+    #expect(
+      LegacyDonorMigration.record(
+        .completed, metadataDirectory: rig.metadata, manifest: rig.v3Registration.manifest))
+    var fallbacks: [ParakeetUpgradeCoordinator.Fallback] = []
+    rig.coordinator.onOutcome = {
+      if case .loadFailed(_, _, _, let fallback) = $0 { fallbacks.append(fallback) }
+    }
+    let prepared = try await rig.coordinator.prepareLoad()
+    #expect(Self.physicalLoad(rig, succeeds: false) == .loaded)
+    _ = await rig.coordinator.handleLoadFailure(prepared, error: VendorLoadFailed())
+    #expect(fallbacks == [ParakeetUpgradeCoordinator.Fallback.none])
+    #expect(rig.selection.current?.model != .v3)
+    #expect(
+      FileManager.default.fileExists(atPath: rig.v3Registration.installDirectory.path) == false)
+  }
+
   /// #3546 §3.7 T2: an Ultra activation reports the attempt count read before the success
   /// reset zeroes it, its own load time, and that nothing served before. When this fails,
   /// the upgrade report says zero attempts or times another load.
@@ -571,8 +636,11 @@ struct ParakeetUpgradePolicyTests {
   @Test("an Ultra load failure carries the fallback it is about to take and the loader error")
   func loadFailureCarriesItsFallback() async throws {
     let rig = try await Self.rig(v3: true, ultra: true)
-    var failures: [(ParakeetModel, ParakeetUpgradeCoordinator.LoadFacts, String,
-      ParakeetUpgradeCoordinator.Fallback)] = []
+    var failures:
+      [(
+        ParakeetModel, ParakeetUpgradeCoordinator.LoadFacts, String,
+        ParakeetUpgradeCoordinator.Fallback
+      )] = []
     rig.coordinator.onOutcome = {
       if case .loadFailed(let model, let facts, let error, let fallback) = $0 {
         failures.append((model, facts, error, fallback))
@@ -848,24 +916,21 @@ struct ParakeetUpgradePolicyTests {
     #expect(prepared.selection?.model == .v3)
   }
 
-  @Test("donor recovery is not stopped by a completed record, and is stopped by a decline")
-  func donorRecoveryHonoursOnlyDecline() async throws {
-    let rig = try await Self.rig(v3: false, ultra: false, enabled: false, v3Donor: true)
-    let donor = try #require(rig.v3Registration.legacyDonorDirectory)
-    try Self.install(Self.v3Files, into: donor)
-    #expect(
-      LegacyDonorMigration.record(
-        .completed, metadataDirectory: rig.metadata, manifest: rig.v3Registration.manifest))
-    let prepared = try await rig.coordinator.prepareLoad()
-    #expect(prepared.selection?.model == .v3, "recovered from the donor despite the record")
-    let declined = try await Self.rig(v3: false, ultra: false, enabled: false, v3Donor: true)
-    try Self.install(Self.v3Files, into: try #require(declined.v3Registration.legacyDonorDirectory))
-    #expect(
-      LegacyDonorMigration.record(
-        .declined, metadataDirectory: declined.metadata, manifest: declined.v3Registration.manifest)
-    )
-    let vendor = try await declined.coordinator.prepareLoad()
-    #expect(vendor.selection?.model == .ultra, "a deliberate decline is honoured")
+  @Test("a first migration brings v3 from the donor; a completed or declined record does not")
+  func donorMigrationOnlyWithoutRecord() async throws {
+    let fresh = try await Self.rig(v3: false, ultra: false, enabled: false, v3Donor: true)
+    try Self.install(Self.v3Files, into: try #require(fresh.v3Registration.legacyDonorDirectory))
+    let migrated = try await fresh.coordinator.prepareLoad()
+    #expect(migrated.selection?.model == .v3, "no record: the launch migration brings v3 over")
+    for state in [LegacyDonorMigration.RecordedState.completed, .declined] {
+      let rig = try await Self.rig(v3: false, ultra: false, enabled: false, v3Donor: true)
+      try Self.install(Self.v3Files, into: try #require(rig.v3Registration.legacyDonorDirectory))
+      #expect(
+        LegacyDonorMigration.record(
+          state, metadataDirectory: rig.metadata, manifest: rig.v3Registration.manifest))
+      let prepared = try await rig.coordinator.prepareLoad()
+      #expect(prepared.selection?.model == .ultra, "\(state): the donor is not read again")
+    }
   }
 
   @Test("partial owned v3 bytes are not accepted")
@@ -1027,7 +1092,9 @@ struct ParakeetUpgradePolicyTests {
     let log = LoadLog([false, false, false])
     let manager = Self.scriptedManager(rig, log)
     var failed: [ParakeetModel] = []
-    rig.coordinator.onOutcome = { if case .loadFailed(let model, _, _, _) = $0 { failed.append(model) } }
+    rig.coordinator.onOutcome = {
+      if case .loadFailed(let model, _, _, _) = $0 { failed.append(model) }
+    }
     await #expect(throws: VendorLoadFailed.self) {
       try await Self.load(through: door, rig, manager)
     }
@@ -1044,7 +1111,9 @@ struct ParakeetUpgradePolicyTests {
     let log = LoadLog([false, false, false])
     let manager = Self.scriptedManager(rig, log)
     var failed: [ParakeetModel] = []
-    rig.coordinator.onOutcome = { if case .loadFailed(let model, _, _, _) = $0 { failed.append(model) } }
+    rig.coordinator.onOutcome = {
+      if case .loadFailed(let model, _, _, _) = $0 { failed.append(model) }
+    }
     await #expect(throws: VendorLoadFailed.self) {
       try await Self.load(through: door, rig, manager)
     }
@@ -1915,7 +1984,6 @@ struct ParakeetUpgradePolicyTests {
     #expect(await read.value == false)
   }
 
-
   // MARK: 8b: what Settings presents
 
   @Test("Settings names the serving model, else the pending one; fallback names v3")
@@ -1977,7 +2045,8 @@ struct ParakeetUpgradePolicyTests {
 
     let rejected = try await Self.rig(v3: true, ultra: false, enabled: false)
     let v3Load = try await rejected.coordinator.prepareLoad()
-    #expect(await rejected.coordinator.handleLoadFailure(v3Load, error: VendorLoadFailed()) == .reload)
+    #expect(
+      await rejected.coordinator.handleLoadFailure(v3Load, error: VendorLoadFailed()) == .reload)
     #expect(await rejected.coordinator.currentAdmission() == false, "rejected v3 is not ready")
 
     let exhausted = try await Self.rig(
@@ -2044,9 +2113,12 @@ struct ParakeetUpgradePolicyTests {
 
   /// Which newer fact lands while a foreground Resume waits for a held Cancel
   /// drain.
-  enum ParkedResumeChange: CaseIterable { case none, foregroundCancel, backgroundCancel, exhaustion }
+  enum ParkedResumeChange: CaseIterable {
+    case none, foregroundCancel, backgroundCancel, exhaustion
+  }
 
-  @Test("a foreground Resume parked behind a drain re-checks before it fetches",
+  @Test(
+    "a foreground Resume parked behind a drain re-checks before it fetches",
     arguments: ParkedResumeChange.allCases)
   func parkedForegroundResume(_ change: ParkedResumeChange) async throws {
     let (rig, gate) = try await Self.heldBackgroundFetch()

@@ -160,10 +160,10 @@ public enum LegacyDonorMigration {
     let metadata = registration.metadataDirectory
     let fm = FileManager.default
 
-    // Already answered, either way. `declined` is the load-bearing half: without
-    // it, deleting the model would be undone by the next launch — and it is
-    // honoured even under `ignoringRecord`, because a deliberate removal is a
-    // decision, not a stale cache entry.
+    // Already answered, either way: a recorded completion or deliberate decline
+    // stops migration. `declined` is the load-bearing half: without it,
+    // deleting the model would be undone by the next launch, because a
+    // deliberate removal is a decision, not a stale cache entry.
     if recordedState(metadataDirectory: metadata, manifest: manifest) != nil { return .none }
 
     let admission = CacheAdmission(

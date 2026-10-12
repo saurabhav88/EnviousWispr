@@ -268,18 +268,6 @@ public final class ParakeetDeliveryHandle {
     await controller.admitIfComplete(registration)
   }
 
-  /// Read-only donor recovery that a completed migration record does not
-  /// suppress (a declined one still does). Ticks the shared progress file like
-  /// `ensureModelLocationReady`, for the same wedge-guard reason.
-  package func recoverFromDonor() async {
-    let progress = self.progress
-    await controller.recoverFromDonor(
-      registration,
-      onProgress: {
-        progress.write(0, ModelLoadStallPolicy.validatingCachePhase, "")
-      })
-  }
-
   /// Deletes this registration's whole owned install, marker and staging,
   /// recording no decline (`ModelDeliveryController.retireOwnedInstall`).
   package func retireOwnedInstall(ownedModelsRoot: URL) async -> Bool {

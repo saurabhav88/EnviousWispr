@@ -577,7 +577,8 @@ extension ParakeetUpgradeCoordinator {
       milliseconds = Int((ContinuousClock.now - start.at) / .milliseconds(1))
     }
     return LoadFacts(
-      selection: request, priorModel: priorModel, attempts: attempts, loadMilliseconds: milliseconds)
+      selection: request, priorModel: priorModel, attempts: attempts, loadMilliseconds: milliseconds
+    )
   }
 
   /// The success hook (`didPublishLoad`): a READY Ultra publish for the current
@@ -850,15 +851,19 @@ extension ParakeetUpgradeCoordinator {
     }
   }
 
-  /// v3 accepted (plan §3.4): the admission fast path, then a full validation
-  /// of the owned install with a marker refresh, then read-only donor recovery
-  /// (a completed migration record does not stop it; a deliberate decline
-  /// does) followed by validation again. Never fetches.
+  /// v3 accepted (plan §3.4, amended 2026-10-12): the owned install is validated
+  /// first, then the launch's single-flight donor migration is started or joined
+  /// EVEN when the owned install was accepted, so its record is written before
+  /// any retirement can run; then the install is read again. Never fetches.
+  /// A valid completed migration record suppresses donor copying after
+  /// retirement (founder 2026-10-12: no v3 fallback after Ultra has worked).
+  /// Missing, unreadable or digest-mismatched records keep ordinary migration's
+  /// existing behaviour. The shared donor is never modified.
   private func acceptV3() async -> Bool {
     guard let delivery, delivery.locationIsUsable else { return false }
+    if await delivery.isAdmitted() == false { _ = await delivery.admitIfComplete() }
+    guard await delivery.ensureModelLocationReady() != nil else { return false }
     if await delivery.isAdmitted() { return true }
-    if await delivery.admitIfComplete() { return true }
-    await delivery.recoverFromDonor()
     return await delivery.admitIfComplete()
   }
 
