@@ -31,6 +31,14 @@ struct TranscriptionCheckpointStagesTests {
     )
   }
 
+  /// The running chunk count carried by each `decodeChunkScheduled` mark, in order.
+  private func scheduledChunkCounts(_ wrapper: KernelRecordingSession) -> [Int] {
+    wrapper.transcriptionCheckpointEvents.compactMap { event -> Int? in
+      if case .mark(_, _, .decodeChunkScheduled, let count) = event { return count }
+      return nil
+    }
+  }
+
   private func stages(_ events: [TranscriptionCheckpointEvent]) -> [TranscriptionStage] {
     events.compactMap {
       if case .mark(_, _, let stage, _) = $0 { return stage }
@@ -160,12 +168,13 @@ struct TranscriptionCheckpointStagesTests {
     // would admit both.
     context.engine.emitObservationTickOnPreviousStream()
     context.engine.emitObservationTick()
-    await wrapper.drainReadyWork()
-
-    let counts = wrapper.transcriptionCheckpointEvents.compactMap { event -> Int? in
-      if case .mark(_, _, .decodeChunkScheduled, let count) = event { return count }
-      return nil
-    }
+    // Wait on the subject's own positive signal, the current attempt's tick counted, never the
+    // quiescence heuristic alone: under contention it returned before the tick landed (#3641).
+    // The stale tick was yielded first, so its absence is read after this wait. That negative
+    // observation is bound by that ordering only, not by a signal of its own.
+    await wrapper.drainUntil(
+      { !scheduledChunkCounts(wrapper).isEmpty }, what: "the current attempt's tick counted")
+    let counts = scheduledChunkCounts(wrapper)
     #expect(counts == [1], "only the current attempt's tick may count: \(counts)")
 
     context.clock.advance(by: 3)
