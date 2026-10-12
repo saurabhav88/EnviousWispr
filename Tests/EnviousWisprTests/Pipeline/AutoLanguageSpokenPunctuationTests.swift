@@ -3,6 +3,7 @@ import EnviousWisprLLM
 import EnviousWisprPostProcessing
 import Foundation
 import Testing
+import os
 
 @testable import EnviousWisprPipeline
 
@@ -180,6 +181,33 @@ struct AutoLanguageSpokenPunctuationTests {
     #expect(out.text == Self.germanTake)
     #expect(step.lastRun?.punctuationResolutionSource == "engine")
     #expect(step.lastRun?.punctuationLanguage == "en")
+  }
+
+  @Test(
+    "the routing probe and normalization share one waiting budget",
+    arguments: [(0.0, 0.50035), (0.3, 0.20035), (1.0, 0.0)])
+  func sharedBudget(spent: Double, expected: Double) async throws {
+    let clock = OSAllocatedUnfairLock(initialState: 0.0)
+    let calls = OSAllocatedUnfairLock(initialState: 0)
+    let step = InverseTextNormalizationStep(requestWork: { request in
+      calls.withLock { $0 += 1 }
+      #expect(abs(request.deadlineSeconds - expected) < 1e-9)
+      return ITNWorkResult(text: ".", punctuationRulesFired: 1)
+    })
+    step.spokenPunctuation = Self.on
+    step.backendSupportsLID = true
+    step.probeNow = { clock.withLock { $0 } }
+    step.routingProbe = {
+      clock.withLock { $0 = spent }
+      return "de"
+    }
+    let input = ctx("Diktiere Punkt", language: "en", source: .engine, textLanguage: "de")
+    let out = try await step.process(input)
+    #expect(calls.withLock { $0 } == (expected > 0 ? 1 : 0))
+    #expect(out.text == (expected > 0 ? "." : "Diktiere Punkt"))
+    let run = try #require(step.lastRun)
+    #expect(run.latencyMs >= spent * 1000)
+    #expect(run.punctuationStatus == (expected > 0 ? .rewrote : .timedOut))
   }
 
   @Test("a normalization timeout after a corrected route still returns the whole input and says so")
