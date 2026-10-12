@@ -645,6 +645,10 @@ extension ParakeetUpgradeCoordinator {
     needsExplicitRetry = false
     guard request.model == .ultra, let target else {
       onUsabilityMayHaveChanged?()
+      // A3: an admission that landed before this v3 load published is owed now.
+      if request.model == .v3, activationOwedGeneration != nil, isActivationOwed {
+        onActivationOwed?()
+      }
       return
     }
     // Captured before the reset below zeroes the attempt count.
@@ -1271,11 +1275,13 @@ extension ParakeetUpgradeCoordinator {
   }
 
   /// A3: owed only while v3 still serves this session; a launch or a switch into Parakeet
-  /// that already chose Ultra owes nothing.
+  /// that already chose Ultra owes nothing. The admission is remembered even when v3 has not
+  /// published yet (a cached Ultra can be admitted before v3's launch load finishes):
+  /// `loadPublished` offers it once v3 serves, and `isActivationOwed` re-checks the rest.
   private func offerAdmittedActivation(generation: UInt64) {
     guard isCurrentBackground(generation) else { return }
     activationOwedGeneration = generation
-    if isActivationOwed { onActivationOwed?() } else { activationOwedGeneration = nil }
+    if isActivationOwed { onActivationOwed?() }
   }
 
   private func runBackgroundFetch(generation: UInt64) async {

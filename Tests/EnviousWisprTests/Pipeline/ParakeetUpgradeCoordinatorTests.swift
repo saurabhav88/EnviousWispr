@@ -1490,6 +1490,31 @@ struct ParakeetUpgradePolicyTests {
     #expect(facts.priorModel == .v3)
   }
 
+  /// #3546 A3, Chunk 12 live UAT: a fast (cached) Ultra admission landed before v3's launch
+  /// load published, so the offer found nothing serving and was dropped; v3 served until a
+  /// relaunch. When this fails, that ordering again leaves the switch for the next launch.
+  @Test("A3: an admission before v3's load publishes is owed once v3 serves")
+  func admissionBeforeV3PublishesIsOwedAfterLoad() async throws {
+    let rig = try await Self.rig(v3: true, ultra: false, onboarding: true)
+    Self.enqueueUltra(rig)
+    let admitted = OutcomeSignal(.backgroundAdmitted)
+    var owed = 0
+    rig.coordinator.onActivationOwed = { owed += 1 }
+    rig.coordinator.onOutcome = { admitted.observe($0) }
+    let prepared = try await rig.coordinator.prepareLoad()
+    #expect(prepared.selection?.model == .v3)
+    await admitted.wait()
+    #expect(owed == 0, "nothing serves yet, so nothing is owed")
+    #expect(rig.coordinator.isActivationOwed == false)
+
+    #expect(Self.physicalLoad(rig) == .loaded, "v3's launch load publishes after admission")
+    #expect(owed == 1, "v3 now serves: the admitted Ultra is offered")
+    #expect(rig.coordinator.isActivationOwed)
+    #expect(rig.coordinator.beginOwedActivation())
+    let next = try await rig.coordinator.prepareLoad()
+    #expect(next.selection?.model == .ultra, "row A for the admitted Ultra")
+  }
+
   @Test("A3: a decline after admission withdraws the owed activation")
   func declineWithdrawsOwedActivation() async throws {
     let rig = try await Self.rig(v3: true, ultra: false, onboarding: true)

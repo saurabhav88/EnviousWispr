@@ -1,0 +1,14 @@
+{
+  "el": {
+    "text": "Καλημέρα σας, η συνάντηση θα ξεκινήσει στις δέκα το πρωί.",
+    "voice": "el-GR-AthinaNeural"
+  },
+  "ru": {
+    "text": "Доброе утро, встреча начнётся в десять часов утра.",
+    "voice": "ru-RU-SvetlanaNeural"
+  },
+  "cs": {
+    "text": "Dobré ráno, schůzka začne v deset hodin ráno.",
+    "voice": "cs-CZ-VlastaNeural"
+  }
+}
