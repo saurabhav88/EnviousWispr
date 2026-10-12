@@ -50,7 +50,6 @@ struct ParakeetUpgradeCoordinatorTests {
     #expect(rig.selection.current == afterSettle, "a settled point is not prepared again")
   }
 
-
   @Test("a selection point marked after a preparation returned stays pending")
   func laterSelectionPointIsNotConsumedEarly() async throws {
     let selection = ParakeetSelectionProvider()
@@ -1734,6 +1733,34 @@ struct ParakeetUpgradePolicyTests {
     let next = try await rig.coordinator.prepareLoad()
     #expect(next.selection?.model == .v3)
     #expect(rig.coordinator.hasBackgroundFetchForTesting, "Retry grants the download again")
+  }
+
+  /// Chunk 12 whole-PR review r3: Try again while v3 is loaded. Settings' warm-up returns at
+  /// once for a ready engine, so a selection point would wait for a load that never comes.
+  /// When this fails, the Try again row clears and the upgrade stalls until a relaunch.
+  @Test("Try again while v3 serves restarts the background upgrade and owes the activation")
+  func retryWhileV3ServesResumesTheUpgrade() async throws {
+    let rig = try await Self.rig(
+      v3: true, ultra: false,
+      state: .init(attempts: 2, refetchSpent: true, exhausted: false, declined: false),
+      onboarding: true)
+    rig.coordinator.servingReadiness = { true }
+    let admitted = OutcomeSignal(.backgroundAdmitted)
+    var owed = 0
+    rig.coordinator.onActivationOwed = { owed += 1 }
+    rig.coordinator.onOutcome = { admitted.observe($0) }
+    _ = try await rig.coordinator.prepareLoad()
+    #expect(Self.physicalLoad(rig) == .loaded, "v3 serves and stays loaded")
+    #expect(rig.coordinator.needsExplicitRetry)
+    #expect(rig.coordinator.hasBackgroundFetchForTesting == false)
+    Self.enqueueUltra(rig)
+    try rig.coordinator.retry()
+    #expect(rig.coordinator.needsExplicitRetry == false)
+    #expect(rig.coordinator.hasBackgroundFetchForTesting, "no load needed to restart the download")
+    await admitted.wait()
+    #expect(
+      owed == 1, "the admitted Ultra is owed to the engine owner, as any background admission")
+    #expect(rig.coordinator.isActivationOwed)
   }
 
   enum Ineligible: String, CaseIterable, Sendable { case declined, deliveryOff, noSelection }

@@ -759,7 +759,13 @@ extension ParakeetUpgradeCoordinator {
 
   /// Explicit Retry: proves the store can be written, then grants one new
   /// bounded recovery cycle (attempts, refetch and exhaustion reset; a decline
-  /// stays) and marks a selection point. Never automatic.
+  /// stays). Never automatic.
+  ///
+  /// While accepted v3 is loaded and serving, the grant restarts the background
+  /// upgrade (download, admission, then the owed in-session activation, A3):
+  /// Settings' warm-up returns at once for a ready engine, so a selection point
+  /// would wait for a load that never comes. Otherwise it marks a selection point
+  /// that the warm-up's load consumes.
   package func retry() throws {
     guard let target else { return }
     try target.store.probeWritable()
@@ -768,7 +774,13 @@ extension ParakeetUpgradeCoordinator {
     try target.store.write(state)
     needsExplicitRetry = false
     emit(.retryGranted)
-    markSelectionPoint()
+    if servingRequest?.model == .v3, frozen?.model == .v3, !hasPendingSelectionPoint,
+      hasReadyServingRequest()
+    {
+      scheduleBackgroundFetch()
+    } else {
+      markSelectionPoint()
+    }
   }
 
   // MARK: Selection
