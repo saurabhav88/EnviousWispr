@@ -52,6 +52,20 @@ struct ClipboardSettingsView: View {
               .accessibilityLabel(Text(Copy.restoreTitle))
           }
         }
+        BrandedRow {
+          SettingsRow(
+            map: .id(.keepOutOfClipboardHistory),
+            icon: "eye.slash",
+            help: Copy.keepOutOfHistoryHelp
+          ) {
+            Toggle("", isOn: $settings.keepDictationsOutOfClipboardHistory)
+              .labelsHidden()
+              .toggleStyle(BrandedToggleStyle())
+              .fixedSize()
+              .disabled(!settings.restoreClipboardAfterPaste)
+              .accessibilityLabel(Text(Copy.keepOutOfHistoryTitle))
+          }
+        }
         BrandedRow(showDivider: false) {
           SettingsRow(
             map: .id(.smartInsertion),

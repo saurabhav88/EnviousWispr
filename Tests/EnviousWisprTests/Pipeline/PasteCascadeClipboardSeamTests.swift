@@ -52,6 +52,7 @@ struct PasteCascadeClipboardSeamTests {
       targetElement: nil,
       targetElementIsRetried: false,
       restoreClipboardAfterPaste: false,
+      keepDictationsOutOfClipboardHistory: false,
       terminalBudget: nil)
   }
 

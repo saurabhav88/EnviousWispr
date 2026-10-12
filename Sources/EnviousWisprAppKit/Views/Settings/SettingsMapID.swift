@@ -139,6 +139,7 @@ enum SettingsMapID: String, CaseIterable, Hashable, Sendable {
   case recordingChimePreview = "recordingChime.preview"
   case autoCopyToClipboard = "autoCopyToClipboard"
   case restoreClipboard = "restoreClipboard"
+  case keepOutOfClipboardHistory = "keepOutOfClipboardHistory"
   case smartInsertion = "smartInsertion"
   case quickAddClipboardFallback = "quickAddClipboardFallback"
   case recordingMode = "recordingMode"

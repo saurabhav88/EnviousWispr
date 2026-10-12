@@ -60,6 +60,10 @@ public struct DictationSessionConfig: Sendable {
   /// scattered writes to `pipeline.autoPasteToActiveApp` in the former root state.
   public let autoPasteToActiveApp: Bool
   public let restoreClipboardAfterPaste: Bool
+  /// FROZEN at recording start with `restoreClipboardAfterPaste` (#3672): mark the temporary
+  /// paste write and the clipboard we give back as transient, so clipboard-history apps that follow
+  /// the nspasteboard.org convention skip them. Has an effect only while the restore is on.
+  public let keepDictationsOutOfClipboardHistory: Bool
   /// Adjust spacing and capitalisation to the text around the caret.
   ///
   /// FROZEN at recording start, like `restoreClipboardAfterPaste` above. A
@@ -159,6 +163,7 @@ public struct DictationSessionConfig: Sendable {
     triggerSource: TriggerSource,
     autoPasteToActiveApp: Bool,
     restoreClipboardAfterPaste: Bool,
+    keepDictationsOutOfClipboardHistory: Bool,
     smartInsertion: Bool,
     vadAutoStop: Bool,
     vadSilenceTimeout: Double,
@@ -183,6 +188,7 @@ public struct DictationSessionConfig: Sendable {
     self.triggerSource = triggerSource
     self.autoPasteToActiveApp = autoPasteToActiveApp
     self.restoreClipboardAfterPaste = restoreClipboardAfterPaste
+    self.keepDictationsOutOfClipboardHistory = keepDictationsOutOfClipboardHistory
     self.smartInsertion = smartInsertion
     self.vadAutoStop = vadAutoStop
     self.vadSilenceTimeout = vadSilenceTimeout

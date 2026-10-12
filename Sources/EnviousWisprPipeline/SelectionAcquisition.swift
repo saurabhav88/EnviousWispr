@@ -427,8 +427,9 @@ public enum SelectionAcquisition {
           acquisitionMs: elapsedMs(), clipboardRestore: .notTouched)
       }
 
+      // The user's clipboard after we copied THEIR selection, not a dictation: no marker added.
       let restored = PasteService.restoreClipboard(
-        payload, changeCountAfterPaste: ownedChangeCount, on: board)
+        payload, changeCountAfterPaste: ownedChangeCount, markTransient: false, on: board)
       let restore: ClipboardRestore = restored ? .restored : .declined
       let refusal = refusalOf(result)
       await log(

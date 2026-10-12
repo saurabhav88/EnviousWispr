@@ -1,0 +1,78 @@
+#!/usr/bin/env python3
+"""#3672: one fresh isolated Codex session per language reviews the drafted search block for
+keepOutOfClipboardHistory (accuracy, naturalness, collisions with its Clipboard-tab siblings).
+Mirrors scripts/settings-map/draft-vocabulary.sh isolation. Usage: review3672.py <worktree> <draft.json> <outdir>"""
+import concurrent.futures
+import json
+import os
+import pathlib
+import subprocess
+import sys
+import tempfile
+
+wt = pathlib.Path(sys.argv[1])
+draft = json.load(open(sys.argv[2], encoding="utf-8"))
+out = pathlib.Path(sys.argv[3])
+out.mkdir(parents=True, exist_ok=True)
+ID = "keepOutOfClipboardHistory"
+SIBLINGS = ["restoreClipboard", "autoCopyToClipboard", "smartInsertion", "quickAddClipboardFallback",
+            "dictation.tab.clipboard"]
+vocab = json.load(open(wt / "Sources/EnviousWisprAppKit/Resources/SettingsSearchVocabulary.json", encoding="utf-8"))
+by_id = {e["id"]: {b["language"]: b for b in e["blocks"]} for e in vocab["entries"]}
+blocks = {b["language"]: b for b in draft["blocks"]}
+
+BRIEF = """You are reviewing a draft search vocabulary block for ONE place in the Settings search box of EnviousWispr, a macOS dictation app (press a key and speak, it types your words into any app). The language you review is "{lang}".
+
+Use ONLY this brief and the data below. Do not open, search or read any file, folder, repository or website. Do not run commands.
+
+The place (English title and description are the source of truth; the page is Dictation Settings, the tab is Clipboard):
+- English title: Keep dictations out of clipboard history apps
+- German title: Diktate aus dem Verlauf von Zwischenablage-Apps heraushalten
+- English description: Asks clipboard apps to skip the text we paste.
+- What it really does: a switch. When on, EnviousWispr marks the temporary text it puts on the clipboard while pasting (and the clipboard it puts back) with the common "transient" marker, so clipboard history apps that follow that convention (Maccy, Raycast, Paste) skip it. It only applies when "Restore clipboard after paste" is on. It does NOT stop other apps that ignore the convention. It is off by default.
+
+Review the draft block for language "{lang}" below:
+1. Accuracy: remove or rewrite anything the place does not do (it never deletes history, never encrypts, never blocks clipboard apps, never turns off clipboard history).
+2. Collisions: the block must not fit the sibling places on the same tab equally well. The siblings' current blocks in this language are listed below. Words that mean only "clipboard" or "paste" belong to the siblings; this place is about clipboard HISTORY apps and keeping dictated text out of them.
+3. Naturalness: wording a native speaker of "{lang}" would really type or see in an app's settings. For the title: how an app in that language would label this switch. Keep product names unchanged. Lowercase except nouns the language capitalises. "words" 0 to 6 short terms; "phrases" 1 to 3 everyday searches, at least one. For en and de there is no title (the interface supplies it); for de use du-form.
+
+Draft block:
+{draft}
+
+Sibling blocks in "{lang}" (id -> block):
+{siblings}
+
+Output: one JSON object only, no commentary, no code fence, with the corrected block in exactly the draft's shape: {{"language": "{lang}", "title": "...", "words": [...], "phrases": [...]}} (omit "title" for en and de). If the draft is already right, return it unchanged. After the JSON add nothing.
+"""
+
+
+def run(lang: str) -> tuple[str, int]:
+    prompt = BRIEF.format(
+        lang=lang,
+        draft=json.dumps(blocks[lang], ensure_ascii=False, indent=1),
+        siblings=json.dumps({i: by_id[i][lang] for i in SIBLINGS if lang in by_id.get(i, {})},
+                            ensure_ascii=False, indent=1),
+    )
+    iso = pathlib.Path(tempfile.mkdtemp(prefix="ew-vocab-review."))
+    (iso / "work").mkdir()
+    (iso / "codex-home").mkdir()
+    os.symlink(os.path.expanduser("~/.codex/auth.json"), iso / "codex-home" / "auth.json")
+    answer = iso / "out.txt"
+    env = dict(os.environ, CODEX_HOME=str(iso / "codex-home"))
+    proc = subprocess.run(
+        [os.path.expanduser("~/.claude/bin/codex-run"), str(answer), "-c", "tools.web_search=false", "exec",
+         "--sandbox", "read-only", "--skip-git-repo-check", "--ignore-rules", "--ephemeral", "-C", str(iso / "work")],
+        input=prompt, text=True, env=env, cwd=str(iso / "work"), capture_output=True)
+    last = pathlib.Path(str(answer) + ".last")
+    if proc.returncode == 0 and last.exists():
+        (out / f"review-{lang}.txt").write_text(last.read_text(encoding="utf-8"), encoding="utf-8")
+    else:
+        (out / f"review-{lang}.FAILED").write_text(f"exit {proc.returncode}\n{proc.stderr[-2000:]}", encoding="utf-8")
+    return lang, proc.returncode
+
+
+langs = [b["language"] for b in draft["blocks"]]
+with concurrent.futures.ThreadPoolExecutor(max_workers=6) as pool:
+    for lang, rc in pool.map(run, langs):
+        print(f"{lang}: exit {rc}", flush=True)
+print("DONE", flush=True)

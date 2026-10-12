@@ -16,6 +16,7 @@
  "AudioSettingsView.swift | SettingsSectionHeading | map .id(.sectionMicrophone)",
  "AudioSettingsView.swift | settingsMapRegistration | .bluetoothGuideLearnMore",
  "ClipboardSettingsView.swift | SettingsRow | map .id(.autoCopyToClipboard)",
+ "ClipboardSettingsView.swift | SettingsRow | map .id(.keepOutOfClipboardHistory)",
  "ClipboardSettingsView.swift | SettingsRow | map .id(.quickAddClipboardFallback)",
  "ClipboardSettingsView.swift | SettingsRow | map .id(.restoreClipboard)",
  "ClipboardSettingsView.swift | SettingsRow | map .id(.smartInsertion)",

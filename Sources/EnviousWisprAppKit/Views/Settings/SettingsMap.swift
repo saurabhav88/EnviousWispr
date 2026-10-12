@@ -562,6 +562,12 @@ enum SettingsMap {
       parent: .sectionClipboard, destination: .dictation(.clipboard), dictionaryTab: nil,
       visibility: .always, target: .restoreClipboard, fallbacks: []),
     SettingsMapNode(
+      id: .keepOutOfClipboardHistory, structure: .item, item: .setting,
+      title: .resource(DictationSettingsCopy.Clipboard.keepOutOfHistoryTitle),
+      description: .resource(DictationSettingsCopy.Clipboard.keepOutOfHistoryShort),
+      parent: .sectionClipboard, destination: .dictation(.clipboard), dictionaryTab: nil,
+      visibility: .always, target: .keepOutOfClipboardHistory, fallbacks: []),
+    SettingsMapNode(
       id: .smartInsertion, structure: .item, item: .setting,
       title: .resource(DictationSettingsCopy.Clipboard.smartInsertionTitle),
       description: .resource(DictationSettingsCopy.Clipboard.smartInsertionShort),

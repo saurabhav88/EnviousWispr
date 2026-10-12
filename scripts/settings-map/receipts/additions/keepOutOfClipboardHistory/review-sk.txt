@@ -1,0 +1,1 @@
+{"language":"sk","title":"neukladať diktovaný text do histórie schránky","words":[],"phrases":["neukladať diktovaný text do histórie schránky","vynechať diktovaný text z histórie schránky"]}

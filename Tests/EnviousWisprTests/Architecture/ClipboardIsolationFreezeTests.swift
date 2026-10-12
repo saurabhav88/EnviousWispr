@@ -846,6 +846,8 @@ struct ClipboardIsolationFreezeTests {
       [(block: Int?, position: Int, usesExecutorBoard: Bool, kind: String?)] = []
     private(set) var clipboardFallbackWrites:
       [(insideFallback: Bool, usesExecutorBoard: Bool, kind: String?)] = []
+    /// The `markTransient:` argument of each `ClipboardCleanup.scheduleRestore` call (#3672).
+    private(set) var restoreMarkerArguments: [String?] = []
     private var snapshotsByBlock: [Int: [Int]] = [:]
 
     var automaticRoutesHaveSnapshots: [Bool] {
@@ -876,6 +878,12 @@ struct ClipboardIsolationFreezeTests {
         {
           callsUsingExecutorBoard += 1
         }
+      }
+
+      if functionName == "scheduleRestore", base == "ClipboardCleanup" {
+        restoreMarkerArguments.append(
+          node.arguments.first { $0.label?.text == "markTransient" }?.expression
+            .tokens(viewMode: .sourceAccurate).map(\.text).joined(separator: " "))
       }
 
       guard trailingName(of: member.base) == "PasteService" else {
@@ -1053,8 +1061,12 @@ struct ClipboardIsolationFreezeTests {
     #expect(
       visitor.automaticRouteWrites.map(\.kind)
         == Array(
-          repeating: "request . restoreClipboardAfterPaste ? . temporary : . kept", count: 3),
-      "each automatic paste route must be marked temporary exactly when the restore will run")
+          repeating: "request . pasteWriteKind", count: 3),
+      "each automatic paste route takes its write kind from the request, which is temporary only when the restore will run and the user asked (#3672)")
+    #expect(
+      visitor.restoreMarkerArguments
+        == Array(repeating: "request . keepDictationsOutOfClipboardHistory", count: 3),
+      "each automatic route schedules its restore with the frozen clipboard-history value (#3672)")
     #expect(
       visitor.clipboardFallbackWrites.map(\.kind) == [". kept"],
       "the clipboard fallback keeps the dictation, so it must never be marked temporary")
@@ -1224,7 +1236,7 @@ struct ClipboardIsolationFreezeTests {
           let pb = NSPasteboard.withUniqueName()
           PasteService.copyToClipboard("x", to: pb)
           _ = PasteService.saveClipboard(from: pb)
-          PasteService.restoreClipboard(snap, changeCountAfterPaste: 1, on: pb)
+          PasteService.restoreClipboard(snap, changeCountAfterPaste: 1, markTransient: false, on: pb)
         }
         """,
       file: "PasteServiceClipboardTests.swift")
@@ -1323,7 +1335,7 @@ struct ClipboardIsolationFreezeTests {
       // (call as written inside the allowlisted suite, violations expected)
       (#"PasteService.copyToClipboard("x", to: .general)"#, 1),
       (#"_ = PasteService.saveClipboard(from: .general)"#, 1),
-      (#"PasteService.restoreClipboard(s, changeCountAfterPaste: 1, on: .general)"#, 1),
+      (#"PasteService.restoreClipboard(s, changeCountAfterPaste: 1, markTransient: false, on: .general)"#, 1),
       (#"PasteService.copyToClipboard("x", to: NSPasteboard.general)"#, 1),
       // Wrapping and escaping change the syntax, not the board.
       (#"PasteService.copyToClipboard("x", to: (.general))"#, 1),

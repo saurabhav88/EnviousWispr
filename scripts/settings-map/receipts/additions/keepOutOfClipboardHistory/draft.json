@@ -1,0 +1,299 @@
+{
+ "id": "keepOutOfClipboardHistory",
+ "blocks": [
+  {
+   "language": "ar",
+   "title": "استبعاد النصوص المملاة من سجل تطبيقات الحافظة",
+   "words": [],
+   "phrases": [
+    "عدم حفظ الإملاء في سجل الحافظة",
+    "منع تطبيقات الحافظة من حفظ النص المملى"
+   ]
+  },
+  {
+   "language": "bg",
+   "title": "изключване на диктовките от историята на приложенията за клипборда",
+   "words": [],
+   "phrases": [
+    "без диктовки в историята на клипборда",
+    "да не се запазва продиктуваният текст в историята"
+   ]
+  },
+  {
+   "language": "cs",
+   "title": "nezahrnovat diktovaný text do historie aplikací pro schránku",
+   "words": [],
+   "phrases": [
+    "neukládat diktování do historie schránky",
+    "vynechat diktovaný text z historie schránky"
+   ]
+  },
+  {
+   "language": "da",
+   "title": "hold dikteret tekst ude af udklipsholderapps' historik",
+   "words": [],
+   "phrases": [
+    "gem ikke diktat i udklipsholderens historik",
+    "udelad dikteret tekst fra udklipshistorikken"
+   ]
+  },
+  {
+   "language": "de",
+   "words": [
+    "Clipboard-Verlauf"
+   ],
+   "phrases": [
+    "speichere meine Diktate nicht im Zwischenablageverlauf",
+    "halte diktierten Text aus dem Clipboard-Verlauf raus"
+   ]
+  },
+  {
+   "language": "el",
+   "title": "εξαίρεση υπαγορεύσεων από το ιστορικό εφαρμογών προχείρου",
+   "words": [],
+   "phrases": [
+    "να μη μένει η υπαγόρευση στο ιστορικό του προχείρου",
+    "να μην αποθηκεύονται υπαγορεύσεις στο ιστορικό"
+   ]
+  },
+  {
+   "language": "en",
+   "words": [
+    "clipboard manager"
+   ],
+   "phrases": [
+    "don't save dictation in clipboard history",
+    "ask clipboard managers to ignore dictated text"
+   ]
+  },
+  {
+   "language": "es",
+   "title": "excluir los dictados del historial de las apps del portapapeles",
+   "words": [],
+   "phrases": [
+    "no guardar dictados en el historial del portapapeles",
+    "que el gestor del portapapeles ignore el texto dictado"
+   ]
+  },
+  {
+   "language": "et",
+   "title": "jäta dikteeritud tekst lõikelauarakenduste ajaloost välja",
+   "words": [],
+   "phrases": [
+    "ära salvesta dikteeritud teksti lõikelaua ajalukku",
+    "dikteerimine ilma lõikelaua ajalukku salvestamata"
+   ]
+  },
+  {
+   "language": "fi",
+   "title": "jätä sanelut pois leikepöytäsovellusten historiasta",
+   "words": [],
+   "phrases": [
+    "älä tallenna sanelua leikepöydän historiaan",
+    "jätä saneltu teksti pois leikepöytähistoriasta"
+   ]
+  },
+  {
+   "language": "fr",
+   "title": "exclure les dictées de l’historique des apps de presse-papiers",
+   "words": [],
+   "phrases": [
+    "ne pas enregistrer les dictées dans l’historique du presse-papiers",
+    "faire ignorer le texte dicté par le gestionnaire de presse-papiers"
+   ]
+  },
+  {
+   "language": "hi",
+   "title": "बोलकर लिखे गए टेक्स्ट को क्लिपबोर्ड ऐप्स की हिस्ट्री से बाहर रखें",
+   "words": [],
+   "phrases": [
+    "बोलकर लिखा टेक्स्ट क्लिपबोर्ड हिस्ट्री में सेव न हो",
+    "क्लिपबोर्ड ऐप में डिक्टेशन सेव न करें"
+   ]
+  },
+  {
+   "language": "hr",
+   "title": "izostavi diktirani tekst iz povijesti aplikacija za međuspremnik",
+   "words": [],
+   "phrases": [
+    "ne spremaj diktat u povijest međuspremnika",
+    "bez diktiranog teksta u povijesti međuspremnika"
+   ]
+  },
+  {
+   "language": "hu",
+   "title": "diktált szöveg kihagyása a vágólapkezelők előzményeiből",
+   "words": [],
+   "phrases": [
+    "ne mentse a diktálást a vágólap előzményeibe",
+    "diktált szöveg kizárása a vágólap előzményeiből"
+   ]
+  },
+  {
+   "language": "it",
+   "title": "escludi i dettati dalla cronologia delle app per gli appunti",
+   "words": [],
+   "phrases": [
+    "non salvare i dettati nella cronologia degli appunti",
+    "fai ignorare il testo dettato al gestore degli appunti"
+   ]
+  },
+  {
+   "language": "ja",
+   "title": "音声入力したテキストをクリップボードアプリの履歴に残さない",
+   "words": [],
+   "phrases": [
+    "音声入力をクリップボードの履歴に保存しない",
+    "クリップボードアプリに音声入力を記録させない"
+   ]
+  },
+  {
+   "language": "ko",
+   "title": "받아쓰기 텍스트를 클립보드 앱 기록에서 제외",
+   "words": [],
+   "phrases": [
+    "받아쓴 내용을 클립보드 기록에 저장하지 않기",
+    "클립보드 앱에 음성 입력 기록 안 남기기"
+   ]
+  },
+  {
+   "language": "lt",
+   "title": "neįtraukti diktuojamo teksto į iškarpinės programų istoriją",
+   "words": [],
+   "phrases": [
+    "nesaugoti diktuojamo teksto iškarpinės istorijoje",
+    "diktavimas be įrašymo į iškarpinės istoriją"
+   ]
+  },
+  {
+   "language": "lv",
+   "title": "neiekļaut diktēto tekstu starpliktuves lietotņu vēsturē",
+   "words": [],
+   "phrases": [
+    "nesaglabāt diktēto tekstu starpliktuves vēsturē",
+    "izlaist diktēto tekstu starpliktuves vēsturē"
+   ]
+  },
+  {
+   "language": "mt",
+   "title": "ħalli t-test iddettat barra mill-istorja tal-apps tal-clipboard",
+   "words": [],
+   "phrases": [
+    "tissejvjax id-dettatura fl-istorja tal-clipboard",
+    "żomm it-test iddettat barra mill-istorja tal-clipboard"
+   ]
+  },
+  {
+   "language": "nl",
+   "title": "houd gedicteerde tekst uit de geschiedenis van klembordapps",
+   "words": [],
+   "phrases": [
+    "dictaten niet opslaan in de klembordgeschiedenis",
+    "laat de klembordbeheerder gedicteerde tekst overslaan"
+   ]
+  },
+  {
+   "language": "pl",
+   "title": "wyklucz dyktowany tekst z historii aplikacji do schowka",
+   "words": [],
+   "phrases": [
+    "nie zapisuj dyktowania w historii schowka",
+    "pomijaj dyktowany tekst w historii schowka"
+   ]
+  },
+  {
+   "language": "pt",
+   "title": "excluir ditados do histórico dos apps de área de transferência",
+   "words": [
+    "histórico do clipboard"
+   ],
+   "phrases": [
+    "não guardar ditados no histórico da área de transferência",
+    "não salvar texto ditado no histórico do clipboard"
+   ]
+  },
+  {
+   "language": "ro",
+   "title": "exclude dictările din istoricul aplicațiilor pentru clipboard",
+   "words": [],
+   "phrases": [
+    "nu salva textul dictat în istoricul clipboardului",
+    "fără dictări în istoricul clipboardului"
+   ]
+  },
+  {
+   "language": "ru",
+   "title": "не сохранять диктовки в истории приложений для буфера обмена",
+   "words": [],
+   "phrases": [
+    "не записывать диктовку в историю буфера обмена",
+    "исключить надиктованный текст из истории буфера"
+   ]
+  },
+  {
+   "language": "sk",
+   "title": "nezahŕňať diktovaný text do histórie aplikácií pre schránku",
+   "words": [],
+   "phrases": [
+    "neukladať diktovanie do histórie schránky",
+    "vynechať diktovaný text z histórie schránky"
+   ]
+  },
+  {
+   "language": "sl",
+   "title": "izključi narekovano besedilo iz zgodovine aplikacij za odložišče",
+   "words": [],
+   "phrases": [
+    "ne shranjuj narekovanega besedila v zgodovino odložišča",
+    "brez narekovanja v zgodovini odložišča"
+   ]
+  },
+  {
+   "language": "sv",
+   "title": "håll dikterad text utanför urklippsapparnas historik",
+   "words": [],
+   "phrases": [
+    "spara inte diktat i urklippshistoriken",
+    "låt urklippshanteraren hoppa över dikterad text"
+   ]
+  },
+  {
+   "language": "tr",
+   "title": "dikte edilen metni pano uygulamalarının geçmişine kaydetme",
+   "words": [],
+   "phrases": [
+    "sesle yazılanları pano geçmişine kaydetme",
+    "dikte metnini pano geçmişinin dışında tut"
+   ]
+  },
+  {
+   "language": "uk",
+   "title": "не зберігати диктування в історії застосунків буфера обміну",
+   "words": [],
+   "phrases": [
+    "не записувати надиктований текст в історію буфера обміну",
+    "виключити диктування з історії буфера"
+   ]
+  },
+  {
+   "language": "vi",
+   "title": "không lưu văn bản đọc chính tả vào lịch sử ứng dụng clipboard",
+   "words": [
+    "lịch sử bộ nhớ tạm"
+   ],
+   "phrases": [
+    "đừng lưu nội dung nhập bằng giọng nói vào lịch sử clipboard",
+    "bỏ qua văn bản đọc chính tả trong lịch sử bộ nhớ tạm"
+   ]
+  },
+  {
+   "language": "zh",
+   "title": "不让剪贴板应用将听写内容存入历史记录",
+   "words": [],
+   "phrases": [
+    "语音输入不要存到剪贴板历史里",
+    "让剪贴板应用跳过听写文本"
+   ]
+  }
+ ]
+}

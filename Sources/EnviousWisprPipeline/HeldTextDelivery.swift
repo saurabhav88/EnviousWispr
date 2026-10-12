@@ -33,11 +33,16 @@ package struct HeldDeliverySettings: Equatable, Sendable {
   package let smartInsertion: Bool
   package let autoPasteToActiveApp: Bool
   package let restoreClipboardAfterPaste: Bool
+  package let keepDictationsOutOfClipboardHistory: Bool
 
-  package init(smartInsertion: Bool, autoPasteToActiveApp: Bool, restoreClipboardAfterPaste: Bool) {
+  package init(
+    smartInsertion: Bool, autoPasteToActiveApp: Bool, restoreClipboardAfterPaste: Bool,
+    keepDictationsOutOfClipboardHistory: Bool
+  ) {
     self.smartInsertion = smartInsertion
     self.autoPasteToActiveApp = autoPasteToActiveApp
     self.restoreClipboardAfterPaste = restoreClipboardAfterPaste
+    self.keepDictationsOutOfClipboardHistory = keepDictationsOutOfClipboardHistory
   }
 }
 
@@ -99,6 +104,7 @@ package enum HeldTextDelivery {
     let request = KernelFinalizationWiring.deliveryRequest(
       computation: computation, targetApp: targetApp, recordedWindow: targetWindow,
       takeID: takeID, restoreClipboardAfterPaste: settings.restoreClipboardAfterPaste,
+      keepDictationsOutOfClipboardHistory: settings.keepDictationsOutOfClipboardHistory,
       origin: .escapeRecoveryUndo)
 
     let caret = computation.caret

@@ -1,0 +1,15 @@
+{
+  "language": "vi",
+  "title": "yêu cầu ứng dụng lịch sử bộ nhớ tạm bỏ qua văn bản đọc chính tả",
+  "words": [
+    "lịch sử bộ nhớ tạm",
+    "lịch sử clipboard",
+    "Maccy",
+    "Raycast",
+    "Paste"
+  ],
+  "phrases": [
+    "không lưu văn bản nhập bằng giọng nói vào lịch sử bộ nhớ tạm",
+    "để Maccy bỏ qua văn bản đọc chính tả"
+  ]
+}

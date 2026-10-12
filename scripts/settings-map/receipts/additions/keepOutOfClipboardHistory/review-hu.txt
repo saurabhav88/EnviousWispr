@@ -1,0 +1,1 @@
+{"language":"hu","title":"diktált szöveg kihagyása a vágólapkezelők előzményeiből","words":[],"phrases":["ne mentse a diktálást a vágólap előzményeibe","diktált szöveg kizárása a vágólap előzményeiből"]}

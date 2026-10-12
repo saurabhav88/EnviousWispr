@@ -57,6 +57,10 @@ struct LastDictationActionTests {
     var pasteResult: ClipboardCleanup.ManualClipboardResult = .dispatched
     var copyResult: ClipboardCleanup.ManualClipboardResult = .copied
     var pastes: [(text: String, restore: Bool)] = []
+    /// The "keep dictations out of clipboard history apps" value (#3672) the paste is asked to use,
+    /// and the value each paste was handed.
+    var markTransient = false
+    var pasteMarks: [Bool] = []
     var copies: [String] = []
     var permissionsOpened = 0
     var reports: [(LastDictationAction.Action, LastDictationAction.Source, String)] = []
@@ -112,6 +116,7 @@ struct LastDictationActionTests {
           return true
         },
         restoreClipboard: { true },
+        markTransient: { fake.markTransient },
         clipboardHeld: {
           if let override = fake.clipboardHeldOverride { return override() }
           guard fake.clipboardHeldPolls > 0 else { return false }
@@ -119,8 +124,9 @@ struct LastDictationActionTests {
           return true
         },
         clipboardWaited: { fake.clipboardWaits.append($0) },
-        manualPaste: { text, restore in
+        manualPaste: { text, restore, markTransient in
           fake.pastes.append((text, restore))
+          fake.pasteMarks.append(markTransient)
           return fake.pasteResult
         },
         manualCopy: { text in
@@ -241,6 +247,20 @@ struct LastDictationActionTests {
     #expect(fake.pastes.map(\.text) == ["Send the draft to Maya."])
     #expect(fake.pastes.first?.restore == true, "the user's clipboard setting is passed through")
     #expect(fake.activated.isEmpty)
+  }
+
+  @Test("The clipboard-history setting is read at the press and passed to the paste (#3672)")
+  func pasteForwardsTheClipboardHistorySetting() async throws {
+    for setting in [false, true] {
+      let (a, _) = try Self.twoOtherApps()
+      let fake = Fake()
+      fake.frontmost = a
+      fake.markTransient = setting
+      let action = makeAction(fake)
+      action.notePasteChordPressed()
+      await action.pasteFromChord().value
+      #expect(fake.pasteMarks == [setting])
+    }
   }
 
   @Test("A busy clipboard and a Cmd+V that could not be posted are reported as such")

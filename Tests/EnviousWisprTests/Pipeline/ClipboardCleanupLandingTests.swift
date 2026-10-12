@@ -197,16 +197,19 @@ struct ClipboardCleanupLandingTests {
   }
 
   /// Restore ON: the user's clipboard is photographed, our payload is written, cleanup scheduled.
+  ///
+  /// `marked` is the frozen "keep dictations out of clipboard history apps" value (#3672): ON writes
+  /// the payload marked and schedules the restore with the flag; OFF is the released sequence.
   private func restoreOnPaste(
     payload: String, fake: FakeLanding, permitted: Bool = true, outcomes: Outcomes,
-    gate: WakeGate = WakeGate()
+    gate: WakeGate = WakeGate(), marked: Bool = true
   ) -> (NSPasteboard, Int) {
     let pb = board(holding: Self.user)
     let snap = snapshot(of: pb)
-    putMarked(payload, on: pb)
+    if marked { putMarked(payload, on: pb) } else { put(payload, on: pb) }
     let after = pb.changeCount
     ClipboardCleanup.scheduleRestore(
-      snap, changeCountAfterPaste: after, tier: .cgEvent, on: pb,
+      snap, changeCountAfterPaste: after, markTransient: marked, tier: .cgEvent, on: pb,
       landing: check(
         fake, legacy: Self.dictation, permitted: permitted, into: outcomes, gate: gate))
     return (pb, after)
@@ -228,6 +231,35 @@ struct ClipboardCleanupLandingTests {
       #expect(pb.changeCount > after, "the kept text had to be rewritten unmarked")
       #expect(outcomes.all == [.retained(changeCount: pb.changeCount)])
       #expect(ClipboardCleanup.hasPending == false)
+    }
+  }
+
+  @Test("#3672: with the history setting off a kept dictation already on the board is not written again")
+  func settingOffKeepShortCircuits() async throws {
+    try await withCleanCleanupThrowing {
+      let fake = FakeLanding(preset: .some(.absent))
+      let outcomes = Outcomes()
+      let (pb, after) = restoreOnPaste(
+        payload: Self.dictation, fake: fake, outcomes: outcomes, marked: false)
+      try await finished(ClipboardCleanup.pendingTaskForTests())
+      #expect(pb.string(forType: .string) == Self.dictation)
+      #expect(carriesMarker(pb) == false)
+      #expect(pb.changeCount == after, "the released keep path does not rewrite text already there")
+      #expect(outcomes.all == [.retained(changeCount: after)])
+    }
+  }
+
+  @Test("#3672: with the history setting off a context-adjusted payload is still rewritten, unmarked")
+  func settingOffAdjustedPayloadIsRewritten() async throws {
+    try await withCleanCleanupThrowing {
+      let fake = FakeLanding(preset: .some(.absent))
+      let outcomes = Outcomes()
+      let (pb, after) = restoreOnPaste(
+        payload: Self.adjusted, fake: fake, outcomes: outcomes, marked: false)
+      try await finished(ClipboardCleanup.pendingTaskForTests())
+      #expect(pb.string(forType: .string) == Self.dictation)
+      #expect(carriesMarker(pb) == false)
+      #expect(pb.changeCount > after)
     }
   }
 
@@ -315,7 +347,7 @@ struct ClipboardCleanupLandingTests {
       put("the next dictation", on: pb)
       let newFake = FakeLanding()
       ClipboardCleanup.scheduleRestore(
-        inherited, changeCountAfterPaste: pb.changeCount, tier: .cgEvent, on: pb,
+        inherited, changeCountAfterPaste: pb.changeCount, markTransient: false, tier: .cgEvent, on: pb,
         landing: check(newFake, legacy: "the next dictation", into: outcomes))
 
       oldFake.publish(.absent)
@@ -348,7 +380,7 @@ struct ClipboardCleanupLandingTests {
       put("the held words ", on: pb)
       #expect(pb.string(forType: .string) == "the held words ", "the board holds the submitted payload")
       ClipboardCleanup.scheduleRestore(
-        undoSnapshot, changeCountAfterPaste: pb.changeCount, tier: .cgEvent, on: pb,
+        undoSnapshot, changeCountAfterPaste: pb.changeCount, markTransient: false, tier: .cgEvent, on: pb,
         landing: check(undoFake, legacy: "the held words ", into: outcomes))
       try await undoFake.waitUntilAsked()
       let undoTask = try #require(ClipboardCleanup.pendingTaskForTests())
@@ -358,7 +390,7 @@ struct ClipboardCleanupLandingTests {
       #expect(pb.string(forType: .string) == "the new dictation ", "the board holds the submitted payload")
       let dictationFake = FakeLanding()
       ClipboardCleanup.scheduleRestore(
-        inherited, changeCountAfterPaste: pb.changeCount, tier: .cgEvent, on: pb,
+        inherited, changeCountAfterPaste: pb.changeCount, markTransient: false, tier: .cgEvent, on: pb,
         landing: check(dictationFake, legacy: "the new dictation ", into: outcomes))
 
       undoFake.publish(.absent)
@@ -551,7 +583,7 @@ struct ClipboardCleanupLandingTests {
       let snap = snapshot(of: pb)
       put(Self.dictation, on: pb)
       ClipboardCleanup.scheduleRestore(
-        snap, changeCountAfterPaste: pb.changeCount, tier: .cgEvent, on: pb,
+        snap, changeCountAfterPaste: pb.changeCount, markTransient: false, tier: .cgEvent, on: pb,
         landing: ClipboardCleanup.LandingCheck(
           decision: { await fake.decision() },
           mayRetain: { _ in true },

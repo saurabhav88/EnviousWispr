@@ -516,7 +516,8 @@ final class DictationLifecycleCoordinator {
     return HeldDeliverySettings(
       smartInsertion: settings.smartInsertion,
       autoPasteToActiveApp: driver.state.allowsAutoPaste,
-      restoreClipboardAfterPaste: settings.restoreClipboardAfterPaste)
+      restoreClipboardAfterPaste: settings.restoreClipboardAfterPaste,
+      keepDictationsOutOfClipboardHistory: settings.keepDictationsOutOfClipboardHistory)
   }
 
   /// #285 — resolve which backend owns the shared audio capture right now.
@@ -650,7 +651,8 @@ final class DictationLifecycleCoordinator {
                   guard let self else {
                     return HeldDeliverySettings(
                       smartInsertion: false, autoPasteToActiveApp: false,
-                      restoreClipboardAfterPaste: false)
+                      restoreClipboardAfterPaste: false,
+                      keepDictationsOutOfClipboardHistory: false)
                   }
                   return self.undoDeliverySettings()
                 },

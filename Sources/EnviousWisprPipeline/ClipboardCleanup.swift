@@ -89,8 +89,10 @@ public enum ClipboardCleanup {
   /// answer for what a later delivery should inherit while a rewrite was
   /// pending — found by review, and the reason this is an enum.
   private enum Operation {
-    /// Put the user's clipboard back.
-    case restore(ClipboardSnapshot)
+    /// Put the user's clipboard back. `markTransient` is the frozen "keep dictations out of
+    /// clipboard history" value (#3672): it says whether the paste write was marked transient, so the
+    /// restore of the user's own items and the keep path's unmarked rewrite follow the same value.
+    case restore(ClipboardSnapshot, markTransient: Bool)
     /// Replace our contextual payload with the legacy one, so a manual ⌘V pastes
     /// what the user expects. Only ever pending when clipboard restore is OFF,
     /// because `mustRewriteClipboardToLegacy` requires `!willRestoreUserClipboard`.
@@ -306,7 +308,7 @@ public enum ClipboardCleanup {
     }
 
     switch current.operation {
-    case .restore(let snapshot):
+    case .restore(let snapshot, markTransient: _):
       // Our payload is still on the board and a real user clipboard is being
       // held for it. THAT is the user's clipboard, not what the board shows.
       return snapshot
@@ -384,7 +386,7 @@ public enum ClipboardCleanup {
     }
 
     switch current.operation {
-    case .restore(let snapshot):
+    case .restore(let snapshot, markTransient: _):
       // Our payload is still on the board and the real clipboard is held for it.
       return plainText(in: snapshot)
 
@@ -600,7 +602,7 @@ public enum ClipboardCleanup {
     }
 
     switch current.operation {
-    case .restore(let snapshot):
+    case .restore(let snapshot, markTransient: _):
       // Our own payload is still on the board and the real user clipboard is being held for it.
       // Photographing the board here is the loss this whole method exists to prevent.
       return snapshot
@@ -622,19 +624,21 @@ public enum ClipboardCleanup {
   static func scheduleRestore(
     _ snapshot: ClipboardSnapshot,
     changeCountAfterPaste: Int,
+    markTransient: Bool,
     tier: PasteTier,
     on board: NSPasteboard = .general,
     landing: LandingCheck? = nil
   ) {
     schedule(
-      operation: .restore(snapshot),
+      operation: .restore(snapshot, markTransient: markTransient),
       changeCountAfterPaste: changeCountAfterPaste,
       tier: tier,
       board: board,
       landing: landing
     ) {
       PasteService.restoreClipboard(
-        snapshot, changeCountAfterPaste: changeCountAfterPaste, on: board)
+        snapshot, changeCountAfterPaste: changeCountAfterPaste, markTransient: markTransient,
+        on: board)
     }
   }
 
@@ -739,12 +743,14 @@ public enum ClipboardCleanup {
   ///
   /// Obeys the same restore setting as a dictation. With restore on, the user's clipboard comes back
   /// after the usual delay under the usual change-count guard; with it off, the text stays.
+  /// `markTransient` is the "keep dictations out of clipboard history" setting (#3672); it marks the
+  /// write and the restore only while `restore` is on, because only then are they undone.
   ///
   /// - Parameter dispatch: posts Cmd+V and returns whether it was posted. Never writes the board.
   /// - Parameter write: puts `text` on `board` as the given kind and returns the change count after
   ///   the write. Tests pass a write that does not take; production uses the default.
   public static func manualPaste(
-    text: String, restore: Bool, on board: NSPasteboard,
+    text: String, restore: Bool, markTransient: Bool, on board: NSPasteboard,
     write: @MainActor (String, NSPasteboard, PasteService.WriteKind) -> Int = defaultManualWrite,
     dispatch: () -> Bool
   ) -> ManualClipboardResult {
@@ -754,13 +760,15 @@ public enum ClipboardCleanup {
     // `claimBoardForManualWrite`. Taken even with restore off: a write that does not take has
     // already cleared the board, and the user's clipboard must come back either way.
     let snapshot = snapshotForDelivery(from: board)
-    // Marked only when the restore will run: with restore off the text stays, so it is a kept write
-    // (#3528).
-    let changeCountAfterWrite = write(text, board, restore ? .temporary : .kept)
+    // Marked only when the restore will run and the user asked for it: with restore off the text
+    // stays, so it is a kept write (#3528, #3672).
+    let marked = restore && markTransient
+    let changeCountAfterWrite = write(text, board, marked ? .temporary : .kept)
     // Proven, not assumed: `setString` can refuse, and a Cmd+V then would paste whatever the board
     // holds instead of the dictation.
     guard boardHolds(text, board) else {
-      PasteService.restoreClipboard(snapshot, changeCountAfterPaste: changeCountAfterWrite, on: board)
+      PasteService.restoreClipboard(
+        snapshot, changeCountAfterPaste: changeCountAfterWrite, markTransient: marked, on: board)
       return .writeFailed
     }
     guard dispatch() else {
@@ -768,12 +776,13 @@ public enum ClipboardCleanup {
       // text on the board is now the user's only way to paste it. A marked write is therefore
       // rewritten unmarked, or the one copy the user can still paste would be hidden from their
       // clipboard manager (#3528). If that rewrite does not take, the user's clipboard comes back.
-      if restore {
+      if marked {
         _ = write(text, board, .kept)
         let changeCountAfterRewrite = board.changeCount
         guard boardHolds(text, board), !boardCarriesTransientMarker(board) else {
           PasteService.restoreClipboard(
-            snapshot, changeCountAfterPaste: changeCountAfterRewrite, on: board)
+            snapshot, changeCountAfterPaste: changeCountAfterRewrite, markTransient: marked,
+            on: board)
           return .writeFailed
         }
       }
@@ -781,7 +790,8 @@ public enum ClipboardCleanup {
     }
     if restore {
       scheduleRestore(
-        snapshot, changeCountAfterPaste: changeCountAfterWrite, tier: .cgEvent, on: board)
+        snapshot, changeCountAfterPaste: changeCountAfterWrite, markTransient: marked,
+        tier: .cgEvent, on: board)
     }
     return .dispatched
   }
@@ -797,7 +807,9 @@ public enum ClipboardCleanup {
     let prior = PasteService.saveClipboard(from: board)
     let changeCountAfterWrite = write(text, board, .kept)
     guard boardHolds(text, board) else {
-      PasteService.restoreClipboard(prior, changeCountAfterPaste: changeCountAfterWrite, on: board)
+      // Not a dictation, so released behavior: the user's own items go back with no marker added.
+      PasteService.restoreClipboard(
+        prior, changeCountAfterPaste: changeCountAfterWrite, markTransient: false, on: board)
       return .writeFailed
     }
     return .copied
@@ -973,8 +985,13 @@ public enum ClipboardCleanup {
     var keepWriteFailed = false
     var afterFailedWrite = 0
     if let decided, landing.mayRetain(decided) {
+      // The paste write was marked exactly when its pending restore carries the flag (#3672).
       let pasteWriteWasMarked: Bool
-      if case .restore = operation { pasteWriteWasMarked = true } else { pasteWriteWasMarked = false }
+      if case .restore(_, markTransient: let marked) = operation {
+        pasteWriteWasMarked = marked
+      } else {
+        pasteWriteWasMarked = false
+      }
       switch keepDictation(
         landing.legacyText, owned: owned, on: board, rewriteUnconditionally: pasteWriteWasMarked)
       {
@@ -993,9 +1010,9 @@ public enum ClipboardCleanup {
       // count read right after OUR attempt, so a copy made after it is never restored over; with
       // restore off there is nothing held to hand back.
       label = "keep_failed"
-      if case .restore(let snapshot) = operation {
+      if case .restore(let snapshot, markTransient: let marked) = operation {
         applied = PasteService.restoreClipboard(
-          snapshot, changeCountAfterPaste: afterFailedWrite, on: board)
+          snapshot, changeCountAfterPaste: afterFailedWrite, markTransient: marked, on: board)
       }
     } else if case .restore = operation {
       applied = body()
@@ -1043,7 +1060,9 @@ public enum ClipboardCleanup {
       }
     }
     let afterAttempt = board.changeCount
-    guard boardHolds(legacyText, board), !boardCarriesTransientMarker(board) else {
+    guard boardHolds(legacyText, board),
+      !rewriteUnconditionally || !boardCarriesTransientMarker(board)
+    else {
       return .writeFailed(changeCountAfterAttempt: afterAttempt)
     }
     return .kept(.retained(changeCount: board.changeCount))

@@ -254,6 +254,7 @@ public enum PasteService {
   public static func restoreClipboard(
     _ snapshot: ClipboardSnapshot,
     changeCountAfterPaste: Int,
+    markTransient: Bool,
     on pasteboard: NSPasteboard = .general
   ) -> Bool {
     // Read once, up front. The unstructured logging `Task` below then captures
@@ -296,7 +297,7 @@ public enum PasteService {
       // The user's own clipboard goes back marked, so a manager does not record it a second time
       // (#3528). The marker's result is not counted: a refusal must not turn a restore into
       // "declined".
-      if !pbItem.types.contains(transientMarkerType) {
+      if markTransient && !pbItem.types.contains(transientMarkerType) {
         _ = pbItem.setData(Data(), forType: transientMarkerType)
       }
       return pbItem

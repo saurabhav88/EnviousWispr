@@ -25,6 +25,16 @@ struct ClipboardSettingsCopyTests {
       Copy.restoreHelp,
       "Saves and restores whatever was on your clipboard before pasting your dictation."
     ),
+    "keepOutOfHistoryTitle": (
+      Copy.keepOutOfHistoryTitle, "Keep dictations out of clipboard history apps"
+    ),
+    "keepOutOfHistoryShort": (
+      Copy.keepOutOfHistoryShort, "Asks clipboard apps to skip the text we paste."
+    ),
+    "keepOutOfHistoryHelp": (
+      Copy.keepOutOfHistoryHelp,
+      "Asks clipboard history apps such as Maccy, Raycast and Paste to skip the text EnviousWispr puts on your clipboard for a moment while it pastes, and the clipboard it puts back. Apps that follow the common convention will not save it; apps that ignore the convention still may. A dictation that stays on your clipboard because a paste did not land is still available for clipboard history apps to save. Needs Restore clipboard after paste to be on."
+    ),
     "smartInsertionTitle": (Copy.smartInsertionTitle, "Smart insertion"),
     "smartInsertionShort": (
       Copy.smartInsertionShort, "Fits text to the spacing and capitals around your cursor."
@@ -53,7 +63,8 @@ struct ClipboardSettingsCopyTests {
   @Test("each switch's short line fits under its title")
   func shortLinesFit() {
     for short in [
-      Copy.autoCopyShort, Copy.restoreShort, Copy.smartInsertionShort, Copy.quickAddShort,
+      Copy.autoCopyShort, Copy.restoreShort, Copy.keepOutOfHistoryShort, Copy.smartInsertionShort,
+      Copy.quickAddShort,
     ] {
       let line = String(localized: short)
       #expect(!line.isEmpty && line.count <= 60, "\(line) is \(line.count) characters")

@@ -49,7 +49,8 @@ struct PasteCascadeLandingHandoffTests {
     PasteDeliveryRequest(
       legacyText: "Sarah ", repairedText: nil, caretContext: nil,
       candidateDeletesDictatedText: false, targetApp: nil, targetElement: nil,
-      targetElementIsRetried: false, restoreClipboardAfterPaste: true, terminalBudget: nil,
+      targetElementIsRetried: false, restoreClipboardAfterPaste: true,
+      keepDictationsOutOfClipboardHistory: false, terminalBudget: nil,
       takeID: takeID)
   }
 
@@ -92,7 +93,8 @@ struct PasteCascadeLandingHandoffTests {
       legacyText: "Sarah ", repairedText: nil, caretContext: nil,
       candidateDeletesDictatedText: false, targetApp: nil,
       targetElement: PastedRegionFakeAX.field(pid), targetElementIsRetried: true,
-      restoreClipboardAfterPaste: true, terminalBudget: nil, takeID: "take-1")
+      restoreClipboardAfterPaste: true, keepDictationsOutOfClipboardHistory: false,
+      terminalBudget: nil, takeID: "take-1")
     retried.recordedWindow = AXUIElementCreateApplication(5001)
     #expect(executor(Calls()).landingCheck(for: session, request: retried) == nil)
     // Control: the same session without a recorded window still gets its check.

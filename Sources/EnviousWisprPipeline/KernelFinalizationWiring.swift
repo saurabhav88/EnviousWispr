@@ -971,6 +971,7 @@ struct KernelFinalizationWiring {
             computation: computation, targetApp: context.targetApp,
             recordedWindow: context.targetWindow, takeID: deliveryTakeID,
             restoreClipboardAfterPaste: config?.restoreClipboardAfterPaste ?? false,
+            keepDictationsOutOfClipboardHistory: config?.keepDictationsOutOfClipboardHistory ?? false,
             origin: .dictation))
         pasteResult = result
 
@@ -1261,7 +1262,7 @@ struct KernelFinalizationWiring {
   static func deliveryRequest(
     computation: InsertionComputation, targetApp: NSRunningApplication?,
     recordedWindow: AXUIElement?, takeID: String?, restoreClipboardAfterPaste: Bool,
-    origin: PasteDeliveryOrigin
+    keepDictationsOutOfClipboardHistory: Bool, origin: PasteDeliveryOrigin
   ) -> PasteDeliveryRequest {
     let payloads = computation.repair.payloads
     var request = PasteDeliveryRequest(
@@ -1282,6 +1283,7 @@ struct KernelFinalizationWiring {
       // "retried and recovered" apart from "captured at record-start".
       targetElementIsRetried: computation.caret.retried,
       restoreClipboardAfterPaste: restoreClipboardAfterPaste,
+      keepDictationsOutOfClipboardHistory: keepDictationsOutOfClipboardHistory,
       terminalBudget: computation.caret.terminalBudget,
       takeID: takeID,
       recordedWindow: recordedWindow)

@@ -64,6 +64,9 @@ final class LastDictationAction {
     var activate: @MainActor (NSRunningApplication) -> Bool
     var modifiersHeld: @MainActor () -> Bool
     var restoreClipboard: @MainActor () -> Bool
+    /// The "keep dictations out of clipboard history apps" setting (#3672), read at the same moment
+    /// as `restoreClipboard`, immediately before the write.
+    var markTransient: @MainActor () -> Bool
     /// Whether the clipboard is still held by the last dictation's cleanup or a Quick Add takeover,
     /// so a reuse write now would be refused (#3135). `ClipboardCleanup.isBoardHeldForManualWrite`.
     var clipboardHeld: @MainActor () -> Bool
@@ -72,7 +75,8 @@ final class LastDictationAction {
     var clipboardWaited: @MainActor (Duration) -> Void
     /// `ClipboardCleanup.manualPaste` on the general board with the real Cmd+V, in production.
     var manualPaste:
-      @MainActor (_ text: String, _ restore: Bool) -> ClipboardCleanup.ManualClipboardResult
+      @MainActor (_ text: String, _ restore: Bool, _ markTransient: Bool) ->
+        ClipboardCleanup.ManualClipboardResult
     var manualCopy: @MainActor (_ text: String) -> ClipboardCleanup.ManualClipboardResult
     var openPermissions: @MainActor () -> Void
     var report: @MainActor (Action, Source, Outcome) -> Void
@@ -243,7 +247,9 @@ final class LastDictationAction {
     // replace the text this paste is about to put there.
     guard copyPresses == copiesAtPress else { return .cancelled }
     pendingCopy?.cancel()
-    switch environment.manualPaste(text, environment.restoreClipboard()) {
+    switch environment.manualPaste(
+      text, environment.restoreClipboard(), environment.markTransient())
+    {
     case .dispatched: return .dispatched
     case .dispatchFailed: return .dispatchFailed
     case .clipboardBusy: return .clipboardBusy
@@ -358,6 +364,7 @@ extension LastDictationAction {
             .isEmpty
         },
         restoreClipboard: { [weak settings] in settings?.restoreClipboardAfterPaste ?? true },
+        markTransient: { [weak settings] in settings?.keepDictationsOutOfClipboardHistory ?? false },
         clipboardHeld: { ClipboardCleanup.isBoardHeldForManualWrite(.general) },
         clipboardWaited: { waited in
           Task {
@@ -366,9 +373,9 @@ extension LastDictationAction {
               level: .info, category: "LastDictation")
           }
         },
-        manualPaste: { text, restore in
+        manualPaste: { text, restore, markTransient in
           ClipboardCleanup.manualPaste(
-            text: text, restore: restore, on: .general,
+            text: text, restore: restore, markTransient: markTransient, on: .general,
             dispatch: { PasteService.postPasteKeystroke() })
         },
         manualCopy: { ClipboardCleanup.manualCopy(text: $0, on: .general) },

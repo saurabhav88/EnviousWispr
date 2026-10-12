@@ -1,0 +1,1 @@
+{"language":"da","title":"hold diktater ude af historikken i udklipsholderapps","words":[],"phrases":["gem ikke dikteret tekst i udklipsholderhistorikken","lad udklipsholderapps springe mine diktater over"]}
