@@ -722,6 +722,9 @@ extension ParakeetUpgradeCoordinator {
         guard isCurrentLoad(request), !Task.isCancelled else { return .fail }
         return .reload
       }
+      // A repair that failed or was cancelled awaited: a newer selection owns the
+      // presentation now.
+      guard isCurrentLoad(request), !Task.isCancelled else { return .fail }
       // The last permitted load failed: nothing loads again without the explicit
       // Retry, so Settings offers it now rather than after a refused press.
       if case .state(let state) = target.store.read(), state.attempts >= Self.attemptBudget {
@@ -1251,19 +1254,28 @@ extension ParakeetUpgradeCoordinator {
 
   /// Row B's background fetch, when the CURRENT choice is row B: accepted,
   /// unrejected v3 frozen; the owned transport on; onboarding complete; the
-  /// target's state readable, not declined, not exhausted; its location
+  /// target's state readable, not declined, not exhausted, with a load left in
+  /// its budget (bytes nothing may load are never fetched); its location
   /// usable; no Cancel this process. A WhisperKit-only launch has no frozen
   /// choice, so it starts nothing; work already running survives E14.
   private func backgroundEligible(_ target: UpgradeTarget) -> Bool {
     guard !backgroundSuppressed, isOnboardingComplete(),
       (delivery ?? target.delivery).isEnabled(), target.delivery.locationIsUsable,
       v3Accepted, !v3RejectedThisLaunch, frozen?.model == .v3,
-      case .state(let state) = target.store.read(), !state.declined, !state.exhausted
+      case .state(let state) = target.store.read(), !state.declined, !state.exhausted,
+      state.attempts < Self.attemptBudget
     else { return false }
     return true
   }
 
   private func scheduleBackgroundFetch() {
+    // A spent budget without exhaustion (a refetch whose attempt reset was interrupted)
+    // fetches nothing: only the explicit Retry grants loads again, so Settings offers it.
+    if let target, case .state(let state) = target.store.read(), !state.declined,
+      !state.exhausted, state.attempts >= Self.attemptBudget
+    {
+      needsExplicitRetry = true
+    }
     guard let target, backgroundFetch == nil, backgroundEligible(target) else { return }
     backgroundGeneration &+= 1
     let generation = backgroundGeneration

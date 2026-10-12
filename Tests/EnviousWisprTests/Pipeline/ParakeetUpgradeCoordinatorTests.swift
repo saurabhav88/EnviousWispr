@@ -1336,6 +1336,42 @@ struct ParakeetUpgradePolicyTests {
     #expect(Self.ultraRequests(rig) == 0)
   }
 
+  /// Chunk 12 Codex r2: a failure handler whose repair awaited while a newer selection took
+  /// over must not set the newer selection's Try again. When this fails, Settings shows a
+  /// Try again that the current load never asked for.
+  @Test(
+    "a repair that fails after a newer selection leaves its Retry presentation alone",
+    arguments: [false, true])
+  func supersededRepairLeavesRetryAlone(cancelled: Bool) async throws {
+    let rig = try await Self.rig(v3: false, ultra: true)
+    let prepared = try await rig.coordinator.prepareLoad()
+    #expect(Self.physicalLoad(rig, succeeds: false) == .loaded)
+    #expect(Self.state(rig)?.attempts == 1, "one load left: the repair runs")
+    try Data("damaged".utf8).write(
+      to: rig.ultraRegistration.installDirectory.appendingPathComponent(Self.ultraFiles[1].path))
+    let gate = StageGate()
+    await rig.controller.setBeforeExistingCacheValidationForTesting { await gate.pass() }
+    let handler = Task {
+      await rig.coordinator.handleLoadFailure(prepared, error: VendorLoadFailed())
+    }
+    await gate.waitForEntry(1)
+    // While the repair waits: a newer selection, and the store reaches the budget.
+    rig.coordinator.markSelectionPoint()
+    try rig.store.write(.init(attempts: 2, refetchSpent: false, exhausted: false, declined: false))
+    if cancelled { handler.cancel() }
+    // Every Ultra file answers 404, so the repair fails at once instead of admitting.
+    for f in Self.ultraFiles {
+      DeliveryStubProtocol.enqueue(
+        url: rig.ultraBase.appendingPathComponent(f.path).absoluteString,
+        .init(status: 404, headers: [:], body: Data()))
+    }
+    gate.open()
+    #expect(await handler.value == .fail)
+    await rig.controller.setBeforeExistingCacheValidationForTesting(nil)
+    #expect(
+      rig.coordinator.needsExplicitRetry == false, "the newer selection owns the presentation")
+  }
+
   @Test("Retry during the retirement drain prevents deletion")
   func retryDuringDrainDeletesNothing() async throws {
     let rig = try await Self.rig(
@@ -1644,6 +1680,26 @@ struct ParakeetUpgradePolicyTests {
     rig.coordinator.onboardingDidComplete()
     await admitted.wait()
     #expect(await rig.controller.isAdmitted(rig.ultraRegistration))
+  }
+
+  /// Chunk 12 whole-PR review r2: a refetch removed Ultra but its attempt reset never landed,
+  /// so the budget is spent with no bytes. When this fails, the app downloads about 630 MB
+  /// that the next selection exhausts and deletes, and Settings shows no Try again.
+  @Test("a spent budget without bytes fetches nothing in the background and asks for Retry")
+  func spentBudgetFetchesNothing() async throws {
+    let rig = try await Self.rig(
+      v3: true, ultra: false,
+      state: .init(attempts: 2, refetchSpent: true, exhausted: false, declined: false),
+      onboarding: true)
+    Self.enqueueUltra(rig)
+    let prepared = try await rig.coordinator.prepareLoad()
+    #expect(prepared.selection?.model == .v3)
+    #expect(rig.coordinator.hasBackgroundFetchForTesting == false, "no download nothing may load")
+    #expect(rig.coordinator.needsExplicitRetry, "Settings offers Try again")
+    try rig.coordinator.retry()
+    let next = try await rig.coordinator.prepareLoad()
+    #expect(next.selection?.model == .v3)
+    #expect(rig.coordinator.hasBackgroundFetchForTesting, "Retry grants the download again")
   }
 
   enum Ineligible: String, CaseIterable, Sendable { case declined, deliveryOff, noSelection }
