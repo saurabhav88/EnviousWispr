@@ -326,13 +326,16 @@ def phase_probe():
     return got
 
 
-def phase_dictate():
+def phase_dictate(route=None):
     print("\n== dictate: create a known last dictation in document A (silently, through BlackHole)")
     from silent_audio import AudioRoute, take_was_virtual
-    route = AudioRoute()
-    route.install_restore_handlers()
+    own_route = route is None
+    if own_route:
+        route = AudioRoute()
+        route.install_restore_handlers()
     try:
-        route.apply()  # inside the try: a partial apply is restored by the finally below
+        if own_route:
+            route.apply()  # inside the try: a partial apply is restored by the finally below
         path = new_textedit_doc(f"3106-a-{RUN_ID}")
         require_front("com.apple.TextEdit", "dictate")
         # Push-to-talk (`record_tts`, a trusted recipe), not the menu-driven `test_recording`: on the
@@ -358,7 +361,7 @@ def phase_dictate():
         except Exception as exc:  # the teardown below must still run
             print(f"    (stopping the take raised {exc!r})")
             stopped = False
-        end_take_then_restore(route, "dictate", stopped)
+        end_take_then_restore(route, "dictate", stopped, restore=own_route)
     # Recognised as the spoken sentence by word overlap, not by one exact word: the fallback `say`
     # voice made the ASR hear "Maya" as "Mighty" on one run in two (2026-09-23), which is the
     # recogniser, not this feature. Document A is new this run, so what lands there is this take;
@@ -799,12 +802,13 @@ def restore_keybind_state():
         return False
     if not absent_again:
         return True
-    if not terminate_verified_dev_app("restore the keybind keys with the app down"):
+    exited = terminate_verified_dev_app("restore the keybind keys with the app down")
+    if not exited:
         return False
     for key in absent_again:
         subprocess.run(["defaults", "delete", "com.enviouswispr.app", key], capture_output=True)
     ok = all(defaults_value(k) is None for k in absent_again)
-    relaunched = launch_dev_app_with_endpoint()
+    relaunched = launch_dev_app_with_endpoint(exited)
     print(f"    (keybind keys {absent_again} deleted again: {ok}; app relaunched: {relaunched})")
     return ok and relaunched
 
@@ -890,16 +894,19 @@ def phase_clipboard_manager(expected):
           repr(doc_text(path)[:80]))
 
 
-def phase_recording_in_flight():
+def phase_recording_in_flight(route=None):
     """A chord pressed while recording is refused. Silent: the mic is BlackHole and nothing plays."""
     print("\n== recording in flight: Paste Last refuses while a take runs")
     from silent_audio import AudioRoute
-    route = AudioRoute()
-    route.install_restore_handlers()
+    own_route = route is None
+    if own_route:
+        route = AudioRoute()
+        route.install_restore_handlers()
     base = log_size()
     started = False
     try:
-        route.apply()  # inside the try: a partial apply is restored by the finally below
+        if own_route:
+            route.apply()  # inside the try: a partial apply is restored by the finally below
         path = new_textedit_doc(f"3106-recording-{RUN_ID}")
         require_front("com.apple.TextEdit", "recording in flight")
         base = log_size()
@@ -938,68 +945,96 @@ def phase_recording_in_flight():
         except Exception as exc:  # the teardown below must still run
             print(f"    (stopping the take raised {exc!r})")
             stopped = False
-        end_take_then_restore(route, "recording in flight", stopped)
+        end_take_then_restore(route, "recording in flight", stopped, restore=own_route)
 
 
-def end_take_then_restore(route, label, stopped):
+def end_take_then_restore(route, label, stopped, restore=True):
     """Restore the REAL microphone only once no take can be listening. `stopped` says whether the
     take was confirmed ended. If not, the verified dev app is terminated; after a confirmed exit it
     is relaunched on the STILL-virtual route, so its microphone picker exists to be restored and
     read back. If neither is confirmed, the virtual route is LEFT in place and the run aborts with
     the recovery step, rather than handing a live take the founder's microphone."""
+    route.finish_playback()
     if not stopped:
         exited = terminate_verified_dev_app(f"{label}: a take would not stop")
         if not exited:
             raise Aborted(f"{label}: a take may still be live and the dev app did not exit; the "
                           "virtual microphone is LEFT in place. Recover: quit the dev app, then "
                           "`python3 Tests/RuntimeUAT/silent_audio.py restore`.")
-        if not launch_dev_app_with_endpoint():
+        if not launch_dev_app_with_endpoint(exited, route=route):
             raise Aborted(f"{label}: the dev app did not relaunch; the virtual route is left in "
                           "place. Recover: `python3 Tests/RuntimeUAT/silent_audio.py restore`.")
     check(f"{label}: no take left running", True)
-    if not check(f"{label}: all three audio devices restored", route.restore()):
+    if restore and not check(f"{label}: all audio choices restored", route.restore()):
         raise Aborted(f"{label}: the audio devices were not restored")
 
 
-def dev_app_pid():
-    """This worktree's running dev app, verified by executable path, or None. Never by name:
-    the shipped app and other worktrees' builds share names (tools-and-apps.md)."""
-    import subprocess
-    exe = os.path.join(APP_BUNDLE, "Contents", "MacOS", "EnviousWispr")
-    out = subprocess.run(["ps", "-eww", "-o", "pid=,command="], capture_output=True,
-                         text=True).stdout
-    pids = [int(line.split(None, 1)[0]) for line in out.splitlines()
-            if line.strip() and line.split(None, 1)[1:] == [exe]]
-    return pids[0] if len(pids) == 1 else None
-
-
 def terminate_verified_dev_app(why):
-    """TERM exactly this worktree's dev app (re-verified by path), wait for it to exit."""
+    """TERM the retained native identity and return a positive exit proof."""
     import signal as _signal
-    pid = dev_app_pid()
-    if pid is None:
-        print(f"    (cannot stop the dev app for '{why}': not exactly one instance at {APP_BUNDLE})")
-        return False
-    print(f"    (terminating dev app pid {pid}: {why})")
-    os.kill(pid, _signal.SIGTERM)
-    return wait_for("the dev app to exit", lambda: dev_app_pid() is None, deadline=15.0)
-
-
-def launch_dev_app_with_endpoint():
-    """Open this worktree's dev app with the DEBUG fault endpoint on, and wait for it."""
-    import subprocess
-    import faultInjection as fi
-    subprocess.run(["open", "--env", "EW_FAULT_INJECTION=1", APP_BUNDLE], check=False)
-    up = wait_for("the fault endpoint", lambda: _endpoint_answers(fi), deadline=30.0)
-    if up:
-        w.connect()
-    return up
-
-
-def _endpoint_answers(fi):
+    from instance_guard import verify_target, prove_target_exited, InstanceGuardError
+    old = w._target
+    if old is None:
+        raise Aborted("cannot terminate an unpinned dev app")
+    verify_target(old)
+    print(f"    (terminating dev app pid {old.pid}: {why})")
     try:
-        return fi.send("query_state").startswith("OK")
-    except Exception:
+        os.kill(old.pid, _signal.SIGTERM)
+    except ProcessLookupError:
+        pass
+    proof = None
+    def ended():
+        nonlocal proof
+        try:
+            proof = prove_target_exited(old)
+        except InstanceGuardError:
+            return False
+        return True
+    return proof if wait_for("the pinned dev app to exit", ended, deadline=15.0) else False
+
+
+def launch_dev_app_with_endpoint(proof, route=None):
+    """Launch one expected replacement, then explicitly bind or transfer ownership."""
+    import subprocess
+    from instance_guard import verify_exit_proof, running_enviouswispr_instances, pin_target, InstanceGuardError
+    old = w._target
+    if old is None:
+        raise Aborted("replacement launch requires the retained old lifecycle")
+    verify_exit_proof(old, proof)
+    if running_enviouswispr_instances():
+        raise Aborted("another EnviousWispr instance prevents replacement launch")
+    subprocess.run(["open", "-n", "--env", "EW_FAULT_INJECTION=1", APP_BUNDLE], check=True)
+    candidate = None
+    def ready():
+        nonlocal candidate
+        found = running_enviouswispr_instances()
+        if not found:
+            return False
+        if len(found) != 1 or next(iter(found.values())) != old.executable:
+            raise Aborted("replacement launch produced an unexpected or ambiguous app")
+        current = pin_target(int(next(iter(found))), old.executable)
+        if candidate is not None and current != candidate:
+            raise Aborted("replacement changed during endpoint startup")
+        candidate = current
+        try:
+            return w._recording_state(candidate) == "idle"
+        except InstanceGuardError:
+            raise
+        except (RuntimeError, OSError):
+            return False
+    if not wait_for("the authenticated replacement capture query", ready, deadline=30.0):
+        return False
+    if route is None:
+        w.bind_after_verified_exit(old, candidate, proof)
+    else:
+        route.transfer_after_verified_exit(candidate, proof)
+    return True
+
+
+def _endpoint_answers(fi=None):
+    try:
+        return w._capture_snapshot(w._target) is not None
+    except (RuntimeError, OSError):
         return False
 
 
@@ -1258,7 +1293,7 @@ def main():
     if screen_is_locked():
         print("ABORT: the screen is locked; every verdict would be about the lock screen")
         return 2
-    from silent_audio import AlertSink
+    from silent_audio import AudioRoute
     w._INPUT_WARN = False  # the harness's warning chime would read as a beep on the meter
     w.connect()
     try:
@@ -1271,7 +1306,11 @@ def main():
     if unknown:
         print(f"unknown phase(s) {unknown}; choose from probe, all, {', '.join(PHASES)}")
         return 2
-    sink = AlertSink()
+    if not _endpoint_answers():
+        exited = terminate_verified_dev_app("relaunch with EW_FAULT_INJECTION=1")
+        if not exited or not launch_dev_app_with_endpoint(exited):
+            raise Aborted("could not relaunch the dev app with the capture query")
+    sink = AudioRoute(include_alerts=True)
     if not sink.apply():
         restored = sink.restore()
         print("ABORT: the alert and output devices did not switch to BlackHole; the beep meter "
@@ -1280,11 +1319,6 @@ def main():
                                " (NOT restored: run `python3 Tests/RuntimeUAT/silent_audio.py restore`)"))
         return 2
     try:
-        if not _endpoint_answers(__import__("faultInjection")):
-            print("    (the DEBUG fault endpoint is not up: relaunching this worktree's dev app with it)")
-            if not (terminate_verified_dev_app("relaunch with EW_FAULT_INJECTION=1")
-                    and launch_dev_app_with_endpoint()):
-                raise Aborted("could not relaunch the dev app with the fault endpoint")
         # The meter's own control, before anything acts: it must read quiet, or no later
         # "no beep" verdict means anything.
         run_metered("control", lambda: None)
@@ -1294,13 +1328,15 @@ def main():
         if not chords:
             skip("chord phases", "synthetic chords do not reach this app's Carbon hotkey")
         if wanted != ["probe"]:
-            expected = phase_dictate()
+            expected = phase_dictate(sink)
             chosen = PHASES if "all" in wanted else [p for p in PHASES if p in wanted]
             for name in chosen:
                 if name not in ("menu", "notes") and not chords:
                     continue
                 fn = globals()[f"phase_{name}"]
-                if name in ("keys_held", "recording_in_flight"):
+                if name == "recording_in_flight":
+                    run_metered(name, fn, sink)
+                elif name == "keys_held":
                     run_metered(name, fn)
                 else:
                     run_metered(name, fn, expected)
@@ -1308,11 +1344,10 @@ def main():
         record("run", "ABORT", str(e))
     finally:
         # Each cleanup is attempted on its own and recorded; a failure in one never skips the
-        # next, and the audio restore always runs last.
+        # next. Audio restoration must precede any settings-restoration restart.
         for name, step in [
             ("DEBUG reuse fault cleared", lambda: fault("clear_reuse_fault") == "OK"),
             ("clipboard restored byte for byte", lambda: pasteboard_restore(snapshot)),
-            ("keybind settings restored exactly", restore_keybind_state),
             ("modifier flags cleared", modifiers_cleared),
             ("run documents closed", close_run_documents),
             ("the Notes test note deleted", notes_cleanup),
@@ -1325,6 +1360,13 @@ def main():
             check("devices restored", sink.restore())
         except Exception as exc:
             check("devices restored", False, repr(exc))
+        if not sink.applied:
+            try:
+                check("keybind settings restored exactly", restore_keybind_state())
+            except Exception as exc:
+                check("keybind settings restored exactly", False, repr(exc))
+        else:
+            check("keybind settings restored exactly", False, "audio recovery remains pending; restart refused")
     passed = sum(1 for _, s, _ in results if s == "PASS")
     failed = [r for r in results if r[1] in ("FAIL", "ABORT")]
     skipped = sum(1 for _, s, _ in results if s == "SKIP")

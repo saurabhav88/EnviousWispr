@@ -33,6 +33,9 @@ from settings_nav import NavigationError, RouteError  # noqa: E402,F401
 _pid = None
 _app = None
 _target = None
+_active_audio_route = None
+_standalone_player = None
+_PLAYBACK_OWNER_UNSET = object()
 _recording_cleanup_safe = True
 _CAPTURE_TOKEN_DIR = pathlib.Path.home() / "Library/Logs/EnviousWispr"
 _INPUT_WARN = True  # Play chime before CGEvent input (click/type/key)
@@ -325,6 +328,22 @@ def connect(app="EnviousWispr", expected_pid=None, expected_executable=None):
         raise SystemExit(1)
     _pid, _app = pid, get_ax_app(pid)
     print(f"Connected to {app} (PID {pid})")
+
+def bind_after_verified_exit(old, new, proof):
+    """Explicit same-bundle lifecycle handoff; ordinary connect still refuses replacement."""
+    from instance_guard import verify_exit_proof
+    global _pid, _app, _target, _TABLES
+    if _target != old or new.executable != old.executable:
+        raise InstanceGuardError("lifecycle handoff conflicts with the retained app")
+    verify_exit_proof(old, proof)
+    verify_target(new)
+    if _recording_state(new) != "idle":
+        raise InstanceGuardError("replacement app has not released capture")
+    application = get_ax_app(new.pid)
+    verify_target(new)
+    verify_exit_proof(old, proof)
+    _pid, _app, _target, _TABLES = new.pid, application, new, (None, [])
+
 
 def health():
     _ensure_connected()
@@ -2055,7 +2074,7 @@ def _recording_interruptions():
             signal.signal(sig, handler)
 
 
-def _recording_control(target, action=None):
+def _recording_control(target, action=None, before_dispatch=None):
     """One strict state owner, including actions while its own menu remains open."""
     verify_target(target)
     if _target != target:
@@ -2115,6 +2134,8 @@ def _recording_control(target, action=None):
             expected = "idle" if action == "start" else "recording"
             if action not in {"start", "stop"} or state != expected or not enabled:
                 raise RuntimeError("recording action is not currently available")
+            if before_dispatch is not None:
+                before_dispatch()
             perform_action(item, "AXPress")  # false can still act; state decides success
         return state, enabled
     finally:
@@ -2221,7 +2242,7 @@ def _stop_recording(target, timeout):
         state = _recording_state(target, min(5.0, remaining))
         if state == "idle":
             return True
-        if state in {"recording", "starting"} and not attempted:
+        if state == "recording" and not attempted:
             attempted = True
             _recording_control(target, "stop")
         if time.monotonic() >= deadline:
@@ -2229,7 +2250,29 @@ def _stop_recording(target, timeout):
         time.sleep(0.05)  # deadline-fallback: positive non-recording observation
 
 
+def _spawn_owned_playback(audio, *, owner=_PLAYBACK_OWNER_UNSET):
+    import threading
+    global _standalone_player, _recording_cleanup_safe
+    if owner is _PLAYBACK_OWNER_UNSET:
+        owner = _active_audio_route
+    if owner is not _active_audio_route:
+        raise RuntimeError("playback resource owner changed before dispatch")
+    protection = (_defer_recording_signals() if threading.current_thread() is threading.main_thread()
+                  else contextlib.nullcontext())
+    with protection:
+        _recording_cleanup_safe = False
+        if owner is not None:
+            from silent_audio import _spawn_playback
+            return _spawn_playback(owner, audio)
+        if _standalone_player is not None:
+            raise RuntimeError("previous standalone playback remains unresolved")
+        _standalone_player = subprocess.Popen(["/usr/bin/afplay", audio],
+                                             stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+        return _standalone_player
+
+
 def _reap_playback(proc, timeout):
+    global _standalone_player, _recording_cleanup_safe
     if proc is None:
         return
     if proc.poll() is None:
@@ -2238,9 +2281,95 @@ def _reap_playback(proc, timeout):
         proc.communicate(timeout=timeout)
     except subprocess.TimeoutExpired:
         proc.kill()
-        proc.communicate(timeout=timeout)
+        try:
+            proc.communicate(timeout=timeout)
+        except subprocess.TimeoutExpired as error:
+            raise RuntimeError("owned playback process could not be reaped") from error
     if proc.poll() is None:
         raise RuntimeError("owned playback process could not be reaped")
+    route = getattr(proc, "_ew_audio_route", None)
+    if route is not None:
+        from silent_audio import _complete_playback
+        _complete_playback(route, proc, timeout)
+    if _standalone_player is proc:
+        _standalone_player = None
+    if _standalone_player is None:
+        _recording_cleanup_safe = True
+
+
+def _finish_playback_on_exit(proc, timeout):
+    """Use from finally: preserve the original failure if cleanup also fails."""
+    primary = sys.exc_info()[1]
+    try:
+        _reap_playback(proc, timeout)
+    except BaseException as cleanup:
+        if primary is None:
+            raise
+        primary.add_note(f"playback cleanup failed: {cleanup!r}")
+
+
+@contextlib.contextmanager
+def _legacy_capture(timeout):
+    """Own cleanup from the first native keyboard dispatch through capture release."""
+    global _recording_cleanup_safe
+    connect()
+    target, owner = _target, _active_audio_route
+    _require_idle_without_ui(target)
+    life = {"target": target, "dispatched": False, "release": None, "join": None, "player": None}
+
+    def dispatch():
+        global _recording_cleanup_safe
+        verify_target(target)
+        if not life["dispatched"]:
+            _require_idle_without_ui(target)
+            life["dispatched"] = True
+            _recording_cleanup_safe = False
+
+    life["dispatch"] = dispatch
+    with _recording_interruptions():
+        try:
+            yield life
+        finally:
+            primary = sys.exc_info()[1]
+            errors = []
+
+            def cleanup(action):
+                try:
+                    action()
+                except BaseException as error:
+                    errors.append(error)
+
+            try:
+                with _defer_recording_signals():
+                    if life["dispatched"] and life["release"] is not None:
+                        cleanup(life["release"])
+                    if life["join"] is not None:
+                        cleanup(life["join"])
+                    if owner is not None:
+                        cleanup(owner.finish_playback)
+                        if owner._payload.get("playback") is not None:
+                            errors.append(RuntimeError("legacy playback journal remains unresolved"))
+                    else:
+                        cleanup(lambda: _reap_playback(life["player"] or _standalone_player, timeout))
+                    if life["dispatched"]:
+                        def stop_owned_capture():
+                            try:
+                                _stop_recording(target, timeout)
+                            except InstanceGuardError:
+                                from instance_guard import prove_target_exited
+                                prove_target_exited(target)
+                        cleanup(stop_owned_capture)
+                    _recording_cleanup_safe = not errors
+            except BaseException as error:
+                errors.append(error)
+            if errors:
+                if primary is None:
+                    primary = errors[0]
+                    for error in errors[1:]:
+                        primary.add_note(f"legacy cleanup failed: {error!r}")
+                    raise primary
+                for error in errors:
+                    primary.add_note(f"legacy cleanup failed: {error!r}")
 
 
 def test_recording(audio=None, sentence=None, hold=3.0, expect=None, timeout=30.0):
@@ -2298,12 +2427,15 @@ def test_recording(audio=None, sentence=None, hold=3.0, expect=None, timeout=30.
     clip_before = get_clipboard_text() or ""
     attempted, audio_proc, original_error = False, None, None
     cleanup_errors = []
+    def mark_start_attempt():
+        nonlocal attempted
+        attempted = True
     begin_test(f"recording{' +audio' if audio else ''}")
     with _recording_interruptions():
         try:
             _recording_cleanup_safe = False
-            attempted = True  # AX false or a raised exception can follow a real Start
-            _recording_control(target, "start")
+            # Refusal before dispatch cannot own a take; AX false/raise after dispatch can.
+            _recording_control(target, "start", before_dispatch=mark_start_attempt)
             deadline = time.monotonic() + timeout
             while _recording_state(target) != "recording":
                 if time.monotonic() >= deadline:
@@ -2311,8 +2443,7 @@ def test_recording(audio=None, sentence=None, hold=3.0, expect=None, timeout=30.
                 time.sleep(0.05)  # deadline-fallback: observe the recording transition
             if audio:
                 with _defer_recording_signals():
-                    audio_proc = subprocess.Popen(["afplay", audio], stdout=subprocess.DEVNULL,
-                                                  stderr=subprocess.PIPE)
+                    audio_proc = _spawn_owned_playback(audio)
                 deadline = time.monotonic() + hold
                 while True:
                     if _recording_state(target) != "recording":
@@ -2482,15 +2613,15 @@ RECORD_KEY = "ropt"
 _CHAIN_WINDOW_S = 0.5
 
 
-def press_record_key():
+def press_record_key(before_dispatch=None):
     """Post ONE press of the record hotkey, the way the app can actually see it.
 
     The record key is a BARE MODIFIER, so it is delivered as `kCGEventFlagsChanged`
     rather than keyDown/keyUp, and it is handled through an event tap rather than
     Carbon (`tools-and-apps.md` FACT: the-record-hotkey-IS-drivable-synthetically-only-cancel-is-not).
 
-    **This delegates to `simulate_input.modifier_down`/`modifier_up`, which have
-    carried the correct mechanism all along** — including
+    **This delegates to `simulate_input.hold_modifier`, whose shared event builder
+    carries the same mechanism as `modifier_down`/`modifier_up`** — including
     `CGEventSetIntegerValueField(kCGKeyboardEventKeycode)`, because the keycode
     does NOT survive the type change on its own. #2410 proposed a fresh helper
     "so nobody re-derives this"; the snippet it proposed was itself a
@@ -2522,9 +2653,7 @@ def press_record_key():
             "registered with Carbon, which does not deliver synthetic events."
         )
 
-    _si.modifier_down(binding.keycode)
-    time.sleep(0.04)
-    _si.modifier_up(binding.keycode)
+    _si.hold_modifier(binding.keycode, duration=0.04, before_press=before_dispatch)
 
 
 # One per launch of a debug build. Chosen over `[Recovery] #1 scan pass 1 started
@@ -2922,7 +3051,7 @@ def instances_stayed_single(before, window_start, samples):
     return True, ""
 
 
-def double_press_record_key(attempts=3):
+def double_press_record_key(attempts=3, before_dispatch=None):
     """Two presses inside the app's chain window — the hands-free gesture (#2410).
 
     The window is measured from the FIRST PRESS (`HotkeyService.recordingStart`),
@@ -3005,9 +3134,9 @@ def double_press_record_key(attempts=3):
     # own blindness.
     for attempt in range(1, attempts + 1):
         attempt_start = _dt.datetime.now().astimezone()
-        press_record_key()
+        press_record_key(before_dispatch=before_dispatch)
         time.sleep(0.12)
-        press_record_key()
+        press_record_key(before_dispatch=before_dispatch)
         time.sleep(0.6)
         # `log_lines_since`, NOT a cursor: a rotation between the snapshot and
         # this read would hide the marker, and a hidden marker here is what turns
@@ -3156,89 +3285,95 @@ def test_hands_free(audio=None, sentence=None, hold=4.0, expect=None, timeout=30
     log_size_before = _snapshot_log_size()
     clip_before = get_clipboard_text() or ""
 
-    # Phase 1: the REAL gesture - two presses inside the app's chain window.
-    print(f"\n--- DOUBLE PRESS (hands-free lock) ---")
-    double_press_record_key()
+    with _legacy_capture(timeout) as life:
+        # Phase 1: the REAL gesture - two presses inside the app's chain window.
+        print(f"\n--- DOUBLE PRESS (hands-free lock) ---")
+        double_press_record_key(before_dispatch=life["dispatch"])
 
-    # Wait for recording to engage — menu should flip to "Stop Recording"
-    t_start = time.time()
-    recording_started = False
-    for _ in range(10):
-        time.sleep(0.3)
+        # Wait for recording to engage — menu should flip to "Stop Recording"
+        t_start = time.time()
+        recording_started = False
+        for _ in range(10):
+            time.sleep(0.3)
+            instance_samples.append(running_enviouswispr_instances())
+            if _find_match(_app, "Stop Recording", "AXMenuItem"):
+                recording_started = True
+                break
+        start_latency = time.time() - t_start
+        print(f"Recording started: {'YES' if recording_started else 'NO'} ({start_latency:.1f}s)")
+
+        if not recording_started:
+            # STOP FIRST. This branch fires when the AX probe never saw `Stop
+            # Recording`, which is exactly when the harness does NOT know whether the
+            # gesture locked - and returning here left the app recording if it had.
+            # Historical reasoning treated an extra short take as harmless. Cleanup
+            # now refuses to create a take merely because the observation was missing.
+            print("BLOCKED: Recording did not start (menu never showed 'Stop Recording')")
+            # Historical fallback toggled even an idle app and could create a new take.
+            # Strict raw-state cleanup stops only capture that is actually active.
+            _stop_recording(life["target"], timeout)
+            end_test()
+            return False
+
+        # Phase 2: Play audio if provided
+        audio_proc = None
+        if audio:
+            print(f"Playing audio through speakers...")
+            audio_proc = _spawn_owned_playback(audio)
+            life["player"] = audio_proc
+
+        # Phase 3: Let it record, with mid-recording check
+        mid_check_at = min(hold / 2, 2.0)
+        time.sleep(mid_check_at)
         instance_samples.append(running_enviouswispr_instances())
-        if _find_match(_app, "Stop Recording", "AXMenuItem"):
-            recording_started = True
-            break
-    start_latency = time.time() - t_start
-    print(f"Recording started: {'YES' if recording_started else 'NO'} ({start_latency:.1f}s)")
 
-    if not recording_started:
-        # STOP FIRST. This branch fires when the AX probe never saw `Stop
-        # Recording`, which is exactly when the harness does NOT know whether the
-        # gesture locked - and returning here left the app recording if it had.
-        # A press costs nothing in the other world: with nothing locked it starts
-        # a take the app discards as too short.
-        print("BLOCKED: Recording did not start (menu never showed 'Stop Recording')")
-        print("  posting a stop press anyway, in case the gesture locked and the "
-              "menu probe is what failed")
-        time.sleep(_CHAIN_WINDOW_S)
-        single_press_record_key()
-        time.sleep(1.0)
-        end_test()
-        return False
+        # Mid-recording check: verify STILL recording (the hands-free test)
+        still_recording_mid = _find_match(_app, "Stop Recording", "AXMenuItem") is not None
+        print(f"Still recording at {mid_check_at:.1f}s: {'YES' if still_recording_mid else 'NO'}")
 
-    # Phase 2: Play audio if provided
-    audio_proc = None
-    if audio:
-        print(f"Playing audio through speakers...")
-        audio_proc = subprocess.Popen(
-            ["afplay", audio],
-            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
-        )
+        remaining = hold - mid_check_at - start_latency
+        if remaining > 0:
+            time.sleep(remaining)
+        instance_samples.append(running_enviouswispr_instances())
 
-    # Phase 3: Let it record, with mid-recording check
-    mid_check_at = min(hold / 2, 2.0)
-    time.sleep(mid_check_at)
-    instance_samples.append(running_enviouswispr_instances())
+        # Final pre-stop check
+        still_recording_end = _find_match(_app, "Stop Recording", "AXMenuItem") is not None
+        print(f"Still recording at {hold:.1f}s: {'YES' if still_recording_end else 'NO'}")
 
-    # Mid-recording check: verify STILL recording (the hands-free test)
-    still_recording_mid = _find_match(_app, "Stop Recording", "AXMenuItem") is not None
-    print(f"Still recording at {mid_check_at:.1f}s: {'YES' if still_recording_mid else 'NO'}")
-
-    remaining = hold - mid_check_at - start_latency
-    if remaining > 0:
-        time.sleep(remaining)
-    instance_samples.append(running_enviouswispr_instances())
-
-    # Final pre-stop check
-    still_recording_end = _find_match(_app, "Stop Recording", "AXMenuItem") is not None
-    print(f"Still recording at {hold:.1f}s: {'YES' if still_recording_end else 'NO'}")
-
-    if audio_proc and audio_proc.poll() is None:
-        audio_proc.terminate()
-
-    # Phase 4: single press to stop. `HotkeyService` ignores presses within
-    # 500ms of locking, so a stop posted inside that cooldown is swallowed and
-    # reads as "the app ignored it". `hold` is at least a second in every path
-    # above, so the cooldown has long expired - asserted rather than assumed,
-    # because a future caller passing hold=0.2 would otherwise get a confusing
-    # failure in the app rather than a clear one here.
-    if hold < _CHAIN_WINDOW_S:
-        # STOP THE RECORDING BEFORE REFUSING. This branch is reached only AFTER
-        # the double press has locked hands-free and the hold has elapsed, so
-        # returning here left the app recording indefinitely - capturing ambient
-        # audio and poisoning every later run in the session. That is the exact
-        # failure the Escape Recovery UAT produced on 2026-08-18, where the
-        # founder ended the recording by hand.
-        # Wait out the lock cooldown first, or the stop press is swallowed and
-        # the refusal leaves the same mess it was written to avoid.
-        print(f"BLOCKED: hold={hold:.2f}s is inside the {_CHAIN_WINDOW_S:.1f}s "
-              f"lock cooldown; the stop press would be swallowed")
-        stop_after_short_hold(hold)
-        end_test()
-        return False
-    print(f"\n--- SINGLE PRESS (stop) ---")
-    single_press_record_key()
+        # Phase 4: single press to stop. `HotkeyService` ignores presses within
+        # 500ms of locking, so a stop posted inside that cooldown is swallowed and
+        # reads as "the app ignored it". `hold` is at least a second in every path
+        # above, so the cooldown has long expired - asserted rather than assumed,
+        # because a future caller passing hold=0.2 would otherwise get a confusing
+        # failure in the app rather than a clear one here.
+        if hold < _CHAIN_WINDOW_S:
+            # STOP THE RECORDING BEFORE REFUSING. This branch is reached only AFTER
+            # the double press has locked hands-free and the hold has elapsed, so
+            # returning here left the app recording indefinitely - capturing ambient
+            # audio and poisoning every later run in the session. That is the exact
+            # failure the Escape Recovery UAT produced on 2026-08-18, where the
+            # founder ended the recording by hand.
+            # Wait out the lock cooldown first, or the stop press is swallowed and
+            # the refusal leaves the same mess it was written to avoid.
+            print(f"BLOCKED: hold={hold:.2f}s is inside the {_CHAIN_WINDOW_S:.1f}s "
+                  f"lock cooldown; the stop press would be swallowed")
+            try:
+                if _recording_state(life["target"]) == "recording":
+                    stop_after_short_hold(hold)
+                else:
+                    _stop_recording(life["target"], timeout)
+            finally:
+                _finish_playback_on_exit(audio_proc, timeout)
+            end_test()
+            return False
+        print(f"\n--- SINGLE PRESS (stop) ---")
+        try:
+            if _recording_state(life["target"]) == "recording":
+                single_press_record_key()
+            else:
+                _stop_recording(life["target"], timeout)
+        finally:
+            _finish_playback_on_exit(audio_proc, timeout)
 
     # Phase 5: Wait for completion (log-based with clipboard fallback)
     t_stop = time.time()
@@ -3423,48 +3558,39 @@ def test_ptt(key=None, audio=None, sentence=None, expect=None, timeout=10.0):
     log_size_before = _snapshot_log_size()
     clip_before = get_clipboard_text() or ""
 
-    # Phase 1: Key down (recording starts)
+    # Phase 1: Key down (recording starts). Build both events before dispatch.
     import simulate_input as _si
-    print(f"\n--- KEY DOWN ({key}) ---")
-    _chime()
-
     key_lower = key.lower()
     if key_lower in _si.MODIFIER_KEYS:
-        _si.modifier_down(_si.MODIFIER_KEYS[key_lower])
+        kc = _si.MODIFIER_KEYS[key_lower]
+        down = _si._flags_changed_event(kc, _si._MODIFIER_FLAGS[kc], True)
+        up = _si._flags_changed_event(kc, 0, False)
     elif key_lower in _si.KEY_CODES:
-        from Quartz import CGEventCreateKeyboardEvent, CGEventPost, kCGHIDEventTap
         kc = _si.KEY_CODES[key_lower]
-        down = CGEventCreateKeyboardEvent(None, kc, True)
-        CGEventPost(kCGHIDEventTap, down)
+        down = _si.CGEventCreateKeyboardEvent(None, kc, True)
+        up = _si.CGEventCreateKeyboardEvent(None, kc, False)
     else:
         print(f"BLOCKED: Unknown key '{key}'")
         end_test()
         return False
-
-    time.sleep(0.8)  # let recording engage + model warm
-
-    # Phase 2: Play audio
-    print(f"Playing audio ({audio_dur:.2f}s)...")
-    audio_proc = subprocess.Popen(
-        ["afplay", audio], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
-    )
-
-    # Phase 3: Wait for audio + buffer
+    if down is None or up is None:
+        raise RuntimeError("PTT events could not be created")
     hold_audio = audio_dur + 0.8
-    time.sleep(hold_audio)
-    if audio_proc.poll() is None:
-        audio_proc.terminate()
-
-    # Phase 4: Key up (recording stops)
     total_hold = 0.8 + hold_audio
-    print(f"\n--- KEY UP ({key}) after {total_hold:.1f}s hold ---")
-    if key_lower in _si.MODIFIER_KEYS:
-        _si.modifier_up(_si.MODIFIER_KEYS[key_lower])
-    else:
-        from Quartz import CGEventCreateKeyboardEvent, CGEventPost, kCGHIDEventTap
-        kc = _si.KEY_CODES[key_lower]
-        up = CGEventCreateKeyboardEvent(None, kc, False)
-        CGEventPost(kCGHIDEventTap, up)
+    with _legacy_capture(timeout) as life:
+        life["release"] = lambda: _si.CGEventPost(_si.kCGHIDEventTap, up)
+        print(f"\n--- KEY DOWN ({key}) ---")
+        _chime()
+        life["dispatch"]()
+        _si.CGEventPost(_si.kCGHIDEventTap, down)
+        time.sleep(0.8)  # settle: preserve engagement/model allowance.
+        # Phase 2: Play audio; Phase 3: Wait for audio + buffer.
+        print(f"Playing audio ({audio_dur:.2f}s)...")
+        audio_proc = _spawn_owned_playback(audio)
+        life["player"] = audio_proc
+        time.sleep(hold_audio)  # test-fixture-timer: existing PTT hold.
+        # Phase 4: Key up (recording stops), guaranteed by the cleanup envelope.
+        print(f"\n--- KEY UP ({key}) after {total_hold:.1f}s hold ---")
 
     # Phase 5: Wait for completion (log-based with clipboard fallback)
     t_stop = time.time()
@@ -3565,19 +3691,54 @@ def record_tts(sentence="The quick brown fox jumps over the lazy dog", key=None,
 
     # Hold PTT key + play audio concurrently
     import threading
+    playback_owner = _active_audio_route
+    playback_errors = []
     def _play():
-        time.sleep(0.3)  # let key press register first
-        subprocess.run(["afplay", audio_path],
-                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        process = None
+        try:
+            time.sleep(0.3)  # settle: preserve the existing key-registration interval.
+            process = _spawn_owned_playback(audio_path, owner=playback_owner)
+            _, error_output = process.communicate(timeout=audio_dur + 1.5)
+            if process.returncode != 0:
+                raise RuntimeError(f"PTT playback failed: {error_output!r}")
+        except BaseException as error:
+            playback_errors.append(error)
+        finally:
+            try:
+                _reap_playback(process, 30.0)
+            except BaseException as error:
+                playback_errors.append(error)
 
-    player = threading.Thread(target=_play)
-    player.start()
-    hold_dur = audio_dur + 1.0
-    print(f"Holding {key} for {hold_dur:.1f}s (audio {audio_dur:.1f}s)...")
-    try:
-        _si.hold_key(key, duration=hold_dur, before_release=before_release)
-    finally:
-        player.join()
+    with _legacy_capture(30.0) as life:
+        player = threading.Thread(target=_play)
+        def before_press():
+            life["dispatch"]()
+            with _defer_recording_signals():
+                player.start()
+                life["join"] = player.join
+        hold_dur = audio_dur + 1.0
+        print(f"Holding {key} for {hold_dur:.1f}s (audio {audio_dur:.1f}s)...")
+        hold_error = None
+        try:
+            _si.hold_key(key, duration=hold_dur, before_release=before_release, before_press=before_press)
+        except BaseException as error:
+            hold_error = error
+        finally:
+            try:
+                with _defer_recording_signals():
+                    if life["join"] is not None:
+                        player.join()
+            except BaseException as error:
+                playback_errors.append(error)
+        if hold_error is not None:
+            for error in playback_errors:
+                hold_error.add_note(f"playback cleanup: {error!r}")
+            raise hold_error
+        if playback_errors:
+            primary = playback_errors[0]
+            for error in playback_errors[1:]:
+                primary.add_note(f"playback cleanup: {error!r}")
+            raise primary
 
     # Wait for pipeline (ASR + polish + paste)
     print(f"Waiting {wait:.0f}s for pipeline...")

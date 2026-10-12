@@ -171,17 +171,14 @@ def main():
     app_stopped = False
     audio_restored = True
     try:
-        if d.app_pid() is None:
-            d.launchctl_set(args.export)
-            d.start_app()
-        route = d.audio_route()
-        route.apply()
         # ONE relaunch on an empty word list, so nothing helps the recogniser.
-        d.stop_app()
+        proof = d.stop_app()
         d.file_restore(d.WORDS, d.empty_words_like(snaps["words"]))
         d.defaults_write_bool(True)
         d.launchctl_set(args.export)
-        d.start_app()
+        d.start_app(proof)
+        route = d.audio_route()
+        route.apply()
         doc = d.new_doc("words")
         d.prove_oracle(doc)
         for i, word in enumerate(words, 1):
@@ -214,11 +211,13 @@ def main():
             print(f"    (closing the document failed: {error})")
         try:
             if route is not None:
-                route.restore()
+                audio_restored = bool(route.restore())
         except Exception as error:
             audio_restored = False
             print(f"    (audio restore failed: {error})")
         try:
+            if not audio_restored:
+                raise d.Aborted("audio recovery remains pending; stopping its app is refused")
             d.stop_app()
             app_stopped = True
         except d.Aborted as error:

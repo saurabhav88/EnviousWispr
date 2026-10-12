@@ -74,6 +74,7 @@ DOMAIN = "com.enviouswispr.app"
 # change is under test.
 _REPO_ROOT = pathlib.Path(__file__).resolve().parents[2]
 BUNDLE = str(_REPO_ROOT / "build" / "EnviousWispr Local.app")
+_EXIT_PROOF = None
 
 
 def require_bundle():
@@ -183,10 +184,8 @@ def read_default(k):
 
 
 def dev_pids():
-    out = subprocess.run(["ps", "-eo", "pid=,command="], capture_output=True, text=True).stdout
-    needle = "EnviousWispr Local.app/Contents/MacOS/" + "EnviousWispr"
-    return sorted(int(l.split(None, 1)[0]) for l in out.splitlines()
-                  if needle in l and "/bin/zsh" not in l and "python3" not in l)
+    from instance_guard import running_enviouswispr_instances
+    return sorted(int(pid) for pid in running_enviouswispr_instances())
 
 
 def windows(pid):
@@ -213,7 +212,7 @@ def visible_overlays(pid):
 
 
 def stop_app(timeout=30.0):
-    """TERM every dev instance and wait for the process table to agree it is gone.
+    """TERM only the retained dev identity and require positive native exit.
 
     DOES NOT require a bundle, deliberately. Stopping needs no build, and
     TEARDOWN calls this: `phase5_language_hover` deletes its state keys, stops,
@@ -224,12 +223,21 @@ def stop_app(timeout=30.0):
     The precondition belongs at the START of a run, before anything is stopped
     OR written, and each harness's `main` asks for it there.
     """
-    for p in dev_pids():
-        subprocess.run(["kill", "-TERM", str(p)], capture_output=True)
-    deadline = time.time() + timeout
-    while dev_pids() and time.time() < deadline:
-        time.sleep(0.2)  # test-fixture-timer: process-table polling; TERM emits no signal here
-    return not dev_pids()
+    from instance_guard import running_enviouswispr_instances, prove_target_exited
+    import last_dictation_uat as lifecycle
+    global _EXIT_PROOF
+    found = running_enviouswispr_instances()
+    if not found:
+        _EXIT_PROOF = prove_target_exited(rk._target) if rk._target is not None else None
+        return True
+    expected = str(pathlib.Path(BUNDLE) / "Contents/MacOS/EnviousWispr")
+    if len(found) != 1 or next(iter(found.values())) != expected:
+        return False
+    if getattr(rk, "_active_audio_route", None) is not None:
+        raise RuntimeError("restore the active audio owner before a planned geometry restart")
+    rk.connect(expected_pid=int(next(iter(found))), expected_executable=expected)
+    _EXIT_PROOF = lifecycle.terminate_verified_dev_app("geometry preset restart")
+    return bool(_EXIT_PROOF)
 
 
 def start_app(timeout=30.0):
@@ -250,13 +258,33 @@ def start_app(timeout=30.0):
     answered here, after the fact, where the answer set is closed.
     """
     require_bundle()
-    subprocess.run(["open", "-n", BUNDLE], capture_output=True)
-    deadline = time.time() + timeout
-    while time.time() < deadline:
-        pids = dev_pids()
-        if len(pids) == 1:
-            return pids[0]
-        time.sleep(0.2)  # test-fixture-timer: process-table polling for the new instance
+    from instance_guard import running_enviouswispr_instances, InstanceGuardError
+    import last_dictation_uat as lifecycle
+    if rk._target is not None:
+        if _EXIT_PROOF is None:
+            raise RuntimeError("geometry launch has no verified old-instance exit")
+        if lifecycle.launch_dev_app_with_endpoint(_EXIT_PROOF):
+            return rk._target.pid
+    else:
+        if running_enviouswispr_instances():
+            raise RuntimeError("initial geometry launch refuses an existing app")
+        subprocess.run(["open", "-n", "--env", "EW_FAULT_INJECTION=1", BUNDLE], check=True)
+        deadline = time.monotonic() + timeout
+        expected = str(pathlib.Path(BUNDLE) / "Contents/MacOS/EnviousWispr")
+        while time.monotonic() < deadline:
+            found = running_enviouswispr_instances()
+            if found:
+                if len(found) != 1 or next(iter(found.values())) != expected:
+                    raise RuntimeError("geometry launch produced an unexpected app")
+                rk.connect(expected_pid=int(next(iter(found))), expected_executable=expected)
+                try:
+                    rk._capture_snapshot(rk._target)
+                    return rk._target.pid
+                except InstanceGuardError:
+                    raise
+                except (RuntimeError, OSError):
+                    pass
+            time.sleep(0.2)  # deadline-fallback: observe the initial native instance.
     # STATES THE OBSERVATION, NOT THE CAUSE. An earlier draft ended "this is NOT
     # a product finding: rebuild" — which is a causal claim about a state with
     # more than one producer, and the other producer is the app CRASHING during

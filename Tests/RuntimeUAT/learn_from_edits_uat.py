@@ -216,12 +216,16 @@ def running_instances():
 
 
 def stop_app():
-    for pid, path in running_instances().items():
-        if path == APP_BIN:
-            subprocess.run(["kill", "-TERM", str(pid)], check=False)
-    if not wait_for("this worktree's app to exit",
-                    lambda: all(p != APP_BIN for p in running_instances().values()), deadline=20.0):
-        raise Aborted("the dev app did not exit within 20s; refusing to touch settings under it")
+    from instance_guard import prove_target_exited
+    import last_dictation_uat as lifecycle
+    pid = app_pid()
+    if pid is None:
+        return prove_target_exited(w._target) if w._target is not None else None
+    w.connect(expected_pid=pid, expected_executable=APP_BIN)
+    proof = lifecycle.terminate_verified_dev_app("restore the learning drill with the app down")
+    if not proof:
+        raise Aborted("the pinned dev app did not exit; refusing to touch its settings")
+    return proof
 
 
 def expected_door_threshold():
@@ -233,9 +237,16 @@ def expected_door_threshold():
         return float(json.load(fh)["decision_config"]["detection_threshold"])
 
 
-def start_app():
+def start_app(proof=None):
     mark = log_mark()
-    subprocess.run(["open", "-n", APP], check=True)
+    if w._target is not None:
+        import last_dictation_uat as lifecycle
+        if proof is None or not lifecycle.launch_dev_app_with_endpoint(proof):
+            raise Aborted("the replacement app did not pass authenticated capture readiness")
+    else:
+        if running_instances():
+            raise Aborted("initial launch requires no existing EnviousWispr instance")
+        subprocess.run(["open", "-n", "--env", "EW_FAULT_INJECTION=1", APP], check=True)
     if not wait_for("the app's door banner", lambda: has(mark, DOOR_ACTIVE), deadline=90.0):
         raise Aborted("the relaunched app never logged the UAT door as ACTIVE")
     banner = [l for l in w.log_entries_since(mark) if DOOR_ACTIVE in l][-1]
@@ -261,10 +272,12 @@ def start_app():
 
 
 def app_pid():
-    for pid, path in running_instances().items():
-        if path == APP_BIN:
-            return pid
-    return None
+    found = running_instances()
+    if not found:
+        return None
+    if len(found) != 1 or next(iter(found.values())) != APP_BIN:
+        raise Aborted("the learning drill found an unexpected or ambiguous EnviousWispr instance")
+    return next(iter(found))
 
 
 # --- defaults / launchctl --------------------------------------------------
@@ -657,9 +670,15 @@ def finish_restore(snaps, initially_running, app_stopped, audio_restored):
         ok_e = False
         print(f"LAUNCHCTL READBACK FAILED: {error}")
     running_restored = not initially_running
-    if initially_running and app_stopped and ok_w:
-        launched = subprocess.run(["open", "-n", APP], capture_output=True, text=True).returncode == 0
-        running_restored = launched and bool(wait_for("the initially running app to return", lambda: app_pid() is not None, deadline=20.0))
+    if initially_running and app_stopped and ok_w and audio_restored:
+        from instance_guard import prove_target_exited
+        import last_dictation_uat as lifecycle
+        try:
+            proof = prove_target_exited(w._target)
+            running_restored = lifecycle.launch_dev_app_with_endpoint(proof)
+        except Exception as error:
+            print(f"RESTORED APP LAUNCH FAILED: {error}")
+            running_restored = False
     restored = audio_restored and app_stopped and ok_w and ok_d and ok_e and running_restored
     receipt = (f"audio={audio_restored}; app_stopped={app_stopped}; words={why_w}; "
                f"legacy_ledger_present={legacy_ledger_present()} (never written by this script); "
@@ -761,11 +780,11 @@ def relaunch_for_case(snaps, toggle_on, export, words=None):
     custom words, saved to the side, for the run), or the one seeded word a
     case asks for, so the founder's historical words are learned fresh; the
     originals come back in `finally`. The retired ledger is not touched."""
-    stop_app()
+    proof = stop_app()
     file_restore(WORDS, words or empty_words_like(snaps["words"]))
     defaults_write_bool(toggle_on)
     launchctl_set(export)
-    return start_app()
+    return start_app(proof)
 
 
 def alias_landed(pair, heard_text):
@@ -1198,27 +1217,12 @@ def case_learned_check_door_off(path):
 
 # --- audio ------------------------------------------------------------------
 
-BAND_SCRIPT = os.path.expanduser(
-    "~/Developer/EnviousLabs/EnviousWispr/docs/feature-requests/issue-1946-artifacts/2026-09-08-live-uat-background-band.py")
-
-
 def audio_route():
-    """`AudioRoute` from the #1946 artifact (main checkout, gitignored): apply
-    BlackHole to output + input and pick it in Settings → Dictation Settings →
-    Microphone by AX (#3385); restore reads the values back.
-
-    The artifact drives the app through THIS process's already-imported `wispr_eyes`
-    (this worktree's, imported at the top of this file), not the main checkout's copy:
-    it reuses `sys.modules["wispr_eyes"]` when present, and the assert below proves it."""
-    import importlib.util
-    if not os.path.exists(BAND_SCRIPT):
-        raise Aborted(f"the BlackHole route helper is missing: {BAND_SCRIPT}")
-    spec = importlib.util.spec_from_file_location("band", BAND_SCRIPT)
-    band = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(band)
-    if os.path.realpath(band.w.__file__) != os.path.realpath(w.__file__):
-        raise Aborted(f"the route helper loaded {band.w.__file__}, not this run's {w.__file__}")
-    return band.AudioRoute()
+    """Use this checkout's tracked, durable audio owner."""
+    import silent_audio
+    if silent_audio.w is not w:
+        raise Aborted("the audio helper is not using this drill's retained connection")
+    return silent_audio.AudioRoute()
 
 
 # --- main -------------------------------------------------------------------
@@ -1262,13 +1266,12 @@ def main():
             env_set(key, None)
         # Inaudible: BlackHole for BOTH system output and input, and the app's
         # own mic picker set through the UI (uat-testing.md RULE:
-        # silent-uat-via-blackhole-and-select-the-mic-in-the-UI). The proven
-        # implementation lives in the main checkout's #1946 artifact.
-        if app_pid() is None:
-            # the mic picker is set through the app's own Settings, so the
-            # subject must be up before the route is applied
-            launchctl_set(args.export)
-            start_app()
+        # silent-uat-via-blackhole-and-select-the-mic-in-the-UI).
+        # Bootstrap before routing, so the endpoint and export are ready without
+        # changing an audio journal's retained app identity underneath it.
+        launchctl_set(args.export)
+        initial_proof = stop_app()
+        start_app(initial_proof)
         route = audio_route()
         route.apply()
         doc = new_doc("learn")
@@ -1305,7 +1308,12 @@ def main():
                     words = learned_word_seed(snaps["words"], PAIRS[name.replace("-door-off", "")].correct)
                 # The learned-check door is ON only for its own case (#3105).
                 check_door_set("Tuist" if name == "learned-check" else None)
+                if not route.restore():
+                    raise Aborted("audio restoration did not complete before the case restart")
+                route = None
                 relaunch_for_case(snaps, toggle_on, args.export, words=words)
+                route = audio_route()
+                route.apply()
                 clear_field(doc)
             try:
                 fn(doc)
@@ -1343,7 +1351,9 @@ def main():
             record("audio-restore", "FAIL", str(error))
         app_stopped = False
         try:
-            stop_app()
+            if not audio_restored:
+                raise Aborted("audio recovery remains pending; final restart is refused")
+            final_proof = stop_app()
             app_stopped = True
         except Exception as error:
             record("app-stop", "FAIL", str(error))
@@ -1398,9 +1408,13 @@ def main():
         # running when the drill began.
         if initially_running and app_stopped:
             try:
-                subprocess.run(["open", "-n", APP], check=False)
-            except Exception:
-                pass
+                import last_dictation_uat as lifecycle
+                if not lifecycle.launch_dev_app_with_endpoint(final_proof):
+                    raise Aborted("the restored app did not become ready")
+            except Exception as error:
+                record("restored-app-launch", "FAIL", str(error))
+                exit_code = 3
+                save("summary.json", {"exit_code": exit_code, "results": results, "finished": now_iso()})
     print(f"\nEXIT {exit_code}")
     return exit_code
 

@@ -28,6 +28,11 @@ import fcntl
 import tempfile
 import stat
 import contextlib
+import copy
+import hashlib
+import select
+import threading
+import uuid
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
@@ -39,6 +44,31 @@ SWITCH = "/opt/homebrew/bin/SwitchAudioSource"
 SILENT_DEVICE = "BlackHole 2ch"
 RESTORE_FILE = os.path.expanduser("~/.ew-uat-audio-restore.json")
 LOG = os.path.expanduser("~/Library/Logs/EnviousWispr/app.log")
+_PLAYER = "/usr/bin/afplay"
+_CHILD = r"""
+import json, os, sys
+sys.path.insert(0, sys.argv[1])
+from instance_guard import process_start
+lock, gate, ready = map(int, sys.argv[2:5])
+os.set_inheritable(lock, True)
+data = (json.dumps({"pid": os.getpid(), "start": list(process_start(os.getpid()))}) + "\n").encode()
+while data:
+    count = os.write(ready, data)
+    if count <= 0:
+        raise RuntimeError("ready pipe failed")
+    data = data[count:]
+os.close(ready)
+command = b""
+while len(command) < 3:
+    chunk = os.read(gate, 3 - len(command))
+    if not chunk:
+        sys.exit(125)
+    command += chunk
+os.close(gate)
+if command != b"GO\n":
+    sys.exit(125)
+os.execv("/usr/bin/afplay", ["/usr/bin/afplay", sys.argv[5]])
+"""
 
 
 def input_picker():
@@ -164,7 +194,7 @@ def _publish_recovery(path, payload):
 
 
 def _record_lock(path):
-    fd = os.open(path + ".lock", os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600)
+    fd = os.open(RESTORE_FILE + ".lock", os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600)
     try:
         if not stat.S_ISREG(os.fstat(fd).st_mode):
             raise RuntimeError("audio recovery lock is not a regular file")
@@ -177,10 +207,310 @@ def _record_lock(path):
 
 def _release_record_lock(fd):
     if fd is not None:
+        os.close(fd)  # An inherited child retains exclusion; never explicitly unlock it.
+
+
+def _init_playback_journal(route):
+    from instance_guard import process_start
+    route._playback_guard = threading.RLock()
+    route._player = None
+    route._payload.update(version=3, run=uuid.uuid4().hex,
+                          harness={"pid": os.getpid(), "start": list(process_start(os.getpid()))},
+                          playback=None, lineage=[])
+
+
+def _replace_record(path, owned, payload):
+    """Update an already-owned journal under its common resource lock."""
+    if _record_bytes(path) != owned:
+        raise RuntimeError("audio journal ownership changed")
+    data = (json.dumps(payload, sort_keys=True) + "\n").encode()
+    directory = os.path.dirname(path)
+    fd, temporary = tempfile.mkstemp(prefix=".ew-journal-", dir=directory)
+    try:
+        with os.fdopen(fd, "wb") as fh:
+            os.fchmod(fh.fileno(), 0o600)
+            fh.write(data)
+            fh.flush()
+            os.fsync(fh.fileno())
+        if _record_bytes(path) != owned:
+            raise RuntimeError("audio journal changed before commit")
+        os.replace(temporary, path)
+        actual = _record_bytes(path)
+        if actual[1] != data:
+            raise RuntimeError("audio journal commit changed")
+        directory_fd = os.open(directory, os.O_RDONLY)
         try:
-            fcntl.flock(fd, fcntl.LOCK_UN)
+            os.fsync(directory_fd)
         finally:
-            os.close(fd)
+            os.close(directory_fd)
+        return actual
+    finally:
+        if os.path.lexists(temporary):
+            os.unlink(temporary)
+
+
+def _set_playback(route, playback):
+    from instance_guard import process_start
+    if not route.applied or route._lock is None:
+        raise RuntimeError("playback requires the applied resource owner")
+    owner = {"pid": os.getpid(), "start": list(process_start(os.getpid()))}
+    if route._payload.get("harness") != owner:
+        raise RuntimeError("playback journal belongs to another harness")
+    payload = copy.deepcopy(route._payload)
+    payload["playback"] = playback
+    route._owned = _replace_record(route.FILE, route._owned, payload)
+    route._payload = payload
+
+
+def _ready_identity(fd, deadline):
+    data = bytearray()
+    while not data.endswith(b"\n"):
+        remaining = deadline - time.monotonic()
+        if remaining <= 0 or not select.select([fd], [], [], remaining)[0]:
+            raise RuntimeError("playback child readiness expired")
+        chunk = os.read(fd, 256)
+        if not chunk:
+            raise RuntimeError("playback child exited before readiness")
+        data.extend(chunk)
+        if len(data) > 256 or data.count(b"\n") > 1:
+            raise RuntimeError("playback readiness is malformed")
+    value = json.loads(data)
+    if (not isinstance(value, dict) or set(value) != {"pid", "start"}
+            or type(value["pid"]) is not int or not 0 < value["pid"] <= 2_147_483_647
+            or not isinstance(value["start"], list) or len(value["start"]) != 2
+            or any(type(n) is not int for n in value["start"])
+            or value["start"][0] <= 0 or not 0 <= value["start"][1] < 1_000_000):
+        raise RuntimeError("playback child identity is malformed")
+    return value
+
+
+def _python_executable():
+    """Framework Python may re-exec: compare with the current runtime's native path."""
+    from instance_guard import process_start
+    pid = os.getpid()
+    before = process_start(pid)
+    result = subprocess.run(["ps", "-ww", "-o", "comm=", "-p", str(pid)],
+                            capture_output=True, text=True, timeout=5)
+    value = result.stdout.strip()
+    if (result.returncode != 0 or result.stderr.strip() or len(value.splitlines()) != 1
+            or not os.path.isabs(value) or process_start(pid) != before):
+        raise RuntimeError("current Python executable is unreadable")
+    return os.path.realpath(value)
+
+
+def _verify_blocked_child(pid, start):
+    from instance_guard import process_start
+    before = process_start(pid)
+    result = subprocess.run(["ps", "-ww", "-o", "comm=", "-p", str(pid)],
+                            capture_output=True, text=True, timeout=5)
+    if (result.returncode != 0 or result.stderr.strip()
+            or len(result.stdout.strip().splitlines()) != 1
+            or os.path.realpath(result.stdout.strip()) != _python_executable()
+            or before != tuple(start) or process_start(pid) != before):
+        raise RuntimeError("blocked playback child identity changed")
+
+
+def _spawn_playback(route, clip, timeout=5.0):
+    clip = os.path.realpath(clip)
+    with open(clip, "rb") as fh:
+        content = fh.read()
+    if not content:
+        raise RuntimeError("playback clip is empty")
+    with route._playback_guard:
+        if route._payload.get("playback") is not None:
+            raise RuntimeError("previous playback remains unresolved")
+        lease = {"stage": "intent", "nonce": uuid.uuid4().hex,
+                 "clip": clip, "sha256": hashlib.sha256(content).hexdigest()}
+        _set_playback(route, lease)  # Committed before any child can exist.
+        gate_r = gate_w = ready_r = ready_w = None
+        proc = None
+        try:
+            gate_r, gate_w = os.pipe()
+            ready_r, ready_w = os.pipe()
+            proc = subprocess.Popen([sys.executable, "-c", _CHILD, HERE,
+                                     str(route._lock), str(gate_r), str(ready_w), clip],
+                                    pass_fds=(route._lock, gate_r, ready_w),
+                                    stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                                    stderr=subprocess.PIPE)
+            route._player = proc
+            os.close(gate_r); gate_r = None
+            os.close(ready_w); ready_w = None
+            identity = _ready_identity(ready_r, time.monotonic() + timeout)
+            if identity["pid"] != proc.pid:
+                raise RuntimeError("playback child PID mismatch")
+            _verify_blocked_child(proc.pid, identity["start"])
+            lease.update(stage="committed", **identity)
+            _set_playback(route, lease)  # Fsynced before GO can permit audio.
+            proc._ew_audio_route = route
+            if os.write(gate_w, b"GO\n") != 3:
+                raise RuntimeError("playback GO failed")
+            return proc
+        except BaseException as error:
+            if gate_w is not None:
+                os.close(gate_w); gate_w = None
+            try:
+                w._reap_playback(proc, timeout)
+                remaining = route._payload.get("playback")
+                if proc is not None and isinstance(remaining, dict) and remaining["stage"] == "intent":
+                    _set_playback(route, None)  # Owned child reaped after its GO pipe closed.
+                    route._player = None
+            except BaseException as cleanup:
+                error.add_note(f"playback cleanup failed: {cleanup!r}")
+            raise
+        finally:
+            for fd in (gate_r, gate_w, ready_r, ready_w):
+                if fd is not None:
+                    os.close(fd)
+
+
+def _complete_playback(route, proc, timeout=5.0):
+    from instance_guard import TargetIdentity, prove_target_exited
+    with route._playback_guard:
+        lease = route._payload.get("playback")
+        if (not isinstance(lease, dict) or lease.get("stage") != "committed"
+                or lease.get("pid") != proc.pid):
+            raise RuntimeError("playback completion has no matching lease")
+        proc.wait(timeout=timeout)
+        prove_target_exited(TargetIdentity(proc.pid, _PLAYER, tuple(lease["start"])))
+        _set_playback(route, None)
+        proc._ew_audio_route = None
+        route._player = None
+
+
+def _current_harness():
+    from instance_guard import process_start
+    return {"pid": os.getpid(), "start": list(process_start(os.getpid()))}
+
+
+def _process_identity(data):
+    from instance_guard import TargetIdentity
+    if (not isinstance(data, dict) or set(data) != {"pid", "start"}
+            or type(data["pid"]) is not int or not 0 < data["pid"] <= 2_147_483_647
+            or not isinstance(data["start"], list) or len(data["start"]) != 2
+            or any(type(value) is not int for value in data["start"])
+            or data["start"][0] <= 0 or not 0 <= data["start"][1] < 1_000_000):
+        raise RuntimeError("audio journal process identity is malformed")
+    return TargetIdentity(data["pid"], _PLAYER, tuple(data["start"]))
+
+
+def _validate_playback_journal(payload):
+    import re
+    if (not isinstance(payload, dict) or payload.get("version") != 3
+            or not isinstance(payload.get("run"), str)
+            or re.fullmatch(r"[0-9a-f]{32}", payload["run"]) is None
+            or not isinstance(payload.get("lineage"), list)
+            or payload.get("kind") not in {"audio", "alert", "audio-alert"}):
+        raise RuntimeError("unsupported or malformed playback recovery journal")
+    required = {"version", "run", "harness", "playback", "lineage", "kind", "target", "devices"}
+    if payload["kind"] in {"audio", "audio-alert"}:
+        required.add("app_device")
+    if set(payload) != required:
+        raise RuntimeError("audio journal fields are incomplete or unexpected")
+    _validate_lineage(payload)
+    harness = _process_identity(payload.get("harness"))
+    lease = payload.get("playback")
+    if lease is not None:
+        if (not isinstance(lease, dict) or lease.get("stage") not in {"intent", "committed"}
+                or not isinstance(lease.get("nonce"), str)
+                or re.fullmatch(r"[0-9a-f]{32}", lease["nonce"]) is None
+                or not isinstance(lease.get("clip"), str) or not os.path.isabs(lease["clip"])
+                or not isinstance(lease.get("sha256"), str)
+                or re.fullmatch(r"[0-9a-f]{64}", lease["sha256"]) is None):
+            raise RuntimeError("playback lease is malformed")
+        keys = {"stage", "nonce", "clip", "sha256"}
+        if lease["stage"] == "committed":
+            keys |= {"pid", "start"}
+            _process_identity({key: lease.get(key) for key in ("pid", "start")})
+        if set(lease) != keys:
+            raise RuntimeError("playback lease fields are incomplete or unexpected")
+    return harness, lease
+
+
+def _decode_target(data):
+    from instance_guard import TargetIdentity
+    if (not isinstance(data, dict) or set(data) != {"pid", "executable", "start"}
+            or not isinstance(data["executable"], str) or not os.path.isabs(data["executable"])
+            or not data["executable"].endswith(".app/Contents/MacOS/EnviousWispr")):
+        raise RuntimeError("audio recovery target identity is malformed")
+    identity = _process_identity({key: data[key] for key in ("pid", "start")})
+    return TargetIdentity(identity.pid, data["executable"], identity.start)
+
+
+def _validate_lineage(payload):
+    target = _decode_target(payload.get("target"))
+    previous = None
+    for entry in payload["lineage"]:
+        if not isinstance(entry, dict) or set(entry) != {"old", "new", "replacement_start"}:
+            raise RuntimeError("audio handoff lineage is malformed")
+        old, new = _decode_target(entry["old"]), _decode_target(entry["new"])
+        if (old == new or old.executable != new.executable
+                or (previous is not None and old != previous)):
+            raise RuntimeError("audio handoff lineage is discontinuous")
+        replacement = entry["replacement_start"]
+        if replacement is not None:
+            observed = _process_identity({"pid": old.pid, "start": replacement})
+            if observed.start == old.start:
+                raise RuntimeError("audio handoff claims exit of the same native process")
+        previous = new
+    if previous is not None and previous != target:
+        raise RuntimeError("audio journal target differs from its last verified handoff")
+
+
+def _player_running(lease):
+    from instance_guard import process_start, prove_target_exited, InstanceGuardError
+    identity = _process_identity({key: lease.get(key) for key in ("pid", "start")})
+    try:
+        before = process_start(identity.pid)
+    except InstanceGuardError:
+        prove_target_exited(identity)  # Unreadability alone never means disappearance.
+        return False
+    if before != identity.start:
+        return False  # Positive native PID reuse proves this particular child ended.
+    result = subprocess.run(["ps", "-ww", "-o", "comm=", "-p", str(identity.pid)],
+                            capture_output=True, text=True, timeout=5)
+    try:
+        after = process_start(identity.pid)
+    except InstanceGuardError:
+        prove_target_exited(identity)
+        return False
+    if after != before:
+        return False
+    if (result.returncode != 0 or result.stderr.strip()
+            or len(result.stdout.strip().splitlines()) != 1
+            or os.path.realpath(result.stdout.strip()) not in
+            {_python_executable(), _PLAYER}):
+        raise RuntimeError("owned playback executable is unknown")
+    return True
+
+
+def _stop_orphan_playback(payload):
+    from instance_guard import prove_target_exited
+    harness, lease = _validate_playback_journal(payload)
+    prove_target_exited(harness)  # A live or unreadable owner forbids cross-process recovery.
+    if lease is None:
+        return
+    if lease["stage"] != "committed":
+        raise RuntimeError("an unidentified pre-GO child still holds the audio lock")
+    for stop_signal in (signal.SIGTERM, signal.SIGKILL):
+        if not _player_running(lease):
+            return
+        try:
+            os.kill(lease["pid"], stop_signal)  # Identity was freshly verified above.
+        except ProcessLookupError:
+            pass
+        deadline = time.monotonic() + 30.0  # Existing recording/recovery completion allowance.
+        while True:
+            try:
+                if not _player_running(lease):
+                    return
+            except RuntimeError:
+                # Native teardown can temporarily lose its identity fields while
+                # kill(0) still sees the PID. This is unknown, never an exit proof.
+                pass
+            if time.monotonic() >= deadline:
+                break
+            time.sleep(0.05)  # deadline-fallback: observe the owned child's native exit.
+    raise RuntimeError("owned orphan playback did not end")
 
 
 def _target_json(target):
@@ -188,13 +518,8 @@ def _target_json(target):
 
 
 def _saved_target(data):
-    from instance_guard import TargetIdentity, verify_target
-    if (not isinstance(data, dict) or type(data.get("pid")) is not int
-            or not isinstance(data.get("executable"), str)
-            or not isinstance(data.get("start"), list) or len(data["start"]) != 2
-            or any(type(n) is not int or n < 0 for n in data["start"])):
-        raise RuntimeError("audio recovery target identity is malformed")
-    target = TargetIdentity(data["pid"], data["executable"], tuple(data["start"]))
+    from instance_guard import verify_target
+    target = _decode_target(data)
     verify_target(target)
     w.connect(expected_pid=target.pid, expected_executable=target.executable)
     return target
@@ -210,11 +535,16 @@ def _idle(target):
 def _restore_record(path, owned, payload):
     if _record_bytes(path) != owned:
         raise RuntimeError("audio recovery ownership changed")
-    if not isinstance(payload, dict) or payload.get("version") != 2 or payload.get("kind") not in {"audio", "alert"}:
-        raise RuntimeError("unsupported audio recovery record")
+    harness, lease = _validate_playback_journal(payload)
+    if lease is not None:
+        raise RuntimeError("unresolved playback lease blocks physical restoration")
+    if payload["harness"] != _current_harness():
+        from instance_guard import prove_target_exited
+        prove_target_exited(harness)
     target = _saved_target(payload.get("target"))
     choices = payload.get("devices")
-    expected = {"output", "input"} if payload["kind"] == "audio" else {"output", "system"}
+    expected = {"audio": {"output", "input"}, "alert": {"output", "system"},
+                "audio-alert": {"output", "input", "system"}}[payload["kind"]]
     if not isinstance(choices, dict) or set(choices) != expected:
         raise RuntimeError("audio recovery devices are incomplete")
     for kind, choice in choices.items():
@@ -222,11 +552,14 @@ def _restore_record(path, owned, payload):
             raise RuntimeError("audio recovery device identity is missing")
         _resolve_device(kind, choice["uid"])
     app_choice = None
-    if payload["kind"] == "audio":
+    if payload["kind"] in {"audio", "audio-alert"}:
         app_choice = w._sn.InputChoice.from_json(payload.get("app_device"))
-    if not w._recording_cleanup_safe:
-        raise RuntimeError("unreaped playback blocks audio recovery")
+    if getattr(w, "_standalone_player", None) is not None:
+        raise RuntimeError("standalone playback blocks audio recovery")
     w._stop_recording(target, 30.0)  # existing recording completion allowance
+    if w._recording_state(target) != "idle":
+        raise RuntimeError("capture release was not confirmed before restoration")
+    w._recording_cleanup_safe = True  # Durable empty playback plus confirmed capture release.
     for kind, choice in choices.items():
         _idle(target)
         _switch_and_verify(kind, choice, target=target)
@@ -245,14 +578,40 @@ def _restore_record(path, owned, payload):
 
 
 def _replay_recovery(path):
-    fd = _record_lock(path)
-    try:
+    with w._defer_recording_signals():
+        if os.path.lexists(RESTORE_FILE) and os.path.lexists(AlertSink.FILE):
+            raise RuntimeError("conflicting audio recovery records require their original owner")
         owned = _record_bytes(path)
         payload = json.loads(owned[1])
-        with w._defer_recording_signals():
+        _validate_playback_journal(payload)
+        try:
+            fd = _record_lock(path)
+        except BlockingIOError:
+            if payload["harness"] == _current_harness():
+                raise
+            if _record_bytes(path) != owned:
+                raise RuntimeError("audio journal changed before orphan recovery")
+            _stop_orphan_playback(payload)
+            fd = _record_lock(path)
+        try:
+            if _record_bytes(path) != owned:
+                raise RuntimeError("audio journal changed during orphan recovery")
+            if payload["harness"] != _current_harness():
+                from instance_guard import prove_target_exited
+                harness, _ = _validate_playback_journal(payload)
+                prove_target_exited(harness)
+            lease = payload["playback"]
+            if lease is not None:
+                if lease["stage"] == "committed":
+                    _stop_orphan_playback(payload)
+                # Holding the common lock closes the pre-GO case: any possible
+                # child still alive before exec would retain that same lock.
+                payload = copy.deepcopy(payload)
+                payload["playback"] = None
+                owned = _replace_record(path, owned, payload)
             return _restore_record(path, owned, payload)
-    finally:
-        _release_record_lock(fd)
+        finally:
+            _release_record_lock(fd)
 
 
 class AudioRoute:
@@ -261,7 +620,12 @@ class AudioRoute:
     KINDS = ("output", "input")
     KIND = "audio"
 
-    def __init__(self):
+    def __init__(self, include_alerts=False):
+        if include_alerts:
+            if self.KIND != "audio":
+                raise RuntimeError("only the full audio owner can include alerts")
+            self.KINDS = ("output", "input", "system")
+            self.KIND = "audio-alert"
         if not os.path.exists(SWITCH):
             raise RuntimeError("silent audio routing tool is missing")
         w.connect()
@@ -270,7 +634,7 @@ class AudioRoute:
         self.devices = {kind: _device(kind) for kind in self.KINDS}
         self.original_output = self.devices["output"]["name"]
         self.original_input = self.devices.get("input", {}).get("name")
-        self.original_app_device = w.read_input_choice() if self.KIND == "audio" else None
+        self.original_app_device = w.read_input_choice() if "input" in self.KINDS else None
         self.original = {kind: choice["name"] for kind, choice in self.devices.items()}
         self.applied, self._owned, self._lock = False, None, None
         self._handlers = {}
@@ -294,23 +658,28 @@ class AudioRoute:
             raise RuntimeError("silent route already owns a recovery record")
         self._lock = _record_lock(self.FILE)
         try:
+            for record in (RESTORE_FILE, AlertSink.FILE):
+                if record != self.FILE and os.path.lexists(record):
+                    raise RuntimeError("another audio recovery record must be resolved first")
             _idle(self.target)
             if any(_device(kind)["uid"] != choice["uid"] for kind, choice in self.devices.items()):
                 raise RuntimeError("audio snapshot changed before application")
-            if self.KIND == "audio" and not w.read_input_choice().same_choice(self.original_app_device):
+            if "input" in self.KINDS and not w.read_input_choice().same_choice(self.original_app_device):
                 raise RuntimeError("app microphone snapshot changed")
             silent = {kind: _resolve_device(kind, SILENT_DEVICE, "name") for kind in self.KINDS}
             self._payload = {"version": 2, "kind": self.KIND, "target": _target_json(self.target),
                              "devices": self.devices}
             if self.original_app_device is not None:
                 self._payload["app_device"] = self.original_app_device.to_json()
+            _init_playback_journal(self)
             with w._defer_recording_signals():
                 self._owned = _publish_recovery(self.FILE, self._payload)
                 self.applied = True
+                w._active_audio_route = self
             for kind, choice in silent.items():
                 _idle(self.target)
                 _switch_and_verify(kind, choice, target=self.target)
-            if self.KIND == "audio":
+            if "input" in self.KINDS:
                 _idle(self.target)
                 select_input_device(SILENT_DEVICE)
                 if w.read_input_choice().uid != silent["input"]["uid"]:
@@ -327,21 +696,67 @@ class AudioRoute:
                 _release_record_lock(self._lock)
                 self._lock = None
 
+    def finish_playback(self, timeout=30.0):
+        with self._playback_guard:
+            if self._player is not None:
+                w._reap_playback(self._player, timeout)
+
     def restore(self):
         try:
             if not self.applied:
                 return True
             if self._lock is None:
                 self._lock = _record_lock(self.FILE)
-            with w._defer_recording_signals():
+            with self._playback_guard, w._defer_recording_signals():
+                self.finish_playback()
+                lease = self._payload.get("playback")
+                if isinstance(lease, dict) and lease["stage"] == "intent":
+                    # No GO was committed. Reacquiring after close positively
+                    # proves no pre-exec child still holds the inherited lock.
+                    _release_record_lock(self._lock)
+                    self._lock = None
+                    self._lock = _record_lock(self.FILE)
+                    _set_playback(self, None)
                 ok = _restore_record(self.FILE, self._owned, self._payload)
                 if ok:
                     self.applied = False
+                    if getattr(w, "_active_audio_route", None) is self:
+                        w._active_audio_route = None
                 return ok
         finally:
             _release_record_lock(self._lock)
             self._lock = None
             self._restore_handlers()
+
+    def transfer_after_verified_exit(self, new, proof):
+        from instance_guard import verify_exit_proof, verify_target
+        with self._playback_guard, w._defer_recording_signals():
+            self.finish_playback()
+            if not self.applied or self._lock is None:
+                raise RuntimeError("audio handoff requires its current resource lock")
+            _validate_playback_journal(self._payload)
+            if self._payload["playback"] is not None or self._payload["harness"] != _current_harness():
+                raise RuntimeError("unresolved playback or foreign ownership blocks audio handoff")
+            old = self.target
+            if new.executable != old.executable or w._target != old:
+                raise RuntimeError("audio handoff conflicts with the retained app")
+            verify_exit_proof(old, proof)
+            verify_target(new)
+            if w._recording_state(new) != "idle":
+                raise RuntimeError("replacement capture has not been released")
+            payload = copy.deepcopy(self._payload)
+            payload["target"] = _target_json(new)
+            payload["lineage"].append({"old": _target_json(old), "new": _target_json(new),
+                                       "replacement_start": list(proof.replacement_start)
+                                       if proof.replacement_start is not None else None})
+            _validate_playback_journal(payload)
+            verify_exit_proof(old, proof)
+            verify_target(new)
+            self._owned = _replace_record(self.FILE, self._owned, payload)
+            self._payload, self.target = payload, new
+            w.bind_after_verified_exit(old, new, proof)
+            # Derived from durable no-playback, verified old exit and released new capture.
+            w._recording_cleanup_safe = True
 
 
 class AlertSink(AudioRoute):

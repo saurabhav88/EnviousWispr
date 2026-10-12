@@ -106,3 +106,10 @@ ew_wait_for_launch() {
   fi
   return 1
 }
+
+# Endpoint readiness uses the RuntimeUAT owner's strict parser and native identity.
+ew_wait_for_capture() {
+  local app_path="$1" root
+  root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd -P)"
+  PYTHONDONTWRITEBYTECODE=1 python3 "$root/Tests/RuntimeUAT/uat.py" capture-ready --app "$app_path"
+}

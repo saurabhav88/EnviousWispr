@@ -1939,11 +1939,11 @@ def restore_words():
         return True
     # Stopped FIRST, even when the bytes already match: a queued save or the in-memory list could
     # still write the learned word back after the restore.
-    lf.stop_app()
+    proof = lf.stop_app()
     lf.file_restore(lf.WORDS, snap)
     ok, detail = lf.verify_restore(lf.WORDS, snap, "words")
     print(f"    word file restore: {detail}")
-    relaunched = subprocess.run(["open", "-n", lf.APP], check=False).returncode == 0
+    relaunched = u.launch_dev_app_with_endpoint(proof)
     print(f"    dev app relaunched: {relaunched}")
     if ok and relaunched:
         WORDS["snap"] = None
@@ -2096,7 +2096,7 @@ def main():
     if screen_is_locked():
         print("ABORT: the screen is locked")
         return 2
-    from silent_audio import AlertSink
+    from silent_audio import AudioRoute
     w._INPUT_WARN = False
     w.connect()
     try:
@@ -2109,14 +2109,10 @@ def main():
     if unknown:
         print(f"unknown phase(s) {unknown}; choose from {', '.join(PHASES)}")
         return 2
-    sink = AlertSink()
-    if not sink.apply():
-        print(f"ABORT: alert and output devices did not switch to BlackHole (restored: {sink.restore()})")
-        return 2
-    from silent_audio import AudioRoute
     route = None
     try:
-        route = AudioRoute()  # inside the try: a failed Settings read must still restore the sink
+        # One original snapshot for output, microphone and alerts, before any switch.
+        route = AudioRoute(include_alerts=True)
         route.install_restore_handlers()
         route.apply()
         RUN_ROUTE["route"] = route
@@ -2171,14 +2167,10 @@ def main():
                      "`python3 Tests/RuntimeUAT/silent_audio.py restore`.")
         else:
             try:
-                u.check("microphone restored (once, for the whole run)", route.restore())
+                u.check("audio choices restored (once, for the whole run)", route.restore())
             except Exception as exc:
-                u.check("microphone restored (once, for the whole run)", False, repr(exc))
+                u.check("audio choices restored (once, for the whole run)", False, repr(exc))
         RUN_ROUTE["route"] = None
-        try:
-            u.check("devices restored", sink.restore())
-        except Exception as exc:
-            u.check("devices restored", False, repr(exc))
         try:
             u.check("word file restored (Self-Learning Dictionary)", restore_words())
         except Exception as exc:

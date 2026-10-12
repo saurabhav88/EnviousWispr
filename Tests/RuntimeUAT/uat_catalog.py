@@ -117,7 +117,7 @@ HARNESS_STATUS = {
     "record_tts":      {"status": "recipe", "issue": "#2547", "note": "`polished` is ONE LINE; read multi-line output with uat.py verdict. focus_app takes an APP NAME, not a bundle id"},
     "test_cancel":     {"status": "broken", "issue": "code-tooling", "note": "cancels via a synthetic Escape, which does NOT reach the Carbon hotkey (code-tooling.md FACT: synthetic-escape-does-not-reach-a-carbon-hotkey), so it reports FAIL on a working app. Not a runnable recipe; cancel needs a human press until a real driver exists"},
     # broken / unreliable
-    "test_hands_free": {"status": "broken", "issue": "#2409", "note": "drives the MENU and cannot engage hands-free lock; returns PASS for a gesture that never fired. Use double_press_record_key"},
+    "test_hands_free": {"status": "unreliable", "issue": "#3656", "note": "drives the double-press gesture and requires all three hands-free markers; cleanup has offline controls, but current live gesture/attribution validation is pending. Prefer the primitive double_press_record_key with explicit app evidence"},
     "test_all": {"status": "primitive", "issue": None, "note": 'chains scan(toggle=True); passes only when every surface row is OK (#3385: FAIL/BLOCKED rows fail it). A long AX sweep: informational, never a release gate'},
     "check": {"status": "primitive", "issue": None, "note": 'check(page, *labels, tab=None): nav(page, tab) + read(label). Returns a ReadResult (dict + .missing/.ok); RAISES NavigationError when the route does not land (#3385). AX read: informational'},
     "verify": {"status": "primitive", "issue": None, "note": 'verify(page, {label: expected}, tab=None): returns {label: VERIFIED/ISSUE/INFO/MISSING}; RAISES NavigationError when the route does not land (#3385). AX read, informational'},
@@ -131,6 +131,7 @@ HARNESS_STATUS = {
     "clipboard":       {"status": "primitive", "issue": None, "note": "fallback signal only; verdicts come from app.log (RULE: uat-verdicts-from-app-log)"},
     # primitives
     "connect":         {"status": "primitive", "issue": None, "note": "pins expected PID, executable and native start token; reconnect verifies the retained identity and refuses replacement"},
+    "bind_after_verified_exit": {"status": "primitive", "issue": "#3656", "note": "explicit same-bundle replacement only after native old-instance exit proof and verified released replacement capture; refreshes translation cache"},
     "health":          {"status": "primitive", "issue": None, "note": ""},
     "read":            {"status": "primitive", "issue": None, "note": ""},
     "read_cards": {"status": "primitive", "issue": None, "note": "groups engine/style/pill/chime; reads the window CONTENT only (sidebar subtree excluded, #3385); selection = value's first clause is Selected"},
@@ -301,7 +302,7 @@ def _self_test():
           [rid for rid, r in RECIPES.items() if r.get("export")] == ["learn-from-edits"])
     check("settings-search is script-backed", RECIPES["settings-search"].get("script") == "settings_search_uat.py")
     check("recipe ids are shell-safe", all(re.fullmatch(r"[a-z][a-z0-9-]*", rid) for rid in RECIPES))
-    check("test_hands_free is broken (#2409)", HARNESS_STATUS["test_hands_free"]["status"] == "broken")
+    check("test_hands_free is not promoted to a certified recipe", HARNESS_STATUS["test_hands_free"]["status"] == "unreliable")
 
     with tempfile.TemporaryDirectory() as tmp:
         for rel in DOC_FILES:

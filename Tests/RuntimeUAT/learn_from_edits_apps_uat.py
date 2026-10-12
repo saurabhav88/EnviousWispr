@@ -800,16 +800,13 @@ def main():
     app_stopped = False
     audio_restored = True
     try:
-        if d.app_pid() is None:
-            d.launchctl_set(args.export)
-            d.start_app()
-        route = d.audio_route()
-        route.apply()
-        d.stop_app()
+        proof = d.stop_app()
         d.file_restore(d.WORDS, d.empty_words_like(snaps["words"]))
         d.defaults_write_bool(True)
         d.launchctl_set(args.export)
-        d.start_app()
+        d.start_app(proof)
+        route = d.audio_route()
+        route.apply()
         for app in apps:
             print(f"\n=== {app} ===", flush=True)
             d.park_pointer()
@@ -878,20 +875,27 @@ def main():
                     print(f"  cleanup :: {row['cleanup']}", flush=True)
                     d.save("rows.json", rows)
             # Each app starts from the same state: the word is forgotten again.
-            d.stop_app()
+            if not route.restore():
+                raise d.Aborted("audio restoration did not complete before the next app restart")
+            route = None
+            proof = d.stop_app()
             d.file_restore(d.WORDS, d.empty_words_like(snaps["words"]))
-            d.start_app()
+            d.start_app(proof)
+            route = d.audio_route()
+            route.apply()
     except d.Aborted as error:
         rows.append({"outcome": f"INSTRUMENT: {error}"})
         exit_code = 2
     finally:
         try:
             if route is not None:
-                route.restore()
+                audio_restored = bool(route.restore())
         except Exception as error:
             audio_restored = False
             print(f"    (audio restore failed: {error})")
         try:
+            if not audio_restored:
+                raise d.Aborted("audio recovery remains pending; stopping its app is refused")
             d.stop_app()
             app_stopped = True
         except d.Aborted as error:

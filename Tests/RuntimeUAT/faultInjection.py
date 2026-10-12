@@ -659,16 +659,19 @@ def _assert_dictation_recovers(
 
 
 def _wait_for_app_exit(timeout_s: float = 10.0) -> bool:
-    """Poll until no `EnviousWispr Local.app` main process remains."""
+    """Observe positive native exit of the retained target; probe errors are unknown."""
+    from instance_guard import prove_target_exited, InstanceGuardError
+    old = _import_wispr_eyes()._target
+    if old is None:
+        raise RuntimeError("app-exit verification requires the retained lifecycle")
     deadline = time.monotonic() + timeout_s
     while time.monotonic() < deadline:
-        result = subprocess.run(
-            ["pgrep", "-f", "EnviousWispr Local.app/Contents/MacOS/EnviousWispr"],
-            capture_output=True, text=True,
-        )
-        if result.returncode != 0:
+        try:
+            prove_target_exited(old)
             return True
-        time.sleep(0.2)
+        except InstanceGuardError:
+            pass
+        time.sleep(0.2)  # deadline-fallback: observe the retained native exit.
     return False
 
 
@@ -692,21 +695,59 @@ def _wait_for_endpoint(timeout_s: float = 10.0) -> bool:
     return False
 
 
+def _launch_replacement(proof, environment):
+    """Preserve a fault scenario's launch environment and explicitly transfer its lifecycle."""
+    from instance_guard import verify_exit_proof, running_enviouswispr_instances, pin_target, InstanceGuardError
+    eyes = _import_wispr_eyes()
+    old = eyes._target
+    verify_exit_proof(old, proof)
+    if running_enviouswispr_instances():
+        raise RuntimeError("another app prevents fault-scenario replacement")
+    route = getattr(eyes, "_active_audio_route", None)
+    if route is not None:
+        route.finish_playback()
+    process = subprocess.Popen([old.executable], env=environment,
+                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    candidate = None
+    deadline = time.monotonic() + 30.0  # Existing authenticated endpoint startup allowance.
+    while time.monotonic() < deadline:
+        found = running_enviouswispr_instances()
+        if found:
+            if found != {str(process.pid): old.executable}:
+                raise RuntimeError("fault replacement is ambiguous or not the owned process")
+            current = pin_target(process.pid, old.executable)
+            if candidate is not None and candidate != current:
+                raise RuntimeError("fault replacement changed during startup")
+            candidate = current
+            try:
+                ready = eyes._recording_state(candidate) == "idle"
+            except InstanceGuardError:
+                raise
+            except (RuntimeError, OSError):
+                ready = False
+            if ready:
+                if route is None:
+                    eyes.bind_after_verified_exit(old, candidate, proof)
+                else:
+                    route.transfer_after_verified_exit(candidate, proof)
+                return process
+        if process.poll() is not None:
+            raise RuntimeError("fault replacement exited before readiness")
+        time.sleep(0.05)  # deadline-fallback: observe native replacement and authenticated readiness.
+    raise RuntimeError("fault replacement did not reach authenticated readiness")
+
+
 def _relaunch_app() -> dict:
     """Re-open the dev bundle with EW_FAULT_INJECTION=1 set so the
     DebugFaultEndpoint comes back up. Used by scenarios that terminate
     the app (A7) and still need a recovery cycle.
     """
-    bundle_path = (
-        "/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr/build/"
-        "EnviousWispr Local.app"
-    )
-    subprocess.run(
-        ["open", "--env", "EW_FAULT_INJECTION=1", bundle_path],
-        check=False,
-    )
-    endpoint_up = _wait_for_endpoint(timeout_s=12.0)
-    return {"relaunched": endpoint_up}
+    from instance_guard import prove_target_exited
+    import last_dictation_uat as lifecycle
+    eyes = _import_wispr_eyes()
+    proof = prove_target_exited(eyes._target)
+    route = getattr(eyes, "_active_audio_route", None)
+    return {"relaunched": lifecycle.launch_dev_app_with_endpoint(proof, route=route)}
 
 
 class _TTSAudio:
@@ -731,20 +772,19 @@ class _TTSAudio:
         # Reuse the existing TTS helper (OpenAI echo by default, with
         # macOS `say` fallback) — see Tests/RuntimeUAT/wispr_eyes.py.
         self._wav = eyes.tts(self.sentence)
-        self._proc = subprocess.Popen(
-            ["afplay", self._wav],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-        )
+        self._proc = eyes._spawn_owned_playback(self._wav)
         return self
 
     def __exit__(self, *_exc):
         if self._proc is not None:
+            eyes = _import_wispr_eyes()
             try:
-                self._proc.terminate()
-                self._proc.wait(timeout=1.0)
-            except Exception:
-                self._proc.kill()
+                eyes._reap_playback(self._proc, 30.0)
+            except BaseException as error:
+                if _exc and _exc[1] is not None:
+                    _exc[1].add_note(f"fault playback cleanup: {error!r}")
+                else:
+                    raise
         return False
 
 
@@ -941,11 +981,13 @@ def R1_readiness_lost_after_load(**_) -> dict:
     sentence = ("The readiness retry audit take, one two three four five, "
                 "this recording must survive the crash and be recovered.")
 
+    from instance_guard import running_enviouswispr_instances, verify_target, prove_target_exited
+    eyes = _import_wispr_eyes()
+    eyes.connect()
+    original_target = eyes._target
+
     def dev_pids() -> list[str]:
-        out = subprocess.run(
-            ["pgrep", "-f", "EnviousWispr Local.app/Contents/MacOS/EnviousWispr"],
-            capture_output=True, text=True).stdout.split()
-        return [p for p in out if p.strip()]
+        return list(running_enviouswispr_instances())
 
     def ewrec_ids() -> set:
         if not os.path.isdir(spool_dir):
@@ -996,7 +1038,10 @@ def R1_readiness_lost_after_load(**_) -> dict:
     # FileNotFoundError AFTER the original app is already dead, leaving the run
     # with no verdict and no cleanup. `scripts/lib/launch-check.sh:16-20` records
     # that `ps -o command=` returns argv.
-    app_path = _running_app_executable_path(int(target_pid))
+    verify_target(original_target)
+    if int(target_pid) != original_target.pid:
+        return invalid("fault target differs from the retained native lifecycle")
+    app_path = original_target.executable
     if not app_path.endswith("Local.app/Contents/MacOS/EnviousWispr"):
         return invalid(f"pid {target_pid} is not a dev bundle: {app_path!r}")
     if not os.path.exists(app_path):
@@ -1138,7 +1183,8 @@ def R1_readiness_lost_after_load(**_) -> dict:
 
         # Real speech must REACH the spool before the crash.
         time.sleep(_R1_SPEECH_SECONDS)
-        subprocess.run(["kill", "-9", target_pid])  # ONLY the verified target
+        verify_target(original_target)
+        os.kill(original_target.pid, __import__("signal").SIGKILL)
     time.sleep(2.0)
 
     def relaunch_clean() -> None:
@@ -1149,8 +1195,7 @@ def R1_readiness_lost_after_load(**_) -> dict:
         env_clean = dict(os.environ)
         env_clean.pop("EW_FORCE_READINESS_LOST", None)
         env_clean["EW_FAULT_INJECTION"] = "1"
-        subprocess.Popen([app_path], env=env_clean,
-                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        _launch_replacement(prove_target_exited(eyes._target), env_clean)
 
     def invalid_after_crash(reason: str) -> dict:
         relaunch_clean()
@@ -1170,8 +1215,7 @@ def R1_readiness_lost_after_load(**_) -> dict:
     env = dict(os.environ)
     env["EW_FORCE_READINESS_LOST"] = "1"
     env["EW_FAULT_INJECTION"] = "1"
-    faulted = subprocess.Popen([app_path], env=env,
-                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    faulted = _launch_replacement(prove_target_exited(eyes._target), env)
 
     fault_observed = False
     retry_marker = os.path.join(spool_dir, f"{spool_id}.readiness-retry")
@@ -1206,11 +1250,14 @@ def R1_readiness_lost_after_load(**_) -> dict:
             fault_observed = True
         if os.path.exists(attempt_marker):
             return False  # a replay is STILL running; refuse rather than destroy it
-        try:
-            subprocess.run(["kill", "-9", str(faulted.pid)])
-        except Exception:
-            pass
-        time.sleep(1.0)
+        old = eyes._target
+        if old.pid != faulted.pid:
+            raise RuntimeError("fault cleanup process differs from the retained lifecycle")
+        verify_target(old)
+        os.kill(old.pid, __import__("signal").SIGKILL)
+        if not _wait_for_app_exit(timeout_s=10.0):
+            return False
+        proof = prove_target_exited(old)
         restart = dict(os.environ)
         restart.pop("EW_FORCE_READINESS_LOST", None)
         # Must be re-set: the launcher supplies it to the app, never to this
@@ -1221,8 +1268,7 @@ def R1_readiness_lost_after_load(**_) -> dict:
         # pid and launches a SECOND instance, which makes the following scenario
         # refuse its now-ambiguous target and leaves two apps contending for the
         # global hotkey.
-        faulted = subprocess.Popen([app_path], env=restart,
-                                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        faulted = _launch_replacement(proof, restart)
         return True
 
     # ---- 3-5. OBSERVE the four artifacts; never INFER state from a subset ----
@@ -1661,11 +1707,15 @@ def A7_app_quit(**_) -> dict:
     scenario used to also assert no XPC service helper survived the quit;
     that check is gone with the last helper it was checking for.
     """
+    eyes = _import_wispr_eyes()
+    eyes.connect()
     if not _start_recording_locked():
         return {"terminal": False, "reason": "could not enter recording", "state": query_state()}
     with _TTSAudio():
         time.sleep(0.8)  # warm-up: audio flowing into pipeline
         # Cocoa quit — triggers applicationWillTerminate cleanup.
+        from instance_guard import verify_target
+        verify_target(eyes._target)
         subprocess.run(
             ["osascript", "-e",
              'tell application id "com.enviouswispr.app.dev" to quit'],
@@ -1673,6 +1723,9 @@ def A7_app_quit(**_) -> dict:
         )
         exited_cleanly = _wait_for_app_exit(timeout_s=10.0)
     # Relaunch + recovery cycle.
+    if not exited_cleanly:
+        return {"exited_cleanly": False, "relaunched": False, "recovered": False,
+                "reason": "old lifecycle exit remains unconfirmed; replacement refused"}
     relaunched = _relaunch_app()
     recovery = _assert_dictation_recovers() if relaunched["relaunched"] else {
         "recovered": False,

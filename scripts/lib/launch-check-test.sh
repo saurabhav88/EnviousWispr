@@ -319,6 +319,63 @@ else
   bad "stability cost" "took ${live_elapsed}s — the stability window should start only once the process exists"
 fi
 
+# Execute the launch command and capture handler themselves, with only native
+# launch/query boundaries stubbed. These controls never launch the real app.
+DEV_OPEN="$(sed -n '/# DEV-OPEN-BEGIN/,/# DEV-OPEN-END/p' "$CALLER")"
+CAPTURE_HANDLER="$(sed -n '/# CAPTURE-HANDLER-BEGIN/,/# CAPTURE-HANDLER-END/p' "$CALLER")"
+if [ -z "$DEV_OPEN" ] || [ -z "$CAPTURE_HANDLER" ]; then
+  echo "ERROR: dev launch/capture handler anchors are missing." >&2
+  exit 1
+fi
+{
+  printf 'set -euo pipefail\nAPP_PATH="/nowhere.app"\n'
+  # shellcheck disable=SC2016 # These expressions belong to the generated probe.
+  printf 'open() { [ "$#" -eq 3 ] && [ "$1" = --env ] && [ "$2" = EW_FAULT_INJECTION=1 ] && [ "$3" = "$APP_PATH" ]; }\n'
+  printf '%s\n' "$DEV_OPEN"
+  printf 'echo dev-open-completed\n'
+} > "$TMP/dev-open-probe.sh"
+if bash "$TMP/dev-open-probe.sh" >"$TMP/dev-open.out" 2>"$TMP/dev-open.err" &&
+   grep -q '^dev-open-completed$' "$TMP/dev-open.out" && [ ! -s "$TMP/dev-open.err" ]; then
+  ok "actual dev launch enables the endpoint for the exact bundle"
+else
+  bad "dev launch environment" "the real launch command omitted or changed its endpoint environment"
+fi
+
+for capture_status in 0 1 2; do
+  {
+    printf 'set -euo pipefail\nAPP_PATH="/nowhere.app"\n'
+    # shellcheck disable=SC2016 # These expressions belong to the generated probe.
+    printf 'ew_wait_for_capture() { [ "$1" = "$APP_PATH" ] || return 71; echo capture-probe-called; return %s; }\n' "$capture_status"
+    printf '%s\n' "$CAPTURE_HANDLER"
+    printf 'echo capture-handler-completed\n'
+  } > "$TMP/capture-handler-probe.sh"
+  if bash "$TMP/capture-handler-probe.sh" >"$TMP/capture.out" 2>"$TMP/capture.err"; then capture_rc=0; else capture_rc=$?; fi
+  if [ "$capture_status" -eq 0 ]; then
+    if [ "$capture_rc" -eq 0 ] && grep -q '^capture-probe-called$' "$TMP/capture.out" &&
+       grep -q '^capture-handler-completed$' "$TMP/capture.out" && [ ! -s "$TMP/capture.err" ]; then
+      ok "authenticated capture readiness lets the actual handler continue"
+    else bad "capture handler success" "the query was not called or the successful handler did not finish"; fi
+  elif [ "$capture_rc" -ne 0 ] && grep -q '^capture-probe-called$' "$TMP/capture.out" &&
+       grep -q '^ERROR: this dev app did not answer' "$TMP/capture.out" &&
+       ! grep -q '^capture-handler-completed$' "$TMP/capture.out" && [ ! -s "$TMP/capture.err" ]; then
+    ok "capture readiness refusal $capture_status stops the actual launch handler"
+  else bad "capture handler refusal" "query status $capture_status was accepted or failed silently"; fi
+done
+
+QUERY_ENTRY="$(cd "$HERE/../.." && pwd -P)/Tests/RuntimeUAT/uat.py"
+for query_status in 0 2; do
+  python3() {
+    [ "$#" -eq 4 ] && [ "$1" = "$QUERY_ENTRY" ] &&
+      [ "$2" = capture-ready ] && [ "$3" = --app ] && [ "$4" = /nowhere.app ] || return 71
+    return "$query_status"
+  }
+  if ew_wait_for_capture /nowhere.app; then query_rc=0; else query_rc=$?; fi
+  unset -f python3
+  if [ "$query_rc" -eq "$query_status" ]; then
+    ok "capture library calls the canonical query and preserves status $query_status"
+  else bad "capture library wiring" "returned $query_rc instead of $query_status"; fi
+done
+
 printf '\n%s passed, %s failed\n' "$PASS" "$FAIL"
 if [ "$((PASS + FAIL))" -lt 18 ]; then
   printf 'ERROR: expected at least 18 assertions, ran %s\n' "$((PASS + FAIL))"

@@ -1451,7 +1451,7 @@ def coverage_cases():
     return [
         ("every PR1 inventory row is scanned or exempted with a reason", missing, []),
         ("every exemption is one an inventory row uses", sorted(set(sn.SCAN_EXEMPT) - used), []),
-        ("each microphone caller captures the app's choice before it switches any audio",
+        ("audio caller source retains snapshot and routing call sites (Drift Guard)",
          order, []),
         ("the Diagnostics inventory has its 12 controls", sum(
             1 for _, s, _ in INVENTORY if s == ("Diagnostics", None)), 12),
@@ -1466,10 +1466,11 @@ def coverage_cases():
 
 
 def _capture_before_routing():
-    """Problems with the callers' order, read from their source: `AudioRoute.__init__` must
-    capture the app's choice (`read_input_choice`, which refuses an unrestorable original) and
-    switch nothing; the switching happens in `apply`. The #1946 helper lives in the main
-    checkout and is checked when present."""
+    """Drift Guard for snapshot/routing call sites, not execution or ordering proof.
+
+    Lifecycle execution controls own the runtime snapshot-before-routing contract.
+    The historical #1946 helper is included only when present.
+    """
     import ast
     import os
     here = os.path.dirname(os.path.abspath(__file__))

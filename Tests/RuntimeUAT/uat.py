@@ -574,6 +574,35 @@ def cmd_verdict(args):
 
 # -------------------------------------------------------------------- main --
 
+def cmd_capture_ready(args):
+    """Read-only, authenticated readiness for this exact launched dev bundle."""
+    import time
+    from pathlib import Path
+    import wispr_eyes as w
+    from instance_guard import InstanceGuardError
+    executable = str(Path(args.app).resolve() / "Contents/MacOS/EnviousWispr")
+    try:
+        w.connect(expected_executable=executable)
+        target = w._target
+        deadline = time.monotonic() + 30.0  # existing endpoint startup allowance
+        while True:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                print("Capture query did not become ready before the startup deadline.", file=sys.stderr)
+                return 1
+            try:
+                w._capture_snapshot(target, min(5.0, remaining))
+                print(f"Authenticated capture query ready (PID {target.pid}).")
+                return 0
+            except InstanceGuardError:
+                raise
+            except (RuntimeError, OSError):
+                time.sleep(min(0.05, max(0, deadline - time.monotonic())))  # deadline-fallback: observe endpoint readiness
+    except InstanceGuardError:
+        print("Capture query target identity is missing, ambiguous or replaced.", file=sys.stderr)
+        return 2
+
+
 def main(argv=None):
     p = argparse.ArgumentParser(prog="uat.py", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = p.add_subparsers(dest="verb", required=True)
@@ -597,6 +626,9 @@ def main(argv=None):
     v.add_argument("--since")
     v.add_argument("--width", type=int, default=400)
     v.set_defaults(fn=cmd_verdict)
+    ready = sub.add_parser("capture-ready", help="verify the launched dev app's authenticated capture query")
+    ready.add_argument("--app", required=True)
+    ready.set_defaults(fn=cmd_capture_ready)
     args = p.parse_args(argv)
     return args.fn(args)
 
@@ -690,6 +722,46 @@ def _self_test():
         check("silent wav is ~6 s mono 16-bit", abs(wv.getnframes() / wv.getframerate() - 6.0) < 0.01
               and wv.getnchannels() == 1 and wv.getsampwidth() == 2)
 
+    # Startup command contracts only: the strict capture parser is separately
+    # exercised by lifecycle controls; these stubs never connect to a native app.
+    import contextlib
+    import io
+    import types
+    from unittest.mock import patch
+    from instance_guard import InstanceGuardError
+    from pathlib import Path
+    import time as clock_module
+    for name, responses, connect_error, expected in [
+        ("capture readiness uses the exact pinned target", [None], None, 0),
+        ("capture readiness waits for the endpoint signal", [RuntimeError("not ready"), None], None, 0),
+        ("capture readiness times out instead of reporting success", [RuntimeError("not ready")], None, 1),
+        ("capture readiness refuses a replaced target", [InstanceGuardError("replaced")], None, 2),
+        ("capture readiness refuses an ambiguous connection", [], InstanceGuardError("ambiguous"), 2),
+    ]:
+        clock_state, queries, connections = {"now": 0.0}, [], []
+        target = types.SimpleNamespace(pid=111)
+        def fake_connect(**kwargs):
+            connections.append(kwargs)
+            if connect_error is not None:
+                raise connect_error
+        def fake_query(actual, timeout):
+            queries.append((actual, timeout))
+            reply = responses[min(len(queries) - 1, len(responses) - 1)]
+            if isinstance(reply, Exception):
+                raise reply
+            return {"v": "1", "pid": "111"}
+        fake_owner = types.SimpleNamespace(connect=fake_connect, _target=target, _capture_snapshot=fake_query)
+        with patch.dict(sys.modules, {"wispr_eyes": fake_owner}), \
+             patch.object(clock_module, "monotonic", side_effect=lambda: clock_state["now"]), \
+             patch.object(clock_module, "sleep", side_effect=lambda seconds: clock_state.update(now=clock_state["now"] + seconds)), \
+             contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+            result = cmd_capture_ready(types.SimpleNamespace(app="/test/EnviousWispr Local.app"))
+        wanted = str(Path("/test/EnviousWispr Local.app").resolve() / "Contents/MacOS/EnviousWispr")
+        check(name, result == expected and connections == [{"expected_executable": wanted}]
+              and (not queries if connect_error else bool(queries))
+              and all(actual is target and 0 < timeout <= 5 for actual, timeout in queries)
+              and (len(queries) == 2 if len(responses) == 2 else True))
+
     # Counted from the rows that RAN, never a literal (a hardcoded total drifts
     # the first time a check is added and reports N/N+1 as a pass).
     total = len(ran)
@@ -716,13 +788,18 @@ def _lifecycle_self_test():
     import fcntl
     import concurrent.futures
     import threading
+    import copy
+    import hashlib
+    import select
+    import uuid
     from unittest.mock import patch
     import instance_guard as guard
+    native_process_start = guard.process_start
     import settings_nav as settings_owner
     import ptt_binding
     from settings_nav_fixtures import FakeSettings
     root = pathlib.Path(__file__).parent
-    ran, failures = [], []
+    ran, failures, skipped = [], [], []
     executable = "/test/EnviousWispr Local.app/Contents/MacOS/EnviousWispr"
     target = guard.TargetIdentity(111, executable, (123, 456))
 
@@ -804,6 +881,9 @@ def _lifecycle_self_test():
         def ax_read(el, attr, unused):
             if el is application:
                 if attr == "AXExtrasMenuBar":
+                    state["start_checks"] = state.get("start_checks", 0) + 1
+                    if state.get("competing_start") and state["start_checks"] == 2:
+                        state["mode"] = "recording"
                     return (5, None) if state.get("unreadable") else (0, "bar")
                 return 0, settings.root().get(attr)
             if isinstance(el, dict):
@@ -815,11 +895,11 @@ def _lifecycle_self_test():
             table = {("app", "AXExtrasMenuBar"): "bar", ("bar", "AXChildren"): ["status"],
                      ("status", "AXChildren"): ["menu"] if state["open"] else [],
                      ("menu", "AXRole"): "AXMenu", ("menu", "AXChildren"): [] if state.get("empty") else
-                         (["start", "stop"] if state.get("contradictory") else ["start" if state["mode"] == "idle" else "stop"]),
+                         (["start", "stop"] if state.get("contradictory") else ["stop" if state["mode"] == "recording" else "start"]),
                      ("start", "AXRole"): "AXMenuItem", ("stop", "AXRole"): "AXMenuItem",
                      ("start", "AXTitle"): "Aufnahme starten" if state.get("german") else "Start Recording",
                      ("stop", "AXTitle"): "Aufnahme stoppen" if state.get("german") else "Stop Recording",
-                     ("start", "AXEnabled"): not state.get("disabled", False), ("stop", "AXEnabled"): True}
+                     ("start", "AXEnabled"): not state.get("disabled", False) and state["mode"] != "arming", ("stop", "AXEnabled"): True}
             return (0, table[(el, attr)]) if (el, attr) in table else (5, None)
         def ax_action(el, action):
             if isinstance(el, dict):
@@ -857,15 +937,32 @@ def _lifecycle_self_test():
         player = []
         class Player:
             returncode = None
+            pid = 222222222
             def __init__(self, *args, **kwargs):
+                self.child_fds = []
                 events.append(("launch",))
                 if state.get("launch_fail"):
                     raise OSError("playback launch failed")
                 player.append(self)
+                command = args[0]
+                if len(command) > 2 and command[1] == "-c":
+                    expected_fds = tuple(int(command[index]) for index in (4, 5, 6))
+                    require(kwargs.get("pass_fds") == expected_fds)
+                    self.child_fds = [os.dup(expected_fds[0]), os.dup(expected_fds[1])]
+                    ready_fd = int(command[6])
+                    os.write(ready_fd, (json.dumps({"pid": self.pid, "start": [123, 456]}) + "\n").encode())
                 if state.get("signal_acquire"):
                     Signals.fire(Signals.SIGTERM)
             def poll(self):
                 return self.returncode
+            def wait(self, timeout):
+                if self.returncode is None:
+                    self.communicate(timeout)
+                return self.returncode
+            def close_child_fds(self):
+                for fd in self.child_fds:
+                    os.close(fd)
+                self.child_fds = []
             def communicate(self, timeout):
                 events.append(("communicate",))
                 if self.returncode is not None:
@@ -873,7 +970,10 @@ def _lifecycle_self_test():
                 if state.get("hung") or state.get("unreapable"):
                     sleep(timeout)
                     raise subprocess.TimeoutExpired("afplay", timeout)
+                if self.child_fds:
+                    require(os.read(self.child_fds[1], 3) == b"GO\n")
                 self.returncode = 1 if state.get("playback_fail") else 0
+                self.close_child_fds()
                 if state.get("premature"):
                     state["mode"] = "idle"
                 return None, b"playback error" if self.returncode else b""
@@ -884,15 +984,19 @@ def _lifecycle_self_test():
                     Signals.fire(Signals.SIGTERM)
                 if not state.get("unreapable"):
                     self.returncode = -15
+                    self.close_child_fds()
             def kill(self):
                 events.append(("kill",))
                 if not state.get("unreapable"):
                     self.returncode = -9
+                    self.close_child_fds()
         devices = {"input": {"name": "Physical input", "uid": "physical-i", "id": "101", "type": "input"},
                    "output": {"name": "Physical output", "uid": "physical-o", "id": "102", "type": "output"}}
         devices["system"] = dict(devices["output"])
         originals = {k: dict(v) for k, v in devices.items()}
         def run(args, **kwargs):
+            if args[0] == "ps":
+                return types.SimpleNamespace(returncode=0, stdout=sys.executable + "\n", stderr="")
             if args[0] == "afinfo":
                 return types.SimpleNamespace(returncode=1, stdout="duration 1.0 sec", stderr="failed")
             kind = args[args.index("-t") + 1]
@@ -937,6 +1041,7 @@ def _lifecycle_self_test():
                 sequence = state.get("query_sequence")
                 if sequence:
                     phase, released = sequence.pop(0)
+                    state["mode"] = "recording" if phase == "live" else "arming" if phase == "arming" else "idle"
                 else:
                     phase = state.get("raw_phase", "live" if state["mode"] == "recording" else "idle")
                     released = state.get("released", state["mode"] != "recording")
@@ -967,6 +1072,7 @@ def _lifecycle_self_test():
         compile_functions(root / "ui_helpers.py", {"get_attr_checked", "element_pid"}, native)
         w = types.ModuleType("private_lifecycle_subject")
         w.__dict__.update({"__file__": str(root / "wispr_eyes.py"), "_target": target, "_pid": 111, "_app": "app",
+            "_active_audio_route": None, "_standalone_player": None, "_PLAYBACK_OWNER_UNSET": object(),
             "_TABLES": (111, [{"Start Recording": "Aufnahme starten", "Stop Recording": "Aufnahme stoppen"}]),
             "_recording_cleanup_safe": True, "contextlib": contextlib, "math": math, "signal": Signals,
             "time": clock, "subprocess": boundary, "os": os, "pathlib": pathlib, "json": json, "sys": sys,
@@ -986,19 +1092,28 @@ def _lifecycle_self_test():
             "_wait_for_pipeline_completion": lambda *a: (True, "log", "completed", ["completed"], None, []),
             "_extract_transcript_text": lambda *a: "known words", "tts": lambda *a: (_ for _ in ()).throw(AssertionError("unexpected TTS"))})
         names = {"connect", "_ensure_connected", "_verify_element", "perform_action", "set_attr", "_ui_tables", "_ui_terms",
+                 "bind_after_verified_exit",
                  "_audio_duration", "_defer_recording_signals", "_recording_interruptions", "_recording_control",
                  "_read_capture_token", "_capture_snapshot", "_recording_state", "_require_idle_without_ui",
-                 "_stop_recording", "_reap_playback", "test_recording", "_report_result", "_ax", "nav",
+                 "_stop_recording", "_spawn_owned_playback", "_reap_playback", "_legacy_capture", "_finish_playback_on_exit", "test_recording", "_report_result", "_ax", "nav",
                  "_open_settings", "_cancel_menu", "_stored", "_input_read_uid",
                  "read_input_choice", "select_input_choice", "restore_input_choice"}
         compile_functions(root / "wispr_eyes.py", names, w.__dict__)
         audio = {"w": w, "os": os, "json": json, "signal": Signals, "sys": sys, "time": clock,
                  "subprocess": boundary, "fcntl": fcntl, "tempfile": tempfile, "stat": stat, "contextlib": contextlib,
+                 "copy": copy, "hashlib": hashlib, "select": select, "threading": threading, "uuid": uuid,
+                 "HERE": str(root),
                  "SWITCH": sys.executable, "SILENT_DEVICE": "BlackHole 2ch", "RESTORE_FILE": str(directory / "restore.json")}
         tree = ast.parse((root / "silent_audio.py").read_text())
+        for node in tree.body:
+            if isinstance(node, ast.Assign) and len(node.targets) == 1 and isinstance(node.targets[0], ast.Name):
+                if node.targets[0].id in {"_PLAYER", "_CHILD"}:
+                    audio[node.targets[0].id] = ast.literal_eval(node.value)
         names = {n.name for n in tree.body if isinstance(n, (ast.FunctionDef, ast.ClassDef))}
         compile_functions(root / "silent_audio.py", names, audio)
         audio["AlertSink"].FILE = str(directory / "alert.json")
+        audio_module = types.ModuleType("private_lifecycle_audio")
+        audio_module.__dict__.update(audio)
         clip = directory / "sample.wav"
         with wave.open(str(clip), "wb") as fh:
             fh.setnchannels(1); fh.setsampwidth(2); fh.setframerate(8000); fh.writeframes(b"\0\0" * 8000)
@@ -1008,14 +1123,22 @@ def _lifecycle_self_test():
                           a is b or (isinstance(a, dict) and isinstance(b, dict)
                                      and a.get("_native_id") == b.get("_native_id")))
             return real_ax(**kwargs)
-        with patch.object(settings_owner, "AX", side_effect=adapter), \
+        with patch.dict(sys.modules, {"silent_audio": audio_module}), \
+             patch.object(settings_owner, "AX", side_effect=adapter), \
              patch.object(ptt_binding, "read_domain", side_effect=lambda: {"preferredInputDeviceIDOverride": settings.input_uid}), \
              patch.object(guard, "process_start", return_value=target.start), \
              patch.object(guard, "running_enviouswispr_instances", side_effect=lambda: {"111": executable} if state["alive"] else {}):
-            yield types.SimpleNamespace(w=w, audio=audio, events=events, state=state, player=player,
-                                        devices=devices, originals=originals, clip=str(clip), signals=Signals, settings=settings)
+            try:
+                yield types.SimpleNamespace(w=w, audio=audio, events=events, state=state, player=player,
+                                            devices=devices, originals=originals, clip=str(clip), signals=Signals, settings=settings)
+            finally:
+                for process in player:
+                    process.close_child_fds()
 
-    def case(family, name, action, **options):
+    def case(family, name, action, *, native_macos=False, **options):
+        if native_macos and sys.platform != "darwin":
+            skipped.append((family, name, "requires the real macOS native process identity reader"))
+            return
         ran.append((family, name))
         try:
             with tempfile.TemporaryDirectory(prefix="ew-lifecycle-") as directory, \
@@ -1044,6 +1167,17 @@ def _lifecycle_self_test():
             require(f.w._recording_cleanup_safe and not f.signals.mask and not f.signals.pending)
             return
         raise AssertionError("failed take was accepted")
+    def refused_start(f):
+        try:
+            recording(f)
+        except RuntimeError as error:
+            require("recording action is not currently available" in str(error))
+        else:
+            raise AssertionError("competing take did not refuse Start")
+        require(f.state["mode"] == "recording")
+        require(not any(event[0] == "launch" or event[:2] in {("AX", "start"), ("AX", "stop")}
+                        for event in f.events))
+    case("recording", "Start refusal leaves existing take untouched", refused_start, competing_start=True)
     case("recording", "normal natural playback", lambda f: require(recording(f) is True))
     case("recording", "false Start that acted", lambda f: require(recording(f) is True), start_false=True)
     case("recording", "raising Start that acted", failed_recording, start_raise=True)
@@ -1053,6 +1187,182 @@ def _lifecycle_self_test():
     case("recording", "premature capture", failed_recording, premature=True)
     case("recording", "false Stop that acted", lambda f: require(recording(f) is True), stop_false=True)
     case("recording", "raising Stop that acted", failed_recording, stop_raise=True)
+    def legacy_ingress(f, kind="ptt", key="ropt", failure=None, missing_marker=None,
+                       second_failure=None, late_refusal=False, interrupt_thread=False):
+        """Actual callers and input primitives; fake only native events, log and scheduling."""
+        inputs = types.ModuleType("simulate_input")
+        events = f.events
+        counts = {"down": 0, "up": 0}
+        native_errors = {direction: RuntimeError("native " + direction + " failed after acting")
+                         for direction in ("down", "up")}
+        hold_failure = RuntimeError("native hold interrupted")
+        callback_failure = RuntimeError("before release failed")
+        join_failure = RuntimeError("native join failed")
+        def event(_, code, down):
+            if late_refusal:
+                # Native event construction occurs inside hold_key, after envelope preflight.
+                f.state["mode"] = "recording"
+            return {"code": code, "down": down}
+        def post(_, value):
+            direction = "down" if value["down"] else "up"
+            counts[direction] += 1
+            events.append(("key", direction, value["code"]))
+            if kind == "hands-free":
+                if value["down"] and not f.state.get("idle_gesture"):
+                    f.state["mode"] = "idle" if counts["down"] >= 3 else "recording"
+            else:
+                if not (direction == "up" and f.state.get("cleanup_stop_noop")):
+                    f.state["mode"] = "recording" if value["down"] else "idle"
+            if kind == "tts" and not value["down"]:
+                with log.open("a") as output:
+                    output.write("CORRECTION_DEBUG [RAW ASR] known words\n")
+            if failure == direction or second_failure == direction or (failure == "second-down" and direction == "down" and counts[direction] == 2):
+                raise native_errors[direction]
+        actual_sleep = f.w.time.sleep
+        interrupted = False
+        def sleep(seconds):
+            nonlocal interrupted
+            if not interrupted and ((failure == "engagement" and seconds == 0.8) or
+                                    (failure == "hold" and seconds > 1) or
+                                    (failure == "pulse" and seconds == 0.04)):
+                interrupted = True
+                raise hold_failure
+            actual_sleep(seconds)
+        inputs.__dict__.update(MODIFIER_KEYS={"ropt": 61}, KEY_CODES={"space": 49}, _MODIFIER_FLAGS={61: 8},
+            CGEventCreateKeyboardEvent=event, CGEventPost=post,
+            CGEventSetType=lambda *unused: None, CGEventSetFlags=lambda *unused: None,
+            CGEventSetIntegerValueField=lambda *unused: None,
+            kCGHIDEventTap=0, kCGEventFlagsChanged=1, kCGKeyboardEventKeycode=2,
+            kCGEventFlagMaskCommand=4, kCGEventFlagMaskShift=2,
+            kCGEventFlagMaskAlternate=8, kCGEventFlagMaskControl=16,
+            DEFAULT_DELAY=0.1, time=types.SimpleNamespace(sleep=sleep), sys=sys)
+        compile_functions(root / "simulate_input.py", {"_flags_changed_event", "hold_modifier", "hold_key"}, inputs.__dict__)
+        class Thread:
+            def __init__(self, target): self.target, self.started = target, False
+            def start(self):
+                self.started = True
+                events.append(("thread", "start"))
+                self.target()
+                if interrupt_thread:
+                    f.signals.fire(f.signals.SIGTERM)
+            def join(self):
+                require(self.started)
+                events.append(("thread", "join"))
+                if second_failure == "join":
+                    raise join_failure
+        scheduler = types.SimpleNamespace(Thread=Thread, current_thread=threading.current_thread,
+                                           main_thread=threading.main_thread)
+        binding = types.SimpleNamespace(key_name=key, keycode=61 if key == "ropt" else 49, is_modifier_only=True)
+        markers = ["Double press", "Hands-free mode activated", "Single press while locked"]
+        log = pathlib.Path(f.clip).with_suffix(".log")
+        log.write_text("CORRECTION_DEBUG [RAW ASR] known words\n")
+        f.w.__dict__.update(_dt=dt, _CHAIN_WINDOW_S=0.5, _APP_LOG_PATH=str(log),
+            _chime=lambda: None, tts=lambda *args, **kwargs: f.clip,
+            resolve=lambda: binding, require_push_to_talk=lambda: None,
+            _ptt_binding_diagnostic=lambda *unused: None,
+            _require_single_instance=lambda *unused: {"111": executable},
+            instances_stayed_single=lambda *unused: (True, "private fixture"),
+            log_lines_since=lambda *unused: [m for m in markers if m != missing_marker],
+            _find_match=lambda *unused: None if f.state.get("missing_observation") else
+                ("stop" if f.state["mode"] == "recording" else None))
+        f.w.time = types.SimpleNamespace(monotonic=f.w.time.monotonic, time=f.w.time.time, sleep=sleep)
+        compile_functions(root / "wispr_eyes.py", {"test_ptt", "test_hands_free", "record_tts",
+            "press_record_key", "double_press_record_key", "single_press_record_key", "stop_after_short_hold"}, f.w.__dict__)
+        def before_release():
+            if failure == "before-release": raise callback_failure
+        error = None
+        with patch.dict(sys.modules, {"simulate_input": inputs, "threading": scheduler}), \
+             patch.object(ptt_binding, "resolve", return_value=binding):
+            try:
+                if kind == "input":
+                    inputs.hold_key(key, duration=2.0, before_release=before_release)
+                    result = True
+                elif kind == "ptt":
+                    result = f.w.test_ptt(key=key, audio=f.clip, expect="known", timeout=0.2)
+                elif kind == "hands-free":
+                    result = f.w.test_hands_free(audio="" if failure == "short" else f.clip,
+                        hold=0.2 if failure == "short" else 4.0, expect="known", timeout=0.2)
+                else:
+                    result = f.w.record_tts("known words", key=key, wait=0.1, before_release=before_release)
+            except BaseException as caught:
+                error = caught
+        if f.state.get("preflight_busy") or late_refusal:
+            require(error is not None and counts == {"down": 0, "up": 0} and not f.player)
+            return
+        should_error = bool(failure not in (None, "short") or second_failure or interrupt_thread or
+                            f.state.get("launch_fail") or f.state.get("playback_fail"))
+        if (error is not None) != should_error:
+            raise AssertionError(f"legacy {kind}/{failure}: unexpected error outcome {error!r}")
+        if should_error:
+            expected_error = ("playback launch failed" if f.state.get("launch_fail") else
+                "PTT playback failed" if f.state.get("playback_fail") else
+                "before release failed" if failure == "before-release" else
+                "native hold interrupted" if failure in ("engagement", "hold", "pulse") else
+                "native " + ("down" if failure == "second-down" else failure or second_failure or "interruption") + " failed after acting")
+            if interrupt_thread:
+                require(isinstance(error, SystemExit) and error.code == 128 + f.signals.SIGTERM)
+            else:
+                require(expected_error in str(error))
+            if second_failure:
+                primary = callback_failure if failure == "before-release" else hold_failure if failure == "hold" else native_errors[failure or second_failure]
+                require(error is primary)
+                require(any(("join failed" if second_failure == "join" else "release failed" if kind == "input" else "recording did not stop" if f.state.get("cleanup_stop_noop") else "native up failed") in note
+                            for note in getattr(error, "__notes__", [])))
+        if interrupt_thread:
+            require(counts == {"down": 0, "up": 0} and f.state["mode"] == "idle")
+            require(any(e == ("thread", "join") for e in events) and
+                    all(p.poll() is not None for p in f.player))
+            return
+        require(counts["down"] > 0 and counts["up"] >= counts["down"])
+        require((f.state["mode"] == "recording" if f.state.get("cleanup_stop_noop") else f.state["mode"] == "idle")
+                and all(p.poll() is not None for p in f.player))
+        if f.state.get("cleanup_stop_noop"):
+            require(not f.w._recording_cleanup_safe and any("Stop" in note or "recording" in note
+                    for note in getattr(error, "__notes__", [])))
+        if f.state.get("idle_gesture"):
+            require(counts["down"] == 2 and not any(e[:2] == ("AX", "start") for e in events))
+        if kind == "tts" and any(e == ("thread", "start") for e in events):
+            require(any(e == ("thread", "join") for e in events))
+        if failure == "short" or missing_marker is not None or f.state.get("missing_observation"):
+            require(result is False)
+        elif not should_error:
+            require(result is True if kind != "tts" else result["success"] is True)
+    for key in ("ropt", "space"):
+        for failure in (None, "down", "engagement", "hold", "up"):
+            case("legacy-ingress", f"PTT {key} cleans {failure or 'success'}", lambda f, key=key, failure=failure:
+                 legacy_ingress(f, key=key, failure=failure))
+        case("legacy-ingress", f"PTT {key} cleans playback spawn failure", lambda f, key=key:
+             legacy_ingress(f, key=key), launch_fail=True)
+    for failure in (None, "down", "second-down", "pulse", "short"):
+        case("legacy-ingress", f"hands-free cleans {failure or 'success'}", lambda f, failure=failure:
+             legacy_ingress(f, kind="hands-free", failure=failure))
+    case("legacy-ingress", "missing hands-free observation never toggles idle", lambda f:
+         legacy_ingress(f, kind="hands-free"), idle_gesture=True, missing_observation=True)
+    for marker in ("Double press", "Hands-free mode activated", "Single press while locked"):
+        case("legacy-ingress", "hands-free still requires " + marker, lambda f, marker=marker:
+             legacy_ingress(f, kind="hands-free", missing_marker=marker))
+    for failure in (None, "down", "before-release"):
+        case("legacy-ingress", f"record_tts cleans {failure or 'success'}", lambda f, failure=failure:
+             legacy_ingress(f, kind="tts", failure=failure))
+    case("legacy-ingress", "record_tts propagates worker failure after join", lambda f:
+         legacy_ingress(f, kind="tts"), playback_fail=True)
+    def busy_legacy(f, kind):
+        f.state.update(mode="recording", preflight_busy=True)
+        legacy_ingress(f, kind=kind)
+    for kind in ("ptt", "hands-free", "tts"):
+        case("legacy-ingress", kind + " busy preflight dispatches no keys", lambda f, kind=kind: busy_legacy(f, kind))
+    for key in ("ropt", "space"):
+        for failure in ("down", "hold", "before-release"):
+            case("legacy-ingress", f"input {key} preserves {failure} plus release error", lambda f, key=key, failure=failure:
+                 legacy_ingress(f, kind="input", key=key, failure=failure, second_failure="up"))
+    case("legacy-ingress", "record_tts preserves hold callback error plus join error", lambda f:
+         legacy_ingress(f, kind="tts", failure="before-release", second_failure="join"))
+    case("legacy-ingress", "cleanup-only release and Stop errors both survive", lambda f:
+         legacy_ingress(f, second_failure="up"), cleanup_stop_noop=True, stop_noop=True)
+    case("legacy-ingress", "late record_tts refusal sends no keys or worker", lambda f:
+         legacy_ingress(f, kind="tts", late_refusal=True))
+    case("legacy-ingress", "thread-start interruption still registers join and reaps", lambda f:
+         legacy_ingress(f, kind="tts", interrupt_thread=True))
     case("signals", "interruption during acquisition", failed_recording, signal_acquire=True)
     case("signals", "repeated interruption during cleanup", failed_recording, hung=True, signal_cleanup=True)
     for name, options in [("unreadable", {"unreadable": True}), ("empty", {"empty": True}),
@@ -1070,6 +1380,106 @@ def _lifecycle_self_test():
         require(route.restore() is True and not route.applied)
         require(f.devices == f.originals and not os.path.exists(route.FILE))
     case("routes", "three choices round trip", round_trip)
+    def combined_round_trip(f):
+        route = f.audio["AudioRoute"](include_alerts=True)
+        require(f.devices == f.originals)
+        require(not any(event[0] == "switch" for event in f.events))
+        require(route.original_app_device.uid == "")
+        require(route.devices == f.originals)
+        require(route.apply() is True)
+        payload = json.loads(pathlib.Path(route.FILE).read_text())
+        require(payload["kind"] == "audio-alert" and payload["devices"] == f.originals)
+        require(all(device["uid"] == "BlackHole2ch_UID" for device in f.devices.values()))
+        require(f.settings.input_uid == "BlackHole2ch_UID")
+        index = len(f.events)
+        require(route.restore() is True and not route.applied)
+        require(f.devices == f.originals and f.settings.input_uid == "")
+        require([event[:2] for event in f.events[index:] if event[0] == "switch"] ==
+                [("switch", "output"), ("switch", "input"), ("switch", "system")])
+        require(not os.path.exists(route.FILE))
+    case("routes", "combined owner snapshots then restores all four choices once", combined_round_trip)
+    def leased_recording(f):
+        route = f.audio["AudioRoute"](include_alerts=True)
+        route.apply()
+        originals = json.loads(pathlib.Path(route.FILE).read_text())["devices"]
+        require(recording(f) is True)
+        after = json.loads(pathlib.Path(route.FILE).read_text())
+        require(after["playback"] is None and after["devices"] == originals)
+        require(route._player is None and all(process.poll() is not None for process in f.player))
+        require(route.restore() is True and f.devices == f.originals)
+    case("recording", "leased take reaps and clears its journal before restoration", leased_recording)
+    def standalone_blocks_route(f):
+        process = f.w._spawn_owned_playback(f.clip)
+        index = len(f.events)
+        try:
+            f.audio["AudioRoute"]()
+        except RuntimeError as error:
+            require("cleanup remains unresolved" in str(error))
+        else:
+            raise AssertionError("an untracked live player admitted a new audio owner")
+        require(not any(event[0] == "switch" for event in f.events[index:]))
+        f.w._reap_playback(process, 0.2)
+        route = f.audio["AudioRoute"]()
+        require(route.apply() is True and route.restore() is True)
+    case("recording", "standalone playback blocks routing until reaped", standalone_blocks_route)
+    def actual_handoff(f, refused=False):
+        route = f.audio["AudioRoute"](include_alerts=True); route.apply()
+        before = pathlib.Path(route.FILE).read_bytes()
+        new = guard.TargetIdentity(222, executable, (124, 456))
+        token = pathlib.Path(f.clip).parent / "fault-token-222"
+        token.write_bytes(b"a" * 64); token.chmod(0o600)
+        phase, released = ("live", "false") if refused else ("idle", "true")
+        f.state["query_reply"] = ("OK v=1 pid=222 parakeet_phase=" + phase + " parakeet_released=" + released +
+            " whisperkit_phase=idle whisperkit_released=true backend=parakeet\n")
+        index = len(f.events)
+        with patch.object(guard, "running_enviouswispr_instances", return_value={"222": executable}), \
+             patch.object(guard, "process_start", side_effect=lambda pid: new.start if pid == 222 else target.start), \
+             patch.object(os, "kill", side_effect=ProcessLookupError()):
+            try:
+                route.transfer_after_verified_exit(new, guard.ExitProof(target, None))
+            except RuntimeError:
+                require(refused and pathlib.Path(route.FILE).read_bytes() == before and route.target == target and f.w._target == target)
+            else:
+                require(not refused and route.target == new and f.w._target == new)
+                payload = json.loads(pathlib.Path(route.FILE).read_text())
+                require(payload["devices"] == f.originals and payload["target"] == f.audio["_target_json"](new))
+                require(payload["lineage"] == [{"old": f.audio["_target_json"](target),
+                    "new": f.audio["_target_json"](new), "replacement_start": None}])
+        require(not any(event[0] == "switch" for event in f.events[index:]))
+        f.audio["_release_record_lock"](route._lock); route._lock = None
+    case("handoff", "actual owner journals verified replacement without changing originals", actual_handoff)
+    case("handoff", "actual owner refuses unreleased replacement without journal changes", lambda f: actual_handoff(f, refused=True))
+    def overlapping_owner(f, first_kind):
+        first = f.audio[first_kind](); first.apply()
+        second_kind = "AlertSink" if first_kind == "AudioRoute" else "AudioRoute"
+        second = f.audio[second_kind]()
+        index = len(f.events)
+        try:
+            second.apply()
+        except BlockingIOError:
+            pass
+        else:
+            raise AssertionError("overlapping output owner was admitted")
+        require(not any(event[0] == "switch" for event in f.events[index:]))
+        require(first.restore() is True and f.devices == f.originals)
+    case("publication", "audio owner excludes independent alert owner", lambda f: overlapping_owner(f, "AudioRoute"))
+    case("publication", "alert owner excludes independent audio owner", lambda f: overlapping_owner(f, "AlertSink"))
+    def conflicting_records(f):
+        route = f.audio["AudioRoute"]()
+        paths = (pathlib.Path(route.FILE), pathlib.Path(f.audio["AlertSink"].FILE))
+        for path in paths:
+            path.write_bytes(b"legacy conflicting recovery")
+        before = [path.read_bytes() for path in paths]
+        index = len(f.events)
+        try:
+            f.audio["_replay_recovery"](route.FILE)
+        except RuntimeError as error:
+            require("conflicting audio recovery records" in str(error))
+        else:
+            raise AssertionError("conflicting originals were guessed")
+        require([path.read_bytes() for path in paths] == before)
+        require(not any(event[0] == "switch" for event in f.events[index:]))
+    case("recovery", "conflicting original snapshots retain both records", conflicting_records)
     def retry(f):
         route = f.audio["AudioRoute"](); route.apply()
         before = pathlib.Path(route.FILE).read_bytes(); f.state["restore_fail"] = True
@@ -1191,7 +1601,7 @@ def _lifecycle_self_test():
         f.state["mode"] = "recording"
         cli(f, 0)
         require(f.state["mode"] == "idle" and f.devices == f.originals and not os.path.exists(route.FILE))
-    case("recovery", "actual CLI stops capture and restores", cli_recording)
+    case("recovery", "CLI entry-block fixture stops capture and restores", cli_recording)
     def cli_unknown(f):
         route = f.audio["AudioRoute"](); route.apply()
         before = pathlib.Path(route.FILE).read_bytes()
@@ -1199,7 +1609,7 @@ def _lifecycle_self_test():
         f.state["query_timeout"] = True; index = len(f.events)
         cli(f, 1)
         require(pathlib.Path(route.FILE).read_bytes() == before and not any(e[0] == "switch" for e in f.events[index:]))
-    case("recovery", "actual CLI refuses unknown state", cli_unknown)
+    case("recovery", "CLI entry-block fixture refuses unknown state", cli_unknown)
     def publication(f):
         path = str(pathlib.Path(f.clip).with_name("publication.json"))
         barrier = threading.Barrier(8)
@@ -1335,8 +1745,336 @@ def _lifecycle_self_test():
         require(not any(e[0] == "switch" for e in f.events))
     case("routes", "unreadable route refuses", lambda f: failed_apply(f, "route_unreadable"))
     case("routes", "ambiguous silent device refuses", lambda f: failed_apply(f, "duplicate"))
+    def native_playback_lock(f, no_go=False, parent_death=False, death_stage="after-go", fail_at=None):
+        import time as native_time
+        directory = pathlib.Path(f.clip).parent
+        player_path = directory / "fixture-player"
+        ack_path, release_path = directory / "exec-ack", directory / "player-release"
+        os.mkfifo(ack_path); os.mkfifo(release_path)
+        ack_fd = os.open(ack_path, os.O_RDWR | os.O_NONBLOCK)
+        release_fd = os.open(release_path, os.O_RDWR | os.O_NONBLOCK)
+        player_path.write_text("#!" + sys.executable + "\n" +
+            "import json,os,sys\n" +
+            "with open(sys.argv[1]) as f: paths=json.load(f)\n" +
+            "with open(paths['ack'],'wb',buffering=0) as f: f.write(b'EXEC\\n')\n" +
+            "with open(paths['release'],'rb',buffering=0) as f: f.read(1)\n")
+        player_path.chmod(0o700)
+        clip = directory / "native-descriptor.json"
+        clip.write_text(json.dumps({"ack": str(ack_path), "release": str(release_path)}))
+        source = (root / "silent_audio.py").read_text()
+        require(source.count('"/usr/bin/afplay"') == 3)
+        copied = directory / "private-native-audio.py"
+        copied.write_text(source.replace('"/usr/bin/afplay"', json.dumps(str(player_path))))
+        subject = dict(f.audio)
+        subject.update(subprocess=subprocess, time=native_time,
+                       RESTORE_FILE=str(directory / "native-restore.json"))
+        tree = ast.parse(copied.read_text())
+        for node in tree.body:
+            if isinstance(node, ast.Assign) and len(node.targets) == 1 and isinstance(node.targets[0], ast.Name):
+                if node.targets[0].id in {"_PLAYER", "_CHILD"}:
+                    subject[node.targets[0].id] = ast.literal_eval(node.value)
+        names = {node.name for node in tree.body if isinstance(node, (ast.FunctionDef, ast.ClassDef))}
+        compile_functions(copied, names, subject)
+        owner = types.ModuleType("native_playback_subject")
+        owner.__dict__.update(contextlib=contextlib, signal=signal_api, subprocess=subprocess,
+                              sys=sys, _standalone_player=None, _recording_cleanup_safe=True)
+        compile_functions(root / "wispr_eyes.py", {"_defer_recording_signals", "_reap_playback"}, owner.__dict__)
+        subject["w"] = owner
+        alias = types.ModuleType("silent_audio")
+        alias.__dict__.update(subject)
+        route = types.SimpleNamespace(FILE=subject["RESTORE_FILE"], applied=False, _owned=None,
+            _payload={"version": 2, "kind": "audio-alert", "target": subject["_target_json"](target),
+                      "devices": copy.deepcopy(f.originals), "app_device": f.w.read_input_choice().to_json()})
+        process = None
+        harness = None
+        gate_r = gate_w = ready_r = ready_w = None
+        try:
+            if parent_death:
+                # Native identity is real; the app/OS-device boundaries below are private fixtures.
+                route._payload["target"] = {"pid": os.getpid(), "executable": executable,
+                                           "start": list(native_process_start(os.getpid()))}
+                config = directory / "process-config.json"
+                config.write_text(json.dumps({"copy": str(copied), "root": str(root),
+                    "record": subject["RESTORE_FILE"], "clip": str(clip), "payload": route._payload,
+                    "wispr": str(root / "wispr_eyes.py"), "death_stage": death_stage}))
+                program = directory / "journal-process.py"
+                program.write_text('''import ast,contextlib,copy,fcntl,hashlib,json,os,select,signal,stat,subprocess,sys,tempfile,threading,time,types,uuid
+cfg=json.load(open(sys.argv[1]))
+sys.path.insert(0,cfg["root"])
+from instance_guard import process_start,prove_target_exited,TargetIdentity
+scope=dict(globals(),HERE=cfg["root"],RESTORE_FILE=cfg["record"])
+tree=ast.parse(open(cfg["copy"]).read())
+for n in tree.body:
+    if isinstance(n,ast.Assign) and len(n.targets)==1 and isinstance(n.targets[0],ast.Name) and n.targets[0].id in {"_PLAYER","_CHILD"}:
+        scope[n.targets[0].id]=ast.literal_eval(n.value)
+nodes=[n for n in tree.body if isinstance(n,(ast.FunctionDef,ast.ClassDef))]
+exec(compile(ast.Module(body=nodes,type_ignores=[]),cfg["copy"],"exec"),scope)
+def reap(p,timeout):
+    if p is None:return
+    if p.poll() is None:p.terminate()
+    try:p.communicate(timeout=timeout)
+    except subprocess.TimeoutExpired:p.kill();p.communicate(timeout=timeout)
+scope["w"]=types.SimpleNamespace(_reap_playback=reap)
+if sys.argv[2]=="owner":
+    r=types.SimpleNamespace(FILE=cfg["record"],_payload=cfg["payload"],applied=False,_owned=None)
+    r._lock=scope["_record_lock"](r.FILE)
+    scope["_init_playback_journal"](r)
+    r._owned=scope["_publish_recovery"](r.FILE,r._payload);r.applied=True
+    actual_set=scope["_set_playback"]
+    actual_verify=scope["_verify_blocked_child"]
+    def checkpoint(child,start=None):
+        print(json.dumps({"child":child,"start":start,"harness":os.getpid()}),flush=True)
+        sys.stdin.read()
+    def observed_set(route,lease):
+        actual_set(route,lease)
+        if lease is not None and ((cfg["death_stage"]=="intent" and lease["stage"]=="intent") or (cfg["death_stage"]=="committed" and lease["stage"]=="committed")):
+            checkpoint(lease.get("pid"),lease.get("start"))
+    def observed_verify(pid,start):
+        actual_verify(pid,start)
+        if cfg["death_stage"]=="verified":checkpoint(pid,start)
+    scope["_set_playback"]=observed_set
+    scope["_verify_blocked_child"]=observed_verify
+    child=scope["_spawn_playback"](r,cfg["clip"])
+    print(json.dumps({"child":child.pid,"harness":os.getpid()}),flush=True)
+    sys.stdin.read()
+elif sys.argv[2]=="recover":
+    owned=scope["_record_bytes"](cfg["record"])
+    payload=json.loads(owned[1])
+    originals=copy.deepcopy(payload["devices"])
+    scope["_stop_orphan_playback"](payload)
+    assert scope["_record_bytes"](cfg["record"])==owned
+    fd=scope["_record_lock"](cfg["record"])
+    try:
+        assert not scope["_player_running"](payload["playback"])
+        payload["playback"]=None
+        scope["_replace_record"](cfg["record"],owned,payload)
+        assert json.load(open(cfg["record"]))["devices"]==originals
+        print("RECOVERED",flush=True)
+    finally:scope["_release_record_lock"](fd)
+else:
+    import instance_guard as identity
+    import settings_nav
+    original=cfg["payload"]["devices"]
+    devices={kind:dict(value,uid="virtual",id="59",name="Virtual") for kind,value in original.items()}
+    app_choice=settings_nav.InputChoice.from_json(cfg["payload"]["app_device"])
+    expected=cfg["payload"]["target"]
+    identity.running_enviouswispr_instances=lambda:{str(expected["pid"]):expected["executable"]}
+    w=types.ModuleType("private_restore_boundary")
+    w.__dict__.update(contextlib=contextlib,signal=signal,subprocess=subprocess,time=time,sys=sys,
+                     _recording_cleanup_safe=True,_standalone_player=None,_target=None,_sn=settings_nav)
+    def connect(expected_pid,expected_executable):
+        w._target=identity.pin_target(expected_pid,expected_executable)
+    w.connect=connect
+    w._capture_snapshot=lambda target,timeout=5.0:{"parakeet_phase":"idle","parakeet_released":"true","whisperkit_phase":"idle","whisperkit_released":"true"}
+    def no_action(*args):raise AssertionError("idle fixture must not dispatch recording")
+    w._recording_control=no_action
+    wt=ast.parse(open(cfg["wispr"]).read())
+    names={"_defer_recording_signals","_recording_state","_stop_recording"}
+    wn=[n for n in wt.body if isinstance(n,ast.FunctionDef) and n.name in names]
+    assert {n.name for n in wn}==names
+    exec(compile(ast.Module(body=wn,type_ignores=[]),cfg["wispr"],"exec"),w.__dict__)
+    w.read_input_choice=lambda:app_choice
+    def restore_choice(choice):
+        global app_choice
+        app_choice=choice
+    w.restore_input_choice=restore_choice
+    def device_boundary(command,**kwargs):
+        kind=command[command.index("-t")+1]
+        if "-a" in command:rows=[original[kind],dict(original[kind],uid="virtual",id="59",name="Virtual")]
+        elif "-c" in command:rows=[devices[kind]]
+        else:
+            assert "-i" in command and command[command.index("-i")+1]==original[kind]["id"]
+            devices[kind]=dict(original[kind]);rows=[]
+        return types.SimpleNamespace(returncode=0,stdout="\\n".join(json.dumps(r) for r in rows),stderr="")
+    real_run=subprocess.run
+    def run_boundary(command,**kwargs):
+        return device_boundary(command,**kwargs) if command[0]=="fixture-switch" else real_run(command,**kwargs)
+    scope["subprocess"]=types.SimpleNamespace(run=run_boundary)
+    scope["SWITCH"]="fixture-switch"
+    scope["w"]=w
+    scope["AlertSink"].FILE=cfg["record"]+".alerts"
+    assert scope["_replay_recovery"](cfg["record"]) is True
+    assert devices==original and app_choice.same_choice(settings_nav.InputChoice.from_json(cfg["payload"]["app_device"]))
+    assert not os.path.exists(cfg["record"])
+    print("RESTORED",flush=True)
+''')
+                harness = subprocess.Popen([sys.executable, str(program), str(config), "owner"],
+                    stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+                if not select.select([harness.stdout], [], [], 5.0)[0]:
+                    raise AssertionError("native owner did not announce its committed child")
+                announced = json.loads(harness.stdout.readline())
+                require(announced["harness"] == harness.pid)
+                def forced_failure(stage):
+                    if fail_at == stage:
+                        payload = json.loads(pathlib.Path(subject["RESTORE_FILE"]).read_text())
+                        error = AssertionError("forced private fixture interruption at " + stage)
+                        error.owned_child = guard.TargetIdentity(announced["child"], str(player_path),
+                            tuple(announced.get("start") or payload["playback"]["start"]))
+                        error.owned_lock = route.FILE
+                        raise error
+                forced_failure("announcement")
+                if death_stage == "after-go":
+                    if not select.select([ack_fd], [], [], 5.0)[0]:
+                        raise AssertionError("native child did not announce exec")
+                    require(os.read(ack_fd, 5) == b"EXEC\n")
+                forced_failure("exec")
+                before = pathlib.Path(subject["RESTORE_FILE"]).read_bytes()
+                with patch.object(guard, "process_start", new=native_process_start):
+                    lease = json.loads(before)["playback"]
+                    child_identity = (guard.TargetIdentity(announced["child"], str(player_path),
+                                      tuple(announced.get("start") or lease["start"]))
+                                      if announced["child"] is not None else None)
+                harness.kill(); _, errors = harness.communicate(timeout=5.0)
+                if harness.returncode != -signal_api.SIGKILL or errors:
+                    raise AssertionError(f"native owner kill: exit={harness.returncode}, stderr={errors!r}")
+                require(pathlib.Path(subject["RESTORE_FILE"]).read_bytes() == before)
+                forced_failure("death")
+                if death_stage == "after-go":
+                    recovery = subprocess.run([sys.executable, str(program), str(config), "recover"],
+                        capture_output=True, text=True, timeout=65.0)
+                    if recovery.returncode != 0 or recovery.stdout.strip() != "RECOVERED" or recovery.stderr:
+                        raise AssertionError(f"fresh recovery: exit={recovery.returncode}, stdout={recovery.stdout!r}, stderr={recovery.stderr!r}")
+                if child_identity is not None:
+                    deadline = native_time.monotonic() + 5.0
+                    with patch.object(guard, "process_start", new=native_process_start):
+                        while True:
+                            try:
+                                guard.prove_target_exited(child_identity)
+                                break
+                            except guard.InstanceGuardError:
+                                if native_time.monotonic() >= deadline:
+                                    raise AssertionError("owned pre-GO child did not exit after parent death")
+                                native_time.sleep(0.01)  # deadline-fallback: native child exit proof.
+                if death_stage != "after-go":
+                    require(not select.select([ack_fd], [], [], 0)[0])
+                restored = subprocess.run([sys.executable, str(program), str(config), "restore"],
+                    capture_output=True, text=True, timeout=35.0)
+                if restored.returncode != 0 or restored.stdout.strip() != "RESTORED" or restored.stderr:
+                    raise AssertionError(f"fresh restore: exit={restored.returncode}, stdout={restored.stdout!r}, stderr={restored.stderr!r}")
+                require(not pathlib.Path(subject["RESTORE_FILE"]).exists())
+                return
+            with patch.object(guard, "process_start", new=native_process_start), \
+                 patch.dict(sys.modules, {"silent_audio": alias}):
+                route._lock = subject["_record_lock"](route.FILE)
+                subject["_init_playback_journal"](route)
+                route._owned = subject["_publish_recovery"](route.FILE, route._payload)
+                route.applied = True
+                if no_go:
+                    gate_r, gate_w = os.pipe()
+                    ready_r, ready_w = os.pipe()
+                    process = subprocess.Popen([sys.executable, "-c", subject["_CHILD"], str(root),
+                        str(route._lock), str(gate_r), str(ready_w), str(clip)],
+                        pass_fds=(route._lock, gate_r, ready_w),
+                        stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+                    os.close(gate_r); gate_r = None
+                    os.close(ready_w); ready_w = None
+                    identity = subject["_ready_identity"](ready_r, native_time.monotonic() + 5.0)
+                    require(identity["pid"] == process.pid and tuple(identity["start"]) == native_process_start(process.pid))
+                    os.close(gate_w); gate_w = None
+                    _, errors = process.communicate(timeout=5.0)
+                    require(process.returncode == 125 and not errors)
+                    require(not select.select([ack_fd], [], [], 0)[0])
+                    return
+                with owner._defer_recording_signals():
+                    process = subject["_spawn_playback"](route, str(clip))
+                require(select.select([ack_fd], [], [], 5.0)[0])
+                require(os.read(ack_fd, 5) == b"EXEC\n")
+                lease = json.loads(pathlib.Path(route.FILE).read_text())["playback"]
+                require(lease["stage"] == "committed" and lease["pid"] == process.pid)
+                require(tuple(lease["start"]) == native_process_start(process.pid))
+                subject["_release_record_lock"](route._lock); route._lock = None
+                try:
+                    unexpected = subject["_record_lock"](route.FILE)
+                except BlockingIOError:
+                    pass
+                else:
+                    subject["_release_record_lock"](unexpected)
+                    raise AssertionError("exec child lost the lock after parent close")
+                require(os.write(release_fd, b"x") == 1)
+                _, errors = process.communicate(timeout=5.0)
+                require(process.returncode == 0 and not errors)
+                route._lock = subject["_record_lock"](route.FILE)
+                subject["_complete_playback"](route, process)
+                require(json.loads(pathlib.Path(route.FILE).read_text())["playback"] is None)
+        finally:
+            primary = sys.exc_info()[1]
+            cleanup_errors = []
+            def clean(action):
+                try:
+                    action()
+                except BaseException as error:
+                    cleanup_errors.append(error)
+            def reap_private(child):
+                if child is not None:
+                    if child.poll() is None:
+                        child.kill()
+                    child.communicate(timeout=5.0)
+            clean(lambda: reap_private(harness))
+            # Only the private fixture FIFO is released; pre-GO children exit on EOF.
+            clean(lambda: os.write(release_fd, b"x"))
+            clean(lambda: reap_private(process))
+            clean(lambda: subject["_release_record_lock"](getattr(route, "_lock", None)))
+            route._lock = None
+            for fd in (gate_r, gate_w, ready_r, ready_w):
+                if fd is not None:
+                    clean(lambda fd=fd: os.close(fd))
+            def await_private_child_release():
+                deadline = native_time.monotonic() + 5.0
+                while True:
+                    try:
+                        fd = subject["_record_lock"](route.FILE)
+                    except BlockingIOError:
+                        if native_time.monotonic() >= deadline:
+                            raise AssertionError("private child retained its lock after cleanup")
+                        native_time.sleep(0.01)  # deadline-fallback: observe owned lock release.
+                    else:
+                        subject["_release_record_lock"](fd)
+                        return
+            clean(await_private_child_release)
+            clean(lambda: os.close(ack_fd))
+            clean(lambda: os.close(release_fd))
+            if cleanup_errors:
+                if primary is None:
+                    primary = cleanup_errors[0]
+                    for error in cleanup_errors[1:]:
+                        primary.add_note(f"private child cleanup: {error!r}")
+                    raise primary
+                for error in cleanup_errors:
+                    primary.add_note(f"private child cleanup: {error!r}")
+    case("native-playback", "real exec child retains exclusion after parent close", native_playback_lock, native_macos=True)
+    case("native-playback", "real child refuses playback after GO pipe closes", lambda f: native_playback_lock(f, no_go=True), native_macos=True)
+    case("native-playback", "fresh process reaps committed playback after real harness death", lambda f: native_playback_lock(f, parent_death=True), native_macos=True)
+    for stage in ("intent", "verified", "committed"):
+        case("native-playback", "real harness death before GO at " + stage,
+             lambda f, stage=stage: native_playback_lock(f, parent_death=True, death_stage=stage), native_macos=True)
+    def interrupted_native_fixture(f, stage):
+        import time as native_time
+        try:
+            native_playback_lock(f, parent_death=True, fail_at=stage)
+        except AssertionError as error:
+            require(str(error) == "forced private fixture interruption at " + stage)
+            require(not getattr(error, "__notes__", []))
+            deadline = native_time.monotonic() + 5.0
+            with patch.object(guard, "process_start", new=native_process_start):
+                while True:
+                    try:
+                        guard.prove_target_exited(error.owned_child)
+                        break
+                    except guard.InstanceGuardError:
+                        if native_time.monotonic() >= deadline:
+                            raise AssertionError("failed native fixture leaked its owned player")
+                        native_time.sleep(0.01)  # deadline-fallback: observe real child exit.
+            fd = f.audio["_record_lock"](error.owned_lock)
+            f.audio["_release_record_lock"](fd)
+        else:
+            raise AssertionError("native fixture did not execute the injected failure")
+    for stage in ("announcement", "exec", "death"):
+        case("native-playback", "failed fixture reaps orphan after " + stage,
+             lambda f, stage=stage: interrupted_native_fixture(f, stage), native_macos=True)
+
     def native_mask(f):
-        owner = {"contextlib": contextlib, "signal": signal_api, "subprocess": subprocess}
+        owner = {"contextlib": contextlib, "signal": signal_api, "subprocess": subprocess,
+                 "_standalone_player": None, "_recording_cleanup_safe": True}
         compile_functions(root / "wispr_eyes.py", {"_defer_recording_signals", "_reap_playback"}, owner)
         before = signal_api.pthread_sigmask(signal_api.SIG_BLOCK, set())
         previous = {sig: signal_api.getsignal(sig) for sig in (signal_api.SIGINT, signal_api.SIGTERM, signal_api.SIGHUP)}
@@ -1380,9 +2118,17 @@ def _lifecycle_self_test():
     case("query", "unreleased delivery is contradictory", refuse_query, raw_phase="delivering", released=False)
     case("query", "Stop waits through stopping and released delivery", lambda f: require(
         f.w._stop_recording(target, 0.2) is True), query_sequence=[("stopping", False), ("delivering", True)])
+    def arming_cleanup(f):
+        require(f.w._stop_recording(target, 0.2) is True)
+        require(sum(event[:2] == ("AX", "stop") for event in f.events) == 1)
+        require(f.state["mode"] == "idle")
+    case("query", "arming cleanup waits for a drivable Stop then confirms release", arming_cleanup,
+         mode="arming", query_sequence=[("arming", True), ("live", False)])
     for failure in failures: print("FAIL " + failure)
+    for family, name, reason in skipped: print(f"SKIP {family}/{name}: {reason}")
     print("lifecycle families: " + json.dumps(dict(collections.Counter(family for family, _ in ran)), sort_keys=True))
     print(f"lifecycle controls: {len(ran)} cases, {len(failures)} failures")
+    if skipped: print(f"lifecycle controls: {len(skipped)} platform cases skipped, not passed")
     return 1 if failures else 0
 
 

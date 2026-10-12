@@ -291,7 +291,7 @@ def main():
     handled = (signal.SIGINT, signal.SIGTERM, signal.SIGHUP, signal.SIGQUIT, signal.SIGTSTP)
     for signum in handled:
         signal.signal(signum, interrupt)
-    from silent_audio import AlertSink, AudioRoute
+    from silent_audio import AudioRoute
     w._INPUT_WARN = False
     w.connect()
     try:
@@ -299,13 +299,10 @@ def main():
     except u.Aborted as e:
         print(f"ABORT: {e}")
         return 2
-    rows, unstaged, sink, route = [], [], AlertSink(), None
+    rows, unstaged, route = [], [], None
     try:
-        if not sink.apply():
-            raise u.Aborted("the alert and output devices did not switch to BlackHole")
-        # Once, before any app is staged: switching the microphone opens and closes our Settings,
-        # which must not happen between an app's staging and its take.
-        route = AudioRoute()
+        # Snapshot and route all three devices once, before staging any destination.
+        route = AudioRoute(include_alerts=True)
         route.apply()
         ROUTE["route"] = route
         for app in requested:
@@ -347,16 +344,12 @@ def main():
             if route is not None:
                 # The flag, not the exception: it survives a later error replacing the exception.
                 if cleanup_check("every matrix take stopped", not p.TAKE_STUCK["stuck"]):
-                    cleanup_check("microphone and app device restored", route.restore())
+                    cleanup_check("audio and app choices restored", route.restore())
                 else:
                     print("    the virtual microphone is LEFT in place: quit the dev app, then run "
                           "`python3 Tests/RuntimeUAT/silent_audio.py restore`")
         except BaseException as exc:
-            cleanup_check("microphone and app device restored", False, repr(exc))
-        try:
-            cleanup_check("devices restored", sink.restore())  # outermost: whatever failed before
-        except BaseException as exc:
-            cleanup_check("devices restored", False, repr(exc))
+            cleanup_check("audio and app choices restored", False, repr(exc))
     print("\n| app | chunk | tier | landed | read by | observed | reason | target_window | host_exposed_focus | manual_ax | before_ms | resolve_ms | false miss |")
     print("|---|---|---|---|---|---|---|---|---|---|---|---|---|")
     for r in rows:

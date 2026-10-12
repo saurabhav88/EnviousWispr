@@ -94,6 +94,51 @@ def verify_target(target):
     return target
 
 
+@dataclass(frozen=True)
+class ExitProof:
+    old: TargetIdentity
+    replacement_start: tuple[int, int] | None
+
+
+def prove_target_exited(old):
+    """Positive native absence or a different start token; errors never mean exit.
+
+    Darwin kill(2), signal zero: no signal is sent; ESRCH alone proves absence.
+    https://developer.apple.com/library/archive/documentation/System/Conceptual/ManPages_iPhoneOS/man2/kill.2.html
+    """
+    if (not isinstance(old, TargetIdentity) or type(old.pid) is not int
+            or not 0 < old.pid <= 2_147_483_647):
+        raise InstanceGuardError("exit proof requires a valid pinned identity")
+    try:
+        os.kill(old.pid, 0)
+    except ProcessLookupError:
+        return ExitProof(old, None)
+    except OSError as error:
+        raise InstanceGuardError("native process existence is unreadable") from error
+    try:
+        current = process_start(old.pid)
+    except InstanceGuardError:
+        # It may have exited between the two native reads. Only ESRCH can close that gap.
+        try:
+            os.kill(old.pid, 0)
+        except ProcessLookupError:
+            return ExitProof(old, None)
+        except OSError as error:
+            raise InstanceGuardError("native process existence is unreadable") from error
+        raise
+    if current == old.start:
+        raise InstanceGuardError("pinned process has not exited")
+    return ExitProof(old, current)
+
+
+def verify_exit_proof(old, proof):
+    if not isinstance(proof, ExitProof) or proof.old != old:
+        raise InstanceGuardError("exit proof belongs to another lifecycle")
+    # Re-observe native state at the handoff boundary; a caller-created value is no evidence.
+    prove_target_exited(old)
+    return proof
+
+
 def running_enviouswispr_instances():
     """Every running EnviousWispr app bundle, as {pid: executable path}.
 
@@ -297,6 +342,8 @@ def run_identity_cases():
     import ast
     import pathlib
     import types
+    import tempfile
+    import json
     from unittest.mock import patch
     failures, count = [], 0
     executable = "/Users/x/EW/build/EnviousWispr Local.app/Contents/MacOS/EnviousWispr"
@@ -318,6 +365,34 @@ def run_identity_cases():
 
     token = (123, 456)
     target = TargetIdentity(111, executable, token)
+    for name, probe, start, refused in [
+        ("native ESRCH proves exit", ProcessLookupError(), token, False),
+        ("same native token is still alive", None, token, True),
+        ("different native token proves old exit", None, (124, 456), False),
+        ("native permission failure is unknown", PermissionError(), token, True),
+        ("other existence failure is unknown", OSError("read failure"), token, True),
+        ("unreadable live native token is unknown", None, InstanceGuardError("unreadable"), True),
+    ]:
+        with patch.object(os, "kill", side_effect=probe) as probe_call, \
+             patch(__name__ + ".process_start", side_effect=start if isinstance(start, Exception) else None,
+                   return_value=start):
+            def proof_case():
+                proof = prove_target_exited(target)
+                _assert(proof.old == target)
+                _assert(proof.replacement_start == (None if isinstance(probe, ProcessLookupError) else start))
+            case(name, proof_case, refused)
+            _assert(all(call.args == (111, 0) for call in probe_call.call_args_list))
+    with patch.object(os, "kill", side_effect=[None, ProcessLookupError()]), \
+         patch(__name__ + ".process_start", side_effect=InstanceGuardError("exited between reads")):
+        case("native exit between reads", lambda: _assert(prove_target_exited(target) == ExitProof(target, None)))
+    with patch.object(os, "kill", return_value=None), patch(__name__ + ".process_start", return_value=token):
+        case("forged stale proof is re-observed", lambda: verify_exit_proof(target, ExitProof(target, None)), True)
+    case("proof for another lifecycle refuses", lambda: verify_exit_proof(target,
+         ExitProof(TargetIdentity(222, executable, token), None)), True)
+    for pid in (0, -1, True, 2_147_483_648):
+        with patch.object(os, "kill") as probe_call:
+            case("invalid exit PID " + repr(pid), lambda: prove_target_exited(TargetIdentity(pid, executable, token)), True)
+            _assert(not probe_call.called)
     for name, table in [("one", valid), ("none", {}),
                         ("multiple", {**valid, "222": executable}),
                         ("wrong path", {"111": executable + "-other"})]:
@@ -349,7 +424,7 @@ def run_identity_cases():
     # Compile the exact caller functions without importing PyObjC or executing module setup.
     source = pathlib.Path(__file__).with_name("wispr_eyes.py").read_text()
     names = {"connect", "_ensure_connected", "_verify_element", "perform_action", "set_attr",
-             "tap", "close_window", "_ax", "_cancel_menu", "_open_settings", "batch"}
+             "tap", "close_window", "_ax", "_cancel_menu", "_open_settings", "batch", "bind_after_verified_exit", "_ui_tables"}
     tree = ast.parse(source)
     nodes = [n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name in names]
     assert {n.name for n in nodes} == names
@@ -363,6 +438,230 @@ def run_identity_cases():
               "_raw_set_attr": lambda el, attr, value: (calls.append((el, attr, value)), True)[1]}
     exec(compile(ast.Module(body=nodes, type_ignores=[]), source, "exec"), caller)
     calls = []
+    replacement = TargetIdentity(222, executable, (124, 456))
+    for name, new, idle, exited, refused in [
+        ("explicit verified lifecycle bind", replacement, "idle", True, False),
+        ("handoff refuses wrong executable", TargetIdentity(222, executable + "-other", (124, 456)), "idle", True, True),
+        ("handoff refuses live replacement", replacement, "recording", True, True),
+        ("handoff refuses old instance still alive", replacement, "idle", False, True),
+    ]:
+        caller.update(_target=target, _pid=111, _app=("app", 111), _TABLES=(111, []),
+                      _recording_state=lambda unused: idle)
+        with patch.dict(sys.modules, {"instance_guard": sys.modules[__name__]}), \
+             patch.object(os, "kill", side_effect=ProcessLookupError() if exited else None), \
+             patch(__name__ + ".running_enviouswispr_instances", return_value={"222": executable}), \
+             patch(__name__ + ".process_start", side_effect=lambda pid: replacement.start if pid == 222 else token):
+            case(name, lambda: caller["bind_after_verified_exit"](target, new, ExitProof(target, None)), refused)
+        _assert((caller["_target"], caller["_pid"], caller["_app"]) ==
+                ((target, 111, ("app", 111)) if refused else (replacement, 222, ("app", 222))))
+        if refused:
+            _assert(caller["_TABLES"] == (111, []))
+        if not refused:
+            with tempfile.TemporaryDirectory(prefix="ew-handoff-tables-") as directory:
+                bundle = pathlib.Path(directory) / "Replacement.app" / "Contents"
+                resources = bundle / "Resources" / "de.lproj"
+                resources.mkdir(parents=True)
+                (resources / "Localizable.strings").write_text("private native boundary fixture")
+                commands = []
+                def read_native(command, **unused):
+                    commands.append(command)
+                    return types.SimpleNamespace(returncode=0, stderr="", stdout=(
+                        str(bundle / "MacOS" / "EnviousWispr") if command[0] == "ps" else
+                        json.dumps({"Start Recording": "Neue Aufnahme"})))
+                caller.update(subprocess=types.SimpleNamespace(run=read_native), json=json)
+                def read_replacement_tables():
+                    _assert(caller["_ui_tables"]() == [{"Start Recording": "Neue Aufnahme"}])
+                    _assert(caller["_TABLES"] == (222, [{"Start Recording": "Neue Aufnahme"}]))
+                    _assert(commands[0][-1] == "222" and len(commands) == 2)
+                case("handoff loads the replacement translation table", read_replacement_tables)
+    restart_path = pathlib.Path(__file__).with_name("last_dictation_uat.py")
+    restart_tree = ast.parse(restart_path.read_text())
+    restart_names = {"Aborted", "wait_for", "launch_dev_app_with_endpoint"}
+    restart_nodes = [node for node in restart_tree.body
+                     if isinstance(node, (ast.FunctionDef, ast.ClassDef)) and node.name in restart_names]
+    _assert({node.name for node in restart_nodes} == restart_names)
+    for name, peer, owner_alive, transfer in [
+        ("restart caller binds the verified replacement", False, False, False),
+        ("restart caller transfers the existing audio owner", False, False, True),
+        ("restart caller refuses an active peer before launch", True, False, False),
+        ("restart caller refuses a live old lifecycle before launch", False, True, False),
+    ]:
+        events, clock_state = [], {"now": 0.0}
+        current_table = dict(valid) if peer else {}
+        def launch_boundary(command, **kwargs):
+            events.append(("launch", command, kwargs))
+            current_table.clear(); current_table.update({"222": executable})
+            return types.SimpleNamespace(returncode=0)
+        w_subject = types.SimpleNamespace(_target=target, _recording_state=lambda new: "idle",
+            bind_after_verified_exit=lambda old, new, proof: events.append(("bind", old, new, proof)))
+        route_subject = types.SimpleNamespace(transfer_after_verified_exit=
+            lambda new, proof: events.append(("transfer", new, proof))) if transfer else None
+        namespace = {"w": w_subject, "APP_BUNDLE": executable.removesuffix("/Contents/MacOS/EnviousWispr"),
+                     "time": types.SimpleNamespace(monotonic=lambda: clock_state["now"],
+                       sleep=lambda seconds: clock_state.update(now=clock_state["now"] + seconds))}
+        exec(compile(ast.Module(body=restart_nodes, type_ignores=[]), str(restart_path), "exec"), namespace)
+        def restart_case():
+            proof = ExitProof(target, None)
+            try:
+                result = namespace["launch_dev_app_with_endpoint"](proof, route=route_subject)
+            except (InstanceGuardError, namespace["Aborted"]):
+                _assert((peer or owner_alive) and not events)
+                return
+            _assert(not peer and not owner_alive and result is True)
+            _assert(events[0] == ("launch", ["open", "-n", "--env", "EW_FAULT_INJECTION=1", namespace["APP_BUNDLE"]], {"check": True}))
+            wanted = ("transfer", replacement, proof) if transfer else ("bind", target, replacement, proof)
+            _assert(events[1:] == [wanted])
+        with patch.dict(sys.modules, {"instance_guard": sys.modules[__name__]}), \
+             patch.object(os, "kill", side_effect=None if owner_alive else ProcessLookupError()), \
+             patch(__name__ + ".running_enviouswispr_instances", side_effect=lambda: dict(current_table)), \
+             patch(__name__ + ".process_start", side_effect=lambda pid: replacement.start if pid == 222 else token), \
+             patch.object(subprocess, "run", side_effect=launch_boundary):
+            case(name, restart_case)
+    learning_path = pathlib.Path(__file__).with_name("learn_from_edits_uat.py")
+    learning_tree = ast.parse(learning_path.read_text())
+    learning_names = {"Aborted", "app_pid", "audio_route", "finish_restore"}
+    learning_nodes = [node for node in learning_tree.body
+                      if isinstance(node, (ast.FunctionDef, ast.ClassDef)) and node.name in learning_names]
+    _assert({node.name for node in learning_nodes} == learning_names)
+    for name, table, expected, refused in [
+        ("learning caller accepts one exact app", {111: executable}, 111, False),
+        ("learning caller accepts confirmed absence", {}, None, False),
+        ("learning caller refuses duplicate exact apps", {111: executable, 222: executable}, None, True),
+        ("learning caller refuses another bundle", {222: executable + "-other"}, None, True),
+    ]:
+        namespace = {"APP_BIN": executable, "running_instances": lambda: dict(table)}
+        exec(compile(ast.Module(body=learning_nodes, type_ignores=[]), str(learning_path), "exec"), namespace)
+        def learning_identity():
+            try:
+                result = namespace["app_pid"]()
+            except namespace["Aborted"]:
+                _assert(refused)
+            else:
+                _assert(not refused and result == expected)
+        case(name, learning_identity)
+    for audio_restored in (True, False):
+        events = []
+        snaps = {"launchctl": "original-env", "words": "original-bytes", "defaults": {"original": True}}
+        namespace = {"w": types.SimpleNamespace(_target=target), "WORDS": "/fixture/words.json",
+            "launchctl_set": lambda value: events.append(("environment", value)),
+            "file_restore": lambda path, value: events.append(("file", path, value)),
+            "defaults_restore": lambda value: events.append(("defaults", value)),
+            "verify_restore": lambda *args: (True, "original bytes"),
+            "defaults_snapshot": lambda: snaps["defaults"], "launchctl_get": lambda: snaps["launchctl"],
+            "legacy_ledger_present": lambda: False}
+        exec(compile(ast.Module(body=learning_nodes, type_ignores=[]), str(learning_path), "exec"), namespace)
+        lifecycle = types.SimpleNamespace(launch_dev_app_with_endpoint=lambda proof: (events.append(("launch", proof)), True)[1])
+        def finish_case():
+            restored, _ = namespace["finish_restore"](snaps, True, True, audio_restored)
+            _assert(restored is audio_restored)
+            _assert(events[:3] == [("environment", "original-env"), ("file", "/fixture/words.json", "original-bytes"), ("defaults", {"original": True})])
+            _assert(events[3:] == ([("launch", ExitProof(target, None))] if audio_restored else []))
+        with patch.dict(sys.modules, {"instance_guard": sys.modules[__name__], "last_dictation_uat": lifecycle}), \
+             patch.object(os, "kill", side_effect=ProcessLookupError()):
+            case("learning restoration launch requires completed audio=" + str(audio_restored), finish_case)
+    geometry_path = pathlib.Path(__file__).with_name("phase5_geometry_relaunch.py")
+    geometry_tree = ast.parse(geometry_path.read_text())
+    geometry_names = {"dev_pids", "stop_app", "start_app"}
+    geometry_nodes = [node for node in geometry_tree.body if isinstance(node, ast.FunctionDef) and node.name in geometry_names]
+    _assert({node.name for node in geometry_nodes} == geometry_names)
+    for name, table, expected in [
+        ("geometry stop pins one exact instance", valid, True),
+        ("geometry stop refuses two exact instances", {**valid, "222": executable}, False),
+        ("geometry stop refuses a different bundle", {"222": executable + "-other"}, False),
+    ]:
+        events = []
+        rk = types.SimpleNamespace(_target=target, _active_audio_route=None,
+            connect=lambda **kwargs: events.append(("connect", kwargs)))
+        namespace = {"rk": rk, "pathlib": pathlib, "BUNDLE": executable.removesuffix("/Contents/MacOS/EnviousWispr"), "_EXIT_PROOF": None}
+        exec(compile(ast.Module(body=geometry_nodes, type_ignores=[]), str(geometry_path), "exec"), namespace)
+        lifecycle = types.SimpleNamespace(terminate_verified_dev_app=lambda why: (events.append(("terminate", why)), ExitProof(target, None))[1])
+        def geometry_stop():
+            _assert(namespace["stop_app"]() is expected)
+            if expected:
+                _assert(events[0] == ("connect", {"expected_pid": 111, "expected_executable": executable}))
+                _assert(len(events) == 2 and namespace["_EXIT_PROOF"] == ExitProof(target, None))
+            else:
+                _assert(not events and namespace["_EXIT_PROOF"] is None)
+        with patch.dict(sys.modules, {"instance_guard": sys.modules[__name__], "last_dictation_uat": lifecycle}), \
+             patch(__name__ + ".running_enviouswispr_instances", return_value=table):
+            case(name, geometry_stop)
+    for proved in (True, False):
+        events = []
+        rk = types.SimpleNamespace(_target=target)
+        namespace = {"rk": rk, "pathlib": pathlib, "BUNDLE": executable.removesuffix("/Contents/MacOS/EnviousWispr"),
+                     "_EXIT_PROOF": ExitProof(target, None) if proved else None,
+                     "require_bundle": lambda: events.append("bundle")}
+        exec(compile(ast.Module(body=geometry_nodes, type_ignores=[]), str(geometry_path), "exec"), namespace)
+        def launched(proof):
+            _assert(proof == ExitProof(target, None))
+            events.append("launch"); rk._target = replacement
+            return True
+        lifecycle = types.SimpleNamespace(launch_dev_app_with_endpoint=launched)
+        def geometry_start():
+            try:
+                result = namespace["start_app"]()
+            except RuntimeError:
+                _assert(not proved and events == ["bundle"])
+            else:
+                _assert(proved and result == 222 and events == ["bundle", "launch"])
+        with patch.dict(sys.modules, {"instance_guard": sys.modules[__name__], "last_dictation_uat": lifecycle}):
+            case("geometry start requires exit proof=" + str(proved), geometry_start)
+    fault_path = pathlib.Path(__file__).with_name("faultInjection.py")
+    fault_tree = ast.parse(fault_path.read_text())
+    fault_names = {"_wait_for_app_exit", "_launch_replacement", "_relaunch_app"}
+    fault_nodes = [node for node in fault_tree.body if isinstance(node, ast.FunctionDef) and node.name in fault_names]
+    _assert({node.name for node in fault_nodes} == fault_names)
+    for name, peer, owner_alive, transfer in [
+        ("fault launch preserves armed environment and binds", False, False, False),
+        ("fault launch reaps then transfers audio ownership", False, False, True),
+        ("fault launch refuses a competing app before spawn", True, False, False),
+        ("fault launch refuses a live old process before spawn", False, True, False),
+    ]:
+        events, clock_state = [], {"now": 0.0}
+        table = dict(valid) if peer else {}
+        route = types.SimpleNamespace(finish_playback=lambda: events.append("reap"),
+            transfer_after_verified_exit=lambda new, proof: events.append(("transfer", new, proof))) if transfer else None
+        eyes = types.SimpleNamespace(_target=target, _active_audio_route=route,
+            _recording_state=lambda new: "idle",
+            bind_after_verified_exit=lambda old, new, proof: events.append(("bind", old, new, proof)))
+        process = types.SimpleNamespace(pid=222, poll=lambda: None)
+        environment = {"EW_FORCE_READINESS_LOST": "1", "EW_FAULT_INJECTION": "1"}
+        def spawned(command, **kwargs):
+            _assert(command == [executable] and kwargs["env"] == environment)
+            events.append("spawn"); table.clear(); table.update({"222": executable})
+            return process
+        namespace = {"_import_wispr_eyes": lambda: eyes, "subprocess": subprocess,
+                     "time": types.SimpleNamespace(monotonic=lambda: clock_state["now"],
+                       sleep=lambda seconds: clock_state.update(now=clock_state["now"] + seconds))}
+        exec(compile(ast.Module(body=fault_nodes, type_ignores=[]), str(fault_path), "exec"), namespace)
+        def fault_launch():
+            proof = ExitProof(target, None)
+            try:
+                result = namespace["_launch_replacement"](proof, environment)
+            except RuntimeError:
+                _assert((peer or owner_alive) and not events)
+                return
+            _assert(not peer and not owner_alive and result is process)
+            wanted = ["reap", "spawn", ("transfer", replacement, proof)] if transfer else ["spawn", ("bind", target, replacement, proof)]
+            _assert(events == wanted)
+        with patch.dict(sys.modules, {"instance_guard": sys.modules[__name__]}), \
+             patch.object(os, "kill", side_effect=None if owner_alive else ProcessLookupError()), \
+             patch(__name__ + ".running_enviouswispr_instances", side_effect=lambda: dict(table)), \
+             patch(__name__ + ".process_start", side_effect=lambda pid: replacement.start if pid == 222 else token), \
+             patch.object(subprocess, "Popen", side_effect=spawned):
+            case(name, fault_launch)
+    for exited in (True, False):
+        clock_state = {"now": 0.0}
+        namespace = {"_import_wispr_eyes": lambda: types.SimpleNamespace(_target=target),
+                     "time": types.SimpleNamespace(monotonic=lambda: clock_state["now"],
+                       sleep=lambda seconds: clock_state.update(now=clock_state["now"] + seconds))}
+        exec(compile(ast.Module(body=fault_nodes, type_ignores=[]), str(fault_path), "exec"), namespace)
+        with patch.dict(sys.modules, {"instance_guard": sys.modules[__name__]}), \
+             patch.object(os, "kill", side_effect=ProcessLookupError() if exited else PermissionError()), \
+             patch(__name__ + ".process_start", return_value=token):
+            case("fault exit probe requires native evidence=" + str(exited),
+                 lambda: _assert(namespace["_wait_for_app_exit"](0.5) is exited))
+    caller.update(_target=None, _pid=None, _app=None)
     with patch(__name__ + ".running_enviouswispr_instances", return_value=valid), \
          patch(__name__ + ".process_start", return_value=token):
         case("explicit connection", lambda: caller["connect"](expected_pid=111, expected_executable=executable))

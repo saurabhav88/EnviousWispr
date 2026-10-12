@@ -322,7 +322,7 @@ def modifier_up(keycode):
     CGEventPost(kCGHIDEventTap, event)
 
 
-def hold_modifier(keycode, duration=2.0, before_release=None):
+def hold_modifier(keycode, duration=2.0, before_release=None, before_press=None):
     """Press a modifier key, hold for *duration* seconds, then release. The release is posted in a
     `finally`: an interrupt during the hold must not leave the key (a push-to-talk key) down. Both
     events are built first, and the press is posted INSIDE the `try`, so no gap exists between
@@ -335,13 +335,21 @@ def hold_modifier(keycode, duration=2.0, before_release=None):
     up = _flags_changed_event(keycode, 0, False)
     if down is None or up is None:
         raise RuntimeError(f"hold_modifier({keycode}): an event could not be created; nothing posted")
+    if before_press is not None:
+        before_press()
     try:
         CGEventPost(kCGHIDEventTap, down)
         time.sleep(duration)
         if before_release is not None:
             before_release()
     finally:
-        CGEventPost(kCGHIDEventTap, up)
+        primary = sys.exc_info()[1]
+        try:
+            CGEventPost(kCGHIDEventTap, up)
+        except BaseException as cleanup:
+            if primary is None:
+                raise
+            primary.add_note(f"key release failed: {cleanup!r}")
 
 
 def scroll(dx=0, dy=0, x=None, y=None):
@@ -358,7 +366,7 @@ def scroll(dx=0, dy=0, x=None, y=None):
 
 
 def hold_key(key_name, duration=2.0, cmd=False, shift=False, alt=False, ctrl=False,
-             before_release=None):
+             before_release=None, before_press=None):
     """Press and hold any key for *duration* seconds, then release.
 
     Works for both regular keys (space, a, return) and modifiers.
@@ -369,7 +377,8 @@ def hold_key(key_name, duration=2.0, cmd=False, shift=False, alt=False, ctrl=Fal
 
     # Check if it's a modifier key first
     if key_lower in MODIFIER_KEYS:
-        hold_modifier(MODIFIER_KEYS[key_lower], duration, before_release=before_release)
+        hold_modifier(MODIFIER_KEYS[key_lower], duration, before_release=before_release,
+                      before_press=before_press)
         return
 
     if key_lower not in KEY_CODES:
@@ -396,13 +405,21 @@ def hold_key(key_name, duration=2.0, cmd=False, shift=False, alt=False, ctrl=Fal
         raise RuntimeError(f"hold_key({key_name!r}): an event could not be created; nothing posted")
     CGEventSetFlags(down_event, flags)
     CGEventSetFlags(up_event, flags)
+    if before_press is not None:
+        before_press()
     try:
         CGEventPost(kCGHIDEventTap, down_event)
         time.sleep(duration)
         if before_release is not None:
             before_release()  # key still down; the release below runs even if this raises
     finally:
-        CGEventPost(kCGHIDEventTap, up_event)
+        primary = sys.exc_info()[1]
+        try:
+            CGEventPost(kCGHIDEventTap, up_event)
+        except BaseException as cleanup:
+            if primary is None:
+                raise
+            primary.add_note(f"key release failed: {cleanup!r}")
     time.sleep(DEFAULT_DELAY)
 
 

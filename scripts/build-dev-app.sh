@@ -232,7 +232,9 @@ codesign --verify "$APP_PATH"
 
 # ─── Step 8: Launch ───────────────────────────────────────────────────────────
 echo "==> Step 8: Launching..."
-open "$APP_PATH"
+# DEV-OPEN-BEGIN (anchor for scripts/lib/launch-check-test.sh)
+open --env EW_FAULT_INJECTION=1 "$APP_PATH"
+# DEV-OPEN-END
 
 # #2157 chunk C: poll a SIGNAL instead of sleeping a fixed 3 s, and verify the
 # process is THIS worktree's app rather than matching text in a command line.
@@ -255,5 +257,12 @@ elif [ "$_launch_rc" -ne 0 ]; then
   exit 1
 fi
 # LAUNCH-HANDLER-END
+# CAPTURE-HANDLER-BEGIN (anchor for scripts/lib/launch-check-test.sh)
+if ew_wait_for_capture "$APP_PATH"; then _capture_rc=0; else _capture_rc=$?; fi
+if [ "$_capture_rc" -ne 0 ]; then
+  echo "ERROR: this dev app did not answer its authenticated capture query."
+  exit 1
+fi
+# CAPTURE-HANDLER-END
 echo "==> EnviousWispr (dev) running ✓  ($APP_PATH)"
 echo "    This session holds the dev app until it runs: python3 $DEV_APP_LOCK release"

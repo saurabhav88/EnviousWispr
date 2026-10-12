@@ -375,28 +375,8 @@ def main():
                               "wanted": WANTED, "read_back": written}, indent=2))
             return
 
-        # This row opens the bundle itself rather than through `start_app`, so it
-        # asks for the same refusal explicitly.
-        g.require_bundle()
-        # `open` does not pass env vars, so the endpoint is armed with --env.
-        subprocess.run(["open", "-n", "--env", "EW_FAULT_INJECTION=1", g.BUNDLE],
-                       capture_output=True)
-        deadline, pid = time.time() + 30, None
-        while time.time() < deadline:
-            pids = g.dev_pids()
-            if len(pids) == 1:
-                pid = pids[0]
-                break
-            time.sleep(0.2)  # test-fixture-timer: process-table polling
-        if not pid:
-            # NAMES THE CAUSE. This row opens the bundle itself rather than
-            # through `start_app`, so it carries the same distinction by hand:
-            # the build was present at `require_bundle` and still produced no
-            # instance, which is an incomplete or unsignable deploy — not the
-            # product failing to start. Nothing was measured either way.
-            report["verdict"] = "ABORT_LAUNCH_FAILED"
-            print(json.dumps({"verdict": report["verdict"], "bundle": g.BUNDLE}))
-            return
+        # The shared owner supplies authenticated readiness and verified lifecycle binding.
+        pid = g.start_app()
         report["pid"] = pid
         g.await_idle()
 
