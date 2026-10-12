@@ -24,10 +24,10 @@ Already holding your recording keybind and want to let go? Keep holding it and p
 
 - It works at any point while you hold the keybind, including the first second.
 - It works in **Push to Talk** when your keybind is a modifier key used on its own, such as the right Option key, which is the default.
-- Press Space with only your keybind held. If you hold another modifier key too, EnviousWispr does not treat it as a lock.
+- Press Space with only your recording modifier held and Caps Lock off. A different modifier, such as Shift with Option, prevents locking. Left and right keys of the same modifier count as one.
 - It does not work when your keybind is a combination of keys, or in **Toggle** mode. It also does not work while macOS Secure Input is on, which some password fields turn on, because EnviousWispr cannot see the Space then.
 - Some macOS shortcuts also use Space with a modifier key, such as Command+Space for Spotlight. If your keybind is that modifier key, macOS may react to the Space as well. If that happens, choose another keybind, or change that macOS shortcut in **System Settings** > **Keyboard** > **Keyboard Shortcuts**.
-- If the lock does not take, the recording ends when you let go, as it always does in Push to Talk.
+- If the recording bar does not show that recording is locked on, do not rely on releasing the key to finish. Click **Stop** in the main EnviousWispr window to finish and paste, or press your cancel keybind, Escape by default, to stop without pasting.
 
 In **Toggle** mode you do not need this. One press starts recording and the next press stops it. See [Toggle Mode](/help/toggle-mode/).
 

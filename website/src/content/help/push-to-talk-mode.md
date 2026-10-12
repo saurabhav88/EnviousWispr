@@ -31,7 +31,7 @@ The option you pick is highlighted. It worked when holding your keybind starts a
 
 ### Record without holding the key
 
-For a long block of speech, press your keybind, let go, and press it again within half a second. Or, while you are holding the keybind, press Space. Recording stays on after you let go. This is hands-free mode. [Hands-Free Mode (Long Dictation)](/help/hands-free-mode-long-dictation/) covers it in full.
+For a long block of speech, press your keybind, let go, and press it again within half a second. Or, if your keybind is a modifier key used on its own, press Space while holding just that modifier. Recording stays on after you let go. This is hands-free mode. [Hands-Free Mode (Long Dictation)](/help/hands-free-mode-long-dictation/) covers it in full.
 
 If you prefer to tap once to start and once to stop, use [Toggle Mode](/help/toggle-mode/).
 

@@ -45,7 +45,7 @@ When your push-to-talk keybind is a modifier key used on its own, pressing anoth
 
 After the first second, extra keys do not cause this dismissal. A locked recording and toggle mode are not affected.
 
-Space is the exception. Pressing Space while you hold your keybind, at any time, locks the recording on instead of dismissing it. See [Hands-Free Mode](/help/hands-free-mode-long-dictation/).
+Space can lock instead of dismissing when you hold only your recording modifier. This also works during the first second. See [Hands-Free Mode](/help/hands-free-mode-long-dictation/).
 
 For this kind of push-to-talk keybind, an ordinary key already down prevents a new recording from starting. Release that key, then press your keybind again.
 

@@ -211,6 +211,45 @@ struct HotkeyHeldSpaceLockTests {
     #expect(rig.lockDecisions.map(\.reason) == ["not_lockable_at_publication"])
   }
 
+  @Test("a start that joined while the engine had already moved on to a newer attempt is refused at execution")
+  func lateJoinAfterTheEngineAdvancedIsRefused() async throws {
+    let rig = Rig()
+    await rig.press(0)  // attempt A: its start is parked in the driver
+    for _ in 0..<50 where rig.driver.enteredCount < 1 { await ListenerKeyboard.mainTurn() }
+    #expect(rig.driver.enteredCount == 1)
+    let sink = try #require(rig.effects.keyboardListenerDispositionSink)
+    func send(_ kind: KeyEventValue.Kind, _ key: UInt16, _ down: Bool, _ t: TimeInterval) {
+      rig.clock.now = 500 + t
+      let held = down ? Set([HotkeyHeldSpaceLockTests.option]) : []
+      _ = sink(
+        KeyEventValue(
+          kind: kind, keyCode: key, rawFlags: ListenerKeyboard.rawFlags(held),
+          timestamp: 500 + t))
+    }
+    // Everything below is decided by the engine on this turn; none of it runs on main until the
+    // test yields, so main still owns attempt A when the engine already owns attempt B.
+    send(.keyDown, 49, true, 0.25)  // the held Space: lock A
+    send(.flagsChanged, HotkeyHeldSpaceLockTests.option, false, 0.375)  // release
+    send(.flagsChanged, HotkeyHeldSpaceLockTests.option, true, 0.9)  // stops A (engine side)
+    send(.keyUp, 49, false, 0.95)  // Space is up again, so B's start is not refused as typing
+    send(.flagsChanged, HotkeyHeldSpaceLockTests.option, false, 1.0)
+    send(.flagsChanged, HotkeyHeldSpaceLockTests.option, true, 1.2)  // starts B
+    // A's start now finds a running session and joins it. The engine ignores this (it owns B);
+    // main must remember it against A.
+    rig.service.markExecutingStartJoined()
+    await ListenerKeyboard.mainTurn()
+    #expect(rig.published.isEmpty, "locked a session the held key never started")
+    #expect(rig.lockDecisions.map(\.reason) == ["not_lockable_at_publication"])
+    // Refusing A drops A's queued stop with it (attempt-scoped), so the joined session is not
+    // stopped or cancelled by the held key's lock or by the press that would have stopped it.
+    #expect(rig.actions == ["start", "lock_held", "start"])
+    #expect(rig.stops == 0 && rig.cancels == 0)
+    // The newer attempt is untouched and still starts normally.
+    await rig.driver.resolve(call: 2, .recording("S2"))
+    await rig.driver.resolve(call: 1, .noRecording)
+    #expect(rig.published.isEmpty)
+  }
+
   @Test(
     "after an early held lock, a record press inside the first press's window is a bounce, never a cancel"
   )
