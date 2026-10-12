@@ -6,7 +6,7 @@ section: "Recording"
 order: 1
 keywords: ["push to talk", "hold to talk", "hold the key", "ptt", "press and hold", "default mode", "recording mode", "release to stop", "hold keybind"]
 related: ["customizing-your-keybind", "first-word-gets-cut-off", "escape-recovery"]
-updated: 2026-09-29
+updated: 2026-10-12
 deflection: "can_resolve"
 ---
 **Push to Talk** is the default recording mode. You hold your recording keybind while you speak. When you let go, the recording ends and your words appear at your cursor once EnviousWispr has worked out what you said.
@@ -31,7 +31,7 @@ The option you pick is highlighted. It worked when holding your keybind starts a
 
 ### Record without holding the key
 
-For a long block of speech, press your keybind, let go, and press it again within half a second. Recording stays on after you let go. This is hands-free mode. [Hands-Free Mode (Long Dictation)](/help/hands-free-mode-long-dictation/) covers it in full.
+For a long block of speech, press your keybind, let go, and press it again within half a second. Or, while you are holding the keybind, press Space. Recording stays on after you let go. This is hands-free mode. [Hands-Free Mode (Long Dictation)](/help/hands-free-mode-long-dictation/) covers it in full.
 
 If you prefer to tap once to start and once to stop, use [Toggle Mode](/help/toggle-mode/).
 

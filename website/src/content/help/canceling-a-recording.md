@@ -6,7 +6,7 @@ section: "Recording"
 order: 5
 keywords: ["cancel", "stop without pasting", "throw away", "discard", "escape", "abort", "undo", "didnt mean to record", "delete recording", "cancel recording", "started recording by accident", "cancel button", "triple press"]
 related: ["recording-won-t-stop-or-seems-stuck", "escape-recovery"]
-updated: 2026-09-29
+updated: 2026-10-12
 deflection: "can_resolve"
 ---
 To stop a recording without pasting anything, press your cancel keybind, Escape by default. EnviousWispr keeps what you said for 24 hours in case you want it back. To throw it away for good, click **Cancel** in the main EnviousWispr window.
@@ -19,7 +19,7 @@ This works in **Push to Talk**, in **Toggle**, and in a hands-free recording. In
 
 - **Push to Talk:** press Escape. Or, when you start a recording, press your recording keybind three times within half a second.
 - **Toggle:** press Escape. Your recording keybind stops the recording and pastes the text.
-- **Hands-free** (the double-press lock in Push to Talk): press Escape. A single press of your recording keybind stops the recording and pastes the text.
+- **Hands-free** (a locked recording in Push to Talk): press Escape. A single press of your recording keybind stops the recording and pastes the text.
 
 ### Get back a recording I cancelled with Escape
 
