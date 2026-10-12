@@ -151,6 +151,28 @@ struct HotkeyHeldSpaceLockTests {
     #expect(rig.lockDecisions.first?.committed == false)
   }
 
+  @Test("a take the controller will not lock is refused after the Space was consumed, and keeps recording")
+  func publicationRefusalLeavesTheTakeRunning() async {
+    for (result, reason) in [
+      (HandsFreeLockRequestResult.notLockable, "not_lockable_at_publication"),
+      (HandsFreeLockRequestResult.unavailable, "publication_unavailable"),
+    ] {
+      let rig = Rig()
+      rig.service.onLockRequested = { [weak rig] sessionID in
+        rig?.published.append(sessionID)
+        return result
+      }
+      await rig.press(0)
+      await rig.driver.resolve(.recording("S1"))
+      #expect(await rig.space(1) == .consume, "accepted intent consumes the Space (plan 3.5)")
+      #expect(rig.published == ["S1"])
+      #expect(rig.lockDecisions.map(\.reason) == [reason])
+      #expect(rig.lockDecisions.first?.committed == false)
+      #expect(!rig.service.isRecordingLocked)
+      #expect(rig.stops == 0 && rig.cancels == 0, "a refused lock must not stop the take")
+    }
+  }
+
   @Test("a press that is still being processed is refused, as a double tap is")
   func processingRefusesTheHeldLock() async {
     let rig = Rig()

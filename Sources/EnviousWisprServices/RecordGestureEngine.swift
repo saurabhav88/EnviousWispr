@@ -7,10 +7,11 @@ import os
 ///
 /// `RecordGesture` decides; this engine owns it, its lone-tap timer and the hand-off of every
 /// decision to `HotkeyService`, which executes it on the main thread. Each input is applied under
-/// one lock, so a press, a release and the timer are ordered by when the ENGINE receives them;
-/// the timer runs on its own queue and never waits for the main thread. In P1 every key event
-/// still arrives through the main thread (Carbon and `NSEvent` monitors); P2/P3 add a listener
-/// thread that calls `ingest` directly.
+/// one lock, so presses, releases, held-Space locks (#3517) and timer decisions are ordered by
+/// when the ENGINE receives them; the timer runs on its own queue and never waits for the main
+/// thread. Bare-modifier input arrives directly from the keyboard listener's thread; Carbon chord
+/// input arrives on main. Listener-origin lone-tap timers decide off main; Carbon-origin timers
+/// keep their main-queue hop.
 ///
 /// Delivery (plan amendment A1): one FIFO outbox and one application path for every producer. A
 /// background producer (the timer queue) appends and claims at most one pending

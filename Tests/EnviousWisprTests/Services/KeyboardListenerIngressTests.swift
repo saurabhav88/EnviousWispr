@@ -1192,4 +1192,52 @@ struct KeyboardListenerIngressTests {
     await rig.key(Self.option, held: Self.optionHeld, at: 3.5)
     #expect(rig.effects == ["start", "lockHeld", "start"])
   }
+
+  @Test("a Space autorepeat with no press behind it never locks, and passes")
+  func autorepeatWithoutAPressNeverLocks() async {
+    let rig = Rig()
+    await rig.key(Self.option, held: Self.optionHeld, at: 0)
+    #expect(await rig.space(autorepeat: true, at: 2.0) == .pass)
+    #expect(rig.effects == ["start"])
+    #expect(!rig.engine.snapshot.isLocked)
+  }
+
+  @Test("a chord that shares the record key's modifier is never configured, so a Space stays a lock candidate")
+  func chordSharingTheRecordModifierIsNeverExempt() async {
+    var bindings = ShortcutBindings.shipped
+    bindings.record = .keyboard(keyCode: Self.option, modifiers: [])
+    // Option+Space for Paste Last: the bare Option record key outranks it, so it holds no Carbon
+    // registration and the listener must not treat its Space as "the user reaching for a shortcut".
+    bindings.pasteLast = .keyboard(keyCode: 49, modifiers: [.option])
+    let rig = Rig(bindings: bindings)
+    await rig.key(Self.option, held: Self.optionHeld, at: 0)
+    #expect(await rig.space(at: 1.5) == .consume)
+    #expect(rig.effects == ["start", "lockHeld"])
+  }
+
+  @Test("a record release a sweep committed before the Space is applied first, so the Space cannot lock")
+  func pendingReleaseIsAppliedBeforeTheSpace() async {
+    let rig = Rig()
+    await rig.key(Self.option, held: Self.optionHeld, at: 0)
+    rig.readings.withLock { $0[Self.option] = .up }
+    await rig.fireSweeps(at: 5)  // the first up reading: nothing released yet
+    let ingress = rig.ingress!
+    let answer = OSAllocatedUnfairLock<KeyboardEventDisposition?>(initialState: nil)
+    let fired = OSAllocatedUnfairLock(initialState: false)
+    let event = KeyEventValue(
+      kind: .keyDown, keyCode: 49, rawFlags: ListenerKeyboard.rawFlags(Self.optionHeld),
+      timestamp: 510.5)
+    // Between the second sweep's commit of the release and its own drain, the tap delivers a Space.
+    rig.afterCommit.withLock {
+      $0 = {
+        guard fired.withLock({ let was = $0; $0 = true; return !was }) else { return }
+        answer.withLock { $0 = ingress.receive(event) }
+      }
+    }
+    rig.clock.now = 510.5
+    await rig.fireSweeps(at: 10)
+    #expect(answer.withLock { $0 } == .pass, "a Space consumed after the key was already released")
+    #expect(rig.effects == ["start", "holdStop"], "the Space locked a take whose key was up")
+    #expect(!rig.engine.snapshot.isLocked)
+  }
 }
