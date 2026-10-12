@@ -122,17 +122,16 @@ struct ActiveEngineOperation {
         if asrManager.activeBackendType == .whisperKit {
           try await whisperKitBackend.prepare()
         } else {
-          // #3546: an initial load this door settled runs the same load and
-          // failure sequence a warm-up does (A-fail, E19, bounded repair); a
-          // frozen reload never changes the identity already serving.
-          if let prepared = try await parakeetUpgrade.settlePendingSelection() {
-            try await parakeetUpgrade.loadPrepared(
-              prepared,
-              checkCaller: { try Task.checkCancellation() },
-              load: { try await asrManager.loadModel() })
-          } else {
-            try await asrManager.loadModel()
-          }
+          // #3546: every Parakeet load here runs the same load and failure
+          // sequence a warm-up does. A pending selection settles first (A-fail,
+          // E19, bounded repair); a frozen reload keeps the identity already
+          // serving but still takes the bounded repair, so an import, a recovery
+          // replay or a Diagnostics run is not left failing on damaged files.
+          let prepared = try await parakeetUpgrade.prepareLoad()
+          try await parakeetUpgrade.loadPrepared(
+            prepared,
+            checkCaller: { try Task.checkCancellation() },
+            load: { try await asrManager.loadModel() })
         }
         if let afterLoadForTesting { await afterLoadForTesting() }
         // The SAME projection `isLoaded` vends, deliberately: a postcondition

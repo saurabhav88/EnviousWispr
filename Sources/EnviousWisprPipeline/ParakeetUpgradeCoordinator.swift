@@ -67,6 +67,12 @@ package final class ParakeetUpgradeCoordinator {
     case reload
     /// Surface the original error.
     case fail
+    /// E19's Ultra fetch failed after v3 failed: surface the delivery failure, which
+    /// names the real cause (disk, network), not the v3 load error.
+    case deliveryFailed(ParakeetDeliveryError)
+    /// The caller was cancelled during E19's Ultra fetch: surface the cancellation, not a
+    /// load failure.
+    case cancelled
   }
 
   /// #3546 §3.7 T2: immutable facts captured where a load is decided, so an observer
@@ -323,16 +329,6 @@ package final class ParakeetUpgradeCoordinator {
     selectionPointsConsumed != selectionPointsMarked
   }
 
-  /// Barrier for loads that do not go through the adapter
-  /// (`ActiveEngineOperation`): when a selection point is pending, its request
-  /// is prepared and published before the load reads one, so a direct load
-  /// never consumes the request an earlier selection published.
-  @discardableResult
-  package func settlePendingSelection() async throws -> PreparedLoad? {
-    guard hasPendingSelectionPoint else { return nil }
-    return try await prepareLoad()
-  }
-
   /// Runs the delivery stage and publishes the request the next physical load
   /// reads. Joins an in-flight preparation instead of starting a second.
   package func prepareLoad() async throws -> PreparedLoad {
@@ -449,6 +445,11 @@ package final class ParakeetUpgradeCoordinator {
         // plan from repairing.
         if target == nil, loads >= maxLoads { throw error }
         let plan = await handleLoadFailure(current, error: error)
+        switch plan {
+        case .deliveryFailed(let failure): throw failure
+        case .cancelled: throw CancellationError()
+        case .reload, .fail: break
+        }
         guard loads < maxLoads, plan == .reload else { throw error }
         try checkCaller()
         if target != nil {
@@ -742,6 +743,12 @@ extension ParakeetUpgradeCoordinator {
           return .fail
         }
         return .reload
+      } catch let failure as ParakeetDeliveryError {
+        return .deliveryFailed(failure)
+      } catch is CancellationError where Task.isCancelled {
+        // Only the caller's own cancellation is a cancel. A fetch cancelled by the
+        // background Cancel it joined (E12) leaves this caller with v3's failure.
+        return .cancelled
       } catch {
         return .fail
       }

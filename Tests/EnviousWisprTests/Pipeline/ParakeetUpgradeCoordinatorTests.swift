@@ -35,31 +35,21 @@ struct ParakeetUpgradeCoordinatorTests {
     #expect(request.displayBytes == 483_256_769)
   }
 
-  @Test("a direct load with no pending selection point prepares nothing")
-  func settleWithoutSelectionPointIsANoOp() async throws {
-    let selection = ParakeetSelectionProvider()
-    let coordinator = ParakeetUpgradeCoordinator(parakeetSelection: selection, delivery: nil)
-    #expect(coordinator.hasPendingSelectionPoint == false)
-    try await coordinator.settlePendingSelection()
-    #expect(selection.current == nil)
+  @Test("a pending selection point is prepared once, and a later load reuses the frozen request")
+  func pendingSelectionPreparedOnce() async throws {
+    let rig = try await ParakeetUpgradePolicyTests.rig(v3: true, ultra: false)
+    rig.coordinator.markSelectionPoint()
+    rig.coordinator.markSelectionPoint()  // a second launch poke coalesces
+    #expect(rig.coordinator.hasPendingSelectionPoint)
+    let first = try await rig.coordinator.prepareLoad()
+    #expect(first.isSelectionLoad)
+    #expect(rig.coordinator.hasPendingSelectionPoint == false)
+    let afterSettle = rig.selection.current
+    let reload = try await rig.coordinator.prepareLoad()
+    #expect(reload.isSelectionLoad == false, "no new selection: the frozen request")
+    #expect(rig.selection.current == afterSettle, "a settled point is not prepared again")
   }
 
-  @Test("a pending selection point is prepared before a direct load, and only once")
-  func settlePreparesThePendingSelectionOnce() async throws {
-    let selection = ParakeetSelectionProvider()
-    let coordinator = ParakeetUpgradeCoordinator(parakeetSelection: selection, delivery: nil)
-    coordinator.markSelectionPoint()
-    coordinator.markSelectionPoint()  // a second launch poke coalesces
-    #expect(coordinator.hasPendingSelectionPoint)
-    try await coordinator.settlePendingSelection()
-    #expect(coordinator.hasPendingSelectionPoint == false)
-    let afterSettle = selection.current
-    try await coordinator.settlePendingSelection()
-    #expect(selection.current == afterSettle, "a settled point is not prepared again")
-    if ParakeetInstallLocation.directoryFromSystemApplicationSupport() != nil {
-      #expect(afterSettle?.generation == 1)
-    }
-  }
 
   @Test("a selection point marked after a preparation returned stays pending")
   func laterSelectionPointIsNotConsumedEarly() async throws {
@@ -1101,6 +1091,47 @@ struct ParakeetUpgradePolicyTests {
     #expect(log.order == [.v3, .ultra, .ultra], "E19 to Ultra, then its one repair and reload")
     #expect(failed == log.order, "every failure, the last included, is reported")
     #expect(Self.state(rig)?.attempts == 2)
+  }
+
+  /// Chunk 12 second pass: a file import, recovery replay or Diagnostics load reaches the
+  /// frozen Ultra through `ActiveEngineOperation`. When this fails, that door loads the manager
+  /// directly, so a damaged Ultra after the activation is never repaired there and every retry
+  /// of the import fails the same way.
+  @Test(
+    "after the activation, a failed frozen reload is repaired through either door",
+    arguments: Door.allCases)
+  func frozenReloadRepairsThroughEitherDoor(door: Door) async throws {
+    let rig = try await Self.rig(v3: true, ultra: true)
+    Self.enqueueUltra(rig)
+    let log = LoadLog([true, false, true])
+    let manager = Self.scriptedManager(rig, log)
+    try await Self.load(through: .warmUp, rig, manager)
+    #expect(log.order == [.ultra], "the activation's selection load chose Ultra")
+    #expect(rig.selection.current?.repairable == false, "chosen while v3 could still serve")
+    manager.isModelLoaded = false  // an idle unload; the next load reloads the frozen request
+    try await Self.load(through: door, rig, manager)
+    #expect(log.order == [.ultra, .ultra, .ultra], "frozen reload, its bounded repair, reload")
+  }
+
+  /// Chunk 12 second pass: v3 fails its launch load and E19's Ultra fetch then fails. When
+  /// this fails, the caller is told v3 failed to load instead of the fetch's real cause (no
+  /// network, no disk), and a cancelled fetch reads as a load failure.
+  @Test(
+    "v3 fails and E19's Ultra fetch fails: the fetch failure is what the caller sees",
+    arguments: Door.allCases)
+  func e19FetchFailureSurfaces(door: Door) async throws {
+    let rig = try await Self.rig(v3: true, ultra: false)
+    for f in Self.ultraFiles {
+      DeliveryStubProtocol.enqueue(
+        url: rig.ultraBase.appendingPathComponent(f.path).absoluteString,
+        .init(status: 404, headers: [:], body: Data()))
+    }
+    let log = LoadLog([false])
+    let manager = Self.scriptedManager(rig, log)
+    await #expect(throws: ParakeetDeliveryError.self) {
+      try await Self.load(through: door, rig, manager)
+    }
+    #expect(log.order == [.v3], "only v3 loaded; Ultra never arrived")
   }
 
   @Test(
