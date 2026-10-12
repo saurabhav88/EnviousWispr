@@ -143,7 +143,7 @@ final class ParakeetUpgradeTelemetry {
       extra: ["fallback": fallback])
     Task {
       await AppLogger.shared.log(
-        "[Upgrade] outcome=load_failed error=\(descriptor) fallback=\(fallback)",
+        "outcome=load_failed error=\(descriptor) fallback=\(fallback)",
         level: .info, category: "Upgrade")
     }
   }

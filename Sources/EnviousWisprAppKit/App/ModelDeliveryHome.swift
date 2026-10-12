@@ -14,7 +14,24 @@ import Foundation
 /// direction; the composition root holds it as one `let`.
 @Observable @MainActor
 final class ModelDeliveryHome {
-  let controller = ModelDeliveryController()
+  let controller: ModelDeliveryController = {
+    #if DEBUG
+      // #3546 T4: a DEBUG-only Live UAT seam. It reports a fixed free-disk figure to
+      // every delivery preflight, so the deferred-disk upgrade outcome is staged
+      // without filling a real disk. It is logged when used; Release compiles it out.
+      if let raw = ProcessInfo.processInfo.environment["EW_UAT_DELIVERY_AVAILABLE_BYTES"],
+        let bytes = Int64(raw)
+      {
+        Task {
+          await AppLogger.shared.log(
+            "UAT seam: available disk forced to \(bytes) bytes",
+            level: .info, category: "Delivery")
+        }
+        return ModelDeliveryController(availableDiskBytes: { _ in bytes })
+      }
+    #endif
+    return ModelDeliveryController()
+  }()
   /// Nil when the bundled manifest failed to load — a can't-happen-in-release
   /// condition (unit-tested against the bundled resource); the Parakeet path
   /// then runs legacy delivery, never crashes.
@@ -38,7 +55,8 @@ final class ModelDeliveryHome {
   /// #3546: what Settings presents for Parakeet, mirrored from the upgrade
   /// coordinator (it owns every decision; this only re-reads on its signal).
   private(set) var parakeetPresentedModel: ParakeetModel?
-  private(set) var parakeetBackgroundUpgrade: ParakeetUpgradeCoordinator.BackgroundUpgradeState = .idle
+  private(set) var parakeetBackgroundUpgrade: ParakeetUpgradeCoordinator.BackgroundUpgradeState =
+    .idle
   private(set) var parakeetNeedsExplicitRetry = false
   /// v3 failed to load in this launch (E19): its name may still show, but the
   /// download row belongs to the serving Ultra.
