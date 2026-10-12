@@ -329,20 +329,28 @@ def connect(app="EnviousWispr", expected_pid=None, expected_executable=None):
     _pid, _app = pid, get_ax_app(pid)
     print(f"Connected to {app} (PID {pid})")
 
-def bind_after_verified_exit(old, new, proof):
+def bind_after_verified_exit(old, new, proof, before_bind=None, *, recovery=False):
     """Explicit same-bundle lifecycle handoff; ordinary connect still refuses replacement."""
     from instance_guard import verify_exit_proof
     global _pid, _app, _target, _TABLES
-    if _target != old or new.executable != old.executable:
-        raise InstanceGuardError("lifecycle handoff conflicts with the retained app")
-    verify_exit_proof(old, proof)
-    verify_target(new)
-    if _recording_state(new) != "idle":
-        raise InstanceGuardError("replacement app has not released capture")
-    application = get_ax_app(new.pid)
-    verify_target(new)
-    verify_exit_proof(old, proof)
-    _pid, _app, _target, _TABLES = new.pid, application, new, (None, [])
+    with _defer_recording_signals():
+        if recovery:
+            if (_target, _pid, _app) != (None, None, None) or before_bind is None:
+                raise InstanceGuardError("recovery bind requires an unconnected owner and journal")
+        elif _target != old:
+            raise InstanceGuardError("lifecycle handoff conflicts with the retained app")
+        if new.executable != old.executable:
+            raise InstanceGuardError("replacement executable differs")
+        verify_exit_proof(old, proof)
+        verify_target(new)
+        if _recording_state(new) != "idle":
+            raise InstanceGuardError("replacement app has not released capture")
+        application = get_ax_app(new.pid)
+        verify_target(new)
+        verify_exit_proof(old, proof)
+        if before_bind is not None:
+            before_bind()
+        _pid, _app, _target, _TABLES = new.pid, application, new, (None, [])
 
 
 def health():
@@ -2250,6 +2258,18 @@ def _stop_recording(target, timeout):
         time.sleep(0.05)  # deadline-fallback: positive non-recording observation
 
 
+def _wait_for_capture_release(target, timeout):
+    """Observe natural key/gesture release; never grant credit to emergency Stop."""
+    deadline = time.monotonic() + timeout
+    while True:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            return False
+        if _recording_state(target, min(5.0, remaining)) == "idle":
+            return True
+        time.sleep(0.05)  # deadline-fallback: raw capture release observation.
+
+
 def _spawn_owned_playback(audio, *, owner=_PLAYBACK_OWNER_UNSET):
     import threading
     global _standalone_player, _recording_cleanup_safe
@@ -3591,6 +3611,10 @@ def test_ptt(key=None, audio=None, sentence=None, expect=None, timeout=10.0):
         time.sleep(hold_audio)  # test-fixture-timer: existing PTT hold.
         # Phase 4: Key up (recording stops), guaranteed by the cleanup envelope.
         print(f"\n--- KEY UP ({key}) after {total_hold:.1f}s hold ---")
+        with _defer_recording_signals():
+            life["release"]()
+            life["release"] = None
+        release_ok = _wait_for_capture_release(life["target"], timeout)
 
     # Phase 5: Wait for completion (log-based with clipboard fallback)
     t_stop = time.time()
@@ -3614,7 +3638,9 @@ def test_ptt(key=None, audio=None, sentence=None, expect=None, timeout=10.0):
 
     # PTT always uses audio (we played a file), so non-completion is FAIL
     # regardless of "audio was empty" semantics.
-    overall_pass = _report_result(completed, audio, expect, transcription)
+    overall_pass = _report_result(completed, audio, expect, transcription) if release_ok else False
+    if not release_ok:
+        print("Result:         FAIL (PTT release required emergency cleanup)")
     # Nothing happened at all: print what the instrument believed, so a reader
     # can tell a real product failure from a key the app was never listening
     # for. Gated on the silent shape so a passing run gains no noise.
@@ -3720,7 +3746,18 @@ def record_tts(sentence="The quick brown fox jumps over the lazy dog", key=None,
         print(f"Holding {key} for {hold_dur:.1f}s (audio {audio_dur:.1f}s)...")
         hold_error = None
         try:
-            _si.hold_key(key, duration=hold_dur, before_release=before_release, before_press=before_press)
+            def finish_audio_before_release():
+                with _defer_recording_signals():
+                    player.join()
+                if playback_errors:
+                    primary = playback_errors[0]
+                    for error in playback_errors[1:]:
+                        primary.add_note(f"playback cleanup: {error!r}")
+                    raise primary
+                if before_release is not None:
+                    before_release()
+            _si.hold_key(key, duration=hold_dur, before_release=finish_audio_before_release,
+                         before_press=before_press)
         except BaseException as error:
             hold_error = error
         finally:

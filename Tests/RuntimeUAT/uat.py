@@ -1049,7 +1049,9 @@ def _lifecycle_self_test():
                 other_released = state.get("other_released", True)
                 reply = (f"OK v=1 pid=111 parakeet_phase={phase} parakeet_released={str(released).lower()} "
                          f"whisperkit_phase={other_phase} whisperkit_released={str(other_released).lower()} backend=parakeet\n")
-                self.chunks = [state.get("query_reply", reply).encode(), b""]
+                sequence = state.get("query_replies")
+                actual_reply = sequence.pop(0) if sequence else state.get("query_reply", reply)
+                self.chunks = [actual_reply.encode(), b""]
                 if state.get("fragment_reply"):
                     self.chunks = [self.chunks[0][:11], self.chunks[0][11:37], self.chunks[0][37:], b""]
                 events.append(("query", phase, released))
@@ -1095,7 +1097,7 @@ def _lifecycle_self_test():
                  "bind_after_verified_exit",
                  "_audio_duration", "_defer_recording_signals", "_recording_interruptions", "_recording_control",
                  "_read_capture_token", "_capture_snapshot", "_recording_state", "_require_idle_without_ui",
-                 "_stop_recording", "_spawn_owned_playback", "_reap_playback", "_legacy_capture", "_finish_playback_on_exit", "test_recording", "_report_result", "_ax", "nav",
+                 "_stop_recording", "_wait_for_capture_release", "_spawn_owned_playback", "_reap_playback", "_legacy_capture", "_finish_playback_on_exit", "test_recording", "_report_result", "_ax", "nav",
                  "_open_settings", "_cancel_menu", "_stored", "_input_read_uid",
                  "read_input_choice", "select_input_choice", "restore_input_choice"}
         compile_functions(root / "wispr_eyes.py", names, w.__dict__)
@@ -1211,8 +1213,10 @@ def _lifecycle_self_test():
                 if value["down"] and not f.state.get("idle_gesture"):
                     f.state["mode"] = "idle" if counts["down"] >= 3 else "recording"
             else:
-                if not (direction == "up" and f.state.get("cleanup_stop_noop")):
+                if not (direction == "up" and (f.state.get("cleanup_stop_noop") or f.state.get("key_up_noop"))):
                     f.state["mode"] = "recording" if value["down"] else "idle"
+                if direction == "up" and f.state.get("natural_release_sequence"):
+                    f.state["query_sequence"] = [("stopping", False), ("delivering", True)]
             if kind == "tts" and not value["down"]:
                 with log.open("a") as output:
                     output.write("CORRECTION_DEBUG [RAW ASR] known words\n")
@@ -1238,7 +1242,7 @@ def _lifecycle_self_test():
             DEFAULT_DELAY=0.1, time=types.SimpleNamespace(sleep=sleep), sys=sys)
         compile_functions(root / "simulate_input.py", {"_flags_changed_event", "hold_modifier", "hold_key"}, inputs.__dict__)
         class Thread:
-            def __init__(self, target): self.target, self.started = target, False
+            def __init__(self, target): self.target, self.started, self.joins = target, False, 0
             def start(self):
                 self.started = True
                 events.append(("thread", "start"))
@@ -1247,8 +1251,9 @@ def _lifecycle_self_test():
                     f.signals.fire(f.signals.SIGTERM)
             def join(self):
                 require(self.started)
+                self.joins += 1
                 events.append(("thread", "join"))
-                if second_failure == "join":
+                if second_failure == "join" and self.joins > 1:
                     raise join_failure
         scheduler = types.SimpleNamespace(Thread=Thread, current_thread=threading.current_thread,
                                            main_thread=threading.main_thread)
@@ -1327,7 +1332,7 @@ def _lifecycle_self_test():
             require(counts["down"] == 2 and not any(e[:2] == ("AX", "start") for e in events))
         if kind == "tts" and any(e == ("thread", "start") for e in events):
             require(any(e == ("thread", "join") for e in events))
-        if failure == "short" or missing_marker is not None or f.state.get("missing_observation"):
+        if failure == "short" or missing_marker is not None or f.state.get("missing_observation") or f.state.get("key_up_noop"):
             require(result is False)
         elif not should_error:
             require(result is True if kind != "tts" else result["success"] is True)
@@ -1367,6 +1372,15 @@ def _lifecycle_self_test():
          legacy_ingress(f, kind="tts", late_refusal=True))
     case("legacy-ingress", "thread-start interruption still registers join and reaps", lambda f:
          legacy_ingress(f, kind="tts", interrupt_thread=True))
+    for key in ("ropt", "space"):
+        def rescued_release(f, key=key):
+            legacy_ingress(f, key=key)
+            require(any(e[:2] == ("AX", "stop") for e in f.events))
+        case("legacy-ingress", key + " emergency Stop cannot earn PTT success", rescued_release, key_up_noop=True)
+    def natural_release(f):
+        legacy_ingress(f)
+        require(not any(e[:2] == ("AX", "stop") for e in f.events))
+    case("legacy-ingress", "natural stopping release passes without rescue", natural_release, natural_release_sequence=True)
     case("signals", "interruption during acquisition", failed_recording, signal_acquire=True)
     case("signals", "repeated interruption during cleanup", failed_recording, hung=True, signal_cleanup=True)
     for name, options in [("unreadable", {"unreadable": True}), ("empty", {"empty": True}),
@@ -1426,7 +1440,7 @@ def _lifecycle_self_test():
         route = f.audio["AudioRoute"]()
         require(route.apply() is True and route.restore() is True)
     case("recording", "standalone playback blocks routing until reaped", standalone_blocks_route)
-    def actual_handoff(f, refused=False):
+    def actual_handoff(f, refused=False, late=False, commit_failure=False):
         route = f.audio["AudioRoute"](include_alerts=True); route.apply()
         before = pathlib.Path(route.FILE).read_bytes()
         new = guard.TargetIdentity(222, executable, (124, 456))
@@ -1435,16 +1449,24 @@ def _lifecycle_self_test():
         phase, released = ("live", "false") if refused else ("idle", "true")
         f.state["query_reply"] = ("OK v=1 pid=222 parakeet_phase=" + phase + " parakeet_released=" + released +
             " whisperkit_phase=idle whisperkit_released=true backend=parakeet\n")
+        if late:
+            idle = f.state["query_reply"]
+            f.state["query_replies"] = [idle, idle.replace("parakeet_phase=idle parakeet_released=true",
+                                                          "parakeet_phase=live parakeet_released=false")]
+        original_replace = f.audio["_replace_record"]
+        def fail_commit(*args): raise RuntimeError("handoff publication failed")
         index = len(f.events)
         with patch.object(guard, "running_enviouswispr_instances", return_value={"222": executable}), \
              patch.object(guard, "process_start", side_effect=lambda pid: new.start if pid == 222 else target.start), \
-             patch.object(os, "kill", side_effect=ProcessLookupError()):
+             patch.object(os, "kill", side_effect=ProcessLookupError()), \
+             patch.dict(f.audio, {"_replace_record": fail_commit if commit_failure else original_replace}):
             try:
                 route.transfer_after_verified_exit(new, guard.ExitProof(target, None))
             except RuntimeError:
-                require(refused and pathlib.Path(route.FILE).read_bytes() == before and route.target == target and f.w._target == target)
+                require((refused or late or commit_failure) and pathlib.Path(route.FILE).read_bytes() == before
+                        and route.target == target and f.w._target == target)
             else:
-                require(not refused and route.target == new and f.w._target == new)
+                require(not (refused or late or commit_failure) and route.target == new and f.w._target == new)
                 payload = json.loads(pathlib.Path(route.FILE).read_text())
                 require(payload["devices"] == f.originals and payload["target"] == f.audio["_target_json"](new))
                 require(payload["lineage"] == [{"old": f.audio["_target_json"](target),
@@ -1453,6 +1475,80 @@ def _lifecycle_self_test():
         f.audio["_release_record_lock"](route._lock); route._lock = None
     case("handoff", "actual owner journals verified replacement without changing originals", actual_handoff)
     case("handoff", "actual owner refuses unreleased replacement without journal changes", lambda f: actual_handoff(f, refused=True))
+    case("handoff", "late active capture refuses before journal commit and binding", lambda f: actual_handoff(f, late=True))
+    case("handoff", "publication failure leaves the retained connection and route unchanged", lambda f:
+         actual_handoff(f, commit_failure=True))
+    def fresh_recovery(f, mode="attach", complete=False):
+        route = f.audio["AudioRoute"](include_alerts=True); route.apply()
+        owned = route._owned
+        payload = copy.deepcopy(route._payload)
+        before = pathlib.Path(route.FILE).read_bytes()
+        f.audio["_release_record_lock"](route._lock); route._lock = None
+        f.w._active_audio_route = None
+        f.w._target, f.w._pid, f.w._app = None, None, None  # private fresh-interpreter fixture
+        new = guard.TargetIdentity(222, executable, (124, 456))
+        token = pathlib.Path(f.clip).parent / "fault-token-222"
+        token.write_bytes(b"a" * 64); token.chmod(0o600)
+        table = {} if mode == "launch" else {"222": executable}
+        if mode == "wrong": table = {"222": executable + "-other"}
+        if mode == "many": table = {"222": executable, "333": executable}
+        phase, released = ("live", "false") if mode == "active" else ("idle", "true")
+        f.state["query_reply"] = (f"OK v=1 pid=222 parakeet_phase={phase} parakeet_released={released} "
+                                 "whisperkit_phase=idle whisperkit_released=true backend=parakeet\n")
+        if mode == "timeout": f.state["query_timeout"] = True
+        native_run = f.audio["subprocess"].run
+        def run(command, **kwargs):
+            if command[0] == "open":
+                require(command == ["open", "-n", "--env", "EW_FAULT_INJECTION=1",
+                                    executable.rsplit("/Contents/MacOS/", 1)[0]])
+                f.events.append(("recovery-launch",))
+                table["222"] = executable
+                return types.SimpleNamespace(returncode=0)
+            return native_run(command, **kwargs)
+        def native_kill(pid, sig):
+            require(sig == 0)
+            if mode == "unknown-exit" and pid == 111:
+                raise PermissionError("native old exit unreadable")
+            if pid == 111: raise ProcessLookupError()
+        def native_start(pid):
+            if mode == "unknown-exit" and pid == 111:
+                raise guard.InstanceGuardError("old identity unreadable")
+            return new.start if pid == 222 else target.start
+        actual_replace = f.audio["_replace_record"]
+        def replace(*args):
+            if mode == "commit": raise RuntimeError("recovery publication failed")
+            return actual_replace(*args)
+        # UI picker APIs are service boundaries here. Their actual AX bodies have
+        # separate Settings/identity controls; this cell covers full replay ordering.
+        f.w.read_input_choice = lambda: settings_owner.InputChoice(uid=f.settings.input_uid, shown="fixture")
+        f.w.restore_input_choice = lambda choice: setattr(f.settings, "input_uid", choice.uid)
+        index = len(f.events)
+        with patch.object(guard, "running_enviouswispr_instances", side_effect=lambda: dict(table)), \
+             patch.object(guard, "process_start", side_effect=native_start), \
+             patch.object(os, "kill", side_effect=native_kill), \
+             patch.object(f.audio["subprocess"], "run", side_effect=run), \
+             patch.dict(f.audio, {"_replace_record": replace}):
+            try:
+                if complete:
+                    result = f.audio["_replay_recovery"](route.FILE)
+                else:
+                    result = f.audio["_recover_target"](route.FILE, owned, payload)
+            except RuntimeError:
+                require(mode not in ("attach", "launch") and pathlib.Path(route.FILE).read_bytes() == before)
+                require(f.w._target is None and not any(e[0] == "switch" for e in f.events[index:]))
+            else:
+                require(mode in ("attach", "launch") and f.w._target == new)
+                if complete:
+                    require(result is True and not pathlib.Path(route.FILE).exists() and f.devices == f.originals)
+                else:
+                    updated = result[1]
+                    require(updated["devices"] == payload["devices"] and updated["app_device"] == payload["app_device"])
+                    require(updated["target"] == f.audio["_target_json"](new) and len(updated["lineage"]) == 1)
+                require(any(e[0] == "recovery-launch" for e in f.events[index:]) == (mode == "launch"))
+    for mode in ("attach", "launch", "wrong", "many", "active", "unknown-exit", "timeout", "commit"):
+        case("recovery-replacement", "fresh recovery " + mode, lambda f, mode=mode: fresh_recovery(f, mode))
+    case("recovery-replacement", "complete replay binds replacement then restores original devices", lambda f:
+         fresh_recovery(f, complete=True))
     def overlapping_owner(f, first_kind):
         first = f.audio[first_kind](); first.apply()
         second_kind = "AlertSink" if first_kind == "AudioRoute" else "AudioRoute"

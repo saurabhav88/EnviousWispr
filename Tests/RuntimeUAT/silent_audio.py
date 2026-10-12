@@ -577,6 +577,74 @@ def _restore_record(path, owned, payload):
     return True
 
 
+def _handoff_payload(payload, old, new, proof):
+    if _decode_target(payload["target"]) != old or payload["playback"] is not None:
+        raise RuntimeError("handoff requires the recorded owner and resolved playback")
+    updated = copy.deepcopy(payload)
+    updated["target"] = _target_json(new)
+    updated["lineage"].append({"old": _target_json(old), "new": _target_json(new),
+        "replacement_start": list(proof.replacement_start) if proof.replacement_start is not None else None})
+    _validate_playback_journal(updated)
+    return updated
+
+
+def _recover_target(path, owned, payload):
+    """Fresh-process recovery binds a verified replacement before restoring the picker."""
+    from instance_guard import (verify_target, prove_target_exited, verify_exit_proof,
+        running_enviouswispr_instances, pin_target, InstanceGuardError)
+    old = _decode_target(payload["target"])
+    try:
+        verify_target(old)
+    except InstanceGuardError:
+        proof = prove_target_exited(old)
+    else:
+        return owned, payload
+    if (w._target, w._pid, w._app) != (None, None, None):
+        raise RuntimeError("replacement recovery requires a fresh connection")
+    if payload["playback"] is not None or _record_bytes(path) != owned:
+        raise RuntimeError("recovery ownership is unresolved")
+    found = running_enviouswispr_instances()
+    if found and (len(found) != 1 or next(iter(found.values())) != old.executable):
+        raise RuntimeError("unexpected or ambiguous recovery replacement")
+    deadline = time.monotonic() + 30.0
+    if not found:
+        verify_exit_proof(old, proof)
+        bundle = old.executable.rsplit("/Contents/MacOS/", 1)[0]
+        subprocess.run(["open", "-n", "--env", "EW_FAULT_INJECTION=1", bundle], check=True, timeout=10.0)
+    candidate = None
+    while True:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise RuntimeError("recovery replacement readiness expired")
+        found = running_enviouswispr_instances()
+        if found:
+            if len(found) != 1 or next(iter(found.values())) != old.executable:
+                raise RuntimeError("unexpected or ambiguous recovery replacement")
+            new = pin_target(int(next(iter(found))), old.executable)
+            if candidate is not None and candidate != new:
+                raise RuntimeError("recovery replacement changed during readiness")
+            candidate = new
+            try:
+                state = w._recording_state(new, min(5.0, remaining))
+            except InstanceGuardError:
+                raise
+            except (RuntimeError, OSError):
+                state = None
+            if state == "recording":
+                raise RuntimeError("replacement is already capturing")
+            if state == "idle":
+                break
+        elif candidate is not None:
+            raise RuntimeError("recovery replacement disappeared")
+        time.sleep(0.05)  # deadline-fallback: authenticated readiness observation.
+    updated = _handoff_payload(payload, old, candidate, proof)
+    def commit_recovery():
+        nonlocal owned
+        owned = _replace_record(path, owned, updated)
+    w.bind_after_verified_exit(old, candidate, proof, before_bind=commit_recovery, recovery=True)
+    return owned, updated
+
+
 def _replay_recovery(path):
     with w._defer_recording_signals():
         if os.path.lexists(RESTORE_FILE) and os.path.lexists(AlertSink.FILE):
@@ -609,6 +677,7 @@ def _replay_recovery(path):
                 payload = copy.deepcopy(payload)
                 payload["playback"] = None
                 owned = _replace_record(path, owned, payload)
+            owned, payload = _recover_target(path, owned, payload)
             return _restore_record(path, owned, payload)
         finally:
             _release_record_lock(fd)
@@ -744,17 +813,11 @@ class AudioRoute:
             verify_target(new)
             if w._recording_state(new) != "idle":
                 raise RuntimeError("replacement capture has not been released")
-            payload = copy.deepcopy(self._payload)
-            payload["target"] = _target_json(new)
-            payload["lineage"].append({"old": _target_json(old), "new": _target_json(new),
-                                       "replacement_start": list(proof.replacement_start)
-                                       if proof.replacement_start is not None else None})
-            _validate_playback_journal(payload)
-            verify_exit_proof(old, proof)
-            verify_target(new)
-            self._owned = _replace_record(self.FILE, self._owned, payload)
-            self._payload, self.target = payload, new
-            w.bind_after_verified_exit(old, new, proof)
+            payload = _handoff_payload(self._payload, old, new, proof)
+            def commit_handoff():
+                self._owned = _replace_record(self.FILE, self._owned, payload)
+                self._payload, self.target = payload, new
+            w.bind_after_verified_exit(old, new, proof, before_bind=commit_handoff)
             # Derived from durable no-playback, verified old exit and released new capture.
             w._recording_cleanup_safe = True
 

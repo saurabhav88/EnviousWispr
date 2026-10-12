@@ -231,25 +231,30 @@ except uat.Aborted as e:
 uat.field_text = lambda path: "hello"
 ok("control: text comes back unchanged", uat.readable("/tmp/x", "row") == "hello")
 
-print("\nstop_app fails closed")
-import subprocess as _sp
-_real_run = _sp.run
-_sp.run = lambda *a, **k: None
-uat.stop_app = REAL_STOP_APP   # the subject, not the stub an earlier row installed
-RUNNING[0] = True   # never dies, whatever we send it
-try:
-    uat.stop_app()
-    ok("an app that will not exit ABORTS", False,
-       "settings would then be written under a live app, which overwrites them on quit")
-except uat.Aborted as e:
-    ok("an app that will not exit ABORTS", True, str(e)[:70])
-RUNNING[0] = False  # exits promptly
-try:
-    uat.stop_app()
-    ok("control: an app that does exit is fine", True)
-except uat.Aborted as e:
-    ok("control: an app that does exit is fine", False, str(e))
-_sp.run = _real_run
+print("\nstop_app delegates the verified lifecycle authority")
+from unittest.mock import patch
+lifecycle = types.ModuleType("learn_from_edits_uat")
+lifecycle.Aborted = type("Aborted", (RuntimeError,), {})
+def verified_stop():
+    if RUNNING[0]:
+        raise lifecycle.Aborted("the pinned dev app did not exit")
+    return "private-positive-exit-proof"
+lifecycle.stop_app = verified_stop
+w._active_audio_route = None
+uat.stop_app = REAL_STOP_APP
+with patch.dict(sys.modules, {"learn_from_edits_uat": lifecycle}):
+    RUNNING[0] = True
+    try:
+        uat.stop_app()
+        ok("verified stop authority refusal ABORTS the caller", False)
+    except uat.Aborted as e:
+        ok("verified stop authority refusal ABORTS the caller", "pinned dev app did not exit" in str(e))
+    RUNNING[0] = False
+    try:
+        proof = uat.stop_app()
+        ok("control: a positive exit proof is retained", proof == "private-positive-exit-proof" and uat._EXIT_PROOF == proof)
+    except uat.Aborted as e:
+        ok("control: a positive exit proof is retained", False, str(e))
 
 # ---------------------------------------------------------------------------
 # The restore PROPERTY, added 2026-08-19 after four consecutive review findings

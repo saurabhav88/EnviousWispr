@@ -112,18 +112,20 @@ def learned_dictionary(snapshot):
     return {"exists": True, "bytes": raw, "mode": 0o600, "sha256": hashlib.sha256(raw).hexdigest(), "parsed": parsed}
 
 
-def start_app():
+def start_app(proof=None):
     mark = lfe.log_mark()
-    subprocess.run(["open", "-n", lfe.APP], check=True)
+    import last_dictation_uat as lifecycle
+    if not lifecycle.launch_dev_app_with_endpoint(proof):
+        raise lfe.Aborted("the app did not pass authenticated capture readiness")
     if not lfe.wait_for("startup scan", lambda: lfe.has(mark, "scan finished"), deadline=90.0):
         raise lfe.Aborted("the app did not reach a ready state")
-    # Same readiness wait as the drill: the status item's exact menu entry must exist
-    # before a menu-driven take, or the harness falls into a system-wide menu walk.
     lfe.w.connect()
+    if lfe.w._recording_state(lfe.w._target) != "idle":
+        raise lfe.Aborted("the launched app has not released capture")
     if not lfe.wait_for("the Start Recording menu item",
                         lambda: lfe.w._find_match(lfe.w._app, "Start Recording", None, exact=True), deadline=30.0):
         raise lfe.Aborted("the relaunched app never exposed its Start Recording menu item")
-    time.sleep(1.0)  # settle: overlay host and paste registry finish their first render; no ack
+    time.sleep(1.0)  # settle: preserve overlay/paste-registry first-render allowance.
     return mark
 
 
@@ -215,11 +217,13 @@ def main():
             # launches with BlackHole already selected is ~1 s slower per take (#3114), which would inflate
             # both arms' absolute times.
             route.restore()
-            lfe.stop_app()
+            route = None
+            proof = lfe.stop_app()
             lfe.file_restore(lfe.WORDS, learned_dictionary(snaps["words"]))
             door_set(adapter_key, args.adapter if arm == "on" else None)
             door_set(threshold_key, args.threshold if arm == "on" else None)
-            mark = start_app()
+            mark = start_app(proof)
+            route = lfe.audio_route()
             route.apply()
             if arm == "on" and not lfe.wait_for(f"the {label} checker door", lambda: lfe.has(mark, f"learned-check {label} door ACTIVE"), deadline=30.0):
                 raise lfe.Aborted(f"the {label} checker door did not report ACTIVE")
@@ -250,17 +254,20 @@ def main():
                 print(f"AUDIO RESTORE FAILED: {error}")
         stopped = True
         try:
-            lfe.stop_app()
+            if not audio_restored:
+                raise lfe.Aborted("audio recovery remains pending; refusing planned stop")
+            final_proof = lfe.stop_app()
         except Exception as error:
             stopped = False
             print(f"APP STOP FAILED: {error}")
-        doors_restored = True
-        for key, value in ((adapter_key, snaps["adapter"]), (threshold_key, snaps["threshold"])):
-            try:
-                door_set(key, value)
-            except Exception as error:
-                doors_restored = False
-                print(f"DOOR RESTORE FAILED for {key}: {error}")
+        doors_restored = stopped
+        if stopped:
+            for key, value in ((adapter_key, snaps["adapter"]), (threshold_key, snaps["threshold"])):
+                try:
+                    door_set(key, value)
+                except Exception as error:
+                    doors_restored = False
+                    print(f"DOOR RESTORE FAILED for {key}: {error}")
         if stopped:
             try:
                 lfe.file_restore(lfe.WORDS, snaps["words"])
@@ -274,13 +281,17 @@ def main():
             ok_d = False
             print(f"DOOR READBACK FAILED: {error}")
         if initially_running and stopped:
-            subprocess.run(["open", "-n", lfe.APP], check=False)
+            try:
+                start_app(final_proof)
+            except Exception as error:
+                stopped = False
+                print(f"APP RESTORE FAILED: {error}")
         lfe.save("rows.json", rows)
         summary = summarize(rows)
         lfe.save("summary.json", summary)
         print(json.dumps(summary, indent=1))
         print(f"RESTORE words={ok_w} ({why}) doors={ok_d} audio={audio_restored}")
-        if not (ok_w and ok_d and audio_restored):
+        if not (ok_w and ok_d and audio_restored and stopped):
             sys.exit(3)
 
 

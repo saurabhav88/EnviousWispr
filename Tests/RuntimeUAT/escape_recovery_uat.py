@@ -362,9 +362,8 @@ def log_since(baseline):
 
 
 def app_is_running():
-    return subprocess.run(
-        ["pgrep", "-f", "EnviousWispr Local.app/Contents/MacOS/EnviousWispr"],
-        capture_output=True).returncode == 0
+    import learn_from_edits_uat as lifecycle
+    return lifecycle.app_pid() is not None
 
 
 def in_flight(base):
@@ -419,35 +418,38 @@ def ensure_stopped(base, why="", grace=0.0):
     return False
 
 
-def stop_app():
-    """Down, and confirmed down.
+_EXIT_PROOF = None
 
-    Separate from `start_app` so settings can be written while the app is NOT
-    running. `SettingsManager` writes its own values back on change, so a write
-    made underneath a live app is a race against it, and the app wins on quit.
-    """
-    # check=False BY DESIGN and the result is deliberately dropped: `pkill`
-    # exits 1 when nothing matched, which is the ordinary case here — the app
-    # may already be down. The OUTCOME is what matters and it is verified
-    # separately by `app_is_running`, not by this call's status.
-    subprocess.run(["pkill", "-f", "EnviousWispr Local.app/Contents/MacOS/EnviousWispr"],
-                   check=False, capture_output=True)
-    if not wait_for("the old instance to exit", lambda: not app_is_running(), deadline=15.0):
-        # FAIL CLOSED. The old code discarded this answer, so an app that
-        # ignored or outran SIGTERM left every later step operating under a live
-        # instance: settings written underneath it, a second instance launched
-        # beside it, and a restore it could overwrite on its own way out. The
-        # method's name claims the app is stopped, so it has to be true or raise.
-        raise Aborted("the dev app did not exit within 15s; refusing to touch settings under it")
+
+def stop_app():
+    """Down by freshly verified native identity, before stopped-store writes."""
+    import learn_from_edits_uat as lifecycle
+    global _EXIT_PROOF
+    if getattr(w, "_active_audio_route", None) is not None:
+        raise Aborted("restore the owned audio route before a planned restart")
+    # Historical pkill-status logic treated an unmatched name as ordinary absence.
+    # Native enumeration and positive old-process exit now own that distinction.
+    try:
+        _EXIT_PROOF = lifecycle.stop_app()
+    except lifecycle.Aborted as error:
+        raise Aborted(str(error)) from error
+    return _EXIT_PROOF
 
 
 def start_app():
-    """Up, waiting on the app's OWN readiness line rather than a guess."""
+    """Expected endpoint-enabled app, with explicit verified replacement binding."""
+    import last_dictation_uat as lifecycle
+    global _EXIT_PROOF
     base = log_length()
-    subprocess.run(["open", "-n", APP], check=True)
+    if not lifecycle.launch_dev_app_with_endpoint(_EXIT_PROOF):
+        raise Aborted("the app did not pass authenticated capture readiness")
     if not wait_for("the app to finish its startup scan",
                     lambda: "scan finished" in log_since(base), deadline=60.0):
         raise RuntimeError("app did not reach a ready state; aborting rather than guessing")
+    w.connect()
+    if w._recording_state(w._target) != "idle":
+        raise Aborted("the launched app has not released capture")
+    _EXIT_PROOF = None
 
 
 def apply_settings(pairs, label):

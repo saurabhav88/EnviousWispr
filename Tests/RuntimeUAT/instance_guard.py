@@ -344,6 +344,8 @@ def run_identity_cases():
     import types
     import tempfile
     import json
+    import contextlib
+    import signal
     from unittest.mock import patch
     failures, count = [], 0
     executable = "/Users/x/EW/build/EnviousWispr Local.app/Contents/MacOS/EnviousWispr"
@@ -424,14 +426,15 @@ def run_identity_cases():
     # Compile the exact caller functions without importing PyObjC or executing module setup.
     source = pathlib.Path(__file__).with_name("wispr_eyes.py").read_text()
     names = {"connect", "_ensure_connected", "_verify_element", "perform_action", "set_attr",
-             "tap", "close_window", "_ax", "_cancel_menu", "_open_settings", "batch", "bind_after_verified_exit", "_ui_tables"}
+             "tap", "close_window", "_ax", "_cancel_menu", "_open_settings", "batch", "bind_after_verified_exit", "_ui_tables", "_defer_recording_signals"}
     tree = ast.parse(source)
     nodes = [n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name in names]
     assert {n.name for n in nodes} == names
     caller = {"_pid": None, "_app": None, "_target": None,
               "InstanceGuardError": InstanceGuardError, "pin_target": pin_target,
               "verify_target": verify_target, "running_enviouswispr_instances": lambda: running_enviouswispr_instances(),
-              "pathlib": pathlib, "__file__": str(pathlib.Path(__file__).with_name("wispr_eyes.py")),
+              "pathlib": pathlib, "contextlib": contextlib, "signal": signal,
+              "__file__": str(pathlib.Path(__file__).with_name("wispr_eyes.py")),
               "find_app_pid": lambda _: (_ for _ in ()).throw(AssertionError("unexpected lookup")),
               "get_ax_app": lambda pid: ("app", pid), "element_pid": lambda el: el,
               "_raw_perform_action": lambda el, action: (calls.append((el, action)), True)[1],
@@ -517,6 +520,81 @@ def run_identity_cases():
              patch(__name__ + ".process_start", side_effect=lambda pid: replacement.start if pid == 222 else token), \
              patch.object(subprocess, "run", side_effect=launch_boundary):
             case(name, restart_case)
+    for initial, environment in [(True, {}), (True, {"EW_PASTE_BAKEOFF_VARIANT": "V2", "EW_PASTE_BAKEOFF_RUN_ID": "owned-run"})]:
+        events, clock_state, current_table = [], {"now": 0.0}, {}
+        def native_launch(command, **kwargs):
+            events.append(command)
+            current_table["222"] = executable
+            return types.SimpleNamespace(returncode=0)
+        w_subject = types.SimpleNamespace(_target=None, _recording_state=lambda new: "idle",
+            connect=lambda **kwargs: events.append(("connect", kwargs)))
+        namespace = {"w": w_subject, "APP_BUNDLE": executable.removesuffix("/Contents/MacOS/EnviousWispr"),
+            "time": types.SimpleNamespace(monotonic=lambda: clock_state["now"],
+                     sleep=lambda seconds: clock_state.update(now=clock_state["now"] + seconds))}
+        exec(compile(ast.Module(body=restart_nodes, type_ignores=[]), str(restart_path), "exec"), namespace)
+        def initial_launch_case():
+            _assert(namespace["launch_dev_app_with_endpoint"](environment=environment))
+            expected_command = ["open", "-n", "--env", "EW_FAULT_INJECTION=1"]
+            for key, value in sorted(environment.items()): expected_command += ["--env", key + "=" + value]
+            expected_command += [namespace["APP_BUNDLE"]]
+            _assert(events == [expected_command, ("connect", {"expected_pid": 222, "expected_executable": executable})])
+        with patch.dict(sys.modules, {"instance_guard": sys.modules[__name__]}), \
+             patch(__name__ + ".running_enviouswispr_instances", side_effect=lambda: dict(current_table)), \
+             patch(__name__ + ".process_start", return_value=replacement.start), \
+             patch.object(subprocess, "run", side_effect=native_launch):
+            case("authenticated initial launcher preserves environment=" + str(bool(environment)), initial_launch_case)
+    for filename, function_names in [
+        ("escape_recovery_uat.py", {"stop_app", "start_app"}),
+        ("auto_dictionary_bench.py", {"start_app"}),
+        ("paste_bakeoff.py", {"running_dev_pids", "stop_dev_app", "launch_dev_app"}),
+    ]:
+        path = pathlib.Path(__file__).with_name(filename)
+        tree = ast.parse(path.read_text())
+        selected = [n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name in function_names]
+        _assert({n.name for n in selected} == function_names)
+        for fail_launch in (False, True):
+            events = []
+            proof = ExitProof(target, None)
+            w_subject = types.SimpleNamespace(_target=target, _active_audio_route=None, _app="fixture",
+                connect=lambda: events.append("connect"), _recording_state=lambda target: "idle",
+                _find_match=lambda *args, **kwargs: True)
+            class NativeAborted(RuntimeError): pass
+            shared = types.SimpleNamespace(w=w_subject, Aborted=NativeAborted,
+                stop_app=lambda: (events.append("stop"), proof)[1], log_mark=lambda: 0,
+                wait_for=lambda *args, **kwargs: True, has=lambda *args: True)
+            lifecycle = types.SimpleNamespace(launch_dev_app_with_endpoint=lambda *args, **kwargs:
+                (events.append(("launch", args, kwargs)), not fail_launch)[1])
+            with tempfile.TemporaryDirectory(prefix="ew-restart-bundle-") as directory:
+                namespace = {"w": w_subject, "wispr_eyes": w_subject, "lfe": shared,
+                    "Aborted": NativeAborted, "_EXIT_PROOF": proof, "DEV_APP": pathlib.Path(directory),
+                    "time": types.SimpleNamespace(sleep=lambda seconds: None, monotonic=lambda: 0),
+                    "log_length": lambda: 0, "log_since": lambda base: "scan finished",
+                    "wait_for": lambda *args, **kwargs: True, "log_size": lambda: 0}
+                exec(compile(ast.Module(body=selected, type_ignores=[]), str(path), "exec"), namespace)
+                def migrated_caller():
+                    try:
+                        if filename == "escape_recovery_uat.py":
+                            _assert(namespace["stop_app"]() == proof)
+                            result = namespace["start_app"]()
+                        elif filename == "auto_dictionary_bench.py":
+                            result = namespace["start_app"](proof)
+                        else:
+                            result = namespace["launch_dev_app"]("V0", "owned-run")
+                    except NativeAborted:
+                        _assert(fail_launch and filename != "paste_bakeoff.py")
+                    else:
+                        if filename == "paste_bakeoff.py":
+                            _assert(result[0] is (not fail_launch))
+                        else:
+                            _assert(not fail_launch)
+                    launches = [event for event in events if isinstance(event, tuple) and event[0] == "launch"]
+                    _assert(len(launches) == 1 and launches[0][1] == (proof,))
+                    _assert(("connect" in events) == (not fail_launch and filename != "paste_bakeoff.py"))
+                with patch.dict(sys.modules, {"learn_from_edits_uat": shared, "last_dictation_uat": lifecycle,
+                                             "instance_guard": sys.modules[__name__]}), \
+                     patch(__name__ + ".running_enviouswispr_instances", return_value={"222":
+                         str(namespace["DEV_APP"] / "Contents/MacOS/EnviousWispr") if filename == "paste_bakeoff.py" else executable}):
+                    case(filename + " actual restart propagates launch failure=" + str(fail_launch), migrated_caller)
     learning_path = pathlib.Path(__file__).with_name("learn_from_edits_uat.py")
     learning_tree = ast.parse(learning_path.read_text())
     learning_names = {"Aborted", "app_pid", "audio_route", "finish_restore"}

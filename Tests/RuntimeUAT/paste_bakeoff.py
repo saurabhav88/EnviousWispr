@@ -107,29 +107,20 @@ def log_since(offset: int) -> str:
 
 
 def running_dev_pids() -> list[int]:
-    """PIDs of dev instances, identified by EXECUTABLE PATH.
-
-    Never by name or bundle id: a bare name also matches the production app, and a
-    Release-configuration test host carries the production identifier while living under
-    a different path.
-    """
-    out = subprocess.run(
-        ["pgrep", "-f", "EnviousWispr Local.app/Contents/MacOS/EnviousWispr"],
-        capture_output=True, text=True,
-    )
-    return [int(p) for p in out.stdout.split() if p.strip().isdigit()]
+    """Checked native enumeration of exactly this checkout's expected dev app."""
+    from instance_guard import running_enviouswispr_instances
+    found = running_enviouswispr_instances()
+    if found and (len(found) != 1 or next(iter(found.values())) != str(DEV_APP / "Contents/MacOS/EnviousWispr")):
+        raise RuntimeError("bakeoff found an unexpected or ambiguous app")
+    return [int(pid) for pid in found]
 
 
-def stop_dev_app() -> None:
-    for pid in running_dev_pids():
-        subprocess.run(["kill", "-TERM", str(pid)], capture_output=True)
-    deadline = time.monotonic() + 10
-    while time.monotonic() < deadline:
-        if not running_dev_pids():
-            return
-        time.sleep(0.3)  # settle: polling the process table, which exposes no exit signal
-    for pid in running_dev_pids():
-        subprocess.run(["kill", "-KILL", str(pid)], capture_output=True)
+def stop_dev_app():
+    """Stop only the fresh pinned expected lifecycle; broad TERM/KILL is retired."""
+    import learn_from_edits_uat as lifecycle
+    if getattr(wispr_eyes, "_active_audio_route", None) is not None:
+        raise RuntimeError("restore owned audio before a planned bakeoff restart")
+    return lifecycle.stop_app()
 
 
 def launch_dev_app(variant: str, run_id: str) -> tuple[bool, str]:
@@ -141,18 +132,15 @@ def launch_dev_app(variant: str, run_id: str) -> tuple[bool, str]:
     """
     if not DEV_APP.exists():
         return False, f"dev_app_missing:{DEV_APP}"
-    stop_dev_app()
+    proof = stop_dev_app()
     boundary = log_size()
-    # `open` hands off to LaunchServices, which does NOT inherit this process's
-    # environment — passing `env=` to subprocess.run sets it for `open` itself and the
-    # app would never see it. Measured before the first run rather than discovered as a
-    # run of "control_line_never_appeared" that looks like a code fault.
-    command = ["open", "-n"]
-    if variant != "V0":
-        command += ["--env", f"EW_PASTE_BAKEOFF_VARIANT={variant}",
-                    "--env", f"EW_PASTE_BAKEOFF_RUN_ID={run_id}"]
-    command += ["-a", str(DEV_APP)]
-    subprocess.run(command, capture_output=True)
+    # LaunchServices does not inherit subprocess env; preserve explicit variant/run-ID pairs.
+    environment = ({"EW_PASTE_BAKEOFF_VARIANT": variant, "EW_PASTE_BAKEOFF_RUN_ID": run_id}
+                   if variant != "V0" else {})
+    import last_dictation_uat as lifecycle
+    if not lifecycle.launch_dev_app_with_endpoint(proof, environment=environment,
+            expected_executable=str(DEV_APP / "Contents/MacOS/EnviousWispr")):
+        return False, "authenticated_capture_readiness_failed"
 
     if variant == "V0":
         # The baseline emits no control line by design, so its proof is that the process

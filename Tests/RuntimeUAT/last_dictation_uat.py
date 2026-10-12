@@ -993,26 +993,43 @@ def terminate_verified_dev_app(why):
     return proof if wait_for("the pinned dev app to exit", ended, deadline=15.0) else False
 
 
-def launch_dev_app_with_endpoint(proof, route=None):
+def launch_dev_app_with_endpoint(proof=None, route=None, environment=None, expected_executable=None):
     """Launch one expected replacement, then explicitly bind or transfer ownership."""
     import subprocess
     from instance_guard import verify_exit_proof, running_enviouswispr_instances, pin_target, InstanceGuardError
     old = w._target
+    expected = expected_executable or (old.executable if old is not None else
+                                      APP_BUNDLE.rstrip("/") + "/Contents/MacOS/EnviousWispr")
+    if expected != APP_BUNDLE.rstrip("/") + "/Contents/MacOS/EnviousWispr":
+        raise Aborted("launch requires this checkout's expected executable")
     if old is None:
-        raise Aborted("replacement launch requires the retained old lifecycle")
-    verify_exit_proof(old, proof)
+        if proof is not None or route is not None:
+            raise Aborted("initial launch cannot transfer a prior owner")
+    else:
+        if expected != old.executable or proof is None:
+            raise Aborted("replacement launch requires the retained old lifecycle")
+        verify_exit_proof(old, proof)
     if running_enviouswispr_instances():
         raise Aborted("another EnviousWispr instance prevents replacement launch")
-    subprocess.run(["open", "-n", "--env", "EW_FAULT_INJECTION=1", APP_BUNDLE], check=True)
+    environment = {} if environment is None else environment
+    allowed = {"EW_PASTE_BAKEOFF_VARIANT", "EW_PASTE_BAKEOFF_RUN_ID"}
+    if (type(environment) is not dict or not set(environment) <= allowed or
+            any(type(value) is not str or not value or "\0" in value for value in environment.values())):
+        raise Aborted("launch environment is not an approved variant/run-id pair")
+    command = ["open", "-n", "--env", "EW_FAULT_INJECTION=1"]
+    for key, value in sorted(environment.items()):
+        command.extend(["--env", key + "=" + value])
+    command.append(APP_BUNDLE)
+    subprocess.run(command, check=True)
     candidate = None
     def ready():
         nonlocal candidate
         found = running_enviouswispr_instances()
         if not found:
             return False
-        if len(found) != 1 or next(iter(found.values())) != old.executable:
+        if len(found) != 1 or next(iter(found.values())) != expected:
             raise Aborted("replacement launch produced an unexpected or ambiguous app")
-        current = pin_target(int(next(iter(found))), old.executable)
+        current = pin_target(int(next(iter(found))), expected)
         if candidate is not None and current != candidate:
             raise Aborted("replacement changed during endpoint startup")
         candidate = current
@@ -1024,7 +1041,9 @@ def launch_dev_app_with_endpoint(proof, route=None):
             return False
     if not wait_for("the authenticated replacement capture query", ready, deadline=30.0):
         return False
-    if route is None:
+    if old is None:
+        w.connect(expected_pid=candidate.pid, expected_executable=expected)
+    elif route is None:
         w.bind_after_verified_exit(old, candidate, proof)
     else:
         route.transfer_after_verified_exit(candidate, proof)
