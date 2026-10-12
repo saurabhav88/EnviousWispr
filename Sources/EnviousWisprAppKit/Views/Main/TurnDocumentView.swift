@@ -192,26 +192,37 @@ private struct TurnRowView: View {
       Text(text)
         .textSelection(.enabled)
     case .markedUp(let diff):
-      MarkedUpTurnText(result: diff)
-        .textSelection(.enabled)
-        // The marks are visual; a screen reader gets the wizard's own spoken form instead,
-        // the same helper its whole-document marked-up view uses (found by whole-diff review).
-        .accessibilityLabel(TranscribeFileExport.markedUpAccessibilityText(diff.segments))
+      MarkedUpPassageText(segments: diff.segments)
     }
   }
 }
 
-/// One turn's worth of marked-up text — red struck-through removals, green-tinted
+/// One passage of marked-up text — red struck-through removals, green-tinted
 /// changes/adds. The colours come from `MarkUpPalette`, the same table the wizard's
 /// whole-document `markedUpText` reads (#2817 finding 5: this view painted orange and no red).
 ///
-/// One `Text` per turn rather than one per document, so a 20,000-word transcript is forty-odd
+/// One `Text` per passage rather than one per document, so a 20,000-word transcript is forty-odd
 /// small layouts instead of one that re-lays out on every scroll (finding 5, the lag half).
-private struct MarkedUpTurnText: View {
-  let result: WordDiff.Result
+///
+/// The one home for how a marked-up passage is selectable and spoken, shared by History's turn
+/// rows and Transcribe a File's passages. The marks are visual, so a screen reader gets the spoken
+/// form ("Removed: um.") instead, through `accessibilityRepresentation`.
+///
+/// **Never put `.accessibilityLabel` on this text beside `.textSelection(.enabled)`** (#3573):
+/// that pairing crashed the app with a stack overflow in macOS accessibility label resolution (Sentry
+/// ENVIOUSWISPR-6W and 6X), on the first
+/// accessibility read after the Marked up view appeared (reproduced on unchanged main, 3 of 3
+/// launches; label alone, selection alone and the representation below did not crash, 2 of 2
+/// each). The representation keeps selection and the spoken marks.
+struct MarkedUpPassageText: View {
+  let segments: [WordDiff.Segment]
 
   var body: some View {
-    Text(TranscribeFileExport.markedUpText(result.segments))
+    Text(TranscribeFileExport.markedUpText(segments))
+      .textSelection(.enabled)
+      .accessibilityRepresentation {
+        Text(TranscribeFileExport.markedUpAccessibilityText(segments))
+      }
   }
 }
 
