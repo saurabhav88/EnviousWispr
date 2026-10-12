@@ -55,6 +55,12 @@ public enum ObservabilityBootstrap {
   @MainActor
   public static var launchedCrashReports: Bool? { lifecycle.launchedCrashReports }
 
+  /// Whether PostHog is capturing right now (usage metrics ON and set up). #3546: a
+  /// once-per-install event records its local "already sent" mark only when this is
+  /// true, so turning metrics on later does not lose or manufacture it.
+  @MainActor
+  public static var isUsageCaptureRunning: Bool { lifecycle.isPostHogRunning }
+
   /// The app-defaults key holding the canonical PostHog anonymous id from the latest ON setup
   /// (#3269). PostHog's own getters return "" while it is stopped (`PostHogSDK.swift:306-332`),
   /// so this is how a feedback report the user ticked "Include diagnostics" on can still carry

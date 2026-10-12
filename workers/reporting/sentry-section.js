@@ -109,6 +109,11 @@ export const ERROR_CATEGORIES = Object.freeze({
   audio_capture_stalled: { group: LOST, deliveryProven: true, emitted: true, label: "microphone capture stalled" },
   asr_failed: { group: LOST, deliveryProven: true, emitted: true, label: "transcription failed" },
   model_load_failed: { group: LOST, deliveryProven: true, emitted: true, label: "speech model failed to load" },
+  // #3546: an Ultra load failed. When v3 was accepted it serves at once and the
+  // dictation goes on; with no fallback the loader's own failure path reports
+  // separately. The fallback is an unindexed EXTRA, so no aggregate field can prove
+  // delivery: conservative, like model_load_wedged.
+  parakeet_ultra_load_failed: { group: LOST, deliveryProven: false, emitted: true, label: "Parakeet Ultra failed to load" },
   heart_path_finalization: { group: LOST, deliveryProven: true, emitted: true, label: "dictation finished with no text" },
   pipeline_post_condition_failed: { group: LOST, deliveryProven: true, emitted: true, label: "recording start ended in an invalid state" },
 

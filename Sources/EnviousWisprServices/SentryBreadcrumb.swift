@@ -576,6 +576,9 @@ public enum SentryBreadcrumb {
     /// silently unmet until the next retrieve retries. Security-relevant + persistent,
     /// so it earns a handled error (never the key material — only the account name).
     case legacyKeyCleanupFailed = "legacy_key_cleanup_failed"
+    /// #3546 §3.7 T2: a Parakeet Ultra load failed; the fallback (v3 or none) is
+    /// already chosen. Split by the loader's `Domain#code`.
+    case parakeetUltraLoadFailed = "parakeet_ultra_load_failed"
   }
 }
 

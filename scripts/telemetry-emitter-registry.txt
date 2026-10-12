@@ -59,6 +59,7 @@ feedback.help_check_terminal	per_user_action	keep	analytics-operations.md FACT: 
 paste.landing_observed	per_take	sampled	analytics-operations.md FACT: app-posthog-events ("Paste landing" insight, floored at telemetry_policy_version 5: miss rate (absent; no_target is an unreadable host, not a trustworthy miss, #3286) by tier and app_class with sampled early found rows weighted, late-hit rate from late_check_status/late_found_ms, read before PR B's default-on decision and at each release after)	#3106
 paste.landing_retained	per_take	keep	analytics-operations.md FACT: app-posthog-events (#3106 release review: retained over trustworthy observed misses (absent only; no_target never retains, #3286) from paste.landing_observed, a lower bound since excluded apps stay in that denominator; pill_shown rate among retained; yielded rate)	#3106
 polish_setup.prompt	per_user_action	keep	analytics-operations.md FACT: app-posthog-events ("Polish setup prompts" funnel: rows by surface x action per day, card rows joined to dictation.terminal polish_setup_problem by take_id, read daily after release, #3438)	#3438
+parakeet_upgrade.activation	per_change	keep	workers/daily-report ultra-rollout.js ultraUpgradeFunnel (Q4: Ultra activations, load failures with fallback, first_activation; #3546 chunk 9c)	#3546
 dictation.started	ungraded	ungraded	-	pre-#2987
 dictation.terminal	per_take	folded	analytics-operations.md FACT: app-posthog-events (one terminal per accepted take; learned check readiness and absence by selected engine, #3105)	#3105
 eg1.*	ungraded	ungraded	-	pre-#2987

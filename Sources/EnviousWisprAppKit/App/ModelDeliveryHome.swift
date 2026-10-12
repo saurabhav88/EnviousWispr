@@ -107,6 +107,11 @@ final class ModelDeliveryHome {
       isOnboardingComplete: isOnboardingComplete)
     coordinator.onUsabilityMayHaveChanged = { [weak self] in self?.notifyParakeetUsable() }
     coordinator.onPresentationChanged = { [weak self] in self?.refreshParakeetPresentation() }
+    // #3546 §3.7 T2: only with the Ultra target is there an upgrade to report.
+    if parakeetUpgradeTarget != nil, let parakeetIdentity {
+      let telemetry = ParakeetUpgradeTelemetry(target: parakeetIdentity)
+      coordinator.onOutcome = { telemetry.observe($0) }
+    }
     parakeetUpgrade = coordinator
     refreshParakeetPresentation()
     return coordinator

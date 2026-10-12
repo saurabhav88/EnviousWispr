@@ -1,5 +1,6 @@
 import EnviousWisprASR
 import EnviousWisprCore
+import EnviousWisprServices
 import Foundation
 import Testing
 
@@ -545,6 +546,52 @@ struct ParakeetUpgradePolicyTests {
     #expect(FileManager.default.fileExists(atPath: rig.v3Registration.installDirectory.path))
   }
 
+  /// #3546 §3.7 T2: an Ultra activation reports the attempt count read before the success
+  /// reset zeroes it, its own load time, and that nothing served before. When this fails,
+  /// the upgrade report says zero attempts or times another load.
+  @Test("an Ultra activation carries its attempt count and load time from before the reset")
+  func activationCarriesItsFacts() async throws {
+    let rig = try await Self.rig(v3: true, ultra: true)
+    var activations: [ParakeetUpgradeCoordinator.LoadFacts] = []
+    rig.coordinator.onOutcome = { if case .activated(let facts) = $0 { activations.append(facts) } }
+    _ = try await rig.coordinator.prepareLoad()
+    #expect(Self.physicalLoad(rig) == .loaded)
+    let facts = try #require(activations.first)
+    #expect(activations.count == 1)
+    #expect(facts.selection.model == .ultra)
+    #expect(facts.attempts == 1, "read before the reset below")
+    #expect(facts.loadMilliseconds != nil, "this coordinator timed the load")
+    #expect(facts.priorModel == nil, "nothing was serving")
+    #expect(Self.state(rig) == .fresh)
+  }
+
+  /// #3546 §3.7 T2: an Ultra load failure reports the fallback the policy is about to take,
+  /// decided before the report, with the loader's own error. When this fails, the report
+  /// waits for or contradicts the fallback the app actually made.
+  @Test("an Ultra load failure carries the fallback it is about to take and the loader error")
+  func loadFailureCarriesItsFallback() async throws {
+    let rig = try await Self.rig(v3: true, ultra: true)
+    var failures: [(ParakeetModel, ParakeetUpgradeCoordinator.LoadFacts, String,
+      ParakeetUpgradeCoordinator.Fallback)] = []
+    rig.coordinator.onOutcome = {
+      if case .loadFailed(let model, let facts, let error, let fallback) = $0 {
+        failures.append((model, facts, error, fallback))
+      }
+    }
+    let prepared = try await rig.coordinator.prepareLoad()
+    #expect(Self.physicalLoad(rig, succeeds: false) == .loaded)
+    let plan = await rig.coordinator.handleLoadFailure(prepared, error: VendorLoadFailed())
+    #expect(plan == .reload)
+    #expect(rig.selection.current?.model == .v3, "the fallback the report named")
+    let failure = try #require(failures.first)
+    #expect(failures.count == 1)
+    #expect(failure.0 == .ultra)
+    #expect(failure.3 == .v3)
+    #expect(failure.1.attempts == 1)
+    #expect(failure.1.loadMilliseconds != nil)
+    #expect(failure.2 == SentryBreadcrumb.structuredDescriptor(VendorLoadFailed()))
+  }
+
   @Test("X: a spent budget on admitted bytes persists refetch intent, then removes them")
   func rowXRefetchesOnce() async throws {
     let rig = try await Self.rig(
@@ -720,7 +767,7 @@ struct ParakeetUpgradePolicyTests {
     rig.selection.didPublishLoad?(request)
     rig.writes.failing = false
     #expect(outcomes.contains(.storeUnavailable("reset")))
-    #expect(outcomes.contains(.activated) == false)
+    #expect(outcomes.contains { if case .activated = $0 { true } else { false } } == false)
     #expect(FileManager.default.fileExists(atPath: rig.v3Registration.installDirectory.path))
   }
 
@@ -980,7 +1027,7 @@ struct ParakeetUpgradePolicyTests {
     let log = LoadLog([false, false, false])
     let manager = Self.scriptedManager(rig, log)
     var failed: [ParakeetModel] = []
-    rig.coordinator.onOutcome = { if case .loadFailed(let model) = $0 { failed.append(model) } }
+    rig.coordinator.onOutcome = { if case .loadFailed(let model, _, _, _) = $0 { failed.append(model) } }
     await #expect(throws: VendorLoadFailed.self) {
       try await Self.load(through: door, rig, manager)
     }
@@ -997,7 +1044,7 @@ struct ParakeetUpgradePolicyTests {
     let log = LoadLog([false, false, false])
     let manager = Self.scriptedManager(rig, log)
     var failed: [ParakeetModel] = []
-    rig.coordinator.onOutcome = { if case .loadFailed(let model) = $0 { failed.append(model) } }
+    rig.coordinator.onOutcome = { if case .loadFailed(let model, _, _, _) = $0 { failed.append(model) } }
     await #expect(throws: VendorLoadFailed.self) {
       try await Self.load(through: door, rig, manager)
     }
@@ -1156,7 +1203,7 @@ struct ParakeetUpgradePolicyTests {
     rig.coordinator.markSelectionPoint()
     rig.selection.didPublishLoad?(request)
     #expect(Self.state(rig)?.attempts == 1)
-    #expect(outcomes.contains(.activated) == false)
+    #expect(outcomes.contains { if case .activated = $0 { true } else { false } } == false)
     #expect(FileManager.default.fileExists(atPath: rig.v3Registration.installDirectory.path))
   }
 

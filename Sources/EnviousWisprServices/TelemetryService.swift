@@ -37,8 +37,6 @@ import PostHog
       self.boolProps = boolProps
     }
 
-    /// #3546 §3.7 T1: the same event with the model keys added, exactly as
-    /// `ASRModelAttribution.telemetryProperties` writes them to the vendor.
     /// #3546 §3.7 T1: the same event with the model keys COPIED from the dictionary the
     /// emitter hands the SDK, so a hook test fails when an emitter stops merging them.
     public func withModelProperties(_ properties: [String: Any]) -> CapturedTelemetryEvent {
@@ -2855,6 +2853,42 @@ public final class TelemetryService {
         CapturedTelemetryEvent(name: event, stringProps: properties, boolProps: [:]))
     #endif
     PostHogSDK.shared.capture(event, properties: properties)
+  }
+
+  /// #3546 §3.7 T2: one Parakeet Ultra upgrade transition (closed `outcome` vocabulary:
+  /// activated, load_failed, deferred_disk, declined, resumed, refetch, exhausted,
+  /// cleanup_failed). The caller owns deduplication. Content-free: model names and the
+  /// revision come from our bundled manifest. `loadMs` and `$value` (seconds) appear only
+  /// on load outcomes the coordinator timed; `priorModel` only on load outcomes;
+  /// `fallback` only on `load_failed`; `attempts` only where the coordinator read it;
+  /// `firstActivation` only on `activated`.
+  public func parakeetUpgradeActivation(
+    targetModel: String, targetRevision: String?, priorModel: String?, outcome: String,
+    fallback: String?, attempts: Int?, loadMs: Int?, firstActivation: Bool?
+  ) {
+    var properties: [String: Any] = [
+      "target_model": targetModel,
+      "outcome": outcome,
+    ]
+    if let targetRevision { properties["target_revision"] = targetRevision }
+    if let priorModel { properties["prior_model"] = priorModel }
+    if let fallback { properties["fallback"] = fallback }
+    if let attempts { properties["attempts"] = attempts }
+    if let loadMs {
+      properties["load_ms"] = loadMs
+      properties["$value"] = Double(loadMs) / 1000.0
+    }
+    if let firstActivation { properties["first_activation"] = firstActivation }
+    #if DEBUG
+      testEventHook?(
+        CapturedTelemetryEvent(
+          name: "parakeet_upgrade.activation",
+          stringProps: properties.compactMapValues { $0 as? String },
+          intProps: properties.compactMapValues { $0 as? Int },
+          doubleProps: properties.compactMapValues { $0 as? Double },
+          boolProps: properties.compactMapValues { $0 as? Bool }))
+    #endif
+    PostHogSDK.shared.capture("parakeet_upgrade.activation", properties: properties)
   }
 
   /// #1348 Phase 2: owned model-delivery funnel (`model_delivery.*`, D3

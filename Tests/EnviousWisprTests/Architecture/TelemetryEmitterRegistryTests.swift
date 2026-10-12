@@ -183,8 +183,17 @@ struct TelemetryEmitterRegistryTests {
   /// #3546 §3.7 T1: no new site or event. Fourteen emitters gain a `model:` parameter (the
   /// five `asr_model*` properties on rows that already fire, at their existing cadence), which
   /// moves the function signatures this fingerprint names.
+  /// #3546 §3.7 T2: new `parakeet_upgrade.activation` site (`parakeetUpgradeActivation`).
+  /// Checklist: per_change, keep; one row per Parakeet Ultra upgrade outcome, each outcome sent at
+  /// most once per target per install (`deferred_disk`, `cleanup_failed` once per target per app
+  /// version), deduplicated by `ParakeetUpgradeTelemetry`'s ledger, which records only rows handed
+  /// to a running PostHog. Bound: eight outcomes per target per install plus the two
+  /// version-scoped repeats; one row per install in the expected case. No take_id; our manifest's
+  /// model names and an 8-character revision, closed outcome and fallback strings, Int attempts
+  /// and load_ms, a Bool. No existing row describes an upgrade transition. Reader named on its
+  /// graded registry row (chunk 9c).
   static let sitesFingerprint =
-    "e829e13ad5e6249470c73241671c3b8dc3e57f44ee8200acdc0dba9a5a0b9368"
+    "49d1db9a722508919b06c82b82d0e759c47b0657c6831bf5659bdad793477d90"
   static let ungradedFingerprint =
     "8c5e46c2f2f7fb59004bb2eb5ea1ac210ef32dbb79fdcb68b3eff70a28cc133f"
 

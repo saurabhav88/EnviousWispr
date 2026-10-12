@@ -1,6 +1,7 @@
 import EnviousWisprASR
 import EnviousWisprCore
 import EnviousWisprModelDelivery
+import EnviousWisprServices
 import Foundation
 
 /// Decides, at each model-selection point, which Parakeet model this Mac loads,
@@ -68,11 +69,31 @@ package final class ParakeetUpgradeCoordinator {
     case fail
   }
 
-  /// Observable transitions (tests now, §3.7 telemetry later). No telemetry.
+  /// #3546 §3.7 T2: immutable facts captured where a load is decided, so an observer
+  /// never reads policy state after the fact. `attempts` is the persisted physical
+  /// attempt count before a success resets it (nil when the store was unreadable);
+  /// `loadMilliseconds` is nil when this coordinator did not time the load.
+  package struct LoadFacts: Equatable, Sendable {
+    package let selection: ParakeetModelSelection
+    /// The model serving before this load; nil when nothing was serving.
+    package let priorModel: ParakeetModel?
+    package let attempts: Int?
+    package let loadMilliseconds: Int?
+  }
+
+  /// Where a failed load goes next, decided before the failure is reported.
+  package enum Fallback: String, Equatable, Sendable {
+    case v3
+    case none
+  }
+
+  /// Observable transitions. This type sends no telemetry; AppKit's
+  /// `ParakeetUpgradeTelemetry` reports the upgrade outcomes (#3546 §3.7 T2).
   package enum Outcome: Equatable, Sendable {
     case selected(ParakeetModel, row: String)
-    case activated
-    case loadFailed(ParakeetModel)
+    case activated(LoadFacts)
+    /// `error` is the loader error's `Domain#code` descriptor.
+    case loadFailed(ParakeetModel, LoadFacts, error: String, fallback: Fallback)
     case fellBackToV3
     case exhausted
     case refetchStarted
@@ -129,6 +150,9 @@ package final class ParakeetUpgradeCoordinator {
   /// selection point or a changed identity cancels them, so bytes are never
   /// deleted on behalf of a decision that no longer holds.
   private var cleanupTasks: [ParakeetModel: (id: UUID, task: Task<Void, Never>)] = [:]
+  /// #3546 §3.7 T2: when the current physical load reached the vendor, keyed by its
+  /// selection generation, so its outcome reports its own duration.
+  private var physicalLoadStart: (generation: UInt64, at: ContinuousClock.Instant)?
   /// Observed transitions.
   package var onOutcome: (@MainActor (Outcome) -> Void)?
   /// Invites companion policies to re-read `isParakeetUsable()`; it never
@@ -537,8 +561,23 @@ extension ParakeetUpgradeCoordinator {
       }
       state.attempts += 1
       try target.store.write(state)
+      physicalLoadStart = (request.generation, ContinuousClock.now)
       onPresentationChanged?()
     }
+  }
+
+  /// The facts for `request`'s outcome, read before any state reset.
+  private func loadFacts(
+    _ request: ParakeetModelSelection, priorModel: ParakeetModel?, target: UpgradeTarget
+  ) -> LoadFacts {
+    var attempts: Int?
+    if case .state(let state) = target.store.read() { attempts = state.attempts }
+    var milliseconds: Int?
+    if let start = physicalLoadStart, start.generation == request.generation {
+      milliseconds = Int((ContinuousClock.now - start.at) / .milliseconds(1))
+    }
+    return LoadFacts(
+      selection: request, priorModel: priorModel, attempts: attempts, loadMilliseconds: milliseconds)
   }
 
   /// The success hook (`didPublishLoad`): a READY Ultra publish for the current
@@ -548,19 +587,22 @@ extension ParakeetUpgradeCoordinator {
   /// retirement queued, off the main actor, after readiness was published.
   func loadPublished(_ request: ParakeetModelSelection) {
     guard isCurrentLoad(request) else { return }
+    let priorModel = servingRequest?.model
     servingRequest = request
     needsExplicitRetry = false
     guard request.model == .ultra, let target else {
       onUsabilityMayHaveChanged?()
       return
     }
+    // Captured before the reset below zeroes the attempt count.
+    let facts = loadFacts(request, priorModel: priorModel, target: target)
     do {
       try target.store.write(.fresh)
     } catch {
       emit(.storeUnavailable("reset"))
       return
     }
-    emit(.activated)
+    emit(.activated(facts))
     guard let delivery, isCurrentLoad(request) else { return }
     scheduleCleanup(delivery, model: .v3, selection: request, root: target.ownedModelsRoot)
   }
@@ -588,7 +630,16 @@ extension ParakeetUpgradeCoordinator {
     guard let request = prepared.selection, isCurrentLoad(request), !Task.isCancelled else {
       return .fail
     }
-    emit(.loadFailed(request.model))
+    // The fallback is the branch below, decided here from the same conditions so the
+    // report never waits for a later `fellBackToV3`. `v3Request()` is nil only
+    // without `delivery`.
+    let fallsBackToV3 =
+      request.model == .ultra && prepared.isSelectionLoad && v3Accepted && delivery != nil
+    emit(
+      .loadFailed(
+        request.model, loadFacts(request, priorModel: servingRequest?.model, target: target),
+        error: SentryBreadcrumb.structuredDescriptor(error),
+        fallback: fallsBackToV3 ? .v3 : .none))
     switch request.model {
     case .ultra:
       // A-fail: accepted v3 serves now, in the same selection attempt.
