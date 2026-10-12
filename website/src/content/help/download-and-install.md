@@ -7,7 +7,7 @@ order: 3
 keywords: ["install", "download", "setup", "get started", "dmg", "first time", "where do i get it", "installation", "macOS warning", "cannot be opened", "security warning", "dock icon"]
 related: ["system-requirements", "granting-permissions-microphone-accessibility-and-automation", "your-first-dictation"]
 seeAlso: "getting-started-enviouswispr-under-2-minutes"
-updated: 2026-09-29
+updated: 2026-10-12
 deflection: "can_resolve"
 ---
 EnviousWispr is a free, open-source dictation app for macOS. To install it, download the disk image from [enviouswispr.com](https://enviouswispr.com), drag EnviousWispr into your Applications folder, and open it. It takes about two minutes. There is no account to create and no subscription to start.
@@ -19,7 +19,7 @@ EnviousWispr is a free, open-source dictation app for macOS. To install it, down
 3. **Move the app.** Drag the EnviousWispr icon onto the Applications folder icon beside it.
 4. **Open the app.** Open your Applications folder and double-click EnviousWispr.
 
-Open the app from Applications, not from the disk image or Downloads. An app opened from those places cannot update itself.
+Open the app from Applications. Running it from a read-only disk image or a temporary location created by macOS can prevent updates.
 
 ### macOS warns me when I first open it
 

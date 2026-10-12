@@ -5,7 +5,7 @@ category: "updates-and-source"
 section: "Updates"
 order: 1
 keywords: ["update", "updates", "new version", "upgrade", "auto update", "check for updates", "latest version", "what's new", "update does not appear"]
-updated: 2026-10-07
+updated: 2026-10-12
 deflection: "can_resolve"
 ---
 EnviousWispr checks for updates by itself and tells you when a new version is ready to install. When one arrives, you click to install it, and the app restarts into the updated version.
@@ -23,7 +23,7 @@ When an update is ready, the menu bar icon changes to tell you. To keep the icon
 
 ### An update does not appear
 
-If checking does nothing, or you stay on an old version, the most likely cause is where the app is running from. An app opened straight from Downloads or from the disk image cannot replace itself. See [Updates Never Arrive: Move EnviousWispr to Applications](/help/updates-not-arriving-move-to-applications/).
+If checking does nothing, or you stay on an old version, the most likely cause is where the app is running from. An app running from a read-only disk image or a temporary location created by macOS cannot replace itself. See [Updates Never Arrive: Move EnviousWispr to Applications](/help/updates-not-arriving-move-to-applications/).
 
 ### Where updates come from
 

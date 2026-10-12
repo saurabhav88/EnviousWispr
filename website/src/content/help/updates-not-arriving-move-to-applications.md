@@ -1,19 +1,19 @@
 ---
 title: "Updates Never Arrive: Move EnviousWispr to Applications"
-description: "If EnviousWispr is running from Downloads or the disk image it cannot update itself. Move it to Applications and updates work again."
+description: "If EnviousWispr is running from a read-only disk image or a temporary location created by macOS, it cannot update itself. Move it to Applications and open it there."
 category: "updates-and-source"
 section: "Updates"
 order: 3
 keywords: ["no updates", "never updates", "stuck on old version", "cannot update", "update does nothing", "running from downloads", "move to applications", "translocated", "check for updates does nothing", "still on old version", "can't be updated if it's running from the location it was downloaded to", "opened from a read-only or a temporary location"]
 related: ["auto-updates"]
-updated: 2026-09-29
+updated: 2026-10-12
 deflection: "show_but_always_send"
 ---
 If EnviousWispr never gets a new version, it is most likely running from Downloads or the disk image instead of your Applications folder. The fix is to quit the app, drag EnviousWispr into Applications, and open it from there.
 
 ### Why EnviousWispr cannot update
 
-When you open an app straight from your Downloads folder, macOS runs it from a hidden temporary copy instead of the file you downloaded. Apple does this so an app cannot quietly load other files that came down alongside it.
+When you open a downloaded app, macOS may run it from a hidden temporary copy instead of the file you downloaded. Apple does this so an app cannot quietly load other files that came down alongside it.
 
 An app running this way cannot replace itself, and updating means replacing itself. EnviousWispr keeps working, but it stays on the version you first installed.
 

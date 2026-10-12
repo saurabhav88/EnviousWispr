@@ -68,8 +68,9 @@ final class AppLifecycleCoordinator {
   private let menuBarController: MenuBarController
   private let appWindowCoordinator: AppWindowCoordinator
   private let hotkeyService: HotkeyService
-  // #1451: launch-time App Translocation recovery limb. Called once on launch;
-  // never a prerequisite for anything below it.
+  // #1451: App Translocation recovery limb. This instance reports the launch state once on
+  // launch (the child's ack, stale-decline clearing) and never blocks anything below it; the
+  // offer itself runs earlier, in the pre-flight (#3252).
   private let applicationRelocationCoordinator: ApplicationRelocationCoordinator
   // #1480: forwards launch / device-change / pipeline-state facts to the
   // Bluetooth awareness card's single decision owner. The coordinator carries no

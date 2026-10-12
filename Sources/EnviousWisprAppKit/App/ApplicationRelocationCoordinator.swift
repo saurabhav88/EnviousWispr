@@ -13,8 +13,9 @@ import Security
 // into a writable Applications folder, relaunches, and — critically — waits for
 // the newly launched copy to hand back a health confirmation before the current
 // (only known-good) process terminates. Every failure leaves the current
-// process usable: this is a launch-time LIMB, never a prerequisite for menu-bar
-// setup, hotkeys, dictation, or onboarding.
+// process usable. A due update-blocking launch waits for the offer and move
+// outcome before normal startup (#3252); every non-handoff outcome permits
+// normal startup, and healthy and offer-not-due launches proceed immediately.
 //
 // Design + amendment rationale (handshake A1, presentation-only marker A2,
 // atomic replace A3, signature validation A4, bounded flush A5, no original
@@ -675,7 +676,8 @@ final class ApplicationRelocationCoordinator {
       // stays alive as the authoritative copy (its handshake fails). Quit this
       // redundant child rather than leave two blocked instances running (cloud
       // Codex review #1490). Healthy child lives on as the new app; the two
-      // branches are mutually exclusive, so there is never zero or two copies.
+      // branches are mutually exclusive within this child. A healthy late child
+      // may coexist with a parent that already timed out and started normally.
       if !healthy { terminate() }
       return
     }
