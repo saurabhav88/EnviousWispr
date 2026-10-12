@@ -5,7 +5,8 @@ Why: measured 2026-08-01, 0/1890 Type B corpus inputs are both capitalized and
 terminally punctuated, while 32/32 real dictations in the founder's app log are
 (100% terminal punctuation, 94% both; backend=parakeet). Every cloud polish
 score we hold was therefore measured on an input form the shipped ASR does not
-produce. This rebuilds the inputs through the ASR we actually ship.
+produce. This rebuilds the inputs through the ASR we actually ship. NOTE: refuses to
+run since #3546 (the shipped engine is Parakeet Ultra; this route still uses v3, #3696).
 
 Engine fidelity: drives `fluidaudiocli tts-asr-verify` from the PINNED FluidAudio
 checkout (`.build/checkouts/FluidAudio`, revision fb506037 per Package.resolved),
@@ -58,6 +59,13 @@ LONGFORM_SECONDS = 15.0
 
 
 def check_engine() -> None:
+    # #3546: the app ships Parakeet Ultra, but `tts-asr-verify` loads the vendor default
+    # model (v3) at this pin, so a run would rebuild the corpus with the retired engine.
+    # Refuse until synthesis and Ultra transcription are separated (#3696).
+    sys.exit(
+        "refusing: tts-asr-verify transcribes with Parakeet v3, but the app ships "
+        "Parakeet Ultra (#3546). Regenerating would measure the retired engine; see #3696."
+    )
     if not CLI.exists():
         sys.exit(
             f"fluidaudiocli not built at {CLI}\n"
