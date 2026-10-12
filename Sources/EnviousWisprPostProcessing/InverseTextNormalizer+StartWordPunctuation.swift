@@ -142,6 +142,32 @@ extension InverseTextNormalizer {
     return SpokenPunctuationResult(text: out, rulesFired: fired)
   }
 
+  /// #3624: whether `text` holds at least one COMPLETE start-word command of `language`: the start
+  /// word, then one of that language's command forms, by the same pattern `applyStartWordPunctuation`
+  /// matches. Read-only: used to decide a take's routing language before the pass runs. An empty
+  /// `startWord` (the user's bare-commands choice) answers false, because a bare command word is not
+  /// evidence of a command.
+  package static func hasStartWordCommand(
+    in text: String, language: String, startWord: String
+  ) -> Bool {
+    let start = startWord.trimmingCharacters(in: .whitespacesAndNewlines)
+      .precomposedStringWithCanonicalMapping
+    guard !start.isEmpty, let rules = SpokenPunctuationRules.startWordRules(for: language) else {
+      return false
+    }
+    var breakForms: [String] = []
+    var markForms: [String] = []
+    for rule in rules {
+      let isBreak = rule.command == .lineBreak || rule.command == .paragraphBreak
+      for form in rule.spokenForms {
+        let normalized = form.precomposedStringWithCanonicalMapping
+        if isBreak { breakForms.append(normalized) } else { markForms.append(normalized) }
+      }
+    }
+    let pattern = startWordPattern(start: start, breakForms: breakForms, markForms: markForms)
+    return firstMatch(pattern, text) != nil
+  }
+
   // MARK: - Pattern
 
   private static let horizontalSpace = #"[ \t\x{00A0}]"#

@@ -144,6 +144,11 @@ final class InverseTextNormalizationStep: TextProcessingStep {
   /// always-on intent for steps constructed in isolation (tests).
   var backendSupportsLID: Bool = false
 
+  /// #3624 test seam: REPLACES the routing-language probe (the pre-route check that lets confident
+  /// text evidence correct a wrong engine label) so a test can drive its timeout. Production leaves
+  /// it nil.
+  package var routingProbe: (@Sendable () async -> String?)?
+
   /// Per-run outcome the wiring reads after the chain runs to thread ITN fields onto
   /// `dictation.completed`. Metadata only (counts/lengths/latency/skip-reason) — never
   /// transcript text (`telemetry-privacy-boundary`).
@@ -178,7 +183,8 @@ final class InverseTextNormalizationStep: TextProcessingStep {
     /// resolved language is still nil.
     let punctuationLanguage: String?
     /// #2450: which resolver rung answered (`locked`, `engine`, `dictation`, `document`, `none`),
-    /// read from the context, never a second resolver.
+    /// read from the context, never a second resolver. #3624: `engine_text` when the take's own text
+    /// evidence corrected an engine label for this step's routing (the context keeps `engine`).
     let punctuationResolutionSource: String?
   }
 
@@ -290,8 +296,38 @@ final class InverseTextNormalizationStep: TextProcessingStep {
     // inside the deadline reads `self`, the registry or the language again
     // (`swift-concurrency-patterns` telemetry-snapshot-not-shared-property; the `withDeadline`
     // precedent #832/#913 PR8). The route switch below is exhaustive on purpose.
+    //
+    // #3624: the language the route and punctuation plan use. It is the engine's label unless the
+    // take's own text proves the label wrong for a spoken-punctuation take (`routingLanguage`).
+    // Everything here is snapshotted BEFORE the probe suspends, so a later take's value cannot leak in.
+    let backendSupportsLID = self.backendSupportsLID
+    let engineLanguage = context.language
+    let source = context.languageSource
+    let textLanguage = context.textLanguage
+    let language: String?
+    if spokenPunctuationSnapshot.enabled, source == .engine,
+      let base = LanguageNormalizer.baseCode(textLanguage),
+      SpokenPunctuationRules.supportedLanguages.contains(base),
+      base != LanguageNormalizer.baseCode(engineLanguage)
+    {
+      // The complete-command match runs off-main under the step's existing ceiling; a timeout keeps
+      // the engine's label and source. Only a take whose engine and text languages disagree gets here.
+      let probe: @Sendable () async -> String? =
+        routingProbe ?? {
+          Self.routingLanguage(
+            language: engineLanguage, source: source,
+            textLanguage: textLanguage, text: input,
+            settings: spokenPunctuationSnapshot)
+        }
+      let probed: String?? = await withDeadline(seconds: Self.floorSeconds, operation: probe)
+      language = probed ?? engineLanguage
+    } else {
+      language = engineLanguage
+    }
+    let punctuationResolutionSource =
+      language != engineLanguage ? "engine_text" : source?.rawValue
     let route = InverseTextNormalizationGate.route(
-      language: context.language, englishVetoed: context.englishRulesVetoed,
+      language: language, englishVetoed: context.englishRulesVetoed,
       backendSupportsLID: backendSupportsLID, registry: registry)
     let rules: LanguageRuleSet?
     let admitted: Bool
@@ -314,14 +350,14 @@ final class InverseTextNormalizationStep: TextProcessingStep {
       punctuationLanguage = "en"
       plan = Self.englishPunctuationPlan(settings: spokenPunctuationSnapshot)
     case .language(let code):
-      rules = registry.ruleSet(forLanguage: context.language)
+      rules = registry.ruleSet(forLanguage: language)
       admitted = true
       skipReason = nil
       routeLabel = "language:\(code)"
       requestRoute = .language(code)
       punctuationLanguage = code
       plan = Self.punctuationPlan(
-        language: context.language, englishVetoed: context.englishRulesVetoed,
+        language: language, englishVetoed: context.englishRulesVetoed,
         settings: spokenPunctuationSnapshot)
     case .neutral(let reason):
       rules = nil
@@ -329,9 +365,9 @@ final class InverseTextNormalizationStep: TextProcessingStep {
       skipReason = reason
       routeLabel = "neutral"
       requestRoute = .languageNeutral
-      punctuationLanguage = LanguageNormalizer.baseCode(context.language)
+      punctuationLanguage = LanguageNormalizer.baseCode(language)
       plan = Self.punctuationPlan(
-        language: context.language, englishVetoed: context.englishRulesVetoed,
+        language: language, englishVetoed: context.englishRulesVetoed,
         settings: spokenPunctuationSnapshot)
     }
     // With an English start word the bare English words must NOT convert, so the normalizer is told the
@@ -449,7 +485,7 @@ final class InverseTextNormalizationStep: TextProcessingStep {
         latencyMs: elapsedMs, lenBefore: lenBefore, lenAfter: lenBefore,
         punctuationStatus: punctuation.status, punctuationRulesFired: punctuation.rulesFired,
         punctuationLanguage: punctuationLanguage,
-        punctuationResolutionSource: context.languageSource?.rawValue)
+        punctuationResolutionSource: punctuationResolutionSource)
       return context
     }
 
@@ -459,7 +495,7 @@ final class InverseTextNormalizationStep: TextProcessingStep {
       latencyMs: elapsedMs, lenBefore: lenBefore, lenAfter: converted.count,
       punctuationStatus: punctuation.status, punctuationRulesFired: punctuation.rulesFired,
       punctuationLanguage: punctuationLanguage,
-      punctuationResolutionSource: context.languageSource?.rawValue)
+      punctuationResolutionSource: punctuationResolutionSource)
     // Per-step IN:/OUT: + PipelineTiming traces are emitted by `TextProcessingRunner`
     // for every step (DEBUG-gated, local-only) — no duplicate logging here.
     if !changed { return context }
@@ -522,6 +558,29 @@ extension InverseTextNormalizationStep {
       }
     }
     return PunctuationPlan(attemptLanguage: base, startWord: startWord, notAttemptedStatus: nil)
+  }
+
+  /// #3624: the language the take's ITN route and punctuation plan use. Returns the TEXT's language
+  /// instead of the engine's label only when all of these hold; otherwise `language` unchanged:
+  /// Spoken punctuation is on; the label came from the engine (never a lock, never the text rung);
+  /// the text's confident language is one of the four spoken-punctuation languages and a different
+  /// base from the label's; that language's validated, non-empty start word is followed by one of its
+  /// command forms in the text (the existing matcher decides, accent-sensitive). Pure and static so a
+  /// test drives the whole table.
+  nonisolated static func routingLanguage(
+    language: String?, source: DictationLanguageResolver.Resolution.Source?,
+    textLanguage: String?, text: String, settings: SpokenPunctuationSettings
+  ) -> String? {
+    guard settings.enabled, source == .engine,
+      let base = LanguageNormalizer.baseCode(textLanguage),
+      SpokenPunctuationRules.supportedLanguages.contains(base),
+      base != LanguageNormalizer.baseCode(language)
+    else { return language }
+    let plan = punctuationPlan(language: base, englishVetoed: false, settings: settings)
+    guard let word = plan.startWord, !word.isEmpty,
+      InverseTextNormalizer.hasStartWordCommand(in: text, language: base, startWord: word)
+    else { return language }
+    return base
   }
 
   /// The English route's plan: `nil` (the bare English words, no pass, no status, exactly as before)

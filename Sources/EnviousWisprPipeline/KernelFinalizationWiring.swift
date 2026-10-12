@@ -83,7 +83,8 @@ final class KernelFinalizationOutcome {
   /// a closed vocabulary) and how many commands it rewrote. Both nil on the English route when no start word is configured. A
   /// ROUTING fact, never a precision claim. `punctuationLanguage` is the language this take's
   /// punctuation routing used (`en` on the English route, even when `cleanup_language` is nil) and
-  /// `punctuationResolutionSource` the resolver rung that answered.
+  /// `punctuationResolutionSource` the resolver rung that answered (`engine_text`: #3624, the text
+  /// corrected an engine label for the punctuation routing only).
   var punctuationStatus: String?
   var punctuationRulesFired: Int?
   var punctuationLanguage: String?
