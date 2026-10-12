@@ -192,8 +192,14 @@ struct TelemetryEmitterRegistryTests {
   /// model names and an 8-character revision, closed outcome and fallback strings, Int attempts
   /// and load_ms, a Bool. No existing row describes an upgrade transition. Reader named on its
   /// graded registry row (a PostHog query on request; no standing report).
+  /// #3546 A3: a new `coldstart.press_blocked` site (four in all),
+  /// `ColdPressGuard.reconcileParakeetUpgrade`, for a press that lands during the in-session
+  /// Ultra activation. Same meaning and cadence as
+  /// the existing sites (one row per press that minted no session, `warmup_in_flight: true`),
+  /// same properties; the activation runs once per install, so it adds at most a few rows. The
+  /// event's row stays `ungraded`, unchanged.
   static let sitesFingerprint =
-    "49d1db9a722508919b06c82b82d0e759c47b0657c6831bf5659bdad793477d90"
+    "11a6fa6ad2991244fb72566dec0dca4e9c0435b3d576ef4e7f4eace6da84f14e"
   static let ungradedFingerprint =
     "8c5e46c2f2f7fb59004bb2eb5ea1ac210ef32dbb79fdcb68b3eff70a28cc133f"
 

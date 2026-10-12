@@ -546,6 +546,13 @@ import Testing
     CallSite(
       file: "Sources/EnviousWisprAppKit/App/WisprBootstrapper.swift", matcher: "switchBackend",
       text: "await asrManager.switchBackend(to: backend)", classification: .structurallySafe),
+    // #3546 A3: the `activateParakeetUpgrade` closure's unload of v3. Its only caller is
+    // `EngineCoordinator.activateParakeetUpgrade()`, which runs it inside
+    // `engineMutationScope.withClaim(site: "parakeetUpgradeActivation")` with
+    // `isSwitching` held; `unloadModel()` also re-acquires "asrManagerUnload" itself.
+    CallSite(
+      file: "Sources/EnviousWisprAppKit/App/WisprBootstrapper.swift", matcher: "unloadModel",
+      text: "await asrManager.unloadModel()", classification: .transitivelyCoveredByCaller),
 
     // MARK: ASRManager
     // `switchBackend(to:)`'s internal unload — same structural protection as
@@ -577,9 +584,11 @@ import Testing
     // thrown error before publish. Structurally safe by construction: `candidate`
     // has no other referrer anywhere in the app (it is a plain local until
     // publish), so nothing else can be mid-call on it when this fires.
+    // #3546: now awaited in place instead of detached, so a fallback load cannot start
+    // while the failed candidate still holds a model; the referrer argument is unchanged.
     CallSite(
       file: "Sources/EnviousWisprASR/ASRManager.swift", matcher: "unload",
-      text: "Task { await candidate.unload() }", classification: .structurallySafe),
+      text: "await candidate.unload()", classification: .structurallySafe),
     // #1908: `performLoad`'s retire-the-old-backend step, fired immediately
     // after `self.parakeetBackend` is reassigned to the new `candidate` —
     // by that point no NEW caller can reach `retiring` through the manager.
@@ -622,23 +631,14 @@ import Testing
     CallSite(
       file: "Sources/EnviousWisprASR/ASRManager.swift", matcher: "unload",
       text: "await captured.unload()", classification: .transitivelyCoveredByCaller),
-    // Idle-timer firing `unloadModel()` on itself. Safe regardless of when it
-    // fires: `unloadModel()`'s OWN body re-acquires "asrManagerUnload"
-    // internally on every call, by construction — not because of anything
-    // about this call site or its caller.
+    // `enqueueIdleUnload()`: the one queued unload that both the idle Timer and
+    // `noteTranscriptionComplete`'s immediate branch now use (#3546 A3, so
+    // `cancelIdleTimer()` can stop a task already queued). Safe regardless of when it
+    // fires: `unloadModel()`'s OWN body re-acquires "asrManagerUnload" internally on
+    // every call, by construction — not because of anything about this call site.
     CallSite(
       file: "Sources/EnviousWisprASR/ASRManager.swift", matcher: "unloadModel",
-      text: "_ = Task<Void, Never> { await self?.unloadModel() }",
-      classification: .structurallySafe),
-    // `noteTranscriptionComplete`'s immediate-unload branch — a bare, implicit-
-    // `self` call the visitor could not see before Codex r1 (SwiftSyntax-pivot
-    // round) required `DeclReferenceExprSyntax` callee matching too. Same
-    // reasoning as the `self?.unloadModel()` idle-timer entry directly above:
-    // `unloadModel()`'s own body re-acquires its claim internally regardless
-    // of how it is reached.
-    CallSite(
-      file: "Sources/EnviousWisprASR/ASRManager.swift", matcher: "unloadModel",
-      text: "Task { await unloadModel() }", classification: .structurallySafe),
+      text: "await self.unloadModel()", classification: .structurallySafe),
 
     // MARK: ASRProtocol — the shared `ASRBackend` protocol extension's
     // default `prepare(progressCallback:)`, used by any conformer that does
