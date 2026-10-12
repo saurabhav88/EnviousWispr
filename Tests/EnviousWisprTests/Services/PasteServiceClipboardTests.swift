@@ -200,8 +200,10 @@ struct PasteServiceClipboardTests {
       #expect(pasteboard.writeObjects([original]))
       let snapshot = PasteService.saveClipboard(from: pasteboard)
 
-      let count = PasteService.copyToClipboardReturningChangeCount(
-        "dictated words", to: pasteboard, kind: .temporary)
+      // The plain AppKit write stands in for the paste, so this body also builds on the parent
+      // commit and goes red there on the marker line alone.
+      Self.setClipboardString("dictated words", on: pasteboard)
+      let count = pasteboard.changeCount
       #expect(
         PasteService.restoreClipboard(snapshot, changeCountAfterPaste: count, on: pasteboard)
           == true)
@@ -227,6 +229,34 @@ struct PasteServiceClipboardTests {
       #expect(
         PasteService.restoreClipboard(empty, changeCountAfterPaste: count, on: pasteboard) == true)
       #expect(pasteboard.pasteboardItems?.isEmpty ?? true)
+    }
+  }
+
+  @Test("#3528: the paste entry publishes the requested marker before dispatch")
+  func pasteEntryPublishesRequestedMarker() throws {
+    let cases: [(PasteService.WriteKind, Bool)] = [(.temporary, true), (.kept, false)]
+    for (kind, expectedMarker) in cases {
+      try withPrivatePasteboard { board in
+        var posts = 0
+        let result = PasteService.pasteToActiveApp(
+          "dictated words", to: board, kind: kind,
+          postKeystroke: {
+            posts += 1
+            return true
+          })
+        guard case .cgEventCreationFailed = result else {
+          Issue.record("An isolated board must refuse dispatch")
+          return
+        }
+        let items = try #require(board.pasteboardItems)
+        #expect(items.count == 1)
+        #expect(items[0].string(forType: .string) == "dictated words")
+        #expect(
+          items[0].types.map(\.rawValue).contains("org.nspasteboard.TransientType")
+            == expectedMarker)
+        #expect(result.changeCount == board.changeCount)
+        #expect(posts == 0)
+      }
     }
   }
 
