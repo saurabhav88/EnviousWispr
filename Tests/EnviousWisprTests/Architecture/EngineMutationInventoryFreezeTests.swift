@@ -408,17 +408,10 @@ import Testing
         reason:
           "recovery's claim does not wait for a just-ended ordinary session's unawaited termination cleanup to finish before this call proceeds"
       )),
-    CallSite(
-      file: "Sources/EnviousWisprAppKit/App/ActiveEngineOperation.swift", matcher: "loadModel",
-      text: "try await asrManager.loadModel()",
-      classification: .knownGap(
-        issue: 1749,
-        reason:
-          "recovery's claim does not wait for a just-ended ordinary session's unawaited termination cleanup to finish before this call proceeds"
-      )),
-    // #3546: the same door's load closure for a load it settled, which
-    // `ParakeetUpgradeCoordinator.loadPrepared` calls for the load and every
-    // reload of the failure plan. Same claim, same gap.
+    // #3546: the door's only Parakeet load, the load closure
+    // `ParakeetUpgradeCoordinator.loadPrepared` calls for the load and every reload of the
+    // failure plan (Chunk 12 second pass: the former direct `asrManager.loadModel()` for a
+    // frozen reload now goes through it too). Same claim, same #1749 gap.
     CallSite(
       file: "Sources/EnviousWisprAppKit/App/ActiveEngineOperation.swift", matcher: "loadModel",
       text: "load: { try await asrManager.loadModel() })",
@@ -1999,9 +1992,11 @@ import Testing
       // were `ASRManagerProxy.swift`'s and `ASRServiceHandler.swift`'s own
       // fire-and-forget `cancelStreaming` forwards, deleted with those files.
       // #3546: 17 — `ActiveEngineOperation`'s reload after the upgrade
-      // coordinator's failure plan is a second #1749 site of the same door.
-      gaps.count == 17,
-      "expected exactly 17 `knownGap` entries (2 for #1745, 15 for #1749), found \(gaps.count)"
+      // coordinator's failure plan was a second #1749 site of the same door.
+      // #3546 Chunk 12: back to 16 — the door's direct load was folded into
+      // that one `loadPrepared` load closure, so the door has one #1749 site.
+      gaps.count == 16,
+      "expected exactly 16 `knownGap` entries (2 for #1745, 14 for #1749), found \(gaps.count)"
     )
     for gap in gaps {
       #expect(
@@ -2042,9 +2037,6 @@ import Testing
       SiteKey(
         file: "Sources/EnviousWisprAppKit/App/ActiveEngineOperation.swift", matcher: "prepare",
         text: "try await whisperKitBackend.prepare()"),
-      SiteKey(
-        file: "Sources/EnviousWisprAppKit/App/ActiveEngineOperation.swift", matcher: "loadModel",
-        text: "try await asrManager.loadModel()"),
       SiteKey(
         file: "Sources/EnviousWisprAppKit/App/ActiveEngineOperation.swift", matcher: "loadModel",
         text: "load: { try await asrManager.loadModel() })"),
