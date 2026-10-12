@@ -380,10 +380,19 @@ package final class KeyboardListenerIngress: Sendable {
     guard event.kind == .keyDown, !event.isAutorepeat, event.keyCode == spaceKeyCode,
       let recordKey, let own = ModifierKeyCodes.flag(for: recordKey)
     else { return false }
+    // Only the modifier families a person can hold are compared. The rest of the device-independent
+    // range carries bits no family owns: a posted Right Option + Space was measured carrying
+    // 0x2000_0000 (#3517 live check), which `.deviceIndependentFlagsMask` would count as a second
+    // modifier and refuse every lock.
     let held = NSEvent.ModifierFlags(rawValue: UInt(truncatingIfNeeded: event.rawFlags))
-      .intersection(.deviceIndependentFlagsMask)
+      .intersection(Self.modifierFamilies)
     return held == own
   }
+
+  /// Every modifier family a key event's flags can name.
+  private static let modifierFamilies: NSEvent.ModifierFlags = [
+    .capsLock, .shift, .control, .option, .command, .numericPad, .help, .function,
+  ]
 
   /// One ordinary key event (#3544 P4). Updates the local ordinary-key state, and queues a fresh
   /// press for the engine's decision in input order with modifier events, unless the key and its

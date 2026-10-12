@@ -1088,6 +1088,17 @@ struct KeyboardListenerIngressTests {
     }
   }
 
+  @Test("a flag bit no modifier family owns does not change Space classification")
+  func spaceIgnoresUnownedFlagBits() async {
+    // 0x2000_0000 was measured on a posted Right Option + Space (#3517 live check).
+    for extra: UInt64 in [0x2000_0000, 0x4000_0000, 0x0000_8000_0000] {
+      let rig = Rig()
+      await rig.key(Self.option, held: Self.optionHeld, at: 0)
+      #expect(await rig.space(rawExtra: extra, at: 0.3) == .consume, "extra flags \(extra)")
+      #expect(rig.effects == ["start", "lockHeld"], "extra flags \(extra)")
+    }
+  }
+
   @Test("side bits and the non-coalesced flag do not change Space classification")
   func spaceIgnoresDeviceFlags() async {
     let rig = Rig()
