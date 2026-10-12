@@ -78,15 +78,23 @@ final class RecordingDesktopHotkeyEffects: DesktopHotkeyEffects {
   var beforeKeyboardListenerInstallReturns:
     ((@escaping @Sendable (KeyEventValue) -> Void) -> Void)?
 
+  /// The same sink with its answer kept (#3517): what the policy decided about each event.
+  private(set) var keyboardListenerDispositionSink:
+    (@Sendable (KeyEventValue) -> KeyboardEventDisposition)?
+
   func installKeyboardListener(
-    _ sink: @escaping @Sendable (KeyEventValue) -> Void
+    _ sink: @escaping @Sendable (KeyEventValue) -> KeyboardEventDisposition
   ) -> DesktopEffectToken? {
     keyboardListenerInstalls += 1
     guard !failKeyboardListenerInstall else { return nil }
     let token = DesktopEffectToken()
     keyboardListenerToken = token
-    keyboardListenerSink = sink
-    beforeKeyboardListenerInstallReturns?(sink)
+    // Most tests deliver events and ignore the answer; the answer stays reachable for the ones
+    // that assert it.
+    let ignoringAnswer: @Sendable (KeyEventValue) -> Void = { _ = sink($0) }
+    keyboardListenerSink = ignoringAnswer
+    keyboardListenerDispositionSink = sink
+    beforeKeyboardListenerInstallReturns?(ignoringAnswer)
     return token
   }
 
@@ -129,6 +137,7 @@ final class RecordingDesktopHotkeyEffects: DesktopHotkeyEffects {
     if token == keyboardListenerToken {
       keyboardListenerToken = nil
       keyboardListenerSink = nil
+      keyboardListenerDispositionSink = nil
       lastRemovedListener = token
     }
     return true

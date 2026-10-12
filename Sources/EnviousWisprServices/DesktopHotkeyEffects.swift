@@ -54,6 +54,16 @@ package struct DesktopHotkeyEvent: Sendable {
   }
 }
 
+/// What the keyboard listener's policy decided about one key event (#3517). `pass` is the rule:
+/// the event continues to the system unchanged. `consume` is the one exception, used only for a
+/// Space press the policy accepted as a hands-free lock (and the repeats and key-up of that same
+/// press), so the app being dictated into never receives it. Only key events can be consumed;
+/// modifier changes and recovery notices always pass.
+package enum KeyboardEventDisposition: Sendable, Equatable {
+  case pass
+  case consume
+}
+
 /// One keyboard event as the listener's event tap saw it, already decoded (#3544 P2).
 ///
 /// Primitive values only, for the same reason as the rest of this file: no `CGEvent` or
@@ -197,11 +207,12 @@ package protocol DesktopHotkeyEffects: AnyObject {
   ///
   /// Installation and removal stay main-isolated like every other resource here. The `sink` is
   /// NOT: it runs synchronously on the listener's thread while the OS holds the event, so it must
-  /// never wait on main. The event always continues unchanged; Carbon owns registered chords
-  /// (#3544 P5 D5). Nil when the tap
+  /// never wait on main. The event continues unchanged unless the sink returns `.consume`, which
+  /// the policy does only for a Space that locked a held take (#3517); Carbon owns registered
+  /// chords (#3544 P5 D5). Nil when the tap
   /// could not be created (for example without Accessibility); the caller reports that.
   func installKeyboardListener(
-    _ sink: @escaping @Sendable (KeyEventValue) -> Void
+    _ sink: @escaping @Sendable (KeyEventValue) -> KeyboardEventDisposition
   ) -> DesktopEffectToken?
 
   /// The listener's state: the installed one's, or the last removed one's final state (read after

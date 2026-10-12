@@ -1062,7 +1062,14 @@ public final class HotkeyService {
     }
     lockIntentAttemptID = attemptID
     heldLockIntentAttemptID = attemptID
-    publishLockIfReady()
+    if executingJoinedAttemptID == attemptID {
+      // The start already found a running session to join: the held key never started this take,
+      // so there is nothing for it to lock. Report the intent, leave the joined session alone.
+      emitLockResolved(committed: false, reason: .notLockableAtPublication)
+      refuseAttempt(attemptID)
+    } else {
+      publishLockIfReady()
+    }
     emitHotkeyPressed(.lockHeld, trigger: .ptt, frozen: (lock.keyCode, lock.mode))
   }
 
@@ -1386,10 +1393,11 @@ public final class HotkeyService {
           MainActor.assumeIsolated { self?.reportListenerObservation(observation) }
         }
       })
-    let sink: @Sendable (KeyEventValue) -> Void = { event in
-      ingress.receive(event)
+    let sink: @Sendable (KeyEventValue) -> KeyboardEventDisposition = { event in
+      let disposition = ingress.receive(event)
       if event.kind == .stormStopped { stormed() }
       if let observation = event.secureInput { secureInputSeen(observation) }
+      return disposition
     }
     listenerInstallAttempts += 1
     // Admission opens before the adapter call: the tap can deliver a press before the call

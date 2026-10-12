@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import os
 
@@ -46,7 +47,9 @@ import os
 /// cap.
 ///
 /// Our own synthetic events (`isOurs`) and key code 179 (a second Globe code some keyboards send,
-/// Wispr Flow ignores it too) change nothing. Every event passes through to the system in P3.
+/// Wispr Flow ignores it too) change nothing. Every event passes through to the system, with one
+/// exception (#3517): a Space press that locks a held push-to-talk take is consumed, together with
+/// the repeats and key-up of that same physical press (see `receive`).
 package final class KeyboardListenerIngress: Sendable {
 
   /// A shortcut edge that executes on main.
@@ -103,7 +106,20 @@ package final class KeyboardListenerIngress: Sendable {
     /// A fresh ordinary key press, for the engine's other-key dismissal (#3544 P4, D2). Carries
     /// no key identity: the engine needs only when it happened.
     case otherKey(input: RecordGesture.InputTime)
+    /// A Space press that may lock a held push-to-talk take (#3517): the engine decides, and if it
+    /// refuses, the key is any other ordinary key (`otherKey`). `token` names this decision so the
+    /// invocation that queued it can learn its own answer (`drain(receiptFor:)`).
+    case heldLock(input: RecordGesture.InputTime, generation: UInt64, token: UInt64)
   }
+
+  /// What running one queued action produced: for a `heldLock`, whether the engine accepted it.
+  private struct Receipt {
+    let token: UInt64
+    let accepted: Bool
+  }
+
+  /// Space (`kVK_Space`).
+  private static let spaceKeyCode: UInt16 = 49
 
   private struct State: Sendable {
     var tracker = KeyStateTracker()
@@ -138,6 +154,15 @@ package final class KeyboardListenerIngress: Sendable {
     var staleReported: Set<StaleKind> = []
     /// Whether this installation already reported a tap re-enable (#3544 P6): one per installation.
     var reenableReported = false
+    /// #3517: the physical Space press now down, named by a fresh token at every non-autorepeat
+    /// keyDown (even when the previous press's keyUp was missed). Nil while Space is up.
+    var spacePress: UInt64?
+    var nextSpaceToken: UInt64 = 0
+    /// The physical Space press whose events are being consumed because it locked a held take.
+    /// Always equal to `spacePress` or nil: a newer press, its keyUp, any recovery boundary and a
+    /// reading that proves Space up all end it.
+    var suppressedSpace: UInt64?
+    var nextActionToken: UInt64 = 0
   }
 
   package let installation: UInt64
@@ -195,6 +220,7 @@ package final class KeyboardListenerIngress: Sendable {
     let sweep = state.withLock { s -> RecordGestureEngine.TimerHandle? in
       s.closed = true
       s.pending.removeAll()
+      Self.forgetSpace(&s)
       s.sweepPending = nil
       defer { s.sweepHandle = nil }
       return s.sweepHandle
@@ -204,13 +230,17 @@ package final class KeyboardListenerIngress: Sendable {
 
   // MARK: - Input (listener thread)
 
-  /// One listener event, synchronously on the listener's thread.
-  package func receive(_ event: KeyEventValue) {
+  /// One listener event, synchronously on the listener's thread. The answer says whether the event
+  /// continues to the system: always `pass`, except for a Space press that locked a held
+  /// push-to-talk take and the repeats and key-up of that same physical press (#3517).
+  package func receive(_ event: KeyEventValue) -> KeyboardEventDisposition {
     switch event.kind {
     case .flagsChanged:
       ingest(event)
     case .tapReenabled:
-      // Keys may have moved while the tap was off: the next two sweeps decide.
+      // Keys may have moved while the tap was off: the next two sweeps decide. A consumed Space's
+      // key-up may have been lost with them, so its suppression ends here (fail open).
+      forgetSpaceLocked()
       restartConfirmation()
       requestOrdinaryResync()
       resyncOrdinaryIfNeeded(except: nil)
@@ -223,15 +253,34 @@ package final class KeyboardListenerIngress: Sendable {
     case .secureInputChanged:
       // Leaving Secure Input: key-ups may have been hidden (plan A2). Entering changes nothing
       // for modifiers; for ordinary keys both edges are boundaries, read now.
-      guard let enabled = event.secureInput?.enabled else { return }
+      guard let enabled = event.secureInput?.enabled else { return .pass }
+      forgetSpaceLocked()
       if !enabled { restartConfirmation() }
       requestOrdinaryResync()
       resyncOrdinaryIfNeeded(except: nil)
     case .keyDown, .keyUp:
-      ingestOrdinary(event)
+      return ingestOrdinary(event)
     case .stormStopped:
-      break
+      forgetSpaceLocked()
     }
+    return .pass
+  }
+
+  /// End any Space suppression and forget the physical Space press (recovery boundaries).
+  private func forgetSpaceLocked() {
+    state.withLock { Self.forgetSpace(&$0) }
+  }
+
+  private static func forgetSpace(_ s: inout State) {
+    s.spacePress = nil
+    s.suppressedSpace = nil
+  }
+
+  /// A reading that proves Space up ends its suppression in the same critical section that updates
+  /// the tracker, so a decision still in flight cannot recreate it afterwards (#3517).
+  private static func forgetSpaceIfUp(_ s: inout State) {
+    guard !s.tracker.ordinaryDown.contains(spaceKeyCode) else { return }
+    forgetSpace(&s)
   }
 
   /// One modifier event. Every admitted event advances the input sequence, which also restarts the
@@ -293,6 +342,7 @@ package final class KeyboardListenerIngress: Sendable {
       // A stale reading leaves the resync pending: the next event asks again.
       guard !s.closed, s.ordinarySequence == captured.sequence else { return nil }
       let removed = s.tracker.resyncOrdinary(answers, at: readAt, except: except)
+      Self.forgetSpaceIfUp(&s)
       if s.resyncEpoch == captured.epoch { s.ordinaryResyncNeeded = false }
       return Self.firstStale(&s, .ordinary, removed: removed)
     }
@@ -300,27 +350,116 @@ package final class KeyboardListenerIngress: Sendable {
     armSweepIfNeeded()
   }
 
+  /// What a Space event did in the critical section that classified it.
+  private enum SpaceStep {
+    case none
+    /// An autorepeat or key-up of a press already being consumed.
+    case tail
+    /// A fresh press that may lock a held take; `token` names the queued decision, `press` the
+    /// physical press it belongs to.
+    case lock(token: UInt64, press: UInt64)
+  }
+
+  /// The bare record key's code, or nil when the record binding is not a bare modifier.
+  private static func bareRecordKey(_ binding: ShortcutBinding) -> UInt16? {
+    guard binding.isBareModifier, case .keyboard(let code, _) = binding else { return nil }
+    return code
+  }
+
+  /// Whether `event` is a fresh Space press made with exactly the record key's own modifier down
+  /// (#3517): the held key's device-independent flags equal that key's mapped flag, so Caps Lock,
+  /// Function, Numeric Pad, Help or any other modifier family makes it the user's own chord. The
+  /// other side of the same family is not distinguished (Right plus Left Option reads as Option).
+  private static func isHeldLockCandidate(_ event: KeyEventValue, recordKey: UInt16?) -> Bool {
+    guard event.kind == .keyDown, !event.isAutorepeat, event.keyCode == spaceKeyCode,
+      let recordKey, let own = ModifierKeyCodes.flag(for: recordKey)
+    else { return false }
+    let held = NSEvent.ModifierFlags(rawValue: UInt(truncatingIfNeeded: event.rawFlags))
+      .intersection(.deviceIndependentFlagsMask)
+    return held == own
+  }
+
   /// One ordinary key event (#3544 P4). Updates the local ordinary-key state, and queues a fresh
-  /// press for the engine's dismissal decision in input order with modifier events, unless the key
-  /// and its modifiers match a configured, eligible chord shortcut (the user reaching for it, not
-  /// interference). Nothing about the key leaves this function.
-  private func ingestOrdinary(_ event: KeyEventValue) {
-    guard !event.isOurs else { return }
+  /// press for the engine's decision in input order with modifier events, unless the key and its
+  /// modifiers match a configured, eligible chord shortcut (the user reaching for it, not
+  /// interference). A fresh Space made with the record key's own modifier is first offered to the
+  /// engine as a hands-free lock (#3517); only when the engine refuses is it an ordinary key, with
+  /// the dismissal that implies. Nothing about the key leaves this function except the answer.
+  ///
+  /// The answer is `consume` only when THIS invocation's own drain ran the lock decision and the
+  /// engine accepted it, and the physical Space press is still the one that was decided; a
+  /// decision some other thread's drain ran (a sweep holding the queue) passes the Space through
+  /// and installs nothing. Repeats and the key-up of a consumed press are consumed too, until that
+  /// key-up or a recovery boundary ends it.
+  private func ingestOrdinary(_ event: KeyEventValue) -> KeyboardEventDisposition {
+    guard !event.isOurs else { return .pass }
     let handled = clock()
-    let configuration = engine.listenerClassification().configuration
+    let classification = engine.listenerClassification()
+    let configuration = classification.configuration
     let isChord = configuration.bindings.matchesChord(
       keyCode: event.keyCode, rawFlags: event.rawFlags, armed: configuration.armed)
+    let candidate = Self.isHeldLockCandidate(
+      event, recordKey: Self.bareRecordKey(configuration.bindings.record))
     resyncOrdinaryIfNeeded(except: event.keyCode)
-    state.withLock { s in
-      guard !s.closed else { return }
+    let step = state.withLock { s -> SpaceStep in
+      guard !s.closed else { return .none }
       s.ordinarySequence &+= 1
+      var tail = false
+      var press: UInt64?
+      if event.keyCode == Self.spaceKeyCode {
+        switch (event.kind, event.isAutorepeat) {
+        case (.keyDown, true):
+          tail = s.suppressedSpace != nil && s.suppressedSpace == s.spacePress
+        case (.keyDown, false):
+          // A new physical press, even if the previous key-up was missed.
+          s.nextSpaceToken &+= 1
+          s.spacePress = s.nextSpaceToken
+          s.suppressedSpace = nil
+          press = s.nextSpaceToken
+        case (.keyUp, _):
+          tail = s.suppressedSpace != nil && s.suppressedSpace == s.spacePress
+          s.spacePress = nil
+          s.suppressedSpace = nil
+        default:
+          break
+        }
+      }
       let fresh = s.tracker.ingestOrdinary(event)
-      guard fresh, !isChord else { return }
-      s.pending.append(
-        .otherKey(input: .accepting(stamp: event.timestamp, handled: handled)))
+      guard fresh, !isChord else { return tail ? .tail : .none }
+      let input = RecordGesture.InputTime.accepting(stamp: event.timestamp, handled: handled)
+      if candidate, let press {
+        s.nextActionToken &+= 1
+        let token = s.nextActionToken
+        s.pending.append(.heldLock(input: input, generation: classification.generation, token: token))
+        return .lock(token: token, press: press)
+      }
+      s.pending.append(.otherKey(input: input))
+      return .none
     }
-    drain()
-    armSweepIfNeeded()
+    switch step {
+    case .none:
+      drain()
+      armSweepIfNeeded()
+      return .pass
+    case .tail:
+      drain()
+      armSweepIfNeeded()
+      return .consume
+    case .lock(let token, let press):
+      let accepted = drain(receiptFor: token)
+      armSweepIfNeeded()
+      guard accepted else { return .pass }
+      // Finalize in one critical section: still open, still the same physical press, and the
+      // tracker still holds Space (a reading may have proved it up since). Never takes the engine
+      // lock.
+      return state.withLock { s -> KeyboardEventDisposition in
+        guard !s.closed, s.spacePress == press,
+          s.tracker.ordinaryDown.contains(Self.spaceKeyCode)
+        else { return .pass }
+        s.suppressedSpace = press
+        return .consume
+      }
+    }
   }
 
   /// Turn one tracker edge into an action, remembering a press's route for its release.
@@ -394,13 +533,20 @@ package final class KeyboardListenerIngress: Sendable {
 
   /// Run committed actions oldest first, outside every lock, one drainer at a time; an action
   /// committed while another thread drains is run by that drainer, in order.
-  private func drain() {
+  ///
+  /// `receiptFor`: the token of a `heldLock` this invocation queued. Returns whether THIS
+  /// invocation ran that action and the engine accepted it; false when another drainer owns the
+  /// queue (it runs the action in order, but this caller cannot know the answer in time) or the
+  /// engine refused. The answer is collected locally, never from a shared box.
+  @discardableResult
+  private func drain(receiptFor token: UInt64? = nil) -> Bool {
     let start = state.withLock { s -> Bool in
       guard !s.draining else { return false }
       s.draining = true
       return true
     }
-    guard start else { return }
+    guard start else { return false }
+    var accepted = false
     while true {
       let next = state.withLock { s -> Action? in
         guard !s.closed, !s.pending.isEmpty else {
@@ -410,12 +556,13 @@ package final class KeyboardListenerIngress: Sendable {
         }
         return s.pending.removeFirst()
       }
-      guard let next else { return }
-      perform(next)
+      guard let next else { return accepted }
+      if let receipt = perform(next), receipt.token == token { accepted = receipt.accepted }
     }
   }
 
-  private func perform(_ action: Action) {
+  @discardableResult
+  private func perform(_ action: Action) -> Receipt? {
     switch action {
     case .engine(
       let keyCode, let isPress, let input, let generation, let recovery, let onlyAttempt,
@@ -432,7 +579,17 @@ package final class KeyboardListenerIngress: Sendable {
       toMain(edge)
     case .otherKey(let input):
       engine.otherKeyFromListener(input: input, installation: installation)
+    case .heldLock(let input, let generation, let token):
+      if engine.lockHeldFromListener(
+        input: input, installation: installation, generation: generation)
+      {
+        return Receipt(token: token, accepted: true)
+      }
+      // Not a lock: this Space is any other ordinary key, with today's dismissal.
+      engine.otherKeyFromListener(input: input, installation: installation)
+      return Receipt(token: token, accepted: false)
     }
+    return nil
   }
 
   // MARK: - Reconciliation
@@ -512,6 +669,7 @@ package final class KeyboardListenerIngress: Sendable {
       // A stale reading is dropped, never applied: the next sweep asks again.
       guard !s.closed, s.ordinarySequence == captured.sequence else { return nil }
       let removed = s.tracker.resyncOrdinary(answers.filter { $0.value == .up }, at: readAt)
+      Self.forgetSpaceIfUp(&s)
       return Self.firstStale(&s, .ordinary, removed: removed)
     }
     if let stale { observe(stale) }

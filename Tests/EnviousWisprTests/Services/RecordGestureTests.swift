@@ -252,7 +252,7 @@ struct RecordGestureTests {
 
   @Test("a held lock's cooldown ends 500 ms after the lock; the next press then stops")
   func heldLockCooldownBoundary() {
-    for (press, stops) in [(100.75, false), (100.8125, true)] {
+    for (press, stops) in [(100.749, false), (100.75, false), (100.751, true)] {
       var g = RecordGesture()
       _ = Self.press(&g, Self.at(100))
       _ = g.lockHeld(Self.at(100.25))

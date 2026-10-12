@@ -1177,6 +1177,9 @@ struct RecordGestureEngineTests {
       bindings: Self.bindings(record: .keyboard(keyCode: Self.rightCommand, modifiers: [])),
       mode: .pushToTalk)
     #expect(!Self.lockHeld(moved, at: 0.3), "locked under a binding that is no longer current")
+    // Rebinding away and back is a new generation twice over: the old hold is not revived.
+    moved.engine.configure(bindings: Self.bindings(), mode: .pushToTalk)
+    #expect(!Self.lockHeld(moved, at: 0.4), "rebinding away and back must not revive the old hold")
     // Its release still ends the hold it belongs to.
     #expect(Self.listener(moved, false, 0.6) == nil)
   }
@@ -1203,15 +1206,25 @@ struct RecordGestureEngineTests {
     #expect(rig.engine.snapshot.isLocked)
   }
 
-  @Test("a lock decided after a refused attempt is dropped; a newer attempt is untouched")
+  @Test("refusing an older attempt drops its held lock and preserves a newer locked hold")
   func lockHeldOfARefusedAttemptIsDropped() {
     let rig = Rig()
     rig.engine.openListenerAdmission(installation: 7)
-    _ = Self.listener(rig, true, 0)
-    #expect(Self.lockHeld(rig, at: 0.3))
-    rig.engine.reset(attempt: 1)  // main refused the attempt (processing, rejected publication)
+    #expect(Self.listener(rig, true, 0) == nil)
+    #expect(Self.lockHeld(rig, at: 0.25))
+    #expect(Self.listener(rig, false, 0.375) == nil)
+    #expect(Self.listener(rig, true, 0.875) == nil)  // stops attempt 1
+    #expect(Self.listener(rig, false, 1.0) == nil)
+    #expect(Self.listener(rig, true, 1.125) == nil)  // starts attempt 2
+    #expect(Self.lockHeld(rig, at: 1.375))
+
+    rig.engine.reset(attempt: 1)
     rig.engine.drainForTesting()
-    #expect(!rig.sink.validNames.contains("lockHeld"))
-    #expect(rig.sink.delivered.contains { $0.name == "lockHeld" && !$0.valid })
+
+    #expect(rig.sink.validNames == ["start", "lockHeld"])
+    #expect(rig.sink.delivered.contains { $0.name == "lockHeld" && $0.attempt == 1 && !$0.valid })
+    #expect(rig.sink.delivered.contains { $0.name == "lockHeld" && $0.attempt == 2 && $0.valid })
+    #expect(rig.engine.snapshot.isHeld)
+    #expect(rig.engine.snapshot.isLocked)
   }
 }
