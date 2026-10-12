@@ -12,6 +12,7 @@ import hashlib
 import importlib.util
 import io
 import json
+import os
 from pathlib import Path
 import re
 import shlex
@@ -19,6 +20,7 @@ import subprocess
 import sys
 
 LOCK_TOOL = Path('/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr/scripts/lib/dev-app-lock.py')
+MAC_GIT_DIR = Path('/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr/.git')
 OWNER_SHA256 = None
 lock = None
 
@@ -145,6 +147,32 @@ def script_argument(argv):
     return argv[0], argv[1:]
 
 
+def foreign_project_validator(script):
+    """Only a resolved absolute validator in a proven other Git project is exempt.
+
+    Mac worktrees share the main Git directory. Unknown and relative routes
+    retain the lock requirement; callers already use their worktree's absolute
+    tracked script path. Symlinks are classified by their target, not the alias.
+    """
+    path = Path(script)
+    if not path.is_absolute():
+        return False
+    path = path.resolve()
+    if not path.is_file():
+        return False
+    # Do not let inherited Git targeting variables reclassify the script's repo.
+    env = {key: value for key, value in os.environ.items() if not key.startswith('GIT_')}
+    probe = subprocess.run(['git', '-C', str(path.parent), 'rev-parse',
+                            '--path-format=absolute', '--git-common-dir'],
+                           capture_output=True, text=True, timeout=10, env=env)
+    if probe.returncode or probe.stderr.strip() or not probe.stdout.strip():
+        return False
+    common = Path(probe.stdout.strip())
+    if not common.is_absolute():
+        return False
+    return common.resolve() != MAC_GIT_DIR.resolve()
+
+
 def route(argv):
     """Return (protected action, lock mutation, release). Readers stay readers."""
     name = Path(argv[0]).name
@@ -159,7 +187,8 @@ def route(argv):
             return True, False, False  # It has no help/self-test argument contract.
         if Path(script).name == 'validate-pr.sh':
             # Its only reader entrypoint is literal first argument --self-test.
-            return arguments[:1] != ['--self-test'], False, False
+            return (arguments[:1] != ['--self-test'] and
+                    not foreign_project_validator(script)), False, False
         if '/RuntimeUAT/' in '/' + script:
             reader = (Path(script).name == 'uat.py' and
                       arguments[:1] in (["recipes"], ["preflight"], ["verdict"], ["--help"]))

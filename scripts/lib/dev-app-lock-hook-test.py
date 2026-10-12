@@ -5,6 +5,7 @@ import hashlib
 import json
 from pathlib import Path
 import tempfile
+import subprocess
 import unittest
 from unittest.mock import patch
 
@@ -25,6 +26,21 @@ class HookTests(unittest.TestCase):
         hook_source = (HERE / 'dev-app-lock-hook.py').read_text()
         anchor = "LOCK_TOOL = Path('/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr/scripts/lib/dev-app-lock.py')"
         self.assertEqual(hook_source.count(anchor), 1)
+        self.mac = root / 'Mac project'
+        self.mac.mkdir()
+        subprocess.run(['git', 'init', '-q', str(self.mac)], check=True)
+        (self.mac / 'validate-pr.sh').write_text('#!/bin/sh\nexit 0\n')
+        subprocess.run(['git', '-C', str(self.mac), 'add', '.'], check=True)
+        subprocess.run(['git', '-C', str(self.mac), '-c', 'user.name=Fixture',
+                        '-c', 'user.email=fixture@example.invalid', '-c', 'commit.gpgsign=false',
+                        'commit', '-qm', 'fixture'], check=True)
+        self.mac_worktree = root / 'Mac worktree'
+        subprocess.run(['git', '-C', str(self.mac), 'worktree', 'add', '-q',
+                        '-b', 'fixture', str(self.mac_worktree)], check=True)
+        scope_anchor = "MAC_GIT_DIR = Path('/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr/.git')"
+        self.assertEqual(hook_source.count(scope_anchor), 1)
+        hook_source = hook_source.replace(scope_anchor,
+            f'MAC_GIT_DIR = Path({str(self.mac / ".git")!r})')
         hook_path = root / 'hook.py'
         hook_source = hook_source.replace(anchor, f'LOCK_TOOL = Path({str(lock_path)!r})')
         self.assertEqual(hook_source.count('OWNER_SHA256 = None'), 1)
@@ -47,12 +63,38 @@ class HookTests(unittest.TestCase):
         result = self.hook.handle(self.event(command=command, chat=chat))
         return result.get('hookSpecificOutput', {}).get('permissionDecision') == 'deny'
 
+    def test_foreign_project_validator_does_not_take_mac_slot(self):
+        root = Path(self.tmp.name)
+        foreign = root / 'Android project'
+        foreign.mkdir()
+        subprocess.run(['git', 'init', '-q', str(foreign)], check=True)
+        validator = foreign / 'validate-pr.sh'
+        validator.write_text('#!/bin/sh\nexit 0\n')
+        self.hook.invoke('chat-b', 'claim')
+        before = self.card_path.read_bytes()
+        for command in (f'"{validator}" --no-tests', f'bash "{validator}" --no-tests',
+                        f'env FOO=x bash "{validator}" --no-tests'):
+            with self.subTest(command=command):
+                self.assertFalse(self.denied(command))
+        self.assertEqual(self.card_path.read_bytes(), before)
+
     def test_free_action_refused_own_action_passes_peer_refused(self):
         action = '/tmp/build-dev-app.sh'
         self.assertTrue(self.denied(action))
         self.hook.invoke('chat-a', 'claim')
         self.assertFalse(self.denied(action))
         self.assertTrue(self.denied(action, 'chat-b'))
+
+    def test_mac_main_worktree_and_symlink_still_require_slot(self):
+        mac = self.mac
+        self.assertTrue(self.denied(f'"{mac}/validate-pr.sh"'))
+        # This test's checkout may itself be a Mac worktree.
+        self.assertTrue(self.denied(f'"{self.mac_worktree}/validate-pr.sh"'))
+        alias = Path(self.tmp.name) / 'validate-pr.sh'
+        alias.symlink_to(mac / 'validate-pr.sh')
+        self.assertTrue(self.denied(str(alias)))
+        self.assertTrue(self.denied('scripts/validate-pr.sh --no-tests'))
+        self.assertTrue(self.denied('/missing/validate-pr.sh'))
 
     def test_executed_routes_and_wrappers(self):
         for command in [
