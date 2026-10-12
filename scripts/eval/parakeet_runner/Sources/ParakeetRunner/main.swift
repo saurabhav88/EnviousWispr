@@ -17,8 +17,16 @@ import Foundation
 ///   - `manager.transcribe(samples, decoderState: &state)`
 ///   - no language hint (parity with the shipped behaviour)
 ///
+/// #3546: the model is explicit. `--model ultra` is the shipping Parakeet;
+/// `--model v3` replays the historical model. `--model-dir` is the repo-shaped
+/// directory the app installed (for Ultra:
+/// `~/Library/Application Support/EnviousWispr/Models/parakeet-ultra`). There is
+/// no default and no fallback: a missing or unloadable directory fails the run
+/// rather than measuring a different model.
+///
+/// Usage:  ParakeetRunner --model ultra|v3 --model-dir <dir> <manifest.jsonl> <out.jsonl>
 /// Input:  a JSONL manifest, one {"id": "...", "wav": "/abs/path.wav"} per line.
-/// Output: JSONL, one {"id","text","ms"} or {"id","error"} per line.
+/// Output: JSONL, one {"id","model","text","ms"} or {"id","model","error"} per line.
 
 struct ManifestRow: Decodable {
   let id: String
@@ -30,12 +38,44 @@ func fail(_ message: String) -> Never {
   exit(1)
 }
 
-let args = CommandLine.arguments
-guard args.count >= 3 else {
-  fail("usage: ParakeetRunner <manifest.jsonl> <out.jsonl>")
+let usage = "usage: ParakeetRunner --model ultra|v3 --model-dir <dir> <manifest.jsonl> <out.jsonl>"
+var options: [String: String] = [:]
+var positional: [String] = []
+var argIterator = CommandLine.arguments.dropFirst().makeIterator()
+while let arg = argIterator.next() {
+  if arg == "--model" || arg == "--model-dir" {
+    guard let value = argIterator.next() else { fail(usage) }
+    options[arg] = value
+  } else if arg.hasPrefix("--") {
+    fail("unknown option \(arg)\n\(usage)")
+  } else {
+    positional.append(arg)
+  }
 }
-let manifestURL = URL(fileURLWithPath: args[1])
-let outURL = URL(fileURLWithPath: args[2])
+guard positional.count == 2, let modelName = options["--model"],
+  let modelDirPath = options["--model-dir"]
+else { fail(usage) }
+let version: AsrModelVersion
+let repo: Repo
+switch modelName {
+case "ultra": (version, repo) = (.ultra, .parakeetUltra)
+case "v3": (version, repo) = (.v3, .parakeetV3)
+default: fail("--model must be ultra or v3, got \(modelName)")
+}
+let modelDir = URL(fileURLWithPath: modelDirPath, isDirectory: true).standardizedFileURL
+var isDirectory: ObjCBool = false
+guard FileManager.default.fileExists(atPath: modelDir.path, isDirectory: &isDirectory),
+  isDirectory.boolValue
+else { fail("model directory does not exist: \(modelDir.path)") }
+// FluidAudio loads from the directory's PARENT plus the model's own folder name, so a
+// differently named directory would load a sibling model silently.
+guard modelDir.lastPathComponent == repo.folderName else {
+  fail(
+    "--model-dir must name \(repo.folderName), got \(modelDir.path); "
+      + "FluidAudio resolves the model folder from its parent")
+}
+let manifestURL = URL(fileURLWithPath: positional[0])
+let outURL = URL(fileURLWithPath: positional[1])
 
 guard let manifestData = try? Data(contentsOf: manifestURL) else {
   fail("cannot read manifest at \(manifestURL.path)")
@@ -60,19 +100,20 @@ func samples(at path: String) throws -> [Float] {
 }
 
 let start = Date()
-FileHandle.standardError.write(Data("loading Parakeet v3...\n".utf8))
+FileHandle.standardError.write(
+  Data("loading Parakeet \(modelName) from \(modelDir.path)...\n".utf8))
 
 // Cache-only: the app owns model setup; a benchmark must never mutate the
 // model bytes it measures.
 ModelHub.offlineMode = true
 let models: AsrModels
 do {
-  models = try await AsrModels.loadFromCache(version: .v3)
+  models = try await AsrModels.load(from: modelDir, version: version)
 } catch {
-  fail("Open EnviousWispr and complete Parakeet model setup once, then rerun.")
+  fail("cannot load Parakeet \(modelName) from \(modelDir.path) offline: \(error)")
 }
 // #2788: same explicit long-form path as the app (ParakeetBackend), so this measures
-// what ships rather than upstream's new v3 default.
+// what ships rather than upstream's default.
 let manager = AsrManager(config: ASRConfig(melChunkContext: true))
 try await manager.loadModels(models)
 let layers = await manager.decoderLayerCount
@@ -99,12 +140,13 @@ for row in rows {
     let result = try await manager.transcribe(audio, decoderState: &state)
     payload = [
       "id": row.id,
+      "model": modelName,
       "text": result.text,
       "ms": Int(Date().timeIntervalSince(caseStart) * 1000),
     ]
   } catch {
     errors += 1
-    payload = ["id": row.id, "error": "\(error)"]
+    payload = ["id": row.id, "model": modelName, "error": "\(error)"]
     FileHandle.standardError.write(Data("ERROR \(row.id): \(error)\n".utf8))
   }
   let data = try JSONSerialization.data(withJSONObject: payload, options: [.sortedKeys])
@@ -123,6 +165,6 @@ let elapsedTotal = Int(Date().timeIntervalSince(runStart))
 // Build the summary as one String first: splitting a concatenation across the
 // `.utf8` call makes `+` apply to a String and a UTF8View, which does not compile.
 let summary =
-  "DONE \(done - errors)/\(rows.count) in \(elapsedTotal)s | errors=\(errors) -> \(outURL.path)\n"
+  "DONE model=\(modelName) \(done - errors)/\(rows.count) in \(elapsedTotal)s | errors=\(errors) -> \(outURL.path)\n"
 FileHandle.standardError.write(Data(summary.utf8))
 exit(errors == 0 ? 0 : 1)

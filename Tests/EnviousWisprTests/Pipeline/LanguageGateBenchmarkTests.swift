@@ -43,15 +43,20 @@ struct LanguageGateBenchmarkTests {
 
   /// `<repo>/Tests/EnviousWisprTests/Resources/LanguageGate/transcripts.jsonl`, located from
   /// `#filePath` the same way `InverseTextNormalizerParityTests` finds its fixture.
-  static let fixtureURL: URL = URL(filePath: #filePath)
+  static let fixtureDirectory: URL = URL(filePath: #filePath)
     .deletingLastPathComponent()  // Pipeline
     .deletingLastPathComponent()  // EnviousWisprTests
     .deletingLastPathComponent()  // Tests
     .deletingLastPathComponent()  // repo root
-    .appending(path: "Tests/EnviousWisprTests/Resources/LanguageGate/transcripts.jsonl")
+    .appending(path: "Tests/EnviousWisprTests/Resources/LanguageGate")
+  /// Historical rows: Parakeet v3 and WhisperKit on the September 2026 audio, kept byte-for-byte.
+  static let fixtureURL = fixtureDirectory.appending(path: "transcripts.jsonl")
+  /// #3546: Parakeet Ultra rows on the same 178 sentences, re-spoken by the same Azure voices
+  /// (October 2026; the September WAVs were not kept). Same oracles, Parakeet only.
+  static let ultraFixtureURL = fixtureDirectory.appending(path: "transcripts-ultra.jsonl")
 
-  static func loadRows() throws -> [Row] {
-    let text = try String(contentsOf: fixtureURL, encoding: .utf8)
+  static func loadRows(_ url: URL = fixtureURL) throws -> [Row] {
+    let text = try String(contentsOf: url, encoding: .utf8)
     let decoder = JSONDecoder()
     return try text.split(separator: "\n").compactMap { line in
       let trimmed = line.trimmingCharacters(in: .whitespaces)
@@ -306,5 +311,82 @@ struct LanguageGateBenchmarkTests {
     for f in failures { print("  ENGLISH-CONTROL \(f)") }
     let failureList = failures.joined(separator: "\n")
     #expect(failures.isEmpty, "\(failures.count) English controls regressed:\n\(failureList)")
+  }
+
+  // MARK: - Parakeet Ultra (#3546)
+
+  /// The Ultra rows grade the same way as the historical ones. When these fail, Ultra's own
+  /// spelling of a foreign sentence lets the English rules rewrite a real word, or an English
+  /// control stops converting, on the model the app now ships.
+  @Test("Ultra fixture: 178 Parakeet Ultra rows covering every language")
+  func ultraFixtureShape() throws {
+    let rows = try Self.loadRows(Self.ultraFixtureURL)
+    #expect(rows.count == 178, "Ultra fixture rows: \(rows.count)")
+    #expect(Set(rows.map(\.engine)) == ["parakeet"])
+    #expect(Set(rows.map(\.id)).count == rows.count, "duplicate Ultra case ids")
+    #expect(Set(rows.map(\.lang)).count >= 20, "languages: \(Set(rows.map(\.lang)).count)")
+    let header = try String(contentsOf: Self.ultraFixtureURL, encoding: .utf8)
+      .split(separator: "\n").first.map(String.init) ?? ""
+    #expect(header.contains("\"parakeet-ultra-coreml\""), "header names another model: \(header)")
+  }
+
+  @Test("Ultra: foreign-word damage stays within the measured residual")
+  func ultraForeignWordsSurviveCleanup() async throws {
+    let rows = try Self.loadRows(Self.ultraFixtureURL)
+    var outcomes: [Outcome] = []
+    for row in rows {
+      outcomes.append(Self.grade(row, cleaned: try await Self.clean(row)))
+    }
+    let report = try Self.writeReport(outcomes)
+    let staged = outcomes.filter { $0.staged && $0.hasOracle && !$0.bucket.hasPrefix("english") }
+    let damaged = staged.filter { !$0.damaged.isEmpty }
+    print(
+      "LanguageGateBenchmark Ultra: staged=\(staged.count) "
+        + "unreachable=\(outcomes.filter { $0.hasOracle && !$0.staged }.count) "
+        + "damaged=\(damaged.count) report=\(report.path)")
+    for o in damaged {
+      print("  DAMAGED \(o.id) [ultra] lost \(o.damaged): \(o.raw) -> \(o.cleaned)")
+    }
+    #expect(staged.count >= 80, "too few staged Ultra collision rows to mean anything: \(staged.count)")
+    // The measured Ultra residuals (2026-10-12, 2 of 101 staged), the same class as v3's one:
+    // Ultra garbled the rest of the sentence ("Telisu", "nuėjomome"), so the language could
+    // not be placed and the English rules ran. Paired run on the same October audio: v3
+    // damaged 1 of 95 (`sl_si_filler_05`), wrote the Slovenian row in Cyrillic and left
+    // Lithuanian "ten" unstaged. Named here so a third can never hide behind them. Accepted
+    // for the model swap and tracked as cleanup work in #3678 (founder 2026-10-12).
+    let permittedResiduals: Set<String> = ["sl_si_filler_02", "lt_lt_itn_07"]
+    let unexpected = Set(damaged.map(\.id)).subtracting(permittedResiduals).sorted()
+    #expect(
+      unexpected.isEmpty,
+      "\(unexpected.count) of \(staged.count) staged Ultra rows lost a real word: \(unexpected.joined(separator: ", "))"
+    )
+  }
+
+  @Test("Ultra: English controls still convert numbers and still drop fillers")
+  func ultraEnglishControlsStillConvert() async throws {
+    let rows = try Self.loadRows(Self.ultraFixtureURL).filter { $0.bucket.hasPrefix("english") }
+    #expect(rows.count >= 10, "Ultra English controls are missing or truncated: \(rows.count)")
+    #expect(rows.contains { !$0.must_convert.isEmpty }, "no number-conversion oracle")
+    #expect(rows.contains { !$0.must_drop.isEmpty }, "no filler-removal oracle")
+    // Ultra writes English numbers as digits itself (measured 2026-10-12: every conversion
+    // oracle is already present in `raw`), as WhisperKit does, so on Ultra this test proves
+    // filler removal only; the conversion half stays proven by the historical Parakeet rows.
+    // Recorded as a measured fact so a change in Ultra's output surfaces here.
+    #expect(
+      rows.filter { !$0.must_convert.isEmpty }.allSatisfy { row in
+        row.must_convert.allSatisfy { row.raw.contains($0) }
+      }, "Ultra left an English number spelled out; the conversion half applies again")
+    var failures: [String] = []
+    for row in rows {
+      let o = Self.grade(row, cleaned: try await Self.clean(row))
+      if !o.missingConversions.isEmpty {
+        failures.append("\(o.id) missing \(o.missingConversions): \(o.cleaned)")
+      }
+      if !o.survivingFillers.isEmpty {
+        failures.append("\(o.id) kept filler \(o.survivingFillers): \(o.cleaned)")
+      }
+    }
+    for f in failures { print("  ENGLISH-CONTROL ultra \(f)") }
+    #expect(failures.isEmpty, "\(failures.count) Ultra English controls regressed:\n\(failures.joined(separator: "\n"))")
   }
 }

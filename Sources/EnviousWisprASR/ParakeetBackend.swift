@@ -7,12 +7,11 @@ import os
 // Disambiguate from FluidAudio.ASRResult — we always mean our own type.
 public typealias ASRResult = EnviousWisprCore.ASRResult
 
-/// Parakeet v3 ASR backend using FluidAudio/CoreML.
+/// Parakeet ASR backend using FluidAudio/CoreML.
 ///
-/// This is the primary (default) backend. Parakeet v3 provides:
-/// - ~110x real-time factor on Apple Silicon
-/// - Built-in punctuation and capitalization
-/// - 25 European language support
+/// This is the primary (default) backend. It loads the model the upgrade policy
+/// selects (#3546): Parakeet Ultra, or Parakeet v3 while an install upgrades.
+/// Both write their own punctuation and capitalization.
 public actor ParakeetBackend: ASRBackend {
   public private(set) var isReady = false
 
