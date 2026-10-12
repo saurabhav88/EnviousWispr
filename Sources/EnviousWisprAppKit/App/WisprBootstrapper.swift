@@ -2020,6 +2020,9 @@ package final class WisprBootstrapper {
         kernelDriver.applyEngineUnloadPolicy(settings.modelUnloadPolicy)
         whisperKitKernelDriver.applyEngineUnloadPolicy(settings.modelUnloadPolicy)
       },
+      engineSelectionSettled: { [settings, asrManager] in
+        settings.selectedBackend == asrManager.activeBackendType
+      },
       ensureEngineReady: { [weak engineCoordinator, activeEngine] in
         guard let engineCoordinator else { return .notReady }
         switch await engineCoordinator.ensureSelectedReadyForPress() {
@@ -2089,10 +2092,11 @@ package final class WisprBootstrapper {
           ollamaModelIsRemote: snapshot.llmProvider == LLMProvider.ollama.rawValue
             ? ollamaRemoteness(snapshot.llmModel) : false)
         // #3546 §3.7 T1: the frozen engine's serving model, read at the same freeze.
-        configuration.asrModel =
-          (configuration.backendType == .whisperKit
-          ? whisperKitKernelDriver.servingModelAttribution
-          : kernelDriver.servingModelAttribution)?.identity
+        configuration.asrModel = FileImportSettingsFreeze.frozenASRModel(
+          backend: configuration.backendType,
+          parakeetServing: kernelDriver.servingModelAttribution,
+          whisperKitServing: whisperKitKernelDriver.servingModelAttribution,
+          whisperKitValidated: whisperKitKernelDriver.requestedModelAttribution)
         // #2772: **the import starts its OWN bundled polisher.**
         //
         // Since the import's polisher is chosen independently of dictation's, EG-1 can be

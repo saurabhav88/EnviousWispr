@@ -553,6 +553,11 @@ final class FileImportCoordinator {
   /// an import holds the engine, so claiming first would make the switch wait
   /// for a run that is itself waiting for the switch.
   private let ensureEngineReady: @MainActor () async -> EngineReadiness
+  /// #3546 Chunk 12: whether the selected engine is the active one. Read under the claim,
+  /// before the second readiness drive: a selection changed during the first drive cannot
+  /// converge while this import holds the engine (the engine owner defers that switch until
+  /// the import releases), so waiting for it would hold the claim forever.
+  private let engineSelectionSettled: @MainActor () -> Bool
 
   /// Mirrors `EngineCoordinator.PressReadiness` without importing it, so this
   /// type keeps knowing nothing about who owns engine switching.
@@ -815,6 +820,7 @@ final class FileImportCoordinator {
     refreshOllamaFacts: @escaping @MainActor () async -> Void = {},
     disarmEngineTimers: @escaping @MainActor () -> Void = {},
     rearmEngineTimers: @escaping @MainActor () -> Void = {},
+    engineSelectionSettled: @escaping @MainActor () -> Bool = { true },
     ensureEngineReady: @escaping @MainActor () async -> EngineReadiness = { .ready },
     onEngineReleased: @escaping @MainActor () -> Void = {},
     beginRun: @escaping @MainActor () -> RunConfiguration,
@@ -843,6 +849,7 @@ final class FileImportCoordinator {
     self.polishOllamaLocalityNow = polishOllamaLocalityNow
     self.refreshOllamaFacts = refreshOllamaFacts
     self.ensureEngineReady = ensureEngineReady
+    self.engineSelectionSettled = engineSelectionSettled
     self.disarmEngineTimers = disarmEngineTimers
     self.rearmEngineTimers = rearmEngineTimers
     self.onEngineReleased = onEngineReleased
@@ -1753,6 +1760,14 @@ final class FileImportCoordinator {
       // readiness hops to the backend actor, so the window is real rather than
       // theoretical. It does not throw on cancellation, so without the guard a
       // stopped run carried on and transcribed. Found by cloud review.
+      //
+      // A selection the user changed during the first drive is refused, not awaited: its
+      // switch is deferred until this claim is released, so waiting here never ends.
+      guard engineSelectionSettled() else {
+        guard generationAtStart == generation else { return }
+        showRejection(.engineNotReady)
+        return
+      }
       guard await ensureEngineReady() == .ready else {
         guard generationAtStart == generation else { return }
         showRejection(.engineNotReady)

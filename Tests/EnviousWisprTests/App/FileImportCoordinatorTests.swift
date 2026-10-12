@@ -101,6 +101,7 @@ struct FileImportCoordinatorTests {
         polishIsCloud: false, localPolishProvider: nil, polishProvider: .egOne,
         ollamaModel: nil, polishModel: "eg-1", backendType: .parakeet)
     },
+    engineSelectionSettled: @escaping @MainActor () -> Bool = { true },
     ensureEngineReady: @escaping @MainActor () async -> FileImportCoordinator.EngineReadiness = {
       .ready
     },
@@ -122,6 +123,7 @@ struct FileImportCoordinatorTests {
           processingTime: 0, backendType: .parakeet)
       },
       engineAdmission: .live(lease: lease, as: .fileImport),
+      engineSelectionSettled: engineSelectionSettled,
       ensureEngineReady: ensureEngineReady,
       onEngineReleased: onEngineReleased,
       beginRun: beginRun,
@@ -1334,12 +1336,14 @@ struct FileImportCoordinatorTests {
     processPart: @escaping @MainActor (String) async throws -> FileImportRunner.PartOutcome = {
       Self.outcome($0)
     },
+    engineSelectionSettled: @escaping @MainActor () -> Bool = { true },
     ensureEngineReady: @escaping @MainActor () async -> FileImportCoordinator.EngineReadiness = {
       .ready
     }
   ) async -> FileImportCoordinator {
     let coordinator = makeCoordinator(
       lease: lease, transcribe: transcribe, processPart: processPart,
+      engineSelectionSettled: engineSelectionSettled,
       ensureEngineReady: ensureEngineReady,
       onEngineReleased: { count.value += 1 })
     coordinator.choose(url: Self.anyURL)
@@ -1404,6 +1408,29 @@ struct FileImportCoordinatorTests {
     coordinator.start()
     _ = await settleUntil { count.value >= 1 }
     #expect(coordinator.state == .rejected(.engineNotReady))
+    #expect(count.value == 1)
+  }
+
+  /// #3546 Chunk 12 whole-PR review r4: the user changed engines while the first readiness
+  /// drive loaded the old one. When this fails, the import waits under its claim for a switch
+  /// the engine owner defers until that claim is released: neither side finishes, and the
+  /// held engine blocks dictation.
+  @Test("an engine choice changed before the claim is refused, not awaited, under the claim")
+  func changedSelectionUnderClaimIsRefused() async {
+    let count = ReleaseCount()
+    let readinessCalls = Counter()
+    let coordinator = await readyCoordinator(
+      lease: EngineLease(), count: count,
+      engineSelectionSettled: { false },
+      ensureEngineReady: {
+        await readinessCalls.bump()
+        return .ready
+      })
+    coordinator.start()
+    _ = await settleUntil { count.value >= 1 }
+    #expect(coordinator.state == .rejected(.engineNotReady))
+    #expect(await readinessCalls.count == 1, "no readiness drive under the claim")
+    #expect(coordinator.isEngineHeld == false, "the claim is released")
     #expect(count.value == 1)
   }
 

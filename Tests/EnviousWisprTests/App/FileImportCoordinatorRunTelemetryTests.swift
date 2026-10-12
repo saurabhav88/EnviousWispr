@@ -20,6 +20,31 @@ import Testing
 @MainActor
 struct FileImportCoordinatorRunTelemetryTests {
 
+  /// #3546 Chunk 12 whole-PR review r4: an import that reloads an idle-unloaded WhisperKit
+  /// directly leaves the adapter's cached readiness stale. When this fails, that import's
+  /// `file_import_completed` row carries no model at all.
+  @Test("the frozen model falls back to WhisperKit's validated identity, and never crosses engines")
+  func frozenASRModelResolution() {
+    let whisper = ASRModelIdentity(name: "whisperkit-coreml", revision: "97a5bf9b", variant: "small")
+    let ultra = ASRModelIdentity(name: "parakeet-ultra-coreml", revision: "95eaa59a", variant: "int8")
+    let validated = ASRModelAttribution(identity: whisper, loaded: false, inferenceReached: false)
+    let serving = ASRModelAttribution(identity: ultra, loaded: true, inferenceReached: false)
+    #expect(
+      FileImportSettingsFreeze.frozenASRModel(
+        backend: .whisperKit, parakeetServing: serving, whisperKitServing: nil,
+        whisperKitValidated: validated) == whisper,
+      "stale WhisperKit cache: the validated identity")
+    #expect(
+      FileImportSettingsFreeze.frozenASRModel(
+        backend: .parakeet, parakeetServing: nil, whisperKitServing: nil,
+        whisperKitValidated: validated) == nil,
+      "a Parakeet import never borrows WhisperKit's identity")
+    #expect(
+      FileImportSettingsFreeze.frozenASRModel(
+        backend: .parakeet, parakeetServing: serving, whisperKitServing: nil,
+        whisperKitValidated: nil) == ultra)
+  }
+
   /// Synchronous, same-actor recorders: the closures under test are `@MainActor` and called
   /// directly (never through a detached `Task`), so a plain `@MainActor` class is a complete
   /// and race-free record of every call, in order — no `actor`/`await`/settle needed to read it.
