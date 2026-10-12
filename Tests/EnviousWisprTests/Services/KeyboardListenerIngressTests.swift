@@ -58,6 +58,7 @@ struct KeyboardListenerIngressTests {
           case .loneTapStop: self?.effects.append("loneTapStop")
           case .cancel: self?.effects.append("cancel")
           case .dismiss: self?.effects.append("dismiss")
+          case .lockHeld: self?.effects.append("lockHeld")
           case .loneTapResolved: break
           }
         }

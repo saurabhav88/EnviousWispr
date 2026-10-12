@@ -48,6 +48,7 @@ struct RecordGestureEngineTests {
       case .loneTapResolved: return "resolved"
       case .cancel: return "cancel"
       case .dismiss: return "dismiss"
+      case .lockHeld: return "lockHeld"
       }
     }
   }
@@ -1038,5 +1039,179 @@ struct RecordGestureEngineTests {
     #expect(rig.engine.ownedListenerKey == nil, "the watchdog would release a Carbon chord")
     #expect(Self.listener(rig, false, 1) == .unownedRelease)
     #expect(rig.engine.snapshot.isHeld)
+  }
+
+  // MARK: - Lock while held (#3517)
+
+  private static func lockHeld(
+    _ rig: Rig, at t: TimeInterval, installation: UInt64 = 7, generation: UInt64? = nil
+  ) -> Bool {
+    rig.engine.lockHeldFromListener(
+      input: rig.at(t), installation: installation,
+      generation: generation ?? rig.engine.listenerConfigurationGeneration)
+  }
+
+  @Test("a lock made at any point of the hold keeps the take; the release does not stop it")
+  func lockHeldAtAnyTimeKeepsTheTake() {
+    for t in [0.1, 0.4, 0.999, 1.0, 3.0] {
+      let rig = Rig()
+      rig.engine.openListenerAdmission(installation: 7)
+      #expect(Self.listener(rig, true, 0) == nil)
+      #expect(Self.lockHeld(rig, at: t), "a hold of \(t) s did not lock")
+      // The release arrives before main has run the lock: it follows the lock in input order.
+      #expect(Self.listener(rig, false, t + 0.5) == nil)
+      rig.engine.drainForTesting()
+      #expect(rig.sink.validNames == ["start", "lockHeld"], "hold \(t) s")
+      #expect(rig.engine.snapshot.isLocked)
+      #expect(!rig.engine.snapshot.isHeld)
+    }
+  }
+
+  @Test("the lock effect carries the key, mode, input and time it was decided under")
+  func lockHeldEffectCapturesItsDecision() {
+    let rig = Rig()
+    var captured: [RecordGestureEngine.LockHeld] = []
+    rig.sink.onBatch = { batch in
+      for case .lockHeld(let lock) in batch.effects { captured.append(lock) }
+    }
+    rig.engine.openListenerAdmission(installation: 7)
+    _ = Self.listener(rig, true, 0)
+    #expect(Self.lockHeld(rig, at: 0.25))
+    rig.engine.drainForTesting()
+    #expect(captured.count == 1)
+    #expect(captured.first?.keyCode == ModifierKeyCodes.rightOption)
+    #expect(captured.first?.mode == .pushToTalk)
+    #expect(captured.first?.elapsedMs == 250)
+    #expect(captured.first?.input.occurred == 500.25)
+  }
+
+  @Test("after a lock made while held the next press is a bounce, then a stop, never a cancel")
+  func pressesAfterAHeldLock() {
+    // First press 0, lock 0.25, release 0.375: a press at 0.4375 is inside the first press's window.
+    let bounce = Rig()
+    bounce.engine.openListenerAdmission(installation: 7)
+    _ = Self.listener(bounce, true, 0)
+    #expect(Self.lockHeld(bounce, at: 0.25))
+    _ = Self.listener(bounce, false, 0.375)
+    #expect(Self.listener(bounce, true, 0.4375) == nil)
+    bounce.engine.drainForTesting()
+    #expect(bounce.sink.validNames == ["start", "lockHeld", "ignoredCooldown"])
+    // Exactly 500 ms after the lock is still a bounce (inclusive); just after it stops.
+    let edge = Rig()
+    edge.engine.openListenerAdmission(installation: 7)
+    _ = Self.listener(edge, true, 0)
+    #expect(Self.lockHeld(edge, at: 0.25))
+    _ = Self.listener(edge, false, 0.375)
+    #expect(Self.listener(edge, true, 0.75) == nil)
+    _ = Self.listener(edge, false, 0.8125)
+    #expect(Self.listener(edge, true, 0.875) == nil)
+    edge.engine.drainForTesting()
+    #expect(edge.sink.validNames == ["start", "lockHeld", "ignoredCooldown", "stopLocked"])
+  }
+
+  @Test("a lock is refused unless a listener-owned push-to-talk hold of the bare record key is live")
+  func lockHeldRefusals() {
+    // Nothing held.
+    let idle = Rig()
+    idle.engine.openListenerAdmission(installation: 7)
+    #expect(!Self.lockHeld(idle, at: 0.1))
+    // Key already up.
+    let released = Rig()
+    released.engine.openListenerAdmission(installation: 7)
+    _ = Self.listener(released, true, 0)
+    _ = Self.listener(released, false, 0.7)
+    #expect(!Self.lockHeld(released, at: 0.8))
+    // Already locked by a double tap.
+    let doubleTap = Rig()
+    doubleTap.engine.openListenerAdmission(installation: 7)
+    _ = Self.listener(doubleTap, true, 0)
+    _ = Self.listener(doubleTap, false, 0.1)
+    _ = Self.listener(doubleTap, true, 0.2)
+    #expect(doubleTap.engine.snapshot.isLocked)
+    #expect(!Self.lockHeld(doubleTap, at: 0.3))
+    // Already locked while held: a second Space does nothing more.
+    let twice = Rig()
+    twice.engine.openListenerAdmission(installation: 7)
+    _ = Self.listener(twice, true, 0)
+    #expect(Self.lockHeld(twice, at: 0.3))
+    #expect(!Self.lockHeld(twice, at: 0.4))
+    // Toggle mode owns no hold.
+    let toggle = Rig()
+    toggle.engine.configure(bindings: ShortcutBindings.shipped, mode: .toggle)
+    toggle.engine.openListenerAdmission(installation: 7)
+    #expect(!Self.lockHeld(toggle, at: 0.1))
+    // A press admitted through main (a chord) is never the listener's.
+    let carbon = Rig()
+    carbon.engine.openListenerAdmission(installation: 7)
+    carbon.main(true, 0)
+    #expect(!Self.lockHeld(carbon, at: 0.2))
+    // A stale installation, and a stale generation.
+    let stale = Rig()
+    stale.engine.openListenerAdmission(installation: 7)
+    _ = Self.listener(stale, true, 0)
+    #expect(!Self.lockHeld(stale, at: 0.2, installation: 6))
+    #expect(!Self.lockHeld(stale, at: 0.2, generation: stale.engine.listenerConfigurationGeneration &+ 1))
+    #expect(Self.lockHeld(stale, at: 0.3), "the control: the same hold does lock")
+  }
+
+  @Test("a press that joined a running recording is never locked by a held key")
+  func lockHeldRefusesAJoiningPress() {
+    let rig = Rig()
+    rig.engine.openListenerAdmission(installation: 7)
+    rig.engine.setRecordingActive(true)
+    _ = Self.listener(rig, true, 0)
+    #expect(!Self.lockHeld(rig, at: 0.3))
+  }
+
+  @Test("rebinding the record key mid-hold makes the old hold ineligible; an unchanged assignment does not")
+  func lockHeldAfterRebinding() {
+    let same = Rig()
+    same.engine.openListenerAdmission(installation: 7)
+    _ = Self.listener(same, true, 0)
+    same.engine.configure(bindings: Self.bindings(), mode: .pushToTalk)  // equal: no new generation
+    #expect(Self.lockHeld(same, at: 0.3), "an unchanged assignment stranded the hold")
+    let moved = Rig()
+    moved.engine.openListenerAdmission(installation: 7)
+    _ = Self.listener(moved, true, 0)
+    moved.engine.configure(
+      bindings: Self.bindings(record: .keyboard(keyCode: Self.rightCommand, modifiers: [])),
+      mode: .pushToTalk)
+    #expect(!Self.lockHeld(moved, at: 0.3), "locked under a binding that is no longer current")
+    // Its release still ends the hold it belongs to.
+    #expect(Self.listener(moved, false, 0.6) == nil)
+  }
+
+  @Test("a lock supersedes a lone-tap wait left pending while the key is held again")
+  func lockHeldRetiresThePendingLoneTapWait() {
+    let rig = Rig()
+    rig.engine.openListenerAdmission(installation: 7)
+    _ = Self.listener(rig, true, 0)
+    _ = Self.listener(rig, false, 0.1)  // quick release: the lone-tap wait is armed for 0.6
+    _ = Self.listener(rig, true, 0.55)  // a late second press: the wait stays pending
+    #expect(Self.lockHeld(rig, at: 0.58))
+    rig.clock.now = 502
+    rig.fireDueOffMain()
+    rig.engine.drainForTesting()
+    #expect(rig.sink.validNames.contains("lockHeld"))
+    #expect(!rig.sink.validNames.contains("loneTapStop"), "the retired wait still stopped the take")
+    let names = rig.sink.validNames
+    if let resolved = names.firstIndex(of: "resolved"), let lock = names.firstIndex(of: "lockHeld") {
+      #expect(resolved < lock, "the retired wait must resolve before the lock is reported")
+    } else {
+      Issue.record("expected resolved and lockHeld in \(names)")
+    }
+    #expect(rig.engine.snapshot.isLocked)
+  }
+
+  @Test("a lock decided after a refused attempt is dropped; a newer attempt is untouched")
+  func lockHeldOfARefusedAttemptIsDropped() {
+    let rig = Rig()
+    rig.engine.openListenerAdmission(installation: 7)
+    _ = Self.listener(rig, true, 0)
+    #expect(Self.lockHeld(rig, at: 0.3))
+    rig.engine.reset(attempt: 1)  // main refused the attempt (processing, rejected publication)
+    rig.engine.drainForTesting()
+    #expect(!rig.sink.validNames.contains("lockHeld"))
+    #expect(rig.sink.delivered.contains { $0.name == "lockHeld" && !$0.valid })
   }
 }

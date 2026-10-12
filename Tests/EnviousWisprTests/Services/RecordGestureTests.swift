@@ -199,4 +199,103 @@ struct RecordGestureTests {
     #expect(T.accepting(stamp: 0, handled: 100).occurred == nil)
     #expect(T.accepting(stamp: 99.5, handled: 100).occurred == 99.5)
   }
+
+  // MARK: - Lock while held (#3517)
+
+  @Test("a held, started, unlocked gesture locks without becoming a new attempt")
+  func lockHeldLocksTheHeldTake() {
+    var g = RecordGesture()
+    _ = Self.press(&g, Self.at(100))
+    let generation = g.generation
+    guard let held = g.lockHeld(Self.at(100.25)) else { Issue.record("expected a lock"); return }
+    #expect(held.elapsedMs == 250)
+    #expect(held.usesOccurrence)
+    #expect(g.isLocked)
+    #expect(g.lockedWhileHeld)
+    #expect(g.isHeld, "the key is still down")
+    #expect(g.attemptID == 1, "a lock is not a fresh attempt")
+    #expect(g.generation != generation)
+    guard case .suppressedLocked = g.release(Self.at(100.5)) else {
+      Issue.record("the release of a locked hold must be suppressed"); return
+    }
+  }
+
+  @Test("a gesture that is not held, not started or already locked does not lock")
+  func lockHeldNeedsAHeldStartedUnlockedGesture() {
+    var fresh = RecordGesture()
+    #expect(fresh.lockHeld(Self.at(100)) == nil, "nothing started")
+    var released = RecordGesture()
+    _ = Self.press(&released, Self.at(100))
+    _ = released.release(Self.at(100.1))
+    #expect(released.lockHeld(Self.at(100.2)) == nil, "the key is up")
+    var locked = RecordGesture()
+    _ = Self.press(&locked, Self.at(100))
+    _ = locked.release(Self.at(100.1))
+    _ = Self.press(&locked, Self.at(100.2))  // double-tap lock
+    #expect(locked.isLocked)
+    #expect(locked.lockHeld(Self.at(100.3)) == nil, "already locked")
+    #expect(!locked.lockedWhileHeld, "a double-tap lock is not a lock made while held")
+  }
+
+  @Test("after a lock made while held, a press inside the first press's window is a bounce, never a cancel")
+  func pressAfterAHeldLockInsideTheFirstWindowIsIgnoredNotCancelled() {
+    var g = RecordGesture()
+    _ = Self.press(&g, Self.at(100))
+    _ = g.lockHeld(Self.at(100.25))  // 250 ms into the hold
+    _ = g.release(Self.at(100.375))
+    // 100.4375 is 437 ms after the first press (inside its window) and 187 ms after the lock.
+    guard case .ignoredCooldown(let ms) = Self.press(&g, Self.at(100.4375)) else {
+      Issue.record("expected the lock cooldown, not a triple-press cancel"); return
+    }
+    #expect(ms == 187)
+  }
+
+  @Test("a held lock's cooldown ends 500 ms after the lock; the next press then stops")
+  func heldLockCooldownBoundary() {
+    for (press, stops) in [(100.75, false), (100.8125, true)] {
+      var g = RecordGesture()
+      _ = Self.press(&g, Self.at(100))
+      _ = g.lockHeld(Self.at(100.25))
+      _ = g.release(Self.at(100.375))
+      let decision = Self.press(&g, Self.at(press))
+      if stops {
+        guard case .stopLocked = decision else { Issue.record("expected stop at \(press)"); continue }
+      } else {
+        guard case .ignoredCooldown = decision else {
+          Issue.record("expected cooldown at \(press)"); continue
+        }
+      }
+    }
+  }
+
+  @Test("a double-tap lock still cancels on a third press inside the window")
+  func doubleTapLockKeepsTriplePressCancel() {
+    var g = RecordGesture()
+    _ = Self.press(&g, Self.at(100))
+    _ = g.release(Self.at(100.1))
+    _ = Self.press(&g, Self.at(100.2))
+    _ = g.release(Self.at(100.25))
+    guard case .tripleCancel = Self.press(&g, Self.at(100.4)) else {
+      Issue.record("expected triple cancel"); return
+    }
+  }
+
+  @Test("a cleanup or a fresh attempt forgets that the lock was made while held")
+  func lockedWhileHeldDoesNotOutliveItsAttempt() {
+    var cleaned = RecordGesture()
+    _ = Self.press(&cleaned, Self.at(100))
+    _ = cleaned.lockHeld(Self.at(100.25))
+    cleaned.cleanup()
+    #expect(!cleaned.lockedWhileHeld)
+    #expect(!cleaned.isLocked)
+    var fresh = RecordGesture()
+    _ = Self.press(&fresh, Self.at(100))
+    _ = fresh.lockHeld(Self.at(100.25))
+    _ = fresh.release(Self.at(100.375))
+    fresh.cleanup()
+    guard case .start = Self.press(&fresh, Self.at(101)) else {
+      Issue.record("expected a fresh start"); return
+    }
+    #expect(!fresh.lockedWhileHeld)
+  }
 }

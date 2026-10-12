@@ -168,6 +168,15 @@ public final class HotkeyService {
   /// gesture state, so a late start result is judged against the attempt it belongs to.
   private var executingAttemptID: UInt64?
   private var lockIntentAttemptID: UInt64?
+  /// #3517: the attempt whose lock intent came from a Space press while its record key was held,
+  /// not from a second press. Such an intent is refused (never published) when the executing start
+  /// turns out to have joined a running session, because the held key never started that take.
+  private var heldLockIntentAttemptID: UInt64?
+  /// #3517: the attempt whose executing start joined a running session, kept with main's own
+  /// execution identity. The engine's `joinedAttempt` is one current slot and loses an older
+  /// attempt once a newer start replaces it, so a late join of a still-executing older start is
+  /// recorded here as well.
+  private var executingJoinedAttemptID: UInt64?
 
   /// True when recording is locked into hands-free mode.
   /// When locked, key releases are suppressed and recording continues
@@ -436,6 +445,9 @@ public final class HotkeyService {
     /// #3544 P6: a bare-modifier push-to-talk press the listener refused because an ordinary key
     /// was held (P4 exact-set start). Nothing started.
     case refusedKeyHeld = "refused_key_held"
+    /// #3517: a Space press locked the running push-to-talk take while its record key was held.
+    /// Measures the lock INTENT; `hotkey.lock_resolved` measures whether it was published.
+    case lockHeld = "lock_held"
   }
 
   /// Which hotkey delivered the press.
@@ -699,6 +711,7 @@ public final class HotkeyService {
   /// returns, so interference from here on spares the joined session and the press keeps its stop.
   package func markExecutingStartJoined() {
     guard let attempt = executingAttemptID else { return }
+    executingJoinedAttemptID = attempt
     engine.markJoined(attempt: attempt)
   }
 
@@ -786,6 +799,8 @@ public final class HotkeyService {
     acceptedSessionID = nil
     executingAttemptID = nil
     lockIntentAttemptID = nil
+    heldLockIntentAttemptID = nil
+    executingJoinedAttemptID = nil
   }
 
   /// Refuse one attempt (#1631 `.noRecording`, publication rejected, processing): its queued
@@ -882,6 +897,14 @@ public final class HotkeyService {
       acceptedStartPressID == attemptID,
       let sessionID = acceptedSessionID
     else { return }
+    // #3517: a held-key lock belongs to a take the held key started. If that start joined a session
+    // that was already running, there is nothing for the key to lock: refuse the intent, leave the
+    // joined session alone.
+    if heldLockIntentAttemptID == attemptID, executingJoinedAttemptID == attemptID {
+      emitLockResolved(committed: false, reason: .notLockableAtPublication)
+      refuseAttempt(attemptID)
+      return
+    }
     let result = onLockRequested?(sessionID) ?? .unavailable
     #if DEBUG
       let traced: String =
@@ -959,6 +982,7 @@ public final class HotkeyService {
       case .loneTapStop(let trace): executeLoneTapStop(trace)
       case .cancel(let cancel): executeListenerCancel(cancel)
       case .dismiss(let dismiss): executeListenerDismiss(dismiss)
+      case .lockHeld(let lock): executeLockHeld(lock, attemptID: batch.attemptID)
       case .loneTapResolved: break
       }
     }
@@ -1012,6 +1036,36 @@ public final class HotkeyService {
     }
   }
 
+  /// A Space press locked the running take while its record key was held (#3517). The engine
+  /// already locked the gesture, in input order; main records the intent and publishes it exactly
+  /// as it does for a double-tap lock (`publishLockIfReady`), after the same processing refusal.
+  /// The start task keeps running: cancelling it would leave a locked pill with no recording.
+  private func executeLockHeld(_ lock: RecordGestureEngine.LockHeld, attemptID: UInt64) {
+    guard executingAttemptID == attemptID, !pendingDismissals.contains(attemptID) else { return }
+    if let isProcessing = onIsProcessing, isProcessing() {
+      Task {
+        await AppLogger.shared.log(
+          "Space while held ignored — pipeline is still processing",
+          level: .info, category: "HotkeyService"
+        )
+      }
+      emitHotkeyPressed(.ignoredProcessing, trigger: .ptt, frozen: (lock.keyCode, lock.mode))
+      refuseAttempt(attemptID)
+      engine.forgetHeld(ifNoInputAfter: lock.inputSequence)
+      return
+    }
+    Task {
+      await AppLogger.shared.log(
+        "Space while held — requesting hands-free mode",
+        level: .info, category: "HotkeyService"
+      )
+    }
+    lockIntentAttemptID = attemptID
+    heldLockIntentAttemptID = attemptID
+    publishLockIfReady()
+    emitHotkeyPressed(.lockHeld, trigger: .ptt, frozen: (lock.keyCode, lock.mode))
+  }
+
   private func executePress(_ press: RecordGestureEngine.Press, attemptID: UInt64) {
     let input = press.input
     if let pressedMs = press.afterStopTimerMs {
@@ -1048,6 +1102,7 @@ public final class HotkeyService {
       // #1631: a fresh attempt owns a fresh identity, and inherits no acceptance.
       clearExecutionState()
       executingAttemptID = pressID
+      executingJoinedAttemptID = press.joinsRecording ? pressID : nil
       recordingTask?.cancel()
       let pendingCancellation = listenerCancellationTask
       recordingTask = Task { [weak self] in
@@ -1075,6 +1130,7 @@ public final class HotkeyService {
           let start = self.onStartRecording
         {
           self.engine.unmarkJoined(attempt: pressID)
+          if self.executingJoinedAttemptID == pressID { self.executingJoinedAttemptID = nil }
           outcome = await start()
         }
         self.resolveStart(pressID: pressID, outcome: outcome)
