@@ -169,6 +169,10 @@ package final class KeyboardListenerIngress: Sendable {
   /// Test seam: runs after a reconciliation commits its actions and before it drains them, so a
   /// test can deliver newer input in exactly that window. Production never sets it.
   package let afterReconcileCommitForTesting: (@Sendable () -> Void)?
+  /// Test seam: runs after the engine accepted a held-Space lock and before this invocation
+  /// finalizes its suppression, outside every lock, so a test can deliver a reading, a boundary or
+  /// a newer press in exactly that window. Production never sets it.
+  package let afterHeldLockAcceptedForTesting: (@Sendable () -> Void)?
   package var pendingRecordEdgesForTesting: [Bool] {
     state.withLock { s in
       s.pending.compactMap { action in
@@ -191,10 +195,12 @@ package final class KeyboardListenerIngress: Sendable {
     clock: @escaping RecordGestureEngine.Clock, scheduler: @escaping RecordGestureEngine.Scheduler,
     toMain: @escaping @Sendable (MainEdge) -> Void,
     observe: @escaping @Sendable (Observation) -> Void = { _ in },
-    afterReconcileCommitForTesting: (@Sendable () -> Void)? = nil
+    afterReconcileCommitForTesting: (@Sendable () -> Void)? = nil,
+    afterHeldLockAcceptedForTesting: (@Sendable () -> Void)? = nil
   ) {
     self.installation = installation
     self.afterReconcileCommitForTesting = afterReconcileCommitForTesting
+    self.afterHeldLockAcceptedForTesting = afterHeldLockAcceptedForTesting
     self.engine = engine
     self.reader = reader
     self.clock = clock
@@ -449,6 +455,7 @@ package final class KeyboardListenerIngress: Sendable {
       let accepted = drain(receiptFor: token)
       armSweepIfNeeded()
       guard accepted else { return .pass }
+      afterHeldLockAcceptedForTesting?()
       // Finalize in one critical section: still open, still the same physical press, and the
       // tracker still holds Space (a reading may have proved it up since). Never takes the engine
       // lock.

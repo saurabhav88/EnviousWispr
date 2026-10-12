@@ -149,6 +149,11 @@ struct TelemetryVolumePolicyTests {
       Policy.decide(
         event: "hotkey.pressed", properties: ["press_action": "refused_key_held"],
         uuid: Self.droppedUUID) == .keep)
+    // #3517: a Space that locked a held take is a signal row, kept whole.
+    #expect(
+      Policy.decide(
+        event: "hotkey.pressed", properties: ["press_action": "lock_held"],
+        uuid: Self.droppedUUID) == .keep)
     // The kept row still carries the policy stamp and no sampling stamps.
     let out = Policy.apply(
       event: "hotkey.pressed",
