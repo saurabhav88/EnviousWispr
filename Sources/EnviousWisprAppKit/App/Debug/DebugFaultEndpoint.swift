@@ -350,6 +350,15 @@
         let w = whisperKitKernelDriver.state
         return "OK parakeet=\(p) whisperkit=\(w) backend=\(activeBackend())"
 
+      case "query_capture_state":
+        let p = kernelDriver.debugCaptureStatus
+        let w = whisperKitKernelDriver.debugCaptureStatus
+        let pid = ProcessInfo.processInfo.processIdentifier
+        return "OK v=1 pid=\(pid) "
+          + "parakeet_phase=\(p.phase) parakeet_released=\(p.released) "
+          + "whisperkit_phase=\(w.phase) whisperkit_released=\(w.released) "
+          + "backend=\(activeBackend().rawValue)"
+
       default:
         // #1317 proof-bench: force_zero_fill(mode,N,trialID) — arm the DEBUG
         // all-zero injector directly on the in-process `AudioCaptureManager`

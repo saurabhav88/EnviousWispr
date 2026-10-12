@@ -1430,6 +1430,11 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
   // MARK: DEBUG
 
   #if DEBUG
+    /// Read-only UAT snapshot. Presentation can be idle before capture teardown completes.
+    package var debugCaptureStatus: (phase: String, released: Bool) {
+      (String(describing: kernel.state), kernel.resourcesReleased)
+    }
+
     /// Drives the kernel's cancel unwind — the kernel-era equivalent of
     /// the old Parakeet pipeline's `forceCancelNow()`. Callable from `DebugFaultEndpoint`.
     package func forceCancelNow() async {

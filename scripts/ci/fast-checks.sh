@@ -165,6 +165,8 @@ member_runtime_uat_self_tests() {
   python3 Tests/RuntimeUAT/ptt_binding.py --self-test
   python3 Tests/RuntimeUAT/faultInjection.py --self-test
   python3 Tests/RuntimeUAT/instance_guard.py --self-test
+  python3 Tests/RuntimeUAT/uat.py --identity-self-test
+  python3 Tests/RuntimeUAT/uat.py --lifecycle-self-test
   # #2775 UAT front door. These three are PyObjC-free by design (like the
   # instance guard, #2426) so they run on the hosted runner. uat_catalog's
   # self-test fails if a public wispr_eyes function has no trust-status row.

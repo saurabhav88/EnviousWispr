@@ -6,6 +6,7 @@ import Foundation
 import Testing
 
 @testable import EnviousWisprASR
+@testable import EnviousWisprAppKit
 @testable import EnviousWisprPipeline
 
 // MARK: - KernelDictationDriverTests (epic #827, PR-4 §11.4)
@@ -231,6 +232,38 @@ import Testing
   }
 
   #if DEBUG
+    @Test("capture endpoint binds both release flags and pending idle cleanup")
+    func debugCaptureReplyBindsReleaseFlags() async throws {
+      let h = makeDriver()
+      let resting = makeDriver()
+      try await startDriverToLive(h)
+      try #require(h.kernel.state == .live)
+      try #require(h.kernel.resourcesReleased == false)
+      let parakeetEndpoint = DebugFaultEndpoint(
+        audioCapture: nil, kernelDriver: h.driver, whisperKitKernelDriver: resting.driver,
+        activeBackend: { .parakeet })
+      let whisperkitEndpoint = DebugFaultEndpoint(
+        audioCapture: nil, kernelDriver: resting.driver, whisperKitKernelDriver: h.driver,
+        activeBackend: { .whisperKit })
+      let prefix = "OK v=1 pid=\(ProcessInfo.processInfo.processIdentifier) "
+      #expect(await parakeetEndpoint.handleForTesting(command: "query_capture_state") == prefix
+        + "parakeet_phase=live parakeet_released=false "
+        + "whisperkit_phase=idle whisperkit_released=true backend=parakeet")
+      #expect(await whisperkitEndpoint.handleForTesting(command: "query_capture_state") == prefix
+        + "parakeet_phase=idle parakeet_released=true "
+        + "whisperkit_phase=live whisperkit_released=false backend=whisperKit")
+      h.kernel.testForceState(.idle)
+      #expect(h.driver.debugCaptureStatus.phase == "idle")
+      #expect(h.driver.debugCaptureStatus.released == false)
+      #expect(await parakeetEndpoint.handleForTesting(command: "query_capture_state") == prefix
+        + "parakeet_phase=idle parakeet_released=false "
+        + "whisperkit_phase=idle whisperkit_released=true backend=parakeet")
+      h.kernel.testForceState(.live)
+      h.driver.setTerminalReason(.modelWedged)
+      await drainUntil { h.kernel.resourcesReleased }
+      try #require(h.kernel.resourcesReleased)
+    }
+
     @Test("a failed terminal surfaces the TYPED reason — no raw detail leak (#1558)")
     func failedTerminalSurfacesTypedReasonNoRawLeak() {
       let h = makeDriver()
@@ -728,6 +761,26 @@ import Testing
   }
 
   // MARK: Helpers
+
+  #if DEBUG
+    @Test("capture query keeps raw phase separate from presentation and exposes unreleased capture")
+    func debugCaptureStatusTracksActualOwner() async throws {
+      let h = makeDriver()
+      #expect(h.driver.debugCaptureStatus.phase == "idle")
+      #expect(h.driver.debugCaptureStatus.released == true)
+      try await startDriverToLive(h)
+      try #require(h.kernel.state == .live, "capture must actually be live")
+      #expect(h.driver.debugCaptureStatus.phase == "live")
+      #expect(h.driver.debugCaptureStatus.released == false)
+      h.driver.setTerminalReason(.modelWedged)
+      #expect(h.driver.state == .error(.modelWedged))
+      #expect(h.driver.debugCaptureStatus.phase == "live")
+      #expect(h.driver.debugCaptureStatus.released == false)
+      await drainUntil { h.kernel.resourcesReleased }
+      try #require(h.kernel.resourcesReleased, "capture cleanup must finish")
+      #expect(h.driver.debugCaptureStatus.released == true)
+    }
+  #endif
 
   private struct Harness {
     let driver: KernelDictationDriver

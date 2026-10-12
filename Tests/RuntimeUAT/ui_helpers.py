@@ -13,6 +13,7 @@ from ApplicationServices import (
     AXUIElementCopyAttributeNames,
     AXUIElementCopyActionNames,
     AXUIElementPerformAction,
+    AXUIElementGetPid,
     AXUIElementSetAttributeValue,
     AXValueGetValue,
     kAXErrorSuccess,
@@ -54,6 +55,14 @@ def get_attr(element, attr):
     return None
 
 
+def get_attr_checked(element, attr):
+    """Required AX reads must distinguish unreadability from an empty value."""
+    err, value = AXUIElementCopyAttributeValue(element, attr, None)
+    if err != kAXErrorSuccess or value is None:
+        raise RuntimeError(f"required accessibility attribute {attr} is unreadable")
+    return value
+
+
 def set_attr(element, attr, value):
     """Set an AX attribute on *element*. Returns True on success."""
     err = AXUIElementSetAttributeValue(element, attr, value)
@@ -80,6 +89,14 @@ def perform_action(element, action):
     """Perform *action* on *element*. Returns True on success."""
     err = AXUIElementPerformAction(element, action)
     return err == kAXErrorSuccess
+
+
+def element_pid(element):
+    """Return positively readable AX ownership; errors are not a missing owner."""
+    err, pid = AXUIElementGetPid(element, None)
+    if err != kAXErrorSuccess or type(pid) is not int or pid <= 0:
+        raise RuntimeError("accessibility element ownership is unreadable")
+    return pid
 
 
 def activate_app(pid):

@@ -5,8 +5,14 @@ Usage:  python3 -c "from wispr_eyes import *; connect(); see()"
 import json, os, platform, sys, subprocess, time
 import datetime as _dt
 import pathlib
+import contextlib
+import math
+import signal
+import socket
+import stat
 sys.path.insert(0, os.path.dirname(__file__))
-from ui_helpers import (find_app_pid, get_ax_app, get_attr, set_attr, perform_action,
+from ui_helpers import (find_app_pid, get_ax_app, get_attr, get_attr_checked, set_attr as _raw_set_attr,
+    perform_action as _raw_perform_action, element_pid,
     find_element, find_all_elements, find_control_for_label, wait_for_condition,
     get_process_memory_mb, get_clipboard_text, validate_app_ready, element_frame,
     _iter_children_with_menubars)
@@ -15,7 +21,8 @@ from ptt_binding import PTTBindingError, require_push_to_talk, resolve
 # control without importing PyObjC. Re-exported here because every caller and
 # every `wispr_eyes.running_enviouswispr_instances(...)` reference predates it.
 from instance_guard import (running_enviouswispr_instances,  # noqa: F401
-                            _require_single_instance, run_guard_cases)
+                            _require_single_instance, run_guard_cases,
+                            InstanceGuardError, pin_target, verify_target)
 # #2885: the DEBUG-only door. Hand a file to a running dev build without the screen.
 from import_door import resolve_pid, transcribe_file_backend  # noqa: F401,E402
 # #3385: Settings navigation has ONE owner. `nav/check/look/verify/scan/switch_backend` and
@@ -25,6 +32,9 @@ from settings_nav import NavigationError, RouteError  # noqa: E402,F401
 
 _pid = None
 _app = None
+_target = None
+_recording_cleanup_safe = True
+_CAPTURE_TOKEN_DIR = pathlib.Path.home() / "Library/Logs/EnviousWispr"
 _INPUT_WARN = True  # Play chime before CGEvent input (click/type/key)
 _TTS_PATH = "/tmp/wispr_eyes_tts.aiff"
 _OPENAI_TTS_PATH = "/tmp/wispr_eyes_tts.mp3"
@@ -94,6 +104,8 @@ def _audio_duration(path):
         pass
     try:
         result = subprocess.run(["afinfo", path], capture_output=True, text=True, timeout=5)
+        if result.returncode != 0 or result.stderr.strip():
+            return None
         for line in result.stdout.splitlines():
             if "duration" in line.lower():
                 return float(line.split()[-2])
@@ -181,6 +193,29 @@ def _ensure_connected():
     if _app is None:
         print("ERROR: Not connected. Call connect() first.")
         raise SystemExit(1)
+    if _target is not None:
+        verify_target(_target)
+
+
+def _verify_element(element):
+    _ensure_connected()
+    if _target is not None:
+        try:
+            owner = element_pid(element)
+        except Exception as error:
+            raise InstanceGuardError("AX element ownership is unreadable") from error
+        if owner != _target.pid:
+            raise InstanceGuardError("AX element belongs to another process")
+
+
+def perform_action(element, action):
+    _verify_element(element)
+    return _raw_perform_action(element, action)
+
+
+def set_attr(element, attr, value):
+    _verify_element(element)
+    return _raw_set_attr(element, attr, value)
 
 _TABLES = (None, [])  # (pid, tables) for the connected app
 
@@ -262,10 +297,29 @@ def _text_visible(text):
     return _search(_app)
 
 # ── Public API ───────────────────────────────────────────────────────
-def connect(app="EnviousWispr"):
+def connect(app="EnviousWispr", expected_pid=None, expected_executable=None):
     """Find PID, create AX ref. Raises SystemExit(1) if app not found."""
-    global _pid, _app
-    pid = find_app_pid(app)
+    global _pid, _app, _target
+    if app == "EnviousWispr":
+        if _target is None:
+            if expected_executable is None:
+                expected_executable = str(pathlib.Path(__file__).resolve().parents[2]
+                                          / "build/EnviousWispr Local.app/Contents/MacOS/EnviousWispr")
+            if expected_pid is None:
+                found = running_enviouswispr_instances()
+                if len(found) != 1:
+                    raise InstanceGuardError("connection needs exactly one EnviousWispr")
+                expected_pid = int(next(iter(found)))
+            _target = pin_target(expected_pid, expected_executable)
+        elif ((expected_pid is not None and expected_pid != _target.pid)
+              or (expected_executable is not None and expected_executable != _target.executable)):
+            raise InstanceGuardError("refusing conflicting app rebind")
+        verify_target(_target)
+        pid = _target.pid
+    else:
+        if _target is not None:
+            raise InstanceGuardError("cannot rebind a pinned EnviousWispr session")
+        pid = find_app_pid(app)
     if not pid:
         print(f"ERROR: {app} not running")
         raise SystemExit(1)
@@ -421,6 +475,8 @@ def tap(text, role=None):
         r, t = get_attr(tgt,"AXRole") or "", _txt(tgt)
         ok = set_attr(tgt,"AXSelected",True) if r=="AXRow" else perform_action(tgt,"AXPress")
         print(f"tap({r}): '{t}' -> {'OK' if ok else 'FAILED'}"); return ok
+    except InstanceGuardError:
+        raise
     except Exception as e: print(f"tap error: {e}"); return False
 
 def _fuzzy_find_label(label):
@@ -1192,6 +1248,8 @@ def batch(actions):
             result = fn(*args, **kwargs)
             elapsed = time.time() - t0
             results.append((name, result, elapsed))
+        except InstanceGuardError:
+            raise
         except Exception as e:
             elapsed = time.time() - t0
             print(f"batch: {name} error: {e}")
@@ -1220,7 +1278,6 @@ def close_window():
     """Close the frontmost app window via AXCloseButton."""
     _ensure_connected()
     try:
-        from ui_helpers import find_all_elements, perform_action
         for w in find_all_elements(_app, role="AXWindow"):
             btn = get_attr(w, "AXCloseButton")
             if btn:
@@ -1229,6 +1286,8 @@ def close_window():
                 return True
         print("No window to close")
         return False
+    except InstanceGuardError:
+        raise
     except Exception as e: print(f"close_window error: {e}"); return False
 
 # ── AI Diagnostics ────────────────────────────────────────────────────
@@ -1942,7 +2001,8 @@ def select_input_choice(auto, name=None):
     if not nav("Dictation Settings", "Microphone"):
         raise NavigationError("could not navigate to Dictation Settings > Microphone")
     return _sn.select_input(_ax(), lambda: _app, _input_read_uid, auto, name,
-                            cancel=_cancel_menu)
+                            cancel=_cancel_menu,
+                            before_select=lambda: _require_idle_without_ui(_target))
 
 
 def restore_input_choice(choice):
@@ -1950,7 +2010,237 @@ def restore_input_choice(choice):
     connect()
     if not nav("Dictation Settings", "Microphone"):
         raise NavigationError("could not navigate to Dictation Settings > Microphone")
-    return _sn.restore_input(_ax(), lambda: _app, _input_read_uid, choice, cancel=_cancel_menu)
+    return _sn.restore_input(_ax(), lambda: _app, _input_read_uid, choice, cancel=_cancel_menu,
+                             before_select=lambda: _require_idle_without_ui(_target))
+
+
+@contextlib.contextmanager
+def _defer_recording_signals():
+    """Defer Python interruption without giving a spawned player a blocked mask."""
+    signals = {signal.SIGINT, signal.SIGTERM, signal.SIGHUP}
+    previous_mask = signal.pthread_sigmask(signal.SIG_BLOCK, signals)
+    previous_handlers = {sig: signal.getsignal(sig) for sig in signals}
+    pending = []
+    def deferred(sig, frame):
+        pending.append((sig, frame))
+    try:
+        for sig in signals:
+            signal.signal(sig, deferred)
+        signal.pthread_sigmask(signal.SIG_SETMASK, previous_mask)
+        yield
+    finally:
+        signal.pthread_sigmask(signal.SIG_BLOCK, signals)
+        for sig, handler in previous_handlers.items():
+            signal.signal(sig, handler)
+        signal.pthread_sigmask(signal.SIG_SETMASK, previous_mask)
+        for sig, frame in pending:
+            handler = previous_handlers[sig]
+            if callable(handler):
+                handler(sig, frame)
+            elif handler != signal.SIG_IGN:
+                raise SystemExit(128 + sig)
+
+
+@contextlib.contextmanager
+def _recording_interruptions():
+    previous = {sig: signal.getsignal(sig) for sig in (signal.SIGINT, signal.SIGTERM, signal.SIGHUP)}
+    def interrupted(sig, frame):
+        raise SystemExit(128 + sig)
+    try:
+        for sig in previous:
+            signal.signal(sig, interrupted)
+        yield
+    finally:
+        for sig, handler in previous.items():
+            signal.signal(sig, handler)
+
+
+def _recording_control(target, action=None):
+    """One strict state owner, including actions while its own menu remains open."""
+    verify_target(target)
+    if _target != target:
+        raise InstanceGuardError("recording target differs from the retained connection")
+    app = get_ax_app(target.pid)
+    def read(element, attr):
+        if element_pid(element) != target.pid:
+            raise InstanceGuardError("recording state element belongs to another process")
+        return get_attr_checked(element, attr)
+    def children(element):
+        value = read(element, "AXChildren")
+        if isinstance(value, (str, bytes, dict)):
+            raise RuntimeError("recording menu children are malformed")
+        try:
+            return list(value)
+        except TypeError as error:
+            raise RuntimeError("recording menu children are malformed") from error
+    bar = read(app, "AXExtrasMenuBar")
+    items = children(bar)
+    if len(items) != 1:
+        raise RuntimeError("recording status item is missing or ambiguous")
+    status = items[0]
+    menu = None
+    try:
+        menus = children(status)
+        if not menus:
+            perform_action(status, "AXPress")
+            deadline = time.monotonic() + 3.0
+            while not menus:
+                verify_target(target)
+                menus = children(status)
+                if menus:
+                    break
+                if time.monotonic() >= deadline:
+                    raise RuntimeError("recording menu did not become readable")
+                time.sleep(0.05)  # deadline-fallback: observe the native menu opening
+        if len(menus) != 1 or read(menus[0], "AXRole") != "AXMenu":
+            raise RuntimeError("recording menu is ambiguous or malformed")
+        menu = menus[0]
+        start_terms, stop_terms = set(_ui_terms("Start Recording")), set(_ui_terms("Stop Recording"))
+        matches = []
+        for item in children(menu):
+            if read(item, "AXRole") != "AXMenuItem":
+                continue
+            title = read(item, "AXTitle")
+            if not isinstance(title, str):
+                raise RuntimeError("recording item title is malformed")
+            if title in start_terms or title in stop_terms:
+                matches.append(("idle" if title in start_terms else "recording", item))
+        if len(matches) != 1:
+            raise RuntimeError("recording state is missing, contradictory or ambiguous")
+        state, item = matches[0]
+        enabled = read(item, "AXEnabled")
+        if type(enabled) is not bool:
+            raise RuntimeError("recording enabled state is malformed")
+        if action is not None:
+            expected = "idle" if action == "start" else "recording"
+            if action not in {"start", "stop"} or state != expected or not enabled:
+                raise RuntimeError("recording action is not currently available")
+            perform_action(item, "AXPress")  # false can still act; state decides success
+        return state, enabled
+    finally:
+        if menu is not None:
+            primary = sys.exc_info()[1]
+            try:
+                perform_action(menu, "AXCancel")
+            except BaseException as cleanup:
+                if primary is None:
+                    raise
+                primary.add_note(f"recording menu cleanup failed: {cleanup!r}")
+
+
+def _read_capture_token(target):
+    import re
+    path = _CAPTURE_TOKEN_DIR / f"fault-token-{target.pid}"
+    with os.fdopen(os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK), "rb") as fh:
+        info = os.fstat(fh.fileno())
+        if (not stat.S_ISREG(info.st_mode) or info.st_uid != os.getuid()
+                or stat.S_IMODE(info.st_mode) != 0o600):
+            raise RuntimeError("dev capture token ownership or permissions are invalid")
+        token = fh.read(65)
+    if re.fullmatch(rb"[0-9a-f]{64}", token) is None:
+        raise RuntimeError("dev capture token format is invalid")
+    return token
+
+
+def _capture_snapshot(target, timeout=5.0):
+    """One authenticated, target-bound, non-interfering read of the real owners."""
+    if type(timeout) not in {int, float} or not math.isfinite(timeout) or timeout <= 0:
+        raise RuntimeError("dev capture query deadline is invalid")
+    verify_target(target)
+    token = _read_capture_token(target)
+    deadline = time.monotonic() + timeout
+    data = bytearray()
+    try:
+        with socket.create_connection(("127.0.0.1", 8765), timeout=timeout) as connection:
+            connection.sendall(token + b"\nquery_capture_state\n")
+            while True:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise RuntimeError("dev capture query deadline expired")
+                connection.settimeout(remaining)
+                chunk = connection.recv(256)
+                if not chunk:
+                    break
+                data.extend(chunk)
+                if len(data) > 512:
+                    raise RuntimeError("dev capture query reply exceeds its bound")
+    except OSError as error:
+        raise RuntimeError("dev capture query unavailable; launch with EW_FAULT_INJECTION=1") from error
+    verify_target(target)
+    if _read_capture_token(target) != token:
+        raise RuntimeError("dev capture query launch token changed")
+    if not data.endswith(b"\n") or data.count(b"\n") != 1:
+        raise RuntimeError("dev capture query did not return one complete reply")
+    try:
+        words = bytes(data[:-1]).decode("ascii").split(" ")
+    except UnicodeError as error:
+        raise RuntimeError("dev capture reply is malformed") from error
+    fields = {}
+    for word in words[1:]:
+        pair = word.split("=")
+        if len(pair) != 2 or not all(pair) or pair[0] in fields:
+            raise RuntimeError("dev capture reply fields are malformed or duplicated")
+        fields[pair[0]] = pair[1]
+    required = {"v", "pid", "parakeet_phase", "parakeet_released", "whisperkit_phase", "whisperkit_released", "backend"}
+    phases = {"idle", "arming", "live", "stopping", "delivering"}
+    if (words[0] != "OK" or set(fields) != required or fields["v"] != "1"
+            or fields["pid"] != str(target.pid) or fields["backend"] not in {"parakeet", "whisperKit"}
+            or any(fields[name + "_phase"] not in phases for name in ("parakeet", "whisperkit"))
+            or any(fields[name + "_released"] not in {"true", "false"} for name in ("parakeet", "whisperkit"))):
+        raise RuntimeError("dev capture reply identity, version or state is invalid")
+    return fields
+
+
+def _recording_state(target, timeout=5.0):
+    fields = _capture_snapshot(target, timeout)
+    owners = [(fields[name + "_phase"], fields[name + "_released"] == "true")
+              for name in ("parakeet", "whisperkit")]
+    if any(phase == "live" for phase, _ in owners):
+        return "recording"
+    if any(phase == "arming" for phase, _ in owners):
+        return "starting"
+    if any(phase == "stopping" or (phase == "idle" and not released) for phase, released in owners):
+        return "stopping"
+    if all(phase in {"idle", "delivering"} and released for phase, released in owners):
+        return "idle"
+    raise RuntimeError("dev capture owners have contradictory release state")
+
+
+def _require_idle_without_ui(target):
+    if not _recording_cleanup_safe or _recording_state(target) != "idle":
+        raise RuntimeError("microphone selection requires positively released capture")
+
+
+def _stop_recording(target, timeout):
+    deadline = time.monotonic() + timeout
+    attempted = False
+    while True:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise RuntimeError("recording did not stop; physical audio restoration refused")
+        state = _recording_state(target, min(5.0, remaining))
+        if state == "idle":
+            return True
+        if state in {"recording", "starting"} and not attempted:
+            attempted = True
+            _recording_control(target, "stop")
+        if time.monotonic() >= deadline:
+            raise RuntimeError("recording did not stop; physical audio restoration refused")
+        time.sleep(0.05)  # deadline-fallback: positive non-recording observation
+
+
+def _reap_playback(proc, timeout):
+    if proc is None:
+        return
+    if proc.poll() is None:
+        proc.terminate()
+    try:
+        proc.communicate(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        proc.kill()
+        proc.communicate(timeout=timeout)
+    if proc.poll() is None:
+        raise RuntimeError("owned playback process could not be reaped")
 
 
 def test_recording(audio=None, sentence=None, hold=3.0, expect=None, timeout=30.0):
@@ -1970,71 +2260,111 @@ def test_recording(audio=None, sentence=None, hold=3.0, expect=None, timeout=30.
         test_recording(sentence="Check the EnviousWispr app", expect="EnviousWispr")
         test_recording(audio='/path/to/clip.wav', expect='keyword')  # explicit audio file
     """
+    global _recording_cleanup_safe
     connect()
-
-    # Generate TTS audio if no explicit audio file provided
+    target = _target
+    if target is None:
+        raise InstanceGuardError("recording requires a pinned EnviousWispr target")
+    if not _recording_cleanup_safe:
+        raise RuntimeError("a previous recording or playback cleanup remains unresolved")
+    if not all(isinstance(v, (int, float)) and not isinstance(v, bool)
+               and math.isfinite(v) and v > 0 for v in (hold, timeout)):
+        raise RuntimeError("recording durations must be finite and positive")
     if audio is None:
         if sentence is None:
             sentence = "The quick brown fox jumps over the lazy dog"
-        audio = tts(sentence)
-        if expect is None:
-            expect = "fox" if "fox" in sentence.lower() else sentence.split()[len(sentence.split())//2].lower()
-
-    begin_test(f"recording{' +audio' if audio else ''}")
-
-    # Close Settings if open
-    close_window()
-
-    # Get audio duration
+        if not isinstance(sentence, str):
+            raise RuntimeError("recording sentence is invalid")
+        if sentence.strip():
+            audio = tts(sentence)
+            if expect is None:
+                expect = "fox" if "fox" in sentence.lower() else sentence.split()[len(sentence.split())//2].lower()
+        elif expect is None:
+            raise RuntimeError("a silence probe requires an explicit expectation")
+    audio_dur = None
     if audio:
+        if not os.path.isfile(audio) or not os.access(audio, os.R_OK):
+            raise RuntimeError("recording audio is unreadable")
         audio_dur = _audio_duration(audio)
-        if audio_dur:
-            hold = audio_dur + 1.5
-            print(f"Audio: {audio} ({audio_dur:.1f}s)")
-        else:
-            print(f"Audio: {audio} (duration unknown, using hold={hold}s)")
-
-    # Snapshot app.log size + clipboard before the test. Log-based detection
-    # is primary (clipboard-free, doesn't race with the user's activity);
-    # clipboard is a fallback when Debug mode is off.
+        if not isinstance(audio_dur, (int, float)) or not math.isfinite(audio_dur) or audio_dur <= 0:
+            raise RuntimeError("recording audio duration is unknown or invalid")
+        hold = audio_dur + 1.5  # existing tail allowance; natural player exit is required
+    close_window()
+    _require_idle_without_ui(target)
+    state, enabled = _recording_control(target)
+    if state != "idle" or not enabled:
+        raise RuntimeError("recording is not positively idle and ready")
     log_size_before = _snapshot_log_size()
     clip_before = get_clipboard_text() or ""
-
-    # Phase 1: Start recording via menu
-    print(f"\n--- START RECORDING ---")
-    if not tap("Start Recording"):
-        print("BLOCKED: Could not tap 'Start Recording'")
-        end_test()
-        return False
-    time.sleep(0.5)
-
-    # Check overlay appeared
-    overlay_win = find_element(_app, role="AXWindow")
-    print(f"Overlay: {'appeared' if overlay_win else 'not detected'}")
-
-    # Phase 2: Play audio if provided
-    audio_proc = None
-    if audio:
-        print(f"Playing audio through speakers...")
-        audio_proc = subprocess.Popen(
-            ["afplay", audio],
-            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
-        )
-
-    # Record for duration
-    remaining = hold - 0.5
-    if remaining > 0:
-        print(f"Recording for {remaining:.1f}s...")
-        time.sleep(remaining)
-
-    # Kill audio if still playing
-    if audio_proc and audio_proc.poll() is None:
-        audio_proc.terminate()
-
-    # Phase 3: Stop recording via menu
-    print(f"\n--- STOP RECORDING ---")
-    tap("Stop Recording")
-
+    attempted, audio_proc, original_error = False, None, None
+    cleanup_errors = []
+    begin_test(f"recording{' +audio' if audio else ''}")
+    with _recording_interruptions():
+        try:
+            _recording_cleanup_safe = False
+            attempted = True  # AX false or a raised exception can follow a real Start
+            _recording_control(target, "start")
+            deadline = time.monotonic() + timeout
+            while _recording_state(target) != "recording":
+                if time.monotonic() >= deadline:
+                    raise RuntimeError("recording did not start")
+                time.sleep(0.05)  # deadline-fallback: observe the recording transition
+            if audio:
+                with _defer_recording_signals():
+                    audio_proc = subprocess.Popen(["afplay", audio], stdout=subprocess.DEVNULL,
+                                                  stderr=subprocess.PIPE)
+                deadline = time.monotonic() + hold
+                while True:
+                    if _recording_state(target) != "recording":
+                        raise RuntimeError("capture ended before playback completed")
+                    remaining = deadline - time.monotonic()
+                    if remaining <= 0:
+                        raise RuntimeError("audio playback exceeded its duration-derived deadline")
+                    try:
+                        _, playback_stderr = audio_proc.communicate(timeout=min(0.1, remaining))
+                    except subprocess.TimeoutExpired:
+                        continue
+                    if audio_proc.returncode != 0:
+                        raise RuntimeError(f"audio playback failed: {playback_stderr!r}")
+                    if _recording_state(target) != "recording":
+                        raise RuntimeError("capture ended during playback")
+                    break
+            else:
+                deadline = time.monotonic() + hold
+                while time.monotonic() < deadline:
+                    if _recording_state(target) != "recording":
+                        raise RuntimeError("silence probe capture ended prematurely")
+                    time.sleep(min(0.05, max(0, deadline - time.monotonic())))  # test-fixture-timer: intentional silent capture
+            _stop_recording(target, timeout)
+        except BaseException as error:
+            original_error = error
+        finally:
+            # Each cleanup gets its chance; pending/repeated signals cannot cut this short.
+            try:
+                with _defer_recording_signals():
+                    try:
+                        _reap_playback(audio_proc, timeout)
+                    except BaseException as error:
+                        cleanup_errors.append(error)
+                    if attempted:
+                        try:
+                            _stop_recording(target, timeout)
+                        except BaseException as error:
+                            cleanup_errors.append(error)
+                    _recording_cleanup_safe = not cleanup_errors
+                    end_test()
+            except BaseException as error:
+                if original_error is None:
+                    original_error = error
+                else:
+                    original_error.add_note(f"interrupted cleanup: {error!r}")
+        if original_error is not None:
+            for error in cleanup_errors:
+                original_error.add_note(f"cleanup failed: {error!r}")
+            raise original_error
+        if cleanup_errors:
+            raise RuntimeError(f"recording cleanup failed: {cleanup_errors!r}")
+    t_stop = time.time()
     # Phase 4: Wait for completion (log-based with clipboard fallback)
     t_stop = time.time()
     completed, signal, completion_line, states_seen, clip_seen, log_lines = _wait_for_pipeline_completion(

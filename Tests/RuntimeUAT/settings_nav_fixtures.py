@@ -1486,13 +1486,25 @@ def _capture_before_routing():
         if cls is None:
             problems.append(f"{os.path.basename(path)}: no AudioRoute")
             continue
-        methods = {f.name: ast.unparse(f) for f in cls.body if isinstance(f, ast.FunctionDef)}
-        init, apply_ = methods.get("__init__", ""), methods.get("apply", "")
-        if "read_input_choice" not in init:
+        methods = {f.name: f for f in cls.body if isinstance(f, ast.FunctionDef)}
+        init, apply_ = methods.get("__init__"), methods.get("apply")
+        def calls(node):
+            return {n.func.id if isinstance(n.func, ast.Name) else n.func.attr
+                    for n in ast.walk(node) if isinstance(n, ast.Call)
+                    and isinstance(n.func, (ast.Name, ast.Attribute))} if node else set()
+        def sets_device(node):
+            if node is None:
+                return False
+            return any(isinstance(n, (ast.List, ast.Tuple))
+                       and any(isinstance(v, ast.Constant) and v.value in {"-s", "-i"} for v in n.elts)
+                       for n in ast.walk(node))
+        helper = next((n for n in tree.body if isinstance(n, ast.FunctionDef)
+                       and n.name == "_switch_and_verify"), None)
+        if "read_input_choice" not in calls(init):
             problems.append(f"{os.path.basename(path)}: __init__ does not capture the choice")
-        if "'-s'" in init or "select_input" in init:
+        if sets_device(init) or calls(init) & {"select_input", "select_input_device", "select_input_choice", "_switch_and_verify"}:
             problems.append(f"{os.path.basename(path)}: __init__ switches audio")
-        if "'-s'" not in apply_:
+        if not (sets_device(apply_) or ("_switch_and_verify" in calls(apply_) and sets_device(helper))):
             problems.append(f"{os.path.basename(path)}: apply does not do the switching")
     return problems
 

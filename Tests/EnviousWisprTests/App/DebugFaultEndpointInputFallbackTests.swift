@@ -32,7 +32,10 @@ import Testing
         sourceType: .halDeviceInput, reason: .noBTAutoInput, rationale: "test")
     }
 
-    private func makeEndpoint(audioCapture: AudioCaptureManager?) -> DebugFaultEndpoint {
+    private func makeEndpoint(
+      audioCapture: AudioCaptureManager?,
+      configure: (KernelDictationDriver, KernelDictationDriver) -> Void = { _, _ in }
+    ) -> DebugFaultEndpoint {
       let clock = FakeClock()
       let engine = FakeEngine(behavior: .batchSuccess(text: "x"), clock: clock)
       let steps = LimbSteps(
@@ -67,14 +70,31 @@ import Testing
           steps: steps, adapter: engine,
           engineMutationScope: .alwaysAllowedForTesting)
       }
+      let parakeet = makeDriver()
+      let whisperkit = makeDriver()
+      configure(parakeet, whisperkit)
       return DebugFaultEndpoint(
         audioCapture: audioCapture,
-        kernelDriver: makeDriver(),
-        whisperKitKernelDriver: makeDriver(),
+        kernelDriver: parakeet,
+        whisperKitKernelDriver: whisperkit,
         activeBackend: { .parakeet })
     }
 
     // MARK: - The happy path, both directions
+
+    @Test("capture query reports both raw owners and release flags without changing state")
+    func captureQueryUsesBothRawOwners() async {
+      let endpoint = makeEndpoint(audioCapture: nil) { parakeet, whisperkit in
+        parakeet.kernelForTesting.testForceState(.arming)
+        whisperkit.kernelForTesting.testForceState(.stopping)
+      }
+      let expected = "OK v=1 pid=\(ProcessInfo.processInfo.processIdentifier) "
+        + "parakeet_phase=arming parakeet_released=true "
+        + "whisperkit_phase=stopping whisperkit_released=true backend=parakeet"
+      #expect(await endpoint.handleForTesting(command: "query_capture_state") == expected)
+      #expect(await endpoint.handleForTesting(command: "query_capture_state") == expected)
+      #expect(await endpoint.handleForTesting(command: "query_capture") == "ERR unknown_command")
+    }
 
     @Test("force_default_input_absent arms the manager and replies OK")
     func forceCommandArms() async {

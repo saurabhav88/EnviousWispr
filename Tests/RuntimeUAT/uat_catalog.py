@@ -109,6 +109,8 @@ RECIPES = {
 # issues cited. Change the table when the code changes, never the other way.
 # --------------------------------------------------------------------------
 HARNESS_STATUS = {
+    "perform_action": {"status": "primitive", "issue": "#3656", "note": "verifies pinned app identity and AX ownership before mutation"},
+    "set_attr": {"status": "primitive", "issue": "#3656", "note": "verifies pinned app identity and AX ownership before mutation"},
     # recipes
     "test_recording":  {"status": "recipe", "issue": None, "note": "menu-driven; log verdict, clipboard fallback only when Debug Mode is off"},
     "test_ptt":        {"status": "recipe", "issue": None, "note": "needs run_in_background (CGEvent); FAIL with `asr_empty_despite_audio` usually means TTS went to a Bluetooth output"},
@@ -128,7 +130,7 @@ HARNESS_STATUS = {
     "see":             {"status": "primitive", "issue": None, "note": "PRINTS the tree and returns None; capture with redirect_stdout, never str(see())"},
     "clipboard":       {"status": "primitive", "issue": None, "note": "fallback signal only; verdicts come from app.log (RULE: uat-verdicts-from-app-log)"},
     # primitives
-    "connect":         {"status": "primitive", "issue": None, "note": "attaches to WHATEVER holds the dev slot; uat.py preflight proves it is this worktree's build"},
+    "connect":         {"status": "primitive", "issue": None, "note": "pins expected PID, executable and native start token; reconnect verifies the retained identity and refuses replacement"},
     "health":          {"status": "primitive", "issue": None, "note": ""},
     "read":            {"status": "primitive", "issue": None, "note": ""},
     "read_cards": {"status": "primitive", "issue": None, "note": "groups engine/style/pill/chime; reads the window CONTENT only (sidebar subtree excluded, #3385); selection = value's first clause is Selected"},

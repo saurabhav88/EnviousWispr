@@ -24,6 +24,10 @@ import signal
 import subprocess
 import sys
 import time
+import fcntl
+import tempfile
+import stat
+import contextlib
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
@@ -69,8 +73,52 @@ def select_input_choice(choice):
     w.restore_input_choice(choice)
 
 
+def _route_read(args):
+    result = subprocess.run([SWITCH, *args, "-f", "json"], capture_output=True, text=True, timeout=5)
+    if result.returncode != 0 or not isinstance(result.stderr, str) or result.stderr.strip():
+        raise RuntimeError("audio route read did not complete cleanly")
+    if not isinstance(result.stdout, str) or not result.stdout.strip():
+        raise RuntimeError("audio route read is empty")
+    rows = [json.loads(line) for line in result.stdout.splitlines() if line.strip()]
+    for row in rows:
+        if (not isinstance(row, dict) or not all(isinstance(row.get(k), str) and row[k]
+                for k in ("name", "uid", "id", "type")) or not row["id"].isascii()
+                or not row["id"].isdecimal() or len(row["id"]) > 10
+                or not 0 < int(row["id"]) <= 4_294_967_295):
+            raise RuntimeError("audio device identity is malformed")
+    return rows
+
+
+def _device(kind):
+    rows = _route_read(["-c", "-t", kind])
+    if len(rows) != 1:
+        raise RuntimeError("current audio device is ambiguous")
+    return rows[0]
+
+
 def _current(kind):
-    return subprocess.run([SWITCH, "-c", "-t", kind], capture_output=True, text=True).stdout.strip()
+    return _device(kind)["name"]
+
+
+def _resolve_device(kind, value, key="uid"):
+    rows = _route_read(["-a", "-t", "output" if kind == "system" else kind])
+    matches = [row for row in rows if row[key] == value]
+    if len(matches) != 1:
+        raise RuntimeError("audio device is missing or ambiguous")
+    return matches[0]
+
+
+def _switch_and_verify(kind, choice, *, target):
+    # Numeric live ID selected from one exact UID match; -u accepts substrings.
+    device = _resolve_device(kind, choice["uid"])
+    _idle(target)
+    result = subprocess.run([SWITCH, "-i", device["id"], "-t", kind],
+                            capture_output=True, text=True, timeout=5)
+    if result.returncode != 0 or result.stderr.strip():
+        raise RuntimeError("audio device switch failed")
+    now = _device(kind)
+    if (now["uid"], now["id"]) != (device["uid"], device["id"]):
+        raise RuntimeError("audio device switch did not land")
 
 
 def take_was_virtual(log_offset):
@@ -83,109 +131,223 @@ def take_was_virtual(log_offset):
     return bool(transports) and all(t == "virtual" for t in transports), transports
 
 
+def _record_bytes(path):
+    with os.fdopen(os.open(path, os.O_RDONLY | os.O_NOFOLLOW), "rb") as fh:
+        info = os.fstat(fh.fileno())
+        if not stat.S_ISREG(info.st_mode):
+            raise RuntimeError("audio recovery is not a regular file")
+        return (info.st_dev, info.st_ino), fh.read()
+
+
+def _publish_recovery(path, payload):
+    data = (json.dumps(payload, sort_keys=True) + "\n").encode()
+    directory = os.path.dirname(path)
+    fd, temporary = tempfile.mkstemp(prefix=".ew-audio-", dir=directory)
+    try:
+        with os.fdopen(fd, "wb") as fh:
+            os.fchmod(fh.fileno(), 0o600)
+            fh.write(data)
+            fh.flush()
+            os.fsync(fh.fileno())
+        os.link(temporary, path)  # exclusive atomic publication, never overwrite
+        directory_fd = os.open(directory, os.O_RDONLY)
+        try:
+            os.fsync(directory_fd)
+        finally:
+            os.close(directory_fd)
+        identity, actual = _record_bytes(path)
+        if actual != data:
+            raise RuntimeError("audio recovery publication changed")
+        return identity, data
+    finally:
+        os.unlink(temporary)
+
+
+def _record_lock(path):
+    fd = os.open(path + ".lock", os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600)
+    try:
+        if not stat.S_ISREG(os.fstat(fd).st_mode):
+            raise RuntimeError("audio recovery lock is not a regular file")
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BaseException:
+        os.close(fd)
+        raise
+    return fd
+
+
+def _release_record_lock(fd):
+    if fd is not None:
+        try:
+            fcntl.flock(fd, fcntl.LOCK_UN)
+        finally:
+            os.close(fd)
+
+
+def _target_json(target):
+    return {"pid": target.pid, "executable": target.executable, "start": list(target.start)}
+
+
+def _saved_target(data):
+    from instance_guard import TargetIdentity, verify_target
+    if (not isinstance(data, dict) or type(data.get("pid")) is not int
+            or not isinstance(data.get("executable"), str)
+            or not isinstance(data.get("start"), list) or len(data["start"]) != 2
+            or any(type(n) is not int or n < 0 for n in data["start"])):
+        raise RuntimeError("audio recovery target identity is malformed")
+    target = TargetIdentity(data["pid"], data["executable"], tuple(data["start"]))
+    verify_target(target)
+    w.connect(expected_pid=target.pid, expected_executable=target.executable)
+    return target
+
+
+def _idle(target):
+    if not w._recording_cleanup_safe:
+        raise RuntimeError("playback or recording cleanup remains unresolved")
+    if w._recording_state(target) != "idle":
+        raise RuntimeError("physical audio restore requires positive non-recording state")
+
+
+def _restore_record(path, owned, payload):
+    if _record_bytes(path) != owned:
+        raise RuntimeError("audio recovery ownership changed")
+    if not isinstance(payload, dict) or payload.get("version") != 2 or payload.get("kind") not in {"audio", "alert"}:
+        raise RuntimeError("unsupported audio recovery record")
+    target = _saved_target(payload.get("target"))
+    choices = payload.get("devices")
+    expected = {"output", "input"} if payload["kind"] == "audio" else {"output", "system"}
+    if not isinstance(choices, dict) or set(choices) != expected:
+        raise RuntimeError("audio recovery devices are incomplete")
+    for kind, choice in choices.items():
+        if not isinstance(choice, dict) or not isinstance(choice.get("uid"), str) or not choice["uid"]:
+            raise RuntimeError("audio recovery device identity is missing")
+        _resolve_device(kind, choice["uid"])
+    app_choice = None
+    if payload["kind"] == "audio":
+        app_choice = w._sn.InputChoice.from_json(payload.get("app_device"))
+    if not w._recording_cleanup_safe:
+        raise RuntimeError("unreaped playback blocks audio recovery")
+    w._stop_recording(target, 30.0)  # existing recording completion allowance
+    for kind, choice in choices.items():
+        _idle(target)
+        _switch_and_verify(kind, choice, target=target)
+    if app_choice is not None:
+        _idle(target)
+        select_input_choice(app_choice)
+        if not w.read_input_choice().same_choice(app_choice):
+            raise RuntimeError("app microphone restoration did not land")
+    _idle(target)
+    if any(_device(kind)["uid"] != choice["uid"] for kind, choice in choices.items()):
+        raise RuntimeError("audio restoration changed during verification")
+    if _record_bytes(path) != owned:
+        raise RuntimeError("audio recovery record changed before removal")
+    os.unlink(path)
+    return True
+
+
+def _replay_recovery(path):
+    fd = _record_lock(path)
+    try:
+        owned = _record_bytes(path)
+        payload = json.loads(owned[1])
+        with w._defer_recording_signals():
+            return _restore_record(path, owned, payload)
+    finally:
+        _release_record_lock(fd)
+
+
 class AudioRoute:
-    """Make the drill inaudible, and put everything back even when interrupted."""
+    """Own one silent run and its durable, retryable recovery record."""
+    FILE = RESTORE_FILE
+    KINDS = ("output", "input")
+    KIND = "audio"
 
     def __init__(self):
         if not os.path.exists(SWITCH):
-            raise RuntimeError(f"{SWITCH} is missing; cannot route audio silently")
-        self.original_output = _current("output")
-        self.original_input = _current("input")
-        # #3385: the STORED choice (its UID, "" for Auto) with the name the control shows for
-        # it, never the display text alone. Unreadable or ambiguous refuses here, before any
-        # device is switched.
-        self.original_app_device = w.read_input_choice()
-        self.applied = False
+            raise RuntimeError("silent audio routing tool is missing")
+        w.connect()
+        self.target = w._target
+        _idle(self.target)
+        self.devices = {kind: _device(kind) for kind in self.KINDS}
+        self.original_output = self.devices["output"]["name"]
+        self.original_input = self.devices.get("input", {}).get("name")
+        self.original_app_device = w.read_input_choice() if self.KIND == "audio" else None
+        self.original = {kind: choice["name"] for kind, choice in self.devices.items()}
+        self.applied, self._owned, self._lock = False, None, None
+        self._handlers = {}
 
     def install_restore_handlers(self):
+        if self._handlers:
+            return
+        def interrupted(sig, frame):
+            raise SystemExit(128 + sig)  # unwind recording first; never restore here
         for sig in (signal.SIGINT, signal.SIGTERM, signal.SIGHUP):
-            signal.signal(sig, lambda *_: (self.restore(), sys.exit(130)))
+            self._handlers[sig] = signal.getsignal(sig)
+            signal.signal(sig, interrupted)
+
+    def _restore_handlers(self):
+        for sig, handler in self._handlers.items():
+            signal.signal(sig, handler)
+        self._handlers = {}
 
     def apply(self):
-        with open(RESTORE_FILE, "w") as fh:
-            json.dump({"output": self.original_output, "input": self.original_input,
-                       "app_device": self.original_app_device.to_json()}, fh)
-        print(f"ORIGINALS output={self.original_output!r} input={self.original_input!r} "
-              f"app_device={self.original_app_device!r}", flush=True)
-        self.applied = True
-        for kind in ("output", "input"):
-            subprocess.run([SWITCH, "-s", SILENT_DEVICE, "-t", kind], capture_output=True)
-        select_input_device(SILENT_DEVICE)
-        print(f"SILENT    output={_current('output')!r} input={_current('input')!r} "
-              f"app_device={w.read_input_choice()!r}", flush=True)
-
-    def restore(self):
-        """True when all three devices are verified back. Safe after a PARTIAL `apply`."""
-        if not self.applied:
-            return True
-        self.applied = False
-        return _restore(self.original_output, self.original_input, self.original_app_device)
-
-
-def _restore(output, input_, app_device):
-    """`app_device` is the captured `settings_nav.InputChoice`, or None when a restore file
-    holds no usable one (an older run kept only the display text, which cannot say which
-    device a named choice was): then the app device is reported unrestored for a human."""
-    subprocess.run([SWITCH, "-s", output, "-t", "output"], capture_output=True)
-    subprocess.run([SWITCH, "-s", input_, "-t", "input"], capture_output=True)
-    if app_device is None:
-        print("RESTORE WARNING: no captured app device choice; choose it again by hand in "
-              "Dictation Settings > Microphone", flush=True)
-    else:
+        if self.applied:
+            raise RuntimeError("silent route already owns a recovery record")
+        self._lock = _record_lock(self.FILE)
         try:
-            select_input_choice(app_device)
-        except Exception as exc:  # the system devices are put back even if the picker is not
-            print(f"RESTORE WARNING: app device not restored: {exc!r}", flush=True)
-    try:
-        app_now = w.read_input_choice()
-    except Exception as exc:
-        app_now = None
-        print(f"RESTORE WARNING: app device unreadable: {exc!r}", flush=True)
-    # All THREE are verified: a failed picker restore would otherwise leave the founder's app
-    # listening to BlackHole behind a "verified" line. The app device is verified by its stored
-    # UID ("" for Auto; the device Auto resolves to follows the system input just restored).
-    app_ok = app_now is not None and app_device is not None and app_now.same_choice(app_device)
-    ok = _current("output") == output and _current("input") == input_ and app_ok
-    print(f"RESTORED  output={_current('output')!r} input={_current('input')!r} "
-          f"app_device={app_now!r} verified={ok}", flush=True)
-    if ok and os.path.exists(RESTORE_FILE):
-        os.remove(RESTORE_FILE)
-    return ok
-
-
-class AlertSink:
-    """Send ALL sound, system alert beeps included, to BlackHole for a whole run, and restore it.
-
-    The alert device (`-t system`) is separate from the output device: without this, the
-    "nothing can take that key" beep still plays on the speakers during a silent run.
-    """
-
-    def __init__(self):
-        self.original = {kind: _current(kind) for kind in ("output", "system")}
-
-    FILE = os.path.expanduser("~/.ew-uat-alert-restore.json")
-
-    def apply(self):
-        # On disk first, so a SIGKILLed run can be undone: `python3 silent_audio.py restore`.
-        with open(self.FILE, "w") as fh:
-            json.dump(self.original, fh)
-        for kind in self.original:
-            subprocess.run([SWITCH, "-s", SILENT_DEVICE, "-t", kind], capture_output=True)
-        # Verified, not assumed: the meter is only evidence when both devices really moved.
-        return all(_current(kind) == SILENT_DEVICE for kind in self.original)
+            _idle(self.target)
+            if any(_device(kind)["uid"] != choice["uid"] for kind, choice in self.devices.items()):
+                raise RuntimeError("audio snapshot changed before application")
+            if self.KIND == "audio" and not w.read_input_choice().same_choice(self.original_app_device):
+                raise RuntimeError("app microphone snapshot changed")
+            silent = {kind: _resolve_device(kind, SILENT_DEVICE, "name") for kind in self.KINDS}
+            self._payload = {"version": 2, "kind": self.KIND, "target": _target_json(self.target),
+                             "devices": self.devices}
+            if self.original_app_device is not None:
+                self._payload["app_device"] = self.original_app_device.to_json()
+            with w._defer_recording_signals():
+                self._owned = _publish_recovery(self.FILE, self._payload)
+                self.applied = True
+            for kind, choice in silent.items():
+                _idle(self.target)
+                _switch_and_verify(kind, choice, target=self.target)
+            if self.KIND == "audio":
+                _idle(self.target)
+                select_input_device(SILENT_DEVICE)
+                if w.read_input_choice().uid != silent["input"]["uid"]:
+                    raise RuntimeError("silent app microphone did not land")
+            return True
+        except BaseException as error:
+            try:
+                self.restore()
+            except BaseException as cleanup:
+                error.add_note(f"audio restore failed: {cleanup!r}")
+            raise
+        finally:
+            if not self.applied:
+                _release_record_lock(self._lock)
+                self._lock = None
 
     def restore(self):
-        return _restore_alert(self.original)
+        try:
+            if not self.applied:
+                return True
+            if self._lock is None:
+                self._lock = _record_lock(self.FILE)
+            with w._defer_recording_signals():
+                ok = _restore_record(self.FILE, self._owned, self._payload)
+                if ok:
+                    self.applied = False
+                return ok
+        finally:
+            _release_record_lock(self._lock)
+            self._lock = None
+            self._restore_handlers()
 
 
-def _restore_alert(original):
-    for kind, device in original.items():
-        subprocess.run([SWITCH, "-s", device, "-t", kind], capture_output=True)
-    ok = all(_current(kind) == device for kind, device in original.items())
-    print(f"ALERTS    {({k: _current(k) for k in original})} verified={ok}", flush=True)
-    if ok and os.path.exists(AlertSink.FILE):
-        os.remove(AlertSink.FILE)
-    return ok
+class AlertSink(AudioRoute):
+    FILE = os.path.expanduser("~/.ew-uat-alert-restore.json")
+    KINDS = ("output", "system")
+    KIND = "alert"
 
 
 class BeepMeter:
@@ -226,17 +388,11 @@ class BeepMeter:
 
 
 if __name__ == "__main__" and sys.argv[1:] == ["restore"]:
-    ok = True
-    if os.path.exists(RESTORE_FILE):
-        with open(RESTORE_FILE) as fh:
-            saved = json.load(fh)
-        try:
-            app = w._sn.InputChoice.from_json(saved["app_device"])
-        except w._sn.PreferenceError as exc:
-            print(f"RESTORE WARNING: {exc}", flush=True)
-            app = None
-        ok = _restore(saved["output"], saved["input"], app) and ok
-    if os.path.exists(AlertSink.FILE):
-        with open(AlertSink.FILE) as fh:
-            ok = _restore_alert(json.load(fh)) and ok
-    sys.exit(0 if ok else 1)
+    try:
+        for path in (RESTORE_FILE, AlertSink.FILE):
+            if os.path.lexists(path):
+                _replay_recovery(path)
+    except BaseException as error:
+        print(f"RESTORE REFUSED: {error!r}", file=sys.stderr)
+        sys.exit(1)
+    sys.exit(0)

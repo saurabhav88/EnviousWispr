@@ -947,7 +947,8 @@ def read_input(ax, root_of, read_uid, cancel=None, timeout=5.0):
     return InputChoice(uid, name)
 
 
-def select_input(ax, root_of, read_uid, auto, name=None, uid=None, timeout=5.0, cancel=None):
+def select_input(ax, root_of, read_uid, auto, name=None, uid=None, timeout=5.0, cancel=None,
+                 before_select=None):
     """Choose Auto (`auto=True`) or the device `name` in the control's OWN menu, then PROVE the
     stored choice took it: Auto stores "" and the control shows Auto; a device stores a
     non-empty UID (exactly `uid` when given, as a restore does) and `read_input` resolves the
@@ -983,6 +984,11 @@ def select_input(ax, root_of, read_uid, auto, name=None, uid=None, timeout=5.0, 
             cancel(menu)
         raise NavigationError(f"refusing: {len(hits)} menu items match "
                               f"{'Auto' if auto else name!r} in {[_item_title(ax, i) for i in items]}")
+    if before_select is not None:
+        current = _own_menu(ax, input_control(ax, root_of()), root_of(), _holds_input_choices)
+        if current is None or not ax.same(current, menu):
+            raise NavigationError("microphone picker changed before selection")
+        before_select()
     ax.press(hits[0])
     result = {}
 
@@ -996,16 +1002,17 @@ def select_input(ax, root_of, read_uid, auto, name=None, uid=None, timeout=5.0, 
     return result["choice"]
 
 
-def restore_input(ax, root_of, read_uid, choice, timeout=5.0, cancel=None):
+def restore_input(ax, root_of, read_uid, choice, timeout=5.0, cancel=None, before_select=None):
     """Put back a choice `read_input` captured: Auto as Auto, a device by its name AND its UID."""
     if not isinstance(choice, InputChoice):
         raise PreferenceError(f"not a captured microphone choice: {choice!r}")
     if choice.auto:
-        return select_input(ax, root_of, read_uid, True, timeout=timeout, cancel=cancel)
+        return select_input(ax, root_of, read_uid, True, timeout=timeout, cancel=cancel,
+                            before_select=before_select)
     if not choice.shown:
         raise PreferenceError(f"{choice!r} has no name to choose it by")
     return select_input(ax, root_of, read_uid, False, choice.shown, uid=choice.uid,
-                        timeout=timeout, cancel=cancel)
+                        timeout=timeout, cancel=cancel, before_select=before_select)
 
 
 # ── The scan manifest ──────────────────────────────────────────────────────

@@ -700,7 +700,701 @@ def _self_test():
     return 0
 
 
+def _lifecycle_self_test():
+    """Harness contracts only: execute source owners against private OS/AX fixtures."""
+    import ast
+    import io
+    import contextlib
+    import collections
+    import math
+    import pathlib
+    import signal as signal_api
+    import stat
+    import tempfile
+    import types
+    import wave
+    import fcntl
+    import concurrent.futures
+    import threading
+    from unittest.mock import patch
+    import instance_guard as guard
+    import settings_nav as settings_owner
+    import ptt_binding
+    from settings_nav_fixtures import FakeSettings
+    root = pathlib.Path(__file__).parent
+    ran, failures = [], []
+    executable = "/test/EnviousWispr Local.app/Contents/MacOS/EnviousWispr"
+    target = guard.TargetIdentity(111, executable, (123, 456))
+
+    def require(value):
+        if not value:
+            raise AssertionError("lifecycle contract did not hold")
+
+    def compile_functions(path, names, namespace):
+        tree = ast.parse(path.read_text())
+        nodes = [n for n in tree.body if isinstance(n, (ast.FunctionDef, ast.ClassDef)) and n.name in names]
+        require({n.name for n in nodes} == names)
+        exec(compile(ast.Module(body=nodes, type_ignores=[]), str(path), "exec"), namespace)
+
+    @contextlib.contextmanager
+    def fixture(directory, **options):
+        events, state = [], {"mode": "idle", "open": False, "alive": True, "clock": 0.0, **options}
+        class Settings(FakeSettings):
+            generation = 0
+            def _act(self, name, change):
+                original = super()._act(name, change)
+                def press():
+                    if name == "input-open":
+                        self.generation += 1
+                        if state.get("recording_during_picker"):
+                            state["mode"] = "recording"
+                    if name == "tab:Microphone" and state.get("recording_during_navigation"):
+                        state["mode"] = "recording"
+                    if name.startswith("input:") and name != "input:BlackHole 2ch" and state.get("app_noop"):
+                        self.presses.append(name)
+                        return True
+                    result = original()
+                    if name.startswith("input:") and name != "input:BlackHole 2ch" and state.get("app_raise"):
+                        raise RuntimeError("microphone selection failed after acting")
+                    return result
+                return press
+            def root(self):
+                root = super().root()
+                def identify(node, path=()):
+                    node["_native_id"] = (path, self.generation if node.get("AXRole") in {"AXMenu", "AXMenuItem", "AXPopover"} else 0)
+                    for i, child in enumerate(node.get("AXChildren", [])):
+                        identify(child, path + (i,))
+                identify(root)
+                return root
+        settings = Settings()
+        application = object()
+        class Signals:
+            SIGINT, SIGTERM, SIGHUP = signal_api.SIGINT, signal_api.SIGTERM, signal_api.SIGHUP
+            SIG_BLOCK, SIG_SETMASK = signal_api.SIG_BLOCK, signal_api.SIG_SETMASK
+            SIG_IGN = signal_api.SIG_IGN
+            handlers, mask, pending = {}, set(), []
+            @classmethod
+            def getsignal(cls, sig):
+                return cls.handlers.get(sig, signal_api.SIG_DFL)
+            @classmethod
+            def signal(cls, sig, handler):
+                cls.handlers[sig] = handler
+            @classmethod
+            def fire(cls, sig):
+                if sig in cls.mask:
+                    cls.pending.append(sig)
+                else:
+                    handler = cls.getsignal(sig)
+                    if callable(handler):
+                        handler(sig, None)
+                    else:
+                        raise SystemExit(128 + sig)
+            @classmethod
+            def pthread_sigmask(cls, how, mask):
+                previous = cls.mask.copy()
+                cls.mask = cls.mask | set(mask) if how == cls.SIG_BLOCK else set(mask)
+                ready = [sig for sig in cls.pending if sig not in cls.mask]
+                cls.pending = [sig for sig in cls.pending if sig in cls.mask]
+                for sig in ready:
+                    cls.fire(sig)
+                return previous
+        def sleep(seconds):
+            state["clock"] += max(seconds, 0.001)
+        clock = types.SimpleNamespace(monotonic=lambda: state["clock"], time=lambda: state["clock"], sleep=sleep)
+        def ax_read(el, attr, unused):
+            if el is application:
+                if attr == "AXExtrasMenuBar":
+                    return (5, None) if state.get("unreadable") else (0, "bar")
+                return 0, settings.root().get(attr)
+            if isinstance(el, dict):
+                return 0, el.get(attr)
+            if state.get("unreadable"):
+                return 5, None
+            if state.get("title_error") and attr == "AXTitle":
+                return 5, None
+            table = {("app", "AXExtrasMenuBar"): "bar", ("bar", "AXChildren"): ["status"],
+                     ("status", "AXChildren"): ["menu"] if state["open"] else [],
+                     ("menu", "AXRole"): "AXMenu", ("menu", "AXChildren"): [] if state.get("empty") else
+                         (["start", "stop"] if state.get("contradictory") else ["start" if state["mode"] == "idle" else "stop"]),
+                     ("start", "AXRole"): "AXMenuItem", ("stop", "AXRole"): "AXMenuItem",
+                     ("start", "AXTitle"): "Aufnahme starten" if state.get("german") else "Start Recording",
+                     ("stop", "AXTitle"): "Aufnahme stoppen" if state.get("german") else "Stop Recording",
+                     ("start", "AXEnabled"): not state.get("disabled", False), ("stop", "AXEnabled"): True}
+            return (0, table[(el, attr)]) if (el, attr) in table else (5, None)
+        def ax_action(el, action):
+            if isinstance(el, dict):
+                if action == "AXCancel":
+                    settings.menu_open = False
+                    settings.cancels += 1
+                    settings.presses.append("cancel")
+                    return True
+                if action == "AXPress":
+                    events.append(("selection", el.get("AXTitle") or el.get("AXDescription")))
+                    return el["_press"]() if el.get("_press") else False
+            events.append(("AX", el, action))
+            if el == "status":
+                settings.menu_open = False
+                state["open"] = True
+            elif el == "menu":
+                state["open"] = False
+                if state.get("cancel_raise") and (state.get("cancel_any") or state["mode"] == "recording"):
+                    state["cancel_raise"] = False
+                    raise RuntimeError("menu cancel failed")
+            elif el == "start":
+                state["mode"] = "recording"
+                if state.get("start_raise"):
+                    raise RuntimeError("Start failed after acting")
+                if state.get("start_false"):
+                    return False
+            elif el == "stop":
+                if not state.get("stop_noop"):
+                    state["mode"] = "idle"
+                if state.get("stop_raise"):
+                    raise RuntimeError("Stop failed after acting")
+                if state.get("stop_false"):
+                    return False
+            return True
+        player = []
+        class Player:
+            returncode = None
+            def __init__(self, *args, **kwargs):
+                events.append(("launch",))
+                if state.get("launch_fail"):
+                    raise OSError("playback launch failed")
+                player.append(self)
+                if state.get("signal_acquire"):
+                    Signals.fire(Signals.SIGTERM)
+            def poll(self):
+                return self.returncode
+            def communicate(self, timeout):
+                events.append(("communicate",))
+                if self.returncode is not None:
+                    return None, b""
+                if state.get("hung") or state.get("unreapable"):
+                    sleep(timeout)
+                    raise subprocess.TimeoutExpired("afplay", timeout)
+                self.returncode = 1 if state.get("playback_fail") else 0
+                if state.get("premature"):
+                    state["mode"] = "idle"
+                return None, b"playback error" if self.returncode else b""
+            def terminate(self):
+                events.append(("terminate",))
+                if state.get("signal_cleanup"):
+                    Signals.fire(Signals.SIGTERM)
+                    Signals.fire(Signals.SIGTERM)
+                if not state.get("unreapable"):
+                    self.returncode = -15
+            def kill(self):
+                events.append(("kill",))
+                if not state.get("unreapable"):
+                    self.returncode = -9
+        devices = {"input": {"name": "Physical input", "uid": "physical-i", "id": "101", "type": "input"},
+                   "output": {"name": "Physical output", "uid": "physical-o", "id": "102", "type": "output"}}
+        devices["system"] = dict(devices["output"])
+        originals = {k: dict(v) for k, v in devices.items()}
+        def run(args, **kwargs):
+            if args[0] == "afinfo":
+                return types.SimpleNamespace(returncode=1, stdout="duration 1.0 sec", stderr="failed")
+            kind = args[args.index("-t") + 1]
+            virtual = {"name": "BlackHole 2ch", "uid": "BlackHole2ch_UID", "id": "59", "type": "input" if kind == "input" else "output"}
+            if "-a" in args:
+                rows = [originals[kind], virtual]
+                if state.get("new_recording_during_resolution") and any(
+                        event[0] in {"AX", "query"} for event in events[state.get("resolution_anchor", len(events)):]):
+                    state["new_recording_during_resolution"] = False
+                    state["mode"] = "recording"
+                if state.get("duplicate"):
+                    rows.append(dict(virtual))
+            elif "-c" in args:
+                rows = [devices[kind]]
+                if state.get("route_unreadable"):
+                    return types.SimpleNamespace(returncode=1, stdout="", stderr="unreadable")
+            else:
+                device = virtual if args[args.index("-i") + 1] == "59" else originals[kind]
+                events.append(("switch", kind, device["uid"]))
+                if (state.get("restore_fail") or state.get("restore_fail_kind") == kind) and device["uid"].startswith("physical"):
+                    return types.SimpleNamespace(returncode=0, stdout="", stderr="")
+                devices[kind] = dict(device)
+                if state.get("new_recording_after_output") and kind == "output" and device["uid"].startswith("physical"):
+                    state["new_recording_after_output"] = False
+                    state["mode"] = "recording"
+                for option in ("signal_apply", "signal_restore"):
+                    if state.get(option) and ((option == "signal_apply") == (device["uid"] == "BlackHole2ch_UID")):
+                        state[option] = False
+                        Signals.fire(Signals.SIGTERM)
+                return types.SimpleNamespace(returncode=0, stdout="", stderr="")
+            return types.SimpleNamespace(returncode=0, stdout="\n".join(json.dumps(row) for row in rows), stderr="")
+        boundary = types.SimpleNamespace(run=run, Popen=Player, DEVNULL=subprocess.DEVNULL,
+                                         PIPE=subprocess.PIPE, TimeoutExpired=subprocess.TimeoutExpired)
+        token_path = directory / "fault-token-111"
+        token_path.write_bytes(b"a" * 64); token_path.chmod(0o600)
+        class Connection:
+            def __enter__(self): return self
+            def __exit__(self, *args): return False
+            def settimeout(self, timeout): require(timeout > 0)
+            def sendall(self, payload):
+                require(payload == b"a" * 64 + b"\nquery_capture_state\n")
+                sequence = state.get("query_sequence")
+                if sequence:
+                    phase, released = sequence.pop(0)
+                else:
+                    phase = state.get("raw_phase", "live" if state["mode"] == "recording" else "idle")
+                    released = state.get("released", state["mode"] != "recording")
+                other_phase = state.get("other_phase", "idle")
+                other_released = state.get("other_released", True)
+                reply = (f"OK v=1 pid=111 parakeet_phase={phase} parakeet_released={str(released).lower()} "
+                         f"whisperkit_phase={other_phase} whisperkit_released={str(other_released).lower()} backend=parakeet\n")
+                self.chunks = [state.get("query_reply", reply).encode(), b""]
+                if state.get("fragment_reply"):
+                    self.chunks = [self.chunks[0][:11], self.chunks[0][11:37], self.chunks[0][37:], b""]
+                events.append(("query", phase, released))
+            def recv(self, count):
+                if state.get("query_timeout"):
+                    raise TimeoutError("query timed out")
+                chunk = self.chunks[0][:count]
+                self.chunks[0] = self.chunks[0][count:]
+                if not self.chunks[0]:
+                    self.chunks.pop(0)
+                if not chunk and state.get("change_token"):
+                    token_path.write_bytes(b"b" * 64)
+                if not chunk and state.get("change_identity"):
+                    state["alive"] = False
+                return chunk
+        def connection(address, timeout):
+            require(address == ("127.0.0.1", 8765) and timeout > 0)
+            return Connection()
+        native = {"AXUIElementCopyAttributeValue": ax_read, "AXUIElementGetPid": lambda el, out: (0, 111), "kAXErrorSuccess": 0}
+        compile_functions(root / "ui_helpers.py", {"get_attr_checked", "element_pid"}, native)
+        w = types.ModuleType("private_lifecycle_subject")
+        w.__dict__.update({"__file__": str(root / "wispr_eyes.py"), "_target": target, "_pid": 111, "_app": "app",
+            "_TABLES": (111, [{"Start Recording": "Aufnahme starten", "Stop Recording": "Aufnahme stoppen"}]),
+            "_recording_cleanup_safe": True, "contextlib": contextlib, "math": math, "signal": Signals,
+            "time": clock, "subprocess": boundary, "os": os, "pathlib": pathlib, "json": json, "sys": sys,
+            "socket": types.SimpleNamespace(create_connection=connection), "stat": stat,
+            "_CAPTURE_TOKEN_DIR": directory,
+            "verify_target": guard.verify_target, "pin_target": guard.pin_target, "InstanceGuardError": guard.InstanceGuardError,
+            "running_enviouswispr_instances": lambda: guard.running_enviouswispr_instances(), "get_ax_app": lambda pid: application,
+            "get_attr_checked": native["get_attr_checked"], "element_pid": native["element_pid"],
+            "_raw_perform_action": ax_action, "_raw_set_attr": lambda *a: True,
+            "get_attr": lambda el, attr: ax_read(el, attr, None)[1],
+            "_iter_children_with_menubars": lambda el: ax_read(el, "AXChildren", None)[1] or [],
+            "element_frame": lambda el: el.get("_frame") if isinstance(el, dict) else None,
+            "NavigationError": settings_owner.NavigationError, "RouteError": settings_owner.RouteError,
+            "_sn": settings_owner,
+            "close_window": lambda: False, "begin_test": lambda *a: None, "end_test": lambda: None,
+            "_snapshot_log_size": lambda: 0, "get_clipboard_text": lambda: "",
+            "_wait_for_pipeline_completion": lambda *a: (True, "log", "completed", ["completed"], None, []),
+            "_extract_transcript_text": lambda *a: "known words", "tts": lambda *a: (_ for _ in ()).throw(AssertionError("unexpected TTS"))})
+        names = {"connect", "_ensure_connected", "_verify_element", "perform_action", "set_attr", "_ui_tables", "_ui_terms",
+                 "_audio_duration", "_defer_recording_signals", "_recording_interruptions", "_recording_control",
+                 "_read_capture_token", "_capture_snapshot", "_recording_state", "_require_idle_without_ui",
+                 "_stop_recording", "_reap_playback", "test_recording", "_report_result", "_ax", "nav",
+                 "_open_settings", "_cancel_menu", "_stored", "_input_read_uid",
+                 "read_input_choice", "select_input_choice", "restore_input_choice"}
+        compile_functions(root / "wispr_eyes.py", names, w.__dict__)
+        audio = {"w": w, "os": os, "json": json, "signal": Signals, "sys": sys, "time": clock,
+                 "subprocess": boundary, "fcntl": fcntl, "tempfile": tempfile, "stat": stat, "contextlib": contextlib,
+                 "SWITCH": sys.executable, "SILENT_DEVICE": "BlackHole 2ch", "RESTORE_FILE": str(directory / "restore.json")}
+        tree = ast.parse((root / "silent_audio.py").read_text())
+        names = {n.name for n in tree.body if isinstance(n, (ast.FunctionDef, ast.ClassDef))}
+        compile_functions(root / "silent_audio.py", names, audio)
+        audio["AlertSink"].FILE = str(directory / "alert.json")
+        clip = directory / "sample.wav"
+        with wave.open(str(clip), "wb") as fh:
+            fh.setnchannels(1); fh.setsampwidth(2); fh.setframerate(8000); fh.writeframes(b"\0\0" * 8000)
+        real_ax = settings_owner.AX
+        def adapter(**kwargs):
+            kwargs.update(sleep=sleep, clock=lambda: state["clock"], same=lambda a, b:
+                          a is b or (isinstance(a, dict) and isinstance(b, dict)
+                                     and a.get("_native_id") == b.get("_native_id")))
+            return real_ax(**kwargs)
+        with patch.object(settings_owner, "AX", side_effect=adapter), \
+             patch.object(ptt_binding, "read_domain", side_effect=lambda: {"preferredInputDeviceIDOverride": settings.input_uid}), \
+             patch.object(guard, "process_start", return_value=target.start), \
+             patch.object(guard, "running_enviouswispr_instances", side_effect=lambda: {"111": executable} if state["alive"] else {}):
+            yield types.SimpleNamespace(w=w, audio=audio, events=events, state=state, player=player,
+                                        devices=devices, originals=originals, clip=str(clip), signals=Signals, settings=settings)
+
+    def case(family, name, action, **options):
+        ran.append((family, name))
+        try:
+            with tempfile.TemporaryDirectory(prefix="ew-lifecycle-") as directory, \
+                 fixture(pathlib.Path(directory), **options) as f, contextlib.redirect_stdout(io.StringIO()):
+                action(f)
+        except BaseException as error:
+            failures.append(f"{family}/{name}: {error!r}")
+
+    def recording(f):
+        return f.w.test_recording(audio=f.clip, expect="known", timeout=0.2)
+    def failed_recording(f):
+        try:
+            recording(f)
+        except BaseException as error:
+            expected = next(message for option, message in [
+                ("start_raise", "Start failed after acting"), ("launch_fail", "playback launch failed"),
+                ("playback_fail", "audio playback failed"), ("hung", "audio playback exceeded"),
+                ("premature", "capture ended during playback"), ("stop_raise", "Stop failed after acting"),
+                ("signal_acquire", "signal"), ("signal_cleanup", "audio playback exceeded")]
+                if f.state.get(option))
+            require((isinstance(error, SystemExit) and error.code == 128 + f.signals.SIGTERM)
+                    if expected == "signal" else expected in str(error))
+            require(any(e[:2] == ("AX", "start") for e in f.events))
+            require(f.state["mode"] == "idle")
+            require(all(player.poll() is not None for player in f.player))
+            require(f.w._recording_cleanup_safe and not f.signals.mask and not f.signals.pending)
+            return
+        raise AssertionError("failed take was accepted")
+    case("recording", "normal natural playback", lambda f: require(recording(f) is True))
+    case("recording", "false Start that acted", lambda f: require(recording(f) is True), start_false=True)
+    case("recording", "raising Start that acted", failed_recording, start_raise=True)
+    case("recording", "playback launch failure", failed_recording, launch_fail=True)
+    case("recording", "playback nonzero", failed_recording, playback_fail=True)
+    case("recording", "playback timeout", failed_recording, hung=True)
+    case("recording", "premature capture", failed_recording, premature=True)
+    case("recording", "false Stop that acted", lambda f: require(recording(f) is True), stop_false=True)
+    case("recording", "raising Stop that acted", failed_recording, stop_raise=True)
+    case("signals", "interruption during acquisition", failed_recording, signal_acquire=True)
+    case("signals", "repeated interruption during cleanup", failed_recording, hung=True, signal_cleanup=True)
+    for name, options in [("unreadable", {"unreadable": True}), ("empty", {"empty": True}),
+                          ("contradictory", {"contradictory": True}), ("disabled", {"disabled": True}),
+                          ("replaced target", {"alive": False})]:
+        def preflight(f):
+            try: recording(f)
+            except RuntimeError: pass
+            else: raise AssertionError("invalid preflight accepted")
+            require(not any(e[0] == "launch" or e[:2] == ("AX", "start") for e in f.events))
+        case("state", name + " preflight refuses", preflight, **options)
+    case("state", "localized exact recording item", lambda f: require(recording(f) is True), german=True)
+    def round_trip(f):
+        route = f.audio["AudioRoute"](); require(route.apply() is True)
+        require(route.restore() is True and not route.applied)
+        require(f.devices == f.originals and not os.path.exists(route.FILE))
+    case("routes", "three choices round trip", round_trip)
+    def retry(f):
+        route = f.audio["AudioRoute"](); route.apply()
+        before = pathlib.Path(route.FILE).read_bytes(); f.state["restore_fail"] = True
+        try: route.restore()
+        except RuntimeError: pass
+        else: raise AssertionError("unlanded restore accepted")
+        require(route.applied and pathlib.Path(route.FILE).read_bytes() == before)
+        f.state["restore_fail"] = False; require(route.restore() is True)
+    case("routes", "partial restore remains retryable", retry)
+    def second_restore_failure(f):
+        route = f.audio["AudioRoute"](); route.apply()
+        before = pathlib.Path(route.FILE).read_bytes(); f.state["restore_fail_kind"] = "input"
+        try: route.restore()
+        except RuntimeError as error: require("did not land" in str(error))
+        else: raise AssertionError("second failed system restore was accepted")
+        require(f.devices["output"] == f.originals["output"] and route.applied)
+        require(pathlib.Path(route.FILE).read_bytes() == before)
+        f.state["restore_fail_kind"] = None; require(route.restore() is True)
+    case("routes", "second system restore failure retains completed first choice", second_restore_failure)
+    def app_failure(f, option):
+        route = f.audio["AudioRoute"](); route.apply()
+        before = pathlib.Path(route.FILE).read_bytes(); f.state[option] = True
+        try: route.restore()
+        except RuntimeError as error:
+            require("after acting" in str(error) if option == "app_raise" else "stored choice" in str(error))
+        else: raise AssertionError("failed app microphone restore was accepted")
+        require(route.applied and pathlib.Path(route.FILE).read_bytes() == before)
+        require(f.settings.input_uid == ("" if option == "app_raise" else "BlackHole2ch_UID"))
+        f.state[option] = False; require(route.restore() is True)
+    case("microphone", "app selection acts then raises and remains retryable", lambda f: app_failure(f, "app_raise"))
+    case("microphone", "app selection no-op fails actual UID verification", lambda f: app_failure(f, "app_noop"))
+    def microphone_transition(f, option):
+        route = f.audio["AudioRoute"](); route.apply()
+        before = pathlib.Path(route.FILE).read_bytes(); f.state[option] = True
+        if option == "recording_during_navigation":
+            f.settings.remembered_tab = "Engine"
+        index = len(f.events)
+        try: route.restore()
+        except RuntimeError as error: require("positively released capture" in str(error))
+        else: raise AssertionError("microphone selected after capture began in preparation")
+        require(f.settings.input_uid == "BlackHole2ch_UID" and route.applied)
+        require(pathlib.Path(route.FILE).read_bytes() == before)
+        require(not any(e[0] == "selection" and e[1] == "Auto" for e in f.events[index:]))
+    case("microphone", "recording during actual navigation refuses selection", lambda f: microphone_transition(f, "recording_during_navigation"))
+    case("microphone", "recording during picker preparation refuses selection", lambda f: microphone_transition(f, "recording_during_picker"))
+    def new_recording(f):
+        route = f.audio["AudioRoute"](); route.apply()
+        before = pathlib.Path(route.FILE).read_bytes(); index = len(f.events)
+        f.state["new_recording_after_output"] = True
+        try: route.restore()
+        except RuntimeError as error: require("positive non-recording" in str(error))
+        else: raise AssertionError("physical microphone reconnected during new capture")
+        switches = [e for e in f.events[index:] if e[0] == "switch"]
+        require(switches == [("switch", "output", "physical-o")])
+        require(route.applied and pathlib.Path(route.FILE).read_bytes() == before)
+    case("routes", "new recording blocks later microphone restore", new_recording)
+    def resolution_transition(f):
+        route = f.audio["AudioRoute"](); route.apply()
+        before = pathlib.Path(route.FILE).read_bytes(); index = len(f.events)
+        f.state["new_recording_during_resolution"] = True
+        f.state["resolution_anchor"] = index
+        try: route.restore()
+        except RuntimeError as error: require("positive non-recording" in str(error))
+        else: raise AssertionError("recording during device resolution allowed a physical switch")
+        require(not any(e[0] == "switch" for e in f.events[index:]))
+        require(route.applied and pathlib.Path(route.FILE).read_bytes() == before)
+    case("routes", "device resolution transition blocks final switch", resolution_transition)
+    def primary_cancel(f):
+        try: recording(f)
+        except RuntimeError as error:
+            require(str(error) == "Start failed after acting")
+            require(any("menu cancel failed" in note for note in error.__notes__))
+            require(f.state["mode"] == "idle" and f.w._recording_cleanup_safe)
+        else: raise AssertionError("original Start failure did not escape")
+    case("errors", "Start error survives menu cancellation error", primary_cancel, start_raise=True, cancel_raise=True)
+    def read_cancel(f):
+        try: recording(f)
+        except RuntimeError as error:
+            require("attribute AXTitle is unreadable" in str(error))
+            require(any("menu cancel failed" in note for note in error.__notes__))
+        else: raise AssertionError("original read error did not escape")
+        require(not any(e[0] == "launch" or e[:2] == ("AX", "start") for e in f.events))
+    case("errors", "read error survives menu cancellation error", read_cancel,
+         title_error=True, cancel_raise=True, cancel_any=True)
+    def cancel_only(f):
+        try: recording(f)
+        except RuntimeError as error: require(str(error) == "menu cancel failed")
+        else: raise AssertionError("cancellation failure was swallowed")
+        require(not any(e[0] == "launch" or e[:2] == ("AX", "start") for e in f.events))
+    case("errors", "standalone menu cancellation error escapes", cancel_only, cancel_raise=True, cancel_any=True)
+    def replay(f):
+        route = f.audio["AudioRoute"](); route.apply()
+        f.audio["_release_record_lock"](route._lock); route._lock = None
+        f.state["mode"] = "recording"
+        require(f.audio["_replay_recovery"](route.FILE) is True)
+        stop = next(i for i, e in enumerate(f.events) if e[:2] == ("AX", "stop"))
+        physical = [i for i, e in enumerate(f.events) if e[0] == "switch" and e[2].startswith("physical")]
+        require(physical and all(i > stop for i in physical))
+    case("recovery", "active capture stops before replay", replay)
+    def cli(f, expected):
+        tree = ast.parse((root / "silent_audio.py").read_text())
+        entry = tree.body[-1]
+        require(isinstance(entry, ast.If))
+        def exit_(code): raise SystemExit(code)
+        original = {k: f.audio.get(k) for k in ("__name__", "sys")}
+        f.audio.update({"__name__": "__main__", "sys": types.SimpleNamespace(
+            argv=["silent_audio.py", "restore"], stderr=io.StringIO(), exit=exit_)})
+        try:
+            exec(compile(ast.Module(body=[entry], type_ignores=[]), "silent_audio.py CLI", "exec"), f.audio)
+        except SystemExit as error:
+            require(error.code == expected)
+        else:
+            raise AssertionError("CLI did not report a terminal exit")
+        finally:
+            f.audio.update(original)
+    def cli_recording(f):
+        route = f.audio["AudioRoute"](); route.apply()
+        f.audio["_release_record_lock"](route._lock); route._lock = None
+        f.state["mode"] = "recording"
+        cli(f, 0)
+        require(f.state["mode"] == "idle" and f.devices == f.originals and not os.path.exists(route.FILE))
+    case("recovery", "actual CLI stops capture and restores", cli_recording)
+    def cli_unknown(f):
+        route = f.audio["AudioRoute"](); route.apply()
+        before = pathlib.Path(route.FILE).read_bytes()
+        f.audio["_release_record_lock"](route._lock); route._lock = None
+        f.state["query_timeout"] = True; index = len(f.events)
+        cli(f, 1)
+        require(pathlib.Path(route.FILE).read_bytes() == before and not any(e[0] == "switch" for e in f.events[index:]))
+    case("recovery", "actual CLI refuses unknown state", cli_unknown)
+    def publication(f):
+        path = str(pathlib.Path(f.clip).with_name("publication.json"))
+        barrier = threading.Barrier(8)
+        published, observed = threading.Event(), threading.Event()
+        real_link = os.link
+        observations = []
+        def link(source, destination):
+            barrier.wait(timeout=5)
+            real_link(source, destination)
+            published.set()
+            require(observed.wait(timeout=5))
+        def reader():
+            require(published.wait(timeout=5))
+            try:
+                observations.append(json.loads(pathlib.Path(path).read_bytes()))
+            finally:
+                observed.set()
+        def publish(n):
+            try: return f.audio["_publish_recovery"](path, {"winner": n, "complete": "x" * 4096})
+            except FileExistsError: return None
+        with patch.object(os, "link", side_effect=link), concurrent.futures.ThreadPoolExecutor(max_workers=9) as pool:
+            reading = pool.submit(reader)
+            results = list(pool.map(publish, range(8)))
+            reading.result(timeout=5)
+        require(sum(result is not None for result in results) == 1)
+        data = json.loads(pathlib.Path(path).read_bytes()); require(type(data["winner"]) is int)
+        require(observations == [data] and data["complete"] == "x" * 4096)
+        require(stat.S_IMODE(os.stat(path).st_mode) == 0o600)
+    case("publication", "exclusive concurrent complete winner", publication)
+    def bad_audio(f):
+        for path in [f.clip + "-missing", str(pathlib.Path(f.clip).with_name("invalid.wav"))]:
+            if not path.endswith("-missing"):
+                pathlib.Path(path).write_bytes(b"invalid audio")
+            try: f.w.test_recording(audio=path, expect="known")
+            except RuntimeError: pass
+            else: raise AssertionError("unreadable/unknown-duration audio accepted")
+        require(not any(e[0] == "launch" or e[:2] == ("AX", "start") for e in f.events))
+    case("audio", "unknown duration and missing file refuse", bad_audio)
+    case("audio", "intentional silence probe", lambda f: require(
+        f.w.test_recording(sentence=" ", expect="known", hold=0.1, timeout=0.2) is True))
+    def unsafe_stop(f):
+        try: recording(f)
+        except RuntimeError as error: require("did not stop" in str(error))
+        else: raise AssertionError("Stop without idle accepted")
+        require(f.state["mode"] == "recording" and not f.w._recording_cleanup_safe)
+    case("recording", "Stop true without idle stays unsafe", unsafe_stop, stop_noop=True)
+    def unreaped(f):
+        route = f.audio["AudioRoute"](); route.apply()
+        try: recording(f)
+        except RuntimeError as error: require("audio playback exceeded" in str(error))
+        else: raise AssertionError("unreaped player accepted")
+        require(not f.w._recording_cleanup_safe and f.player[0].poll() is None)
+        require(("terminate",) in f.events and ("kill",) in f.events)
+        before = pathlib.Path(route.FILE).read_bytes(); index = len(f.events)
+        try: route.restore()
+        except RuntimeError: pass
+        else: raise AssertionError("restore after failed reap accepted")
+        require(pathlib.Path(route.FILE).read_bytes() == before and route.applied)
+        require(not any(e[0] == "switch" for e in f.events[index:]))
+    case("recording", "failed reap forbids restoration", unreaped, unreapable=True)
+    def existing(f):
+        route = f.audio["AudioRoute"](); pathlib.Path(route.FILE).write_bytes(b"previous recovery")
+        try: route.apply()
+        except FileExistsError: pass
+        else: raise AssertionError("existing recovery was overwritten")
+        require(pathlib.Path(route.FILE).read_bytes() == b"previous recovery")
+        require(not any(e[0] == "switch" for e in f.events))
+    case("publication", "existing record refuses before switches", existing)
+    def active_publisher(f):
+        route = f.audio["AudioRoute"](); route.apply()
+        before = pathlib.Path(route.FILE).read_bytes(); index = len(f.events)
+        try: f.audio["_replay_recovery"](route.FILE)
+        except BlockingIOError: pass
+        else: raise AssertionError("replay raced an active publisher")
+        require(pathlib.Path(route.FILE).read_bytes() == before and len(f.events) == index)
+        require(route.restore() is True)
+    case("publication", "active owner excludes replay", active_publisher)
+    def blocked_replay(f, option):
+        route = f.audio["AudioRoute"](); route.apply()
+        before = pathlib.Path(route.FILE).read_bytes()
+        f.audio["_release_record_lock"](route._lock); route._lock = None
+        f.state[option] = False if option == "alive" else True
+        index = len(f.events)
+        try: f.audio["_replay_recovery"](route.FILE)
+        except RuntimeError: pass
+        else: raise AssertionError("unsafe recovery accepted")
+        require(pathlib.Path(route.FILE).read_bytes() == before)
+        require(not any(e[0] == "switch" for e in f.events[index:]))
+    case("recovery", "unknown state retains record", lambda f: blocked_replay(f, "query_timeout"))
+    case("recovery", "changed target retains record", lambda f: blocked_replay(f, "alive"))
+    def stale_owner(f):
+        route = f.audio["AudioRoute"](); route.apply()
+        pathlib.Path(route.FILE).write_bytes(b"changed owner record"); index = len(f.events)
+        try: route.restore()
+        except RuntimeError: pass
+        else: raise AssertionError("changed recovery ownership accepted")
+        require(pathlib.Path(route.FILE).read_bytes() == b"changed owner record")
+        require(not any(e[0] == "switch" for e in f.events[index:]))
+    case("recovery", "changed record is neither restored nor removed", stale_owner)
+    def malformed_recovery(f):
+        path = f.audio["AudioRoute"].FILE
+        pathlib.Path(path).write_text(json.dumps({"output": "old legacy device"}))
+        before = pathlib.Path(path).read_bytes()
+        cli(f, 1)
+        require(pathlib.Path(path).read_bytes() == before and not any(e[0] == "switch" for e in f.events))
+    case("recovery", "legacy recovery refuses without identity", malformed_recovery)
+    def alert(f):
+        sink = f.audio["AlertSink"](); require(sink.apply() is True)
+        require(sink.restore() is True and f.devices == f.originals)
+    case("routes", "alert sink uses safe round trip", alert)
+    def interrupted_apply(f):
+        route = f.audio["AudioRoute"](); route.install_restore_handlers()
+        try: route.apply()
+        except SystemExit as error: require(error.code == 128 + f.signals.SIGTERM)
+        else: raise AssertionError("interruption reported success")
+        require(f.devices == f.originals and not route.applied and not os.path.exists(route.FILE))
+        require(not f.signals.mask and not f.signals.pending)
+    case("signals", "partial application unwinds safely", interrupted_apply, signal_apply=True)
+    def interrupted_restore(f):
+        route = f.audio["AudioRoute"](); route.install_restore_handlers(); route.apply()
+        f.state["signal_restore"] = True
+        try: route.restore()
+        except SystemExit as error: require(error.code == 128 + f.signals.SIGTERM)
+        else: raise AssertionError("pending interruption reported success")
+        require(f.devices == f.originals and not route.applied and not os.path.exists(route.FILE))
+        require(not f.signals.mask and not f.signals.pending)
+    case("signals", "restore finishes before pending interruption", interrupted_restore)
+    def failed_apply(f, option):
+        f.state[option] = True
+        try: f.audio["AudioRoute"]().apply()
+        except RuntimeError: pass
+        else: raise AssertionError("invalid routing accepted")
+        require(not any(e[0] == "switch" for e in f.events))
+    case("routes", "unreadable route refuses", lambda f: failed_apply(f, "route_unreadable"))
+    case("routes", "ambiguous silent device refuses", lambda f: failed_apply(f, "duplicate"))
+    def native_mask(f):
+        owner = {"contextlib": contextlib, "signal": signal_api, "subprocess": subprocess}
+        compile_functions(root / "wispr_eyes.py", {"_defer_recording_signals", "_reap_playback"}, owner)
+        before = signal_api.pthread_sigmask(signal_api.SIG_BLOCK, set())
+        previous = {sig: signal_api.getsignal(sig) for sig in (signal_api.SIGINT, signal_api.SIGTERM, signal_api.SIGHUP)}
+        process = None
+        try:
+            with owner["_defer_recording_signals"]():
+                process = subprocess.Popen([sys.executable, "-c",
+                    "import signal,json; print(json.dumps(sorted(int(s) for s in signal.pthread_sigmask(signal.SIG_BLOCK,set()))))"],
+                    stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+                out, err = process.communicate(timeout=5)
+                require(process.returncode == 0 and not err and set(json.loads(out)) == {int(s) for s in before})
+        finally:
+            with owner["_defer_recording_signals"]():
+                owner["_reap_playback"](process, 5)
+        require(signal_api.pthread_sigmask(signal_api.SIG_BLOCK, set()) == before)
+        require(all(signal_api.getsignal(sig) == handler for sig, handler in previous.items()))
+    case("signals", "real spawned process retains caller signal mask", native_mask)
+    case("query", "fragmented complete reply is accepted", lambda f: require(f.w._recording_state(target) == "idle"), fragment_reply=True)
+    case("query", "idle without released resources is stopping", lambda f: require(f.w._recording_state(target) == "stopping"), released=False)
+    case("query", "released delivery is non-capturing", lambda f: require(f.w._recording_state(target) == "idle"), raw_phase="delivering", released=True)
+    case("query", "either driver's live phase prohibits idle", lambda f: require(f.w._recording_state(target) == "recording"), other_phase="live", other_released=False)
+    valid_reply = "OK v=1 pid=111 parakeet_phase=idle parakeet_released=true whisperkit_phase=idle whisperkit_released=true backend=parakeet\n"
+    def refuse_query(f):
+        try: f.w._recording_state(target)
+        except (RuntimeError, OSError): return
+        raise AssertionError("invalid capture query accepted")
+    for name, reply in [
+        ("missing newline", valid_reply.rstrip("\n")), ("premature EOF", ""),
+        ("authentication failure", "ERR auth\n"), ("duplicate field", valid_reply.replace("v=1", "v=1 v=1")),
+        ("wrong PID", valid_reply.replace("pid=111", "pid=222")), ("wrong version", valid_reply.replace("v=1", "v=2")),
+        ("missing field", valid_reply.replace("whisperkit_released=true ", "")),
+        ("unknown phase", valid_reply.replace("parakeet_phase=idle", "parakeet_phase=unknown")),
+        ("unknown backend", valid_reply.replace("backend=parakeet", "backend=other")),
+        ("invalid Boolean", valid_reply.replace("parakeet_released=true", "parakeet_released=1")),
+        ("extra reply", valid_reply + valid_reply), ("oversized reply", "x" * 513),
+    ]:
+        case("query", name + " refuses", refuse_query, query_reply=reply)
+    case("query", "timeout refuses", refuse_query, query_timeout=True)
+    case("query", "changed launch token refuses", refuse_query, change_token=True)
+    case("query", "changed native identity refuses", refuse_query, change_identity=True)
+    case("query", "unreleased delivery is contradictory", refuse_query, raw_phase="delivering", released=False)
+    case("query", "Stop waits through stopping and released delivery", lambda f: require(
+        f.w._stop_recording(target, 0.2) is True), query_sequence=[("stopping", False), ("delivering", True)])
+    for failure in failures: print("FAIL " + failure)
+    print("lifecycle families: " + json.dumps(dict(collections.Counter(family for family, _ in ran)), sort_keys=True))
+    print(f"lifecycle controls: {len(ran)} cases, {len(failures)} failures")
+    return 1 if failures else 0
+
+
 if __name__ == "__main__":
+    if "--lifecycle-self-test" in sys.argv:
+        sys.exit(_lifecycle_self_test())
+    if "--identity-self-test" in sys.argv:
+        from instance_guard import run_identity_cases
+        failures, total = run_identity_cases()
+        for failure in failures:
+            print("FAIL " + failure)
+        sys.exit(1 if failures else 0)
     if "--self-test" in sys.argv:
         sys.exit(_self_test())
     sys.exit(main())
