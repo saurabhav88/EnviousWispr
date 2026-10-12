@@ -1553,6 +1553,34 @@ struct ParakeetUpgradePolicyTests {
     #expect(next.selection?.model == .ultra, "row A for the admitted Ultra")
   }
 
+  /// Chunk 12 Codex ruling: the background fetch's admission can resume on the main actor after
+  /// a newer selection point already re-decided the model. Here that selection takes the admitted
+  /// Ultra, fails, and falls back to v3. When this fails, v3's publication re-opens the settled
+  /// choice and the app tries Ultra again by itself.
+  @Test("A3: an admission that lands after a newer selection point offers nothing")
+  func admissionAfterNewerSelectionOffersNothing() async throws {
+    let rig = try await Self.rig(v3: true, ultra: false, onboarding: true)
+    Self.enqueueUltra(rig)
+    let admitted = OutcomeSignal(.backgroundAdmitted)
+    var owed = 0
+    rig.coordinator.onActivationOwed = { owed += 1 }
+    rig.coordinator.onOutcome = { [coordinator = rig.coordinator] outcome in
+      // The newer selection point lands in the hop between admission and the offer.
+      if outcome == .backgroundAdmitted { coordinator.markSelectionPoint() }
+      admitted.observe(outcome)
+    }
+    _ = try await rig.coordinator.prepareLoad()
+    await admitted.wait()
+    let ultra = try await rig.coordinator.prepareLoad()
+    #expect(ultra.selection?.model == .ultra, "the newer selection takes the admitted Ultra")
+    #expect(Self.physicalLoad(rig, succeeds: false) == .loaded)
+    #expect(await rig.coordinator.handleLoadFailure(ultra, error: VendorLoadFailed()) == .reload)
+    #expect(rig.selection.current?.model == .v3, "A-fail")
+    #expect(Self.physicalLoad(rig) == .loaded, "v3 publishes")
+    #expect(owed == 0, "the settled choice is not re-opened")
+    #expect(rig.coordinator.isActivationOwed == false)
+  }
+
   @Test("A3: a decline after admission withdraws the owed activation")
   func declineWithdrawsOwedActivation() async throws {
     let rig = try await Self.rig(v3: true, ultra: false, onboarding: true)

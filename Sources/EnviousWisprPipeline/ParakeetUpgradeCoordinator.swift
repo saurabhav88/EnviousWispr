@@ -1289,8 +1289,15 @@ extension ParakeetUpgradeCoordinator {
   /// that already chose Ultra owes nothing. The admission is remembered even when v3 has not
   /// published yet (a cached Ultra can be admitted before v3's launch load finishes):
   /// `loadPublished` offers it once v3 serves, and `isActivationOwed` re-checks the rest.
-  private func offerAdmittedActivation(generation: UInt64) {
-    guard isCurrentBackground(generation) else { return }
+  /// Bound to the selection that started the background work: a fetch that finishes after a
+  /// newer selection point (which re-decided the model, perhaps Ultra then A-fail back to v3)
+  /// offers nothing, so a settled choice is never re-opened automatically.
+  private func offerAdmittedActivation(generation: UInt64, selectionPoint: UInt64) {
+    guard isCurrentBackground(generation),
+      selectionPoint == selectionPointsMarked,
+      selectionPoint == frozenSelectionPoint,
+      frozen?.model == .v3
+    else { return }
     activationOwedGeneration = generation
     if isActivationOwed { onActivationOwed?() }
   }
@@ -1302,12 +1309,13 @@ extension ParakeetUpgradeCoordinator {
         backgroundFetch = nil
       }
     }
+    let selectionPoint = frozenSelectionPoint
     guard let target, isCurrentBackground(generation), backgroundEligible(target) else { return }
     let admitted = await target.delivery.isAdmitted()
     guard isCurrentBackground(generation), backgroundEligible(target) else { return }
     // A Resume after a Cancel that landed once the bytes were already admitted.
     if admitted {
-      offerAdmittedActivation(generation: generation)
+      offerAdmittedActivation(generation: generation, selectionPoint: selectionPoint)
       return
     }
     emit(.backgroundStarted)
@@ -1321,7 +1329,7 @@ extension ParakeetUpgradeCoordinator {
     case .admitted:
       setBackgroundUpgrade(.idle)
       emit(.backgroundAdmitted)
-      offerAdmittedActivation(generation: generation)
+      offerAdmittedActivation(generation: generation, selectionPoint: selectionPoint)
     case .failed(let failure) where failure.reason == .insufficientDisk:
       setBackgroundUpgrade(.deferredDisk)
       emit(.deferredDisk)
