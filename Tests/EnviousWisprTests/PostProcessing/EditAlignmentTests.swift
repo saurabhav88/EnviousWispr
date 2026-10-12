@@ -1,3 +1,4 @@
+import EnviousWisprCore
 import Foundation
 import Testing
 
@@ -155,6 +156,52 @@ import Testing
     // Decoration-only edits are dropped with their own reason.
     let deco = EditAlignment.align(pasted: "see ( it", edited: "see ) it")
     #expect(deco.runs.isEmpty && deco.dropped.map(\.reason) == [.decorationOnly])
+  }
+
+  /// What `ObservedCorrectionWatcher.judgeBurst` hands the judge for these surviving runs: the
+  /// cores, numbered from 1. Building the request is the real consumer check.
+  private func request(for runs: [EditAlignment.Run]) throws -> CorrectionJudgeRequest {
+    let candidates = runs.enumerated().map { index, run in
+      CorrectionCandidate(
+        id: index + 1, original: run.coreOriginal, replacement: run.coreReplacement)
+    }
+    return try CorrectionJudgeRequest(candidates: candidates, context: "ctx", language: "en")
+  }
+
+  @Test(
+    "a replacement that is only a zero-width space is dropped before the judge, which would refuse it (#3470)"
+  )
+  func blankRunIsDroppedNotRefusedLater() throws {
+    // The premise: the judge request trims with CharacterSet, and Character.isWhitespace disagrees.
+    let zeroWidth = "\u{200B}"
+    #expect(CharacterSet.whitespacesAndNewlines.contains("\u{200B}".unicodeScalars.first!))
+    #expect(Character(zeroWidth).isWhitespace == false)
+    let result = EditAlignment.align(pasted: "a b c", edited: "a \(zeroWidth) c")
+    #expect(result.runs.isEmpty)
+    #expect(result.dropped.map(\.reason) == [.decorationOnly])
+    // Whatever survives must build a request. On the parent this run survived and the request
+    // threw emptyRun(id: 1).
+    if !result.runs.isEmpty { _ = try request(for: result.runs) }
+  }
+
+  @Test("a blank edit beside a real fix keeps the real fix for the judge (#3470)")
+  func blankRunDoesNotCostItsSibling() throws {
+    let result = EditAlignment.align(
+      pasted: "meet Sarah and Tom now", edited: "meet Saira and \u{200B} now")
+    #expect(result.runs.map { "\($0.original)→\($0.replacement)" } == ["Sarah→Saira"])
+    #expect(result.dropped.map(\.reason) == [.decorationOnly])
+    // On the parent both runs survived, the request threw emptyRun(id: 2), and Sarah→Saira was lost.
+    let built = try request(for: result.runs)
+    #expect(built.candidates.map(\.replacement) == ["Saira"])
+  }
+
+  @Test("a visible fix and an invisible scalar the judge does not trim are unaffected (#3470)")
+  func visibleAndUntrimmedScalarsKeepTheirBehaviour() throws {
+    #expect(runs("meet Sarah now", "meet Saira now") == ["Sarah→Saira"])
+    // U+FEFF is trimmed by neither predicate: producer and judge request still agree it is a run.
+    let bom = EditAlignment.align(pasted: "a b c", edited: "a \u{FEFF} c")
+    #expect(bom.dropped.isEmpty)
+    _ = try request(for: bom.runs)
   }
 
   @Test(

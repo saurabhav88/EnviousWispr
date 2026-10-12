@@ -67,6 +67,15 @@ struct CorrectionJudgingContractTests {
     #expect(throws: CorrectionJudgeRequestError.unchangedRun(id: 1)) {
       try request([CorrectionCandidate(id: 1, original: "same ", replacement: "same")])
     }
+    // A zero-width space is blank to the request (CharacterSet trims it); the producer mirrors this
+    // through `runText` (#3470).
+    #expect(throws: CorrectionJudgeRequestError.emptyRun(id: 1)) {
+      try request([CorrectionCandidate(id: 1, original: "Sarah", replacement: "\u{200B}")])
+    }
+    #expect(throws: CorrectionJudgeRequestError.unchangedRun(id: 1)) {
+      try request([CorrectionCandidate(id: 1, original: "Sarah", replacement: "Sarah\u{200B}")])
+    }
+    #expect(CorrectionJudgeRequest.runText(" \u{200B}x\n") == "x")
     let long = String(repeating: "x", count: CorrectionJudgeRequest.maxContextUTF16 + 1)
     #expect(throws: CorrectionJudgeRequestError.contextTooLong(long.utf16.count)) {
       try request([ok], context: long)

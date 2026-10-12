@@ -1,3 +1,4 @@
+import EnviousWisprCore
 import Foundation
 
 // MARK: - Edit alignment (#996 §3.1 step 5)
@@ -167,8 +168,10 @@ package enum EditAlignment {
     if originals.count == 1, editeds.count == 1, containsCJK(o), containsCJK(r) {
       return .cjkSingleToken
     }
-    let co = lexicalCore(o)
-    let cr = lexicalCore(r)
+    // The judge request refuses a run whose trimmed text is empty or unchanged. Test the cores with
+    // that same definition so such a run is dropped here, not sent and refused (#3470).
+    let co = CorrectionJudgeRequest.runText(lexicalCore(o))
+    let cr = CorrectionJudgeRequest.runText(lexicalCore(r))
     if co.isEmpty || cr.isEmpty || co == cr { return .decorationOnly }
     return nil
   }
