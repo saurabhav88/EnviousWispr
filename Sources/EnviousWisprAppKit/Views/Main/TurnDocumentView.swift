@@ -205,15 +205,18 @@ private struct TurnRowView: View {
 /// small layouts instead of one that re-lays out on every scroll (finding 5, the lag half).
 ///
 /// The one home for how a marked-up passage is selectable and spoken, shared by History's turn
-/// rows and Transcribe a File's passages. The marks are visual, so a screen reader gets the spoken
-/// form ("Removed: um.") instead, through `accessibilityRepresentation`.
+/// rows and Transcribe a File's passages. Text selection stays enabled on the visible text, and the
+/// marks (colour and strikethrough say nothing aloud) are spoken as words ("Removed: um.") through
+/// `accessibilityRepresentation`.
 ///
-/// **Never put `.accessibilityLabel` on this text beside `.textSelection(.enabled)`** (#3573):
-/// that pairing crashed the app with a stack overflow in macOS accessibility label resolution (Sentry
-/// ENVIOUSWISPR-6W and 6X), on the first
-/// accessibility read after the Marked up view appeared (reproduced on unchanged main, 3 of 3
-/// launches; label alone, selection alone and the representation below did not crash, 2 of 2
-/// each). The representation keeps selection and the spoken marks.
+/// #3573: with the dev app launched through LaunchServices, an outside accessibility client reading
+/// History's two-speaker Marked up view crashed unchanged main (selection plus a custom
+/// `.accessibilityLabel` on the same text) in 3 of 3 launches. Label alone, selection alone and
+/// selection plus this representation each had no crash in 2 of 2 launches; putting the label
+/// before the selection still crashed 2 of 2. This view had no crash in 5 of 5 launches and exposed
+/// "Hello Removed: um. world today.". A direct executable launch did not reproduce the crash on
+/// unchanged main. Not live-verified: Transcribe a File, and VoiceOver focus, selection
+/// announcements and copy behaviour.
 struct MarkedUpPassageText: View {
   let segments: [WordDiff.Segment]
 

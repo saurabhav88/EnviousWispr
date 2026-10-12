@@ -24,6 +24,8 @@ struct MarkedUpPassageAccessibilityFreezeTests {
   private final class Visitor: SyntaxVisitor {
     private(set) var markedUpTextCalls: [String] = []
     private(set) var passageModifiers: Set<String> = []
+    private(set) var passageSelectionArguments: [String] = []
+    private(set) var passageSpokenCalls = 0
     private(set) var passageViewCalls = 0
     private var typeStack: [String] = []
 
@@ -39,6 +41,13 @@ struct MarkedUpPassageAccessibilityFreezeTests {
         if name == "markedUpText" { markedUpTextCalls.append(typeStack.last ?? "<top level>") }
         if typeStack.last == "MarkedUpPassageText", member.base != nil {
           passageModifiers.insert(name)
+          if name == "textSelection" {
+            passageSelectionArguments.append(
+              node.arguments.map { $0.expression.trimmedDescription }.joined(separator: ","))
+          }
+        }
+        if typeStack.last == "MarkedUpPassageText", name == "markedUpAccessibilityText" {
+          passageSpokenCalls += 1
         }
       }
       if let ref = node.calledExpression.as(DeclReferenceExprSyntax.self),
@@ -50,7 +59,9 @@ struct MarkedUpPassageAccessibilityFreezeTests {
     }
   }
 
-  private static func scan() throws -> (calls: [String], modifiers: Set<String>, uses: Int) {
+  private static func scan() throws -> (
+    calls: [String], modifiers: Set<String>, uses: Int, selection: [String], spoken: Int
+  ) {
     let root = RepoRoot.sourceURL("Sources/EnviousWisprAppKit")
     guard
       let enumerator = FileManager.default.enumerator(
@@ -59,6 +70,8 @@ struct MarkedUpPassageAccessibilityFreezeTests {
     var calls: [String] = []
     var modifiers: Set<String> = []
     var uses = 0
+    var selection: [String] = []
+    var spoken = 0
     var scanned = 0
     while let url = enumerator.nextObject() as? URL {
       guard url.pathExtension == "swift" else { continue }
@@ -68,10 +81,12 @@ struct MarkedUpPassageAccessibilityFreezeTests {
       calls += visitor.markedUpTextCalls
       modifiers.formUnion(visitor.passageModifiers)
       uses += visitor.passageViewCalls
+      selection += visitor.passageSelectionArguments
+      spoken += visitor.passageSpokenCalls
     }
     // Fail closed: scanning nothing must not read as a pass.
     #expect(scanned > 100, "expected to scan the whole app module, scanned \(scanned) files")
-    return (calls, modifiers, uses)
+    return (calls, modifiers, uses, selection, spoken)
   }
 
   @Test("every marked-up text is drawn inside MarkedUpPassageText, and nowhere else")
@@ -86,7 +101,9 @@ struct MarkedUpPassageAccessibilityFreezeTests {
   func safePairing() throws {
     let result = try Self.scan()
     #expect(result.modifiers.contains("textSelection"))
+    #expect(result.selection == [".enabled"], "selection must stay enabled; found \(result.selection)")
     #expect(result.modifiers.contains("accessibilityRepresentation"))
+    #expect(result.spoken == 1, "the representation must speak the marks; found \(result.spoken) calls")
     #expect(
       result.modifiers.isDisjoint(with: ["accessibilityLabel", "accessibilityValue"]),
       "a label or value beside textSelection crashed the app (#3573); found \(result.modifiers)")
