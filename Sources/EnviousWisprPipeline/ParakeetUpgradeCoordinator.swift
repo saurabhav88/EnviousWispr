@@ -643,7 +643,9 @@ extension ParakeetUpgradeCoordinator {
     guard isCurrentLoad(request) else { return }
     let priorModel = servingRequest?.model
     servingRequest = request
-    needsExplicitRetry = false
+    // Only a loaded Ultra settles Ultra's Try again; v3 serving while Ultra's budget is
+    // spent keeps it (nothing else fetches or loads Ultra until the explicit Retry).
+    if request.model == .ultra { needsExplicitRetry = false }
     guard request.model == .ultra, let target else {
       onUsabilityMayHaveChanged?()
       // A3: an admission that landed before this v3 load published is owed now.

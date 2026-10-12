@@ -134,6 +134,41 @@ struct ParakeetUltraLanguageLockRealBoundaryTests {
     }
   }
 
+  /// Chunk 12 Codex r3: the two tests above lock each clip to its own language, so they would
+  /// pass with the lock ignored if Auto already returns the right alphabet. Here the SAME
+  /// Russian audio is locked to Russian and to Greek. Measured on this clip: the Greek lock
+  /// suppresses every Cyrillic token and leaves only digits and punctuation, so the assertion is
+  /// "no Cyrillic letter, and different from the Russian lock", not "Greek letters". When this
+  /// fails, a language chosen in Settings does not constrain Ultra's output at all.
+  @Test(
+    "different locks constrain the same audio on both paths",
+    .enabled(if: ParakeetRealBoundaryFixture.ultraIsInstalled),
+    .tags(.realBoundary))
+  func sameAudioDifferentLocks() async throws {
+    let outputs = try await Self.withUltra { backend in
+      let samples = try Self.clip("ru")
+      var outputs: [String: (batch: String, live: String)] = [:]
+      for language in ["ru", "el"] {
+        let batch = try await backend.transcribe(
+          audioSamples: samples, options: TranscriptionOptions(language: language)
+        ).text
+        let live = try await Self.stream(samples, language: language, on: backend)
+        outputs[language] = (batch, live)
+      }
+      return outputs
+    }
+    let ru = try #require(outputs["ru"])
+    let el = try #require(outputs["el"])
+    #expect(Self.isOnly(.cyrillic, ru.batch), "ru batch: \(ru.batch)")
+    #expect(Self.isOnly(.cyrillic, ru.live), "ru live: \(ru.live)")
+    for (path, text) in [("batch", el.batch), ("live", el.live)] {
+      let cyrillic = Self.letters(text).filter { (0x0400...0x04FF).contains($0.value) }
+      #expect(cyrillic.isEmpty, "el \(path) kept Cyrillic: \(text)")
+    }
+    #expect(el.batch != ru.batch, "the Greek lock changed the batch output")
+    #expect(el.live != ru.live, "the Greek lock changed the live output")
+  }
+
   @Test(
     "Auto and an unsupported code both decode without a lock",
     .enabled(if: ParakeetRealBoundaryFixture.ultraIsInstalled),
