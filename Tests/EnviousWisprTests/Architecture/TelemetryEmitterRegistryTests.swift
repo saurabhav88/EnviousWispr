@@ -191,7 +191,7 @@ struct TelemetryEmitterRegistryTests {
   /// version-scoped repeats; one row per install in the expected case. No take_id; our manifest's
   /// model names and an 8-character revision, closed outcome and fallback strings, Int attempts
   /// and load_ms, a Bool. No existing row describes an upgrade transition. Reader named on its
-  /// graded registry row (chunk 9c).
+  /// graded registry row (a PostHog query on request; no standing report).
   static let sitesFingerprint =
     "49d1db9a722508919b06c82b82d0e759c47b0657c6831bf5659bdad793477d90"
   static let ungradedFingerprint =
