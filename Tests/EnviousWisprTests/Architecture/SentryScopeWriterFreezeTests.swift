@@ -39,8 +39,12 @@ struct SentryScopeWriterFreezeTests {
   /// #3438: one new breadcrumb producer, `PolishSetupPromptEvent.send` (stage `polish_setup`,
   /// message `prompt_<action>`, data surface/problem/provider): closed enum values only, no
   /// key, model name or text. The other 69 lines hash to the previous value.
+  /// #3546 §3.7 T3: one new scope writer, `writeASRModelScope` (setTag and removeTag): seven
+  /// model tags from our own manifests (model name, 8-character revision, variant) and a closed
+  /// load phase, every value through `SentryEventSanitizer.redactString`, absent values removed.
+  /// Written only by `ASRModelScopeOwner` through `updateASRModelScope`.
   static let inventoryFingerprint =
-    "39c1c978e0947b937c42d6c05b84ed54ef54431d8ab1bafa5951d12775d39062"
+    "88eb0e2baf4ed9a81f12d5954ebda39b9f5914a5693a24de0021ce5ec74cd218"
 
   struct Site: Hashable, Comparable {
     let file: String

@@ -85,6 +85,34 @@ public enum SentryBreadcrumb {
     scope.setTag(value: SentryEventSanitizer.redactString(backend), key: "asr.backend")
   }
 
+  /// #3546 §3.7 T3: the requested model, its load phase and the serving model, written
+  /// only by `ASRModelScopeOwner`. Each absent value REMOVES its tag (never a sentinel), so
+  /// a crash report names only what was true when it was captured.
+  package static func updateASRModelScope(_ snapshot: ASRModelScopeOwner.Snapshot) {
+    SentrySDK.configureScope { scope in
+      Self.writeASRModelScope(snapshot, to: scope)
+    }
+  }
+
+  nonisolated static func writeASRModelScope(
+    _ snapshot: ASRModelScopeOwner.Snapshot, to scope: Scope
+  ) {
+    func write(_ value: String?, _ key: String) {
+      if let value {
+        scope.setTag(value: SentryEventSanitizer.redactString(value), key: key)
+      } else {
+        scope.removeTag(key: key)
+      }
+    }
+    write(snapshot.requested?.name, "asr.model_requested")
+    write(snapshot.requested?.revision, "asr.model_requested_revision")
+    write(snapshot.requested?.variant, "asr.model_requested_variant")
+    write(snapshot.phase?.rawValue, "asr.load_phase")
+    write(snapshot.serving?.name, "asr.model")
+    write(snapshot.serving?.revision, "asr.model_revision")
+    write(snapshot.serving?.variant, "asr.model_variant")
+  }
+
   /// Update the audio route tag. Called when capture route is resolved or changes.
   /// Values are low-cardinality: built_in_mic, hal_device_input, audio_engine, failed, unknown.
   public static func updateAudioRoute(_ route: String) {

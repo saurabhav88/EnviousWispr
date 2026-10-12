@@ -1,6 +1,7 @@
 import EnviousWisprASR
 import EnviousWisprModelDelivery
 import EnviousWisprPipeline
+import EnviousWisprServices
 import Foundation
 
 /// Builds the multilingual (WhisperKit) delivery wiring in ONE place (#1386
@@ -59,7 +60,11 @@ enum WhisperKitDeliveryWiring {
         guard let handle, let installDirectory, await handle.isAdmitted() else { return nil }
         return installDirectory.path
       },
-      tokenizerFolderURL: tokenizerFolderURL)
+      tokenizerFolderURL: tokenizerFolderURL,
+      // #3546 §3.7 T3: the crash-report model tags; the backend keeps the identity only
+      // when its variant is the one it loads.
+      modelIdentity: modelDelivery.whisperKitRegistration?.manifest.identity.asrModelIdentity,
+      scopeOwner: .shared)
 
     let retirement = handle.flatMap { handle -> WhisperKitLegacyUpgradeCoordinator? in
       guard let trustedFiles, !trustedFiles.isEmpty else { return nil }

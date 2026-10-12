@@ -1,4 +1,5 @@
 import EnviousWisprCore
+import EnviousWisprServices
 import Foundation
 @preconcurrency import WhisperKit
 
@@ -85,6 +86,19 @@ public actor WhisperKitBackend: ASRBackend {
   /// are unrepresentable. Mutated only through `WhisperKitLoadStateMachine.transition`.
   private var loadState: LoadState = .idle
 
+  /// #3546 §3.7 T3: the delivered dictation model, kept only when its variant is the one
+  /// this backend loads; nil means the crash-report tags name no WhisperKit model.
+  private let scopeIdentity: ASRModelIdentity?
+  /// Where WhisperKit's crash-report model tags go (one snapshot with its sequence); nil
+  /// writes none (tests, bare hosts). Production delivers to `ASRModelScopeOwner`.
+  typealias ScopeDelivery = @Sendable (UInt64, ASRModelScopeOwner.Snapshot) async -> Void
+  private let deliverScope: ScopeDelivery?
+  private var scopeSequence: UInt64 = 0
+  private var scopeRequested: ASRModelIdentity?
+  private var scopePhase: ASRModelScopeOwner.Phase?
+  /// The latest report, so the physical load can wait for its own `loading` tags to land.
+  private var lastScopeReport: (sequence: UInt64, snapshot: ASRModelScopeOwner.Snapshot)?
+
   /// Monotonic generation stamp (former `loadGeneration`). Bumped by `unload()`
   /// BEFORE the teardown transition so a load/warm-up completing after an unload
   /// is recognizably stale. Lives OUTSIDE `loadState` because it must be
@@ -152,22 +166,44 @@ public actor WhisperKitBackend: ASRBackend {
   /// unskippable.
   package init(
     admittedModelFolder: @escaping @Sendable () async -> String?,
-    tokenizerFolderURL: URL? = nil
+    tokenizerFolderURL: URL? = nil,
+    modelIdentity: ASRModelIdentity? = nil,
+    scopeOwner: ASRModelScopeOwner? = nil
   ) {
     self.testSeams = nil
     self.admittedModelFolder = admittedModelFolder
     self.tokenizerFolderURL = tokenizerFolderURL
+    self.scopeIdentity = Self.validated(modelIdentity)
+    self.deliverScope = Self.delivery(to: scopeOwner)
   }
 
   /// Test-only initializer that injects fake load/warm-up operations.
   init(
     testSeams: TestSeams,
     admittedModelFolder: @escaping @Sendable () async -> String? = { nil },
-    tokenizerFolderURL: URL? = nil
+    tokenizerFolderURL: URL? = nil,
+    modelIdentity: ASRModelIdentity? = nil,
+    scopeOwner: ASRModelScopeOwner? = nil,
+    scopeDelivery: ScopeDelivery? = nil
   ) {
     self.testSeams = testSeams
     self.admittedModelFolder = admittedModelFolder
     self.tokenizerFolderURL = tokenizerFolderURL
+    self.scopeIdentity = Self.validated(modelIdentity)
+    self.deliverScope = scopeDelivery ?? Self.delivery(to: scopeOwner)
+  }
+
+  private static func delivery(to owner: ASRModelScopeOwner?) -> ScopeDelivery? {
+    guard let owner else { return nil }
+    let deliver: ScopeDelivery = { (sequence: UInt64, snapshot: ASRModelScopeOwner.Snapshot) in
+      await owner.observe(.whisperKit, sequence: sequence, snapshot: snapshot)
+    }
+    return deliver
+  }
+
+  /// The delivered identity only when it names the variant this backend loads.
+  private static func validated(_ identity: ASRModelIdentity?) -> ASRModelIdentity? {
+    identity?.variant == defaultModelVariant() ? identity : nil
   }
 
   /// Snapshot of the current load phase, for tests to assert orchestration
@@ -236,12 +272,73 @@ public actor WhisperKitBackend: ASRBackend {
   /// logging await, so a reentrant read never sees a stale phase
   /// ([[actor-reentrancy-await]]).
   @discardableResult
-  private func emit(_ event: LoadEvent) async -> [Effect] {
+  private func emit(_ event: LoadEvent, failure: (any Error)? = nil) async -> [Effect] {
     let (next, effects) = WhisperKitLoadStateMachine.transition(
       loadState, on: event, generation: generation)
+    let previous = loadState.phase
     loadState = next
+    reportModelScope(from: previous, on: event, failure: failure)
     for effect in effects { await runSideEffect(effect) }
     return effects
+  }
+
+  /// #3546 §3.7 T3: the crash-report model tags follow ACCEPTED transitions only (a stale
+  /// completion leaves the state, and so the tags, unchanged). A load in flight, including
+  /// its warm-up, is `loading`; a ready model is `loaded` even when its warm-up inference
+  /// failed; a load that ends without a model is `failed`, or `cancelled` when unloaded or
+  /// when its own error was a cancellation or supersession. Synchronous: the snapshot and its
+  /// sequence are taken here, delivery is queued, and no await is added before the
+  /// transition's effects; `publishLoadingScope()` makes a physical load wait for delivery.
+  private func reportModelScope(
+    from previous: LoadPhase, on event: LoadEvent, failure: (any Error)?
+  ) {
+    guard let deliverScope else { return }
+    let current = loadState.phase
+    var phase = scopePhase
+    var requested = scopeRequested
+    switch (previous, current) {
+    case (.idle, .loading), (.ready, .loading):
+      requested = scopeIdentity
+      phase = .loading
+    case (.loading, .ready), (.warming, .ready):
+      phase = .loaded
+    case (.loading, .idle), (.warming, .idle):
+      if case .loadFailed = event {
+        if let failure,
+          failure is CancellationError || failure is ASRLoadCancelledError
+            || failure is ASRLoadSupersededError
+        {
+          phase = .cancelled
+        } else {
+          phase = .failed
+        }
+      } else {
+        phase = .cancelled
+      }
+    default:
+      break
+    }
+    let serving = loadState.isReady ? scopeIdentity : nil
+    let snapshot = ASRModelScopeOwner.Snapshot(
+      requested: requested, phase: phase, serving: serving)
+    let wasReady: Bool
+    if case .ready = previous { wasReady = true } else { wasReady = false }
+    let changed = phase != scopePhase || requested != scopeRequested || loadState.isReady != wasReady
+    scopePhase = phase
+    scopeRequested = requested
+    guard changed else { return }
+    // Sequenced here, so a delivery that arrives late cannot overwrite a newer report.
+    scopeSequence &+= 1
+    let sequence = scopeSequence
+    lastScopeReport = (sequence, snapshot)
+    Task { await deliverScope(sequence, snapshot) }
+  }
+
+  /// Delivers the latest report now (a repeat is dropped by its sequence), so a crash during
+  /// the native load finds this load's `loading` tags already written.
+  private func publishLoadingScope() async {
+    guard let deliverScope, let report = lastScopeReport else { return }
+    await deliverScope(report.sequence, report.snapshot)
   }
 
   /// Executes the synchronous effects (cancel / log / telemetry). Orchestration
@@ -328,14 +425,19 @@ public actor WhisperKitBackend: ASRBackend {
     do {
       modelPath = try await resolveModelPath()
     } catch {
-      await emit(.loadFailed(identity))
+      await emit(.loadFailed(identity), failure: error)
       throw error
     }
     let kit: any LoadedASRModel
     do {
+      // #3546 §3.7 T3: this load's `loading` tags land before the native load, and a load
+      // unloaded or cancelled while they were delivered never enters it.
+      await publishLoadingScope()
+      guard identity.generation == generation else { throw ASRLoadSupersededError() }
+      try Task.checkCancellation()
       kit = try await performLoad(modelPath)
     } catch {
-      await emit(.loadFailed(identity))
+      await emit(.loadFailed(identity), failure: error)
       throw error
     }
     for effect in await emit(.loadSucceeded(kit: kit, identity)) {

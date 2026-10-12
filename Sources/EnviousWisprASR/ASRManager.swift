@@ -1,5 +1,6 @@
 @preconcurrency import AVFoundation
 import EnviousWisprCore
+import EnviousWisprServices
 import Foundation
 
 /// Manages ASR backend selection and delegates transcription calls.
@@ -15,7 +16,31 @@ public final class ASRManager: ASRManagerInterface {
   /// from, set at the same publish that reports `didPublishLoad`. `nil` while
   /// nothing is loaded, after an unload or backend switch, and for a backend
   /// that loads without a request (an injected mock).
-  package private(set) var publishedSelection: ParakeetModelSelection?
+  package private(set) var publishedSelection: ParakeetModelSelection? {
+    // #3546 §3.7 T3: publish, failed publish, unload and switch all pass through here.
+    didSet { if publishedSelection != oldValue { reportModelScope() } }
+  }
+
+  /// #3546 §3.7 T3: Parakeet's crash-report model tags, owned by `ASRModelScopeOwner`.
+  /// `scopeRequested` and `scopePhase` describe the latest physical load; the serving
+  /// model is always `publishedModelIdentity`.
+  package var modelScopeOwner: ASRModelScopeOwner = .shared
+  private var scopeSequence: UInt64 = 0
+  private var scopeRequested: ASRModelIdentity?
+  private var scopePhase: ASRModelScopeOwner.Phase?
+
+  private func reportModelScope() {
+    scopeSequence &+= 1
+    modelScopeOwner.observe(
+      .parakeet, sequence: scopeSequence,
+      snapshot: .init(requested: scopeRequested, phase: scopePhase, serving: publishedModelIdentity))
+  }
+
+  /// A cancelled, superseded or user-cancelled load is `cancelled`; anything else failed.
+  static func scopePhase(after error: any Error) -> ASRModelScopeOwner.Phase {
+    error is CancellationError || error is ASRLoadCancelledError
+      || error is ASRLoadSupersededError ? .cancelled : .failed
+  }
 
   public var publishedModelIdentity: ASRModelIdentity? { publishedSelection?.modelIdentity }
 
@@ -149,6 +174,11 @@ public final class ASRManager: ASRManagerInterface {
   /// supersession early-return. Ordinary session discard never calls this.
   private func invalidateCurrentLoadGeneration(cause: String) {
     loadGeneration &+= 1
+    // #3546 §3.7 T3: the load in flight no longer counts.
+    if scopePhase == .loading {
+      scopePhase = .cancelled
+      reportModelScope()
+    }
     if isModelLoaded {
       Task {
         await AppLogger.shared.log(
@@ -481,7 +511,20 @@ public final class ASRManager: ASRManagerInterface {
         throw ParakeetLoadAccountingUnavailableError()
       }
       loadedSelection = selection
-      try await parakeet.prepare(selection: selection, progressCallback: progress)
+      // #3546 §3.7 T3: tagged after admission and accounting, before the vendor load.
+      scopeRequested = selection.modelIdentity
+      scopePhase = .loading
+      reportModelScope()
+      do {
+        try await parakeet.prepare(selection: selection, progressCallback: progress)
+      } catch {
+        // A superseded load's phase belongs to the load that replaced it.
+        if gen == loadGeneration {
+          scopePhase = Self.scopePhase(after: error)
+          reportModelScope()
+        }
+        throw error
+      }
     } else {
       try await candidate.prepare(progressCallback: progress)
     }
@@ -509,6 +552,10 @@ public final class ASRManager: ASRManagerInterface {
     // #3546: only a READY publish for the current generation (the superseded
     // case threw above) reports success, whoever asked for the load.
     publishedSelection = ready ? loadedSelection : nil
+    if loadedSelection != nil {
+      scopePhase = ready ? .loaded : .failed
+      reportModelScope()
+    }
     if ready, let loadedSelection {
       parakeetSelection.didPublishLoad?(loadedSelection)
     }

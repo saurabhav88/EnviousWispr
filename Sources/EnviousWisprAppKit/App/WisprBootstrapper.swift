@@ -1037,6 +1037,7 @@ package final class WisprBootstrapper {
     // Restore persisted backend selection synchronously (no race with first record).
     asrManager.setInitialBackendType(settings.selectedBackend)
     SentryBreadcrumb.updateASRBackend(settings.selectedBackend.rawValue)
+    ASRModelScopeOwner.shared.activate(settings.selectedBackend)
 
     // #1173: settings-change telemetry observer. `emitBaseline` re-emits the
     // comprehensive `settings.snapshot` at onboarding-completion (fixes the
@@ -1393,6 +1394,8 @@ package final class WisprBootstrapper {
           }
           await asrManager.switchBackend(to: backend)
           SentryBreadcrumb.updateASRBackend(backend.rawValue)
+          // #3546 §3.7 T3: the model tags follow the engine now active.
+          ASRModelScopeOwner.shared.activate(backend)
         },
         warm: { [kernelDriver, whisperKitKernelDriver] backend in
           await (backend == .whisperKit ? whisperKitKernelDriver : kernelDriver)
