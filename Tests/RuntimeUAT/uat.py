@@ -1287,7 +1287,11 @@ def _lifecycle_self_test():
             except BaseException as caught:
                 error = caught
         if f.state.get("preflight_busy") or late_refusal:
-            require(error is not None and counts == {"down": 0, "up": 0} and not f.player)
+            require(isinstance(error, RuntimeError))
+            require(str(error) == "microphone selection requires positively released capture")
+            require(counts == {"down": 0, "up": 0} and not f.player)
+            require(f.state["mode"] == "recording")
+            require(not any(e == ("thread", "start") or e[:2] == ("AX", "stop") for e in events))
             return
         should_error = bool(failure not in (None, "short") or second_failure or interrupt_thread or
                             f.state.get("launch_fail") or f.state.get("playback_fail"))
@@ -1911,6 +1915,7 @@ else:
                         error.owned_child = guard.TargetIdentity(announced["child"], str(player_path),
                             tuple(announced.get("start") or payload["playback"]["start"]))
                         error.owned_lock = route.FILE
+                        error.owned_lock_acquire = subject["_record_lock"]
                         raise error
                 forced_failure("announcement")
                 if death_stage == "after-go":
@@ -2064,8 +2069,8 @@ else:
                         if native_time.monotonic() >= deadline:
                             raise AssertionError("failed native fixture leaked its owned player")
                         native_time.sleep(0.01)  # deadline-fallback: observe real child exit.
-            fd = f.audio["_record_lock"](error.owned_lock)
-            f.audio["_release_record_lock"](fd)
+            fd = error.owned_lock_acquire(error.owned_lock)
+            os.close(fd)
         else:
             raise AssertionError("native fixture did not execute the injected failure")
     for stage in ("announcement", "exec", "death"):
