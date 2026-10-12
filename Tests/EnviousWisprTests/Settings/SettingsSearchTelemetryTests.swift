@@ -175,12 +175,20 @@ struct SettingsSearchTelemetryTests {
   func passwordFormatRegression() {
     #expect(SettingsSearchQueryFilter.reportable("password\u{200B}is\u{200B}hunter2") == nil)
     #expect(SettingsSearchQueryFilter.reportable("Passwort\u{200B}ist\u{200B}geheim") == nil)
+    // Marks that render as nothing (variation selector, combining grapheme joiner) too.
+    #expect(SettingsSearchQueryFilter.reportable("password\u{FE0F}is\u{FE0F}hunter2") == nil)
+    #expect(SettingsSearchQueryFilter.reportable("password\u{034F}is\u{034F}hunter2") == nil)
+    #expect(SettingsSearchQueryFilter.reportable("dark\u{FE0F}mode") == "dark\u{FE0F}mode")
   }
 
-  @Test("every Unicode format member can separate a labelled password (#3526)")
+  @Test("every Unicode format or default-ignorable member can separate a labelled password (#3526)")
   func passwordFormatClass() {
     let formats = (0...0x10FFFF).compactMap { Unicode.Scalar($0) }
-      .filter { $0.properties.generalCategory == .format }
+      .filter {
+        $0.properties.generalCategory == .format || $0.properties.isDefaultIgnorableCodePoint
+      }
+    // Variation selector and combining grapheme joiner are marks, not format characters.
+    #expect(formats.contains("\u{FE0F}") && formats.contains("\u{034F}"))
     #expect(formats.isEmpty == false)
     print("Settings search password format members: \(formats.count)")
     for scalar in formats {

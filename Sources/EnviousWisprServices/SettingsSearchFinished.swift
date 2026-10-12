@@ -76,14 +76,15 @@ public enum SettingsSearchQueryFilter {
   }
 
   /// Checks read compatibility-folded, whitespace-collapsed copies; sent text is unchanged.
-  /// The default removes format characters so copied keys and addresses remain detectable.
+  /// The default removes format and default-ignorable characters (variation selectors, the combining
+  /// grapheme joiner) so copied keys and addresses remain detectable (#3526).
   /// Password matching also reads a format-preserving view for embedded characters and gaps.
   static func detectionCopy(_ query: String, preservingFormat: Bool = false) -> String {
     var out = String.UnicodeScalarView()
     var lastWasSpace = false
     let folded = query.precomposedStringWithCompatibilityMapping
     for scalar in folded.unicodeScalars {
-      if scalar.properties.generalCategory == .format {
+      if scalar.properties.generalCategory == .format || scalar.properties.isDefaultIgnorableCodePoint {
         if preservingFormat { out.append("\u{200B}") }
         continue
       }
