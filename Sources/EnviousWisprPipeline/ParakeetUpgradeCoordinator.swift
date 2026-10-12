@@ -707,14 +707,25 @@ extension ParakeetUpgradeCoordinator {
       }
       // No v3: the existing bounded repair of Ultra, only while the budget
       // allows another load; a repair after the last permitted attempt would
-      // fetch bytes nothing may load.
-      if request.repairable,
+      // fetch bytes nothing may load. A frozen reload repairs even when the
+      // selection chose Ultra as non-repairable because v3 could serve then: only
+      // a selection load falls back, so after an activation retired v3 a failed
+      // reload would otherwise leave nothing serving (A1: after Ultra has worked,
+      // its failures take the bounded repair). Only cache-only requests: the others
+      // are delivery-off loads (rows K and E19's delivery-off branch), which never
+      // repair.
+      if request.cacheOnly && (request.repairable || !prepared.isSelectionLoad),
         case .state(let state) = target.store.read(),
         !state.exhausted, state.attempts < Self.attemptBudget,
         case .admitted = await foreground({ await target.delivery.repairInForeground() })
       {
         guard isCurrentLoad(request), !Task.isCancelled else { return .fail }
         return .reload
+      }
+      // The last permitted load failed: nothing loads again without the explicit
+      // Retry, so Settings offers it now rather than after a refused press.
+      if case .state(let state) = target.store.read(), state.attempts >= Self.attemptBudget {
+        needsExplicitRetry = true
       }
       return .fail
     case .v3:

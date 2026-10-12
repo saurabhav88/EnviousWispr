@@ -1153,6 +1153,44 @@ struct ParakeetUpgradePolicyTests {
     #expect(Self.state(rig)?.attempts == 2)
   }
 
+  /// Chunk 12 whole-PR review: Ultra chosen while v3 could still serve is non-repairable, and
+  /// that request stays frozen after the activation retires v3. When this fails, damaged Ultra
+  /// files on a later reload leave no engine at all instead of the bounded repair (A1).
+  @Test("after an activation retired v3, a failed frozen Ultra reload gets the bounded repair")
+  func frozenReloadAfterActivationRepairs() async throws {
+    let rig = try await Self.rig(v3: true, ultra: true)
+    let retired = OutcomeSignal(.retiredV3)
+    rig.coordinator.onOutcome = { retired.observe($0) }
+    let first = try await rig.coordinator.prepareLoad()
+    #expect(first.selection?.repairable == false, "v3 could serve when Ultra was chosen")
+    #expect(Self.physicalLoad(rig) == .loaded)
+    await retired.wait()
+    let reload = try await rig.coordinator.prepareLoad()
+    #expect(reload.isSelectionLoad == false)
+    #expect(reload.selection?.model == .ultra)
+    #expect(Self.physicalLoad(rig, succeeds: false) == .loaded)
+    Self.enqueueUltra(rig)
+    try Data("damaged".utf8).write(
+      to: rig.ultraRegistration.installDirectory.appendingPathComponent(Self.ultraFiles[1].path))
+    #expect(await rig.coordinator.handleLoadFailure(reload, error: VendorLoadFailed()) == .reload)
+    #expect(Self.ultraRequests(rig) > 0, "the repair fetched good bytes")
+    #expect(rig.coordinator.needsExplicitRetry == false, "a load is still permitted")
+  }
+
+  /// Chunk 12 whole-PR review: when this fails, Settings shows no Try again after the last
+  /// permitted Ultra load fails, until a later press is refused.
+  @Test("the last permitted Ultra failure asks for the explicit Retry at once")
+  func lastPermittedFailureAsksForRetry() async throws {
+    let rig = try await Self.rig(
+      v3: false, ultra: true,
+      state: .init(attempts: 1, refetchSpent: false, exhausted: false, declined: false))
+    let prepared = try await rig.coordinator.prepareLoad()
+    #expect(Self.physicalLoad(rig, succeeds: false) == .loaded)
+    #expect(rig.coordinator.needsExplicitRetry == false)
+    #expect(await rig.coordinator.handleLoadFailure(prepared, error: VendorLoadFailed()) == .fail)
+    #expect(rig.coordinator.needsExplicitRetry)
+  }
+
   enum Residue: String, CaseIterable, Sendable { case marker, install, staging }
 
   /// Makes one retirement step fail by locking a file it must delete.
