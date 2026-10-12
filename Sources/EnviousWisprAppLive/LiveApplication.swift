@@ -23,11 +23,16 @@ import SwiftUI
 /// retire it for hotkeys now that the gate covers them.
 @MainActor
 package final class LiveApplication {
-  /// App-lifetime owner of the bootstrapper. The shell strongly retains this
-  /// `LiveApplication` in `@State`; the delegate's reference is `weak`, exactly as
-  /// it was before this module existed. Mounted SwiftUI roots may also retain the
-  /// bootstrapper, but its lifetime does not depend on them.
-  private let bootstrapper: WisprBootstrapper
+  /// App-lifetime owner of the bootstrapper, through the sequencer that decides when it is
+  /// built (#3252). The shell strongly retains this `LiveApplication` in `@State`; the
+  /// delegate's reference is `weak`, exactly as it was before this module existed. Mounted
+  /// SwiftUI roots may also retain the bootstrapper, but its lifetime does not depend on them.
+  private let sequencer: LaunchSequencer<WisprBootstrapper>
+
+  /// Present only when this launch is offered the Move EnviousWispr question before the app
+  /// starts (#3252): a download copy running from a temporary or read-only location whose offer
+  /// is due. A healthy launch has none and runs none of that code.
+  private let offerDriver: LaunchOfferDriver<WisprBootstrapper>?
 
   package init() {
     // Construction stays synchronous and in this order for the same reason it
@@ -36,43 +41,60 @@ package final class LiveApplication {
     // One stateless live type conforms to both protocols, and the same instance
     // fills both fields of `DesktopPresentationEffects`.
     let presentation = LiveDesktopPresentationEffects()
-    bootstrapper = WisprBootstrapper(
-      makeHotkeyEffects: { LiveDesktopHotkeyEffects() },
-      presentationEffects: DesktopPresentationEffects(
-        application: presentation, panels: presentation),
-      // #3062: the one place the real scroll-wheel monitor is chosen.
-      scrollWheelMonitor: LiveScrollWheelMonitor(),
-      // #3545: the one place the real Settings key monitor is chosen.
-      settingsKeyMonitor: LiveSettingsKeyMonitor(),
-      relocationRelauncher: LiveRelocationRelauncher(),
-      // #2455 C4: the pill. `makePanel` is a factory rather than an instance
-      // because the host builds its panel lazily, on first presentation.
-      overlayEffects: DesktopOverlayEffects(
-        makePanel: { LiveOverlayPanelDriver() },
-        workspace: LiveWorkspaceObserver()),
-      // #1413: the two live desktop mutations behind the other-audio hold.
-      otherAudioEffects: OtherAudioEffects(
-        volume: LiveOutputVolumeEffects(), media: LiveMediaPlaybackEffects()))
+    // #3252: the launch decision is synchronous and cheap and builds none of the heavy graph.
+    // When it says "offer first" the bootstrapper is not built until the person has answered;
+    // otherwise the sequencer builds it right here, in the same position as before.
+    let relocation = RelocationLaunchPlan(
+      presentation: DesktopPresentationEffects(application: presentation, panels: presentation),
+      relauncher: LiveRelocationRelauncher())
+    let sequencer = LaunchSequencer(startImmediately: !relocation.offersFirst) {
+      WisprBootstrapper(
+        makeHotkeyEffects: { LiveDesktopHotkeyEffects() },
+        presentationEffects: DesktopPresentationEffects(
+          application: presentation, panels: presentation),
+        // #3062: the one place the real scroll-wheel monitor is chosen.
+        scrollWheelMonitor: LiveScrollWheelMonitor(),
+        // #3545: the one place the real Settings key monitor is chosen.
+        settingsKeyMonitor: LiveSettingsKeyMonitor(),
+        relocationRelauncher: LiveRelocationRelauncher(),
+        // #2455 C4: the pill. `makePanel` is a factory rather than an instance
+        // because the host builds its panel lazily, on first presentation.
+        overlayEffects: DesktopOverlayEffects(
+          makePanel: { LiveOverlayPanelDriver() },
+          workspace: LiveWorkspaceObserver()),
+        // #1413: the two live desktop mutations behind the other-audio hold.
+        otherAudioEffects: OtherAudioEffects(
+          volume: LiveOutputVolumeEffects(), media: LiveMediaPlaybackEffects()))
+    }
+    self.sequencer = sequencer
+    offerDriver = LaunchOfferDriver(sequencer: sequencer, plan: relocation)
   }
 
   // MARK: - Scene surface
 
-  package var mainWindowTitle: String { bootstrapper.mainWindowTitle }
-  package var onboardingWindowTitle: String { bootstrapper.onboardingWindowTitle }
-  package var onboardingWindowID: String { bootstrapper.onboardingWindowID }
+  // The titles and the onboarding id are constants the scenes need before any bootstrapper
+  // exists (#3252); the bootstrapper's own properties return the same values.
+  package var mainWindowTitle: String { LaunchWindowIdentity.mainTitle }
+  package var onboardingWindowTitle: String { LaunchWindowIdentity.onboardingTitle }
+  package var onboardingWindowID: String { LaunchWindowIdentity.onboardingID }
 
-  package func mainWindowContent() -> some View { bootstrapper.mainWindowContent() }
+  /// The gate draws nothing, and hides its window, until the bootstrapper exists; the real
+  /// root then replaces it. On a healthy launch the target exists already, so the real root
+  /// mounts at once.
+  package func mainWindowContent() -> some View {
+    LaunchGate(sequencer) { $0.mainWindowContent() }
+  }
   /// The main window's menu commands: Edit › Find Settings (#3482). Built here, not on the
   /// bootstrapper, whose public surface stays the lifecycle forwards and view factories.
   package func mainWindowCommands() -> some Commands { FindSettingsCommand() }
   package func onboardingWindowContent() -> some View {
-    bootstrapper.onboardingWindowContent()
+    LaunchGate(sequencer) { $0.onboardingWindowContent() }
   }
 
   // MARK: - Lifecycle surface
 
   package func applicationWillFinishLaunching() {
-    bootstrapper.applicationWillFinishLaunching()
+    sequencer.applicationWillFinishLaunching()
     // #2377 Phase 6: arm the DEBUG marker sink in the callback BEFORE the
     // measured one, and AFTER this callback's own production work.
     //
@@ -99,19 +121,22 @@ package final class LiveApplication {
     #if DEBUG
       let launchEnter = OverlayFirstRenderMarkers.capture(.launchEnter)
     #endif
-    bootstrapper.applicationDidFinishLaunching()
+    sequencer.applicationDidFinishLaunching()
     #if DEBUG
       OverlayFirstRenderMarkers.emit(
         launchEnter, OverlayFirstRenderMarkers.capture(.launchExit))
     #endif
+    // #3252: only a bad-location launch has a driver. It offers the move on a later run-loop
+    // turn, after this callback has returned, so the app can become active first.
+    offerDriver?.didFinishLaunching()
   }
   package func applicationShouldHandleReopen() -> Bool {
-    bootstrapper.applicationShouldHandleReopen()
+    sequencer.applicationShouldHandleReopen()
   }
   package func applicationDidBecomeActive() {
-    bootstrapper.applicationDidBecomeActive()
+    sequencer.applicationDidBecomeActive()
   }
   package func applicationWillTerminate() {
-    bootstrapper.applicationWillTerminate()
+    sequencer.applicationWillTerminate()
   }
 }

@@ -1231,6 +1231,26 @@ public final class SettingsManager {
     return decoded
   }
 
+  /// The two stored telemetry switches (#3269), read through ONE definition shared by
+  /// `init(defaults:)` and the launch pre-flight, which needs them before any `SettingsManager`
+  /// exists (#3252, plan 3.5). A nil `defaults` resolves to `SettingsDefaults.store`, exactly as
+  /// the initializer does; an absent key reads as the shipped default.
+  package struct StoredTelemetrySwitches: Equatable, Sendable {
+    package let usageMetrics: Bool
+    package let crashReports: Bool
+  }
+
+  package static func storedTelemetrySwitches(defaults: UserDefaults? = nil)
+    -> StoredTelemetrySwitches
+  {
+    let defaults = defaults ?? SettingsDefaults.store
+    return StoredTelemetrySwitches(
+      usageMetrics: defaults.object(forKey: "shareUsageMetrics") as? Bool
+        ?? SettingsDefaultValues.shareUsageMetrics,
+      crashReports: defaults.object(forKey: "sendCrashReports") as? Bool
+        ?? SettingsDefaultValues.sendCrashReports)
+  }
+
   public init(defaults: UserDefaults? = nil) {
     let defaults = defaults ?? SettingsDefaults.store
     self.defaults = defaults
@@ -1396,12 +1416,9 @@ public final class SettingsManager {
     crashRecoveryEnabled =
       defaults.object(forKey: "crashRecoveryEnabled") as? Bool
       ?? SettingsDefaultValues.crashRecoveryEnabled
-    shareUsageMetrics =
-      defaults.object(forKey: "shareUsageMetrics") as? Bool
-      ?? SettingsDefaultValues.shareUsageMetrics
-    sendCrashReports =
-      defaults.object(forKey: "sendCrashReports") as? Bool
-      ?? SettingsDefaultValues.sendCrashReports
+    let telemetrySwitches = Self.storedTelemetrySwitches(defaults: defaults)
+    shareUsageMetrics = telemetrySwitches.usageMetrics
+    sendCrashReports = telemetrySwitches.crashReports
     // #996: `object(forKey:)` tells an absent key from an explicit false; only
     // the absent case is written, so an upgrade never overwrites a choice.
     if let stored = defaults.object(forKey: "learnFromEdits") as? Bool {

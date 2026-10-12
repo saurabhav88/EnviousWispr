@@ -169,11 +169,13 @@ final class AppLifecycleCoordinator {
     // app menu or Cmd-Tab entry. `AppWindowCoordinator` owns the policy now
     // (`beginLaunch` / `finishLaunch`, called by the bootstrapper).
 
-    // #1451: recover from App Translocation. Runs on EVERY launch (NOT gated by
-    // onboarding — the 14 stuck users already finished onboarding), returns
-    // immediately after scheduling any prompt, and is a limb: it never blocks
-    // the launch sequence below.
-    applicationRelocationCoordinator.evaluateAndOfferIfNeeded()
+    // #1451: App Translocation recovery. Runs on EVERY launch (NOT gated by
+    // onboarding — the 14 stuck users already finished onboarding), is synchronous and
+    // cheap, and is a limb: it never blocks the launch sequence below. #3252: the OFFER
+    // itself no longer runs here. A bad-location launch is offered before this
+    // bootstrapper is built (`LaunchSequencer` / `LaunchOfferDriver`), so what remains
+    // is the relaunched child's health ack and clearing a stale decline.
+    applicationRelocationCoordinator.reportLaunchState()
 
     // #879: the launch-preload telemetry callback wiring was removed. The
     // launch warm-up now routes through `KernelDictationDriver.ensureEngineWarm

@@ -72,15 +72,17 @@ struct LaunchDecisionTests {
 
   // MARK: One cadence owner, no persistence side effects
 
-  @Test("The instance cadence and the pure decision agree at the boundary")
-  func instanceCadenceAgreesWithTheDecision() {
+  @Test("The shared cadence rule and the coordinator's decision agree at the boundary")
+  func cadenceRuleAgreesWithTheDecision() {
     for (seconds, offers) in [(Self.sevenDays - 1, false), (Self.sevenDays, true)] {
       let suppression = ApplicationRelocationCoordinatorTests.FakeSuppression()
       suppression.stored = (Self.now.addingTimeInterval(-seconds), "2.3.0")
       let h = ApplicationRelocationCoordinatorTests.makeHarness(
         bundleURL: ApplicationRelocationCoordinatorTests.translocatedURL, now: Self.now,
         suppression: suppression)
-      #expect(h.coordinator.shouldOffer(now: Self.now) == offers)
+      #expect(
+        ApplicationRelocationCoordinator.offerIsDue(
+          lastDecline: suppression.stored, currentVersion: "2.3.0", now: Self.now) == offers)
       #expect(
         h.coordinator.launchDecision() == (offers ? .offerFirst(state: .translocated) : .proceed))
     }

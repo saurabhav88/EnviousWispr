@@ -821,8 +821,10 @@ struct TelemetryServiceRelocationSink: RelocationTelemetrySink {
 // MARK: - Live factory
 
 extension ApplicationRelocationCoordinator {
-  /// Production wiring. `AppLifecycleCoordinator` constructs this once via
-  /// `WisprBootstrapper` and calls `evaluateAndOfferIfNeeded()` on launch.
+  /// Production wiring. Two instances exist in a bad-location launch: the pre-flight one
+  /// (`RelocationLaunchPlan`) decides and runs the offer before the app is built, and
+  /// `WisprBootstrapper` constructs the other, whose `AppLifecycleCoordinator` calls
+  /// `reportLaunchState()` on launch (#3252).
   @MainActor
   /// #2455 C3: `application` is required and non-defaulted, and is threaded
   /// straight to the presenter, which is the only collaborator here that touches

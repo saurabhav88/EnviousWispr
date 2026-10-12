@@ -177,7 +177,8 @@ struct ApplicationRelocationCoordinatorTests {
     moverResult: Result<InstallResolution, RelocationFailure> = .success(
       .installed(URL(fileURLWithPath: "/Applications/EnviousWispr.app"), bundleVersion: "1.0")),
     now: Date = Date(timeIntervalSince1970: 1_000_000),
-    suppression: FakeSuppression = FakeSuppression()
+    suppression: FakeSuppression = FakeSuppression(),
+    destinationIsRunning: @escaping @MainActor (String, URL) -> Bool = { _, _ in true }
   ) -> Harness {
     let presenter = FakePresenter()
     let mover = FakeMover(moverResult)
@@ -201,10 +202,29 @@ struct ApplicationRelocationCoordinatorTests {
       telemetry: telemetry,
       now: { now },
       terminate: { terminate.count += 1 },
-      makeAttemptID: { "attempt-1" })
+      makeAttemptID: { "attempt-1" },
+      destinationIsRunning: destinationIsRunning)
     return Harness(
       coordinator: coordinator, suppression: suppression, presenter: presenter, mover: mover,
       relauncher: relauncher, handshake: handshake, telemetry: telemetry, terminate: terminate)
+  }
+
+  /// Routing adapter preserving the existing coordinator assertions. It does not start a target
+  /// or verify startup/card ordering; `LaunchOfferDriverTests` cover that production owner.
+  /// The launch decision, then the pre-flight run under a deadline, then the failure card.
+  /// nil: no offer, or the run never completed (recorded as a failure).
+  @discardableResult
+  static func launchOffer(_ h: Harness) async -> PreflightOutcome? {
+    guard case .offerFirst(let state) = h.coordinator.launchDecision() else { return nil }
+    let run = Task { @MainActor in
+      await h.coordinator.runPreflight(state: state)
+    }
+    guard let outcome = await preflightBoundedValue(of: run) else {
+      Issue.record("launchOffer: runPreflight never completed")
+      return nil
+    }
+    if case .continueNormally(let card?) = outcome { h.coordinator.presentFailure(card) }
+    return outcome
   }
 
   // MARK: install_resolution keeps the existing-copy distinction
@@ -218,8 +238,7 @@ struct ApplicationRelocationCoordinatorTests {
     let h = Self.makeHarness(
       bundleURL: Self.translocatedURL,
       moverResult: .failure(.stripFailedAtDestination))
-    h.coordinator.evaluateAndOfferIfNeeded()
-    await h.coordinator.pendingWork?.value
+    await Self.launchOffer(h)
     #expect(h.telemetry.failedEvents.map(\.1) == ["stripFailedAtDestination"])
     #expect(h.telemetry.lastFailedInstallResolution == "existing_usable")
     // A placed-but-suspect copy must never be offered for opening.
@@ -237,8 +256,7 @@ struct ApplicationRelocationCoordinatorTests {
     let h = Self.makeHarness(
       bundleURL: Self.translocatedURL,
       moverResult: .failure(.stripFailedAfterPlacement))
-    h.coordinator.evaluateAndOfferIfNeeded()
-    await h.coordinator.pendingWork?.value
+    await Self.launchOffer(h)
     #expect(h.telemetry.lastFailedInstallResolution == "installed")
     // Still Message A: a copy that may be unclean is never offered for opening.
     if case .nothingMoved = h.presenter.presentations[0] {
@@ -264,8 +282,7 @@ struct ApplicationRelocationCoordinatorTests {
     // for EVERYTHING would pass the test above.
     let h = Self.makeHarness(
       bundleURL: Self.translocatedURL, moverResult: .failure(.diskFull))
-    h.coordinator.evaluateAndOfferIfNeeded()
-    await h.coordinator.pendingWork?.value
+    await Self.launchOffer(h)
     #expect(h.telemetry.lastFailedInstallResolution == "unresolved")
   }
 
@@ -278,21 +295,20 @@ struct ApplicationRelocationCoordinatorTests {
   private static var placedPath: String { placedURL.standardizedFileURL.path }
 
   @Test("the expected child emits completed")
-  func childCompletedWhenItIsTheExpectedCopy() async {
+  func childCompletedWhenItIsTheExpectedCopy() {
     let h = Self.makeHarness(
       bundleURL: Self.placedURL, version: "2.3.0",
       relaunchAttemptID: "attempt-1", relaunchReason: "translocated",
       relaunchDestinationScope: "system_applications",
       relaunchExpectedPath: Self.placedPath, relaunchExpectedVersion: "2.3.0")
-    h.coordinator.evaluateAndOfferIfNeeded()
-    await h.coordinator.pendingWork?.value
+    h.coordinator.reportLaunchState()
     #expect(h.telemetry.completedEvents.count == 1)
     #expect(h.telemetry.completedEvents.first?.source == "child_health")
     #expect(h.handshake.writes.first?.healthy == true)
   }
 
   @Test("a healthy child at ANOTHER path writes its ack but claims NO completion")
-  func childAtWrongPathDoesNotClaimCompletion() async {
+  func childAtWrongPathDoesNotClaimCompletion() {
     // Launch Services can route an open request to a different registered copy.
     // That copy is healthy, so without this guard it would report success for
     // an attempt the parent is about to fail as ackPathMismatch — one attempt
@@ -302,28 +318,26 @@ struct ApplicationRelocationCoordinatorTests {
       version: "2.3.0", relaunchAttemptID: "attempt-1", relaunchReason: "translocated",
       relaunchDestinationScope: "system_applications",
       relaunchExpectedPath: Self.placedPath, relaunchExpectedVersion: "2.3.0")
-    h.coordinator.evaluateAndOfferIfNeeded()
-    await h.coordinator.pendingWork?.value
+    h.coordinator.reportLaunchState()
     #expect(h.telemetry.completedEvents.isEmpty)
     // The health ack is safety-critical and must STILL be written.
     #expect(h.handshake.writes.count == 1)
   }
 
   @Test("a healthy child of the RIGHT path but wrong version claims no completion")
-  func childWithWrongVersionDoesNotClaimCompletion() async {
+  func childWithWrongVersionDoesNotClaimCompletion() {
     let h = Self.makeHarness(
       bundleURL: Self.placedURL, version: "9.9.9",
       relaunchAttemptID: "attempt-1", relaunchReason: "translocated",
       relaunchDestinationScope: "system_applications",
       relaunchExpectedPath: Self.placedPath, relaunchExpectedVersion: "2.3.0")
-    h.coordinator.evaluateAndOfferIfNeeded()
-    await h.coordinator.pendingWork?.value
+    h.coordinator.reportLaunchState()
     #expect(h.telemetry.completedEvents.isEmpty)
     #expect(h.handshake.writes.count == 1)
   }
 
   @Test("a child whose ack cannot be PUBLISHED claims no completion")
-  func childWithUnpublishableAckDoesNotClaimCompletion() async {
+  func childWithUnpublishableAckDoesNotClaimCompletion() {
     // Unwritable Application Support or a full disk: the parent will never see
     // the ack and will fail this attempt on timeout, so a `completed` here
     // would make one attempt both a success and a failure (review r2 P2).
@@ -332,19 +346,17 @@ struct ApplicationRelocationCoordinatorTests {
       relaunchReason: "translocated", relaunchDestinationScope: "system_applications",
       relaunchExpectedPath: Self.placedPath, relaunchExpectedVersion: "2.3.0")
     h.handshake.ackPublishes = false
-    h.coordinator.evaluateAndOfferIfNeeded()
-    await h.coordinator.pendingWork?.value
+    h.coordinator.reportLaunchState()
     #expect(h.telemetry.completedEvents.isEmpty)
     // The attempt to publish still happened; only the CLAIM is withheld.
     #expect(h.handshake.writes.count == 1)
   }
 
   @Test("an OLD parent's child still acks, and simply emits nothing")
-  func childFromOldParentStillAcks() async {
+  func childFromOldParentStillAcks() {
     let h = Self.makeHarness(
       bundleURL: Self.placedURL, relaunchAttemptID: "attempt-1")
-    h.coordinator.evaluateAndOfferIfNeeded()
-    await h.coordinator.pendingWork?.value
+    h.coordinator.reportLaunchState()
     #expect(h.telemetry.completedEvents.isEmpty)
     #expect(h.handshake.writes.count == 1)
     #expect(h.handshake.writes.first?.healthy == true)
@@ -384,7 +396,7 @@ struct ApplicationRelocationCoordinatorTests {
   @Test("cadence: never declined -> offer")
   func cadenceFresh() {
     let h = Self.makeHarness(bundleURL: Self.translocatedURL)
-    #expect(h.coordinator.shouldOffer(now: Date(timeIntervalSince1970: 1_000_000)))
+    #expect(h.coordinator.launchDecision() == .offerFirst(state: .translocated))
   }
 
   @Test("cadence: declined yesterday, same version -> suppress")
@@ -392,7 +404,7 @@ struct ApplicationRelocationCoordinatorTests {
     let now = Date(timeIntervalSince1970: 1_000_000)
     let h = Self.makeHarness(bundleURL: Self.translocatedURL, version: "2.3.0", now: now)
     h.suppression.stored = (at: now.addingTimeInterval(-24 * 60 * 60), version: "2.3.0")
-    #expect(h.coordinator.shouldOffer(now: now) == false)
+    #expect(h.coordinator.launchDecision() == .proceed)
   }
 
   @Test("cadence: declined 8 days ago -> offer again")
@@ -400,7 +412,7 @@ struct ApplicationRelocationCoordinatorTests {
     let now = Date(timeIntervalSince1970: 1_000_000)
     let h = Self.makeHarness(bundleURL: Self.translocatedURL, version: "2.3.0", now: now)
     h.suppression.stored = (at: now.addingTimeInterval(-8 * 24 * 60 * 60), version: "2.3.0")
-    #expect(h.coordinator.shouldOffer(now: now))
+    #expect(h.coordinator.launchDecision() == .offerFirst(state: .translocated))
   }
 
   @Test("cadence: version changed -> offer even within 7 days")
@@ -408,17 +420,16 @@ struct ApplicationRelocationCoordinatorTests {
     let now = Date(timeIntervalSince1970: 1_000_000)
     let h = Self.makeHarness(bundleURL: Self.translocatedURL, version: "2.4.0", now: now)
     h.suppression.stored = (at: now.addingTimeInterval(-60 * 60), version: "2.3.0")
-    #expect(h.coordinator.shouldOffer(now: now))
+    #expect(h.coordinator.launchDecision() == .offerFirst(state: .translocated))
   }
 
   // MARK: Healthy launch
 
   @Test("healthy launch: no prompt, clears stale decline, no telemetry")
-  func healthyLaunchClears() async {
+  func healthyLaunchClears() {
     let h = Self.makeHarness(bundleURL: Self.healthyURL)
     h.suppression.stored = (at: Date(timeIntervalSince1970: 1), version: "old")
-    h.coordinator.evaluateAndOfferIfNeeded()
-    await h.coordinator.pendingWork?.value
+    h.coordinator.reportLaunchState()
     #expect(h.suppression.clearCount == 1)
     #expect(h.telemetry.offeredEvents.isEmpty)
     #expect(h.presenter.progressShown == 0)
@@ -427,10 +438,9 @@ struct ApplicationRelocationCoordinatorTests {
   // MARK: Relaunched-child ack path (A2)
 
   @Test("relaunch child: healthy destination writes healthy ack, never prompts")
-  func childAckHealthy() async {
+  func childAckHealthy() {
     let h = Self.makeHarness(bundleURL: Self.healthyURL, relaunchAttemptID: "attempt-1")
-    h.coordinator.evaluateAndOfferIfNeeded()
-    await h.coordinator.pendingWork?.value
+    h.coordinator.reportLaunchState()
     #expect(h.handshake.writes.count == 1)
     #expect(h.handshake.writes.first?.healthy == true)
     #expect(h.telemetry.offeredEvents.isEmpty)  // no prompt on the child path
@@ -439,10 +449,9 @@ struct ApplicationRelocationCoordinatorTests {
   }
 
   @Test("relaunch child: still-blocked destination writes UNhealthy ack (A2 no masking)")
-  func childAckStillBad() async {
+  func childAckStillBad() {
     let h = Self.makeHarness(bundleURL: Self.translocatedURL, relaunchAttemptID: "attempt-1")
-    h.coordinator.evaluateAndOfferIfNeeded()
-    await h.coordinator.pendingWork?.value
+    h.coordinator.reportLaunchState()
     #expect(h.handshake.writes.count == 1)
     #expect(h.handshake.writes.first?.healthy == false)
     // Still-blocked child quits itself; the original stays the authoritative
@@ -456,8 +465,7 @@ struct ApplicationRelocationCoordinatorTests {
   func declineFlow() async {
     let h = Self.makeHarness(bundleURL: Self.translocatedURL)
     h.presenter.choice = .notNow
-    h.coordinator.evaluateAndOfferIfNeeded()
-    await h.coordinator.pendingWork?.value
+    await Self.launchOffer(h)
     #expect(h.telemetry.offeredEvents.count == 1)
     #expect(h.telemetry.declinedEvents == ["translocated"])
     #expect(h.suppression.stored?.version == "2.3.0")
@@ -472,8 +480,7 @@ struct ApplicationRelocationCoordinatorTests {
     let h = Self.makeHarness(bundleURL: Self.translocatedURL)
     h.presenter.choice = .move
     h.handshake.ackHealthy = true
-    h.coordinator.evaluateAndOfferIfNeeded()
-    await h.coordinator.pendingWork?.value
+    await Self.launchOffer(h)
     #expect(h.telemetry.acceptedEvents.count == 1)
     #expect(h.mover.calls == 1)
     #expect(h.relauncher.lastAttemptID == "attempt-1")
@@ -490,8 +497,7 @@ struct ApplicationRelocationCoordinatorTests {
     let h = Self.makeHarness(bundleURL: Self.translocatedURL)
     // A read-only-volume child: unhealthy for a reason that is NOT translocation.
     h.handshake.outcome = .unhealthy(stateLabel: "read_only_volume")
-    h.coordinator.evaluateAndOfferIfNeeded()
-    await h.coordinator.pendingWork?.value
+    await Self.launchOffer(h)
     #expect(h.terminate.count == 0)  // the only known-good copy stays alive
     #expect(h.telemetry.relaunchedEvents.isEmpty)
     // #2006: this used to be the single `relaunchUnconfirmed` bucket for four
@@ -510,8 +516,7 @@ struct ApplicationRelocationCoordinatorTests {
   func moveAckStillTranslocated() async {
     let h = Self.makeHarness(bundleURL: Self.translocatedURL)
     h.handshake.outcome = .unhealthy(stateLabel: "translocated")
-    h.coordinator.evaluateAndOfferIfNeeded()
-    await h.coordinator.pendingWork?.value
+    await Self.launchOffer(h)
     #expect(h.terminate.count == 0)
     #expect(h.telemetry.failedEvents.map(\.1) == ["ackUnhealthyTranslocated"])
     // The loop person A repeated four times: "open it from Applications" when
@@ -526,8 +531,7 @@ struct ApplicationRelocationCoordinatorTests {
   func moveAckTimedOutOffersDestination() async {
     let h = Self.makeHarness(bundleURL: Self.translocatedURL)
     h.handshake.outcome = .timedOut
-    h.coordinator.evaluateAndOfferIfNeeded()
-    await h.coordinator.pendingWork?.value
+    await Self.launchOffer(h)
     #expect(h.terminate.count == 0)
     #expect(h.telemetry.failedEvents.map(\.1) == ["ackTimeout"])
     // Placed and signature-verified, no evidence of breakage -> Message B,
@@ -549,8 +553,7 @@ struct ApplicationRelocationCoordinatorTests {
       moverResult: .success(
         .existingUsable(
           URL(fileURLWithPath: "/Applications/EnviousWispr.app"), bundleVersion: "9.9")))
-    h.coordinator.evaluateAndOfferIfNeeded()
-    await h.coordinator.pendingWork?.value
+    await Self.launchOffer(h)
     #expect(h.handshake.lastExpectedVersion == "9.9")
   }
 
@@ -558,8 +561,7 @@ struct ApplicationRelocationCoordinatorTests {
   func relaunchRejected() async {
     let h = Self.makeHarness(bundleURL: Self.translocatedURL)
     h.relauncher.success = false
-    h.coordinator.evaluateAndOfferIfNeeded()
-    await h.coordinator.pendingWork?.value
+    await Self.launchOffer(h)
     #expect(h.terminate.count == 0)
     #expect(h.telemetry.failedEvents.map(\.1) == ["relaunchRejected"])
     #expect(h.presenter.failures == [.relaunchRejected])
@@ -571,8 +573,7 @@ struct ApplicationRelocationCoordinatorTests {
   func moveFailure() async {
     let h = Self.makeHarness(
       bundleURL: Self.translocatedURL, moverResult: .failure(.diskFull))
-    h.coordinator.evaluateAndOfferIfNeeded()
-    await h.coordinator.pendingWork?.value
+    await Self.launchOffer(h)
     #expect(h.terminate.count == 0)
     #expect(h.telemetry.failedEvents.map(\.1) == ["diskFull"])
     #expect(h.presenter.failures == [.diskFull])
@@ -667,8 +668,7 @@ struct ApplicationRelocationCoordinatorTests {
       bundleURL: Self.translocatedURL,
       moverResult: .success(.existingUsable(dest, bundleVersion: "1.0")))
     h.handshake.ackHealthy = true
-    h.coordinator.evaluateAndOfferIfNeeded()
-    await h.coordinator.pendingWork?.value
+    await Self.launchOffer(h)
     #expect(h.relauncher.lastAttemptID == "attempt-1")
     #expect(h.terminate.count == 1)
   }
@@ -682,8 +682,7 @@ struct ApplicationRelocationCoordinatorTests {
     let h = Self.makeHarness(
       bundleURL: Self.translocatedURL,
       moverResult: .success(.existingRunning(dest, bundleVersion: "1.0")))
-    h.coordinator.evaluateAndOfferIfNeeded()
-    await h.coordinator.pendingWork?.value
+    await Self.launchOffer(h)
     #expect(h.relauncher.activatedURL == dest)  // brought the live copy to front
     #expect(h.relauncher.relaunchCalls == 0)  // NO duplicate instance spawned
     #expect(h.handshake.awaitCalls == 0)  // no handshake needed for an already-live copy
@@ -698,8 +697,7 @@ struct ApplicationRelocationCoordinatorTests {
       bundleURL: Self.translocatedURL,
       moverResult: .success(.existingRunning(dest, bundleVersion: "1.0")))
     h.relauncher.activateSuccess = false
-    h.coordinator.evaluateAndOfferIfNeeded()
-    await h.coordinator.pendingWork?.value
+    await Self.launchOffer(h)
     #expect(h.terminate.count == 0)
     #expect(h.telemetry.failedEvents.map(\.1) == ["relaunchRejected"])
   }
@@ -782,7 +780,7 @@ struct ApplicationRelocationCoordinatorTests {
     h.coordinator.reportLaunchState()
     #expect(h.telemetry.offeredEvents.isEmpty)
     #expect(h.mover.calls == 0)
-    #expect(h.coordinator.pendingWork == nil)
+    #expect(h.coordinator.preflightWorker == nil && h.coordinator.preflightAuthority == nil)
     #expect(h.terminate.count == 0)
   }
 

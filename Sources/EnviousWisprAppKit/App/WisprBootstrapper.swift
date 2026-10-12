@@ -2567,9 +2567,9 @@ package final class WisprBootstrapper {
 
   // MARK: - Window titles (so the shell needs no EnviousWisprCore dependency)
 
-  package var mainWindowTitle: String { AppConstants.appName }
-  package var onboardingWindowTitle: String { AppConstants.onboardingWindowTitle }
-  package var onboardingWindowID: String { AppConstants.onboardingWindowID }
+  package var mainWindowTitle: String { LaunchWindowIdentity.mainTitle }
+  package var onboardingWindowTitle: String { LaunchWindowIdentity.onboardingTitle }
+  package var onboardingWindowID: String { LaunchWindowIdentity.onboardingID }
 
   // MARK: - Root content
   // Homes are injected here, INSIDE the kit — the shell injects nothing, so no
