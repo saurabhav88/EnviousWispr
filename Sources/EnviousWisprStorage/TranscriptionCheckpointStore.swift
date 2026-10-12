@@ -55,12 +55,23 @@ public final class TranscriptionCheckpointStore: @unchecked Sendable {
   /// only through the absence of a later report, never surfaced to the user.
   public func apply(_ event: TranscriptionCheckpointEvent, now: Date = Date()) {
     switch event {
-    case .mark(let takeID, let backend, let stage, let chunksScheduled):
+    case .mark(let takeID, let backend, let stage, let chunksScheduled, let model):
       let checkpoint = TranscriptionCheckpoint(
         takeID: takeID, backend: backend, stage: stage, stageEnteredAt: now,
-        chunksScheduled: chunksScheduled, appVersion: AppConstants.appVersion)
+        chunksScheduled: chunksScheduled, appVersion: AppConstants.appVersion, model: model)
       lock.withLock { mirror = checkpoint }
       write(checkpoint)
+    case .updateModel(let takeID, let model):
+      let updated: TranscriptionCheckpoint? = lock.withLock {
+        guard let current = mirror, current.takeID == takeID else { return nil }
+        let next = TranscriptionCheckpoint(
+          takeID: current.takeID, backend: current.backend, stage: current.stage,
+          stageEnteredAt: current.stageEnteredAt, chunksScheduled: current.chunksScheduled,
+          appVersion: current.appVersion, model: model)
+        mirror = next
+        return next
+      }
+      if let updated { write(updated) }
     case .clear:
       lock.withLock { mirror = nil }
       try? FileManager.default.removeItem(at: fileURL)

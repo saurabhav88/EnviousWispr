@@ -1,3 +1,4 @@
+import EnviousWisprCore
 import Foundation
 
 /// Hardware and signal facts for a take that captured nothing usable (#1890).
@@ -116,6 +117,9 @@ struct KernelTerminalTelemetrySnapshot: Sendable {
   let backend: String
   let outcome: RecordingOutcome
   let signalAttribution: KernelSignalAttributionTelemetry?
+  /// #3546 §3.7 T1: the take's model and how far it got, `nil` when unknown.
+  /// Not defaulted: a construction site has to say.
+  let modelAttribution: ASRModelAttribution?
   /// #2087. Defaulted to `.ordinary` so every existing construction site is
   /// unchanged.
   ///

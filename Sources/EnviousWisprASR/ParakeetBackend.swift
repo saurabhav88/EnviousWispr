@@ -337,9 +337,10 @@ public actor ParakeetBackend: ASRBackend {
     }
   }
 
-  public func transcribe(audioSamples: [Float], options: TranscriptionOptions) async throws
-    -> ASRResult
-  {
+  public func transcribe(
+    audioSamples: [Float], options: TranscriptionOptions,
+    onInferenceEntered: ASRInferenceEntryObserver? = nil
+  ) async throws -> ASRResult {
     // #2918: captured and cleared before the readiness guard, so a refused call leaves
     // nothing installed for the next caller (same ordering as WhisperKit).
     let progressObserver = transcriptionProgressObserver
@@ -408,6 +409,11 @@ public actor ParakeetBackend: ASRBackend {
       let batchDecodeFaultRole = await enterBatchDecodeFaultBoundary()
       defer { exitBatchDecodeFaultBoundary(role: batchDecodeFaultRole) }
     #endif
+    // #3546 §3.7 T1: the entry is committed here, after every preparatory await and the
+    // last cancellation check, with no suspension before the vendor call. Outside the
+    // `do` so a cancellation stays a cancellation.
+    try Task.checkCancellation()
+    onInferenceEntered?()
     do {
       let fluidResult = try await manager.transcribe(
         audioSamples, decoderState: &decoderState, language: languageHint)
@@ -545,7 +551,8 @@ public actor ParakeetBackend: ASRBackend {
   /// `cancelInFlightStreamingStart()` — see `startStreaming(options:generation:)`
   /// below), any caller (tests included) can use this directly.
   public func startStreaming(options: TranscriptionOptions) async throws {
-    try await startStreaming(options: options, generation: reserveStreamingGeneration())
+    try await startStreaming(
+      options: options, generation: reserveStreamingGeneration(), onWindowInferenceEntered: nil)
   }
 
   /// #1908 round 8: takes an ALREADY-RESERVED generation rather than
@@ -568,7 +575,12 @@ public actor ParakeetBackend: ASRBackend {
   /// (actor isolation guarantees only one runs at a time until it suspends)
   /// gets the strictly-earlier number, and every check below then correctly
   /// recognizes a call that started before a newer one as superseded.
-  func startStreaming(options: TranscriptionOptions, generation myGeneration: UInt64) async throws {
+  /// #3546 §3.7 T1: `onWindowInferenceEntered` goes to this attempt's own vendor manager
+  /// (observation only; see `ASRManagerInterface.startStreaming`).
+  func startStreaming(
+    options: TranscriptionOptions, generation myGeneration: UInt64,
+    onWindowInferenceEntered: ASRInferenceEntryObserver?
+  ) async throws {
     guard isReady, let models = fluidModels else { throw ASRError.notReady }
 
     // Cancel any existing streaming session before starting a new one.
@@ -585,7 +597,8 @@ public actor ParakeetBackend: ASRBackend {
     // the other, with nothing in the UI to say which they were on.
     let config = SlidingWindowAsrConfig.streaming
       .applying(language: Self.fluidLanguage(for: options.language))
-    let manager = SlidingWindowAsrManager(config: config)
+    let manager = SlidingWindowAsrManager(
+      config: config, onWindowInferenceEntered: onWindowInferenceEntered)
     do {
       // Vendor API: streaming starts via loadModels(_:) then startStreaming(source:).
       try await manager.loadModels(models)

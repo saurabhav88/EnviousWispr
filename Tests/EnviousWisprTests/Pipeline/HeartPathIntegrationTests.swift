@@ -713,8 +713,8 @@ internal final class MockASRManager: ASRManagerInterface {
   }
 
   func transcribe(
-    audioSamples: [Float],
-    options: TranscriptionOptions
+    audioSamples: [Float], options: TranscriptionOptions,
+    onInferenceEntered: ASRInferenceEntryObserver? = nil
   ) async throws -> ASRResult {
     transcribeCallCount += 1
     lastTranscribedSampleCount = audioSamples.count
@@ -727,7 +727,10 @@ internal final class MockASRManager: ASRManagerInterface {
     }
   }
 
-  func startStreaming(options: TranscriptionOptions, attemptID: UUID) async throws {
+  func startStreaming(
+    options: TranscriptionOptions, attemptID: UUID,
+    onWindowInferenceEntered: ASRInferenceEntryObserver? = nil
+  ) async throws {
     throw MockFailure.unexpectedStreaming
   }
 

@@ -34,12 +34,16 @@ struct TranscriptionCheckpointStoreTests {
     #expect(!FileManager.default.fileExists(atPath: file.path))
 
     store.apply(
-      .mark(takeID: Self.takeID, backend: "parakeet", stage: .captureStopped, chunksScheduled: 0))
+      .mark(
+        takeID: Self.takeID, backend: "parakeet", stage: .captureStopped, chunksScheduled: 0,
+        model: nil))
     #expect(store.current?.stage == .captureStopped)
     #expect(FileManager.default.fileExists(atPath: file.path))
 
     store.apply(
-      .mark(takeID: Self.takeID, backend: "parakeet", stage: .decodeStarted, chunksScheduled: 2))
+      .mark(
+        takeID: Self.takeID, backend: "parakeet", stage: .decodeStarted, chunksScheduled: 2,
+        model: nil))
     let reread = TranscriptionCheckpointStore(directory: dir)
     let orphan = try #require(reread.takeOrphan())
     #expect(orphan.stage == .decodeStarted)
@@ -51,7 +55,9 @@ struct TranscriptionCheckpointStoreTests {
     #expect(!FileManager.default.fileExists(atPath: file.path))
 
     store.apply(
-      .mark(takeID: Self.takeID, backend: "parakeet", stage: .decodeReturned, chunksScheduled: 2))
+      .mark(
+        takeID: Self.takeID, backend: "parakeet", stage: .decodeReturned, chunksScheduled: 2,
+        model: nil))
     store.apply(.clear)
     #expect(store.current == nil)
     #expect(!FileManager.default.fileExists(atPath: file.path))
@@ -69,7 +75,9 @@ struct TranscriptionCheckpointStoreTests {
     let prod = TranscriptionCheckpointStore(
       directory: dir, fileName: TranscriptionCheckpointStore.fileName(forBundleID: "com.x"))
     dev.apply(
-      .mark(takeID: Self.takeID, backend: "parakeet", stage: .decodeStarted, chunksScheduled: 0))
+      .mark(
+        takeID: Self.takeID, backend: "parakeet", stage: .decodeStarted, chunksScheduled: 0,
+        model: nil))
     #expect(prod.takeOrphan() == nil, "the shipped app must not consume the dev build's checkpoint")
     #expect(dev.takeOrphan()?.stage == .decodeStarted)
     #expect(
@@ -95,10 +103,14 @@ struct TranscriptionCheckpointStoreTests {
     let dir = Self.tempDir()
     let writer = TranscriptionCheckpointStore(directory: dir)
     writer.apply(
-      .mark(takeID: Self.takeID, backend: "parakeet", stage: .decodeStarted, chunksScheduled: 0))
+      .mark(
+        takeID: Self.takeID, backend: "parakeet", stage: .decodeStarted, chunksScheduled: 0,
+        model: nil))
     // Deleting a file needs write permission on its directory.
     try FileManager.default.setAttributes([.posixPermissions: 0o500], ofItemAtPath: dir.path)
-    defer { try? FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: dir.path) }
+    defer {
+      try? FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: dir.path)
+    }
     let reader = TranscriptionCheckpointStore(directory: dir)
     #expect(reader.takeOrphan() == nil, "a checkpoint that cannot be consumed must not be reported")
     try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: dir.path)
@@ -112,7 +124,9 @@ struct TranscriptionCheckpointStoreTests {
     let dir = Self.tempDir()
     let store = TranscriptionCheckpointStore(directory: dir)
     store.apply(
-      .mark(takeID: Self.takeID, backend: "whisperKit", stage: .tailChecked, chunksScheduled: 0))
+      .mark(
+        takeID: Self.takeID, backend: "whisperKit", stage: .tailChecked, chunksScheduled: 0,
+        model: nil))
     let file = dir.appendingPathComponent(TranscriptionCheckpointStore.fileName)
     let json = try #require(
       try JSONSerialization.jsonObject(with: Data(contentsOf: file)) as? [String: Any])
@@ -130,7 +144,9 @@ struct TranscriptionCheckpointStoreTests {
       let writer = TranscriptionCheckpointStore(directory: dir)
       let then = Date(timeIntervalSinceNow: -12.5)
       writer.apply(
-        .mark(takeID: Self.takeID, backend: "parakeet", stage: .decodeStarted, chunksScheduled: 3),
+        .mark(
+          takeID: Self.takeID, backend: "parakeet", stage: .decodeStarted, chunksScheduled: 3,
+          model: nil),
         now: then)
 
       let seen = Seen()
@@ -184,6 +200,64 @@ struct TranscriptionCheckpointStoreTests {
       }
     }
   #endif
+
+  /// #3546 §3.7 T1: a checkpoint carries the take's model so the next launch names it.
+  @Test("a checkpoint's model attribution survives the write and the orphan read")
+  func modelAttributionRoundTrips() throws {
+    let dir = Self.tempDir()
+    let model = ASRModelAttribution(
+      identity: ASRModelIdentity(
+        name: "parakeet-ultra-coreml", revision: "95eaa59a39d4", variant: "int8"),
+      loaded: true, inferenceReached: true)
+    TranscriptionCheckpointStore(directory: dir).apply(
+      .mark(
+        takeID: Self.takeID, backend: "parakeet", stage: .decodeStarted, chunksScheduled: 1,
+        model: model))
+    let orphan = try #require(TranscriptionCheckpointStore(directory: dir).takeOrphan())
+    #expect(orphan.modelAttribution == model)
+    #expect(orphan.asrModelRevision == "95eaa59a")
+  }
+
+  /// #3546 §3.7 T1: an inference entry refreshes the model WITHOUT restarting the stage
+  /// clock, so `stage_age_ms` still measures time in the stage; another take's update is
+  /// ignored.
+  @Test("a model update keeps the stage and its start time, and ignores another take")
+  func modelUpdateKeepsTheStageClock() throws {
+    let dir = Self.tempDir()
+    let store = TranscriptionCheckpointStore(directory: dir)
+    let start = Date(timeIntervalSince1970: 1_000)
+    store.apply(
+      .mark(
+        takeID: Self.takeID, backend: "parakeet", stage: .decodeStarted, chunksScheduled: 0,
+        model: nil), now: start)
+    let model = ASRModelAttribution(
+      identity: ASRModelIdentity(name: "parakeet-ultra-coreml", revision: nil, variant: "int8"),
+      loaded: true, inferenceReached: true)
+    store.apply(.updateModel(takeID: "OTHER-TAKE", model: model), now: start + 9)
+    #expect(store.current?.modelAttribution == nil)
+    store.apply(.updateModel(takeID: Self.takeID, model: model), now: start + 9)
+    let orphan = try #require(TranscriptionCheckpointStore(directory: dir).takeOrphan())
+    #expect(orphan.modelAttribution == model)
+    #expect(orphan.stage == .decodeStarted)
+    #expect(orphan.stageEnteredAt == start)
+  }
+
+  /// #3546 §3.7 T1: a checkpoint written by an older build has no model keys. It still
+  /// decodes and reports, with the model unknown rather than guessed.
+  @Test("a checkpoint from before #3546 decodes with the model unknown")
+  func oldCheckpointDecodesWithModelUnknown() throws {
+    let dir = Self.tempDir()
+    let json = """
+      {"takeID":"\(Self.takeID)","backend":"parakeet","stage":"decode_started",
+      "stageEnteredAt":"2026-10-01T00:00:00Z","chunksScheduled":0,"appVersion":"2.5.3"}
+      """
+    try Data(json.utf8).write(
+      to: dir.appendingPathComponent(TranscriptionCheckpointStore.fileName))
+    let orphan = try #require(TranscriptionCheckpointStore(directory: dir).takeOrphan())
+    #expect(orphan.stage == .decodeStarted)
+    #expect(orphan.modelAttribution == nil)
+    #expect(orphan.asrModel == nil)
+  }
 
   /// The Sentry fingerprint carries the stage, so each stage is its own issue.
   @Test("each stage groups as its own Sentry issue")

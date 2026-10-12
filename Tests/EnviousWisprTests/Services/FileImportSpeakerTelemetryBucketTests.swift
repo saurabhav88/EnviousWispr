@@ -111,7 +111,7 @@ struct FileImportSpeakerTelemetryBucketTests {
       }
       defer { TelemetryService.shared.testEventHook = nil }
       TelemetryService.shared.trackFileImportCompleted(
-        outcome: .asrFailed, asrBackend: .parakeet, durationSeconds: 120)
+        outcome: .asrFailed, asrBackend: .parakeet, model: nil, durationSeconds: 120)
       #expect(recorder.event?.name == "file_import_completed")
       #expect(recorder.event?.stringProps["outcome"] == "asr_failed")
       #expect(recorder.event?.stringProps["asr_backend"] == "parakeet")
@@ -128,7 +128,7 @@ struct FileImportSpeakerTelemetryBucketTests {
       }
       defer { TelemetryService.shared.testEventHook = nil }
       TelemetryService.shared.trackFileImportCompleted(
-        outcome: .success, asrBackend: .whisperKit, durationSeconds: 30,
+        outcome: .success, asrBackend: .whisperKit, model: nil, durationSeconds: 30,
         asrOutcome: .success, polishOutcome: .skipped, polishProvider: .none,
         polishModel: "should-not-appear")
       #expect(recorder.event?.stringProps["polish_outcome"] == "skipped")
@@ -144,7 +144,7 @@ struct FileImportSpeakerTelemetryBucketTests {
       }
       defer { TelemetryService.shared.testEventHook = nil }
       TelemetryService.shared.trackFileImportCompleted(
-        outcome: .success, asrBackend: .parakeet, durationSeconds: 30,
+        outcome: .success, asrBackend: .parakeet, model: nil, durationSeconds: 30,
         asrOutcome: .success, polishOutcome: .success, polishProvider: .ollama,
         polishModel: "llama3.1")
       #expect(recorder.event?.stringProps["polish_provider"] == "ollama")

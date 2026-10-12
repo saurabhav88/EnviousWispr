@@ -78,7 +78,7 @@ struct SettingsAdvisoryRenderHarness {
           samples: [0.1], seconds: 60, byteCount: 1_024, codec: "AAC",
           sampleRate: 44_100, channelCount: 1)
       },
-      transcribe: { _, _ in throw HarnessFailure.unexpectedWork },
+      transcribe: { _, _, _ in throw HarnessFailure.unexpectedWork },
       engineAdmission: .live(lease: EngineLease(), as: .fileImport),
       ensureEngineReady: { .notInstalled },
       beginRun: {

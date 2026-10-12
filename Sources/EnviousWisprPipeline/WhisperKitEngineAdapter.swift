@@ -83,6 +83,21 @@ final class WhisperKitEngineAdapter: ASREngineAdapter, @unchecked Sendable {
   /// so the 77 test construction sites stay untouched and cannot affect a hold.
   private let vendorDecodeOccupancy: VendorDecodeOccupancy
 
+  /// #3546 §3.7 T1: the delivered dictation model's identity (the stable
+  /// WhisperKit manifest), handed in by AppKit, which can read the manifest.
+  /// Production passes it through the factory (required there); the init
+  /// default `nil` keeps test construction sites untouched and reports no
+  /// model, never a wrong one.
+  private let deliveredModelIdentity: ASRModelIdentity?
+  /// The delivered identity once the backend's own variant was checked against
+  /// it; `nil` before that check or on a mismatch, so a backend loading a
+  /// different variant is never reported under the manifest's name.
+  private var validatedModelIdentity: ASRModelIdentity?
+  private var modelIdentityChecked = false
+  /// One receipt per recent session (`InferenceReceiptBook`), same as Parakeet.
+  private let inferenceReceipts = InferenceReceiptBook()
+  var onInferenceEntryRecorded: (@MainActor (SessionID) -> Void)?
+
   // MARK: Engine-session bookkeeping (NOT FSM state — §3.11 adapter-shape check)
 
   /// The session `beginSession(_:)` opened, or `nil` between sessions.
@@ -292,9 +307,11 @@ final class WhisperKitEngineAdapter: ASREngineAdapter, @unchecked Sendable {
     vendorDecodeOccupancy: VendorDecodeOccupancy = VendorDecodeOccupancy(),
     // #1707 Phase 2: DEBUG fault-injection oracle (§11.1). Defaulted `nil`
     // so every existing test construction site is unaffected.
-    batchDecodeFaultController: BatchDecodeFaultController? = nil
+    batchDecodeFaultController: BatchDecodeFaultController? = nil,
+    deliveredModelIdentity: ASRModelIdentity? = nil
   ) {
     self.backend = backend
+    self.deliveredModelIdentity = deliveredModelIdentity
     self.vendorDecodeOccupancy = vendorDecodeOccupancy
     self.engineMutationScope = engineMutationScope
     self.languageDetector = languageDetector
@@ -346,6 +363,41 @@ final class WhisperKitEngineAdapter: ASREngineAdapter, @unchecked Sendable {
 
   var readiness: ASREngineReadiness { cachedReadiness }
 
+  // MARK: ASREngineAdapter — model attribution (#3546 §3.7 T1)
+
+  var servingModelIdentity: ASRModelIdentity? {
+    cachedReadiness == .ready ? validatedModelIdentity : nil
+  }
+
+  func requestedModelIdentity() -> ASRModelIdentity? { validatedModelIdentity }
+
+  func inferenceEntry(for session: SessionID) -> ASRInferenceEntry? {
+    inferenceReceipts.entry(for: session)
+  }
+
+  /// Checks the backend's variant against the delivered identity, once. The
+  /// dictation variant is fixed for the backend's lifetime.
+  private func checkModelIdentity() async {
+    guard !modelIdentityChecked else { return }
+    // Marked checked only after the answer is stored, so a concurrent warm-up
+    // reads the variant itself rather than skipping to an unset identity. The
+    // variant is fixed for the backend's lifetime, so a second read is harmless.
+    let variant = await backend.modelVariantName
+    validatedModelIdentity =
+      deliveredModelIdentity?.variant == variant ? deliveredModelIdentity : nil
+    modelIdentityChecked = true
+  }
+
+  /// The observation the backend calls synchronously immediately before a vendor decode,
+  /// bound to THIS operation's session receipt and the model serving now. The record is
+  /// committed on the backend's own actor before the decode starts, so it always lands
+  /// before the decode's result.
+  private func inferenceObserver(for session: SessionID?) -> ASRInferenceEntryObserver? {
+    inferenceReceipts.observer(session: session, identity: servingModelIdentity) {
+      [weak self] session in self?.onInferenceEntryRecorded?(session)
+    }
+  }
+
   /// #1275: read-only pass-through of the cached warm-up duration.
   var lastWarmupInferenceMs: Int? { cachedWarmupInferenceMs }
 
@@ -356,10 +408,12 @@ final class WhisperKitEngineAdapter: ASREngineAdapter, @unchecked Sendable {
   /// in-flight CoreML load semantics (`#445`). CoreML's `MLModel.load` exposes
   /// no progress signal, so the kernel runs signal-free warm-up — no wedge
   /// detection, no wall-clock timeout (per the protocol's MUST NOT clause).
-  func warmUp() async throws {
+  func warmUp(modelReceipt: WarmUpModelReceipt?) async throws {
+    await checkModelIdentity()
     if await backend.isReady {
       cachedReadiness = .ready
       cachedWarmupInferenceMs = await backend.lastWarmupInferenceMs
+      modelReceipt?.attribution = warmUpAttribution(loaded: true)
       return
     }
     cachedReadiness = .warming
@@ -376,11 +430,21 @@ final class WhisperKitEngineAdapter: ASREngineAdapter, @unchecked Sendable {
       let ready = await captured.isReady
       cachedReadiness = ready ? .ready : .notReady
       cachedWarmupInferenceMs = ready ? await captured.lastWarmupInferenceMs : nil
+      modelReceipt?.attribution = warmUpAttribution(loaded: ready)
       guard ready else { throw ASRLoadSupersededError() }
     } catch {
       prepareTask = nil
       cachedReadiness = .notReady
+      modelReceipt?.attribution = warmUpAttribution(loaded: false)
       throw error
+    }
+  }
+
+  /// The dictation model is fixed for this backend, so a warm-up's model is the checked
+  /// delivered identity; nil when unchecked or mismatched.
+  private func warmUpAttribution(loaded: Bool) -> ASRModelAttribution? {
+    validatedModelIdentity.map {
+      ASRModelAttribution(identity: $0, loaded: loaded, inferenceReached: false)
     }
   }
 
@@ -406,6 +470,7 @@ final class WhisperKitEngineAdapter: ASREngineAdapter, @unchecked Sendable {
   /// against the backend's current state so a recently-unloaded model is
   /// reported as `.notReady`.
   func warmUpFromCache() async throws {
+    await checkModelIdentity()
     let ready = await backend.isReady
     cachedReadiness = ready ? .ready : .notReady
     cachedWarmupInferenceMs = ready ? await backend.lastWarmupInferenceMs : nil
@@ -434,6 +499,7 @@ final class WhisperKitEngineAdapter: ASREngineAdapter, @unchecked Sendable {
   /// helper, so neither meshing bug can occur on any path.
   func beginSession(_ id: SessionID, options: TranscriptionOptions, streaming: Bool) async throws {
     sessionID = id
+    inferenceReceipts.open(id)  // #3546: before any suspension, so every operation finds it
     decodeOptions = options
     isTerminal = false
     isCancelled = false
@@ -514,7 +580,9 @@ final class WhisperKitEngineAdapter: ASREngineAdapter, @unchecked Sendable {
   private func startStreamingSession(_ id: SessionID, options: TranscriptionOptions) async {
     guard
       let session = await backend.makeStreamingSession(
-        options: options, vendorDecodeOccupancy: vendorDecodeOccupancy)
+        options: options, vendorDecodeOccupancy: vendorDecodeOccupancy,
+        // #3546: every decode the session issues (cycle, tail, flush) passes this.
+        onDecode: inferenceObserver(for: id))
     else {
       // Stale guard (cloud r2): a cancel + beginSession(B) during the vend
       // await must not overwrite B's per-session telemetry state.
@@ -1441,6 +1509,9 @@ final class WhisperKitEngineAdapter: ASREngineAdapter, @unchecked Sendable {
     {
       return .failed(ASREngineError.decodeFailed)
     }
+    // #3546: bound to this call's session before any suspension; the backend awaits it
+    // only at its vendor decode.
+    let inferenceObserver = inferenceObserver(for: sessionID)
     do {
       // #2787: counted for the whole vendor call, so a session that stops
       // waiting leaves the engine visibly busy until WhisperKit returns.
@@ -1448,7 +1519,8 @@ final class WhisperKitEngineAdapter: ASREngineAdapter, @unchecked Sendable {
         // Twin of `ASRManager.transcribe`: never START a decode in a task the
         // session terminal already cancelled (second-pass review, #2787).
         try Task.checkCancellation()
-        return try await backend.transcribe(audioSamples: samples, options: decodeOptions)
+        return try await backend.transcribe(
+          audioSamples: samples, options: decodeOptions, onInferenceEntered: inferenceObserver)
       }
       return .success(result)
     } catch is CancellationError {
@@ -1635,20 +1707,26 @@ package protocol WhisperKitBackendDriving: Actor {
   /// state (completed/threw/timed-out — only `.completed` sets it).
   var lastWarmupInferenceMs: Int? { get }
   func prepare() async throws
-  func transcribe(audioSamples: [Float], options: TranscriptionOptions) async throws -> ASRResult
+  /// #3546 §3.7 T1: `onInferenceEntered` travels with THIS call and is invoked synchronously
+  /// at the backend's vendor-call boundary, so no other call can fire or clear it.
+  func transcribe(
+    audioSamples: [Float], options: TranscriptionOptions,
+    onInferenceEntered: ASRInferenceEntryObserver?
+  ) async throws -> ASRResult
   func observeLID(samples: [Float], maxWindows: Int) async -> LIDObservationBatch
   // #1276 Step 2 (PR-2): vend the authoritative streaming session
   // (locked-language Live-transcription path). Nil when the model is not
   // loaded (the adapter stays in batch mode, fail-open).
   func makeStreamingSession(
-    options: TranscriptionOptions, vendorDecodeOccupancy: VendorDecodeOccupancy
+    options: TranscriptionOptions, vendorDecodeOccupancy: VendorDecodeOccupancy,
+    onDecode: ASRInferenceEntryObserver?
   ) async -> (any WhisperKitIncrementalSession)?
   func unload() async
 }
 
 // Retroactive conformance — `WhisperKitBackend` already has every requirement
 // at the right access level (`isReady` public, `modelVariantName` package,
-// `prepare()` public, `transcribe(...)` public,
+// `prepare()` public, `transcribe(..., onInferenceEntered:)` package,
 // `observeLID(...)` package, `makeStreamingSession(...)` package, `unload()`
 // public). No method additions needed in `EnviousWisprASR`.
 extension WhisperKitBackend: WhisperKitBackendDriving {}

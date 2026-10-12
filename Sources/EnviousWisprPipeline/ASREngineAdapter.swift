@@ -46,6 +46,30 @@ package struct ASREngineIdentity: Sendable {
   }
 }
 
+/// The first vendor-inference entry of one session (#3546 plan §3.7 T1).
+package struct ASRInferenceEntry: Sendable, Equatable {
+  package let session: SessionID
+  package let identity: ASRModelIdentity?
+
+  package init(session: SessionID, identity: ASRModelIdentity?) {
+    self.session = session
+    self.identity = identity
+  }
+}
+
+/// One warm-up call's model outcome (#3546 plan §3.7 T1), owned by the caller that passed it
+/// to `warmUp(modelReceipt:)`. Each call writes only its own receipt, so a warm-up that
+/// finishes late can never hand its outcome to another caller.
+@MainActor
+package final class WarmUpModelReceipt {
+  /// The model this warm-up published (`loaded: true`), or the request its last physical
+  /// load attempted (`loaded: false`); `nil` when it failed before any load or the engine
+  /// names no model.
+  package var attribution: ASRModelAttribution?
+
+  package init() {}
+}
+
 /// Static capability flags an engine adapter advertises so the kernel can
 /// branch on `capabilities` rather than on engine identity (PR-1 §B.2.1,
 /// D15). An optional capability the adapter does not support MUST degrade
@@ -286,6 +310,29 @@ package protocol ASREngineAdapter: AnyObject, Sendable {
   /// Current warm-up / load readiness.
   var readiness: ASREngineReadiness { get }
 
+  // MARK: Model attribution (#3546 plan §3.7 T1)
+  //
+  // Observation only: nothing branches on these. No protocol defaults on
+  // purpose, so a new engine has to say which model it serves rather than
+  // inherit a silent "unknown".
+
+  /// The model published READY right now, or `nil` while nothing is loaded.
+  var servingModelIdentity: ASRModelIdentity? { get }
+
+  /// The model the next or current load will use, as already decided, or
+  /// `nil` while that decision is still pending. Never a guess.
+  func requestedModelIdentity() -> ASRModelIdentity?
+
+  /// For one session: whether audio entered vendor inference, and the
+  /// serving model frozen at that first entry. `nil` when it never did, or
+  /// for any other session. `reached` with a `nil` identity means inference
+  /// ran on a model that published no identity (a test double).
+  func inferenceEntry(for session: SessionID) -> ASRInferenceEntry?
+
+  /// Told the session whose first vendor-inference entry was just recorded, so the
+  /// kernel can refresh that take's crash checkpoint. Observation only.
+  var onInferenceEntryRecorded: (@MainActor (SessionID) -> Void)? { get set }
+
   /// #1275: duration of the most recent silent warm-up inference, in
   /// milliseconds. `nil` for adapters without this concept (default, e.g.
   /// Parakeet) or before the first load's warm-up completes. Read only for
@@ -298,7 +345,10 @@ package protocol ASREngineAdapter: AnyObject, Sendable {
   /// Takes no `SessionID`: it can be driven by a sessionless pre-warm or by a
   /// session's `warmingUp` state. A late completion never drives an FSM
   /// transition by itself — it only updates `readiness` (PR-1 §B.2.2, CN-7).
-  func warmUp() async throws
+  /// #3546 §3.7 T1: `modelReceipt`, when given, receives THIS call's model outcome
+  /// (`WarmUpModelReceipt`), written inside the call at its own load boundary on success
+  /// and on a throw. Observation only.
+  func warmUp(modelReceipt: WarmUpModelReceipt?) async throws
 
   /// OPTIONAL load-wedge signal (PR-1 §B.1.7). `nil` when the engine exposes
   /// no load-progress stream — the kernel then does signal-free `warmingUp`

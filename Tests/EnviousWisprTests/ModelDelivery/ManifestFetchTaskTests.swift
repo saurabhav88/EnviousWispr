@@ -847,7 +847,7 @@ final class DeliveryStubProtocol: URLProtocol {
     await controller.addStateObserver { _, state in
       if case .downloading = state { Task { await inflight.fire() } }
     }
-    let warm = Task { @MainActor in try? await adapter.warmUp() }
+    let warm = Task { @MainActor in try? await adapter.warmUp(modelReceipt: nil) }
     await inflight.wait()
 
     // A model-LOAD wedge recovery must leave the in-flight download alone.
@@ -893,7 +893,8 @@ extension ManifestFetchTaskTests {
     let metadata = root.appendingPathComponent("metadata", isDirectory: true)
     try FileManager.default.createDirectory(at: install, withIntermediateDirectories: true)
     try FileManager.default.createDirectory(at: metadata, withIntermediateDirectories: true)
-    let host = "https://prepare.invalid.example/\(UUID().uuidString)/"
+    let tag = UUID().uuidString
+    let host = "https://prepare.invalid.example/\(tag)/"
     let files = ManifestFixture.smallFiles
     let manifest = try DeliveryManifest.load(
       from: ManifestFixture.manifestJSON(
@@ -909,7 +910,9 @@ extension ManifestFetchTaskTests {
     let selection = ParakeetSelectionProvider()
     let coordinator = ParakeetUpgradeCoordinator(parakeetSelection: selection, delivery: handle)
 
-    DeliveryStubProtocol.reset()
+    // Scoped to this rig: the shared request list is also written by suites that run
+    // concurrently with this one.
+    DeliveryStubProtocol.beginScope(pathPrefix: "/\(tag)/")
     ChunkAppendDelegate.protocolClassesForTesting = [DeliveryStubProtocol.self]
     for f in files {
       DeliveryStubProtocol.enqueue(
@@ -929,7 +932,9 @@ extension ManifestFetchTaskTests {
     #expect(request.generation == 1, "one delivery stage published one request")
     #expect(request.directory == install)
     #expect(request.cacheOnly)
-    #expect(DeliveryStubProtocol.requests.filter { $0.hasPrefix("GET ") }.count == files.count)
+    #expect(
+      DeliveryStubProtocol.requests(in: "/\(tag)/").filter { $0.hasPrefix("GET ") }.count
+        == files.count)
     #expect(coordinator.hasPendingSelectionPoint == false)
     #expect(await controller.isAdmitted(registration))
   }

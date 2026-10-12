@@ -251,10 +251,16 @@ private final class NoOpASRManagerV2: ASRManagerInterface {
   func setInitialBackendType(_ type: ASRBackendType) { activeBackendType = type }
   func switchBackend(to type: ASRBackendType) async { activeBackendType = type }
   var activeBackendSupportsStreaming: Bool { get async { false } }
-  func transcribe(audioSamples: [Float], options: TranscriptionOptions) async throws -> ASRResult {
+  func transcribe(
+    audioSamples: [Float], options: TranscriptionOptions,
+    onInferenceEntered: ASRInferenceEntryObserver? = nil
+  ) async throws -> ASRResult {
     throw V2StubError.unexpected
   }
-  func startStreaming(options: TranscriptionOptions, attemptID: UUID) async throws {
+  func startStreaming(
+    options: TranscriptionOptions, attemptID: UUID,
+    onWindowInferenceEntered: ASRInferenceEntryObserver? = nil
+  ) async throws {
     throw V2StubError.unexpected
   }
   func feedAudio(_ buffer: AVAudioPCMBuffer) async throws { throw V2StubError.unexpected }

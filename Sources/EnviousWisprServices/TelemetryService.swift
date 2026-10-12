@@ -36,8 +36,34 @@ import PostHog
       self.doubleProps = doubleProps
       self.boolProps = boolProps
     }
+
+    /// #3546 §3.7 T1: the same event with the model keys added, exactly as
+    /// `ASRModelAttribution.telemetryProperties` writes them to the vendor.
+    /// #3546 §3.7 T1: the same event with the model keys COPIED from the dictionary the
+    /// emitter hands the SDK, so a hook test fails when an emitter stops merging them.
+    public func withModelProperties(_ properties: [String: Any]) -> CapturedTelemetryEvent {
+      var strings = stringProps
+      var bools = boolProps
+      for key in ASRModelAttribution.telemetryKeys {
+        strings.removeValue(forKey: key)
+        bools.removeValue(forKey: key)
+        if let value = properties[key] as? String { strings[key] = value }
+        if let value = properties[key] as? Bool { bools[key] = value }
+      }
+      return CapturedTelemetryEvent(
+        name: name, stringProps: strings, intProps: intProps, doubleProps: doubleProps,
+        boolProps: bools)
+    }
   }
 #endif
+
+extension Dictionary where Key == String, Value == Any {
+  /// #3546 §3.7 T1: adds the model keys; `nil` adds nothing (unknown model).
+  mutating func addModelAttribution(_ model: ASRModelAttribution?) {
+    guard let model else { return }
+    merge(model.telemetryProperties) { _, new in new }
+  }
+}
 
 /// Telemetry Bible Phase 4 (#1173): which user action triggered an API-key
 /// validation pass. Threaded into `validateKeyAndDiscoverModels` (defaulted to
@@ -273,6 +299,9 @@ public final class TelemetryService {
   /// Called by the former root state when a pipeline completes. Reads Transcript + ExecutionMetrics.
   public func reportDictationCompleted(
     transcript t: Transcript, inputMode: String,
+    // #3546 §3.7 T1: the take's model, paired with its take id at the
+    // accepted terminal; nil omits the keys.
+    model: ASRModelAttribution?,
     recordingSeconds: Double? = nil, stopReason: String? = nil,
     historySaveStatus: String? = nil, historySaveErrorClass: String? = nil,
     selectedTransport: String? = nil, effectiveTransport: String? = nil,
@@ -369,6 +398,7 @@ public final class TelemetryService {
       result: "success",
       inputMode: inputMode,
       asrBackend: t.backendType.rawValue,
+      model: model,
       llmProvider: t.llmProvider,
       fillerRemoval: false,
       targetApp: m?.targetApp,
@@ -470,14 +500,16 @@ public final class TelemetryService {
 
   /// An eligible cancel selected Escape Recovery.
   public func escapeRecoveryStarted(
-    asrBackend: String, polishProvider: String, recordingDurationMs: Int, takeID: String
+    asrBackend: String, polishProvider: String, recordingDurationMs: Int, takeID: String,
+    model: ASRModelAttribution?
   ) {
-    let props: [String: Any] = [
+    var props: [String: Any] = [
       "asr_backend": asrBackend,
       "polish_provider": polishProvider,
       "recording_duration_ms": recordingDurationMs,
       "take_id": takeID,
     ]
+    props.addModelAttribution(model)
     #if DEBUG
       testEventHook?(
         CapturedTelemetryEvent(
@@ -485,7 +517,8 @@ public final class TelemetryService {
           stringProps: [
             "asr_backend": asrBackend, "polish_provider": polishProvider, "take_id": takeID,
           ],
-          intProps: ["recording_duration_ms": recordingDurationMs]))
+          intProps: ["recording_duration_ms": recordingDurationMs]
+        ).withModelProperties(props))
     #endif
     PostHogSDK.shared.capture("escape_recovery.started", properties: props)
   }
@@ -499,19 +532,23 @@ public final class TelemetryService {
   /// inferred from the resolutions that did arrive.
   ///
   /// Shape only, never content: no transcript, no audio, no sample values.
-  public func asrRetryDeadlineStarted(takeID: String, asrBackend: String, budgetMs: Int) {
-    let props: [String: Any] = [
+  public func asrRetryDeadlineStarted(
+    takeID: String, asrBackend: String, budgetMs: Int, model: ASRModelAttribution?
+  ) {
+    var props: [String: Any] = [
       "phase": "started",
       "take_id": takeID,
       "asr_backend": asrBackend,
       "budget_ms": budgetMs,
     ]
+    props.addModelAttribution(model)
     #if DEBUG
       testEventHook?(
         CapturedTelemetryEvent(
           name: "asr.retry_deadline_observed",
           stringProps: ["phase": "started", "take_id": takeID, "asr_backend": asrBackend],
-          intProps: ["budget_ms": budgetMs]))
+          intProps: ["budget_ms": budgetMs]
+        ).withModelProperties(props))
     #endif
     PostHogSDK.shared.capture("asr.retry_deadline_observed", properties: props)
   }
@@ -543,7 +580,8 @@ public final class TelemetryService {
     disposition: ASRRetryDeadlineDisposition,
     operationReturnMs: Int?,
     callerResumeMs: Int,
-    acceptedAfterCutoff: Bool
+    acceptedAfterCutoff: Bool,
+    model: ASRModelAttribution?
   ) {
     var props: [String: Any] = [
       "phase": "resolved",
@@ -558,6 +596,7 @@ public final class TelemetryService {
     // Absent rather than a sentinel. A negative or zero stand-in would be
     // indistinguishable from a real fast return once it reaches a chart.
     if let operationReturnMs { props["operation_return_ms"] = operationReturnMs }
+    props.addModelAttribution(model)
     #if DEBUG
       var intProps: [String: Int] = ["budget_ms": budgetMs, "caller_resume_ms": callerResumeMs]
       if let operationReturnMs { intProps["operation_return_ms"] = operationReturnMs }
@@ -569,7 +608,8 @@ public final class TelemetryService {
             "resolution": resolution.rawValue, "disposition": disposition.rawValue,
           ],
           intProps: intProps,
-          boolProps: ["accepted_after_cutoff": acceptedAfterCutoff]))
+          boolProps: ["accepted_after_cutoff": acceptedAfterCutoff]
+        ).withModelProperties(props))
     #endif
     PostHogSDK.shared.capture("asr.retry_deadline_observed", properties: props)
   }
@@ -591,12 +631,14 @@ public final class TelemetryService {
   /// the same `take_id`, so the join, not a guess, is where those come from.
   public func escapeRecoveryCompleted(
     outcome: EscapeRecoveryTerminalOutcome, asrDurationMs: Int?, polishDurationMs: Int?,
-    durationMs: Int?, asrBackend: String?, takeID: String
+    durationMs: Int?, asrBackend: String?, takeID: String, model: ASRModelAttribution?
   ) {
     var props: [String: Any] = [
       "outcome": outcome.rawValue,
       "take_id": takeID,
     ]
+    // #3546: absent when the recovery's model is unknown, never defaulted.
+    props.addModelAttribution(model)
     if let durationMs {
       props["duration_ms"] = durationMs
       // Seconds in the reserved aggregation slot, raw milliseconds under their
@@ -620,7 +662,8 @@ public final class TelemetryService {
           name: "escape_recovery.completed",
           stringProps: stringProps,
           intProps: intProps,
-          doubleProps: durationMs.map { ["$value": Double($0) / 1000.0] } ?? [:]))
+          doubleProps: durationMs.map { ["$value": Double($0) / 1000.0] } ?? [:]
+        ).withModelProperties(props))
     #endif
     PostHogSDK.shared.capture("escape_recovery.completed", properties: props)
   }
@@ -703,21 +746,27 @@ public final class TelemetryService {
   /// #3289: one sample per launch after 12 idle minutes: does an idle app give its memory back?
   /// Numbers and booleans only. `footprint_mb` is this process's `phys_footprint` in MiB and does
   /// not include the EG-1/S1-mini `llama-server` child process. Launch-scoped: no join key.
+  ///
+  /// #3546 §3.7 T1: `model` is the speech model loaded at that moment (`loaded: true`), or nil
+  /// (keys omitted) when none is loaded.
   public func appIdleMemory(
-    footprintMB: Int, minutesSinceLaunch: Int, wordCheckLoaded: Bool, wordCheckWanted: Bool
+    footprintMB: Int, minutesSinceLaunch: Int, wordCheckLoaded: Bool, wordCheckWanted: Bool,
+    model: ASRModelAttribution?
   ) {
-    let props: [String: Any] = [
+    var props: [String: Any] = [
       "footprint_mb": footprintMB,
       "minutes_since_launch": minutesSinceLaunch,
       "word_check_loaded": wordCheckLoaded,
       "word_check_wanted": wordCheckWanted,
     ]
+    props.addModelAttribution(model)
     #if DEBUG
       testEventHook?(
         CapturedTelemetryEvent(
           name: "app.idle_memory",
           intProps: props.compactMapValues { $0 as? Int },
-          boolProps: props.compactMapValues { $0 as? Bool }))
+          boolProps: props.compactMapValues { $0 as? Bool }
+        ).withModelProperties(props))
     #endif
     PostHogSDK.shared.capture("app.idle_memory", properties: props)
   }
@@ -1614,23 +1663,27 @@ public final class TelemetryService {
   /// honest limit on any reliability number built from terminals alone.
   ///
   /// Content-free: an opaque take key and a closed-vocabulary backend name.
-  public func dictationStarted(takeID: String, backend: String) {
+  public func dictationStarted(takeID: String, backend: String, model: ASRModelAttribution?) {
     let event = "dictation.started"
-    let props: [String: Any] = ["take_id": takeID, "backend": backend]
+    var props: [String: Any] = ["take_id": takeID, "backend": backend]
+    // #3546 §3.7 T1: the only row a crashed take has, so it carries the model
+    // known at acceptance (absent while the take's model is still undecided).
+    props.addModelAttribution(model)
     // #2958: acceptance opens the take's record-start summary. Opened HERE, on the
     // denominator, so a marker for a take that was never accepted has nowhere to land.
     takeStages.open(takeID: takeID)
     #if DEBUG
       testEventHook?(
         CapturedTelemetryEvent(
-          name: event, stringProps: ["take_id": takeID, "backend": backend]))
+          name: event, stringProps: ["take_id": takeID, "backend": backend]
+        ).withModelProperties(props))
       // Logged for the same reason the terminal is: without it, Live UAT can see
       // endings but not beginnings, and the one number this event exists to
       // produce — started takes that never reported an ending — is unverifiable
       // outside PostHog.
       Task {
         await AppLogger.shared.log(
-          "dictation_started take=\(takeID) backend=\(backend)",
+          "dictation_started take=\(takeID) backend=\(backend) asr_model=\(model?.identity.name ?? "unknown")",
           level: .info, category: "Telemetry")
       }
     #endif
@@ -1669,6 +1722,9 @@ public final class TelemetryService {
     backend: String,
     result: String,
     reason: String?,
+    // #3546 §3.7 T1: the take's frozen model and how far it got; nil omits
+    // the keys (unknown), never a guess.
+    model: ASRModelAttribution?,
     inputDeviceKind: String? = nil,
     effectiveTransport: String? = nil,
     selectedTransport: String? = nil,
@@ -1725,6 +1781,7 @@ public final class TelemetryService {
     if let vadFilteredSampleCount { props["vad_filtered_sample_count"] = vadFilteredSampleCount }
     if let vadRetainedRatio { props["vad_retained_ratio"] = vadRetainedRatio }
     if let vadConditioningReason { props["vad_conditioning_reason"] = vadConditioningReason }
+    props.addModelAttribution(model)
     // #2958: the record-start summary (#1780's three boundaries) rides on the terminal
     // row. Consumed exactly once; a take with no open entry (pre-acceptance failure,
     // evicted, or already closed) renders NO `vad_stage_reached` rather than a
@@ -1743,7 +1800,7 @@ public final class TelemetryService {
         "learned_check_fallback_reason", "learned_check_checker_identity",
         "learned_check_checker_status", "learned_check_absence_reason",
         "vad_stage_reached", "vad_backend", "vad_input_route", "polish_language_hint",
-        "polish_setup_problem",
+        "polish_setup_problem", "asr_model", "asr_model_revision", "asr_model_variant",
       ] {
         if let value = props[key] as? String { stringProps[key] = value }
       }
@@ -1764,7 +1821,10 @@ public final class TelemetryService {
         if let value = props[key] as? Double { doubleProps[key] = value }
       }
       var boolProps: [String: Bool] = [:]
-      for key in ["vad_ready", "vad_model_reused", "vad_first_chunk_should_stop"] {
+      for key in [
+        "vad_ready", "vad_model_reused", "vad_first_chunk_should_stop", "asr_model_loaded",
+        "asr_model_inference_reached",
+      ] {
         if let value = props[key] as? Bool { boolProps[key] = value }
       }
       testEventHook?(
@@ -1796,7 +1856,11 @@ public final class TelemetryService {
             + "vad_reason=\(stringProps["vad_conditioning_reason"] ?? "absent") "
             // #2958: the folded record-start summary, ABSENT-or-value for the same
             // reason: `vad_stage=absent` on an accepted take is a ledger defect.
-            + "vad_stage=\(stringProps["vad_stage_reached"] ?? "absent")",
+            + "vad_stage=\(stringProps["vad_stage_reached"] ?? "absent") "
+            // #3546: ABSENT-or-value, so Live UAT reads the model PostHog gets.
+            + "asr_model=\(stringProps["asr_model"] ?? "absent") "
+            + "asr_model_inference_reached="
+            + "\(boolProps["asr_model_inference_reached"].map { String($0) } ?? "absent")",
           level: .info, category: "Telemetry")
       }
     #endif
@@ -1910,6 +1974,7 @@ public final class TelemetryService {
 
   public func dictationCompleted(
     result: String, inputMode: String, asrBackend: String,
+    model: ASRModelAttribution?,
     llmProvider: String?, fillerRemoval: Bool,
     targetApp: String?, pasteResult: String?,
     /// #3423: the record-start focus-owner state, one of five closed values; nil omits the key.
@@ -1969,6 +2034,7 @@ public final class TelemetryService {
       "e2e_seconds": e2eSeconds,
       "$value": e2eSeconds,
     ]
+    props.addModelAttribution(model)
     // #1060: how long the user actually spoke (distinct from e2e processing time)
     // + why the recording stopped. Metadata only (telemetry-privacy-boundary).
     if let rec = recordingSeconds { props["recording_seconds"] = rec }
@@ -2243,14 +2309,25 @@ public final class TelemetryService {
   /// (launch / onboarding / engine_swap / cold_press / explicit_retry); `warmupInFlight` is true
   /// when a prior warm-up was already running and this call joined it. Privacy:
   /// timing/state only, no audio or text (telemetry-privacy boundary).
-  public func coldStartWarmupStarted(engine: String, reason: String, warmupInFlight: Bool) {
-    PostHogSDK.shared.capture(
-      "coldstart.warmup_started",
-      properties: [
-        "engine": engine,
-        "reason": reason,
-        "warmup_in_flight": warmupInFlight,
-      ])
+  /// #3546 §3.7 T1: `model` is the identity this warm-up was asked to load,
+  /// `loaded: false`; nil (omitted) while that choice is still pending.
+  public func coldStartWarmupStarted(
+    engine: String, reason: String, warmupInFlight: Bool, model: ASRModelAttribution?
+  ) {
+    var properties: [String: Any] = [
+      "engine": engine,
+      "reason": reason,
+      "warmup_in_flight": warmupInFlight,
+    ]
+    properties.addModelAttribution(model)
+    #if DEBUG
+      testEventHook?(
+        CapturedTelemetryEvent(
+          name: "coldstart.warmup_started", stringProps: ["engine": engine, "reason": reason],
+          boolProps: ["warmup_in_flight": warmupInFlight]
+        ).withModelProperties(properties))
+    #endif
+    PostHogSDK.shared.capture("coldstart.warmup_started", properties: properties)
   }
 
   /// Cold-boot warm-up reached `.ready`. `durationMs` is `ready_at − warmup_started_at`.
@@ -2263,9 +2340,11 @@ public final class TelemetryService {
   /// the distribution was observable). Nil when no wedge guard covered the
   /// warm-up (WhisperKit, in-process debug) and for pre-#1388 rows. Query by
   /// presence, never `!= 0`.
+  /// #3546 §3.7 T1: `model` is the identity published by this warm-up.
   public func coldStartWarmupCompleted(
-    engine: String, reason: String, durationMs: Int, inferenceWarmupMs: Int? = nil,
-    installDurationMs: Int? = nil, installSilenceMaxMs: Int? = nil
+    engine: String, reason: String, durationMs: Int, model: ASRModelAttribution?,
+    inferenceWarmupMs: Int? = nil, installDurationMs: Int? = nil,
+    installSilenceMaxMs: Int? = nil
   ) {
     var properties: [String: Any] = [
       "engine": engine,
@@ -2282,6 +2361,14 @@ public final class TelemetryService {
     if let installSilenceMaxMs {
       properties["install_silence_max_ms"] = installSilenceMaxMs
     }
+    properties.addModelAttribution(model)
+    #if DEBUG
+      testEventHook?(
+        CapturedTelemetryEvent(
+          name: "coldstart.warmup_completed", stringProps: ["engine": engine, "reason": reason],
+          intProps: properties.compactMapValues { $0 as? Int }
+        ).withModelProperties(properties))
+    #endif
     PostHogSDK.shared.capture("coldstart.warmup_completed", properties: properties)
   }
 
@@ -2305,27 +2392,48 @@ public final class TelemetryService {
   /// re-kicks it. `error` is `SentryBreadcrumb.structuredDescriptor` (`Domain#code`,
   /// #2965); before that release it was `String(describing:)`, which the sanitizer
   /// blanked on half the rows. Split any trend on `error` at that release.
-  public func coldStartWarmupFailed(engine: String, reason: String, error: String) {
-    PostHogSDK.shared.capture(
-      "coldstart.warmup_failed",
-      properties: [
-        "engine": engine,
-        "reason": reason,
-        "error": error,
-      ])
+  /// #3546 §3.7 T1: `model` is the identity this warm-up failed to load.
+  public func coldStartWarmupFailed(
+    engine: String, reason: String, error: String, model: ASRModelAttribution?
+  ) {
+    var properties: [String: Any] = [
+      "engine": engine,
+      "reason": reason,
+      "error": error,
+    ]
+    properties.addModelAttribution(model)
+    #if DEBUG
+      testEventHook?(
+        CapturedTelemetryEvent(
+          name: "coldstart.warmup_failed",
+          stringProps: ["engine": engine, "reason": reason, "error": error]
+        ).withModelProperties(properties))
+    #endif
+    PostHogSDK.shared.capture("coldstart.warmup_failed", properties: properties)
   }
 
   /// A press landed on a not-yet-ready engine, so NO recording session was
   /// minted (no audio captured → none discarded). `warmupInFlight` distinguishes
   /// "joined an in-flight warm-up" from "kicked a fresh one." Pairs with the
   /// existing `launch.model_preload_completed`. Privacy: state only.
-  public func coldStartPressBlocked(asrBackend: String, warmupInFlight: Bool) {
-    PostHogSDK.shared.capture(
-      "coldstart.press_blocked",
-      properties: [
-        "asr_backend": asrBackend,
-        "warmup_in_flight": warmupInFlight,
-      ])
+  /// #3546 §3.7 T1: `model` is the identity the blocked press was waiting on
+  /// (`loaded: false`), nil while that choice is still pending.
+  public func coldStartPressBlocked(
+    asrBackend: String, warmupInFlight: Bool, model: ASRModelAttribution?
+  ) {
+    var properties: [String: Any] = [
+      "asr_backend": asrBackend,
+      "warmup_in_flight": warmupInFlight,
+    ]
+    properties.addModelAttribution(model)
+    #if DEBUG
+      testEventHook?(
+        CapturedTelemetryEvent(
+          name: "coldstart.press_blocked", stringProps: ["asr_backend": asrBackend],
+          boolProps: ["warmup_in_flight": warmupInFlight]
+        ).withModelProperties(properties))
+    #endif
+    PostHogSDK.shared.capture("coldstart.press_blocked", properties: properties)
   }
 
   // MARK: - Crash-recovery (#1063 PR2)
@@ -2496,12 +2604,14 @@ public final class TelemetryService {
   /// downtime. It is not a measured hang duration.
   public func transcriptionInterruptedAtQuit(
     stage: String, backend: String, chunksScheduled: Int, stageAgeMs: Int,
-    checkpointAppVersion: String
+    checkpointAppVersion: String, model: ASRModelAttribution?
   ) {
-    let props: [String: Any] = [
+    var props: [String: Any] = [
       "stage": stage, "asr_backend": backend, "chunks_scheduled": chunksScheduled,
       "stage_age_ms": stageAgeMs, "checkpoint_app_version": checkpointAppVersion,
     ]
+    // #3546 §3.7 T1: checkpoint-time attribution; absent for an older checkpoint.
+    props.addModelAttribution(model)
     #if DEBUG
       testEventHook?(
         CapturedTelemetryEvent(
@@ -2509,7 +2619,8 @@ public final class TelemetryService {
           stringProps: [
             "stage": stage, "asr_backend": backend, "checkpoint_app_version": checkpointAppVersion,
           ],
-          intProps: ["chunks_scheduled": chunksScheduled, "stage_age_ms": stageAgeMs]))
+          intProps: ["chunks_scheduled": chunksScheduled, "stage_age_ms": stageAgeMs]
+        ).withModelProperties(props))
     #endif
     PostHogSDK.shared.capture("transcription.interrupted_at_quit", properties: props)
   }
@@ -3768,6 +3879,8 @@ public final class TelemetryService {
   public func trackFileImportCompleted(
     outcome: FileImportRunOutcome,
     asrBackend: ASRBackendType,
+    // #3546 §3.7 T1: frozen with the run's configuration; nil omits the keys.
+    model: ASRModelAttribution?,
     durationSeconds: TimeInterval,
     asrOutcome: FileImportASROutcome? = nil,
     polishOutcome: FileImportPolishOutcome? = nil,
@@ -3791,12 +3904,14 @@ public final class TelemetryService {
         props["polish_model"] = polishModel
       }
     }
+    props.addModelAttribution(model)
 
     #if DEBUG
       testEventHook?(
         CapturedTelemetryEvent(
           name: "file_import_completed",
-          stringProps: props.compactMapValues { $0 as? String }))
+          stringProps: props.compactMapValues { $0 as? String }
+        ).withModelProperties(props))
     #endif
 
     PostHogSDK.shared.capture("file_import_completed", properties: props)

@@ -114,6 +114,9 @@ final class DiagnosticsDiary: @unchecked Sendable {
   static let sharedFields: Set<String> = [
     "result", "selected_transport", "effective_transport", "input_selection_mode",
     "capture_native_rate_hz", "capture_native_channel_count", "capture_input_channel",
+    // #3546 §3.7 T1: which speech model the take used, and how far it got.
+    "asr_model", "asr_model_revision", "asr_model_variant", "asr_model_loaded",
+    "asr_model_inference_reached",
   ]
 
   /// Fields kept only from `dictation.terminal`.
@@ -127,7 +130,8 @@ final class DiagnosticsDiary: @unchecked Sendable {
 
   /// Fields kept only from `dictation.completed`.
   static let completedFields: Set<String> = sharedFields.union([
-    "input_mode", "asr_backend", "llm_provider", "filler_removal", "target_app", "focus_owner_state",
+    "input_mode", "asr_backend", "llm_provider", "filler_removal", "target_app",
+    "focus_owner_state",
     "paste_result",
     "e2e_seconds", "asr_seconds", "llm_seconds", "paste_latency_ms", "recording_seconds",
     "stop_reason", "interrupted_by", "asr_salvage_outcome", "asr_retry_outcome",
@@ -179,7 +183,8 @@ final class DiagnosticsDiary: @unchecked Sendable {
     switch key {
     case "vad_ready", "vad_model_reused", "vad_first_chunk_should_stop",
       "filler_removal", "capture_rate_divergence_detected",
-      "capture_format_stabilized", "capture_rebuilt_for_format":
+      "capture_format_stabilized", "capture_rebuilt_for_format", "asr_model_loaded",
+      "asr_model_inference_reached":
       if case .bool = value { return true }
     case "capture_native_channel_count", "capture_input_channel", "duration_ms",
       "vad_raw_sample_count", "vad_filtered_sample_count", "paste_latency_ms",

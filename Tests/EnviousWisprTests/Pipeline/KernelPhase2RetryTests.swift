@@ -603,8 +603,10 @@ struct KernelPhase2RetryTests {
       _ operationReturnMs: Int?, _ callerResumeMs: Int, _ acceptedAfterCutoff: Bool
     ) {
       resolutions.append(
-        (takeID, backend, budgetMs, resolution, disposition, operationReturnMs, callerResumeMs,
-          acceptedAfterCutoff))
+        (
+          takeID, backend, budgetMs, resolution, disposition, operationReturnMs, callerResumeMs,
+          acceptedAfterCutoff
+        ))
     }
   }
 
@@ -621,12 +623,12 @@ struct KernelPhase2RetryTests {
     let wrapper = KernelRecordingSession(
       engine: engine, capture: capture, vad: vad, clock: clock, paste: paste,
       prepareEscapeRecovery: prepareEscapeRecovery,
-      onRetryDeadlineStarted: { takeID, backend, budgetMs in
+      onRetryDeadlineStarted: { takeID, backend, budgetMs, _ in
         log.recordStart(takeID, backend, budgetMs)
       },
       onRetryDeadlineResolved: {
         takeID, backend, budgetMs, resolution, disposition, operationReturnMs, callerResumeMs,
-        accepted in
+        accepted, _ in
         log.recordResolution(
           takeID, backend, budgetMs, resolution, disposition, operationReturnMs, callerResumeMs,
           accepted)
@@ -642,7 +644,8 @@ struct KernelPhase2RetryTests {
     ctx.engine.retryDecodeTimeoutSeconds = 20.0
     await runToTerminal(ctx)
 
-    #expect(log.starts.count == 1, "every attempt must be counted, or unresolved starts are guesswork")
+    #expect(
+      log.starts.count == 1, "every attempt must be counted, or unresolved starts are guesswork")
     let resolved = log.resolutions
     #expect(resolved.count == 1)
     guard let observation = resolved.first else { return }
@@ -654,7 +657,8 @@ struct KernelPhase2RetryTests {
     #expect(returnMs >= 0, "a decode that returned must carry a return time")
     #expect(
       returnMs <= observation.budgetMs,
-      "the fixture is an on-time decode; it returned in \(returnMs)ms against \(observation.budgetMs)ms")
+      "the fixture is an on-time decode; it returned in \(returnMs)ms against \(observation.budgetMs)ms"
+    )
     #expect(
       observation.acceptedAfterCutoff == false,
       "an on-time accepted decode is not exposure to a stricter cutoff")
@@ -823,7 +827,6 @@ struct KernelPhase2RetryTests {
       would attribute main-actor contention to the retry budget
       """)
   }
-
 
   @Test("#1946 A retry resolving after the take was abandoned is observed as abandoned")
   func retryDeadlineObservationAbandonedTake() async {

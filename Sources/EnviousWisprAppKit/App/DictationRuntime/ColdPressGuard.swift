@@ -60,7 +60,8 @@ enum ColdPressGuard {
   ) {
     overlay.present(.cachingModel(engineLabel: active.engineDisplayName))
     TelemetryService.shared.coldStartPressBlocked(
-      asrBackend: backendTag, warmupInFlight: readiness == .warming)
+      asrBackend: backendTag, warmupInFlight: readiness == .warming,
+      model: active.requestedModelAttribution)
     Task { [overlay, active] in
       await active.ensureEngineWarm(reason: .coldPress)
       // Announce READY only if the warm-up actually reached ready. A failed

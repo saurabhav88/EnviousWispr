@@ -28,13 +28,15 @@ final class KernelLifecycleTelemetrySink {
   /// the level is fixed in the default closure rather than exposed in the
   /// typealias so this module doesn't have to import Sentry directly
   /// (`SentryLevel` lives behind `EnviousWisprServices`'s Sentry wrapper).
-  typealias BreadcrumbSink = @MainActor (
-    _ stage: String, _ message: String, _ data: [String: Any]?
-  ) -> Void
+  typealias BreadcrumbSink =
+    @MainActor (
+      _ stage: String, _ message: String, _ data: [String: Any]?
+    ) -> Void
 
-  typealias RecordingStateSink = @MainActor (
-    _ active: Bool, _ backend: String?, _ isStreaming: Bool?
-  ) -> Void
+  typealias RecordingStateSink =
+    @MainActor (
+      _ active: Bool, _ backend: String?, _ isStreaming: Bool?
+    ) -> Void
 
   /// #1846. Optional-taking so `nil` means REMOVE, never a sentinel value.
   typealias TakeIDSink = @MainActor (_ takeID: String?) -> Void
@@ -44,68 +46,77 @@ final class KernelLifecycleTelemetrySink {
   /// `takeID` (#1846) names WHICH dictation the event belongs to. Threaded as a
   /// parameter rather than read from `telemetryState` inside the default closure so
   /// a test observing this seam sees the exact value that reaches PostHog.
-  typealias DictationInvokedSink = @MainActor (
-    _ triggerSource: String, _ inputMode: String, _ targetApp: String?, _ takeID: String?
-  ) -> Void
+  typealias DictationInvokedSink =
+    @MainActor (
+      _ triggerSource: String, _ inputMode: String, _ targetApp: String?, _ takeID: String?
+    ) -> Void
 
-  typealias ModelLoadWedgedSink = @MainActor (
-    _ backend: String, _ telemetry: KernelModelLoadWedgeTelemetry?
-  ) -> Void
+  typealias ModelLoadWedgedSink =
+    @MainActor (
+      _ backend: String, _ telemetry: KernelModelLoadWedgeTelemetry?
+    ) -> Void
 
   /// #1845. Every optional is omit-when-nil at the `TelemetryService` boundary;
   /// `peakAudioLevel` is optional deliberately so a missing reading can never be
   /// emitted as an exact zero.
-  typealias VADGateNoSpeechSink = @MainActor (
-    _ backend: String, _ mode: String, _ rawSampleCount: Int, _ peakAudioLevel: Float?,
-    _ wholeBufferRMS: Float?, _ maxWindowRMS: Float?, _ durationMs: Int?,
-    _ effectiveTransport: String?, _ selectedTransport: String?, _ inputSelectionMode: String?,
-    _ inputDeviceKind: String?, _ captureNativeRateHz: Double?, _ captureNativeChannelCount: Int?,
-    _ captureInputChannel: Int?, _ takeID: String?
-  ) -> Void
+  typealias VADGateNoSpeechSink =
+    @MainActor (
+      _ backend: String, _ mode: String, _ rawSampleCount: Int, _ peakAudioLevel: Float?,
+      _ wholeBufferRMS: Float?, _ maxWindowRMS: Float?, _ durationMs: Int?,
+      _ effectiveTransport: String?, _ selectedTransport: String?, _ inputSelectionMode: String?,
+      _ inputDeviceKind: String?, _ captureNativeRateHz: Double?, _ captureNativeChannelCount: Int?,
+      _ captureInputChannel: Int?, _ takeID: String?
+    ) -> Void
 
   /// #1884 `dictation.started` — the denominator. Deliberately minimal: this
   /// event exists to be counted, and every fact worth knowing about a take is
   /// already on its terminal row.
-  typealias DictationStartedSink = @MainActor (
-    _ takeID: String, _ backend: String
-  ) -> Void
+  typealias DictationStartedSink =
+    @MainActor (
+      _ takeID: String, _ backend: String, _ model: ASRModelAttribution?
+    ) -> Void
 
   /// #1884 `dictation.terminal`. `result` is one of the seven terminal labels;
   /// `reason` is a `TerminalNoticeReason.rawValue` and is nil unless the terminal
   /// is `.failed`. The attribution block is nil unless the take was signal-free.
-  typealias DictationTerminalSink = @MainActor (
-    _ takeID: String, _ backend: String, _ result: String, _ reason: String?,
-    _ inputDeviceKind: String?, _ effectiveTransport: String?, _ selectedTransport: String?,
-    _ inputSelectionMode: String?, _ wholeBufferRMS: Float?, _ maxWindowRMS: Float?,
-    _ peakAudioLevel: Float?, _ durationMs: Int?, _ captureNativeRateHz: Double?,
-    _ captureNativeChannelCount: Int?,
-    // #2664: the device input channel the capture took (0 = default), beside the count.
-    _ captureInputChannel: Int?,
-    // #2184: what the VAD's segments did to this take's audio. All four are nil
-    // when the take concluded before the conditioner ran, which is the reading
-    // rather than a gap. Owner: `KernelVADConditioningTelemetry`.
-    _ vadRawSampleCount: Int?, _ vadFilteredSampleCount: Int?,
-    _ vadRetainedRatio: Double?, _ vadConditioningReason: String?,
-    // #2087: `ordinary` or `escape_recovery`. An Escape Recovery session
-    // concludes `.completed` like any other, so without this the terminal row
-    // reports withheld text as a delivered dictation.
-    _ deliveryDisposition: String?
-  ) -> Void
+  typealias DictationTerminalSink =
+    @MainActor (
+      _ takeID: String, _ backend: String, _ result: String, _ reason: String?,
+      _ inputDeviceKind: String?, _ effectiveTransport: String?, _ selectedTransport: String?,
+      _ inputSelectionMode: String?, _ wholeBufferRMS: Float?, _ maxWindowRMS: Float?,
+      _ peakAudioLevel: Float?, _ durationMs: Int?, _ captureNativeRateHz: Double?,
+      _ captureNativeChannelCount: Int?,
+      // #2664: the device input channel the capture took (0 = default), beside the count.
+      _ captureInputChannel: Int?,
+      // #2184: what the VAD's segments did to this take's audio. All four are nil
+      // when the take concluded before the conditioner ran, which is the reading
+      // rather than a gap. Owner: `KernelVADConditioningTelemetry`.
+      _ vadRawSampleCount: Int?, _ vadFilteredSampleCount: Int?,
+      _ vadRetainedRatio: Double?, _ vadConditioningReason: String?,
+      // #2087: `ordinary` or `escape_recovery`. An Escape Recovery session
+      // concludes `.completed` like any other, so without this the terminal row
+      // reports withheld text as a delivered dictation.
+      _ deliveryDisposition: String?,
+      // #3546 §3.7 T1: the take's frozen model attribution, nil when unknown.
+      _ model: ASRModelAttribution?
+    ) -> Void
 
-  typealias CaptureErrorSink = @MainActor (
-    _ error: any Error & StableSentryErrorIdentity,
-    _ category: SentryBreadcrumb.ErrorCategory,
-    _ stage: String,
-    _ extra: [String: Any]?
-  ) -> Void
+  typealias CaptureErrorSink =
+    @MainActor (
+      _ error: any Error & StableSentryErrorIdentity,
+      _ category: SentryBreadcrumb.ErrorCategory,
+      _ stage: String,
+      _ extra: [String: Any]?
+    ) -> Void
 
-  typealias SnapshotCaptureErrorSink = @MainActor (
-    _ error: any Error & StableSentryErrorIdentity,
-    _ category: SentryBreadcrumb.ErrorCategory,
-    _ stage: String,
-    _ extra: [String: Any]?,
-    _ snapshot: SentryBreadcrumb.RecordingSnapshot
-  ) -> Void
+  typealias SnapshotCaptureErrorSink =
+    @MainActor (
+      _ error: any Error & StableSentryErrorIdentity,
+      _ category: SentryBreadcrumb.ErrorCategory,
+      _ stage: String,
+      _ extra: [String: Any]?,
+      _ snapshot: SentryBreadcrumb.RecordingSnapshot
+    ) -> Void
 
   /// Rich `no_audio_captured` emission with the full `NoAudioContext` (route,
   /// active-capture flag, source type, device IDs). Div 6 of seam audit /
@@ -119,11 +130,12 @@ final class KernelLifecycleTelemetrySink {
 
   /// #1408: the non-paging counter that gives salvage a denominator. Injected
   /// like every other sink so tests observe the emission without PostHog.
-  typealias AudioCaptureInterruptedSink = @MainActor (
-    _ cause: String, _ salvageAttempted: Bool, _ salvageSucceeded: Bool,
-    _ terminalState: String, _ backend: String, _ recordingDurationMs: Int?,
-    _ takeID: String?
-  ) -> Void
+  typealias AudioCaptureInterruptedSink =
+    @MainActor (
+      _ cause: String, _ salvageAttempted: Bool, _ salvageSucceeded: Bool,
+      _ terminalState: String, _ backend: String, _ recordingDurationMs: Int?,
+      _ takeID: String?
+    ) -> Void
 
   // MARK: Identity + read sources
 
@@ -232,16 +244,17 @@ final class KernelLifecycleTelemetrySink {
         captureNativeChannelCount: captureNativeChannelCount,
         captureInputChannel: captureInputChannel, takeID: takeID)
     },
-    dictationStarted: @escaping DictationStartedSink = { takeID, backend in
-      TelemetryService.shared.dictationStarted(takeID: takeID, backend: backend)
+    dictationStarted: @escaping DictationStartedSink = { takeID, backend, model in
+      TelemetryService.shared.dictationStarted(takeID: takeID, backend: backend, model: model)
     },
     dictationTerminal: @escaping DictationTerminalSink = {
       takeID, backend, result, reason, inputDeviceKind, effectiveTransport, selectedTransport,
       inputSelectionMode, wholeBufferRMS, maxWindowRMS, peakAudioLevel, durationMs,
       captureNativeRateHz, captureNativeChannelCount, captureInputChannel, vadRawSampleCount,
-      vadFilteredSampleCount, vadRetainedRatio, vadConditioningReason, deliveryDisposition in
+      vadFilteredSampleCount, vadRetainedRatio, vadConditioningReason, deliveryDisposition,
+      model in
       TelemetryService.shared.dictationTerminal(
-        takeID: takeID, backend: backend, result: result, reason: reason,
+        takeID: takeID, backend: backend, result: result, reason: reason, model: model,
         inputDeviceKind: inputDeviceKind, effectiveTransport: effectiveTransport,
         selectedTransport: selectedTransport, inputSelectionMode: inputSelectionMode,
         wholeBufferRMS: wholeBufferRMS, maxWindowRMS: maxWindowRMS,
@@ -331,9 +344,9 @@ final class KernelLifecycleTelemetrySink {
   /// Deliberately routed through the SAME `updateTakeID` writer as the per-event
   /// refresh and the terminal clear: this type stays the single owner of that
   /// scope tag.
-  func acceptSession(takeID: String) {
+  func acceptSession(takeID: String, model: ASRModelAttribution?) {
     updateTakeID(takeID)
-    dictationStarted(takeID, backend.rawValue)
+    dictationStarted(takeID, backend.rawValue, model)
   }
 
   /// #1884: exactly one row per ACCEPTED terminal, rendered from the immutable
@@ -379,7 +392,7 @@ final class KernelLifecycleTelemetrySink {
       attribution?.captureInputChannel,
       conditioning?.rawSampleCount, conditioning?.filteredSampleCount,
       conditioning?.retainedRatio, conditioning?.conditioningReason,
-      snapshot.deliveryDisposition.rawValue)
+      snapshot.deliveryDisposition.rawValue, snapshot.modelAttribution)
   }
 
   /// Switch over the 12-case lifecycle vocabulary and emit each PR-1 §B.7.2

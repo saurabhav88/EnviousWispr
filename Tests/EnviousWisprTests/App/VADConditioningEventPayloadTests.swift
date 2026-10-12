@@ -49,7 +49,7 @@ import Testing
     ) throws -> CapturedTelemetryEvent {
       let events = capture {
         $0.dictationTerminal(
-          takeID: "TAKE-2184", backend: "parakeet", result: "completed", reason: nil,
+          takeID: "TAKE-2184", backend: "parakeet", result: "completed", reason: nil, model: nil,
           vadRawSampleCount: raw, vadFilteredSampleCount: filtered,
           vadRetainedRatio: ratio, vadConditioningReason: reason)
       }

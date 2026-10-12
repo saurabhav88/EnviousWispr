@@ -638,10 +638,16 @@ private final class NoOpASRManager: ASRManagerInterface {
 
   var activeBackendSupportsStreaming: Bool { get async { false } }
 
-  func transcribe(audioSamples: [Float], options: TranscriptionOptions) async throws -> ASRResult {
+  func transcribe(
+    audioSamples: [Float], options: TranscriptionOptions,
+    onInferenceEntered: ASRInferenceEntryObserver? = nil
+  ) async throws -> ASRResult {
     throw NoOpError.unexpected
   }
-  func startStreaming(options: TranscriptionOptions, attemptID: UUID) async throws {
+  func startStreaming(
+    options: TranscriptionOptions, attemptID: UUID,
+    onWindowInferenceEntered: ASRInferenceEntryObserver? = nil
+  ) async throws {
     throw NoOpError.unexpected
   }
   func feedAudio(_ buffer: AVAudioPCMBuffer) async throws { throw NoOpError.unexpected }

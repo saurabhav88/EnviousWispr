@@ -100,10 +100,18 @@ package protocol WhisperKitTranscribing: Sendable {
 package struct OccupiedWhisperKitDecoder: WhisperKitTranscribing {
   let base: any WhisperKitTranscribing
   let occupancy: VendorDecodeOccupancy
+  /// #3546 §3.7 T1: observation only, called synchronously immediately before each vendor
+  /// decode this decorator issues (every streaming cycle, tail and flush decode passes
+  /// through here), after a cancellation check.
+  let onDecode: ASRInferenceEntryObserver?
 
-  package init(base: any WhisperKitTranscribing, occupancy: VendorDecodeOccupancy) {
+  package init(
+    base: any WhisperKitTranscribing, occupancy: VendorDecodeOccupancy,
+    onDecode: ASRInferenceEntryObserver? = nil
+  ) {
     self.base = base
     self.occupancy = occupancy
+    self.onDecode = onDecode
   }
 
   package func transcribe(
@@ -111,7 +119,9 @@ package struct OccupiedWhisperKitDecoder: WhisperKitTranscribing {
     shouldContinueDecoding: (@Sendable () -> Bool)?
   ) async throws -> [TranscriptionResult] {
     try await occupancy.track {
-      try await base.transcribe(
+      try Task.checkCancellation()
+      onDecode?()
+      return try await base.transcribe(
         audioArray: audioArray, decodeOptions: decodeOptions,
         shouldContinueDecoding: shouldContinueDecoding)
     }

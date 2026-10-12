@@ -126,6 +126,12 @@ extension ParakeetOfflineModeConflictError: StableSentryErrorIdentity {
   public var sentrySemanticID: String { "asr.offline_mode_conflict" }
 }
 
+/// #3546 §3.7 T1: observation only. Called SYNCHRONOUSLY at the native-call boundary, after
+/// the last cancellation check and with no suspension before the vendor call, so a recorded
+/// entry always means the vendor call was made. Passed WITH the call it observes, never
+/// installed on a shared object. It must not block, await or throw.
+public typealias ASRInferenceEntryObserver = @Sendable () -> Void
+
 /// Abstraction over ASR management — enables swapping between in-process and XPC implementations.
 ///
 /// `ASRManager` (in-process) and `ASRManagerProxy` (XPC) both conform to this protocol.
@@ -136,6 +142,10 @@ public protocol ASRManagerInterface: AnyObject {
   var activeBackendType: ASRBackendType { get }
   var isModelLoaded: Bool { get }
   var isStreaming: Bool { get }  // periphery:ignore - read via existential type (ASRManagerProxy)
+  /// #3546 §3.7 T1: the identity of the model published READY right now, or
+  /// `nil` when nothing is loaded. Telemetry sends `nil` as an absent model,
+  /// never as a guessed one.
+  var publishedModelIdentity: ASRModelIdentity? { get }
 
   // Download progress (0.0–1.0), phase description, and detail string.
   // Updated during loadModel() when model download is in progress.
@@ -159,7 +169,13 @@ public protocol ASRManagerInterface: AnyObject {
   var activeBackendSupportsStreaming: Bool { get async }
 
   // Batch transcription
-  func transcribe(audioSamples: [Float], options: TranscriptionOptions) async throws -> ASRResult
+  /// #3546 §3.7 T1: passed with THIS call and invoked synchronously by the backend at its
+  /// vendor-call boundary, after readiness, preparatory work and the last cancellation check.
+  /// A refused call never invokes it. `nil` for a caller with no take to attribute.
+  func transcribe(
+    audioSamples: [Float], options: TranscriptionOptions,
+    onInferenceEntered: ASRInferenceEntryObserver?
+  ) async throws -> ASRResult
 
   /// #2787: whether a vendor decode (`transcribe` / `finalizeStreaming`) is
   /// still running, independent of whether any session is still waiting for
@@ -177,7 +193,13 @@ public protocol ASRManagerInterface: AnyObject {
   /// Create a fresh `attemptID` before scheduling the call and its deadline —
   /// `cancelInFlightStreamingStart(attemptID:)` needs it to name exactly
   /// this attempt (#1908 round 11).
-  func startStreaming(options: TranscriptionOptions, attemptID: UUID) async throws
+  /// #3546 §3.7 T1: `onWindowInferenceEntered` is handed to the vendor's streaming manager,
+  /// which calls it synchronously immediately before each window's model call. Observation
+  /// only; it changes no start, stop or cancel decision. `nil` for a caller with no take.
+  func startStreaming(
+    options: TranscriptionOptions, attemptID: UUID,
+    onWindowInferenceEntered: ASRInferenceEntryObserver?
+  ) async throws
   func feedAudio(_ buffer: AVAudioPCMBuffer) async throws
   func finalizeStreaming() async throws -> ASRResult
   func cancelStreaming() async
@@ -262,6 +284,12 @@ public protocol ASRManagerInterface: AnyObject {
 }
 
 extension ASRManagerInterface {
+  /// #3546 safe default for test doubles, which publish no delivered model:
+  /// no identity, so telemetry omits the model rather than naming a wrong one.
+  /// `ASRManager` overrides it with its published request.
+  public var publishedModelIdentity: ASRModelIdentity? { nil }
+
+
   /// #1339 safe default: managers do NOT feed the shared progress file unless
   /// they explicitly opt in (`ASRManagerProxy` does).
   public var feedsSharedProgressFile: Bool { false }

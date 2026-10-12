@@ -29,7 +29,7 @@ struct DictationCompletedRouteFieldsTests {
       defer { TelemetryService.shared.testEventHook = nil }
 
       TelemetryService.shared.reportDictationCompleted(
-        transcript: Transcript(text: "hello"), inputMode: "ptt",
+        transcript: Transcript(text: "hello"), inputMode: "ptt", model: nil,
         selectedTransport: "bluetooth", effectiveTransport: "built_in",
         routeReason: "btOutputUserSelectedDevice",
         inputSelectionMode: "explicit", outputTransport: "bluetooth",
@@ -62,7 +62,7 @@ struct DictationCompletedRouteFieldsTests {
       defer { TelemetryService.shared.testEventHook = nil }
 
       TelemetryService.shared.reportDictationCompleted(
-        transcript: Self.transcriptOpeningAllFourGates(), inputMode: "ptt",
+        transcript: Self.transcriptOpeningAllFourGates(), inputMode: "ptt", model: nil,
         recordingSeconds: 2.5)
 
       let event = try #require(box.event)
@@ -100,7 +100,7 @@ struct DictationCompletedRouteFieldsTests {
 
       TelemetryService.shared.reportDictationCompleted(
         transcript: Self.transcriptOpeningAllFourGates(),
-        inputMode: "ptt",
+        inputMode: "ptt", model: nil,
         takeID: Self.takeID)
 
       let names = Set(seen.events.map(\.name))
@@ -126,7 +126,7 @@ struct DictationCompletedRouteFieldsTests {
 
       TelemetryService.shared.reportDictationCompleted(
         transcript: Self.transcriptOpeningAllFourGates(),
-        inputMode: "ptt",
+        inputMode: "ptt", model: nil,
         takeID: nil)
 
       #expect(seen.events.count == 2, "same two events, so the nil suppressed nothing")
@@ -155,7 +155,7 @@ struct DictationCompletedRouteFieldsTests {
 
       TelemetryService.shared.reportDictationCompleted(
         transcript: Self.transcriptOpeningAllFourGatesRemotely(),
-        inputMode: "ptt",
+        inputMode: "ptt", model: nil,
         takeID: Self.takeID)
 
       #expect(seen.events.count == 2, "both gates must open for the exclusion to mean anything")
@@ -189,7 +189,7 @@ struct DictationCompletedRouteFieldsTests {
 
       TelemetryService.shared.reportDictationCompleted(
         transcript: Self.transcriptOpeningAllFourGates(),
-        inputMode: "ptt",
+        inputMode: "ptt", model: nil,
         takeID: Self.takeID)
 
       let polish = try #require(seen.events.first { $0.name == "llm.polish_completed" })
@@ -287,7 +287,7 @@ struct DictationCompletedRouteFieldsTests {
           text: "hello",
           metrics: ExecutionMetrics(
             pasteTier: "cgevent", targetApp: "com.raycast.macos", focusOwnerState: state)),
-        inputMode: "ptt", takeID: Self.takeID)
+        inputMode: "ptt", model: nil, takeID: Self.takeID)
 
       let completed = seen.events.filter { $0.name == "dictation.completed" }
       try #require(completed.count == 1)
@@ -306,7 +306,7 @@ struct DictationCompletedRouteFieldsTests {
       }
       defer { TelemetryService.shared.testEventHook = nil }
       TelemetryService.shared.reportDictationCompleted(
-        transcript: Transcript(text: "hello"), inputMode: "ptt")
+        transcript: Transcript(text: "hello"), inputMode: "ptt", model: nil)
       let event = try #require(box.event)
       #expect(event.stringProps["focus_owner_state"] == nil)
     }
@@ -320,7 +320,7 @@ struct DictationCompletedRouteFieldsTests {
       defer { TelemetryService.shared.testEventHook = nil }
 
       TelemetryService.shared.reportDictationCompleted(
-        transcript: Transcript(text: "hello"), inputMode: "ptt")
+        transcript: Transcript(text: "hello"), inputMode: "ptt", model: nil)
 
       let props = box.event?.stringProps
       #expect(props?["selected_transport"] == nil)
@@ -339,7 +339,7 @@ struct DictationCompletedRouteFieldsTests {
       defer { TelemetryService.shared.testEventHook = nil }
 
       TelemetryService.shared.reportDictationCompleted(
-        transcript: Transcript(text: "hello"), inputMode: "ptt",
+        transcript: Transcript(text: "hello"), inputMode: "ptt", model: nil,
         captureNativeChannelCount: 2)
 
       #expect(box.event?.intProps["capture_native_channel_count"] == 2)
@@ -354,7 +354,7 @@ struct DictationCompletedRouteFieldsTests {
       defer { TelemetryService.shared.testEventHook = nil }
 
       TelemetryService.shared.reportDictationCompleted(
-        transcript: Transcript(text: "hello"), inputMode: "ptt")
+        transcript: Transcript(text: "hello"), inputMode: "ptt", model: nil)
 
       #expect(box.event?.intProps["capture_native_channel_count"] == nil)
     }
@@ -368,18 +368,18 @@ struct DictationCompletedRouteFieldsTests {
       defer { TelemetryService.shared.testEventHook = nil }
 
       TelemetryService.shared.reportDictationCompleted(
-        transcript: Transcript(text: "hello"), inputMode: "ptt",
+        transcript: Transcript(text: "hello"), inputMode: "ptt", model: nil,
         captureNativeChannelCount: 2, captureInputChannel: 1)
       #expect(box.event?.intProps["capture_input_channel"] == 1)
 
       // 0 is the measured default channel and must travel (it is the reading
       // that says "the setting was not applied on this take").
       TelemetryService.shared.reportDictationCompleted(
-        transcript: Transcript(text: "hello"), inputMode: "ptt", captureInputChannel: 0)
+        transcript: Transcript(text: "hello"), inputMode: "ptt", model: nil, captureInputChannel: 0)
       #expect(box.event?.intProps["capture_input_channel"] == 0)
 
       TelemetryService.shared.reportDictationCompleted(
-        transcript: Transcript(text: "hello"), inputMode: "ptt")
+        transcript: Transcript(text: "hello"), inputMode: "ptt", model: nil)
       #expect(box.event?.intProps["capture_input_channel"] == nil)
     }
 
@@ -392,7 +392,7 @@ struct DictationCompletedRouteFieldsTests {
       defer { TelemetryService.shared.testEventHook = nil }
 
       TelemetryService.shared.reportDictationCompleted(
-        transcript: Transcript(text: "hello"), inputMode: "ptt",
+        transcript: Transcript(text: "hello"), inputMode: "ptt", model: nil,
         asrSalvageOutcome: "rewarm_succeeded")
 
       #expect(box.event?.stringProps["asr_salvage_outcome"] == "rewarm_succeeded")
@@ -407,7 +407,7 @@ struct DictationCompletedRouteFieldsTests {
       defer { TelemetryService.shared.testEventHook = nil }
 
       TelemetryService.shared.reportDictationCompleted(
-        transcript: Transcript(text: "hello"), inputMode: "ptt")
+        transcript: Transcript(text: "hello"), inputMode: "ptt", model: nil)
 
       #expect(box.event?.stringProps["asr_salvage_outcome"] == nil)
     }
@@ -423,7 +423,7 @@ struct DictationCompletedRouteFieldsTests {
       defer { TelemetryService.shared.testEventHook = nil }
 
       TelemetryService.shared.reportDictationCompleted(
-        transcript: Transcript(text: "hello"), inputMode: "ptt",
+        transcript: Transcript(text: "hello"), inputMode: "ptt", model: nil,
         asrRetryOutcome: "retry_succeeded")
 
       #expect(box.event?.stringProps["asr_retry_outcome"] == "retry_succeeded")
@@ -439,7 +439,7 @@ struct DictationCompletedRouteFieldsTests {
       defer { TelemetryService.shared.testEventHook = nil }
 
       TelemetryService.shared.reportDictationCompleted(
-        transcript: Transcript(text: "hello"), inputMode: "ptt")
+        transcript: Transcript(text: "hello"), inputMode: "ptt", model: nil)
 
       #expect(box.event?.stringProps["asr_retry_outcome"] == nil)
     }
@@ -457,7 +457,7 @@ struct DictationCompletedRouteFieldsTests {
       defer { TelemetryService.shared.testEventHook = nil }
 
       TelemetryService.shared.reportDictationCompleted(
-        transcript: Transcript(text: "hello"), inputMode: "ptt",
+        transcript: Transcript(text: "hello"), inputMode: "ptt", model: nil,
         routeResolutionSource: "app_derived",
         inputResolutionSource: "list_fallback")
 
@@ -476,7 +476,7 @@ struct DictationCompletedRouteFieldsTests {
       defer { TelemetryService.shared.testEventHook = nil }
 
       TelemetryService.shared.reportDictationCompleted(
-        transcript: Transcript(text: "hello"), inputMode: "ptt")
+        transcript: Transcript(text: "hello"), inputMode: "ptt", model: nil)
 
       #expect(box.event?.stringProps.keys.contains("input_resolution_source") == false)
     }
@@ -511,7 +511,7 @@ struct DictationCompletedRouteFieldsTests {
       transcript.metrics = metrics
 
       TelemetryService.shared.reportDictationCompleted(
-        transcript: transcript, inputMode: "ptt")
+        transcript: transcript, inputMode: "ptt", model: nil)
 
       let rows = log.events.filter { $0.name == "dictation.completed" }
       #expect(rows.count == 1, "exactly one dictation.completed, got \(rows.count)")
@@ -544,7 +544,7 @@ struct DictationCompletedRouteFieldsTests {
       transcript.metrics = metrics
 
       TelemetryService.shared.reportDictationCompleted(
-        transcript: transcript, inputMode: "ptt")
+        transcript: transcript, inputMode: "ptt", model: nil)
 
       let completed = log.events.filter { $0.name == "dictation.completed" }
       #expect(completed.count == 1, "exactly one dictation.completed, got \(completed.count)")
@@ -563,7 +563,7 @@ struct DictationCompletedRouteFieldsTests {
       defer { TelemetryService.shared.testEventHook = nil }
 
       TelemetryService.shared.reportDictationCompleted(
-        transcript: Transcript(text: "hello"), inputMode: "ptt")
+        transcript: Transcript(text: "hello"), inputMode: "ptt", model: nil)
 
       let props = try #require(log.events.first { $0.name == "dictation.completed" }).stringProps
       #expect(props.keys.contains("cleanup_language") == false)
@@ -586,7 +586,7 @@ struct DictationCompletedRouteFieldsTests {
       transcript.metrics = ExecutionMetrics(pasteTier: "cgevent", pasteLatencyMs: 12)
 
       TelemetryService.shared.reportDictationCompleted(
-        transcript: transcript, inputMode: "ptt")
+        transcript: transcript, inputMode: "ptt", model: nil)
 
       let rows = log.events.filter { $0.name == "dictation.completed" }
       #expect(rows.count == 1)
@@ -622,7 +622,7 @@ struct DictationCompletedRouteFieldsTests {
       transcript.metrics = metrics
 
       TelemetryService.shared.reportDictationCompleted(
-        transcript: transcript, inputMode: "ptt", takeID: Self.takeID)
+        transcript: transcript, inputMode: "ptt", model: nil, takeID: Self.takeID)
 
       let names = Set(log.events.map(\.name))
       #expect(
@@ -683,7 +683,7 @@ struct DictationCompletedRouteFieldsTests {
         pasteTier: "clipboard_only", coldStart: true, tailDroppedMs: 37)
 
       TelemetryService.shared.reportDictationCompleted(
-        transcript: transcript, inputMode: "ptt")
+        transcript: transcript, inputMode: "ptt", model: nil)
 
       let row = try #require(log.events.first { $0.name == "dictation.completed" })
       #expect(

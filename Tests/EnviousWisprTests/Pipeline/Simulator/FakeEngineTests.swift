@@ -112,10 +112,10 @@ struct FakeEngineTests {
   @Test("warmUp() is idempotent and safe when already ready")
   func warmUpIsIdempotent() async throws {
     let (engine, _) = makeEngine(.batchSuccess(text: "x"))
-    try await engine.warmUp()
+    try await engine.warmUp(modelReceipt: nil)
     #expect(engine.readiness == .ready)
-    try await engine.warmUp()
-    try await engine.warmUp()
+    try await engine.warmUp(modelReceipt: nil)
+    try await engine.warmUp(modelReceipt: nil)
     #expect(engine.readiness == .ready)
     #expect(engine.warmUpCallCount == 3)
   }
@@ -126,7 +126,7 @@ struct FakeEngineTests {
   func slowLoadWaitsForClock() async throws {
     let clock = FakeClock()
     let engine = FakeEngine(behavior: .slowLoad(ticksToReady: 3), clock: clock)
-    let warmUp = Task { @MainActor in try await engine.warmUp() }
+    let warmUp = Task { @MainActor in try await engine.warmUp(modelReceipt: nil) }
     await Task.yield()
     #expect(engine.readiness == .warming)
     clock.advance(by: 2)
@@ -166,7 +166,7 @@ struct FakeEngineTests {
     // parked continuation, so warmUp() must throw immediately, not park.
     await engine.cancel()
     await #expect(throws: ASREngineError.self) {
-      try await engine.warmUp()
+      try await engine.warmUp(modelReceipt: nil)
     }
   }
 

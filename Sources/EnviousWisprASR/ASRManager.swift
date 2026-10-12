@@ -7,7 +7,18 @@ import Foundation
 @Observable
 public final class ASRManager: ASRManagerInterface {
   public private(set) var activeBackendType: ASRBackendType = .parakeet
-  public private(set) var isModelLoaded = false
+  public private(set) var isModelLoaded = false {
+    // #3546 §3.7: a model that is no longer loaded no longer serves.
+    didSet { if !isModelLoaded { publishedSelection = nil } }
+  }
+  /// #3546 §3.7 T1: the Parakeet request the current READY model was loaded
+  /// from, set at the same publish that reports `didPublishLoad`. `nil` while
+  /// nothing is loaded, after an unload or backend switch, and for a backend
+  /// that loads without a request (an injected mock).
+  package private(set) var publishedSelection: ParakeetModelSelection?
+
+  public var publishedModelIdentity: ASRModelIdentity? { publishedSelection?.modelIdentity }
+
   public private(set) var isStreaming = false
 
   // Download progress — updated in-process during loadModel().
@@ -497,6 +508,7 @@ public final class ASRManager: ASRManagerInterface {
     }
     // #3546: only a READY publish for the current generation (the superseded
     // case threw above) reports success, whoever asked for the load.
+    publishedSelection = ready ? loadedSelection : nil
     if ready, let loadedSelection {
       parakeetSelection.didPublishLoad?(loadedSelection)
     }
@@ -510,9 +522,11 @@ public final class ASRManager: ASRManagerInterface {
   // still makes a press landing during a launch warm-up join the in-flight load.
 
   /// Transcribe raw audio samples (16kHz mono Float32).
-  public func transcribe(audioSamples: [Float], options: TranscriptionOptions = .default)
-    async throws -> ASRResult
-  {
+  /// #3546: `onInferenceEntered` per the protocol docs.
+  public func transcribe(
+    audioSamples: [Float], options: TranscriptionOptions = .default,
+    onInferenceEntered inferenceObserver: ASRInferenceEntryObserver? = nil
+  ) async throws -> ASRResult {
     guard let activeBackend else { throw ASRManagerNotOwnedError(backend: activeBackendType) }
     // #2787: counted for the whole vendor call, so a session that stops
     // waiting (cancel during transcribing) leaves the engine visibly BUSY
@@ -542,7 +556,9 @@ public final class ASRManager: ASRManagerInterface {
       await activeBackend.setTranscriptionProgressObserver(sink)
       do {
         try Task.checkCancellation()
-        return try await activeBackend.transcribe(audioSamples: audioSamples, options: options)
+        // #3546: passed through; the backend commits it at its own vendor boundary.
+        return try await activeBackend.transcribe(
+          audioSamples: audioSamples, options: options, onInferenceEntered: inferenceObserver)
       } catch {
         await activeBackend.setTranscriptionProgressObserver(nil)
         throw error
@@ -566,7 +582,8 @@ public final class ASRManager: ASRManagerInterface {
   /// counter) so `cancelInFlightStreamingStart(attemptID:)` can name exactly
   /// which attempt it means to abandon, never an unrelated later one.
   public func startStreaming(
-    options: TranscriptionOptions = .default, attemptID: UUID = UUID()
+    options: TranscriptionOptions = .default, attemptID: UUID = UUID(),
+    onWindowInferenceEntered: ASRInferenceEntryObserver? = nil
   ) async throws {
     try Task.checkCancellation()
     guard !streamingStartInFlight, !isStreaming else { throw CancellationError() }
@@ -607,7 +624,9 @@ public final class ASRManager: ASRManagerInterface {
     guard supported else { return }
 
     if let parakeet, let backendGen {
-      try await parakeet.startStreaming(options: options, generation: backendGen)
+      try await parakeet.startStreaming(
+        options: options, generation: backendGen,
+        onWindowInferenceEntered: onWindowInferenceEntered)
     } else {
       // Non-Parakeet (or an injected test backend): no backend-level
       // generation to coordinate, same as before #1908 round 8.

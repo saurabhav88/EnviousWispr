@@ -43,7 +43,7 @@ import Testing
       let events = capture {
         $0.escapeRecoveryStarted(
           asrBackend: "parakeet", polishProvider: "apple", recordingDurationMs: 4200,
-          takeID: "take-1")
+          takeID: "take-1", model: nil)
       }
       let event = try #require(events.first)
       #expect(event.name == "escape_recovery.started")
@@ -62,7 +62,7 @@ import Testing
       let events = capture {
         $0.escapeRecoveryCompleted(
           outcome: outcome, asrDurationMs: 800, polishDurationMs: 1500, durationMs: 2500,
-          asrBackend: "parakeet", takeID: "take-2")
+          asrBackend: "parakeet", takeID: "take-2", model: nil)
       }
       return try #require(events.first)
     }
@@ -155,7 +155,7 @@ import Testing
       let ordinary = try #require(
         capture {
           $0.dictationTerminal(
-            takeID: "t", backend: "parakeet", result: "completed", reason: nil)
+            takeID: "t", backend: "parakeet", result: "completed", reason: nil, model: nil)
         }.first)
       #expect(
         ordinary.stringProps["delivery_disposition"] == nil,
@@ -164,7 +164,7 @@ import Testing
       let recovery = try #require(
         capture {
           $0.dictationTerminal(
-            takeID: "t", backend: "parakeet", result: "completed", reason: nil,
+            takeID: "t", backend: "parakeet", result: "completed", reason: nil, model: nil,
             deliveryDisposition: "escape_recovery")
         }.first)
       #expect(recovery.stringProps["delivery_disposition"] == "escape_recovery")

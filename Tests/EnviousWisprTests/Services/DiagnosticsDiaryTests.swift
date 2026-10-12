@@ -67,10 +67,11 @@ struct DiagnosticsDiaryTests {
       takeStages: TakeStageLedger(), diagnosticsDiary: Self.makeDiary(directory, clock))
 
     service.dictationTerminal(
-      takeID: Self.takeA, backend: "parakeet", result: "completed", reason: nil,
+      takeID: Self.takeA, backend: "parakeet", result: "completed", reason: nil, model: nil,
       inputDeviceKind: "built_in", durationMs: 2400)
     service.dictationCompleted(
-      result: "success", inputMode: "push_to_talk", asrBackend: "parakeet", llmProvider: "none",
+      result: "success", inputMode: "push_to_talk", asrBackend: "parakeet", model: nil,
+      llmProvider: "none",
       fillerRemoval: true, targetApp: "com.apple.Notes", pasteResult: "pasted",
       e2eSeconds: 1.25, asrSeconds: 0.5, llmSeconds: nil, itnRan: true, takeID: Self.takeA)
 
@@ -110,7 +111,7 @@ struct DiagnosticsDiaryTests {
   func noDiaryNoSnapshot() async {
     let service = TelemetryService(takeStages: TakeStageLedger())
     service.dictationTerminal(
-      takeID: Self.takeA, backend: "parakeet", result: "completed", reason: nil)
+      takeID: Self.takeA, backend: "parakeet", result: "completed", reason: nil, model: nil)
     #expect(await service.diagnosticsSnapshot() == nil)
   }
 
@@ -432,7 +433,7 @@ struct DiagnosticsDiaryTests {
       takeStages: TakeStageLedger(), diagnosticsDiary: Self.makeDiary(directory, Clock(Self.start)))
 
     service.dictationTerminal(
-      takeID: Self.takeA, backend: "parakeet", result: "completed", reason: nil)
+      takeID: Self.takeA, backend: "parakeet", result: "completed", reason: nil, model: nil)
 
     #expect(try Self.takeIDs(await service.diagnosticsSnapshot()) == [Self.takeA])
   }

@@ -768,7 +768,7 @@ struct SettingsMapRenderingTests {
     let home = try Home()
     let coordinator = FileImportCoordinator(
       decode: { _ in throw Unexpected.work },
-      transcribe: { _, _ in throw Unexpected.work },
+      transcribe: { _, _, _ in throw Unexpected.work },
       engineAdmission: .live(lease: EngineLease(), as: .fileImport),
       ensureEngineReady: { .notInstalled },
       beginRun: {

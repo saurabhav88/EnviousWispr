@@ -27,7 +27,7 @@ import Testing
       }
       defer { TelemetryService.shared.testEventHook = nil }
       TelemetryService.shared.dictationCompleted(
-        result: "success", inputMode: "ptt", asrBackend: "parakeet", llmProvider: nil,
+        result: "success", inputMode: "ptt", asrBackend: "parakeet", model: nil, llmProvider: nil,
         fillerRemoval: false, targetApp: nil, pasteResult: "accessibility",
         e2eSeconds: 1.0, asrSeconds: nil, llmSeconds: nil,
         englishSpelling: englishSpelling, spellingSwaps: spellingSwaps)
@@ -53,7 +53,8 @@ import Testing
     /// The hop the app actually uses: a saved transcript's metrics through
     /// `reportDictationCompleted`, so a broken mapping there cannot hide behind the emitter test.
     @MainActor
-    @Test("a transcript's spelling metrics reach dictation.completed through reportDictationCompleted")
+    @Test(
+      "a transcript's spelling metrics reach dictation.completed through reportDictationCompleted")
     func reportedFromTranscriptMetrics() throws {
       func report(_ metrics: ExecutionMetrics) -> [CapturedTelemetryEvent] {
         let box = EventBox()
@@ -63,7 +64,8 @@ import Testing
         defer { TelemetryService.shared.testEventHook = nil }
         var transcript = Transcript(text: "the colour")
         transcript.metrics = metrics
-        TelemetryService.shared.reportDictationCompleted(transcript: transcript, inputMode: "ptt")
+        TelemetryService.shared.reportDictationCompleted(
+          transcript: transcript, inputMode: "ptt", model: nil)
         return box.values
       }
       let british = try #require(

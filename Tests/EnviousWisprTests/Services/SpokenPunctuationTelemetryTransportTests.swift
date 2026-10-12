@@ -29,7 +29,8 @@ import Testing
         MainActor.assumeIsolated { log.events.append(event) }
       }
       defer { TelemetryService.shared.testEventHook = nil }
-      TelemetryService.shared.reportDictationCompleted(transcript: transcript, inputMode: "ptt")
+      TelemetryService.shared.reportDictationCompleted(
+        transcript: transcript, inputMode: "ptt", model: nil)
       let completed = log.events.filter { $0.name == "dictation.completed" }
       #expect(completed.count == 1, "exactly one dictation.completed, got \(completed.count)")
       return try #require(completed.first)
@@ -79,7 +80,9 @@ import Testing
       #expect(allKeys.contains("punctuation_resolution_source") == false)
     }
 
-    @Test("The language and the resolver rung arrive as their own properties, independent of the cleanup fields")
+    @Test(
+      "The language and the resolver rung arrive as their own properties, independent of the cleanup fields"
+    )
     func languageAndSourceAreTheirOwnProperties() throws {
       var metrics = ExecutionMetrics()
       // Deliberately different from the cleanup fields: the English route can run while the

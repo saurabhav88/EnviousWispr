@@ -146,7 +146,7 @@ final class BenchmarkSuite {
         let samples = generateTestAudio(duration: duration)
 
         let start = CFAbsoluteTimeGetCurrent()
-        _ = try? await activeEngine.transcribe(samples, .default)
+        _ = try? await activeEngine.transcribe(samples, .default, nil)
         let elapsed = CFAbsoluteTimeGetCurrent() - start
 
         results.append(
@@ -238,7 +238,7 @@ final class BenchmarkSuite {
         localized: "Running batch ASR...",
         comment: "Settings > Diagnostics, speed test: progress. ASR means speech recognition.")
       let batchStart = CFAbsoluteTimeGetCurrent()
-      let batchResult = try? await activeEngine.transcribe(testSamples, .default)
+      let batchResult = try? await activeEngine.transcribe(testSamples, .default, nil)
       batchTime = CFAbsoluteTimeGetCurrent() - batchStart
       batchTranscript = batchResult?.text ?? ""
       // This closure's own return below is what releases row 23's claim
@@ -280,7 +280,8 @@ final class BenchmarkSuite {
       let streamingOutcome = await engineMutationScope.withClaim(site: "benchmarkSuiteStreaming") {
         var startedStreaming = false
         do {
-          try await asrManager.startStreaming(options: .default, attemptID: UUID())
+          try await asrManager.startStreaming(
+            options: .default, attemptID: UUID(), onWindowInferenceEntered: nil)
           startedStreaming = true
 
           // Chunk the samples into AVAudioPCMBuffers and feed them

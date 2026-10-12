@@ -300,12 +300,18 @@ private final class FactoryFakeASRManager: ASRManagerInterface {
   func unloadModel() async { fatalError("not used in DictationSessionConfigFactoryTests") }
   func setInitialBackendType(_: ASRBackendType) { fatalError("not used") }
   func switchBackend(to _: ASRBackendType) async { fatalError("not used") }
-  func transcribe(audioSamples _: [Float], options _: TranscriptionOptions) async throws
+  func transcribe(
+    audioSamples _: [Float], options _: TranscriptionOptions,
+    onInferenceEntered _: ASRInferenceEntryObserver? = nil
+  ) async throws
     -> ASRResult
   {
     fatalError("not used")
   }
-  func startStreaming(options _: TranscriptionOptions, attemptID: UUID) async throws {
+  func startStreaming(
+    options _: TranscriptionOptions, attemptID: UUID,
+    onWindowInferenceEntered _: ASRInferenceEntryObserver? = nil
+  ) async throws {
     fatalError("not used")
   }
   func feedAudio(_: AVAudioPCMBuffer) async throws { fatalError("not used") }

@@ -157,7 +157,8 @@ struct PasteCascadeLandingHandoffTests {
       return box.rows
     }
 
-    @Test("A retained row waits for the overlay's verdict, then is emitted once with exactly five keys")
+    @Test(
+      "A retained row waits for the overlay's verdict, then is emitted once with exactly five keys")
     func retainedRowCarriesThePillVerdictOnce() throws {
       let calls = Calls()
       let session = try capture()
@@ -190,7 +191,9 @@ struct PasteCascadeLandingHandoffTests {
       #expect(rows.first?["pill_shown"] as? Bool == false)
     }
 
-    @Test("An Undo restore's retained and yielded rows carry origin; the request's value is snapshotted (#3437)")
+    @Test(
+      "An Undo restore's retained and yielded rows carry origin; the request's value is snapshotted (#3437)"
+    )
     func undoRowsCarryOrigin() throws {
       var undo = request()
       undo.origin = .escapeRecoveryUndo
@@ -205,12 +208,19 @@ struct PasteCascadeLandingHandoffTests {
       #expect(retained.count == 6)
 
       let yieldedCheck = try #require(
-        executor(Calls()).landingCheck(for: try capture(), request: { var r = request(); r.origin = .escapeRecoveryUndo; return r }()))
+        executor(Calls()).landingCheck(
+          for: try capture(),
+          request: {
+            var r = request()
+            r.origin = .escapeRecoveryUndo
+            return r
+          }()))
       let yielded = try #require(retainedRows { yieldedCheck.onOutcome(.yielded) }.first)
       #expect(yielded["origin"] as? String == "escape_recovery_undo")
     }
 
-    @Test("A retained miss with no take id has no pill to show: one row, pill_shown false, no take id")
+    @Test(
+      "A retained miss with no take id has no pill to show: one row, pill_shown false, no take id")
     func retainedWithoutTakeIDIsReportedNotShown() throws {
       let calls = Calls()
       let check = try #require(
@@ -308,7 +318,8 @@ struct PasteCascadeLandingWiringTests {
       assembled.allSatisfy { $0.contains("onTakeAccepted") && $0.contains("onRetained") },
       "\(assembled)")
     // Order inside the acceptance relay: the sink first, then AppKit.
-    let accept = try #require(text.range(of: "lifecycleSink.acceptSession(takeID: takeID)"))
+    let accept = try #require(
+      text.range(of: "lifecycleSink.acceptSession(takeID: takeID, model: model)"))
     let told = try #require(text.range(of: "onTakeAccepted(takeID)"))
     #expect(accept.upperBound <= told.lowerBound)
   }

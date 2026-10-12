@@ -83,10 +83,14 @@ actor StubWhisperKitBackend: WhisperKitBackendDriving {
     isReady = true
   }
 
-  func transcribe(audioSamples: [Float], options: TranscriptionOptions) async throws
-    -> ASRResult
-  {
+  /// #3546: the stub awaits the call's observation where the backend's vendor decode
+  /// would start, so the adapter's record lands before the result, as in production.
+  func transcribe(
+    audioSamples: [Float], options: TranscriptionOptions,
+    onInferenceEntered: ASRInferenceEntryObserver?
+  ) async throws -> ASRResult {
     transcribeCount += 1
+    onInferenceEntered?()
     transcribeWaiters.notify(reached: transcribeCount)
     lastTranscribeSamples = audioSamples
     lastTranscribeOptions = options
@@ -120,7 +124,8 @@ actor StubWhisperKitBackend: WhisperKitBackendDriving {
   }
 
   func makeStreamingSession(
-    options: TranscriptionOptions, vendorDecodeOccupancy: VendorDecodeOccupancy
+    options: TranscriptionOptions, vendorDecodeOccupancy: VendorDecodeOccupancy,
+    onDecode: ASRInferenceEntryObserver?
   ) async -> (any WhisperKitIncrementalSession)? {
     makeStreamingSessionCount += 1
     return streamingSessionFactory?()

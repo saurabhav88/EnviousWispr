@@ -1005,6 +1005,13 @@ extension ParakeetUpgradeCoordinator {
     return true
   }
 
+  /// #3546 §3.7 T1: the identity the frozen request names, or `nil` while a
+  /// selection point is pending (its choice is not made yet) or before any
+  /// selection. Telemetry only; no policy reads it.
+  package var requestedModelIdentity: ASRModelIdentity? {
+    hasPendingSelectionPoint ? nil : frozen?.modelIdentity
+  }
+
   /// The model Settings names: the confirmed serving model while it is still
   /// the published request, otherwise the frozen model of the pending load or
   /// reload. Nil before any selection; the caller then falls back. A name

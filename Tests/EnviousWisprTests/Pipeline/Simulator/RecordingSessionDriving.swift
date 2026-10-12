@@ -159,6 +159,8 @@ final class LimbInjectionBox {
 /// `StopTimeZeroSignalTelemetryLog` — observation only, no policy.
 final class StoreLog {
   var storedTexts: [String] = []
+  /// #3546: the row id the kernel wrote with each text, in order.
+  var storedTranscriptIDs: [UUID] = []
 }
 
 /// Reference-type holder so the injected `markASRTimingEnd` closure can count
@@ -235,6 +237,13 @@ final class KernelRecordingSession: RecordingSessionDriving {
   var transcriptionCheckpointEvents: [TranscriptionCheckpointEvent] {
     transcriptionCheckpointLog.events
   }
+  /// #3546 §3.7 T1: the kernel's frozen concluded-take pair and its take id.
+  var lastTakeID: String? { kernel.lastTakeID }
+  var lastTakeModel: (takeID: String, model: ASRModelAttribution?)? { kernel.lastTakeModel }
+  var storedTranscriptIDs: [UUID] { storeLog.storedTranscriptIDs }
+  var concludedModels: [(transcriptID: UUID, takeID: String, model: ASRModelAttribution?)] {
+    kernel.concludedModels
+  }
   /// #1317: `CaptureStallContext`s the kernel's STOP-time classification
   /// submitted via `stopTimeZeroSignalTelemetry`, in fire order. Lets a test
   /// assert exactly one classified event fired (dedup) without a real
@@ -286,6 +295,8 @@ final class KernelRecordingSession: RecordingSessionDriving {
     /// event were covered, and the step that FILLS the field was not. Defaulted
     /// so every existing scenario is unchanged.
     onTerminalSnapshot: @escaping @MainActor (KernelTerminalTelemetrySnapshot) -> Void = { _ in },
+    /// #3546 §3.7 T1: the kernel's acceptance call (take id and the model known then).
+    onSessionAccepted: @escaping @MainActor (String, ASRModelAttribution?) -> Void = { _, _ in },
     /// #2549: defaults to `{ false }` (permission granted), matching the
     /// kernel's own production default, so every existing scenario in the
     /// 37-scenario inventory is unchanged. A scenario that wants to exercise
@@ -294,11 +305,14 @@ final class KernelRecordingSession: RecordingSessionDriving {
     /// #1946 chunk 2: the retry-deadline observation seams. Defaulted to no-ops
     /// so every existing scenario is unchanged; the five retry-schedule cases
     /// pass recorders and assert what the kernel computed.
-    onRetryDeadlineStarted: @escaping @MainActor (String, String, Int) -> Void = { _, _, _ in },
-    onRetryDeadlineResolved: @escaping @MainActor (
-      String, String, Int, ASRRetryDeadlineResolution, ASRRetryDeadlineDisposition, Int?, Int,
-      Bool
-    ) -> Void = { _, _, _, _, _, _, _, _ in },
+    onRetryDeadlineStarted:
+      @escaping @MainActor (String, String, Int, ASRModelAttribution?) ->
+      Void = { _, _, _, _ in },
+    onRetryDeadlineResolved:
+      @escaping @MainActor (
+        String, String, Int, ASRRetryDeadlineResolution, ASRRetryDeadlineDisposition, Int?, Int,
+        Bool, ASRModelAttribution?
+      ) -> Void = { _, _, _, _, _, _, _, _, _ in },
     /// #3195 PR B: the key-up Apple session hooks. Defaulted no-ops so every existing
     /// scenario is unchanged; `KernelAFMPrewarmHookTests` passes recorders.
     onAFMPrepare: @escaping @MainActor (String, String?) -> Void = { _, _ in },
@@ -329,8 +343,9 @@ final class KernelRecordingSession: RecordingSessionDriving {
         if limb.forceEmptyAfterProcessing { return "" }
         return raw
       },
-      store: { [storeLog] text, _, _ in
+      store: { [storeLog] text, transcriptID, _ in
         storeLog.storedTexts.append(text)
+        storeLog.storedTranscriptIDs.append(transcriptID)
         // #1167: a throwing save models the best-effort store seam. The kernel
         // ABSORBS the throw (records it on the finalization outcome) and still
         // proceeds to deliver + `.completed` — it no longer routes a terminal
@@ -377,6 +392,7 @@ final class KernelRecordingSession: RecordingSessionDriving {
       },
       zeroSignalDecisionSnapshot: zeroSignalDecisionSnapshot,
       zeroSignalRefusalSink: zeroSignalRefusalSink,
+      sessionAcceptedTelemetry: onSessionAccepted,
       sessionTerminalTelemetry: onTerminalSnapshot,
       markASRTimingEnd: { [asrTimingLog] in asrTimingLog.count += 1 },
       telemetryState: telemetryState,

@@ -33,10 +33,18 @@ public struct TranscriptionCheckpoint: Codable, Sendable, Equatable {
   public let stageEnteredAt: Date
   public let chunksScheduled: Int
   public let appVersion: String
+  /// #3546 §3.7 T1: the take's model attribution when the stage was entered.
+  /// Every field is optional so a checkpoint written by an older build still
+  /// decodes, with the model unknown (`modelAttribution == nil`).
+  public let asrModel: String?
+  public let asrModelRevision: String?
+  public let asrModelVariant: String?
+  public let asrModelLoaded: Bool?
+  public let asrModelInferenceReached: Bool?
 
   public init(
     takeID: String, backend: String, stage: TranscriptionStage, stageEnteredAt: Date,
-    chunksScheduled: Int, appVersion: String
+    chunksScheduled: Int, appVersion: String, model: ASRModelAttribution? = nil
   ) {
     self.takeID = takeID
     self.backend = backend
@@ -44,6 +52,21 @@ public struct TranscriptionCheckpoint: Codable, Sendable, Equatable {
     self.stageEnteredAt = stageEnteredAt
     self.chunksScheduled = chunksScheduled
     self.appVersion = appVersion
+    asrModel = model?.identity.name
+    asrModelRevision = model?.identity.revision
+    asrModelVariant = model?.identity.variant
+    asrModelLoaded = model?.loaded
+    asrModelInferenceReached = model?.inferenceReached
+  }
+
+  /// The attribution this checkpoint carried, or `nil` when it carried none
+  /// (an older build, or a take whose model was unknown).
+  public var modelAttribution: ASRModelAttribution? {
+    guard let asrModel, let asrModelLoaded, let asrModelInferenceReached else { return nil }
+    return ASRModelAttribution(
+      identity: ASRModelIdentity(
+        name: asrModel, revision: asrModelRevision, variant: asrModelVariant),
+      loaded: asrModelLoaded, inferenceReached: asrModelInferenceReached)
   }
 }
 
@@ -53,7 +76,15 @@ public struct TranscriptionCheckpoint: Codable, Sendable, Equatable {
 public enum TranscriptionCheckpointEvent: Sendable, Equatable {
   /// The take entered `stage`. `chunksScheduled` is the running count of vendor
   /// chunks scheduled so far (0 until the decode reports any).
-  case mark(takeID: String, backend: String, stage: TranscriptionStage, chunksScheduled: Int)
+  /// `model` is the take's attribution at that moment (#3546), `nil` when unknown.
+  case mark(
+    takeID: String, backend: String, stage: TranscriptionStage, chunksScheduled: Int,
+    model: ASRModelAttribution?)
+  /// #3546 §3.7 T1: the take's model attribution changed (inference was entered) while it
+  /// holds a checkpoint. Rewrites only the model fields, keeping the stage and the time it
+  /// was entered, so `stage_age_ms` still measures time in that stage. Ignored when the
+  /// stored checkpoint belongs to another take.
+  case updateModel(takeID: String, model: ASRModelAttribution?)
   /// The take reached a terminal while the app was alive: nothing to report later.
   case clear
 }

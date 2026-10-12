@@ -24,12 +24,13 @@ enum EscapeRecoveryCompletionReport {
   /// root into a second implementation.
   @MainActor
   static func report(
-    outcome: EscapeRecoveryTerminalOutcome, transcript: Transcript?, fallbackTakeID: String?
+    outcome: EscapeRecoveryTerminalOutcome, transcript: Transcript?, fallbackTakeID: String?,
+    modelForTake: (String) -> ASRModelAttribution?
   ) {
     emit(outcome: outcome, transcript: transcript, fallbackTakeID: fallbackTakeID) {
       TelemetryService.shared.escapeRecoveryCompleted(
         outcome: $0, asrDurationMs: $1, polishDurationMs: $2, durationMs: $3,
-        asrBackend: $4, takeID: $5)
+        asrBackend: $4, takeID: $5, model: modelForTake($5))
     }
   }
 

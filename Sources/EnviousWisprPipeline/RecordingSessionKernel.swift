@@ -346,7 +346,7 @@ final class RecordingSessionKernel {
   private let escapeRecoveryStartedTelemetry:
     @MainActor (
       _ asrBackend: String, _ polishProvider: String, _ recordingDurationMs: Int,
-      _ takeID: String
+      _ takeID: String, _ model: ASRModelAttribution?
     ) -> Void
 
   /// #1946 chunk 2. The Phase-2 retry deadline's own observation seam, routed
@@ -355,12 +355,15 @@ final class RecordingSessionKernel {
   /// different facts and an absent field must not be spellable on the half that
   /// requires it.
   private let asrRetryDeadlineStartedTelemetry:
-    @MainActor (_ takeID: String, _ asrBackend: String, _ budgetMs: Int) -> Void
+    @MainActor (
+      _ takeID: String, _ asrBackend: String, _ budgetMs: Int, _ model: ASRModelAttribution?
+    ) -> Void
   private let asrRetryDeadlineResolvedTelemetry:
     @MainActor (
       _ takeID: String, _ asrBackend: String, _ budgetMs: Int,
       _ resolution: ASRRetryDeadlineResolution, _ disposition: ASRRetryDeadlineDisposition,
-      _ operationReturnMs: Int?, _ callerResumeMs: Int, _ acceptedAfterCutoff: Bool
+      _ operationReturnMs: Int?, _ callerResumeMs: Int, _ acceptedAfterCutoff: Bool,
+      _ model: ASRModelAttribution?
     ) -> Void
 
   // MARK: Wedge-detection tuning
@@ -454,7 +457,8 @@ final class RecordingSessionKernel {
   /// with no ordering guarantee against `runForwardPath` — so an early
   /// model-load or capture-start failure could be raised before the tag existed.
   /// Defaulted to a no-op: only the production composition root wires it.
-  private let sessionAcceptedTelemetry: @MainActor (_ takeID: String) -> Void
+  private let sessionAcceptedTelemetry:
+    @MainActor (_ takeID: String, _ model: ASRModelAttribution?) -> Void
   /// #3195 PR B: start preparing the Apple polish session for this take the moment
   /// it leaves `.live` for finalization (see the one call site before `.stopping`).
   /// Synchronous and non-suspending; the factory wires it to the driver's retained
@@ -818,6 +822,27 @@ final class RecordingSessionKernel {
   /// start, giving it exactly `lastStopReason`'s honest-absence semantics.
   private(set) var lastTakeID: String?
 
+  /// #3546 §3.7 T1: the concluded take's model attribution, PAIRED with its take id
+  /// and frozen at the same accepted terminal, so a completion report filed after the
+  /// next take started still names the model of the take it reports. Cleared with
+  /// `lastTakeID`.
+  private(set) var lastTakeModel: (takeID: String, model: ASRModelAttribution?)?
+
+  /// #3546 §3.7 T1: the take and model of each recently written transcript row, keyed by
+  /// the row's id. Bounded to the last `concludedModelCapacity` rows: a completion report
+  /// is filed from its row within the same take's terminal handling, so a short history
+  /// covers any delay; an evicted row reports its model as unknown, never another take's.
+  private(set) var concludedModels:
+    [(transcriptID: UUID, takeID: String, model: ASRModelAttribution?)] = []
+  static let concludedModelCapacity = 8
+
+  private func recordConcludedModel(transcriptID: UUID, sid: SessionID) {
+    concludedModels.append((transcriptID, sid.raw.uuidString, modelAttribution(for: sid)))
+    if concludedModels.count > Self.concludedModelCapacity {
+      concludedModels.removeFirst(concludedModels.count - Self.concludedModelCapacity)
+    }
+  }
+
   /// Wall-clock length of the most recent recording in seconds (#1060), captured
   /// when the recording-exit latches and cleared at session start. LIVE metadata
   /// for `dictation.completed` (`recording_seconds`) — distinct from the
@@ -974,25 +999,33 @@ final class RecordingSessionKernel {
     vad: any VADSignalSource,
     currentTick: @escaping @MainActor () -> UInt64,
     sleepTicks: @escaping @MainActor (Int) async -> Void,
-    processText: @escaping @MainActor (
-      _ raw: String, _ onPolishStarted: @escaping @MainActor () -> Void
-    ) async throws -> String,
-    store: @escaping @MainActor (
-      _ text: String, _ transcriptID: UUID, _ disposition: FinalizationDisposition
-    ) async throws -> Void,
-    deliver: @escaping @MainActor (
-      _ text: String, _ disposition: FinalizationDisposition
-    ) async -> KernelDeliveryOutcome,
+    processText:
+      @escaping @MainActor (
+        _ raw: String, _ onPolishStarted: @escaping @MainActor () -> Void
+      ) async throws -> String,
+    store:
+      @escaping @MainActor (
+        _ text: String, _ transcriptID: UUID, _ disposition: FinalizationDisposition
+      ) async throws -> Void,
+    deliver:
+      @escaping @MainActor (
+        _ text: String, _ disposition: FinalizationDisposition
+      ) async -> KernelDeliveryOutcome,
     prepareEscapeRecovery: @escaping PrepareEscapeRecovery = { _, _, _ in false },
-    escapeRecoveryStartedTelemetry: @escaping @MainActor (String, String, Int, String) -> Void = {
-      _, _, _, _ in
-    },
-    asrRetryDeadlineStartedTelemetry: @escaping @MainActor (String, String, Int) -> Void = {
-      _, _, _ in
-    },
-    asrRetryDeadlineResolvedTelemetry: @escaping @MainActor (
-      String, String, Int, ASRRetryDeadlineResolution, ASRRetryDeadlineDisposition, Int?, Int, Bool
-    ) -> Void = { _, _, _, _, _, _, _, _ in },
+    escapeRecoveryStartedTelemetry:
+      @escaping @MainActor (
+        String, String, Int, String, ASRModelAttribution?
+      ) -> Void = { _, _, _, _, _ in },
+    asrRetryDeadlineStartedTelemetry:
+      @escaping @MainActor (
+        String, String, Int, ASRModelAttribution?
+      ) -> Void = { _, _, _, _ in },
+    asrRetryDeadlineResolvedTelemetry:
+      @escaping @MainActor (
+        String, String, Int, ASRRetryDeadlineResolution, ASRRetryDeadlineDisposition, Int?, Int,
+        Bool,
+        ASRModelAttribution?
+      ) -> Void = { _, _, _, _, _, _, _, _, _ in },
     engineMutationScope: EngineMutationScope,
     // #2787: persisted stage checkpoint for the take in flight. Defaulted to a
     // no-op so every test construction site is untouched; the factory wires the
@@ -1015,7 +1048,10 @@ final class RecordingSessionKernel {
     zeroSignalDecisionSnapshot: (@MainActor () -> ZeroSignalDecisionSnapshot)? = nil,
     zeroSignalRefusalSink: @escaping @MainActor ([ZeroSignalRefusalContext]) -> Void = { _ in },
     recordingStoppedTelemetry: @escaping @MainActor (_ sampleCount: Int) -> Void = { _ in },
-    sessionAcceptedTelemetry: @escaping @MainActor (_ takeID: String) -> Void = { _ in },
+    sessionAcceptedTelemetry:
+      @escaping @MainActor (
+        _ takeID: String, _ model: ASRModelAttribution?
+      ) -> Void = { _, _ in },
     sessionTerminalTelemetry: @escaping @MainActor (KernelTerminalTelemetrySnapshot) -> Void = {
       _ in
     },
@@ -1033,7 +1069,8 @@ final class RecordingSessionKernel {
     // are `#if DEBUG`-gated, and release builds never construct/wire a real
     // instance, so this stays a no-op in production.
     batchDecodeFaultController: BatchDecodeFaultController? = nil,
-    prepareAFMSessionAtStop: @escaping @MainActor (_ takeID: String, _ expectedDetectedLanguage: String?)
+    prepareAFMSessionAtStop:
+      @escaping @MainActor (_ takeID: String, _ expectedDetectedLanguage: String?)
       -> Void = { _, _ in },
     clearAFMSession: @escaping @MainActor (_ takeID: String?) -> Void = { _ in }
   ) {
@@ -1134,10 +1171,20 @@ final class RecordingSessionKernel {
       takeID: sid.raw.uuidString,
       polishEnabled: config.llmProvider != .none
     )
+    // #3546 §3.7 T1: a model already serving at acceptance is this take's
+    // model unless the take's warm-up says otherwise. Nothing serving means
+    // unknown for now, never the previous selection.
+    if let serving = adapter.servingModelIdentity {
+      telemetryState.takeModelIdentity = serving
+      telemetryState.takeModelLoaded = true
+    }
     // #1846 cloud review: publish the take tag NOW, in this same turn, before
     // `spawn` queues anything. Waiting for the observer's first lifecycle event
     // would leave a scheduling window in which an early failure ships untagged.
-    sessionAcceptedTelemetry(sid.raw.uuidString)
+    sessionAcceptedTelemetry(sid.raw.uuidString, currentModelAttribution())
+    adapter.onInferenceEntryRecorded = { [weak self] entrySession in
+      self?.refreshCheckpointAfterInferenceEntry(entrySession)
+    }
     transition(to: .arming)
     spawn(sid) { [weak self] in
       await self?.runForwardPath(sid)
@@ -1211,11 +1258,54 @@ final class RecordingSessionKernel {
   private var decodeChunksScheduled = 0
 
   private func markStage(_ stage: TranscriptionStage) {
+    lastMarkedStage = stage
     transcriptionCheckpoint(
       .mark(
         takeID: currentSessionID.raw.uuidString,
         backend: adapter.engineIdentity.backendType.rawValue,
-        stage: stage, chunksScheduled: decodeChunksScheduled))
+        stage: stage, chunksScheduled: decodeChunksScheduled,
+        model: currentModelAttribution()))
+  }
+
+  /// #3546 §3.7 T1: the stage the take's checkpoint currently holds, nil once cleared or
+  /// before the first mark, so an inference entry recorded later can refresh it.
+  private var lastMarkedStage: TranscriptionStage?
+
+  /// #3546 §3.7 T1: the adapter recorded a vendor-inference entry for `sid`. If that take
+  /// already holds a checkpoint, rewrite it so a crash from here on reports the entry.
+  private func refreshCheckpointAfterInferenceEntry(_ sid: SessionID) {
+    guard sid == currentSessionID, lastMarkedStage != nil else { return }
+    transcriptionCheckpoint(
+      .updateModel(takeID: sid.raw.uuidString, model: modelAttribution(for: sid)))
+  }
+
+  /// #3546 §3.7 T1: this take's model attribution right now. Inference, once
+  /// entered, names the model frozen at that entry (so a fallback can never
+  /// credit Ultra with v3's decode); before that, the take's own model and
+  /// whether it loaded. `nil` when unknown.
+  func currentModelAttribution() -> ASRModelAttribution? {
+    modelAttribution(for: currentSessionID)
+  }
+
+  private func modelAttribution(for sid: SessionID) -> ASRModelAttribution? {
+    if let entry = adapter.inferenceEntry(for: sid) {
+      return entry.identity.map {
+        ASRModelAttribution(identity: $0, loaded: true, inferenceReached: true)
+      }
+    }
+    return telemetryState.takeModelIdentity.map {
+      ASRModelAttribution(
+        identity: $0, loaded: telemetryState.takeModelLoaded, inferenceReached: false)
+    }
+  }
+
+  /// #3546 §3.7 T1: records the take's model once its warm-up settled, from the receipt
+  /// that warm-up call wrote (the model it published, or the request it failed to load),
+  /// never a live read or another warm-up's outcome.
+  private func noteTakeModelAfterWarmUp(_ receipt: WarmUpModelReceipt) {
+    let outcome = receipt.attribution
+    telemetryState.takeModelIdentity = outcome?.identity
+    telemetryState.takeModelLoaded = outcome?.loaded ?? false
   }
 
   /// What the session that is finishing IS (#2087). See `FinalizationDisposition`
@@ -1489,7 +1579,7 @@ final class RecordingSessionKernel {
     spawn(sid) { [adapter, engineMutationScope, weak self] in
       _ = await engineMutationScope.withClaim(site: "preWarm") {
         do {
-          try await adapter.warmUp()
+          try await adapter.warmUp(modelReceipt: nil)
           self?.log("preWarm adapter.warmUp succeeded sid=\(sid.raw)")
         } catch {
           self?.log("preWarm adapter.warmUp failed sid=\(sid.raw) error=\(error)")
@@ -1594,8 +1684,10 @@ final class RecordingSessionKernel {
       // flip while Arming (#1548 D1: warmingUp folded into arming, no state
       // transition here), and the overlay reads it for the cold-boot pill.
       didLoadModelThisSession = true
-      let warmResult = await warmUp(sid)
+      let modelReceipt = WarmUpModelReceipt()
+      let warmResult = await warmUp(sid, modelReceipt: modelReceipt)
       guard isCurrent(sid) else { return }
+      noteTakeModelAfterWarmUp(modelReceipt)
       switch warmResult {
       case .ready:
         break
@@ -1904,7 +1996,7 @@ final class RecordingSessionKernel {
             sessionConfig?.llmProvider.rawValue ?? "none",
             Int(
               TimeInterval(elapsedTicks) * KernelFinalizationWiring.tickDurationSeconds * 1000),
-            takeID)
+            takeID, currentModelAttribution())
         }
         // FALL THROUGH to the stop tail, exactly as `.audioInterruption` does
         // below. The take is transcribed and polished normally; only storage
@@ -2980,11 +3072,14 @@ final class RecordingSessionKernel {
       let retryBudgetSec = asrRetryDeadlineSec(forSampleCount: retryInput.count)
       let retryTakeID = sid.raw.uuidString
       let retryBackend = adapter.engineIdentity.backendType.rawValue
+      // #3546 §3.7 T1: frozen with the take id, so a stale resolution reports
+      // this retry's model, never a newer take's.
+      let retryModel = currentModelAttribution()
       let retryBudgetMs = Int((retryBudgetSec * 1000).rounded())
       // Written by the decode itself, not beside it: only the operation closure
       // knows when `retryDecode` returned, and on a timeout it may never write.
       let retryOperationReturn = OSAllocatedUnfairLock<Duration?>(initialState: nil)
-      asrRetryDeadlineStartedTelemetry(retryTakeID, retryBackend, retryBudgetMs)
+      asrRetryDeadlineStartedTelemetry(retryTakeID, retryBackend, retryBudgetMs, retryModel)
       // BELOW the started event, not above it. That call captures to PostHog
       // synchronously, so a clock started before it charges the instrument's own
       // cost to the decode and can report an on-time retry as late.
@@ -3057,7 +3152,7 @@ final class RecordingSessionKernel {
           && retryOperationReturnDuration.map { $0 > .seconds(retryBudgetSec) } == true
         asrRetryDeadlineResolvedTelemetry(
           retryTakeID, retryBackend, retryBudgetMs, retryResolution, disposition,
-          retryOperationReturnMs, retryCallerResumeMs, acceptedAfterCutoff)
+          retryOperationReturnMs, retryCallerResumeMs, acceptedAfterCutoff, retryModel)
       }
       guard isCurrent(sid), recordingOutcome == nil else {
         emitRetryDeadlineObservation(.stale)
@@ -3355,6 +3450,10 @@ final class RecordingSessionKernel {
     // get unload, failures before do not (PR-4.5 #8, §5b).
     transcriptReadyForDelivery = true
 
+    // #3546 §3.7 T1: pair the row about to be written with its take and model,
+    // keyed by the row's own id, so a report filed from that row names this
+    // take's model even after later takes concluded.
+    recordConcludedModel(transcriptID: transcriptID, sid: sid)
     do {
       // The disposition is read HERE, at the storage step, because storage
       // runs before delivery and a flag consulted at delivery would arrive
@@ -3389,7 +3488,7 @@ final class RecordingSessionKernel {
   /// structurally precludes a recovery claim from existing, since recovery's
   /// atomic handshake requires `!isDictationActive()`). Documented, not
   /// gated (RULE: close-the-window-never-handle-it).
-  private func warmUp(_ sid: SessionID) async -> WarmUpResult {
+  private func warmUp(_ sid: SessionID, modelReceipt: WarmUpModelReceipt) async -> WarmUpResult {
     loadWedgeDetected = false
     loadTickCount = 0
     loadAttemptStartedAtTick = currentTick()
@@ -3428,7 +3527,7 @@ final class RecordingSessionKernel {
 
     var thrownError: (any Error)?
     do {
-      try await adapter.warmUp()
+      try await adapter.warmUp(modelReceipt: modelReceipt)
     } catch {
       // Classified below — `warmUp()` throwing is expected on the wedge path
       // (the watcher cancels the adapter, which unblocks the parked load).
@@ -4375,6 +4474,7 @@ final class RecordingSessionKernel {
       && adapter.isVendorDecodeInFlight
     // #2787: the app lived to see this terminal; nothing for the next launch to report.
     transcriptionCheckpoint(.clear)
+    lastMarkedStage = nil
     // #1846: stamp the concluded take INSIDE the set-once barrier, so it is
     // first-wins under the same condition as the outcome itself and can only ever
     // name the session this terminal actually accepted (`audit-all-terminal-paths-
@@ -4382,6 +4482,7 @@ final class RecordingSessionKernel {
     // `isCurrent(sid)` guard above already proved they match, and `sid` is
     // unambiguously the session being concluded.
     lastTakeID = sid.raw.uuidString
+    lastTakeModel = (sid.raw.uuidString, modelAttribution(for: sid))
     // #3195: a prepared Apple session this take did not use is dropped at its one
     // accepted terminal (cancel included). Take-scoped, so it cannot clear a newer take.
     clearAFMSession(sid.raw.uuidString)
@@ -4412,6 +4513,8 @@ final class RecordingSessionKernel {
       // COPIED, never measured here. Populated at its producer (§G5); nil for
       // every take that is not signal-free.
       signalAttribution: telemetryState.signalAttribution,
+      // #3546 §3.7 T1: frozen into the snapshot like everything else here.
+      modelAttribution: modelAttribution(for: sid),
       // #2087: read from the kernel's own disposition, the same field that
       // decided whether to hold the text. Deriving it here from the outcome
       // would be a second opinion that can disagree with the first.
@@ -4587,6 +4690,7 @@ final class RecordingSessionKernel {
     lastCancelOrigin = .systemOrFault
     lastTerminalStoppedWaitingForDecode = false
     decodeChunksScheduled = 0
+    lastMarkedStage = nil
     cancelOriginLatched = false
     // #2087: the disposition describes THIS take. Leaking it forward would make
     // the next session inherit an abandonment the user never requested, and the
@@ -4628,6 +4732,7 @@ final class RecordingSessionKernel {
     // reason instead of having it wiped when the session reaches `.live`.
     lastStopReason = nil  // #1060
     lastTakeID = nil  // #1846 — absent, never the new session's id
+    lastTakeModel = nil  // #3546 — cleared with its take id
     lastSalvagedLeadTrimMs = nil  // #1434
     lastCaptureHealth = nil  // #1434
     // #1714: cleared with the other prior-session facts so a new session cannot
@@ -5081,6 +5186,7 @@ final class RecordingSessionKernel {
     func testForceConclude(_ outcome: RecordingOutcome) {
       recordingOutcome = outcome
       transcriptionCheckpoint(.clear)  // #2787: a forced conclusion is a terminal too
+      lastMarkedStage = nil
       state = .idle
       bump()
     }

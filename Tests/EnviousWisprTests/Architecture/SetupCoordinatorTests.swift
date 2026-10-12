@@ -440,12 +440,18 @@ private final class FakeASRManager: ASRManagerInterface {
   func unloadModel() async { fatalError("not used in SetupCoordinatorTests") }
   func setInitialBackendType(_: ASRBackendType) { fatalError("not used in SetupCoordinatorTests") }
   func switchBackend(to _: ASRBackendType) async { fatalError("not used in SetupCoordinatorTests") }
-  func transcribe(audioSamples _: [Float], options _: TranscriptionOptions) async throws
+  func transcribe(
+    audioSamples _: [Float], options _: TranscriptionOptions,
+    onInferenceEntered _: ASRInferenceEntryObserver? = nil
+  ) async throws
     -> ASRResult
   {
     fatalError("not used in SetupCoordinatorTests")
   }
-  func startStreaming(options _: TranscriptionOptions, attemptID: UUID) async throws {
+  func startStreaming(
+    options _: TranscriptionOptions, attemptID: UUID,
+    onWindowInferenceEntered _: ASRInferenceEntryObserver? = nil
+  ) async throws {
     fatalError("not used in SetupCoordinatorTests")
   }
   func feedAudio(_: AVAudioPCMBuffer) async throws {

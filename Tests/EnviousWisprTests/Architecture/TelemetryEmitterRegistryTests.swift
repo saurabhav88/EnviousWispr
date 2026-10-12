@@ -180,8 +180,11 @@ struct TelemetryEmitterRegistryTests {
   /// moves to per_change; `hotkey.pressed` gains `press_action=refused_key_held`, one row per
   /// refused bare-modifier push-to-talk press, kept whole. No content, no ordinary-key identity;
   /// readers named on both registry rows.
+  /// #3546 §3.7 T1: no new site or event. Fourteen emitters gain a `model:` parameter (the
+  /// five `asr_model*` properties on rows that already fire, at their existing cadence), which
+  /// moves the function signatures this fingerprint names.
   static let sitesFingerprint =
-    "448af263db49fd5bbe5a86f4ccfd650fc20077639130445c25605abc4708f9df"
+    "e829e13ad5e6249470c73241671c3b8dc3e57f44ee8200acdc0dba9a5a0b9368"
   static let ungradedFingerprint =
     "8c5e46c2f2f7fb59004bb2eb5ea1ac210ef32dbb79fdcb68b3eff70a28cc133f"
 

@@ -35,12 +35,12 @@ struct DictationTerminalTelemetryTests {
       context: KernelSessionContext(),
       captureTelemetry: CaptureTelemetryState(),
       telemetryState: KernelTelemetryState(),
-      dictationStarted: { takeID, backend in
+      dictationStarted: { takeID, backend, _ in
         recorder.starts.append((takeID, backend))
       },
       dictationTerminal: {
         takeID, backend, result, reason, kind, effectiveTransport, _, _, _, _, peak, _, _, _,
-        inputChannel, vadRaw, vadFiltered, vadRatio, vadReason, disposition in
+        inputChannel, vadRaw, vadFiltered, vadRatio, vadReason, disposition, _ in
         recorder.terminals.append((takeID, backend, result, reason))
         recorder.attributions.append((kind, peak, effectiveTransport))
         recorder.inputChannels.append(inputChannel)
@@ -55,7 +55,8 @@ struct DictationTerminalTelemetryTests {
     attribution: KernelSignalAttributionTelemetry? = nil
   ) -> KernelTerminalTelemetrySnapshot {
     KernelTerminalTelemetrySnapshot(
-      takeID: "TAKE-A", backend: "parakeet", outcome: outcome, signalAttribution: attribution)
+      takeID: "TAKE-A", backend: "parakeet", outcome: outcome, signalAttribution: attribution,
+      modelAttribution: nil)
   }
 
   // MARK: - The seven terminals
@@ -270,7 +271,7 @@ struct DictationTerminalTelemetryTests {
   @Test("acceptance emits exactly one started row carrying the same identity")
   func acceptanceEmitsTheDenominator() {
     let recorder = Recorder()
-    makeSink(recorder).acceptSession(takeID: "TAKE-A")
+    makeSink(recorder).acceptSession(takeID: "TAKE-A", model: nil)
     #expect(recorder.starts.count == 1)
     #expect(recorder.starts.first?.takeID == "TAKE-A")
     #expect(recorder.starts.first?.backend == "parakeet")

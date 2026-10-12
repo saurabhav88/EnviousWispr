@@ -23,8 +23,14 @@ package protocol ASRBackend: Actor {
   /// progress (Parakeet via FluidAudio download) override directly.
   func prepare(progressCallback: ProgressCallback?) async throws
 
-  /// Batch transcription from raw Float32 samples (16kHz mono).
-  func transcribe(audioSamples: [Float], options: TranscriptionOptions) async throws -> ASRResult
+  /// Batch transcription from raw Float32 samples (16kHz mono). #3546 §3.7 T1:
+  /// `onInferenceEntered` is called synchronously immediately before the vendor call, after
+  /// readiness validation, preparatory work and the last cancellation check; a call refused
+  /// before that point never calls it. `nil` for a caller with no take to attribute.
+  func transcribe(
+    audioSamples: [Float], options: TranscriptionOptions,
+    onInferenceEntered: ASRInferenceEntryObserver?
+  ) async throws -> ASRResult
 
   /// #2787: observation only — see the extension default below. A PROTOCOL
   /// requirement, not only an extension member, so a call through the

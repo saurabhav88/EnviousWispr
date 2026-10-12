@@ -1,6 +1,7 @@
 import EnviousWisprCore
 @preconcurrency import FluidAudio
 import Foundation
+import os
 import Testing
 
 @testable import EnviousWisprASR
@@ -94,4 +95,56 @@ struct WhisperKitRealBoundaryTests {
       "WhisperKit returned: \(result.text)"
     )
   }
+
+  #if DEBUG
+    /// #3546 §3.7 T1 (amendment §2.4): the real backend checks cancellation after its last
+    /// preparatory await and before committing the inference entry. A decode cancelled while
+    /// parked at that await reaches neither the commit nor the vendor. When this fails, a
+    /// cancelled take is reported as having reached inference. Removing the check turns
+    /// this red (the observer then fires once).
+    @Test(
+      "a decode cancelled during preparation never commits an inference entry",
+      .enabled("requires the shipped model to be admitted") {
+        await WhisperKitRealBoundaryFixture.shippedModelIsAdmitted()
+      },
+      .tags(.realBoundary)
+    )
+    func cancelledDuringPreparationCommitsNothing() async throws {
+      let samples = try AudioConverter().resampleAudioFile(
+        path: WhisperKitRealBoundaryFixture.audioURL.path)
+      let registration = try WhisperKitRealBoundaryFixture.productionRegistration()
+      let controller = ModelDeliveryController()
+      let backend = WhisperKitBackend(
+        admittedModelFolder: {
+          guard await controller.isAdmitted(registration) else { return nil }
+          return registration.installDirectory.path
+        },
+        tokenizerFolderURL: WhisperKitRealBoundaryFixture.tokenizerFolder)
+      try await backend.prepare()
+      let trial = "inference-entry-\(UUID().uuidString)"
+      await backend.armBatchDecodeHold(trialID: trial)
+      let entries = OSAllocatedUnfairLock(initialState: 0)
+      let decode = Task {
+        try await backend.transcribe(
+          audioSamples: samples, options: .default,
+          onInferenceEntered: { entries.withLock { $0 += 1 } })
+      }
+      // Bounded wait for the decode to park at the preparatory boundary (a subject signal;
+      // the deadline only fails a decode that never got there).
+      let deadline = ContinuousClock.now.advanced(by: .seconds(30))
+      while await backend.queryBatchDecodeFault(trialID: trial)?.heldDecodeEntryEpochSec == nil {
+        guard ContinuousClock.now < deadline else {
+          Issue.record("the decode never reached the preparatory boundary")
+          break
+        }
+        await Task.yield()
+      }
+      decode.cancel()
+      await backend.releaseBatchDecode(trialID: trial)
+      await #expect(throws: CancellationError.self) { _ = try await decode.value }
+      #expect(entries.withLock { $0 } == 0)
+      await backend.clearBatchDecodeFault()
+      await backend.unload()
+    }
+  #endif
 }

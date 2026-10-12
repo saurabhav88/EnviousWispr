@@ -57,7 +57,7 @@ import Testing
     let adapter = WhisperKitEngineAdapter(
       backend: backend, engineMutationScope: .alwaysAllowedForTesting)
     #expect(adapter.readiness == .notReady)
-    try await adapter.warmUp()
+    try await adapter.warmUp(modelReceipt: nil)
     #expect(adapter.readiness == .ready)
     await adapter.cancel()
     // Backend was set ready by `prepare()`; cancel only refreshes the cached
@@ -73,7 +73,7 @@ import Testing
     let backend = StubWhisperKitBackend()
     let adapter = WhisperKitEngineAdapter(
       backend: backend, engineMutationScope: .alwaysAllowedForTesting)
-    try await adapter.warmUp()
+    try await adapter.warmUp(modelReceipt: nil)
     #expect(adapter.readiness == .ready)
     await adapter.recoverFromWedge()
     #expect(adapter.readiness == .notReady, "wedge recovery unloads the in-process backend")
@@ -89,7 +89,7 @@ import Testing
     let adapter = WhisperKitEngineAdapter(
       backend: backend, engineMutationScope: .alwaysAllowedForTesting,
       wedgeRecoveryUnloadDeadlineSec: 0.05)
-    try await adapter.warmUp()
+    try await adapter.warmUp(modelReceipt: nil)
     #expect(adapter.readiness == .ready)
     await adapter.recoverFromWedge()  // must return despite the hung unload
     #expect(adapter.readiness == .notReady)
@@ -100,7 +100,7 @@ import Testing
     let backend = StubWhisperKitBackend()
     let adapter = WhisperKitEngineAdapter(
       backend: backend, engineMutationScope: .alwaysAllowedForTesting)
-    try await adapter.warmUp()
+    try await adapter.warmUp(modelReceipt: nil)
     #expect(adapter.readiness == .ready)
     adapter.applyUnloadPolicy(.immediately)
     // Await the armed unload task to completion (deterministic, bounded) —
@@ -147,7 +147,7 @@ import Testing
     let backend = StubWhisperKitBackend()
     let adapter = WhisperKitEngineAdapter(backend: backend, engineMutationScope: scope)
     box.adapter = adapter
-    try await adapter.warmUp()
+    try await adapter.warmUp(modelReceipt: nil)
     #expect(adapter.readiness == .ready)
     adapter.applyUnloadPolicy(.immediately)
     await adapter.modelUnloadTaskForUnitTests?.value
@@ -166,7 +166,7 @@ import Testing
     let adapter = WhisperKitEngineAdapter(
       backend: backend, engineMutationScope: .alwaysAllowedForTesting)
     do {
-      try await adapter.warmUp()
+      try await adapter.warmUp(modelReceipt: nil)
       Issue.record("expected throw")
     } catch {
       // expected
@@ -181,7 +181,7 @@ import Testing
     let backend = StubWhisperKitBackend()
     let adapter = WhisperKitEngineAdapter(
       backend: backend, engineMutationScope: .alwaysAllowedForTesting)
-    try await adapter.warmUp()
+    try await adapter.warmUp(modelReceipt: nil)
     let count = await backend.prepareCount
     #expect(count == 1)
   }
@@ -192,7 +192,7 @@ import Testing
     await backend.setIsReady(true)
     let adapter = WhisperKitEngineAdapter(
       backend: backend, engineMutationScope: .alwaysAllowedForTesting)
-    try await adapter.warmUp()
+    try await adapter.warmUp(modelReceipt: nil)
     let count = await backend.prepareCount
     #expect(count == 0)
   }
@@ -231,7 +231,7 @@ import Testing
     await backend.setIsReady(true)
     let adapter = WhisperKitEngineAdapter(
       backend: backend, engineMutationScope: .alwaysAllowedForTesting)
-    try await adapter.warmUp()  // populates cachedReadiness == .ready
+    try await adapter.warmUp(modelReceipt: nil)  // populates cachedReadiness == .ready
     await backend.setIsReady(false)  // the backend itself became not-ready
     let outcome = await adapter.recoverFromASRInterruption()
     #expect(
@@ -924,7 +924,7 @@ import Testing
     let backend = StubWhisperKitBackend()
     let adapter = WhisperKitEngineAdapter(
       backend: backend, engineMutationScope: .alwaysAllowedForTesting)
-    try await adapter.warmUp()
+    try await adapter.warmUp(modelReceipt: nil)
     adapter.applyUnloadPolicy(.twoMinutes)
     // Codex review (#1595): an optional `armed?.value` lets this test pass
     // vacuously if applyUnloadPolicy never arms anything at all — require it.
@@ -1034,7 +1034,7 @@ import Testing
     let backend = StubWhisperKitBackend()
     let adapter = WhisperKitEngineAdapter(
       backend: backend, engineMutationScope: .alwaysAllowedForTesting)
-    try await adapter.warmUp()
+    try await adapter.warmUp(modelReceipt: nil)
     adapter.applyUnloadPolicy(.never)
     // `.never` arms no task — the inspector is nil synchronously after the
     // call, so no unload can fire. Assert directly instead of yield-polling
@@ -1049,7 +1049,7 @@ import Testing
     let backend = StubWhisperKitBackend()
     let adapter = WhisperKitEngineAdapter(
       backend: backend, engineMutationScope: .alwaysAllowedForTesting)
-    try await adapter.warmUp()
+    try await adapter.warmUp(modelReceipt: nil)
     adapter.applyUnloadPolicy(.immediately)
     // Await the armed unload task deterministically (release-config CI does
     // not complete it within a fixed `Task.yield()` budget — #874 red main).
@@ -1063,7 +1063,7 @@ import Testing
     let backend = StubWhisperKitBackend()
     let adapter = WhisperKitEngineAdapter(
       backend: backend, engineMutationScope: .alwaysAllowedForTesting)
-    try await adapter.warmUp()
+    try await adapter.warmUp(modelReceipt: nil)
     adapter.applyUnloadPolicy(.twoMinutes)
     // Capture the armed task, cancel it, then await the captured handle: its
     // sleep throws on cancellation and the task returns without unloading, so

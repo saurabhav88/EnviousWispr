@@ -561,9 +561,10 @@ final actor FakeASRBackend: ASRBackend {
     for c in parked { c.resume() }
   }
 
-  func transcribe(audioSamples: [Float], options: TranscriptionOptions)
-    async throws -> ASRResult
-  {
+  func transcribe(
+    audioSamples: [Float], options: TranscriptionOptions,
+    onInferenceEntered: ASRInferenceEntryObserver? = nil
+  ) async throws -> ASRResult {
     // #2132: mirrors `ParakeetBackend.transcribe`'s entry guard exactly
     // (`guard isReady ... else { throw ASRError.notReady }`). A double must
     // refuse what the real tool refuses, or a test proves nothing about it.
@@ -576,6 +577,10 @@ final actor FakeASRBackend: ASRBackend {
         for waiter in waiters { waiter.continuation.resume(returning: true) }
       }
     }
+    // #3546: the simulated vendor entry, after readiness and the preparatory gate, behind
+    // the last cancellation check, like the real backends.
+    try Task.checkCancellation()
+    onInferenceEntered?()
     // #2918: a backend that can say how far it is reports through the installed observer,
     // then clears it, exactly as the real backends do.
     if let observer = progressObserver {

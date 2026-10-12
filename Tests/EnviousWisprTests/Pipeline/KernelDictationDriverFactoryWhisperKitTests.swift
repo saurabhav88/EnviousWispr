@@ -62,7 +62,8 @@ import Testing
         captureTelemetry: CaptureTelemetryState(),
         pasteCompletionRegistry: PasteCompletionRegistry(),
         engineMutationScope: .alwaysAllowedForTesting,
-        vendorDecodeOccupancy: VendorDecodeOccupancy())
+        vendorDecodeOccupancy: VendorDecodeOccupancy(),
+        whisperKitModelIdentity: nil)
       return KernelDictationDriverFactory.makeForWhisperKit(inputs: inputs)
     }
 
@@ -97,7 +98,8 @@ import Testing
         captureTelemetry: CaptureTelemetryState(),
         pasteCompletionRegistry: PasteCompletionRegistry(),
         engineMutationScope: .alwaysAllowedForTesting,
-        vendorDecodeOccupancy: VendorDecodeOccupancy())
+        vendorDecodeOccupancy: VendorDecodeOccupancy(),
+        whisperKitModelIdentity: nil)
       _ = KernelDictationDriverFactory.makeForWhisperKit(inputs: inputs)
       // Factory construction is synchronous and pure — no warm-up dispatch.
       // Backend's `isReady` flips to true only after `prepare()` completes.

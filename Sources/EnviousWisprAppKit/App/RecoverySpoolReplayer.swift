@@ -381,7 +381,7 @@ final class RecoverySpoolReplayer: RecoverySpoolReplaying {
     if let replayProvider { onReplayWillTranscribe?(replayProvider) }
     defer { if let replayProvider { onReplayFinished?(replayProvider) } }
     do {
-      result = try await activeEngine.transcribe(recovered.samples, options)
+      result = try await activeEngine.transcribe(recovered.samples, options, nil)
     } catch {
       // A Discard-driven engine reset kills the in-flight transcribe and surfaces
       // here as a throw — treat it as an abort (the user discarded), not a failure.

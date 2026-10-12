@@ -945,7 +945,7 @@ struct ParakeetUpgradePolicyTests {
     switch door {
     case .warmUp:
       try await ParakeetEngineAdapter(asrManager: manager, parakeetUpgrade: rig.coordinator)
-        .warmUp()
+        .warmUp(modelReceipt: nil)
     case .directLoad:
       try await ActiveEngineOperation.live(
         asrManager: manager, parakeetUpgrade: rig.coordinator,

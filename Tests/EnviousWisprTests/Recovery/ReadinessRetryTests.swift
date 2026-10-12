@@ -206,7 +206,7 @@ struct ReadinessRetryTelemetryContractTests {
         activeEngine: ActiveEngineOperation(
           isLoaded: { asr.isModelLoaded },
           load: { try await asr.loadModel() },
-          transcribe: { samples, options in
+          transcribe: { samples, options, _ in
             try await asr.transcribe(audioSamples: samples, options: options)
           },
           hardCancel: {}),

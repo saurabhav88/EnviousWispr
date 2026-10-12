@@ -17,8 +17,12 @@ enum DictationCompletedReporting {
   ) {
     let route = driver.lastResolvedRoute
     let health = driver.lastCaptureHealth
+    // #3546 §3.7 T1: the take and model recorded for THIS row when it was written, so a
+    // late report cannot borrow a newer take's. Absent for a row the kernel did not record.
+    let concluded = driver.concludedTake(forTranscriptID: transcript.id)
     TelemetryService.shared.reportDictationCompleted(
       transcript: transcript, inputMode: inputMode,
+      model: concluded?.model,
       recordingSeconds: driver.lastRecordingDurationSeconds,
       stopReason: driver.lastStopReason,
       historySaveStatus: driver.lastHistorySaved ? "succeeded" : "failed",  // #1167
@@ -61,13 +65,14 @@ enum DictationCompletedReporting {
       // only fire on `.asrFailed`/`.asrInterrupted`), so this read-through
       // chain is a successful retry's ONLY visibility.
       asrRetryOutcome: driver.asrRetryOutcome?.rawValue,
-      // #1846: the take this completion belongs to. `lastTakeID` is FROZEN at the
-      // accepted terminal, not a live read of the in-flight take key — if the user
-      // started talking again before this report was filed, a live read would stamp
-      // this event with the NEXT take's id, which is worse than absent because it
-      // joins cleanly to the wrong dictation. Rationale on
-      // `RecordingSessionKernel.lastTakeID`.
-      takeID: driver.lastTakeID,
+      // #1846: the take this completion belongs to, never a live read of the in-flight
+      // take key — if the user started talking again before this report was filed, a live
+      // read would stamp this event with the NEXT take's id, which is worse than absent
+      // because it joins cleanly to the wrong dictation.
+      // #3546: read from the row's own record, written with the row by the kernel's one
+      // store path. An evicted or unknown row omits the key rather than fall back to the
+      // latest take (`lastTakeID`), which can be a newer one.
+      takeID: concluded?.takeID,
       // #3195: content-free; nil unless this take's live Apple polish completed.
       afmPrewarm: driver.lastAFMPrewarm)
   }

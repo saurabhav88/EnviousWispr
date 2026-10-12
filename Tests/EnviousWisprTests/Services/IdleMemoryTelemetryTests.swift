@@ -27,7 +27,8 @@ import Testing
       }
       defer { service.testEventHook = previous }
       service.appIdleMemory(
-        footprintMB: 471, minutesSinceLaunch: 12, wordCheckLoaded: false, wordCheckWanted: true)
+        footprintMB: 471, minutesSinceLaunch: 12, wordCheckLoaded: false, wordCheckWanted: true,
+        model: nil)
       #expect(box.events.count == 1)
       let event = box.events.first
       #expect(event?.intProps == ["footprint_mb": 471, "minutes_since_launch": 12])

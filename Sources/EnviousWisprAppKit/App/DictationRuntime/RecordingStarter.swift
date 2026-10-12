@@ -356,7 +356,8 @@ final class RecordingStarter {
       recordingOverlay.present(
         .warning(reason: .modelNotDownloaded(engineLabel: active.engineDisplayName)))
       TelemetryService.shared.coldStartPressBlocked(
-        asrBackend: backend.rawValue, warmupInFlight: false)
+        asrBackend: backend.rawValue, warmupInFlight: false,
+        model: active.requestedModelAttribution)
       return .noRecording
     }
     lastRecordingResult?.polishError = nil
@@ -633,7 +634,8 @@ final class RecordingStarter {
         recordingOverlay.present(
           .warning(reason: .modelNotDownloaded(engineLabel: active.engineDisplayName)))
         TelemetryService.shared.coldStartPressBlocked(
-          asrBackend: backend.rawValue, warmupInFlight: false)
+          asrBackend: backend.rawValue, warmupInFlight: false,
+          model: active.requestedModelAttribution)
         return
       }
       if active.engineReadiness != .ready {

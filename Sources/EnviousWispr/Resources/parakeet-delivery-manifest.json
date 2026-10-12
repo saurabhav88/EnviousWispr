@@ -5,7 +5,7 @@
     "name": "parakeet-ultra-coreml",
     "revision": "95eaa59a39d4394f047a4dc5cce480388a60d1b6",
     "variant": "int8",
-    "runtimeABI": "fluidAudio-6efc52ec"
+    "runtimeABI": "fluidAudio-fb506037"
   },
   "runtimeCompatibility": {
     "minAppVersion": "2.5.4"
@@ -167,5 +167,5 @@
     "diskHeadroomFactor": "2.2",
     "evictPreviousRevisions": false
   },
-  "manifestDigest": "0beeb0ad89e743738dacb9326d981497357fa6207128a5c6b1c4931eab13fbb5"
+  "manifestDigest": "a66864c7c96ca8fccfb00f50f784f02aa2275dc58d6f7b1d9d415120b97bdc7d"
 }

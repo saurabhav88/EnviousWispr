@@ -37,23 +37,28 @@ enum TranscriptionInterruptionReporter {
   ) -> TranscriptionCheckpoint? {
     guard let checkpoint = store.takeOrphan() else { return nil }
     let ageMs = max(0, Int(now.timeIntervalSince(checkpoint.stageEnteredAt) * 1000))
+    var extra: [String: Any] = [
+      "stage": checkpoint.stage.rawValue,
+      "asr_backend": checkpoint.backend,
+      "chunks_scheduled": checkpoint.chunksScheduled,
+      "stage_age_ms": ageMs,
+      "checkpoint_app_version": checkpoint.appVersion,
+      "take_id": checkpoint.takeID,
+    ]
+    // #3546 §3.7 T1: the model the checkpoint recorded, never this launch's.
+    if let model = checkpoint.modelAttribution {
+      extra.merge(model.telemetryProperties) { _, new in new }
+    }
     SentryBreadcrumb.captureError(
       InterruptedTranscriptionError(stage: checkpoint.stage),
       category: .transcriptionInterrupted,
       stage: "asr",
-      extra: [
-        "stage": checkpoint.stage.rawValue,
-        "asr_backend": checkpoint.backend,
-        "chunks_scheduled": checkpoint.chunksScheduled,
-        "stage_age_ms": ageMs,
-        "checkpoint_app_version": checkpoint.appVersion,
-        "take_id": checkpoint.takeID,
-      ],
+      extra: extra,
       tags: ["transcription.stage": checkpoint.stage.rawValue])
     TelemetryService.shared.transcriptionInterruptedAtQuit(
       stage: checkpoint.stage.rawValue, backend: checkpoint.backend,
       chunksScheduled: checkpoint.chunksScheduled, stageAgeMs: ageMs,
-      checkpointAppVersion: checkpoint.appVersion)
+      checkpointAppVersion: checkpoint.appVersion, model: checkpoint.modelAttribution)
     return checkpoint
   }
 }

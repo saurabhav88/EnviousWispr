@@ -16,7 +16,9 @@ struct AFMPrewarmTelemetryTests {
   #if DEBUG
     final class Box: @unchecked Sendable { var event: CapturedTelemetryEvent? }
 
-    private static func transcript(provider: String, polished: String?) -> EnviousWisprCore.Transcript {
+    private static func transcript(provider: String, polished: String?)
+      -> EnviousWisprCore.Transcript
+    {
       EnviousWisprCore.Transcript(
         text: "hello there friend",
         polishedText: polished,
@@ -38,7 +40,7 @@ struct AFMPrewarmTelemetryTests {
       }
       defer { TelemetryService.shared.testEventHook = nil }
       TelemetryService.shared.reportDictationCompleted(
-        transcript: t, inputMode: "ptt", takeID: takeID, afmPrewarm: afmPrewarm)
+        transcript: t, inputMode: "ptt", model: nil, takeID: takeID, afmPrewarm: afmPrewarm)
       return box.event
     }
 

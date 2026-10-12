@@ -38,7 +38,8 @@ import Testing
       languageDetector: LanguageDetector(),
       audioCaptureSessionIDSource: { 0 },
       engineMutationScope: .alwaysAllowedForTesting,
-      vendorDecodeOccupancy: VendorDecodeOccupancy())
+      vendorDecodeOccupancy: VendorDecodeOccupancy(),
+      deliveredModelIdentity: nil)
     #expect(adapter.engineIdentity.backendType == .whisperKit)
   }
 }
@@ -65,10 +66,16 @@ private final class MinimalASRManager: ASRManagerInterface {
   func setInitialBackendType(_ type: ASRBackendType) {}
   func switchBackend(to type: ASRBackendType) async {}
   var activeBackendSupportsStreaming: Bool { get async { false } }
-  func transcribe(audioSamples: [Float], options: TranscriptionOptions) async throws -> ASRResult {
+  func transcribe(
+    audioSamples: [Float], options: TranscriptionOptions,
+    onInferenceEntered: ASRInferenceEntryObserver? = nil
+  ) async throws -> ASRResult {
     ASRResult(text: "", language: "en", duration: 0, processingTime: 0, backendType: .parakeet)
   }
-  func startStreaming(options: TranscriptionOptions, attemptID: UUID) async throws {}
+  func startStreaming(
+    options: TranscriptionOptions, attemptID: UUID,
+    onWindowInferenceEntered: ASRInferenceEntryObserver? = nil
+  ) async throws {}
   func feedAudio(_ buffer: AVAudioPCMBuffer) async throws {}
   func finalizeStreaming() async throws -> ASRResult {
     ASRResult(text: "", language: "en", duration: 0, processingTime: 0, backendType: .parakeet)

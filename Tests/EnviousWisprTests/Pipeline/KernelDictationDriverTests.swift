@@ -140,7 +140,7 @@ import Testing
     // the user's explicit intent. Park the forward path at format stabilization so
     // the session is genuinely still `.arming` when the stop toggle lands.
     let h = makeDriver()
-    try await h.adapter.warmUp()  // warm — no cold load; stabilization is the parking point
+    try await h.adapter.warmUp(modelReceipt: nil)  // warm — no cold load; stabilization is the parking point
     h.capture.gateStabilizationCall = 1  // park the first stabilization call
     try await h.driver.handle(event: .toggleRecording(.testDefault()))
     await h.capture.awaitStabilizationGateReached()
@@ -506,7 +506,7 @@ import Testing
       let h = makeDriver()
       // Warm the engine so `adapter.readiness == .ready` (a genuine cold load
       // would surface the caching pill instead).
-      try await h.adapter.warmUp()
+      try await h.adapter.warmUp(modelReceipt: nil)
       #expect(h.adapter.readiness == .ready)
       // #1548 D2 (founder 2026-07-14): the recording pill shows the INSTANT the
       // press is accepted on a warm engine — no first-buffer gate, no hidden Arming
@@ -575,7 +575,7 @@ import Testing
   @Test("ensureEngineWarm is a no-op when the engine is already ready")
   func ensureEngineWarmNoOpWhenReady() async throws {
     let h = makeDriver()
-    try await h.adapter.warmUp()
+    try await h.adapter.warmUp(modelReceipt: nil)
     #expect(h.adapter.readiness == .ready)
     #expect(h.adapter.warmUpCallCount == 1)
     // Already ready → the helper must not touch the adapter again (no second
@@ -746,7 +746,7 @@ import Testing
   /// the engine first (a warm press opens the session immediately) and deliver
   /// the buffer with a small retry so it cannot race `beginSession`'s wiring.
   private func startDriverToLive(_ h: Harness) async throws {
-    try await h.adapter.warmUp()
+    try await h.adapter.warmUp(modelReceipt: nil)
     try await h.driver.handle(event: .toggleRecording(.testDefault()))
     for _ in 0..<2000 {
       if h.kernel.state == .live { return }

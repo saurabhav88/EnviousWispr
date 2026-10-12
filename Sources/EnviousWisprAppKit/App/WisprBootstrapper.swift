@@ -653,6 +653,8 @@ package final class WisprBootstrapper {
         pasteCompletionRegistry: pasteCompletionRegistry,
         engineMutationScope: engineMutationScope,
         vendorDecodeOccupancy: asrManager.vendorDecodeOccupancy,
+        whisperKitModelIdentity: modelDelivery.whisperKitRegistration?.manifest.identity
+          .asrModelIdentity,
         outputClassifierHolder: outputClassifierHolder,
         dictationAudioArchiveOptInProvider: { settings.isDictationAudioArchiveEnabled },
         microphonePermissionIsDenied: { permissions.microphonePermissionIsDenied },
@@ -1733,10 +1735,14 @@ package final class WisprBootstrapper {
           checkerEligibility?.wordCheck?.isWantedForTelemetry ?? false
         )
       },
-      emit: { sample in
+      emit: { [asrManager, kernelDriver, whisperKitKernelDriver] sample in
         TelemetryService.shared.appIdleMemory(
           footprintMB: sample.footprintMB, minutesSinceLaunch: sample.minutesSinceLaunch,
-          wordCheckLoaded: sample.wordCheckLoaded, wordCheckWanted: sample.wordCheckWanted)
+          wordCheckLoaded: sample.wordCheckLoaded, wordCheckWanted: sample.wordCheckWanted,
+          // #3546 §3.7 T1: the active engine's loaded model, nil when none is loaded.
+          model: asrManager.activeBackendType == .whisperKit
+            ? whisperKitKernelDriver.servingModelAttribution
+            : kernelDriver.servingModelAttribution)
       })
     idleMemoryObserver.start()
     idleMemoryObserverForSettings = idleMemoryObserver
@@ -1843,7 +1849,7 @@ package final class WisprBootstrapper {
       // the claim precisely so the switch it may trigger is not deferred by the
       // claim. A second loader here would be a second answer to the same
       // question, which is the shape that produced this feature's first defect.
-      transcribe: { [activeEngine, settings] samples, onProgress in
+      transcribe: { [activeEngine, settings] samples, onProgress, onInferenceEntered in
         var options = TranscriptionOptions.default
         if case .locked(let code) = settings.languageMode { options.language = code }
         // The engine's own language answer travels with the words. Reducing this
@@ -1856,7 +1862,8 @@ package final class WisprBootstrapper {
         // on both exits, so a dictation that follows never inherits the import's sink.
         await activeEngine.setTranscriptionProgressObserver(onProgress)
         do {
-          let result = try await activeEngine.transcribe(samples, options)
+          // #3546 §3.7 T1: the run's own inference observation travels with this call.
+          let result = try await activeEngine.transcribe(samples, options, onInferenceEntered)
           await activeEngine.setTranscriptionProgressObserver(nil)
           return result
         } catch {
@@ -1890,11 +1897,11 @@ package final class WisprBootstrapper {
       },
       // #3069: which engine, whether it and the configured polisher succeeded.
       emitRunTelemetry: {
-        outcome, backend, durationSeconds, asrOutcome, polishOutcome, provider, model in
+        outcome, backend, asrModel, durationSeconds, asrOutcome, polishOutcome, provider, model in
         TelemetryService.shared.trackFileImportCompleted(
-          outcome: outcome, asrBackend: backend, durationSeconds: durationSeconds,
-          asrOutcome: asrOutcome, polishOutcome: polishOutcome, polishProvider: provider,
-          polishModel: model)
+          outcome: outcome, asrBackend: backend, model: asrModel,
+          durationSeconds: durationSeconds, asrOutcome: asrOutcome, polishOutcome: polishOutcome,
+          polishProvider: provider, polishModel: model)
       },
       // #3069: same `.asrFailed` category and fingerprint dictation's own ASR failures use
       // (one engine defect, one Sentry issue), tagged `stage: "file_import"` so it is
@@ -2007,7 +2014,9 @@ package final class WisprBootstrapper {
       // import started after the user adds a word should use it.
       // The wizard's steps WRITE settings when the user picks, so freezing
       // settings here freezes exactly what the user chose on those screens.
-      beginRun: { [settings, customWordsPropagator, localPolishRuntimes] in
+      beginRun: {
+        [settings, customWordsPropagator, localPolishRuntimes, kernelDriver, whisperKitKernelDriver]
+        in
         let snapshot = FileImportSettingsFreeze.snapshot(settings: settings)
         fileImportRunner.freeze(settings: snapshot, vocabulary: customWordsPropagator.corrector)
         // #3289: Start and Clean it again both come through here, after the claim; preload the word
@@ -2016,10 +2025,15 @@ package final class WisprBootstrapper {
         checkerEligibility.wordCheck?.fileImportStarted(
           needsWordCheck: LearnedWordCheckerEngine(
             provider: LLMProvider(rawValue: snapshot.llmProvider) ?? .none) == nil)
-        let configuration = FileImportSettingsFreeze.configuration(
+        var configuration = FileImportSettingsFreeze.configuration(
           for: snapshot,
           ollamaModelIsRemote: snapshot.llmProvider == LLMProvider.ollama.rawValue
             ? ollamaRemoteness(snapshot.llmModel) : false)
+        // #3546 §3.7 T1: the frozen engine's serving model, read at the same freeze.
+        configuration.asrModel =
+          (configuration.backendType == .whisperKit
+          ? whisperKitKernelDriver.servingModelAttribution
+          : kernelDriver.servingModelAttribution)?.identity
         // #2772: **the import starts its OWN bundled polisher.**
         //
         // Since the import's polisher is chosen independently of dictation's, EG-1 can be
@@ -2112,10 +2126,15 @@ package final class WisprBootstrapper {
     // outlasts Stop), with the need read from the run's FROZEN provider. Wired here, after the
     // coordinator exists, so the closure can see it.
     checkerEligibility.wordCheck?.inFlightWorkNeedsWordCheck = {
-      [weak kernelDriver, weak whisperKitKernelDriver, weak fileImportCoordinator, weak fileImportRunner] in
+      [
+        weak kernelDriver, weak whisperKitKernelDriver, weak fileImportCoordinator,
+        weak fileImportRunner
+      ] in
       WordCheckRuntime.workNeedsWordCheck(
-        dictationProviders: [kernelDriver?.currentSessionConfig, whisperKitKernelDriver?.currentSessionConfig]
-          .compactMap { $0?.llmProvider },
+        dictationProviders: [
+          kernelDriver?.currentSessionConfig, whisperKitKernelDriver?.currentSessionConfig,
+        ]
+        .compactMap { $0?.llmProvider },
         importHoldsEngine: fileImportCoordinator?.isEngineHeld == true,
         importProvider: fileImportRunner?.frozenLLMProvider)
     }
@@ -2552,12 +2571,15 @@ private struct MainWindowRoot: View {
       .environment(b.audioDeviceList)
       // Only the microphone status view invokes this reader and observes capture changes.
       // No second state owner or capture command; the diagnostic UID survives stop.
-      .environment(\.microphoneCapturePresentation, {
-        MicrophoneCapturePresentation(
-          isCapturing: b.liveRecordingState.audioCapture.isCapturing,
-          boundDeviceUID:
-            b.liveRecordingState.audioCapture.zeroSignalDiscriminatorDevice?.deviceUID)
-      })
+      .environment(
+        \.microphoneCapturePresentation,
+        {
+          MicrophoneCapturePresentation(
+            isCapturing: b.liveRecordingState.audioCapture.isCapturing,
+            boundDeviceUID:
+              b.liveRecordingState.audioCapture.zeroSignalDiscriminatorDevice?.deviceUID)
+        }
+      )
       .environment(b.aiAvailability)
       .environment(b.llmDiscovery)
       .environment(b.polishSetup.savedKeyPresence)

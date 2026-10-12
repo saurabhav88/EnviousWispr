@@ -56,6 +56,14 @@ final class KernelTelemetryState {
   /// a second clearer here would blank the tag while polish and paste are still
   /// running, which is exactly where the highest-volume errors are raised.
   var takeID: String?
+  /// #3546 §3.7 T1: the model this take is using and whether it was loaded,
+  /// set at acceptance only when a model was already serving, then at the end
+  /// of the take's warm-up (the serving model when ready, else the request
+  /// that failed to load). `nil` means unknown, never a guess. Whether audio
+  /// reached inference, and on which model, is the adapter's per-session
+  /// `inferenceEntry`, which wins over this.
+  var takeModelIdentity: ASRModelIdentity?
+  var takeModelLoaded = false
   var recordingSnapshot: KernelRecordingSnapshotTelemetry?
   var noSpeechTelemetry: KernelNoSpeechTelemetry?
   var asrEmptyDiagnostics: ASREmptyResultDiagnostics?
@@ -144,6 +152,8 @@ final class KernelTelemetryState {
   func resetForNewSession(takeID: String, polishEnabled: Bool) {
     self.takeID = takeID
     self.polishEnabled = polishEnabled
+    takeModelIdentity = nil
+    takeModelLoaded = false
     recordingSnapshot = nil
     noSpeechTelemetry = nil
     asrEmptyDiagnostics = nil

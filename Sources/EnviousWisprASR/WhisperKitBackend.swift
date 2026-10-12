@@ -572,9 +572,11 @@ public actor WhisperKitBackend: ASRBackend {
     transcriptionProgressObserver = observer
   }
 
-  public func transcribe(audioSamples: [Float], options: TranscriptionOptions) async throws
-    -> ASRResult
-  {
+  /// #3546: `onInferenceEntered` per `ASRBackend.transcribe`.
+  public func transcribe(
+    audioSamples: [Float], options: TranscriptionOptions,
+    onInferenceEntered inferenceObserver: ASRInferenceEntryObserver? = nil
+  ) async throws -> ASRResult {
     // #2918: captured and cleared BEFORE the readiness guard suspends, so a refused call
     // leaves nothing installed for a later caller's decode and a replacement during the
     // suspension cannot be picked up (grounded round 2).
@@ -590,7 +592,8 @@ public actor WhisperKitBackend: ASRBackend {
     let engineProgress: NSKeyValueObservation? = progressObserver.flatMap { observer in
       let progress = kit.progress
       guard Self.isFreshProgress(progress) else { return nil }
-      return Self.observeEngineProgress(progress, highWater: ProgressHighWater(), observer: observer)
+      return Self.observeEngineProgress(
+        progress, highWater: ProgressHighWater(), observer: observer)
     }
     defer { engineProgress?.invalidate() }
 
@@ -609,6 +612,11 @@ public actor WhisperKitBackend: ASRBackend {
       let batchDecodeFaultRole = await enterBatchDecodeFaultBoundary()
       defer { exitBatchDecodeFaultBoundary(role: batchDecodeFaultRole) }
     #endif
+    // #3546 §3.7 T1: committed after every preparatory await and the last cancellation
+    // check, with no suspension before the vendor call; outside the `do`, whose catch would
+    // turn a cancellation into `transcriptionFailed`.
+    try Task.checkCancellation()
+    inferenceObserver?()
     do {
       // TODO(#827): watchdog needs a decoder-step or token/segment progress
       // callback owned by WhisperKit; cancellation depends on this await
@@ -657,7 +665,8 @@ public actor WhisperKitBackend: ASRBackend {
   // keeps `.none` per cycle; it must NEVER inherit the `>30s -> .vad` branch that
   // would re-chunk the whole growing buffer, F2).
   package func makeStreamingSession(
-    options: TranscriptionOptions, vendorDecodeOccupancy: VendorDecodeOccupancy
+    options: TranscriptionOptions, vendorDecodeOccupancy: VendorDecodeOccupancy,
+    onDecode: ASRInferenceEntryObserver?
   ) async -> (any WhisperKitIncrementalSession)? {
     guard let kit = await readyKitAfterWarmupDrain() else { return nil }
     var opts = makeDecodeOptions(from: options, sampleCount: 0)
@@ -677,7 +686,8 @@ public actor WhisperKitBackend: ASRBackend {
     // investigation log 2026-07-04) — the buffer shape alone is the winner.
     // #2787: every decode this session issues is counted (see the decorator).
     return WhisperKitStreamingSession(
-      whisperKit: OccupiedWhisperKitDecoder(base: kit, occupancy: vendorDecodeOccupancy),
+      whisperKit: OccupiedWhisperKitDecoder(
+        base: kit, occupancy: vendorDecodeOccupancy, onDecode: onDecode),
       decodingOptions: opts,
       conditionOnPriorText: false, localAgreement: true)
   }
@@ -866,7 +876,7 @@ public actor WhisperKitBackend: ASRBackend {
     let leadingTrim =
       joined.utf16.count
       - joined.drop(while: { $0.unicodeScalars.allSatisfy(CharacterSet.whitespaces.contains) })
-        .utf16.count
+      .utf16.count
     let text = joined.trimmingCharacters(in: .whitespaces)
     let language = results.first?.language
 

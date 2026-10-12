@@ -93,8 +93,8 @@ struct DictationInvokedPipelineWiringTests {
       to: "\n  }\n\n  private static func positive"
     )
     #expect(
-      reportCall.contains("takeID: driver.lastTakeID,"),
-      "the App completion bridge must forward the concluded key into the four-event fan-out"
+      reportCall.contains("takeID: concluded?.takeID,"),
+      "the App completion bridge must forward the row's own concluded key (#3546)"
     )
   }
 
@@ -215,7 +215,7 @@ struct DictationInvokedPipelineWiringTests {
       to: "transition(to: .arming)"
     )
     #expect(
-      accept.contains("sessionAcceptedTelemetry(sid.raw.uuidString)"),
+      accept.contains("sessionAcceptedTelemetry(sid.raw.uuidString, currentModelAttribution())"),
       "the tag must be published in the same turn that accepts the session"
     )
     // And it must precede the first `spawn`, or the window is not closed.
@@ -233,9 +233,11 @@ struct DictationInvokedPipelineWiringTests {
       "Sources/EnviousWisprPipeline/KernelLifecycleTelemetrySink.swift")
     // #1884: acceptance now activates BOTH effects through one method. The tag
     // write is asserted here; the `dictation.started` emission below.
-    #expect(sinkSource.contains("func acceptSession(takeID: String) {"))
+    #expect(
+      sinkSource.contains("func acceptSession(takeID: String, model: ASRModelAttribution?) {"))
     let acceptBody = try Self.slice(
-      sinkSource, from: "func acceptSession(takeID: String) {", to: "\n  }")
+      sinkSource, from: "func acceptSession(takeID: String, model: ASRModelAttribution?) {",
+      to: "\n  }")
     #expect(
       acceptBody.contains("updateTakeID(takeID)"),
       "must route through the same writer as the per-event refresh and terminal clear"
@@ -248,8 +250,8 @@ struct DictationInvokedPipelineWiringTests {
     // And production actually wires it — an unwired hook is a dead guard.
     let factorySource = try Self.read(
       "Sources/EnviousWisprPipeline/KernelDictationDriverFactory.swift")
-    #expect(factorySource.contains("telemetryRelay.establishTakeID(takeID)"))
-    #expect(factorySource.contains("lifecycleSink.acceptSession(takeID: takeID)"))
+    #expect(factorySource.contains("telemetryRelay.establishTakeID(takeID, model: model)"))
+    #expect(factorySource.contains("lifecycleSink.acceptSession(takeID: takeID, model: model)"))
 
     // #1884 terminal path: kernel -> relay -> sink, all three links. The kernel
     // and sink defaults are INERT, so unit tests alone can pass with nothing

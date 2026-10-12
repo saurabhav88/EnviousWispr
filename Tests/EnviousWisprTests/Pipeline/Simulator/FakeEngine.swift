@@ -133,6 +133,27 @@ final class FakeEngine: ASREngineAdapter, @unchecked Sendable {
 
   private(set) var readiness: ASREngineReadiness = .notReady
 
+  // MARK: #3546 §3.7 T1 — scriptable model attribution
+
+  /// The identity this fake reports as loaded; nil (the default) means none, so
+  /// every existing scenario reports an unknown model.
+  var servingModelIdentity: ASRModelIdentity?
+  /// The identity a load would use; nil (the default) means still undecided.
+  var requestedModel: ASRModelIdentity?
+  func requestedModelIdentity() -> ASRModelIdentity? { requestedModel }
+  /// Set at the top of each non-cancelled `finalize` / `retryDecode`, the fake's
+  /// stand-in for a vendor-inference entry, freezing `servingModelIdentity` then.
+  private(set) var inferenceEntryRecord: ASRInferenceEntry?
+  func inferenceEntry(for session: SessionID) -> ASRInferenceEntry? {
+    inferenceEntryRecord?.session == session ? inferenceEntryRecord : nil
+  }
+  var onInferenceEntryRecorded: (@MainActor (SessionID) -> Void)?
+  private func noteInferenceEntry() {
+    guard let lastSessionID, inferenceEntryRecord?.session != lastSessionID else { return }
+    inferenceEntryRecord = ASRInferenceEntry(session: lastSessionID, identity: servingModelIdentity)
+    onInferenceEntryRecorded?(lastSessionID)
+  }
+
   /// Mid-recording engine-crash callback (PR-4 §3.2). The kernel sets this
   /// during session setup; `fireEngineInterrupted()` lets a scenario simulate
   /// an ASR-service crash while recording.
@@ -203,6 +224,7 @@ final class FakeEngine: ASREngineAdapter, @unchecked Sendable {
     retryDecodeCallCount += 1
     lastRetryDecodeInputSamples = inputSamples
     eventLog.append(.retryDecode)
+    noteInferenceEntry()
     if retryDecodeDelayTicks > 0 {
       await clock.sleep(ticks: retryDecodeDelayTicks)
     }
@@ -377,7 +399,23 @@ final class FakeEngine: ASREngineAdapter, @unchecked Sendable {
 
   // MARK: Warm-up
 
-  func warmUp() async throws {
+  /// Writes the call's receipt like the production adapters: `servingModelIdentity` loaded
+  /// on success, `requestedModel` not loaded on a thrown load.
+  func warmUp(modelReceipt: WarmUpModelReceipt?) async throws {
+    do {
+      try await performWarmUp()
+      modelReceipt?.attribution = servingModelIdentity.map {
+        ASRModelAttribution(identity: $0, loaded: true, inferenceReached: false)
+      }
+    } catch {
+      modelReceipt?.attribution = requestedModel.map {
+        ASRModelAttribution(identity: $0, loaded: false, inferenceReached: false)
+      }
+      throw error
+    }
+  }
+
+  private func performWarmUp() async throws {
     warmUpCallCount += 1
     eventLog.append(.warmUp)
     // Idempotent: safe to call when already ready (PR-1 §B.2.2).
@@ -464,6 +502,7 @@ final class FakeEngine: ASREngineAdapter, @unchecked Sendable {
       isTerminal = true
       return .cancelled
     }
+    noteInferenceEntry()
     let outcome: ASREngineOutcome
     switch behavior {
     case .batchSuccess(let text):

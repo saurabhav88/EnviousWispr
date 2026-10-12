@@ -46,7 +46,8 @@ struct ParakeetStreamingGenerationTests {
       do {
         try await backend.prepare(
           selection: ParakeetModelSelection(
-            model: .v3, revision: nil, directory: ParakeetRealBoundaryFixture.installDirectory, cacheOnly: true,
+            model: .v3, revision: nil, directory: ParakeetRealBoundaryFixture.installDirectory,
+            cacheOnly: true,
             displayBytes: ParakeetModel.v3ShippedBytes, repairable: false, generation: 1),
           progressCallback: nil)
 
@@ -57,7 +58,8 @@ struct ParakeetStreamingGenerationTests {
         _ = backend.reserveStreamingGeneration()
 
         await #expect(throws: CancellationError.self) {
-          try await backend.startStreaming(options: .default, generation: staleGeneration)
+          try await backend.startStreaming(
+            options: .default, generation: staleGeneration, onWindowInferenceEntered: nil)
         }
 
         do {
@@ -93,7 +95,8 @@ struct ParakeetStreamingGenerationTests {
       do {
         try await backend.prepare(
           selection: ParakeetModelSelection(
-            model: .v3, revision: nil, directory: ParakeetRealBoundaryFixture.installDirectory, cacheOnly: true,
+            model: .v3, revision: nil, directory: ParakeetRealBoundaryFixture.installDirectory,
+            cacheOnly: true,
             displayBytes: ParakeetModel.v3ShippedBytes, repairable: false, generation: 1),
           progressCallback: nil)
 
@@ -106,7 +109,8 @@ struct ParakeetStreamingGenerationTests {
         await reclaim?.value
 
         await #expect(throws: CancellationError.self) {
-          try await backend.startStreaming(options: .default, generation: abandonedGeneration)
+          try await backend.startStreaming(
+            options: .default, generation: abandonedGeneration, onWindowInferenceEntered: nil)
         }
 
         do {

@@ -552,6 +552,20 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
     kernel.applyEngineUnloadPolicy(policy)
   }
 
+  /// #3546 §3.7 T1: the model this engine was asked to load, as a not-loaded
+  /// attribution, or nil while undecided. For sessionless telemetry (a blocked
+  /// press); a take's own attribution lives in the kernel.
+  public var requestedModelAttribution: ASRModelAttribution? {
+    Self.requestedAttribution(adapter)
+  }
+
+  /// #3546 §3.7 T1: the model loaded right now, or nil when none is.
+  public var servingModelAttribution: ASRModelAttribution? {
+    adapter.servingModelIdentity.map {
+      ASRModelAttribution(identity: $0, loaded: true, inferenceReached: false)
+    }
+  }
+
   public func ensureEngineWarm(reason: EngineWarmupReason) async -> EngineWarmupOutcome {
     let engine = adapter.engineIdentity.rawValue
     if adapter.readiness == .ready {
@@ -563,8 +577,11 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
     }
     let warmupInFlight = adapter.readiness == .warming
     let start = ContinuousClock.now
+    // #3546 §3.7 T1: the model this warm-up was asked to load, when that is
+    // already decided (nil while a selection is still pending; never a guess).
     TelemetryService.shared.coldStartWarmupStarted(
-      engine: engine, reason: reason.telemetryToken, warmupInFlight: warmupInFlight)
+      engine: engine, reason: reason.telemetryToken, warmupInFlight: warmupInFlight,
+      model: Self.requestedAttribution(adapter))
     // #1339: arm the sessionless load-wedge guard — exactly one per attempt.
     // Gated to file-backed signal sources (`warmupStallGuardEligible`:
     // Parakeet-over-XPC yes; WhisperKit and the in-process debug manager are
@@ -608,8 +625,10 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
     // return.
     var warmResult: EngineWarmupOutcome = .cancelled
     let claimOutcome = await engineMutationScope.withClaim(site: "ensureEngineWarm") {
+      // #3546 §3.7 T1: this call's own model outcome, written inside the warm-up.
+      let modelReceipt = WarmUpModelReceipt()
       do {
-        try await adapter.warmUp()
+        try await adapter.warmUp(modelReceipt: modelReceipt)
         let ms = Self.elapsedMs(since: start)
         // #1388: un-truncated install-phase observation. With gate (B) removed
         // there is no auto-abort at 15s, so the success event finally records
@@ -618,6 +637,7 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
         let install = observedGuard?.installObservation
         TelemetryService.shared.coldStartWarmupCompleted(
           engine: engine, reason: reason.telemetryToken, durationMs: ms,
+          model: modelReceipt.attribution,
           inferenceWarmupMs: adapter.lastWarmupInferenceMs,
           installDurationMs: install?.durationMs,
           installSilenceMaxMs: install?.silenceMaxMs)
@@ -638,7 +658,8 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
           let classified: any Error = ModelLoadWatchdog.WedgeError()
           TelemetryService.shared.coldStartWarmupFailed(
             engine: engine, reason: reason.telemetryToken,
-            error: SentryBreadcrumb.structuredDescriptor(classified))
+            error: SentryBreadcrumb.structuredDescriptor(classified),
+            model: modelReceipt.attribution)
           if reason == .launch {
             TelemetryService.shared.launchModelPreloadCompleted(
               backend: engine, result: "failed", durationMs: ms)
@@ -662,7 +683,8 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
           // path actually resume; before #1388 it hung with no outcome).
           TelemetryService.shared.coldStartWarmupFailed(
             engine: engine, reason: reason.telemetryToken,
-            error: SentryBreadcrumb.structuredDescriptor(error))
+            error: SentryBreadcrumb.structuredDescriptor(error),
+            model: modelReceipt.attribution)
           if reason == .launch {
             TelemetryService.shared.launchModelPreloadCompleted(
               backend: engine, result: "failed", durationMs: ms)
@@ -673,6 +695,18 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
     }
     if case .refused = claimOutcome { return .cancelled }
     return warmResult
+  }
+
+  /// #3546 §3.7 T1: the decided request as a not-loaded attribution, for rows emitted
+  /// BEFORE a warm-up runs (its start, a blocked press). Outcomes use the warm-up call's
+  /// own `WarmUpModelReceipt`, never this live read.
+  @MainActor
+  private static func requestedAttribution(_ adapter: any ASREngineAdapter)
+    -> ASRModelAttribution?
+  {
+    adapter.requestedModelIdentity().map {
+      ASRModelAttribution(identity: $0, loaded: false, inferenceReached: false)
+    }
   }
 
   /// #1388: how a warm-up throw maps to a terminal outcome.
@@ -1038,6 +1072,22 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
   /// would name the next take once the user started talking again. Rationale and the
   /// absent-vs-wrong argument live on `RecordingSessionKernel.lastTakeID`.
   public var lastTakeID: String? { kernel.lastTakeID }
+
+  /// #3546 §3.7 T1: the model attribution of the take `takeID` names, frozen at its
+  /// accepted terminal; nil when that take is not the one the kernel froze, or its
+  /// model was unknown. Keyed by take id so a report can never name another take's model.
+  /// #3546 §3.7 T1: the take id and model attribution of the transcript row `transcriptID`,
+  /// recorded when the kernel wrote it; nil when the row is not among the recent ones.
+  public func concludedTake(forTranscriptID transcriptID: UUID)
+    -> (takeID: String, model: ASRModelAttribution?)?
+  {
+    kernel.concludedModels.last { $0.transcriptID == transcriptID }.map { ($0.takeID, $0.model) }
+  }
+
+  public func concludedModelAttribution(forTakeID takeID: String?) -> ASRModelAttribution? {
+    guard let takeID, let pair = kernel.lastTakeModel, pair.takeID == takeID else { return nil }
+    return pair.model
+  }
 
   /// #3195: `hit` / `miss_key` / `none` for the concluded take's live Apple polish,
   /// or nil. Reported only when the outcome belongs to `lastTakeID`, so a value can
@@ -2092,7 +2142,8 @@ public struct PolishSetupTakeHooks {
 
   public init(
     freeze: @escaping @MainActor () -> PolishSetupTakeContext?,
-    classify: @escaping @MainActor (PolishSetupEvidence, PolishSetupTakeContext) ->
+    classify:
+      @escaping @MainActor (PolishSetupEvidence, PolishSetupTakeContext) ->
       PolishSetupProblemTag?,
     recordTerminalProblem: @escaping @MainActor (String, PolishSetupProblemTag) -> Void,
     ingest: @escaping @MainActor (PolishTakeOutcome, Bool) -> Void,

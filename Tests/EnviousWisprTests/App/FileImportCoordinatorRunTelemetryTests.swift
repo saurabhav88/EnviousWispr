@@ -77,24 +77,33 @@ struct FileImportCoordinatorRunTelemetryTests {
     transcribe: @escaping @MainActor ([Float]) async throws -> String = { _ in
       "One. Two. Three."
     },
+    observedTranscribe: (@MainActor ([Float], ASRInferenceEntryObserver?) async throws -> String)? =
+      nil,
     processPart: @escaping @MainActor (String) async throws -> FileImportRunner.PartOutcome = {
       FileImportRunner.PartOutcome(text: $0, polishedText: $0)
     },
     polishProvider: LLMProvider = .egOne,
-    emitRunTelemetry: @escaping @MainActor (
-      TelemetryService.FileImportRunOutcome, ASRBackendType, TimeInterval,
-      TelemetryService.FileImportASROutcome?, TelemetryService.FileImportPolishOutcome?,
-      LLMProvider?, String?
-    ) -> Void = { _, _, _, _, _, _, _ in },
+    asrModel: ASRModelIdentity? = nil,
+    emitRunTelemetry:
+      @escaping @MainActor (
+        TelemetryService.FileImportRunOutcome, ASRBackendType, ASRModelAttribution?, TimeInterval,
+        TelemetryService.FileImportASROutcome?, TelemetryService.FileImportPolishOutcome?,
+        LLMProvider?, String?
+      ) -> Void = { _, _, _, _, _, _, _, _ in },
     captureASRFailure: @escaping @MainActor (any Error, ASRBackendType) -> Void = { _, _ in },
     updateHistoryRow: @escaping @MainActor (Transcript) throws -> Bool = { _ in true }
   ) -> FileImportCoordinator {
     FileImportCoordinator(
       decode: { _ in Self.decoded(seconds: 1.0) },
-      transcribe: { samples, _ in
-        ASRResult(
-          text: try await transcribe(samples), language: nil, duration: 0, processingTime: 0,
-          backendType: .parakeet)
+      transcribe: { samples, _, onInferenceEntered in
+        let text =
+          if let observedTranscribe {
+            try await observedTranscribe(samples, onInferenceEntered)
+          } else {
+            try await transcribe(samples)
+          }
+        return ASRResult(
+          text: text, language: nil, duration: 0, processingTime: 0, backendType: .parakeet)
       },
       emitRunTelemetry: emitRunTelemetry,
       captureASRFailure: captureASRFailure,
@@ -102,13 +111,92 @@ struct FileImportCoordinatorRunTelemetryTests {
       beginRun: {
         FileImportCoordinator.RunConfiguration(
           polishIsCloud: false, localPolishProvider: nil, polishProvider: polishProvider,
-          ollamaModel: nil, polishModel: "eg-1", backendType: .parakeet)
+          ollamaModel: nil, polishModel: "eg-1", backendType: .parakeet, asrModel: asrModel)
       },
       saveToHistory: { _ in },
       updateHistoryRow: updateHistoryRow,
       mergeSpeakerFields: { _, _, _ in true },
       historyRowExists: { _ in true },
       processPart: { part, _ in try await processPart(part) })
+  }
+
+  // MARK: - #3546 model attribution
+
+  @MainActor
+  private final class CoordinatorBox {
+    var models: [ASRModelAttribution?] = []
+    var observers: [ASRInferenceEntryObserver?] = []
+  }
+
+  /// #3546 §3.7 T1: a failed run's `asr_model_inference_reached` comes from the engine's own
+  /// signal, not the outcome. The failed-AFTER-entry arm is the population this field exists
+  /// to expose; the failed-before-entry arm is its control.
+  @Test(
+    "a failed run reports inference reached only when the engine entered its decode",
+    arguments: [false, true])
+  func failedRunInferenceFollowsTheEngine(enteredBeforeFailing: Bool) async throws {
+    struct EngineError: Error {}
+    let ultra = ASRModelIdentity(
+      name: "parakeet-ultra-coreml", revision: "95eaa59a", variant: "int8")
+    let box = CoordinatorBox()
+    let coordinator = makeCoordinator(
+      lease: EngineLease(),
+      observedTranscribe: { _, onInferenceEntered in
+        if enteredBeforeFailing { onInferenceEntered?() }
+        throw EngineError()
+      },
+      asrModel: ultra,
+      emitRunTelemetry: { _, _, model, _, _, _, _, _ in box.models.append(model) })
+
+    coordinator.choose(url: Self.anyURL)
+    _ = await settleUntil {
+      if case .ready = coordinator.state { return true } else { return false }
+    }
+    coordinator.start()
+    _ = await settleUntil {
+      if case .rejected = coordinator.state { return true } else { return false }
+    }
+
+    #expect(box.models.count == 1)
+    let model = try #require(box.models.first ?? nil)
+    #expect(model.identity == ultra)
+    #expect(model.loaded == true)
+    #expect(model.inferenceReached == enteredBeforeFailing)
+  }
+
+  /// #3546 §3.7 T1: each run's observation is bound to that run's generation, so one that
+  /// fires after a newer run started is dropped. When this fails, a run that never decoded
+  /// reports `asr_model_inference_reached: true` because an older run's engine did.
+  @Test("an older run's late inference observation never marks a newer run")
+  func lateObservationFromAnOlderRunIsDropped() async throws {
+    struct EngineError: Error {}
+    let box = CoordinatorBox()
+    let coordinator = makeCoordinator(
+      lease: EngineLease(),
+      observedTranscribe: { _, onInferenceEntered in
+        box.observers.append(onInferenceEntered)
+        // The second run fires the FIRST run's observation, then fails before its own.
+        if box.observers.count == 2, let older = box.observers[0] { older() }
+        throw EngineError()
+      },
+      asrModel: ASRModelIdentity(name: "parakeet-ultra-coreml", revision: nil, variant: nil),
+      emitRunTelemetry: { _, _, model, _, _, _, _, _ in box.models.append(model) })
+
+    for _ in 0..<2 {
+      coordinator.choose(url: Self.anyURL)
+      _ = await settleUntil {
+        if case .ready = coordinator.state { return true } else { return false }
+      }
+      coordinator.start()
+      _ = await settleUntil {
+        if case .rejected = coordinator.state { return true } else { return false }
+      }
+    }
+
+    #expect(box.observers.count == 2)
+    #expect(box.observers.allSatisfy { $0 != nil }, "each run passed its own observation")
+    #expect(box.models.count == 2)
+    #expect(box.models.map { $0?.inferenceReached } == [false, false])
   }
 
   // MARK: - ASR failure
@@ -121,7 +209,7 @@ struct FileImportCoordinatorRunTelemetryTests {
     let coordinator = makeCoordinator(
       lease: EngineLease(),
       transcribe: { _ in throw EngineError() },
-      emitRunTelemetry: { outcome, _, _, asrOutcome, polishOutcome, _, _ in
+      emitRunTelemetry: { outcome, _, _, _, asrOutcome, polishOutcome, _, _ in
         telemetry.record(outcome: outcome, asrOutcome: asrOutcome, polishOutcome: polishOutcome)
       },
       captureASRFailure: { _, backend in
@@ -157,7 +245,7 @@ struct FileImportCoordinatorRunTelemetryTests {
         try await Task.sleep(for: .seconds(30))  // settle: cancelled by stop() below, never reached
         return "unreachable"
       },
-      emitRunTelemetry: { outcome, _, _, asrOutcome, polishOutcome, _, _ in
+      emitRunTelemetry: { outcome, _, _, _, asrOutcome, polishOutcome, _, _ in
         telemetry.record(outcome: outcome, asrOutcome: asrOutcome, polishOutcome: polishOutcome)
       },
       captureASRFailure: { _, backend in
@@ -189,7 +277,7 @@ struct FileImportCoordinatorRunTelemetryTests {
     let telemetry = RunTelemetryRecorder()
     let coordinator = makeCoordinator(
       lease: EngineLease(), polishProvider: .ollama,
-      emitRunTelemetry: { outcome, _, _, asrOutcome, polishOutcome, provider, model in
+      emitRunTelemetry: { outcome, _, _, _, asrOutcome, polishOutcome, provider, model in
         telemetry.record(outcome: outcome, asrOutcome: asrOutcome, polishOutcome: polishOutcome)
         #expect(provider == .ollama)
         #expect(model == "eg-1")
@@ -214,7 +302,7 @@ struct FileImportCoordinatorRunTelemetryTests {
     let coordinator = makeCoordinator(
       lease: EngineLease(),
       processPart: { _ in throw PolishError() },
-      emitRunTelemetry: { outcome, _, _, asrOutcome, polishOutcome, _, _ in
+      emitRunTelemetry: { outcome, _, _, _, asrOutcome, polishOutcome, _, _ in
         telemetry.record(outcome: outcome, asrOutcome: asrOutcome, polishOutcome: polishOutcome)
       })
 
@@ -238,7 +326,7 @@ struct FileImportCoordinatorRunTelemetryTests {
     struct WriteError: Error {}
     let coordinator = makeCoordinator(
       lease: EngineLease(),
-      emitRunTelemetry: { outcome, _, _, asrOutcome, polishOutcome, _, _ in
+      emitRunTelemetry: { outcome, _, _, _, asrOutcome, polishOutcome, _, _ in
         telemetry.record(outcome: outcome, asrOutcome: asrOutcome, polishOutcome: polishOutcome)
       },
       updateHistoryRow: { _ in throw WriteError() })

@@ -664,9 +664,22 @@ final class DictationLifecycleCoordinator {
         },
         // `lastTakeID` is the driver's CONCLUDED key — what a failed recovery
         // still has when there is no row to read one from.
-        reportEscapeRecoveryCompleted: {
+        reportEscapeRecoveryCompleted: { outcome, transcript in
           EscapeRecoveryCompletionReport.report(
-            outcome: $0, transcript: $1, fallbackTakeID: driver.lastTakeID)
+            outcome: outcome, transcript: transcript, fallbackTakeID: driver.lastTakeID,
+            // #3546 §3.7 T1: keyed by the take this report names; absent when the
+            // driver's frozen pair belongs to another take.
+            modelForTake: { takeID in
+              // The row's own recorded take first; a row-less terminal falls back to the
+              // driver's frozen pair, which answers only for that same take id.
+              if let row = transcript,
+                let concluded = driver.concludedTake(forTranscriptID: row.id),
+                concluded.takeID == takeID
+              {
+                return concluded.model
+              }
+              return driver.concludedModelAttribution(forTakeID: takeID)
+            })
         }))
   }
 }

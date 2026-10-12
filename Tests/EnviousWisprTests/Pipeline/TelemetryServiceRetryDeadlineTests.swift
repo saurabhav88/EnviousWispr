@@ -44,7 +44,7 @@
     func startedPayload() {
       let events = captureEvents {
         TelemetryService.shared.asrRetryDeadlineStarted(
-          takeID: "take-1", asrBackend: "parakeet", budgetMs: 1200)
+          takeID: "take-1", asrBackend: "parakeet", budgetMs: 1200, model: nil)
       }
       #expect(events.count == 1)
       guard let event = events.first else { return }
@@ -63,7 +63,7 @@
         TelemetryService.shared.asrRetryDeadlineResolved(
           takeID: "take-2", asrBackend: "whisperkit", budgetMs: 900,
           resolution: .timedOut, disposition: .rejected,
-          operationReturnMs: nil, callerResumeMs: 950, acceptedAfterCutoff: false)
+          operationReturnMs: nil, callerResumeMs: 950, acceptedAfterCutoff: false, model: nil)
       }
       #expect(events.count == 1)
       guard let event = events.first else { return }
@@ -87,7 +87,7 @@
         TelemetryService.shared.asrRetryDeadlineResolved(
           takeID: "take-3", asrBackend: "parakeet", budgetMs: 100,
           resolution: .operationReturned, disposition: .accepted,
-          operationReturnMs: 260, callerResumeMs: 265, acceptedAfterCutoff: true)
+          operationReturnMs: 260, callerResumeMs: 265, acceptedAfterCutoff: true, model: nil)
       }
       #expect(late.first?.boolProps["accepted_after_cutoff"] == true)
       #expect(late.first?.intProps["operation_return_ms"] == 260)
@@ -100,7 +100,7 @@
         TelemetryService.shared.asrRetryDeadlineResolved(
           takeID: "take-4", asrBackend: "parakeet", budgetMs: 1000,
           resolution: .operationReturned, disposition: .accepted,
-          operationReturnMs: 120, callerResumeMs: 125, acceptedAfterCutoff: false)
+          operationReturnMs: 120, callerResumeMs: 125, acceptedAfterCutoff: false, model: nil)
       }
       #expect(onTime.first?.boolProps["accepted_after_cutoff"] == false)
     }
@@ -111,7 +111,7 @@
         TelemetryService.shared.asrRetryDeadlineResolved(
           takeID: "take-5", asrBackend: "parakeet", budgetMs: 1000,
           resolution: .operationReturned, disposition: .stale,
-          operationReturnMs: 4000, callerResumeMs: 4010, acceptedAfterCutoff: false)
+          operationReturnMs: 4000, callerResumeMs: 4010, acceptedAfterCutoff: false, model: nil)
       }
       #expect(stale.first?.stringProps["disposition"] == "stale")
       #expect(
@@ -122,7 +122,7 @@
         TelemetryService.shared.asrRetryDeadlineResolved(
           takeID: "take-6", asrBackend: "parakeet", budgetMs: 1000,
           resolution: .operationReturned, disposition: .abandoned,
-          operationReturnMs: 4000, callerResumeMs: 4010, acceptedAfterCutoff: false)
+          operationReturnMs: 4000, callerResumeMs: 4010, acceptedAfterCutoff: false, model: nil)
       }
       #expect(abandoned.first?.stringProps["disposition"] == "abandoned")
     }

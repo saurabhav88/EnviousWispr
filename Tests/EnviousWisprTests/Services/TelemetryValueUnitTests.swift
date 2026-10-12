@@ -72,7 +72,7 @@ import Testing
       let latencyMs = 302
       let events = Self.capture("dictation.completed") {
         TelemetryService.shared.dictationCompleted(
-          result: "success", inputMode: "ptt", asrBackend: "parakeet", llmProvider: nil,
+          result: "success", inputMode: "ptt", asrBackend: "parakeet", model: nil, llmProvider: nil,
           fillerRemoval: false, targetApp: nil, pasteResult: "accessibility",
           e2eSeconds: 1.5, asrSeconds: nil, llmSeconds: nil, pasteLatencyMs: latencyMs)
       }

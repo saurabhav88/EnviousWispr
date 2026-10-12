@@ -111,7 +111,7 @@ struct FileImportCoordinatorTests {
       decode: decode,
       // The rows above pass a plain text closure; the language rides alongside
       // it so a row that does not care about language never mentions one.
-      transcribe: { samples, onProgress in
+      transcribe: { samples, onProgress, _ in
         let text: String
         if let transcribeWithProgress {
           text = try await transcribeWithProgress(samples, onProgress)

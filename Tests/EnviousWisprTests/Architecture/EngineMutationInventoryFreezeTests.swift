@@ -445,7 +445,9 @@ import Testing
       // the closure now returns the call's value directly. Same call site.
       // #2918: bound to `let result` again so the progress observer installed for this
       // call is cleared before the value is returned (and on a throw). Same call site.
-      text: "let result = try await activeEngine.transcribe(samples, options)",
+      // #3546: carries the run's inference observation as a third argument. Same call,
+      // same claim covering it.
+      text: "let result = try await activeEngine.transcribe(samples, options, onInferenceEntered)",
       classification: .structurallySafe),
     // #2809: `transcribe` now hands back the full `ASRResult` (word timings and
     // coverage ride alongside the text) rather than a `(text, language)` tuple,
@@ -453,9 +455,10 @@ import Testing
     // it — only the local binding shape changed.
     // #2918: the call now hands the engine the run's progress sink as a trailing closure.
     // Same call, same claim covering it.
+    // #3546: the sink and the run's inference observation are now both plain arguments.
     CallSite(
       file: "Sources/EnviousWisprAppKit/App/FileImportCoordinator.swift", matcher: "transcribe",
-      text: "let result = try await transcribe(decodedSamples) { [weak self] fraction in",
+      text: "let result = try await transcribe(",
       classification: .structurallySafe),
     // Not a call at all: the initializer storing the injected closure. Matched
     // because the scanner reads NAMES, which is the right trade — a scanner that
@@ -474,7 +477,7 @@ import Testing
     CallSite(
       file: "Sources/EnviousWisprAppKit/App/ActiveEngineOperation.swift", matcher: "transcribe",
       text:
-        "return try await whisperKitBackend.transcribe(audioSamples: samples, options: options)",
+        "return try await whisperKitBackend.transcribe(",
       classification: .knownGap(
         issue: 1749,
         reason:
@@ -482,7 +485,7 @@ import Testing
       )),
     CallSite(
       file: "Sources/EnviousWisprAppKit/App/ActiveEngineOperation.swift", matcher: "transcribe",
-      text: "return try await asrManager.transcribe(audioSamples: samples, options: options)",
+      text: "return try await asrManager.transcribe(",
       classification: .knownGap(
         issue: 1749,
         reason:
@@ -493,7 +496,7 @@ import Testing
     // `ActiveEngineOperation` transcribe routes directly above.
     CallSite(
       file: "Sources/EnviousWisprAppKit/App/RecoverySpoolReplayer.swift", matcher: "transcribe",
-      text: "result = try await activeEngine.transcribe(recovered.samples, options)",
+      text: "result = try await activeEngine.transcribe(recovered.samples, options, nil)",
       classification: .knownGap(
         issue: 1749,
         reason:
@@ -531,7 +534,7 @@ import Testing
     // MARK: BenchmarkSuite — direct call inside its own "benchmarkSuiteStreaming" claim.
     CallSite(
       file: "Sources/EnviousWisprAppKit/App/BenchmarkSuite.swift", matcher: "startStreaming",
-      text: "try await asrManager.startStreaming(options: .default, attemptID: UUID())",
+      text: "try await asrManager.startStreaming(",
       classification: .gated),
 
     // MARK: WisprBootstrapper — the sole `.switchBackend(to:)` call site
@@ -604,7 +607,7 @@ import Testing
     // Same claim inheritance as the entry directly above.
     CallSite(
       file: "Sources/EnviousWisprASR/ASRManager.swift", matcher: "startStreaming",
-      text: "try await parakeet.startStreaming(options: options, generation: backendGen)",
+      text: "try await parakeet.startStreaming(",
       classification: .transitivelyCoveredByCaller),
     // The real unload, directly inside "asrManagerUnload"'s claim closure.
     CallSite(
@@ -678,7 +681,7 @@ import Testing
     // `prepare()` forward above). Crosses no new claim boundary of its own.
     CallSite(
       file: "Sources/EnviousWisprASR/ParakeetBackend.swift", matcher: "startStreaming",
-      text: "try await startStreaming(options: options, generation: reserveStreamingGeneration())",
+      text: "try await startStreaming(",
       classification: .transitivelyCoveredByCaller),
 
     // MARK: ParakeetBackend — #1654 streaming error identity. Both sites match
@@ -713,7 +716,8 @@ import Testing
       text: "self.unload(reason: \"idle\")", classification: .unrelatedDomain),
     CallSite(
       file: "Sources/EnviousWisprAppKit/App/WordCheckRuntime.swift", matcher: "unload",
-      text: "if activeSelections == 0 { unload(reason: \"not_wanted\") }", classification: .unrelatedDomain),
+      text: "if activeSelections == 0 { unload(reason: \"not_wanted\") }",
+      classification: .unrelatedDomain),
     CallSite(
       file: "Sources/EnviousWisprAppKit/App/WordCheckRuntime.swift", matcher: "unload",
       text: "unload(reason: \"delivery_\\(state)\")", classification: .unrelatedDomain),
@@ -808,10 +812,11 @@ import Testing
     CallSite(
       file: "Sources/EnviousWisprPipeline/KernelDictationDriver.swift", matcher: "recoverFromWedge",
       text: "await self.adapter.recoverFromWedge()", classification: .gated),
-    // Direct call inside "ensureEngineWarm"'s own claim closure.
+    // Direct call inside "ensureEngineWarm"'s own claim closure. #3546: passes its own
+    // model receipt; same call.
     CallSite(
       file: "Sources/EnviousWisprPipeline/KernelDictationDriver.swift", matcher: "warmUp",
-      text: "try await adapter.warmUp()", classification: .gated),
+      text: "try await adapter.warmUp(modelReceipt: modelReceipt)", classification: .gated),
 
     // MARK: ParakeetEngineAdapter
     // `recoverFromASRInterruption()`'s own recursive warm-up — that function
@@ -819,14 +824,14 @@ import Testing
     // ASR-interruption salvage), itself session-scoped.
     CallSite(
       file: "Sources/EnviousWisprPipeline/ParakeetEngineAdapter.swift", matcher: "warmUp",
-      text: "try await self.warmUp()", classification: .structurallySafe),
+      text: "try await self.warmUp(modelReceipt: nil)", classification: .structurallySafe),
     // `retryDecode()`'s own repair-before-retry re-warm — a bare, implicit-
     // `self` call inside the SAME session-scoped `retryDecode` whose external
     // call site is already `structurallySafe` below (`RecordingSessionKernel`
     // reaches it only mid-`.delivering`). Inherits that same guarantee.
     CallSite(
       file: "Sources/EnviousWisprPipeline/ParakeetEngineAdapter.swift", matcher: "warmUp",
-      text: "try await warmUp()", classification: .structurallySafe),
+      text: "try await warmUp(modelReceipt: nil)", classification: .structurallySafe),
     CallSite(
       file: "Sources/EnviousWisprPipeline/ParakeetEngineAdapter.swift",
       matcher: "cancelInFlightLoad", text: "self.asrManager.cancelInFlightLoad()",
@@ -837,7 +842,7 @@ import Testing
     // gated- and structurally-safe-reachable.
     CallSite(
       file: "Sources/EnviousWisprPipeline/ParakeetEngineAdapter.swift", matcher: "loadModel",
-      text: "load: { try await self.asrManager.loadModel() })",
+      text: "try await self.asrManager.loadModel()",
       classification: .transitivelyCoveredByCaller),
     // #1908 round 11: a deadline can outlive `beginSession()`'s own minting
     // window (a caller-abandoned attempt's vendor call keeps running in the
@@ -846,7 +851,7 @@ import Testing
     // is refused outright rather than racing this one.
     CallSite(
       file: "Sources/EnviousWisprPipeline/ParakeetEngineAdapter.swift", matcher: "startStreaming",
-      text: "try await asrManager.startStreaming(options: options, attemptID: attemptID)",
+      text: "try await asrManager.startStreaming(",
       classification: .structurallySafe),
     // `cancel()`'s in-flight-load release — its dominant caller is genuine
     // session termination (structurally safe); its one sessionless caller
@@ -897,7 +902,8 @@ import Testing
     // doc comment at the site.
     CallSite(
       file: "Sources/EnviousWisprPipeline/RecordingSessionKernel.swift", matcher: "warmUp",
-      text: "try await adapter.warmUp()", classification: .structurallySafe),
+      text: "try await adapter.warmUp(modelReceipt: modelReceipt)",
+      classification: .structurallySafe),
     // The kernel's own session-entry dispatch to its PRIVATE `warmUp(_ sid:)`
     // (row 22 above) — a bare, implicit-`self` call to a same-instance
     // method, not a new engine touch of its own. The real engine mutation
@@ -906,7 +912,8 @@ import Testing
     // immediately above and below this one).
     CallSite(
       file: "Sources/EnviousWisprPipeline/RecordingSessionKernel.swift", matcher: "warmUp",
-      text: "let warmResult = await warmUp(sid)", classification: .transitivelyCoveredByCaller),
+      text: "let warmResult = await warmUp(sid, modelReceipt: modelReceipt)",
+      classification: .transitivelyCoveredByCaller),
     CallSite(
       file: "Sources/EnviousWisprPipeline/RecordingSessionKernel.swift",
       matcher: "recoverFromWedge",
@@ -926,7 +933,7 @@ import Testing
     // Direct call inside "preWarm"'s own claim closure.
     CallSite(
       file: "Sources/EnviousWisprPipeline/RecordingSessionKernel.swift", matcher: "warmUp",
-      text: "try await adapter.warmUp()", classification: .gated),
+      text: "try await adapter.warmUp(modelReceipt: nil)", classification: .gated),
 
     // MARK: OnboardingV2View — `startSetup(warmUp:settings:)`'s bare
     // `await warmUp()` invokes a LOCAL PARAMETER (`warmUp: @MainActor ()
@@ -1042,7 +1049,7 @@ import Testing
     // unawaited cancellation races recovery's gate opening.
     CallSite(
       file: "Sources/EnviousWisprPipeline/WhisperKitEngineAdapter.swift", matcher: "transcribe",
-      text: "return try await backend.transcribe(audioSamples: samples, options: decodeOptions)",
+      text: "return try await backend.transcribe(",
       classification: .knownGap(
         issue: 1749,
         reason:
@@ -1059,7 +1066,7 @@ import Testing
     CallSite(
       file: "Sources/EnviousWisprASR/ASRManager.swift", matcher: "transcribe",
       text:
-        "return try await activeBackend.transcribe(audioSamples: audioSamples, options: options)",
+        "return try await activeBackend.transcribe(",
       classification: .transitivelyCoveredByCaller),
     CallSite(
       file: "Sources/EnviousWisprASR/ASRManager.swift", matcher: "feedAudio",
@@ -1148,7 +1155,7 @@ import Testing
     // inherits the caller's safety exactly as the sites above do.
     CallSite(
       file: "Sources/EnviousWisprASR/WhisperKitIncrementalSession.swift", matcher: "transcribe",
-      text: "try await base.transcribe(",
+      text: "return try await base.transcribe(",
       classification: .transitivelyCoveredByCaller),
     CallSite(
       file: "Sources/EnviousWisprASR/WhisperKitStreamingSession.swift", matcher: "transcribe",
@@ -1266,10 +1273,11 @@ import Testing
     // (same claims the file's existing `startStreaming` entry already uses).
     CallSite(
       file: "Sources/EnviousWisprAppKit/App/BenchmarkSuite.swift", matcher: "transcribe",
-      text: "_ = try? await activeEngine.transcribe(samples, .default)", classification: .gated),
+      text: "_ = try? await activeEngine.transcribe(samples, .default, nil)", classification: .gated
+    ),
     CallSite(
       file: "Sources/EnviousWisprAppKit/App/BenchmarkSuite.swift", matcher: "transcribe",
-      text: "let batchResult = try? await activeEngine.transcribe(testSamples, .default)",
+      text: "let batchResult = try? await activeEngine.transcribe(testSamples, .default, nil)",
       classification: .gated),
     CallSite(
       file: "Sources/EnviousWisprAppKit/App/BenchmarkSuite.swift", matcher: "feedAudio",
@@ -2043,14 +2051,14 @@ import Testing
       SiteKey(
         file: "Sources/EnviousWisprAppKit/App/ActiveEngineOperation.swift", matcher: "transcribe",
         text:
-          "return try await whisperKitBackend.transcribe(audioSamples: samples, options: options)"
+          "return try await whisperKitBackend.transcribe("
       ),
       SiteKey(
         file: "Sources/EnviousWisprAppKit/App/ActiveEngineOperation.swift", matcher: "transcribe",
-        text: "return try await asrManager.transcribe(audioSamples: samples, options: options)"),
+        text: "return try await asrManager.transcribe("),
       SiteKey(
         file: "Sources/EnviousWisprAppKit/App/RecoverySpoolReplayer.swift", matcher: "transcribe",
-        text: "result = try await activeEngine.transcribe(recovered.samples, options)"),
+        text: "result = try await activeEngine.transcribe(recovered.samples, options, nil)"),
       SiteKey(
         file: "Sources/EnviousWisprASR/WhisperKitBackend.swift", matcher: "transcribe",
         text:
@@ -2061,7 +2069,7 @@ import Testing
         text: "let results = try await whisperKit.transcribe("),
       SiteKey(
         file: "Sources/EnviousWisprPipeline/WhisperKitEngineAdapter.swift", matcher: "transcribe",
-        text: "return try await backend.transcribe(audioSamples: samples, options: decodeOptions)"),
+        text: "return try await backend.transcribe("),
       SiteKey(
         file: "Sources/EnviousWisprPipeline/ParakeetEngineAdapter.swift", matcher: "transcribe",
         text: "let result = try await asrManager.transcribe("),

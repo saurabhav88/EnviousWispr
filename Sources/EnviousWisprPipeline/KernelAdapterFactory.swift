@@ -54,6 +54,7 @@ package enum KernelAdapterFactory {
     audioCaptureSessionIDSource: @escaping @MainActor () -> UInt64,
     engineMutationScope: EngineMutationScope,
     vendorDecodeOccupancy: VendorDecodeOccupancy,
+    deliveredModelIdentity: ASRModelIdentity?,
     batchDecodeFaultController: BatchDecodeFaultController? = nil
   ) -> any ASREngineAdapter {
     WhisperKitEngineAdapter(
@@ -62,6 +63,7 @@ package enum KernelAdapterFactory {
       languageDetector: languageDetector,
       audioCaptureSessionIDSource: audioCaptureSessionIDSource,
       vendorDecodeOccupancy: vendorDecodeOccupancy,
-      batchDecodeFaultController: batchDecodeFaultController)
+      batchDecodeFaultController: batchDecodeFaultController,
+      deliveredModelIdentity: deliveredModelIdentity)
   }
 }

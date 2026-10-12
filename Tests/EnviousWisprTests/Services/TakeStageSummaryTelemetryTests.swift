@@ -64,7 +64,8 @@ import Testing
     @Test("the three markers emit no rows of their own")
     func markersEmitNothing() {
       let events = capture {
-        TelemetryService.shared.dictationStarted(takeID: Self.takeA, backend: "parakeet")
+        TelemetryService.shared.dictationStarted(
+          takeID: Self.takeA, backend: "parakeet", model: nil)
         Self.emitAllThree(takeID: Self.takeA)
       }
       #expect(events.map(\.name) == ["dictation.started"])
@@ -74,10 +75,11 @@ import Testing
     @Test("a take that reached every boundary carries all eight vad_* fields on its terminal")
     func fullSummaryOnTerminal() throws {
       let events = capture {
-        TelemetryService.shared.dictationStarted(takeID: Self.takeA, backend: "parakeet")
+        TelemetryService.shared.dictationStarted(
+          takeID: Self.takeA, backend: "parakeet", model: nil)
         Self.emitAllThree(takeID: Self.takeA)
         TelemetryService.shared.dictationTerminal(
-          takeID: Self.takeA, backend: "parakeet", result: "completed", reason: nil)
+          takeID: Self.takeA, backend: "parakeet", result: "completed", reason: nil, model: nil)
       }
       let e = try terminal(events, take: Self.takeA)
       #expect(e.stringProps["vad_stage_reached"] == "first_chunk_completed")
@@ -93,9 +95,11 @@ import Testing
     @Test("a take that ended before any boundary reports stage none and no boundary fields")
     func earlyTerminalReportsNone() throws {
       let events = capture {
-        TelemetryService.shared.dictationStarted(takeID: Self.takeA, backend: "parakeet")
+        TelemetryService.shared.dictationStarted(
+          takeID: Self.takeA, backend: "parakeet", model: nil)
         TelemetryService.shared.dictationTerminal(
-          takeID: Self.takeA, backend: "parakeet", result: "failed", reason: "no_microphone_found")
+          takeID: Self.takeA, backend: "parakeet", result: "failed", reason: "no_microphone_found",
+          model: nil)
       }
       let e = try terminal(events, take: Self.takeA)
       #expect(e.stringProps["vad_stage_reached"] == "none")
@@ -109,7 +113,8 @@ import Testing
     )
     func partialSummaryStopsAtLastBoundary() throws {
       let events = capture {
-        TelemetryService.shared.dictationStarted(takeID: Self.takeA, backend: "whisperKit")
+        TelemetryService.shared.dictationStarted(
+          takeID: Self.takeA, backend: "whisperKit", model: nil)
         TelemetryService.shared.dictationVADPreparationCompleted(
           backend: "whisperKit", inputRoute: "bluetooth", ready: true, modelReused: true,
           takeID: Self.takeA)
@@ -117,7 +122,7 @@ import Testing
           backend: "whisperKit", inputRoute: "bluetooth", monitorToFirstChunkMs: 40,
           takeID: Self.takeA)
         TelemetryService.shared.dictationTerminal(
-          takeID: Self.takeA, backend: "whisperKit", result: "cancelled", reason: nil)
+          takeID: Self.takeA, backend: "whisperKit", result: "cancelled", reason: nil, model: nil)
       }
       let e = try terminal(events, take: Self.takeA)
       #expect(e.stringProps["vad_stage_reached"] == "first_chunk_started")
@@ -132,7 +137,7 @@ import Testing
       let events = capture {
         Self.emitAllThree(takeID: Self.takeA)
         TelemetryService.shared.dictationTerminal(
-          takeID: Self.takeA, backend: "parakeet", result: "completed", reason: nil)
+          takeID: Self.takeA, backend: "parakeet", result: "completed", reason: nil, model: nil)
       }
       let e = try terminal(events, take: Self.takeA)
       #expect(
@@ -144,10 +149,11 @@ import Testing
     @Test("a marker with no take key writes nothing")
     func nilTakeKeyWritesNothing() throws {
       let events = capture {
-        TelemetryService.shared.dictationStarted(takeID: Self.takeA, backend: "parakeet")
+        TelemetryService.shared.dictationStarted(
+          takeID: Self.takeA, backend: "parakeet", model: nil)
         Self.emitAllThree(takeID: nil)
         TelemetryService.shared.dictationTerminal(
-          takeID: Self.takeA, backend: "parakeet", result: "completed", reason: nil)
+          takeID: Self.takeA, backend: "parakeet", result: "completed", reason: nil, model: nil)
       }
       let e = try terminal(events, take: Self.takeA)
       #expect(e.stringProps["vad_stage_reached"] == "none")
@@ -157,17 +163,19 @@ import Testing
     @Test("overlapping takes keep independent summaries, and A's late terminal still finds its own")
     func overlappingTakesAreIndependent() throws {
       let events = capture {
-        TelemetryService.shared.dictationStarted(takeID: Self.takeA, backend: "parakeet")
+        TelemetryService.shared.dictationStarted(
+          takeID: Self.takeA, backend: "parakeet", model: nil)
         TelemetryService.shared.dictationVADPreparationCompleted(
           backend: "parakeet", inputRoute: "built_in_mic", ready: true, modelReused: false,
           takeID: Self.takeA)
         // Take B is accepted before A reports its ending.
-        TelemetryService.shared.dictationStarted(takeID: Self.takeB, backend: "whisperKit")
+        TelemetryService.shared.dictationStarted(
+          takeID: Self.takeB, backend: "whisperKit", model: nil)
         Self.emitAllThree(takeID: Self.takeB)
         TelemetryService.shared.dictationTerminal(
-          takeID: Self.takeA, backend: "parakeet", result: "cancelled", reason: nil)
+          takeID: Self.takeA, backend: "parakeet", result: "cancelled", reason: nil, model: nil)
         TelemetryService.shared.dictationTerminal(
-          takeID: Self.takeB, backend: "whisperKit", result: "completed", reason: nil)
+          takeID: Self.takeB, backend: "whisperKit", result: "completed", reason: nil, model: nil)
       }
       let a = try terminal(events, take: Self.takeA)
       let b = try terminal(events, take: Self.takeB)
@@ -179,17 +187,20 @@ import Testing
 
     // MARK: - #3111 polish_language_hint
 
-    @Test("#3111 the EG-1 language hint rides the take's own terminal; overlapping takes stay apart")
+    @Test(
+      "#3111 the EG-1 language hint rides the take's own terminal; overlapping takes stay apart")
     func polishLanguageHintFoldsOntoItsTake() throws {
       let events = capture {
-        TelemetryService.shared.dictationStarted(takeID: Self.takeA, backend: "parakeet")
-        TelemetryService.shared.dictationStarted(takeID: Self.takeB, backend: "parakeet")
+        TelemetryService.shared.dictationStarted(
+          takeID: Self.takeA, backend: "parakeet", model: nil)
+        TelemetryService.shared.dictationStarted(
+          takeID: Self.takeB, backend: "parakeet", model: nil)
         TelemetryService.shared.recordPolishLanguageHint(takeID: Self.takeA, hint: "named")
         TelemetryService.shared.recordPolishLanguageHint(takeID: Self.takeB, hint: "conflict")
         TelemetryService.shared.dictationTerminal(
-          takeID: Self.takeB, backend: "parakeet", result: "completed", reason: nil)
+          takeID: Self.takeB, backend: "parakeet", result: "completed", reason: nil, model: nil)
         TelemetryService.shared.dictationTerminal(
-          takeID: Self.takeA, backend: "parakeet", result: "completed", reason: nil)
+          takeID: Self.takeA, backend: "parakeet", result: "completed", reason: nil, model: nil)
       }
       #expect(try terminal(events, take: Self.takeA).stringProps["polish_language_hint"] == "named")
       #expect(
@@ -199,16 +210,19 @@ import Testing
 
     // MARK: - #3438 polish_setup_problem
 
-    @Test("#3438 a confirmed setup problem rides the take's own terminal; overlapping takes stay apart")
+    @Test(
+      "#3438 a confirmed setup problem rides the take's own terminal; overlapping takes stay apart")
     func polishSetupProblemFoldsOntoItsTake() throws {
       let events = capture {
-        TelemetryService.shared.dictationStarted(takeID: Self.takeA, backend: "parakeet")
-        TelemetryService.shared.dictationStarted(takeID: Self.takeB, backend: "parakeet")
+        TelemetryService.shared.dictationStarted(
+          takeID: Self.takeA, backend: "parakeet", model: nil)
+        TelemetryService.shared.dictationStarted(
+          takeID: Self.takeB, backend: "parakeet", model: nil)
         TelemetryService.shared.recordPolishSetupProblem(takeID: Self.takeA, tag: .cloudKeyMissing)
         TelemetryService.shared.dictationTerminal(
-          takeID: Self.takeB, backend: "parakeet", result: "completed", reason: nil)
+          takeID: Self.takeB, backend: "parakeet", result: "completed", reason: nil, model: nil)
         TelemetryService.shared.dictationTerminal(
-          takeID: Self.takeA, backend: "parakeet", result: "completed", reason: nil)
+          takeID: Self.takeA, backend: "parakeet", result: "completed", reason: nil, model: nil)
       }
       #expect(
         try terminal(events, take: Self.takeA).stringProps["polish_setup_problem"]
@@ -218,14 +232,18 @@ import Testing
       #expect(events.filter { $0.name == "dictation.terminal" }.count == 2, "no extra rows")
     }
 
-    @Test("#3438 a setup problem recorded after the terminal, or for an unopened take, writes nothing")
+    @Test(
+      "#3438 a setup problem recorded after the terminal, or for an unopened take, writes nothing")
     func polishSetupProblemNeedsAnOpenTake() throws {
       let events = capture {
-        TelemetryService.shared.dictationStarted(takeID: Self.takeA, backend: "parakeet")
+        TelemetryService.shared.dictationStarted(
+          takeID: Self.takeA, backend: "parakeet", model: nil)
         TelemetryService.shared.dictationTerminal(
-          takeID: Self.takeA, backend: "parakeet", result: "completed", reason: nil)
-        TelemetryService.shared.recordPolishSetupProblem(takeID: Self.takeA, tag: .localNotDownloaded)
-        TelemetryService.shared.recordPolishSetupProblem(takeID: Self.takeB, tag: .localNotDownloaded)
+          takeID: Self.takeA, backend: "parakeet", result: "completed", reason: nil, model: nil)
+        TelemetryService.shared.recordPolishSetupProblem(
+          takeID: Self.takeA, tag: .localNotDownloaded)
+        TelemetryService.shared.recordPolishSetupProblem(
+          takeID: Self.takeB, tag: .localNotDownloaded)
       }
       #expect(try terminal(events, take: Self.takeA).stringProps["polish_setup_problem"] == nil)
       #expect(TelemetryService.shared.takeStages.close(takeID: Self.takeA) == nil)
@@ -235,9 +253,10 @@ import Testing
     @Test("#3111 no hint recorded, or recorded for a closed take: the terminal carries none")
     func polishLanguageHintAbsentUnlessRecordedOnAnOpenTake() throws {
       let events = capture {
-        TelemetryService.shared.dictationStarted(takeID: Self.takeA, backend: "parakeet")
+        TelemetryService.shared.dictationStarted(
+          takeID: Self.takeA, backend: "parakeet", model: nil)
         TelemetryService.shared.dictationTerminal(
-          takeID: Self.takeA, backend: "parakeet", result: "completed", reason: nil)
+          takeID: Self.takeA, backend: "parakeet", result: "completed", reason: nil, model: nil)
         // Late: the take already closed, so this must write nothing and reopen nothing.
         TelemetryService.shared.recordPolishLanguageHint(takeID: Self.takeA, hint: "named")
         // Never opened.
@@ -250,9 +269,9 @@ import Testing
 
     @Test("a late marker after the terminal cannot reopen the take")
     func lateMarkerAfterTerminalIsIgnored() throws {
-      TelemetryService.shared.dictationStarted(takeID: Self.takeA, backend: "parakeet")
+      TelemetryService.shared.dictationStarted(takeID: Self.takeA, backend: "parakeet", model: nil)
       TelemetryService.shared.dictationTerminal(
-        takeID: Self.takeA, backend: "parakeet", result: "completed", reason: nil)
+        takeID: Self.takeA, backend: "parakeet", result: "completed", reason: nil, model: nil)
       Self.emitAllThree(takeID: Self.takeA)
       #expect(TelemetryService.shared.takeStages.close(takeID: Self.takeA) == nil)
     }
@@ -260,13 +279,14 @@ import Testing
     @Test("the stage only moves forward: a repeated earlier boundary never demotes it")
     func stageIsMonotonic() throws {
       let events = capture {
-        TelemetryService.shared.dictationStarted(takeID: Self.takeA, backend: "parakeet")
+        TelemetryService.shared.dictationStarted(
+          takeID: Self.takeA, backend: "parakeet", model: nil)
         Self.emitAllThree(takeID: Self.takeA)
         TelemetryService.shared.dictationVADPreparationCompleted(
           backend: "parakeet", inputRoute: "built_in_mic", ready: false, modelReused: true,
           takeID: Self.takeA)
         TelemetryService.shared.dictationTerminal(
-          takeID: Self.takeA, backend: "parakeet", result: "completed", reason: nil)
+          takeID: Self.takeA, backend: "parakeet", result: "completed", reason: nil, model: nil)
       }
       let e = try terminal(events, take: Self.takeA)
       #expect(e.stringProps["vad_stage_reached"] == "first_chunk_completed")

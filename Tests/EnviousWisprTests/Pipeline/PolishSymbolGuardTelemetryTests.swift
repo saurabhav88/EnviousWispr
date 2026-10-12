@@ -42,36 +42,42 @@ struct PolishSymbolGuardTelemetryTests {
         }
       }
       defer { TelemetryService.shared.testEventHook = nil }
-      TelemetryService.shared.reportDictationCompleted(transcript: transcript, inputMode: "ptt")
+      TelemetryService.shared.reportDictationCompleted(
+        transcript: transcript, inputMode: "ptt", model: nil)
       return box.event
     }
 
     @Test("A symbol drop reaches the event with its guard name and the measured count")
     func symbolDropReachesTheEvent() throws {
-      let event = try #require(capturePolishCompleted(Self.transcript(guardName: "symbol_drop", symbolTokens: 2)))
+      let event = try #require(
+        capturePolishCompleted(Self.transcript(guardName: "symbol_drop", symbolTokens: 2)))
       #expect(event.stringProps["polish_validator_guard"] == "symbol_drop")
       #expect(event.intProps["symbol_tokens"] == 2)
     }
 
     @Test("A measured zero is emitted; nil is omitted")
     func zeroEmittedNilOmitted() throws {
-      let zero = try #require(capturePolishCompleted(Self.transcript(guardName: nil, symbolTokens: 0)))
+      let zero = try #require(
+        capturePolishCompleted(Self.transcript(guardName: nil, symbolTokens: 0)))
       #expect(zero.intProps["symbol_tokens"] == 0)
       #expect(zero.stringProps["polish_validator_guard"] == nil)
-      let none = try #require(capturePolishCompleted(Self.transcript(guardName: nil, symbolTokens: nil)))
+      let none = try #require(
+        capturePolishCompleted(Self.transcript(guardName: nil, symbolTokens: nil)))
       #expect(none.intProps["symbol_tokens"] == nil)
       #expect(none.stringProps["polish_validator_guard"] == nil)
     }
 
     @Test("ExecutionMetrics decodes a pre-#3038 record with both fields absent")
     func legacyDecode() throws {
-      let json = #"{"asrLatencySeconds":0.4,"llmLatencySeconds":0.3,"coldStart":false,"streamingMode":false}"#
+      let json =
+        #"{"asrLatencySeconds":0.4,"llmLatencySeconds":0.3,"coldStart":false,"streamingMode":false}"#
       let metrics = try JSONDecoder().decode(ExecutionMetrics.self, from: Data(json.utf8))
       #expect(metrics.polishValidatorGuard == nil)
       #expect(metrics.symbolTokens == nil)
       let roundTrip = try JSONDecoder().decode(
         ExecutionMetrics.self,
-        from: JSONEncoder().encode(ExecutionMetrics(polishValidatorGuard: "symbol_drop", symbolTokens: 3)))
+        from: JSONEncoder().encode(
+          ExecutionMetrics(polishValidatorGuard: "symbol_drop", symbolTokens: 3)))
       #expect(roundTrip.polishValidatorGuard == "symbol_drop")
       #expect(roundTrip.symbolTokens == 3)
     }
