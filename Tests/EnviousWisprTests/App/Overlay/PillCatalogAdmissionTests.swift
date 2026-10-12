@@ -91,6 +91,8 @@ struct PillCatalogAdmissionTests {
       "polishSetupCard.featureRoute",
       .polishSetupCard(PolishSetupCardModel(problem: .cloudKeyMissing(.openAI)))
     ),
+    // #3546 A3: the Parakeet Ultra upgrade pill; same admission from a non-upgrade slot.
+    ("parakeetUpgrade.featureRoute", .parakeetUpgrade(ParakeetUpgradePillModel(phase: .ready))),
   ]
 
   // MARK: - The sweep
@@ -179,12 +181,12 @@ struct PillCatalogAdmissionTests {
     // conditional, so a mis-specified axis — one state, one event, a predicate
     // that never fires — leaves this test green while asserting nothing. The
     // three counts are arithmetic over the axes.
-    // 20 requests x 3 states = 60 cells: the 5 feature routes refused in the 2
-    // non-empty states (10), `.hidden` emptying in all 3, and the remaining 47
+    // 21 requests x 3 states = 63 cells: the 6 feature routes refused in the 2
+    // non-empty states (12), `.hidden` emptying in all 3, and the remaining 48
     // admitted.
-    #expect(refused == 10, "the refusal half of this sweep is not being exercised")
+    #expect(refused == 12, "the refusal half of this sweep is not being exercised")
     #expect(emptied == 3, "the emptying half of this sweep is not being exercised")
-    #expect(admitted == 47, "the admission half of this sweep is not being exercised")
+    #expect(admitted == 48, "the admission half of this sweep is not being exercised")
     #expect(refused + emptied + admitted == StartingState.allCases.count * Self.events.count)
   }
 
@@ -253,13 +255,13 @@ struct PillCatalogAdmissionTests {
       "bluetoothAwareness.pipelineRoute", "escapeRecovery",
       "bluetoothAwareness.featureRoute", "importStatus.featureRoute",
       "correctionLearned.featureRoute", "correctionLearnedSaveError.featureRoute",
-      "polishSetupCard.featureRoute",
+      "polishSetupCard.featureRoute", "parakeetUpgrade.featureRoute",
     ]
     #expect(Set(labels) == expected, "a request is missing from the sweep's axis")
     #expect(labels.count == expected.count, "the sweep's axis contains a duplicate")
     #expect(
-      Self.events.filter { Self.isFeatureRoute($0.event) }.count == 5,
-      "all five feature routes must be on the axis — they are where a refusal is observable")
+      Self.events.filter { Self.isFeatureRoute($0.event) }.count == 6,
+      "all six feature routes must be on the axis — they are where a refusal is observable")
 
     // **A LABEL IS NOT AN EVENT, and the set check above only proves the labels.**
     // A row labelled "warning" carrying `.error` satisfies every assertion in this
@@ -287,7 +289,8 @@ struct PillCatalogAdmissionTests {
         ("importStatus.featureRoute", .importStatus(message: _)),
         ("correctionLearned.featureRoute", .correctionLearned(_)),
         ("correctionLearnedSaveError.featureRoute", .correctionLearnedSaveError(_)),
-        ("polishSetupCard.featureRoute", .polishSetupCard(_)):
+        ("polishSetupCard.featureRoute", .polishSetupCard(_)),
+        ("parakeetUpgrade.featureRoute", .parakeetUpgrade(_)):
         break
       default:
         Issue.record("\(label) is paired with the wrong request")
@@ -298,7 +301,7 @@ struct PillCatalogAdmissionTests {
   private static func isFeatureRoute(_ event: OverlayEvent) -> Bool {
     switch event {
     case .importStatus, .bluetoothAwareness, .correctionLearned, .correctionLearnedSaveError,
-      .polishSetupCard:
+      .polishSetupCard, .parakeetUpgrade:
       return true
     default: return false
     }

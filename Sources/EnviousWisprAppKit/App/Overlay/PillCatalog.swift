@@ -61,6 +61,9 @@ enum PillCatalogRequest: Equatable, Sendable {
   /// #3438: the AI polish setup card. A feature route with no pipeline intent, announced by the
   /// catalog directly (medium, like the Bluetooth card).
   case polishSetupCard(PolishSetupCardModel)
+  /// #3546 A3: the Parakeet Ultra upgrade pills. A feature route with no pipeline intent,
+  /// announced by the catalog directly (medium).
+  case parakeetUpgrade(ParakeetUpgradePillModel)
 
   // **NINETEEN cases: `.recording`, the sixteen non-recording the migration
   // froze, and the two #996 auto-learn feature routes above.** C2 staged
@@ -159,6 +162,9 @@ enum PillCatalog {
     }
     if case .polishSetupCard(let model) = request {
       return .medium(PolishSetupSurfaceCopy.cardAnnouncement(line: model.line))
+    }
+    if case .parakeetUpgrade(let model) = request {
+      return .medium(DictationNarrator.parakeetUpgradeAnnouncement(for: model.phase))
     }
     guard let intent = request.matchingIntent else {
       // **Import status announces NOTHING, and that is preserved rather than
@@ -376,6 +382,21 @@ enum PillCatalog {
         id: id, content: .polishSetupCard(model), expiry: .untilReplaced,
         requestedWidth: .fixed(320))
 
+    case .parakeetUpgrade(let model):
+      // #3546 A3: the cold-start pill's shape (300 x 56, title and subtitle). Downloading
+      // stays six seconds while its progress line moves; installing waits for its replacement
+      // (ready, or a dismissal when v3 serves again); ready leaves after three seconds, like
+      // the recovery success pill.
+      let expiry: OverlayExpiry
+      switch model.phase {
+      case .downloading: expiry = .after(seconds: 6)
+      case .installing: expiry = .untilReplaced
+      case .ready: expiry = .after(seconds: 3)
+      }
+      return PillDefinition(
+        id: id, content: .parakeetUpgrade(model), expiry: expiry,
+        requestedWidth: .fixed(300), reservesFixedHeight: 56)
+
     case .correctionLearned(let model):
       // 2026-09-21 plan §3.1 step 9, widened to three seconds on 2026-09-22
       // (founder, live UAT: "the pill wasn't there long enough"), then to four
@@ -511,7 +532,8 @@ extension PillCatalogRequest {
     case .recoverySucceeded: return .recoverySucceeded
     case .bluetoothAwareness: return .bluetoothAwareness
     case .escapeRecovery(let transcriptID): return .escapeRecovery(transcriptID: transcriptID)
-    case .importStatus, .correctionLearned, .correctionLearnedSaveError, .polishSetupCard:
+    case .importStatus, .correctionLearned, .correctionLearnedSaveError, .polishSetupCard,
+      .parakeetUpgrade:
       return nil
     }
   }

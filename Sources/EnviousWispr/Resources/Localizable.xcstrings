@@ -6618,6 +6618,17 @@
         }
       }
     },
+    "Downloading Parakeet Ultra" : {
+      "comment" : "Pill title when the Parakeet Ultra speech model starts downloading in the background.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Parakeet Ultra wird heruntergeladen"
+          }
+        }
+      }
+    },
     "Downloading model files..." : {
       "comment" : "Setup progress: the speech model is downloading.\nSpeech engine settings, WhisperKit model: download status line.",
       "localizations" : {
@@ -8962,6 +8973,17 @@
         }
       }
     },
+    "Installing Parakeet Ultra…" : {
+      "comment" : "Pill title when the user presses record while Parakeet Ultra is being loaded.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Parakeet Ultra wird installiert…"
+          }
+        }
+      }
+    },
     "Installing model..." : {
       "comment" : "Setup progress: the speech model is being installed.",
       "localizations" : {
@@ -9153,6 +9175,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Aktuelle Vorschau-Engine beibehalten"
+          }
+        }
+      }
+    },
+    "Keep dictating. We’ll switch when it’s ready." : {
+      "comment" : "Pill line under Downloading Parakeet Ultra: dictation keeps working meanwhile.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Diktiere weiter. Wir wechseln automatisch."
           }
         }
       }
@@ -12719,6 +12752,17 @@
         }
       }
     },
+    "Parakeet Ultra is ready" : {
+      "comment" : "Pill title once Parakeet Ultra has loaded and dictation uses it.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Parakeet Ultra ist bereit"
+          }
+        }
+      }
+    },
     "Pashto" : {
       "comment" : "A language name (dictation language picker).",
       "localizations" : {
@@ -13398,6 +13442,17 @@
         }
       }
     },
+    "Press to dictate" : {
+      "comment" : "Pill line under Parakeet Ultra is ready: press the dictation shortcut to start.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zum Diktieren drücken"
+          }
+        }
+      }
+    },
     "Press your keybind and start talking." : {
       "localizations" : {
         "de" : {
@@ -13796,6 +13851,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Bereit zum Import"
+          }
+        }
+      }
+    },
+    "Ready in a few seconds" : {
+      "comment" : "Pill line under Installing Parakeet Ultra.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "In wenigen Sekunden bereit"
           }
         }
       }

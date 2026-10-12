@@ -33,6 +33,13 @@ enum OverlayEvent: Equatable {
   /// #3438: the AI polish setup card. A feature with the Bluetooth card's admission: idle
   /// pipeline, free slot, persists until replaced.
   case polishSetupCard(PolishSetupCardModel)
+  /// #3546 A3: a Parakeet Ultra upgrade pill. Idle pipeline only, and the slot empty or
+  /// already holding an upgrade pill (which it replaces).
+  case parakeetUpgrade(ParakeetUpgradePillModel)
+  /// #3546 A3: new progress for the downloading pill. Morphs it in place, keeping its
+  /// identity and its armed dwell; a no-op when the downloading pill is not current, so a
+  /// late update can never bring back a pill that already left.
+  case parakeetUpgradeProgress(fraction: Double)
   /// A notice that morphs a LIVE recording pill rather than replacing it.
   case inPanelNotice(RecordingNoticeReason, dismissAfter: Double?)
   /// Hands-free lock engaged or released. updateLockState today; it
@@ -261,6 +268,10 @@ struct OverlayReducer {
       return reduceBluetoothAwareness()
     case .polishSetupCard(let model):
       return reducePolishSetupCard(model)
+    case .parakeetUpgrade(let model):
+      return reduceParakeetUpgrade(model)
+    case .parakeetUpgradeProgress(let fraction):
+      return reduceParakeetUpgradeProgress(fraction)
     case .inPanelNotice(let reason, let dismissAfter):
       return reduceInPanelNotice(reason, dismissAfter: dismissAfter)
     case .lockStateChanged(let locked):
@@ -643,6 +654,32 @@ struct OverlayReducer {
     return admitEntry(PillCatalog.entry(for: .polishSetupCard(model), id: makeID()))
   }
 
+  /// #3546 A3: an upgrade pill never displaces any other presentation, including the notices
+  /// `featureSlotIsAvailable` lets a feature replace (a retained-clipboard notice holds the
+  /// user's text); it may replace an upgrade pill (downloading, then installing, then ready).
+  private mutating func reduceParakeetUpgrade(_ model: ParakeetUpgradePillModel) -> OverlayPlan {
+    guard state.pipelineIntent == .hidden else { return .noChange }
+    if case .parakeetUpgrade? = state.current?.content {
+      return admitEntry(PillCatalog.entry(for: .parakeetUpgrade(model), id: makeID()))
+    }
+    guard state.current == nil else { return .noChange }
+    return admitEntry(PillCatalog.entry(for: .parakeetUpgrade(model), id: makeID()))
+  }
+
+  /// Same identity, same armed dwell (`.unchanged`): only the progress line moves.
+  private mutating func reduceParakeetUpgradeProgress(_ fraction: Double) -> OverlayPlan {
+    guard let current = state.current, case .parakeetUpgrade(let shown) = current.content,
+      case .downloading(let old) = shown.phase, old != fraction
+    else { return .noChange }
+    let updated = PillDefinition(
+      id: current.id,
+      content: .parakeetUpgrade(ParakeetUpgradePillModel(phase: .downloading(fraction: fraction))),
+      expiry: current.expiry, requestedWidth: current.requestedWidth,
+      reservesFixedHeight: current.reservesFixedHeight)
+    state.set(current: updated)
+    return OverlayPlan(presentation: updated, didChange: true, expiryCommand: .unchanged)
+  }
+
   /// Admit a catalog entry.
   ///
   /// **The `nil` branch cannot be reached and is loud rather than silent.**
@@ -981,8 +1018,8 @@ struct OverlayReducer {
       break
     case .recording:
       effects.append(.recordingStateChanged(false))
-    case .notice, .bluetoothAwareness, .polishSetupCard, .correctionLearnedSaveError,
-      .retainedClipboardFallback:
+    case .notice, .bluetoothAwareness, .polishSetupCard, .parakeetUpgrade,
+      .correctionLearnedSaveError, .retainedClipboardFallback:
       break
     case .correctionLearned(let shown):
       // #996 auto-learn: only an unanswered offer owes an end report; a result

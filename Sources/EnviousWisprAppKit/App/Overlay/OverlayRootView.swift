@@ -156,6 +156,14 @@ struct OverlayRootView: View {
         onClose: { press(.closeBluetoothAwareness, on: presentation) },
         onAdjustSettings: { press(.openBluetoothSettings, on: presentation) })
 
+    case .parakeetUpgrade(let model):
+      // #3546 A3: the cold-start pill's look, per the approved mocks.
+      ColdStartNoticeView(
+        title: DictationNarrator.parakeetUpgradeTitle(for: model.phase),
+        subtitle: DictationNarrator.parakeetUpgradeSubtitle(for: model.phase),
+        icon: Self.parakeetUpgradeIcon(for: model.phase),
+        progress: Self.parakeetUpgradeProgress(for: model.phase))
+
     case .polishSetupCard(let model):
       PolishSetupCardView(
         model: model,
@@ -240,6 +248,23 @@ struct OverlayRootView: View {
         width: design.width, height: design.reservedHeight,
         alignment: recordingFrame.position == .bottom ? .bottom : .center)
     }
+  }
+
+  private static func parakeetUpgradeIcon(for phase: ParakeetUpgradePillModel.Phase)
+    -> ColdStartNoticeView.Icon
+  {
+    switch phase {
+    case .downloading: return .download
+    case .installing: return .spinner
+    case .ready: return .ready
+    }
+  }
+
+  private static func parakeetUpgradeProgress(for phase: ParakeetUpgradePillModel.Phase)
+    -> Double?
+  {
+    if case .downloading(let fraction) = phase { return fraction }
+    return nil
   }
 
   /// Eleven shipped pills collapse to one MODEL, and `NoticeModel.Kind` is what

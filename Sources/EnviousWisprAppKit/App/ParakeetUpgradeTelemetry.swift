@@ -30,6 +30,8 @@ final class ParakeetUpgradeTelemetry {
     let attempts: Int?
     let loadMs: Int?
     let firstActivation: Bool?
+    /// A3: what marked the selection point behind a load outcome; nil on other outcomes.
+    var activationTrigger: String? = nil
   }
 
   static let ledgerKey = "parakeetUpgradeTelemetry.emitted"
@@ -119,7 +121,8 @@ final class ParakeetUpgradeTelemetry {
           fallback: fallback,
           attempts: facts?.attempts,
           loadMs: facts?.loadMilliseconds,
-          firstActivation: firstActivation))
+          firstActivation: firstActivation,
+          activationTrigger: facts?.trigger.rawValue))
     }
     entries.append(key)
     defaults.set(entries, forKey: Self.ledgerKey)
@@ -133,7 +136,8 @@ final class ParakeetUpgradeTelemetry {
     TelemetryService.shared.parakeetUpgradeActivation(
       targetModel: row.targetModel, targetRevision: row.targetRevision,
       priorModel: row.priorModel, outcome: row.outcome, fallback: row.fallback,
-      attempts: row.attempts, loadMs: row.loadMs, firstActivation: row.firstActivation)
+      attempts: row.attempts, loadMs: row.loadMs, firstActivation: row.firstActivation,
+      activationTrigger: row.activationTrigger)
   }
 
   private static func reportToSentryAndLog(_ descriptor: String, _ fallback: String) {

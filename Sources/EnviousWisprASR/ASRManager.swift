@@ -441,18 +441,29 @@ public final class ASRManager: ASRManagerInterface {
     // succeeds, so an abandoned attempt can never mutate the instance a
     // successor or any other caller is using.
     let candidate = parakeetBackendFactory()
-    var published = false
-    defer {
+    do {
+      try await prepareAndPublish(candidate, generation: gen)
+    } catch {
       // Any exit that never published `candidate` — superseded, cancelled,
       // or a thrown error — must still release whatever resources its own
       // `prepare()` may have allocated. Dropping the reference alone does
       // NOT run FluidAudio's `cleanup()` (no `deinit` performs it), so this
       // is the ONLY thing that frees a superseded attempt's real resources.
-      if !published {
-        Task { await candidate.unload() }
-      }
+      // `prepareAndPublish` publishes only on its success path, so every
+      // throw is unpublished.
+      // #3546: awaited, not detached, so the caller's fallback (a failed Ultra load
+      // falling back to v3) cannot start while this candidate still holds a model. This
+      // runs in `performLoadRacingCancellation`'s own task, so a cancelled caller is
+      // already released and does not wait here.
+      await candidate.unload()
+      throw error
     }
+  }
 
+  /// The body of one physical load: prepares `candidate` and publishes it only on success.
+  private func prepareAndPublish(_ candidate: any ASRBackend, generation gen: UInt64)
+    async throws
+  {
     let progress: ProgressCallback = { [weak self] fraction, phase, detail in
       Task { @MainActor [weak self] in
         guard let self, gen == self.loadGeneration, !self.isModelLoaded else { return }
@@ -544,7 +555,6 @@ public final class ASRManager: ASRManagerInterface {
     // ARC deallocation alone does not run.
     let retiring = parakeetBackend
     parakeetBackend = candidate
-    published = true
     isModelLoaded = ready
     if !(retiring === (candidate as AnyObject)) {
       Task { await retiring.unload() }
@@ -802,6 +812,22 @@ public final class ASRManager: ASRManagerInterface {
   /// Unload the active backend, freeing model RAM.
   /// Refuses to unload if a streaming session is active — cancel streaming first.
   public func unloadModel() async {
+    // #3546 A3: one unload at a time. A second caller (the in-session Ultra activation, while
+    // an idle unload is already running) waits for the running one instead of starting its
+    // own, so it never returns while the first is still releasing the model.
+    if let running = inFlightUnloadTask {
+      await running.value
+      return
+    }
+    let task = Task { @MainActor in await self.unloadModelOnce() }
+    inFlightUnloadTask = task
+    defer { inFlightUnloadTask = nil }
+    await task.value
+  }
+
+  private var inFlightUnloadTask: Task<Void, Never>?
+
+  private func unloadModelOnce() async {
     // #959: a live streaming session means the model is in use and there is no
     // in-flight load to supersede — refuse FIRST, before bumping the generation,
     // so the readiness `ready→notReady` log never falsely fires on a refusal
@@ -894,17 +920,42 @@ public final class ASRManager: ASRManagerInterface {
   public func noteTranscriptionComplete(policy: ModelUnloadPolicy) {
     lastTranscriptionTime = Date()
     if policy == .immediately {
-      Task { await unloadModel() }
+      cancelIdleTimer()
+      enqueueIdleUnload()
       return
     }
     scheduleIdleTimer(policy: policy)
   }
 
-  /// Cancel any pending idle timer (called when recording starts).
+  /// Cancel any pending idle timer (called when recording starts), and any idle unload
+  /// already queued but not yet started. An unload already running is not stopped.
   public func cancelIdleTimer() {
     idleTimer?.invalidate()
     idleTimer = nil
+    idleUnloadGeneration &+= 1
   }
+
+  /// Bumped by `cancelIdleTimer()`. #3546 A3: the Timer callback and the `.immediately`
+  /// policy each queue an unload task; invalidating the Timer does not reach a task it
+  /// already queued, which would then unload the model an in-session activation is loading.
+  private var idleUnloadGeneration: UInt64 = 0
+
+  private var queuedIdleUnloadTask: Task<Void, Never>?
+
+  private func enqueueIdleUnload() {
+    let generation = idleUnloadGeneration
+    queuedIdleUnloadTask = Task { @MainActor [weak self] in
+      guard let self, generation == self.idleUnloadGeneration else { return }
+      await self.unloadModel()
+    }
+  }
+
+  #if DEBUG
+    /// The last queued idle unload, run or dropped, so a test waits for the subject itself.
+    func waitForQueuedIdleUnloadForTesting() async {
+      await queuedIdleUnloadTask?.value
+    }
+  #endif
 
   /// Schedule (or reset) the idle timer for timed policies.
   private func scheduleIdleTimer(policy: ModelUnloadPolicy) {
@@ -913,7 +964,7 @@ public final class ASRManager: ASRManagerInterface {
     // Timer fires on the main run loop — safe for @MainActor ASRManager.
     idleTimer = Timer.scheduledTimer(withTimeInterval: interval, repeats: false) { [weak self] _ in
       MainActor.assumeIsolated {
-        _ = Task<Void, Never> { await self?.unloadModel() }
+        self?.enqueueIdleUnload()
       }
     }
   }

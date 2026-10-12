@@ -52,6 +52,32 @@ enum ColdPressGuard {
     }
   }
 
+  /// #3546 A3: a press during the in-session Ultra activation. The same wait as an engine
+  /// switch (the coordinator holds the switch gate), with the upgrade's Installing pill.
+  /// The upgrade presenter owns the once-only "Parakeet Ultra is ready" pill, which replaces
+  /// Installing; this waiter only removes its own Installing pill if it is still showing
+  /// when the switch settles (Ultra failed and v3 serves, or the Ready pill was already
+  /// spent). Mints no session. Returns the waiter, so a caller can know when it settled.
+  @discardableResult
+  static func reconcileParakeetUpgrade(
+    overlay: OverlayDirector,
+    model: ASRModelAttribution?,
+    isActivating: @escaping @MainActor () -> Bool,
+    ensureSelectedReady: @escaping @MainActor () async -> EngineCoordinator.PressReadiness
+  ) -> Task<Void, Never> {
+    let receipt = overlay.present(
+      .parakeetUpgrade(
+        ParakeetUpgradePillModel(phase: .installing), isStillWanted: isActivating))
+    TelemetryService.shared.coldStartPressBlocked(
+      asrBackend: ASRBackendType.parakeet.rawValue, warmupInFlight: true,
+      model: model)
+    return Task { [overlay] in
+      _ = await ensureSelectedReady()
+      guard let receipt else { return }
+      overlay.dismissIfCurrent(receipt)
+    }
+  }
+
   static func handle(
     overlay: OverlayDirector,
     active: KernelDictationDriver,

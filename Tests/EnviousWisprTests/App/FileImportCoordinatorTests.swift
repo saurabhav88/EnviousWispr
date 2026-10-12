@@ -104,7 +104,6 @@ struct FileImportCoordinatorTests {
     ensureEngineReady: @escaping @MainActor () async -> FileImportCoordinator.EngineReadiness = {
       .ready
     },
-    engineIsLoaded: @escaping @MainActor () async -> Bool = { true },
     onEngineReleased: @escaping @MainActor () -> Void = {}
   ) -> FileImportCoordinator {
     FileImportCoordinator(
@@ -123,7 +122,6 @@ struct FileImportCoordinatorTests {
           processingTime: 0, backendType: .parakeet)
       },
       engineAdmission: .live(lease: lease, as: .fileImport),
-      engineIsLoaded: engineIsLoaded,
       ensureEngineReady: ensureEngineReady,
       onEngineReleased: onEngineReleased,
       beginRun: beginRun,
@@ -1336,14 +1334,13 @@ struct FileImportCoordinatorTests {
     processPart: @escaping @MainActor (String) async throws -> FileImportRunner.PartOutcome = {
       Self.outcome($0)
     },
-    engineIsLoaded: @escaping @MainActor () async -> Bool = { true },
     ensureEngineReady: @escaping @MainActor () async -> FileImportCoordinator.EngineReadiness = {
       .ready
     }
   ) async -> FileImportCoordinator {
     let coordinator = makeCoordinator(
       lease: lease, transcribe: transcribe, processPart: processPart,
-      ensureEngineReady: ensureEngineReady, engineIsLoaded: engineIsLoaded,
+      ensureEngineReady: ensureEngineReady,
       onEngineReleased: { count.value += 1 })
     coordinator.choose(url: Self.anyURL)
     _ = await settleUntil {
@@ -1399,8 +1396,7 @@ struct FileImportCoordinatorTests {
     let readinessCalls = Counter()
     let coordinator = await readyCoordinator(
       lease: EngineLease(), count: count,
-      // Loaded at the first check, unloaded by the time the claim is taken, and not ready again.
-      engineIsLoaded: { false },
+      // Ready at the first check, and not ready again by the time the claim is taken.
       ensureEngineReady: {
         await readinessCalls.bump()
         return await readinessCalls.count == 1 ? .ready : .notReady

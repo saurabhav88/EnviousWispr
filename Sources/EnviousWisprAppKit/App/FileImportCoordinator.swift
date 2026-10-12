@@ -554,10 +554,6 @@ final class FileImportCoordinator {
   /// for a run that is itself waiting for the switch.
   private let ensureEngineReady: @MainActor () async -> EngineReadiness
 
-  /// Whether the selected engine still has a model resident. Asked once, after
-  /// the claim, because the unload timer is only disarmed from that point on.
-  private let engineIsLoaded: @MainActor () async -> Bool
-
   /// Mirrors `EngineCoordinator.PressReadiness` without importing it, so this
   /// type keeps knowing nothing about who owns engine switching.
   enum EngineReadiness: Sendable, Equatable {
@@ -817,7 +813,6 @@ final class FileImportCoordinator {
     engineAdmission: EngineAdmissionAccess,
     polishOllamaLocalityNow: @escaping @MainActor () -> Bool? = { false },
     refreshOllamaFacts: @escaping @MainActor () async -> Void = {},
-    engineIsLoaded: @escaping @MainActor () async -> Bool = { true },
     disarmEngineTimers: @escaping @MainActor () -> Void = {},
     rearmEngineTimers: @escaping @MainActor () -> Void = {},
     ensureEngineReady: @escaping @MainActor () async -> EngineReadiness = { .ready },
@@ -848,7 +843,6 @@ final class FileImportCoordinator {
     self.polishOllamaLocalityNow = polishOllamaLocalityNow
     self.refreshOllamaFacts = refreshOllamaFacts
     self.ensureEngineReady = ensureEngineReady
-    self.engineIsLoaded = engineIsLoaded
     self.disarmEngineTimers = disarmEngineTimers
     self.rearmEngineTimers = rearmEngineTimers
     self.onEngineReleased = onEngineReleased
@@ -1748,21 +1742,21 @@ final class FileImportCoordinator {
         engineAdmission.release(token)
         finishEngineHold()
       }
-      // The timer above could have fired while we were claiming. Cheap to ask,
-      // and the alternative is transcribing on an engine that just unloaded.
+      // The timer above could have fired while we were claiming, and the
+      // alternative is transcribing on an engine that just unloaded.
+      // #3546 A3: asked unconditionally, not only when the engine reads unloaded.
+      // An in-session Parakeet upgrade that began before this claim can still
+      // read v3 as loaded while it unloads it; the readiness drive waits for that
+      // switch to settle, and returns at once when nothing is in flight.
       //
-      // **Both awaits are suspension points a Stop can land in**, and this one
-      // was added by the previous fix — for WhisperKit, readiness hops to the
-      // backend actor, so the window is real rather than theoretical. Neither
-      // await throws on cancellation, so without the guard a stopped run carried
-      // on and transcribed. Found by cloud review.
-      if await engineIsLoaded() == false {
+      // **This await is a suspension point a Stop can land in.** For WhisperKit,
+      // readiness hops to the backend actor, so the window is real rather than
+      // theoretical. It does not throw on cancellation, so without the guard a
+      // stopped run carried on and transcribed. Found by cloud review.
+      guard await ensureEngineReady() == .ready else {
         guard generationAtStart == generation else { return }
-        guard await ensureEngineReady() == .ready else {
-          guard generationAtStart == generation else { return }
-          showRejection(.engineNotReady)
-          return
-        }
+        showRejection(.engineNotReady)
+        return
       }
       guard generationAtStart == generation else { return }
 

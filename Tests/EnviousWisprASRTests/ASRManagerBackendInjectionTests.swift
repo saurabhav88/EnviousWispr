@@ -186,6 +186,157 @@ struct ASRManagerBackendInjectionTests {
     #expect(manager.activeBackendType == .whisperKit)
   }
 
+  /// #3546 A-fail: when this fails, a failed Ultra load is still releasing its model while
+  /// the v3 fallback loads, so both models are resident at once.
+  @Test("a failed load returns its error only after the failed candidate finished unloading")
+  func failedLoadAwaitsCandidateCleanup() async throws {
+    struct LoadBroke: Error {}
+    let failing = FakeASRBackend(initiallyReady: false, prepareFailure: LoadBroke())
+    let resident = FakeASRBackend(initiallyReady: true)
+    var made = 0
+    let manager = ASRManager(
+      engineMutationScope: .alwaysAllowedForTesting,
+      parakeetSelection: ParakeetSelectionProvider(),
+      parakeetBackendFactory: {
+        made += 1
+        return made == 1 ? resident : failing
+      })
+    await failing.gateUnload()
+    var returned = false
+    let load = Task { @MainActor in
+      defer { returned = true }
+      try await manager.loadModel()
+    }
+    var parked = false
+    for _ in 0..<500 {
+      if await failing.unloadCount == 1 {
+        parked = true
+        break
+      }
+      // deadline-fallback: bounded poll for the cleanup to start (500 x 10 ms).
+      try await Task.sleep(for: .milliseconds(10))
+    }
+    #expect(parked, "the failed candidate's cleanup started")
+    for _ in 0..<20 { await Task.yield() }
+    #expect(returned == false, "the error waits for the cleanup")
+    await failing.releaseUnload()
+    await #expect(throws: LoadBroke.self) { try await load.value }
+    #expect(await failing.unloadsFinished == 1)
+  }
+
+  /// #3546 A3: when this fails, an idle unload queued by the previous dictation lands on the
+  /// model an in-session Parakeet Ultra activation is loading.
+  @Test("cancelling the idle timer also stops an unload it already queued")
+  func cancelIdleTimerStopsQueuedUnload() async throws {
+    func loadedManager() async throws -> (ASRManager, FakeASRBackend) {
+      let backend = FakeASRBackend(initiallyReady: true)
+      let manager = ASRManager(
+        engineMutationScope: .alwaysAllowedForTesting,
+        parakeetSelection: ParakeetSelectionProvider(), parakeetBackendFactory: { backend })
+      try await manager.loadModel()
+      return (manager, backend)
+    }
+    let (control, controlBackend) = try await loadedManager()
+    let (cancelled, cancelledBackend) = try await loadedManager()
+
+    cancelled.noteTranscriptionComplete(policy: .immediately)
+    cancelled.cancelIdleTimer()
+    control.noteTranscriptionComplete(policy: .immediately)
+
+    // Bounded: a queued unload that never settles fails here instead of hanging the suite.
+    let settled = await withDeadline(seconds: 5) {
+      await control.waitForQueuedIdleUnloadForTesting()
+      await cancelled.waitForQueuedIdleUnloadForTesting()
+      return true
+    }
+    #expect(settled == true, "both queued unloads settled")
+    #expect(await controlBackend.unloadCount == 1, "control: an uncancelled queued unload runs")
+    #expect(await cancelledBackend.unloadCount == 0)
+    #expect(cancelled.isModelLoaded)
+  }
+
+  /// #3546 A3: when this fails, the in-session Ultra activation's unload returns while an idle
+  /// unload is still releasing v3, and Ultra starts loading beside it.
+  @Test("a second unload waits for the one already running and does not start its own")
+  func secondUnloadJoinsTheRunningOne() async throws {
+    let backend = FakeASRBackend(initiallyReady: true)
+    let manager = ASRManager(
+      engineMutationScope: .alwaysAllowedForTesting,
+      parakeetSelection: ParakeetSelectionProvider(), parakeetBackendFactory: { backend })
+    try await manager.loadModel()
+    await backend.gateUnload()
+    let first = Task { @MainActor in await manager.unloadModel() }
+    var parked = false
+    for _ in 0..<500 {
+      if await backend.unloadCount == 1 {
+        parked = true
+        break
+      }
+      // deadline-fallback: bounded poll for the first unload to reach the backend (500 x 10 ms).
+      try await Task.sleep(for: .milliseconds(10))
+    }
+    #expect(parked, "the first unload is running")
+    var secondReturned = false
+    let second = Task { @MainActor in
+      await manager.unloadModel()
+      secondReturned = true
+    }
+    for _ in 0..<20 { await Task.yield() }
+    #expect(secondReturned == false, "the second unload waits for the running one")
+    await backend.releaseUnload()
+    await first.value
+    await second.value
+    #expect(await backend.unloadCount == 1, "one physical unload")
+    #expect(manager.isModelLoaded == false)
+  }
+
+  /// #3546 A3: when this fails, one cancelled live-preview stream that never finishes holds
+  /// every later cancelled stream, with its audio and model references, for the app's life.
+  @Test("a newer retired stream finishes even while an older one is still draining")
+  func newerRetiredStreamFinishesBehindAHeldOlderOne() async throws {
+    actor Gate {
+      private var open = false
+      private var waiters: [CheckedContinuation<Void, Never>] = []
+      private(set) var finished = false
+      func wait() async {
+        if open { return }
+        await withCheckedContinuation { waiters.append($0) }
+      }
+      func release() {
+        open = true
+        for w in waiters { w.resume() }
+        waiters = []
+      }
+      func markFinished() { finished = true }
+    }
+    let olderHeld = Gate()
+    let older = ParakeetBackend.chainRetirement(
+      previous: nil, cancel: {}, finish: { await olderHeld.wait() })
+    let newer = Gate()
+    let newerRetirement = ParakeetBackend.chainRetirement(
+      previous: older.drain, cancel: {}, finish: { await newer.markFinished() })
+    await newerRetirement.cancellation.value
+
+    var newerFinished = false
+    for _ in 0..<500 {
+      if await newer.finished {
+        newerFinished = true
+        break
+      }
+      // deadline-fallback: bounded poll for the newer finish (500 x 10 ms).
+      try await Task.sleep(for: .milliseconds(10))
+    }
+    #expect(newerFinished, "the newer stream's finish does not wait for the older drain")
+
+    // The chain still covers the held older stream, and completes once it finishes.
+    await olderHeld.release()
+    let drained = await withDeadline(seconds: 5) {
+      await newerRetirement.drain.value
+      return true
+    }
+    #expect(drained == true)
+  }
+
   @Test("switchBackend unloads the previous backend exactly once")
   func switchBackendUnloadsPreviousBackend() async throws {
     let parakeet = FakeASRBackend(initiallyReady: true)
@@ -496,10 +647,17 @@ final actor FakeASRBackend: ASRBackend {
   /// admission gate wins the race with a load. Default preserves prior behaviour.
   private let readyAfterPrepare: Bool
 
-  init(initiallyReady: Bool, gated: Bool = false, readyAfterPrepare: Bool = true) {
+  /// #3546: when set, `prepare()` throws it (a failed model load).
+  private let prepareFailure: (any Error)?
+
+  init(
+    initiallyReady: Bool, gated: Bool = false, readyAfterPrepare: Bool = true,
+    prepareFailure: (any Error)? = nil
+  ) {
     self.ready = initiallyReady
     self.gated = gated
     self.readyAfterPrepare = readyAfterPrepare
+    self.prepareFailure = prepareFailure
   }
 
   // MARK: ASRBackend
@@ -515,6 +673,7 @@ final actor FakeASRBackend: ASRBackend {
         gateContinuations.append(c)
       }
     }
+    if let prepareFailure { throw prepareFailure }
     ready = readyAfterPrepare
   }
 
@@ -598,8 +757,27 @@ final actor FakeASRBackend: ASRBackend {
   }
   var progressObserverIsInstalled: Bool { progressObserver != nil }
 
+  /// #3546: when set, `unload()` parks until `releaseUnload()`, so a test can see whether
+  /// its caller waits for the cleanup to finish.
+  private var unloadGated = false
+  private var unloadContinuations: [CheckedContinuation<Void, Never>] = []
+  private(set) var unloadsFinished = 0
+
+  func gateUnload() { unloadGated = true }
+
+  func releaseUnload() {
+    unloadGated = false
+    let parked = unloadContinuations
+    unloadContinuations.removeAll()
+    for c in parked { c.resume() }
+  }
+
   func unload() async {
     unloadCount += 1
     ready = false
+    if unloadGated {
+      await withCheckedContinuation { unloadContinuations.append($0) }
+    }
+    unloadsFinished += 1
   }
 }

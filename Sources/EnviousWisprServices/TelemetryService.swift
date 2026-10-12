@@ -2861,10 +2861,13 @@ public final class TelemetryService {
   /// revision come from our bundled manifest. `loadMs` and `$value` (seconds) appear only
   /// on load outcomes the coordinator timed; `priorModel` only on load outcomes;
   /// `fallback` only on `load_failed`; `attempts` only where the coordinator read it;
-  /// `firstActivation` only on `activated`.
+  /// `firstActivation` only on `activated`. `activationTrigger` (A3) only on load outcomes:
+  /// `selection_point` (launch, or a switch into Parakeet) or `background_admission` (the
+  /// in-session switch after Ultra downloaded).
   public func parakeetUpgradeActivation(
     targetModel: String, targetRevision: String?, priorModel: String?, outcome: String,
-    fallback: String?, attempts: Int?, loadMs: Int?, firstActivation: Bool?
+    fallback: String?, attempts: Int?, loadMs: Int?, firstActivation: Bool?,
+    activationTrigger: String? = nil
   ) {
     var properties: [String: Any] = [
       "target_model": targetModel,
@@ -2879,6 +2882,7 @@ public final class TelemetryService {
       properties["$value"] = Double(loadMs) / 1000.0
     }
     if let firstActivation { properties["first_activation"] = firstActivation }
+    if let activationTrigger { properties["activation_trigger"] = activationTrigger }
     #if DEBUG
       testEventHook?(
         CapturedTelemetryEvent(

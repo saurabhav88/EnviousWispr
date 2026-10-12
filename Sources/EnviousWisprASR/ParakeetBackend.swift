@@ -33,6 +33,54 @@ public actor ParakeetBackend: ASRBackend {
 
   // Streaming ASR state
   private var streamingManager: SlidingWindowAsrManager?
+
+  /// #3546 A3: retired streams remain in use until their recognizer tasks finish. The vendor
+  /// `cancel()` requests completion; it does not prove it. Each retired stream's `finish()`
+  /// awaits its recognizer task (after `cancel()` the task flushes what it already holds and
+  /// starts nothing new), chained so one handle covers every retired stream, and `unload()`
+  /// waits for the chain before it releases the model, so an in-session model switch does not
+  /// load the new model while the old one is still running.
+  private var streamingDrain: Task<Void, Never>?
+
+  /// Hang guard for `unload()`'s wait on the drain, not a latency budget. The chain may cover
+  /// several retired streams, each flushing the audio it already holds. `unload()` waits for
+  /// the chain up to this guard. Past it, it releases its own model references under the
+  /// founder-approved best-effort policy (#3546 A3, #3680); an outstanding stream may still
+  /// retain the old models.
+  private static let streamingDrainDeadlineSeconds = 5.0
+
+  /// Cancels `manager` and adds its drain to the chain `unload()` waits for. The drain is
+  /// published before the first suspension, so an `unload()` that runs while this cancel is
+  /// in flight already sees it. Callers wait for the cancel, not the whole drain.
+  private func retireStreaming(_ manager: SlidingWindowAsrManager) async {
+    let retirement = Self.chainRetirement(
+      previous: streamingDrain,
+      cancel: { await manager.cancel() },
+      finish: { _ = try? await manager.finish() })
+    streamingDrain = retirement.drain
+    await retirement.cancellation.value
+  }
+
+  /// One retirement: `finish` starts as soon as this stream's own `cancel` completes, never
+  /// behind an older stream's drain, so one drain that never returns cannot hold every later
+  /// stream (and its audio and model references) with it. The returned `drain` completes
+  /// when this finish and every earlier drain have.
+  static func chainRetirement(
+    previous: Task<Void, Never>?,
+    cancel: @escaping @Sendable () async -> Void,
+    finish: @escaping @Sendable () async -> Void
+  ) -> (cancellation: Task<Void, Never>, drain: Task<Void, Never>) {
+    let cancellation = Task { await cancel() }
+    let finished = Task {
+      await cancellation.value
+      await finish()
+    }
+    let drain = Task {
+      await previous?.value
+      await finished.value
+    }
+    return (cancellation, drain)
+  }
   private var streamingStartTime: CFAbsoluteTime = 0
   /// #1908 round 10: which generation `streamingManager` was published
   /// under, so `reclaimIfPublished(generation:)` can tell "the exact
@@ -140,7 +188,7 @@ public actor ParakeetBackend: ASRBackend {
     guard publishedStreamingGeneration == generation, let manager = streamingManager else { return }
     streamingManager = nil
     publishedStreamingGeneration = nil
-    await manager.cancel()
+    await retireStreaming(manager)
   }
 
   public var supportsStreaming: Bool { true }
@@ -587,7 +635,7 @@ public actor ParakeetBackend: ASRBackend {
     if let existing = streamingManager {
       streamingManager = nil
       publishedStreamingGeneration = nil
-      await existing.cancel()
+      await retireStreaming(existing)
     }
     guard streamingGeneration.withLock({ $0 == myGeneration }) else { throw CancellationError() }
 
@@ -602,18 +650,18 @@ public actor ParakeetBackend: ASRBackend {
       // Vendor API: streaming starts via loadModels(_:) then startStreaming(source:).
       try await manager.loadModels(models)
       guard streamingGeneration.withLock({ $0 == myGeneration }) else {
-        await manager.cancel()
+        await retireStreaming(manager)
         throw CancellationError()
       }
       try await manager.startStreaming(source: .microphone)
     } catch is CancellationError {
-      await manager.cancel()
+      await retireStreaming(manager)
       throw CancellationError()
     } catch {
       // #1654: pin a stable identity before this leaves the service. A cancellation is
       // deliberately excluded above rather than classified — a cancelled stream is not a
       // failure and must never acquire a failure identity.
-      await manager.cancel()
+      await retireStreaming(manager)
       throw Self.streamingThrowable(for: error, operation: .start)
     }
     // #1908: a caller that abandoned this attempt (deadline expiry, via
@@ -647,7 +695,7 @@ public actor ParakeetBackend: ASRBackend {
       return true
     }
     guard published else {
-      await manager.cancel()
+      await retireStreaming(manager)
       throw CancellationError()
     }
   }
@@ -753,7 +801,7 @@ public actor ParakeetBackend: ASRBackend {
     if let manager = streamingManager {
       streamingManager = nil
       publishedStreamingGeneration = nil
-      await manager.cancel()
+      await retireStreaming(manager)
     }
   }
 
@@ -764,7 +812,20 @@ public actor ParakeetBackend: ASRBackend {
     if let streaming = streamingManager {
       streamingManager = nil
       publishedStreamingGeneration = nil
-      await streaming.cancel()
+      await retireStreaming(streaming)
+    }
+    // #3546 A3: every stream retired before this point, including ones cancelled by
+    // `cancelStreaming()` or an abandoned start that already gave up, stops using the model
+    // first. A start still inside the vendor load is not waited for (it may never return);
+    // it sees the bumped generation and retires its own stream.
+    if let drain = streamingDrain {
+      if await withDeadline(seconds: Self.streamingDrainDeadlineSeconds, operation: {
+        await drain.value
+      }) == nil {
+        await AppLogger.shared.log(
+          "Parakeet unload: a cancelled stream did not drain within the deadline",
+          level: .info, category: "ASR")
+      }
     }
     await fluidAsrManager?.cleanup()
     fluidAsrManager = nil

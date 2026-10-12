@@ -445,6 +445,49 @@ enum DictationNarrator {
       comment:
         "Pill subtitle while the speech engine loads after a restart. %@ is the engine's name.")
   }
+  // MARK: #3546 A3 Parakeet Ultra upgrade pills (founder-approved mocks, 2026-10-12)
+
+  static func parakeetUpgradeTitle(for phase: ParakeetUpgradePillModel.Phase) -> String {
+    switch phase {
+    case .downloading:
+      return String(
+        localized: "Downloading Parakeet Ultra",
+        comment: "Pill title when the Parakeet Ultra speech model starts downloading in the background.")
+    case .installing:
+      return String(
+        localized: "Installing Parakeet Ultra…",
+        comment: "Pill title when the user presses record while Parakeet Ultra is being loaded.")
+    case .ready:
+      return String(
+        localized: "Parakeet Ultra is ready",
+        comment: "Pill title once Parakeet Ultra has loaded and dictation uses it.")
+    }
+  }
+
+  static func parakeetUpgradeSubtitle(for phase: ParakeetUpgradePillModel.Phase) -> String {
+    switch phase {
+    case .downloading:
+      return String(
+        localized: "Keep dictating. We’ll switch when it’s ready.",
+        comment: "Pill line under Downloading Parakeet Ultra: dictation keeps working meanwhile.")
+    case .installing:
+      return String(
+        localized: "Ready in a few seconds",
+        comment: "Pill line under Installing Parakeet Ultra.")
+    case .ready:
+      return String(
+        localized: "Press to dictate",
+        comment: "Pill line under Parakeet Ultra is ready: press the dictation shortcut to start.")
+    }
+  }
+
+  /// The spoken sentence: the title (without its ellipsis) and the line, as one.
+  static func parakeetUpgradeAnnouncement(for phase: ParakeetUpgradePillModel.Phase) -> String {
+    let title = parakeetUpgradeTitle(for: phase)
+    let spokenTitle = title.hasSuffix("…") ? String(title.dropLast()) : title
+    return "\(spokenTitle). \(parakeetUpgradeSubtitle(for: phase))"
+  }
+
   // dash kept (founder 2026-07-15)
   static let readyTitle = String(
     localized: "Ready — press to dictate",

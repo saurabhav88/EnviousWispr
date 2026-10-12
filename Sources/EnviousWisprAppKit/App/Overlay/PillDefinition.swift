@@ -469,6 +469,8 @@ enum OverlayContent: Equatable, Sendable {
   case bluetoothAwareness
   /// #3438: the AI polish setup card.
   case polishSetupCard(PolishSetupCardModel)
+  /// #3546 A3: the Parakeet Ultra upgrade's pills (downloading, installing, ready).
+  case parakeetUpgrade(ParakeetUpgradePillModel)
   case escapeRecovery(transcriptID: UUID)
   /// #996 auto-learn: the Undo pill. The model carries the pill UUID and its
   /// phase (learned with the Undo button, or a typed result line); the reducer
@@ -493,6 +495,9 @@ enum OverlayContent: Equatable, Sendable {
   var reChecksOwnerBeforeRender: Bool {
     if case .correctionLearned(let model) = self, case .learned = model.phase { return true }
     if case .retainedClipboardFallback = self { return true }
+    // #3546 A3: a Cancel can stop the download, or the switch can settle, before the first
+    // render; the upgrade pill would then announce something no longer true.
+    if case .parakeetUpgrade = self { return true }
     return false
   }
 }
@@ -567,4 +572,19 @@ struct PillDefinition: Equatable, Sendable {
     self.requestedWidth = requestedWidth
     self.reservesFixedHeight = reservesFixedHeight
   }
+}
+
+/// #3546 A3: what one Parakeet Ultra upgrade pill shows (founder-approved mocks, 2026-10-12).
+/// A feature route: idle pipeline only; a recording or any pipeline notice replaces it.
+struct ParakeetUpgradePillModel: Equatable, Sendable {
+  enum Phase: Equatable, Sendable {
+    /// Shown once when the background download starts; `fraction` drives the progress line.
+    case downloading(fraction: Double)
+    /// Shown only for a record press during the in-session switch.
+    case installing
+    /// Shown once after Ultra loaded.
+    case ready
+  }
+
+  let phase: Phase
 }

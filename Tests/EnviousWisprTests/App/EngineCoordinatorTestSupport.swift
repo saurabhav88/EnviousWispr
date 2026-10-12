@@ -59,6 +59,15 @@ final class FakeEngineDeps {
   /// `.warmCompleted` poke to follow it) swaps in a refusing `.live`.
   var mutationScope: EngineMutationScope = .alwaysAllowedForTesting
 
+  /// #3546 A3: the owed in-session Parakeet Ultra activation. `activate` clears the debt,
+  /// counts, and awaits `onActivateAwait` (so a test can hold it open and inspect the gate).
+  var activationOwed = false
+  var fileImportRunning = false
+  /// The shared engine lease's holder check; a test can bind it to a real `EngineLease`.
+  var engineHeld: @MainActor () -> Bool = { false }
+  private(set) var activationCount = 0
+  var onActivateAwait: (@MainActor () async -> Void)?
+
   /// Records the site string of every refused claim, so a test can prove the refusal
   /// actually happened rather than inferring it from an absence.
   private(set) var refusedSites: [String] = []
@@ -108,6 +117,8 @@ final class FakeEngineDeps {
       readiness: { self.readiness($0) },
       isEngineActive: { self.isActive($0) },
       isRecovering: { self.recovering },
+      isFileImportRunning: { self.fileImportRunning },
+      isEngineHeld: { self.engineHeld() },
       isInstalled: { self.installed($0) },
       stateLabel: { _ in "idle" },
       performSwitch: { backend in
@@ -127,7 +138,13 @@ final class FakeEngineDeps {
         if case .ready = outcome { self.setReadiness(backend, .ready) }
         return outcome
       },
-      engineMutationScope: mutationScope)
+      engineMutationScope: mutationScope,
+      isParakeetActivationOwed: { self.activationOwed },
+      activateParakeetUpgrade: {
+        self.activationOwed = false
+        self.activationCount += 1
+        if let hook = self.onActivateAwait { await hook() }
+      })
   }
 
   /// Build a started coordinator over this fake. `start()` fires the initial

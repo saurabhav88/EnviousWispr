@@ -41,13 +41,14 @@ struct ParakeetUpgradeTelemetryTests {
   }
 
   static func facts(
-    _ model: ParakeetModel, prior: ParakeetModel? = nil, attempts: Int? = 1, ms: Int? = 840
+    _ model: ParakeetModel, prior: ParakeetModel? = nil, attempts: Int? = 1, ms: Int? = 840,
+    trigger: ParakeetUpgradeCoordinator.SelectionTrigger = .selectionPoint
   ) -> ParakeetUpgradeCoordinator.LoadFacts {
     ParakeetUpgradeCoordinator.LoadFacts(
       selection: ParakeetModelSelection(
         model: model, revision: "95eaa59a", directory: URL(fileURLWithPath: "/tmp/x"),
         cacheOnly: true, displayBytes: 1, repairable: false, generation: 1),
-      priorModel: prior, attempts: attempts, loadMilliseconds: ms)
+      priorModel: prior, attempts: attempts, loadMilliseconds: ms, trigger: trigger)
   }
 
   @Test("an activation sends one row with its facts, and only the first is a first activation")
@@ -69,6 +70,21 @@ struct ParakeetUpgradeTelemetryTests {
     // A relaunch reads the same ledger: still one row.
     rig.telemetry().observe(.activated(Self.facts(.ultra)))
     #expect(rig.rows.count == 1)
+  }
+
+  /// #3546 A3: the activation row says what marked the selection point, so an in-session
+  /// switch is told apart from a launch. When this fails, the founder's rollout query cannot
+  /// separate the two.
+  @Test("an activation row carries the trigger frozen with its request")
+  func activationCarriesItsTrigger() throws {
+    let rig = Rig()
+    rig.telemetry().observe(
+      .activated(Self.facts(.ultra, prior: .v3, trigger: .backgroundAdmission)))
+    let row = try #require(rig.rows.first)
+    #expect(row.activationTrigger == "background_admission")
+    let launch = Rig()
+    launch.telemetry().observe(.activated(Self.facts(.ultra)))
+    #expect(launch.rows.first?.activationTrigger == "selection_point")
   }
 
   @Test("an Ultra load failure always reaches Sentry, and its usage row is sent once")
@@ -172,7 +188,8 @@ struct ParakeetUpgradeTelemetryTests {
   /// seams above. When this fails, the vendor row is missing a property, carries one it
   /// should omit, converts milliseconds wrongly, or the Ultra load failure groups wrong.
   @MainActor
-  @Suite("Parakeet upgrade telemetry, real sinks (#3546)", .serialized, .tags(.observabilityContract))
+  @Suite(
+    "Parakeet upgrade telemetry, real sinks (#3546)", .serialized, .tags(.observabilityContract))
   struct ParakeetUpgradeTelemetrySinkTests {
     @MainActor final class Box { var events: [CapturedTelemetryEvent] = [] }
 

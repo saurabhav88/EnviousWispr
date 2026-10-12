@@ -121,6 +121,10 @@ final class RecordingStarter {
   /// reactive pill rather than minting a session on a transient engine.
   let isEngineSwitching: @MainActor () -> Bool
 
+  /// #3546 A3: set by the composition root; a press during the in-session Ultra activation
+  /// shows the upgrade's pills instead of the engine-switch ones.
+  var isActivatingParakeetUpgrade: (@MainActor () -> Bool)?
+
   /// #1171 — the start-window state-gate. `beginMinting` is called the instant the
   /// start path commits to minting (selected == active confirmed, no switch in
   /// flight); while held, `EngineCoordinator` refuses to switch engines, so the
@@ -731,6 +735,13 @@ final class RecordingStarter {
   private func reconcileSelectedBackendIfNeeded() -> Bool {
     let selected = settings.selectedBackend
     guard asrManager.activeBackendType != selected || isEngineSwitching() else { return false }
+    if selected == .parakeet, let isActivating = isActivatingParakeetUpgrade, isActivating() {
+      ColdPressGuard.reconcileParakeetUpgrade(
+        overlay: recordingOverlay, model: kernelDriver.requestedModelAttribution,
+        isActivating: isActivating,
+        ensureSelectedReady: ensureSelectedReadyForPress)
+      return true
+    }
     ColdPressGuard.reconcileSelectedBackend(
       overlay: recordingOverlay,
       selectedDriver: selected == .whisperKit ? whisperKitKernelDriver : kernelDriver,

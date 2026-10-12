@@ -74,6 +74,11 @@ package final class EngineLease {
 
   private var held: Token?
 
+  /// #3546 A3: called after every effective release, so work deferred because the engine
+  /// was held (the in-session Parakeet Ultra activation) is offered again whoever held it,
+  /// without each holder remembering to say so. Synchronous; it must not re-enter `admit`.
+  package var onReleased: (@MainActor () -> Void)?
+
   package init() {}
 
   /// Claims the resource, or refuses and names the holder.
@@ -95,6 +100,7 @@ package final class EngineLease {
   package func release(_ token: Token) -> Bool {
     guard held == token else { return false }
     held = nil
+    onReleased?()
     return true
   }
 

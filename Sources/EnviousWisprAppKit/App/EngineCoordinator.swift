@@ -47,6 +47,8 @@ final class EngineCoordinator {
     case warmCompleted
     case setupStateChanged
     case launch
+    /// #3546 A3: Ultra was admitted in the background while v3 serves.
+    case parakeetUpgradeOwed
   }
 
   /// Injected reads + operations. Bundling them keeps the coordinator a thin
@@ -76,6 +78,8 @@ final class EngineCoordinator {
     /// Defaults to "not running" so every existing construction keeps today's
     /// behaviour rather than silently gaining a new deferral.
     var isFileImportRunning: @MainActor () -> Bool = { false }
+    /// #3546 A3: the shared `EngineLease` has a holder; read only by the Ultra activation gate.
+    var isEngineHeld: @MainActor () -> Bool = { false }
     /// Whether the given engine's model is on disk (gates a load attempt).
     let isInstalled: @MainActor (ASRBackendType) -> Bool
     /// A telemetry label for the given engine's pipeline state.
@@ -94,6 +98,15 @@ final class EngineCoordinator {
     /// closure triplet; the scope's own `onRefused` closure now owns refusal
     /// telemetry.
     let engineMutationScope: EngineMutationScope
+
+    /// #3546 A3: whether an in-session Parakeet Ultra activation is owed
+    /// (`ParakeetUpgradeCoordinator.isActivationOwed`). Defaults to never, so every
+    /// existing construction keeps today's behaviour.
+    var isParakeetActivationOwed: @MainActor () -> Bool = { false }
+    /// #3546 A3: the activation itself, run only from the quiet-moment gate below under the
+    /// held switch gate and a mutation claim: mark the selection point, unload v3, warm. The
+    /// existing load and failure plan decide whether Ultra or v3 serves afterwards.
+    var activateParakeetUpgrade: @MainActor () async -> Void = {}
   }
 
   // MARK: - Published snapshot + gate
@@ -106,6 +119,10 @@ final class EngineCoordinator {
   /// before the `await`, cleared synchronously after). Recovery-start and
   /// record-start read it to mutually exclude with a switch (§3.4).
   private(set) var isSwitching = false
+
+  /// #3546 A3: true while the in-session Ultra activation holds the switch gate (a subset of
+  /// `isSwitching`), so a press during it shows the upgrade's own pills.
+  private(set) var isActivatingParakeetUpgrade = false
 
   /// #1707 Phase 3 (§3.4 wake-up table) — fired when a warm completes, a
   /// setup/migration state change lands, or an engine switch completes: any
@@ -320,6 +337,17 @@ final class EngineCoordinator {
       if justLeftSwitchingPhase {
         onEngineStateChangedForRecovery?()
       }
+      // #3546 A3: a converged Parakeet that owes the Ultra activation takes it at the first
+      // quiet moment, behind the same gates a switch waits for. A warm-up someone else
+      // started need not poke this coordinator when it settles, so join it (the same join
+      // gate 4b uses) and the join's completion poke re-offers the activation.
+      if actual == .parakeet, deps.isParakeetActivationOwed() {
+        if deps.readiness(actual) == .warming {
+          joinInFlightWarm(actual)
+        } else if isQuietForActivation() {
+          await activateParakeetUpgrade()
+        }
+      }
       return
     }
 
@@ -411,6 +439,38 @@ final class EngineCoordinator {
 
     // 8. Warm the now-active engine in the background (never awaited here).
     startWarm(for: want)
+  }
+
+  // MARK: - In-session Parakeet upgrade (#3546 A3)
+
+  /// The switch gates, applied to the activation: nothing loading, recording, transcribing,
+  /// polishing, minting, recovering or importing, no coordinator warm or join in flight, and
+  /// the shared engine lease free (a Diagnostics speed test or a decode still finishing for
+  /// an abandoned take holds it). Synchronous, so the check and `isSwitching` going true
+  /// share one MainActor turn. The lease's release pokes this coordinator.
+  private func isQuietForActivation() -> Bool {
+    deps.readiness(.parakeet) != .warming
+      && !deps.isEngineActive(.parakeet) && !deps.isEngineActive(.whisperKit) && !isMinting
+      && !deps.isRecovering() && !deps.isFileImportRunning() && !deps.isEngineHeld()
+      && warmingBackend == nil && joiningBackend == nil
+  }
+
+  /// Holds the switch gate (record-start and recovery both respect it) and a mutation claim
+  /// (recovery cannot begin) for the whole activation. A refused claim activates nothing and
+  /// the next poke tries again.
+  private func activateParakeetUpgrade() async {
+    isSwitching = true
+    isActivatingParakeetUpgrade = true
+    currentSwitchPhase = .switching
+    publishStatus()
+    _ = await deps.engineMutationScope.withClaim(site: "parakeetUpgradeActivation") {
+      await self.deps.activateParakeetUpgrade()
+    }
+    isSwitching = false
+    isActivatingParakeetUpgrade = false
+    currentSwitchPhase = .idle
+    publishStatus()
+    onEngineStateChangedForRecovery?()
   }
 
   // MARK: - Background warm (the only place a load FAILURE surfaces)

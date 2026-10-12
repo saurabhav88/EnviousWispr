@@ -79,6 +79,16 @@ package final class ParakeetUpgradeCoordinator {
     package let priorModel: ParakeetModel?
     package let attempts: Int?
     package let loadMilliseconds: Int?
+    /// #3546 A3: what marked the selection point that chose this request, frozen with it.
+    package let trigger: SelectionTrigger
+  }
+
+  /// #3546 A3: what marked a selection point. A launch or a switch into Parakeet is
+  /// `.selectionPoint`; the in-session activation after a background admission is
+  /// `.backgroundAdmission`.
+  package enum SelectionTrigger: String, Equatable, Sendable {
+    case selectionPoint = "selection_point"
+    case backgroundAdmission = "background_admission"
   }
 
   /// Where a failed load goes next, decided before the failure is reported.
@@ -146,6 +156,15 @@ package final class ParakeetUpgradeCoordinator {
   /// The selection-point token `frozen` was chosen under; queued cleanup is
   /// valid only while it still matches.
   private var frozenSelectionPoint: UInt64 = 0
+  /// #3546 A3: the trigger of the newest marked selection point, and the one frozen with the
+  /// request it chose.
+  private var markedTrigger: SelectionTrigger = .selectionPoint
+  private var frozenTrigger: SelectionTrigger = .selectionPoint
+  /// #3546 A3: a background admission owes an in-session activation while v3 serves. Set by
+  /// the admission; cleared by the activation's selection point, a decline or a Cancel.
+  private var activationOwedGeneration: UInt64?
+  /// Called when an activation becomes owed, so the engine owner can look for a quiet moment.
+  package var onActivationOwed: (() -> Void)?
   /// Queued deletions (v3 retirement, target removal), one per model. A new
   /// selection point or a changed identity cancels them, so bytes are never
   /// deleted on behalf of a decision that no longer holds.
@@ -263,8 +282,41 @@ package final class ParakeetUpgradeCoordinator {
 
   /// Records a selection point (launch, or an actual switch into Parakeet).
   package func markSelectionPoint() {
+    markSelectionPoint(trigger: .selectionPoint)
+  }
+
+  private func markSelectionPoint(trigger: SelectionTrigger) {
     cancelCleanupTasks()
     selectionPointsMarked &+= 1
+    markedTrigger = trigger
+    // Any selection point settles an owed activation: it re-decides the model anyway.
+    activationOwedGeneration = nil
+  }
+
+  /// #3546 A3: the Ultra target's cache key, for UI facts keyed by revision; nil without one.
+  package var upgradeTargetCacheKey: String? { target?.delivery.cacheKey }
+
+  /// #3546 A3: whether Ultra was admitted in the background while v3 serves, so the engine
+  /// owner should activate it at the first quiet moment. Re-reads the eligibility the
+  /// background fetch required (including a Cancel whose decline did not persist) and the
+  /// attempt budget a load needs; never true once the activation's selection point is marked.
+  package var isActivationOwed: Bool {
+    guard let generation = activationOwedGeneration, generation == backgroundGeneration,
+      let target, backgroundEligible(target),
+      servingRequest?.model == .v3, !hasPendingSelectionPoint,
+      case .state(let state) = target.store.read(), state.attempts < Self.attemptBudget
+    else { return false }
+    return true
+  }
+
+  /// #3546 A3: the engine owner found a quiet moment. Marks the selection point that the
+  /// next Parakeet load consumes (row A for the admitted Ultra), and returns whether there
+  /// was an activation to start. The caller unloads v3 and warms; the existing load and
+  /// failure plan (A, A-fail, E19) decide what serves.
+  package func beginOwedActivation() -> Bool {
+    guard isActivationOwed else { return false }
+    markSelectionPoint(trigger: .backgroundAdmission)
+    return true
   }
 
   package var hasPendingSelectionPoint: Bool {
@@ -577,8 +629,8 @@ extension ParakeetUpgradeCoordinator {
       milliseconds = Int((ContinuousClock.now - start.at) / .milliseconds(1))
     }
     return LoadFacts(
-      selection: request, priorModel: priorModel, attempts: attempts, loadMilliseconds: milliseconds
-    )
+      selection: request, priorModel: priorModel, attempts: attempts,
+      loadMilliseconds: milliseconds, trigger: frozenTrigger)
   }
 
   /// The success hook (`didPublishLoad`): a READY Ultra publish for the current
@@ -894,6 +946,7 @@ extension ParakeetUpgradeCoordinator {
         repairable: request.repairable)
     if frozen != published { cancelCleanupTasks() }
     frozenSelectionPoint = selectionPointsMarked
+    frozenTrigger = markedTrigger
     frozen = published
     return published
   }
@@ -902,6 +955,7 @@ extension ParakeetUpgradeCoordinator {
     needsExplicitRetry = false
     if frozen != request { cancelCleanupTasks() }
     frozenSelectionPoint = selectionPointsMarked
+    frozenTrigger = markedTrigger
     frozen = request
     emit(.selected(request.model, row: row))
     return PreparedLoad(selection: request, isSelectionLoad: true)
@@ -1175,6 +1229,7 @@ extension ParakeetUpgradeCoordinator {
   /// and its claim on the target's delivery events.
   private func invalidateBackgroundFetch() {
     backgroundGeneration &+= 1
+    activationOwedGeneration = nil
     backgroundPublication.set(nil)
     backgroundFetch = nil
   }
@@ -1215,6 +1270,14 @@ extension ParakeetUpgradeCoordinator {
     backgroundGeneration == generation && !Task.isCancelled
   }
 
+  /// A3: owed only while v3 still serves this session; a launch or a switch into Parakeet
+  /// that already chose Ultra owes nothing.
+  private func offerAdmittedActivation(generation: UInt64) {
+    guard isCurrentBackground(generation) else { return }
+    activationOwedGeneration = generation
+    if isActivationOwed { onActivationOwed?() } else { activationOwedGeneration = nil }
+  }
+
   private func runBackgroundFetch(generation: UInt64) async {
     defer {
       if backgroundFetch?.generation == generation {
@@ -1224,18 +1287,24 @@ extension ParakeetUpgradeCoordinator {
     }
     guard let target, isCurrentBackground(generation), backgroundEligible(target) else { return }
     let admitted = await target.delivery.isAdmitted()
-    guard isCurrentBackground(generation), !admitted, backgroundEligible(target) else { return }
+    guard isCurrentBackground(generation), backgroundEligible(target) else { return }
+    // A Resume after a Cancel that landed once the bytes were already admitted.
+    if admitted {
+      offerAdmittedActivation(generation: generation)
+      return
+    }
     emit(.backgroundStarted)
     setBackgroundUpgrade(
       .downloading(fraction: 0, bytesWritten: 0, totalBytes: target.delivery.modelTotalBytes))
-    // E3/E14: the outcome is recorded only; activation waits for the next
-    // selection point, and failure leaves v3 serving until then.
+    // E3/E14: admission leaves v3 serving until the engine owner takes the owed
+    // activation at a quiet moment. Failure leaves v3 serving.
     let outcome = await target.delivery.ensureAvailable()
     guard isCurrentBackground(generation) else { return }
     switch outcome {
     case .admitted:
       setBackgroundUpgrade(.idle)
       emit(.backgroundAdmitted)
+      offerAdmittedActivation(generation: generation)
     case .failed(let failure) where failure.reason == .insufficientDisk:
       setBackgroundUpgrade(.deferredDisk)
       emit(.deferredDisk)

@@ -9,10 +9,11 @@ Default mode is a read-only PREFLIGHT: it reports what the drill would act on an
 changes nothing. `--drill` runs the upgrade path a v3 user takes:
 
   stage   owned v3 restored from --backup (APFS clone), Ultra and its upgrade state removed
-  launch1 v3 serves; Ultra downloads in the background and is admitted; v3 is NOT retired
-          (admission alone is not activation)
-  launch2 the launch is a selection point: Ultra activates and the owned v3 is retired
-  launch3 the owned v3 is not re-created (no v3 admission line; founder 2026-10-12)
+  launch1 v3 serves; Ultra downloads in the background and is admitted; the idle app
+          activates Ultra in the same process and retires the owned v3 (amendment A3:
+          no relaunch). That the activation waits while dictation or an import is
+          running is covered by EngineCoordinatorUpgradeActivationTests, not here.
+  launch2 the owned v3 is not re-created (no v3 admission line; founder 2026-10-12)
 
 The shared FluidAudio donor is read-only throughout and fingerprinted at every step.
 Deletions are confined to the app-owned Models and ModelDelivery folders. Claim the
@@ -206,28 +207,22 @@ def drill(app: App, backup: pathlib.Path) -> None:
     stage_v3_user(app, backup, donor)
 
     off = log_offset()
-    app.start()
-    line = wait_line(off, f"admitted {ULTRA_LINE}", 1200)
-    print(f"launch1 Ultra admitted: {line}", flush=True)
-    if f"retired {V3_LINE}" in log_since(off) or not fingerprint(OWNED_V3):
-        raise Fail("launch1: v3 was retired by admission alone")
-    print("launch1 v3 still present after admission: PASS", flush=True)
-    app.stop()
-
-    off = log_offset()
-    app.start()
-    print(f"launch2 {wait_line(off, f'retired {V3_LINE}', 180)}", flush=True)
+    first_pid = app.start()
+    print(f"launch1 Ultra admitted: {wait_line(off, f'admitted {ULTRA_LINE}', 1200)}", flush=True)
+    print(f"launch1 {wait_line(off, f'retired {V3_LINE}', 180)}", flush=True)
+    if app.pid() != first_pid:
+        raise Fail("launch1: the activation did not stay in the same app process")
     if fingerprint(OWNED_V3):
-        raise Fail("launch2: owned v3 still present after activation")
-    print("launch2 Ultra activated and owned v3 retired: PASS", flush=True)
+        raise Fail("launch1: owned v3 still present after same-session activation")
+    print("launch1 Ultra activated in the same session and owned v3 retired: PASS", flush=True)
     app.stop()
 
     off = log_offset()
     app.start()
-    wait_line(off, f"retired {V3_LINE}", 180)  # the activation of this launch
+    wait_line(off, f"retired {V3_LINE}", 180)  # this launch's retire pass
     if f"admitted {V3_LINE}" in log_since(off) or fingerprint(OWNED_V3):
-        raise Fail("launch3: owned v3 was re-created")
-    print("launch3 owned v3 not re-created: PASS", flush=True)
+        raise Fail("launch2: owned v3 was re-created")
+    print("launch2 owned v3 not re-created: PASS", flush=True)
 
     if fingerprint(DONOR) != donor:
         raise Fail("the shared FluidAudio donor changed")

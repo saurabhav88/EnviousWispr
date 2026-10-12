@@ -184,6 +184,11 @@ enum PillRequest {
     onClose: () -> Void,
     onOpenSettings: () -> Void
   )
+  /// #3546 A3: a Parakeet Ultra upgrade pill. No buttons; the reducer admits it only on an
+  /// idle pipeline with an empty slot or one already holding an upgrade pill. `isStillWanted`
+  /// is read immediately before a deferred first render: false (the download stopped, the
+  /// switch already settled) rolls it back unrendered and unannounced.
+  case parakeetUpgrade(ParakeetUpgradePillModel, isStillWanted: () -> Bool)
   /// #3438: the card after a dictation whose AI polish did not run because its chosen model is
   /// not set up. A feature: the slot only while the pipeline is idle, never displacing another
   /// feature, persisting until answered or replaced.
@@ -240,6 +245,8 @@ struct PillReceipt: Hashable, Sendable {
 enum PillUpdate: Equatable, Sendable {
   case recordingLock(Bool)
   case inPanelNotice(RecordingNoticeReason, dismissAfter: Double?)
+  /// #3546 A3: new download progress for the Parakeet Ultra downloading pill, if current.
+  case parakeetUpgradeProgress(fraction: Double)
 }
 
 /// Whether dismissing speaks.

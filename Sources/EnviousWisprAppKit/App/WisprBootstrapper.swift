@@ -279,6 +279,18 @@ package final class WisprBootstrapper {
     // both constructed long before the import coordinator exists, and both have
     // to be able to see a running import.
     weak var fileImportCoordinatorForGates: FileImportCoordinator?
+    // GitHub cloud review, PR #1732: captured by `isDictationActive` below,
+    // assigned once `engineCoordinator` exists. (#3546 A3: declared here, ahead of the
+    // Diagnostics speed test, which also reads its switch gate.) A record
+    // press that has called `beginMinting()` but not yet reached an active
+    // kernel session (still suspended in `preWarm`/the recovery-arm await)
+    // does not make `liveRecordingState.isDictationActive` true — without
+    // this, recovery's per-item scan could reclaim the engine for the next
+    // orphan during exactly that window, and the in-flight press would
+    // abort when its own stale-gate re-check catches up.
+    // `weak`, matching every other cross-reference between these two
+    // coordinators in this file — avoids a retain cycle.
+    weak var engineCoordinatorForRecoveryGate: EngineCoordinator?
     // #1741 — the ONE shared mutation-side capability (§3 construction-
     // topology correction: one value, not one per consumer), threaded through
     // each consumer's required initializer argument as this plan migrates it
@@ -915,6 +927,27 @@ package final class WisprBootstrapper {
     // #3106 PR B: the late clipboard notice can present from here on. Held strongly by both
     // drivers' callbacks; the director is held weakly by the notice.
     retainedPasteNotice.connect(recordingOverlay)
+    // #3546 A3: the Parakeet Ultra upgrade's downloading and ready pills. Only with the Ultra
+    // target is there an upgrade to show. Chained after the telemetry observer the delivery
+    // home installed, which keeps receiving every outcome first.
+    if let ultraCacheKey = parakeetUpgrade.upgradeTargetCacheKey {
+      let upgradePills = ParakeetUpgradePillPresenter(
+        overlay: recordingOverlay, targetCacheKey: ultraCacheKey,
+        isUltraReady: { [settings, asrManager, parakeetUpgrade] in
+          settings.selectedBackend == .parakeet && asrManager.activeBackendType == .parakeet
+            && asrManager.isModelLoaded && parakeetUpgrade.presentedModel == .ultra
+        })
+      let upstreamOutcome = parakeetUpgrade.onOutcome
+      parakeetUpgrade.onOutcome = { outcome in
+        upstreamOutcome?(outcome)
+        upgradePills.observe(outcome)
+      }
+      let upstreamBackground = parakeetUpgrade.onBackgroundUpgradeChanged
+      parakeetUpgrade.onBackgroundUpgradeChanged = { state in
+        upstreamBackground?(state)
+        upgradePills.backgroundUpgradeChanged(state)
+      }
+    }
 
     // #996 chunk 5h: composed here because every collaborator it needs already
     // exists (settings, the word list, the packs, the overlay director, the
@@ -1220,7 +1253,8 @@ package final class WisprBootstrapper {
     // pipeline: its job is owning the surface.
     let diagnosticsCoordinator = DiagnosticsCoordinator(
       benchmark: BenchmarkSuite(
-        engineMutationScope: engineMutationScope, engineLease: engineLease))
+        engineMutationScope: engineMutationScope, engineLease: engineLease,
+        isEngineSwitching: { engineCoordinatorForRecoveryGate?.isSwitching ?? false }))
 
     // **Two arguments, and no self-reference problem to solve** (#2292 C3).
     // This used to hand over three closures, one of which resolved the chip's
@@ -1298,17 +1332,6 @@ package final class WisprBootstrapper {
           generation: UInt64(customWordsCoordinator.customWords.count) &+ 1)
       },
       currentSnippets: { [snippetsCoordinator] in snippetsCoordinator.vocabulary })
-    // GitHub cloud review, PR #1732: captured by `isDictationActive` below,
-    // assigned once `engineCoordinator` exists a few lines down. A record
-    // press that has called `beginMinting()` but not yet reached an active
-    // kernel session (still suspended in `preWarm`/the recovery-arm await)
-    // does not make `liveRecordingState.isDictationActive` true — without
-    // this, recovery's per-item scan could reclaim the engine for the next
-    // orphan during exactly that window, and the in-flight press would
-    // abort when its own stale-gate re-check catches up.
-    // `weak`, matching every other cross-reference between these two
-    // coordinators in this file — avoids a retain cycle.
-    weak var engineCoordinatorForRecoveryGate: EngineCoordinator?
     // #1741 Chunk 2 — the recovery-side capability, required at construction
     // (replacing the post-init `tryBeginRecoveryClaim`/`endRecoveryClaim`
     // closure assignments this plan removes below).
@@ -1380,6 +1403,7 @@ package final class WisprBootstrapper {
         // press while the cancelled work is still inside the engine, and a
         // switch admitted in that window unloads the backend underneath it.
         isFileImportRunning: { fileImportCoordinatorForGates?.isEngineHeld ?? false },
+        isEngineHeld: { [engineLease] in engineLease.isBusy },
         isInstalled: { [setup] backend in
           backend == .parakeet ? true : setup.whisperKitSetup.setupState == .ready
         },
@@ -1404,7 +1428,36 @@ package final class WisprBootstrapper {
         // #1707 Phase 3 (§3.2, row 4) / #1741 Chunk 7: `startWarm()`'s
         // background convenience warm must never race recovery on the shared
         // engine — guarded by the one shared `engineMutationScope`.
-        engineMutationScope: engineMutationScope))
+        engineMutationScope: engineMutationScope,
+        // #3546 A3: the in-session Ultra activation at the first quiet moment. Marks the
+        // selection point the next Parakeet load consumes, releases v3 through the same
+        // unload the idle timer uses, then warms; the load's own plan (row A, A-fail, E19)
+        // decides whether Ultra or v3 serves.
+        isParakeetActivationOwed: { [parakeetUpgrade] in parakeetUpgrade.isActivationOwed },
+        activateParakeetUpgrade: { [parakeetUpgrade, asrManager, kernelDriver] in
+          guard parakeetUpgrade.beginOwedActivation() else { return }
+          // An idle-unload timer firing mid-load would cancel the Ultra load it lands on.
+          kernelDriver.cancelPendingEngineUnload()
+          await asrManager.unloadModel()
+          // The quiet gates exclude a live stream and recovery, the unload's only two
+          // refusals. If v3 is somehow still resident, load nothing now: the marked
+          // selection point waits for the next real load, so two models never load.
+          guard !asrManager.isModelLoaded else {
+            await AppLogger.shared.log(
+              "Parakeet upgrade activation: v3 unload refused; Ultra waits for the next load",
+              level: .info, category: "Upgrade")
+            return
+          }
+          _ = await kernelDriver.ensureEngineWarm(reason: .engineSwap)
+        }))
+    parakeetUpgrade.onActivationOwed = { [weak engineCoordinator] in
+      engineCoordinator?.poke(.parakeetUpgradeOwed)
+    }
+    // #3546 A3: an activation deferred because the engine lease was held (a speed test, a
+    // decode still finishing for an abandoned take) is offered again when it is released.
+    engineLease.onReleased = { [weak engineCoordinator] in
+      engineCoordinator?.poke(.parakeetUpgradeOwed)
+    }
     // GitHub cloud review, PR #1732: now that `engineCoordinator` exists,
     // `isDictationActive` (wired above) can read its minting state.
     engineCoordinatorForRecoveryGate = engineCoordinator
@@ -1595,7 +1648,11 @@ package final class WisprBootstrapper {
         }
         return engineCoordinator.status.selectedInstalled
       },
-      endMinting: { [weak engineCoordinator] in engineCoordinator?.endMinting() }
+      endMinting: { [weak engineCoordinator] in engineCoordinator?.endMinting() },
+      // #3546 A3: a press during the in-session Ultra activation gets the upgrade pills.
+      isActivatingParakeetUpgrade: { [weak engineCoordinator] in
+        engineCoordinator?.isActivatingParakeetUpgrade ?? false
+      }
     )
 
     // PR-B.3 of #763: menu bar surface home.
@@ -1955,7 +2012,6 @@ package final class WisprBootstrapper {
       // the adapters covers both engines rather than one of them twice.
       // Idempotent, so both are always touched rather than whichever looks
       // active.
-      engineIsLoaded: { [activeEngine] in await activeEngine.isLoaded() },
       disarmEngineTimers: { [kernelDriver, whisperKitKernelDriver] in
         kernelDriver.cancelPendingEngineUnload()
         whisperKitKernelDriver.cancelPendingEngineUnload()

@@ -1459,6 +1459,88 @@ struct ParakeetUpgradePolicyTests {
     #expect(next.selection?.model == .ultra, "the next selection point activates it (row A)")
   }
 
+  /// #3546 A3: when this fails, a v3 user keeps v3 until a relaunch, or the activation row
+  /// cannot tell an in-session switch from a launch.
+  @Test("A3: a background admission while v3 serves owes one in-session activation to Ultra")
+  func backgroundAdmissionOwesActivation() async throws {
+    let rig = try await Self.rig(v3: true, ultra: false, onboarding: true)
+    Self.enqueueUltra(rig)
+    let admitted = OutcomeSignal(.backgroundAdmitted)
+    var owed = 0
+    var activations: [ParakeetUpgradeCoordinator.LoadFacts] = []
+    rig.coordinator.onActivationOwed = { owed += 1 }
+    rig.coordinator.onOutcome = {
+      admitted.observe($0)
+      if case .activated(let facts) = $0 { activations.append(facts) }
+    }
+    _ = try await rig.coordinator.prepareLoad()
+    #expect(Self.physicalLoad(rig) == .loaded, "v3 serves this session")
+    await admitted.wait()
+    #expect(owed == 1)
+    #expect(rig.coordinator.isActivationOwed)
+
+    #expect(rig.coordinator.beginOwedActivation())
+    #expect(rig.coordinator.isActivationOwed == false, "the selection point settles the debt")
+    #expect(rig.coordinator.beginOwedActivation() == false, "only once")
+    let prepared = try await rig.coordinator.prepareLoad()
+    #expect(prepared.selection?.model == .ultra, "row A for the admitted Ultra")
+    #expect(Self.physicalLoad(rig) == .loaded)
+    let facts = try #require(activations.first)
+    #expect(facts.trigger == .backgroundAdmission)
+    #expect(facts.priorModel == .v3)
+  }
+
+  @Test("A3: a decline after admission withdraws the owed activation")
+  func declineWithdrawsOwedActivation() async throws {
+    let rig = try await Self.rig(v3: true, ultra: false, onboarding: true)
+    Self.enqueueUltra(rig)
+    let admitted = OutcomeSignal(.backgroundAdmitted)
+    rig.coordinator.onOutcome = { admitted.observe($0) }
+    _ = try await rig.coordinator.prepareLoad()
+    #expect(Self.physicalLoad(rig) == .loaded)
+    await admitted.wait()
+    #expect(rig.coordinator.isActivationOwed)
+    try rig.store.write(.init(attempts: 0, refetchSpent: false, exhausted: false, declined: true))
+    #expect(rig.coordinator.isActivationOwed == false)
+    #expect(rig.coordinator.beginOwedActivation() == false)
+  }
+
+  /// When this fails, a Cancel whose decline could not be saved still swaps the model, or a
+  /// Resume after the download already finished leaves v3 serving until a relaunch.
+  @Test("A3: a Cancel that cannot persist withdraws the activation; Resume offers it again")
+  func cancelWithdrawsAndResumeReoffers() async throws {
+    let rig = try await Self.rig(v3: true, ultra: false, onboarding: true)
+    Self.enqueueUltra(rig)
+    let admitted = OutcomeSignal(.backgroundAdmitted)
+    rig.coordinator.onOutcome = { admitted.observe($0) }
+    // The offer is not an outcome; the bounded signal is released by hand on the second one.
+    let reoffered = OutcomeSignal("a second activation offer", matching: { _ in true })
+    var offerCount = 0
+    rig.coordinator.onActivationOwed = {
+      offerCount += 1
+      if offerCount == 2 { reoffered.observe(.backgroundAdmitted) }
+    }
+    _ = try await rig.coordinator.prepareLoad()
+    #expect(Self.physicalLoad(rig) == .loaded, "v3 serves this session")
+    await admitted.wait()
+    #expect(offerCount == 1)
+    #expect(rig.coordinator.isActivationOwed)
+
+    rig.writes.failing = true
+    await #expect(throws: ParakeetUpgradeStoreWriteError(field: "declined")) {
+      try await rig.coordinator.cancelBackgroundUpgrade()
+    }
+    rig.writes.failing = false
+    #expect(Self.state(rig)?.declined == false, "the decline did not persist")
+    #expect(rig.coordinator.isActivationOwed == false, "Cancel still withdraws it")
+    #expect(rig.coordinator.beginOwedActivation() == false)
+
+    try await rig.coordinator.resumeBackgroundUpgrade()
+    await reoffered.wait()
+    #expect(offerCount == 2, "Resume finds Ultra already admitted and offers it again")
+    #expect(rig.coordinator.isActivationOwed)
+  }
+
   @Test("E22: a row-B launch before onboarding holds the fetch until onboarding completes")
   func onboardingHoldsThenStarts() async throws {
     let rig = try await Self.rig(v3: true, ultra: false, onboarding: false)

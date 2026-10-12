@@ -1544,6 +1544,13 @@ extension OverlayDirector: OverlayPresenting {
       handle(.pipeline(.recoverySucceeded), binding: .none, relay: relay)
     case .importStatus(let message):
       handle(.importStatus(message: message), binding: .none, relay: relay)
+    case .parakeetUpgrade(let model, let isStillWanted):
+      // #3546 A3: the reducer owns the admission (idle pipeline; an empty slot or an upgrade
+      // pill to replace). No buttons; the binding carries the pre-render question.
+      handle(
+        .parakeetUpgrade(model),
+        binding: .install(deliver: { _ in }, onExpire: nil, isStillWanted: isStillWanted),
+        relay: relay)
 
     case .accessibilityNotice:
       presentAccessibilityNotice(relay: relay)
@@ -1757,6 +1764,8 @@ extension OverlayDirector: OverlayPresenting {
       handle(.lockStateChanged(isLocked), binding: .none)
     case .inPanelNotice(let reason, let dismissAfter):
       handle(.inPanelNotice(reason, dismissAfter: dismissAfter), binding: .none)
+    case .parakeetUpgradeProgress(let fraction):
+      handle(.parakeetUpgradeProgress(fraction: fraction), binding: .none)
     }
   }
 
