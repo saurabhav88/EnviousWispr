@@ -33,7 +33,8 @@ public final class ASRManager: ASRManagerInterface {
     scopeSequence &+= 1
     modelScopeOwner.observe(
       .parakeet, sequence: scopeSequence,
-      snapshot: .init(requested: scopeRequested, phase: scopePhase, serving: publishedModelIdentity))
+      snapshot: .init(requested: scopeRequested, phase: scopePhase, serving: publishedModelIdentity)
+    )
   }
 
   /// A cancelled, superseded or user-cancelled load is `cancelled`; anything else failed.
@@ -950,12 +951,12 @@ public final class ASRManager: ASRManagerInterface {
     }
   }
 
-  #if DEBUG
-    /// The last queued idle unload, run or dropped, so a test waits for the subject itself.
-    func waitForQueuedIdleUnloadForTesting() async {
-      await queuedIdleUnloadTask?.value
-    }
-  #endif
+  /// The last queued idle unload, run or dropped, so a test waits for the subject itself. Not
+  /// DEBUG-only: the Release test build (CI's build-for-testing) compiles the test that calls it.
+  // periphery:ignore - test seam
+  func waitForQueuedIdleUnloadForTesting() async {
+    await queuedIdleUnloadTask?.value
+  }
 
   /// Schedule (or reset) the idle timer for timed policies.
   private func scheduleIdleTimer(policy: ModelUnloadPolicy) {

@@ -1528,7 +1528,7 @@ struct ParakeetUpgradePolicyTests {
     #expect(facts.priorModel == .v3)
   }
 
-  /// #3546 A3, Chunk 12 live UAT: a fast (cached) Ultra admission landed before v3's launch
+  /// #3546 A3, Chunk 12 live UAT: an 8 s Ultra download was admitted before v3's launch
   /// load published, so the offer found nothing serving and was dropped; v3 served until a
   /// relaunch. When this fails, that ordering again leaves the switch for the next launch.
   @Test("A3: an admission before v3's load publishes is owed once v3 serves")

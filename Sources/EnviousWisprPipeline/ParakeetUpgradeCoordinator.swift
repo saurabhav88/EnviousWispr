@@ -1287,7 +1287,7 @@ extension ParakeetUpgradeCoordinator {
 
   /// A3: owed only while v3 still serves this session; a launch or a switch into Parakeet
   /// that already chose Ultra owes nothing. The admission is remembered even when v3 has not
-  /// published yet (a cached Ultra can be admitted before v3's launch load finishes):
+  /// published yet (a fast download can admit Ultra before v3's launch load finishes):
   /// `loadPublished` offers it once v3 serves, and `isActivationOwed` re-checks the rest.
   /// Bound to the selection that started the background work: a fetch that finishes after a
   /// newer selection point (which re-decided the model, perhaps Ultra then A-fail back to v3)
