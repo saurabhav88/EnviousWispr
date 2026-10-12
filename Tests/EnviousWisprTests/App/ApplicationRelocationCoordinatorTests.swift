@@ -176,9 +176,9 @@ struct ApplicationRelocationCoordinatorTests {
     relaunchExpectedVersion: String? = nil,
     moverResult: Result<InstallResolution, RelocationFailure> = .success(
       .installed(URL(fileURLWithPath: "/Applications/EnviousWispr.app"), bundleVersion: "1.0")),
-    now: Date = Date(timeIntervalSince1970: 1_000_000)
+    now: Date = Date(timeIntervalSince1970: 1_000_000),
+    suppression: FakeSuppression = FakeSuppression()
   ) -> Harness {
-    let suppression = FakeSuppression()
     let presenter = FakePresenter()
     let mover = FakeMover(moverResult)
     let relauncher = FakeRelauncher()
@@ -752,5 +752,69 @@ struct ApplicationRelocationCoordinatorTests {
       #expect(b.0 == "EnviousWispr is now in your Applications folder.", "\(failure)")
       #expect(b.1 == "You can quit this copy and use the one in Applications.", "\(failure)")
     }
+  }
+
+  // MARK: reportLaunchState (#3252, plan 3.6 / T8)
+
+  @Test("T8: a decline, then a healthy launch clears it, then a blocked launch offers again")
+  func declineHealthyThenBlockedOffersAgain() {
+    let suppression = FakeSuppression()
+    suppression.stored = (Date(timeIntervalSince1970: 1_000_000 - 60), "2.3.0")
+    // Blocked inside the cooldown: proceeds and keeps the record.
+    let blocked = Self.makeHarness(bundleURL: Self.translocatedURL, suppression: suppression)
+    blocked.coordinator.reportLaunchState()
+    #expect(suppression.clearCount == 0)
+    #expect(suppression.stored != nil)
+    #expect(blocked.coordinator.launchDecision() == .proceed)
+    // A healthy launch clears it.
+    let healthy = Self.makeHarness(bundleURL: Self.healthyURL, suppression: suppression)
+    healthy.coordinator.reportLaunchState()
+    #expect(suppression.clearCount == 1)
+    #expect(suppression.stored == nil)
+    // Blocked again: the offer is due.
+    let again = Self.makeHarness(bundleURL: Self.translocatedURL, suppression: suppression)
+    #expect(again.coordinator.launchDecision() == .offerFirst(state: .translocated))
+  }
+
+  @Test("T8: reporting launch state never shows an offer, schedules work or touches the mover")
+  func reportLaunchStateNeverOffers() {
+    let h = Self.makeHarness(bundleURL: Self.translocatedURL)
+    h.coordinator.reportLaunchState()
+    #expect(h.telemetry.offeredEvents.isEmpty)
+    #expect(h.mover.calls == 0)
+    #expect(h.coordinator.pendingWork == nil)
+    #expect(h.terminate.count == 0)
+  }
+
+  @Test("T8: a healthy relaunched child acknowledges, reports completed and does not quit")
+  func healthyChildAcknowledgesThroughReportLaunchState() {
+    let path = Self.healthyURL.standardizedFileURL.path
+    let h = Self.makeHarness(
+      bundleURL: Self.healthyURL, relaunchAttemptID: "attempt-7", relaunchReason: "translocated",
+      relaunchDestinationScope: "system_applications", relaunchExpectedPath: path,
+      relaunchExpectedVersion: "2.3.0")
+    h.coordinator.reportLaunchState()
+    #expect(h.handshake.writes.count == 1)
+    #expect(h.handshake.writes.first?.attemptID == "attempt-7")
+    #expect(h.handshake.writes.first?.healthy == true)
+    #expect(h.handshake.writes.first?.path == path)
+    #expect(h.telemetry.completedEvents.count == 1)
+    #expect(h.telemetry.completedEvents.first?.source == "child_health")
+    #expect(h.terminate.count == 0)
+  }
+
+  @Test("T8: an unhealthy relaunched child acknowledges unhealthy, reports no completed, and quits")
+  func unhealthyChildQuitsThroughReportLaunchState() {
+    let h = Self.makeHarness(
+      bundleURL: Self.translocatedURL, relaunchAttemptID: "attempt-8",
+      relaunchReason: "translocated", relaunchDestinationScope: "system_applications",
+      relaunchExpectedPath: Self.translocatedURL.standardizedFileURL.path,
+      relaunchExpectedVersion: "2.3.0")
+    h.coordinator.reportLaunchState()
+    #expect(h.handshake.writes.count == 1)
+    #expect(h.handshake.writes.first?.healthy == false)
+    #expect(h.handshake.writes.first?.stateLabel == "translocated")
+    #expect(h.telemetry.completedEvents.isEmpty)
+    #expect(h.terminate.count == 1)
   }
 }

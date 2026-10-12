@@ -343,7 +343,7 @@ final class CenteredRelocationPresenter: RelocationPresenting {
       .stripFailedBeforePlacement, .stripFailedAtDestination, .stripFailedAfterPlacement,
       .ackUnhealthyTranslocated,
       .ackUnhealthyOther, .ackPathMismatch, .ackVersionMismatch, .ackMalformed, .ackTimeout,
-      .relaunchRejected, .unknown:
+      .relaunchRejected, .installTimedOut, .unknown:
       return (
         String(
           localized: "We couldn't move EnviousWispr automatically.",
