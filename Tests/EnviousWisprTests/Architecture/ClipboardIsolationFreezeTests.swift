@@ -842,9 +842,10 @@ struct ClipboardIsolationFreezeTests {
   private final class SnapshotRoutingVisitor: SyntaxVisitor {
     private(set) var snapshotCalls = 0
     private(set) var callsUsingExecutorBoard = 0
-    private(set) var automaticRouteWrites: [(block: Int?, position: Int, usesExecutorBoard: Bool)] =
-      []
-    private(set) var clipboardFallbackWrites: [(insideFallback: Bool, usesExecutorBoard: Bool)] = []
+    private(set) var automaticRouteWrites:
+      [(block: Int?, position: Int, usesExecutorBoard: Bool, kind: String?)] = []
+    private(set) var clipboardFallbackWrites:
+      [(insideFallback: Bool, usesExecutorBoard: Bool, kind: String?)] = []
     private var snapshotsByBlock: [Int: [Int]] = [:]
 
     var automaticRoutesHaveSnapshots: [Bool] {
@@ -887,6 +888,10 @@ struct ClipboardIsolationFreezeTests {
       // so the receipt-returning copy is classified by WHERE it is, not by its name: inside the
       // clipboard fallback it is the manual write, anywhere else an automatic route's.
       let insideFallback = isInsideClipboardFallback(node)
+      // #3528: the write kind decides whether a clipboard manager records the text, so the freeze
+      // test reads it from the source with the board label.
+      let kind = node.arguments.first { $0.label?.text == "kind" }?.expression
+        .tokens(viewMode: .sourceAccurate).map(\.text).joined(separator: " ")
       if functionName == "pasteToActiveApp"
         || (functionName == "copyToClipboardReturningChangeCount" && !insideFallback)
       {
@@ -894,13 +899,14 @@ struct ClipboardIsolationFreezeTests {
           (
             block: enclosingCodeBlockStart(node),
             position: node.positionAfterSkippingLeadingTrivia.utf8Offset,
-            usesExecutorBoard: usesExecutorBoard
+            usesExecutorBoard: usesExecutorBoard,
+            kind: kind
           ))
       } else if functionName == "copyToClipboard"
         || functionName == "copyToClipboardReturningChangeCount"
       {
         clipboardFallbackWrites.append(
-          (insideFallback: insideFallback, usesExecutorBoard: usesExecutorBoard))
+          (insideFallback: insideFallback, usesExecutorBoard: usesExecutorBoard, kind: kind))
       }
       return .visitChildren
     }
@@ -1042,6 +1048,16 @@ struct ClipboardIsolationFreezeTests {
           $0.insideFallback && $0.usesExecutorBoard
         },
       "the one manual clipboard fallback must stay explicit and use the executor's board")
+    // #3528: a temporary write is marked so clipboard managers skip it. The three automatic routes
+    // mark exactly when the restore will run; the manual fallback keeps its text, so it never marks.
+    #expect(
+      visitor.automaticRouteWrites.map(\.kind)
+        == Array(
+          repeating: "request . restoreClipboardAfterPaste ? . temporary : . kept", count: 3),
+      "each automatic paste route must be marked temporary exactly when the restore will run")
+    #expect(
+      visitor.clipboardFallbackWrites.map(\.kind) == [". kept"],
+      "the clipboard fallback keeps the dictation, so it must never be marked temporary")
   }
 
   @Test("a new automatic paste route cannot omit its cleanup snapshot")

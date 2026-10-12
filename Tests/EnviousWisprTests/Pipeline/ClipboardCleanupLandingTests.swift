@@ -180,6 +180,22 @@ struct ClipboardCleanupLandingTests {
   private static let dictation = "the dictated sentence"
   private static let adjusted = "the dictated sentence, adjusted for context"
 
+  /// What a restore-ON paste really writes (#3528): the payload and the transient marker as ONE
+  /// item. The literal type string is the oracle, not our own constant.
+  private func putMarked(_ text: String, on pb: NSPasteboard) {
+    let item = NSPasteboardItem()
+    item.setString(text, forType: .string)
+    item.setData(Data(), forType: NSPasteboard.PasteboardType("org.nspasteboard.TransientType"))
+    pb.clearContents()
+    pb.writeObjects([item])
+  }
+
+  private func carriesMarker(_ pb: NSPasteboard) -> Bool {
+    pb.pasteboardItems?.contains {
+      $0.types.map(\.rawValue).contains("org.nspasteboard.TransientType")
+    } ?? false
+  }
+
   /// Restore ON: the user's clipboard is photographed, our payload is written, cleanup scheduled.
   private func restoreOnPaste(
     payload: String, fake: FakeLanding, permitted: Bool = true, outcomes: Outcomes,
@@ -187,7 +203,7 @@ struct ClipboardCleanupLandingTests {
   ) -> (NSPasteboard, Int) {
     let pb = board(holding: Self.user)
     let snap = snapshot(of: pb)
-    put(payload, on: pb)
+    putMarked(payload, on: pb)
     let after = pb.changeCount
     ClipboardCleanup.scheduleRestore(
       snap, changeCountAfterPaste: after, tier: .cgEvent, on: pb,
@@ -206,7 +222,11 @@ struct ClipboardCleanupLandingTests {
       let (pb, after) = restoreOnPaste(payload: Self.dictation, fake: fake, outcomes: outcomes)
       try await finished(ClipboardCleanup.pendingTaskForTests())
       #expect(pb.string(forType: .string) == Self.dictation)
-      #expect(outcomes.all == [.retained(changeCount: after)])
+      // The paste write was marked transient, so the kept text is written again without the
+      // marker (#3528): a clipboard manager records a dictation the user is keeping.
+      #expect(carriesMarker(pb) == false)
+      #expect(pb.changeCount > after, "the kept text had to be rewritten unmarked")
+      #expect(outcomes.all == [.retained(changeCount: pb.changeCount)])
       #expect(ClipboardCleanup.hasPending == false)
     }
   }
@@ -224,7 +244,9 @@ struct ClipboardCleanupLandingTests {
       fake.publish(.absent)
       try await finished(ClipboardCleanup.pendingTaskForTests())
       #expect(pb.string(forType: .string) == Self.dictation)
-      #expect(outcomes.all == [.retained(changeCount: after)])
+      #expect(carriesMarker(pb) == false)
+      #expect(pb.changeCount > after)
+      #expect(outcomes.all == [.retained(changeCount: pb.changeCount)])
     }
   }
 

@@ -87,7 +87,8 @@ package enum HeldTextDelivery {
     // Accessibility work runs, and nothing schedules a restore over this explicit copy.
     guard settings.autoPasteToActiveApp else {
       ClipboardCleanup.deliveryClaimsBoard()
-      let receipt = PasteService.copyToClipboardReturningChangeCount(text, to: pasteboard)
+      let receipt = PasteService.copyToClipboardReturningChangeCount(
+        text, to: pasteboard, kind: .kept)
       return HeldTextDeliveryResult(outcome: .clipboardOnly, fallbackClipboardChangeCount: receipt)
     }
 

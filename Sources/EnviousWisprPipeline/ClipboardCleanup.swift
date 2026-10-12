@@ -258,8 +258,8 @@ public enum ClipboardCleanup {
   ///
   /// Called by `snapshotForDelivery` itself, so the restore-on path needs no second call, and
   /// called directly by the restore-off path.
-  /// Public because a delivery writer lives in AppKit too: Escape Recovery's Undo pastes through
-  /// `PasteService` directly rather than through the cascade. The visibility follows the CALL GRAPH
+  /// Public because a delivery writer lives in AppKit too: Escape Recovery's Undo with auto-paste off
+  /// copies through `PasteService` directly rather than through the cascade. The visibility follows the CALL GRAPH
   /// rather than the layer, which is what stops the one writer outside this module from being the
   /// one that is invisible.
   public static func deliveryClaimsBoard() {
@@ -669,7 +669,7 @@ public enum ClipboardCleanup {
           submitted: submittedChangeCount,
           current: board.changeCount)
       else { return false }
-      PasteService.copyToClipboard(legacyText, to: board)
+      PasteService.copyToClipboard(legacyText, to: board, kind: .kept)
       return true
     }
   }
@@ -741,11 +741,12 @@ public enum ClipboardCleanup {
   /// after the usual delay under the usual change-count guard; with it off, the text stays.
   ///
   /// - Parameter dispatch: posts Cmd+V and returns whether it was posted. Never writes the board.
-  /// - Parameter write: puts `text` on `board` and returns the change count after the write. Tests
-  ///   pass a write that does not take; production uses the default.
+  /// - Parameter write: puts `text` on `board` as the given kind and returns the change count after
+  ///   the write. Tests pass a write that does not take; production uses the default.
   public static func manualPaste(
     text: String, restore: Bool, on board: NSPasteboard,
-    write: @MainActor (String, NSPasteboard) -> Int = defaultManualWrite, dispatch: () -> Bool
+    write: @MainActor (String, NSPasteboard, PasteService.WriteKind) -> Int = defaultManualWrite,
+    dispatch: () -> Bool
   ) -> ManualClipboardResult {
     guard claimBoardForManualWrite(board) else { return .clipboardBusy }
     // Photographed only now, after any stale pending work was dropped, so this reads the board as it
@@ -753,7 +754,9 @@ public enum ClipboardCleanup {
     // `claimBoardForManualWrite`. Taken even with restore off: a write that does not take has
     // already cleared the board, and the user's clipboard must come back either way.
     let snapshot = snapshotForDelivery(from: board)
-    let changeCountAfterWrite = write(text, board)
+    // Marked only when the restore will run: with restore off the text stays, so it is a kept write
+    // (#3528).
+    let changeCountAfterWrite = write(text, board, restore ? .temporary : .kept)
     // Proven, not assumed: `setString` can refuse, and a Cmd+V then would paste whatever the board
     // holds instead of the dictation.
     guard boardHolds(text, board) else {
@@ -762,7 +765,18 @@ public enum ClipboardCleanup {
     }
     guard dispatch() else {
       // Nothing was pasted, so there is nothing to wait for and nothing to hand back yet: the
-      // text on the board is now the user's only way to paste it.
+      // text on the board is now the user's only way to paste it. A marked write is therefore
+      // rewritten unmarked, or the one copy the user can still paste would be hidden from their
+      // clipboard manager (#3528). If that rewrite does not take, the user's clipboard comes back.
+      if restore {
+        _ = write(text, board, .kept)
+        let changeCountAfterRewrite = board.changeCount
+        guard boardHolds(text, board), !boardCarriesTransientMarker(board) else {
+          PasteService.restoreClipboard(
+            snapshot, changeCountAfterPaste: changeCountAfterRewrite, on: board)
+          return .writeFailed
+        }
+      }
       return .dispatchFailed
     }
     if restore {
@@ -776,12 +790,12 @@ public enum ClipboardCleanup {
   /// the clipboard is the whole point.
   public static func manualCopy(
     text: String, on board: NSPasteboard,
-    write: @MainActor (String, NSPasteboard) -> Int = defaultManualWrite
+    write: @MainActor (String, NSPasteboard, PasteService.WriteKind) -> Int = defaultManualWrite
   ) -> ManualClipboardResult {
     guard claimBoardForManualWrite(board) else { return .clipboardBusy }
     // Kept only to put the user's clipboard back if the write does not take.
     let prior = PasteService.saveClipboard(from: board)
-    let changeCountAfterWrite = write(text, board)
+    let changeCountAfterWrite = write(text, board, .kept)
     guard boardHolds(text, board) else {
       PasteService.restoreClipboard(prior, changeCountAfterPaste: changeCountAfterWrite, on: board)
       return .writeFailed
@@ -790,8 +804,15 @@ public enum ClipboardCleanup {
   }
 
   /// The real write behind `manualPaste` and `manualCopy`.
-  public static func defaultManualWrite(_ text: String, _ board: NSPasteboard) -> Int {
-    PasteService.copyToClipboardReturningChangeCount(text, to: board)
+  public static func defaultManualWrite(
+    _ text: String, _ board: NSPasteboard, _ kind: PasteService.WriteKind
+  ) -> Int {
+    PasteService.copyToClipboardReturningChangeCount(text, to: board, kind: kind)
+  }
+
+  /// Whether any item on the board carries the transient marker (#3528). A kept dictation must not.
+  private static func boardCarriesTransientMarker(_ board: NSPasteboard) -> Bool {
+    board.pasteboardItems?.contains { $0.types.contains(PasteService.transientMarkerType) } ?? false
   }
 
   /// Whether the board's string is exactly `text`, compared in UTF-16 code units.
@@ -952,7 +973,11 @@ public enum ClipboardCleanup {
     var keepWriteFailed = false
     var afterFailedWrite = 0
     if let decided, landing.mayRetain(decided) {
-      switch keepDictation(landing.legacyText, owned: owned, on: board) {
+      let pasteWriteWasMarked: Bool
+      if case .restore = operation { pasteWriteWasMarked = true } else { pasteWriteWasMarked = false }
+      switch keepDictation(
+        landing.legacyText, owned: owned, on: board, rewriteUnconditionally: pasteWriteWasMarked)
+      {
       case .kept(let kept): outcome = kept
       case .writeFailed(let afterAttempt):
         keepWriteFailed = true
@@ -1002,19 +1027,23 @@ public enum ClipboardCleanup {
   nonisolated static let landingDecisionBoundSeconds = 3.0
 
   /// Leave this take's legacy text on the board for a manual ⌘V, or yield to whoever wrote it.
+  ///
+  /// - Parameter rewriteUnconditionally: true when the paste write was marked transient (the
+  ///   `.restore` operation). The text may already be on the board, but with the marker, so it is
+  ///   written again unmarked or the kept dictation stays out of the user's clipboard history (#3528).
   private static func keepDictation(
-    _ legacyText: String, owned: Int, on board: NSPasteboard
+    _ legacyText: String, owned: Int, on board: NSPasteboard, rewriteUnconditionally: Bool
   ) -> KeepResult {
     guard board.changeCount == owned else { return .kept(.yielded) }
-    if !boardHolds(legacyText, board) {
+    if rewriteUnconditionally || !boardHolds(legacyText, board) {
       if let write = testKeepWriteOverride {
         write(legacyText, board)
       } else {
-        PasteService.copyToClipboard(legacyText, to: board)
+        PasteService.copyToClipboard(legacyText, to: board, kind: .kept)
       }
     }
     let afterAttempt = board.changeCount
-    guard boardHolds(legacyText, board) else {
+    guard boardHolds(legacyText, board), !boardCarriesTransientMarker(board) else {
       return .writeFailed(changeCountAfterAttempt: afterAttempt)
     }
     return .kept(.retained(changeCount: board.changeCount))

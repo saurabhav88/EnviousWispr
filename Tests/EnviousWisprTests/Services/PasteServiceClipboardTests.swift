@@ -46,7 +46,7 @@ struct PasteServiceClipboardTests {
     withPrivatePasteboard { pasteboard in
       let text = "dictation-\(UUID().uuidString)"
       let returnedChangeCount = PasteService.copyToClipboardReturningChangeCount(
-        text, to: pasteboard)
+        text, to: pasteboard, kind: .temporary)
 
       #expect(pasteboard.string(forType: .string) == text)
       #expect(pasteboard.changeCount == returnedChangeCount)
@@ -62,7 +62,7 @@ struct PasteServiceClipboardTests {
 
       let pastedText = "after-\(UUID().uuidString)"
       let changeCountAfterPaste = PasteService.copyToClipboardReturningChangeCount(
-        pastedText, to: pasteboard)
+        pastedText, to: pasteboard, kind: .temporary)
       #expect(pasteboard.string(forType: .string) == pastedText)
 
       PasteService.restoreClipboard(
@@ -83,7 +83,7 @@ struct PasteServiceClipboardTests {
       // Our paste writes text onto the board.
       let pastedText = "dictated-\(UUID().uuidString)"
       let changeCountAfterPaste = PasteService.copyToClipboardReturningChangeCount(
-        pastedText, to: pasteboard)
+        pastedText, to: pasteboard, kind: .temporary)
       #expect(pasteboard.string(forType: .string) == pastedText)
 
       PasteService.restoreClipboard(
@@ -103,7 +103,7 @@ struct PasteServiceClipboardTests {
 
       let pastedText = "after-\(UUID().uuidString)"
       let changeCountAfterPaste = PasteService.copyToClipboardReturningChangeCount(
-        pastedText, to: pasteboard)
+        pastedText, to: pasteboard, kind: .temporary)
       #expect(pasteboard.string(forType: .string) == pastedText)
 
       let userClipboardText = "user-followup-\(UUID().uuidString)"
@@ -136,7 +136,7 @@ struct PasteServiceClipboardTests {
 
       let snapshot = PasteService.saveClipboard(from: pasteboard)
       let changeCountAfterPaste = PasteService.copyToClipboardReturningChangeCount(
-        "replacement", to: pasteboard)
+        "replacement", to: pasteboard, kind: .temporary)
 
       PasteService.restoreClipboard(
         snapshot, changeCountAfterPaste: changeCountAfterPaste, on: pasteboard)
@@ -146,6 +146,87 @@ struct PasteServiceClipboardTests {
       #expect(restored[0].data(forType: .string) == Data("plain".utf8))
       #expect(restored[0].data(forType: .rtf) == Data(#"{\rtf1 rich}"#.utf8))
       #expect(restored[1].data(forType: .string) == Data("second".utf8))
+    }
+  }
+
+  // MARK: - Transient marker (#3528)
+  // The literal type string is the oracle on purpose: it is the nspasteboard.org convention that
+  // clipboard managers read, not our own constant.
+
+  @Test("#3528: a temporary write is ONE item carrying the text and the transient marker")
+  func temporaryWriteCarriesMarkerOnOneItem() throws {
+    try withPrivatePasteboard { pasteboard in
+      PasteService.copyToClipboard("dictated words", to: pasteboard, kind: .temporary)
+
+      let items = try #require(pasteboard.pasteboardItems)
+      #expect(items.count == 1)
+      #expect(items[0].types.map(\.rawValue).contains("org.nspasteboard.TransientType"))
+      #expect(items[0].string(forType: .string) == "dictated words")
+      #expect(pasteboard.string(forType: .string) == "dictated words")
+    }
+  }
+
+  @Test("#3528: a kept write carries no marker")
+  func keptWriteCarriesNoMarker() throws {
+    try withPrivatePasteboard { pasteboard in
+      PasteService.copyToClipboard("dictated words", to: pasteboard, kind: .kept)
+
+      let items = try #require(pasteboard.pasteboardItems)
+      #expect(
+        items.allSatisfy { !$0.types.map(\.rawValue).contains("org.nspasteboard.TransientType") })
+      #expect(pasteboard.string(forType: .string) == "dictated words")
+    }
+  }
+
+  @Test("#3528: a temporary write reports the new change count")
+  func temporaryWriteReturnsChangeCount() {
+    withPrivatePasteboard { pasteboard in
+      let before = pasteboard.changeCount
+      let returned = PasteService.copyToClipboardReturningChangeCount(
+        "dictated words", to: pasteboard, kind: .temporary)
+      #expect(returned == pasteboard.changeCount)
+      #expect(returned != before)
+    }
+  }
+
+  @Test("#3528: restoreClipboard marks the restored items and keeps every representation")
+  func restoreMarksItemsAndKeepsRepresentations() throws {
+    try withPrivatePasteboard { pasteboard in
+      let original = NSPasteboardItem()
+      original.setData(Data("user text".utf8), forType: .string)
+      original.setData(
+        Data([0x01, 0x02, 0x03]), forType: NSPasteboard.PasteboardType("com.example.custom"))
+      pasteboard.clearContents()
+      #expect(pasteboard.writeObjects([original]))
+      let snapshot = PasteService.saveClipboard(from: pasteboard)
+
+      let count = PasteService.copyToClipboardReturningChangeCount(
+        "dictated words", to: pasteboard, kind: .temporary)
+      #expect(
+        PasteService.restoreClipboard(snapshot, changeCountAfterPaste: count, on: pasteboard)
+          == true)
+
+      let restored = try #require(pasteboard.pasteboardItems)
+      #expect(restored.count == 1)
+      #expect(restored[0].types.map(\.rawValue).contains("org.nspasteboard.TransientType"))
+      #expect(restored[0].data(forType: .string) == Data("user text".utf8))
+      #expect(
+        restored[0].data(forType: NSPasteboard.PasteboardType("com.example.custom"))
+          == Data([0x01, 0x02, 0x03]))
+    }
+  }
+
+  @Test("#3528: restoring an empty prior clipboard leaves an empty, unmarked board")
+  func restoreEmptySnapshotLeavesEmptyBoard() {
+    withPrivatePasteboard { pasteboard in
+      pasteboard.clearContents()
+      let empty = PasteService.saveClipboard(from: pasteboard)
+      let count = PasteService.copyToClipboardReturningChangeCount(
+        "dictated words", to: pasteboard, kind: .temporary)
+
+      #expect(
+        PasteService.restoreClipboard(empty, changeCountAfterPaste: count, on: pasteboard) == true)
+      #expect(pasteboard.pasteboardItems?.isEmpty ?? true)
     }
   }
 
@@ -163,9 +244,9 @@ struct RestoreClipboardResultTests {
   @Test("True when the board was ours to write")
   func trueWhenApplied() {
     let pb = NSPasteboard.withUniqueName()
-    PasteService.copyToClipboard("user clipboard", to: pb)
+    PasteService.copyToClipboard("user clipboard", to: pb, kind: .kept)
     let snapshot = PasteService.saveClipboard(from: pb)
-    PasteService.copyToClipboard("our payload", to: pb)
+    PasteService.copyToClipboard("our payload", to: pb, kind: .temporary)
     #expect(
       PasteService.restoreClipboard(snapshot, changeCountAfterPaste: pb.changeCount, on: pb)
         == true)
@@ -174,11 +255,11 @@ struct RestoreClipboardResultTests {
   @Test("False when the guard declined")
   func falseWhenDeclined() {
     let pb = NSPasteboard.withUniqueName()
-    PasteService.copyToClipboard("user clipboard", to: pb)
+    PasteService.copyToClipboard("user clipboard", to: pb, kind: .kept)
     let snapshot = PasteService.saveClipboard(from: pb)
-    PasteService.copyToClipboard("our payload", to: pb)
+    PasteService.copyToClipboard("our payload", to: pb, kind: .temporary)
     let stale = pb.changeCount
-    PasteService.copyToClipboard("someone else", to: pb)
+    PasteService.copyToClipboard("someone else", to: pb, kind: .kept)
     #expect(PasteService.restoreClipboard(snapshot, changeCountAfterPaste: stale, on: pb) == false)
   }
 
@@ -189,14 +270,14 @@ struct RestoreClipboardResultTests {
     // have recorded `applied=true` for a restoration AppKit had refused. A
     // multi-item snapshot exercises the item-construction path too.
     let pb = NSPasteboard.withUniqueName()
-    PasteService.copyToClipboard("user clipboard", to: pb)
+    PasteService.copyToClipboard("user clipboard", to: pb, kind: .kept)
     let snapshot = ClipboardSnapshot(
       items: [
         [.string: Data("first".utf8)],
         [.string: Data("second".utf8)],
       ],
       changeCount: pb.changeCount)
-    PasteService.copyToClipboard("our payload", to: pb)
+    PasteService.copyToClipboard("our payload", to: pb, kind: .temporary)
     #expect(
       PasteService.restoreClipboard(snapshot, changeCountAfterPaste: pb.changeCount, on: pb)
         == true)
@@ -213,7 +294,7 @@ struct RestoreClipboardResultTests {
   func trueWhenPriorWasEmpty() {
     let pb = NSPasteboard.withUniqueName()
     let snapshot = PasteService.saveClipboard(from: pb)
-    PasteService.copyToClipboard("our payload", to: pb)
+    PasteService.copyToClipboard("our payload", to: pb, kind: .temporary)
     #expect(
       PasteService.restoreClipboard(snapshot, changeCountAfterPaste: pb.changeCount, on: pb)
         == true)

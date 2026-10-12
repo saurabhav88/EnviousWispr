@@ -1100,6 +1100,7 @@ internal final class PasteCascadeExecutor {
           #endif
           let dispatchResult = PasteService.pasteToActiveApp(
             payload.text, to: self.pasteboard,
+            kind: request.restoreClipboardAfterPaste ? .temporary : .kept,
             postKeystroke: Self.keystrokeProcess(ownerPath: gate.ownerPath, app: app).map { pid in
               { MainActor.assumeIsolated { Self.postPasteChord(at: pid) } }
             })
@@ -1222,7 +1223,8 @@ internal final class PasteCascadeExecutor {
             submissionLedger.append(submissionToken(tier: .appleScript, text: payload.text))
           #endif
           let changeCount = PasteService.copyToClipboardReturningChangeCount(
-            payload.text, to: self.pasteboard)
+            payload.text, to: self.pasteboard,
+            kind: request.restoreClipboardAfterPaste ? .temporary : .kept)
           submittedClipboardChangeCount = changeCount
           tiersAttempted.append(.appleScript)
           let tier2bStart = CFAbsoluteTimeGetCurrent()
@@ -1319,7 +1321,8 @@ internal final class PasteCascadeExecutor {
           submissionLedger.append(submissionToken(tier: .menuPaste, text: payload.text))
         #endif
         let changeCount = PasteService.copyToClipboardReturningChangeCount(
-          payload.text, to: self.pasteboard)
+          payload.text, to: self.pasteboard,
+          kind: request.restoreClipboardAfterPaste ? .temporary : .kept)
         submittedClipboardChangeCount = changeCount
         switch PasteService.findPasteMenuItem(pid: app.processIdentifier) {
         case .found(let menuItem):
@@ -1413,7 +1416,7 @@ internal final class PasteCascadeExecutor {
       // have read this payload as the target app's Copy response and then restored over it.
       ClipboardCleanup.deliveryClaimsBoard()
       fallbackClipboardChangeCount = PasteService.copyToClipboardReturningChangeCount(
-        request.legacyText, to: self.pasteboard)
+        request.legacyText, to: self.pasteboard, kind: .kept)
       // An earlier route may have SUBMITTED the contextual payload and failed.
       // What the user can now paste by hand is this legacy text, so that is what
       // the record has to say (Codex review r4) — otherwise the field reports a

@@ -136,18 +136,54 @@ public enum PasteService {
   // because a concurrently-running suite had advanced the count. The guard is
   // correct; the shared board was the defect.
 
+  /// Whether a clipboard write is meant to stay (#3528). Clipboard managers that follow the
+  /// nspasteboard.org convention skip a `.temporary` write, so a dictation we only borrow the
+  /// board for never lands in their history. Every caller names a kind; there is no default.
+  public enum WriteKind: Sendable {
+    /// We will undo this write (paste then restore the user's clipboard). Carries the marker.
+    case temporary
+    /// The text is meant to stay on the clipboard (auto-copy, copy buttons, paste-miss fallback).
+    case kept
+  }
+
+  /// The nspasteboard.org marker for "on the board only briefly, do not record in a history".
+  public static let transientMarkerType = NSPasteboard.PasteboardType(
+    "org.nspasteboard.TransientType")
+
+  /// The only place a `WriteKind` becomes bytes on the board (#3528).
+  /// `.temporary` publishes the text and the marker as ONE item in ONE `writeObjects`, so no
+  /// manager can see the text without its marker.
+  private static func publish(_ text: String, to pasteboard: NSPasteboard, kind: WriteKind) {
+    switch kind {
+    case .kept:
+      pasteboard.clearContents()
+      pasteboard.setString(text, forType: .string)
+    case .temporary:
+      let item = NSPasteboardItem()
+      item.setString(text, forType: .string)
+      // A refused marker leaves the text unmarked, which is today's behaviour (#3528 plan Q7).
+      _ = item.setData(Data(), forType: transientMarkerType)
+      pasteboard.clearContents()
+      _ = pasteboard.writeObjects([item])
+    }
+  }
+
   /// Copy text to the supplied pasteboard.
-  public static func copyToClipboard(_ text: String, to pasteboard: NSPasteboard = .general) {
-    pasteboard.clearContents()
-    pasteboard.setString(text, forType: .string)
+  public static func copyToClipboard(
+    _ text: String,
+    to pasteboard: NSPasteboard = .general,
+    kind: WriteKind
+  ) {
+    publish(text, to: pasteboard, kind: kind)
   }
 
   /// Copy text to the supplied pasteboard and return its resulting change count.
   public static func copyToClipboardReturningChangeCount(
     _ text: String,
-    to pasteboard: NSPasteboard = .general
+    to pasteboard: NSPasteboard = .general,
+    kind: WriteKind
   ) -> Int {
-    copyToClipboard(text, to: pasteboard)
+    copyToClipboard(text, to: pasteboard, kind: kind)
     return pasteboard.changeCount
   }
 
@@ -256,6 +292,12 @@ public enum PasteService {
       let pbItem = NSPasteboardItem()
       for (type, data) in itemDict where !pbItem.setData(data, forType: type) {
         itemsAccepted = false
+      }
+      // The user's own clipboard goes back marked, so a manager does not record it a second time
+      // (#3528). The marker's result is not counted: a refusal must not turn a restore into
+      // "declined".
+      if !pbItem.types.contains(transientMarkerType) {
+        _ = pbItem.setData(Data(), forType: transientMarkerType)
       }
       return pbItem
     }
@@ -2284,14 +2326,14 @@ public enum PasteService {
   public static func pasteToActiveApp(
     _ text: String,
     to pasteboard: NSPasteboard = .general,
+    kind: WriteKind,
     postKeystroke: (() -> Bool)? = nil
   ) -> PasteDispatchResult {
     let pasteStart = CFAbsoluteTimeGetCurrent()
     let accessibilityTrusted = AXIsProcessTrusted()
 
     let previousChangeCount = pasteboard.changeCount
-    pasteboard.clearContents()
-    pasteboard.setString(text, forType: .string)
+    publish(text, to: pasteboard, kind: kind)
     let changeCountAfterWrite = pasteboard.changeCount
     let clipboardWriteSuccess = pasteboard.changeCount != previousChangeCount
 
