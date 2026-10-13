@@ -575,6 +575,30 @@ jobs:
       - name: Checkout
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
 
+      # #3729: the drift checks moved here from the weekly ci-drift-check.yml need
+      # yamllint, ShellCheck, jq, sha256sum and PyYAML. Install what the image
+      # lacks, then verify every one, BEFORE fast-checks runs: a missing tool
+      # there is a SKIP, which the zero-SKIP assertion below turns red, but only
+      # after the whole run; failing here names the tool first.
+      - name: Provision fast-checks tools
+        run: |
+          set -euo pipefail
+          missing_apt=""
+          command -v shellcheck >/dev/null 2>&1 || missing_apt="$missing_apt shellcheck"
+          command -v jq >/dev/null 2>&1 || missing_apt="$missing_apt jq"
+          if [ -n "$missing_apt" ]; then
+            sudo apt-get update -qq
+            # shellcheck disable=SC2086 # word splitting is the list
+            sudo apt-get install -y -qq $missing_apt
+          fi
+          command -v yamllint >/dev/null 2>&1 || python3 -m pip install --quiet --disable-pip-version-check yamllint
+          python3 -c 'import yaml' 2>/dev/null || python3 -m pip install --quiet --disable-pip-version-check pyyaml
+          for tool in yamllint shellcheck jq sha256sum git python3; do
+            command -v "$tool" >/dev/null 2>&1 || { echo "::error::fast-checks tool missing after provisioning: $tool"; exit 1; }
+          done
+          python3 -c 'import yaml' || { echo "::error::PyYAML missing after provisioning"; exit 1; }
+          echo "==> yamllint $(yamllint --version | awk '{print $2}'), $(shellcheck --version | awk '/^version:/{print "shellcheck " $2}'), $(jq --version)"
+
       - name: Quick checks (#3524)
         run: |
           set -euo pipefail

@@ -2,10 +2,10 @@ name: Xcode CI setup
 description: >-
   Toolchain selection, Tuist install, compilation-cache and DerivedData
   redirects, Release build-cache restore, and Xcode project generation — the
-  setup every lane in pr-check.yml, cache-warm.yml and nightly-battery.yml
-  that builds the app with xcodebuild needs before it can build or test. (The eval-packages step builds
-  standalone SwiftPM packages with `swift build` and deliberately does not
-  use it.)
+  setup every lane in pr-check.yml and cache-warm.yml that builds the app
+  with xcodebuild needs before it can build or test. (The eval-packages step
+  builds standalone SwiftPM packages with `swift build` and deliberately does
+  not use it.)
 
 # Why this exists (#1994): main-post-merge.yml (removed in #3729) ran its debug
 # and release validation as two parallel jobs, and each needed the same
