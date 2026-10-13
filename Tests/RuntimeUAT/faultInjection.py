@@ -57,6 +57,18 @@ TOKEN_DIR = Path("~/Library/Logs/EnviousWispr").expanduser()
 APP_NAME = "EnviousWispr"
 
 
+def arm_qualification_crash(kind: str) -> str:
+    """Arm a fixed in-process crash after the authenticated reply is sent.
+
+    This is a trigger primitive, not a passing scenario: the caller must prove
+    the exact process terminated and inspect raw and received crash evidence.
+    """
+    commands = {"trap": "qualification_trap", "abort": "qualification_abort"}
+    if kind not in commands:
+        raise ValueError("qualification crash kind must be trap or abort")
+    return send(commands[kind])
+
+
 # ──────────────────────────── scenario metadata ────────────────────────────
 
 

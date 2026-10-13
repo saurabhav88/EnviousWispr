@@ -192,3 +192,19 @@ Fixed command set (no arbitrary RPC):
 3. Add a `@scenario(...)`-decorated function in `faultInjection.py`. Document its negative control.
 4. Add a row to "Index by scenario name" above. Add an entry to "Index by symptom" if the scenario maps to a known production failure mode.
 5. Demonstrate red/green at PR time: revert the negative control, scenario fails. Restore, scenario passes.
+
+## Crash-report qualification primitives (#3685)
+
+`faultInjection.arm_qualification_crash("trap" | "abort")` uses the existing
+per-launch authenticated loopback endpoint. The Dev build contains fixed
+in-process marker functions, and triggers only after its armed reply is sent.
+Only one action may be pending or triggered in an app lifetime; failed reply
+sending cancels that request. Both commands are compiled out of Release.
+
+These primitives are not registered passing scenarios. A driver must hold the
+canonical dev-app lock, identify the exact executable and PID, launch with
+`EW_FAULT_INJECTION=1`, verify `OK qualification_armed`, prove actual process
+termination, preserve the raw report before restart, and inspect the matching
+received development/synthetic event and UUID-matching dSYM. An external
+SIGABRT is a separate signal control; it does not prove an in-app throw site.
+Detailed baseline/candidate acceptance lives in the #3685 testing plan.

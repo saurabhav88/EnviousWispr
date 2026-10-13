@@ -6,6 +6,7 @@
   import EnviousWisprPipeline
   import EnviousWisprPostProcessing
   import EnviousWisprServices
+  import Darwin
   import Foundation
   import Network
 
@@ -25,6 +26,7 @@
   ///   Every command must carry the matching token in its first line.
   ///   Token file is deleted on `stop()`.
   /// - Fixed command set (no arbitrary RPC, no method invocation, no shell escape):
+  ///   `qualification_trap`, `qualification_abort` (one-shot fatal controls after reply delivery),
   ///   `force_cancel`, `query_state`,
   ///   `force_zero_fill(mode,N,trialID)`, `query_fault_status(trialID)` (#1317
   ///   proof-bench; the last two drive the DEBUG all-zero injector directly on
@@ -71,6 +73,15 @@
 
     // MARK: - Listener state
 
+    enum QualificationAction: String {
+      case trap
+      case abort
+    }
+
+    private var pendingQualification: (id: UUID, action: QualificationAction)?
+    private var qualificationTriggered = false
+    private let qualificationAction: ((QualificationAction) -> Void)?
+
     private var listener: NWListener?
     private let port: UInt16
     private let token: String
@@ -87,8 +98,10 @@
       whisperKitKernelDriver: KernelDictationDriver,
       activeBackend: @escaping () -> ASRBackendType,
       port: UInt16 = 8765,
-      batchDecodeFaultController: BatchDecodeFaultController? = nil
+      batchDecodeFaultController: BatchDecodeFaultController? = nil,
+      qualificationAction: ((QualificationAction) -> Void)? = nil
     ) {
+      self.qualificationAction = qualificationAction
       self.audioCapture = audioCapture
       self.kernelDriver = kernelDriver
       self.whisperKitKernelDriver = whisperKitKernelDriver
@@ -156,6 +169,7 @@
     /// Tear down the listener and remove the token file. Safe to call multiple
     /// times — wired into `applicationWillTerminate`.
     func stop() {
+      pendingQualification = nil
       listener?.cancel()
       listener = nil
       try? FileManager.default.removeItem(at: tokenPath)
@@ -204,11 +218,20 @@
           }
           let request = String(decoding: buffer, as: UTF8.self)
           Task { @MainActor in
+            let previousArmID = self.pendingQualification?.id
             let reply = await self.handle(request: request)
+            let armID =
+              reply == "OK qualification_armed" && self.pendingQualification?.id != previousArmID
+              ? self.pendingQualification?.id : nil
             let payload = (reply + "\n").data(using: .utf8) ?? Data()
             conn.send(
               content: payload,
-              completion: .contentProcessed { _ in conn.cancel() }
+              completion: .contentProcessed { error in
+                conn.cancel()
+                Task { @MainActor in
+                  self.completeQualificationReply(id: armID, succeeded: error == nil)
+                }
+              }
             )
           }
         } else {
@@ -230,6 +253,45 @@
       await handle(request: "\(token)\n\(command)")
     }
 
+    /// Exercise the authenticated request and its real reply-completion boundary without a socket.
+    func qualificationRequestForTesting(command: String, authenticated: Bool = true) async
+      -> (reply: String, armID: UUID?)
+    {
+      let previousArmID = pendingQualification?.id
+      let requestToken = authenticated ? token : "invalid-token"
+      let reply = await handle(request: "\(requestToken)\n\(command)")
+      return (
+        reply,
+        reply == "OK qualification_armed" && pendingQualification?.id != previousArmID
+          ? pendingQualification?.id : nil
+      )
+    }
+
+    func completeQualificationReply(id: UUID?, succeeded: Bool) {
+      guard let id, let pending = pendingQualification, pending.id == id else { return }
+      pendingQualification = nil
+      guard succeeded else { return }
+      qualificationTriggered = true
+      if let qualificationAction {
+        qualificationAction(pending.action)
+        return
+      }
+      switch pending.action {
+      case .trap: Self.qualificationTrap()
+      case .abort: Self.qualificationAbort()
+      }
+    }
+
+    @inline(never)
+    private static func qualificationTrap() -> Never {
+      fatalError("EW synthetic host trap")
+    }
+
+    @inline(never)
+    private static func qualificationAbort() -> Never {
+      Darwin.abort()
+    }
+
     private func handle(request: String) async -> String {
       let lines = request.split(separator: "\n", maxSplits: 1, omittingEmptySubsequences: false)
       guard lines.count == 2 else { return "ERR malformed" }
@@ -237,6 +299,14 @@
 
       let cmd = lines[1].trimmingCharacters(in: .whitespacesAndNewlines)
       switch cmd {
+      case "qualification_trap", "qualification_abort":
+        guard pendingQualification == nil, !qualificationTriggered else {
+          return "ERR qualification_already_armed"
+        }
+        let action: QualificationAction = cmd == "qualification_trap" ? .trap : .abort
+        pendingQualification = (UUID(), action)
+        return "OK qualification_armed"
+
       case "force_cancel":
         switch activeBackend() {
         case .parakeet: await kernelDriver.forceCancelNow()
@@ -301,7 +371,8 @@
         // driver reads `ERR busy` rather than an empty reply. Commands are assumed
         // to arrive one at a time from one driver: a `clear_oracle_delay` sent
         // while this waits is undone when it resumes.
-        guard await SeamCasingOracleRuntime.waitUntilNoBuilderForTesting(timeout: .seconds(3)) else {
+        guard await SeamCasingOracleRuntime.waitUntilNoBuilderForTesting(timeout: .seconds(3))
+        else {
           return "ERR busy"
         }
         let slow = SeamCasingOracle.delayingDictionaryForFaultInjection(milliseconds: ms)

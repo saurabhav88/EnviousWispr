@@ -49,7 +49,10 @@ let releaseConfigSettings: SettingsDictionary = [
 // so the dev-only self-signed signing + the `EnviousWispr Local` product naming
 // live here and NEVER touch the CI-load-bearing Debug config (CI's hosted runner
 // has no `EnviousWispr Dev` cert). (#913 PR4 — Codex-grounded reconciliation.)
-let devConfigSettings: SettingsDictionary = debugConfigSettings
+let devConfigSettings: SettingsDictionary = debugConfigSettings.merging([
+  "DEBUG_INFORMATION_FORMAT": "dwarf-with-dsym",
+  "GCC_GENERATE_DEBUGGING_SYMBOLS": "YES",
+]) { _, new in new }
 
 // Dev-only manual signing with the self-signed `EnviousWispr Dev` cert. Merged
 // ONLY into the Dev config of the 3 signable bundles (app + 2 XPC). Debug and
