@@ -202,6 +202,11 @@ private final class StageGate {
     await deadlineTask?.value
   }
 
+  func expireForTesting() {
+    deadlineTask?.cancel()
+    failAndRelease(sourceLocation: sourceLocation)
+  }
+
   private func rejectExpired(_ operation: String) -> Bool {
     guard expired else { return false }
     Issue.record(
@@ -317,7 +322,7 @@ struct ParakeetUpgradeStageGateTests {
     var observedHeld = false
     var result: Result<ParakeetUpgradeCoordinator.PreparedLoad, any Error>?
     await withKnownIssue("Held subject expires") {
-      let gate = StageGate(deadline: .milliseconds(1))
+      let gate = StageGate()
       let c = ParakeetUpgradeCoordinator(
         parakeetSelection: ParakeetSelectionProvider(), delivery: nil)
       c.deliveryStageGateForTesting = { await gate.pass() }
@@ -328,7 +333,7 @@ struct ParakeetUpgradeStageGateTests {
       let subject = Task { try await c.prepareLoad() }
       await gate.waitForEntry(1)
       observedHeld = gate.heldCountForTesting == 1
-      await gate.waitForDeadlineForTesting()
+      gate.expireForTesting()
       result = await subject.result
     }
     #expect(observedHeld == true)
