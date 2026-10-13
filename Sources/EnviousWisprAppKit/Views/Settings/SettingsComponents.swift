@@ -264,6 +264,30 @@ struct SettingsHelpText: View {
   }
 }
 
+/// A link to a Help Center article from inside a "?" popover (#3703): the label, the spoken name and
+/// the destination come from the caller. Written in the shape of `SpokenPunctuationLearnMoreLink`; the
+/// older Learn more links (Learning, Live Preview, Spoken punctuation, Privacy) keep their own copies.
+struct SettingsHelpArticleLink: View {
+  let url: URL?
+  let label: LocalizedStringResource
+  let accessibilityLabel: LocalizedStringResource
+
+  var body: some View {
+    if let url {
+      Link(destination: url) {
+        HStack(spacing: 4) {
+          Text(label)
+          Image(systemName: "arrow.up.right")
+            .accessibilityHidden(true)
+        }
+        .font(.stHelper)
+      }
+      .foregroundStyle(.stAccent)
+      .accessibilityLabel(Text(accessibilityLabel))
+    }
+  }
+}
+
 extension SettingsRow where HelpContent == SettingsHelpText {
   /// A mapped row: its title and short line come from its Settings Map node (#3482), so the row
   /// and search can never describe it differently; the catalog extracts the help by its type.

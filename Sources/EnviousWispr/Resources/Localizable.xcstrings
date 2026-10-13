@@ -6372,6 +6372,17 @@
         }
       }
     },
+    "Double-press the keybind to go hands-free. Triple-press to cancel instead." : {
+      "comment" : "Keybinds, Recording mode help in Push to Talk: two quick presses lock hands-free recording on, three quick presses cancel.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Drücke das Tastenkürzel zweimal, um freihändig aufzunehmen. Drücke es dreimal, um stattdessen abzubrechen."
+          }
+        }
+      }
+    },
     "Double-press to go hands-free." : {
       "localizations" : {
         "de" : {
@@ -8543,12 +8554,24 @@
         }
       }
     },
-    "Hold the keybind to record. Release to stop. Double-press to lock it on. Triple-press to cancel." : {
+    "Hold only the keybind and press Space to go hands-free." : {
+      "comment" : "Keybinds, Recording mode help in Push to Talk: while holding a single modifier dictation key, pressing Space locks hands-free recording on. Space is the Space bar.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Halte das Tastenkürzel zum Aufnehmen gedrückt. Lass es zum Stoppen los. Zweimal drücken, um die Aufnahme weiterlaufen zu lassen. Dreimal drücken, um sie abzubrechen."
+            "value" : "Halte nur das Tastenkürzel gedrückt und drücke die Leertaste, um freihändig aufzunehmen."
+          }
+        }
+      }
+    },
+    "Hold the keybind to record. Release to stop." : {
+      "comment" : "Keybinds, Recording mode help in Push to Talk: hold the dictation key to record.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Halte das Tastenkürzel zum Aufnehmen gedrückt. Lass es zum Stoppen los."
           }
         }
       }
@@ -18424,6 +18447,17 @@
         }
       }
     },
+    "To stop a hands-free recording, press the keybind once." : {
+      "comment" : "Keybinds, Recording mode help in Push to Talk: how to end a hands-free recording.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Um eine freihändige Aufnahme zu stoppen, drücke das Tastenkürzel einmal."
+          }
+        }
+      }
+    },
     "Today's date" : {
       "comment" : "Snippets, edit: button that inserts today's date into the snippet text.",
       "localizations" : {
@@ -19624,6 +19658,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Warnung: %@"
+          }
+        }
+      }
+    },
+    "Watch how Push to Talk works" : {
+      "comment" : "Keybinds, Recording mode help: spoken name of the Help Center video link.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Video zur Aufnahmeart „Zum Sprechen drücken“ ansehen"
+          }
+        }
+      }
+    },
+    "Watch how it works" : {
+      "comment" : "Keybinds, Recording mode help in Push to Talk: link to the Help Center page that shows a short video of the recording gestures.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Video ansehen"
           }
         }
       }

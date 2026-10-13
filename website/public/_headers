@@ -13,6 +13,11 @@
 /images/*
   Cache-Control: public, max-age=2592000
 
+# Help clips are replaced in place under fixed names (#3703), so they revalidate like /og-image.png
+# below rather than living a month in a browser.
+/help-media/*
+  Cache-Control: public, max-age=3600, must-revalidate
+
 # Root files are replaced in place under a fixed name (a new preview card, a
 # new favicon). Without a rule Cloudflare served the old /og-image.png for a
 # year and a manual purge was needed. One hour lets a replacement land on its

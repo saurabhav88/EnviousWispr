@@ -174,6 +174,14 @@ const alsoRead = article ? related(articles, article) : [];
     <article>
       <h1 class="help-h1">{article!.data.title}</h1>
       <p class="help-lede">{article!.data.description}</p>
+      {article!.data.video && article!.data.videoPoster && article!.data.videoDescription && (
+        <figure class="help-video">
+          <video controls preload="none" playsinline poster={article!.data.videoPoster} aria-describedby="help-video-desc">
+            <source src={article!.data.video} type="video/mp4" />
+          </video>
+          <figcaption id="help-video-desc">Silent demonstration of the written steps below. {article!.data.videoDescription}</figcaption>
+        </figure>
+      )}
       <div class="help-body"><Content /></div>
 
       <footer class="help-foot">
@@ -238,6 +246,10 @@ const alsoRead = article ? related(articles, article) : [];
 
   .help-h1 { font-size: 34px; font-weight: 800; letter-spacing: -1px; margin: 0 0 10px; text-wrap: balance; }
   .help-lede { font-size: 17px; color: var(--text-2); margin: 0 0 28px; line-height: 1.55; }
+
+  .help-video { margin: 0 0 28px; }
+  .help-video video { display: block; width: 100%; height: auto; aspect-ratio: 16 / 10; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); }
+  .help-video figcaption { margin-top: 8px; font-size: 13px; line-height: 1.5; color: var(--text-3); }
 
   .help-section-title { font-size: 13px; text-transform: uppercase; letter-spacing: 0.07em; color: var(--text-3); margin: 30px 0 10px; }
 

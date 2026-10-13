@@ -14,10 +14,11 @@ struct KeybindsSettingsView: View {
         BrandedRow {
           SettingsRow(
             map: .id(.recordingMode),
-            icon: "hand.tap",
-            help: settings.isPushToTalk
-              ? KeybindsSettingsCopy.pushToTalkHelp : KeybindsSettingsCopy.toggleHelp
+            icon: "hand.tap"
           ) {
+            RecordingModeHelpPanel(
+              isPushToTalk: settings.isPushToTalk, record: settings.shortcutBindings.record)
+          } control: {
             BrandedSegmentedPicker(
               options: SettingsChoicePresentation.recordingMode.map(\.pickerOption),
               selection: $settings.recordingMode
@@ -97,10 +98,6 @@ enum KeybindsSettingsCopy {
   static let modeTitle: LocalizedStringResource = "Recording mode"
   static let modeShort: LocalizedStringResource =
     "Hold to talk, or press once to start and again to stop."
-  static let pushToTalkHelp: LocalizedStringResource =
-    "Hold the keybind to record. Release to stop. Double-press to lock it on. Triple-press to cancel."
-  static let toggleHelp: LocalizedStringResource =
-    "Press once to start recording. Press again to stop."
   static let recordTitle: LocalizedStringResource = "Start / stop recording"
   static let recordShort: LocalizedStringResource = "Click Change to choose the keys you use."
   static let recordHelp: LocalizedStringResource = "This keybind starts and stops recording."

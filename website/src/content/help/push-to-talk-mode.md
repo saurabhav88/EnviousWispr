@@ -8,8 +8,19 @@ keywords: ["push to talk", "hold to talk", "hold the key", "ptt", "press and hol
 related: ["customizing-your-keybind", "first-word-gets-cut-off", "escape-recovery"]
 updated: 2026-10-12
 deflection: "can_resolve"
+video: "/help-media/push-to-talk-modes.mp4"
+videoPoster: "/help-media/push-to-talk-modes-poster.jpg"
+videoDescription: "The clip shows the three ways to record in turn: hold the key and let go, double-press to go hands-free, and hold only the key while pressing Space to go hands-free."
 ---
 **Push to Talk** is the default recording mode. You hold your recording keybind while you speak. When you let go, the recording ends and your words appear at your cursor once EnviousWispr has worked out what you said.
+
+### The three ways to record
+
+1. **Hold.** Press and hold your keybind while you speak. Let go to finish.
+2. **Double-press.** Press your keybind twice in quick succession, within half a second, to go hands-free. Recording keeps going after you let go. Press your keybind once to stop. Three quick presses cancel the recording instead.
+3. **Hold and Space.** If your keybind is a modifier key used on its own, hold only that key and press Space to go hands-free. Press your keybind once to stop.
+
+[Hands-Free Mode (Long Dictation)](/help/hands-free-mode-long-dictation/) explains the limits of each.
 
 ### Dictate with Push to Talk
 

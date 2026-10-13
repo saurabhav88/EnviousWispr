@@ -17,8 +17,8 @@
 #
 # Classify contract (lifted VERBATIM from the pre-#1151 inline step):
 #   - a change to pr-check.yml / main-post-merge.yml self-forces a full build
-#   - so does the one help article a Swift test reads (see the comment above
-#     the first build-forcing grep)
+#   - so do the help article and the help clip files a Swift test reads (see the
+#     comment above the first build-forcing grep)
 #   - any path outside (website/ docs/ .github/ .claude/ CLAUDE.md) forces a
 #     full build
 #   - otherwise content-only -> skip
@@ -68,18 +68,25 @@ classify() {
   # one ships unvalidated build infrastructure. Any action added under that
   # directory is by construction used by a workflow here.
   #
-  # ONE help article is in the same list, by exact path (#2450):
-  # website/src/content/help/spoken-punctuation-and-emoji.md. A Swift test
-  # (SpokenPunctuationHelpArticleParityTests) reads it and compares its command
-  # tables with the rules the app really applies. Everything under website/ is
-  # otherwise excluded from the build decision below, so an edit to that article
-  # alone classified as needs_build=false and the test that guards it never
-  # ran. The match is the exact path, not the help directory: every other help
-  # article stays a website-only change.
-  if grep -qE '^(\.github/(workflows/(pr-check|main-post-merge)\.yml$|actions/)|website/src/content/help/spoken-punctuation-and-emoji\.md$)' <<<"$changed"; then
+  # A few help files are in the same list, each by exact path, because a Swift
+  # test reads them. Everything under website/ is otherwise excluded from the
+  # build decision below, so an edit to one of them alone classified as
+  # needs_build=false and the test that guards it never ran:
+  #   - website/src/content/help/spoken-punctuation-and-emoji.md (#2450):
+  #     SpokenPunctuationHelpArticleParityTests compares its command tables
+  #     with the rules the app really applies.
+  #   - website/src/content/help/push-to-talk-mode.md and the two clip files
+  #     website/public/help-media/push-to-talk-modes.mp4 and
+  #     website/public/help-media/push-to-talk-modes-poster.jpg (#3703):
+  #     RecordingModeHelpArticleParityTests reads the page the Recording mode
+  #     "?" links to and the clip it declares.
+  # The match is the exact path, not the help directory: every other help
+  # article stays a website-only change, and so does a later clip file such as
+  # a German one.
+  if grep -qE '^(\.github/(workflows/(pr-check|main-post-merge)\.yml$|actions/)|website/src/content/help/(spoken-punctuation-and-emoji|push-to-talk-mode)\.md$|website/public/help-media/push-to-talk-modes(-poster\.jpg|\.mp4)$)' <<<"$changed"; then
     printf 'needs_build=true\n' >>"$GITHUB_OUTPUT"
     printf 'needs_website=%s\n' "$website" >>"$GITHUB_OUTPUT"
-    echo "==> CI build workflow, composite action or the spoken-punctuation help article changed — full Xcode build required (needs_website=$website)"
+    echo "==> CI build workflow, composite action or a help file a Swift parity test reads (spoken-punctuation article, push-to-talk article, its clip) changed — full Xcode build required (needs_website=$website)"
   # Content that no app build or test reads skips the Xcode lanes (founder 2026-10-08: content
   # changes never pay for app tests; PR #3531, website + help + README.md only, ran the
   # 26-minute build because README.md was missing here). A path joins this list only after
@@ -322,6 +329,16 @@ self_test() {
   _expect_classify $'docs/x.md\nwebsite/src/content/help/spoken-punctuation-and-emoji.md' true "parity article plus docs -> build and website" true
   _expect_classify "website/src/content/help/spoken-punctuation-and-emojis.md" false "near-miss article name -> website only" true
   _expect_classify "website/src/content/help/using-snippets.md" false "another help article -> website only" true
+  # #3703: the Push to Talk page and its clip are read by RecordingModeHelpArticleParityTests. Each of
+  # the three exact paths alone builds; so does each with another content file; a near-miss page name,
+  # a later German clip and another file in the folder stay website-only.
+  _expect_classify "website/src/content/help/push-to-talk-mode.md" true "ptt article alone -> build and website" true
+  _expect_classify "website/public/help-media/push-to-talk-modes.mp4" true "ptt clip alone -> build and website" true
+  _expect_classify "website/public/help-media/push-to-talk-modes-poster.jpg" true "ptt poster alone -> build and website" true
+  _expect_classify $'docs/x.md\nwebsite/public/help-media/push-to-talk-modes.mp4' true "ptt clip plus docs -> build and website" true
+  _expect_classify "website/src/content/help/push-to-talk-mode-2.md" false "near-miss ptt article name -> website only" true
+  _expect_classify "website/public/help-media/push-to-talk-modes-de.mp4" false "later German clip -> website only" true
+  _expect_classify "website/public/help-media/other-clip.mp4" false "another clip file -> website only" true
   # 2026-10-08: content no app build or test reads skips the build. Two-way controls: the
   # same names elsewhere, a near-miss name, and the kept-out neighbours still build.
   _expect_classify $'README.md

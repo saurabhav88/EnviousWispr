@@ -55,6 +55,14 @@ const help = defineCollection({
     updated: z.coerce.date(),
     /** What the in-app help check may do with this article; see help-deflection.js. */
     deflection: z.enum(DEFLECTION_POLICIES),
+    /**
+     * Optional silent clip (#3703). All three or none; scripts/help-media-contract.mjs owns the full
+     * contract and runs in the build (check-help-content.mjs), so the patterns here only type the
+     * values the template reads.
+     */
+    video: z.string().regex(/^\/help-media\/[a-z0-9][a-z0-9-]*\.mp4$/).optional(),
+    videoPoster: z.string().regex(/^\/help-media\/[a-z0-9][a-z0-9-]*\.(jpg|png|webp)$/).optional(),
+    videoDescription: z.string().trim().min(1).optional(),
   }),
 });
 

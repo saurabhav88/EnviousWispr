@@ -8,11 +8,13 @@
 //
 // Zod already rejects missing or malformed frontmatter and an unknown category,
 // so this file carries only the checks that need the BODY, which a collection
-// schema cannot see.
+// schema cannot see, plus the clip contract (#3703), which needs the files on disk.
 import fs from 'node:fs';
 import path from 'node:path';
+import { validateMedia } from './help-media-contract.mjs';
 
 const DIR = path.join(process.cwd(), 'src/content/help');
+const PUBLIC_DIR = path.join(process.cwd(), 'public');
 
 // Internal symbol names that must never reach a reader. Carried over verbatim
 // from the deleted kb-lint.sh.
@@ -46,6 +48,8 @@ if (files.length === 0) {
 for (const file of files) {
   const raw = fs.readFileSync(path.join(DIR, file), 'utf8');
   const body = raw.replace(/^---\n[\s\S]*?\n---\n/, '');
+
+  errors.push(...validateMedia(file, raw, PUBLIC_DIR));
 
   for (const term of JARGON) {
     if (body.includes(term)) errors.push(`${file}: internal jargon "${term}"`);
