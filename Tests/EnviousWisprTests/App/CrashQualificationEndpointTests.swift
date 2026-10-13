@@ -14,9 +14,10 @@ import Testing
   @MainActor
   @Suite("Crash qualification endpoint", .tags(.harnessContract))
   struct CrashQualificationEndpointTests {
-    private func makeEndpoint(action: @escaping (DebugFaultEndpoint.QualificationAction) -> Void)
-      -> DebugFaultEndpoint
-    {
+    private func makeEndpoint(
+      action: @escaping (DebugFaultEndpoint.QualificationAction) -> Void = { _ in },
+      child: (@MainActor () async -> EGOneServerManager.QualificationChildSignal?)? = nil
+    ) -> DebugFaultEndpoint {
       let clock = FakeClock()
       let engine = FakeEngine(behavior: .batchSuccess(text: "x"), clock: clock)
       let steps = LimbSteps(
@@ -55,7 +56,7 @@ import Testing
         audioCapture: nil,
         kernelDriver: makeDriver(),
         whisperKitKernelDriver: makeDriver(),
-        activeBackend: { .parakeet }, qualificationAction: action)
+        activeBackend: { .parakeet }, qualificationAction: action, qualificationChildTrap: child)
     }
 
     @Test(arguments: ["qualification_trap", "qualification_abort"])
@@ -134,6 +135,90 @@ import Testing
       endpoint.stop()
       endpoint.completeQualificationReply(id: request.armID, succeeded: true)
       #expect(actions.isEmpty)
+    }
+
+    @Test func ownedChildSignalDispatchesOnceWithFixedFacts() async {
+      var calls = 0
+      let endpoint = makeEndpoint(child: {
+        calls += 1
+        return EGOneServerManager.QualificationChildSignal(pid: 4242, generation: 7)
+      })
+      let request = await endpoint.qualificationRequestForTesting(
+        command: "qualification_child_trap")
+      #expect(
+        request.reply
+          == "OK qualification_child_signal pid=4242 generation=7 role=local_polish_server")
+      #expect(request.armID == nil)
+      #expect(calls == 1)
+    }
+
+    @Test func ownedChildMissingDependencyAndRefusalAreDistinct() async {
+      let absent = makeEndpoint()
+      #expect(
+        await absent.handleForTesting(command: "qualification_child_trap") == "ERR no_dependency")
+      var calls = 0
+      let refused = makeEndpoint(child: {
+        calls += 1
+        return nil
+      })
+      #expect(
+        await refused.handleForTesting(command: "qualification_child_trap")
+          == "ERR no_owned_ready_process")
+      #expect(calls == 1)
+    }
+
+    @Test func ownedChildUnauthenticatedAndUnknownRequestsCannotDispatch() async {
+      var calls = 0
+      let endpoint = makeEndpoint(child: {
+        calls += 1
+        return EGOneServerManager.QualificationChildSignal(pid: 4242, generation: 7)
+      })
+      let unauthorized = await endpoint.qualificationRequestForTesting(
+        command: "qualification_child_trap", authenticated: false)
+      #expect(unauthorized.reply == "ERR auth")
+      #expect(
+        await endpoint.handleForTesting(command: "qualification_child_trap pid=99")
+          == "ERR unknown_command")
+      #expect(calls == 0)
+      #expect(
+        await endpoint.handleForTesting(command: "qualification_child_trap")
+          == "OK qualification_child_signal pid=4242 generation=7 role=local_polish_server")
+      #expect(calls == 1)
+    }
+
+    @Test func delayedChildReplyCannotClaimHostFatalArm() async {
+      var actions: [DebugFaultEndpoint.QualificationAction] = []
+      let entered = AsyncStream<Void>.makeStream()
+      var release: CheckedContinuation<Void, Never>?
+      var currentFact = EGOneServerManager.QualificationChildSignal(pid: 4242, generation: 7)
+      let endpoint = makeEndpoint(
+        action: { actions.append($0) },
+        child: {
+          let observed = currentFact
+          entered.continuation.yield(())
+          await withCheckedContinuation { release = $0 }
+          return observed
+        })
+      let childTask = Task { @MainActor in
+        await endpoint.qualificationRequestForTesting(command: "qualification_child_trap")
+      }
+      var iterator = entered.stream.makeAsyncIterator()
+      #expect(await iterator.next() != nil)
+      let host = await endpoint.qualificationRequestForTesting(command: "qualification_trap")
+      #expect(host.reply == "OK qualification_armed")
+      #expect(host.armID != nil)
+      currentFact = EGOneServerManager.QualificationChildSignal(pid: 4343, generation: 8)
+      release?.resume()
+      let child = await childTask.value
+      #expect(
+        child.reply
+          == "OK qualification_child_signal pid=4242 generation=7 role=local_polish_server")
+      #expect(child.armID == nil)
+      endpoint.completeQualificationReply(id: child.armID, succeeded: true)
+      #expect(actions.isEmpty)
+      endpoint.completeQualificationReply(id: host.armID, succeeded: true)
+      #expect(actions == [.trap])
+      entered.continuation.finish()
     }
   }
 #endif

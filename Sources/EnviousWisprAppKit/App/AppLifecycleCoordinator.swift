@@ -43,6 +43,8 @@ final class AppLifecycleCoordinator {
     /// `EW_FAULT_INJECTION=1` is set in the launching environment. Stopped in
     /// `runWillTerminate`. Compiled out of release entirely.
     private var debugFaultEndpoint: DebugFaultEndpoint?
+    var qualificationChildTrap:
+      (@MainActor () async -> EGOneServerManager.QualificationChildSignal?)?
   #endif
 
   // Injected dependencies — delegated to, never owned.
@@ -245,7 +247,9 @@ final class AppLifecycleCoordinator {
       return TelemetryService.FlushContext(
         activeRecording: phase.isActive, appPhase: phase.telemetryLabel,
         lastStage: checkpoint?.stage.rawValue,
-        stageAgeMs: checkpoint.map { max(0, Int(Date().timeIntervalSince($0.stageEnteredAt) * 1000)) })
+        stageAgeMs: checkpoint.map {
+          max(0, Int(Date().timeIntervalSince($0.stageEnteredAt) * 1000))
+        })
     }
 
     // #2787: report the take the PREVIOUS process died in the middle of, once.
@@ -339,7 +343,8 @@ final class AppLifecycleCoordinator {
           activeBackend: { [weak self] in
             self?.settings.selectedBackend ?? .parakeet
           },
-          batchDecodeFaultController: batchDecodeFaultController
+          batchDecodeFaultController: batchDecodeFaultController,
+          qualificationChildTrap: qualificationChildTrap
         )
         endpoint.start()
         debugFaultEndpoint = endpoint

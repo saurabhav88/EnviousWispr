@@ -2,6 +2,10 @@ import EnviousWisprCore
 import Foundation
 import os
 
+#if DEBUG
+  import Darwin
+#endif
+
 /// Endpoint of a ready local inference server: where to send requests and
 /// the per-launch bearer token that authenticates the app to it.
 public struct EGOneEndpoint: Sendable, Equatable {
@@ -19,7 +23,8 @@ public struct EGOneEndpoint: Sendable, Equatable {
     URL(string: "http://127.0.0.1:\(port)/completion")!
   }
 
-  public init(port: UInt16, authToken: String, contextTokens: Int,
+  public init(
+    port: UInt16, authToken: String, contextTokens: Int,
     hasLearnedWordAdapter: Bool = false
   ) {
     self.port = port
@@ -133,6 +138,35 @@ public actor EGOneServerManager {
   private let quitKillBox = OSAllocatedUnfairLock<Process?>(initialState: nil)
 
   public init() {}
+
+  #if DEBUG
+    public struct QualificationChildSignal: Sendable, Equatable {
+      public let pid: Int32
+      public let generation: Int
+      public let role: String
+
+      public init(pid: Int32, generation: Int) {
+        self.pid = pid
+        self.generation = generation
+        self.role = "local_polish_server"
+      }
+    }
+
+    /// Signal accepted is not proof of termination; the runtime driver verifies the exit.
+    public func qualificationTrapOwnedReadyChild() -> QualificationChildSignal? {
+      guard ProcessInfo.processInfo.environment["EW_FAULT_INJECTION"] == "1",
+        case .ready = state,
+        let proc = process, proc.isRunning
+      else { return nil }
+      let generation = launchGeneration
+      let pid = proc.processIdentifier
+      guard pid > 0, pid != getpid(), process === proc,
+        generation == launchGeneration, proc.isRunning, proc.processIdentifier == pid
+      else { return nil }
+      guard Darwin.kill(pid, SIGTRAP) == 0 else { return nil }
+      return QualificationChildSignal(pid: pid, generation: generation)
+    }
+  #endif
 
   /// #2649: read the current state without registering, so the coordinator can
   /// seed a per-model observer without disturbing the single manager observer.
@@ -358,7 +392,8 @@ public actor EGOneServerManager {
     if restartedOnceThisGeneration {
       transition(to: .failed(reason: "crashed_twice"))
       await AppLogger.shared.log(
-        "Local polish server crashed twice this session — staying down", level: .info, category: "LLM")
+        "Local polish server crashed twice this session — staying down", level: .info,
+        category: "LLM")
       return
     }
     restartedOnceThisGeneration = true

@@ -208,3 +208,12 @@ termination, preserve the raw report before restart, and inspect the matching
 received development/synthetic event and UUID-matching dSYM. An external
 SIGABRT is a separate signal control; it does not prove an in-app throw site.
 Detailed baseline/candidate acceptance lives in the #3685 testing plan.
+
+`faultInjection.qualification_child_trap()` targets only the manager's current
+owned READY process, with opt-in and immediate identity/generation checks. The
+reply contains fixed role, PID and generation of an accepted SIGTRAP signal;
+it does not prove death. No caller-supplied PID, path, provider or signal is
+accepted. The runtime driver must verify the child exit independently, parent
+continuity/session state, and a later genuine host crash. Refusal must not be
+retried automatically against a replacement process. Native child stacks are
+not supplied by this command.

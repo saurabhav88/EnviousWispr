@@ -160,6 +160,14 @@ public actor LocalPolishServerCoordinator {
 
   public init() {}
 
+  #if DEBUG
+    public func qualificationTrapOwnedReadyChild() async
+      -> EGOneServerManager.QualificationChildSignal?
+    {
+      await manager.qualificationTrapOwnedReadyChild()
+    }
+  #endif
+
   /// Admission and the eviction decision share this actor's non-suspending
   /// turn. A take either gets a hold before a transition decides to stop, or
   /// sees changing before it freezes its local-polish choice.
@@ -258,8 +266,9 @@ public actor LocalPolishServerCoordinator {
     // A ready start cannot change argv. Adapter arrival/removal is an explicit
     // stop and boot, and neither that nor a model switch may evict a pinned
     // take or import. The release callback retries the latest deferred intent.
-    let changesProcess = resident != nil && (
-      resident != target?.provider
+    let changesProcess =
+      resident != nil
+      && (resident != target?.provider
         || residentTarget?.configuration.learnedWordAdapterURL
           != target?.configuration.learnedWordAdapterURL
         || (residentAdapterFellBack && target?.retriesAdapterFallback == true
@@ -333,7 +342,9 @@ public actor LocalPolishServerCoordinator {
     await transition(to: deferredRequest.request, intent: deferredRequest.intent)
   }
 
-  public func checkerFailureReason(for provider: LLMProvider) -> EGOneServerManager.CheckerFailureReason? {
+  public func checkerFailureReason(for provider: LLMProvider) -> EGOneServerManager
+    .CheckerFailureReason?
+  {
     recordedCheckerFailures[provider]
   }
 
@@ -344,9 +355,10 @@ public actor LocalPolishServerCoordinator {
   /// Health for `provider`. Returns red when a DIFFERENT model is resident,
   /// rather than the manager's state — which would describe the other model's
   /// process and read green about the wrong thing.
-  public func probeHealth(_ provider: LLMProvider, promptFamily: PromptFamily,
-    spec: EGOneServerManager.ProbeSpec) async -> EGOneHealth
-  {
+  public func probeHealth(
+    _ provider: LLMProvider, promptFamily: PromptFamily,
+    spec: EGOneServerManager.ProbeSpec
+  ) async -> EGOneHealth {
     guard resident == provider else { return .red(reason: "not_running") }
     let result = await manager.probeHealth(promptFamily: promptFamily, spec: spec)
     // A probe takes real time. If the user switched during it, this verdict

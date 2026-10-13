@@ -3,6 +3,7 @@
   import EnviousWisprASR
   import EnviousWisprAudio
   import EnviousWisprCore
+  import EnviousWisprLLM
   import EnviousWisprPipeline
   import EnviousWisprPostProcessing
   import EnviousWisprServices
@@ -26,6 +27,7 @@
   ///   Every command must carry the matching token in its first line.
   ///   Token file is deleted on `stop()`.
   /// - Fixed command set (no arbitrary RPC, no method invocation, no shell escape):
+  ///   `qualification_child_trap` (owned ready child only),
   ///   `qualification_trap`, `qualification_abort` (one-shot fatal controls after reply delivery),
   ///   `force_cancel`, `query_state`,
   ///   `force_zero_fill(mode,N,trialID)`, `query_fault_status(trialID)` (#1317
@@ -81,6 +83,8 @@
     private var pendingQualification: (id: UUID, action: QualificationAction)?
     private var qualificationTriggered = false
     private let qualificationAction: ((QualificationAction) -> Void)?
+    private let qualificationChildTrap:
+      (@MainActor () async -> EGOneServerManager.QualificationChildSignal?)?
 
     private var listener: NWListener?
     private let port: UInt16
@@ -99,8 +103,11 @@
       activeBackend: @escaping () -> ASRBackendType,
       port: UInt16 = 8765,
       batchDecodeFaultController: BatchDecodeFaultController? = nil,
-      qualificationAction: ((QualificationAction) -> Void)? = nil
+      qualificationAction: ((QualificationAction) -> Void)? = nil,
+      qualificationChildTrap:
+        (@MainActor () async -> EGOneServerManager.QualificationChildSignal?)? = nil
     ) {
+      self.qualificationChildTrap = qualificationChildTrap
       self.qualificationAction = qualificationAction
       self.audioCapture = audioCapture
       self.kernelDriver = kernelDriver
@@ -299,6 +306,14 @@
 
       let cmd = lines[1].trimmingCharacters(in: .whitespacesAndNewlines)
       switch cmd {
+      case "qualification_child_trap":
+        guard let qualificationChildTrap else { return "ERR no_dependency" }
+        guard let fact = await qualificationChildTrap() else {
+          return "ERR no_owned_ready_process"
+        }
+        return
+          "OK qualification_child_signal pid=\(fact.pid) generation=\(fact.generation) role=\(fact.role)"
+
       case "qualification_trap", "qualification_abort":
         guard pendingQualification == nil, !qualificationTriggered else {
           return "ERR qualification_already_armed"

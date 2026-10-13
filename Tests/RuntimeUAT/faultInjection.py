@@ -57,6 +57,11 @@ TOKEN_DIR = Path("~/Library/Logs/EnviousWispr").expanduser()
 APP_NAME = "EnviousWispr"
 
 
+def qualification_child_trap() -> str:
+    """Signal the manager-owned ready child; reply is not proof of death."""
+    return send("qualification_child_trap")
+
+
 def arm_qualification_crash(kind: str) -> str:
     """Arm a fixed in-process crash after the authenticated reply is sent.
 
