@@ -1030,9 +1030,9 @@ extension ManifestFetchTaskTests {
   fileprivate static func partsManifest(
     parts: [Data] = [Data("01234".utf8), Data("56789".utf8)],
     fileContent: Data = partsContent, withBackup: Bool = true, family: String = "parakeet",
-    name: String = "fixture-model"
+    name: String = "fixture-model", sourceBaseURL: String = Self.mirrorBase
   ) throws -> DeliveryManifest {
-    var sources = [["id": "our_copy", "baseURL": mirrorBase]]
+    var sources = [["id": "our_copy", "baseURL": sourceBaseURL]]
     if withBackup { sources.append(["id": "backup", "baseURL": backupBase]) }
     return try DeliveryManifest.load(
       from: ManifestFixture.manifestJSON(
@@ -1055,9 +1055,11 @@ extension ManifestFetchTaskTests {
       })
   }
 
-  private func servePart(_ index: Int, _ body: Data, hang: Bool = false) {
+  private func servePart(
+    _ index: Int, _ body: Data, hang: Bool = false, baseURL: String = Self.mirrorBase
+  ) {
     DeliveryStubProtocol.enqueue(
-      url: "\(Self.mirrorBase)\(Self.partsFile).part-\(index)",
+      url: "\(baseURL)\(Self.partsFile).part-\(index)",
       .init(
         status: 200, headers: ["Content-Length": String(body.count), "ETag": "\"p\(index)\""],
         body: body, hangAfterBody: hang))
@@ -1111,12 +1113,16 @@ extension ManifestFetchTaskTests {
   }
 
   @Test func partsAreFetchedVerifiedAssembledAndLeaveNoResidueAfterPromotion() async throws {
-    let manifest = try Self.partsManifest()
+    let scope = "/parts-\(UUID().uuidString)/"
+    let partsBase = "https://mirror.invalid.example\(scope)"
+    let manifest = try Self.partsManifest(sourceBaseURL: partsBase)
     let staging = try makeStaging()
     let progress = ProgressLog()
     try await withStubs {
-      servePart(1, Data("01234".utf8))
-      servePart(2, Data("56789".utf8))
+      // Other delivery suites share this process-wide URLProtocol stub.
+      DeliveryStubProtocol.beginScope(pathPrefix: scope)
+      servePart(1, Data("01234".utf8), baseURL: partsBase)
+      servePart(2, Data("56789".utf8), baseURL: partsBase)
       let outcome = try await partsTask(manifest: manifest, staging: staging, progress: progress)
         .run()
       #expect(outcome.finalSourceID == "our_copy")
@@ -1124,9 +1130,9 @@ extension ManifestFetchTaskTests {
       #expect(outcome.bytesDownloaded == 10)
       #expect(try Data(contentsOf: stagedFile(staging)) == Self.partsContent)
       #expect(
-        DeliveryStubProtocol.requests == [
-          "GET https://mirror.invalid.example/base/weights.bin.part-1",
-          "GET https://mirror.invalid.example/base/weights.bin.part-2",
+        DeliveryStubProtocol.requests(in: scope) == [
+          "GET \(partsBase)\(Self.partsFile).part-1",
+          "GET \(partsBase)\(Self.partsFile).part-2",
         ])
       #expect(FileManager.default.fileExists(atPath: transportRoot(staging).path) == false)
       // Logical progress: never above the file's size, and ends exactly on it.
