@@ -186,30 +186,51 @@ import Testing
       #expect(calls == 1)
     }
 
-    @Test func delayedChildReplyCannotClaimHostFatalArm() async {
+    @Test func delayedChildReplyCannotClaimHostFatalArm() async throws {
       var actions: [DebugFaultEndpoint.QualificationAction] = []
-      let entered = AsyncStream<Void>.makeStream()
+      let signals = SignalPipelineLogger()
       var release: CheckedContinuation<Void, Never>?
+      var finished = false
+      var childResult: (reply: String, armID: UUID?)?
       var currentFact = EGOneServerManager.QualificationChildSignal(pid: 4242, generation: 7)
       let endpoint = makeEndpoint(
         action: { actions.append($0) },
         child: {
+          guard finished == false else { return nil }
           let observed = currentFact
-          entered.continuation.yield(())
-          await withCheckedContinuation { release = $0 }
+          await withCheckedContinuation { continuation in
+            release = continuation
+            // Publish the releasable gate before announcing entry.
+            Task { @MainActor in
+              await signals.log("child entered", level: .info, category: "Qualification")
+            }
+          }
           return observed
         })
       let childTask = Task { @MainActor in
-        await endpoint.qualificationRequestForTesting(command: "qualification_child_trap")
+        guard Task.isCancelled == false else { return }
+        childResult = await endpoint.qualificationRequestForTesting(
+          command: "qualification_child_trap")
+        // Completion belongs to the actual subject, not the injected stub.
+        await signals.log("child completed", level: .info, category: "Qualification")
       }
-      var iterator = entered.stream.makeAsyncIterator()
-      #expect(await iterator.next() != nil)
+      defer {
+        finished = true
+        let pending = release
+        release = nil
+        pending?.resume()
+        childTask.cancel()
+      }
+      _ = try await signals.waitForEntry(matching: { $0.message == "child entered" })
+      let continuation = try #require(release)
       let host = await endpoint.qualificationRequestForTesting(command: "qualification_trap")
       #expect(host.reply == "OK qualification_armed")
       #expect(host.armID != nil)
       currentFact = EGOneServerManager.QualificationChildSignal(pid: 4343, generation: 8)
-      release?.resume()
-      let child = await childTask.value
+      release = nil
+      continuation.resume()
+      _ = try await signals.waitForEntry(matching: { $0.message == "child completed" })
+      let child = try #require(childResult)
       #expect(
         child.reply
           == "OK qualification_child_signal pid=4242 generation=7 role=local_polish_server")
@@ -218,7 +239,19 @@ import Testing
       #expect(actions.isEmpty)
       endpoint.completeQualificationReply(id: host.armID, succeeded: true)
       #expect(actions == [.trap])
-      entered.continuation.finish()
     }
+
+    @Test func missingChildEntryDeadlineFailsFast() async {
+      let signals = SignalPipelineLogger()
+      do {
+        // test-fixture-timer: exercise the existing waiter's no-signal deadline.
+        _ = try await signals.waitForEntry(
+          matching: { $0.message == "never sent" }, timeout: .milliseconds(10))
+        Issue.record("A missing child entry unexpectedly satisfied the waiter")
+      } catch {
+        #expect(error is TimeoutError)
+      }
+    }
+
   }
 #endif

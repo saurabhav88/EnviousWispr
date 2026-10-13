@@ -55,7 +55,8 @@ struct TestDefaultsTests {
       ("com.apple.finder", false), ("com.apple.", false), ("NSGlobalDomain", false),
       ("com.enviouswispr.app", false), ("com.enviouswispr.app.dev", false), (".GlobalPreferences", false),
       ("../victim", false), ("a/b", false), ("a..b", false), ("", false), ("has space", false),
-      ("ew-2998-\(UUID().uuidString)", true), ("com.enviouswispr.tests.2123.absent.x", true),
+      // Classification only: this safe argument never creates or registers a suite.
+      ("ew-2998-classification-only", true), ("com.enviouswispr.tests.2123.absent.x", true),
       ("SM-2064-stuck-1", true), ("ew.settingsDefaultsTest.1", true),
     ])
   func unsafeNamesAreRefused(name: String, safe: Bool) throws {
