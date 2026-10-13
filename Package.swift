@@ -67,7 +67,10 @@ let package = Package(
       revision: "8746d3d8d2f3a19c79276f6d884b8c9c02e751e2"),
     .package(url: "https://github.com/sparkle-project/Sparkle.git", from: "2.6.0"),
     .package(url: "https://github.com/PostHog/posthog-ios.git", from: "3.0.0"),
-    .package(url: "https://github.com/getsentry/sentry-cocoa.git", from: "9.8.0"),
+    // #3685: qualified macOS artifact with native crash attribution/caller fixes.
+    .package(
+      url: "https://github.com/saurabhav88/sentry-cocoa.git",
+      revision: "beaa5941c0057dccf8a17837103aea0ca1376afc"),
     // Test-only (#1741 Chunk 10): real Swift lexical/syntactic awareness for
     // EngineMutationInventoryFreezeTests's comment/string handling, replacing
     // a hand-rolled character scanner that hit diminishing returns across 5
