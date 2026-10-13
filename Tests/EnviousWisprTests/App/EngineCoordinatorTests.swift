@@ -328,6 +328,25 @@ struct EngineCoordinatorTests {
     #expect(fake.switchCount == 0)
   }
 
+  /// #3546 Chunk 12 whole-PR review r6: a file import waits for readiness under its own claim.
+  /// When this fails, a selection changed during that wait leaves the import (and the held
+  /// engine) waiting forever for a switch the import itself blocks.
+  @Test(
+    "a switch blocked by a running file import ends the wait instead of hanging",
+    .timeLimit(.minutes(1)))
+  func pressWaitEndsWhenAnImportBlocksTheSwitch() async {
+    let fake = FakeEngineDeps(selected: .whisperKit, active: .parakeet)
+    fake.fileImportRunning = true
+    let c = fake.makeStartedCoordinator()
+    let outcome = await c.ensureSelectedReadyForPress()  // must not deadlock
+    #expect(outcome == .notReady)
+    #expect(fake.switchCount == 0, "the import's engine is not switched underneath it")
+    // The control: with the import gone, the same divergence converges.
+    fake.fileImportRunning = false
+    #expect(await c.ensureSelectedReadyForPress() == .ready)
+    #expect(fake.active == .whisperKit)
+  }
+
   @Test("ensureSelectedReadyForPress returns .notReady when the selected engine's warm fails")
   func ensureSelectedReadyForPressReturnsNotReadyOnWarmFail() async {
     let fake = FakeEngineDeps(selected: .whisperKit, active: .parakeet)

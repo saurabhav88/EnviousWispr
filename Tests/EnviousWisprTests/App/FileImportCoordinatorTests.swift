@@ -1434,6 +1434,33 @@ struct FileImportCoordinatorTests {
     #expect(count.value == 1)
   }
 
+  /// #3546 Chunk 12 whole-PR review r6: the engine choice changes WHILE the readiness drive
+  /// under the claim waits (an in-session Ultra activation). When this fails, the import
+  /// freezes the new choice and transcribes on the old engine, or keeps waiting.
+  @Test("an engine choice changed during the claimed readiness drive is refused")
+  func selectionChangedDuringClaimedDriveIsRefused() async {
+    let count = ReleaseCount()
+    let readinessCalls = Counter()
+    var settledReads = 0
+    let coordinator = await readyCoordinator(
+      lease: EngineLease(), count: count,
+      // Settled before the drive, changed by the time it returns.
+      engineSelectionSettled: {
+        settledReads += 1
+        return settledReads == 1
+      },
+      ensureEngineReady: {
+        await readinessCalls.bump()
+        return .ready
+      })
+    coordinator.start()
+    _ = await settleUntil { count.value >= 1 }
+    #expect(coordinator.state == .rejected(.engineNotReady))
+    #expect(await readinessCalls.count == 2, "both drives ran; the second returned ready")
+    #expect(settledReads == 2)
+    #expect(coordinator.isEngineHeld == false, "the claim is released")
+  }
+
   @Test("a run that fails after the claim fires the hook once")
   func releaseHookOnFailure() async {
     struct EngineBroke: Error {}

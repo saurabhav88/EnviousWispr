@@ -1774,6 +1774,14 @@ final class FileImportCoordinator {
         return
       }
       guard generationAtStart == generation else { return }
+      // And again after it: the user can change engines while the drive waits (for example
+      // during an in-session Ultra activation). The engine owner then stops waiting for a
+      // switch this claim blocks, and the drive may have readied the old engine; freezing now
+      // would record one engine and transcribe on another.
+      guard engineSelectionSettled() else {
+        showRejection(.engineNotReady)
+        return
+      }
 
       let configuration = beginRun()
       runConfiguration = configuration

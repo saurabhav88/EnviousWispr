@@ -670,6 +670,10 @@ final class EngineCoordinator {
     // press cannot proceed, so give up rather than hang.
     if deps.isEngineActive(.parakeet) || deps.isEngineActive(.whisperKit) { return true }
     if deps.isRecovering() { return true }
+    // #3546 Chunk 12: a switch deferred behind a file import (gate 6b) cannot converge until
+    // the import releases, and the import may be the very caller waiting here (its readiness
+    // drive under its own claim), so waiting would never end.
+    if s.selected != s.active, deps.isFileImportRunning() { return true }
     if s.selected == s.active { return true }  // converged steady not-ready → cold-press
     return false  // diverged + free → the switch is pending; keep waiting
   }
