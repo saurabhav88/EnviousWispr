@@ -8,7 +8,7 @@ None of these components is GPL/LGPL-licensed.
 
 --------------------------------------------------------------------------------
 WhisperKit (argmax-oss-swift)
-  Version: 1.1.0
+  Version: 1.1.1
   License: MIT
   Source:  https://github.com/argmaxinc/argmax-oss-swift
 --------------------------------------------------------------------------------

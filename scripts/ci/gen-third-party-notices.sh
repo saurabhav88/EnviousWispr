@@ -30,7 +30,7 @@ CO="${PROJ_ROOT}/.build/checkouts"
 # cross-check below hard-fails if Package.resolved gains/loses a direct dep that
 # this list does not cover, so the notices can't silently go stale (Codex #2).
 COMPONENTS=(
-  "WhisperKit (argmax-oss-swift)|1.1.0|MIT|argmax-oss-swift/LICENSE|https://github.com/argmaxinc/argmax-oss-swift|argmax-oss-swift"
+  "WhisperKit (argmax-oss-swift)|1.1.1|MIT|argmax-oss-swift/LICENSE|https://github.com/argmaxinc/argmax-oss-swift|argmax-oss-swift"
   # Argmax OSS itself is MIT, but it incorporates Apache-2.0 swift-transformers
   # code (Sources/ArgmaxCore/External) and ships the required attribution in its
   # own NOTICES file. Apache §4(d) / good-faith attribution: carry that NOTICES
