@@ -31,6 +31,8 @@ struct KeyboardListenerIngressTests {
     /// Runs between a reconciliation's commit and its drain.
     let afterCommit = OSAllocatedUnfairLock<(@Sendable () -> Void)?>(initialState: nil)
     let beforeMain = OSAllocatedUnfairLock<(@Sendable () -> Void)?>(initialState: nil)
+    /// Runs after an accepted held-Space lock and before its suppression is finalized (#3517).
+    let afterAccepted = OSAllocatedUnfairLock<(@Sendable () -> Void)?>(initialState: nil)
     /// Field-health observations (#3544 P6), in the order the ingress made them.
     let observations = OSAllocatedUnfairLock<[KeyboardListenerIngress.Observation]>(
       initialState: [])
@@ -58,6 +60,7 @@ struct KeyboardListenerIngressTests {
           case .loneTapStop: self?.effects.append("loneTapStop")
           case .cancel: self?.effects.append("cancel")
           case .dismiss: self?.effects.append("dismiss")
+          case .lockHeld: self?.effects.append("lockHeld")
           case .loneTapResolved: break
           }
         }
@@ -72,6 +75,7 @@ struct KeyboardListenerIngressTests {
       let duringRead = self.duringRead
       let mainEdges = self.mainEdges
       let afterCommit = self.afterCommit
+      let afterAccepted = self.afterAccepted
       let beforeMain = self.beforeMain
       let observations = self.observations
       return KeyboardListenerIngress(
@@ -95,7 +99,8 @@ struct KeyboardListenerIngressTests {
           mainEdges.withLock { $0.append(edge) }
         },
         observe: { observation in observations.withLock { $0.append(observation) } },
-        afterReconcileCommitForTesting: { afterCommit.withLock { $0 }?() })
+        afterReconcileCommitForTesting: { afterCommit.withLock { $0 }?() },
+        afterHeldLockAcceptedForTesting: { afterAccepted.withLock { $0 }?() })
     }
 
     func replace(_ installation: UInt64, start: Bool = true) {
@@ -110,8 +115,29 @@ struct KeyboardListenerIngressTests {
     func send(_ event: KeyEventValue, at t: TimeInterval) async {
       clock.now = 500 + t
       let ingress = self.ingress!
-      await Task.detached { ingress.receive(event) }.value
+      _ = await Task.detached { ingress.receive(event) }.value
       engine.drainForTesting()
+    }
+
+    /// Same as `send`, returning what the ingress answered (#3517).
+    func answer(_ event: KeyEventValue, at t: TimeInterval) async -> KeyboardEventDisposition {
+      clock.now = 500 + t
+      let ingress = self.ingress!
+      let answer = await Task.detached { ingress.receive(event) }.value
+      engine.drainForTesting()
+      return answer
+    }
+
+    /// A Space key event made with `held` modifiers down (the record key by default).
+    func space(
+      _ kind: KeyEventValue.Kind = .keyDown, autorepeat: Bool = false,
+      held: Set<UInt16> = [KeyboardListenerIngressTests.option], rawExtra: UInt64 = 0,
+      ours: Bool = false, at t: TimeInterval
+    ) async -> KeyboardEventDisposition {
+      await answer(
+        KeyEventValue(
+          kind: kind, keyCode: 49, rawFlags: ListenerKeyboard.rawFlags(held) | rawExtra,
+          timestamp: 500 + t, isAutorepeat: autorepeat, isOurs: ours), at: t)
     }
 
     func key(_ code: UInt16, held: Set<UInt16>, at t: TimeInterval) async {
@@ -328,7 +354,7 @@ struct KeyboardListenerIngressTests {
     let ingress = rig.ingress!
     rig.duringRead.withLock {
       $0 = {
-        ingress.receive(KeyEventValue(kind: .tapReenabled, keyCode: 0, rawFlags: 0, timestamp: nil))
+        _ = ingress.receive(KeyEventValue(kind: .tapReenabled, keyCode: 0, rawFlags: 0, timestamp: nil))
       }
     }
     await rig.fireSweeps(at: 5)
@@ -449,8 +475,8 @@ struct KeyboardListenerIngressTests {
     let ingress = rig.ingress!
     rig.duringRead.withLock {
       $0 = {
-        ingress.receive(KeyEventValue(kind: .keyUp, keyCode: 0, rawFlags: 0, timestamp: 505.0))
-        ingress.receive(KeyEventValue(kind: .keyDown, keyCode: 0, rawFlags: 0, timestamp: 505.05))
+        _ = ingress.receive(KeyEventValue(kind: .keyUp, keyCode: 0, rawFlags: 0, timestamp: 505.0))
+        _ = ingress.receive(KeyEventValue(kind: .keyDown, keyCode: 0, rawFlags: 0, timestamp: 505.05))
       }
     }
     await rig.fireSweeps(at: 5.1)
@@ -557,8 +583,8 @@ struct KeyboardListenerIngressTests {
     let ingress = rig.ingress!
     rig.duringRead.withLock {
       $0 = {
-        ingress.receive(KeyEventValue(kind: .keyUp, keyCode: 0, rawFlags: 0, timestamp: 505.0))
-        ingress.receive(KeyEventValue(kind: .keyDown, keyCode: 0, rawFlags: 0, timestamp: 505.05))
+        _ = ingress.receive(KeyEventValue(kind: .keyUp, keyCode: 0, rawFlags: 0, timestamp: 505.0))
+        _ = ingress.receive(KeyEventValue(kind: .keyDown, keyCode: 0, rawFlags: 0, timestamp: 505.05))
       }
     }
     await rig.fireSweeps(at: 5.1)
@@ -691,7 +717,7 @@ struct KeyboardListenerIngressTests {
     let ingress = rig.ingress!
     rig.duringRead.withLock {
       $0 = {
-        ingress.receive(
+        _ = ingress.receive(
           KeyEventValue(
             kind: .flagsChanged, keyCode: Self.shift,
             rawFlags: ListenerKeyboard.rawFlags([Self.option, Self.shift]), timestamp: 509.9))
@@ -826,7 +852,7 @@ struct KeyboardListenerIngressTests {
     // reconciliation. A group restructures its independent lifetime; @concurrent alone
     // supplies no retained task handle. Main must release and join this worker.
     let blocked = Task.detached {
-      ingress.receive(KeyEventValue(
+      _ = ingress.receive(KeyEventValue(
         kind: .flagsChanged, keyCode: Self.shift, rawFlags: flags, timestamp: 500.1))
     }
     // deadline-fallback: wait for the subject's active drainer to enter delivery.
@@ -836,7 +862,7 @@ struct KeyboardListenerIngressTests {
       await rig.fireSweeps(at: 5)
       rig.afterCommit.withLock {
         $0 = {
-          ingress.receive(KeyEventValue(
+          _ = ingress.receive(KeyEventValue(
             kind: .flagsChanged, keyCode: Self.option, rawFlags: flags, timestamp: 510))
           pending.withLock { $0 = ingress.pendingRecordEdgesForTesting }
         }
@@ -859,5 +885,370 @@ struct KeyboardListenerIngressTests {
     await rig.key(Self.shift, held: [Self.option, Self.shift], at: 2)
     #expect(rig.reads.withLock { $0 } == 0)
     #expect(rig.effects == ["start"])
+  }
+
+  // MARK: - Space locks a held take (#3517)
+
+  private static let optionHeld: Set<UInt16> = [ModifierKeyCodes.rightOption]
+
+  @Test("a Space made with the record key held locks the take, and that press is consumed whole")
+  func heldSpaceLocksAndIsConsumed() async {
+    let rig = Rig()
+    await rig.key(Self.option, held: Self.optionHeld, at: 0)
+    #expect(await rig.space(at: 1.5) == .consume)
+    #expect(await rig.space(autorepeat: true, at: 1.55) == .consume, "a repeat reached the app")
+    #expect(await rig.space(.keyUp, at: 1.6) == .consume, "the key-up reached the app")
+    await rig.key(Self.option, held: [], at: 1.7)
+    #expect(rig.effects == ["start", "lockHeld"])
+    #expect(rig.engine.snapshot.isLocked)
+    // The tail ended with the key-up: a later Space repeat is nobody's.
+    #expect(await rig.space(autorepeat: true, at: 3) == .pass)
+  }
+
+  @Test("a Space inside the first second locks instead of dismissing; other keys still dismiss")
+  func spaceInsideTheTypingWindowLocks() async {
+    let rig = Rig()
+    await rig.key(Self.option, held: Self.optionHeld, at: 0)
+    #expect(await rig.space(at: 0.2) == .consume)
+    #expect(rig.effects == ["start", "lockHeld"])
+    let other = Rig()
+    await other.key(Self.option, held: Self.optionHeld, at: 0)
+    _ = await other.answer(
+      KeyEventValue(
+        kind: .keyDown, keyCode: 0, rawFlags: ListenerKeyboard.rawFlags(Self.optionHeld),
+        timestamp: 500.2), at: 0.2)
+    #expect(other.effects == ["start", "dismiss"])
+  }
+
+  @Test("a Space with any other modifier family, Caps Lock or Function is not a lock candidate")
+  func spaceWithOtherModifiersIsNotACandidate() async {
+    let extras: [(String, UInt64)] = [
+      ("caps lock", 0x10000), ("function", 0x800000), ("numeric pad", 0x200000),
+      ("help", 0x400000), ("shift", 0x20000), ("command", 0x100000), ("control", 0x40000),
+    ]
+    for (name, extra) in extras {
+      let rig = Rig()
+      await rig.key(Self.option, held: Self.optionHeld, at: 0)
+      #expect(await rig.space(rawExtra: extra, at: 0.3) == .pass, "\(name) Space was consumed")
+      // Not a lock: today's rule applies, so a key inside the first second dismisses.
+      #expect(rig.effects == ["start", "dismiss"], "\(name) Space did not follow the old rule")
+    }
+    // The control: the same event without the extra flag locks.
+    let control = Rig()
+    await control.key(Self.option, held: Self.optionHeld, at: 0)
+    #expect(await control.space(at: 0.3) == .consume)
+  }
+
+  @Test("a Space outside the first second with an extra modifier changes nothing")
+  func lateSpaceWithAnExtraModifierDoesNothing() async {
+    let rig = Rig()
+    await rig.key(Self.option, held: Self.optionHeld, at: 0)
+    #expect(await rig.space(rawExtra: 0x20000, at: 2) == .pass)
+    #expect(rig.effects == ["start"])
+    #expect(!rig.engine.snapshot.isLocked)
+  }
+
+  @Test("a Space with no record key held, or in toggle mode, or our own, is an ordinary key")
+  func spaceWithoutAHeldRecordKeyPasses() async {
+    let idle = Rig()
+    #expect(await idle.space(held: [], at: 0.1) == .pass)
+    #expect(idle.effects.isEmpty)
+    let released = Rig()
+    await released.key(Self.option, held: Self.optionHeld, at: 0)
+    await released.key(Self.option, held: [], at: 0.8)
+    #expect(await released.space(at: 0.9) == .pass)
+    #expect(!released.engine.snapshot.isLocked)
+    let toggle = Rig(mode: .toggle)
+    #expect(await toggle.space(at: 0.1) == .pass)
+    #expect(toggle.effects.isEmpty)
+    let ours = Rig()
+    await ours.key(Self.option, held: Self.optionHeld, at: 0)
+    #expect(await ours.space(ours: true, at: 1.5) == .pass)
+    #expect(ours.effects == ["start"])
+  }
+
+  @Test("a second Space on a take that is already locked is an ordinary key and passes")
+  func spaceOnALockedTakePasses() async {
+    let rig = Rig()
+    await rig.key(Self.option, held: Self.optionHeld, at: 0)
+    #expect(await rig.space(at: 1.5) == .consume)
+    #expect(await rig.space(.keyUp, at: 1.6) == .consume)
+    #expect(await rig.space(at: 2.0) == .pass, "a locked take must not eat later Spaces")
+    #expect(await rig.space(.keyUp, at: 2.1) == .pass)
+    #expect(rig.effects == ["start", "lockHeld"])
+  }
+
+  @Test("a missed Space key-up never lets the old suppression eat the next fresh Space")
+  func missedKeyUpDoesNotEatTheNextPress() async {
+    let rig = Rig()
+    await rig.key(Self.option, held: Self.optionHeld, at: 0)
+    #expect(await rig.space(at: 1.5) == .consume)
+    // No key-up arrives. A new, non-autorepeat press is a new physical press.
+    #expect(await rig.space(at: 2.0) == .pass)
+    // Its own repeats and key-up are not consumed either: nothing was decided for it.
+    #expect(await rig.space(autorepeat: true, at: 2.05) == .pass)
+    #expect(await rig.space(.keyUp, at: 2.1) == .pass)
+  }
+
+  @Test("a reading that proves a consumed Space up ends its suppression")
+  func readingEndsSuppression() async {
+    let rig = Rig()
+    await rig.key(Self.option, held: Self.optionHeld, at: 0)
+    #expect(await rig.space(at: 1.5) == .consume)
+    rig.readings.withLock { $0[49] = .up }
+    await rig.fireSweeps(at: 6.5)
+    #expect(await rig.space(autorepeat: true, at: 7) == .pass, "suppression outlived the reading")
+  }
+
+  @Test("closing the ingress, a re-enable and a Secure Input change each end the suppression")
+  func recoveryBoundariesEndSuppression() async {
+    for boundary in ["close", "reenable", "secureInput"] {
+      let rig = Rig()
+      await rig.key(Self.option, held: Self.optionHeld, at: 0)
+      #expect(await rig.space(at: 1.5) == .consume, Comment(rawValue: boundary))
+      switch boundary {
+      case "close": rig.ingress.close()
+      case "reenable": await rig.notice(.tapReenabled, at: 1.6)
+      default: await rig.notice(.secureInputChanged, secureInputOn: true, at: 1.6)
+      }
+      #expect(await rig.space(.keyUp, at: 1.7) == .pass, "\(boundary) left the key-up consumed")
+    }
+  }
+
+  @Test("a decision another drainer runs passes the Space through, and the lock still happens")
+  func spaceDecidedByAnotherDrainerPasses() async {
+    var bindings = ShortcutBindings.shipped
+    bindings.record = .keyboard(keyCode: Self.option, modifiers: [])
+    bindings.quickAdd = .keyboard(keyCode: Self.command, modifiers: [])
+    let rig = Rig(bindings: bindings)
+    await rig.key(Self.option, held: Self.optionHeld, at: 0)
+    await rig.key(Self.command, held: [Self.option, Self.command], at: 0.1)
+    // The sweep releases Command (two up readings) and, while it holds the queue inside the
+    // main hop of that release, the tap thread delivers a Space.
+    rig.readings.withLock { $0[Self.command] = .up }
+    let ingress = rig.ingress!
+    let answer = OSAllocatedUnfairLock<KeyboardEventDisposition?>(initialState: nil)
+    let fired = OSAllocatedUnfairLock(initialState: false)
+    let event = KeyEventValue(
+      kind: .keyDown, keyCode: 49, rawFlags: ListenerKeyboard.rawFlags(Self.optionHeld),
+      timestamp: 505.5)
+    rig.beforeMain.withLock {
+      $0 = {
+        guard fired.withLock({ let was = $0; $0 = true; return !was }) else { return }
+        // deadline-fallback: bounded by the worker finishing; a regression fails, not hangs.
+        let done = DispatchSemaphore(value: 0)
+        DispatchQueue.global(qos: .userInteractive).async {
+          answer.withLock { $0 = ingress.receive(event) }
+          done.signal()
+        }
+        #expect(
+          done.wait(timeout: .now() + 5) == .success,
+          "Space waited for the other drainer to finish")
+      }
+    }
+    rig.clock.now = 505.5
+    await rig.fireSweeps(at: 5)
+    await rig.fireSweeps(at: 10)
+    #expect(answer.withLock { $0 } == .pass, "a decision this thread did not run was consumed")
+    #expect(rig.effects.contains("lockHeld"), "the lock was lost with the receipt")
+    #expect(rig.engine.snapshot.isLocked)
+    // No suppression was installed for that press: its key-up passes.
+    #expect(await rig.space(.keyUp, at: 10.1) == .pass)
+  }
+
+  @Test("a refused Space candidate retains the strict one-second dismissal rule")
+  func refusedSpaceCandidateFallsBackToOtherKey() async {
+    for t in [0.3, 1.0, 1.1] {
+      let rig = Rig()
+      await rig.key(Self.option, held: Self.optionHeld, at: 0)
+      // Change the generation without changing the current record key. Classification still
+      // accepts the Space; the old hold's admission generation makes the engine refuse the lock.
+      var bindings = ShortcutBindings.shipped
+      bindings.record = .keyboard(keyCode: Self.option, modifiers: [])
+      bindings.quickAdd = .keyboard(keyCode: 2, modifiers: [.command])
+      rig.engine.configure(bindings: bindings, mode: .pushToTalk)
+
+      #expect(await rig.space(at: t) == .pass)
+      #expect(rig.effects == (t < 1.0 ? ["start", "dismiss"] : ["start"]), "at \(t) s")
+      #expect(!rig.engine.snapshot.isLocked)
+      #expect(await rig.space(autorepeat: true, at: t + 0.01) == .pass)
+      #expect(await rig.space(.keyUp, at: t + 0.02) == .pass)
+    }
+  }
+
+  @Test("every bare record modifier accepts its own Space flags")
+  func everyBareRecordModifierAcceptsSpace() async {
+    for code in ModifierKeyCodes.all.sorted() {
+      var bindings = ShortcutBindings.shipped
+      bindings.record = .keyboard(keyCode: code, modifiers: [])
+      let rig = Rig(bindings: bindings)
+      await rig.key(code, held: [code], at: 0)
+      #expect(await rig.space(held: [code], at: 0.3) == .consume, "record key \(code)")
+      #expect(rig.effects == ["start", "lockHeld"], "record key \(code)")
+    }
+  }
+
+  @Test("a flag bit no modifier family owns does not change Space classification")
+  func spaceIgnoresUnownedFlagBits() async {
+    // 0x2000_0000 was measured on a posted Right Option + Space (#3517 live check).
+    for extra: UInt64 in [0x2000_0000, 0x4000_0000, 0x0000_8000_0000] {
+      let rig = Rig()
+      await rig.key(Self.option, held: Self.optionHeld, at: 0)
+      #expect(await rig.space(rawExtra: extra, at: 0.3) == .consume, "extra flags \(extra)")
+      #expect(rig.effects == ["start", "lockHeld"], "extra flags \(extra)")
+    }
+  }
+
+  @Test("side bits and the non-coalesced flag do not change Space classification")
+  func spaceIgnoresDeviceFlags() async {
+    let rig = Rig()
+    let held: Set<UInt16> = [Self.option, ModifierKeyCodes.leftOption]
+    await rig.key(Self.option, held: held, at: 0)
+    #expect(await rig.space(held: held, rawExtra: 0x100, at: 0.3) == .consume)
+    #expect(rig.effects == ["start", "lockHeld"])
+  }
+
+  /// Run `window` between an accepted lock and its suppression finalization, then deliver a Space
+  /// press and report what the ingress answered, plus what a later key-up of that press gets.
+  private func acceptedLockWithEventInTheWindow(
+    _ window: @escaping @Sendable (KeyboardListenerIngress, HotkeyTestClock, HotkeyTestScheduler) -> Void
+  ) async -> (rig: Rig, answer: KeyboardEventDisposition, keyUp: KeyboardEventDisposition) {
+    let rig = Rig()
+    await rig.key(Self.option, held: Self.optionHeld, at: 0)
+    let ingress = rig.ingress!
+    let clock = rig.clock
+    let timers = rig.timers
+    rig.afterAccepted.withLock { $0 = { window(ingress, clock, timers) } }
+    let answer = await rig.space(at: 1.5)
+    rig.afterAccepted.withLock { $0 = nil }
+    let keyUp = await rig.space(.keyUp, at: 1.6)
+    return (rig, answer, keyUp)
+  }
+
+  @Test("a reading that proves Space up between acceptance and finalization installs no suppression")
+  func readingBetweenAcceptanceAndFinalizationInstallsNothing() async {
+    let rig = Rig()
+    rig.readings.withLock { $0[49] = .up }
+    await rig.key(Self.option, held: Self.optionHeld, at: 0)
+    let clock = rig.clock
+    let timers = rig.timers
+    rig.afterAccepted.withLock {
+      $0 = {
+        clock.now = 506
+        timers.fireDue()  // the sweep reads Space up and removes it from the tracker
+      }
+    }
+    #expect(await rig.space(at: 1.5) == .pass, "a stale receipt recreated suppression")
+    rig.afterAccepted.withLock { $0 = nil }
+    #expect(rig.effects == ["start", "lockHeld"], "the lock itself must still happen")
+    #expect(await rig.space(.keyUp, at: 1.6) == .pass)
+  }
+
+  @Test("close, a re-enable, a Secure Input change and a storm between acceptance and finalization install no suppression")
+  func boundariesBetweenAcceptanceAndFinalizationInstallNothing() async {
+    let boundaries: [(String, @Sendable (KeyboardListenerIngress) -> Void)] = [
+      ("close", { $0.close() }),
+      (
+        "reenable",
+        { _ = $0.receive(KeyEventValue(kind: .tapReenabled, keyCode: 0, rawFlags: 0, timestamp: nil)) }
+      ),
+      (
+        "secureInput",
+        {
+          _ = $0.receive(
+            KeyEventValue(
+              kind: .secureInputChanged, keyCode: 0, rawFlags: 0, timestamp: nil,
+              secureInput: SecureInputObservation(enabled: true, ownerPID: nil)))
+        }
+      ),
+      (
+        "storm",
+        { _ = $0.receive(KeyEventValue(kind: .stormStopped, keyCode: 0, rawFlags: 0, timestamp: nil)) }
+      ),
+    ]
+    for (name, boundary) in boundaries {
+      let result = await acceptedLockWithEventInTheWindow { ingress, _, _ in boundary(ingress) }
+      #expect(result.answer == .pass, "\(name): a stale receipt recreated suppression")
+      #expect(result.keyUp == .pass, "\(name): the key-up was consumed")
+    }
+  }
+
+  @Test("a newer Space press between acceptance and finalization keeps its own disposition")
+  func newerPressBetweenAcceptanceAndFinalizationWins() async {
+    let second = KeyEventValue(
+      kind: .keyDown, keyCode: 49, rawFlags: ListenerKeyboard.rawFlags(Self.optionHeld),
+      timestamp: 501.55)
+    let result = await acceptedLockWithEventInTheWindow { ingress, _, _ in
+      // The take is already locked, so the engine refuses this second press; it is a new
+      // physical press with a new token either way.
+      _ = ingress.receive(second)
+    }
+    #expect(result.answer == .pass, "the old receipt consumed a newer press's turn")
+    #expect(result.keyUp == .pass)
+  }
+
+  @Test("a consumed Space still held across the stop refuses a fresh start until it is released")
+  func heldConsumedSpaceRefusesAFreshStart() async {
+    let rig = Rig()
+    await rig.key(Self.option, held: Self.optionHeld, at: 0)
+    #expect(await rig.space(at: 1.5) == .consume)
+    await rig.key(Self.option, held: [], at: 1.7)
+    await rig.key(Self.option, held: Self.optionHeld, at: 2.5)  // stops the locked take
+    await rig.key(Self.option, held: [], at: 2.6)
+    await rig.key(Self.option, held: Self.optionHeld, at: 3.0)  // Space is still physically down
+    #expect(rig.effects == ["start", "lockHeld"], "a fresh start ran with Space still down")
+    #expect(rig.engine.listenerRefusals[.ordinaryKeyHeld] == 1)
+    await rig.key(Self.option, held: [], at: 3.1)
+    #expect(await rig.space(.keyUp, at: 3.2) == .consume, "the consumed press's key-up reached the app")
+    await rig.key(Self.option, held: Self.optionHeld, at: 3.5)
+    #expect(rig.effects == ["start", "lockHeld", "start"])
+  }
+
+  @Test("a Space autorepeat with no press behind it never locks, and passes")
+  func autorepeatWithoutAPressNeverLocks() async {
+    let rig = Rig()
+    await rig.key(Self.option, held: Self.optionHeld, at: 0)
+    #expect(await rig.space(autorepeat: true, at: 2.0) == .pass)
+    #expect(rig.effects == ["start"])
+    #expect(!rig.engine.snapshot.isLocked)
+  }
+
+  @Test("a chord that shares the record key's modifier is never configured, so a Space stays a lock candidate")
+  func chordSharingTheRecordModifierIsNeverExempt() async {
+    var bindings = ShortcutBindings.shipped
+    bindings.record = .keyboard(keyCode: Self.option, modifiers: [])
+    // Option+Space for Paste Last: the bare Option record key outranks it, so it holds no Carbon
+    // registration and the listener must not treat its Space as "the user reaching for a shortcut".
+    bindings.pasteLast = .keyboard(keyCode: 49, modifiers: [.option])
+    let rig = Rig(bindings: bindings)
+    await rig.key(Self.option, held: Self.optionHeld, at: 0)
+    #expect(await rig.space(at: 1.5) == .consume)
+    #expect(rig.effects == ["start", "lockHeld"])
+  }
+
+  @Test("a record release a sweep committed before the Space is applied first, so the Space cannot lock")
+  func pendingReleaseIsAppliedBeforeTheSpace() async {
+    let rig = Rig()
+    await rig.key(Self.option, held: Self.optionHeld, at: 0)
+    rig.readings.withLock { $0[Self.option] = .up }
+    await rig.fireSweeps(at: 5)  // the first up reading: nothing released yet
+    let ingress = rig.ingress!
+    let answer = OSAllocatedUnfairLock<KeyboardEventDisposition?>(initialState: nil)
+    let fired = OSAllocatedUnfairLock(initialState: false)
+    let event = KeyEventValue(
+      kind: .keyDown, keyCode: 49, rawFlags: ListenerKeyboard.rawFlags(Self.optionHeld),
+      timestamp: 510.5)
+    // Between the second sweep's commit of the release and its own drain, the tap delivers a Space.
+    rig.afterCommit.withLock {
+      $0 = {
+        guard fired.withLock({ let was = $0; $0 = true; return !was }) else { return }
+        answer.withLock { $0 = ingress.receive(event) }
+      }
+    }
+    rig.clock.now = 510.5
+    await rig.fireSweeps(at: 10)
+    #expect(answer.withLock { $0 } == .pass, "a Space consumed after the key was already released")
+    #expect(rig.effects == ["start", "holdStop"], "the Space locked a take whose key was up")
+    #expect(!rig.engine.snapshot.isLocked)
   }
 }

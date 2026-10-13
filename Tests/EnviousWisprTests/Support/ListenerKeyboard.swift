@@ -63,6 +63,23 @@ final class ListenerKeyboard {
     await Self.mainTurn()
   }
 
+  /// One Space key event with the modifiers this keyboard holds (plus `extraRaw`), through the
+  /// listener's own sink, returning what the policy answered (#3517); waits for main like `deliver`.
+  @discardableResult
+  func space(
+    _ kind: KeyEventValue.Kind = .keyDown, autorepeat: Bool = false, extraRaw: UInt64 = 0,
+    at timestamp: TimeInterval? = nil
+  ) async -> KeyboardEventDisposition {
+    let sink = effects.keyboardListenerDispositionSink
+    #expect(sink != nil, "no keyboard listener installed: start the service first")
+    let event = KeyEventValue(
+      kind: kind, keyCode: 49, rawFlags: Self.rawFlags(held) | extraRaw, timestamp: timestamp,
+      isAutorepeat: autorepeat)
+    let answer = await Task.detached { sink?(event) }.value
+    await Self.mainTurn()
+    return answer ?? .pass
+  }
+
   /// Wait for main to run everything queued on it before this call (FIFO): the listener's main
   /// hops and the engine's pending drain.
   static func mainTurn() async {

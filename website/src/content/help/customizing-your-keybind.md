@@ -6,7 +6,7 @@ section: "Recording"
 order: 4
 keywords: ["keybind", "dictation stopped when i typed", "other key cancels", "secure input", "keybinds", "hotkey", "shortcut", "keyboard shortcut", "change the key", "how do i change the key", "key combo", "keybinding", "remap", "different key", "globe key", "fn key", "caps lock", "conflicts with another app", "quick add shortcut", "control shift w", "paste last dictation", "copy last dictation", "control command v", "control command c", "keybind not working", "not active", "key already in use"]
 related: ["adding-a-word-from-your-selection", "escape-recovery", "transcript-history"]
-updated: 2026-10-09
+updated: 2026-10-12
 deflection: "can_resolve"
 ---
 Your keybind is the key you hold or press to record, and you can change it to whatever suits your hands. EnviousWispr arrives set to the right Option key.
@@ -44,6 +44,8 @@ If holding a key down is uncomfortable, toggle mode asks less of your hand. One 
 When your push-to-talk keybind is a modifier key used on its own, pressing another ordinary key during the first second can dismiss the recording. Keys matching an eligible configured shortcut are exempt. A dismissed recording is thrown away: nothing is pasted or kept, even with Escape Recovery on.
 
 After the first second, extra keys do not cause this dismissal. A locked recording and toggle mode are not affected.
+
+Space can lock instead of dismissing when you hold only your recording modifier. This also works during the first second. See [Hands-Free Mode](/help/hands-free-mode-long-dictation/).
 
 For this kind of push-to-talk keybind, an ordinary key already down prevents a new recording from starting. Release that key, then press your keybind again.
 

@@ -20,6 +20,11 @@ package struct RecordGesture: Sendable {
   /// until the next key press or cancel.
   package private(set) var isLocked = false
 
+  /// The lock was made while the record key was still held (a Space press, #3517), not by a second
+  /// press inside the first press's window. Such a lock must never read a later press inside that
+  /// window as a triple-press cancel: the user pressed once and locked from the hold.
+  package private(set) var lockedWhileHeld = false
+
   /// Timestamp of the key-down that started the current recording session.
   /// Used for the 500ms double-press detection window.
   package private(set) var start: InputTime? = nil
@@ -151,6 +156,7 @@ package struct RecordGesture: Sendable {
   package mutating func cleanup() {
     generation &+= 1
     isLocked = false
+    lockedWhileHeld = false
     start = nil
     lockAt = nil
     attemptOrigin = nil
@@ -224,14 +230,15 @@ package struct RecordGesture: Sendable {
       // Not recording → start fresh
       generation &+= 1
       isLocked = false
+      lockedWhileHeld = false
       start = input
       attemptOrigin = DiagnosticOrigin(binding: binding, mode: mode, epoch: diagnosticEpoch)
       // #1631: a fresh attempt owns a fresh identity, and inherits no acceptance.
       attemptID &+= 1
       return .start(attemptID: attemptID)
     }
-    if Self.elapsed(from: start, to: input) <= Self.window {
-      // Within 500ms window
+    if Self.elapsed(from: start, to: input) <= Self.window && !(isLocked && lockedWhileHeld) {
+      // Within 500ms window (a lock made while held skips this branch: #3517)
       if isLocked {
         // Triple press → cancel
         isHeld = false
@@ -265,6 +272,31 @@ package struct RecordGesture: Sendable {
       // this branch the press left no log line and no row.
       return .lateAfterWindow(afterFirstMs: Int(Self.elapsed(from: start, to: input) * 1000))
     }
+  }
+
+  // MARK: - Lock while held (#3517)
+
+  /// What a lock made while the record key is held produced.
+  package struct HeldLock: Sendable {
+    /// Whole milliseconds from the press to the lock, on the same clock choice as a double tap.
+    package let elapsedMs: Int
+    package let usesOccurrence: Bool
+  }
+
+  /// Lock the running take while its record key is still held (#3517). Only a held, unlocked,
+  /// started gesture locks; anything else changes nothing and returns nil. `start`, the attempt
+  /// identity and the diagnostic epoch are untouched: this is not a new attempt and not a cleanup.
+  /// The press that follows the key's release is judged by the lock cooldown, not the first
+  /// press's window (`lockedWhileHeld`).
+  package mutating func lockHeld(_ input: InputTime) -> HeldLock? {
+    guard let start, isHeld, !isLocked else { return nil }
+    let pair = Self.clockPair(from: start, to: input)
+    generation &+= 1
+    isLocked = true
+    lockedWhileHeld = true
+    lockAt = input
+    return HeldLock(
+      elapsedMs: Int(max(0, pair.end - pair.start) * 1000), usesOccurrence: pair.usesOccurrence)
   }
 
   // MARK: - Release

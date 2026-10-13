@@ -18,11 +18,11 @@ struct KeyboardListenerSeamTests {
   /// Calls the sink on a worker thread, as the listener's own thread will, and returns whether it
   /// ran on main. The continuation always resumes: the dispatched block runs unconditionally.
   private func deliverFromWorker(
-    _ sink: @escaping @Sendable (KeyEventValue) -> Void, _ event: KeyEventValue
+    _ sink: @escaping @Sendable (KeyEventValue) -> KeyboardEventDisposition, _ event: KeyEventValue
   ) async -> Bool {
     await withCheckedContinuation { continuation in
       DispatchQueue.global(qos: .userInteractive).async {
-        sink(event)
+        _ = sink(event)
         continuation.resume(returning: Thread.isMainThread)
       }
     }
@@ -34,9 +34,10 @@ struct KeyboardListenerSeamTests {
     let seen = OSAllocatedUnfairLock<[KeyEventValue]>(initialState: [])
     let token = effects.installKeyboardListener { event in
       seen.withLock { $0.append(event) }
+      return .pass
     }
     #expect(token != nil)
-    let sink = try #require(effects.keyboardListenerSink)
+    let sink = try #require(effects.keyboardListenerDispositionSink)
 
     let firstOnMain = await deliverFromWorker(sink, press)
     let other = KeyEventValue(kind: .keyDown, keyCode: 14, rawFlags: 0, timestamp: 1000.5)
@@ -47,10 +48,28 @@ struct KeyboardListenerSeamTests {
     #expect(seen.withLock { $0 } == [press, other])
   }
 
+  @Test("the sink's answer reaches the caller, and the void sink still delivers (#3517)")
+  func sinkAnswerReachesTheCaller() async throws {
+    let effects = RecordingDesktopHotkeyEffects()
+    let answers = OSAllocatedUnfairLock<[KeyboardEventDisposition]>(
+      initialState: [.consume, .pass])
+    _ = effects.installKeyboardListener { _ in
+      answers.withLock { $0.isEmpty ? .pass : $0.removeFirst() }
+    }
+    let sink = try #require(effects.keyboardListenerDispositionSink)
+    #expect(sink(press) == .consume)
+    #expect(sink(press) == .pass)
+    // The ignoring sink most suites use runs the same policy and discards the answer.
+    answers.withLock { $0 = [.consume] }
+    let ignoring = try #require(effects.keyboardListenerSink)
+    ignoring(press)
+    #expect(answers.withLock { $0.isEmpty }, "the void sink did not reach the policy")
+  }
+
   @Test("removing the listener's token stops delivery")
   func removalDropsTheSink() throws {
     let effects = RecordingDesktopHotkeyEffects()
-    let token = effects.installKeyboardListener { _ in }
+    let token = effects.installKeyboardListener { _ in .pass }
     #expect(effects.keyboardListenerSink != nil)
 
     #expect(effects.remove(try #require(token)) == true)
@@ -63,7 +82,7 @@ struct KeyboardListenerSeamTests {
   func refusedRemovalKeepsOwnership() throws {
     let effects = RecordingDesktopHotkeyEffects()
     effects.refuseRemovals = true
-    let token = effects.installKeyboardListener { _ in }
+    let token = effects.installKeyboardListener { _ in .pass }
 
     #expect(effects.remove(try #require(token)) == false)
 
@@ -74,7 +93,7 @@ struct KeyboardListenerSeamTests {
   @Test("removing another token leaves the listener installed")
   func unrelatedRemovalKeepsTheListener() {
     let effects = RecordingDesktopHotkeyEffects()
-    let token = effects.installKeyboardListener { _ in }
+    let token = effects.installKeyboardListener { _ in .pass }
 
     #expect(effects.remove(DesktopEffectToken()) == true)
 
@@ -87,7 +106,7 @@ struct KeyboardListenerSeamTests {
     let effects = RecordingDesktopHotkeyEffects()
     effects.failKeyboardListenerInstall = true
 
-    let token = effects.installKeyboardListener { _ in }
+    let token = effects.installKeyboardListener { _ in .pass }
 
     #expect(token == nil)
     #expect(effects.keyboardListenerInstalls == 1)

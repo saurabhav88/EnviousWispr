@@ -7,10 +7,11 @@ import os
 ///
 /// `RecordGesture` decides; this engine owns it, its lone-tap timer and the hand-off of every
 /// decision to `HotkeyService`, which executes it on the main thread. Each input is applied under
-/// one lock, so a press, a release and the timer are ordered by when the ENGINE receives them;
-/// the timer runs on its own queue and never waits for the main thread. In P1 every key event
-/// still arrives through the main thread (Carbon and `NSEvent` monitors); P2/P3 add a listener
-/// thread that calls `ingest` directly.
+/// one lock, so presses, releases, held-Space locks (#3517) and timer decisions are ordered by
+/// when the ENGINE receives them; the timer runs on its own queue and never waits for the main
+/// thread. Bare-modifier input arrives directly from the keyboard listener's thread; Carbon chord
+/// input arrives on main. Listener-origin lone-tap timers decide off main; Carbon-origin timers
+/// keep their main-queue hop.
 ///
 /// Delivery (plan amendment A1): one FIFO outbox and one application path for every producer. A
 /// background producer (the timer queue) appends and claims at most one pending
@@ -93,6 +94,9 @@ package final class RecordGestureEngine: Sendable {
     /// (#3544 P4, D2). The engine already ended the attempt; main dismisses that attempt's
     /// recording only, destructively.
     case dismiss(Dismiss)
+    /// A Space press locked the take while its record key was held (#3517). The engine already
+    /// locked the gesture; main records the intent and publishes it like a double-tap lock.
+    case lockHeld(LockHeld)
     /// One scheduled lone-tap wait finished, on any path (stopped, stale, locked, cancelled).
     /// A completion signal for tests; always applied, even in an invalidated batch.
     case loneTapResolved
@@ -124,6 +128,17 @@ package final class RecordGestureEngine: Sendable {
   package struct Dismiss: Sendable, Equatable {
     /// The attempt the dismissed press started.
     package let attemptID: UInt64
+  }
+
+  /// A lock made while the record key was held (#3517), with everything main needs captured at
+  /// decision time so a later rebind cannot change what it reports.
+  package struct LockHeld: Sendable {
+    package let inputSequence: UInt64
+    package let mode: RecordingMode
+    package let keyCode: UInt16
+    package let input: RecordGesture.InputTime
+    package let elapsedMs: Int
+    package let usesOccurrence: Bool
   }
 
   package struct QuickReleaseTrace: Sendable {
@@ -220,6 +235,10 @@ package final class RecordGestureEngine: Sendable {
     /// Whether a key-state reading may end this hold (#3544 P4 C2). Kept with the attempt, so it
     /// survives listener replacement and absence.
     let recovery: ListenerPressRecovery
+    /// The listener configuration generation this press was admitted under (#3517). A release
+    /// ignores it (a rebind never strands a hold), but locking the hold from a later key needs
+    /// the binding the press was classified under to still be current.
+    let generation: UInt64
   }
 
   /// The listener-owned record press a held-record check may ask about: its key, its attempt, and
@@ -584,6 +603,48 @@ package final class RecordGestureEngine: Sendable {
     return dismissed
   }
 
+  /// A Space press while the bare push-to-talk record key is held (#3517), as the listener
+  /// observed it. Locks the running take into hands-free here, in input order, and queues one
+  /// `.lockHeld` effect for main to publish. Returns whether it locked; false changes nothing,
+  /// and the caller then treats the key as any other ordinary key (including dismissal).
+  ///
+  /// Needs the current installation and configuration generation, push-to-talk with a bare
+  /// modifier record binding, a listener-owned press of that key admitted under the current
+  /// generation, and the live attempt held, unlocked, started, not joining a running session and
+  /// not already ended by this engine. There is no time limit: unlike dismissal, the lock may
+  /// come at any point of the hold.
+  @discardableResult
+  package func lockHeldFromListener(
+    input: RecordGesture.InputTime, installation: UInt64, generation: UInt64
+  ) -> Bool {
+    let (locked, work, submit) = state.withLock { s -> (Bool, TimerWork, Bool) in
+      guard s.listenerInstallation == installation,
+        s.listenerConfigurationGeneration == generation,
+        s.mode == .pushToTalk, s.binding.isBareModifier,
+        let owned = s.owned, !owned.fromMain, owned.keyCode == Self.key(s.binding),
+        owned.generation == generation, owned.attemptID == s.gesture.attemptID,
+        s.joinedAttempt != owned.attemptID, !s.endingRequested
+      else { return (false, TimerWork(), false) }
+      guard let held = s.gesture.lockHeld(input) else { return (false, TimerWork(), false) }
+      s.inputSequence &+= 1
+      var work = TimerWork()
+      var effects: [Effect] = []
+      // A quick release followed by a late second press can leave the lone-tap wait pending while
+      // the key is held again; the lock supersedes it.
+      Self.cancelTimer(&s, into: &work, effects: &effects)
+      effects.append(
+        .lockHeld(
+          LockHeld(
+            inputSequence: s.inputSequence, mode: s.mode, keyCode: owned.keyCode, input: input,
+            elapsedMs: held.elapsedMs, usesOccurrence: held.usesOccurrence)))
+      s.outbox.append(Batch(epoch: s.epoch, attemptID: owned.attemptID, effects: effects))
+      return (true, work, Self.claimAsyncDrain(&s))
+    }
+    perform(work)
+    if submit { submitAsyncDrain() }
+    return locked
+  }
+
   /// Whether the other-key rule would still dismiss the current take at handling time `now`
   /// (#3544 P4): a listener-owned push-to-talk press of the live attempt, held, not locked, and
   /// less than `otherKeyDismissalWindow` old by handling time. Read by the Secure Input notice,
@@ -750,7 +811,8 @@ package final class RecordGestureEngine: Sendable {
       let joinsRecording = s.joinedAttempt == s.gesture.attemptID
       // The held key's release follows this press, whatever the configuration is by then.
       s.owned = OwnedPress(
-        keyCode: keyCode, attemptID: s.gesture.attemptID, fromMain: fromMain, recovery: recovery)
+        keyCode: keyCode, attemptID: s.gesture.attemptID, fromMain: fromMain, recovery: recovery,
+        generation: s.listenerConfigurationGeneration)
       switch decision {
       case .start, .lockIntent:
         // A fresh attempt or a lock: the pending lone-tap stop no longer applies.

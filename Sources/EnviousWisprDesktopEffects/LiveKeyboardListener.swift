@@ -13,7 +13,9 @@ import os
 ///
 /// **What the callback may do.** Decode primitive fields, call the sink synchronously, return the
 /// event. Nothing that can wait: no main hop, no `Task`, no logging, no formatting. The event is
-/// always returned unchanged: Carbon owns registered chords (#3544 P5 D5). Mask: `flagsChanged`, plus `keyDown` and `keyUp` from P4 (plan §3.1) for the
+/// returned unchanged, with one exception: a keyDown or keyUp the sink answers `.consume` is
+/// deleted (#3517, the Space that locked a held take). Carbon owns registered chords (#3544 P5
+/// D5). Mask: `flagsChanged`, plus `keyDown` and `keyUp` from P4 (plan §3.1) for the
 /// other-key rule; an ordinary key's code and flags reach the sink and go no further than the
 /// ingress's local key state.
 ///
@@ -73,7 +75,7 @@ final class LiveKeyboardListener: @unchecked Sendable {
     #endif
   }
 
-  private let sink: @Sendable (KeyEventValue) -> Void
+  private let sink: @Sendable (KeyEventValue) -> KeyboardEventDisposition
   private let state = OSAllocatedUnfairLock(uncheckedState: State())
   private let startedSignal = DispatchSemaphore(value: 0)
   private let finishedSignal = DispatchSemaphore(value: 0)
@@ -86,7 +88,7 @@ final class LiveKeyboardListener: @unchecked Sendable {
   private var secureInput = SecureInputChangeDetector()
   private var context: Unmanaged<CallbackContext>?
 
-  init(sink: @escaping @Sendable (KeyEventValue) -> Void) {
+  init(sink: @escaping @Sendable (KeyEventValue) -> KeyboardEventDisposition) {
     self.sink = sink
   }
 
@@ -253,11 +255,11 @@ final class LiveKeyboardListener: @unchecked Sendable {
 
   // MARK: - Callback paths (worker thread)
 
-  fileprivate func deliver(_ event: CGEvent, kind: KeyEventValue.Kind) {
+  fileprivate func deliver(_ event: CGEvent, kind: KeyEventValue.Kind) -> KeyboardEventDisposition {
     // Removal closes admission under the lock. An event admitted just before removal may still
     // finish its sink call outside the lock; a successful removal waits for worker cleanup, which
     // runs only after this callback returns.
-    guard state.withLock({ $0.delivering && !$0.stopRequested }) else { return }
+    guard state.withLock({ $0.delivering && !$0.stopRequested }) else { return .pass }
     let value = KeyEventValue(
       kind: kind,
       keyCode: UInt16(truncatingIfNeeded: event.getIntegerValueField(.keyboardEventKeycode)),
@@ -266,7 +268,7 @@ final class LiveKeyboardListener: @unchecked Sendable {
       isAutorepeat: event.getIntegerValueField(.keyboardEventAutorepeat) != 0,
       isOurs: event.getIntegerValueField(.eventSourceUserData)
         == SyntheticKeyboardEventMarker.userData)
-    sink(value)
+    return sink(value)
   }
 
   #if DEBUG
@@ -300,7 +302,7 @@ final class LiveKeyboardListener: @unchecked Sendable {
     guard let storm else { return }
     if storm {
       // Told once, before cleanup: the owner replaces this installation after its cooldown.
-      sink(
+      _ = sink(
         KeyEventValue(
           kind: .stormStopped, keyCode: 0, rawFlags: 0,
           timestamp: ProcessInfo.processInfo.systemUptime))
@@ -318,7 +320,7 @@ final class LiveKeyboardListener: @unchecked Sendable {
       return s.delivering
     }
     if report {
-      sink(
+      _ = sink(
         KeyEventValue(
           kind: .tapReenabled, keyCode: 0, rawFlags: 0,
           timestamp: ProcessInfo.processInfo.systemUptime))
@@ -332,7 +334,7 @@ final class LiveKeyboardListener: @unchecked Sendable {
       enabled: enabled, ownerPID: enabled ? Self.secureInputOwnerPID() : nil)
     else { return }
     guard state.withLock({ $0.delivering && !$0.stopRequested }) else { return }
-    sink(
+    _ = sink(
       KeyEventValue(
         kind: .secureInputChanged, keyCode: 0, rawFlags: 0,
         timestamp: ProcessInfo.processInfo.systemUptime, secureInput: observation))
@@ -474,16 +476,18 @@ private func keyboardTapCallback(
   #endif
   switch type {
   case .flagsChanged:
-    listener.deliver(event, kind: .flagsChanged)
+    // A modifier change is never consumed.
+    _ = listener.deliver(event, kind: .flagsChanged)
   case .keyDown:
-    listener.deliver(event, kind: .keyDown)
+    if listener.deliver(event, kind: .keyDown) == .consume { return nil }
   case .keyUp:
-    listener.deliver(event, kind: .keyUp)
+    if listener.deliver(event, kind: .keyUp) == .consume { return nil }
   case .tapDisabledByTimeout, .tapDisabledByUserInput:
     listener.recoverFromDisable()
   default:
     break
   }
-  // Always pass the event through; Carbon owns registered chords (#3544 P5 D5).
+  // Pass the event through unless the policy consumed it above; Carbon owns registered chords
+  // (#3544 P5 D5).
   return Unmanaged.passUnretained(event)
 }
