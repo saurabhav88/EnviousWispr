@@ -33,6 +33,13 @@ function declaredLines(lines, name) {
   return lines.filter((line) => line.startsWith(`${name}:`));
 }
 
+// Any top-level spelling YAML reads as this key: `video:`, `video :`, `"video":`, `'video':`. The page
+// schema accepts all of them, so the all-three-or-none rule must see them; only the first is canonical.
+function mentionedLines(lines, name) {
+  const loose = new RegExp(`^["']?${name}["']?\\s*:`);
+  return lines.filter((line) => loose.test(line));
+}
+
 /**
  * Reads the three media fields from a frontmatter block.
  * Returns the decoded values that parsed and the problems found; a field that appears more than once,
@@ -73,11 +80,16 @@ export function validateMedia(file, source, publicDir) {
   const frontmatter = frontmatterBlock(source);
   if (frontmatter === null) return [`${file}: no frontmatter block`];
   const lines = frontmatter.split('\n');
-  const declared = MEDIA_FIELDS.filter((name) => declaredLines(lines, name).length > 0);
+  const declared = MEDIA_FIELDS.filter((name) => mentionedLines(lines, name).length > 0);
   if (declared.length === 0) return [];
 
   const { fields, errors: readErrors } = readMediaFields(frontmatter);
   const problems = readErrors.map((e) => `${file}: ${e}`);
+  for (const name of declared) {
+    if (declaredLines(lines, name).length === 0) {
+      problems.push(`${file}: ${name} must be an unquoted key followed at once by a colon`);
+    }
+  }
 
   for (const name of MEDIA_FIELDS) {
     if (!declared.includes(name)) problems.push(`${file}: ${name} is required when any media field is set`);

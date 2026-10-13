@@ -96,6 +96,15 @@ test('an em or an en dash in the description is rejected', () => {
   }
 });
 
+test('a spaced or quoted key is still a declaration and is rejected as non-canonical', () => {
+  for (const key of ['video :', '"video":', "'video':"]) {
+    const out = problems(GOOD.replace('video:', key));
+    assert.ok(out.some((p) => p.includes('video must be an unquoted key')), `${key} -> ${JSON.stringify(out)}`);
+  }
+  const alone = problems('video : "/help-media/clip-one.mp4"');
+  assert.ok(alone.some((p) => p.includes('videoPoster is required')), JSON.stringify(alone));
+});
+
 test('an indented lookalike is not a top-level field', () => {
   assert.deepEqual(problems('related:\n  video: "x"'), []);
 });
