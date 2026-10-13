@@ -790,12 +790,13 @@ struct SpokenPunctuationRoutingTests {
   @Test(
     "The English plan exists only with the switch on and a valid English start word",
     arguments: [
-      (true, ["en": "Insert"], "Insert"),
-      (true, ["en": "Mark", "de": "Sprich"], "Mark"),
+      (true, [("en", "Insert")], "Insert"),
+      (true, [("en", "Mark"), ("de", "Sprich")], "Mark"),
     ])
-  func englishPlanWithAStartWord(enabled: Bool, overrides: [String: String], word: String) {
+  func englishPlanWithAStartWord(enabled: Bool, overrides: [(String, String)], word: String) {
     let plan = InverseTextNormalizationStep.englishPunctuationPlan(
-      settings: SpokenPunctuationSettings(enabled: enabled, startWordOverrides: overrides))
+      settings: SpokenPunctuationSettings(
+        enabled: enabled, startWordOverrides: Dictionary(uniqueKeysWithValues: overrides)))
     #expect(plan?.attemptLanguage == "en")
     #expect(plan?.startWord == word)
   }

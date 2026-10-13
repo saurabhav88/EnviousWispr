@@ -96,7 +96,7 @@ struct SettingsSearchNavigationTests {
     "the arrival is the primary control when it is on screen, else the declared fallback",
     arguments: [
       // inputDevice, defaults
-      ("inputDevice", Set<SettingsMapID>([.inputDevice]), SettingsMapID?.some(.inputDevice)),
+      ("inputDevice", [SettingsMapID.inputDevice], SettingsMapID?.some(.inputDevice)),
       // pauseDuration, auto-stop on / off
       ("pauseDuration", [.pauseDuration, .stopOnSilence], .pauseDuration),
       ("pauseDuration", [.stopOnSilence], .stopOnSilence),
@@ -112,13 +112,12 @@ struct SettingsSearchNavigationTests {
       ("theme", [.theme], .theme),
       // nothing mounted: no rung yet (the arrival owner waits for the destination's content)
       ("pauseDuration", [], nil),
-    ] as [(String, Set<SettingsMapID>, SettingsMapID?)])
-  func arrivalTarget(entryID: String, mounted: Set<SettingsMapID>, expected: SettingsMapID?) throws
-  {
+    ] as [(String, [SettingsMapID], SettingsMapID?)])
+  func arrivalTarget(entryID: String, mounted: [SettingsMapID], expected: SettingsMapID?) throws {
     var state = SettingsNavigationState()
     state.perform(.search(try Self.request(entryID)))
     let reveal = try #require(state.reveal)
-    #expect(reveal.arrival(mounted: mounted) == expected, "\(entryID) with \(mounted)")
+    #expect(reveal.arrival(mounted: Set(mounted)) == expected, "\(entryID) with \(mounted)")
   }
 
   // MARK: - The reducer
