@@ -1,0 +1,259 @@
+name: Cache Warm
+
+# #3729: main's build-only Release cache writer. It replaces main-post-merge.yml,
+# which ran the Release and Debug suites again after every merge (founder
+# 2026-10-13: no post-merge tests, no timed runs). Nothing here runs a test.
+#
+# Why a writer is still needed: a PR can only restore caches saved on the main
+# ref, and pr-check.yml is restore-only. Without this job every PR compiles
+# its third-party packages from cold. It builds exactly what the PR gate
+# builds, through the same script (scripts/ci/build-for-testing-release.sh),
+# so the cache it saves holds the objects a PR build looks up.
+#
+# Events:
+#   push to main       classify the whole push (before..after); warm and save
+#                      only when it touched build inputs
+#   workflow_dispatch  main only; always warms and saves (re-seed after an
+#                      eviction or a toolchain bump)
+#   pull_request       self-proof for a PR that changes this workflow or what
+#                      it runs: builds, never saves, never tests
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+    # Everything this workflow's behaviour depends on, so a PR touching any of
+    # it re-runs the workflow against itself (#1994). #3344: list each script
+    # the composite action RUNS (`grep -oE "run: scripts/[^ ]+" .github/actions/xcode-ci-setup/action.yml`),
+    # since a change to one alters the warm while leaving action.yml untouched.
+    paths:
+      - '.github/workflows/cache-warm.yml'
+      - '.github/actions/xcode-ci-setup/action.yml'
+      - 'scripts/ci/configure-compilation-cache.sh'
+      - 'scripts/ci/configure-tuist-deriveddata-cache.sh'
+      - 'scripts/ci/ensure-metal-toolchain.sh'
+      - 'scripts/ci/verify-checked-out-revision.sh'
+      - 'scripts/ci/classify-changes.sh'
+      - 'scripts/ci/build-for-testing-release.sh'
+      # #3019: the phase wrapper and the metrics emitter run in the warm job.
+      - 'scripts/lib/ci-phase.sh'
+      - 'scripts/ci/ci-metrics.py'
+  workflow_dispatch:
+
+# Shared Xcode-engine constants (#913 PR3).
+env:
+  DERIVED_DATA_PATH: .derivedData/CI
+  XCODE_PROJECT: EnviousWispr.xcodeproj
+  XCODE_RELEASE_SCHEME: EnviousWispr-Release
+
+jobs:
+  # Cheap Linux decision. No concurrency group, at workflow or job level: the
+  # cancellation below belongs to the warm job alone, so a docs-only push that
+  # never reaches it cannot cancel a useful warm already running.
+  classify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      needs_build: ${{ steps.changes.outputs.needs_build }}
+      revision: ${{ steps.revision.outputs.sha }}
+
+    steps:
+      # One revision per run. github.sha is fixed when the run is created (for
+      # a dispatch, main's tip at that moment), so both jobs check out the same
+      # commit even if main moves while this run waits for a Mac.
+      - name: Select revision
+        id: revision
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          REF: ${{ github.ref }}
+          EVENT_SHA: ${{ github.sha }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          case "$EVENT_NAME" in
+            pull_request) sha="$PR_HEAD_SHA" ;;
+            push|workflow_dispatch)
+              if [ "$REF" != "refs/heads/main" ]; then
+                echo "::error::cache-warm runs on main only, got $REF"
+                exit 1
+              fi
+              sha="$EVENT_SHA"
+              ;;
+            *) echo "::error::Unsupported event: $EVENT_NAME"; exit 1 ;;
+          esac
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+          echo "==> revision $sha ($EVENT_NAME)"
+
+      # fetch-depth 0 for a PR's three-dot diff. A push keeps depth 2: a squash
+      # merge is one commit, and a deeper push whose BEFORE is not fetched fails
+      # safe to a full build inside classify-changes.sh.
+      - name: Checkout PR head
+        if: github.event_name == 'pull_request'
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          ref: ${{ steps.revision.outputs.sha }}
+          fetch-depth: 0
+
+      - name: Checkout main revision
+        if: github.event_name != 'pull_request'
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          ref: ${{ steps.revision.outputs.sha }}
+          fetch-depth: 2
+
+      - name: Verify checked-out revision
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: scripts/ci/verify-checked-out-revision.sh
+
+      - name: Detect build-affecting changes
+        id: changes
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BEFORE: ${{ github.event.before }}
+          AFTER: ${{ github.sha }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          case "$EVENT_NAME" in
+            push)
+              scripts/ci/classify-changes.sh --push-diff "$BEFORE" "$AFTER"
+              ;;
+            pull_request)
+              scripts/ci/classify-changes.sh "$BASE_SHA" "$HEAD_SHA"
+              ;;
+            workflow_dispatch)
+              echo "needs_build=true" >> "$GITHUB_OUTPUT"
+              echo "==> Manual dispatch always warms main's cache"
+              ;;
+            *)
+              echo "::error::Unsupported event: $EVENT_NAME"
+              exit 1
+              ;;
+          esac
+
+  # Build-only. Job-level concurrency: main warms share `cache-warm-main`, so
+  # a newer build-affecting push cancels an older warm whose cache would be
+  # stale anyway; each PR self-proof has its own group and never touches the
+  # main warm. A docs-only push skips this job by its `if:`; that it then leaves
+  # a running warm alone is a hosted control (#3729 plan §11), not assumed.
+  warm:
+    needs: classify
+    if: needs.classify.outputs.needs_build == 'true'
+    runs-on: xcode-27
+    # Unchanged from the release-validation job this replaces, which built the
+    # same target and then ran the suite. A cold Release build-for-testing took
+    # 17m31s on the hosted image (nightly-battery.yml, before #3729).
+    timeout-minutes: 45
+    concurrency:
+      group: ${{ github.event_name == 'pull_request' && format('cache-warm-pr-{0}', github.event.pull_request.number) || 'cache-warm-main' }}
+      cancel-in-progress: true
+
+    steps:
+      - name: Checkout revision
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          ref: ${{ needs.classify.outputs.revision }}
+          fetch-depth: 1
+
+      - name: Verify checked-out revision
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: scripts/ci/verify-checked-out-revision.sh
+
+      - name: Xcode CI setup
+        id: setup
+        uses: ./.github/actions/xcode-ci-setup
+        with:
+          derived-data-path: ${{ env.DERIVED_DATA_PATH }}
+          configuration: release
+
+      - name: Build for testing (release, Xcode)
+        id: release-test-build
+        run: |
+          set -euo pipefail
+          scripts/ci/build-for-testing-release.sh \
+            --project "$XCODE_PROJECT" \
+            --scheme "$XCODE_RELEASE_SCHEME" \
+            --derived-data "$DERIVED_DATA_PATH" \
+            --log xcode-build-for-testing-release.log \
+            --result-bundle "$GITHUB_WORKSPACE/xcode-build-for-testing-release.xcresult"
+
+      - name: Upload release build failure evidence
+        if: failure() && steps.release-test-build.outcome == 'failure'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: cache-warm-build-failure-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            xcode-build-for-testing-release.log
+            xcode-build-for-testing-release.xcresult
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Stamp cache save start
+        id: save-start
+        if: always()
+        continue-on-error: true
+        run: echo "t=$(date +%s)" >> "$GITHUB_OUTPUT"
+
+      # The ONE writer of the Xcode build cache (scripts/ci/check-cache-paths.py
+      # enforces it). Main only, after a successful build, and not when the
+      # restore was an exact hit: the primary key carries github.sha, so a first
+      # run for a commit always saves and a rerun of the same commit skips. A PR
+      # self-proof never saves (its ref is refs/pull/<N>/merge).
+      - name: Save Xcode build cache
+        id: cache-save
+        if: >-
+          github.event_name != 'pull_request' &&
+          github.ref == 'refs/heads/main' &&
+          success() &&
+          steps.setup.outputs.cache-hit != 'true'
+        uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+        with:
+          # MUST stay identical to the restore paths in
+          # .github/actions/xcode-ci-setup/action.yml — a save/restore pair that
+          # disagrees produces a permanently cold cache with no error anywhere.
+          # That restore is the ONLY other copy of this list, and
+          # scripts/ci/check-cache-paths.py holds both to one literal expectation.
+          path: |
+            ${{ env.DERIVED_DATA_PATH }}/SourcePackages
+            ${{ env.DERIVED_DATA_PATH }}/CompilationCache.noindex
+            ${{ env.DERIVED_DATA_PATH }}/*/SourcePackages
+          key: ${{ steps.setup.outputs.cache-primary-key }}
+
+      # #3019: one line of numbers for this job (scripts/ci/ci-metrics.py).
+      # Advisory: never fails the job. Runs after the save so save seconds are
+      # on the line too. restored_kb is the unpacked size; the archive size is
+      # only in the restore step's own log.
+      - name: CI metrics
+        if: always()
+        continue-on-error: true
+        env:
+          CACHE_MATCHED_KEY: ${{ steps.setup.outputs.cache-matched-key }}
+          CACHE_HIT: ${{ steps.setup.outputs.cache-hit }}
+          RESTORE_S: ${{ steps.setup.outputs.cache-restore-seconds }}
+          RESTORED_KB: ${{ steps.setup.outputs.cache-restored-kb }}
+          CAS_VALIDATE: ${{ steps.setup.outputs.cas-validate-outcome }}
+          CAS_VALIDATE_S: ${{ steps.setup.outputs.cas-validate-seconds }}
+          CAS_KB: ${{ steps.setup.outputs.cas-kb }}
+          SAVE_OUTCOME: ${{ steps.cache-save.outcome }}
+          SAVE_T0: ${{ steps.save-start.outputs.t }}
+        run: |
+          save_s=""
+          if [[ "$SAVE_T0" =~ ^[0-9]+$ ]] && [ "$SAVE_OUTCOME" != "skipped" ]; then save_s=$(( $(date +%s) - SAVE_T0 )); fi
+          python3 scripts/ci/ci-metrics.py emit \
+            --job cache-warm --family release \
+            --metrics-file "${EW_CI_METRICS_FILE:-${RUNNER_TEMP:-.}/ew-ci-metrics.env}" \
+            --log 'xcode-build-*.log' \
+            --set "cache_matched_key=$CACHE_MATCHED_KEY" \
+            --set "cache_hit=$CACHE_HIT" \
+            --set "restore_s=$RESTORE_S" \
+            --set "restored_kb=$RESTORED_KB" \
+            --set "cas_validate=$CAS_VALIDATE" \
+            --set "cas_validate_s=$CAS_VALIDATE_S" \
+            --set "cas_kb=$CAS_KB" \
+            --set "save_outcome=$SAVE_OUTCOME" \
+            --set "save_s=$save_s"

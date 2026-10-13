@@ -87,15 +87,17 @@ import Testing
         "scripts/build-release-dmg.sh",
         "scripts/xcode-test.sh",
         ".github/workflows/pr-check.yml",
-        ".github/workflows/main-post-merge.yml",
+        ".github/workflows/cache-warm.yml",
       ] {
         failures.append(contentsOf: try arm64InvocationFailures(path: path))
       }
       // #3729: the CI Release build-for-testing lives in one script that the PR
-      // gate calls. Only its one `xcodebuild build-for-testing` command counts:
-      // the script's self-test spells the same flags as expected arguments,
-      // and those must not stand in for the real ones. No command, or two,
-      // fails, so deleting it cannot read as "nothing to check".
+      // gate and the main cache warm both run. Only its one `xcodebuild
+      // build-for-testing` command counts: the script's self-test spells the
+      // same flags as expected arguments, and those must not stand in for the
+      // real ones. No command, or two, fails, so deleting it cannot read as
+      // "nothing to check". Each caller must RUN it: a line that starts with
+      // the script path, so a `paths:` filter entry naming it does not count.
       let sharedRelease = "scripts/ci/build-for-testing-release.sh"
       let commands = xcodebuildCommands(
         verb: "build-for-testing", in: executableText(try read(sharedRelease)))
@@ -106,8 +108,13 @@ import Testing
           "\(sharedRelease) must hold exactly one xcodebuild build-for-testing command, found \(commands.count)"
         )
       }
-      if !executableText(try read(".github/workflows/pr-check.yml")).contains(sharedRelease) {
-        failures.append(".github/workflows/pr-check.yml must build for testing through \(sharedRelease)")
+      for caller in [".github/workflows/pr-check.yml", ".github/workflows/cache-warm.yml"] {
+        let runsIt = executableText(try read(caller)).split(separator: "\n").contains {
+          $0.split(whereSeparator: \.isWhitespace).first == Substring(sharedRelease)
+        }
+        if !runsIt {
+          failures.append("\(caller) must build for testing by running \(sharedRelease)")
+        }
       }
       return failures
 
