@@ -18,7 +18,7 @@ videoDescription: "The clip shows the three ways to record in turn: hold the key
 
 1. **Hold.** Press and hold your keybind while you speak. Let go to finish.
 2. **Double-press.** Press your keybind twice within half a second to go hands-free. Press it three times within half a second to cancel instead. After a double-press, recording keeps going when you let go. Press your keybind once to stop.
-3. **Hold + Space.** If your keybind is a single key such as Command, Option, Shift, Control or Fn (Globe), hold only that key and press Space to go hands-free. The default keybind, Right Option, is one of these. A key combination cannot do this. Press your keybind once to stop.
+3. **Hold + Space.** If your keybind is a modifier key used on its own, such as Command, Option, Shift, Control or Fn (Globe), hold only that key and press Space to go hands-free. The default keybind, Right Option, is one of these. A key combination cannot do this. Press your keybind once to stop.
 
 [Hands-Free Mode (Long Dictation)](/help/hands-free-mode-long-dictation/) explains hands-free recording, including when Space does not lock.
 
@@ -42,7 +42,7 @@ The option you pick is highlighted. It worked when holding your keybind starts a
 
 ### Record without holding the key
 
-For a long block of speech, press your keybind twice within half a second. Or, if your keybind is a single key such as Option, hold it and press Space. Recording stays on after you let go. This is hands-free mode. [Hands-Free Mode (Long Dictation)](/help/hands-free-mode-long-dictation/) covers it in full.
+For a long block of speech, press your keybind twice within half a second. Or, if your keybind is a modifier key used on its own, such as Option, hold only that key and press Space. Recording stays on after you let go. This is hands-free mode. [Hands-Free Mode (Long Dictation)](/help/hands-free-mode-long-dictation/) covers it in full.
 
 If you prefer to tap once to start and once to stop, use [Toggle Mode](/help/toggle-mode/).
 
