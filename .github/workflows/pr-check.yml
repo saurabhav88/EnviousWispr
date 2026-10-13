@@ -127,33 +127,21 @@ jobs:
       # (scripts/lib/ci-phase.sh): same command, same exit status, plus a named
       # log and the seconds for the EW-CI-METRICS line at the end of the job.
       #
-      # #3348: the only Release compile in this job. It used to follow a plain
-      # non-testable `xcodebuild build` (324-719 s) whose products fed the three
-      # checks below; ENABLE_TESTABILITY changes flags, so nothing was reused.
-      # Measured before removing it (Xcode 27.0, one tree, separate DerivedData):
-      # the testable and non-testable apps had identical bundle inventories (180
-      # files), Mach-O sets (8), load commands, rpaths, minos, Info.plist and
-      # extracted .stringsdata; the testable app imports 146 extra symbols, all
-      # from baseline libraries (libSystem, SwiftUI, libswiftCore...), with zero
-      # weak/strong or library flips on shared symbols, and both pass
-      # check-weak-linked-symbols.sh with identical summaries.
+      # #3348: the only Release compile in this job; its products feed the three
+      # checks below. #3729: the flags live in scripts/ci/build-for-testing-release.sh,
+      # shared with the main cache warm so both compile the same thing (the
+      # script's header carries the #3348 testable/non-testable measurement).
       - name: Build for testing (release, Xcode)
         id: release-test-build
         if: steps.changes.outputs.needs_build == 'true'
         run: |
           set -euo pipefail
-          . "$GITHUB_WORKSPACE/scripts/lib/ci-phase.sh"
-          ew_phase build_for_testing_release xcode-build-for-testing-release.log -- xcodebuild build-for-testing \
-            -project "$XCODE_PROJECT" \
-            -scheme "$XCODE_RELEASE_SCHEME" \
-            -configuration Release \
-            -derivedDataPath "$DERIVED_DATA_PATH" \
-            -destination 'platform=macOS,arch=arm64' \
-            -resultBundlePath "$GITHUB_WORKSPACE/xcode-build-for-testing-release.xcresult" \
-            ARCHS=arm64 \
-            ONLY_ACTIVE_ARCH=YES \
-            VALID_ARCHS=arm64 \
-            ENABLE_TESTABILITY=YES
+          scripts/ci/build-for-testing-release.sh \
+            --project "$XCODE_PROJECT" \
+            --scheme "$XCODE_RELEASE_SCHEME" \
+            --derived-data "$DERIVED_DATA_PATH" \
+            --log xcode-build-for-testing-release.log \
+            --result-bundle "$GITHUB_WORKSPACE/xcode-build-for-testing-release.xcresult"
 
       - name: Upload release test-build failure evidence
         if: failure() && steps.release-test-build.outcome == 'failure'
