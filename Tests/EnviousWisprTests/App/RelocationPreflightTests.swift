@@ -426,7 +426,8 @@ struct RelocationPreflightTests {
   func watchdogStartsAtMove() async {
     let presenterGate = PreflightGate()
     let rig = PreflightRig(
-      mover: StageMover(PreflightRig.installed()), presenter: PreflightRecordingPresenter(gate: presenterGate))
+      mover: StageMover(PreflightRig.installed()),
+      presenter: PreflightRecordingPresenter(gate: presenterGate))
     let run = Task { await rig.coordinator.runPreflight(state: .translocated) }
     guard await presenterGate.waitUntilEntered() else {
       Issue.record("the offer was never presented")
@@ -444,10 +445,11 @@ struct RelocationPreflightTests {
     #expect(await preflightBoundedValue(of: run) == .handedOff)
   }
 
-  @Test("The default watchdog is the 20 s placeholder, NOT calibrated (Chunk 4 owns it)")
-  func defaultWatchdogIsTheNamedPlaceholder() {
-    // A literal on purpose: this pins the placeholder's value, it does not calibrate anything.
-    #expect(ApplicationRelocationCoordinator.provisionalMoveWatchdogSeconds == 20)
+  @Test("The default watchdog is 20 s, the floor that Chunk 4's measured moves left in force")
+  func defaultWatchdogIsTheMeasuredFloor() {
+    // A literal on purpose: this pins the value so a change must also redo the measurement
+    // (the evidence is in the constant's doc comment); it does not calibrate anything itself.
+    #expect(ApplicationRelocationCoordinator.defaultMoveWatchdogSeconds == 20)
   }
 
   // MARK: Success commits before the parent terminates
@@ -586,14 +588,16 @@ struct RelocationPreflightTests {
     if let failure = row.moverFailure {
       moverResult = .failure(failure)
     } else {
-      moverResult = row.route == .activate ? PreflightRig.existingRunning() : PreflightRig.installed()
+      moverResult =
+        row.route == .activate ? PreflightRig.existingRunning() : PreflightRig.installed()
     }
     let relauncher = StageRelauncher()
     relauncher.relaunchResult = row.relaunchOK
     relauncher.activateResult = row.activateOK
     let handshake = StageHandshake()
     handshake.outcome = row.ack
-    let rig = PreflightRig(mover: StageMover(moverResult), relauncher: relauncher, handshake: handshake)
+    let rig = PreflightRig(
+      mover: StageMover(moverResult), relauncher: relauncher, handshake: handshake)
     rig.destinationRunning = row.destinationRunning
 
     let run = Task { await rig.coordinator.runPreflight(state: .translocated) }
@@ -645,12 +649,15 @@ struct RelocationPreflightTests {
       rig = PreflightRig(mover: StageMover(PreflightRig.installed(), gate: gate))
     case .activate:
       rig = PreflightRig(
-        mover: StageMover(PreflightRig.existingRunning()), relauncher: StageRelauncher(activateGate: gate))
+        mover: StageMover(PreflightRig.existingRunning()),
+        relauncher: StageRelauncher(activateGate: gate))
     case .relaunch:
       rig = PreflightRig(
-        mover: StageMover(PreflightRig.installed()), relauncher: StageRelauncher(relaunchGate: gate))
+        mover: StageMover(PreflightRig.installed()), relauncher: StageRelauncher(relaunchGate: gate)
+      )
     case .ack:
-      rig = PreflightRig(mover: StageMover(PreflightRig.installed()), handshake: StageHandshake(gate: gate))
+      rig = PreflightRig(
+        mover: StageMover(PreflightRig.installed()), handshake: StageHandshake(gate: gate))
     }
 
     let run = Task { await rig.coordinator.runPreflight(state: .translocated) }

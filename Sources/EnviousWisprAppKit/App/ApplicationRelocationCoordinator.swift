@@ -392,7 +392,8 @@ protocol RelocationHandshaking: Sendable {
   @discardableResult
   func writeAck(
     attemptID: String, resolvedPath: String, healthy: Bool, stateLabel: String?,
-    bundleVersion: String?) -> Bool
+    bundleVersion: String?
+  ) -> Bool
 }
 
 /// Bounded `update.relocation_*` telemetry. Live impl forwards to
@@ -518,12 +519,14 @@ final class ApplicationRelocationCoordinator {
   /// bundle version changes, whichever comes first.
   static let declineCooldown: TimeInterval = 7 * 24 * 60 * 60
 
-  /// PLACEHOLDER, NOT empirically calibrated and NOT ship-approved (#3252, plan 3.7). Twenty
-  /// seconds is only the floor of the approved formula N = max(20 s, 3 x max(cold p99, warm
-  /// p99)). Chunk 4 must replace or confirm it from at least 30 cold and 30 warm full moves on a
-  /// notarized build before this ships; neither historical timings nor a passing unit test
-  /// calibrate it.
-  static let provisionalMoveWatchdogSeconds: TimeInterval = 20
+  /// Move watchdog (#3252, plan 3.7): N = max(20 s, 3 x max(cold p99, warm p99)). Measured on a
+  /// rented M1 16 GB with macOS 14.8.9, notarized build 0.0.3252, source opened from a quarantined
+  /// disk image (macOS translocated it), 30 cold and 30 warm externally validated full moves: the
+  /// slowest cold move took 5.22 s and the slowest warm move 0.72 s (nearest-rank p99 of 30 is the
+  /// maximum; each figure is an upper bound from Move press to observed parent exit). 3 x 5.22 s
+  /// is 15.7 s, so the 20 s floor governs. Not measured: the 8 GB M1 support floor or slower
+  /// storage. Evidence: `artifacts/issue-3252-chunk4/` (`analyze.py`, `host-evidence/`).
+  static let defaultMoveWatchdogSeconds: TimeInterval = 20
 
   /// The one pre-flight run of this coordinator. A second call awaits the same run and returns
   /// its outcome, so a repeated call can never start the app while the first move can still
@@ -557,7 +560,7 @@ final class ApplicationRelocationCoordinator {
       ApplicationRelocationCoordinator.chooseDestination(appName: $0)
     },
     moveWatchdogSeconds: TimeInterval = ApplicationRelocationCoordinator
-      .provisionalMoveWatchdogSeconds,
+      .defaultMoveWatchdogSeconds,
     watchdogSleep: @escaping @Sendable (TimeInterval) async throws -> Void = {
       try await Task.sleep(nanoseconds: UInt64($0 * 1_000_000_000))
     },
