@@ -1416,6 +1416,10 @@ struct ParakeetUpgradePolicyTests {
     let prepared = try await rig.coordinator.prepareLoad()
     #expect(prepared.selection?.model == .v3)
     await gate.waitForEntry(1)
+    // Chunk 12 r5: v3 ready when Retry is pressed takes Retry's background branch, which
+    // marks no selection point; Retry itself must still cancel the queued removal.
+    rig.coordinator.servingReadiness = { true }
+    #expect(Self.physicalLoad(rig) == .loaded, "v3 is ready when Retry is pressed")
     try rig.coordinator.retry()
     gate.open()
     await ended.wait()

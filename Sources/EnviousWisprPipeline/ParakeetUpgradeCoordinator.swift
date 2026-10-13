@@ -772,6 +772,9 @@ extension ParakeetUpgradeCoordinator {
     var state = ParakeetUpgradeState.fresh
     if case .state(let current) = target.store.read() { state.declined = current.declined }
     try target.store.write(state)
+    // A queued removal of the target's bytes belongs to the cycle this grant replaces; on
+    // the background branch below no selection point cancels it, so cancel it here.
+    cancelCleanupTasks()
     needsExplicitRetry = false
     emit(.retryGranted)
     if servingRequest?.model == .v3, frozen?.model == .v3, !hasPendingSelectionPoint,
