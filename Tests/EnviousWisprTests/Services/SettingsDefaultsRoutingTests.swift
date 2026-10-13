@@ -84,6 +84,31 @@ struct SettingsDefaultsRoutingTests {
 
   // MARK: - Routing
 
+  @Test("#3672: keeping dictations out of clipboard history apps is OFF on a fresh install, persists ON, and is unified")
+  func keepOutOfClipboardHistoryDefaultsOffAndPersistsOn() {
+    let suite = Self.freshSuite()
+    let settings = SettingsManager(defaults: suite)
+    #expect(settings.keepDictationsOutOfClipboardHistory == false)
+    #expect(suite.object(forKey: "keepDictationsOutOfClipboardHistory") == nil)
+
+    settings.keepDictationsOutOfClipboardHistory = true
+
+    #expect(suite.object(forKey: "keepDictationsOutOfClipboardHistory") as? Bool == true)
+    #expect(SettingsManager(defaults: suite).keepDictationsOutOfClipboardHistory == true)
+    #expect(
+      SettingsManager.unifiedDefaultsKeys.filter { $0 == "keepDictationsOutOfClipboardHistory" }
+        .count == 1)
+  }
+
+  @Test("#3672: the clipboard-history switch emits its SettingKey exactly once")
+  func keepOutOfClipboardHistoryNotifies() {
+    let settings = SettingsManager(defaults: Self.freshSuite())
+    var seen: [SettingsManager.SettingKey] = []
+    settings.onChange = { seen.append($0) }
+    settings.keepDictationsOutOfClipboardHistory = true
+    #expect(seen == [.keepDictationsOutOfClipboardHistory])
+  }
+
   @Test("Smart insertion persists OFF and belongs to unified defaults")
   func smartInsertionPersistsOff() {
     // The default alone proves nothing about an explicit choice surviving.

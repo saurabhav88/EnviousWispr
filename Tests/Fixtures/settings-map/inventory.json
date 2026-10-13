@@ -2028,6 +2028,24 @@
    }
   },
   {
+   "id": "keepOutOfClipboardHistory",
+   "kind": "setting",
+   "destination": {
+    "page": "dictation",
+    "tab": "clipboard"
+   },
+   "disposition": "mapped",
+   "parent": "section.clipboard",
+   "target": "keepOutOfClipboardHistory",
+   "fallbacks": [],
+   "dynamicTitle": false,
+   "seedParent": null,
+   "description": {
+    "kind": "static",
+    "english": "Asks clipboard apps to skip the text we paste."
+   }
+  },
+  {
    "id": "smartInsertion",
    "kind": "setting",
    "destination": {

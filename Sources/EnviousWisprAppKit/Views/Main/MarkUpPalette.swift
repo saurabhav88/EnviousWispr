@@ -3,7 +3,7 @@ import SwiftUI
 
 /// The one colour table for the Marked up view (#2817 finding 5), read by BOTH renderers: the
 /// wizard's whole-document `TranscribeFileExport.markedUpText` and the per-turn
-/// `MarkedUpTurnText` in `TurnDocumentView`. Two readers, one table, so the two views can
+/// `MarkedUpPassageText` in `TurnDocumentView`. Two readers, one table, so the two views can
 /// never disagree about what a removed word looks like.
 ///
 /// Founder (2026-09-12, again 2026-09-13 on the turn view): "strike outs should be red,

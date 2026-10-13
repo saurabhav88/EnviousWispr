@@ -1,12 +1,18 @@
 {
  "schema": "settings-search-vocabulary-review",
  "canonicalization": "length-prefixed-v1",
- "addedIDs": [],
+ "addedIDs": [
+  {
+   "id": "keepOutOfClipboardHistory",
+   "review": "additions/keepOutOfClipboardHistory.json",
+   "reviewSHA256": "f492de9f5738c95cba5e7a9972f6b02dda3d7d57d3bbbfaf932db12783cf5ea6"
+  }
+ ],
  "retiredIDs": [],
  "resource": {
   "path": "Sources/EnviousWisprAppKit/Resources/SettingsSearchVocabulary.json",
-  "sha256": "44690e53406ddb9730e98263a800ef9b9e34e7829dd5823bf7b46c14198bead8",
-  "bytes": 1592162
+  "sha256": "7f622292b158df2289a045554496e2c346a4e46ecb183356e21f8ede060e8d47",
+  "bytes": 1600313
  },
  "sources": [
   {
@@ -290,7 +296,7 @@
  "languages": [
   {
    "language": "ar",
-   "contentSHA256": "380ea2f3ed4d4a92b4627343e9c3f27e266ed22877d8debcf9b6ed6585f10191",
+   "contentSHA256": "862f383110115ea95ab3b1ea401c3b92d9a171d849603e96ea209385912ff531",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -356,6 +362,25 @@
      "disposition": "the word appended to the reviewed words; nothing else changed"
     },
     {
+     "kind": "addition-content",
+     "id": "keepOutOfClipboardHistory",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the Clipboard tab siblings); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-12",
+     "draft": {
+      "path": "additions/keepOutOfClipboardHistory/draft.json",
+      "sha256": "50748de26c16eb8efc90b3ee796094cf7d4405067c462b1fc7ec3281a52a6159"
+     },
+     "prompt": {
+      "path": "additions/keepOutOfClipboardHistory/review-driver.py.txt",
+      "sha256": "625f1a834592754a1792770a4056fe30b9f2b4c44c0f53922eab3b434220dd2d"
+     },
+     "output": {
+      "path": "additions/keepOutOfClipboardHistory/review-ar.txt",
+      "sha256": "5822ea18f01794271ab61c55ea12560bce6a99e9b487df703f658817b74d6a8b"
+     },
+     "disposition": "adopted as returned by the review (additions/keepOutOfClipboardHistory.json)"
+    },
+    {
      "kind": "model-name-edit",
      "scope": [
       "currentEngineSection"
@@ -369,7 +394,7 @@
   },
   {
    "language": "bg",
-   "contentSHA256": "5ca50d08700e95a12769d3253a2d1542599dbdaf0f84b69bcf797292a190c68f",
+   "contentSHA256": "ee551d9d475f1276a1a8fa4b8c4d21b82a8ed2813938bff6b1ea8f9ae09c4ac8",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -433,13 +458,32 @@
       "transcriptionEngine.allLanguages"
      ],
      "disposition": "the word appended to the reviewed words; nothing else changed"
+    },
+    {
+     "kind": "addition-content",
+     "id": "keepOutOfClipboardHistory",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the Clipboard tab siblings); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-12",
+     "draft": {
+      "path": "additions/keepOutOfClipboardHistory/draft.json",
+      "sha256": "50748de26c16eb8efc90b3ee796094cf7d4405067c462b1fc7ec3281a52a6159"
+     },
+     "prompt": {
+      "path": "additions/keepOutOfClipboardHistory/review-driver.py.txt",
+      "sha256": "625f1a834592754a1792770a4056fe30b9f2b4c44c0f53922eab3b434220dd2d"
+     },
+     "output": {
+      "path": "additions/keepOutOfClipboardHistory/review-bg.txt",
+      "sha256": "7d96f6bfa071bf142ef3cc172ca0f1d9495f4b8d3828cbb010b9a2122988aeea"
+     },
+     "disposition": "adopted as returned by the review (additions/keepOutOfClipboardHistory.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "cs",
-   "contentSHA256": "d7edf33d079b46a13c3e8f9fd03632adaa4ad6411016e4b9e571d91bfc8a698e",
+   "contentSHA256": "3083578234e556445c742e31671791a1594dd4eddd96184774f4d736df16aa09",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -503,13 +547,32 @@
       "transcriptionEngine.allLanguages"
      ],
      "disposition": "the word appended to the reviewed words; nothing else changed"
+    },
+    {
+     "kind": "addition-content",
+     "id": "keepOutOfClipboardHistory",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the Clipboard tab siblings); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-12",
+     "draft": {
+      "path": "additions/keepOutOfClipboardHistory/draft.json",
+      "sha256": "50748de26c16eb8efc90b3ee796094cf7d4405067c462b1fc7ec3281a52a6159"
+     },
+     "prompt": {
+      "path": "additions/keepOutOfClipboardHistory/review-driver.py.txt",
+      "sha256": "625f1a834592754a1792770a4056fe30b9f2b4c44c0f53922eab3b434220dd2d"
+     },
+     "output": {
+      "path": "additions/keepOutOfClipboardHistory/review-cs.txt",
+      "sha256": "be13a95083c0f25edc8ab95ae4942d1b1effe27caad83e3fb437e675b111a25b"
+     },
+     "disposition": "adopted as returned by the review (additions/keepOutOfClipboardHistory.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "da",
-   "contentSHA256": "273d9c86b24394e6c796feb87f2f154cedb0b292d200ea651722af0197b2b155",
+   "contentSHA256": "a93291fef3698cb48099de52d3b889ab4263c04f4e269228cc20002654588b53",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -573,13 +636,32 @@
       "transcriptionEngine.allLanguages"
      ],
      "disposition": "the word appended to the reviewed words; nothing else changed"
+    },
+    {
+     "kind": "addition-content",
+     "id": "keepOutOfClipboardHistory",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the Clipboard tab siblings); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-12",
+     "draft": {
+      "path": "additions/keepOutOfClipboardHistory/draft.json",
+      "sha256": "50748de26c16eb8efc90b3ee796094cf7d4405067c462b1fc7ec3281a52a6159"
+     },
+     "prompt": {
+      "path": "additions/keepOutOfClipboardHistory/review-driver.py.txt",
+      "sha256": "625f1a834592754a1792770a4056fe30b9f2b4c44c0f53922eab3b434220dd2d"
+     },
+     "output": {
+      "path": "additions/keepOutOfClipboardHistory/review-da.txt",
+      "sha256": "36b1b9d96d328f5631ea67ada15dd69aba7a816f24481ff033e32d2cccda54e4"
+     },
+     "disposition": "adopted as returned by the review (additions/keepOutOfClipboardHistory.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "de",
-   "contentSHA256": "4671dcf2490714effd576b86b9065cb58078975e1d38620e207b2065b0dfad82",
+   "contentSHA256": "b44d92185c08c90fbb4e9f16f9814232dce47fc320290bf8a3381f08013e53b2",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -666,13 +748,33 @@
       "transcriptionEngine.allLanguages"
      ],
      "disposition": "the word appended to the reviewed words; nothing else changed"
+    },
+    {
+     "kind": "addition-content",
+     "id": "keepOutOfClipboardHistory",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the Clipboard tab siblings); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-12",
+     "draft": {
+      "path": "additions/keepOutOfClipboardHistory/draft.json",
+      "sha256": "50748de26c16eb8efc90b3ee796094cf7d4405067c462b1fc7ec3281a52a6159"
+     },
+     "prompt": {
+      "path": "additions/keepOutOfClipboardHistory/review-driver.py.txt",
+      "sha256": "625f1a834592754a1792770a4056fe30b9f2b4c44c0f53922eab3b434220dd2d"
+     },
+     "output": {
+      "path": "additions/keepOutOfClipboardHistory/review-de.txt",
+      "sha256": "f00249fcad9302876e337f21c32fbd362576d5e22de74cb15328dd7b8378bc61"
+     },
+     "disposition": "adopted as returned by the review (additions/keepOutOfClipboardHistory.json)",
+     "note": "German: Codex only. The GPT and Gemini council was NOT run for this id (spend needs founder approval); the earlier council reviews cover the other 246 ids only."
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "el",
-   "contentSHA256": "6b05ff49a20a3229ba4f9c13dd2bcb82101650ee632cefdd1a8603a5b67828c4",
+   "contentSHA256": "07e0f4f5cb55e2bbb0162541223db0ce0e21b31f04d4a43b7f1ddb33024bf3af",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -738,6 +840,25 @@
      "disposition": "the word appended to the reviewed words; nothing else changed"
     },
     {
+     "kind": "addition-content",
+     "id": "keepOutOfClipboardHistory",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the Clipboard tab siblings); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-12",
+     "draft": {
+      "path": "additions/keepOutOfClipboardHistory/draft.json",
+      "sha256": "50748de26c16eb8efc90b3ee796094cf7d4405067c462b1fc7ec3281a52a6159"
+     },
+     "prompt": {
+      "path": "additions/keepOutOfClipboardHistory/review-driver.py.txt",
+      "sha256": "625f1a834592754a1792770a4056fe30b9f2b4c44c0f53922eab3b434220dd2d"
+     },
+     "output": {
+      "path": "additions/keepOutOfClipboardHistory/review-el.txt",
+      "sha256": "897f2999f3b9c0808a071a6974ee6d83987ef69d52de2ddc4d7ec3d3c33d63bf"
+     },
+     "disposition": "adopted as returned by the review (additions/keepOutOfClipboardHistory.json)"
+    },
+    {
      "kind": "model-name-edit",
      "scope": [
       "currentEngineSection"
@@ -751,7 +872,7 @@
   },
   {
    "language": "en",
-   "contentSHA256": "5cf21f2ada93737a12b28f9adc34fb4aaac660559a3bbf30b875dc6b4c8f817c",
+   "contentSHA256": "76e256a3b96b27f62ade83cec7743ca109314555778d13e454f7c4236eda4263",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -830,13 +951,32 @@
       "transcriptionEngine.allLanguages"
      ],
      "disposition": "the word appended to the reviewed words; nothing else changed"
+    },
+    {
+     "kind": "addition-content",
+     "id": "keepOutOfClipboardHistory",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the Clipboard tab siblings); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-12",
+     "draft": {
+      "path": "additions/keepOutOfClipboardHistory/draft.json",
+      "sha256": "50748de26c16eb8efc90b3ee796094cf7d4405067c462b1fc7ec3281a52a6159"
+     },
+     "prompt": {
+      "path": "additions/keepOutOfClipboardHistory/review-driver.py.txt",
+      "sha256": "625f1a834592754a1792770a4056fe30b9f2b4c44c0f53922eab3b434220dd2d"
+     },
+     "output": {
+      "path": "additions/keepOutOfClipboardHistory/review-en.txt",
+      "sha256": "62d4f7388cec9f840dc3feb014f8f14ad041eebdaadd742126f44ad4d799a602"
+     },
+     "disposition": "adopted as returned by the review (additions/keepOutOfClipboardHistory.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "es",
-   "contentSHA256": "18c4bb65ca1042dacd88d9b7913e8d2ed100be53961bb26baa95866e045ea200",
+   "contentSHA256": "1fc0956ad86bc0cfe9afe74a2a8eddf6b1641cf6e81684d0c9af9ca2578efb30",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -902,6 +1042,25 @@
      "disposition": "the word appended to the reviewed words; nothing else changed"
     },
     {
+     "kind": "addition-content",
+     "id": "keepOutOfClipboardHistory",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the Clipboard tab siblings); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-12",
+     "draft": {
+      "path": "additions/keepOutOfClipboardHistory/draft.json",
+      "sha256": "50748de26c16eb8efc90b3ee796094cf7d4405067c462b1fc7ec3281a52a6159"
+     },
+     "prompt": {
+      "path": "additions/keepOutOfClipboardHistory/review-driver.py.txt",
+      "sha256": "625f1a834592754a1792770a4056fe30b9f2b4c44c0f53922eab3b434220dd2d"
+     },
+     "output": {
+      "path": "additions/keepOutOfClipboardHistory/review-es.txt",
+      "sha256": "4a46af6e5ff98afcd62b831e5a169f6fd1992ff608d6228e18a9b6037c7b7bd1"
+     },
+     "disposition": "adopted as returned by the review (additions/keepOutOfClipboardHistory.json)"
+    },
+    {
      "kind": "model-name-edit",
      "scope": [
       "currentEngineSection"
@@ -915,7 +1074,7 @@
   },
   {
    "language": "et",
-   "contentSHA256": "3da04bf4f6714465119fa269dc25a0fb4e7ceacdcfd07d0a6217a929e76c948b",
+   "contentSHA256": "4e7dcc3018fd61323d579688423f547d11227a46d61968473dfd79ee419c4b7d",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -979,13 +1138,32 @@
       "transcriptionEngine.allLanguages"
      ],
      "disposition": "the word appended to the reviewed words; nothing else changed"
+    },
+    {
+     "kind": "addition-content",
+     "id": "keepOutOfClipboardHistory",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the Clipboard tab siblings); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-12",
+     "draft": {
+      "path": "additions/keepOutOfClipboardHistory/draft.json",
+      "sha256": "50748de26c16eb8efc90b3ee796094cf7d4405067c462b1fc7ec3281a52a6159"
+     },
+     "prompt": {
+      "path": "additions/keepOutOfClipboardHistory/review-driver.py.txt",
+      "sha256": "625f1a834592754a1792770a4056fe30b9f2b4c44c0f53922eab3b434220dd2d"
+     },
+     "output": {
+      "path": "additions/keepOutOfClipboardHistory/review-et.txt",
+      "sha256": "5a055149f437f220512ef93787919b18c75a1ea1de84e3536b8d861a42209281"
+     },
+     "disposition": "adopted as returned by the review (additions/keepOutOfClipboardHistory.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "fi",
-   "contentSHA256": "429007a636c615cf2c0c8554d8dd09121fcf1ca1a1a6b7c741fea9854b9fa282",
+   "contentSHA256": "5d6b1381545e936d629c97485a1efa2bf8fa20a105ad9dbd8849adc5dbb30860",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -1049,13 +1227,32 @@
       "transcriptionEngine.allLanguages"
      ],
      "disposition": "the word appended to the reviewed words; nothing else changed"
+    },
+    {
+     "kind": "addition-content",
+     "id": "keepOutOfClipboardHistory",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the Clipboard tab siblings); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-12",
+     "draft": {
+      "path": "additions/keepOutOfClipboardHistory/draft.json",
+      "sha256": "50748de26c16eb8efc90b3ee796094cf7d4405067c462b1fc7ec3281a52a6159"
+     },
+     "prompt": {
+      "path": "additions/keepOutOfClipboardHistory/review-driver.py.txt",
+      "sha256": "625f1a834592754a1792770a4056fe30b9f2b4c44c0f53922eab3b434220dd2d"
+     },
+     "output": {
+      "path": "additions/keepOutOfClipboardHistory/review-fi.txt",
+      "sha256": "a0d181e0337398cf524dc5ac4d6daa87c8b9d1141ddbf515ace890b48b24f338"
+     },
+     "disposition": "adopted as returned by the review (additions/keepOutOfClipboardHistory.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "fr",
-   "contentSHA256": "c16af05edd6eed63f27e104b78bfe675bd4ef2a6a8d3ca40b86f71a166d5a481",
+   "contentSHA256": "39e3193481ce16e67d9813c439c1a3471087924f88e304f75aae131a39e919a9",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -1119,13 +1316,32 @@
       "transcriptionEngine.allLanguages"
      ],
      "disposition": "the word appended to the reviewed words; nothing else changed"
+    },
+    {
+     "kind": "addition-content",
+     "id": "keepOutOfClipboardHistory",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the Clipboard tab siblings); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-12",
+     "draft": {
+      "path": "additions/keepOutOfClipboardHistory/draft.json",
+      "sha256": "50748de26c16eb8efc90b3ee796094cf7d4405067c462b1fc7ec3281a52a6159"
+     },
+     "prompt": {
+      "path": "additions/keepOutOfClipboardHistory/review-driver.py.txt",
+      "sha256": "625f1a834592754a1792770a4056fe30b9f2b4c44c0f53922eab3b434220dd2d"
+     },
+     "output": {
+      "path": "additions/keepOutOfClipboardHistory/review-fr.txt",
+      "sha256": "3c3d822848fa9537b898f5f38d86919650cc0cec90c271174bbbc90c458f9a4a"
+     },
+     "disposition": "adopted as returned by the review (additions/keepOutOfClipboardHistory.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "hi",
-   "contentSHA256": "f7ea387f60a1634d8218fa1b5017ff9b7e87fb6b9c635e13fe4a3ae46a9c8862",
+   "contentSHA256": "8d9ce4655879877b9cfb6d30d980b4c5c4ecee3e19db0148e3651cc4b321301b",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -1189,13 +1405,32 @@
       "transcriptionEngine.allLanguages"
      ],
      "disposition": "the word appended to the reviewed words; nothing else changed"
+    },
+    {
+     "kind": "addition-content",
+     "id": "keepOutOfClipboardHistory",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the Clipboard tab siblings); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-12",
+     "draft": {
+      "path": "additions/keepOutOfClipboardHistory/draft.json",
+      "sha256": "50748de26c16eb8efc90b3ee796094cf7d4405067c462b1fc7ec3281a52a6159"
+     },
+     "prompt": {
+      "path": "additions/keepOutOfClipboardHistory/review-driver.py.txt",
+      "sha256": "625f1a834592754a1792770a4056fe30b9f2b4c44c0f53922eab3b434220dd2d"
+     },
+     "output": {
+      "path": "additions/keepOutOfClipboardHistory/review-hi.txt",
+      "sha256": "13477b9b3d7d3c1cf25e2d9bd1d3f52e27f43118eed4ea1b214684cad3194f34"
+     },
+     "disposition": "adopted as returned by the review (additions/keepOutOfClipboardHistory.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "hr",
-   "contentSHA256": "4d3ba8c0f74d755b048142b110ec6766be65a2707836f46a1d411f287d0856ef",
+   "contentSHA256": "664231a28d8d5ab5703bba0befeef48c9a728fdb1a56784b3a80d6eca3e60f69",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -1259,13 +1494,32 @@
       "transcriptionEngine.allLanguages"
      ],
      "disposition": "the word appended to the reviewed words; nothing else changed"
+    },
+    {
+     "kind": "addition-content",
+     "id": "keepOutOfClipboardHistory",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the Clipboard tab siblings); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-12",
+     "draft": {
+      "path": "additions/keepOutOfClipboardHistory/draft.json",
+      "sha256": "50748de26c16eb8efc90b3ee796094cf7d4405067c462b1fc7ec3281a52a6159"
+     },
+     "prompt": {
+      "path": "additions/keepOutOfClipboardHistory/review-driver.py.txt",
+      "sha256": "625f1a834592754a1792770a4056fe30b9f2b4c44c0f53922eab3b434220dd2d"
+     },
+     "output": {
+      "path": "additions/keepOutOfClipboardHistory/review-hr.txt",
+      "sha256": "1d7825c4b16e2560b90476ffec06006d9b6a1b151d9bb15252b4f6e8ca4308dc"
+     },
+     "disposition": "adopted as returned by the review (additions/keepOutOfClipboardHistory.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "hu",
-   "contentSHA256": "d4d6577e02dfc265c6e264abdd17a8a7184d802be5dff2bc28dd730d6807f44f",
+   "contentSHA256": "c7a478ced5c9fdfc0270472d7cb3971c70661b9a17bbefdfbf7e389527f89956",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -1329,13 +1583,32 @@
       "transcriptionEngine.allLanguages"
      ],
      "disposition": "the word appended to the reviewed words; nothing else changed"
+    },
+    {
+     "kind": "addition-content",
+     "id": "keepOutOfClipboardHistory",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the Clipboard tab siblings); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-12",
+     "draft": {
+      "path": "additions/keepOutOfClipboardHistory/draft.json",
+      "sha256": "50748de26c16eb8efc90b3ee796094cf7d4405067c462b1fc7ec3281a52a6159"
+     },
+     "prompt": {
+      "path": "additions/keepOutOfClipboardHistory/review-driver.py.txt",
+      "sha256": "625f1a834592754a1792770a4056fe30b9f2b4c44c0f53922eab3b434220dd2d"
+     },
+     "output": {
+      "path": "additions/keepOutOfClipboardHistory/review-hu.txt",
+      "sha256": "ac9aac5ed2dfa7f6b267cbce8a45b240e0b24ecef2d72f6f6d369bf263a87578"
+     },
+     "disposition": "adopted as returned by the review (additions/keepOutOfClipboardHistory.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "it",
-   "contentSHA256": "a7b873cf44ec35ba70c9b8e3221ff7f6218e9516fa504d752d2b7370dbe0217a",
+   "contentSHA256": "bfdd276b862e62301002031e1fcaad51ee32f4ea055cddfc8ed9c08219292bdc",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -1401,6 +1674,25 @@
      "disposition": "the word appended to the reviewed words; nothing else changed"
     },
     {
+     "kind": "addition-content",
+     "id": "keepOutOfClipboardHistory",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the Clipboard tab siblings); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-12",
+     "draft": {
+      "path": "additions/keepOutOfClipboardHistory/draft.json",
+      "sha256": "50748de26c16eb8efc90b3ee796094cf7d4405067c462b1fc7ec3281a52a6159"
+     },
+     "prompt": {
+      "path": "additions/keepOutOfClipboardHistory/review-driver.py.txt",
+      "sha256": "625f1a834592754a1792770a4056fe30b9f2b4c44c0f53922eab3b434220dd2d"
+     },
+     "output": {
+      "path": "additions/keepOutOfClipboardHistory/review-it.txt",
+      "sha256": "7e748d7f8d6140c82d3638ad1f3da1f5176adc23fca5cf293759c84b4b6d5705"
+     },
+     "disposition": "adopted as returned by the review (additions/keepOutOfClipboardHistory.json)"
+    },
+    {
      "kind": "model-name-edit",
      "scope": [
       "currentEngineSection"
@@ -1414,7 +1706,7 @@
   },
   {
    "language": "ja",
-   "contentSHA256": "6e7c0fd17dcd3ddf312db811c6a451c396cfe3b9438586bcf70095dcd879cf84",
+   "contentSHA256": "2020e136ac22f6102af8a99629af82962781c8656d7992b16b17fde41f7afdf1",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -1478,13 +1770,32 @@
       "transcriptionEngine.allLanguages"
      ],
      "disposition": "the word appended to the reviewed words; nothing else changed"
+    },
+    {
+     "kind": "addition-content",
+     "id": "keepOutOfClipboardHistory",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the Clipboard tab siblings); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-12",
+     "draft": {
+      "path": "additions/keepOutOfClipboardHistory/draft.json",
+      "sha256": "50748de26c16eb8efc90b3ee796094cf7d4405067c462b1fc7ec3281a52a6159"
+     },
+     "prompt": {
+      "path": "additions/keepOutOfClipboardHistory/review-driver.py.txt",
+      "sha256": "625f1a834592754a1792770a4056fe30b9f2b4c44c0f53922eab3b434220dd2d"
+     },
+     "output": {
+      "path": "additions/keepOutOfClipboardHistory/review-ja.txt",
+      "sha256": "e77a83bf9aef373d316f5b4737bd16e9f9deaa4f7b011b07d3e52b0cfd127231"
+     },
+     "disposition": "adopted as returned by the review (additions/keepOutOfClipboardHistory.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "ko",
-   "contentSHA256": "52555daf2e84b35315e0fb817195d4caa2d3955db9fc87da47c8e40b0a8cbcb6",
+   "contentSHA256": "3d4a34a8f6c5b8e6c30677620fe78a268584d9c6b7f4775bbec3a65ea00af6af",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -1548,13 +1859,32 @@
       "transcriptionEngine.allLanguages"
      ],
      "disposition": "the word appended to the reviewed words; nothing else changed"
+    },
+    {
+     "kind": "addition-content",
+     "id": "keepOutOfClipboardHistory",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the Clipboard tab siblings); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-12",
+     "draft": {
+      "path": "additions/keepOutOfClipboardHistory/draft.json",
+      "sha256": "50748de26c16eb8efc90b3ee796094cf7d4405067c462b1fc7ec3281a52a6159"
+     },
+     "prompt": {
+      "path": "additions/keepOutOfClipboardHistory/review-driver.py.txt",
+      "sha256": "625f1a834592754a1792770a4056fe30b9f2b4c44c0f53922eab3b434220dd2d"
+     },
+     "output": {
+      "path": "additions/keepOutOfClipboardHistory/review-ko.txt",
+      "sha256": "7f454bcdb670767e35dfb932c55cfe9d6bec0528aeb482c86e2c34786a2db304"
+     },
+     "disposition": "adopted as returned by the review (additions/keepOutOfClipboardHistory.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "lt",
-   "contentSHA256": "de77b5e49680d11a5cdeb0d5885d0a723c33fc0f97f4a3ae90b533907ba8e338",
+   "contentSHA256": "0581c33638863a856187fded7a9b8109f12d2e7d3acb1cb8a00adb6effaa2b58",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -1620,6 +1950,25 @@
      "disposition": "the word appended to the reviewed words; nothing else changed"
     },
     {
+     "kind": "addition-content",
+     "id": "keepOutOfClipboardHistory",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the Clipboard tab siblings); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-12",
+     "draft": {
+      "path": "additions/keepOutOfClipboardHistory/draft.json",
+      "sha256": "50748de26c16eb8efc90b3ee796094cf7d4405067c462b1fc7ec3281a52a6159"
+     },
+     "prompt": {
+      "path": "additions/keepOutOfClipboardHistory/review-driver.py.txt",
+      "sha256": "625f1a834592754a1792770a4056fe30b9f2b4c44c0f53922eab3b434220dd2d"
+     },
+     "output": {
+      "path": "additions/keepOutOfClipboardHistory/review-lt.txt",
+      "sha256": "b5da3f8a4b112df851bf3975c2532cb9deb5ddb7216e8f828f34e1e3986a3e81"
+     },
+     "disposition": "adopted as returned by the review (additions/keepOutOfClipboardHistory.json)"
+    },
+    {
      "kind": "model-name-edit",
      "scope": [
       "currentEngineSection"
@@ -1633,7 +1982,7 @@
   },
   {
    "language": "lv",
-   "contentSHA256": "d01b09e7ff9d1c70bd68383ae719f017ace5921bfd2f656c79e1ba72d2f775d7",
+   "contentSHA256": "74bf04abddbed18b70da2c3468c5fd56e52893bfe0c1197c47af3aceb9f380f0",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -1697,13 +2046,32 @@
       "transcriptionEngine.allLanguages"
      ],
      "disposition": "the word appended to the reviewed words; nothing else changed"
+    },
+    {
+     "kind": "addition-content",
+     "id": "keepOutOfClipboardHistory",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the Clipboard tab siblings); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-12",
+     "draft": {
+      "path": "additions/keepOutOfClipboardHistory/draft.json",
+      "sha256": "50748de26c16eb8efc90b3ee796094cf7d4405067c462b1fc7ec3281a52a6159"
+     },
+     "prompt": {
+      "path": "additions/keepOutOfClipboardHistory/review-driver.py.txt",
+      "sha256": "625f1a834592754a1792770a4056fe30b9f2b4c44c0f53922eab3b434220dd2d"
+     },
+     "output": {
+      "path": "additions/keepOutOfClipboardHistory/review-lv.txt",
+      "sha256": "3bf51cc6f0c9c2d5ad4f326ed8686e767a6897f17ccf2a72779938924cda99c7"
+     },
+     "disposition": "adopted as returned by the review (additions/keepOutOfClipboardHistory.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "mt",
-   "contentSHA256": "7fdfafb9180b5c8a125c19f21ee49a0f0d73bd4217c92e135b97b2df2ab6923f",
+   "contentSHA256": "874e61a957b2fc8b783ecae085eddadcacd0eaeae6e1420c23802373a6cd9ee2",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -1769,6 +2137,25 @@
      "disposition": "the word appended to the reviewed words; nothing else changed"
     },
     {
+     "kind": "addition-content",
+     "id": "keepOutOfClipboardHistory",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the Clipboard tab siblings); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-12",
+     "draft": {
+      "path": "additions/keepOutOfClipboardHistory/draft.json",
+      "sha256": "50748de26c16eb8efc90b3ee796094cf7d4405067c462b1fc7ec3281a52a6159"
+     },
+     "prompt": {
+      "path": "additions/keepOutOfClipboardHistory/review-driver.py.txt",
+      "sha256": "625f1a834592754a1792770a4056fe30b9f2b4c44c0f53922eab3b434220dd2d"
+     },
+     "output": {
+      "path": "additions/keepOutOfClipboardHistory/review-mt.txt",
+      "sha256": "d6f2172edbd2725c17f9fc7eed44ee9dcfc9c77ac41ef404bf8f96f52066c1af"
+     },
+     "disposition": "adopted as returned by the review (additions/keepOutOfClipboardHistory.json)"
+    },
+    {
      "kind": "model-name-edit",
      "scope": [
       "currentEngineSection"
@@ -1782,7 +2169,7 @@
   },
   {
    "language": "nl",
-   "contentSHA256": "afbc26ee78064a4878f316bc0dc5849dfa97ba25ecfd04c2e517c6e4a3a894b8",
+   "contentSHA256": "c582e06f4ca05e000e560652703a8b5ee83d4b3907ae8cfc8295a09a35f75417",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -1846,13 +2233,32 @@
       "transcriptionEngine.allLanguages"
      ],
      "disposition": "the word appended to the reviewed words; nothing else changed"
+    },
+    {
+     "kind": "addition-content",
+     "id": "keepOutOfClipboardHistory",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the Clipboard tab siblings); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-12",
+     "draft": {
+      "path": "additions/keepOutOfClipboardHistory/draft.json",
+      "sha256": "50748de26c16eb8efc90b3ee796094cf7d4405067c462b1fc7ec3281a52a6159"
+     },
+     "prompt": {
+      "path": "additions/keepOutOfClipboardHistory/review-driver.py.txt",
+      "sha256": "625f1a834592754a1792770a4056fe30b9f2b4c44c0f53922eab3b434220dd2d"
+     },
+     "output": {
+      "path": "additions/keepOutOfClipboardHistory/review-nl.txt",
+      "sha256": "796ff8aa44174d13a0fce107db19c6a7466b20a74de23ab5935d3389c8157893"
+     },
+     "disposition": "adopted as returned by the review (additions/keepOutOfClipboardHistory.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "pl",
-   "contentSHA256": "47de5d699ccf18f3eeb2cdcf2166ddd7d7bc23ee43e049bd74d0deced1adb1b3",
+   "contentSHA256": "dddf3dfccb7b62a052981f152b2dab2f1ee181f528faec3be91ac8b785633514",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -1916,13 +2322,32 @@
       "transcriptionEngine.allLanguages"
      ],
      "disposition": "the word appended to the reviewed words; nothing else changed"
+    },
+    {
+     "kind": "addition-content",
+     "id": "keepOutOfClipboardHistory",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the Clipboard tab siblings); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-12",
+     "draft": {
+      "path": "additions/keepOutOfClipboardHistory/draft.json",
+      "sha256": "50748de26c16eb8efc90b3ee796094cf7d4405067c462b1fc7ec3281a52a6159"
+     },
+     "prompt": {
+      "path": "additions/keepOutOfClipboardHistory/review-driver.py.txt",
+      "sha256": "625f1a834592754a1792770a4056fe30b9f2b4c44c0f53922eab3b434220dd2d"
+     },
+     "output": {
+      "path": "additions/keepOutOfClipboardHistory/review-pl.txt",
+      "sha256": "907b41830f2795811072ea0279466395b5b9eff46617e85c15621f3c2aac12ff"
+     },
+     "disposition": "adopted as returned by the review (additions/keepOutOfClipboardHistory.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "pt",
-   "contentSHA256": "4158a038947d2a1499f62aefdbb42f3c913642a8b498c0fbccbfe80a8326e963",
+   "contentSHA256": "b34175a423233dd632693022a7873afd2bfad294bf2979da0982ba21a180bc8e",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -1994,13 +2419,32 @@
       "transcriptionEngine.allLanguages"
      ],
      "disposition": "the word appended to the reviewed words; nothing else changed"
+    },
+    {
+     "kind": "addition-content",
+     "id": "keepOutOfClipboardHistory",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the Clipboard tab siblings); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-12",
+     "draft": {
+      "path": "additions/keepOutOfClipboardHistory/draft.json",
+      "sha256": "50748de26c16eb8efc90b3ee796094cf7d4405067c462b1fc7ec3281a52a6159"
+     },
+     "prompt": {
+      "path": "additions/keepOutOfClipboardHistory/review-driver.py.txt",
+      "sha256": "625f1a834592754a1792770a4056fe30b9f2b4c44c0f53922eab3b434220dd2d"
+     },
+     "output": {
+      "path": "additions/keepOutOfClipboardHistory/review-pt.txt",
+      "sha256": "aebf317986791d538ae60b40507672e41c6f2147a0f0000003fc93d12276b30e"
+     },
+     "disposition": "adopted as returned by the review (additions/keepOutOfClipboardHistory.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "ro",
-   "contentSHA256": "575441506c091ea095a4562d876841b35462cfe9e112a3f31ae819c90112a7aa",
+   "contentSHA256": "8c896f0afc9992c310ba69d5168999367b4ab37c543c1d70e821f28ff0f2f73d",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -2064,13 +2508,32 @@
       "transcriptionEngine.allLanguages"
      ],
      "disposition": "the word appended to the reviewed words; nothing else changed"
+    },
+    {
+     "kind": "addition-content",
+     "id": "keepOutOfClipboardHistory",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the Clipboard tab siblings); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-12",
+     "draft": {
+      "path": "additions/keepOutOfClipboardHistory/draft.json",
+      "sha256": "50748de26c16eb8efc90b3ee796094cf7d4405067c462b1fc7ec3281a52a6159"
+     },
+     "prompt": {
+      "path": "additions/keepOutOfClipboardHistory/review-driver.py.txt",
+      "sha256": "625f1a834592754a1792770a4056fe30b9f2b4c44c0f53922eab3b434220dd2d"
+     },
+     "output": {
+      "path": "additions/keepOutOfClipboardHistory/review-ro.txt",
+      "sha256": "9f1564726c9e721af32d95d0ccc0479a4a2d31831b2f980e6da6bdff911b2321"
+     },
+     "disposition": "adopted as returned by the review (additions/keepOutOfClipboardHistory.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "ru",
-   "contentSHA256": "9fb200712fd0f9fd902223d1fc27014dc2ca5675a02a02383ec2f6d013ff42ab",
+   "contentSHA256": "91088991ac1d3e6de73a15a7c855e0afee23ab2c4de7e8857bebdb18f4ee060b",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -2134,13 +2597,32 @@
       "transcriptionEngine.allLanguages"
      ],
      "disposition": "the word appended to the reviewed words; nothing else changed"
+    },
+    {
+     "kind": "addition-content",
+     "id": "keepOutOfClipboardHistory",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the Clipboard tab siblings); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-12",
+     "draft": {
+      "path": "additions/keepOutOfClipboardHistory/draft.json",
+      "sha256": "50748de26c16eb8efc90b3ee796094cf7d4405067c462b1fc7ec3281a52a6159"
+     },
+     "prompt": {
+      "path": "additions/keepOutOfClipboardHistory/review-driver.py.txt",
+      "sha256": "625f1a834592754a1792770a4056fe30b9f2b4c44c0f53922eab3b434220dd2d"
+     },
+     "output": {
+      "path": "additions/keepOutOfClipboardHistory/review-ru.txt",
+      "sha256": "1ef2e6faabfcf4f8bc569d0643748894f06783bd902ddffdcb0f02eb9e619a44"
+     },
+     "disposition": "adopted as returned by the review (additions/keepOutOfClipboardHistory.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "sk",
-   "contentSHA256": "566f6e32ac829a5898b55d44de74562a047e559611ce348d2df8d97e1f4ae3cd",
+   "contentSHA256": "e9197ffe84258c3388ccfa55bc1b7a123c687836459333086a20ce2e821817d3",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -2204,13 +2686,32 @@
       "transcriptionEngine.allLanguages"
      ],
      "disposition": "the word appended to the reviewed words; nothing else changed"
+    },
+    {
+     "kind": "addition-content",
+     "id": "keepOutOfClipboardHistory",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the Clipboard tab siblings); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-12",
+     "draft": {
+      "path": "additions/keepOutOfClipboardHistory/draft.json",
+      "sha256": "50748de26c16eb8efc90b3ee796094cf7d4405067c462b1fc7ec3281a52a6159"
+     },
+     "prompt": {
+      "path": "additions/keepOutOfClipboardHistory/review-driver.py.txt",
+      "sha256": "625f1a834592754a1792770a4056fe30b9f2b4c44c0f53922eab3b434220dd2d"
+     },
+     "output": {
+      "path": "additions/keepOutOfClipboardHistory/review-sk.txt",
+      "sha256": "7c2d040c386909847bed74dde3195c3502d701a97aaba056ebbab1109a34e115"
+     },
+     "disposition": "adopted as returned by the review (additions/keepOutOfClipboardHistory.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "sl",
-   "contentSHA256": "88907fa8cd82db71f8fe01d7d7664b56386dd030b7e6c7fd56a2990d97200643",
+   "contentSHA256": "167c7b0417fc79f66f3d264190b44aa4b690b47a76156bf2471700439f8056d6",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -2276,6 +2777,25 @@
      "disposition": "the word appended to the reviewed words; nothing else changed"
     },
     {
+     "kind": "addition-content",
+     "id": "keepOutOfClipboardHistory",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the Clipboard tab siblings); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-12",
+     "draft": {
+      "path": "additions/keepOutOfClipboardHistory/draft.json",
+      "sha256": "50748de26c16eb8efc90b3ee796094cf7d4405067c462b1fc7ec3281a52a6159"
+     },
+     "prompt": {
+      "path": "additions/keepOutOfClipboardHistory/review-driver.py.txt",
+      "sha256": "625f1a834592754a1792770a4056fe30b9f2b4c44c0f53922eab3b434220dd2d"
+     },
+     "output": {
+      "path": "additions/keepOutOfClipboardHistory/review-sl.txt",
+      "sha256": "6eed9b93f31ac08d0582fb6d458b3e994ca78d36c238219b228898fd95e3bb77"
+     },
+     "disposition": "adopted as returned by the review (additions/keepOutOfClipboardHistory.json)"
+    },
+    {
      "kind": "model-name-edit",
      "scope": [
       "currentEngineSection"
@@ -2289,7 +2809,7 @@
   },
   {
    "language": "sv",
-   "contentSHA256": "db4687b60fc4ed90917634dedda2a07860d98d0fe92b84d81851ab6abdc0c6fa",
+   "contentSHA256": "a7bfd4c140764e2e94accc9025e76cdb9b6ccd718f9e6f98efa05d69d618190c",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -2353,13 +2873,32 @@
       "transcriptionEngine.allLanguages"
      ],
      "disposition": "the word appended to the reviewed words; nothing else changed"
+    },
+    {
+     "kind": "addition-content",
+     "id": "keepOutOfClipboardHistory",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the Clipboard tab siblings); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-12",
+     "draft": {
+      "path": "additions/keepOutOfClipboardHistory/draft.json",
+      "sha256": "50748de26c16eb8efc90b3ee796094cf7d4405067c462b1fc7ec3281a52a6159"
+     },
+     "prompt": {
+      "path": "additions/keepOutOfClipboardHistory/review-driver.py.txt",
+      "sha256": "625f1a834592754a1792770a4056fe30b9f2b4c44c0f53922eab3b434220dd2d"
+     },
+     "output": {
+      "path": "additions/keepOutOfClipboardHistory/review-sv.txt",
+      "sha256": "1d8d0cfea92157056b7f5e5e80fa04fb5e3fd2df4a50a189804517b5f13f0810"
+     },
+     "disposition": "adopted as returned by the review (additions/keepOutOfClipboardHistory.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "tr",
-   "contentSHA256": "24b0311dc94889c263b9206817d27d19571c83f5cd0a60a80866f783bffc00c5",
+   "contentSHA256": "df4e3e8d5fc19e6be2b43d090c55fbc99c36baccd4b2c0cdf5cfac6ccbf39b9e",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -2423,13 +2962,32 @@
       "transcriptionEngine.allLanguages"
      ],
      "disposition": "the word appended to the reviewed words; nothing else changed"
+    },
+    {
+     "kind": "addition-content",
+     "id": "keepOutOfClipboardHistory",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the Clipboard tab siblings); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-12",
+     "draft": {
+      "path": "additions/keepOutOfClipboardHistory/draft.json",
+      "sha256": "50748de26c16eb8efc90b3ee796094cf7d4405067c462b1fc7ec3281a52a6159"
+     },
+     "prompt": {
+      "path": "additions/keepOutOfClipboardHistory/review-driver.py.txt",
+      "sha256": "625f1a834592754a1792770a4056fe30b9f2b4c44c0f53922eab3b434220dd2d"
+     },
+     "output": {
+      "path": "additions/keepOutOfClipboardHistory/review-tr.txt",
+      "sha256": "3bb1515b237312f9ae8664727222f03576ca5c1b40b55dc294344168583e5e1c"
+     },
+     "disposition": "adopted as returned by the review (additions/keepOutOfClipboardHistory.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "uk",
-   "contentSHA256": "87de513f5147aed2519b54a5fe7fd27db5a2d32f6cd7b0f622367f905e1cb237",
+   "contentSHA256": "89393dee2ecc97a11f5f84393ba8e5f2f75b8707dfd4106d2d4d76817bdf1830",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -2495,6 +3053,25 @@
      "disposition": "the word appended to the reviewed words; nothing else changed"
     },
     {
+     "kind": "addition-content",
+     "id": "keepOutOfClipboardHistory",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the Clipboard tab siblings); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-12",
+     "draft": {
+      "path": "additions/keepOutOfClipboardHistory/draft.json",
+      "sha256": "50748de26c16eb8efc90b3ee796094cf7d4405067c462b1fc7ec3281a52a6159"
+     },
+     "prompt": {
+      "path": "additions/keepOutOfClipboardHistory/review-driver.py.txt",
+      "sha256": "625f1a834592754a1792770a4056fe30b9f2b4c44c0f53922eab3b434220dd2d"
+     },
+     "output": {
+      "path": "additions/keepOutOfClipboardHistory/review-uk.txt",
+      "sha256": "d1c304f45de5ae081a1b2f170fb899d5b720c553136e58c690761c464139a2da"
+     },
+     "disposition": "adopted as returned by the review (additions/keepOutOfClipboardHistory.json)"
+    },
+    {
      "kind": "model-name-edit",
      "scope": [
       "currentEngineSection"
@@ -2508,7 +3085,7 @@
   },
   {
    "language": "vi",
-   "contentSHA256": "8284ecb3eb7afc2095ed20a19f6c5d4b2dc36bb60f5b3a62d5da3ebd5d9f7358",
+   "contentSHA256": "685344dfbcf0d9586377d532f862726cae396e20d3b0557e504483fc10d3bbef",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -2572,13 +3149,32 @@
       "transcriptionEngine.allLanguages"
      ],
      "disposition": "the word appended to the reviewed words; nothing else changed"
+    },
+    {
+     "kind": "addition-content",
+     "id": "keepOutOfClipboardHistory",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the Clipboard tab siblings); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-12",
+     "draft": {
+      "path": "additions/keepOutOfClipboardHistory/draft.json",
+      "sha256": "50748de26c16eb8efc90b3ee796094cf7d4405067c462b1fc7ec3281a52a6159"
+     },
+     "prompt": {
+      "path": "additions/keepOutOfClipboardHistory/review-driver.py.txt",
+      "sha256": "625f1a834592754a1792770a4056fe30b9f2b4c44c0f53922eab3b434220dd2d"
+     },
+     "output": {
+      "path": "additions/keepOutOfClipboardHistory/review-vi.txt",
+      "sha256": "fc1790dac862be97ddc92dda13da7ccbc0de171ae29351e59686fbc63f77a1ac"
+     },
+     "disposition": "adopted as returned by the review (additions/keepOutOfClipboardHistory.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "zh",
-   "contentSHA256": "c124deb2c3d37ea35e7b971eb6e38481bbccec27eca32e82d8330974246c12d1",
+   "contentSHA256": "e796a7a434954b4912dac3537c619e52aa6c41167781d0689bd88212a3ff525b",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -2642,6 +3238,25 @@
       "transcriptionEngine.allLanguages"
      ],
      "disposition": "the word appended to the reviewed words; nothing else changed"
+    },
+    {
+     "kind": "addition-content",
+     "id": "keepOutOfClipboardHistory",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the Clipboard tab siblings); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-12",
+     "draft": {
+      "path": "additions/keepOutOfClipboardHistory/draft.json",
+      "sha256": "50748de26c16eb8efc90b3ee796094cf7d4405067c462b1fc7ec3281a52a6159"
+     },
+     "prompt": {
+      "path": "additions/keepOutOfClipboardHistory/review-driver.py.txt",
+      "sha256": "625f1a834592754a1792770a4056fe30b9f2b4c44c0f53922eab3b434220dd2d"
+     },
+     "output": {
+      "path": "additions/keepOutOfClipboardHistory/review-zh.txt",
+      "sha256": "7d91fac9f8b28edf7f45bb9ab3f29747be2940bc9aaaf6570550b4499d736ce2"
+     },
+     "disposition": "adopted as returned by the review (additions/keepOutOfClipboardHistory.json)"
     }
    ],
    "phraseExemptions": []
@@ -2719,6 +3334,7 @@
   "inputDevice.device": "d20e838b00653dfa7a7cb319b55a27dcfca81ca8715148ea19d9bcba856c489f",
   "inputSocket": "cda24a6f89cc814e3bb1bca9cd81b09c4b5cb58292a9804225d4d4a621ca4d60",
   "inputSocket.input": "d0dc92af4c11b261bb8523ee339d31ed5bd602f6388f49037ceb6b3157c23258",
+  "keepOutOfClipboardHistory": "312be4ada874b771a0ed258f23ec82c77223f1e11fc443207e91eb99a8920254",
   "keybind.resetToDefault": "765eac97bf622e1ddb30d0dace76ef3b942c0e0f72be5b6a7b56ca42ae14405e",
   "learnFrom": "132dbd5d38d7d6a1fd18907912195b6d47bfb9fc25556e31f49b081286f3d2ed",
   "license.gpl": "0b55c18a302405e180a46395765c7a2c5f6e5b6bb9d8e69a8e21530109fdbf77",

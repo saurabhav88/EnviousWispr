@@ -51,7 +51,7 @@ struct ManualClipboardTransactionTests {
     let users = snapshot(of: pb)
     put("the dictation still being read", on: pb)
     ClipboardCleanup.scheduleRestore(
-      users, changeCountAfterPaste: pb.changeCount, tier: .cgEvent, on: pb)
+      users, changeCountAfterPaste: pb.changeCount, markTransient: false, tier: .cgEvent, on: pb)
   }
 
   // MARK: Paste
@@ -66,7 +66,7 @@ struct ManualClipboardTransactionTests {
       var boardAtDispatch: String?
 
       let result = ClipboardCleanup.manualPaste(
-        text: "send the draft to Maya", restore: true, on: pb
+        text: "send the draft to Maya", restore: true, markTransient: false, on: pb
       ) {
         dispatches += 1
         boardAtDispatch = pb.string(forType: .string)
@@ -88,7 +88,7 @@ struct ManualClipboardTransactionTests {
     await withFastCleanup {
       let pb = board(holding: "the user's own clipboard")
       let result = ClipboardCleanup.manualPaste(
-        text: "send the draft to Maya", restore: false, on: pb
+        text: "send the draft to Maya", restore: false, markTransient: false, on: pb
       ) { true }
 
       #expect(result == .dispatched)
@@ -102,7 +102,7 @@ struct ManualClipboardTransactionTests {
     await withFastCleanup {
       let pb = board(holding: "the user's own clipboard")
       let result = ClipboardCleanup.manualPaste(
-        text: "send the draft to Maya", restore: true, on: pb
+        text: "send the draft to Maya", restore: true, markTransient: false, on: pb
       ) { false }
 
       #expect(result == .dispatchFailed)
@@ -116,7 +116,7 @@ struct ManualClipboardTransactionTests {
     await withFastCleanup {
       let pb = board(holding: "the user's own clipboard")
       #expect(
-        ClipboardCleanup.manualPaste(text: "send the draft to Maya", restore: true, on: pb) { true }
+        ClipboardCleanup.manualPaste(text: "send the draft to Maya", restore: true, markTransient: false, on: pb) { true }
           == .dispatched)
       put("something copied during the window", on: pb)
 
@@ -140,7 +140,9 @@ struct ManualClipboardTransactionTests {
   // MARK: A write that does not take
 
   /// `setString` refusing after `clearContents`: the board is empty, not holding the dictation.
-  private static func refusedWrite(_ text: String, _ pb: NSPasteboard) -> Int {
+  private static func refusedWrite(
+    _ text: String, _ pb: NSPasteboard, _ kind: PasteService.WriteKind
+  ) -> Int {
     pb.clearContents()
     return pb.changeCount
   }
@@ -153,7 +155,7 @@ struct ManualClipboardTransactionTests {
       let pb = board(holding: "the user's own clipboard")
       var dispatches = 0
       let result = ClipboardCleanup.manualPaste(
-        text: "send the draft to Maya", restore: restore, on: pb, write: Self.refusedWrite
+        text: "send the draft to Maya", restore: restore, markTransient: false, on: pb, write: Self.refusedWrite
       ) {
         dispatches += 1
         return true
@@ -163,6 +165,166 @@ struct ManualClipboardTransactionTests {
       #expect(dispatches == 0)
       #expect(!ClipboardCleanup.hasPending)
       #expect(pb.string(forType: .string) == "the user's own clipboard")
+    }
+  }
+
+  // MARK: Transient marker (#3528)
+  // The literal type string is the oracle: it is the nspasteboard.org convention managers read.
+
+  private static let transientMarker = "org.nspasteboard.TransientType"
+
+  private func carriesMarker(_ pb: NSPasteboard) -> Bool {
+    pb.pasteboardItems?.contains { $0.types.map(\.rawValue).contains(Self.transientMarker) } ?? false
+  }
+
+  @Test("#3528: Paste Last with restore and the history setting on writes the text marked, on one item")
+  func pasteWithRestoreWritesMarked() async {
+    await withFastCleanup {
+      let pb = board(holding: "the user's own clipboard")
+      var markedAtDispatch = false
+      var itemCountAtDispatch = 0
+      let result = ClipboardCleanup.manualPaste(text: "send the draft to Maya", restore: true, markTransient: true, on: pb) {
+        markedAtDispatch = self.carriesMarker(pb)
+        itemCountAtDispatch = pb.pasteboardItems?.count ?? 0
+        return true
+      }
+
+      #expect(result == .dispatched)
+      #expect(markedAtDispatch)
+      #expect(itemCountAtDispatch == 1)
+      await ClipboardCleanup.awaitPendingCleanup()
+      #expect(pb.string(forType: .string) == "the user's own clipboard")
+    }
+  }
+
+  @Test("#3528: Paste Last with restore off writes the text unmarked even with the history setting on, because it stays")
+  func pasteWithoutRestoreWritesUnmarked() async {
+    await withFastCleanup {
+      let pb = board(holding: "the user's own clipboard")
+      var markedAtDispatch = true
+      let result = ClipboardCleanup.manualPaste(
+        text: "send the draft to Maya", restore: false, markTransient: true, on: pb
+      ) {
+        markedAtDispatch = self.carriesMarker(pb)
+        return true
+      }
+
+      #expect(result == .dispatched)
+      #expect(!markedAtDispatch)
+      #expect(pb.string(forType: .string) == "send the draft to Maya")
+      #expect(!carriesMarker(pb))
+    }
+  }
+
+  @Test("#3528: Copy Last Dictation leaves the text unmarked")
+  func copyLeavesTextUnmarked() async {
+    await withFastCleanup {
+      let pb = board(holding: "the user's own clipboard")
+      #expect(ClipboardCleanup.manualCopy(text: "send the draft to Maya", on: pb) == .copied)
+      #expect(pb.string(forType: .string) == "send the draft to Maya")
+      #expect(!carriesMarker(pb))
+    }
+  }
+
+  @Test("#3528: a paste whose Cmd+V cannot be posted leaves the text on the board unmarked")
+  func dispatchFailureRewritesUnmarked() async {
+    await withFastCleanup {
+      let pb = board(holding: "the user's own clipboard")
+      let result = ClipboardCleanup.manualPaste(
+        text: "send the draft to Maya", restore: true, markTransient: true, on: pb
+      ) { false }
+
+      #expect(result == .dispatchFailed)
+      #expect(pb.string(forType: .string) == "send the draft to Maya")
+      #expect(!carriesMarker(pb))
+      #expect(!ClipboardCleanup.hasPending)
+    }
+  }
+
+  @Test("#3528: if the unmarked rewrite after a failed Cmd+V does not take, the user's clipboard comes back")
+  func dispatchFailureRewriteRefusedRestoresClipboard() async {
+    await withFastCleanup {
+      let pb = board(holding: "the user's own clipboard")
+      let result = ClipboardCleanup.manualPaste(
+        text: "send the draft to Maya", restore: true, markTransient: true, on: pb,
+        write: { text, board, kind in
+          switch kind {
+          case .temporary:
+            return ClipboardCleanup.defaultManualWrite(text, board, kind)
+          case .kept:
+            board.clearContents()
+            return board.changeCount
+          }
+        }
+      ) { false }
+
+      #expect(result == .writeFailed)
+      #expect(pb.string(forType: .string) == "the user's own clipboard")
+    }
+  }
+
+  // MARK: History setting OFF (#3672): the released write sequence
+
+  @Test("#3672: Paste Last with the history setting off writes the text unmarked and restores unmarked")
+  func settingOffWritesUnmarked() async {
+    await withFastCleanup {
+      let pb = board(holding: "the user's own clipboard")
+      var markedAtDispatch = true
+      let result = ClipboardCleanup.manualPaste(
+        text: "send the draft to Maya", restore: true, markTransient: false, on: pb
+      ) {
+        markedAtDispatch = self.carriesMarker(pb)
+        return true
+      }
+
+      #expect(result == .dispatched)
+      #expect(!markedAtDispatch)
+      await ClipboardCleanup.awaitPendingCleanup()
+      #expect(pb.string(forType: .string) == "the user's own clipboard")
+      #expect(!carriesMarker(pb))
+    }
+  }
+
+  @Test("#3672: with the setting off a failed Cmd+V leaves the text where it was, with no extra write")
+  func settingOffDispatchFailureWritesNothingMore() async {
+    await withFastCleanup {
+      let pb = board(holding: "the user's own clipboard")
+      var writes = 0
+      let result = ClipboardCleanup.manualPaste(
+        text: "send the draft to Maya", restore: true, markTransient: false, on: pb,
+        write: { text, board, kind in
+          writes += 1
+          return ClipboardCleanup.defaultManualWrite(text, board, kind)
+        }
+      ) { false }
+
+      #expect(result == .dispatchFailed)
+      #expect(writes == 1, "the released sequence is one write; the unmarked rewrite is only for a marked paste")
+      #expect(pb.string(forType: .string) == "send the draft to Maya")
+      #expect(!carriesMarker(pb))
+    }
+  }
+
+  @Test("#3672: the restore keeps a marker the user's own clipboard already carried, in both states")
+  func restoreKeepsAnExistingMarkerWhateverTheSetting() async {
+    for setting in [false, true] {
+      await withFastCleanup {
+        let pb = NSPasteboard.withUniqueName()
+        let item = NSPasteboardItem()
+        item.setString("copied from a password manager", forType: .string)
+        item.setData(Data(), forType: NSPasteboard.PasteboardType(Self.transientMarker))
+        pb.clearContents()
+        pb.writeObjects([item])
+
+        let result = ClipboardCleanup.manualPaste(
+          text: "send the draft to Maya", restore: true, markTransient: setting, on: pb
+        ) { true }
+
+        #expect(result == .dispatched)
+        await ClipboardCleanup.awaitPendingCleanup()
+        #expect(pb.string(forType: .string) == "copied from a password manager")
+        #expect(carriesMarker(pb), "an existing marker is part of the user's clipboard bytes")
+      }
     }
   }
 
@@ -185,8 +347,8 @@ struct ManualClipboardTransactionTests {
       let pb = board(holding: "the user's own clipboard")
       var dispatches = 0
       let result = ClipboardCleanup.manualPaste(
-        text: "send the draft to Maya", restore: false, on: pb,
-        write: { text, board in
+        text: "send the draft to Maya", restore: false, markTransient: false, on: pb,
+        write: { text, board, _ in
           board.clearContents()
           board.setString(String(text.dropLast()), forType: .string)
           return board.changeCount
@@ -221,7 +383,7 @@ struct ManualClipboardTransactionTests {
         // #3135: the predicate Paste/Copy Last waits on says held exactly where the write refuses.
         #expect(ClipboardCleanup.isBoardHeldForManualWrite(pb), "legacyRewrite=\(legacyRewrite)")
 
-        let paste = ClipboardCleanup.manualPaste(text: "reused", restore: true, on: pb) {
+        let paste = ClipboardCleanup.manualPaste(text: "reused", restore: true, markTransient: false, on: pb) {
           dispatches += 1
           return true
         }
@@ -275,7 +437,7 @@ struct ManualClipboardTransactionTests {
       var dispatches = 0
       #expect(ClipboardCleanup.isBoardHeldForManualWrite(pb), "a takeover is a hold")
 
-      let paste = ClipboardCleanup.manualPaste(text: "reused", restore: false, on: pb) {
+      let paste = ClipboardCleanup.manualPaste(text: "reused", restore: false, markTransient: false, on: pb) {
         dispatches += 1
         return true
       }

@@ -1,0 +1,1 @@
+{"language":"pt","title":"manter ditados fora dos apps de histórico da área de transferência","words":["histórico da área de transferência","histórico do clipboard"],"phrases":["não salvar ditados em apps de histórico da área de transferência","pedir ao Maccy para ignorar meus ditados"]}

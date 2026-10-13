@@ -211,6 +211,7 @@ struct DictationSessionConfigFactoryTests {
     let harness = try Harness.make(backend: .parakeet)
     harness.settings.autoCopyToClipboard = false
     harness.settings.restoreClipboardAfterPaste = true
+    harness.settings.keepDictationsOutOfClipboardHistory = true
     harness.settings.vadAutoStop = true
     harness.settings.vadSilenceTimeout = 2.5
     harness.settings.vadSensitivity = 0.7
@@ -221,6 +222,7 @@ struct DictationSessionConfigFactoryTests {
     let config = harness.makeConfig()
     #expect(config.autoCopyToClipboard == false)
     #expect(config.restoreClipboardAfterPaste == true)
+    #expect(config.keepDictationsOutOfClipboardHistory == true)
     #expect(config.vadAutoStop == true)
     #expect(config.vadSilenceTimeout == 2.5)
     #expect(config.vadSensitivity == 0.7)

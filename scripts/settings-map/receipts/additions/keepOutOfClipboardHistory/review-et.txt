@@ -1,0 +1,1 @@
+{"language":"et","title":"jäta dikteeritud tekst lõikelauarakenduste ajaloost välja","words":[],"phrases":["ära salvesta dikteeritud teksti lõikelaua ajalukku","dikteerimine ilma lõikelaua ajalukku salvestamata"]}

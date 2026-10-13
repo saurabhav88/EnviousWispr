@@ -264,6 +264,9 @@
   "mac-ctl-restore-clipboard": [
    "restoreClipboard"
   ],
+  "mac-ctl-keep-out-of-clipboard-history": [
+   "keepOutOfClipboardHistory"
+  ],
   "mac-ctl-smart-insertion": [
    "smartInsertion"
   ],
@@ -677,6 +680,11 @@
    "kind": "control",
    "parent": "mac-window-main",
    "label": "Search settings [Cmd+F; finds a page, setting or choice]"
+  },
+  "mac-ctl-keep-out-of-clipboard-history": {
+   "kind": "control",
+   "parent": "mac-sec-clipboard",
+   "label": "Keep dictations out of clipboard history apps"
   }
  }
 }

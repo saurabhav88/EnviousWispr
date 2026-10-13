@@ -62,7 +62,8 @@ struct HeldTextDeliveryTests {
     -> HeldDeliverySettings
   {
     HeldDeliverySettings(
-      smartInsertion: smart, autoPasteToActiveApp: autoPaste, restoreClipboardAfterPaste: restore)
+      smartInsertion: smart, autoPasteToActiveApp: autoPaste, restoreClipboardAfterPaste: restore,
+      keepDictationsOutOfClipboardHistory: false)
   }
 
   /// A field handle. Never messaged: every read goes through the injected seams.
@@ -220,7 +221,8 @@ struct HeldTextDeliveryTests {
       targetWindow: window, seams: theSeams, afterCaret: { _ in Self.noFacts })
     let dictation = KernelFinalizationWiring.deliveryRequest(
       computation: dictationComputation, targetApp: app, recordedWindow: window,
-      takeID: "take-1", restoreClipboardAfterPaste: true, origin: .dictation)
+      takeID: "take-1", restoreClipboardAfterPaste: true,
+      keepDictationsOutOfClipboardHistory: false, origin: .dictation)
 
     #expect(held.legacyText == dictation.legacyText)
     #expect(held.repairedText == dictation.repairedText)

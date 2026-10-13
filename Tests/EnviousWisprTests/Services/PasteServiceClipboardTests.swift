@@ -46,7 +46,7 @@ struct PasteServiceClipboardTests {
     withPrivatePasteboard { pasteboard in
       let text = "dictation-\(UUID().uuidString)"
       let returnedChangeCount = PasteService.copyToClipboardReturningChangeCount(
-        text, to: pasteboard)
+        text, to: pasteboard, kind: .temporary)
 
       #expect(pasteboard.string(forType: .string) == text)
       #expect(pasteboard.changeCount == returnedChangeCount)
@@ -62,11 +62,11 @@ struct PasteServiceClipboardTests {
 
       let pastedText = "after-\(UUID().uuidString)"
       let changeCountAfterPaste = PasteService.copyToClipboardReturningChangeCount(
-        pastedText, to: pasteboard)
+        pastedText, to: pasteboard, kind: .temporary)
       #expect(pasteboard.string(forType: .string) == pastedText)
 
       PasteService.restoreClipboard(
-        snapshot, changeCountAfterPaste: changeCountAfterPaste, on: pasteboard)
+        snapshot, changeCountAfterPaste: changeCountAfterPaste, markTransient: false, on: pasteboard)
 
       #expect(pasteboard.string(forType: .string) == originalText)
     }
@@ -83,11 +83,11 @@ struct PasteServiceClipboardTests {
       // Our paste writes text onto the board.
       let pastedText = "dictated-\(UUID().uuidString)"
       let changeCountAfterPaste = PasteService.copyToClipboardReturningChangeCount(
-        pastedText, to: pasteboard)
+        pastedText, to: pasteboard, kind: .temporary)
       #expect(pasteboard.string(forType: .string) == pastedText)
 
       PasteService.restoreClipboard(
-        emptySnapshot, changeCountAfterPaste: changeCountAfterPaste, on: pasteboard)
+        emptySnapshot, changeCountAfterPaste: changeCountAfterPaste, markTransient: false, on: pasteboard)
 
       // The board must be cleared back to empty, not left holding our paste text.
       #expect(pasteboard.string(forType: .string) == nil)
@@ -103,14 +103,14 @@ struct PasteServiceClipboardTests {
 
       let pastedText = "after-\(UUID().uuidString)"
       let changeCountAfterPaste = PasteService.copyToClipboardReturningChangeCount(
-        pastedText, to: pasteboard)
+        pastedText, to: pasteboard, kind: .temporary)
       #expect(pasteboard.string(forType: .string) == pastedText)
 
       let userClipboardText = "user-followup-\(UUID().uuidString)"
       Self.setClipboardString(userClipboardText, on: pasteboard)
 
       PasteService.restoreClipboard(
-        snapshot, changeCountAfterPaste: changeCountAfterPaste, on: pasteboard)
+        snapshot, changeCountAfterPaste: changeCountAfterPaste, markTransient: false, on: pasteboard)
 
       #expect(pasteboard.string(forType: .string) == userClipboardText)
     }
@@ -136,16 +136,198 @@ struct PasteServiceClipboardTests {
 
       let snapshot = PasteService.saveClipboard(from: pasteboard)
       let changeCountAfterPaste = PasteService.copyToClipboardReturningChangeCount(
-        "replacement", to: pasteboard)
+        "replacement", to: pasteboard, kind: .temporary)
 
       PasteService.restoreClipboard(
-        snapshot, changeCountAfterPaste: changeCountAfterPaste, on: pasteboard)
+        snapshot, changeCountAfterPaste: changeCountAfterPaste, markTransient: false, on: pasteboard)
 
       let restored = try #require(pasteboard.pasteboardItems)
       #expect(restored.count == 2)
       #expect(restored[0].data(forType: .string) == Data("plain".utf8))
       #expect(restored[0].data(forType: .rtf) == Data(#"{\rtf1 rich}"#.utf8))
       #expect(restored[1].data(forType: .string) == Data("second".utf8))
+    }
+  }
+
+  // MARK: - Transient marker (#3528)
+  // The literal type string is the oracle on purpose: it is the nspasteboard.org convention that
+  // clipboard managers read, not our own constant.
+
+  @Test("#3528: a temporary write is ONE item carrying the text and the transient marker")
+  func temporaryWriteCarriesMarkerOnOneItem() throws {
+    try withPrivatePasteboard { pasteboard in
+      PasteService.copyToClipboard("dictated words", to: pasteboard, kind: .temporary)
+
+      let items = try #require(pasteboard.pasteboardItems)
+      #expect(items.count == 1)
+      #expect(items[0].types.map(\.rawValue).contains("org.nspasteboard.TransientType"))
+      #expect(items[0].string(forType: .string) == "dictated words")
+      #expect(pasteboard.string(forType: .string) == "dictated words")
+    }
+  }
+
+  @Test("#3528: a kept write carries no marker")
+  func keptWriteCarriesNoMarker() throws {
+    try withPrivatePasteboard { pasteboard in
+      PasteService.copyToClipboard("dictated words", to: pasteboard, kind: .kept)
+
+      let items = try #require(pasteboard.pasteboardItems)
+      #expect(
+        items.allSatisfy { !$0.types.map(\.rawValue).contains("org.nspasteboard.TransientType") })
+      #expect(pasteboard.string(forType: .string) == "dictated words")
+    }
+  }
+
+  @Test("#3528: a temporary write reports the new change count")
+  func temporaryWriteReturnsChangeCount() {
+    withPrivatePasteboard { pasteboard in
+      let before = pasteboard.changeCount
+      let returned = PasteService.copyToClipboardReturningChangeCount(
+        "dictated words", to: pasteboard, kind: .temporary)
+      #expect(returned == pasteboard.changeCount)
+      #expect(returned != before)
+    }
+  }
+
+  @Test("#3528: restoreClipboard marks the restored items and keeps every representation")
+  func restoreMarksItemsAndKeepsRepresentations() throws {
+    try withPrivatePasteboard { pasteboard in
+      let original = NSPasteboardItem()
+      original.setData(Data("user text".utf8), forType: .string)
+      original.setData(
+        Data([0x01, 0x02, 0x03]), forType: NSPasteboard.PasteboardType("com.example.custom"))
+      pasteboard.clearContents()
+      #expect(pasteboard.writeObjects([original]))
+      let snapshot = PasteService.saveClipboard(from: pasteboard)
+
+      // The plain AppKit write stands in for the paste, so this body also builds on the parent
+      // commit and goes red there on the marker line alone.
+      Self.setClipboardString("dictated words", on: pasteboard)
+      let count = pasteboard.changeCount
+      #expect(
+        PasteService.restoreClipboard(snapshot, changeCountAfterPaste: count, markTransient: true, on: pasteboard)
+          == true)
+
+      let restored = try #require(pasteboard.pasteboardItems)
+      #expect(restored.count == 1)
+      #expect(restored[0].types.map(\.rawValue).contains("org.nspasteboard.TransientType"))
+      #expect(restored[0].data(forType: .string) == Data("user text".utf8))
+      #expect(
+        restored[0].data(forType: NSPasteboard.PasteboardType("com.example.custom"))
+          == Data([0x01, 0x02, 0x03]))
+    }
+  }
+
+  // #3672: the setting decides whether a restore adds the marker. The literal type string is the
+  // oracle, never our own constant. These live here because this file is the only test file the
+  // clipboard isolation scan allows to call PasteService restore helpers.
+  private func boardWithUserClipboard(
+    _ pasteboard: NSPasteboard, markedItem: Bool
+  ) -> ClipboardSnapshot {
+    let item = NSPasteboardItem()
+    item.setString("user text", forType: .string)
+    item.setData(Data([1, 2, 3]), forType: NSPasteboard.PasteboardType("com.example.custom"))
+    if markedItem {
+      item.setData(
+        Data([0]), forType: NSPasteboard.PasteboardType("org.nspasteboard.TransientType"))
+    }
+    pasteboard.clearContents()
+    pasteboard.writeObjects([item])
+    return PasteService.saveClipboard(from: pasteboard)
+  }
+
+  private func typeNames(_ pasteboard: NSPasteboard) -> [String] {
+    (pasteboard.pasteboardItems ?? []).flatMap { $0.types.map(\.rawValue) }.sorted()
+  }
+
+  @Test("#3672: restoring with the setting off adds no marker and changes no representation")
+  func restoreOffAddsNothing() {
+    withPrivatePasteboard { pasteboard in
+      let snapshot = boardWithUserClipboard(pasteboard, markedItem: false)
+      let before = typeNames(pasteboard)
+      Self.setClipboardString("dictated words", on: pasteboard)
+
+      #expect(
+        PasteService.restoreClipboard(
+          snapshot, changeCountAfterPaste: pasteboard.changeCount, markTransient: false,
+          on: pasteboard))
+      #expect(typeNames(pasteboard) == before)
+      #expect(!typeNames(pasteboard).contains("org.nspasteboard.TransientType"))
+    }
+  }
+
+  @Test("#3672: restoring with the setting on adds the marker and keeps every representation")
+  func restoreOnAddsTheMarker() {
+    withPrivatePasteboard { pasteboard in
+      let snapshot = boardWithUserClipboard(pasteboard, markedItem: false)
+      let before = typeNames(pasteboard)
+      Self.setClipboardString("dictated words", on: pasteboard)
+
+      #expect(
+        PasteService.restoreClipboard(
+          snapshot, changeCountAfterPaste: pasteboard.changeCount, markTransient: true,
+          on: pasteboard))
+      #expect(typeNames(pasteboard) == (before + ["org.nspasteboard.TransientType"]).sorted())
+      #expect(pasteboard.string(forType: .string) == "user text")
+    }
+  }
+
+  @Test("#3672: a marker the user's own clipboard carried comes back as it was, in both states")
+  func existingMarkerSurvivesRestore() {
+    for setting in [false, true] {
+      withPrivatePasteboard { pasteboard in
+        let snapshot = boardWithUserClipboard(pasteboard, markedItem: true)
+        let before = typeNames(pasteboard)
+        Self.setClipboardString("dictated words", on: pasteboard)
+
+        #expect(
+          PasteService.restoreClipboard(
+            snapshot, changeCountAfterPaste: pasteboard.changeCount, markTransient: setting,
+            on: pasteboard))
+        #expect(typeNames(pasteboard) == before)
+      }
+    }
+  }
+
+  @Test("#3528: restoring an empty prior clipboard leaves an empty, unmarked board")
+  func restoreEmptySnapshotLeavesEmptyBoard() {
+    withPrivatePasteboard { pasteboard in
+      pasteboard.clearContents()
+      let empty = PasteService.saveClipboard(from: pasteboard)
+      let count = PasteService.copyToClipboardReturningChangeCount(
+        "dictated words", to: pasteboard, kind: .temporary)
+
+      #expect(
+        PasteService.restoreClipboard(empty, changeCountAfterPaste: count, markTransient: false, on: pasteboard) == true)
+      #expect(pasteboard.pasteboardItems?.isEmpty ?? true)
+    }
+  }
+
+  @Test("#3528: the paste entry publishes the requested marker before dispatch")
+  func pasteEntryPublishesRequestedMarker() throws {
+    let cases: [(PasteService.WriteKind, Bool)] = [(.temporary, true), (.kept, false)]
+    for (kind, expectedMarker) in cases {
+      try withPrivatePasteboard { board in
+        var posts = 0
+        let result = PasteService.pasteToActiveApp(
+          "dictated words", to: board, kind: kind,
+          postKeystroke: {
+            posts += 1
+            return true
+          })
+        guard case .cgEventCreationFailed = result else {
+          Issue.record("An isolated board must refuse dispatch")
+          return
+        }
+        let items = try #require(board.pasteboardItems)
+        #expect(items.count == 1)
+        #expect(items[0].string(forType: .string) == "dictated words")
+        #expect(
+          items[0].types.map(\.rawValue).contains("org.nspasteboard.TransientType")
+            == expectedMarker)
+        #expect(result.changeCount == board.changeCount)
+        #expect(posts == 0)
+      }
     }
   }
 
@@ -163,23 +345,23 @@ struct RestoreClipboardResultTests {
   @Test("True when the board was ours to write")
   func trueWhenApplied() {
     let pb = NSPasteboard.withUniqueName()
-    PasteService.copyToClipboard("user clipboard", to: pb)
+    PasteService.copyToClipboard("user clipboard", to: pb, kind: .kept)
     let snapshot = PasteService.saveClipboard(from: pb)
-    PasteService.copyToClipboard("our payload", to: pb)
+    PasteService.copyToClipboard("our payload", to: pb, kind: .temporary)
     #expect(
-      PasteService.restoreClipboard(snapshot, changeCountAfterPaste: pb.changeCount, on: pb)
+      PasteService.restoreClipboard(snapshot, changeCountAfterPaste: pb.changeCount, markTransient: false, on: pb)
         == true)
   }
 
   @Test("False when the guard declined")
   func falseWhenDeclined() {
     let pb = NSPasteboard.withUniqueName()
-    PasteService.copyToClipboard("user clipboard", to: pb)
+    PasteService.copyToClipboard("user clipboard", to: pb, kind: .kept)
     let snapshot = PasteService.saveClipboard(from: pb)
-    PasteService.copyToClipboard("our payload", to: pb)
+    PasteService.copyToClipboard("our payload", to: pb, kind: .temporary)
     let stale = pb.changeCount
-    PasteService.copyToClipboard("someone else", to: pb)
-    #expect(PasteService.restoreClipboard(snapshot, changeCountAfterPaste: stale, on: pb) == false)
+    PasteService.copyToClipboard("someone else", to: pb, kind: .kept)
+    #expect(PasteService.restoreClipboard(snapshot, changeCountAfterPaste: stale, markTransient: false, on: pb) == false)
   }
 
   @Test("Reports a REAL write, not an assumed one")
@@ -189,16 +371,16 @@ struct RestoreClipboardResultTests {
     // have recorded `applied=true` for a restoration AppKit had refused. A
     // multi-item snapshot exercises the item-construction path too.
     let pb = NSPasteboard.withUniqueName()
-    PasteService.copyToClipboard("user clipboard", to: pb)
+    PasteService.copyToClipboard("user clipboard", to: pb, kind: .kept)
     let snapshot = ClipboardSnapshot(
       items: [
         [.string: Data("first".utf8)],
         [.string: Data("second".utf8)],
       ],
       changeCount: pb.changeCount)
-    PasteService.copyToClipboard("our payload", to: pb)
+    PasteService.copyToClipboard("our payload", to: pb, kind: .temporary)
     #expect(
-      PasteService.restoreClipboard(snapshot, changeCountAfterPaste: pb.changeCount, on: pb)
+      PasteService.restoreClipboard(snapshot, changeCountAfterPaste: pb.changeCount, markTransient: false, on: pb)
         == true)
     // `string(forType:)` on a MULTI-ITEM board returns every item's string joined
     // by newlines — real AppKit behaviour, not a defect, and the first version of
@@ -213,9 +395,9 @@ struct RestoreClipboardResultTests {
   func trueWhenPriorWasEmpty() {
     let pb = NSPasteboard.withUniqueName()
     let snapshot = PasteService.saveClipboard(from: pb)
-    PasteService.copyToClipboard("our payload", to: pb)
+    PasteService.copyToClipboard("our payload", to: pb, kind: .temporary)
     #expect(
-      PasteService.restoreClipboard(snapshot, changeCountAfterPaste: pb.changeCount, on: pb)
+      PasteService.restoreClipboard(snapshot, changeCountAfterPaste: pb.changeCount, markTransient: false, on: pb)
         == true)
     #expect(pb.string(forType: .string) == nil)
   }

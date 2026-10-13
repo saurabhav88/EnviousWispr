@@ -130,8 +130,8 @@ struct ClipboardSettingsWiringTests {
       sectionNote: quickAdd ? "" : note)
   }
 
-  @Test("four rows, each with its own copy, icon, setting and an unlabeled fixed-size switch")
-  func fourRowsWiredToTheirOwnSettings() throws {
+  @Test("five rows, each with its own copy, icon, setting and an unlabeled fixed-size switch")
+  func fiveRowsWiredToTheirOwnSettings() throws {
     let rows = Self.rows(in: try Self.tree())
     let expected = [
       Self.expectedRow(
@@ -140,6 +140,14 @@ struct ClipboardSettingsWiringTests {
       Self.expectedRow(
         "arrow.uturn.backward", "restore", map: "restoreClipboard",
         binding: "$settings.restoreClipboardAfterPaste"),
+      {
+        var row = Self.expectedRow(
+          "eye.slash", "keepOutOfHistory", map: "keepOutOfClipboardHistory",
+          binding: "$settings.keepDictationsOutOfClipboardHistory")
+        row.modifiers.insert("disabled", at: 3)
+        row.modifierArguments.insert(["!settings.restoreClipboardAfterPaste"], at: 3)
+        return row
+      }(),
       Self.expectedRow(
         "text.cursor", "smartInsertion", map: "smartInsertion", binding: "$settings.smartInsertion"),
       Self.expectedRow(
@@ -147,13 +155,10 @@ struct ClipboardSettingsWiringTests {
         binding: "$settings.quickAddClipboardFallback",
         quickAdd: true),
     ]
-    #expect(rows.count == 4, "\(rows.count) rows: \(rows)")
+    #expect(rows.count == expected.count, "\(rows.count) rows: \(rows)")
     #expect(
-      Self.allToggleBindings(in: try Self.tree())
-        == [
-          "$settings.autoCopyToClipboard", "$settings.restoreClipboardAfterPaste",
-          "$settings.smartInsertion", "$settings.quickAddClipboardFallback",
-        ], "the page holds a switch outside the four rows, or lost one")
+      Self.allToggleBindings(in: try Self.tree()) == expected.map(\.binding),
+      "a row lost its switch, or a switch appears outside the rows")
     for (row, want) in zip(rows, expected) {
       #expect(row == want, "got \(row)\nwant \(want)")
     }
@@ -164,6 +169,7 @@ struct ClipboardSettingsWiringTests {
     let expected: [(SettingsMapID, LocalizedStringResource)] = [
       (.autoCopyToClipboard, DictationSettingsCopy.Clipboard.autoCopyShort),
       (.restoreClipboard, DictationSettingsCopy.Clipboard.restoreShort),
+      (.keepOutOfClipboardHistory, DictationSettingsCopy.Clipboard.keepOutOfHistoryShort),
       (.smartInsertion, DictationSettingsCopy.Clipboard.smartInsertionShort),
       (.quickAddClipboardFallback, DictationSettingsCopy.Clipboard.quickAddShort),
     ]

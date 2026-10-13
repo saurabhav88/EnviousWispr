@@ -1,0 +1,1 @@
+{"language":"lt","title":"neįtraukti diktuojamo teksto į iškarpinės programų istoriją","words":[],"phrases":["nesaugoti diktuojamo teksto iškarpinės istorijoje","diktavimas be įrašymo į iškarpinės istoriją"]}

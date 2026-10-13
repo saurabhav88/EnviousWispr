@@ -91,7 +91,7 @@ struct SpeechSettingsCopyTests {
     #expect(SpokenPunctuationCopy.toggleLabel == "Spoken punctuation")
     #expect(
       SpokenPunctuationCopy.toggleDescription
-        == "Say punctuation out loud to insert it. EnviousWispr already adds punctuation for you, so this can compete with it."
+        == "Say punctuation out loud to insert it. EnviousWispr removes extra marks the speech engine adds next to the ones you say."
     )
     // #2450: the in-app word table is gone; the phrase and footnote wording is pinned in
     // `SpokenPunctuationCopyTests`, and the list lives in the Help Center article.

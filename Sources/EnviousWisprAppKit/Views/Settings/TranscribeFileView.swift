@@ -1641,11 +1641,8 @@ struct TranscribeFileView: View {
               .foregroundStyle(Color.stTextSecondary)
               .accessibilityLabel("Cleanup summary: \(markedUp.legend)")
             ForEach(Array(passages.enumerated()), id: \.offset) { _, passage in
-              Text(TranscribeFileExport.markedUpText(passage.segments))
+              MarkedUpPassageText(segments: passage.segments)
                 .lineSpacing(6)
-                .textSelection(.enabled)
-                // The marks are visual; this is what a screen reader gets instead.
-                .accessibilityLabel(TranscribeFileExport.markedUpAccessibilityText(passage.segments))
             }
           }
         } else {

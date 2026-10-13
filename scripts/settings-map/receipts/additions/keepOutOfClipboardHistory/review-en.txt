@@ -1,0 +1,1 @@
+{"language":"en","words":["clipboard manager"],"phrases":["don't save dictation in clipboard history","ask clipboard managers to ignore dictated text"]}

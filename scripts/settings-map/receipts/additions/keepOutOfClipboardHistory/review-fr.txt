@@ -1,0 +1,1 @@
+{"language":"fr","title":"exclure les dictées de l’historique des gestionnaires de presse-papiers","words":[],"phrases":["ne pas enregistrer les dictées dans l’historique du presse-papiers","demander aux gestionnaires de presse-papiers d’ignorer le texte dicté"]}

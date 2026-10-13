@@ -1,0 +1,1 @@
+{"language":"it","title":"escludi le dettature dalla cronologia delle app per gli appunti","words":[],"phrases":["non salvare le dettature nella cronologia degli appunti","escludi il testo dettato dalla cronologia delle app per gli appunti"]}

@@ -12,9 +12,9 @@ Generated from the compiled Settings Map and the validated search vocabulary. Do
 
 The interface ships in English and German. The other 30 languages (ar, bg, cs, da, el, es, et, fi, fr, hi, hr, hu, it, ja, ko, lt, lv, mt, nl, pl, pt, ro, ru, sk, sl, sv, tr, uk, vi, zh) are search metadata only: words and titles people may type, matched against the same places. Titles below read English / German.
 
-272 nodes, 246 searchable, 7872 vocabulary blocks.
+273 nodes, 247 searchable, 7904 vocabulary blocks.
 
-Fingerprints: mapSHA256 `3ec2032ed9a46f013dffdceacf0933126b939d65047a33e9ecf9c7c0df38b6b6`, uiCatalogSHA256 `f99bf9a810af3006d23e4474df6d2df0fad77a86e6e0632d231c5a1e57f845da`, vocabularyCanonicalization `length-prefixed-v1`, vocabularySHA256 `44690e53406ddb9730e98263a800ef9b9e34e7829dd5823bf7b46c14198bead8`
+Fingerprints: mapSHA256 `374e83acc80ed2ca80960b39627db7673f5c6488469a0bcb4b6d7b6001773e3d`, uiCatalogSHA256 `e4544cfa563f454f33960566005080bda9d00dc942d3291805afddd25b31e67f`, vocabularyCanonicalization `length-prefixed-v1`, vocabularySHA256 `7f622292b158df2289a045554496e2c346a4e46ecb183356e21f8ede060e8d47`
 
 ## Structure
 
@@ -231,6 +231,7 @@ Fingerprints: mapSHA256 `3ec2032ed9a46f013dffdceacf0933126b939d65047a33e9ecf9c7c
       - [Clipboard / Zwischenablage](#node-section-clipboard) `section.clipboard` (section)
         - [Auto-copy to clipboard / Automatisch in die Zwischenablage kopieren](#node-autoCopyToClipboard) `autoCopyToClipboard` (setting)
         - [Restore clipboard after paste / Zwischenablage nach dem Einfügen wiederherstellen](#node-restoreClipboard) `restoreClipboard` (setting)
+        - [Keep dictations out of clipboard history apps / Diktate aus dem Verlauf von Zwischenablage-Apps heraushalten](#node-keepOutOfClipboardHistory) `keepOutOfClipboardHistory` (setting)
         - [Smart insertion / Intelligentes Einfügen](#node-smartInsertion) `smartInsertion` (setting)
       - [Quick Add / Schnell hinzufügen](#node-section-quickAddClipboard) `section.quickAddClipboard` (section)
         - [Read selections through the clipboard / Auswahl über die Zwischenablage lesen](#node-quickAddClipboardFallback) `quickAddClipboardFallback` (setting)
@@ -2169,6 +2170,28 @@ Fingerprints: mapSHA256 `3ec2032ed9a46f013dffdceacf0933126b939d65047a33e9ecf9c7c
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | phrases: put my previous clipboard contents back after pasting; keep what I copied before dictating |
 | Search (de) | phrases: stell nach dem Einfügen meinen alten Zwischenablageinhalt wieder her; behalte das, was ich vor dem Diktieren kopiert habe |
+| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+
+<a id="node-keepOutOfClipboardHistory"></a>
+
+### Keep dictations out of clipboard history apps / Diktate aus dem Verlauf von Zwischenablage-Apps heraushalten (`keepOutOfClipboardHistory`)
+
+| Field | Value |
+|---|---|
+| Structure | item |
+| Kind | setting |
+| Parent | [`section.clipboard`](#node-section-clipboard) |
+| Title source | catalog key `Keep dictations out of clipboard history apps` |
+| Description | Asks clipboard apps to skip the text we paste. / Bittet Zwischenablage-Apps, den eingefügten Text nicht zu speichern. |
+| Description source | catalog key `Asks clipboard apps to skip the text we paste.` |
+| Destination | `dictation` › `clipboard` |
+| Dictionary tab | none |
+| Shown when | `always` |
+| Arrival target | [`keepOutOfClipboardHistory`](#node-keepOutOfClipboardHistory) |
+| Fallbacks, in order | none |
+| Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
+| Search (en) | words: clipboard manager<br>phrases: don't save dictation in clipboard history; ask clipboard managers to ignore dictated text |
+| Search (de) | words: Clipboard-Verlauf<br>phrases: speichere meine Diktate nicht im Zwischenablageverlauf; halte diktierten Text aus dem Clipboard-Verlauf raus |
 | Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-smartInsertion"></a>

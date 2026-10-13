@@ -358,6 +358,77 @@ struct KeyboardListenerIntegrationTests {
     #expect(toggles == 0)
   }
 
+  @Test("a Copy Last press queued behind its installation's storm does nothing")
+  func staleMainInstallationIsRefusedAfterStorm() async throws {
+    let ptt = PTT()
+    defer { ptt.service.stop() }
+    let key = ModifierKeyCodes.rightCommand
+    // A bare Command convenience is refused while higher-priority Paste Last needs
+    // Command as its chord prefix. Give that higher role a distinct valid chord here.
+    ptt.service.pasteLastModifiers = [.control]
+    ptt.service.copyLastKeyCode = key
+    ptt.service.copyLastModifiers = []
+    try #require(ShortcutMatcher.ownsItsBinding(.copyLast, in: ptt.service.bindings))
+    var copies = 0
+    var judged: [(KeyboardListenerIngress.MainEdge, Bool)] = []
+    let handled = HotkeyGlobeKeyTests.CallbackWaiter()
+    let retried = HotkeyGlobeKeyTests.CallbackWaiter()
+    ptt.service.onCopyLast = { copies += 1 }
+    ptt.service.onListenerEdgeHandledForTesting = { edge, current in
+      judged.append((edge, current))
+      handled.note()
+    }
+    ptt.service.onListenerRetryResolvedForTesting = { retried.note() }
+    let engine = ptt.service.recordGestureEngineForTesting
+    let generation = engine.listenerConfigurationGeneration
+    let installation = ptt.service.listenerGeneration
+    await ptt.keys.press(key, at: 500)
+    await handled.wait(until: 1)
+    let live = try #require(judged.last)
+    try #require(live.0.installation == installation && live.0.role == .copyLast && live.0.isPress)
+    try #require(live.1 && copies == 1)
+    await ptt.keys.release(key, at: 500.1)
+    await handled.wait(until: 2)
+    let liveRelease = try #require(judged.last)
+    try #require(
+      liveRelease.0.role == .copyLast && liveRelease.0.keyCode == key
+      && liveRelease.0.isPress == false && liveRelease.0.installation == installation
+      && liveRelease.0.generation == generation && liveRelease.1)
+    let sink = try #require(ptt.effects.keyboardListenerSink)
+    let flags = ListenerKeyboard.rawFlags([key])
+    Self.onWorkerWhileMainWaits {
+      sink(KeyEventValue(kind: .stormStopped, keyCode: 0, rawFlags: 0, timestamp: nil))
+      sink(KeyEventValue(kind: .flagsChanged, keyCode: key, rawFlags: flags, timestamp: nil))
+    }
+    await handled.wait(until: 3)
+    try #require(ptt.service.listenerGeneration != installation)
+    try #require(engine.listenerConfigurationGeneration == generation)
+    try #require(ptt.service.isEnabled && ptt.service.isSuspended == false)
+    let stale = try #require(judged.last)
+    try #require(stale.0.installation == installation && stale.0.role == .copyLast && stale.0.isPress)
+    #expect(stale.1 == false && copies == 1)
+    ptt.clock.now = 560
+    ptt.timers.fireDue()
+    await retried.wait(until: 1)
+    let replacement = ptt.service.listenerGeneration
+    try #require(replacement != installation && ptt.effects.keyboardListenerToken != nil)
+    try #require(engine.listenerConfigurationGeneration == generation)
+    await ptt.keys.press(key, at: 560)
+    await handled.wait(until: 4)
+    let fresh = try #require(judged.last)
+    #expect(fresh.0.installation == replacement && fresh.0.role == .copyLast && fresh.0.isPress)
+    #expect(fresh.1 && copies == 2)
+    await ptt.keys.release(key, at: 560.1)
+    await handled.wait(until: 5)
+    let freshRelease = try #require(judged.last)
+    #expect(
+      freshRelease.0.role == .copyLast && freshRelease.0.keyCode == key
+      && freshRelease.0.isPress == false && freshRelease.0.installation == replacement
+      && freshRelease.0.generation == generation)
+    #expect(freshRelease.1)
+    #expect(copies == 2, "a release fired another copy")
+  }
+
   /// A live tap can deliver a press before `installKeyboardListener` returns; the engine must
   /// already admit that installation, or the hold records nothing and its release is unowned.
   @Test("a press delivered while the listener is still being installed is recorded")

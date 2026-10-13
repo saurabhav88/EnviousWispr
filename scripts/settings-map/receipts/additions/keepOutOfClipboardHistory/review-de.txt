@@ -1,0 +1,10 @@
+{
+  "language": "de",
+  "words": [
+    "Clipboard-Verlauf"
+  ],
+  "phrases": [
+    "speichere meine Diktate nicht im Zwischenablageverlauf",
+    "halte diktierten Text aus dem Clipboard-Verlauf raus"
+  ]
+}

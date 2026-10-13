@@ -177,6 +177,10 @@ package struct KeyStateTracker: Equatable, Sendable {
     _ answers: [UInt16: Reading], at readAt: TimeInterval, except: UInt16? = nil
   ) -> Int {
     var removed = 0
+    // The event applies its own key after this resync. Ordinary-event freshness comes
+    // from isAutorepeat, not ordinaryDown insertion, so excluding the key does not
+    // independently protect fresh-key dismissal. Keep the exclusion to avoid counting
+    // the event's own key as a reading-driven recovery.
     for (key, answer) in answers where key != except && ModifierKeyCodes.flag(for: key) == nil {
       switch answer {
       case .down: ordinaryDown.insert(key)

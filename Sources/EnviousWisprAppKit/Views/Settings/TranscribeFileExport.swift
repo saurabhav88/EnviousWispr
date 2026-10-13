@@ -117,7 +117,7 @@ enum TranscribeFileExport {
   /// press, not a verified board change; `copyToClipboardReturningChangeCount` exists if
   /// that ever needs gating.
   @MainActor static func copy(_ text: String) {
-    PasteService.copyToClipboard(text)
+    PasteService.copyToClipboard(text, kind: .kept)
     NSAccessibility.post(
       element: NSApp.mainWindow as Any,
       notification: .announcementRequested,

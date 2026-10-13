@@ -1,0 +1,1 @@
+{"language":"tr","title":"dikte edilen metni pano uygulamalarının geçmişine kaydetme","words":[],"phrases":["sesle yazılanları pano geçmişine kaydetme","dikte metinleri pano geçmişinde görünmesin"]}

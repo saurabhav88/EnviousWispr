@@ -1,0 +1,1 @@
+{"language":"es","title":"excluir los dictados del historial de los gestores del portapapeles","words":[],"phrases":["no guardar dictados en el historial del portapapeles","que el gestor del portapapeles ignore el texto dictado"]}

@@ -72,7 +72,7 @@ struct ClipboardCleanupTests {
       let afterOurWrite = pb.changeCount
 
       ClipboardCleanup.scheduleRestore(
-        snapshot, changeCountAfterPaste: afterOurWrite, tier: .cgEvent, on: pb)
+        snapshot, changeCountAfterPaste: afterOurWrite, markTransient: false, tier: .cgEvent, on: pb)
 
       // The point of the change: the caller is NOT blocked, so our payload is
       // still on the board the instant after scheduling.
@@ -92,7 +92,7 @@ struct ClipboardCleanupTests {
       let afterOurWrite = pb.changeCount
 
       ClipboardCleanup.scheduleRestore(
-        snapshot, changeCountAfterPaste: afterOurWrite, tier: .cgEvent, on: pb)
+        snapshot, changeCountAfterPaste: afterOurWrite, markTransient: false, tier: .cgEvent, on: pb)
       // The user copies something while we wait.
       put("something the user just copied", on: pb)
 
@@ -122,7 +122,7 @@ struct ClipboardCleanupTests {
       let snapshot = snapshot(of: pb)
       put("our dictated payload", on: pb)
       ClipboardCleanup.scheduleRestore(
-        snapshot, changeCountAfterPaste: pb.changeCount, tier: .cgEvent, on: pb)
+        snapshot, changeCountAfterPaste: pb.changeCount, markTransient: false, tier: .cgEvent, on: pb)
       put("something the user just copied", on: pb)   // the board moves; pending goes stale
 
       guard
@@ -161,7 +161,7 @@ struct ClipboardCleanupTests {
       let snapshot = snapshot(of: pb)
       put("our dictated payload", on: pb)
       ClipboardCleanup.scheduleRestore(
-        snapshot, changeCountAfterPaste: pb.changeCount, tier: .cgEvent, on: pb)
+        snapshot, changeCountAfterPaste: pb.changeCount, markTransient: false, tier: .cgEvent, on: pb)
       put("something the user just copied", on: pb)
       #expect(ClipboardCleanup.hasPending)
 
@@ -191,7 +191,7 @@ struct ClipboardCleanupTests {
       let snapshot = snapshot(of: pb)
       put("our dictated payload", on: pb)
       ClipboardCleanup.scheduleRestore(
-        snapshot, changeCountAfterPaste: pb.changeCount, tier: .cgEvent, on: pb)
+        snapshot, changeCountAfterPaste: pb.changeCount, markTransient: false, tier: .cgEvent, on: pb)
 
       // **The board moves, which makes the pending value stale and sends the takeover down the
       // branch that READS the board.** That is the only branch a budget can refuse: the other two
@@ -406,7 +406,7 @@ struct ClipboardCleanupTests {
       let snapshot = snapshot(of: pb)
       put("our dictated payload", on: pb)
       ClipboardCleanup.scheduleRestore(
-        snapshot, changeCountAfterPaste: pb.changeCount, tier: .cgEvent, on: pb)
+        snapshot, changeCountAfterPaste: pb.changeCount, markTransient: false, tier: .cgEvent, on: pb)
 
       guard case .deliveryInFlight = ClipboardCleanup.beginTakeover(
         maximumBytes: 1 << 20, from: pb)
@@ -433,7 +433,7 @@ struct ClipboardCleanupTests {
       let snapshot = snapshot(of: pb)
       put("our dictated payload", on: pb)
       ClipboardCleanup.scheduleRestore(
-        snapshot, changeCountAfterPaste: pb.changeCount, tier: .cgEvent, on: pb)
+        snapshot, changeCountAfterPaste: pb.changeCount, markTransient: false, tier: .cgEvent, on: pb)
 
       // The user copies something: the pending value is now stale and nothing is mid-read.
       put("something the user just copied", on: pb)
@@ -483,7 +483,7 @@ struct ClipboardCleanupTests {
       put("dictation one", on: pb)
 
       ClipboardCleanup.scheduleRestore(
-        snapshot, changeCountAfterPaste: pb.changeCount, tier: .cgEvent, on: pb)
+        snapshot, changeCountAfterPaste: pb.changeCount, markTransient: false, tier: .cgEvent, on: pb)
 
       // A second delivery begins before the first cleanup ran. The board still
       // holds OUR text; photographing it would save dictation one as "the user's
@@ -499,7 +499,7 @@ struct ClipboardCleanupTests {
       let snapshot = snapshot(of: pb)
       put("dictation one", on: pb)
       ClipboardCleanup.scheduleRestore(
-        snapshot, changeCountAfterPaste: pb.changeCount, tier: .cgEvent, on: pb)
+        snapshot, changeCountAfterPaste: pb.changeCount, markTransient: false, tier: .cgEvent, on: pb)
 
       // The user copies something. The pending snapshot is now stale, and
       // inheriting it would destroy what they just copied — the inverse of the
@@ -536,7 +536,7 @@ struct ClipboardCleanupTests {
       let snapshot = snapshot(of: pb)
       put("our dictated payload", on: pb)
       ClipboardCleanup.scheduleRestore(
-        snapshot, changeCountAfterPaste: pb.changeCount, tier: .cgEvent, on: pb)
+        snapshot, changeCountAfterPaste: pb.changeCount, markTransient: false, tier: .cgEvent, on: pb)
 
       // Cancelling must not be read as "do it now". If it were, the restore would
       // fire before the target app had read our payload — the wrong-text failure.
@@ -555,14 +555,14 @@ struct ClipboardCleanupTests {
       put("first payload", on: pbA)
       ClipboardCleanup.scheduleRestore(
         snapshot(of: pbA), changeCountAfterPaste: pbA.changeCount,
-        tier: .cgEvent, on: pbA)
+        markTransient: false, tier: .cgEvent, on: pbA)
 
       let pbB = NSPasteboard.withUniqueName()
       put("the user's own clipboard", on: pbB)
       let snapshotB = snapshot(of: pbB)
       put("second payload", on: pbB)
       ClipboardCleanup.scheduleRestore(
-        snapshotB, changeCountAfterPaste: pbB.changeCount, tier: .cgEvent, on: pbB)
+        snapshotB, changeCountAfterPaste: pbB.changeCount, markTransient: false, tier: .cgEvent, on: pbB)
 
       await ClipboardCleanup.awaitPendingCleanup()
       #expect(pbB.string(forType: .string) == "the user's own clipboard")
@@ -581,7 +581,7 @@ struct ClipboardCleanupTests {
       let snapshot = snapshot(of: pb)
       put("our dictated payload", on: pb)
       ClipboardCleanup.scheduleRestore(
-        snapshot, changeCountAfterPaste: pb.changeCount, tier: .cgEvent, on: pb)
+        snapshot, changeCountAfterPaste: pb.changeCount, markTransient: false, tier: .cgEvent, on: pb)
       // Force the guard to decline.
       put("user copied this", on: pb)
 
@@ -600,7 +600,7 @@ struct ClipboardCleanupTests {
       let snapshot = snapshot(of: pb)
       put("our dictated payload", on: pb)
       ClipboardCleanup.scheduleRestore(
-        snapshot, changeCountAfterPaste: pb.changeCount, tier: .cgEvent, on: pb)
+        snapshot, changeCountAfterPaste: pb.changeCount, markTransient: false, tier: .cgEvent, on: pb)
       #expect(ClipboardCleanup.hasPending == true)
       await ClipboardCleanup.awaitPendingCleanup()
       #expect(ClipboardCleanup.hasPending == false)
@@ -664,7 +664,7 @@ struct ClipboardCleanupTests {
       let held = snapshot(of: pb)
       put("dictation one", on: pb)
       ClipboardCleanup.scheduleRestore(
-        held, changeCountAfterPaste: pb.changeCount, tier: .cgEvent, on: pb)
+        held, changeCountAfterPaste: pb.changeCount, markTransient: false, tier: .cgEvent, on: pb)
       let afterScheduling = pb.changeCount
 
       // The board holds OUR text; the user's own clipboard is the one being held for them.
@@ -681,7 +681,7 @@ struct ClipboardCleanupTests {
       let oracleHeld = snapshot(of: oraclePb)
       put("dictation one", on: oraclePb)
       ClipboardCleanup.scheduleRestore(
-        oracleHeld, changeCountAfterPaste: oraclePb.changeCount, tier: .cgEvent, on: oraclePb)
+        oracleHeld, changeCountAfterPaste: oraclePb.changeCount, markTransient: false, tier: .cgEvent, on: oraclePb)
       #expect(
         string(ClipboardCleanup.snapshotForDelivery(from: oraclePb)) == "the user's own clipboard")
     }
@@ -696,7 +696,7 @@ struct ClipboardCleanupTests {
       let held = snapshot(of: pb)
       put("dictation one", on: pb)
       ClipboardCleanup.scheduleRestore(
-        held, changeCountAfterPaste: pb.changeCount, tier: .cgEvent, on: pb)
+        held, changeCountAfterPaste: pb.changeCount, markTransient: false, tier: .cgEvent, on: pb)
       put("something the user just copied", on: pb)
 
       #expect(ClipboardCleanup.userPlainText(from: pb) == "something the user just copied")
@@ -710,7 +710,7 @@ struct ClipboardCleanupTests {
       let oracleHeld = snapshot(of: oraclePb)
       put("dictation one", on: oraclePb)
       ClipboardCleanup.scheduleRestore(
-        oracleHeld, changeCountAfterPaste: oraclePb.changeCount, tier: .cgEvent, on: oraclePb)
+        oracleHeld, changeCountAfterPaste: oraclePb.changeCount, markTransient: false, tier: .cgEvent, on: oraclePb)
       put("something the user just copied", on: oraclePb)
       #expect(
         string(ClipboardCleanup.snapshotForDelivery(from: oraclePb))

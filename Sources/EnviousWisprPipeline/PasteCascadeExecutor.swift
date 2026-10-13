@@ -54,6 +54,14 @@ internal struct PasteDeliveryRequest {
   /// repaired candidate.
   let targetElementIsRetried: Bool
   let restoreClipboardAfterPaste: Bool
+  /// Frozen with `restoreClipboardAfterPaste` (#3672). Marks the temporary paste write and the
+  /// restore as transient; only meaningful while the restore is on.
+  let keepDictationsOutOfClipboardHistory: Bool
+  /// How this delivery's clipboard write is marked: transient only when the restore will undo it AND
+  /// the user asked to keep dictations out of clipboard-history apps.
+  var pasteWriteKind: PasteService.WriteKind {
+    restoreClipboardAfterPaste && keepDictationsOutOfClipboardHistory ? .temporary : .kept
+  }
   /// The SAME cumulative terminal-resolution budget the caret read used.
   ///
   /// One per delivery, shared by the initial resolution and every commit
@@ -1100,6 +1108,7 @@ internal final class PasteCascadeExecutor {
           #endif
           let dispatchResult = PasteService.pasteToActiveApp(
             payload.text, to: self.pasteboard,
+            kind: request.pasteWriteKind,
             postKeystroke: Self.keystrokeProcess(ownerPath: gate.ownerPath, app: app).map { pid in
               { MainActor.assumeIsolated { Self.postPasteChord(at: pid) } }
             })
@@ -1122,7 +1131,8 @@ internal final class PasteCascadeExecutor {
             // Scheduled, not awaited (#2197). The delay and the guard are
             // unchanged; the dictation just stops queueing behind them.
             ClipboardCleanup.scheduleRestore(
-              snapshot, changeCountAfterPaste: dispatchResult.changeCount, tier: tier,
+              snapshot, changeCountAfterPaste: dispatchResult.changeCount,
+              markTransient: request.keepDictationsOutOfClipboardHistory, tier: tier,
               landing: tier == .cgEvent ? landingCheck(for: arrivalCapture, request: request) : nil)
           }
         }
@@ -1222,7 +1232,8 @@ internal final class PasteCascadeExecutor {
             submissionLedger.append(submissionToken(tier: .appleScript, text: payload.text))
           #endif
           let changeCount = PasteService.copyToClipboardReturningChangeCount(
-            payload.text, to: self.pasteboard)
+            payload.text, to: self.pasteboard,
+            kind: request.pasteWriteKind)
           submittedClipboardChangeCount = changeCount
           tiersAttempted.append(.appleScript)
           let tier2bStart = CFAbsoluteTimeGetCurrent()
@@ -1243,7 +1254,8 @@ internal final class PasteCascadeExecutor {
           }
           if let snapshot {
             ClipboardCleanup.scheduleRestore(
-              snapshot, changeCountAfterPaste: changeCount, tier: tier,
+              snapshot, changeCountAfterPaste: changeCount,
+              markTransient: request.keepDictationsOutOfClipboardHistory, tier: tier,
               landing: tier == .appleScript
                 ? landingCheck(for: arrivalCapture, request: request) : nil)
           }
@@ -1319,7 +1331,8 @@ internal final class PasteCascadeExecutor {
           submissionLedger.append(submissionToken(tier: .menuPaste, text: payload.text))
         #endif
         let changeCount = PasteService.copyToClipboardReturningChangeCount(
-          payload.text, to: self.pasteboard)
+          payload.text, to: self.pasteboard,
+          kind: request.pasteWriteKind)
         submittedClipboardChangeCount = changeCount
         switch PasteService.findPasteMenuItem(pid: app.processIdentifier) {
         case .found(let menuItem):
@@ -1356,7 +1369,8 @@ internal final class PasteCascadeExecutor {
                 // Restore the user's prior clipboard after the paste lands.
                 if let snapshot {
                   ClipboardCleanup.scheduleRestore(
-                    snapshot, changeCountAfterPaste: changeCount, tier: tier,
+                    snapshot, changeCountAfterPaste: changeCount,
+                    markTransient: request.keepDictationsOutOfClipboardHistory, tier: tier,
                     landing: landingCheck(for: arrivalCapture, request: request))
                 }
               } else {
@@ -1413,7 +1427,7 @@ internal final class PasteCascadeExecutor {
       // have read this payload as the target app's Copy response and then restored over it.
       ClipboardCleanup.deliveryClaimsBoard()
       fallbackClipboardChangeCount = PasteService.copyToClipboardReturningChangeCount(
-        request.legacyText, to: self.pasteboard)
+        request.legacyText, to: self.pasteboard, kind: .kept)
       // An earlier route may have SUBMITTED the contextual payload and failed.
       // What the user can now paste by hand is this legacy text, so that is what
       // the record has to say (Codex review r4) — otherwise the field reports a

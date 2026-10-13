@@ -83,6 +83,9 @@ struct SmartInsertionSettingRoutingTests {
       group.contains(".smartInsertion"),
       "Smart insertion must sit in the frozen group beside .restoreClipboardAfterPaste")
     #expect(group.contains(".restoreClipboardAfterPaste"))
+    #expect(
+      group.contains(".keepDictationsOutOfClipboardHistory"),
+      "the clipboard-history switch is frozen per recording with Restore clipboard (#3672)")
 
     // Nothing in this case may touch live state. Naming the known mutation
     // owners makes a future live-sync addition fail here rather than silently

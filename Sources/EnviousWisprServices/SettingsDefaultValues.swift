@@ -73,6 +73,8 @@ enum SettingsDefaultValues {
 
   static let modelUnloadPolicy: ModelUnloadPolicy = .never
   static let restoreClipboardAfterPaste = true
+  /// #3672: OFF, the released behavior; ON adds the nspasteboard.org transient marker.
+  static let keepDictationsOutOfClipboardHistory = false
   /// Quick Add's clipboard fallback (#2465). Default ON, because the whole point is that the
   /// feature stops silently failing in the apps people actually chat in, and a fallback nobody
   /// turns on is a fallback that does not exist.

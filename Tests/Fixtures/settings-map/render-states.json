@@ -399,6 +399,7 @@
    "dictation.tab.livePreview",
    "dictation.tab.microphone",
    "dictation.tab.pill",
+   "keepOutOfClipboardHistory",
    "quickAddClipboardFallback",
    "restoreClipboard",
    "section.clipboard",

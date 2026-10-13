@@ -311,6 +311,16 @@ enum DictationSettingsCopy {
       "Saves and restores whatever was on your clipboard before pasting your dictation.",
       comment: "Clipboard settings: explains Restore clipboard after paste.")
 
+    static let keepOutOfHistoryTitle = LocalizedStringResource(
+      "Keep dictations out of clipboard history apps",
+      comment: "Clipboard settings: switch title.")
+    static let keepOutOfHistoryShort = LocalizedStringResource(
+      "Asks clipboard apps to skip the text we paste.",
+      comment: "Clipboard settings: short line under Keep dictations out of clipboard history apps.")
+    static let keepOutOfHistoryHelp = LocalizedStringResource(
+      "Asks clipboard history apps such as Maccy, Raycast and Paste to skip the text EnviousWispr puts on your clipboard for a moment while it pastes, and the clipboard it puts back. Apps that follow the common convention will not save it; apps that ignore the convention still may. A dictation that stays on your clipboard because a paste did not land is still available for clipboard history apps to save. Needs Restore clipboard after paste to be on.",
+      comment: "Clipboard settings: explains Keep dictations out of clipboard history apps.")
+
     static let smartInsertionTitle = LocalizedStringResource(
       "Smart insertion", comment: "Clipboard settings: switch title.")
     static let smartInsertionShort = LocalizedStringResource(

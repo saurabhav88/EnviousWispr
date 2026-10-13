@@ -1,0 +1,1 @@
+{"language":"sl","title":"izključi narekovano besedilo iz zgodovine aplikacij za odložišče","words":[],"phrases":["ne shranjuj narekovanega besedila v zgodovino odložišča","brez narekovanja v zgodovini odložišča"]}

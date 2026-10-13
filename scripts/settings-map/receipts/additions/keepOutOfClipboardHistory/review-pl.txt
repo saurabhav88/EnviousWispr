@@ -1,0 +1,1 @@
+{"language":"pl","title":"nie zapisuj dyktowanego tekstu w historii schowka","words":[],"phrases":["nie zapisuj dyktowanego tekstu w aplikacjach z historią schowka","pomijaj dyktowany tekst w historii schowka"]}

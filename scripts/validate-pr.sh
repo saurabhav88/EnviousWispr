@@ -140,6 +140,10 @@ if [ "${1:-}" = "--self-test" ]; then
   lane_case "scripts/lib" "Docs/dev-tooling" "scripts/lib/l10n-catalog-sync.sh"
   lane_case "scripts/ci" "Docs/dev-tooling" "scripts/ci/classify-changes.sh"
   lane_case "root script" "Docs/dev-tooling" "scripts/build-dev-app.sh"
+  lane_case "root python script" "Docs/dev-tooling" "scripts/mutation-battery-test.py"
+  lane_case "root python plus eval python" "Docs/dev-tooling,Eval-harness" "scripts/mutation-battery.py
+scripts/eval/a.py"
+  lane_case "root data file" "" "scripts/test-inventory-baseline.txt"
   lane_case "scripts/eval only" "Eval-harness" "scripts/eval/run_egone_gguf.py"
   lane_case "scripts/eval plus scripts/lib" "Docs/dev-tooling,Eval-harness" "scripts/eval/a.py
 scripts/lib/b.sh"
@@ -162,6 +166,19 @@ scripts/lib/b.sh"
   fallback_case "content plus eval" "Eval-harness" "Content,Eval-harness"
   fallback_case "worker plus eval" "Worker" "Eval-harness,Worker"
   fallback_case "none" "" ""
+  eval "$(sed -n '/^detected_json_from_lanes() {/,/^}/p' "$0")"
+  detected_json_case() { # name, expected compact JSON, detected lanes
+    local got
+    got=$(detected_json_from_lanes "$3")
+    if [ "$got" = "$2" ]; then
+      pass=$((pass + 1)); echo "self-test PASS: run.json detected_lanes for $1 = $got"
+    else
+      fail=$((fail + 1)); echo "self-test FAIL: run.json detected_lanes for $1: expected '$2', got '$got'"
+    fi
+  }
+  detected_json_case "none" '[]' ""
+  detected_json_case "one lane" '["Code"]' "Code"
+  detected_json_case "two lanes" '["CI/workflow","Code"]' "CI/workflow,Code"
 
   # Test: run.json schema produced by the orchestrator validates against
   # check-validation.sh's expected fields.
@@ -290,13 +307,21 @@ detect_lane_from_diff() {
   if echo "$changed_files" | grep -qE '^workers/'; then
     lanes="$lanes Worker"
   fi
+  # Root `scripts/*.py` joined the root `scripts/*.sh` pattern in #3585: `scripts/mutation-battery-test.py`
+  # was the only changed file of a PR and matched no lane, so Phase 3 chose none.
   if echo "$changed_files" | grep -qE '^(docs/|\.claude/|CLAUDE\.md)' \
      || echo "$changed_files" | grep -E '^scripts/[^/]+/' | grep -qvE '^scripts/eval/' \
-     || echo "$changed_files" | grep -qE '^scripts/[^/]+\.sh$'; then
+     || echo "$changed_files" | grep -qE '^scripts/[^/]+\.(sh|py)$'; then
     lanes="$lanes Docs/dev-tooling"
   fi
 
   echo "$lanes" | xargs -n1 | sort -u | tr '\n' ',' | sed 's/,$//'
+}
+
+# The detected lanes as a JSON array for run.json. An empty detection is `[]`; the old inline
+# `tr | jq -R | jq -s` printed `[""]` for it, which looked like one lane with an empty name (#3585).
+detected_json_from_lanes() {
+  printf '%s\n' "$1" | tr ',' '\n' | jq -R . | jq -sc 'map(select(. != ""))'
 }
 
 # The lane used when the plan declares none. The verifier checks only the declared lane's evidence,
@@ -335,6 +360,12 @@ else
 fi
 DETECTED=$(detect_lane_from_diff "$CHANGED")
 echo "==> Detected lanes: ${DETECTED:-<none>}"
+if [ -z "$DETECTED" ] && [ -n "$CHANGED" ]; then
+  # Files changed but none matched a lane: the plan's declared lane is the only lane left, and nothing
+  # cross-checks it. Name the files so the router gap is visible (#3585).
+  echo "WARN: no lane matched these changed files; only the plan's declared lane is checked:" >&2
+  printf '%s\n' "$CHANGED" | sed 's/^/      /' >&2
+fi
 
 # --- Read declared lane from THIS PR's plan file (Phase 1 Preface) ---
 # #1463, two compounding bugs, both fixed here.
@@ -639,7 +670,7 @@ fi
 
 # --- Write run.json ---
 COMPLETED_AT=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-DETECTED_JSON=$(echo "$DETECTED" | tr ',' '\n' | jq -R . | jq -s .)
+DETECTED_JSON=$(detected_json_from_lanes "$DETECTED")
 CHANGED_JSON=$(printf '%s\n' "$CHANGED" | jq -R . | jq -s 'map(select(. != ""))')
 SATISFIED_JSON=$(printf '%s\n' "${SATISFIED[@]}" | jq -R . | jq -s 'map(select(. != ""))')
 SKIPPED_JSON=$(printf '%s\n' "${SKIPPED[@]}" | jq -R . | jq -s 'map(select(. != ""))')

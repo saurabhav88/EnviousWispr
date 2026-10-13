@@ -3381,6 +3381,28 @@
         }
       }
     },
+    "Asks clipboard apps to skip the text we paste." : {
+      "comment" : "Clipboard settings: short line under Keep dictations out of clipboard history apps.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bittet Zwischenablage-Apps, den eingefügten Text nicht zu speichern."
+          }
+        }
+      }
+    },
+    "Asks clipboard history apps such as Maccy, Raycast and Paste to skip the text EnviousWispr puts on your clipboard for a moment while it pastes, and the clipboard it puts back. Apps that follow the common convention will not save it; apps that ignore the convention still may. A dictation that stays on your clipboard because a paste did not land is still available for clipboard history apps to save. Needs Restore clipboard after paste to be on." : {
+      "comment" : "Clipboard settings: explains Keep dictations out of clipboard history apps.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bittet Zwischenablage-Apps wie Maccy, Raycast und Paste, den Text nicht zu speichern, den EnviousWispr beim Einfügen kurz in die Zwischenablage legt, sowie den anschließend wiederhergestellten Inhalt. Apps, die der üblichen Konvention folgen, speichern diese Inhalte nicht; andere Apps können sie weiterhin speichern. Bleibt ein Diktat nach einem fehlgeschlagenen Einfügen in der Zwischenablage, können Zwischenablage-Apps es speichern. Dafür muss „Zwischenablage nach dem Einfügen wiederherstellen“ eingeschaltet sein."
+          }
+        }
+      }
+    },
     "Assamese" : {
       "comment" : "A language name (dictation language picker).",
       "localizations" : {
@@ -9190,6 +9212,17 @@
         }
       }
     },
+    "Keep dictations out of clipboard history apps" : {
+      "comment" : "Clipboard settings: switch title.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Diktate aus dem Verlauf von Zwischenablage-Apps heraushalten"
+          }
+        }
+      }
+    },
     "Keep editing" : {
       "localizations" : {
         "de" : {
@@ -14961,13 +14994,13 @@
         }
       }
     },
-    "Say punctuation out loud to insert it. EnviousWispr already adds punctuation for you, so this can compete with it." : {
+    "Say punctuation out loud to insert it. EnviousWispr removes extra marks the speech engine adds next to the ones you say." : {
       "comment" : "Speech engine settings, spoken punctuation: description under the toggle.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Sprich Satzzeichen aus, um sie einzufügen. EnviousWispr setzt Satzzeichen bereits selbst. Beides kann sich in die Quere kommen."
+            "value" : "Sprich Satzzeichen aus, um sie einzufügen. EnviousWispr entfernt zusätzliche Satzzeichen, die die Spracherkennung direkt neben die von dir gesprochenen setzt."
           }
         }
       }

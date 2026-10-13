@@ -43,6 +43,7 @@ public final class SettingsManager {
     case pushToTalkModifiers
     case modelUnloadPolicy
     case restoreClipboardAfterPaste
+    case keepDictationsOutOfClipboardHistory
     case quickAddClipboardFallback
     case smartInsertion
     case escapeRecoveryEnabled
@@ -117,7 +118,7 @@ public final class SettingsManager {
     "quickAddKeyCode", "quickAddModifiersRaw",
     "pasteLastKeyCode", "pasteLastModifiersRaw", "copyLastKeyCode", "copyLastModifiersRaw",
     "pushToTalkKeyCode", "pushToTalkModifiersRaw", "modelUnloadPolicy",
-    "restoreClipboardAfterPaste", "quickAddClipboardFallback",
+    "restoreClipboardAfterPaste", "keepDictationsOutOfClipboardHistory", "quickAddClipboardFallback",
     "smartInsertion", "escapeRecoveryEnabled",
     "wordCorrectionEnabled",
     "fillerRemovalEnabled", "emojiFormatterEnabled", "spokenPunctuationEnabled",
@@ -646,6 +647,19 @@ public final class SettingsManager {
     didSet {
       defaults.set(restoreClipboardAfterPaste, forKey: "restoreClipboardAfterPaste")
       onChange?(.restoreClipboardAfterPaste)
+    }
+  }
+
+  /// Ask clipboard-history apps that follow the nspasteboard.org convention to skip the text we
+  /// put on the clipboard for a moment while we paste, and the clipboard we give back (#3672).
+  /// OFF by default, which is how released versions behave. Frozen per recording with the other
+  /// paste settings (`DictationSessionConfig`); only has an effect while Restore clipboard is on,
+  /// because with it off the dictation stays on the clipboard on purpose.
+  public var keepDictationsOutOfClipboardHistory: Bool {
+    didSet {
+      defaults.set(
+        keepDictationsOutOfClipboardHistory, forKey: "keepDictationsOutOfClipboardHistory")
+      onChange?(.keepDictationsOutOfClipboardHistory)
     }
   }
 
@@ -1350,6 +1364,9 @@ public final class SettingsManager {
     restoreClipboardAfterPaste =
       defaults.object(forKey: "restoreClipboardAfterPaste") as? Bool
       ?? SettingsDefaultValues.restoreClipboardAfterPaste
+    keepDictationsOutOfClipboardHistory =
+      defaults.object(forKey: "keepDictationsOutOfClipboardHistory") as? Bool
+      ?? SettingsDefaultValues.keepDictationsOutOfClipboardHistory
     quickAddClipboardFallback =
       defaults.object(forKey: "quickAddClipboardFallback") as? Bool
       ?? SettingsDefaultValues.quickAddClipboardFallback

@@ -144,6 +144,14 @@ package final class KeyboardListenerIngress: Sendable {
   /// Test seam: runs after a reconciliation commits its actions and before it drains them, so a
   /// test can deliver newer input in exactly that window. Production never sets it.
   package let afterReconcileCommitForTesting: (@Sendable () -> Void)?
+  package var pendingRecordEdgesForTesting: [Bool] {
+    state.withLock { s in
+      s.pending.compactMap { action in
+        if case .engine(_, let press, _, _, _, _, _) = action { return press }
+        return nil
+      }
+    }
+  }
   private let engine: RecordGestureEngine
   private let reader: @Sendable (Set<UInt16>) -> [UInt16: KeyStateTracker.Reading]
   private let clock: RecordGestureEngine.Clock

@@ -4,10 +4,10 @@ description: "How to dictate slash commands, punctuation marks and emoji, includ
 category: "features"
 section: "Text Processing"
 order: 3
-keywords: ["punctuation", "say comma", "period", "full stop", "slash", "backslash", "new line", "new paragraph", "emoji", "thumbs up", "smiley", "spoken commands", "emoji not working", "comma written as a word", "period in the middle of my sentence", "start word", "German punctuation", "Satzzeichen diktieren", "Diktiere Punkt", "neuer Absatz", "French punctuation", "Place point", "Spanish punctuation", "Añade punto", "Italian punctuation", "Metti punto", "Punkt written as a word", "spoken punctuation other languages"]
+keywords: ["punctuation", "say comma", "period", "full stop", "slash", "backslash", "new line", "new paragraph", "emoji", "thumbs up", "smiley", "spoken commands", "emoji not working", "comma written as a word", "period in the middle of my sentence", "start word", "German punctuation", "Satzzeichen diktieren", "Diktiere Punkt", "neuer Absatz", "French punctuation", "Place point", "Spanish punctuation", "Añade punto", "Italian punctuation", "Metti punto", "Punkt written as a word", "spoken punctuation other languages", "double period", "two commas in a row", "extra comma next to my comma", "doubled punctuation"]
 related: ["numbers-dates-and-times"]
 seeAlso: "speak-emoji-dictation"
-updated: 2026-10-04
+updated: 2026-10-11
 deflection: "can_resolve"
 ---
 You can speak a phrase and get a symbol, an emoji or a line break instead of the words you said. Emoji and slash work by default. Spoken punctuation is off until you turn it on. The settings are under **Dictation Settings** > **Engine**.
@@ -149,7 +149,28 @@ In English with no start word, and **Spoken punctuation** on, EnviousWispr canno
 
 In German, French, Spanish and Italian a command word stays a word unless the start word comes right before it. A start word of your own can still come up in a normal sentence, so choose one you would not say. If you chose no start word, a command word is a mark every time you say it.
 
-EnviousWispr already punctuates for you, so spoken punctuation competes with that. Turn it on if you need exact control over your punctuation and do not mind fixing the occasional unintended symbol. If it gets in your way, switch **Spoken punctuation** off.
+### Why a mark you did not say appears next to one you did
+
+With **Spoken punctuation** on, the marks you say are not the only marks in your text. EnviousWispr already adds punctuation for you, so this can compete with it. Your speech engine also writes commas and periods of its own, and it sometimes writes one right next to the mark you said, so you would get a comma and a period together, or two periods.
+
+EnviousWispr cleans up the clear cases:
+
+- **An extra mark right next to a spoken one.** You say "comma" and the engine also writes a comma or a period beside it. You get one comma.
+- **A command the engine wrote twice.** "Period. period." becomes one full stop.
+- **A pause in the middle of a command.** If a pause makes the engine put a full stop or comma between the start word and the command, as in "Diktiere. Punkt", it still counts as one command.
+
+This cleanup works in English, German, French, Spanish and Italian. Other languages, and dictation with **Spoken punctuation** off, behave as before.
+
+Some things stay as they are:
+
+- **The engine's other marks.** A comma or period the engine adds somewhere else in your sentence stays, because EnviousWispr cannot tell it from one you meant.
+- **A start word the engine leaves behind.** Sometimes the engine turns your command into a mark itself and leaves the start word in the text, for example "Anna, diktiere, Jonas". Delete the extra word by hand.
+- **A mark in front of a new line or new paragraph.** A full stop before the break stays. When the break follows a sentence-ending mark, a spoken mark command, or an engine-added comma, semicolon or colon, cleanup can remove a full stop or comma after the break. It cannot tell whether you wanted that mark there; add it back by hand if needed.
+- **Marks that belong to a word.** Abbreviations such as "Dr." and "p.m.", the German "z.B.", the German dot after a number as in "am 2. Juni", marks joined to the next word as in "example.com", and an ellipsis ("...") are not touched.
+- **A command you say twice on purpose.** "Period period" gives two full stops.
+- **Marks added by AI polish.** AI polish can change the punctuation again after this cleanup.
+
+If an engine mark still lands where you did not want it, delete it by hand. If **Spoken punctuation** gets in your way, switch it off.
 
 ### Type a backslash
 

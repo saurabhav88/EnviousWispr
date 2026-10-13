@@ -11,6 +11,7 @@ extension DictationSessionConfig {
     triggerSource: TriggerSource = .programmatic,
     autoPasteToActiveApp: Bool = false,
     restoreClipboardAfterPaste: Bool = false,
+    keepDictationsOutOfClipboardHistory: Bool = false,
     // Defaults OFF here while production defaults ON: every existing suite keeps
     // its legacy behaviour until it opts in explicitly.
     smartInsertion: Bool = false,
@@ -39,6 +40,7 @@ extension DictationSessionConfig {
       triggerSource: triggerSource,
       autoPasteToActiveApp: autoPasteToActiveApp,
       restoreClipboardAfterPaste: restoreClipboardAfterPaste,
+      keepDictationsOutOfClipboardHistory: keepDictationsOutOfClipboardHistory,
       smartInsertion: smartInsertion,
       vadAutoStop: vadAutoStop,
       vadSilenceTimeout: vadSilenceTimeout,

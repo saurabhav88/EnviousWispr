@@ -251,15 +251,24 @@ struct MultilingualSpokenPunctuationTests {
     #expect(Self.text(input, language) == expected)
   }
 
-  /// The pass cannot tell whether the recogniser or the user wrote a mark that DIFFERS from the one the
-  /// command writes, so it keeps it: an abbreviation's dot, a list marker, a decimal, a different mark.
-  @Test("A different mark before the start word is kept, never deleted")
-  func differentMarksBeforeTheStartWordAreKept() {
+  /// A mark that is NOT a sentence mark is kept: an abbreviation's dot, a list marker, a decimal. The
+  /// pass cannot tell whether the recogniser or the user wrote it, and it is not a collision with the
+  /// command's mark.
+  @Test("An abbreviation dot, a list marker and a decimal before the start word are kept")
+  func protectedMarksBeforeTheStartWordAreKept() {
     #expect(Self.text("z.B. Diktiere Komma weiter") == "z.B., weiter")
     #expect(Self.text("1. Diktiere Komma weiter") == "1., weiter")
     #expect(Self.text("3.14 Diktiere Punkt") == "3.14.")
-    #expect(Self.text("Das ist toll. Diktiere Ausrufezeichen.") == "Das ist toll.!")
-    #expect(Self.text("Wie geht es dir. Diktiere Fragezeichen") == "Wie geht es dir.?")
+  }
+
+  /// #3594 changed this on purpose. #2450 kept a DIFFERENT sentence mark in front of a mark command
+  /// ("toll.!", "dir.?") because the pass could not tell who wrote it. A sentence mark directly in front
+  /// of a spoken mark command is a collision whoever wrote it, and measured on Parakeet v3 and WhisperKit
+  /// in four languages it is the doubled mark users see. The spoken mark replaces it.
+  @Test("A different sentence mark before a mark command is replaced by the spoken one")
+  func differentSentenceMarkBeforeTheStartWordIsReplaced() {
+    #expect(Self.text("Das ist toll. Diktiere Ausrufezeichen.") == "Das ist toll!")
+    #expect(Self.text("Wie geht es dir. Diktiere Fragezeichen") == "Wie geht es dir?")
   }
 
   @Test("A line break keeps the sentence end it follows, and a lone ellipsis is not a recogniser mark")

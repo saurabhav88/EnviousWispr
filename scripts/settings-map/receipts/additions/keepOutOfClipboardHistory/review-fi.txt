@@ -1,0 +1,1 @@
+{"language":"fi","title":"jätä sanelut pois leikepöytäsovellusten historiasta","words":[],"phrases":["älä tallenna sanelua leikepöydän historiaan","jätä saneltu teksti pois leikepöytähistoriasta"]}

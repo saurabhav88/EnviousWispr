@@ -149,6 +149,15 @@ package struct CorrectionJudgeRequest: Sendable, Equatable {
   /// BCP-47 base code of the dictation, when the pipeline knows it.
   package let language: String?
 
+  /// The one definition of a run's blank-or-unchanged text. The producer
+  /// (`EditAlignment.dropReason`) and this validator both use it, so a run the
+  /// validator refuses is dropped before it is sent (#3470). `CharacterSet`
+  /// trims U+200B while `Character.isWhitespace` does not, so a producer that
+  /// tested only `isWhitespace` handed over a run this init then refused.
+  package static func runText(_ text: String) -> String {
+    text.trimmingCharacters(in: .whitespacesAndNewlines)
+  }
+
   package init(candidates: [CorrectionCandidate], context: String, language: String?) throws {
     guard !candidates.isEmpty else { throw CorrectionJudgeRequestError.noCandidates }
     guard candidates.count <= Self.maxCandidates else {
@@ -162,8 +171,8 @@ package struct CorrectionJudgeRequest: Sendable, Equatable {
       guard seen.insert(candidate.id).inserted else {
         throw CorrectionJudgeRequestError.duplicateID(candidate.id)
       }
-      let original = candidate.original.trimmingCharacters(in: .whitespacesAndNewlines)
-      let replacement = candidate.replacement.trimmingCharacters(in: .whitespacesAndNewlines)
+      let original = Self.runText(candidate.original)
+      let replacement = Self.runText(candidate.replacement)
       guard !original.isEmpty, !replacement.isEmpty else {
         throw CorrectionJudgeRequestError.emptyRun(id: candidate.id)
       }

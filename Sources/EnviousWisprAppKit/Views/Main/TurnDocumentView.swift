@@ -192,26 +192,40 @@ private struct TurnRowView: View {
       Text(text)
         .textSelection(.enabled)
     case .markedUp(let diff):
-      MarkedUpTurnText(result: diff)
-        .textSelection(.enabled)
-        // The marks are visual; a screen reader gets the wizard's own spoken form instead,
-        // the same helper its whole-document marked-up view uses (found by whole-diff review).
-        .accessibilityLabel(TranscribeFileExport.markedUpAccessibilityText(diff.segments))
+      MarkedUpPassageText(segments: diff.segments)
     }
   }
 }
 
-/// One turn's worth of marked-up text — red struck-through removals, green-tinted
+/// One passage of marked-up text — red struck-through removals, green-tinted
 /// changes/adds. The colours come from `MarkUpPalette`, the same table the wizard's
 /// whole-document `markedUpText` reads (#2817 finding 5: this view painted orange and no red).
 ///
-/// One `Text` per turn rather than one per document, so a 20,000-word transcript is forty-odd
+/// One `Text` per passage rather than one per document, so a 20,000-word transcript is forty-odd
 /// small layouts instead of one that re-lays out on every scroll (finding 5, the lag half).
-private struct MarkedUpTurnText: View {
-  let result: WordDiff.Result
+///
+/// The one home for how a marked-up passage is selectable and spoken, shared by History's turn
+/// rows and Transcribe a File's passages. Text selection stays enabled on the visible text, and the
+/// marks (colour and strikethrough say nothing aloud) are spoken as words ("Removed: um.") through
+/// `accessibilityRepresentation`.
+///
+/// #3573: with the dev app launched through LaunchServices, an outside accessibility client reading
+/// History's two-speaker Marked up view crashed unchanged main (selection plus a custom
+/// `.accessibilityLabel` on the same text) in 3 of 3 launches. Label alone, selection alone and
+/// selection plus this representation each had no crash in 2 of 2 launches; putting the label
+/// before the selection still crashed 2 of 2. This view had no crash in 5 of 5 launches and exposed
+/// "Hello Removed: um. world today.". A direct executable launch did not reproduce the crash on
+/// unchanged main. Not live-verified: Transcribe a File, and VoiceOver focus, selection
+/// announcements and copy behaviour.
+struct MarkedUpPassageText: View {
+  let segments: [WordDiff.Segment]
 
   var body: some View {
-    Text(TranscribeFileExport.markedUpText(result.segments))
+    Text(TranscribeFileExport.markedUpText(segments))
+      .textSelection(.enabled)
+      .accessibilityRepresentation {
+        Text(TranscribeFileExport.markedUpAccessibilityText(segments))
+      }
   }
 }
 

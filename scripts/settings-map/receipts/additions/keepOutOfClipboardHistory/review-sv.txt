@@ -1,0 +1,1 @@
+{"language":"sv","title":"håll dikterad text utanför urklippsapparnas historik","words":[],"phrases":["spara inte diktat i urklippshistoriken","låt urklippshanteraren hoppa över dikterad text"]}

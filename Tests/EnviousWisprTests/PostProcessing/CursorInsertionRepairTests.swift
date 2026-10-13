@@ -802,6 +802,34 @@ struct CursorInsertionRepairTests {
       "\(testCase.payload)")
   }
 
+  // MARK: - Reconciled dictation reaches the repair (#3594)
+
+  /// The engine writes its own period after a spoken "period"; the real normalizer (switch on) now removes
+  /// it, so the payload the repair receives holds ONE period. The expectations are literals: the first is
+  /// the frozen matrix row for the payload "Store today." at this caret, the second is that document with
+  /// one full stop. The control (right side already a full stop) separates reconciliation from the repair's
+  /// own seam de-duplication: without reconciliation the payload would end in two full stops, the repair
+  /// would drop only one, and the document would still show two.
+  @Test("A mid-sentence insertion of reconciled dictation holds one full stop")
+  func reconciledDictationInsertsOneFullStop() {
+    let normalized = InverseTextNormalizer().normalize(
+      "Store today period.", spokenPunctuation: true)
+    #expect(normalized == "Store today.")
+
+    let beforeText = CursorInsertionRepair.repair(
+      text: normalized,
+      context: CursorInsertionRepair.CaretText(left: "I went to the ", right: "yesterday"),
+      protectedWords: Self.protectedWords, oracle: Self.prototypeOracle)
+    #expect(beforeText.repairedText == "store today. ")
+
+    let beforeStop = CursorInsertionRepair.repair(
+      text: normalized,
+      context: CursorInsertionRepair.CaretText(left: "I went to the ", right: "."),
+      protectedWords: Self.protectedWords, oracle: Self.prototypeOracle)
+    #expect(beforeStop.candidateRules.contains(.droppedTerminalPeriod))
+    #expect("I went to the " + (beforeStop.repairedText ?? "") + "." == "I went to the store today.")
+  }
+
   // MARK: - The comma-versus-period case a single character could not express
 
   // MARK: - Adversarial input shapes

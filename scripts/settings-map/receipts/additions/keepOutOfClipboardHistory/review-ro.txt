@@ -1,0 +1,1 @@
+{"language":"ro","title":"exclude dictările din istoricul aplicațiilor de clipboard","words":[],"phrases":["nu salva textul dictat în istoricul clipboardului","fără dictări în istoricul clipboardului"]}

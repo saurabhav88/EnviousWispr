@@ -33,11 +33,16 @@ package struct HeldDeliverySettings: Equatable, Sendable {
   package let smartInsertion: Bool
   package let autoPasteToActiveApp: Bool
   package let restoreClipboardAfterPaste: Bool
+  package let keepDictationsOutOfClipboardHistory: Bool
 
-  package init(smartInsertion: Bool, autoPasteToActiveApp: Bool, restoreClipboardAfterPaste: Bool) {
+  package init(
+    smartInsertion: Bool, autoPasteToActiveApp: Bool, restoreClipboardAfterPaste: Bool,
+    keepDictationsOutOfClipboardHistory: Bool
+  ) {
     self.smartInsertion = smartInsertion
     self.autoPasteToActiveApp = autoPasteToActiveApp
     self.restoreClipboardAfterPaste = restoreClipboardAfterPaste
+    self.keepDictationsOutOfClipboardHistory = keepDictationsOutOfClipboardHistory
   }
 }
 
@@ -87,7 +92,8 @@ package enum HeldTextDelivery {
     // Accessibility work runs, and nothing schedules a restore over this explicit copy.
     guard settings.autoPasteToActiveApp else {
       ClipboardCleanup.deliveryClaimsBoard()
-      let receipt = PasteService.copyToClipboardReturningChangeCount(text, to: pasteboard)
+      let receipt = PasteService.copyToClipboardReturningChangeCount(
+        text, to: pasteboard, kind: .kept)
       return HeldTextDeliveryResult(outcome: .clipboardOnly, fallbackClipboardChangeCount: receipt)
     }
 
@@ -98,6 +104,7 @@ package enum HeldTextDelivery {
     let request = KernelFinalizationWiring.deliveryRequest(
       computation: computation, targetApp: targetApp, recordedWindow: targetWindow,
       takeID: takeID, restoreClipboardAfterPaste: settings.restoreClipboardAfterPaste,
+      keepDictationsOutOfClipboardHistory: settings.keepDictationsOutOfClipboardHistory,
       origin: .escapeRecoveryUndo)
 
     let caret = computation.caret

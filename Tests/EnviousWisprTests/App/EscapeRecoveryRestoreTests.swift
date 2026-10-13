@@ -118,7 +118,8 @@ struct EscapeRecoveryRestoreTests {
       settingsAtPress: {
         reads.count += 1
         return HeldDeliverySettings(
-          smartInsertion: true, autoPasteToActiveApp: true, restoreClipboardAfterPaste: false)
+          smartInsertion: true, autoPasteToActiveApp: true, restoreClipboardAfterPaste: false,
+          keepDictationsOutOfClipboardHistory: false)
       },
       report: { _, _, _ in })
 

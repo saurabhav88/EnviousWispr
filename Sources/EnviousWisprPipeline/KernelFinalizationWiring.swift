@@ -83,7 +83,8 @@ final class KernelFinalizationOutcome {
   /// a closed vocabulary) and how many commands it rewrote. Both nil on the English route when no start word is configured. A
   /// ROUTING fact, never a precision claim. `punctuationLanguage` is the language this take's
   /// punctuation routing used (`en` on the English route, even when `cleanup_language` is nil) and
-  /// `punctuationResolutionSource` the resolver rung that answered.
+  /// `punctuationResolutionSource` the resolver rung that answered (`engine_text`: #3624, the text
+  /// corrected an engine label for the punctuation routing only).
   var punctuationStatus: String?
   var punctuationRulesFired: Int?
   var punctuationLanguage: String?
@@ -971,6 +972,7 @@ struct KernelFinalizationWiring {
             computation: computation, targetApp: context.targetApp,
             recordedWindow: context.targetWindow, takeID: deliveryTakeID,
             restoreClipboardAfterPaste: config?.restoreClipboardAfterPaste ?? false,
+            keepDictationsOutOfClipboardHistory: config?.keepDictationsOutOfClipboardHistory ?? false,
             origin: .dictation))
         pasteResult = result
 
@@ -1261,7 +1263,7 @@ struct KernelFinalizationWiring {
   static func deliveryRequest(
     computation: InsertionComputation, targetApp: NSRunningApplication?,
     recordedWindow: AXUIElement?, takeID: String?, restoreClipboardAfterPaste: Bool,
-    origin: PasteDeliveryOrigin
+    keepDictationsOutOfClipboardHistory: Bool, origin: PasteDeliveryOrigin
   ) -> PasteDeliveryRequest {
     let payloads = computation.repair.payloads
     var request = PasteDeliveryRequest(
@@ -1282,6 +1284,7 @@ struct KernelFinalizationWiring {
       // "retried and recovered" apart from "captured at record-start".
       targetElementIsRetried: computation.caret.retried,
       restoreClipboardAfterPaste: restoreClipboardAfterPaste,
+      keepDictationsOutOfClipboardHistory: keepDictationsOutOfClipboardHistory,
       terminalBudget: computation.caret.terminalBudget,
       takeID: takeID,
       recordedWindow: recordedWindow)

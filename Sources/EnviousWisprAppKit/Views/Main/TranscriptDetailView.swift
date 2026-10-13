@@ -141,7 +141,7 @@ struct TranscriptDetailView: View {
         // and the press, and copying a snapshot would hand back text the user was told had
         // gone. Returns the text unchanged for an ordinary dictation.
         guard let text = exportText else { return }
-        PasteService.copyToClipboard(text)
+        PasteService.copyToClipboard(text, kind: .kept)
       } label: {
         Label(exportButtonLabels.copy, systemImage: "doc.on.doc")
       }
@@ -176,7 +176,7 @@ struct TranscriptDetailView: View {
           guard pasteAllowed,
             let text = transcriptCoordinator.textForDelivery(transcript)
           else { return }
-          PasteService.copyToClipboard(text)
+          PasteService.copyToClipboard(text, kind: .kept)
           // #2087: the OTHER door back to a held recovery. The pill reports its
           // restores; without this one the funnel counted only the users who
           // caught a three-second offer. No-op for an ordinary row.

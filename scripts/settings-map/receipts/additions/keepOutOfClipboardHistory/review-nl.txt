@@ -1,0 +1,1 @@
+{"language":"nl","title":"houd gedicteerde tekst uit de geschiedenis van klembordapps","words":[],"phrases":["dictaties niet opslaan in de klembordgeschiedenis","laat de klembordbeheerder gedicteerde tekst overslaan"]}

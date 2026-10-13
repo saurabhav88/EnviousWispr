@@ -314,6 +314,23 @@ struct SpokenPunctuationRoutingTests {
     }
   }
 
+  /// #3594: `englishParity` compares the step to the normalizer it wraps, so it cannot see a change in the
+  /// normalizer itself. These literals are written by hand: the engine's mark beside a spoken mark is gone
+  /// with the switch on, and untouched with it off.
+  @Test("English: the engine's mark beside a spoken mark is gone with the switch on, kept with it off")
+  func englishEngineMarkBesideSpokenMark() async throws {
+    let cases: [(input: String, on: String)] = [
+      ("Period.", "."), ("hello period. World", "hello. World"), ("what question mark?", "what?"),
+      ("New paragraph.", "."),
+    ]
+    for (input, expectedOn) in cases {
+      let on = step(SpokenPunctuationSettings(enabled: true, startWordOverrides: [:]))
+      #expect(try await on.process(ctx(input, language: "en")).text == expectedOn, "input=\(input)")
+      let off = step(SpokenPunctuationSettings(enabled: false, startWordOverrides: [:]))
+      #expect(try await off.process(ctx(input, language: "en")).text == input, "off, input=\(input)")
+    }
+  }
+
   @Test("A nil language on a non-LID engine still runs the English route, as before")
   func nilLanguageNonLIDIsEnglish() async throws {
     let step = step(Self.on, lid: false)
@@ -616,6 +633,107 @@ struct SpokenPunctuationRoutingTests {
     var finished = result
     SnippetFinalizer.finalize(&finished)
     #expect(finished.text == "Schau hier. example.com, dann")
+  }
+
+  // MARK: - The recogniser's marks beside a command, by route (#3594)
+
+  /// A take with the engine's own mark glued after a spoken command, on each route the gate can choose.
+  /// The expectations are literals, and the route metadata is asserted next to the complete text.
+  private static let collision = "alpha comma. beta period."
+
+  @Test("A take with no language on a non-LID engine takes the English route and is reconciled")
+  func noLanguageNonLIDIsReconciled() async throws {
+    let step = step(Self.on, lid: false)
+    let out = try await step.process(ctx(Self.collision, language: nil))
+    #expect(out.text == "alpha, beta.")
+    let run = try #require(step.lastRun)
+    #expect(run.ran == true)
+    #expect(run.skipReason == nil)
+    #expect(run.punctuationStatus == nil)
+    #expect(run.punctuationLanguage == "en")
+  }
+
+  @Test("A take with no language on an LID engine, or with the English veto, keeps the neutral output")
+  func noLanguageLIDOrVetoedIsNeutral() async throws {
+    let lid = step(Self.on, lid: true)
+    let lidOut = try await lid.process(ctx(Self.collision, language: nil))
+    #expect(lidOut.text == Self.collision)
+    #expect(lid.lastRun?.skipReason == "lid_backend_nil")
+    #expect(lid.lastRun?.punctuationStatus == .unresolved)
+
+    let vetoed = step(Self.on, lid: false)
+    let vetoedOut = try await vetoed.process(ctx(Self.collision, language: nil, vetoed: true))
+    #expect(vetoedOut.text == Self.collision)
+    #expect(vetoed.lastRun?.skipReason == "language_vetoed")
+    #expect(vetoed.lastRun?.punctuationStatus == .unresolved)
+  }
+
+  @Test(
+    "A resolved language with no command table keeps the engine's marks byte for byte",
+    arguments: [
+      // Existing routing, asserted as it is: pt and pl take the neutral rule set (no skip reason), ja is
+      // skipped as non-English. None has a command table, so all three report `unsupported`.
+      ("pt", "Ol\u{00E1} v\u{00ED}rgula. Ponto.", nil as String?),
+      ("pl", "Cze\u{015B}\u{0107} przecinek. Kropka.", nil),
+      ("ja", "\u{3053}\u{3093}\u{306B}\u{3061}\u{306F}\u{3001}\u{53E5}\u{70B9}\u{3002}", "non_english"),
+    ])
+  func languageWithoutATableIsUntouched(language: String, input: String, skip: String?) async throws {
+    let step = step(Self.on)
+    let out = try await step.process(ctx(input, language: language, source: .engine))
+    #expect(out.text == input)
+    #expect(step.lastRun?.skipReason == skip)
+    #expect(step.lastRun?.punctuationStatus == .unsupported)
+    #expect(step.lastRun?.punctuationLanguage == language)
+  }
+
+  @Test("With the switch off an English and a start-word take keep the commands and the engine's marks")
+  func switchOffKeepsCommandsAndMarks() async throws {
+    let english = step(Self.off)
+    let englishOut = try await english.process(ctx("Hello. Period", language: "en"))
+    #expect(englishOut.text == "Hello. Period")
+    #expect(english.lastRun?.punctuationRulesFired == nil)
+
+    let german = step(Self.off)
+    let germanOut = try await german.process(
+      ctx("Das ist toll. Diktiere Ausrufezeichen.", language: "de"))
+    #expect(germanOut.text == "Das ist toll. Diktiere Ausrufezeichen.")
+    #expect(german.lastRun?.punctuationStatus == .disabled)
+    #expect(german.lastRun?.punctuationRulesFired == nil)
+  }
+
+  // MARK: - The real chain: a snippet beside an engine mark and a command (#3594)
+
+  /// A sentinel is `EWSNIP` plus hex, so it ends in a digit about five times in eight. The start-word route
+  /// protects a dot after a digit (a German ordinal); a snippet is not an ordinal, so the engine's dot
+  /// after it must go all the same. The candidate here ends in a digit on purpose.
+  @Test("English: the engine's mark after a snippet and before a spoken command is removed")
+  func snippetBesideEngineMarkEnglish() async throws {
+    let steps = makeChain(
+      candidateSource: { "EWSNIPcafe0" },
+      snippets: [Snippet(trigger: "my sign off", expansion: "thanks, sam")])
+    let result = try await runChain(
+      steps, ctx("Talk soon backslash my sign off. Period", language: "en"))
+    #expect(result.protectedExpansions.map(\.sentinel) == ["EWSNIPcafe0"])
+    #expect(result.text == "Talk soon EWSNIPcafe0.")
+    #expect(result.text.components(separatedBy: "EWSNIPcafe0").count == 2, "exactly one sentinel")
+    var finished = result
+    SnippetFinalizer.finalize(&finished)
+    #expect(finished.text == "Talk soon thanks, sam.")
+  }
+
+  @Test("German: the engine's mark after a snippet and before a command is removed, even after a digit")
+  func snippetBesideEngineMarkGerman() async throws {
+    let steps = makeChain(
+      candidateSource: { "EWSNIPcafe0" },
+      snippets: [Snippet(trigger: "my sign off", expansion: "thanks, sam")])
+    let result = try await runChain(
+      steps, ctx("Bis morgen backslash my sign off. Diktiere Komma danke", language: "de"))
+    #expect(result.protectedExpansions.map(\.sentinel) == ["EWSNIPcafe0"])
+    #expect(result.text == "Bis morgen EWSNIPcafe0, danke")
+    #expect(result.text.components(separatedBy: "EWSNIPcafe0").count == 2, "exactly one sentinel")
+    var finished = result
+    SnippetFinalizer.finalize(&finished)
+    #expect(finished.text == "Bis morgen thanks, sam, danke")
   }
 
   // MARK: - Filler removal cannot eat a command
