@@ -1145,13 +1145,38 @@ struct RecordGestureEngineTests {
     carbon.engine.openListenerAdmission(installation: 7)
     carbon.main(true, 0)
     #expect(!Self.lockHeld(carbon, at: 0.2))
-    // A stale installation, and a stale generation.
-    let stale = Rig()
-    stale.engine.openListenerAdmission(installation: 7)
-    _ = Self.listener(stale, true, 0)
-    #expect(!Self.lockHeld(stale, at: 0.2, installation: 6))
-    #expect(!Self.lockHeld(stale, at: 0.2, generation: stale.engine.listenerConfigurationGeneration &+ 1))
-    #expect(Self.lockHeld(stale, at: 0.3), "the control: the same hold does lock")
+    // A stale installation is refused even while its listener-owned hold is live.
+    let staleInstallation = Rig()
+    staleInstallation.engine.openListenerAdmission(installation: 7)
+    _ = Self.listener(staleInstallation, true, 0)
+    #expect(Self.lockHeld(staleInstallation, at: 0.2, installation: 6) == false)
+
+    // A future generation is also refused by the held attempt's own generation.
+    let futureGeneration = Rig()
+    futureGeneration.engine.openListenerAdmission(installation: 7)
+    _ = Self.listener(futureGeneration, true, 0)
+    let currentGeneration = futureGeneration.engine.listenerConfigurationGeneration
+    #expect(
+      Self.lockHeld(futureGeneration, at: 0.2, generation: currentGeneration &+ 1) == false)
+    #expect(Self.lockHeld(futureGeneration, at: 0.3) == true, "the control: the same hold does lock")
+
+    // Change the other binding so the record hold and key still match, but its old
+    // listener-classification generation no longer describes the current config.
+    let staleGeneration = Rig()
+    staleGeneration.engine.openListenerAdmission(installation: 7)
+    _ = Self.listener(staleGeneration, true, 0)
+    let heldGeneration = staleGeneration.engine.listenerConfigurationGeneration
+    staleGeneration.engine.configure(
+      bindings: Self.bindings(cancel: .keyboard(keyCode: Self.rightCommand, modifiers: [])),
+      mode: .pushToTalk)
+    #expect(
+      staleGeneration.engine.listenerConfigurationGeneration != heldGeneration,
+      "changing the other binding starts a new listener generation")
+    #expect(staleGeneration.engine.snapshot.isHeld, "the record hold remains owned")
+    #expect(
+      Self.lockHeld(staleGeneration, at: 0.2, generation: heldGeneration) == false,
+      "a press classified before the listener generation changed cannot lock")
+    #expect(staleGeneration.engine.snapshot.isLocked == false)
   }
 
   @Test("a press that joined a running recording is never locked by a held key")
