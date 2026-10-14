@@ -43,8 +43,11 @@ struct SentryScopeWriterFreezeTests {
   /// model tags from our own manifests (model name, 8-character revision, variant) and a closed
   /// load phase, every value through `SentryEventSanitizer.redactString`, absent values removed.
   /// Written only by `ASRModelScopeOwner` through `updateASRModelScope`.
+  /// #3685: publishPolishScope configures the scope; writePolishScope redacts the complete
+  /// polish context at write time. writeStableTags adds four fixed/UUID process identity tags.
+  /// captureChildProcessFailure adds a metadata-only breadcrumb from the typed child facts.
   static let inventoryFingerprint =
-    "88eb0e2baf4ed9a81f12d5954ebda39b9f5914a5693a24de0021ce5ec74cd218"
+    "626c9c9b9fd91b0a901b619ec17809251e8ef92e63e1f529f28a59f9d37fc302"
 
   struct Site: Hashable, Comparable {
     let file: String
