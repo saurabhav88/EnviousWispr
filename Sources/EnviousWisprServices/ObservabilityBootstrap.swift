@@ -292,7 +292,8 @@ public enum ObservabilityBootstrap {
   /// `start` receives. Used only when "Send crash reports" is ON at launch (#3269).
   static func configureSentryOptions(_ options: Options, dsn: String) {
     options.dsn = dsn
-    options.releaseName = "com.enviouswispr.app@\(appVersion)"
+    options.releaseName = sentryReleaseName(
+      version: appVersion, stamped: Bundle.main.object(forInfoDictionaryKey: "SentryReleaseName") as? String)
     options.environment = environment
 
     // Privacy: no PII, no default data collection
@@ -330,6 +331,13 @@ public enum ObservabilityBootstrap {
     options.sendClientReports = false
     options.enableMetrics = false
     options.enableLogs = false
+  }
+
+  /// Production reads the signed bundle's binding; legacy/dev bundles retain the same identity.
+  static func sentryReleaseName(version: String, stamped: String?) -> String {
+    let canonical = "com.enviouswispr.app@\(version)"
+    if let stamped, stamped == canonical { return stamped }
+    return canonical
   }
 
   /// The launch-stable global tags, each value through `SentryEventSanitizer.redactString` like

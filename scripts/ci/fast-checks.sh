@@ -74,6 +74,7 @@ member_ci_self_tests() {
   scripts/ci/classify-changes.sh --self-test
   scripts/ci/check-pr-check-fetch-depth.sh
   python3 scripts/ci/check-test-recipe.py --self-test
+  python3 scripts/ci/sentry-release-binding.py --self-test
   # #3019: the metrics instrument is advisory in every lane, so a broken
   # parser would be invisible there; here it is red. (The schedule guard's
   # self-test ran here too until #3729 removed the hourly schedule and the

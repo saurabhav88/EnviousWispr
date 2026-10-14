@@ -9,6 +9,15 @@ import Testing
 @Suite("Failure-time crash context", .tags(.observabilityContract))
 @MainActor
 struct CrashReportContextTests {
+  @Test func runtimeReleaseIdentityUsesVerifiedStampAndPreservesLegacyNames() {
+    #expect(ObservabilityBootstrap.sentryReleaseName(version: "2.6.0", stamped: nil)
+      == "com.enviouswispr.app@2.6.0")
+    #expect(ObservabilityBootstrap.sentryReleaseName(version: "2.6.0", stamped: "v2.6.0")
+      == "com.enviouswispr.app@2.6.0")
+    #expect(ObservabilityBootstrap.sentryReleaseName(
+      version: "2.6.0", stamped: "com.enviouswispr.app@2.6.0") == "com.enviouswispr.app@2.6.0")
+  }
+
   @Test func selectedSettingsDoNotRelabelActiveWork() {
     var state = SentryBreadcrumb.PolishScopeState()
     state.select(provider: .ollama, model: "custom", fileImport: false)

@@ -138,6 +138,8 @@ plutil -replace SUFeedURL -string "$FEED_URL" "$BUNDLE/Contents/Info.plist"
 plutil -replace SentryDSN -string "${SENTRY_DSN:-}" "$BUNDLE/Contents/Info.plist"
 plutil -replace CFBundleShortVersionString -string "$VERSION" "$BUNDLE/Contents/Info.plist"
 plutil -replace CFBundleVersion -string "$VERSION" "$BUNDLE/Contents/Info.plist"
+SENTRY_PACKAGE_ID="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$BUNDLE/Contents/Info.plist")"
+plutil -replace SentryReleaseName -string "${SENTRY_PACKAGE_ID}@${VERSION}" "$BUNDLE/Contents/Info.plist"
 
 echo "==> [4/9] Verify stamped secrets + feed + versions (pre-sign)"
 APP_PLIST="$BUNDLE/Contents/Info.plist"
@@ -504,6 +506,8 @@ echo "==> [8/9] Collect dSYMs"
 test -d "$ARCHIVE_PATH/dSYMs/EnviousWispr.app.dSYM"
 mkdir -p "$PROJ_ROOT/build/dSYMs"
 cp -R "$ARCHIVE_PATH/dSYMs/." "$PROJ_ROOT/build/dSYMs/"
+python3 "$PROJ_ROOT/scripts/ci/sentry-release-binding.py" --create "$BUNDLE" \
+    --version "$VERSION" --source "$COMMIT" --dsyms "$PROJ_ROOT/build/dSYMs"
 find "$PROJ_ROOT/build/dSYMs" -maxdepth 2 -name '*.dSYM' -print | sort
 
 echo "==> [9/9] Create branded DMG (app + Applications only; #1486)"

@@ -1172,6 +1172,7 @@ jobs:
           SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
           SENTRY_PROJECT: ${{ secrets.SENTRY_PROJECT }}
           VERSION: ${{ needs.preflight.outputs.version }}
+          TAG: ${{ needs.preflight.outputs.tag }}
           DRY_RUN: ${{ inputs.dry_run }}
         run: |
           set -euo pipefail
@@ -1183,22 +1184,51 @@ jobs:
           fi
           sentry-cli --version
 
+          # #3687: creation and association must name the same release the signed app uses.
+          # An old artifact without a binding remains unverified; never silently backfill it.
+          BINDING_STATUS=0
+          if SOURCE_COMMIT=$(git rev-parse "refs/tags/${TAG}^{commit}" 2>/dev/null); then
+            :
+          elif [[ "${DRY_RUN}" == "true" ]]; then
+            SOURCE_COMMIT=$(git rev-parse HEAD)
+          else
+            echo "::error::Cannot bind source: release tag is missing."
+            SOURCE_COMMIT=""
+            BINDING_STATUS=1
+          fi
+          SENTRY_RELEASE=""
+          if [[ "$BINDING_STATUS" == "0" ]]; then
+            if SENTRY_RELEASE=$(python3 scripts/ci/sentry-release-binding.py \
+              --verify build/dSYMs/sentry-release-binding.json --version "$VERSION" \
+              --source "$SOURCE_COMMIT" --dsyms build/dSYMs); then
+              echo "==> Bound runtime Sentry release: ${SENTRY_RELEASE}"
+            else
+              echo "::error::Runtime/source/dSYM release binding failed. Symbols remain independently uploadable."
+              BINDING_STATUS=1
+            fi
+          fi
+
           # #1117: in a dry_run, install + version above prove sentry-cli works on
           # ubuntu; stop before any real Sentry mutation (no release created/uploaded).
           if [[ "${DRY_RUN}" == "true" ]]; then
-            echo "DRY RUN: would run: sentry-cli releases new v${VERSION}; debug-files upload --include-sources build/dSYMs/; releases finalize v${VERSION}"
+            echo "DRY RUN: verified release=${SENTRY_RELEASE:-unverified}; no release metadata or symbols are mutated."
             ls -la build/dSYMs/ 2>/dev/null || echo "::warning::dSYMs not found in dry-run download"
-            exit 0
+            exit "$BINDING_STATUS"
           fi
 
-          sentry-cli releases new "v${VERSION}"
+          if [[ "$BINDING_STATUS" == "0" ]]; then
+            sentry-cli releases new "$SENTRY_RELEASE" || BINDING_STATUS=1
+          fi
           # Commit association is a nice-to-have (suspect-commits), NOT required for
           # symbolication. `set-commits --auto` can hard-fail ("could not find the SHA
           # of the previous release in the git history") — notably on a `mode=sentry-only`
           # RE-RUN, which is exactly #1088's remediation path. --ignore-missing degrades
           # it to default-commits instead of failing the whole dSYM upload; it is a no-op
           # when --auto would have succeeded. Keeps the essential symbol upload unblocked.
-          sentry-cli releases set-commits "v${VERSION}" --auto --ignore-missing
+          if [[ "$BINDING_STATUS" == "0" ]]; then
+            sentry-cli releases set-commits "$SENTRY_RELEASE" --auto --ignore-missing \
+              || echo "::warning::Sentry commit association failed; symbol upload continues."
+          fi
 
           echo "==> Uploading dSYMs ..."
           # --wait-for makes the command fail if the server cannot fully PROCESS the
@@ -1206,8 +1236,11 @@ jobs:
           # then means "symbols processed", not merely "bytes accepted". 300s < 900s job timeout.
           sentry-cli debug-files upload --include-sources --wait-for 300 build/dSYMs/
 
-          sentry-cli releases finalize "v${VERSION}"
-          echo "==> Sentry release v${VERSION} finalized with dSYMs."
+          if [[ "$BINDING_STATUS" == "0" ]]; then
+            sentry-cli releases finalize "$SENTRY_RELEASE" || BINDING_STATUS=1
+          fi
+          echo "==> Sentry symbol upload completed; release=${SENTRY_RELEASE:-unverified}, binding status=${BINDING_STATUS}."
+          exit "$BINDING_STATUS"
 
   # ==========================================================================
   # LIMB Job D2 — Bump Homebrew cask (#1368)
