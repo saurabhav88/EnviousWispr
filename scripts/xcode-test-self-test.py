@@ -9,8 +9,10 @@ import json
 import os
 from pathlib import Path
 import shutil
+import signal
 import subprocess
 import tempfile
+import time
 import unittest
 
 PARSER = argparse.ArgumentParser(description=__doc__)
@@ -27,6 +29,18 @@ class RunnerContract(unittest.TestCase):
         lib = self.root / 'scripts/lib'
         lib.mkdir(parents=True)
         shutil.copyfile(RUNNER, self.root / 'scripts/xcode-test.sh')
+        # The real receipt owner, against owned classifier and eval-compile
+        # stand-ins with the real output contracts (#3729 PR-C).
+        shutil.copyfile(RUNNER.with_name('lib') / 'validation-receipt.py', lib / 'validation-receipt.py')
+        ci = self.root / 'scripts/ci'
+        ci.mkdir()
+        for name, key, prefix in (('classify-changes.sh', 'needs_build', 'Sources/'),
+                                  ('needs-eval-packages.sh', 'needs_eval_packages', 'scripts/eval/')):
+            (ci / name).write_text('#!/usr/bin/env bash\n'
+                                   f"if grep -q '^{prefix}'; then v=true; else v=false; fi\n"
+                                   f"printf '{key}=%s\\n' \"$v\" >>\"$GITHUB_OUTPUT\"\n")
+        (ci / 'compile-eval-packages.sh').write_text(
+            '#!/usr/bin/env bash\necho eval >> "$TRACE"\nexit "${EVAL_RC:-0}"\n')
         # Replace only dependencies in the private fixture. The runner itself is
         # byte-identical, with no production environment bypass or rewrite.
         (lib / 'ensure-generated.sh').write_text('ew_ensure_generated() { echo generate >> "$TRACE"; }\n')
@@ -42,6 +56,8 @@ ew_prune_stale_lanes() { :; }
 ''')
         (lib / 'lane-verdict.sh').write_text('''ew_lane_verdict() {
   echo "verdict:$3:required=${EW_LANE_REQUIRED_BUNDLES-unset}" >> "$TRACE"
+  EW_LANE_EXECUTED_COUNT=2
+  EW_LANE_JUDGED_BUNDLES="${EW_LANE_REQUIRED_BUNDLES-EnviousWisprTests EnviousWisprDesktopEffectsTests EnviousWisprASRTests}"
   return "${VERDICT_RC:-0}"
 }
 ''')
@@ -51,11 +67,33 @@ ew_prune_stale_lanes() { :; }
         xcode.write_text('''#!/usr/bin/env python3
 import json, os, sys
 from pathlib import Path
+import subprocess, time
 args = sys.argv[1:]
+if args[0] == '-version':
+    swapped = os.environ.get('TOOLCHAIN_FLAG') and Path(os.environ['TOOLCHAIN_FLAG']).exists()
+    print('Xcode 27.0')
+    print('Build version ' + ('28A1' if swapped else '27A266a'))
+    sys.exit(0)
 with open(os.environ['CALLS'], 'a') as f:
     f.write(json.dumps(args) + '\\n')
 if args[0] == 'test':
     Path(args[args.index('-resultBundlePath') + 1]).mkdir()
+    root = Path(os.environ['FIXTURE_ROOT'])
+    if os.environ.get('STARTED'):
+        Path(os.environ['STARTED']).write_text('running')
+    deadline = time.time() + 10
+    while os.environ.get('HOLD') and Path(os.environ['HOLD']).exists() and time.time() < deadline:
+        time.sleep(0.05)
+    if os.environ.get('MUTATE'):
+        (root / os.environ['MUTATE']).write_text('changed during the run\\n')
+        if os.environ.get('MUTATE_STAGE'):
+            subprocess.run(['git', '-C', str(root), 'add', os.environ['MUTATE']], check=True)
+    if os.environ.get('TOOLCHAIN_FLAG'):
+        Path(os.environ['TOOLCHAIN_FLAG']).write_text('swapped')
+    if os.environ.get('PLANT_RECEIPT'):
+        planted = root / '.derivedData/Test/ew-validation-receipt.json'
+        planted.parent.mkdir(parents=True, exist_ok=True)
+        planted.write_text('{}')
     Path(os.environ['PACKAGE_STATE']).write_text('current lockfile dependencies')
     print('Test run with 2 tests passed.')
     sys.exit(int(os.environ.get('XCODE_RC', '0')))
@@ -84,14 +122,37 @@ print(json.dumps({'testNodes': [{'nodeType': 'Test Plan', 'children': nodes}]}))
                         XCRUN_CALLS=str(self.root / 'xcrun-calls'),
                         DERIVED_DATA_PATH=str(self.root / 'derived'),
                         PACKAGE_STATE=str(self.root / 'package-state'),
-                        PUBLISHED_STATE=str(self.root / 'published-state'), STUB_SEEDED='1')
+                        PUBLISHED_STATE=str(self.root / 'published-state'), STUB_SEEDED='1',
+                        FIXTURE_ROOT=str(self.root))
         (self.root / 'package-state').write_text('old lockfile dependencies')
         self.env.pop('XCODE_RC', None)
-        for name in ('VERDICT_RC', 'XCRESULT_RC', 'OMIT_SELECTION', 'NODE_SUFFIX'):
+        for name in ('VERDICT_RC', 'XCRESULT_RC', 'OMIT_SELECTION', 'NODE_SUFFIX', 'CI',
+                     'EW_LANE_REQUIRED_BUNDLES', 'EVAL_RC', 'HOLD', 'STARTED', 'MUTATE',
+                     'MUTATE_STAGE', 'TOOLCHAIN_FLAG', 'PLANT_RECEIPT'):
             self.env.pop(name, None)
         self.sentinel = self.root / 'derived/keep-cache'
         self.sentinel.parent.mkdir()
         self.sentinel.write_text('unchanged compatible cache')
+        # An owned repository, so the receipt binds a real index tree.
+        (self.root / 'Sources').mkdir()
+        (self.root / 'Sources/A.swift').write_text('let a = 1\n')
+        (self.root / '.gitignore').write_text('.derivedData/\n')
+        for cmd in (['init', '-q'], ['config', 'user.email', 't@t'], ['config', 'user.name', 't'],
+                    ['add', 'Sources', '.gitignore', 'scripts'], ['commit', '-qm', 'fixture']):
+            self.git(*cmd)
+        self.receipt = self.root / '.derivedData/Test/ew-validation-receipt.json'
+        self.lock = self.root / '.derivedData/Test/.ew-validation.lock'
+
+    def git(self, *args):
+        return subprocess.run(['git', '-C', str(self.root), *args], check=True,
+                              capture_output=True, text=True).stdout.strip()
+
+    def trace(self):
+        path = self.root / 'trace'
+        return path.read_text().splitlines() if path.exists() else []
+
+    def receipt_data(self):
+        return json.loads(self.receipt.read_text())
 
     def run_runner(self, *args, rc=0, **env):
         result = subprocess.run(['bash', str(self.root / 'scripts/xcode-test.sh'),
@@ -221,6 +282,211 @@ print(json.dumps({'testNodes': [{'nodeType': 'Test Plan', 'children': nodes}]}))
         self.run_runner('--release', rc=1, VERDICT_RC='1')
         self.assertEqual(self.configurations(), ['Debug'])
         self.assertFalse((self.root / 'published-state').exists())
+
+    # --- #3729 PR-C: the validation receipt -------------------------------
+
+    def assert_no_receipt(self, result, reason=None):
+        self.assertFalse(self.receipt.exists(), result.stdout)
+        if reason:
+            self.assertIn(reason, result.stdout)
+
+    def test_full_run_compiles_eval_then_publishes_a_receipt(self):
+        tree = self.git('write-tree')
+        result = self.run_runner()
+        trace = self.trace()
+        self.assertEqual(trace.count('eval'), 1)
+        self.assertLess(trace.index('verdict:Debug lane:required=unset'), trace.index('eval'))
+        data = self.receipt_data()
+        self.assertEqual(data['tree'], tree)
+        self.assertEqual(data['head'], self.git('rev-parse', 'HEAD'))
+        self.assertEqual((data['toolchain'], data['executed_tests'], data['bundles']),
+                         ('27A266a', 2, ['EnviousWisprTests', 'EnviousWisprDesktopEffectsTests', 'EnviousWisprASRTests']))
+        self.assertEqual((data['configuration'], data['debug_verdict'], data['eval_verdict']),
+                         ('Debug', 'PASS', 'PASS'))
+        self.assertIn('validation receipt: issued', result.stdout)
+        self.assertFalse(self.lock.exists())
+
+    def test_staged_matching_change_binds_the_index_tree(self):
+        (self.root / 'Sources/A.swift').write_text('let a = 2\n')
+        self.git('add', 'Sources/A.swift')
+        self.run_runner()
+        self.assertEqual(self.receipt_data()['tree'], self.git('write-tree'))
+        self.assertNotEqual(self.receipt_data()['tree'], self.git('rev-parse', 'HEAD^{tree}'))
+
+    def test_unstaged_tracked_change_issues_no_receipt(self):
+        (self.root / 'Sources/A.swift').write_text('let a = 2\n')
+        result = self.run_runner()
+        self.assert_no_receipt(result, 'differs from the index')
+        self.assertIn('eval', self.trace())  # the full run still validates
+
+    def test_untracked_build_input_issues_no_receipt(self):
+        (self.root / 'Sources/New.swift').write_text('x\n')
+        self.assert_no_receipt(self.run_runner(), 'untracked file is a build input')
+
+    def test_untracked_eval_input_issues_no_receipt(self):
+        (self.root / 'scripts/eval').mkdir()
+        (self.root / 'scripts/eval/x.swift').write_text('x\n')
+        self.assert_no_receipt(self.run_runner(), 'eval-package input')
+
+    def test_unrelated_untracked_file_still_issues_a_receipt(self):
+        (self.root / 'notes.txt').write_text('scratch\n')
+        self.run_runner()
+        self.assertTrue(self.receipt.exists())
+
+    def test_working_file_changed_mid_run_issues_no_receipt(self):
+        result = self.run_runner(MUTATE='Sources/A.swift')
+        self.assert_no_receipt(result, 'an input changed during the run')
+
+    def test_index_changed_mid_run_issues_no_receipt(self):
+        result = self.run_runner(MUTATE='Sources/A.swift', MUTATE_STAGE='1')
+        self.assert_no_receipt(result, 'an input changed during the run')
+
+    def test_toolchain_changed_mid_run_issues_no_receipt(self):
+        result = self.run_runner(TOOLCHAIN_FLAG=str(self.root / 'toolchain-swapped'))
+        self.assert_no_receipt(result, 'an input changed during the run')
+
+    def test_failed_eval_compile_fails_and_issues_no_receipt(self):
+        result = self.run_runner(rc=1, EVAL_RC='1')
+        self.assert_no_receipt(result, 'eval packages verdict: FAIL')
+
+    def test_filtered_run_invalidates_and_neither_compiles_eval_nor_issues_a_receipt(self):
+        self.run_runner()
+        self.assertTrue(self.receipt.exists())
+        self.run_runner('--filter', 'Target/SuiteA')
+        self.assertEqual(self.trace().count('eval'), 1)  # only the first, full run compiled
+        self.assertFalse(self.receipt.exists())
+        self.assertFalse(self.lock.exists())
+
+    def test_release_only_run_invalidates_and_neither_compiles_eval_nor_issues_a_receipt(self):
+        self.run_runner()
+        self.assertTrue(self.receipt.exists())
+        self.run_runner('--configuration', 'Release')
+        self.assertEqual(self.trace().count('eval'), 1)
+        self.assertFalse(self.receipt.exists())
+        self.assertFalse(self.lock.exists())
+
+    def test_ci_mode_issues_no_receipt(self):
+        self.assert_no_receipt(self.run_runner(CI='true'), 'CI mode')
+
+    def test_weakened_bundle_list_issues_no_receipt(self):
+        result = self.run_runner(EW_LANE_REQUIRED_BUNDLES='EnviousWisprTests')
+        self.assert_no_receipt(result, 'EW_LANE_REQUIRED_BUNDLES overrides')
+
+    def test_a_failed_run_invalidates_the_previous_receipt(self):
+        self.run_runner()
+        self.assertTrue(self.receipt.exists())
+        self.run_runner(rc=1, VERDICT_RC='1')
+        self.assertFalse(self.receipt.exists())
+        self.assertFalse(self.lock.exists())
+
+    def test_publication_collision_is_a_failure(self):
+        result = self.run_runner(rc=1, PLANT_RECEIPT='1')
+        self.assertIn('could not be published', result.stdout)
+        self.assertEqual(self.receipt.read_text(), '{}')  # the planted file, never overwritten
+
+    def test_an_existing_lock_refuses_every_kind_of_run_without_touching_anything(self):
+        self.run_runner()
+        before, tests_before = self.receipt.read_bytes(), len(self.tests)
+        self.lock.mkdir()
+        (self.lock / 'pid').write_text(f'{os.getpid()}\n')
+        for args in ((), ('--filter', 'Target/SuiteA'), ('--configuration', 'Release')):
+            result = self.run_runner(*args, rc=2)
+            self.assertIn(f'validation lock exists: {self.lock} (pid {os.getpid()})', result.stdout)
+            self.assertEqual(self.receipt.read_bytes(), before)
+            self.assertEqual(len(self.tests), tests_before)  # no test command ran
+            self.assertEqual((self.lock / 'pid').read_text().strip(), str(os.getpid()))
+
+    def test_an_abandoned_lock_is_refused_until_removed(self):
+        dead = subprocess.Popen(['true']); dead.wait()
+        self.lock.parent.mkdir(parents=True)
+        self.lock.mkdir()
+        (self.lock / 'pid').write_text(f'{dead.pid}\n')
+        result = self.run_runner(rc=2)
+        self.assertIn(f"remove the lock with: rm -r '{self.lock}'", result.stdout)
+        self.assertTrue(self.lock.exists())
+        shutil.rmtree(self.lock)  # the owned fixture's abandoned lock, as the message says
+        self.run_runner()
+        self.assertTrue(self.receipt.exists())
+        self.assertFalse(self.lock.exists())
+
+    def start_held_run(self, log_dir):
+        hold, started = self.root / 'hold', self.root / f'started-{log_dir}'
+        hold.write_text('hold')
+        proc = subprocess.Popen(['bash', str(self.root / 'scripts/xcode-test.sh'),
+                                 '--log-dir', str(self.root / log_dir)],
+                                env=dict(self.env, HOLD=str(hold), STARTED=str(started)),
+                                text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                                start_new_session=True)
+        deadline = time.time() + 10
+        while not started.exists() and time.time() < deadline:
+            time.sleep(0.05)
+        self.assertTrue(started.exists(), 'the held run never reached its test command')
+        return proc, hold
+
+    def test_two_attempts_one_publishes_and_the_other_cannot_disturb_it(self):
+        owner, hold = self.start_held_run('logs-owner')
+        rival = subprocess.run(['bash', str(self.root / 'scripts/xcode-test.sh'),
+                                '--log-dir', str(self.root / 'logs-rival')],
+                               env=self.env, text=True, stdout=subprocess.PIPE,
+                               stderr=subprocess.STDOUT, timeout=15)
+        self.assertEqual(rival.returncode, 2, rival.stdout)
+        self.assertIn('validation lock exists', rival.stdout)
+        filtered = subprocess.run(['bash', str(self.root / 'scripts/xcode-test.sh'),
+                                   '--log-dir', str(self.root / 'logs-filtered'), '--filter', 'Target/SuiteA'],
+                                  env=self.env, text=True, stdout=subprocess.PIPE,
+                                  stderr=subprocess.STDOUT, timeout=15)
+        self.assertEqual(filtered.returncode, 2, filtered.stdout)
+        self.assertTrue(self.lock.exists())
+        self.assertEqual((self.lock / 'pid').read_text().strip(), str(owner.pid))
+        hold.unlink()
+        out, _ = owner.communicate(timeout=15)
+        self.assertEqual(owner.returncode, 0, out)
+        self.assertIn('validation receipt: issued', out)
+        self.assertTrue(self.receipt.exists())
+        self.assertFalse(self.lock.exists())
+
+    def test_interruption_releases_the_lock_and_issues_no_receipt(self):
+        owner, hold = self.start_held_run('logs-owner')
+        os.killpg(owner.pid, signal.SIGTERM)
+        owner.communicate(timeout=15)
+        self.assertNotEqual(owner.returncode, 0)
+        self.assertFalse(self.lock.exists())
+        self.assertFalse(self.receipt.exists())
+        hold.unlink()
+        self.run_runner()  # the next attempt can run
+        self.assertTrue(self.receipt.exists())
+
+
+class EvalCompileContract(unittest.TestCase):
+    """The real compile-eval-packages.sh against a recorded `swift` and pin seeder:
+    three Release compiles, serially, each in its own package path, tracked pins."""
+
+    def test_three_serial_pinned_release_compiles(self):
+        with tempfile.TemporaryDirectory(prefix='ew-eval-contract-') as tmp:
+            root = Path(tmp)
+            (root / 'scripts/ci').mkdir(parents=True)
+            shutil.copyfile(RUNNER.parent / 'ci/compile-eval-packages.sh', root / 'scripts/ci/compile-eval-packages.sh')
+            (root / 'scripts/ci/seed-eval-package-pins.py').write_text(
+                'import sys\nopen(sys.argv[-1] + ".seeded", "w").write("x")\n')
+            (root / 'Package.resolved').write_text('{}')
+            for pkg in ('apple_runner', 'alias_runner', 'prompt_render'):
+                (root / 'scripts/eval' / pkg).mkdir(parents=True)
+            bin_dir = root / 'bin'
+            bin_dir.mkdir()
+            swift = bin_dir / 'swift'
+            swift.write_text('#!/usr/bin/env bash\necho "$*" >> "$SWIFT_CALLS"\n')
+            swift.chmod(0o755)
+            calls = root / 'swift-calls'
+            r = subprocess.run(['bash', 'scripts/ci/compile-eval-packages.sh'], cwd=root, text=True,
+                               env=dict(os.environ, PATH=f'{bin_dir}{os.pathsep}{os.environ["PATH"]}',
+                                        SWIFT_CALLS=str(calls)),
+                               stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=15)
+            self.assertEqual(r.returncode, 0, r.stdout)
+            rows = calls.read_text().splitlines()
+            self.assertEqual(rows, [f'build -c release --package-path scripts/eval/{p} --only-use-versions-from-resolved-file'
+                                    for p in ('apple_runner', 'alias_runner', 'prompt_render')])
+            for pkg in ('apple_runner', 'alias_runner', 'prompt_render'):
+                self.assertTrue((root / f'scripts/eval/{pkg}.seeded').exists())
 
 
 

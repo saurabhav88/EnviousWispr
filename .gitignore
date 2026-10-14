@@ -190,6 +190,8 @@ scripts/lib/*
 # used by pr-check.yml (#3729 removed its post-merge and nightly callers).
 !scripts/lib/xcode-test-run.sh
 !scripts/lib/ci-phase.sh
+# #3729 PR-C: the validation receipt owner (written by xcode-test.sh, read by pre-push).
+!scripts/lib/validation-receipt.py
 !scripts/lib/mic-in-use.swift
 # #1677: the offline German number-data generator, its pinned upstream sources (with their
 # licences), manifest and tests are tracked; the committed generated Swift is what ships.

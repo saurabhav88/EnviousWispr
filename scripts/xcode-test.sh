@@ -13,7 +13,9 @@ set -euo pipefail
 # --configuration Release runs Release only; legacy --release runs both.
 #
 # Usage:
-#   scripts/xcode-test.sh                 # everyday local Debug lane
+#   scripts/xcode-test.sh                 # everyday local Debug lane; this full run
+#                                         # also compiles the eval packages and
+#                                         # writes the validation receipt pre-push reads
 #   scripts/xcode-test.sh --filter Target/SuiteA --filter Target/SuiteB
 #                                         # one Debug run for both suites
 #   scripts/xcode-test.sh --configuration Release  # release-cut validation only
@@ -42,7 +44,43 @@ fi
 . "$PROJECT_ROOT/scripts/lib/log-dir.sh"
 # shellcheck source=scripts/lib/lane-verdict.sh
 . "$PROJECT_ROOT/scripts/lib/lane-verdict.sh"
-trap 'ew_seed_release_all' EXIT
+# #3729 PR-C: a full, unfiltered Debug run (no --filter, Debug or both) is the
+# push proof. Every run holds one per-checkout lock; a full run compiles the three eval packages
+# after the suite, and publishes .derivedData/Test/ew-validation-receipt.json
+# (owner: scripts/lib/validation-receipt.py) only when the index tree it tested
+# is unchanged at the end. scripts/githooks/pre-push reads that receipt.
+RECEIPT_HELPER="$PROJECT_ROOT/scripts/lib/validation-receipt.py"
+VALIDATION_LOCK="$PROJECT_ROOT/.derivedData/Test/.ew-validation.lock"
+VALIDATION_LOCK_HELD=0
+ew_validation_cleanup() {
+  [ "$VALIDATION_LOCK_HELD" = 1 ] || return 0
+  if [ "$(cat "$VALIDATION_LOCK/pid" 2>/dev/null || true)" = "$$" ]; then
+    rm -f "$VALIDATION_LOCK/pid" && rmdir "$VALIDATION_LOCK" 2>/dev/null || true
+  fi
+  VALIDATION_LOCK_HELD=0
+}
+# mkdir is the atomic step. An existing lock is never reclaimed automatically: two
+# contenders that both read a dead owner could otherwise each remove the other's fresh
+# lock. A run stopped by a signal releases it through the EXIT trap; only a killed run
+# (SIGKILL, a crash) leaves one behind, and the refusal says how to remove it.
+ew_validation_lock() {
+  local holder
+  mkdir -p "$(dirname "$VALIDATION_LOCK")" || return 1
+  if ! mkdir "$VALIDATION_LOCK" 2>/dev/null; then
+    holder="$(cat "$VALIDATION_LOCK/pid" 2>/dev/null || true)"
+    echo "ERROR: validation lock exists: $VALIDATION_LOCK (pid ${holder:-unknown}). Wait for that run; if no such process is running, remove the lock with: rm -r '$VALIDATION_LOCK'" >&2
+    return 1
+  fi
+  VALIDATION_LOCK_HELD=1
+  if ! printf '%s\n' "$$" > "$VALIDATION_LOCK/pid"; then
+    rm -f "$VALIDATION_LOCK/pid"
+    rmdir "$VALIDATION_LOCK" 2>/dev/null || true
+    VALIDATION_LOCK_HELD=0
+    return 1
+  fi
+  return 0
+}
+trap 'ew_validation_cleanup; ew_seed_release_all' EXIT
 # bash exits on a signal WITHOUT running the EXIT trap, which would strand a
 # seed lock. Converting each signal into a normal exit makes EXIT run.
 trap 'exit 129' HUP
@@ -112,6 +150,35 @@ if [ -n "$RESULT_BUNDLE_PATH" ] && [ "$CONFIGURATION" = "both" ]; then
 fi
 
 cd "$PROJECT_ROOT"
+
+FULL_VALIDATION=0
+NO_RECEIPT_REASON=""
+START_IDENTITY=""
+# Every run takes the lock and then invalidates the previous receipt: any attempt
+# changes the build and test state the receipt describes. Taken before anything is
+# invalidated, so a refused run cannot disturb the run that holds it. --log-dir and
+# DERIVED_DATA_PATH do not move the lock.
+ew_validation_lock || exit 2
+if ! python3 "$RECEIPT_HELPER" invalidate --root "$PROJECT_ROOT"; then
+  echo "ERROR: could not remove the previous validation receipt" >&2
+  exit 1
+fi
+if [ "${#TEST_ARGS[@]}" -eq 0 ] && [ "$CONFIGURATION" != "Release" ]; then
+  FULL_VALIDATION=1
+  if [ -n "${CI:-}" ]; then
+    NO_RECEIPT_REASON="CI mode"
+  elif [ -n "${EW_LANE_REQUIRED_BUNDLES+set}" ]; then
+    NO_RECEIPT_REASON="EW_LANE_REQUIRED_BUNDLES overrides the required bundles"
+  fi
+  if [ -z "$NO_RECEIPT_REASON" ]; then
+    # Captured BEFORE generation. Exit 3 is an ineligible tree (reason printed).
+    if START_IDENTITY="$(python3 "$RECEIPT_HELPER" capture --root "$PROJECT_ROOT")"; then :; else
+      NO_RECEIPT_REASON="the input tree is not eligible at the start (see the line above)"
+      START_IDENTITY=""
+    fi
+  fi
+fi
+PHASE_START=$SECONDS
 # Owner: scripts/lib/log-dir.sh, which has its own two-way suite. Creating the
 # directory is deliberately the caller's job — a resolver with a side effect
 # cannot be tested without one.
@@ -150,6 +217,7 @@ fi
 # Generate the Xcode project (gitignored, never committed) — only when a
 # generation input actually changed (#2157 chunk C).
 ew_ensure_generated "$PROJECT_ROOT"
+echo "==> phase generate: $((SECONDS - PHASE_START))s"
 
 printf "==> Test plan: %s; %s filter(s); incremental build data: %s\n" "$CONFIGURATION" "${#TEST_ARGS[@]}" "$DERIVED_DATA"
 # EVERY lane now names its result bundle, because the verdict is read from it
@@ -289,8 +357,14 @@ ew_seed_resolve_or_unseed "$DERIVED_DATA" \
     -scheme "$RESOLVE_SCHEME" \
     -derivedDataPath "$DERIVED_DATA"
 
+DEBUG_EXECUTED=0
+DEBUG_BUNDLES=""
 if [ "$CONFIGURATION" != "Release" ]; then
+  PHASE_START=$SECONDS
   run_lane "$DEBUG_SCHEME" Debug "$LOG_DIR/xcode-test-debug.log" "$DEBUG_RESULT_BUNDLE"
+  echo "==> phase debug build+test: $((SECONDS - PHASE_START))s"
+  DEBUG_EXECUTED="${EW_LANE_EXECUTED_COUNT:-0}"
+  DEBUG_BUNDLES="${EW_LANE_JUDGED_BUNDLES:-}"
 fi
 if [ "$CONFIGURATION" != "Debug" ]; then
   run_lane "$RELEASE_SCHEME" Release "$LOG_DIR/xcode-test-release.log" \
@@ -300,3 +374,36 @@ fi
 # only runs for a freshly consumed snapshot. Publish after the selected test
 # build refreshed packages and passed, never before a Release-only run (#3044).
 ew_seed_publish "$PROJECT_ROOT" "$DERIVED_DATA"
+
+[ "$FULL_VALIDATION" = 1 ] || exit 0
+# The standalone eval packages compile only here and in the PR check: serially,
+# Release, each in its own persistent .build directory, held to tracked pins.
+PHASE_START=$SECONDS
+echo "==> eval packages: compiling apple_runner, alias_runner, prompt_render (Release, serial)"
+if bash "$PROJECT_ROOT/scripts/ci/compile-eval-packages.sh" 2>&1 | tee "$LOG_DIR/eval-packages.log"; then
+  echo "==> phase eval compile: $((SECONDS - PHASE_START))s"
+  echo "==> eval packages verdict: PASS"
+else
+  echo "==> eval packages verdict: FAIL (log: $LOG_DIR/eval-packages.log)"
+  exit 1
+fi
+
+if [ -n "$NO_RECEIPT_REASON" ]; then
+  echo "==> validation receipt: NOT issued ($NO_RECEIPT_REASON); a push of build inputs will be refused"
+  exit 0
+fi
+if python3 "$RECEIPT_HELPER" publish --root "$PROJECT_ROOT" --start "$START_IDENTITY" \
+    --field configuration=Debug --field "scheme=$DEBUG_SCHEME" \
+    --field "bundles=$DEBUG_BUNDLES" --field "executed_tests=$DEBUG_EXECUTED" \
+    --field debug_verdict=PASS --field eval_verdict=PASS \
+    --field "result_bundle=$DEBUG_RESULT_BUNDLE" >/dev/null; then
+  echo "==> validation receipt: issued ($(python3 "$RECEIPT_HELPER" path --root "$PROJECT_ROOT"))"
+else
+  rc=$?
+  if [ "$rc" = 3 ]; then
+    echo "==> validation receipt: NOT issued (an input changed during the run); a push of build inputs will be refused"
+    exit 0
+  fi
+  echo "ERROR: the validation receipt could not be published (exit $rc)" >&2
+  exit 1
+fi
