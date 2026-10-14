@@ -319,6 +319,9 @@ struct SpokenSymbolsTests {
     #expect(fr("Il dit Place guillemet ouvrant Place points de suspension") == "Il dit \u{00AB}\u{00A0}\u{2026}")
     #expect(fr("Il dit Place guillemet ouvrant Place virgule") == "Il dit \u{00AB}\u{00A0},")
     #expect(
+      fr("Il dit Place guillemet ouvrant Place nouvelle ligne oui")
+        == "Il dit \u{00AB}\nOui")
+    #expect(
       fr("Il dit Place guillemet ouvrant oui Place guillemet fermant Place point")
         == "Il dit \u{00AB}\u{00A0}oui\u{00A0}\u{00BB}.")
   }
