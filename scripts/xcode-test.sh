@@ -5,13 +5,12 @@ set -euo pipefail
 # (#913 PR7). Canonical replacement for the retired CLT-only `swift-test.sh`
 # (whose header falsely claimed "Xcode is not installed").
 #
-# Relation to CI (#3013): pr-check.yml's single required lane builds and RUNS
-# the Release suite (`build-for-testing` + `test-without-building`,
-# scripts/lib/xcode-test-run.sh); main-post-merge.yml runs the full Debug suite
-# and the Release suite on main. So the Debug lane below is the developer's
-# everyday run and the only pre-merge Debug execution, and `--release` runs
-# what the PR gate runs. The two result bundles from a `--release` run are the
-# inputs to scripts/ci/debug-only-inventory.py.
+# Relation to CI (#3013, #3729): pr-check.yml's single required lane builds and
+# RUNS the Release suite (`build-for-testing` + `test-without-building`,
+# scripts/lib/xcode-test-run.sh). No hosted job runs the Debug suite (#3729
+# removed the post-merge Debug and Release runs), so Debug validation runs
+# locally. The Debug lane below is the developer's everyday run.
+# --configuration Release runs Release only; legacy --release runs both.
 #
 # Usage:
 #   scripts/xcode-test.sh                 # everyday local Debug lane
@@ -172,8 +171,9 @@ RELEASE_RESULT_BUNDLE="${RESULT_BUNDLE_PATH:-$LOG_DIR/xcode-test-release.xcresul
 # What is ADDED beside it is the truncated-run refusal, because a positive count
 # cannot prove the lane finished — a crashed bundle was measured reporting
 # `** TEST SUCCEEDED **` at 2,557 of 6,664 tests with exit 0. That owner is
-# shared with the three CI steps (pr-check.yml / main-post-merge.yml) so the
-# rule cannot hold in one place and lapse in another.
+# shared with the PR gate's test step (pr-check.yml, through
+# scripts/lib/xcode-test-run.sh) so the rule cannot hold in one place and lapse
+# in another.
 # A batch sums every selected suite into one positive count, so a mistyped
 # filter beside a real one would still pass. Require every selection to appear
 # in the result bundle's node identifiers (`test://.../<Target>/<Suite>[/<test>]`).

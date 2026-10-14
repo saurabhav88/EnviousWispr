@@ -2,9 +2,10 @@
 """scripts/ci/ci-metrics.py — one line of numbers per macOS CI job (#3019).
 
 The #3013 receipts (Mac-minutes, cache outcome, compiler hit counts, phase
-seconds) were assembled by hand from downloaded job logs. The macOS build/test
-jobs (build-and-test, release-validation, debug-validation, battery; not the
-advisory older-macOS launch) end with `ci-metrics.py emit`, which prints one line
+seconds) were assembled by hand from downloaded job logs. The macOS build jobs
+(pr-check.yml build-and-test and cache-warm.yml's warm job, `--job cache-warm`;
+not the advisory older-macOS launch) end with `ci-metrics.py emit`, which prints
+one line
 
     EW-CI-METRICS {"job": ..., "family": ..., "phase_build_release_s": 359, ...}
 
@@ -30,7 +31,7 @@ AFTER printing whatever was collected, with `"errors": [...]` in the JSON.
 
 collect needs `gh` authenticated with actions:read on the repository:
   ci-metrics.py collect --workflow pr-check.yml --runs 10 [--event pull_request]
-  ci-metrics.py collect --workflow main-post-merge.yml --runs 10 --event push
+  ci-metrics.py collect --workflow cache-warm.yml --runs 10 --event push
 
 `--self-test` runs the fixture matrix and never touches GitHub.
 """

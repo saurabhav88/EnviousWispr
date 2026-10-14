@@ -135,9 +135,9 @@ func targetSettings(
 // Deliberately NOT set on the xcodebuild command line: a command-line
 // `SETTING=value` has highest precedence and applies to EVERY target in the
 // invocation, which would de-optimize the PRODUCT modules too. Per-target is what
-// the intent actually is, and it keeps `main-post-merge.yml`'s release suite
+// the intent actually is, and it keeps the PR gate's Release suite (`pr-check.yml`)
 // running unoptimized tests against fully optimized product code — so the
-// Debug/Release behavioural divergences that job exists to catch (#2070/#2083,
+// Debug/Release behavioural divergences that suite exists to catch (#2070/#2083,
 // `Parser.defaultMaximumNestingLevel` is 20 under `#if DEBUG` and 256 otherwise)
 // stay caught.
 //
@@ -826,9 +826,9 @@ let project = Project(
         targets: ["EnviousWispr"],
         findImplicitDependencies: true
       ),
-      // PR3: release-config test action so main-post-merge can run
-      // `xcodebuild test -scheme EnviousWispr-Release -configuration Release`,
-      // preserving the release-config test coverage the old post-merge job ran.
+      // PR3: release-config test action, added so the old post-merge job could
+      // run `xcodebuild test -scheme EnviousWispr-Release -configuration Release`
+      // (#3729 retired that workflow).
       //
       // #3013: this scheme is now the PR gate's test run, executed from
       // `build-for-testing` products with `test-without-building`.

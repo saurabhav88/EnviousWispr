@@ -9,6 +9,9 @@
 # the test step never compiles, and hands the verdict to `ew_lane_verdict`, which
 # stays a JUDGE and never gains a run half.
 #
+# Current caller: pr-check.yml's Release test step (#3729 removed the
+# post-merge and nightly callers).
+#
 # Usage (source it, then):
 #   ew_run_tests <products-dir> <scheme> <output-prefix> <label> <required-bundles> [xcodebuild args...]
 #

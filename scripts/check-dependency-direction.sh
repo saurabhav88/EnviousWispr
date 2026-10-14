@@ -163,9 +163,11 @@ done
 # `import EnviousWisprDesktopEffects` and constructed `LiveDesktopHotkeyEffects()`
 # COMPILED AND LINKED, with no dependency edge declared anywhere. Xcode puts every
 # built product in one search path, so a declared edge orders the link — it does
-# not gate module visibility. SwiftPM would reject it, but CI runs Tuist and
-# xcodebuild only (`pr-check.yml`, `main-post-merge.yml`); no `swift build` ever
-# runs. So "the missing dependency IS the wall" was false, and this loop is the
+# not gate module visibility. SwiftPM would reject it, but CI builds the app and
+# test targets with Tuist and xcodebuild only (`pr-check.yml`, `cache-warm.yml`);
+# the only `swift build` in CI compiles the standalone eval packages
+# (scripts/ci/compile-eval-packages.sh), never these targets. So "the missing
+# dependency IS the wall" was false, and this loop is the
 # wall instead.
 #
 # Keep the lists exhaustive: a test target absent from here is unchecked, which

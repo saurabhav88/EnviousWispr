@@ -5,8 +5,10 @@ import Testing
 @testable import EnviousWisprCore
 
 /// What's New had NO Swift test coverage before #1493 — its only guard was the
-/// weekly `render-release-notes.py --self-test` in ci-drift-check, which is not a
-/// per-PR gate. These tests are the Swift-side twin of that self-test: they freeze
+/// weekly `render-release-notes.py --self-test` in ci-drift-check, which was not a
+/// per-PR gate (since #3729 that self-test is a fast-checks member, run by the
+/// required build-check job and the pre-push hook). These tests are the Swift-side
+/// twin of that self-test: they freeze
 /// the invariants the release-notes renderer and the Settings screen both depend on.
 @Suite("What's New content", .tags(.driftGuard))
 struct WhatsNewContentTests {

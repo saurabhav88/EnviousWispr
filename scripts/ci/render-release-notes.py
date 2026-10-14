@@ -1175,7 +1175,8 @@ def main():
             return 2
         # PER-ENTRY completeness, not just per-VERSION presence (#2234).
         # Shared with the RENDER path below — cloud review r1 P2: this check only
-        # protected `--self-test`, which runs weekly, while the release workflow
+        # protected `--self-test`, which then ran weekly (since #3729 fast-checks
+        # runs it on every PR and push), while the release workflow
         # invokes `--version`, which would still have emitted a bare-title bullet.
         empty = empty_fields(entries)
         if empty:
@@ -1213,10 +1214,12 @@ def main():
         return 2
 
     # The SAME completeness check on the PUBLISH path, not only in `--self-test`
-    # (cloud review r1 P2 on PR #2235). `--self-test` runs weekly via
-    # `ci-drift-check`; `.github/workflows/release.yml` renders with `--version`,
-    # so a guard living only in the self-test would let a bare-title bullet ship
-    # for up to a week — which is exactly how #2234 reached a release branch.
+    # (cloud review r1 P2 on PR #2235). `--self-test` then ran weekly via
+    # `ci-drift-check` (since #3729 it is the fast-checks member
+    # `release-notes-self-test`); `.github/workflows/release.yml` renders with
+    # `--version`, so a guard living only in the self-test would have let a
+    # bare-title bullet ship for up to a week — which is exactly how #2234 reached
+    # a release branch.
     #
     # FAILING HERE IS THE SAFE DIRECTION, and the workflow is already built for
     # it: that step is `continue-on-error: true` and its own comment says the

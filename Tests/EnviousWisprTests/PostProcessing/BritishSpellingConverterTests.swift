@@ -24,8 +24,8 @@ struct BritishSpellingConverterTests {
     let expected: String
     /// Tokens that change between input and expected, counted by hand.
     let swaps: Int
-    // An empty description is an argument with no identity: the nightly debug-only inventory fails
-    // closed on it (#3161), and the `Case(input: "")` row printed as a blank label.
+    // An empty description is an argument with no identity: the retired Debug-only inventory
+    // (#3161, removed in #3729) failed closed on it, and `Case(input: "")` printed a blank label.
     var testDescription: String { input.isEmpty ? "(empty input)" : input }
   }
 

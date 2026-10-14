@@ -24,7 +24,7 @@ import Testing
 // (`KernelLifecycleTelemetrySinkTests.noSpeechEmptyAfterProcessingEmission`).
 //
 // SPLIT into two suites so the config-independent core keeps running in the
-// post-merge RELEASE lane (ci-pipeline.md RULE: release-tests-run-post-merge):
+// PR gate's RELEASE lane (ci-pipeline.md RULE: release-tests-run-on-the-pr):
 //   • `Issue1358EmptyRecoveryTests` (this suite) — pure classifier / floor /
 //     wiring tests. Runs in BOTH debug and release.
 //   • `Issue1358EmptyRecoveryFSMTests` (below, `#if DEBUG`) — the FSM-legality,

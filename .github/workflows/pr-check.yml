@@ -37,11 +37,11 @@ jobs:
   # exact production startup are not covered here; release.yml launch-on-macos-14
   # launches the notarized DMG on macOS 14 before anything is published (#3348).
   #
-  # The Debug lane that used to run beside this one is gone: the founder's Mac
-  # runs the Debug suite before every push, and post-merge still runs the full
-  # Debug suite on main, so PRs are gated on the Release configuration (built
-  # testable, #3348). What that moves: Debug-only compilation and Debug-specific behaviour are now
-  # found after merge instead of before. Measured before the change (2026-09-16,
+  # The Debug lane that used to run beside this one is gone, and since #3729 no
+  # hosted job runs the Debug suite: it runs locally (scripts/xcode-test.sh), so
+  # PRs are gated on the Release configuration (built testable, #3348). What that
+  # moves: Debug-only compilation and Debug-specific behaviour are found only by
+  # the local Debug run. Measured before the change (2026-09-16,
   # docs/audits/ci-test-burden-2026-09-16): five macOS jobs and ~65 Mac-minutes
   # per app-code PR on a five-slot account, 8 min of queue in the sample.
   # Step-level needs_build gating. (#913 PR3 → Xcode engine.)
@@ -103,7 +103,7 @@ jobs:
         run: scripts/ci/gen-third-party-notices.sh --check
 
       # #2592: the whole Xcode setup (toolchain through project generation) is
-      # ONE owner, shared with both main-post-merge.yml jobs. The `if:` here skips
+      # ONE owner, shared with cache-warm.yml's warm job. The `if:` here skips
       # the entire action for a docs-only PR; the action's header says why the
       # steps inside carry none.
       - name: Xcode CI setup
@@ -233,8 +233,9 @@ jobs:
           if-no-files-found: error
 
       # #3013: RUN the suite from the bundles the step above produced. `ew_run_tests`
-      # (scripts/lib/xcode-test-run.sh) is the one owner of the run shape for PR,
-      # post-merge and nightly: it finds exactly one `<scheme>_*.xctestrun`, runs
+      # (scripts/lib/xcode-test-run.sh) is the one owner of the run shape (#3729
+      # removed its post-merge and nightly callers): it finds exactly one
+      # `<scheme>_*.xctestrun`, runs
       # `test-without-building` (zero compiles in this step, by construction),
       # then hands the log and .xcresult to `ew_lane_verdict` (#2401), which
       # refuses an empty or truncated run. Still serial: parallel Swift Testing

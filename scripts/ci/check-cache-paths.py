@@ -21,7 +21,7 @@ with no error anywhere". It was right, it was read, and prose does not execute.
 There were FOUR lists when this was written: the composite action's restore,
 the post-merge save, and pr-check.yml's two inline restores. #2592 wired both
 pr-check.yml lanes to the composite action, so there are now exactly two —
-one restore (used by all four macOS lanes) and one save. Two is the floor:
+one restore (used by pr-check.yml and cache-warm.yml since #3729) and one save. Two is the floor:
 `actions/cache/restore` and `actions/cache/save` are separate steps in
 separate workflows, and each must spell the list itself.
 
