@@ -93,13 +93,13 @@ import Testing
 // expanded the deliberately bounded surface from three protocols to ten:
 // seven additional known protocols this file had not previously enumerated
 // (`ASREngineLanguageIdentifying`, `ASREngineWarmupCancelling`,
-// `WhisperKitBackendDriving`, `WhisperKitIncrementalSession`,
+// `WhisperBackendDriving`, `WhisperKitIncrementalSession`,
 // `WhisperKitTranscribing`, `ASRServiceProtocol`,
 // `ASREngineTelemetryProviding` — some read-only, frozen for drift even
 // though they are not vocabulary candidates themselves; see
 // `EngineProtocolSurfaceFreezeTests` for all ten's frozen signatures) plus
 // two concrete-only method surfaces not declared by any of the ten frozen
-// protocols (`WhisperKitEngineAdapter.unloadForRemoval()`, reached via a
+// protocols (`WhisperEngineAdapter.unloadForRemoval()`, reached via a
 // type-cast at one call site; `ParakeetBackend.prepare(selection:progressCallback:)`,
 // reached via a type-cast at one call site AND via direct, uncast
 // construction/ownership at another — `ASRServiceHandler.swift` builds and
@@ -138,7 +138,7 @@ import Testing
   // MARK: Classification
 
   enum Classification: Sendable {
-    /// The call sits directly inside one of the 16 established
+    /// The call sits directly inside one of the 17 established
     /// `engineMutationScope.withClaim(site:)` closures (or, for the
     /// sessionless load-wedge guard, is armed/disarmed across exactly that
     /// claim's own lifetime — `KernelDictationDriver.ensureEngineWarm`'s
@@ -212,7 +212,7 @@ import Testing
   /// Stable identity: file + matcher + normalized (trimmed) source text +
   /// classification. Deliberately NOT line number — a reformat that keeps the
   /// same call unchanged must not spuriously fail. Two physically distinct
-  /// call sites with identical trimmed text (e.g. `WhisperKitEngineAdapter`'s
+  /// call sites with identical trimmed text (e.g. `WhisperEngineAdapter`'s
   /// two `await backend.unload()` claim closures) are represented as two
   /// array entries, preserving multiplicity as its own signal.
   struct CallSite {
@@ -247,12 +247,12 @@ import Testing
   /// Codex plan reviews traced the full engine-facing surface across TEN
   /// protocols (`ASRBackend`, `ASRManagerInterface`, `ASREngineAdapter`,
   /// `ASREngineLanguageIdentifying`, `ASREngineWarmupCancelling`,
-  /// `WhisperKitBackendDriving`, `WhisperKitIncrementalSession`,
+  /// `WhisperBackendDriving`, `WhisperKitIncrementalSession`,
   /// `WhisperKitTranscribing`, `ASRServiceProtocol`,
   /// `ASREngineTelemetryProviding` — see `EngineProtocolSurfaceFreezeTests`
   /// for their frozen signatures) plus two concrete-only method surfaces not
   /// declared by any of the ten frozen protocols
-  /// (`WhisperKitEngineAdapter.unloadForRemoval()`, reached via a type-cast;
+  /// (`WhisperEngineAdapter.unloadForRemoval()`, reached via a type-cast;
   /// `ParakeetBackend.prepare(selection:progressCallback:)`, reached via a
   /// type-cast at one call site and via direct, uncast construction/ownership
   /// in `ASRServiceHandler`; both are already caught here because their names
@@ -269,9 +269,9 @@ import Testing
   /// `WhisperKitStreamingSession.finalize(finalSamples:speechSegments:)`,
   /// a different type sharing the bare name; classified like every other
   /// entry, not specially unified), `observeLID`, `makeStreamingSession`
-  /// (`WhisperKitBackendDriving`), `cancelSessionlessWarmup`
+  /// (`WhisperBackendDriving`), `cancelSessionlessWarmup`
   /// (`ASREngineWarmupCancelling`), `unloadForRemoval` (concrete-only,
-  /// reached via `adapter as? WhisperKitEngineAdapter`), `transcribeSamples`,
+  /// reached via `adapter as? WhisperEngineAdapter`), `transcribeSamples`,
   /// `feedAudioBuffer` (`ASRServiceProtocol` — its own `loadModel`/
   /// `unloadModel`/`startStreaming`/`finalizeStreaming`/`cancelStreaming`
   /// requirements share bare names already tracked, so only these two
@@ -285,7 +285,7 @@ import Testing
   /// exclude them is that their target is independently caught, NOT (an
   /// earlier draft's wrong claim) that they "don't gate engine mutation" —
   /// `applyUnloadPolicy`'s `.immediately` case directly arms a real
-  /// deferred `backend.unload()` call (`WhisperKitEngineAdapter.swift:1072`).
+  /// deferred `backend.unload()` call (`WhisperEngineAdapter.swift:1072`).
   ///
   /// Two names are deliberately excluded despite being real engine
   /// operations, for the SAME bare-name-collision reason, each documented
@@ -296,7 +296,7 @@ import Testing
   ///   `Task.cancel()`/`<x>Task?.cancel()` and other types' own unrelated
   ///   `cancel()` methods. The real engine-touching sites are
   ///   `KernelDictationDriver.swift:641`, `RecordingSessionKernel.swift:3852`
-  ///   (`adapter.cancel()`), and `WhisperKitEngineAdapter.swift:988`
+  ///   (`adapter.cancel()`), and `WhisperEngineAdapter.swift:988`
   ///   (`live.cancel()`, forwarding to `WhisperKitStreamingSession.cancel()`).
   ///   NOT claimed safe merely because their owners hold
   ///   `EngineMutationScope` — `RecordingSessionKernel.swift:3852`'s call
@@ -306,7 +306,7 @@ import Testing
   /// - `start` (`WhisperKitIncrementalSession`): 25 raw text matches, almost
   ///   all `Timer`/`NWListener`/`NWConnection`/hotkey-service/watcher
   ///   `.start()` calls with no relation to the ASR engine. The real site
-  ///   is `WhisperKitEngineAdapter.swift:538` (`session.start(audioSamplesProvider:)`).
+  ///   is `WhisperEngineAdapter.swift:538` (`session.start(audioSamplesProvider:)`).
   ///
   /// Both exclusions are permanent under THIS design, not temporary
   /// oversights — a future rename of either protocol requirement (e.g.
@@ -983,12 +983,12 @@ import Testing
       text: "await self.runWarmingGate(warmUp: warmUp, displayFloor: displayFloor)",
       classification: .structurallySafe),
 
-    // MARK: WhisperKitEngineAdapter
+    // MARK: WhisperEngineAdapter
     // `recoverFromWedge()`'s deadline-bounded unload — this file's own doc
     // comment marks it "§3.2, structurally-safe row": called only by the
     // kernel's wedge detectors, which fire only within an active session.
     CallSite(
-      file: "Sources/EnviousWisprPipeline/WhisperKitEngineAdapter.swift", matcher: "unload",
+      file: "Sources/EnviousWisprPipeline/WhisperEngineAdapter.swift", matcher: "unload",
       text: "await captured.unload()", classification: .structurallySafe),
     // `unloadForRemoval()`'s unload — reached ONLY via the user-facing Remove
     // command (`WhisperKitSetupService.removeModel()` -> `removeModelAction`
@@ -999,27 +999,27 @@ import Testing
     // `whisperKitIdleUnload` sites below, which are direct claim-closure
     // calls rather than several layers of indirection into one).
     CallSite(
-      file: "Sources/EnviousWisprPipeline/WhisperKitEngineAdapter.swift", matcher: "unload",
+      file: "Sources/EnviousWisprPipeline/WhisperEngineAdapter.swift", matcher: "unload",
       text: "await backend.unload()", classification: .transitivelyCoveredByCaller),
     // Direct calls inside the two "whisperKitIdleUnload" claim closures
     // (`.immediately` and the timed-interval branch).
     CallSite(
-      file: "Sources/EnviousWisprPipeline/WhisperKitEngineAdapter.swift", matcher: "unload",
+      file: "Sources/EnviousWisprPipeline/WhisperEngineAdapter.swift", matcher: "unload",
       text: "await backend.unload()", classification: .gated),
     CallSite(
-      file: "Sources/EnviousWisprPipeline/WhisperKitEngineAdapter.swift", matcher: "unload",
+      file: "Sources/EnviousWisprPipeline/WhisperEngineAdapter.swift", matcher: "unload",
       text: "await backend.unload()", classification: .gated),
     // `warmUp()`'s own prepare call — reached via the same gated- and
     // structurally-safe-mixed callers as `ParakeetEngineAdapter.warmUp()`.
     CallSite(
-      file: "Sources/EnviousWisprPipeline/WhisperKitEngineAdapter.swift", matcher: "prepare",
+      file: "Sources/EnviousWisprPipeline/WhisperEngineAdapter.swift", matcher: "prepare",
       text: "let task = Task<Void, Error> { try await captured.prepare() }",
       classification: .transitivelyCoveredByCaller),
     // `startStreamingSession`'s vend — reached only at a session's own start
     // (same window `ParakeetEngineAdapter.beginSession`'s streaming-start
-    // entry above covers), a `WhisperKitBackendDriving` requirement.
+    // entry above covers), a `WhisperBackendDriving` requirement.
     CallSite(
-      file: "Sources/EnviousWisprPipeline/WhisperKitEngineAdapter.swift",
+      file: "Sources/EnviousWisprPipeline/WhisperEngineAdapter.swift",
       matcher: "makeStreamingSession",
       text: "let session = await backend.makeStreamingSession(",
       classification: .structurallySafe),
@@ -1027,13 +1027,13 @@ import Testing
     // session-scoped, an `ASREngineLanguageIdentifying`-adjacent read that
     // runs a real inference but never mutates persistent engine state.
     CallSite(
-      file: "Sources/EnviousWisprPipeline/WhisperKitEngineAdapter.swift", matcher: "observeLID",
+      file: "Sources/EnviousWisprPipeline/WhisperEngineAdapter.swift", matcher: "observeLID",
       text: "await backendForObserver.observeLID(", classification: .structurallySafe),
     // The adapter's own flush into its incremental streaming session's
     // `WhisperKitIncrementalSession.finalize` — session-scoped (`streamingSession`
     // is non-nil only during an active streaming session).
     CallSite(
-      file: "Sources/EnviousWisprPipeline/WhisperKitEngineAdapter.swift", matcher: "finalize",
+      file: "Sources/EnviousWisprPipeline/WhisperEngineAdapter.swift", matcher: "finalize",
       text: "let result = await live.finalize(finalSamples: [], speechSegments: [])",
       classification: .structurallySafe),
     // #1749 — the WhisperKit batch transcribe inside `finalize()`, one of the
@@ -1041,7 +1041,7 @@ import Testing
     // grounded review traced: not guaranteed to stop when the session's own
     // unawaited cancellation races recovery's gate opening.
     CallSite(
-      file: "Sources/EnviousWisprPipeline/WhisperKitEngineAdapter.swift", matcher: "transcribe",
+      file: "Sources/EnviousWisprPipeline/WhisperEngineAdapter.swift", matcher: "transcribe",
       text: "return try await backend.transcribe(",
       classification: .knownGap(
         issue: 1749,
@@ -1104,6 +1104,46 @@ import Testing
       text: "let fluidResult = try await manager.transcribe(",
       classification: .transitivelyCoveredByCaller),
 
+    // MARK: TranscribeCppWhisperBackend (#3735 Chunk 4/6)
+    // `LiveWhisperExecutorDriver`: thin forwarders to `TranscribeCppExecutor.shared`; each is
+    // reached only through the backend's own methods below, so its safety is that caller's.
+    CallSite(
+      file: "Sources/EnviousWisprASR/TranscribeCppWhisperBackend.swift", matcher: "transcribe",
+      text: "try await TranscribeCppExecutor.shared.transcribe(",
+      classification: .transitivelyCoveredByCaller),
+    CallSite(
+      file: "Sources/EnviousWisprASR/TranscribeCppWhisperBackend.swift", matcher: "unload",
+      text: "await TranscribeCppExecutor.shared.unload(handle)",
+      classification: .transitivelyCoveredByCaller),
+    // `performWarmup`'s silent decode: part of `prepare()`'s load chain, as WhisperKit's.
+    CallSite(
+      file: "Sources/EnviousWisprASR/TranscribeCppWhisperBackend.swift", matcher: "transcribe",
+      text: "_ = try await driver.transcribe(",
+      classification: .transitivelyCoveredByCaller),
+    // The `ASRBackend.transcribe` decode: the same callers as WhisperKit's (adapter and
+    // `ActiveEngineOperation`), so the same #1749 tag, never a stronger one.
+    CallSite(
+      file: "Sources/EnviousWisprASR/TranscribeCppWhisperBackend.swift", matcher: "transcribe",
+      text: "run = try await driver.transcribe(",
+      classification: .knownGap(
+        issue: 1749,
+        reason:
+          "every currently-known caller of this method is itself part of the #1749 race window"
+      )),
+    // `release(_:)`: frees one model handle; reached only from `unload()` and from a load or
+    // warm-up that lost to a newer generation, whose callers own the safety.
+    CallSite(
+      file: "Sources/EnviousWisprASR/TranscribeCppWhisperBackend.swift", matcher: "unload",
+      text: "await driver.unload(handle)",
+      classification: .transitivelyCoveredByCaller),
+    // `pressureTeardown()`'s unload runs only as the teardown closure the adapter's
+    // `memoryPressureAuthorizer()` invokes inside its
+    // `engineMutationScope.withClaim(site: "whisperMemoryPressureUnload")` closure, after the
+    // session re-check, and the claim is held until it returns.
+    CallSite(
+      file: "Sources/EnviousWisprASR/TranscribeCppWhisperBackend.swift", matcher: "unload",
+      text: "await unload()", classification: .gated),
+
     // MARK: WhisperKitBackend — new Chunk 11 entries.
     // `performWarmup`'s silent probe decode — part of `warmUp()`'s own
     // already-tracked chain (gated/structurallySafe depending on caller),
@@ -1115,7 +1155,7 @@ import Testing
     // The concrete `ASRBackend.transcribe` implementation, forwarding to the
     // real WhisperKit SDK decode. #1749 — every currently-known external
     // caller of this specific method (`ActiveEngineOperation.swift`'s direct
-    // `whisperKitBackend.transcribe` and `WhisperKitEngineAdapter.swift`'s
+    // `whisperKitBackend.transcribe` and `WhisperEngineAdapter.swift`'s
     // `backend.transcribe`) is already tagged `knownGap(1749)` above; marking
     // this deeper layer `transitivelyCoveredByCaller` would overstate safety
     // this method does not currently have from any known caller.
@@ -1300,7 +1340,7 @@ import Testing
     // MARK: WhisperKitLegacyUpgradeCoordinator / KernelDictationDriver /
     // WisprBootstrapper — the three remaining links in the ALREADY-verified
     // "whisperKitRemove" claim chain this file's existing
-    // `WhisperKitEngineAdapter.swift` `unloadForRemoval` entry documents
+    // `WhisperEngineAdapter.swift` `unloadForRemoval` entry documents
     // end-to-end (`WhisperKitSetupService.removeModel()` ->
     // `WhisperKitLegacyUpgradeCoordinator.remove()` -> `unloadForRemoval`
     // closure -> `KernelDictationDriver.unloadEngineForRemoval()` -> the
@@ -1312,7 +1352,7 @@ import Testing
       classification: .transitivelyCoveredByCaller),
     CallSite(
       file: "Sources/EnviousWisprPipeline/KernelDictationDriver.swift", matcher: "unloadForRemoval",
-      text: "await (adapter as? WhisperKitEngineAdapter)?.unloadForRemoval()",
+      text: "await (adapter as? WhisperEngineAdapter)?.unloadForRemoval()",
       classification: .transitivelyCoveredByCaller),
     // The closure WIRING itself — a property assignment, not a call; safety
     // inherited from wherever it is actually invoked (the same chain above).
@@ -1995,8 +2035,10 @@ import Testing
       // coordinator's failure plan was a second #1749 site of the same door.
       // #3546 Chunk 12: back to 16 — the door's direct load was folded into
       // that one `loadPrepared` load closure, so the door has one #1749 site.
-      gaps.count == 16,
-      "expected exactly 16 `knownGap` entries (2 for #1745, 14 for #1749), found \(gaps.count)"
+      // #3735: 17 — `TranscribeCppWhisperBackend.transcribe`'s decode has the same callers as
+      // WhisperKit's backend decode, so it carries the same #1749 tag.
+      gaps.count == 17,
+      "expected exactly 17 `knownGap` entries (2 for #1745, 15 for #1749), found \(gaps.count)"
     )
     for gap in gaps {
       #expect(
@@ -2057,10 +2099,13 @@ import Testing
           "results = try await kit.transcribe(audioArray: paddedSamples, decodeOptions: decodeOptions)"
       ),
       SiteKey(
+        file: "Sources/EnviousWisprASR/TranscribeCppWhisperBackend.swift", matcher: "transcribe",
+        text: "run = try await driver.transcribe("),
+      SiteKey(
         file: "Sources/EnviousWisprASR/WhisperKitStreamingSession.swift", matcher: "transcribe",
         text: "let results = try await whisperKit.transcribe("),
       SiteKey(
-        file: "Sources/EnviousWisprPipeline/WhisperKitEngineAdapter.swift", matcher: "transcribe",
+        file: "Sources/EnviousWisprPipeline/WhisperEngineAdapter.swift", matcher: "transcribe",
         text: "return try await backend.transcribe("),
       SiteKey(
         file: "Sources/EnviousWisprPipeline/ParakeetEngineAdapter.swift", matcher: "transcribe",

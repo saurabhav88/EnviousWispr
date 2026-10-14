@@ -141,7 +141,7 @@ package enum ASREngineError: Error, Sendable {
 /// `.wedged` has a kernel capture route (`RecordingSessionKernel`'s
 /// finalize cadence-stall detector) but it cannot arm against either real
 /// production adapter today — both `ParakeetEngineAdapter` and
-/// `WhisperKitEngineAdapter` return `nil` for `finalizeProgress`, the signal
+/// `WhisperEngineAdapter` return `nil` for `finalizeProgress`, the signal
 /// the detector requires (only the test-only `FakeEngine` exposes it). All
 /// 4 cases are pinned defensively. The members say `public` to satisfy the
 /// public protocol; the type's `package` visibility caps them. NEVER change any
@@ -432,7 +432,7 @@ package protocol ASREngineAdapter: AnyObject, Sendable {
   /// #1707 Phase 2 — a second, bounded decode attempt over audio a PRIOR
   /// `finalize()` call already failed to decode. Distinct from calling
   /// `finalize()` again: both `ParakeetEngineAdapter` and
-  /// `WhisperKitEngineAdapter` self-latch a terminal flag on every exit from
+  /// `WhisperEngineAdapter` self-latch a terminal flag on every exit from
   /// `finalize()` (each adapter's own `isTerminal`), so a second literal
   /// `finalize()` call does not crash — it silently misbehaves. `inputSamples`
   /// is REQUIRED (non-optional) — never falls back to adapter-held state,

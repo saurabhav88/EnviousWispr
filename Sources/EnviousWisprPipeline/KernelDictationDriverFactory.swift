@@ -13,7 +13,7 @@ import Foundation
 ///
 /// The App layer needs a `KernelDictationDriver` but cannot construct one
 /// directly: `RecordingSessionKernel`, `ParakeetEngineAdapter`,
-/// `WhisperKitEngineAdapter`, `KernelHeartPathTelemetryObserver`, `LimbSteps`,
+/// `WhisperEngineAdapter`, `KernelHeartPathTelemetryObserver`, `LimbSteps`,
 /// `KernelFinalizationOutcome`, `KernelSessionContext`, `KernelFinalizationWiring`,
 /// `HeartPathTelemetryEmitter`, `KernelLifecycleTelemetrySink`, and
 /// `CaptureVADSignalSource` are all module-internal-or-package by design (epic
@@ -282,7 +282,7 @@ public enum KernelDictationDriverFactory {
     package let batchDecodeFaultController: BatchDecodeFaultController?
     /// #1741 Chunk 9 — the shared `EngineMutationScope` constructed once by
     /// the composition root, threaded into the driver, kernel, and
-    /// `WhisperKitEngineAdapter` this factory builds. Required — no default.
+    /// `WhisperEngineAdapter` this factory builds. Required — no default.
     package let engineMutationScope: EngineMutationScope
     /// #2787: the ONE occupancy counter the composition root owns
     /// (`ASRManager.vendorDecodeOccupancy`). WhisperKit's live batch decode

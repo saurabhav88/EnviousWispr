@@ -6,8 +6,8 @@ import Foundation
 
 // MARK: - StubWhisperKitBackend (epic #827, PR-5 Rung 3 §11.2)
 //
-// Configurable test double for the `WhisperKitBackendDriving` actor-bound
-// protocol declared in `WhisperKitEngineAdapter.swift`. Lets
+// Configurable test double for the `WhisperBackendDriving` actor-bound
+// protocol declared in `WhisperEngineAdapter.swift`. Lets
 // `WhisperKitEngineAdapterTests` drive the adapter without loading a real
 // WhisperKit model. The actor-bound seam means this stub must itself be an
 // `actor` (the protocol declares `: Actor`).
@@ -15,7 +15,7 @@ import Foundation
 // Members mirror the protocol surface 1:1. Configurable behavior knobs +
 // observed counters follow the `StubParakeetASRManager` shape.
 
-actor StubWhisperKitBackend: WhisperKitBackendDriving {
+actor StubWhisperKitBackend: WhisperBackendDriving {
 
   // MARK: Configurable behavior
 
@@ -75,7 +75,7 @@ actor StubWhisperKitBackend: WhisperKitBackendDriving {
   func setSlowTranscribe(_ v: Bool) { slowTranscribe = v }
   func setPrepareThrows(_ v: (any Error)?) { prepareThrows = v }
 
-  // MARK: WhisperKitBackendDriving
+  // MARK: WhisperBackendDriving
 
   func prepare() async throws {
     prepareCount += 1

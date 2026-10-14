@@ -24,7 +24,7 @@ import Testing
   private static let bannedParakeetLiteral = #"\.parakeet\b"#
 
   /// Matches the `.whisperKit` enum-case literal. Does NOT match
-  /// `WhisperKit` (capitalized engine name) nor `WhisperKitEngineAdapter` /
+  /// `WhisperKit` (capitalized engine name) nor `WhisperEngineAdapter` /
   /// `WhisperKitBackend` type names.
   private static let bannedWhisperKitLiteral = #"\.whisperKit\b"#
 
@@ -391,12 +391,12 @@ import Testing
   }
 
   @Test(
-    "`WhisperKit`, `WhisperKitEngineAdapter`, and `WhisperKitBackend` strings are not flagged (PR-5 Rung 3 negative control)"
+    "`WhisperKit`, `WhisperEngineAdapter`, and `WhisperKitBackend` strings are not flagged (PR-5 Rung 3 negative control)"
   )
   func negativeControlWhisperKitEngineNamePasses() {
     let source = """
       // 5. WhisperKit adapter.
-      let adapter = WhisperKitEngineAdapter(backend: inputs.whisperKitBackend)
+      let adapter = WhisperEngineAdapter(backend: inputs.whisperKitBackend)
       // The WhisperKit display name is sourced from adapter.engineIdentity.displayName.
       // WhisperKitBackend lives in EnviousWisprASR; reach via the package seam.
       """
@@ -499,7 +499,7 @@ import Testing
 
   /// The whole-word concrete adapter type names PR-6 confines.
   private static let concreteAdapterTypeNames = [
-    "ParakeetEngineAdapter", "WhisperKitEngineAdapter",
+    "ParakeetEngineAdapter", "WhisperEngineAdapter",
   ]
 
   /// The one allowlisted construction home (epic #827, PR-6).
@@ -513,7 +513,7 @@ import Testing
   /// `Sources/` lives only in `KernelAdapterFactory.swift`. The construction-call
   /// pattern (`\bTypeName\s*\(`) is deliberately narrower than a whole-word type
   /// scan: it does NOT match the adapters' own `class`/`extension` declarations
-  /// (followed by `:` or `{`, never `(`) nor the 10 `category: "WhisperKitEngineAdapter"`
+  /// (followed by `:` or `{`, never `(`) nor the 10 `category: "WhisperEngineAdapter"`
   /// `AppLogger` string literals, which is exactly why a whole-word repo-wide ban
   /// would false-fail (Codex r4). `scanSources` skips comment-only lines, so the
   /// `// MARK: - …Adapter (` headers are not counted either.
@@ -562,29 +562,29 @@ import Testing
 
   @Test("the construction-call scanner flags an adapter constructed outside the factory (PR-6)")
   func adversarialAdapterConstructionFlagged() {
-    let source = "    let adapter = WhisperKitEngineAdapter(backend: backend)"
+    let source = "    let adapter = WhisperEngineAdapter(backend: backend)"
     #expect(
-      Self.regexFlags(source: source, pattern: #"\bWhisperKitEngineAdapter\s*\("#),
+      Self.regexFlags(source: source, pattern: #"\bWhisperEngineAdapter\s*\("#),
       "an adapter construction call must be flagged by the construction-call scanner")
   }
 
   @Test(
     "the construction-call scanner does NOT flag log strings, extensions, or class decls (PR-6)")
   func negativeControlNonConstructionReferencesNotFlagged() {
-    let pattern = #"\bWhisperKitEngineAdapter\s*\("#
+    let pattern = #"\bWhisperEngineAdapter\s*\("#
     let logString =
-      #"      await AppLogger.shared.log(m, level: .info, category: "WhisperKitEngineAdapter")"#
-    let extensionDecl = "extension WhisperKitEngineAdapter: ASREngineTelemetryProviding {}"
-    let classDecl = "final class WhisperKitEngineAdapter: ASREngineAdapter {"
+      #"      await AppLogger.shared.log(m, level: .info, category: "WhisperEngineAdapter")"#
+    let extensionDecl = "extension WhisperEngineAdapter: ASREngineTelemetryProviding {}"
+    let classDecl = "final class WhisperEngineAdapter: ASREngineAdapter {"
     #expect(
       Self.regexFlags(source: logString, pattern: pattern) == false,
-      "a `category: \"WhisperKitEngineAdapter\"` log string must NOT be flagged")
+      "a `category: \"WhisperEngineAdapter\"` log string must NOT be flagged")
     #expect(
       Self.regexFlags(source: extensionDecl, pattern: pattern) == false,
-      "an `extension WhisperKitEngineAdapter` declaration must NOT be flagged")
+      "an `extension WhisperEngineAdapter` declaration must NOT be flagged")
     #expect(
       Self.regexFlags(source: classDecl, pattern: pattern) == false,
-      "a `final class WhisperKitEngineAdapter` declaration must NOT be flagged")
+      "a `final class WhisperEngineAdapter` declaration must NOT be flagged")
   }
 
   // MARK: Helpers

@@ -81,7 +81,7 @@ extension ASREngineNotReadyAfterLoadError: StableSentryErrorIdentity {
 
 /// Thrown when the ASR manager is asked to load or transcribe on an engine it
 /// does not own (#1386 PR-2: WhisperKit). WhisperKit runs in-process behind its
-/// relocation gate via `WhisperKitEngineAdapter`; the manager and its XPC helper
+/// relocation gate via `WhisperEngineAdapter`; the manager and its XPC helper
 /// are Parakeet-only. This exists so the retired route fails loudly instead of
 /// quietly doing nothing — or mapping a model the gate never saw.
 package struct ASRManagerNotOwnedError: Error, Equatable {

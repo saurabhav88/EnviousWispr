@@ -94,7 +94,7 @@ enum WhisperPreviewDeliveryWiring {
   /// against a 591-626ms repeat-to-repeat envelope.
   ///
   /// **The condition is per-BACKEND, and an earlier version got that wrong.** It
-  /// mirrored `WhisperKitEngineAdapter`'s gate — toggle on AND language locked —
+  /// mirrored `WhisperEngineAdapter`'s gate — toggle on AND language locked —
   /// and applied it to both engines. But that language condition is
   /// WhisperKit-adapter-specific: the KERNEL sets
   /// `shouldStream = config.useStreamingASR && adapter.capabilities.supportsStreaming`

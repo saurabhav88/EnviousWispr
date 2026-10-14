@@ -258,7 +258,7 @@ public final class ASRManager: ASRManagerInterface {
   ///
   /// #1386 PR-2 made this manager Parakeet-only. It used to construct its own
   /// `WhisperKitBackend`, which was never the instance real dictation used: the
-  /// kernel driver builds its own and drives it through `WhisperKitEngineAdapter`
+  /// kernel driver builds its own and drives it through `WhisperEngineAdapter`
   /// (`WisprBootstrapper.swift:282`). So this was a duplicate model owner reachable
   /// only from crash recovery and Diagnostics — and under the default
   /// `ASRManagerProxy` those two crossed XPC and had the helper build a THIRD one
@@ -899,7 +899,7 @@ public final class ASRManager: ASRManagerInterface {
   /// fail-open attempt to unload the currently-published backend, so a load
   /// wedged inside a vendor call that will not cooperate with cancellation
   /// cannot block recovery indefinitely. Ports
-  /// `WhisperKitEngineAdapter.recoverFromWedge()`'s exact pattern (2.0s
+  /// `WhisperEngineAdapter.recoverFromWedge()`'s exact pattern (2.0s
   /// default, `wedgeRecoveryUnloadDeadlineSec`-equivalent) rather than
   /// inventing a new one. Call `cancelInFlightLoad()` FIRST to release any
   /// waiter; this method targets the PUBLISHED backend only — an in-flight

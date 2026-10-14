@@ -19,7 +19,7 @@ import Testing
 // doc comment for the two-consecutive-Codex-round history that makes this
 // necessary): this suite freezes the exact signatures of TEN engine-facing
 // protocols and TWO known concrete-only method surfaces not declared by any
-// of the ten protocols (one, `WhisperKitEngineAdapter.unloadForRemoval()`,
+// of the ten protocols (one, `WhisperEngineAdapter.unloadForRemoval()`,
 // is reached only via a type-cast; the other,
 // `ParakeetBackend.prepare(selection:progressCallback:)`, is reached via a
 // type-cast at one call site AND via direct, uncast construction/ownership
@@ -375,8 +375,8 @@ import Testing
       "Sources/EnviousWisprPipeline/ASREngineOptionalCapabilities.swift", nil
     ),
     (
-      "protocol", "WhisperKitBackendDriving",
-      "Sources/EnviousWisprPipeline/WhisperKitEngineAdapter.swift", nil
+      "protocol", "WhisperBackendDriving",
+      "Sources/EnviousWisprPipeline/WhisperEngineAdapter.swift", nil
     ),
     (
       "protocol", "WhisperKitIncrementalSession",
@@ -391,8 +391,8 @@ import Testing
       "Sources/EnviousWisprPipeline/KernelTelemetryState.swift", nil
     ),
     (
-      "concrete", "WhisperKitEngineAdapter",
-      "Sources/EnviousWisprPipeline/WhisperKitEngineAdapter.swift", "unloadForRemoval"
+      "concrete", "WhisperEngineAdapter",
+      "Sources/EnviousWisprPipeline/WhisperEngineAdapter.swift", "unloadForRemoval"
     ),
     ("concrete", "ParakeetBackend", "Sources/EnviousWisprASR/ParakeetBackend.swift", "prepare"),
   ]
@@ -682,10 +682,10 @@ import Testing
       members: [
         MemberSignature(condition: nil, signature: "func cancelSessionlessWarmup() async")
       ]),
-    "WhisperKitBackendDriving": Surface(
-      name: "WhisperKitBackendDriving",
-      file: "Sources/EnviousWisprPipeline/WhisperKitEngineAdapter.swift",
-      header: "protocol WhisperKitBackendDriving : Actor",
+    "WhisperBackendDriving": Surface(
+      name: "WhisperBackendDriving",
+      file: "Sources/EnviousWisprPipeline/WhisperEngineAdapter.swift",
+      header: "protocol WhisperBackendDriving : Actor",
       members: [
         MemberSignature(condition: nil, signature: "var isReady: Bool { get }"),
         MemberSignature(condition: nil, signature: "var modelVariantName: String { get }"),
@@ -749,9 +749,9 @@ import Testing
           signature: "var lastASRDiagnostics: KernelASRAdapterDiagnostics? { get }"),
         MemberSignature(condition: nil, signature: "var lastFailureError: (any Error)? { get }"),
       ]),
-    "WhisperKitEngineAdapter.unloadForRemoval": Surface(
-      name: "WhisperKitEngineAdapter.unloadForRemoval",
-      file: "Sources/EnviousWisprPipeline/WhisperKitEngineAdapter.swift", header: nil,
+    "WhisperEngineAdapter.unloadForRemoval": Surface(
+      name: "WhisperEngineAdapter.unloadForRemoval",
+      file: "Sources/EnviousWisprPipeline/WhisperEngineAdapter.swift", header: nil,
       members: [
         MemberSignature(condition: nil, signature: "package func unloadForRemoval() async")
       ]),

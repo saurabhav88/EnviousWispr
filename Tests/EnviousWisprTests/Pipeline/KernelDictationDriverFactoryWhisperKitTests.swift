@@ -74,7 +74,7 @@ import Testing
       let driver = makeDriver()
       // The assembler does `limbSteps.llmPolish.backend = adapter.engineIdentity.backendType`.
       // For the WhisperKit branch, `adapter.engineIdentity.backendType == .whisperKit`
-      // (`WhisperKitEngineAdapter.engineIdentity` declares it). The polish stamp
+      // (`WhisperEngineAdapter.engineIdentity` declares it). The polish stamp
       // is the directly observable proof that the assembler routed identity
       // correctly. (Emitter + lifecycle sink stamps covered transitively by
       // the strengthened freeze test — see file header.)

@@ -909,7 +909,7 @@ final class ParakeetEngineAdapter: ASREngineAdapter, @unchecked Sendable {
   /// whole story — it releases any awaiting caller, but the vendor call
   /// itself can keep running orphaned in the background (no more helper
   /// process for the OS to reap). `attemptWedgeRecoveryUnload()` is the
-  /// deadline-bounded, fail-open follow-up (ports `WhisperKitEngineAdapter
+  /// deadline-bounded, fail-open follow-up (ports `WhisperEngineAdapter
   /// .recoverFromWedge()`'s pattern) — a no-op on the still-live
   /// `ASRManagerProxy` path (protocol default), so this stays correct while
   /// both transports coexist during the migration.

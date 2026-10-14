@@ -6,7 +6,7 @@ import Foundation
 ///
 /// Before PR-6 the driver-assembly factory (`KernelDictationDriverFactory`)
 /// constructed both concrete adapters inline, so it named `ParakeetEngineAdapter`
-/// and `WhisperKitEngineAdapter` directly and engine construction was entangled
+/// and `WhisperEngineAdapter` directly and engine construction was entangled
 /// with driver assembly. PR-6 moves the two construction expressions here so
 /// there is one home that knows how to build each engine's adapter, and the
 /// driver-assembly factory names no concrete adapter type in code.
@@ -49,7 +49,7 @@ package enum KernelAdapterFactory {
   /// `batchDecodeFaultController` (#1707 Phase 2): DEBUG fault-injection
   /// oracle, defaulted `nil` so every existing test call site is unaffected.
   package static func makeWhisperKitAdapter(
-    backend: any WhisperKitBackendDriving,
+    backend: any WhisperBackendDriving,
     languageDetector: LanguageDetector,
     audioCaptureSessionIDSource: @escaping @MainActor () -> UInt64,
     engineMutationScope: EngineMutationScope,
@@ -57,7 +57,7 @@ package enum KernelAdapterFactory {
     deliveredModelIdentity: ASRModelIdentity?,
     batchDecodeFaultController: BatchDecodeFaultController? = nil
   ) -> any ASREngineAdapter {
-    WhisperKitEngineAdapter(
+    WhisperEngineAdapter(
       backend: backend,
       engineMutationScope: engineMutationScope,
       languageDetector: languageDetector,

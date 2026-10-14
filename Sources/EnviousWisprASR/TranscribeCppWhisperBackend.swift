@@ -150,11 +150,13 @@ package actor TranscribeCppWhisperBackend<Driver: WhisperExecutorDriving>: ASRBa
   private var lastScopeReport: (sequence: UInt64, snapshot: ASRModelScopeOwner.Snapshot)?
 
   /// Runs `teardown` under the app's engine-mutation authorization (EngineMutationScope or a
-  /// lease) and returns false when the claim is refused. Supplied by the composition root;
-  /// nil means memory pressure never unloads.
+  /// lease) and returns whether it ran it; false when the claim is refused. `teardown`
+  /// returns whether the model was actually unloaded, so the caller updates its readiness only
+  /// after a real teardown. Installed by the adapter (`bindMemoryPressure(authorizer:)`); nil
+  /// means memory pressure never unloads.
   package typealias UnloadAuthorizer =
-    @Sendable (_ teardown: @escaping @Sendable () async -> Void) async -> Bool
-  private let authorizeUnload: UnloadAuthorizer?
+    @Sendable (_ teardown: @escaping @Sendable () async -> Bool) async -> Bool
+  private var authorizeUnload: UnloadAuthorizer?
 
   // Operation and pressure bookkeeping.
   private var inFlight = 0
@@ -708,6 +710,18 @@ package actor TranscribeCppWhisperBackend<Driver: WhisperExecutorDriving>: ASRBa
     return Array(windows.prefix(maxWindows))
   }
 
+  // MARK: - Streaming
+
+  /// #3735 §3.11: the rolling session arrives in Chunk 8. Until then no session is vended, which
+  /// the adapter already treats as batch degradation: the take is decoded once, in batch, from
+  /// the full recording.
+  package func makeStreamingSession(
+    options: TranscriptionOptions, vendorDecodeOccupancy: VendorDecodeOccupancy,
+    onDecode: ASRInferenceEntryObserver?
+  ) async -> (any WhisperKitIncrementalSession)? {
+    nil
+  }
+
   // MARK: - Unload and memory pressure
 
   /// Supersedes any in-flight load or warm-up, then frees every model this actor holds. The
@@ -737,9 +751,17 @@ package actor TranscribeCppWhisperBackend<Driver: WhisperExecutorDriving>: ASRBa
   private var unloading = false
   private var unloadWaiters: [CheckedContinuation<Void, Never>] = []
 
+  /// Installs the unload authorizer and only then starts the memory-pressure monitor, in one
+  /// actor step, so no pressure event can arrive before the authorization path exists. Called
+  /// by the adapter that owns the EngineMutationScope.
+  package func bindMemoryPressure(authorizer: @escaping UnloadAuthorizer) {
+    authorizeUnload = authorizer
+    startMemoryPressureMonitoring()
+  }
+
   /// Installs the system memory-pressure source. Not started by default: activation belongs
-  /// to the composition root together with `authorizeUnload`.
-  package func startMemoryPressureMonitoring() {
+  /// to `bindMemoryPressure(authorizer:)`.
+  private func startMemoryPressureMonitoring() {
     guard pressureSource == nil else { return }
     let source = DispatchSource.makeMemoryPressureSource(
       eventMask: [.warning, .critical], queue: .global(qos: .utility))
@@ -776,7 +798,7 @@ package actor TranscribeCppWhisperBackend<Driver: WhisperExecutorDriving>: ASRBa
     }
     pressureRunning = true
     teardownRan = false
-    let authorized = await authorizeUnload { [weak self] in await self?.pressureTeardown() }
+    let authorized = await authorizeUnload { [weak self] in await self?.pressureTeardown() ?? false }
     pressureRunning = false
     // Refused, or an authorizer that never ran the teardown: the model stays ready.
     if !authorized || !teardownRan { pressurePending = false }
@@ -787,18 +809,20 @@ package actor TranscribeCppWhisperBackend<Driver: WhisperExecutorDriving>: ASRBa
 
   private var teardownRan = false
 
-  private func pressureTeardown() async {
+  /// Returns whether the model was unloaded.
+  private func pressureTeardown() async -> Bool {
     teardownRan = true
     // Re-checked under the authorization: work may have started while it was acquired.
     guard case .ready = loadState else {
       pressurePending = false
-      return
+      return false
     }
-    guard idleForPressure else { return }  // still pending; retried when that work ends
+    guard idleForPressure else { return false }  // still pending; retried when that work ends
     admissionClosed = true
     if let handle = currentHandle() { await driver.waitForDrain(handle) }
     await unload()
     pressurePending = false
+    return true
   }
 
   /// Ends one transcription or LID operation. A cancelled caller's native call may still be

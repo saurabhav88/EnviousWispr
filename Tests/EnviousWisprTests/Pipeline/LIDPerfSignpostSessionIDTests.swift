@@ -37,7 +37,7 @@ import Testing
   @Test("adapter does NOT read audioCaptureSessionIDSource at beginSession")
   func adapterDoesNotCaptureAtBeginSession() async throws {
     var readCount = 0
-    let adapter = WhisperKitEngineAdapter(
+    let adapter = WhisperEngineAdapter(
       backend: StubWhisperKitBackend(),
       engineMutationScope: .alwaysAllowedForTesting,
       audioCaptureSessionIDSource: {
@@ -60,7 +60,7 @@ import Testing
         text: "ok", language: "en", duration: 1.0,
         processingTime: 0.1, backendType: .whisperKit))
     var readCount = 0
-    let adapter = WhisperKitEngineAdapter(
+    let adapter = WhisperEngineAdapter(
       backend: backend,
       engineMutationScope: .alwaysAllowedForTesting,
       audioCaptureSessionIDSource: {
@@ -98,7 +98,7 @@ import Testing
         processingTime: 0.1, backendType: .whisperKit))
 
     let capturedID: UInt64 = 7777
-    let adapter = WhisperKitEngineAdapter(
+    let adapter = WhisperEngineAdapter(
       backend: backend,
       engineMutationScope: .alwaysAllowedForTesting,
       audioCaptureSessionIDSource: { capturedID })

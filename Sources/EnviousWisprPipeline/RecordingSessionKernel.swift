@@ -2792,7 +2792,7 @@ final class RecordingSessionKernel {
     case .transcript(let result):
       // PR-5 Rung 5 Pass 2 #8 — `result.processingTime` is the adapter's
       // pure decode duration (started AFTER LID at
-      // `WhisperKitEngineAdapter.swift:630`); `asrEnd - asrStart` would
+      // `WhisperEngineAdapter.swift:630`); `asrEnd - asrStart` would
       // include LID and break parity with OLD
       // `WhisperKitPipeline.swift:1161-1168` `asr_s` semantic. Sentry/app.log
       // ASR-completed payload reads this field; PostHog latency telemetry
@@ -5157,7 +5157,7 @@ final class RecordingSessionKernel {
   /// Timestamp-only variant — `voiced_duration_s`, `lid_window_count`,
   /// `clip_kind` are not known here (LID has not run yet). Matches the OLD
   /// signature's all-optional-tail at `WhisperKitPipeline.swift:1438-1452`.
-  /// Format matches `WhisperKitEngineAdapter.logLIDPerfSignpost`.
+  /// Format matches `WhisperEngineAdapter.logLIDPerfSignpost`.
   private func emitLIDReleaseSignpost(sessionID: UInt64) {
     let ts = String(format: "%.6f", CFAbsoluteTimeGetCurrent())
     let message = "lid_perf_signpost name=t_release timestamp_s=\(ts) session_id=\(sessionID)"

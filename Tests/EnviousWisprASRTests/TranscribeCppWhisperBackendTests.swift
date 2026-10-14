@@ -368,7 +368,7 @@ struct TranscribeCppWhisperBackendTests {
       driver,
       authorize: { teardown in
         claims.increment()
-        await teardown()
+        _ = await teardown()
         return true
       })
     try await backend.prepare()
@@ -395,7 +395,7 @@ struct TranscribeCppWhisperBackendTests {
     let backend = Self.makeBackend(
       driver,
       authorize: { teardown in
-        await teardown()
+        _ = await teardown()
         return true
       })
     try await backend.prepare()
@@ -452,7 +452,7 @@ struct TranscribeCppWhisperBackendTests {
     let backend = Self.makeBackend(
       driver,
       authorize: { teardown in
-        await teardown()
+        _ = await teardown()
         return true
       })
     let prepare = Task { try await backend.prepare() }
@@ -472,7 +472,7 @@ struct TranscribeCppWhisperBackendTests {
     let backend = Self.makeBackend(
       driver,
       authorize: { teardown in
-        await teardown()
+        _ = await teardown()
         return true
       }, warmupDeadline: 0.2)
     try await backend.prepare()  // fail-open ready after the warm-up ceiling

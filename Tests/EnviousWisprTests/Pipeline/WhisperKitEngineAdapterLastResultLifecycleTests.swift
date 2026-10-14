@@ -24,7 +24,7 @@ import Testing
       ASRResult(
         text: "first", language: "en", duration: 1, processingTime: 0.1,
         backendType: .whisperKit))
-    let adapter = WhisperKitEngineAdapter(
+    let adapter = WhisperEngineAdapter(
       backend: backend, engineMutationScope: .alwaysAllowedForTesting)
     let sid = SessionID()
     try await adapter.beginSession(sid, options: .default, streaming: false)
@@ -43,7 +43,7 @@ import Testing
       ASRResult(
         text: "done", language: "en", duration: 1, processingTime: 0.1,
         backendType: .whisperKit))
-    let adapter = WhisperKitEngineAdapter(
+    let adapter = WhisperEngineAdapter(
       backend: backend, engineMutationScope: .alwaysAllowedForTesting)
     let sid = SessionID()
     try await adapter.beginSession(sid, options: .default, streaming: false)
@@ -62,7 +62,7 @@ import Testing
       ASRResult(
         text: "", language: "en", duration: 1, processingTime: 0.1,
         backendType: .whisperKit))
-    let adapter = WhisperKitEngineAdapter(
+    let adapter = WhisperEngineAdapter(
       backend: backend, engineMutationScope: .alwaysAllowedForTesting)
     let sid = SessionID()
     try await adapter.beginSession(sid, options: .default, streaming: false)
@@ -82,7 +82,7 @@ import Testing
   func lastResultNotSetOnFailedFinalize() async throws {
     let backend = StubWhisperKitBackend()
     await backend.setTranscribeThrows(StubBackendError.decodeFailed)
-    let adapter = WhisperKitEngineAdapter(
+    let adapter = WhisperEngineAdapter(
       backend: backend, engineMutationScope: .alwaysAllowedForTesting)
     let sid = SessionID()
     try await adapter.beginSession(sid, options: .default, streaming: false)
@@ -99,7 +99,7 @@ import Testing
   @Test("lastResult is NOT set on .cancelled finalize outcomes")
   func lastResultNotSetOnCancelledFinalize() async throws {
     let backend = StubWhisperKitBackend()
-    let adapter = WhisperKitEngineAdapter(
+    let adapter = WhisperEngineAdapter(
       backend: backend, engineMutationScope: .alwaysAllowedForTesting)
     try await adapter.beginSession(SessionID(), options: .default, streaming: false)
     await adapter.cancel()
@@ -109,7 +109,7 @@ import Testing
 
   // MARK: Helpers
 
-  private func feed(_ adapter: WhisperKitEngineAdapter, samples: [Float], session: SessionID) {
+  private func feed(_ adapter: WhisperEngineAdapter, samples: [Float], session: SessionID) {
     guard let buffer = FakeAudioCapture.makeBuffer(samples: samples) else {
       Issue.record("failed to synthesize a test buffer")
       return

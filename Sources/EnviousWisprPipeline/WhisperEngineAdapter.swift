@@ -4,7 +4,7 @@ import EnviousWisprCore
 import EnviousWisprServices
 import Foundation
 
-// MARK: - WhisperKitEngineAdapter (epic #827, PR-5 Rung 3)
+// MARK: - WhisperEngineAdapter (epic #827, PR-5 Rung 3)
 //
 // The production `ASREngineAdapter` conformer for the WhisperKit engine. It
 // wraps a `WhisperKitBackend` actor (the model-owning seam introduced by R2,
@@ -65,14 +65,14 @@ import Foundation
 
 /// The kernel-facing `ASREngineAdapter` conformer for WhisperKit. Drives the
 /// underlying WhisperKit actor through a local `package` protocol seam
-/// (`WhisperKitBackendDriving` below) so tests can inject a stub without
+/// (`WhisperBackendDriving` below) so tests can inject a stub without
 /// loading a real model.
 @MainActor
-final class WhisperKitEngineAdapter: ASREngineAdapter, @unchecked Sendable {
+final class WhisperEngineAdapter: ASREngineAdapter, @unchecked Sendable {
 
   // MARK: Injected dependencies
 
-  private let backend: any WhisperKitBackendDriving
+  private let backend: any WhisperBackendDriving
   private let languageDetector: LanguageDetector
   /// #1707 Phase 2: DEBUG fault-injection oracle (§11.1) — `nil` in every
   /// production/test path that doesn't explicitly construct one.
@@ -299,7 +299,7 @@ final class WhisperKitEngineAdapter: ASREngineAdapter, @unchecked Sendable {
   // MARK: Init
 
   init(
-    backend: any WhisperKitBackendDriving,
+    backend: any WhisperBackendDriving,
     engineMutationScope: EngineMutationScope,
     languageDetector: LanguageDetector = LanguageDetector(),
     audioCaptureSessionIDSource: @escaping @MainActor () -> UInt64 = { 0 },
@@ -566,7 +566,7 @@ final class WhisperKitEngineAdapter: ASREngineAdapter, @unchecked Sendable {
       Task {
         await AppLogger.shared.log(
           "WhisperKit recording started (batch mode, language: \(languageForLog), \(reason))",
-          level: .info, category: "WhisperKitEngineAdapter"
+          level: .info, category: "WhisperEngineAdapter"
         )
       }
     }
@@ -592,7 +592,7 @@ final class WhisperKitEngineAdapter: ASREngineAdapter, @unchecked Sendable {
       Task {
         await AppLogger.shared.log(
           "WhisperKit recording started (batch mode, streaming requested but model not loaded)",
-          level: .info, category: "WhisperKitEngineAdapter"
+          level: .info, category: "WhisperEngineAdapter"
         )
       }
       return
@@ -621,7 +621,7 @@ final class WhisperKitEngineAdapter: ASREngineAdapter, @unchecked Sendable {
     Task {
       await AppLogger.shared.log(
         "WhisperKit recording started (streaming, language: \(options.language ?? "?"))",
-        level: .info, category: "WhisperKitEngineAdapter"
+        level: .info, category: "WhisperEngineAdapter"
       )
     }
   }
@@ -841,7 +841,7 @@ final class WhisperKitEngineAdapter: ASREngineAdapter, @unchecked Sendable {
           + "margin=\(String(format: "%.2f", lidResult.margin)) "
           + "voiced=\(String(format: "%.2f", lidResult.voicedDuration))s "
           + "abstained=\(lidResult.abstained)",
-        level: .info, category: "WhisperKitEngineAdapter"
+        level: .info, category: "WhisperEngineAdapter"
       )
     }
 
@@ -946,6 +946,7 @@ final class WhisperKitEngineAdapter: ASREngineAdapter, @unchecked Sendable {
 
     let asrText: String
     let asrLanguage: String?
+    let asrSegmentTimings: [ASRSegmentTiming]?
     let asrStart = CFAbsoluteTimeGetCurrent()
 
     switch await runBatchFallback(
@@ -957,9 +958,10 @@ final class WhisperKitEngineAdapter: ASREngineAdapter, @unchecked Sendable {
       clipKind: clipKind,
       diagnostics: &diagnostics
     ) {
-    case .success(let text, let language):
+    case .success(let text, let language, let segmentTimings):
       asrText = text
       asrLanguage = language
+      asrSegmentTimings = segmentTimings
     case .stale(let outcome):
       // Session changed under the decode await — return without mutating
       // adapter state (a stale session-A finalize must not clobber B).
@@ -1016,7 +1018,8 @@ final class WhisperKitEngineAdapter: ASREngineAdapter, @unchecked Sendable {
       language: asrLanguage,
       duration: audioDurationSec,
       processingTime: asrLatencySec,
-      backendType: .whisperKit
+      backendType: .whisperKit,
+      segmentTimings: asrSegmentTimings
     )
     lastResult = result
 
@@ -1328,7 +1331,8 @@ final class WhisperKitEngineAdapter: ASREngineAdapter, @unchecked Sendable {
         language: result.language,
         duration: audioDurationSec,
         processingTime: result.processingTime,
-        backendType: result.backendType
+        backendType: result.backendType,
+        segmentTimings: result.segmentTimings
       )
       lastResult = correctedResult
       // #1707 Codex r9/r10: mirror the normal finalize path's per-
@@ -1435,7 +1439,7 @@ final class WhisperKitEngineAdapter: ASREngineAdapter, @unchecked Sendable {
       Task { [strategy = result.strategy] in
         await AppLogger.shared.log(
           "WhisperKit streaming flush empty (strategy=\(strategy)) — falling back to batch",
-          level: .info, category: "WhisperKitEngineAdapter"
+          level: .info, category: "WhisperEngineAdapter"
         )
       }
       return nil
@@ -1484,7 +1488,7 @@ final class WhisperKitEngineAdapter: ASREngineAdapter, @unchecked Sendable {
       await AppLogger.shared.log(
         "WhisperKit streaming flush complete: chars=\(chars), decodes=\(decodes), "
           + "tailDecodeMs=\(tailMs) (\(flushMs)ms total)",
-        level: .info, category: "WhisperKitEngineAdapter"
+        level: .info, category: "WhisperEngineAdapter"
       )
     }
     return .transcript(asrResult)
@@ -1532,7 +1536,8 @@ final class WhisperKitEngineAdapter: ASREngineAdapter, @unchecked Sendable {
 
   /// The `finalize`-facing result of the single batch-decode path.
   private enum BatchFallbackResult {
-    case success(text: String, language: String?)
+    /// `segmentTimings` (#3735 §3.10) index `text`; nil when the adapter's trim changed it.
+    case success(text: String, language: String?, segmentTimings: [ASRSegmentTiming]?)
     /// Session changed under the decode await — `finalize` returns this
     /// verbatim WITHOUT mutating adapter state (a stale session-A finalize must
     /// not clobber session B).
@@ -1586,10 +1591,13 @@ final class WhisperKitEngineAdapter: ASREngineAdapter, @unchecked Sendable {
       Task { [chars = trimmed.count] in
         await AppLogger.shared.log(
           "WhisperKit batch decode complete: chars=\(chars) (\(batchMs)ms)",
-          level: .info, category: "WhisperKitEngineAdapter"
+          level: .info, category: "WhisperEngineAdapter"
         )
       }
-      return .success(text: trimmed, language: result.language)
+      // Segment ranges index the backend's text; they travel only while that text is unchanged.
+      return .success(
+        text: trimmed, language: result.language,
+        segmentTimings: trimmed == result.text ? result.segmentTimings : nil)
     case .cancelled:
       return .cancelled
     case .failed(let error):
@@ -1600,7 +1608,7 @@ final class WhisperKitEngineAdapter: ASREngineAdapter, @unchecked Sendable {
       Task { [desc = error.localizedDescription] in
         await AppLogger.shared.log(
           "WhisperKit batch decode failed: \(desc)",
-          level: .info, category: "WhisperKitEngineAdapter"
+          level: .info, category: "WhisperEngineAdapter"
         )
       }
       return .failed(error)
@@ -1645,18 +1653,18 @@ final class WhisperKitEngineAdapter: ASREngineAdapter, @unchecked Sendable {
     }
     let message = fields.joined(separator: " ")
     Task {
-      await AppLogger.shared.log(message, level: .info, category: "WhisperKitEngineAdapter")
+      await AppLogger.shared.log(message, level: .info, category: "WhisperEngineAdapter")
     }
   }
 }
 
 // MARK: - ASREngineTelemetryProviding conformance
 
-extension WhisperKitEngineAdapter: ASREngineTelemetryProviding {}
+extension WhisperEngineAdapter: ASREngineTelemetryProviding {}
 
 // MARK: - PR-5 Rung 5 (#827) — optional capability conformances
 
-extension WhisperKitEngineAdapter: ASREngineLanguageIdentifying {}
+extension WhisperEngineAdapter: ASREngineLanguageIdentifying {}
 
 // #879: the `ASREngineCacheModelLoadable` conformance (`prepareModelIfCached`)
 // was removed with `KernelDictationDriver.prepareBackendSilently()`. WhisperKit's
@@ -1667,7 +1675,7 @@ extension WhisperKitEngineAdapter: ASREngineLanguageIdentifying {}
 
 // MARK: - Test-only inspectors (`@testable import` reaches `internal`)
 
-extension WhisperKitEngineAdapter {
+extension WhisperEngineAdapter {
   /// Test-only read of the retained PCM. The production read site is the
   /// incremental worker's provider closure, which captures `self` weakly and
   /// reads `retainedPCM` on `@MainActor`.
@@ -1686,7 +1694,7 @@ extension WhisperKitEngineAdapter {
   internal var modelUnloadTaskForUnitTests: Task<Void, Never>? { modelUnloadTask }
 }
 
-// MARK: - WhisperKitBackendDriving — local seam for testability (OQ-4 option a)
+// MARK: - WhisperBackendDriving — local seam for testability (OQ-4 option a)
 
 /// Actor-bound protocol that captures every WhisperKit-backend surface this
 /// adapter needs to drive. Declared `package` and local to this file so the
@@ -1699,7 +1707,7 @@ extension WhisperKitEngineAdapter {
 /// `Sources/EnviousWisprASR/ASRProtocol.swift:14` — `WhisperKitBackend.isReady`
 /// is actor-isolated (`public private(set) var isReady`), so the synchronous
 /// protocol requirement only satisfies through an actor-bound protocol.
-package protocol WhisperKitBackendDriving: Actor {
+package protocol WhisperBackendDriving: Actor {
   var isReady: Bool { get }
   var modelVariantName: String { get }
   /// #1275 item A: duration of the most recent silent warm-up inference, in
@@ -1729,4 +1737,42 @@ package protocol WhisperKitBackendDriving: Actor {
 // `prepare()` public, `transcribe(..., onInferenceEntered:)` package,
 // `observeLID(...)` package, `makeStreamingSession(...)` package, `unload()`
 // public). No method additions needed in `EnviousWisprASR`.
-extension WhisperKitBackend: WhisperKitBackendDriving {}
+extension WhisperKitBackend: WhisperBackendDriving {}
+
+// #3735 §3.2: the transcribe.cpp backend drives the same adapter. Its streaming vend is nil
+// until Chunk 8's rolling session, so the adapter decodes in batch.
+extension TranscribeCppWhisperBackend: WhisperBackendDriving {}
+
+// MARK: - Memory-pressure unload binding (#3735 §3.2a)
+
+extension WhisperEngineAdapter {
+  /// Binds `backend`'s memory-pressure unload to this adapter's `EngineMutationScope`, then
+  /// starts its monitor, in one backend call: no pressure event can reach the backend before
+  /// the authorization path exists. The composition root calls this once after constructing
+  /// the adapter over that backend (Chunk 7).
+  func bindMemoryPressureUnload<Driver: WhisperExecutorDriving>(
+    to backend: TranscribeCppWhisperBackend<Driver>
+  ) async {
+    await backend.bindMemoryPressure(authorizer: memoryPressureAuthorizer())
+  }
+
+  /// The authorization the backend runs its teardown under. The claim is the same
+  /// EngineMutationScope the idle-timer unload takes, held through the backend's drain and free,
+  /// so recovery never races it. Refused while a session is live (re-checked after the claim's
+  /// hop, as the idle unload does); readiness changes only after a real unload.
+  func memoryPressureAuthorizer()
+    -> @Sendable (_ teardown: @escaping @Sendable () async -> Bool) async -> Bool
+  {
+    { [engineMutationScope, weak self] teardown in
+      let outcome = await engineMutationScope.withClaim(site: "whisperMemoryPressureUnload") {
+        [weak self] () async -> Bool in
+        guard let self, self.sessionID == nil || self.isTerminal else { return false }
+        let unloaded = await teardown()
+        if unloaded { self.cachedReadiness = .notReady }
+        return true
+      }
+      guard case .completed(let ran) = outcome else { return false }
+      return ran
+    }
+  }
+}

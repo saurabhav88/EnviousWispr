@@ -62,7 +62,7 @@ package struct IncrementalResult: Sendable {
 }
 
 /// Narrow seam over WhisperKit's transcribe entry point, mirroring
-/// `WhisperKitBackendDriving`. Lets the streaming session be
+/// `WhisperBackendDriving`. Lets the streaming session be
 /// characterization-tested with a fake decoder instead of a loaded model.
 package protocol WhisperKitTranscribing: Sendable {
   /// `shouldContinueDecoding` is polled by the decoder once per token; returning

@@ -220,7 +220,7 @@ import Testing
       """
       A retired route owns a WhisperKit backend again: \(offenders).
       WhisperKit loads in-process behind its relocation gate, via \
-      WhisperKitEngineAdapter. The manager and its XPC helper are Parakeet-only; \
+      WhisperEngineAdapter. The manager and its XPC helper are Parakeet-only; \
       recovery and Diagnostics reach the active engine through \
       ActiveEngineOperation.
       """)

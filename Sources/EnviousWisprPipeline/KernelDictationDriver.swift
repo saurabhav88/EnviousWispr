@@ -338,7 +338,7 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
   /// adapter TYPE stays module-internal. No-op for engines without one
   /// (Parakeet's removal story is not this PR's).
   package func unloadEngineForRemoval() async {
-    await (adapter as? WhisperKitEngineAdapter)?.unloadForRemoval()
+    await (adapter as? WhisperEngineAdapter)?.unloadForRemoval()
   }
 
   /// The per-session context the wiring's closures read (PR-4 §3.3 — "captured
@@ -412,7 +412,7 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
   /// `onStateChange` above. Guards this driver's own `ensureEngineWarm(_:)`
   /// claim (row 4/12/13/15/16/18's single shared choke point). The owned
   /// `RecordingSessionKernel` (row 21's `preWarm()` guard) and, when this
-  /// driver's adapter is a `WhisperKitEngineAdapter` (row 6's idle-unload
+  /// driver's adapter is a `WhisperEngineAdapter` (row 6's idle-unload
   /// guard), the adapter itself now each receive the SAME shared value
   /// directly at THEIR OWN construction, via the factories — no more
   /// post-construction forwarding through this property.
