@@ -89,6 +89,14 @@ public struct ASRSegmentTiming: Sendable, Codable, Equatable {
     self.startMs = startMs
     self.endMs = endMs
   }
+
+  /// Both bounds present, non-negative and of positive length: the only bounds that can
+  /// overlap a speaker interval. The one test shared by speaker assembly and the retry
+  /// decision, so they cannot disagree.
+  public var hasUsableBounds: Bool {
+    guard let startMs, let endMs else { return false }
+    return startMs >= 0 && endMs > startMs
+  }
 }
 
 /// Result from an ASR transcription pass.

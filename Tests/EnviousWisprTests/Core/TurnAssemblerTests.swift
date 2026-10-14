@@ -596,6 +596,21 @@ struct TurnAssemblerSegmentPathTests {
     #expect(result.turns.map(\.speakerId) == [TurnAssembler.bothSpeakersID, "A"])
   }
 
+  @Test("zero-length, reversed and negative bounds are untimed: they label Both and never time a turn")
+  func unusableBoundsNeverTimeATurn() {
+    let text = "aa bb cc dd"
+    let result = TurnAssembler.assemble(
+      segmentTimings: [
+        timing(0, 2, 100, 100), timing(3, 5, 400, 300), timing(6, 8, -50, 50),
+        timing(9, 11, 600, 700),
+      ],
+      rawText: text, segments: [speaker("A", 0, 1_000)])
+    #expect(result.turns.map(\.speakerId) == [TurnAssembler.bothSpeakersID, "A"])
+    #expect(result.turns.map { slice($0.originalTextRange, of: text) } == ["aa bb cc", "dd"])
+    #expect(result.turns[0].startMs == nil && result.turns[0].endMs == nil)
+    #expect(result.turns[1].startMs == 600 && result.turns[1].endMs == 700)
+  }
+
   @Test("the word path is unchanged: its turns carry no stored granularity")
   func wordPathControl() {
     let turns = TurnAssembler.assemble(

@@ -1910,6 +1910,22 @@ struct FileImportCoordinatorSpeakerTests {
     #expect(!coordinator.retainsRetryInputs)
   }
 
+  @Test("zero-length, reversed or negative segment bounds alone: noWordTimings, no retry, audio released (#3735)")
+  func invalidSegmentBoundsAreNotRetryable() async {
+    for bounds in [(100, 100), (400, 300), (-50, 50)] {
+      let store = FakeHistoryStore()
+      guard
+        let (coordinator, historyID) = await settledImport(
+          store: store, wordTimings: nil,
+          segmentTimings: [ASRSegmentTiming(range: 0..<18, startMs: bounds.0, endMs: bounds.1)],
+          speakerLabeler: { _, _ in .labeled(count: 2, segments: Self.twoSpeakerSegments) })
+      else { return }
+      #expect(store.current(historyID)?.speakerAnalysis == .failed(.noWordTimings))
+      #expect(!coordinator.canRetrySpeakerAnalysis, "bounds \(bounds) can never overlap")
+      #expect(!coordinator.retainsRetryInputs)
+    }
+  }
+
   @Test("usable segments that bind no interval fail as noWordTimings but stay retryable (#3735)")
   func unboundUsableSegmentsStayRetryable() async {
     let store = FakeHistoryStore()

@@ -1506,7 +1506,7 @@ final class FileImportCoordinator {
   }
 
   static func segmentTimingsCanBind(_ segments: [ASRSegmentTiming]?) -> Bool {
-    segments?.contains { $0.startMs != nil && $0.endMs != nil } ?? false
+    segments?.contains { !$0.range.isEmpty && $0.hasUsableBounds } ?? false
   }
 
   /// The one reading of "could a retry change this stored outcome", shared by the button

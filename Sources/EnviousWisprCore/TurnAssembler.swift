@@ -291,7 +291,7 @@ public enum TurnAssembler {
       }
       appendUncovered(cursor, range.lowerBound)
       let speaker: String
-      if let start = timing.startMs, let end = timing.endMs, end > start {
+      if timing.hasUsableBounds, let start = timing.startMs, let end = timing.endMs {
         var overlapping: Set<String> = []
         for segment in segments
         where min(end, segment.endMs) - max(start, segment.startMs) > 0 {
@@ -302,7 +302,12 @@ public enum TurnAssembler {
       } else {
         speaker = bothSpeakersID
       }
-      entries.append((range, timing.startMs, timing.endMs, speaker))
+      // Unusable bounds never reach a turn's time.
+      entries.append(
+        (
+          range, timing.hasUsableBounds ? timing.startMs : nil,
+          timing.hasUsableBounds ? timing.endMs : nil, speaker
+        ))
       cursor = range.upperBound
     }
     if !Task.isCancelled { appendUncovered(cursor, units.count) }
