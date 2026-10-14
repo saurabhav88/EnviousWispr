@@ -32,6 +32,72 @@ import Foundation
 package enum SpokenPunctuationCommand: String, Sendable, CaseIterable {
   case period, comma, questionMark, exclamationMark
   case colon, semicolon, lineBreak, paragraphBreak
+  // #3738: symbols. Their spoken forms come from Apple's dictation table minus ordinary words and
+  // regional forms (`docs/feature-requests/issue-3738-2026-10-14-spoken-symbols.md` D1).
+  case openParenthesis, closeParenthesis, openSquareBracket, closeSquareBracket
+  case openBrace, closeBrace, openAngleBracket, closeAngleBracket
+  case openQuote, closeQuote, openSingleQuote, closeSingleQuote
+  case hyphen, underscore, apostrophe, emDash, enDash, ellipsis
+  case ampersand, plusSign, equalsSign, verticalBar, asterisk, hashSign, tilde
+
+  /// #3738: what kind of command this is. The ONLY owner of that question: the recogniser-mark
+  /// reconciliation, repeated-command merging, trailing-mark absorption, preceding-mark removal and the
+  /// start-word collision check act on `.mark` and `.lineBreak` only, so a new symbol can never absorb
+  /// or drop a sentence end next to it.
+  package var role: SpokenPunctuationRole {
+    switch self {
+    case .period, .comma, .questionMark, .exclamationMark, .colon, .semicolon: return .mark
+    case .lineBreak, .paragraphBreak: return .lineBreak
+    case .openParenthesis, .closeParenthesis, .openSquareBracket, .closeSquareBracket,
+      .openBrace, .closeBrace, .openAngleBracket, .closeAngleBracket, .openQuote, .closeQuote,
+      .openSingleQuote, .closeSingleQuote, .hyphen, .underscore, .apostrophe, .emDash, .enDash,
+      .ellipsis, .ampersand, .plusSign, .equalsSign, .verticalBar, .asterisk, .hashSign, .tilde:
+      return .symbol
+    }
+  }
+
+  /// #3738: how a symbol sits against its neighbours; nil for the legacy marks and breaks, whose
+  /// spacing stays in their matchers. One renderer applies it on both routes
+  /// (`InverseTextNormalizer.renderSymbol`).
+  package var spacing: SpokenSymbolSpacing? {
+    switch self {
+    case .period, .comma, .questionMark, .exclamationMark, .colon, .semicolon, .lineBreak,
+      .paragraphBreak:
+      return nil
+    case .openParenthesis, .openSquareBracket, .openBrace, .openAngleBracket, .openQuote,
+      .openSingleQuote, .hashSign, .tilde:
+      return .opens
+    case .closeParenthesis, .closeSquareBracket, .closeBrace, .closeAngleBracket, .closeQuote,
+      .closeSingleQuote, .ellipsis, .asterisk:
+      return .closes
+    case .hyphen, .underscore, .apostrophe, .emDash:
+      return .joins
+    case .enDash, .ampersand, .plusSign, .equalsSign, .verticalBar:
+      return .spaced
+    }
+  }
+}
+
+/// #3738: the three kinds of spoken command. See `SpokenPunctuationCommand.role`.
+package enum SpokenPunctuationRole: Sendable, Equatable {
+  /// A sentence mark that attaches to the previous word: `.`, `,`, `?`, `!`, `:`, `;`.
+  case mark
+  /// A line or paragraph break.
+  case lineBreak
+  /// A symbol (#3738): brackets, quotes, dashes and the rest.
+  case symbol
+}
+
+/// #3738: how a spoken symbol sits against the words around it.
+package enum SpokenSymbolSpacing: Sendable, Equatable {
+  /// Keeps the space before it and joins the next word: `(`, `"` (opening), `#`.
+  case opens
+  /// Joins the previous word and keeps the space after it: `)`, `"` (closing), `…`.
+  case closes
+  /// Joins both sides: `-`, `_`, `'`, `—`.
+  case joins
+  /// One space on each side: `&`, `+`, `=`, `|`, `–`.
+  case spaced
 }
 
 /// One command and its spoken forms in one language.
@@ -65,9 +131,12 @@ package enum SpokenPunctuationRules {
     baseCode(language) == "en" ? english : rules(for: language)
   }
 
-  /// Every spoken form `startWordRules(for:)` knows, for start-word collision checks.
+  /// Every spoken form of the LEGACY commands (`.mark` and `.lineBreak`) `startWordRules(for:)` knows,
+  /// for start-word collision checks. #3738: symbol forms are left out on purpose, so a start word that
+  /// was valid before the symbols existed ("open", "left", "close") can never be newly refused, which
+  /// would silently put English back into bare-word mode. Matching still uses every rule.
   package static func startWordForms(for language: String) -> [String]? {
-    startWordRules(for: language)?.flatMap(\.spokenForms)
+    startWordRules(for: language)?.filter { $0.command.role != .symbol }.flatMap(\.spokenForms)
   }
 
   /// The default start word of a Start word language: the shipped word, or `""` for English, whose
@@ -166,9 +235,16 @@ package enum SpokenPunctuationRules {
     return result
   }
 
-  /// Every spoken form of a language, for start-word collision checks. `nil` when unsupported.
+  /// Every spoken form of a language's LEGACY commands, for start-word collision checks (#3738: symbol
+  /// forms left out, see `startWordForms`). `nil` when unsupported.
   package static func spokenForms(for language: String) -> [String]? {
-    rules(for: language)?.flatMap(\.spokenForms)
+    rules(for: language)?.filter { $0.command.role != .symbol }.flatMap(\.spokenForms)
+  }
+
+  /// #3738: the English symbol rules, for the bare-word route. The same rows the English start-word
+  /// table holds, so the two routes can never disagree on a symbol's forms.
+  package static var englishSymbolRules: [SpokenPunctuationRule] {
+    english.filter { $0.command.role == .symbol }
   }
 
   // MARK: - Tables
@@ -188,6 +264,17 @@ package enum SpokenPunctuationRules {
     .init(command: .semicolon, spokenForms: ["Semikolon", "Strichpunkt"], replacement: ";"),
     .init(command: .comma, spokenForms: ["Komma"], replacement: ","),
     .init(command: .period, spokenForms: ["Punkt"], replacement: "."),
+    // #3738: Apple's German forms (macOS 27 dictation commands page), AUTHORED, not measured on speech.
+    .init(command: .openParenthesis, spokenForms: ["linke Klammer", "Klammer auf"], replacement: "("),
+    .init(command: .closeParenthesis, spokenForms: ["rechte Klammer", "Klammer zu"], replacement: ")"),
+    .init(
+      command: .openQuote, spokenForms: ["Anführungszeichen unten", "Anführungszeichen auf"],
+      replacement: "\u{201E}"),
+    .init(
+      command: .closeQuote, spokenForms: ["Anführungszeichen oben", "Anführungszeichen zu"],
+      replacement: "\u{201C}"),
+    .init(command: .hyphen, spokenForms: ["Bindestrich"], replacement: "-"),
+    .init(command: .ellipsis, spokenForms: ["Auslassungspunkte"], replacement: "\u{2026}"),
   ]
 
   /// French. **`nouveau paragraphe` is AUTHORED, not measured**: Apple converted both French line-break
@@ -202,6 +289,13 @@ package enum SpokenPunctuationRules {
     .init(command: .colon, spokenForms: ["deux points"], replacement: ":"),
     .init(command: .comma, spokenForms: ["virgule"], replacement: ","),
     .init(command: .period, spokenForms: ["point"], replacement: "."),
+    // #3738: Apple's French forms, AUTHORED. Guillemets carry the French no-break space inside.
+    .init(command: .openParenthesis, spokenForms: ["parenthèse ouvrante"], replacement: "("),
+    .init(command: .closeParenthesis, spokenForms: ["parenthèse fermante"], replacement: ")"),
+    .init(command: .openQuote, spokenForms: ["guillemet ouvrant"], replacement: "\u{00AB}\u{00A0}"),
+    .init(command: .closeQuote, spokenForms: ["guillemet fermant"], replacement: "\u{00A0}\u{00BB}"),
+    .init(command: .hyphen, spokenForms: ["trait d'union"], replacement: "-"),
+    .init(command: .ellipsis, spokenForms: ["points de suspension"], replacement: "\u{2026}"),
   ]
 
   /// Spanish. Apple emits only the CLOSING `?` and `!`, never the opening `¿` `¡`, so neither does this
@@ -215,6 +309,13 @@ package enum SpokenPunctuationRules {
     .init(command: .colon, spokenForms: ["dos puntos"], replacement: ":"),
     .init(command: .comma, spokenForms: ["coma"], replacement: ","),
     .init(command: .period, spokenForms: ["punto"], replacement: "."),
+    // #3738: Apple's Spanish forms, AUTHORED.
+    .init(command: .openParenthesis, spokenForms: ["paréntesis de apertura", "abrir paréntesis"], replacement: "("),
+    .init(command: .closeParenthesis, spokenForms: ["paréntesis de cierre", "cerrar paréntesis"], replacement: ")"),
+    .init(command: .openQuote, spokenForms: ["abrir comillas"], replacement: "\u{201C}"),
+    .init(command: .closeQuote, spokenForms: ["comillas de cierre", "cerrar comillas"], replacement: "\u{201D}"),
+    .init(command: .hyphen, spokenForms: ["guion"], replacement: "-"),
+    .init(command: .ellipsis, spokenForms: ["puntos suspensivos"], replacement: "\u{2026}"),
   ]
 
   /// Italian.
@@ -227,6 +328,13 @@ package enum SpokenPunctuationRules {
     .init(command: .colon, spokenForms: ["due punti"], replacement: ":"),
     .init(command: .comma, spokenForms: ["virgola"], replacement: ","),
     .init(command: .period, spokenForms: ["punto"], replacement: "."),
+    // #3738: Apple's Italian forms, AUTHORED (Apple's page mixes "parentesi chiusa" and "parentesi tonda chiusa").
+    .init(command: .openParenthesis, spokenForms: ["parentesi aperta", "parentesi tonda aperta"], replacement: "("),
+    .init(command: .closeParenthesis, spokenForms: ["parentesi chiusa", "parentesi tonda chiusa"], replacement: ")"),
+    .init(command: .openQuote, spokenForms: ["apri virgolette"], replacement: "\u{201C}"),
+    .init(command: .closeQuote, spokenForms: ["chiudi virgolette"], replacement: "\u{201D}"),
+    .init(command: .hyphen, spokenForms: ["trattino"], replacement: "-"),
+    .init(command: .ellipsis, spokenForms: ["puntini di sospensione"], replacement: "\u{2026}"),
   ]
 
   /// English, for the OPTIONAL start word only (the default, bare words, is `InverseTextNormalizer.punct`
@@ -244,6 +352,77 @@ package enum SpokenPunctuationRules {
     .init(command: .semicolon, spokenForms: ["semicolon"], replacement: ";"),
     .init(command: .comma, spokenForms: ["comma"], replacement: ","),
     .init(command: .period, spokenForms: ["period", "full stop"], replacement: "."),
+    // #3738: symbols, on BOTH English routes (the bare-word route reads `englishSymbolRules`). Forms
+    // from Apple's English table (`docs/audits/2026-10-14-3738-apple-embedded-commands-en.txt`) minus
+    // ordinary words and regional forms: no bare "quote", "dash", "star", "dot", "point", "at", no
+    // "open/close bracket" (UK `(`, US `[`). Quotes are straight, as Apple's table writes them.
+    .init(
+      command: .openParenthesis,
+      spokenForms: ["open parenthesis", "open paren", "left parenthesis", "left paren"],
+      replacement: "("),
+    .init(
+      command: .closeParenthesis,
+      spokenForms: ["close parenthesis", "close paren", "right parenthesis", "right paren"],
+      replacement: ")"),
+    .init(
+      command: .openSquareBracket, spokenForms: ["open square bracket", "left square bracket"],
+      replacement: "["),
+    .init(
+      command: .closeSquareBracket, spokenForms: ["close square bracket", "right square bracket"],
+      replacement: "]"),
+    .init(
+      command: .openBrace,
+      spokenForms: [
+        "open curly bracket", "open curly brace", "open brace", "left curly bracket",
+        "left curly brace", "left brace",
+      ],
+      replacement: "{"),
+    .init(
+      command: .closeBrace,
+      spokenForms: [
+        "close curly bracket", "close curly brace", "close brace", "right curly bracket",
+        "right curly brace", "right brace",
+      ],
+      replacement: "}"),
+    .init(
+      command: .openAngleBracket, spokenForms: ["open angle bracket", "left angle bracket"],
+      replacement: "<"),
+    .init(
+      command: .closeAngleBracket, spokenForms: ["close angle bracket", "right angle bracket"],
+      replacement: ">"),
+    .init(
+      command: .openQuote,
+      spokenForms: [
+        "open double quote", "begin double quote", "open quotes", "begin quotes", "open quote",
+        "begin quote",
+      ],
+      replacement: "\""),
+    .init(
+      command: .closeQuote,
+      spokenForms: [
+        "close double quote", "end double quote", "close quotes", "end quotes", "close quote",
+        "end quote", "unquote",
+      ],
+      replacement: "\""),
+    .init(
+      command: .openSingleQuote, spokenForms: ["open single quote", "begin single quote"],
+      replacement: "'"),
+    .init(
+      command: .closeSingleQuote, spokenForms: ["close single quote", "end single quote"],
+      replacement: "'"),
+    .init(command: .hyphen, spokenForms: ["hyphen"], replacement: "-"),
+    .init(command: .underscore, spokenForms: ["underscore"], replacement: "_"),
+    .init(command: .apostrophe, spokenForms: ["apostrophe"], replacement: "'"),
+    .init(command: .emDash, spokenForms: ["em dash"], replacement: "\u{2014}"),
+    .init(command: .enDash, spokenForms: ["en dash"], replacement: "\u{2013}"),
+    .init(command: .ellipsis, spokenForms: ["ellipsis"], replacement: "\u{2026}"),
+    .init(command: .ampersand, spokenForms: ["ampersand"], replacement: "&"),
+    .init(command: .plusSign, spokenForms: ["plus sign"], replacement: "+"),
+    .init(command: .equalsSign, spokenForms: ["equals sign", "equal sign"], replacement: "="),
+    .init(command: .verticalBar, spokenForms: ["vertical bar"], replacement: "|"),
+    .init(command: .asterisk, spokenForms: ["asterisk"], replacement: "*"),
+    .init(command: .hashSign, spokenForms: ["hash sign", "number sign"], replacement: "#"),
+    .init(command: .tilde, spokenForms: ["tilde"], replacement: "~"),
   ]
 
   /// `de`, `de-DE`, `de_DE` and any casing all name the same table.

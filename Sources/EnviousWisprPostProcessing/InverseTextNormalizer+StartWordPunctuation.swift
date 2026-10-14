@@ -69,10 +69,16 @@ extension InverseTextNormalizer {
     let start = startWord.trimmingCharacters(in: .whitespacesAndNewlines)
       .precomposedStringWithCanonicalMapping
 
+    // #3738: symbols first, rendered by their own spacing, so a sentence capital pending from a later
+    // mark command can land inside an opening bracket ("Diktiere Punkt Diktiere linke Klammer beta"
+    // -> `. (Beta`), and so the legacy matcher below never sees a symbol command.
+    let symbolPass = Self.applySymbolCommands(
+      text, rules: rules, startWord: start, guardDeterminers: false)
+
     var ruleByKey: [String: SpokenPunctuationRule] = [:]
     var breakForms: [String] = []
     var markForms: [String] = []
-    for rule in rules {
+    for rule in rules where rule.command.role != .symbol {
       let isBreak = rule.command == .lineBreak || rule.command == .paragraphBreak
       for form in rule.spokenForms {
         let normalized = form.precomposedStringWithCanonicalMapping
@@ -84,17 +90,20 @@ extension InverseTextNormalizer {
     let pattern = Self.startWordPattern(start: start, breakForms: breakForms, markForms: markForms)
     // #3594: a command the engine wrote twice ("Diktiere Punkt. Diktiere Punkt.") is one command.
     let text = Self.mergeRepeatedCommand(
-      in: text,
+      in: symbolPass.text,
       forms: Self.alternation(breakForms + markForms),
       startWord: start.isEmpty ? "" : Self.literal(start))
     let matches = reMatches(pattern, text)
-    guard !matches.isEmpty else { return unchanged }
+    guard !matches.isEmpty else {
+      return symbolPass.fired == 0
+        ? unchanged : SpokenPunctuationResult(text: text, rulesFired: symbolPass.fired)
+    }
 
     let ns = text as NSString
     var out = ""
     var cursor = 0
     var pendingCapital = false
-    var fired = 0
+    var fired = symbolPass.fired
     // #3737: whether the last mark command was a period with nothing but whitespace and break commands
     // after it. Anything else that survives between or after (a mark the matcher did not consume, a
     // closer, a word) makes it false, so an untouched input dot is never attributed to a command.
@@ -141,12 +150,24 @@ extension InverseTextNormalizer {
       case .period: finalFullStop = true
       case .lineBreak, .paragraphBreak: break
       case .comma, .questionMark, .exclamationMark, .colon, .semicolon: finalFullStop = false
+      // #3738: symbols never reach this matcher (filtered out of its forms above; the symbol pass
+      // renders them first). Listed so a new command is a compile error here, not a silent default.
+      case .openParenthesis, .closeParenthesis, .openSquareBracket, .closeSquareBracket,
+        .openBrace, .closeBrace, .openAngleBracket, .closeAngleBracket, .openQuote, .closeQuote,
+        .openSingleQuote, .closeSingleQuote, .hyphen, .underscore, .apostrophe, .emDash, .enDash,
+        .ellipsis, .ampersand, .plusSign, .equalsSign, .verticalBar, .asterisk, .hashSign, .tilde:
+        break
       }
       switch rule.command {
       case .period, .questionMark, .exclamationMark, .lineBreak, .paragraphBreak:
         pendingCapital = true
       case .comma, .colon, .semicolon:
         pendingCapital = false
+      case .openParenthesis, .closeParenthesis, .openSquareBracket, .closeSquareBracket,
+        .openBrace, .closeBrace, .openAngleBracket, .closeAngleBracket, .openQuote, .closeQuote,
+        .openSingleQuote, .closeSingleQuote, .hyphen, .underscore, .apostrophe, .emDash, .enDash,
+        .ellipsis, .ampersand, .plusSign, .equalsSign, .verticalBar, .asterisk, .hashSign, .tilde:
+        break
       }
     }
 
@@ -174,6 +195,7 @@ extension InverseTextNormalizer {
     }
     var breakForms: [String] = []
     var markForms: [String] = []
+    // Every command counts as evidence for routing, symbols included (#3738).
     for rule in rules {
       let isBreak = rule.command == .lineBreak || rule.command == .paragraphBreak
       for form in rule.spokenForms {
@@ -245,7 +267,7 @@ extension InverseTextNormalizer {
 
   /// The lookup key of a form or of the text that matched it: lowercase, whitespace runs collapsed to
   /// one space, typographic apostrophe folded to the plain one.
-  private static func formKey(_ text: String) -> String {
+  static func formKey(_ text: String) -> String {
     var key = ""
     var previousWasSpace = false
     for character in text.precomposedStringWithCanonicalMapping.lowercased() {

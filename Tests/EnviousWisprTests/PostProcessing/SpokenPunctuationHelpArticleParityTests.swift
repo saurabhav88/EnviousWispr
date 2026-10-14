@@ -65,6 +65,14 @@ struct SpokenPunctuationHelpArticleParityTests {
   static let breakLabels: [String: String] = [
     "a line break": "\n",
     "a blank line": "\n\n",
+    // #3738: results a table cell cannot show as one plain character. The dashes are words because
+    // help content carries no em or en dash characters; `\|` is Markdown's escaped pipe; the French
+    // guillemets carry a no-break space.
+    "an em dash": "\u{2014}",
+    "an en dash": "\u{2013}",
+    "\\|": "|",
+    "\u{00AB} and a no-break space": "\u{00AB}\u{00A0}",
+    "a no-break space and \u{00BB}": "\u{00A0}\u{00BB}",
   ]
 
   /// Parse the one table under `heading` (an exact line such as `#### German`). The section ends at the
@@ -161,6 +169,18 @@ struct SpokenPunctuationHelpArticleParityTests {
     let rows = try Self.parseTable(
       markdown: Self.article(), heading: "### Dictate a comma, full stop or new line")
     #expect(rows.sorted() == Self.englishExpected.sorted())
+  }
+
+  @Test("The English symbols table lists every English symbol form, once each (#3738)")
+  func englishSymbolTable() throws {
+    let rows = try Self.parseTable(
+      markdown: Self.article(), heading: "### Dictate brackets, quotes and other symbols")
+    let expected = SpokenPunctuationRules.englishSymbolRules.flatMap { rule in
+      rule.spokenForms.map { Row(say: $0, result: rule.replacement) }
+    }
+    #expect(expected.count > 50, "the English symbol table itself shrank")
+    #expect(rows.sorted() == expected.sorted())
+    #expect(rows.count == expected.count)
   }
 
   /// Heading, language code and the language's own name, in the order the article lists them.

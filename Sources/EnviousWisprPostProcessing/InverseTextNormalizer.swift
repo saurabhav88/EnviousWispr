@@ -2933,6 +2933,9 @@ public struct InverseTextNormalizer: Sendable {
         return " \(command.lowercased()) "
       }
     }
+    // #3738: spoken symbols, after the joiners (so "open paren slash clear close paren" still reads the
+    // slash between spaces) and before sentence capitalisation.
+    if spokenPunctuation { t = Self.applyEnglishSymbolCommands(t) }
     // capitalize sentence starts crudely (no case-insensitivity: targets lowercase only)
     t = reSub(#"(^|[.!?]\s+)([a-z])"#, t, caseInsensitive: false) { m in
       (m.g(1) ?? "") + (m.g(2) ?? "").uppercased()

@@ -470,14 +470,23 @@ struct MultilingualSpokenPunctuationTests {
     #expect(paragraph.replacement == "\n\n")
   }
 
-  @Test("Every language covers all eight commands exactly once")
+  @Test("Every language covers all eight legacy commands and its declared symbols exactly once")
   func everyLanguageCoversEveryCommand() throws {
+    let legacy = Set(SpokenPunctuationCommand.allCases.filter { $0.role != .symbol })
+    // #3738 D7: the four start-word languages carry parentheses, quotes, hyphen and ellipsis (Apple's
+    // localized forms); English carries every symbol.
+    let fourLanguageSymbols: Set<SpokenPunctuationCommand> = [
+      .openParenthesis, .closeParenthesis, .openQuote, .closeQuote, .hyphen, .ellipsis,
+    ]
     for language in SpokenPunctuationRules.supportedLanguages {
       let rules = try #require(SpokenPunctuationRules.rules(for: language))
       let commands = rules.map(\.command)
-      #expect(Set(commands) == Set(SpokenPunctuationCommand.allCases), "language: \(language)")
-      #expect(commands.count == SpokenPunctuationCommand.allCases.count, "language: \(language)")
+      #expect(Set(commands) == legacy.union(fourLanguageSymbols), "language: \(language)")
+      #expect(commands.count == legacy.count + fourLanguageSymbols.count, "language: \(language)")
     }
+    let english = try #require(SpokenPunctuationRules.startWordRules(for: "en")).map(\.command)
+    #expect(Set(english) == Set(SpokenPunctuationCommand.allCases))
+    #expect(english.count == SpokenPunctuationCommand.allCases.count)
   }
 
   @Test("No spoken form is empty or repeated within a language")
