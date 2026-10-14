@@ -107,6 +107,63 @@
       #expect(chipStates.contains(.askToLock) && chipStates.contains(.educateAboutSettings))
     }
 
+    @Test("every value that changes a pill's text has a row")
+    func valueDependentVariantsCovered() {
+      let samples = PillPreviewCatalog.polishSetupSamples
+      #expect(
+        Set(samples.map { PillPreviewCatalog.polishProblemCaseName($0.problem) })
+          == PillPreviewCatalog.allPolishProblemCaseNames)
+      let sampleLines = samples.map { PolishSetupCardModel(problem: $0.problem).line }
+      #expect(Set(sampleLines).count == sampleLines.count, "two setup samples show one sentence")
+
+      var rowLines: [String] = []
+      var tails = Set<String>()
+      var warningTexts = Set<String>()
+      var cachingLabels = Set<String>()
+      var fractions = Set<Double>()
+      for entry in PillPreviewCatalog.all {
+        switch entry.make(Self.ignoreNote) {
+        case .polishSetupCard(let model, _, _):
+          rowLines.append(model.line)
+        case .warning(let reason):
+          warningTexts.insert(DictationNarrator.copy(for: reason))
+          if case .interruptedTail(let disclosure, let trimmed) = reason {
+            tails.insert("\(PillPreviewCatalog.disclosureName(disclosure)).\(trimmed)")
+          }
+        case .cachingModel(let label):
+          cachingLabels.insert(label)
+        case .parakeetUpgrade(let model, _):
+          if case .downloading(let fraction) = model.phase { fractions.insert(fraction) }
+        default:
+          break
+        }
+      }
+      #expect(rowLines.count == samples.count)
+      #expect(Set(rowLines) == Set(sampleLines))
+      #expect(
+        tails == [
+          "deviceRemoved.false", "deviceRemoved.true", "otherInterruption.false",
+          "otherInterruption.true",
+        ])
+      for value in PillPreviewCatalog.historyClasses {
+        #expect(warningTexts.contains(value.userMessage), "no row shows \(value)")
+      }
+      for backend in PillPreviewCatalog.backends {
+        #expect(cachingLabels.contains(backend.displayName), "no warm-up row for \(backend)")
+        #expect(
+          warningTexts.contains(
+            DictationNarrator.copy(for: .modelNotDownloaded(engineLabel: backend.displayName))),
+          "no not-downloaded row for \(backend)")
+      }
+      #expect(fractions.isSuperset(of: [0.0, 0.4, 1.0]))
+      #expect(
+        Set(PillPreviewCatalog.historyClasses.map(PillPreviewCatalog.historyClassName)).count
+          == 4)
+      #expect(
+        Set(PillPreviewCatalog.backends.map(PillPreviewCatalog.backendCaseName))
+          == ["parakeet", "whisperKit"])
+    }
+
     @Test("sample buttons only report to the status line")
     func sampleCallbacksAreInert() {
       var notes: [String] = []

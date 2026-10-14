@@ -148,8 +148,8 @@
 
     /// Group names in drop-down order.
     static let groupOrder = [
-      "Undo pills", "Cards and chips", "Notices", "Warnings", "Errors", "Advisories",
-      "Interruptions",
+      "Undo pills", "Cards and chips", "AI polish setup", "Notices", "Warnings", "Errors",
+      "Advisories", "Interruptions",
     ]
 
     /// The names of every `RecordingWarningReason` case, by exhaustive switch. The enum is not
@@ -173,15 +173,111 @@
     ]
 
     /// Sample warning reasons. Fake data only.
-    private static let warningSamples: [RecordingWarningReason] = [
-      .modelNotDownloaded(engineLabel: "Parakeet"),
-      .polishFailed,
-      .historySaveFailed(reason: "disk full"),
-      .escapeRecoveryUnavailable,
-      .salvagedBeginning,
-      .interruptedTail(disclosure: .deviceRemoved, alsoTrimmedLead: false),
-      .interruptedTail(disclosure: .otherInterruption, alsoTrimmedLead: true),
+    private static let warningSamples: [RecordingWarningReason] =
+      backends.map { .modelNotDownloaded(engineLabel: $0.displayName) }
+      + [.polishFailed]
+      + historyClasses.map { .historySaveFailed(reason: $0.userMessage) }
+      + [
+        .escapeRecoveryUnavailable,
+        .salvagedBeginning,
+        .interruptedTail(disclosure: .deviceRemoved, alsoTrimmedLead: false),
+        .interruptedTail(disclosure: .deviceRemoved, alsoTrimmedLead: true),
+        .interruptedTail(disclosure: .otherInterruption, alsoTrimmedLead: false),
+        .interruptedTail(disclosure: .otherInterruption, alsoTrimmedLead: true),
+      ]
+
+    /// Every speech engine whose name appears in a pill sentence.
+    static let backends: [ASRBackendType] = [.parakeet, .whisperKit]
+
+    /// Exhaustive, so a new engine is forced into `backends`.
+    static func backendCaseName(_ backend: ASRBackendType) -> String {
+      switch backend {
+      case .parakeet: return "parakeet"
+      case .whisperKit: return "whisperKit"
+      }
+    }
+
+    /// Every history-save failure class; each has its own sentence. `HistorySaveErrorClass` is
+    /// not `CaseIterable`, so `historyClassName` forces a new case into view.
+    static let historyClasses: [HistorySaveErrorClass] = [
+      .fullDisk, .permissionDenied, .readOnly, .unknown,
     ]
+
+    static func historyClassName(_ value: HistorySaveErrorClass) -> String {
+      switch value {
+      case .fullDisk: return "fullDisk"
+      case .permissionDenied: return "permissionDenied"
+      case .readOnly: return "readOnly"
+      case .unknown: return "unknown"
+      }
+    }
+
+    static func disclosureName(_ value: CompletionInterruptionDisclosure) -> String {
+      switch value {
+      case .deviceRemoved: return "deviceRemoved"
+      case .otherInterruption: return "otherInterruption"
+      }
+    }
+
+    /// The names of every `PolishSetupProblem` case, by exhaustive switch. The enum carries
+    /// values, so it cannot be `CaseIterable`; this is where a new case is forced into view.
+    static func polishProblemCaseName(_ problem: PolishSetupProblem) -> String {
+      switch problem {
+      case .cloudKeyMissing: return "cloudKeyMissing"
+      case .cloudKeyRejected: return "cloudKeyRejected"
+      case .ollamaNotInstalled: return "ollamaNotInstalled"
+      case .ollamaNotRunning: return "ollamaNotRunning"
+      case .ollamaNoModel: return "ollamaNoModel"
+      case .ollamaModelNotInstalled: return "ollamaModelNotInstalled"
+      case .localEngineNotDownloaded: return "localEngineNotDownloaded"
+      case .localEngineDownloadPaused: return "localEngineDownloadPaused"
+      case .localEngineUpdatePaused: return "localEngineUpdatePaused"
+      case .localEngineFailed: return "localEngineFailed"
+      case .localEngineDownloading: return "localEngineDownloading"
+      case .localEngineVerifying: return "localEngineVerifying"
+      case .appleUnavailable: return "appleUnavailable"
+      case .appleModelNotReady: return "appleModelNotReady"
+      }
+    }
+
+    static let allPolishProblemCaseNames: Set<String> = [
+      "cloudKeyMissing", "cloudKeyRejected", "ollamaNotInstalled", "ollamaNotRunning",
+      "ollamaNoModel", "ollamaModelNotInstalled", "localEngineNotDownloaded",
+      "localEngineDownloadPaused", "localEngineUpdatePaused", "localEngineFailed",
+      "localEngineDownloading", "localEngineVerifying", "appleUnavailable", "appleModelNotReady",
+    ]
+
+    /// The setup-card problems real routing can produce, each with a distinct sentence: cloud
+    /// problems for the three cloud providers, local-engine problems for the two local
+    /// engines, the four Ollama problems and the Apple buckets. Other provider pairings are
+    /// not reachable in the app, so they get no row.
+    static let polishSetupSamples: [(id: String, problem: PolishSetupProblem)] = {
+      var samples: [(String, PolishSetupProblem)] = [
+        ("ollamaNotInstalled", .ollamaNotInstalled),
+        ("ollamaNotRunning", .ollamaNotRunning),
+        ("ollamaNoModel", .ollamaNoModel),
+        ("ollamaModelNotInstalled", .ollamaModelNotInstalled),
+        ("appleDisabled", .appleUnavailable(.appleIntelligenceDisabled)),
+        ("appleUnavailable", .appleUnavailable(.unsupportedOS)),
+        ("appleModelNotReady", .appleModelNotReady),
+      ]
+      for provider in [LLMProvider.openAI, .gemini, .claude] {
+        samples.append(("cloudKeyMissing.\(provider.rawValue)", .cloudKeyMissing(provider)))
+        samples.append(("cloudKeyRejected.\(provider.rawValue)", .cloudKeyRejected(provider)))
+      }
+      for provider in [LLMProvider.egOne, .s1Mini] {
+        let name = provider.rawValue
+        samples += [
+          ("localEngineNotDownloaded.\(name)", .localEngineNotDownloaded(provider)),
+          ("localEngineDownloadPaused.\(name)", .localEngineDownloadPaused(provider)),
+          ("localEngineUpdatePaused.\(name)", .localEngineUpdatePaused(provider)),
+          ("localEngineFailed.\(name)", .localEngineFailed(provider)),
+          ("localEngineDownloading.\(name)", .localEngineDownloading(provider)),
+          ("localEngineVerifying.\(name)", .localEngineVerifying(provider)),
+        ]
+      }
+      return samples.map { (id: $0.0, problem: $0.1) }
+    }()
 
     private static let interruptionReasons: [TerminalNoticeReason] = [
       .deviceRemoved, .engineLost, .unknownInterruption,
@@ -265,14 +361,18 @@
             onClose: { note("Close pressed (preview only)") },
             onOpenSettings: { note("Adjust settings pressed (preview only)") })
         })
-      rows.append(
-        row("polishSetup.ollama", .polishSetupCard, "Cards and chips", "AI polish setup card") {
-          note in
-          .polishSetupCard(
-            model: PolishSetupCardModel(problem: .ollamaNotRunning),
-            onFinishSetup: { note("Finish setup pressed (preview only)") },
-            onNotNow: { note("Not now pressed (preview only)") })
-        })
+      for sample in polishSetupSamples {
+        rows.append(
+          row(
+            "polishSetup.\(sample.id)", .polishSetupCard, "AI polish setup",
+            "AI polish setup: \(sample.id)"
+          ) { note in
+            .polishSetupCard(
+              model: PolishSetupCardModel(problem: sample.problem),
+              onFinishSetup: { note("Finish setup pressed (preview only)") },
+              onNotNow: { note("Not now pressed (preview only)") })
+          })
+      }
       rows.append(
         row("recoveryNotice", .recoveryNotice, "Cards and chips", "Crash recovery notice") {
           note in
@@ -295,10 +395,13 @@
           "retainedClipboard", .retainedClipboardFallback, "Notices",
           "Copied to clipboard (kept words)"
         ) { _ in .retainedClipboardFallback(takeID: "preview-take", isStillWanted: { true }) })
-      rows.append(
-        row("cachingModel", .cachingModel, "Notices", "Warming up the engine") { _ in
-          .cachingModel(engineLabel: "Parakeet")
-        })
+      for backend in backends {
+        rows.append(
+          row(
+            "cachingModel.\(backendCaseName(backend))", .cachingModel, "Notices",
+            "Warming up \(backend.displayName)"
+          ) { _ in .cachingModel(engineLabel: backend.displayName) })
+      }
       rows.append(
         row("engineReady", .engineReady, "Notices", "Engine ready") { _ in .engineReady })
       rows.append(
@@ -310,7 +413,10 @@
           .importStatus(message: "Importing 3 files")
         })
       let upgradePhases: [(String, ParakeetUpgradePillModel.Phase)] = [
-        ("downloading", .downloading(fraction: 0.4)), ("installing", .installing),
+        ("downloading.start", .downloading(fraction: 0.0)),
+        ("downloading", .downloading(fraction: 0.4)),
+        ("downloading.end", .downloading(fraction: 1.0)),
+        ("installing", .installing),
         ("ready", .ready),
       ]
       for (name, phase) in upgradePhases {
@@ -326,9 +432,10 @@
       for (index, reason) in warningSamples.enumerated() {
         let name = warningCaseName(reason)
         rows.append(
-          row("warning.\(index).\(name)", .warning, "Warnings", "Warning: \(name) (\(index + 1))") {
-            _ in .warning(reason: reason)
-          })
+          row(
+            "warning.\(index).\(name)", .warning, "Warnings",
+            "Warning: \(name), \(String(DictationNarrator.copy(for: reason).prefix(44)))"
+          ) { _ in .warning(reason: reason) })
       }
       for holder in SharedEngineHolder.allCases {
         rows.append(
