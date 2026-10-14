@@ -473,3 +473,136 @@ struct TurnAssemblerTests {
     #expect(!turns.isEmpty, "the gate alone must not make the result empty")
   }
 }
+
+/// #3735 §3.10: speaker turns from SEGMENT timings (transcribe.cpp whisper has no word
+/// timing). What the user sees when this fails: one speaker's words labelled as the other's,
+/// text missing from the transcript, or a guessed speaker on a stretch nobody can attribute.
+@Suite("TurnAssembler segment path (#3735)", .tags(.productOutcome))
+struct TurnAssemblerSegmentPathTests {
+
+  private func timing(_ lower: Int, _ upper: Int, _ start: Int?, _ end: Int?) -> ASRSegmentTiming {
+    ASRSegmentTiming(range: lower..<upper, startMs: start, endMs: end)
+  }
+
+  private func speaker(_ id: String, _ start: Int, _ end: Int) -> SpeakerSegment {
+    SpeakerSegment(speakerId: id, startMs: start, endMs: end, quality: 1)
+  }
+
+  private func slice(_ range: Range<Int>, of text: String) -> String {
+    let lower = String.Index(utf16Offset: range.lowerBound, in: text)
+    let upper = String.Index(utf16Offset: range.upperBound, in: text)
+    return String(text[lower..<upper])
+  }
+
+  @Test("one speaker's segment takes that speaker; alternating speakers inside one segment are Both")
+  func alternatingWithinOneSegmentIsBoth() {
+    let text = "hello there. yes no yes."
+    let result = TurnAssembler.assemble(
+      segmentTimings: [timing(0, 12, 0, 1_000), timing(13, 24, 1_000, 4_000)], rawText: text,
+      segments: [
+        speaker("A", 0, 1_000), speaker("B", 1_000, 2_000), speaker("A", 2_000, 3_000),
+        speaker("B", 3_000, 4_000),
+      ])
+    #expect(result.anySegmentBound)
+    #expect(result.turns.map(\.speakerId) == ["A", TurnAssembler.bothSpeakersID])
+    #expect(result.turns.map { slice($0.originalTextRange, of: text) } == ["hello there.", "yes no yes."])
+    #expect(result.turns.allSatisfy { $0.granularity == .segment })
+  }
+
+  @Test("a large majority and an exact tie are both Both: the minority speaker is never absorbed")
+  func majorityAndTieAreBoth() {
+    let majority = TurnAssembler.assemble(
+      segmentTimings: [timing(0, 4, 0, 10_000)], rawText: "word",
+      segments: [speaker("A", 0, 9_900), speaker("B", 9_900, 10_000)])
+    let tie = TurnAssembler.assemble(
+      segmentTimings: [timing(0, 4, 0, 1_000)], rawText: "word",
+      segments: [speaker("A", 0, 500), speaker("B", 500, 1_000)])
+    #expect(majority.turns.map(\.speakerId) == [TurnAssembler.bothSpeakersID])
+    #expect(tie.turns.map(\.speakerId) == [TurnAssembler.bothSpeakersID])
+  }
+
+  @Test("fragmented intervals of one speaker still count as that one speaker")
+  func fragmentedSameSpeaker() {
+    let result = TurnAssembler.assemble(
+      segmentTimings: [timing(0, 9, 0, 3_000)], rawText: "a b c d e",
+      segments: [speaker("A", 0, 800), speaker("A", 1_200, 1_900), speaker("A", 2_400, 3_000)])
+    #expect(result.turns.map(\.speakerId) == ["A"])
+    #expect(result.turns.first?.startMs == 0 && result.turns.first?.endMs == 3_000)
+  }
+
+  @Test("an untimed segment, or one no interval covers, is Both, never a nearby speaker")
+  func untimedAndUncoveredAreBoth() {
+    let text = "first second third"
+    let result = TurnAssembler.assemble(
+      segmentTimings: [timing(0, 5, 0, 500), timing(6, 12, nil, nil), timing(13, 18, 900, 1_000)],
+      rawText: text,
+      segments: [speaker("A", 0, 500)])
+    #expect(result.turns.map(\.speakerId) == ["A", TurnAssembler.bothSpeakersID])
+    #expect(result.turns.map { slice($0.originalTextRange, of: text) } == ["first", "second third"])
+    #expect(result.turns.last?.startMs == 900, "only real bounds count toward a turn's time")
+
+    let none = TurnAssembler.assemble(
+      segmentTimings: [timing(0, 5, 0, 500)], rawText: "first", segments: [speaker("A", 600, 900)])
+    #expect(!none.anySegmentBound, "nothing overlapped: the timings never merged")
+    #expect(none.turns.map(\.speakerId) == [TurnAssembler.bothSpeakersID])
+  }
+
+  @Test("adjacent same-speaker segments coalesce in order; every word stays exactly once")
+  func coalescingKeepsOrderAndText() {
+    let text = "one two three four five"
+    let result = TurnAssembler.assemble(
+      segmentTimings: [
+        timing(0, 3, 0, 100), timing(4, 7, 100, 200), timing(8, 13, 300, 400),
+        timing(14, 18, 500, 600), timing(19, 23, 600, 700),
+      ],
+      rawText: text,
+      segments: [speaker("A", 0, 200), speaker("B", 300, 400), speaker("A", 500, 700)])
+    #expect(result.turns.map(\.speakerId) == ["A", "B", "A"])
+    #expect(result.turns.map(\.id) == ["0-7", "8-13", "14-23"])
+    #expect(result.turns.map { slice($0.originalTextRange, of: text) } == ["one two", "three", "four five"])
+  }
+
+  @Test("text no segment covers stays in the transcript as untimed Both; whitespace-only gaps do not")
+  func uncoveredTextSurvives() {
+    let text = "alpha  lost words  omega tail"
+    let result = TurnAssembler.assemble(
+      segmentTimings: [timing(0, 5, 0, 100), timing(19, 24, 200, 300)], rawText: text,
+      segments: [speaker("A", 0, 100), speaker("B", 200, 300)])
+    #expect(result.turns.map(\.speakerId) == ["A", TurnAssembler.bothSpeakersID, "B", TurnAssembler.bothSpeakersID])
+    #expect(
+      result.turns.map { slice($0.originalTextRange, of: text) } == ["alpha", "lost words", "omega", "tail"])
+    #expect(result.turns[1].startMs == nil && result.turns[3].startMs == nil)
+  }
+
+  @Test("CJK and emoji ranges slice on UTF-16 offsets without splitting a character")
+  func unicodeRanges() {
+    let text = "你好世界 😀再见"
+    let firstEnd = "你好世界".utf16.count
+    let secondStart = firstEnd + 1
+    let result = TurnAssembler.assemble(
+      segmentTimings: [timing(0, firstEnd, 0, 500), timing(secondStart, text.utf16.count, 500, 900)],
+      rawText: text, segments: [speaker("A", 0, 500), speaker("B", 500, 900)])
+    #expect(result.turns.map { slice($0.originalTextRange, of: text) } == ["你好世界", "😀再见"])
+    #expect(result.turns.map(\.speakerId) == ["A", "B"])
+  }
+
+  @Test("out-of-order or out-of-range segment ranges are not trusted; their text stays as uncovered Both")
+  func invalidRangesAreUncovered() {
+    let text = "aa bb"
+    let result = TurnAssembler.assemble(
+      segmentTimings: [timing(3, 5, 0, 100), timing(0, 2, 100, 200), timing(4, 99, 0, 100)],
+      rawText: text, segments: [speaker("A", 0, 200)])
+    #expect(result.turns.map { slice($0.originalTextRange, of: text) } == ["aa", "bb"])
+    #expect(result.turns.map(\.speakerId) == [TurnAssembler.bothSpeakersID, "A"])
+  }
+
+  @Test("the word path is unchanged: its turns carry no stored granularity")
+  func wordPathControl() {
+    let turns = TurnAssembler.assemble(
+      entries: [ASRWordTiming(word: "hi", range: 0..<2, startMs: 0, endMs: 100)],
+      segments: [speaker("A", 0, 100)])
+    #expect(turns.map(\.speakerId) == ["A"])
+    #expect(turns.first?.granularity == nil)
+    #expect(turns.first?.effectiveGranularity == .word)
+  }
+}

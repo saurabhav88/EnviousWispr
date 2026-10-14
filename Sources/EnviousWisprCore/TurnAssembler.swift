@@ -243,6 +243,116 @@ public enum TurnAssembler {
       speakerId: speaker, startMs: startMs, endMs: endMs, originalTextRange: range)
   }
 
+  // MARK: - Segment path (#3735 §3.10)
+
+  /// The segment path's result. `anySegmentBound` is false when no timed segment overlapped
+  /// any diarizer interval: then the timings could not be merged at all, which the caller
+  /// stores as `.noWordTimings`, exactly as for word timings that never bind. Turns that are
+  /// all Both because every segment mixed speakers are a legitimate result, not that failure.
+  public struct SegmentAssembly: Sendable, Equatable {
+    public let turns: [Turn]
+    public let anySegmentBound: Bool
+  }
+
+  /// Partitions a transcript into speaker turns from SEGMENT timings, for an engine that has
+  /// no word timing (transcribe.cpp whisper). A segment's words cannot be placed in time
+  /// individually, so the whole segment takes one label:
+  /// - its one speaker, when every positive overlap with the diarizer's intervals belongs to
+  ///   that speaker (several intervals of the same speaker still count as one);
+  /// - Both, when it overlaps different speakers, whatever the durations: naming the majority
+  ///   would silently give the minority speaker's words to someone else;
+  /// - Both, when it has no timing or overlaps no interval: no individual speaker is guessed,
+  ///   and none of the word path's nearest-speaker fallback or tiny-unknown folding applies.
+  /// Text no segment covers (an engine segment that could not be bound to the text) becomes
+  /// its own untimed Both entry, so every non-whitespace character of `rawText` stays in a
+  /// turn. Adjacent entries with the same label coalesce in order; ids are range-derived.
+  /// Checks `Task.isCancelled` once per entry, like the word path: a cancelled call returns
+  /// a partial result the caller must treat as unusable.
+  public static func assemble(
+    segmentTimings: [ASRSegmentTiming], rawText: String, segments: [SpeakerSegment]
+  ) -> SegmentAssembly {
+    let units = Array(rawText.utf16)
+    var entries: [(range: Range<Int>, startMs: Int?, endMs: Int?, speaker: String)] = []
+    var anyBound = false
+    var cursor = 0
+
+    func appendUncovered(_ lower: Int, _ upper: Int) {
+      guard let trimmed = nonWhitespaceBounds(units, lower, upper) else { return }
+      entries.append((trimmed, nil, nil, bothSpeakersID))
+    }
+
+    for timing in segmentTimings {
+      guard !Task.isCancelled else { break }
+      let range = timing.range
+      // Ranges come from the backend's ordered binding; anything out of order, out of the
+      // text or empty is left to the uncovered-text pass rather than trusted.
+      guard range.lowerBound >= cursor, range.upperBound <= units.count, !range.isEmpty else {
+        continue
+      }
+      appendUncovered(cursor, range.lowerBound)
+      let speaker: String
+      if let start = timing.startMs, let end = timing.endMs, end > start {
+        var overlapping: Set<String> = []
+        for segment in segments
+        where min(end, segment.endMs) - max(start, segment.startMs) > 0 {
+          overlapping.insert(segment.speakerId)
+        }
+        if !overlapping.isEmpty { anyBound = true }
+        speaker = overlapping.count == 1 ? overlapping.first! : bothSpeakersID
+      } else {
+        speaker = bothSpeakersID
+      }
+      entries.append((range, timing.startMs, timing.endMs, speaker))
+      cursor = range.upperBound
+    }
+    if !Task.isCancelled { appendUncovered(cursor, units.count) }
+
+    var turns: [Turn] = []
+    var group: [(range: Range<Int>, startMs: Int?, endMs: Int?, speaker: String)] = []
+    func flush() {
+      guard let first = group.first, let last = group.last else { return }
+      let range = first.range.lowerBound..<last.range.upperBound
+      let timed = group.compactMap { entry -> (Int, Int)? in
+        guard let start = entry.startMs, let end = entry.endMs else { return nil }
+        return (start, end)
+      }
+      turns.append(
+        Turn(
+          id: "\(range.lowerBound)-\(range.upperBound)", speakerId: first.speaker,
+          startMs: timed.map(\.0).min(), endMs: timed.map(\.1).max(),
+          originalTextRange: range, granularity: .segment))
+      group = []
+    }
+    for entry in entries {
+      if let previous = group.last, previous.speaker != entry.speaker { flush() }
+      group.append(entry)
+    }
+    flush()
+    return SegmentAssembly(turns: turns, anySegmentBound: anyBound)
+  }
+
+  /// The UTF-16 bounds of `units[lower..<upper]` without leading and trailing whitespace, or
+  /// nil when it is whitespace only.
+  private static func nonWhitespaceBounds(_ units: [UInt16], _ lower: Int, _ upper: Int)
+    -> Range<Int>?
+  {
+    guard lower < upper else { return nil }
+    let text = String(decoding: units[lower..<upper], as: UTF16.self)
+    var offset = lower
+    var first: Int?
+    var last: Int?
+    for scalar in text.unicodeScalars {
+      let width = UTF16.width(scalar)
+      if !CharacterSet.whitespacesAndNewlines.contains(scalar) {
+        if first == nil { first = offset }
+        last = offset + width
+      }
+      offset += width
+    }
+    guard let first, let last else { return nil }
+    return first..<last
+  }
+
   /// Default `"Speaker N"` names in first-appearance order among the turns, excluding
   /// `"unknown"` — a classification outcome, never a named speaker — and excluding any
   /// speakerId that is a key in `existingNames` (already named, so it needs no default).

@@ -158,3 +158,44 @@ struct TranscriptSpeakerFieldsTests {
     #expect(mapped == .analyzerThrew)
   }
 }
+
+/// #3735 §3.10: turn granularity through a full Transcript save and reload. What the user sees
+/// when this fails: an older History document stops opening, or segment-labelled turns reload
+/// as word-accurate ones.
+@Suite("Transcript turn granularity (#3735)", .tags(.productOutcome))
+struct TranscriptTurnGranularityTests {
+
+  @Test("a stored turn without granularity decodes and reads as word granularity")
+  func legacyTurnDecodesAsWord() throws {
+    let id = UUID().uuidString
+    let legacy = """
+      {"id":"\(id)","text":"hi there","duration":1.5,"processingTime":0.2,\
+      "backendType":"parakeet","createdAt":12345.0,\
+      "speakerAnalysis":{"labeled":{"count":1}},"speakerNames":{"A":"Speaker 1"},\
+      "turns":[{"id":"0-8","speakerId":"A","startMs":0,"endMs":800,\
+      "originalTextRange":[0,8],"wasPolished":true}]}
+      """
+    let transcript = try JSONDecoder().decode(Transcript.self, from: Data(legacy.utf8))
+    let turn = try #require(transcript.turns?.first)
+    #expect(turn.granularity == nil)
+    #expect(turn.effectiveGranularity == .word)
+  }
+
+  @Test("segment granularity survives a full Transcript encode and decode")
+  func segmentGranularityRoundTrips() throws {
+    let turns = [
+      Turn(
+        id: "0-5", speakerId: "A", startMs: 0, endMs: 500, originalTextRange: 0..<5,
+        processedText: "Hello", wasPolished: true, granularity: .segment),
+      Turn(
+        id: "6-11", speakerId: TurnAssembler.bothSpeakersID, startMs: nil, endMs: nil,
+        originalTextRange: 6..<11, granularity: .segment),
+    ]
+    let row = Transcript(text: "hello world").mergingSpeakerFields(
+      analysis: .labeled(count: 1), turns: turns)
+    let data = try JSONEncoder().encode(row)
+    let reloaded = try JSONDecoder().decode(Transcript.self, from: data)
+    #expect(reloaded.turns == turns)
+    #expect(reloaded.turns?.map(\.effectiveGranularity) == [.segment, .segment])
+  }
+}

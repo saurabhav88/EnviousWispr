@@ -117,6 +117,7 @@ struct FileImportCoordinatorSpeakerTests {
     transcribedText: String = "one two three",
     wordTimings: [ASRWordTiming]? = nil,
     wordTimingCoverage: ASRWordTimingCoverage? = nil,
+    segmentTimings: [ASRSegmentTiming]? = nil,
     speakerLabeler: @escaping @MainActor ([Float], TimeInterval) async -> SpeakerAnalysis,
     saveToHistory: @escaping @MainActor (Transcript) throws -> Void = { _ in },
     updateHistoryRow: @escaping @MainActor (Transcript) throws -> Bool = { _ in true },
@@ -152,7 +153,8 @@ struct FileImportCoordinatorSpeakerTests {
       transcribe: { _, _, _ in
         ASRResult(
           text: transcribedText, language: "en", duration: 0, processingTime: 0,
-          backendType: .parakeet, wordTimings: wordTimings, wordTimingCoverage: wordTimingCoverage)
+          backendType: .parakeet, wordTimings: wordTimings, wordTimingCoverage: wordTimingCoverage,
+          segmentTimings: segmentTimings)
       },
       speakerLabeler: speakerLabeler,
       emitSpeakerTelemetry: emitSpeakerTelemetry,
@@ -727,6 +729,7 @@ struct FileImportCoordinatorSpeakerTests {
     store: FakeHistoryStore, lease: EngineLease = EngineLease(), seconds: Double = 1.0,
     transcribedText: String = "hello there friend",
     wordTimings: [ASRWordTiming]? = nil,
+    segmentTimings: [ASRSegmentTiming]? = nil,
     speakerLabeler: @escaping @MainActor ([Float], TimeInterval) async -> SpeakerAnalysis,
     processPart: @escaping @MainActor (String, String?) async throws ->
       FileImportRunner.PartOutcome = { part, _ in
@@ -747,7 +750,7 @@ struct FileImportCoordinatorSpeakerTests {
   ) -> FileImportCoordinator {
     makeCoordinator(
       lease: lease, seconds: seconds, transcribedText: transcribedText,
-      wordTimings: wordTimings, speakerLabeler: speakerLabeler,
+      wordTimings: wordTimings, segmentTimings: segmentTimings, speakerLabeler: speakerLabeler,
       saveToHistory: { store.save($0) },
       updateHistoryRow: { store.update($0) },
       mergeSpeakerFields: { try store.mergeSpeakerFields($0, $1, $2) },
@@ -1513,10 +1516,12 @@ struct FileImportCoordinatorSpeakerTests {
   /// coordinator and its history id; nil (with an issue recorded) if no row landed.
   private func settledImport(
     store: FakeHistoryStore, wordTimings: [ASRWordTiming]?,
+    segmentTimings: [ASRSegmentTiming]? = nil,
     speakerLabeler: @escaping @MainActor ([Float], TimeInterval) async -> SpeakerAnalysis
   ) async -> (FileImportCoordinator, UUID)? {
     let coordinator = makeStoreBackedCoordinator(
-      store: store, wordTimings: wordTimings, speakerLabeler: speakerLabeler)
+      store: store, wordTimings: wordTimings, segmentTimings: segmentTimings,
+      speakerLabeler: speakerLabeler)
     coordinator.choose(url: Self.anyURL)
     _ = await settleUntil {
       if case .ready = coordinator.state { return true } else { return false }
@@ -1848,6 +1853,153 @@ struct FileImportCoordinatorSpeakerTests {
     #expect(turnTexts(store.current(historyID)) == ["Hello.", "there friend"])
     #expect(store.current(historyID)?.turns?.map(\.wasPolished) == [true, false])
     #expect(telemetry.stored.first?.fallback == 1, "\(telemetry.events)")
+  }
+
+  // MARK: - #3735 §3.10 segment timings
+
+  /// "hello there friend": "hello there" inside speaker A's interval, "friend" inside B's.
+  private static let twoSpeakerSegmentTimings = [
+    ASRSegmentTiming(range: 0..<11, startMs: 0, endMs: 200),
+    ASRSegmentTiming(range: 12..<18, startMs: 5_000, endMs: 5_400),
+  ]
+
+  @Test("segment timings alone label speakers on the first pass and store segment turns (#3735)")
+  func segmentOnlyInitialAnalysis() async {
+    let store = FakeHistoryStore()
+    guard
+      let (coordinator, historyID) = await settledImport(
+        store: store, wordTimings: nil, segmentTimings: Self.twoSpeakerSegmentTimings,
+        speakerLabeler: { _, _ in .labeled(count: 2, segments: Self.twoSpeakerSegments) })
+    else { return }
+    let stored = await settleUntil { store.current(historyID)?.turns != nil && coordinator.state == .finished }
+    #expect(stored)
+    let row = store.current(historyID)
+    #expect(row?.speakerAnalysis == .labeled(count: 2))
+    #expect(row?.turns?.map(\.speakerId) == ["A", "B"])
+    #expect(row?.turns?.map(\.granularity) == [.segment, .segment])
+    #expect(row?.turns?.map(\.originalTextRange) == [0..<11, 12..<18])
+    #expect(!coordinator.retainsRetryInputs, "a labeled outcome releases the audio")
+  }
+
+  @Test("segments that mix speakers store Both turns as a labeled result, not a timing failure (#3735)")
+  func mixedSegmentsAreLabeledBoth() async {
+    let store = FakeHistoryStore()
+    guard
+      let (_, historyID) = await settledImport(
+        store: store, wordTimings: nil,
+        segmentTimings: [ASRSegmentTiming(range: 0..<18, startMs: 0, endMs: 5_400)],
+        speakerLabeler: { _, _ in .labeled(count: 2, segments: Self.twoSpeakerSegments) })
+    else { return }
+    let stored = await settleUntil { store.current(historyID)?.turns != nil }
+    #expect(stored)
+    #expect(store.current(historyID)?.speakerAnalysis == .labeled(count: 2))
+    #expect(store.current(historyID)?.turns?.map(\.speakerId) == [TurnAssembler.bothSpeakersID])
+  }
+
+  @Test("segment timings with no usable bounds and no word timings: noWordTimings, no retry, audio released (#3735)")
+  func unusableSegmentsAreNotRetryable() async {
+    let store = FakeHistoryStore()
+    guard
+      let (coordinator, historyID) = await settledImport(
+        store: store, wordTimings: nil,
+        segmentTimings: [ASRSegmentTiming(range: 0..<18, startMs: nil, endMs: nil)],
+        speakerLabeler: { _, _ in .labeled(count: 2, segments: Self.twoSpeakerSegments) })
+    else { return }
+    #expect(store.current(historyID)?.speakerAnalysis == .failed(.noWordTimings))
+    #expect(!coordinator.canRetrySpeakerAnalysis)
+    #expect(!coordinator.retainsRetryInputs)
+  }
+
+  @Test("usable segments that bind no interval fail as noWordTimings but stay retryable (#3735)")
+  func unboundUsableSegmentsStayRetryable() async {
+    let store = FakeHistoryStore()
+    guard
+      let (coordinator, historyID) = await settledImport(
+        store: store, wordTimings: nil,
+        segmentTimings: [ASRSegmentTiming(range: 0..<18, startMs: 9_000, endMs: 9_500)],
+        speakerLabeler: { _, _ in .labeled(count: 2, segments: Self.twoSpeakerSegments) })
+    else { return }
+    #expect(store.current(historyID)?.speakerAnalysis == .failed(.noWordTimings))
+    #expect(coordinator.canRetrySpeakerAnalysis, "another segmentation could bind these segments")
+    #expect(coordinator.retainsRetryInputs)
+    // Deleting the row releases the retained segment state with the audio.
+    coordinator.noteHistoryRowDeleted(historyID)
+    #expect(!coordinator.retainsRetryInputs)
+    #expect(!coordinator.canRetrySpeakerAnalysis)
+  }
+
+  @Test("a retry on segment timings re-runs only the analyzer and stores segment turns (#3735)")
+  func segmentRetry() async {
+    let store = FakeHistoryStore()
+    @MainActor final class AttemptCounter {
+      private(set) var count = 0
+      func next() -> Int {
+        count += 1
+        return count
+      }
+    }
+    let attempts = AttemptCounter()
+    let coordinator = makeStoreBackedCoordinator(
+      store: store, wordTimings: nil, segmentTimings: Self.twoSpeakerSegmentTimings,
+      speakerLabeler: { _, _ in
+        attempts.next() == 1
+          ? .failed(.analyzerThrew("boom")) : .labeled(count: 2, segments: Self.twoSpeakerSegments)
+      })
+    coordinator.choose(url: Self.anyURL)
+    _ = await settleUntil {
+      if case .ready = coordinator.state { return true } else { return false }
+    }
+    coordinator.start()
+    _ = await settleUntil { coordinator.state == .finished }
+    guard let historyID = coordinator.historyID else {
+      Issue.record("no historyID after the visible run finished")
+      return
+    }
+    let failed = await settleUntil {
+      if case .failed = store.current(historyID)?.speakerAnalysis { return true }
+      return false
+    }
+    #expect(failed)
+    #expect(coordinator.canRetrySpeakerAnalysis, "segment timings are a usable retry input")
+    coordinator.retrySpeakerAnalysis()
+    let retried = await settleUntil {
+      store.current(historyID)?.speakerAnalysis == .labeled(count: 2)
+        && coordinator.state == .finished
+    }
+    #expect(retried)
+    #expect(store.current(historyID)?.turns?.map(\.granularity) == [.segment, .segment])
+    #expect(store.current(historyID)?.turns?.map(\.speakerId) == ["A", "B"])
+    #expect(attempts.count == 2, "the analyzer ran twice; the ASR never re-ran")
+  }
+
+  @Test("word timings keep precedence when they bind; segments are not used (#3735)")
+  func wordPathKeepsPrecedence() async {
+    let store = FakeHistoryStore()
+    guard
+      let (_, historyID) = await settledImport(
+        store: store, wordTimings: Self.twoSpeakerWordTimings(),
+        segmentTimings: [ASRSegmentTiming(range: 0..<18, startMs: 0, endMs: 5_400)],
+        speakerLabeler: { _, _ in .labeled(count: 2, segments: Self.twoSpeakerSegments) })
+    else { return }
+    let stored = await settleUntil { store.current(historyID)?.turns != nil }
+    #expect(stored)
+    #expect(store.current(historyID)?.turns?.map(\.speakerId) == ["A", "B"])
+    #expect(store.current(historyID)?.turns?.allSatisfy { $0.granularity == nil } == true)
+  }
+
+  @Test("choosing another file drops the previous file's segment retry state (#3735)")
+  func chooseDropsSegmentRetryState() async {
+    let store = FakeHistoryStore()
+    guard
+      let (coordinator, _) = await settledImport(
+        store: store, wordTimings: nil,
+        segmentTimings: [ASRSegmentTiming(range: 0..<18, startMs: 9_000, endMs: 9_500)],
+        speakerLabeler: { _, _ in .labeled(count: 2, segments: Self.twoSpeakerSegments) })
+    else { return }
+    #expect(coordinator.canRetrySpeakerAnalysis)
+    coordinator.choose(url: Self.anyURL)
+    #expect(!coordinator.retainsRetryInputs)
+    #expect(!coordinator.canRetrySpeakerAnalysis)
   }
 
   @Test("a retry re-cleans the new sections and persists them")

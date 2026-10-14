@@ -58,6 +58,29 @@ struct FileImportDocumentMathTests {
     #expect(notEngine.allSatisfy { !FileImportDocumentMath.isAboutTheEngine($0) })
   }
 
+  @Test("both finalTurns branches keep each turn's granularity (#3735 §3.10)")
+  func finalTurnsKeepGranularity() {
+    let turns = [
+      Turn(
+        id: "0-5", speakerId: "A", startMs: 0, endMs: 500, originalTextRange: 0..<5,
+        granularity: .segment),
+      Turn(
+        id: "6-11", speakerId: "B", startMs: 500, endMs: 900, originalTextRange: 6..<11,
+        granularity: .segment),
+      Turn(id: "12-15", speakerId: "A", startMs: 900, endMs: 1_000, originalTextRange: 12..<15),
+    ]
+    let parts = [
+      FileImportCoordinator.Part(
+        id: 0, text: "Hello", isUnpolished: false, wasPolished: true, turnID: "0-5")
+    ]
+    for completed in [true, false] {
+      let final = FileImportDocumentMath.finalTurns(turns, parts: parts, cleanupCompleted: completed)
+      #expect(final.map(\.granularity) == [.segment, .segment, nil])
+      #expect(final[0].processedText == "Hello", "the cleaned branch")
+      #expect(final[1].processedText == nil, "the unreached branch")
+    }
+  }
+
   @Test("decoder refusals map to the two file refusals; anything else is a described failure")
   func decoderRefusalsMap() {
     #expect(FileImportDocumentMath.rejection(for: AudioFileDecoder.Rejection.unreadable) == .cannotRead)

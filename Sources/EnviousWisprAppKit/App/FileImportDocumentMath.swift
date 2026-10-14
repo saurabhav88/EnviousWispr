@@ -202,7 +202,7 @@ enum FileImportDocumentMath {
         return Turn(
           id: turn.id, speakerId: turn.speakerId, startMs: turn.startMs, endMs: turn.endMs,
           originalTextRange: turn.originalTextRange, processedText: nil,
-          wasPolished: cleanupCompleted)
+          wasPolished: cleanupCompleted, granularity: turn.granularity)
       }
       // Rebuilt with each piece's own raw gap, never an invented space.
       let joined = mine.map { $0.text + $0.trailingGap }.joined()
@@ -210,7 +210,7 @@ enum FileImportDocumentMath {
         id: turn.id, speakerId: turn.speakerId, startMs: turn.startMs, endMs: turn.endMs,
         originalTextRange: turn.originalTextRange,
         processedText: joined,
-        wasPolished: !mine.contains(where: \.isUnpolished))
+        wasPolished: !mine.contains(where: \.isUnpolished), granularity: turn.granularity)
     }
   }
 
