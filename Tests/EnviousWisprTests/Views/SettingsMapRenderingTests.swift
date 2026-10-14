@@ -369,7 +369,7 @@ struct SettingsMapRenderingTests {
         legacyStore: FileLegacyKeyStore(storageDirectory: directory.appending(path: "keys")))
       setup = SetupCoordinator(
         asrManager: RouterTestASRManager(),
-        whisperKitSetup: WhisperKitSetupService(
+        whisperSetup: WhisperSetupService(
           engineMutationScope: .alwaysAllowedForTesting, readAvailability: { .notDownloaded }),
         setupStateReader: { .notDownloaded }, preloadAction: {}, ollamaStatusProbe: { _ in },
         ollamaSetup: ollama)

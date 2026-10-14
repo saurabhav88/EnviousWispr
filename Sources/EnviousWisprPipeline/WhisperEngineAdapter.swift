@@ -77,6 +77,11 @@ final class WhisperEngineAdapter: ASREngineAdapter, @unchecked Sendable {
   /// #1707 Phase 2: DEBUG fault-injection oracle (§11.1) — `nil` in every
   /// production/test path that doesn't explicitly construct one.
   private let batchDecodeFaultController: BatchDecodeFaultController?
+
+  /// #3735 §3.2a: the memory-pressure binding the production factory starts at construction;
+  /// nil for adapters over other backends. A backend built with `loadsAfterPressureBinding`
+  /// holds every `prepare()` until it completes.
+  private(set) var memoryPressureBinding: Task<Void, Never>?
   /// #2787: counts this adapter's vendor decode against the shared occupancy.
   /// Production passes `ASRManager.vendorDecodeOccupancy` through the factory
   /// (required there); the init default is a private counter nothing reads,
@@ -460,7 +465,7 @@ final class WhisperEngineAdapter: ASREngineAdapter, @unchecked Sendable {
   /// In the kernel-driven flow, the kernel's spawned `warmUp()` path
   /// already calls `prepare()`, which resolves the admitted owned model folder
   /// and loads from it when one exists. (#1386 PR-2 replaced the old
-  /// `WhisperKitSetupService.getLocalModelPath` ~/Documents probe named here:
+  /// `WhisperSetupService.getLocalModelPath` ~/Documents probe named here:
   /// availability is controller admission now, and `prepare()` never fetches.)
   /// So no `warmUpFromCache` work is needed here — the cached-load
   /// optimization is preserved by `prepare()`'s own resolve branch, and the
@@ -1754,6 +1759,17 @@ extension WhisperEngineAdapter {
     to backend: TranscribeCppWhisperBackend<Driver>
   ) async {
     await backend.bindMemoryPressure(authorizer: memoryPressureAuthorizer())
+  }
+
+  /// Starts `bindMemoryPressureUnload(to:)` once, at construction (`KernelAdapterFactory`).
+  /// The task holds the adapter strongly until the one binding call returns: a binding that
+  /// never ran would leave a `loadsAfterPressureBinding` backend unable to load. The installed
+  /// authorizer itself captures the adapter weakly.
+  func startMemoryPressureBinding<Driver: WhisperExecutorDriving>(
+    to backend: TranscribeCppWhisperBackend<Driver>
+  ) {
+    guard memoryPressureBinding == nil else { return }
+    memoryPressureBinding = Task { await self.bindMemoryPressureUnload(to: backend) }
   }
 
   /// The authorization the backend runs its teardown under. The claim is the same

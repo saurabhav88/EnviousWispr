@@ -198,8 +198,10 @@ struct TelemetryEmitterRegistryTests {
   /// the existing sites (one row per press that minted no session, `warmup_in_flight: true`),
   /// same properties; the activation runs once per install, so it adds at most a few rows. The
   /// event's row stays `ungraded`, unchanged.
+  /// #3735: `settingsChangeBlocked`'s `whisperKitState:` parameter is `whisperState:` (the
+  /// property is `whisper_state`). Same event, site count, cadence and meaning.
   static let sitesFingerprint =
-    "11a6fa6ad2991244fb72566dec0dca4e9c0435b3d576ef4e7f4eace6da84f14e"
+    "1f8aaf63facab70616f2f399073e2e69a514738a20ad4fa08d0e733e3cffe92c"
   static let ungradedFingerprint =
     "8c5e46c2f2f7fb59004bb2eb5ea1ac210ef32dbb79fdcb68b3eff70a28cc133f"
 

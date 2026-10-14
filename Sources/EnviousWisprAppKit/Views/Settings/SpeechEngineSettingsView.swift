@@ -417,12 +417,12 @@ struct SpeechEngineSettingsView: View {
     .environment(\.settingsPR1Density, true)
     .onAppear {
       if settings.selectedBackend == .whisper {
-        Task { await setup.whisperKitSetup.detectState() }
+        Task { await setup.whisperSetup.detectState() }
       }
     }
     .onChange(of: settings.selectedBackend) { _, newBackend in
       if newBackend == .whisper {
-        Task { await setup.whisperKitSetup.detectState() }
+        Task { await setup.whisperSetup.detectState() }
       }
     }
     .sheet(isPresented: $showLanguageLockSheet) {
@@ -521,12 +521,12 @@ struct SpeechEngineSettingsView: View {
     // ── Section 2: WhisperKit Model Setup (conditional) ───────────────
     if settings.selectedBackend == .whisper {
           VStack(alignment: .leading, spacing: 6) {
-            whisperKitSetupContent
+            whisperSetupContent
             // Inline, in the section the user is looking at — never an
             // overlay. Rendered OUTSIDE the state switch: a failed removal
             // can flip the state to error/not-downloaded, and the notice
             // must survive that flip (Codex 2c-r1 P2).
-            if let notice = setup.whisperKitSetup.removeNotice {
+            if let notice = setup.whisperSetup.removeNotice {
               Text(
                 notice == .refusedDictationInFlight
                   ? "Finish your current dictation first, then try again."
@@ -624,7 +624,7 @@ struct SpeechEngineSettingsView: View {
   private var languageSectionIsAvailable: Bool {
     switch settings.selectedBackend {
     case .whisper:
-      if case .ready = setup.whisperKitSetup.setupState { return true }
+      if case .ready = setup.whisperSetup.setupState { return true }
       return false
     case .parakeet:
       return true
@@ -646,9 +646,9 @@ struct SpeechEngineSettingsView: View {
     case .whisper:
       return String(
         localized:
-          "Auto-detect your language, or lock to a specific one. WhisperKit supports 99+ languages.",
+          "Auto-detect your language, or lock to a specific one. Whisper supports 99+ languages.",
         comment:
-          "Speech engine settings, Language section: explanation for the multilingual engine (WhisperKit)."
+          "Speech engine settings, Language section: explanation for the multilingual engine (Whisper)."
       )
     case .parakeet:
       return String(
@@ -874,8 +874,8 @@ struct SpeechEngineSettingsView: View {
   // MARK: - WhisperKit Setup UI
 
   @ViewBuilder
-  private var whisperKitSetupContent: some View {
-    switch setup.whisperKitSetup.setupState {
+  private var whisperSetupContent: some View {
+    switch setup.whisperSetup.setupState {
     case .checking:
       HStack {
         ProgressView()
@@ -899,7 +899,7 @@ struct SpeechEngineSettingsView: View {
           SettingsActionButton(
             title: Copy.setUpModel, isEnabled: true, emphasis: .filled, shape: .roundedRect, size: .medium
           ) {
-            setup.whisperKitSetup.downloadModel()
+            setup.whisperSetup.downloadModel()
           }
           .settingsMapRegistration(.whisperModelSetUp)
 
@@ -930,7 +930,7 @@ struct SpeechEngineSettingsView: View {
               .foregroundStyle(.stTextSecondary)
           }
           Button {
-            setup.whisperKitSetup.cancelDownload()
+            setup.whisperSetup.cancelDownload()
           } label: {
             Text(SettingsItemCopy.Engine.whisperCancel).font(.stHelper).settingsHoverQuiet(tint: .stError)
           }
@@ -952,7 +952,7 @@ struct SpeechEngineSettingsView: View {
           .settingsReadingCopy()
         HStack {
           SettingsActionButton(title: SettingsItemCopy.Engine.whisperResume, isEnabled: true, emphasis: .filled, shape: .roundedRect, size: .medium) {
-            setup.whisperKitSetup.downloadModel()
+            setup.whisperSetup.downloadModel()
           }
           .settingsMapRegistration(.whisperModelResume)
           whisperKitRefreshButton
@@ -1006,7 +1006,7 @@ struct SpeechEngineSettingsView: View {
           // design the founder killed; do not restore it without a new ruling.
           // While the removal drain runs, the button is REPLACED by progress
           // (founder ruling 2026-07-17: visible, unspammable).
-          if setup.whisperKitSetup.isRemoving {
+          if setup.whisperSetup.isRemoving {
             HStack(spacing: 6) {
               ProgressView()
                 .controlSize(.small)
@@ -1016,7 +1016,7 @@ struct SpeechEngineSettingsView: View {
             }
           } else {
             Button {
-              setup.whisperKitSetup.removeModel()
+              setup.whisperSetup.removeModel()
             } label: {
               Text(SettingsItemCopy.Engine.whisperRemove).font(.stHelper).settingsHoverQuiet(tint: .stError)
             }
@@ -1042,7 +1042,7 @@ struct SpeechEngineSettingsView: View {
           .fixedSize(horizontal: false, vertical: true)
 
         Button(SettingsItemCopy.Engine.whisperTryAgain) {
-          Task { await setup.whisperKitSetup.detectState() }
+          Task { await setup.whisperSetup.detectState() }
         }
         .controlSize(.small)
         .font(.stHelper)
@@ -1062,7 +1062,7 @@ struct SpeechEngineSettingsView: View {
   @ViewBuilder
   private var whisperKitRefreshButton: some View {
     Button {
-      Task { await setup.whisperKitSetup.forceDetectState() }
+      Task { await setup.whisperSetup.forceDetectState() }
     } label: {
       Image(systemName: "arrow.clockwise")
         .settingsHoverQuiet()

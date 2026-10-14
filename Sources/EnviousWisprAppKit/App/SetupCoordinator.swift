@@ -15,7 +15,7 @@ final class SetupCoordinator {
   let ollamaSetup: OllamaSetupService
   /// #1386 PR-2: injected, because its download/cancel/availability now come
   /// from the delivery layer, which is built beside this coordinator.
-  let whisperKitSetup: WhisperKitSetupService
+  let whisperSetup: WhisperSetupService
 
   @ObservationIgnored
   private var whisperKitPreloadTask: Task<Void, Never>?
@@ -38,10 +38,10 @@ final class SetupCoordinator {
   private let preloadAction: @MainActor () async -> Void
 
   /// Reads WhisperKit setup readiness for the preload gate. Defaults to the owned
-  /// `whisperKitSetup` service, so production behavior is unchanged. A unit test
+  /// `whisperSetup` service, so production behavior is unchanged. A unit test
   /// injects a reader that returns `.ready` to prove the parakeet backend guard —
   /// not the (test-unreachable) readiness gate — is what suppresses preload (#898).
-  private let setupStateReader: @MainActor () -> WhisperKitSetupState
+  private let setupStateReader: @MainActor () -> WhisperSetupState
 
   /// #1386 PR-2: the ~/Documents phase of the multilingual migration. Injected
   /// (the coordinator that owns it is built beside this one) and fired from
@@ -57,8 +57,8 @@ final class SetupCoordinator {
 
   init(
     asrManager: any ASRManagerInterface,
-    whisperKitSetup: WhisperKitSetupService,
-    setupStateReader: (@MainActor () -> WhisperKitSetupState)? = nil,
+    whisperSetup: WhisperSetupService,
+    setupStateReader: (@MainActor () -> WhisperSetupState)? = nil,
     runDocumentsMigration: @escaping @MainActor () async -> Void = {},
     preloadAction: @escaping @MainActor () async -> Void,
     ollamaStatusProbe: (@MainActor (String) async -> Void)? = nil,
@@ -70,13 +70,13 @@ final class SetupCoordinator {
   ) {
     self.ollamaSetup = ollamaSetup ?? OllamaSetupService()
     self.asrManager = asrManager
-    self.whisperKitSetup = whisperKitSetup
+    self.whisperSetup = whisperSetup
     self.runDocumentsMigration = runDocumentsMigration
     self.preloadAction = preloadAction
     self.ollamaPollDelay = ollamaPollDelay
     // Bind the default readers inside init capturing the owned services as
     // locals (a default parameter value cannot reference `self`).
-    let service = whisperKitSetup
+    let service = whisperSetup
     self.setupStateReader = setupStateReader ?? { service.setupState }
     let ollama = self.ollamaSetup
     self.ollamaStatusProbe =
@@ -95,7 +95,7 @@ final class SetupCoordinator {
       guard !Task.isCancelled, let self else { return }
       await self.runDocumentsMigration()
       guard !Task.isCancelled else { return }
-      await self.whisperKitSetup.detectState()
+      await self.whisperSetup.detectState()
       guard !Task.isCancelled else { return }
       self.startPreloadObservation()
     }
@@ -198,7 +198,7 @@ final class SetupCoordinator {
     ollamaSetup.cleanup()
   }
 
-  /// Observe `whisperKitSetup.setupState` and invoke `preloadAction` when it becomes
+  /// Observe `whisperSetup.setupState` and invoke `preloadAction` when it becomes
   /// `.ready` and the active backend is WhisperKit. Cancels any prior observation
   /// task; safe to call repeatedly (e.g. on backend switch).
   func startPreloadObservation() {
@@ -223,7 +223,7 @@ final class SetupCoordinator {
 
         await withCheckedContinuation { continuation in
           withObservationTracking {
-            _ = self.whisperKitSetup.setupState
+            _ = self.whisperSetup.setupState
           } onChange: {
             continuation.resume()
           }

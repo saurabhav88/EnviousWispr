@@ -67,7 +67,7 @@ extension WhisperKit: LoadedASRModel {}
 /// dictation accuracy on Apple Silicon (GPU for mel/encoder/decoder — #879
 /// Phase C; the prior Neural Engine path cold-compiled ~109s on a wiped cache).
 ///
-/// The model must be downloaded via WhisperKitSetupService before calling prepare().
+/// The model must be downloaded via WhisperSetupService before calling prepare().
 public actor WhisperKitBackend: ASRBackend {
   /// Protocol-required readiness, now COMPUTED from the single `loadState`
   /// authority (#1276 Step 1) — true iff the model is loaded AND its warm-up has
@@ -211,7 +211,7 @@ public actor WhisperKitBackend: ASRBackend {
   var loadPhaseForTesting: LoadPhase { loadState.phase }
 
   /// Test-only: drive the load single-flight with an INJECTED resolver, so tests
-  /// avoid the real `WhisperKitSetupService` / network resolver `prepare()` uses.
+  /// avoid the real `WhisperSetupService` / network resolver `prepare()` uses.
   /// Pairs with `TestSeams` (which fakes the kit build + warm-up).
   func loadForTesting(resolveModelPath: @escaping @Sendable () async throws -> String)
     async throws

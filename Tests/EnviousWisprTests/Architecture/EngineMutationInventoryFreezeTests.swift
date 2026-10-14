@@ -306,7 +306,7 @@ import Testing
   /// - `start` (`WhisperKitIncrementalSession`): 25 raw text matches, almost
   ///   all `Timer`/`NWListener`/`NWConnection`/hotkey-service/watcher
   ///   `.start()` calls with no relation to the ASR engine. The real site
-  ///   is `WhisperEngineAdapter.swift:538` (`session.start(audioSamplesProvider:)`).
+  ///   is `WhisperEngineAdapter.startStreamingSession`'s `session.start(audioSamplesProvider:)`.
   ///
   /// Both exclusions are permanent under THIS design, not temporary
   /// oversights — a future rename of either protocol requirement (e.g.
@@ -991,8 +991,8 @@ import Testing
       file: "Sources/EnviousWisprPipeline/WhisperEngineAdapter.swift", matcher: "unload",
       text: "await captured.unload()", classification: .structurallySafe),
     // `unloadForRemoval()`'s unload — reached ONLY via the user-facing Remove
-    // command (`WhisperKitSetupService.removeModel()` -> `removeModelAction`
-    // -> `WhisperKitLegacyUpgradeCoordinator.remove()` -> `unloadForRemoval`
+    // command (`WhisperSetupService.removeModel()` -> `removeModelAction`
+    // -> #3735 `WhisperDeliveryWiring`'s Remove action -> `WhisperRemovalHook.unloadForRemoval`
     // closure -> `KernelDictationDriver.unloadEngineForRemoval()` -> here),
     // which is entirely inside `removeModel()`'s own "whisperKitRemove"
     // claim closure (verified end-to-end; this is NOT the same as the two
@@ -1338,15 +1338,16 @@ import Testing
       matcher: "cancelSessionlessWarmup", text: "await cancelling.cancelSessionlessWarmup()",
       classification: .transitivelyCoveredByCaller),
 
-    // MARK: WhisperKitLegacyUpgradeCoordinator / KernelDictationDriver /
-    // WisprBootstrapper — the three remaining links in the ALREADY-verified
-    // "whisperKitRemove" claim chain this file's existing
-    // `WhisperEngineAdapter.swift` `unloadForRemoval` entry documents
-    // end-to-end (`WhisperKitSetupService.removeModel()` ->
-    // `WhisperKitLegacyUpgradeCoordinator.remove()` -> `unloadForRemoval`
+    // MARK: WhisperDeliveryWiring / KernelDictationDriver / WisprBootstrapper —
+    // the remaining links in the ALREADY-verified "whisperKitRemove" claim chain
+    // this file's existing `WhisperEngineAdapter.swift` `unloadForRemoval` entry
+    // documents end-to-end (`WhisperSetupService.removeModel()` -> #3735
+    // `WhisperDeliveryWiring`'s Remove action -> `WhisperRemovalHook.unloadForRemoval`
     // closure -> `KernelDictationDriver.unloadEngineForRemoval()` -> the
     // already-counted adapter entry). Each is one more layer of that same
-    // verified chain, not a new one.
+    // verified chain, not a new one. `WhisperKitLegacyUpgradeCoordinator.remove()`
+    // is no longer reached (#3735 retired its wiring) and is deleted with the
+    // rest of WhisperKit; its site stays counted until then.
     CallSite(
       file: "Sources/EnviousWisprPipeline/WhisperKitLegacyUpgradeCoordinator.swift",
       matcher: "unloadForRemoval", text: "await unloadForRemoval()",
@@ -1358,8 +1359,12 @@ import Testing
     // The closure WIRING itself — a property assignment, not a call; safety
     // inherited from wherever it is actually invoked (the same chain above).
     CallSite(
+      file: "Sources/EnviousWisprAppKit/App/WhisperDeliveryWiring.swift",
+      matcher: "unloadForRemoval", text: "await removal.unloadForRemoval()",
+      classification: .transitivelyCoveredByCaller),
+    CallSite(
       file: "Sources/EnviousWisprAppKit/App/WisprBootstrapper.swift", matcher: "unloadForRemoval",
-      text: "whisperKitRetirement?.unloadForRemoval = { [weak whisperKitKernelDriver] in",
+      text: "whisper.removal.unloadForRemoval = { [weak whisperKitKernelDriver] in",
       classification: .transitivelyCoveredByCaller),
   ]
 

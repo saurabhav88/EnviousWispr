@@ -251,7 +251,8 @@ public enum KernelDictationDriverFactory {
   /// the model-owning backend actor and the LID actor.
   package struct WhisperKitInputs {
     package let audioCapture: any AudioCaptureInterface
-    package let whisperKitBackend: WhisperKitBackend
+    /// #3735: transcribe.cpp; `WhisperKitBackend` no longer serves this route.
+    package let whisperKitBackend: LiveTranscribeCppWhisperBackend
     package let languageDetector: LanguageDetector
     package let vadSignalSource: CaptureVADSignalSource
     package let transcriptStore: TranscriptStore
@@ -325,7 +326,7 @@ public enum KernelDictationDriverFactory {
     @MainActor
     package init(
       audioCapture: any AudioCaptureInterface,
-      whisperKitBackend: WhisperKitBackend,
+      whisperKitBackend: LiveTranscribeCppWhisperBackend,
       languageDetector: LanguageDetector,
       vadSignalSource: CaptureVADSignalSource,
       transcriptStore: TranscriptStore,
@@ -487,7 +488,7 @@ public enum KernelDictationDriverFactory {
     // PR-6 (#827): concrete adapter construction is owned by
     // `KernelAdapterFactory`; this file names no concrete adapter type in code.
     let captureSource = inputs.audioCapture
-    let adapter = KernelAdapterFactory.makeWhisperKitAdapter(
+    let adapter = KernelAdapterFactory.makeWhisperAdapter(
       backend: inputs.whisperKitBackend,
       languageDetector: inputs.languageDetector,
       audioCaptureSessionIDSource: { captureSource.currentCaptureSessionID },

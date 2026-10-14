@@ -46,7 +46,7 @@ final class AudioEventRouter {
         stage: "audio", message: "Audio engine interrupted", level: .error,
         data: [
           "parakeet_state": "\(pState)",
-          "whisperkit_state": "\(wkState)",
+          "whisper_state": "\(wkState)",
         ])
       switch self.resolveActiveCaptureBackend() {
       case .parakeet:

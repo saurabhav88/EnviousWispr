@@ -42,6 +42,32 @@ package enum KernelAdapterFactory {
       batchDecodeFaultController: batchDecodeFaultController)
   }
 
+  /// #3735: the production Whisper adapter, over transcribe.cpp. It starts the adapter's
+  /// memory-pressure binding (§3.2a) here, at construction. The production backend is built
+  /// with `loadsAfterPressureBinding`, so every load, from any caller, waits for this binding:
+  /// no model is ever resident on it without the EngineMutationScope-authorized pressure
+  /// unload.
+  package static func makeWhisperAdapter<Driver: WhisperExecutorDriving>(
+    backend: TranscribeCppWhisperBackend<Driver>,
+    languageDetector: LanguageDetector,
+    audioCaptureSessionIDSource: @escaping @MainActor () -> UInt64,
+    engineMutationScope: EngineMutationScope,
+    vendorDecodeOccupancy: VendorDecodeOccupancy,
+    deliveredModelIdentity: ASRModelIdentity?,
+    batchDecodeFaultController: BatchDecodeFaultController? = nil
+  ) -> any ASREngineAdapter {
+    let adapter = WhisperEngineAdapter(
+      backend: backend,
+      engineMutationScope: engineMutationScope,
+      languageDetector: languageDetector,
+      audioCaptureSessionIDSource: audioCaptureSessionIDSource,
+      vendorDecodeOccupancy: vendorDecodeOccupancy,
+      batchDecodeFaultController: batchDecodeFaultController,
+      deliveredModelIdentity: deliveredModelIdentity)
+    adapter.startMemoryPressureBinding(to: backend)
+    return adapter
+  }
+
   /// The single WhisperKit adapter construction site in `Sources/`.
   /// `audioCaptureSessionIDSource` mirrors the adapter's own parameter (PR-5
   /// Rung 4.5) so the adapter can snapshot the capture session id at

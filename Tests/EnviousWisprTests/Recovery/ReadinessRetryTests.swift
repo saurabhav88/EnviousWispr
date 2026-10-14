@@ -29,8 +29,9 @@ import Testing
 struct ActiveEngineLoadPostconditionTests {
 
   /// A backend the parakeet branch never touches; `.live` requires one.
-  private static func unusedBackend() -> WhisperKitBackend {
-    WhisperKitBackend(admittedModelFolder: { nil })
+  private static func unusedBackend() -> LiveTranscribeCppWhisperBackend {
+    LiveTranscribeCppWhisperBackend(
+          driver: LiveWhisperExecutorDriver(), modelVariant: "q8_0", admittedModelPath: { nil })
   }
 
   /// Constructed through `.live(...)`, never the memberwise initializer — a
@@ -108,7 +109,8 @@ struct ReadinessRetryTelemetryContractTests {
     manager.readyAfterLoad = false
     let engine = ActiveEngineOperation.live(
       asrManager: manager, parakeetUpgrade: .legacyForTesting(),
-      whisperKitBackend: WhisperKitBackend(admittedModelFolder: { nil }))
+      whisperKitBackend: LiveTranscribeCppWhisperBackend(
+          driver: LiveWhisperExecutorDriver(), modelVariant: "q8_0", admittedModelPath: { nil }))
     let suite = BenchmarkSuite(
       engineMutationScope: .alwaysAllowedForTesting, isEngineSwitching: { false })
 
@@ -133,7 +135,8 @@ struct ReadinessRetryTelemetryContractTests {
     manager.readyAfterLoad = false
     let engine = ActiveEngineOperation.live(
       asrManager: manager, parakeetUpgrade: .legacyForTesting(),
-      whisperKitBackend: WhisperKitBackend(admittedModelFolder: { nil }))
+      whisperKitBackend: LiveTranscribeCppWhisperBackend(
+          driver: LiveWhisperExecutorDriver(), modelVariant: "q8_0", admittedModelPath: { nil }))
     let lease = EngineLease()
     var released = 0
     lease.onReleased = { released += 1 }
@@ -167,6 +170,15 @@ struct ReadinessRetryTelemetryContractTests {
     let classified = recoveryFailureClass(for: ASREngineNotReadyAfterLoadError())
     #expect(classified == .loadReturnedNotReady)
     #expect(classified != .cancelled, "cancelled is terminal — this is the #2132 trap")
+  }
+
+  /// #3735: a recovered recording the transcribe.cpp engine could not load for or decode is
+  /// classified as such, not as `other` (the residual #2132 emptied).
+  @Test("a transcribe.cpp load or decode failure has its own recovery class")
+  func transcribeCppFailuresAreClassified() {
+    #expect(recoveryFailureClass(for: TranscribeCppWhisperError.loadFailed(status: 3)) == .whisperModelLoad)
+    #expect(
+      recoveryFailureClass(for: TranscribeCppWhisperError.runFailed(status: 5)) == .whisperTranscription)
   }
 
 }

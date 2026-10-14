@@ -197,7 +197,7 @@ struct WhisperLIDParityRunner {
 
   /// Built off the main actor, so the private defaults never cross an isolation boundary.
   nonisolated static func makeDetector(suite: String) -> LanguageDetector {
-    LanguageDetector(clock: FixedParityClock(), defaults: UserDefaults(suiteName: suite) ?? .init())
+    LanguageDetector(clock: FixedParityClock(), defaults: TestDefaults.suite(suite) ?? .init())
   }
 
   enum ParityError: Error {

@@ -1,0 +1,153 @@
+import EnviousWisprCore
+@preconcurrency import FluidAudio
+import Foundation
+import Testing
+
+@testable import EnviousWisprASR
+@testable import EnviousWisprAppKit
+@testable import EnviousWisprPipeline
+@testable import EnviousWisprServices
+
+/// #3735 chunk 7: the Whisper engine exactly as the app composes it — delivery registration,
+/// `WhisperDeliveryWiring`, the factory's adapter with its memory-pressure binding — decoding
+/// real speech with the real turbo Q8_0 model on Metal.
+///
+/// **What the user sees when this fails:** a Whisper dictation produces no text, a cancelled
+/// dictation leaves the engine unusable for the next one, or the engine cannot load again
+/// after it was unloaded while idle.
+///
+/// The model is admitted into a private temporary root (a clone of the #3705 evaluation copy,
+/// verified by the delivery controller's own hash check), never the app's data. Skipped when
+/// that copy is absent; a skip is not a pass.
+@MainActor
+@Suite("Whisper production wiring on the real model (#3735)", .serialized, .tags(.productOutcome))
+struct WhisperProductionWiringRealBoundaryTests {
+
+  nonisolated static let repoRoot = URL(filePath: #filePath)
+    .deletingLastPathComponent()  // Pipeline
+    .deletingLastPathComponent()  // EnviousWisprTests
+    .deletingLastPathComponent()  // Tests
+    .deletingLastPathComponent()  // repo root
+
+  /// The #3705 evaluation copy, looked up in this checkout and then in the main checkout.
+  nonisolated static var evaluationModel: URL {
+    let relative = "artifacts/issue-3705-transcribecpp-eval/models/whisper-large-v3-turbo-Q8_0.gguf"
+    let candidates = [
+      repoRoot.appending(path: relative),
+      repoRoot.deletingLastPathComponent().appending(path: "EnviousWispr").appending(
+        path: relative),
+    ]
+    return candidates.first { FileManager.default.fileExists(atPath: $0.path) } ?? candidates[0]
+  }
+
+  nonisolated static var modelIsPresent: Bool {
+    let size =
+      (try? FileManager.default.attributesOfItem(atPath: evaluationModel.path)[.size])
+      as? NSNumber
+    return size?.int64Value == 886_381_760
+  }
+
+  /// Literal oracle: what the committed clip says (#3705 receipt, `WhisperGGUFRealDeliveryTests`).
+  nonisolated static let expectedWords =
+    "the quick brown fox jumps over the lazy dog while the morning sun rises slowly above the quiet hills"
+
+  nonisolated static func words(_ text: String) -> String {
+    text.lowercased().split(whereSeparator: { !$0.isLetter && !$0.isNumber }).joined(separator: " ")
+  }
+
+  @Test(
+    "an admitted model decodes real speech through the adapter; a cancelled decode leaves it reusable; an idle unload reloads",
+    .enabled(if: Self.modelIsPresent),
+    .tags(.realBoundary)
+  )
+  func admittedDecodeCancelReuseAndReload() async throws {
+    let samples = try AudioConverter().resampleAudioFile(
+      path: Self.repoRoot.appending(path: "scripts/freeze-suite/clips/normal-speech.wav").path)
+    #expect(samples.count > 16_000)
+
+    let root = FileManager.default.temporaryDirectory
+      .appendingPathComponent("ew-3735-wiring-\(UUID().uuidString)", isDirectory: true)
+    defer { try? FileManager.default.removeItem(at: root) }
+    let flags = try #require(TestDefaults.suite("ew-3735-wiring-flags-\(UUID().uuidString)"))
+    let home = ModelDeliveryHome(
+      engineMutationScope: .alwaysAllowedForTesting,
+      manifestBundle: try #require(
+        Bundle(url: Self.repoRoot.appendingPathComponent("Sources/EnviousWispr/Resources"))),
+      appSupportOverride: root,
+      deliveryFlagDefaults: flags)
+    let registration = try #require(home.whisperRegistration)
+    let entrypoint = try #require(registration.manifest.resolvedEntrypointPath)
+    try FileManager.default.createDirectory(
+      at: registration.installDirectory, withIntermediateDirectories: true)
+    try FileManager.default.copyItem(
+      at: Self.evaluationModel,
+      to: registration.installDirectory.appendingPathComponent(entrypoint))
+
+    let settings = SettingsManager(
+      defaults: try #require(TestDefaults.suite("ew-3735-wiring-\(UUID().uuidString)")))
+    settings.selectedBackend = .whisper
+    let wired = WhisperDeliveryWiring.make(
+      modelDelivery: home, settings: settings, engineMutationScope: .alwaysAllowedForTesting)
+    // The controller's own admission: size and sha256 against the shipped manifest.
+    #expect(await home.whisperHandle?.adoptIfPresent() == true)
+
+    let occupancy = VendorDecodeOccupancy()
+    let adapter = try #require(
+      KernelAdapterFactory.makeWhisperAdapter(
+        backend: wired.backend,
+        languageDetector: LanguageDetector(),
+        audioCaptureSessionIDSource: { 0 },
+        engineMutationScope: .alwaysAllowedForTesting,
+        vendorDecodeOccupancy: occupancy,
+        deliveredModelIdentity: registration.manifest.identity.asrModelIdentity)
+        as? WhisperEngineAdapter)
+    #expect(adapter.memoryPressureBinding != nil, "the factory starts the pressure binding")
+
+    // 1. Warm-up and a real decode through the adapter's batch path, automatic language.
+    try await adapter.warmUp(modelReceipt: nil)
+    #expect(adapter.readiness == .ready)
+    #expect(Self.words(try await decode(adapter, samples)) == Self.expectedWords)
+
+    // 2. Cancel a decode inside the native call, then decode again on the same engine.
+    let long = Array(repeating: samples, count: 8).flatMap { $0 }
+    let (entered, signal) = AsyncStream.makeStream(of: Void.self)
+    let take = Task {
+      try await wired.backend.transcribe(
+        audioSamples: long, options: TranscriptionOptions(language: "en"),
+        onInferenceEntered: { signal.yield() })
+    }
+    for await _ in entered { break }
+    take.cancel()
+    let cancelled = await take.result
+    #expect(throws: CancellationError.self) { try cancelled.get() }
+    #expect(occupancy.isIdle)
+    #expect(Self.words(try await decode(adapter, samples)) == Self.expectedWords)
+
+    // 3. The idle unload, under the mutation claim, then a reload and another decode.
+    adapter.applyUnloadPolicy(.immediately)
+    await adapter.modelUnloadTaskForUnitTests?.value
+    #expect(adapter.readiness == .notReady)
+    #expect(await wired.backend.isReady == false)
+    try await adapter.warmUp(modelReceipt: nil)
+    #expect(adapter.readiness == .ready)
+    #expect(Self.words(try await decode(adapter, samples)) == Self.expectedWords)
+    await wired.backend.unload()
+  }
+
+  /// One dictation through the adapter's batch path: begin, feed, speech range, finalize.
+  private func decode(_ adapter: WhisperEngineAdapter, _ samples: [Float]) async throws -> String {
+    let session = SessionID()
+    try await adapter.beginSession(session, options: TranscriptionOptions(), streaming: false)
+    let buffer = try #require(FakeAudioCapture.makeBuffer(samples: samples))
+    adapter.acceptAudio(
+      AudioBufferHandoff(
+        buffer: buffer, frameCount: samples.count, sequence: 1, sessionID: session))
+    adapter.observeSpeechSegments([SpeechSegment(startSample: 0, endSample: samples.count)])
+    let outcome = await adapter.finalize(batchSamples: nil)
+    guard case .transcript(let result) = outcome else {
+      Issue.record("expected a transcript, got \(outcome)")
+      return ""
+    }
+    return result.text
+  }
+}

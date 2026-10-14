@@ -109,7 +109,7 @@ struct ActiveEngineOperation {
   ///   so this door never loads the request an earlier selection published.
   static func live(
     asrManager: any ASRManagerInterface, parakeetUpgrade: ParakeetUpgradeCoordinator,
-    whisperKitBackend: WhisperKitBackend,
+    whisperKitBackend: LiveTranscribeCppWhisperBackend,
     afterLoadForTesting: (@MainActor () async -> Void)? = nil
   ) -> ActiveEngineOperation {
     let readiness: @MainActor () async -> Bool = {

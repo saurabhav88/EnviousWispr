@@ -43,8 +43,10 @@ struct SentryScopeWriterFreezeTests {
   /// model tags from our own manifests (model name, 8-character revision, variant) and a closed
   /// load phase, every value through `SentryEventSanitizer.redactString`, absent values removed.
   /// Written only by `ASRModelScopeOwner` through `updateASRModelScope`.
+  /// #3735: no new site. The adapter's `finalize` breadcrumb moved with its file rename to
+  /// the renamed `WhisperEngineAdapter.swift`; its data is unchanged metadata.
   static let inventoryFingerprint =
-    "88eb0e2baf4ed9a81f12d5954ebda39b9f5914a5693a24de0021ce5ec74cd218"
+    "44aae975f0aae33f4151e120c5ace8f20156a8fb553da1e404ef895a7085eb1e"
 
   struct Site: Hashable, Comparable {
     let file: String

@@ -2094,6 +2094,17 @@
         }
       }
     },
+    "Accuracy is the same either way, because the same transcription runs." : {
+      "comment" : "Speech engine settings, Faster Transcription: help panel: accuracy.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Genauigkeit ist in beiden Fällen gleich, weil dieselbe Transkription ausgeführt wird."
+          }
+        }
+      }
+    },
     "Accuracy, measured" : {
       "comment" : "Speech engine settings, Faster Transcription: help panel heading.",
       "localizations" : {
@@ -3522,13 +3533,13 @@
         }
       }
     },
-    "Auto-detect your language, or lock to a specific one. WhisperKit supports 99+ languages." : {
-      "comment" : "Speech engine settings, Language section: explanation for the multilingual engine (WhisperKit).",
+    "Auto-detect your language, or lock to a specific one. Whisper supports 99+ languages." : {
+      "comment" : "Speech engine settings, Language section: explanation for the multilingual engine (Whisper).",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Lass deine Sprache automatisch erkennen oder wähle eine feste Sprache. WhisperKit unterstützt über 99 Sprachen."
+            "value" : "Lass deine Sprache automatisch erkennen oder wähle eine feste Sprache. Whisper unterstützt über 99 Sprachen."
           }
         }
       }
@@ -8726,17 +8737,6 @@
         }
       }
     },
-    "If you pick a specific language and often dictate for more than a minute, turn this on. Otherwise it makes little difference either way." : {
-      "comment" : "Speech engine settings, Faster Transcription: help panel: recommendation.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Wenn du eine feste Sprache auswählst und oft länger als eine Minute diktierst, schalte dies ein. Sonst macht es kaum einen Unterschied."
-          }
-        }
-      }
-    },
     "Immediately" : {
       "comment" : "Speech engine settings: when an idle speech model is unloaded from memory.",
       "localizations" : {
@@ -12343,17 +12343,6 @@
         }
       }
     },
-    "On short dictations you will not notice a difference. On long ones it helps clearly: transcribing after you stop gets slower the longer you spoke, while transcribing as you go stays about the same however long the recording is." : {
-      "comment" : "Speech engine settings, Faster Transcription: help panel: speed.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Bei kurzen Diktaten merkst du keinen Unterschied. Bei langen hilft es deutlich: Die Transkription nach dem Stoppen dauert mit der Aufnahmelänge immer länger. Die laufende Transkription braucht danach ungefähr gleich lang, egal wie lang die Aufnahme ist."
-          }
-        }
-      }
-    },
     "On this Mac" : {
       "comment" : "AI Polish provider list: group heading.\nAI Polish, Ollama model menu: heading for models that run on this Mac.",
       "localizations" : {
@@ -12376,13 +12365,13 @@
         }
       }
     },
-    "On this engine, transcribing as you go is about as accurate as waiting until you stop. It can still occasionally drop a final word or two, which we are working on." : {
-      "comment" : "Speech engine settings, Faster Transcription: help panel: accuracy.",
+    "On this engine, transcription currently happens once when you stop, whether this is on or off. Nothing looks different while you record." : {
+      "comment" : "Speech engine settings, Faster Transcription: description under the toggle (multilingual engine).",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Bei dieser Engine ist die laufende Transkription ungefähr so genau wie die Transkription nach dem Stoppen. Gelegentlich fehlen trotzdem ein oder zwei Wörter am Ende. Wir arbeiten daran."
+            "value" : "Bei dieser Engine wird derzeit erst nach dem Stoppen transkribiert, egal ob dies ein- oder ausgeschaltet ist. Während der Aufnahme sieht alles gleich aus."
           }
         }
       }
@@ -14645,6 +14634,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Überprüfen und starten"
+          }
+        }
+      }
+    },
+    "Right now this setting does not change the speed on this engine: it transcribes once when you stop either way." : {
+      "comment" : "Speech engine settings, Faster Transcription: help panel: speed.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Derzeit ändert diese Einstellung bei dieser Engine nichts an der Geschwindigkeit: Es wird in beiden Fällen erst nach dem Stoppen transkribiert."
           }
         }
       }
@@ -18610,17 +18610,6 @@
         }
       }
     },
-    "Transcribes while you speak instead of once when you stop. Nothing looks different while you record; this only changes when the work happens. It mainly helps on long recordings, and it needs a language selected." : {
-      "comment" : "Speech engine settings, Faster Transcription: description under the toggle (multilingual engine).",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Transkribiert während des Sprechens statt erst nach dem Stoppen. Während der Aufnahme sieht alles gleich aus; nur der Zeitpunkt der Verarbeitung ändert sich. Das hilft vor allem bei langen Aufnahmen und erfordert eine ausgewählte Sprache."
-          }
-        }
-      }
-    },
     "Transcribing" : {
       "comment" : "Sidebar status chip while speech is turned into text. Very short space, no ellipsis.\nTranscribe a File, Working step: the transcribing row, before its minutes are known.",
       "localizations" : {
@@ -20025,12 +20014,12 @@
         }
       }
     },
-    "WhisperKit requires a ~1.5 GB model download. It runs fully on your Mac, no internet needed after setup." : {
+    "Whisper needs an 886 MB model download. It runs fully on your Mac, no internet needed after setup." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "WhisperKit benötigt einen Modell-Download von etwa 1,5 GB. Danach läuft es vollständig auf deinem Mac, ohne Internetverbindung."
+            "value" : "Whisper benötigt einen Modell-Download von 886 MB. Danach läuft es vollständig auf deinem Mac, ohne Internetverbindung."
           }
         }
       }
@@ -20390,6 +20379,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Du kannst weiter diktieren, während %@ heruntergeladen wird."
+          }
+        }
+      }
+    },
+    "You can leave this setting as it is. It has no effect on this engine yet." : {
+      "comment" : "Speech engine settings, Faster Transcription: help panel: recommendation.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Du kannst diese Einstellung so lassen, wie sie ist. Bei dieser Engine hat sie noch keine Wirkung."
           }
         }
       }

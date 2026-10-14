@@ -174,7 +174,8 @@ enum DictationRuntimeFixtures {
     return KernelDictationDriverFactory.makeForWhisperKit(
       inputs: .init(
         audioCapture: audioCapture,
-        whisperKitBackend: WhisperKitBackend(admittedModelFolder: { nil }),
+        whisperKitBackend: LiveTranscribeCppWhisperBackend(
+          driver: LiveWhisperExecutorDriver(), modelVariant: "q8_0", admittedModelPath: { nil }),
         languageDetector: detector,
         vadSignalSource: vad,
         transcriptStore: store,

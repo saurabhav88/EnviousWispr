@@ -188,6 +188,11 @@ public enum RecoveryFailureClass: String, Sendable {
   // vocabulary is cheap to avoid now and expensive to undo after it ships.
   case transcriptionFailed = "asr_transcription_failed"
   case whisperKitModelLoad = "whisperkit_model_load"
+  /// #3735: the transcribe.cpp Whisper engine's model load or decode failed
+  /// (`TranscribeCppWhisperError`). Builds before #3735 report the WhisperKit and
+  /// `other` classes for the same slot.
+  case whisperModelLoad = "whisper_model_load"
+  case whisperTranscription = "whisper_transcription"
   case parakeetModelLoad = "parakeet_model_load"
   case parakeetTranscription = "parakeet_transcription"
   case xpcTransport = "xpc_transport"
@@ -3616,7 +3621,7 @@ public final class TelemetryService {
   /// so it was deferred to the next idle/recording-start. Bypass, not a failure.
   public func settingsChangeBlocked(
     setting: String, requested: String, activeBackend: String,
-    reason: String, parakeetState: String, whisperKitState: String
+    reason: String, parakeetState: String, whisperState: String
   ) {
     #if DEBUG
       testEventHook?(
@@ -3628,7 +3633,7 @@ public final class TelemetryService {
             "active_backend": activeBackend,
             "reason": reason,
             "parakeet_state": parakeetState,
-            "whisperkit_state": whisperKitState,
+            "whisper_state": whisperState,
           ]))
     #endif
     PostHogSDK.shared.capture(
@@ -3639,7 +3644,7 @@ public final class TelemetryService {
         "active_backend": activeBackend,
         "reason": reason,
         "parakeet_state": parakeetState,
-        "whisperkit_state": whisperKitState,
+        "whisper_state": whisperState,
       ])
   }
 

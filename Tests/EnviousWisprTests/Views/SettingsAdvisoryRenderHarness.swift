@@ -112,7 +112,7 @@ struct SettingsAdvisoryRenderHarness {
       legacyStore: FileLegacyKeyStore(storageDirectory: runDirectory.appending(path: "fixture-keys")))
     let setup = SetupCoordinator(
       asrManager: RouterTestASRManager(),
-      whisperKitSetup: WhisperKitSetupService(engineMutationScope: .alwaysAllowedForTesting),
+      whisperSetup: WhisperSetupService(engineMutationScope: .alwaysAllowedForTesting),
       preloadAction: {}, ollamaStatusProbe: { _ in })
     let egOne = EGOneRuntime(
       manifest: nil, serverBinaryURL: nil, delivery: nil, defaults: defaults)

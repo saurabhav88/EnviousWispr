@@ -116,7 +116,7 @@ struct DictationSettingsRenderHarness {
   struct Scenario {
     var label = "ordinary"
     var backend: ASRBackendType = .parakeet
-    var setupState: WhisperKitSetupState = .notDownloaded
+    var setupState: WhisperSetupState = .notDownloaded
     var expanded = false
     var removing = false
     var preparing = false
@@ -154,7 +154,7 @@ struct DictationSettingsRenderHarness {
     let warmGate = InstallGate()
     if scenario.removing { Self.installGates.append(removalGate) }
     if scenario.preparing { Self.installGates.append(warmGate) }
-    let service = WhisperKitSetupService(engineMutationScope: .alwaysAllowedForTesting,
+    let service = WhisperSetupService(engineMutationScope: .alwaysAllowedForTesting,
       readAvailability: { scenario.setupState },
       startDownload: { Issue.record("render tried downloading"); return false },
       cancelActiveDownload: { Issue.record("render tried cancelling"); return false },
@@ -168,7 +168,7 @@ struct DictationSettingsRenderHarness {
       service.removeModel()  // staged fake removal, no filesystem deletion capability
       try #require(service.isRemoving)
     }
-    let setup = SetupCoordinator(asrManager: RouterTestASRManager(), whisperKitSetup: service,
+    let setup = SetupCoordinator(asrManager: RouterTestASRManager(), whisperSetup: service,
       setupStateReader: { .notDownloaded }, preloadAction: { Issue.record("render tried preloading") },
       ollamaStatusProbe: { _ in })
     let presenter = LanguageSuggestionPresenter(overlay: NoOverlay(), onLanguageAccepted: { _ in }, defaults: defaults)
@@ -307,7 +307,7 @@ struct DictationSettingsRenderHarness {
   @Test("render Engine setup states and Preview readiness/inventory using isolated owners",
     .enabled(if: ProcessInfo.processInfo.environment["EW_RENDER_DICTATION"] == "1"))
   func statePages() async throws {
-    let engineStates: [(String, WhisperKitSetupState)] = [
+    let engineStates: [(String, WhisperSetupState)] = [
       ("setup", .notDownloaded), ("checking", .checking), ("downloading", .downloading(progress: 0.42, status: "420 MB of 1000 MB")),
       ("paused", .paused), ("ready", .ready), ("error", .error("Model files could not be verified. Try again.")),
     ]

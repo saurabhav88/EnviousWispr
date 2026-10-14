@@ -21,7 +21,8 @@ import Foundation
 /// (for the real-engine-boundary hold/release/query).
 @MainActor
 package final class BatchDecodeFaultController {
-  private let whisperKitBackend: WhisperKitBackend?
+  /// #3735: the Whisper route's transcribe.cpp backend (it replaced `WhisperKitBackend`).
+  private let whisperKitBackend: LiveTranscribeCppWhisperBackend?
   // #1908: widened from the concrete `ASRManagerProxy?` to the shared
   // interface — a hard downcast to the proxy type went silently dark
   // (`nil`, no build error, no test failure) the moment the composition
@@ -29,7 +30,9 @@ package final class BatchDecodeFaultController {
   // the three `#if DEBUG` batch-decode methods this type calls.
   private let asrManager: (any ASRManagerInterface)?
 
-  package init(whisperKitBackend: WhisperKitBackend?, asrManager: (any ASRManagerInterface)?) {
+  package init(
+    whisperKitBackend: LiveTranscribeCppWhisperBackend?, asrManager: (any ASRManagerInterface)?
+  ) {
     self.whisperKitBackend = whisperKitBackend
     self.asrManager = asrManager
   }
@@ -124,7 +127,7 @@ package final class BatchDecodeFaultController {
 
   // MARK: Real-engine-boundary hold/release/query (§3.2a-i)
   //
-  // DEBUG-only: `WhisperKitBackend`'s and `ASRManagerProxy`'s hold/release/
+  // DEBUG-only: `TranscribeCppWhisperBackend`'s and `ASRManagerProxy`'s hold/release/
   // clear methods are themselves declared inside `#if DEBUG` (they don't
   // exist in Release), and this controller is deliberately NOT gated at the
   // type level (§ file header) — so these four methods must be individually
@@ -134,7 +137,7 @@ package final class BatchDecodeFaultController {
 
   #if DEBUG
     /// Arms a one-shot hold on the NEXT real decode call the given backend
-    /// issues (`WhisperKitBackend.armBatchDecodeHold` in-process;
+    /// issues (`TranscribeCppWhisperBackend.armBatchDecodeHold` in-process;
     /// `ParakeetBackend.armBatchDecodeHold` across XPC via `ASRManagerProxy`).
     package func holdBatchDecode(backend: ASRBackendType, trialID: String) async {
       switch backend {
@@ -156,7 +159,7 @@ package final class BatchDecodeFaultController {
     }
 
     /// Merges this controller's own kernel-side timestamps with the
-    /// backend-side timestamps — read directly from `WhisperKitBackend`
+    /// backend-side timestamps — read directly from `TranscribeCppWhisperBackend`
     /// in-process, or from the shared `BatchDecodeFaultSnapshotFile` for
     /// Parakeet (never over XPC — XPC replies serialize behind a pending
     /// request, so a query cannot ask the service for progress while a

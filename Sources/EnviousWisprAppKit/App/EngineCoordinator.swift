@@ -605,7 +605,7 @@ final class EngineCoordinator {
       TelemetryService.shared.settingsChangeBlocked(
         setting: "selected_backend", requested: want.rawValue, activeBackend: active.rawValue,
         reason: reason.rawValue,
-        parakeetState: deps.stateLabel(.parakeet), whisperKitState: deps.stateLabel(.whisper))
+        parakeetState: deps.stateLabel(.parakeet), whisperState: deps.stateLabel(.whisper))
     }
     publishStatus()
   }
@@ -622,7 +622,7 @@ final class EngineCoordinator {
   /// bails unless WhisperKit is the active backend, so a Settings-initiated
   /// download completing while Fast is active would otherwise never flip
   /// `selectedInstalled`. Reading `isInstalled(.whisper)` inside the tracking
-  /// block registers the dependency on `whisperKitSetup.setupState` (REV-4). In
+  /// block registers the dependency on `whisperSetup.setupState` (REV-4). In
   /// unit tests the fake reader touches no `@Observable` source, so this is inert.
   private func observeInstalledState() {
     withObservationTracking {

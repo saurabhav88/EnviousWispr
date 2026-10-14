@@ -4,13 +4,13 @@ import Testing
 @testable import EnviousWisprASR
 
 /// #1386 PR-2b. The Settings-row presenter over the injected delivery actions.
-@Suite @MainActor struct WhisperKitSetupServiceTests {
+@Suite(.tags(.productOutcome)) @MainActor struct WhisperSetupServiceTests {
 
   /// Codex 2b-r1 P2: a REFUSED download (kill switch off, no wiring) publishes no
   /// delivery state, so the optimistic "Starting download..." would stick forever.
   /// The refusal must re-detect back to honest truth.
   @Test func aRefusedDownloadReturnsTheRowToHonestStateInsteadOfStickingForever() async throws {
-    let service = WhisperKitSetupService(
+    let service = WhisperSetupService(
       engineMutationScope: .alwaysAllowedForTesting,
       readAvailability: { .notDownloaded },
       startDownload: { false })
@@ -34,7 +34,7 @@ import Testing
   @Test func anAcceptedDownloadKeepsTheOptimisticStateForTheProjection() async throws {
     final class Box: @unchecked Sendable { var startCalls = 0 }
     let box = Box()
-    let service = WhisperKitSetupService(
+    let service = WhisperSetupService(
       engineMutationScope: .alwaysAllowedForTesting,
       readAvailability: { .notDownloaded },
       startDownload: {
@@ -60,7 +60,7 @@ import Testing
   @Test func aRefusedCancelKeepsShowingTheRunningFetch() async throws {
     final class Box: @unchecked Sendable { var cancelCalls = 0 }
     let box = Box()
-    let service = WhisperKitSetupService(
+    let service = WhisperSetupService(
       engineMutationScope: .alwaysAllowedForTesting,
       readAvailability: { .notDownloaded },
       cancelActiveDownload: {
@@ -87,7 +87,7 @@ import Testing
   @Test func aCancelBeatingTheDownloadTaskPreventsTheStartEntirely() async throws {
     final class Box: @unchecked Sendable { var started = 0 }
     let box = Box()
-    let service = WhisperKitSetupService(
+    let service = WhisperSetupService(
       engineMutationScope: .alwaysAllowedForTesting,
       readAvailability: { .notDownloaded },
       startDownload: {
@@ -113,7 +113,7 @@ import Testing
   @Test func anAcceptedCancelLeavesTheRowToTheProjection() async throws {
     final class Box: @unchecked Sendable { var cancelCalls = 0 }
     let box = Box()
-    let service = WhisperKitSetupService(
+    let service = WhisperSetupService(
       engineMutationScope: .alwaysAllowedForTesting,
       readAvailability: { .notDownloaded },
       cancelActiveDownload: {
@@ -142,7 +142,7 @@ import Testing
   @Test func removeDuringADictationRefusesAndTouchesNothing() async throws {
     final class Box: @unchecked Sendable { var actionCalls = 0 }
     let box = Box()
-    let service = WhisperKitSetupService(
+    let service = WhisperSetupService(
       engineMutationScope: .alwaysAllowedForTesting,
       readAvailability: { .ready },
       removeModelAction: {
@@ -161,7 +161,7 @@ import Testing
   @Test func endingTheDictationQueuesNoDeferredDeletion() async throws {
     final class Box: @unchecked Sendable { var actionCalls = 0 }
     let box = Box()
-    let service = WhisperKitSetupService(
+    let service = WhisperSetupService(
       engineMutationScope: .alwaysAllowedForTesting,
       readAvailability: { .ready },
       removeModelAction: {
@@ -191,7 +191,7 @@ import Testing
   @Test func twoRefusalsInARowAccumulateNoState() async throws {
     final class Box: @unchecked Sendable { var actionCalls = 0 }
     let box = Box()
-    let service = WhisperKitSetupService(
+    let service = WhisperSetupService(
       engineMutationScope: .alwaysAllowedForTesting,
       readAvailability: { .ready },
       removeModelAction: {
@@ -211,7 +211,7 @@ import Testing
   @Test func anUnwiredSessionAuthorityRefusesFailSafe() async throws {
     final class Box: @unchecked Sendable { var actionCalls = 0 }
     let box = Box()
-    let service = WhisperKitSetupService(
+    let service = WhisperSetupService(
       engineMutationScope: .alwaysAllowedForTesting,
       readAvailability: { .ready },
       removeModelAction: {
@@ -228,7 +228,7 @@ import Testing
   }
 
   @Test func aFailedRemovalShowsTheFailureNoticeAndReDetectsDiskTruth() async throws {
-    let service = WhisperKitSetupService(
+    let service = WhisperSetupService(
       engineMutationScope: .alwaysAllowedForTesting,
       readAvailability: { .notDownloaded },  // partial deletion: marker gone
       removeModelAction: { .failed })
@@ -257,7 +257,7 @@ import Testing
   @Test func aSuccessfulRemovalNeverReProbesTheController() async throws {
     final class Box: @unchecked Sendable { var readAvailabilityCalls = 0 }
     let box = Box()
-    let service = WhisperKitSetupService(
+    let service = WhisperSetupService(
       engineMutationScope: .alwaysAllowedForTesting,
       readAvailability: {
         box.readAvailabilityCalls += 1
@@ -288,7 +288,7 @@ import Testing
       var release: CheckedContinuation<Void, Never>?
     }
     let box = Box()
-    let service = WhisperKitSetupService(
+    let service = WhisperSetupService(
       engineMutationScope: .alwaysAllowedForTesting,
       readAvailability: { .notDownloaded },
       removeModelAction: {
@@ -315,7 +315,7 @@ import Testing
   }
 
   @Test func aResumableCancelPresentsPausedNotNotDownloaded() async throws {
-    let service = WhisperKitSetupService(
+    let service = WhisperSetupService(
       engineMutationScope: .alwaysAllowedForTesting, readAvailability: { .notDownloaded })
     service.applyDeliveryState(.paused)
     #expect(service.setupState == .paused, "paused survives as its own presentation")
@@ -328,7 +328,7 @@ import Testing
   @Test func aGateRefusedDownloadNeverStartsAndReDetects() async throws {
     final class Box: @unchecked Sendable { var started = 0 }
     let box = Box()
-    let service = WhisperKitSetupService(
+    let service = WhisperSetupService(
       engineMutationScope: .live(
         tryBegin: { false }, end: { false }, wake: {}, onRefused: { _ in }),
       readAvailability: { .notDownloaded },
@@ -352,7 +352,7 @@ import Testing
       var refusedSites: [String] = []
     }
     let box = Box()
-    let service = WhisperKitSetupService(
+    let service = WhisperSetupService(
       engineMutationScope: .live(
         tryBegin: { false }, end: { false }, wake: {},
         onRefused: { box.refusedSites.append($0) }),
@@ -380,7 +380,7 @@ import Testing
   @Test func aGateRefusedRemoveClearsIsRemovingAndSurfacesFailed() async throws {
     final class Box: @unchecked Sendable { var actionCalls = 0 }
     let box = Box()
-    let service = WhisperKitSetupService(
+    let service = WhisperSetupService(
       engineMutationScope: .live(
         tryBegin: { false }, end: { false }, wake: {}, onRefused: { _ in }),
       readAvailability: { .ready },

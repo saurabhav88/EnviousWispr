@@ -1050,7 +1050,8 @@ struct ParakeetUpgradePolicyTests {
     case .directLoad:
       try await ActiveEngineOperation.live(
         asrManager: manager, parakeetUpgrade: rig.coordinator,
-        whisperKitBackend: WhisperKitBackend(admittedModelFolder: { nil })
+        whisperKitBackend: LiveTranscribeCppWhisperBackend(
+          driver: LiveWhisperExecutorDriver(), modelVariant: "q8_0", admittedModelPath: { nil })
       ).load()
     }
   }

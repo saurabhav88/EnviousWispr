@@ -48,6 +48,12 @@ package func recoveryFailureClass(for error: any Error) -> RecoveryFailureClass?
     }
   }
   if error is WhisperKitModelLoadSentryError { return .whisperKitModelLoad }
+  if let whisper = error as? TranscribeCppWhisperError {
+    switch whisper {
+    case .loadFailed: return .whisperModelLoad
+    case .runFailed: return .whisperTranscription
+    }
+  }
   if error is ParakeetModelLoadSentryError { return .parakeetModelLoad }
   if error is ParakeetTranscriptionSentryError { return .parakeetTranscription }
   if error is ASRManagerNotOwnedError { return .managerNotOwned }

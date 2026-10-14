@@ -1,7 +1,7 @@
 import Foundation
 
-/// States in the WhisperKit model setup flow.
-public enum WhisperKitSetupState: Equatable {
+/// States in the Whisper model setup flow.
+public enum WhisperSetupState: Equatable {
   case checking  // initial detection
   case notDownloaded  // model not on disk
   case downloading(progress: Double, status: String)  // actively downloading
@@ -16,14 +16,14 @@ public enum WhisperKitSetupState: Equatable {
 /// 2c: the Remove press's inline outcome, rendered in the Settings row that
 /// owns the button (never an overlay — gotchas-audio RULE:
 /// in-panel-notice-not-new-overlay-intent).
-public enum WhisperKitRemoveNotice: Equatable {
+public enum WhisperRemoveNotice: Equatable {
   /// Founder ruling 2.5.4: Remove REFUSES during a dictation — no defer, no
   /// queue; the user presses again after the dictation ends.
   case refusedDictationInFlight
   case failed
 }
 
-/// Presents WhisperKit model setup in Settings. Downloads happen there — NEVER
+/// Presents Whisper model setup in Settings. Downloads happen there — NEVER
 /// auto-triggered on first record.
 ///
 /// #1386 PR-2 hollowed this out. It used to own a `WhisperKit.download()` task
@@ -35,18 +35,18 @@ public enum WhisperKitRemoveNotice: Equatable {
 /// holds no download task and no cache truth of its own.
 @MainActor
 @Observable
-public final class WhisperKitSetupService {
+public final class WhisperSetupService {
 
   // MARK: - Public State
 
-  public private(set) var setupState: WhisperKitSetupState = .checking
+  public private(set) var setupState: WhisperSetupState = .checking
 
   /// Reads current availability: `.ready` when an admitted verified model exists,
   /// admission truth alone; a refused foreign copy is simply not an installed model.
   /// `.notDownloaded` otherwise. Injected by the composition root over the
   /// delivery handle + relocation coordinator — ASR imports neither Pipeline nor
   /// ModelDelivery, so the dependency arrives as a closure.
-  private let readAvailability: @MainActor () async -> WhisperKitSetupState
+  private let readAvailability: @MainActor () async -> WhisperSetupState
   /// The explicit Download action (controller-backed). Returns whether the
   /// request was ACCEPTED — false means refused (kill switch off, no wiring)
   /// and no delivery state will ever arrive for it.
@@ -57,7 +57,7 @@ public final class WhisperKitSetupService {
   private let cancelActiveDownload: @MainActor () async -> Bool
   /// 2c: the explicit Remove action. nil notice = removed; a notice = refused
   /// or failed, rendered inline.
-  private let removeModelAction: @MainActor () async -> WhisperKitRemoveNotice?
+  private let removeModelAction: @MainActor () async -> WhisperRemoveNotice?
 
   /// #1707 Phase 3 (§3.2, rows 9/10) / #1741 Chunk 4 — the mutation-side
   /// capability guarding Download/Cancel/Remove's engine-touching work, none
@@ -74,10 +74,10 @@ public final class WhisperKitSetupService {
   /// an unverified one.
   package init(
     engineMutationScope: EngineMutationScope,
-    readAvailability: @escaping @MainActor () async -> WhisperKitSetupState = { .notDownloaded },
+    readAvailability: @escaping @MainActor () async -> WhisperSetupState = { .notDownloaded },
     startDownload: @escaping @MainActor () async -> Bool = { false },
     cancelActiveDownload: @escaping @MainActor () async -> Bool = { false },
-    removeModelAction: @escaping @MainActor () async -> WhisperKitRemoveNotice? = { .failed }
+    removeModelAction: @escaping @MainActor () async -> WhisperRemoveNotice? = { .failed }
   ) {
     self.engineMutationScope = engineMutationScope
     self.readAvailability = readAvailability
@@ -113,7 +113,7 @@ public final class WhisperKitSetupService {
   /// Apply a delivery-state projection pushed by the composition root (the
   /// download's live progress). Kept separate from `detectState()` so a push
   /// never fights the 5s read cache.
-  public func applyDeliveryState(_ state: WhisperKitSetupState) {
+  public func applyDeliveryState(_ state: WhisperSetupState) {
     setupState = state
     if case .ready = state { lastDetectTime = Date() }
   }
@@ -190,7 +190,7 @@ public final class WhisperKitSetupService {
   // MARK: - Remove (2c)
 
   /// The Remove press's inline notice; cleared on the next Remove/Download.
-  public private(set) var removeNotice: WhisperKitRemoveNotice?
+  public private(set) var removeNotice: WhisperRemoveNotice?
 
   /// True while a removal drain runs (founder ruling 2026-07-17): the row shows
   /// "Removing model..." and the button is gone, so Remove cannot be spammed at

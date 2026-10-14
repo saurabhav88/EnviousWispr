@@ -84,7 +84,7 @@ struct EngineSettingsLayoutTests {
     let settings = SettingsManager(defaults: defaults)
     settings.selectedBackend = .parakeet
     let setup = SetupCoordinator(asrManager: RouterTestASRManager(),
-      whisperKitSetup: WhisperKitSetupService(engineMutationScope: .alwaysAllowedForTesting,
+      whisperSetup: WhisperSetupService(engineMutationScope: .alwaysAllowedForTesting,
         readAvailability: { .notDownloaded }),
       setupStateReader: { .notDownloaded }, preloadAction: {}, ollamaStatusProbe: { _ in })
     let presenter = LanguageSuggestionPresenter(overlay: DictationSettingsRenderHarness.NoOverlay(),

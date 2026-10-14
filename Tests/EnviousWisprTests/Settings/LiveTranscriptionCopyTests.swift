@@ -57,8 +57,9 @@ struct LiveTranscriptionCopyTests {
     }
   }
 
-  /// WhisperKit must not inherit Parakeet's "leave this off" advice. On that engine
-  /// streaming is roughly accuracy-neutral and genuinely faster on long recordings.
+  /// Whisper must not inherit Parakeet's "leave this off" advice: Parakeet's measured cost
+  /// does not transfer. #3735: until the transcribe.cpp streaming session is measured, the
+  /// Whisper advice is neutral, because the setting changes nothing on that engine yet.
   @Test("WhisperKit is not told to turn the setting off")
   func whisperKitIsNotToldToDisable() {
     let advice = LiveTranscriptionCopy.whisperKit.recommendationBody.lowercased()

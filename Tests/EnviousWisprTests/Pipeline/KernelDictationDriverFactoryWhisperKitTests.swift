@@ -45,8 +45,8 @@ import Testing
 
     // MARK: Helpers
 
-    /// Construct via the real `WhisperKitBackend()` actor — lazy, does not
-    /// load a CoreML model until `prepare()` runs. Factory does not call
+    /// Construct via the real transcribe.cpp backend actor — lazy, does not
+    /// load a model until `prepare()` runs. Factory does not call
     /// `prepare()` (warm-up is kernel-driven post-construction), so the
     /// backend stays `isReady == false` after factory return.
     private func makeDriver() -> KernelDictationDriver {
@@ -54,7 +54,8 @@ import Testing
       let vad = KernelDictationDriverFactory.makeSharedVADSignalSource(audioCapture: audio)
       let inputs = KernelDictationDriverFactory.WhisperKitInputs(
         audioCapture: audio,
-        whisperKitBackend: WhisperKitBackend(admittedModelFolder: { nil }),
+        whisperKitBackend: LiveTranscribeCppWhisperBackend(
+          driver: LiveWhisperExecutorDriver(), modelVariant: "q8_0", admittedModelPath: { nil }),
         languageDetector: LanguageDetector(),
         vadSignalSource: vad,
         transcriptStore: TranscriptStore(),
@@ -85,7 +86,8 @@ import Testing
 
     @Test("makeForWhisperKit does not call backend.prepare() (factory is lazy)")
     func makeForWhisperKitDoesNotLoadModel() async {
-      let backend = WhisperKitBackend(admittedModelFolder: { nil })
+      let backend = LiveTranscribeCppWhisperBackend(
+          driver: LiveWhisperExecutorDriver(), modelVariant: "q8_0", admittedModelPath: { nil })
       let audio = FakeAudioCapture()
       let vad = KernelDictationDriverFactory.makeSharedVADSignalSource(audioCapture: audio)
       let inputs = KernelDictationDriverFactory.WhisperKitInputs(

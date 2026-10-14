@@ -92,10 +92,11 @@ package final class WisprBootstrapper {
   /// The take selector also answers the Dictionary status line.
   let checkerEligibility: LearnedWordCheckerEligibility
 
-  /// #1386 PR-2. Stored because nothing else owns it: it is reached only through a closure
-  /// `SetupCoordinator` calls once, and a closure capture cannot keep it alive. Held here, it
-  /// lives as long as the app — which is what "runs on every launch" requires.
-  let whisperKitRetirement: WhisperKitLegacyUpgradeCoordinator?
+  /// #1386 PR-2; #3735: the Whisper model migration. Stored because nothing else owns it: it
+  /// is reached only through closures (`SetupCoordinator` calls one once) that capture it
+  /// weakly, and a closure capture cannot keep it alive. Held here, it lives as long as the
+  /// app — which is what "runs on every launch" requires.
+  let whisperMigration: WhisperModelMigration
   let audioDeviceList: AudioDeviceList
   /// #2376 C7: the Appearance page's window onto the recording pill. A
   /// view-facing home like the nine beside it, injected into every window root
@@ -392,14 +393,11 @@ package final class WisprBootstrapper {
     // lines — NOT the full `whisperKitKernelDriver`, which still needs
     // `vadSource`/`languageDetector` built later) so `BatchDecodeFaultController`
     // can be constructed with BOTH backend references before the Parakeet
-    // driver below. No circular dependency: `WhisperKitDeliveryWiring.make`'s
-    // only input, `modelDelivery`, is already in scope. `whisperKitRetirement`
-    // is extracted from the SAME `whisperKit` value at its original site
-    // further down — `whisperKit` is a plain `let` that survives the
-    // intervening code.
-    let whisperKit = WhisperKitDeliveryWiring.make(
-      modelDelivery: modelDelivery, engineMutationScope: engineMutationScope)
-    let whisperKitBackend = whisperKit.backend
+    // driver below. No circular dependency: `WhisperDeliveryWiring.make`'s
+    // inputs are already in scope. #3735: the backend is transcribe.cpp.
+    let whisper = WhisperDeliveryWiring.make(
+      modelDelivery: modelDelivery, settings: settings, engineMutationScope: engineMutationScope)
+    let whisperKitBackend = whisper.backend
 
     // #1707 Phase 2: DEBUG fault-injection oracle (§11.1/§3.2a-i) — the SOLE
     // owner of every batch-decode fault command, dispatching to whichever
@@ -656,13 +654,13 @@ package final class WisprBootstrapper {
     // `ASREngineLanguageIdentifying` cast on the adapter; the launch warm-up
     // is owned by the shared `ensureEngineWarm(reason: .launch)` (#879).
     // #1386 PR-2: the multilingual engine's delivery wiring (owned folder,
-    // relocation coordinator, one gated backend, setup surface). Detail lives in
-    // `WhisperKitDeliveryWiring`; the root just names it.
-    // #1707 Phase 2: `whisperKit`/`whisperKitBackend` are now constructed
-    // earlier (hoisted above the Parakeet driver, see the #1707 comment near
-    // `modelDelivery`) — only `whisperKitRetirement` is extracted here, from
-    // that SAME already-constructed `whisperKit` value.
-    let whisperKitRetirement = whisperKit.retirement
+    // migration, one gated backend, setup surface). Detail lives in
+    // `WhisperDeliveryWiring`; the root just names it.
+    // #1707 Phase 2: `whisper`/`whisperKitBackend` are constructed earlier
+    // (hoisted above the Parakeet driver, see the #1707 comment near
+    // `modelDelivery`) — only `whisperMigration` is extracted here, from that
+    // SAME already-constructed `whisper` value.
+    let whisperMigration = whisper.migration
 
     let whisperKitKernelDriver = KernelDictationDriverFactory.makeForWhisperKit(
       inputs: KernelDictationDriverFactory.WhisperKitInputs(
@@ -676,7 +674,7 @@ package final class WisprBootstrapper {
         pasteCompletionRegistry: pasteCompletionRegistry,
         engineMutationScope: engineMutationScope,
         vendorDecodeOccupancy: asrManager.vendorDecodeOccupancy,
-        whisperKitModelIdentity: modelDelivery.whisperKitRegistration?.manifest.identity
+        whisperKitModelIdentity: modelDelivery.whisperRegistration?.manifest.identity
           .asrModelIdentity,
         outputClassifierHolder: outputClassifierHolder,
         dictationAudioArchiveOptInProvider: { settings.isDictationAudioArchiveEnabled },
@@ -703,15 +701,14 @@ package final class WisprBootstrapper {
     // an unprompted download for a non-opted-in user).
     let setup = SetupCoordinator(
       asrManager: asrManager,
-      whisperKitSetup: whisperKit.setupService,
-      // Fired from runDidFinishLaunching once the app is on screen, and that
-      // timing is the whole reason this is a closure rather than a call in the
-      // constructor: retirement reads `~/Documents`, which can raise the
-      // Files-and-Folders prompt. A permission dialog thrown at a user before the
-      // app has drawn is a bad first impression and an easy accidental "Don't
-      // Allow" — which would leave the copy unreadable and retirement declined.
-      runDocumentsMigration: { [weak whisperKitRetirement] in
-        await whisperKitRetirement?.runLaunch()
+      whisperSetup: whisper.setupService,
+      // Fired from runDidFinishLaunching once the app is on screen. #3735: the
+      // Whisper migration no longer reads `~/Documents` (the reason this was
+      // deferred: a Files-and-Folders prompt before the app has drawn); it stays
+      // deferred so its deletions and any download start after launch work, never
+      // inside construction.
+      runDocumentsMigration: { [weak whisperMigration] in
+        await whisperMigration?.runLaunch()
       },
       preloadAction: { [weak whisperKitKernelDriver] in
         await whisperKitKernelDriver?.ensureEngineWarm(reason: .launch)
@@ -747,7 +744,7 @@ package final class WisprBootstrapper {
     // 2c: the Remove drain's engine-unload seam — assignable only now that the
     // driver (and its adapter) exist; the wiring that built the coordinator ran
     // before them. L1: the drain awaits this BEFORE the delivery deletion.
-    whisperKitRetirement?.unloadForRemoval = { [weak whisperKitKernelDriver] in
+    whisper.removal.unloadForRemoval = { [weak whisperKitKernelDriver] in
       await whisperKitKernelDriver?.unloadEngineForRemoval()
     }
     // ONE lookup, three readers: the polish-runtime eviction rule below, the
@@ -1416,7 +1413,7 @@ package final class WisprBootstrapper {
         isFileImportRunning: { fileImportCoordinatorForGates?.isEngineHeld ?? false },
         isEngineHeld: { [engineLease] in engineLease.isBusy },
         isInstalled: { [setup] backend in
-          backend == .parakeet ? true : setup.whisperKitSetup.setupState == .ready
+          backend == .parakeet ? true : setup.whisperSetup.setupState == .ready
         },
         stateLabel: { [kernelDriver, whisperKitKernelDriver] backend in
           (backend == .whisper ? whisperKitKernelDriver : kernelDriver).state.telemetryLabel
@@ -1507,15 +1504,15 @@ package final class WisprBootstrapper {
     // Row 7: Parakeet's idle-unload choke point. #1741 Chunk 3 — `asrManager`
     // (whichever concrete type) already received the shared `engineMutationScope`
     // at construction, above; no post-init wiring needed here anymore.
-    // Rows 9/10: WhisperKit Settings Remove/Download/Cancel. #1741 Chunk 4 —
-    // `whisperKit.setupService` already received the shared `engineMutationScope`
-    // at construction, via `WhisperKitDeliveryWiring.make(...)` above; no
+    // Rows 9/10: Whisper Settings Remove/Download/Cancel. #1741 Chunk 4 —
+    // `whisper.setupService` already received the shared `engineMutationScope`
+    // at construction, via `WhisperDeliveryWiring.make(...)` above; no
     // post-init wiring needed here anymore.
-    // Row 14: the WhisperKit legacy-migration delete+refetch window. #1741
-    // Chunk 8 — `whisperKitRetirement` already received the shared
-    // `engineMutationScope` at construction, via
-    // `WhisperKitDeliveryWiring.make(...)` above; no post-init wiring needed
-    // here anymore.
+    // Row 14 (#3735): the WhisperKit retirement held a claim across its
+    // delete+refetch window because a recovery replay's load read those same
+    // files. The Whisper migration deletes only retired CoreML files no engine
+    // loads any more, and the GGUF it fetches is admitted atomically by the
+    // delivery controller, so it takes no claim.
     // Row 17: Parakeet Settings Download/Cancel. #1741 Chunk 6 —
     // `modelDelivery` already received the shared `engineMutationScope` at
     // construction, above; no post-init wiring needed here anymore.
@@ -1653,7 +1650,7 @@ package final class WisprBootstrapper {
       isSelectedModelInstalled: { [weak engineCoordinator, weak setup] in
         guard let engineCoordinator else { return true }
         if engineCoordinator.status.selected == .whisper,
-          setup?.whisperKitSetup.isRemoving == true
+          setup?.whisperSetup.isRemoving == true
         {
           return false
         }
@@ -2304,7 +2301,7 @@ package final class WisprBootstrapper {
     self.contactsImportCoordinator = contactsImportCoordinator
     self.bulkImportEnrichmentCoordinator = bulkImportEnrichmentCoordinator
     self.setup = setup
-    self.whisperKitRetirement = whisperKitRetirement
+    self.whisperMigration = whisperMigration
     self.localPolishRuntimes = localPolishRuntimes
     self.modelDelivery = modelDelivery
     self.checkerEligibility = checkerEligibility
@@ -2413,7 +2410,7 @@ package final class WisprBootstrapper {
     // claim — and it stays true after Stop until the cancelled work has
     // physically exited, which is the window the refusal most needs to cover.
     // Found by Codex; the sweep is mine.
-    setup.whisperKitSetup.isDictationInFlight = {
+    setup.whisperSetup.isDictationInFlight = {
       [weak settingsSync, weak engineCoordinator, weak engineLease] in
       (settingsSync?.isWhisperKitDictationInFlight() ?? true)
         || (engineCoordinator?.isMintingWhisperKitSession ?? true)

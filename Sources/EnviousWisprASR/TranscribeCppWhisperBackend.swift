@@ -66,6 +66,11 @@ package struct LiveWhisperExecutorDriver: WhisperExecutorDriving {
   }
 }
 
+/// #3735: the Whisper backend the app composes (transcribe.cpp over the shared executor).
+package typealias LiveTranscribeCppWhisperBackend = TranscribeCppWhisperBackend<
+  LiveWhisperExecutorDriver
+>
+
 // MARK: - Errors
 
 /// Stable Sentry identities for transcribe.cpp load and run failures (#3735 plan §7). The
@@ -157,6 +162,13 @@ package actor TranscribeCppWhisperBackend<Driver: WhisperExecutorDriving>: ASRBa
   package typealias UnloadAuthorizer =
     @Sendable (_ teardown: @escaping @Sendable () async -> Bool) async -> Bool
   private var authorizeUnload: UnloadAuthorizer?
+  /// #3735 §3.2a: when true, `prepare()` waits until `bindMemoryPressure(authorizer:)` has run,
+  /// so no model is resident before the pressure unload is authorized, whichever caller loads
+  /// it (the adapter's warm-up, or recovery, Diagnostics and file import through
+  /// `ActiveEngineOperation`). The composition sets it; the adapter factory performs the
+  /// binding at construction.
+  private let loadsAfterPressureBinding: Bool
+  private var pressureBindingWaiters: [CheckedContinuation<Void, Never>] = []
 
   // Operation and pressure bookkeeping.
   private var inFlight = 0
@@ -173,12 +185,14 @@ package actor TranscribeCppWhisperBackend<Driver: WhisperExecutorDriving>: ASRBa
     admittedModelPath: @escaping @Sendable () async -> String?,
     modelIdentity: ASRModelIdentity? = nil,
     scopeOwner: ASRModelScopeOwner? = nil,
-    authorizeUnload: UnloadAuthorizer? = nil
+    authorizeUnload: UnloadAuthorizer? = nil,
+    loadsAfterPressureBinding: Bool = false
   ) {
     self.init(
       driver: driver, modelVariant: modelVariant, admittedModelPath: admittedModelPath,
       modelIdentity: modelIdentity, scopeDelivery: Self.delivery(to: scopeOwner),
-      authorizeUnload: authorizeUnload, warmupDeadlineSeconds: 20)
+      authorizeUnload: authorizeUnload, warmupDeadlineSeconds: 20,
+      loadsAfterPressureBinding: loadsAfterPressureBinding)
   }
 
   /// Full initializer; tests shorten the warm-up ceiling and capture scope reports.
@@ -189,7 +203,8 @@ package actor TranscribeCppWhisperBackend<Driver: WhisperExecutorDriving>: ASRBa
     modelIdentity: ASRModelIdentity?,
     scopeDelivery: ScopeDelivery?,
     authorizeUnload: UnloadAuthorizer?,
-    warmupDeadlineSeconds: Double
+    warmupDeadlineSeconds: Double,
+    loadsAfterPressureBinding: Bool = false
   ) {
     self.driver = driver
     self.variant = modelVariant
@@ -198,6 +213,7 @@ package actor TranscribeCppWhisperBackend<Driver: WhisperExecutorDriving>: ASRBa
     self.deliverScope = scopeDelivery
     self.authorizeUnload = authorizeUnload
     self.warmupDeadlineSeconds = warmupDeadlineSeconds
+    self.loadsAfterPressureBinding = loadsAfterPressureBinding
   }
 
   private static func delivery(to owner: ASRModelScopeOwner?) -> ScopeDelivery? {
@@ -217,6 +233,9 @@ package actor TranscribeCppWhisperBackend<Driver: WhisperExecutorDriving>: ASRBa
   /// that a download is the user's decision, so an admitted but unloadable file is an honest,
   /// visible load failure.
   package func prepare() async throws {
+    while loadsAfterPressureBinding, authorizeUnload == nil {
+      await withCheckedContinuation { pressureBindingWaiters.append($0) }
+    }
     // A teardown in progress still frees handles after it published idle; a replacement load
     // started now could be freed by it.
     guard !admissionClosed else { throw ASRError.notReady }
@@ -512,6 +531,16 @@ package actor TranscribeCppWhisperBackend<Driver: WhisperExecutorDriving>: ASRBa
     // Native work can outlive a cancelled caller; its later seeks report nothing.
     defer { progress?.invalidate() }
     let start = ContinuousClock.now
+    #if DEBUG
+      // #1707 Phase 2: the real shared-engine call boundary for the overlap Live UAT oracle
+      // (§3.2a-i), ported from `WhisperKitBackend` for #3735. `defer` closes the interval on
+      // every exit. Because this backend is an actor, suspending at this exact point (BEFORE
+      // the real call) is what lets a SECOND `transcribe()` call reach this SAME point and
+      // proceed to ITS OWN native call while the first is held: the actor-reentrancy question
+      // this oracle exists to exercise.
+      let batchDecodeFaultRole = await enterBatchDecodeFaultBoundary()
+      defer { exitBatchDecodeFaultBoundary(role: batchDecodeFaultRole) }
+    #endif
     // #3546 §3.7 T1: the last cancellation check before the native boundary; the entry
     // observer fires inside the executor immediately before `transcribe_run`.
     try Task.checkCancellation()
@@ -761,6 +790,9 @@ package actor TranscribeCppWhisperBackend<Driver: WhisperExecutorDriving>: ASRBa
   package func bindMemoryPressure(authorizer: @escaping UnloadAuthorizer) {
     authorizeUnload = authorizer
     startMemoryPressureMonitoring()
+    let waiters = pressureBindingWaiters
+    pressureBindingWaiters = []
+    for waiter in waiters { waiter.resume() }
   }
 
   /// Installs the system memory-pressure source. Not started by default: activation belongs
@@ -839,6 +871,105 @@ package actor TranscribeCppWhisperBackend<Driver: WhisperExecutorDriving>: ASRBa
   var operationCountsForTesting: (inFlight: Int, pressurePending: Bool) {
     (inFlight, pressurePending)
   }
+
+  #if DEBUG
+    // MARK: #1707 Phase 2 — batch-decode fault oracle (shared-backend overlap
+    // Live UAT, §3.2a-i). One armed trial at a time by construction (a DEBUG
+    // test seam, never a concurrent-scenario primitive). Mirrors
+    // `ParakeetBackend`'s identically-shaped seam; unlike Parakeet, this
+    // actor is in-process, so `queryBatchDecodeFault` returns state directly
+    // — no cross-process file needed (`BatchDecodeFaultController` holds a
+    // direct reference to this actor). #3735: ported unchanged from
+    // `WhisperKitBackend`, which it replaces on the Whisper route.
+
+    private enum BatchDecodeFaultRole {
+      case none
+      case held(trialID: String)
+      case newSession(trialID: String)
+    }
+
+    private var armedBatchDecodeTrialID: String?
+    private var batchDecodeHeldClassified = false
+    private var batchDecodeHoldContinuation: CheckedContinuation<Void, Never>?
+    private var batchDecodeSnapshot: BatchDecodeFaultSnapshotState?
+
+    /// A forgotten release cannot wedge this actor — bounded by this safety
+    /// unhold, well past any realistic Live UAT test duration.
+    private static var batchDecodeFaultSafetyUnholdSec: Double { 30.0 }
+
+    /// Arms a one-shot hold for the NEXT `transcribe(...)` call this actor
+    /// issues. `package` access: callable from `BatchDecodeFaultController`
+    /// in `EnviousWisprPipeline` (same package, `Package.swift`).
+    package func armBatchDecodeHold(trialID: String) {
+      armedBatchDecodeTrialID = trialID
+      batchDecodeHeldClassified = false
+      batchDecodeSnapshot = BatchDecodeFaultSnapshotState(trialID: trialID)
+    }
+
+    /// Releases a held decode, letting it proceed to the real native
+    /// `transcribe` call. No-op if `trialID` does not match the
+    /// currently-armed trial or nothing is currently held.
+    package func releaseBatchDecode(trialID: String) {
+      guard armedBatchDecodeTrialID == trialID else { return }
+      batchDecodeHoldContinuation?.resume()
+      batchDecodeHoldContinuation = nil
+    }
+
+    /// Clears all armed/held state so a forgotten trial from one Live UAT
+    /// scenario cannot leak into the next.
+    package func clearBatchDecodeFault() {
+      batchDecodeHoldContinuation?.resume()
+      batchDecodeHoldContinuation = nil
+      armedBatchDecodeTrialID = nil
+      batchDecodeHeldClassified = false
+      batchDecodeSnapshot = nil
+    }
+
+    /// Returns the current backend-side snapshot for `trialID`, or `nil` if
+    /// it does not match the currently/most-recently armed trial.
+    package func queryBatchDecodeFault(trialID: String) -> BatchDecodeFaultSnapshotState? {
+      batchDecodeSnapshot.flatMap { $0.trialID == trialID ? $0 : nil }
+    }
+
+    private func enterBatchDecodeFaultBoundary() async -> BatchDecodeFaultRole {
+      guard let trialID = armedBatchDecodeTrialID else { return .none }
+      let now = Date().timeIntervalSince1970
+      guard !batchDecodeHeldClassified else {
+        batchDecodeSnapshot?.newSessionEntryEpochSec = now
+        return .newSession(trialID: trialID)
+      }
+      batchDecodeHeldClassified = true
+      batchDecodeSnapshot?.heldDecodeEntryEpochSec = now
+      await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
+        batchDecodeHoldContinuation = cont
+        Task { [weak self] in
+          try? await Task.sleep(for: .seconds(Self.batchDecodeFaultSafetyUnholdSec))
+          await self?.autoReleaseBatchDecodeHoldIfStillHeld(trialID: trialID)
+        }
+      }
+      return .held(trialID: trialID)
+    }
+
+    private func exitBatchDecodeFaultBoundary(role: BatchDecodeFaultRole) {
+      let now = Date().timeIntervalSince1970
+      switch role {
+      case .none:
+        return
+      case .held(let trialID):
+        guard batchDecodeSnapshot?.trialID == trialID else { return }
+        batchDecodeSnapshot?.heldDecodeCompletionEpochSec = now
+      case .newSession(let trialID):
+        guard batchDecodeSnapshot?.trialID == trialID else { return }
+        batchDecodeSnapshot?.newSessionCompletionEpochSec = now
+      }
+    }
+
+    private func autoReleaseBatchDecodeHoldIfStillHeld(trialID: String) {
+      guard armedBatchDecodeTrialID == trialID, batchDecodeHoldContinuation != nil else { return }
+      batchDecodeHoldContinuation?.resume()
+      batchDecodeHoldContinuation = nil
+    }
+  #endif
 }
 
 /// Forwards native seek progress as a 0...1 fraction, monotonically and only while it is

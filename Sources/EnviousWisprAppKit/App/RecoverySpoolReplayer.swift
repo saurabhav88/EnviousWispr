@@ -825,6 +825,7 @@ final class RecoverySpoolReplayer: RecoverySpoolReplaying {
       // unavailable-engine deferral.
       case .xpcModelNotLoaded: return false
       case .xpcUnreachable, .cancelled, .transcriptionFailed, .whisperKitModelLoad,
+        .whisperModelLoad, .whisperTranscription,
         .parakeetModelLoad, .parakeetTranscription, .xpcTransport, .other:
         return false
       }
