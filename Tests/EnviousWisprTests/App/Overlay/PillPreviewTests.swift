@@ -95,10 +95,18 @@
       for entry in PillPreviewCatalog.all {
         switch entry.make(Self.ignoreNote) {
         case .correctionLearned(let model, _, _, _):
-          #expect(model.phase == .learned, "row \(entry.id) is not in the learned phase")
-          learnedKinds.insert(model.kind == .added ? "added" : "updated")
+          switch model.phase {
+          case .learned: break
+          case .undone, .undoError: Issue.record("row \(entry.id) is in an excluded result phase")
+          }
+          switch model.kind {
+          case .added: learnedKinds.insert("added")
+          case .updated: learnedKinds.insert("updated")
+          }
         case .languageChip(let payload, _, _, _):
-          chipStates.append(payload.state)
+          switch payload.state {
+          case .askToLock, .educateAboutSettings: chipStates.append(payload.state)
+          }
         default:
           break
         }
@@ -110,6 +118,26 @@
     @Test("every value that changes a pill's text has a row")
     func valueDependentVariantsCovered() {
       let samples = PillPreviewCatalog.polishSetupSamples
+      // An inventory written out here, independent of the lists the rows are built from: a
+      // dropped provider or Apple bucket would otherwise remove its row and its expectation.
+      var expectedIDs: Set<String> = [
+        "ollamaNotInstalled", "ollamaNotRunning", "ollamaNoModel", "ollamaModelNotInstalled",
+        "appleDisabled", "appleUnavailable", "appleModelNotReady",
+      ]
+      for provider in ["openAI", "gemini", "claude"] {
+        for problem in ["cloudKeyMissing", "cloudKeyRejected"] {
+          expectedIDs.insert("\(problem).\(provider)")
+        }
+      }
+      for provider in ["egOne", "s1Mini"] {
+        for problem in [
+          "localEngineNotDownloaded", "localEngineDownloadPaused", "localEngineUpdatePaused",
+          "localEngineFailed", "localEngineDownloading", "localEngineVerifying",
+        ] {
+          expectedIDs.insert("\(problem).\(provider)")
+        }
+      }
+      #expect(Set(samples.map(\.id)) == expectedIDs)
       #expect(
         Set(samples.map { PillPreviewCatalog.polishProblemCaseName($0.problem) })
           == PillPreviewCatalog.allPolishProblemCaseNames)
@@ -121,6 +149,7 @@
       var warningTexts = Set<String>()
       var cachingLabels = Set<String>()
       var fractions = Set<Double>()
+      var upgradePhases = Set<String>()
       for entry in PillPreviewCatalog.all {
         switch entry.make(Self.ignoreNote) {
         case .polishSetupCard(let model, _, _):
@@ -133,7 +162,13 @@
         case .cachingModel(let label):
           cachingLabels.insert(label)
         case .parakeetUpgrade(let model, _):
-          if case .downloading(let fraction) = model.phase { fractions.insert(fraction) }
+          switch model.phase {
+          case .downloading(let fraction):
+            fractions.insert(fraction)
+            upgradePhases.insert("downloading")
+          case .installing: upgradePhases.insert("installing")
+          case .ready: upgradePhases.insert("ready")
+          }
         default:
           break
         }
@@ -156,6 +191,7 @@
           "no not-downloaded row for \(backend)")
       }
       #expect(fractions.isSuperset(of: [0.0, 0.4, 1.0]))
+      #expect(upgradePhases == ["downloading", "installing", "ready"])
       #expect(
         Set(PillPreviewCatalog.historyClasses.map(PillPreviewCatalog.historyClassName)).count
           == 4)
