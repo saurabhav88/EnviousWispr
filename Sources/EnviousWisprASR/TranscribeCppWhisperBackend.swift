@@ -23,8 +23,8 @@ package protocol WhisperExecutorDriving: Sendable {
     onInferenceEntered: (@Sendable () -> Void)?,
     onProgress: (@Sendable (Int64, Int64) -> Void)?
   ) async throws -> TranscribeCppRunResult
-  /// Returns once no native work for `handle` is running (a cancelled caller's native call
-  /// can outlive the caller). Never frees anything.
+  /// Returns once no native work for `handle` is running (the executor releases a cancelled
+  /// caller before its aborted native call ends). Never frees anything.
   func waitForDrain(_ handle: Handle) async
   /// Aborts and drains work on `handle`, then frees it. Unknown handles return at once.
   func unload(_ handle: Handle) async
@@ -160,7 +160,6 @@ package actor TranscribeCppWhisperBackend<Driver: WhisperExecutorDriving>: ASRBa
 
   // Operation and pressure bookkeeping.
   private var inFlight = 0
-  private var undrained = 0
   private var admissionClosed = false
   private var pressurePending = false
   private var pressureRunning = false
@@ -501,8 +500,7 @@ package actor TranscribeCppWhisperBackend<Driver: WhisperExecutorDriving>: ASRBa
     transcriptionProgressObserver = nil
     guard !admissionClosed else { throw ASRError.notReady }
     inFlight += 1
-    var abandoned: Driver.Handle?
-    defer { endOperation(abandoned: abandoned) }
+    defer { endOperation() }
 
     guard let handle = await readyHandleAfterWarmupDrain(), !admissionClosed else {
       throw ASRError.notReady
@@ -524,7 +522,13 @@ package actor TranscribeCppWhisperBackend<Driver: WhisperExecutorDriving>: ASRBa
         onInferenceEntered: inferenceObserver, onProgress: progress?.forward)
     } catch {
       let mapped = Self.mapRunError(error)
-      if mapped is CancellationError { abandoned = handle }
+      if mapped is CancellationError {
+        // The executor releases a cancelled caller at once and aborts the native run. Return
+        // only after that run physically ends, so callers that count this call as engine
+        // occupancy (`VendorDecodeOccupancy`) never see idle while native work continues.
+        progress?.invalidate()
+        await driver.waitForDrain(handle)
+      }
       throw mapped
     }
     let elapsed = ContinuousClock.now - start
@@ -659,8 +663,7 @@ package actor TranscribeCppWhisperBackend<Driver: WhisperExecutorDriving>: ASRBa
   package func observeLID(samples: [Float], maxWindows: Int) async -> LIDObservationBatch {
     guard !admissionClosed else { return .unavailable }
     inFlight += 1
-    var abandoned: Driver.Handle?
-    defer { endOperation(abandoned: abandoned) }
+    defer { endOperation() }
     guard let handle = await readyHandleAfterWarmupDrain(), !admissionClosed else {
       return .unavailable
     }
@@ -676,7 +679,8 @@ package actor TranscribeCppWhisperBackend<Driver: WhisperExecutorDriving>: ASRBa
           RawLIDObservation(argmaxLang: observation.code, logProb: observation.logProb))
       } catch {
         if Self.mapRunError(error) is CancellationError {
-          abandoned = handle
+          // As in `transcribe`: returns only after the aborted native call ends.
+          await driver.waitForDrain(handle)
           return .cancelled
         }
         lastError = error.localizedDescription
@@ -773,7 +777,7 @@ package actor TranscribeCppWhisperBackend<Driver: WhisperExecutorDriving>: ASRBa
   }
 
   /// A memory-pressure event. Unloads through the authorized path only when no load,
-  /// warm-up, transcription, LID or undrained native work exists; otherwise the request is
+  /// warm-up, transcription or LID work exists; otherwise the request is
   /// deferred and retried when the last one ends. A refused authorization leaves the model
   /// ready.
   package func handleMemoryPressure() async {
@@ -782,7 +786,7 @@ package actor TranscribeCppWhisperBackend<Driver: WhisperExecutorDriving>: ASRBa
   }
 
   private var idleForPressure: Bool {
-    guard inFlight == 0, undrained == 0 else { return false }
+    guard inFlight == 0 else { return false }
     switch loadState {
     case .idle: return true
     case .ready(_, let stale): return stale == nil
@@ -825,39 +829,15 @@ package actor TranscribeCppWhisperBackend<Driver: WhisperExecutorDriving>: ASRBa
     return true
   }
 
-  /// Ends one transcription or LID operation. A cancelled caller's native call may still be
-  /// running: it counts as undrained until the executor reports its return.
-  private func endOperation(abandoned: Driver.Handle?) {
+  /// Ends one transcription or LID operation. A cancelled operation has already waited for
+  /// its native call to end.
+  private func endOperation() {
     inFlight -= 1
-    if let abandoned {
-      undrained += 1
-      Task {
-        await driver.waitForDrain(abandoned)
-        await self.drained()
-      }
-    }
     if pressurePending { Task { await self.servicePressure() } }
   }
 
-  private func drained() async {
-    undrained -= 1
-    if undrained == 0 {
-      for waiter in drainBookkeepingWaiters { waiter.resume() }
-      drainBookkeepingWaiters = []
-    }
-    await servicePressure()
-  }
-
-  private var drainBookkeepingWaiters: [CheckedContinuation<Void, Never>] = []
-
-  /// Test seam: returns once every abandoned native call has been reported drained.
-  func waitForDrainBookkeepingForTesting() async {
-    guard undrained > 0 else { return }
-    await withCheckedContinuation { drainBookkeepingWaiters.append($0) }
-  }
-
-  var operationCountsForTesting: (inFlight: Int, undrained: Int, pressurePending: Bool) {
-    (inFlight, undrained, pressurePending)
+  var operationCountsForTesting: (inFlight: Int, pressurePending: Bool) {
+    (inFlight, pressurePending)
   }
 }
 

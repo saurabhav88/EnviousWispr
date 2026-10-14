@@ -1136,13 +1136,14 @@ import Testing
       file: "Sources/EnviousWisprASR/TranscribeCppWhisperBackend.swift", matcher: "unload",
       text: "await driver.unload(handle)",
       classification: .transitivelyCoveredByCaller),
-    // `pressureTeardown()`'s unload runs only as the teardown closure the adapter's
-    // `memoryPressureAuthorizer()` invokes inside its
+    // `pressureTeardown()`'s unload is not lexically inside a claim. Its one caller chain:
+    // `handleMemoryPressure()` -> `servicePressure()` -> the installed `authorizeUnload`, which
+    // is the adapter's `memoryPressureAuthorizer()`; that runs the teardown closure inside its
     // `engineMutationScope.withClaim(site: "whisperMemoryPressureUnload")` closure, after the
-    // session re-check, and the claim is held until it returns.
+    // session re-check, and holds the claim until it returns.
     CallSite(
       file: "Sources/EnviousWisprASR/TranscribeCppWhisperBackend.swift", matcher: "unload",
-      text: "await unload()", classification: .gated),
+      text: "await unload()", classification: .transitivelyCoveredByCaller),
 
     // MARK: WhisperKitBackend — new Chunk 11 entries.
     // `performWarmup`'s silent probe decode — part of `warmUp()`'s own

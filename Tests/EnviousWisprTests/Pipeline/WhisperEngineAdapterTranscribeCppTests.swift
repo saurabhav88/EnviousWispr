@@ -12,7 +12,8 @@ import Testing
 /// **What the user sees when this fails:** with Faster Transcription on, a Whisper take returns
 /// no text (the nil streaming vend is not degraded to batch); speaker timings vanish between the
 /// engine and the document; or a memory-pressure unload frees the model during a take, or runs
-/// without the claim recovery waits on.
+/// without the claim recovery waits on; or a cancelled take reads the engine as idle while
+/// the native decode still runs, so the next take or an unload enters under it.
 @MainActor
 @Suite("Whisper adapter over transcribe.cpp (#3735)", .serialized, .tags(.productOutcome))
 struct WhisperEngineAdapterTranscribeCppTests {
@@ -70,6 +71,34 @@ struct WhisperEngineAdapterTranscribeCppTests {
     #expect(diag?.streamingEffective == false)
     #expect(diag?.streamingDegradeReason == "model_not_ready")
     #expect(diag?.streamingFinalPath == "clean_batch")
+  }
+
+  @Test("a cancelled take keeps the engine counted busy until the native decode returns")
+  func cancelledTakeHoldsOccupancyUntilNativeReturn() async throws {
+    let driver = AdapterFakeDriver()
+    let backend = makeBackend(driver)
+    let occupancy = VendorDecodeOccupancy()
+    let adapter = WhisperEngineAdapter(
+      backend: backend, engineMutationScope: .alwaysAllowedForTesting,
+      vendorDecodeOccupancy: occupancy)
+    try await adapter.warmUp(modelReceipt: nil)
+
+    let sid = SessionID()
+    try await adapter.beginSession(
+      sid, options: TranscriptionOptions(language: "es"), streaming: false)
+    feed(adapter, samples: [Float](repeating: 0.1, count: 16_000), session: sid)
+    adapter.observeSpeechSegments([SpeechSegment(startSample: 0, endSample: 16_000)])
+    driver.holdNative()
+    let take = Task { await adapter.finalize(batchSamples: nil) }
+    await driver.waitUntilNativeEntered()
+    #expect(occupancy.inFlight == 1)
+    take.cancel()
+    // The executor released the caller; the backend now waits for the aborted native run.
+    await driver.waitUntilDrainWaiting()
+    #expect(occupancy.inFlight == 1, "busy while the native decode runs after the cancel")
+    await driver.releaseNative()
+    _ = await take.value
+    #expect(occupancy.isIdle)
   }
 
   @Test(
@@ -136,13 +165,25 @@ struct WhisperEngineAdapterTranscribeCppTests {
   }
 }
 
-/// A non-blocking fake executor driver: every call returns at once.
+/// A fake executor driver. Calls return at once unless `holdNative()` is set: then a decode's
+/// "native" work waits for `releaseNative()`, and a cancelled caller is released at once with
+/// `.cancelled` while that work keeps running, as the real executor does.
 private final class AdapterFakeDriver: WhisperExecutorDriving, @unchecked Sendable {
   typealias Handle = Int
   private let lock = NSLock()
   private var run = TranscribeCppRunResult(text: "ok", detectedLanguage: "en", segments: [])
   private var _languages: [String?] = []
   private var _unloaded: [Int] = []
+  private var nativeGate: AsyncGate?
+  private var nativeRunning = false
+  private var drainWaiters: [CheckedContinuation<Void, Never>] = []
+  private let entered = AsyncGate()
+  private let drainWaiting = AsyncGate()
+
+  func holdNative() { lock.withLock { nativeGate = AsyncGate() } }
+  func releaseNative() async { await lock.withLock { nativeGate }?.open() }
+  func waitUntilNativeEntered() async { await entered.wait() }
+  func waitUntilDrainWaiting() async { await drainWaiting.wait() }
 
   func setRun(_ result: TranscribeCppRunResult) { lock.withLock { run = result } }
   var decodeLanguages: [String?] { lock.withLock { _languages } }
@@ -161,13 +202,72 @@ private final class AdapterFakeDriver: WhisperExecutorDriving, @unchecked Sendab
     onInferenceEntered: (@Sendable () -> Void)?, onProgress: (@Sendable (Int64, Int64) -> Void)?
   ) async throws -> TranscribeCppRunResult {
     onInferenceEntered?()
-    return lock.withLock {
+    let (gate, result) = lock.withLock { () -> (AsyncGate?, TranscribeCppRunResult) in
       _languages.append(language)
-      return run
+      if nativeGate != nil { nativeRunning = true }
+      return (nativeGate, run)
+    }
+    guard let gate else { return result }
+    let caller = CallerRelease()
+    Task {
+      await gate.wait()
+      let waiters = lock.withLock { () -> [CheckedContinuation<Void, Never>] in
+        nativeRunning = false
+        defer { drainWaiters = [] }
+        return drainWaiters
+      }
+      for waiter in waiters { waiter.resume() }
+      caller.finish(cancelled: false)
+    }
+    await entered.open()
+    // The caller leaves at once on cancel; the "native" task keeps running until released.
+    let cancelled = await withTaskCancellationHandler {
+      await caller.wait()
+    } onCancel: {
+      caller.finish(cancelled: true)
+    }
+    if cancelled { throw TranscribeCppExecutor.ExecutorError.cancelled }
+    return result
+  }
+
+  func waitForDrain(_ handle: Int) async {
+    await withCheckedContinuation { continuation in
+      let idle = lock.withLock { () -> Bool in
+        guard nativeRunning else { return true }
+        drainWaiters.append(continuation)
+        return false
+      }
+      if idle { continuation.resume() } else { Task { await drainWaiting.open() } }
     }
   }
 
-  func waitForDrain(_ handle: Int) async {}
-
   func unload(_ handle: Int) async { lock.withLock { _unloaded.append(handle) } }
+}
+
+/// One-shot: the first `finish` decides whether the caller saw a cancel or the native return.
+private final class CallerRelease: @unchecked Sendable {
+  private let lock = NSLock()
+  private var outcome: Bool?
+  private var waiter: CheckedContinuation<Bool, Never>?
+
+  func finish(cancelled: Bool) {
+    let resume = lock.withLock { () -> CheckedContinuation<Bool, Never>? in
+      guard outcome == nil else { return nil }
+      outcome = cancelled
+      defer { waiter = nil }
+      return waiter
+    }
+    resume?.resume(returning: cancelled)
+  }
+
+  func wait() async -> Bool {
+    await withCheckedContinuation { continuation in
+      let ready = lock.withLock { () -> Bool? in
+        if let outcome { return outcome }
+        waiter = continuation
+        return nil
+      }
+      if let ready { continuation.resume(returning: ready) }
+    }
+  }
 }

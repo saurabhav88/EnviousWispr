@@ -293,7 +293,7 @@ struct TranscribeCppWhisperBackendTests {
     #expect(seen.values == [0.4], "a failed run never reports completion")
   }
 
-  @Test("a cancelled decode ends the caller at once and counts as undrained until native returns")
+  @Test("a cancelled decode returns only after its native call ends, and stays in flight until then")
   func cancellationAndDrain() async throws {
     let driver = FakeWhisperDriver()
     let backend = Self.makeBackend(driver)
@@ -306,11 +306,12 @@ struct TranscribeCppWhisperBackendTests {
     }
     await driver.waitForLog("enter 1 lang=nil samples=24000")
     take.cancel()
-    await #expect(throws: CancellationError.self) { try await driver.bounded(take) }
-    #expect(await backend.operationCountsForTesting.undrained == 1)
+    // The executor released the caller; the backend now waits for the aborted native run.
+    await driver.waitForLog("drain-wait 1")
+    #expect(await backend.operationCountsForTesting.inFlight == 1)
     driver.releaseRuns()
-    try await driver.bounded(Task { await backend.waitForDrainBookkeepingForTesting() })
-    #expect(await backend.operationCountsForTesting.undrained == 0)
+    await #expect(throws: CancellationError.self) { try await driver.bounded(take) }
+    #expect(await backend.operationCountsForTesting.inFlight == 0)
   }
 
   // MARK: - LID
@@ -501,9 +502,9 @@ struct TranscribeCppWhisperBackendTests {
     }
     await driver.waitForLog("progress 10/100")
     take.cancel()
-    await #expect(throws: CancellationError.self) { try await driver.bounded(take) }
+    await driver.waitForLog("drain-wait 1")
     driver.releaseRuns()
-    try await driver.bounded(Task { await backend.waitForDrainBookkeepingForTesting() })
+    await #expect(throws: CancellationError.self) { try await driver.bounded(take) }
     #expect(seen.values == [0.1])
   }
 
@@ -794,7 +795,11 @@ fileprivate final class FakeWhisperDriver: WhisperExecutorDriving, @unchecked Se
         drainWaiters[handle, default: []].append(continuation)
         return false
       }
-      if idle { continuation.resume() }
+      if idle {
+        continuation.resume()
+      } else {
+        record("drain-wait \(handle)")
+      }
     }
   }
 

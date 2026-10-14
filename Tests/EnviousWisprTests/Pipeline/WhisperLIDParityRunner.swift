@@ -22,6 +22,11 @@ import Testing
 /// Engines: `wk` = the shipped `WhisperKitBackend` over the installed model and bundled
 /// tokenizer; `tc` = `TranscribeCppWhisperBackend` over `LiveWhisperExecutorDriver` and the
 /// approved turbo Q8_0 GGUF.
+///
+/// Model identity: before any clip, the runner fingerprints the model (`modelFingerprint`) and
+/// refuses to run unless it equals `EW_LID_PARITY_EXPECTED_MODEL_SHA256`, so every shard's
+/// header names the same verified bytes. A decode that fails or is cancelled is an error row,
+/// never `ok`.
 @MainActor
 @Suite("Whisper LID parity runner (#3735, measurement only)", .serialized, .tags(.harnessContract))
 struct WhisperLIDParityRunner {
@@ -61,6 +66,12 @@ struct WhisperLIDParityRunner {
       Issue.record("unknown engine \(engine)")
       return
     }
+    let modelPath = identity["model_path"] ?? identity["model_folder"] ?? ""
+    let fingerprint = try Self.modelFingerprint(atPath: modelPath)
+    let expected = try #require(env["EW_LID_PARITY_EXPECTED_MODEL_SHA256"])
+    try #require(fingerprint == expected, "model fingerprint \(fingerprint) != \(expected)")
+    var headerIdentity = identity
+    headerIdentity["model_sha256"] = fingerprint
     let proxy = RecordingWhisperBackend(base: base)
     let loadStart = ContinuousClock.now
     try await proxy.prepare()
@@ -71,7 +82,7 @@ struct WhisperLIDParityRunner {
       out.append(try JSONSerialization.data(withJSONObject: object, options: [.sortedKeys]))
       out.append(0x0A)
     }
-    try emit(["kind": "header", "engine": engine, "identity": identity, "load_ms": loadMs])
+    try emit(["kind": "header", "engine": engine, "identity": headerIdentity, "load_ms": loadMs])
 
     let rows = try String(contentsOfFile: shard, encoding: .utf8).split(separator: "\n")
     for line in rows where !line.isEmpty {
@@ -87,6 +98,35 @@ struct WhisperLIDParityRunner {
     }
     await proxy.unload()
     try out.write(to: URL(filePath: outPath), options: .withoutOverwriting)
+  }
+
+  /// SHA-256 of a model file, or for a folder (WhisperKit's Core ML bundle) SHA-256 over every
+  /// regular file in sorted relative-path order, each contributing its path and its bytes'
+  /// SHA-256. `shasum -a 256` reproduces the file case.
+  static func modelFingerprint(atPath path: String) throws -> String {
+    let url = URL(filePath: path)
+    func fileDigest(_ file: URL) throws -> String {
+      let data = try Data(contentsOf: file, options: .alwaysMapped)
+      return SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+    }
+    var isDirectory: ObjCBool = false
+    guard FileManager.default.fileExists(atPath: path, isDirectory: &isDirectory) else {
+      throw ParityError.missingModel(path)
+    }
+    guard isDirectory.boolValue else { return try fileDigest(url) }
+    guard let walker = FileManager.default.enumerator(
+      at: url, includingPropertiesForKeys: [.isRegularFileKey])
+    else { throw ParityError.missingModel(path) }
+    var entries: [(String, URL)] = []
+    for case let file as URL in walker
+    where try file.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile == true {
+      entries.append((String(file.path.dropFirst(url.path.count)), file))
+    }
+    var manifest = ""
+    for (relative, file) in entries.sorted(by: { $0.0 < $1.0 }) {
+      manifest += "\(relative)\t\(try fileDigest(file))\n"
+    }
+    return SHA256.hash(data: Data(manifest.utf8)).map { String(format: "%02x", $0) }.joined()
   }
 
   /// Loads the frozen Float32 PCM and verifies its byte count and SHA-256 against the manifest.
@@ -146,9 +186,11 @@ struct WhisperLIDParityRunner {
       result["had_speech_evidence"] = evidence
     case .cancelled:
       result["outcome"] = "cancelled"
+      result["status"] = "error"
     case .failed(let error):
       result["outcome"] = "failed"
       result["error"] = String(describing: error)
+      result["status"] = "error"
     }
     return result
   }
@@ -162,6 +204,7 @@ struct WhisperLIDParityRunner {
     case badRow
     case sizeMismatch(Int, Int)
     case hashMismatch
+    case missingModel(String)
   }
 }
 
