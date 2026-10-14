@@ -1216,6 +1216,19 @@ jobs:
             exit "$BINDING_STATUS"
           fi
 
+          # Automatic association uses the verified artifact source, including older-release recovery.
+          if [[ "$BINDING_STATUS" == "0" ]]; then
+            if git checkout --detach "$SOURCE_COMMIT"; then
+              if [[ "$(git rev-parse HEAD)" != "$SOURCE_COMMIT" ]]; then
+                echo "::error::Checkout does not match the verified release source."
+                BINDING_STATUS=1
+              fi
+            else
+              echo "::error::Cannot select verified release source. Symbol upload continues."
+              BINDING_STATUS=1
+            fi
+          fi
+
           if [[ "$BINDING_STATUS" == "0" ]]; then
             sentry-cli releases new "$SENTRY_RELEASE" || BINDING_STATUS=1
           fi
