@@ -42,6 +42,36 @@ class CouldNotTell(RuntimeError):
         super().__init__(f"COULD NOT TELL: {detail}. Not an app result.")
 
 
+_take_cleanup = None
+
+
+def take_started(stop):
+    """Register how to stop the running take (menu Stop, key up). Whatever ends the run, an
+    exception, an interrupt or a SetupFailed, `stop_active_take` runs it before the audio rig
+    puts the devices back, so a recording never outlives its route (#3764)."""
+    global _take_cleanup
+    _take_cleanup = stop
+
+
+def take_stopped():
+    """The take ended normally: nothing left to stop."""
+    global _take_cleanup
+    _take_cleanup = None
+
+
+def stop_active_take():
+    """Stop a registered take once; never raises (it runs on the way out of a failure)."""
+    global _take_cleanup
+    stop, _take_cleanup = _take_cleanup, None
+    if stop is None:
+        return
+    try:
+        stop()
+        print("TAKE STOPPED by cleanup before the restore", flush=True)
+    except BaseException as exc:  # an interrupt during cleanup must not skip the device restore
+        print(f"TAKE CLEANUP FAILED: {exc!r}; the app may still be recording", flush=True)
+
+
 def declare_target(bundle_id, activate=None):
     """Name the app the take must paste into (its bundle id, e.g. com.apple.TextEdit).
     `activate` (optional) brings it back to the front; the gate calls it once before refusing.

@@ -132,18 +132,22 @@ class AudioRig:
             route = "BlackHole in/out/alerts, app mic pinned" if self.use_route else "REAL mic and speaker"
             print(f"RIG READY: {route}, paste target {self.target.bundle_id}", flush=True)
             return self
-        except Exception as exc:
+        except BaseException as exc:
             self._restore_all()
-            if isinstance(exc, tg.SetupFailed):
+            if isinstance(exc, (tg.SetupFailed, KeyboardInterrupt)):
                 raise
+            # SystemExit included: wispr_eyes.connect() exits when the app is gone mid-setup.
             raise tg.SetupFailed("rig", repr(exc)) from exc
 
     def _install_restore_handlers(self):
-        """An interrupt restores BOTH the route and the alert device, then exits (a SIGKILL leaves
-        the on-disk restore files for `python3 silent_audio.py restore`)."""
+        """An interrupt unwinds the take (its own cleanup, then `take_gate.stop_active_take`) and
+        then this rig's exit restores BOTH the route and the alert device, in that order. A SIGKILL
+        leaves the on-disk restore files for `python3 silent_audio.py restore`."""
+        def _unwind(*_):
+            raise SystemExit(130)
+
         for sig in (signal.SIGINT, signal.SIGTERM, signal.SIGHUP):
-            self._old_handlers[sig] = signal.signal(
-                sig, lambda *_: (self._restore_all(), sys.exit(130)))
+            self._old_handlers[sig] = signal.signal(sig, _unwind)
 
     def _prove_route(self):
         for kind in ("output", "input", "system"):
@@ -156,7 +160,9 @@ class AudioRig:
                                  f"the app's stored microphone is {choice!r}, not {BLACKHOLE_UID}")
 
     def _restore_all(self):
-        """Every step runs even if another fails; True only when all verified."""
+        """Every step runs even if another fails; True only when all verified. A take still
+        running is stopped FIRST, so no recording outlives its route."""
+        tg.stop_active_take()
         tg.clear_target()
         try:
             self.target.close()
@@ -168,7 +174,7 @@ class AudioRig:
                 continue
             try:
                 ok = bool(part.restore()) and ok
-            except Exception as restore_exc:
+            except (Exception, SystemExit) as restore_exc:  # wispr_eyes.connect() exits if the app went
                 print(f"RIG: restore step failed: {restore_exc!r}", flush=True)
                 ok = False
         self.route = self.alerts = None
@@ -255,6 +261,47 @@ def _self_test():
     rig = AudioRig(target=FakeTarget())
     rig.route, rig.alerts = Fake(), Fake()
     expect("a clean restore returns normally", rig.__exit__(None, None, None) is False and rig.restored)
+
+    rig = AudioRig(target=FakeTarget())
+    later = Fake()
+
+    class Exits(Fake):
+        def restore(self):
+            self.calls += 1
+            raise SystemExit(1)  # wispr_eyes.connect() when the app disappeared
+    rig.route, rig.alerts = Exits(), later
+    try:
+        rig.__exit__(None, None, None)
+    except tg.SetupFailed:
+        pass
+    expect("an app that vanished during restore still lets the alerts restore", later.calls == 1)
+
+    order = []
+    tg.take_started(lambda: order.append("take stopped"))
+
+    class Logs(Fake):
+        def restore(self):
+            order.append("devices restored")
+            return True
+    rig = AudioRig(target=FakeTarget())
+    rig.route, rig.alerts = Logs(), None
+    rig.__exit__(RuntimeError, RuntimeError("take crashed"), None)
+    expect("a running take is stopped before the devices are restored",
+           order == ["take stopped", "devices restored"])
+
+    class Boom(FakeTarget):
+        def ready(self):
+            raise SystemExit(1)
+    rig = AudioRig(target=Boom(), route=False)
+    os_reason = __import__("os").environ
+    os_reason["EW_UAT_SPEAKER_REASON"] = "self-test"
+    try:
+        rig.__enter__()
+        expect("an exit during setup becomes SETUP FAILED", False)
+    except tg.SetupFailed as exc:
+        expect("an exit during setup becomes SETUP FAILED", exc.step == "rig")
+    finally:
+        os_reason.pop("EW_UAT_SPEAKER_REASON", None)
 
     tg.declare_target("com.example.Outer")
     try:

@@ -619,6 +619,10 @@ def _finish_player(proc):
         proc.wait(timeout=5)
     except subprocess.TimeoutExpired:
         proc.kill()
+        try:
+            proc.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            pass  # still None: check_player reports it as SETUP (the player never finished)
     return proc.returncode, killed
 
 
@@ -2078,6 +2082,7 @@ def test_recording(audio=None, sentence=None, hold=3.0, expect=None, timeout=30.
         print("BLOCKED: Could not tap 'Start Recording'")
         end_test()
         return False
+    _tg.take_started(lambda: tap("Stop Recording"))
     time.sleep(0.5)
 
     # Check overlay appeared
@@ -2088,7 +2093,7 @@ def test_recording(audio=None, sentence=None, hold=3.0, expect=None, timeout=30.
     audio_proc = None
     if audio:
         print(f"Playing audio...")
-        audio_proc = _play_take(audio, on_fail=lambda: (tap("Stop Recording"), end_test()))
+        audio_proc = _play_take(audio, on_fail=lambda: (_tg.stop_active_take(), end_test()))
 
     # Record for duration
     remaining = hold - 0.5
@@ -2102,6 +2107,7 @@ def test_recording(audio=None, sentence=None, hold=3.0, expect=None, timeout=30.
     # Phase 3: Stop recording via menu
     print(f"\n--- STOP RECORDING ---")
     tap("Stop Recording")
+    _tg.take_stopped()
 
     # Phase 4: Wait for completion (log-based with clipboard fallback)
     t_stop = time.time()
@@ -3185,6 +3191,14 @@ def test_ptt(key=None, audio=None, sentence=None, expect=None, timeout=10.0):
     _chime()
 
     key_lower = key.lower()
+
+    def _key_up():
+        if key_lower in _si.MODIFIER_KEYS:
+            _si.modifier_up(_si.MODIFIER_KEYS[key_lower])
+        else:
+            from Quartz import CGEventCreateKeyboardEvent, CGEventPost, kCGHIDEventTap
+            CGEventPost(kCGHIDEventTap, CGEventCreateKeyboardEvent(None, _si.KEY_CODES[key_lower], False))
+
     if key_lower in _si.MODIFIER_KEYS:
         _si.modifier_down(_si.MODIFIER_KEYS[key_lower])
     elif key_lower in _si.KEY_CODES:
@@ -3196,20 +3210,13 @@ def test_ptt(key=None, audio=None, sentence=None, expect=None, timeout=10.0):
         print(f"BLOCKED: Unknown key '{key}'")
         end_test()
         return False
+    _tg.take_started(_key_up)  # #3764: any exit before the key-up below still releases it
 
     time.sleep(0.8)  # let recording engage + model warm
 
     # Phase 2: Play audio
     print(f"Playing audio ({audio_dur:.2f}s)...")
-
-    def _key_up():
-        if key_lower in _si.MODIFIER_KEYS:
-            _si.modifier_up(_si.MODIFIER_KEYS[key_lower])
-        else:
-            from Quartz import CGEventCreateKeyboardEvent, CGEventPost, kCGHIDEventTap
-            CGEventPost(kCGHIDEventTap, CGEventCreateKeyboardEvent(None, _si.KEY_CODES[key_lower], False))
-
-    audio_proc = _play_take(audio, on_fail=lambda: (_key_up(), end_test()))
+    audio_proc = _play_take(audio, on_fail=lambda: (_tg.stop_active_take(), end_test()))
 
     # Phase 3: Wait for audio + buffer
     hold_audio = audio_dur + 0.8
@@ -3219,13 +3226,8 @@ def test_ptt(key=None, audio=None, sentence=None, expect=None, timeout=10.0):
     # Phase 4: Key up (recording stops)
     total_hold = 0.8 + hold_audio
     print(f"\n--- KEY UP ({key}) after {total_hold:.1f}s hold ---")
-    if key_lower in _si.MODIFIER_KEYS:
-        _si.modifier_up(_si.MODIFIER_KEYS[key_lower])
-    else:
-        from Quartz import CGEventCreateKeyboardEvent, CGEventPost, kCGHIDEventTap
-        kc = _si.KEY_CODES[key_lower]
-        up = CGEventCreateKeyboardEvent(None, kc, False)
-        CGEventPost(kCGHIDEventTap, up)
+    _key_up()
+    _tg.take_stopped()
 
     # Phase 5: Wait for completion (log-based with clipboard fallback)
     t_stop = time.time()
