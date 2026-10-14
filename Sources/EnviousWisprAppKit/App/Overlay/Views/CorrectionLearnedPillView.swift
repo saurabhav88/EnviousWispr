@@ -110,9 +110,9 @@ struct CorrectionLearnedPillView: View {
 
   var body: some View {
     let line = CorrectionLearnedPillCopy.line(for: model)
-    HStack(spacing: 10) {
+    HStack(spacing: UndoPillMetrics.rowGap) {
       Text(line.text)
-        .font(.system(size: 13, weight: .medium))
+        .font(.system(size: UndoPillMetrics.sentenceSize, weight: .medium))
         .foregroundStyle(line.isError ? Color.red.opacity(0.9) : .white)
         .lineLimit(1)
         .minimumScaleFactor(CorrectionLearnedPillCopy.minimumScale)
@@ -121,10 +121,10 @@ struct CorrectionLearnedPillView: View {
       if line.showsUndo {
         Button(action: onUndo) {
           Text(CorrectionLearnedPillCopy.undo)
-            .font(.system(size: 12, weight: .semibold))
+            .font(.system(size: UndoPillMetrics.actionSize, weight: .semibold))
             .foregroundStyle(.white)
-            .padding(.horizontal, 12)
-            .padding(.vertical, 4)
+            .padding(.horizontal, UndoPillMetrics.actionPaddingAcross)
+            .padding(.vertical, UndoPillMetrics.actionPaddingDown)
             .contentShape(Capsule())
             .overlay(Capsule().strokeBorder(Color.white.opacity(0.55), lineWidth: 1))
         }
@@ -132,8 +132,8 @@ struct CorrectionLearnedPillView: View {
         .accessibilityLabel(CorrectionLearnedPillCopy.undo)
       }
     }
-    .padding(.horizontal, 14)
-    .padding(.vertical, 10)
+    .padding(.horizontal, UndoPillMetrics.sidePadding)
+    .padding(.vertical, UndoPillMetrics.verticalPadding)
     .background(OverlayCapsuleBackground())
     .overlay {
       if line.showsUndo {

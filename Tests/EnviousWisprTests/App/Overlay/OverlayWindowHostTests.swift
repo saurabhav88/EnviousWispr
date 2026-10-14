@@ -582,7 +582,7 @@ struct OverlayWindowHostTests {
       Self.view(width: 185, height: 44), width: .fixed(185), fixedHeight: nil, isFresh: true,
       position: .bottom)
     let panel = try #require(recorder.panel)
-    #expect(panel.frame.origin.y == 85)
+    #expect(panel.frame.origin.y == CGFloat(85 + 16))
     #expect(workspace.observerCount == 1, "the host must subscribe exactly once")
 
     // A full-screen space appears: `visibleFrame` does not shrink, so the pill
@@ -596,7 +596,7 @@ struct OverlayWindowHostTests {
     // host sees is unchanged.
 
     #expect(
-      panel.frame.origin.y == 0,
+      panel.frame.origin.y == CGFloat(0 + 16),
       "the Space change never reached the host — it is not registered")
 
     // One Host animated move must yield exactly one `setFrame` receipt. Count ALL
@@ -631,7 +631,7 @@ struct OverlayWindowHostTests {
     workspace.simulateActiveSpaceChange()
 
     #expect(
-      panel.frame.origin.y == 85,
+      panel.frame.origin.y == CGFloat(85 + 16),
       "the first automatic Space move was mistaken for a drag, so the pill stopped following Spaces"
     )
   }

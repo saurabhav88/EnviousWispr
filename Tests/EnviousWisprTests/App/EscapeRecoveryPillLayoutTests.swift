@@ -21,57 +21,70 @@ struct EscapeRecoveryPillLayoutTests {
 
   // MARK: - Geometry
 
-  @Test("The pill is wide enough for the sentence it renders")
-  func theSentenceFitsThePillItIsRenderedIn() {
-    let font = NSFont.systemFont(ofSize: PillMetrics.titleSize, weight: .medium)
+  /// Hosts the cancel pill the way the learned-word test hosts its pill: one
+  /// off-screen `NSHostingView`, layout flushed, size read from what SwiftUI
+  /// laid out.
+  @MainActor private func fittingSize(of face: EscapeRecoveryPillFace) -> CGSize {
+    let host = NSHostingView(rootView: face)
+    host.layoutSubtreeIfNeeded()
+    return host.fittingSize
+  }
+
+  @Test("The pill is wide enough for the sentence and the button word it renders")
+  @MainActor func theSentenceAndButtonFitThePillTheyAreRenderedIn() {
+    // Measured here from the fonts, independently of the view's own layout.
     let title = DictationNarrator.escapeRecoveryPillTitle as NSString
-    let sentence = ceil(title.size(withAttributes: [.font: font]).width)
+    let word = DictationNarrator.escapeRecoveryPillAction as NSString
+    let sentence = ceil(
+      title.size(
+        withAttributes: [
+          .font: NSFont.systemFont(ofSize: UndoPillMetrics.sentenceSize, weight: .medium)
+        ]
+      ).width)
+    let button = ceil(
+      word.size(
+        withAttributes: [
+          .font: NSFont.systemFont(ofSize: UndoPillMetrics.actionSize, weight: .semibold)
+        ]
+      ).width) + 2 * UndoPillMetrics.actionPaddingAcross
 
     let claimed =
-      PillMetrics.leadInset + sentence + PillMetrics.midGap
-      + PillMetrics.actionWidth + PillMetrics.trailInset
+      UndoPillMetrics.sidePadding + sentence + UndoPillMetrics.rowGap + button
+      + UndoPillMetrics.sidePadding
 
     // Failing this renders "Dictation cance…", which the earlier fixed-width
     // pill did when the copy was revised.
-    #expect(PillMetrics.pillWidth >= claimed)
+    #expect(fittingSize(of: EscapeRecoveryPillFace(progress: 0, palette: .dark)).width >= claimed)
   }
 
-  @Test("A longer sentence would widen the pill rather than clip")
-  func theWidthTracksTheCopyRatherThanAConstant() {
-    let font = NSFont.systemFont(ofSize: PillMetrics.titleSize, weight: .medium)
-    let shipped = DictationNarrator.escapeRecoveryPillTitle as NSString
-    let longer = (DictationNarrator.escapeRecoveryPillTitle + " again") as NSString
+  /// **#3747, founder 2026-10-14: "make the dictation cancelled pill the same
+  /// size as the added to dictionary pill".** The two Undo pills are drawn by
+  /// different views with different sentences, so their WIDTHS differ by design;
+  /// their heights are the size a person compares. Both real views are rendered
+  /// and the heights are read from what SwiftUI lays out, so a change to either
+  /// view that moves one fails here.
+  @Test("The cancelled pill is as tall as the learned-word pill")
+  @MainActor func theCancelledPillMatchesTheLearnedWordPillHeight() {
+    let learned = NSHostingView(
+      rootView: CorrectionLearnedPillView(
+        model: LearnedPillFixture.model(canonical: "Tuist", kind: .added), onUndo: {}, dwell: nil))
+    learned.layoutSubtreeIfNeeded()
+    let cancelled = fittingSize(of: EscapeRecoveryPillFace(progress: 0, palette: .dark))
 
-    let shippedWidth = ceil(shipped.size(withAttributes: [.font: font]).width)
-    let longerWidth = ceil(longer.size(withAttributes: [.font: font]).width)
-
-    // The measurement is what the pill is built from, so a wider sentence has to
-    // produce a wider measurement. A constant here would make both equal and the
-    // pill would clip the longer one silently.
-    #expect(longerWidth > shippedWidth)
-    #expect(PillMetrics.pillWidth > shippedWidth)
+    #expect(learned.fittingSize.height > 0, "the learned-word pill did not lay out")
+    #expect(cancelled.height > 0, "the cancelled pill did not lay out")
+    #expect(
+      abs(cancelled.height - learned.fittingSize.height) <= 0.5,
+      "cancelled \(cancelled.height) vs learned-word \(learned.fittingSize.height)")
   }
 
-  /// **Equality, not headroom, and the direction matters.**
-  ///
-  /// `showPanel` anchors the PANEL to the configured screen edge, so any slack
-  /// inside it moves the visible capsule that far off that edge and makes a
-  /// recording-to-recovery transition jump. The shadow is drawn by the window,
-  /// outside its frame, so no slack is needed to avoid clipping it.
-  @Test("The anchored panel is exactly the visible pill")
-  func thePanelFrameIsThePill() {
-    #expect(PillMetrics.panelWidth == PillMetrics.pillWidth)
-    #expect(PillMetrics.panelHeight == PillMetrics.pillHeight)
-  }
-
-  @Test("The action is a real target, not a hairline")
-  func theActionIsBigEnoughToHit() {
-    // Well under the 44pt HIG target because this is a transient overlay the
-    // pointer is already near, but a button that shrinks toward the text size
-    // would be a regression a user feels immediately.
-    #expect(PillMetrics.actionWidth >= 60)
-    #expect(PillMetrics.actionHeight >= 28)
-    #expect(PillMetrics.actionHeight < PillMetrics.pillHeight)
+  @Test("The light and dark palettes lay out to the same size")
+  @MainActor func theThemesShareOneSize() {
+    // The palette changes colour only. A theme that changed the size would make
+    // the pill jump when the Mac switches appearance.
+    #expect(
+      fittingSize(of: EscapeRecoveryPillFace(progress: 0, palette: .light))
+        == fittingSize(of: EscapeRecoveryPillFace(progress: 0, palette: .dark)))
   }
 
   // MARK: - The countdown

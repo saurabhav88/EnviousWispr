@@ -156,18 +156,19 @@ struct EscapeRecoveryPillFace: View {
   @State private var isActionHovered = false
 
   var body: some View {
-    HStack(spacing: PillMetrics.midGap) {
+    HStack(spacing: UndoPillMetrics.rowGap) {
       Text(DictationNarrator.escapeRecoveryPillTitle)
-        .font(.system(size: PillMetrics.titleSize, weight: .medium))
+        .font(.system(size: UndoPillMetrics.sentenceSize, weight: .medium))
         .foregroundStyle(palette.text)
         .lineLimit(1)
 
       Button(action: onPress) {
         Text(DictationNarrator.escapeRecoveryPillAction)
-          .font(.system(size: PillMetrics.actionSize, weight: .semibold))
+          .font(.system(size: UndoPillMetrics.actionSize, weight: .semibold))
           .foregroundStyle(palette.actionText)
           .lineLimit(1)
-          .frame(width: PillMetrics.actionWidth, height: PillMetrics.actionHeight)
+          .padding(.horizontal, UndoPillMetrics.actionPaddingAcross)
+          .padding(.vertical, UndoPillMetrics.actionPaddingDown)
           .background(
             RoundedRectangle(cornerRadius: PillMetrics.actionRadius, style: .continuous)
               .fill(isActionHovered ? palette.actionFillHover : palette.actionFill)
@@ -182,13 +183,15 @@ struct EscapeRecoveryPillFace: View {
       .accessibilityLabel(DictationNarrator.escapeRecoveryPillAction)
       .onHover { isActionHovered = $0 }
     }
-    .padding(.leading, PillMetrics.leadInset)
-    .padding(.trailing, PillMetrics.trailInset)
+    // Content-sized (#3747): the pill is its row plus the shared Undo padding, so
+    // it can never disagree with the learned-word pill about height.
+    //
     // The sentence centres in the WHOLE pill, because the rail is an overlay on
     // the rim rather than a row in a stack. Putting the bar in the layout steals
     // height from the bottom and lifts the text above the pill's true middle,
     // which reads as cramped at the top.
-    .frame(width: PillMetrics.pillWidth, height: PillMetrics.pillHeight)
+    .padding(.horizontal, UndoPillMetrics.sidePadding)
+    .padding(.vertical, UndoPillMetrics.verticalPadding)
     .background(Capsule().fill(palette.fill))
     // Both overlays sit IN FRONT of the button and are pure decoration, so both
     // opt out of hit testing. A stroked shape is hit-testable by default and its
@@ -205,53 +208,53 @@ struct EscapeRecoveryPillFace: View {
 
 // MARK: - Metrics
 
-/// The pill's geometry, in one place because the PANEL has to be sized to it and
-/// a panel that disagrees with its content clips or floats.
+/// **The geometry both Undo pills share (#3747, founder 2026-10-14: "make the
+/// dictation cancelled pill the same size as the added to dictionary pill").**
+///
+/// `CorrectionLearnedPillView` and `EscapeRecoveryPillFace` read these same
+/// numbers, so one cannot be retuned without the other. The values are the
+/// learned-word pill's own, moved here unchanged. Widths still differ, because
+/// the two sentences differ; the heights and type sizes are what a person
+/// compares.
+enum UndoPillMetrics {
+  /// The sentence, drawn medium weight.
+  static let sentenceSize: CGFloat = 13
+  /// The button word, drawn semibold. This is a FONT size, not the button height.
+  static let actionSize: CGFloat = 12
+  static let actionPaddingAcross: CGFloat = 12
+  static let actionPaddingDown: CGFloat = 4
+  /// Between the sentence and the button.
+  static let rowGap: CGFloat = 10
+  static let sidePadding: CGFloat = 14
+  static let verticalPadding: CGFloat = 10
+}
+
+/// The cancel pill's own geometry that the learned-word pill does not share.
+///
+/// **The panel is EXACTLY the pill, and that is a placement requirement
+/// rather than a saving (Codex review round 2, 2026-08-19).**
+///
+/// `showPanel` anchors the PANEL to the configured top or bottom edge, and the
+/// geometry code reasons about that frame as though it were the visible pill.
+/// Any margin inside the panel therefore moves the capsule that far off its
+/// edge, and a bottom recording-to-recovery transition jumps upward by the
+/// margin. That transition is a CONTINUING presentation — the same pill in a
+/// replaced panel, whose frame is inherited precisely so the visible capsule
+/// does not move — so a margin makes it move the one time it must not.
+///
+/// A margin looked necessary because the pill drew its own SwiftUI shadow,
+/// which a tight frame would clip. It does not: `showPanel` sets
+/// `hasShadow = true`, and AppKit draws a window's shadow OUTSIDE its frame.
+/// The SwiftUI shadow was redundant with it, and paying for it in placement
+/// was paying twice.
+///
+/// The view is content-sized (#3747), so the panel width follows the localized
+/// sentence and button word the host measures, and a longer translation widens
+/// the pill instead of clipping.
 enum PillMetrics {
-  static let titleSize: CGFloat = 17
-  static let actionSize: CGFloat = 15
-  static let actionWidth: CGFloat = 78
-  static let actionHeight: CGFloat = 34
+  /// Larger than half the button height, so SwiftUI clamps it to a full capsule.
   static let actionRadius: CGFloat = 12
-  static let leadInset: CGFloat = 22
-  static let midGap: CGFloat = 16
-  static let trailInset: CGFloat = 10
   static let railInset: CGFloat = 1.5
-  static let pillHeight: CGFloat = 58
-
-  /// **The panel is EXACTLY the pill, and that is a placement requirement
-  /// rather than a saving (Codex review round 2, 2026-08-19).**
-  ///
-  /// `showPanel` anchors the PANEL to the configured top or bottom edge, and the
-  /// geometry code reasons about that frame as though it were the visible pill.
-  /// Any margin inside the panel therefore moves the capsule that far off its
-  /// edge, and a bottom recording-to-recovery transition jumps upward by the
-  /// margin. That transition is a CONTINUING presentation — the same pill in a
-  /// replaced panel, whose frame is inherited precisely so the visible capsule
-  /// does not move — so a margin makes it move the one time it must not.
-  ///
-  /// A margin looked necessary because the pill drew its own SwiftUI shadow,
-  /// which a tight frame would clip. It does not: `showPanel` sets
-  /// `hasShadow = true`, and AppKit draws a window's shadow OUTSIDE its frame.
-  /// The SwiftUI shadow was redundant with it, and paying for it in placement
-  /// was paying twice.
-
-  /// The pill sizes itself to the SENTENCE it renders.
-  ///
-  /// A hand-tuned constant here is a latent truncation bug: the copy is
-  /// founder-owned and has already been revised once (#2087, 2026-08-18), and a
-  /// pill too narrow by two points silently renders "Dictation cance…". The
-  /// two points of slack absorb rounding between this measurement and the
-  /// renderer's own layout.
-  static let pillWidth: CGFloat = {
-    let font = NSFont.systemFont(ofSize: titleSize, weight: .medium)
-    let title = DictationNarrator.escapeRecoveryPillTitle as NSString
-    let measured = ceil(title.size(withAttributes: [.font: font]).width)
-    return leadInset + measured + midGap + actionWidth + trailInset + 2
-  }()
-
-  static var panelWidth: CGFloat { pillWidth }
-  static var panelHeight: CGFloat { pillHeight }
 }
 
 // MARK: - Palette

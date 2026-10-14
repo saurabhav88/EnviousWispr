@@ -126,12 +126,76 @@ struct OverlayPlacementStateTests {
 
   // MARK: - #1341: the Bottom full-screen rule
 
-  @Test("Bottom sits on the Dock-safe edge normally, and on the true screen edge in full screen")
+  /// #3747: the literals are independent of `bottomGapAboveDock` on purpose, so
+  /// changing the constant fails here and the choice of 16 stays deliberate.
+  @Test("Bottom floats 16pt above the Dock-safe edge normally, and above the true screen edge in full screen")
   func bottomDropsToTheTrueEdgeInFullScreen() {
-    #expect(OverlayPlacementState.freshOriginY(for: .bottom, on: Self.screen) == 85)
+    #expect(OverlayPlacementState.freshOriginY(for: .bottom, on: Self.screen) == CGFloat(85 + 16))
     // `visibleFrame` does NOT shrink when another app is full-screen — measured
     // 2026-07-17 — so without this rule the pill floats ~85pt above the edge.
-    #expect(OverlayPlacementState.freshOriginY(for: .bottom, on: Self.fullScreened) == 0)
+    #expect(OverlayPlacementState.freshOriginY(for: .bottom, on: Self.fullScreened) == CGFloat(0 + 16))
+  }
+
+  @Test("a fresh Bottom pill is placed above the Dock edge, not on it (#3747)")
+  func freshBottomPillClearsTheDockEdge() {
+    var placement = OverlayPlacementState()
+    placement.beginFresh(at: .bottom, screen: Self.screen)
+    let size = CGSize(width: 185, height: 44)
+    let desktop = placement.frame(
+      for: size, continuity: .fresh(position: .bottom, screen: Self.screen.id),
+      environment: Self.screen)
+    #expect(desktop.origin.y == 101, "a Bottom pill sat on the Dock edge")
+    #expect(desktop.origin.y > Self.screen.visibleFrame.minY)
+
+    var fullScreenPlacement = OverlayPlacementState()
+    fullScreenPlacement.beginFresh(at: .bottom, screen: Self.fullScreened)
+    let fullScreen = fullScreenPlacement.frame(
+      for: size, continuity: .fresh(position: .bottom, screen: Self.fullScreened.id),
+      environment: Self.fullScreened)
+    #expect(fullScreen.origin.y == 16, "a full-screen Bottom pill sat on the screen edge")
+  }
+
+  /// The clamp still wins over the gap: a tall pill loses the gap before it
+  /// loses its top edge to the menu bar (#1060).
+  @Test("a tall fresh Bottom pill is clamped below the menu bar and gives up the gap")
+  func tallFreshBottomPillKeepsClampPrecedence() {
+    var placement = OverlayPlacementState()
+    placement.beginFresh(at: .bottom, screen: Self.screen)
+    let tall = placement.frame(
+      for: CGSize(width: 320, height: 900),
+      continuity: .fresh(position: .bottom, screen: Self.screen.id),
+      environment: Self.screen)
+    // visibleFrame.maxY is 945; 945 - 900 - 8 = 37, below the requested 101.
+    #expect(tall.origin.y == 37)
+    #expect(tall.maxY == 937)
+  }
+
+  /// Existing behavior, pinned because the gap makes it visible: a continuing
+  /// Bottom pill inherits its origin, so a pill that was clamped keeps the lower
+  /// origin when it shrinks again and does not regain the gap.
+  @Test("a Bottom pill that grows into the clamp and shrinks again keeps the inherited origin")
+  func bottomGrowThenShrinkInheritsTheOrigin() {
+    var placement = OverlayPlacementState()
+    placement.beginFresh(at: .bottom, screen: Self.screen)
+    let small = placement.frame(
+      for: CGSize(width: 185, height: 44),
+      continuity: .fresh(position: .bottom, screen: Self.screen.id),
+      environment: Self.screen)
+    #expect(small.origin.y == 101)
+
+    let grown = placement.frame(
+      for: CGSize(width: 320, height: 900),
+      continuity: .continuing(
+        currentFrame: small, anchoredScreen: Self.screen.id, outgoingWasContentSized: true),
+      environment: Self.screen)
+    #expect(grown.origin.y == 37)
+
+    let shrunk = placement.frame(
+      for: CGSize(width: 185, height: 44),
+      continuity: .continuing(
+        currentFrame: grown, anchoredScreen: Self.screen.id, outgoingWasContentSized: true),
+      environment: Self.screen)
+    #expect(shrunk.origin.y == 37, "a continuing Bottom pill did not inherit its origin")
   }
 
   @Test("Top is measured from the visible top and is unaffected by a full-screen space")
@@ -206,7 +270,7 @@ struct OverlayPlacementStateTests {
     let moved = placement.repositionedFrameForSpaceChange(
       currentFrame: live, on: Self.fullScreened)
 
-    #expect(moved?.origin.y == 0)
+    #expect(moved?.origin.y == 16)
     // Shipped that site RECENTRES on this path. An earlier version of this test
     // asserted the x was preserved, which encoded my own invented behaviour
     // rather than the shipped rule. It is not the #2195 defect: this path runs
@@ -254,7 +318,7 @@ struct OverlayPlacementStateTests {
     let moved = placement.repositionedFrameForSpaceChange(currentFrame: live, on: other)
 
     #expect(moved?.origin.x == other.visibleFrame.midX - 92.5, "the pill was stranded")
-    #expect(moved?.origin.y == 85)
+    #expect(moved?.origin.y == 101)
   }
 
   @Test("a dragged Top pill keeps its Top edge for re-anchoring")
@@ -291,7 +355,7 @@ struct OverlayPlacementStateTests {
       id: ScreenID(rawValue: 7),
       frame: Self.screen.frame, visibleFrame: Self.screen.visibleFrame)
     let live = CGRect(
-      x: Self.screen.visibleFrame.midX - 92.5, y: 85, width: 185, height: 44)
+      x: Self.screen.visibleFrame.midX - 92.5, y: 101, width: 185, height: 44)
 
     #expect(
       placement.repositionedFrameForSpaceChange(currentFrame: live, on: twin) == nil,

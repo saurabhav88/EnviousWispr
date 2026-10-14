@@ -38,6 +38,11 @@ struct OverlayPlacementState: Equatable {
   static let topOffsetFromVisibleTop: CGFloat = 60
   /// Shipped clamp margin.
   static let topClampMargin: CGFloat = 8
+  /// Extra margin above the selected automatic Bottom baseline, before clamping.
+  /// This is a chosen window-origin margin, not guaranteed Dock-hover or shadow
+  /// clearance. Chosen for #3747 / ENVIOUSWISPR-76: a pill flush on the Dock edge
+  /// sat under the pointer that reveals Dock labels.
+  static let bottomGapAboveDock: CGFloat = 16
 
   // MARK: - Anchor transitions
 
@@ -128,6 +133,8 @@ struct OverlayPlacementState: Equatable {
   /// even when the Dock is hidden behind another app's full-screen space
   /// (`05411427:Sources/EnviousWisprAppKit/App/RecordingOverlayPanel.swift`, measured 2026-07-17).
   ///
+  /// The recomputed Bottom origin includes `bottomGapAboveDock` (#3747).
+  ///
   /// A user-dragged pill is left alone: the user's position outranks our rule.
   /// `screen` is the CURRENT target screen the caller resolved, not the screen
   /// the pill was anchored to. Shipped that site re-resolves the target every
@@ -181,6 +188,7 @@ struct OverlayPlacementState: Equatable {
   }
 
   /// Ported from `origin/main`'s `RecordingOverlayPanel.computeRequestedY`.
+  /// Bottom adds `bottomGapAboveDock` (#3747) to whichever baseline it picks.
   static func freshOriginY(for position: OverlayPillPosition, on screen: ScreenGeometry)
     -> CGFloat
   {
@@ -191,8 +199,10 @@ struct OverlayPlacementState: Equatable {
       // `visibleFrame` is Dock-reserved space as this background app sees it and
       // does NOT shrink when a DIFFERENT app is in native full screen — measured
       // empirically 2026-07-17, leaving an ~85pt gap. Drop to the true screen
-      // edge in that case only.
-      return screen.hasFullScreenSpace ? screen.frame.minY : screen.visibleFrame.minY
+      // edge in that case only. The #3747 gap is added after that choice, so a
+      // full-screen pill does not sit on the edge where pointing reveals a hidden Dock.
+      let baseline = screen.hasFullScreenSpace ? screen.frame.minY : screen.visibleFrame.minY
+      return baseline + bottomGapAboveDock
     }
   }
 

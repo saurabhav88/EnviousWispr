@@ -551,8 +551,8 @@ struct PillDefinition: Equatable, Sendable {
   /// - `BluetoothAwarenessCardView` has `.frame(width: 320)` of its own
   ///   → `.fixed(320)` even though the call passes
   ///   `fitToContent: true`.
-  /// - Escape Recovery's `PillMetrics.pillWidth` is computed from the title
-  ///   font's text metrics at runtime → `.measured`, and no literal is correct.
+  /// - Escape Recovery's `EscapeRecoveryPillFace` is content-sized from the title
+  ///   and button word's text metrics at runtime (#3747) → `.measured`, and no literal is correct.
   let requestedWidth: OverlayWidth
   /// True when this presentation must reserve a fixed interaction frame rather
   /// than shrink to its content. **Only the non-preview recording pill sets
