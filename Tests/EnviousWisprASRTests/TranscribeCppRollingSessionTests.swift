@@ -44,7 +44,7 @@ struct TranscribeCppRollingSessionTests {
   /// An unused decoder: tests that drive `apply` directly never decode.
   private static let noDecode: TranscribeCppRollingSession.Decode = { _ in
     Issue.record("no decode expected")
-    return []
+    return TranscribeCppRunResult(text: "", detectedLanguage: nil, segments: [])
   }
 
   // MARK: - Agreement over changing segment boundaries
@@ -121,6 +121,55 @@ struct TranscribeCppRollingSessionTests {
     await s.apply(revised, realAudioEnd: 3)
     await s.apply(revised, realAudioEnd: 3.2)
     #expect(await s.committedTextForTests == " one two three four five")
+  }
+
+  @Test("a re-heard committed word is not committed twice (thermal, then formal)")
+  func revisedCommittedWord() async {
+    let s = Self.session(Self.noDecode)
+    let first = [Self.seg(0, 2, " Their thermal behavior is"), Self.seg(2, 3, " not")]
+    await s.apply(first, realAudioEnd: 3)
+    await s.apply(first, realAudioEnd: 3.5)
+    #expect(await s.committedTextForTests == " Their thermal behavior is not")
+    // The next decodes re-hear "thermal" as "formal" inside one long segment.
+    let revised = [Self.seg(0, 4.5, " Their formal behavior is not as steady"), Self.seg(4.5, 5, " as")]
+    await s.apply(revised, realAudioEnd: 5)
+    await s.apply(revised, realAudioEnd: 5.5)
+    let committed = await s.committedTextForTests
+    let held = await s.heldBackTextForTests
+    let text = committed + held
+    #expect(text.components(separatedBy: "behavior").count == 2, "said once: \(text)")
+    #expect(text.hasSuffix(" as steady as"), "the new words survive the cut: \(text)")
+  }
+
+  @Test("the cut aligns committed words with revisions and never eats a new segment")
+  func cutIndexAlignment() {
+    let cut = TranscribeCppRollingSession.cutIndex
+    #expect(cut(["a", "b", "c"], ["a", "b", "c", "d"], 4) == 3)
+    #expect(cut(["a", "b", "c"], ["a", "b", "x", "d"], 4) == 3, "a revised last word is consumed")
+    #expect(cut(["a", "b", "c"], ["a", "b", "d", "e"], 2) == 2, "the limit protects new words")
+    #expect(cut([], ["a"], 1) == 0)
+    #expect(cut(["a"], ["a"], 0) == 0)
+  }
+
+  @Test("trimmed native segments keep the decoder's spacing; unspaced scripts get none")
+  func spacingFromFullText() {
+    let english = TranscribeCppRunResult(
+      text: "maintain a fairly constant temperature",
+      detectedLanguage: nil,
+      segments: [
+        Self.native(0, 1000, "maintain a"), Self.native(1000, 2500, "fairly constant temperature"),
+      ])
+    #expect(TranscribeCppRollingSession.spacedTexts(of: english).joined() == english.text)
+    let japanese = TranscribeCppRunResult(
+      text: "今日はいい天気です。散歩に行きましょう。", detectedLanguage: nil,
+      segments: [Self.native(0, 1500, "今日はいい天気です。"), Self.native(1500, 3000, "散歩に行きましょう。")])
+    #expect(TranscribeCppRollingSession.spacedTexts(of: japanese).joined() == japanese.text)
+    let join = TranscribeCppRollingSession.join
+    #expect(join("Cushing", "of") == "Cushing of")
+    #expect(join("ground,", "said") == "ground, said")
+    #expect(join("ground", ", said") == "ground, said")
+    #expect(join("天気です。", "散歩") == "天気です。散歩")
+    #expect(join("", "x") == "x")
   }
 
   // MARK: - Retention (§3.5)
@@ -211,7 +260,7 @@ struct TranscribeCppRollingSessionTests {
   /// cancelled), and records any call that starts while another is still running.
   final class ScriptedDecoder: @unchecked Sendable {
     private let lock = NSLock()
-    private var script: [[TranscribeCppSegment]]
+    private var script: [TranscribeCppRunResult]
     private var calls: [Int] = []
     private var running = 0
     private(set) var overlapped = false
@@ -223,7 +272,15 @@ struct TranscribeCppRollingSessionTests {
     private var callWaiters: [(Int, CheckedContinuation<Void, Never>)] = []
     private var throwOn: Set<Int> = []
 
-    init(_ script: [[TranscribeCppSegment]]) { self.script = script }
+    /// Each entry's full text is its segment texts concatenated, as the decoder spaced them.
+    init(_ script: [[TranscribeCppSegment]]) {
+      self.script = script.map {
+        TranscribeCppRunResult(
+          text: $0.map(\.text).joined().trimmingCharacters(in: .whitespaces),
+          detectedLanguage: nil, segments: $0)
+      }
+    }
+    init(runs: [TranscribeCppRunResult]) { self.script = runs }
 
     var callSampleCounts: [Int] { lock.withLock { calls } }
 
@@ -300,7 +357,11 @@ struct TranscribeCppRollingSessionTests {
           if Task.isCancelled { throw CancellationError() }
         }
         if fails { throw TranscribeCppWhisperError.runFailed(status: 9) }
-        return lock.withLock { script.isEmpty ? [] : script.removeFirst() }
+        return lock.withLock {
+          script.isEmpty
+            ? TranscribeCppRunResult(text: "", detectedLanguage: nil, segments: [])
+            : script.removeFirst()
+        }
       }
     }
   }
@@ -409,7 +470,7 @@ struct TranscribeCppRollingSessionTests {
     audio.set(Self.voiced(3.1))
     let result = await s.finalize(finalSamples: [], speechSegments: [])
     #expect(result.accepted == false)
-    #expect(result.text == " Keep this.", "the prefix rides along as a diagnostic only")
+    #expect(result.text == "Keep this.", "the prefix rides along as a diagnostic only")
     #expect(
       result.strategy
         == (flushThrows ? "streaming_flush_failed" : "streaming_buffer_empty_fallback"))

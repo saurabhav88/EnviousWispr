@@ -53,10 +53,10 @@ struct RollingUnit: Sendable, Equatable {
 }
 
 package actor TranscribeCppRollingSession: WhisperIncrementalSession {
-  /// One decode of `samples`, returning native segments timed in `samples`' own coordinates.
-  /// The backend owns the model, the heart lane, padding, occupancy and the native-boundary
-  /// observer; a cancelled call returns only after the aborted native run has ended.
-  typealias Decode = @Sendable ([Float]) async throws -> [TranscribeCppSegment]
+  /// One decode of `samples`: the native full text and segments, timed in `samples`' own
+  /// coordinates. The backend owns the model, the heart lane, padding, occupancy and the
+  /// native-boundary observer; a cancelled call returns only after the aborted native run ended.
+  typealias Decode = @Sendable ([Float]) async throws -> TranscribeCppRunResult
 
   private let decode: Decode
   private let cadence: Duration
@@ -75,13 +75,9 @@ package actor TranscribeCppRollingSession: WhisperIncrementalSession {
   static let minVoicedTailSec: Float = 0.1
   static let tailEnergyFloor: Float = 0.001
 
-  /// A decode's segment that starts within this of the committed end is treated as the same
-  /// audio re-decoded (the UFAL `HypothesisBuffer.insert` jitter tolerance).
+  /// A segment that starts at or after the committed end, less this jitter tolerance (the UFAL
+  /// `HypothesisBuffer.insert` value), holds only audio no committed word came from.
   static let cutToleranceSec: Float = 0.1
-  /// Longest repeated run of committed words removed at the seam. Segments, not words, are the
-  /// unit of time here, so a straddling segment can repeat more words than the WhisperKit
-  /// session's word-timed 5-gram allowed for.
-  static let seamWindow = 20
 
   // MARK: Stream state (single owner: the serial loop, then finalize)
 
@@ -183,7 +179,7 @@ package actor TranscribeCppRollingSession: WhisperIncrementalSession {
       return fallback(strategy: "streaming_window_overflow_fallback", tailMs: 0)
     }
 
-    let releaseText = committedText + heldBack.map(\.unit.text).joined()
+    let releaseText = heldBack.reduce(committedText) { Self.join($0, $1.unit.text) }
     // Coverage of the text about to be released, from its own segments (never from how much
     // audio a decode was handed, #1308), clamped to real audio.
     let releasedEnd = min(
@@ -201,19 +197,19 @@ package actor TranscribeCppRollingSession: WhisperIncrementalSession {
     let originSample = max(0, min(count, Int(bufferStart * Self.sampleRate)))
     let window = Array(samples[originSample..<count])
     do {
-      let segments = try await decode(window)
+      let run = try await decode(window)
       let tailMs = Self.milliseconds(since: flushStart)
       let realEnd = Float(window.count) / Self.sampleRate
-      let bufferText =
-        segments
-        .filter { Float($0.startMs) / 1000 < realEnd }
-        .map(\.text).joined()
+      let bufferText = zip(run.segments, Self.spacedTexts(of: run))
+        .filter { Float($0.0.startMs) / 1000 < realEnd }
+        .reduce("") { Self.join($0, $1.1) }
       guard !bufferText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
         return fallback(strategy: "streaming_buffer_empty_fallback", tailMs: tailMs)
       }
       // The scrolled-out prefix plus the buffer decode IS the transcript (committed text in
       // the buffer is re-decoded inside `bufferText`; never add both).
-      return result(text: scrolledOutText + bufferText, samplesCovered: count, tailDecodeMs: tailMs)
+      return result(
+        text: Self.join(scrolledOutText, bufferText), samplesCovered: count, tailDecodeMs: tailMs)
     } catch {
       return fallback(
         strategy: "streaming_flush_failed", tailMs: Self.milliseconds(since: flushStart))
@@ -253,7 +249,7 @@ package actor TranscribeCppRollingSession: WhisperIncrementalSession {
       let window = Array(samples[originSample..<count])
       let started = ContinuousClock.now
       loopDecodeInFlight = true
-      let native: [TranscribeCppSegment]
+      let native: TranscribeCppRunResult
       do {
         native = try await decode(window)
       } catch {
@@ -268,10 +264,10 @@ package actor TranscribeCppRollingSession: WhisperIncrementalSession {
       loopDecodeInFlight = false
       // A terminal that landed during the decode wins: drop this cycle.
       guard running, !finished, !Task.isCancelled else { break }
-      let segments = native.map {
+      let segments = zip(native.segments, Self.spacedTexts(of: native)).map {
         RollingSegment(
-          start: origin + Float($0.startMs) / 1000, end: origin + Float($0.endMs) / 1000,
-          text: $0.text)
+          start: origin + Float($0.0.startMs) / 1000, end: origin + Float($0.0.endMs) / 1000,
+          text: $0.1)
       }
       if apply(segments, realAudioEnd: Float(count) / Self.sampleRate) {
         lastDecodeSampleCount = count
@@ -299,26 +295,17 @@ package actor TranscribeCppRollingSession: WhisperIncrementalSession {
     }
     guard !units.isEmpty else { return false }
 
-    // 1. CUT the committed prefix. Normally the decode repeats the committed words first;
-    //    when it revises them instead, cut by time (segments that end inside committed audio)
-    //    and drop a repeated head at the seam.
-    let committedKeys = committedInBuffer.map(\.unit.key)
-    var fresh: [RollingUnit]
-    if !committedKeys.isEmpty, units.count >= committedKeys.count,
-      Array(units.prefix(committedKeys.count).map(\.key)) == committedKeys
-    {
-      fresh = Array(units.dropFirst(committedKeys.count))
-    } else {
-      let committedEnd = committedInBuffer.last?.end ?? bufferStart
-      fresh = units.filter { segments[$0.segment].end > committedEnd + Self.cutToleranceSec }
-      // A segment straddling the committed end repeats committed words at its head.
-      let tail = committedKeys.suffix(Self.seamWindow)
-      for n in stride(from: min(Self.seamWindow, tail.count, fresh.count), through: 1, by: -1)
-      where Array(tail.suffix(n)) == fresh.prefix(n).map(\.key) {
-        fresh.removeFirst(n)
-        break
-      }
-    }
+    // 1. CUT the committed prefix. The decode re-hears the committed words first, sometimes
+    //    differently ("thermal" one cycle, "formal" the next). Align the committed words to
+    //    the head of this decode allowing such revisions, and cut after the best alignment;
+    //    units in a segment that starts after the committed end are new and are never cut.
+    let committedEnd = committedInBuffer.last?.end ?? bufferStart
+    let firstNew =
+      units.firstIndex { segments[$0.segment].start >= committedEnd - Self.cutToleranceSec }
+      ?? units.count
+    let cut = Self.cutIndex(
+      committed: committedInBuffer.map(\.unit.key), units: units.map(\.key), limit: firstNew)
+    let fresh = Array(units[cut...])
 
     // 2. AGREE: the longest common unit prefix with the previous cycle, whatever the segment
     //    boundaries; then commit only the complete segments that prefix covers.
@@ -340,7 +327,7 @@ package actor TranscribeCppRollingSession: WhisperIncrementalSession {
     }
     if commitCount > 0 {
       for unit in fresh[0..<commitCount] {
-        committedText += unit.text
+        committedText = Self.join(committedText, unit.text)
         committedInBuffer.append((unit, segments[unit.segment].end))
       }
       lastCommittedEnd = max(lastCommittedEnd, segments[fresh[commitCount - 1].segment].end)
@@ -361,7 +348,7 @@ package actor TranscribeCppRollingSession: WhisperIncrementalSession {
       boundary > bufferStart
     {
       for entry in committedInBuffer where entry.end <= boundary {
-        scrolledOutText += entry.unit.text
+        scrolledOutText = Self.join(scrolledOutText, entry.unit.text)
       }
       committedInBuffer.removeAll { $0.end <= boundary }
       bufferStart = boundary
@@ -372,7 +359,7 @@ package actor TranscribeCppRollingSession: WhisperIncrementalSession {
     // advance to the retention line anyway. Committed words before it scroll out; the
     // unstable words there never commit, and their agreement state goes with them.
     for entry in committedInBuffer where entry.end <= retentionLine {
-      scrolledOutText += entry.unit.text
+      scrolledOutText = Self.join(scrolledOutText, entry.unit.text)
     }
     committedInBuffer.removeAll { $0.end <= retentionLine }
     // No committed segment ended in the discarded span, so whatever was said there is not in
@@ -381,6 +368,69 @@ package actor TranscribeCppRollingSession: WhisperIncrementalSession {
     heldBack.removeAll { $0.end <= retentionLine }
     previousHypothesis = heldBack.map(\.unit)
     bufferStart = retentionLine
+  }
+
+  // MARK: - Alignment and spacing
+
+  /// Where the committed words end in a decode's units: the prefix length `j <= limit` whose
+  /// alignment to every committed word costs the fewest edits, the longest on a tie (a revised
+  /// final committed word is consumed, not re-committed). Zero when nothing is committed.
+  static func cutIndex(committed: [String], units: [String], limit: Int) -> Int {
+    let m = min(units.count, limit)
+    guard !committed.isEmpty, m > 0 else { return 0 }
+    var previous = Array(0...m)
+    for (i, word) in committed.enumerated() {
+      var current = [i + 1] + [Int](repeating: 0, count: m)
+      for j in 1...m {
+        current[j] = min(
+          previous[j - 1] + (word == units[j - 1] ? 0 : 1), previous[j] + 1, current[j - 1] + 1)
+      }
+      previous = current
+    }
+    var best = 0
+    for j in 0...m where previous[j] <= previous[best] { best = j }
+    return best
+  }
+
+  /// Each segment's text as it appears in the native full text, with the spacing before it.
+  /// transcribe.cpp trims segment texts; the full text keeps the decoder's own spacing (none in
+  /// unspaced scripts). A segment not found in order falls back to its trimmed text, which
+  /// `join` then spaces as the script requires.
+  static func spacedTexts(of run: TranscribeCppRunResult) -> [String] {
+    let full = run.text
+    var cursor = full.startIndex
+    return run.segments.map { segment in
+      let piece = segment.text.trimmingCharacters(in: .whitespacesAndNewlines)
+      guard !piece.isEmpty, let found = full.range(of: piece, range: cursor..<full.endIndex)
+      else { return segment.text }
+      defer { cursor = found.upperBound }
+      return String(full[cursor..<found.upperBound])
+    }
+  }
+
+  /// Joins two pieces of transcript, adding one space only where neither piece supplies one
+  /// and both sides are words of a spaced script; never inside Chinese, Japanese, Thai and the
+  /// other unspaced scripts, and never before closing punctuation.
+  static func join(_ a: String, _ b: String) -> String {
+    guard let last = a.last, let first = b.first else { return a + b }
+    if last.isWhitespace || first.isWhitespace { return a + b }
+    guard first.isLetter || first.isNumber, !isUnspaced(first), !isUnspaced(last) else {
+      return a + b
+    }
+    return a + " " + b
+  }
+
+  private static func isUnspaced(_ character: Character) -> Bool {
+    guard let scalar = character.unicodeScalars.first?.value else { return false }
+    let ranges: [ClosedRange<UInt32>] = [
+      0x0E00...0x0EFF,  // Thai, Lao
+      0x1000...0x109F,  // Myanmar
+      0x1780...0x17FF,  // Khmer
+      0x3000...0x30FF,  // CJK punctuation, Hiragana, Katakana
+      0x3400...0x4DBF, 0x4E00...0x9FFF, 0xF900...0xFAFF,  // Han
+      0xFF00...0xFFEF,  // full-width forms
+    ]
+    return ranges.contains { $0.contains(scalar) }
   }
 
   // MARK: - Units

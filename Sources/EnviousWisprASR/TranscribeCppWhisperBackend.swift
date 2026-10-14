@@ -767,7 +767,7 @@ package actor TranscribeCppWhisperBackend<Driver: WhisperExecutorDriving>: ASRBa
 
   /// One heart-lane decode for the rolling session: `samples` (the session's retained buffer)
   /// padded with the same trailing silence as a batch decode, the locked `language` forced.
-  /// Returns the native segments, timed in `samples`' own coordinates.
+  /// Returns the native result; its segments are timed in `samples`' own coordinates.
   ///
   /// A cancelled call (the session stopping its loop) waits for the aborted run to end before
   /// it rethrows, exactly as `transcribe` does, so a caller counting it as engine occupancy
@@ -775,7 +775,7 @@ package actor TranscribeCppWhisperBackend<Driver: WhisperExecutorDriving>: ASRBa
   /// immediately before `transcribe_run`, after every cancellation check.
   func decodeForRollingSession(
     samples: [Float], language: String, onDecode: ASRInferenceEntryObserver?
-  ) async throws -> [TranscribeCppSegment] {
+  ) async throws -> TranscribeCppRunResult {
     guard !admissionClosed else { throw ASRError.notReady }
     inFlight += 1
     defer { endOperation() }
@@ -789,7 +789,7 @@ package actor TranscribeCppWhisperBackend<Driver: WhisperExecutorDriving>: ASRBa
       let run = try await driver.transcribe(
         handle, samples: input, language: language, lane: .heart,
         onInferenceEntered: onDecode, onProgress: nil)
-      return run.segments
+      return run
     } catch {
       let mapped = Self.mapRunError(error)
       if mapped is CancellationError { await driver.waitForDrain(handle) }
