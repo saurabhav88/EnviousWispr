@@ -13,6 +13,9 @@ classifiers are the checkout's own scripts/ci/classify-changes.sh (build inputs)
 and scripts/ci/needs-eval-packages.sh (eval-package inputs); this file keeps no
 list of its own.
 
+Known limit: the tree is checked at the start and the end, not continuously. An edit made during
+the run and reverted before it ends is not detected; the lock stops a second run, not an editor.
+
 Publication writes a complete temporary file in the receipt directory and
 hard-links it to the final name, so a reader sees no file or a whole one, and an
 existing final file is a failure, never an overwrite.
@@ -44,6 +47,9 @@ REQUIRED = {
 }
 
 
+# Source roots the full run compiles by glob: the app and test targets, and the three eval packages.
+IGNORED_SWIFT_ROOTS = ("Sources", "Tests", "scripts/eval/apple_runner/Sources",
+                       "scripts/eval/alias_runner/Sources", "scripts/eval/prompt_render/Sources")
 # The full Debug run's required bundles: lane-verdict.sh's default list.
 EXPECTED_BUNDLES = {"EnviousWisprTests", "EnviousWisprDesktopEffectsTests", "EnviousWisprASRTests"}
 
@@ -99,8 +105,20 @@ def capture(root):
     root = Path(root)
     tree = git(root, "write-tree").stdout.decode().strip()
     head = git(root, "rev-parse", "HEAD").stdout.decode().strip()
+    # A tracked file flagged assume-unchanged or skip-worktree can differ from the index while
+    # `git diff` reports clean, and the build still compiles the working copy.
+    flags = [e for e in git(root, "ls-files", "-v", "-z").stdout.decode().split("\0") if e]
+    if any(e[0].islower() or e[0] == "S" for e in flags):
+        raise Ineligible("a tracked file is flagged assume-unchanged or skip-worktree (clear the flag)")
     if git(root, "diff", "--quiet", "--no-ext-diff", check=False).returncode != 0:
         raise Ineligible("a tracked file differs from the index (stage it, or restore it)")
+    # The build globs Sources/ and Tests/, and each eval package compiles its own Sources/, so an
+    # IGNORED Swift file there is compiled yet outside the index tree. (Other ignored Swift, such as
+    # an eval package's .build/checkouts or an uncompiled runner, is not an input.)
+    ignored = [p for p in git(root, "ls-files", "--others", "--ignored", "--exclude-standard", "-z",
+                              "--", *IGNORED_SWIFT_ROOTS).stdout.decode().split("\0") if p]
+    if any(p.endswith(".swift") for p in ignored):
+        raise Ineligible("an ignored Swift file under a compiled source root is outside the index tree")
     untracked = [p for p in git(root, "ls-files", "--others", "--exclude-standard", "-z")
                  .stdout.decode().split("\0") if p]
     if untracked:
@@ -318,6 +336,34 @@ def self_test():
         except Ineligible as e:
             case("an untracked eval input is ineligible", "eval-package input" in str(e))
         shutil.rmtree(root / "scripts/eval")
+        run("update-index", "--assume-unchanged", "Sources/A.swift")
+        try:
+            capture(root); case("an assume-unchanged tracked file is ineligible", False)
+        except Ineligible as e:
+            case("an assume-unchanged tracked file is ineligible", "assume-unchanged" in str(e))
+        run("update-index", "--no-assume-unchanged", "Sources/A.swift")
+        run("update-index", "--skip-worktree", "Sources/A.swift")
+        try:
+            capture(root); case("a skip-worktree tracked file is ineligible", False)
+        except Ineligible as e:
+            case("a skip-worktree tracked file is ineligible", "skip-worktree" in str(e))
+        run("update-index", "--no-skip-worktree", "Sources/A.swift")
+        exclude = root / ".git/info/exclude"
+        exclude.write_text("Sources/Hidden.swift\nscripts/eval/x/.build/\n")
+        (root / "Sources/Hidden.swift").write_text("let hidden = 1\n")
+        try:
+            capture(root); case("an ignored Swift file under Sources/ is ineligible", False)
+        except Ineligible as e:
+            case("an ignored Swift file under Sources/ is ineligible", "ignored Swift" in str(e))
+        (root / "Sources/Hidden.swift").unlink()
+        (root / "scripts/eval/x/.build").mkdir(parents=True)
+        (root / "scripts/eval/x/.build/Dep.swift").write_text("let dep = 1\n")
+        try:
+            capture(root); case("an ignored Swift file in a package build dir is not an input", True)
+        except Ineligible as e:
+            case("an ignored Swift file in a package build dir is not an input", False, str(e))
+        shutil.rmtree(root / "scripts/eval")
+        exclude.write_text("")
         (root / "notes.txt").write_text("scratch\n")
         try:
             capture(root); case("an unrelated untracked file is eligible", True)
