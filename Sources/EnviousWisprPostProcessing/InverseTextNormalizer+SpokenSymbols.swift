@@ -61,7 +61,8 @@ extension InverseTextNormalizer {
       let rest = String(value.drop(while: isHorizontalSpace))
       // A spoken slash or backslash after a symbol its left boundary rejects ("<", "_") keeps a gap,
       // so the joiner pass still reads it: "open angle bracket backslash path" -> `<\path`.
-      if joinerGap, rest.count < value.count, let symbol, !symbol.isWhitespace,
+      // No space test: an engine comma the symbol dropped may have been the only separator.
+      if joinerGap, let symbol, !symbol.isWhitespace,
         !joinerLeftNeighbours.contains(symbol),
         firstMatch(Self.joinerWordAtStart, rest) != nil
       {
@@ -168,7 +169,7 @@ extension InverseTextNormalizer {
 
   /// A spoken slash or backslash at the start of the text, with the joiner's own right boundary.
   private static let joinerWordAtStart =
-    #"\A(?:back[^\S\r\n]*slash|(?:forward[^\S\r\n]+)?slash)(?![^\s.,;:!?])"#
+    #"\A(?:back[^\S\r\n]*slash|(?:forward[^\S\r\n]+)?slash)(?![^\s.,;:!?])(?![.,;:!?]\S)"#
 
   /// A spoken slash or backslash at the end of the text, with the joiner's own left boundary.
   private static let joinerWordAtEnd =

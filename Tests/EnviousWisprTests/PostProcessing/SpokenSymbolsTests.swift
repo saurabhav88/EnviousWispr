@@ -108,6 +108,9 @@ struct SpokenSymbolsTests {
     #expect(on("Type backslash underscore name now") == "Type\\_name now")
     #expect(on("See open paren and slash close paren now") == "See (and slash) now")
     #expect(!on("Run open angle bracket slash path close angle bracket").contains("\u{200A}"))
+    // An engine comma glued to the backslash was the only separator (build review r4).
+    #expect(
+      on("Run open angle bracket,backslash path close angle bracket now") == "Run <\\path> now")
     // A spaced symbol before a spoken backslash keeps its own space and glues as before.
     #expect(on("Set x equals sign backslash path now") == "Set x =\\path now")
     // Start-word route: the slash is read by the bare-word pass before the start-word symbols render.
