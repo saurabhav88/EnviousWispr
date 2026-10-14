@@ -108,6 +108,12 @@ struct SpokenSymbolsTests {
     #expect(on("Type backslash underscore name now") == "Type\\_name now")
     #expect(on("See open paren and slash close paren now") == "See (and slash) now")
     #expect(!on("Run open angle bracket slash path close angle bracket").contains("\u{200A}"))
+    // A spaced symbol before a spoken backslash keeps its own space and glues as before.
+    #expect(on("Set x equals sign backslash path now") == "Set x =\\path now")
+    // Start-word route: the slash is read by the bare-word pass before the start-word symbols render.
+    let bare = normalizer.normalize(
+      "Run Insert open paren slash clear Insert close paren now", spokenPunctuation: false)
+    #expect(startWord(bare, "en", "Insert") == "Run (/clear) now")
     // A transcript's own hair space is never removed, and the pass still runs.
     #expect(on("Run open paren x close paren\u{200A}now") == "Run (x)\u{200A}now")
   }

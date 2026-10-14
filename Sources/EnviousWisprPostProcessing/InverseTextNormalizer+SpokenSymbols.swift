@@ -61,7 +61,8 @@ extension InverseTextNormalizer {
       let rest = String(value.drop(while: isHorizontalSpace))
       // A spoken slash or backslash after a symbol its left boundary rejects ("<", "_") keeps a gap,
       // so the joiner pass still reads it: "open angle bracket backslash path" -> `<\path`.
-      if joinerGap, rest.count < value.count, let symbol, !joinerLeftNeighbours.contains(symbol),
+      if joinerGap, rest.count < value.count, let symbol, !symbol.isWhitespace,
+        !joinerLeftNeighbours.contains(symbol),
         firstMatch(Self.joinerWordAtStart, rest) != nil
       {
         return String(Self.joinerGapCharacter) + rest
