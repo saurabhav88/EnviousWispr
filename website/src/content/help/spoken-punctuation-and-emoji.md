@@ -179,6 +179,7 @@ Say the start word, then the command, in the language you dictate in. These tabl
 | Diktiere Anführungszeichen zu | “ |
 | Diktiere Bindestrich | - |
 | Diktiere Auslassungspunkte | … |
+| Diktiere Ellipse | … |
 
 #### French
 
@@ -217,6 +218,7 @@ Say the start word, then the command, in the language you dictate in. These tabl
 | Añade paréntesis de cierre | ) |
 | Añade cerrar paréntesis | ) |
 | Añade abrir comillas | “ |
+| Añade comillas | “ |
 | Añade comillas de cierre | ” |
 | Añade cerrar comillas | ” |
 | Añade guion | - |

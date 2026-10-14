@@ -1573,7 +1573,7 @@
 {"input": "a b three dot s d d dot three at g mail dot com", "expected": "a b three dot s d d dot three at g mail.com", "category": "email", "slice": "public"}
 {"input": "dot three at g mail dot com", "expected": "dot three at g mail.com", "category": "email", "slice": "public"}
 {"input": "one three at g mail dot com", "expected": "one three at g mail.com", "category": "email", "slice": "public"}
-{"input": "a b three hyphen s d d dash three at g mail dot com", "expected": "a b three hyphen s d d dash three at g mail.com", "category": "email", "slice": "public"}
+{"input": "a b three hyphen s d d dash three at g mail dot com", "expected": "a b three-s d d dash three at g mail.com", "category": "email", "slice": "public"}
 {"input": "h t t p colon slash slash w w w dot o u r d a i l y n e w s dot com dot s m", "expected": "h t t p://w w w dot o u r d a i l y n e w s.com dot s m", "category": "url", "slice": "public"}
 {"input": "h t t p colon slash slash w w w dot c o m d a i l y n e w s dot a b dot s m", "expected": "h t t p://w w w dot c o m d a i l y n e w s dot a b dot s m", "category": "url", "slice": "public"}
 {"input": "h t t p colon slash slash w w w dot c o m d a i l y n e w s dot a b slash s m", "expected": "h t t p://w w w dot c o m d a i l y n e w s dot a b/s m", "category": "url", "slice": "public"}
@@ -2102,7 +2102,7 @@
 {"input": "my dash site.com slash docs", "expected": "my dash site.com/docs", "category": "url", "slice": "negative"}
 {"input": "alice @ example.com slash unsubscribe", "expected": "alice @ example.com/unsubscribe", "category": "negative", "slice": "negative"}
 {"input": "example.com slash docs dot html", "expected": "example.com/docs dot html", "category": "negative", "slice": "negative"}
-{"input": "example.com slash user underscore settings", "expected": "example.com/user underscore settings", "category": "negative", "slice": "negative"}
+{"input": "example.com slash user underscore settings", "expected": "example.com/user_settings", "category": "negative", "slice": "negative"}
 {"input": "https: slash slash example.com slash docs", "expected": "https://example.com/docs", "category": "negative", "slice": "negative"}
 {"input": "example.com slash search? q equals test", "expected": "example.com/search? Q equals test", "category": "url", "slice": "gold"}
 {"input": "example.com slash docs- slash next", "expected": "example.com/docs-/next", "category": "url", "slice": "gold"}

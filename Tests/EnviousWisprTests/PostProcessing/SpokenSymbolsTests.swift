@@ -97,6 +97,90 @@ struct SpokenSymbolsTests {
     #expect(on("Run open paren slash clear close paren now.") == "Run (/clear) now.")
   }
 
+  /// Every English symbol form on BOTH English routes, with the expected spacing written from the plan's
+  /// table (D2), not from the renderer: opens keeps the space before and joins the next word, closes
+  /// joins the word before, joins removes both spaces, spaced puts one space on each side.
+  @Test("Every English symbol form converts with its class's spacing on both English routes")
+  func everyEnglishFormBothRoutes() {
+    for rule in SpokenPunctuationRules.englishSymbolRules {
+      guard let spacing = rule.command.spacing else {
+        Issue.record("\(rule.command) has no spacing")
+        continue
+      }
+      let symbol = rule.replacement
+      let expected: String
+      switch spacing {
+      case .opens: expected = "Alpha " + symbol + "beta"
+      case .closes: expected = "Alpha" + symbol + " beta"
+      case .joins: expected = "Alpha" + symbol + "beta"
+      case .spaced: expected = "Alpha " + symbol + " beta"
+      }
+      for form in rule.spokenForms {
+        #expect(on("Alpha \(form) beta") == expected, "bare: \(form)")
+        #expect(
+          startWord("Alpha Insert \(form) beta", "en", "Insert") == expected, "start word: \(form)")
+      }
+    }
+  }
+
+  @Test("Every determiner keeps a symbol name as words")
+  func everyDeterminer() {
+    for word in InverseTextNormalizer.symbolDeterminers.sorted() {
+      let input = "Use \(word) asterisk now"
+      #expect(on(input) == input, "\(word)")
+    }
+  }
+
+  @Test("Spaced symbols stay tight against a line break, and nested and adjacent brackets join")
+  func boundaries() {
+    #expect(startWord("Alpha Insert ampersand\nbeta", "en", "Insert") == "Alpha &\nbeta")
+    #expect(startWord("Insert ampersand beta", "en", "Insert") == "& beta")
+    #expect(startWord("Alpha Insert ampersand", "en", "Insert") == "Alpha &")
+    #expect(on("Call open paren open paren x close paren close paren") == "Call ((x))")
+    #expect(on("Say open paren open quote hi close quote close paren") == "Say (\"hi\")")
+    #expect(on("Only open paren here") == "Only (here")
+  }
+
+  /// Shapes from real dictation (the founder's History, read locally): the engine puts a comma at the
+  /// pause around a spoken symbol.
+  @Test(
+    "An engine comma inside a symbol pair goes; one after the closing symbol stays",
+    arguments: [
+      ("Say open parenthesis, urgent, close parenthesis, send it today.",
+       "Say (urgent), send it today."),
+      ("It should say open paren user ID, colon string, close paren returns bool.",
+       "It should say (user ID: string) returns bool."),
+      ("Set API, underscore, key first.", "Set API_key first."),
+      ("Keep it open paren see above. close paren", "Keep it (see above.)"),
+    ])
+  func engineCommaInsidePair(input: String, expected: String) {
+    #expect(on(input) == expected)
+  }
+
+  @Test("A legacy command right after a joining symbol is still converted")
+  func legacyAfterJoiningSymbol() {
+    #expect(startWord("Hello Insert underscore Insert comma", "en", "Insert") == "Hello_,")
+  }
+
+  @Test("A capital pending after a full stop lands after every opening symbol")
+  func capitalAfterEveryOpener() {
+    #expect(
+      startWord("Done Insert period Insert open angle bracket beta", "en", "Insert") == "Done. <Beta")
+    #expect(startWord("Done Insert period Insert hash sign beta", "en", "Insert") == "Done. #Beta")
+  }
+
+  @Test("A start word that is a symbol's first word still gates the symbol")
+  func symbolFirstWordStartWord() {
+    #expect(startWord("Call Open open paren x", "en", "Open") == "Call (x")
+  }
+
+  @Test("A closing symbol after a spoken period means the period is not the last character")
+  func periodThenSymbolProvenance() {
+    let result = normalizer.normalizeReportingFinalFullStop(
+      "see you period close paren", spokenPunctuation: true)
+    #expect(result.spokenFinalFullStop == false)
+  }
+
   // MARK: - Start word
 
   @Test("German start word: brackets, quotes, hyphen and ellipsis")

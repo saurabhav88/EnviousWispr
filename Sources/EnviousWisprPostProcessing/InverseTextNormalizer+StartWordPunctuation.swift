@@ -309,6 +309,8 @@ extension InverseTextNormalizer {
   private static func isWhitespaceOrOpening(_ character: Character) -> Bool {
     if character.isWhitespace || character == "\"" || character == "'" { return true }
     if character == "\u{00BF}" || character == "\u{00A1}" { return true }
+    // #3738: the opening symbols that are not Unicode opening punctuation.
+    if character == "<" || character == "#" || character == "~" { return true }
     return character.unicodeScalars.allSatisfy {
       $0.properties.generalCategory == .openPunctuation
         || $0.properties.generalCategory == .initialPunctuation

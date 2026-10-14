@@ -46,6 +46,16 @@ extension InverseTextNormalizer {
     // after it, so "underscores" and "re-tilde" are not commands.
     let pattern =
       #"(?<![\p{L}\p{N}_-])"# + lead + "(" + alternation(forms) + #")(?![\p{L}\p{N}_])"#
+    // A joining or opening symbol eats the space after it, unless a legacy command follows: removing
+    // that space would glue "Insert comma" onto the symbol, where the legacy matcher's word boundary
+    // can no longer see it ("Hello Insert underscore Insert comma").
+    let legacyForms = alternation(
+      rules.filter { $0.command.role != .symbol }.flatMap(\.spokenForms))
+    func trimSymbolGap(_ value: String) -> String {
+      let legacy = #"\A[ \t\x{00A0}]*"# + lead + "(?:" + legacyForms + #")\b"#
+      if firstMatch(legacy, value) != nil { return value }
+      return String(value.drop(while: isHorizontalSpace))
+    }
     let matches = reMatches(pattern, text)
     guard !matches.isEmpty else { return (text, 0) }
 
@@ -53,14 +63,17 @@ extension InverseTextNormalizer {
     var out = ""
     var cursor = 0
     var skipLeadingSpace = false
+    var absorbLeadingComma = false
     var lastWasSpaced = false
     var fired = 0
     for match in matches {
       let range = match.result.range
       guard range.location >= cursor else { continue }
       var gap = ns.substring(with: NSRange(location: cursor, length: range.location - cursor))
-      if skipLeadingSpace { gap = String(gap.drop(while: isHorizontalSpace)) }
+      if absorbLeadingComma { gap = droppingEngineComma(gap) }
+      if skipLeadingSpace { gap = trimSymbolGap(gap) }
       skipLeadingSpace = false
+      absorbLeadingComma = false
       let matched = ns.substring(with: range)
       guard let form = match.g(1), let rule = ruleByKey[formKey(form)],
         let spacing = rule.command.spacing
@@ -82,21 +95,28 @@ extension InverseTextNormalizer {
       case .opens:
         out += rule.replacement
         skipLeadingSpace = true
+        absorbLeadingComma = true
       case .closes:
-        out = trimmingTrailingSpace(out) + rule.replacement
+        out = trimmingEngineComma(out) + rule.replacement
       case .joins:
-        out = trimmingTrailingSpace(out) + rule.replacement
+        out = trimmingEngineComma(out) + rule.replacement
         skipLeadingSpace = true
+        absorbLeadingComma = true
       case .spaced:
+        // One space each side, none against a line break or the text's start or end.
         let left = trimmingTrailingSpace(out)
-        out = left + (left.isEmpty || left.last == "\n" ? "" : " ") + rule.replacement + " "
+        let right = ns.substring(from: NSMaxRange(range)).drop(while: isHorizontalSpace)
+        let leftSpace = left.isEmpty || left.last?.isNewline == true ? "" : " "
+        let rightSpace = right.isEmpty || right.first?.isNewline == true ? "" : " "
+        out = left + leftSpace + rule.replacement + rightSpace
         skipLeadingSpace = true
       }
       fired += 1
       cursor = NSMaxRange(range)
     }
     var tail = ns.substring(from: cursor)
-    if skipLeadingSpace { tail = String(tail.drop(while: isHorizontalSpace)) }
+    if absorbLeadingComma { tail = droppingEngineComma(tail) }
+    if skipLeadingSpace { tail = trimSymbolGap(tail) }
     // A spaced symbol at the very end leaves no space dangling after it.
     if tail.isEmpty, lastWasSpaced { out = trimmingTrailingSpace(out) }
     out += tail
@@ -115,6 +135,23 @@ extension InverseTextNormalizer {
   }
 
   // MARK: - Helpers
+
+  /// Real dictation (founder History, #3738): the engine writes a comma at the pause around a spoken
+  /// symbol, "open parenthesis, urgent, close parenthesis". A comma that would land INSIDE the symbol
+  /// pair (right after an opening or joining symbol, right before a closing or joining one) is the
+  /// engine's, so it goes: `(urgent)`. A comma after a closing symbol stays, and a full stop is never
+  /// touched (`(see above.)` is real).
+  private static func droppingEngineComma(_ text: String) -> String {
+    let rest = text.drop(while: isHorizontalSpace)
+    guard rest.first == "," else { return text }
+    return String(rest.dropFirst())
+  }
+
+  private static func trimmingEngineComma(_ text: String) -> String {
+    let trimmed = trimmingTrailingSpace(text)
+    guard trimmed.last == "," else { return trimmed }
+    return trimmingTrailingSpace(String(trimmed.dropLast()))
+  }
 
   private static func isHorizontalSpace(_ character: Character) -> Bool {
     character == " " || character == "\t" || character == "\u{00A0}"

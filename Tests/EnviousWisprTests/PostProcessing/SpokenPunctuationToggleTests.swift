@@ -198,8 +198,9 @@ struct SpokenPunctuationToggleTests {
 
     let allowed: Set<String> = ["punctuation", "url"]
     // #3738: two rows outside those categories contain a spoken SYMBOL command and now move with the
-    // switch, by identity and with what each position writes (the OFF value is the fixture's own
-    // expectation, an independent oracle; the ON value is the plan's spacing table).
+    // switch, by identity and with what each position writes (the OFF value is the Python oracle's
+    // output; the ON value, also written into parity.jsonl as an intended edit, is the plan's spacing
+    // table).
     let pinnedSymbolRows: [String: (off: String, on: String)] = [
       "example.com slash user underscore settings": (
         "example.com/user underscore settings", "example.com/user_settings"),
@@ -265,7 +266,8 @@ struct SpokenPunctuationToggleTests {
       }
       let off = Self.itn.normalize(input, spokenPunctuation: false)
       let on = Self.itn.normalize(input, spokenPunctuation: true)
-      #expect(off == expected, "OFF \(input.debugDescription) -> \(off.debugDescription)")
+      let expectedOff = pinnedSymbolRows[input]?.off ?? expected
+      #expect(off == expectedOff, "OFF \(input.debugDescription) -> \(off.debugDescription)")
       // #3738: a row that also carries a spoken symbol writes its pinned ON value instead.
       let expectedOn = pinnedSymbolRows[input]?.on ?? expected
       #expect(on == expectedOn, "ON \(input.debugDescription) -> \(on.debugDescription)")

@@ -492,7 +492,8 @@ struct MultilingualSpokenPunctuationTests {
   @Test("No spoken form is empty or repeated within a language")
   func formsAreWellFormed() throws {
     for language in SpokenPunctuationRules.supportedLanguages {
-      let forms = try #require(SpokenPunctuationRules.spokenForms(for: language))
+      // #3738: every rule's forms, symbols included (spokenForms is the collision-only subset).
+      let forms = try #require(SpokenPunctuationRules.rules(for: language)).flatMap(\.spokenForms)
       #expect(forms.allSatisfy { $0.isEmpty == false }, "language: \(language)")
       let lowered = forms.map { $0.lowercased() }
       #expect(Set(lowered).count == lowered.count, "language: \(language)")

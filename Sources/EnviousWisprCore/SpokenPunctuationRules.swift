@@ -264,7 +264,8 @@ package enum SpokenPunctuationRules {
     .init(command: .semicolon, spokenForms: ["Semikolon", "Strichpunkt"], replacement: ";"),
     .init(command: .comma, spokenForms: ["Komma"], replacement: ","),
     .init(command: .period, spokenForms: ["Punkt"], replacement: "."),
-    // #3738: Apple's German forms (macOS 27 dictation commands page), AUTHORED, not measured on speech.
+    // #3738: Apple's German forms (macOS 27 dictation commands page), not measured on speech.
+    // "Klammer auf/zu", "Anführungszeichen auf/zu" and "Auslassungspunkte" are our own aliases, not Apple's.
     .init(command: .openParenthesis, spokenForms: ["linke Klammer", "Klammer auf"], replacement: "("),
     .init(command: .closeParenthesis, spokenForms: ["rechte Klammer", "Klammer zu"], replacement: ")"),
     .init(
@@ -274,7 +275,7 @@ package enum SpokenPunctuationRules {
       command: .closeQuote, spokenForms: ["Anführungszeichen oben", "Anführungszeichen zu"],
       replacement: "\u{201C}"),
     .init(command: .hyphen, spokenForms: ["Bindestrich"], replacement: "-"),
-    .init(command: .ellipsis, spokenForms: ["Auslassungspunkte"], replacement: "\u{2026}"),
+    .init(command: .ellipsis, spokenForms: ["Ellipse", "Auslassungspunkte"], replacement: "\u{2026}"),
   ]
 
   /// French. **`nouveau paragraphe` is AUTHORED, not measured**: Apple converted both French line-break
@@ -309,10 +310,11 @@ package enum SpokenPunctuationRules {
     .init(command: .colon, spokenForms: ["dos puntos"], replacement: ":"),
     .init(command: .comma, spokenForms: ["coma"], replacement: ","),
     .init(command: .period, spokenForms: ["punto"], replacement: "."),
-    // #3738: Apple's Spanish forms, AUTHORED.
+    // #3738: Apple's Spanish forms, not measured on speech; "abrir/cerrar paréntesis" and "abrir/cerrar
+    // comillas" are our own aliases.
     .init(command: .openParenthesis, spokenForms: ["paréntesis de apertura", "abrir paréntesis"], replacement: "("),
     .init(command: .closeParenthesis, spokenForms: ["paréntesis de cierre", "cerrar paréntesis"], replacement: ")"),
-    .init(command: .openQuote, spokenForms: ["abrir comillas"], replacement: "\u{201C}"),
+    .init(command: .openQuote, spokenForms: ["abrir comillas", "comillas"], replacement: "\u{201C}"),
     .init(command: .closeQuote, spokenForms: ["comillas de cierre", "cerrar comillas"], replacement: "\u{201D}"),
     .init(command: .hyphen, spokenForms: ["guion"], replacement: "-"),
     .init(command: .ellipsis, spokenForms: ["puntos suspensivos"], replacement: "\u{2026}"),
@@ -328,7 +330,8 @@ package enum SpokenPunctuationRules {
     .init(command: .colon, spokenForms: ["due punti"], replacement: ":"),
     .init(command: .comma, spokenForms: ["virgola"], replacement: ","),
     .init(command: .period, spokenForms: ["punto"], replacement: "."),
-    // #3738: Apple's Italian forms, AUTHORED (Apple's page mixes "parentesi chiusa" and "parentesi tonda chiusa").
+    // #3738: Apple's Italian forms, not measured on speech (Apple's page mixes "parentesi chiusa" and
+    // "parentesi tonda chiusa"); "parentesi tonda aperta" is our own alias.
     .init(command: .openParenthesis, spokenForms: ["parentesi aperta", "parentesi tonda aperta"], replacement: "("),
     .init(command: .closeParenthesis, spokenForms: ["parentesi chiusa", "parentesi tonda chiusa"], replacement: ")"),
     .init(command: .openQuote, spokenForms: ["apri virgolette"], replacement: "\u{201C}"),
