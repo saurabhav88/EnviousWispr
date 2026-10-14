@@ -339,7 +339,8 @@ final class PipelineSettingsSync {
       kernelDriver.spokenPunctuation = settings.spokenPunctuation
       whisperKitKernelDriver.spokenPunctuation = settings.spokenPunctuation
     case .casualModeEnabled:
-      // #3737: live-mutable like the Cleanup switches above; the next take uses the new value.
+      // #3737: live-mutable; a change also affects an in-flight take
+      // if its Casual Ending step has not run yet.
       kernelDriver.casualModeEnabled = settings.casualModeEnabled
       whisperKitKernelDriver.casualModeEnabled = settings.casualModeEnabled
     case .isDebugModeEnabled:

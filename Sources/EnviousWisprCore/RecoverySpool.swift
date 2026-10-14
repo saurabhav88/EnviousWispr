@@ -121,8 +121,9 @@ public struct RecordingSettingsSnapshot: Codable, Sendable, Equatable {
   /// means the spool predates English (UK), which is `.american`. The initializer parameter is not
   /// defaulted, so every writer must pass the record-time value.
   public let englishSpelling: EnglishSpelling?
-  /// #3737: the Casual mode switch at record time, so a recovered take keeps or drops its final full stop
-  /// as the live take would have. OPTIONAL for the same reason as its siblings: spools written before
+  /// #3737: the Casual mode switch at record time. Recovery uses this saved value;
+  /// live dictation reads the switch when its final cleanup step runs, so changing
+  /// the switch during a take can make live delivery and recovery disagree. OPTIONAL for the same reason as its siblings: spools written before
   /// this field exist, and a missing non-optional key would fail the whole decode. `nil` means the spool
   /// predates Casual mode, which is OFF. The initializer parameter is not defaulted, so every writer
   /// must pass a value (file import passes `false`: Casual mode never applies to an imported recording).

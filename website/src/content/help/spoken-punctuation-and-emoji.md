@@ -60,7 +60,7 @@ Only the last full stop goes. "Sounds good, see you at three." becomes "Sounds g
 
 A final "etc.", "Dr." or "Inc." loses its dot.
 
-Capitals stay as they are. Casual mode does not change **Transcribe a File**, and it does not change dictations already in your History. If you dictate twice into the same line, the second dictation continues the first one as the same sentence, because there is no full stop between them.
+Casual mode only changes the ending. It does not change **Transcribe a File** or dictations already in your History. When you dictate twice into the same line, spacing and starting capitals depend on Smart insertion and what the target app supports. A question mark, exclamation mark or protected full stop still separates the sentences.
 
 Casual mode works with every speech engine, with AI polish on or off. The **Casual** tone of [S1-mini](/help/s1-mini-by-superwhisper-and-writing-style/) is a different option: it is part of AI polish and changes more than the ending.
 
