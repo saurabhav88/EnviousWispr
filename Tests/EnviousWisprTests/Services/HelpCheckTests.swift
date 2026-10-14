@@ -1372,14 +1372,23 @@ struct HelpCheckTests {
 
   @Test("A split that used the prepared session and then timed out still reports it")
   func prewarmedSurvivesTimeouts() async {
-    // Split deadline: the split takes the session, then never returns.
+    // Split deadline, fired only after the split has taken the session: then it never returns.
+    let consumed = Gate()
     let splitTimeout = HelpCheck(
       decompose: { _, _, onConsumed in
         onConsumed()
+        consumed.release()
         await withCheckedContinuation { (_: CheckedContinuation<Void, Never>) in }
         return .concerns([], hitCap: false)
       }, decompositionVersion: "afm-kit-1", client: HelpCheckClient(transport: Self.noCard().transport),
-      appVersion: "2.6.0", sleep: Self.clock(firing: [HelpCheck.decompositionDeadline]))
+      appVersion: "2.6.0",
+      sleep: { duration in
+        if duration == HelpCheck.decompositionDeadline {
+          await consumed.pass()
+          return
+        }
+        try await Task.sleep(for: .seconds(3600))  // test-fixture-timer: no other deadline may fire here
+      })
     guard case .send(_, let reason, let prewarmed) = await splitTimeout.run("x y", prepared: "s1")
     else {
       Issue.record("expected send")
@@ -1451,26 +1460,40 @@ struct HelpCheckTests {
     #expect(prewarmed == false)
   }
 
+  /// Hands out "s1", "s2", ... in call order. With `holds`, call N waits for `gate(N)`.
   @MainActor
   final class Preparer {
-    let gate = Gate()
     private(set) var calls = 0
     var holds = false
+    private var gates: [Int: Gate] = [:]
+    func gate(_ n: Int) -> Gate {
+      if let gate = gates[n] { return gate }
+      let gate = Gate()
+      gates[n] = gate
+      return gate
+    }
     func make() -> @Sendable () async -> (any Sendable)? {
       { [self] in
-        let n = await MainActor.run { () -> Int in
+        let (n, gate) = await MainActor.run { () -> (Int, Gate?) in
           calls += 1
-          return calls
+          return (calls, holds ? gate(calls) : nil)
         }
-        if await MainActor.run(body: { holds }) { await gate.pass() }
+        await gate?.pass()
         return "s\(n)"
       }
     }
   }
 
+  /// Every finished preparation and release, in order, from the submission's own report.
+  @MainActor
+  final class Settles {
+    private(set) var all: [FeedbackSubmission.SplitSettle] = []
+    func record(_ settle: FeedbackSubmission.SplitSettle) { all.append(settle) }
+  }
+
   @MainActor
   static func preparedSubmission(
-    _ spy: SplitSpy, _ transport: FakeTransport, preparer: Preparer,
+    _ spy: SplitSpy, _ transport: FakeTransport, preparer: Preparer, settles: Settles,
     graceSleep: @escaping @Sendable (Duration) async throws -> Void = { _ in
       try await Task.sleep(for: .seconds(3600))  // test-fixture-timer: a grace period this test never lets end
     }
@@ -1481,6 +1504,7 @@ struct HelpCheckTests {
       store: store, save: recorder.save, helpCheck: Self.spyCheck(spy, transport),
       graceSleep: graceSleep)
     submission.prepareSplit = preparer.make()
+    submission.splitSettled = { settles.record($0) }
     return (submission, recorder, suite)
   }
 
@@ -1493,17 +1517,54 @@ struct HelpCheckTests {
       sent: ("Paste fails.", ""), current: { .init(presentation: a, message: "Paste fails.", email: "") })
   }
 
+  @Test("The deadline race's decision step runs once, before the caller resumes, whoever wins")
+  func decisionRunsBeforeResume() async {
+    final class Flag: @unchecked Sendable {
+      private let lock = NSLock()
+      private var n = 0
+      func add() { lock.withLock { n += 1 } }
+      var count: Int { lock.withLock { n } }
+    }
+    // The work wins.
+    let workWins = Flag()
+    let won = await HelpCheck.first(
+      within: .seconds(4), sleep: Self.clock(), orElse: 0, onDecided: workWins.add
+    ) { 1 }
+    #expect(won == 1)
+    #expect(workWins.count == 1)
+    // The deadline wins; the work finishes later and decides nothing.
+    let deadlineWins = Flag()
+    let late = Gate()
+    let finished = Gate()
+    let timedOut = await HelpCheck.first(
+      within: .seconds(4), sleep: Self.clock(firing: [.seconds(4)]), orElse: 0,
+      onDecided: deadlineWins.add
+    ) {
+      await late.pass()
+      finished.release()
+      return 1
+    }
+    #expect(timedOut == 0)
+    #expect(deadlineWins.count == 1)
+    late.release()
+    await finished.pass()
+    #expect(deadlineWins.count == 1)
+  }
+
   @Test("The composer prepares once; Send takes the session once; the next Send builds its own")
   @MainActor
   func preparedOnceClaimedOnce() async throws {
     let spy = SplitSpy()
     let preparer = Preparer()
+    let settles = Settles()
     let terminals = Terminals()
-    let (submission, recorder, suite) = Self.preparedSubmission(spy, Self.noCard(), preparer: preparer)
+    let (submission, recorder, suite) = Self.preparedSubmission(
+      spy, Self.noCard(), preparer: preparer, settles: settles)
     defer { UserDefaults().removePersistentDomain(forName: suite) }
     submission.onHelpTerminal = { terminals.record($0) }
     submission.composerAppeared()
-    #expect(await Self.eventually { submission.hasPreparedSplit })
+    #expect(await Self.eventually { settles.all == [.preparationInstalled] })
+    #expect(submission.hasPreparedSplit == true)
     submission.composerAppeared()  // a second appearance with a session ready prepares nothing
     #expect(preparer.calls == 1)
     _ = try await Self.send(submission)
@@ -1524,17 +1585,42 @@ struct HelpCheckTests {
     let spy = SplitSpy()
     let preparer = Preparer()
     preparer.holds = true
-    let (submission, _, suite) = Self.preparedSubmission(spy, Self.noCard(), preparer: preparer)
+    let settles = Settles()
+    let (submission, _, suite) = Self.preparedSubmission(
+      spy, Self.noCard(), preparer: preparer, settles: settles)
     defer { UserDefaults().removePersistentDomain(forName: suite) }
     submission.composerAppeared()
-    #expect(await Self.eventually { preparer.gate.arrived == 1 })
+    #expect(await Self.eventually { preparer.gate(1).arrived == 1 })
     _ = try await Self.send(submission)
     #expect(spy.offered == [nil])
-    preparer.gate.release()
-    // The preparation was cancelled at Send; its late session is dropped. Give it every chance to
-    // land (the bound is the deadline), then check the slot is still empty.
-    _ = await Self.eventually(200) { submission.hasPreparedSplit }
+    preparer.gate(1).release()
+    #expect(await Self.eventually { settles.all == [.preparationDropped] })
     #expect(submission.hasPreparedSplit == false)
+  }
+
+  @Test("Send, then the composer again: the first preparation finishing late cannot touch the new one")
+  @MainActor
+  func editThenSendKeepsGenerations() async throws {
+    let spy = SplitSpy()
+    let preparer = Preparer()
+    preparer.holds = true
+    let settles = Settles()
+    let (submission, _, suite) = Self.preparedSubmission(
+      spy, Self.noCard(), preparer: preparer, settles: settles)
+    defer { UserDefaults().removePersistentDomain(forName: suite) }
+    submission.composerAppeared()
+    #expect(await Self.eventually { preparer.gate(1).arrived == 1 })
+    _ = try await Self.send(submission)  // takes nothing; the first preparation is now stale
+    submission.composerAppeared()  // back to the composer: a second preparation starts
+    #expect(await Self.eventually { preparer.gate(2).arrived == 1 })
+    preparer.gate(1).release()  // the stale one finishes first
+    #expect(await Self.eventually { settles.all == [.preparationDropped] })
+    #expect(submission.hasPreparedSplit == false)
+    #expect(submission.isPreparingSplit == true)
+    preparer.gate(2).release()
+    #expect(await Self.eventually { settles.all == [.preparationDropped, .preparationInstalled] })
+    _ = try await Self.send(submission)
+    #expect(spy.offered == [nil, "s2"])
   }
 
   @Test("A quick reopen keeps the unused session; the grace period releases it; a check blocks preparing")
@@ -1542,26 +1628,31 @@ struct HelpCheckTests {
   func reopenKeepsAndGraceReleases() async throws {
     let spy = SplitSpy()
     let preparer = Preparer()
+    let settles = Settles()
     let grace = Gate()
     let (submission, _, suite) = Self.preparedSubmission(
-      spy, Self.noCard(), preparer: preparer, graceSleep: { _ in await grace.pass() })
+      spy, Self.noCard(), preparer: preparer, settles: settles,
+      graceSleep: { _ in await grace.pass() })
     defer { UserDefaults().removePersistentDomain(forName: suite) }
     submission.composerAppeared()
-    #expect(await Self.eventually { submission.hasPreparedSplit })
+    #expect(await Self.eventually { settles.all == [.preparationInstalled] })
     // Closed and reopened before the grace period ends: same session, nothing new prepared.
     submission.composerDisappeared()
     #expect(await Self.eventually { grace.arrived == 1 })
     submission.composerAppeared()
     grace.release()  // the cancelled release wakes up late and must not clear the slot
-    _ = await Self.eventually(200) { !submission.hasPreparedSplit }
+    #expect(await Self.eventually { settles.all == [.preparationInstalled, .releaseDropped] })
     #expect(submission.hasPreparedSplit == true)
     #expect(preparer.calls == 1)
     // Closed for good: the grace period ends and the session is released.
     submission.composerDisappeared()
-    #expect(await Self.eventually { !submission.hasPreparedSplit })
+    #expect(
+      await Self.eventually { settles.all == [.preparationInstalled, .releaseDropped, .released] })
+    #expect(submission.hasPreparedSplit == false)
     // While a check or cards are up, the composer is not on screen: nothing is prepared.
     let held = Self.preparedSubmission(
-      spy, FakeTransport([.reply(200, Self.reply([Self.section("i0")]))]), preparer: preparer)
+      spy, FakeTransport([.reply(200, Self.reply([Self.section("i0")]))]), preparer: preparer,
+      settles: Settles())
     defer { UserDefaults().removePersistentDomain(forName: held.2) }
     let step = try await Self.send(held.0)
     guard case .suggestions = step else {

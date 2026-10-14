@@ -101,9 +101,14 @@ public final class FeedbackSubmission {
     let generation = splitGeneration
     splitPreparation = Task { [weak self] in
       let carrier = await prepareSplit()
-      guard let self, !Task.isCancelled, self.splitGeneration == generation else { return }
+      guard let self else { return }
+      guard !Task.isCancelled, self.splitGeneration == generation else {
+        self.splitSettled?(.preparationDropped)
+        return
+      }
       self.preparedSplit = carrier
       self.splitPreparation = nil
+      self.splitSettled?(.preparationInstalled)
     }
   }
 
@@ -115,9 +120,14 @@ public final class FeedbackSubmission {
     let generation = splitGeneration
     let sleep = graceSleep
     splitRelease = Task { [weak self] in
-      guard (try? await sleep(Self.preparedSplitGrace)) != nil else { return }
-      guard let self, !Task.isCancelled, self.splitGeneration == generation else { return }
+      let slept = (try? await sleep(Self.preparedSplitGrace)) != nil
+      guard let self else { return }
+      guard slept, !Task.isCancelled, self.splitGeneration == generation else {
+        self.splitSettled?(.releaseDropped)
+        return
+      }
       self.releasePreparedSplit()
+      self.splitSettled?(.released)
     }
   }
 
@@ -138,6 +148,14 @@ public final class FeedbackSubmission {
     preparedSplit = nil
     splitGeneration += 1
   }
+
+  /// How a preparation or a delayed release ended, reported when it has finished changing (or not
+  /// changing) the slot, so a test can wait for that instead of guessing (#3739).
+  enum SplitSettle: Equatable, Sendable {
+    case preparationInstalled, preparationDropped, released, releaseDropped
+  }
+  /// Test observation only; nil in the app.
+  var splitSettled: (@MainActor (SplitSettle) -> Void)?
 
   /// Whether an unused prepared session is held now, and whether one is being prepared (tests).
   var hasPreparedSplit: Bool { preparedSplit != nil }

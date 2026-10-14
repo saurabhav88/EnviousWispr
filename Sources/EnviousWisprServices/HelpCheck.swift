@@ -63,7 +63,8 @@ public struct HelpCheck: Sendable {
     // and then a request that ran out the clock is whole-message, with the split's failure.
     let stage = Stage()
     let finished: Conclusion? = await Self.first(
-      within: Self.overallDeadline, sleep: sleep, orElse: nil
+      within: Self.overallDeadline, sleep: sleep, orElse: nil,
+      onDecided: { _ = stage.closeSplit() }
     ) { [self] in
       await self.check(message, prepared: prepared, stage: stage)
     }
@@ -96,7 +97,8 @@ public struct HelpCheck: Sendable {
     }
 
     /// Ends the split's part and returns whether it used the prepared session. Later calls return
-    /// the same answer.
+    /// the same answer. Called inside the deadline race's decision (`first`'s `onDecided`), so a
+    /// use the split reports after losing its race is never counted.
     func closeSplit() -> Bool {
       lock.withLock {
         splitOpen = false
@@ -118,7 +120,8 @@ public struct HelpCheck: Sendable {
   {
     let split = await Self.first(
       within: Self.decompositionDeadline, sleep: sleep,
-      orElse: HelpCheckDecomposition.unavailable(.afmTimeout)
+      orElse: HelpCheckDecomposition.unavailable(.afmTimeout),
+      onDecided: { _ = stage.closeSplit() }
     ) { [decompose] in
       await decompose(message, prepared, { stage.splitConsumedPrepared() })
     }
@@ -205,12 +208,15 @@ public struct HelpCheck: Sendable {
   }
 
   /// The first of `work` or the deadline. The loser is cancelled and NOT awaited, so a split that
-  /// ignores cancellation cannot hold the check past its deadline.
+  /// ignores cancellation cannot hold the check past its deadline. `onDecided` runs exactly once,
+  /// inside the step that picks the winner and before the caller resumes, so state frozen there
+  /// cannot be changed by the loser after the decision (#3739 D4a).
   static func first<T: Sendable>(
     within deadline: Duration, sleep: @escaping Sleep, orElse timedOut: T,
+    onDecided: (@Sendable () -> Void)? = nil,
     _ work: @escaping @Sendable () async -> T
   ) async -> T {
-    let once = Once<T>()
+    let once = Once<T>(onDecided: onDecided)
     return await withTaskCancellationHandler {
       // Unsafe, not checked: `Once` already resumes exactly once. Swift 6.3 emits a generic
       // `withCheckedContinuation` back-deploy thunk here whose frame size differs from the -Onone
@@ -238,6 +244,14 @@ public struct HelpCheck: Sendable {
     private var continuation: UnsafeContinuation<T, Never>?
     private var pending: T?
     private var finished = false
+    /// The first `resume` wins: set under the lock, so two sides finishing together cannot both
+    /// be taken, and `onDecided` runs in that same step.
+    private var accepted = false
+    private var onDecided: (@Sendable () -> Void)?
+
+    init(onDecided: (@Sendable () -> Void)?) {
+      self.onDecided = onDecided
+    }
     var onFinish: (@Sendable () -> Void)? {
       get { lock.withLock { finishAction } }
       set {
@@ -260,7 +274,10 @@ public struct HelpCheck: Sendable {
 
     func resume(_ value: T) {
       let ready = lock.withLock { () -> Bool in
-        guard !finished, pending == nil else { return false }
+        guard !accepted else { return false }
+        accepted = true
+        onDecided?()
+        onDecided = nil
         if continuation == nil {
           pending = value
           return false
