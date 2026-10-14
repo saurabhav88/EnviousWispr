@@ -19,11 +19,14 @@ import Foundation
 //     boundaries; the longest common prefix is agreed. Only COMPLETE segments of this decode
 //     that the agreed prefix covers commit, so every committed span has a real end time and no
 //     word time is ever invented.
-//   - Retention (§3.5): past `bufferTrimSec` the origin moves to the end of a committed
+//   - Retention (§3.5), checked on the captured audio before every window is cut (so empty
+//     and failed decodes cannot grow the window) and after every applied decode: past
+//     `bufferTrimSec` the origin moves to the end of a committed
 //     segment that leaves at least `minRetainedBufferSec` of real audio in the window; the
 //     text before it scrolls out. With no such boundary and the buffer past
 //     `maxUnconfirmedWindowSec + 5`, the origin advances to the captured-audio retention line,
-//     the discarded unstable span's agreement state is cleared, and nothing disputed commits.
+//     ALL held-back and agreement state is cleared (a crossing segment has no word times to
+//     split by), and nothing disputed commits.
 //     That span's words are then missing from the stream, so finalize sends the take to the
 //     adapter's clean batch decode instead of releasing a transcript with a hole in it.
 //   - Finalize: release = committed text + the held-back hypothesis. Caught up (the audio the
@@ -107,7 +110,20 @@ package actor TranscribeCppRollingSession: WhisperIncrementalSession {
   private var stopSnapshotTaken = false
   private var running = false
   private var finished = false
+  /// Set by `cancel`: no result after it is released, and finalize stops at its next step.
+  private var cancelled = false
   private var loopTask: Task<Void, Never>?
+  /// The stopped loop's drain, shared by every terminal (a second Cancel joins the first's
+  /// drain instead of returning before the native run ends).
+  private var drainTask: Task<Void, Never>?
+  /// Finalize's authoritative decode while it runs; Cancel cancels and joins it.
+  private var flushTask: Task<TranscribeCppRunResult, Error>?
+  /// Loop cycles whose decode returned and was accounted (applied, empty or failed).
+  private var cyclesCompleted = 0
+  private var cycleWaiters: [(Int, CheckedContinuation<Void, Never>)] = []
+  /// Terminals (finalize, cancel) that reached the drain join.
+  private var drainJoins = 0
+  private var drainJoinWaiters: [(Int, CheckedContinuation<Void, Never>)] = []
   private var audioSamplesProvider: (@Sendable () async -> (samples: [Float], count: Int))?
 
   init(decode: @escaping Decode, cadence: Duration = .seconds(1)) {
@@ -123,6 +139,19 @@ package actor TranscribeCppRollingSession: WhisperIncrementalSession {
   var decodeCountForTests: Int { decodeCount }
   var discardedUnstableAudioForTests: Bool { discardedUnstableAudio }
 
+  /// Returns once `count` loop cycles have finished applying (or accounting for) their decode.
+  /// The decoder's own call signal fires at decode ENTRY, before the result is applied.
+  func cyclesCompleted(reach count: Int) async {
+    guard cyclesCompleted < count else { return }
+    await withCheckedContinuation { cycleWaiters.append((count, $0)) }
+  }
+
+  /// Returns once `count` terminals are waiting on (or have passed) the shared drain.
+  func drainJoins(reach count: Int) async {
+    guard drainJoins < count else { return }
+    await withCheckedContinuation { drainJoinWaiters.append((count, $0)) }
+  }
+
   // MARK: WhisperIncrementalSession
 
   package func start(
@@ -130,6 +159,7 @@ package actor TranscribeCppRollingSession: WhisperIncrementalSession {
   ) {
     running = true
     finished = false
+    cancelled = false
     committedText = ""
     committedInBuffer = []
     scrolledOutText = ""
@@ -144,8 +174,19 @@ package actor TranscribeCppRollingSession: WhisperIncrementalSession {
     loopDecodeInFlight = false
     stoppedMidDecode = false
     stopSnapshotTaken = false
+    cyclesCompleted = 0
     self.audioSamplesProvider = audioSamplesProvider
-    loopTask = Task { [weak self] in await self?.runLoop() }
+    // A previous take's native work may still be draining: the new loop decodes only after it
+    // physically ended, so two runs never share the model.
+    let drain = drainTask
+    let flush = flushTask
+    drainTask = nil
+    flushTask = nil
+    loopTask = Task { [weak self] in
+      await drain?.value
+      _ = await flush?.result
+      await self?.runLoop()
+    }
   }
 
   /// #1309: the adapter calls this BEFORE draining its feed tasks, so the snapshot reflects the
@@ -168,12 +209,16 @@ package actor TranscribeCppRollingSession: WhisperIncrementalSession {
   ) async -> IncrementalResult {
     if !stopSnapshotTaken { stoppedMidDecode = loopDecodeInFlight }
     await stopLoop()
+    guard !cancelled else { return cancelledResult() }
     guard let provider = audioSamplesProvider else {
       return result(text: committedText, samplesCovered: 0, tailDecodeMs: 0)
     }
     audioSamplesProvider = nil
     let (samples, count) = await provider()
+    guard !cancelled else { return cancelledResult() }
 
+    // The flush window obeys the same bound as every loop window.
+    retain(realAudioEnd: Float(count) / Self.sampleRate)
     // A forced advance dropped words that never committed: releasing would ship a hole.
     if discardedUnstableAudio {
       return fallback(strategy: "streaming_window_overflow_fallback", tailMs: 0)
@@ -191,13 +236,23 @@ package actor TranscribeCppRollingSession: WhisperIncrementalSession {
       return result(text: releaseText, samplesCovered: count, tailDecodeMs: 0)
     }
 
-    // Fresh speech at stop: ONE decode of the retained, context-bearing buffer. Not abortable:
-    // it produces the words the user reads.
+    // Fresh speech at stop: ONE decode of the retained, context-bearing buffer. Only Cancel
+    // (or the caller's cancellation) aborts it; either way it is joined before anything else
+    // uses the model.
     let flushStart = ContinuousClock.now
     let originSample = max(0, min(count, Int(bufferStart * Self.sampleRate)))
     let window = Array(samples[originSample..<count])
+    let decode = self.decode
+    let flush = Task { try await decode(window) }
+    flushTask = flush
+    defer { if flushTask == flush { flushTask = nil } }
     do {
-      let run = try await decode(window)
+      let run = try await withTaskCancellationHandler {
+        try await flush.value
+      } onCancel: {
+        flush.cancel()
+      }
+      guard !cancelled else { return cancelledResult() }
       let tailMs = Self.milliseconds(since: flushStart)
       let realEnd = Float(window.count) / Self.sampleRate
       let bufferText = zip(run.segments, Self.spacedTexts(of: run))
@@ -211,25 +266,42 @@ package actor TranscribeCppRollingSession: WhisperIncrementalSession {
       return result(
         text: Self.join(scrolledOutText, bufferText), samplesCovered: count, tailDecodeMs: tailMs)
     } catch {
+      _ = await flush.result  // a cancelled caller still waits for the native return
+      guard !cancelled else { return cancelledResult() }
       return fallback(
         strategy: "streaming_flush_failed", tailMs: Self.milliseconds(since: flushStart))
     }
   }
 
+  /// Cancels the loop AND a running flush, and returns only after both native runs physically
+  /// ended. A finalize still in progress returns `streaming_cancelled`, never text.
   package func cancel() async {
+    cancelled = true
     audioSamplesProvider = nil
+    let flush = flushTask
+    flush?.cancel()
     await stopLoop()
+    _ = await flush?.result
   }
 
   /// Ends the loop: no cycle mutates state after this, an in-flight decode is cancelled (the
   /// executor aborts its native run) and awaited until that run has physically returned.
+  /// Concurrent terminals share one drain.
   private func stopLoop() async {
     running = false
     finished = true
-    let loop = loopTask
-    loopTask = nil
-    loop?.cancel()
-    await loop?.value
+    if let loop = loopTask {
+      loopTask = nil
+      loop.cancel()
+      let previous = drainTask
+      drainTask = Task {
+        await previous?.value
+        await loop.value
+      }
+    }
+    drainJoins += 1
+    Self.resume(&drainJoinWaiters, reached: drainJoins)
+    await drainTask?.value
   }
 
   // MARK: - Loop
@@ -244,6 +316,9 @@ package actor TranscribeCppRollingSession: WhisperIncrementalSession {
       guard running, !finished, !Task.isCancelled else { break }
       guard count - lastDecodeSampleCount >= minNewSamplesToDecode else { continue }
 
+      // §3.5 holds whatever the decodes return: empty and failed decodes never apply, so the
+      // bound is enforced on the captured audio before the window is cut.
+      retain(realAudioEnd: Float(count) / Self.sampleRate)
       let originSample = max(0, min(count, Int(bufferStart * Self.sampleRate)))
       let origin = Float(originSample) / Self.sampleRate
       let window = Array(samples[originSample..<count])
@@ -259,6 +334,7 @@ package actor TranscribeCppRollingSession: WhisperIncrementalSession {
             "Whisper streaming decode failed: \(error.localizedDescription)",
             level: .info, category: "WhisperStreaming")
         }
+        completeCycle()
         continue
       }
       loopDecodeInFlight = false
@@ -274,7 +350,21 @@ package actor TranscribeCppRollingSession: WhisperIncrementalSession {
       }
       decodeCount += 1
       totalDecodeTimeMs += Self.milliseconds(since: started)
+      completeCycle()
     }
+  }
+
+  private func completeCycle() {
+    cyclesCompleted += 1
+    Self.resume(&cycleWaiters, reached: cyclesCompleted)
+  }
+
+  private static func resume(
+    _ waiters: inout [(Int, CheckedContinuation<Void, Never>)], reached count: Int
+  ) {
+    let ready = waiters.filter { $0.0 <= count }.map(\.1)
+    waiters.removeAll { $0.0 <= count }
+    for waiter in ready { waiter.resume() }
   }
 
   // MARK: - Agreement and retention
@@ -364,9 +454,11 @@ package actor TranscribeCppRollingSession: WhisperIncrementalSession {
     committedInBuffer.removeAll { $0.end <= retentionLine }
     // No committed segment ended in the discarded span, so whatever was said there is not in
     // the committed text. Finalize hands the take to the batch decode rather than guess.
+    // A held-back segment crossing the line has no word times, so none of its words can be
+    // kept as agreement: the next hypothesis rebuilds agreement from retained audio only.
     discardedUnstableAudio = true
-    heldBack.removeAll { $0.end <= retentionLine }
-    previousHypothesis = heldBack.map(\.unit)
+    heldBack = []
+    previousHypothesis = []
     bufferStart = retentionLine
   }
 
@@ -471,6 +563,13 @@ package actor TranscribeCppRollingSession: WhisperIncrementalSession {
 
   /// `accepted: false`: the adapter re-transcribes the whole recording in batch. The committed
   /// prefix rides along for diagnostics only.
+  private func cancelledResult() -> IncrementalResult {
+    IncrementalResult(
+      text: nil, samplesCovered: 0, decodeCount: decodeCount,
+      totalDecodeTimeMs: totalDecodeTimeMs, accepted: false, strategy: "streaming_cancelled",
+      tailDecodeMs: 0, stopWhileDecodeInFlight: stoppedMidDecode)
+  }
+
   private func fallback(strategy: String, tailMs: Int) -> IncrementalResult {
     let trimmed = committedText.trimmingCharacters(in: .whitespacesAndNewlines)
     return IncrementalResult(

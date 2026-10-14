@@ -204,55 +204,227 @@ struct TranscribeCppRollingSessionTests {
   @Test("a segment crossing the retention line never commits its disputed words")
   func crossingSegmentNotForceCommitted() async {
     let s = Self.session(Self.noDecode)
+    // 31 s > 25 + 5 with nothing committed: the origin advances to 23 s, inside the segment.
     await s.apply([Self.seg(0, 31, " long disputed run")], realAudioEnd: 31)
-    await s.apply([Self.seg(0, 31, " long changing run")], realAudioEnd: 31)
-    // "long" agrees but the segment is not fully agreed, so nothing commits.
-    #expect(await s.committedTextForTests == "")
+    #expect(await s.bufferStartForTests == 23)
     #expect(await s.discardedUnstableAudioForTests)
+    #expect(await s.heldBackTextForTests == "", "a crossing segment's words are not kept")
+    // The same words again: agreement starts over from retained audio, so they do not commit
+    // on the strength of a hypothesis that partly described discarded audio.
+    await s.apply([Self.seg(0, 8, " long disputed run")], realAudioEnd: 31.5)
+    #expect(await s.committedTextForTests == "")
+  }
+
+  @Test(
+    "empty or failing decodes on growing audio never decode past the bound, and the take falls back",
+    arguments: [false, true])
+  func emptyDecodesStayBounded(throwing: Bool) async {
+    let d = ScriptedDecoder([])  // every decode is empty
+    if throwing { d.failingEvery() }
+    let audio = Audio()
+    audio.set(Self.voiced(20))
+    let s = Self.session(d.decode)
+    await s.start(audioSamplesProvider: audio.provider)
+    await Self.within("cycle 1") { await s.cyclesCompleted(reach: 1) }
+    audio.set(Self.voiced(26))
+    let afterFirstSet = d.callSampleCounts.count
+    await Self.within("a decode of 26 s") { await d.calls(reach: afterFirstSet + 2) }
+    audio.set(Self.voiced(32))
+    let afterSecondSet = d.callSampleCounts.count
+    await Self.within("a decode after 32 s") { await d.calls(reach: afterSecondSet + 2) }
+    let result = await s.finalize(finalSamples: [], speechSegments: [])
+    let counts = d.callSampleCounts
+    #expect(counts.allSatisfy { $0 <= 30 * 16_000 }, "no window past 25 + 5 s: \(counts)")
+    #expect(counts.contains(26 * 16_000), "the 26 s window decoded whole")
+    #expect(counts.last == 8 * 16_000, "past the bound: the retained 8 s of context")
+    #expect(await s.bufferStartForTests == 24)
+    #expect(result.accepted == false)
+    #expect(result.strategy == "streaming_window_overflow_fallback")
+  }
+
+  @Test("cancel during the flush aborts it, waits for its native return, and releases no text")
+  func cancelDuringFlush() async {
+    let d = ScriptedDecoder([[Self.native(0, 1000, " One")], [Self.native(0, 2000, " One two")]])
+    d.hold(call: 1)
+    let audio = Audio()
+    audio.set(Self.voiced(1.2))
+    let s = Self.session(d.decode)
+    await s.start(audioSamplesProvider: audio.provider)
+    await Self.within("cycle 1 applied") { await s.cyclesCompleted(reach: 1) }
+    audio.set(Self.voiced(2.1))  // fresh speech at stop: finalize decodes once
+    let finalize = Task { await s.finalize(finalSamples: [], speechSegments: []) }
+    await Self.within("the flush decode") { await d.calls(reach: 2) }
+    let cancelReturned = Once<Bool>()
+    let cancel = Task {
+      await s.cancel()
+      cancelReturned.fulfil(true)
+    }
+    await Self.within("the flush's cancellation") { await d.heldCallCancelled() }
+    // The flush's native run has not returned, so Cancel has not either.
+    #expect(d.overlapped == false)
+    cancelReturned.fulfil(false)
+    #expect(await cancelReturned.value() == false, "cancel returned before the flush ended")
+    d.release()
+    guard await Self.joined(cancel, "cancel", onExpiry: { d.release() }) != nil,
+      let result = await Self.joined(finalize, "finalize", onExpiry: { d.release() })
+    else { return }
+    #expect(result.accepted == false)
+    #expect(result.text == nil, "no text after a cancel")
+    #expect(result.strategy == "streaming_cancelled")
+    // Reuse after the drain.
+    let again = ScriptedDecoder([[Self.native(0, 1200, " Next.")], [Self.native(0, 1200, " Next.")]])
+    let reuse = Self.session(again.decode)
+    audio.set(Self.voiced(1.2))
+    await reuse.start(audioSamplesProvider: audio.provider)
+    await Self.within("reuse cycle 1") { await reuse.cyclesCompleted(reach: 1) }
+    audio.set(Self.voiced(1.2) + Self.silence(1.2))
+    await Self.within("reuse cycle 2") { await reuse.cyclesCompleted(reach: 2) }
+    #expect(await reuse.finalize(finalSamples: [], speechSegments: []).text == "Next.")
+  }
+
+  @Test("two Cancels both wait for the same aborted loop decode")
+  func concurrentCancelsShareTheDrain() async {
+    let d = ScriptedDecoder([[Self.native(0, 1200, " Later.")]])
+    d.hold(call: 0)
+    let audio = Audio()
+    audio.set(Self.voiced(1.2))
+    let s = Self.session(d.decode)
+    await s.start(audioSamplesProvider: audio.provider)
+    await Self.within("decode call 1") { await d.calls(reach: 1) }
+    let firstDone = Once<Bool>()
+    let secondDone = Once<Bool>()
+    let first = Task {
+      await s.cancel()
+      firstDone.fulfil(true)
+    }
+    let second = Task {
+      await s.cancel()
+      secondDone.fulfil(true)
+    }
+    await Self.within("both cancels at the drain") { await s.drainJoins(reach: 2) }
+    firstDone.fulfil(false)
+    secondDone.fulfil(false)
+    #expect(await firstDone.value() == false, "a cancel returned before the native run ended")
+    #expect(await secondDone.value() == false, "a cancel returned before the native run ended")
+    d.release()
+    guard await Self.joined(first, "first cancel", onExpiry: { d.release() }) != nil,
+      await Self.joined(second, "second cancel", onExpiry: { d.release() }) != nil
+    else { return }
+    #expect(d.sawCancellation)
+  }
+
+  @Test("a restart while the cancelled decode is still native waits for it")
+  func restartWaitsForTheDrain() async {
+    let d = ScriptedDecoder([[Self.native(0, 1200, " Later.")], [Self.native(0, 1200, " Later.")]])
+    d.hold(call: 0)
+    let audio = Audio()
+    audio.set(Self.voiced(1.2))
+    let s = Self.session(d.decode)
+    await s.start(audioSamplesProvider: audio.provider)
+    await Self.within("decode call 1") { await d.calls(reach: 1) }
+    let cancel = Task { await s.cancel() }
+    await Self.within("the loop decode's cancellation") { await d.heldCallCancelled() }
+    await s.start(audioSamplesProvider: audio.provider)
+    d.release()
+    guard await Self.joined(cancel, "cancel", onExpiry: { d.release() }) != nil else { return }
+    await Self.within("the restarted loop's decode") { await d.calls(reach: 2) }
+    #expect(d.overlapped == false, "the restarted loop decoded while the aborted run was native")
+    _ = await s.finalize(finalSamples: [], speechSegments: [])
   }
 
   // MARK: - Session lifecycle (fake decoder, real loop)
 
-  /// Waits for `ready` with a deadline that never joins the waited-for work: the first of the
-  /// two fulfils a one-shot. Expiry records an issue and returns, so a missing signal fails the
-  /// test instead of hanging the lane (the deadline is a hang guard, not a settle budget).
-  static func within(
-    _ what: String, seconds: Double = 10, sourceLocation: SourceLocation = #_sourceLocation,
-    _ ready: @escaping @Sendable () async -> Void
-  ) async {
-    final class Once: @unchecked Sendable {
-      let lock = NSLock()
-      var done = false
-      var waiter: CheckedContinuation<Bool, Never>?
-      func fulfil(_ ok: Bool) {
-        let w = lock.withLock { () -> CheckedContinuation<Bool, Never>? in
-          guard !done else { return nil }
-          done = true
-          defer { waiter = nil }
-          return waiter
+  /// A value set at most once; `value()` returns the FIRST fulfilment, whether it landed before
+  /// or after the waiter registered.
+  final class Once<Value: Sendable>: @unchecked Sendable {
+    private let lock = NSLock()
+    private var stored: Value?
+    private var waiter: CheckedContinuation<Value, Never>?
+    func fulfil(_ value: Value) {
+      let w = lock.withLock { () -> CheckedContinuation<Value, Never>? in
+        guard stored == nil else { return nil }
+        stored = value
+        defer { waiter = nil }
+        return waiter
+      }
+      w?.resume(returning: value)
+    }
+    func value() async -> Value {
+      await withCheckedContinuation { c in
+        let ready = lock.withLock { () -> Value? in
+          if let stored { return stored }
+          waiter = c
+          return nil
         }
-        w?.resume(returning: ok)
+        if let ready { c.resume(returning: ready) }
       }
     }
-    let once = Once()
+  }
+
+  /// Waits for `ready` with a deadline that never joins the waited-for work: the first of the
+  /// two fulfils a one-shot. Expiry records an issue, runs `onExpiry` (release whatever gate the
+  /// work may block on) and returns false, so a missing signal fails the test instead of
+  /// hanging the lane (the deadline is a hang guard, not a settle budget).
+  @discardableResult
+  static func within(
+    _ what: String, seconds: Double = 10, sourceLocation: SourceLocation = #_sourceLocation,
+    onExpiry: @Sendable () -> Void = {},
+    _ ready: @escaping @Sendable () async -> Void
+  ) async -> Bool {
+    let once = Once<Bool>()
     let watch = Task { await ready(); once.fulfil(true) }
     let timer = Task {
       try? await Task.sleep(for: .seconds(seconds))  // deadline-fallback: hang guard only
       once.fulfil(false)
     }
-    let ok = await withCheckedContinuation { (c: CheckedContinuation<Bool, Never>) in
-      once.lock.lock()
-      if once.done {
-        once.lock.unlock()
-        c.resume(returning: true)
-      } else {
-        once.waiter = c
-        once.lock.unlock()
-      }
-    }
+    let ok = await once.value()
     watch.cancel()
     timer.cancel()
-    if !ok { Issue.record("timed out waiting for \(what)", sourceLocation: sourceLocation) }
+    if !ok {
+      Issue.record("timed out waiting for \(what)", sourceLocation: sourceLocation)
+      onExpiry()
+    }
+    return ok
+  }
+
+  /// A terminal task's value within the deadline, or nil (with a recorded issue) after the
+  /// task is cancelled and `onExpiry` released its gate.
+  static func joined<T: Sendable>(
+    _ task: Task<T, Never>, _ what: String, seconds: Double = 10,
+    sourceLocation: SourceLocation = #_sourceLocation, onExpiry: @Sendable () -> Void = {}
+  ) async -> T? {
+    let box = Once<T>()
+    let arrived = await within(
+      what, seconds: seconds, sourceLocation: sourceLocation,
+      onExpiry: {
+        task.cancel()
+        onExpiry()
+      },
+      { box.fulfil(await task.value) })
+    guard arrived else { return nil }
+    return await box.value()
+  }
+
+  @Test("the wait helper reports the outcome that won, and a stalled terminal expires")
+  func waitHelperControls() async {
+    // The timer wins before anyone waits: the stored outcome is false, never a default true.
+    let early = Once<Bool>()
+    early.fulfil(false)
+    early.fulfil(true)
+    #expect(await early.value() == false)
+    // A terminal task that never ends expires, is cancelled and has its gate released.
+    let gate = Once<Bool>()
+    let stalled = Task<Int, Never> {
+      try? await Task.sleep(for: .seconds(600))  // deadline-fallback: a terminal that never ends
+      return 1
+    }
+    await withKnownIssue("the terminal never ends, so the join must expire") {
+      let value = await Self.joined(
+        stalled, "a stalled terminal", seconds: 0.2, onExpiry: { gate.fulfil(true) })
+      #expect(value == nil)
+    }
+    #expect(stalled.isCancelled)
+    #expect(await gate.value())
   }
 
   /// Scripted decoder: returns the next scripted segments (timed in the window's coordinates),
@@ -286,6 +458,8 @@ struct TranscribeCppRollingSessionTests {
 
     func hold(call index: Int) { lock.withLock { holdIndex = index } }
     func failing(call index: Int) { lock.withLock { _ = throwOn.insert(index) } }
+    private var failAll = false
+    func failingEvery() { lock.withLock { failAll = true } }
 
     /// Returns once the decoder has been called `count` times.
     func calls(reach count: Int) async {
@@ -330,7 +504,7 @@ struct TranscribeCppRollingSessionTests {
           let ready = callWaiters.filter { $0.0 <= calls.count }.map(\.1)
           callWaiters.removeAll { $0.0 <= calls.count }
           let index = calls.count - 1
-          return (index, holdIndex == index, throwOn.contains(index), ready)
+          return (index, holdIndex == index, failAll || throwOn.contains(index), ready)
         }
         for waiter in ready { waiter.resume() }
         defer { lock.withLock { running -= 1 } }
@@ -407,9 +581,9 @@ struct TranscribeCppRollingSessionTests {
     audio.set(Self.voiced(2) + Self.silence(0.5))
     let s = Self.session(d.decode)
     await s.start(audioSamplesProvider: audio.provider)
-    await Self.within("decode call 1") { await d.calls(reach: 1) }
+    await Self.within("cycle 1 applied") { await s.cyclesCompleted(reach: 1) }
     audio.set(Self.voiced(2) + Self.silence(1.6))
-    await Self.within("decode call 2") { await d.calls(reach: 2) }
+    await Self.within("cycle 2 applied") { await s.cyclesCompleted(reach: 2) }
     let result = await s.finalize(finalSamples: [], speechSegments: [])
     #expect(result.accepted)
     #expect(result.text == "Turn left at the light.")
@@ -427,7 +601,7 @@ struct TranscribeCppRollingSessionTests {
     audio.set(Self.voiced(1.2))
     let s = Self.session(d.decode)
     await s.start(audioSamplesProvider: audio.provider)
-    await Self.within("decode call 1") { await d.calls(reach: 1) }
+    await Self.within("cycle 1 applied") { await s.cyclesCompleted(reach: 1) }
     // Speech continued right up to the stop; under 1 s more, so no loop cycle decodes it.
     audio.set(Self.voiced(2.1))
     let result = await s.finalize(finalSamples: [], speechSegments: [])
@@ -443,9 +617,9 @@ struct TranscribeCppRollingSessionTests {
     audio.set(Self.voiced(1) + Self.silence(0.1))
     let s = Self.session(d.decode)
     await s.start(audioSamplesProvider: audio.provider)
-    await Self.within("decode call 1") { await d.calls(reach: 1) }
+    await Self.within("cycle 1 applied") { await s.cyclesCompleted(reach: 1) }
     audio.set(Self.voiced(1) + Self.silence(1.5))
-    await Self.within("decode call 2") { await d.calls(reach: 2) }
+    await Self.within("cycle 2 applied") { await s.cyclesCompleted(reach: 2) }
     audio.set(Self.voiced(1) + Self.silence(2.4))
     let result = await s.finalize(finalSamples: [], speechSegments: [])
     #expect(result.text == "Done.")
@@ -464,9 +638,9 @@ struct TranscribeCppRollingSessionTests {
     audio.set(Self.voiced(1.1))
     let s = Self.session(d.decode)
     await s.start(audioSamplesProvider: audio.provider)
-    await Self.within("decode call 1") { await d.calls(reach: 1) }
+    await Self.within("cycle 1 applied") { await s.cyclesCompleted(reach: 1) }
     audio.set(Self.voiced(2.2))
-    await Self.within("decode call 2") { await d.calls(reach: 2) }
+    await Self.within("cycle 2 applied") { await s.cyclesCompleted(reach: 2) }
     audio.set(Self.voiced(3.1))
     let result = await s.finalize(finalSamples: [], speechSegments: [])
     #expect(result.accepted == false)
@@ -485,9 +659,9 @@ struct TranscribeCppRollingSessionTests {
     audio.set(Self.voiced(31))
     let s = Self.session(d.decode)
     await s.start(audioSamplesProvider: audio.provider)
-    await Self.within("decode call 1") { await d.calls(reach: 1) }
+    await Self.within("cycle 1 applied") { await s.cyclesCompleted(reach: 1) }
     audio.set(Self.voiced(32.5))
-    await Self.within("decode call 2") { await d.calls(reach: 2) }
+    await Self.within("cycle 2 applied") { await s.cyclesCompleted(reach: 2) }
     let result = await s.finalize(finalSamples: [], speechSegments: [])
     #expect(result.accepted == false)
     #expect(result.strategy == "streaming_window_overflow_fallback")
@@ -510,7 +684,9 @@ struct TranscribeCppRollingSessionTests {
     await Self.within("the loop decode's cancellation") { await d.heldCallCancelled() }
     #expect(d.callSampleCounts.count == 1, "the flush must wait for the aborted loop decode")
     d.release()
-    let result = await finalize.value
+    guard let result = await Self.joined(finalize, "finalize", onExpiry: { d.release() }) else {
+      return
+    }
     #expect(result.stopWhileDecodeInFlight)
     #expect(result.text == "Hi there", "the flush ran after the drain, unpoisoned by the abort")
     #expect(d.callSampleCounts.count == 2)
@@ -531,14 +707,14 @@ struct TranscribeCppRollingSessionTests {
     let cancel = Task { await s.cancel() }
     await Self.within("the loop decode's cancellation") { await d.heldCallCancelled() }
     d.release()
-    await cancel.value
+    guard await Self.joined(cancel, "cancel", onExpiry: { d.release() }) != nil else { return }
     #expect(d.sawCancellation)
     #expect(d.overlapped == false)
     // Reuse: a fresh start decodes normally.
     await s.start(audioSamplesProvider: audio.provider)
-    await Self.within("decode call 2") { await d.calls(reach: 2) }
+    await Self.within("cycle 1 applied") { await s.cyclesCompleted(reach: 1) }
     audio.set(Self.voiced(1.2) + Self.silence(1.2))
-    await Self.within("decode call 3") { await d.calls(reach: 3) }
+    await Self.within("cycle 2 applied") { await s.cyclesCompleted(reach: 2) }
     let result = await s.finalize(finalSamples: [], speechSegments: [])
     #expect(result.text == "Again.")
   }

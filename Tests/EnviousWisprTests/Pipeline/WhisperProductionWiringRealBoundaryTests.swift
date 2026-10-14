@@ -200,7 +200,10 @@ struct WhisperProductionWiringRealBoundaryTests {
         onDecode: { entries.hit() }))
     await session.start(audioSamplesProvider: { (audio, audio.count) })
     try await BoundedWait.until(entries.first, deadline: .seconds(30))
-    let result = await session.finalize(finalSamples: [], speechSegments: [])
+    let result = try await BoundedWait.result(
+      of: Task { await session.finalize(finalSamples: [], speechSegments: []) },
+      deadline: .seconds(60)
+    ).get()
     #expect(result.accepted)
     #expect(Self.words(result.text ?? "") == Self.expectedWords)
     #expect(entries.lock.withLock { entries.count } >= 1, "native entry observed")
@@ -214,14 +217,17 @@ struct WhisperProductionWiringRealBoundaryTests {
         onDecode: { cancelled.hit() }))
     await doomed.start(audioSamplesProvider: { (audio, audio.count) })
     try await BoundedWait.until(cancelled.first, deadline: .seconds(30))
-    await doomed.cancel()
+    _ = try await BoundedWait.result(of: Task { await doomed.cancel() }, deadline: .seconds(60))
     #expect(occupancy.isIdle, "cancel returns only after the aborted native run ends")
     let reuse = try #require(
       await wired.backend.makeStreamingSession(
         options: TranscriptionOptions(language: "en"), vendorDecodeOccupancy: occupancy,
         onDecode: nil))
     await reuse.start(audioSamplesProvider: { (audio, audio.count) })
-    let again = await reuse.finalize(finalSamples: [], speechSegments: [])
+    let again = try await BoundedWait.result(
+      of: Task { await reuse.finalize(finalSamples: [], speechSegments: []) },
+      deadline: .seconds(60)
+    ).get()
     #expect(Self.words(again.text ?? "") == Self.expectedWords)
   }
 

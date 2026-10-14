@@ -818,6 +818,45 @@ import Testing
     #expect(diag?.streamingMaxUnconfirmedWindowSec == 25.0)
   }
 
+  /// #3735: the rolling session's overflow (and failed-flush) results carry the committed
+  /// prefix as a diagnostic with `accepted: false`. The user must get the clean batch decode of
+  /// the WHOLE recording, never that prefix, and never prefix plus batch.
+  @Test("a rejected flush that still carries text: the prefix is discarded for one clean batch")
+  func rejectedFlushWithDiagnosticPrefixFallsBack() async throws {
+    let backend = StubWhisperKitBackend()
+    let stubSession = StubIncrementalSession(
+      result: IncrementalResult(
+        text: "diagnostic prefix", samplesCovered: 0, decodeCount: 7, totalDecodeTimeMs: 900,
+        accepted: false, strategy: "streaming_window_overflow_fallback", tailDecodeMs: 0))
+    await backend.setStreamingSessionFactory({ stubSession })
+    await backend.setTranscribeResult(
+      ASRResult(
+        text: "the whole recording", language: "en", duration: 1, processingTime: 0.1,
+        backendType: .whisper))
+    let adapter = WhisperEngineAdapter(
+      backend: backend, engineMutationScope: .alwaysAllowedForTesting)
+    let sid = SessionID()
+    try await adapter.beginSession(
+      sid, options: TranscriptionOptions(language: "en"), streaming: true)
+    let recording = speechSamples(count: 16_000)
+    feed(adapter, samples: recording, session: sid)
+    adapter.observeSpeechSegments([SpeechSegment(startSample: 0, endSample: 16_000)])
+    let outcome = await adapter.finalize(batchSamples: nil)
+    guard case .transcript(let result) = outcome else {
+      Issue.record("expected .transcript, got \(outcome)")
+      return
+    }
+    #expect(result.text == "the whole recording")
+    #expect(result.text.contains("diagnostic prefix") == false)
+    #expect(await backend.transcribeCount == 1, "exactly one batch decode")
+    #expect(await backend.lastTranscribeSamples.count == recording.count, "over the recording")
+    let diag = adapter.lastASRDiagnostics
+    #expect(diag?.streamingEffective == false)
+    #expect(diag?.streamingDegradeReason == "flush_empty")
+    #expect(diag?.streamingFinalPath == "fallback_batch")
+    #expect(diag?.incrementalDecodeCount == 7, "the flush's counters survive the fallback")
+  }
+
   @Test("streaming OFF + locked: no streaming session, clean batch")
   func streamingOffUsesBatch() async throws {
     let backend = StubWhisperKitBackend()
