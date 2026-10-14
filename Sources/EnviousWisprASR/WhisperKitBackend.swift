@@ -769,7 +769,7 @@ public actor WhisperKitBackend: ASRBackend {
   package func makeStreamingSession(
     options: TranscriptionOptions, vendorDecodeOccupancy: VendorDecodeOccupancy,
     onDecode: ASRInferenceEntryObserver?
-  ) async -> (any WhisperKitIncrementalSession)? {
+  ) async -> (any WhisperIncrementalSession)? {
     guard let kit = await readyKitAfterWarmupDrain() else { return nil }
     var opts = makeDecodeOptions(from: options, sampleCount: 0)
     // LocalAgreement-2 confirmation is word-level — word timings are required

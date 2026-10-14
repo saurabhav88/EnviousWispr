@@ -1,0 +1,440 @@
+import EnviousWisprCore
+import EnviousWisprTranscribeCpp
+import Foundation
+
+// MARK: - TranscribeCppRollingSession (#3735 plan §3.11, retention rule §3.5)
+//
+// Faster Transcription on Whisper, over transcribe.cpp. The #1276 architecture (the UFAL
+// whisper_streaming recipe, `.claude/knowledge/whisperkit-research.md` FACT:
+// ufal-streaming-architecture-shipped) as `WhisperKitStreamingSession` shipped it, with one
+// change forced by the engine: transcribe.cpp gives SEGMENT timestamps, never word times.
+//
+//   - Per cycle: pull the adapter's lossless `streamingPCM`; gate on >= 1 s of new audio;
+//     decode the retained buffer `[bufferStart .. end]`. Committed speech stays IN the window
+//     (re-decoded), so every decode warms up on known audio and never opens cold on a pause.
+//     The language is the locked one: no LID.
+//   - Agreement (LocalAgreement-2 over words): the hypothesis is split into Unicode-aware word
+//     units that keep their original spacing. The units after the committed cut are compared
+//     with the previous cycle's, independently of where either decode put its segment
+//     boundaries; the longest common prefix is agreed. Only COMPLETE segments of this decode
+//     that the agreed prefix covers commit, so every committed span has a real end time and no
+//     word time is ever invented.
+//   - Retention (§3.5): past `bufferTrimSec` the origin moves to the end of a committed
+//     segment that leaves at least `minRetainedBufferSec` of real audio in the window; the
+//     text before it scrolls out. With no such boundary and the buffer past
+//     `maxUnconfirmedWindowSec + 5`, the origin advances to the captured-audio retention line,
+//     the discarded unstable span's agreement state is cleared, and nothing disputed commits.
+//     That span's words are then missing from the stream, so finalize sends the take to the
+//     adapter's clean batch decode instead of releasing a transcript with a hole in it.
+//   - Finalize: release = committed text + the held-back hypothesis. Caught up (the audio the
+//     release does not cover is under 0.1 s or silent) → release, zero inference. Otherwise
+//     ONE decode of the retained buffer, appended to the scrolled-out text. Empty, failed or
+//     overflowed → `accepted: false`, which the adapter turns into the clean batch decode of
+//     the whole recording.
+//
+// Heart mode only. The Universal preview (Chunk 9) builds on this core with its own display
+// and audio bounds; those bounds must never apply to the heart transcript, which is kept whole
+// for the recording cap.
+
+/// One segment of a decode, in absolute seconds of the session's `streamingPCM`.
+struct RollingSegment: Sendable, Equatable {
+  let start: Float
+  let end: Float
+  let text: String
+}
+
+/// One word of a hypothesis. `text` carries the word with the spacing and punctuation that
+/// precede it in the decoder's output, so concatenating units reproduces that output exactly
+/// (CJK stays unspaced). `key` is the comparable word alone.
+struct RollingUnit: Sendable, Equatable {
+  let text: String
+  let key: String
+  let segment: Int
+}
+
+package actor TranscribeCppRollingSession: WhisperIncrementalSession {
+  /// One decode of `samples`, returning native segments timed in `samples`' own coordinates.
+  /// The backend owns the model, the heart lane, padding, occupancy and the native-boundary
+  /// observer; a cancelled call returns only after the aborted native run has ended.
+  typealias Decode = @Sendable ([Float]) async throws -> [TranscribeCppSegment]
+
+  private let decode: Decode
+  private let cadence: Duration
+
+  static let sampleRate: Float = 16_000
+  /// One second of new audio before a cycle decodes (the shipped WhisperKit gate).
+  private let minNewSamplesToDecode = 16_000
+
+  /// §3.5 retention values, shared with the shipped WhisperKit session.
+  package static let defaultMaxUnconfirmedWindowSec: Float = 25
+  static let bufferTrimSec: Float = 15
+  static let minRetainedBufferSec: Float = 8
+
+  /// Finalize's caught-up rule (the shipped unheard-tail rule): audio the release does not
+  /// cover counts as heard when it is shorter than this or quieter than `tailEnergyFloor`.
+  static let minVoicedTailSec: Float = 0.1
+  static let tailEnergyFloor: Float = 0.001
+
+  /// A decode's segment that starts within this of the committed end is treated as the same
+  /// audio re-decoded (the UFAL `HypothesisBuffer.insert` jitter tolerance).
+  static let cutToleranceSec: Float = 0.1
+  /// Longest repeated run of committed words removed at the seam. Segments, not words, are the
+  /// unit of time here, so a straddling segment can repeat more words than the WhisperKit
+  /// session's word-timed 5-gram allowed for.
+  static let seamWindow = 20
+
+  // MARK: Stream state (single owner: the serial loop, then finalize)
+
+  /// Every committed unit's text, in order; the transcript prefix. Only grows.
+  private var committedText = ""
+  /// Committed units whose audio is still inside the buffer, with their segment's end.
+  private var committedInBuffer: [(unit: RollingUnit, end: Float)] = []
+  /// Committed text whose audio has scrolled out of the buffer.
+  private var scrolledOutText = ""
+  /// End (seconds) of the last committed segment.
+  private var lastCommittedEnd: Float = 0
+  /// Buffer origin (seconds); moves only at a trim.
+  private var bufferStart: Float = 0
+  /// The previous cycle's units after the committed cut (agreement state).
+  private var previousHypothesis: [RollingUnit] = []
+  /// This cycle's held-back units and the end of the segment each belongs to.
+  private var heldBack: [(unit: RollingUnit, end: Float)] = []
+  /// Set when a forced advance discarded audio whose words never committed.
+  private var discardedUnstableAudio = false
+
+  private var lastDecodeSampleCount = 0
+  private var decodeCount = 0
+  private var totalDecodeTimeMs = 0
+
+  private var loopDecodeInFlight = false
+  private var stoppedMidDecode = false
+  private var stopSnapshotTaken = false
+  private var running = false
+  private var finished = false
+  private var loopTask: Task<Void, Never>?
+  private var audioSamplesProvider: (@Sendable () async -> (samples: [Float], count: Int))?
+
+  init(decode: @escaping Decode, cadence: Duration = .seconds(1)) {
+    self.decode = decode
+    self.cadence = cadence
+  }
+
+  // MARK: Test observability (actor state, not decoder timing)
+
+  var committedTextForTests: String { committedText }
+  var bufferStartForTests: Float { bufferStart }
+  var heldBackTextForTests: String { heldBack.map(\.unit.text).joined() }
+  var decodeCountForTests: Int { decodeCount }
+  var discardedUnstableAudioForTests: Bool { discardedUnstableAudio }
+
+  // MARK: WhisperIncrementalSession
+
+  package func start(
+    audioSamplesProvider: @Sendable @escaping () async -> (samples: [Float], count: Int)
+  ) {
+    running = true
+    finished = false
+    committedText = ""
+    committedInBuffer = []
+    scrolledOutText = ""
+    lastCommittedEnd = 0
+    bufferStart = 0
+    previousHypothesis = []
+    heldBack = []
+    discardedUnstableAudio = false
+    lastDecodeSampleCount = 0
+    decodeCount = 0
+    totalDecodeTimeMs = 0
+    loopDecodeInFlight = false
+    stoppedMidDecode = false
+    stopSnapshotTaken = false
+    self.audioSamplesProvider = audioSamplesProvider
+    loopTask = Task { [weak self] in await self?.runLoop() }
+  }
+
+  /// #1309: the adapter calls this BEFORE draining its feed tasks, so the snapshot reflects the
+  /// stop moment. Kept `async` to match the requirement exactly (see the protocol's doc).
+  package func noteStopRequested() async {
+    guard !stopSnapshotTaken else { return }
+    stopSnapshotTaken = true
+    stoppedMidDecode = loopDecodeInFlight
+  }
+
+  /// Authoritative flush. The adapter has drained its feed tasks, so the provider returns the
+  /// complete `streamingPCM`. The loop is stopped and its in-flight decode aborted, then
+  /// AWAITED: the aborted run must physically end before the flush decode, which uses the same
+  /// model. The executor clears the abort before admitting the next request, so the loop's
+  /// stop never reaches the flush. `finalSamples` and `speechSegments` are ignored (the
+  /// single-coordinate design, §3.2: every coordinate here is `streamingPCM`'s).
+  // periphery:ignore:parameters finalSamples,speechSegments - single-coordinate design (§3.2)
+  package func finalize(
+    finalSamples: [Float], speechSegments: [SpeechSegment]
+  ) async -> IncrementalResult {
+    if !stopSnapshotTaken { stoppedMidDecode = loopDecodeInFlight }
+    await stopLoop()
+    guard let provider = audioSamplesProvider else {
+      return result(text: committedText, samplesCovered: 0, tailDecodeMs: 0)
+    }
+    audioSamplesProvider = nil
+    let (samples, count) = await provider()
+
+    // A forced advance dropped words that never committed: releasing would ship a hole.
+    if discardedUnstableAudio {
+      return fallback(strategy: "streaming_window_overflow_fallback", tailMs: 0)
+    }
+
+    let releaseText = committedText + heldBack.map(\.unit.text).joined()
+    // Coverage of the text about to be released, from its own segments (never from how much
+    // audio a decode was handed, #1308), clamped to real audio.
+    let releasedEnd = min(
+      max(lastCommittedEnd, heldBack.last?.end ?? 0), Float(count) / Self.sampleRate)
+    let unheardStart = max(0, min(count, Int(releasedEnd * Self.sampleRate)))
+    let unheard = unheardStart < count ? Array(samples[unheardStart..<count]) : []
+    let unheardSec = Float(unheard.count) / Self.sampleRate
+    if unheardSec < Self.minVoicedTailSec || Self.rms(unheard) <= Self.tailEnergyFloor {
+      return result(text: releaseText, samplesCovered: count, tailDecodeMs: 0)
+    }
+
+    // Fresh speech at stop: ONE decode of the retained, context-bearing buffer. Not abortable:
+    // it produces the words the user reads.
+    let flushStart = ContinuousClock.now
+    let originSample = max(0, min(count, Int(bufferStart * Self.sampleRate)))
+    let window = Array(samples[originSample..<count])
+    do {
+      let segments = try await decode(window)
+      let tailMs = Self.milliseconds(since: flushStart)
+      let realEnd = Float(window.count) / Self.sampleRate
+      let bufferText =
+        segments
+        .filter { Float($0.startMs) / 1000 < realEnd }
+        .map(\.text).joined()
+      guard !bufferText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+        return fallback(strategy: "streaming_buffer_empty_fallback", tailMs: tailMs)
+      }
+      // The scrolled-out prefix plus the buffer decode IS the transcript (committed text in
+      // the buffer is re-decoded inside `bufferText`; never add both).
+      return result(text: scrolledOutText + bufferText, samplesCovered: count, tailDecodeMs: tailMs)
+    } catch {
+      return fallback(
+        strategy: "streaming_flush_failed", tailMs: Self.milliseconds(since: flushStart))
+    }
+  }
+
+  package func cancel() async {
+    audioSamplesProvider = nil
+    await stopLoop()
+  }
+
+  /// Ends the loop: no cycle mutates state after this, an in-flight decode is cancelled (the
+  /// executor aborts its native run) and awaited until that run has physically returned.
+  private func stopLoop() async {
+    running = false
+    finished = true
+    let loop = loopTask
+    loopTask = nil
+    loop?.cancel()
+    await loop?.value
+  }
+
+  // MARK: - Loop
+
+  private func runLoop() async {
+    while running, !Task.isCancelled {
+      try? await Task.sleep(for: cadence)
+      guard running, !finished, !Task.isCancelled, let provider = audioSamplesProvider else {
+        break
+      }
+      let (samples, count) = await provider()
+      guard running, !finished, !Task.isCancelled else { break }
+      guard count - lastDecodeSampleCount >= minNewSamplesToDecode else { continue }
+
+      let originSample = max(0, min(count, Int(bufferStart * Self.sampleRate)))
+      let origin = Float(originSample) / Self.sampleRate
+      let window = Array(samples[originSample..<count])
+      let started = ContinuousClock.now
+      loopDecodeInFlight = true
+      let native: [TranscribeCppSegment]
+      do {
+        native = try await decode(window)
+      } catch {
+        loopDecodeInFlight = false
+        if !Task.isCancelled, !finished {
+          await AppLogger.shared.log(
+            "Whisper streaming decode failed: \(error.localizedDescription)",
+            level: .info, category: "WhisperStreaming")
+        }
+        continue
+      }
+      loopDecodeInFlight = false
+      // A terminal that landed during the decode wins: drop this cycle.
+      guard running, !finished, !Task.isCancelled else { break }
+      let segments = native.map {
+        RollingSegment(
+          start: origin + Float($0.startMs) / 1000, end: origin + Float($0.endMs) / 1000,
+          text: $0.text)
+      }
+      if apply(segments, realAudioEnd: Float(count) / Self.sampleRate) {
+        lastDecodeSampleCount = count
+      }
+      decodeCount += 1
+      totalDecodeTimeMs += Self.milliseconds(since: started)
+    }
+  }
+
+  // MARK: - Agreement and retention
+
+  /// Applies one decode. Returns whether it produced a usable hypothesis ("heard"); an empty
+  /// decode leaves the sample mark behind, so the next cycle retries that audio and finalize
+  /// never treats it as heard.
+  @discardableResult
+  func apply(_ decoded: [RollingSegment], realAudioEnd: Float) -> Bool {
+    // Real audio only: a segment starting in the padding is a hallucination; an end that ran
+    // into the padding is clamped, so it can never claim audio that does not exist.
+    let segments = decoded.filter { $0.start < realAudioEnd }.map {
+      RollingSegment(start: $0.start, end: min($0.end, realAudioEnd), text: $0.text)
+    }
+    var units: [RollingUnit] = []
+    for (index, segment) in segments.enumerated() {
+      units += Self.units(of: segment.text, segment: index)
+    }
+    guard !units.isEmpty else { return false }
+
+    // 1. CUT the committed prefix. Normally the decode repeats the committed words first;
+    //    when it revises them instead, cut by time (segments that end inside committed audio)
+    //    and drop a repeated head at the seam.
+    let committedKeys = committedInBuffer.map(\.unit.key)
+    var fresh: [RollingUnit]
+    if !committedKeys.isEmpty, units.count >= committedKeys.count,
+      Array(units.prefix(committedKeys.count).map(\.key)) == committedKeys
+    {
+      fresh = Array(units.dropFirst(committedKeys.count))
+    } else {
+      let committedEnd = committedInBuffer.last?.end ?? bufferStart
+      fresh = units.filter { segments[$0.segment].end > committedEnd + Self.cutToleranceSec }
+      // A segment straddling the committed end repeats committed words at its head.
+      let tail = committedKeys.suffix(Self.seamWindow)
+      for n in stride(from: min(Self.seamWindow, tail.count, fresh.count), through: 1, by: -1)
+      where Array(tail.suffix(n)) == fresh.prefix(n).map(\.key) {
+        fresh.removeFirst(n)
+        break
+      }
+    }
+
+    // 2. AGREE: the longest common unit prefix with the previous cycle, whatever the segment
+    //    boundaries; then commit only the complete segments that prefix covers.
+    var agreed = 0
+    while agreed < fresh.count, agreed < previousHypothesis.count,
+      fresh[agreed].key == previousHypothesis[agreed].key
+    {
+      agreed += 1
+    }
+    var commitCount = 0
+    var index = 0
+    while index < fresh.count {
+      let segment = fresh[index].segment
+      var next = index
+      while next < fresh.count, fresh[next].segment == segment { next += 1 }
+      guard next <= agreed else { break }
+      commitCount = next
+      index = next
+    }
+    if commitCount > 0 {
+      for unit in fresh[0..<commitCount] {
+        committedText += unit.text
+        committedInBuffer.append((unit, segments[unit.segment].end))
+      }
+      lastCommittedEnd = max(lastCommittedEnd, segments[fresh[commitCount - 1].segment].end)
+    }
+    let remaining = Array(fresh[commitCount...])
+    heldBack = remaining.map { ($0, segments[$0.segment].end) }
+    previousHypothesis = remaining
+
+    // 3. RETAIN (§3.5).
+    retain(realAudioEnd: realAudioEnd)
+    return true
+  }
+
+  private func retain(realAudioEnd: Float) {
+    guard realAudioEnd - bufferStart > Self.bufferTrimSec else { return }
+    let retentionLine = realAudioEnd - Self.minRetainedBufferSec
+    if let boundary = committedInBuffer.last(where: { $0.end <= retentionLine })?.end,
+      boundary > bufferStart
+    {
+      for entry in committedInBuffer where entry.end <= boundary {
+        scrolledOutText += entry.unit.text
+      }
+      committedInBuffer.removeAll { $0.end <= boundary }
+      bufferStart = boundary
+      return
+    }
+    guard realAudioEnd - bufferStart > Self.defaultMaxUnconfirmedWindowSec + 5 else { return }
+    // No safe committed boundary and the buffer is past one Whisper window plus headroom:
+    // advance to the retention line anyway. Committed words before it scroll out; the
+    // unstable words there never commit, and their agreement state goes with them.
+    for entry in committedInBuffer where entry.end <= retentionLine {
+      scrolledOutText += entry.unit.text
+    }
+    committedInBuffer.removeAll { $0.end <= retentionLine }
+    // No committed segment ended in the discarded span, so whatever was said there is not in
+    // the committed text. Finalize hands the take to the batch decode rather than guess.
+    discardedUnstableAudio = true
+    heldBack.removeAll { $0.end <= retentionLine }
+    previousHypothesis = heldBack.map(\.unit)
+    bufferStart = retentionLine
+  }
+
+  // MARK: - Units
+
+  /// Splits text into word units that keep the spacing and punctuation before each word;
+  /// trailing punctuation joins the last unit. Word boundaries come from the system's
+  /// Unicode word segmentation, which also splits unspaced scripts (CJK, Thai) into words.
+  /// Keys compare words case-insensitively without the surrounding punctuation.
+  static func units(of text: String, segment: Int) -> [RollingUnit] {
+    var ranges: [Range<String.Index>] = []
+    text.enumerateSubstrings(in: text.startIndex..<text.endIndex, options: .byWords) {
+      _, range, _, _ in
+      ranges.append(range)
+    }
+    guard !ranges.isEmpty else { return [] }
+    var units: [RollingUnit] = []
+    var cursor = text.startIndex
+    for (index, range) in ranges.enumerated() {
+      let end = index == ranges.count - 1 ? text.endIndex : range.upperBound
+      units.append(
+        RollingUnit(
+          text: String(text[cursor..<end]), key: text[range].lowercased(), segment: segment))
+      cursor = end
+    }
+    return units
+  }
+
+  // MARK: - Results
+
+  private func result(text: String, samplesCovered: Int, tailDecodeMs: Int) -> IncrementalResult {
+    let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+    return IncrementalResult(
+      text: trimmed.isEmpty ? nil : trimmed, samplesCovered: samplesCovered,
+      decodeCount: decodeCount, totalDecodeTimeMs: totalDecodeTimeMs,
+      accepted: !trimmed.isEmpty, strategy: "streaming", tailDecodeMs: tailDecodeMs,
+      stopWhileDecodeInFlight: stoppedMidDecode)
+  }
+
+  /// `accepted: false`: the adapter re-transcribes the whole recording in batch. The committed
+  /// prefix rides along for diagnostics only.
+  private func fallback(strategy: String, tailMs: Int) -> IncrementalResult {
+    let trimmed = committedText.trimmingCharacters(in: .whitespacesAndNewlines)
+    return IncrementalResult(
+      text: trimmed.isEmpty ? nil : committedText, samplesCovered: 0,
+      decodeCount: decodeCount, totalDecodeTimeMs: totalDecodeTimeMs, accepted: false,
+      strategy: strategy, tailDecodeMs: tailMs, stopWhileDecodeInFlight: stoppedMidDecode)
+  }
+
+  static func rms(_ samples: [Float]) -> Float {
+    guard !samples.isEmpty else { return 0 }
+    return (samples.reduce(Float(0)) { $0 + $1 * $1 } / Float(samples.count)).squareRoot()
+  }
+
+  private static func milliseconds(since start: ContinuousClock.Instant) -> Int {
+    Int((ContinuousClock.now - start) / .milliseconds(1))
+  }
+}

@@ -27,8 +27,8 @@ import Foundation
 // return.
 //
 // #1308 (Step 2, PR-2): the "Live transcription" toggle. On + a picked (locked)
-// language starts the authoritative `WhisperKitStreamingSession` (confirmed-
-// segment holdback, single-coordinate `streamingPCM`, Parakeet feed-task drain
+// language starts the authoritative streaming session (#3735: `TranscribeCppRollingSession`;
+// confirmed-segment holdback, single-coordinate `streamingPCM`, Parakeet feed-task drain
 // ported wholesale) whose flush IS the transcript — meshing-free by construction
 // (one growing stream compared against itself, no second independent decode).
 // Every other path (toggle off, or on + auto language) finalizes through the
@@ -186,8 +186,8 @@ final class WhisperEngineAdapter: ASREngineAdapter, @unchecked Sendable {
   /// transcription" toggle is ON and the language is picked (locked). Its
   /// `finalize` output IS the transcript (not a best-effort rescue). `nil` on the
   /// toggle-OFF and auto-language paths, which finalize through the clean batch
-  /// decode (PR-1). Reuses the `WhisperKitIncrementalSession` seam (#360).
-  private var streamingSession: (any WhisperKitIncrementalSession)?
+  /// decode (PR-1). Reuses the `WhisperIncrementalSession` seam (#360).
+  private var streamingSession: (any WhisperIncrementalSession)?
 
   /// `true` between a successful streaming-session start and finalize/cancel.
   private var streamingActive = false
@@ -493,8 +493,8 @@ final class WhisperEngineAdapter: ASREngineAdapter, @unchecked Sendable {
 
   /// Begin a session. #1276 Step 2 (PR-2) routing on `(streaming, language)`:
   /// - `streaming && locked` (language non-nil): start the authoritative
-  ///   `WhisperKitStreamingSession` — live confirmed-segment decoding whose flush
-  ///   IS the transcript.
+  ///   streaming session (#3735: `TranscribeCppRollingSession`) — live confirmed-segment
+  ///   decoding whose flush IS the transcript.
   /// - `streaming && auto` (language nil): DEGRADE to the clean batch decode (no
   ///   session). Streaming commits to one language at the first cycle and
   ///   WhisperKit's sub-second in-decoder LID is unreliable (the garble trap);
@@ -934,7 +934,7 @@ final class WhisperEngineAdapter: ASREngineAdapter, @unchecked Sendable {
       diagnostics.incrementalTailDecodeMs = flush.tailDecodeMs
       diagnostics.stopWhileDecodeInFlight = flush.stopWhileDecodeInFlight
       diagnostics.streamingMaxUnconfirmedWindowSec =
-        Double(WhisperKitStreamingSession.defaultMaxUnconfirmedWindowSec)
+        Double(TranscribeCppRollingSession.defaultMaxUnconfirmedWindowSec)
     }
     // PR-5 Rung 4.5 (#827): LID perf-signpost transport for kernel-side
     // `t_release` and wiring-side `t_clipboard_write` emits. Populated here
@@ -1477,7 +1477,7 @@ final class WhisperEngineAdapter: ASREngineAdapter, @unchecked Sendable {
     diagnostics.incrementalTailDecodeMs = result.tailDecodeMs
     diagnostics.stopWhileDecodeInFlight = result.stopWhileDecodeInFlight
     diagnostics.streamingMaxUnconfirmedWindowSec =
-      Double(WhisperKitStreamingSession.defaultMaxUnconfirmedWindowSec)
+      Double(TranscribeCppRollingSession.defaultMaxUnconfirmedWindowSec)
     lastASRDiagnostics = diagnostics
     isTerminal = true
     clearSessionBuffers()
@@ -1733,7 +1733,7 @@ package protocol WhisperBackendDriving: Actor {
   func makeStreamingSession(
     options: TranscriptionOptions, vendorDecodeOccupancy: VendorDecodeOccupancy,
     onDecode: ASRInferenceEntryObserver?
-  ) async -> (any WhisperKitIncrementalSession)?
+  ) async -> (any WhisperIncrementalSession)?
   func unload() async
 }
 

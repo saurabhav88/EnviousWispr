@@ -68,10 +68,10 @@ package struct HeldBackSegment: Sendable, Equatable {
 }
 
 /// The authoritative WhisperKit streaming session. Conforms to the existing
-/// `WhisperKitIncrementalSession` seam (#360) so the adapter drives it with the
+/// `WhisperIncrementalSession` seam (#360) so the adapter drives it with the
 /// same start/finalize/cancel lifecycle it already understands; the
 /// best-effort-vs-authoritative difference lives in the adapter's result handling.
-package actor WhisperKitStreamingSession: WhisperKitIncrementalSession {
+package actor WhisperKitStreamingSession: WhisperIncrementalSession {
   private let whisperKit: any WhisperKitTranscribing
   private let baseDecodingOptions: DecodingOptions
   private let cadence: Duration
@@ -297,7 +297,7 @@ package actor WhisperKitStreamingSession: WhisperKitIncrementalSession {
     self.onCancelLoopAbortRequestedForTesting = onCancelLoopAbortRequestedForTesting
   }
 
-  // MARK: WhisperKitIncrementalSession
+  // MARK: WhisperIncrementalSession
 
   package func start(
     audioSamplesProvider: @Sendable @escaping () async -> (samples: [Float], count: Int)
@@ -551,7 +551,7 @@ package actor WhisperKitStreamingSession: WhisperKitIncrementalSession {
   // Keep `async`, exactly matching the protocol requirement — a synchronous
   // signature here combined with any defaulted async overload silently skips
   // the snapshot on concrete-typed calls (#1309 flaky-test root cause; see
-  // the requirement's doc in WhisperKitIncrementalSession.swift).
+  // the requirement's doc in WhisperIncrementalSession.swift).
   package func noteStopRequested() async {
     guard !stopSnapshotTaken else { return }
     stopSnapshotTaken = true

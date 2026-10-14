@@ -37,40 +37,109 @@ struct WhisperEngineAdapterTranscribeCppTests {
     )
   }
 
-  @Test(
-    "Faster Transcription on, locked language: the nil streaming vend decodes once in batch, with segment timings"
-  )
-  func streamingRequestDegradesToBatch() async throws {
+  /// One take: begin, feed `samples`, mark them speech, finalize.
+  private func take(
+    _ adapter: WhisperEngineAdapter, language: String?, streaming: Bool,
+    samples: [Float] = [Float](repeating: 0.1, count: 16_000)
+  ) async throws -> ASREngineOutcome {
+    let sid = SessionID()
+    try await adapter.beginSession(
+      sid, options: TranscriptionOptions(language: language), streaming: streaming)
+    feed(adapter, samples: samples, session: sid)
+    adapter.observeSpeechSegments([SpeechSegment(startSample: 0, endSample: samples.count)])
+    return await adapter.finalize(batchSamples: nil)
+  }
+
+  @Test("Faster Transcription on, locked language: the rolling session's flush is the transcript")
+  func lockedStreamingUsesTheRollingSession() async throws {
     let driver = AdapterFakeDriver()
     driver.setRun(
       TranscribeCppRunResult(
         text: " hola mundo", detectedLanguage: nil,
         segments: [TranscribeCppSegment(startMs: 0, endMs: 900, text: " hola mundo")]))
-    let backend = makeBackend(driver)
     let adapter = WhisperEngineAdapter(
-      backend: backend, engineMutationScope: .alwaysAllowedForTesting)
+      backend: makeBackend(driver), engineMutationScope: .alwaysAllowedForTesting)
     try await adapter.warmUp(modelReceipt: nil)
-    #expect(adapter.readiness == .ready)
 
-    let sid = SessionID()
-    try await adapter.beginSession(
-      sid, options: TranscriptionOptions(language: "es"), streaming: true)
-    feed(adapter, samples: [Float](repeating: 0.1, count: 16_000), session: sid)
-    adapter.observeSpeechSegments([SpeechSegment(startSample: 0, endSample: 16_000)])
-    let outcome = await adapter.finalize(batchSamples: nil)
+    let outcome = try await take(adapter, language: "es", streaming: true)
     guard case .transcript(let result) = outcome else {
       Issue.record("expected .transcript, got \(outcome)")
       return
     }
     #expect(result.text == "hola mundo")
-    #expect(result.language == "es", "a locked language is the forced hint")
-    #expect(result.wordTimings == nil)
-    #expect(result.segmentTimings == [ASRSegmentTiming(range: 0..<10, startMs: 0, endMs: 900)])
-    #expect(driver.decodeLanguages == [nil, "es"], "the warm-up, then one batch decode")
+    #expect(result.language == "es")
+    #expect(driver.decodeLanguages == [nil, "es"], "the warm-up, then the session's one flush")
+    let diag = adapter.lastASRDiagnostics
+    #expect(diag?.streamingEffective == true)
+    #expect(diag?.streamingDegradeReason == "none")
+    #expect(diag?.streamingFinalPath == "streaming_flush")
+    #expect(adapter.lastLanguageDetection?.tier == .locked, "locked-language evidence kept")
+  }
+
+  @Test("Faster Transcription on with Auto-detect stays one batch decode, with segment timings")
+  func autoLanguageStaysBatch() async throws {
+    let driver = AdapterFakeDriver()
+    driver.setRun(
+      TranscribeCppRunResult(
+        text: " hello there", detectedLanguage: "en",
+        segments: [TranscribeCppSegment(startMs: 0, endMs: 900, text: " hello there")]))
+    let adapter = WhisperEngineAdapter(
+      backend: makeBackend(driver), engineMutationScope: .alwaysAllowedForTesting)
+    try await adapter.warmUp(modelReceipt: nil)
+
+    let outcome = try await take(adapter, language: nil, streaming: true)
+    guard case .transcript(let result) = outcome else {
+      Issue.record("expected .transcript, got \(outcome)")
+      return
+    }
+    #expect(result.text == "hello there")
+    #expect(result.segmentTimings == [ASRSegmentTiming(range: 0..<11, startMs: 0, endMs: 900)])
     let diag = adapter.lastASRDiagnostics
     #expect(diag?.streamingEffective == false)
-    #expect(diag?.streamingDegradeReason == "model_not_ready")
+    #expect(diag?.streamingDegradeReason == "auto_language")
     #expect(diag?.streamingFinalPath == "clean_batch")
+  }
+
+  @Test("an empty streaming flush falls back to the clean batch decode of the whole recording")
+  func emptyFlushFallsBackToBatch() async throws {
+    let driver = AdapterFakeDriver()
+    driver.setRun(
+      TranscribeCppRunResult(
+        text: " hola mundo", detectedLanguage: nil,
+        segments: [TranscribeCppSegment(startMs: 0, endMs: 900, text: " hola mundo")]))
+    let adapter = WhisperEngineAdapter(
+      backend: makeBackend(driver), engineMutationScope: .alwaysAllowedForTesting)
+    try await adapter.warmUp(modelReceipt: nil)
+    // The flush decodes to nothing; the batch fallback that follows gets the real text.
+    driver.enqueue([TranscribeCppRunResult(text: "", detectedLanguage: nil, segments: [])])
+
+    let outcome = try await take(adapter, language: "es", streaming: true)
+    guard case .transcript(let result) = outcome else {
+      Issue.record("expected .transcript, got \(outcome)")
+      return
+    }
+    #expect(result.text == "hola mundo")
+    #expect(driver.decodeLanguages == [nil, "es", "es"], "warm-up, empty flush, batch fallback")
+    let diag = adapter.lastASRDiagnostics
+    #expect(diag?.streamingDegradeReason == "flush_empty")
+    #expect(diag?.streamingFinalPath == "fallback_batch")
+  }
+
+  @Test("the streaming flush counts as engine occupancy through the native return")
+  func streamingFlushIsOccupancy() async throws {
+    let driver = AdapterFakeDriver()
+    let occupancy = VendorDecodeOccupancy()
+    let adapter = WhisperEngineAdapter(
+      backend: makeBackend(driver), engineMutationScope: .alwaysAllowedForTesting,
+      vendorDecodeOccupancy: occupancy)
+    try await adapter.warmUp(modelReceipt: nil)
+    driver.holdNative()
+    let pending = Task { try await take(adapter, language: "es", streaming: true) }
+    await driver.waitUntilNativeEntered()
+    #expect(occupancy.inFlight == 1)
+    await driver.releaseNative()
+    _ = try await pending.value
+    #expect(occupancy.isIdle)
   }
 
   @Test("a cancelled take keeps the engine counted busy until the native decode returns")
@@ -186,6 +255,9 @@ private final class AdapterFakeDriver: WhisperExecutorDriving, @unchecked Sendab
   func waitUntilDrainWaiting() async { await drainWaiting.wait() }
 
   func setRun(_ result: TranscribeCppRunResult) { lock.withLock { run = result } }
+  /// Results returned in order by the next decodes, before falling back to `run`.
+  private var queued: [TranscribeCppRunResult] = []
+  func enqueue(_ results: [TranscribeCppRunResult]) { lock.withLock { queued += results } }
   var decodeLanguages: [String?] { lock.withLock { _languages } }
   var unloaded: [Int] { lock.withLock { _unloaded } }
 
@@ -205,7 +277,7 @@ private final class AdapterFakeDriver: WhisperExecutorDriving, @unchecked Sendab
     let (gate, result) = lock.withLock { () -> (AsyncGate?, TranscribeCppRunResult) in
       _languages.append(language)
       if nativeGate != nil { nativeRunning = true }
-      return (nativeGate, run)
+      return (nativeGate, queued.isEmpty ? run : queued.removeFirst())
     }
     guard let gate else { return result }
     let caller = CallerRelease()

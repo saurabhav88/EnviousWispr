@@ -270,7 +270,7 @@ actor RecordingWhisperBackend: WhisperBackendDriving {
   func makeStreamingSession(
     options: TranscriptionOptions, vendorDecodeOccupancy: VendorDecodeOccupancy,
     onDecode: ASRInferenceEntryObserver?
-  ) async -> (any WhisperKitIncrementalSession)? {
+  ) async -> (any WhisperIncrementalSession)? {
     nil
   }
 

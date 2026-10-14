@@ -93,7 +93,7 @@ import Testing
 // expanded the deliberately bounded surface from three protocols to ten:
 // seven additional known protocols this file had not previously enumerated
 // (`ASREngineLanguageIdentifying`, `ASREngineWarmupCancelling`,
-// `WhisperBackendDriving`, `WhisperKitIncrementalSession`,
+// `WhisperBackendDriving`, `WhisperIncrementalSession`,
 // `WhisperKitTranscribing`, `ASRServiceProtocol`,
 // `ASREngineTelemetryProviding` — some read-only, frozen for drift even
 // though they are not vocabulary candidates themselves; see
@@ -247,7 +247,7 @@ import Testing
   /// Codex plan reviews traced the full engine-facing surface across TEN
   /// protocols (`ASRBackend`, `ASRManagerInterface`, `ASREngineAdapter`,
   /// `ASREngineLanguageIdentifying`, `ASREngineWarmupCancelling`,
-  /// `WhisperBackendDriving`, `WhisperKitIncrementalSession`,
+  /// `WhisperBackendDriving`, `WhisperIncrementalSession`,
   /// `WhisperKitTranscribing`, `ASRServiceProtocol`,
   /// `ASREngineTelemetryProviding` — see `EngineProtocolSurfaceFreezeTests`
   /// for their frozen signatures) plus two concrete-only method surfaces not
@@ -265,7 +265,7 @@ import Testing
   /// `ASRBackend`/`ASRManagerInterface`/`ASRServiceProtocol`, matched once
   /// per name since bare-identifier matching does not distinguish layers),
   /// `beginSession`, `acceptAudio`, `finalize` (`ASREngineAdapter` /
-  /// `WhisperKitIncrementalSession` — `finalize` also matches
+  /// `WhisperIncrementalSession` — `finalize` also matches
   /// `WhisperKitStreamingSession.finalize(finalSamples:speechSegments:)`,
   /// a different type sharing the bare name; classified like every other
   /// entry, not specially unified), `observeLID`, `makeStreamingSession`
@@ -291,7 +291,7 @@ import Testing
   /// operations, for the SAME bare-name-collision reason, each documented
   /// with its real production call sites so the exclusion is never mistaken
   /// for an oversight:
-  /// - `cancel` (`ASREngineAdapter`/`WhisperKitIncrementalSession`): ~134
+  /// - `cancel` (`ASREngineAdapter`/`WhisperIncrementalSession`): ~134
   ///   raw text matches across the four scanned roots, almost all
   ///   `Task.cancel()`/`<x>Task?.cancel()` and other types' own unrelated
   ///   `cancel()` methods. The real engine-touching sites are
@@ -303,7 +303,7 @@ import Testing
   ///   specifically sits inside the #1749 race window (see the doc comment
   ///   above `expected` for how that race surfaces in this table instead,
   ///   through `transcribe`).
-  /// - `start` (`WhisperKitIncrementalSession`): 25 raw text matches, almost
+  /// - `start` (`WhisperIncrementalSession`): 25 raw text matches, almost
   ///   all `Timer`/`NWListener`/`NWConnection`/hotkey-service/watcher
   ///   `.start()` calls with no relation to the ASR engine. The real site
   ///   is `WhisperEngineAdapter.startStreamingSession`'s `session.start(audioSamplesProvider:)`.
@@ -1030,7 +1030,7 @@ import Testing
       file: "Sources/EnviousWisprPipeline/WhisperEngineAdapter.swift", matcher: "observeLID",
       text: "await backendForObserver.observeLID(", classification: .structurallySafe),
     // The adapter's own flush into its incremental streaming session's
-    // `WhisperKitIncrementalSession.finalize` — session-scoped (`streamingSession`
+    // `WhisperIncrementalSession.finalize` — session-scoped (`streamingSession`
     // is non-nil only during an active streaming session).
     CallSite(
       file: "Sources/EnviousWisprPipeline/WhisperEngineAdapter.swift", matcher: "finalize",
@@ -1120,6 +1120,17 @@ import Testing
       file: "Sources/EnviousWisprASR/TranscribeCppWhisperBackend.swift", matcher: "transcribe",
       text: "_ = try await driver.transcribe(",
       classification: .transitivelyCoveredByCaller),
+    // #3735 chunk 8: `decodeForRollingSession`, the rolling session's loop and flush decode,
+    // the transcribe.cpp counterpart of `WhisperKitStreamingSession`'s incremental decodes:
+    // the same #1749 tag, never a stronger one.
+    CallSite(
+      file: "Sources/EnviousWisprASR/TranscribeCppWhisperBackend.swift", matcher: "transcribe",
+      text: "let run = try await driver.transcribe(",
+      classification: .knownGap(
+        issue: 1749,
+        reason:
+          "an in-flight incremental decode is not guaranteed to stop before recovery's gate opens"
+      )),
     // The `ASRBackend.transcribe` decode: the same callers as WhisperKit's (adapter and
     // `ActiveEngineOperation`), so the same #1749 tag, never a stronger one.
     CallSite(
@@ -2043,8 +2054,10 @@ import Testing
       // that one `loadPrepared` load closure, so the door has one #1749 site.
       // #3735: 17 — `TranscribeCppWhisperBackend.transcribe`'s decode has the same callers as
       // WhisperKit's backend decode, so it carries the same #1749 tag.
-      gaps.count == 17,
-      "expected exactly 17 `knownGap` entries (2 for #1745, 15 for #1749), found \(gaps.count)"
+      // #3735 chunk 8: 18 — the rolling session's decode, tagged as WhisperKit's incremental
+      // decodes are.
+      gaps.count == 18,
+      "expected exactly 18 `knownGap` entries (2 for #1745, 16 for #1749), found \(gaps.count)"
     )
     for gap in gaps {
       #expect(
@@ -2107,6 +2120,9 @@ import Testing
       SiteKey(
         file: "Sources/EnviousWisprASR/TranscribeCppWhisperBackend.swift", matcher: "transcribe",
         text: "run = try await driver.transcribe("),
+      SiteKey(
+        file: "Sources/EnviousWisprASR/TranscribeCppWhisperBackend.swift", matcher: "transcribe",
+        text: "let run = try await driver.transcribe("),
       SiteKey(
         file: "Sources/EnviousWisprASR/WhisperKitStreamingSession.swift", matcher: "transcribe",
         text: "let results = try await whisperKit.transcribe("),

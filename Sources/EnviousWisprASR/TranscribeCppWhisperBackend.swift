@@ -745,14 +745,56 @@ package actor TranscribeCppWhisperBackend<Driver: WhisperExecutorDriving>: ASRBa
 
   // MARK: - Streaming
 
-  /// #3735 §3.11: the rolling session arrives in Chunk 8. Until then no session is vended, which
-  /// the adapter already treats as batch degradation: the take is decoded once, in batch, from
-  /// the full recording.
+  /// #3735 §3.11: Faster Transcription on Whisper. Vends a `TranscribeCppRollingSession` only for
+  /// a locked language on a ready (admitted, loaded) model; otherwise nil, which the adapter
+  /// treats as batch degradation (the take is decoded once, in batch, from the full recording).
+  /// Auto-detect stays batch: streaming must commit to one language before its first decode.
   package func makeStreamingSession(
     options: TranscriptionOptions, vendorDecodeOccupancy: VendorDecodeOccupancy,
     onDecode: ASRInferenceEntryObserver?
-  ) async -> (any WhisperKitIncrementalSession)? {
-    nil
+  ) async -> (any WhisperIncrementalSession)? {
+    guard let language = options.language, !language.isEmpty, isReady else { return nil }
+    // #2787: every decode the session issues (loop cycle or flush) is counted against the
+    // shared occupancy through the native return, including a cancelled loop decode's drain.
+    return TranscribeCppRollingSession(
+      decode: { [self] samples in
+        try await vendorDecodeOccupancy.track {
+          try await self.decodeForRollingSession(
+            samples: samples, language: language, onDecode: onDecode)
+        }
+      })
+  }
+
+  /// One heart-lane decode for the rolling session: `samples` (the session's retained buffer)
+  /// padded with the same trailing silence as a batch decode, the locked `language` forced.
+  /// Returns the native segments, timed in `samples`' own coordinates.
+  ///
+  /// A cancelled call (the session stopping its loop) waits for the aborted run to end before
+  /// it rethrows, exactly as `transcribe` does, so a caller counting it as engine occupancy
+  /// never reads idle while native work continues. `onDecode` fires inside the executor
+  /// immediately before `transcribe_run`, after every cancellation check.
+  func decodeForRollingSession(
+    samples: [Float], language: String, onDecode: ASRInferenceEntryObserver?
+  ) async throws -> [TranscribeCppSegment] {
+    guard !admissionClosed else { throw ASRError.notReady }
+    inFlight += 1
+    defer { endOperation() }
+    guard let handle = await readyHandleAfterWarmupDrain(), !admissionClosed else {
+      throw ASRError.notReady
+    }
+    var input = samples
+    input.append(contentsOf: [Float](repeating: 0, count: Self.silencePaddingSamples))
+    try Task.checkCancellation()
+    do {
+      let run = try await driver.transcribe(
+        handle, samples: input, language: language, lane: .heart,
+        onInferenceEntered: onDecode, onProgress: nil)
+      return run.segments
+    } catch {
+      let mapped = Self.mapRunError(error)
+      if mapped is CancellationError { await driver.waitForDrain(handle) }
+      throw mapped
+    }
   }
 
   // MARK: - Unload and memory pressure

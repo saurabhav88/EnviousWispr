@@ -379,8 +379,8 @@ import Testing
       "Sources/EnviousWisprPipeline/WhisperEngineAdapter.swift", nil
     ),
     (
-      "protocol", "WhisperKitIncrementalSession",
-      "Sources/EnviousWisprASR/WhisperKitIncrementalSession.swift", nil
+      "protocol", "WhisperIncrementalSession",
+      "Sources/EnviousWisprASR/WhisperIncrementalSession.swift", nil
     ),
     (
       "protocol", "WhisperKitTranscribing",
@@ -705,14 +705,14 @@ import Testing
         MemberSignature(
           condition: nil,
           signature:
-            "func makeStreamingSession(\n    options: TranscriptionOptions, vendorDecodeOccupancy: VendorDecodeOccupancy,\n    onDecode: ASRInferenceEntryObserver?\n  ) async -> (any WhisperKitIncrementalSession)?"
+            "func makeStreamingSession(\n    options: TranscriptionOptions, vendorDecodeOccupancy: VendorDecodeOccupancy,\n    onDecode: ASRInferenceEntryObserver?\n  ) async -> (any WhisperIncrementalSession)?"
         ),
         MemberSignature(condition: nil, signature: "func unload() async"),
       ]),
-    "WhisperKitIncrementalSession": Surface(
-      name: "WhisperKitIncrementalSession",
-      file: "Sources/EnviousWisprASR/WhisperKitIncrementalSession.swift",
-      header: "protocol WhisperKitIncrementalSession : Sendable",
+    "WhisperIncrementalSession": Surface(
+      name: "WhisperIncrementalSession",
+      file: "Sources/EnviousWisprASR/WhisperIncrementalSession.swift",
+      header: "protocol WhisperIncrementalSession : Sendable",
       members: [
         MemberSignature(
           condition: nil,

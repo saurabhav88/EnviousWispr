@@ -13,7 +13,7 @@ import Testing
 /// Scope: `Sources/**/*.swift` must contain none of the tokens; `Tests/**` may
 /// contain them only in this file. `.claude/` and `docs/` are out of scope.
 @Suite struct WhisperKitStitchFreezeTests {
-  /// Whole-word matches so e.g. `WhisperKitIncrementalSession` (the retained
+  /// Whole-word matches so e.g. `WhisperIncrementalSession` (the retained
   /// seam protocol) does not false-positive.
   private static let tokenPatterns = [
     #"\bWhisperKitIncrementalWorker\b"#,

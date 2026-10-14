@@ -124,9 +124,9 @@ import Testing
   /// A session whose `cancel()` blocks until the test lets it finish, standing in
   /// for the real one still inside a WhisperKit transcribe.
   ///
-  /// Held through `WhisperKitIncrementalSession` rather than the concrete type,
+  /// Held through `WhisperIncrementalSession` rather than the concrete type,
   /// which is the only reason a teardown that must WAIT can be observed at all.
-  private final class BlockingSession: WhisperKitIncrementalSession, @unchecked Sendable {
+  private final class BlockingSession: WhisperIncrementalSession, @unchecked Sendable {
     private let mutex = NSLock()
     private var enteredCancel = false
     private var releasedCancel = false

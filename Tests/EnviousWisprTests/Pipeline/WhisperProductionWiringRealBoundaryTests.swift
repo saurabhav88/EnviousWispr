@@ -142,6 +142,89 @@ struct WhisperProductionWiringRealBoundaryTests {
     await wired.backend.unload()
   }
 
+  @Test(
+    "Faster Transcription on the real model: a rolling session decodes during the take and its flush is the transcript; a cancelled session leaves the engine reusable",
+    .enabled(if: Self.modelIsPresent),
+    .tags(.realBoundary)
+  )
+  func rollingSessionOnTheRealModel() async throws {
+    let samples = try AudioConverter().resampleAudioFile(
+      path: Self.repoRoot.appending(path: "scripts/freeze-suite/clips/normal-speech.wav").path)
+    let root = FileManager.default.temporaryDirectory
+      .appendingPathComponent("ew-3735-rolling-\(UUID().uuidString)", isDirectory: true)
+    defer { try? FileManager.default.removeItem(at: root) }
+    let home = ModelDeliveryHome(
+      engineMutationScope: .alwaysAllowedForTesting,
+      manifestBundle: try #require(
+        Bundle(url: Self.repoRoot.appendingPathComponent("Sources/EnviousWispr/Resources"))),
+      appSupportOverride: root,
+      deliveryFlagDefaults: try #require(TestDefaults.suite("ew-3735-rolling-\(UUID().uuidString)")))
+    let registration = try #require(home.whisperRegistration)
+    let entrypoint = try #require(registration.manifest.resolvedEntrypointPath)
+    try FileManager.default.createDirectory(
+      at: registration.installDirectory, withIntermediateDirectories: true)
+    try FileManager.default.copyItem(
+      at: Self.evaluationModel, to: registration.installDirectory.appendingPathComponent(entrypoint))
+    let settings = SettingsManager(
+      defaults: try #require(TestDefaults.suite("ew-3735-rolling-s-\(UUID().uuidString)")))
+    let wired = WhisperDeliveryWiring.make(
+      modelDelivery: home, settings: settings, engineMutationScope: .alwaysAllowedForTesting)
+    #expect(await home.whisperHandle?.adoptIfPresent() == true)
+    let adapter = try #require(
+      KernelAdapterFactory.makeWhisperAdapter(
+        backend: wired.backend, languageDetector: LanguageDetector(),
+        audioCaptureSessionIDSource: { 0 }, engineMutationScope: .alwaysAllowedForTesting,
+        vendorDecodeOccupancy: VendorDecodeOccupancy(),
+        deliveredModelIdentity: registration.manifest.identity.asrModelIdentity)
+        as? WhisperEngineAdapter)
+    try await adapter.warmUp(modelReceipt: nil)
+    defer { Task { await wired.backend.unload() } }
+
+    final class Entries: @unchecked Sendable {
+      let lock = NSLock()
+      var count = 0
+      let first = BoundedWait.Signal()
+      func hit() {
+        lock.withLock { count += 1 }
+        first.fire()
+      }
+    }
+    let occupancy = VendorDecodeOccupancy()
+    let audio = samples
+
+    // 1. A session decodes during the take, then flushes.
+    let entries = Entries()
+    let session = try #require(
+      await wired.backend.makeStreamingSession(
+        options: TranscriptionOptions(language: "en"), vendorDecodeOccupancy: occupancy,
+        onDecode: { entries.hit() }))
+    await session.start(audioSamplesProvider: { (audio, audio.count) })
+    try await BoundedWait.until(entries.first, deadline: .seconds(30))
+    let result = await session.finalize(finalSamples: [], speechSegments: [])
+    #expect(result.accepted)
+    #expect(Self.words(result.text ?? "") == Self.expectedWords)
+    #expect(entries.lock.withLock { entries.count } >= 1, "native entry observed")
+    #expect(occupancy.isIdle)
+
+    // 2. Cancel a session while its loop decode runs natively; the next session works.
+    let cancelled = Entries()
+    let doomed = try #require(
+      await wired.backend.makeStreamingSession(
+        options: TranscriptionOptions(language: "en"), vendorDecodeOccupancy: occupancy,
+        onDecode: { cancelled.hit() }))
+    await doomed.start(audioSamplesProvider: { (audio, audio.count) })
+    try await BoundedWait.until(cancelled.first, deadline: .seconds(30))
+    await doomed.cancel()
+    #expect(occupancy.isIdle, "cancel returns only after the aborted native run ends")
+    let reuse = try #require(
+      await wired.backend.makeStreamingSession(
+        options: TranscriptionOptions(language: "en"), vendorDecodeOccupancy: occupancy,
+        onDecode: nil))
+    await reuse.start(audioSamplesProvider: { (audio, audio.count) })
+    let again = await reuse.finalize(finalSamples: [], speechSegments: [])
+    #expect(Self.words(again.text ?? "") == Self.expectedWords)
+  }
+
   /// One dictation through the adapter's batch path: begin, feed, speech range, finalize.
   private func decode(_ adapter: WhisperEngineAdapter, _ samples: [Float]) async throws -> String {
     let session = SessionID()

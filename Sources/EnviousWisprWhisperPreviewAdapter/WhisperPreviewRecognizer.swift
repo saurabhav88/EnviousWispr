@@ -199,7 +199,7 @@ package final class WhisperPreviewSessionHandle: LivePreviewEngineSession, @unch
     /// sibling); the calls here are one `start` and one `cancel` per recording,
     /// so existential dispatch costs nothing measurable and buys the only way to
     /// test a teardown that must WAIT.
-    var session: (any WhisperKitIncrementalSession)?
+    var session: (any WhisperIncrementalSession)?
     /// Created once by the first `end()`; every later caller awaits this same
     /// task rather than returning early.
     var teardown: Task<Void, Never>?
@@ -288,7 +288,7 @@ package final class WhisperPreviewSessionHandle: LivePreviewEngineSession, @unch
   /// Start the decode loop against this handle's own growing buffer. Separate
   /// from `init` because `start` is actor-isolated and an initializer cannot
   /// await.
-  func attach(_ session: any WhisperKitIncrementalSession) async {
+  func attach(_ session: any WhisperIncrementalSession) async {
     let alreadyEnded = state.withLock { s -> Bool in
       s.session = session
       return s.ended

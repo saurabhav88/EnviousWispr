@@ -39,7 +39,7 @@ actor StubWhisperKitBackend: WhisperBackendDriving {
   var observeLIDResult: LIDObservationBatch = .observations([])
   /// When set, `makeStreamingSession` returns this session; otherwise nil
   /// (mirrors the "model not loaded" path). #1276 PR-2.
-  var streamingSessionFactory: (@Sendable () -> (any WhisperKitIncrementalSession)?)?
+  var streamingSessionFactory: (@Sendable () -> (any WhisperIncrementalSession)?)?
 
   /// When set, `transcribe(...)` yields N times before returning — models a
   /// decode suspended in WhisperKit while a new session begins.
@@ -68,7 +68,7 @@ actor StubWhisperKitBackend: WhisperBackendDriving {
   func setTranscribeThrows(_ v: (any Error)?) { transcribeThrows = v }
   func setObserveLIDResult(_ v: LIDObservationBatch) { observeLIDResult = v }
   func setStreamingSessionFactory(
-    _ v: (@Sendable () -> (any WhisperKitIncrementalSession)?)?
+    _ v: (@Sendable () -> (any WhisperIncrementalSession)?)?
   ) {
     streamingSessionFactory = v
   }
@@ -126,7 +126,7 @@ actor StubWhisperKitBackend: WhisperBackendDriving {
   func makeStreamingSession(
     options: TranscriptionOptions, vendorDecodeOccupancy: VendorDecodeOccupancy,
     onDecode: ASRInferenceEntryObserver?
-  ) async -> (any WhisperKitIncrementalSession)? {
+  ) async -> (any WhisperIncrementalSession)? {
     makeStreamingSessionCount += 1
     return streamingSessionFactory?()
   }
@@ -149,11 +149,11 @@ actor StubWhisperKitBackend: WhisperBackendDriving {
 
 // MARK: - StubIncrementalSession
 
-/// Configurable test double for `WhisperKitIncrementalSession`. The adapter
+/// Configurable test double for `WhisperIncrementalSession`. The adapter
 /// holds a session as an existential; tests inject this stub via the
 /// backend's `incrementalSessionFactory` to control accepted-vs-rejected
 /// worker results.
-actor StubIncrementalSession: WhisperKitIncrementalSession {
+actor StubIncrementalSession: WhisperIncrementalSession {
   var finalizeResult: IncrementalResult
   var startCount = 0
   var finalizeCount = 0
@@ -181,7 +181,7 @@ actor StubIncrementalSession: WhisperKitIncrementalSession {
   }
 
   // Explicit no-op — the protocol deliberately has no default (see
-  // `WhisperKitIncrementalSession.noteStopRequested` doc).
+  // `WhisperIncrementalSession.noteStopRequested` doc).
   func noteStopRequested() async {}
 
   func finalize(
