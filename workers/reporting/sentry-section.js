@@ -60,6 +60,10 @@ export const ERROR_CATEGORIES = Object.freeze({
   // a producer; the test below re-derives the set from Sources/ every run).
   availability_check_failed: { group: LOST, deliveryProven: false, emitted: false, label: "AI availability check failed" },
   fallback_failed: { group: LOST, deliveryProven: false, emitted: false, label: "polish fallback failed" },
+  // #3685: a handled warning records an owned child exit, not a host crash or
+  // proof of text delivery/loss. The conservative row must disclose that
+  // delivery is unproven rather than claiming the user lost words.
+  child_process_failed: { group: LOST, deliveryProven: false, emitted: true, label: "owned local process stopped" },
   // #2997: the one producer is Snippet Import's review/commit mismatch
   // (`SnippetImportReporter.fileReviewCommitMismatch`), filed from Settings with no
   // dictation in flight and nothing written, so no text can have been lost.
