@@ -116,7 +116,7 @@ struct AFMPrewarmTelemetryTests {
           englishSpelling: EnglishSpellingStep(target: .text),
           llmPolish: polish,
           englishSpellingAfterPolish: EnglishSpellingStep(target: .polishedText),
-          emojiRestore: EmojiRestoreStep()),
+          emojiRestore: EmojiRestoreStep(), casualEnding: CasualEndingStep()),
         textProcessingRunner: TextProcessingRunner(),
         save: { _, _ in },
         deliverPaste: { _ in

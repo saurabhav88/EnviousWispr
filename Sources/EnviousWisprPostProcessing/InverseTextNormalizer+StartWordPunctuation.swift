@@ -8,10 +8,14 @@ import Foundation
 package struct SpokenPunctuationResult: Sendable, Equatable {
   package let text: String
   package let rulesFired: Int
+  /// #3737: the text ENDS with a full stop the user said: the last MARK command was a period, and only
+  /// whitespace and line or paragraph break commands follow it. Casual mode keeps that full stop.
+  package let spokenFinalFullStop: Bool
 
-  package init(text: String, rulesFired: Int) {
+  package init(text: String, rulesFired: Int, spokenFinalFullStop: Bool = false) {
     self.text = text
     self.rulesFired = rulesFired
+    self.spokenFinalFullStop = spokenFinalFullStop
   }
 }
 
@@ -91,6 +95,10 @@ extension InverseTextNormalizer {
     var cursor = 0
     var pendingCapital = false
     var fired = 0
+    // #3737: whether the last mark command was a period with nothing but whitespace and break commands
+    // after it. Anything else that survives between or after (a mark the matcher did not consume, a
+    // closer, a word) makes it false, so an untouched input dot is never attributed to a command.
+    var finalFullStop = false
 
     for match in matches {
       let range = match.result.range
@@ -100,8 +108,10 @@ extension InverseTextNormalizer {
         ? Self.capitalizing(gap, sentinels: protectedSentinels, pending: &pendingCapital) : gap
       cursor = range.location + range.length
 
+      if gap.contains(where: { !$0.isWhitespace }) { finalFullStop = false }
       let form = match.g(1) ?? match.g(2) ?? ""
       guard let rule = ruleByKey[Self.formKey(form)] else {
+        finalFullStop = false
         // The pattern is built from the same forms, so this is unreachable; keep the matched text
         // rather than drop it if that ever stops being true.
         out += ns.substring(with: range)
@@ -128,6 +138,11 @@ extension InverseTextNormalizer {
       out += rule.replacement
       fired += 1
       switch rule.command {
+      case .period: finalFullStop = true
+      case .lineBreak, .paragraphBreak: break
+      case .comma, .questionMark, .exclamationMark, .colon, .semicolon: finalFullStop = false
+      }
+      switch rule.command {
       case .period, .questionMark, .exclamationMark, .lineBreak, .paragraphBreak:
         pendingCapital = true
       case .comma, .colon, .semicolon:
@@ -139,7 +154,9 @@ extension InverseTextNormalizer {
     out +=
       pendingCapital
       ? Self.capitalizing(tail, sentinels: protectedSentinels, pending: &pendingCapital) : tail
-    return SpokenPunctuationResult(text: out, rulesFired: fired)
+    if tail.contains(where: { !$0.isWhitespace }) { finalFullStop = false }
+    return SpokenPunctuationResult(
+      text: out, rulesFired: fired, spokenFinalFullStop: finalFullStop)
   }
 
   /// #3624: whether `text` holds at least one COMPLETE start-word command of `language`: the start

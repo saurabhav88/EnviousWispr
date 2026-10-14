@@ -169,6 +169,12 @@ public struct TextProcessingContext: Sendable {
   /// it. Neither value proves the delivered text is British.
   public var englishSpellingSwaps: Int?
 
+  /// #3737: the spoken-punctuation pass converted a full-stop command the user SAID at the very end of
+  /// the take ("... period"), so Casual mode keeps that full stop. Written ONLY by
+  /// `InverseTextNormalizationStep` (from the matcher that converted the command); read ONLY by
+  /// `CasualEndingStep`. False when the engine already wrote the mark itself: provenance is then lost.
+  public var spokenFinalFullStop = false
+
   public init(text: String, language: String?) {
     self.text = text
     self.language = language

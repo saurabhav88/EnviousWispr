@@ -204,7 +204,7 @@ struct EscapeRecoveryAbandonmentTests {
         englishSpelling: EnglishSpellingStep(target: .text),
         llmPolish: LLMPolishStep(keychainManager: KeychainManager()),
         englishSpellingAfterPolish: EnglishSpellingStep(target: .polishedText),
-        emojiRestore: EmojiRestoreStep())
+        emojiRestore: EmojiRestoreStep(), casualEnding: CasualEndingStep())
       let driver = KernelDictationDriver(
         kernel: kernel, observer: observer, outcome: KernelFinalizationOutcome(),
         context: KernelSessionContext(), steps: steps, adapter: adapter,

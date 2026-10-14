@@ -45,7 +45,7 @@ import Testing
         englishSpelling: EnglishSpellingStep(target: .text),
         llmPolish: LLMPolishStep(keychainManager: KeychainManager()),
         englishSpellingAfterPolish: EnglishSpellingStep(target: .polishedText),
-        emojiRestore: EmojiRestoreStep())
+        emojiRestore: EmojiRestoreStep(), casualEnding: CasualEndingStep())
       func makeDriver() -> KernelDictationDriver {
         let kernel = RecordingSessionKernel(
           adapter: engine,

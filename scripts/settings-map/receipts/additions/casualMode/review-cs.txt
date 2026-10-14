@@ -1,0 +1,11 @@
+{
+  "language": "cs",
+  "title": "vynechat tečku na konci",
+  "words": [
+    "koncová tečka"
+  ],
+  "phrases": [
+    "diktovat bez tečky na konci",
+    "odstranit tečku na konci diktátu"
+  ]
+}

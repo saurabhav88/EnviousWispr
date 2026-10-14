@@ -1,0 +1,361 @@
+{
+ "id": "casualMode",
+ "blocks": [
+  {
+   "language": "ar",
+   "title": "الوضع غير الرسمي",
+   "words": [
+    "النقطة الأخيرة"
+   ],
+   "phrases": [
+    "بدون نقطة في نهاية الإملاء",
+    "حذف النقطة الأخيرة"
+   ]
+  },
+  {
+   "language": "bg",
+   "title": "непринуден режим",
+   "words": [
+    "крайна точка"
+   ],
+   "phrases": [
+    "без точка в края на диктовката",
+    "махни последната точка"
+   ]
+  },
+  {
+   "language": "cs",
+   "title": "neformální režim",
+   "words": [
+    "koncová tečka"
+   ],
+   "phrases": [
+    "bez tečky na konci diktování",
+    "vynechat poslední tečku"
+   ]
+  },
+  {
+   "language": "da",
+   "title": "uformel tilstand",
+   "words": [
+    "slutpunktum"
+   ],
+   "phrases": [
+    "uden punktum til sidst i dikteringen",
+    "fjern det sidste punktum"
+   ]
+  },
+  {
+   "language": "de",
+   "words": [
+    "Schlusspunkt",
+    "Satzende"
+   ],
+   "phrases": [
+    "lass den Punkt am Ende des Diktats weg",
+    "kein Punkt am Ende"
+   ]
+  },
+  {
+   "language": "el",
+   "title": "χαλαρή λειτουργία",
+   "words": [
+    "τελική τελεία"
+   ],
+   "phrases": [
+    "χωρίς τελεία στο τέλος της υπαγόρευσης",
+    "αφαίρεση της τελευταίας τελείας"
+   ]
+  },
+  {
+   "language": "en",
+   "words": [
+    "full stop",
+    "period",
+    "trailing dot"
+   ],
+   "phrases": [
+    "no period at the end of dictation",
+    "leave off the final full stop"
+   ]
+  },
+  {
+   "language": "es",
+   "title": "modo informal",
+   "words": [
+    "punto final"
+   ],
+   "phrases": [
+    "sin punto al final del dictado",
+    "quitar el último punto"
+   ]
+  },
+  {
+   "language": "et",
+   "title": "vaba režiim",
+   "words": [
+    "lõpupunkt"
+   ],
+   "phrases": [
+    "ilma punktita dikteerimise lõpus",
+    "jäta viimane punkt ära"
+   ]
+  },
+  {
+   "language": "fi",
+   "title": "rento tila",
+   "words": [
+    "loppupiste"
+   ],
+   "phrases": [
+    "ei pistettä sanelun loppuun",
+    "jätä viimeinen piste pois"
+   ]
+  },
+  {
+   "language": "fr",
+   "title": "mode décontracté",
+   "words": [
+    "point final"
+   ],
+   "phrases": [
+    "sans point à la fin de la dictée",
+    "enlever le dernier point"
+   ]
+  },
+  {
+   "language": "hi",
+   "title": "अनौपचारिक मोड",
+   "words": [
+    "अंतिम पूर्ण विराम",
+    "फुल स्टॉप"
+   ],
+   "phrases": [
+    "डिक्टेशन के अंत में पूर्ण विराम न लगाएं",
+    "आखिरी फुल स्टॉप हटाएं"
+   ]
+  },
+  {
+   "language": "hr",
+   "title": "opušteni način rada",
+   "words": [
+    "završna točka"
+   ],
+   "phrases": [
+    "bez točke na kraju diktata",
+    "izostavi zadnju točku"
+   ]
+  },
+  {
+   "language": "hu",
+   "title": "kötetlen mód",
+   "words": [
+    "záró pont"
+   ],
+   "phrases": [
+    "ne legyen pont a diktálás végén",
+    "utolsó pont elhagyása"
+   ]
+  },
+  {
+   "language": "it",
+   "title": "modalità informale",
+   "words": [
+    "punto finale"
+   ],
+   "phrases": [
+    "senza punto alla fine della dettatura",
+    "togliere l'ultimo punto"
+   ]
+  },
+  {
+   "language": "ja",
+   "title": "カジュアルモード",
+   "words": [
+    "句点",
+    "文末の丸"
+   ],
+   "phrases": [
+    "音声入力の最後に句点を付けない",
+    "末尾の句点を省く"
+   ]
+  },
+  {
+   "language": "ko",
+   "title": "캐주얼 모드",
+   "words": [
+    "마침표"
+   ],
+   "phrases": [
+    "받아쓰기 끝에 마침표 안 붙이기",
+    "마지막 마침표 빼기"
+   ]
+  },
+  {
+   "language": "lt",
+   "title": "neformalus režimas",
+   "words": [
+    "galutinis taškas"
+   ],
+   "phrases": [
+    "be taško diktavimo pabaigoje",
+    "praleisti paskutinį tašką"
+   ]
+  },
+  {
+   "language": "lv",
+   "title": "neformālais režīms",
+   "words": [
+    "beigu punkts"
+   ],
+   "phrases": [
+    "bez punkta diktēšanas beigās",
+    "izlaist pēdējo punktu"
+   ]
+  },
+  {
+   "language": "mt",
+   "title": "modalità informali",
+   "words": [
+    "punt finali"
+   ],
+   "phrases": [
+    "mingħajr punt fl-aħħar tad-dettatura",
+    "neħħi l-aħħar punt"
+   ]
+  },
+  {
+   "language": "nl",
+   "title": "informele modus",
+   "words": [
+    "slotpunt"
+   ],
+   "phrases": [
+    "geen punt aan het einde van het dicteren",
+    "laat de laatste punt weg"
+   ]
+  },
+  {
+   "language": "pl",
+   "title": "tryb swobodny",
+   "words": [
+    "końcowa kropka"
+   ],
+   "phrases": [
+    "bez kropki na końcu dyktowania",
+    "pomiń ostatnią kropkę"
+   ]
+  },
+  {
+   "language": "pt",
+   "title": "modo informal",
+   "words": [
+    "ponto final"
+   ],
+   "phrases": [
+    "sem ponto no fim do ditado",
+    "tirar o último ponto"
+   ]
+  },
+  {
+   "language": "ro",
+   "title": "mod informal",
+   "words": [
+    "punct final"
+   ],
+   "phrases": [
+    "fără punct la sfârșitul dictării",
+    "elimină ultimul punct"
+   ]
+  },
+  {
+   "language": "ru",
+   "title": "неформальный режим",
+   "words": [
+    "конечная точка"
+   ],
+   "phrases": [
+    "без точки в конце диктовки",
+    "убрать последнюю точку"
+   ]
+  },
+  {
+   "language": "sk",
+   "title": "neformálny režim",
+   "words": [
+    "koncová bodka"
+   ],
+   "phrases": [
+    "bez bodky na konci diktovania",
+    "vynechať poslednú bodku"
+   ]
+  },
+  {
+   "language": "sl",
+   "title": "sproščeni način",
+   "words": [
+    "končna pika"
+   ],
+   "phrases": [
+    "brez pike na koncu nareka",
+    "izpusti zadnjo piko"
+   ]
+  },
+  {
+   "language": "sv",
+   "title": "avslappnat läge",
+   "words": [
+    "slutpunkt"
+   ],
+   "phrases": [
+    "ingen punkt i slutet av dikteringen",
+    "ta bort sista punkten"
+   ]
+  },
+  {
+   "language": "tr",
+   "title": "gündelik mod",
+   "words": [
+    "son nokta"
+   ],
+   "phrases": [
+    "dikte sonuna nokta koyma",
+    "son noktayı kaldır"
+   ]
+  },
+  {
+   "language": "uk",
+   "title": "неформальний режим",
+   "words": [
+    "кінцева крапка"
+   ],
+   "phrases": [
+    "без крапки в кінці диктування",
+    "прибрати останню крапку"
+   ]
+  },
+  {
+   "language": "vi",
+   "title": "chế độ thân mật",
+   "words": [
+    "dấu chấm cuối"
+   ],
+   "phrases": [
+    "không thêm dấu chấm cuối đoạn đọc",
+    "bỏ dấu chấm cuối cùng"
+   ]
+  },
+  {
+   "language": "zh",
+   "title": "随意模式",
+   "words": [
+    "句号",
+    "末尾标点"
+   ],
+   "phrases": [
+    "语音输入结尾不加句号",
+    "去掉最后的句号"
+   ]
+  }
+ ]
+}

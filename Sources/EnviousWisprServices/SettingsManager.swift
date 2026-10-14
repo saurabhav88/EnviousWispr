@@ -51,6 +51,8 @@ public final class SettingsManager {
     case fillerRemovalEnabled
     case emojiFormatterEnabled
     case spokenPunctuation
+    /// #3737: Casual mode, leave off the final full stop.
+    case casualModeEnabled
     case crashRecoveryEnabled
     /// #3269: the PostHog usage-metrics switch.
     case shareUsageMetrics
@@ -122,7 +124,7 @@ public final class SettingsManager {
     "smartInsertion", "escapeRecoveryEnabled",
     "wordCorrectionEnabled",
     "fillerRemovalEnabled", "emojiFormatterEnabled", "spokenPunctuationEnabled",
-    "spokenPunctuationStartWords",
+    "spokenPunctuationStartWords", "casualModeEnabled",
     "crashRecoveryEnabled", "shareUsageMetrics", "sendCrashReports", "contactsSyncOnLaunchEnabled",
     "isDebugModeEnabled", "isDictationAudioArchiveEnabled", "debugLogLevel",
     "whisperKitLanguage", "languageMode", "englishSpelling",
@@ -744,6 +746,16 @@ public final class SettingsManager {
     didSet {
       defaults.set(emojiFormatterEnabled, forKey: "emojiFormatterEnabled")
       onChange?(.emojiFormatterEnabled)
+    }
+  }
+
+  /// Casual mode (#3737): leave off the full stop at the very end of each dictation. Default OFF, so
+  /// nobody sees a change unless they turn it on. Canonical default in
+  /// `SettingsDefaultValues.casualModeEnabled`.
+  public var casualModeEnabled: Bool {
+    didSet {
+      defaults.set(casualModeEnabled, forKey: "casualModeEnabled")
+      onChange?(.casualModeEnabled)
     }
   }
 
@@ -1408,6 +1420,9 @@ public final class SettingsManager {
     emojiFormatterEnabled =
       defaults.object(forKey: "emojiFormatterEnabled") as? Bool
       ?? SettingsDefaultValues.emojiFormatterEnabled
+    casualModeEnabled =
+      defaults.object(forKey: "casualModeEnabled") as? Bool
+      ?? SettingsDefaultValues.casualModeEnabled
     spokenPunctuation = SpokenPunctuationSettings(
       enabled: defaults.object(forKey: "spokenPunctuationEnabled") as? Bool
         ?? SettingsDefaultValues.spokenPunctuationEnabled,

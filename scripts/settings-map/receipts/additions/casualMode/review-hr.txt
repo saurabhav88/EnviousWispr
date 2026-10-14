@@ -1,0 +1,11 @@
+{
+  "language": "hr",
+  "title": "bez završne točke",
+  "words": [
+    "završna točka"
+  ],
+  "phrases": [
+    "bez točke na kraju diktata",
+    "izostavi završnu točku"
+  ]
+}

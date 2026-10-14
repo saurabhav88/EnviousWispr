@@ -305,6 +305,11 @@ public final class FileImportRunner {
     let emojiFormatter = EmojiFormatterStep()
     emojiFormatter.emojiFormatterEnabled = settings.emojiFormatterEnabled
 
+    // #3737: the freeze passes false (an imported recording is a document, not a reply); read it
+    // rather than hard-code it, so the snapshot stays the one authority for this run.
+    let casualEnding = CasualEndingStep()
+    casualEnding.casualModeEnabled = settings.casualModeEnabled ?? false
+
     let itn = InverseTextNormalizationStep()
     itn.spokenPunctuation = settings.spokenPunctuationSettings
     itn.backendSupportsLID = settings.backendSupportsLanguageDetection
@@ -319,7 +324,7 @@ public final class FileImportRunner {
       englishSpelling: EnglishSpellingStep(target: .text),
       llmPolish: llmPolish,
       englishSpellingAfterPolish: EnglishSpellingStep(target: .polishedText),
-      emojiRestore: EmojiRestoreStep())
+      emojiRestore: EmojiRestoreStep(), casualEnding: casualEnding)
   }
 }
 

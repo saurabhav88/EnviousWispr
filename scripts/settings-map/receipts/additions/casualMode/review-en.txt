@@ -1,0 +1,12 @@
+{
+  "language": "en",
+  "words": [
+    "full stop",
+    "period",
+    "trailing dot"
+  ],
+  "phrases": [
+    "no period at the end of dictation",
+    "leave off the final full stop"
+  ]
+}

@@ -57,6 +57,9 @@ enum SettingsProjection {
     /// switch, so each logical coalesces and suppresses its own net no-ops: flipping the switch
     /// never reports a customisation, and editing a word never reports the switch.
     case spokenPunctuationStartWord = "spoken_punctuation_start_word"
+    /// #3737: Casual mode (leave off the final full stop). Ships off; adoption is the question.
+    /// On/off only.
+    case casualMode = "casual_mode"
     case crashRecovery = "crash_recovery"
     /// #996: whether the "remember this correction?" card is on. Instrumented because
     /// adoption of a default-ON toggle is measured by who turns it OFF, and that
@@ -162,6 +165,7 @@ enum SettingsProjection {
     case .contactsSyncOnLaunchEnabled: return [.contactsSync]
     case .emojiFormatterEnabled: return [.emojiFormatter]
     case .spokenPunctuation: return [.spokenPunctuation, .spokenPunctuationStartWord]
+    case .casualModeEnabled: return [.casualMode]
     case .crashRecoveryEnabled: return [.crashRecovery]
     case .learnFromEdits: return [.learnFromEdits]
     case .languageMode: return [.languageMode]
@@ -260,6 +264,7 @@ enum SettingsProjection {
     case .spokenPunctuation: return onOff(settings.spokenPunctuation.enabled)
     case .spokenPunctuationStartWord:
       return settings.spokenPunctuation.startWordOverrides.isEmpty ? "default" : "customised"
+    case .casualMode: return onOff(settings.casualModeEnabled)
     case .crashRecovery: return onOff(settings.crashRecoveryEnabled)
     case .learnFromEdits: return onOff(settings.learnFromEdits)
     case .languageMode: return languageModeLabel(settings.languageMode)

@@ -1,0 +1,1 @@
+{"language":"da","title":"udelad afsluttende punktum","words":["slutpunktum","afsluttende punktum"],"phrases":["uden punktum til sidst i dikteringen","fjern punktummet til sidst i dikteringen"]}

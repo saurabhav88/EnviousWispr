@@ -161,6 +161,19 @@ enum DictationSettingsCopy {
       "Say comma or new paragraph to insert it.",
       comment: "Speech engine settings: short line under the spoken punctuation row.")
 
+    /// #3737. "Casual mode" is the founder's name for the switch (2026-10-13).
+    static let casualTitle = LocalizedStringResource(
+      "Casual mode",
+      comment:
+        "Speech engine settings: name of the switch that leaves off the full stop at the end of each dictation."
+    )
+    static let casualShort = LocalizedStringResource(
+      "Leave off the full stop at the end of each dictation.",
+      comment: "Speech engine settings: short line under the Casual mode row.")
+    static let casualHelp = LocalizedStringResource(
+      "Only the last full stop goes. Question marks, exclamation marks and full stops inside the text stay, and so does a full stop you say out loud with Spoken punctuation. Transcribe a File is not changed.",
+      comment: "Speech engine settings: help behind the question mark on the Casual mode row.")
+
     static let unloadTitle = LocalizedStringResource("Unload model after")
     static let unloadShort = LocalizedStringResource(
       "Frees memory when you are not dictating.",

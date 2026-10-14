@@ -1,0 +1,11 @@
+{
+  "language": "fr",
+  "title": "sans point final",
+  "words": [
+    "point final"
+  ],
+  "phrases": [
+    "sans point à la fin de la dictée",
+    "enlever le point final de la dictée"
+  ]
+}

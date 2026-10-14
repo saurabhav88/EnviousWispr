@@ -1,0 +1,11 @@
+{
+  "language": "de",
+  "words": [
+    "Schlusspunkt",
+    "Satzende"
+  ],
+  "phrases": [
+    "lass den Punkt am Ende des Diktats weg",
+    "kein Punkt am Ende"
+  ]
+}

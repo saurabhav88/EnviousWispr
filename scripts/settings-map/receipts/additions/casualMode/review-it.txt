@@ -1,0 +1,1 @@
+{"language":"it","title":"ometti il punto finale","words":["punto finale"],"phrases":["senza punto alla fine della dettatura","togliere il punto finale"]}

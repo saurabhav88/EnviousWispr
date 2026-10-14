@@ -158,6 +158,7 @@
  "SpeechEngineSettingsView.swift | SettingsRow | map .id(.autoDetectLanguage)",
  "SpeechEngineSettingsView.swift | SettingsRow | map .id(.fasterTranscription)",
  "SpeechEngineSettingsView.swift | SettingsRow | map .id(.fillerRemoval)",
+ "SpeechEngineSettingsView.swift | SettingsRow | map .id(.casualMode)",
  "SpeechEngineSettingsView.swift | SettingsRow | map .id(.spokenEmoji)",
  "SpeechEngineSettingsView.swift | SettingsRow | map .id(.spokenPunctuation)",
  "SpeechEngineSettingsView.swift | SettingsRow | map .id(.stopOnSilence)",

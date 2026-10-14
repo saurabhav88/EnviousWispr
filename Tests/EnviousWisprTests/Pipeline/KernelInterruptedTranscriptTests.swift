@@ -53,7 +53,7 @@ struct KernelInterruptedTranscriptTests {
         englishSpelling: EnglishSpellingStep(target: .text),
         llmPolish: LLMPolishStep(keychainManager: KeychainManager()),
         englishSpellingAfterPolish: EnglishSpellingStep(target: .polishedText),
-        emojiRestore: EmojiRestoreStep()),
+        emojiRestore: EmojiRestoreStep(), casualEnding: CasualEndingStep()),
       textProcessingRunner: TextProcessingRunner(),
       save: { transcript, _ in saved.transcript = transcript },
       deliverPaste: { _ in

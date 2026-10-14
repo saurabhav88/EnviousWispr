@@ -48,6 +48,21 @@ struct SpokenPunctuationSettingsPlumbingTests {
     return (sync, settings, parakeet, whisperKit)
   }
 
+  @Test("#3737: Casual mode initially syncs and changes on both drivers")
+  func casualModeSync() {
+    let (sync, settings, parakeet, whisperKit) = makeSync()
+    settings.casualModeEnabled = true
+    sync.applyInitialSettings(settings)
+    #expect(parakeet.casualModeEnabled == true)
+    #expect(whisperKit.casualModeEnabled == true)
+    for enabled in [false, true] {
+      settings.casualModeEnabled = enabled
+      sync.handleSettingChanged(.casualModeEnabled, settings: settings)
+      #expect(parakeet.casualModeEnabled == enabled)
+      #expect(whisperKit.casualModeEnabled == enabled)
+    }
+  }
+
   private func snapshot(
     enabled: Bool?, words: [String: String]?
   ) -> RecordingSettingsSnapshot {
@@ -63,7 +78,7 @@ struct SpokenPunctuationSettingsPlumbingTests {
       llmProvider: "none",
       llmModel: "none",
       s1Control: nil,
-      englishSpelling: nil)
+      englishSpelling: nil, casualModeEnabled: nil)
   }
 
   // MARK: - Settings store to both drivers

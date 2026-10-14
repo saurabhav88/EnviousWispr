@@ -21,7 +21,7 @@ struct RecoverySpoolWriterTests {
       emojiFormatterEnabled: false, spokenPunctuationEnabled: false, spokenPunctuationStartWords: nil,
       customWordsVersion: nil,
       llmProvider: "none", llmModel: "none", polishPromptVersion: nil, s1Control: nil,
-      englishSpelling: nil)
+      englishSpelling: nil, casualModeEnabled: nil)
   }
 
   /// Fails the Nth write (1 = header). Lets us simulate a disk-full mid-spool.

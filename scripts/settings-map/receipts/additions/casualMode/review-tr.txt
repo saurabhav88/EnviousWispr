@@ -1,0 +1,1 @@
+{"language":"tr","title":"son noktayı kaldır","words":["son nokta"],"phrases":["dikte sonuna nokta koyma","dikte sonundaki noktayı kaldır"]}

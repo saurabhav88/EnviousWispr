@@ -23,7 +23,7 @@ struct FileImportRunnerTests {
       englishSpelling: EnglishSpellingStep(target: .text),
       llmPolish: LLMPolishStep(keychainManager: KeychainManager()),
       englishSpellingAfterPolish: EnglishSpellingStep(target: .polishedText),
-      emojiRestore: EmojiRestoreStep())
+      emojiRestore: EmojiRestoreStep(), casualEnding: CasualEndingStep())
   }
 
   /// **Snippet expansion must not run on an imported file.** A trigger word spoken by somebody in a
@@ -71,7 +71,7 @@ struct FileImportRunnerTests {
         backendType: .parakeet, backendSupportsLanguageDetection: false,
         languageMode: .locked("en"), wordCorrectionEnabled: false, fillerRemovalEnabled: false,
         emojiFormatterEnabled: false, spokenPunctuationEnabled: false, spokenPunctuationStartWords: nil, llmProvider: "none",
-        llmModel: "none", s1Control: nil, englishSpelling: spelling)
+        llmModel: "none", s1Control: nil, englishSpelling: spelling, casualModeEnabled: nil)
     }
     let british = FileImportRunner(keychainManager: KeychainManager())
     british.freeze(settings: snapshot(.british), vocabulary: nil)
@@ -112,7 +112,7 @@ struct FileImportRunnerTests {
     languageMode: .auto, wordCorrectionEnabled: false, fillerRemovalEnabled: false,
     emojiFormatterEnabled: false, spokenPunctuationEnabled: false, spokenPunctuationStartWords: nil,
     llmProvider: LLMProvider.egOne.rawValue, llmModel: LLMProvider.egOneModelName, s1Control: nil,
-    englishSpelling: nil)
+    englishSpelling: nil, casualModeEnabled: nil)
 
   /// A part cannot run before the import's configuration is frozen. This is a programming error rather
   /// than a user-facing one, and it fails loudly instead of running under whatever the defaults happen

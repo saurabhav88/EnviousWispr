@@ -1,0 +1,11 @@
+{
+  "language": "lv",
+  "title": "bez punkta beigās",
+  "words": [
+    "beigu punkts"
+  ],
+  "phrases": [
+    "diktēt bez punkta beigās",
+    "noņemt punktu diktētā teksta beigās"
+  ]
+}

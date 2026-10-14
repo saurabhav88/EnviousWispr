@@ -1,0 +1,11 @@
+{
+  "language": "pt",
+  "title": "sem ponto no fim",
+  "words": [
+    "ponto final no fim"
+  ],
+  "phrases": [
+    "sem ponto no fim do ditado",
+    "tirar o ponto final do fim do ditado"
+  ]
+}
