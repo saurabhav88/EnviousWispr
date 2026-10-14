@@ -85,6 +85,9 @@ extension InverseTextNormalizer {
     var skipLeadingSpace = false
     var absorbLeadingComma = false
     var lastWasSpaced = false
+    // The previous rendered command was an opening symbol. A straight quote opens AND closes, so its
+    // character alone cannot say which; the command can (`"+"` here, `"x" + "y"` after a closer).
+    var lastOpened = false
     var fired = 0
     for match in matches {
       let range = match.result.range
@@ -101,15 +104,19 @@ extension InverseTextNormalizer {
         out += gap + matched
         cursor = NSMaxRange(range)
         lastWasSpaced = false
+        lastOpened = false
         continue
       }
       if guardDeterminers, symbolDeterminers.contains(lastWord(of: out + gap).lowercased()) {
         out += gap + matched
         cursor = NSMaxRange(range)
         lastWasSpaced = false
+        lastOpened = false
         continue
       }
       out += gap
+      let followsOpener = lastOpened && gap.allSatisfy(isHorizontalSpace)
+      lastOpened = spacing == .opens
       lastWasSpaced = spacing == .spaced
       switch spacing {
       case .opens:
@@ -132,7 +139,7 @@ extension InverseTextNormalizer {
         let left = trimmingTrailingSpace(out)
         let right = ns.substring(from: NSMaxRange(range)).drop(while: isHorizontalSpace)
         let leftSpace =
-          left.isEmpty || left.last?.isNewline == true
+          left.isEmpty || left.last?.isNewline == true || followsOpener
             || left.last.map(Self.tightAfter.contains) == true ? "" : " "
         let rightSpace =
           right.isEmpty || right.first?.isNewline == true
@@ -228,12 +235,16 @@ extension InverseTextNormalizer {
     character == " " || character == "\t" || character == "\u{00A0}"
   }
 
+  /// Trailing horizontal space removed, except the no-break space a French opening guillemet
+  /// carries (`«\u{00A0}`), which belongs to the guillemet.
   private static func trimmingTrailingSpace(_ text: String) -> String {
     var end = text.endIndex
     while end > text.startIndex, isHorizontalSpace(text[text.index(before: end)]) {
       end = text.index(before: end)
     }
-    return String(text[..<end])
+    let trimmed = String(text[..<end])
+    return trimmed.hasSuffix("\u{00AB}") && text[end...].contains("\u{00A0}")
+      ? trimmed + "\u{00A0}" : trimmed
   }
 
   /// The last run of letters before the end of `text`, ignoring trailing whitespace.

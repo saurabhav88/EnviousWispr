@@ -296,6 +296,33 @@ struct SpokenSymbolsTests {
         == "Gut. (Beta)")
   }
 
+  /// Cloud review PR #3755 and its two local rounds: every pairing of an opener, a quote or a
+  /// guillemet with the command after it, on both routes. Expected text written by hand.
+  @Test("Openers, quotes and guillemets keep typed spacing next to the following command")
+  func openerAndQuoteBoundaries() {
+    let en = { (text: String) in self.startWord(text, "en", "Insert") }
+    // An opener, then a spaced symbol: no space inside.
+    #expect(en("Set Insert open quote Insert plus sign Insert close quote") == "Set \"+\"")
+    #expect(on("Set open quote plus sign close quote") == "Set \"+\"")
+    #expect(on("Set open paren plus sign close paren") == "Set (+)")
+    // An opener, then a closer, a joiner or a mark.
+    #expect(en("Set Insert open quote Insert close quote") == "Set \"\"")
+    #expect(en("Set Insert open quote Insert underscore x") == "Set \"_x")
+    #expect(en("Set Insert open quote Insert comma") == "Set \",")
+    // A closing quote, then a spaced symbol or a mark.
+    #expect(en("Set Insert open quote x Insert close quote Insert ampersand y") == "Set \"x\" & y")
+    #expect(en("Set Insert open quote x Insert close quote Insert comma") == "Set \"x\",")
+    // A spaced symbol, then a quote.
+    #expect(en("Set x Insert plus sign Insert open quote y Insert close quote") == "Set x + \"y\"")
+    // French guillemets keep their no-break spaces next to the command after them.
+    let fr = { (text: String) in self.startWord(text, "fr", "Place") }
+    #expect(fr("Il dit Place guillemet ouvrant Place points de suspension") == "Il dit \u{00AB}\u{00A0}\u{2026}")
+    #expect(fr("Il dit Place guillemet ouvrant Place virgule") == "Il dit \u{00AB}\u{00A0},")
+    #expect(
+      fr("Il dit Place guillemet ouvrant oui Place guillemet fermant Place point")
+        == "Il dit \u{00AB}\u{00A0}oui\u{00A0}\u{00BB}.")
+  }
+
   @Test("French start word: guillemets carry the no-break space inside")
   func frenchGuillemets() {
     #expect(

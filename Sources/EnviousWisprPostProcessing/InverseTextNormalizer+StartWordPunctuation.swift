@@ -144,6 +144,8 @@ extension InverseTextNormalizer {
           &out, before: rule, startWord: start, language: language,
           protectedSentinels: protectedSentinels)
       }
+      // #3738: a French opening guillemet keeps its no-break space before a mark.
+      if out.hasSuffix("\u{00AB}") { out += "\u{00A0}" }
       out += rule.replacement
       fired += 1
       switch rule.command {
