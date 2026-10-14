@@ -53,10 +53,12 @@ Your speech engine puts a full stop at the end of a sentence, so a dictation usu
 Only the last full stop goes. "Sounds good, see you at three." becomes "Sounds good, see you at three". "Hi. See you soon." becomes "Hi. See you soon", so the full stop inside the text stays. These stay as they are:
 
 - Question marks and exclamation marks, because they change what you mean.
-- An ellipsis, and the dot of an abbreviation at the end, like "9 a.m." or "the U.S.".
+- An ellipsis, and dotted endings such as "9 a.m.", "the U.S." and "Ph.D.".
 - In languages other than English, a dot right after a number, because it can be an ordinal, like German "am 3.".
 - A full stop you say out loud with **Spoken punctuation** on, like "see you period". If your speech engine already turned the word into a full stop before EnviousWispr saw it, EnviousWispr cannot tell, and the full stop may still be left off.
 - The ending of a snippet, when the dictation ends with one.
+
+A final "etc.", "Dr." or "Inc." loses its dot.
 
 Capitals stay as they are. Casual mode does not change **Transcribe a File**, and it does not change dictations already in your History. If you dictate twice into the same line, the second dictation continues the first one as the same sentence, because there is no full stop between them.
 

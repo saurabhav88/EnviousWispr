@@ -171,7 +171,7 @@ enum DictationSettingsCopy {
       "Leave off the full stop at the end of each dictation.",
       comment: "Speech engine settings: short line under the Casual mode row.")
     static let casualHelp = LocalizedStringResource(
-      "Only the last full stop goes. Question marks, exclamation marks and full stops inside the text stay, and so does a full stop you say out loud with Spoken punctuation. Transcribe a File is not changed.",
+      "Only the last full stop goes. Question marks, exclamation marks and full stops inside the text stay. Casual mode keeps a spoken full stop when EnviousWispr recognizes and converts its command. If your speech engine already turned the command into a dot, Casual mode may remove it. Transcribe a File is not changed.",
       comment: "Speech engine settings: help behind the question mark on the Casual mode row.")
 
     static let unloadTitle = LocalizedStringResource("Unload model after")

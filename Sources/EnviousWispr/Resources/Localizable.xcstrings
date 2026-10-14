@@ -12495,13 +12495,13 @@
         }
       }
     },
-    "Only the last full stop goes. Question marks, exclamation marks and full stops inside the text stay, and so does a full stop you say out loud with Spoken punctuation. Transcribe a File is not changed." : {
+    "Only the last full stop goes. Question marks, exclamation marks and full stops inside the text stay. Casual mode keeps a spoken full stop when EnviousWispr recognizes and converts its command. If your speech engine already turned the command into a dot, Casual mode may remove it. Transcribe a File is not changed." : {
       "comment" : "Speech engine settings: help behind the question mark on the Casual mode row.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Nur der Punkt ganz am Ende des Diktats fällt weg. Fragezeichen, Ausrufezeichen und Punkte innerhalb des Textes bleiben erhalten. Auch ein Punkt, den du bei aktivierter Option „Gesprochene Satzzeichen“ aussprichst, bleibt erhalten. „Datei transkribieren“ bleibt unverändert."
+            "value" : "Nur der Punkt ganz am Ende des Diktats fällt weg. Fragezeichen, Ausrufezeichen und Punkte innerhalb des Textes bleiben erhalten. Ein gesprochener Punkt bleibt erhalten, wenn EnviousWispr den Befehl erkennt und umwandelt. Hat die Spracherkennung den Befehl bereits in einen Punkt umgewandelt, kann „Lockerer Modus“ ihn entfernen. „Datei transkribieren“ bleibt unverändert."
           }
         }
       }

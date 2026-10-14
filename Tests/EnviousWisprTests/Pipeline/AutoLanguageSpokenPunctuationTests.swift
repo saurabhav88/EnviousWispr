@@ -113,6 +113,9 @@ struct AutoLanguageSpokenPunctuationTests {
     let out = try await step.process(input)
     #expect(out.text == "Ruf mich unter +49 176 9087654 um 7:30 an, Frage B-2.")
     #expect(step.lastRun?.punctuationResolutionSource == "engine_text")
+    #expect(
+      out.spokenFinalFullStop == true,
+      "#3737: a final German command keeps its provenance after correcting the English engine label")
   }
 
   @Test("a locked language is never overridden, even when the text disagrees")
