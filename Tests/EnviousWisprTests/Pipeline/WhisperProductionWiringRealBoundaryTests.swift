@@ -116,6 +116,9 @@ struct WhisperProductionWiringRealBoundaryTests {
         audioSamples: long, options: TranscriptionOptions(language: "en"),
         onInferenceEntered: { entered.fire() })
     }
+    // Every exit, including an expired wait below, requests cancellation; the executor aborts
+    // the native run and frees nothing under it.
+    defer { take.cancel() }
     // Bounded: a native call that never starts, or a cancel that never returns, fails the test.
     // On expiry the task is cancelled (the executor aborts the native run); nothing is freed
     // under it.

@@ -515,6 +515,47 @@ struct WhisperPreviewCommandRecordTests {
     #expect(first.state(of: .preview) == .admitted)
   }
 
+  @Test("Download then Cancel with no suspension between: nothing fetches, the decline survives")
+  func downloadThenCancelImmediately() async throws {
+    let f = try makeFixture()
+    defer { try? FileManager.default.removeItem(at: f.root) }
+    let first = await f.launch()
+    let fetchesBefore = f.door.fetches
+    f.door.fetchSucceeds = true
+
+    f.home.startPreviewDownload()
+    f.home.cancelPreviewDownload()
+    let press = try #require(f.home.previewDownloadTaskForTests)
+    _ = try await BoundedWait.result(of: press)
+
+    #expect(f.door.fetches == fetchesBefore)
+    #expect(first.state(of: .preview) == .declined)
+    _ = await f.launch()
+    #expect(f.door.fetches == fetchesBefore)
+  }
+
+  @Test("Download then Remove with no suspension between: nothing fetches, the decline survives")
+  func downloadThenRemoveImmediately() async throws {
+    let f = try makeFixture()
+    defer { try? FileManager.default.removeItem(at: f.root) }
+    let first = await f.launch()
+    let fetchesBefore = f.door.fetches
+    f.door.fetchSucceeds = true
+    let finished = BoundedWait.Signal()
+    f.home.previewRemovalDidFinish = { finished.fire() }
+
+    f.home.startPreviewDownload()
+    f.home.removePreviewModel()
+    let press = try #require(f.home.previewDownloadTaskForTests)
+    _ = try await BoundedWait.result(of: press)
+    try await BoundedWait.until(finished)
+
+    #expect(f.door.fetches == fetchesBefore)
+    #expect(first.state(of: .preview) == .declined)
+    _ = await f.launch()
+    #expect(f.door.fetches == fetchesBefore)
+  }
+
   @Test("with an unusable record, Cancel, Remove and Download touch nothing")
   func unusableRecordRefusesEveryDoor() async throws {
     let f = try makeFixture()

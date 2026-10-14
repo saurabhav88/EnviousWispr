@@ -1218,6 +1218,11 @@ final class ModelDeliveryHome {
 
   var previewReplacement: PreviewReplacementCommands?
 
+  /// Bumped by every ACCEPTED Cancel or Remove. A Download press captures it when scheduled
+  /// and drops its work if it changed before the work runs, so a Cancel pressed right after
+  /// Download is never undone by the queued Download clearing the decline.
+  private var previewDownloadIntentEpoch = 0
+
   private func logPreviewRefusal(_ command: String) {
     Task {
       await AppLogger.shared.log(
@@ -1244,8 +1249,10 @@ final class ModelDeliveryHome {
       }
       return
     }
+    let epoch = previewDownloadIntentEpoch
     previewDownloadTaskForTests = Task { [weak self] in
-      if await previewReplacement.download() == false { self?.logPreviewRefusal("download") }
+      guard let self, self.previewDownloadIntentEpoch == epoch else { return }
+      if await previewReplacement.download() == false { self.logPreviewRefusal("download") }
     }
   }
 
@@ -1336,6 +1343,7 @@ final class ModelDeliveryHome {
       logPreviewRefusal("removal")
       return
     }
+    previewDownloadIntentEpoch += 1
     removalStepsForTests = []
     let task = Task { [weak self] in
       // AWAIT the drain, do not merely request it. Every holder must be gone
@@ -1387,6 +1395,7 @@ final class ModelDeliveryHome {
       logPreviewRefusal("cancel")
       return
     }
+    previewDownloadIntentEpoch += 1
     Task { await handle.cancelActiveFetch() }
   }
 
