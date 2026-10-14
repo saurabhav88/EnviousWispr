@@ -121,6 +121,13 @@ public struct RecordingSettingsSnapshot: Codable, Sendable, Equatable {
   /// means the spool predates English (UK), which is `.american`. The initializer parameter is not
   /// defaulted, so every writer must pass the record-time value.
   public let englishSpelling: EnglishSpelling?
+  /// #3737: the Casual mode switch at record time. Recovery uses this saved value;
+  /// live dictation reads the switch when its final cleanup step runs, so changing
+  /// the switch during a take can make live delivery and recovery disagree. OPTIONAL for the same reason as its siblings: spools written before
+  /// this field exist, and a missing non-optional key would fail the whole decode. `nil` means the spool
+  /// predates Casual mode, which is OFF. The initializer parameter is not defaulted, so every writer
+  /// must pass a value (file import passes `false`: Casual mode never applies to an imported recording).
+  public let casualModeEnabled: Bool?
 
   public init(
     backendType: ASRBackendType,
@@ -136,7 +143,8 @@ public struct RecordingSettingsSnapshot: Codable, Sendable, Equatable {
     llmModel: String,
     polishPromptVersion: String? = nil,
     s1Control: S1ControlSettings?,
-    englishSpelling: EnglishSpelling?
+    englishSpelling: EnglishSpelling?,
+    casualModeEnabled: Bool?
   ) {
     self.backendType = backendType
     self.backendSupportsLanguageDetection = backendSupportsLanguageDetection
@@ -152,6 +160,7 @@ public struct RecordingSettingsSnapshot: Codable, Sendable, Equatable {
     self.polishPromptVersion = polishPromptVersion
     self.s1Control = s1Control
     self.englishSpelling = englishSpelling
+    self.casualModeEnabled = casualModeEnabled
   }
 
   /// The spoken-punctuation settings this snapshot replays under (#2450): the recorded switch (absent

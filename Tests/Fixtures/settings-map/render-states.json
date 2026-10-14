@@ -412,6 +412,7 @@
   "mapped": [
    "autoDetectLanguage",
    "autoDetectLanguage.resetSuggestions",
+   "casualMode",
    "currentEngineSection",
    "dictation.tab.chimes",
    "dictation.tab.clipboard",
@@ -439,6 +440,7 @@
    "statusLine": 1
   },
   "mapped": [
+   "casualMode",
    "currentEngineSection",
    "dictation.tab.chimes",
    "dictation.tab.clipboard",
@@ -463,6 +465,7 @@
  "dictation.engine.allLanguagesDownloading": {
   "exempt": {},
   "mapped": [
+   "casualMode",
    "currentEngineSection",
    "dictation.tab.chimes",
    "dictation.tab.clipboard",
@@ -486,6 +489,7 @@
  "dictation.engine.allLanguagesFailed": {
   "exempt": {},
   "mapped": [
+   "casualMode",
    "currentEngineSection",
    "dictation.tab.chimes",
    "dictation.tab.clipboard",
@@ -509,6 +513,7 @@
  "dictation.engine.allLanguagesPaused": {
   "exempt": {},
   "mapped": [
+   "casualMode",
    "currentEngineSection",
    "dictation.tab.chimes",
    "dictation.tab.clipboard",
@@ -535,6 +540,7 @@
   "mapped": [
    "autoDetectLanguage",
    "autoDetectLanguage.resetSuggestions",
+   "casualMode",
    "currentEngineSection",
    "dictation.tab.chimes",
    "dictation.tab.clipboard",
@@ -563,6 +569,7 @@
   "mapped": [
    "autoDetectLanguage",
    "autoDetectLanguage.resetSuggestions",
+   "casualMode",
    "currentEngineSection",
    "dictation.tab.chimes",
    "dictation.tab.clipboard",
@@ -592,6 +599,7 @@
   "mapped": [
    "autoDetectLanguage",
    "autoDetectLanguage.resetSuggestions",
+   "casualMode",
    "currentEngineSection",
    "dictation.tab.chimes",
    "dictation.tab.clipboard",
@@ -620,6 +628,7 @@
   "mapped": [
    "autoDetectLanguage",
    "autoDetectLanguage.resetSuggestions",
+   "casualMode",
    "currentEngineSection",
    "dictation.tab.chimes",
    "dictation.tab.clipboard",

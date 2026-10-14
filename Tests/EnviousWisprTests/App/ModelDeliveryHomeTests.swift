@@ -1389,3 +1389,64 @@ struct ParakeetHomeTaskWaitTests {
     fallback.cancel()
   }
 }
+
+/// #3735: the transcribe.cpp Whisper registrations are defined on the home (the one owner
+/// of "which models exist and where they install") but stay inert until the engine swap.
+///
+/// **What the user sees when this fails:** a Whisper user's new model installs over or beside
+/// the wrong folder, or a launch starts downloading 886 MB the user never asked for.
+@MainActor
+@Suite("ModelDeliveryHome — transcribe.cpp Whisper registrations (#3735)", .tags(.productOutcome))
+struct WhisperGGUFRegistrationTests {
+  private static func manifestBundle() throws -> Bundle {
+    let repoRoot = URL(fileURLWithPath: #filePath)
+      .deletingLastPathComponent()  // (file)
+      .deletingLastPathComponent()  // App
+      .deletingLastPathComponent()  // EnviousWisprTests
+      .deletingLastPathComponent()  // Tests
+    return try #require(Bundle(url: repoRoot.appendingPathComponent("Sources/EnviousWispr/Resources")))
+  }
+
+  @Test("both registrations load the bundled manifests and install into their own sibling folders")
+  func registrationsInstallIntoDistinctGGUFHomes() throws {
+    let appSupport = URL(fileURLWithPath: NSTemporaryDirectory())
+      .appendingPathComponent("ew-3735-reg-\(UUID().uuidString)", isDirectory: true)
+    let bundle = try Self.manifestBundle()
+    let turbo = try ModelDeliveryHome.whisperGGUFRegistration(manifestBundle: bundle, appSupport: appSupport)
+    let preview = try ModelDeliveryHome.whisperPreviewGGUFRegistration(
+      manifestBundle: bundle, appSupport: appSupport)
+
+    #expect(turbo.manifest.identity.name == "whisper-large-v3-turbo-gguf")
+    #expect(preview.manifest.identity.name == "whisper-small-gguf")
+    let models = appSupport.appendingPathComponent("EnviousWispr/Models", isDirectory: true)
+    #expect(turbo.installDirectory.standardizedFileURL.path == models.appendingPathComponent("whisper-gguf").standardizedFileURL.path)
+    #expect(preview.installDirectory.standardizedFileURL.path == models.appendingPathComponent("whisper-preview-gguf").standardizedFileURL.path)
+    // Never the retired CoreML homes, and never each other.
+    for dir in [turbo.installDirectory, preview.installDirectory] {
+      #expect(!["whisper", "whisper-preview"].contains(dir.lastPathComponent))
+    }
+    #expect(turbo.installDirectory != preview.installDirectory)
+    #expect(turbo.metadataDirectory == preview.metadataDirectory)
+    #expect(turbo.manifest.identity.cacheKey != preview.manifest.identity.cacheKey)
+  }
+
+  @Test("construction still registers the WhisperKit models and nothing of the new family")
+  func constructionLeavesTheActiveRoutesOnWhisperKit() throws {
+    let root = URL(fileURLWithPath: NSTemporaryDirectory())
+      .appendingPathComponent("ew-3735-mdh-\(UUID().uuidString)", isDirectory: true)
+    try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+    let home = ModelDeliveryHome(
+      engineMutationScope: .live(tryBegin: { true }, end: { true }, wake: {}, onRefused: { _ in }),
+      manifestBundle: try Self.manifestBundle(),
+      appSupportOverride: root)
+    #expect(home.whisperKitRegistration?.manifest.identity.family == .whisperKit)
+    #expect(home.whisperPreviewRegistration?.manifest.identity.family == .whisperKit)
+    #expect(home.whisperKitRegistration?.installDirectory.lastPathComponent == "whisper")
+    #expect(home.whisperPreviewRegistration?.installDirectory.lastPathComponent == "whisper-preview")
+    // Construction created no new-family install folder: nothing was fetched or adopted.
+    let models = root.appendingPathComponent("EnviousWispr/Models", isDirectory: true)
+    for name in ["whisper-gguf", "whisper-preview-gguf"] {
+      #expect(!FileManager.default.fileExists(atPath: models.appendingPathComponent(name).path))
+    }
+  }
+}

@@ -21,7 +21,7 @@ with no error anywhere". It was right, it was read, and prose does not execute.
 There were FOUR lists when this was written: the composite action's restore,
 the post-merge save, and pr-check.yml's two inline restores. #2592 wired both
 pr-check.yml lanes to the composite action, so there are now exactly two —
-one restore (used by all four macOS lanes) and one save. Two is the floor:
+one restore (used by pr-check.yml and cache-warm.yml since #3729) and one save. Two is the floor:
 `actions/cache/restore` and `actions/cache/save` are separate steps in
 separate workflows, and each must spell the list itself.
 
@@ -182,13 +182,14 @@ EXPECTED_ROOT = DD_LITERAL
 # `action.yml`, so a basename cannot tell two of them apart (#2593 item 3).
 EXPECTED_OWNERS = (
     (".github/actions/xcode-ci-setup/action.yml", "composite", "restore"),
-    (".github/workflows/main-post-merge.yml", "release-validation", "save"),
-    (".github/workflows/main-post-merge.yml", "debug-validation", "save"),
+    (".github/workflows/cache-warm.yml", "warm", "save"),
 )
 
 # #3013: one cache FAMILY per build configuration, one writer per family. The
 # composite action builds the key from its `configuration` input, so a Debug
-# lane never restores Release objects it cannot use. The marker filter above
+# lane never restores Release objects it cannot use. #3729: the hosted Debug
+# lanes are gone, so `release` is the only family and cache-warm.yml's warm job
+# its only writer; a `debug` caller or writer is refused. The marker filter above
 # cannot see this (a key reworded to drop the family token still carries
 # `-xcode-`), so the family contract is checked separately:
 #   - the composite's restore key AND every restore-keys prefix carry the
@@ -198,11 +199,10 @@ EXPECTED_OWNERS = (
 #     family this table expects, and its key is that setup step's exported
 #     primary key; each family has exactly one writer.
 SETUP_ACTION = "./.github/actions/xcode-ci-setup"
-FAMILIES = ("debug", "release")
+FAMILIES = ("release",)
 FAMILY_TOKEN = "-xcode-${{ inputs.configuration }}-"
 EXPECTED_WRITERS = {
-    (".github/workflows/main-post-merge.yml", "release-validation"): "release",
-    (".github/workflows/main-post-merge.yml", "debug-validation"): "debug",
+    (".github/workflows/cache-warm.yml", "warm"): "release",
 }
 
 # Cache steps that are NOT Xcode caches and are allowed to exist, (file, unit).
@@ -780,7 +780,7 @@ def self_test() -> int:
                         ${{  env.DERIVED_DATA_PATH  }}/CompilationCache.noindex
             """)
         # Regression for the silently-dropped writer: this step carries no literal
-        # `-xcode-`, exactly like main-post-merge.yml's save, and its list differs —
+        # `-xcode-`, exactly like cache-warm.yml's save, and its list differs —
         # so it must be COMPARED and rejected, not filtered out and ignored.
         primary_keyed = fixture("""
             jobs:
@@ -835,7 +835,7 @@ def self_test() -> int:
         expect("a list everyone agrees on but is WRONG is caught",
                run([shared_wrong], F, [(shared_wrong, "j", "restore")]), 1)
         expect("an expected writer missing from the family is caught",
-               run([good_a], F, [(good_a, "a", "restore"), ("main-post-merge.yml", "release-validation", "save")]), 1)
+               run([good_a], F, [(good_a, "a", "restore"), ("cache-warm.yml", "warm", "save")]), 1)
         # The branch #2592 relies on — a restore that reappears somewhere the
         # expectation does not name — pinned so it cannot be deleted quietly.
         expect("an owner the check does not expect is caught",
@@ -1144,6 +1144,31 @@ def self_test() -> int:
                       key: ${{ steps.setup.outputs.cache-primary-key }}
                       path: |
                         .derivedData/CI/SourcePackages
+              reader:
+                steps:
+                  - uses: ./.github/actions/xcode-ci-setup
+                    with:
+                      derived-data-path: .derivedData/CI
+                      configuration: release
+            """
+        r, m, (w,) = fam_repo(MANIFEST_GOOD, WF_GOOD)
+        W = {(w, "rel"): "release"}
+        expect("(control) release only: one writer, every caller named -> pass", fam_run(r, [m, w], W), 0)
+        # #3729: the debug family is retired. A Debug reader and a Debug writer are each refused,
+        # even when the writer table names them, because FAMILIES no longer holds `debug`.
+        r, m, (w, w2) = fam_repo(MANIFEST_GOOD, WF_GOOD, """
+            jobs:
+              dbgreader:
+                steps:
+                  - uses: ./.github/actions/xcode-ci-setup
+                    with:
+                      derived-data-path: .derivedData/CI
+                      configuration: debug
+            """)
+        expect("a Debug caller is rejected (retired family)",
+               fam_run(r, [m, w, w2], {(w, "rel"): "release"}), 1, "configuration 'debug', expected one of")
+        r, m, (w, w2) = fam_repo(MANIFEST_GOOD, WF_GOOD, """
+            jobs:
               dbg:
                 steps:
                   - uses: ./.github/actions/xcode-ci-setup
@@ -1156,16 +1181,11 @@ def self_test() -> int:
                       key: ${{ steps.setup.outputs.cache-primary-key }}
                       path: |
                         .derivedData/CI/SourcePackages
-              reader:
-                steps:
-                  - uses: ./.github/actions/xcode-ci-setup
-                    with:
-                      derived-data-path: .derivedData/CI
-                      configuration: release
-            """
-        r, m, (w,) = fam_repo(MANIFEST_GOOD, WF_GOOD)
-        W = {(w, "rel"): "release", (w, "dbg"): "debug"}
-        expect("(control) two families, one writer each, every caller named -> pass", fam_run(r, [m, w], W), 0)
+            """)
+        expect("a Debug writer outside the writer table is rejected",
+               fam_run(r, [m, w, w2], {(w, "rel"): "release"}), 1, "not a writer in EXPECTED_WRITERS")
+        expect("a Debug writer is rejected even when the writer table names it",
+               fam_run(r, [m, w, w2], {(w, "rel"): "release", (w2, "dbg"): "debug"}), 1, "setup call names")
         r, m, (w, w2) = fam_repo(MANIFEST_GOOD, WF_GOOD, """
             jobs:
               reader:
@@ -1175,7 +1195,7 @@ def self_test() -> int:
                       derived-data-path: .derivedData/CI
             """)
         expect("a caller omitting configuration is caught",
-               fam_run(r, [m, w, w2], {(w, "rel"): "release", (w, "dbg"): "debug"}), 1, "without `configuration`")
+               fam_run(r, [m, w, w2], {(w, "rel"): "release"}), 1, "without `configuration`")
         r, m, (w, w2) = fam_repo(MANIFEST_GOOD, WF_GOOD, """
             jobs:
               reader:
@@ -1186,7 +1206,7 @@ def self_test() -> int:
                       configuration: prod
             """)
         expect("a caller naming an unknown family is caught",
-               fam_run(r, [m, w, w2], {(w, "rel"): "release", (w, "dbg"): "debug"}), 1, "expected one of")
+               fam_run(r, [m, w, w2], {(w, "rel"): "release"}), 1, "expected one of")
         r, m, (w,) = fam_repo("""
             name: setup
             inputs:
@@ -1205,7 +1225,7 @@ def self_test() -> int:
                       .derivedData/CI/SourcePackages
             """, WF_GOOD)
         expect("a restore-keys prefix that crosses families is caught",
-               fam_run(r, [m, w], {(w, "rel"): "release", (w, "dbg"): "debug"}), 1, "lacks the family token")
+               fam_run(r, [m, w], {(w, "rel"): "release"}), 1, "lacks the family token")
         r, m, (w,) = fam_repo("""
             name: setup
             runs:
@@ -1220,7 +1240,7 @@ def self_test() -> int:
                       .derivedData/CI/SourcePackages
             """, WF_GOOD)
         expect("a setup manifest without a required configuration input is caught",
-               fam_run(r, [m, w], {(w, "rel"): "release", (w, "dbg"): "debug"}), 1, "REQUIRED `configuration`")
+               fam_run(r, [m, w], {(w, "rel"): "release"}), 1, "REQUIRED `configuration`")
         r, m, (w,) = fam_repo(MANIFEST_GOOD, """
             jobs:
               rel:
@@ -1252,21 +1272,21 @@ def self_test() -> int:
                fam_run(r, [m, w], {(w, "rel"): "release", (w, "rel2"): "release"}), 1, "writers")
         r, m, (w,) = fam_repo(MANIFEST_GOOD, """
             jobs:
-              dbg:
+              rel:
                 steps:
                   - uses: ./.github/actions/xcode-ci-setup
                     id: setup
                     with:
                       derived-data-path: .derivedData/CI
-                      configuration: release
+                      configuration: prod
                   - uses: actions/cache/save@v5
                     with:
                       key: ${{ steps.setup.outputs.cache-primary-key }}
                       path: |
                         .derivedData/CI/SourcePackages
             """)
-        expect("a writer whose setup names the other family is caught",
-               fam_run(r, [m, w], {(w, "dbg"): "debug"}), 1, "setup call names")
+        expect("a writer whose setup names another family is caught",
+               fam_run(r, [m, w], {(w, "rel"): "release"}), 1, "setup call names")
         r, m, (w,) = fam_repo(MANIFEST_GOOD, """
             jobs:
               rel:
@@ -1286,7 +1306,7 @@ def self_test() -> int:
                fam_run(r, [m, w], {(w, "rel"): "release"}), 1, "exported primary key")
         r, m, (w,) = fam_repo(MANIFEST_GOOD, WF_GOOD)
         expect("an expected writer with no save is caught",
-               fam_run(r, [m], {(w, "rel"): "release", (w, "dbg"): "debug"}), 1, "no such save")
+               fam_run(r, [m], {(w, "rel"): "release"}), 1, "no such save")
         # A composite that is NOT the setup action owns no cache and declares no
         # configuration; the family contract must not bind it.
         r, m, (w,) = fam_repo(MANIFEST_GOOD, WF_GOOD)
@@ -1300,7 +1320,7 @@ def self_test() -> int:
                   run: echo hello
             """, os.path.join(os.path.relpath(r, tmp), ".github/actions/hello/action.yml"), env=None)
         expect("(control) an unrelated composite is not bound by the family contract",
-               fam_run(r, [hello, m, w], {(w, "rel"): "release", (w, "dbg"): "debug"}), 0)
+               fam_run(r, [hello, m, w], {(w, "rel"): "release"}), 0)
 
         # --- #2593 item 3: discovery reaches nested manifests and .yaml.
         repo = os.path.join(tmp, "repo")

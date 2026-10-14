@@ -18,9 +18,9 @@ import Testing
 // / `testActiveTaskCount`, which are `#if DEBUG`-only hooks on the kernel so
 // they never ship in the release app binary (same posture as
 // `TelemetryService.testEventHook` / `DualModePolishTelemetryTests`). The suite
-// therefore compiles only in debug; the post-merge release-config test run
-// skips it. Coverage is preserved in every dev/PR debug test run, and the FSM
-// logic these assert is config-independent.
+// therefore compiles only in debug; the PR gate's release-config test run
+// skips it. It runs in the local Debug suite (scripts/xcode-test.sh), and the
+// FSM logic these assert is config-independent.
 
 #if DEBUG
 

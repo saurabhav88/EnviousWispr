@@ -1,14 +1,16 @@
 #!/usr/bin/env bash
-# scripts/ci/needs-eval-packages.sh — decide whether a PR must compile the standalone
-# eval packages (#3505). Writes needs_eval_packages=<bool> to $GITHUB_OUTPUT.
+# scripts/ci/needs-eval-packages.sh — decide whether a change touches the standalone
+# eval packages' inputs (#3505). Writes needs_eval_packages=<bool> to $GITHUB_OUTPUT.
 #
-# The compile (scripts/ci/compile-eval-packages.sh) took 669 s of a 33-minute PR check
-# (run 37563794262) on every app-code PR, including the many that cannot affect it. A
-# PR needs it only when it changes one of the packages' inputs, which
-# scripts/ci/eval-package-inputs.py derives from the manifests (never a hand list).
+# Callers since #3729: scripts/githooks/pre-push and scripts/lib/validation-receipt.py
+# (`--classify-only`: does a push or an untracked file need eval proof). It once
+# decided whether pr-check.yml compiled the packages, which took 669 s of a 33-minute
+# PR check (run 37563794262); #3729 PR-B moved that compile to the full local run.
+# The inputs come from scripts/ci/eval-package-inputs.py, derived from the manifests
+# (never a hand list).
 #
-# This is a time saving, not a gate, so every doubt compiles: an empty SHA, a failed
-# diff, an unreadable manifest or an empty input set all answer true.
+# Every doubt answers true: an empty SHA, a failed diff, an unreadable manifest or an
+# empty input set, so a doubt always asks for proof.
 #
 # Usage:
 #   needs-eval-packages.sh <BASE_SHA> <HEAD_SHA>   three-dot diff of the PR's own files

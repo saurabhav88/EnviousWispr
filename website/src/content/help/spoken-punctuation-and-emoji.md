@@ -1,13 +1,13 @@
 ---
 title: "Spoken Punctuation and Emoji"
-description: "How to dictate slash commands, punctuation marks and emoji, including punctuation in German, French, Spanish and Italian, and which settings control them."
+description: "How to dictate slash commands, punctuation marks, brackets, quotes, other symbols and emoji, including punctuation in German, French, Spanish and Italian, and which settings control them."
 category: "features"
 section: "Text Processing"
 order: 3
-keywords: ["punctuation", "say comma", "period", "full stop", "slash", "backslash", "new line", "new paragraph", "emoji", "thumbs up", "smiley", "spoken commands", "emoji not working", "comma written as a word", "period in the middle of my sentence", "start word", "German punctuation", "Satzzeichen diktieren", "Diktiere Punkt", "neuer Absatz", "French punctuation", "Place point", "Spanish punctuation", "Añade punto", "Italian punctuation", "Metti punto", "Punkt written as a word", "spoken punctuation other languages", "double period", "two commas in a row", "extra comma next to my comma", "doubled punctuation"]
+keywords: ["punctuation", "say comma", "period", "full stop", "slash", "backslash", "new line", "new paragraph", "emoji", "thumbs up", "smiley", "spoken commands", "emoji not working", "comma written as a word", "period in the middle of my sentence", "start word", "German punctuation", "Satzzeichen diktieren", "Diktiere Punkt", "neuer Absatz", "French punctuation", "Place point", "Spanish punctuation", "Añade punto", "Italian punctuation", "Metti punto", "Punkt written as a word", "spoken punctuation other languages", "double period", "two commas in a row", "extra comma next to my comma", "doubled punctuation", "casual mode", "full stop at the end", "period at the end of every dictation", "remove the final period", "no period at the end", "turn off the final full stop", "parenthesis", "left parenthesis", "brackets", "quotes", "open quote", "underscore", "hyphen", "symbols", "say a symbol"]
 related: ["numbers-dates-and-times"]
 seeAlso: "speak-emoji-dictation"
-updated: 2026-10-11
+updated: 2026-10-14
 deflection: "can_resolve"
 ---
 You can speak a phrase and get a symbol, an emoji or a line break instead of the words you said. Emoji and slash work by default. Spoken punctuation is off until you turn it on. The settings are under **Dictation Settings** > **Engine**.
@@ -46,6 +46,97 @@ Turn on **Spoken punctuation** in **Dictation Settings** > **Engine**. It is off
 
 Backslash joins the words on both sides, so "C colon backslash Users" becomes "C:\Users".
 
+### Dictate brackets, quotes and other symbols
+
+With **Spoken punctuation** on, you can also say the name of a symbol. "Tuesday left parenthesis after lunch right parenthesis" becomes "Tuesday (after lunch)". "report underscore final" becomes "report_final". "She said open quote I will be there close quote" becomes She said "I will be there".
+
+Each symbol lands with the spacing you would type. Opening brackets and quotes join the next word, closing ones join the word before. A hyphen, an underscore, an apostrophe and an em dash join both words. An ampersand, a plus sign, an equals sign, a vertical bar and an en dash get a space on each side.
+
+When you talk about a symbol with a word like "a", "an" or "the" in front, the words stay: "use an asterisk for the footnote" stays as you said it. Without such a word, the name becomes the symbol, so "hyphen separates words" starts with a hyphen. Give English a start word (see below) if you need symbol names as ordinary words.
+
+Say "open square bracket" or "open parenthesis" rather than "open bracket": "bracket" means a round bracket in British English and a square one in American English, so EnviousWispr does not guess. For percent, dollar and at, say the number or the address: "five percent" gives "5%" and "five dollars" gives "$5".
+
+| Say this | You get |
+|---|---|
+| open parenthesis | ( |
+| open paren | ( |
+| left parenthesis | ( |
+| left paren | ( |
+| close parenthesis | ) |
+| close paren | ) |
+| right parenthesis | ) |
+| right paren | ) |
+| open square bracket | [ |
+| left square bracket | [ |
+| close square bracket | ] |
+| right square bracket | ] |
+| open curly bracket | { |
+| open curly brace | { |
+| open brace | { |
+| left curly bracket | { |
+| left curly brace | { |
+| left brace | { |
+| close curly bracket | } |
+| close curly brace | } |
+| close brace | } |
+| right curly bracket | } |
+| right curly brace | } |
+| right brace | } |
+| open angle bracket | < |
+| left angle bracket | < |
+| close angle bracket | > |
+| right angle bracket | > |
+| open double quote | " |
+| begin double quote | " |
+| open quotes | " |
+| begin quotes | " |
+| open quote | " |
+| begin quote | " |
+| close double quote | " |
+| end double quote | " |
+| close quotes | " |
+| end quotes | " |
+| close quote | " |
+| end quote | " |
+| unquote | " |
+| open single quote | ' |
+| begin single quote | ' |
+| close single quote | ' |
+| end single quote | ' |
+| hyphen | - |
+| underscore | _ |
+| apostrophe | ' |
+| em dash | an em dash |
+| en dash | an en dash |
+| ellipsis | … |
+| ampersand | & |
+| plus sign | + |
+| equals sign | = |
+| equal sign | = |
+| vertical bar | \| |
+| asterisk | * |
+| hash sign | # |
+| number sign | # |
+| tilde | ~ |
+
+### Leave off the final full stop (Casual mode)
+
+Your speech engine puts a full stop at the end of a sentence, so a dictation usually ends with one. In a chat message or a search box that full stop can feel too formal. Turn on **Casual mode** in **Dictation Settings** > **Engine** and the full stop at the very end of each dictation is left off. It is off by default.
+
+Only the last full stop goes. "Sounds good, see you at three." becomes "Sounds good, see you at three". "Hi. See you soon." becomes "Hi. See you soon", so the full stop inside the text stays. These stay as they are:
+
+- Question marks and exclamation marks, because they change what you mean.
+- An ellipsis, and dotted endings such as "9 a.m.", "the U.S." and "Ph.D.".
+- In languages other than English, a dot right after a number, because it can be an ordinal, like German "am 3.".
+- A full stop you say out loud with **Spoken punctuation** on, like "see you period". If your speech engine already turned the word into a full stop before EnviousWispr saw it, EnviousWispr cannot tell, and the full stop may still be left off.
+- The ending of a snippet, when the dictation ends with one.
+
+A final "etc.", "Dr." or "Inc." loses its dot.
+
+Casual mode only changes the ending. It does not change **Transcribe a File** or dictations already in your History. When you dictate twice into the same line, spacing and starting capitals depend on Smart insertion and what the target app supports. A question mark, exclamation mark or protected full stop still separates the sentences.
+
+Casual mode works with every speech engine, with AI polish on or off. The **Casual** tone of [S1-mini](/help/s1-mini-by-superwhisper-and-writing-style/) is a different option: it is part of AI polish and changes more than the ending.
+
 ### Dictate punctuation in German, French, Spanish and Italian
 
 In these four languages the command words are also everyday words. "Punkt" is a noun as well as a full stop. So you say a start word first, and then the command. "Diktiere Punkt" gives a full stop. "Punkt" on its own stays the word.
@@ -59,7 +150,7 @@ The default start words are:
 
 Spoken punctuation must be on. It works when your dictation language is German, French, Spanish or Italian, whether you chose the language or EnviousWispr detected it. English works as it does today: say the word on its own. You can also give English a start word, see Choose your own start word below.
 
-In French, a mark is written straight after the word before it, with no space. In Spanish, EnviousWispr writes only the closing question mark or exclamation mark, not the opening one.
+In French, a mark is written straight after the word before it, with no space. In Spanish, EnviousWispr writes only the closing question mark or exclamation mark, not the opening one. Brackets, quotes, the hyphen and the ellipsis work in these four languages too, with the quotation marks each language uses; French guillemets keep a no-break space inside them. The other symbols are English only.
 
 Say the start word, then the command, in the language you dictate in. These tables list every command.
 
@@ -78,6 +169,17 @@ Say the start word, then the command, in the language you dictate in. These tabl
 | Diktiere neuer Absatz | a blank line |
 | Diktiere neuen Absatz | a blank line |
 | Diktiere Neuabsatz | a blank line |
+| Diktiere linke Klammer | ( |
+| Diktiere Klammer auf | ( |
+| Diktiere rechte Klammer | ) |
+| Diktiere Klammer zu | ) |
+| Diktiere Anführungszeichen unten | „ |
+| Diktiere Anführungszeichen auf | „ |
+| Diktiere Anführungszeichen oben | “ |
+| Diktiere Anführungszeichen zu | “ |
+| Diktiere Bindestrich | - |
+| Diktiere Auslassungspunkte | … |
+| Diktiere Ellipse | … |
 
 #### French
 
@@ -92,6 +194,12 @@ Say the start word, then the command, in the language you dictate in. These tabl
 | Place nouvelle ligne | a line break |
 | Place à la ligne | a line break |
 | Place nouveau paragraphe | a blank line |
+| Place parenthèse ouvrante | ( |
+| Place parenthèse fermante | ) |
+| Place guillemet ouvrant | « and a no-break space |
+| Place guillemet fermant | a no-break space and » |
+| Place trait d'union | - |
+| Place points de suspension | … |
 
 #### Spanish
 
@@ -105,6 +213,16 @@ Say the start word, then the command, in the language you dictate in. These tabl
 | Añade punto y coma | ; |
 | Añade nueva línea | a line break |
 | Añade nuevo párrafo | a blank line |
+| Añade paréntesis de apertura | ( |
+| Añade abrir paréntesis | ( |
+| Añade paréntesis de cierre | ) |
+| Añade cerrar paréntesis | ) |
+| Añade abrir comillas | “ |
+| Añade comillas | “ |
+| Añade comillas de cierre | ” |
+| Añade cerrar comillas | ” |
+| Añade guion | - |
+| Añade puntos suspensivos | … |
 
 #### Italian
 
@@ -118,6 +236,14 @@ Say the start word, then the command, in the language you dictate in. These tabl
 | Metti punto e virgola | ; |
 | Metti nuova riga | a line break |
 | Metti nuovo paragrafo | a blank line |
+| Metti parentesi aperta | ( |
+| Metti parentesi tonda aperta | ( |
+| Metti parentesi chiusa | ) |
+| Metti parentesi tonda chiusa | ) |
+| Metti apri virgolette | “ |
+| Metti chiudi virgolette | ” |
+| Metti trattino | - |
+| Metti puntini di sospensione | … |
 
 ### Choose your own start word
 

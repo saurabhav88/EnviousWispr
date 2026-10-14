@@ -65,7 +65,7 @@ struct EscapeRecoveryCompletionProducerTests {
         englishSpelling: EnglishSpellingStep(target: .text),
         llmPolish: LLMPolishStep(keychainManager: KeychainManager()),
         englishSpellingAfterPolish: EnglishSpellingStep(target: .polishedText),
-        emojiRestore: EmojiRestoreStep())
+        emojiRestore: EmojiRestoreStep(), casualEnding: CasualEndingStep())
       let outcome = KernelFinalizationOutcome()
       let driver = KernelDictationDriver(
         kernel: kernel, observer: observer, outcome: outcome,

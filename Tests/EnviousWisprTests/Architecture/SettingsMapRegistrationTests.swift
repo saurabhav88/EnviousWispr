@@ -17,16 +17,35 @@ struct SettingsMapRegistrationTests {
     "SettingsSummaryCard", "EngineCard",
   ]
 
-  static func sources() throws -> [(path: String, tree: SourceFileSyntax)] {
+  struct ParsedSource: Sendable {
+    let path: String
+    let tree: SourceFileSyntax
+  }
+
+  enum SourceScanError: Error { case cannotEnumerate, tooFewFiles(Int) }
+
+  /// Five tests read the AppKit sources; each used to parse all of them again (about 11 s each on
+  /// 2026-10-14, #3729 PR-D). Parsed once here: each call already held every tree at once, so the
+  /// peak is unchanged, only held for the suite's lifetime. Swift initialises a static stored
+  /// property once, lazily and thread-safely; a failed scan is cached as its error, so every test
+  /// still fails.
+  static let parsedSources: Result<[ParsedSource], any Error> = Result {
     let root = RepoRoot.url.appending(path: "Sources/EnviousWisprAppKit")
-    let files = try #require(
-      FileManager.default.enumerator(at: root, includingPropertiesForKeys: nil)?.allObjects
-        as? [URL])
+    guard
+      let files = FileManager.default.enumerator(at: root, includingPropertiesForKeys: nil)?
+        .allObjects as? [URL]
+    else { throw SourceScanError.cannotEnumerate }
     let swift = files.filter { $0.pathExtension == "swift" }
-    #expect(swift.count > 100, "found only \(swift.count) AppKit sources; the scan root moved")
+    // Fail closed in every test that reads the scan: the scan root moved.
+    guard swift.count > 100 else { throw SourceScanError.tooFewFiles(swift.count) }
     return try swift.map { url in
-      (url.path, Parser.parse(source: try String(contentsOf: url, encoding: .utf8)))
+      ParsedSource(
+        path: url.path, tree: Parser.parse(source: try String(contentsOf: url, encoding: .utf8)))
     }
+  }
+
+  static func sources() throws -> [(path: String, tree: SourceFileSyntax)] {
+    try parsedSources.get().map { ($0.path, $0.tree) }
   }
 
   @Test("no shared settings component offers an initializer that takes its own title")

@@ -1,0 +1,11 @@
+{
+  "language": "vi",
+  "title": "bỏ dấu chấm cuối",
+  "words": [
+    "dấu chấm cuối"
+  ],
+  "phrases": [
+    "bỏ dấu chấm ở cuối mỗi lần nhập bằng giọng nói",
+    "nhập bằng giọng nói không có dấu chấm cuối"
+  ]
+}

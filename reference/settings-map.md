@@ -12,9 +12,9 @@ Generated from the compiled Settings Map and the validated search vocabulary. Do
 
 The interface ships in English and German. The other 30 languages (ar, bg, cs, da, el, es, et, fi, fr, hi, hr, hu, it, ja, ko, lt, lv, mt, nl, pl, pt, ro, ru, sk, sl, sv, tr, uk, vi, zh) are search metadata only: words and titles people may type, matched against the same places. Titles below read English / German.
 
-273 nodes, 247 searchable, 7904 vocabulary blocks.
+274 nodes, 248 searchable, 7936 vocabulary blocks.
 
-Fingerprints: mapSHA256 `374e83acc80ed2ca80960b39627db7673f5c6488469a0bcb4b6d7b6001773e3d`, uiCatalogSHA256 `aea3106d33674c9fd41eb125387a372c8d8d9bffbb5a8616c022e25c28ad1a4d`, vocabularyCanonicalization `length-prefixed-v1`, vocabularySHA256 `7f622292b158df2289a045554496e2c346a4e46ecb183356e21f8ede060e8d47`
+Fingerprints: mapSHA256 `fdbe1ef9bf7ecd777acb07125c6b0777ef99910082aae61c6876d48123fbc7ea`, uiCatalogSHA256 `08f9321c10d49b6d9f33ebbfbc547417e099f8a2eaea7d424d208cebc873efb8`, vocabularyCanonicalization `length-prefixed-v1`, vocabularySHA256 `8febfbae120e05d2b62a5ce65abcc5723a82502f3588b6312821a5c7cab1ed3b`
 
 ## Structure
 
@@ -147,6 +147,7 @@ Fingerprints: mapSHA256 `374e83acc80ed2ca80960b39627db7673f5c6488469a0bcb4b6d7b6
           - [Start word for / Startwort für](#node-startWordField) `startWordField` (setting)
             - [Save word / Wort sichern](#node-startWord-save) `startWord.save` (action)
             - [Reset / Zurücksetzen](#node-startWord-reset) `startWord.reset` (action)
+        - [Casual mode / Lockerer Modus](#node-casualMode) `casualMode` (setting)
         - [Unload model after / Modell entladen nach](#node-unloadModel) `unloadModel` (setting)
           - [Never / Nie](#node-unloadModel-never) `unloadModel.never` (choice)
           - [Immediately / Sofort](#node-unloadModel-immediately) `unloadModel.immediately` (choice)
@@ -1481,6 +1482,28 @@ Fingerprints: mapSHA256 `374e83acc80ed2ca80960b39627db7673f5c6488469a0bcb4b6d7b6
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | phrases: restore the default punctuation start word; reset my custom punctuation trigger |
 | Search (de) | phrases: stell das voreingestellte Startwort für Satzzeichen wieder her; setze mein eigenes Auslösewort für Satzzeichen zurück |
+| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+
+<a id="node-casualMode"></a>
+
+### Casual mode / Lockerer Modus (`casualMode`)
+
+| Field | Value |
+|---|---|
+| Structure | item |
+| Kind | setting |
+| Parent | [`section.engineShared`](#node-section-engineShared) |
+| Title source | catalog key `Casual mode` |
+| Description | Leave off the full stop at the end of each dictation. / Lässt den Punkt am Ende jedes Diktats weg. |
+| Description source | catalog key `Leave off the full stop at the end of each dictation.` |
+| Destination | `dictation` › `engine` |
+| Dictionary tab | none |
+| Shown when | `always` |
+| Arrival target | [`casualMode`](#node-casualMode) |
+| Fallbacks, in order | none |
+| Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
+| Search (en) | words: full stop, period, trailing dot<br>phrases: no period at the end of dictation; leave off the final full stop |
+| Search (de) | words: Schlusspunkt, Satzende<br>phrases: lass den Punkt am Ende des Diktats weg; kein Punkt am Ende |
 | Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-unloadModel"></a>

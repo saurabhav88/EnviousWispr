@@ -33,7 +33,7 @@ struct RecoverySpoolStoreTests {
       llmProvider: "openAI",
       llmModel: "gpt-4o-mini",
       polishPromptVersion: nil,
-      s1Control: nil, englishSpelling: nil)
+      s1Control: nil, englishSpelling: nil, casualModeEnabled: nil)
   }
 
   /// Drive the real writer to disk and await the serial queue draining.

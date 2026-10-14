@@ -582,7 +582,7 @@ public enum KernelDictationDriverFactory {
       englishSpelling: EnglishSpellingStep(target: .text),
       llmPolish: llmPolish,
       englishSpellingAfterPolish: EnglishSpellingStep(target: .polishedText),
-      emojiRestore: EmojiRestoreStep()
+      emojiRestore: EmojiRestoreStep(), casualEnding: CasualEndingStep()
     )
 
     // 2. Shared mutable holders.

@@ -47,7 +47,7 @@ import Testing
         emojiFormatterEnabled: false, spokenPunctuationEnabled: false, spokenPunctuationStartWords: nil,
         customWordsVersion: nil,
         llmProvider: "none", llmModel: "none", polishPromptVersion: nil, s1Control: nil,
-        englishSpelling: nil)
+        englishSpelling: nil, casualModeEnabled: nil)
     }
 
     /// A directive pointing at a fresh file inside `dir`, encoded exactly as the

@@ -44,20 +44,30 @@ requires exactly one status check:
     the PR template lists the shapes)
 - Restrict deletions and block force pushes enabled
 
-`ci-drift-check.yml` is NOT a required PR check — it runs weekly (Monday noon UTC)
-and on manual trigger (see "Drift detector" below). Strict "branches up to date
-before merging" is OFF, so a moved `main` needs no rebase.
+The drift checks run inside `build-check` (see "Drift detector" below). Strict
+"branches up to date before merging" is OFF, so a moved `main` needs no rebase.
 
 Direct pushes to `main` are allowed for the release bot (appcast updates) but
 human changes should go through PRs.
 
 ## Drift detector
 
-`ci-drift-check.yml` runs weekly (Monday noon UTC) and on manual trigger. It fails if:
+Six `scripts/ci/fast-checks.sh` members, run by the local `pre-push` hook and by the
+required `build-check` job (#3729; until then the weekly `ci-drift-check.yml`). They
+fail if:
 
-1. Any workflow uses a floating action ref instead of a full SHA
-2. Any script referenced by a workflow doesn't exist in the repo
-3. Any workflow YAML has syntax errors
+1. `ci-action-pins`: a workflow or composite action uses an external action not pinned
+   to a full commit SHA
+2. `ci-script-refs`: a workflow or composite action names a `scripts/….sh` that doesn't
+   exist
+3. `ci-yaml`: `yamllint` reports a problem in a workflow or action manifest
+4. `release-notes-self-test`: the release-notes renderer can no longer read
+   `WhatsNewContent.swift`
+5. `appcast-shellcheck`: ShellCheck reports a problem in `scripts/ci/appcast-delivery.sh`
+6. `appcast-self-test`: the appcast delivery owner's deterministic self-test fails
+
+The first three share one file list, `scripts/ci/check-cache-paths.py`'s `discover()`,
+read by `scripts/ci/check-ci-drift.py`.
 
 ## Release flow
 

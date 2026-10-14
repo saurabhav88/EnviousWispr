@@ -1,0 +1,11 @@
+{
+  "language": "ro",
+  "title": "fără punct final",
+  "words": [
+    "punct final"
+  ],
+  "phrases": [
+    "fără punct la sfârșitul dictării",
+    "elimină punctul de la sfârșitul dictării"
+  ]
+}

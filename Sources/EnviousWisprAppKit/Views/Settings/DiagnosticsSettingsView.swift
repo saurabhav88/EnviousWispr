@@ -144,6 +144,9 @@ struct DiagnosticsSettingsView: View {
         #endif
       }
 
+      // ── Pill Preview (#3736) ──────────────────────────────────────────
+      PillPreviewSection()
+
       // ── Log Files ─────────────────────────────────────────────────────
       BrandedSection(header: "Log Files") {
         BrandedRow {

@@ -87,9 +87,34 @@ import Testing
         "scripts/build-release-dmg.sh",
         "scripts/xcode-test.sh",
         ".github/workflows/pr-check.yml",
-        ".github/workflows/main-post-merge.yml",
+        ".github/workflows/cache-warm.yml",
       ] {
         failures.append(contentsOf: try arm64InvocationFailures(path: path))
+      }
+      // #3729: the CI Release build-for-testing lives in one script that the PR
+      // gate and the main cache warm both run. Only its one `xcodebuild
+      // build-for-testing` command counts: the script's self-test spells the
+      // same flags as expected arguments, and those must not stand in for the
+      // real ones. No command, or two, fails, so deleting it cannot read as
+      // "nothing to check". Each caller must RUN it: a line that starts with
+      // the script path, so a `paths:` filter entry naming it does not count.
+      let sharedRelease = "scripts/ci/build-for-testing-release.sh"
+      let commands = xcodebuildCommands(
+        verb: "build-for-testing", in: executableText(try read(sharedRelease)))
+      if commands.count == 1 {
+        failures.append(contentsOf: arm64FlagFailures(commands[0], path: sharedRelease))
+      } else {
+        failures.append(
+          "\(sharedRelease) must hold exactly one xcodebuild build-for-testing command, found \(commands.count)"
+        )
+      }
+      for caller in [".github/workflows/pr-check.yml", ".github/workflows/cache-warm.yml"] {
+        let runsIt = executableText(try read(caller)).split(separator: "\n").contains {
+          $0.split(whereSeparator: \.isWhitespace).first == Substring(sharedRelease)
+        }
+        if !runsIt {
+          failures.append("\(caller) must build for testing by running \(sharedRelease)")
+        }
       }
       return failures
 
@@ -145,15 +170,59 @@ import Testing
   }
 
   private static func arm64InvocationFailures(path: String) throws -> [String] {
-    let source = try read(path)
-    guard source.contains("xcodebuild") else { return [] }
+    let code = executableText(try read(path))
+    guard code.contains("xcodebuild") else { return [] }
+    return arm64FlagFailures(code, path: path)
+  }
+
+  private static func arm64FlagFailures(_ code: String, path: String) -> [String] {
+    // Whole tokens, so `VALID_ARCHS=arm64` cannot stand in for `ARCHS=arm64`.
+    let tokens = Set(code.split(whereSeparator: \.isWhitespace).map(String.init))
     return [
-      requireContains(source, "ARCHS=arm64", "\(path) must pass ARCHS=arm64 to xcodebuild"),
-      requireContains(
-        source, "VALID_ARCHS=arm64", "\(path) must pass VALID_ARCHS=arm64 to xcodebuild"),
-      requireContains(
-        source, "ONLY_ACTIVE_ARCH", "\(path) must pass ONLY_ACTIVE_ARCH on xcodebuild invocations"),
+      tokens.contains("ARCHS=arm64") ? nil : "\(path) must pass ARCHS=arm64 to xcodebuild",
+      tokens.contains("VALID_ARCHS=arm64")
+        ? nil : "\(path) must pass VALID_ARCHS=arm64 to xcodebuild",
+      tokens.contains { $0.hasPrefix("ONLY_ACTIVE_ARCH=") }
+        ? nil : "\(path) must pass ONLY_ACTIVE_ARCH on xcodebuild invocations",
     ].compactMap { $0 }
+  }
+
+  /// Each shell command that runs `xcodebuild <verb>`: the line holding those
+  /// two tokens plus every `\`-continued line after it.
+  private static func xcodebuildCommands(verb: String, in code: String) -> [String] {
+    let lines = code.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
+    var commands: [String] = []
+    var index = 0
+    while index < lines.count {
+      let tokens = lines[index].split(whereSeparator: \.isWhitespace).map(String.init)
+      let starts = zip(tokens, tokens.dropFirst()).contains { $0 == "xcodebuild" && $1 == verb }
+      guard starts else {
+        index += 1
+        continue
+      }
+      var command = [lines[index]]
+      while command.last?.hasSuffix("\\") == true, index + 1 < lines.count {
+        index += 1
+        command.append(lines[index])
+      }
+      commands.append(command.joined(separator: "\n"))
+      index += 1
+    }
+    return commands
+  }
+
+  /// The source with shell/YAML comments removed: a whole `#` line, and the
+  /// rest of a line from a `#` that starts a word. A comment that mentions a
+  /// flag cannot satisfy the check for it.
+  private static func executableText(_ source: String) -> String {
+    source.split(separator: "\n", omittingEmptySubsequences: false).map { line -> Substring in
+      var previous: Character = " "
+      for index in line.indices {
+        if line[index] == "#", previous.isWhitespace { return line[..<index] }
+        previous = line[index]
+      }
+      return line
+    }.joined(separator: "\n")
   }
 
   private static func requiredFile(_ path: String) -> String? {

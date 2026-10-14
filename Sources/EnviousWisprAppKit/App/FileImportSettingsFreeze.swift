@@ -59,7 +59,10 @@ enum FileImportSettingsFreeze {
       s1Control: settings.s1Control,
       // #3124: frozen at Start like the language; "Clean it again" re-snapshots.
       englishSpelling: EnglishSpelling.effective(
-        languageMode: settings.languageMode, stored: settings.englishSpelling))
+        languageMode: settings.languageMode, stored: settings.englishSpelling),
+      // #3737: Casual mode never applies to an imported recording (a document, not a reply); this
+      // freeze also covers Clean it again and speaker-separated parts.
+      casualModeEnabled: false)
   }
 
   /// What the rest of the app must read INSTEAD of live settings once a run has

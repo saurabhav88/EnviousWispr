@@ -1,0 +1,11 @@
+{
+  "language": "hu",
+  "title": "záró pont elhagyása",
+  "words": [
+    "záró pont"
+  ],
+  "phrases": [
+    "ne legyen pont a diktálás végén",
+    "a diktálás végéről törölje a pontot"
+  ]
+}

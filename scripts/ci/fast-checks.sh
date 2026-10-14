@@ -54,6 +54,12 @@ MEMBERS=(
   "eval-harness-self-tests|python3|build-check"
   "language-data-generator|python3|build-check"
   "l10n-receipt-self-test|bash python3 git|build-check"
+  "ci-action-pins|python3 yamllint|build-check"
+  "ci-script-refs|python3|build-check"
+  "ci-yaml|python3 yamllint|build-check"
+  "release-notes-self-test|python3|build-check"
+  "appcast-shellcheck|shellcheck|build-check"
+  "appcast-self-test|bash git jq sha256sum|build-check"
   "third-party-notices|bash python3 perl|other-job"
   "worker-tests|node|other-job"
 )
@@ -63,17 +69,15 @@ MEMBERS=(
 # causal comments (minus `set -euo pipefail`, which the runner applies).
 # ---------------------------------------------------------------------------
 
-# CI step: CI self-tests (classify-changes + fetch-depth + compile cache + cache paths + schedule guard + metrics)
+# CI step: CI self-tests (classify-changes + fetch-depth + compile cache + cache paths + metrics)
 member_ci_self_tests() {
   scripts/ci/classify-changes.sh --self-test
   scripts/ci/check-pr-check-fetch-depth.sh
   python3 scripts/ci/check-test-recipe.py --self-test
-  # #3019: the schedule guard decides whether a macOS matrix runs at
-  # all, and it now waits for an in-flight push run; its verdict matrix
-  # (mocked gh, no network) had no CI caller before this. The metrics
-  # instrument is advisory in every lane, so a broken parser would be
-  # invisible there; here it is red.
-  scripts/ci/post-merge-should-run.sh --self-test
+  # #3019: the metrics instrument is advisory in every lane, so a broken
+  # parser would be invisible there; here it is red. (The schedule guard's
+  # self-test ran here too until #3729 removed the hourly schedule and the
+  # guard with it.)
   python3 scripts/ci/ci-metrics.py --self-test
   # #2580. `actions/cache` hashes the PATH LIST into a cache version, and
   # a restore matches on version BEFORE key — so two lists that differ in
@@ -262,6 +266,50 @@ member_language_data_generator() {
   # not corpus-validator tests. Needs only python3 and the stdlib.
   python3 scripts/itn/generate.py --check
   python3 -m unittest discover -s scripts/itn/tests -p 'test_generate.py'
+}
+
+# #3729: the six checks below ran only in ci-drift-check.yml, weekly on a
+# schedule, so a floating action ref or a deleted script could sit on main for up
+# to a week before anything said so (founder 2026-10-13: no timed runs). They run
+# here now, once each, in the required build-check and before every push. The
+# three CI-file checks share one file list: check-cache-paths.py's discover().
+
+# #1994 + the drift job: an external action pinned by tag can be moved to new code
+# after review; a full commit SHA cannot. The helper's own self-test runs first,
+# once, here (it drives the real yamllint too, so this member declares it).
+member_ci_action_pins() {
+  python3 scripts/ci/check-ci-drift.py --self-test
+  python3 scripts/ci/check-ci-drift.py --check pins
+}
+
+# A workflow or composite action that names a deleted script fails at run time,
+# after merge. deploy-blog's website-relative path counts (see the helper).
+member_ci_script_refs() {
+  python3 scripts/ci/check-ci-drift.py --check scripts
+}
+
+# The drift job's yamllint config, over every enumerated definition file.
+member_ci_yaml() {
+  python3 scripts/ci/check-ci-drift.py --check yaml
+}
+
+# Catches drift between the Swift What's New format and the parser the release
+# workflow relies on, before it silently falls back to auto-notes.
+member_release_notes_self_test() {
+  python3 scripts/ci/render-release-notes.py --self-test
+}
+
+# The appcast delivery owner (release.yml's dry-run rehearsal runs both of these
+# too; that is the release lifecycle's own check and stays). ShellCheck with -x,
+# so a sourced file is followed rather than reported.
+member_appcast_shellcheck() {
+  shellcheck -x scripts/ci/appcast-delivery.sh
+}
+
+# Its deterministic self-test: gh, curl and timeout are replaced by its own mocks
+# on PATH, so it needs no token and contacts nothing; git, jq and sha256sum are real.
+member_appcast_self_test() {
+  bash scripts/ci/appcast-delivery.sh --self-test
 }
 
 # CI home: build-and-test, step "Verify third-party notices are in sync", which
@@ -461,7 +509,7 @@ run_all() {
 
 # The member list, frozen independently of MEMBERS. Adding or removing a member
 # is a deliberate edit to both.
-EXPECTED_MEMBERS="ci-self-tests dependency-direction lane-verdict-self-test dev-app-lock-self-test download-link-lint runtime-uat-self-tests judge-contracts eval-harness-self-tests language-data-generator l10n-receipt-self-test third-party-notices worker-tests"
+EXPECTED_MEMBERS="ci-self-tests dependency-direction lane-verdict-self-test dev-app-lock-self-test download-link-lint runtime-uat-self-tests judge-contracts eval-harness-self-tests language-data-generator l10n-receipt-self-test ci-action-pins ci-script-refs ci-yaml release-notes-self-test appcast-shellcheck appcast-self-test third-party-notices worker-tests"
 
 member_names() { local r; for r in "$@"; do printf '%s ' "${r%%|*}"; done; }
 
@@ -506,7 +554,7 @@ self_test() {
   for name in $EXPECTED_MEMBERS; do
     check "member function exists for $name" "$(declare -F "member_${name//-/_}" > /dev/null && echo yes || echo no)" "yes"
   done
-  check "--ci leaves out exactly the other-job members" "$(selected_members 1 | cut -d'|' -f1 | grep -c -e third-party-notices -e worker-tests)|$(selected_members 1 | wc -l | tr -d ' ')" "0|10"
+  check "--ci leaves out exactly the other-job members" "$(selected_members 1 | cut -d'|' -f1 | grep -c -e third-party-notices -e worker-tests)|$(selected_members 1 | wc -l | tr -d ' ')" "0|16"
 
   local saved_members=("${MEMBERS[@]}")
   MEMBERS=("bad-record-without-fields")

@@ -24,7 +24,8 @@ extension InverseTextNormalizer {
   private static let englishPhrases: (marks: String, breaks: String) = {
     var marks: [String] = []
     var breaks: [String] = []
-    for rule in SpokenPunctuationRules.startWordRules(for: "en") ?? [] {
+    // #3738: the legacy marks and breaks only; a symbol never absorbs an engine mark beside it.
+    for rule in SpokenPunctuationRules.startWordRules(for: "en") ?? [] where rule.command.role != .symbol {
       let isBreak = rule.command == .lineBreak || rule.command == .paragraphBreak
       for form in rule.spokenForms {
         let pattern = form.split(separator: " ")

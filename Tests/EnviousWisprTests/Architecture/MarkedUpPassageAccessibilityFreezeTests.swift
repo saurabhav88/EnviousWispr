@@ -59,9 +59,25 @@ struct MarkedUpPassageAccessibilityFreezeTests {
     }
   }
 
-  private static func scan() throws -> (
-    calls: [String], modifiers: Set<String>, uses: Int, selection: [String], spoken: Int
-  ) {
+  private struct ScanResult: Sendable {
+    let calls: [String]
+    let modifiers: Set<String>
+    let uses: Int
+    let selection: [String]
+    let spoken: Int
+  }
+
+  private enum ScanError: Error { case tooFewFiles(Int) }
+
+  /// The three tests read one scan of the app module (#3729 PR-D): it parsed every AppKit file once
+  /// per test (about 5 s each on 2026-10-14). Only the small results are kept, never the trees.
+  /// Swift initialises a static stored property once, lazily and thread-safely; a failed scan is
+  /// cached as its error, so every test still fails.
+  private static let cachedScan: Result<ScanResult, any Error> = Result { try buildScan() }
+
+  private static func scan() throws -> ScanResult { try cachedScan.get() }
+
+  private static func buildScan() throws -> ScanResult {
     let root = RepoRoot.sourceURL("Sources/EnviousWisprAppKit")
     guard
       let enumerator = FileManager.default.enumerator(
@@ -84,9 +100,10 @@ struct MarkedUpPassageAccessibilityFreezeTests {
       selection += visitor.passageSelectionArguments
       spoken += visitor.passageSpokenCalls
     }
-    // Fail closed: scanning nothing must not read as a pass.
-    #expect(scanned > 100, "expected to scan the whole app module, scanned \(scanned) files")
-    return (calls, modifiers, uses, selection, spoken)
+    // Fail closed: scanning nothing must not read as a pass, in every test that reads the scan.
+    guard scanned > 100 else { throw ScanError.tooFewFiles(scanned) }
+    return ScanResult(
+      calls: calls, modifiers: modifiers, uses: uses, selection: selection, spoken: spoken)
   }
 
   @Test("every marked-up text is drawn inside MarkedUpPassageText, and nowhere else")

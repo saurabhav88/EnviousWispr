@@ -105,6 +105,8 @@ struct LimbSteps {
   /// #3124: the same conversion on the polish output, so polish cannot revert it.
   let englishSpellingAfterPolish: EnglishSpellingStep
   let emojiRestore: EmojiRestoreStep
+  /// #3737 Casual mode: leaves off the final full stop. Last, so no later step re-adds one.
+  let casualEnding: CasualEndingStep
 
   /// The post-ASR chain, in order, and the ONLY place that order is written (#628).
   ///
@@ -121,7 +123,8 @@ struct LimbSteps {
   /// `emojiRestore` sits after polish because it repairs what polish dropped (#761).
   /// `englishSpelling` follows ITN so the floor is British (#3124);
   /// `englishSpellingAfterPolish` follows polish so a model cannot revert it, and precedes
-  /// `emojiRestore` so the restorer aligns two British texts.
+  /// `emojiRestore` so the restorer aligns two British texts. `casualEnding` (#3737) is last so
+  /// no later step can put back the final full stop it removed.
   ///
   /// The chain is NOT the last thing that touches the text: `SnippetFinalizer` runs after the
   /// runner in both paths, and `CursorInsertionRepair` runs after that on the live path.
@@ -130,7 +133,7 @@ struct LimbSteps {
     [
       snippetExpansion, wordCorrection, learnedWordCheck, fillerRemoval, emojiFormatter,
       inverseTextNormalization, englishSpelling, llmPolish, englishSpellingAfterPolish,
-      emojiRestore,
+      emojiRestore, casualEnding,
     ]
   }
 
@@ -780,6 +783,12 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
   public var snippetExpansion: SnippetExpansionStep { steps.snippetExpansion }
   public var fillerRemoval: FillerRemovalStep { steps.fillerRemoval }
   public var emojiFormatter: EmojiFormatterStep { steps.emojiFormatter }
+  /// #3737 Casual mode. A narrow value, like `spokenPunctuation` below, so the internal step type
+  /// does not cross the module boundary. `package` because only first-party targets consume it.
+  package var casualModeEnabled: Bool {
+    get { steps.casualEnding.casualModeEnabled }
+    set { steps.casualEnding.casualModeEnabled = newValue }
+  }
   public var llmPolish: LLMPolishStep { steps.llmPolish }
 
   /// Spoken-punctuation setting (#1794, #2450). A narrow value rather than an

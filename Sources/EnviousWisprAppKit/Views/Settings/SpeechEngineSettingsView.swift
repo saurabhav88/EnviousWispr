@@ -364,6 +364,19 @@ struct SpeechEngineSettingsView: View {
             SpokenPunctuationStartWordRow(settings: settings)
           }
         }
+        BrandedRow {
+          SettingsRow(
+            map: .id(.casualMode),
+            icon: "bubble.left",
+            help: Copy.casualHelp
+          ) {
+            Toggle("", isOn: $settings.casualModeEnabled)
+            .labelsHidden()
+            .toggleStyle(BrandedToggleStyle())
+            .fixedSize()
+            .accessibilityLabel(Text(Copy.casualTitle))
+          }
+        }
         BrandedRow(showDivider: false) {
           VStack(alignment: .leading, spacing: 6) {
             SettingsRow(

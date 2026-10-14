@@ -41,7 +41,7 @@ struct PipelineStateChangeHandlerFactoryCopyTests {
       englishSpelling: EnglishSpellingStep(target: .text),
       llmPolish: LLMPolishStep(keychainManager: KeychainManager()),
       englishSpellingAfterPolish: EnglishSpellingStep(target: .polishedText),
-      emojiRestore: EmojiRestoreStep())
+      emojiRestore: EmojiRestoreStep(), casualEnding: CasualEndingStep())
     let outcome = KernelFinalizationOutcome()
     let context = KernelSessionContext()
     let adapter = FakeEngine(behavior: .batchSuccess(text: "x"), clock: FakeClock())
@@ -160,7 +160,7 @@ struct PipelineStateChangeHandlerFactoryCopyTests {
         englishSpelling: EnglishSpellingStep(target: .text),
         llmPolish: LLMPolishStep(keychainManager: KeychainManager()),
         englishSpellingAfterPolish: EnglishSpellingStep(target: .polishedText),
-        emojiRestore: EmojiRestoreStep())
+        emojiRestore: EmojiRestoreStep(), casualEnding: CasualEndingStep())
       let observer = KernelHeartPathTelemetryObserver(
         kernel: wrapper.testKernel, audioCapture: capture,
         emitter: HeartPathTelemetryEmitter(

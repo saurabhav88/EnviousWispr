@@ -359,6 +359,18 @@ else
         echo "::error::MediaRemoteAdapter.framework or mediaremote-adapter.pl missing from the bundle (#1413)"
         exit 1
     fi
+    # 5.7. #3735: the transcribe.cpp engine framework (dynamic, linked by the app).
+    # Built and ad-hoc signed upstream, so it is re-sealed here with the Developer
+    # ID, hardened runtime and secure timestamp before the main-app signature.
+    # Missing is a broken build (no Whisper engine, no Universal preview): fail closed.
+    CT_FRAMEWORK="$BUNDLE/Contents/Frameworks/CTranscribe.framework"
+    if [[ -f "$CT_FRAMEWORK/Versions/A/CTranscribe" ]]; then
+        echo "    [5.7/6] transcribe.cpp: CTranscribe.framework"
+        codesign "${SIGN_FLAGS[@]}" "$CT_FRAMEWORK/Versions/A"
+    else
+        echo "::error::CTranscribe.framework missing from the bundle (#3735)"
+        exit 1
+    fi
     # 6. Embed the Developer ID provisioning profile, THEN the main app bundle.
     # keychain-access-groups is a RESTRICTED entitlement; AMFI requires the embedded
     # profile to authorize it at launch (TN3125). The profile is sealed by the

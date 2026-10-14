@@ -288,12 +288,14 @@ detect_lane_from_diff() {
     lanes="$lanes Content"
   fi
   # `.github/actions/` joined this pattern in #1994, when main-post-merge.yml's
-  # shared Xcode setup moved into a composite action. Measured before the fix:
+  # shared Xcode setup moved into a composite action (#3729 retired that
+  # workflow; pr-check.yml and cache-warm.yml use the action). Measured before the fix:
   # `.github/actions/xcode-ci-setup/action.yml` matched NO lane at all — not
   # CI/workflow, not Docs/dev-tooling — so a change to it carried no Phase 3
   # obligations whatsoever. Third instance of one class in this change, after
   # `scripts/ci/classify-changes.sh` (build decision) and
-  # `.github/workflows/ci-drift-check.yml` (drift scan): each looked only at
+  # `.github/workflows/ci-drift-check.yml` (drift scan; since #3729 the
+  # fast-checks member scripts/ci/check-ci-drift.py): each looked only at
   # `.github/workflows/`, so moving CI logic one directory sideways escaped it.
   #
   # `scripts/ci/` and `scripts/lib/` were unlaned until #3189: the old scripts/ pattern needed a

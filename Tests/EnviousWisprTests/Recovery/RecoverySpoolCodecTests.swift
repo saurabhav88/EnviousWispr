@@ -35,7 +35,9 @@ struct RecoverySpoolCodecTests {
       // survives rather than that a default was re-minted on the way back.
       s1Control: S1ControlSettings(styling: .formal, structure: .prose, context: .email),
       // #3124: non-default for the same reason.
-      englishSpelling: .british)
+      englishSpelling: .british,
+      // #3737: non-default for the same reason.
+      casualModeEnabled: true)
   }
 
   @Test("an audio frame round-trips bit-exact under AES-GCM")
@@ -238,7 +240,7 @@ struct RecoverySpoolCodecTests {
       llmModel: snapshot().llmModel,
       polishPromptVersion: snapshot().polishPromptVersion,
       s1Control: nil,
-      englishSpelling: snapshot().englishSpelling)
+      englishSpelling: snapshot().englishSpelling, casualModeEnabled: snapshot().casualModeEnabled)
     #expect(decoded == expected)
   }
 
@@ -271,8 +273,27 @@ struct RecoverySpoolCodecTests {
       llmModel: snapshot().llmModel,
       polishPromptVersion: snapshot().polishPromptVersion,
       s1Control: snapshot().s1Control,
-      englishSpelling: nil)
+      englishSpelling: nil, casualModeEnabled: snapshot().casualModeEnabled)
     #expect(decoded == expected)
+  }
+
+  /// #3737: a spool written before Casual mode has no `casualModeEnabled` key. It must decode with
+  /// the field nil (replayed as OFF) and every other field intact.
+  @Test("a spool written before #3737 decodes with Casual mode absent")
+  func legacySpoolWithoutCasualModeStillDecodes() throws {
+    let current = try JSONEncoder().encode(snapshot())
+    var fields = try #require(
+      try JSONSerialization.jsonObject(with: current) as? [String: Any])
+    #expect(fields["casualModeEnabled"] as? Bool == true, "a NEW snapshot must carry the key")
+    fields.removeValue(forKey: "casualModeEnabled")
+    let legacy = try JSONSerialization.data(withJSONObject: fields)
+    #expect(String(decoding: legacy, as: UTF8.self).contains("casualModeEnabled") == false)
+
+    let decoded = try JSONDecoder().decode(RecordingSettingsSnapshot.self, from: legacy)
+    #expect(decoded.casualModeEnabled == nil)
+    #expect(decoded.englishSpelling == snapshot().englishSpelling)
+    #expect(decoded.spokenPunctuationStartWords == snapshot().spokenPunctuationStartWords)
+    #expect(decoded.llmModel == snapshot().llmModel)
   }
 
   /// #2450: a spool written before start words has no `spokenPunctuationStartWords` key. It must decode
@@ -307,7 +328,7 @@ struct RecoverySpoolCodecTests {
       llmModel: snapshot().llmModel,
       polishPromptVersion: snapshot().polishPromptVersion,
       s1Control: snapshot().s1Control,
-      englishSpelling: snapshot().englishSpelling)
+      englishSpelling: snapshot().englishSpelling, casualModeEnabled: snapshot().casualModeEnabled)
     #expect(decoded == expected)
   }
 

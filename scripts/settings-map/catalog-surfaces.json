@@ -165,6 +165,9 @@
   "mac-ctl-spoken-punctuation": [
    "spokenPunctuation"
   ],
+  "mac-ctl-casual-mode": [
+   "casualMode"
+  ],
   "mac-ctl-spoken-punctuation-start-word": [
    "startWordLanguage",
    "startWordField",
@@ -685,6 +688,11 @@
    "kind": "control",
    "parent": "mac-sec-clipboard",
    "label": "Keep dictations out of clipboard history apps"
+  },
+  "mac-ctl-casual-mode": {
+   "kind": "control",
+   "parent": "mac-sec-engine-shared",
+   "label": "Casual mode"
   }
  }
 }

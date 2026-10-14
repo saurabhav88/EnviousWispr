@@ -184,6 +184,16 @@ else
   bad "the count sums every per-target run summary" "out=$out"
 fi
 
+# The same count is exported for the caller's validation receipt (#3729), in
+# the caller's shell (no subshell), and set even when the verdict fails.
+unset EW_LANE_EXECUTED_COUNT
+ew_lane_verdict "$LOG" "$TMP/no-such-bundle" "probe" >/dev/null 2>&1 || true
+if [ "${EW_LANE_EXECUTED_COUNT:-unset}" = "6829" ]; then
+  ok "the judged count is exported as EW_LANE_EXECUTED_COUNT"
+else
+  bad "the judged count is exported as EW_LANE_EXECUTED_COUNT" "got '${EW_LANE_EXECUTED_COUNT:-unset}'"
+fi
+
 echo "== the expected count FLAGS and never GATES =="
 # tools-and-apps.md FACT: ew-watcher-classification — a count is a parameter, a
 # parameter can be borrowed from the wrong workflow, and a count-GATED check

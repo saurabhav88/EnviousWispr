@@ -1,25 +1,25 @@
 name: Xcode CI setup
 description: >-
   Toolchain selection, Tuist install, compilation-cache and DerivedData
-  redirects, build-cache restore (one family per configuration), and Xcode
-  project generation — the setup every lane in pr-check.yml,
-  main-post-merge.yml and nightly-battery.yml that builds the app with
-  xcodebuild needs before it can build or test. (The eval-packages step builds
-  standalone SwiftPM packages with `swift build` and deliberately does not
-  use it.)
+  redirects, Release build-cache restore, and Xcode project generation — the
+  setup every lane in pr-check.yml and cache-warm.yml that builds the app
+  with xcodebuild needs before it can build or test. (The eval-packages step
+  builds standalone SwiftPM packages with `swift build` and deliberately does
+  not use it.)
 
-# Why this exists (#1994): main-post-merge.yml runs its debug and release
-# validation as two parallel jobs, and each needs the same multi-step
-# setup. Two hand-mirrored copies of one decision is the shape that diverges —
-# .claude/rules/workflow-process.md RULE: port-proven-patterns-wholesale
+# Why this exists (#1994): main-post-merge.yml (removed in #3729) ran its debug
+# and release validation as two parallel jobs, and each needed the same
+# multi-step setup. Two hand-mirrored copies of one decision is the shape that
+# diverges — .claude/rules/workflow-process.md RULE: port-proven-patterns-wholesale
 # records two separate cases in this repo where exactly that happened. One
-# owner, both callers.
+# owner, every caller.
 #
 # #2592: pr-check.yml's build-debug and build-release lanes were the third and
 # fourth copies, hand-mirrored inline, and one of them is where #2580's cold
 # cache shipped from. They now call this action too, so the Xcode cache path
 # list exists in exactly TWO places — the restore below and the save in
-# main-post-merge.yml's release-validation job — instead of four.
+# cache-warm.yml's warm job (#3729; main-post-merge.yml's release-validation
+# before it) — instead of four.
 # scripts/ci/check-cache-paths.py asserts both against a literal expectation.
 #
 # The caller must check the repository out BEFORE using this action: a local
@@ -29,7 +29,7 @@ description: >-
 # Gating: the steps here carry no `if:`. pr-check.yml skips the whole setup
 # for a docs-only PR by putting `if: steps.changes.outputs.needs_build == 'true'`
 # on the step that USES this action — a caller-step condition governs every
-# step of a composite action — and main-post-merge.yml gates at the job level.
+# step of a composite action — and cache-warm.yml gates at the job level.
 
 inputs:
   derived-data-path:
@@ -41,10 +41,13 @@ inputs:
     default: 4.195.11
   configuration:
     description: >-
-      Build-cache family, `debug` or `release` (#3013). Each family has ONE
-      writer in main-post-merge.yml (debug-validation / release-validation) and
-      restore-keys never cross families, so a Debug lane cannot restore Release
-      objects it cannot use, and vice versa. Validated before the restore.
+      Build-cache family; `release` is the only one (#3729). #3013 gave each
+      configuration its own family so a Debug lane could never restore Release
+      objects; the hosted Debug lanes are gone, and with them the `debug`
+      family. The input stays explicit, and the key and every restore-keys
+      prefix still carry it, so a family added later starts cold instead of
+      restoring the wrong objects. ONE writer: cache-warm.yml's warm job.
+      Validated before the restore.
     required: true
 
 outputs:
@@ -176,14 +179,15 @@ runs:
     # full, uncached network resolution every run (issue #1295). Redirecting
     # the global default here, before generate runs and before the cache is
     # restored, makes that resolve land somewhere the cache below actually
-    # covers. main-post-merge.yml is the cache WRITER, so it must produce the
+    # covers. cache-warm.yml is the cache WRITER, so it must produce the
     # same directory shape pr-check.yml restores; both go through this step.
     - name: Configure DerivedData cache redirect
       shell: bash
       run: scripts/ci/configure-tuist-deriveddata-cache.sh "$GITHUB_WORKSPACE/${{ inputs.derived-data-path }}"
 
     # #3013: a wrong family name would build a key no writer ever saves, and a
-    # permanently cold cache is silent (#2580). Refuse anything but the two.
+    # permanently cold cache is silent (#2580). #3729: `release` is the only
+    # family with a writer, so `debug` is refused here too.
     - name: Validate cache configuration
       shell: bash
       env:
@@ -191,8 +195,8 @@ runs:
       run: |
         set -euo pipefail
         case "$CONFIGURATION" in
-          debug|release) echo "==> cache family: $CONFIGURATION" ;;
-          *) echo "::error::xcode-ci-setup: configuration must be 'debug' or 'release', got '$CONFIGURATION'"; exit 1 ;;
+          release) echo "==> cache family: $CONFIGURATION" ;;
+          *) echo "::error::xcode-ci-setup: configuration must be 'release', got '$CONFIGURATION'"; exit 1 ;;
         esac
 
     - name: Compute Xcode build cache key
@@ -209,13 +213,12 @@ runs:
         echo "toolchain_id=$TOOLCHAIN_ID" >> "$GITHUB_OUTPUT"
 
     # Rolling key (github.sha suffix) so the primary key is never an exact hit
-    # on a PR. pr-check.yml is restore-only by design — main-post-merge.yml's
-    # two validation jobs are the writers, one per family (issue #804, #3013),
-    # each saving under this step's exported cache-primary-key. restore-keys
-    # fall through to the freshest cache OF THE SAME FAMILY: the broadest prefix
-    # still carries `-xcode-<configuration>-`, so a Debug lane never restores
-    # Release objects and a first run after a toolchain bump starts cold rather
-    # than half-wrong.
+    # on a PR. pr-check.yml is restore-only by design — cache-warm.yml's warm
+    # job is the one writer (issue #804, #3729), saving under this step's
+    # exported cache-primary-key. restore-keys fall through to the freshest
+    # cache OF THE SAME FAMILY: the broadest prefix still carries
+    # `-xcode-<configuration>-`, so no fallback crosses families (#3013) and a
+    # first run after a toolchain bump starts cold rather than half-wrong.
     #
     # The third path entry is a glob (issue #1295): the redirect above makes
     # tuist generate's implicit resolve write into a per-project hash-named
@@ -229,7 +232,7 @@ runs:
     # several callers the hardcoded form becomes a silent trap: a caller
     # passing a different derived-data-path would build in one place and cache
     # another, and the only symptom is a permanently cold cache. The save in
-    # main-post-merge.yml must continue to match whatever this resolves to.
+    # cache-warm.yml must continue to match whatever this resolves to.
     #
     # #2580: the compilation cache REPLACES Build/ here rather than joining it.
     # Two numbers, and they are not the same measurement, which is why the

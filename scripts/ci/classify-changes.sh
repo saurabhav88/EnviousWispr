@@ -8,7 +8,7 @@
 #   classify-changes.sh <BASE_SHA> <HEAD_SHA>   default: three-dot (merge-base)
 #                                               diff + #825 fail-safe, classify
 #   classify-changes.sh --push-diff <BEFORE> <AFTER>
-#                                               post-merge: two-dot before..after
+#                                               main push: two-dot before..after
 #                                               diff + fail-safe, classify
 #   classify-changes.sh --classify-only         classify a newline file list
 #                                               read from stdin (no git)
@@ -16,7 +16,8 @@
 #                                               non-zero on any mismatch
 #
 # Classify contract (lifted VERBATIM from the pre-#1151 inline step):
-#   - a change to pr-check.yml / main-post-merge.yml self-forces a full build
+#   - a change to pr-check.yml / cache-warm.yml self-forces a full build
+#     (#3729: cache-warm.yml replaced main-post-merge.yml in this list)
 #   - so do the help article and the help clip files a Swift test reads (see the
 #     comment above the first build-forcing grep)
 #   - any path outside (website/ docs/ .github/ .claude/ CLAUDE.md) forces a
@@ -54,9 +55,9 @@ classify() {
 
   # `.github/actions/` is in the build self-force list for the SAME reason as
   # this script is in the website list above, and it was introduced by #1994:
-  # main-post-merge.yml's shared Xcode setup (toolchain, Tuist, DerivedData
-  # redirect, cache restore, project generation) now lives in a composite
-  # action. Everything under `.github/` is otherwise excluded from the build
+  # the shared Xcode setup (toolchain, Tuist, DerivedData redirect, cache
+  # restore, project generation) lives in a composite action that every macOS
+  # lane calls. Everything under `.github/` is otherwise excluded from the build
   # decision two branches down, so without this line a change that rewrites the
   # entire build setup for both macOS jobs classifies as non-code and skips
   # every validation job — while the run still reports success. Measured, not
@@ -83,7 +84,7 @@ classify() {
   # The match is the exact path, not the help directory: every other help
   # article stays a website-only change, and so does a later clip file such as
   # a German one.
-  if grep -qE '^(\.github/(workflows/(pr-check|main-post-merge)\.yml$|actions/)|website/src/content/help/(spoken-punctuation-and-emoji|push-to-talk-mode)\.md$|website/public/help-media/push-to-talk-modes(-poster\.jpg|\.mp4)$)' <<<"$changed"; then
+  if grep -qE '^(\.github/(workflows/(pr-check|cache-warm)\.yml$|actions/)|website/src/content/help/(spoken-punctuation-and-emoji|push-to-talk-mode)\.md$|website/public/help-media/push-to-talk-modes(-poster\.jpg|\.mp4)$)' <<<"$changed"; then
     printf 'needs_build=true\n' >>"$GITHUB_OUTPUT"
     printf 'needs_website=%s\n' "$website" >>"$GITHUB_OUTPUT"
     echo "==> CI build workflow, composite action or a help file a Swift parity test reads (spoken-punctuation article, push-to-talk article, its clip) changed — full Xcode build required (needs_website=$website)"
@@ -150,9 +151,9 @@ detect() {
   fi
 }
 
-# push_diff: post-merge mode. Acquire the push's changed files with a TWO-dot
+# push_diff: main-push mode. Acquire the push's changed files with a TWO-dot
 # before..after diff (the whole range the push introduced, not just the last
-# commit), then classify. Used by main-post-merge.yml. before..after is correct
+# commit), then classify. Used by cache-warm.yml. before..after is correct
 # for a push (HEAD~1 HEAD missed every commit but the last -> under-build on a
 # multi-commit push).
 push_diff() {
@@ -295,9 +296,9 @@ self_test() {
   _expect_classify $'docs/x.md\nwebsite/y.astro' false "docs+website only" true
   # FLIPPED by #1994, deliberately, and worth reading before flipping it back.
   # This row asserted `false` because when it was written `.github/actions/`
-  # held nothing that affected the build. main-post-merge.yml now keeps its
-  # shared Xcode setup there as a composite action, so a change to that path
-  # rewrites how both macOS jobs build. The old expectation was correct for the
+  # held nothing that affected the build. The shared Xcode setup now lives
+  # there as a composite action, so a change to that path rewrites how every
+  # macOS job builds. The old expectation was correct for the
   # old world and became a silent hole in the new one: the classifier would
   # answer "non-code" about the build's own setup and every validation job
   # would skip while the run reported success.
@@ -309,6 +310,12 @@ self_test() {
   _expect_classify ".github/dependabot.yml" false "dependabot still excluded" false
   _expect_classify ".github/ISSUE_TEMPLATE/bug.md" false "issue templates still excluded" false
   _expect_classify ".github/workflows/release.yml" false "other workflows still excluded" false
+  # #3729: the cache warmer builds what the PR gate builds, so a change to it alone
+  # must warm (and its PR self-proof must build). Two-way: the retired post-merge
+  # name and a near-miss spelling are ordinary excluded workflows now.
+  _expect_classify ".github/workflows/cache-warm.yml" true "cache-warm self-forces build" false
+  _expect_classify ".github/workflows/main-post-merge.yml" false "retired post-merge name no longer forces" false
+  _expect_classify ".github/workflows/cache-warm.yaml" false "near-miss cache-warm spelling excluded" false
   # This file self-forces the website lane: it decides whether that lane runs,
   # so it must not be able to answer "no" about its own change. The row below
   # keeps the original coverage — an ORDINARY scripts/ path still builds
@@ -405,7 +412,7 @@ Sources/B.swift' true "README plus swift -> build" false
   _expect_exit1 "" "$head2" "empty base -> exit 1"
   _expect_exit1 "$maintip" "" "empty head -> exit 1"
 
-  echo "== push-diff before..after (post-merge) =="
+  echo "== push-diff before..after (main push) =="
   git switch -q main
   local pushbase pushhead sbase
   pushbase="$(git rev-parse HEAD)"

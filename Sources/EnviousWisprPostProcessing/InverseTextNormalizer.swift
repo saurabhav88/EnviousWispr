@@ -256,6 +256,18 @@ public struct InverseTextNormalizer: Sendable {
   ///   Defaults to `false`, matching the shipped product default (#1794) so a caller that
   ///   forgets it gets the shipped behaviour.
   public func normalize(_ text: String, spokenPunctuation: Bool = false) -> String {
+    normalizeReportingFinalFullStop(text, spokenPunctuation: spokenPunctuation).text
+  }
+
+  /// `normalize`, plus whether the text ENDS with a full stop the user SAID (#3737 Casual mode keeps
+  /// it). True only when a bare `period` / `full stop` command is followed by nothing but whitespace
+  /// and line or paragraph break commands, judged on the text the command rows convert (after the
+  /// recogniser-mark reconciliation has absorbed the engine's mark beside a command). Any surviving
+  /// mark after the command makes it false, so an untouched input dot is never attributed to a
+  /// command. Always false while `spokenPunctuation` is off.
+  package func normalizeReportingFinalFullStop(_ text: String, spokenPunctuation: Bool)
+    -> (text: String, spokenFinalFullStop: Bool)
+  {
     var t = " " + text.trimmingCharacters(in: .whitespacesAndNewlines) + " "
 
     // "shout" = the whole utterance is upper-case (typed in caps). In shout text a capitalized
@@ -636,6 +648,8 @@ public struct InverseTextNormalizer: Sendable {
 
     t = keepMagnitude(t)  // '$80,000,000'->'$80 million' (founder house style), keep the word
     if spokenPunctuation { t = Self.reconcileEnglishRecognizerMarks(t) }  // #3594
+    let spokenFinalFullStop =
+      spokenPunctuation && firstMatch(Self.spokenFinalFullStopPattern, t) != nil  // #3737
     t = applyPunct(t, spokenPunctuation: spokenPunctuation)
 
     // restore register-preserved spans verbatim
@@ -661,7 +675,7 @@ public struct InverseTextNormalizer: Sendable {
       m in "\(m.g(1) ?? "")-\(m.g(2) ?? "")"
     }
     t = reSub(#"[ \t]+"#, t, caseInsensitive: false) { _ in " " }  // collapse spaces (keep newlines)
-    return t.trimmingCharacters(in: .whitespacesAndNewlines)
+    return (t.trimmingCharacters(in: .whitespacesAndNewlines), spokenFinalFullStop)
   }
 
   // MARK: - Strict cardinal parser
@@ -2363,12 +2377,25 @@ public struct InverseTextNormalizer: Sendable {
     // pull it back over the line break and double the previous period (#3041). "On its own" means
     // it follows a sentence end (a closing quote or bracket may sit between); "Add a new line."
     // keeps its period.
-    (#"(?<=[.!?…][”’"')\]}»]{0,3}\s)new paragraph\b[.,]?"#, "\n\n"), (#"(?<=[.!?…][”’"')\]}»]{0,3}\s)new line\b[.,]?"#, "\n"),
+    (#"(?<=[.!?…][”’"')\]}»]{0,3}\s)new paragraph\b[.,]?"#, "\n\n"),
+    (#"(?<=[.!?…][”’"')\]}»]{0,3}\s)new line\b[.,]?"#, "\n"),
     (#"\bnew paragraph\b"#, "\n\n"), (#"\bnew line\b"#, "\n"),
-    (#"\s+comma\b"#, ","), (#"\s+period\b"#, "."), (#"\s+full stop\b"#, "."),
+    (#"\s+comma\b"#, ","), (periodRow, "."), (fullStopRow, "."),
     (#"\s+question mark\b"#, "?"), (#"\s+exclamation (mark|point)\b"#, "!"),
     (#"\s+colon\b"#, ":"), (#"\s+semicolon\b"#, ";"),
   ]
+
+  /// #3737: the two full-stop rows of `punct`, named so `spokenFinalFullStopPattern` reports exactly
+  /// what the table converts.
+  static let periodRow = #"\s+period\b"#
+  static let fullStopRow = #"\s+full stop\b"#
+
+  /// #3737: a full-stop row at the very end of the text, followed only by line or paragraph break
+  /// commands and whitespace. Strict: a mark left after a break (reconciliation absorbs only the
+  /// glued marks it owns) makes it false. A later period command is matched by this same pattern, so
+  /// the LAST full-stop command decides.
+  static let spokenFinalFullStopPattern =
+    "(?:" + periodRow + "|" + fullStopRow + #")(?:\s+new (?:paragraph|line)\b)*\s*\z"#
 
   /// #2955 / #3038: the joiner pattern for "slash" / "forward slash" and "backslash" / "back slash",
   /// matched in ONE pass because a joiner that follows another joiner has already lost its
@@ -2810,6 +2837,13 @@ public struct InverseTextNormalizer: Sendable {
   ///   formatting rather than part of the spoken-command feature.
   private func applyPunct(_ t0: String, spokenPunctuation: Bool) -> String {
     var t = t0
+    // #3738: spoken symbols FIRST, as on the start-word route, so the only commas the symbol pass can
+    // drop inside a pair are the engine's: a spoken "comma" is still the word here and converts below
+    // ("open paren x comma close paren" -> `(x,)`). The joiner pass below still reads a spoken slash
+    // inside brackets (its left neighbour class accepts `(`), and beside any other symbol through the
+    // gap the symbol pass leaves (`joinerGapCharacter`), removed once the joiner pass has run.
+    let joinerGap = spokenPunctuation && !t0.contains(Self.joinerGapCharacter)
+    if spokenPunctuation { t = Self.applyEnglishSymbolCommands(t, joinerGap: joinerGap) }
     if spokenPunctuation {
       for (pat, rep) in Self.punct {
         t = reSub(pat, t) { _ in rep }
@@ -2900,6 +2934,7 @@ public struct InverseTextNormalizer: Sendable {
         return ns.substring(with: leading) + "/"
       }
     }
+    if joinerGap { t.removeAll { $0 == Self.joinerGapCharacter } }
     // Only a command this pass wrote from a spoken marker; a written `/Users` alone is left as is.
     if wroteCommand {
       t = reSub(Self.loneCommandPeriod, t, caseInsensitive: false) { m in

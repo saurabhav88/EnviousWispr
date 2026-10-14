@@ -133,6 +133,10 @@ ew_lane_verdict() {
   # Reported before any refusal, because a reader diagnosing a FAIL wants the
   # number as much as a reader confirming a PASS does.
   echo "==> $label executed $n tests"
+  # For the caller's validation receipt (#3729): the count this verdict judged.
+  # Informational only; the return status is the verdict.
+  # shellcheck disable=SC2034  # read by the sourcing caller
+  EW_LANE_EXECUTED_COUNT="$n"
 
   if [ -n "$expected" ]; then
     case "$expected" in
@@ -196,6 +200,9 @@ ew_lane_verdict() {
     # passes an empty list. A gate that fails honest usage teaches people to
     # bypass it.
     local required_bundles="${EW_LANE_REQUIRED_BUNDLES-EnviousWisprTests EnviousWisprDesktopEffectsTests EnviousWisprASRTests}"
+    # For the caller's validation receipt (#3729): the bundle list this verdict required.
+    # shellcheck disable=SC2034  # read by the sourcing caller
+    EW_LANE_JUDGED_BUNDLES="$required_bundles"
     if [ -n "$required_bundles" ]; then
       local ran_bundles required_bundle
       ran_bundles="$(python3 -c '

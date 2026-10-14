@@ -218,6 +218,10 @@ echo "==> Step 7: Verifying deployed bundle..."
   || { echo "ERROR: MediaRemoteAdapter.framework missing from Frameworks (#1413)"; exit 1; }
 [ -f "$APP_PATH/Contents/Resources/mediaremote-adapter.pl" ] \
   || { echo "ERROR: mediaremote-adapter.pl missing from Resources (#1413)"; exit 1; }
+# #3735: the transcribe.cpp engine (dynamic framework). Missing means the Whisper
+# engine and the Universal preview cannot load: a broken build, not a degraded one.
+[ -f "$APP_PATH/Contents/Frameworks/CTranscribe.framework/Versions/A/CTranscribe" ] \
+  || { echo "ERROR: CTranscribe.framework missing from Frameworks (#3735)"; exit 1; }
 # #2649: S1-mini rides the same route. The licence text is listed here too —
 # its ADDITIONAL TERM binds the distributed bundle, not just the download.
 for s1_resource in s1-manifest.json s1-delivery-manifest.json \

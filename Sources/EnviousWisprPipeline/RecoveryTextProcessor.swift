@@ -89,7 +89,7 @@ public final class RecoveryTextProcessor {
       englishSpelling: EnglishSpellingStep(target: .text),
       llmPolish: llmPolish,
       englishSpellingAfterPolish: EnglishSpellingStep(target: .polishedText),
-      emojiRestore: EmojiRestoreStep())
+      emojiRestore: EmojiRestoreStep(), casualEnding: CasualEndingStep())
     self.steps.learnedWordCheck.selectionProvider = checkerSelectionProvider
     // #945 / #1446 / #1461: crash recovery is invisible to live-polish
     // telemetry. The runner and LLMPolishStep each own separate emitter sets,
@@ -109,6 +109,8 @@ public final class RecoveryTextProcessor {
     steps.learnedWordCheck.wordCorrectionEnabled = snapshot.wordCorrectionEnabled
     steps.fillerRemoval.fillerRemovalEnabled = snapshot.fillerRemovalEnabled
     steps.emojiFormatter.emojiFormatterEnabled = snapshot.emojiFormatterEnabled
+    // #3737: a spool from before Casual mode records nothing; absent means OFF, the default.
+    steps.casualEnding.casualModeEnabled = snapshot.casualModeEnabled ?? false
     // #1794: a legacy spool records no preference for this setting, absence is not an
     // affirmative opt-in, and the founder-directed default is OFF. Does NOT depend on
     // whether the take was ever delivered. #2450: the recorded effective start words travel

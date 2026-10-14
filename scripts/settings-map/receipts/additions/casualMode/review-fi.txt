@@ -1,0 +1,11 @@
+{
+  "language": "fi",
+  "title": "jätä loppupiste pois",
+  "words": [
+    "loppupiste"
+  ],
+  "phrases": [
+    "ei pistettä sanelun loppuun",
+    "jätä piste pois sanelun lopusta"
+  ]
+}

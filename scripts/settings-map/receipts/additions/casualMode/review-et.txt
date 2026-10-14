@@ -1,0 +1,11 @@
+{
+  "language": "et",
+  "title": "ilma lõpupunktita",
+  "words": [
+    "lõpupunkt"
+  ],
+  "phrases": [
+    "dikteeri ilma lõpupunktita",
+    "jäta dikteeritud teksti lõpust punkt ära"
+  ]
+}

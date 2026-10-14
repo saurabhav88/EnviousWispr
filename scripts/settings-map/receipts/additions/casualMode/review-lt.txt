@@ -1,0 +1,11 @@
+{
+  "language": "lt",
+  "title": "be taško pabaigoje",
+  "words": [
+    "taškas pabaigoje"
+  ],
+  "phrases": [
+    "be taško diktavimo pabaigoje",
+    "pašalinti tašką padiktuoto teksto pabaigoje"
+  ]
+}

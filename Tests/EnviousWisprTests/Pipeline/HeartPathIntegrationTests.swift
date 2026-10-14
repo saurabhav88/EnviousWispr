@@ -359,7 +359,7 @@ private final class HeartPathHarness {
         englishSpelling: EnglishSpellingStep(target: .text),
         llmPolish: polishStep,
         englishSpellingAfterPolish: EnglishSpellingStep(target: .polishedText),
-        emojiRestore: EmojiRestoreStep()),
+        emojiRestore: EmojiRestoreStep(), casualEnding: CasualEndingStep()),
       textProcessingRunner: textProcessingRunner,
       save: { _, _ in },
       deliverPaste: { [pasteSink] request in

@@ -105,14 +105,6 @@ struct TestInventoryFreezeTests {
 
   /// Collects every suite that CONTAINS tests, with its declared classes and counts.
   ///
-  /// A suite is any type declaration holding at least one `@Test` member. Swift Testing treats a plain
-  /// `struct` of `@Test` functions as an IMPLICIT suite, so `@Suite` is not required to be one — an
-  /// earlier enumeration keyed on `@Suite` missed 14 files holding 146 tests.
-  private static func suites(inFile path: String, relativeTo root: String) throws -> [SuiteRecord] {
-    let source = try String(contentsOf: URL(fileURLWithPath: path), encoding: .utf8)
-    return suites(inSource: source, file: relativePath(of: path, under: root))
-  }
-
   private static func relativePath(of path: String, under root: String) -> String {
     path.hasPrefix(root + "/") ? String(path.dropFirst(root.count + 1)) : path
   }
@@ -514,21 +506,61 @@ struct TestInventoryFreezeTests {
 
   // MARK: - Inventory
 
-  private static func inventory() throws -> [SuiteRecord] {
+  /// A suite is any type declaration holding at least one `@Test` member. Swift Testing treats a plain
+  /// `struct` of `@Test` functions as an IMPLICIT suite, so `@Suite` is not required to be one — an
+  /// earlier enumeration keyed on `@Suite` missed 14 files holding 146 tests.
+  ///
+  /// ONE walk of every test file, shared by every test in this suite (#3729 PR-D). Each file is
+  /// parsed once and both independent traversals run on that tree: the suite walk (records) and the
+  /// raw `@Test` count (attribution). Only the small results are kept, never the trees, so the
+  /// memory peak is one file's tree, lower than the three whole-tree walks this replaced (each test
+  /// used to walk and parse all files itself: about 23 s each on 2026-10-14).
+  private struct TreeScan: Sendable {
+    let records: [SuiteRecord]
+    let mismatches: [String]
+    let parsedTotal: Int
+    let rawTotal: Int
+  }
+
+  private enum ScanError: Error { case cannotEnumerate(String) }
+
+  /// Swift initialises a static stored property once, lazily and thread-safely.
+  private static let scan: Result<TreeScan, any Error> = Result { try buildScan() }
+
+  private static func buildScan() throws -> TreeScan {
     let root = RepoRoot.url.path
     let testsDir = root + "/Tests"
     guard
       let walker = FileManager.default.enumerator(
         at: URL(fileURLWithPath: testsDir), includingPropertiesForKeys: nil)
-    else {
-      Issue.record("cannot enumerate \(testsDir)")
-      return []
-    }
+    else { throw ScanError.cannotEnumerate(testsDir) }
     var records: [SuiteRecord] = []
+    var mismatches: [String] = []
+    var parsedTotal = 0
+    var rawTotal = 0
     for case let url as URL in walker where url.pathExtension == "swift" {
-      records.append(contentsOf: try suites(inFile: url.path, relativeTo: root))
+      let source = try String(contentsOf: url, encoding: .utf8)
+      let rel = relativePath(of: url.path, under: root)
+      // ONE parse, both answers. The two traversals must stay structurally independent — that is the
+      // whole point of the attribution guard — but they have no reason to read the file twice.
+      let tree = Parser.parse(source: source)
+      let raw = rawTestAttributeCount(in: Syntax(tree))
+      let fileRecords = suites(inTree: tree, file: rel)
+      let attributed = fileRecords.reduce(0) { $0 + $1.testCount }
+      records.append(contentsOf: fileRecords)
+      rawTotal += raw
+      parsedTotal += attributed
+      if raw != attributed {
+        mismatches.append("  \(rel): attributed \(attributed), found \(raw)")
+      }
     }
-    return records.sorted { $0.key < $1.key }
+    return TreeScan(
+      records: records.sorted { $0.key < $1.key }, mismatches: mismatches,
+      parsedTotal: parsedTotal, rawTotal: rawTotal)
+  }
+
+  private static func inventory() throws -> [SuiteRecord] {
+    try scan.get().records
   }
 
   private static func baselineKeys() throws -> Set<String> {
@@ -565,31 +597,8 @@ struct TestInventoryFreezeTests {
 
   @Test("the suite walk attributes every test it can see")
   func attributionReconciles() throws {
-    let root = RepoRoot.url.path
-    guard
-      let walker = FileManager.default.enumerator(
-        at: URL(fileURLWithPath: root + "/Tests"), includingPropertiesForKeys: nil)
-    else {
-      Issue.record("cannot enumerate Tests/")
-      return
-    }
-    var mismatches: [String] = []
-    var parsedTotal = 0
-    var rawTotal = 0
-    for case let url as URL in walker where url.pathExtension == "swift" {
-      let source = try String(contentsOf: url, encoding: .utf8)
-      let rel = Self.relativePath(of: url.path, under: root)
-      // ONE parse, both answers. The two traversals must stay structurally independent — that is the
-      // whole point of this guard — but they have no reason to read the file twice.
-      let tree = Parser.parse(source: source)
-      let raw = Self.rawTestAttributeCount(in: Syntax(tree))
-      let attributed = Self.suites(inTree: tree, file: rel).reduce(0) { $0 + $1.testCount }
-      rawTotal += raw
-      parsedTotal += attributed
-      if raw != attributed {
-        mismatches.append("  \(rel): attributed \(attributed), found \(raw)")
-      }
-    }
+    let scan = try Self.scan.get()
+    let (mismatches, parsedTotal, rawTotal) = (scan.mismatches, scan.parsedTotal, scan.rawTotal)
     #expect(
       mismatches.isEmpty,
       """

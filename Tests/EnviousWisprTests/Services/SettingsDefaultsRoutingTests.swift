@@ -100,6 +100,23 @@ struct SettingsDefaultsRoutingTests {
         .count == 1)
   }
 
+  @Test("#3737: Casual mode is OFF on a fresh install, persists ON, notifies once, and is unified")
+  func casualModeDefaultsOffAndPersistsOn() {
+    let suite = Self.freshSuite()
+    let settings = SettingsManager(defaults: suite)
+    #expect(settings.casualModeEnabled == false)
+    #expect(suite.object(forKey: "casualModeEnabled") == nil)
+
+    var seen: [SettingsManager.SettingKey] = []
+    settings.onChange = { seen.append($0) }
+    settings.casualModeEnabled = true
+
+    #expect(seen == [.casualModeEnabled])
+    #expect(suite.object(forKey: "casualModeEnabled") as? Bool == true)
+    #expect(SettingsManager(defaults: suite).casualModeEnabled == true)
+    #expect(SettingsManager.unifiedDefaultsKeys.filter { $0 == "casualModeEnabled" }.count == 1)
+  }
+
   @Test("#3672: the clipboard-history switch emits its SettingKey exactly once")
   func keepOutOfClipboardHistoryNotifies() {
     let settings = SettingsManager(defaults: Self.freshSuite())

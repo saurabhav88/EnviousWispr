@@ -6,13 +6,18 @@
    "id": "keepOutOfClipboardHistory",
    "review": "additions/keepOutOfClipboardHistory.json",
    "reviewSHA256": "f492de9f5738c95cba5e7a9972f6b02dda3d7d57d3bbbfaf932db12783cf5ea6"
+  },
+  {
+   "id": "casualMode",
+   "review": "additions/casualMode.json",
+   "reviewSHA256": "a0c11e26f3b0d9950644078b0bf80ffc252177077711958cc3ec0a87715610d7"
   }
  ],
  "retiredIDs": [],
  "resource": {
   "path": "Sources/EnviousWisprAppKit/Resources/SettingsSearchVocabulary.json",
-  "sha256": "7f622292b158df2289a045554496e2c346a4e46ecb183356e21f8ede060e8d47",
-  "bytes": 1600313
+  "sha256": "8febfbae120e05d2b62a5ce65abcc5723a82502f3588b6312821a5c7cab1ed3b",
+  "bytes": 1606257
  },
  "sources": [
   {
@@ -296,7 +301,7 @@
  "languages": [
   {
    "language": "ar",
-   "contentSHA256": "862f383110115ea95ab3b1ea401c3b92d9a171d849603e96ea209385912ff531",
+   "contentSHA256": "aef58c592b086f71a6d231f103bdbe9801040e17499c4f755f139b7baf79d72f",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -388,13 +393,32 @@
      "date": "2026-10-11",
      "method": "#3546 chunk 8b orchestrator review (Codex, repo access), finding F5: the current-engine title names whichever Parakeet model serves, so the fixed version token is wrong once Ultra ships",
      "disposition": "removed the version token \" v3\" from the reviewed title; no other word changed and no new translated content"
+    },
+    {
+     "kind": "addition-content",
+     "id": "casualMode",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the Engine tab siblings and the S1-mini Tone places); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-14",
+     "draft": {
+      "path": "additions/casualMode/draft.json",
+      "sha256": "cd70be03fb13320b042958b22b9c47c60eac40bbbabeea4beec9324caf56e9c2"
+     },
+     "prompt": {
+      "path": "additions/casualMode/review-driver.py.txt",
+      "sha256": "881178e8dffe7e290cb8dadff8659c64752e704d622f2ec55834b1b22405855e"
+     },
+     "output": {
+      "path": "additions/casualMode/review-ar.txt",
+      "sha256": "41fdcefadf40189e9a6abc04ba829ce3e6788de7b33c0091baa25186ae29a57c"
+     },
+     "disposition": "adopted as returned by the review (additions/casualMode.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "bg",
-   "contentSHA256": "ee551d9d475f1276a1a8fa4b8c4d21b82a8ed2813938bff6b1ea8f9ae09c4ac8",
+   "contentSHA256": "7e98f95b43e1437d4ea3b2de997fd2b247dfd839e8f205ed72be09dbe64853c2",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -477,13 +501,32 @@
       "sha256": "7d96f6bfa071bf142ef3cc172ca0f1d9495f4b8d3828cbb010b9a2122988aeea"
      },
      "disposition": "adopted as returned by the review (additions/keepOutOfClipboardHistory.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "casualMode",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the Engine tab siblings and the S1-mini Tone places); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-14",
+     "draft": {
+      "path": "additions/casualMode/draft.json",
+      "sha256": "cd70be03fb13320b042958b22b9c47c60eac40bbbabeea4beec9324caf56e9c2"
+     },
+     "prompt": {
+      "path": "additions/casualMode/review-driver.py.txt",
+      "sha256": "881178e8dffe7e290cb8dadff8659c64752e704d622f2ec55834b1b22405855e"
+     },
+     "output": {
+      "path": "additions/casualMode/review-bg.txt",
+      "sha256": "9915a97e0d8d3607355b9002562b2c9a804652f45081697b8164c31756280b77"
+     },
+     "disposition": "adopted as returned by the review (additions/casualMode.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "cs",
-   "contentSHA256": "3083578234e556445c742e31671791a1594dd4eddd96184774f4d736df16aa09",
+   "contentSHA256": "570125e1266673446ced606e6291f1b9c3a42439df8b6d57b6894dd7913fab4b",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -566,13 +609,32 @@
       "sha256": "be13a95083c0f25edc8ab95ae4942d1b1effe27caad83e3fb437e675b111a25b"
      },
      "disposition": "adopted as returned by the review (additions/keepOutOfClipboardHistory.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "casualMode",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the Engine tab siblings and the S1-mini Tone places); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-14",
+     "draft": {
+      "path": "additions/casualMode/draft.json",
+      "sha256": "cd70be03fb13320b042958b22b9c47c60eac40bbbabeea4beec9324caf56e9c2"
+     },
+     "prompt": {
+      "path": "additions/casualMode/review-driver.py.txt",
+      "sha256": "881178e8dffe7e290cb8dadff8659c64752e704d622f2ec55834b1b22405855e"
+     },
+     "output": {
+      "path": "additions/casualMode/review-cs.txt",
+      "sha256": "c537c99135a371847974e950b3cf6829602020c8af5dd5281da222f1c2e021d5"
+     },
+     "disposition": "adopted as returned by the review (additions/casualMode.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "da",
-   "contentSHA256": "a93291fef3698cb48099de52d3b889ab4263c04f4e269228cc20002654588b53",
+   "contentSHA256": "99acbbecfd24f5f211eb5143d941e578c795714f0c0d828b4c3bc14936308fe2",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -655,13 +717,32 @@
       "sha256": "36b1b9d96d328f5631ea67ada15dd69aba7a816f24481ff033e32d2cccda54e4"
      },
      "disposition": "adopted as returned by the review (additions/keepOutOfClipboardHistory.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "casualMode",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the Engine tab siblings and the S1-mini Tone places); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-14",
+     "draft": {
+      "path": "additions/casualMode/draft.json",
+      "sha256": "cd70be03fb13320b042958b22b9c47c60eac40bbbabeea4beec9324caf56e9c2"
+     },
+     "prompt": {
+      "path": "additions/casualMode/review-driver.py.txt",
+      "sha256": "881178e8dffe7e290cb8dadff8659c64752e704d622f2ec55834b1b22405855e"
+     },
+     "output": {
+      "path": "additions/casualMode/review-da.txt",
+      "sha256": "df04fa7086aac08dfc851255af218efa8eaba6d1b9a20409a2b8572531aa09d7"
+     },
+     "disposition": "adopted as returned by the review (additions/casualMode.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "de",
-   "contentSHA256": "b44d92185c08c90fbb4e9f16f9814232dce47fc320290bf8a3381f08013e53b2",
+   "contentSHA256": "4c38f6af274fb26c0f3e79a451f105ed08acf87578a00b115338e73f3c02056e",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -768,13 +849,32 @@
      },
      "disposition": "adopted as returned by the review (additions/keepOutOfClipboardHistory.json)",
      "note": "German: Codex only. The GPT and Gemini council was NOT run for this id (spend needs founder approval); the earlier council reviews cover the other 246 ids only."
+    },
+    {
+     "kind": "addition-content",
+     "id": "casualMode",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the Engine tab siblings and the S1-mini Tone places); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-14",
+     "draft": {
+      "path": "additions/casualMode/draft.json",
+      "sha256": "cd70be03fb13320b042958b22b9c47c60eac40bbbabeea4beec9324caf56e9c2"
+     },
+     "prompt": {
+      "path": "additions/casualMode/review-driver.py.txt",
+      "sha256": "881178e8dffe7e290cb8dadff8659c64752e704d622f2ec55834b1b22405855e"
+     },
+     "output": {
+      "path": "additions/casualMode/review-de.txt",
+      "sha256": "687c85a4cd2180312c8ee50b70728bd6f31f42d75ef9b8843e7f9c31ea14523b"
+     },
+     "disposition": "adopted as returned by the review (additions/casualMode.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "el",
-   "contentSHA256": "07e0f4f5cb55e2bbb0162541223db0ce0e21b31f04d4a43b7f1ddb33024bf3af",
+   "contentSHA256": "609f4bc73a5801ac840d3eba5c1d88b812c1bc2b48d021597fba5134bae91475",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -866,13 +966,32 @@
      "date": "2026-10-11",
      "method": "#3546 chunk 8b orchestrator review (Codex, repo access), finding F5: the current-engine title names whichever Parakeet model serves, so the fixed version token is wrong once Ultra ships",
      "disposition": "removed the version token \" v3\" from the reviewed title; no other word changed and no new translated content"
+    },
+    {
+     "kind": "addition-content",
+     "id": "casualMode",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the Engine tab siblings and the S1-mini Tone places); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-14",
+     "draft": {
+      "path": "additions/casualMode/draft.json",
+      "sha256": "cd70be03fb13320b042958b22b9c47c60eac40bbbabeea4beec9324caf56e9c2"
+     },
+     "prompt": {
+      "path": "additions/casualMode/review-driver.py.txt",
+      "sha256": "881178e8dffe7e290cb8dadff8659c64752e704d622f2ec55834b1b22405855e"
+     },
+     "output": {
+      "path": "additions/casualMode/review-el.txt",
+      "sha256": "f88ece2fe7950b924a08b79b5d56ce07bfa6e51b80cdc81184f86a663eec87a0"
+     },
+     "disposition": "adopted as returned by the review (additions/casualMode.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "en",
-   "contentSHA256": "76e256a3b96b27f62ade83cec7743ca109314555778d13e454f7c4236eda4263",
+   "contentSHA256": "4acabcb9502436ea42a289128729e86a9f1c885d93c1b0df17fae69bc2710dc5",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -970,13 +1089,32 @@
       "sha256": "62d4f7388cec9f840dc3feb014f8f14ad041eebdaadd742126f44ad4d799a602"
      },
      "disposition": "adopted as returned by the review (additions/keepOutOfClipboardHistory.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "casualMode",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the Engine tab siblings and the S1-mini Tone places); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-14",
+     "draft": {
+      "path": "additions/casualMode/draft.json",
+      "sha256": "cd70be03fb13320b042958b22b9c47c60eac40bbbabeea4beec9324caf56e9c2"
+     },
+     "prompt": {
+      "path": "additions/casualMode/review-driver.py.txt",
+      "sha256": "881178e8dffe7e290cb8dadff8659c64752e704d622f2ec55834b1b22405855e"
+     },
+     "output": {
+      "path": "additions/casualMode/review-en.txt",
+      "sha256": "166b8979e538b26ce25b339674588e37489674003e488e635c40d3f13fd65016"
+     },
+     "disposition": "adopted as returned by the review (additions/casualMode.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "es",
-   "contentSHA256": "1fc0956ad86bc0cfe9afe74a2a8eddf6b1641cf6e81684d0c9af9ca2578efb30",
+   "contentSHA256": "1426da6c2336b786627e996a0393ce0b4a36949912413d9a1a2ec12211a8aae9",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -1068,13 +1206,32 @@
      "date": "2026-10-11",
      "method": "#3546 chunk 8b orchestrator review (Codex, repo access), finding F5: the current-engine title names whichever Parakeet model serves, so the fixed version token is wrong once Ultra ships",
      "disposition": "removed the version token \" v3\" from the reviewed title; no other word changed and no new translated content"
+    },
+    {
+     "kind": "addition-content",
+     "id": "casualMode",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the Engine tab siblings and the S1-mini Tone places); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-14",
+     "draft": {
+      "path": "additions/casualMode/draft.json",
+      "sha256": "cd70be03fb13320b042958b22b9c47c60eac40bbbabeea4beec9324caf56e9c2"
+     },
+     "prompt": {
+      "path": "additions/casualMode/review-driver.py.txt",
+      "sha256": "881178e8dffe7e290cb8dadff8659c64752e704d622f2ec55834b1b22405855e"
+     },
+     "output": {
+      "path": "additions/casualMode/review-es.txt",
+      "sha256": "4eaf4ee4e629947f4b2ba139d63c384ac0cb978f7777d971df9c5ff1e489376a"
+     },
+     "disposition": "adopted as returned by the review (additions/casualMode.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "et",
-   "contentSHA256": "4e7dcc3018fd61323d579688423f547d11227a46d61968473dfd79ee419c4b7d",
+   "contentSHA256": "f1e89d4bcd0928169983c417efde26d6ebd9489eb18a084fface1758bbd02f8c",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -1157,13 +1314,32 @@
       "sha256": "5a055149f437f220512ef93787919b18c75a1ea1de84e3536b8d861a42209281"
      },
      "disposition": "adopted as returned by the review (additions/keepOutOfClipboardHistory.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "casualMode",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the Engine tab siblings and the S1-mini Tone places); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-14",
+     "draft": {
+      "path": "additions/casualMode/draft.json",
+      "sha256": "cd70be03fb13320b042958b22b9c47c60eac40bbbabeea4beec9324caf56e9c2"
+     },
+     "prompt": {
+      "path": "additions/casualMode/review-driver.py.txt",
+      "sha256": "881178e8dffe7e290cb8dadff8659c64752e704d622f2ec55834b1b22405855e"
+     },
+     "output": {
+      "path": "additions/casualMode/review-et.txt",
+      "sha256": "2fe4d9fb46c3cac8f1d7a7d75a88a44ae9955ec22b0f45ef01c19cac7abc8915"
+     },
+     "disposition": "adopted as returned by the review (additions/casualMode.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "fi",
-   "contentSHA256": "5d6b1381545e936d629c97485a1efa2bf8fa20a105ad9dbd8849adc5dbb30860",
+   "contentSHA256": "ede139d4d2566e4d63ede2a19681672a513456364261ec86c46075874a99b218",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -1246,13 +1422,32 @@
       "sha256": "a0d181e0337398cf524dc5ac4d6daa87c8b9d1141ddbf515ace890b48b24f338"
      },
      "disposition": "adopted as returned by the review (additions/keepOutOfClipboardHistory.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "casualMode",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the Engine tab siblings and the S1-mini Tone places); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-14",
+     "draft": {
+      "path": "additions/casualMode/draft.json",
+      "sha256": "cd70be03fb13320b042958b22b9c47c60eac40bbbabeea4beec9324caf56e9c2"
+     },
+     "prompt": {
+      "path": "additions/casualMode/review-driver.py.txt",
+      "sha256": "881178e8dffe7e290cb8dadff8659c64752e704d622f2ec55834b1b22405855e"
+     },
+     "output": {
+      "path": "additions/casualMode/review-fi.txt",
+      "sha256": "d21d89137e2ce3f20b67776e6b169afc2e6f61d32c4f628e2948a6b4c81c08f6"
+     },
+     "disposition": "adopted as returned by the review (additions/casualMode.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "fr",
-   "contentSHA256": "39e3193481ce16e67d9813c439c1a3471087924f88e304f75aae131a39e919a9",
+   "contentSHA256": "2bb4cfa88674e7dd596f219e393d9a1597f5dfb901b56f2da0a613bf2673cb87",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -1335,13 +1530,32 @@
       "sha256": "3c3d822848fa9537b898f5f38d86919650cc0cec90c271174bbbc90c458f9a4a"
      },
      "disposition": "adopted as returned by the review (additions/keepOutOfClipboardHistory.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "casualMode",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the Engine tab siblings and the S1-mini Tone places); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-14",
+     "draft": {
+      "path": "additions/casualMode/draft.json",
+      "sha256": "cd70be03fb13320b042958b22b9c47c60eac40bbbabeea4beec9324caf56e9c2"
+     },
+     "prompt": {
+      "path": "additions/casualMode/review-driver.py.txt",
+      "sha256": "881178e8dffe7e290cb8dadff8659c64752e704d622f2ec55834b1b22405855e"
+     },
+     "output": {
+      "path": "additions/casualMode/review-fr.txt",
+      "sha256": "8a1fef204c63cae6b941856c428a0e2f5c279e09779a3b931192368e83c5e27d"
+     },
+     "disposition": "adopted as returned by the review (additions/casualMode.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "hi",
-   "contentSHA256": "8d9ce4655879877b9cfb6d30d980b4c5c4ecee3e19db0148e3651cc4b321301b",
+   "contentSHA256": "4611bc2cf9c669a77843e5752050fc7c8578ca93607b71b7c6b04f5a4c411582",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -1424,13 +1638,32 @@
       "sha256": "13477b9b3d7d3c1cf25e2d9bd1d3f52e27f43118eed4ea1b214684cad3194f34"
      },
      "disposition": "adopted as returned by the review (additions/keepOutOfClipboardHistory.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "casualMode",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the Engine tab siblings and the S1-mini Tone places); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-14",
+     "draft": {
+      "path": "additions/casualMode/draft.json",
+      "sha256": "cd70be03fb13320b042958b22b9c47c60eac40bbbabeea4beec9324caf56e9c2"
+     },
+     "prompt": {
+      "path": "additions/casualMode/review-driver.py.txt",
+      "sha256": "881178e8dffe7e290cb8dadff8659c64752e704d622f2ec55834b1b22405855e"
+     },
+     "output": {
+      "path": "additions/casualMode/review-hi.txt",
+      "sha256": "cd1847780d1bee7883dc6e092117b9406b414f486c5f0ea93fba7ba1964b7a05"
+     },
+     "disposition": "adopted as returned by the review (additions/casualMode.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "hr",
-   "contentSHA256": "664231a28d8d5ab5703bba0befeef48c9a728fdb1a56784b3a80d6eca3e60f69",
+   "contentSHA256": "677bfa660963e082b2152150c2ad5214e0b3c58445612d9f50ffe88b27e6f6db",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -1513,13 +1746,32 @@
       "sha256": "1d7825c4b16e2560b90476ffec06006d9b6a1b151d9bb15252b4f6e8ca4308dc"
      },
      "disposition": "adopted as returned by the review (additions/keepOutOfClipboardHistory.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "casualMode",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the Engine tab siblings and the S1-mini Tone places); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-14",
+     "draft": {
+      "path": "additions/casualMode/draft.json",
+      "sha256": "cd70be03fb13320b042958b22b9c47c60eac40bbbabeea4beec9324caf56e9c2"
+     },
+     "prompt": {
+      "path": "additions/casualMode/review-driver.py.txt",
+      "sha256": "881178e8dffe7e290cb8dadff8659c64752e704d622f2ec55834b1b22405855e"
+     },
+     "output": {
+      "path": "additions/casualMode/review-hr.txt",
+      "sha256": "291e6b2f03c2f1b9a8daa30297945534774cfcdf9e1c7b14959f163278274fd7"
+     },
+     "disposition": "adopted as returned by the review (additions/casualMode.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "hu",
-   "contentSHA256": "c7a478ced5c9fdfc0270472d7cb3971c70661b9a17bbefdfbf7e389527f89956",
+   "contentSHA256": "622bde66c1e90debeaeb09c8afa03226dc2d38fdcd1c67c2ca7d21cff318a2f0",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -1602,13 +1854,32 @@
       "sha256": "ac9aac5ed2dfa7f6b267cbce8a45b240e0b24ecef2d72f6f6d369bf263a87578"
      },
      "disposition": "adopted as returned by the review (additions/keepOutOfClipboardHistory.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "casualMode",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the Engine tab siblings and the S1-mini Tone places); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-14",
+     "draft": {
+      "path": "additions/casualMode/draft.json",
+      "sha256": "cd70be03fb13320b042958b22b9c47c60eac40bbbabeea4beec9324caf56e9c2"
+     },
+     "prompt": {
+      "path": "additions/casualMode/review-driver.py.txt",
+      "sha256": "881178e8dffe7e290cb8dadff8659c64752e704d622f2ec55834b1b22405855e"
+     },
+     "output": {
+      "path": "additions/casualMode/review-hu.txt",
+      "sha256": "1931eb9f2415f8ab980efcf049178eb5a7c54b322bcc14ef5bc4f215c3e15215"
+     },
+     "disposition": "adopted as returned by the review (additions/casualMode.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "it",
-   "contentSHA256": "bfdd276b862e62301002031e1fcaad51ee32f4ea055cddfc8ed9c08219292bdc",
+   "contentSHA256": "e7eb156ab6779fb1c253607d48b336f5c44e98324d321c199ee72a6649e91d18",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -1700,13 +1971,32 @@
      "date": "2026-10-11",
      "method": "#3546 chunk 8b orchestrator review (Codex, repo access), finding F5: the current-engine title names whichever Parakeet model serves, so the fixed version token is wrong once Ultra ships",
      "disposition": "removed the version token \" v3\" from the reviewed title; no other word changed and no new translated content"
+    },
+    {
+     "kind": "addition-content",
+     "id": "casualMode",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the Engine tab siblings and the S1-mini Tone places); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-14",
+     "draft": {
+      "path": "additions/casualMode/draft.json",
+      "sha256": "cd70be03fb13320b042958b22b9c47c60eac40bbbabeea4beec9324caf56e9c2"
+     },
+     "prompt": {
+      "path": "additions/casualMode/review-driver.py.txt",
+      "sha256": "881178e8dffe7e290cb8dadff8659c64752e704d622f2ec55834b1b22405855e"
+     },
+     "output": {
+      "path": "additions/casualMode/review-it.txt",
+      "sha256": "f8d991dc6d4882d4d42792e36d86192c79233c4889ab1ac21e42bd0495cf520c"
+     },
+     "disposition": "adopted as returned by the review (additions/casualMode.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "ja",
-   "contentSHA256": "2020e136ac22f6102af8a99629af82962781c8656d7992b16b17fde41f7afdf1",
+   "contentSHA256": "16a6d2165d742923ca5bd8244640c09a90eb9949809d5e219d00d3582942d823",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -1789,13 +2079,32 @@
       "sha256": "e77a83bf9aef373d316f5b4737bd16e9f9deaa4f7b011b07d3e52b0cfd127231"
      },
      "disposition": "adopted as returned by the review (additions/keepOutOfClipboardHistory.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "casualMode",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the Engine tab siblings and the S1-mini Tone places); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-14",
+     "draft": {
+      "path": "additions/casualMode/draft.json",
+      "sha256": "cd70be03fb13320b042958b22b9c47c60eac40bbbabeea4beec9324caf56e9c2"
+     },
+     "prompt": {
+      "path": "additions/casualMode/review-driver.py.txt",
+      "sha256": "881178e8dffe7e290cb8dadff8659c64752e704d622f2ec55834b1b22405855e"
+     },
+     "output": {
+      "path": "additions/casualMode/review-ja.txt",
+      "sha256": "5594cae9c035bcec4b46f45bb66bff383c9fb89b5c9331c2a37a2caec903d710"
+     },
+     "disposition": "adopted as returned by the review (additions/casualMode.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "ko",
-   "contentSHA256": "3d4a34a8f6c5b8e6c30677620fe78a268584d9c6b7f4775bbec3a65ea00af6af",
+   "contentSHA256": "71ccb428733627ffce8642ac6342fde442af2b7b4cc237fa6652a4c8fcb6b879",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -1878,13 +2187,32 @@
       "sha256": "7f454bcdb670767e35dfb932c55cfe9d6bec0528aeb482c86e2c34786a2db304"
      },
      "disposition": "adopted as returned by the review (additions/keepOutOfClipboardHistory.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "casualMode",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the Engine tab siblings and the S1-mini Tone places); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-14",
+     "draft": {
+      "path": "additions/casualMode/draft.json",
+      "sha256": "cd70be03fb13320b042958b22b9c47c60eac40bbbabeea4beec9324caf56e9c2"
+     },
+     "prompt": {
+      "path": "additions/casualMode/review-driver.py.txt",
+      "sha256": "881178e8dffe7e290cb8dadff8659c64752e704d622f2ec55834b1b22405855e"
+     },
+     "output": {
+      "path": "additions/casualMode/review-ko.txt",
+      "sha256": "9eba67e8825531f74c71bdd63abccdbfa6c5e30c9c80dd631449a3429a52192a"
+     },
+     "disposition": "adopted as returned by the review (additions/casualMode.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "lt",
-   "contentSHA256": "0581c33638863a856187fded7a9b8109f12d2e7d3acb1cb8a00adb6effaa2b58",
+   "contentSHA256": "7901a3e0cfa397437d85a87d71082df5a81702ca81d735d446484a637fe1c92d",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -1976,13 +2304,32 @@
      "date": "2026-10-11",
      "method": "#3546 chunk 8b orchestrator review (Codex, repo access), finding F5: the current-engine title names whichever Parakeet model serves, so the fixed version token is wrong once Ultra ships",
      "disposition": "removed the version token \" v3\" from the reviewed title; no other word changed and no new translated content"
+    },
+    {
+     "kind": "addition-content",
+     "id": "casualMode",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the Engine tab siblings and the S1-mini Tone places); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-14",
+     "draft": {
+      "path": "additions/casualMode/draft.json",
+      "sha256": "cd70be03fb13320b042958b22b9c47c60eac40bbbabeea4beec9324caf56e9c2"
+     },
+     "prompt": {
+      "path": "additions/casualMode/review-driver.py.txt",
+      "sha256": "881178e8dffe7e290cb8dadff8659c64752e704d622f2ec55834b1b22405855e"
+     },
+     "output": {
+      "path": "additions/casualMode/review-lt.txt",
+      "sha256": "1d5a8768ef5083da6aad269ab3db5ea782bcae34097f2d4eedd73b4d0818c389"
+     },
+     "disposition": "adopted as returned by the review (additions/casualMode.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "lv",
-   "contentSHA256": "74bf04abddbed18b70da2c3468c5fd56e52893bfe0c1197c47af3aceb9f380f0",
+   "contentSHA256": "837116be5bc935e600939d52ff441a526864e586cba319f0014fd16e016e4465",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -2065,13 +2412,32 @@
       "sha256": "3bf51cc6f0c9c2d5ad4f326ed8686e767a6897f17ccf2a72779938924cda99c7"
      },
      "disposition": "adopted as returned by the review (additions/keepOutOfClipboardHistory.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "casualMode",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the Engine tab siblings and the S1-mini Tone places); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-14",
+     "draft": {
+      "path": "additions/casualMode/draft.json",
+      "sha256": "cd70be03fb13320b042958b22b9c47c60eac40bbbabeea4beec9324caf56e9c2"
+     },
+     "prompt": {
+      "path": "additions/casualMode/review-driver.py.txt",
+      "sha256": "881178e8dffe7e290cb8dadff8659c64752e704d622f2ec55834b1b22405855e"
+     },
+     "output": {
+      "path": "additions/casualMode/review-lv.txt",
+      "sha256": "c8dffec8f1ab295f4bd46d1c2b589156b4adb41632b2148541c21ff5206b467b"
+     },
+     "disposition": "adopted as returned by the review (additions/casualMode.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "mt",
-   "contentSHA256": "874e61a957b2fc8b783ecae085eddadcacd0eaeae6e1420c23802373a6cd9ee2",
+   "contentSHA256": "4282152c43d46ea4942287293d24babc664819a491a2afc799937d2b0ebe5d6c",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -2163,13 +2529,32 @@
      "date": "2026-10-11",
      "method": "#3546 chunk 8b orchestrator review (Codex, repo access), finding F5: the current-engine title names whichever Parakeet model serves, so the fixed version token is wrong once Ultra ships",
      "disposition": "removed the version token \" v3\" from the reviewed title; no other word changed and no new translated content"
+    },
+    {
+     "kind": "addition-content",
+     "id": "casualMode",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the Engine tab siblings and the S1-mini Tone places); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-14",
+     "draft": {
+      "path": "additions/casualMode/draft.json",
+      "sha256": "cd70be03fb13320b042958b22b9c47c60eac40bbbabeea4beec9324caf56e9c2"
+     },
+     "prompt": {
+      "path": "additions/casualMode/review-driver.py.txt",
+      "sha256": "881178e8dffe7e290cb8dadff8659c64752e704d622f2ec55834b1b22405855e"
+     },
+     "output": {
+      "path": "additions/casualMode/review-mt.txt",
+      "sha256": "1196b84ea9c5c8a77e8883363e0f82d99decc6ed9338e5320ba933e32c0e116f"
+     },
+     "disposition": "adopted as returned by the review (additions/casualMode.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "nl",
-   "contentSHA256": "c582e06f4ca05e000e560652703a8b5ee83d4b3907ae8cfc8295a09a35f75417",
+   "contentSHA256": "b60a62ad51bc53f65497bfd64180c28c818d12cdb03d26e6fbfea4aa2550497e",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -2252,13 +2637,32 @@
       "sha256": "796ff8aa44174d13a0fce107db19c6a7466b20a74de23ab5935d3389c8157893"
      },
      "disposition": "adopted as returned by the review (additions/keepOutOfClipboardHistory.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "casualMode",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the Engine tab siblings and the S1-mini Tone places); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-14",
+     "draft": {
+      "path": "additions/casualMode/draft.json",
+      "sha256": "cd70be03fb13320b042958b22b9c47c60eac40bbbabeea4beec9324caf56e9c2"
+     },
+     "prompt": {
+      "path": "additions/casualMode/review-driver.py.txt",
+      "sha256": "881178e8dffe7e290cb8dadff8659c64752e704d622f2ec55834b1b22405855e"
+     },
+     "output": {
+      "path": "additions/casualMode/review-nl.txt",
+      "sha256": "a9482f56f5ad51c79a059a976a39b4a3eb2825219597ca6dd0ecfd6e6eec472c"
+     },
+     "disposition": "adopted as returned by the review (additions/casualMode.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "pl",
-   "contentSHA256": "dddf3dfccb7b62a052981f152b2dab2f1ee181f528faec3be91ac8b785633514",
+   "contentSHA256": "ead53b610e8750666ca28cec8b569d226403901fe3b8dcfe590b10b45a7a2d7f",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -2341,13 +2745,32 @@
       "sha256": "907b41830f2795811072ea0279466395b5b9eff46617e85c15621f3c2aac12ff"
      },
      "disposition": "adopted as returned by the review (additions/keepOutOfClipboardHistory.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "casualMode",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the Engine tab siblings and the S1-mini Tone places); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-14",
+     "draft": {
+      "path": "additions/casualMode/draft.json",
+      "sha256": "cd70be03fb13320b042958b22b9c47c60eac40bbbabeea4beec9324caf56e9c2"
+     },
+     "prompt": {
+      "path": "additions/casualMode/review-driver.py.txt",
+      "sha256": "881178e8dffe7e290cb8dadff8659c64752e704d622f2ec55834b1b22405855e"
+     },
+     "output": {
+      "path": "additions/casualMode/review-pl.txt",
+      "sha256": "f518ff4915728711dd8e80239dcfdbb09005fcdda69fc5da8fc6aa2c14e5267c"
+     },
+     "disposition": "adopted as returned by the review (additions/casualMode.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "pt",
-   "contentSHA256": "b34175a423233dd632693022a7873afd2bfad294bf2979da0982ba21a180bc8e",
+   "contentSHA256": "6312981d236190e6fc288964397c7548162993d9e91d4f10169ef9ecad9154a2",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -2438,13 +2861,32 @@
       "sha256": "aebf317986791d538ae60b40507672e41c6f2147a0f0000003fc93d12276b30e"
      },
      "disposition": "adopted as returned by the review (additions/keepOutOfClipboardHistory.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "casualMode",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the Engine tab siblings and the S1-mini Tone places); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-14",
+     "draft": {
+      "path": "additions/casualMode/draft.json",
+      "sha256": "cd70be03fb13320b042958b22b9c47c60eac40bbbabeea4beec9324caf56e9c2"
+     },
+     "prompt": {
+      "path": "additions/casualMode/review-driver.py.txt",
+      "sha256": "881178e8dffe7e290cb8dadff8659c64752e704d622f2ec55834b1b22405855e"
+     },
+     "output": {
+      "path": "additions/casualMode/review-pt.txt",
+      "sha256": "e5990ed2cb631ab9706dd9465292afe48713c1504ef95efca50c0fc4191e54bc"
+     },
+     "disposition": "adopted as returned by the review (additions/casualMode.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "ro",
-   "contentSHA256": "8c896f0afc9992c310ba69d5168999367b4ab37c543c1d70e821f28ff0f2f73d",
+   "contentSHA256": "765982767841792071c1d85aef9218681c226cdf1596f7748ff30140306d139a",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -2527,13 +2969,32 @@
       "sha256": "9f1564726c9e721af32d95d0ccc0479a4a2d31831b2f980e6da6bdff911b2321"
      },
      "disposition": "adopted as returned by the review (additions/keepOutOfClipboardHistory.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "casualMode",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the Engine tab siblings and the S1-mini Tone places); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-14",
+     "draft": {
+      "path": "additions/casualMode/draft.json",
+      "sha256": "cd70be03fb13320b042958b22b9c47c60eac40bbbabeea4beec9324caf56e9c2"
+     },
+     "prompt": {
+      "path": "additions/casualMode/review-driver.py.txt",
+      "sha256": "881178e8dffe7e290cb8dadff8659c64752e704d622f2ec55834b1b22405855e"
+     },
+     "output": {
+      "path": "additions/casualMode/review-ro.txt",
+      "sha256": "4d95823f616797539c8dccf00f8aad58d70844263133bd6382a3ff64a6552b55"
+     },
+     "disposition": "adopted as returned by the review (additions/casualMode.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "ru",
-   "contentSHA256": "91088991ac1d3e6de73a15a7c855e0afee23ab2c4de7e8857bebdb18f4ee060b",
+   "contentSHA256": "07fe1692fdbbecbeeb846ba05308b207936ff3ed635194d17c8302d7ed8ab3e2",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -2616,13 +3077,32 @@
       "sha256": "1ef2e6faabfcf4f8bc569d0643748894f06783bd902ddffdcb0f02eb9e619a44"
      },
      "disposition": "adopted as returned by the review (additions/keepOutOfClipboardHistory.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "casualMode",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the Engine tab siblings and the S1-mini Tone places); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-14",
+     "draft": {
+      "path": "additions/casualMode/draft.json",
+      "sha256": "cd70be03fb13320b042958b22b9c47c60eac40bbbabeea4beec9324caf56e9c2"
+     },
+     "prompt": {
+      "path": "additions/casualMode/review-driver.py.txt",
+      "sha256": "881178e8dffe7e290cb8dadff8659c64752e704d622f2ec55834b1b22405855e"
+     },
+     "output": {
+      "path": "additions/casualMode/review-ru.txt",
+      "sha256": "37818b3c5b5fc2f7bf383dd8a013c1fdedffe17fffd486ff53ec33f8d73072a4"
+     },
+     "disposition": "adopted as returned by the review (additions/casualMode.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "sk",
-   "contentSHA256": "e9197ffe84258c3388ccfa55bc1b7a123c687836459333086a20ce2e821817d3",
+   "contentSHA256": "798f84657c77fd693bbede0ccd87f80611f1c4e0dedf4f026ebaa4fbd4d3cba4",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -2705,13 +3185,32 @@
       "sha256": "7c2d040c386909847bed74dde3195c3502d701a97aaba056ebbab1109a34e115"
      },
      "disposition": "adopted as returned by the review (additions/keepOutOfClipboardHistory.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "casualMode",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the Engine tab siblings and the S1-mini Tone places); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-14",
+     "draft": {
+      "path": "additions/casualMode/draft.json",
+      "sha256": "cd70be03fb13320b042958b22b9c47c60eac40bbbabeea4beec9324caf56e9c2"
+     },
+     "prompt": {
+      "path": "additions/casualMode/review-driver.py.txt",
+      "sha256": "881178e8dffe7e290cb8dadff8659c64752e704d622f2ec55834b1b22405855e"
+     },
+     "output": {
+      "path": "additions/casualMode/review-sk.txt",
+      "sha256": "0aadf63dfdcbdfbdfe842bf248f8e068567672c1a4dbf87b4e912bc7025ef0d1"
+     },
+     "disposition": "adopted as returned by the review (additions/casualMode.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "sl",
-   "contentSHA256": "167c7b0417fc79f66f3d264190b44aa4b690b47a76156bf2471700439f8056d6",
+   "contentSHA256": "5fcd54fb55f3bf480854138c450c70572fa4c0a5dc21df882203b2a3e9362681",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -2803,13 +3302,32 @@
      "date": "2026-10-11",
      "method": "#3546 chunk 8b orchestrator review (Codex, repo access), finding F5: the current-engine title names whichever Parakeet model serves, so the fixed version token is wrong once Ultra ships",
      "disposition": "removed the version token \" v3\" from the reviewed title; no other word changed and no new translated content"
+    },
+    {
+     "kind": "addition-content",
+     "id": "casualMode",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the Engine tab siblings and the S1-mini Tone places); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-14",
+     "draft": {
+      "path": "additions/casualMode/draft.json",
+      "sha256": "cd70be03fb13320b042958b22b9c47c60eac40bbbabeea4beec9324caf56e9c2"
+     },
+     "prompt": {
+      "path": "additions/casualMode/review-driver.py.txt",
+      "sha256": "881178e8dffe7e290cb8dadff8659c64752e704d622f2ec55834b1b22405855e"
+     },
+     "output": {
+      "path": "additions/casualMode/review-sl.txt",
+      "sha256": "6ee903a0b2128e1f38d2e27a4378a9c65acbc6ce99516aa6089862a959e01b6a"
+     },
+     "disposition": "adopted as returned by the review (additions/casualMode.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "sv",
-   "contentSHA256": "a7bfd4c140764e2e94accc9025e76cdb9b6ccd718f9e6f98efa05d69d618190c",
+   "contentSHA256": "8038b94f6bfbe4ac3cea9872b9492fa5f04e0252032c1839fb51abbbd8f0b832",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -2892,13 +3410,32 @@
       "sha256": "1d8d0cfea92157056b7f5e5e80fa04fb5e3fd2df4a50a189804517b5f13f0810"
      },
      "disposition": "adopted as returned by the review (additions/keepOutOfClipboardHistory.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "casualMode",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the Engine tab siblings and the S1-mini Tone places); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-14",
+     "draft": {
+      "path": "additions/casualMode/draft.json",
+      "sha256": "cd70be03fb13320b042958b22b9c47c60eac40bbbabeea4beec9324caf56e9c2"
+     },
+     "prompt": {
+      "path": "additions/casualMode/review-driver.py.txt",
+      "sha256": "881178e8dffe7e290cb8dadff8659c64752e704d622f2ec55834b1b22405855e"
+     },
+     "output": {
+      "path": "additions/casualMode/review-sv.txt",
+      "sha256": "7dc92a94e9854858928f91adfab6049cfd21384608c886a2b2d05f3552741df1"
+     },
+     "disposition": "adopted as returned by the review (additions/casualMode.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "tr",
-   "contentSHA256": "df4e3e8d5fc19e6be2b43d090c55fbc99c36baccd4b2c0cdf5cfac6ccbf39b9e",
+   "contentSHA256": "d56c9a565b8ed395a023e24e1c3ff1f590f2a4b63d8c8f5f4ede8a2c7b8101b1",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -2981,13 +3518,32 @@
       "sha256": "3bb1515b237312f9ae8664727222f03576ca5c1b40b55dc294344168583e5e1c"
      },
      "disposition": "adopted as returned by the review (additions/keepOutOfClipboardHistory.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "casualMode",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the Engine tab siblings and the S1-mini Tone places); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-14",
+     "draft": {
+      "path": "additions/casualMode/draft.json",
+      "sha256": "cd70be03fb13320b042958b22b9c47c60eac40bbbabeea4beec9324caf56e9c2"
+     },
+     "prompt": {
+      "path": "additions/casualMode/review-driver.py.txt",
+      "sha256": "881178e8dffe7e290cb8dadff8659c64752e704d622f2ec55834b1b22405855e"
+     },
+     "output": {
+      "path": "additions/casualMode/review-tr.txt",
+      "sha256": "4d3e31b3e97633fc00d795575bb71d77df1fdc93933b9ef473a45b95f7b37892"
+     },
+     "disposition": "adopted as returned by the review (additions/casualMode.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "uk",
-   "contentSHA256": "89393dee2ecc97a11f5f84393ba8e5f2f75b8707dfd4106d2d4d76817bdf1830",
+   "contentSHA256": "5bf20fa01711d010a43fe2e96ceebd020ceeb8eebd92db38f60eb749ae0676e3",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -3079,13 +3635,32 @@
      "date": "2026-10-11",
      "method": "#3546 chunk 8b orchestrator review (Codex, repo access), finding F5: the current-engine title names whichever Parakeet model serves, so the fixed version token is wrong once Ultra ships",
      "disposition": "removed the version token \" v3\" from the reviewed title; no other word changed and no new translated content"
+    },
+    {
+     "kind": "addition-content",
+     "id": "casualMode",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the Engine tab siblings and the S1-mini Tone places); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-14",
+     "draft": {
+      "path": "additions/casualMode/draft.json",
+      "sha256": "cd70be03fb13320b042958b22b9c47c60eac40bbbabeea4beec9324caf56e9c2"
+     },
+     "prompt": {
+      "path": "additions/casualMode/review-driver.py.txt",
+      "sha256": "881178e8dffe7e290cb8dadff8659c64752e704d622f2ec55834b1b22405855e"
+     },
+     "output": {
+      "path": "additions/casualMode/review-uk.txt",
+      "sha256": "90cd717e511b9ee6aec70b619bfe3867c926fa970d940a2792d44e0c9540149f"
+     },
+     "disposition": "adopted as returned by the review (additions/casualMode.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "vi",
-   "contentSHA256": "685344dfbcf0d9586377d532f862726cae396e20d3b0557e504483fc10d3bbef",
+   "contentSHA256": "1e2d55919724a03e2454177bd9d50153ed9887051b159b0fee2fdc7d6b68fc74",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -3168,13 +3743,32 @@
       "sha256": "fc1790dac862be97ddc92dda13da7ccbc0de171ae29351e59686fbc63f77a1ac"
      },
      "disposition": "adopted as returned by the review (additions/keepOutOfClipboardHistory.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "casualMode",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the Engine tab siblings and the S1-mini Tone places); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-14",
+     "draft": {
+      "path": "additions/casualMode/draft.json",
+      "sha256": "cd70be03fb13320b042958b22b9c47c60eac40bbbabeea4beec9324caf56e9c2"
+     },
+     "prompt": {
+      "path": "additions/casualMode/review-driver.py.txt",
+      "sha256": "881178e8dffe7e290cb8dadff8659c64752e704d622f2ec55834b1b22405855e"
+     },
+     "output": {
+      "path": "additions/casualMode/review-vi.txt",
+      "sha256": "ba37e8c43930b50062b4b15e41b167c328b559912084bc84d208daaccea2a665"
+     },
+     "disposition": "adopted as returned by the review (additions/casualMode.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "zh",
-   "contentSHA256": "e796a7a434954b4912dac3537c619e52aa6c41167781d0689bd88212a3ff525b",
+   "contentSHA256": "2f861d5246744a4637bf2b9c2ac86b725885142dc5755a6f3fd5100695420b83",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -3257,6 +3851,25 @@
       "sha256": "7d91fac9f8b28edf7f45bb9ab3f29747be2940bc9aaaf6570550b4499d736ce2"
      },
      "disposition": "adopted as returned by the review (additions/keepOutOfClipboardHistory.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "casualMode",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the Engine tab siblings and the S1-mini Tone places); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-14",
+     "draft": {
+      "path": "additions/casualMode/draft.json",
+      "sha256": "cd70be03fb13320b042958b22b9c47c60eac40bbbabeea4beec9324caf56e9c2"
+     },
+     "prompt": {
+      "path": "additions/casualMode/review-driver.py.txt",
+      "sha256": "881178e8dffe7e290cb8dadff8659c64752e704d622f2ec55834b1b22405855e"
+     },
+     "output": {
+      "path": "additions/casualMode/review-zh.txt",
+      "sha256": "9cc422cf4882d46980a092757666f0bd8f9b757af36f6b2c6a85ca4778393ae4"
+     },
+     "disposition": "adopted as returned by the review (additions/casualMode.json)"
     }
    ],
    "phraseExemptions": []
@@ -3307,6 +3920,7 @@
   "bluetoothGuide": "445ed828d0133e5a218c100eb2df93a59830fe4d69da484e25869c4425145a79",
   "bluetoothGuide.learnMore": "4d312e93ce5f0565e9506db62ecc1c6a42894567ec5476e1abbce81f4b47cd16",
   "cancelKeybind": "d82570c24238ed8c67c1c190172fc861780259d58cb6ec5fdfe3b1643c5dec92",
+  "casualMode": "c2a5d58c654c14b3b176d95f4768293082422942a6703bf89c1fb5c06c4700dc",
   "contactsSyncOnLaunch": "41f77f2ec9b9c551568bc1ded19f36e24b7d844e9f406a7ee519cc6c26939817",
   "copyLastKeybind": "3ff3f188f9d78c347cab688632896ab567441680766f5314ff72f6a7eed13a33",
   "currentEngineSection": "76daf8b646e233495d835a44f589ce2ace17612e55d4614c5478aaa740b5601e",

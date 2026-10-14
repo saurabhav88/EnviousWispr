@@ -138,9 +138,9 @@ func targetSettings(
 // Deliberately NOT set on the xcodebuild command line: a command-line
 // `SETTING=value` has highest precedence and applies to EVERY target in the
 // invocation, which would de-optimize the PRODUCT modules too. Per-target is what
-// the intent actually is, and it keeps `main-post-merge.yml`'s release suite
+// the intent actually is, and it keeps the PR gate's Release suite (`pr-check.yml`)
 // running unoptimized tests against fully optimized product code — so the
-// Debug/Release behavioural divergences that job exists to catch (#2070/#2083,
+// Debug/Release behavioural divergences that suite exists to catch (#2070/#2083,
 // `Parser.defaultMaximumNestingLevel` is 20 under `#if DEBUG` and 256 otherwise)
 // stay caught.
 //
@@ -254,6 +254,7 @@ let firstPartyTargetDeps: [TargetDependency] = [
   .target(name: "EnviousWisprAudio"),
   .target(name: "EnviousWisprServices"),
   .target(name: "EnviousWisprASR"),
+  .target(name: "EnviousWisprTranscribeCpp"),
   .target(name: "EnviousWisprLLM"),
   .target(name: "EnviousWisprPipeline"),
   .target(name: "EnviousWisprWordCheck"),
@@ -325,6 +326,13 @@ let project = Project(
       dependencies: [
         .package(product: "FluidAudio")
       ]),
+    // #3735: thin Swift boundary over the transcribe.cpp binary framework
+    // (mechanism only, no app policy). See Package.swift for the binary pin.
+    firstPartyLibrary(
+      "EnviousWisprTranscribeCpp",
+      dependencies: [
+        .package(product: "CTranscribe")
+      ]),
     firstPartyLibrary(
       "EnviousWisprASR",
       dependencies: [
@@ -334,7 +342,10 @@ let project = Project(
         // #1707 Phase 3: TelemetryService (recoveryEngineActionDeferred) for
         // the EngineRecoveryGate mutation-claim guards on the idle-unload path.
         .target(name: "EnviousWisprServices"),
+        // #3735: the transcribe.cpp boundary for the Whisper engine.
+        .target(name: "EnviousWisprTranscribeCpp"),
         .package(product: "WhisperKit"),
+        .package(product: "CTranscribe"),  // #3735: transcribe.cpp; Xcode does not propagate it transitively
         .package(product: "FluidAudio"),
         .package(product: "PostHog"),
       ]),
@@ -420,6 +431,9 @@ let project = Project(
         .target(name: "EnviousWisprPostProcessing"),
         .target(name: "EnviousWisprLivePreview"),
         .target(name: "EnviousWisprASR"),
+        // #3735: the transcribe.cpp boundary for the Universal preview engine.
+        .target(name: "EnviousWisprTranscribeCpp"),
+        .package(product: "CTranscribe"),
         // NO `.target(name: "EnviousWisprModelDelivery")`. The limb receives
         // resolved paths and an admission ANSWER as values; giving it the
         // delivery module would let a future edit import a fetch-capable API
@@ -449,6 +463,7 @@ let project = Project(
         .target(name: "EnviousWisprLivePreview"),
         .target(name: "EnviousWisprWhisperPreviewAdapter"),
         .package(product: "WhisperKit"),
+        .package(product: "CTranscribe"),  // #3735: transcribe.cpp; Xcode does not propagate it transitively
         .package(product: "FluidAudio"),
         .package(product: "PostHog"),
         .package(product: "MLX"),  // #3242: Cmlx/_NumericsShims via EnviousWisprWordCheck, as FluidAudio above
@@ -487,6 +502,7 @@ let project = Project(
         .target(name: "EnviousWisprAppKit"),
         .target(name: "EnviousWisprCore"),
         .package(product: "WhisperKit"),
+        .package(product: "CTranscribe"),  // #3735: transcribe.cpp; Xcode does not propagate it transitively
         .package(product: "FluidAudio"),
         .package(product: "PostHog"),
         .package(product: "MLX"),  // #3242: Cmlx/_NumericsShims via EnviousWisprWordCheck, as FluidAudio above
@@ -501,6 +517,7 @@ let project = Project(
         .target(name: "EnviousWisprServices"),
         // Same transitive-propagation reason as AppLive below.
         .package(product: "WhisperKit"),
+        .package(product: "CTranscribe"),  // #3735: transcribe.cpp; Xcode does not propagate it transitively
         .package(product: "FluidAudio"),
         .package(product: "PostHog"),
         .package(product: "MLX"),  // #3242: Cmlx/_NumericsShims via EnviousWisprWordCheck, as FluidAudio above
@@ -519,6 +536,7 @@ let project = Project(
         // "unable to resolve module dependency: 'FastClusterWrapper'" — a
         // FluidAudio internal named nowhere in this project's source.
         .package(product: "WhisperKit"),
+        .package(product: "CTranscribe"),  // #3735: transcribe.cpp; Xcode does not propagate it transitively
         .package(product: "FluidAudio"),
         .package(product: "PostHog"),
         .package(product: "MLX"),  // #3242: Cmlx/_NumericsShims via EnviousWisprWordCheck, as FluidAudio above
@@ -595,6 +613,11 @@ let project = Project(
         // so a file merely placed beside its siblings ships in no build.
         // Nothing loads it until the preview recognizer arrives (chunk 4).
         "Sources/EnviousWispr/Resources/whisperkit-preview-delivery-manifest.json",
+        // #3735: the transcribe.cpp GGUF models (Whisper turbo Q8_0 as verified parts,
+        // and whisper-small Q8_0 for the Universal preview). Bundled now, inert until
+        // the engine swap registers them.
+        "Sources/EnviousWispr/Resources/whisper-delivery-manifest.json",
+        "Sources/EnviousWispr/Resources/whisper-preview-delivery-manifest.json",
         // #1348 Phase 3: EG-1 delivery manifest — the DELIVERY trust root for
         // EG-1's convergence onto the shared engine (the runtime trust root
         // stays eg1-manifest.json). Same Bundle.main route.
@@ -688,6 +711,9 @@ let project = Project(
         // the module that chooses live implementations.
         .target(name: "EnviousWisprAppLive"),
         .package(product: "Sparkle"),
+        // #3735: dynamic framework, a direct app dep so Tuist embeds
+        // CTranscribe.framework into the .app (same reason as Sparkle).
+        .package(product: "CTranscribe"),
       ],
       settings: appSettings
     ),
@@ -724,6 +750,7 @@ let project = Project(
         .target(name: "EnviousWisprAppKitTestSupport"),
         .target(name: "EnviousWisprDesktopEffects"),
         .package(product: "WhisperKit"),
+        .package(product: "CTranscribe"),  // #3735: transcribe.cpp; Xcode does not propagate it transitively
         .package(product: "FluidAudio"),
         .package(product: "PostHog"),
         .package(product: "MLX"),  // #3242: Cmlx/_NumericsShims via EnviousWisprWordCheck, as FluidAudio above
@@ -758,6 +785,7 @@ let project = Project(
         .package(product: "PostHog"),
         .package(product: "MLX"),  // #3242: Cmlx/_NumericsShims via EnviousWisprWordCheck, as FluidAudio above
         .package(product: "Sparkle"),
+        .package(product: "CTranscribe"),  // #3735: transcribe.cpp; Xcode does not propagate it transitively
         // #1741 Chunk 10: EngineMutationInventoryFreezeTests's real Swift
         // parser. Test-target-only — never reaches the app or XPC targets
         // above (see Package.swift for the matching SPM dependency).
@@ -782,7 +810,10 @@ let project = Project(
         // #1525 PR I-B: the bridge classification tests import this
         // directly, not transitively through EnviousWisprASR.
         .target(name: "EnviousWisprFluidAudioBridge"),
+        // #3735: TranscribeCppRealBoundaryTests import the boundary directly.
+        .target(name: "EnviousWisprTranscribeCpp"),
         .package(product: "WhisperKit"),
+        .package(product: "CTranscribe"),  // #3735: transcribe.cpp; Xcode does not propagate it transitively
         // Static-link FluidAudio: the test bundle links EnviousWisprASR (a
         // static framework that uses FluidAudio), so its symbols must be
         // resolved here too (Xcode doesn't propagate transitive static-link).
@@ -829,9 +860,9 @@ let project = Project(
         targets: ["EnviousWispr"],
         findImplicitDependencies: true
       ),
-      // PR3: release-config test action so main-post-merge can run
-      // `xcodebuild test -scheme EnviousWispr-Release -configuration Release`,
-      // preserving the release-config test coverage the old post-merge job ran.
+      // PR3: release-config test action, added so the old post-merge job could
+      // run `xcodebuild test -scheme EnviousWispr-Release -configuration Release`
+      // (#3729 retired that workflow).
       //
       // #3013: this scheme is now the PR gate's test run, executed from
       // `build-for-testing` products with `test-without-building`.

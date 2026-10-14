@@ -24,7 +24,8 @@
 # checkout would have satisfied it. The lanes are named so that dropping any one
 # named lane's declaration fails, and an unrelated checkout cannot substitute.
 # The aggregator checkout uses the default depth (no key) and is not required.
-# main-post-merge.yml legitimately uses fetch-depth: 2 and is NOT linted here.
+# cache-warm.yml sets its own depths (0 for a PR diff, 2 for a push diff, 1 for
+# the build) and is NOT linted here; this guard covers pr-check.yml only.
 #
 # Usage:
 #   check-pr-check-fetch-depth.sh [FILE]   default FILE: .github/workflows/pr-check.yml

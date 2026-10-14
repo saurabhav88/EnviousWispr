@@ -903,6 +903,24 @@
    "seedParent": "startWordField"
   },
   {
+   "id": "casualMode",
+   "kind": "setting",
+   "destination": {
+    "page": "dictation",
+    "tab": "engine"
+   },
+   "disposition": "mapped",
+   "parent": "section.engineShared",
+   "target": "casualMode",
+   "fallbacks": [],
+   "dynamicTitle": false,
+   "seedParent": null,
+   "description": {
+    "kind": "static",
+    "english": "Leave off the full stop at the end of each dictation."
+   }
+  },
+  {
    "id": "unloadModel",
    "kind": "setting",
    "destination": {

@@ -1,0 +1,11 @@
+{
+  "language": "sl",
+  "title": "brez pike na koncu",
+  "words": [
+    "končna pika"
+  ],
+  "phrases": [
+    "brez pike na koncu nareka",
+    "odstrani piko na koncu nareka"
+  ]
+}

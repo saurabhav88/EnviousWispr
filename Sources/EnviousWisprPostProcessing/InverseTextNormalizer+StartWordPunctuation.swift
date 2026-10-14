@@ -8,10 +8,14 @@ import Foundation
 package struct SpokenPunctuationResult: Sendable, Equatable {
   package let text: String
   package let rulesFired: Int
+  /// #3737: the text ENDS with a full stop the user said: the last MARK command was a period, and only
+  /// whitespace and line or paragraph break commands follow it. Casual mode keeps that full stop.
+  package let spokenFinalFullStop: Bool
 
-  package init(text: String, rulesFired: Int) {
+  package init(text: String, rulesFired: Int, spokenFinalFullStop: Bool = false) {
     self.text = text
     self.rulesFired = rulesFired
+    self.spokenFinalFullStop = spokenFinalFullStop
   }
 }
 
@@ -65,10 +69,16 @@ extension InverseTextNormalizer {
     let start = startWord.trimmingCharacters(in: .whitespacesAndNewlines)
       .precomposedStringWithCanonicalMapping
 
+    // #3738: symbols first, rendered by their own spacing, so a sentence capital pending from a later
+    // mark command can land inside an opening bracket ("Diktiere Punkt Diktiere linke Klammer beta"
+    // -> `. (Beta`), and so the legacy matcher below never sees a symbol command.
+    let symbolPass = Self.applySymbolCommands(
+      text, rules: rules, startWord: start, guardDeterminers: false, joinerGap: false)
+
     var ruleByKey: [String: SpokenPunctuationRule] = [:]
     var breakForms: [String] = []
     var markForms: [String] = []
-    for rule in rules {
+    for rule in rules where rule.command.role != .symbol {
       let isBreak = rule.command == .lineBreak || rule.command == .paragraphBreak
       for form in rule.spokenForms {
         let normalized = form.precomposedStringWithCanonicalMapping
@@ -80,17 +90,24 @@ extension InverseTextNormalizer {
     let pattern = Self.startWordPattern(start: start, breakForms: breakForms, markForms: markForms)
     // #3594: a command the engine wrote twice ("Diktiere Punkt. Diktiere Punkt.") is one command.
     let text = Self.mergeRepeatedCommand(
-      in: text,
+      in: symbolPass.text,
       forms: Self.alternation(breakForms + markForms),
       startWord: start.isEmpty ? "" : Self.literal(start))
     let matches = reMatches(pattern, text)
-    guard !matches.isEmpty else { return unchanged }
+    guard !matches.isEmpty else {
+      return symbolPass.fired == 0
+        ? unchanged : SpokenPunctuationResult(text: text, rulesFired: symbolPass.fired)
+    }
 
     let ns = text as NSString
     var out = ""
     var cursor = 0
     var pendingCapital = false
-    var fired = 0
+    var fired = symbolPass.fired
+    // #3737: whether the last mark command was a period with nothing but whitespace and break commands
+    // after it. Anything else that survives between or after (a mark the matcher did not consume, a
+    // closer, a word) makes it false, so an untouched input dot is never attributed to a command.
+    var finalFullStop = false
 
     for match in matches {
       let range = match.result.range
@@ -100,8 +117,10 @@ extension InverseTextNormalizer {
         ? Self.capitalizing(gap, sentinels: protectedSentinels, pending: &pendingCapital) : gap
       cursor = range.location + range.length
 
+      if gap.contains(where: { !$0.isWhitespace }) { finalFullStop = false }
       let form = match.g(1) ?? match.g(2) ?? ""
       guard let rule = ruleByKey[Self.formKey(form)] else {
+        finalFullStop = false
         // The pattern is built from the same forms, so this is unreachable; keep the matched text
         // rather than drop it if that ever stops being true.
         out += ns.substring(with: range)
@@ -125,13 +144,33 @@ extension InverseTextNormalizer {
           &out, before: rule, startWord: start, language: language,
           protectedSentinels: protectedSentinels)
       }
+      // #3738: a French opening guillemet keeps its no-break space before a mark (never before a
+      // line break, which would leave trailing whitespace).
+      if rule.command.role == .mark, out.hasSuffix("\u{00AB}") { out += "\u{00A0}" }
       out += rule.replacement
       fired += 1
+      switch rule.command {
+      case .period: finalFullStop = true
+      case .lineBreak, .paragraphBreak: break
+      case .comma, .questionMark, .exclamationMark, .colon, .semicolon: finalFullStop = false
+      // #3738: symbols never reach this matcher (filtered out of its forms above; the symbol pass
+      // renders them first). Listed so a new command is a compile error here, not a silent default.
+      case .openParenthesis, .closeParenthesis, .openSquareBracket, .closeSquareBracket,
+        .openBrace, .closeBrace, .openAngleBracket, .closeAngleBracket, .openQuote, .closeQuote,
+        .openSingleQuote, .closeSingleQuote, .hyphen, .underscore, .apostrophe, .emDash, .enDash,
+        .ellipsis, .ampersand, .plusSign, .equalsSign, .verticalBar, .asterisk, .hashSign, .tilde:
+        break
+      }
       switch rule.command {
       case .period, .questionMark, .exclamationMark, .lineBreak, .paragraphBreak:
         pendingCapital = true
       case .comma, .colon, .semicolon:
         pendingCapital = false
+      case .openParenthesis, .closeParenthesis, .openSquareBracket, .closeSquareBracket,
+        .openBrace, .closeBrace, .openAngleBracket, .closeAngleBracket, .openQuote, .closeQuote,
+        .openSingleQuote, .closeSingleQuote, .hyphen, .underscore, .apostrophe, .emDash, .enDash,
+        .ellipsis, .ampersand, .plusSign, .equalsSign, .verticalBar, .asterisk, .hashSign, .tilde:
+        break
       }
     }
 
@@ -139,7 +178,9 @@ extension InverseTextNormalizer {
     out +=
       pendingCapital
       ? Self.capitalizing(tail, sentinels: protectedSentinels, pending: &pendingCapital) : tail
-    return SpokenPunctuationResult(text: out, rulesFired: fired)
+    if tail.contains(where: { !$0.isWhitespace }) { finalFullStop = false }
+    return SpokenPunctuationResult(
+      text: out, rulesFired: fired, spokenFinalFullStop: finalFullStop)
   }
 
   /// #3624: whether `text` holds at least one COMPLETE start-word command of `language`: the start
@@ -157,6 +198,7 @@ extension InverseTextNormalizer {
     }
     var breakForms: [String] = []
     var markForms: [String] = []
+    // Every command counts as evidence for routing, symbols included (#3738).
     for rule in rules {
       let isBreak = rule.command == .lineBreak || rule.command == .paragraphBreak
       for form in rule.spokenForms {
@@ -228,7 +270,7 @@ extension InverseTextNormalizer {
 
   /// The lookup key of a form or of the text that matched it: lowercase, whitespace runs collapsed to
   /// one space, typographic apostrophe folded to the plain one.
-  private static func formKey(_ text: String) -> String {
+  static func formKey(_ text: String) -> String {
     var key = ""
     var previousWasSpace = false
     for character in text.precomposedStringWithCanonicalMapping.lowercased() {
@@ -270,6 +312,8 @@ extension InverseTextNormalizer {
   private static func isWhitespaceOrOpening(_ character: Character) -> Bool {
     if character.isWhitespace || character == "\"" || character == "'" { return true }
     if character == "\u{00BF}" || character == "\u{00A1}" { return true }
+    // #3738: the opening symbols that are not Unicode opening punctuation.
+    if character == "<" || character == "#" || character == "~" { return true }
     return character.unicodeScalars.allSatisfy {
       $0.properties.generalCategory == .openPunctuation
         || $0.properties.generalCategory == .initialPunctuation

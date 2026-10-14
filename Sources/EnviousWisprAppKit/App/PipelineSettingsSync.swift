@@ -184,6 +184,8 @@ final class PipelineSettingsSync {
     whisperKitKernelDriver.emojiFormatter.emojiFormatterEnabled = settings.emojiFormatterEnabled
     kernelDriver.spokenPunctuation = settings.spokenPunctuation
     whisperKitKernelDriver.spokenPunctuation = settings.spokenPunctuation
+    kernelDriver.casualModeEnabled = settings.casualModeEnabled
+    whisperKitKernelDriver.casualModeEnabled = settings.casualModeEnabled
 
     audioCapture.selectedInputDeviceUID = settings.selectedInputDeviceUID
     audioCapture.preferredInputDeviceIDOverride = settings.preferredInputDeviceIDOverride
@@ -336,6 +338,11 @@ final class PipelineSettingsSync {
       // its actor hop); the next take uses the new value.
       kernelDriver.spokenPunctuation = settings.spokenPunctuation
       whisperKitKernelDriver.spokenPunctuation = settings.spokenPunctuation
+    case .casualModeEnabled:
+      // #3737: live-mutable; a change also affects an in-flight take
+      // if its Casual Ending step has not run yet.
+      kernelDriver.casualModeEnabled = settings.casualModeEnabled
+      whisperKitKernelDriver.casualModeEnabled = settings.casualModeEnabled
     case .isDebugModeEnabled:
       Task { await AppLogger.shared.setDebugMode(settings.isDebugModeEnabled) }
     case .debugLogLevel:

@@ -131,7 +131,7 @@
     // `kernelForTesting` + `testForceTransition` are DEBUG-only seams
     // (`KernelDictationDriver.swift` `#if DEBUG`), so EVERY test needing them lives
     // in this one block — same pattern as ASREventRouterTests. Otherwise the
-    // release-config test lane (post-merge) fails to compile and reports an empty
+    // release-config test lane (the PR gate) fails to compile and reports an empty
     // bundle, which a Debug-only local run cannot see by construction. Add new
     // seam-using tests HERE rather than starting a second guarded region.
     #if DEBUG

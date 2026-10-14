@@ -18,7 +18,8 @@ struct RecoveryTextProcessorTests {
     backendType: ASRBackendType = .parakeet, lidCapable: Bool = false,
     languageMode: LanguageMode = .auto,
     s1Control: S1ControlSettings? = nil,
-    englishSpelling: EnglishSpelling? = nil
+    englishSpelling: EnglishSpelling? = nil,
+    casualMode: Bool? = nil
   ) -> RecordingSettingsSnapshot {
     RecordingSettingsSnapshot(
       backendType: backendType,
@@ -33,7 +34,7 @@ struct RecoveryTextProcessorTests {
       llmModel: "none",
       polishPromptVersion: nil,
       s1Control: s1Control,
-      englishSpelling: englishSpelling)
+      englishSpelling: englishSpelling, casualModeEnabled: casualMode)
   }
 
   /// #2649: a recovered take polishes under the tone the user had picked WHEN
@@ -87,6 +88,23 @@ struct RecoveryTextProcessorTests {
       snapshot(fillerRemoval: false, languageMode: .locked("en"), englishSpelling: nil))
     let legacyOutcome = await legacy.process(rawText: "the color of the center")
     #expect(legacyOutcome.text == "the color of the center")
+  }
+
+  /// #3737: a recovered take keeps or drops its final full stop as the live take did, and a spool
+  /// from before Casual mode replays with it OFF.
+  @Test("Casual mode replays from the snapshot; a legacy spool keeps the full stop")
+  func casualModeReplays() async {
+    let casual = RecoveryTextProcessor(keychainManager: KeychainManager())
+    casual.applySettings(
+      snapshot(fillerRemoval: false, languageMode: .locked("en"), casualMode: true))
+    let casualOutcome = await casual.process(rawText: "see you soon.")
+    #expect(casualOutcome.text.hasSuffix("soon"))
+
+    let legacy = RecoveryTextProcessor(keychainManager: KeychainManager())
+    legacy.applySettings(
+      snapshot(fillerRemoval: false, languageMode: .locked("en"), casualMode: nil))
+    let legacyOutcome = await legacy.process(rawText: "see you soon.")
+    #expect(legacyOutcome.text.hasSuffix("soon."))
   }
 
   @Test("disabling filler removal in the snapshot leaves the text untouched")

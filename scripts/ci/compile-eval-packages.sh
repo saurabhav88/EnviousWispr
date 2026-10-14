@@ -5,11 +5,13 @@
 # seconds land on the EW-CI-METRICS line through scripts/lib/ci-phase.sh).
 #
 # scripts/eval/{apple_runner,alias_runner,prompt_render} are STANDALONE SwiftPM
-# packages that path-depend on EnviousWisprCore. Nothing else compiles them —
-# not scripts/xcode-test.sh, not any Xcode scheme — so a public Core signature
-# change broke them with a fully green local suite AND a green PR (#1770 left
-# apple_runner uncompilable; 4,374 local tests passed and only a human reading
-# the call site caught it). Compile-only: no run, no corpus, no model download.
+# packages that path-depend on EnviousWisprCore. No Xcode scheme compiles them,
+# so a public Core signature change once broke them with a fully green local
+# suite AND a green PR (#1770 left apple_runner uncompilable; 4,374 local tests
+# passed and only a human reading the call site caught it). Caller: a full
+# unfiltered scripts/xcode-test.sh run, after its Debug suite and before its
+# validation receipt (#3729); pr-check.yml ran it until #3729 PR-B. Compile-only:
+# no run, no corpus, no model download.
 #
 # `swift build` is correct here and does NOT contravene the project's
 # Xcode-build-engine policy: that policy governs the app, XPC, release and

@@ -1,0 +1,1 @@
+{"language":"sk","title":"vynechávať bodku na konci","words":["koncová bodka"],"phrases":["bez bodky na konci diktovaného textu","vynechať bodku na konci diktovania"]}

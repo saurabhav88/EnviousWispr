@@ -72,6 +72,7 @@ enum SettingsMapID: String, CaseIterable, Hashable, Sendable {
   case startWordField = "startWordField"
   case startWordSave = "startWord.save"
   case startWordReset = "startWord.reset"
+  case casualMode = "casualMode"
   case unloadModelAfter = "unloadModel"
   case unloadModelNever = "unloadModel.never"
   case unloadModelImmediately = "unloadModel.immediately"

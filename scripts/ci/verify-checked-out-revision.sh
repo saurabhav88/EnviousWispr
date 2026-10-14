@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 # Assert the working tree is at the revision the workflow intended to test.
 #
-# Why it is a script and not an inline step (#1994): main-post-merge.yml runs
-# four jobs that each check out independently (the fourth is the #2334
-# schedule guard), so this guard would otherwise exist as four hand-mirrored
-# copies. Two copies of one decision is the shape that drifts —
+# Why it is a script and not an inline step (#1994): main-post-merge.yml ran
+# four jobs that each checked out independently (the fourth was the #2334
+# schedule guard), so this guard would otherwise have existed as four
+# hand-mirrored copies. Two copies of one decision is the shape that drifts —
 # .claude/rules/workflow-process.md RULE: port-proven-patterns-wholesale
-# records two cases in this repo where exactly that happened. One owner, four
-# callers.
+# records two cases in this repo where exactly that happened. Since #3729 its
+# callers are cache-warm.yml's classify and warm jobs.
 #
 # Reads (all from the workflow environment):
 #   EVENT_NAME    github.event_name

@@ -1,0 +1,63 @@
+{
+ "schemaVersion": 1,
+ "identity": {
+  "family": "whisper",
+  "name": "whisper-large-v3-turbo-gguf",
+  "revision": "5eaf945c7978e564bae5b28a5b1639dd93c2bfb1",
+  "variant": "q8_0",
+  "runtimeABI": "transcribecpp-ew-3735-v0.4.0.4"
+ },
+ "runtimeCompatibility": {
+  "minAppVersion": "2.5.4"
+ },
+ "optionalFiles": [],
+ "totalBytes": 886381760,
+ "files": [
+  {
+   "path": "whisper-large-v3-turbo-Q8_0.gguf",
+   "sizeBytes": 886381760,
+   "sha256": "b2e30cc286bc9f3aba4db9099fc7403543497c05ce7100d0d83091ddfd25a183",
+   "component": "whisper-large-v3-turbo-Q8_0.gguf",
+   "parts": [
+    {
+     "path": "whisper-large-v3-turbo-Q8_0.gguf.part1",
+     "sizeBytes": 295460587,
+     "sha256": "ed3320a8c2196ab4d75be1c3df546fded7f8d990ffd8f584f892d312664b1c4b"
+    },
+    {
+     "path": "whisper-large-v3-turbo-Q8_0.gguf.part2",
+     "sizeBytes": 295460587,
+     "sha256": "30948cda4c6c660612ca668c70a64ba40f8907efe5d80754f20407f837312d4f"
+    },
+    {
+     "path": "whisper-large-v3-turbo-Q8_0.gguf.part3",
+     "sizeBytes": 295460586,
+     "sha256": "ece5e9602614bd67575940bb32f25a7145775e3e7af76e32b1f138fa38bed1c7"
+    }
+   ]
+  }
+ ],
+ "sources": [
+  {
+   "id": "our_copy",
+   "baseURL": "https://models.enviouswispr.com/whisper/handy-computer/whisper-large-v3-turbo-gguf/5eaf945c7978e564bae5b28a5b1639dd93c2bfb1/",
+   "servesParts": true
+  },
+  {
+   "id": "hf_pinned",
+   "baseURL": "https://huggingface.co/handy-computer/whisper-large-v3-turbo-gguf/resolve/5eaf945c7978e564bae5b28a5b1639dd93c2bfb1/"
+  }
+ ],
+ "license": {
+  "name": "MIT (OpenAI Whisper weights); GGUF conversion repo declares Apache-2.0",
+  "url": "https://huggingface.co/handy-computer/whisper-large-v3-turbo-gguf"
+ },
+ "admission": {
+  "layout": "componentSet",
+  "installLocation": "whisperGGUFModelsCache",
+  "diskHeadroomFactor": "2.2",
+  "evictPreviousRevisions": false,
+  "entrypointFile": "whisper-large-v3-turbo-Q8_0.gguf"
+ },
+ "manifestDigest": "2c273da9b3d15647afdf694b18f5d45bdb3353bf887bbfd1fd3fd9e7189e4913"
+}

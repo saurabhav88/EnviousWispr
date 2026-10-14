@@ -1,0 +1,11 @@
+{
+  "language": "pl",
+  "title": "bez kropki na końcu",
+  "words": [
+    "końcowa kropka"
+  ],
+  "phrases": [
+    "bez kropki na końcu dyktowania",
+    "usuń kropkę na końcu dyktowania"
+  ]
+}

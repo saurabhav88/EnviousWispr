@@ -81,4 +81,39 @@ struct EnvironmentInjectionFreezeTests {
       to one question in front of the same user on two settings pages.
       """)
   }
+
+  #if DEBUG
+    /// Settings > Diagnostics > Pill Preview reads its controller through a type-based
+    /// `@Environment`, which has no default: a Settings host without the injection traps at
+    /// runtime with every other test green (#3736). The injection is `#if DEBUG`, so the
+    /// check reads the source and requires the `#if DEBUG` wrapper too.
+    @Test("the window root that hosts Settings injects the pill-preview home in Debug builds")
+    func pillPreviewIsInjectedWhereSettingsIsHosted() throws {
+      let url = RepoRoot.url.appending(path: Self.bootstrapperPath)
+      let source = try String(contentsOf: url, encoding: .utf8)
+      try #require(source.count > 1000, "\(Self.bootstrapperPath) read \(source.count) bytes")
+
+      let host = "UnifiedWindowView()"
+      let start = try #require(
+        source.range(of: host), "positive control failed: \(host) is not in the composition root")
+      let rest = source[start.upperBound...]
+      let blockEnd = rest.range(of: "\nprivate struct ") ?? rest.range(of: "\nstruct ")
+      let block = blockEnd.map { String(rest[..<$0.lowerBound]) } ?? String(rest)
+      try #require(
+        block.contains(".environment(b.settings)"),
+        "positive control failed: the Settings host block does not inject settings")
+
+      let injection = ".environment(b.pillPreviewController)"
+      let at = try #require(
+        block.range(of: injection),
+        "the Settings host does not inject the pill-preview controller")
+      let before = block[..<at.lowerBound]
+      let lastIf = try #require(
+        before.range(of: "#if DEBUG", options: .backwards),
+        "the injection is not inside an #if DEBUG block")
+      #expect(
+        !before[lastIf.upperBound...].contains("#endif"),
+        "the injection is outside its #if DEBUG block")
+    }
+  #endif
 }

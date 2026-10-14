@@ -37,7 +37,7 @@ struct SnippetChainPlacementTests {
       englishSpelling: EnglishSpellingStep(target: .text),
       llmPolish: LLMPolishStep(keychainManager: KeychainManager()),
       englishSpellingAfterPolish: EnglishSpellingStep(target: .polishedText),
-      emojiRestore: EmojiRestoreStep())
+      emojiRestore: EmojiRestoreStep(), casualEnding: CasualEndingStep())
   }
 
   @Test("The chain order is frozen, and snippet expansion is first")
@@ -57,6 +57,7 @@ struct SnippetChainPlacementTests {
         "LLM Polish",
         "English Spelling (after polish)",
         "Emoji Restore",
+        "Casual Ending",
       ])
   }
 

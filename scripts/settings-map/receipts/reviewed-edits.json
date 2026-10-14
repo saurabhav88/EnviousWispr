@@ -7509,6 +7509,337 @@
    },
    "review": "additions/keepOutOfClipboardHistory.json",
    "reviewSHA256": "f492de9f5738c95cba5e7a9972f6b02dda3d7d57d3bbbfaf932db12783cf5ea6"
+  },
+  "casualMode": {
+   "blocks": {
+    "ar": {
+     "title": "حذف النقطة في نهاية الإملاء",
+     "words": [
+      "نقطة نهاية الإملاء"
+     ],
+     "phrases": [
+      "بدون نقطة في نهاية الإملاء",
+      "احذف النقطة من نهاية الإملاء"
+     ]
+    },
+    "bg": {
+     "title": "без точка в края",
+     "words": [
+      "точка в края"
+     ],
+     "phrases": [
+      "без точка в края на диктовката",
+      "махай точката в края на диктовката"
+     ]
+    },
+    "cs": {
+     "title": "vynechat tečku na konci",
+     "words": [
+      "koncová tečka"
+     ],
+     "phrases": [
+      "diktovat bez tečky na konci",
+      "odstranit tečku na konci diktátu"
+     ]
+    },
+    "da": {
+     "title": "udelad afsluttende punktum",
+     "words": [
+      "slutpunktum",
+      "afsluttende punktum"
+     ],
+     "phrases": [
+      "uden punktum til sidst i dikteringen",
+      "fjern punktummet til sidst i dikteringen"
+     ]
+    },
+    "de": {
+     "words": [
+      "Schlusspunkt",
+      "Satzende"
+     ],
+     "phrases": [
+      "lass den Punkt am Ende des Diktats weg",
+      "kein Punkt am Ende"
+     ]
+    },
+    "el": {
+     "title": "χωρίς τελεία στο τέλος",
+     "words": [
+      "τελική τελεία"
+     ],
+     "phrases": [
+      "χωρίς τελεία στο τέλος της υπαγόρευσης",
+      "να αφαιρεί την τελεία στο τέλος της υπαγόρευσης"
+     ]
+    },
+    "en": {
+     "words": [
+      "full stop",
+      "period",
+      "trailing dot"
+     ],
+     "phrases": [
+      "no period at the end of dictation",
+      "leave off the final full stop"
+     ]
+    },
+    "es": {
+     "title": "omitir el punto final",
+     "words": [
+      "punto final"
+     ],
+     "phrases": [
+      "sin punto al final del dictado",
+      "quitar el punto al final del dictado"
+     ]
+    },
+    "et": {
+     "title": "ilma lõpupunktita",
+     "words": [
+      "lõpupunkt"
+     ],
+     "phrases": [
+      "dikteeri ilma lõpupunktita",
+      "jäta dikteeritud teksti lõpust punkt ära"
+     ]
+    },
+    "fi": {
+     "title": "jätä loppupiste pois",
+     "words": [
+      "loppupiste"
+     ],
+     "phrases": [
+      "ei pistettä sanelun loppuun",
+      "jätä piste pois sanelun lopusta"
+     ]
+    },
+    "fr": {
+     "title": "sans point final",
+     "words": [
+      "point final"
+     ],
+     "phrases": [
+      "sans point à la fin de la dictée",
+      "enlever le point final de la dictée"
+     ]
+    },
+    "hi": {
+     "title": "अंत का फुल स्टॉप हटाएँ",
+     "words": [
+      "अंतिम पूर्ण विराम",
+      "आखिरी फुल स्टॉप"
+     ],
+     "phrases": [
+      "डिक्टेशन के अंत में पूर्ण विराम न लगाएँ",
+      "डिक्टेशन के आखिर का फुल स्टॉप हटाएँ"
+     ]
+    },
+    "hr": {
+     "title": "bez završne točke",
+     "words": [
+      "završna točka"
+     ],
+     "phrases": [
+      "bez točke na kraju diktata",
+      "izostavi završnu točku"
+     ]
+    },
+    "hu": {
+     "title": "záró pont elhagyása",
+     "words": [
+      "záró pont"
+     ],
+     "phrases": [
+      "ne legyen pont a diktálás végén",
+      "a diktálás végéről törölje a pontot"
+     ]
+    },
+    "it": {
+     "title": "ometti il punto finale",
+     "words": [
+      "punto finale"
+     ],
+     "phrases": [
+      "senza punto alla fine della dettatura",
+      "togliere il punto finale"
+     ]
+    },
+    "ja": {
+     "title": "末尾の句点を省略",
+     "words": [
+      "末尾の句点",
+      "末尾のピリオド"
+     ],
+     "phrases": [
+      "音声入力の最後に句点を付けない",
+      "末尾の句点を省く"
+     ]
+    },
+    "ko": {
+     "title": "끝 마침표 생략",
+     "words": [
+      "끝 마침표"
+     ],
+     "phrases": [
+      "받아쓰기 끝에 마침표 안 붙이기",
+      "마지막 마침표 빼기"
+     ]
+    },
+    "lt": {
+     "title": "be taško pabaigoje",
+     "words": [
+      "taškas pabaigoje"
+     ],
+     "phrases": [
+      "be taško diktavimo pabaigoje",
+      "pašalinti tašką padiktuoto teksto pabaigoje"
+     ]
+    },
+    "lv": {
+     "title": "bez punkta beigās",
+     "words": [
+      "beigu punkts"
+     ],
+     "phrases": [
+      "diktēt bez punkta beigās",
+      "noņemt punktu diktētā teksta beigās"
+     ]
+    },
+    "mt": {
+     "title": "mod mingħajr punt finali",
+     "words": [
+      "punt finali"
+     ],
+     "phrases": [
+      "mingħajr punt fl-aħħar tad-dettatura",
+      "neħħi l-punt fl-aħħar tad-dettatura"
+     ]
+    },
+    "nl": {
+     "title": "punt aan het einde weglaten",
+     "words": [
+      "afsluitende punt"
+     ],
+     "phrases": [
+      "geen punt aan het einde van mijn gedicteerde tekst",
+      "laat de punt aan het einde weg"
+     ]
+    },
+    "pl": {
+     "title": "bez kropki na końcu",
+     "words": [
+      "końcowa kropka"
+     ],
+     "phrases": [
+      "bez kropki na końcu dyktowania",
+      "usuń kropkę na końcu dyktowania"
+     ]
+    },
+    "pt": {
+     "title": "sem ponto no fim",
+     "words": [
+      "ponto final no fim"
+     ],
+     "phrases": [
+      "sem ponto no fim do ditado",
+      "tirar o ponto final do fim do ditado"
+     ]
+    },
+    "ro": {
+     "title": "fără punct final",
+     "words": [
+      "punct final"
+     ],
+     "phrases": [
+      "fără punct la sfârșitul dictării",
+      "elimină punctul de la sfârșitul dictării"
+     ]
+    },
+    "ru": {
+     "title": "убирать точку в конце",
+     "words": [
+      "точка в конце"
+     ],
+     "phrases": [
+      "без точки в конце диктовки",
+      "убрать точку в конце диктовки"
+     ]
+    },
+    "sk": {
+     "title": "vynechávať bodku na konci",
+     "words": [
+      "koncová bodka"
+     ],
+     "phrases": [
+      "bez bodky na konci diktovaného textu",
+      "vynechať bodku na konci diktovania"
+     ]
+    },
+    "sl": {
+     "title": "brez pike na koncu",
+     "words": [
+      "končna pika"
+     ],
+     "phrases": [
+      "brez pike na koncu nareka",
+      "odstrani piko na koncu nareka"
+     ]
+    },
+    "sv": {
+     "title": "utelämna avslutande punkt",
+     "words": [
+      "avslutande punkt"
+     ],
+     "phrases": [
+      "ingen punkt i slutet av dikteringen",
+      "ta bort punkten i slutet av dikteringen"
+     ]
+    },
+    "tr": {
+     "title": "son noktayı kaldır",
+     "words": [
+      "son nokta"
+     ],
+     "phrases": [
+      "dikte sonuna nokta koyma",
+      "dikte sonundaki noktayı kaldır"
+     ]
+    },
+    "uk": {
+     "title": "без крапки в кінці",
+     "words": [
+      "кінцева крапка"
+     ],
+     "phrases": [
+      "без крапки в кінці диктування",
+      "прибрати крапку в кінці надиктованого тексту"
+     ]
+    },
+    "vi": {
+     "title": "bỏ dấu chấm cuối",
+     "words": [
+      "dấu chấm cuối"
+     ],
+     "phrases": [
+      "bỏ dấu chấm ở cuối mỗi lần nhập bằng giọng nói",
+      "nhập bằng giọng nói không có dấu chấm cuối"
+     ]
+    },
+    "zh": {
+     "title": "去掉末尾句号",
+     "words": [
+      "末尾句号",
+      "结尾句号"
+     ],
+     "phrases": [
+      "语音输入结尾不加句号",
+      "去掉最后的句号"
+     ]
+    }
+   },
+   "review": "additions/casualMode.json",
+   "reviewSHA256": "a0c11e26f3b0d9950644078b0bf80ffc252177077711958cc3ec0a87715610d7"
   }
  }
 }

@@ -1,3 +1,4 @@
+import EnviousWisprCore
 import Foundation
 import Testing
 
@@ -196,7 +197,25 @@ struct SpokenPunctuationToggleTests {
     #expect(divergent.isEmpty == false, "vacuous: the toggle changed nothing across the corpus")
 
     let allowed: Set<String> = ["punctuation", "url"]
-    let unexpected = divergent.filter { !allowed.contains($0.category) }
+    // #3738: two rows outside those categories contain a spoken SYMBOL command and now move with the
+    // switch, by identity and with what each position writes (the OFF value is the Python oracle's
+    // output; the ON value, also written into parity.jsonl as an intended edit, is the plan's spacing
+    // table).
+    let pinnedSymbolRows: [String: (off: String, on: String)] = [
+      "example.com slash user underscore settings": (
+        "example.com/user underscore settings", "example.com/user_settings"),
+      "a b three hyphen s d d dash three at g mail dot com": (
+        "a b three hyphen s d d dash three at g mail.com", "a b three-s d d dash three at g mail.com"),
+    ]
+    for (input, pin) in pinnedSymbolRows {
+      let off = Self.itn.normalize(input, spokenPunctuation: false)
+      let on = Self.itn.normalize(input, spokenPunctuation: true)
+      #expect(off == pin.off, "OFF \(input.debugDescription) -> \(off.debugDescription)")
+      #expect(on == pin.on, "ON \(input.debugDescription) -> \(on.debugDescription)")
+    }
+    let unexpected = divergent.filter {
+      !allowed.contains($0.category) && pinnedSymbolRows[$0.input] == nil
+    }
     let leaked = unexpected.prefix(10)
       .map { "[\($0.category)] \($0.input.debugDescription)" }
       .joined(separator: ", ")
@@ -247,11 +266,16 @@ struct SpokenPunctuationToggleTests {
       }
       let off = Self.itn.normalize(input, spokenPunctuation: false)
       let on = Self.itn.normalize(input, spokenPunctuation: true)
-      #expect(off == expected, "OFF \(input.debugDescription) -> \(off.debugDescription)")
-      #expect(on == expected, "ON \(input.debugDescription) -> \(on.debugDescription)")
+      let expectedOff = pinnedSymbolRows[input]?.off ?? expected
+      #expect(off == expectedOff, "OFF \(input.debugDescription) -> \(off.debugDescription)")
+      // #3738: a row that also carries a spoken symbol writes its pinned ON value instead.
+      let expectedOn = pinnedSymbolRows[input]?.on ?? expected
+      #expect(on == expectedOn, "ON \(input.debugDescription) -> \(on.debugDescription)")
     }
 
-    let phrases = Self.gatedTriggers.map(\.spoken) + ["new line", "new paragraph"]
+    let phrases =
+      Self.gatedTriggers.map(\.spoken) + ["new line", "new paragraph"]
+      + SpokenPunctuationRules.englishSymbolRules.flatMap(\.spokenForms)
     for row in divergent {
       let carriesTrigger = phrases.contains { phrase in
         let pattern = #"\b"# + NSRegularExpression.escapedPattern(for: phrase) + #"\b"#

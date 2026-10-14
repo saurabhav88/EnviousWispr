@@ -75,6 +75,15 @@ COMPONENTS=(
   # llama-server-PROVENANCE.md); its MIT license text is vendored in-repo,
   # hence the repo: path scheme (#1271 Codex code-diff r6).
   "llama.cpp (bundled llama-server binary)|fdb1db87|MIT|repo:Sources/EnviousWispr/Resources/llama-server-LICENSE.txt|https://github.com/ggml-org/llama.cpp|"
+  # #3735: transcribe.cpp is a SwiftPM BINARY target (CTranscribe.framework, built from our
+  # fork saurabhav88/transcribe.cpp at da01aa11, release ew-3735-v0.4.0.4), so it has no
+  # .build/checkouts source; its MIT text and the texts of the three components it vendors
+  # and links (ggml, miniz, Silero VAD) are copied verbatim from that commit beside the
+  # other vendored licences (the repo: scheme, as for llama.cpp above).
+  "transcribe.cpp (bundled CTranscribe.framework)|da01aa11 (fork saurabhav88/transcribe.cpp of v0.4.0)|MIT|repo:Sources/EnviousWispr/Resources/transcribe-cpp-LICENSE.txt|https://github.com/saurabhav88/transcribe.cpp|"
+  "ggml (bundled in CTranscribe.framework)|n/a|MIT|repo:Sources/EnviousWispr/Resources/transcribe-cpp-ggml-LICENSE.txt|https://github.com/ggml-org/ggml|"
+  "miniz (bundled in CTranscribe.framework)|n/a|MIT|repo:Sources/EnviousWispr/Resources/transcribe-cpp-miniz-LICENSE.txt|https://github.com/richgel999/miniz|"
+  "Silero VAD (bundled in CTranscribe.framework)|n/a|MIT|repo:Sources/EnviousWispr/Resources/transcribe-cpp-silero-vad-LICENSE.txt|https://github.com/snakers4/silero-vad|"
   # #1413: mediaremote-adapter is NOT a SwiftPM dep either — the framework is
   # built from the pinned upstream commit and committed at Vendor/ with its perl script
   # (Sources/EnviousWispr/Resources/mediaremote-adapter-PROVENANCE.md); its
@@ -349,6 +358,34 @@ printf 'Earlier versions used Parakeet TDT 0.6B v3 (CoreML), CC-BY-4.0, from\n'
 printf 'https://huggingface.co/FluidInference/parakeet-tdt-0.6b-v3-coreml (base model\n'
 printf 'nvidia/parakeet-tdt-0.6b-v3 by NVIDIA). An existing copy keeps working until\n'
 printf 'Parakeet Ultra is ready, and is then removed.\n'
+
+# #3735: the transcribe.cpp Whisper models are SERVED by us (models.enviouswispr.com, the
+# pinned Hugging Face revisions as backup). The weights are OpenAI's (MIT); the GGUF
+# conversion repositories declare Apache-2.0, so both texts ship, cat'd from vendored files
+# beside the other licences. Not active until the engine swap (#3735 PR-B) registers them.
+WHISPER_MIT="${PROJ_ROOT}/Sources/EnviousWispr/Resources/whisper-openai-LICENSE.txt"
+WHISPER_APACHE="${PROJ_ROOT}/Sources/EnviousWispr/Resources/whisper-gguf-conversion-APACHE-2.0.txt"
+for f in "$WHISPER_MIT" "$WHISPER_APACHE"; do
+  [[ -f "$f" ]] || { echo "error: missing $f" >&2; exit 1; }
+done
+printf '\n'
+printf 'OpenAI Whisper large-v3-turbo and Whisper small (GGUF Q8_0)\n'
+printf '  Version: handy-computer/whisper-large-v3-turbo-gguf revision 5eaf945c,\n'
+printf '           handy-computer/whisper-small-gguf revision a2073177\n'
+printf '  License: MIT (OpenAI Whisper weights); Apache-2.0 (GGUF conversion repositories)\n'
+printf '  Source:  https://huggingface.co/handy-computer/whisper-large-v3-turbo-gguf\n'
+printf '           https://huggingface.co/handy-computer/whisper-small-gguf\n\n'
+printf 'EnviousWispr downloads these models when the multilingual Whisper engine or the\n'
+printf 'Universal live preview is used; they are not distributed inside this disk image.\n'
+printf 'The files are served from models.enviouswispr.com, with the Hugging Face\n'
+printf 'revisions above as backup sources. Envious Labs did not modify the models. The\n'
+printf 'large model is transferred in three pieces that the app joins back together;\n'
+printf 'the installed file is byte-identical to the publisher'"'"'s file and is checked\n'
+printf 'against its published SHA-256 before use.\n\n'
+printf 'OpenAI Whisper licence:\n\n'
+cat "$WHISPER_MIT"
+printf '\nGGUF conversion repositories licence:\n\n'
+cat "$WHISPER_APACHE"
 
 # S1-mini is, like Parakeet Ultra above, SERVED by us from models.enviouswispr.com
 # rather than by its publisher, which makes us a redistributor under

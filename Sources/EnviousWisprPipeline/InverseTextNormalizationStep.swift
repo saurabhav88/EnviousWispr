@@ -57,6 +57,9 @@ struct ITNWorkRequest: Sendable {
 struct ITNWorkResult: Sendable {
   let text: String
   let punctuationRulesFired: Int?
+  /// #3737: the text ends with a full stop the user said, as the punctuation matcher that converted
+  /// it reports. Copied into `TextProcessingContext.spokenFinalFullStop` for Casual mode.
+  var spokenFinalFullStop = false
 }
 
 /// The closed vocabulary of `punctuation_status` on `dictation.completed` (#2450). A ROUTING fact:
@@ -339,6 +342,9 @@ final class InverseTextNormalizationStep: TextProcessingStep {
     let route = InverseTextNormalizationGate.route(
       language: language, englishVetoed: context.englishRulesVetoed,
       backendSupportsLID: backendSupportsLID, registry: registry)
+    // #3737: carry the selected route, so Casual mode reads this decision instead of making its own.
+    var ctx = context
+    ctx.cleanupRoute = route
     let rules: LanguageRuleSet?
     let admitted: Bool
     let skipReason: String?
@@ -412,19 +418,28 @@ final class InverseTextNormalizationStep: TextProcessingStep {
       let normalizer = self.normalizer
       work = { request in
         // The text work for every route is the gate's single implementation (#1677).
-        let text = InverseTextNormalizationGate.execute(
+        let normalized = InverseTextNormalizationGate.executeReportingFinalFullStop(
           request.input, route: route, rules: rules, normalizer: normalizer,
           spokenPunctuation: request.spokenPunctuation.enabled)
+        let text = normalized.text
         // #2450: when this take has a plan (neutral or language route, or English with a start word), the
         // start-word pass runs INSIDE the same closure, so one deadline covers both and a timeout
         // discards both, returning the whole pre-ITN text.
         guard let language = request.punctuationLanguage,
           let startWord = request.startWord
-        else { return ITNWorkResult(text: text, punctuationRulesFired: nil) }
+        else {
+          return ITNWorkResult(
+            text: text, punctuationRulesFired: nil,
+            spokenFinalFullStop: normalized.spokenFinalFullStop)
+        }
         let result = normalizer.applyStartWordPunctuation(
           text, language: language, startWord: startWord,
           protectedSentinels: request.protectedSentinels)
-        return ITNWorkResult(text: result.text, punctuationRulesFired: result.rulesFired)
+        // With a plan the bare English words are off for this take (`normalizerSettings`), so the
+        // start-word pass is the only matcher that can have converted a final full stop.
+        return ITNWorkResult(
+          text: result.text, punctuationRulesFired: result.rulesFired,
+          spokenFinalFullStop: result.spokenFinalFullStop)
       }
     }
 
@@ -512,7 +527,7 @@ final class InverseTextNormalizationStep: TextProcessingStep {
         punctuationStatus: punctuation.status, punctuationRulesFired: punctuation.rulesFired,
         punctuationLanguage: punctuationLanguage,
         punctuationResolutionSource: punctuationResolutionSource)
-      return context
+      return ctx
     }
 
     let changed = converted != input
@@ -524,9 +539,11 @@ final class InverseTextNormalizationStep: TextProcessingStep {
       punctuationResolutionSource: punctuationResolutionSource)
     // Per-step IN:/OUT: + PipelineTiming traces are emitted by `TextProcessingRunner`
     // for every step (DEBUG-gated, local-only) — no duplicate logging here.
-    if !changed { return context }
+    // #3737: the provenance travels even when the text is unchanged; a timeout returned above, so an
+    // abandoned run never sets it.
+    ctx.spokenFinalFullStop = maybeResult?.spokenFinalFullStop ?? false
+    if !changed { return ctx }
 
-    var ctx = context
     ctx.text = converted
     return ctx
   }
@@ -729,16 +746,29 @@ public enum InverseTextNormalizationGate {
     _ text: String, route: Route, rules: LanguageRuleSet?, normalizer: InverseTextNormalizer,
     spokenPunctuation: Bool
   ) -> String {
+    executeReportingFinalFullStop(
+      text, route: route, rules: rules, normalizer: normalizer,
+      spokenPunctuation: spokenPunctuation
+    ).text
+  }
+
+  /// `execute`, plus whether the English bare-word commands converted a full stop the user said at the
+  /// very end (#3737). The neutral and language routes report false: their spoken punctuation is the
+  /// start-word pass, which reports its own.
+  package static func executeReportingFinalFullStop(
+    _ text: String, route: Route, rules: LanguageRuleSet?, normalizer: InverseTextNormalizer,
+    spokenPunctuation: Bool
+  ) -> (text: String, spokenFinalFullStop: Bool) {
     switch route {
     case .english:
-      return normalizer.normalize(text, spokenPunctuation: spokenPunctuation)
+      return normalizer.normalizeReportingFinalFullStop(text, spokenPunctuation: spokenPunctuation)
     case .neutral:
-      return normalizer.normalizeLanguageNeutral(text)
+      return (normalizer.normalizeLanguageNeutral(text), false)
     case .language(let code):
       guard let rules, rules.baseCode == code else {
-        return normalizer.normalizeLanguageNeutral(text)
+        return (normalizer.normalizeLanguageNeutral(text), false)
       }
-      return normalizer.normalize(text, language: rules)
+      return (normalizer.normalize(text, language: rules), false)
     }
   }
 

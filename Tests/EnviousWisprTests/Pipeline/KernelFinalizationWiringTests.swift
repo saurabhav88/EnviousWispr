@@ -2110,7 +2110,7 @@ import os
       englishSpelling: EnglishSpellingStep(target: .text),
       llmPolish: polish ?? LLMPolishStep(keychainManager: KeychainManager()),
       englishSpellingAfterPolish: EnglishSpellingStep(target: .polishedText),
-      emojiRestore: EmojiRestoreStep())
+      emojiRestore: EmojiRestoreStep(), casualEnding: CasualEndingStep())
   }
 
   private func makeWiring(

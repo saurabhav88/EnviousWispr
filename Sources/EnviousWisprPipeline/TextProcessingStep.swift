@@ -169,6 +169,18 @@ public struct TextProcessingContext: Sendable {
   /// it. Neither value proves the delivered text is British.
   public var englishSpellingSwaps: Int?
 
+  /// #3737: the spoken-punctuation pass converted a full-stop command the user SAID at the very end of
+  /// the take ("... period"), so Casual mode keeps that full stop. Written ONLY by
+  /// `InverseTextNormalizationStep` (from the matcher that converted the command); read ONLY by
+  /// `CasualEndingStep`. False when the engine already wrote the mark itself: provenance is then lost.
+  public var spokenFinalFullStop = false
+
+  /// #3737 (cloud review): the cleanup route ITN selected for this take; nil when no ITN route reached
+  /// this context (including the runner discarding ITN after its outer timeout). Records routing, not
+  /// successful normalization. Written ONLY by `InverseTextNormalizationStep`; read by `CasualEndingStep`,
+  /// so Casual mode's English decision is the gate's, never a second one.
+  var cleanupRoute: InverseTextNormalizationGate.Route? = nil
+
   public init(text: String, language: String?) {
     self.text = text
     self.language = language

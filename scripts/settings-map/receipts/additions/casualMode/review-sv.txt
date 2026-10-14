@@ -1,0 +1,1 @@
+{"language":"sv","title":"utelämna avslutande punkt","words":["avslutande punkt"],"phrases":["ingen punkt i slutet av dikteringen","ta bort punkten i slutet av dikteringen"]}

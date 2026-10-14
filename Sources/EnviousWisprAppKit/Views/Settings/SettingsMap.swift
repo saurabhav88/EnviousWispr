@@ -370,6 +370,12 @@ enum SettingsMap {
       parent: .startWordField, destination: .dictation(.engine), dictionaryTab: nil,
       visibility: .spokenPunctuationOn, target: .startWordReset, fallbacks: [.spokenPunctuation]),
     SettingsMapNode(
+      id: .casualMode, structure: .item, item: .setting,
+      title: .resource(DictationSettingsCopy.Engine.casualTitle),
+      description: .resource(DictationSettingsCopy.Engine.casualShort),
+      parent: .sectionEngineShared, destination: .dictation(.engine), dictionaryTab: nil,
+      visibility: .always, target: .casualMode, fallbacks: []),
+    SettingsMapNode(
       id: .unloadModelAfter, structure: .item, item: .setting,
       title: .resource(DictationSettingsCopy.Engine.unloadTitle),
       description: .resource(DictationSettingsCopy.Engine.unloadShort),

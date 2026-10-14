@@ -34,6 +34,7 @@ enum ShippedModelNames {
     .parakeet: ["parakeet-ultra-coreml"],
     .s1Mini: ["s1-mini"],
     .s1MiniChecker: ["s1c"],
+    .whisper: ["whisper-large-v3-turbo-gguf", "whisper-small-gguf"],
     .whisperKit: ["whisperkit-coreml"],
     .wordCheck: ["kev-wc"],
   ]
@@ -74,6 +75,8 @@ enum ShippedModelNames {
     "parakeet|parakeet-ultra-coreml": ["int8"],
     "s1_mini|s1-mini": ["q4km"],
     "s1_mini_checker|s1c": ["f16"],
+    "whisper|whisper-large-v3-turbo-gguf": ["q8_0"],
+    "whisper|whisper-small-gguf": ["q8_0"],
     "whisper_kit|whisperkit-coreml": [
       "openai_whisper-large-v3-v20240930_turbo", "openai_whisper-small_216MB",
     ],

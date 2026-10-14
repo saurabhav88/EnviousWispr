@@ -32,16 +32,18 @@ jobs:
   # in Debug and vanishes in Release), whose products feed the String Catalog
   # check, the older-macOS linkage assert, the snapshot for the advisory macOS 14
   # launch job, and the FULL logic suite (`test-without-building`, never a second
-  # compile) + the FoundationModels compile probe + the standalone eval packages.
+  # compile) + the FoundationModels compile probe. The standalone eval packages
+  # compiled here until #3729 PR-B; the full local scripts/xcode-test.sh run now
+  # compiles them and the pre-push receipt check requires that proof.
   # The testable app is a COMPATIBILITY SMOKE CHECK: production stripping and the
   # exact production startup are not covered here; release.yml launch-on-macos-14
   # launches the notarized DMG on macOS 14 before anything is published (#3348).
   #
-  # The Debug lane that used to run beside this one is gone: the founder's Mac
-  # runs the Debug suite before every push, and post-merge still runs the full
-  # Debug suite on main, so PRs are gated on the Release configuration (built
-  # testable, #3348). What that moves: Debug-only compilation and Debug-specific behaviour are now
-  # found after merge instead of before. Measured before the change (2026-09-16,
+  # The Debug lane that used to run beside this one is gone, and since #3729 no
+  # hosted job runs the Debug suite: it runs locally (scripts/xcode-test.sh), so
+  # PRs are gated on the Release configuration (built testable, #3348). What that
+  # moves: Debug-only compilation and Debug-specific behaviour are found only by
+  # the local Debug run. Measured before the change (2026-09-16,
   # docs/audits/ci-test-burden-2026-09-16): five macOS jobs and ~65 Mac-minutes
   # per app-code PR on a five-slot account, 8 min of queue in the sample.
   # Step-level needs_build gating. (#913 PR3 → Xcode engine.)
@@ -74,25 +76,6 @@ jobs:
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: scripts/ci/classify-changes.sh "$BASE_SHA" "$HEAD_SHA"
 
-      # #3505: the eval-package compile (last step of this job) took 669 s of a
-      # 33-minute check on every app-code PR. It runs only when the PR changes one
-      # of the packages' inputs, which scripts/ci/eval-package-inputs.py DERIVES
-      # from the manifests (root targets reachable from the products the packages
-      # use, plus manifests, lockfile and these scripts) rather than a hand list
-      # that could miss a new dependency. Every doubt (empty SHA, failed diff,
-      # unreadable manifest) answers true. The self-test runs here, not in the
-      # ubuntu aggregator, because the derivation needs `swift package`.
-      - name: Detect eval-package input changes
-        id: eval_inputs
-        if: steps.changes.outputs.needs_build == 'true'
-        env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-        run: |
-          set -euo pipefail
-          scripts/ci/needs-eval-packages.sh --self-test
-          scripts/ci/needs-eval-packages.sh "$BASE_SHA" "$HEAD_SHA"
-
       # #1778: the notices gate used to run ONLY during release packaging, so a
       # dependency bump that forgot the generator sat green on main until someone
       # tried to ship - v2.4.1 lost two release runs to exactly that (Sparkle
@@ -103,7 +86,7 @@ jobs:
         run: scripts/ci/gen-third-party-notices.sh --check
 
       # #2592: the whole Xcode setup (toolchain through project generation) is
-      # ONE owner, shared with both main-post-merge.yml jobs. The `if:` here skips
+      # ONE owner, shared with cache-warm.yml's warm job. The `if:` here skips
       # the entire action for a docs-only PR; the action's header says why the
       # steps inside carry none.
       - name: Xcode CI setup
@@ -127,33 +110,21 @@ jobs:
       # (scripts/lib/ci-phase.sh): same command, same exit status, plus a named
       # log and the seconds for the EW-CI-METRICS line at the end of the job.
       #
-      # #3348: the only Release compile in this job. It used to follow a plain
-      # non-testable `xcodebuild build` (324-719 s) whose products fed the three
-      # checks below; ENABLE_TESTABILITY changes flags, so nothing was reused.
-      # Measured before removing it (Xcode 27.0, one tree, separate DerivedData):
-      # the testable and non-testable apps had identical bundle inventories (180
-      # files), Mach-O sets (8), load commands, rpaths, minos, Info.plist and
-      # extracted .stringsdata; the testable app imports 146 extra symbols, all
-      # from baseline libraries (libSystem, SwiftUI, libswiftCore...), with zero
-      # weak/strong or library flips on shared symbols, and both pass
-      # check-weak-linked-symbols.sh with identical summaries.
+      # #3348: the only Release compile in this job; its products feed the three
+      # checks below. #3729: the flags live in scripts/ci/build-for-testing-release.sh,
+      # shared with the main cache warm so both compile the same thing (the
+      # script's header carries the #3348 testable/non-testable measurement).
       - name: Build for testing (release, Xcode)
         id: release-test-build
         if: steps.changes.outputs.needs_build == 'true'
         run: |
           set -euo pipefail
-          . "$GITHUB_WORKSPACE/scripts/lib/ci-phase.sh"
-          ew_phase build_for_testing_release xcode-build-for-testing-release.log -- xcodebuild build-for-testing \
-            -project "$XCODE_PROJECT" \
-            -scheme "$XCODE_RELEASE_SCHEME" \
-            -configuration Release \
-            -derivedDataPath "$DERIVED_DATA_PATH" \
-            -destination 'platform=macOS,arch=arm64' \
-            -resultBundlePath "$GITHUB_WORKSPACE/xcode-build-for-testing-release.xcresult" \
-            ARCHS=arm64 \
-            ONLY_ACTIVE_ARCH=YES \
-            VALID_ARCHS=arm64 \
-            ENABLE_TESTABILITY=YES
+          scripts/ci/build-for-testing-release.sh \
+            --project "$XCODE_PROJECT" \
+            --scheme "$XCODE_RELEASE_SCHEME" \
+            --derived-data "$DERIVED_DATA_PATH" \
+            --log xcode-build-for-testing-release.log \
+            --result-bundle "$GITHUB_WORKSPACE/xcode-build-for-testing-release.xcresult"
 
       - name: Upload release test-build failure evidence
         if: failure() && steps.release-test-build.outcome == 'failure'
@@ -245,18 +216,20 @@ jobs:
           if-no-files-found: error
 
       # #3013: RUN the suite from the bundles the step above produced. `ew_run_tests`
-      # (scripts/lib/xcode-test-run.sh) is the one owner of the run shape for PR,
-      # post-merge and nightly: it finds exactly one `<scheme>_*.xctestrun`, runs
+      # (scripts/lib/xcode-test-run.sh) is the one owner of the run shape (#3729
+      # removed its post-merge and nightly callers): it finds exactly one
+      # `<scheme>_*.xctestrun`, runs
       # `test-without-building` (zero compiles in this step, by construction),
       # then hands the log and .xcresult to `ew_lane_verdict` (#2401), which
       # refuses an empty or truncated run. Still serial: parallel Swift Testing
       # was measured unsafe for this suite (Project.swift, the Release scheme).
       #
-      # #3019 measured overlapping the eval-package compile with this step on
-      # the 3-core hosted runner (PR #3021 head caacfcaa): tests 287 s -> 562 s,
-      # eval 342 s -> 723 s, launch-to-join 723 s against 629 s serial, and one
-      # timing-sensitive test failed under the load. The overlap went, the test
-      # stayed; the eval compile is its own step after this one again.
+      # History: #3019 measured overlapping the eval-package compile with this
+      # step on the 3-core hosted runner (PR #3021 head caacfcaa): tests 287 s ->
+      # 562 s, eval 342 s -> 723 s, launch-to-join 723 s against 629 s serial, and
+      # one timing-sensitive test failed under the load. The overlap went; the
+      # compile then ran after this step until #3729 PR-B moved it to the local
+      # full run.
       - name: Run logic tests (release, Xcode)
         if: steps.changes.outputs.needs_build == 'true'
         run: |
@@ -328,41 +301,10 @@ jobs:
 
           echo "==> FoundationModels compile probe PASSED"
 
-      # #1836's eval-package compile guard: scripts/ci/compile-eval-packages.sh
-      # owns the loop and its rationale since #3019. It was a step here, then
-      # its own job from #2114 to #3013, and a step again since #3013: with one
-      # required macOS lane per PR the third runner it took was a slot the build
-      # lane then waited for. It reads no DerivedData, so it runs last, after
-      # the suite (running it BESIDE the suite was measured slower, see the
-      # test step). Still gates merges through this job's result in build-check.
-      # #3461: the restored Xcode cache (about 20 GB) plus this run's build left
-      # too little disk for the three eval packages, each a full dependency
-      # graph of its own ("No space left on device"). This workflow restores
-      # the cache and never saves it, and nothing from here on reads
-      # DerivedData (CI metrics reads logs; the failure uploads read workspace
-      # files), so the suite's build is freed first. `find -xdev -delete`, not
-      # `rm -rf`, and only after proving the directory is not its own mount.
-      - name: Free DerivedData before the eval packages
-        if: steps.changes.outputs.needs_build == 'true' && steps.eval_inputs.outputs.needs_eval_packages != 'false'
-        run: |
-          set -euo pipefail
-          echo "==> disk before: $(df -h "$GITHUB_WORKSPACE" | tail -1)"
-          if [ -d "$DERIVED_DATA_PATH" ]; then
-            if [ "$(stat -f %d "$DERIVED_DATA_PATH")" != "$(stat -f %d "$(dirname "$DERIVED_DATA_PATH")")" ]; then
-              echo "::error::$DERIVED_DATA_PATH is a mount point; refusing to delete it"
-              exit 1
-            fi
-            find "$DERIVED_DATA_PATH" -xdev -delete
-            [ ! -e "$DERIVED_DATA_PATH" ] || { echo "::error::$DERIVED_DATA_PATH still exists after delete"; exit 1; }
-          fi
-          echo "==> disk after:  $(df -h "$GITHUB_WORKSPACE" | tail -1)"
-
-      - name: Compile standalone eval packages
-        if: steps.changes.outputs.needs_build == 'true' && steps.eval_inputs.outputs.needs_eval_packages != 'false'
-        run: |
-          set -euo pipefail
-          . "$GITHUB_WORKSPACE/scripts/lib/ci-phase.sh"
-          ew_phase eval_packages eval-packages.log -- scripts/ci/compile-eval-packages.sh
+      # #3729 PR-B: the eval-package steps that stood here (input detection, freeing
+      # DerivedData for disk (#3461), and scripts/ci/compile-eval-packages.sh, #1836)
+      # left CI. The full local scripts/xcode-test.sh run compiles all three packages
+      # and the pre-push hook refuses an eval-input push its receipt does not cover.
 
       # #3019: one line of numbers for this job. Advisory: it can never fail
       # the lane, and a broken instrument shows in this step's log instead of
@@ -586,6 +528,30 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+
+      # #3729: the drift checks moved here from the weekly ci-drift-check.yml need
+      # yamllint, ShellCheck, jq, sha256sum and PyYAML. Install what the image
+      # lacks, then verify every one, BEFORE fast-checks runs: a missing tool
+      # there is a SKIP, which the zero-SKIP assertion below turns red, but only
+      # after the whole run; failing here names the tool first.
+      - name: Provision fast-checks tools
+        run: |
+          set -euo pipefail
+          missing_apt=""
+          command -v shellcheck >/dev/null 2>&1 || missing_apt="$missing_apt shellcheck"
+          command -v jq >/dev/null 2>&1 || missing_apt="$missing_apt jq"
+          if [ -n "$missing_apt" ]; then
+            sudo apt-get update -qq
+            # shellcheck disable=SC2086 # word splitting is the list
+            sudo apt-get install -y -qq $missing_apt
+          fi
+          command -v yamllint >/dev/null 2>&1 || python3 -m pip install --quiet --disable-pip-version-check yamllint
+          python3 -c 'import yaml' 2>/dev/null || python3 -m pip install --quiet --disable-pip-version-check pyyaml
+          for tool in yamllint shellcheck jq sha256sum git python3; do
+            command -v "$tool" >/dev/null 2>&1 || { echo "::error::fast-checks tool missing after provisioning: $tool"; exit 1; }
+          done
+          python3 -c 'import yaml' || { echo "::error::PyYAML missing after provisioning"; exit 1; }
+          echo "==> yamllint $(yamllint --version | awk '{print $2}'), $(shellcheck --version | awk '/^version:/{print "shellcheck " $2}'), $(jq --version)"
 
       - name: Quick checks (#3524)
         run: |

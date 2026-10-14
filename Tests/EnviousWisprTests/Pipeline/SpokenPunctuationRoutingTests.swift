@@ -360,9 +360,53 @@ struct SpokenPunctuationRoutingTests {
 
   /// Work that outlasts the 0.5 s floor. A cooperative sleep, so the abandoned branch frees its
   /// executor at the floor (the same shape `InverseTextNormalizationBudgetTests` uses).
+  /// #3737: the final-spoken-full-stop flag reaches the context on every punctuation route, from the
+  /// matcher that converted the command.
+  @Test("Final spoken full stop reaches the context on every route")
+  func finalStopTransport() async throws {
+    let rows: [(String, String, [String: String], Bool)] = [
+      ("see you period", "en", [:], true),
+      ("see you Dictate period", "en", ["en": "Dictate"], true),
+      ("Bis morgen Diktiere Punkt", "de", [:], true),
+      ("Bis morgen Sprich Punkt", "de", ["de": "Sprich"], true),
+      ("Bis morgen Punkt", "de", ["de": ""], true),
+      ("see you period", "en", [:], false),
+    ]
+    for (text, language, words, enabled) in rows {
+      let itn = step(SpokenPunctuationSettings(enabled: enabled, startWordOverrides: words))
+      let out = try await itn.process(ctx(text, language: language))
+      #expect(out.spokenFinalFullStop == enabled, "\(text) [\(language)]")
+    }
+  }
+
+  @Test("The selected cleanup route reaches the context on success and on timeout (#3737)")
+  func routeReachesContext() async throws {
+    let english = step(Self.off, lid: false)
+    let out = try await english.process(ctx("see you at 5.", language: nil))
+    #expect(out.cleanupRoute == .english)
+
+    let timedOut = InverseTextNormalizationStep(requestWork: Self.slowWork)
+    timedOut.spokenPunctuation = Self.off
+    timedOut.backendSupportsLID = false
+    let late = try await timedOut.process(ctx("see you at 5.", language: nil))
+    #expect(late.text == "see you at 5.")
+    #expect(late.cleanupRoute == .english, "a timeout keeps the routing decision")
+  }
+
+  @Test("Unchanged text still carries successful provenance (#3737)")
+  func unchangedCarriesProvenance() async throws {
+    let itn = InverseTextNormalizationStep(requestWork: { request in
+      ITNWorkResult(text: request.input, punctuationRulesFired: 1, spokenFinalFullStop: true)
+    })
+    let out = try await itn.process(ctx("See you.", language: "en"))
+    #expect(out.text == "See you.")
+    #expect(out.spokenFinalFullStop == true)
+  }
+
   private static func slowWork(_ request: ITNWorkRequest) async -> ITNWorkResult {
     try? await Task.sleep(for: .seconds(2.0))  // test-fixture-timer: the deadline itself is under test
-    return ITNWorkResult(text: "PARTIAL:" + request.input, punctuationRulesFired: 5)
+    return ITNWorkResult(
+      text: "PARTIAL:" + request.input, punctuationRulesFired: 5, spokenFinalFullStop: true)
   }
 
   @Test(
@@ -377,6 +421,7 @@ struct SpokenPunctuationRoutingTests {
     let out = try await step.process(ctx(input, language: "de"))
 
     #expect(out.text == input, "the entire pre-ITN text, never a neutral-only middle")
+    #expect(out.spokenFinalFullStop == false, "#3737: an abandoned run never reports provenance")
     let run = try #require(step.lastRun)
     #expect(run.punctuationStatus == .timedOut)
     #expect(run.punctuationRulesFired == nil, "the abandoned run's count is discarded")
@@ -405,6 +450,7 @@ struct SpokenPunctuationRoutingTests {
     let input = "meet at three thirty"
     let out = try await step.process(ctx(input, language: "en"))
     #expect(out.text == input)
+    #expect(out.spokenFinalFullStop == false, "#3737: an abandoned run never reports provenance")
     #expect(step.lastRun?.punctuationStatus == nil)
     #expect(timeouts.count == 1)
     #expect(timeouts.first?["route"] as? String == "english", "the English breadcrumb names its route")
@@ -528,7 +574,7 @@ struct SpokenPunctuationRoutingTests {
       englishSpelling: EnglishSpellingStep(target: .text),
       llmPolish: LLMPolishStep(keychainManager: KeychainManager()),
       englishSpellingAfterPolish: EnglishSpellingStep(target: .polishedText),
-      emojiRestore: EmojiRestoreStep())
+      emojiRestore: EmojiRestoreStep(), casualEnding: CasualEndingStep())
     steps.inverseTextNormalization.spokenPunctuation = Self.on
     steps.inverseTextNormalization.backendSupportsLID = true
     return steps

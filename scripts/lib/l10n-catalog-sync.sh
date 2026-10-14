@@ -74,7 +74,7 @@ PINNED_XCODE_BUILD = "27A266a"  # Xcode 27.0; keep equal to .github/actions/xcod
 PRODUCTION_TARGETS = [
     "EnviousWisprCore", "EnviousWisprObservabilityCore", "EnviousWisprStorage",
     "EnviousWisprModelDelivery", "EnviousWisprPostProcessing", "EnviousWisprAudio",
-    "EnviousWisprServices", "EnviousWisprFluidAudioBridge", "EnviousWisprASR",
+    "EnviousWisprServices", "EnviousWisprFluidAudioBridge", "EnviousWisprTranscribeCpp", "EnviousWisprASR",
     "EnviousWisprLLM", "EnviousWisprWordCheck", "EnviousWisprPipeline", "EnviousWisprContacts",
     "EnviousWisprLivePreview", "EnviousWisprWhisperPreviewAdapter", "EnviousWisprAppKit",
     "EnviousWisprDesktopEffects", "EnviousWisprAppLive", "EnviousWispr",
@@ -88,6 +88,10 @@ NON_PRODUCTION = {
 GENERATED_RESOURCE_TARGETS = {
     "EnviousWispr_EnviousWisprAppKit", "EnviousWispr_EnviousWisprPostProcessing",
 }
+# Binary-framework wrapper targets Xcode makes for a SwiftPM binaryTarget (#3735: CTranscribe).
+# They compile nothing; with the compilation cache on (CI) Xcode still writes a `.cas-config`
+# into their `.build` folder. Accepted only while that folder holds no `.stringsdata` at all.
+BINARY_PRODUCT_TARGETS = {"CTranscribe-product"}
 # Retired targets whose stale `.build` folder can survive in an old derived-data tree. Accepted
 # only while every `.stringsdata` it holds is Xcode's ExtractedAppShortcutsMetadata (written even
 # with extraction off); an empty folder or any real extraction still stops the run.
@@ -180,6 +184,9 @@ def collect_inputs(derived, configuration):
     for name in [u for u in unknown if u in RETIRED_METADATA_ONLY_TARGETS]:
         found = sorted((base / f"{name}.build").rglob("*.stringsdata"))
         if found and all(p.name == "ExtractedAppShortcutsMetadata.stringsdata" for p in found):
+            unknown.remove(name)
+    for name in [u for u in unknown if u in BINARY_PRODUCT_TARGETS]:
+        if not any((base / f"{name}.build").rglob("*.stringsdata")):
             unknown.remove(name)
     if unknown:
         raise Refused(f"project targets the target lists do not know: {unknown}")

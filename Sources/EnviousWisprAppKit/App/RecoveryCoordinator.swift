@@ -328,7 +328,9 @@ final class RecoveryCoordinator {
       s1Control: settings.s1Control,
       // #3124: the value in force for this take, replayed on recovery.
       englishSpelling: EnglishSpelling.effective(
-        languageMode: settings.languageMode, stored: settings.englishSpelling))
+        languageMode: settings.languageMode, stored: settings.englishSpelling),
+      // #3737: replayed at its record-time value.
+      casualModeEnabled: settings.casualModeEnabled)
 
     // Constructing the store prepares the spool directory before the helper
     // opens the file at this path. Cheap local FS (not securityd IPC).

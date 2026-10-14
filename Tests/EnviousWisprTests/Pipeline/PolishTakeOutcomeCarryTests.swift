@@ -55,7 +55,7 @@ struct PolishTakeOutcomeCarryTests {
       englishSpelling: EnglishSpellingStep(target: .text),
       llmPolish: polish,
       englishSpellingAfterPolish: EnglishSpellingStep(target: .polishedText),
-      emojiRestore: EmojiRestoreStep())
+      emojiRestore: EmojiRestoreStep(), casualEnding: CasualEndingStep())
   }
 
   private struct Driver {

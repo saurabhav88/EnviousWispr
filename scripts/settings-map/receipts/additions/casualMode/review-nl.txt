@@ -1,0 +1,11 @@
+{
+  "language": "nl",
+  "title": "punt aan het einde weglaten",
+  "words": [
+    "afsluitende punt"
+  ],
+  "phrases": [
+    "geen punt aan het einde van mijn gedicteerde tekst",
+    "laat de punt aan het einde weg"
+  ]
+}
