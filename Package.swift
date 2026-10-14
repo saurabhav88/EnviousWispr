@@ -34,6 +34,10 @@ let package = Package(
     // (validation-discipline.md RULE: measure-with-the-real-tool-never-a-simulation).
     // Purely additive — no production code imports change.
     .library(name: "EnviousWisprPipeline", targets: ["EnviousWisprPipeline"]),
+    // #3735: exported so the Tuist graph can link and embed the transcribe.cpp
+    // binary framework through `.package(product: "CTranscribe")`, the same way it
+    // consumes Sparkle and the other external products.
+    .library(name: "CTranscribe", targets: ["CTranscribe"]),
   ],
   dependencies: [
     .package(url: "https://github.com/argmaxinc/argmax-oss-swift", from: "1.0.0"),
@@ -167,6 +171,8 @@ let package = Package(
         "EnviousWisprPostProcessing",
         "EnviousWisprLivePreview",
         "EnviousWisprASR",
+        // #3735: the transcribe.cpp boundary for the Universal preview engine.
+        "EnviousWisprTranscribeCpp",
       ],
       path: "Sources/EnviousWisprWhisperPreviewAdapter"
     ),
@@ -211,6 +217,24 @@ let package = Package(
       ],
       path: "Sources/EnviousWisprFluidAudioBridge"
     ),
+    // #3735: transcribe.cpp (our fork with two additive Whisper APIs: language
+    // log-probability and seek progress). Dynamic framework built with the unmodified
+    // upstream `scripts/ci/build_xcframework.sh` (macOS slice, minimum macOS 14.0,
+    // Metal library embedded); module name `CTranscribe`. A static ggml-metal link
+    // without -force_load crashes at launch, which is why this is the dynamic build.
+    .binaryTarget(
+      name: "CTranscribe",
+      url:
+        "https://github.com/saurabhav88/transcribe.cpp/releases/download/ew-3735-v0.4.0.3/TranscribeCpp.xcframework.zip",
+      checksum: "e355792c946a283438da8809d7ecaf388306353adc63687315209a1c3e80f9e4"
+    ),
+    // #3735: the thin Swift boundary over CTranscribe. Mechanism only (sessions,
+    // runs, language probability, progress, abort, UTF-8 repair); no app policy.
+    .target(
+      name: "EnviousWisprTranscribeCpp",
+      dependencies: ["CTranscribe"],
+      path: "Sources/EnviousWisprTranscribeCpp"
+    ),
     .target(
       name: "EnviousWisprASR",
       dependencies: [
@@ -222,6 +246,8 @@ let package = Package(
         "EnviousWisprServices",
         .product(name: "WhisperKit", package: "argmax-oss-swift"),
         "FluidAudio",
+        // #3735: the transcribe.cpp boundary for the Whisper engine.
+        "EnviousWisprTranscribeCpp",
       ],
       path: "Sources/EnviousWisprASR"
     ),
@@ -395,6 +421,8 @@ let package = Package(
         "EnviousWisprContacts",
         // #3242: KevEncodingTests exercise the word check's encoder directly.
         "EnviousWisprWordCheck",
+        // #3735: WhisperGGUFRealDeliveryTests decode the admitted model directly.
+        "EnviousWisprTranscribeCpp",
         // #1741 Chunk 10: EngineMutationInventoryFreezeTests's real Swift
         // parser (replaces its hand-rolled comment/string scanner). This is
         // the ONLY place swift-syntax is depended on in this package.
@@ -416,6 +444,8 @@ let package = Package(
         // not transitively through EnviousWisprASR.
         "EnviousWisprFluidAudioBridge",
         "FluidAudio",
+        // #3735: TranscribeCppRealBoundaryTests drive the native boundary directly.
+        "EnviousWisprTranscribeCpp",
       ],
       path: "Tests/EnviousWisprASRTests"
     ),

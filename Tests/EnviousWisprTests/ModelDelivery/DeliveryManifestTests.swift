@@ -417,6 +417,82 @@ enum ManifestFixture {
   }
 }
 
+/// #3735: the transcribe.cpp Whisper GGUF manifests. Bytes verified over the public copy
+/// before bundling (`docs/audits/3735-swap/chunk2/public-verify.txt`); the turbo file is
+/// served from our copy as three ordered transport parts (not loadable GGUF shards), the
+/// small model as one object, each with the pinned Hugging Face revision as whole-file
+/// backup. Digests regenerated with `scripts/regen-delivery-manifest-digest.py` and
+/// reproduced by the Swift loader below.
+@Suite(.tags(.driftGuard)) struct WhisperGGUFManifestTests {
+  static let turboGoldenDigest = "f6485d8b5234c817759411f86510f50da734ad9d8479d0f97805d42d8f9efeeb"
+  static let previewGoldenDigest = "6a28862edf8b23da505ea29bbab99547d6db4d1a7640dd9a49db0987d6e88a75"
+
+  static func load(_ name: String) throws -> (manifest: DeliveryManifest, data: Data) {
+    let data = try Data(
+      contentsOf: ParakeetShippedManifestTests.repoRoot.appendingPathComponent(
+        "Sources/EnviousWispr/Resources/\(name).json"))
+    return (try DeliveryManifest.load(from: data), data)
+  }
+
+  @Test func turboManifestPinsTheApprovedFileAsThreeOrderedParts() throws {
+    let (manifest, data) = try Self.load("whisper-delivery-manifest")
+    #expect(manifest.manifestDigest == Self.turboGoldenDigest)
+    #expect(try DeliveryManifest.canonicalDigest(of: data) == Self.turboGoldenDigest)
+    #expect(manifest.identity.family == .whisper)
+    #expect(manifest.identity.name == "whisper-large-v3-turbo-gguf")
+    #expect(manifest.identity.revision == "5eaf945c7978e564bae5b28a5b1639dd93c2bfb1")
+    #expect(manifest.identity.variant == "q8_0")
+    #expect(manifest.identity.runtimeABI == "transcribecpp-ew-3735-v0.4.0.3")
+    #expect(manifest.sources.map(\.id) == ["our_copy", "hf_pinned"])
+    #expect(manifest.sources.first?.servesParts == true)
+    #expect(manifest.files.count == 1)
+    let file = try #require(manifest.files.first)
+    #expect(file.path == "whisper-large-v3-turbo-Q8_0.gguf")
+    #expect(file.sizeBytes == 886_381_760)
+    #expect(file.sha256 == "b2e30cc286bc9f3aba4db9099fc7403543497c05ce7100d0d83091ddfd25a183")
+    #expect(manifest.totalBytes == file.sizeBytes)
+    let parts = try #require(file.parts)
+    #expect(parts.map(\.path) == (1...3).map { "whisper-large-v3-turbo-Q8_0.gguf.part\($0)" })
+    #expect(parts.reduce(0) { $0 + $1.sizeBytes } == file.sizeBytes)
+    #expect(parts.allSatisfy { $0.sizeBytes <= 295_460_587 })
+  }
+
+  @Test func previewManifestPinsTheApprovedSmallModelAsOneObject() throws {
+    let (manifest, data) = try Self.load("whisper-preview-delivery-manifest")
+    #expect(manifest.manifestDigest == Self.previewGoldenDigest)
+    #expect(try DeliveryManifest.canonicalDigest(of: data) == Self.previewGoldenDigest)
+    #expect(manifest.identity.family == .whisper)
+    #expect(manifest.identity.name == "whisper-small-gguf")
+    #expect(manifest.identity.revision == "a2073177cb69bd74b9ca9460b852d17fbfd5d68c")
+    #expect(manifest.identity.variant == "q8_0")
+    #expect(manifest.sources.map(\.id) == ["our_copy", "hf_pinned"])
+    #expect(manifest.sources.contains { $0.servesParts == true } == false)
+    let file = try #require(manifest.files.first)
+    #expect(manifest.files.count == 1)
+    #expect(file.sizeBytes == 269_751_136)
+    #expect(file.sha256 == "9b9c8811bbcc82a7766f0fb0925614bdacb0923b2cc630daeac17108b655b860")
+    #expect(file.parts == nil)
+  }
+
+  @Test func bothIdentitiesAreDistinctFromEachOtherAndFromWhisperKit() throws {
+    let turbo = try Self.load("whisper-delivery-manifest").manifest.identity
+    let preview = try Self.load("whisper-preview-delivery-manifest").manifest.identity
+    #expect(turbo.cacheKey != preview.cacheKey)
+    #expect(turbo.family != .whisperKit && preview.family != .whisperKit)
+  }
+
+  @Test func bothManifestsAreDeclaredAsAppResources() throws {
+    let project = try String(
+      contentsOf: ParakeetShippedManifestTests.repoRoot.appendingPathComponent("Project.swift"),
+      encoding: .utf8)
+    for name in ["whisper-delivery-manifest.json", "whisper-preview-delivery-manifest.json"] {
+      #expect(
+        project.contains("Sources/EnviousWispr/Resources/\(name)"),
+        "\(name) must be listed in the app target's resources")
+    }
+  }
+}
+
 /// #996 phase D, #3105: the correction judge's delivery manifest, Judge 1 v31.
 /// The golden digest and every byte-level constant were measured from the
 /// STAGED folder (`scripts/build-edit-judge-delivery-manifest.py`, export

@@ -15,7 +15,7 @@ SYNC = sys.argv[1]
 TARGETS = [
     "EnviousWisprCore", "EnviousWisprObservabilityCore", "EnviousWisprStorage",
     "EnviousWisprModelDelivery", "EnviousWisprPostProcessing", "EnviousWisprAudio",
-    "EnviousWisprServices", "EnviousWisprFluidAudioBridge", "EnviousWisprASR",
+    "EnviousWisprServices", "EnviousWisprFluidAudioBridge", "EnviousWisprTranscribeCpp", "EnviousWisprASR",
     "EnviousWisprLLM", "EnviousWisprWordCheck", "EnviousWisprPipeline", "EnviousWisprContacts",
     "EnviousWisprLivePreview", "EnviousWisprWhisperPreviewAdapter", "EnviousWisprAppKit",
     "EnviousWisprDesktopEffects", "EnviousWisprAppLive", "EnviousWispr",

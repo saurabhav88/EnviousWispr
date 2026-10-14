@@ -74,7 +74,7 @@ PINNED_XCODE_BUILD = "27A266a"  # Xcode 27.0; keep equal to .github/actions/xcod
 PRODUCTION_TARGETS = [
     "EnviousWisprCore", "EnviousWisprObservabilityCore", "EnviousWisprStorage",
     "EnviousWisprModelDelivery", "EnviousWisprPostProcessing", "EnviousWisprAudio",
-    "EnviousWisprServices", "EnviousWisprFluidAudioBridge", "EnviousWisprASR",
+    "EnviousWisprServices", "EnviousWisprFluidAudioBridge", "EnviousWisprTranscribeCpp", "EnviousWisprASR",
     "EnviousWisprLLM", "EnviousWisprWordCheck", "EnviousWisprPipeline", "EnviousWisprContacts",
     "EnviousWisprLivePreview", "EnviousWisprWhisperPreviewAdapter", "EnviousWisprAppKit",
     "EnviousWisprDesktopEffects", "EnviousWisprAppLive", "EnviousWispr",

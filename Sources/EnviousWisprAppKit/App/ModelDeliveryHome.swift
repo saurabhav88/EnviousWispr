@@ -195,6 +195,42 @@ final class ModelDeliveryHome {
   /// manifests to the same literal.
   static let ownedModelHost = "models.enviouswispr.com"
 
+  /// #3735: the transcribe.cpp Whisper turbo registration. Defined here because this
+  /// type is the single owner of "which models exist and where they install", but INERT
+  /// until the engine swap: `init` does not call it, so nothing fetches, sweeps or adopts
+  /// these bytes at launch. Installs into `Models/whisper-gguf`, a sibling of the retired
+  /// CoreML `Models/whisper`, never that directory. Metadata shares the delivery directory:
+  /// staging and markers key on the full `ModelIdentity.cacheKey`.
+  static func whisperGGUFRegistration(
+    manifestBundle: Bundle, appSupport: URL
+  ) throws -> DeliveryRegistration {
+    try ggufRegistration(
+      resource: "whisper-delivery-manifest", directory: "whisper-gguf",
+      manifestBundle: manifestBundle, appSupport: appSupport)
+  }
+
+  /// #3735: the transcribe.cpp whisper-small registration for the Universal preview.
+  /// Inert until the preview moves engines; installs into `Models/whisper-preview-gguf`.
+  static func whisperPreviewGGUFRegistration(
+    manifestBundle: Bundle, appSupport: URL
+  ) throws -> DeliveryRegistration {
+    try ggufRegistration(
+      resource: "whisper-preview-delivery-manifest", directory: "whisper-preview-gguf",
+      manifestBundle: manifestBundle, appSupport: appSupport)
+  }
+
+  private static func ggufRegistration(
+    resource: String, directory: String, manifestBundle: Bundle, appSupport: URL
+  ) throws -> DeliveryRegistration {
+    let manifest = try DeliveryManifest.loadBundled(resource: resource, bundle: manifestBundle)
+    return DeliveryRegistration(
+      manifest: manifest,
+      installDirectory: appSupport.appendingPathComponent(
+        "EnviousWispr/Models/\(directory)", isDirectory: true),
+      metadataDirectory: appSupport.appendingPathComponent(
+        "EnviousWispr/ModelDelivery", isDirectory: true))
+  }
+
   /// A checker downloads only from our own mirror, under the prefix its base
   /// model already uses: one `our_copy` source on `ownedModelHost`.
   static func checkerHostIsConfigured(

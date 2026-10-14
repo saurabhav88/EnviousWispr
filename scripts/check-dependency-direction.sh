@@ -40,7 +40,10 @@ permitted_imports_for() {
     EnviousWisprObservabilityCore) echo "" ;;
     EnviousWisprAudio)             echo "EnviousWisprCore" ;;
     EnviousWisprFluidAudioBridge)  echo "" ;;
-    EnviousWisprASR)               echo "EnviousWisprCore EnviousWisprAudio EnviousWisprFluidAudioBridge EnviousWisprServices" ;;
+    # #3735: the transcribe.cpp boundary. A leaf over the CTranscribe binary: it
+    # imports no first-party module, so it can hold no app policy.
+    EnviousWisprTranscribeCpp)     echo "" ;;
+    EnviousWisprASR)               echo "EnviousWisprCore EnviousWisprAudio EnviousWisprFluidAudioBridge EnviousWisprServices EnviousWisprTranscribeCpp" ;;
     EnviousWisprPostProcessing)    echo "EnviousWisprCore" ;;
     EnviousWisprContacts)          echo "EnviousWisprCore" ;;
     EnviousWisprStorage)           echo "EnviousWisprCore" ;;
@@ -64,8 +67,9 @@ permitted_imports_for() {
     # here with no check failing (cloud review r8). What it must NEVER get is Audio,
     # Pipeline, Services or AppKit: the limb must not be able to reach capture, the
     # recording path or the app shell. That is this line's entire job — keep the
-    # list at four.
-    EnviousWisprWhisperPreviewAdapter) echo "EnviousWisprCore EnviousWisprPostProcessing EnviousWisprLivePreview EnviousWisprASR" ;;
+    # list at five. #3735 added EnviousWisprTranscribeCpp, the native leaf the
+    # transcribe.cpp preview engine calls; it imports no first-party module.
+    EnviousWisprWhisperPreviewAdapter) echo "EnviousWisprCore EnviousWisprPostProcessing EnviousWisprLivePreview EnviousWisprASR EnviousWisprTranscribeCpp" ;;
     EnviousWisprPipeline)          echo "EnviousWisprCore EnviousWisprASR EnviousWisprAudio EnviousWisprLLM EnviousWisprModelDelivery EnviousWisprPostProcessing EnviousWisprServices EnviousWisprStorage" ;;
     EnviousWisprAppKit)            echo "EnviousWisprCore EnviousWisprStorage EnviousWisprPostProcessing EnviousWisprAudio EnviousWisprServices EnviousWisprASR EnviousWisprLLM EnviousWisprModelDelivery EnviousWisprPipeline EnviousWisprContacts EnviousWisprLivePreview EnviousWisprWhisperPreviewAdapter EnviousWisprWordCheck" ;;
     EnviousWisprAppKitTestSupport) echo "EnviousWisprAppKit EnviousWisprCore" ;;
@@ -226,8 +230,8 @@ test_targets_and_permitted() {
     # Everything the unit suite legitimately links. EnviousWisprDesktopEffects and
     # EnviousWisprAppLive are ABSENT on purpose — that absence is the point.
     EnviousWisprDesktopEffectsTests) echo "EnviousWisprCore EnviousWisprAppKit EnviousWisprAppKitTestSupport EnviousWisprDesktopEffects" ;;
-    EnviousWisprTests) echo "EnviousWisprCore EnviousWisprObservabilityCore EnviousWisprModelDelivery EnviousWisprPostProcessing EnviousWisprLLM EnviousWisprPipeline EnviousWisprStorage EnviousWisprAudio EnviousWisprLivePreview EnviousWisprWhisperPreviewAdapter EnviousWisprFluidAudioBridge EnviousWisprAppKit EnviousWisprAppKitTestSupport EnviousWisprContacts EnviousWisprServices EnviousWisprASR EnviousWisprWordCheck" ;;
-    EnviousWisprASRTests) echo "EnviousWisprCore EnviousWisprASR EnviousWisprAudio EnviousWisprFluidAudioBridge EnviousWisprServices" ;;
+    EnviousWisprTests) echo "EnviousWisprCore EnviousWisprObservabilityCore EnviousWisprModelDelivery EnviousWisprPostProcessing EnviousWisprLLM EnviousWisprPipeline EnviousWisprStorage EnviousWisprAudio EnviousWisprLivePreview EnviousWisprWhisperPreviewAdapter EnviousWisprFluidAudioBridge EnviousWisprAppKit EnviousWisprAppKitTestSupport EnviousWisprContacts EnviousWisprServices EnviousWisprASR EnviousWisprWordCheck EnviousWisprTranscribeCpp" ;;
+    EnviousWisprASRTests) echo "EnviousWisprCore EnviousWisprASR EnviousWisprAudio EnviousWisprFluidAudioBridge EnviousWisprServices EnviousWisprTranscribeCpp" ;;
     # #3095: not a target. `Tests/Fixtures/` holds files a test launches at
     # runtime (`swift Tests/Fixtures/frozen-app/FrozenAppHelper.swift`, #2705);
     # nothing compiles them in. The empty list is the contract: a fixture may

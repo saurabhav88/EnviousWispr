@@ -1,0 +1,45 @@
+{
+ "schemaVersion": 1,
+ "identity": {
+  "family": "whisper",
+  "name": "whisper-small-gguf",
+  "revision": "a2073177cb69bd74b9ca9460b852d17fbfd5d68c",
+  "variant": "q8_0",
+  "runtimeABI": "transcribecpp-ew-3735-v0.4.0.3"
+ },
+ "runtimeCompatibility": {
+  "minAppVersion": "2.5.4"
+ },
+ "optionalFiles": [],
+ "totalBytes": 269751136,
+ "files": [
+  {
+   "path": "whisper-small-Q8_0.gguf",
+   "sizeBytes": 269751136,
+   "sha256": "9b9c8811bbcc82a7766f0fb0925614bdacb0923b2cc630daeac17108b655b860",
+   "component": "whisper-small-Q8_0.gguf"
+  }
+ ],
+ "sources": [
+  {
+   "id": "our_copy",
+   "baseURL": "https://models.enviouswispr.com/whisper/handy-computer/whisper-small-gguf/a2073177cb69bd74b9ca9460b852d17fbfd5d68c/"
+  },
+  {
+   "id": "hf_pinned",
+   "baseURL": "https://huggingface.co/handy-computer/whisper-small-gguf/resolve/a2073177cb69bd74b9ca9460b852d17fbfd5d68c/"
+  }
+ ],
+ "license": {
+  "name": "MIT (OpenAI Whisper weights); GGUF conversion repo declares Apache-2.0",
+  "url": "https://huggingface.co/handy-computer/whisper-small-gguf"
+ },
+ "admission": {
+  "layout": "componentSet",
+  "installLocation": "whisperPreviewGGUFModelsCache",
+  "diskHeadroomFactor": "2.2",
+  "evictPreviousRevisions": false,
+  "entrypointFile": "whisper-small-Q8_0.gguf"
+ },
+ "manifestDigest": "6a28862edf8b23da505ea29bbab99547d6db4d1a7640dd9a49db0987d6e88a75"
+}

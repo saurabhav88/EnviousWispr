@@ -78,6 +78,7 @@ import Testing
       .parakeet: ["parakeet-tdt-0.6b-v3-coreml", "parakeet-ultra-coreml"],
       .s1Mini: ["s1-mini"],
       .s1MiniChecker: ["s1c"],
+      .whisper: ["whisper-large-v3-turbo-gguf", "whisper-small-gguf"],
       .whisperKit: ["whisperkit-coreml"],
       .wordCheck: ["kev-wc"],
     ]
