@@ -163,6 +163,32 @@
       return (controller, director, busy)
     }
 
+    /// A presenter that never presents, so a test decides when the host answers.
+    @MainActor
+    private final class StubPresenter: OverlayPresenting {
+      private(set) var pendingResults: [(PillPresentationResult) -> Void] = []
+      var featureSlotIsAvailable: Bool { true }
+      func present(_ request: PillRequest) -> PillReceipt? { nil }
+      func present(
+        _ request: PillRequest, onResult: @escaping (PillPresentationResult) -> Void
+      ) -> PillReceipt? {
+        pendingResults.append(onResult)
+        return nil
+      }
+      func update(_ update: PillUpdate) {}
+      func dismissCurrent(_ mode: PillDismissal) {}
+      func dismissIfCurrent(_ receipt: PillReceipt) {}
+      func isCurrent(_ receipt: PillReceipt) -> Bool { false }
+      func deliver(_ result: PillPresentationResult, at index: Int? = nil) {
+        pendingResults[index ?? pendingResults.count - 1](result)
+      }
+    }
+
+    private func stubbedController(_ presenter: StubPresenter) -> PillPreviewController {
+      PillPreviewController(
+        presenter: presenter, isPipelineBusy: { false }, overlayIsEmpty: { true })
+    }
+
     @Test("Play shows the selected pill when the pipeline is idle and the overlay is empty")
     func playShows() {
       let (controller, director, _) = make()
@@ -247,6 +273,7 @@
     func unknownSelectionIsReported() {
       let (controller, _, _) = make()
       controller.play()
+      #expect(controller.outcome == .shown("Learned word Undo (added)"))
       controller.selectedID = "no-such-row"
       controller.play()
       #expect(controller.outcome == .notShown("no preview is selected"))
@@ -286,18 +313,34 @@
 
     @Test("a result that arrives after Dismiss cannot change the status")
     func lateResultAfterDismissIsIgnored() {
-      var deferred: (() -> Void)?
-      let director = OverlayDirector(
-        host: WindowlessOverlayHost(), announce: { _ in }, livePreview: .disabled,
-        grantAccessibility: {}, openMicrophoneSettings: {}, advisoryHint: { _ in nil },
-        selections: { .shipped }, firstRenderSchedule: { deferred = $0 })
-      let (controller, _, _) = make(director: director)
+      let presenter = StubPresenter()
+      let controller = stubbedController(presenter)
       controller.play()
-      #expect(controller.outcome == .pending("Learned word Undo (added)"))
       controller.dismiss()
-      #expect(controller.outcome == .idle)
-      deferred?()
+      presenter.deliver(.notPresented)
       #expect(controller.outcome == .idle, "a late host answer overwrote the status")
+    }
+
+    @Test("a result from an earlier Play cannot change what a newer Play reports")
+    func staleResultFromEarlierPlayIsIgnored() {
+      let presenter = StubPresenter()
+      let controller = stubbedController(presenter)
+      controller.play()
+      controller.play()
+      #expect(presenter.pendingResults.count == 2)
+      presenter.deliver(.notPresented, at: 0)
+      #expect(
+        controller.outcome == .pending("Learned word Undo (added)"),
+        "the first Play's answer overwrote the second Play's status")
+    }
+
+    @Test("a refused presentation is reported as not shown")
+    func refusedPresentationIsReported() {
+      let presenter = StubPresenter()
+      let controller = stubbedController(presenter)
+      controller.play()
+      presenter.deliver(.notPresented)
+      #expect(controller.outcome == .notShown("the overlay refused it"))
     }
 
     @Test("a deferred first render reports pending, then shown")
