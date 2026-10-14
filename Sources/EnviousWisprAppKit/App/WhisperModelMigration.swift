@@ -71,8 +71,8 @@ final class WhisperModelMigration {
 
   enum CommandOutcome: Sendable, Equatable {
     case done
-    /// The record could not be written, so nothing else ran.
-    case refusedRecordWrite
+    /// The record could not be read or written, so nothing else ran.
+    case refusedRecord
   }
 
   private let metadataDirectory: URL
@@ -81,9 +81,10 @@ final class WhisperModelMigration {
   private let removeItem: (URL) throws -> Void
   private let log: @MainActor (String) -> Void
 
-  /// Bumped by every user command, so a launch run that was overtaken (a Cancel during its
-  /// automatic fetch) does not write a stale state afterwards.
-  private var generation = 0
+  /// Bumped per artifact by every user command on that artifact, so a launch run overtaken on
+  /// one artifact (a Cancel during its automatic fetch) does not write a stale state for it,
+  /// and the other artifact's work goes on.
+  private var generations: [Artifact: Int] = [:]
 
   init(
     metadataDirectory: URL,
@@ -103,22 +104,39 @@ final class WhisperModelMigration {
 
   // MARK: - Record
 
+  /// Keyed by `Artifact.rawValue`, so the file reads as a plain JSON object.
   private struct Record: Codable, Equatable {
     var version = 1
-    var artifacts: [Artifact: ReplacementState] = [:]
+    var artifacts: [String: ReplacementState] = [:]
+
+    subscript(artifact: Artifact) -> ReplacementState? {
+      get { artifacts[artifact.rawValue] }
+      set { artifacts[artifact.rawValue] = newValue }
+    }
+  }
+
+  private enum RecordRead {
+    case absent
+    case present(Record)
+    /// The file exists but could not be read, decoded, or has a version this build does not
+    /// know. It may hold a decision (a decline) this build cannot see, so nothing proceeds
+    /// and nothing overwrites it.
+    case unusable
   }
 
   private var recordURL: URL {
     metadataDirectory.appendingPathComponent("whisper-replacement.json")
   }
 
-  /// A record that exists but cannot be read is treated as absent for every artifact, which
-  /// recomputes `owed` from the disk and the selection: the same answer a first launch gives.
-  private func readRecord() -> Record {
+  private func readRecord() -> RecordRead {
+    guard FileManager.default.fileExists(atPath: recordURL.path) else { return .absent }
     guard let data = try? Data(contentsOf: recordURL),
       let record = try? JSONDecoder().decode(Record.self, from: data), record.version == 1
-    else { return Record() }
-    return record
+    else {
+      log("Whisper migration: the replacement record is unreadable; nothing changes")
+      return .unusable
+    }
+    return .present(record)
   }
 
   private func writeRecord(_ record: Record) -> Bool {
@@ -134,12 +152,19 @@ final class WhisperModelMigration {
   }
 
   func state(of artifact: Artifact) -> ReplacementState? {
-    readRecord().artifacts[artifact]
+    if case .present(let record) = readRecord() { return record[artifact] }
+    return nil
   }
 
+  /// Refuses (false) on an unusable record as well as on a failed write.
   private func setState(_ state: ReplacementState, for artifact: Artifact) -> Bool {
-    var record = readRecord()
-    record.artifacts[artifact] = state
+    var record: Record
+    switch readRecord() {
+    case .absent: record = Record()
+    case .present(let existing): record = existing
+    case .unusable: return false
+    }
+    record[artifact] = state
     return writeRecord(record)
   }
 
@@ -149,17 +174,22 @@ final class WhisperModelMigration {
   /// deletion: a rollback must not lose the old model and then refuse the new one.
   func runLaunch() async {
     guard isDeliveryEnabled() else { return }
-    let started = generation
+    let started = generations
 
     // 1. The first launch of this build records each artifact's debt, before any deletion.
-    var record = readRecord()
+    var record: Record
+    switch readRecord() {
+    case .absent: record = Record()
+    case .present(let existing): record = existing
+    case .unusable: return
+    }
     var changed = false
-    for artifact in Artifact.allCases where record.artifacts[artifact] == nil {
+    for artifact in Artifact.allCases where record[artifact] == nil {
       guard let port = ports[artifact] else { continue }
       let hadOld =
         Self.directoryExists(port.legacyInstallDirectory)
         || (artifact == .dictation && legacyOwedMarkerExists)
-      record.artifacts[artifact] = (hadOld || port.isSelected()) ? .owed : .notOwed
+      record[artifact] = (hadOld || port.isSelected()) ? .owed : .notOwed
       changed = true
     }
     if changed, !writeRecord(record) { return }
@@ -169,16 +199,15 @@ final class WhisperModelMigration {
 
     // 3. Settle or fetch what is owed.
     for artifact in Artifact.allCases {
-      guard generation == started, let port = ports[artifact],
-        readRecord().artifacts[artifact] == .owed
-      else { continue }
+      let current = { [unowned self] in generations[artifact] == started[artifact] }
+      guard current(), let port = ports[artifact], state(of: artifact) == .owed else { continue }
       if await port.isAdmittedOrAdoptable() {
-        if generation == started { markAdmitted(artifact) }
+        if current() { markAdmitted(artifact) }
         continue
       }
-      guard port.isSelected(), isDeliveryEnabled() else { continue }
+      guard current(), port.isSelected(), isDeliveryEnabled() else { continue }
       let admitted = await port.ensureAvailable()
-      if admitted, generation == started { markAdmitted(artifact) }
+      if admitted, current() { markAdmitted(artifact) }
     }
   }
 
@@ -187,11 +216,11 @@ final class WhisperModelMigration {
   /// Settings Download: clears a decline and fetches. The record is written first, so a quit
   /// mid-download resumes on the next launch.
   func download(_ artifact: Artifact) async -> CommandOutcome {
-    generation += 1
-    guard setState(.owed, for: artifact) else { return .refusedRecordWrite }
+    generations[artifact, default: 0] += 1
+    guard setState(.owed, for: artifact) else { return .refusedRecord }
     guard let port = ports[artifact] else { return .done }
-    let mine = generation
-    if await port.ensureAvailable(), mine == generation {
+    let mine = generations[artifact]
+    if await port.ensureAvailable(), mine == generations[artifact] {
       markAdmitted(artifact)
     }
     return .done
@@ -203,10 +232,10 @@ final class WhisperModelMigration {
 
   /// Settings Cancel or Remove: recorded BEFORE the caller stops the fetch or deletes the
   /// files, so the next launch never restarts what the user stopped. Refused (and nothing
-  /// else should run) when the record cannot be written.
+  /// else should run) when the record cannot be read or written.
   func decline(_ artifact: Artifact) -> CommandOutcome {
-    generation += 1
-    return setState(.declined, for: artifact) ? .done : .refusedRecordWrite
+    generations[artifact, default: 0] += 1
+    return setState(.declined, for: artifact) ? .done : .refusedRecord
   }
 
   // MARK: - Retirement

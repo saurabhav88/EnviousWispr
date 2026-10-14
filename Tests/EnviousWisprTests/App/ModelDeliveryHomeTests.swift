@@ -699,6 +699,7 @@ struct ModelDeliveryHomeTests {
       }
     }
     let gate = Gate()
+    Self.bindPreviewCommandsForTests(home)
     home.drainPreviewHoldersBeforeRemoval = { await gate.wait() }
     home.previewRemovalDidFinish = { gate.noteFinished() }
     // **Never the real delete.** `manifestBundle` redirects only where manifests
@@ -774,6 +775,7 @@ struct ModelDeliveryHomeTests {
       }
     }
     let gate = Gate()
+    Self.bindPreviewCommandsForTests(home)
     home.drainPreviewHoldersBeforeRemoval = { await gate.wait() }
     // Counted, not performed: see the note above about Application Support.
     let deletes = Deletes()
@@ -794,6 +796,18 @@ struct ModelDeliveryHomeTests {
       home.removalStepsForTests == ["drain", "delete", "finish"],
       "exactly one of each step, got \(home.removalStepsForTests)")
     #expect(deletes.count == 1, "two presses performed \(deletes.count) deletes")
+  }
+
+  /// #3735: preview commands refuse until the replacement record is bound. These tests are about
+  /// the doors' other contracts, so the record here always accepts, and `download` reaches
+  /// delivery the way `WhisperModelMigration.download` does.
+  static func bindPreviewCommandsForTests(_ home: ModelDeliveryHome) {
+    home.previewReplacement = .init(
+      download: { [weak home] in
+        _ = await home?.whisperPreviewHandle?.ensureAvailable()
+        return true
+      },
+      decline: { true })
   }
 
   private final class Deletes: @unchecked Sendable {
@@ -866,6 +880,7 @@ struct ModelDeliveryHomeTests {
     }
 
     let off = try home(enabled: false)
+    Self.bindPreviewCommandsForTests(off)
     let offBaseline = await baselineAfterLaunchProbe(off)
     off.startPreviewDownload()
     for _ in 0..<2000 { await Task.yield() }
@@ -874,6 +889,7 @@ struct ModelDeliveryHomeTests {
       "the kill switch is off but the download door still reached delivery")
 
     let on = try home(enabled: true)
+    Self.bindPreviewCommandsForTests(on)
     let onBaseline = await baselineAfterLaunchProbe(on)
     on.startPreviewDownload()
     for _ in 0..<4000 where on.previewStateUpdatesForTests == onBaseline { await Task.yield() }
@@ -1092,6 +1108,7 @@ struct ModelDeliveryHomeTests {
     }
 
     let off = try home(enabled: false)
+    Self.bindPreviewCommandsForTests(off)
     let offFinishes = Finishes()
     off.previewRemovalDidFinish = { offFinishes.record() }
     for _ in 0..<400 { await Task.yield() }
@@ -1106,6 +1123,7 @@ struct ModelDeliveryHomeTests {
       "control: with the flag OFF the removal must actually have been refused")
 
     let on = try home(enabled: true)
+    Self.bindPreviewCommandsForTests(on)
     let onFinishes = Finishes()
     on.previewRemovalDidFinish = { onFinishes.record() }
     for _ in 0..<400 { await Task.yield() }

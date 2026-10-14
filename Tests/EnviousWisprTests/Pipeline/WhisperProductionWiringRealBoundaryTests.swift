@@ -110,22 +110,27 @@ struct WhisperProductionWiringRealBoundaryTests {
 
     // 2. Cancel a decode inside the native call, then decode again on the same engine.
     let long = Array(repeating: samples, count: 8).flatMap { $0 }
-    let (entered, signal) = AsyncStream.makeStream(of: Void.self)
+    let entered = BoundedWait.Signal()
     let take = Task {
       try await wired.backend.transcribe(
         audioSamples: long, options: TranscriptionOptions(language: "en"),
-        onInferenceEntered: { signal.yield() })
+        onInferenceEntered: { entered.fire() })
     }
-    for await _ in entered { break }
+    // Bounded: a native call that never starts, or a cancel that never returns, fails the test.
+    // On expiry the task is cancelled (the executor aborts the native run); nothing is freed
+    // under it.
+    try await BoundedWait.until(entered, deadline: .seconds(30))
     take.cancel()
-    let cancelled = await take.result
+    let cancelled = try await BoundedWait.result(of: take, deadline: .seconds(30))
     #expect(throws: CancellationError.self) { try cancelled.get() }
-    #expect(occupancy.isIdle)
+    // Occupancy through a cancel is the adapter test's subject
+    // (`cancelledTakeHoldsOccupancyUntilNativeReturn`); this direct backend call is untracked.
     #expect(Self.words(try await decode(adapter, samples)) == Self.expectedWords)
 
     // 3. The idle unload, under the mutation claim, then a reload and another decode.
     adapter.applyUnloadPolicy(.immediately)
-    await adapter.modelUnloadTaskForUnitTests?.value
+    let unloadTask = try #require(adapter.modelUnloadTaskForUnitTests)
+    _ = try await BoundedWait.result(of: unloadTask, deadline: .seconds(30))
     #expect(adapter.readiness == .notReady)
     #expect(await wired.backend.isReady == false)
     try await adapter.warmUp(modelReceipt: nil)

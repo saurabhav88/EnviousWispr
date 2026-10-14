@@ -1,6 +1,7 @@
 import Foundation
 import Testing
 
+@testable import EnviousWisprASR
 @testable import EnviousWisprAppKit
 
 /// #3735 plan §3.6: every row of the migration state matrix, against real temporary folders.
@@ -16,9 +17,10 @@ struct WhisperModelMigrationTests {
     var admitted = false
     var fetches = 0
     var fetchSucceeds = true
-    /// When set, a fetch suspends here until the test resumes it.
-    var hold: CheckedContinuation<Void, Never>?
+    /// When set, the next fetch fires `held` and suspends until `release` fires.
     var holdNextFetch = false
+    let held = BoundedWait.Signal()
+    let release = BoundedWait.Signal()
 
     init(selected: Bool) { self.selected = selected }
 
@@ -30,7 +32,9 @@ struct WhisperModelMigrationTests {
           fetches += 1
           if holdNextFetch {
             holdNextFetch = false
-            await withCheckedContinuation { hold = $0 }
+            held.fire()
+            // Bounded: a test that never releases fails here instead of hanging the lane.
+            try? await BoundedWait.until(release)
           }
           if fetchSucceeds { admitted = true }
           return fetchSucceeds
@@ -317,12 +321,55 @@ struct WhisperModelMigrationTests {
     let (migration, read) = makeMigration(&rig)
 
     let launch = Task { await migration.runLaunch() }
-    while read().dictation.hold == nil { await Task.yield() }
+    try await BoundedWait.until(read().dictation.held)
     #expect(migration.decline(.dictation) == .done)
-    read().dictation.hold?.resume()
-    await launch.value
+    let release = read().dictation.release
+    release.fire()
+    _ = try await BoundedWait.result(of: launch, onExpiry: { release.fire() })
 
     #expect(migration.state(of: .dictation) == .declined)
+  }
+
+  @Test("a Cancel on dictation during its launch fetch does not stop the owed preview fetch")
+  func cancelIsPerArtifact() async throws {
+    var rig = try Rig(dictationSelected: true, previewSelected: true)
+    rig.dictation.holdNextFetch = true
+    let (migration, read) = makeMigration(&rig)
+
+    let launch = Task { await migration.runLaunch() }
+    try await BoundedWait.until(read().dictation.held)
+    #expect(migration.decline(.dictation) == .done)
+    let release = read().dictation.release
+    release.fire()
+    _ = try await BoundedWait.result(of: launch, onExpiry: { release.fire() })
+
+    #expect(migration.state(of: .dictation) == .declined)
+    #expect(read().preview.fetches == 1)
+    #expect(migration.state(of: .preview) == .admitted)
+  }
+
+  // MARK: - A record this build cannot read
+
+  @Test(
+    "an unreadable or unknown-version record changes nothing: no deletion, no download, no overwrite",
+    arguments: ["{not json", #"{"version":2,"artifacts":{"dictation":"declined"}}"#])
+  func unusableRecordChangesNothing(contents: String) async throws {
+    var rig = try Rig(dictationSelected: true, previewSelected: true)
+    try rig.makeOldModels()
+    let recordURL = rig.metadata.appendingPathComponent("whisper-replacement.json")
+    try Data(contents.utf8).write(to: recordURL)
+    let (migration, read) = makeMigration(&rig)
+
+    await migration.runLaunch()
+    #expect(migration.decline(.preview) == .refusedRecord)
+    #expect(await migration.download(.dictation) == .refusedRecord)
+
+    let after = read()
+    #expect(after.exists(after.legacyDictation))
+    #expect(after.exists(after.legacyPreview))
+    #expect(after.dictation.fetches == 0)
+    #expect(after.preview.fetches == 0)
+    #expect(try String(contentsOf: recordURL, encoding: .utf8) == contents)
   }
 
   // MARK: - What counts as a leftover
@@ -364,5 +411,143 @@ struct WhisperModelMigrationTests {
     #expect(migration.state(of: .dictation) == .owed)
     #expect(migration.state(of: .preview) == .notOwed)
     #expect(after.dictation.fetches == 0)
+  }
+}
+
+/// #3735 §3.6 through the preview's real Settings doors (`ModelDeliveryHome`'s Download, Cancel
+/// and Remove), bound to a real `WhisperModelMigration` exactly as production binds it. When this
+/// fails, a user who cancelled or removed the preview model gets it downloaded again at the next
+/// launch, or a press does something while the record cannot be kept.
+@MainActor
+@Suite("Preview Settings commands keep the replacement record (#3735)", .serialized, .tags(.productOutcome))
+struct WhisperPreviewCommandRecordTests {
+  typealias FakeDoor = WhisperModelMigrationTests.FakeDoor
+
+  @MainActor struct Fixture {
+    let root: URL
+    let home: ModelDeliveryHome
+    let metadata: URL
+    let door: FakeDoor
+
+    func migration() -> WhisperModelMigration {
+      WhisperModelMigration(
+        metadataDirectory: metadata,
+        ports: [.preview: door.port(legacy: root.appendingPathComponent("old-preview"))],
+        isDeliveryEnabled: { true }, log: { _ in })
+    }
+
+    /// A launch: a fresh migration over the same disk, bound to the doors.
+    func launch() async -> WhisperModelMigration {
+      let migration = migration()
+      WhisperDeliveryWiring.bindPreviewCommands(of: home, to: migration)
+      await migration.runLaunch()
+      return migration
+    }
+  }
+
+  private func makeFixture() throws -> Fixture {
+    let repoRoot = URL(filePath: #filePath)
+      .deletingLastPathComponent().deletingLastPathComponent()
+      .deletingLastPathComponent().deletingLastPathComponent()
+    let root = FileManager.default.temporaryDirectory
+      .appendingPathComponent("ew-3735-preview-doors-\(UUID().uuidString)", isDirectory: true)
+    let home = ModelDeliveryHome(
+      engineMutationScope: .alwaysAllowedForTesting,
+      manifestBundle: try #require(
+        Bundle(url: repoRoot.appendingPathComponent("Sources/EnviousWispr/Resources"))),
+      appSupportOverride: root,
+      deliveryFlagDefaults: try #require(TestDefaults.suite("ew-3735-doors-\(UUID().uuidString)")))
+    let metadata = try #require(home.whisperPreviewRegistration).metadataDirectory
+    // Never the real delete: the doors' ordering is under test, not the controller's removal.
+    home.deletePreviewModelOverrideForTests = {}
+    let door = FakeDoor(selected: true)
+    door.fetchSucceeds = false  // the launch fetch ends with the preview still owed
+    return Fixture(root: root, home: home, metadata: metadata, door: door)
+  }
+
+  @Test("Cancel records the decline, so the next launch does not download again")
+  func cancelSurvivesRelaunch() async throws {
+    let f = try makeFixture()
+    defer { try? FileManager.default.removeItem(at: f.root) }
+    let first = await f.launch()
+    #expect(first.state(of: .preview) == .owed)
+    #expect(f.door.fetches == 1)
+
+    f.home.cancelPreviewDownload()
+    #expect(first.state(of: .preview) == .declined)
+
+    _ = await f.launch()
+    #expect(f.door.fetches == 1, "a cancelled preview download restarted at the next launch")
+  }
+
+  @Test("Remove records the decline before it drains anything, and the next launch keeps it")
+  func removeSurvivesRelaunch() async throws {
+    let f = try makeFixture()
+    defer { try? FileManager.default.removeItem(at: f.root) }
+    let first = await f.launch()
+    var stateAtDrain: WhisperModelMigration.ReplacementState?
+    f.home.drainPreviewHoldersBeforeRemoval = { stateAtDrain = first.state(of: .preview) }
+    let finished = BoundedWait.Signal()
+    f.home.previewRemovalDidFinish = { finished.fire() }
+
+    f.home.removePreviewModel()
+    try await BoundedWait.until(finished)
+    #expect(stateAtDrain == .declined)
+    #expect(f.home.removalStepsForTests == ["drain", "delete", "finish"])
+
+    _ = await f.launch()
+    #expect(f.door.fetches == 1, "a removed preview model was downloaded again at the next launch")
+  }
+
+  @Test("Download after a Cancel clears the decline and fetches")
+  func downloadClearsDecline() async throws {
+    let f = try makeFixture()
+    defer { try? FileManager.default.removeItem(at: f.root) }
+    let first = await f.launch()
+    f.home.cancelPreviewDownload()
+    f.door.fetchSucceeds = true
+
+    f.home.startPreviewDownload()
+    let press = try #require(f.home.previewDownloadTaskForTests)
+    _ = try await BoundedWait.result(of: press)
+
+    #expect(f.door.fetches == 2)
+    #expect(first.state(of: .preview) == .admitted)
+  }
+
+  @Test("with an unusable record, Cancel, Remove and Download touch nothing")
+  func unusableRecordRefusesEveryDoor() async throws {
+    let f = try makeFixture()
+    defer { try? FileManager.default.removeItem(at: f.root) }
+    try FileManager.default.createDirectory(at: f.metadata, withIntermediateDirectories: true)
+    let recordURL = f.metadata.appendingPathComponent("whisper-replacement.json")
+    try Data("{not json".utf8).write(to: recordURL)
+    let migration = f.migration()
+    WhisperDeliveryWiring.bindPreviewCommands(of: f.home, to: migration)
+    var drained = false
+    f.home.drainPreviewHoldersBeforeRemoval = { drained = true }
+
+    f.home.cancelPreviewDownload()
+    f.home.removePreviewModel()
+    f.home.startPreviewDownload()
+    let press = try #require(f.home.previewDownloadTaskForTests)
+    _ = try await BoundedWait.result(of: press)
+
+    #expect(!drained)
+    #expect(f.home.removalStepsForTests.isEmpty)
+    #expect(f.door.fetches == 0)
+    #expect(try String(contentsOf: recordURL, encoding: .utf8) == "{not json")
+  }
+
+  @Test("an unbound record refuses every door")
+  func unboundRefuses() async throws {
+    let f = try makeFixture()
+    defer { try? FileManager.default.removeItem(at: f.root) }
+    var drained = false
+    f.home.drainPreviewHoldersBeforeRemoval = { drained = true }
+    f.home.removePreviewModel()
+    f.home.startPreviewDownload()
+    #expect(!drained)
+    #expect(f.home.previewDownloadTaskForTests == nil)
   }
 }

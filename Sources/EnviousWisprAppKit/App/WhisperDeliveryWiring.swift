@@ -113,6 +113,8 @@ enum WhisperDeliveryWiring {
       TelemetryService.shared.modelDeliveryEvent(name: name, properties: props)
     }
 
+    bindPreviewCommands(of: modelDelivery, to: migration)
+
     let removal = WhisperRemovalHook()
 
     // Availability is controller admission, never a directory probe.
@@ -240,6 +242,19 @@ enum WhisperDeliveryWiring {
 
     return Wired(
       backend: backend, migration: migration, setupService: setupService, removal: removal)
+  }
+}
+
+extension WhisperDeliveryWiring {
+  /// The preview's Settings commands go through the migration's record (see
+  /// `ModelDeliveryHome.PreviewReplacementCommands`). One function, so tests bind exactly what
+  /// production binds.
+  static func bindPreviewCommands(
+    of modelDelivery: ModelDeliveryHome, to migration: WhisperModelMigration
+  ) {
+    modelDelivery.previewReplacement = .init(
+      download: { [weak migration] in await migration?.download(.preview) == .done },
+      decline: { [weak migration] in migration?.decline(.preview) == .done })
   }
 }
 

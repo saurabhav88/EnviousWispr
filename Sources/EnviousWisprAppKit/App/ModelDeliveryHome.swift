@@ -1204,8 +1204,34 @@ final class ModelDeliveryHome {
   /// Do not "fix" that asymmetry from this file. Changing `remove()` would
   /// change a shared primitive the main transcription model also uses, against
   /// its owner's stated intent.
+  /// #3735: the preview artifact's replacement record (`WhisperModelMigration`), bound by
+  /// `WhisperDeliveryWiring`. Every preview command goes through it and refuses while it is
+  /// unbound: a Cancel or Remove that bypassed it would leave the record owed, and the next
+  /// launch would download the model again.
+  struct PreviewReplacementCommands {
+    /// Records owed, then fetches. False when the record could not be read or written.
+    let download: @MainActor () async -> Bool
+    /// Records declined. False when the record could not be read or written; the caller then
+    /// does nothing else.
+    let decline: @MainActor () -> Bool
+  }
+
+  var previewReplacement: PreviewReplacementCommands?
+
+  private func logPreviewRefusal(_ command: String) {
+    Task {
+      await AppLogger.shared.log(
+        "Preview \(command) refused: the Whisper replacement record is unbound or unwritable",
+        level: .info, category: "Delivery")
+    }
+  }
+
   func startPreviewDownload() {
     guard let handle = whisperPreviewHandle else { return }
+    guard let previewReplacement else {
+      logPreviewRefusal("download")
+      return
+    }
     guard handle.isEnabled() else {
       // Logged rather than silent: a Download button that does nothing is
       // otherwise indistinguishable from a broken one, and the flag is remote,
@@ -1218,8 +1244,13 @@ final class ModelDeliveryHome {
       }
       return
     }
-    Task { _ = await handle.ensureAvailable() }
+    previewDownloadTaskForTests = Task { [weak self] in
+      if await previewReplacement.download() == false { self?.logPreviewRefusal("download") }
+    }
   }
+
+  /// The last Download press's work, so a test can wait for it to end.
+  package private(set) var previewDownloadTaskForTests: Task<Void, Never>?
 
   /// Called BEFORE the preview model's files are deleted, so whoever holds the
   /// loaded model can let go of it first.
@@ -1298,6 +1329,13 @@ final class ModelDeliveryHome {
     // other removal is still going, reopening the window it exists to close.
     // The button stays on screen throughout, so a second press is ordinary.
     guard removalTask == nil else { return }
+    // #3735: the decline is recorded BEFORE anything is drained or deleted, and a failed
+    // record refuses the whole removal, so the next launch never fetches a model the user
+    // removed.
+    guard let previewReplacement, previewReplacement.decline() else {
+      logPreviewRefusal("removal")
+      return
+    }
     removalStepsForTests = []
     let task = Task { [weak self] in
       // AWAIT the drain, do not merely request it. Every holder must be gone
@@ -1344,6 +1382,11 @@ final class ModelDeliveryHome {
   /// reports `nothingToCancel` and no state moves.
   func cancelPreviewDownload() {
     guard let handle = whisperPreviewHandle else { return }
+    // #3735: recorded first, so the next launch does not restart a cancelled download.
+    guard let previewReplacement, previewReplacement.decline() else {
+      logPreviewRefusal("cancel")
+      return
+    }
     Task { await handle.cancelActiveFetch() }
   }
 
