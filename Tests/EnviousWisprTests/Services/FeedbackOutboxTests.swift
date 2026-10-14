@@ -48,11 +48,15 @@ struct FeedbackOutboxTests {
     private let lock = NSLock()
     private var script: [Answer]
     private(set) var eventIDs: [String] = []
+    private var bodies: [Data] = []
     init(_ script: [Answer]) { self.script = script }
     var sent: [String] { lock.withLock { eventIDs } }
+    /// Every request body, in order: the envelopes exactly as sent.
+    var envelopes: [Data] { lock.withLock { bodies } }
     func call(_ request: URLRequest) throws -> (status: Int, headers: [String: String]) {
       let answer: Answer = lock.withLock {
         let body = request.httpBody ?? Data()
+        bodies.append(body)
         let firstLine = body.split(separator: 0x0A).first.map { Data($0) } ?? Data()
         let header = (try? JSONSerialization.jsonObject(with: firstLine)) as? [String: Any]
         eventIDs.append(header?["event_id"] as? String ?? "?")
@@ -241,6 +245,44 @@ struct FeedbackOutboxTests {
     #expect(rejected.state == .rejected)
     #expect(rejected.helpOutcome == help)
     #expect(http.sent == [Self.eventID(1), Self.eventID(1)])
+  }
+
+  /// #3739: the split's failure is part of the frozen help metadata, so it reaches Sentry on the
+  /// report's eventual delivery, after a restart and a retry, with the same event id.
+  @Test("A saved split failure survives a restart and a retry and is tagged on delivery")
+  func splitFailureSurvivesRetries() async throws {
+    let directory = Self.tempDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let clock = Clock(Self.start)
+    let http = HTTP([.networkError])
+    let help = FeedbackSenderTests.helpOutcome.recordingSplitFailure(.afmTimeout)
+    let record = FeedbackRecord(
+      id: UUID(uuidString: "00000000-0000-4000-8000-000000000001")!, submittedAt: Self.start,
+      message: "report 1", email: nil, attachment: nil, context: FeedbackReporterTests.context,
+      attempts: 0, nextAttemptAt: nil, state: .pending, rejectedStatus: nil, helpOutcome: help)
+    let outbox = Self.makeOutbox(directory, http: http, clock: clock)
+    #expect(await outbox.enqueue(record) == .saved(offline: false))
+    await outbox.drain()  // network error: kept with a backoff
+
+    let retried = try #require(try Self.records(in: directory).first)
+    #expect(retried.attempts == 1)
+    #expect(retried.message == "report 1")
+    #expect(retried.helpOutcome?.splitFailure == .afmTimeout)
+    let tags = try #require(FeedbackSender.feedbackPayload(for: retried)["tags"] as? [String: String])
+    #expect(tags["help_split_failure"] == "afm_timeout")
+
+    clock.advance(61)
+    await Self.makeOutbox(directory, http: http, clock: clock).drain()  // relaunch: delivered
+    #expect(http.sent == [Self.eventID(1), Self.eventID(1)])
+    #expect(try Self.records(in: directory).isEmpty)
+    // The envelope Sentry accepted carries the tag in its feedback item.
+    let delivered = try #require(http.envelopes.last)
+    let items = delivered.split(separator: 0x0A).compactMap {
+      (try? JSONSerialization.jsonObject(with: Data($0))) as? [String: Any]
+    }
+    let sentTags = try #require(items.compactMap { $0["tags"] as? [String: String] }.first)
+    #expect(sentTags["help_split_failure"] == "afm_timeout")
+    #expect(sentTags["help_outcome"] == "partial_sent")
   }
 
   @Test("The 51st report is refused and nothing is evicted")

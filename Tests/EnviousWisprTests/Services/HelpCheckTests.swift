@@ -1072,6 +1072,90 @@ struct HelpCheckTests {
     #expect(recorder.saves[0].help?.terminalOutcome == .fallbackSent)
     #expect(recorder.saves[0].help?.failureReason == .network)
     #expect(recorder.saves[0].help?.mode == .wholeMessageAlwaysSend)
+    // #3739: the check's own failure and the split's failure are saved apart.
+    #expect(recorder.saves[0].help?.splitFailure == .afmUnavailable)
+    #expect(recorder.saves[0].help?.sentryTags["help_failure"] == "network")
+    #expect(recorder.saves[0].help?.sentryTags["help_split_failure"] == "afm_unavailable")
+  }
+
+  /// #3739: every path that saves a checked report saves the split's failure with it; a split that
+  /// ran saves none.
+  @Test("The split's failure is saved with the report on the cards path and the no-card path")
+  @MainActor
+  func splitFailureSaved() async throws {
+    // Whole message (split timed out), one card, the user sends.
+    do {
+      let (store, suite) = Self.makeStore()
+      defer { UserDefaults().removePersistentDomain(forName: suite) }
+      let recorder = RecordingSave()
+      let submission = FeedbackSubmission(
+        store: store, save: recorder.save,
+        helpCheck: Self.check(
+          .unavailable(.afmTimeout),
+          FakeTransport([
+            .reply(200, Self.reply([Self.section("i0", eligible: false)], suppression: false))
+          ])))
+      let a = UUID()
+      submission.presentationAppeared(a)
+      let step = await submission.send(
+        try #require(FeedbackDraft(message: "hi there", email: "")), diagnostics: nil, from: a,
+        sent: ("hi there", ""), current: { .init(presentation: a, message: "hi there", email: "") })
+      guard case .suggestions = step else {
+        Issue.record("expected suggestions")
+        return
+      }
+      let generation = try #require(submission.helpGeneration)
+      let saved = await submission.finishSuggestions(
+        solved: [], generation: generation, from: a,
+        current: { .init(presentation: a, message: "hi there", email: "") })
+      #expect(saved == .saved(offline: false))
+      let help = try #require(recorder.saves.first?.help)
+      #expect(help.mode == .wholeMessageAlwaysSend)
+      #expect(help.terminalOutcome == .stillSent)
+      #expect(help.shownCardCount == 1)
+      #expect(help.splitFailure == .afmTimeout)
+    }
+    // Whole message (split refused), nothing to show: sent at once.
+    do {
+      let (store, suite) = Self.makeStore()
+      defer { UserDefaults().removePersistentDomain(forName: suite) }
+      let recorder = RecordingSave()
+      let submission = FeedbackSubmission(
+        store: store, save: recorder.save,
+        helpCheck: Self.check(
+          .unavailable(.afmRefused),
+          FakeTransport([.reply(200, Self.reply([Self.none("i0")], suppression: false))])))
+      let a = UUID()
+      submission.presentationAppeared(a)
+      let step = await submission.send(
+        try #require(FeedbackDraft(message: "hi there", email: "")), diagnostics: nil, from: a,
+        sent: ("hi there", ""), current: { .init(presentation: a, message: "hi there", email: "") })
+      #expect(step == .sent(.saved(offline: false), splitFailure: .afmRefused))
+      let help = try #require(recorder.saves.first?.help)
+      #expect(help.terminalOutcome == .stillSent)
+      #expect(help.splitFailure == .afmRefused)
+    }
+    // The split ran: nothing is recorded.
+    do {
+      let (store, suite) = Self.makeStore()
+      defer { UserDefaults().removePersistentDomain(forName: suite) }
+      let recorder = RecordingSave()
+      let submission = FeedbackSubmission(
+        store: store, save: recorder.save,
+        helpCheck: Self.check(
+          .concerns([Concern(summary: "s", evidence: "Paste", kind: .bug)], hitCap: false),
+          FakeTransport([.reply(200, Self.reply([Self.none("i0")], suppression: false))])))
+      let a = UUID()
+      submission.presentationAppeared(a)
+      _ = await submission.send(
+        try #require(FeedbackDraft(message: "Paste fails.", email: "")), diagnostics: nil, from: a,
+        sent: ("Paste fails.", ""),
+        current: { .init(presentation: a, message: "Paste fails.", email: "") })
+      let help = try #require(recorder.saves.first?.help)
+      #expect(help.mode == .decomposed)
+      #expect(help.splitFailure == nil)
+      #expect(help.sentryTags["help_split_failure"] == nil)
+    }
   }
 
   @Test("Without a help check, Send saves directly as before")

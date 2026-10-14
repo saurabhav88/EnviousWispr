@@ -203,6 +203,67 @@ struct FeedbackSenderTests {
     }
   }
 
+  /// #3739: the reason the on-device split was skipped is saved with the report and tagged, so a
+  /// report like ENVIOUSWISPR-77 says why the whole message was checked.
+  @Test(
+    "A saved split failure is tagged with its closed reason; only the four split failures qualify",
+    arguments: [
+      ("afm_timeout", FeedbackHelpOutcome.FailureReason.afmTimeout),
+      ("afm_unavailable", .afmUnavailable), ("afm_refused", .afmRefused), ("afm_error", .afmError),
+    ])
+  func splitFailureTag(raw: String, reason: FeedbackHelpOutcome.FailureReason) throws {
+    let outcome = Self.helpOutcome.recordingSplitFailure(reason)
+    #expect(outcome.splitFailure == reason)
+    let tags = try #require(
+      FeedbackSender.feedbackPayload(for: Self.record(helpOutcome: outcome))["tags"]
+        as? [String: String])
+    #expect(tags["help_split_failure"] == raw)
+    // Every other tag is the outcome's own, unchanged.
+    var rest = tags
+    rest.removeValue(forKey: "help_split_failure")
+    #expect(rest == Self.helpOutcome.sentryTags)
+    // It survives encoding, and the encoded field holds only the closed reason.
+    let data = try JSONEncoder().encode(outcome)
+    #expect(String(decoding: data, as: UTF8.self).contains(#""splitFailure":"\#(raw)""#))
+    #expect(try JSONDecoder().decode(FeedbackHelpOutcome.self, from: data) == outcome)
+  }
+
+  @Test("A reason that is not a split failure records nothing, and a stored one does not decode")
+  func splitFailureIsClosed() throws {
+    for reason: FeedbackHelpOutcome.FailureReason in [.network, .timeout, .disabled, .httpError] {
+      #expect(Self.helpOutcome.recordingSplitFailure(reason).splitFailure == nil)
+      #expect(Self.helpOutcome.recordingSplitFailure(reason) == Self.helpOutcome)
+    }
+    #expect(Self.helpOutcome.recordingSplitFailure(nil).sentryTags["help_split_failure"] == nil)
+    let text = String(
+      decoding: try JSONEncoder().encode(Self.helpOutcome.recordingSplitFailure(.afmTimeout)),
+      as: UTF8.self)
+    let edited = text.replacingOccurrences(
+      of: #""splitFailure":"afm_timeout""#, with: #""splitFailure":"network""#)
+    #expect(edited != text)
+    #expect(throws: DecodingError.self) {
+      try JSONDecoder().decode(FeedbackHelpOutcome.self, from: Data(edited.utf8))
+    }
+  }
+
+  @Test("An outcome saved before #3739, with help metadata and no split field, keeps its metadata")
+  func outcomeBeforeSplitFailureDecodes() throws {
+    // A literal in the shape #3275 wrote: no `splitFailure` key.
+    let old = """
+      {"schemaVersion":1,"terminalOutcome":"fallback_sent","failureReason":"network",      "mode":"whole_message_always_send","overflow":false,"shownCardCount":0,"issues":[]}
+      """
+    let decoded = try JSONDecoder().decode(FeedbackHelpOutcome.self, from: Data(old.utf8))
+    #expect(decoded.splitFailure == nil)
+    #expect(decoded.terminalOutcome == .fallbackSent)
+    #expect(decoded.failureReason == .network)
+    #expect(decoded.mode == .wholeMessageAlwaysSend)
+    #expect(decoded.sentryTags["help_split_failure"] == nil)
+    #expect(decoded.sentryTags["help_failure"] == "network")
+    // Encoding it again adds no split field.
+    #expect(
+      String(decoding: try JSONEncoder().encode(decoded), as: UTF8.self).contains("split") == false)
+  }
+
   typealias Help = FeedbackHelpOutcome
 
   @Test("A help-check outcome out of bounds cannot be frozen")

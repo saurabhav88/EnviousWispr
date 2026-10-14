@@ -191,6 +191,24 @@ public struct FeedbackHelpOutcome: Codable, Equatable, Sendable {
   /// Cards on screen after grouping concerns that share a remedy (at most three).
   public let shownCardCount: Int
   public let issues: [Issue]
+  /// Why the on-device split was skipped and the whole message was checked instead (#3739): one of
+  /// `splitFailureReasons`, or nil when the split ran or the check never reached it. Saved with the
+  /// report so the reason reaches Sentry after a restart or a retry. Absent in reports saved before
+  /// #3739, which decode as nil.
+  public private(set) var splitFailure: FailureReason?
+
+  /// The on-device split's own failures; no other reason can be a split failure.
+  public static let splitFailureReasons: Set<FailureReason> = [
+    .afmUnavailable, .afmTimeout, .afmRefused, .afmError,
+  ]
+
+  /// This outcome with the split's failure recorded. A reason that is not a split failure records
+  /// nothing.
+  public func recordingSplitFailure(_ reason: FailureReason?) -> FeedbackHelpOutcome {
+    var copy = self
+    copy.splitFailure = reason.flatMap { Self.splitFailureReasons.contains($0) ? $0 : nil }
+    return copy
+  }
 
   // Counts are derived from `issues`, so they cannot disagree with them.
   public var issueCount: Int { issues.count }
@@ -243,7 +261,12 @@ public struct FeedbackHelpOutcome: Codable, Equatable, Sendable {
       throw DecodingError.dataCorruptedError(
         forKey: .schemaVersion, in: c, debugDescription: "help outcome out of bounds")
     }
-    self = value
+    let splitFailure = try c.decodeIfPresent(FailureReason.self, forKey: .splitFailure)
+    if let splitFailure, !Self.splitFailureReasons.contains(splitFailure) {
+      throw DecodingError.dataCorruptedError(
+        forKey: .splitFailure, in: c, debugDescription: "not a split failure")
+    }
+    self = value.recordingSplitFailure(splitFailure)
   }
 
   /// Sentry tags for the report: fixed keys, bounded values, no user-written text.
@@ -262,6 +285,7 @@ public struct FeedbackHelpOutcome: Codable, Equatable, Sendable {
       "help_unmatched": String(unmatchedIssueCount),
     ]
     if let failureReason { tags["help_failure"] = failureReason.rawValue }
+    if let splitFailure { tags["help_split_failure"] = splitFailure.rawValue }
     if let coveragePassed { tags["help_coverage"] = coveragePassed ? "pass" : "fail" }
     if let versions {
       tags["help_kb"] = versions.kb

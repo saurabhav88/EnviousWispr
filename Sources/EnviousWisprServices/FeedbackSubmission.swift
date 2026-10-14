@@ -269,14 +269,17 @@ public final class FeedbackSubmission {
   }
 
   /// Saves the frozen report with its outcome and reports how the check ended. The event reads
-  /// the save's own result, so a report the outbox refused is never counted as sent.
+  /// the save's own result, so a report the outbox refused is never counted as sent. The saved
+  /// outcome carries the split's failure (#3739), on the cards path and the immediate-send path
+  /// alike, since both end here.
   private func saveFrozen(
     _ held: Frozen, outcome: FeedbackHelpOutcome, from presentation: UUID,
     current: @MainActor () -> FormState
   ) async -> FeedbackReporter.Outcome? {
     var result: FeedbackReporter.Outcome?
     let shown = await submit(
-      held.draft, diagnostics: held.diagnostics, helpOutcome: outcome, from: presentation,
+      held.draft, diagnostics: held.diagnostics,
+      helpOutcome: outcome.recordingSplitFailure(held.splitFailure), from: presentation,
       sent: held.sent, usageMetrics: held.usageMetrics ?? false, current: current,
       result: { result = $0 })
     let terminal: HelpCheckTerminal.Outcome =
