@@ -4,8 +4,9 @@
 # GitHub-hosted macOS runners have no audio input device and cannot run the
 # shipped speech models under test conditions, so every suite behind a
 # real-device or real-model gate SKIPS there and, until this script, ran only
-# when a session happened to run the full local suite. This runs them on a
-# schedule on the founder's Mac. It is a plain launchd job, NEVER a GitHub
+# when a session happened to run the full local suite. This runs them on the
+# founder's Mac, by hand: #3729 retired its 02:30 launchd timer along with the
+# hosted timed runs (founder 2026-10-13). It is NEVER a GitHub
 # runner: nothing public points at this machine and no credential lives here
 # (.claude/knowledge/ci-security-architecture.md DECISION: no self-hosted
 # runner, no Mac mini).
@@ -19,10 +20,8 @@
 # the summary line names it, because a battery that quietly skips everything
 # is the exact hole this exists to close.
 #
-# Install (separate, local, one-time; not done by any PR):
-#   cp scripts/launchd/com.enviouswispr.nightly-battery.plist ~/Library/LaunchAgents/
-#   launchctl load ~/Library/LaunchAgents/com.enviouswispr.nightly-battery.plist
-# Optional Discord line: put DISCORD_WEBHOOK_URL=... in
+# A manual command: nothing schedules it, and there is no launchd agent to
+# install (#3729). Optional Discord line: put DISCORD_WEBHOOK_URL=... in
 # ~/.config/enviouswispr/nightly-battery.env (chmod 600). Unset means log only.
 #
 # Usage:
@@ -161,11 +160,11 @@ fi
 # keeps the capture unit RUNNING while idle, so on 2026-09-16 the built-in
 # microphone read "running somewhere" while the only dev instance was idle
 # (app.log: AXWarmup prime only). A gate on this signal would skip the battery
-# every night the policy is warm. What it CAN say is written to the log and the
+# on every run while the policy is warm. What it CAN say is written to the log and the
 # summary: "an input device was running, results may be contended". A take on a
 # Release build therefore remains a KNOWN LIMIT of this battery: macOS lets two
 # processes capture one device, so the user's take is not taken away, only the
-# battery's own result may be polluted, and the run is at 02:30 local. If a
+# battery's own result may be polluted, so run it when nobody is dictating. If a
 # clean "mid-take" signal is ever wanted from a Release build, it has to come
 # from the app (a state file), not from CoreAudio.
 mic_state() {  # prints running|idle|unknown; never gates
@@ -196,8 +195,7 @@ post_discord() {  # $1=message; log-only when no webhook is configured
 import json, sys, os, urllib.request
 req = urllib.request.Request(os.environ["DISCORD_WEBHOOK_URL"], data=json.dumps({"content": sys.argv[1]}).encode(),
                              headers={"Content-Type": "application/json"})
-# Bounded, like the hosted reporter: an optional notification must never keep
-# the launchd job alive.
+# Bounded: an optional notification must never keep the battery run alive.
 urllib.request.urlopen(req, timeout=30).read()
 PY
 }
@@ -218,10 +216,10 @@ summary=()
 # that bundle has its own TCC identity and the suite SKIPS there, which the
 # per-suite loop below would have counted as "ran". scripts/test-real-microphone.sh
 # is the honest route: SwiftPM under the invoking process's grant, a skip or a
-# zero-test run is a FAILURE, and it carries its own shutdown watchdog. Under
-# launchd the grant belongs to the job's process, so the first scheduled run may
-# fail on TCC; that failure is the receipt to act on (grant once, rerun), never
-# a skip to ignore.
+# zero-test run is a FAILURE, and it carries its own shutdown watchdog. The
+# grant belongs to the invoking process, so a first run from a new terminal or
+# host may fail on TCC; that failure is the receipt to act on (grant once,
+# rerun), never a skip to ignore.
 mic_log="$LOG_DIR/nightly-battery-real-microphone.log"
 if "$PROJECT_ROOT/scripts/test-real-microphone.sh" >"$mic_log" 2>&1; then
   log "ran    real-microphone receipt (scripts/test-real-microphone.sh) passed"
