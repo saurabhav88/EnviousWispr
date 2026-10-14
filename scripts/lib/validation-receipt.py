@@ -50,6 +50,9 @@ REQUIRED = {
 # Source roots the full run compiles by glob: the app and test targets, and the three eval packages.
 IGNORED_SWIFT_ROOTS = ("Sources", "Tests", "scripts/eval/apple_runner/Sources",
                        "scripts/eval/alias_runner/Sources", "scripts/eval/prompt_render/Sources")
+# File types Xcode and SwiftPM compile from a sources glob.
+COMPILED_SOURCE_SUFFIXES = (".swift", ".m", ".mm", ".c", ".cc", ".cpp", ".cxx", ".h", ".hh", ".hpp",
+                            ".metal", ".s")
 # The full Debug run's required bundles: lane-verdict.sh's default list.
 EXPECTED_BUNDLES = {"EnviousWisprTests", "EnviousWisprDesktopEffectsTests", "EnviousWisprASRTests"}
 
@@ -113,12 +116,14 @@ def capture(root):
     if git(root, "diff", "--quiet", "--no-ext-diff", check=False).returncode != 0:
         raise Ineligible("a tracked file differs from the index (stage it, or restore it)")
     # The build globs Sources/ and Tests/, and each eval package compiles its own Sources/, so an
-    # IGNORED Swift file there is compiled yet outside the index tree. (Other ignored Swift, such as
-    # an eval package's .build/checkouts or an uncompiled runner, is not an input.)
+    # IGNORED compilable source there (Swift, C-family, Metal, assembly) is compiled yet outside the
+    # index tree. (Ignored files elsewhere, such as an eval package's .build/checkouts or an
+    # uncompiled runner, are not inputs; ignored DATA files under a compiled root, such as
+    # benchmark audio, are not compiled and are not checked here.)
     ignored = [p for p in git(root, "ls-files", "--others", "--ignored", "--exclude-standard", "-z",
                               "--", *IGNORED_SWIFT_ROOTS).stdout.decode().split("\0") if p]
-    if any(p.endswith(".swift") for p in ignored):
-        raise Ineligible("an ignored Swift file under a compiled source root is outside the index tree")
+    if any(p.lower().endswith(COMPILED_SOURCE_SUFFIXES) for p in ignored):
+        raise Ineligible("an ignored source file under a compiled source root is outside the index tree")
     untracked = [p for p in git(root, "ls-files", "--others", "--exclude-standard", "-z")
                  .stdout.decode().split("\0") if p]
     if untracked:
@@ -349,13 +354,20 @@ def self_test():
             case("a skip-worktree tracked file is ineligible", "skip-worktree" in str(e))
         run("update-index", "--no-skip-worktree", "Sources/A.swift")
         exclude = root / ".git/info/exclude"
-        exclude.write_text("Sources/Hidden.swift\nscripts/eval/x/.build/\n")
-        (root / "Sources/Hidden.swift").write_text("let hidden = 1\n")
+        exclude.write_text("Sources/Hidden.swift\nSources/Hidden.metal\nSources/hidden.wav\nscripts/eval/x/.build/\n")
+        for hidden, label in (("Hidden.swift", "Swift"), ("Hidden.metal", "Metal")):
+            (root / "Sources" / hidden).write_text("x\n")
+            try:
+                capture(root); case(f"an ignored {label} file under Sources/ is ineligible", False)
+            except Ineligible as e:
+                case(f"an ignored {label} file under Sources/ is ineligible", "ignored source" in str(e))
+            (root / "Sources" / hidden).unlink()
+        (root / "Sources/hidden.wav").write_text("data\n")
         try:
-            capture(root); case("an ignored Swift file under Sources/ is ineligible", False)
+            capture(root); case("an ignored data file under Sources/ is not a compiled input", True)
         except Ineligible as e:
-            case("an ignored Swift file under Sources/ is ineligible", "ignored Swift" in str(e))
-        (root / "Sources/Hidden.swift").unlink()
+            case("an ignored data file under Sources/ is not a compiled input", False, str(e))
+        (root / "Sources/hidden.wav").unlink()
         (root / "scripts/eval/x/.build").mkdir(parents=True)
         (root / "scripts/eval/x/.build/Dep.swift").write_text("let dep = 1\n")
         try:
