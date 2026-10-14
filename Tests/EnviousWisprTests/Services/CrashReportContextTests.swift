@@ -114,4 +114,23 @@ struct CrashReportContextTests {
     #expect(sanitized.tags?["exception.stack_status"] == "addresses_present")
     #expect(frame.function == nil)
   }
+
+  @Test func partialReasonRedactionIsReported() {
+    let event = Event()
+    event.exceptions = [Exception(value: "Failed /Users/synthetic/file", type: "FixedTestException")]
+    let sanitized = SentryEventSanitizer.sanitize(event)
+    #expect(sanitized.exceptions?.first?.value == "Failed /Users/[REDACTED]/file")
+    #expect(sanitized.tags?["exception.reason_status"] == "redacted")
+  }
+
+  @Test func framesWithoutAddressesDoNotClaimAddresses() {
+    let event = Event()
+    event.exceptions = [Exception(value: "fixed reason", type: "FixedTestException")]
+    let thread = SentryThread(threadId: 1)
+    thread.crashed = true
+    thread.stacktrace = SentryStacktrace(frames: [Frame()], registers: [:])
+    event.threads = [thread]
+    let sanitized = SentryEventSanitizer.sanitize(event)
+    #expect(sanitized.tags?["exception.stack_status"] == "unavailable")
+  }
 }
