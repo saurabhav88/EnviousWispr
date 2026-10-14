@@ -31,14 +31,13 @@ struct LiveTranscriptionCopyTests {
   ///
   /// One toggle drives two different implementations whose evidence points in OPPOSITE
   /// directions. The first draft showed Parakeet's 28-clip and 500-dictation figures to
-  /// WhisperKit users and told them to switch the setting off, which is materially wrong
+  /// Whisper users and told them to switch the setting off, which is materially wrong
   /// guidance for an engine where streaming is about as accurate as batch and clearly
-  /// faster on long recordings.
+  /// faster on long recordings (#3735 qualification, 71 clips:
+  /// `docs/audits/3735-swap/chunk8/qual/RECEIPT.md`).
   ///
-  /// WhisperKit carries NO figures on purpose: our own records disagree about them
-  /// (`#1276` says 3/107 phantom endings, `whisperkit-research.md` corrects it to 1/109),
-  /// and the quoted latency pair came from a prototype harness predating the shipped
-  /// architecture. Two sources disagreeing is exactly when a number must not reach a user.
+  /// Whisper carries NO figures on purpose: its stop-to-text times were measured on one
+  /// Mac, and slower supported Macs would not see the same times.
   @Test("Parakeet's measurements never appear in WhisperKit's panel")
   func parakeetFiguresDoNotLeakIntoWhisperKit() {
     let wk = LiveTranscriptionCopy.whisperKit
@@ -58,8 +57,8 @@ struct LiveTranscriptionCopyTests {
   }
 
   /// Whisper must not inherit Parakeet's "leave this off" advice: Parakeet's measured cost
-  /// does not transfer. #3735: until the transcribe.cpp streaming session is measured, the
-  /// Whisper advice is neutral, because the setting changes nothing on that engine yet.
+  /// does not transfer. On Whisper streaming is roughly accuracy-neutral and faster on long
+  /// recordings (#3735 qualification).
   @Test("WhisperKit is not told to turn the setting off")
   func whisperKitIsNotToldToDisable() {
     let advice = LiveTranscriptionCopy.whisperKit.recommendationBody.lowercased()

@@ -126,10 +126,8 @@ enum DictationSettingsCopy {
     static let fasterFastShort = LocalizedStringResource(
       "Works during recording; may miss the last words.",
       comment: "Speech engine settings: short line under Faster Transcription on the fast engine.")
-    /// #3735: Faster Transcription changes nothing on Whisper until its transcribe.cpp streaming
-    /// session lands; see `LiveTranscriptionCopy.whisperKitToggleDescription`.
     static let fasterMultilingualShort = LocalizedStringResource(
-      "No effect on this engine yet.",
+      "Works during recording with a selected language.",
       comment:
         "Speech engine settings: short line under Faster Transcription on the multilingual engine.")
 

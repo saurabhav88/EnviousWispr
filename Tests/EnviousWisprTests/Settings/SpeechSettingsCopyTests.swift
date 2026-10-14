@@ -24,7 +24,7 @@ struct SpeechSettingsCopyTests {
     )
     #expect(
       LiveTranscriptionCopy.whisperKitToggleDescription
-        == "On this engine, transcription currently happens once when you stop, whether this is on or off. Nothing looks different while you record."
+        == "Transcribes while you speak instead of once when you stop. Nothing looks different while you record; this only changes when the work happens. It mainly helps on long recordings, and it needs a language selected."
     )
     #expect(LiveTranscriptionCopy.parakeet.title == "What Faster Transcription changes")
     #expect(LiveTranscriptionCopy.parakeet.speedHeading == "Speed")
@@ -59,12 +59,12 @@ struct SpeechSettingsCopyTests {
     #expect(LiveTranscriptionCopy.whisperKit.speedHeading == "Speed")
     #expect(
       LiveTranscriptionCopy.whisperKit.speedBody
-        == "Right now this setting does not change the speed on this engine: it transcribes once when you stop either way."
+        == "On short dictations you will not notice a difference. On long ones it usually helps clearly, because most of the work is done before you stop. Now and then it falls back to transcribing after you stop, which takes about as long as having this off."
     )
     #expect(LiveTranscriptionCopy.whisperKit.accuracyHeading == "Accuracy")
     #expect(
       LiveTranscriptionCopy.whisperKit.accuracyBody
-        == "Accuracy is the same either way, because the same transcription runs."
+        == "On this engine, transcribing as you go is about as accurate as waiting until you stop. It can still occasionally drop a final word or two, which we are working on."
     )
     #expect(LiveTranscriptionCopy.whisperKit.whyHeading == "One thing to know")
     #expect(
@@ -74,7 +74,7 @@ struct SpeechSettingsCopyTests {
     #expect(LiveTranscriptionCopy.whisperKit.recommendationHeading == "What we recommend")
     #expect(
       LiveTranscriptionCopy.whisperKit.recommendationBody
-        == "You can leave this setting as it is. It has no effect on this engine yet."
+        == "If you pick a specific language and often dictate for more than a minute, turn this on. Otherwise it makes little difference either way."
     )
     #expect(
       LiveTranscriptionCopy.whisperKit.footnote
