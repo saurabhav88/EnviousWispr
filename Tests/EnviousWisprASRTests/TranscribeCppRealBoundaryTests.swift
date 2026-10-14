@@ -93,6 +93,9 @@ struct TranscribeCppRealBoundaryTests {
       previous = call.advanced
     }
     #expect(calls.last.map { $0.advanced == $0.total } == true)
+    // Completion is reported once, and only after the run finished: every earlier call
+    // stays below the total (seek can pass the real end while padded frames decode).
+    #expect(calls.dropLast().allSatisfy { $0.advanced < $0.total })
     // The denominator is the clip's REAL mel frames (100,224 samples -> 626), not the
     // 3,000-frame padded window.
     for call in calls {

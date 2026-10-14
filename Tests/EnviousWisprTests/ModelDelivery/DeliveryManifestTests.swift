@@ -424,8 +424,8 @@ enum ManifestFixture {
 /// backup. Digests regenerated with `scripts/regen-delivery-manifest-digest.py` and
 /// reproduced by the Swift loader below.
 @Suite(.tags(.driftGuard)) struct WhisperGGUFManifestTests {
-  static let turboGoldenDigest = "f6485d8b5234c817759411f86510f50da734ad9d8479d0f97805d42d8f9efeeb"
-  static let previewGoldenDigest = "6a28862edf8b23da505ea29bbab99547d6db4d1a7640dd9a49db0987d6e88a75"
+  static let turboGoldenDigest = "2c273da9b3d15647afdf694b18f5d45bdb3353bf887bbfd1fd3fd9e7189e4913"
+  static let previewGoldenDigest = "da2db7892d82cdd4c95bfef124e6af67cd181f4b9644410434f91ca874e28aa4"
 
   static func load(_ name: String) throws -> (manifest: DeliveryManifest, data: Data) {
     let data = try Data(
@@ -442,7 +442,7 @@ enum ManifestFixture {
     #expect(manifest.identity.name == "whisper-large-v3-turbo-gguf")
     #expect(manifest.identity.revision == "5eaf945c7978e564bae5b28a5b1639dd93c2bfb1")
     #expect(manifest.identity.variant == "q8_0")
-    #expect(manifest.identity.runtimeABI == "transcribecpp-ew-3735-v0.4.0.3")
+    #expect(manifest.identity.runtimeABI == "transcribecpp-ew-3735-v0.4.0.4")
     #expect(manifest.sources.map(\.id) == ["our_copy", "hf_pinned"])
     #expect(manifest.sources.first?.servesParts == true)
     #expect(manifest.files.count == 1)

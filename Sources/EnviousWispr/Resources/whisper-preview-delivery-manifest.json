@@ -5,7 +5,7 @@
   "name": "whisper-small-gguf",
   "revision": "a2073177cb69bd74b9ca9460b852d17fbfd5d68c",
   "variant": "q8_0",
-  "runtimeABI": "transcribecpp-ew-3735-v0.4.0.3"
+  "runtimeABI": "transcribecpp-ew-3735-v0.4.0.4"
  },
  "runtimeCompatibility": {
   "minAppVersion": "2.5.4"
@@ -41,5 +41,5 @@
   "evictPreviousRevisions": false,
   "entrypointFile": "whisper-small-Q8_0.gguf"
  },
- "manifestDigest": "6a28862edf8b23da505ea29bbab99547d6db4d1a7640dd9a49db0987d6e88a75"
+ "manifestDigest": "da2db7892d82cdd4c95bfef124e6af67cd181f4b9644410434f91ca874e28aa4"
 }

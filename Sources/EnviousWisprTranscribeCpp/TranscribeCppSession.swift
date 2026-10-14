@@ -3,7 +3,7 @@ import Foundation
 import os
 
 /// #3735: the native boundary to transcribe.cpp (our fork `saurabhav88/transcribe.cpp`,
-/// release `ew-3735-v0.4.0.3`). Mechanism only: no app policy lives in this module.
+/// release `ew-3735-v0.4.0.4`). Mechanism only: no app policy lives in this module.
 ///
 /// One `TranscribeCppSession` owns one native session, which owns its model
 /// (`transcribe_open`). transcribe.cpp 0.x session calls are single-thread-at-a-time and
