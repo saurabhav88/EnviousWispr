@@ -29,24 +29,24 @@ SCENARIOS_MD = os.path.join(HERE, "SCENARIOS.md")
 # --------------------------------------------------------------------------
 # Recipes: the closed set `uat.py run <id>` accepts and the validators check.
 # `function` must be a HARNESS_STATUS key with status `recipe`.
-# `audio` says whether the recipe plays sound through the speaker (and so is
-# refused when the output is muted or below the floor).
+# `audio` says whether the recipe plays speech. Every recipe that records runs inside
+# `audio_rig.AudioRig` (#3764): BlackHole and a proven paste target, or exit 3.
 # --------------------------------------------------------------------------
 RECIPES = {
     "heart-path": {
         "function": "test_recording",
-        "purpose": "Menu-driven record -> TTS through the speaker -> stop -> pipeline completes. "
+        "purpose": "Menu-driven record -> TTS through BlackHole -> stop -> pipeline completes and pastes into the target. "
                    "The default Code-lane Live UAT: proves capture, ASR, polish and delivery still work.",
         "verdict": "app.log: `Pipeline timing TOTAL` + the CORRECTION_DEBUG chain; expected token in the final text",
         "audio": True,
-        "needs": "one debug instance of THIS worktree's build; speaker unmuted >= 25; Accessibility",
+        "needs": "one debug instance of THIS worktree's build; BlackHole 2ch + SwitchAudioSource; Accessibility",
     },
     "ptt": {
         "function": "test_ptt",
         "purpose": "Hold the configured push-to-talk key for the audio's duration; verifies overlay states and delivery.",
         "verdict": "app.log completion marker + overlay states seen; binding resolved by ptt_binding (refuses on doubt, #1997)",
         "audio": True,
-        "needs": "push-to-talk mode in Settings; speaker unmuted; Accessibility",
+        "needs": "push-to-talk mode in Settings; BlackHole 2ch + SwitchAudioSource; Accessibility",
     },
     "learn-from-edits": {
         # Script-backed (#996): a multi-case drill with its own restore, not one
@@ -82,7 +82,7 @@ RECIPES = {
         "purpose": "One dictation whose raw ASR and polished output are read from the log. For transcription/polish quality questions.",
         "verdict": "app.log CORRECTION_DEBUG rows, read WHOLE by uat.py verdict (record_tts's own `polished` field is one line, #2547)",
         "audio": True,
-        "needs": "push-to-talk mode; speaker unmuted; Accessibility",
+        "needs": "push-to-talk mode; BlackHole 2ch + SwitchAudioSource; Accessibility",
     },
     "silent-probe": {
         "function": "test_recording",
@@ -145,6 +145,7 @@ HARNESS_STATUS = {
     "clear_modifier_flags": {"status": "primitive", "issue": None, "note": "after any CGEvent drive that could leave a modifier stuck"},
     "acquisition_verdict": {"status": "primitive", "issue": None, "note": "selection-acquisition route reading"},
     "screenshot":      {"status": "primitive", "issue": None, "note": "needs Screen Recording; WINDOW capture, never full screen"},
+    "reach_diagnostic": {"status": "primitive", "issue": "#3764", "note": "why a control was not found: window off-desktop/hidden (window server lists it, AX does not; relaunch the dev app) or the UI changed; nav() prints it on failure. Ends with the repair-then-continue line"},
     "zoom":            {"status": "primitive", "issue": None, "note": ""},
     "record":          {"status": "primitive", "issue": None, "note": "screen video around a flow; pick the frame afterwards (README)"},
     "Recording":       {"status": "primitive", "issue": None, "note": "context manager behind record()"},

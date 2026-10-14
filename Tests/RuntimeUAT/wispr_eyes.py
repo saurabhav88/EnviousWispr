@@ -22,6 +22,10 @@ from import_door import resolve_pid, transcribe_file_backend  # noqa: F401,E402
 # every scenario driver route through it; its offline control is `settings_nav.py --self-test`.
 import settings_nav as _sn  # noqa: E402
 from settings_nav import NavigationError, RouteError  # noqa: E402,F401
+# #3764: every audio take passes ONE gate: BlackHole, a named paste target in front, and the
+# take's own log lines afterwards. Set up with `audio_rig.AudioRig`.
+import take_gate as _tg  # noqa: E402
+from take_gate import CouldNotTell, SetupFailed, declare_target as declare_paste_target  # noqa: E402,F401
 
 _pid = None
 _app = None
@@ -589,6 +593,64 @@ def _ax():
         terms=_ui_terms)
 
 
+def _play_take(audio, on_fail):
+    """Start take audio. If the player cannot start, `on_fail` stops the take (menu Stop or key
+    up) BEFORE the SetupFailed propagates, so a refusal never leaves a recording running (#3764)."""
+    try:
+        return subprocess.Popen(["afplay", audio], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    except Exception as exc:
+        try:
+            on_fail()
+        finally:
+            raise _tg.SetupFailed("playback", f"afplay did not start: {exc!r}")
+
+
+def _take_lines(start):
+    """The take's own app.log entries, rotation-proof (`log_entries_since`)."""
+    return "\n".join(log_entries_since(start))
+
+
+def _finish_player(proc):
+    """Stop take audio still playing; return (exit status, whether the harness stopped it)."""
+    killed = proc.poll() is None
+    if killed:
+        proc.terminate()
+    try:
+        proc.wait(timeout=5)
+    except subprocess.TimeoutExpired:
+        proc.kill()
+    return proc.returncode, killed
+
+
+HARNESS_REPAIR = ("HARNESS: repair the harness (or the setup named above), rerun the failed step, then "
+                  "continue. Never drive EnviousWispr by pixels or computer-use instead.")
+
+
+def reach_diagnostic():
+    """Why a control could not be found, as far as the harness can tell (#3764).
+
+    Accessibility lists no window that sits on another desktop (Space) or belongs to a hidden
+    app, while the window server still lists it. Measured 2026-10-14: the dev app's window was
+    open (CGWindowList: layer 0, titled "EnviousWispr") with AXWindows empty, so `nav` reported
+    a missing sidebar; relaunching the dev app put a new window in reach (AXWindows 1)."""
+    try:
+        import Quartz
+        pid = _pid
+        ax_windows = get_attr(_app, "AXWindows") or [] if _app is not None else []
+        cg = [x for x in Quartz.CGWindowListCopyWindowInfo(Quartz.kCGWindowListOptionAll, 0)
+              if x.get("kCGWindowOwnerPID") == pid and x.get("kCGWindowLayer") == 0
+              and x.get("kCGWindowName")]
+    except Exception as exc:
+        return f"REACH: could not inspect windows ({exc!r}). {HARNESS_REPAIR}"
+    if cg and not ax_windows:
+        names = [x.get("kCGWindowName") for x in cg]
+        return (f"REACH: the app has window(s) {names} but accessibility lists none: the window is on "
+                "another desktop (Space) or the app is hidden. Relaunch the dev app (a new window "
+                f"opens on this desktop) or bring the window here, then rerun. {HARNESS_REPAIR}")
+    return (f"REACH: accessibility lists {len(ax_windows)} window(s); the control itself was not "
+            f"found: check whether the app's UI changed under the harness. {HARNESS_REPAIR}")
+
+
 def _open_settings():
     # #3454: the menu bar item that opens the window is "Open EnviousWispr" (was "Settings...").
     settings_item = _find_match(_app, "Open EnviousWispr", "AXMenuItem", exact=True)
@@ -626,6 +688,7 @@ def nav(page, tab=None, leave_answer=None):
                              leave_answer=leave_answer)
     except NavigationError as e:
         print(f"nav({page!r}, {tab!r}) FAILED: {e}")
+        print(reach_diagnostic())
         return False
     shown = f" (tab {route.shown_tab})" if route.shown_tab and tab is None else ""
     print(f"Navigated to {page}" + (f" > {tab}" if tab else "") + shown)
@@ -1994,10 +2057,19 @@ def test_recording(audio=None, sentence=None, hold=3.0, expect=None, timeout=30.
         else:
             print(f"Audio: {audio} (duration unknown, using hold={hold}s)")
 
+    # #3764: refuse before recording starts, so a refusal never leaves a take running.
+    if audio:
+        try:
+            _tg.check_before_play()
+        except _tg.SetupFailed:
+            end_test()
+            raise
+
     # Snapshot app.log size + clipboard before the test. Log-based detection
     # is primary (clipboard-free, doesn't race with the user's activity);
     # clipboard is a fallback when Debug mode is off.
     log_size_before = _snapshot_log_size()
+    take_started = _dt.datetime.now().astimezone()  # #3764: the take gate reads from here
     clip_before = get_clipboard_text() or ""
 
     # Phase 1: Start recording via menu
@@ -2015,11 +2087,8 @@ def test_recording(audio=None, sentence=None, hold=3.0, expect=None, timeout=30.
     # Phase 2: Play audio if provided
     audio_proc = None
     if audio:
-        print(f"Playing audio through speakers...")
-        audio_proc = subprocess.Popen(
-            ["afplay", audio],
-            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
-        )
+        print(f"Playing audio...")
+        audio_proc = _play_take(audio, on_fail=lambda: (tap("Stop Recording"), end_test()))
 
     # Record for duration
     remaining = hold - 0.5
@@ -2027,9 +2096,8 @@ def test_recording(audio=None, sentence=None, hold=3.0, expect=None, timeout=30.
         print(f"Recording for {remaining:.1f}s...")
         time.sleep(remaining)
 
-    # Kill audio if still playing
-    if audio_proc and audio_proc.poll() is None:
-        audio_proc.terminate()
+    # Stop audio still playing; its exit status is judged after the take (#3764).
+    player = _finish_player(audio_proc) if audio_proc else None
 
     # Phase 3: Stop recording via menu
     print(f"\n--- STOP RECORDING ---")
@@ -2057,6 +2125,9 @@ def test_recording(audio=None, sentence=None, hold=3.0, expect=None, timeout=30.
     overall_pass = _report_result(completed, audio, expect, result_text)
     print(f"{'='*60}")
     end_test()
+    if audio:
+        _tg.check_player(*player)
+        _tg.check_after_take(_take_lines(take_started))
     return overall_pass
 
 
@@ -2823,7 +2894,15 @@ def test_hands_free(audio=None, sentence=None, hold=4.0, expect=None, timeout=30
         else:
             print(f"Audio: {audio} (duration unknown, using hold={hold}s)")
 
+    if audio:
+        try:
+            _tg.check_before_play()  # #3764: before the record key, never mid-take
+        except _tg.SetupFailed:
+            end_test()
+            raise
+
     log_size_before = _snapshot_log_size()
+    take_started = _dt.datetime.now().astimezone()  # #3764: the take gate reads from here
     clip_before = get_clipboard_text() or ""
 
     # Phase 1: the REAL gesture - two presses inside the app's chain window.
@@ -2860,11 +2939,8 @@ def test_hands_free(audio=None, sentence=None, hold=4.0, expect=None, timeout=30
     # Phase 2: Play audio if provided
     audio_proc = None
     if audio:
-        print(f"Playing audio through speakers...")
-        audio_proc = subprocess.Popen(
-            ["afplay", audio],
-            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
-        )
+        print(f"Playing audio...")
+        audio_proc = _play_take(audio, on_fail=lambda: (time.sleep(_CHAIN_WINDOW_S), single_press_record_key(), end_test()))
 
     # Phase 3: Let it record, with mid-recording check
     mid_check_at = min(hold / 2, 2.0)
@@ -2884,8 +2960,7 @@ def test_hands_free(audio=None, sentence=None, hold=4.0, expect=None, timeout=30
     still_recording_end = _find_match(_app, "Stop Recording", "AXMenuItem") is not None
     print(f"Still recording at {hold:.1f}s: {'YES' if still_recording_end else 'NO'}")
 
-    if audio_proc and audio_proc.poll() is None:
-        audio_proc.terminate()
+    player = _finish_player(audio_proc) if audio_proc else None
 
     # Phase 4: single press to stop. `HotkeyService` ignores presses within
     # 500ms of locking, so a stop posted inside that cooldown is swallowed and
@@ -3008,6 +3083,10 @@ def test_hands_free(audio=None, sentence=None, hold=4.0, expect=None, timeout=30
     overall_pass = _report_result(completed, audio, expect, result_text) and hands_free_proven
     print(f"{'='*60}")
     end_test()
+    if audio:
+        if player:
+            _tg.check_player(*player)
+        _tg.check_after_take(_take_lines(take_started))
     return overall_pass
 
 
@@ -3090,7 +3169,14 @@ def test_ptt(key=None, audio=None, sentence=None, expect=None, timeout=10.0):
     audio_dur = _audio_duration(audio) or 3.0
     print(f"Audio: {audio} ({audio_dur:.2f}s)")
 
+    try:
+        _tg.check_before_play()  # #3764: before the key goes down, never mid-take
+    except _tg.SetupFailed:
+        end_test()
+        raise
+
     log_size_before = _snapshot_log_size()
+    take_started = _dt.datetime.now().astimezone()  # #3764: the take gate reads from here
     clip_before = get_clipboard_text() or ""
 
     # Phase 1: Key down (recording starts)
@@ -3115,15 +3201,20 @@ def test_ptt(key=None, audio=None, sentence=None, expect=None, timeout=10.0):
 
     # Phase 2: Play audio
     print(f"Playing audio ({audio_dur:.2f}s)...")
-    audio_proc = subprocess.Popen(
-        ["afplay", audio], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
-    )
+
+    def _key_up():
+        if key_lower in _si.MODIFIER_KEYS:
+            _si.modifier_up(_si.MODIFIER_KEYS[key_lower])
+        else:
+            from Quartz import CGEventCreateKeyboardEvent, CGEventPost, kCGHIDEventTap
+            CGEventPost(kCGHIDEventTap, CGEventCreateKeyboardEvent(None, _si.KEY_CODES[key_lower], False))
+
+    audio_proc = _play_take(audio, on_fail=lambda: (_key_up(), end_test()))
 
     # Phase 3: Wait for audio + buffer
     hold_audio = audio_dur + 0.8
     time.sleep(hold_audio)
-    if audio_proc.poll() is None:
-        audio_proc.terminate()
+    player = _finish_player(audio_proc)
 
     # Phase 4: Key up (recording stops)
     total_hold = 0.8 + hold_audio
@@ -3166,6 +3257,8 @@ def test_ptt(key=None, audio=None, sentence=None, expect=None, timeout=10.0):
         _ptt_binding_diagnostic(key)
     print(f"{'=' * 60}")
     end_test()
+    _tg.check_player(*player)
+    _tg.check_after_take(_take_lines(take_started))
     return overall_pass
 
 
@@ -3228,17 +3321,26 @@ def record_tts(sentence="The quick brown fox jumps over the lazy dog", key=None,
     # Get audio duration
     audio_dur = _audio_duration(audio_path) or 3.0
 
+    # #3764: refuse right before the key goes down (after the slow TTS step), never mid-take.
+    _tg.check_before_play()
+
     # Mark log position before recording
+    take_started = _dt.datetime.now().astimezone()  # #3764: the take gate reads from here
     log_size_before = 0
     if os.path.exists(_APP_LOG_PATH):
         log_size_before = os.path.getsize(_APP_LOG_PATH)
 
     # Hold PTT key + play audio concurrently
     import threading
+    played = []  # the player's exit status, judged after the take (#3764)
+
     def _play():
         time.sleep(0.3)  # let key press register first
-        subprocess.run(["afplay", audio_path],
-                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        try:
+            played.append(subprocess.run(["afplay", audio_path], stdout=subprocess.DEVNULL,
+                                         stderr=subprocess.DEVNULL).returncode)
+        except Exception:
+            played.append(None)
 
     player = threading.Thread(target=_play)
     player.start()
@@ -3312,6 +3414,8 @@ def record_tts(sentence="The quick brown fox jumps over the lazy dog", key=None,
     print(f"Result:      {'OK' if result['success'] else 'FAIL'}")
     print(f"{'=' * 60}")
 
+    _tg.check_player(played[0] if played else None)
+    _tg.check_after_take(_take_lines(take_started))
     return result
 
 

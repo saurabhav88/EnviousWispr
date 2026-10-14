@@ -567,6 +567,7 @@ def run_app(app, args):
     pid, doc = stage(app)
     row["pid"] = pid
     require_frontmost(bundle)
+    w.declare_paste_target(bundle)  # #3764: the take gate checks this target before and after
     mark = d.log_mark()
     clip = w.tts(PARAGRAPH if args.paragraph else SENTENCE, engine="say")
     buf = io.StringIO()

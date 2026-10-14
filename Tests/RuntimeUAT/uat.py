@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
-"""The front door for Live UAT (#2775). Four verbs, in the order a session uses them:
+"""The front door for Live UAT (#2775). Five verbs, in the order a session uses them:
 
     python3 Tests/RuntimeUAT/uat.py recipes            # what exists, what to trust, where it is written up
     python3 Tests/RuntimeUAT/uat.py preflight          # is THIS machine ready for UAT right now (nudge, never blocks)
+    python3 Tests/RuntimeUAT/uat.py rig-check          # #3764: set up BlackHole + a paste target, prove, restore (no take)
     python3 Tests/RuntimeUAT/uat.py run <recipe> ...   # run a canonical recipe, read the verdict from the log
     python3 Tests/RuntimeUAT/uat.py verdict [--mark]   # read dictation verdicts from the log, whole, rotation-proof
 
@@ -10,7 +11,8 @@ Why a front door: sessions reached Live UAT with no entry point, rebuilt what
 `wispr_eyes.py` already does, and repeated traps that were written down.
 `preflight` prints the recipe index INTO the session as it runs, so the reading
 is delivered rather than looked up, and checks the machine (right build running,
-debug log on, speaker not muted, room quiet). It is a NUDGE, never a gate
+debug log on, room quiet). Every recording recipe runs inside `audio_rig.AudioRig`
+(#3764): BlackHole and a proven paste target, or exit 3, which is never an app result. It is a NUDGE, never a gate
 (founder 2026-09-10): it reports what is ready and never blocks anything.
 
 This module imports `wispr_eyes` (PyObjC) and runs on the dev machine only.
@@ -366,12 +368,6 @@ def cmd_run(args):
     recipe = cat.RECIPES.get(args.recipe)
     if recipe is None:
         raise SystemExit(f"unknown recipe {args.recipe!r}; one of: {', '.join(cat.RECIPES)}")
-    # A heads-up, not a gate: an audio recipe against a muted speaker will read
-    # silence as a product defect, so say so, but let the caller decide.
-    if recipe["audio"]:
-        level, detail, _l, _muted = pf.output_volume()
-        if level != "ok":
-            print(f"HEADS UP: {detail}")
     full_head = _git("rev-parse", "HEAD")
     # Build-vs-HEAD freshness for the receipt (local Codex review, PR #2780). The
     # front door does NOT prove the running build == HEAD — that is the push
@@ -428,7 +424,34 @@ def cmd_run(args):
         return completed.returncode
 
     import wispr_eyes as w
+    import audio_rig
+    import take_gate as tg
 
+    # #3764: every in-process recipe records, so it runs inside a rig: BlackHole and a proven
+    # paste target (TextEdit unless --target). The silent probe must hear the real room, so it
+    # keeps the real microphone and still pastes only into the target. A setup failure exits 3
+    # and is never an app result.
+    target = audio_rig.AppTarget(args.target) if args.target else audio_rig.TextEditTarget()
+    saved_reason = os.environ.get("EW_UAT_SPEAKER_REASON")
+    if args.recipe == "silent-probe":
+        os.environ["EW_UAT_SPEAKER_REASON"] = "silent-probe measures the real room"
+    try:
+        with audio_rig.AudioRig(target=target, route=args.recipe != "silent-probe"):
+            return _run_in_rig(args, recipe, w, run_dir, full_head, build_matches_head)
+    except tg.SetupFailed as exc:
+        print(exc, flush=True)
+        return 3
+    except tg.CouldNotTell as exc:
+        print(exc, flush=True)
+        return 2
+    finally:
+        if saved_reason is None:
+            os.environ.pop("EW_UAT_SPEAKER_REASON", None)
+        else:
+            os.environ["EW_UAT_SPEAKER_REASON"] = saved_reason
+
+
+def _run_in_rig(args, recipe, w, run_dir, full_head, build_matches_head):
     # silent-probe always plays its OWN generated silence and derives its own
     # empty expectation, so --audio / --sentence / --expect are silently ignored.
     # A caller passing `--audio speech.wav` would believe they tested speech while
@@ -591,7 +614,10 @@ def main(argv=None):
     run.add_argument("--audio")
     run.add_argument("--run-dir")
     run.add_argument("--export", help="script-backed recipes only: the locked candidate's fp32 export directory")
+    run.add_argument("--target", help="paste target bundle id (default: a new TextEdit document)")
     run.set_defaults(fn=cmd_run)
+    rc = sub.add_parser("rig-check", help="set up BlackHole and a TextEdit target, prove both, restore; no take")
+    rc.set_defaults(fn=lambda _a: 0 if __import__("audio_rig").check() else 3)
     v = sub.add_parser("verdict", help="dictation verdicts from app.log since the mark")
     v.add_argument("--mark", action="store_true")
     v.add_argument("--since")

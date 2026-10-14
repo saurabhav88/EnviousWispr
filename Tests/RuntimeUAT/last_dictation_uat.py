@@ -344,6 +344,7 @@ def phase_dictate():
             if not w.close_window():
                 break
         require_front("com.apple.TextEdit", "dictate")
+        w.declare_paste_target("com.apple.TextEdit")  # #3764: the take gate checks it before and after
         base = log_size()
         w.record_tts(SENTENCE)
         # settle: a second, unrequested take would start inside this window (see above)
