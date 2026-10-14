@@ -75,8 +75,8 @@ import SwiftUI
     private var statusText: String {
       switch controller.outcome {
       case .idle: return "Pick a pill and press Play."
-      case .pending(let title): return "Showing: \(title)…"
-      case .shown(let title): return "Showing: \(title)"
+      case .pending(let title): return "Waiting to show: \(title)…"
+      case .shown(let title): return "Shown: \(title)"
       case .notShown(let reason): return "Not shown: \(reason)."
       }
     }

@@ -1,4 +1,5 @@
 #if DEBUG
+  import EnviousWisprAppKitTestSupport
   import EnviousWisprCore
   import EnviousWisprPipeline
   import Foundation
@@ -85,6 +86,25 @@
           director.renderModel.state.presentation != nil,
           "row \(entry.id) left the overlay empty")
       }
+    }
+
+    @Test("both learned-word kinds and both language-chip states have rows, all in the learned phase")
+    func learnedAndChipVariantsCovered() {
+      var learnedKinds = Set<String>()
+      var chipStates: [LanguageChipDisplayState] = []
+      for entry in PillPreviewCatalog.all {
+        switch entry.make(Self.ignoreNote) {
+        case .correctionLearned(let model, _, _, _):
+          #expect(model.phase == .learned, "row \(entry.id) is not in the learned phase")
+          learnedKinds.insert(model.kind == .added ? "added" : "updated")
+        case .languageChip(let payload, _, _, _):
+          chipStates.append(payload.state)
+        default:
+          break
+        }
+      }
+      #expect(learnedKinds == ["added", "updated"])
+      #expect(chipStates.contains(.askToLock) && chipStates.contains(.educateAboutSettings))
     }
 
     @Test("sample buttons only report to the status line")
@@ -217,9 +237,81 @@
     func dismissClears() {
       let (controller, director, _) = make()
       controller.play()
+      #expect(director.renderModel.state.presentation != nil, "the first Play showed nothing")
       controller.dismiss()
       #expect(director.renderModel.state.presentation == nil)
       #expect(controller.outcome == .idle)
+    }
+
+    @Test("Play with an unknown selection says so instead of keeping an old success")
+    func unknownSelectionIsReported() {
+      let (controller, _, _) = make()
+      controller.play()
+      controller.selectedID = "no-such-row"
+      controller.play()
+      #expect(controller.outcome == .notShown("no preview is selected"))
+    }
+
+    @Test("a learned preview that runs out its dwell tells only the status line")
+    func learnedExpiryIsInert() {
+      let clock = LearnedPillClock()
+      let director = OverlayDirector(
+        host: WindowlessOverlayHost(), scheduler: clock.scheduler, announce: { _ in },
+        livePreview: .disabled, grantAccessibility: {}, openMicrophoneSettings: {},
+        advisoryHint: { _ in nil }, selections: { .shipped }, firstRenderSchedule: { $0() })
+      let (controller, _, _) = make(director: director)
+      controller.selectedID = "learned.added"
+      controller.play()
+      #expect(director.renderModel.state.presentation != nil, "the learned preview never showed")
+      clock.advance(to: 1000)
+      #expect(director.renderModel.state.presentation == nil, "the preview did not expire")
+      #expect(controller.lastEvent == "Preview ended")
+    }
+
+    @Test("a dictation Undo preview that expires never pastes")
+    func escapeExpiryNeverPastes() {
+      let clock = LearnedPillClock()
+      let director = OverlayDirector(
+        host: WindowlessOverlayHost(), scheduler: clock.scheduler, announce: { _ in },
+        livePreview: .disabled, grantAccessibility: {}, openMicrophoneSettings: {},
+        advisoryHint: { _ in nil }, selections: { .shipped }, firstRenderSchedule: { $0() })
+      let (controller, _, _) = make(director: director)
+      controller.selectedID = "escape.undo"
+      controller.play()
+      #expect(director.renderModel.state.presentation != nil, "the Undo preview never showed")
+      clock.advance(to: 1000)
+      #expect(director.renderModel.state.presentation == nil, "the preview did not expire")
+      #expect(controller.lastEvent == nil, "expiry reached the sample paste callback")
+    }
+
+    @Test("a result that arrives after Dismiss cannot change the status")
+    func lateResultAfterDismissIsIgnored() {
+      var deferred: (() -> Void)?
+      let director = OverlayDirector(
+        host: WindowlessOverlayHost(), announce: { _ in }, livePreview: .disabled,
+        grantAccessibility: {}, openMicrophoneSettings: {}, advisoryHint: { _ in nil },
+        selections: { .shipped }, firstRenderSchedule: { deferred = $0 })
+      let (controller, _, _) = make(director: director)
+      controller.play()
+      #expect(controller.outcome == .pending("Learned word Undo (added)"))
+      controller.dismiss()
+      #expect(controller.outcome == .idle)
+      deferred?()
+      #expect(controller.outcome == .idle, "a late host answer overwrote the status")
+    }
+
+    @Test("a deferred first render reports pending, then shown")
+    func deferredRenderReportsShown() {
+      var deferred: (() -> Void)?
+      let director = OverlayDirector(
+        host: WindowlessOverlayHost(), announce: { _ in }, livePreview: .disabled,
+        grantAccessibility: {}, openMicrophoneSettings: {}, advisoryHint: { _ in nil },
+        selections: { .shipped }, firstRenderSchedule: { deferred = $0 })
+      let (controller, _, _) = make(director: director)
+      controller.play()
+      #expect(controller.outcome == .pending("Learned word Undo (added)"))
+      deferred?()
+      #expect(controller.outcome == .shown("Learned word Undo (added)"))
     }
 
     @Test("Turning review mode off clears the preview")
@@ -236,13 +328,18 @@
     func dismissKeepsReplacement() {
       let (controller, director, _) = make()
       controller.play()
-      // A pipeline-owned pill replaces a feature pill (an import notice would be refused).
-      guard let real = director.present(.processing(phase: .polishing)) else {
-        Issue.record("the replacement was refused")
+      #expect(director.renderModel.state.presentation != nil, "the first Play showed nothing")
+      // A real recording replaces a feature pill preview (an import notice would be refused).
+      let recording = PillRequest.recording(
+        RecordingPillInput(
+          audioLevel: 0, audioLevelProvider: { 0 }, recordingElapsedProvider: { nil },
+          isLocked: false))
+      guard let real = director.present(recording) else {
+        Issue.record("the real recording was refused")
         return
       }
       controller.dismiss()
-      #expect(director.isCurrent(real))
+      #expect(director.isCurrent(real), "Dismiss removed the real recording")
     }
   }
 #endif

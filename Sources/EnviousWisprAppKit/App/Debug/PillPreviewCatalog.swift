@@ -212,7 +212,7 @@
               model: model,
               isStillWanted: { true },
               onUndo: { note("Undo pressed (preview only, no word was changed)") },
-              onEnded: { note("Pill ended on its own") })
+              onEnded: { note("Preview ended") })
           })
       }
       rows.append(
@@ -245,7 +245,7 @@
               lang: "es", displayName: "Spanish", state: .askToLock, generation: 1),
             onLock: { note("Lock pressed (preview only)") },
             onDismiss: { note("Dismiss pressed (preview only)") },
-            onExpire: { note("Chip ended on its own") })
+            onExpire: { note("Preview ended") })
         })
       rows.append(
         row("chip.educate", .languageChip, "Cards and chips", "Language chip (settings hint)") {
@@ -255,7 +255,7 @@
               lang: "fr", displayName: "French", state: .educateAboutSettings, generation: 1),
             onLock: { note("Lock pressed (preview only)") },
             onDismiss: { note("Dismiss pressed (preview only)") },
-            onExpire: { note("Chip ended on its own") })
+            onExpire: { note("Preview ended") })
         })
       rows.append(
         row("bluetooth", .bluetoothAwareness, "Cards and chips", "Bluetooth awareness card") {

@@ -65,7 +65,15 @@
     }
 
     func play() {
-      guard let entry = selectedEntry else { return }
+      // Every Play, including a refused one, retires results still on their way from an
+      // earlier Play, so a late answer cannot overwrite what this press reports.
+      attempt += 1
+      let thisAttempt = attempt
+      lastEvent = nil
+      guard let entry = selectedEntry else {
+        outcome = .notShown("no preview is selected")
+        return
+      }
       guard isEligible else {
         outcome = .notShown("a real dictation or a real pill is on screen")
         return
@@ -80,9 +88,6 @@
         }
       }
 
-      attempt += 1
-      let thisAttempt = attempt
-      lastEvent = nil
       outcome = .pending(entry.title)
 
       let request = entry.make { [weak self] text in
