@@ -134,9 +134,12 @@ jobs:
               ;;
           esac
 
-  # Build-only. Job-level concurrency: main warms share `cache-warm-main`, so
-  # a newer build-affecting push cancels an older warm whose cache would be
-  # stale anyway; each PR self-proof has its own group and never touches the
+  # Build-only. Job-level concurrency: main warms share `cache-warm-main`, and
+  # the warm that enters the group LATER cancels the one in progress. Warms
+  # usually enter in push order, so a newer push cancels an older warm. If two
+  # classify jobs finish out of order, the older commit's warm can cancel the
+  # newer one and save an older cache; the cost is a colder next PR build,
+  # nothing else (tracked in a follow-up issue). Each PR self-proof has its own group and never touches the
   # main warm. A docs-only push skips this job by its `if:`; that it then leaves
   # a running warm alone is a hosted control (#3729 plan §11), not assumed.
   warm:

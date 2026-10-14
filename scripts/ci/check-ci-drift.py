@@ -144,7 +144,11 @@ def check_scripts(tree, files):
         if os.path.isfile(os.path.join(tree, ref)):
             print(f"  OK  {ref}")
         elif os.path.isfile(os.path.join(tree, "website", ref)):
-            print(f"  OK  website/{ref}")  # deploy-blog runs this path with working-directory: website
+            # deploy-blog runs this path with working-directory: website. Limit, kept
+            # from ci-drift-check.yml: the fallback does not read the step's working
+            # directory, so a root-relative call to a website-only script passes here
+            # and fails when the step runs.
+            print(f"  OK  website/{ref}")
         else:
             bad.append(f"{rel}: referenced script {ref} does not exist")
     print(f"==> scripts: {len(refs)} reference(s) in {len(files)} file(s)")
@@ -290,7 +294,7 @@ def self_test():
         t = tree_with(base, {".github/workflows/a.yml": wf(pinned, "bash scripts/deploy-blog.sh"),
                              "website/scripts/deploy-blog.sh": "true\n"})
         rc, out = entry("--check", "scripts", "--tree", t)
-        expect("scripts: a website-relative script (deploy-blog) passes", rc, 0, out, "OK  website/scripts/deploy-blog.sh")
+        expect("scripts: a script found only under website/ passes (working directory not read)", rc, 0, out, "OK  website/scripts/deploy-blog.sh")
         t = tree_with(base, {".github/workflows/a.yml": "# was: scripts/ci/retired.sh\n" + textwrap.dedent(wf(pinned)).lstrip("\n")})
         rc, out = entry("--check", "scripts", "--tree", t)
         expect("scripts: a missing script named only in a comment is history", rc, 0, out, "0 reference(s)")
