@@ -75,6 +75,15 @@ COMPONENTS=(
   # llama-server-PROVENANCE.md); its MIT license text is vendored in-repo,
   # hence the repo: path scheme (#1271 Codex code-diff r6).
   "llama.cpp (bundled llama-server binary)|fdb1db87|MIT|repo:Sources/EnviousWispr/Resources/llama-server-LICENSE.txt|https://github.com/ggml-org/llama.cpp|"
+  # #3735: transcribe.cpp is a SwiftPM BINARY target (CTranscribe.framework, built from our
+  # fork saurabhav88/transcribe.cpp at da01aa11, release ew-3735-v0.4.0.4), so it has no
+  # .build/checkouts source; its MIT text and the texts of the three components it vendors
+  # and links (ggml, miniz, Silero VAD) are copied verbatim from that commit beside the
+  # other vendored licences (the repo: scheme, as for llama.cpp above).
+  "transcribe.cpp (bundled CTranscribe.framework)|da01aa11 (fork saurabhav88/transcribe.cpp of v0.4.0)|MIT|repo:Sources/EnviousWispr/Resources/transcribe-cpp-LICENSE.txt|https://github.com/saurabhav88/transcribe.cpp|"
+  "ggml (bundled in CTranscribe.framework)|n/a|MIT|repo:Sources/EnviousWispr/Resources/transcribe-cpp-ggml-LICENSE.txt|https://github.com/ggml-org/ggml|"
+  "miniz (bundled in CTranscribe.framework)|n/a|MIT|repo:Sources/EnviousWispr/Resources/transcribe-cpp-miniz-LICENSE.txt|https://github.com/richgel999/miniz|"
+  "Silero VAD (bundled in CTranscribe.framework)|n/a|MIT|repo:Sources/EnviousWispr/Resources/transcribe-cpp-silero-vad-LICENSE.txt|https://github.com/snakers4/silero-vad|"
   # #1413: mediaremote-adapter is NOT a SwiftPM dep either — the framework is
   # built from the pinned upstream commit and committed at Vendor/ with its perl script
   # (Sources/EnviousWispr/Resources/mediaremote-adapter-PROVENANCE.md); its
