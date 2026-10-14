@@ -127,6 +127,11 @@ package final class WisprBootstrapper {
   /// call `recordingOverlay.prewarmFirstRender()` — the +1 stored property
   /// is the plan's named cost.
   let recordingOverlay: OverlayDirector
+  #if DEBUG
+    /// #3736: plays sample pills through `recordingOverlay` for Settings > Diagnostics > Pill
+    /// Preview. Absent from Release.
+    let pillPreviewController: PillPreviewController
+  #endif
 
   /// #996: Self-Learning Dictionary as ONE app-lifetime slot (the Quick Add
   /// shape). The learned correction coordinator, the Undo-pill presenter, the
@@ -1853,6 +1858,16 @@ package final class WisprBootstrapper {
 
     self.navigationCoordinator = navigationCoordinator
     self.diagnosticsCoordinator = diagnosticsCoordinator
+    #if DEBUG
+      self.pillPreviewController = PillPreviewController(
+        presenter: recordingOverlay,
+        isPipelineBusy: { [liveRecordingState] in
+          liveRecordingState.isDictationActive || liveRecordingState.pipelineState.isActive
+        },
+        overlayIsEmpty: { [recordingOverlay] in
+          recordingOverlay.renderModel.state.presentation == nil
+        })
+    #endif
     self.recoveryCoordinator = recoveryCoordinator
     self.languageSuggestionPresenter = languageSuggestionPresenter
     self.updateCoordinatorHolder = updateCoordinatorHolder
@@ -2605,6 +2620,9 @@ private struct MainWindowRoot: View {
       .frame(minWidth: 750, minHeight: 400)
       .environment(b.navigationCoordinator)
       .environment(b.diagnosticsCoordinator)
+      #if DEBUG
+        .environment(b.pillPreviewController)
+      #endif
       .environment(b.languageSuggestionPresenter)
       .environment(b.updateCoordinatorHolder)
       .environment(\.settingsKeyMonitor, b.settingsKeyMonitor)
