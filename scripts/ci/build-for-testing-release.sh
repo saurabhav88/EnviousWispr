@@ -33,6 +33,16 @@
 # XcodeBuildTopologyFreezeTests (arm64OnlyBuildSettings) reads this file and
 # fails if the invocation below loses ARCHS=arm64, VALID_ARCHS=arm64 or
 # ONLY_ACTIVE_ARCH.
+#
+# #3729 PR-B: DEBUG_INFORMATION_FORMAT=dwarf skips dSYM generation. Nothing in
+# this build's consumers reads a dSYM (pr-check.yml's linkage, catalog, app
+# snapshot and launch, the full Release suite, the Settings Map export and the
+# FoundationModels probe; cache-warm saves the compiler cache, not products;
+# Project.swift has no build-phase scripts). The shipped app is archived by
+# scripts/build-release-dmg.sh with its own settings, and its dSYMs are
+# untouched by this. A command-line setting applies to every target in this
+# invocation, which is the intent here. The --self-test expected arguments
+# fail if the flag is lost.
 
 set -euo pipefail
 
@@ -90,7 +100,8 @@ run_build() {
     ARCHS=arm64 \
     ONLY_ACTIVE_ARCH=YES \
     VALID_ARCHS=arm64 \
-    ENABLE_TESTABILITY=YES
+    ENABLE_TESTABILITY=YES \
+    DEBUG_INFORMATION_FORMAT=dwarf
 }
 
 # Drives the REAL entrypoint (this file, as a new process) with a stub
@@ -137,7 +148,8 @@ STUB
       -project "$1" -scheme "$2" -configuration Release \
       -derivedDataPath "$3" -destination 'platform=macOS,arch=arm64' \
       -resultBundlePath "$4" \
-      ARCHS=arm64 ONLY_ACTIVE_ARCH=YES VALID_ARCHS=arm64 ENABLE_TESTABILITY=YES
+      ARCHS=arm64 ONLY_ACTIVE_ARCH=YES VALID_ARCHS=arm64 ENABLE_TESTABILITY=YES \
+      DEBUG_INFORMATION_FORMAT=dwarf
   }
 
   # 1. Success: exact argument list, status 0, log and metrics written.
