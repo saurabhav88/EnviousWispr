@@ -12442,13 +12442,13 @@
         }
       }
     },
-    "On-screen preview pauses while Faster Transcription is on." : {
+    "On-screen preview pauses while Faster Transcription works during recording." : {
       "comment" : "On-screen preview status. Faster Transcription is the name of a setting.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Die Bildschirmvorschau pausiert, solange „Schnellere Transkription“ aktiviert ist."
+            "value" : "Die Bildschirmvorschau pausiert, solange „Schnellere Transkription“ während der Aufnahme transkribiert."
           }
         }
       }
@@ -13097,13 +13097,13 @@
         }
       }
     },
-    "Paused while Faster Transcription is on" : {
+    "Paused while Faster Transcription works during recording" : {
       "comment" : "Live Preview settings: paused for faster transcription.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Pausiert, solange „Schnellere Transkription“ aktiv ist"
+            "value" : "Pausiert, solange „Schnellere Transkription“ während der Aufnahme transkribiert"
           }
         }
       }
@@ -20263,13 +20263,13 @@
         }
       }
     },
-    "Works on macOS 14 and later, in more languages. Needs one optional 217 MB download." : {
-      "comment" : "Live Preview settings, preview engine: universal description. 217 MB is a download size.",
+    "Works on macOS 14 and later, in more languages. Needs one optional 270 MB download." : {
+      "comment" : "Live Preview settings, preview engine: universal description. 270 MB is a download size.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Funktioniert ab macOS 14 und unterstützt mehr Sprachen. Ein optionaler Download von 217 MB ist nötig."
+            "value" : "Funktioniert ab macOS 14 und unterstützt mehr Sprachen. Ein optionaler Download von 270 MB ist nötig."
           }
         }
       }

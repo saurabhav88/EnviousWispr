@@ -1,6 +1,7 @@
 import Foundation
 import Testing
 
+@testable import EnviousWisprASR
 @testable import EnviousWisprTranscribeCpp
 
 /// #3735 plan §3.2a: the executor that owns every transcribe.cpp call.
@@ -407,9 +408,15 @@ private final class FakeNative: @unchecked Sendable {
   let ignoresAbort: Set<String>
   /// Loads that block inside native code until `releaseLoad` (or a deadline) frees them.
   private let loadGates: [String: DispatchSemaphore]
+  /// What a model's successful run returns; by default its name as text, with no segments.
+  let results: [String: TranscribeCppRunResult]
 
-  init(ignoresAbort: Set<String> = [], blocksLoad: Set<String> = []) {
+  init(
+    ignoresAbort: Set<String> = [], blocksLoad: Set<String> = [],
+    results: [String: TranscribeCppRunResult] = [:]
+  ) {
     self.ignoresAbort = ignoresAbort
+    self.results = results
     self.loadGates = Dictionary(uniqueKeysWithValues: blocksLoad.map { ($0, DispatchSemaphore(value: 0)) })
   }
 
@@ -632,7 +639,8 @@ private final class FakeSession: TranscribeCppEngineSession, @unchecked Sendable
     let aborted = abortFlag && !native.ignoresAbort.contains(name)
     native.exit(self)
     if aborted { throw FakeAbort() }
-    return TranscribeCppRunResult(text: name, detectedLanguage: nil, segments: [])
+    return native.results[name]
+      ?? TranscribeCppRunResult(text: name, detectedLanguage: nil, segments: [])
   }
 
   func close() { native.record("close \(name)") }
@@ -672,5 +680,203 @@ private final class OneShot<Value: Sendable>: @unchecked Sendable {
         lock.unlock()
       }
     }
+  }
+}
+
+// MARK: - #3735 Chunk 9: the Universal preview yields to the heart
+
+/// The Universal Live Preview's rolling session and runtime over a REAL executor (fake native
+/// sessions): live-preview.md RULE: universal-preview-engine-safety invariant 4.
+///
+/// **What the user sees when this fails:** with the on-screen preview running, the final
+/// dictation waits behind a preview decode (slower text after Stop), two models run on the GPU
+/// at once, or the pill shows words from a decode the heart interrupted.
+@Suite("Universal preview yields to the heart (#3735)", .serialized, .tags(.productOutcome))
+struct TranscribeCppPreviewPriorityTests {
+
+  /// Forwards to one test executor, so the runtime's real lane choices reach real scheduling.
+  private struct ExecutorDriver: WhisperExecutorDriving {
+    typealias Handle = TranscribeCppExecutor.ModelHandle
+    let executor: TranscribeCppExecutor
+    func load(modelPath: String, lane: TranscribeCppExecutor.Lane) async throws -> Handle {
+      try await executor.load(modelPath: modelPath, lane: lane)
+    }
+    func detectLanguage(_ handle: Handle, samples: [Float], lane: TranscribeCppExecutor.Lane)
+      async throws -> TranscribeCppLanguageObservation
+    {
+      try await executor.detectLanguage(handle, samples: samples, lane: lane)
+    }
+    func transcribe(
+      _ handle: Handle, samples: [Float], language: String?, lane: TranscribeCppExecutor.Lane,
+      onInferenceEntered: (@Sendable () -> Void)?, onProgress: (@Sendable (Int64, Int64) -> Void)?
+    ) async throws -> TranscribeCppRunResult {
+      try await executor.transcribe(
+        handle, samples: samples, language: language, lane: lane, onProgress: onProgress,
+        onInferenceEntered: onInferenceEntered)
+    }
+    func waitForDrain(_ handle: Handle) async { await executor.waitForDrain(handle) }
+    func unload(_ handle: Handle) async { await executor.unload(handle) }
+  }
+
+  /// Texts the preview publishes, with a signal for the first one.
+  private final class Published: @unchecked Sendable {
+    private let lock = NSLock()
+    private var texts: [String] = []
+    private var waiter: CheckedContinuation<Void, Never>?
+    var all: [String] { lock.withLock { texts } }
+    func append(_ text: String) {
+      let w = lock.withLock { () -> CheckedContinuation<Void, Never>? in
+        texts.append(text)
+        defer { waiter = nil }
+        return waiter
+      }
+      w?.resume()
+    }
+    func first() async {
+      await withCheckedContinuation { c in
+        let now = lock.withLock { () -> Bool in
+          if !texts.isEmpty { return true }
+          waiter = c
+          return false
+        }
+        if now { c.resume() }
+      }
+    }
+  }
+
+  private static let small = "small"
+  private static let heard = TranscribeCppRunResult(
+    text: "Hello there.", detectedLanguage: nil,
+    segments: [TranscribeCppSegment(startMs: 0, endMs: 1_100, text: "Hello there.")])
+  private static let speech: [Float] = (0..<19_200).map { Float(sin(Double($0) * 0.05)) * 0.2 }
+
+  private static func runtime(
+    _ executor: TranscribeCppExecutor, residency: TranscribeCppPreviewResidency = .init()
+  ) -> TranscribeCppPreviewRuntime {
+    TranscribeCppPreviewRuntime(
+      driver: ExecutorDriver(executor: executor), modelPath: small, isAdmitted: { true },
+      cadence: .milliseconds(1), residency: residency)
+  }
+
+  /// A bounded wait (the rolling tests' deadline helper: expiry fails the test, never hangs).
+  private static func within(
+    _ what: String, sourceLocation: SourceLocation = #_sourceLocation,
+    _ ready: @escaping @Sendable () async -> Void
+  ) async {
+    await TranscribeCppRollingSessionTests.within(what, sourceLocation: sourceLocation, ready)
+  }
+
+  @Test("a heart request aborts the running preview decode, runs after its native return, and the preview shows nothing from it")
+  func heartPreemptsThePreview() async throws {
+    let native = FakeNative(results: [Self.small: Self.heard])
+    let executor = TranscribeCppExecutor(makeSession: native.makeSession)
+    await native.observe(executor)
+    let heart = try await executor.load(modelPath: "turbo", lane: .heart)
+    let published = Published()
+    let session = try await Self.runtime(executor).makeSession(
+      language: "en", hypothesisRetentionLimit: 2_000, onHypothesis: published.append)
+    await session.start { (Self.speech, Self.speech.count) }
+    await native.waitForArrivals(1)
+    #expect(native.log == ["enter small"], "control: the preview decode is inside native code")
+
+    let h = Task { try await executor.transcribe(heart, samples: [1], language: "en", lane: .heart) }
+    await native.waitForAbort(Self.small)
+    await native.waitForArrivals(2)
+    // The aborted preview run returned BEFORE the heart run entered: never two at once.
+    #expect(Array(native.log.prefix(4)) == ["enter small", "abort small", "exit small", "enter turbo"])
+    #expect(published.all.isEmpty, "a preempted decode must publish nothing")
+    native.release("turbo")
+    #expect(try await native.bounded(h).text == "turbo")
+
+    // The preview resumes on its next cycle and publishes the retried audio.
+    await native.waitForArrivals(3)
+    native.release(Self.small)
+    await Self.within("the retried decode's text") { await published.first() }
+    #expect(published.all == ["Hello there."])
+    await session.cancel()
+    #expect(native.peakInside == 1)
+  }
+
+  @Test("while heart work runs the preview never enters native code; it decodes once the heart is done")
+  func previewRefusedWhileTheHeartRuns() async throws {
+    let native = FakeNative(results: [Self.small: Self.heard])
+    let executor = TranscribeCppExecutor(makeSession: native.makeSession)
+    await native.observe(executor)
+    let heart = try await executor.load(modelPath: "turbo", lane: .heart)
+    // Prepared before the heart works, as the app prepares it before recording: a preview LOAD
+    // while heart work runs is refused too (`heartBusy`), which is the same rule.
+    let runtime = Self.runtime(executor)
+    try await runtime.ensureLoaded()
+    let h = Task { try await executor.transcribe(heart, samples: [1], language: "en", lane: .heart) }
+    await native.waitForArrivals(1)
+
+    let published = Published()
+    let session = try await runtime.makeSession(
+      language: nil, hypothesisRetentionLimit: 2_000, onHypothesis: published.append)
+    await session.start { (Self.speech, Self.speech.count) }
+    let rolling = try #require(session as? TranscribeCppRollingSession)
+    // Three refused cycles: the executor answered `heartBusy` without queueing anything.
+    await Self.within("three refused cycles") { await rolling.cyclesCompleted(reach: 3) }
+    #expect(native.log == ["enter turbo"], "no preview decode while the heart works")
+    #expect(published.all.isEmpty)
+
+    native.release("turbo")
+    _ = try await native.bounded(h)
+    await native.waitForArrivals(2)
+    native.release(Self.small)
+    await Self.within("the first preview text") { await published.first() }
+    #expect(published.all == ["Hello there."])
+    await session.cancel()
+  }
+
+  @Test("stopping the preview aborts its decode and returns only after the native run ended")
+  func stopJoinsTheNativeReturn() async throws {
+    let native = FakeNative(results: [Self.small: Self.heard])
+    let executor = TranscribeCppExecutor(makeSession: native.makeSession)
+    await native.observe(executor)
+    let published = Published()
+    let session = try await Self.runtime(executor).makeSession(
+      language: "en", hypothesisRetentionLimit: 2_000, onHypothesis: published.append)
+    await session.start { (Self.speech, Self.speech.count) }
+    await native.waitForArrivals(1)
+    await session.cancel()
+    // Cancel returned: the aborted run had already exited native code.
+    #expect(native.log == ["enter small", "abort small", "exit small"])
+    #expect(native.inside == 0)
+    #expect(published.all.isEmpty)
+  }
+
+  @Test("the preview model loads on the preview lane, decodes with padding, and is freed once when released")
+  func previewLaneLoadAndRelease() async throws {
+    let native = FakeNative(results: [Self.small: Self.heard])
+    let executor = TranscribeCppExecutor(makeSession: native.makeSession)
+    await native.observe(executor)
+    let residency = TranscribeCppPreviewResidency()
+    var runtime: TranscribeCppPreviewRuntime?
+    do {  // `held` ends with this scope, so `runtime` below is the last strong reference
+      let held = Self.runtime(executor, residency: residency)
+      async let first: Void = held.ensureLoaded()
+      async let second: Void = held.ensureLoaded()
+      _ = try await (first, second)
+      runtime = held
+    }
+    #expect(residency.loadedCount == 1, "one load, however often and however concurrently asked")
+    let published = Published()
+    var session: (any WhisperIncrementalSession)? = try await runtime?.makeSession(
+      language: "en", hypothesisRetentionLimit: 2_000, onHypothesis: published.append)
+    await session?.start { (Self.speech, Self.speech.count) }
+    await native.waitForArrivals(1)
+    // The window plus 0.5 s of trailing silence, like the heart's decodes.
+    #expect(native.samplesSeen.first?.count == Self.speech.count + 8_000)
+    native.release(Self.small)
+    await Self.within("the first preview text") { await published.first() }
+    await session?.cancel()
+    runtime = nil
+    #expect(native.closeCount(Self.small) == 0, "a session still holds the runtime and its model")
+
+    session = nil
+    await Self.within("the released model's free") { await residency.waitUntilNoneLoaded() }
+    #expect(native.closeCount(Self.small) == 1)
+    #expect(residency.loadedCount == 0)
   }
 }

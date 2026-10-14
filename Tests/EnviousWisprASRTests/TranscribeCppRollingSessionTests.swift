@@ -899,4 +899,110 @@ struct TranscribeCppRollingSessionTests {
     #expect(result.text == nil, "the late \"One two\" is not released")
     #expect(result.strategy == "streaming_cancelled")
   }
+
+  // MARK: - #3735 Chunk 9: preview mode (the Universal Live Preview)
+
+  /// What the preview handed the display, in order.
+  final class Shown: @unchecked Sendable {
+    private let lock = NSLock()
+    private var texts: [String] = []
+    var all: [String] { lock.withLock { texts } }
+    func append(_ text: String) { lock.withLock { texts.append(text) } }
+  }
+
+  private static func previewSession(
+    _ decode: @escaping TranscribeCppRollingSession.Decode, limit: Int, shown: Shown
+  ) -> TranscribeCppRollingSession {
+    TranscribeCppRollingSession(
+      decode: decode, cadence: .milliseconds(1),
+      publication: .init(retentionLimit: limit, onHypothesis: shown.append))
+  }
+
+  @Test("the preview hands over a bounded tail from the end, never an empty one, and only when it changes")
+  func previewPublishesBoundedChangedTails() async {
+    let long = (0..<30).map { " word\($0)" }.joined()  // 247 characters, one segment
+    let d = ScriptedDecoder([
+      [Self.native(0, 1000, long)],
+      [],  // an empty decode: the last text stays up
+      [Self.native(0, 1000, long)],  // agrees: the words commit, the shown text is unchanged
+    ])
+    let shown = Shown()
+    let audio = Audio()
+    audio.set(Self.voiced(1))
+    let s = Self.previewSession(d.decode, limit: 40, shown: shown)
+    await s.start(audioSamplesProvider: audio.provider)
+    await Self.within("cycle 1") { await s.cyclesCompleted(reach: 1) }
+    audio.set(Self.voiced(2))
+    // Cycle 2's empty decode leaves the audio unheard, so cycle 3 retries it at once.
+    await Self.within("cycles 2 and 3") { await s.cyclesCompleted(reach: 3) }
+    await s.cancel()
+
+    let expected = String(String(long.suffix(40)).drop { $0.isWhitespace })
+    #expect(shown.all == [expected], "one text: bounded, from the end, not repeated, never empty")
+    #expect(expected.count <= 40 && expected.hasSuffix("word29"))
+    #expect(await s.committedTextForTests.count <= 40, "the committed text is kept to the limit")
+    #expect(d.callSampleCounts.count == 3, "control: all three decodes ran")
+  }
+
+  @Test("preview mode keeps its transcript to the limit while heart mode keeps every word")
+  func previewBoundsTheTranscriptHeartKeepsIt() async {
+    let preview = Self.previewSession(Self.noDecode, limit: 50, shown: Shown())
+    let heart = Self.session(Self.noDecode)
+    // Twenty sentences, each agreed by two decodes, so all of them commit in both modes.
+    var segments: [RollingSegment] = []
+    for i in 0..<20 {
+      segments.append(Self.seg(Float(i), Float(i + 1), " sentence\(i)."))
+      for session in [preview, heart] {
+        await session.apply(segments, realAudioEnd: Float(i + 1))
+        await session.apply(segments, realAudioEnd: Float(i + 1) + 0.5)
+      }
+    }
+    let heartText = await heart.committedTextForTests
+    #expect(heartText.hasPrefix(" sentence0.") && heartText.hasSuffix(" sentence19."))
+    let previewText = await preview.committedTextForTests
+    #expect(previewText.count <= 50)
+    #expect(heartText.hasSuffix(previewText), "the preview keeps the newest words")
+  }
+
+  @Test("an unbroken run longer than the limit (no spaces, CJK) is handed over cut to the limit")
+  func previewBoundsUnbrokenText() async {
+    let unbroken = String(repeating: "日本語の文章", count: 600)  // 3,600 characters, no spaces
+    let d = ScriptedDecoder([[Self.native(0, 1000, unbroken)]])
+    let shown = Shown()
+    let audio = Audio()
+    audio.set(Self.voiced(1))
+    let s = Self.previewSession(d.decode, limit: 2_000, shown: shown)
+    await s.start(audioSamplesProvider: audio.provider)
+    await Self.within("cycle 1") { await s.cyclesCompleted(reach: 1) }
+    await s.cancel()
+    #expect(shown.all.count == 1)
+    #expect(shown.all.first?.count == 2_000)
+    #expect(shown.all.first.map { unbroken.hasSuffix($0) } == true, "the newest text, unspaced")
+  }
+
+  @Test("continuous unstable speech past the window bound keeps handing over bounded text")
+  func previewStaysBoundedPastTheWindow() async {
+    // Every decode disagrees with the last, so nothing commits and the window advances by force.
+    // Each also ends differently: an unchanged tail is (rightly) not handed over again.
+    let words = (0..<300).map { " w\($0)" }.joined()
+    let d = ScriptedDecoder(
+      (0..<6).map { i in
+        [Self.native(0, 1000, (i.isMultiple(of: 2) ? words : " other" + words) + " end\(i)")]
+      })
+    let shown = Shown()
+    let audio = Audio()
+    let s = Self.previewSession(d.decode, limit: 100, shown: shown)
+    audio.set(Self.voiced(20))
+    await s.start(audioSamplesProvider: audio.provider)
+    for (step, seconds) in [26, 32, 34].enumerated() {
+      await Self.within("cycle \(step + 1)") { await s.cyclesCompleted(reach: step + 1) }
+      audio.set(Self.voiced(Float(seconds)))
+    }
+    await Self.within("cycle 4") { await s.cyclesCompleted(reach: 4) }
+    await s.cancel()
+    #expect(await s.bufferStartForTests > 0, "control: the window advanced past the bound")
+    #expect(d.callSampleCounts.allSatisfy { $0 <= 30 * 16_000 }, "no decode past 25 + 5 s")
+    #expect(shown.all.count >= 2, "control: text kept flowing")
+    #expect(shown.all.allSatisfy { $0.count <= 100 })
+  }
 }

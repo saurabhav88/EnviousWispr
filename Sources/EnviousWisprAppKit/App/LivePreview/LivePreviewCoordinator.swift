@@ -513,7 +513,7 @@ final class LivePreviewCoordinator: CorrectorVocabularyConsumer {
         //
         // Every refusal reason can persist for the rest of a session — the user
         // turns Faster Transcription on, or locks a language the model does not
-        // cover, or removes the model. The prepared engine holds a loaded 217 MB
+        // cover, or removes the model. The prepared engine holds a loaded preview
         // model that cannot serve ANY recording while the reason holds, so
         // keeping it is a pure cost. Re-preparing when the block clears costs one
         // model load, which is what the first preparation cost anyway.
@@ -1051,13 +1051,19 @@ enum LivePreviewCopy {
   /// #2108 Gate C. Faster Transcription already decodes continuously while you
   /// speak, and a second decoder would slow it by half (measured).
   ///
+  /// #3735: "works during recording", not "is on". With Whisper on Auto-detect the
+  /// toggle can be on while dictation is transcribed only after you stop, and the
+  /// preview then runs (`WhisperPreviewDeliveryWiring.heartIsStreaming`, the one
+  /// predicate). Same words as the toggle's own note for that engine
+  /// (`DictationSettingsCopy.fasterMultilingualShort`).
+  ///
   /// **This names the setting, and #2155 renamed it.** Missed by the first sweep
   /// because `claim-sweep.sh` scoped itself to `Views/` and this copy lives under
   /// `App/LivePreview/` — user-facing pill text outside the surface list. The tool
   /// now covers this directory; the lesson is that a copy string is user-facing
   /// because of where it is SHOWN, never because of which folder holds it.
   static let heartIsStreaming = String(
-    localized: "On-screen preview pauses while Faster Transcription is on.",
+    localized: "On-screen preview pauses while Faster Transcription works during recording.",
     comment: "On-screen preview status. Faster Transcription is the name of a setting.")
   /// No remedy offered ON PURPOSE. A build shipped without the engine's files is
   /// ours to fix, and a "Download" button here would point at nothing.

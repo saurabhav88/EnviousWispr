@@ -22,7 +22,7 @@ public enum AppearancePreference: String, CaseIterable, Sendable {
 ///
 /// Persisted by rawValue; unknown or missing values resolve to `.apple`, which
 /// is the founder's Gate 1 decision: Apple's engine wherever it genuinely works,
-/// and the 217 MB universal model offered rather than imposed.
+/// and the downloadable universal model offered rather than imposed.
 ///
 /// An enum rather than a Bool so a third engine costs a case, not a migration —
 /// this feature already replaced "the only engine" with "two engines" once.
@@ -31,7 +31,7 @@ public enum LivePreviewEngineChoice: String, CaseIterable, Sendable {
   /// covers the languages macOS has already installed.
   case apple
   /// The downloadable universal model. No OS floor beyond the app's own, carries
-  /// its own languages, costs one optional 217 MB download.
+  /// its own languages, costs one optional download (size: its delivery manifest).
   case universal
 }
 

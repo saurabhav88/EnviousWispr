@@ -287,8 +287,12 @@ enum LivePreviewSettingsCopy {
   /// Why the pause exists: the universal preview refuses to run while the heart
   /// decodes continuously, because concurrent decode was measured costing
   /// transcription 1.50x. Yielding is the design, not a defect.
+  ///
+  /// #3735: "works during recording", because the toggle being on is not the
+  /// condition: Whisper on Auto-detect transcribes after you stop, and the preview
+  /// runs (`WhisperPreviewDeliveryWiring.heartIsStreaming`).
   static let pausedForFasterTranscription = String(
-    localized: "Paused while Faster Transcription is on",
+    localized: "Paused while Faster Transcription works during recording",
     comment: "Live Preview settings: paused for faster transcription.")
   static let statusPausedDetail =
     String(

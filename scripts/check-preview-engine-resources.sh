@@ -1,36 +1,40 @@
 #!/usr/bin/env bash
-# #2123: prove a BUILT app carries what the universal preview engine needs.
+# #2123, #3735: prove a BUILT app carries what the universal preview engine needs.
 #
 # WHY THIS IS NOT A UNIT TEST. A test process's `Bundle.main` is the test runner,
-# not the app, so it cannot see app-target resources at all — and the route
-# builder hardcodes `Bundle.main`. A unit test here would inspect committed
-# SOURCE files and pass while the shipped app was missing them, which is worse
-# than no check: it would read as coverage.
+# not the app, so it cannot see app-target resources at all, and the route
+# builder reads the registration `ModelDeliveryHome` builds from `Bundle.main`. A
+# unit test here would inspect committed SOURCE files and pass while the shipped
+# app was missing them, which is worse than no check: it would read as coverage.
 #
-# WHAT BREAKS WITHOUT IT. Packaging happens in ONE place — Tuist's
-# `Project.swift`: a `.folderReference` for the tokenizer and a resource path for
-# the manifest. `Package.swift` ships neither, for two DIFFERENT reasons worth
-# keeping straight: the manifest lives under the `EnviousWispr` target, which
-# carries `exclude: ["Resources"]`; the tokenizer lives under `EnviousWisprASR`,
-# which excludes nothing but declares no `resources:` at all, so SwiftPM simply
-# never processes it.
+# WHAT BREAKS WITHOUT IT. Packaging happens in ONE place: Tuist's `Project.swift`
+# lists the manifest as an app resource. `Package.swift` does not ship it: the
+# manifest lives under the `EnviousWispr` target, which carries
+# `exclude: ["Resources"]`.
 #
 # That single packaging point is the RISK, not a reassurance. A dropped entry
 # still compiles, still passes every test, and produces an app whose preview
 # engine can never run: the user picks Universal and gets "unavailable in this
 # build" with no way to fix it.
 #
+# #3735: the Universal engine is transcribe.cpp whisper-small. It needs only its
+# delivery manifest (the model file is downloaded and admitted at run time); the
+# GGUF carries its own vocabulary, so there is no bundled tokenizer any more.
+#
 # Usage: check-preview-engine-resources.sh [/path/to/Some.app]
 #        check-preview-engine-resources.sh --self-test
 # Defaults to the local dev build.
 set -euo pipefail
 
-EXPECTED_VARIANT="openai_whisper-small_216MB"
+MANIFEST_NAME="whisper-preview-delivery-manifest.json"
+EXPECTED_NAME="whisper-small-gguf"
+EXPECTED_VARIANT="q8_0"
+EXPECTED_ENTRYPOINT="whisper-small-Q8_0.gguf"
 
 # --self-test: prove this gate FIRES as well as passes.
 #
 # A resource check that only ever runs against a good bundle is indistinguishable
-# from one that returns 0 unconditionally — the failure this exists to catch is
+# from one that returns 0 unconditionally: the failure this exists to catch is
 # rare by design, so it would sit green for months either way. Each case below
 # builds a fixture that is wrong in exactly ONE way and asserts this script
 # rejects it, plus a fully-correct fixture it must ACCEPT. Without that last
@@ -54,18 +58,13 @@ if [ "${1:-}" = "--self-test" ]; then
     fi
   }
 
-  mkbundle() {  # mkbundle <dir> <variant-or-empty> <with-tokenizer 0|1>
-    local d="$1" variant="$2" tok="$3"
+  mkbundle() {  # mkbundle <dir> <name> <variant> <entrypoint>; empty name = no manifest
+    local d="$1" name="$2" variant="$3" entry="$4"
     mkdir -p "$d/Contents/Resources"
     printf '<plist/>\n' >"$d/Contents/Info.plist"
-    if [ -n "$variant" ]; then
-      printf '{"identity":{"variant":"%s"}}\n' "$variant" \
-        >"$d/Contents/Resources/whisperkit-preview-delivery-manifest.json"
-    fi
-    if [ "$tok" -eq 1 ]; then
-      mkdir -p "$d/Contents/Resources/WhisperPreviewTokenizer/models/openai/whisper-small"
-      printf '{}\n' \
-        >"$d/Contents/Resources/WhisperPreviewTokenizer/models/openai/whisper-small/tokenizer.json"
+    if [ -n "$name" ]; then
+      printf '{"identity":{"name":"%s","variant":"%s"},"admission":{"entrypointFile":"%s"}}\n' \
+        "$name" "$variant" "$entry" >"$d/Contents/Resources/$MANIFEST_NAME"
     fi
   }
 
@@ -73,21 +72,19 @@ if [ "${1:-}" = "--self-test" ]; then
   expect "path that does not exist"        1 "$TMP/nope.app"
   mkdir -p "$TMP/notabundle.app"
   expect "directory with no Info.plist"    1 "$TMP/notabundle.app"
-  mkbundle "$TMP/nomanifest.app" "" 1
+  mkbundle "$TMP/nomanifest.app" "" "" ""
   expect "bundle missing the manifest"     1 "$TMP/nomanifest.app"
-  mkbundle "$TMP/notokenizer.app" "$EXPECTED_VARIANT" 0
-  expect "bundle missing the tokenizer"    1 "$TMP/notokenizer.app"
-  mkbundle "$TMP/wrongvariant.app" "some_other_model" 1
+  mkbundle "$TMP/wrongname.app" "whisper-large-v3-turbo-gguf" "$EXPECTED_VARIANT" "$EXPECTED_ENTRYPOINT"
+  expect "manifest naming another model"   1 "$TMP/wrongname.app"
+  mkbundle "$TMP/wrongvariant.app" "$EXPECTED_NAME" "f16" "$EXPECTED_ENTRYPOINT"
   expect "manifest naming another variant" 1 "$TMP/wrongvariant.app"
+  mkbundle "$TMP/wrongentry.app" "$EXPECTED_NAME" "$EXPECTED_VARIANT" "other.gguf"
+  expect "manifest naming another file"    1 "$TMP/wrongentry.app"
   mkdir -p "$TMP/badjson.app/Contents/Resources"
   printf '<plist/>\n' >"$TMP/badjson.app/Contents/Info.plist"
-  printf 'not json at all' \
-    >"$TMP/badjson.app/Contents/Resources/whisperkit-preview-delivery-manifest.json"
-  mkdir -p "$TMP/badjson.app/Contents/Resources/WhisperPreviewTokenizer/models/openai/whisper-small"
-  printf '{}\n' \
-    >"$TMP/badjson.app/Contents/Resources/WhisperPreviewTokenizer/models/openai/whisper-small/tokenizer.json"
+  printf 'not json at all' >"$TMP/badjson.app/Contents/Resources/$MANIFEST_NAME"
   expect "manifest that is not valid JSON" 1 "$TMP/badjson.app"
-  mkbundle "$TMP/good.app" "$EXPECTED_VARIANT" 1
+  mkbundle "$TMP/good.app" "$EXPECTED_NAME" "$EXPECTED_VARIANT" "$EXPECTED_ENTRYPOINT"
   expect "a fully correct bundle"          0 "$TMP/good.app"
 
   echo "$pass passed, $fail_count failed"
@@ -103,37 +100,35 @@ fail() { echo "::error::$*"; exit 1; }
 # POSITIVE CONTROL, first and deliberately.
 #
 # Every check below reports "missing". So does pointing at a path that is not an
-# app bundle at all — a stale build directory, a renamed product, a typo in a CI
+# app bundle at all: a stale build directory, a renamed product, a typo in a CI
 # variable. Without this, "the preview resources are missing" and "I was not
 # looking at an app" produce the same red, and the second sends someone editing
 # a manifest that was never wrong.
-[ -d "$APP" ] || fail "not a directory: $APP — this is a PATH problem, not a resource problem"
+[ -d "$APP" ] || fail "not a directory: $APP (a PATH problem, not a resource problem)"
 [ -f "$APP/Contents/Info.plist" ] \
-  || fail "no Info.plist under $APP — that path is not an app bundle, so nothing below is meaningful"
+  || fail "no Info.plist under $APP: that path is not an app bundle, so nothing below is meaningful"
 
 # 1. The delivery manifest. Without it there is no registration, so the engine
 #    reports unavailable-in-this-build no matter what is on disk.
-MANIFEST="$RESOURCES/whisperkit-preview-delivery-manifest.json"
+MANIFEST="$RESOURCES/$MANIFEST_NAME"
 [ -f "$MANIFEST" ] || fail "preview delivery manifest missing from the bundle: $MANIFEST"
 
-# 2. The bundled tokenizer. `WhisperPreviewDeliveryWiring.makeRoute` refuses
-#    without it — deliberately, because WhisperKit's tokenizer search runs
-#    independently of `download: false`, so a nil folder can reach the NETWORK,
-#    and the app's other bundled tokenizer is large-v3 and would silently load
-#    the wrong vocabulary into the small model. Both measured on #2108.
-TOKENIZER="$RESOURCES/WhisperPreviewTokenizer/models/openai/whisper-small/tokenizer.json"
-[ -f "$TOKENIZER" ] || fail "preview tokenizer missing from the bundle: $TOKENIZER"
-
-# 3. The manifest must be readable JSON naming the variant this engine expects.
-#    A truncated or wrong-variant file is present-but-useless, and "the file
-#    exists" is exactly the check that cannot tell the difference.
-VARIANT=$(python3 -c "
+# 2. The manifest must be readable JSON naming the model, variant and entrypoint this engine
+#    loads. A truncated or wrong-model file is present-but-useless, and "the file exists" is
+#    exactly the check that cannot tell the difference.
+FIELDS=$(python3 -c "
 import json, sys
-with open('$MANIFEST') as f:
-    print(json.load(f)['identity']['variant'])
-" 2>/dev/null) || fail "preview manifest is not readable JSON with an identity.variant: $MANIFEST"
+with open(sys.argv[1]) as f:
+    m = json.load(f)
+print(m['identity']['name'], m['identity']['variant'], m['admission']['entrypointFile'])
+" "$MANIFEST" 2>/dev/null) \
+  || fail "preview manifest is not readable JSON with identity.name, identity.variant and admission.entrypointFile: $MANIFEST"
+read -r NAME VARIANT ENTRYPOINT <<<"$FIELDS"
 
+[ "$NAME" = "$EXPECTED_NAME" ] || fail "preview manifest names model '$NAME', expected $EXPECTED_NAME"
 [ "$VARIANT" = "$EXPECTED_VARIANT" ] \
   || fail "preview manifest names variant '$VARIANT', expected $EXPECTED_VARIANT"
+[ "$ENTRYPOINT" = "$EXPECTED_ENTRYPOINT" ] \
+  || fail "preview manifest names entrypoint '$ENTRYPOINT', expected $EXPECTED_ENTRYPOINT"
 
-echo "OK: preview engine resources present in $(basename "$APP") (variant $VARIANT)"
+echo "OK: preview engine resources present in $(basename "$APP") ($NAME $VARIANT)"

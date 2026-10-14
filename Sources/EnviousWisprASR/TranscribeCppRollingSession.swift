@@ -35,9 +35,12 @@ import Foundation
 //     overflowed → `accepted: false`, which the adapter turns into the clean batch decode of
 //     the whole recording.
 //
-// Heart mode only. The Universal preview (Chunk 9) builds on this core with its own display
-// and audio bounds; those bounds must never apply to the heart transcript, which is kept whole
-// for the recording cap.
+// Two modes on one core. Heart mode (no `Publication`) keeps the whole transcript for the
+// recording cap and finalizes as above. Preview mode (the Universal Live Preview, §3.5) adds a
+// `Publication`: after every heard decode it hands the display a tail built from the END, and
+// it keeps its own committed and scrolled-out text to that tail's limit, because nothing ever
+// releases a preview transcript. The preview's audio cap lives with its session owner; the
+// preview only ever cancels, never finalizes. Preview bounds never apply in heart mode.
 
 /// One segment of a decode, in absolute seconds of the session's `streamingPCM`.
 struct RollingSegment: Sendable, Equatable {
@@ -57,12 +60,26 @@ struct RollingUnit: Sendable, Equatable {
 
 package actor TranscribeCppRollingSession: WhisperIncrementalSession {
   /// One decode of `samples`: the native full text and segments, timed in `samples`' own
-  /// coordinates. The backend owns the model, the heart lane, padding, occupancy and the
-  /// native-boundary observer; a cancelled call returns only after the aborted native run ended.
+  /// coordinates. The owner (heart backend or preview runtime) owns the model, the lane,
+  /// padding, occupancy and the native-boundary observer; a cancelled call returns only after
+  /// the aborted native run ended.
   typealias Decode = @Sendable ([Float]) async throws -> TranscribeCppRunResult
+
+  /// Preview mode: what the display is handed after every heard decode.
+  struct Publication: Sendable {
+    /// The most text the session keeps or hands over, in characters (the preview's
+    /// `LivePreviewTextBound.maxCharacters`, which this module cannot import).
+    let retentionLimit: Int
+    /// Called on this actor inside the loop. It must only enqueue: anything slower delays the
+    /// next decode.
+    let onHypothesis: @Sendable (String) -> Void
+  }
 
   private let decode: Decode
   private let cadence: Duration
+  private let publication: Publication?
+  /// The last text handed to `onHypothesis`, so an unchanged hypothesis is not handed again.
+  private var lastPublished = ""
 
   static let sampleRate: Float = 16_000
   /// One second of new audio before a cycle decodes (the shipped WhisperKit gate).
@@ -130,9 +147,10 @@ package actor TranscribeCppRollingSession: WhisperIncrementalSession {
   private var drainJoinWaiters: [(Int, CheckedContinuation<Void, Never>)] = []
   private var audioSamplesProvider: (@Sendable () async -> (samples: [Float], count: Int))?
 
-  init(decode: @escaping Decode, cadence: Duration = .seconds(1)) {
+  init(decode: @escaping Decode, cadence: Duration = .seconds(1), publication: Publication? = nil) {
     self.decode = decode
     self.cadence = cadence
+    self.publication = publication
   }
 
   // MARK: Test observability (actor state, not decoder timing)
@@ -180,6 +198,7 @@ package actor TranscribeCppRollingSession: WhisperIncrementalSession {
     stoppedMidDecode = false
     stopSnapshotTaken = false
     cyclesCompleted = 0
+    lastPublished = ""
     self.audioSamplesProvider = audioSamplesProvider
     // A previous take's native work may still be draining: the new loop decodes only after it
     // physically ended, so two runs never share the model.
@@ -344,9 +363,13 @@ package actor TranscribeCppRollingSession: WhisperIncrementalSession {
       } catch {
         guard live else { break }
         loopDecodeInFlight = false
-        await AppLogger.shared.log(
-          "Whisper streaming decode failed: \(error.localizedDescription)",
-          level: .info, category: "WhisperStreaming")
+        // The preview's refusals (heart busy, preempted) are expected every time the heart
+        // works; it keeps its last text and tries again next cycle, so only the heart logs.
+        if publication == nil {
+          await AppLogger.shared.log(
+            "Whisper streaming decode failed: \(error.localizedDescription)",
+            level: .info, category: "WhisperStreaming")
+        }
         guard live else { break }
         completeCycle()
         continue
@@ -361,6 +384,8 @@ package actor TranscribeCppRollingSession: WhisperIncrementalSession {
       }
       if apply(segments, realAudioEnd: Float(count) / Self.sampleRate) {
         lastDecodeSampleCount = count
+        // After the `live` check: a terminal that won the race never publishes.
+        publishHypothesis()
       }
       decodeCount += 1
       totalDecodeTimeMs += Self.milliseconds(since: started)
@@ -433,7 +458,7 @@ package actor TranscribeCppRollingSession: WhisperIncrementalSession {
     }
     if commitCount > 0 {
       for unit in fresh[0..<commitCount] {
-        committedText = Self.join(committedText, unit.text)
+        appendTranscript(&committedText, unit.text)
         committedInBuffer.append((unit, segments[unit.segment].end))
       }
       lastCommittedEnd = max(lastCommittedEnd, segments[fresh[commitCount - 1].segment].end)
@@ -454,7 +479,7 @@ package actor TranscribeCppRollingSession: WhisperIncrementalSession {
       boundary > bufferStart
     {
       for entry in committedInBuffer where entry.end <= boundary {
-        scrolledOutText = Self.join(scrolledOutText, entry.unit.text)
+        appendTranscript(&scrolledOutText, entry.unit.text)
       }
       committedInBuffer.removeAll { $0.end <= boundary }
       bufferStart = boundary
@@ -465,7 +490,7 @@ package actor TranscribeCppRollingSession: WhisperIncrementalSession {
     // advance to the retention line anyway. Committed words before it scroll out; the
     // unstable words there never commit, and their agreement state goes with them.
     for entry in committedInBuffer where entry.end <= retentionLine {
-      scrolledOutText = Self.join(scrolledOutText, entry.unit.text)
+      appendTranscript(&scrolledOutText, entry.unit.text)
     }
     committedInBuffer.removeAll { $0.end <= retentionLine }
     // No committed segment ended in the discarded span, so whatever was said there is not in
@@ -476,6 +501,32 @@ package actor TranscribeCppRollingSession: WhisperIncrementalSession {
     heldBack = []
     previousHypothesis = []
     bufferStart = retentionLine
+  }
+
+  /// Appends to a transcript. Heart mode keeps it whole; preview mode keeps only its last
+  /// `retentionLimit` characters, so the preview never holds a growing transcript.
+  private func appendTranscript(_ text: inout String, _ piece: String) {
+    text = Self.join(text, piece)
+    if let limit = publication?.retentionLimit, text.count > limit {
+      text = String(text.suffix(limit))
+    }
+  }
+
+  /// Preview mode: hands the display the committed tail plus the held-back words, built from
+  /// the end and bounded, only when it is non-empty and changed. An empty or wordless cycle
+  /// never reaches here, so the last usable text stays up instead of blanking the pill.
+  private func publishHypothesis() {
+    guard let publication else { return }
+    let limit = publication.retentionLimit
+    let held = heldBack.reduce("") { Self.join($0, $1.unit.text) }
+    let tail =
+      held.count >= limit
+      ? String(held.suffix(limit))
+      : String(Self.join(String(committedText.suffix(limit - held.count)), held).suffix(limit))
+    let shown = String(tail.drop { $0.isWhitespace })
+    guard !shown.isEmpty, shown != lastPublished else { return }
+    lastPublished = shown
+    publication.onHypothesis(shown)
   }
 
   // MARK: - Alignment and spacing

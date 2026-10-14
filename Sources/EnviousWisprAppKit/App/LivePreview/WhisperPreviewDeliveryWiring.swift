@@ -21,18 +21,22 @@ import Foundation
 @MainActor
 enum WhisperPreviewDeliveryWiring {
 
-  /// Whether a universal route can be composed in this build at all — the same
+  /// Whether a universal route can be composed in this build at all: the same
   /// answer `makeRoute` gives, asked without building anything.
   ///
   /// The UI needs this answer BEFORE it offers a control: an engine that cannot
   /// run must not enable the toggle or offer a Download.
-  ///
-  /// #3735: false until the transcribe.cpp preview session lands (Chunk 9). The
-  /// WhisperKit preview runtime is disconnected because the migration retires its
-  /// model folder; the GGUF model may already be downloading or admitted, and that
-  /// must not read as a preview that can run.
   static func isComposable(modelDelivery: ModelDeliveryHome) -> Bool {
-    false
+    modelPath(modelDelivery.whisperPreviewRegistration) != nil
+  }
+
+  /// Where the admitted model file lives: the manifest's entrypoint in its install
+  /// directory, or nil when this build registered no preview model (a build defect).
+  /// The one authority both `isComposable` and `makeRoute` read.
+  private static func modelPath(_ registration: DeliveryRegistration?) -> String? {
+    guard let registration, let entrypoint = registration.manifest.resolvedEntrypointPath
+    else { return nil }
+    return registration.installDirectory.appendingPathComponent(entrypoint).path
   }
 
   /// Build the preview engine's route, or nil when this build cannot compose one.
@@ -44,13 +48,31 @@ enum WhisperPreviewDeliveryWiring {
   /// help, and falling back to Apple would make the chosen card and the running
   /// engine disagree.
   ///
-  /// #3735: always nil until Chunk 9 composes the transcribe.cpp preview route over
-  /// `modelDelivery.whisperPreviewRegistration` (the GGUF); see `isComposable`.
+  /// #3735: the route decodes the transcribe.cpp whisper-small GGUF registered as
+  /// `modelDelivery.whisperPreviewRegistration`.
   static func makeRoute(
     modelDelivery: ModelDeliveryHome,
     settings: SettingsManager
   ) -> LivePreviewEngineRoute? {
-    nil
+    guard let registration = modelDelivery.whisperPreviewRegistration,
+      let modelPath = modelPath(registration)
+    else { return nil }
+
+    let controller = modelDelivery.controller
+    let identity = registration.manifest.identity
+
+    let environment = WhisperPreviewEngineResolver.Environment(
+      // Identity + digest, so a revision bump or a re-authored manifest
+      // invalidates a prepared engine instead of serving weights we no longer
+      // ship.
+      artifactIdentity: "\(identity.cacheKey)@\(registration.manifest.manifestDigest.prefix(12))",
+      modelPath: modelPath,
+      isAdmitted: { await controller.isAdmitted(registration) },
+      isHeartStreaming: {
+        await MainActor.run { Self.heartIsStreaming(settings: settings) }
+      })
+
+    return WhisperPreviewEngineResolver.route(environment)
   }
 
   /// Whether the transcription engine is itself decoding continuously right now.
@@ -64,10 +86,10 @@ enum WhisperPreviewDeliveryWiring {
   /// and applied it to both engines. But that language condition is
   /// WhisperKit-adapter-specific: the KERNEL sets
   /// `shouldStream = config.useStreamingASR && adapter.capabilities.supportsStreaming`
-  /// with no language term at all (`RecordingSessionKernel.swift:1397`), and
+  /// with no language term at all (`RecordingSessionKernel.swift:1858` at aed04f9c), and
   /// Parakeet advertises `supportsStreaming: true`
-  /// (`ParakeetEngineAdapter.swift:288`) and begins streaming regardless of
-  /// language mode. WhisperKit is the engine that degrades to batch on `.auto`.
+  /// (`ParakeetEngineAdapter.swift:289`) and begins streaming regardless of
+  /// language mode. Whisper is the engine that degrades to batch on `.auto`.
   ///
   /// So on Parakeet + streaming + Auto the heart IS decoding continuously, and
   /// the earlier predicate returned false — permitting exactly the contention

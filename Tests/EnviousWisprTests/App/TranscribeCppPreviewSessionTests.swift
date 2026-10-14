@@ -7,8 +7,8 @@ import Testing
 @testable import EnviousWisprLivePreview
 @testable import EnviousWisprWhisperPreviewAdapter
 
-/// #2108 — what the preview session handle delivers, and how big it can get.
-@Suite struct WhisperPreviewSessionHandleTests {
+/// #2108, #3735: what a Universal preview session delivers, and how big it can get.
+@Suite struct TranscribeCppPreviewSessionTests {
 
   /// Wait for the publisher task to deliver, on a bounded real-time poll.
   ///
@@ -46,7 +46,7 @@ import Testing
     let lookups = WordCorrector.buildLookups(words: [word(canonical, alias: alias)])
 
     let box = Box()
-    let handle = WhisperPreviewSessionHandle(
+    let handle = TranscribeCppPreviewSession(
       lookups: lookups, onText: { box.delivered.append($0) })
 
     // Just over the limit, so the INNER bound trims to exactly the cap, with a
@@ -79,7 +79,7 @@ import Testing
   @Test("an empty hypothesis is not delivered")
   func emptyHypothesisIsNotDelivered() async {
     let box = Box()
-    let handle = WhisperPreviewSessionHandle(
+    let handle = TranscribeCppPreviewSession(
       lookups: nil, onText: { box.delivered.append($0) })
 
     handle.enqueue("")
@@ -103,7 +103,7 @@ import Testing
   @Test("end is safe and complete when called twice, from two callers")
   func endIsIdempotentAndAwaitable() async {
     let box = Box()
-    let handle = WhisperPreviewSessionHandle(
+    let handle = TranscribeCppPreviewSession(
       lookups: nil, onText: { box.delivered.append($0) })
 
     async let first: Void = handle.end()
@@ -175,7 +175,7 @@ import Testing
   @Test("end() waits for a cap-triggered cancel that is still running")
   func cappedDecodeStopIsJoinable() async {
     let box = Box()
-    let handle = WhisperPreviewSessionHandle(
+    let handle = TranscribeCppPreviewSession(
       lookups: nil, onText: { box.delivered.append($0) })
     let session = BlockingSession()
     await handle.attach(session)
@@ -183,7 +183,7 @@ import Testing
     // One feed over the cap. The samples are never retained — the guard caps
     // before the append — so this array is transient.
     let overCap = [Float](
-      repeating: 0, count: WhisperPreviewSessionHandle.maxRetainedSamples + 1)
+      repeating: 0, count: TranscribeCppPreviewSession.maxRetainedSamples + 1)
     async let fed: Void = handle.feed(overCap)
 
     // CONTROL: the cap really fired and the cancel really started. Without this

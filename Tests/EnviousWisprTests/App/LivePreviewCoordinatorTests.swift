@@ -1908,7 +1908,7 @@ struct LivePreviewCoordinatorTests {
   ///
   /// This is the path nobody had reached: use the preview once, then turn live
   /// transcription on. Every later recording resolves to `.blocked`, correctly —
-  /// and the prepared engine, holding a loaded 217 MB model it can no longer use,
+  /// and the prepared engine, holding a loaded preview model it can no longer use,
   /// stayed cached for the rest of the session. Invisible on Apple's engine,
   /// which holds a locale.
   @Test("a blocked resolution releases the engine instead of caching a model it cannot use")

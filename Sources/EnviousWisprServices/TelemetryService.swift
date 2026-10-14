@@ -2844,7 +2844,7 @@ public final class TelemetryService {
   /// **Exactly two properties, and the bound is deliberate.** Settings telemetry
   /// already reports whether the preview is switched ON; it cannot say which
   /// engine that adoption runs on, which is the question that decides whether
-  /// shipping a 217 MB download was worth it. A refusal REASON was drafted as a
+  /// shipping the optional Universal download was worth it. A refusal REASON was drafted as a
   /// third property and cut: the reasons are a closed set today but they name
   /// language and streaming state, and this event fires once per recording, so
   /// it is the wrong place to start describing what a user was doing.

@@ -6954,6 +6954,231 @@
     ]
    }
   },
+  "previewEngine.universal": {
+   "ar": {
+    "words": [
+     "معاينة يونيفرسال",
+     "معاينة 270MB",
+     "معاينة macOS 14"
+    ]
+   },
+   "bg": {
+    "words": [
+     "Universal",
+     "универсален преглед",
+     "270 MB",
+     "macOS 14 преглед"
+    ]
+   },
+   "cs": {
+    "words": [
+     "Universal náhled",
+     "náhled macOS 14",
+     "270 MB"
+    ]
+   },
+   "da": {
+    "words": [
+     "Universal-preview",
+     "270 MB",
+     "preview macOS 14"
+    ]
+   },
+   "de": {
+    "words": [
+     "270MB"
+    ]
+   },
+   "el": {
+    "words": [
+     "270 MB",
+     "270MB"
+    ]
+   },
+   "en": {
+    "words": [
+     "270MB"
+    ]
+   },
+   "es": {
+    "words": [
+     "Universal vista previa",
+     "270 MB",
+     "vista previa macOS 14"
+    ]
+   },
+   "et": {
+    "words": [
+     "Universali eelvaade",
+     "270 MB",
+     "macOS 14 eelvaade"
+    ]
+   },
+   "fi": {
+    "words": [
+     "Universal-esikatselu",
+     "270 Mt",
+     "270 MB",
+     "macOS 14 esikatselu"
+    ]
+   },
+   "fr": {
+    "words": [
+     "aperçu Universal",
+     "270 Mo",
+     "aperçu macOS 14"
+    ]
+   },
+   "hi": {
+    "words": [
+     "Universal प्रीव्यू",
+     "यूनिवर्सल प्रीव्यू",
+     "270 MB",
+     "macOS 14 प्रीव्यू"
+    ]
+   },
+   "hr": {
+    "words": [
+     "Universal preview",
+     "270 MB",
+     "pregled macOS 14"
+    ]
+   },
+   "hu": {
+    "words": [
+     "270 MB",
+     "macOS 14 előnézet"
+    ]
+   },
+   "it": {
+    "words": [
+     "270 MB",
+     "anteprima macOS 14"
+    ]
+   },
+   "ja": {
+    "words": [
+     "ユニバーサル",
+     "270MB",
+     "macOS 14プレビュー"
+    ]
+   },
+   "ko": {
+    "words": [
+     "유니버설 미리보기",
+     "Universal 미리보기",
+     "270MB 미리보기",
+     "macOS 14 미리보기"
+    ]
+   },
+   "lt": {
+    "words": [
+     "Universal",
+     "universali peržiūra",
+     "270 MB",
+     "macOS 14 peržiūra"
+    ]
+   },
+   "lv": {
+    "words": [
+     "Universal priekšskatījums",
+     "universālais priekšskatījums",
+     "270 MB"
+    ]
+   },
+   "mt": {
+    "words": [
+     "Universal preview",
+     "270 MB",
+     "preview macOS 14"
+    ]
+   },
+   "nl": {
+    "words": [
+     "Universal preview",
+     "270 MB",
+     "macOS 14 preview"
+    ]
+   },
+   "pl": {
+    "words": [
+     "podgląd Universal",
+     "podgląd macOS 14",
+     "270 MB"
+    ]
+   },
+   "pt": {
+    "words": [
+     "prévia Universal",
+     "270 MB",
+     "prévia macOS 14"
+    ]
+   },
+   "ro": {
+    "words": [
+     "previzualizare Universal",
+     "previzualizare macOS 14",
+     "270 MB"
+    ]
+   },
+   "ru": {
+    "words": [
+     "Universal предпросмотр",
+     "предпросмотр macOS 14",
+     "270 МБ"
+    ]
+   },
+   "sk": {
+    "words": [
+     "Universal",
+     "270 MB",
+     "náhľad macOS 14"
+    ]
+   },
+   "sl": {
+    "words": [
+     "Universal",
+     "univerzalni predogled",
+     "270 MB"
+    ]
+   },
+   "sv": {
+    "words": [
+     "Universal förhandsvisning",
+     "270 MB",
+     "270MB"
+    ]
+   },
+   "tr": {
+    "words": [
+     "270 MB",
+     "macOS 14 önizleme"
+    ]
+   },
+   "uk": {
+    "words": [
+     "Universal",
+     "універсальний перегляд",
+     "270 МБ",
+     "перегляд macOS 14"
+    ]
+   },
+   "vi": {
+    "words": [
+     "Universal preview",
+     "xem trước macOS 14",
+     "270 MB"
+    ]
+   },
+   "zh": {
+    "words": [
+     "通用预览",
+     "Universal预览",
+     "270MB",
+     "macOS14预览"
+    ]
+   }
+  },
   "recordingChime.dustMote": {
    "de": {
     "words": [

@@ -5,10 +5,10 @@
     "vocabularyBlocks" : 7936
   },
   "fingerprints" : {
-    "mapSHA256" : "fdbe1ef9bf7ecd777acb07125c6b0777ef99910082aae61c6876d48123fbc7ea",
-    "uiCatalogSHA256" : "08f9321c10d49b6d9f33ebbfbc547417e099f8a2eaea7d424d208cebc873efb8",
+    "mapSHA256" : "d1c44bd6d16e3152bcdedf7d91f8cd44a5daf9effd05fd5ede7eec1e6075fdc9",
+    "uiCatalogSHA256" : "4cd0af96a3d178f48d743739c949b60b6ff880def0cce6e78556400ecb3818c6",
     "vocabularyCanonicalization" : "length-prefixed-v1",
-    "vocabularySHA256" : "8febfbae120e05d2b62a5ce65abcc5723a82502f3588b6312821a5c7cab1ed3b"
+    "vocabularySHA256" : "55ee74c2d244db94df78782b675eeb0b9b6ef494a69cbdef86ce2918df8df304"
   },
   "interfaceLanguages" : [
     "en",
@@ -81668,9 +81668,9 @@
       "declaredIn" : "Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift",
       "description" : {
         "catalog" : "Sources/EnviousWispr/Resources/Localizable.xcstrings",
-        "de" : "Funktioniert ab macOS 14 und unterstützt mehr Sprachen. Ein optionaler Download von 217 MB ist nötig.",
-        "en" : "Works on macOS 14 and later, in more languages. Needs one optional 217 MB download.",
-        "key" : "Works on macOS 14 and later, in more languages. Needs one optional 217 MB download.",
+        "de" : "Funktioniert ab macOS 14 und unterstützt mehr Sprachen. Ein optionaler Download von 270 MB ist nötig.",
+        "en" : "Works on macOS 14 and later, in more languages. Needs one optional 270 MB download.",
+        "key" : "Works on macOS 14 and later, in more languages. Needs one optional 270 MB download.",
         "source" : "resource",
         "table" : "Localizable"
       },
@@ -81706,7 +81706,7 @@
           "title" : "Universal",
           "words" : [
             "معاينة يونيفرسال",
-            "معاينة 217MB",
+            "معاينة 270MB",
             "معاينة macOS 14"
           ]
         },
@@ -81719,7 +81719,7 @@
           "words" : [
             "Universal",
             "универсален преглед",
-            "217 MB",
+            "270 MB",
             "macOS 14 преглед"
           ]
         },
@@ -81732,7 +81732,7 @@
           "words" : [
             "Universal náhled",
             "náhled macOS 14",
-            "217 MB"
+            "270 MB"
           ]
         },
         "da" : {
@@ -81743,7 +81743,7 @@
           "title" : "Universal",
           "words" : [
             "Universal-preview",
-            "217 MB",
+            "270 MB",
             "preview macOS 14"
           ]
         },
@@ -81754,7 +81754,7 @@
             "nimm die Vorschau-Engine mit mehr Sprachen"
           ],
           "words" : [
-            "217MB"
+            "270MB"
           ]
         },
         "el" : {
@@ -81764,8 +81764,8 @@
           ],
           "title" : "Universal",
           "words" : [
-            "217 MB",
-            "217MB"
+            "270 MB",
+            "270MB"
           ]
         },
         "en" : {
@@ -81775,7 +81775,7 @@
             "choose the preview engine with more languages"
           ],
           "words" : [
-            "217MB"
+            "270MB"
           ]
         },
         "es" : {
@@ -81786,7 +81786,7 @@
           "title" : "Universal",
           "words" : [
             "Universal vista previa",
-            "217 MB",
+            "270 MB",
             "vista previa macOS 14"
           ]
         },
@@ -81798,7 +81798,7 @@
           "title" : "Universal",
           "words" : [
             "Universali eelvaade",
-            "217 MB",
+            "270 MB",
             "macOS 14 eelvaade"
           ]
         },
@@ -81810,8 +81810,8 @@
           "title" : "Universal",
           "words" : [
             "Universal-esikatselu",
-            "217 Mt",
-            "217 MB",
+            "270 Mt",
+            "270 MB",
             "macOS 14 esikatselu"
           ]
         },
@@ -81822,7 +81822,7 @@
           "title" : "Universal",
           "words" : [
             "aperçu Universal",
-            "217 Mo",
+            "270 Mo",
             "aperçu macOS 14"
           ]
         },
@@ -81835,7 +81835,7 @@
           "words" : [
             "Universal प्रीव्यू",
             "यूनिवर्सल प्रीव्यू",
-            "217 MB",
+            "270 MB",
             "macOS 14 प्रीव्यू"
           ]
         },
@@ -81847,7 +81847,7 @@
           "title" : "Universal",
           "words" : [
             "Universal preview",
-            "217 MB",
+            "270 MB",
             "pregled macOS 14"
           ]
         },
@@ -81858,7 +81858,7 @@
           ],
           "title" : "Universal",
           "words" : [
-            "217 MB",
+            "270 MB",
             "macOS 14 előnézet"
           ]
         },
@@ -81869,7 +81869,7 @@
           ],
           "title" : "Universal",
           "words" : [
-            "217 MB",
+            "270 MB",
             "anteprima macOS 14"
           ]
         },
@@ -81881,7 +81881,7 @@
           "title" : "Universal",
           "words" : [
             "ユニバーサル",
-            "217MB",
+            "270MB",
             "macOS 14プレビュー"
           ]
         },
@@ -81893,7 +81893,7 @@
           "words" : [
             "유니버설 미리보기",
             "Universal 미리보기",
-            "217MB 미리보기",
+            "270MB 미리보기",
             "macOS 14 미리보기"
           ]
         },
@@ -81906,7 +81906,7 @@
           "words" : [
             "Universal",
             "universali peržiūra",
-            "217 MB",
+            "270 MB",
             "macOS 14 peržiūra"
           ]
         },
@@ -81919,7 +81919,7 @@
           "words" : [
             "Universal priekšskatījums",
             "universālais priekšskatījums",
-            "217 MB"
+            "270 MB"
           ]
         },
         "mt" : {
@@ -81929,7 +81929,7 @@
           "title" : "Universali",
           "words" : [
             "Universal preview",
-            "217 MB",
+            "270 MB",
             "preview macOS 14"
           ]
         },
@@ -81941,7 +81941,7 @@
           "title" : "Universal",
           "words" : [
             "Universal preview",
-            "217 MB",
+            "270 MB",
             "macOS 14 preview"
           ]
         },
@@ -81953,7 +81953,7 @@
           "words" : [
             "podgląd Universal",
             "podgląd macOS 14",
-            "217 MB"
+            "270 MB"
           ]
         },
         "pt" : {
@@ -81964,7 +81964,7 @@
           "title" : "Universal",
           "words" : [
             "prévia Universal",
-            "217 MB",
+            "270 MB",
             "prévia macOS 14"
           ]
         },
@@ -81976,7 +81976,7 @@
           "words" : [
             "previzualizare Universal",
             "previzualizare macOS 14",
-            "217 MB"
+            "270 MB"
           ]
         },
         "ru" : {
@@ -81988,7 +81988,7 @@
           "words" : [
             "Universal предпросмотр",
             "предпросмотр macOS 14",
-            "217 МБ"
+            "270 МБ"
           ]
         },
         "sk" : {
@@ -81999,7 +81999,7 @@
           "title" : "Univerzálny",
           "words" : [
             "Universal",
-            "217 MB",
+            "270 MB",
             "náhľad macOS 14"
           ]
         },
@@ -82012,7 +82012,7 @@
           "words" : [
             "Universal",
             "univerzalni predogled",
-            "217 MB"
+            "270 MB"
           ]
         },
         "sv" : {
@@ -82023,8 +82023,8 @@
           "title" : "Universal",
           "words" : [
             "Universal förhandsvisning",
-            "217 MB",
-            "217MB"
+            "270 MB",
+            "270MB"
           ]
         },
         "tr" : {
@@ -82034,7 +82034,7 @@
           ],
           "title" : "Universal",
           "words" : [
-            "217 MB",
+            "270 MB",
             "macOS 14 önizleme"
           ]
         },
@@ -82047,7 +82047,7 @@
           "words" : [
             "Universal",
             "універсальний перегляд",
-            "217 МБ",
+            "270 МБ",
             "перегляд macOS 14"
           ]
         },
@@ -82060,7 +82060,7 @@
           "words" : [
             "Universal preview",
             "xem trước macOS 14",
-            "217 MB"
+            "270 MB"
           ]
         },
         "zh" : {
@@ -82072,7 +82072,7 @@
           "words" : [
             "通用预览",
             "Universal预览",
-            "217MB",
+            "270MB",
             "macOS14预览"
           ]
         }

@@ -14,7 +14,7 @@ The interface ships in English and German. The other 30 languages (ar, bg, cs, d
 
 274 nodes, 248 searchable, 7936 vocabulary blocks.
 
-Fingerprints: mapSHA256 `fdbe1ef9bf7ecd777acb07125c6b0777ef99910082aae61c6876d48123fbc7ea`, uiCatalogSHA256 `08f9321c10d49b6d9f33ebbfbc547417e099f8a2eaea7d424d208cebc873efb8`, vocabularyCanonicalization `length-prefixed-v1`, vocabularySHA256 `8febfbae120e05d2b62a5ce65abcc5723a82502f3588b6312821a5c7cab1ed3b`
+Fingerprints: mapSHA256 `d1c44bd6d16e3152bcdedf7d91f8cd44a5daf9effd05fd5ede7eec1e6075fdc9`, uiCatalogSHA256 `4cd0af96a3d178f48d743739c949b60b6ff880def0cce6e78556400ecb3818c6`, vocabularyCanonicalization `length-prefixed-v1`, vocabularySHA256 `55ee74c2d244db94df78782b675eeb0b9b6ef494a69cbdef86ce2918df8df304`
 
 ## Structure
 
@@ -5106,16 +5106,16 @@ Fingerprints: mapSHA256 `fdbe1ef9bf7ecd777acb07125c6b0777ef99910082aae61c6876d48
 | Kind | choice |
 | Parent | [`previewEngine`](#node-previewEngine) |
 | Title source | catalog key `Universal` |
-| Description | Works on macOS 14 and later, in more languages. Needs one optional 217 MB download. / Funktioniert ab macOS 14 und unterstützt mehr Sprachen. Ein optionaler Download von 217 MB ist nötig. |
-| Description source | catalog key `Works on macOS 14 and later, in more languages. Needs one optional 217 MB download.` |
+| Description | Works on macOS 14 and later, in more languages. Needs one optional 270 MB download. / Funktioniert ab macOS 14 und unterstützt mehr Sprachen. Ein optionaler Download von 270 MB ist nötig. |
+| Description source | catalog key `Works on macOS 14 and later, in more languages. Needs one optional 270 MB download.` |
 | Destination | `dictation` › `livePreview` |
 | Dictionary tab | none |
 | Shown when | `previewChoicesExpanded` |
 | Arrival target | [`previewEngine`](#node-previewEngine) |
 | Fallbacks, in order | none |
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
-| Search (en) | words: 217MB<br>phrases: choose Universal for the live preview; use the preview engine that works on macOS 14; choose the preview engine with more languages |
-| Search (de) | words: 217MB<br>phrases: nimm Universal für die Live-Vorschau; wähle die Vorschau-Engine, die auf macOS 14 läuft; nimm die Vorschau-Engine mit mehr Sprachen |
+| Search (en) | words: 270MB<br>phrases: choose Universal for the live preview; use the preview engine that works on macOS 14; choose the preview engine with more languages |
+| Search (de) | words: 270MB<br>phrases: nimm Universal für die Live-Vorschau; wähle die Vorschau-Engine, die auf macOS 14 läuft; nimm die Vorschau-Engine mit mehr Sprachen |
 | Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-pillPosition-top"></a>
