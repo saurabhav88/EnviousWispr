@@ -35,7 +35,7 @@ struct HelpCheckTelemetryTests {
             deflection: .canResolve, resolution: .solved)!
         ]))
     let terminal = HelpCheckTerminal(
-      .stillSent, record: record, splitFailure: nil, checkSeconds: 1.25)
+      .stillSent, record: record, splitFailure: nil, splitPrewarmed: true, checkSeconds: 1.25)
     let captured = Captured()
     TelemetryService.shared.testEventHook = { @Sendable in captured.add($0) }
     defer { TelemetryService.shared.testEventHook = nil }
@@ -55,7 +55,9 @@ struct HelpCheckTelemetryTests {
         "issue_count": 1, "card_count": 1, "section_count": 1, "page_count": 0,
         "solved_count": 1, "unmatched_count": 0,
       ])
-    #expect(event.boolProps == ["overflow": false, "coverage_passed": true])
+    // #3739: whether the split used a session prepared before Send, as a Boolean only.
+    #expect(
+      event.boolProps == ["overflow": false, "coverage_passed": true, "split_prewarmed": true])
     #expect(event.doubleProps == ["$value": 1.25])
     // No help-center ids either: a slug names which article a user needed.
     let values = event.stringProps.values.joined(separator: " ")

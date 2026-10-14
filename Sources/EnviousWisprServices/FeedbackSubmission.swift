@@ -59,13 +59,89 @@ public final class FeedbackSubmission {
 
   public init(
     store: FeedbackDraftStore, save: @escaping Save, helpCheck: HelpCheck? = nil,
-    clock: @escaping @MainActor () -> Date = { Date() }
+    clock: @escaping @MainActor () -> Date = { Date() },
+    graceSleep: @escaping @Sendable (Duration) async throws -> Void = { try await Task.sleep(for: $0) }
   ) {
     self.store = store
     self.save = save
     self.helpCheck = helpCheck
     self.clock = clock
+    self.graceSleep = graceSleep
   }
+
+  // MARK: - Split prepared before Send (#3739)
+
+  /// Builds a split session ahead of Send, or returns nil where none can be built (below macOS 26,
+  /// model unavailable). Opaque here: Services never sees the concrete session. Nil sets nothing up.
+  public var prepareSplit: (@Sendable () async -> (any Sendable)?)?
+
+  /// How long an unused prepared session is kept after the composer closes: a quick reopen keeps
+  /// it; after this it is released. Bounds what the app holds, not what the model keeps loaded.
+  public static let preparedSplitGrace: Duration = .seconds(60)
+
+  private let graceSleep: @Sendable (Duration) async throws -> Void
+  /// The one unused prepared session, the preparation still running, the pending release, and a
+  /// generation that invalidates late completions and releases (shape of `LLMPolishStep`'s Apple
+  /// session slot, #3195).
+  private var preparedSplit: (any Sendable)?
+  private var splitPreparation: Task<Void, Never>?
+  private var splitRelease: Task<Void, Never>?
+  private var splitGeneration = 0
+
+  /// The composer is on screen: keep an unused session if one exists, else start preparing one.
+  /// Never prepares while one is ready or being prepared, without a help check, or while a check
+  /// or its cards are up (only the composer leads to a Send).
+  public func composerAppeared() {
+    splitRelease?.cancel()
+    splitRelease = nil
+    guard helpCheck != nil, helpPhase == .idle, let prepareSplit, preparedSplit == nil,
+      splitPreparation == nil
+    else { return }
+    splitGeneration += 1
+    let generation = splitGeneration
+    splitPreparation = Task { [weak self] in
+      let carrier = await prepareSplit()
+      guard let self, !Task.isCancelled, self.splitGeneration == generation else { return }
+      self.preparedSplit = carrier
+      self.splitPreparation = nil
+    }
+  }
+
+  /// The composer went away (popover closed, Send, or the cards replaced it): release the unused
+  /// session after `preparedSplitGrace`, unless the composer comes back first.
+  public func composerDisappeared() {
+    guard preparedSplit != nil || splitPreparation != nil else { return }
+    splitRelease?.cancel()
+    let generation = splitGeneration
+    let sleep = graceSleep
+    splitRelease = Task { [weak self] in
+      guard (try? await sleep(Self.preparedSplitGrace)) != nil else { return }
+      guard let self, !Task.isCancelled, self.splitGeneration == generation else { return }
+      self.releasePreparedSplit()
+    }
+  }
+
+  /// Takes the unused session for one check: synchronous, so it happens before Send first
+  /// suspends and no second Send can take the same session. A preparation still running is
+  /// cancelled and cannot refill the slot; that check builds its own session.
+  private func claimPreparedSplit() -> (any Sendable)? {
+    let carrier = preparedSplit
+    releasePreparedSplit()
+    return carrier
+  }
+
+  private func releasePreparedSplit() {
+    splitPreparation?.cancel()
+    splitPreparation = nil
+    splitRelease?.cancel()
+    splitRelease = nil
+    preparedSplit = nil
+    splitGeneration += 1
+  }
+
+  /// Whether an unused prepared session is held now, and whether one is being prepared (tests).
+  var hasPreparedSplit: Bool { preparedSplit != nil }
+  var isPreparingSplit: Bool { splitPreparation != nil }
 
   // MARK: - Help check (#3275)
 
@@ -133,6 +209,7 @@ public final class FeedbackSubmission {
     /// Filled when the check concludes: its duration and the split's failure, for the event.
     var checkSeconds: Double = 0
     var splitFailure: FeedbackHelpOutcome.FailureReason?
+    var splitPrewarmed = false
   }
   private var frozen: Frozen?
 
@@ -156,8 +233,9 @@ public final class FeedbackSubmission {
       draft: draft, diagnostics: diagnostics, sent: sent, generation: generation, startedAt: clock(),
       usageMetrics: usageMetrics)
     sender = presentation
+    let prepared = claimPreparedSplit()
     helpPhase = .checking
-    let conclusion = await helpCheck.run(draft.message)
+    let conclusion = await helpCheck.run(draft.message, prepared: prepared)
     // Only this generation's result may move the state; anything else is stale.
     guard var held = frozen, held.generation == generation, helpPhase == .checking else {
       return .busy
@@ -166,11 +244,13 @@ public final class FeedbackSubmission {
     switch conclusion {
     case .suggestions(let suggestions):
       held.splitFailure = suggestions.splitFailure
+      held.splitPrewarmed = suggestions.splitPrewarmed
       frozen = held
       helpPhase = .suggestions(suggestions)
       return .suggestions(suggestions)
-    case .send(let outcome, let splitFailure):
+    case .send(let outcome, let splitFailure, let splitPrewarmed):
       held.splitFailure = splitFailure
+      held.splitPrewarmed = splitPrewarmed
       helpPhase = .idle
       frozen = nil
       return .sent(
@@ -235,7 +315,7 @@ public final class FeedbackSubmission {
     onHelpTerminal?(
       HelpCheckTerminal(
         .dismissed, record: suggestions.outcome(solved: []), splitFailure: held.splitFailure,
-        checkSeconds: held.checkSeconds))
+        splitPrewarmed: held.splitPrewarmed, checkSeconds: held.checkSeconds))
     return true
   }
 
@@ -264,7 +344,7 @@ public final class FeedbackSubmission {
     onHelpTerminal?(
       HelpCheckTerminal(
         .helped, record: suggestions.outcome(solved: confirmed), splitFailure: held.splitFailure,
-        checkSeconds: held.checkSeconds))
+        splitPrewarmed: held.splitPrewarmed, checkSeconds: held.checkSeconds))
     return true
   }
 
@@ -287,7 +367,7 @@ public final class FeedbackSubmission {
     onHelpTerminal?(
       HelpCheckTerminal(
         terminal, record: outcome, splitFailure: held.splitFailure,
-        checkSeconds: held.checkSeconds))
+        splitPrewarmed: held.splitPrewarmed, checkSeconds: held.checkSeconds))
     return shown
   }
 

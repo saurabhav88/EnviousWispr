@@ -134,6 +134,10 @@ struct FeedbackForm: View {
           .transition(.opacity.combined(with: .scale(scale: 0.98)))
         case .idle:
           form.transition(.opacity)
+            // #3739: the composer itself, not the popover (which also shows the check, the cards
+            // and the thank-you), prepares the on-device split for Send.
+            .onAppear { submission.composerAppeared() }
+            .onDisappear { submission.composerDisappeared() }
         }
       }
     }

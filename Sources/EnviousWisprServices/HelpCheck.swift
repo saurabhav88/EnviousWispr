@@ -4,8 +4,12 @@ import Foundation
 /// section answers each concern, and either offer cards or send the report as written. It never
 /// holds a report back on its own: every failure, timeout or doubt ends in ordinary sending.
 public struct HelpCheck: Sendable {
-  /// The on-device split. Returns `.unavailable` rather than throwing.
-  public typealias Decompose = @Sendable (String) async -> HelpCheckDecomposition
+  /// The on-device split: the message, a session prepared before Send (#3739) or nil, and a
+  /// callback the split runs when it actually uses that session. Returns `.unavailable` rather
+  /// than throwing.
+  public typealias Decompose =
+    @Sendable (String, (any Sendable)?, @escaping @Sendable () -> Void) async
+    -> HelpCheckDecomposition
   public typealias Sleep = @Sendable (Duration) async throws -> Void
 
   /// macOS 26 validation (#3275 plan): normal-length p99 3.28 s on an M4 MacBook Air; slower splits
@@ -45,36 +49,59 @@ public struct HelpCheck: Sendable {
     /// Cards to offer. Nothing is sent until the user chooses.
     case suggestions(HelpCheckSuggestions)
     /// Nothing to offer: send the report now with this outcome. `splitFailure` is why the
-    /// on-device split was skipped, when it was, for counting (never user text).
-    case send(FeedbackHelpOutcome, splitFailure: FeedbackHelpOutcome.FailureReason?)
+    /// on-device split was skipped, when it was, and `splitPrewarmed` whether the split used a
+    /// session prepared before Send (#3739); both for counting, never user text.
+    case send(
+      FeedbackHelpOutcome, splitFailure: FeedbackHelpOutcome.FailureReason?, splitPrewarmed: Bool)
   }
 
   /// Runs the check against the untouched message. Always returns within `overallDeadline` (plus
   /// scheduling), whatever the split or the network does; late work is cancelled, not awaited.
-  public func run(_ message: String) async -> Conclusion {
+  /// `prepared` is a split session prepared before Send (#3739), handed to the split once.
+  public func run(_ message: String, prepared: (any Sendable)? = nil) async -> Conclusion {
     // The overall deadline's fallback names the path actually taken: a split that timed out
     // and then a request that ran out the clock is whole-message, with the split's failure.
     let stage = Stage()
     let finished: Conclusion? = await Self.first(
       within: Self.overallDeadline, sleep: sleep, orElse: nil
     ) { [self] in
-      await self.check(message, stage: stage)
+      await self.check(message, prepared: prepared, stage: stage)
     }
     if let finished { return finished }
     let (mode, splitFailure, overflow) = stage.value
-    return Self.fallback(.timeout, mode: mode, splitFailure: splitFailure, overflow: overflow)
+    return Self.fallback(
+      .timeout, mode: mode, splitFailure: splitFailure, overflow: overflow,
+      splitPrewarmed: stage.closeSplit())
   }
 
   /// Which path the check is on, for the overall deadline's fallback: decomposed until the split
-  /// says otherwise.
+  /// says otherwise. Also whether the split used the prepared session: recorded only while the
+  /// split is still this check's, so a split that gave up its deadline and uses the session late
+  /// never changes what an ended split, or an ended check, reports (#3739 D4a).
   private final class Stage: @unchecked Sendable {
     private let lock = NSLock()
     private var mode: FeedbackHelpOutcome.Mode = .decomposed
     private var splitFailure: FeedbackHelpOutcome.FailureReason?
     private var overflow = false
+    private var splitOpen = true
+    private var prewarmed = false
 
     var value: (FeedbackHelpOutcome.Mode, FeedbackHelpOutcome.FailureReason?, Bool) {
       lock.withLock { (mode, splitFailure, overflow) }
+    }
+
+    /// The split used the prepared session; ignored once the split has ended.
+    func splitConsumedPrepared() {
+      lock.withLock { if splitOpen { prewarmed = true } }
+    }
+
+    /// Ends the split's part and returns whether it used the prepared session. Later calls return
+    /// the same answer.
+    func closeSplit() -> Bool {
+      lock.withLock {
+        splitOpen = false
+        return prewarmed
+      }
     }
 
     func set(_ request: HelpCheckRequest, _ splitFailure: FeedbackHelpOutcome.FailureReason?) {
@@ -86,13 +113,16 @@ public struct HelpCheck: Sendable {
     }
   }
 
-  private func check(_ message: String, stage: Stage) async -> Conclusion {
+  private func check(_ message: String, prepared: (any Sendable)?, stage: Stage) async
+    -> Conclusion
+  {
     let split = await Self.first(
       within: Self.decompositionDeadline, sleep: sleep,
       orElse: HelpCheckDecomposition.unavailable(.afmTimeout)
     ) { [decompose] in
-      await decompose(message)
+      await decompose(message, prepared, { stage.splitConsumedPrepared() })
     }
+    let splitPrewarmed = stage.closeSplit()
     let request: HelpCheckRequest
     let anchored: [Bool]
     var summaries: [String] = []
@@ -121,26 +151,32 @@ public struct HelpCheck: Sendable {
     stage.set(request, splitFailure)
     guard !Task.isCancelled else {
       return Self.fallback(
-        .timeout, mode: request.mode, splitFailure: splitFailure, overflow: request.overflow)
+        .timeout, mode: request.mode, splitFailure: splitFailure, overflow: request.overflow,
+        splitPrewarmed: splitPrewarmed)
     }
 
     switch await client.check(request) {
     case .failure(let failure):
       return Self.fallback(
-        failure.reason, mode: request.mode, splitFailure: splitFailure, overflow: request.overflow)
+        failure.reason, mode: request.mode, splitFailure: splitFailure, overflow: request.overflow,
+        splitPrewarmed: splitPrewarmed)
     case .success(let reply):
       guard reply.status == .ok else {
         return Self.fallback(
           Self.serverReason(reply.reason), mode: request.mode, splitFailure: splitFailure,
           overflow: request.overflow, versions: reply.versions,
-          coveragePassed: reply.coverage.map { $0 >= HelpCheckReply.coverageGate })
+          coveragePassed: reply.coverage.map { $0 >= HelpCheckReply.coverageGate },
+          splitPrewarmed: splitPrewarmed)
       }
-      let suggestions = HelpCheckSuggestions(
+      var suggestions = HelpCheckSuggestions(
         mode: request.mode, overflow: request.overflow, reply: reply, anchored: anchored,
         splitFailure: splitFailure, summaries: summaries)
+      suggestions.splitPrewarmed = splitPrewarmed
       if suggestions.cards.isEmpty {
         // Nothing worth showing (praise, or no match): send now, recording what was checked.
-        return .send(suggestions.outcome(solved: []), splitFailure: splitFailure)
+        return .send(
+          suggestions.outcome(solved: []), splitFailure: splitFailure,
+          splitPrewarmed: splitPrewarmed)
       }
       return .suggestions(suggestions)
     }
@@ -155,7 +191,8 @@ public struct HelpCheck: Sendable {
   static func fallback(
     _ reason: FeedbackHelpOutcome.FailureReason, mode: FeedbackHelpOutcome.Mode,
     splitFailure: FeedbackHelpOutcome.FailureReason? = nil, overflow: Bool = false,
-    versions: FeedbackHelpOutcome.Versions? = nil, coveragePassed: Bool? = nil
+    versions: FeedbackHelpOutcome.Versions? = nil, coveragePassed: Bool? = nil,
+    splitPrewarmed: Bool
   ) -> Conclusion {
     // Everything known when the check stopped is kept (the path, the split's failure, whether
     // the split was cut short, the server's version stamps), so failures count against the
@@ -164,7 +201,7 @@ public struct HelpCheck: Sendable {
       FeedbackHelpOutcome(
         terminalOutcome: .fallbackSent, failureReason: reason, mode: mode, overflow: overflow,
         coveragePassed: coveragePassed, versions: versions, shownCardCount: 0, issues: [])!,
-      splitFailure: splitFailure)
+      splitFailure: splitFailure, splitPrewarmed: splitPrewarmed)
   }
 
   /// The first of `work` or the deadline. The loser is cancelled and NOT awaited, so a split that
@@ -257,6 +294,8 @@ public struct HelpCheckSuggestions: Equatable, Sendable {
   public let anchored: [Bool]
   /// Why the split was skipped, when it was (whole-message mode).
   public let splitFailure: FeedbackHelpOutcome.FailureReason?
+  /// Whether the split used a session prepared before Send (#3739), for counting.
+  public var splitPrewarmed = false
   /// Each concern's short name from the on-device split, in order, for the cards' wording
   /// ("Did this fix …?"). Written by the model on this Mac; empty in whole-message mode.
   public var summaries: [String] = []
@@ -388,6 +427,8 @@ public struct HelpCheckTerminal: Equatable, Sendable {
   public let unmatched: Int
   public let failure: FeedbackHelpOutcome.FailureReason?
   public let splitFailure: FeedbackHelpOutcome.FailureReason?
+  /// Whether the split used a session prepared before Send (#3739): consumed, not merely asked for.
+  public let splitPrewarmed: Bool
   /// Seconds from Send to cards or sending.
   public let checkSeconds: Double
   public let versions: FeedbackHelpOutcome.Versions?
@@ -406,7 +447,7 @@ public struct HelpCheckTerminal: Equatable, Sendable {
   /// From the outcome frozen with a sent (or refused) report.
   init(
     _ outcome: Outcome, record: FeedbackHelpOutcome,
-    splitFailure: FeedbackHelpOutcome.FailureReason?, checkSeconds: Double
+    splitFailure: FeedbackHelpOutcome.FailureReason?, splitPrewarmed: Bool, checkSeconds: Double
   ) {
     self.outcome = outcome
     self.mode = record.mode
@@ -420,6 +461,7 @@ public struct HelpCheckTerminal: Equatable, Sendable {
     self.unmatched = record.unmatchedIssueCount
     self.failure = record.failureReason
     self.splitFailure = splitFailure
+    self.splitPrewarmed = splitPrewarmed
     self.checkSeconds = checkSeconds
     self.versions = record.versions
   }

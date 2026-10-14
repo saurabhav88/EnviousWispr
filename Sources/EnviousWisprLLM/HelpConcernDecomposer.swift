@@ -78,11 +78,49 @@ public enum HelpConcernDecomposer {
     return supported.contains(base)
   }
 
-  /// Splits `message` in one fresh session. Never throws; every failure is an `Outcome`.
-  public static func decompose(_ message: String) async -> Outcome {
+  /// A session built ahead of Send (#3739): the session and the exact instructions it was built
+  /// with. Generic so the hand-off decision is testable without the on-device model; the live
+  /// carrier holds a `LanguageModelSession`. Single use: the check that receives it consumes it.
+  struct PreparedSplit<Session: Sendable>: Sendable {
+    let session: Session
+    let instructions: String
+  }
+
+  /// The session one split uses: the offered one when it is a carrier of this session type built
+  /// with today's `instructions`, else a fresh one. `onConsumed` runs only when the offered session
+  /// is selected, after every eligibility check and right before generation (#3739 D4a).
+  static func chooseSession<Session: Sendable>(
+    offered: (any Sendable)?, instructions: String, fresh: () -> Session,
+    onConsumed: @Sendable () -> Void
+  ) -> Session {
+    if let carrier = offered as? PreparedSplit<Session>, carrier.instructions == instructions {
+      onConsumed()
+      return carrier.session
+    }
+    return fresh()
+  }
+
+  /// Builds the split's session and starts loading the model (#3739 D1), with no user text. Nil
+  /// below macOS 26, when the model is not available, or when cancelled before the session exists.
+  public static func prepareSession() async -> (any Sendable)? {
     #if canImport(FoundationModels)
       if #available(macOS 26.0, *) {
-        return await AFM.decompose(message)
+        return AFM.prepare()
+      }
+    #endif
+    return nil
+  }
+
+  /// Splits `message`. `prepared` is a session from `prepareSession`, used only after the same
+  /// availability, language and fit checks a fresh split makes; otherwise the split builds its
+  /// own. `onConsumed` runs when, and only when, the prepared session is used. Never throws;
+  /// every failure is an `Outcome`.
+  public static func decompose(
+    _ message: String, prepared: (any Sendable)?, onConsumed: @escaping @Sendable () -> Void
+  ) async -> Outcome {
+    #if canImport(FoundationModels)
+      if #available(macOS 26.0, *) {
+        return await AFM.decompose(message, prepared: prepared, onConsumed: onConsumed)
       }
     #endif
     return .failed(.unavailable)
@@ -120,8 +158,22 @@ public enum HelpConcernDecomposer {
         var issues: [Issue]
       }
 
-      static func decompose(_ message: String) async -> Outcome {
-        let model = SystemLanguageModel(guardrails: .permissiveContentTransformations)
+      static func makeModel() -> SystemLanguageModel {
+        SystemLanguageModel(guardrails: .permissiveContentTransformations)
+      }
+
+      static func prepare() -> (any Sendable)? {
+        let model = makeModel()
+        guard case .available = model.availability, !Task.isCancelled else { return nil }
+        let session = LanguageModelSession(model: model, instructions: instructions)
+        session.prewarm()
+        return PreparedSplit(session: session, instructions: instructions)
+      }
+
+      static func decompose(
+        _ message: String, prepared: (any Sendable)?, onConsumed: @escaping @Sendable () -> Void
+      ) async -> Outcome {
+        let model = makeModel()
         guard case .available = model.availability else { return .failed(.unavailable) }
         let language = HelpConcernDecomposer.detectedBase(message)
         guard
@@ -138,7 +190,10 @@ public enum HelpConcernDecomposer {
               contextTokens: model.contextSize)
           else { return .failed(.tooLong) }
           try Task.checkCancellation()
-          let session = LanguageModelSession(model: model, instructions: instructions)
+          let session = HelpConcernDecomposer.chooseSession(
+            offered: prepared, instructions: instructions,
+            fresh: { LanguageModelSession(model: model, instructions: instructions) },
+            onConsumed: onConsumed)
           let response = try await session.respond(
             to: prompt, generating: Decomposition.self,
             options: GenerationOptions(sampling: .greedy))
