@@ -81,86 +81,12 @@ struct HelpConcernDecomposerTests {
       FeedbackHelpOutcome(
         terminalOutcome: .stillSent, failureReason: nil, mode: .decomposed, overflow: false,
         coveragePassed: nil, versions: nil, shownCardCount: 0, issues: []))
-    let terminal = HelpCheckTerminal(
-      .stillSent, record: record, splitFailure: nil, splitPrewarmed: false, checkSeconds: 1)
+    let terminal = HelpCheckTerminal(.stillSent, record: record, splitFailure: nil, checkSeconds: 1)
     sink(terminal)
     #expect(emitted == 1)
     // Turned off while a check was running: the end of that check sends nothing.
     metricsOn = false
     sink(terminal)
     #expect(emitted == 1)
-  }
-
-  // MARK: - Split prepared before Send (#3739)
-
-  final class Count: @unchecked Sendable {
-    private let lock = NSLock()
-    private var n = 0
-    func add() { lock.withLock { n += 1 } }
-    var value: Int { lock.withLock { n } }
-  }
-
-  @Test("A prepared session is used only when it was built with today's instructions")
-  func chooseSession() {
-    let instructions = HelpConcernDecomposer.instructions
-    let matching = HelpConcernDecomposer.PreparedSplit(session: "prepared", instructions: instructions)
-    let used = Count()
-    #expect(
-      HelpConcernDecomposer.chooseSession(
-        offered: matching, instructions: instructions, fresh: { "fresh" }, onConsumed: used.add)
-        == "prepared")
-    #expect(used.value == 1)
-    // Built with other instructions, of another session type, or none offered: a fresh session.
-    let stale = HelpConcernDecomposer.PreparedSplit(session: "prepared", instructions: "older")
-    let other = HelpConcernDecomposer.PreparedSplit(session: 7, instructions: instructions)
-    for offered in [stale as (any Sendable)?, other, nil, "prepared"] {
-      #expect(
-        HelpConcernDecomposer.chooseSession(
-          offered: offered, instructions: instructions, fresh: { "fresh" }, onConsumed: used.add)
-          == "fresh")
-    }
-    #expect(used.value == 1)
-  }
-
-  final class Forwarded: @unchecked Sendable {
-    private let lock = NSLock()
-    private var prepared: [String?] = []
-    var all: [String?] { lock.withLock { prepared } }
-    func add(_ value: String?) { lock.withLock { prepared.append(value) } }
-  }
-
-  @Test("The live check passes the prepared session and the use callback through to the split")
-  func makeForwardsPreparedSession() async {
-    let forwarded = Forwarded()
-    let check = HelpCheckWiring.make(appVersion: "2.6.0") { _, prepared, onConsumed in
-      forwarded.add(prepared as? String)
-      onConsumed()
-      return .failed(.refused)
-    }
-    let used = Count()
-    let split = await check.decompose("Paste fails.", "s1", used.add)
-    #expect(forwarded.all == ["s1"])
-    #expect(used.value == 1)
-    #expect(split == .unavailable(.afmRefused))
-  }
-
-  @Test("Install puts the split preparation on the shared submission")
-  @MainActor
-  func installSetsPreparation() async throws {
-    let suite = "HelpConcernDecomposerTests.\(UUID().uuidString)"
-    defer { UserDefaults().removePersistentDomain(forName: suite) }
-    let settings = SettingsManager(defaults: try #require(TestDefaults.suite(suite)))
-    let submission = FeedbackSubmission(
-      store: FeedbackDraftStore(defaults: { TestDefaults.suite(suite)! }),
-      save: { _, _, _, _ in .saved(offline: false) })
-    let calls = Count()
-    HelpCheckWiring.install(on: submission, settings: settings) {
-      calls.add()
-      return "prepared"
-    }
-    #expect(submission.helpCheck != nil)
-    let prepare = try #require(submission.prepareSplit)
-    #expect(await prepare() as? String == "prepared")
-    #expect(calls.value == 1)
   }
 }

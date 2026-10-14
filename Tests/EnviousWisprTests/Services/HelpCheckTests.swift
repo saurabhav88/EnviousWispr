@@ -124,7 +124,7 @@ struct HelpCheckTests {
     _ split: HelpCheckDecomposition, _ transport: FakeTransport, firing: Set<Duration> = []
   ) -> HelpCheck {
     HelpCheck(
-      decompose: { _, _, _ in split }, decompositionVersion: "afm-kit-1",
+      decompose: { _ in split }, decompositionVersion: "afm-kit-1",
       client: HelpCheckClient(transport: transport.transport), appVersion: "2.6.0",
       sleep: clock(firing: firing))
   }
@@ -414,7 +414,7 @@ struct HelpCheckTests {
       .reply(200, Self.reply([Self.section("i0", eligible: false)], suppression: false))
     ])
     let check = HelpCheck(
-      decompose: { _, _, _ in
+      decompose: { _ in
         // Never returns, even when cancelled.
         await withCheckedContinuation { (_: CheckedContinuation<Void, Never>) in }
         return .concerns([], hitCap: false)
@@ -435,7 +435,7 @@ struct HelpCheckTests {
     let check = Self.check(
       .concerns([Concern(summary: "s", evidence: "Paste", kind: .bug)], hitCap: false), transport,
       firing: [HelpCheck.overallDeadline])
-    guard case .send(let outcome, _, _) = await check.run("Paste fails.") else {
+    guard case .send(let outcome, _) = await check.run("Paste fails.") else {
       Issue.record("expected send")
       return
     }
@@ -448,7 +448,7 @@ struct HelpCheckTests {
     // The overall deadline fires only once the whole-message request is on the wire.
     let (requested, opened) = AsyncStream<Void>.makeStream()
     let check = HelpCheck(
-      decompose: { _, _, _ in
+      decompose: { _ in
         await withCheckedContinuation { (_: CheckedContinuation<Void, Never>) in }
         return .concerns([], hitCap: false)
       }, decompositionVersion: "afm-kit-1",
@@ -465,7 +465,7 @@ struct HelpCheckTests {
         }
         try await Task.sleep(for: .seconds(3600))  // test-fixture-timer: no other deadline may fire here
       })
-    guard case .send(let outcome, let splitFailure, _) = await check.run("Paste fails.") else {
+    guard case .send(let outcome, let splitFailure) = await check.run("Paste fails.") else {
       Issue.record("expected send")
       return
     }
@@ -501,7 +501,7 @@ struct HelpCheckTests {
     let transport = FakeTransport([script])
     let check = Self.check(
       .concerns([Concern(summary: "s", evidence: "Paste", kind: .bug)], hitCap: false), transport)
-    guard case .send(let outcome, _, _) = await check.run("Paste fails.") else {
+    guard case .send(let outcome, _) = await check.run("Paste fails.") else {
       Issue.record("expected send for \(answer)")
       return
     }
@@ -522,7 +522,7 @@ struct HelpCheckTests {
     let message = (0..<5).map { "Part \($0)." }.joined(separator: " ")
     let check = Self.check(
       .concerns(concerns, hitCap: true), FakeTransport([.fail(URLError(.notConnectedToInternet))]))
-    guard case .send(let outcome, _, _) = await check.run(message) else {
+    guard case .send(let outcome, _) = await check.run(message) else {
       Issue.record("expected send")
       return
     }
@@ -534,14 +534,14 @@ struct HelpCheckTests {
   func splitFailureCarried() async {
     let transport = FakeTransport([.reply(200, Self.reply([Self.none("i0")], suppression: false))])
     let check = Self.check(.unavailable(.afmRefused), transport)
-    guard case .send(let outcome, let splitFailure, _) = await check.run("Paste fails.") else {
+    guard case .send(let outcome, let splitFailure) = await check.run("Paste fails.") else {
       Issue.record("expected send")
       return
     }
     #expect(splitFailure == .afmRefused)
     #expect(outcome.mode == .wholeMessageAlwaysSend)
     let failing = FakeTransport([.fail(URLError(.notConnectedToInternet))])
-    guard case .send(_, let reason, _) = await Self.check(.unavailable(.afmTimeout), failing).run("x y")
+    guard case .send(_, let reason) = await Self.check(.unavailable(.afmTimeout), failing).run("x y")
     else {
       Issue.record("expected send")
       return
@@ -554,7 +554,7 @@ struct HelpCheckTests {
     let transport = FakeTransport([.reply(200, Self.reply([Self.none("i0")], suppression: false))])
     let check = Self.check(
       .concerns([Concern(summary: "s", evidence: "Paste", kind: .bug)], hitCap: false), transport)
-    guard case .send(let outcome, _, _) = await check.run("Paste fails.") else {
+    guard case .send(let outcome, _) = await check.run("Paste fails.") else {
       Issue.record("expected send")
       return
     }
@@ -1256,412 +1256,5 @@ struct HelpCheckTests {
   func helpCenterRootIsTheHelpSite() {
     #expect(HelpCenter.rootURL == "https://enviouswispr.com/help/")
     #expect(HelpCheckReply.helpURLPrefix == "https://enviouswispr.com/help/")
-  }
-
-  // MARK: - Split prepared before Send (#3739)
-
-  /// Holds an async call until `release()`. Counts each arrival under the same lock that parks it,
-  /// so a test that releases on seeing the count never releases an empty gate (#3134).
-  final class Gate: @unchecked Sendable {
-    private let lock = NSLock()
-    private var waiters: [CheckedContinuation<Void, Never>] = []
-    private var isOpen = false
-    private var arrivals = 0
-    var arrived: Int { lock.withLock { arrivals } }
-
-    func pass() async {
-      await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
-        let now = lock.withLock { () -> Bool in
-          arrivals += 1
-          if isOpen { return true }
-          waiters.append(continuation)
-          return false
-        }
-        if now { continuation.resume() }
-      }
-    }
-
-    func release() {
-      let parked = lock.withLock { () -> [CheckedContinuation<Void, Never>] in
-        isOpen = true
-        defer { waiters = [] }
-        return waiters
-      }
-      parked.forEach { $0.resume() }
-    }
-  }
-
-  /// Yields until `condition` holds, at most `limit` times; false means it never did. The yield
-  /// count is the fail-fast deadline; nothing here measures time.
-  @MainActor
-  static func eventually(_ limit: Int = 10_000, _ condition: () -> Bool) async -> Bool {
-    for _ in 0..<limit {
-      if condition() { return true }
-      await Task.yield()
-    }
-    return condition()
-  }
-
-  /// What the split was offered on each call, and whether it used the session it was offered.
-  final class SplitSpy: @unchecked Sendable {
-    private let lock = NSLock()
-    private var seen: [String?] = []
-    var offered: [String?] { lock.withLock { seen } }
-    /// Use an offered session (as the decomposer does when every check passes).
-    let consumes: Bool
-    init(consumes: Bool = true) { self.consumes = consumes }
-
-    func decompose(
-      _ prepared: (any Sendable)?, _ onConsumed: @Sendable () -> Void
-    ) -> HelpCheckDecomposition {
-      let token = prepared as? String
-      lock.withLock { seen.append(token) }
-      if consumes, token != nil { onConsumed() }
-      return .concerns([Concern(summary: "s", evidence: "Paste", kind: .bug)], hitCap: false)
-    }
-  }
-
-  static func spyCheck(_ spy: SplitSpy, _ transport: FakeTransport) -> HelpCheck {
-    HelpCheck(
-      decompose: { _, prepared, onConsumed in spy.decompose(prepared, onConsumed) },
-      decompositionVersion: "afm-kit-1", client: HelpCheckClient(transport: transport.transport),
-      appVersion: "2.6.0", sleep: clock())
-  }
-
-  static func noCard() -> FakeTransport {
-    FakeTransport([.reply(200, Self.reply([Self.none("i0")], suppression: false))])
-  }
-
-  @Test("The yield-bounded wait gives up on a condition that never holds")
-  @MainActor
-  func eventuallyGivesUp() async {
-    #expect(await Self.eventually(50) { false } == false)
-  }
-
-  @Test("The split's use of the prepared session is reported; an unused or absent one is not")
-  func prewarmedReported() async {
-    let used = await Self.spyCheck(SplitSpy(), Self.noCard()).run("Paste fails.", prepared: "s1")
-    guard case .send(_, _, let usedPrewarmed) = used else {
-      Issue.record("expected send")
-      return
-    }
-    #expect(usedPrewarmed == true)
-    let unused = await Self.spyCheck(SplitSpy(consumes: false), Self.noCard())
-      .run("Paste fails.", prepared: "s1")
-    guard case .send(_, _, let unusedPrewarmed) = unused else {
-      Issue.record("expected send")
-      return
-    }
-    #expect(unusedPrewarmed == false)
-    let none = await Self.spyCheck(SplitSpy(), Self.noCard()).run("Paste fails.")
-    guard case .send(_, _, let nonePrewarmed) = none else {
-      Issue.record("expected send")
-      return
-    }
-    #expect(nonePrewarmed == false)
-    // The cards carry it too.
-    let cards = await Self.spyCheck(
-      SplitSpy(), FakeTransport([.reply(200, Self.reply([Self.section("i0")]))])
-    ).run("Paste fails.", prepared: "s1")
-    guard case .suggestions(let s) = cards else {
-      Issue.record("expected suggestions")
-      return
-    }
-    #expect(s.splitPrewarmed == true)
-  }
-
-  @Test("A split that used the prepared session and then timed out still reports it")
-  func prewarmedSurvivesTimeouts() async {
-    // Split deadline, fired only after the split has taken the session: then it never returns.
-    let consumed = Gate()
-    let splitTimeout = HelpCheck(
-      decompose: { _, _, onConsumed in
-        onConsumed()
-        consumed.release()
-        await withCheckedContinuation { (_: CheckedContinuation<Void, Never>) in }
-        return .concerns([], hitCap: false)
-      }, decompositionVersion: "afm-kit-1", client: HelpCheckClient(transport: Self.noCard().transport),
-      appVersion: "2.6.0",
-      sleep: { duration in
-        if duration == HelpCheck.decompositionDeadline {
-          await consumed.pass()
-          return
-        }
-        try await Task.sleep(for: .seconds(3600))  // test-fixture-timer: no other deadline may fire here
-      })
-    guard case .send(_, let reason, let prewarmed) = await splitTimeout.run("x y", prepared: "s1")
-    else {
-      Issue.record("expected send")
-      return
-    }
-    #expect(reason == .afmTimeout)
-    #expect(prewarmed == true)
-    // Overall deadline, fired only once the request is on the wire: the split took the session
-    // and finished; the request never answers.
-    let (requested, opened) = AsyncStream<Void>.makeStream()
-    let overall = HelpCheck(
-      decompose: { _, prepared, onConsumed in SplitSpy().decompose(prepared, onConsumed) },
-      decompositionVersion: "afm-kit-1",
-      client: HelpCheckClient(transport: { _ in
-        opened.yield()
-        await withCheckedContinuation { (_: CheckedContinuation<Void, Never>) in }
-        throw URLError(.timedOut)
-      }),
-      appVersion: "2.6.0",
-      sleep: { duration in
-        if duration == HelpCheck.overallDeadline {
-          for await _ in requested { return }
-        }
-        try await Task.sleep(for: .seconds(3600))  // test-fixture-timer: no other deadline may fire here
-      })
-    guard case .send(let outcome, _, let overallPrewarmed) = await overall.run("x y", prepared: "s1")
-    else {
-      Issue.record("expected send")
-      return
-    }
-    #expect(outcome.failureReason == .timeout)
-    #expect(overallPrewarmed == true)
-  }
-
-  @Test("A split that uses the session only after its deadline changes nothing that was reported")
-  func lateConsumptionIgnored() async {
-    // Split deadline at once; the split uses the session only after that, while the request is on
-    // the wire; then the overall deadline ends the check, and its fallback reads the stage.
-    let late = Gate()
-    let used = Gate()
-    let check = HelpCheck(
-      decompose: { _, _, onConsumed in
-        await late.pass()  // ignores cancellation, like a stuck model
-        onConsumed()
-        used.release()
-        return .concerns([], hitCap: false)
-      }, decompositionVersion: "afm-kit-1",
-      client: HelpCheckClient(transport: { _ in
-        late.release()
-        await withCheckedContinuation { (_: CheckedContinuation<Void, Never>) in }
-        throw URLError(.timedOut)
-      }),
-      appVersion: "2.6.0",
-      sleep: { duration in
-        if duration == HelpCheck.decompositionDeadline { return }
-        if duration == HelpCheck.overallDeadline {
-          await used.pass()
-          return
-        }
-        try await Task.sleep(for: .seconds(3600))  // test-fixture-timer: no other deadline may fire here
-      })
-    guard case .send(let outcome, let reason, let prewarmed) = await check.run("x y", prepared: "s1")
-    else {
-      Issue.record("expected send")
-      return
-    }
-    #expect(outcome.failureReason == .timeout)
-    #expect(reason == .afmTimeout)
-    #expect(prewarmed == false)
-  }
-
-  /// Hands out "s1", "s2", ... in call order. With `holds`, call N waits for `gate(N)`.
-  @MainActor
-  final class Preparer {
-    private(set) var calls = 0
-    var holds = false
-    private var gates: [Int: Gate] = [:]
-    func gate(_ n: Int) -> Gate {
-      if let gate = gates[n] { return gate }
-      let gate = Gate()
-      gates[n] = gate
-      return gate
-    }
-    func make() -> @Sendable () async -> (any Sendable)? {
-      { [self] in
-        let (n, gate) = await MainActor.run { () -> (Int, Gate?) in
-          calls += 1
-          return (calls, holds ? gate(calls) : nil)
-        }
-        await gate?.pass()
-        return "s\(n)"
-      }
-    }
-  }
-
-  /// Every finished preparation and release, in order, from the submission's own report.
-  @MainActor
-  final class Settles {
-    private(set) var all: [FeedbackSubmission.SplitSettle] = []
-    func record(_ settle: FeedbackSubmission.SplitSettle) { all.append(settle) }
-  }
-
-  @MainActor
-  static func preparedSubmission(
-    _ spy: SplitSpy, _ transport: FakeTransport, preparer: Preparer, settles: Settles,
-    graceSleep: @escaping @Sendable (Duration) async throws -> Void = { _ in
-      try await Task.sleep(for: .seconds(3600))  // test-fixture-timer: a grace period this test never lets end
-    }
-  ) -> (FeedbackSubmission, RecordingSave, String) {
-    let (store, suite) = Self.makeStore()
-    let recorder = RecordingSave()
-    let submission = FeedbackSubmission(
-      store: store, save: recorder.save, helpCheck: Self.spyCheck(spy, transport),
-      graceSleep: graceSleep)
-    submission.prepareSplit = preparer.make()
-    submission.splitSettled = { settles.record($0) }
-    return (submission, recorder, suite)
-  }
-
-  @MainActor
-  static func send(_ submission: FeedbackSubmission) async throws -> FeedbackSubmission.SendStep {
-    let a = UUID()
-    submission.presentationAppeared(a)
-    return await submission.send(
-      try #require(FeedbackDraft(message: "Paste fails.", email: "")), diagnostics: nil, from: a,
-      sent: ("Paste fails.", ""), current: { .init(presentation: a, message: "Paste fails.", email: "") })
-  }
-
-  @Test("The deadline race's decision step runs once, before the caller resumes, whoever wins")
-  func decisionRunsBeforeResume() async {
-    final class Flag: @unchecked Sendable {
-      private let lock = NSLock()
-      private var n = 0
-      func add() { lock.withLock { n += 1 } }
-      var count: Int { lock.withLock { n } }
-    }
-    // The work wins.
-    let workWins = Flag()
-    let won = await HelpCheck.first(
-      within: .seconds(4), sleep: Self.clock(), orElse: 0, onDecided: workWins.add
-    ) { 1 }
-    #expect(won == 1)
-    #expect(workWins.count == 1)
-    // The deadline wins; the work finishes later and decides nothing.
-    let deadlineWins = Flag()
-    let late = Gate()
-    let finished = Gate()
-    let timedOut = await HelpCheck.first(
-      within: .seconds(4), sleep: Self.clock(firing: [.seconds(4)]), orElse: 0,
-      onDecided: deadlineWins.add
-    ) {
-      await late.pass()
-      finished.release()
-      return 1
-    }
-    #expect(timedOut == 0)
-    #expect(deadlineWins.count == 1)
-    late.release()
-    await finished.pass()
-    #expect(deadlineWins.count == 1)
-  }
-
-  @Test("The composer prepares once; Send takes the session once; the next Send builds its own")
-  @MainActor
-  func preparedOnceClaimedOnce() async throws {
-    let spy = SplitSpy()
-    let preparer = Preparer()
-    let settles = Settles()
-    let terminals = Terminals()
-    let (submission, recorder, suite) = Self.preparedSubmission(
-      spy, Self.noCard(), preparer: preparer, settles: settles)
-    defer { UserDefaults().removePersistentDomain(forName: suite) }
-    submission.onHelpTerminal = { terminals.record($0) }
-    submission.composerAppeared()
-    #expect(await Self.eventually { settles.all == [.preparationInstalled] })
-    #expect(submission.hasPreparedSplit == true)
-    submission.composerAppeared()  // a second appearance with a session ready prepares nothing
-    #expect(preparer.calls == 1)
-    _ = try await Self.send(submission)
-    #expect(spy.offered == ["s1"])
-    #expect(submission.hasPreparedSplit == false)
-    #expect(submission.isPreparingSplit == false)
-    #expect(terminals.all.map(\.splitPrewarmed) == [true])
-    #expect(recorder.saves.count == 1)
-    // Without a new composer appearance there is nothing to offer.
-    _ = try await Self.send(submission)
-    #expect(spy.offered == ["s1", nil])
-    #expect(terminals.all.map(\.splitPrewarmed) == [true, false])
-  }
-
-  @Test("Send before the session is ready builds its own, and the late session never fills the slot")
-  @MainActor
-  func sendBeforeReady() async throws {
-    let spy = SplitSpy()
-    let preparer = Preparer()
-    preparer.holds = true
-    let settles = Settles()
-    let (submission, _, suite) = Self.preparedSubmission(
-      spy, Self.noCard(), preparer: preparer, settles: settles)
-    defer { UserDefaults().removePersistentDomain(forName: suite) }
-    submission.composerAppeared()
-    #expect(await Self.eventually { preparer.gate(1).arrived == 1 })
-    _ = try await Self.send(submission)
-    #expect(spy.offered == [nil])
-    preparer.gate(1).release()
-    #expect(await Self.eventually { settles.all == [.preparationDropped] })
-    #expect(submission.hasPreparedSplit == false)
-  }
-
-  @Test("Send, then the composer again: the first preparation finishing late cannot touch the new one")
-  @MainActor
-  func editThenSendKeepsGenerations() async throws {
-    let spy = SplitSpy()
-    let preparer = Preparer()
-    preparer.holds = true
-    let settles = Settles()
-    let (submission, _, suite) = Self.preparedSubmission(
-      spy, Self.noCard(), preparer: preparer, settles: settles)
-    defer { UserDefaults().removePersistentDomain(forName: suite) }
-    submission.composerAppeared()
-    #expect(await Self.eventually { preparer.gate(1).arrived == 1 })
-    _ = try await Self.send(submission)  // takes nothing; the first preparation is now stale
-    submission.composerAppeared()  // back to the composer: a second preparation starts
-    #expect(await Self.eventually { preparer.gate(2).arrived == 1 })
-    preparer.gate(1).release()  // the stale one finishes first
-    #expect(await Self.eventually { settles.all == [.preparationDropped] })
-    #expect(submission.hasPreparedSplit == false)
-    #expect(submission.isPreparingSplit == true)
-    preparer.gate(2).release()
-    #expect(await Self.eventually { settles.all == [.preparationDropped, .preparationInstalled] })
-    _ = try await Self.send(submission)
-    #expect(spy.offered == [nil, "s2"])
-  }
-
-  @Test("A quick reopen keeps the unused session; the grace period releases it; a check blocks preparing")
-  @MainActor
-  func reopenKeepsAndGraceReleases() async throws {
-    let spy = SplitSpy()
-    let preparer = Preparer()
-    let settles = Settles()
-    let grace = Gate()
-    let (submission, _, suite) = Self.preparedSubmission(
-      spy, Self.noCard(), preparer: preparer, settles: settles,
-      graceSleep: { _ in await grace.pass() })
-    defer { UserDefaults().removePersistentDomain(forName: suite) }
-    submission.composerAppeared()
-    #expect(await Self.eventually { settles.all == [.preparationInstalled] })
-    // Closed and reopened before the grace period ends: same session, nothing new prepared.
-    submission.composerDisappeared()
-    #expect(await Self.eventually { grace.arrived == 1 })
-    submission.composerAppeared()
-    grace.release()  // the cancelled release wakes up late and must not clear the slot
-    #expect(await Self.eventually { settles.all == [.preparationInstalled, .releaseDropped] })
-    #expect(submission.hasPreparedSplit == true)
-    #expect(preparer.calls == 1)
-    // Closed for good: the grace period ends and the session is released.
-    submission.composerDisappeared()
-    #expect(
-      await Self.eventually { settles.all == [.preparationInstalled, .releaseDropped, .released] })
-    #expect(submission.hasPreparedSplit == false)
-    // While a check or cards are up, the composer is not on screen: nothing is prepared.
-    let held = Self.preparedSubmission(
-      spy, FakeTransport([.reply(200, Self.reply([Self.section("i0")]))]), preparer: preparer,
-      settles: Settles())
-    defer { UserDefaults().removePersistentDomain(forName: held.2) }
-    let step = try await Self.send(held.0)
-    guard case .suggestions = step else {
-      Issue.record("expected suggestions")
-      return
-    }
-    let before = preparer.calls
-    held.0.composerAppeared()
-    #expect(held.0.isPreparingSplit == false)
-    #expect(preparer.calls == before)
   }
 }

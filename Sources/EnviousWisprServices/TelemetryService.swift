@@ -1298,9 +1298,7 @@ public final class TelemetryService {
       "section_count": terminal.sections, "page_count": terminal.pages,
       "solved_count": terminal.solved, "unmatched_count": terminal.unmatched,
     ]
-    var bools: [String: Bool] = [
-      "overflow": terminal.overflow, "split_prewarmed": terminal.splitPrewarmed,
-    ]
+    var bools: [String: Bool] = ["overflow": terminal.overflow]
     if let coverage = terminal.coveragePassed { bools["coverage_passed"] = coverage }
     var props: [String: Any] = ["$value": terminal.checkSeconds]
     for (k, v) in strings { props[k] = v }
