@@ -137,19 +137,25 @@ extension InverseTextNormalizer {
   // MARK: - Helpers
 
   /// Real dictation (founder History, #3738): the engine writes a comma at the pause around a spoken
-  /// symbol, "open parenthesis, urgent, close parenthesis". A comma that would land INSIDE the symbol
-  /// pair (right after an opening or joining symbol, right before a closing or joining one) is the
-  /// engine's, so it goes: `(urgent)`. A comma after a closing symbol stays, and a full stop is never
-  /// touched (`(see above.)` is real).
+  /// symbol, "open parenthesis, urgent, close parenthesis". A single comma that would land INSIDE the
+  /// symbol pair (right after an opening or joining symbol, right before a closing or joining one) is
+  /// the engine's, so it goes: `(urgent)`. A comma after a closing symbol stays, a full stop is never
+  /// touched (`(see above.)` is real), and a SPOKEN comma is still the word "comma" when this runs on
+  /// both routes, so it survives (`(x,)`).
   private static func droppingEngineComma(_ text: String) -> String {
     let rest = text.drop(while: isHorizontalSpace)
-    guard rest.first == "," else { return text }
+    // A single comma only: a run (",,") is not one pause mark.
+    guard rest.first == ",",
+      rest.dropFirst().drop(while: isHorizontalSpace).first != ","
+    else { return text }
     return String(rest.dropFirst())
   }
 
   private static func trimmingEngineComma(_ text: String) -> String {
     let trimmed = trimmingTrailingSpace(text)
-    guard trimmed.last == "," else { return trimmed }
+    guard trimmed.last == ",",
+      trimmingTrailingSpace(String(trimmed.dropLast())).last != ","
+    else { return trimmed }
     return trimmingTrailingSpace(String(trimmed.dropLast()))
   }
 

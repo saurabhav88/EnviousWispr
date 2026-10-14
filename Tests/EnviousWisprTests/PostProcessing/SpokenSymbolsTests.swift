@@ -100,20 +100,37 @@ struct SpokenSymbolsTests {
   /// Every English symbol form on BOTH English routes, with the expected spacing written from the plan's
   /// table (D2), not from the renderer: opens keeps the space before and joins the next word, closes
   /// joins the word before, joins removes both spaces, spaced puts one space on each side.
+  /// The symbol and spacing class of every English symbol command, written by hand from the plan's
+  /// table (D1, D2), never read from the rule or the command under test.
+  private static let expectedSymbol: [SpokenPunctuationCommand: (symbol: String, spacing: String)] = [
+    .openParenthesis: ("(", "opens"), .closeParenthesis: (")", "closes"),
+    .openSquareBracket: ("[", "opens"), .closeSquareBracket: ("]", "closes"),
+    .openBrace: ("{", "opens"), .closeBrace: ("}", "closes"),
+    .openAngleBracket: ("<", "opens"), .closeAngleBracket: (">", "closes"),
+    .openQuote: ("\"", "opens"), .closeQuote: ("\"", "closes"),
+    .openSingleQuote: ("'", "opens"), .closeSingleQuote: ("'", "closes"),
+    .hyphen: ("-", "joins"), .underscore: ("_", "joins"), .apostrophe: ("'", "joins"),
+    .emDash: ("\u{2014}", "joins"), .enDash: ("\u{2013}", "spaced"), .ellipsis: ("\u{2026}", "closes"),
+    .ampersand: ("&", "spaced"), .plusSign: ("+", "spaced"), .equalsSign: ("=", "spaced"),
+    .verticalBar: ("|", "spaced"), .asterisk: ("*", "closes"), .hashSign: ("#", "opens"),
+    .tilde: ("~", "opens"),
+  ]
+
   @Test("Every English symbol form converts with its class's spacing on both English routes")
   func everyEnglishFormBothRoutes() {
-    for rule in SpokenPunctuationRules.englishSymbolRules {
-      guard let spacing = rule.command.spacing else {
-        Issue.record("\(rule.command) has no spacing")
+    let rules = SpokenPunctuationRules.englishSymbolRules
+    #expect(Set(rules.map(\.command)) == Set(Self.expectedSymbol.keys), "the English symbol set drifted")
+    for rule in rules {
+      guard let want = Self.expectedSymbol[rule.command] else {
+        Issue.record("\(rule.command) has no hand-written expectation")
         continue
       }
-      let symbol = rule.replacement
       let expected: String
-      switch spacing {
-      case .opens: expected = "Alpha " + symbol + "beta"
-      case .closes: expected = "Alpha" + symbol + " beta"
-      case .joins: expected = "Alpha" + symbol + "beta"
-      case .spaced: expected = "Alpha " + symbol + " beta"
+      switch want.spacing {
+      case "opens": expected = "Alpha " + want.symbol + "beta"
+      case "closes": expected = "Alpha" + want.symbol + " beta"
+      case "joins": expected = "Alpha" + want.symbol + "beta"
+      default: expected = "Alpha " + want.symbol + " beta"
       }
       for form in rule.spokenForms {
         #expect(on("Alpha \(form) beta") == expected, "bare: \(form)")
@@ -125,7 +142,10 @@ struct SpokenSymbolsTests {
 
   @Test("Every determiner keeps a symbol name as words")
   func everyDeterminer() {
-    for word in InverseTextNormalizer.symbolDeterminers.sorted() {
+    for word in [
+      "a", "an", "the", "this", "that", "each", "every", "my", "your", "our", "their", "his", "her",
+      "its",
+    ] {
       let input = "Use \(word) asterisk now"
       #expect(on(input) == input, "\(word)")
     }
@@ -155,6 +175,15 @@ struct SpokenSymbolsTests {
     ])
   func engineCommaInsidePair(input: String, expected: String) {
     #expect(on(input) == expected)
+  }
+
+  @Test("An explicitly spoken comma inside a pair survives on both routes; comma runs are left alone")
+  func explicitCommaInsidePair() {
+    #expect(on("Call open paren x comma close paren") == "Call (x,)")
+    #expect(
+      startWord("Call Insert open paren x Insert comma Insert close paren", "en", "Insert")
+        == "Call (x,)")
+    #expect(on("Odd open paren,, x,, close paren") == "Odd (,, x,,)")
   }
 
   @Test("A legacy command right after a joining symbol is still converted")

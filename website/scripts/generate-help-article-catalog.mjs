@@ -54,7 +54,9 @@ function frontmatterString(frontmatter, field, file) {
 function tablesToText(markdown) {
   const out = [];
   const lines = markdown.split("\n");
-  const cells = (line) => line.trim().replace(/^\|/, "").replace(/\|$/, "").split("|").map((c) => c.trim());
+  // An escaped pipe (`\|`) is a literal "|" inside a cell, as GitHub-flavoured Markdown renders it (#3738).
+  const cells = (line) =>
+    line.trim().replace(/^\|/, "").replace(/(?<!\\)\|$/, "").split(/(?<!\\)\|/).map((c) => c.trim().replace(/\\\|/g, "|"));
   const isSeparator = (line) => /^\s*\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)*\|?\s*$/.test(line);
   for (let i = 0; i < lines.length; i++) {
     if (lines[i].trim().startsWith("|") && i + 1 < lines.length && isSeparator(lines[i + 1])) {

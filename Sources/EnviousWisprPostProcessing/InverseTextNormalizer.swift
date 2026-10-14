@@ -2836,6 +2836,11 @@ public struct InverseTextNormalizer: Sendable {
   ///   formatting rather than part of the spoken-command feature.
   private func applyPunct(_ t0: String, spokenPunctuation: Bool) -> String {
     var t = t0
+    // #3738: spoken symbols FIRST, as on the start-word route, so the only commas the symbol pass can
+    // drop inside a pair are the engine's: a spoken "comma" is still the word here and converts below
+    // ("open paren x comma close paren" -> `(x,)`). The joiner pass below still reads a spoken slash
+    // inside brackets (its left neighbour class accepts `(`).
+    if spokenPunctuation { t = Self.applyEnglishSymbolCommands(t) }
     if spokenPunctuation {
       for (pat, rep) in Self.punct {
         t = reSub(pat, t) { _ in rep }
@@ -2933,9 +2938,6 @@ public struct InverseTextNormalizer: Sendable {
         return " \(command.lowercased()) "
       }
     }
-    // #3738: spoken symbols, after the joiners (so "open paren slash clear close paren" still reads the
-    // slash between spaces) and before sentence capitalisation.
-    if spokenPunctuation { t = Self.applyEnglishSymbolCommands(t) }
     // capitalize sentence starts crudely (no case-insensitivity: targets lowercase only)
     t = reSub(#"(^|[.!?]\s+)([a-z])"#, t, caseInsensitive: false) { m in
       (m.g(1) ?? "") + (m.g(2) ?? "").uppercased()
