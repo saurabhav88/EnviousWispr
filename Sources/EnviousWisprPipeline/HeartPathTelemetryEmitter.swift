@@ -378,7 +378,7 @@ final class HeartPathTelemetryEmitter {
   private var dedupedBreadcrumbMessage: String {
     switch backend {
     case .parakeet: return "No audio captured (deduped)"
-    case .whisperKit: return "No audio captured (WhisperKit, deduped)"
+    case .whisper: return "No audio captured (Whisper, deduped)"
     }
   }
 

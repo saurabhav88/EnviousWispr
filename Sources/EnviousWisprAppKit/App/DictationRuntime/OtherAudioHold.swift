@@ -20,7 +20,7 @@ import Foundation
 /// coordinator's own file gains no import and no collaborator.
 enum OtherAudioBackend: Hashable, Sendable {
   case parakeet
-  case whisperKit
+  case whisper
 }
 
 /// The take-level facts the telemetry sink receives once, when the hold's

@@ -113,13 +113,13 @@ struct ActiveEngineOperation {
     afterLoadForTesting: (@MainActor () async -> Void)? = nil
   ) -> ActiveEngineOperation {
     let readiness: @MainActor () async -> Bool = {
-      asrManager.activeBackendType == .whisperKit
+      asrManager.activeBackendType == .whisper
         ? await whisperKitBackend.isReady : asrManager.isModelLoaded
     }
     var operation = ActiveEngineOperation(
       isLoaded: readiness,
       load: {
-        if asrManager.activeBackendType == .whisperKit {
+        if asrManager.activeBackendType == .whisper {
           try await whisperKitBackend.prepare()
         } else {
           // #3546: every Parakeet load here runs the same load and failure
@@ -147,7 +147,7 @@ struct ActiveEngineOperation {
         guard ready else { throw ASREngineNotReadyAfterLoadError() }
       },
       transcribe: { samples, options, onInferenceEntered in
-        if asrManager.activeBackendType == .whisperKit {
+        if asrManager.activeBackendType == .whisper {
           return try await whisperKitBackend.transcribe(
             audioSamples: samples, options: options, onInferenceEntered: onInferenceEntered)
         }
@@ -160,7 +160,7 @@ struct ActiveEngineOperation {
         // recovery `prepare()` aborts instead of blocking dictation until the
         // model finishes loading (Codex 2b-r2 P1). Engine switches defer while
         // recovery replays, so the routing read here is stable.
-        if asrManager.activeBackendType == .whisperKit {
+        if asrManager.activeBackendType == .whisper {
           await whisperKitBackend.unload()
         } else {
           asrManager.cancelInFlightLoad()
@@ -171,7 +171,7 @@ struct ActiveEngineOperation {
     // `ASRManager.transcribe` does for its own backends); every other engine goes through
     // the manager, which installs it per call.
     operation.setTranscriptionProgressObserver = { observer in
-      if asrManager.activeBackendType == .whisperKit {
+      if asrManager.activeBackendType == .whisper {
         var hopped: (@Sendable (Double) -> Void)? = nil
         if let observer {
           hopped = { @Sendable fraction in Task { @MainActor in observer(fraction) } }

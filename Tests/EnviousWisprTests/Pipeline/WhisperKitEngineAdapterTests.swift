@@ -20,19 +20,19 @@ import Testing
 
   // MARK: Identity (PR-5 Rung 1)
 
-  @Test("engineIdentity: WhisperKit declares .whisperKit backend")
+  @Test("engineIdentity: WhisperKit declares .whisper backend")
   func engineIdentityBackend() {
     let adapter = WhisperEngineAdapter(
       backend: StubWhisperKitBackend(), engineMutationScope: .alwaysAllowedForTesting)
-    #expect(adapter.engineIdentity.backendType == .whisperKit)
-    #expect(adapter.engineIdentity.rawValue == "whisperKit")
+    #expect(adapter.engineIdentity.backendType == .whisper)
+    #expect(adapter.engineIdentity.rawValue == "whisper")
   }
 
   @Test("engineIdentity: WhisperKit displayName == WhisperKit")
   func engineIdentityDisplayName() {
     let adapter = WhisperEngineAdapter(
       backend: StubWhisperKitBackend(), engineMutationScope: .alwaysAllowedForTesting)
-    #expect(adapter.engineIdentity.displayName == "WhisperKit")
+    #expect(adapter.engineIdentity.displayName == "Whisper")
   }
 
   // MARK: Capabilities + readiness
@@ -396,7 +396,7 @@ import Testing
     await backend.setTranscribeResult(
       ASRResult(
         text: "recovered", language: "en", duration: 1, processingTime: 0.1,
-        backendType: .whisperKit))
+        backendType: .whisper))
     let adapter = WhisperEngineAdapter(
       backend: backend, engineMutationScope: .alwaysAllowedForTesting)
     let sid = SessionID()
@@ -426,7 +426,7 @@ import Testing
     await backend.setTranscribeResult(
       ASRResult(
         text: "recovered", language: "en", duration: 1, processingTime: 0.1,
-        backendType: .whisperKit))
+        backendType: .whisper))
     let adapter = WhisperEngineAdapter(
       backend: backend, engineMutationScope: .alwaysAllowedForTesting)
     let sid = SessionID()
@@ -448,7 +448,7 @@ import Testing
     await backend.setTranscribeResult(
       ASRResult(
         text: "hello world", language: "en", duration: 1, processingTime: 0.1,
-        backendType: .whisperKit))
+        backendType: .whisper))
     let adapter = WhisperEngineAdapter(
       backend: backend, engineMutationScope: .alwaysAllowedForTesting)
     let sid = SessionID()
@@ -470,7 +470,7 @@ import Testing
     await backend.setTranscribeResult(
       ASRResult(
         text: "  ", language: "en", duration: 1, processingTime: 0.1,
-        backendType: .whisperKit))
+        backendType: .whisper))
     let adapter = WhisperEngineAdapter(
       backend: backend, engineMutationScope: .alwaysAllowedForTesting)
     let sid = SessionID()
@@ -493,7 +493,7 @@ import Testing
     await backend.setTranscribeResult(
       ASRResult(
         text: "", language: "en", duration: 1, processingTime: 0.1,
-        backendType: .whisperKit))
+        backendType: .whisper))
     let adapter = WhisperEngineAdapter(
       backend: backend, engineMutationScope: .alwaysAllowedForTesting)
     let sid = SessionID()
@@ -632,7 +632,7 @@ import Testing
     await backend.setTranscribeResult(
       ASRResult(
         text: "batch-text", language: "en", duration: 1, processingTime: 0.1,
-        backendType: .whisperKit))
+        backendType: .whisper))
     let adapter = WhisperEngineAdapter(
       backend: backend, engineMutationScope: .alwaysAllowedForTesting)
     let sid = SessionID()
@@ -656,7 +656,7 @@ import Testing
     await backend.setTranscribeResult(
       ASRResult(
         text: "auto-batch", language: "en", duration: 1, processingTime: 0.1,
-        backendType: .whisperKit))
+        backendType: .whisper))
     let adapter = WhisperEngineAdapter(
       backend: backend, engineMutationScope: .alwaysAllowedForTesting)
     let sid = SessionID()
@@ -722,7 +722,7 @@ import Testing
     await backend.setTranscribeResult(
       ASRResult(
         text: "auto-batch", language: "en", duration: 1, processingTime: 0.1,
-        backendType: .whisperKit))
+        backendType: .whisper))
     let adapter = WhisperEngineAdapter(
       backend: backend, engineMutationScope: .alwaysAllowedForTesting)
     let sid = SessionID()
@@ -754,7 +754,7 @@ import Testing
     await backend.setTranscribeResult(
       ASRResult(
         text: "fallback-batch", language: "en", duration: 1, processingTime: 0.1,
-        backendType: .whisperKit))
+        backendType: .whisper))
     let adapter = WhisperEngineAdapter(
       backend: backend, engineMutationScope: .alwaysAllowedForTesting)
     let sid = SessionID()
@@ -786,7 +786,7 @@ import Testing
     await backend.setTranscribeResult(
       ASRResult(
         text: "rescue-batch", language: "en", duration: 1, processingTime: 0.1,
-        backendType: .whisperKit))
+        backendType: .whisper))
     let adapter = WhisperEngineAdapter(
       backend: backend, engineMutationScope: .alwaysAllowedForTesting)
     let sid = SessionID()
@@ -826,7 +826,7 @@ import Testing
     await backend.setTranscribeResult(
       ASRResult(
         text: "off-batch", language: "en", duration: 1, processingTime: 0.1,
-        backendType: .whisperKit))
+        backendType: .whisper))
     let adapter = WhisperEngineAdapter(
       backend: backend, engineMutationScope: .alwaysAllowedForTesting)
     let sid = SessionID()
@@ -859,7 +859,7 @@ import Testing
     await backend.setTranscribeResult(
       ASRResult(
         text: "decoded", language: "en", duration: 1, processingTime: 0.1,
-        backendType: .whisperKit))
+        backendType: .whisper))
     let adapter = WhisperEngineAdapter(
       backend: backend, engineMutationScope: .alwaysAllowedForTesting)
     let sid = SessionID()
@@ -890,7 +890,7 @@ import Testing
     await backend.setTranscribeResult(
       ASRResult(
         text: "ok", language: "en", duration: 1, processingTime: 0.1,
-        backendType: .whisperKit))
+        backendType: .whisper))
     let adapter = WhisperEngineAdapter(
       backend: backend, engineMutationScope: .alwaysAllowedForTesting)
     let sid = SessionID()
@@ -967,7 +967,7 @@ import Testing
     await backend.setTranscribeResult(
       ASRResult(
         text: "stale-text", language: "en", duration: 1, processingTime: 0.1,
-        backendType: .whisperKit))
+        backendType: .whisper))
     let adapter = WhisperEngineAdapter(
       backend: backend, engineMutationScope: .alwaysAllowedForTesting)
     let sidA = SessionID()
@@ -997,7 +997,7 @@ import Testing
     await backend.setTranscribeResult(
       ASRResult(
         text: "stale-text", language: "en", duration: 1, processingTime: 0.1,
-        backendType: .whisperKit))
+        backendType: .whisper))
     let adapter = WhisperEngineAdapter(
       backend: backend, engineMutationScope: .alwaysAllowedForTesting)
     let sidA = SessionID()
@@ -1123,7 +1123,7 @@ import Testing
     await backend.setTranscribeResult(
       ASRResult(
         text: "first", language: "en", duration: 1, processingTime: 0.1,
-        backendType: .whisperKit))
+        backendType: .whisper))
     let adapter = WhisperEngineAdapter(
       backend: backend, engineMutationScope: .alwaysAllowedForTesting)
     let sid = SessionID()
@@ -1152,7 +1152,7 @@ import Testing
     await backend.setTranscribeResult(
       ASRResult(
         text: "done", language: "en", duration: 1, processingTime: 0.1,
-        backendType: .whisperKit))
+        backendType: .whisper))
     let adapter = WhisperEngineAdapter(
       backend: backend, engineMutationScope: .alwaysAllowedForTesting)
     let sid = SessionID()
@@ -1231,7 +1231,7 @@ import Testing
     await backend.setTranscribeResult(
       ASRResult(
         text: "decoded", language: "en", duration: 1, processingTime: 0.1,
-        backendType: .whisperKit))
+        backendType: .whisper))
     let adapter = WhisperEngineAdapter(
       backend: backend, engineMutationScope: .alwaysAllowedForTesting)
     let sid = SessionID()
@@ -1289,7 +1289,7 @@ import Testing
     await backend.setTranscribeResult(
       ASRResult(
         text: "done", language: "en", duration: 1, processingTime: 0.1,
-        backendType: .whisperKit))
+        backendType: .whisper))
     feed(adapter, samples: speechSamples(count: 16_000), session: sidA)
     adapter.observeSpeechSegments([SpeechSegment(startSample: 0, endSample: 16_000)])
     _ = await adapter.finalize(batchSamples: nil)
@@ -1317,7 +1317,7 @@ import Testing
     await backend.setTranscribeResult(
       ASRResult(
         text: "retried text", language: "en", duration: 1, processingTime: 0.1,
-        backendType: .whisperKit))
+        backendType: .whisper))
     let adapter = WhisperEngineAdapter(
       backend: backend, engineMutationScope: .alwaysAllowedForTesting)
     let sid = SessionID()
@@ -1347,7 +1347,7 @@ import Testing
     await backend.setTranscribeResult(
       ASRResult(
         text: "retried text", language: "en", duration: 0, processingTime: 0.1,
-        backendType: .whisperKit))
+        backendType: .whisper))
     let adapter = WhisperEngineAdapter(
       backend: backend, engineMutationScope: .alwaysAllowedForTesting)
     let sid = SessionID()
@@ -1403,7 +1403,7 @@ import Testing
     await backend.setTranscribeResult(
       ASRResult(
         text: "phase 2 retry text", language: "en", duration: 1, processingTime: 0.1,
-        backendType: .whisperKit))
+        backendType: .whisper))
     let retryOutcome = await adapter.retryDecode(inputSamples: speechSamples(count: 16_000))
     guard case .transcript(let retryResult) = retryOutcome else {
       Issue.record("expected the Phase-2 retry to recover a transcript, got \(retryOutcome)")
@@ -1453,7 +1453,7 @@ import Testing
     await backend.setTranscribeResult(
       ASRResult(
         text: "retried spanish text", language: "es", duration: 1, processingTime: 0.1,
-        backendType: .whisperKit))
+        backendType: .whisper))
     let retryOutcome = await adapter.retryDecode(inputSamples: speechSamples(count: 16_000))
     guard case .transcript = retryOutcome else {
       Issue.record("expected the retry to recover a transcript, got \(retryOutcome)")

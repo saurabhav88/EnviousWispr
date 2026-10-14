@@ -7,7 +7,7 @@ import Testing
 /// #1635 §11.4: the JOIN between the two halves of this fix.
 ///
 /// Chunk 1 proves the coordinator publishes `warmInFlight`. Chunk 2 proves the copy mapping
-/// turns `.whisperKit` into the preparing string. Neither proves the value the coordinator
+/// turns `.whisper` into the preparing string. Neither proves the value the coordinator
 /// actually publishes is the value the production mapper actually receives — and that gap
 /// is precisely where the previous attempt at this issue died: every piece passed its own
 /// test while the label could never appear on screen.
@@ -51,7 +51,7 @@ struct ModelPreparingRowIntegrationTests {
     // The user picks the optional engine before it exists on disk. The switch must be
     // refused (gate 4, not installed) with Parakeet still active — this is the real
     // ordering, since the Download button only renders once WhisperKit is selected.
-    fake.selected = .whisperKit
+    fake.selected = .whisper
     c.poke(.settingsChanged)
     let blocked = await enginePoll { c.status.blockedReason == .notInstalled }
     try #require(blocked, "an uninstalled engine must block the switch, not warm")
@@ -75,7 +75,7 @@ struct ModelPreparingRowIntegrationTests {
     #expect(
       renderedLabel(c) == ModelPreparingCopy.preparing,
       "the row must render the preparing copy from the coordinator's own published value")
-    #expect(fake.active == .whisperKit, "and the engine really did switch")
+    #expect(fake.active == .whisper, "and the engine really did switch")
 
     let completed = AsyncLatch()
     c.onEngineStateChangedForRecovery = { completed.release() }
@@ -87,7 +87,7 @@ struct ModelPreparingRowIntegrationTests {
   @Test("a failed warm returns the row to Model Ready, never a stuck spinner")
   func failedWarmReturnsToReady() async throws {
     let fake = FakeEngineDeps(selected: .parakeet, active: .parakeet)
-    fake.warmOutcome[.whisperKit] = .failed(FakeWarmError.failed)
+    fake.warmOutcome[.whisper] = .failed(FakeWarmError.failed)
     let warm = AsyncLatch()
     let c = try await driveToParkedWarm(fake, warm)
 
@@ -105,7 +105,7 @@ struct ModelPreparingRowIntegrationTests {
   @Test("a cancelled warm returns the row to Model Ready")
   func cancelledWarmReturnsToReady() async throws {
     let fake = FakeEngineDeps(selected: .parakeet, active: .parakeet)
-    fake.warmOutcome[.whisperKit] = .cancelled
+    fake.warmOutcome[.whisper] = .cancelled
     let warm = AsyncLatch()
     let c = try await driveToParkedWarm(fake, warm)
 

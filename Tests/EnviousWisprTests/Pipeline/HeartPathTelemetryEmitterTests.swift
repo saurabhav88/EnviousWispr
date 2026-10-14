@@ -171,7 +171,7 @@ struct HeartPathTelemetryEmitterTests {
   @Test("stallFired re-arms after a session-id change")
   func stallReArmsOnSessionChange() {
     let recorder = Recorder()
-    let emitter = Self.makeEmitter(backend: .whisperKit, recorder: recorder)
+    let emitter = Self.makeEmitter(backend: .whisper, recorder: recorder)
 
     _ = emitter.stallFired(ctx: Self.stallContext(sessionID: 1), isActivelyCapturing: true)
     _ = emitter.stallFired(ctx: Self.stallContext(sessionID: 1), isActivelyCapturing: true)
@@ -277,13 +277,13 @@ struct HeartPathTelemetryEmitterTests {
   @Test("noAudioCaptured dedup breadcrumb for WhisperKit carries WhisperKit-tagged message")
   func noAudioDedupBreadcrumbWhisperKitTag() {
     let recorder = Recorder()
-    let emitter = Self.makeEmitter(backend: .whisperKit, recorder: recorder)
+    let emitter = Self.makeEmitter(backend: .whisper, recorder: recorder)
 
     _ = emitter.stallFired(ctx: Self.stallContext(sessionID: 9), isActivelyCapturing: true)
     emitter.noAudioCaptured(ctx: Self.noAudioContext(sessionID: 9))
 
     #expect(recorder.breadcrumbs.count == 1)
-    #expect(recorder.breadcrumbs[0].message == "No audio captured (WhisperKit, deduped)")
+    #expect(recorder.breadcrumbs[0].message == "No audio captured (Whisper, deduped)")
     #expect(recorder.breadcrumbs[0].data["deduped_from"] as? String == "audio_capture_stalled")
   }
 
@@ -330,7 +330,7 @@ struct HeartPathTelemetryEmitterTests {
     let recorder = Recorder()
     let captureTelemetry = CaptureTelemetryState()
     let emitter = Self.makeEmitter(
-      backend: .whisperKit,
+      backend: .whisper,
       captureTelemetry: captureTelemetry,
       recorder: recorder
     )
@@ -405,7 +405,7 @@ struct HeartPathTelemetryEmitterTests {
   @Test("each event emits the matching HeartPathError case")
   func eachEventEmitsExpectedHeartPathErrorCase() {
     let recorder = Recorder()
-    let emitter = Self.makeEmitter(backend: .whisperKit, recorder: recorder)
+    let emitter = Self.makeEmitter(backend: .whisper, recorder: recorder)
 
     _ = emitter.stallFired(ctx: Self.stallContext(sessionID: 1), isActivelyCapturing: true)
     emitter.noAudioCaptured(ctx: Self.noAudioContext(sessionID: 4))

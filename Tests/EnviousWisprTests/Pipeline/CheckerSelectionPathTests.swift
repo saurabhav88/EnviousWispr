@@ -79,7 +79,7 @@ struct CheckerSelectionPathTests {
           calls.append((provider, language))
           return choice
         })
-      runner.freeze(settings: snapshot(backend: .whisperKit), vocabulary: vocabulary)
+      runner.freeze(settings: snapshot(backend: .whisper), vocabulary: vocabulary)
       let result = try await runner.process(part: spoken)
       #expect(result.text.contains("Tuist") == (choice.checker != nil))
       #expect(calls.count == 1)
@@ -118,7 +118,7 @@ struct CheckerSelectionPathTests {
           : .init(absence: .serverUnavailable)
       })
     runner.freeze(
-      settings: snapshot(backend: .whisperKit, languageMode: .auto, engineDetectsLanguage: true),
+      settings: snapshot(backend: .whisper, languageMode: .auto, engineDetectsLanguage: true),
       vocabulary: vocabulary)
     let english = try await runner.process(part: spoken, engineLanguage: "en")
     let spanish = try await runner.process(part: spoken, engineLanguage: "es")

@@ -23,7 +23,7 @@ import Testing
     await backend.setTranscribeResult(
       ASRResult(
         text: "first", language: "en", duration: 1, processingTime: 0.1,
-        backendType: .whisperKit))
+        backendType: .whisper))
     let adapter = WhisperEngineAdapter(
       backend: backend, engineMutationScope: .alwaysAllowedForTesting)
     let sid = SessionID()
@@ -42,7 +42,7 @@ import Testing
     await backend.setTranscribeResult(
       ASRResult(
         text: "done", language: "en", duration: 1, processingTime: 0.1,
-        backendType: .whisperKit))
+        backendType: .whisper))
     let adapter = WhisperEngineAdapter(
       backend: backend, engineMutationScope: .alwaysAllowedForTesting)
     let sid = SessionID()
@@ -61,7 +61,7 @@ import Testing
     await backend.setTranscribeResult(
       ASRResult(
         text: "", language: "en", duration: 1, processingTime: 0.1,
-        backendType: .whisperKit))
+        backendType: .whisper))
     let adapter = WhisperEngineAdapter(
       backend: backend, engineMutationScope: .alwaysAllowedForTesting)
     let sid = SessionID()

@@ -162,7 +162,7 @@ import Testing
         Issue.record("a fresh lease refused the first claim")
         return
       }
-      fx.coordinator.acceptEngineToken(token, mintedBy: useWhisperKit ? .whisperKit : .parakeet)
+      fx.coordinator.acceptEngineToken(token, mintedBy: useWhisperKit ? .whisper : .parakeet)
       #expect(fx.engineLease.isBusy, "the claim must still be held while the session runs")
 
       let driver = useWhisperKit ? fx.whisperKitKernelDriver : fx.kernelDriver
@@ -216,7 +216,7 @@ import Testing
         return
       }
       fx.coordinator.acceptEngineToken(
-        token, mintedBy: mintedByWhisperKit ? .whisperKit : .parakeet)
+        token, mintedBy: mintedByWhisperKit ? .whisper : .parakeet)
 
       let idleEngine = mintedByWhisperKit ? fx.kernelDriver : fx.whisperKitKernelDriver
       idleEngine.onSessionTerminalAccepted?("someone-elses-take")
@@ -263,14 +263,14 @@ import Testing
   /// this signal for `.completed` — so it is covered by the driver's own projection
   /// test, not here.)
   @Test func sessionEndedWithoutSaveSignalRoutesToRecoveryCleanup() {
-    for backend in ["parakeet", "whisperKit"] {
+    for backend in ["parakeet", "whisper"] {
       let fx = Self.makeCoordinator()
       var calls: [(String?, RecordingRecoveryEnding)] = []
       fx.coordinator.onRecordingEndedWithoutDurableSave = { id, ending in
         calls.append((id, ending))
       }
       fx.coordinator.install()
-      let driver = backend == "whisperKit" ? fx.whisperKitKernelDriver : fx.kernelDriver
+      let driver = backend == "whisper" ? fx.whisperKitKernelDriver : fx.kernelDriver
 
       driver.onSessionEndedWithoutSave?("sid-1", .discarded)
       driver.onSessionEndedWithoutSave?(nil, .failed)

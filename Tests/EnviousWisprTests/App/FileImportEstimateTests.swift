@@ -45,10 +45,10 @@ struct FileImportEstimateTests {
   /// Start to stored on 2026-09-13 (6.2 s per audio minute) against 467 s on Parakeet.
   @Test("WhisperKit's estimate is longer than Parakeet's on the same file")
   func whisperKitEstimateIsLonger() {
-    #expect(FileImportCoordinator.secondsPerAudioMinute(for: .whisperKit) == 6.2)
+    #expect(FileImportCoordinator.secondsPerAudioMinute(for: .whisper) == 6.2)
     #expect(FileImportCoordinator.secondsPerAudioMinute(for: .parakeet) == 3.8)
-    #expect(FileImportCoordinator.estimateText(audioSeconds: 7_208.7, backend: .whisperKit) == "about 12 minutes")
+    #expect(FileImportCoordinator.estimateText(audioSeconds: 7_208.7, backend: .whisper) == "about 12 minutes")
     #expect(FileImportCoordinator.estimateText(audioSeconds: 7_208.7, backend: .parakeet) == "about 8 minutes")
-    #expect(FileImportCoordinator.estimateText(audioSeconds: 2_902.5, backend: .whisperKit) == "about 5 minutes")
+    #expect(FileImportCoordinator.estimateText(audioSeconds: 2_902.5, backend: .whisper) == "about 5 minutes")
   }
 }

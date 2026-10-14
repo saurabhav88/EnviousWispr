@@ -2225,7 +2225,9 @@ public final class TelemetryService {
       "stage": stage,
       // #1348 D3 reconciliation: joinable with model_delivery.* datasets.
       "reason_class": "watchdog_fired",
-      "family": backend == "whisperKit" ? "whisper_kit" : backend,
+      // #3735: the backend label and the delivery family share one spelling
+      // ("parakeet", "whisper"), so the backend is the family.
+      "family": backend,
     ]
     if let silenceMs { properties["silence_ms"] = silenceMs }
     if let observedMaxGapMs { properties["observed_max_gap_ms"] = observedMaxGapMs }

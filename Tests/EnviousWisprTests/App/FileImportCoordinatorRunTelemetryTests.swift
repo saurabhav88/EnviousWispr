@@ -31,7 +31,7 @@ struct FileImportCoordinatorRunTelemetryTests {
     let serving = ASRModelAttribution(identity: ultra, loaded: true, inferenceReached: false)
     #expect(
       FileImportSettingsFreeze.frozenASRModel(
-        backend: .whisperKit, parakeetServing: serving, whisperKitServing: nil,
+        backend: .whisper, parakeetServing: serving, whisperKitServing: nil,
         whisperKitValidated: validated) == whisper,
       "stale WhisperKit cache: the validated identity")
     #expect(

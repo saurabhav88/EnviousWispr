@@ -971,7 +971,7 @@ import Testing
     func adversarialNonInstrumented() {
       let (settings, telemetry, box, _) = makeHarness()
       defer { TelemetryService.shared.testEventHook = nil }
-      settings.selectedBackend = settings.selectedBackend == .parakeet ? .whisperKit : .parakeet
+      settings.selectedBackend = settings.selectedBackend == .parakeet ? .whisper : .parakeet
       telemetry.flush()
       #expect(box.all.isEmpty)
     }

@@ -192,7 +192,7 @@ function easternOffsetMinutesAt(date) {
 
 // ----- Adoption presentation -------------------------------------------------
 
-const ENGINE_LABELS = { parakeet: "Parakeet", whisperKit: "WhisperKit" };
+const ENGINE_LABELS = { parakeet: "Parakeet", whisper: "Whisper" };
 const PROVIDER_LABELS = {
   appleIntelligence: "Apple Intelligence",
   egOne: "EG-1 (our own model)",

@@ -69,16 +69,16 @@ import Testing
 
     // MARK: 1. Construction returns a WhisperKit-identity driver
 
-    @Test("makeForWhisperKit returns a driver whose polish step is stamped .whisperKit")
+    @Test("makeForWhisperKit returns a driver whose polish step is stamped .whisper")
     func makeForWhisperKitReturnsDriverWithWhisperKitIdentity() {
       let driver = makeDriver()
       // The assembler does `limbSteps.llmPolish.backend = adapter.engineIdentity.backendType`.
-      // For the WhisperKit branch, `adapter.engineIdentity.backendType == .whisperKit`
+      // For the WhisperKit branch, `adapter.engineIdentity.backendType == .whisper`
       // (`WhisperEngineAdapter.engineIdentity` declares it). The polish stamp
       // is the directly observable proof that the assembler routed identity
       // correctly. (Emitter + lifecycle sink stamps covered transitively by
       // the strengthened freeze test — see file header.)
-      #expect(driver.llmPolish.backend == .whisperKit)
+      #expect(driver.llmPolish.backend == .whisper)
     }
 
     // MARK: 2. Factory construction does not load the model

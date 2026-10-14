@@ -45,7 +45,7 @@ struct RecordingFinalizerAbandonmentTests {
 
     @Test(
       "a shortcut cancel during a live recovery is admitted as an abandonment",
-      arguments: [ASRBackendType.parakeet, .whisperKit])
+      arguments: [ASRBackendType.parakeet, .whisper])
     func shortcutDuringRecoveryIsAdmitted(backend: ASRBackendType) async {
       let fx = Self.makeFixture()
       fx.asr.activeBackendType = backend
@@ -62,7 +62,7 @@ struct RecordingFinalizerAbandonmentTests {
     /// nothing happens at all.
     @Test(
       "the cancel button in the same state is not an abandonment",
-      arguments: [ASRBackendType.parakeet, .whisperKit])
+      arguments: [ASRBackendType.parakeet, .whisper])
     func buttonInTheSameStateIsNotAbandonment(backend: ASRBackendType) async {
       let fx = Self.makeFixture()
       fx.asr.activeBackendType = backend
@@ -164,7 +164,7 @@ struct RecordingFinalizerAbandonmentTests {
     private static func driver(_ fx: Fixture, _ backend: ASRBackendType)
       -> KernelDictationDriver
     {
-      backend == .whisperKit ? fx.whisperKitKernelDriver : fx.kernelDriver
+      backend == .whisper ? fx.whisperKitKernelDriver : fx.kernelDriver
     }
 
     /// Park a driver's kernel where an Escape Recovery is transcribing. Nothing

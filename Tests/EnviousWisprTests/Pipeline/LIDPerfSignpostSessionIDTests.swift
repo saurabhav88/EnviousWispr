@@ -58,7 +58,7 @@ import Testing
     await backend.setTranscribeResult(
       ASRResult(
         text: "ok", language: "en", duration: 1.0,
-        processingTime: 0.1, backendType: .whisperKit))
+        processingTime: 0.1, backendType: .whisper))
     var readCount = 0
     let adapter = WhisperEngineAdapter(
       backend: backend,
@@ -95,7 +95,7 @@ import Testing
     await backend.setTranscribeResult(
       ASRResult(
         text: "hola mundo", language: "es", duration: 1.0,
-        processingTime: 0.1, backendType: .whisperKit))
+        processingTime: 0.1, backendType: .whisper))
 
     let capturedID: UInt64 = 7777
     let adapter = WhisperEngineAdapter(

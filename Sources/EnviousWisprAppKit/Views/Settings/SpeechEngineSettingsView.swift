@@ -237,7 +237,7 @@ struct SpeechEngineSettingsView: View {
         // engines (it binds the same `useStreamingASR`). On WhisperKit with
         // Auto-detect language, streaming safely uses clean batch instead
         // (the footnote explains why); a picked language streams.
-        if settings.selectedBackend == .parakeet || settings.selectedBackend == .whisperKit {
+        if settings.selectedBackend == .parakeet || settings.selectedBackend == .whisper {
           BrandedRow(showDivider: false) {
             VStack(alignment: .leading, spacing: 6) {
               SettingsRow(
@@ -261,7 +261,7 @@ struct SpeechEngineSettingsView: View {
                 .fixedSize()
                 .accessibilityLabel(Text(LiveTranscriptionCopy.toggleLabel))
               }
-              if settings.selectedBackend == .whisperKit,
+              if settings.selectedBackend == .whisper,
                 isAutoLanguage(settings.languageMode)
               {
                 Text(LiveTranscriptionCopy.autoLanguageFootnote)
@@ -416,12 +416,12 @@ struct SpeechEngineSettingsView: View {
     }
     .environment(\.settingsPR1Density, true)
     .onAppear {
-      if settings.selectedBackend == .whisperKit {
+      if settings.selectedBackend == .whisper {
         Task { await setup.whisperKitSetup.detectState() }
       }
     }
     .onChange(of: settings.selectedBackend) { _, newBackend in
-      if newBackend == .whisperKit {
+      if newBackend == .whisper {
         Task { await setup.whisperKitSetup.detectState() }
       }
     }
@@ -519,7 +519,7 @@ struct SpeechEngineSettingsView: View {
     }
 
     // ── Section 2: WhisperKit Model Setup (conditional) ───────────────
-    if settings.selectedBackend == .whisperKit {
+    if settings.selectedBackend == .whisper {
           VStack(alignment: .leading, spacing: 6) {
             whisperKitSetupContent
             // Inline, in the section the user is looking at — never an
@@ -623,7 +623,7 @@ struct SpeechEngineSettingsView: View {
   /// lock is a stored preference applied at decode time, so it has no such gate.
   private var languageSectionIsAvailable: Bool {
     switch settings.selectedBackend {
-    case .whisperKit:
+    case .whisper:
       if case .ready = setup.whisperKitSetup.setupState { return true }
       return false
     case .parakeet:
@@ -643,7 +643,7 @@ struct SpeechEngineSettingsView: View {
   /// defect this issue was raised for, not a stylistic preference.
   private var languageSectionCopy: String {
     switch settings.selectedBackend {
-    case .whisperKit:
+    case .whisper:
       return String(
         localized:
           "Auto-detect your language, or lock to a specific one. WhisperKit supports 99+ languages.",
@@ -986,7 +986,7 @@ struct SpeechEngineSettingsView: View {
             // one. Reappearance is another honest impression, so there is no dedup here.
             .onAppear {
               TelemetryService.shared.settingsModelPreparingImpression(
-                engine: "whisperKit", reason: "engine_swap")
+                engine: "whisper", reason: "engine_swap")
             }
           } else {
             Label(

@@ -61,7 +61,7 @@ final class LiveRecordingState {
   /// `asrManager.activeBackendType`. Both drivers expose `PipelineState`
   /// natively post-Rung 5, so no bridge is needed.
   var pipelineState: PipelineState {
-    if asrManager.activeBackendType == .whisperKit {
+    if asrManager.activeBackendType == .whisper {
       return whisperKitKernelDriver.state
     }
     return kernelDriver.state
@@ -76,7 +76,7 @@ final class LiveRecordingState {
   /// #1393: monotonic elapsed recording time, mirroring `pipelineState`'s
   /// exact backend-branching shape.
   var recordingElapsedSeconds: TimeInterval? {
-    if asrManager.activeBackendType == .whisperKit {
+    if asrManager.activeBackendType == .whisper {
       return whisperKitKernelDriver.recordingElapsedSeconds
     }
     return kernelDriver.recordingElapsedSeconds
@@ -89,7 +89,7 @@ final class LiveRecordingState {
   /// Telemetry reads the driver's `currentTranscript` directly, unaffected.
   var currentTranscript: Transcript? {
     let driver =
-      asrManager.activeBackendType == .whisperKit ? whisperKitKernelDriver : kernelDriver
+      asrManager.activeBackendType == .whisper ? whisperKitKernelDriver : kernelDriver
     guard driver.lastHistorySaved else { return nil }
     return driver.currentTranscript
   }

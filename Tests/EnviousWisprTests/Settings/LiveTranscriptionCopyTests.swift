@@ -78,11 +78,11 @@ struct LiveTranscriptionCopyTests {
       LiveTranscriptionCopy.panel(for: .parakeet).accuracyBody
         == LiveTranscriptionCopy.parakeet.accuracyBody)
     #expect(
-      LiveTranscriptionCopy.panel(for: .whisperKit).accuracyBody
+      LiveTranscriptionCopy.panel(for: .whisper).accuracyBody
         == LiveTranscriptionCopy.whisperKit.accuracyBody)
     #expect(
       LiveTranscriptionCopy.toggleDescription(for: .parakeet)
-        != LiveTranscriptionCopy.toggleDescription(for: .whisperKit))
+        != LiveTranscriptionCopy.toggleDescription(for: .whisper))
   }
 
   /// The panel is keyed by `metric` through `Identifiable`, so a duplicate would silently
@@ -119,7 +119,7 @@ struct LiveTranscriptionCopyTests {
   /// perceptible gain below five minutes on Parakeet, so that claim must not return.
   @Test("No toggle description promises speed the measurements do not support")
   func descriptionsDoNotPromiseUnsupportedSpeed() {
-    for backend in [ASRBackendType.parakeet, .whisperKit] {
+    for backend in [ASRBackendType.parakeet, .whisper] {
       let d = LiveTranscriptionCopy.toggleDescription(for: backend).lowercased()
       #expect(
         d.contains("faster results") == false,

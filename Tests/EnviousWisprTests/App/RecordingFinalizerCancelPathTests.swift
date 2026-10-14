@@ -91,7 +91,7 @@
 
     @Test func cancelIsNoOpWhenWhisperKitIdle() async {
       let fx = Self.makeFixture()
-      fx.asr.activeBackendType = .whisperKit
+      fx.asr.activeBackendType = .whisper
       fx.lockBox.isLocked = true
       await fx.finalizer.cancel(trigger: .shortcut)
       #expect(fx.lockBox.isLocked == false)
@@ -336,7 +336,7 @@
         let fx = Self.makeFixture()
         fx.kernelDriver.setTerminalReason(.modelWedged)
         fx.whisperKitKernelDriver.setTerminalReason(.asrFailed)
-        fx.asr.activeBackendType = .whisperKit
+        fx.asr.activeBackendType = .whisper
         fx.finalizer.resetActive()
         #expect(fx.whisperKitKernelDriver.state == .idle)
         #expect(fx.kernelDriver.state == .error(.modelWedged))

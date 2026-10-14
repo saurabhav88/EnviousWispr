@@ -125,7 +125,7 @@ struct TranscriptionCheckpointStoreTests {
     let store = TranscriptionCheckpointStore(directory: dir)
     store.apply(
       .mark(
-        takeID: Self.takeID, backend: "whisperKit", stage: .tailChecked, chunksScheduled: 0,
+        takeID: Self.takeID, backend: "whisper", stage: .tailChecked, chunksScheduled: 0,
         model: nil))
     let file = dir.appendingPathComponent(TranscriptionCheckpointStore.fileName)
     let json = try #require(

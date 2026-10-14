@@ -351,7 +351,7 @@ struct LanguageAwarePromptInjectionTests {
     #expect(!system.contains("日本語"), "perLanguage terms must not leak on Parakeet path")
   }
 
-  @Test("backend .whisperKit with nil detection uses formatting-only path")
+  @Test("backend .whisper with nil detection uses formatting-only path")
   func whisperKitNilDetectionIsFormattingOnly() {
     // Defensive: a future WhisperKit codepath that bypasses the detector
     // must NOT fall through to the English-centric legacy prompt. The
@@ -362,7 +362,7 @@ struct LanguageAwarePromptInjectionTests {
       customWords: words,
       customVocabulary: PromptVocabulary(global: ["EnviousWispr"]),
       detection: nil,
-      backend: .whisperKit
+      backend: .whisper
     )
     let plan = DefaultPromptPlanner().plan(input: built)
     let system = plan.envelope.messages.first(where: { $0.role == .system })?.content ?? ""
@@ -372,7 +372,7 @@ struct LanguageAwarePromptInjectionTests {
     #expect(!system.contains("CUSTOM VOCABULARY"))
   }
 
-  @Test("backend .whisperKit with populated detection uses tier-gated W3 path")
+  @Test("backend .whisper with populated detection uses tier-gated W3 path")
   func whisperKitWithDetectionUsesTierPolicy() {
     // Explicit WhisperKit + populated high-confidence detection should
     // behave identically to the W3 tier-gated path: global + perLanguage
@@ -385,7 +385,7 @@ struct LanguageAwarePromptInjectionTests {
       customWords: [CustomWord(canonical: "EnviousWispr")],
       customVocabulary: vocab,
       detection: detection(lang: "de", tier: .highAuto),
-      backend: .whisperKit
+      backend: .whisper
     )
     let plan = DefaultPromptPlanner().plan(input: built)
     let system = plan.envelope.messages.first(where: { $0.role == .system })?.content ?? ""

@@ -213,7 +213,7 @@ final class SetupCoordinator {
         // WhisperKit; warming AFTER a backend switch is owned by
         // `EngineCoordinator` (#1171), so this observer is no longer restarted on
         // a switch.
-        guard self.asrManager.activeBackendType == .whisperKit else { return }
+        guard self.asrManager.activeBackendType == .whisper else { return }
 
         let currentState = self.setupStateReader()
         if currentState == .ready {

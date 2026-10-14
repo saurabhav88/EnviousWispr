@@ -77,7 +77,7 @@ enum ModelPreparingCopy {
   /// "ready" is the status quo, whereas a stuck "preparing" would be a NEW lie with no way
   /// out.
   static func isPreparing(warmInFlight: ASRBackendType?) -> Bool {
-    warmInFlight == .whisperKit
+    warmInFlight == .whisper
   }
 
   /// The label for a given warm state. Convenience over `isPreparing` for the row.

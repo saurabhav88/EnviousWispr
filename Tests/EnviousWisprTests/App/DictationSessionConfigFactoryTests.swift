@@ -186,7 +186,7 @@ struct DictationSessionConfigFactoryTests {
   @Test("autoPasteToActiveApp is true when whisperKit pipeline is idle")
   func autoPasteOnIdleWhisperKit() async throws {
     // Pins the happy path of the WhisperKit branch: when
-    // `asrManager.activeBackendType == .whisperKit`, the factory must produce
+    // `asrManager.activeBackendType == .whisper`, the factory must produce
     // `autoPasteToActiveApp == true` while `whisperKitKernelDriver.state == .idle`.
     //
     // Note on coverage limits (Codex r2 finding): both pipelines start `.idle`
@@ -199,7 +199,7 @@ struct DictationSessionConfigFactoryTests {
     // idle state in unit tests would require booting real audio capture / ASR
     // (the only public mutator is `startRecording(config:)`); the runtime UAT
     // covers that path.
-    let harness = try Harness.make(backend: .whisperKit)
+    let harness = try Harness.make(backend: .whisper)
     let config = harness.makeConfig()
     #expect(config.autoPasteToActiveApp == true)
   }

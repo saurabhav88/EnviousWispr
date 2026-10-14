@@ -30,9 +30,9 @@ struct ASRManagerColdStateContractTests {
     let sut = ASRManager(
       engineMutationScope: .alwaysAllowedForTesting, parakeetSelection: ParakeetSelectionProvider())
 
-    sut.setInitialBackendType(.whisperKit)
+    sut.setInitialBackendType(.whisper)
 
-    #expect(sut.activeBackendType == .whisperKit)
+    #expect(sut.activeBackendType == .whisper)
     #expect(sut.isModelLoaded == false)
     #expect(sut.isStreaming == false)
     #expect(await sut.activeBackendSupportsStreaming == false)
@@ -43,8 +43,8 @@ struct ASRManagerColdStateContractTests {
     let sut = ASRManager(
       engineMutationScope: .alwaysAllowedForTesting, parakeetSelection: ParakeetSelectionProvider())
 
-    await sut.switchBackend(to: .whisperKit)
-    #expect(sut.activeBackendType == .whisperKit)
+    await sut.switchBackend(to: .whisper)
+    #expect(sut.activeBackendType == .whisper)
     #expect(sut.isModelLoaded == false)
     #expect(sut.isStreaming == false)
 
@@ -53,8 +53,8 @@ struct ASRManagerColdStateContractTests {
     #expect(sut.isModelLoaded == false)
     #expect(sut.isStreaming == false)
 
-    await sut.switchBackend(to: .whisperKit)
-    #expect(sut.activeBackendType == .whisperKit)
+    await sut.switchBackend(to: .whisper)
+    #expect(sut.activeBackendType == .whisper)
     #expect(sut.isModelLoaded == false)
     #expect(sut.isStreaming == false)
   }
@@ -111,11 +111,11 @@ struct ASRManagerColdStateContractTests {
   func startStreamingOnWhisperKitDoesNothing() async throws {
     let sut = ASRManager(
       engineMutationScope: .alwaysAllowedForTesting, parakeetSelection: ParakeetSelectionProvider())
-    sut.setInitialBackendType(.whisperKit)
+    sut.setInitialBackendType(.whisper)
 
     try await sut.startStreaming(options: .default)
 
-    #expect(sut.activeBackendType == .whisperKit)
+    #expect(sut.activeBackendType == .whisper)
     #expect(sut.isModelLoaded == false)
     #expect(sut.isStreaming == false)
     #expect(await sut.activeBackendSupportsStreaming == false)

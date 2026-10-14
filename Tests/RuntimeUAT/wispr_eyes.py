@@ -4293,7 +4293,7 @@ def _self_test():
     mic = lambda value: _el("AXMenuButton", desc="Input device", value=value)
     prof = lambda n: {"SPAudioDataType": [{"_items": [{"_name": "Scarlett 2i2",
                                                        "coreaudio_device_input": n}]}]}
-    WK, PK = {"selectedBackend": "whisperKit"}, {"selectedBackend": "parakeet"}
+    WK, PK = {"selectedBackend": "whisper"}, {"selectedBackend": "parakeet"}
     probe_rows = [
         ("parakeet_selected", (), PK, None, None, True),
         ("parakeet_selected", (), WK, None, None, False),

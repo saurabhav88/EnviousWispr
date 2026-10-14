@@ -61,7 +61,7 @@ package final class BatchDecodeFaultController {
   private func setPendingFailure(_ value: PendingFailure, backend: ASRBackendType) {
     switch backend {
     case .parakeet: parakeetPendingFailure = value
-    case .whisperKit: whisperKitPendingFailure = value
+    case .whisper: whisperKitPendingFailure = value
     }
   }
 
@@ -89,7 +89,7 @@ package final class BatchDecodeFaultController {
         return true
       case .every: return true
       }
-    case .whisperKit:
+    case .whisper:
       switch whisperKitPendingFailure {
       case .none: return false
       case .next:
@@ -138,7 +138,7 @@ package final class BatchDecodeFaultController {
     /// `ParakeetBackend.armBatchDecodeHold` across XPC via `ASRManagerProxy`).
     package func holdBatchDecode(backend: ASRBackendType, trialID: String) async {
       switch backend {
-      case .whisperKit:
+      case .whisper:
         await whisperKitBackend?.armBatchDecodeHold(trialID: trialID)
       case .parakeet:
         await asrManager?.armBatchDecodeHold(trialID: trialID)
@@ -148,7 +148,7 @@ package final class BatchDecodeFaultController {
     /// Releases a previously-armed hold, letting the held decode proceed.
     package func releaseBatchDecode(backend: ASRBackendType, trialID: String) async {
       switch backend {
-      case .whisperKit:
+      case .whisper:
         await whisperKitBackend?.releaseBatchDecode(trialID: trialID)
       case .parakeet:
         await asrManager?.releaseBatchDecode(trialID: trialID)
@@ -171,7 +171,7 @@ package final class BatchDecodeFaultController {
       let kernel = kernelTimestamps
       let backendSnapshot: BatchDecodeFaultSnapshotState?
       switch backend {
-      case .whisperKit:
+      case .whisper:
         backendSnapshot = await whisperKitBackend?.queryBatchDecodeFault(trialID: trialID)
       case .parakeet:
         backendSnapshot = BatchDecodeFaultSnapshotFile.shared.read()

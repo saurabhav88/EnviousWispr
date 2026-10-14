@@ -177,7 +177,7 @@ struct ShippedBackendLatencyTests {
       for _ in 0..<ShippedBackendLatencyFixture.runCount {
         let result = try await backend.transcribe(audioSamples: samples, options: .default)
         ShippedBackendLatencyFixture.requireExpectedTranscript(result, backend: "WhisperKit")
-        #expect(result.backendType == .whisperKit)
+        #expect(result.backendType == .whisper)
         timings.append(result.processingTime)
       }
       ShippedBackendLatencyFixture.requireBudget(timings, backend: "WhisperKit")

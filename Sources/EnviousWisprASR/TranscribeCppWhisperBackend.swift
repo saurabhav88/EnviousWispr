@@ -203,7 +203,7 @@ package actor TranscribeCppWhisperBackend<Driver: WhisperExecutorDriving>: ASRBa
   private static func delivery(to owner: ASRModelScopeOwner?) -> ScopeDelivery? {
     guard let owner else { return nil }
     let deliver: ScopeDelivery = { (sequence: UInt64, snapshot: ASRModelScopeOwner.Snapshot) in
-      await owner.observe(.whisperKit, sequence: sequence, snapshot: snapshot)
+      await owner.observe(.whisper, sequence: sequence, snapshot: snapshot)
     }
     return deliver
   }
@@ -601,7 +601,7 @@ package actor TranscribeCppWhisperBackend<Driver: WhisperExecutorDriving>: ASRBa
     return ASRResult(
       text: text, language: language,
       duration: Double(originalSampleCount) / Double(sampleRate),
-      processingTime: processingTime, backendType: .whisperKit,
+      processingTime: processingTime, backendType: .whisper,
       wordTimings: nil, wordTimingCoverage: nil, segmentTimings: segmentTimings)
   }
 

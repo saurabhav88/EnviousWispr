@@ -44,7 +44,7 @@ enum FileImportSettingsFreeze {
       // whatever WhisperKit reported, so an automatic-language import fell back
       // to identifying the language from the ASR text — the weakest source in
       // the ladder, on the text least safe to guess from. Found by cloud review.
-      backendSupportsLanguageDetection: settings.selectedBackend == .whisperKit,
+      backendSupportsLanguageDetection: settings.selectedBackend == .whisper,
       languageMode: settings.languageMode,
       wordCorrectionEnabled: settings.wordCorrectionEnabled,
       fillerRemovalEnabled: settings.fillerRemovalEnabled,
@@ -117,7 +117,7 @@ enum FileImportSettingsFreeze {
     whisperKitServing: ASRModelAttribution?, whisperKitValidated: ASRModelAttribution?
   ) -> ASRModelIdentity? {
     switch backend {
-    case .whisperKit: return (whisperKitServing ?? whisperKitValidated)?.identity
+    case .whisper: return (whisperKitServing ?? whisperKitValidated)?.identity
     case .parakeet: return parakeetServing?.identity
     }
   }

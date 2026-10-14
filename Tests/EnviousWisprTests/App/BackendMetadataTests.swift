@@ -28,8 +28,8 @@ struct BackendMetadataTests {
   @Test("modelLabel: WhisperKit backend returns 'WhisperKit'")
   func modelLabelWhisperKit() {
     let bm = makeBackendMetadata()
-    bm.settings.selectedBackend = .whisperKit
-    #expect(bm.modelLabel == "WhisperKit")
+    bm.settings.selectedBackend = .whisper
+    #expect(bm.modelLabel == "Whisper")
   }
 
   // MARK: - llmLabel

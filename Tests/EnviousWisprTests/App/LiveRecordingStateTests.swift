@@ -44,7 +44,7 @@ struct LiveRecordingStateTests {
     state.asrManager.setInitialBackendType(.parakeet)
     #expect(state.pipelineState == .idle)
     // WhisperKit arm → reads the WhisperKit driver → .error(.deviceRemoved).
-    state.asrManager.setInitialBackendType(.whisperKit)
+    state.asrManager.setInitialBackendType(.whisper)
     #expect(state.pipelineState == .error(.deviceRemoved))
   }
 
@@ -60,7 +60,7 @@ struct LiveRecordingStateTests {
     // without crashing, not a distinguishing nonzero value.
     state.asrManager.setInitialBackendType(.parakeet)
     #expect(state.recordingElapsedSeconds == nil)
-    state.asrManager.setInitialBackendType(.whisperKit)
+    state.asrManager.setInitialBackendType(.whisper)
     #expect(state.recordingElapsedSeconds == nil)
   }
 
@@ -90,7 +90,7 @@ struct LiveRecordingStateTests {
       fired.value = true
     }
 
-    state.asrManager.setInitialBackendType(.whisperKit)
+    state.asrManager.setInitialBackendType(.whisper)
     // Yield once to let the observation registry deliver.
     await Task.yield()
     #expect(fired.value, "Observation must propagate through any ASRManagerInterface existential")

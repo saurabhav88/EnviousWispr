@@ -9,7 +9,7 @@ is already broken.
 Usage:
     # Legacy Lane A gauntlet (health-check between scenarios):
     python3 Tests/RuntimeUAT/run_gauntlet.py --backend parakeet
-    python3 Tests/RuntimeUAT/run_gauntlet.py --backend whisperKit
+    python3 Tests/RuntimeUAT/run_gauntlet.py --backend whisper
 
 
 The #1317 dead-mic proof bench that used to live here was moved OFFLINE on
@@ -121,7 +121,7 @@ def _main(argv: list[str]) -> int:
     # Subcommand routing; no subcommand ⇒ legacy Lane A gauntlet (back-compat).
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("--backend", choices=["parakeet", "whisperKit"],
+    parser.add_argument("--backend", choices=["parakeet", "whisper"],
                         default="parakeet")
     args = parser.parse_args(argv)
 

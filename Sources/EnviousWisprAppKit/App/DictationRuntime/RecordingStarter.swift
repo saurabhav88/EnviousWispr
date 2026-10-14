@@ -152,7 +152,7 @@ final class RecordingStarter {
   /// or polishing) — blocks a new start so the user does not stack
   /// recordings on top of in-flight post-processing.
   var isProcessing: Bool {
-    if asrManager.activeBackendType == .whisperKit {
+    if asrManager.activeBackendType == .whisper {
       let state = whisperKitKernelDriver.state
       return state == .transcribing || state == .polishing
     } else {
@@ -166,7 +166,7 @@ final class RecordingStarter {
   /// shared `ensureEngineWarm`. Computed (not a stored slot or a method), so it
   /// adds no entanglement to this start-path home.
   var activeDriver: KernelDictationDriver {
-    asrManager.activeBackendType == .whisperKit ? whisperKitKernelDriver : kernelDriver
+    asrManager.activeBackendType == .whisper ? whisperKitKernelDriver : kernelDriver
   }
 
   /// #1707 Phase 3 — the backend + timestamp of the FIRST recovery refusal in
@@ -302,7 +302,7 @@ final class RecordingStarter {
   func start() async -> RecordingStartOutcome {
     dictationLifecycleCoordinator?.cancelPendingWarning()
     let backend = asrManager.activeBackendType
-    let isWhisperKit = backend == .whisperKit
+    let isWhisperKit = backend == .whisper
     let active: KernelDictationDriver = isWhisperKit ? whisperKitKernelDriver : kernelDriver
     // PR-7 (#827): snapshot engine readiness BEFORE prewarm so the cold-start
     // log cohorts warm/cold/mid-flight; snapshot-at-entry avoids retro-labeling.
@@ -504,7 +504,7 @@ final class RecordingStarter {
       // release it on the way out, which costs this session's exclusivity and
       // keeps the record button working — the right way round for a limb.
       if let coordinator = dictationLifecycleCoordinator {
-        coordinator.acceptEngineToken(engineToken, mintedBy: isWhisperKit ? .whisperKit : .parakeet)
+        coordinator.acceptEngineToken(engineToken, mintedBy: isWhisperKit ? .whisper : .parakeet)
         unmintedEngineToken = nil
       } else {
         Self.reportNilCollaborator(callback: "acceptEngineToken")
@@ -592,7 +592,7 @@ final class RecordingStarter {
   func toggle(source: TriggerSource) async {
     dictationLifecycleCoordinator?.cancelPendingWarning()
     let backend = asrManager.activeBackendType
-    let isWK = backend == .whisperKit
+    let isWK = backend == .whisper
     let active: KernelDictationDriver = isWK ? whisperKitKernelDriver : kernelDriver
     let isStartingFromIdle =
       !(isWK ? whisperKitKernelDriver.state.isActive : kernelDriver.state.isActive)
@@ -703,7 +703,7 @@ final class RecordingStarter {
       // claim is only cleared here when somebody real took ownership of it.
       if let token = claimedEngineToken {
         if let coordinator = dictationLifecycleCoordinator {
-          coordinator.acceptEngineToken(token, mintedBy: isWK ? .whisperKit : .parakeet)
+          coordinator.acceptEngineToken(token, mintedBy: isWK ? .whisper : .parakeet)
           claimedEngineToken = nil
         } else {
           Self.reportNilCollaborator(callback: "acceptEngineToken")
@@ -744,7 +744,7 @@ final class RecordingStarter {
     }
     ColdPressGuard.reconcileSelectedBackend(
       overlay: recordingOverlay,
-      selectedDriver: selected == .whisperKit ? whisperKitKernelDriver : kernelDriver,
+      selectedDriver: selected == .whisper ? whisperKitKernelDriver : kernelDriver,
       ensureSelectedReady: ensureSelectedReadyForPress)
     return true
   }

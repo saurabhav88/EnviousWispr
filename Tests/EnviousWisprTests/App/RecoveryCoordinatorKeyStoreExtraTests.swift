@@ -36,7 +36,7 @@ struct RecoveryCoordinatorKeyStoreExtraTests {
       backend: .keychain(service: "test.service"),
       fileDirectory: FileManager.default.temporaryDirectory)
     let extra = RecoveryCoordinator.keyStoreFailureExtra(
-      RecoveryKeyStoreError.storeFailed(errSecIO), backend: .whisperKit, store: store)
+      RecoveryKeyStoreError.storeFailed(errSecIO), backend: .whisper, store: store)
     #expect(extra["recovery.key_store_backend"] as? String == "keychain")
     #expect(extra["recovery.key_store_status"] as? Int == Int(errSecIO))
   }

@@ -679,8 +679,12 @@ class PreferenceError(RuntimeError):
 # key -> (kind, allowed raw values or None, the shipped default). Defaults mirror
 # `SettingsDefaultValues.swift`, enum values mirror their Swift enums' cases; the self-test
 # checks both against the Swift source.
+# Legacy raw values the app still decodes to a current case (#3735: builds before the
+# transcribe.cpp swap stored "whisperKit"; `ASRBackendType.init(rawValue:)` maps it).
+LEGACY_ENUM_VALUES = {"selectedBackend": {"whisperKit": "whisper"}}
+
 STORED = {
-    "selectedBackend": ("enum", ("parakeet", "whisperKit"), "parakeet"),
+    "selectedBackend": ("enum", ("parakeet", "whisper"), "parakeet"),
     "llmProvider": ("enum", ("openAI", "gemini", "claude", "ollama", "appleIntelligence",
                              "egOne", "s1Mini", "none"), "appleIntelligence"),
     "wordCorrectionEnabled": ("bool", None, True),
@@ -716,6 +720,7 @@ def stored(read_domain, key):
     if not isinstance(value, str):
         raise PreferenceError(f"{key}: {value!r} is not a stored String")
     if kind == "enum":
+        value = LEGACY_ENUM_VALUES.get(key, {}).get(value, value)
         return value if value in allowed else default
     return value
 

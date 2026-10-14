@@ -107,14 +107,14 @@ enum LiveTranscriptionCopy {
   static func panel(for backend: ASRBackendType) -> Panel {
     switch backend {
     case .parakeet: return parakeet
-    case .whisperKit: return whisperKit
+    case .whisper: return whisperKit
     }
   }
 
   static func toggleDescription(for backend: ASRBackendType) -> String {
     switch backend {
     case .parakeet: return parakeetToggleDescription
-    case .whisperKit: return whisperKitToggleDescription
+    case .whisper: return whisperKitToggleDescription
     }
   }
 

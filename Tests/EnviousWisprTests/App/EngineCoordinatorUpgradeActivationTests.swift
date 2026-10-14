@@ -156,7 +156,7 @@ struct EngineCoordinatorUpgradeActivationTests {
     let ranIdle = await enginePoll(.milliseconds(300)) { idle.activationCount > 0 }
     #expect(ranIdle == false)
 
-    let whisper = FakeEngineDeps(selected: .whisperKit, active: .whisperKit)
+    let whisper = FakeEngineDeps(selected: .whisper, active: .whisper)
     whisper.activationOwed = true
     let w = whisper.makeStartedCoordinator()
     w.poke(.parakeetUpgradeOwed)

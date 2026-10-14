@@ -196,7 +196,7 @@ public actor WhisperKitBackend: ASRBackend {
   private static func delivery(to owner: ASRModelScopeOwner?) -> ScopeDelivery? {
     guard let owner else { return nil }
     let deliver: ScopeDelivery = { (sequence: UInt64, snapshot: ASRModelScopeOwner.Snapshot) in
-      await owner.observe(.whisperKit, sequence: sequence, snapshot: snapshot)
+      await owner.observe(.whisper, sequence: sequence, snapshot: snapshot)
     }
     return deliver
   }
@@ -1028,7 +1028,7 @@ public actor WhisperKitBackend: ASRBackend {
       language: language,
       duration: duration,
       processingTime: processingTime,
-      backendType: .whisperKit,
+      backendType: .whisper,
       wordTimings: wordTimings, wordTimingCoverage: wordTimingCoverage
     )
   }

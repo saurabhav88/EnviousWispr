@@ -87,7 +87,7 @@ final class RecordingFinalizer {
     recordingLockedAccess.set(false)
     lastUserStopRequest = ContinuousClock.now
     let active: KernelDictationDriver =
-      asrManager.activeBackendType == .whisperKit ? whisperKitKernelDriver : kernelDriver
+      asrManager.activeBackendType == .whisper ? whisperKitKernelDriver : kernelDriver
     do {
       try await requestStopDispatch(active)
     } catch {
@@ -113,7 +113,7 @@ final class RecordingFinalizer {
     // and gated on the now-extinct `.startingUp` state) onto the same
     // `cancelRecording()` shape Parakeet uses.
     let active: KernelDictationDriver =
-      asrManager.activeBackendType == .whisperKit ? whisperKitKernelDriver : kernelDriver
+      asrManager.activeBackendType == .whisper ? whisperKitKernelDriver : kernelDriver
     // #2087: abandonment returns at once — no teardown, no terminal await; see policy.
     if CancelAffordancePolicy.isAbandonment(
       trigger: trigger, isEscapeRecoveryTranscribing: active.isEscapeRecoveryTranscribing)
@@ -149,7 +149,7 @@ final class RecordingFinalizer {
   /// Lives here so `DictationRuntime` does not have to store the pipelines
   /// itself; Finalizer already holds them.
   func resetActive() {
-    if asrManager.activeBackendType == .whisperKit {
+    if asrManager.activeBackendType == .whisper {
       whisperKitKernelDriver.reset()
     } else {
       kernelDriver.reset()

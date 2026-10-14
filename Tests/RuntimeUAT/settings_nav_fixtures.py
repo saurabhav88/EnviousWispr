@@ -911,8 +911,10 @@ def valued_cases():
         st = sn.stored
         rows += [
             ("a missing key is the shipped default", st(lambda: {}, "selectedBackend"), "parakeet"),
-            ("a stored backend is read", st(lambda: {"selectedBackend": "whisperKit"},
-                                            "selectedBackend"), "whisperKit"),
+            ("a stored backend is read", st(lambda: {"selectedBackend": "whisper"},
+                                            "selectedBackend"), "whisper"),
+            ("the pre-#3735 backend spelling reads as Whisper, as the app decodes it",
+             st(lambda: {"selectedBackend": "whisperKit"}, "selectedBackend"), "whisper"),
             ("an unknown backend string is the default, as the app treats it",
              st(lambda: {"selectedBackend": "turbo"}, "selectedBackend"), "parakeet"),
             ("a stored Bool is read", st(lambda: {"fillerRemovalEnabled": False},

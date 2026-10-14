@@ -58,7 +58,7 @@ struct WhisperKitWordTimingRealBoundaryTests {
     let result = try await backend.transcribe(audioSamples: samples, options: .default)
     await backend.unload()
 
-    #expect(result.backendType == .whisperKit)
+    #expect(result.backendType == .whisper)
     let wordTimings = try #require(result.wordTimings)
     #expect(!wordTimings.isEmpty)
     let coverage = try #require(result.wordTimingCoverage)

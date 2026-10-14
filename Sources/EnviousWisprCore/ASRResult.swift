@@ -3,7 +3,23 @@ import Foundation
 /// The type of ASR backend used for transcription.
 public enum ASRBackendType: String, Codable, Sendable {
   case parakeet
-  case whisperKit
+  /// #3735: the Whisper engine slot, now served by transcribe.cpp. Stored as
+  /// `"whisper"`; builds before #3735 stored `"whisperKit"`, which still
+  /// decodes here so saved settings and History rows keep their engine.
+  case whisper
+
+  /// Explicit so the legacy `"whisperKit"` spelling decodes. Codable's
+  /// `RawRepresentable` conformance calls this initializer, so settings,
+  /// History rows and every other stored copy accept both spellings; any
+  /// other value stays `nil` (settings fall back to the default, History
+  /// rows fail decoding and are skipped, as before).
+  public init?(rawValue: String) {
+    switch rawValue {
+    case "parakeet": self = .parakeet
+    case "whisper", "whisperKit": self = .whisper
+    default: return nil
+    }
+  }
 
   public var displayName: String {
     switch self {
@@ -11,7 +27,7 @@ public enum ASRBackendType: String, Codable, Sendable {
     // v3 or by Ultra, and this label is stored-row-agnostic; the model name
     // comes from `ParakeetModel.displayName` where a serving model is known.
     case .parakeet: return "Parakeet"
-    case .whisperKit: return "WhisperKit"
+    case .whisper: return "Whisper"
     }
   }
 }

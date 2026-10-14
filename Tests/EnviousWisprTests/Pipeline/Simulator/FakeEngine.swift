@@ -95,7 +95,7 @@ final class FakeEngine: ASREngineAdapter, @unchecked Sendable {
   var behavior: FakeEngineBehavior
 
   /// Self-declared identity (PR-5 Rung 1). Settable so the engine-identity
-  /// propagation sentinel test can construct a `FakeEngine` with `.whisperKit`
+  /// propagation sentinel test can construct a `FakeEngine` with `.whisper`
   /// and assert the kernel reads it back; defaults to `.parakeet` so existing
   /// scenarios assert byte-identical strings.
   var engineIdentity: ASREngineIdentity = ASREngineIdentity(backendType: .parakeet)

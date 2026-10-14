@@ -139,7 +139,7 @@ struct RecoveryTextProcessorTests {
     // (#2614 closed the Automatic dead path on this engine).
     let whisperKit = RecoveryTextProcessor(keychainManager: KeychainManager())
     whisperKit.applySettings(
-      snapshot(fillerRemoval: false, backendType: .whisperKit, lidCapable: true))
+      snapshot(fillerRemoval: false, backendType: .whisper, lidCapable: true))
     let whisperKitOut = await whisperKit.process(rawText: spoken)
     #expect(whisperKitOut.text == "call me at 203")
   }

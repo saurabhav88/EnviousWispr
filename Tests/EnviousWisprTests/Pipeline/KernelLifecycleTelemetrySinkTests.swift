@@ -319,7 +319,7 @@ import Testing
     state.asrCompletedTelemetry = KernelASRCompletedTelemetry(
       durationSeconds: 0.3, charCount: 5, mode: "batch", language: "en",
       incrementalAccepted: true)
-    let sink = makeSink(recorder: recorder, backend: .whisperKit, telemetryState: state)
+    let sink = makeSink(recorder: recorder, backend: .whisper, telemetryState: state)
     sink.emit(.asrCompleted)
     // Parity with OLD `WhisperKitPipeline.swift:1049-1052` — the breadcrumb
     // distinguishes accepted incremental output from batch fallback.
@@ -526,7 +526,7 @@ import Testing
   @Test(".audioInterrupted(.engineLost) captures .audioCaptureFailed + resets state")
   func audioInterruptedEngineLostCaptures() {
     let recorder = Recorder()
-    let sink = makeSink(recorder: recorder, backend: .whisperKit)
+    let sink = makeSink(recorder: recorder, backend: .whisper)
     sink.emit(.audioInterrupted(cause: .engineLost))
     #expect(recorder.captureErrors.count == 1)
     #expect(recorder.captureErrors.first?.category == .audioCaptureFailed)
@@ -696,7 +696,7 @@ import Testing
   @Test(".asrInterrupted(wasRecording: true) emits captureError + state(false)")
   func asrInterruptedEmissionFromRecording() {
     let recorder = Recorder()
-    let sink = makeSink(recorder: recorder, backend: .whisperKit)
+    let sink = makeSink(recorder: recorder, backend: .whisper)
     sink.emit(.asrInterrupted(wasRecording: true))
     #expect(recorder.captureErrors.count == 1)
     #expect(recorder.captureErrors.first?.category == .xpcServiceError)
@@ -704,7 +704,7 @@ import Testing
     // PR-5 Rung 5 Pass 2 #3 — the crash message names the backend again
     // (parity with OLD `WhisperKitPipeline.swift:1217`).
     #expect(
-      recorder.captureErrors.first?.errorDescription == "ASR XPC service crashed (WhisperKit)")
+      recorder.captureErrors.first?.errorDescription == "ASR XPC service crashed (Whisper)")
     #expect(
       recorder.recordingStates == [
         .init(active: false, backend: nil, isStreaming: nil)
@@ -1379,11 +1379,11 @@ import Testing
     let recorder = Recorder()
     let context = KernelSessionContext()
     context.config = .testDefault()
-    let sink = makeSink(recorder: recorder, backend: .whisperKit, context: context)
+    let sink = makeSink(recorder: recorder, backend: .whisper, context: context)
     sink.emit(.recordingCommitted(isStreaming: false))
     // updateRecordingState argument must come from the injected backend, not
     // a hardcoded literal.
-    #expect(recorder.recordingStates.first?.backend == "whisperKit")
+    #expect(recorder.recordingStates.first?.backend == "whisper")
   }
 
   // MARK: - Per-dictation take key (#1846)

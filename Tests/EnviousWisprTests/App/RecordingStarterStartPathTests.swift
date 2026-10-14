@@ -234,7 +234,7 @@ import Testing
     let fx = Self.makeFixture()
     fx.asr.activeBackendType = .parakeet
     #expect(fx.starter.isProcessing == false)
-    fx.asr.activeBackendType = .whisperKit
+    fx.asr.activeBackendType = .whisper
     #expect(fx.starter.isProcessing == false)
   }
 
@@ -618,7 +618,7 @@ import Testing
     @Test("an already-active WhisperKit session reports its continuing id")
     func whisperKitAlreadyActiveReportsRecording() async throws {
       let fx = Self.makeFixture()
-      fx.asr.activeBackendType = .whisperKit
+      fx.asr.activeBackendType = .whisper
       fx.whisperKitKernelDriver.kernelForTesting.testForceState(.live)
       let expected = try #require(fx.whisperKitKernelDriver.continuingSessionID)
 

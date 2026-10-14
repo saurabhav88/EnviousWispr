@@ -88,7 +88,7 @@ struct WhisperKitRealBoundaryTests {
       throw error
     }
 
-    #expect(result.backendType == .whisperKit)
+    #expect(result.backendType == .whisper)
     #expect(
       WhisperKitRealBoundaryFixture.normalizedWords(result.text)
         == WhisperKitRealBoundaryFixture.expectedTranscript,

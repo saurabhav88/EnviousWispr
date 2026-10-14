@@ -197,7 +197,7 @@
           == 4)
       #expect(
         Set(PillPreviewCatalog.backends.map(PillPreviewCatalog.backendCaseName))
-          == ["parakeet", "whisperKit"])
+          == ["parakeet", "whisper"])
     }
 
     @Test("sample buttons only report to the status line")

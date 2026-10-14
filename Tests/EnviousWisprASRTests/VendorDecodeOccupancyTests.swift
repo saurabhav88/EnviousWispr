@@ -311,8 +311,8 @@ struct VendorDecodeOccupancyTests {
       engineMutationScope: .alwaysAllowedForTesting,
       parakeetSelection: ParakeetSelectionProvider(),
       parakeetBackendFactory: { FakeASRBackend(initiallyReady: true) })
-    manager.setInitialBackendType(.whisperKit)
-    await #expect(throws: ASRManagerNotOwnedError(backend: .whisperKit)) {
+    manager.setInitialBackendType(.whisper)
+    await #expect(throws: ASRManagerNotOwnedError(backend: .whisper)) {
       _ = try await manager.transcribe(audioSamples: [0.0], options: .default)
     }
     #expect(manager.vendorDecodeOccupancy.isIdle)

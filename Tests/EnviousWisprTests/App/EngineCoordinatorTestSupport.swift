@@ -26,7 +26,7 @@ final class FakeEngineDeps {
   /// #1635: backed by an `@Observable` box so `EngineCoordinator.observeInstalledState()`
   /// can genuinely track it.
   ///
-  /// That method wraps `deps.isInstalled(.whisperKit)` in `withObservationTracking`, and
+  /// That method wraps `deps.isInstalled(.whisper)` in `withObservationTracking`, and
   /// its own comment says "In unit tests the fake reader touches no `@Observable` source,
   /// so this is inert." A plain stored property therefore made the real download-completion
   /// trigger untestable, and a test could only fake it by calling
@@ -98,16 +98,16 @@ final class FakeEngineDeps {
   }
 
   func readiness(_ b: ASRBackendType) -> ASREngineReadiness {
-    b == .whisperKit ? whisperKitReadiness : parakeetReadiness
+    b == .whisper ? whisperKitReadiness : parakeetReadiness
   }
   func setReadiness(_ b: ASRBackendType, _ r: ASREngineReadiness) {
-    if b == .whisperKit { whisperKitReadiness = r } else { parakeetReadiness = r }
+    if b == .whisper { whisperKitReadiness = r } else { parakeetReadiness = r }
   }
   func isActive(_ b: ASRBackendType) -> Bool {
-    b == .whisperKit ? whisperKitActive : parakeetActive
+    b == .whisper ? whisperKitActive : parakeetActive
   }
   func installed(_ b: ASRBackendType) -> Bool {
-    b == .whisperKit ? whisperKitInstalled : parakeetInstalled
+    b == .whisper ? whisperKitInstalled : parakeetInstalled
   }
 
   func makeDependencies() -> EngineCoordinator.Dependencies {

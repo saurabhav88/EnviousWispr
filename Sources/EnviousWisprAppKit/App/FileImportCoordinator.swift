@@ -172,7 +172,7 @@ final class FileImportCoordinator {
   nonisolated static func secondsPerAudioMinute(for backend: ASRBackendType) -> Double {
     switch backend {
     case .parakeet: return 3.8
-    case .whisperKit: return 6.2
+    case .whisper: return 6.2
     }
   }
 

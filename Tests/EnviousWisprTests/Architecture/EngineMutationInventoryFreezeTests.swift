@@ -1693,9 +1693,9 @@ import Testing
     "switchBackend is matched uniformly regardless of argument label — the prior `to:`-only special case is retired"
   )
   func positiveControlSwitchBackendMatchedUniformly() throws {
-    #expect(try Self.hitCount(in: "switchBackend(to: .whisperKit)", matcher: "switchBackend") == 1)
+    #expect(try Self.hitCount(in: "switchBackend(to: .whisper)", matcher: "switchBackend") == 1)
     #expect(
-      try Self.hitCount(in: "switchBackend(from: .whisperKit)", matcher: "switchBackend") == 1)
+      try Self.hitCount(in: "switchBackend(from: .whisper)", matcher: "switchBackend") == 1)
   }
 
   @Test(

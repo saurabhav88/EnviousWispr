@@ -176,7 +176,22 @@ test("resolveBuckets: shipped default used when neither tier resolves", () => {
 test("resolveBuckets: engine buckets partition totalUsers exactly", () => {
   const { engineBuckets } = resolveBuckets(makeData());
   assert.equal(engineBuckets.parakeet, 2);
-  assert.equal(engineBuckets.whisperKit, 1);
+  assert.equal(engineBuckets.whisper, 1);
+  assert.equal(engineBuckets.whisperKit, undefined);
+});
+
+test("resolveBuckets: old whisperKit and new whisper spellings share one bucket (#3735)", () => {
+  const { engineBuckets } = resolveBuckets(makeData({
+    totalUsers: 4,
+    engineAndTierB: [
+      { distinct_id: "u1", engine: "parakeet", tier_b_provider: null },
+      { distinct_id: "u2", engine: "whisperKit", tier_b_provider: null },
+      { distinct_id: "u3", engine: "whisper", tier_b_provider: null },
+      { distinct_id: "u4", engine: "whisper", tier_b_provider: null },
+    ],
+    tierA: [],
+  }));
+  assert.deepEqual(engineBuckets, { parakeet: 1, whisper: 3 });
 });
 
 test("resolveBuckets: throws on completeness mismatch (the 100-row-truncation class of bug)", () => {
@@ -236,7 +251,7 @@ const GOLDEN_DATA = {
 };
 
 const GOLDEN_BUCKETS = {
-  engineBuckets: { parakeet: 100, whisperKit: 10 },
+  engineBuckets: { parakeet: 100, whisper: 10 },
   polishBuckets: { appleIntelligence: 64, egOne: 36, gemini: 4, none: 3, ollama: 2, openAI: 1 },
 };
 
@@ -254,7 +269,7 @@ test("adoption section: golden fixture matches the founder-approved report shape
   assert.match(msg, /Total users: 110 people used the app that day\./);
   // Percentages are against total_users (110), not net_dictations (1868).
   assert.match(msg, /Parakeet 100 \(91%\)/);
-  assert.match(msg, /WhisperKit 10 \(9%\)/);
+  assert.match(msg, /Whisper 10 \(9%\)/);
   assert.match(msg, /Apple Intelligence 64 \(58%\)/);
   assert.match(msg, /EG-1 \(our own model\) 36 \(33%\)/);
   assert.match(msg, /Net total dictations: 1868\./);
@@ -580,10 +595,10 @@ test("adoption section: a report predating the feature renders without it, and w
 
 test("adoption section: zero-count buckets are omitted, not shown as '(0%)'", () => {
   const msg = formatAdoption(GOLDEN_DATA, {
-    engineBuckets: { parakeet: 110, whisperKit: 0 },
+    engineBuckets: { parakeet: 110, whisper: 0 },
     polishBuckets: { appleIntelligence: 110, gemini: 0 },
   }).join("\n");
-  assert.doesNotMatch(msg, /WhisperKit 0/);
+  assert.doesNotMatch(msg, /Whisper 0/);
   assert.doesNotMatch(msg, /Gemini 0/);
 });
 

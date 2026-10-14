@@ -79,7 +79,7 @@ import Testing
 
       _ = await DictationAudioArchive.archive(
         transcriptID: id, sid: "s", raw: [0.1], fed: [],
-        outcome: .noSpeech, classification: "notEvaluated", backend: "whisperKit",
+        outcome: .noSpeech, classification: "notEvaluated", backend: "whisper",
         directory: dir)
 
       let folder = dir.appendingPathComponent(id.uuidString)

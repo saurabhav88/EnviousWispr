@@ -325,7 +325,7 @@
       case "force_cancel":
         switch activeBackend() {
         case .parakeet: await kernelDriver.forceCancelNow()
-        case .whisperKit: await whisperKitKernelDriver.forceCancelNow()
+        case .whisper: await whisperKitKernelDriver.forceCancelNow()
         }
         return "OK"
 

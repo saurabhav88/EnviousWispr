@@ -24,7 +24,7 @@ import Testing
   func recordingSnapshotReadsAdapterIdentity() {
     let telemetryState = KernelTelemetryState()
     let engine = FakeEngine(behavior: .batchSuccess(text: "x"), clock: FakeClock())
-    engine.engineIdentity = ASREngineIdentity(backendType: .whisperKit)
+    engine.engineIdentity = ASREngineIdentity(backendType: .whisper)
     let kernel = RecordingSessionKernel(
       adapter: engine,
       audioCapture: FakeAudioCapture(),
@@ -43,7 +43,7 @@ import Testing
       let snapshot = kernel.testGetRecordingSnapshot()
       #expect(snapshot != nil, "freezeRecordingSnapshot should populate the snapshot")
       #expect(
-        snapshot?.backend == "whisperKit",
+        snapshot?.backend == "whisper",
         "snapshot.backend must come from adapter.engineIdentity.rawValue, not a literal")
     #endif
   }

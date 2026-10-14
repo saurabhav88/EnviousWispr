@@ -53,7 +53,7 @@ enum EngineChoicePresentation {
   static func choice(for backend: ASRBackendType, parakeetModel: String) -> Choice {
     switch backend {
     case .parakeet: fast(parakeetModel: parakeetModel)
-    case .whisperKit: allLanguages
+    case .whisper: allLanguages
     }
   }
 
@@ -124,7 +124,7 @@ enum EngineChoicePresentation {
   }
 
   static let allLanguages = Choice(
-    backend: .whisperKit,
+    backend: .whisper,
     mapID: .transcriptionEngineAllLanguages,
     icon: "globe",
     title: LocalizedStringResource(

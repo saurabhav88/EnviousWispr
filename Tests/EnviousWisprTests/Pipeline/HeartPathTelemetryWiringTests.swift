@@ -36,7 +36,7 @@ import Testing
 /// dependencies are easy to stub. The WhisperKit equivalent would require
 /// constructing a real `WhisperKitBackend` actor; the asymmetry it depends
 /// on is already proven by the unit tests in
-/// `HeartPathTelemetryEmitterTests` plus the literal `backend: .whisperKit`
+/// `HeartPathTelemetryEmitterTests` plus the literal `backend: .whisper`
 /// argument at the WhisperKit init site. Adding a full pipeline init test
 /// for WhisperKit would not catch a regression the unit tests miss.
 @MainActor

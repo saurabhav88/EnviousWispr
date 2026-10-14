@@ -12,7 +12,7 @@ import Testing
 // freeze tests (`EngineIdentityFreezeTests` Test A / Test B) lock concrete
 // adapter construction to this factory at source level; these runtime tests
 // close the §7 gap the `any ASREngineAdapter` return type leaves open: the
-// compiler does not prove `makeWhisperKitAdapter` returns a `.whisperKit`
+// compiler does not prove `makeWhisperKitAdapter` returns a `.whisper`
 // identity adapter, so assert each make function yields the right identity.
 //
 // There is no shared `FakeASRManager` (the ASR-manager fakes are `private` to
@@ -29,7 +29,7 @@ import Testing
     #expect(adapter.engineIdentity.backendType == .parakeet)
   }
 
-  @Test("makeWhisperKitAdapter returns a .whisperKit-identity adapter")
+  @Test("makeWhisperKitAdapter returns a .whisper-identity adapter")
   func makeWhisperKitAdapterHasWhisperKitIdentity() {
     // `WhisperKitBackend()` is the lazy actor (no CoreML load until prepare()),
     // matching `KernelDictationDriverFactoryWhisperKitTests`.
@@ -40,7 +40,7 @@ import Testing
       engineMutationScope: .alwaysAllowedForTesting,
       vendorDecodeOccupancy: VendorDecodeOccupancy(),
       deliveredModelIdentity: nil)
-    #expect(adapter.engineIdentity.backendType == .whisperKit)
+    #expect(adapter.engineIdentity.backendType == .whisper)
   }
 }
 

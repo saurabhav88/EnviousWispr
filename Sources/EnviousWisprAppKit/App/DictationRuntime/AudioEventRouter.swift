@@ -51,7 +51,7 @@ final class AudioEventRouter {
       switch self.resolveActiveCaptureBackend() {
       case .parakeet:
         self.kernelDriver.handleEngineInterruption(cause)
-      case .whisperKit:
+      case .whisper:
         self.whisperKitKernelDriver.handleEngineInterruption(cause)
       case nil:
         break

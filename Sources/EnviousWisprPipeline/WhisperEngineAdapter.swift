@@ -325,7 +325,7 @@ final class WhisperEngineAdapter: ASREngineAdapter, @unchecked Sendable {
   /// Self-declared identity. The kernel reads from here at every site that
   /// previously hard-coded an engine literal (PR-5 Rung 1).
   var engineIdentity: ASREngineIdentity {
-    ASREngineIdentity(backendType: .whisperKit)
+    ASREngineIdentity(backendType: .whisper)
   }
 
   /// #1707 Phase 2: measured 2026-07-20 against the live dev app — 7 real
@@ -565,7 +565,7 @@ final class WhisperEngineAdapter: ASREngineAdapter, @unchecked Sendable {
       let languageForLog = options.language ?? "auto"
       Task {
         await AppLogger.shared.log(
-          "WhisperKit recording started (batch mode, language: \(languageForLog), \(reason))",
+          "Whisper recording started (batch mode, language: \(languageForLog), \(reason))",
           level: .info, category: "WhisperEngineAdapter"
         )
       }
@@ -591,7 +591,7 @@ final class WhisperEngineAdapter: ASREngineAdapter, @unchecked Sendable {
       }
       Task {
         await AppLogger.shared.log(
-          "WhisperKit recording started (batch mode, streaming requested but model not loaded)",
+          "Whisper recording started (batch mode, streaming requested but model not loaded)",
           level: .info, category: "WhisperEngineAdapter"
         )
       }
@@ -620,7 +620,7 @@ final class WhisperEngineAdapter: ASREngineAdapter, @unchecked Sendable {
     }
     Task {
       await AppLogger.shared.log(
-        "WhisperKit recording started (streaming, language: \(options.language ?? "?"))",
+        "Whisper recording started (streaming, language: \(options.language ?? "?"))",
         level: .info, category: "WhisperEngineAdapter"
       )
     }
@@ -1018,7 +1018,7 @@ final class WhisperEngineAdapter: ASREngineAdapter, @unchecked Sendable {
       language: asrLanguage,
       duration: audioDurationSec,
       processingTime: asrLatencySec,
-      backendType: .whisperKit,
+      backendType: .whisper,
       segmentTimings: asrSegmentTimings
     )
     lastResult = result
@@ -1438,7 +1438,7 @@ final class WhisperEngineAdapter: ASREngineAdapter, @unchecked Sendable {
       sessionDegradedFlushResult = result
       Task { [strategy = result.strategy] in
         await AppLogger.shared.log(
-          "WhisperKit streaming flush empty (strategy=\(strategy)) — falling back to batch",
+          "Whisper streaming flush empty (strategy=\(strategy)) — falling back to batch",
           level: .info, category: "WhisperEngineAdapter"
         )
       }
@@ -1481,12 +1481,12 @@ final class WhisperEngineAdapter: ASREngineAdapter, @unchecked Sendable {
       language: decodeOptions.language,
       duration: audioDurationSec,
       processingTime: Double(flushMs) / 1000.0,
-      backendType: .whisperKit
+      backendType: .whisper
     )
     lastResult = asrResult
     Task { [chars = trimmed.count, decodes = result.decodeCount, tailMs = result.tailDecodeMs] in
       await AppLogger.shared.log(
-        "WhisperKit streaming flush complete: chars=\(chars), decodes=\(decodes), "
+        "Whisper streaming flush complete: chars=\(chars), decodes=\(decodes), "
           + "tailDecodeMs=\(tailMs) (\(flushMs)ms total)",
         level: .info, category: "WhisperEngineAdapter"
       )
@@ -1509,7 +1509,7 @@ final class WhisperEngineAdapter: ASREngineAdapter, @unchecked Sendable {
     // already-captured audio, not a synthetic stand-in. `nil` controller
     // (production, and every test that doesn't opt in) never forces a failure.
     if batchDecodeFaultController?.shouldForceFailBatchDecode(
-      backend: .whisperKit, sampleCount: samples.count) == true
+      backend: .whisper, sampleCount: samples.count) == true
     {
       return .failed(ASREngineError.decodeFailed)
     }
@@ -1590,7 +1590,7 @@ final class WhisperEngineAdapter: ASREngineAdapter, @unchecked Sendable {
       let batchMs = Int((CFAbsoluteTimeGetCurrent() - batchStart) * 1000)
       Task { [chars = trimmed.count] in
         await AppLogger.shared.log(
-          "WhisperKit batch decode complete: chars=\(chars) (\(batchMs)ms)",
+          "Whisper batch decode complete: chars=\(chars) (\(batchMs)ms)",
           level: .info, category: "WhisperEngineAdapter"
         )
       }
@@ -1607,7 +1607,7 @@ final class WhisperEngineAdapter: ASREngineAdapter, @unchecked Sendable {
       // `KernelLifecycleTelemetrySink`.
       Task { [desc = error.localizedDescription] in
         await AppLogger.shared.log(
-          "WhisperKit batch decode failed: \(desc)",
+          "Whisper batch decode failed: \(desc)",
           level: .info, category: "WhisperEngineAdapter"
         )
       }

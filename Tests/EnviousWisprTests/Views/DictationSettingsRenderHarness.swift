@@ -237,9 +237,9 @@ struct DictationSettingsRenderHarness {
       let fake = FakeEngineDeps(selected: .parakeet, active: .parakeet)
       fake.onWarmAwait = { await warmGate.wait() }
       let coordinator = fake.makeStartedCoordinator()
-      fake.selected = .whisperKit
+      fake.selected = .whisper
       coordinator.poke(.settingsChanged)
-      let arrived = await enginePoll { coordinator.status.warmInFlight == .whisperKit }
+      let arrived = await enginePoll { coordinator.status.warmInFlight == .whisper }
       try #require(arrived, "the fake coordinator never reached its preparing state")
       hostedRoot = AnyView(hostedRoot.environment(coordinator))
     }
@@ -312,11 +312,11 @@ struct DictationSettingsRenderHarness {
       ("paused", .paused), ("ready", .ready), ("error", .error("Model files could not be verified. Try again.")),
     ]
     var scenarios: [(DictationTab, Scenario)] = engineStates.map { label, state in
-      (.engine, Scenario(label: "engine-\(label)", backend: .whisperKit, setupState: state))
+      (.engine, Scenario(label: "engine-\(label)", backend: .whisper, setupState: state))
     }
-    scenarios.append((.engine, Scenario(label: "engine-expanded", backend: .whisperKit, setupState: .ready, expanded: true)))
-    scenarios.append((.engine, Scenario(label: "engine-removing", backend: .whisperKit, setupState: .ready, removing: true)))
-    scenarios.append((.engine, Scenario(label: "engine-preparing", backend: .whisperKit, setupState: .ready, preparing: true)))
+    scenarios.append((.engine, Scenario(label: "engine-expanded", backend: .whisper, setupState: .ready, expanded: true)))
+    scenarios.append((.engine, Scenario(label: "engine-removing", backend: .whisper, setupState: .ready, removing: true)))
+    scenarios.append((.engine, Scenario(label: "engine-preparing", backend: .whisper, setupState: .ready, preparing: true)))
     scenarios += [
       (.livePreview, Scenario(label: "preview-off", previewOn: false)),
       (.livePreview, Scenario(label: "preview-auto", mode: .auto)),

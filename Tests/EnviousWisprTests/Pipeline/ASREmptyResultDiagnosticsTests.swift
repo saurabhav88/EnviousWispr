@@ -75,7 +75,7 @@ struct ASREmptyResultDiagnosticsTests {
   @Test("WhisperKit diagnostics keep comparable base fields and worker subset")
   func whisperKitDiagnosticsShape() {
     let diagnostics = ASREmptyResultDiagnostics(
-      backend: "whisperKit",
+      backend: "whisper",
       hasSpeechEvidence: true,
       rawSampleCount: 32_000,
       vadSegmentCount: 2,
@@ -102,7 +102,7 @@ struct ASREmptyResultDiagnosticsTests {
 
     let extra = diagnostics.sentryExtra()
 
-    #expect(extra["backend"] as? String == "whisperKit")
+    #expect(extra["backend"] as? String == "whisper")
     #expect(extra["mode"] == nil)
     #expect(extra["asr.batch_rescue_attempted"] as? Bool == true)
     #expect(extra["asr.batch_rescue_result_chars"] as? Int == 0)
@@ -124,7 +124,7 @@ struct ASREmptyResultDiagnosticsTests {
     // every incremental field through to the rendered extra (parity with OLD
     // `WhisperKitPipeline.swift:1013-1017`).
     var diagnostics = ASREmptyResultDiagnostics(
-      backend: "whisperKit",
+      backend: "whisper",
       hasSpeechEvidence: true,
       rawSampleCount: 32_000,
       vadSegmentCount: 2,

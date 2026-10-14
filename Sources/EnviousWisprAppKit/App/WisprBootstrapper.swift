@@ -722,8 +722,8 @@ package final class WisprBootstrapper {
           // would actually route to — emitting on its readiness alone would
           // tell the harness the wrong engine warmed, recreating the exact
           // ColdPressGuard (#879) false alarm this marker exists to avoid.
-          if settings.selectedBackend == .whisperKit,
-            asrManager.activeBackendType == .whisperKit,
+          if settings.selectedBackend == .whisper,
+            asrManager.activeBackendType == .whisper,
             whisperKitKernelDriver?.engineReadiness == .ready
           {
             OverlayFirstRenderMarkers.emitEngineReadyOnce()
@@ -1401,13 +1401,13 @@ package final class WisprBootstrapper {
         selectedBackend: { settings.selectedBackend },
         activeBackend: { [asrManager] in asrManager.activeBackendType },
         readiness: { [kernelDriver, whisperKitKernelDriver] backend in
-          (backend == .whisperKit ? whisperKitKernelDriver : kernelDriver).engineReadiness
+          (backend == .whisper ? whisperKitKernelDriver : kernelDriver).engineReadiness
         },
         // #2787: an engine whose abandoned decode is still running is ACTIVE
         // for switching purposes, whatever the pipeline state says.
         isEngineActive: { [kernelDriver, whisperKitKernelDriver, engineLease] backend in
           engineLease.currentHolder == .abandonedDecode
-            || (backend == .whisperKit ? whisperKitKernelDriver : kernelDriver).state.isActive
+            || (backend == .whisper ? whisperKitKernelDriver : kernelDriver).state.isActive
         },
         isRecovering: { [weak recoveryCoordinator] in recoveryCoordinator?.isRecovering ?? false },
         // `isEngineHeld`, not `isRunning`: Stop flips the visible state at the
@@ -1419,7 +1419,7 @@ package final class WisprBootstrapper {
           backend == .parakeet ? true : setup.whisperKitSetup.setupState == .ready
         },
         stateLabel: { [kernelDriver, whisperKitKernelDriver] backend in
-          (backend == .whisperKit ? whisperKitKernelDriver : kernelDriver).state.telemetryLabel
+          (backend == .whisper ? whisperKitKernelDriver : kernelDriver).state.telemetryLabel
         },
         performSwitch: { [asrManager, parakeetUpgrade] backend in
           // #3546 E21: an actual transition INTO Parakeet is a selection point;
@@ -1433,7 +1433,7 @@ package final class WisprBootstrapper {
           ASRModelScopeOwner.shared.activate(backend)
         },
         warm: { [kernelDriver, whisperKitKernelDriver] backend in
-          await (backend == .whisperKit ? whisperKitKernelDriver : kernelDriver)
+          await (backend == .whisper ? whisperKitKernelDriver : kernelDriver)
             .ensureEngineWarm(reason: .engineSwap)
         },
         // #1707 Phase 3 (§3.2, row 4) / #1741 Chunk 7: `startWarm()`'s
@@ -1652,7 +1652,7 @@ package final class WisprBootstrapper {
       // missing authority.
       isSelectedModelInstalled: { [weak engineCoordinator, weak setup] in
         guard let engineCoordinator else { return true }
-        if engineCoordinator.status.selected == .whisperKit,
+        if engineCoordinator.status.selected == .whisper,
           setup?.whisperKitSetup.isRemoving == true
         {
           return false
@@ -1811,7 +1811,7 @@ package final class WisprBootstrapper {
           footprintMB: sample.footprintMB, minutesSinceLaunch: sample.minutesSinceLaunch,
           wordCheckLoaded: sample.wordCheckLoaded, wordCheckWanted: sample.wordCheckWanted,
           // #3546 §3.7 T1: the active engine's loaded model, nil when none is loaded.
-          model: asrManager.activeBackendType == .whisperKit
+          model: asrManager.activeBackendType == .whisper
             ? whisperKitKernelDriver.servingModelAttribution
             : kernelDriver.servingModelAttribution)
       })

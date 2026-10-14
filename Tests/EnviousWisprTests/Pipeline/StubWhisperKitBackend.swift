@@ -34,7 +34,7 @@ actor StubWhisperKitBackend: WhisperBackendDriving {
     language: "en",
     duration: 1,
     processingTime: 0.1,
-    backendType: .whisperKit
+    backendType: .whisper
   )
   var observeLIDResult: LIDObservationBatch = .observations([])
   /// When set, `makeStreamingSession` returns this session; otherwise nil

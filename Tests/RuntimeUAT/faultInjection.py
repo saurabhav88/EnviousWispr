@@ -82,7 +82,7 @@ class ScenarioMeta:
     name: str
     lane: str  # "A" | "B" | "B'"
     family: str  # timing | stall | settings | app-quit | model-load | backend-switch | bt-route
-    backends: list[str]  # ["parakeet"] | ["whisperKit"] | ["both"]
+    backends: list[str]  # ["parakeet"] | ["whisper"] | ["both"]
     runtime_budget_seconds: float
     founder_required: bool
     negative_control: str
@@ -351,7 +351,7 @@ def _parse_query_state(reply: str) -> dict[str, str]:
 
 
 def _backend_pipeline_key(backend: str) -> str:
-    # `backend=.parakeet` / `backend=.whisperKit` → which pipeline-state key matters
+    # `backend=.parakeet` / `backend=.whisper` → which pipeline-state key matters
     if "whisper" in backend.lower():
         return "whisperkit"
     return "parakeet"
@@ -1728,7 +1728,7 @@ def A8a_cancel_during_parakeet_load(**_) -> dict:
         name="A8b_cancel_during_whisperkit_load",
         lane="A",
         family="model-load",
-        backends=["whisperKit"],
+        backends=["whisper"],
         runtime_budget_seconds=3.0,
         founder_required=False,
         negative_control="Remove WhisperKit prepare-state-flip at WhisperKitPipeline.swift:1078-1084; state stays inconsistent",
@@ -1786,7 +1786,7 @@ def A9_backend_switch_mid_record(**_) -> dict:
         _stop_recording_locked(settle_s=2.0)
     import settings_nav
     try:
-        pre_backend = _read_setting("selectedBackend")   # "parakeet" | "whisperKit"
+        pre_backend = _read_setting("selectedBackend")   # "parakeet" | "whisper"
     except settings_nav.PreferenceError as e:
         return {"terminal": False, "reason": f"refused before any change: {e}",
                 "state": query_state()}

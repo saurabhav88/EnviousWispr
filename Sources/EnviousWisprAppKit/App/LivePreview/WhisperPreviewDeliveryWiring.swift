@@ -115,7 +115,7 @@ enum WhisperPreviewDeliveryWiring {
     case .parakeet:
       // No language condition: the adapter streams whenever the toggle is on.
       return true
-    case .whisperKit:
+    case .whisper:
       // Degrades to batch on `.auto`, which decodes AFTER the recording rather
       // than throughout it — no continuous overlap, so no refusal.
       switch settings.languageMode {

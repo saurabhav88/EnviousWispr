@@ -9,7 +9,7 @@ import Testing
 // runtime sentinel in `EngineIdentityPropagationTests` covers the
 // natural-flow plumbing; this freeze test catches a future refactor that
 // accidentally hard-codes an engine again at the source level — a `.parakeet`
-// or `.whisperKit` literal compiles fine and would pass type-checking.
+// or `.whisper` literal compiles fine and would pass type-checking.
 //
 // Rung 3 (#827) extended the scan: both engine literals are banned at every
 // reader site, and `KernelLifecycleTelemetrySink` is added to the reader-site
@@ -23,28 +23,28 @@ import Testing
   /// nor `ParakeetEngineAdapter` (the concrete type name).
   private static let bannedParakeetLiteral = #"\.parakeet\b"#
 
-  /// Matches the `.whisperKit` enum-case literal. Does NOT match
+  /// Matches the `.whisper` enum-case literal. Does NOT match
   /// `WhisperKit` (capitalized engine name) nor `WhisperEngineAdapter` /
   /// `WhisperKitBackend` type names.
-  private static let bannedWhisperKitLiteral = #"\.whisperKit\b"#
+  private static let bannedWhisperLiteral = #"\.whisper\b"#
 
   /// All banned engine-identity literals — both must be absent at every
   /// reader site (epic §3.4, PR-5 Rung 1 + Rung 3).
   private static let bannedIdentityLiterals: [(name: String, pattern: String)] = [
     ("parakeet", bannedParakeetLiteral),
-    ("whisperKit", bannedWhisperKitLiteral),
+    ("whisper", bannedWhisperLiteral),
   ]
 
   /// Sites that must read identity from the adapter and must not carry any
   /// banned literal. PR-5 Rung 3 widened the literal scan from `.parakeet`
-  /// only to `.parakeet` AND `.whisperKit` — both engines are now banned at
+  /// only to `.parakeet` AND `.whisper` — both engines are now banned at
   /// every reader site (epic §3.4: kernel never branches on engine identity).
   ///
   /// `KernelLifecycleTelemetrySink` is intentionally NOT in this list: it
   /// receives `backend: ASRBackendType` via init (factory-sourced from
   /// `adapter.engineIdentity.backendType`), so it doesn't reference
   /// `adapter.engineIdentity` directly. It also carries one legitimate
-  /// `backend == .whisperKit` routing-policy switch at
+  /// `backend == .whisper` routing-policy switch at
   /// `KernelLifecycleTelemetrySink.swift:399` (only emits the backend tag
   /// in capture-failure extras for WhisperKit). That switch is pre-Rung-3
   /// behavior unrelated to the kernel-side identity-reader contract this
@@ -55,7 +55,7 @@ import Testing
     "Sources/EnviousWisprPipeline/KernelFinalizationWiring.swift",
     "Sources/EnviousWisprPipeline/RecordingSessionKernel.swift",
     // #878: the ASR-interruption direct-emit path reads `engineIdentity.displayName`
-    // for its Sentry label; was an `== .whisperKit` literal until PR-6 debt cleanup.
+    // for its Sentry label; was an `== .whisper` literal until PR-6 debt cleanup.
     "Sources/EnviousWisprPipeline/KernelDictationDriver.swift",
   ]
 
@@ -364,16 +364,16 @@ import Testing
       "`.parakeet` literal must be flagged by the scanner")
   }
 
-  @Test("a source line with `.whisperKit` is flagged (PR-5 Rung 3 adversarial mirror)")
+  @Test("a source line with `.whisper` is flagged (PR-5 Rung 3 adversarial mirror)")
   func adversarialWhisperKitRegressionFlagged() {
     let source = """
       let snapshot = KernelRecordingSnapshotTelemetry(
-        backend: ASRBackendType.whisperKit.rawValue,
+        backend: ASRBackendType.whisper.rawValue,
         audioRoute: route, wasStreaming: false)
       """
     #expect(
-      Self.regexFlags(source: source, pattern: Self.bannedWhisperKitLiteral),
-      "`.whisperKit` literal must be flagged by the scanner")
+      Self.regexFlags(source: source, pattern: Self.bannedWhisperLiteral),
+      "`.whisper` literal must be flagged by the scanner")
   }
 
   // MARK: Negative controls — capitalized engine-name references are not flagged
@@ -401,7 +401,7 @@ import Testing
       // WhisperKitBackend lives in EnviousWisprASR; reach via the package seam.
       """
     #expect(
-      Self.regexFlags(source: source, pattern: Self.bannedWhisperKitLiteral) == false,
+      Self.regexFlags(source: source, pattern: Self.bannedWhisperLiteral) == false,
       "capitalized `WhisperKit` engine-name references must NOT be flagged")
   }
 

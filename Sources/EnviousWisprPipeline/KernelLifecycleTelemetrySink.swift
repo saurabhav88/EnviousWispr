@@ -537,7 +537,7 @@ final class KernelLifecycleTelemetrySink {
       // ("ASR XPC service crashed (WhisperKit)") so Sentry can slice the
       // crash bucket by backend again.
       let bv = backend.rawValue
-      let backendLabel = backend == .whisperKit ? "WhisperKit" : "Parakeet"
+      let backendLabel = backend == .whisper ? "Whisper" : "Parakeet"
       // #1707: which salvage outcome preceded this terminal — absent when the
       // interruption was never salvage-eligible (recovery not attempted).
       var extra: [String: Any] = ["was_recording": wasRecording, "backend": bv]
@@ -916,7 +916,7 @@ final class KernelLifecycleTelemetrySink {
       error: error,
       audioCapture: audioCapture,
       failureMode: failureMode,
-      backend: backend == .whisperKit ? backend.rawValue : nil
+      backend: backend == .whisper ? backend.rawValue : nil
     )
   }
 

@@ -10,7 +10,7 @@ import Testing
 ///
 /// SetupCoordinator owns the WhisperKit preload observer that previously lived
 /// on the former root state. The observer is gated by two signals: `asrManager.activeBackendType`
-/// (must be `.whisperKit`) and `whisperKitSetup.setupState` (must reach `.ready`).
+/// (must be `.whisper`) and `whisperKitSetup.setupState` (must reach `.ready`).
 /// When both are satisfied, the injected `preloadAction` closure fires once.
 ///
 /// These tests exercise the gating without touching any real WhisperKit / Ollama
@@ -63,7 +63,7 @@ struct SetupCoordinatorTests {
       "https://github.com/saurabhav88/EnviousWispr/issues/898",
       "repeated-start cancellation untested"))
   func repeatedStartCoalescesToSinglePreload() async throws {
-    let fakeASR = FakeASRManager(backend: .whisperKit)
+    let fakeASR = FakeASRManager(backend: .whisper)
     let counter = InvocationCounter()
     let coord = SetupCoordinator(
       asrManager: fakeASR,
@@ -245,7 +245,7 @@ struct SetupCoordinatorTests {
 
   @Test("cleanup() also cancels migration/preload tasks")
   func cleanupCancelsMigrationAndPreloadTasks() async {
-    let fakeASR = FakeASRManager(backend: .whisperKit)
+    let fakeASR = FakeASRManager(backend: .whisper)
     let migrationLog = ProbeLog()
     let migrationGate = ReleaseGate()
     let migrationStarted = AsyncStream.makeStream(of: Void.self)
@@ -280,7 +280,7 @@ struct SetupCoordinatorTests {
     // task's own `guard !Task.isCancelled else { return }` (checked right
     // after this await) must stop it from calling `detectState()` and
     // `startPreloadObservation()` — and since this test's fake backend is
-    // `.whisperKit` with `setupStateReader` fixed to `.ready`, preload would
+    // `.whisper` with `setupStateReader` fixed to `.ready`, preload would
     // fire almost immediately if that guard were missing.
     #expect(await migrationLog.triggers.contains("migration-completed"))
     #expect(
@@ -335,7 +335,7 @@ struct SetupCoordinatorTests {
   func cleanupBeforeMigrationTaskStartsPreventsEntry() async {
     let migrationLog = ProbeLog()
     let coord = SetupCoordinator(
-      asrManager: FakeASRManager(backend: .whisperKit),
+      asrManager: FakeASRManager(backend: .whisper),
       whisperKitSetup: WhisperKitSetupService(engineMutationScope: .alwaysAllowedForTesting),
       setupStateReader: { .ready },
       runDocumentsMigration: { await migrationLog.record("migration-entered") },

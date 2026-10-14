@@ -128,7 +128,7 @@ struct FileImportSpeakerTelemetryBucketTests {
       }
       defer { TelemetryService.shared.testEventHook = nil }
       TelemetryService.shared.trackFileImportCompleted(
-        outcome: .success, asrBackend: .whisperKit, model: nil, durationSeconds: 30,
+        outcome: .success, asrBackend: .whisper, model: nil, durationSeconds: 30,
         asrOutcome: .success, polishOutcome: .skipped, polishProvider: .none,
         polishModel: "should-not-appear")
       #expect(recorder.event?.stringProps["polish_outcome"] == "skipped")

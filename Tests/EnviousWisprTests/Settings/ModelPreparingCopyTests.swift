@@ -25,8 +25,8 @@ struct ModelPreparingCopyTests {
   /// comment records that population and copy must be reviewed together.
   @Test("only WhisperKit's own warm shows the preparing copy")
   func whisperKitWarmShowsPreparing() {
-    #expect(ModelPreparingCopy.isPreparing(warmInFlight: .whisperKit))
-    #expect(ModelPreparingCopy.label(warmInFlight: .whisperKit) == ModelPreparingCopy.preparing)
+    #expect(ModelPreparingCopy.isPreparing(warmInFlight: .whisper))
+    #expect(ModelPreparingCopy.label(warmInFlight: .whisper) == ModelPreparingCopy.preparing)
   }
 
   /// Two-way control. Without these the mapping could return preparing unconditionally and

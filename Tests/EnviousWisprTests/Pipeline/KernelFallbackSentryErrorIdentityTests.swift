@@ -35,7 +35,7 @@ struct KernelFallbackSentryErrorIdentityTests {
   @Test("every KernelFallbackSentryError case keeps the exact production fingerprint")
   func kernelFallbackPinLock() {
     let cases: [(KernelFallbackSentryError, String, SentryBreadcrumb.ErrorCategory)] = [
-      (.xpcServiceError(backendLabel: "WhisperKit"), "EnviousWispr#-3", .xpcServiceError),
+      (.xpcServiceError(backendLabel: "Whisper"), "EnviousWispr#-3", .xpcServiceError),
       (.modelLoadFailed, "EnviousWispr#-10", .modelLoadFailed),
       (.captureStartFailed, "EnviousWispr#-11", .audioCaptureFailed),
       (.noMicrophoneFound, "EnviousWispr#-16", .audioCaptureFailed),
@@ -53,19 +53,19 @@ struct KernelFallbackSentryErrorIdentityTests {
 
   @Test("xpcServiceError's associated backendLabel never changes the pinned descriptor")
   func xpcServiceErrorIgnoresBackendLabel() {
-    let whisperKit = KernelFallbackSentryError.xpcServiceError(backendLabel: "WhisperKit")
+    let whisperKit = KernelFallbackSentryError.xpcServiceError(backendLabel: "Whisper")
     let parakeet = KernelFallbackSentryError.xpcServiceError(backendLabel: "Parakeet")
     #expect(
       SentryBreadcrumb.structuredDescriptor(whisperKit)
         == SentryBreadcrumb.structuredDescriptor(parakeet))
-    #expect(whisperKit.errorDescription == "ASR XPC service crashed (WhisperKit)")
+    #expect(whisperKit.errorDescription == "ASR XPC service crashed (Whisper)")
     #expect(parakeet.errorDescription == "ASR XPC service crashed (Parakeet)")
   }
 
   @Test("all 7 declared KernelFallbackSentryError identities are unique")
   func kernelFallbackIdentitiesAreUnique() {
     let cases: [KernelFallbackSentryError] = [
-      .xpcServiceError(backendLabel: "WhisperKit"), .modelLoadFailed, .captureStartFailed,
+      .xpcServiceError(backendLabel: "Whisper"), .modelLoadFailed, .captureStartFailed,
       .noMicrophoneFound, .transcriptionFailed, .permissionDenied, .prepareFailed,
     ]
     #expect(Set(cases.map(\.sentryFingerprintDescriptor)).count == cases.count)
@@ -109,7 +109,7 @@ struct KernelFallbackSentryErrorIdentityTests {
   @Test(
     "KernelFallbackSentryError's event carries the production title, fingerprint and identity tag")
   func kernelFallbackEventShape() {
-    let error = KernelFallbackSentryError.xpcServiceError(backendLabel: "WhisperKit")
+    let error = KernelFallbackSentryError.xpcServiceError(backendLabel: "Whisper")
 
     let event = SentryBreadcrumb.makeHandledErrorEvent(
       error, category: .xpcServiceError, stage: "asr", environment: Self.env)

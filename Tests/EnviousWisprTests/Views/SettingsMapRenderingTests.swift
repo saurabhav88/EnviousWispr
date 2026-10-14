@@ -268,19 +268,19 @@ struct SettingsMapRenderingTests {
     case "": ordinary = true
     case "choicesOpen": scenario.expanded = true
     case "allLanguagesAuto":
-      scenario.backend = .whisperKit
+      scenario.backend = .whisper
       scenario.mode = .auto
     case "allLanguagesReady":
-      scenario.backend = .whisperKit
+      scenario.backend = .whisper
       scenario.setupState = .ready
     case "allLanguagesDownloading":
-      scenario.backend = .whisperKit
+      scenario.backend = .whisper
       scenario.setupState = .downloading(progress: 0.4, status: "")
     case "allLanguagesPaused":
-      scenario.backend = .whisperKit
+      scenario.backend = .whisper
       scenario.setupState = .paused
     case "allLanguagesFailed":
-      scenario.backend = .whisperKit
+      scenario.backend = .whisper
       scenario.setupState = .error("fixture")
     case "switchesOn":
       scenario.stopOnSilence = true
