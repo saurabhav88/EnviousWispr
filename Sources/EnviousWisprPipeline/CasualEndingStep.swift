@@ -28,12 +28,24 @@ final class CasualEndingStep: TextProcessingStep {
   var maxDuration: Duration { .milliseconds(50) }
 
   func process(_ context: TextProcessingContext) async throws -> TextProcessingContext {
+    // The digit-dot rule asks "is this take English?". The ITN gate already answered that for this take
+    // (a nil language on a non-LID engine runs the English route); reuse its answer, never re-derive it.
+    let language: String?
+    switch context.cleanupRoute {
+    case .some(.english):
+      language = "en"
+    case .some(.language(let code)):
+      language = code
+    case .some(.neutral(_)), .none:
+      language = context.language
+    }
+
     var ctx = context
     ctx.text = CasualEnding.removingFinalFullStop(
-      context.text, language: context.language, spokenFinalFullStop: context.spokenFinalFullStop)
+      context.text, language: language, spokenFinalFullStop: context.spokenFinalFullStop)
     if let polished = context.polishedText {
       ctx.polishedText = CasualEnding.removingFinalFullStop(
-        polished, language: context.language, spokenFinalFullStop: context.spokenFinalFullStop)
+        polished, language: language, spokenFinalFullStop: context.spokenFinalFullStop)
     }
     return ctx
   }

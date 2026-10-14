@@ -175,6 +175,12 @@ public struct TextProcessingContext: Sendable {
   /// `CasualEndingStep`. False when the engine already wrote the mark itself: provenance is then lost.
   public var spokenFinalFullStop = false
 
+  /// #3737 (cloud review): the cleanup route ITN selected for this take; nil when no ITN route reached
+  /// this context (including the runner discarding ITN after its outer timeout). Records routing, not
+  /// successful normalization. Written ONLY by `InverseTextNormalizationStep`; read by `CasualEndingStep`,
+  /// so Casual mode's English decision is the gate's, never a second one.
+  var cleanupRoute: InverseTextNormalizationGate.Route? = nil
+
   public init(text: String, language: String?) {
     self.text = text
     self.language = language

@@ -35,7 +35,8 @@ package enum CasualEnding {
 
   /// - Parameters:
   ///   - text: the take's text.
-  ///   - language: the take's resolved language, any form (`en`, `en-GB`); normalised here.
+  ///   - language: ITN-route language when available; otherwise the resolved language. Any form
+  ///     (`en`, `en-GB`); normalised here.
   ///   - spokenFinalFullStop: the spoken-punctuation pass converted a "period" command at the end.
   /// - Returns: `text` without its final full stop, or `text` unchanged.
   package static func removingFinalFullStop(

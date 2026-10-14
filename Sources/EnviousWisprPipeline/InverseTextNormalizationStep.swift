@@ -342,6 +342,9 @@ final class InverseTextNormalizationStep: TextProcessingStep {
     let route = InverseTextNormalizationGate.route(
       language: language, englishVetoed: context.englishRulesVetoed,
       backendSupportsLID: backendSupportsLID, registry: registry)
+    // #3737: carry the selected route, so Casual mode reads this decision instead of making its own.
+    var ctx = context
+    ctx.cleanupRoute = route
     let rules: LanguageRuleSet?
     let admitted: Bool
     let skipReason: String?
@@ -524,7 +527,7 @@ final class InverseTextNormalizationStep: TextProcessingStep {
         punctuationStatus: punctuation.status, punctuationRulesFired: punctuation.rulesFired,
         punctuationLanguage: punctuationLanguage,
         punctuationResolutionSource: punctuationResolutionSource)
-      return context
+      return ctx
     }
 
     let changed = converted != input
@@ -538,7 +541,6 @@ final class InverseTextNormalizationStep: TextProcessingStep {
     // for every step (DEBUG-gated, local-only) — no duplicate logging here.
     // #3737: the provenance travels even when the text is unchanged; a timeout returned above, so an
     // abandoned run never sets it.
-    var ctx = context
     ctx.spokenFinalFullStop = maybeResult?.spokenFinalFullStop ?? false
     if !changed { return ctx }
 

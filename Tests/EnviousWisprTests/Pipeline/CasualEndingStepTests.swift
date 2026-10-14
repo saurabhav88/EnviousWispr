@@ -80,6 +80,32 @@ struct CasualEndingStepTests {
     #expect(out.polishFallbackReason == SnippetFinalizer.sentinelLossReason)
   }
 
+  @Test("The ITN route decides English for the digit rule, not the raw language field (cloud review)")
+  func routeDecidesTheDigitRule() async throws {
+    let step = CasualEndingStep()
+    step.casualModeEnabled = true
+
+    var english = TextProcessingContext(text: "See you at 5.", language: nil)
+    english.cleanupRoute = .english
+    #expect(try await step.process(english).text == "See you at 5")
+
+    var german = TextProcessingContext(text: "Wir treffen uns am 3.", language: "de")
+    german.cleanupRoute = .language("de")
+    #expect(try await step.process(german).text == "Wir treffen uns am 3.")
+
+    var neutral = TextProcessingContext(text: "See you at 5.", language: nil)
+    neutral.cleanupRoute = .neutral("lid_backend_nil")
+    #expect(try await step.process(neutral).text == "See you at 5.")
+
+    let noRoute = TextProcessingContext(text: "See you at 5.", language: nil)
+    #expect(try await step.process(noRoute).text == "See you at 5.")
+
+    var spoken = TextProcessingContext(text: "See you at 5.", language: nil)
+    spoken.cleanupRoute = .english
+    spoken.spokenFinalFullStop = true
+    #expect(try await step.process(spoken).text == "See you at 5.")
+  }
+
   @Test("Casual Ending is the last step of the dictation chain")
   func lastInChain() {
     let steps = LimbSteps(

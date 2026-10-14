@@ -379,6 +379,20 @@ struct SpokenPunctuationRoutingTests {
     }
   }
 
+  @Test("The selected cleanup route reaches the context on success and on timeout (#3737)")
+  func routeReachesContext() async throws {
+    let english = step(Self.off, lid: false)
+    let out = try await english.process(ctx("see you at 5.", language: nil))
+    #expect(out.cleanupRoute == .english)
+
+    let timedOut = InverseTextNormalizationStep(requestWork: Self.slowWork)
+    timedOut.spokenPunctuation = Self.off
+    timedOut.backendSupportsLID = false
+    let late = try await timedOut.process(ctx("see you at 5.", language: nil))
+    #expect(late.text == "see you at 5.")
+    #expect(late.cleanupRoute == .english, "a timeout keeps the routing decision")
+  }
+
   @Test("Unchanged text still carries successful provenance (#3737)")
   func unchangedCarriesProvenance() async throws {
     let itn = InverseTextNormalizationStep(requestWork: { request in
