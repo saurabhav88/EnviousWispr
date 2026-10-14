@@ -333,7 +333,7 @@ enum SettingsProjection {
   /// surfaces run one redaction policy. Lifted for #2772 for the same reason the discovery
   /// repair was: a second copy is how the two would come to disagree, and here the
   /// disagreement is whether a user's own words leave their Mac.
-  private static func model(provider: LLMProvider, id: String) -> String {
+  static func model(provider: LLMProvider, id: String) -> String {
     switch provider {
     case .appleIntelligence: return "apple-intelligence"
     // #1271: native EG-1 — the model id is OUR fixed literal from the

@@ -173,6 +173,7 @@ final class PipelineSettingsSync {
   /// Custom words are NOT seeded here — `CustomWordsPropagator` (registered
   /// in the former root state init) owns that fanout. See Phase D (#496).
   func applyInitialSettings(_ settings: SettingsManager) {
+    syncPolishDiagnosticSelection(settings)
     syncEGOneLearnedWordChecker()
     kernelDriver.wordCorrection.wordCorrectionEnabled = settings.wordCorrectionEnabled
     kernelDriver.fillerRemoval.fillerRemovalEnabled = settings.fillerRemovalEnabled
@@ -232,6 +233,12 @@ final class PipelineSettingsSync {
 
   /// Handle a settings change by forwarding to the appropriate subsystem.
   func handleSettingChanged(_ key: SettingsManager.SettingKey, settings: SettingsManager) {
+    switch key {
+    case .llmProvider, .llmModel, .ollamaModel, .fileImportLLMProvider, .fileImportLLMModel,
+      .fileImportOllamaModel:
+      syncPolishDiagnosticSelection(settings)
+    default: break
+    }
     switch key {
     case .selectedBackend:
       // #1171 — the EngineCoordinator owns engine selection, status, and the
@@ -586,6 +593,18 @@ final class PipelineSettingsSync {
   /// polisher as part of starting a run (`WisprBootstrapper`'s `beginRun`), the pin guard
   /// above keeps this reconciler off it while the run holds it, and `onEngineReleased`
   /// reconciles back to dictation's selection afterwards.
+
+  private func syncPolishDiagnosticSelection(_ settings: SettingsManager) {
+    SentryBreadcrumb.setPolishSelection(
+      provider: settings.llmProvider,
+      projectedModel: SettingsProjection.model(
+        provider: settings.llmProvider, id: settings.effectiveLLMModel))
+    SentryBreadcrumb.setPolishSelection(
+      provider: settings.effectiveFileImportLLMProvider,
+      projectedModel: SettingsProjection.model(
+        provider: settings.effectiveFileImportLLMProvider, id: settings.effectiveFileImportLLMModel),
+      fileImport: true)
+  }
 
   private func reconcileOllamaEviction(settings: SettingsManager) {
     // #2772: two surfaces, two trackers, one policy. Each surface's PREVIOUS model is

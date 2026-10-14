@@ -696,6 +696,9 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
     // read below uses these locals, never `self`, so reentrancy cannot tear it.
     let provider = llmProvider
     let model = llmModel
+    // Separate from usage telemetry: import/recovery's silent seam must not hide a crash.
+    let diagnosticOperation = SentryBreadcrumb.beginPolishOperation(provider: provider, model: model)
+    defer { SentryBreadcrumb.endPolishOperation(diagnosticOperation) }
     let s1Control = s1Control
     // #3195: claimed here, before the first suspension, so the session prepared for
     // this take is used at most once. A `${transcript}` template never uses it.

@@ -90,6 +90,8 @@ public enum ObservabilityBootstrap {
   /// The production source of metrics-OFF Sentry user ids: a new random UUID per call, so each
   /// OFF launch and each ON-to-OFF change gets its own.
   static let makeOffPeriodUserID: @Sendable () -> UUID = { UUID() }
+  /// Fresh per process, not an installation identity. Captured before work, never added on replay.
+  static let processLaunchID = UUID()
 
   /// The SDK calls `Lifecycle` makes, one closure each, so a test can record the exact order the
   /// production transitions use without starting either SDK.
@@ -142,9 +144,11 @@ public enum ObservabilityBootstrap {
       writeLaunchTags: { joinKey in
         // Set stable tags that rarely change — available on every event including fatal crashes
         let isSynthetic = ProcessInfo.processInfo.environment["EW_FAULT_INJECTION"] == "1"
+        let polishScope = SentryBreadcrumb.preparedPolishScope
         SentrySDK.configureScope { scope in
           writeStableTags(
             environment: environment, isSynthetic: isSynthetic, joinKey: joinKey, to: scope)
+          SentryBreadcrumb.writePolishScope(polishScope, to: scope)
         }
       },
       setJoinKey: { joinKey in
@@ -332,8 +336,13 @@ public enum ObservabilityBootstrap {
   /// every other global-scope write (#3153; the reason is on `SentryBreadcrumb`'s global-scope
   /// section). All three are fixed vocabularies or the canonical UUID, which pass unchanged.
   static func writeStableTags(
-    environment: String, isSynthetic: Bool, joinKey: String?, to scope: Scope
+    environment: String, isSynthetic: Bool, joinKey: String?,
+    launchID: UUID = processLaunchID, to scope: Scope
   ) {
+    scope.setTag(value: "host", key: "app.role")
+    scope.setTag(value: "main", key: "process.role")
+    scope.setTag(value: "1", key: "crash.context_schema")
+    scope.setTag(value: launchID.uuidString, key: "process.launch_id")
     scope.setTag(
       value: SentryEventSanitizer.redactString(environment == "development" ? "debug" : "release"),
       key: "app.build_type")
@@ -465,12 +474,14 @@ public enum ObservabilityBootstrap {
   /// Installed` rows in the 30 days to 2026-09-15) or the PREVIOUS launch's
   /// `app_version` after an update.
   static func processPostHogEvent(
-    name: String, properties: [String: Any], uuid: UUID
+    name: String, properties: [String: Any], uuid: UUID, launchID: UUID = processLaunchID
   ) -> [String: Any]? {
     var input = properties
     input["environment"] = currentEnvironment
     input["app_version"] = appVersion
     input["app"] = appTag
+    // PostHog invokes this in buildEvent BEFORE enqueueing. Queue flush does not rebuild it.
+    input["process_launch_id"] = launchID.uuidString
     guard let kept = TelemetryVolumePolicy.apply(event: name, properties: input, uuid: uuid)
     else { return nil }
     return sanitizePostHogProperties(kept)

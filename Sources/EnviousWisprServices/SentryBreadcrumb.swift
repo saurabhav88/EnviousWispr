@@ -8,6 +8,109 @@ import Sentry
 @MainActor
 public enum SentryBreadcrumb {
 
+  /// Opaque, once-only handle for diagnostic state; it does not control product work.
+  public final class PolishOperation {
+    fileprivate let id = UUID()
+    fileprivate let overflow: Bool
+    fileprivate var finished = false
+    fileprivate init(overflow: Bool) { self.overflow = overflow }
+  }
+
+  struct PolishScopeSnapshot: Sendable {
+    let selection: [String: String]
+    let operations: [[String: String]]
+    let overflowCount: Int
+    var context: [String: Any] {
+      var value: [String: Any] = selection
+      let count = operations.count + overflowCount
+      value["active_count"] = count
+      value["phase"] = count == 0 ? "idle" : (count == 1 ? "step_entered" : "multiple_operations")
+      if count == 1, let operation = operations.first {
+        for (key, item) in operation { value[key] = item }
+      } else if !operations.isEmpty {
+        value["active_operations"] = operations
+      }
+      if overflowCount > 0 {
+        value["untracked_active_count"] = overflowCount
+        value["details_status"] = "tracking_limit"
+      }
+      return value
+    }
+  }
+
+  /// Bounded, transient scope data. Import/recovery share the same observation seam.
+  struct PolishScopeState {
+    private var selection: [String: String] = [:]
+    private var operations: [UUID: [String: String]] = [:]
+    private var overflowCount = 0
+
+    mutating func select(provider: LLMProvider, model: String, fileImport: Bool) {
+      let prefix = fileImport ? "file_import_selected" : "selected"
+      selection["\(prefix)_provider"] = provider.rawValue
+      selection["\(prefix)_model"] = SentryEventSanitizer.redactString(model)
+    }
+
+    mutating func begin(provider: LLMProvider, model: String) -> PolishOperation {
+      let token = PolishOperation(overflow: operations.count >= 8)
+      if token.overflow {
+        overflowCount += 1
+      } else {
+        // Runtime model names retain the existing runtime policy, not the settings allowlist.
+        operations[token.id] = [
+          "active_provider": provider.rawValue,
+          "active_model": SentryEventSanitizer.redactString(model),
+        ]
+      }
+      return token
+    }
+
+    mutating func end(_ token: PolishOperation) {
+      guard !token.finished else { return }
+      token.finished = true
+      if token.overflow { overflowCount -= 1 } else { operations[token.id] = nil }
+    }
+
+    var snapshot: PolishScopeSnapshot {
+      PolishScopeSnapshot(
+        selection: selection,
+        operations: operations.sorted { $0.key.uuidString < $1.key.uuidString }.map(\.value),
+        overflowCount: overflowCount)
+    }
+  }
+
+  private static var polishScope = PolishScopeState()
+
+  public static func setPolishSelection(provider: LLMProvider, projectedModel: String, fileImport: Bool = false) {
+    polishScope.select(provider: provider, model: projectedModel, fileImport: fileImport)
+    publishPolishScope()
+  }
+
+  /// Entering the step is not proof that a model request was issued; bypasses also enter.
+  public static func beginPolishOperation(provider: LLMProvider, model: String) -> PolishOperation? {
+    guard ObservabilityBootstrap.lifecycle.isSentryRunning else { return nil }
+    let token = polishScope.begin(provider: provider, model: model)
+    publishPolishScope()
+    return token
+  }
+
+  public static func endPolishOperation(_ token: PolishOperation?) {
+    guard let token else { return }
+    polishScope.end(token)
+    publishPolishScope()
+  }
+
+  static var preparedPolishScope: PolishScopeSnapshot { polishScope.snapshot }
+
+  nonisolated static func writePolishScope(_ snapshot: PolishScopeSnapshot, to scope: Scope) {
+    scope.setContext(value: SentryEventSanitizer.redactDict(snapshot.context), key: "polish")
+  }
+
+  private static func publishPolishScope() {
+    guard ObservabilityBootstrap.lifecycle.isSentryRunning else { return }
+    let snapshot = polishScope.snapshot
+    SentrySDK.configureScope { scope in writePolishScope(snapshot, to: scope) }
+  }
+
   // MARK: - Recording Snapshot (for handled errors)
 
   /// Immutable point-in-time snapshot frozen before recording teardown.

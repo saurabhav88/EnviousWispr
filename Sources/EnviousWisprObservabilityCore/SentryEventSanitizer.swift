@@ -104,6 +104,22 @@ public enum SentryEventSanitizer {
       if let codeFile = meta.codeFile { meta.codeFile = redactUserPath(codeFile) }
     }
 
+    // Describe retained evidence, never infer a cause or completeness from a frame count.
+    // Runs on the captured event at send/replay time, not on the next launch's live state.
+    if let exceptions = event.exceptions, !exceptions.isEmpty {
+      var tags = event.tags ?? [:]
+      let reasons = exceptions.compactMap(\.value).filter { !$0.isEmpty }
+      tags["exception.reason_status"] = reasons.contains("[REDACTED]")
+        ? "redacted" : (reasons.isEmpty ? "not_provided" : "provided")
+      let hasFrames = exceptions.contains { !($0.stacktrace?.frames.isEmpty ?? true) }
+        || !(event.stacktrace?.frames.isEmpty ?? true)
+        || (event.threads?.contains {
+          $0.crashed?.boolValue == true && !($0.stacktrace?.frames.isEmpty ?? true)
+        } ?? false)
+      tags["exception.stack_status"] = hasFrames ? "addresses_present" : "unavailable"
+      event.tags = tags
+    }
+
     return event
   }
 
