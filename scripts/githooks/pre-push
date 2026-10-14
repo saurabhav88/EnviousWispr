@@ -10,8 +10,14 @@
 # merge of that commit into a freshly fetched origin/main: the tree that would land. When the
 # commit changes app inputs or catalogs, it then checks the String Catalogs from the PUSHING
 # checkout's own last Dev build, but only if that build's receipt says it is of the pushed code.
+# First, per pushed ref (#3729 PR-C): when the ref is new, its remote revision is unknown here,
+# or its range changes build or eval inputs (the commit's own classify-changes.sh and
+# needs-eval-packages.sh), the pushing checkout's validation receipt from a full
+# scripts/xcode-test.sh run must cover the pushed tree's inputs.
 #
 # Verdicts:
+#   receipt ................. PASS or BLOCK only: missing, invalid or non-covering proof, or
+#                              anything this hook cannot classify, blocks a ref that needs it
 #   a check FAILS ............ the push is blocked; the check's own output says why
 #   COULD NOT RUN ............ a warning naming what is missing; the push goes ahead and
 #                              cloud CI checks it (e.g. a commit from before fast-checks.sh,
@@ -405,6 +411,150 @@ check_catalog() {
   esac
 }
 
+# --- The validation receipt (#3729 PR-C) ----------------------------------------------------
+# A push that changes build or eval inputs needs proof that the full local Debug run
+# (scripts/xcode-test.sh, which also compiles the eval packages) passed on the same inputs.
+# The pushing checkout's receipt is read ONCE into WORK; every record that needs proof is
+# judged against that copy. Verdicts are PASS or BLOCK, never COULD NOT RUN.
+RECEIPT_STATE=""  # "ok", or why no proof is available; reported only when a record needs proof
+RECEIPT_TREE=""   # the index tree the receipt proves
+CLS_SEQ=0         # names each classifier run's own output file
+
+read_receipt_once() {
+  local src="$ORIGIN/.derivedData/Test/ew-validation-receipt.json" copy="$WORK/receipt.json"
+  local helper="$HOOK_DIR/../lib/validation-receipt.py" build out
+  if [ ! -f "$src" ]; then RECEIPT_STATE="there is no validation receipt in $ORIGIN"; return 0; fi
+  if ! cp "$src" "$copy" 2> /dev/null; then RECEIPT_STATE="$src cannot be read"; return 0; fi
+  if [ ! -f "$helper" ] || ! command -v python3 > /dev/null 2>&1; then
+    RECEIPT_STATE="the receipt helper ($helper) or python3 is missing"
+    return 0
+  fi
+  if build="$(xcodebuild -version 2> /dev/null | sed -n 's/^Build version //p')" && [ -n "$build" ]; then :; else
+    RECEIPT_STATE="the selected Xcode cannot be read (xcodebuild -version)"
+    return 0
+  fi
+  if out="$(python3 "$helper" validate "$copy" --toolchain "$build" --root "$REPO" 2>&1)"; then :; else
+    RECEIPT_STATE="the receipt is not valid proof: $out"
+    return 0
+  fi
+  if RECEIPT_TREE="$(python3 -c 'import json, sys; print(json.load(open(sys.argv[1]))["tree"])' "$copy" 2> /dev/null)"; then :; else
+    RECEIPT_TREE=""
+  fi
+  case "$RECEIPT_TREE" in
+    *[!0-9a-f]* | "") RECEIPT_STATE="the receipt's tree cannot be read"; return 0 ;;
+  esac
+  RECEIPT_STATE="ok"
+}
+
+# classify_list <snapshot> <NUL-separated path list>: sets CLS_BUILD and CLS_EVAL to true or
+# false using the SNAPSHOT's own classifiers, each writing its own output file. Returns 1 with
+# CLS_ERROR set when it cannot tell: an undecodable or newline-carrying path, a missing
+# classifier, a failed run, or anything but exactly one key=true|false line.
+classify_list() {
+  local snap="$1" list="$2" key script out values pair
+  CLS_BUILD="" CLS_EVAL="" CLS_ERROR=""
+  if python3 - "$list" "$list.nl" << 'PY'; then :; else
+import sys
+raw = open(sys.argv[1], "rb").read()
+names = [n for n in raw.split(b"\0") if n]
+try:
+    decoded = [n.decode("utf-8") for n in names]
+except UnicodeDecodeError:
+    sys.exit(1)
+if any("\n" in n or "\r" in n for n in decoded):
+    sys.exit(1)
+open(sys.argv[2], "w").write("".join(n + "\n" for n in decoded))
+PY
+    CLS_ERROR="a changed path is not plain UTF-8 or contains a newline"
+    return 1
+  fi
+  if [ ! -s "$list.nl" ]; then CLS_BUILD=false CLS_EVAL=false; return 0; fi
+  for pair in "classify-changes.sh:needs_build" "needs-eval-packages.sh:needs_eval_packages"; do
+    script="$snap/scripts/ci/${pair%%:*}"
+    key="${pair#*:}"
+    if [ ! -f "$script" ]; then CLS_ERROR="the pushed commit has no scripts/ci/${pair%%:*}"; return 1; fi
+    CLS_SEQ=$((CLS_SEQ + 1))
+    out="$WORK/classify.$CLS_SEQ"
+    : > "$out"
+    if GITHUB_OUTPUT="$out" "$BASH" "$script" --classify-only < "$list.nl" > /dev/null 2>&1; then :; else
+      CLS_ERROR="scripts/ci/${pair%%:*} --classify-only failed"
+      return 1
+    fi
+    # Exactly one key line, exactly true or false. Read in python: a shell substitution
+    # strips trailing newlines, so a duplicate empty `key=` line would read as one verdict.
+    if values="$(python3 - "$out" "$key" << 'PY'
+import pathlib, sys
+prefix = sys.argv[2] + "="
+rows = [
+    line for line in pathlib.Path(sys.argv[1]).read_text().splitlines()
+    if line.startswith(prefix)
+]
+if len(rows) != 1 or rows[0] not in (prefix + "true", prefix + "false"):
+    sys.exit(1)
+print(rows[0][len(prefix):])
+PY
+    )"; then :; else
+      CLS_ERROR="scripts/ci/${pair%%:*} wrote no single $key=true|false line"
+      return 1
+    fi
+    if [ "$key" = needs_build ]; then CLS_BUILD="$values"; else CLS_EVAL="$values"; fi
+  done
+}
+
+# receipt_record <remote ref> <remote sha> <peeled tip> <snapshot>: 0 PASS, 1 BLOCK.
+receipt_record() {
+  local ref="$1" rsha="$2" tip="$3" snap="$4" tag="${3:0:12}" why list
+  CLS_SEQ=$((CLS_SEQ + 1))
+  list="$WORK/paths.$CLS_SEQ"
+  if [ "$rsha" = "$ZERO_SHA" ]; then
+    why="$ref is a new ref"
+  elif ! git -C "$REPO" cat-file -e "$rsha^{commit}" 2> /dev/null; then
+    why="the remote's ${rsha:0:12} is not in this repository"
+  else
+    if git -C "$REPO" diff -z --no-renames --name-only "$rsha" "$tip" > "$list" 2> /dev/null; then :; else
+      echo "==> receipt: BLOCKED ($ref: git cannot diff ${rsha:0:12}..$tag). Run scripts/xcode-test.sh in $ORIGIN, then push again." >&2
+      return 1
+    fi
+    if ! classify_list "$snap" "$list"; then
+      echo "==> receipt: BLOCKED ($ref: cannot classify ${rsha:0:12}..$tag: $CLS_ERROR). Run scripts/xcode-test.sh in $ORIGIN, then push again." >&2
+      return 1
+    fi
+    if [ "$CLS_BUILD" = false ] && [ "$CLS_EVAL" = false ]; then
+      echo "==> receipt: $ref not required (no build or eval input changed in ${rsha:0:12}..$tag)" >&2
+      return 0
+    fi
+    why="${rsha:0:12}..$tag changes build or eval inputs"
+  fi
+  if [ "$RECEIPT_STATE" != ok ]; then
+    echo "==> receipt: BLOCKED ($why, and $RECEIPT_STATE). Run scripts/xcode-test.sh in $ORIGIN, then push again." >&2
+    return 1
+  fi
+  CLS_SEQ=$((CLS_SEQ + 1))
+  list="$WORK/paths.$CLS_SEQ"
+  if git -C "$REPO" diff -z --no-renames --name-only "$RECEIPT_TREE" "$tip^{tree}" > "$list" 2> /dev/null; then :; else
+    echo "==> receipt: BLOCKED ($ref: git cannot compare the receipt's tree ${RECEIPT_TREE:0:12} with $tag). Run scripts/xcode-test.sh in $ORIGIN, then push again." >&2
+    return 1
+  fi
+  if ! classify_list "$snap" "$list"; then
+    echo "==> receipt: BLOCKED ($ref: cannot classify how $tag differs from the receipt: $CLS_ERROR). Run scripts/xcode-test.sh in $ORIGIN, then push again." >&2
+    return 1
+  fi
+  if [ "$CLS_BUILD" = true ] || [ "$CLS_EVAL" = true ]; then
+    echo "==> receipt: BLOCKED ($why; the receipt proves tree ${RECEIPT_TREE:0:12}, and $tag differs from it in build or eval inputs). Run scripts/xcode-test.sh in $ORIGIN, then push again." >&2
+    return 1
+  fi
+  echo "==> receipt: $ref covered (the receipt's tree ${RECEIPT_TREE:0:12} has the same inputs as $tag)" >&2
+}
+
+# Reuse the snapshot of <sha> when this run already made one.
+ensure_snapshot() {
+  local dir="$WORK/${1:0:12}" snap
+  for snap in ${SNAPSHOTS[@]+"${SNAPSHOTS[@]}"}; do
+    if [ "$snap" = "$dir" ]; then SNAP_DIR="$dir"; return 0; fi
+  done
+  snapshot "$1"
+}
+
 # Make a detached worktree of <sha> inside WORK; its path lands in SNAP_DIR.
 snapshot() {
   local sha="$1" dir
@@ -417,7 +567,7 @@ snapshot() {
 }
 
 main() {
-  local local_ref local_sha remote_ref remote_sha seen="" sha tree check rc
+  local local_ref local_sha remote_ref remote_sha seen="" sha tree check rc tip
   local blocked=0 warned=0 checked=0
 
   # Resolve the pushing checkout BEFORE touching any other tree, then drop the variables git
@@ -433,10 +583,10 @@ main() {
   # Canonical spelling (/var -> /private/var on macOS) so registration checks match exactly.
   WORK="$(cd "$WORK" && pwd -P)" || hook_fault "cannot resolve the temp directory"
   echo "==> pre-push: CI gap: the website build and check:help take longer than the local cut; website-check in CI remains the authority." >&2
+  read_receipt_once
 
   while read -r local_ref local_sha remote_ref remote_sha; do
     [ -n "$local_ref" ] || continue
-    : "$remote_sha"
     if [ "$local_sha" = "$ZERO_SHA" ]; then
       echo "==> pre-push: skip $remote_ref (deletion)" >&2
       continue
@@ -449,20 +599,29 @@ main() {
         continue
         ;;
     esac
-    case " $seen " in *" $local_sha "*) continue ;; esac
-    seen="$seen $local_sha"
-
-    echo "==> pre-push: checking ${local_sha:0:12} ($local_ref -> $remote_ref)" >&2
-    snapshot "$local_sha"
+    # Peeled to a commit: an annotated tag pushed to a branch carries the tag object's id.
+    if tip="$(git -C "$REPO" rev-parse --verify --quiet "$local_sha^{commit}")" && [ ${#tip} -eq 40 ]; then :; else
+      echo "==> pre-push: BLOCKED ($remote_ref: ${local_sha:0:12} is not a commit this repository can read)" >&2
+      blocked=$((blocked + 1))
+      continue
+    fi
+    ensure_snapshot "$tip"
     tree="$SNAP_DIR"
+    # Per RECORD, before the tip deduplication below: two refs at one tip can need
+    # different proof, because their remote ranges differ.
+    if receipt_record "$remote_ref" "$remote_sha" "$tip" "$tree"; then :; else blocked=$((blocked + 1)); fi
+    case " $seen " in *" $tip "*) continue ;; esac
+    seen="$seen $tip"
+
+    echo "==> pre-push: checking ${tip:0:12} ($local_ref -> $remote_ref)" >&2
     checked=$((checked + 1))
     for check in $CHECKS; do
-      if "$check" --repo "$REPO" --tree "$tree" --sha "$local_sha"; then rc=0; else rc=$?; fi
+      if "$check" --repo "$REPO" --tree "$tree" --sha "$tip"; then rc=0; else rc=$?; fi
       case "$rc" in
         0) ;;
         1) blocked=$((blocked + 1)) ;;
         3) warned=$((warned + 1)) ;;
-        *) hook_fault "$check returned $rc for $local_sha" ;;
+        *) hook_fault "$check returned $rc for $tip" ;;
       esac
     done
   done
@@ -534,6 +693,8 @@ if [ -e "$tree/SLOW" ]; then
   echo "$$" > "$SELFTEST_SLOW_PID"
   wait
 fi
+# #3729 PR-C P17: a run that replaces the receipt while the hook runs.
+if [ -n "${SELFTEST_DELETE_RECEIPT:-}" ]; then rm -f "$SELFTEST_DELETE_RECEIPT"; fi
 [ ! -e "$tree/BROKEN" ]
 STUB
   cp "$(dirname "$hook")/../ci/check-test-recipe.py" "$repo/scripts/ci/check-test-recipe.py"
@@ -555,9 +716,40 @@ if [ -n "${CATALOG_STUB_SLEEP:-}" ]; then
 fi
 exit "${CATALOG_STUB_RC:-0}"
 CATSTUB
+  # The receipt check (#3729 PR-C): stand-in classifiers with the real output contract (a path
+  # under APP/ is a build input, under EVAL/ an eval input), the REAL receipt helper beside the
+  # private hook copy, and a stand-in xcodebuild that answers -version (SELFTEST_XCODE_BUILD).
+  for stub in "classify-changes.sh:needs_build:APP/" "needs-eval-packages.sh:needs_eval_packages:EVAL/"; do
+    printf '%s\n' '#!/usr/bin/env bash' \
+      "if grep -q '^${stub##*:}'; then v=true; else v=false; fi" \
+      "printf '$(echo "$stub" | cut -d: -f2)=%s\\n' \"\$v\" >> \"\$GITHUB_OUTPUT\"" \
+      > "$repo/scripts/ci/${stub%%:*}"
+  done
+  printf '.derivedData/\n' > "$repo/.gitignore"
+  mkdir -p "$tmp/lib" "$tmp/bin"
+  cp "$(dirname "$hook")/../lib/validation-receipt.py" "$tmp/lib/validation-receipt.py"
+  printf '%s\n' '#!/usr/bin/env bash' 'echo "Xcode 27.0"' 'echo "Build version ${SELFTEST_XCODE_BUILD:-27A266a}"' > "$tmp/bin/xcodebuild"
+  chmod +x "$tmp/bin/xcodebuild"
+  export PATH="$tmp/bin:$PATH"
+  receipt_helper() { python3 "$tmp/lib/validation-receipt.py" "$@"; }
+  # make_receipt: the real helper's own capture and publish, for the repo's current index tree.
+  make_receipt() {
+    local start
+    receipt_helper invalidate --root "$repo" || return 1
+    start="$(receipt_helper capture --root "$repo")" || return 1
+    receipt_helper publish --root "$repo" --start "$start" --field configuration=Debug \
+      --field scheme=EnviousWispr \
+      --field "bundles=EnviousWisprTests EnviousWisprDesktopEffectsTests EnviousWisprASRTests" \
+      --field executed_tests=5 --field debug_verdict=PASS --field eval_verdict=PASS \
+      --field result_bundle=/selftest.xcresult > /dev/null
+  }
+  RECEIPT_FILE="$repo/.derivedData/Test/ew-validation-receipt.json"
   echo base > "$repo/README"
   git -C "$repo" add -A
   git -C "$repo" commit --quiet -m base
+  # One receipt for the base tree covers every later commit that changes no APP/ or EVAL/ path,
+  # so the cases below that are about other checks keep their verdicts.
+  make_receipt || echo "FAIL  precondition: could not make the base receipt"
   git -C "$repo" remote add origin "$remote"
   cp "$hook" "$tmp/hooks/pre-push"
   mkdir -p "$tmp/ci"
@@ -614,12 +806,13 @@ CATSTUB
   check "inherited GIT_INDEX_FILE is cleared before checks run" "$rc|$(printf '%s' "$out" | grep -c 'GIT_INDEX_FILE=unset')" "0|1"
 
   # 9. a commit with no fast-checks.sh, no recipe checker and no catalog check is COULD NOT RUN
-  #    three times: warnings, not a block
+  #    three times: warnings. Since #3729 PR-C it also has no classifiers, so the receipt check
+  #    cannot tell what it changes and blocks (fail closed); the three warnings stay.
   git -C "$repo" checkout --quiet --orphan bare-branch
   git -C "$repo" rm --quiet -r --cached . > /dev/null
   echo x > "$repo/only-file"; git -C "$repo" add only-file; git -C "$repo" commit --quiet -m orphan
   push origin bare-branch; rc=$?
-  check "missing evidence warns and allows" "$rc|$(grep -c 'COULD NOT RUN' "$tmp/push.out")|$(grep -c 'OK with 3 warning' "$tmp/push.out")" "0|3|1"
+  check "missing evidence warns three times; no classifiers blocks" "$rc|$(grep -c 'COULD NOT RUN' "$tmp/push.out")|$(grep -c 'receipt: BLOCKED (.*has no scripts/ci/classify-changes.sh' "$tmp/push.out")" "1|3|1"
   git -C "$repo" checkout --quiet -f main; git -C "$repo" clean --quiet -fd
 
   # 10. a fault inside the hook blocks, through a private copy that fails mid-run
@@ -1088,6 +1281,9 @@ PY
   # C10. Another checkout of the same repository HAS a Dev build; the pushing one does not.
   w2="$tmp/worktree-two"
   git -C "$repo" worktree add --quiet -b cat-w2 "$w2" cat-add
+  # The pushing checkout's OWN validation receipt (#3729 PR-C): the base tree's, which covers
+  # these Sources/ commits under the stand-in classifiers.
+  mkdir -p "$w2/.derivedData/Test" && cp "$RECEIPT_FILE" "$w2/.derivedData/Test/"
   echo "let d = 1" > "$w2/Sources/EnviousWisprCore/D.swift"; git -C "$w2" add -A; git -C "$w2" commit --quiet -m "from w2"
   : > "$CATALOG_TRACE"
   PATH="$fakebin:$PATH" git -C "$w2" push origin cat-w2 > "$tmp/push.out" 2>&1; rc=$?
@@ -1142,6 +1338,194 @@ PY
   check "C13 changed paths unknown: COULD NOT RUN, never 'nothing changed'" \
     "$rc|$(grep -c 'catalog: COULD NOT RUN (cannot tell which paths changed' "$tmp/push.out")|$(grep -c 'catalog: skipped' "$tmp/push.out")|$(stub_calls)" \
     "0|1|0|0"
+  git -C "$repo" checkout --quiet main
+
+  # P1-P18. The validation receipt (#3729 PR-C), through real pushes. APP/ is a build input
+  # and EVAL/ an eval input under the stand-in classifiers; receipts come from the real helper.
+  git -C "$repo" checkout --quiet -f main
+  git -C "$repo" clean --quiet -fd
+  remote_tip() { git -C "$remote" rev-parse --verify --quiet "refs/heads/$1" || echo none; }
+  corrupt_receipt() { mkdir -p "$(dirname "$RECEIPT_FILE")" && printf '{broken\n' > "$RECEIPT_FILE"; }
+  commit_file() { mkdir -p "$(dirname "$repo/$1")" && echo "${2:-x}" > "$repo/$1" && git -C "$repo" add -A && git -C "$repo" commit --quiet -m "$1"; }
+  hits() { grep -c -- "$1" "$tmp/push.out"; }
+
+  git -C "$repo" checkout --quiet -b p-docs main
+  commit_file docs/p1.md
+  corrupt_receipt
+  push origin p-docs; rc=$?
+  check "P1 a new ref without valid proof blocks, names the command, leaves the remote alone" \
+    "$rc|$(hits 'receipt: BLOCKED (refs/heads/p-docs is a new ref, and the receipt is not valid proof')|$(hits "Run scripts/xcode-test.sh in $repo")|$(remote_tip p-docs)" \
+    "1|1|1|none"
+  make_receipt
+  push origin p-docs; rc=$?
+  check "P2 a new ref with covering proof passes" "$rc|$(hits 'receipt: refs/heads/p-docs covered')|$(remote_tip p-docs)" \
+    "0|1|$(git -C "$repo" rev-parse p-docs)"
+
+  commit_file docs/p3.md
+  corrupt_receipt
+  push origin p-docs; rc=$?
+  check "P3 an existing ref whose range changes no input needs no proof, even beside a bad receipt" \
+    "$rc|$(hits 'receipt: refs/heads/p-docs not required')" "0|1"
+
+  before_p4="$(remote_tip p-docs)"
+  commit_file APP/a.swift
+  push origin p-docs; rc=$?
+  check "P4 a range that changes a build input blocks without valid proof" \
+    "$rc|$(hits 'changes build or eval inputs, and the receipt is not valid proof')|$(remote_tip p-docs)" "1|1|$before_p4"
+  make_receipt
+  push origin p-docs; rc=$?
+  check "P5 the same range with proof of exactly that tree passes" "$rc|$(hits 'receipt: refs/heads/p-docs covered')" "0|1"
+
+  commit_file APP/b.swift
+  commit_file docs/p6.md
+  push origin p-docs; rc=$?
+  check "P6a a multi-commit range is judged at its endpoint: an older receipt does not cover a newer input" \
+    "$rc|$(hits 'differs from it in build or eval inputs')" "1|1"
+  make_receipt
+  push origin p-docs; rc=$?
+  check "P6b the endpoint's own receipt covers the whole range" "$rc" "0"
+
+  git -C "$repo" checkout --quiet -b p-other
+  commit_file APP/c.swift
+  git -C "$repo" checkout --quiet p-docs
+  push origin p-other; rc=$?
+  check "P7 a non-HEAD tip is judged at its own tree, not the receipt's" \
+    "$rc|$(hits 'receipt: BLOCKED (refs/heads/p-other is a new ref; the receipt proves tree')" "1|1"
+
+  commit_file docs/p8.md
+  corrupt_receipt
+  push origin p-docs:p-docs p-docs:p-new8; rc=$?
+  check "P8a one tip, two refs: the existing range is free, the new ref still needs proof" \
+    "$rc|$(hits 'receipt: refs/heads/p-docs not required')|$(hits 'receipt: BLOCKED (refs/heads/p-new8 is a new ref')" "1|1|1"
+  push origin p-docs:p-new8 p-docs:p-docs; rc=$?
+  check "P8b the same push in the other order blocks the same way" \
+    "$rc|$(hits 'receipt: refs/heads/p-docs not required')|$(hits 'receipt: BLOCKED (refs/heads/p-new8 is a new ref')" "1|1|1"
+  make_receipt
+  push origin p-docs:p-docs p-docs:p-new8; rc=$?
+  check "P8c with proof both refs pass" "$rc|$(remote_tip p-new8)" "0|$(git -C "$repo" rev-parse p-docs)"
+
+  printf 'refs/heads/p-docs %s refs/heads/p-docs %s\n' "$(git -C "$repo" rev-parse p-docs)" 1234567890123456789012345678901234567890 > "$tmp/stdin"
+  corrupt_receipt
+  (cd "$repo" && "$BASH" "$hook" origin "$remote" < "$tmp/stdin" > "$tmp/push.out" 2>&1); rc=$?
+  check "P10 a remote revision this repository does not have needs proof" \
+    "$rc|$(hits 'is not in this repository, and the receipt is not valid proof')" "1|1"
+
+  git -C "$repo" mv APP/a.swift docs/a.md
+  git -C "$repo" commit --quiet -m "rename source to docs"
+  push origin p-docs; rc=$?
+  check "P11 renaming a source file to docs still changes a build input" \
+    "$rc|$(hits 'changes build or eval inputs, and the receipt is not valid proof')" "1|1"
+  make_receipt
+  push origin p-docs; rc=$?
+  check "P11b with proof of the renamed tree it passes" "$rc" "0"
+
+  git -C "$repo" tag -a -m annotated p-ann p-docs
+  push origin refs/tags/p-ann:refs/heads/p-from-ann; rc=$?
+  # The hook's own verdict: the remote then refuses a tag object on a branch, which is git's
+  # rule, not this hook's, so the push status is not the subject here.
+  check "P12 an annotated tag pushed to a branch is peeled and checked at its commit" \
+    "$(hits "pre-push: checking $(git -C "$repo" rev-parse --short=12 p-docs)")|$(hits 'receipt: refs/heads/p-from-ann covered')|$(hits 'pre-push: OK')|$(hits 'hook fault')" "1|1|1|0"
+  : "$rc"
+
+  SELFTEST_XCODE_BUILD=28A1 push origin p-docs:p-new13; rc=$?
+  check "P13 a receipt from another Xcode is not proof" "$rc|$(hits 'is not the selected 28A1')" "1|1"
+
+  python3 -c 'import json, sys; p = sys.argv[1]; d = json.load(open(p)); d["tree"] = "0" * 40; json.dump(d, open(p, "w"))' "$RECEIPT_FILE"
+  push origin p-docs:p-new14; rc=$?
+  check "P14 a receipt naming an unknown tree is not proof" "$rc|$(hits 'not a tree object in this repository')" "1|1"
+  make_receipt
+
+  git -C "$repo" checkout --quiet -b p-badcls
+  printf '%s\n' '#!/usr/bin/env bash' 'echo "needs_build=maybe" >> "$GITHUB_OUTPUT"' > "$repo/scripts/ci/classify-changes.sh"
+  git -C "$repo" commit --quiet -am "a classifier with no verdict"
+  push origin p-badcls; rc=$?
+  check "P15 a classifier that writes no true|false verdict blocks" \
+    "$rc|$(hits 'wrote no single needs_build=true|false line')" "1|1"
+  git -C "$repo" checkout --quiet p-docs
+
+  git -C "$repo" checkout --quiet -b p-newline
+  commit_file "docs/two
+lines.md"
+  push origin p-newline; rc=$?
+  check "P16 a path with a newline cannot be classified and blocks" "$rc|$(hits 'contains a newline')" "1|1"
+  git -C "$repo" checkout --quiet p-docs
+
+  make_receipt
+  SELFTEST_DELETE_RECEIPT="$RECEIPT_FILE" push origin p-docs:p-r17a p-docs:p-r17b; rc=$?
+  check "P17 a receipt removed while the hook runs does not change that push's proof" \
+    "$rc|$(hits 'receipt: refs/heads/p-r17b covered')|$([ -e "$RECEIPT_FILE" ] && echo still-there || echo removed-mid-run)" \
+    "0|1|removed-mid-run"
+  make_receipt
+
+  before_eval="$(remote_tip p-docs)"
+  git -C "$repo" checkout --quiet -b p-eval p-docs
+  commit_file EVAL/probe.swift
+  push origin p-eval:p-docs; rc=$?
+  check "P18a an eval-only change blocks with older proof and leaves the remote unchanged" \
+    "$rc|$(hits 'differs from it in build or eval inputs')|$(remote_tip p-docs)" \
+    "1|1|$before_eval"
+  make_receipt
+  push origin p-eval:p-docs; rc=$?
+  check "P18b the same eval-only endpoint passes with covering proof" "$rc" "0"
+  git -C "$repo" branch --quiet -f p-docs p-eval  # local p-docs follows the remote it now matches
+  git -C "$repo" checkout --quiet p-docs
+
+  # P15b-e: duplicate verdict lines, for both classifier keys, including a trailing empty
+  # duplicate (which a shell substitution would have read as one verdict).
+  for dup in "classify-changes.sh:needs_build:false:" "classify-changes.sh:needs_build:false:false" \
+    "needs-eval-packages.sh:needs_eval_packages:false:" "needs-eval-packages.sh:needs_eval_packages:false:false"; do
+    dscript="$(echo "$dup" | cut -d: -f1)"; dkey="$(echo "$dup" | cut -d: -f2)"
+    dfirst="$(echo "$dup" | cut -d: -f3)"; dsecond="$(echo "$dup" | cut -d: -f4)"
+    git -C "$repo" checkout --quiet -b "p-dup-$dkey-${dsecond:-empty}" p-docs
+    printf '%s\n' '#!/usr/bin/env bash' "printf '$dkey=$dfirst\\n$dkey=$dsecond\\n' >> \"\$GITHUB_OUTPUT\"" > "$repo/scripts/ci/$dscript"
+    git -C "$repo" commit --quiet -am "a classifier writing two $dkey lines"
+    push origin "p-dup-$dkey-${dsecond:-empty}"; rc=$?
+    check "P15 a duplicate $dkey verdict ($dkey=$dfirst then $dkey=$dsecond) blocks" \
+      "$rc|$(hits "wrote no single $dkey=true|false line")" "1|1"
+    git -C "$repo" checkout --quiet p-docs
+  done
+  make_receipt
+
+  git -C "$repo" checkout --quiet -b p-rb main
+  commit_file APP/r.swift
+  make_receipt
+  push origin p-rb; rc=$?
+  check "P9a a branch with its own proof passes" "$rc" "0"
+  git -C "$repo" checkout --quiet main
+  commit_file docs/main-moved.md
+  git -C "$repo" checkout --quiet p-rb
+  git -C "$repo" rebase --quiet main
+  push --force origin p-rb; rc=$?
+  check "P9b a rebase with identical inputs passes" "$rc" "0"
+  git -C "$repo" checkout --quiet main
+  commit_file APP/m.swift
+  git -C "$repo" checkout --quiet p-rb
+  git -C "$repo" rebase --quiet main
+  push --force origin p-rb; rc=$?
+  check "P9c a rebase onto changed inputs blocks" "$rc|$(hits 'differs from it in build or eval inputs')" "1|1"
+
+  # Resource controls: private copies that drop the receipt call, or move it after the tip
+  # deduplication; each must let through a push the real hook blocks.
+  git -C "$repo" checkout --quiet p-docs
+  corrupt_receipt
+  if ! inject '    if receipt_record "$remote_ref" "$remote_sha" "$tip" "$tree"; then :; else blocked=$((blocked + 1)); fi' '    :'; then
+    check "the no-receipt control copy was made" "no" "yes"
+  else
+    push origin p-docs:p-ctl1; rc=$?
+    check "control: without the receipt call, P1's kind of push would pass" "$rc" "0"
+  fi
+  if ! awk '
+    $0 == "    if receipt_record \"$remote_ref\" \"$remote_sha\" \"$tip\" \"$tree\"; then :; else blocked=$((blocked + 1)); fi" { n++; next }
+    $0 == "    seen=\"$seen $tip\"" { print; print "    if receipt_record \"$remote_ref\" \"$remote_sha\" \"$tip\" \"$tree\"; then :; else blocked=$((blocked + 1)); fi"; n++; next }
+    { print } END { exit (n == 2 ? 0 : 1) }' "$hook" > "$tmp/hooks/pre-push"; then
+    check "the after-dedup control copy was made" "no" "yes"
+  else
+    commit_file docs/ctl2.md
+    push origin p-docs:p-docs p-docs:p-ctl2; rc=$?
+    check "control: deciding the receipt after deduplication lets P8's second ref through" "$rc" "0"
+  fi
+  cp "$hook" "$tmp/hooks/pre-push"
+  make_receipt
   git -C "$repo" checkout --quiet main
 
   # 12. every run removed its own snapshots and temp directories

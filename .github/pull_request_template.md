@@ -23,7 +23,7 @@
 
 ### Build Verification
 - [ ] Dev build passes locally (`scripts/build-dev-app.sh`, Xcode/Tuist engine)
-- [ ] Required local Debug tests pass (`scripts/xcode-test.sh`; batch related suites with repeated `--filter` flags; GitHub owns the full Release PR check)
+- [ ] Full local validation passed on the pushed inputs (`scripts/xcode-test.sh` with no filter: the Debug suite plus the three eval packages; the pre-push hook refuses build or eval inputs its receipt does not cover). Filtered runs (`--filter`) are for development only; GitHub owns the full Release PR check
 - [ ] CI `build-check` status is green
 
 ### Behavioral Testing (Local UAT)
