@@ -180,10 +180,10 @@ test("the check passes the request's mode to the section request", async () => {
   assert.equal(out.decision_version, "2026-10-14.1");
 });
 
-test("whole-message mode keeps the resolves gate: below 0.7 there is no section card", async () => {
+test("whole-message mode keeps the resolves gate: below 0.7 there is no card at all", async () => {
   const jev = fakeJev(pageAnswer(RESOLVE.slug), sectionAnswer(RESOLVE.sections[0].id, 0.69));
   const out = await runHelpCheck(body({ mode: "whole_message_always_send", issues: [] }), ENV, { fetchImpl: jev.fetchImpl });
-  assert.notEqual(out.issues[0].match_type, "section");
+  assert.equal(out.issues[0].match_type, "none");
   assert.equal(out.suppression_allowed, false);
 });
 
