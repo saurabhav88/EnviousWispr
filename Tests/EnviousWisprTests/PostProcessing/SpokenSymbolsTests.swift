@@ -189,6 +189,20 @@ struct SpokenSymbolsTests {
   @Test("Spaced symbols stay tight against a line break, and nested and adjacent brackets join")
   func boundaries() {
     #expect(startWord("Alpha Insert ampersand\nbeta", "en", "Insert") == "Alpha &\nbeta")
+    // Cloud review PR #3755: no space before the engine's punctuation or a closer, none after an
+    // opener; the start-word route has no later tightening pass.
+    #expect(startWord("Set x Insert equals sign, then y", "en", "Insert") == "Set x =, then y")
+    #expect(startWord("Insert ampersand. Next", "en", "Insert") == "&. Next")
+    #expect(
+      startWord("Insert open paren Insert plus sign Insert close paren", "en", "Insert") == "(+)")
+    #expect(on("Set x equals sign, then y") == "Set x =, then y")
+    // A straight quote opens and closes, so a spaced symbol after a closing one keeps its space.
+    #expect(
+      on("Add open quote x close quote plus sign open quote y close quote") == "Add \"x\" + \"y\"")
+    #expect(
+      startWord(
+        "Add Insert open quote a Insert close quote Insert plus sign Insert open quote b Insert close quote",
+        "en", "Insert") == "Add \"a\" + \"b\"")
     #expect(startWord("Insert ampersand beta", "en", "Insert") == "& beta")
     #expect(startWord("Alpha Insert ampersand", "en", "Insert") == "Alpha &")
     #expect(on("Call open paren open paren x close paren close paren") == "Call ((x))")

@@ -125,11 +125,18 @@ extension InverseTextNormalizer {
         skipLeadingSpace = true
         absorbLeadingComma = true
       case .spaced:
-        // One space each side, none against a line break or the text's start or end.
+        // One space each side, none against a line break, the text's start or end, an opening
+        // bracket or quote on the left, or sentence punctuation or a closer on the right. The
+        // start-word route has no later tightening pass, so this spacing is final there (cloud
+        // review PR #3755: "Set x Insert equals sign, then y" -> `Set x =, then y`).
         let left = trimmingTrailingSpace(out)
         let right = ns.substring(from: NSMaxRange(range)).drop(while: isHorizontalSpace)
-        let leftSpace = left.isEmpty || left.last?.isNewline == true ? "" : " "
-        let rightSpace = right.isEmpty || right.first?.isNewline == true ? "" : " "
+        let leftSpace =
+          left.isEmpty || left.last?.isNewline == true
+            || left.last.map(Self.tightAfter.contains) == true ? "" : " "
+        let rightSpace =
+          right.isEmpty || right.first?.isNewline == true
+            || right.first.map(Self.tightBefore.contains) == true ? "" : " "
         out = left + leftSpace + rule.replacement + rightSpace
         skipLeadingSpace = true
       }
@@ -164,6 +171,20 @@ extension InverseTextNormalizer {
   /// over afterwards, so the symbol ends up with its own spacing. `applyPunct` turns the gap off when
   /// the input already holds this character, so a transcript's own character is never removed.
   static let joinerGapCharacter: Character = "\u{200A}"
+
+  /// A spaced symbol takes no space after these: opening brackets and quotes. Directional quotes
+  /// only: a straight `"` opens AND closes (it is the English open and close quote), and after a
+  /// closing one the space belongs (`"a" + "b"`).
+  private static let tightAfter: Set<Character> = [
+    "(", "[", "{", "<", "\u{201C}", "\u{2018}", "\u{201E}", "\u{00AB}",
+  ]
+
+  /// A spaced symbol takes no space before these: sentence punctuation, closing brackets and
+  /// directional quotes, and the ellipsis.
+  private static let tightBefore: Set<Character> = [
+    ".", ",", ";", ":", "!", "?", ")", "]", "}", ">", "\u{201D}", "\u{2019}", "\u{00BB}",
+    "\u{2026}",
+  ]
 
   /// The characters `joinerCommands` accepts directly before a spoken slash or backslash.
   private static let joinerLeftNeighbours: Set<Character> = [
