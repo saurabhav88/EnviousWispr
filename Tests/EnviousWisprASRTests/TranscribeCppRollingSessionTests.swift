@@ -459,6 +459,10 @@ struct TranscribeCppRollingSessionTests {
     func hold(call index: Int) { lock.withLock { holdIndex = index } }
     func failing(call index: Int) { lock.withLock { _ = throwOn.insert(index) } }
     private var failAll = false
+    private var finishDespiteCancel = false
+    /// A held call that is cancelled still returns its scripted result when released, like a
+    /// native run that completed before the abort landed.
+    func finishingDespiteCancel() { lock.withLock { finishDespiteCancel = true } }
     func failingEvery() { lock.withLock { failAll = true } }
 
     /// Returns once the decoder has been called `count` times.
@@ -528,7 +532,7 @@ struct TranscribeCppRollingSessionTests {
             }
             for waiter in waiters { waiter.resume() }
           }
-          if Task.isCancelled { throw CancellationError() }
+          if Task.isCancelled, !lock.withLock({ finishDespiteCancel }) { throw CancellationError() }
         }
         if fails { throw TranscribeCppWhisperError.runFailed(status: 9) }
         return lock.withLock {
@@ -545,6 +549,35 @@ struct TranscribeCppRollingSessionTests {
     private let lock = NSLock()
     private var samples: [Float] = []
     private var pulls = 0
+    private var holding = false
+    private var held: [CheckedContinuation<Void, Never>] = []
+    private var heldTotal = 0
+    private var heldWaiters: [(Int, CheckedContinuation<Void, Never>)] = []
+    /// While holding, every pull suspends until `releaseOldest`/`stopHolding`.
+    func startHolding() { lock.withLock { holding = true } }
+    func stopHolding() {
+      let all = lock.withLock { () -> [CheckedContinuation<Void, Never>] in
+        holding = false
+        defer { held = [] }
+        return held
+      }
+      for c in all { c.resume() }
+    }
+    func releaseOldest() {
+      let first = lock.withLock { held.isEmpty ? nil : held.removeFirst() }
+      first?.resume()
+    }
+    /// Returns once `count` pulls have been held in total.
+    func heldPulls(reach count: Int) async {
+      await withCheckedContinuation { c in
+        let now = lock.withLock { () -> Bool in
+          if heldTotal >= count { return true }
+          heldWaiters.append((count, c))
+          return false
+        }
+        if now { c.resume() }
+      }
+    }
     private var pullWaiters: [(Int, CheckedContinuation<Void, Never>)] = []
     func set(_ s: [Float]) { lock.withLock { samples = s; pulls = 0 } }
     func pulled(_ count: Int) async {
@@ -559,6 +592,18 @@ struct TranscribeCppRollingSessionTests {
     }
     var provider: @Sendable () async -> (samples: [Float], count: Int) {
       { [self] in
+        await withCheckedContinuation { (c: CheckedContinuation<Void, Never>) in
+          let (hold, ready) = lock.withLock { () -> (Bool, [CheckedContinuation<Void, Never>]) in
+            guard holding else { return (false, []) }
+            held.append(c)
+            heldTotal += 1
+            let ready = heldWaiters.filter { $0.0 <= heldTotal }.map(\.1)
+            heldWaiters.removeAll { $0.0 <= heldTotal }
+            return (true, ready)
+          }
+          for waiter in ready { waiter.resume() }
+          if !hold { c.resume() }
+        }
         let (s, ready) = lock.withLock { () -> ([Float], [CheckedContinuation<Void, Never>]) in
           pulls += 1
           let ready = pullWaiters.filter { $0.0 <= pulls }.map(\.1)
@@ -732,5 +777,126 @@ struct TranscribeCppRollingSessionTests {
     await Self.within("five loop cycles") { await audio.pulled(5) }
     #expect(d.callSampleCounts.count == 1, "half a second of new audio is not enough")
     _ = await s.finalize(finalSamples: [], speechSegments: [])
+  }
+
+  // MARK: - Round 2: stale terminals and caller cancellation
+
+  @Test("finalize, Cancel, then a restart while the old loop decode is native: the old finalize releases nothing")
+  func restartFencesTheOldFinalize() async {
+    let d = ScriptedDecoder([
+      [Self.native(0, 1200, " New take.")], [Self.native(0, 1200, " New take.")],
+    ])
+    d.hold(call: 0)
+    let oldAudio = Audio()
+    oldAudio.set(Self.voiced(1.2))
+    let s = Self.session(d.decode)
+    await s.start(audioSamplesProvider: oldAudio.provider)
+    await Self.within("decode call 1") { await d.calls(reach: 1) }
+    let oldFinalize = Task { await s.finalize(finalSamples: [], speechSegments: []) }
+    let cancel = Task { await s.cancel() }
+    await Self.within("finalize and cancel at the drain") { await s.drainJoins(reach: 2) }
+    // The restart lands while the aborted run is still native.
+    let newAudio = Audio()
+    newAudio.set(Self.voiced(1.2))
+    await s.start(audioSamplesProvider: newAudio.provider)
+    d.release()
+    guard let old = await Self.joined(oldFinalize, "old finalize", onExpiry: { d.release() }),
+      await Self.joined(cancel, "cancel", onExpiry: { d.release() }) != nil
+    else { return }
+    #expect(old.accepted == false)
+    #expect(old.text == nil, "the old finalize must not release the new run's audio")
+    #expect(old.strategy == "streaming_cancelled")
+    // The new run is untouched: its own cycles and its own text.
+    await Self.within("new cycle 1") { await s.cyclesCompleted(reach: 1) }
+    newAudio.set(Self.voiced(1.2) + Self.silence(1.2))
+    await Self.within("new cycle 2") { await s.cyclesCompleted(reach: 2) }
+    let fresh = await s.finalize(finalSamples: [], speechSegments: [])
+    #expect(fresh.text == "New take.")
+    #expect(d.overlapped == false)
+  }
+
+  @Test("finalize, Cancel, then a restart while the old flush is native: the old finalize releases nothing")
+  func restartFencesTheOldFlush() async {
+    let d = ScriptedDecoder([
+      [Self.native(0, 1000, " One")], [Self.native(0, 2000, " One two")],
+      [Self.native(0, 1200, " Fresh.")], [Self.native(0, 1200, " Fresh.")],
+    ])
+    d.hold(call: 1)
+    d.finishingDespiteCancel()
+    let audio = Audio()
+    audio.set(Self.voiced(1.2))
+    let s = Self.session(d.decode)
+    await s.start(audioSamplesProvider: audio.provider)
+    await Self.within("cycle 1 applied") { await s.cyclesCompleted(reach: 1) }
+    audio.set(Self.voiced(2.1))
+    let oldFinalize = Task { await s.finalize(finalSamples: [], speechSegments: []) }
+    await Self.within("the flush decode") { await d.calls(reach: 2) }
+    let cancel = Task { await s.cancel() }
+    await Self.within("the flush's cancellation") { await d.heldCallCancelled() }
+    let newAudio = Audio()
+    newAudio.set(Self.voiced(1.2))
+    await s.start(audioSamplesProvider: newAudio.provider)
+    d.release()  // the old flush returns "One two" anyway
+    guard let old = await Self.joined(oldFinalize, "old finalize", onExpiry: { d.release() }),
+      await Self.joined(cancel, "cancel", onExpiry: { d.release() }) != nil
+    else { return }
+    #expect(old.text == nil)
+    #expect(old.strategy == "streaming_cancelled")
+    await Self.within("new cycle 1") { await s.cyclesCompleted(reach: 1) }
+    newAudio.set(Self.voiced(1.2) + Self.silence(1.2))
+    await Self.within("new cycle 2") { await s.cyclesCompleted(reach: 2) }
+    #expect(await s.finalize(finalSamples: [], speechSegments: []).text == "Fresh.")
+    #expect(d.overlapped == false)
+  }
+
+  @Test("a caller-cancelled finalize on the caught-up path releases nothing")
+  func callerCancelledCaughtUp() async {
+    let d = ScriptedDecoder([
+      [Self.native(0, 1500, " Turn left")], [Self.native(0, 1500, " Turn left")],
+    ])
+    let audio = Audio()
+    audio.set(Self.voiced(1.5) + Self.silence(0.1))
+    let s = Self.session(d.decode)
+    await s.start(audioSamplesProvider: audio.provider)
+    await Self.within("cycle 1 applied") { await s.cyclesCompleted(reach: 1) }
+    audio.set(Self.voiced(1.5) + Self.silence(1.2))
+    await Self.within("cycle 2 applied") { await s.cyclesCompleted(reach: 2) }
+    // Hold pulls: first the loop's, then (after the drain) finalize's own.
+    audio.startHolding()
+    await Self.within("the loop's held pull") { await audio.heldPulls(reach: 1) }
+    let finalize = Task { await s.finalize(finalSamples: [], speechSegments: []) }
+    await Self.within("finalize at the drain") { await s.drainJoins(reach: 1) }
+    audio.releaseOldest()  // the loop's pull returns; the loop sees the stop and ends
+    await Self.within("finalize's held pull") { await audio.heldPulls(reach: 2) }
+    finalize.cancel()
+    audio.stopHolding()
+    guard let result = await Self.joined(finalize, "finalize", onExpiry: { audio.stopHolding() })
+    else { return }
+    #expect(result.accepted == false)
+    #expect(result.text == nil, "caught up, but the caller cancelled: no text")
+    #expect(result.strategy == "streaming_cancelled")
+  }
+
+  @Test("a flush that returns successfully after the caller cancelled releases nothing")
+  func callerCancelledFlushReturnsLate() async {
+    let d = ScriptedDecoder([[Self.native(0, 1000, " One")], [Self.native(0, 2000, " One two")]])
+    d.hold(call: 1)
+    d.finishingDespiteCancel()
+    let audio = Audio()
+    audio.set(Self.voiced(1.2))
+    let s = Self.session(d.decode)
+    await s.start(audioSamplesProvider: audio.provider)
+    await Self.within("cycle 1 applied") { await s.cyclesCompleted(reach: 1) }
+    audio.set(Self.voiced(2.1))
+    let finalize = Task { await s.finalize(finalSamples: [], speechSegments: []) }
+    await Self.within("the flush decode") { await d.calls(reach: 2) }
+    finalize.cancel()
+    await Self.within("the flush's cancellation") { await d.heldCallCancelled() }
+    d.release()
+    guard let result = await Self.joined(finalize, "finalize", onExpiry: { d.release() }) else {
+      return
+    }
+    #expect(result.text == nil, "the late \"One two\" is not released")
+    #expect(result.strategy == "streaming_cancelled")
   }
 }

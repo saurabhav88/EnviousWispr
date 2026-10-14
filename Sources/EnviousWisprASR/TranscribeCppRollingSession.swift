@@ -112,6 +112,10 @@ package actor TranscribeCppRollingSession: WhisperIncrementalSession {
   private var finished = false
   /// Set by `cancel`: no result after it is released, and finalize stops at its next step.
   private var cancelled = false
+  /// Bumped by every `start`. A terminal or loop from an earlier run captures its generation
+  /// and, after every suspension, touches nothing once a newer run has begun: a restart while
+  /// an old finalize still drains must never hand it the new run's audio or counters.
+  private var generation = 0
   private var loopTask: Task<Void, Never>?
   /// The stopped loop's drain, shared by every terminal (a second Cancel joins the first's
   /// drain instead of returning before the native run ends).
@@ -157,6 +161,7 @@ package actor TranscribeCppRollingSession: WhisperIncrementalSession {
   package func start(
     audioSamplesProvider: @Sendable @escaping () async -> (samples: [Float], count: Int)
   ) {
+    generation += 1
     running = true
     finished = false
     cancelled = false
@@ -207,15 +212,16 @@ package actor TranscribeCppRollingSession: WhisperIncrementalSession {
   package func finalize(
     finalSamples: [Float], speechSegments: [SpeechSegment]
   ) async -> IncrementalResult {
+    let run = generation
     if !stopSnapshotTaken { stoppedMidDecode = loopDecodeInFlight }
     await stopLoop()
-    guard !cancelled else { return cancelledResult() }
+    guard isCurrent(run) else { return cancelledResult() }
     guard let provider = audioSamplesProvider else {
       return result(text: committedText, samplesCovered: 0, tailDecodeMs: 0)
     }
     audioSamplesProvider = nil
     let (samples, count) = await provider()
-    guard !cancelled else { return cancelledResult() }
+    guard isCurrent(run) else { return cancelledResult() }
 
     // The flush window obeys the same bound as every loop window.
     retain(realAudioEnd: Float(count) / Self.sampleRate)
@@ -247,15 +253,16 @@ package actor TranscribeCppRollingSession: WhisperIncrementalSession {
     flushTask = flush
     defer { if flushTask == flush { flushTask = nil } }
     do {
-      let run = try await withTaskCancellationHandler {
+      let decoded = try await withTaskCancellationHandler {
         try await flush.value
       } onCancel: {
         flush.cancel()
       }
-      guard !cancelled else { return cancelledResult() }
+      // A decode that finished despite a cancel is still not released.
+      guard isCurrent(run) else { return cancelledResult() }
       let tailMs = Self.milliseconds(since: flushStart)
       let realEnd = Float(window.count) / Self.sampleRate
-      let bufferText = zip(run.segments, Self.spacedTexts(of: run))
+      let bufferText = zip(decoded.segments, Self.spacedTexts(of: decoded))
         .filter { Float($0.0.startMs) / 1000 < realEnd }
         .reduce("") { Self.join($0, $1.1) }
       guard !bufferText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
@@ -267,10 +274,16 @@ package actor TranscribeCppRollingSession: WhisperIncrementalSession {
         text: Self.join(scrolledOutText, bufferText), samplesCovered: count, tailDecodeMs: tailMs)
     } catch {
       _ = await flush.result  // a cancelled caller still waits for the native return
-      guard !cancelled else { return cancelledResult() }
+      guard isCurrent(run) else { return cancelledResult() }
       return fallback(
         strategy: "streaming_flush_failed", tailMs: Self.milliseconds(since: flushStart))
     }
+  }
+
+  /// This terminal may still publish: its run is the current one, nobody cancelled the session
+  /// and the caller did not cancel the finalize.
+  private func isCurrent(_ run: Int) -> Bool {
+    run == generation && !cancelled && !Task.isCancelled
   }
 
   /// Cancels the loop AND a running flush, and returns only after both native runs physically
@@ -307,13 +320,14 @@ package actor TranscribeCppRollingSession: WhisperIncrementalSession {
   // MARK: - Loop
 
   private func runLoop() async {
-    while running, !Task.isCancelled {
+    let run = generation
+    // `live` after every suspension: this loop's run is current and nothing ended it.
+    var live: Bool { run == generation && running && !finished && !Task.isCancelled }
+    while live {
       try? await Task.sleep(for: cadence)
-      guard running, !finished, !Task.isCancelled, let provider = audioSamplesProvider else {
-        break
-      }
+      guard live, let provider = audioSamplesProvider else { break }
       let (samples, count) = await provider()
-      guard running, !finished, !Task.isCancelled else { break }
+      guard live else { break }
       guard count - lastDecodeSampleCount >= minNewSamplesToDecode else { continue }
 
       // §3.5 holds whatever the decodes return: empty and failed decodes never apply, so the
@@ -328,18 +342,18 @@ package actor TranscribeCppRollingSession: WhisperIncrementalSession {
       do {
         native = try await decode(window)
       } catch {
+        guard live else { break }
         loopDecodeInFlight = false
-        if !Task.isCancelled, !finished {
-          await AppLogger.shared.log(
-            "Whisper streaming decode failed: \(error.localizedDescription)",
-            level: .info, category: "WhisperStreaming")
-        }
+        await AppLogger.shared.log(
+          "Whisper streaming decode failed: \(error.localizedDescription)",
+          level: .info, category: "WhisperStreaming")
+        guard live else { break }
         completeCycle()
         continue
       }
+      // A terminal (or a newer run) that landed during the decode wins: drop this cycle.
+      guard live else { break }
       loopDecodeInFlight = false
-      // A terminal that landed during the decode wins: drop this cycle.
-      guard running, !finished, !Task.isCancelled else { break }
       let segments = zip(native.segments, Self.spacedTexts(of: native)).map {
         RollingSegment(
           start: origin + Float($0.0.startMs) / 1000, end: origin + Float($0.0.endMs) / 1000,
@@ -352,6 +366,8 @@ package actor TranscribeCppRollingSession: WhisperIncrementalSession {
       totalDecodeTimeMs += Self.milliseconds(since: started)
       completeCycle()
     }
+    // The aborted decode has returned; a newer run owns the flag otherwise.
+    if run == generation { loopDecodeInFlight = false }
   }
 
   private func completeCycle() {
