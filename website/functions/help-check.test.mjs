@@ -10,7 +10,10 @@ import {
   JEV_MODEL,
   MAX_BODY_BYTES,
   NO_MATCH,
+  DECISION_VERSION,
+  THRESHOLD_VERSION,
   buildPageRequest,
+  buildSectionRequest,
   countLine,
   runHelpCheck,
   validateRequest,
@@ -126,6 +129,62 @@ test("whole-message mode never allows suppression, even with a strong can_resolv
   assert.equal(out.issues[0].resolution_eligible, false);
   assert.equal(out.suppression_allowed, false);
   assert.deepEqual(jev.calls[0].body.state.issues, [{ id: "i0", summary: "", evidence: SECRET_TEXT }]);
+});
+
+// #3739 D3: the resolves question per mode. Literal wording, written out here rather than read
+// from the builder, so a change to either mode's wording fails this test.
+const DECOMPOSED_RESOLVES = (title) => ({
+  type: "noul",
+  instructions: `Would the text of the section you would pick for \`issues[0]\` from the entries in \`sections\` whose page is ${JSON.stringify(title)} actually resolve that issue? Say no when those sections only describe the same feature without the specific fix, when the user says they already tried what the text suggests, or when the issue is a bug the text does not describe.`,
+  criteria: {
+    true: "A section's text gives the specific answer, setting or fix this issue needs and the user has not already tried.",
+    false: "On topic but no fix, already tried, or an undescribed bug.",
+  },
+});
+const WHOLE_MESSAGE_RESOLVES = (title) => ({
+  type: "noul",
+  instructions: `Would the text of the section you would pick for \`issues[0]\` from the entries in \`sections\` whose page is ${JSON.stringify(title)} actually answer at least one of the problems or questions in that issue? The issue is the user's whole message and may contain several problems or questions; one of them answered is enough. Say no when those sections only describe the same feature without the specific fix, when the user says they already tried what the text suggests, or when the problem it would answer is a bug the text does not describe.`,
+  criteria: {
+    true: "A section's text gives the specific answer, setting or fix for at least one problem or question in this issue, and the user has not already tried it.",
+    false: "On topic but no fix for any of its problems or questions, already tried, or an undescribed bug.",
+  },
+});
+
+test("the version stamps: decision bumped for the whole-message wording, thresholds unchanged", () => {
+  assert.equal(DECISION_VERSION, "2026-10-14.1");
+  assert.equal(THRESHOLD_VERSION, "g3-0.5-0.5-u0.5-0.5-0.7-0.7-0.8-c0.5");
+});
+
+test("each mode asks its own resolves question; the section question is the same in both", () => {
+  const issues = [{ id: "i0", summary: "s", evidence: SECRET_TEXT }];
+  const decomposed = buildSectionRequest(SECRET_TEXT, issues, [RESOLVE.slug], "decomposed");
+  const whole = buildSectionRequest(SECRET_TEXT, issues, [RESOLVE.slug], "whole_message_always_send");
+  assert.deepEqual(decomposed.questions.resolves_0, DECOMPOSED_RESOLVES(RESOLVE.title));
+  assert.deepEqual(whole.questions.resolves_0, WHOLE_MESSAGE_RESOLVES(RESOLVE.title));
+  assert.deepEqual(whole.questions.section_0, decomposed.questions.section_0);
+  assert.deepEqual(whole.state, decomposed.state);
+});
+
+test("the check passes the request's mode to the section request", async () => {
+  const decomposedJev = fakeJev(pageAnswer(RESOLVE.slug), sectionAnswer(RESOLVE.sections[0].id));
+  await runHelpCheck(body(), ENV, { fetchImpl: decomposedJev.fetchImpl });
+  assert.deepEqual(decomposedJev.calls[1].body.questions.resolves_0, DECOMPOSED_RESOLVES(RESOLVE.title));
+  const wholeJev = fakeJev(pageAnswer(RESOLVE.slug), sectionAnswer(RESOLVE.sections[0].id));
+  const out = await runHelpCheck(body({ mode: "whole_message_always_send", issues: [] }), ENV, { fetchImpl: wholeJev.fetchImpl });
+  assert.deepEqual(wholeJev.calls[1].body.questions.resolves_0, WHOLE_MESSAGE_RESOLVES(RESOLVE.title));
+  // Still at most one card, always sent, never resolvable, whatever the score.
+  assert.equal(out.issues.length, 1);
+  assert.equal(out.issues[0].requires_send, true);
+  assert.equal(out.issues[0].resolution_eligible, false);
+  assert.equal(out.suppression_allowed, false);
+  assert.equal(out.decision_version, "2026-10-14.1");
+});
+
+test("whole-message mode keeps the resolves gate: below 0.7 there is no section card", async () => {
+  const jev = fakeJev(pageAnswer(RESOLVE.slug), sectionAnswer(RESOLVE.sections[0].id, 0.69));
+  const out = await runHelpCheck(body({ mode: "whole_message_always_send", issues: [] }), ENV, { fetchImpl: jev.fetchImpl });
+  assert.notEqual(out.issues[0].match_type, "section");
+  assert.equal(out.suppression_allowed, false);
 });
 
 test("the kill switch: missing, unknown and disabled send without calling TypeSafe; suggest_only never suppresses", async () => {

@@ -27,7 +27,7 @@ const KINDS = ["bug", "how_to", "feature_request", "other"];
 const MODES = ["decomposed", "whole_message_always_send"];
 const VERSION_PATTERN = /^[A-Za-z0-9._+-]{1,64}$/;
 
-export const DECISION_VERSION = "2026-09-28.1";
+export const DECISION_VERSION = "2026-10-14.1";
 // e2e_grade.py gates: page p, page confidence, section p, section confidence,
 // resolves, page-link p. `useful` must agree with the page pick: every card in the
 // real-endpoint run already had useful >= 0.5, so it removes none and blocks a reply
@@ -164,7 +164,34 @@ export function buildPageRequest(message, issues) {
   };
 }
 
-export function buildSectionRequest(message, issues, picks) {
+// The resolves question per mode (#3739 D3). Decomposed: one concern per issue, and the card
+// may let the user mark it solved. Whole message: the one "issue" is the whole message, which
+// can hold several problems; the card can never suppress the report, so answering ONE of them
+// is enough to show it. Both keep the already-tried and undocumented-bug exclusions.
+function resolvesQuestion(k, pageTitle, mode) {
+  if (mode === "whole_message_always_send") {
+    return {
+      type: "noul",
+      instructions: `Would the text of the section you would pick for \`issues[${k}]\` from the entries in \`sections\` whose page is ${JSON.stringify(pageTitle)} actually answer at least one of the problems or questions in that issue? The issue is the user's whole message and may contain several problems or questions; one of them answered is enough. Say no when those sections only describe the same feature without the specific fix, when the user says they already tried what the text suggests, or when the problem it would answer is a bug the text does not describe.`,
+      criteria: {
+        true: "A section's text gives the specific answer, setting or fix for at least one problem or question in this issue, and the user has not already tried it.",
+        false: "On topic but no fix for any of its problems or questions, already tried, or an undescribed bug.",
+      },
+    };
+  }
+  return {
+    type: "noul",
+    // Scoped to the one page section_k chooses from: `sections` also holds other
+    // concerns' pages, and this score gates a card from THIS page.
+    instructions: `Would the text of the section you would pick for \`issues[${k}]\` from the entries in \`sections\` whose page is ${JSON.stringify(pageTitle)} actually resolve that issue? Say no when those sections only describe the same feature without the specific fix, when the user says they already tried what the text suggests, or when the issue is a bug the text does not describe.`,
+    criteria: {
+      true: "A section's text gives the specific answer, setting or fix this issue needs and the user has not already tried.",
+      false: "On topic but no fix, already tried, or an undescribed bug.",
+    },
+  };
+}
+
+export function buildSectionRequest(message, issues, picks, mode) {
   const pages = [...new Set(picks.filter(Boolean))].sort();
   const sections = pages.flatMap((slug) =>
     CANDIDATE_BY_SLUG.get(slug).sections.map((s) => ({ id: s.id, page: CANDIDATE_BY_SLUG.get(slug).title, heading: s.heading ?? "(intro)", text: s.text })),
@@ -181,16 +208,7 @@ export function buildSectionRequest(message, issues, picks) {
         `Which entry in \`sections\` would be most useful for \`issues[${k}]\`? Use its page, heading and text. A section about the current setting can help with a request to change that setting. A shared word alone is insufficient. Choose __no_match__ if none would help.` +
         CONTEXT,
     };
-    questions[`resolves_${k}`] = {
-      type: "noul",
-      // Scoped to the one page section_k chooses from: `sections` also holds other
-      // concerns' pages, and this score gates a card from THIS page.
-      instructions: `Would the text of the section you would pick for \`issues[${k}]\` from the entries in \`sections\` whose page is ${JSON.stringify(CANDIDATE_BY_SLUG.get(slug).title)} actually resolve that issue? Say no when those sections only describe the same feature without the specific fix, when the user says they already tried what the text suggests, or when the issue is a bug the text does not describe.`,
-      criteria: {
-        true: "A section's text gives the specific answer, setting or fix this issue needs and the user has not already tried.",
-        false: "On topic but no fix, already tried, or an undescribed bug.",
-      },
-    };
+    questions[`resolves_${k}`] = resolvesQuestion(k, CANDIDATE_BY_SLUG.get(slug).title, mode);
   });
   return {
     model: JEV_MODEL,
@@ -298,7 +316,7 @@ export async function runHelpCheck(body, env, { fetchImpl = fetch, now = Date.no
   let sectionAnswers = {};
   if (picks.some(Boolean)) {
     try {
-      sectionAnswers = await callJev(buildSectionRequest(message, issues, picks), env, fetchImpl, deadlineAt, now);
+      sectionAnswers = await callJev(buildSectionRequest(message, issues, picks, request.mode), env, fetchImpl, deadlineAt, now);
     } catch (error) {
       return sendFeedback(error.message, request);
     }
