@@ -1,8 +1,10 @@
 import CryptoKit
+import EnviousWisprCore
 @preconcurrency import FluidAudio
 import Foundation
 import Testing
 
+@testable import EnviousWisprASR
 @testable import EnviousWisprTranscribeCpp
 
 /// #3735 chunk 0: the transcribe.cpp dependency proof through the real Xcode test target.
@@ -145,15 +147,29 @@ struct TranscribeCppRealBoundaryTests {
     let session = try TranscribeCppSession(modelPath: TranscribeCppRealBoundaryFixture.modelPath)
     defer { session.close() }
 
+    // A stopped run never announces native entry: neither an abort requested before the run
+    // nor a caller cancelled after admission and preparation.
+    var entries = 0
     session.requestAbort()
     #expect {
-      _ = try session.run(samples: samples, language: "en")
+      _ = try session.run(samples: samples, language: "en", onInferenceEntered: { entries += 1 })
     } throws: { error in
       (error as? TranscribeCppError)?.isAborted == true
     }
     session.clearAbort()
-    let result = try session.run(samples: samples, language: "en")
+    #expect {
+      _ = try session.run(
+        samples: samples, language: nil, onInferenceEntered: { entries += 1 },
+        shouldStop: { true })
+    } throws: { error in
+      (error as? TranscribeCppError)?.isAborted == true
+    }
+    #expect(entries == 0)
+    let result = try session.run(
+      samples: samples, language: "en", onInferenceEntered: { entries += 1 },
+      shouldStop: { false })
     #expect(!result.text.isEmpty)
+    #expect(entries == 1)
   }
 }
 
@@ -199,6 +215,96 @@ struct TranscribeCppExecutorRealBoundaryTests {
     await executor.unload(model)
     #expect(await executor.counters.freed == 1)
   }
+}
+
+/// #3735 plan §3.2 on real bytes: the Whisper backend through the live executor driver.
+@Suite("transcribe.cpp Whisper backend on the real model (Metal)", .serialized, .tags(.productOutcome))
+struct TranscribeCppWhisperBackendRealBoundaryTests {
+  @Test(
+    "the backend loads and warms the turbo model, transcribes auto and forced, runs LID, reports progress, survives a cancel and unloads",
+    .enabled(if: TranscribeCppRealBoundaryFixture.modelIsPresent),
+    .tags(.realBoundary)
+  )
+  func backendRoutesRealWork() async throws {
+    try TranscribeCppRealBoundaryFixture.requireExpectedModel()
+    let samples = try AudioConverter().resampleAudioFile(
+      path: TranscribeCppRealBoundaryFixture.audioURL.path)
+    let path = TranscribeCppRealBoundaryFixture.modelPath
+    let backend = TranscribeCppWhisperBackend(
+      driver: LiveWhisperExecutorDriver(), modelVariant: "whisper-large-v3-turbo-Q8_0",
+      admittedModelPath: { path })
+    try await backend.prepare()
+    #expect(await backend.isReady)
+    #expect((await backend.lastWarmupInferenceMs ?? -1) >= 0, "the warm-up decode completed")
+
+    let expected =
+      "the quick brown fox jumps over the lazy dog while the morning sun rises slowly above the quiet hills"
+    func words(_ text: String) -> String {
+      text.lowercased().split(whereSeparator: { !$0.isLetter && !$0.isNumber }).joined(separator: " ")
+    }
+
+    // Auto language, with progress and the native-entry signal counted once.
+    let progress = ProgressFractions()
+    await backend.setTranscriptionProgressObserver { progress.record($0) }
+    let entries = ProgressFractions()
+    let auto = try await backend.transcribe(
+      audioSamples: samples, options: TranscriptionOptions(language: nil, enableTimestamps: true),
+      onInferenceEntered: { entries.record(1) })
+    #expect(words(auto.text) == expected)
+    #expect(auto.language == "en")
+    #expect(entries.snapshot().count == 1)
+    let fractions = progress.snapshot()
+    #expect(!fractions.isEmpty && fractions == fractions.sorted() && fractions.last == 1.0)
+    let timings = try #require(auto.segmentTimings)
+    #expect(!timings.isEmpty)
+    let audioMs = Int(Double(samples.count) / 16.0)
+    for timing in timings {
+      #expect(timing.range.upperBound <= auto.text.utf16.count)
+      if let start = timing.startMs, let end = timing.endMs {
+        #expect(0 <= start && start <= end && end <= audioMs)
+      }
+    }
+
+    // Forced language reports the hint.
+    let forced = try await backend.transcribe(
+      audioSamples: samples, options: TranscriptionOptions(language: "en"), onInferenceEntered: nil)
+    #expect(forced.language == "en")
+    #expect(words(forced.text) == expected)
+
+    // LID through the fork's language-probability API.
+    guard case .observations(let observations) = await backend.observeLID(samples: samples, maxWindows: 4)
+    else {
+      Issue.record("expected LID observations")
+      return
+    }
+    #expect(observations.allSatisfy { $0.argmaxLang == "en" && $0.logProb <= 0 && $0.logProb.isFinite })
+
+    // A cancelled take ends as a cancellation; the model is then reused cleanly.
+    let cancelled = Task {
+      try await backend.transcribe(
+        audioSamples: samples, options: TranscriptionOptions(language: "en"), onInferenceEntered: nil)
+    }
+    cancelled.cancel()
+    await #expect(throws: CancellationError.self) { try await cancelled.value }
+    let again = try await backend.transcribe(
+      audioSamples: samples, options: TranscriptionOptions(language: "en"), onInferenceEntered: nil)
+    #expect(words(again.text) == expected)
+
+    await backend.unload()
+    #expect(await backend.isReady == false)
+    await #expect(throws: (any Error).self) {
+      _ = try await backend.transcribe(
+        audioSamples: samples, options: .default, onInferenceEntered: nil)
+    }
+  }
+}
+
+/// Fractions arrive on the native running thread; record under a lock.
+private final class ProgressFractions: @unchecked Sendable {
+  private let lock = NSLock()
+  private var values: [Double] = []
+  func record(_ value: Double) { lock.withLock { values.append(value) } }
+  func snapshot() -> [Double] { lock.withLock { values } }
 }
 
 /// Progress arrives on the native running thread; record under a lock.

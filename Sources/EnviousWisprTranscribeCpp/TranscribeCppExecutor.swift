@@ -60,14 +60,15 @@ public actor TranscribeCppExecutor {
     case detect(ModelHandle, samples: [Float])
     case transcribe(
       ModelHandle, samples: [Float], language: String?,
-      onProgress: (@Sendable (Int64, Int64) -> Void)?)
+      onProgress: (@Sendable (Int64, Int64) -> Void)?,
+      onInferenceEntered: (@Sendable () -> Void)?)
     case free(ModelHandle)
   }
 
   private static func handleID(of work: Work) -> UUID? {
     switch work {
     case .load: nil
-    case .detect(let handle, _), .transcribe(let handle, _, _, _), .free(let handle): handle.id
+    case .detect(let handle, _), .transcribe(let handle, _, _, _, _), .free(let handle): handle.id
     }
   }
 
@@ -112,6 +113,7 @@ public actor TranscribeCppExecutor {
   private var sessions: [UUID: any TranscribeCppEngineSession] = [:]
   private var closing: Set<UUID> = []
   private var unloadWaiters: [UUID: [CheckedContinuation<Void, Never>]] = [:]
+  private var drainWaiters: [UUID: [CheckedContinuation<Void, Never>]] = [:]
   private var heartQueue: [Request] = []
   private var previewQueue: [Request] = []
   private var active: Request?
@@ -171,17 +173,31 @@ public actor TranscribeCppExecutor {
     return observation
   }
 
+  /// - Parameter onInferenceEntered: called synchronously on the native thread immediately
+  ///   before `transcribe_run`. Never called while the request only waits in a queue, nor
+  ///   for a request cancelled before its native work starts.
   public func transcribe(
     _ handle: ModelHandle, samples: [Float], language: String?, lane: Lane,
-    onProgress: (@Sendable (Int64, Int64) -> Void)? = nil
+    onProgress: (@Sendable (Int64, Int64) -> Void)? = nil,
+    onInferenceEntered: (@Sendable () -> Void)? = nil
   ) async throws -> TranscribeCppRunResult {
     guard
       case .transcribed(let result) = try await submit(
         Request(
           lane: lane,
-          work: .transcribe(handle, samples: samples, language: language, onProgress: onProgress)))
+          work: .transcribe(
+            handle, samples: samples, language: language, onProgress: onProgress,
+            onInferenceEntered: onInferenceEntered)))
     else { throw ExecutorError.modelUnavailable }
     return result
+  }
+
+  /// Returns once no native work for `handle` is running. A caller that cancelled keeps the
+  /// native call running until it returns; this waits for that return. It never frees
+  /// anything and never blocks admission of new work.
+  public func waitForDrain(_ handle: ModelHandle) async {
+    guard let active, Self.handleID(of: active.work) == handle.id else { return }
+    await withCheckedContinuation { drainWaiters[handle.id, default: []].append($0) }
   }
 
   /// Aborts and drains any work on `handle`, then frees it. Coalesces: concurrent callers
@@ -330,7 +346,8 @@ public actor TranscribeCppExecutor {
       let outcome =
         next.isCancelled
         ? Outcome.failed(ExecutorError.cancelled)
-        : Self.perform(work, session: session, makeSession: makeSession)
+        : Self.perform(
+          work, session: session, makeSession: makeSession, shouldStop: { next.isCancelled })
       Task { await self.complete(next, outcome) }
     }
   }
@@ -338,6 +355,9 @@ public actor TranscribeCppExecutor {
   private func complete(_ request: Request, _ outcome: Outcome) {
     active = nil
     announce()
+    if let id = Self.handleID(of: request.work) {
+      for waiter in drainWaiters.removeValue(forKey: id) ?? [] { waiter.resume() }
+    }
     counters.completed += 1
     if case .freed = outcome { counters.freed += 1 }
     if request.isCancelled || request.preempted {
@@ -358,7 +378,8 @@ public actor TranscribeCppExecutor {
   /// Runs on the dedicated queue: the only place native work happens.
   private static func perform(
     _ work: Work, session: (any TranscribeCppEngineSession)?,
-    makeSession: @Sendable (String) throws -> any TranscribeCppEngineSession
+    makeSession: @Sendable (String) throws -> any TranscribeCppEngineSession,
+    shouldStop: @escaping () -> Bool
   ) -> Outcome {
     do {
       switch work {
@@ -367,10 +388,12 @@ public actor TranscribeCppExecutor {
       case .detect(_, let samples):
         guard let session else { return .failed(ExecutorError.modelUnavailable) }
         return .detected(try session.detectLanguage(samples: samples))
-      case .transcribe(_, let samples, let language, let onProgress):
+      case .transcribe(_, let samples, let language, let onProgress, let onInferenceEntered):
         guard let session else { return .failed(ExecutorError.modelUnavailable) }
         return .transcribed(
-          try session.run(samples: samples, language: language, onProgress: onProgress))
+          try session.run(
+            samples: samples, language: language, onProgress: onProgress,
+            onInferenceEntered: onInferenceEntered, shouldStop: shouldStop))
       case .free:
         session?.close()
         return .freed
@@ -388,7 +411,8 @@ protocol TranscribeCppEngineSession: AnyObject, Sendable {
   func clearAbort()
   func detectLanguage(samples: [Float]) throws -> TranscribeCppLanguageObservation
   func run(
-    samples: [Float], language: String?, onProgress: ((Int64, Int64) -> Void)?
+    samples: [Float], language: String?, onProgress: ((Int64, Int64) -> Void)?,
+    onInferenceEntered: (() -> Void)?, shouldStop: (() -> Bool)?
   ) throws -> TranscribeCppRunResult
   func close()
 }

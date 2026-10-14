@@ -616,13 +616,17 @@ private final class FakeSession: TranscribeCppEngineSession, @unchecked Sendable
   func clearAbort() { lock.withLock { _abort = false } }
 
   func detectLanguage(samples: [Float]) throws -> TranscribeCppLanguageObservation {
-    _ = try run(samples: samples, language: nil, onProgress: nil)
+    _ = try run(
+      samples: samples, language: nil, onProgress: nil, onInferenceEntered: nil, shouldStop: nil)
     return TranscribeCppLanguageObservation(code: "en", logProb: -0.01)
   }
 
   func run(
-    samples: [Float], language: String?, onProgress: ((Int64, Int64) -> Void)?
+    samples: [Float], language: String?, onProgress: ((Int64, Int64) -> Void)?,
+    onInferenceEntered: (() -> Void)?, shouldStop: (() -> Bool)?
   ) throws -> TranscribeCppRunResult {
+    if shouldStop?() == true { throw FakeAbort() }
+    onInferenceEntered?()
     native.enter(self, samples: samples)
     if !native.releasedAll { gate.wait() }
     let aborted = abortFlag && !native.ignoresAbort.contains(name)
