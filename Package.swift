@@ -225,8 +225,8 @@ let package = Package(
     .binaryTarget(
       name: "CTranscribe",
       url:
-        "https://github.com/saurabhav88/transcribe.cpp/releases/download/ew-3735-v0.4.0.4/TranscribeCpp.xcframework.zip",
-      checksum: "bc4d200230c0e429b4cb5c553c193256efae3ed85c53d8e67d24fb2e106fdd90"
+        "https://github.com/saurabhav88/transcribe.cpp/releases/download/ew-3735-v0.4.0.5/TranscribeCpp.xcframework.zip",
+      checksum: "62e13128aed0df806e9b3bd0c33116a32980f703ff9f5658870c6d0dd437d640"
     ),
     // #3735: the thin Swift boundary over CTranscribe. Mechanism only (sessions,
     // runs, language probability, progress, abort, UTF-8 repair); no app policy.

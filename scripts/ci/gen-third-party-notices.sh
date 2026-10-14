@@ -359,6 +359,34 @@ printf 'https://huggingface.co/FluidInference/parakeet-tdt-0.6b-v3-coreml (base 
 printf 'nvidia/parakeet-tdt-0.6b-v3 by NVIDIA). An existing copy keeps working until\n'
 printf 'Parakeet Ultra is ready, and is then removed.\n'
 
+# #3735: the transcribe.cpp Whisper models are SERVED by us (models.enviouswispr.com, the
+# pinned Hugging Face revisions as backup). The weights are OpenAI's (MIT); the GGUF
+# conversion repositories declare Apache-2.0, so both texts ship, cat'd from vendored files
+# beside the other licences. Not active until the engine swap (#3735 PR-B) registers them.
+WHISPER_MIT="${PROJ_ROOT}/Sources/EnviousWispr/Resources/whisper-openai-LICENSE.txt"
+WHISPER_APACHE="${PROJ_ROOT}/Sources/EnviousWispr/Resources/whisper-gguf-conversion-APACHE-2.0.txt"
+for f in "$WHISPER_MIT" "$WHISPER_APACHE"; do
+  [[ -f "$f" ]] || { echo "error: missing $f" >&2; exit 1; }
+done
+printf '\n'
+printf 'OpenAI Whisper large-v3-turbo and Whisper small (GGUF Q8_0)\n'
+printf '  Version: handy-computer/whisper-large-v3-turbo-gguf revision 5eaf945c,\n'
+printf '           handy-computer/whisper-small-gguf revision a2073177\n'
+printf '  License: MIT (OpenAI Whisper weights); Apache-2.0 (GGUF conversion repositories)\n'
+printf '  Source:  https://huggingface.co/handy-computer/whisper-large-v3-turbo-gguf\n'
+printf '           https://huggingface.co/handy-computer/whisper-small-gguf\n\n'
+printf 'EnviousWispr downloads these models when the multilingual Whisper engine or the\n'
+printf 'Universal live preview is used; they are not distributed inside this disk image.\n'
+printf 'The files are served from models.enviouswispr.com, with the Hugging Face\n'
+printf 'revisions above as backup sources. Envious Labs did not modify the models. The\n'
+printf 'large model is transferred in three pieces that the app joins back together;\n'
+printf 'the installed file is byte-identical to the publisher'"'"'s file and is checked\n'
+printf 'against its published SHA-256 before use.\n\n'
+printf 'OpenAI Whisper licence:\n\n'
+cat "$WHISPER_MIT"
+printf '\nGGUF conversion repositories licence:\n\n'
+cat "$WHISPER_APACHE"
+
 # S1-mini is, like Parakeet Ultra above, SERVED by us from models.enviouswispr.com
 # rather than by its publisher, which makes us a redistributor under
 # Apache-2.0 section 4. That owes recipients a copy of the licence (4a) and the
