@@ -10,7 +10,10 @@ import os
 /// allow one `transcribe_run` in flight per model (`transcribe.h` threading notes), so
 /// callers must serialize every call on a session. `requestAbort()` is the one method
 /// that may be called from another thread while a run is in flight.
-public final class TranscribeCppSession: @unchecked Sendable {
+///
+/// Internal: app code reaches native work only through `TranscribeCppExecutor.shared`,
+/// which is the serializer these threading notes require.
+final class TranscribeCppSession: @unchecked Sendable {
   private var handle: OpaquePointer?
   private let abortFlag = TranscribeCppAbortFlag()
   /// The model file this session loaded, for identity checks by callers.

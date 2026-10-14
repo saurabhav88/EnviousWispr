@@ -157,6 +157,50 @@ struct TranscribeCppRealBoundaryTests {
   }
 }
 
+/// #3735 plan §3.2a on real bytes: the same native work routed through the executor.
+@Suite("transcribe.cpp executor on the real model (Metal)", .serialized, .tags(.productOutcome))
+struct TranscribeCppExecutorRealBoundaryTests {
+  @Test(
+    "the executor loads the turbo model, detects English, transcribes with progress, survives a cancel and is reused",
+    .enabled(if: TranscribeCppRealBoundaryFixture.modelIsPresent),
+    .tags(.realBoundary)
+  )
+  func executorRoutesRealWork() async throws {
+    try TranscribeCppRealBoundaryFixture.requireExpectedModel()
+    let samples = try AudioConverter().resampleAudioFile(
+      path: TranscribeCppRealBoundaryFixture.audioURL.path)
+    let executor = TranscribeCppExecutor()
+    let model = try await executor.load(
+      modelPath: TranscribeCppRealBoundaryFixture.modelPath, lane: .heart)
+
+    let observation = try await executor.detectLanguage(model, samples: samples, lane: .heart)
+    #expect(observation.code == "en")
+    #expect(observation.logProb.isFinite && observation.logProb <= 0)
+
+    let recorder = ProgressRecorder()
+    let result = try await executor.transcribe(
+      model, samples: samples, language: nil, lane: .heart
+    ) { advanced, total in recorder.record(advanced: advanced, total: total) }
+    let words = result.text.lowercased()
+      .split(whereSeparator: { !$0.isLetter && !$0.isNumber }).joined(separator: " ")
+    #expect(
+      words
+        == "the quick brown fox jumps over the lazy dog while the morning sun rises slowly above the quiet hills"
+    )
+    #expect(recorder.snapshot().last.map { $0.advanced == $0.total } == true)
+
+    // A cancelled request ends as cancelled; the model is then reused cleanly.
+    let cancelled = Task { try await executor.transcribe(model, samples: samples, language: "en", lane: .heart) }
+    cancelled.cancel()
+    await #expect(throws: TranscribeCppExecutor.ExecutorError.cancelled) { try await cancelled.value }
+    let again = try await executor.transcribe(model, samples: samples, language: "en", lane: .heart)
+    #expect(!again.text.isEmpty)
+
+    await executor.unload(model)
+    #expect(await executor.counters.freed == 1)
+  }
+}
+
 /// Progress arrives on the native running thread; record under a lock.
 private final class ProgressRecorder: @unchecked Sendable {
   struct Call {
