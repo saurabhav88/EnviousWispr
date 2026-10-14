@@ -11304,6 +11304,17 @@
         }
       }
     },
+    "No effect on this engine yet." : {
+      "comment" : "Speech engine settings: short line under Faster Transcription on the multilingual engine.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bei dieser Engine noch ohne Wirkung."
+          }
+        }
+      }
+    },
     "No internet connection. Please connect to the internet and try again." : {
       "comment" : "Setup error: no internet during the speech model download.",
       "localizations" : {
@@ -20226,17 +20237,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Funktioniert, antwortet derzeit aber langsam."
-          }
-        }
-      }
-    },
-    "Works during recording with a selected language." : {
-      "comment" : "Speech engine settings: short line under Faster Transcription on the multilingual engine.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Transkribiert schon während der Aufnahme, wenn du eine Sprache ausgewählt hast."
           }
         }
       }
