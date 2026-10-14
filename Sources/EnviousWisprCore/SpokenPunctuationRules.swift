@@ -355,7 +355,7 @@ package enum SpokenPunctuationRules {
     .init(command: .semicolon, spokenForms: ["semicolon"], replacement: ";"),
     .init(command: .comma, spokenForms: ["comma"], replacement: ","),
     .init(command: .period, spokenForms: ["period", "full stop"], replacement: "."),
-    // #3738: symbols, on BOTH English routes (the bare-word route reads `englishSymbolRules`). Forms
+    // #3738: symbols, on BOTH English routes (the bare-word route matches this table's symbol rows). Forms
     // from Apple's English table (`docs/audits/2026-10-14-3738-apple-embedded-commands-en.txt`) minus
     // ordinary words and regional forms: no bare "quote", "dash", "star", "dot", "point", "at", no
     // "open/close bracket" (UK `(`, US `[`). Quotes are straight, as Apple's table writes them.

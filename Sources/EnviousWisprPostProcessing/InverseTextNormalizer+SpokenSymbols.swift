@@ -46,10 +46,11 @@ extension InverseTextNormalizer {
     let start = (startWord ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
       .precomposedStringWithCanonicalMapping
     let lead = start.isEmpty ? "" : literal(start) + #"[.,]?[ \t\x{00A0}]+"#
-    // A command is a whole phrase: no letter, digit, underscore or joining hyphen directly before or
-    // after it, so "underscores" and "re-tilde" are not commands.
+    // A command is a whole phrase: no letter, combining mark, digit, underscore or joining hyphen
+    // directly before or after it, so "underscores", "re-tilde" and "tilde-based" are not commands.
     let pattern =
-      #"(?<![\p{L}\p{N}_-])"# + lead + "(" + alternation(forms) + #")(?![\p{L}\p{N}_])"#
+      #"(?<![\p{L}\p{M}\p{N}_-])"# + lead + "(" + alternation(forms)
+      + #")(?![\p{L}\p{M}\p{N}_-])"#
     // A joining or opening symbol eats the space after it, unless a legacy command follows: removing
     // that space would glue "Insert comma" onto the symbol, where the legacy matcher's word boundary
     // can no longer see it ("Hello Insert underscore Insert comma").
@@ -150,8 +151,10 @@ extension InverseTextNormalizer {
   /// - Parameter joinerGap: see `applySymbolCommands`; the caller removes the gaps after its joiner pass.
   static func applyEnglishSymbolCommands(_ text: String, joinerGap: Bool) -> String {
     let unglued = reSub(#"(\p{L})-hyphen(?:ed)?\b"#, text) { m in (m.g(1) ?? "") + " hyphen" }
+    // The whole English table, not only its symbols: the legacy forms keep the space before a legacy
+    // command ("open paren comma close paren" -> `(,)`); only symbol rows are matched here.
     return applySymbolCommands(
-      unglued, rules: SpokenPunctuationRules.englishSymbolRules, startWord: nil,
+      unglued, rules: SpokenPunctuationRules.startWordRules(for: "en") ?? [], startWord: nil,
       guardDeterminers: true, joinerGap: joinerGap
     ).text
   }

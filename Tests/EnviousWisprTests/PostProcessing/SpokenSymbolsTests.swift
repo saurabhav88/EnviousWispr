@@ -109,6 +109,11 @@ struct SpokenSymbolsTests {
     #expect(on("See open paren and slash close paren now") == "See (and slash) now")
     #expect(
       on("Run open angle bracket slash path close angle bracket").contains("\u{200A}") == false)
+    // Second-pass review: a legacy command right after an opening symbol, and a symbol name that is
+    // part of a hyphenated or accented word.
+    #expect(on("Run open paren comma close paren") == "Run (,)")
+    #expect(on("Use tilde-based notation") == "Use tilde-based notation")
+    #expect(on("Use underscore\u{0301} notation") == "Use underscore\u{0301} notation")
     // An engine comma glued to the backslash was the only separator (build review r4).
     #expect(
       on("Run open angle bracket,backslash path close angle bracket now") == "Run <\\path> now")
