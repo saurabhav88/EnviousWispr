@@ -24,9 +24,13 @@ extension InverseTextNormalizer {
   ///   - startWord: nil or empty for bare words (English default); otherwise the start word that must
   ///     come first ("Diktiere linke Klammer").
   ///   - guardDeterminers: leave a command preceded by one of `symbolDeterminers` as words.
+  ///   - joinerGap: keep a `joinerGapCharacter`, instead of no space, between a symbol and a spoken
+  ///     slash or backslash whose word boundary that symbol would break. True only where the joiner
+  ///     pass runs after this one (English bare words, `applyPunct`), which removes every leftover gap.
   /// - Returns: the text and how many commands were rewritten.
   static func applySymbolCommands(
-    _ text: String, rules: [SpokenPunctuationRule], startWord: String?, guardDeterminers: Bool
+    _ text: String, rules: [SpokenPunctuationRule], startWord: String?, guardDeterminers: Bool,
+    joinerGap: Bool
   ) -> (text: String, fired: Int) {
     let symbols = rules.filter { $0.command.role == .symbol && $0.command.spacing != nil }
     guard !symbols.isEmpty else { return (text, 0) }
@@ -51,10 +55,23 @@ extension InverseTextNormalizer {
     // can no longer see it ("Hello Insert underscore Insert comma").
     let legacyForms = alternation(
       rules.filter { $0.command.role != .symbol }.flatMap(\.spokenForms))
-    func trimSymbolGap(_ value: String) -> String {
+    func trimSymbolGap(_ value: String, after symbol: Character?) -> String {
       let legacy = #"\A[ \t\x{00A0}]*"# + lead + "(?:" + legacyForms + #")\b"#
       if firstMatch(legacy, value) != nil { return value }
-      return String(value.drop(while: isHorizontalSpace))
+      let rest = String(value.drop(while: isHorizontalSpace))
+      // A spoken slash or backslash after a symbol its left boundary rejects ("<", "_") keeps a gap,
+      // so the joiner pass still reads it: "open angle bracket backslash path" -> `<\path`.
+      if joinerGap, rest.count < value.count, let symbol, !joinerLeftNeighbours.contains(symbol),
+        firstMatch(Self.joinerWordAtStart, rest) != nil
+      {
+        return String(Self.joinerGapCharacter) + rest
+      }
+      return rest
+    }
+    // A closing or joining symbol right after a spoken slash or backslash keeps a gap for the same
+    // reason: the joiner's right boundary rejects every symbol ("backslash close paren" -> `\)`).
+    func gapBeforeClosing(_ before: String) -> String {
+      joinerGap && firstMatch(Self.joinerWordAtEnd, before) != nil ? String(Self.joinerGapCharacter) : ""
     }
     let matches = reMatches(pattern, text)
     guard !matches.isEmpty else { return (text, 0) }
@@ -71,7 +88,7 @@ extension InverseTextNormalizer {
       guard range.location >= cursor else { continue }
       var gap = ns.substring(with: NSRange(location: cursor, length: range.location - cursor))
       if absorbLeadingComma { gap = droppingEngineComma(gap) }
-      if skipLeadingSpace { gap = trimSymbolGap(gap) }
+      if skipLeadingSpace { gap = trimSymbolGap(gap, after: out.last) }
       skipLeadingSpace = false
       absorbLeadingComma = false
       let matched = ns.substring(with: range)
@@ -97,9 +114,11 @@ extension InverseTextNormalizer {
         skipLeadingSpace = true
         absorbLeadingComma = true
       case .closes:
-        out = trimmingEngineComma(out) + rule.replacement
+        let before = trimmingEngineComma(out)
+        out = before + gapBeforeClosing(before) + rule.replacement
       case .joins:
-        out = trimmingEngineComma(out) + rule.replacement
+        let before = trimmingEngineComma(out)
+        out = before + gapBeforeClosing(before) + rule.replacement
         skipLeadingSpace = true
         absorbLeadingComma = true
       case .spaced:
@@ -116,7 +135,7 @@ extension InverseTextNormalizer {
     }
     var tail = ns.substring(from: cursor)
     if absorbLeadingComma { tail = droppingEngineComma(tail) }
-    if skipLeadingSpace { tail = trimSymbolGap(tail) }
+    if skipLeadingSpace { tail = trimSymbolGap(tail, after: out.last) }
     // A spaced symbol at the very end leaves no space dangling after it.
     if tail.isEmpty, lastWasSpaced { out = trimmingTrailingSpace(out) }
     out += tail
@@ -126,13 +145,33 @@ extension InverseTextNormalizer {
   /// The English bare-word route (#3738): the recogniser glues a spoken hyphen to the word before it
   /// ("well-hyphen known", "well-hyphened known", measured with Parakeet Ultra); read that as the
   /// command, then run the shared pass with the determiner guard.
-  static func applyEnglishSymbolCommands(_ text: String) -> String {
+  /// - Parameter joinerGap: see `applySymbolCommands`; the caller removes the gaps after its joiner pass.
+  static func applyEnglishSymbolCommands(_ text: String, joinerGap: Bool) -> String {
     let unglued = reSub(#"(\p{L})-hyphen(?:ed)?\b"#, text) { m in (m.g(1) ?? "") + " hyphen" }
     return applySymbolCommands(
       unglued, rules: SpokenPunctuationRules.englishSymbolRules, startWord: nil,
-      guardDeterminers: true
+      guardDeterminers: true, joinerGap: joinerGap
     ).text
   }
+
+  /// The gap the symbol pass leaves beside a spoken slash or backslash (HAIR SPACE). It is whitespace
+  /// to `joinerCommands`, which consumes it when it writes `\` or `/`; `applyPunct` removes any left
+  /// over afterwards, so the symbol ends up with its own spacing. `applyPunct` turns the gap off when
+  /// the input already holds this character, so a transcript's own character is never removed.
+  static let joinerGapCharacter: Character = "\u{200A}"
+
+  /// The characters `joinerCommands` accepts directly before a spoken slash or backslash.
+  private static let joinerLeftNeighbours: Set<Character> = [
+    "\"", "'", "(", "[", "{", "\u{201C}", "\u{2018}", "\u{00AB}",
+  ]
+
+  /// A spoken slash or backslash at the start of the text, with the joiner's own right boundary.
+  private static let joinerWordAtStart =
+    #"\A(?:back[^\S\r\n]*slash|(?:forward[^\S\r\n]+)?slash)(?![^\s.,;:!?])"#
+
+  /// A spoken slash or backslash at the end of the text, with the joiner's own left boundary.
+  private static let joinerWordAtEnd =
+    #"(?<![^\s"'(\[{\x{201C}\x{2018}\x{00AB}])(?:back[^\S\r\n]*slash|(?:forward[^\S\r\n]+)?slash)\z"#
 
   // MARK: - Helpers
 

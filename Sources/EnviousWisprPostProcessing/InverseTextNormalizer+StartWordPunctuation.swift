@@ -73,7 +73,7 @@ extension InverseTextNormalizer {
     // mark command can land inside an opening bracket ("Diktiere Punkt Diktiere linke Klammer beta"
     // -> `. (Beta`), and so the legacy matcher below never sees a symbol command.
     let symbolPass = Self.applySymbolCommands(
-      text, rules: rules, startWord: start, guardDeterminers: false)
+      text, rules: rules, startWord: start, guardDeterminers: false, joinerGap: false)
 
     var ruleByKey: [String: SpokenPunctuationRule] = [:]
     var breakForms: [String] = []

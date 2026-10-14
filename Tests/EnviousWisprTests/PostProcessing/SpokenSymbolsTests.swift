@@ -97,29 +97,47 @@ struct SpokenSymbolsTests {
     #expect(on("Run open paren slash clear close paren now.") == "Run (/clear) now.")
   }
 
+  /// Build review r3: a symbol rendered beside a spoken slash or backslash must not hide the word
+  /// from the joiner pass, on either side, and no gap character may reach the output.
+  @Test("English bare words: symbols beside a spoken backslash or slash keep the joiner working")
+  func joinerBesideSymbols() {
+    #expect(on("Run open paren backslash close paren now") == "Run (\\) now")
+    #expect(
+      on("Run open angle bracket backslash path close angle bracket now") == "Run <\\path> now")
+    #expect(on("Type underscore backslash now") == "Type_\\now")
+    #expect(on("Type backslash underscore name now") == "Type\\_name now")
+    #expect(on("See open paren and slash close paren now") == "See (and slash) now")
+    #expect(!on("Run open angle bracket slash path close angle bracket").contains("\u{200A}"))
+    // A transcript's own hair space is never removed, and the pass still runs.
+    #expect(on("Run open paren x close paren\u{200A}now") == "Run (x)\u{200A}now")
+  }
+
   /// Every English symbol form on BOTH English routes, with the expected spacing written from the plan's
   /// table (D2), not from the renderer: opens keeps the space before and joins the next word, closes
   /// joins the word before, joins removes both spaces, spaced puts one space on each side.
   /// The symbol and spacing class of every English symbol command, written by hand from the plan's
   /// table (D1, D2), never read from the rule or the command under test.
-  private static let expectedSymbol: [SpokenPunctuationCommand: (symbol: String, spacing: String)] = [
-    .openParenthesis: ("(", "opens"), .closeParenthesis: (")", "closes"),
-    .openSquareBracket: ("[", "opens"), .closeSquareBracket: ("]", "closes"),
-    .openBrace: ("{", "opens"), .closeBrace: ("}", "closes"),
-    .openAngleBracket: ("<", "opens"), .closeAngleBracket: (">", "closes"),
-    .openQuote: ("\"", "opens"), .closeQuote: ("\"", "closes"),
-    .openSingleQuote: ("'", "opens"), .closeSingleQuote: ("'", "closes"),
-    .hyphen: ("-", "joins"), .underscore: ("_", "joins"), .apostrophe: ("'", "joins"),
-    .emDash: ("\u{2014}", "joins"), .enDash: ("\u{2013}", "spaced"), .ellipsis: ("\u{2026}", "closes"),
-    .ampersand: ("&", "spaced"), .plusSign: ("+", "spaced"), .equalsSign: ("=", "spaced"),
-    .verticalBar: ("|", "spaced"), .asterisk: ("*", "closes"), .hashSign: ("#", "opens"),
-    .tilde: ("~", "opens"),
-  ]
+  private static let expectedSymbol: [SpokenPunctuationCommand: (symbol: String, spacing: String)] =
+    [
+      .openParenthesis: ("(", "opens"), .closeParenthesis: (")", "closes"),
+      .openSquareBracket: ("[", "opens"), .closeSquareBracket: ("]", "closes"),
+      .openBrace: ("{", "opens"), .closeBrace: ("}", "closes"),
+      .openAngleBracket: ("<", "opens"), .closeAngleBracket: (">", "closes"),
+      .openQuote: ("\"", "opens"), .closeQuote: ("\"", "closes"),
+      .openSingleQuote: ("'", "opens"), .closeSingleQuote: ("'", "closes"),
+      .hyphen: ("-", "joins"), .underscore: ("_", "joins"), .apostrophe: ("'", "joins"),
+      .emDash: ("\u{2014}", "joins"), .enDash: ("\u{2013}", "spaced"),
+      .ellipsis: ("\u{2026}", "closes"),
+      .ampersand: ("&", "spaced"), .plusSign: ("+", "spaced"), .equalsSign: ("=", "spaced"),
+      .verticalBar: ("|", "spaced"), .asterisk: ("*", "closes"), .hashSign: ("#", "opens"),
+      .tilde: ("~", "opens"),
+    ]
 
   @Test("Every English symbol form converts with its class's spacing on both English routes")
   func everyEnglishFormBothRoutes() {
     let rules = SpokenPunctuationRules.englishSymbolRules
-    #expect(Set(rules.map(\.command)) == Set(Self.expectedSymbol.keys), "the English symbol set drifted")
+    #expect(
+      Set(rules.map(\.command)) == Set(Self.expectedSymbol.keys), "the English symbol set drifted")
     for rule in rules {
       guard let want = Self.expectedSymbol[rule.command] else {
         Issue.record("\(rule.command) has no hand-written expectation")
@@ -166,10 +184,14 @@ struct SpokenSymbolsTests {
   @Test(
     "An engine comma inside a symbol pair goes; one after the closing symbol stays",
     arguments: [
-      ("Say open parenthesis, urgent, close parenthesis, send it today.",
-       "Say (urgent), send it today."),
-      ("It should say open paren user ID, colon string, close paren returns bool.",
-       "It should say (user ID: string) returns bool."),
+      (
+        "Say open parenthesis, urgent, close parenthesis, send it today.",
+        "Say (urgent), send it today."
+      ),
+      (
+        "It should say open paren user ID, colon string, close paren returns bool.",
+        "It should say (user ID: string) returns bool."
+      ),
       ("Set API, underscore, key first.", "Set API_key first."),
       ("Keep it open paren see above. close paren", "Keep it (see above.)"),
     ])
@@ -177,7 +199,8 @@ struct SpokenSymbolsTests {
     #expect(on(input) == expected)
   }
 
-  @Test("An explicitly spoken comma inside a pair survives on both routes; comma runs are left alone")
+  @Test(
+    "An explicitly spoken comma inside a pair survives on both routes; comma runs are left alone")
   func explicitCommaInsidePair() {
     #expect(on("Call open paren x comma close paren") == "Call (x,)")
     #expect(
@@ -194,7 +217,8 @@ struct SpokenSymbolsTests {
   @Test("A capital pending after a full stop lands after every opening symbol")
   func capitalAfterEveryOpener() {
     #expect(
-      startWord("Done Insert period Insert open angle bracket beta", "en", "Insert") == "Done. <Beta")
+      startWord("Done Insert period Insert open angle bracket beta", "en", "Insert")
+        == "Done. <Beta")
     #expect(startWord("Done Insert period Insert hash sign beta", "en", "Insert") == "Done. #Beta")
   }
 

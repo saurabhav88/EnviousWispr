@@ -2377,7 +2377,8 @@ public struct InverseTextNormalizer: Sendable {
     // pull it back over the line break and double the previous period (#3041). "On its own" means
     // it follows a sentence end (a closing quote or bracket may sit between); "Add a new line."
     // keeps its period.
-    (#"(?<=[.!?…][”’"')\]}»]{0,3}\s)new paragraph\b[.,]?"#, "\n\n"), (#"(?<=[.!?…][”’"')\]}»]{0,3}\s)new line\b[.,]?"#, "\n"),
+    (#"(?<=[.!?…][”’"')\]}»]{0,3}\s)new paragraph\b[.,]?"#, "\n\n"),
+    (#"(?<=[.!?…][”’"')\]}»]{0,3}\s)new line\b[.,]?"#, "\n"),
     (#"\bnew paragraph\b"#, "\n\n"), (#"\bnew line\b"#, "\n"),
     (#"\s+comma\b"#, ","), (periodRow, "."), (fullStopRow, "."),
     (#"\s+question mark\b"#, "?"), (#"\s+exclamation (mark|point)\b"#, "!"),
@@ -2839,8 +2840,10 @@ public struct InverseTextNormalizer: Sendable {
     // #3738: spoken symbols FIRST, as on the start-word route, so the only commas the symbol pass can
     // drop inside a pair are the engine's: a spoken "comma" is still the word here and converts below
     // ("open paren x comma close paren" -> `(x,)`). The joiner pass below still reads a spoken slash
-    // inside brackets (its left neighbour class accepts `(`).
-    if spokenPunctuation { t = Self.applyEnglishSymbolCommands(t) }
+    // inside brackets (its left neighbour class accepts `(`), and beside any other symbol through the
+    // gap the symbol pass leaves (`joinerGapCharacter`), removed once the joiner pass has run.
+    let joinerGap = spokenPunctuation && !t0.contains(Self.joinerGapCharacter)
+    if spokenPunctuation { t = Self.applyEnglishSymbolCommands(t, joinerGap: joinerGap) }
     if spokenPunctuation {
       for (pat, rep) in Self.punct {
         t = reSub(pat, t) { _ in rep }
@@ -2931,6 +2934,7 @@ public struct InverseTextNormalizer: Sendable {
         return ns.substring(with: leading) + "/"
       }
     }
+    if joinerGap { t.removeAll { $0 == Self.joinerGapCharacter } }
     // Only a command this pass wrote from a spoken marker; a written `/Users` alone is left as is.
     if wroteCommand {
       t = reSub(Self.loneCommandPeriod, t, caseInsensitive: false) { m in
