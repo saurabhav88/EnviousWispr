@@ -376,8 +376,8 @@ fi
 ew_seed_publish "$PROJECT_ROOT" "$DERIVED_DATA"
 
 [ "$FULL_VALIDATION" = 1 ] || exit 0
-# The standalone eval packages compile only here and in the PR check: serially,
-# Release, each in its own persistent .build directory, held to tracked pins.
+# The standalone eval packages compile only here (the PR check stopped in #3729 PR-B):
+# serially, Release, each in its own persistent .build directory, held to tracked pins.
 PHASE_START=$SECONDS
 echo "==> eval packages: compiling apple_runner, alias_runner, prompt_render (Release, serial)"
 if bash "$PROJECT_ROOT/scripts/ci/compile-eval-packages.sh" 2>&1 | tee "$LOG_DIR/eval-packages.log"; then

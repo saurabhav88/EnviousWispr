@@ -165,8 +165,8 @@ done
 # built product in one search path, so a declared edge orders the link — it does
 # not gate module visibility. SwiftPM would reject it, but CI builds the app and
 # test targets with Tuist and xcodebuild only (`pr-check.yml`, `cache-warm.yml`);
-# the only `swift build` in CI compiles the standalone eval packages
-# (scripts/ci/compile-eval-packages.sh), never these targets. So "the missing
+# no `swift build` runs in CI since #3729 PR-B (the standalone eval packages
+# compile locally, never these targets). So "the missing
 # dependency IS the wall" was false, and this loop is the
 # wall instead.
 #
