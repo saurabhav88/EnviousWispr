@@ -26,6 +26,8 @@ struct SpokenSymbolsTests {
   @Test(
     "English bare words: each spacing class lands as typed",
     arguments: [
+      // The Help Center article's own first example.
+      ("Tuesday left parenthesis after lunch right parenthesis", "Tuesday (after lunch)"),
       (
         "The meeting is on Tuesday left parenthesis the 14th right parenthesis and it starts at noon.",
         "The meeting is on Tuesday (the 14th) and it starts at noon."

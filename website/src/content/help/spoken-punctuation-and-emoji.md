@@ -48,7 +48,7 @@ Backslash joins the words on both sides, so "C colon backslash Users" becomes "C
 
 ### Dictate brackets, quotes and other symbols
 
-With **Spoken punctuation** on, you can also say the name of a symbol. "Tuesday left parenthesis the fourteenth right parenthesis" becomes "Tuesday (the 14th)". "report underscore final" becomes "report_final". "She said open quote I will be there close quote" becomes She said "I will be there".
+With **Spoken punctuation** on, you can also say the name of a symbol. "Tuesday left parenthesis after lunch right parenthesis" becomes "Tuesday (after lunch)". "report underscore final" becomes "report_final". "She said open quote I will be there close quote" becomes She said "I will be there".
 
 Each symbol lands with the spacing you would type. Opening brackets and quotes join the next word, closing ones join the word before. A hyphen, an underscore, an apostrophe and an em dash join both words. An ampersand, a plus sign, an equals sign, a vertical bar and an en dash get a space on each side.
 
