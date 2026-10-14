@@ -82,13 +82,26 @@ struct ChildProcessFailureTests {
     #expect(fact?.status == 1)
   }
 
-  @Test func outgoingProviderFactSurvivesResidencyChange() async {
+  @Test func outgoingProviderFactSurvivesResidencyChange() async throws {
     let coordinator = LocalPolishServerCoordinator()
     let outgoing = OSAllocatedUnfairLock(initialState: [ChildProcessFailure]())
     let incoming = OSAllocatedUnfairLock(initialState: [ChildProcessFailure]())
     await coordinator.setProcessFailureObserver(for: .egOne) { fact in outgoing.withLock { $0.append(fact) } }
     await coordinator.setProcessFailureObserver(for: .s1Mini) { fact in incoming.withLock { $0.append(fact) } }
-    await coordinator.transition(to: .idle(.s1Mini), intent: coordinator.claimIntent())
+    // Missing binaries exercise residency without launching or sweeping a process.
+    let missingRoot = FileManager.default.temporaryDirectory
+      .appendingPathComponent("ew3685-\(UUID().uuidString)", isDirectory: true)
+    try #require(!FileManager.default.fileExists(atPath: missingRoot.path))
+    let configuration = EGOneServerManager.Configuration(
+      serverBinaryURL: missingRoot.appendingPathComponent("server"),
+      modelURL: missingRoot.appendingPathComponent("model"), contextTokens: 2048)
+    for provider in [LLMProvider.egOne, .s1Mini] {
+      await coordinator.transition(
+        to: .run(LocalPolishTarget(provider: provider, configuration: configuration)),
+        intent: coordinator.claimIntent())
+      let resident = await coordinator.residentModelForTesting
+      #expect(resident == provider)
+    }
     let fact = ChildProcessFailure(
       role: .server, provider: .egOne, generation: 1, phase: .ready,
       termination: .signal, status: 5, pid: 234)
