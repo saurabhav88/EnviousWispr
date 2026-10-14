@@ -199,7 +199,7 @@ struct TelemetryEmitterRegistryTests {
   /// same properties; the activation runs once per install, so it adds at most a few rows. The
   /// event's row stays `ungraded`, unchanged.
   static let sitesFingerprint =
-    "11a6fa6ad2991244fb72566dec0dca4e9c0435b3d576ef4e7f4eace6da84f14e"
+    "38c9db9e113ec4405b0d5d04c9379dd5f78a2d6c7ee15f72697bba2f528f93f9"
   static let ungradedFingerprint =
     "8c5e46c2f2f7fb59004bb2eb5ea1ac210ef32dbb79fdcb68b3eff70a28cc133f"
 

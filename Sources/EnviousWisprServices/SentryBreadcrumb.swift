@@ -220,6 +220,28 @@ public enum SentryBreadcrumb {
 
   // MARK: - Handled Errors
 
+  /// The host observed a child exit, not an unhandled host crash. Keep alerting errors unchanged.
+  public static func captureChildProcessFailure(_ failure: ChildProcessFailure) {
+    guard ObservabilityBootstrap.lifecycle.isSentryRunning else { return }
+    let event = makeChildProcessFailureWarning(failure)
+    SentrySDK.capture(event: event)
+    add(stage: "local_polish", message: "Owned child process failed", level: .warning, data: event.extra)
+  }
+
+  static func makeChildProcessFailureWarning(
+    _ failure: ChildProcessFailure, environment: String = ObservabilityBootstrap.currentEnvironment
+  ) -> Event {
+    var data: [String: Any] = failure.stringProperties
+    for (key, value) in failure.integerProperties { data[key] = value }
+    let event = makeHandledErrorEvent(
+      failure, category: .childProcessFailed, stage: "local_polish", extra: data,
+      tags: ["process.role": failure.role.rawValue, "diagnostic.kind": "child_exit"],
+      fingerprintDetail: failure.groupingDetail, environment: environment)
+    event.level = .warning
+    event.message = SentryMessage(formatted: "Owned child process failed; underlying cause unknown")
+    return event
+  }
+
   /// Capture a handled error with pipeline context tags.
   /// Use for failures that don't crash the app but should be diagnosable in Sentry.
   /// - Parameters:
@@ -462,6 +484,7 @@ public enum SentryBreadcrumb {
   /// Structured error categories for pipeline failures.
   /// Maps to Sentry tags for filtering and alerting.
   public enum ErrorCategory: String, Sendable {
+    case childProcessFailed = "child_process_failed"
     case availabilityCheckFailed = "availability_check_failed"
     case providerInitFailed = "provider_init_failed"
     case generationFailed = "generation_failed"

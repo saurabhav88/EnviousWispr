@@ -38,6 +38,7 @@ public protocol EGOneLeaseProviding: EGOneEndpointProviding {
 /// construction, when it is debounced by a tracker that deliberately skips
 /// `.verifying`.
 public enum EGOneRuntimeEvent: Sendable, Equatable {
+  case childProcessFailed(ChildProcessFailure)
   case healthChanged(from: String, to: String, reason: String?)
   /// The user ENTERED or LEFT a paused install state (#2109). `nil` means
   /// they left one.
@@ -321,6 +322,7 @@ public final class EGOneRuntime: EGOneLeaseProviding {
     }
     Task { [weak self] in
       guard let self else { return }
+      await self.registerProcessFailureObserver()
       let seq = OSAllocatedUnfairLock(initialState: 0)
       await self.server.setStateObserver(for: self.provider) { [weak self] state in
         let mySeq = seq.withLock {
@@ -333,6 +335,12 @@ public final class EGOneRuntime: EGOneLeaseProviding {
           self.applyServerState(state)
         }
       }
+    }
+  }
+
+  private func registerProcessFailureObserver() async {
+    await server.setProcessFailureObserver(for: provider) { [weak self] failure in
+      Task { @MainActor [weak self] in self?.onEvent?(.childProcessFailed(failure)) }
     }
   }
 
@@ -729,7 +737,10 @@ public final class EGOneRuntime: EGOneLeaseProviding {
   public func sweepStaleServersAtLaunch() {
     guard let serverBinaryURL else { return }
     let path = serverBinaryURL.path
-    Task { await self.server.reapOrphansIfIdle(binaryPath: path) }
+    Task {
+      await self.registerProcessFailureObserver()
+      await self.server.reapOrphansIfIdle(binaryPath: path, initiator: self.provider)
+    }
   }
 
   /// Provider switched away: free the RAM (isolate-limbs).
@@ -788,7 +799,8 @@ public final class EGOneRuntime: EGOneLeaseProviding {
       // state stream settles at "not installed" (Download button). Reap any
       // crash orphan (idle-gated).
       if let path = serverBinaryURL?.path {
-        await server.reapOrphansIfIdle(binaryPath: path)
+        await registerProcessFailureObserver()
+        await server.reapOrphansIfIdle(binaryPath: path, initiator: provider)
       }
       return
     }
@@ -899,6 +911,7 @@ public final class EGOneRuntime: EGOneLeaseProviding {
     retriesAdapterFallback: Bool
   ) async {
     guard let serverBinaryURL else { return }
+    await registerProcessFailureObserver()
     let configuration = await makeServerConfiguration(
       serverBinaryURL: serverBinaryURL,
       // Delivery exposes the verified admitted entrypoint, not a discovered file.

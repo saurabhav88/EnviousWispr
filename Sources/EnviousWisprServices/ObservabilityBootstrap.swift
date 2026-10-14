@@ -169,7 +169,7 @@ public enum ObservabilityBootstrap {
     /// The id read at the latest PostHog setup, nil when that read was missing or invalid. Only
     /// this drives the global join, so a stale id is never re-tagged.
     private var currentPostHogID: String?
-    private var isSentryRunning = false
+    private(set) var isSentryRunning = false
     private let operations: Operations
     private let makeUUID: () -> UUID
 

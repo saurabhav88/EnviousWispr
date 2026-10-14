@@ -21,6 +21,17 @@ enum EGOneTelemetryBridge {
     { event in
       Task { @MainActor in
         switch event {
+        case .childProcessFailed(let failure):
+          // Identity is in the immutable fact; the handler's current engine never relabels it.
+          TelemetryService.shared.childProcessFailed(failure)
+          SentryBreadcrumb.captureChildProcessFailure(failure)
+          await AppLogger.shared.log(
+            "Child process failed role=\(failure.role.rawValue) "
+              + "provider=\(failure.provider?.rawValue ?? "unknown") "
+              + "phase=\(failure.phase.rawValue) generation=\(failure.generation.map(String.init) ?? "unknown") "
+              + "termination=\(failure.termination?.rawValue ?? "not_launched") "
+              + "status=\(failure.status.map(String.init) ?? "unknown") cause=unknown",
+            level: .info, category: "LLM")
         case .healthChanged(let from, let to, let reason):
           TelemetryService.shared.egOneDownloadEvent(
             name: "health_changed",

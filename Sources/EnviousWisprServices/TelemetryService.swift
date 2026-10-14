@@ -2828,6 +2828,19 @@ public final class TelemetryService {
     PostHogSDK.shared.capture(event, properties: properties)
   }
 
+  /// One rare row per accepted owned-process failure, independent of current provider selection.
+  public func childProcessFailed(_ failure: ChildProcessFailure) {
+    guard ObservabilityBootstrap.lifecycle.isPostHogRunning else { return }
+    var properties: [String: Any] = failure.stringProperties
+    for (key, value) in failure.integerProperties { properties[key] = value }
+    #if DEBUG
+      testEventHook?(CapturedTelemetryEvent(
+        name: "eg1.child_process_failed", stringProps: failure.stringProperties,
+        intProps: failure.integerProperties))
+    #endif
+    PostHogSDK.shared.capture("eg1.child_process_failed", properties: properties)
+  }
+
   /// #2123: which preview engine ran, and how far it got.
   ///
   /// NOT "whether it produced anything" — `started` proves a session opened, not

@@ -63,6 +63,7 @@ parakeet_upgrade.activation	per_change	keep	PostHog query on founder request dur
 dictation.started	ungraded	ungraded	-	pre-#2987
 dictation.terminal	per_take	folded	analytics-operations.md FACT: app-posthog-events (one terminal per accepted take; learned check readiness and absence by selected engine, #3105)	#3105
 eg1.*	ungraded	ungraded	-	pre-#2987
+eg1.child_process_failed	rare_failure	keep	#3685 child-exit investigation and weekly release health review	#3685
 engine.abandoned_decode_hold_settled	ungraded	ungraded	-	pre-#2987
 engine.abandoned_decode_hold_started	ungraded	ungraded	-	pre-#2987
 engine.switch_failed	ungraded	ungraded	-	pre-#2987

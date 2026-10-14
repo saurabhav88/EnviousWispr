@@ -115,6 +115,7 @@ public actor LocalPolishServerCoordinator {
   /// One observer per model. See `setStateObserver(for:_:)` for why a single
   /// slot was a regression rather than merely a limitation.
   private var observers: [LLMProvider: @Sendable (EGOneServerManager.ServerState) -> Void] = [:]
+  private var failureObservers: [LLMProvider: @Sendable (ChildProcessFailure) -> Void] = [:]
   private var managerObserverInstalled = false
 
   /// A non-isolated mirror of `resident`, read from inside the manager's own
@@ -314,7 +315,9 @@ public actor LocalPolishServerCoordinator {
     }
     setResident(target.provider)
     residentTarget = target
-    await manager.start(configuration: target.configuration)
+    var configuration = target.configuration
+    configuration.owningProvider = target.provider
+    await manager.start(configuration: configuration)
     changing = false
     wakeRemovalWaiters()
     await retryDeferredReconfiguration()
@@ -380,8 +383,25 @@ public actor LocalPolishServerCoordinator {
     return endpoint
   }
 
-  public func reapOrphansIfIdle(binaryPath: String) async {
-    await manager.reapOrphansIfIdle(binaryPath: binaryPath)
+  public func reapOrphansIfIdle(binaryPath: String, initiator: LLMProvider? = nil) async {
+    await installManagerObserverIfNeeded()
+    await manager.reapOrphansIfIdle(binaryPath: binaryPath, initiator: initiator)
+  }
+
+  public func setProcessFailureObserver(
+    for provider: LLMProvider, _ observer: @escaping @Sendable (ChildProcessFailure) -> Void
+  ) async {
+    failureObservers[provider] = observer
+    await installManagerObserverIfNeeded()
+  }
+
+  func publishFailure(_ failure: ChildProcessFailure) {
+    if let provider = failure.provider {
+      failureObservers[provider]?(failure)
+    } else {
+      // One observer forwards unknown attribution without inventing an owning provider.
+      failureObservers.values.first?(failure)
+    }
   }
 
   /// Server-state observation, KEYED BY MODEL.
@@ -418,6 +438,10 @@ public actor LocalPolishServerCoordinator {
   private func installManagerObserverIfNeeded() async {
     guard !managerObserverInstalled else { return }
     managerObserverInstalled = true
+    await manager.setProcessFailureObserver { [weak self] failure in
+      // A fact belongs to the completed lifetime even after a provider switch.
+      Task { await self?.publishFailure(failure) }
+    }
     await manager.setStateObserver { [weak self, observedResident] state in
       // Identity is captured AT EMISSION, not read when the task runs. Reading
       // it later is a real race and it delivers to the wrong model: during an

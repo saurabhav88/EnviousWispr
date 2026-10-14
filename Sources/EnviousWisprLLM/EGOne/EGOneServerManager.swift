@@ -90,12 +90,14 @@ public actor EGOneServerManager {
     /// seconds on a real machine). Tests shrink this so a fake server that
     /// never binds fails fast instead of stalling the suite.
     public var readinessBudgetSeconds: Int
+    /// Captured by the coordinator at launch, never inferred from a later selection.
+    public var owningProvider: LLMProvider?
 
     public init(
       serverBinaryURL: URL, modelURL: URL, contextTokens: Int,
       extraArguments: [String] = [], readinessBudgetSeconds: Int = 60,
       learnedWordAdapterURL: URL? = nil,
-      learnedWordAdapterArguments: [String] = []
+      learnedWordAdapterArguments: [String] = [], owningProvider: LLMProvider? = nil
     ) {
       self.serverBinaryURL = serverBinaryURL
       self.modelURL = modelURL
@@ -104,6 +106,7 @@ public actor EGOneServerManager {
       self.learnedWordAdapterArguments = learnedWordAdapterArguments
       self.extraArguments = extraArguments
       self.readinessBudgetSeconds = readinessBudgetSeconds
+      self.owningProvider = owningProvider
     }
 
     func withoutLearnedWordAdapter() -> Configuration {
@@ -125,17 +128,21 @@ public actor EGOneServerManager {
   private var process: Process? {
     didSet {
       let current = process
-      quitKillBox.withLock { $0 = current }
+      let observation = current == nil ? nil : processObservation
+      quitKillBox.withLock { $0 = (current, observation) }
     }
   }
+  private var processObservation: ChildProcessObservation?
   private var restartedOnceThisGeneration = false
   private var memoryPressureSource: (any DispatchSourceMemoryPressure)?
   private var onStateChange: (@Sendable (ServerState) -> Void)?
+  private var onProcessFailure: (@Sendable (ChildProcessFailure) -> Void)?
   /// Mirror of `process` reachable WITHOUT actor isolation, exclusively for
   /// the synchronous app-quit path (#1271 Codex r1 P1): `Process` children
   /// are NOT killed when the parent exits, and `applicationWillTerminate`
   /// cannot await into this actor.
-  private let quitKillBox = OSAllocatedUnfairLock<Process?>(initialState: nil)
+  private let quitKillBox = OSAllocatedUnfairLock<(Process?, ChildProcessObservation?)>(
+    initialState: (nil, nil))
 
   public init() {}
 
@@ -177,8 +184,17 @@ public actor EGOneServerManager {
     observer(state)
   }
 
+  public func setProcessFailureObserver(_ observer: @escaping @Sendable (ChildProcessFailure) -> Void) {
+    onProcessFailure = observer
+  }
+
   private func transition(to newState: ServerState) {
     state = newState
+    switch newState {
+    case .starting: processObservation?.publish(.starting)
+    case .ready: processObservation?.publish(.ready)
+    case .stopped, .pausedForMemoryPressure, .failed: break
+    }
     onStateChange?(newState)
   }
 
@@ -213,12 +229,13 @@ public actor EGOneServerManager {
   /// Synchronous kill for `applicationWillTerminate` — actor state is left
   /// as-is (the app is exiting); the only job is not orphaning the child.
   public nonisolated func terminateImmediately() {
-    quitKillBox.withLock { proc in
-      if let proc, proc.isRunning {
+    quitKillBox.withLock { owned in
+      owned.1?.suppressIntentionalStop()
+      if let proc = owned.0, proc.isRunning {
         proc.terminationHandler = nil
         proc.terminate()
       }
-      proc = nil
+      owned = (nil, nil)
     }
   }
 
@@ -226,8 +243,20 @@ public actor EGOneServerManager {
   /// bypasses `applicationWillTerminate`, orphaning a multi-GB child).
   /// Exact-path match: only processes running OUR bundled binary die; runs
   /// BEFORE this generation's spawn so it can never hit our own child.
-  static func killStaleServers(binaryPath: String) {
+  static func killStaleServers(
+    binaryPath: String, initiator: LLMProvider? = nil, generation: Int? = nil,
+    report: (@Sendable (ChildProcessFailure) -> Void)? = nil
+  ) {
     let sweep = Process()
+    runOrphanSweep(sweep, binaryPath: binaryPath, initiator: initiator, generation: generation, report: report)
+  }
+
+  /// Separate facts from cleanup policy; failed observation never prevents a later server launch.
+  static func runOrphanSweep(
+    _ sweep: Process, binaryPath: String, initiator: LLMProvider?, generation: Int?,
+    report: (@Sendable (ChildProcessFailure) -> Void)?,
+    launch: (Process) throws -> Void = { try $0.run() }
+  ) {
     sweep.executableURL = URL(fileURLWithPath: "/usr/bin/pkill")
     // pkill -f is an unanchored REGEX over the whole command line — escape
     // metacharacters and anchor to argv[0] so only processes actually
@@ -237,8 +266,31 @@ public actor EGOneServerManager {
     sweep.arguments = ["-f", "^\(escaped)( |$)"]
     sweep.standardOutput = FileHandle.nullDevice
     sweep.standardError = FileHandle.nullDevice
-    try? sweep.run()
+    do {
+      try launch(sweep)
+    } catch {
+      report?(ChildProcessFailure(
+        role: .sweep, provider: initiator, generation: generation, phase: .cleanup,
+        launchErrorCode: (error as NSError).code))
+      return  // Foundation cannot wait for a Process that never launched.
+    }
     sweep.waitUntilExit()
+    if let failure = orphanSweepFailure(
+      reason: sweep.terminationReason, status: sweep.terminationStatus, pid: sweep.processIdentifier,
+      initiator: initiator, generation: generation
+    ) {
+      report?(failure)
+    }
+  }
+
+  static func orphanSweepFailure(
+    reason: Process.TerminationReason, status: Int32, pid: Int32,
+    initiator: LLMProvider?, generation: Int?
+  ) -> ChildProcessFailure? {
+    guard reason == .uncaughtSignal || ![0, 1].contains(status) else { return nil }
+    return ChildProcessFailure(
+      role: .sweep, provider: initiator, generation: generation, phase: .cleanup,
+      termination: reason == .uncaughtSignal ? .signal : .exit, status: status, pid: pid)
   }
 
   /// Ordered orphan reap for paths where spawn will NOT run (EG-1 selected
@@ -247,10 +299,12 @@ public actor EGOneServerManager {
   /// manager owns or is mid-starting — callable from anywhere without the
   /// sweep-vs-fresh-spawn ordering concerns of a detached pkill (#1271 r11;
   /// retires the r10 race class rather than patching another call site).
-  func reapOrphansIfIdle(binaryPath: String) {
+  func reapOrphansIfIdle(binaryPath: String, initiator: LLMProvider? = nil) {
     switch state {
     case .stopped, .failed, .pausedForMemoryPressure:
-      Self.killStaleServers(binaryPath: binaryPath)
+      Self.killStaleServers(
+        binaryPath: binaryPath, initiator: initiator, generation: launchGeneration,
+        report: onProcessFailure)
     case .starting, .ready:
       break
     }
@@ -259,11 +313,18 @@ public actor EGOneServerManager {
   private func tearDownProcess() {
     memoryPressureSource?.cancel()
     memoryPressureSource = nil
-    if let process, process.isRunning {
-      process.terminationHandler = nil
-      process.terminate()
+    if let process {
+      // A startup death can be observed here before Foundation delivers its callback.
+      // Record it once before suppressing the deliberate teardown of a live child.
+      if !process.isRunning { processObservation?.recordTermination(process) }
+      processObservation?.suppressIntentionalStop()
+      if process.isRunning {
+        process.terminationHandler = nil
+        process.terminate()
+      }
     }
     process = nil
+    processObservation = nil
   }
 
   private func spawn(configuration: Configuration) async {
@@ -277,7 +338,9 @@ public actor EGOneServerManager {
     }
     // A previous app instance that CRASHED (bypassing applicationWillTerminate)
     // may have orphaned its server; reap it before spawning ours.
-    Self.killStaleServers(binaryPath: configuration.serverBinaryURL.path)
+    Self.killStaleServers(
+      binaryPath: configuration.serverBinaryURL.path, initiator: configuration.owningProvider,
+      generation: generation, report: onProcessFailure)
     guard FileManager.default.fileExists(atPath: configuration.modelURL.path) else {
       transition(to: .failed(reason: "model_missing"))
       return
@@ -312,7 +375,10 @@ public actor EGOneServerManager {
     // pipe buffers can never fill and wedge the child.
     proc.standardOutput = FileHandle.nullDevice
     proc.standardError = FileHandle.nullDevice
-    proc.terminationHandler = { [weak self] _ in
+    let observation = ChildProcessObservation(
+      provider: configuration.owningProvider, generation: generation, report: onProcessFailure)
+    proc.terminationHandler = { [weak self] terminated in
+      observation.recordTermination(terminated)
       Task { [weak self] in
         await self?.handleTermination(configuration: configuration, generation: generation)
       }
@@ -321,12 +387,16 @@ public actor EGOneServerManager {
     do {
       try proc.run()
     } catch {
+      onProcessFailure?(ChildProcessFailure(
+        role: .server, provider: configuration.owningProvider, generation: generation,
+        phase: .starting, launchErrorCode: (error as NSError).code))
       transition(to: .failed(reason: "spawn_failed"))
       await AppLogger.shared.log(
         "Local polish server spawn failed: \(error.localizedDescription)",
         level: .info, category: "LLM")
       return
     }
+    processObservation = observation
     process = proc
     installMemoryPressureSource()
 
