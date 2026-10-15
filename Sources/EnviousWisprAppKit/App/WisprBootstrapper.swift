@@ -42,6 +42,12 @@ package final class WisprBootstrapper {
     /// #2885 — the DEBUG-only door through which Live UAT hands a file to
     /// `fileImportCoordinator` without the screen. Installed after launch, removed at quit.
     let debugImportDoor: DebugImportDoor
+    /// #3765 — the DEBUG-only Unix-socket door through which scripts read and change app
+    /// state through the owners below. Installed after launch, closed first at quit.
+    let devControlDoor: DevControlDoor
+    /// The launch-time install, kept so quit can cancel it; `uninstall()` is what stops a
+    /// listener, before or while it starts.
+    private var devControlInstall: Task<Void, Never>?
   #endif
   let liveRecordingState: LiveRecordingState
   let lastRecordingResult: LastRecordingResult
@@ -2251,6 +2257,31 @@ package final class WisprBootstrapper {
             llmDiscovery: llmDiscovery, localPolishRuntimes: localPolishRuntimes,
             aiAvailability: aiAvailability, setup: setup, savedKeyPresence: savedKeyPresence)
         })
+      // #3765: every closure reads the app's own owner at request time; none caches.
+      self.devControlDoor = DevControlDoor(
+        dispatcher: DevControlDispatcher(
+          settings: settings,
+          writeContext: DevControlSettings.WriteContext(
+            modelCatalog: { [llmDiscovery] in
+              DevControlSettings.ModelCatalog(
+                provider: llmDiscovery.stateProvider, models: llmDiscovery.discoveredModels)
+            },
+            connectedInputUIDs: { AudioDeviceEnumerator.allInputDevices().map(\.uid) }),
+          status: DevControlDispatcher.StatusSources(
+            engineStatus: { [engineCoordinator] in engineCoordinator.status },
+            isSwitching: { [engineCoordinator] in engineCoordinator.isSwitching },
+            driverState: { [kernelDriver, whisperKitKernelDriver] backend in
+              (backend == .whisperKit ? whisperKitKernelDriver : kernelDriver).state
+            },
+            parakeetDelivery: { [modelDelivery] in modelDelivery.parakeetState },
+            whisperKitSetup: { [setup] in setup.whisperKitSetup.setupState },
+            isFileImportRunning: { [fileImportCoordinator] in fileImportCoordinator.isRunning },
+            savedKeyState: { [savedKeyPresence] in savedKeyPresence.state(for: $0) }),
+          history: DevControlDispatcher.HistorySource(
+            visibleTranscripts: { [transcriptCoordinator] in
+              transcriptCoordinator.visibleTranscripts
+            }),
+          words: customWordsCoordinator))
     #endif
     self.transcriptCoordinator = transcriptCoordinator
     self.liveRecordingState = liveRecordingState
@@ -2537,6 +2568,13 @@ package final class WisprBootstrapper {
       // #2885: after launch, like `quickAdd.install()` above, and after the coordinator
       // exists, which the initializer guarantees.
       debugImportDoor.install()
+      // #3765: same moment. A door that cannot listen logs why and leaves the app as it is.
+      devControlInstall = Task { [devControlDoor] in
+        let result = await devControlDoor.install()
+        guard result != .ready else { return }
+        await AppLogger.shared.log(
+          "[DevControl] not installed: \(result)", level: .info, category: "Debug")
+      }
     #endif
   }
 
@@ -2560,6 +2598,10 @@ package final class WisprBootstrapper {
     #if DEBUG
       // #2885: stop answering, and stop watching, before anything below tears down.
       debugImportDoor.uninstall()
+      // #3765: close admission before any owner the door reads is torn down. Uninstall
+      // also covers an install that has not started yet: it then refuses.
+      devControlInstall?.cancel()
+      devControlDoor.uninstall()
     #endif
     // #1413: finish a live hold from memory before anything below tears down —
     // a Cocoa quit concludes no take, so this is the only path that restores

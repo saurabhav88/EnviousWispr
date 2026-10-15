@@ -689,6 +689,25 @@
       #expect(goneErrno == ENOENT)
     }
 
+    @Test("quit before the launch install runs: the install refuses and nothing listens")
+    func quitBeforeInstallLeavesNoListener() async throws {
+      // The bootstrapper's order at quit: cancel the install task, then uninstall. A task
+      // that had not reached `install()` yet must not open the door afterwards.
+      let door = DevControlDoor(dispatcher: Self.dispatcher())
+      let install = Task { await door.install() }
+      install.cancel()
+      door.uninstall()
+      #expect(await install.value == .refused("alreadyInstalled"))
+      #expect(door.state == .closed)
+      #expect(door.listenerHasStopped)
+      #expect(FileManager.default.fileExists(atPath: door.socketPath) == false)
+
+      let replacement = DevControlDoor(dispatcher: Self.dispatcher())
+      defer { replacement.uninstall() }
+      #expect(await replacement.install() == .ready)
+      try await stop(replacement)
+    }
+
     @Test("an idle door's uninstall leaves an installed door alone; a replacement waits for the stop")
     func pathReservationAcrossDoors() async throws {
       let first = DevControlDoor(dispatcher: Self.dispatcher())
