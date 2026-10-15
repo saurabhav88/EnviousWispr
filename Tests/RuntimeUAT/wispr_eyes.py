@@ -2090,11 +2090,14 @@ def test_recording(audio=None, sentence=None, hold=3.0, expect=None, timeout=30.
 
     # Phase 1: Start recording via menu
     print(f"\n--- START RECORDING ---")
+    # Registered BEFORE the start, so the previous take is proven over while the app is idle;
+    # a Stop tap when the start failed finds nothing to stop (#3764).
+    _tg.take_started(lambda: tap("Stop Recording"), _recording_idle)
     if not tap("Start Recording"):
         print("BLOCKED: Could not tap 'Start Recording'")
+        _tg.take_stopped()
         end_test()
         return False
-    _tg.take_started(lambda: tap("Stop Recording"), _recording_idle)
     time.sleep(0.5)
 
     # Check overlay appeared
@@ -3212,18 +3215,20 @@ def test_ptt(key=None, audio=None, sentence=None, expect=None, timeout=10.0):
             from Quartz import CGEventCreateKeyboardEvent, CGEventPost, kCGHIDEventTap
             CGEventPost(kCGHIDEventTap, CGEventCreateKeyboardEvent(None, _si.KEY_CODES[key_lower], False))
 
+    if key_lower not in _si.MODIFIER_KEYS and key_lower not in _si.KEY_CODES:
+        print(f"BLOCKED: Unknown key '{key}'")
+        end_test()
+        return False
+    # Registered BEFORE the key goes down, so the previous take is proven over while the app is
+    # idle; any exit before the key-up below still releases it (#3764).
+    _tg.take_started(_key_up, _recording_idle)
     if key_lower in _si.MODIFIER_KEYS:
         _si.modifier_down(_si.MODIFIER_KEYS[key_lower])
-    elif key_lower in _si.KEY_CODES:
+    else:
         from Quartz import CGEventCreateKeyboardEvent, CGEventPost, kCGHIDEventTap
         kc = _si.KEY_CODES[key_lower]
         down = CGEventCreateKeyboardEvent(None, kc, True)
         CGEventPost(kCGHIDEventTap, down)
-    else:
-        print(f"BLOCKED: Unknown key '{key}'")
-        end_test()
-        return False
-    _tg.take_started(_key_up, _recording_idle)  # #3764: any exit before the key-up still releases it
 
     time.sleep(0.8)  # let recording engage + model warm
 
