@@ -793,14 +793,10 @@
 
     /// Written here by hand from plan §3.4, not derived from the table.
     private static let deferredNames: Set<String> = [
-      "cancelKeyCode", "cancelModifiers", "quickAddKeyCode",
-      "quickAddModifiers", "pasteLastKeyCode", "pasteLastModifiers", "copyLastKeyCode",
-      "copyLastModifiers", "toggleKeyCode", "toggleModifiers", "fileImportLLMProvider",
-      "fileImportLLMModel", "fileImportOllamaModel", "ollamaModel",
-      "inputChannelByDeviceUID",
+      "cancelKeyCode", "cancelModifiers", "quickAddKeyCode", "quickAddModifiers", "pasteLastKeyCode", "pasteLastModifiers", "copyLastKeyCode", "copyLastModifiers", "toggleKeyCode", "toggleModifiers", "inputChannelByDeviceUID",
     ]
 
-    @Test("every key has exactly one ordinary route; 15 are not shared yet")
+    @Test("every key has exactly one ordinary route; 11 are not shared yet")
     func routeCounts() {
       var counts: [DevControlSettings.Route: Int] = [:]
       var notYetShared: Set<String> = []
@@ -817,12 +813,15 @@
       #expect(counts[.pillDesign] == 2)
       #expect(counts[.languageCommand] == 2)
       #expect(counts[.silenceTimeout] == 1)
-      #expect(counts[.notYetShared] == 15)
+      #expect(counts[.importProvider] == 1)
+      #expect(counts[.importModel] == 1)
+      #expect(counts[.ollamaModel] == 2)
+      #expect(counts[.notYetShared] == 11)
       #expect(DevControlSettings.route(.llmModel) == .modelCatalog)
       #expect(DevControlSettings.route(.hasCompletedOnboarding) == .typed)
     }
 
-    @Test("the 15 deferred keys refuse an ordinary write without any change, and force still writes them")
+    @Test("the 11 deferred keys refuse an ordinary write without any change, and force still writes them")
     func deferredKeysRefuseOrdinaryWrites() throws {
       var refused = 0
       for row in Self.rows where Self.deferredNames.contains(row.name) {
@@ -846,7 +845,7 @@
         #expect(forced == .written(forced: true), "\(row.name)")
         #expect(row.holds(settings), "\(row.name)")
       }
-      #expect(refused == 15)
+      #expect(refused == 11)
     }
 
     @Test("every typed-route key takes an ordinary write, reported not forced")
@@ -873,6 +872,85 @@
       -> LLMModelInfo
     {
       LLMModelInfo(id: id, displayName: id, provider: provider, isAvailable: available, isRemote: remote)
+    }
+
+    @Test("the import provider: a pick seeds then overrides, null follows dictation, none is its own choice")
+    func importProviderRoute() throws {
+      let (_, _, settings) = Self.fixture()
+      settings.llmProvider = .openAI
+      settings.llmModel = "gpt-dictation"
+      settings.ollamaModel = "llama-dictation"
+      var fired: [(SettingsManager.SettingKey, Bool)] = []
+      settings.onChange = { fired.append(($0, settings.isDevControlWrite)) }
+      func write(_ text: String) throws -> DevControlSettings.SetOutcome {
+        DevControlSettings.write(
+          .fileImportLLMProvider, value: try Self.wire(text), force: false,
+          context: Self.context(), to: settings)
+      }
+      #expect(try write(#""gemini""#) == .written(forced: false))
+      #expect(settings.fileImportLLMProvider == .gemini)
+      #expect(settings.fileImportOllamaModel == "llama-dictation", "seeded before the override")
+      #expect(fired.allSatisfy { $0.1 } && settings.isDevControlWrite == false)
+      #expect(try write(#""none""#) == .written(forced: false))
+      #expect(settings.fileImportLLMProvider == LLMProvider.none)
+      #expect(try write("null") == .written(forced: false))
+      #expect(settings.fileImportLLMProvider == nil, "back to following dictation")
+      fired.removeAll()
+      for bad in [#""bogus""#, "3", "true"] {
+        #expect(try write(bad).code == "badValue", "\(bad)")
+      }
+      #expect(fired.isEmpty && settings.fileImportLLMProvider == nil)
+      #expect(settings.llmProvider == .openAI && settings.llmModel == "gpt-dictation")
+    }
+
+    @Test("the import model goes through the import provider's catalog and creates the override")
+    func importModelRoute() throws {
+      let (_, _, settings) = Self.fixture()
+      settings.llmProvider = .openAI
+      settings.llmModel = "gpt-dictation"
+      let catalog = DevControlSettings.ModelCatalog(
+        provider: .openAI, models: [Self.model("gpt-import", .openAI)])
+      func write(_ id: Any, _ catalog: DevControlSettings.ModelCatalog) -> DevControlSettings.SetOutcome {
+        DevControlSettings.write(
+          .fileImportLLMModel, value: id, force: false, context: Self.context(catalog: catalog),
+          to: settings)
+      }
+      #expect(write("gpt-missing", catalog).code == "badValue")
+      #expect(write("gpt-import", .init(provider: .gemini, models: catalog.models)).code == "catalogUnavailable")
+      #expect(write(5, catalog).code == "badValue")
+      #expect(settings.fileImportLLMProvider == nil, "a refusal never creates the override")
+      #expect(write("gpt-import", catalog) == .written(forced: false))
+      #expect(settings.fileImportLLMProvider == .openAI)
+      #expect(settings.fileImportLLMModel == "gpt-import")
+      #expect(settings.llmModel == "gpt-dictation")
+    }
+
+    @Test("an Ollama model write needs that surface's provider to be Ollama, then takes the menu's path")
+    func ollamaModelRoutes() throws {
+      let (_, _, settings) = Self.fixture()
+      settings.llmProvider = .openAI
+      let ollama = DevControlSettings.ModelCatalog(
+        provider: .ollama, models: [Self.model("local-dev:1b", .ollama)])
+      func write(_ key: SettingsManager.SettingKey, _ id: String) -> DevControlSettings.SetOutcome {
+        DevControlSettings.write(
+          key, value: id, force: false, context: Self.context(catalog: ollama), to: settings)
+      }
+      let before = (settings.ollamaModel, settings.llmModel, settings.fileImportOllamaModel)
+      #expect(write(.ollamaModel, "local-dev:1b").code == "checkFailed")
+      #expect(write(.fileImportOllamaModel, "local-dev:1b").code == "checkFailed")
+      #expect((settings.ollamaModel, settings.llmModel, settings.fileImportOllamaModel) == before)
+      #expect(settings.fileImportLLMProvider == nil)
+
+      settings.llmProvider = .ollama
+      #expect(write(.ollamaModel, "local-dev:1b") == .written(forced: false))
+      #expect(settings.llmModel == "local-dev:1b", "the menu's own write; sync mirrors it live")
+      #expect(write(.ollamaModel, "missing:1b").code == "badValue")
+
+      settings.llmProvider = .openAI
+      settings.fileImportLLMProvider = .ollama
+      #expect(write(.fileImportOllamaModel, "local-dev:1b") == .written(forced: false))
+      #expect(settings.fileImportLLMModel == "local-dev:1b")
+      #expect(settings.llmProvider == .openAI)
     }
 
     @Test("an ordinary llmModel write admits only an offered model from the current provider's catalog")

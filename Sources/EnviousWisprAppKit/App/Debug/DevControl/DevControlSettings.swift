@@ -101,10 +101,10 @@
         return make(.viaOwner)
       case .cancelKeyCode, .cancelModifiers, .quickAddKeyCode, .quickAddModifiers,
         .pasteLastKeyCode, .pasteLastModifiers, .copyLastKeyCode, .copyLastModifiers,
-        .toggleKeyCode, .toggleModifiers, .fileImportLLMProvider, .fileImportLLMModel,
-        .fileImportOllamaModel, .ollamaModel, .inputChannelByDeviceUID:
+        .toggleKeyCode, .toggleModifiers, .inputChannelByDeviceUID:
         return make(.extractedCheck, deferredTo: "PR-C")
-      case .vadSilenceTimeout:
+      case .vadSilenceTimeout, .fileImportLLMProvider, .fileImportLLMModel, .fileImportOllamaModel,
+        .ollamaModel:
         return make(.extractedCheck)
       case .hotkeyEnabled, .vadSensitivity, .vadEnergyGate, .crashRecoveryEnabled,
         .onboardingState:
@@ -455,6 +455,14 @@
       case pillDesign
       /// The pause-duration slider's offered values (`SilenceTimeoutSlider`).
       case silenceTimeout
+      /// Transcribe a File's provider picker (`PolishSettings.setProvider` on `.fileImport`);
+      /// `null` is "Use dictation's polish settings".
+      case importProvider
+      /// Transcribe a File's model menu, through the same offered-model groups as llmModel.
+      case importModel
+      /// An Ollama model pick on the surface the field belongs to, allowed only while that
+      /// surface's provider is Ollama; the pick goes through the model menu's own write.
+      case ollamaModel
       /// The language picker sets the lock and the spelling together, so a single-field
       /// write is refused toward `language.set` (`setLanguage`).
       case languageCommand
@@ -482,8 +490,13 @@
         if key == .hasCompletedOnboarding { return .typed }
         return .notYetShared
       case .extractedCheck:
-        if key == .vadSilenceTimeout { return .silenceTimeout }
-        return .notYetShared
+        switch key {
+        case .vadSilenceTimeout: return .silenceTimeout
+        case .fileImportLLMProvider: return .importProvider
+        case .fileImportLLMModel: return .importModel
+        case .ollamaModel, .fileImportOllamaModel: return .ollamaModel
+        default: return .notYetShared
+        }
       }
     }
 
@@ -506,7 +519,27 @@
       case .typed:
         return outcome(assign(key, value: value, to: settings, forced: false))
       case .modelCatalog:
-        return writeModel(value, context: context, to: settings)
+        return writeModel(value, surface: .dictation, context: context, to: settings)
+      case .importProvider:
+        if value is NSNull {
+          settings.followDictationForFileImportPolish()
+          return .written(forced: false)
+        }
+        guard let provider = Codec.raw(value, LLMProvider.self) else {
+          return .refused(code: "badValue", message: "wrong type or unknown value")
+        }
+        PolishSettings.setProvider(provider, on: .fileImport, in: settings)
+        return .written(forced: false)
+      case .importModel:
+        return writeModel(value, surface: .fileImport, context: context, to: settings)
+      case .ollamaModel:
+        let surface: ProviderSetupSurface = key == .ollamaModel ? .dictation : .fileImport
+        guard PolishSettings.provider(on: surface, in: settings) == .ollama else {
+          return .refused(
+            code: "checkFailed",
+            message: "that screen's provider is not Ollama; pick Ollama first, or use force to stage the field")
+        }
+        return writeModel(value, surface: surface, context: context, to: settings)
       case .inputDevice:
         guard let uid = Codec.string(value) else {
           return .refused(code: "badValue", message: "wrong type or unknown value")
@@ -615,16 +648,18 @@
       }
     }
 
-    /// The screen's model menu offers the current provider's discovered models in the
+    /// The screen's model menu offers the surface's provider's discovered models in the
     /// recommended, other and hosted groups and disables the locked ones
-    /// (`OllamaModelPickerPresentation.groups`); the same groups decide here.
+    /// (`OllamaModelPickerPresentation.groups`); the same groups decide here, and the pick
+    /// is written the way the menu writes it (`PolishSettings.setCloudModel`).
     private static func writeModel(
-      _ value: Any, context: WriteContext, to settings: SettingsManager
+      _ value: Any, surface: ProviderSetupSurface, context: WriteContext,
+      to settings: SettingsManager
     ) -> SetOutcome {
       guard let id = Codec.string(value) else {
         return .refused(code: "badValue", message: "wrong type or unknown value")
       }
-      let provider = settings.llmProvider
+      let provider = PolishSettings.provider(on: surface, in: settings)
       guard !fixedModelProviders.contains(provider) else {
         return .refused(code: "badValue", message: "the current provider has a fixed model")
       }
@@ -641,7 +676,8 @@
           code: "badValue",
           message: locked ? "that model is not available with this key" : "no such model")
       }
-      return outcome(assign(.llmModel, value: id, to: settings, forced: false))
+      PolishSettings.setCloudModel(id, on: surface, in: settings)
+      return .written(forced: false)
     }
 
     /// An ordinary spoken-punctuation write: `enabled` is assigned directly; the override

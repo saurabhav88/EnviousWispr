@@ -1153,8 +1153,7 @@ struct TranscribeFileView: View {
       // An explicit pick is an override even when it EQUALS dictation's engine: choosing
       // the same thing on purpose is still choosing, and must not silently resume
       // following dictation on its next change.
-      settings.seedFileImportPolishModelsIfNeeded()
-      settings.fileImportLLMProvider = .some(choice.provider)
+      PolishSettings.setProvider(choice.provider, on: .fileImport, in: settings)
     } label: {
       VStack(alignment: .leading, spacing: 8) {
         HStack {

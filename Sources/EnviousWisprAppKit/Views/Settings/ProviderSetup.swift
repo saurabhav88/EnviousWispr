@@ -426,56 +426,22 @@ struct ProviderSetupSection: View {
 
   /// The provider THIS surface has chosen. Every read in this file goes through here, so a
   /// site cannot accidentally read dictation's while rendering the import's editor.
-  private var provider: LLMProvider {
-    switch surface {
-    case .dictation: return settings.llmProvider
-    case .fileImport: return settings.effectiveFileImportLLMProvider
-    }
-  }
+  private var provider: LLMProvider { PolishSettings.provider(on: surface, in: settings) }
 
   /// The CLOUD model field for this surface. Ollama reads `surfaceOllamaModel`; which one a
   /// provider actually asks for is `SettingsManager.model(for:cloudModel:ollamaModel:)`.
-  private var surfaceCloudModel: String {
-    switch surface {
-    case .dictation: return settings.llmModel
-    case .fileImport:
-      return settings.fileImportLLMProvider == nil
-        ? settings.llmModel : settings.fileImportLLMModel
-    }
-  }
+  private var surfaceCloudModel: String { PolishSettings.cloudModel(on: surface, in: settings) }
 
   private var surfaceOllamaModel: String {
-    switch surface {
-    case .dictation: return settings.ollamaModel
-    case .fileImport:
-      return settings.fileImportLLMProvider == nil
-        ? settings.ollamaModel : settings.fileImportOllamaModel
-    }
+    PolishSettings.ollamaModel(on: surface, in: settings)
   }
 
-  /// Writing the provider. An import write becomes an OVERRIDE, seeded first, per chunk 2:
-  /// a pick that equals dictation's engine is still a pick.
   private func setProvider(_ newValue: LLMProvider) {
-    switch surface {
-    case .dictation: settings.llmProvider = newValue
-    case .fileImport:
-      settings.seedFileImportPolishModelsIfNeeded()
-      settings.fileImportLLMProvider = newValue
-    }
+    PolishSettings.setProvider(newValue, on: surface, in: settings)
   }
 
-  /// Writing the cloud model. On the import surface this also creates the override, because
-  /// editing the MODEL is choosing just as much as editing the provider is.
   private func setCloudModel(_ newValue: String) {
-    switch surface {
-    case .dictation: settings.llmModel = newValue
-    case .fileImport:
-      settings.seedFileImportPolishModelsIfNeeded()
-      if settings.fileImportLLMProvider == nil {
-        settings.fileImportLLMProvider = settings.llmProvider
-      }
-      settings.fileImportLLMModel = newValue
-    }
+    PolishSettings.setCloudModel(newValue, on: surface, in: settings)
   }
 
   /// The model this surface's provider will actually ASK for, through the one policy both
