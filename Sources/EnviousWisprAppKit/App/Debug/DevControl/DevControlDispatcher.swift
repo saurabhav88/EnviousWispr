@@ -30,6 +30,10 @@
       case modelsParakeetCancel = "models.parakeet.cancel"
       case modelsWhisperKitDownload = "models.whisperkit.download"
       case modelsWhisperKitCancel = "models.whisperkit.cancel"
+      case dictationStart = "dictation.start"
+      case dictationStop = "dictation.stop"
+      case dictationCancel = "dictation.cancel"
+      case dictationReceipt = "dictation.receipt"
     }
 
     enum ErrorCode: String, CaseIterable {
@@ -43,6 +47,22 @@
       case notFound
       /// The word owner refused the change; the reply carries its own message.
       case rejected
+      /// Another dictation command is running, or the engine is not at rest.
+      case busy
+      case doorClosed
+      case frontAppNotRunning
+      case frontAppAmbiguous
+      case frontAppNotFront
+      /// The front app changed after a take started; its cancellation was requested and
+      /// the reply carries the take's receipt.
+      case frontAppLost
+      /// The start path warmed or refused without minting a take.
+      case notStarted
+      case notRecording
+      case superseded
+      case wrongLaunch
+      case unknownReceipt
+      case receiptExpired
     }
 
     enum Result {
@@ -50,6 +70,8 @@
       /// door puts it in the request's log line.
       case ok([String: Any], forced: Bool = false)
       case error(code: String, message: String)
+      /// A refusal that still names a take the caller must inspect (`frontAppLost`).
+      case errorWithReceipt(code: String, message: String, receipt: [String: Any])
 
       static func failure(_ code: ErrorCode, _ message: String) -> Result {
         .error(code: code.rawValue, message: message)
@@ -109,14 +131,18 @@
     private let statusSources: StatusSources
     private let history: HistorySource
     private let models: ModelActions
+    /// Dictation commands and their receipts. Its launch id is the door's.
+    let dictation: DevControlDictation
+    var launchID: UUID { dictation.launchID }
     /// The same coordinator Your Words calls; every word command goes through it.
     private let words: CustomWordsCoordinator
 
     init(
       settings: SettingsManager, writeContext: DevControlSettings.WriteContext,
       status: StatusSources, history: HistorySource, models: ModelActions,
-      words: CustomWordsCoordinator
+      dictation: DevControlDictation, words: CustomWordsCoordinator
     ) {
+      self.dictation = dictation
       self.settings = settings
       self.writeContext = writeContext
       self.statusSources = status
@@ -163,6 +189,14 @@
         return model(.whisperKit, "download", args, models.whisperKitDownload)
       case .modelsWhisperKitCancel:
         return model(.whisperKit, "cancel", args, models.whisperKitCancel)
+      case .dictationStart:
+        return await dictation.start(args)
+      case .dictationStop:
+        return await dictation.stop(args)
+      case .dictationCancel:
+        return await dictation.cancel(args)
+      case .dictationReceipt:
+        return dictation.receipt(args)
       }
     }
 
@@ -281,7 +315,7 @@
       ]
     }
 
-    private static func project(_ readiness: ASREngineReadiness) -> String {
+    static func project(_ readiness: ASREngineReadiness) -> String {
       switch readiness {
       case .notReady: return "notReady"
       case .warming: return "warming"
@@ -291,7 +325,7 @@
 
     /// `PipelineState.telemetryLabel` folds advisory into "error" on purpose for its
     /// series; a UAT script needs the two apart, so this mapping is its own.
-    private static func project(_ state: PipelineState) -> (state: String, reason: String?) {
+    static func project(_ state: PipelineState) -> (state: String, reason: String?) {
       switch state {
       case .idle: return ("idle", nil)
       case .loadingModel: return ("loadingModel", nil)

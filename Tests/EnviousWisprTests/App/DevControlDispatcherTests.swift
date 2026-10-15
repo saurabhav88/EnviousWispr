@@ -30,6 +30,7 @@
         status: DevControlFixtures.StatusFake().sources,
         history: DevControlFixtures.history([]),
         models: DevControlFixtures.ModelFake().actions,
+        dictation: DevControlFixtures.inertDictation(),
         words: DevControlFixtures.unwrittenWords())
       return (settings, dispatcher)
     }
@@ -233,6 +234,7 @@
         status: status.sources,
         history: DevControlDispatcher.HistorySource(visibleTranscripts: rows),
         models: models.actions,
+        dictation: DevControlFixtures.inertDictation(),
         words: DevControlFixtures.unwrittenWords())
       return (settings, dispatcher)
     }
@@ -570,6 +572,7 @@ private static func make(words: CustomWordsCoordinator) -> (SettingsManager, Dev
     status: DevControlFixtures.StatusFake().sources,
     history: DevControlFixtures.history([]),
     models: DevControlFixtures.ModelFake().actions,
+    dictation: DevControlFixtures.inertDictation(),
     words: words)
   return (settings, dispatcher)
 }
@@ -856,6 +859,21 @@ func wordCommandsLeaveSettingsAlone() async throws {
 
     static func history(_ rows: [Transcript]) -> DevControlDispatcher.HistorySource {
       DevControlDispatcher.HistorySource(visibleTranscripts: { rows })
+    }
+
+    /// A dictation owner whose runtime is at rest and never mints a take: for suites that
+    /// do not exercise dictation commands.
+    static func inertDictation() -> DevControlDictation {
+      DevControlDictation(
+        launchID: UUID(),
+        control: DevControlDictation.Control(
+          activeBackend: { .parakeet }, driverState: { _ in .idle }, readiness: { _ in .ready },
+          continuingTakeID: { _ in nil }, lastTakeID: { _ in nil },
+          terminalFacts: { _, _ in .init(savedRowID: nil, historySaved: true) },
+          start: {}, stop: {}, cancel: {},
+          frontApp: .init(
+            processes: { _ in [] }, activate: { _ in }, frontmost: { nil },
+            waitUntilFrontmost: { _ in false })))
     }
 
     /// Records which model button a command pressed, in order. `onPress` lets a test move

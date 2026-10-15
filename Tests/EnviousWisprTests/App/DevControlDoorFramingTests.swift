@@ -64,7 +64,8 @@
       status: DevControlFixtures.StatusFake = DevControlFixtures.StatusFake(),
       rows: [Transcript] = [],
       words: CustomWordsCoordinator = DevControlFixtures.unwrittenWords(),
-      models: DevControlFixtures.ModelFake = DevControlFixtures.ModelFake()
+      models: DevControlFixtures.ModelFake = DevControlFixtures.ModelFake(),
+      dictation: DevControlDictation = DevControlFixtures.inertDictation()
     ) -> DevControlDispatcher {
       let defaults = TestDefaults.suite("ew.tests.3765.framing.\(UUID().uuidString)")!
       return DevControlDispatcher(
@@ -75,6 +76,7 @@
         status: status.sources,
         history: DevControlFixtures.history(rows),
         models: models.actions,
+        dictation: dictation,
         words: words)
     }
 
@@ -588,6 +590,48 @@
       #expect(outcomes[3].contains("cmd=models.whisperkit.cancel ok=true"))
       #expect(outcomes[4].contains("cmd=models.parakeet.download ok=false forced=false code=badArgs"))
       try await stop(door)
+    }
+
+    @Test("frontAppLost crosses the socket with its receipt, whose launch is the door's own")
+    func frontAppLostReceiptOverTheSocket() async throws {
+      let runtime = DevControlDictationTests.FakeRuntime()
+      runtime.processes = ["com.apple.Notes": [42]]
+      runtime.onStart = { runtime in
+        runtime.mint()
+        runtime.front = 7
+      }
+      let dispatcher = Self.dispatcher(
+        dictation: DevControlDictation(launchID: UUID(), control: runtime.control))
+      let door = DevControlDoor(dispatcher: dispatcher)
+      #expect(door.launchID == dispatcher.launchID)
+      var outcomes: [String] = []
+      door.onOutcomeLogged = { outcomes.append($0) }
+      defer { door.uninstall() }
+      try #require(await door.install() == .ready)
+
+      let reply = try await runClient(
+        #"""
+        c = dev_control.Connection(\#(door.pid))
+        lost = c.request("dictation.start", {"frontApp": "com.apple.Notes"})
+        held = c.request("dictation.receipt", {"receipt": lost["error"]["receipt"]})
+        print(json.dumps({"lost": lost, "held": held}))
+        """#)
+      let lost = try #require(reply["lost"] as? [String: Any])
+      #expect(lost["ok"] as? Bool == false)
+      let error = try #require(lost["error"] as? [String: Any])
+      #expect(error["code"] as? String == "frontAppLost")
+      let receipt = try #require(error["receipt"] as? [String: String])
+      #expect(receipt["launch"] == door.launchID.uuidString)
+      #expect(receipt["launch"] == lost["launch"] as? String)
+      #expect(receipt["take"] == runtime.nextTake)
+      #expect(runtime.cancels == 1)
+      let held = try #require((reply["held"] as? [String: Any])?["result"] as? [String: Any])
+      #expect(held["status"] as? String == "pending")
+      try #require(outcomes.count == 2, "outcomes: \(outcomes)")
+      #expect(outcomes[0].contains("cmd=dictation.start ok=false forced=false code=frontAppLost"))
+      #expect(outcomes.allSatisfy { !$0.contains(runtime.nextTake) && !$0.contains("Notes") })
+      try await stop(door)
+      #expect(dispatcher.dictation.isClosed, "uninstall closes the receipt registry")
     }
 
     @Test("words CRUD over the socket logs no word content; a list too large to send is refused whole")

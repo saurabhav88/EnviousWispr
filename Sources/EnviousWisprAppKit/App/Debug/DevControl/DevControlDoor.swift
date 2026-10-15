@@ -45,7 +45,7 @@
       case closed
     }
 
-    let launchID = UUID()
+    let launchID: UUID
     let pid: Int32
     let executablePath: String
     let socketPath: String
@@ -64,6 +64,9 @@
     /// Answers admitted requests. Production passes the dispatcher's `handle`; tests pass a
     /// handler that can suspend, to exercise shutdown during a request.
     private let handler: Handler
+    /// Runs at uninstall, after admission closes: production closes the dispatcher's
+    /// dictation receipts so no late callback updates them.
+    private let onUninstall: @MainActor () -> Void
     private let queue = DispatchQueue(label: "com.enviouswispr.dev.control")
     private var listener: NWListener?
     private var sessions: [ObjectIdentifier: Session] = [:]
@@ -78,15 +81,20 @@
     ) {
       self.init(
         handler: { command, args in await dispatcher.handle(command, args: args) },
+        launchID: dispatcher.launchID, onUninstall: { dispatcher.dictation.close() },
         pid: pid, executablePath: executablePath)
     }
 
     init(
       handler: @escaping Handler,
+      launchID: UUID = UUID(),
+      onUninstall: @escaping @MainActor () -> Void = {},
       pid: Int32 = ProcessInfo.processInfo.processIdentifier,
       executablePath: String = Bundle.main.executablePath ?? ""
     ) {
       self.handler = handler
+      self.launchID = launchID
+      self.onUninstall = onUninstall
       self.pid = pid
       self.executablePath = executablePath
       self.socketPath = Self.socketPath(pid: pid)
@@ -177,6 +185,7 @@
       guard state != .closed else { return }
       state = .closed
       generation += 1
+      onUninstall()
       for (key, session) in sessions {
         close(session, key: key)
       }
@@ -439,6 +448,12 @@
         return (["id": Self.idValue(id), "ok": true, "result": payload], label, forced)
       case .error(let code, let message):
         return (Self.errorReply(id: id, code: code, message: message), label, false)
+      case .errorWithReceipt(let code, let message, let receipt):
+        var reply = Self.errorReply(id: id, code: code, message: message)
+        var error = reply["error"] as? [String: Any] ?? [:]
+        error["receipt"] = receipt
+        reply["error"] = error
+        return (reply, label, false)
       }
     }
 

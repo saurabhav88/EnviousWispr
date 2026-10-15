@@ -198,6 +198,15 @@ final class DictationLifecycleCoordinator {
     self.otherAudioHold = otherAudioHold
   }
 
+  #if DEBUG
+    /// #3765: the dev control door's receipt registry hears each take's ending through
+    /// these, AFTER the recovery cleanup and the engine-claim release above have run in
+    /// the same synchronous turn, so neither existing consumer's order changes.
+    var devControlSessionEndedWithoutSave:
+      (@MainActor (ASRBackendType, RecordingRecoveryEnding) -> Void)?
+    var devControlSessionTerminalAccepted: (@MainActor (ASRBackendType, String) -> Void)?
+  #endif
+
   /// Wire the two pipelines' `onStateChange` callbacks. Called once by the
   /// composition root (`EnviousWisprApp.init`) after `DictationLifecycleCoordinator`
   /// and the routers are constructed.
@@ -217,9 +226,15 @@ final class DictationLifecycleCoordinator {
     // state) — keyed off the kernel terminal so it never fires during `.finalizing`.
     kernelDriver.onSessionEndedWithoutSave = { [weak self] id, ending in
       self?.onRecordingEndedWithoutDurableSave(id, ending)
+      #if DEBUG
+        self?.devControlSessionEndedWithoutSave?(.parakeet, ending)
+      #endif
     }
     whisperKernelDriver.onSessionEndedWithoutSave = { [weak self] id, ending in
       self?.onRecordingEndedWithoutDurableSave(id, ending)
+      #if DEBUG
+        self?.devControlSessionEndedWithoutSave?(.whisper, ending)
+      #endif
     }
     // #2648: the shared-resource claim comes back on the kernel's ACCEPTED
     // terminal, not on the published state.
@@ -230,11 +245,17 @@ final class DictationLifecycleCoordinator {
     // recovery — which competes for this same claim — takes it and starts a
     // replay while the first take is still in the polish server. Found by cloud
     // review, which also supplied the sequence.
-    kernelDriver.onSessionTerminalAccepted = { [weak self] _ in
+    kernelDriver.onSessionTerminalAccepted = { [weak self] takeID in
       self?.releaseEngineClaimIfHeld(mintedBy: .parakeet)
+      #if DEBUG
+        self?.devControlSessionTerminalAccepted?(.parakeet, takeID)
+      #endif
     }
-    whisperKernelDriver.onSessionTerminalAccepted = { [weak self] _ in
+    whisperKernelDriver.onSessionTerminalAccepted = { [weak self] takeID in
       self?.releaseEngineClaimIfHeld(mintedBy: .whisper)
+      #if DEBUG
+        self?.devControlSessionTerminalAccepted?(.whisper, takeID)
+      #endif
     }
     // #930: the overlay-only sub-status channel. A `.transcribing` →
     // `.polishing` flip mid-`.finalizing` does NOT change the public

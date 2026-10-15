@@ -209,6 +209,13 @@ final class DictationRuntime {
     await finalizer.cancel(trigger: trigger)
   }
 
+  #if DEBUG
+    /// #3765: the dev control door's explicit stop. The stop control's own path: it clears
+    /// the hands-free lock and stamps the stop request, and it never starts a take, which
+    /// a toggle could.
+    func devControlUserStop() async { await finalizer.userStop() }
+  #endif
+
   func resetActivePipeline() { finalizer.resetActive() }
 
   /// #879 Phase D — route onboarding's first-run model warm-up through the

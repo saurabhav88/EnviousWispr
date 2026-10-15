@@ -281,6 +281,40 @@ import Testing
   }
 
   #if DEBUG
+    /// #3765: the dev control door's receipt hooks hear both callbacks for both engines,
+    /// AFTER the existing consumers ran: the recovery cleanup first, the engine claim
+    /// released before the receipt freezes. Removing a fan-out line, or wiring one engine
+    /// only, leaves a door take pending forever.
+    @Test func devControlHooksHearBothTerminalCallbacksAfterTheExistingConsumers() throws {
+      for backend in [ASRBackendType.parakeet, .whisperKit] {
+        let fx = Self.makeCoordinator()
+        var order: [String] = []
+        fx.coordinator.onRecordingEndedWithoutDurableSave = { _, _ in order.append("recovery") }
+        fx.coordinator.devControlSessionEndedWithoutSave = { heard, ending in
+          order.append("door-ending \(heard.rawValue) \(ending == .noSpeech)")
+        }
+        fx.coordinator.devControlSessionTerminalAccepted = { [lease = fx.engineLease] heard, take in
+          order.append("door-terminal \(heard.rawValue) \(take) claimHeld=\(lease.isBusy)")
+        }
+        fx.coordinator.install()
+        guard case .granted(let token) = fx.engineLease.admit(.dictation) else {
+          Issue.record("a fresh lease refused the first claim")
+          return
+        }
+        fx.coordinator.acceptEngineToken(
+          token, mintedBy: backend == .whisperKit ? .whisperKit : .parakeet)
+        let driver = backend == .whisperKit ? fx.whisperKitKernelDriver : fx.kernelDriver
+
+        driver.onSessionEndedWithoutSave?("sid-1", .noSpeech)
+        driver.onSessionTerminalAccepted?("take-1")
+
+        #expect(order == [
+          "recovery", "door-ending \(backend.rawValue) true",
+          "door-terminal \(backend.rawValue) take-1 claimHeld=false",
+        ])
+      }
+    }
+
     /// #1846 chunk 10: the cap-warning bridge, BEHAVIOURAL.
     ///
     /// `CapWarningTakeIDTests` proves the kernel and driver carry the key;

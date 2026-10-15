@@ -2266,6 +2266,34 @@ package final class WisprBootstrapper {
             aiAvailability: aiAvailability, setup: setup, savedKeyPresence: savedKeyPresence)
         })
       // #3765: every closure reads the app's own owner at request time; none caches.
+      let driverFor: @MainActor (ASRBackendType) -> KernelDictationDriver = {
+        [kernelDriver, whisperKitKernelDriver] backend in
+        backend == .whisperKit ? whisperKitKernelDriver : kernelDriver
+      }
+      let devControlDictation = DevControlDictation(
+        launchID: UUID(),
+        control: DevControlDictation.Control(
+          activeBackend: { [engineCoordinator] in engineCoordinator.status.active },
+          driverState: { driverFor($0).state },
+          readiness: { driverFor($0).engineReadiness },
+          continuingTakeID: { driverFor($0).continuingSessionID },
+          lastTakeID: { driverFor($0).lastTakeID },
+          terminalFacts: { DevControlDictation.TerminalFacts.of(driverFor($0), takeID: $1) },
+          start: { [dictationRuntime] in await dictationRuntime.toggleRecording(source: .programmatic) },
+          stop: { [dictationRuntime] in await dictationRuntime.devControlUserStop() },
+          cancel: { [dictationRuntime] in
+            await dictationRuntime.cancelRecording(trigger: .cancelButton)
+          },
+          frontApp: .live))
+      // Before the door can admit a start, so no take's terminal is missed.
+      dictationLifecycleCoordinator.devControlSessionEndedWithoutSave = {
+        [weak devControlDictation] backend, ending in
+        devControlDictation?.sessionEndedWithoutSave(backend, ending)
+      }
+      dictationLifecycleCoordinator.devControlSessionTerminalAccepted = {
+        [weak devControlDictation] backend, takeID in
+        devControlDictation?.sessionTerminalAccepted(backend, takeID)
+      }
       self.devControlDoor = DevControlDoor(
         dispatcher: DevControlDispatcher(
           settings: settings,
@@ -2294,6 +2322,7 @@ package final class WisprBootstrapper {
             parakeetCancel: { [modelDelivery] in modelDelivery.cancelParakeetDownload() },
             whisperKitDownload: { [setup] in setup.whisperKitSetup.downloadModel() },
             whisperKitCancel: { [setup] in setup.whisperKitSetup.cancelDownload() }),
+          dictation: devControlDictation,
           words: customWordsCoordinator))
     #endif
     self.transcriptCoordinator = transcriptCoordinator
