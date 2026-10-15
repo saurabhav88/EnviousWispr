@@ -122,7 +122,8 @@ struct ShortcutSettingsTests {
   @Test("a captured lone modifier saves no modifiers; a captured chord keeps only the four")
   func capturedEventsNormalize() {
     let s = Self.settings()
-    let lone = binding(flagsChanged(ModifierKeyCodes.rightCommand, []))
+    // A press reports the key's own flag; storing it would need the key held to press it.
+    let lone = binding(flagsChanged(ModifierKeyCodes.rightCommand, [.command]))
     #expect(lone == .keyboard(keyCode: ModifierKeyCodes.rightCommand, modifiers: []))
     #expect(ShortcutSettings.assign(lone, to: .record, in: s) == nil)
     #expect(s.toggleKeyCode == ModifierKeyCodes.rightCommand && s.toggleModifiers == [])

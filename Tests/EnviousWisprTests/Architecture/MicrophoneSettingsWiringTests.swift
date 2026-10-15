@@ -73,14 +73,21 @@ struct MicrophoneSettingsWiringTests {
     #expect(calls.last?.bindings == ["elsewhere", "other"])
   }
 
+  /// #3765 PR-C: the eligibility and the per-device write moved, unchanged, into
+  /// `InputChannelSettings`, which the dev control door also calls; `InputSocketRowTests` proves
+  /// what they decide. This pins that the page still goes through them.
   @Test("the socket choice keeps its eligibility and its per-device write")
   func socketConditionsAndWrite() throws {
     let tree = try Self.source(Self.audioPath)
     let text = Self.codeOnly(tree)
-    #expect(text.contains("device.inputChannelCount>1&&!device.uid.isEmpty"))
+    #expect(
+      text.contains(
+        "InputChannelSettings.offersChoice(uid:device.uid,inputChannelCount:device.inputChannelCount)"))
     #expect(text.contains("ifdevice.inputChannelCount<=6"))
     let writes = Self.setterAssignments(binding: "socketSelection", in: tree)
-    #expect(writes == ["settingsManager.inputChannelByDeviceUID[device.uid] = newValue"], "\(writes)")
+    #expect(
+      writes == ["InputChannelSettings.choose(newValue, for: device.uid, in: settingsManager)"],
+      "\(writes)")
   }
 
   @Test("the media row starts its output listener on appear and stops it on disappear")
