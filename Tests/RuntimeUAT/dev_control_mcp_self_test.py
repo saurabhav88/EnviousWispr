@@ -134,7 +134,7 @@ async def run_cases(r, base):
             models_schema = json.dumps(tools["ew_models_download"].input_schema)
             keys_schema = tools["ew_keys_set"].input_schema
             r.check("typed schemas: model backends and key providers are closed choices",
-                    "whisperkit" in models_schema and "parakeet" in models_schema
+                    "whisper" in models_schema and "parakeet" in models_schema
                     and set(keys_schema.get("required", [])) == {"provider", "secret_name"}
                     and "value" not in json.dumps(keys_schema), models_schema)
             r.check("typed schemas: settings set has a boolean force",
@@ -210,10 +210,10 @@ async def run_cases(r, base):
             r.check("a CLI that does not answer times out once, with no retry",
                     reply.is_error and "timedOut" in text and len(calls) == 1, f"{text} {calls}")
 
-            reply, text, calls = await call("ew_models_download", {"backend": "whisperkit"})
+            reply, text, calls = await call("ew_models_download", {"backend": "whisper"})
             r.check("models download maps to the CLI's models command",
                     not reply.is_error and calls[0]["argv"][2:] == ["models", "download",
-                                                                    "whisperkit"], f"{calls}")
+                                                                    "whisper"], f"{calls}")
             try:
                 reply = await session.call_tool("ew_models_download", {"backend": "sherpa"})
                 refused = reply.is_error

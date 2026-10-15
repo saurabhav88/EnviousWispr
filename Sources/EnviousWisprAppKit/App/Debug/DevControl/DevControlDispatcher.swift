@@ -31,8 +31,8 @@
       case wordsRemove = "words.remove"
       case modelsParakeetDownload = "models.parakeet.download"
       case modelsParakeetCancel = "models.parakeet.cancel"
-      case modelsWhisperKitDownload = "models.whisperkit.download"
-      case modelsWhisperKitCancel = "models.whisperkit.cancel"
+      case modelsWhisperDownload = "models.whisper.download"
+      case modelsWhisperCancel = "models.whisper.cancel"
       case dictationStart = "dictation.start"
       case dictationStop = "dictation.stop"
       case dictationCancel = "dictation.cancel"
@@ -115,15 +115,15 @@
     /// The Settings rows' model buttons, one closure each: Parakeet's foreground Resume and
     /// Cancel (`ModelDeliveryHome.resumeParakeetDownload()` / `cancelParakeetDownload()`;
     /// the row's background-upgrade and retry routes are not offered here) and
-    /// WhisperKit's Download and Cancel (`WhisperKitSetupService.downloadModel()` /
+    /// Whisper's Download and Cancel (`WhisperSetupService.downloadModel()` /
     /// `cancelDownload()`). Each owner keeps its own guards and schedules its own work, so
     /// a call returning means the button was pressed, never that a download finished or a
     /// cancel drained.
     struct ModelActions {
       let parakeetDownload: @MainActor () -> Void
       let parakeetCancel: @MainActor () -> Void
-      let whisperKitDownload: @MainActor () -> Void
-      let whisperKitCancel: @MainActor () -> Void
+      let whisperDownload: @MainActor () -> Void
+      let whisperCancel: @MainActor () -> Void
     }
 
     /// Rows `history.list` returns when the request names no limit.
@@ -200,10 +200,10 @@
         return model(.parakeet, "download", args, models.parakeetDownload)
       case .modelsParakeetCancel:
         return model(.parakeet, "cancel", args, models.parakeetCancel)
-      case .modelsWhisperKitDownload:
-        return model(.whisperKit, "download", args, models.whisperKitDownload)
-      case .modelsWhisperKitCancel:
-        return model(.whisperKit, "cancel", args, models.whisperKitCancel)
+      case .modelsWhisperDownload:
+        return model(.whisper, "download", args, models.whisperDownload)
+      case .modelsWhisperCancel:
+        return model(.whisper, "cancel", args, models.whisperCancel)
       case .dictationStart:
         return await dictation.start(args)
       case .dictationStop:
@@ -502,7 +502,7 @@
       let state: [String: Any]
       switch backend {
       case .parakeet: state = Self.project(statusSources.parakeetDelivery())
-      case .whisperKit: state = Self.project(statusSources.whisperKitSetup())
+      case .whisper: state = Self.project(statusSources.whisperSetup())
       }
       return .ok(["backend": backend.rawValue, "action": action, "state": state])
     }

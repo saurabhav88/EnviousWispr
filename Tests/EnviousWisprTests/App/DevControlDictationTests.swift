@@ -24,9 +24,9 @@
     @MainActor
     final class FakeRuntime {
       var active: ASRBackendType = .parakeet
-      var states: [ASRBackendType: PipelineState] = [.parakeet: .idle, .whisperKit: .idle]
+      var states: [ASRBackendType: PipelineState] = [.parakeet: .idle, .whisper: .idle]
       var readiness: [ASRBackendType: ASREngineReadiness] = [
-        .parakeet: .ready, .whisperKit: .ready,
+        .parakeet: .ready, .whisper: .ready,
       ]
       var continuing: [ASRBackendType: String] = [:]
       var last: [ASRBackendType: String] = [:]
@@ -198,11 +198,11 @@
 
     @Test("a start records on the ACTIVE engine, not the selected one, and both engines work")
     func startUsesActiveEngine() async throws {
-      for backend in [ASRBackendType.whisperKit, .parakeet] {
+      for backend in [ASRBackendType.whisper, .parakeet] {
         let runtime = FakeRuntime()
         runtime.active = backend
         // The other engine is busy: only the active one's state may decide admission.
-        runtime.states[backend == .parakeet ? .whisperKit : .parakeet] = .recording
+        runtime.states[backend == .parakeet ? .whisper : .parakeet] = .recording
         let dictation = Self.make(runtime)
         let receipt = try receipt(await dictation.start([:]))
         #expect(receipt["backend"] as? String == backend.rawValue)
@@ -364,9 +364,9 @@
       let first = try receipt(await dictation.start([:]))
       let firstTake = try #require(first["take"] as? String)
       runtime.facts[firstTake] = .init(savedRowID: row, historySaved: true)
-      // WhisperKit reports an ending for its own take in between: it must not attach here.
-      runtime.last[.whisperKit] = UUID().uuidString
-      dictation.sessionEndedWithoutSave(.whisperKit, .failed)
+      // Whisper reports an ending for its own take in between: it must not attach here.
+      runtime.last[.whisper] = UUID().uuidString
+      dictation.sessionEndedWithoutSave(.whisper, .failed)
       conclude(dictation, runtime, .parakeet, take: firstTake)
       // The same terminal again, now with an ending: ignored.
       runtime.last[.parakeet] = firstTake
@@ -404,7 +404,7 @@
       unknown["take"] = UUID().uuidString
       #expect(code(read(dictation, unknown)) == "unknownReceipt")
       var renamed = receipts[1]
-      renamed["backend"] = "whisperKit"
+      renamed["backend"] = "whisper"
       #expect(code(read(dictation, renamed)) == "unknownReceipt")
       #expect(code(dictation.receipt([:])) == "badArgs")
       #expect(code(dictation.receipt(["receipt": ["take": "x"]])) == "badArgs")
@@ -442,7 +442,7 @@
       runtime.continuing[.parakeet] = UUID().uuidString
       #expect(code(await dictation.stop(["receipt": receipt])) == "superseded")
       runtime.continuing[.parakeet] = receipt["take"] as? String
-      runtime.active = .whisperKit
+      runtime.active = .whisper
       #expect(code(await dictation.stop(["receipt": receipt])) == "superseded")
       runtime.active = .parakeet
       #expect(runtime.stops == 0)
@@ -665,19 +665,19 @@
     /// driver, here while that take is still arming.
     @Test("stop goes through the real finalizer: lock cleared, the active driver stopped while arming")
     func stopThroughTheRealFinalizer() async throws {
-      for backend in [ASRBackendType.parakeet, .whisperKit] {
+      for backend in [ASRBackendType.parakeet, .whisper] {
         let audio = RouterTestAudioCapture()
         let asr = RouterTestASRManager()
         asr.activeBackendType = backend
         let store = DictationRuntimeFixtures.tempStore()
         let parakeet = DictationRuntimeFixtures.makeParakeetDriver(
           audioCapture: audio, asrManager: asr, store: store)
-        let whisperKit = DictationRuntimeFixtures.makeWhisperKitPipeline(
+        let whisper = DictationRuntimeFixtures.makeWhisperPipeline(
           audioCapture: audio, store: store)
         let locked = TestRecordingLockedBox()
         let runtime = Self.runtime(
-          audio: audio, asr: asr, parakeet: parakeet, whisperKit: whisperKit, locked: locked)
-        let driverFor = { (b: ASRBackendType) in b == .whisperKit ? whisperKit : parakeet }
+          audio: audio, asr: asr, parakeet: parakeet, whisper: whisper, locked: locked)
+        let driverFor = { (b: ASRBackendType) in b == .whisper ? whisper : parakeet }
         let control = DevControlDictation.Control(
           activeBackend: { asr.activeBackendType },
           driverState: { driverFor($0).state },
@@ -696,7 +696,7 @@
             waitUntilFrontmost: { _ in false }))
         let dictation = DevControlDictation(launchID: Self.launch, control: control)
         var terminals: [ASRBackendType] = []
-        for (engine, driver) in [(ASRBackendType.parakeet, parakeet), (.whisperKit, whisperKit)] {
+        for (engine, driver) in [(ASRBackendType.parakeet, parakeet), (.whisper, whisper)] {
           driver.onSessionEndedWithoutSave = { (_: String?, ending: RecordingRecoveryEnding) in
             dictation.sessionEndedWithoutSave(engine, ending)
           }
@@ -724,7 +724,7 @@
     /// The runtime graph the Microphone page harness assembles, with an observable lock.
     private static func runtime(
       audio: RouterTestAudioCapture, asr: RouterTestASRManager,
-      parakeet: KernelDictationDriver, whisperKit: KernelDictationDriver,
+      parakeet: KernelDictationDriver, whisper: KernelDictationDriver,
       locked: TestRecordingLockedBox
     ) -> DictationRuntime {
       typealias Harness = DictationSettingsRenderHarness
@@ -741,14 +741,14 @@
         telemetry: Harness.NoTelemetry(), log: { _ in }, nowMicros: { 0 }, sleep: { _ in },
         pid: 0, isProcessAlive: { _ in false }))
       let sync = PipelineSettingsSync(
-        kernelDriver: parakeet, whisperKitKernelDriver: whisperKit, audioCapture: audio,
+        kernelDriver: parakeet, whisperKernelDriver: whisper, audioCapture: audio,
         asrManager: asr, hotkeyService: hotkey, ollamaRemotenessLookup: { _ in nil })
       let last = LastRecordingResult()
       let lockAccess = DictationLifecycleCoordinator.RecordingLockedAccess(
         get: { locked.isLocked }, set: { locked.isLocked = $0 })
       let lease = EngineLease()
       let lifecycle = DictationLifecycleCoordinator(
-        kernelDriver: parakeet, whisperKitKernelDriver: whisperKit,
+        kernelDriver: parakeet, whisperKernelDriver: whisper,
         recordingOverlay: overlay, hotkeyService: hotkey, settingsSync: sync,
         audioCapture: audio,
         transcriptCoordinator: TranscriptCoordinator(store: DictationRuntimeFixtures.tempStore()),
@@ -763,7 +763,7 @@
         engineAdmission: .live(lease: lease, as: .crashRecovery))
       return DictationRuntime(
         audioCapture: audio, asrManager: asr,
-        kernelDriver: parakeet, whisperKitKernelDriver: whisperKit,
+        kernelDriver: parakeet, whisperKernelDriver: whisper,
         settings: settings,
         permissions: PermissionsService(
           accessibilityReader: { true }, microphoneReader: { .authorized },

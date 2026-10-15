@@ -168,20 +168,20 @@
       arguments: [
         (DevControlDispatcher.Command.modelsParakeetDownload, "parakeetDownload", "parakeet", "download"),
         (.modelsParakeetCancel, "parakeetCancel", "parakeet", "cancel"),
-        (.modelsWhisperKitDownload, "whisperKitDownload", "whisperKit", "download"),
-        (.modelsWhisperKitCancel, "whisperKitCancel", "whisperKit", "cancel"),
+        (.modelsWhisperDownload, "whisperDownload", "whisper", "download"),
+        (.modelsWhisperCancel, "whisperCancel", "whisper", "cancel"),
       ])
     func modelCommandPressesOneButton(
       command: DevControlDispatcher.Command, action: String, backend: String, verb: String
     ) async throws {
       let status = DevControlFixtures.StatusFake()
       status.parakeet = .notReady
-      status.whisperKit = .notDownloaded
+      status.whisper = .notDownloaded
       let models = DevControlFixtures.ModelFake()
       // The owner moves its state when pressed; the reply must show the state AFTER.
       models.onPress = { _ in
         status.parakeet = .verifying
-        status.whisperKit = .paused
+        status.whisper = .paused
       }
       let (_, dispatcher) = Self.make(status: status, models: models)
       let reply = try #require(payload(await dispatcher.handle(command, args: [:])))
@@ -197,14 +197,14 @@
     func modelCommandWithIdleOwnerReportsUnchangedState() async throws {
       let status = DevControlFixtures.StatusFake()
       status.parakeet = .cancelled(resumable: true)
-      status.whisperKit = .ready
+      status.whisper = .ready
       let models = DevControlFixtures.ModelFake()
       let (_, dispatcher) = Self.make(status: status, models: models)
       let parakeet = try #require(payload(await dispatcher.handle(.modelsParakeetCancel, args: [:])))
       #expect(parakeet["state"] as? [String: AnyHashable] == ["state": "cancelled", "resumable": true])
-      let whisper = try #require(payload(await dispatcher.handle(.modelsWhisperKitDownload, args: [:])))
+      let whisper = try #require(payload(await dispatcher.handle(.modelsWhisperDownload, args: [:])))
       #expect(whisper["state"] as? [String: AnyHashable] == ["state": "ready"])
-      #expect(models.pressed == ["parakeetCancel", "whisperKitDownload"])
+      #expect(models.pressed == ["parakeetCancel", "whisperDownload"])
     }
 
     @Test("a model command with any argument is refused before any button is pressed")
@@ -213,7 +213,7 @@
       let (_, dispatcher) = Self.make(status: DevControlFixtures.StatusFake(), models: models)
       for command in [
         DevControlDispatcher.Command.modelsParakeetDownload, .modelsParakeetCancel,
-        .modelsWhisperKitDownload, .modelsWhisperKitCancel,
+        .modelsWhisperDownload, .modelsWhisperCancel,
       ] {
         #expect(code(await dispatcher.handle(command, args: ["backend": "parakeet"])) == "badArgs")
       }
@@ -911,8 +911,8 @@ func wordCommandsLeaveSettingsAlone() async throws {
         DevControlDispatcher.ModelActions(
           parakeetDownload: { [self] in press("parakeetDownload") },
           parakeetCancel: { [self] in press("parakeetCancel") },
-          whisperKitDownload: { [self] in press("whisperKitDownload") },
-          whisperKitCancel: { [self] in press("whisperKitCancel") })
+          whisperDownload: { [self] in press("whisperDownload") },
+          whisperCancel: { [self] in press("whisperCancel") })
       }
 
       private func press(_ action: String) {

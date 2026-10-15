@@ -34,7 +34,7 @@ GET_KEY = os.path.expanduser("~/.claude/bin/get-key")
 KEY_ENV = "EW_DEV_CONTROL_KEY"
 SECRET_NAME = re.compile(r"[a-z0-9][a-z0-9._-]{0,63}")
 KEY_PROVIDERS = ("openai", "gemini", "claude")
-MODEL_BACKENDS = ("parakeet", "whisperkit")
+MODEL_BACKENDS = ("parakeet", "whisper")
 # Seconds a CLI call may take before the tool gives up watching it. A wait or a file
 # transcription adds its own timeout on top.
 CALL_SECONDS = float(os.environ.get("EW_DEV_MCP_CALL_SECONDS", "60"))
@@ -261,12 +261,12 @@ def build_server():
                     "--timeout", repr(float(timeout)), timeout=CALL_SECONDS + float(timeout))
 
     @server.tool()
-    def ew_models_download(backend: Literal["parakeet", "whisperkit"]) -> CallToolResult:
-        """Press the model's Download (WhisperKit) or Resume (Parakeet)."""
+    def ew_models_download(backend: Literal["parakeet", "whisper"]) -> CallToolResult:
+        """Press the model's Download (Whisper) or Resume (Parakeet)."""
         return call("models", "download", backend, mutation=True)
 
     @server.tool()
-    def ew_models_cancel(backend: Literal["parakeet", "whisperkit"]) -> CallToolResult:
+    def ew_models_cancel(backend: Literal["parakeet", "whisper"]) -> CallToolResult:
         """Cancel the model's download."""
         return call("models", "cancel", backend, mutation=True)
 

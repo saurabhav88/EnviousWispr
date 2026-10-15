@@ -697,7 +697,7 @@
 
     @Test("another language and Auto keep the stored spelling")
     func otherRowsKeepSpelling() {
-      let german = Self.language("de", backend: .whisperKit, start: (.auto, .british))
+      let german = Self.language("de", backend: .whisper, start: (.auto, .british))
       #expect(german.outcome == .written(forced: false))
       #expect(german.mode == .locked("de") && german.spelling == .british)
       #expect(german.fired.map(\.0) == [.languageMode])
@@ -715,7 +715,7 @@
       let refused = Self.language(outside.code, backend: .parakeet)
       #expect(refused.outcome.code == "checkFailed", "\(outside.code)")
       #expect(refused.mode == .auto && refused.fired.isEmpty)
-      let accepted = Self.language(outside.code, backend: .whisperKit)
+      let accepted = Self.language(outside.code, backend: .whisper)
       #expect(accepted.outcome == .written(forced: false))
       #expect(accepted.mode == .locked(outside.lockCode))
     }

@@ -17,7 +17,7 @@ CLI, from a worktree whose dev build is running:
     python3 Tests/RuntimeUAT/dev_control.py status
     python3 Tests/RuntimeUAT/dev_control.py settings set fillerRemovalEnabled false
     python3 Tests/RuntimeUAT/dev_control.py words add fooFlux --alias "foo flux"
-    python3 Tests/RuntimeUAT/dev_control.py models download whisperkit
+    python3 Tests/RuntimeUAT/dev_control.py models download whisper
     <secret source> | python3 Tests/RuntimeUAT/dev_control.py keys set openai
     R=$(python3 Tests/RuntimeUAT/dev_control.py dictation start --front-app com.apple.TextEdit)
     python3 Tests/RuntimeUAT/dev_control.py dictation stop --receipt "$R"
@@ -305,7 +305,7 @@ Changes need the shared dev-app lock (dev-app-lock.py claim) unless run by hand.
 
 
 # The CLI's model names are the door's command segments (models.<backend>.<action>).
-MODEL_BACKENDS = ("parakeet", "whisperkit")
+MODEL_BACKENDS = ("parakeet", "whisper")
 MODEL_ACTIONS = ("download", "cancel")
 
 

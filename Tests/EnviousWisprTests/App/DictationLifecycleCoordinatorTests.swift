@@ -286,7 +286,7 @@ import Testing
     /// released before the receipt freezes. Removing a fan-out line, or wiring one engine
     /// only, leaves a door take pending forever.
     @Test func devControlHooksHearBothTerminalCallbacksAfterTheExistingConsumers() throws {
-      for backend in [ASRBackendType.parakeet, .whisperKit] {
+      for backend in [ASRBackendType.parakeet, .whisper] {
         let fx = Self.makeCoordinator()
         var order: [String] = []
         fx.coordinator.onRecordingEndedWithoutDurableSave = { _, _ in order.append("recovery") }
@@ -302,8 +302,8 @@ import Testing
           return
         }
         fx.coordinator.acceptEngineToken(
-          token, mintedBy: backend == .whisperKit ? .whisperKit : .parakeet)
-        let driver = backend == .whisperKit ? fx.whisperKitKernelDriver : fx.kernelDriver
+          token, mintedBy: backend == .whisper ? .whisper : .parakeet)
+        let driver = backend == .whisper ? fx.whisperKernelDriver : fx.kernelDriver
 
         driver.onSessionEndedWithoutSave?("sid-1", .noSpeech)
         driver.onSessionTerminalAccepted?("take-1")

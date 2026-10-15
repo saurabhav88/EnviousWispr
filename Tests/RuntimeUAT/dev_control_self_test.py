@@ -351,8 +351,8 @@ def routes_and_values(r, tree):
         (["history", "get", word_id], "history.get", {"id": word_id}),
         (["models", "download", "parakeet"], "models.parakeet.download", None),
         (["models", "cancel", "parakeet"], "models.parakeet.cancel", None),
-        (["models", "download", "whisperkit"], "models.whisperkit.download", None),
-        (["models", "cancel", "whisperkit"], "models.whisperkit.cancel", None),
+        (["models", "download", "whisper"], "models.whisper.download", None),
+        (["models", "cancel", "whisper"], "models.whisper.cancel", None),
         (["language", "set", "en-gb"], "language.set", {"code": "en-gb"}),
         (["dictation", "start"], "dictation.start", {}),
         (["dictation", "start", "--front-app", "com.apple.TextEdit"], "dictation.start",
@@ -384,7 +384,7 @@ def routes_and_values(r, tree):
                     (111, "/abs/clip.m4a", {"timeout": 30.0, "worktree": tree.wt, "echo": False})],
                 f"status={status} calls={b.backend_calls}")
 
-        for argv in (["models", "download", "WhisperKit"], ["models", "resume", "parakeet"],
+        for argv in (["models", "download", "Whisper"], ["models", "resume", "parakeet"],
                      ["models", "download", "parakeet", "extra"]):
             door.received.clear()
             b = FakeBoundaries({"111": exe}, door=door, lock=FakeLock(session=AGENT, status=0))
@@ -469,8 +469,8 @@ def lock_cases(r, tree):
         ["words", "remove", word_id],
         ["models", "download", "parakeet"],
         ["models", "cancel", "parakeet"],
-        ["models", "download", "whisperkit"],
-        ["models", "cancel", "whisperkit"],
+        ["models", "download", "whisper"],
+        ["models", "cancel", "whisper"],
         ["language", "set", "de"],
         ["dictation", "start"],
         ["dictation", "stop", "--receipt", json.dumps(RECEIPT)],

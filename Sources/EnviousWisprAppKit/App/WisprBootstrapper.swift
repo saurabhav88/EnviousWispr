@@ -2267,8 +2267,8 @@ package final class WisprBootstrapper {
         })
       // #3765: every closure reads the app's own owner at request time; none caches.
       let driverFor: @MainActor (ASRBackendType) -> KernelDictationDriver = {
-        [kernelDriver, whisperKitKernelDriver] backend in
-        backend == .whisperKit ? whisperKitKernelDriver : kernelDriver
+        [kernelDriver, whisperKernelDriver] backend in
+        backend == .whisper ? whisperKernelDriver : kernelDriver
       }
       let devControlDictation = DevControlDictation(
         launchID: UUID(),
@@ -2321,8 +2321,8 @@ package final class WisprBootstrapper {
           models: DevControlDispatcher.ModelActions(
             parakeetDownload: { [modelDelivery] in modelDelivery.resumeParakeetDownload() },
             parakeetCancel: { [modelDelivery] in modelDelivery.cancelParakeetDownload() },
-            whisperKitDownload: { [setup] in setup.whisperKitSetup.downloadModel() },
-            whisperKitCancel: { [setup] in setup.whisperKitSetup.cancelDownload() }),
+            whisperDownload: { [setup] in setup.whisperSetup.downloadModel() },
+            whisperCancel: { [setup] in setup.whisperSetup.cancelDownload() }),
           dictation: devControlDictation,
           credentials: CredentialWriter(
             keychainManager: keychainManager, presence: savedKeyPresence,
