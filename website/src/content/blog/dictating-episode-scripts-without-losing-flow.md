@@ -24,7 +24,7 @@ The fix isn't to skip scripting. It's to dictate podcast scripts instead of typi
 
 ## Dictation That Keeps Your Voice
 
-EnviousWispr runs on-device speech recognition locally on your Mac via Core ML. You hold a keybind, speak, release, and polished text appears in whatever app has focus. The whole round trip takes a second or two on Apple Silicon.
+EnviousWispr runs on-device speech recognition locally on your Mac. You hold a keybind, speak, release, and polished text appears in whatever app has focus. The whole round trip takes a second or two on Apple Silicon.
 
 For podcast scripting, this means you can talk through your episode the way you'd explain it to a friend, and get that captured as text immediately. No separate recording app. No uploading audio to a cloud service. No waiting.
 

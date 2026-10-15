@@ -6,7 +6,7 @@ section: "Basics"
 order: 6
 keywords: ["uninstall", "remove", "delete", "get rid of it", "clean up", "free up space", "leftover files", "models taking up space", "delete EnviousWispr", "remove models", "reinstall", "start fresh", "Trash"]
 related: ["model-downloads-and-management"]
-updated: 2026-09-29
+updated: 2026-10-15
 deflection: "show_but_always_send"
 ---
 Removing EnviousWispr takes two parts: deleting the application, and deleting the support files it saved on your Mac. Deleting the application alone leaves your history, custom words, snippets, and downloaded models in place.
@@ -21,7 +21,7 @@ Removing EnviousWispr takes two parts: deleting the application, and deleting th
 The support files can add up to a few gigabytes. To clear them:
 
 1. **Open the Go to Folder box.** In Finder, press **Shift+Cmd+G**.
-2. **Delete the support folder.** Paste `~/Library/Application Support/EnviousWispr` into the box, press Enter, and move that folder to the Trash. It holds your dictation history, your custom words, your snippets, and every model EnviousWispr downloaded: Parakeet, WhisperKit, EG-1, S1-mini, and the word-check models. Any recording that Escape Recovery was still holding for you sits in there too, and goes with it.
+2. **Delete the support folder.** Paste `~/Library/Application Support/EnviousWispr` into the box, press Enter, and move that folder to the Trash. It holds your dictation history, your custom words, your snippets, and every model EnviousWispr downloaded: Parakeet, Whisper, the Live Preview model, EG-1, S1-mini, and the word-check models. Any recording that Escape Recovery was still holding for you sits in there too, and goes with it.
 3. **Delete the preferences file.** Press **Shift+Cmd+G** again, paste `~/Library/Preferences`, press Enter, and move `com.enviouswispr.app.plist` to the Trash. That file stores your settings.
 
 ### Remove an older Parakeet copy
@@ -30,6 +30,13 @@ Current versions keep Parakeet inside `~/Library/Application Support/EnviousWisp
 
 1. **Open the shared model folder.** Press **Shift+Cmd+G** in Finder and go to `~/Library/Application Support/FluidAudio/Models`.
 2. **Delete only the Parakeet folder.** Move only the `parakeet-tdt-0.6b-v3` folder to the Trash. Anything else in that folder may belong to a different application, which would then have to download its files again. If another app on your Mac uses Parakeet, leave this folder alone.
+
+### Remove an older WhisperKit copy
+
+Older versions ran the All Languages engine on WhisperKit, and some of them saved its model, about 1.6 GB, in a folder that other apps can share. EnviousWispr does not delete that folder for you, because another app may use the same files.
+
+1. **Open the shared model folder.** Press **Shift+Cmd+G** in Finder and go to `~/Documents/huggingface/models/argmaxinc/whisperkit-coreml`. If the folder does not exist, there is nothing to remove.
+2. **Delete only the old All Languages model.** Move only the `openai_whisper-large-v3-v20240930_turbo` folder to the Trash. Leave the other folders alone. If another app on your Mac uses WhisperKit, leave this folder alone too.
 
 ### Remove Ollama models
 

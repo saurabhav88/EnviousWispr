@@ -6,7 +6,7 @@ section: "Transcribe a File"
 order: 9
 keywords: ["speaker labels", "speakers", "who said what", "Speaker 1", "Speaker 2", "rename speaker", "Both", "Not fully polished", "transcribe a file", "diarization", "two people", "interview", "meeting recording", "podcast", "no speaker labels", "couldn't add speaker labels", "speaker detection didn't finish"]
 related: ["transcribe-a-file", "transcript-history", "choosing-a-speech-engine-parakeet-vs-whisperkit", "ai-polish-and-cloud-data"]
-updated: 2026-09-29
+updated: 2026-10-15
 deflection: "show_but_always_send"
 ---
 When a recording has more than one voice, [Transcribe a File](/help/transcribe-a-file/) labels each turn with the person who said it, if the app can tell the voices apart and match the words to them. The labels start as **Speaker 1**, **Speaker 2** and so on, in the order the voices first appear. A recording with one voice comes back as plain text with no labels.
@@ -58,11 +58,9 @@ Once the words exist, Stop never throws them away. What was found is what you ge
 
 ### Do speaker labels work in every language?
 
-Both speech engines give you speaker labels, because the labels are built from the time each word was spoken, which both engines report. **Fast** is recommended; its language count is compared with **All Languages** in [choosing a speech engine](/help/choosing-a-speech-engine-parakeet-vs-whisperkit/).
+Both speech engines give you speaker labels. The labels are built from the times the engine reports for what was said. **Fast** reports a time for each word. **All Languages** reports a time for each phrase, so it labels whole phrases, and a phrase in which two people speak is labelled **Both**. Because All Languages works by phrase, it also labels languages that are written without spaces between words, such as Chinese, Japanese and Thai. **Fast** is recommended; its language count is compared with **All Languages** in [choosing a speech engine](/help/choosing-a-speech-engine-parakeet-vs-whisperkit/).
 
-There is one exception. Some languages, such as Chinese, Japanese and Thai, are written without spaces between words. For these, the app matches the words to the engine's timings in 30-second stretches. When a stretch does not line up with its text, the words in that stretch get no timings, and the rest of the recording is unaffected.
-
-If no words at all can be timed on a recording with more than one voice, speaker labels are unavailable. The transcript still comes back complete, as one block, and the page shows "Couldn't add speaker labels to this recording." without a Try again button, because trying again would give the same result.
+If the engine reports no usable times on a recording with more than one voice, speaker labels are unavailable. The transcript still comes back complete, as one block, and the page shows "Couldn't add speaker labels to this recording." without a Try again button, because trying again would give the same result.
 
 ### Why did my speaker labels not appear?
 

@@ -27,7 +27,7 @@ There are other interventions (ergonomic keyboards, split layouts, wrist braces,
 
 The practical barrier has always been accuracy. If dictation produces text so messy that you spend 20 minutes correcting a paragraph you could have typed in five, the net physical cost is worse, not better. You've added mouse work and correction typing on top of the original effort.
 
-That's where modern on-device transcription changes the equation. EnviousWispr uses two on-device backends (Parakeet for fast dictation across 25 European languages and WhisperKit for wider multi-language support, both running natively via Core ML) to transcribe speech locally on your Mac. Accuracy is high enough that corrections are the exception, not the rule. And because optional AI polish automatically cleans up filler words, fixes punctuation, and produces polished text, the output from your voice is often closer to finished than a rushed typed draft would be.
+That's where modern on-device transcription changes the equation. EnviousWispr uses two on-device backends (Parakeet for fast dictation across 25 European languages and Whisper for wider multi-language support, both running natively on Apple Silicon) to transcribe speech locally on your Mac. Accuracy is high enough that corrections are the exception, not the rule. And because optional AI polish automatically cleans up filler words, fixes punctuation, and produces polished text, the output from your voice is often closer to finished than a rushed typed draft would be.
 
 The result: you speak a paragraph, and a second or two later on Apple Silicon, clean text lands in whatever app you're working in. No server round-trip, no cloud dependency, no corrections marathon. The tension leaves your shoulders. You realize you've been bracing for pain with every keystroke, and now you don't have to.
 
@@ -89,7 +89,7 @@ People dealing with RSI often dictate content that's more personal than the aver
 
 This is exactly the kind of content you don't want leaving your machine. EnviousWispr processes everything locally. Your recordings never leave your Mac unless you explicitly configure an external API. No cloud upload, no third-party server handling your audio, no data leaving your device.
 
-For health-related dictation specifically, on-device processing isn't a nice-to-have; it's a baseline requirement. You shouldn't have to wonder whether your description of a medical condition is sitting in someone else's training dataset. With EnviousWispr, the audio is processed via Core ML on the Neural Engine built into every Apple Silicon chip and never transmitted anywhere. You can read exactly how this works on the [how it works page](/features/).
+For health-related dictation specifically, on-device processing isn't a nice-to-have; it's a baseline requirement. You shouldn't have to wonder whether your description of a medical condition is sitting in someone else's training dataset. With EnviousWispr, the audio is processed on the Apple Silicon chip in your Mac and never transmitted anywhere. You can read exactly how this works on the [how it works page](/features/).
 
 Dictation is also entirely on-demand; it only records when you actively initiate it. If you're in a conversation you'd rather not capture (a medical appointment over speakerphone, a sensitive personal call) simply don't start a dictation session. Nothing is listening in the background.
 

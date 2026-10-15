@@ -6,7 +6,7 @@ section: "Transcription Issues"
 order: 2
 keywords: ["inaccurate", "wrong words", "typos", "bad accuracy", "not accurate", "gets my words wrong", "misheard", "poor quality", "garbled", "names spelled wrong", "improve accuracy", "wrong language", "words changed", "rewrote my text"]
 related: ["adding-custom-words", "choosing-your-microphone"]
-updated: 2026-09-29
+updated: 2026-10-15
 deflection: "show_but_always_send"
 ---
 Dictation gets less accurate when the audio is weak, the wrong microphone is in use, the language setting does not match your speech, or the speech engine meets an unfamiliar word. Start with the fix that matches what you see.
@@ -38,7 +38,7 @@ This is the fix for a colleague's name that is spelled wrong every single time. 
 
 ### My language comes out wrong
 
-The **Fast** engine (Parakeet), which you start with, covers 25 European languages. For any other language, go to **Dictation Settings** > **Engine**, click **Change**, pick the **All Languages** card (WhisperKit), set up its model, then pick your language. On All Languages, naming your language is more accurate than leaving it on auto-detect. See [Multi-Language Dictation](/help/multi-language-dictation/).
+The **Fast** engine (Parakeet), which you start with, covers 25 European languages. For any other language, go to **Dictation Settings** > **Engine**, click **Change**, pick the **All Languages** card (Whisper), set up its model, then pick your language. On All Languages, naming your language is more accurate than leaving it on auto-detect. See [Multi-Language Dictation](/help/multi-language-dictation/).
 
 ### Faster Transcription is making mistakes
 

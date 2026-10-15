@@ -5,7 +5,7 @@ category: "features"
 section: "Recording"
 order: 6
 keywords: ["live preview", "preview", "see words as i speak", "see my words", "words on screen", "on screen preview", "while i speak", "recording pill", "watch it type", "is it hearing me", "nothing appears", "no words showing", "install new languages", "preview language", "preview engine"]
-updated: 2026-09-29
+updated: 2026-10-15
 deflection: "can_resolve"
 ---
 Live Preview shows a rough draft of your words in the recording pill while you are still speaking, so you can see that EnviousWispr is hearing you. It is on unless you switch it off.
@@ -47,7 +47,7 @@ To watch your words appear while you talk, use Live Preview. [Faster Transcripti
 The preview needs its own small engine, separate from the one that produces your final text. Click **Change** under **Preview engine** on the **Live Preview** tab and pick one.
 
 - **Apple** is built into macOS, so the engine itself needs no download. It needs **macOS 26 or later**, and it only recognizes languages your Mac has installed. Other languages are a download.
-- **Universal** works on **macOS 14 and later** and covers more languages. It needs one optional **217 MB** download, which only starts when you click **Download** on its card. You can remove it from the same card to get the space back.
+- **Universal** works on **macOS 14 and later** and covers more languages. It needs one optional **270 MB** download, which only starts when you click **Download** on its card. You can remove it from the same card to get the space back.
 
 If you are on macOS 26 and Apple supports your language, use Apple. Choose Universal on older macOS versions, or when Apple does not support your language.
 

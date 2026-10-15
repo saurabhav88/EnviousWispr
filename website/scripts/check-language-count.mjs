@@ -1,17 +1,17 @@
 #!/usr/bin/env node
-// The published language count for EnviousWispr's WhisperKit path, enforced.
+// The published language count for EnviousWispr's Whisper engine, enforced.
 // Runs from `npm run build` via prebuild (beside check-help-content.mjs), so
 // it executes in CI on every deploy — the website-check job in pr-check.yml.
 //
 // WHY 99+ (mirror the vendor — not "99+ forever"):
-// We ship openai_whisper-large-v3-v20240930_turbo through WhisperKit
-// (argmaxinc/argmax-oss-swift, see Package.swift). Argmax publishes 99 to 101
-// languages for large-v3 / large-v3-turbo, and the founder's 2026-08-24
-// direction settled this repo on "99+ for wisprkit". 99+ is true against
-// WhisperKit's 99-101, true against our own accepted-code set, and overstates
-// nothing. If a future reader finds Argmax publishing a DIFFERENT figure for
-// the weights we ship, that number wins: change COUNT below and every site in
-// SITES in the same commit. The OpenAI hosted-API figure (98) is NOT our
+// We ship Whisper Large v3 Turbo (GGUF) through transcribe.cpp (#3735, see
+// Package.swift). The count was settled on the same weights under WhisperKit:
+// Argmax published 99 to 101 languages for large-v3 / large-v3-turbo, and the
+// founder's 2026-08-24 direction settled this repo on "99+". The engine change
+// did not change the weights' language set, so 99+ is still true against our
+// own accepted-code set and overstates nothing. If a future reader finds the
+// model's publisher stating a DIFFERENT figure for the weights we ship, that
+// number wins: change COUNT below and every site in SITES in the same commit. The OpenAI hosted-API figure (98) is NOT our
 // vendor — we do not ship that API (#2368).
 //
 // Two things are checked. Never a whole-site regex over "<number> languages":
@@ -43,50 +43,50 @@ const SITES = [
   ['Sources/EnviousWisprAppKit/Views/Settings/SpeechEngineSettingsView.swift', 'Whisper supports 99+ languages.'],
   ['Sources/EnviousWisprAppKit/Views/Settings/WhatsNewContent.swift', 'title: "Dictate in 99+ languages"'],
   ['website/src/content/blog/live-transcription-that-keeps-up-with-you.md', 'the one that covers 99+ languages and the toughest audio'],
-  ['website/src/content/blog/on-device-dictation-polishing-small-models.md', 'with WhisperKit available for 99+ languages.'],
+  ['website/src/content/blog/on-device-dictation-polishing-small-models.md', 'with Whisper available for 99+ languages.'],
   ['website/src/content/blog/getting-started-enviouswispr-under-2-minutes.md', 'A second engine, All Languages, covers 99+ languages.'],
   ['website/src/content/blog/welcome-to-enviouswispr.md', 'A secondary engine covers 99+ languages.'],
   ['website/src/content/help/choosing-a-speech-engine-parakeet-vs-whisperkit.md', '| Languages | 25 European | 99+ |'],
-  ['website/src/content/help/multi-language-dictation.md', 'switch to the **All Languages** engine (WhisperKit), which supports 99+.'],
-  ['website/src/pages/compare/apple-dictation.astro', '25 European (Parakeet), 99+ languages via WhisperKit'],
-  ['website/src/pages/compare/best-dictation-apps-for-mac.astro', 'ew: "25 European (Parakeet) + 99+ (WhisperKit)"'],
-  ['website/src/pages/compare/best-dictation-apps-for-mac.astro', 'you can switch to WhisperKit for 99+ languages.'],
-  ['website/src/pages/compare/fluidvoice.astro', '"a": "EnviousWispr runs NVIDIA Parakeet TDT v3 for 25 European languages and WhisperKit for 99+ languages, switched manually under Dictation Settings, Engine.'],
-  ['website/src/pages/compare/fluidvoice.astro', '<td>25 European (Parakeet), 99+ via WhisperKit</td>'],
-  ['website/src/pages/compare/fluidvoice.astro', '<p class="faq-a">EnviousWispr runs NVIDIA Parakeet TDT v3 for 25 European languages and WhisperKit for 99+ languages, switched manually under Dictation Settings, Engine.'],
-  ['website/src/pages/compare/google-docs-voice-typing.astro', '<td>25 European (Parakeet), 99+ languages via WhisperKit</td>'],
-  ['website/src/pages/compare/google-docs-voice-typing.astro', 'WhisperKit supports 99+ but with varying accuracy'],
-  ['website/src/pages/compare/handy.astro', '<td>25 European (Parakeet), 99+ via WhisperKit</td>'],
-  ['website/src/data/compare.js', "ew: cell('99+ with WhisperKit'"],
-  ['website/src/pages/compare/notta.astro', '<td>25 European (Parakeet), 99+ languages via WhisperKit</td>'],
-  ['website/src/pages/compare/superwhisper.astro', '"a": "Yes. EnviousWispr offers on-device transcription on Apple Silicon Macs, completely free, with no account or subscription required. It uses Parakeet TDT for 25 European languages and WhisperKit for 99+."'],
+  ['website/src/content/help/multi-language-dictation.md', 'switch to the **All Languages** engine (Whisper), which supports 99+.'],
+  ['website/src/pages/compare/apple-dictation.astro', '25 European (Parakeet), 99+ languages via Whisper'],
+  ['website/src/pages/compare/best-dictation-apps-for-mac.astro', 'ew: "25 European (Parakeet) + 99+ (Whisper)"'],
+  ['website/src/pages/compare/best-dictation-apps-for-mac.astro', 'you can switch to Whisper for 99+ languages.'],
+  ['website/src/pages/compare/fluidvoice.astro', '"a": "EnviousWispr runs NVIDIA Parakeet TDT v3 for 25 European languages and Whisper for 99+ languages, switched manually under Dictation Settings, Engine.'],
+  ['website/src/pages/compare/fluidvoice.astro', '<td>25 European (Parakeet), 99+ via Whisper</td>'],
+  ['website/src/pages/compare/fluidvoice.astro', '<p class="faq-a">EnviousWispr runs NVIDIA Parakeet TDT v3 for 25 European languages and Whisper for 99+ languages, switched manually under Dictation Settings, Engine.'],
+  ['website/src/pages/compare/google-docs-voice-typing.astro', '<td>25 European (Parakeet), 99+ languages via Whisper</td>'],
+  ['website/src/pages/compare/google-docs-voice-typing.astro', 'Whisper supports 99+ but with varying accuracy'],
+  ['website/src/pages/compare/handy.astro', '<td>25 European (Parakeet), 99+ via Whisper</td>'],
+  ['website/src/data/compare.js', "ew: cell('99+ with Whisper'"],
+  ['website/src/pages/compare/notta.astro', '<td>25 European (Parakeet), 99+ languages via Whisper</td>'],
+  ['website/src/pages/compare/superwhisper.astro', '"a": "Yes. EnviousWispr offers on-device transcription on Apple Silicon Macs, completely free, with no account or subscription required. It uses Parakeet TDT for 25 European languages and Whisper for 99+."'],
   ['website/src/pages/compare/superwhisper.astro', 'language count (99+ via WhisperKit) re-measured 2026-08-21'],
-  ['website/src/pages/compare/superwhisper.astro', '<td>25 European (Parakeet), 99+ languages via WhisperKit</td>'],
-  ['website/src/pages/compare/superwhisper.astro', '<p class="faq-a">Yes. EnviousWispr offers on-device transcription on Apple Silicon Macs, completely free, with no account or subscription required. It uses Parakeet TDT for 25 European languages and WhisperKit for 99+.</p>'],
-  ['website/src/pages/compare/typewhisper.astro', '"a": "EnviousWispr runs NVIDIA Parakeet TDT v3 for 25 European languages and WhisperKit for 99+ languages, switched manually in Settings.'],
-  ['website/src/pages/compare/typewhisper.astro', '<p class="faq-a">EnviousWispr runs NVIDIA Parakeet TDT v3 for 25 European languages and WhisperKit for 99+ languages, switched manually in Settings.'],
-  ['website/src/pages/compare/voiceink.astro', '"a": "Yes. Parakeet TDT covers 25 European languages. For wider coverage, EnviousWispr switches to WhisperKit, which supports 99+ languages. VoiceInk supports 100+ languages through whisper.cpp."'],
-  ['website/src/pages/compare/voiceink.astro', 'EnviousWispr supports 99+ languages via WhisperKit. For English specifically'],
-  ['website/src/pages/compare/voiceink.astro', '<td>25 European (Parakeet), 99+ languages via WhisperKit</td>'],
-  ['website/src/pages/compare/voiceink.astro', 'WhisperKit handles 99+ languages when you need wider coverage'],
-  ['website/src/pages/compare/voiceink.astro', 'EnviousWispr supports 99+ via WhisperKit, and Parakeet TDT (the fast engine)'],
-  ['website/src/pages/compare/voiceink.astro', '<p class="faq-a">Yes. Parakeet TDT covers 25 European languages. For wider coverage, EnviousWispr switches to WhisperKit, which supports 99+ languages. VoiceInk supports 100+ languages through whisper.cpp.</p>'],
-  ['website/src/pages/compare/voiceink.astro', 'EnviousWispr supports 99+ via WhisperKit, and its fastest engine (Parakeet TDT)'],
-  ['website/src/pages/compare/whisper-cpp.astro', '<td>25 European (Parakeet), 99+ via WhisperKit</td>'],
-  ['website/src/pages/compare/whisper-cpp.astro', 'with 99+ languages via WhisperKit as a secondary option'],
+  ['website/src/pages/compare/superwhisper.astro', '<td>25 European (Parakeet), 99+ languages via Whisper</td>'],
+  ['website/src/pages/compare/superwhisper.astro', '<p class="faq-a">Yes. EnviousWispr offers on-device transcription on Apple Silicon Macs, completely free, with no account or subscription required. It uses Parakeet TDT for 25 European languages and Whisper for 99+.</p>'],
+  ['website/src/pages/compare/typewhisper.astro', '"a": "EnviousWispr runs NVIDIA Parakeet TDT v3 for 25 European languages and Whisper for 99+ languages, switched manually in Settings.'],
+  ['website/src/pages/compare/typewhisper.astro', '<p class="faq-a">EnviousWispr runs NVIDIA Parakeet TDT v3 for 25 European languages and Whisper for 99+ languages, switched manually in Settings.'],
+  ['website/src/pages/compare/voiceink.astro', '"a": "Yes. Parakeet TDT covers 25 European languages. For wider coverage, you can switch EnviousWispr to Whisper, which supports 99+ languages. VoiceInk supports 100+ languages through whisper.cpp."'],
+  ['website/src/pages/compare/voiceink.astro', 'EnviousWispr supports 99+ languages via Whisper. For English specifically'],
+  ['website/src/pages/compare/voiceink.astro', '<td>25 European (Parakeet), 99+ languages via Whisper</td>'],
+  ['website/src/pages/compare/voiceink.astro', 'Whisper handles 99+ languages when you need wider coverage'],
+  ['website/src/pages/compare/voiceink.astro', 'EnviousWispr supports 99+ via Whisper, and Parakeet TDT (the fast engine)'],
+  ['website/src/pages/compare/voiceink.astro', '<p class="faq-a">Yes. Parakeet TDT covers 25 European languages. For wider coverage, you can switch EnviousWispr to Whisper, which supports 99+ languages. VoiceInk supports 100+ languages through whisper.cpp.</p>'],
+  ['website/src/pages/compare/voiceink.astro', 'EnviousWispr supports 99+ via Whisper, and its fastest engine (Parakeet TDT)'],
+  ['website/src/pages/compare/whisper-cpp.astro', '<td>25 European (Parakeet), 99+ via Whisper</td>'],
+  ['website/src/pages/compare/whisper-cpp.astro', 'with 99+ languages via Whisper as a secondary option'],
   ['website/src/pages/compare/willow-voice.astro', 'language count (99+ via WhisperKit) re-measured 2026-08-21'],
-  ['website/src/pages/compare/willow-voice.astro', '<td>25 European (Parakeet), 99+ languages via WhisperKit</td>'],
-  ['website/src/pages/compare/willow-voice.astro', 'WhisperKit covers 99+ but with higher latency on less common ones'],
-  ['website/src/pages/compare/wisprflow.astro', '<td>25 European (Parakeet), 99+ languages via WhisperKit</td>'],
-  ['website/src/pages/speech-to-text-mac.astro', 'Runs on the GPU. Slower than Parakeet, covers 99+ languages, and this is the one'],
-  ['website/src/data/site-navigation.js', "cardBenefit: 'Dictate in 25 languages with Parakeet or 99+ with WhisperKit, with British spelling too.'"],
-  ['website/src/pages/features/languages.astro', 'switch to the WhisperKit engine in Dictation Settings, Engine, which supports 99+ languages.'],
-  ['website/src/pages/features/languages.astro', 'description="Dictate in 25 European languages with Parakeet or 99+ with WhisperKit'],
+  ['website/src/pages/compare/willow-voice.astro', '<td>25 European (Parakeet), 99+ languages via Whisper</td>'],
+  ['website/src/pages/compare/willow-voice.astro', 'Whisper covers 99+ at higher latency'],
+  ['website/src/pages/compare/wisprflow.astro', '<td>25 European (Parakeet), 99+ languages via Whisper</td>'],
+  ['website/src/pages/speech-to-text-mac.astro', 'Runs on the GPU. Slower than Parakeet, covers 99+ languages, and detects'],
+  ['website/src/data/site-navigation.js', "cardBenefit: 'Dictate in 25 languages with Parakeet or 99+ with Whisper, with British spelling too.'"],
+  ['website/src/pages/features/languages.astro', 'switch to the All Languages engine (Whisper) in Dictation Settings, Engine, which supports 99+ languages.'],
+  ['website/src/pages/features/languages.astro', 'description="Dictate in 25 European languages with Parakeet or 99+ with Whisper'],
   ['website/src/pages/features/languages.astro', 'It hears 25 European languages out of the box and 99+ with a second engine'],
   ['website/src/pages/features/languages.astro', '<span class="accent-ink">99+ when you need them.</span>'],
   ['website/src/pages/features/languages.astro', "copy: '99+ languages for everything else, as a one-time download.'"],
-  ['website/src/pages/llms.txt.ts', 'or WhisperKit (99+ languages). Optional AI polish'],
-  ['website/src/content/blog/british-spelling-dictation-mac.md', 'and WhisperKit covers 99+.'],
+  ['website/src/pages/llms.txt.ts', 'or Whisper Large v3 Turbo (99+ languages). Optional AI polish'],
+  ['website/src/content/blog/british-spelling-dictation-mac.md', 'and Whisper covers 99+.'],
 ];
 
 // A language count in prose: a 1-3 digit number (optionally +) within two
@@ -276,6 +276,6 @@ for (const { file, label, declRe, commentRe } of ANCHORS) {
 
 for (const f of failures) console.error(`FAIL: ${f}`);
 console.log(
-  `language count: ${SITES.length} claim sites carry "${COUNT}" (vendor: Argmax/WhisperKit), ${failures.length} failure(s)`
+  `language count: ${SITES.length} claim sites carry "${COUNT}" (Whisper Large v3 Turbo), ${failures.length} failure(s)`
 );
 process.exit(failures.length ? 1 : 0);

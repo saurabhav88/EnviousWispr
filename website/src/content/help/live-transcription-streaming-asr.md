@@ -6,12 +6,12 @@ section: "Transcription"
 order: 4
 keywords: ["live transcription", "live", "live text", "real time", "realtime", "streaming", "as you talk", "write while i talk", "text appears while speaking", "faster transcription", "last words missing", "words repeated", "ending cut off"]
 seeAlso: "live-transcription-that-keeps-up-with-you"
-updated: 2026-09-29
+updated: 2026-10-15
 deflection: "can_resolve"
 ---
 Faster Transcription makes EnviousWispr turn your speech into text while you are still speaking, instead of all at once when you stop. The finished text is still pasted after you stop. It is off unless you turn it on. It was called Live transcription until recently.
 
-**Leave it off on the Fast engine (Parakeet). On the All Languages engine (WhisperKit), turn it on if you have picked a language and you often dictate for more than a minute.**
+**Leave it off on the Fast engine (Parakeet). On the All Languages engine (Whisper), turn it on if you have picked a language and you often dictate for more than a minute.**
 
 ### Turn Faster Transcription on or off
 
@@ -37,6 +37,6 @@ In our tests, the same audio came out with about twice as many wrong words when 
 
 ### Why it works better on the All Languages engine
 
-The All Languages engine (WhisperKit) keeps one continuous transcript instead of joining pieces together, so accuracy holds up better. It can still drop a final word now and then.
+The All Languages engine (Whisper) keeps one continuous transcript instead of joining pieces together, so accuracy holds up better. It can still drop a final word now and then.
 
 It has to know your language before it can start. If your language is set to auto-detect, EnviousWispr ignores Faster Transcription and works the normal way, because guessing the language from the first moment of audio gets it wrong too often.

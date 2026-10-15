@@ -83,7 +83,7 @@ This is particularly useful for the kind of documentation that always gets skipp
 
 Developer conversations are sensitive. PR descriptions mention internal architecture. Code review comments reference proprietary logic. Slack threads discuss unreleased features, customer issues, and security concerns.
 
-EnviousWispr always transcribes audio on-device using Parakeet or WhisperKit. Deterministic cleanup, EG-1, supported Apple Intelligence, and downloaded Ollama models can keep the text path local too. OpenAI, Gemini, Claude, and Ollama-hosted polish send the transcript and supporting context to the provider you select.
+EnviousWispr always transcribes audio on-device using Parakeet or Whisper. Deterministic cleanup, EG-1, supported Apple Intelligence, and downloaded Ollama models can keep the text path local too. OpenAI, Gemini, Claude, and Ollama-hosted polish send the transcript and supporting context to the provider you select.
 
 The choice is explicit: audio and transcription stay on your Mac, while text leaves only when you select a cloud polish route. For a detailed breakdown, see [On-Device vs Cloud Dictation: What Stays Private](/blog/macos-dictation-offline-private/).
 

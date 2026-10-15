@@ -23,6 +23,8 @@ faqs:
     answer: "No. This change is specific to the optional Whisper-based engine you can switch to. The default engine was already starting quickly and was left as it was."
 ---
 
+*Update, October 2026: this post describes the Whisper engine as it ran then, on WhisperKit and Core ML. The All Languages engine now runs Whisper Large v3 Turbo through [transcribe.cpp](https://github.com/handy-computer/transcribe.cpp) on the GPU, so the Core ML compile described below is no longer part of it.*
+
 EnviousWispr ships with two transcription engines. Most people stay on the default one. The other is a Whisper-based engine you can switch to, and it had a problem that was easy to miss in normal use and impossible to miss at the worst possible moment.
 
 The first time you ran it, or right after a macOS update, you would press the dictation key and wait. Not for a couple of seconds. For closer to two minutes, staring at a "preparing" state with no way to know it would eventually work.

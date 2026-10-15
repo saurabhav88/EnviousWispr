@@ -9,7 +9,7 @@ draft: false
 author: "Saurabh Vaish"
 faqs:
   - question: "Does macOS have a built-in offline dictation option?"
-    answer: "Yes, but with caveats. Apple Dictation can run locally on supported Macs, but its cleanup and customization options are limited. EnviousWispr always transcribes on-device using Parakeet for 25 European languages or WhisperKit for wider multilingual coverage. You can then use local cleanup, local AI polish, or an optional cloud text-polish provider."
+    answer: "Yes, but with caveats. Apple Dictation can run locally on supported Macs, but its cleanup and customization options are limited. EnviousWispr always transcribes on-device using Parakeet for 25 European languages or Whisper for wider multilingual coverage. You can then use local cleanup, local AI polish, or an optional cloud text-polish provider."
   - question: "Can dictation software really work without an internet connection?"
     answer: "Yes, when the speech model runs locally. EnviousWispr transcribes on your Mac, so core dictation works offline after the speech model download. Deterministic cleanup, EG-1, supported Apple Intelligence, and downloaded Ollama models can also stay local. OpenAI, Gemini, Claude, and Ollama-hosted polish need a connection."
   - question: "Is on-device dictation accurate enough for medical or accessibility use?"
@@ -40,12 +40,12 @@ With EnviousWispr, your recordings stay on your Mac. You still choose what happe
 
 ## How On-Device Transcription Works
 
-EnviousWispr handles transcription locally using two backends: Parakeet for fast dictation across 25 European languages, and WhisperKit for wider multi-language support. Both run through local Apple Silicon hardware rather than a remote transcription server.
+EnviousWispr handles transcription locally using two backends: Parakeet for fast dictation across 25 European languages, and Whisper for wider multi-language support. Both run through local Apple Silicon hardware rather than a remote transcription server.
 
 Here's what the pipeline looks like in practice:
 
 1. **Record.** You speak, and EnviousWispr captures audio from your microphone. While the microphone is still awake from a recent dictation, it also keeps the half second from before you pressed the key, so an early start is usually captured.
-2. **Transcribe.** On-device speech recognition converts your speech to text using Core ML.
+2. **Transcribe.** On-device speech recognition converts your speech to text on your Mac.
 3. **Post-process.** Deterministic cleanup runs locally. Optional AI polish can use EG-1, supported Apple Intelligence, or a downloaded Ollama model locally, or OpenAI, Gemini, Claude, and Ollama-hosted models over the network.
 4. **Deliver.** The polished text pastes directly into the app you're using. Your previous clipboard contents are preserved.
 

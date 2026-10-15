@@ -17,7 +17,7 @@ That's the gap a voice-to-prose workflow closes. You talk, the text appears, you
 Understanding what happens between your voice and the finished text helps you get better results. EnviousWispr runs a three-stage pipeline, entirely on your Mac:
 
 1. **Record.** Hold the keybind, speak, release. The app captures raw audio from your microphone.
-2. **Transcribe.** Your speech is converted to text locally via Core ML, using on-device speech recognition. This is a literal transcription; every filler word, false start, and repeated phrase comes through.
+2. **Transcribe.** Your speech is converted to text locally, using on-device speech recognition. This is a literal transcription; every filler word, false start, and repeated phrase comes through.
 3. **Post-process.** An LLM cleans up the raw transcription. It strips filler words, fixes punctuation, corrects grammar, and keeps your voice. A short aside stays a clean line; a longer piece comes back as clean, readable prose (and, with Ollama, OpenAI, or Gemini polish on, with paragraph breaks and light structure).
 
 The third step is where the writing happens. Raw transcription is messy. Post-processing is what turns "so basically what I'm trying to say is that like the pipeline has three steps and each one does a different thing" into a coherent sentence. You can read more about the technical details on the [how EnviousWispr's transcription pipeline works](/features/) page.

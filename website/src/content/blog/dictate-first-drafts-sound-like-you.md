@@ -27,7 +27,7 @@ That's the gap EnviousWispr fills.
 
 ## How EnviousWispr Keeps Your Voice Intact
 
-EnviousWispr splits the work into two stages: transcription and post-processing. Transcription runs locally on your Mac using on-device speech recognition via Core ML. That gives you accurate raw text. Post-processing is where your voice gets preserved.
+EnviousWispr splits the work into two stages: transcription and post-processing. Transcription runs locally on your Mac using on-device speech recognition. That gives you accurate raw text. Post-processing is where your voice gets preserved.
 
 Here's what makes the difference for writers:
 
@@ -101,7 +101,7 @@ You're away from your desk but your Mac Mini is running at home. You come back, 
 
 Writers dictate sensitive material. Unpublished manuscripts. Client work under NDA. Personal essays. Journal entries. The idea of sending raw recordings of your creative process to a cloud server is, for many writers, a non-starter.
 
-EnviousWispr processes everything on-device. Your recordings never leave your Mac. Transcription runs locally via on-device speech recognition and Core ML. Post-processing can run on-device as well. There's no server receiving your audio, no vendor storing your transcripts, no account tied to your creative output.
+EnviousWispr processes everything on-device. Your recordings never leave your Mac. Transcription runs locally via on-device speech recognition. Post-processing can run on-device as well. There's no server receiving your audio, no vendor storing your transcripts, no account tied to your creative output.
 
 For a detailed look at how on-device processing compares to cloud alternatives, see our [on-device vs cloud dictation comparison](/blog/macos-dictation-offline-private/).
 

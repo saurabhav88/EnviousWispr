@@ -119,7 +119,7 @@ export const catalog = [
     path: '/features/languages/',
     name: 'Languages',
     menuTagline: 'Dictate in your language.',
-    cardBenefit: 'Dictate in 25 languages with Parakeet or 99+ with WhisperKit, with British spelling too.',
+    cardBenefit: 'Dictate in 25 languages with Parakeet or 99+ with Whisper, with British spelling too.',
     heroTagline: 'Your language, your spelling',
     updated: '2026-09-28',
     menuProduct: true,

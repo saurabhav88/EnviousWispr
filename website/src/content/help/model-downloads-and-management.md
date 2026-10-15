@@ -6,7 +6,7 @@ section: "Transcription"
 order: 3
 keywords: ["download model", "model download", "stuck downloading", "download failed", "try again", "resume download", "how big", "disk space", "gb", "storage", "redownload", "model files", "where are the models", "unload model", "free memory", "remove model"]
 related: ["uninstalling-enviouswispr"]
-updated: 2026-09-29
+updated: 2026-10-15
 deflection: "can_resolve"
 ---
 EnviousWispr keeps its speech models on your own Mac rather than on a server, which is what lets your audio stay on the device. The trade is a download the first time and some disk space to manage afterwards.
@@ -16,7 +16,8 @@ Each download is checked before it is used, so a broken or half-finished file is
 ### How big are the speech model downloads?
 
 - **Fast engine (Parakeet).** EnviousWispr downloads it for you during setup, and you watch the progress as it goes. It is about 480 MB.
-- **All Languages engine (WhisperKit).** EnviousWispr does not download it for you. If you switch to it, go to **Dictation Settings** > **Engine**, click **Change**, choose **All Languages**, then click **Set up model**. It is about 1.5 GB.
+- **All Languages engine (Whisper).** EnviousWispr does not download it for you. If you switch to it, go to **Dictation Settings** > **Engine**, click **Change**, choose **All Languages**, then click **Set up model**. It is about 886 MB.
+- **If you used All Languages before.** Older versions ran All Languages on WhisperKit with a larger model. If All Languages was your engine when you updated to the current version, EnviousWispr downloads the new model by itself and deletes the old one it had downloaded. Until the download finishes, a recording tells you the model is not downloaded yet. If you cancel the download, start it again under **Dictation Settings** > **Engine**.
 
 ### A model download is stuck or failed
 
@@ -40,7 +41,8 @@ It is set to **Never** by default, so the model stays loaded. The other choices 
 
 You can remove local models you no longer need and download them again later.
 
-- **Remove a WhisperKit model.** Open **Dictation Settings** > **Engine** and click **Remove Model**.
+- **Remove the Whisper model.** Open **Dictation Settings** > **Engine** and click **Remove Model**.
+- **Remove an older WhisperKit copy.** Some older versions left a copy of the old All Languages model in a folder other apps share. [Uninstalling EnviousWispr](/help/uninstalling-enviouswispr/) shows how to find and remove it.
 - **Remove EG-1.** EG-1 is the polish model EnviousWispr built. Open **AI Polish** and use the remove button there. The button appears once EG-1 is installed and ready. If a newer EG-1 is waiting to install, that row offers the upgrade instead, and the remove button comes back once the upgrade finishes.
 - **Remove S1-mini.** S1-mini is the small polish model made by Superwhisper. It has the same card on the **AI Polish** page as EG-1, with the same remove button once it is installed and ready.
 - **Remove Ollama models.** Local Ollama models are removed from the same **AI Polish** page. Hosted Ollama models cannot be removed, because there is nothing on your Mac to remove.

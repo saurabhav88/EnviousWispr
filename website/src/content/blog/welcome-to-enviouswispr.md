@@ -12,7 +12,7 @@ What if you didn't have to choose between fast dictation and private dictation? 
 
 That's the question we kept asking, and it's why we built EnviousWispr.
 
-EnviousWispr runs entirely on your Mac. Your voice recordings never leave your device. Transcription happens locally using on-device speech recognition models optimized for Apple Silicon via Core ML.
+EnviousWispr runs entirely on your Mac. Your voice recordings never leave your device. Transcription happens locally using on-device speech recognition models optimized for Apple Silicon.
 
 Post-processing (correcting punctuation, cleaning up filler words, adjusting tone) can run fully on-device with Apple Intelligence, EG-1, or Ollama, or via a cloud provider like OpenAI or Gemini if you prefer. From microphone to clipboard, nothing touches the internet unless you choose a cloud AI provider.
 
@@ -49,11 +49,11 @@ That's it. No account, no API key, no subscription. EnviousWispr is free. If you
 
 Most dictation tools send your audio to a server. The server runs a speech recognition model, returns the text, and your recording sits in someone else's infrastructure during that process. Retention policies vary. Some providers keep recordings for model training unless you explicitly opt out.
 
-On-device dictation works differently. The speech recognition model runs entirely on your Mac using Core ML, optimized for Apple Silicon. Your audio is processed locally and discarded. There's no server to breach, no retention policy to read, no third-party subprocessor to trust.
+On-device dictation works differently. The speech recognition model runs entirely on your Mac, optimized for Apple Silicon. Your audio is processed locally and discarded. There's no server to breach, no retention policy to read, no third-party subprocessor to trust.
 
 This isn't a privacy promise buried in a terms-of-service document. It's an architectural fact: the pipeline has nowhere to send your audio. It works offline, on a plane, with Wi-Fi turned off.
 
-The accuracy gap between local and cloud transcription has largely closed. Modern on-device models running natively on Apple Silicon via Core ML achieve word error rates under 2% on standard benchmarks, competitive with major cloud speech APIs. You're not trading quality for privacy anymore.
+The accuracy gap between local and cloud transcription has largely closed. Modern on-device models running natively on Apple Silicon achieve word error rates under 2% on standard benchmarks, competitive with major cloud speech APIs. You're not trading quality for privacy anymore.
 
 For a full breakdown, read [how on-device dictation compares to cloud services](/blog/on-device-vs-cloud-dictation-privacy/).
 
@@ -62,7 +62,7 @@ For a full breakdown, read [how on-device dictation compares to cloud services](
 The pipeline has four steps, and they run in parallel on Apple Silicon, which is what makes the end-to-end time roughly two seconds:
 
 1. **Record.** Hold the global keybind (configurable), speak, release. EnviousWispr captures audio from your microphone with a pre-roll buffer so your first words are never clipped.
-2. **Transcribe.** On-device speech recognition runs natively via Core ML on Apple Silicon. The primary engine handles English with streaming transcription that overlaps with recording. A secondary engine covers 99+ languages.
+2. **Transcribe.** On-device speech recognition runs natively on Apple Silicon. The primary engine handles English with streaming transcription that overlaps with recording. A secondary engine covers 99+ languages.
 3. **Polish.** Your choice of AI provider (OpenAI, Gemini, Ollama, Apple Intelligence, or none) removes filler words, fixes punctuation, and shapes the output to match how you speak.
 4. **Paste.** The polished text pastes directly into whatever app has keyboard focus. Your previous clipboard contents are preserved and restored automatically.
 

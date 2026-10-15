@@ -49,7 +49,7 @@ const faqs = [
   },
   {
     "q": "Which speech engines does each app use?",
-    "a": "EnviousWispr runs NVIDIA Parakeet TDT v3 and WhisperKit. Handy 0.9.5 showed dozens of downloadable choices across Parakeet, Nemotron, Canary, Cohere, Whisper, Voxtral, Qwen3 ASR, FunASR, Granite, Moonshine, SenseVoice, GigaAM, Breeze, and MedASR."
+    "a": "EnviousWispr runs NVIDIA Parakeet TDT v3 and Whisper Large v3 Turbo. Handy 0.9.5 showed dozens of downloadable choices across Parakeet, Nemotron, Canary, Cohere, Whisper, Voxtral, Qwen3 ASR, FunASR, Granite, Moonshine, SenseVoice, GigaAM, Breeze, and MedASR."
   },
   {
     "q": "Can I switch from Handy to EnviousWispr easily?",
@@ -325,12 +325,12 @@ const faqs = [
           </tr>
           <tr>
             <td>Speech engines</td>
-            <td><span class="table-highlight"><a href="https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3" style="color: var(--accent); text-decoration: underline;">Parakeet TDT v3</a> + WhisperKit</span> (dual engines, on-device)</td>
+            <td><span class="table-highlight"><a href="https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3" style="color: var(--accent); text-decoration: underline;">Parakeet TDT v3</a> + Whisper</span> (dual engines, on-device)</td>
             <td><span class="table-check">Dozens of local choices</span> across Parakeet, Nemotron, Canary, Cohere, Whisper, Voxtral, Qwen3 ASR, FunASR, Granite, Moonshine, SenseVoice, GigaAM, Breeze, and MedASR</td>
           </tr>
           <tr>
             <td>Model choice</td>
-            <td>Parakeet by default; switch to WhisperKit in Settings for other languages</td>
+            <td>Parakeet by default; switch to Whisper in Settings for other languages</td>
             <td><span class="table-check">Extensive</span>: filter the downloadable catalog by language, streaming, translation, and model family</td>
           </tr>
           <tr>
@@ -400,7 +400,7 @@ const faqs = [
           </tr>
           <tr>
             <td>Where transcription runs</td>
-            <td>Apple Neural Engine (Parakeet) or Apple GPU (WhisperKit), Apple Silicon only</td>
+            <td>Apple Neural Engine (Parakeet) or Apple GPU (Whisper), Apple Silicon only</td>
             <td><span class="table-check">Yes</span> (Whisper models, on Intel/AMD/NVIDIA GPUs on Windows and Linux)</td>
           </tr>
           <tr>
@@ -410,7 +410,7 @@ const faqs = [
           </tr>
           <tr>
             <td>Multi-language</td>
-            <td>25 European (Parakeet), 99+ via WhisperKit</td>
+            <td>25 European (Parakeet), 99+ via Whisper</td>
             <td>Broad via Whisper; automatic detection on Parakeet V3</td>
           </tr>
           <tr>
@@ -499,7 +499,7 @@ const faqs = [
         </div>
         <div class="privacy-step">
           <div class="privacy-step-num">2</div>
-          <div>Audio is processed on-device: the Apple Neural Engine for Parakeet, the Apple GPU for WhisperKit, depending on which you've selected. Nothing is uploaded.</div>
+          <div>Audio is processed on-device: the Apple Neural Engine for Parakeet, the Apple GPU for Whisper, depending on which you've selected. Nothing is uploaded.</div>
         </div>
         <div class="privacy-step">
           <div class="privacy-step-num">3</div>
@@ -579,7 +579,7 @@ const faqs = [
         <div class="deep-dive-title">A menu of models vs two, tuned for the job</div>
         <div class="deep-dive-body">
           <p>Handy gives you a real menu: Whisper Small through Large with GPU acceleration, Parakeet V2 or V3, and it can auto-discover custom GGUF models you download from Hugging Face. If you run Handy on a Windows machine with a discrete GPU, that flexibility is genuinely useful, and it is one of the clearest reasons to pick Handy over EnviousWispr.</p>
-          <p>EnviousWispr keeps it to two: Parakeet TDT v3 is the default, tuned for speed and English/European accuracy. If you dictate in a language it doesn't cover, switch to WhisperKit under Dictation Settings → Engine, a one-time toggle plus a roughly 1.5GB download the first time. The choice is manual, not automatic; there just isn't a size ladder to climb.</p>
+          <p>EnviousWispr keeps it to two: Parakeet TDT v3 is the default, tuned for speed and English/European accuracy. If you dictate in a language it doesn't cover, switch to Whisper under Dictation Settings → Engine, a one-time switch plus a download of about 886 MB the first time. The choice is manual, not automatic; there just isn't a size ladder to climb.</p>
           <div class="deep-dive-detail">
             <strong>Why it matters:</strong> Power users who want to tune the speed-versus-accuracy dial themselves, or who need Windows or Linux support, get more from Handy today. Anyone who wants one setting to change instead of four model sizes to compare gets that from EnviousWispr.
           </div>
@@ -618,7 +618,7 @@ const faqs = [
       <div class="advantage-card reveal">
         <div class="advantage-icon">🎚️</div>
         <div class="advantage-title">You want to choose your own model</div>
-        <p class="advantage-desc">Handy's live catalog covered more than a dozen model families, with filters for language, streaming, and translation. EnviousWispr offers Parakeet or WhisperKit, which is simpler but leaves far less to tune.</p>
+        <p class="advantage-desc">Handy's live catalog covered more than a dozen model families, with filters for language, streaming, and translation. EnviousWispr offers Parakeet or Whisper, which is simpler but leaves far less to tune.</p>
       </div>
       <div class="advantage-card reveal">
         <div class="advantage-icon">🪪</div>
@@ -687,7 +687,7 @@ const faqs = [
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">Which speech engines does each app use?</div>
-        <p class="faq-a">EnviousWispr runs NVIDIA Parakeet TDT v3 and WhisperKit. Handy 0.9.5 showed dozens of downloadable choices across Parakeet, Nemotron, Canary, Cohere, Whisper, Voxtral, Qwen3 ASR, FunASR, Granite, Moonshine, SenseVoice, GigaAM, Breeze, and MedASR.</p>
+        <p class="faq-a">EnviousWispr runs NVIDIA Parakeet TDT v3 and Whisper Large v3 Turbo. Handy 0.9.5 showed dozens of downloadable choices across Parakeet, Nemotron, Canary, Cohere, Whisper, Voxtral, Qwen3 ASR, FunASR, Granite, Moonshine, SenseVoice, GigaAM, Breeze, and MedASR.</p>
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">Can I switch from Handy to EnviousWispr easily?</div>

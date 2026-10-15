@@ -4,7 +4,7 @@
 // itself in English or German. Claims trace to help/multi-language-dictation.md,
 // help/numbers-dates-and-times.md, help/sounds-and-appearance.md,
 // help/filler-word-removal.md and help/choosing-a-speech-engine-parakeet-vs-whisperkit.md.
-// The 99+ WhisperKit count is enforced by scripts/check-language-count.mjs.
+// The 99+ Whisper count is enforced by scripts/check-language-count.mjs.
 import FeatureShell from '../../layouts/FeatureShell.astro';
 import '../../styles/features/everyday.css';
 import FeatureHero from '../../components/features/FeatureHero.astro';
@@ -22,7 +22,7 @@ const localWords = [
 const faq = [
   {
     q: 'Which languages can I dictate in on a Mac with EnviousWispr?',
-    a: 'EnviousWispr, a free dictation app for Mac, starts with the Parakeet engine, which recognises 25 European languages and detects which one you are speaking. For a language Parakeet does not cover, switch to the WhisperKit engine in Dictation Settings, Engine, which supports 99+ languages.',
+    a: 'EnviousWispr, a free dictation app for Mac, starts with the Parakeet engine, which recognises 25 European languages and detects which one you are speaking. For a language Parakeet does not cover, switch to the All Languages engine (Whisper) in Dictation Settings, Engine, which supports 99+ languages.',
   },
   {
     q: 'How do I get British spelling when I dictate on a Mac?',
@@ -42,7 +42,7 @@ const faq = [
 <FeatureShell
   path="/features/languages/"
   title="Languages: dictate in your language on Mac, UK spelling too"
-  description="Dictate in 25 European languages with Parakeet or 99+ with WhisperKit, get British spelling with English (UK), and use EnviousWispr in English or German."
+  description="Dictate in 25 European languages with Parakeet or 99+ with Whisper, get British spelling with English (UK), and use EnviousWispr in English or German."
   ogImage="/images/og/languages.jpg"
   ogImageAlt="EnviousWispr Languages: dictate in your language, spelled the way you spell it"
 >
@@ -58,15 +58,15 @@ const faq = [
     <div class="benefit-copy">
       <span class="eyebrow">Two engines</span>
       <h2>25 languages to start.<br /><span class="accent-ink">99+ when you need them.</span></h2>
-      <p>Parakeet, the engine you start with, recognises 25 European languages and works out which one you are speaking on its own. If your language is not among them, switch to WhisperKit under Dictation Settings, Engine, and download its model once.</p>
-      <p>You can also lock your language. On Parakeet, that keeps a German dictation free of stray Greek or Cyrillic letters. On WhisperKit, naming your language gives higher accuracy than auto-detect. Both engines run on your Mac, so your voice does not leave it.</p>
+      <p>Parakeet, the engine you start with, recognises 25 European languages and works out which one you are speaking on its own. If your language is not among them, switch to the All Languages engine (Whisper) under Dictation Settings, Engine, and download its model once.</p>
+      <p>You can also lock your language. On Parakeet, that keeps a German dictation free of stray Greek or Cyrillic letters. On Whisper, naming your language gives higher accuracy than auto-detect. Both engines run on your Mac, so your voice does not leave it.</p>
     </div>
     <div class="benefit-visual">
       <ImportReassurance
         wrap={false}
         items={[
           { title: 'Parakeet', copy: 'The default. Faster, 25 European languages, detects which one you speak.' },
-          { title: 'WhisperKit', copy: '99+ languages for everything else, as a one-time download.' },
+          { title: 'Whisper', copy: '99+ languages for everything else, as a one-time download.' },
           { title: 'One language per sentence', copy: 'Auto-detect handles one language at a time, so switch between sentences rather than inside one.' },
         ]}
       />

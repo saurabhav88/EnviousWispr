@@ -6,17 +6,17 @@ section: "Transcription"
 order: 2
 keywords: ["language", "languages", "spanish", "french", "german", "hindi", "not english", "foreign language", "bilingual", "multilingual", "change language", "accent", "british english", "british spelling", "uk english", "english uk", "colour", "organise", "american spelling", "wrong language", "greek letters", "cyrillic", "lock language"]
 related: ["choosing-a-speech-engine-parakeet-vs-whisperkit", "filler-word-removal", "live-preview-words-on-screen"]
-updated: 2026-09-29
+updated: 2026-10-15
 deflection: "can_resolve"
 ---
-EnviousWispr handles dozens of languages. The **Fast** engine (Parakeet), which you start with, recognizes 25 European languages and detects which one you are speaking on its own. For other languages, switch to the **All Languages** engine (WhisperKit), which supports 99+.
+EnviousWispr handles dozens of languages. The **Fast** engine (Parakeet), which you start with, recognizes 25 European languages and detects which one you are speaking on its own. For other languages, switch to the **All Languages** engine (Whisper), which supports 99+.
 
 ### Lock or auto-detect my language
 
 Under **Dictation Settings** > **Engine**, you can lock one language or leave **Auto-detect language** on. Both engines offer this. This is the language you speak. The language of EnviousWispr's own menus is a separate setting: see [the app's language](/help/sounds-and-appearance/).
 
 - **On Fast (Parakeet)**, locking a language narrows the text to your own alphabet. A German dictation stops coming back with stray Greek or Cyrillic characters. A lock cannot tell apart two languages that share an alphabet, so it will not separate German from Dutch.
-- **On All Languages (WhisperKit)**, locking a language is more accurate than auto-detect.
+- **On All Languages (Whisper)**, locking a language is more accurate than auto-detect.
 
 To lock a language, switch off **Auto-detect language**, then click **Change** and pick your language. On All Languages, the language section appears once its model has finished downloading.
 

@@ -17,7 +17,7 @@ const meta = {
 const faqs = [
   {
     "q": "Is there a free alternative to Superwhisper?",
-    "a": "Yes. EnviousWispr offers on-device transcription on Apple Silicon Macs, completely free, with no account or subscription required. It uses Parakeet TDT for 25 European languages and WhisperKit for 99+."
+    "a": "Yes. EnviousWispr offers on-device transcription on Apple Silicon Macs, completely free, with no account or subscription required. It uses Parakeet TDT for 25 European languages and Whisper for 99+."
   },
   {
     "q": "How is EnviousWispr different from Superwhisper?",
@@ -25,7 +25,7 @@ const faqs = [
   },
   {
     "q": "How does EnviousWispr compare to Superwhisper for accuracy?",
-    "a": "EnviousWispr uses NVIDIA Parakeet TDT v3 for 25 European languages and WhisperKit for wider language coverage. Superwhisper offers a large searchable library of local and cloud speech models, including Cohere Transcribe, Parakeet realtime, and its Nano, Fast, Standard, Pro, and Ultra choices. Superwhisper gives you more models to compare, while EnviousWispr keeps the choice to two curated local engines."
+    "a": "EnviousWispr uses NVIDIA Parakeet TDT v3 for 25 European languages and Whisper for wider language coverage. Superwhisper offers a large searchable library of local and cloud speech models, including Cohere Transcribe, Parakeet realtime, and its Nano, Fast, Standard, Pro, and Ultra choices. Superwhisper gives you more models to compare, while EnviousWispr keeps the choice to two curated local engines."
   },
   {
     "q": "Can I use EnviousWispr completely offline?",
@@ -240,7 +240,7 @@ const faqs = [
       </span>
       <span class="hero-pill">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
-        Parakeet TDT + WhisperKit
+        Parakeet TDT + Whisper
       </span>
       <span class="hero-pill">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
@@ -312,7 +312,7 @@ const faqs = [
           </tr>
           <tr>
             <td>Speech engines</td>
-            <td><span class="table-highlight"><a href="https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3" style="color: var(--accent); text-decoration: underline;">Parakeet TDT</a> + <a href="https://github.com/argmaxinc/argmax-oss-swift" style="color: var(--accent); text-decoration: underline;">WhisperKit</a></span> (dual engines, on-device)</td>
+            <td><span class="table-highlight"><a href="https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3" style="color: var(--accent); text-decoration: underline;">Parakeet TDT</a> + <a href="https://huggingface.co/openai/whisper-large-v3-turbo" style="color: var(--accent); text-decoration: underline;">Whisper</a></span> (dual engines, on-device)</td>
             <td><span class="table-check">Large searchable library</span>: local and cloud speech choices including Cohere Transcribe, Parakeet realtime, and Superwhisper Nano/Fast/Standard/Pro/Ultra variants</td>
           </tr>
           <tr>
@@ -402,7 +402,7 @@ const faqs = [
           </tr>
           <tr>
             <td>Multi-language</td>
-            <td>25 European (Parakeet), 99+ languages via WhisperKit</td>
+            <td>25 European (Parakeet), 99+ languages via Whisper</td>
             <td>100+ languages with translation to English</td>
           </tr>
           <tr>
@@ -460,7 +460,7 @@ const faqs = [
       <div class="advantage-card reveal">
         <div class="advantage-icon">🧠</div>
         <div class="advantage-title">Two curated local engines</div>
-        <p class="advantage-desc">EnviousWispr uses <a href="https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3" style="color: var(--accent); text-decoration: underline;">NVIDIA Parakeet TDT</a> for 25 European languages and WhisperKit for wider coverage. Superwhisper gives you a much larger library of local and cloud models to compare. EnviousWispr keeps the choice smaller and entirely local. See <a href="/features/" style="color: var(--accent); text-decoration: underline;">how the pipeline works</a>.</p>
+        <p class="advantage-desc">EnviousWispr uses <a href="https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3" style="color: var(--accent); text-decoration: underline;">NVIDIA Parakeet TDT</a> for 25 European languages and Whisper for wider coverage. Superwhisper gives you a much larger library of local and cloud models to compare. EnviousWispr keeps the choice smaller and entirely local. See <a href="/features/" style="color: var(--accent); text-decoration: underline;">how the pipeline works</a>.</p>
       </div>
       <div class="advantage-card reveal">
         <div class="advantage-icon">⚡</div>
@@ -586,8 +586,8 @@ const faqs = [
         <div class="deep-dive-title">Two curated engines vs. a model marketplace</div>
         <div class="deep-dive-body">
           <p>Superwhisper 2.18.1 has a searchable speech and writing model library. The live app showed local Cohere Transcribe, Parakeet realtime, and Superwhisper-branded Nano, Fast, Standard, Pro, and Ultra choices alongside cloud models.</p>
-          <p>EnviousWispr takes a different approach: NVIDIA Parakeet TDT v3, a CTC/TDT hybrid model that runs at ~110x real-time on the Apple Neural Engine. It covers 25 European languages and is tuned for fast, accurate dictation. For languages outside those 25, EnviousWispr falls back to WhisperKit (an Apple Silicon-optimized Whisper implementation).</p>
-          <p>EnviousWispr uses Parakeet TDT v3 for the languages it covers and WhisperKit for broader language support. Superwhisper gives you much more room to compare models, providers, and local or cloud trade-offs.</p>
+          <p>EnviousWispr takes a different approach: NVIDIA Parakeet TDT v3, a CTC/TDT hybrid model that runs at ~110x real-time on the Apple Neural Engine. It covers 25 European languages and is tuned for fast, accurate dictation. For languages outside those 25, you switch EnviousWispr to Whisper Large v3 Turbo, which runs on the Apple GPU.</p>
+          <p>EnviousWispr uses Parakeet TDT v3 for the languages it covers and Whisper for broader language support. Superwhisper gives you much more room to compare models, providers, and local or cloud trade-offs.</p>
           <div class="deep-dive-detail">
             <strong>Why it matters:</strong> Choose Superwhisper if model selection is part of the experience you want. Choose EnviousWispr if you prefer a smaller set of defaults.
           </div>
@@ -663,7 +663,7 @@ const faqs = [
     <div class="faq-list">
       <div class="faq-item reveal">
         <div class="faq-q">Is there a free alternative to Superwhisper?</div>
-        <p class="faq-a">Yes. EnviousWispr offers on-device transcription on Apple Silicon Macs, completely free, with no account or subscription required. It uses Parakeet TDT for 25 European languages and WhisperKit for 99+.</p>
+        <p class="faq-a">Yes. EnviousWispr offers on-device transcription on Apple Silicon Macs, completely free, with no account or subscription required. It uses Parakeet TDT for 25 European languages and Whisper for 99+.</p>
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">How is EnviousWispr different from Superwhisper?</div>
@@ -671,7 +671,7 @@ const faqs = [
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">How does EnviousWispr compare to Superwhisper for accuracy?</div>
-        <p class="faq-a">EnviousWispr uses NVIDIA Parakeet TDT v3 for 25 European languages and WhisperKit for wider language coverage. Superwhisper offers a large searchable library of local and cloud speech models, including Cohere Transcribe, Parakeet realtime, and its Nano, Fast, Standard, Pro, and Ultra choices. Superwhisper gives you more models to compare, while EnviousWispr keeps the choice to two curated local engines.</p>
+        <p class="faq-a">EnviousWispr uses NVIDIA Parakeet TDT v3 for 25 European languages and Whisper for wider language coverage. Superwhisper offers a large searchable library of local and cloud speech models, including Cohere Transcribe, Parakeet realtime, and its Nano, Fast, Standard, Pro, and Ultra choices. Superwhisper gives you more models to compare, while EnviousWispr keeps the choice to two curated local engines.</p>
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">Can I use EnviousWispr completely offline?</div>

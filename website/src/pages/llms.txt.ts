@@ -66,7 +66,7 @@ export async function GET() {
   const out: string[] = [
     '# EnviousWispr',
     '',
-    '> Free, private voice-to-text for macOS. Hold a keybind, speak, release. Polished text lands on your clipboard or pastes directly. Transcription runs on-device with Parakeet (25 European languages) or WhisperKit (99+ languages). Optional AI polish can stay on-device with EG-1, Apple Intelligence, or a local Ollama model; Ollama also offers hosted models that run on its servers, and OpenAI, Gemini and Claude are optional bring-your-own-key cloud providers. No account, no subscription. Free download.',
+    '> Free, private voice-to-text for macOS. Hold a keybind, speak, release. Polished text lands on your clipboard or pastes directly. Transcription runs on-device with Parakeet (25 European languages) or Whisper Large v3 Turbo (99+ languages). Optional AI polish can stay on-device with EG-1, Apple Intelligence, or a local Ollama model; Ollama also offers hosted models that run on its servers, and OpenAI, Gemini and Claude are optional bring-your-own-key cloud providers. No account, no subscription. Free download.',
     '',
     'Maker: Envious Labs LLC (Connecticut, USA). Founder: Saurabh Vaish.',
     'License: GNU General Public License v3 (GPLv3, open source on GitHub).',

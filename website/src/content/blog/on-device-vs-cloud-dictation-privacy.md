@@ -10,7 +10,7 @@ faqs:
   - question: "What is on-device dictation?"
     answer: "On-device dictation turns your speech into text entirely on your own computer, with nothing sent to a server. On a Mac, the speech model runs locally on Apple Silicon, so your voice never leaves the device and it works offline. Optional AI cleanup can also stay on-device, using Apple Intelligence, EG-1, or Ollama, or use a cloud provider if you choose."
   - question: "Is on-device dictation as accurate as cloud dictation?"
-    answer: "On modern hardware, yes. On-device speech recognition models running natively via Core ML on Apple Silicon achieve word error rates under 2% on standard benchmarks, competitive with leading cloud speech APIs. For most English dictation, you won't notice a meaningful difference."
+    answer: "On modern hardware, yes. On-device speech recognition models running natively on Apple Silicon achieve word error rates under 2% on standard benchmarks, competitive with leading cloud speech APIs. For most English dictation, you won't notice a meaningful difference."
   - question: "Does on-device dictation work offline?"
     answer: "Yes. Because the speech recognition model runs locally on your hardware, no internet connection is needed. EnviousWispr works fully offline: on a plane, in a basement, or at a coffee shop with your MacBook Air and no Wi-Fi."
   - question: "What happens to my audio recordings with cloud dictation?"
@@ -94,7 +94,7 @@ For many people, especially those dictating work-related content on a Mac, on-de
 
 ## Where EnviousWispr fits
 
-EnviousWispr is an on-device dictation app for macOS. It ships with two transcription backends: Parakeet for fast dictation across 25 European languages and WhisperKit for wider multi-language support. Both run natively via Core ML on Apple Silicon. Your audio is recorded, transcribed, and post-processed locally. Recordings never leave your Mac.
+EnviousWispr is an on-device dictation app for macOS. It ships with two transcription backends: Parakeet for fast dictation across 25 European languages and Whisper for wider multi-language support. Both run natively on Apple Silicon: Parakeet on the Neural Engine, Whisper on the GPU. Your audio is recorded, transcribed, and post-processed locally. Recordings never leave your Mac.
 
 Here's what the workflow looks like: hold a keybind, speak, release. A second or two later, polished text lands on your clipboard or pastes directly into the app you're using. Post-processing (punctuation cleanup, filler word removal, light formatting) runs through your choice of AI provider: Apple Intelligence, EG-1, and Ollama for fully on-device, or OpenAI and Gemini if you prefer cloud. The polish shapes the output to match what you said, adapting per dictation with nothing to configure.
 
@@ -151,7 +151,7 @@ On-device dictation turns your speech into text entirely on your own computer, w
 
 ### Is on-device dictation as accurate as cloud dictation?
 
-On modern hardware, yes. On-device speech recognition models running natively via Core ML on Apple Silicon achieve word error rates under 2% on standard benchmarks, competitive with leading cloud speech APIs. For most English dictation, you won't notice a meaningful difference.
+On modern hardware, yes. On-device speech recognition models running natively on Apple Silicon achieve word error rates under 2% on standard benchmarks, competitive with leading cloud speech APIs. For most English dictation, you won't notice a meaningful difference.
 
 ### Does on-device dictation work offline?
 

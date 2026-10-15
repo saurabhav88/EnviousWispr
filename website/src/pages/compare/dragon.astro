@@ -347,7 +347,7 @@ const faqs = [
           </tr>
           <tr>
             <td>Speech engines</td>
-            <td><a href="https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3" style="color: var(--accent); text-decoration: underline;">Parakeet TDT</a> + <a href="https://github.com/argmaxinc/argmax-oss-swift" style="color: var(--accent); text-decoration: underline;">WhisperKit</a></td>
+            <td><a href="https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3" style="color: var(--accent); text-decoration: underline;">Parakeet TDT</a> + <a href="https://huggingface.co/openai/whisper-large-v3-turbo" style="color: var(--accent); text-decoration: underline;">Whisper</a></td>
             <td>Proprietary Nuance engine (decades of refinement)</td>
           </tr>
           <tr>
@@ -491,7 +491,7 @@ const faqs = [
         </div>
         <div class="privacy-step">
           <div class="privacy-step-num">2</div>
-          <div>Audio is transcribed by the Neural Engine using Parakeet TDT or WhisperKit. Nothing uploaded.</div>
+          <div>Audio is transcribed on your Mac by Parakeet TDT on the Neural Engine or Whisper on the GPU. Nothing uploaded.</div>
         </div>
         <div class="privacy-step">
           <div class="privacy-step-num">3</div>
@@ -542,10 +542,10 @@ const faqs = [
         <div class="deep-dive-title">Actually runs on your Mac</div>
         <div class="deep-dive-body">
           <p>Nuance discontinued Dragon for Mac in 2018. The last Mac version (6.0.8) predates Apple Silicon entirely. It does not run on modern macOS, and Nuance has no plans to bring it back. If you search for "Dragon Mac," you will find forum posts from frustrated users and no download link.</p>
-          <p>EnviousWispr is built natively for Apple Silicon. It uses Core ML and the Neural Engine directly, meaning transcription runs on dedicated ML hardware rather than general-purpose CPU cores. The app is a lightweight menu bar utility that launches in seconds and uses minimal memory.</p>
-          <p>This is not a compatibility layer or a port. Every component, from audio capture to paste-back, uses native macOS APIs: AVFoundation for audio, Accessibility API for text insertion, and Core ML for model inference.</p>
+          <p>EnviousWispr is built natively for Apple Silicon. Its default engine uses Core ML and the Neural Engine directly, and its Whisper engine runs on the Apple GPU, so transcription runs on dedicated hardware rather than general-purpose CPU cores. The app is a lightweight menu bar utility that launches in seconds and uses minimal memory.</p>
+          <p>This is not a compatibility layer or a port. Every component, from audio capture to paste-back, uses native macOS APIs: AVFoundation for audio, Accessibility API for text insertion, and Core ML and Metal for model inference.</p>
           <div class="deep-dive-detail">
-            <strong>Technical detail:</strong> EnviousWispr runs Parakeet TDT (600M parameters) and WhisperKit models through Core ML on Apple Silicon's Neural Engine. Dragon's proprietary engine was optimized for x86 Windows with no Apple Silicon path. The last Dragon Mac release cannot even launch on macOS 14+.
+            <strong>Technical detail:</strong> EnviousWispr runs Parakeet TDT (600M parameters) through Core ML on Apple Silicon's Neural Engine, and Whisper Large v3 Turbo through transcribe.cpp on the Apple GPU. Dragon's proprietary engine was optimized for x86 Windows with no Apple Silicon path. The last Dragon Mac release cannot even launch on macOS 14+.
           </div>
         </div>
       </div>

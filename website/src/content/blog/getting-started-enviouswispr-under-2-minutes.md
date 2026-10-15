@@ -38,7 +38,7 @@ On first launch, macOS will ask for two permissions, and setup needs both to fin
 
 ### Microphone access
 
-macOS will show a standard permission dialog the first time EnviousWispr tries to record. Click **Allow**. This lets EnviousWispr hear you when you hold the keybind. Your audio is processed locally via Core ML on Apple Silicon. The recording never leaves your device.
+macOS will show a standard permission dialog the first time EnviousWispr tries to record. Click **Allow**. This lets EnviousWispr hear you when you hold the keybind. Your audio is processed locally on Apple Silicon. The recording never leaves your device.
 
 If you accidentally clicked **Don't Allow**, open **System Settings > Privacy & Security > Microphone** and toggle EnviousWispr on.
 

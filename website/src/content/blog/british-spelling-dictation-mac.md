@@ -16,7 +16,7 @@ faqs:
   - question: "How do I get British spelling from dictation on a Mac?"
     answer: "In EnviousWispr, a free dictation app for Mac, open Settings, Transcription, Language, switch off Auto-detect language, click Change and choose English (UK). Your next dictation writes colour, centre and organise instead of the American spellings."
   - question: "Why does my speech-to-text app spell colour as color?"
-    answer: "The speech engines EnviousWispr runs, Parakeet and WhisperKit, both write English with American spelling. They hear you correctly and spell the word the American way. A separate step after transcription is what turns it into British spelling."
+    answer: "The speech engines EnviousWispr runs, Parakeet and Whisper, both write English with American spelling. They hear you correctly and spell the word the American way. A separate step after transcription is what turns it into British spelling."
   - question: "Does British spelling still work with AI polish on?"
     answer: "Yes. EnviousWispr changes the spelling before AI polish runs and checks it again after, which catches American spelling that a polish model puts back. It works with polish on or off, and in Transcribe a File too."
   - question: "Which words does it leave alone?"
@@ -31,7 +31,7 @@ This post explains why that happens and how to make dictation on your Mac write 
 
 Both speech engines write English with American spelling. When you say "colour", the engine hears the word correctly and writes "color", most likely because American spelling dominates the text such models learn from.
 
-The two engines EnviousWispr runs on your Mac, Parakeet and WhisperKit, both behave this way. Your accent has nothing to do with it. A speaker from Leeds and a speaker from Boston get the same spelling, because the spelling comes from the engine, not from your voice. The spelling differences themselves are well documented; [Wikipedia's page on them](https://en.wikipedia.org/wiki/American_and_British_English_spelling_differences) is a good overview.
+The two engines EnviousWispr runs on your Mac, Parakeet and Whisper, both behave this way. Your accent has nothing to do with it. A speaker from Leeds and a speaker from Boston get the same spelling, because the spelling comes from the engine, not from your voice. The spelling differences themselves are well documented; [Wikipedia's page on them](https://en.wikipedia.org/wiki/American_and_British_English_spelling_differences) is a good overview.
 
 ## How to switch to British spelling
 
@@ -64,7 +64,7 @@ If you use Live Preview, the words that appear while you speak come from a separ
 
 ## Other languages and the app's own language
 
-British spelling is one part of a wider set of language options. Parakeet recognises 25 European languages and works out which one you are speaking, and WhisperKit covers 99+. The app's own menus can also be shown in German. The [Languages page](/features/languages/) covers all of it, and the help article [Multi-Language Dictation](/help/multi-language-dictation/) has the step-by-step detail.
+British spelling is one part of a wider set of language options. Parakeet recognises 25 European languages and works out which one you are speaking, and Whisper covers 99+. The app's own menus can also be shown in German. The [Languages page](/features/languages/) covers all of it, and the help article [Multi-Language Dictation](/help/multi-language-dictation/) has the step-by-step detail.
 
 ## The takeaway
 

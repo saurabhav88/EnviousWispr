@@ -1,27 +1,27 @@
 ---
-title: "Choosing a Speech Engine: Parakeet vs WhisperKit"
+title: "Choosing a Speech Engine: Parakeet vs Whisper"
 description: "Which of the two speech engines to use, and when to switch."
 category: "speech-engines"
 section: "Transcription"
 order: 1
-keywords: ["parakeet", "whisperkit", "whisper", "which engine", "engine", "speech engine", "model", "accuracy vs speed", "switch engine", "transcription engine", "which is better", "fast engine", "all languages", "engine is slow", "wrong language", "download whisperkit model"]
+keywords: ["parakeet", "whisper", "whisperkit", "whisper large v3 turbo", "which engine", "engine", "speech engine", "model", "accuracy vs speed", "switch engine", "transcription engine", "which is better", "fast engine", "all languages", "engine is slow", "wrong language", "download whisper model"]
 related: ["multi-language-dictation", "why-is-my-dictation-inaccurate", "using-snippets"]
-updated: 2026-09-29
+updated: 2026-10-15
 deflection: "can_resolve"
 ---
-Keep the **Fast** engine, which uses Parakeet. Switch to the **All Languages** engine, which uses WhisperKit, only if you dictate in a language Fast does not cover.
+Keep the **Fast** engine, which uses Parakeet. Switch to the **All Languages** engine, which uses Whisper, only if you dictate in a language Fast does not cover.
 
 Both engines run entirely on your Mac. Neither sends your audio anywhere, and neither needs an internet connection once its model has been downloaded.
 
-### Parakeet or WhisperKit: which should I use?
+### Parakeet or Whisper: which should I use?
 
 The **Engine** tab of **Dictation Settings** names the engines **Fast** and **All Languages**. This article uses those names with the model in brackets.
 
-| | Fast (Parakeet) | All Languages (WhisperKit) |
+| | Fast (Parakeet) | All Languages (Whisper) |
 | --- | --- | --- |
 | Languages | 25 European | 99+ |
 | Speed | Faster | Slower |
-| Setup | Downloaded for you during setup | You download it, about 1.5 GB |
+| Setup | Downloaded for you during setup | You download it, about 886 MB |
 | Best for | Everyday dictation | Languages Fast does not cover |
 
 Fast is the default, it is faster, and it covers 25 European languages. If your language is not one of them, use All Languages. See [Multi-Language Dictation](/help/multi-language-dictation/) for the language settings.
@@ -29,8 +29,8 @@ Fast is the default, it is faster, and it covers 25 European languages. If your 
 ### Switch to another engine
 
 1. **Open the engine settings.** Click the EnviousWispr icon in your menu bar, choose **Open EnviousWispr**, and go to **Dictation Settings** > **Engine**.
-2. **Pick your engine.** Under **Transcription Engine**, click **Change**, then click the **Fast** card for Parakeet or the **All Languages** card for WhisperKit. Each card names the model it runs.
-3. **Set up the model.** The first time you choose All Languages, the summary shows **Model not set up**. Click **Set up model**. The model does not download on its own, and it takes about 1.5 GB of storage.
+2. **Pick your engine.** Under **Transcription Engine**, click **Change**, then click the **Fast** card for Parakeet or the **All Languages** card for Whisper. Each card names the model it runs: All Languages runs Whisper Large v3 Turbo.
+3. **Set up the model.** The first time you choose All Languages, the summary shows **Model not set up**. Click **Set up model**. The model does not download on its own, and it takes about 886 MB of storage.
 
 The change applies to your next recording. If a dictation is in progress, the page says the change applies after it finishes.
 

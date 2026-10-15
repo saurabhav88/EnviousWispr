@@ -21,7 +21,7 @@ const faqs = [
   },
   {
     "q": "How is EnviousWispr different from TypeWhisper?",
-    "a": "Both are GPLv3, free at the core, and run on-device. TypeWhisper offers seven engine options across Mac and Windows: WhisperKit, Parakeet TDT, Voxtral, Qwen3 ASR, IBM Granite Speech, Apple Speech, and ONNX-based engines, plus a Workflows system for building your own cleanup, translation, and formatting steps. EnviousWispr runs two engines, Parakeet TDT and WhisperKit, switched manually in Settings, and EG-1, a model built and measured specifically for cleaning up dictation, with no setup required. TypeWhisper also runs on Windows in addition to Mac; EnviousWispr is Mac only."
+    "a": "Both are GPLv3, free at the core, and run on-device. TypeWhisper offers seven engine options across Mac and Windows: WhisperKit, Parakeet TDT, Voxtral, Qwen3 ASR, IBM Granite Speech, Apple Speech, and ONNX-based engines, plus a Workflows system for building your own cleanup, translation, and formatting steps. EnviousWispr runs two engines, Parakeet TDT and Whisper, switched manually in Settings, and EG-1, a model built and measured specifically for cleaning up dictation, with no setup required. TypeWhisper also runs on Windows in addition to Mac; EnviousWispr is Mac only."
   },
   {
     "q": "Does TypeWhisper have AI cleanup like EnviousWispr's EG-1?",
@@ -45,7 +45,7 @@ const faqs = [
   },
   {
     "q": "Which speech engines does each app use?",
-    "a": "EnviousWispr runs NVIDIA Parakeet TDT v3 for 25 European languages and WhisperKit for 99+ languages, switched manually in Settings. TypeWhisper offers a much wider menu: WhisperKit, Parakeet TDT, Voxtral, Qwen3 ASR, IBM Granite Speech, and Apple Speech on Mac, plus ONNX-based engines on Windows, with cloud engines available through add-ons."
+    "a": "EnviousWispr runs NVIDIA Parakeet TDT v3 for 25 European languages and Whisper for 99+ languages, switched manually in Settings. TypeWhisper offers a much wider menu: WhisperKit, Parakeet TDT, Voxtral, Qwen3 ASR, IBM Granite Speech, and Apple Speech on Mac, plus ONNX-based engines on Windows, with cloud engines available through add-ons."
   },
   {
     "q": "Can I switch from TypeWhisper to EnviousWispr easily?",
@@ -314,7 +314,7 @@ const faqs = [
           </tr>
           <tr>
             <td>Speech engines</td>
-            <td><span class="table-highlight">Parakeet TDT v3 + WhisperKit</span>, switch in Settings</td>
+            <td><span class="table-highlight">Parakeet TDT v3 + Whisper</span>, switch in Settings</td>
             <td><span class="table-check">Seven options</span>: WhisperKit, Parakeet TDT, Voxtral, Qwen3 ASR, IBM Granite Speech, Apple Speech, plus ONNX-based engines on Windows</td>
           </tr>
           <tr>
@@ -453,7 +453,7 @@ const faqs = [
         </div>
         <div class="privacy-step">
           <div class="privacy-step-num">2</div>
-          <div>Audio is processed on-device: the Apple Neural Engine for Parakeet, the Apple GPU for WhisperKit, depending on which you've selected. Nothing is uploaded.</div>
+          <div>Audio is processed on-device: the Apple Neural Engine for Parakeet, the Apple GPU for Whisper, depending on which you've selected. Nothing is uploaded.</div>
         </div>
         <div class="privacy-step">
           <div class="privacy-step-num">3</div>
@@ -533,7 +533,7 @@ const faqs = [
         <div class="deep-dive-title">Seven engines, or two you switch between</div>
         <div class="deep-dive-body">
           <p>TypeWhisper offers seven engine options across Mac and Windows: WhisperKit, Parakeet TDT, Voxtral, Qwen3 ASR, IBM Granite Speech, Apple Speech, and ONNX-based engines. If you want to compare these engines directly, or you have a strong preference for one, that choice is real.</p>
-          <p>EnviousWispr runs two: Parakeet TDT v3 for the 25 languages it covers best, WhisperKit for the rest. There is no larger menu; you switch between the two in Dictation Settings, Engine.</p>
+          <p>EnviousWispr runs two: Parakeet TDT v3 for the 25 languages it covers best, Whisper for the rest. There is no larger menu; you switch between the two in Dictation Settings, Engine.</p>
           <div class="deep-dive-detail">
             <strong>Why it matters:</strong> Power users and anyone who wants a specific model, or Windows support, get more from TypeWhisper today. Anyone who wants one setup that already works gets that from EnviousWispr.
           </div>
@@ -602,7 +602,7 @@ const faqs = [
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">How is EnviousWispr different from TypeWhisper?</div>
-        <p class="faq-a">Both are GPLv3, free at the core, and run on-device. TypeWhisper offers seven engine options across Mac and Windows: WhisperKit, Parakeet TDT, Voxtral, Qwen3 ASR, IBM Granite Speech, Apple Speech, and ONNX-based engines, plus a Workflows system for building your own cleanup, translation, and formatting steps. EnviousWispr runs two engines, Parakeet TDT and WhisperKit, switched manually in Settings, and EG-1, a model built and measured specifically for cleaning up dictation, with no setup required. TypeWhisper also runs on Windows in addition to Mac; EnviousWispr is Mac only.</p>
+        <p class="faq-a">Both are GPLv3, free at the core, and run on-device. TypeWhisper offers seven engine options across Mac and Windows: WhisperKit, Parakeet TDT, Voxtral, Qwen3 ASR, IBM Granite Speech, Apple Speech, and ONNX-based engines, plus a Workflows system for building your own cleanup, translation, and formatting steps. EnviousWispr runs two engines, Parakeet TDT and Whisper, switched manually in Settings, and EG-1, a model built and measured specifically for cleaning up dictation, with no setup required. TypeWhisper also runs on Windows in addition to Mac; EnviousWispr is Mac only.</p>
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">Does TypeWhisper have AI cleanup like EnviousWispr's EG-1?</div>
@@ -626,7 +626,7 @@ const faqs = [
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">Which speech engines does each app use?</div>
-        <p class="faq-a">EnviousWispr runs NVIDIA Parakeet TDT v3 for 25 European languages and WhisperKit for 99+ languages, switched manually in Settings. TypeWhisper offers a much wider menu: WhisperKit, Parakeet TDT, Voxtral, Qwen3 ASR, IBM Granite Speech, and Apple Speech on Mac, plus ONNX-based engines on Windows, with cloud engines available through add-ons.</p>
+        <p class="faq-a">EnviousWispr runs NVIDIA Parakeet TDT v3 for 25 European languages and Whisper for 99+ languages, switched manually in Settings. TypeWhisper offers a much wider menu: WhisperKit, Parakeet TDT, Voxtral, Qwen3 ASR, IBM Granite Speech, and Apple Speech on Mac, plus ONNX-based engines on Windows, with cloud engines available through add-ons.</p>
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">Can I switch from TypeWhisper to EnviousWispr easily?</div>

@@ -74,7 +74,7 @@ export const groups = [
       spokenly: cell('Dictation across devices', 'Mac, Windows, Linux and iOS. Per-mode prompts and models.'),
     } },
     { label: 'Languages', cells: {
-      ew: cell('99+ with WhisperKit', 'Parakeet covers 25 European languages.'),
+      ew: cell('99+ with Whisper', 'Parakeet covers 25 European languages.'),
       flow: cell('100+', 'Language support varies by feature.'),
       super: cell('100+', 'Model-dependent language support.'),
       mac: cell('100+', 'Model-dependent language support.'),

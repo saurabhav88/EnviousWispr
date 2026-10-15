@@ -73,11 +73,11 @@
     ]
   },
   {
-    "key": "whisperkit",
-    "name": "WhisperKit",
+    "key": "whisper",
+    "name": "Whisper",
     "tag": "99+ languages",
     "model": "Whisper Large v3 Turbo",
-    "strength": "Whisper optimized for Apple Silicon, with broader language coverage including Hindi, Japanese and Arabic.",
+    "strength": "OpenAI's Whisper, run on the Apple GPU, with broader language coverage including Hindi, Japanese and Arabic.",
     "mode": "Automatic mode",
     "elapsed": "",
     "wait": 1600,
@@ -85,7 +85,7 @@
       ["Best for", "Broader language coverage"],
       ["Languages", "99+"],
       ["Processing", "100% on your Mac"],
-      ["Download", "About 1.64 GB on demand"]
+      ["Download", "About 886 MB on demand"]
     ],
     "langs": [
       {
