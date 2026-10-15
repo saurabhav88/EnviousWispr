@@ -1762,6 +1762,29 @@ struct WrappingHStack: Layout {
 /// One look on every page: the founder preferred the original table to the compact
 /// layout (2026-10-03, "the tables looked nicer before"), so the card ignores the
 /// compact density.
+/// #3792: one spec row holding several values, each over a caption, with a "?" beside its label
+/// whose help explains the values. The Transcription page's engine cards use it for the short,
+/// medium and long transcribe times.
+struct EngineCardTimes {
+  let label: String
+  let values: [String]
+  let captions: [String]
+  let help: String
+
+  /// The row as one sentence, for the card's accessibility hint.
+  var spoken: String {
+    "\(label): " + zip(captions, values).map { "\($0) \($1)" }.joined(separator: ", ")
+  }
+}
+
+/// Where the times row reserved room for its "?" (#3792).
+private struct EngineCardHelpAnchorKey: PreferenceKey {
+  static let defaultValue: Anchor<CGRect>? = nil
+  static func reduce(value: inout Anchor<CGRect>?, nextValue: () -> Anchor<CGRect>?) {
+    value = value ?? nextValue()
+  }
+}
+
 struct EngineCard<Footer: View>: View {
   let icon: String
   /// The card's Settings Map choice; its name comes from the map node (#3482).
@@ -1770,6 +1793,8 @@ struct EngineCard<Footer: View>: View {
   /// Ordered (label, value) rows rendered as the card's little spec table.
   /// Empty renders no table, which is how Live Preview's cards opt out.
   var specs: [(label: String, value: String)] = []
+  /// A last spec row of several captioned values with its own help (#3792), or nil.
+  var times: EngineCardTimes? = nil
   /// Why this engine cannot run right now, or nil when it can.
   var unavailability: String? = nil
   let isSelected: Bool
@@ -1830,7 +1855,7 @@ struct EngineCard<Footer: View>: View {
           // The little spec table: label on the left, value right-aligned, thin
           // rules between rows. Both cards share the same row order so the two
           // read as a side-by-side comparison.
-          if !specs.isEmpty {
+          if !specs.isEmpty || times != nil {
             VStack(spacing: 0) {
               ForEach(Array(specs.enumerated()), id: \.offset) { index, row in
                 if index != 0 {
@@ -1850,6 +1875,12 @@ struct EngineCard<Footer: View>: View {
                     .fixedSize(horizontal: false, vertical: true)
                 }
                 .padding(.vertical, 8)
+              }
+              if let times {
+                if !specs.isEmpty {
+                  Divider().overlay(Color.stDivider)
+                }
+                timesRow(times)
               }
             }
           }
@@ -1893,7 +1924,11 @@ struct EngineCard<Footer: View>: View {
       // the card stays selectable and a VoiceOver user is never told why it
       // cannot be used — they select it and nothing happens. Same defect the
       // card's own footer separation exists to prevent, one sense over.
-      .accessibilityHint(([tagline] + [unavailability].compactMap { $0 }).joined(separator: " "))
+      // #3792: the spec table and the times row are inside the replaced children too, so they
+      // join the hint (row by row) or a VoiceOver user never hears the size or the speed.
+      .accessibilityHint(
+        ([tagline] + specs.map { "\($0.label): \($0.value)." } + [times?.spoken].compactMap { $0 }
+          + [unavailability].compactMap { $0 }).joined(separator: " "))
       .accessibilityValue(isSelected ? SettingsCopy.selectedValue : "")
       .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
 
@@ -1911,6 +1946,55 @@ struct EngineCard<Footer: View>: View {
           lineWidth: isSelected ? 2 : 1)
     )
     .animation(.easeInOut(duration: 0.15), value: isSelected)
+    // #3792: the times row's "?" is a SIBLING of the selection button, laid over the room the
+    // row reserved for it. Inside the button's label its click would select the card; on top it
+    // answers alone, and every other point of the card still selects.
+    .overlayPreferenceValue(EngineCardHelpAnchorKey.self) { anchor in
+      if let anchor, let times {
+        GeometryReader { proxy in
+          let rect = proxy[anchor]
+          SettingsInfoButton(rowTitle: times.label, tooltip: times.help) {
+            SettingsHelpText(text: times.help)
+          }
+          .position(x: rect.midX, y: rect.midY)
+        }
+      }
+    }
+  }
+
+  /// The times row: its label with room for the overlaid "?", then each value over its caption.
+  private func timesRow(_ times: EngineCardTimes) -> some View {
+    HStack(alignment: .firstTextBaseline, spacing: 10) {
+      HStack(alignment: .firstTextBaseline, spacing: 6) {
+        Text(times.label)
+          .font(.stHelper)
+          .foregroundStyle(Color.stTextTertiary)
+          .fixedSize(horizontal: false, vertical: true)
+        Color.clear
+          .frame(width: 18, height: 18)
+          .anchorPreference(key: EngineCardHelpAnchorKey.self, value: .bounds) { $0 }
+      }
+      Spacer(minLength: 12)
+      Grid(alignment: .trailing, horizontalSpacing: 14, verticalSpacing: 2) {
+        GridRow {
+          ForEach(Array(times.values.enumerated()), id: \.offset) { _, value in
+            Text(value)
+              .font(.stHelper)
+              .fontWeight(.medium)
+              .monospacedDigit()
+              .foregroundStyle(.stTextBody)
+          }
+        }
+        GridRow {
+          ForEach(Array(times.captions.enumerated()), id: \.offset) { _, caption in
+            Text(caption)
+              .font(.stHelper)
+              .foregroundStyle(Color.stTextTertiary)
+          }
+        }
+      }
+    }
+    .padding(.vertical, 8)
   }
 }
 
@@ -1921,6 +2005,7 @@ extension EngineCard where Footer == EmptyView {
     map: SettingsMapRef,
     tagline: String,
     specs: [(label: String, value: String)] = [],
+    times: EngineCardTimes? = nil,
     unavailability: String? = nil,
     isSelected: Bool,
     onSelect: @escaping () -> Void
@@ -1930,6 +2015,7 @@ extension EngineCard where Footer == EmptyView {
       map: map,
       tagline: tagline,
       specs: specs,
+      times: times,
       unavailability: unavailability,
       isSelected: isSelected,
       onSelect: onSelect,

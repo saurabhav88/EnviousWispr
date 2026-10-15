@@ -60,9 +60,10 @@ struct SpeechEngineSettingsView: View {
     // (#3385: the cards now open under the summary's Change button.)
     // Two equal flexible columns so the pair always spans the full content
     // width (an adaptive grid left-packs them and strands empty space on the
-    // right). Each card carries a "pick this when" tagline plus a four-row spec
-    // table, owned by EngineChoicePresentation (#3482), where the grounding for
-    // every value lives beside it.
+    // right). Each card carries a "pick this when" tagline plus a spec table
+    // ending in the short/medium/long transcribe times (#3792), owned by
+    // EngineChoicePresentation (#3482), where the grounding for every value
+    // lives beside it.
     // Eager (`Grid`, not `LazyVGrid`): a lazy grid below the fold has no cards, so a Settings
     // search for an engine could not arrive at one (#3482). Two cards gain nothing from laziness;
     // flexible frames split the row evenly, as the flexible columns did.
@@ -74,6 +75,11 @@ struct SpeechEngineSettingsView: View {
             map: .id(choice.mapID),
             tagline: String(localized: choice.tagline),
             specs: choice.specs.map { (String(localized: $0.label), $0.value.resolved) },
+            times: EngineCardTimes(
+              label: String(localized: EngineChoicePresentation.transcribeTimeLabel),
+              values: choice.times.values,
+              captions: EngineChoicePresentation.timeCaptions.map { String(localized: $0) },
+              help: choice.times.help),
             isSelected: settings.selectedBackend == choice.backend
           ) {
             settings.selectedBackend = choice.backend

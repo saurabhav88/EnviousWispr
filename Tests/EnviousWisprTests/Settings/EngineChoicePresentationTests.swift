@@ -28,15 +28,16 @@ struct EngineChoicePresentationTests {
           Array($0.utf8)
         }
     }
+    // #3792: Download size joins the table and the times leave it for their own row.
     let fast = [
       "Fast", "Pick this for everyday English and European dictation.",
-      "Model", "Parakeet v3", "Languages", "25 European languages",
-      "Runs on", "Apple Neural Engine", "Transcribe time", "Usually ~0.1s after you speak",
+      "Model", "Parakeet v3", "Download size", "483 MB", "Languages", "25 European languages",
+      "Runs on", "Apple Neural Engine",
     ].map { Array($0.utf8) }
     let all = [
       "All Languages", "Pick this for other languages or the toughest audio.",
-      "Model", "Whisper Large v3 Turbo", "Languages", "99+ languages",
-      "Runs on", "Apple GPU", "Transcribe time", "Usually 1-2s after you speak",
+      "Model", "Whisper Large v3 Turbo", "Download size", "886 MB", "Languages", "99+ languages",
+      "Runs on", "Apple GPU",
     ].map { Array($0.utf8) }
     #expect(card(Presentation.choice(for: .parakeet, parakeetModel: "Parakeet v3")) == fast)
     #expect(card(Presentation.choice(for: .whisper, parakeetModel: "Parakeet v3")) == all)
@@ -84,5 +85,52 @@ struct EngineChoicePresentationTests {
     #expect(String(localized: all.summary) == "For other languages or the toughest audio")
     #expect(fast.summary.key == "For everyday English and European dictation")
     #expect(all.summary.key == "For other languages or the toughest audio")
+  }
+
+  /// #3792: what the times row says. Expected text is typed from the founder-approved plan,
+  /// not read from the code under test. The number format follows the test host's region, which
+  /// is English (US) here.
+  @Test("each card shows its three transcribe times, the captions and the help")
+  func transcribeTimesRow() {
+    let fast = Presentation.choice(for: .parakeet, parakeetModel: "Parakeet Ultra")
+    let all = Presentation.choice(for: .whisper, parakeetModel: "Parakeet Ultra")
+    #expect(fast.times.values == ["0.1 s", "0.3 s", "1 s"])
+    #expect(Array(all.times.values.prefix(2)) == ["0.6 s", "0.8 s"])
+    #expect(Presentation.timeCaptions.map { String(localized: $0) } == ["short", "medium", "long"])
+    #expect(String(localized: Presentation.transcribeTimeLabel) == "Transcribe time")
+    let intro =
+      "Typical transcription time after you stop speaking. This does not include AI polish or pasting. Short means under 5 seconds of speech, medium about 30 seconds, long about 5 minutes."
+    #expect(
+      fast.times.help
+        == intro
+        + " Typical times for people using EnviousWispr. On the oldest supported Macs (M1), about 0.2 s, 0.4 s and 2 s."
+    )
+    #expect(
+      all.times.help == intro + " Measured on a MacBook Pro with M5 Max. Older Macs take longer.")
+  }
+
+  /// #3792: a model update that changes a download changes its manifest; the card must follow.
+  /// Each size is read from the bundled delivery manifest, an independent source.
+  @Test("each card's download size is its delivery manifest's total", arguments: [
+    ("Parakeet Ultra", "parakeet-delivery-manifest.json", "632 MB"),
+    ("Parakeet v3", "parakeet-v3-retired-manifest.json", "483 MB"),
+  ])
+  func fastDownloadSizeFollowsTheManifest(model: String, manifest: String, shown: String) throws {
+    #expect(Presentation.fastDownloadBytes(parakeetModel: model) == (try Self.totalBytes(manifest)))
+    let fast = Presentation.choice(for: .parakeet, parakeetModel: model)
+    #expect(fast.specs[1].value.resolved == shown)
+  }
+
+  @Test("the All Languages download size is the Whisper manifest's total")
+  func whisperDownloadSizeFollowsTheManifest() throws {
+    #expect(Presentation.whisperDownloadBytes == (try Self.totalBytes("whisper-delivery-manifest.json")))
+    #expect(Presentation.allLanguages.specs[1].value.resolved == "886 MB")
+  }
+
+  static func totalBytes(_ manifest: String) throws -> Int64 {
+    let data = try Data(
+      contentsOf: RepoRoot.sourceURL("Sources/EnviousWispr/Resources/\(manifest)"))
+    let object = try #require(try JSONSerialization.jsonObject(with: data) as? [String: Any])
+    return try #require((object["totalBytes"] as? NSNumber)?.int64Value)
   }
 }
