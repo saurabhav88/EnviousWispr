@@ -32,15 +32,35 @@ def socket_path(pid, uid=None):
 
 
 def _read_frame(sock, buffer):
+    """One reply frame (newline excluded) and the bytes after it, which belong to later
+    replies. Socket failures and oversize frames raise DoorError."""
     while b"\n" not in buffer:
-        chunk = sock.recv(65536)
+        if len(buffer) > MAX_FRAME_BYTES:
+            raise DoorError("reply over frame limit")
+        try:
+            chunk = sock.recv(65536)
+        except OSError as error:  # includes socket.timeout
+            raise DoorError(f"receive failed: {error}") from error
         if not chunk:
             raise DoorError("door closed the connection before replying")
         buffer += chunk
-        if len(buffer) > MAX_FRAME_BYTES + 1:
-            raise DoorError("reply over frame limit")
     frame, _, rest = buffer.partition(b"\n")
+    if len(frame) > MAX_FRAME_BYTES:
+        raise DoorError("reply over frame limit")
     return frame, rest
+
+
+def decode_reply(frame):
+    """A reply frame to a dict; anything that is not a UTF-8 JSON object raises DoorError."""
+    try:
+        reply = json.loads(frame.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as error:
+        raise DoorError(f"reply is not JSON: {error}") from error
+    if not isinstance(reply, dict):
+        raise DoorError("reply is not a JSON object")
+    if reply.get("door") != PROTOCOL_VERSION:
+        raise DoorError(f"unsupported door version {reply.get('door')!r}")
+    return reply
 
 
 class Connection:
@@ -57,23 +77,34 @@ class Connection:
             raise DoorError(f"cannot connect to door for pid {self.pid}: {error}") from error
         self._buffer = b""
 
+    def send_raw(self, data):
+        """Send bytes as-is (tests of the door's framing)."""
+        try:
+            self._sock.sendall(data)
+        except OSError as error:
+            raise DoorError(f"send failed: {error}") from error
+
+    def finish_sending(self):
+        """Half-close: the door sees EOF but can still reply."""
+        try:
+            self._sock.shutdown(socket.SHUT_WR)
+        except OSError as error:
+            raise DoorError(f"shutdown failed: {error}") from error
+
+    def read_reply(self):
+        frame, self._buffer = _read_frame(self._sock, self._buffer)
+        reply = decode_reply(frame)
+        if reply.get("pid") != self.pid:
+            raise DoorError(f"reply names pid {reply.get('pid')!r}, expected {self.pid}")
+        return reply
+
     def request(self, cmd, args=None, request_id=None):
         request_id = request_id or str(uuid.uuid4())
         body = {"id": request_id, "cmd": cmd}
         if args is not None:
             body["args"] = args
-        self._sock.sendall(json.dumps(body).encode("utf-8") + b"\n")
-        frame, self._buffer = _read_frame(self._sock, self._buffer)
-        try:
-            reply = json.loads(frame.decode("utf-8"))
-        except (UnicodeDecodeError, json.JSONDecodeError) as error:
-            raise DoorError(f"reply is not JSON: {error}") from error
-        if not isinstance(reply, dict):
-            raise DoorError("reply is not a JSON object")
-        if reply.get("door") != PROTOCOL_VERSION:
-            raise DoorError(f"unsupported door version {reply.get('door')!r}")
-        if reply.get("pid") != self.pid:
-            raise DoorError(f"reply names pid {reply.get('pid')!r}, expected {self.pid}")
+        self.send_raw(json.dumps(body).encode("utf-8") + b"\n")
+        reply = self.read_reply()
         if reply.get("id") != request_id:
             raise DoorError("reply id does not match the request")
         return reply

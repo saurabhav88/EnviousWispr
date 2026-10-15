@@ -56,18 +56,21 @@
         status: process.terminationStatus, exitedNormally: process.terminationReason == .exit)
     }
 
-    /// Runs `body` in a Python child that has imported `Tests/RuntimeUAT/dev_control.py`.
-    /// The client's socket timeout bounds each socket operation; the child must exit 0 with
-    /// empty stderr and print one JSON object as its last stdout line.
-    private func runClient(_ body: String) async throws -> [String: Any] {
-      let runtimeUAT = Self.repoRoot.appendingPathComponent("Tests/RuntimeUAT").path
-      let script = """
+    /// The Python source for a child that has imported `Tests/RuntimeUAT/dev_control.py`
+    /// and then runs `body`.
+    private static func clientScript(_ body: String) -> String {
+      let runtimeUAT = repoRoot.appendingPathComponent("Tests/RuntimeUAT").path
+      return """
         import json, sys
         sys.path.insert(0, \(String(reflecting: runtimeUAT)))
         import dev_control
         \(body)
         """
-      let captured = try await Self.runPython(script)
+    }
+
+    /// The child must exit 0 with empty stderr and print one JSON object as its last
+    /// stdout line.
+    private func parse(_ captured: ChildOutput) throws -> [String: Any] {
       let diagnostics = String(decoding: captured.stderr, as: UTF8.self)
       try #require(
         captured.exitedNormally && captured.status == 0,
@@ -79,6 +82,33 @@
       let object = try JSONSerialization.jsonObject(with: Data(line.utf8))
       return try #require(object as? [String: Any], "client output is not an object: \(text)")
     }
+
+    /// Runs `body` in a Python client child to completion. The client's socket timeout
+    /// bounds each socket operation.
+    private func runClient(_ body: String) async throws -> [String: Any] {
+      try parse(try await Self.runPython(Self.clientScript(body)))
+    }
+
+    /// Uninstalls and waits until the listener has really stopped, so the next test's door
+    /// may claim the same pathname (the door keeps its claim until then).
+    private func stop(_ door: DevControlDoor) async throws {
+      door.uninstall()
+      try #require(
+        await settleUntilObserved { door.listenerHasStopped }, "listener never reported stopped")
+    }
+
+    /// Python for "this connection was closed by the door": no buffered reply, then EOF or
+    /// reset. A timeout or unexpected bytes fail the child instead of passing as "closed".
+    /// Ends with a newline so a body can follow it directly.
+    private static let requireClosed = #"""
+      def require_closed(c):
+          assert not c._buffer, "unexpected buffered reply"
+          try:
+              assert c._sock.recv(1) == b"", "unexpected bytes after closure"
+          except ConnectionResetError:
+              pass
+
+      """#
 
     @Test("a real Python client pings the real door and reads its identity")
     func realPythonClientPingsTheRealDoor() async throws {
@@ -104,7 +134,7 @@
       let result = try #require(reply["result"] as? [String: Any])
       #expect(result["pong"] as? Bool == true)
 
-      door.uninstall()
+      try await stop(door)
       var gone = stat()
       let goneStatus = lstat(door.socketPath, &gone)
       let goneErrno = errno  // read before any other call can overwrite it
@@ -143,6 +173,7 @@
       #expect(second["ok"] as? Bool == false)
       let error = try #require(second["error"] as? [String: Any])
       #expect(error["code"] as? String == "unknownCommand")
+      try await stop(door)
     }
 
     @Test("an unsafe directory or a foreign entry at the socket path is refused")
@@ -172,6 +203,358 @@
       #expect(FileManager.default.fileExists(atPath: file.path))
 
       #expect(DevControlDoor.unsafePathReason(real.appendingPathComponent("3.sock").path) == nil)
+    }
+
+    // MARK: - Chunk 2: framing, bounds, ordering, shutdown, logging
+
+    /// A handler that records each call and holds it until `open()`: the subject's own
+    /// entry is the signal tests wait on.
+    @MainActor
+    final class Gate {
+      private(set) var entered = 0
+      private var isOpen = false
+      private var waiters: [CheckedContinuation<Void, Never>] = []
+
+      func pass() async {
+        entered += 1
+        guard !isOpen else { return }
+        await withCheckedContinuation { waiters.append($0) }
+      }
+
+      func open() {
+        isOpen = true
+        let held = waiters
+        waiters.removeAll()
+        for waiter in held { waiter.resume() }
+      }
+    }
+
+    private func gatedDoor(_ gate: Gate) -> DevControlDoor {
+      DevControlDoor(handler: { _, _ in
+        await gate.pass()
+        return .ok(["pong": true])
+      })
+    }
+
+    @Test("coalesced frames and a frame split inside a multibyte character are each answered")
+    func framesSurviveCoalescingAndSplits() async throws {
+      let door = DevControlDoor(dispatcher: DevControlDispatcher())
+      defer { door.uninstall() }
+      try #require(await door.install() == .ready)
+
+      let reply = try await runClient(
+        #"""
+        c = dev_control.Connection(\#(door.pid))
+        c.send_raw(b'{"id":"a","cmd":"ping"}\n{"id":"b","cmd":"ping"}\n')
+        r1 = c.read_reply(); r2 = c.read_reply()
+        raw = ('{"id":"caf' + chr(0xE9) + '","cmd":"ping"}' + chr(10)).encode("utf-8")
+        cut = raw.index(b"\xc3") + 1
+        c.send_raw(raw[:cut]); c.send_raw(raw[cut:])
+        r3 = c.read_reply()
+        print(json.dumps({"ids": [r1["id"], r2["id"], r3["id"]], "oks": [r1["ok"], r2["ok"], r3["ok"]]}))
+        """#)
+      #expect(reply["ids"] as? [String] == ["a", "b", "caf\u{E9}"])
+      #expect(reply["oks"] as? [Bool] == [true, true, true])
+      try await stop(door)
+    }
+
+    @Test("malformed frames are refused in order and the connection keeps working")
+    func malformedFramesAreRefusedInOrder() async throws {
+      let door = DevControlDoor(dispatcher: DevControlDispatcher())
+      defer { door.uninstall() }
+      try #require(await door.install() == .ready)
+
+      let reply = try await runClient(
+        #"""
+        c = dev_control.Connection(\#(door.pid))
+        frames = [
+            b'\xff\xfe\n',
+            b'[1,2]\n',
+            b'{"cmd":5}\n',
+            b'{"id":7,"cmd":"ping"}\n',
+            b'{"id":"' + b'x' * 129 + b'","cmd":"ping"}\n',
+            b'{"id":"k","cmd":"ping","args":[1]}\n',
+        ]
+        codes = []
+        for frame in frames:
+            c.send_raw(frame)
+            codes.append(c.read_reply()["error"]["code"])
+        last = c.request("ping", request_id="after")
+        print(json.dumps({"codes": codes, "after": last["ok"]}))
+        """#)
+      #expect(reply["codes"] as? [String] == Array(repeating: "malformed", count: 6))
+      #expect(reply["after"] as? Bool == true)
+      try await stop(door)
+    }
+
+    @Test("a frame cut off by EOF is answered incompleteFrame, then the door closes")
+    func incompleteFrameAtEOF() async throws {
+      let door = DevControlDoor(dispatcher: DevControlDispatcher())
+      defer { door.uninstall() }
+      try #require(await door.install() == .ready)
+
+      let reply = try await runClient(
+        Self.requireClosed
+          + #"""
+          c = dev_control.Connection(\#(door.pid), timeout=5)
+          c.send_raw(b'{"cmd":"ping"')
+          c.finish_sending()
+          code = c.read_reply()["error"]["code"]
+          require_closed(c)
+          print(json.dumps({"code": code, "closed": True}))
+          """#)
+      #expect(reply["code"] as? String == "incompleteFrame")
+      #expect(reply["closed"] as? Bool == true)
+      try await stop(door)
+    }
+
+    @Test("a frame of exactly the limit is accepted; one byte over, or no newline past it, is refused")
+    func requestFrameLimit() async throws {
+      let door = DevControlDoor(dispatcher: DevControlDispatcher())
+      defer { door.uninstall() }
+      try #require(await door.install() == .ready)
+
+      let reply = try await runClient(
+        Self.requireClosed
+          + #"""
+          def frame(pad):
+              return json.dumps({"id": "x", "cmd": "ping", "args": {"pad": "a" * pad}}, separators=(",", ":")).encode()
+          base = len(frame(0))
+          limit = dev_control.MAX_FRAME_BYTES
+          exact = frame(limit - base)
+          assert len(exact) == limit
+          c = dev_control.Connection(\#(door.pid), timeout=5)
+          c.send_raw(exact + b"\n")
+          at_limit = c.read_reply()["ok"]
+          c.send_raw(frame(limit - base + 1) + b"\n")
+          over = c.read_reply()["error"]["code"]
+          require_closed(c)
+          d = dev_control.Connection(\#(door.pid), timeout=5)
+          d.send_raw(b"a" * (limit + 10))
+          runaway = d.read_reply()["error"]["code"]
+          require_closed(d)
+          print(json.dumps({"at_limit": at_limit, "over": over, "runaway": runaway, "closed": True}))
+          """#)
+      #expect(reply["at_limit"] as? Bool == true)
+      #expect(reply["over"] as? String == "tooLarge")
+      #expect(reply["runaway"] as? String == "tooLarge")
+      #expect(reply["closed"] as? Bool == true)
+      try await stop(door)
+    }
+
+    @Test("an oversized reply is replaced whole by responseTooLarge carrying identity, and the log says so")
+    func oversizedReplyIsRefusedWhole() async throws {
+      let door = DevControlDoor(handler: { _, _ in
+        .ok(["blob": String(repeating: "a", count: 2 << 20)])
+      })
+      var outcomes: [String] = []
+      door.onOutcomeLogged = { outcomes.append($0) }
+      defer { door.uninstall() }
+      try #require(await door.install() == .ready)
+
+      let reply = try await runClient(
+        #"""
+        r = dev_control.request(\#(door.pid), "ping", {"note": "client-secret-arg"})
+        print(json.dumps(r))
+        """#)
+      #expect(reply["ok"] as? Bool == false)
+      let error = try #require(reply["error"] as? [String: Any])
+      #expect(error["code"] as? String == "responseTooLarge")
+      #expect(reply["pid"] as? Int == Int(door.pid))
+      #expect(reply["launch"] as? String == door.launchID.uuidString)
+      #expect(reply["executable"] as? String == door.executablePath)
+      #expect(reply["door"] as? Int == DevControlDoor.protocolVersion)
+
+      try #require(outcomes.count == 1, "outcomes: \(outcomes)")
+      #expect(outcomes[0].contains("cmd=ping ok=false code=responseTooLarge"))
+      #expect(outcomes[0].contains("client-secret-arg") == false)
+      let clientID = try #require(reply["id"] as? String)
+      #expect(outcomes[0].contains(clientID) == false)
+      try await stop(door)
+    }
+
+    @Test("framing refusals log cmd=none and never the client's id or command text")
+    func refusalsLogSanitizedOutcomes() async throws {
+      let door = DevControlDoor(dispatcher: DevControlDispatcher())
+      var outcomes: [String] = []
+      door.onOutcomeLogged = { outcomes.append($0) }
+      defer { door.uninstall() }
+      try #require(await door.install() == .ready)
+
+      _ = try await runClient(
+        #"""
+        c = dev_control.Connection(\#(door.pid))
+        c.send_raw(b'{"id":"client-id-zzz","cmd":5}\n')
+        c.read_reply()
+        c.send_raw(b'{"id":"client-id-yyy","cmd":"drop-tables"}\n')
+        c.read_reply()
+        print(json.dumps({}))
+        """#)
+      #expect(outcomes.count == 2)
+      #expect(outcomes.first?.contains("cmd=none ok=false code=malformed") == true)
+      #expect(outcomes.last?.contains("cmd=unknown ok=false code=unknownCommand") == true)
+      for line in outcomes {
+        #expect(line.contains("client-id") == false)
+        #expect(line.contains("drop-tables") == false)
+      }
+      try await stop(door)
+    }
+
+    @Test("uninstall while a request is suspended sends nothing and dispatches no buffered request")
+    func uninstallDuringSuspendedDispatch() async throws {
+      let gate = Gate()
+      defer { gate.open() }
+      let door = gatedDoor(gate)
+      defer { door.uninstall() }
+      var processingFinished = false
+      door.onProcessingFinished = { processingFinished = true }
+      try #require(await door.install() == .ready)
+
+      async let child = Self.runPython(
+        Self.clientScript(
+          Self.requireClosed
+            + #"""
+            c = dev_control.Connection(\#(door.pid), timeout=5)
+            c.send_raw(b'{"id":"1","cmd":"ping"}\n{"id":"2","cmd":"ping"}\n')
+            require_closed(c)
+            print(json.dumps({"closed": True}))
+            """#))
+      try #require(await settleUntilObserved { gate.entered == 1 }, "handler never entered")
+      door.uninstall()
+      gate.open()
+      let reply = try parse(try await child)
+      #expect(reply["closed"] as? Bool == true)
+      try #require(await settleUntilObserved { processingFinished }, "processing did not finish")
+      #expect(gate.entered == 1)
+      try await stop(door)
+      var gone = stat()
+      let status = lstat(door.socketPath, &gone)
+      #expect(status == -1)
+    }
+
+    @Test("a peer that leaves before its reply stops the buffered requests behind it")
+    func peerGoneStopsBufferedRequests() async throws {
+      let gate = Gate()
+      defer { gate.open() }
+      let door = gatedDoor(gate)
+      defer { door.uninstall() }
+      try #require(await door.install() == .ready)
+      // The child closes only after the door is inside the first request, signalled by
+      // this file, so the close lands while a buffered second request is waiting.
+      let marker = FileManager.default.temporaryDirectory
+        .appendingPathComponent("ewdc-peer-\(UUID().uuidString)")
+      defer { try? FileManager.default.removeItem(at: marker) }
+
+      async let child = Self.runPython(
+        Self.clientScript(
+          #"""
+          import os, time
+          c = dev_control.Connection(\#(door.pid))
+          c.send_raw(b'{"id":"1","cmd":"ping"}\n{"id":"2","cmd":"ping"}\n')
+          for _ in range(1000):  # bounded wait for the test's signal; a settle tick, not the mechanism
+              if os.path.exists(\#(String(reflecting: marker.path))):
+                  break
+              time.sleep(0.01)
+          else:
+              raise SystemExit("never signalled")
+          c.close()
+          print(json.dumps({}))
+          """#))
+      try #require(await settleUntilObserved { gate.entered == 1 }, "handler never entered")
+      try #require(FileManager.default.createFile(atPath: marker.path, contents: Data()))
+      _ = try parse(try await child)
+      gate.open()
+      try #require(await settleUntilObserved { door.openSessionCount == 0 }, "session stayed open")
+      #expect(gate.entered == 1)
+      try await stop(door)
+    }
+
+    @Test("uninstall while starting resolves install as failed; the path stays reserved until the listener stops")
+    func uninstallWhileStarting() async throws {
+      let door = DevControlDoor(dispatcher: DevControlDispatcher())
+      defer { door.uninstall() }
+      var stateAtStart: DevControlDoor.State?
+      door.onListenerStarted = { [weak door] in
+        stateAtStart = door?.state
+        door?.uninstall()
+      }
+      #expect(await door.install() == .failed("uninstalled"))
+      #expect(stateAtStart == .starting)
+      door.uninstall()
+      #expect(door.state == .closed)
+      #expect(await door.install() == .refused("alreadyInstalled"))
+      // The listener can bind after an uninstall that ran while it was starting; the
+      // pathname must be gone once the listener has really stopped.
+      try #require(
+        await settleUntilObserved { door.listenerHasStopped }, "listener never reported stopped")
+      var gone = stat()
+      let status = lstat(door.socketPath, &gone)
+      let goneErrno = errno  // read before any other call can overwrite it
+      #expect(status == -1)
+      #expect(goneErrno == ENOENT)
+    }
+
+    @Test("an idle door's uninstall leaves an installed door alone; a replacement waits for the stop")
+    func pathReservationAcrossDoors() async throws {
+      let first = DevControlDoor(dispatcher: DevControlDispatcher())
+      defer { first.uninstall() }
+      try #require(await first.install() == .ready)
+
+      let idle = DevControlDoor(dispatcher: DevControlDispatcher())
+      idle.uninstall()
+      #expect(DevControlDoor.socketModeIsPrivate(first.socketPath))
+      let reached = try await runClient("print(json.dumps(dev_control.ping(\(first.pid))))")
+      #expect(reached["ok"] as? Bool == true)
+
+      let early = DevControlDoor(dispatcher: DevControlDispatcher())
+      #expect(await early.install() == .refused("pathInUse"))
+
+      first.uninstall()
+      let beforeStop = DevControlDoor(dispatcher: DevControlDispatcher())
+      // No suspension between the uninstall above and this check, so the listener's
+      // cancellation cannot have been processed yet.
+      #expect(await beforeStop.install() == .refused("pathInUse"))
+      try #require(
+        await settleUntilObserved { first.listenerHasStopped }, "listener never reported stopped")
+
+      let replacement = DevControlDoor(dispatcher: DevControlDispatcher())
+      defer { replacement.uninstall() }
+      #expect(await replacement.install() == .ready)
+      try await stop(replacement)
+    }
+
+    @Test("the Python reader refuses bad reply frames and keeps the bytes after a boundary")
+    func clientRefusesBadReplies() async throws {
+      let reply = try await runClient(
+        #"""
+        class Feed:
+            def __init__(self, chunks):
+                self.chunks = iter(chunks)
+            def recv(self, maximum):
+                value = next(self.chunks, b"")
+                if isinstance(value, BaseException):
+                    raise value
+                return value
+
+        def refuses(operation):
+            try:
+                operation()
+            except dev_control.DoorError:
+                return 1
+            raise AssertionError("expected DoorError")
+
+        count = 0
+        for frame in (b"\xff", b"{", b"[]", b'{"door":2}'):
+            count += refuses(lambda frame=frame: dev_control.decode_reply(frame))
+        limit = dev_control.MAX_FRAME_BYTES
+        count += refuses(lambda: dev_control._read_frame(Feed([b"x" * limit, b"x\n"]), b""))
+        count += refuses(lambda: dev_control._read_frame(Feed([TimeoutError("test timeout")]), b""))
+        count += refuses(lambda: dev_control._read_frame(Feed([]), b"partial"))
+        frame, rest = dev_control._read_frame(Feed([b"x" * limit, b"\nnext\n"]), b"")
+        print(json.dumps({"rejections": count, "boundary_and_remainder": len(frame) == limit and rest == b"next\n"}))
+        """#)
+      #expect(reply["rejections"] as? Int == 7)
+      #expect(reply["boundary_and_remainder"] as? Bool == true)
     }
   }
 #endif
