@@ -727,6 +727,31 @@ class WakeHarness(unittest.TestCase):
                 os.remove(path)
         self.assertEqual(closed, [True])
 
+    def test_notice_frames_come_from_the_recording_at_the_logged_notice(self):
+        text = ("[2026-10-15T19:00:00-04:00] [INFO] [Paste] RETAINED_NOTICE take=A shown=false why=x\n"
+                "[2026-10-15T19:00:05-04:00] [INFO] [Paste] RETAINED_NOTICE take=A shown=true why=kept\n")
+        from datetime import datetime
+        when = datetime.fromisoformat("2026-10-15T19:00:05-04:00").timestamp()
+        self.assertEqual(h.notice_epoch(text), when)
+        self.assertIsNone(h.notice_epoch("no notice here"))
+        asked = []
+
+        class Clip:
+            exists = True
+            started_at = when - 3.0
+            path = "/tmp/clip.mov"
+
+            def frame_at(self, offset, save_path=None):
+                asked.append(round(offset, 1))
+                return save_path
+        self.assertEqual(len(h.notice_frames(Clip(), text, "probe")), 3)
+        self.assertEqual(asked, [3.4, 4.2, 5.0])
+        # Two-way: no recording, or no notice line, gives no frames rather than a guess.
+        Clip.exists = False
+        self.assertEqual(h.notice_frames(Clip(), text, "probe"), [])
+        Clip.exists = True
+        self.assertEqual(h.notice_frames(Clip(), "nothing", "probe"), [])
+
     def test_exact_insertion_rejects_a_doubled_wake_take(self):
         log = ("[x] [INFO] [Pipeline] CORRECTION_DEBUG [LLM Polish] OUT: Quick async update for the "
                "team, I just wrapped up with sales.\n")

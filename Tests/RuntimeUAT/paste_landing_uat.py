@@ -1749,12 +1749,37 @@ def chrome_web_area(pid):
     return None
 
 
-def capture_frame(label):
-    """A full-screen frame taken while the notice is up, for the human visual check. Returns the
-    path, or None when the capture produced no file (Screen Recording not granted)."""
-    path = f"/tmp/ew-uat-3802-{label}-{u.RUN_ID}.png"
-    subprocess.run(["screencapture", "-x", path], capture_output=True)
-    return path if os.path.exists(path) and os.path.getsize(path) > 0 else None
+LOG_STAMP = re.compile(r"^\[(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:[+-]\d{2}:\d{2}|Z))\]")
+CLICKOFF_RECORD_S = 40  # the take: about 3 s of speech, record_tts's 10 s wait, a 2 s settle, slack
+
+
+def notice_epoch(text):
+    """Epoch seconds of the first shown RETAINED_NOTICE line in `text` (the log stamp has one-second
+    resolution), or None."""
+    from datetime import datetime
+    for line in text.splitlines():
+        if "RETAINED_NOTICE" in line and "shown=true" in line:
+            stamp = LOG_STAMP.match(line)
+            if stamp:
+                return datetime.fromisoformat(stamp.group(1).replace("Z", "+00:00")).timestamp()
+    return None
+
+
+def notice_frames(clip, text, label):
+    """Frames from the screen recording that spans the take, around the logged notice. The notice
+    stays up about 2.5 s (PillCatalog) and the log stamp is whole seconds, so three frames spread
+    over that span. Returns the frame paths ([] when there is no recording or no notice line)."""
+    when = notice_epoch(text)
+    if when is None or not clip.exists or clip.started_at is None:
+        return []
+    base = when - clip.started_at
+    frames = []
+    for extra in (0.4, 1.2, 2.0):
+        offset = max(0.0, base + extra)
+        frame = clip.frame_at(offset, save_path=f"/tmp/ew-uat-3802-{label}-{u.RUN_ID}-{offset:.1f}s.png")
+        if frame:
+            frames.append(frame)
+    return frames
 
 
 def stage_wake_arm(arm):
@@ -1817,15 +1842,19 @@ def wake_takes(label, chrome):
     u.set_clipboard_text(f"ew-uat-sentinel-wake-{label}")
     base = u.log_size()
     PHASE_BASE["offset"] = base
-    lines, cascades = take(f"{label}-clickoff", base, sentence=WAKE_SENTENCE)
+    # The Copied notice lasts about 2.5 s and `take()` returns well after it is gone, so the screen
+    # is recorded across the whole take and the frames are picked afterwards from the notice's log
+    # time (uat-testing.md RULE: record-the-screen-a-visual-question-is-not-a-blocker).
+    with w.record(CLICKOFF_RECORD_S) as clip:
+        lines, cascades = take(f"{label}-clickoff", base, sentence=WAKE_SENTENCE)
     text = u.log_since(base)
     observed = [l[1] for l in lines]
     u.check(f"{label}-clickoff: one landing line, a readable-field miss (absent)",
             observed == ["absent"], str(lines))
     u.wait_for("the checked cleanup's line", lambda: KEPT.search(u.log_since(base)), deadline=10.0)
     u.wait_for("the notice's line", lambda: NOTICE.search(u.log_since(base)), deadline=5.0)
-    frame = capture_frame(f"{label}-copied")
     text = u.log_since(base)
+    frames = notice_frames(clip, text, f"{label}-copied")
     kept = [k[0] for k in KEPT.findall(text)]
     notices = NOTICE.findall(text)
     u.check(f"{label}-clickoff: the cleanup kept the dictation", kept == ["keep_dictation"], str(kept))
@@ -1837,10 +1866,11 @@ def wake_takes(label, chrome):
             submitted is not None and board.strip() == submitted, f"board={board[:80]!r} submitted={submitted!r}")
     # The frame is evidence for a human: a file is not proof the pill was visible, so the
     # visual verdict stays outside the automatic count.
-    u.check(f"{label}-clickoff: a frame was captured while the notice was up", frame is not None,
-            "no file (Screen Recording not granted?)")
-    if frame:
-        u.skip(f"{label}-clickoff: Copied pill visible", f"VISUAL CHECK PENDING: open {frame}")
+    u.check(f"{label}-clickoff: frames extracted around the logged notice", bool(frames),
+            f"recording={clip.path if clip.exists else 'none (Screen Recording not granted?)'}")
+    if frames:
+        u.skip(f"{label}-clickoff: Copied pill visible",
+               "VISUAL CHECK PENDING: open " + " ".join(frames))
     u.check(f"{label}-clickoff: the box is still empty", _box_value(chrome) == "",
             repr(_box_value(chrome)))
     # (e) back into the box: the paste lands there, once.
