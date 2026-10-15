@@ -73,6 +73,7 @@
         settings: SettingsManager(defaults: defaults),
         writeContext: DevControlSettings.WriteContext(
           modelCatalog: { DevControlSettings.ModelCatalog(provider: nil, models: []) },
+          loadCachedModelCatalog: { _, _ in },
           connectedInputUIDs: { [] }, inputChannelCounts: { [:] }, pillWordsCapability: { .available }),
         status: status.sources,
         history: DevControlFixtures.history(rows),

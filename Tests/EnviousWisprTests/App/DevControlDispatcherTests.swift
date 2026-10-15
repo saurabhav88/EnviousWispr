@@ -28,6 +28,7 @@
         settings: settings,
         writeContext: DevControlSettings.WriteContext(
           modelCatalog: { DevControlSettings.ModelCatalog(provider: nil, models: []) },
+          loadCachedModelCatalog: { _, _ in },
           connectedInputUIDs: { ["mic-a"] }, inputChannelCounts: { [:] }, pillWordsCapability: { .available }),
         status: DevControlFixtures.StatusFake().sources,
         history: DevControlFixtures.history([]),
@@ -132,6 +133,7 @@
         settings: settings,
         writeContext: DevControlSettings.WriteContext(
           modelCatalog: { DevControlSettings.ModelCatalog(provider: nil, models: []) },
+          loadCachedModelCatalog: { _, _ in },
           connectedInputUIDs: { [] }, inputChannelCounts: { ["mic-a": 4] },
           pillWordsCapability: { .available }),
         status: DevControlFixtures.StatusFake().sources,
@@ -328,6 +330,7 @@
         settings: settings,
         writeContext: DevControlSettings.WriteContext(
           modelCatalog: { DevControlSettings.ModelCatalog(provider: nil, models: []) },
+          loadCachedModelCatalog: { _, _ in },
           connectedInputUIDs: { [] }, inputChannelCounts: { [:] }, pillWordsCapability: { .available }),
         status: status.sources,
         history: DevControlDispatcher.HistorySource(visibleTranscripts: rows),
@@ -667,6 +670,7 @@ private static func make(words: CustomWordsCoordinator) -> (SettingsManager, Dev
     settings: settings,
     writeContext: DevControlSettings.WriteContext(
       modelCatalog: { DevControlSettings.ModelCatalog(provider: nil, models: []) },
+      loadCachedModelCatalog: { _, _ in },
       connectedInputUIDs: { [] }, inputChannelCounts: { [:] }, pillWordsCapability: { .available }),
     status: DevControlFixtures.StatusFake().sources,
     history: DevControlFixtures.history([]),

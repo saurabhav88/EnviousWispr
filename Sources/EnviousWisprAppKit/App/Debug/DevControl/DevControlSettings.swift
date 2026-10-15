@@ -403,6 +403,10 @@
     struct WriteContext {
       /// The polish model catalog discovery currently holds, and the provider it is about.
       var modelCatalog: () -> ModelCatalog
+      /// The screen's synchronous cached load, including ownership and surface repair
+      /// (`LLMModelDiscoveryCoordinator.loadCachedModels`), so a model check after a provider
+      /// change does not depend on a mounted screen.
+      var loadCachedModelCatalog: (LLMProvider, ProviderSetupSurface) -> Void
       /// UIDs of the input devices the system lists right now.
       var connectedInputUIDs: () -> [String]
       /// Input count per connected input device UID, read at request time.
@@ -518,7 +522,8 @@
 
     /// A settings write as the door receives it: `force` assigns directly (any key); an
     /// ordinary write takes the key's route first. Every refusal happens before the first
-    /// mutation.
+    /// mutation, except that a model check may first load the cached catalog and run its
+    /// surface repair, which stays applied even if the requested model is then refused.
     static func write(
       _ key: Key, value: Any, force: Bool, context: WriteContext, to settings: SettingsManager
     ) -> SetOutcome {
@@ -771,10 +776,16 @@
       guard !fixedModelProviders.contains(provider) else {
         return .refused(code: "badValue", message: "the current provider has a fixed model")
       }
-      let catalog = context.modelCatalog()
+      var catalog = context.modelCatalog()
+      if catalog.provider != provider || catalog.models.isEmpty {
+        context.loadCachedModelCatalog(provider, surface)
+        catalog = context.modelCatalog()
+      }
       guard catalog.provider == provider, !catalog.models.isEmpty else {
         return .refused(
-          code: "catalogUnavailable", message: "no discovered models for the current provider")
+          code: "catalogUnavailable",
+          message:
+            "no usable cached model catalog for the current provider; discover its models in the app first, then retry")
       }
       let groups = OllamaModelPickerPresentation.groups(from: catalog.models, provider: provider)
       let offered = (groups.recommended + groups.other + groups.hosted).map(\.id)

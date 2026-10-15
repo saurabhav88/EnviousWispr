@@ -1,6 +1,7 @@
 #if DEBUG
   import AppKit
   import EnviousWisprCore
+  import EnviousWisprLLM
   import EnviousWisprServices
   import Foundation
   import SwiftParser
@@ -547,7 +548,8 @@
       channels: [String: Int] = [:]
     ) -> DevControlSettings.WriteContext {
       DevControlSettings.WriteContext(
-        modelCatalog: { catalog }, connectedInputUIDs: { connected },
+        modelCatalog: { catalog }, loadCachedModelCatalog: { _, _ in },
+        connectedInputUIDs: { connected },
         inputChannelCounts: { channels },
         pillWordsCapability: { pill })
     }
@@ -1131,6 +1133,152 @@
         "a saved input the device does not have shows as Input 1")
     }
 
+    @Test("all four model keys load the saved catalog without mounting a screen")
+    func modelRoutesLoadCachedCatalogs() throws {
+      let routes: [(SettingsManager.SettingKey, LLMProvider, ProviderSetupSurface)] = [
+        (.llmModel, .openAI, .dictation),
+        (.fileImportLLMModel, .gemini, .fileImport),
+        (.ollamaModel, .ollama, .dictation),
+        (.fileImportOllamaModel, .ollama, .fileImport),
+      ]
+      for (key, provider, surface) in routes {
+        let (_, cache, settings) = Self.fixture()
+        let discovery = LLMModelDiscoveryCoordinator(
+          keychainManager: KeychainManager(), cacheDefaults: cache)
+        discovery.loadCachedModels(for: .claude, settings: settings, surface: .dictation)
+
+        let providerKey: SettingsManager.SettingKey =
+          surface == .dictation ? .llmProvider : .fileImportLLMProvider
+        #expect(
+          DevControlSettings.write(
+            providerKey, value: provider.rawValue, force: false, context: Self.context(),
+            to: settings) == .written(forced: false))
+        let dictationBefore = settings.llmModel
+        let id = provider == .ollama ? "local-dev:1b" : "cached-dev-model"
+        cache.set(
+          try JSONEncoder().encode([Self.model(id, provider)]),
+          forKey: "cachedModels_\(provider.rawValue)")
+
+        var loads = 0
+        var context = Self.context()
+        context.modelCatalog = {
+          .init(provider: discovery.stateProvider, models: discovery.discoveredModels)
+        }
+        context.loadCachedModelCatalog = { requestedProvider, requestedSurface in
+          loads += 1
+          #expect(requestedProvider == provider)
+          #expect(requestedSurface == surface)
+          #expect(settings.isDevControlWrite)
+          discovery.loadCachedModels(
+            for: requestedProvider, settings: settings, surface: requestedSurface)
+        }
+
+        #expect(
+          DevControlSettings.write(key, value: id, force: false, context: context, to: settings)
+            == .written(forced: false), "\(DevControlSettings.name(key))")
+        #expect(loads == 1)
+        #expect(discovery.stateProvider == provider)
+        // The menu's write is the cloud-model field; the running app mirrors it into the Ollama
+        // field (`PipelineSettingsSync`), which these tests do not run.
+        #expect(
+          PolishSettings.cloudModel(on: surface, in: settings) == id, "\(DevControlSettings.name(key))")
+        #expect(settings.isDevControlWrite == false)
+        if surface == .fileImport {
+          #expect(settings.llmModel == dictationBefore)
+        }
+
+        // A usable published list is not replaced by another cache load.
+        #expect(
+          DevControlSettings.write(key, value: id, force: false, context: context, to: settings)
+            == .written(forced: false))
+        #expect(loads == 1)
+      }
+    }
+
+    @Test("unusable catalogs get one load attempt; decoding, fixed providers and force skip it")
+    func modelCacheLoadBoundaries() {
+      let (_, _, settings) = Self.fixture()
+      settings.llmProvider = .openAI
+      let initial = settings.llmModel
+      let unusable: [DevControlSettings.ModelCatalog] = [
+        .init(provider: nil, models: []),
+        .init(provider: .gemini, models: [Self.model("gemini-dev", .gemini)]),
+        .init(provider: .openAI, models: []),
+      ]
+      for catalog in unusable {
+        var loads = 0
+        var context = Self.context(catalog: catalog)
+        context.loadCachedModelCatalog = { _, _ in loads += 1 }
+        let result = DevControlSettings.write(
+          .llmModel, value: "missing", force: false, context: context, to: settings)
+        #expect(result.code == "catalogUnavailable")
+        #expect(result.message.contains("cached model catalog"))
+        #expect(loads == 1)
+        #expect(settings.llmModel == initial)
+      }
+
+      var loads = 0
+      var context = Self.context()
+      context.loadCachedModelCatalog = { _, _ in loads += 1 }
+      #expect(
+        DevControlSettings.write(
+          .llmModel, value: 7, force: false, context: context, to: settings
+        ).code == "badValue")
+      for provider in [LLMProvider.appleIntelligence, .egOne, .s1Mini, .none] {
+        settings.llmProvider = provider
+        #expect(
+          DevControlSettings.write(
+            .llmModel, value: "arbitrary", force: false, context: context, to: settings
+          ).code == "badValue")
+      }
+      #expect(
+        DevControlSettings.write(
+          .llmModel, value: "staged", force: true, context: context, to: settings)
+          == .written(forced: true))
+      #expect(loads == 0)
+    }
+
+    @Test("cache repair stays on the requested surface and is attributed even on refusal")
+    func modelCacheRepairBeforeRefusal() throws {
+      for surface in [ProviderSetupSurface.dictation, .fileImport] {
+        let (_, cache, settings) = Self.fixture()
+        settings.llmProvider = .gemini
+        settings.llmModel = "gemini-3.5-transcribe"
+        settings.fileImportLLMProvider = .gemini
+        settings.fileImportLLMModel = "gemini-3.5-transcribe"
+        cache.set(
+          try JSONEncoder().encode([
+            Self.model("gemini-3.5-transcribe", .gemini),
+            Self.model("gemini-3.7-flash", .gemini),
+          ]),
+          forKey: "cachedModels_gemini")
+        let discovery = LLMModelDiscoveryCoordinator(
+          keychainManager: KeychainManager(), cacheDefaults: cache)
+        var context = Self.context()
+        context.modelCatalog = {
+          .init(provider: discovery.stateProvider, models: discovery.discoveredModels)
+        }
+        context.loadCachedModelCatalog = {
+          discovery.loadCachedModels(for: $0, settings: settings, surface: $1)
+        }
+        var fired: [(SettingsManager.SettingKey, Bool)] = []
+        settings.onChange = { fired.append(($0, settings.isDevControlWrite)) }
+        let key: SettingsManager.SettingKey =
+          surface == .dictation ? .llmModel : .fileImportLLMModel
+
+        #expect(
+          DevControlSettings.write(
+            key, value: "not-in-catalog", force: false, context: context, to: settings
+          ).code == "badValue")
+        #expect(PolishSettings.cloudModel(on: surface, in: settings) == "gemini-3.7-flash")
+        let other: ProviderSetupSurface = surface == .dictation ? .fileImport : .dictation
+        #expect(PolishSettings.cloudModel(on: other, in: settings) == "gemini-3.5-transcribe")
+        #expect(fired.isEmpty == false)
+        #expect(fired.allSatisfy { $0.1 })
+        #expect(settings.isDevControlWrite == false)
+        #expect(discovery.discoveredModels.map(\.id) == ["gemini-3.7-flash"])
+      }
+    }
     @Test("an ordinary llmModel write admits only an offered model from the current provider's catalog")
     func modelAdmission() throws {
       let (_, _, settings) = Self.fixture()
