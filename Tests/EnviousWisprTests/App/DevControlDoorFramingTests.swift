@@ -1,5 +1,6 @@
 #if DEBUG
   import Darwin
+  import EnviousWisprCore
   import EnviousWisprServices
   import Foundation
   import Testing
@@ -57,15 +58,20 @@
         status: process.terminationStatus, exitedNormally: process.terminationReason == .exit)
     }
 
-    /// A real dispatcher over isolated settings, with no discovered models and no
-    /// connected input devices.
-    private static func dispatcher() -> DevControlDispatcher {
+    /// A real dispatcher over isolated settings, with no discovered models, no connected
+    /// input devices, plain status facts and the given History rows.
+    private static func dispatcher(
+      status: DevControlFixtures.StatusFake = DevControlFixtures.StatusFake(),
+      rows: [Transcript] = []
+    ) -> DevControlDispatcher {
       let defaults = TestDefaults.suite("ew.tests.3765.framing.\(UUID().uuidString)")!
       return DevControlDispatcher(
         settings: SettingsManager(defaults: defaults),
         writeContext: DevControlSettings.WriteContext(
           modelCatalog: { DevControlSettings.ModelCatalog(provider: nil, models: []) },
-          connectedInputUIDs: { [] }))
+          connectedInputUIDs: { [] }),
+        status: status.sources,
+        history: DevControlFixtures.history(rows))
     }
 
     /// The Python source for a child that has imported `Tests/RuntimeUAT/dev_control.py`
@@ -466,6 +472,63 @@
         #expect(line.contains("4321") == false)
         #expect(line.contains("4322") == false)
         #expect(line.contains("toggleKeyCode") == false)
+      }
+      try await stop(door)
+    }
+
+    @Test("status and History over the socket; a History row too large to send is refused whole")
+    func statusAndHistoryOverTheSocket() async throws {
+      let small = Transcript(text: "small row", polishedText: "Small row.")
+      let huge = Transcript(text: String(repeating: "a", count: 2 << 20))
+      let fake = DevControlFixtures.StatusFake()
+      fake.engine = DevControlFixtures.engine(selected: .whisperKit, active: .parakeet)
+      fake.driverStates = [.parakeet: .transcribing, .whisperKit: .idle]
+      let door = DevControlDoor(dispatcher: Self.dispatcher(status: fake, rows: [huge, small]))
+      var outcomes: [String] = []
+      door.onOutcomeLogged = { outcomes.append($0) }
+      defer { door.uninstall() }
+      try #require(await door.install() == .ready)
+
+      let reply = try await runClient(
+        #"""
+        c = dev_control.Connection(\#(door.pid))
+        status = c.request("status")
+        listed = c.request("history.list", {"limit": 5})
+        got = c.request("history.get", {"id": "\#(small.id.uuidString)"})
+        big = c.request("history.get", {"id": "\#(huge.id.uuidString)"})
+        bad = c.request("history.list", {"limit": True})
+        print(json.dumps({"status": status, "listed": listed, "got": got, "big": big, "bad": bad}))
+        """#)
+      let status = try #require((reply["status"] as? [String: Any])?["result"] as? [String: Any])
+      #expect(status["selectedBackend"] as? String == "parakeet")
+      #expect((status["engine"] as? [String: Any])?["selected"] as? String == "whisperKit")
+      #expect((status["activeDriver"] as? [String: Any])?["state"] as? String == "transcribing")
+
+      let listed = try #require((reply["listed"] as? [String: Any])?["result"] as? [String: Any])
+      let ids = (listed["rows"] as? [[String: Any]])?.compactMap { $0["id"] as? String }
+      #expect(ids == [huge.id.uuidString, small.id.uuidString])
+      #expect((listed["rows"] as? [[String: Any]])?.first?["textBytes"] as? Int == 2 << 20)
+
+      let got = try #require((reply["got"] as? [String: Any])?["result"] as? [String: Any])
+      #expect((got["row"] as? [String: Any])?["polishedText"] as? String == "Small row.")
+
+      let big = try #require(reply["big"] as? [String: Any])
+      #expect(big["ok"] as? Bool == false)
+      #expect((big["error"] as? [String: Any])?["code"] as? String == "responseTooLarge")
+      #expect(big["launch"] as? String == door.launchID.uuidString)
+      #expect(big["pid"] as? Int == Int(door.pid))
+      #expect(big["result"] == nil)
+      let bad = try #require(reply["bad"] as? [String: Any])
+      #expect((bad["error"] as? [String: Any])?["code"] as? String == "badArgs")
+
+      try #require(outcomes.count == 5, "outcomes: \(outcomes)")
+      #expect(outcomes[0].contains("cmd=status ok=true forced=false code=none"))
+      #expect(outcomes[2].contains("cmd=history.get ok=true forced=false code=none"))
+      #expect(outcomes[3].contains("cmd=history.get ok=false forced=false code=responseTooLarge"))
+      for line in outcomes {
+        #expect(line.contains(small.id.uuidString) == false)
+        #expect(line.contains(huge.id.uuidString) == false)
+        #expect(line.contains("small row") == false)
       }
       try await stop(door)
     }

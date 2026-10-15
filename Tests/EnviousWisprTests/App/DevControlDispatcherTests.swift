@@ -1,10 +1,14 @@
 #if DEBUG
+  import EnviousWisprASR
   import EnviousWisprCore
+  import EnviousWisprModelDelivery
+  import EnviousWisprPipeline
   import EnviousWisprServices
   import Foundation
   import Testing
 
   @testable import EnviousWisprAppKit
+  @testable import EnviousWisprStorage
 
   /// #3765: the dev control door's command dispatcher (settings commands).
   ///
@@ -21,7 +25,9 @@
         settings: settings,
         writeContext: DevControlSettings.WriteContext(
           modelCatalog: { DevControlSettings.ModelCatalog(provider: nil, models: []) },
-          connectedInputUIDs: { ["mic-a"] }))
+          connectedInputUIDs: { ["mic-a"] }),
+        status: DevControlFixtures.StatusFake().sources,
+        history: DevControlFixtures.history([]))
       return (settings, dispatcher)
     }
 
@@ -136,6 +142,405 @@
       for result in results {
         let found = try #require(code(result))
         #expect(vocabulary.contains(found), "\(found)")
+      }
+    }
+
+    // MARK: - Status
+
+    private static func make(
+      status: DevControlFixtures.StatusFake, rows: @escaping @MainActor () -> [Transcript] = { [] }
+    ) -> (SettingsManager, DevControlDispatcher) {
+      let defaults = TestDefaults.suite("ew.tests.3765.dispatch.\(UUID().uuidString)")!
+      let settings = SettingsManager(defaults: defaults)
+      let dispatcher = DevControlDispatcher(
+        settings: settings,
+        writeContext: DevControlSettings.WriteContext(
+          modelCatalog: { DevControlSettings.ModelCatalog(provider: nil, models: []) },
+          connectedInputUIDs: { [] }),
+        status: status.sources,
+        history: DevControlDispatcher.HistorySource(visibleTranscripts: rows))
+      return (settings, dispatcher)
+    }
+
+    private func object(_ value: Any?) throws -> [String: Any] {
+      try #require(value as? [String: Any])
+    }
+
+    @Test("status reports each owner's fact, and the driver state is the ACTIVE engine's")
+    func statusReadsEachOwner() async throws {
+      let fake = DevControlFixtures.StatusFake()
+      fake.engine = DevControlFixtures.engine(
+        selected: .whisperKit, active: .parakeet, selectedReadiness: .notReady,
+        activeReadiness: .ready, selectedInstalled: false, blockedReason: .notInstalled)
+      fake.driverStates = [.parakeet: .recording, .whisperKit: .polishing]
+      fake.parakeet = .downloading(fractionCompleted: 0.25, bytesWritten: 100, totalBytes: 400)
+      fake.whisperKit = .downloading(progress: 0.5, status: "Downloading screen copy")
+      fake.fileImportRunning = true
+      fake.keys = [.openAI: .present, .gemini: .absent, .claude: .unknown]
+      let (settings, dispatcher) = Self.make(status: fake)
+      settings.selectedBackend = .parakeet
+
+      let reply = try #require(payload(await dispatcher.handle(.status, args: [:])))
+      // The live setting and the coordinator's snapshot are separate facts.
+      #expect(reply["selectedBackend"] as? String == "parakeet")
+      let engine = try object(reply["engine"])
+      #expect(engine["selected"] as? String == "whisperKit")
+      #expect(engine["active"] as? String == "parakeet")
+      #expect(engine["diverged"] as? Bool == true)
+      #expect(engine["selectedReadiness"] as? String == "notReady")
+      #expect(engine["activeReadiness"] as? String == "ready")
+      #expect(engine["selectedInstalled"] as? Bool == false)
+      #expect(engine["switchPhase"] as? String == "idle")
+      #expect(engine["switchFailure"] is NSNull)
+      #expect(engine["blockedReason"] as? String == "not_installed")
+      #expect(engine["warmInFlight"] is NSNull)
+      #expect(engine["isSwitching"] as? Bool == false)
+
+      let driver = try object(reply["activeDriver"])
+      #expect(driver["backend"] as? String == "parakeet")
+      #expect(driver["state"] as? String == "recording")
+      #expect(driver["reason"] is NSNull)
+      #expect(fake.driverStateAsked == [.parakeet])
+
+      let parakeet = try object(reply["parakeetDelivery"])
+      #expect(parakeet["state"] as? String == "downloading")
+      #expect(parakeet["fractionCompleted"] as? Double == 0.25)
+      #expect(parakeet["bytesWritten"] as? Int64 == 100)
+      #expect(parakeet["totalBytes"] as? Int64 == 400)
+      let whisper = try object(reply["whisperKitSetup"])
+      #expect(whisper["state"] as? String == "downloading")
+      #expect(whisper["progress"] as? Double == 0.5)
+      #expect(reply["fileImportRunning"] as? Bool == true)
+      let keys = try #require(reply["savedKeys"] as? [String: String])
+      #expect(keys == ["openAI": "present", "gemini": "absent", "claude": "unknown"])
+
+      let encoded = String(decoding: try JSONSerialization.data(withJSONObject: reply), as: UTF8.self)
+      #expect(encoded.contains("screen copy") == false)
+    }
+
+    @Test("status sources built from a temporary fake stay alive after construction")
+    func defaultStatusSourcesRemainAlive() async throws {
+      let (_, dispatcher) = Self.make()
+      let reply = try #require(payload(await dispatcher.handle(.status, args: [:])))
+      let engine = try object(reply["engine"])
+      #expect(engine["active"] as? String == "parakeet")
+    }
+
+    @Test("status follows the owners from one request to the next, keeping each state apart")
+    func statusFollowsChangingSnapshots() async throws {
+      let fake = DevControlFixtures.StatusFake()
+      fake.engine = DevControlFixtures.engine(
+        selected: .whisperKit, active: .whisperKit, selectedReadiness: .warming,
+        activeReadiness: .warming, switchPhase: .switching, warmInFlight: .whisperKit)
+      fake.isSwitching = true
+      fake.driverStates = [.parakeet: .idle, .whisperKit: .advisory(.vadGateNoSpeech)]
+      fake.parakeet = .failed(
+        DeliveryFailure(reason: .insufficientDisk, detail: "detail-text", failingSourceID: "src-x"))
+      fake.whisperKit = .error("owner error words")
+      let (_, dispatcher) = Self.make(status: fake)
+
+      let first = try #require(payload(await dispatcher.handle(.status, args: [:])))
+      let engine = try object(first["engine"])
+      #expect(engine["active"] as? String == "whisperKit")
+      #expect(engine["diverged"] as? Bool == false)
+      #expect(engine["activeReadiness"] as? String == "warming")
+      #expect(engine["switchPhase"] as? String == "switching")
+      #expect(engine["warmInFlight"] as? String == "whisperKit")
+      #expect(engine["isSwitching"] as? Bool == true)
+      let driver = try object(first["activeDriver"])
+      #expect(driver["backend"] as? String == "whisperKit")
+      #expect(driver["state"] as? String == "advisory")
+      #expect(driver["reason"] as? String == "vadGateNoSpeech")
+      #expect(fake.driverStateAsked == [.whisperKit])
+      #expect(try object(first["parakeetDelivery"]) as NSDictionary == ["state": "failed", "reason": "insufficient_disk"])
+      #expect(try object(first["whisperKitSetup"]) as NSDictionary == ["state": "error"])
+      let encoded = String(decoding: try JSONSerialization.data(withJSONObject: first), as: UTF8.self)
+      for owned in ["detail-text", "src-x", "owner error words"] {
+        #expect(encoded.contains(owned) == false, "\(owned)")
+      }
+
+      fake.engine = DevControlFixtures.engine(
+        selected: .parakeet, active: .parakeet, selectedReadiness: .ready,
+        activeReadiness: .ready, switchPhase: .failed(reason: "load_failed"))
+      fake.isSwitching = false
+      fake.driverStates = [.parakeet: .error(.asrFailed), .whisperKit: .idle]
+      fake.parakeet = .cancelled(resumable: true)
+      fake.whisperKit = .paused
+      let second = try #require(payload(await dispatcher.handle(.status, args: [:])))
+      let engineAfter = try object(second["engine"])
+      #expect(engineAfter["active"] as? String == "parakeet")
+      #expect(engineAfter["switchPhase"] as? String == "failed")
+      #expect(engineAfter["switchFailure"] as? String == "load_failed")
+      #expect(engineAfter["isSwitching"] as? Bool == false)
+      let driverAfter = try object(second["activeDriver"])
+      #expect(driverAfter["state"] as? String == "error")
+      #expect(driverAfter["reason"] as? String == "asr_failed")
+      #expect(fake.driverStateAsked == [.whisperKit, .parakeet])
+      #expect(
+        try object(second["parakeetDelivery"]) as NSDictionary
+          == ["state": "cancelled", "resumable": true])
+      #expect(try object(second["whisperKitSetup"]) as NSDictionary == ["state": "paused"])
+
+      fake.parakeet = .preparing(validatingExistingCache: true)
+      fake.whisperKit = .notDownloaded
+      let third = try #require(payload(await dispatcher.handle(.status, args: [:])))
+      #expect(
+        try object(third["parakeetDelivery"]) as NSDictionary
+          == ["state": "preparing", "validatingExistingCache": true])
+      #expect(try object(third["whisperKitSetup"]) as NSDictionary == ["state": "notDownloaded"])
+      fake.parakeet = .admitted
+      fake.whisperKit = .ready
+      let fourth = try #require(payload(await dispatcher.handle(.status, args: [:])))
+      #expect(try object(fourth["parakeetDelivery"]) as NSDictionary == ["state": "admitted"])
+      #expect(try object(fourth["whisperKitSetup"]) as NSDictionary == ["state": "ready"])
+    }
+
+    @Test("saved keys come from SavedKeyPresence alone; a provider no path has read is unknown")
+    func savedKeysComeFromPresenceOnly() async throws {
+      let presence = SavedKeyPresence()
+      let fake = DevControlFixtures.StatusFake()
+      fake.keyState = { presence.state(for: $0) }
+      let (_, dispatcher) = Self.make(status: fake)
+
+      let fresh = try #require(payload(await dispatcher.handle(.status, args: [:])))
+      #expect(
+        fresh["savedKeys"] as? [String: String]
+          == ["openAI": "unknown", "gemini": "unknown", "claude": "unknown"])
+
+      presence.recordSaved(.openAI)
+      presence.recordCleared(.gemini)
+      let after = try #require(payload(await dispatcher.handle(.status, args: [:])))
+      #expect(
+        after["savedKeys"] as? [String: String]
+          == ["openAI": "present", "gemini": "absent", "claude": "unknown"])
+    }
+
+    // MARK: - History
+
+    private static func rows(_ count: Int, base: Date = Date()) -> [Transcript] {
+      (0..<count).map {
+        Transcript(text: "row \($0)", createdAt: base.addingTimeInterval(-Double($0)))
+      }
+    }
+
+    @Test("history.list keeps owner order, defaults to 20, allows 200 and refuses other limits")
+    func historyListLimits() async throws {
+      let rows = DevControlFixtures.Box<[Transcript]>([])
+      let (_, dispatcher) = Self.make(status: DevControlFixtures.StatusFake(), rows: { rows.value })
+
+      let empty = try #require(payload(await dispatcher.handle(.historyList, args: [:])))
+      #expect((empty["rows"] as? [Any])?.isEmpty == true)
+      #expect(empty["total"] as? Int == 0)
+      #expect(empty["limit"] as? Int == 20)
+
+      rows.value = Self.rows(250)
+      let byDefault = try #require(payload(await dispatcher.handle(.historyList, args: [:])))
+      let defaultRows = try #require(byDefault["rows"] as? [[String: Any]])
+      #expect(defaultRows.map { $0["id"] as? String } == rows.value.prefix(20).map(\.id.uuidString))
+      #expect(byDefault["total"] as? Int == 250)
+
+      let most = try #require(
+        payload(await dispatcher.handle(.historyList, args: ["limit": NSNumber(value: 200)])))
+      #expect((most["rows"] as? [Any])?.count == 200)
+      let one = try #require(
+        payload(await dispatcher.handle(.historyList, args: ["limit": NSNumber(value: 1)])))
+      #expect((one["rows"] as? [[String: Any]])?.first?["id"] as? String == rows.value[0].id.uuidString)
+
+      let refused: [Any] = [
+        NSNumber(value: 201), NSNumber(value: 0), NSNumber(value: -1), NSNumber(value: 1.5),
+        true, "5", NSNull(),
+      ]
+      for limit in refused {
+        #expect(
+          code(await dispatcher.handle(.historyList, args: ["limit": limit])) == "badArgs",
+          "\(limit)")
+      }
+    }
+
+    @Test("a list summary carries no text or file name, and its size does not grow with the text")
+    func historySummariesAreBounded() async throws {
+      let long = String(repeating: "é\u{301}", count: 50_000)
+      let rows = [
+        Transcript(text: long, polishedText: long, importedFileName: long, processedText: long)
+      ]
+      let (_, dispatcher) = Self.make(status: DevControlFixtures.StatusFake(), rows: { rows })
+      let listed = try #require(payload(await dispatcher.handle(.historyList, args: [:])))
+      let summary = try #require((listed["rows"] as? [[String: Any]])?.first)
+      #expect(summary["kind"] as? String == "import")
+      #expect(summary["textBytes"] as? Int == long.utf8.count)
+      #expect(summary["hasPolishedText"] as? Bool == true)
+      #expect(summary["hasProcessedText"] as? Bool == true)
+      let encoded = try JSONSerialization.data(withJSONObject: listed)
+      #expect(encoded.count < 1_024, "\(encoded.count) bytes")
+    }
+
+    @Test("history.get returns exactly the asked row with its three texts apart")
+    func historyGetExactRow() async throws {
+      let target = Transcript(
+        text: "raw words", polishedText: "Polished words.", language: "en",
+        llmProvider: "openAI", llmModel: "gpt-x", processedText: "Processed words")
+      let rows = Self.rows(3) + [target]
+      let (_, dispatcher) = Self.make(status: DevControlFixtures.StatusFake(), rows: { rows })
+
+      let got = try #require(
+        payload(
+          await dispatcher.handle(
+            .historyGet, args: ["id": target.id.uuidString.lowercased()])))
+      let row = try object(got["row"])
+      #expect(row["id"] as? String == target.id.uuidString)
+      #expect(row["text"] as? String == "raw words")
+      #expect(row["polishedText"] as? String == "Polished words.")
+      #expect(row["processedText"] as? String == "Processed words")
+      #expect(row["language"] as? String == "en")
+      #expect(row["llmModel"] as? String == "gpt-x")
+      #expect(row["pending"] as? Bool == false)
+
+      let plain = try #require(
+        payload(await dispatcher.handle(.historyGet, args: ["id": rows[0].id.uuidString])))
+      let plainRow = try object(plain["row"])
+      #expect(plainRow["text"] as? String == "row 0")
+      #expect(plainRow["polishedText"] is NSNull)
+      #expect(plainRow["processedText"] is NSNull)
+      #expect(plainRow["importedFileName"] is NSNull)
+      #expect(plainRow["escapeRecoveredAt"] is NSNull)
+
+      #expect(
+        code(await dispatcher.handle(.historyGet, args: ["id": UUID().uuidString])) == "notFound")
+      for bad in ["not-a-uuid", 5, NSNull()] as [Any] {
+        #expect(code(await dispatcher.handle(.historyGet, args: ["id": bad])) == "badArgs")
+      }
+      #expect(code(await dispatcher.handle(.historyGet, args: [:])) == "badArgs")
+    }
+
+    @Test("History reads go through the real coordinator: expired rows and deleted rows are gone")
+    func historyThroughTheRealCoordinator() async throws {
+      let directory = FileManager.default.temporaryDirectory
+        .appendingPathComponent("ew-3765-history-\(UUID().uuidString)", isDirectory: true)
+      defer { try? FileManager.default.removeItem(at: directory) }
+      let store = TranscriptStore(directory: directory)
+      let coordinator = TranscriptCoordinator(store: store)
+      defer { coordinator.cancelPulseForTesting() }
+
+      let window = AppConstants.pendingTranscriptRetention
+      let permanent = Transcript(text: "kept row")
+      let held = Transcript(
+        text: "held row", escapeRecoveredAt: Date().addingTimeInterval(-60),
+        escapeRecoveryTakeID: "take-held")
+      let expired = Transcript(
+        text: "expired row", escapeRecoveredAt: Date().addingTimeInterval(-window - 60),
+        escapeRecoveryTakeID: "take-expired")
+      try store.save(permanent)
+      coordinator.setTranscriptsForTesting([permanent, held, expired])
+
+      let (_, dispatcher) = Self.make(
+        status: DevControlFixtures.StatusFake(), rows: { coordinator.visibleTranscripts })
+      let listed = try #require(payload(await dispatcher.handle(.historyList, args: [:])))
+      let ids = (listed["rows"] as? [[String: Any]])?.compactMap { $0["id"] as? String }
+      #expect(ids == [permanent.id.uuidString, held.id.uuidString])
+      #expect(
+        (listed["rows"] as? [[String: Any]])?.map { $0["pending"] as? Bool } == [false, true])
+      #expect(
+        code(await dispatcher.handle(.historyGet, args: ["id": expired.id.uuidString]))
+          == "notFound")
+
+      #expect(
+        payload(await dispatcher.handle(.historyGet, args: ["id": permanent.id.uuidString]))
+          != nil)
+      coordinator.delete(permanent)
+      try #require(coordinator.rawTranscriptsForTesting.contains { $0.id == permanent.id } == false)
+      #expect(
+        code(await dispatcher.handle(.historyGet, args: ["id": permanent.id.uuidString]))
+          == "notFound")
+    }
+
+    @Test("status and History reads change no setting and never enter a dev-control write")
+    func readsHaveNoSideEffects() async throws {
+      let fake = DevControlFixtures.StatusFake()
+      let rows = Self.rows(3)
+      let writeFlags = DevControlFixtures.Box<[Bool]>([])
+      let settingsRef = DevControlFixtures.Box<SettingsManager?>(nil)
+      fake.onRead = {
+        if let settings = settingsRef.value { writeFlags.value.append(settings.isDevControlWrite) }
+      }
+      let (settings, dispatcher) = Self.make(
+        status: fake,
+        rows: {
+          if let settings = settingsRef.value { writeFlags.value.append(settings.isDevControlWrite) }
+          return rows
+        })
+      settingsRef.value = settings
+      let before = try JSONSerialization.data(
+        withJSONObject: DevControlSettings.catalog(settings), options: .sortedKeys)
+
+      _ = await dispatcher.handle(.status, args: [:])
+      _ = await dispatcher.handle(.historyList, args: ["limit": NSNumber(value: 2)])
+      _ = await dispatcher.handle(.historyGet, args: ["id": rows[1].id.uuidString])
+
+      let after = try JSONSerialization.data(
+        withJSONObject: DevControlSettings.catalog(settings), options: .sortedKeys)
+      #expect(before == after)
+      #expect(writeFlags.value.count == 3)
+      #expect(writeFlags.value.allSatisfy { $0 == false })
+    }
+  }
+
+  /// Plain-value owners for the dispatcher's `status` and History reads.
+  @MainActor
+  enum DevControlFixtures {
+    static func engine(
+      selected: ASRBackendType = .parakeet, active: ASRBackendType = .parakeet,
+      selectedReadiness: ASREngineReadiness = .ready, activeReadiness: ASREngineReadiness = .ready,
+      switchPhase: EngineStatus.SwitchPhase = .idle, selectedInstalled: Bool = true,
+      blockedReason: EngineStatus.BlockedReason? = nil, warmInFlight: ASRBackendType? = nil
+    ) -> EngineStatus {
+      EngineStatus(
+        selected: selected, active: active, selectedReadiness: selectedReadiness,
+        activeReadiness: activeReadiness, switchPhase: switchPhase,
+        selectedInstalled: selectedInstalled, blockedReason: blockedReason,
+        warmInFlight: warmInFlight)
+    }
+
+    /// A reference a test and a source closure share.
+    @MainActor
+    final class Box<Value> {
+      var value: Value
+      init(_ value: Value) { self.value = value }
+    }
+
+    static func history(_ rows: [Transcript]) -> DevControlDispatcher.HistorySource {
+      DevControlDispatcher.HistorySource(visibleTranscripts: { rows })
+    }
+
+    /// Mutable owner facts; `sources` reads them at call time, so a test can change one
+    /// between two requests. The closures hold the fake strongly, so a dispatcher built from
+    /// a temporary fake keeps it alive.
+    @MainActor
+    final class StatusFake {
+      var engine = DevControlFixtures.engine()
+      var isSwitching = false
+      var driverStates: [ASRBackendType: PipelineState] = [.parakeet: .idle, .whisperKit: .idle]
+      var parakeet: DeliveryState = .notReady
+      var whisperKit: WhisperKitSetupState = .checking
+      var fileImportRunning = false
+      var keys: [LLMProvider: SavedKeyState] = [:]
+      var keyState: (@MainActor (LLMProvider) -> SavedKeyState)?
+      var onRead: (@MainActor () -> Void)?
+      private(set) var driverStateAsked: [ASRBackendType] = []
+
+      var sources: DevControlDispatcher.StatusSources {
+        DevControlDispatcher.StatusSources(
+          engineStatus: { [self] in onRead?(); return engine },
+          isSwitching: { [self] in isSwitching },
+          driverState: { [self] backend in
+            driverStateAsked.append(backend)
+            return driverStates[backend] ?? .idle
+          },
+          parakeetDelivery: { [self] in parakeet },
+          whisperKitSetup: { [self] in whisperKit },
+          isFileImportRunning: { [self] in fileImportRunning },
+          savedKeyState: { [self] provider in
+            keyState?(provider) ?? keys[provider] ?? .unknown
+          })
       }
     }
   }
