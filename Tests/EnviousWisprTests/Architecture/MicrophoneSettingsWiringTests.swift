@@ -82,7 +82,9 @@ struct MicrophoneSettingsWiringTests {
     let text = Self.codeOnly(tree)
     #expect(
       text.contains(
-        "InputChannelSettings.offersChoice(uid:device.uid,inputChannelCount:device.inputChannelCount)"))
+        "letmultiInputDevice=socketDevice.flatMap{devicein"
+          + "InputChannelSettings.offersChoice(uid:device.uid,"
+          + "inputChannelCount:device.inputChannelCount)?device:nil}"))
     #expect(text.contains("ifdevice.inputChannelCount<=6"))
     let writes = Self.setterAssignments(binding: "socketSelection", in: tree)
     #expect(

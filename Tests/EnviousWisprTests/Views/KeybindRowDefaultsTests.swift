@@ -175,6 +175,16 @@ struct KeybindRowDefaultsTests {
       #expect(block.contains("$settings") == false, "\(role): \(block)")
       #expect(block.contains("keyCode:") == false && block.contains("modifiers:") == false)
     }
+    // And the row asks for exactly its OWN role's fields: a lookup fixed to one role would make
+    // every row edit that role's shortcut, with the owner itself still correct.
+    let tree = Parser.parse(source: try Self.executableSource())
+    for field in ["keyCode", "modifiers"] {
+      let calls = MicrophoneSettingsWiringTests.calls(
+        named: "ShortcutSettings.\(field)Field", in: tree)
+      #expect(calls.count == 2, "\(field): \(calls)")
+      #expect(
+        calls.allSatisfy { $0.arguments == ["role"] && $0.bindings == [field] }, "\(calls)")
+    }
   }
 
   @Test("A comment cannot satisfy the row check")
