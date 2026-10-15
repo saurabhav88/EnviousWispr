@@ -95,7 +95,7 @@ struct EngineChoicePresentationTests {
     let fast = Presentation.choice(for: .parakeet, parakeetModel: "Parakeet Ultra")
     let all = Presentation.choice(for: .whisper, parakeetModel: "Parakeet Ultra")
     #expect(fast.times.values == ["0.1 s", "0.3 s", "1 s"])
-    #expect(Array(all.times.values.prefix(2)) == ["0.6 s", "0.8 s"])
+    #expect(all.times.values == ["0.6 s", "0.8 s", "3 s"])
     #expect(Presentation.timeCaptions.map { String(localized: $0) } == ["short", "medium", "long"])
     #expect(String(localized: Presentation.transcribeTimeLabel) == "Transcribe time")
     let intro =

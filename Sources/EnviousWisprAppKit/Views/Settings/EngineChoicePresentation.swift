@@ -241,9 +241,10 @@ enum EngineChoicePresentation {
               "Speech engine settings, engine card: the chip it runs on, the graphics processor."))),
     ],
     times: TranscribeTimes(
-      // #3792 PENDING: `long` becomes the median of three in-app takes of 3 to 4 minutes before
-      // review; 0 is a placeholder that must not ship.
-      short: 0.6, medium: 0.8, long: 0,
+      // Short and medium: medians of 24 and 18 dev takes. Long: median of three in-app takes of
+      // about 4.5 minutes on the dev build (2026-10-15; `asr_seconds` 2.96, 3.07 and 3.25 s,
+      // which include Auto language detection).
+      short: 0.6, medium: 0.8, long: 3,
       source: LocalizedStringResource(
         "Measured on a MacBook Pro with M5 Max. Older Macs take longer.",
         comment:
