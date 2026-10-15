@@ -32,11 +32,11 @@ import Foundation
 /// THE WHISPER PANEL CARRIES NO FIGURES, DELIBERATELY. Its claims come from the #3735
 /// streaming qualification (71 frozen clips, 54 of about 30 s and 17 of about 5.5 min in
 /// 18 languages, both settings on the same audio; receipt
-/// `docs/audits/3735-swap/chunk8/qual/RECEIPT.md`): pooled word/character errors were lower
-/// streaming than batch in both buckets with per-language differences in both directions,
-/// and on the long clips the median stop-to-text was about 0.26 s against 3.4 s. Those times
-/// are one Mac (M5 Max), so no number goes in front of a user; the qualitative claims below
-/// are the ones the run supports, including the 4 long clips that fell back to batch.
+/// `docs/audits/3735-swap/chunk8/qual/RECEIPT.md`, final run 2): accuracy was comparable on
+/// this set, with per-language gains and losses; on the long clips the median stop-to-text
+/// was 238 ms against 3939 ms; four long clips and one medium clip fell back to batch. Those
+/// times are one Mac (M5 Max), so no number goes in front of a user; the qualitative claims
+/// below are the ones the run supports.
 ///
 /// Brand rule: no em-dashes or en-dashes in user-facing copy.
 enum LiveTranscriptionCopy {
@@ -63,7 +63,8 @@ enum LiveTranscriptionCopy {
   /// (a historical record — see the note there), the two comments quoting the original
   /// user report, and `ParakeetStreamingSentryError`'s diagnostic strings, which would
   /// change Sentry grouping and fire new-issue alerts for no user benefit.
-  static let toggleLabelResource = LocalizedStringResource("Faster Transcription",
+  static let toggleLabelResource = LocalizedStringResource(
+    "Faster Transcription",
     comment: "Speech engine settings, Faster Transcription: the toggle's name.")
   static var toggleLabel: String { String(localized: toggleLabelResource) }
 
