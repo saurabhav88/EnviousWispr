@@ -47,7 +47,10 @@
   ///   rung actually runs in Live UAT; both refuse while capture is active and
   ///   tear down any idle warm source first); `force_reuse_imported_only`,
   ///   `force_reuse_drop_next_sampled_row`, `clear_reuse_fault` (#3106 — the
-  ///   imported-only History and deleted-after-render reuse cases).
+  ///   imported-only History and deleted-after-render reuse cases);
+  ///   `whisper_memory_pressure` (#3735 — delivers ONE memory-pressure event to the
+  ///   composed Whisper backend through its real handler, so the authorized idle unload
+  ///   is Live-UAT testable without allocating memory across the whole Mac).
   /// - Each command dispatches to `@MainActor` via `Task { @MainActor in ... }`
   ///   so command handling matches the actor isolation of the seams it drives.
   ///
@@ -72,6 +75,9 @@
     /// #1707 Phase 2: DEBUG fault-injection oracle (§11.1/§3.2a-i) — the SOLE
     /// dispatch target for every `*_batch_decode*` command below.
     private let batchDecodeFaultController: BatchDecodeFaultController?
+    /// #3735: one memory-pressure event on the composed Whisper backend; returns whether the
+    /// model is still ready afterwards.
+    private let whisperMemoryPressure: (@MainActor () async -> Bool)?
 
     // MARK: - Listener state
 
@@ -103,6 +109,7 @@
       activeBackend: @escaping () -> ASRBackendType,
       port: UInt16 = 8765,
       batchDecodeFaultController: BatchDecodeFaultController? = nil,
+      whisperMemoryPressure: (@MainActor () async -> Bool)? = nil,
       qualificationAction: ((QualificationAction) -> Void)? = nil,
       qualificationChildTrap:
         (@MainActor () async -> EGOneServerManager.QualificationChildSignal?)? = nil
@@ -115,6 +122,7 @@
       self.activeBackend = activeBackend
       self.port = port
       self.batchDecodeFaultController = batchDecodeFaultController
+      self.whisperMemoryPressure = whisperMemoryPressure
       self.token = Self.generateToken()
       self.tokenPath = Self.tokenURL(pid: ProcessInfo.processInfo.processIdentifier)
     }
@@ -430,6 +438,11 @@
       case "clear_reuse_fault":
         TranscriptCoordinator.clearReuseInputFault()
         return "OK"
+
+      case "whisper_memory_pressure":
+        guard let whisperMemoryPressure else { return "ERR no_dependency" }
+        let ready = await whisperMemoryPressure()
+        return "OK whisper_ready=\(ready)"
 
       case "query_state":
         let p = kernelDriver.state

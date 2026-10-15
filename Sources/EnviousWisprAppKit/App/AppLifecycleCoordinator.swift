@@ -83,6 +83,9 @@ final class AppLifecycleCoordinator {
   /// into `DebugFaultEndpoint`'s construction below: one genuinely new
   /// capability adding exactly one dependency.
   private let batchDecodeFaultController: BatchDecodeFaultController?
+  /// #3735: DEBUG `whisper_memory_pressure` command target, forwarded into
+  /// `DebugFaultEndpoint`; nil in Release.
+  private let whisperMemoryPressure: (@MainActor () async -> Bool)?
   /// #2787: the persisted stage checkpoint. Read once at launch for the
   /// previous process's interrupted take, and mirrored into every telemetry
   /// flush as `last_stage` / `stage_age_ms`.
@@ -121,6 +124,7 @@ final class AppLifecycleCoordinator {
     onboardingProgress: OnboardingProgress,
     transcriptionCheckpointStore: TranscriptionCheckpointStore,
     batchDecodeFaultController: BatchDecodeFaultController? = nil,
+    whisperMemoryPressure: (@MainActor () async -> Bool)? = nil,
     // Required and non-defaulted (review r1): a composition that forgets it
     // must fail to compile, not silently drop the watcher's cancellation.
     onRecordingStarted: @escaping @MainActor () -> Void
@@ -147,6 +151,7 @@ final class AppLifecycleCoordinator {
     self.applicationRelocationCoordinator = applicationRelocationCoordinator
     self.bluetoothAwarenessPresenter = bluetoothAwarenessPresenter
     self.batchDecodeFaultController = batchDecodeFaultController
+    self.whisperMemoryPressure = whisperMemoryPressure
     self.transcriptionCheckpointStore = transcriptionCheckpointStore
     // Icon-refresh seam: the window coordinator's two onboarding-dismiss
     // callsites route through this closure. Was wired in `AppDelegate.attach`
@@ -344,6 +349,7 @@ final class AppLifecycleCoordinator {
             self?.settings.selectedBackend ?? .parakeet
           },
           batchDecodeFaultController: batchDecodeFaultController,
+          whisperMemoryPressure: whisperMemoryPressure,
           qualificationChildTrap: qualificationChildTrap
         )
         endpoint.start()

@@ -422,6 +422,16 @@ package final class WisprBootstrapper {
     #else
       let batchDecodeFaultController: BatchDecodeFaultController? = nil
     #endif
+    // #3735: the DEBUG `whisper_memory_pressure` fault command runs the backend's real
+    // pressure handler (authorized idle unload), never a simulated one.
+    #if DEBUG
+      let whisperMemoryPressure: (@MainActor () async -> Bool)? = { [whisperBackend] in
+        await whisperBackend.handleMemoryPressure()
+        return await whisperBackend.isReady
+      }
+    #else
+      let whisperMemoryPressure: (@MainActor () async -> Bool)? = nil
+    #endif
 
     // #1271/#1348 Phase 3 — EG-1 native runtime: the model bytes now move
     // through the shared delivery engine via `EGOneDeliveryAdapter` (a limb —
@@ -1841,6 +1851,7 @@ package final class WisprBootstrapper {
       onboardingProgress: onboardingProgress,
       transcriptionCheckpointStore: transcriptionCheckpointStore,
       batchDecodeFaultController: batchDecodeFaultController,
+      whisperMemoryPressure: whisperMemoryPressure,
       // #996: each real transition into `.recording` cancels a live edit watch.
       // #3242: and pre-loads the word check so the take's check finds it ready.
       onRecordingStarted: {

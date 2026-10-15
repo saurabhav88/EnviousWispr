@@ -276,6 +276,12 @@ def force_cancel() -> str:
     return send("force_cancel")
 
 
+def whisper_memory_pressure() -> str:
+    """#3735: one memory-pressure event on the Whisper backend's real handler.
+    Reply `OK whisper_ready=<true|false>`; false means the idle model was unloaded."""
+    return send("whisper_memory_pressure", timeout=30.0)
+
+
 # #1543: audio capture is in-process now — the audio-boundary DEBUG commands
 # (force_audio_xpc_kill / force_proxy_buffer_drop / force_audio_wedge_start) and
 # their scenarios were removed with the audio-capture boundary. #1908: ASR

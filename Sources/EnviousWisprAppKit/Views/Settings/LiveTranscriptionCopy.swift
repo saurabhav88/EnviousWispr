@@ -35,7 +35,7 @@ import Foundation
 /// `docs/audits/3735-swap/chunk8/qual/RECEIPT.md`): pooled word/character errors were lower
 /// streaming than batch in both buckets with per-language differences in both directions,
 /// and on the long clips the median stop-to-text was about 0.26 s against 3.4 s. Those times
-/// are one Mac (M4 Pro), so no number goes in front of a user; the qualitative claims below
+/// are one Mac (M5 Max), so no number goes in front of a user; the qualitative claims below
 /// are the ones the run supports, including the 4 long clips that fell back to batch.
 ///
 /// Brand rule: no em-dashes or en-dashes in user-facing copy.
