@@ -61,8 +61,11 @@ struct InterfaceCatalogSourceTests {
     "99+ languages": "Über 99 Sprachen",
     "Apple Neural Engine": "Apple Neural Engine",
     "Apple GPU": "Apple GPU",
-    "Usually ~0.1s after you speak": "Meist ~0,1 Sek. nach dem Sprechen",
-    "Usually 1-2s after you speak": "Meist 1\u{2013}2 Sek. nach dem Sprechen",
+    // #3792: the two timing sentences gave way to a size row and three captioned times.
+    "Download size": "Downloadgröße",
+    "short": "kurz",
+    "medium": "mittel",
+    "long": "lang",
     // #3271: the model download host moved; the sentence gives IT allowlist guidance.
     "Could not download the model. Check your connection. On a managed network, ask IT whether models.enviouswispr.com is allowed.":
       "Das Modell konnte nicht heruntergeladen werden. Prüfe deine Verbindung. Frage in einem verwalteten Netzwerk die IT, ob models.enviouswispr.com freigegeben ist.",
