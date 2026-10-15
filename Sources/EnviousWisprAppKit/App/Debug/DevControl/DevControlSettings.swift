@@ -102,8 +102,10 @@
       case .cancelKeyCode, .cancelModifiers, .quickAddKeyCode, .quickAddModifiers,
         .pasteLastKeyCode, .pasteLastModifiers, .copyLastKeyCode, .copyLastModifiers,
         .toggleKeyCode, .toggleModifiers, .fileImportLLMProvider, .fileImportLLMModel,
-        .fileImportOllamaModel, .ollamaModel, .vadSilenceTimeout, .inputChannelByDeviceUID:
+        .fileImportOllamaModel, .ollamaModel, .inputChannelByDeviceUID:
         return make(.extractedCheck, deferredTo: "PR-C")
+      case .vadSilenceTimeout:
+        return make(.extractedCheck)
       case .hotkeyEnabled, .vadSensitivity, .vadEnergyGate, .crashRecoveryEnabled,
         .onboardingState:
         return make(.staging)
@@ -451,6 +453,8 @@
       /// The Appearance pill picker: its group for the slot, `offersCoupled`, then
       /// `PillAppearanceModel.chooseCoupled`.
       case pillDesign
+      /// The pause-duration slider's offered values (`SilenceTimeoutSlider`).
+      case silenceTimeout
       /// The language picker sets the lock and the spelling together, so a single-field
       /// write is refused toward `language.set` (`setLanguage`).
       case languageCommand
@@ -478,6 +482,7 @@
         if key == .hasCompletedOnboarding { return .typed }
         return .notYetShared
       case .extractedCheck:
+        if key == .vadSilenceTimeout { return .silenceTimeout }
         return .notYetShared
       }
     }
@@ -519,6 +524,21 @@
         return writePillDesign(
           value, holdingWords: key == .recordingPillDesignWithWords, context: context,
           to: settings)
+      case .silenceTimeout:
+        guard let seconds = Codec.double(value) else {
+          return .refused(code: "badValue", message: "wrong type or unknown value")
+        }
+        guard Self.silenceTimeoutIsConvertible(seconds) else {
+          return .refused(
+            code: "badValue",
+            message: "silence timeout too large for the detector's chunk count")
+        }
+        guard SilenceTimeoutSlider.offers(seconds) else {
+          return .refused(
+            code: "checkFailed",
+            message: "the pause slider offers 0.5 to 3.0 seconds in 0.25 steps; use force to stage another value")
+        }
+        return outcome(assign(key, value: value, to: settings, forced: false))
       case .languageCommand:
         return .refused(
           code: "checkFailed",

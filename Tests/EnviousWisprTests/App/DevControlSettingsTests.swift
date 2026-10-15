@@ -749,16 +749,58 @@
       }
     }
 
+    // MARK: - Silence timeout (PR-C)
+
+    @Test("an ordinary silence-timeout write takes only the slider's quarter-second values")
+    func silenceTimeoutTakesSliderValues() throws {
+      let offered = ["0.5", "0.75", "1.0", "1.25", "1.5", "1.75", "2.0", "2.25", "2.5", "2.75", "3.0"]
+      for text in offered {
+        let (_, _, settings) = Self.fixture()
+        settings.vadSilenceTimeout = text == "0.5" ? 3.0 : 0.5
+        var fired: [(SettingsManager.SettingKey, Bool)] = []
+        settings.onChange = { fired.append(($0, settings.isDevControlWrite)) }
+        let outcome = DevControlSettings.write(
+          .vadSilenceTimeout, value: try Self.wire(text), force: false, context: Self.context(),
+          to: settings)
+        #expect(outcome == .written(forced: false), "\(text)")
+        #expect(settings.vadSilenceTimeout == Double(text), "\(text)")
+        #expect(fired.map(\.0) == [.vadSilenceTimeout] && fired.allSatisfy { $0.1 }, "\(text)")
+        #expect(settings.isDevControlWrite == false)
+      }
+    }
+
+    @Test("off-step or out-of-range values are checkFailed, wrong types badValue, nothing written")
+    func silenceTimeoutRefusals() throws {
+      for (text, code) in [
+        ("0.25", "checkFailed"), ("3.25", "checkFailed"), ("1.1", "checkFailed"),
+        ("0.6", "checkFailed"), ("120", "checkFailed"), ("1e30", "badValue"), ("true", "badValue"),
+        ("\"2\"", "badValue"), ("null", "badValue"),
+      ] {
+        let (suite, defaults, settings) = Self.fixture()
+        let before = settings.vadSilenceTimeout
+        let stored = defaults.persistentDomain(forName: suite) as NSDictionary?
+        var fired: [SettingsManager.SettingKey] = []
+        settings.onChange = { fired.append($0) }
+        let outcome = DevControlSettings.write(
+          .vadSilenceTimeout, value: try Self.wire(text), force: false, context: Self.context(),
+          to: settings)
+        #expect(outcome.code == code, "\(text)")
+        #expect(settings.vadSilenceTimeout == before, "\(text)")
+        #expect(fired.isEmpty, "\(text)")
+        #expect(stored == defaults.persistentDomain(forName: suite) as NSDictionary?, "\(text)")
+      }
+    }
+
     /// Written here by hand from plan §3.4, not derived from the table.
     private static let deferredNames: Set<String> = [
       "cancelKeyCode", "cancelModifiers", "quickAddKeyCode",
       "quickAddModifiers", "pasteLastKeyCode", "pasteLastModifiers", "copyLastKeyCode",
       "copyLastModifiers", "toggleKeyCode", "toggleModifiers", "fileImportLLMProvider",
-      "fileImportLLMModel", "fileImportOllamaModel", "ollamaModel", "vadSilenceTimeout",
+      "fileImportLLMModel", "fileImportOllamaModel", "ollamaModel",
       "inputChannelByDeviceUID",
     ]
 
-    @Test("every key has exactly one ordinary route; 16 are not shared yet")
+    @Test("every key has exactly one ordinary route; 15 are not shared yet")
     func routeCounts() {
       var counts: [DevControlSettings.Route: Int] = [:]
       var notYetShared: Set<String> = []
@@ -774,12 +816,13 @@
       #expect(counts[.spokenPunctuation] == 1)
       #expect(counts[.pillDesign] == 2)
       #expect(counts[.languageCommand] == 2)
-      #expect(counts[.notYetShared] == 16)
+      #expect(counts[.silenceTimeout] == 1)
+      #expect(counts[.notYetShared] == 15)
       #expect(DevControlSettings.route(.llmModel) == .modelCatalog)
       #expect(DevControlSettings.route(.hasCompletedOnboarding) == .typed)
     }
 
-    @Test("the 16 deferred keys refuse an ordinary write without any change, and force still writes them")
+    @Test("the 15 deferred keys refuse an ordinary write without any change, and force still writes them")
     func deferredKeysRefuseOrdinaryWrites() throws {
       var refused = 0
       for row in Self.rows where Self.deferredNames.contains(row.name) {
@@ -803,7 +846,7 @@
         #expect(forced == .written(forced: true), "\(row.name)")
         #expect(row.holds(settings), "\(row.name)")
       }
-      #expect(refused == 16)
+      #expect(refused == 15)
     }
 
     @Test("every typed-route key takes an ordinary write, reported not forced")

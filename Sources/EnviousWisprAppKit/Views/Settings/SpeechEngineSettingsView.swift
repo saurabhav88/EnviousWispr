@@ -301,8 +301,8 @@ struct SpeechEngineSettingsView: View {
             VStack(alignment: .leading, spacing: 6) {
               BrandedSlider(
                 String(localized: SettingsItemCopy.Engine.pauseDuration),
-                value: $settings.vadSilenceTimeout, in: 0.5...3.0,
-                step: 0.25, low: "0.5s", high: "3.0s", format: "%.1fs")
+                value: $settings.vadSilenceTimeout, in: SilenceTimeoutSlider.range,
+                step: SilenceTimeoutSlider.step, low: "0.5s", high: "3.0s", format: "%.1fs")
               HStack(spacing: 6) {
                 Text(Copy.pauseShort)
                   .font(.stRowHelper)
