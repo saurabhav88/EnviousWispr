@@ -479,7 +479,7 @@
       let runtime = FakeRuntime()
       let dictation = Self.make(runtime)
       let receipt = try receipt(await dictation.start([:]))
-      dictation.close()
+      dictation.shutDown()
       conclude(dictation, runtime, .parakeet, take: try #require(receipt["take"] as? String))
       #expect(code(read(dictation, receipt)) == "unknownReceipt")
       runtime.states[.parakeet] = .idle
@@ -503,7 +503,7 @@
       }
       let started = Background { await dictation.start([:]) }
       try #require(await settleUntilObserved { suspended }, "the start never suspended")
-      dictation.close()
+      dictation.shutDown()
       release?.resume()
       #expect(code(await started.value) == "doorClosed")
       #expect(runtime.cancels == 0)
@@ -533,7 +533,7 @@
       let gated = DevControlDictation(launchID: Self.launch, control: control)
       let started = Background { await gated.start(["frontApp": "notes.app"]) }
       try #require(await settleUntilObserved { waiting }, "the start never waited")
-      gated.close()
+      gated.shutDown()
       release?.resume()
       #expect(code(await started.value) == "doorClosed")
       #expect(runtime.starts == 0)

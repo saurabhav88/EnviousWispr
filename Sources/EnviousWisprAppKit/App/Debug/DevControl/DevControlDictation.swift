@@ -114,7 +114,7 @@
     }
 
     /// Door shutdown: refuse new lifecycle commands and ignore every later callback.
-    func close() {
+    func shutDown() {
       isClosed = true
       pending.removeAll()
       endings.removeAll()

@@ -81,7 +81,7 @@
     ) {
       self.init(
         handler: { command, args in await dispatcher.handle(command, args: args) },
-        launchID: dispatcher.launchID, onUninstall: { dispatcher.dictation.close() },
+        launchID: dispatcher.launchID, onUninstall: { dispatcher.dictation.shutDown() },
         pid: pid, executablePath: executablePath)
     }
 
