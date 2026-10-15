@@ -35,15 +35,6 @@ import SwiftUI
 /// `AIAvailabilityCoordinator` and `KeychainManager` stay authoritative. Nothing here
 /// caches a catalog or owns a lifetime they already own.
 
-/// Unified log for Save/Clear key failures in the provider setup UI.
-/// The user-facing badge intentionally omits the raw OSStatus (#724), so this
-/// log keeps the numeric code observable for support and Sentry triage. Never
-/// log the key value itself.
-///
-/// #2772 chunk 1: moved here from `AIPolishSettingsView.swift` with its only two
-/// callers, `saveKey` and `clearKey`.
-private let providerSetupKeychainUILog = Logger(
-  subsystem: "com.enviouswispr.app", category: "AIPolishSettings")
 
 // MARK: - Which screen is hosting
 
@@ -95,6 +86,63 @@ enum KeyStoreStatus: Equatable {
   case failed(String)
 }
 
+/// #3765: what the API key row's Save and Clear buttons do, outside the view so a test can
+/// press them. The screen state they change lives on `ProviderSetupModel`; the reveal toggle is
+/// the view's own, so `clear` returns whether to hide the key again.
+@MainActor
+enum ProviderSetupKeyActions {
+  struct Owners {
+    let keychainManager: KeychainManager
+    let presence: SavedKeyPresence
+    let discovery: LLMModelDiscoveryCoordinator
+    let settings: SettingsManager
+    let surface: ProviderSetupSurface
+  }
+
+  /// Save `key` for `provider`. Returns the key check it started, or nil when the store failed.
+  /// The writer stores the key, records it, emits `api_key.changed` and starts the key check
+  /// (#3765); this action owns only what the screen shows.
+  @discardableResult
+  static func save(
+    _ key: String, provider: LLMProvider, model: ProviderSetupModel, owners: Owners
+  ) -> Task<Void, Never>? {
+    // The row is drawn only for a cloud provider (`descriptor.mapID`).
+    guard let credential = CredentialProvider(provider) else { return nil }
+    switch writer(owners).save(key, for: credential, settings: owners.settings, surface: owners.surface) {
+    case .failed(let error):
+      model.keyStoreStatus = .failed(AIPolishKeychainFailureMessage.text(for: error, action: .save))
+      return nil
+    case .stored(let validation):
+      model.showSavedBadge()
+      model.setKeySaved(!key.isEmpty, for: provider)
+      return validation
+    }
+  }
+
+  /// Clear `provider`'s key. True when it cleared, so the view hides the key field's text.
+  @discardableResult
+  static func clear(provider: LLMProvider, model: ProviderSetupModel, owners: Owners) -> Bool {
+    guard let credential = CredentialProvider(provider) else { return false }
+    switch writer(owners).clear(credential) {
+    case .failed(let error):
+      model.keyStoreStatus = .failed(AIPolishKeychainFailureMessage.text(for: error, action: .clear))
+      return false
+    case .cleared:
+      model.keyStoreStatus = .none
+      model.clearDraft(for: provider)
+      model.setKeySaved(false, for: provider)
+      return true
+    }
+  }
+
+  /// The same writer the dev control door uses.
+  private static func writer(_ owners: Owners) -> CredentialWriter {
+    CredentialWriter(
+      keychainManager: owners.keychainManager, presence: owners.presence,
+      discovery: owners.discovery)
+  }
+}
+
 /// The editor's own state, held by the host so both `Part`s and the lifecycle modifier
 /// read one copy.
 ///
@@ -130,6 +178,52 @@ final class ProviderSetupModel {
   var openAIKeySaved: Bool?
   var geminiKeySaved: Bool?
   var claudeKeySaved: Bool?
+
+  /// Records the outcome of a Save or a Clear, both of which make the field agree with the
+  /// Keychain again, so each also re-takes the persisted digest the import gate compares.
+  func setKeySaved(_ saved: Bool, for provider: LLMProvider) {
+    switch provider {
+    case .openAI:
+      openAIKeySaved = saved
+      openAIKeyPersistedDigest = ProviderSetupModel.digest(openAIKey)
+    case .gemini:
+      geminiKeySaved = saved
+      geminiKeyPersistedDigest = ProviderSetupModel.digest(geminiKey)
+    case .claude:
+      claudeKeySaved = saved
+      claudeKeyPersistedDigest = ProviderSetupModel.digest(claudeKey)
+    // #2651: enumerated rather than `default:`. There is no saved-key flag to
+    // set for these. A NEW cloud provider on a `default:` arm would save its
+    // key and never record that it had, so the missing-key notice would stay
+    // on screen after a successful save.
+    case .ollama, .appleIntelligence, .egOne, .s1Mini, .none: break
+    }
+  }
+
+  /// Empties the key field of `provider` (a successful Clear).
+  func clearDraft(for provider: LLMProvider) {
+    switch provider {
+    case .openAI: openAIKey = ""
+    case .gemini: geminiKey = ""
+    case .claude: claudeKey = ""
+    case .ollama, .appleIntelligence, .egOne, .s1Mini, .none: break
+    }
+  }
+
+  /// A Save succeeded: show "Saved!" for two seconds (`wait`), then clear it. Only its own
+  /// "Saved!": a failure from a later Save or Clear inside the two seconds must stay on
+  /// screen.
+  @discardableResult
+  func showSavedBadge(
+    wait: @escaping @MainActor () async -> Void = { try? await Task.sleep(for: .seconds(2)) }
+  ) -> Task<Void, Never> {
+    keyStoreStatus = .saved
+    return Task { [weak self] in
+      await wait()
+      guard let self else { return }
+      if self.keyStoreStatus == .saved { self.keyStoreStatus = .none }
+    }
+  }
 
   /// Whether what is ON SCREEN differs from what is STORED (#2772).
   ///
@@ -911,27 +1005,6 @@ private var modelFieldLabel: String {
     }
   }
 
-  /// Records the outcome of a Save or a Clear, both of which make the field agree with the
-  /// Keychain again, so each also re-takes the persisted digest the import gate compares.
-  private func setKeySaved(_ saved: Bool) {
-    switch provider {
-    case .openAI:
-      model.openAIKeySaved = saved
-      model.openAIKeyPersistedDigest = ProviderSetupModel.digest(model.openAIKey)
-    case .gemini:
-      model.geminiKeySaved = saved
-      model.geminiKeyPersistedDigest = ProviderSetupModel.digest(model.geminiKey)
-    case .claude:
-      model.claudeKeySaved = saved
-      model.claudeKeyPersistedDigest = ProviderSetupModel.digest(model.claudeKey)
-    // #2651: enumerated rather than `default:`. There is no saved-key flag to
-    // set for these. A NEW cloud provider on a `default:` arm would save its
-    // key and never record that it had, so the missing-key notice would stay
-    // on screen after a successful save.
-    case .ollama, .appleIntelligence, .egOne, .s1Mini, .none: break
-    }
-  }
-
 /// The API key row: the key's name, what it sends, where to get one; then the field (with a
 /// show/hide eye), Save and Clear, and the badge under them. At narrow widths the controls drop
 /// under the text so the field keeps a usable width (founder-feedback item 24).
@@ -960,21 +1033,9 @@ private var apiKeyRow: some View {
               isEnabled: !activeKeyBinding.wrappedValue.isEmpty && keyDraftIsEdited,
               emphasis: .filled, size: .medium
             ) {
-              let provider = provider
-              let key = activeKeyBinding.wrappedValue
-              guard saveKey(key: key, keychainId: descriptor.keychainId) else {
-                // A failed store may or may not have changed what is stored; say unknown and
-                // drop any verdict about the previous key rather than guess (#3438).
-                savedKeyPresence.recordUncertain(provider)
-                return
-              }
-              setKeySaved(!key.isEmpty)
-              // Before the check below starts, so its verdict is tied to THIS key (#3438).
-              savedKeyPresence.recordSaved(provider)
-              Task {
-                await llmDiscovery.validateKeyAndDiscoverModels(
-                  provider: provider, settings: settings, surface: surface, source: .save)
-              }
+              ProviderSetupKeyActions.save(
+                activeKeyBinding.wrappedValue, provider: provider, model: model,
+                owners: keyActionOwners)
             }
             .settingsMapRegistration(.apiKeySave)
             // Clear destroys a stored key, so it is offered only when one is stored, and in
@@ -984,15 +1045,11 @@ private var apiKeyRow: some View {
                 title: SettingsItemCopy.AIPolish.keyClear,
                 isEnabled: true, emphasis: .destructive, size: .medium
               ) {
-                guard clearKey(keychainId: descriptor.keychainId) else {
-                  savedKeyPresence.recordUncertain(provider)
-                  return
+                if ProviderSetupKeyActions.clear(
+                  provider: provider, model: model, owners: keyActionOwners)
+                {
+                  revealsKey = false
                 }
-                activeKeyBinding.wrappedValue = ""
-                setKeySaved(false)
-                savedKeyPresence.recordCleared(provider)
-                revealsKey = false
-                llmDiscovery.reset()
               }
               .settingsMapRegistration(.apiKeyClear)
             }
@@ -2317,40 +2374,11 @@ private var ollamaBrowseModelsCard: some View {
 
   // MARK: - Helpers
 
-  @discardableResult
-  private func saveKey(key: String, keychainId: String) -> Bool {
-    do {
-      try keychainManager.store(key: keychainId, value: key)
-      model.keyStoreStatus = .saved
-      Task {
-        try? await Task.sleep(for: .seconds(2))
-        // Only its own "Saved!": a failure from a later Save or Clear inside the two seconds
-        // must stay on screen.
-        if model.keyStoreStatus == .saved { model.keyStoreStatus = .none }
-      }
-      TelemetryService.shared.apiKeyChanged(
-        provider: apiKeyProviderLabel(keychainId), action: "save", result: "success")
-      return true
-    } catch {
-      providerSetupKeychainUILog.error(
-        "Save key failed action=save keyID=\(keychainId, privacy: .public) error=\(String(describing: error), privacy: .public)"
-      )
-      model.keyStoreStatus = .failed(
-        AIPolishKeychainFailureMessage.text(for: error, action: .save))
-      TelemetryService.shared.apiKeyChanged(
-        provider: apiKeyProviderLabel(keychainId), action: "save", result: "failure")
-      return false
-    }
-  }
-
-  /// #1173: map a keychain id to the provider label used in API-key telemetry —
-  /// the same `LLMProvider.rawValue` vocabulary as `api_key.validation_completed`,
-  /// so both events group by the same provider. Never the key value.
-  private func apiKeyProviderLabel(_ keychainId: String) -> String {
-    if keychainId == KeychainManager.openAIKeyID { return LLMProvider.openAI.rawValue }
-    if keychainId == KeychainManager.geminiKeyID { return LLMProvider.gemini.rawValue }
-    if keychainId == KeychainManager.claudeKeyID { return LLMProvider.claude.rawValue }
-    return keychainId
+  /// What the key row's Save and Clear act on.
+  private var keyActionOwners: ProviderSetupKeyActions.Owners {
+    ProviderSetupKeyActions.Owners(
+      keychainManager: keychainManager, presence: savedKeyPresence, discovery: llmDiscovery,
+      settings: settings, surface: surface)
   }
 
   /// Clears any failed Save/Clear badge the moment the user resumes
@@ -2360,26 +2388,6 @@ private var ollamaBrowseModelsCard: some View {
   private func dismissStaleFailureStatus() {
     if case .failed = model.keyStoreStatus {
       model.keyStoreStatus = .none
-    }
-  }
-
-  @discardableResult
-  private func clearKey(keychainId: String) -> Bool {
-    do {
-      try keychainManager.delete(key: keychainId)
-      model.keyStoreStatus = .none
-      TelemetryService.shared.apiKeyChanged(
-        provider: apiKeyProviderLabel(keychainId), action: "remove", result: "success")
-      return true
-    } catch {
-      providerSetupKeychainUILog.error(
-        "Clear key failed action=clear keyID=\(keychainId, privacy: .public) error=\(String(describing: error), privacy: .public)"
-      )
-      model.keyStoreStatus = .failed(
-        AIPolishKeychainFailureMessage.text(for: error, action: .clear))
-      TelemetryService.shared.apiKeyChanged(
-        provider: apiKeyProviderLabel(keychainId), action: "remove", result: "failure")
-      return false
     }
   }
 
