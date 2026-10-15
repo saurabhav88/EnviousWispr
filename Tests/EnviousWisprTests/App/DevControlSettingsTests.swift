@@ -395,9 +395,9 @@
           == .written(forced: true))
       #expect(settings.llmProvider == LLMProvider.none)
       #expect(settings.lastLLMProvider == .openAI)
-      #expect(settings.llmModel != "dev-control-stale-model")
 
-      // A fixed-model provider pins its literal, so the setter's sweep is visible exactly.
+      // Off keeps any model id; a fixed-model provider pins its literal, so the setter's
+      // sweep is visible exactly there.
       #expect(
         DevControlSettings.forceWrite(.llmProvider, value: "appleIntelligence", to: settings)
           == .written(forced: true))
