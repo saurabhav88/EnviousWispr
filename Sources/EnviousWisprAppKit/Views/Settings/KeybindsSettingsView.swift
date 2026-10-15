@@ -35,16 +35,14 @@ struct KeybindsSettingsView: View {
           KeybindSettingsRow(
             map: .id(.recordKeybind), icon: "mic",
             help: KeybindsSettingsCopy.recordHelp,
-            keyCode: $settings.toggleKeyCode,
-            modifiers: $settings.toggleModifiers, role: .record
+            role: .record
           )
         }
         BrandedRow {
           KeybindSettingsRow(
             map: .id(.cancelKeybind), icon: "xmark",
             help: KeybindsSettingsCopy.cancelHelp,
-            keyCode: $settings.cancelKeyCode,
-            modifiers: $settings.cancelModifiers, role: .cancel
+            role: .cancel
           )
         }
         BrandedRow(showDivider: false) {
@@ -67,24 +65,21 @@ struct KeybindsSettingsView: View {
           KeybindSettingsRow(
             map: .id(.quickAddKeybind), icon: "character.book.closed",
             help: KeybindsSettingsCopy.addHelp,
-            keyCode: $settings.quickAddKeyCode,
-            modifiers: $settings.quickAddModifiers, role: .quickAdd
+            role: .quickAdd
           )
         }
         BrandedRow {
           KeybindSettingsRow(
             map: .id(.pasteLastKeybind), icon: "clipboard",
             help: KeybindsSettingsCopy.pasteHelp,
-            keyCode: $settings.pasteLastKeyCode,
-            modifiers: $settings.pasteLastModifiers, role: .pasteLast
+            role: .pasteLast
           )
         }
         BrandedRow(showDivider: false) {
           KeybindSettingsRow(
             map: .id(.copyLastKeybind), icon: "doc.on.doc",
             help: KeybindsSettingsCopy.copyHelp,
-            keyCode: $settings.copyLastKeyCode,
-            modifiers: $settings.copyLastModifiers, role: .copyLast
+            role: .copyLast
           )
         }
       }
@@ -137,9 +132,7 @@ private struct KeybindSettingsRow: View {
   let map: SettingsMapRef
   let icon: String
   let help: LocalizedStringResource
-  @Binding var keyCode: UInt16
-  @Binding var modifiers: NSEvent.ModifierFlags
-  /// Which shortcut this row edits. **The row derives its Reset default from this rather than being
+  /// Which shortcut this row edits, and so which two stored fields (`ShortcutSettings`). **The row derives its Reset default from this rather than being
   /// handed one**, so no call site has a default to get wrong.
   ///
   /// Three review rounds found the same defect one member at a time — a hard-coded number, then the
@@ -169,6 +162,17 @@ private struct KeybindSettingsRow: View {
     }
   }
 
+  private var keyCode: Binding<UInt16> {
+    Binding(
+      get: { settings[keyPath: ShortcutSettings.keyCodeField(for: role)] },
+      set: { settings[keyPath: ShortcutSettings.keyCodeField(for: role)] = $0 })
+  }
+  private var modifiers: Binding<NSEvent.ModifierFlags> {
+    Binding(
+      get: { settings[keyPath: ShortcutSettings.modifiersField(for: role)] },
+      set: { settings[keyPath: ShortcutSettings.modifiersField(for: role)] = $0 })
+  }
+
   private var defaultKeyCode: UInt16 { role.defaultKeyCode }
   private var defaultModifiers: NSEvent.ModifierFlags { role.defaultModifiers }
 
@@ -192,7 +196,7 @@ private struct KeybindSettingsRow: View {
   var body: some View {
     SettingsRow(map: map, icon: icon, help: help) {
       HotkeyRecorderView(
-        keyCode: $keyCode, modifiers: $modifiers,
+        keyCode: keyCode, modifiers: modifiers,
         defaultKeyCode: defaultKeyCode, defaultModifiers: defaultModifiers,
         label: captureLabel,
         style: .prominent,
@@ -202,7 +206,7 @@ private struct KeybindSettingsRow: View {
           }
         },
         validate: { [role, settings] proposed in
-          ShortcutMatcher.refusal(assigning: proposed, to: role, in: settings.shortcutBindings)
+          ShortcutSettings.refusal(assigning: proposed, to: role, in: settings)
         },
         keyboardFocus: $recordingKeybindFocused,
         accessibilityFocus: $guidanceReturnFocus
@@ -228,7 +232,8 @@ private struct KeybindSettingsRow: View {
         Text(
           ExternalConflictCopy.notWorking(
             role: role,
-            keys: KeySymbols.format(keyCode: keyCode, modifiers: modifiers))
+            keys: KeySymbols.format(
+              keyCode: keyCode.wrappedValue, modifiers: modifiers.wrappedValue))
         )
         .font(.stRowHelper).foregroundStyle(.stAccent)
         .fixedSize(horizontal: false, vertical: true)

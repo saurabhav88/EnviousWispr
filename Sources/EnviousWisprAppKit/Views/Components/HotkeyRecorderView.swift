@@ -689,16 +689,18 @@ struct HotkeyRecorderView: View {
   /// must already read the new key.
   ///
   /// #3106: returns the refusal, if any, and in that case writes NEITHER half and does not notify
-  /// the owner. The check has to come first: the owner is notified after the write, and a saved
-  /// binding reaches registration through the settings sync before any later check could object.
+  /// the owner; why the check comes first is on `ShortcutSettings.commit`.
   @discardableResult
   func acceptBinding(from event: NSEvent) -> ShortcutRefusal? {
     let accepted = HotkeyCapture.binding(for: event)
-    if let refused = validate(.keyboard(keyCode: accepted.keyCode, modifiers: accepted.modifiers)) {
+    if let refused = ShortcutSettings.commit(
+      .keyboard(keyCode: accepted.keyCode, modifiers: accepted.modifiers),
+      validate: validate,
+      writeKeyCode: { keyCode = $0 },
+      writeModifiers: { modifiers = $0 })
+    {
       return refused
     }
-    keyCode = accepted.keyCode
-    modifiers = accepted.modifiers
     onBindingAccepted(accepted.keyCode, accepted.modifiers)
     return nil
   }
@@ -707,12 +709,11 @@ struct HotkeyRecorderView: View {
   /// default since it shipped. `internal` for the same reason `acceptBinding` is.
   @discardableResult
   func applyDefault() -> ShortcutRefusal? {
-    if let refused = validate(.keyboard(keyCode: defaultKeyCode, modifiers: defaultModifiers)) {
-      return refused
-    }
-    keyCode = defaultKeyCode
-    modifiers = defaultModifiers
-    return nil
+    ShortcutSettings.commit(
+      .keyboard(keyCode: defaultKeyCode, modifiers: defaultModifiers),
+      validate: validate,
+      writeKeyCode: { keyCode = $0 },
+      writeModifiers: { modifiers = $0 })
   }
 
   private func resetToDefault() {
