@@ -513,6 +513,42 @@
       try await stop(door)
     }
 
+    @Test("language.set crosses the socket and reports what the picker's path set")
+    func languageOverTheSocket() async throws {
+      let door = DevControlDoor(dispatcher: Self.dispatcher())
+      var outcomes: [String] = []
+      door.onOutcomeLogged = { outcomes.append($0) }
+      defer { door.uninstall() }
+      try #require(await door.install() == .ready)
+
+      let reply = try await runClient(
+        #"""
+        c = dev_control.Connection(\#(door.pid))
+        uk = c.request("language.set", {"code": "en-gb"})
+        auto = c.request("language.set", {"code": "auto"})
+        bad = c.request("language.set", {"code": "zz"})
+        extra = c.request("language.set", {"code": "de", "spelling": "british"})
+        single = c.request("settings.set", {"key": "englishSpelling", "value": "american"})
+        print(json.dumps({"uk": uk, "auto": auto, "bad": bad, "extra": extra, "single": single}))
+        """#)
+      let uk = try #require((reply["uk"] as? [String: Any])?["result"] as? [String: Any])
+      #expect(uk["languageMode"] as? [String: String] == ["mode": "locked", "code": "en"])
+      #expect(uk["englishSpelling"] as? String == "british")
+      let auto = try #require((reply["auto"] as? [String: Any])?["result"] as? [String: Any])
+      #expect(auto["languageMode"] as? [String: String] == ["mode": "auto"])
+      #expect(auto["englishSpelling"] as? String == "british")
+      func code(_ name: String) -> String? {
+        ((reply[name] as? [String: Any])?["error"] as? [String: Any])?["code"] as? String
+      }
+      #expect(code("bad") == "badValue")
+      #expect(code("extra") == "badArgs")
+      #expect(code("single") == "checkFailed")
+      try #require(outcomes.count == 5, "outcomes: \(outcomes)")
+      #expect(outcomes[0].contains("cmd=language.set ok=true forced=false code=none"))
+      #expect(outcomes.allSatisfy { !$0.contains("en-gb") && !$0.contains("british") })
+      try await stop(door)
+    }
+
     @Test("status and History over the socket; a History row too large to send is refused whole")
     func statusAndHistoryOverTheSocket() async throws {
       let small = Transcript(text: "small row", polishedText: "Small row.")

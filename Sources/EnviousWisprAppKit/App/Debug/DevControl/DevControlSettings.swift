@@ -96,10 +96,9 @@
         .playRecordingSounds, .recordingSoundPairing, .otherAudioWhileDictating, .learnFromEdits:
         return make(.direct)
       case .selectedInputDeviceUID, .preferredInputDeviceIDOverride, .spokenPunctuation,
-        .hasCompletedOnboarding, .recordingPillDesignWithoutWords, .recordingPillDesignWithWords:
+        .hasCompletedOnboarding, .recordingPillDesignWithoutWords, .recordingPillDesignWithWords,
+        .languageMode, .englishSpelling:
         return make(.viaOwner)
-      case .languageMode, .englishSpelling:
-        return make(.viaOwner, deferredTo: "PR-B")
       case .cancelKeyCode, .cancelModifiers, .quickAddKeyCode, .quickAddModifiers,
         .pasteLastKeyCode, .pasteLastModifiers, .copyLastKeyCode, .copyLastModifiers,
         .toggleKeyCode, .toggleModifiers, .fileImportLLMProvider, .fileImportLLMModel,
@@ -452,6 +451,9 @@
       /// The Appearance pill picker: its group for the slot, `offersCoupled`, then
       /// `PillAppearanceModel.chooseCoupled`.
       case pillDesign
+      /// The language picker sets the lock and the spelling together, so a single-field
+      /// write is refused toward `language.set` (`setLanguage`).
+      case languageCommand
       /// The check is delivered in a later PR; only `force` writes it in this build.
       case notYetShared
     }
@@ -472,6 +474,7 @@
         if key == .recordingPillDesignWithoutWords || key == .recordingPillDesignWithWords {
           return .pillDesign
         }
+        if key == .languageMode || key == .englishSpelling { return .languageCommand }
         if key == .hasCompletedOnboarding { return .typed }
         return .notYetShared
       case .extractedCheck:
@@ -516,6 +519,11 @@
         return writePillDesign(
           value, holdingWords: key == .recordingPillDesignWithWords, context: context,
           to: settings)
+      case .languageCommand:
+        return .refused(
+          code: "checkFailed",
+          message: "the language picker sets the lock and the spelling together; use "
+            + "language.set, or force to stage this field alone")
       case .notYetShared:
         return .refused(
           code: "checkNotYetShared",
@@ -549,6 +557,34 @@
           message: "the pill picker does not offer that design right now (\(capability))")
       }
       model.chooseCoupled(design)
+      return .written(forced: false)
+    }
+
+    /// `language.set`: the language picker's choice, `code` naming one of its rows
+    /// (`LanguageCatalog.pickerEntries`, English (UK) included as `en-gb`) or `auto`. The
+    /// row's lock code must be one the SELECTED engine's picker offers
+    /// (`LanguageLockOptions.lockableCodes(for:)`, nil = no restriction). The choice then goes
+    /// through `LanguageLockOptions.apply`, which writes the spelling before the lock and
+    /// keeps the stored spelling for a non-English row or Auto.
+    static func setLanguage(_ code: String, to settings: SettingsManager) -> SetOutcome {
+      let entry: LanguageCatalog.Entry?
+      if code == "auto" {
+        entry = nil
+      } else {
+        // Never `LanguageCatalog.entry(for:)`: it invents a row for an unknown code.
+        guard let found = LanguageCatalog.pickerEntries.first(where: { $0.code == code }) else {
+          return .refused(code: "badValue", message: "no language picker row has that code")
+        }
+        if let offered = LanguageLockOptions.lockableCodes(for: settings.selectedBackend),
+          !offered.contains(found.lockCode)
+        {
+          return .refused(
+            code: "checkFailed",
+            message: "the \(settings.selectedBackend.rawValue) language picker does not offer that language")
+        }
+        entry = found
+      }
+      attributed(settings) { _ = LanguageLockOptions.apply(entry, to: settings) }
       return .written(forced: false)
     }
 

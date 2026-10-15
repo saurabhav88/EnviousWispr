@@ -284,6 +284,9 @@ types; a string needs JSON quotes ('"parakeet"') or --string (--string parakeet)
 Writes persist in the shared preferences every dev and production build reads. --force
 skips the screens' checks, not the owner's consequences (a provider change still resets its
 model). A successful write does not say when an in-flight dictation adopts the value.
+language set CODE is the language picker's choice: lock and English spelling together
+(en-gb locks "en" with British spelling); auto unlocks. settings set languageMode or
+englishSpelling alone is refused toward it; --force stages one field.
 models download/cancel press the Settings row's own button and return that engine's
 state the instant after; poll status for progress. A reply is never a finished download.
 dictation start records on the ACTIVE engine and prints a receipt; --receipt takes that
@@ -350,6 +353,11 @@ def build_parser():
         dest="action", required=True, metavar="ACTION")
     for verb in MODEL_ACTIONS:
         models.add_parser(verb).add_argument("backend", choices=MODEL_BACKENDS)
+
+    language = sub.add_parser("language", help="the dictation language").add_subparsers(
+        dest="action", required=True, metavar="ACTION")
+    language.add_parser("set").add_argument(
+        "code", help="a picker row code (de, en, en-gb, ...) or auto")
 
     dictation = sub.add_parser("dictation", help="start, stop or follow one take").add_subparsers(
         dest="action", required=True, metavar="ACTION")
@@ -424,6 +432,8 @@ def route(args):
         if args.backend not in MODEL_BACKENDS:
             raise CliError("usage", f"unknown model {args.backend!r}", EXIT_USAGE)
         return f"models.{args.backend}.{args.action}", None, True
+    if key == ("language", "set"):
+        return "language.set", {"code": args.code}, True
     if key == ("dictation", "start"):
         wire = {} if args.front_app is None else {"frontApp": args.front_app}
         return "dictation.start", wire, True

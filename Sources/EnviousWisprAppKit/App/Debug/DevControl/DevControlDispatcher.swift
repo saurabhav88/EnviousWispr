@@ -19,6 +19,7 @@
       case settingsList = "settings.list"
       case settingsGet = "settings.get"
       case settingsSet = "settings.set"
+      case languageSet = "language.set"
       case status
       case historyList = "history.list"
       case historyGet = "history.get"
@@ -167,6 +168,8 @@
         }
       case .settingsSet:
         return set(args)
+      case .languageSet:
+        return setLanguage(args)
       case .status:
         return .ok(status())
       case .historyList:
@@ -252,6 +255,25 @@
         var payload = row(key)
         payload["forced"] = forced
         return .ok(payload, forced: forced)
+      case .refused(let code, let message):
+        return .error(
+          code: ErrorCode(rawValue: code)?.rawValue ?? ErrorCode.badValue.rawValue, message: message
+        )
+      }
+    }
+
+    /// `{code}`: a language picker row code (`de`, `en`, `en-gb`, ...) or `auto`. The reply
+    /// reads both fields back, so it reports what the picker's path actually set.
+    private func setLanguage(_ args: [String: Any]) -> Result {
+      guard Set(args.keys) == ["code"], let code = args["code"] as? String else {
+        return .failure(.badArgs, "language.set takes code only, a string")
+      }
+      switch DevControlSettings.setLanguage(code, to: settings) {
+      case .written:
+        return .ok([
+          "languageMode": DevControlSettings.read(.languageMode, from: settings),
+          "englishSpelling": DevControlSettings.read(.englishSpelling, from: settings),
+        ])
       case .refused(let code, let message):
         return .error(
           code: ErrorCode(rawValue: code)?.rawValue ?? ErrorCode.badValue.rawValue, message: message

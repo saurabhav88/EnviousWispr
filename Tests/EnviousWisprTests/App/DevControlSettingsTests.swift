@@ -112,8 +112,8 @@
       func entry(_ key: SettingsManager.SettingKey) -> DevControlSettings.Entry {
         DevControlSettings.entry(key)
       }
-      #expect(entry(.languageMode).deferredTo == "PR-B")
-      #expect(entry(.englishSpelling).deferredTo == "PR-B")
+      #expect(entry(.languageMode).deferredTo == nil)
+      #expect(entry(.englishSpelling).deferredTo == nil)
       #expect(entry(.recordingPillDesignWithWords).deferredTo == nil)
       #expect(entry(.recordingPillDesignWithoutWords).deferredTo == nil)
       #expect(entry(.toggleKeyCode).deferredTo == "PR-C")
@@ -656,16 +656,109 @@
       }
     }
 
+    // MARK: - Language (PR-B)
+
+    private struct LanguageWrite {
+      let outcome: DevControlSettings.SetOutcome
+      let mode: LanguageMode
+      let spelling: EnglishSpelling
+      let fired: [(SettingsManager.SettingKey, Bool)]
+      let flagAfter: Bool
+    }
+
+    private static func language(
+      _ code: String, backend: ASRBackendType = .parakeet,
+      start: (LanguageMode, EnglishSpelling) = (.auto, .american)
+    ) -> LanguageWrite {
+      let (_, _, settings) = Self.fixture()
+      settings.selectedBackend = backend
+      settings.englishSpelling = start.1
+      settings.languageMode = start.0
+      var fired: [(SettingsManager.SettingKey, Bool)] = []
+      settings.onChange = { fired.append(($0, settings.isDevControlWrite)) }
+      let outcome = DevControlSettings.setLanguage(code, to: settings)
+      return LanguageWrite(
+        outcome: outcome, mode: settings.languageMode, spelling: settings.englishSpelling,
+        fired: fired, flagAfter: settings.isDevControlWrite)
+    }
+
+    @Test("English and English (UK) share the en lock and set their own spelling, spelling first")
+    func englishRowsSetLockAndSpelling() {
+      let british = Self.language("en-gb", start: (.locked("de"), .american))
+      #expect(british.outcome == .written(forced: false))
+      #expect(british.mode == .locked("en") && british.spelling == .british)
+      #expect(british.fired.map(\.0) == [.englishSpelling, .languageMode])
+      #expect(british.fired.allSatisfy { $0.1 } && british.flagAfter == false)
+
+      let american = Self.language("en", start: (.auto, .british))
+      #expect(american.mode == .locked("en") && american.spelling == .american)
+      #expect(american.fired.allSatisfy { $0.1 })
+    }
+
+    @Test("another language and Auto keep the stored spelling")
+    func otherRowsKeepSpelling() {
+      let german = Self.language("de", backend: .whisperKit, start: (.auto, .british))
+      #expect(german.outcome == .written(forced: false))
+      #expect(german.mode == .locked("de") && german.spelling == .british)
+      #expect(german.fired.map(\.0) == [.languageMode])
+      let auto = Self.language("auto", start: (.locked("en"), .british))
+      #expect(auto.mode == .auto && auto.spelling == .british)
+      #expect(auto.fired.allSatisfy { $0.1 })
+    }
+
+    @Test("the SELECTED engine's picker decides: a code Parakeet does not offer is refused there only")
+    func selectedBackendRestriction() throws {
+      let offered = try #require(LanguageLockOptions.lockableCodes(for: .parakeet))
+      let outside = try #require(
+        LanguageCatalog.pickerEntries.first { !offered.contains($0.lockCode) },
+        "every picker row is offered on Parakeet; no restriction to test")
+      let refused = Self.language(outside.code, backend: .parakeet)
+      #expect(refused.outcome.code == "checkFailed", "\(outside.code)")
+      #expect(refused.mode == .auto && refused.fired.isEmpty)
+      let accepted = Self.language(outside.code, backend: .whisperKit)
+      #expect(accepted.outcome == .written(forced: false))
+      #expect(accepted.mode == .locked(outside.lockCode))
+    }
+
+    @Test("an unknown or differently spelled code is refused before any write")
+    func unknownLanguageCodes() {
+      for code in ["xx-yy", "EN", "", "Auto", "english"] {
+        let write = Self.language(code)
+        #expect(write.outcome.code == "badValue", "\(code)")
+        #expect(write.fired.isEmpty, "\(code)")
+      }
+    }
+
+    @Test("a single-field language write is refused toward language.set; force stages it alone")
+    func singleFieldLanguageWrites() throws {
+      for (name, value) in [("languageMode", #"{"mode": "locked", "code": "de"}"#),
+                            ("englishSpelling", #""british""#)] {
+        let (_, _, settings) = Self.fixture()
+        var fired: [SettingsManager.SettingKey] = []
+        settings.onChange = { fired.append($0) }
+        let key = try #require(DevControlSettings.key(named: name))
+        let refused = DevControlSettings.write(
+          key, value: try Self.wire(value), force: false, context: Self.context(), to: settings)
+        #expect(refused.code == "checkFailed", "\(name)")
+        #expect(refused.message.contains("language.set"), "\(name)")
+        #expect(fired.isEmpty, "\(name)")
+        let forced = DevControlSettings.write(
+          key, value: try Self.wire(value), force: true, context: Self.context(), to: settings)
+        #expect(forced == .written(forced: true), "\(name)")
+        #expect(fired == [key], "\(name): force writes only that field")
+      }
+    }
+
     /// Written here by hand from plan §3.4, not derived from the table.
     private static let deferredNames: Set<String> = [
-      "languageMode", "englishSpelling", "cancelKeyCode", "cancelModifiers", "quickAddKeyCode",
+      "cancelKeyCode", "cancelModifiers", "quickAddKeyCode",
       "quickAddModifiers", "pasteLastKeyCode", "pasteLastModifiers", "copyLastKeyCode",
       "copyLastModifiers", "toggleKeyCode", "toggleModifiers", "fileImportLLMProvider",
       "fileImportLLMModel", "fileImportOllamaModel", "ollamaModel", "vadSilenceTimeout",
       "inputChannelByDeviceUID",
     ]
 
-    @Test("every key has exactly one ordinary route; 18 are not shared yet")
+    @Test("every key has exactly one ordinary route; 16 are not shared yet")
     func routeCounts() {
       var counts: [DevControlSettings.Route: Int] = [:]
       var notYetShared: Set<String> = []
@@ -680,12 +773,13 @@
       #expect(counts[.inputDevice] == 2)
       #expect(counts[.spokenPunctuation] == 1)
       #expect(counts[.pillDesign] == 2)
-      #expect(counts[.notYetShared] == 18)
+      #expect(counts[.languageCommand] == 2)
+      #expect(counts[.notYetShared] == 16)
       #expect(DevControlSettings.route(.llmModel) == .modelCatalog)
       #expect(DevControlSettings.route(.hasCompletedOnboarding) == .typed)
     }
 
-    @Test("the 18 deferred keys refuse an ordinary write without any change, and force still writes them")
+    @Test("the 16 deferred keys refuse an ordinary write without any change, and force still writes them")
     func deferredKeysRefuseOrdinaryWrites() throws {
       var refused = 0
       for row in Self.rows where Self.deferredNames.contains(row.name) {
@@ -709,7 +803,7 @@
         #expect(forced == .written(forced: true), "\(row.name)")
         #expect(row.holds(settings), "\(row.name)")
       }
-      #expect(refused == 18)
+      #expect(refused == 16)
     }
 
     @Test("every typed-route key takes an ordinary write, reported not forced")
