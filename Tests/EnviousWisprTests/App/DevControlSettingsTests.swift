@@ -534,5 +534,236 @@
           == .written(forced: true))
       #expect(settings.vadSilenceTimeout == 120)
     }
+
+    // MARK: - Ordinary writes (chunk 4)
+
+    private static func context(
+      catalog: DevControlSettings.ModelCatalog = .init(provider: nil, models: []),
+      connected: [String] = []
+    ) -> DevControlSettings.WriteContext {
+      DevControlSettings.WriteContext(
+        modelCatalog: { catalog }, connectedInputUIDs: { connected })
+    }
+
+    /// Written here by hand from plan §3.4, not derived from the table.
+    private static let deferredNames: Set<String> = [
+      "recordingPillDesignWithoutWords", "recordingPillDesignWithWords", "languageMode",
+      "englishSpelling", "cancelKeyCode", "cancelModifiers", "quickAddKeyCode",
+      "quickAddModifiers", "pasteLastKeyCode", "pasteLastModifiers", "copyLastKeyCode",
+      "copyLastModifiers", "toggleKeyCode", "toggleModifiers", "fileImportLLMProvider",
+      "fileImportLLMModel", "fileImportOllamaModel", "ollamaModel", "vadSilenceTimeout",
+      "inputChannelByDeviceUID",
+    ]
+
+    @Test("every key has exactly one ordinary route; 20 are not shared yet")
+    func routeCounts() {
+      var counts: [DevControlSettings.Route: Int] = [:]
+      var notYetShared: Set<String> = []
+      for key in DevControlSettings.allKeys {
+        let route = DevControlSettings.route(key)
+        counts[route, default: 0] += 1
+        if route == .notYetShared { notYetShared.insert(DevControlSettings.name(key)) }
+      }
+      #expect(notYetShared == Self.deferredNames)
+      #expect(counts[.typed] == 46)
+      #expect(counts[.modelCatalog] == 1)
+      #expect(counts[.inputDevice] == 2)
+      #expect(counts[.spokenPunctuation] == 1)
+      #expect(counts[.notYetShared] == 20)
+      #expect(DevControlSettings.route(.llmModel) == .modelCatalog)
+      #expect(DevControlSettings.route(.hasCompletedOnboarding) == .typed)
+    }
+
+    @Test("the 20 deferred keys refuse an ordinary write without any change, and force still writes them")
+    func deferredKeysRefuseOrdinaryWrites() throws {
+      var refused = 0
+      for row in Self.rows where Self.deferredNames.contains(row.name) {
+        let (suite, defaults, settings) = Self.fixture()
+        let key = try #require(DevControlSettings.key(named: row.name))
+        let text = row.wire(settings)
+        let before = DevControlSettings.read(key, from: settings)
+        let stored = defaults.persistentDomain(forName: suite) as NSDictionary?
+        var fired: [SettingsManager.SettingKey] = []
+        settings.onChange = { fired.append($0) }
+        let outcome = DevControlSettings.write(
+          key, value: try Self.wire(text), force: false, context: Self.context(), to: settings)
+        #expect(outcome == .refused(code: "checkNotYetShared", message: outcome.message), "\(row.name)")
+        #expect((before as AnyObject).isEqual(DevControlSettings.read(key, from: settings)), "\(row.name)")
+        #expect(fired.isEmpty, "\(row.name) fired \(fired)")
+        #expect(stored == defaults.persistentDomain(forName: suite) as NSDictionary?, "\(row.name)")
+        refused += 1
+
+        let forced = DevControlSettings.write(
+          key, value: try Self.wire(text), force: true, context: Self.context(), to: settings)
+        #expect(forced == .written(forced: true), "\(row.name)")
+        #expect(row.holds(settings), "\(row.name)")
+      }
+      #expect(refused == 20)
+    }
+
+    @Test("every typed-route key takes an ordinary write, reported not forced")
+    func typedRouteOrdinaryWrites() throws {
+      var written = 0
+      for row in Self.rows {
+        let key = try #require(DevControlSettings.key(named: row.name))
+        guard DevControlSettings.route(key) == .typed else { continue }
+        let (_, _, settings) = Self.fixture()
+        var fired: [SettingsManager.SettingKey] = []
+        settings.onChange = { fired.append($0) }
+        let text = row.wire(settings)
+        let outcome = DevControlSettings.write(
+          key, value: try Self.wire(text), force: false, context: Self.context(), to: settings)
+        #expect(outcome == .written(forced: false), "\(row.name) <- \(text)")
+        #expect(row.holds(settings), "\(row.name)")
+        #expect(fired.contains(row.fires), "\(row.name) fired \(fired)")
+        written += 1
+      }
+      #expect(written == 46)
+    }
+
+    private static func model(_ id: String, _ provider: LLMProvider, available: Bool = true, remote: Bool = false)
+      -> LLMModelInfo
+    {
+      LLMModelInfo(id: id, displayName: id, provider: provider, isAvailable: available, isRemote: remote)
+    }
+
+    @Test("an ordinary llmModel write admits only an offered model from the current provider's catalog")
+    func modelAdmission() throws {
+      let (_, _, settings) = Self.fixture()
+      settings.llmProvider = .openAI
+      let start = settings.llmModel
+      let catalog = DevControlSettings.ModelCatalog(
+        provider: .openAI,
+        models: [Self.model("gpt-dev-a", .openAI), Self.model("gpt-dev-locked", .openAI, available: false)])
+      func write(_ id: Any, _ catalog: DevControlSettings.ModelCatalog) -> DevControlSettings.SetOutcome {
+        DevControlSettings.write(
+          .llmModel, value: id, force: false, context: Self.context(catalog: catalog), to: settings)
+      }
+
+      #expect(write("gpt-dev-locked", catalog).code == "badValue")
+      #expect(write("gpt-dev-missing", catalog).code == "badValue")
+      #expect(write(7, catalog).code == "badValue")
+      #expect(write("gpt-dev-a", .init(provider: .gemini, models: catalog.models)).code == "catalogUnavailable")
+      #expect(write("gpt-dev-a", .init(provider: nil, models: [])).code == "catalogUnavailable")
+      #expect(write("gpt-dev-a", .init(provider: .openAI, models: [])).code == "catalogUnavailable")
+      #expect(settings.llmModel == start)
+
+      #expect(write("gpt-dev-a", catalog) == .written(forced: false))
+      #expect(settings.llmModel == "gpt-dev-a")
+
+      settings.llmProvider = .ollama
+      let ollama = DevControlSettings.ModelCatalog(
+        provider: .ollama,
+        models: [Self.model("local-dev:1b", .ollama), Self.model("hosted-dev:cloud", .ollama, remote: true)])
+      #expect(write("hosted-dev:cloud", ollama) == .written(forced: false))
+      #expect(settings.llmModel == "hosted-dev:cloud")
+      #expect(write("local-dev:1b", ollama) == .written(forced: false))
+
+      for fixed in [LLMProvider.appleIntelligence, .egOne, .s1Mini, .none] {
+        settings.llmProvider = fixed
+        let pinned = settings.llmModel
+        #expect(write("anything", .init(provider: fixed, models: [Self.model("anything", fixed)])).code == "badValue")
+        #expect(settings.llmModel == pinned)
+      }
+      // Force still stages any id, catalog or not.
+      #expect(
+        DevControlSettings.write(
+          .llmModel, value: "staged-id", force: true, context: Self.context(), to: settings)
+          == .written(forced: true))
+    }
+
+    @Test("an ordinary microphone write checks the device is connected, then writes override then selection")
+    func inputDeviceRoute() throws {
+      for key in [SettingsManager.SettingKey.selectedInputDeviceUID, .preferredInputDeviceIDOverride] {
+        let (_, defaults, settings) = Self.fixture()
+        var fired: [SettingsManager.SettingKey] = []
+        settings.onChange = { fired.append($0) }
+        let connected = Self.context(connected: ["mic-a"])
+
+        #expect(DevControlSettings.write(key, value: "mic-b", force: false, context: connected, to: settings).code == "checkFailed")
+        #expect(fired.isEmpty)
+        #expect(DevControlSettings.write(key, value: 4, force: false, context: connected, to: settings).code == "badValue")
+
+        #expect(DevControlSettings.write(key, value: "mic-a", force: false, context: connected, to: settings) == .written(forced: false))
+        #expect(fired == [.preferredInputDeviceIDOverride, .selectedInputDeviceUID])
+        #expect(settings.preferredInputDeviceIDOverride == "mic-a")
+        #expect(settings.selectedInputDeviceUID == "mic-a")
+        #expect(defaults.string(forKey: "selectedInputDeviceUID") == "mic-a")
+
+        fired.removeAll()
+        #expect(DevControlSettings.write(key, value: "", force: false, context: connected, to: settings) == .written(forced: false))
+        #expect(fired == [.preferredInputDeviceIDOverride, .selectedInputDeviceUID])
+        #expect(settings.preferredInputDeviceIDOverride == "")
+        #expect(settings.selectedInputDeviceUID == "")
+
+        // Force stages a disconnected device on the addressed field only.
+        #expect(DevControlSettings.write(key, value: "mic-z", force: true, context: connected, to: settings) == .written(forced: true))
+      }
+    }
+
+    @Test("an ordinary spoken-punctuation write validates every start word first, then commits and resets through the owners")
+    func spokenPunctuationRoute() throws {
+      let (_, _, settings) = Self.fixture()
+      settings.spokenPunctuation = SpokenPunctuationSettings(enabled: false, startWordOverrides: [:])
+      let german = try #require(SpokenPunctuationRules.startWordDefault(for: "de"))
+      try #require(german.isEmpty == false, "German has a default start word")
+      // A non-default German override, set through the owner (not through the door).
+      #expect(settings.commitSpokenPunctuationStartWord("zebra", language: "de") == .accepted("zebra"))
+      try #require(settings.spokenPunctuation.startWordOverrides == ["de": "zebra"])
+
+      func write(_ json: String) throws -> DevControlSettings.SetOutcome {
+        DevControlSettings.write(
+          .spokenPunctuation, value: try Self.wire(json), force: false, context: Self.context(),
+          to: settings)
+      }
+      // One bad entry refuses the whole request: nothing changes, not even `enabled`.
+      let bad = try write(#"{"enabled":true,"startWordOverrides":{"fr":"lapin","de":"two words"}}"#)
+      #expect(bad.code == "checkFailed")
+      #expect(settings.spokenPunctuation == SpokenPunctuationSettings(enabled: false, startWordOverrides: ["de": "zebra"]))
+      #expect(try write(#"{"enabled":true,"startWordOverrides":{"en-US":"zebra"}}"#).code == "checkFailed")
+      #expect(try write(#"{"enabled":true}"#).code == "badValue")
+
+      // A good request: enable, a new French word, German absent (reset to its default).
+      #expect(try write(#"{"enabled":true,"startWordOverrides":{"fr":"lapin"}}"#) == .written(forced: false))
+      #expect(settings.spokenPunctuation.enabled == true)
+      #expect(settings.spokenPunctuation.startWordOverrides == ["fr": "lapin"])
+
+      // The owner's normalization still applies: German's own default stores no override.
+      #expect(try write(#"{"enabled":true,"startWordOverrides":{"fr":"lapin","de":"\#(german)"}}"#) == .written(forced: false))
+      #expect(settings.spokenPunctuation.startWordOverrides == ["fr": "lapin"])
+    }
+
+    @Test("an ordinary spoken-punctuation write refuses a stored map holding a key only force could stage")
+    func spokenPunctuationRefusesStagedRegionalKey() throws {
+      let (suite, defaults, settings) = Self.fixture()
+      #expect(
+        DevControlSettings.forceWrite(
+          .spokenPunctuation,
+          value: try Self.wire(#"{"enabled":false,"startWordOverrides":{"de-DE":"zebra"}}"#),
+          to: settings) == .written(forced: true))
+      let before = settings.spokenPunctuation
+      let stored = defaults.persistentDomain(forName: suite) as NSDictionary?
+      var fired: [SettingsManager.SettingKey] = []
+      settings.onChange = { fired.append($0) }
+
+      let outcome = DevControlSettings.write(
+        .spokenPunctuation, value: try Self.wire(#"{"enabled":true,"startWordOverrides":{}}"#),
+        force: false, context: Self.context(), to: settings)
+      #expect(outcome.code == "checkFailed")
+      #expect(settings.spokenPunctuation == before)
+      #expect(fired.isEmpty)
+      #expect(stored == defaults.persistentDomain(forName: suite) as NSDictionary?)
+    }
+
+    @Test("an ordinary hasCompletedOnboarding write goes through the alias setter")
+    func onboardingAliasOrdinaryWrite() throws {
+      let (_, _, settings) = Self.fixture()
+      settings.onboardingState = .notStarted
+      #expect(
+        DevControlSettings.write(
+          .hasCompletedOnboarding, value: true, force: false, context: Self.context(), to: settings)
+          == .written(forced: false))
+      #expect(settings.onboardingState == .completed)
+    }
   }
 #endif

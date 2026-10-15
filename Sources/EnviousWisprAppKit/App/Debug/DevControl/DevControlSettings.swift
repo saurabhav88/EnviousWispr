@@ -213,10 +213,19 @@
     /// Decodes `value` to the property's type and assigns it, skipping the screens' policy.
     /// Nothing is assigned when decoding or the crash-prevention check fails.
     static func forceWrite(_ key: Key, value: Any, to settings: SettingsManager) -> WriteOutcome {
+      assign(key, value: value, to: settings, forced: true)
+    }
+
+    /// The one property mapping: decode to the property's type, keep the crash-prevention
+    /// check, assign through the typed setter. `forced` only labels the outcome; ordinary
+    /// writes reach this after their route's own checks.
+    private static func assign(
+      _ key: Key, value: Any, to settings: SettingsManager, forced: Bool
+    ) -> WriteOutcome {
       func set<T>(_ decoded: T?, _ assign: (T) -> Void) -> WriteOutcome {
         guard let decoded else { return .badValue("wrong type or unknown value") }
         assign(decoded)
-        return .written(forced: true)
+        return .written(forced: forced)
       }
       switch key {
       case .selectedBackend:
@@ -255,7 +264,7 @@
           return .badValue("silence timeout too large for the detector's chunk count")
         }
         settings.vadSilenceTimeout = seconds
-        return .written(forced: true)
+        return .written(forced: forced)
       case .vadSensitivity:
         return set(Codec.float(value)) { settings.vadSensitivity = $0 }
       case .vadEnergyGate:
@@ -379,6 +388,190 @@
       case .learnFromEdits:
         return set(Codec.bool(value)) { settings.learnFromEdits = $0 }
       }
+    }
+
+    // MARK: - Ordinary writes
+
+    /// What a non-forced write needs from the running app, injected so tests never read
+    /// live discovery state or enumerate real audio hardware.
+    struct WriteContext {
+      /// The polish model catalog discovery currently holds, and the provider it is about.
+      var modelCatalog: () -> ModelCatalog
+      /// UIDs of the input devices the system lists right now.
+      var connectedInputUIDs: () -> [String]
+    }
+
+    struct ModelCatalog {
+      let provider: LLMProvider?
+      let models: [LLMModelInfo]
+    }
+
+    enum SetOutcome: Equatable {
+      case written(forced: Bool)
+      case refused(code: String, message: String)
+
+      /// The refusal code, or nil for a write.
+      var code: String? {
+        if case .refused(let code, _) = self { return code }
+        return nil
+      }
+
+      var message: String {
+        if case .refused(_, let message) = self { return message }
+        return ""
+      }
+    }
+
+    /// Providers whose model is a fixed literal the provider setter pins; there is no model
+    /// to choose, so an ordinary `llmModel` write is refused.
+    static let fixedModelProviders: Set<LLMProvider> = [.appleIntelligence, .egOne, .s1Mini, .none]
+
+    /// How an ordinary (non-forced) write is checked before the typed assignment.
+    enum Route: Equatable {
+      /// No check beyond decoding: the screen assigns the property directly.
+      case typed
+      /// The current provider's discovered catalog (`llmModel`).
+      case modelCatalog
+      /// `MicrophoneChoiceValidation`, then `SettingsManager.chooseInputDevice(uid:)`.
+      case inputDevice
+      /// The start-word owners on `SettingsManager`.
+      case spokenPunctuation
+      /// The check is delivered in a later PR; only `force` writes it in this build.
+      case notYetShared
+    }
+
+    /// Derived from `entry(_:)`, so membership has one authority. A `viaOwner` row with
+    /// no route here refuses rather than falling through to an unchecked assignment.
+    static func route(_ key: Key) -> Route {
+      let entry = entry(key)
+      guard entry.deferredTo == nil else { return .notYetShared }
+      switch entry.kind {
+      case .direct, .staging:
+        return key == .llmModel ? .modelCatalog : .typed
+      case .viaOwner:
+        if key == .selectedInputDeviceUID || key == .preferredInputDeviceIDOverride {
+          return .inputDevice
+        }
+        if key == .spokenPunctuation { return .spokenPunctuation }
+        if key == .hasCompletedOnboarding { return .typed }
+        return .notYetShared
+      case .extractedCheck:
+        return .notYetShared
+      }
+    }
+
+    /// A settings write as the door receives it: `force` assigns directly (any key); an
+    /// ordinary write takes the key's route first. Every refusal happens before the first
+    /// mutation.
+    static func write(
+      _ key: Key, value: Any, force: Bool, context: WriteContext, to settings: SettingsManager
+    ) -> SetOutcome {
+      if force { return outcome(forceWrite(key, value: value, to: settings)) }
+      switch route(key) {
+      case .typed:
+        return outcome(assign(key, value: value, to: settings, forced: false))
+      case .modelCatalog:
+        return writeModel(value, context: context, to: settings)
+      case .inputDevice:
+        guard let uid = Codec.string(value) else {
+          return .refused(code: "badValue", message: "wrong type or unknown value")
+        }
+        guard
+          MicrophoneChoiceValidation.isSelectable(uid: uid, connectedUIDs: context.connectedInputUIDs)
+        else {
+          return .refused(code: "checkFailed", message: "that input device is not connected")
+        }
+        settings.chooseInputDevice(uid: uid)
+        return .written(forced: false)
+      case .spokenPunctuation:
+        return writeSpokenPunctuation(value, to: settings)
+      case .notYetShared:
+        return .refused(
+          code: "checkNotYetShared",
+          message: "this setting's screen check is not shared yet; use force to stage it")
+      }
+    }
+
+    private static func outcome(_ written: WriteOutcome) -> SetOutcome {
+      switch written {
+      case .written(let forced): return .written(forced: forced)
+      case .badValue(let message): return .refused(code: "badValue", message: message)
+      }
+    }
+
+    /// The screen's model menu offers the current provider's discovered models in the
+    /// recommended, other and hosted groups and disables the locked ones
+    /// (`OllamaModelPickerPresentation.groups`); the same groups decide here.
+    private static func writeModel(
+      _ value: Any, context: WriteContext, to settings: SettingsManager
+    ) -> SetOutcome {
+      guard let id = Codec.string(value) else {
+        return .refused(code: "badValue", message: "wrong type or unknown value")
+      }
+      let provider = settings.llmProvider
+      guard !fixedModelProviders.contains(provider) else {
+        return .refused(code: "badValue", message: "the current provider has a fixed model")
+      }
+      let catalog = context.modelCatalog()
+      guard catalog.provider == provider, !catalog.models.isEmpty else {
+        return .refused(
+          code: "catalogUnavailable", message: "no discovered models for the current provider")
+      }
+      let groups = OllamaModelPickerPresentation.groups(from: catalog.models, provider: provider)
+      let offered = (groups.recommended + groups.other + groups.hosted).map(\.id)
+      guard offered.contains(id) else {
+        let locked = groups.locked.contains { $0.id == id }
+        return .refused(
+          code: "badValue",
+          message: locked ? "that model is not available with this key" : "no such model")
+      }
+      return outcome(assign(.llmModel, value: id, to: settings, forced: false))
+    }
+
+    /// An ordinary spoken-punctuation write: `enabled` is assigned directly; the override
+    /// map is the complete desired set of start words. Every entry is validated first by
+    /// the same owner that validates stored overrides at launch
+    /// (`SpokenPunctuationRules.validatedStartWords`, which drops what it refuses); if any
+    /// entry would be dropped, nothing changes. Then each entry goes through
+    /// `commitSpokenPunctuationStartWord` (normalization, sparse defaults) and each override
+    /// absent from the request through `resetSpokenPunctuationStartWord`.
+    private static func writeSpokenPunctuation(_ value: Any, to settings: SettingsManager)
+      -> SetOutcome
+    {
+      guard let candidate = Codec.spokenPunctuation(value) else {
+        return .refused(code: "badValue", message: "wrong type or unknown value")
+      }
+      let requested = candidate.startWordOverrides
+      let baseCodes = requested.keys.allSatisfy { LanguageNormalizer.baseCode($0) == $0 }
+      let validated = SpokenPunctuationRules.validatedStartWords(requested, dropDefaults: false)
+      guard baseCodes, Set(validated.keys) == Set(requested.keys) else {
+        return .refused(
+          code: "checkFailed", message: "a start word or language code was refused")
+      }
+      // A regional key can only have been staged by force; the reset owner normalizes the
+      // language and cannot find it, so a "complete set" write could not remove it.
+      guard
+        settings.spokenPunctuation.startWordOverrides.keys.allSatisfy({
+          LanguageNormalizer.baseCode($0) == $0
+        })
+      else {
+        return .refused(
+          code: "checkFailed",
+          message:
+            "stored start-word keys cannot be reset through the checked owner; use force to replace the staged map"
+        )
+      }
+      if settings.spokenPunctuation.enabled != candidate.enabled {
+        settings.spokenPunctuation.enabled = candidate.enabled
+      }
+      for language in requested.keys.sorted() {
+        settings.commitSpokenPunctuationStartWord(requested[language] ?? "", language: language)
+      }
+      for language in settings.spokenPunctuation.startWordOverrides.keys.sorted()
+      where requested[language] == nil {
+        settings.resetSpokenPunctuationStartWord(language: language)
+      }
+      return .written(forced: false)
     }
 
     /// The silence detector turns the timeout into a chunk count with

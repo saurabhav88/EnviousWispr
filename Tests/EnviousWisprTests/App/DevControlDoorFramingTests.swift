@@ -1,5 +1,6 @@
 #if DEBUG
   import Darwin
+  import EnviousWisprServices
   import Foundation
   import Testing
 
@@ -54,6 +55,17 @@
       return ChildOutput(
         stdout: stdout, stderr: try Data(contentsOf: errorsURL),
         status: process.terminationStatus, exitedNormally: process.terminationReason == .exit)
+    }
+
+    /// A real dispatcher over isolated settings, with no discovered models and no
+    /// connected input devices.
+    private static func dispatcher() -> DevControlDispatcher {
+      let defaults = TestDefaults.suite("ew.tests.3765.framing.\(UUID().uuidString)")!
+      return DevControlDispatcher(
+        settings: SettingsManager(defaults: defaults),
+        writeContext: DevControlSettings.WriteContext(
+          modelCatalog: { DevControlSettings.ModelCatalog(provider: nil, models: []) },
+          connectedInputUIDs: { [] }))
     }
 
     /// The Python source for a child that has imported `Tests/RuntimeUAT/dev_control.py`
@@ -112,7 +124,7 @@
 
     @Test("a real Python client pings the real door and reads its identity")
     func realPythonClientPingsTheRealDoor() async throws {
-      let door = DevControlDoor(dispatcher: DevControlDispatcher())
+      let door = DevControlDoor(dispatcher: Self.dispatcher())
       defer { door.uninstall() }
       let installed = await door.install()
       try #require(installed == .ready, "install returned \(installed)")
@@ -154,7 +166,7 @@
 
     @Test("two requests on one connection are answered in order")
     func sequentialRequestsOnOneConnection() async throws {
-      let door = DevControlDoor(dispatcher: DevControlDispatcher())
+      let door = DevControlDoor(dispatcher: Self.dispatcher())
       defer { door.uninstall() }
       try #require(await door.install() == .ready)
 
@@ -238,7 +250,7 @@
 
     @Test("coalesced frames and a frame split inside a multibyte character are each answered")
     func framesSurviveCoalescingAndSplits() async throws {
-      let door = DevControlDoor(dispatcher: DevControlDispatcher())
+      let door = DevControlDoor(dispatcher: Self.dispatcher())
       defer { door.uninstall() }
       try #require(await door.install() == .ready)
 
@@ -260,7 +272,7 @@
 
     @Test("malformed frames are refused in order and the connection keeps working")
     func malformedFramesAreRefusedInOrder() async throws {
-      let door = DevControlDoor(dispatcher: DevControlDispatcher())
+      let door = DevControlDoor(dispatcher: Self.dispatcher())
       defer { door.uninstall() }
       try #require(await door.install() == .ready)
 
@@ -289,7 +301,7 @@
 
     @Test("a frame cut off by EOF is answered incompleteFrame, then the door closes")
     func incompleteFrameAtEOF() async throws {
-      let door = DevControlDoor(dispatcher: DevControlDispatcher())
+      let door = DevControlDoor(dispatcher: Self.dispatcher())
       defer { door.uninstall() }
       try #require(await door.install() == .ready)
 
@@ -310,7 +322,7 @@
 
     @Test("a frame of exactly the limit is accepted; one byte over, or no newline past it, is refused")
     func requestFrameLimit() async throws {
-      let door = DevControlDoor(dispatcher: DevControlDispatcher())
+      let door = DevControlDoor(dispatcher: Self.dispatcher())
       defer { door.uninstall() }
       try #require(await door.install() == .ready)
 
@@ -366,16 +378,36 @@
       #expect(reply["door"] as? Int == DevControlDoor.protocolVersion)
 
       try #require(outcomes.count == 1, "outcomes: \(outcomes)")
-      #expect(outcomes[0].contains("cmd=ping ok=false code=responseTooLarge"))
+      #expect(outcomes[0].contains("cmd=ping ok=false forced=false code=responseTooLarge"))
       #expect(outcomes[0].contains("client-secret-arg") == false)
       let clientID = try #require(reply["id"] as? String)
       #expect(outcomes[0].contains(clientID) == false)
       try await stop(door)
     }
 
+    @Test("a forced write whose reply is too large still logs forced=true")
+    func forcedWriteKeepsAttributionWhenReplyOverflows() async throws {
+      let door = DevControlDoor(handler: { _, _ in
+        .ok(["blob": String(repeating: "a", count: 2 << 20)], forced: true)
+      })
+      var outcomes: [String] = []
+      door.onOutcomeLogged = { outcomes.append($0) }
+      defer { door.uninstall() }
+      try #require(await door.install() == .ready)
+
+      let reply = try await runClient(
+        #"""
+        print(json.dumps(dev_control.request(\#(door.pid), "ping")))
+        """#)
+      #expect((reply["error"] as? [String: Any])?["code"] as? String == "responseTooLarge")
+      try #require(outcomes.count == 1, "outcomes: \(outcomes)")
+      #expect(outcomes[0].contains("cmd=ping ok=false forced=true code=responseTooLarge"))
+      try await stop(door)
+    }
+
     @Test("framing refusals log cmd=none and never the client's id or command text")
     func refusalsLogSanitizedOutcomes() async throws {
-      let door = DevControlDoor(dispatcher: DevControlDispatcher())
+      let door = DevControlDoor(dispatcher: Self.dispatcher())
       var outcomes: [String] = []
       door.onOutcomeLogged = { outcomes.append($0) }
       defer { door.uninstall() }
@@ -391,11 +423,49 @@
         print(json.dumps({}))
         """#)
       #expect(outcomes.count == 2)
-      #expect(outcomes.first?.contains("cmd=none ok=false code=malformed") == true)
-      #expect(outcomes.last?.contains("cmd=unknown ok=false code=unknownCommand") == true)
+      #expect(outcomes.first?.contains("cmd=none ok=false forced=false code=malformed") == true)
+      #expect(outcomes.last?.contains("cmd=unknown ok=false forced=false code=unknownCommand") == true)
       for line in outcomes {
         #expect(line.contains("client-id") == false)
         #expect(line.contains("drop-tables") == false)
+      }
+      try await stop(door)
+    }
+
+    @Test("a real socket settings.set reaches the table, and the forced log carries no value")
+    func settingsSetOverTheSocket() async throws {
+      let door = DevControlDoor(dispatcher: Self.dispatcher())
+      var outcomes: [String] = []
+      door.onOutcomeLogged = { outcomes.append($0) }
+      defer { door.uninstall() }
+      try #require(await door.install() == .ready)
+
+      let reply = try await runClient(
+        #"""
+        c = dev_control.Connection(\#(door.pid))
+        forced = c.request("settings.set", {"key": "toggleKeyCode", "value": 4321, "force": True})
+        plain = c.request("settings.set", {"key": "toggleKeyCode", "value": 4322})
+        got = c.request("settings.get", {"key": "toggleKeyCode"})
+        listed = c.request("settings.list")
+        print(json.dumps({"forced": forced, "plain": plain, "got": got, "count": len(listed["result"]["settings"])}))
+        """#)
+      let forced = try #require(reply["forced"] as? [String: Any])
+      #expect(forced["ok"] as? Bool == true)
+      #expect((forced["result"] as? [String: Any])?["forced"] as? Bool == true)
+      let plain = try #require(reply["plain"] as? [String: Any])
+      #expect((plain["error"] as? [String: Any])?["code"] as? String == "checkNotYetShared")
+      let got = try #require(reply["got"] as? [String: Any])
+      #expect((got["result"] as? [String: Any])?["value"] as? Int == 4321)
+      #expect(reply["count"] as? Int == 70)
+
+      try #require(outcomes.count == 4, "outcomes: \(outcomes)")
+      #expect(outcomes[0].contains("cmd=settings.set ok=true forced=true code=none"))
+      #expect(outcomes[1].contains("cmd=settings.set ok=false forced=false code=checkNotYetShared"))
+      #expect(outcomes[2].contains("cmd=settings.get ok=true forced=false code=none"))
+      for line in outcomes {
+        #expect(line.contains("4321") == false)
+        #expect(line.contains("4322") == false)
+        #expect(line.contains("toggleKeyCode") == false)
       }
       try await stop(door)
     }
@@ -471,7 +541,7 @@
 
     @Test("uninstall while starting resolves install as failed; the path stays reserved until the listener stops")
     func uninstallWhileStarting() async throws {
-      let door = DevControlDoor(dispatcher: DevControlDispatcher())
+      let door = DevControlDoor(dispatcher: Self.dispatcher())
       defer { door.uninstall() }
       var stateAtStart: DevControlDoor.State?
       door.onListenerStarted = { [weak door] in
@@ -496,28 +566,28 @@
 
     @Test("an idle door's uninstall leaves an installed door alone; a replacement waits for the stop")
     func pathReservationAcrossDoors() async throws {
-      let first = DevControlDoor(dispatcher: DevControlDispatcher())
+      let first = DevControlDoor(dispatcher: Self.dispatcher())
       defer { first.uninstall() }
       try #require(await first.install() == .ready)
 
-      let idle = DevControlDoor(dispatcher: DevControlDispatcher())
+      let idle = DevControlDoor(dispatcher: Self.dispatcher())
       idle.uninstall()
       #expect(DevControlDoor.socketModeIsPrivate(first.socketPath))
       let reached = try await runClient("print(json.dumps(dev_control.ping(\(first.pid))))")
       #expect(reached["ok"] as? Bool == true)
 
-      let early = DevControlDoor(dispatcher: DevControlDispatcher())
+      let early = DevControlDoor(dispatcher: Self.dispatcher())
       #expect(await early.install() == .refused("pathInUse"))
 
       first.uninstall()
-      let beforeStop = DevControlDoor(dispatcher: DevControlDispatcher())
+      let beforeStop = DevControlDoor(dispatcher: Self.dispatcher())
       // No suspension between the uninstall above and this check, so the listener's
       // cancellation cannot have been processed yet.
       #expect(await beforeStop.install() == .refused("pathInUse"))
       try #require(
         await settleUntilObserved { first.listenerHasStopped }, "listener never reported stopped")
 
-      let replacement = DevControlDoor(dispatcher: DevControlDispatcher())
+      let replacement = DevControlDoor(dispatcher: Self.dispatcher())
       defer { replacement.uninstall() }
       #expect(await replacement.install() == .ready)
       try await stop(replacement)

@@ -359,9 +359,12 @@
           close(session, key: key)
           return
         }
-        let (reply, command) = await answer(frame)
+        let (reply, command, forced) = await answer(frame)
         guard isLive(session, owning) else { return }
-        guard await send(reply, correlation: correlation, command: command, on: session) else {
+        guard
+          await send(
+            reply, correlation: correlation, command: command, forced: forced, on: session)
+        else {
           close(session, key: key)
           return
         }
@@ -403,38 +406,39 @@
 
     /// One request frame to one reply object (identity fields are added by `send`) and the
     /// command label the log may carry: an admitted command name, `unknown`, or `none`.
-    private func answer(_ frame: Data) async -> (reply: [String: Any], command: String) {
+    private func answer(_ frame: Data) async -> (reply: [String: Any], command: String, forced: Bool) {
       guard let text = String(data: frame, encoding: .utf8) else {
-        return (Self.errorReply(id: nil, code: "malformed", message: "not UTF-8"), "none")
+        return (Self.errorReply(id: nil, code: "malformed", message: "not UTF-8"), "none", false)
       }
       guard let object = try? JSONSerialization.jsonObject(with: Data(text.utf8)),
         let request = object as? [String: Any]
       else {
-        return (Self.errorReply(id: nil, code: "malformed", message: "not a JSON object"), "none")
+        return (Self.errorReply(id: nil, code: "malformed", message: "not a JSON object"), "none", false)
       }
       let rawID = request["id"]
       let id = rawID as? String
       let idIsValid = rawID == nil || (id.map { $0.count <= 128 } ?? false)
       guard idIsValid else {
         return (
-          Self.errorReply(id: nil, code: "malformed", message: "id must be a short string"), "none"
+          Self.errorReply(id: nil, code: "malformed", message: "id must be a short string"), "none",
+          false
         )
       }
       guard let name = request["cmd"] as? String else {
-        return (Self.errorReply(id: id, code: "malformed", message: "cmd must be a string"), "none")
+        return (Self.errorReply(id: id, code: "malformed", message: "cmd must be a string"), "none", false)
       }
       let rawArgs = request["args"]
       guard rawArgs == nil || rawArgs is [String: Any] else {
-        return (Self.errorReply(id: id, code: "malformed", message: "args must be an object"), "none")
+        return (Self.errorReply(id: id, code: "malformed", message: "args must be an object"), "none", false)
       }
       let args = rawArgs as? [String: Any] ?? [:]
       let command = DevControlDispatcher.Command(rawValue: name)
       let label = command?.rawValue ?? "unknown"
       switch await handler(command, args) {
-      case .ok(let payload):
-        return (["id": Self.idValue(id), "ok": true, "result": payload], label)
+      case .ok(let payload, let forced):
+        return (["id": Self.idValue(id), "ok": true, "result": payload], label, forced)
       case .error(let code, let message):
-        return (Self.errorReply(id: id, code: code, message: message), label)
+        return (Self.errorReply(id: id, code: code, message: message), label, false)
       }
     }
 
@@ -465,7 +469,8 @@
     /// Encodes, logs the outcome of the reply ACTUALLY chosen, and sends it. True when the
     /// send completed without error.
     private func send(
-      _ reply: [String: Any], correlation: UUID, command: String, on session: Session
+      _ reply: [String: Any], correlation: UUID, command: String, forced: Bool = false,
+      on session: Session
     ) async -> Bool {
       var chosen = reply
       var payload = encode(reply)
@@ -477,7 +482,9 @@
       }
       let ok = (chosen["ok"] as? Bool) == true
       let code = ((chosen["error"] as? [String: Any])?["code"] as? String) ?? "none"
-      let outcome = "corr=\(correlation) cmd=\(command) ok=\(ok) code=\(code)"
+      // `forced` is the operation's fact from the dispatcher: a forced write that completed
+      // stays forced even when its reply is replaced by `responseTooLarge`.
+      let outcome = "corr=\(correlation) cmd=\(command) ok=\(ok) forced=\(forced) code=\(code)"
       onOutcomeLogged?(outcome)
       log(outcome)
       guard var bytes = payload else { return false }
