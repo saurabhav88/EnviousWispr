@@ -210,20 +210,38 @@ import Testing
     #expect(ended.isSet, "end() must complete once the cancel finishes")
   }
 
-  /// Records the order of start and cancel; `start` holds until released.
+  /// Records the order of start and cancel. `start` signals its entry and holds on a gate the
+  /// test opens; every signal is a continuation the subject resumes, never a poll.
   private final class OrderedSession: WhisperIncrementalSession, @unchecked Sendable {
     private let mutex = NSLock()
     private var log: [String] = []
-    private var releasedStart = false
+    private var gate: CheckedContinuation<Void, Never>?
+    private var gateOpen = false
+    let startEntered = PreviewWait.Once()
     var events: [String] { mutex.withLock { log } }
-    func releaseStart() { mutex.withLock { releasedStart = true } }
+
+    /// Opens the start gate (idempotent; also the cleanup when a wait expires).
+    func releaseStart() {
+      let waiting = mutex.withLock { () -> CheckedContinuation<Void, Never>? in
+        gateOpen = true
+        defer { gate = nil }
+        return gate
+      }
+      waiting?.resume()
+    }
 
     func start(
       audioSamplesProvider: @Sendable @escaping () async -> (samples: [Float], count: Int)
     ) async {
       mutex.withLock { log.append("start entered") }
-      while !mutex.withLock({ releasedStart }) {
-        try? await Task.sleep(for: .milliseconds(2))  // deadline-fallback: released by the test
+      startEntered.fulfil(true)
+      await withCheckedContinuation { c in
+        let open = mutex.withLock { () -> Bool in
+          if gateOpen { return true }
+          gate = c
+          return false
+        }
+        if open { c.resume() }
       }
       mutex.withLock { log.append("start returned") }
     }
@@ -251,27 +269,27 @@ import Testing
 
   @Test("end() during a start waits for the start, then cancels it")
   func endDuringStartCancelsAfterTheStart() async {
-    let handle = TranscribeCppPreviewSession(lookups: nil, onText: { _ in })
+    let teardownStarted = PreviewWait.Once()
+    let handle = TranscribeCppPreviewSession(
+      lookups: nil, onText: { _ in }, onTeardownStarted: { teardownStarted.fulfil(true) })
     let session = OrderedSession()
     let attaching = Task { await handle.attach(session) }
-    for _ in 0..<500 where session.events.isEmpty {
-      try? await Task.sleep(for: .milliseconds(2))  // deadline-fallback: bounded poll
+    await PreviewWait.within("the start's entry", onExpiry: session.releaseStart) {
+      _ = await session.startEntered.value()
     }
-    #expect(session.events == ["start entered"], "control: the start is in progress")
 
-    let ended = Flag()
-    let ending = Task {
-      await handle.end()
-      ended.set()
+    let ending = Task { await handle.end() }
+    // The subject's own signal: teardown began and is now joining the held start.
+    await PreviewWait.within("teardown's entry", onExpiry: session.releaseStart) {
+      _ = await teardownStarted.value()
     }
-    // deadline-fallback: give an early cancel a real chance to land before the start returns.
-    try? await Task.sleep(for: .milliseconds(100))
-    #expect(!ended.isSet, "end() returned while the start was still running")
-    #expect(session.events == ["start entered"], "no cancel before the start returned")
+    #expect(session.events == ["start entered"], "no cancel while the start is still held")
 
     session.releaseStart()
-    await attaching.value
-    await ending.value
+    await PreviewWait.within("attach and end to finish", onExpiry: session.releaseStart) {
+      await attaching.value
+      await ending.value
+    }
     #expect(session.events == ["start entered", "start returned", "cancel"])
   }
 

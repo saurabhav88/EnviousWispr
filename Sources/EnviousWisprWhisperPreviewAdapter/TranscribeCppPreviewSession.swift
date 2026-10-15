@@ -75,8 +75,14 @@ package final class TranscribeCppPreviewSession: LivePreviewEngineSession, @unch
 
   private let continuation: AsyncStream<String>.Continuation
   private let publisher: Task<Void, Never>
+  /// Test seam: fires when teardown begins, before it joins a pending start (nil in the app).
+  private let onTeardownStarted: (@Sendable () -> Void)?
 
-  init(lookups: WordCorrector.Lookups?, onText: @escaping @Sendable (String) -> Void) {
+  init(
+    lookups: WordCorrector.Lookups?, onText: @escaping @Sendable (String) -> Void,
+    onTeardownStarted: (@Sendable () -> Void)? = nil
+  ) {
+    self.onTeardownStarted = onTeardownStarted
     // `bufferingNewest(1)`: a preview only ever wants the LATEST text. An
     // unbounded buffer would queue stale hypotheses behind a slow consumer and
     // display them after they had stopped being true.
@@ -233,9 +239,10 @@ package final class TranscribeCppPreviewSession: LivePreviewEngineSession, @unch
       // than an assumption, and costs one nil check.
       let capStop = s.decodeStop
       let starting = s.attaching
-      let task = Task { [continuation, publisher] in
+      let task = Task { [continuation, publisher, onTeardownStarted] in
         continuation.finish()
         publisher.cancel()
+        onTeardownStarted?()
         await starting?.value  // the cancel must follow the start it undoes
         await live?.cancel()
         await capStop?.value
