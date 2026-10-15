@@ -566,6 +566,14 @@ def identity_cases(r, tree):
              "doorError", None),
             ("a malformed reply to a mutation", later(result=None), ["words", "add", "X"], 1,
              "outcomeUnknown", None),
+            ("a mutation whose reply was too large to send",
+             later(ok=False, result=None,
+                   error={"code": "responseTooLarge", "message": "reply over limit"}),
+             ["settings", "set", "k", "1"], 1, "outcomeUnknown", None),
+            ("a read whose reply was too large stays the door's refusal",
+             later(ok=False, result=None,
+                   error={"code": "responseTooLarge", "message": "reply over limit"}),
+             ["history", "list"], 1, "responseTooLarge", None),
         ):
             door.respond = respond
             status, document, _, _ = _run(["--worktree", tree.wt] + argv,

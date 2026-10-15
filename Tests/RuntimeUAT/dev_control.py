@@ -543,6 +543,13 @@ def _door_call(session, cmd, wire, mutation):
                 f"{error}; the change may or may not have applied: read the state back "
                 "before retrying", EXIT_FAILED) from error
         raise CliError("doorError", str(error), EXIT_FAILED) from error
+    if mutation and not reply["ok"] and reply["error"]["code"] == "responseTooLarge":
+        # The door dispatched the change and only its reply was too large to send, so
+        # the change may have applied. Every other refusal comes before the owner is called.
+        raise CliError(
+            "outcomeUnknown",
+            "the change may have applied, but its reply was over the size limit: read the "
+            "state back before retrying", EXIT_FAILED)
     return (EXIT_OK if reply["ok"] else EXIT_FAILED), reply
 
 
