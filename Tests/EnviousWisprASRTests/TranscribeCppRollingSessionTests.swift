@@ -980,6 +980,32 @@ struct TranscribeCppRollingSessionTests {
     #expect(shown.all.first.map { unbroken.hasSuffix($0) } == true, "the newest text, unspaced")
   }
 
+  @Test("an oversized committed word and an oversized hypothesis are both handed over within the limit")
+  func previewBuildsOversizedTextWithinTheLimit() async {
+    let unbroken = String(repeating: "日本語の文章", count: 600)  // 3,600 characters, no spaces
+    let d = ScriptedDecoder([
+      [Self.native(0, 1000, unbroken)],
+      [Self.native(0, 1000, unbroken)],  // agrees: the oversized word commits
+      [Self.native(0, 1000, unbroken), Self.native(1000, 2000, " and" + unbroken)],
+    ])
+    let shown = Shown()
+    let audio = Audio()
+    audio.set(Self.voiced(1))
+    let s = Self.previewSession(d.decode, limit: 2_000, shown: shown)
+    await s.start(audioSamplesProvider: audio.provider)
+    for (step, seconds) in [2, 3].enumerated() {
+      await Self.within("cycle \(step + 1)") { await s.cyclesCompleted(reach: step + 1) }
+      audio.set(Self.voiced(Float(seconds)))
+    }
+    await Self.within("cycle 3") { await s.cyclesCompleted(reach: 3) }
+    await s.cancel()
+    #expect(d.callSampleCounts.count == 3, "control: all three decodes ran")
+    #expect(await s.committedTextForTests.count <= 2_000, "the committed oversized word is kept bounded")
+    #expect(!shown.all.isEmpty && shown.all.allSatisfy { $0.count <= 2_000 })
+    #expect(shown.all.last.map { unbroken.hasSuffix($0) || $0.hasSuffix(String(unbroken.suffix(100))) } == true,
+            "the newest text, from the end")
+  }
+
   @Test("continuous unstable speech past the window bound keeps handing over bounded text")
   func previewStaysBoundedPastTheWindow() async {
     // Every decode disagrees with the last, so nothing commits and the window advances by force.

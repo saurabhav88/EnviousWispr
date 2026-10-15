@@ -67,6 +67,9 @@ package final class TranscribeCppPreviewSession: LivePreviewEngineSession, @unch
     /// the same cached model while the capped one is still decoding. Set in the SAME lock acquisition that clears `session`, so
     /// there is no window where neither is visible.
     var decodeStop: Task<Void, Never>?
+    /// The attach's `start`, JOINABLE: `end()` and the cap path await it before cancelling, so a
+    /// cancel can never land before the start it must undo (#3735 Chunk 9 review).
+    var attaching: Task<Void, Never>?
   }
   private let state = OSAllocatedUnfairLock(initialState: State())
 
@@ -143,18 +146,28 @@ package final class TranscribeCppPreviewSession: LivePreviewEngineSession, @unch
   /// from `init` because `start` is actor-isolated and an initializer cannot
   /// await.
   func attach(_ session: any WhisperIncrementalSession) async {
-    let alreadyEnded = state.withLock { s -> Bool in
+    // Accepted only while live, in the SAME lock acquisition that records the start, so `end()`
+    // either refuses it here or finds `attaching` and joins it. An ended handle must not keep a
+    // session: its publication callback retains this handle, and that cycle would keep the
+    // preview model loaded after teardown finished.
+    let starting: Task<Void, Never>? = state.withLock { s in
+      guard !s.ended, !s.capped else { return nil }
       s.session = session
-      return s.ended
+      let task = Task { [weak self] in
+        await session.start { [weak self] in
+          guard let self else { return (samples: [], count: 0) }
+          return self.state.withLock { s in (samples: s.samples, count: s.samples.count) }
+        }
+      }
+      s.attaching = task
+      return task
     }
-    // A session ended before it attached must not start a loop that nothing will
-    // stop. Cheap here; an orphaned decode loop is not.
-    guard !alreadyEnded else { return }
-
-    await session.start { [weak self] in
-      guard let self else { return (samples: [], count: 0) }
-      return self.state.withLock { s in (samples: s.samples, count: s.samples.count) }
+    guard let starting else {
+      // Never started: cancel only releases it.
+      await session.cancel()
+      return
     }
+    await starting.value
   }
 
   package func feed(_ newSamples: [Float]) async {
@@ -186,7 +199,11 @@ package final class TranscribeCppPreviewSession: LivePreviewEngineSession, @unch
     let stop: Task<Void, Never>? = state.withLock { s in
       guard let live = s.session else { return s.decodeStop }
       s.session = nil
-      let task = Task { await live.cancel() }
+      let starting = s.attaching
+      let task = Task {
+        await starting?.value  // the cancel must follow the start it undoes
+        await live.cancel()
+      }
       s.decodeStop = task
       return task
     }
@@ -215,9 +232,11 @@ package final class TranscribeCppPreviewSession: LivePreviewEngineSession, @unch
       // this does — but awaiting both is what makes that an observation rather
       // than an assumption, and costs one nil check.
       let capStop = s.decodeStop
+      let starting = s.attaching
       let task = Task { [continuation, publisher] in
         continuation.finish()
         publisher.cancel()
+        await starting?.value  // the cancel must follow the start it undoes
         await live?.cancel()
         await capStop?.value
       }

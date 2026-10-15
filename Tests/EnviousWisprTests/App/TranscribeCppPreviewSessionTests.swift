@@ -210,6 +210,71 @@ import Testing
     #expect(ended.isSet, "end() must complete once the cancel finishes")
   }
 
+  /// Records the order of start and cancel; `start` holds until released.
+  private final class OrderedSession: WhisperIncrementalSession, @unchecked Sendable {
+    private let mutex = NSLock()
+    private var log: [String] = []
+    private var releasedStart = false
+    var events: [String] { mutex.withLock { log } }
+    func releaseStart() { mutex.withLock { releasedStart = true } }
+
+    func start(
+      audioSamplesProvider: @Sendable @escaping () async -> (samples: [Float], count: Int)
+    ) async {
+      mutex.withLock { log.append("start entered") }
+      while !mutex.withLock({ releasedStart }) {
+        try? await Task.sleep(for: .milliseconds(2))  // deadline-fallback: released by the test
+      }
+      mutex.withLock { log.append("start returned") }
+    }
+    func noteStopRequested() async {}
+    func finalize(finalSamples: [Float], speechSegments: [SpeechSegment]) async
+      -> IncrementalResult
+    {
+      fatalError("the preview never finalizes — it cancels")
+    }
+    func cancel() async { mutex.withLock { log.append("cancel") } }
+  }
+
+  /// **What the user sees when this fails:** after a very short recording, the preview model
+  /// stays in memory (the ended handle and its session keep each other alive), or a preview
+  /// keeps decoding after the recording ended.
+  @Test("a session attached after end() is never started and is released")
+  func attachAfterEndNeverStarts() async {
+    let handle = TranscribeCppPreviewSession(lookups: nil, onText: { _ in })
+    await handle.end()
+    let session = OrderedSession()
+    session.releaseStart()
+    await handle.attach(session)
+    #expect(session.events == ["cancel"], "never started, only released")
+  }
+
+  @Test("end() during a start waits for the start, then cancels it")
+  func endDuringStartCancelsAfterTheStart() async {
+    let handle = TranscribeCppPreviewSession(lookups: nil, onText: { _ in })
+    let session = OrderedSession()
+    let attaching = Task { await handle.attach(session) }
+    for _ in 0..<500 where session.events.isEmpty {
+      try? await Task.sleep(for: .milliseconds(2))  // deadline-fallback: bounded poll
+    }
+    #expect(session.events == ["start entered"], "control: the start is in progress")
+
+    let ended = Flag()
+    let ending = Task {
+      await handle.end()
+      ended.set()
+    }
+    // deadline-fallback: give an early cancel a real chance to land before the start returns.
+    try? await Task.sleep(for: .milliseconds(100))
+    #expect(!ended.isSet, "end() returned while the start was still running")
+    #expect(session.events == ["start entered"], "no cancel before the start returned")
+
+    session.releaseStart()
+    await attaching.value
+    await ending.value
+    #expect(session.events == ["start entered", "start returned", "cancel"])
+  }
+
   // MARK: - #2108: the turnover lock actually serializes
 
   /// Tests the PRIMITIVE, not the vendor.

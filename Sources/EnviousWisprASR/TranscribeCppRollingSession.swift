@@ -504,12 +504,18 @@ package actor TranscribeCppRollingSession: WhisperIncrementalSession {
   }
 
   /// Appends to a transcript. Heart mode keeps it whole; preview mode keeps only its last
-  /// `retentionLimit` characters, so the preview never holds a growing transcript.
+  /// `retentionLimit` characters, and builds them within that budget: the incoming piece is cut
+  /// to the limit and only the room left is taken from the kept text, so no step ever joins
+  /// more than the limit (plus one separating space).
   private func appendTranscript(_ text: inout String, _ piece: String) {
-    text = Self.join(text, piece)
-    if let limit = publication?.retentionLimit, text.count > limit {
-      text = String(text.suffix(limit))
+    guard let limit = publication?.retentionLimit else {
+      text = Self.join(text, piece)
+      return
     }
+    let incoming = piece.count > limit ? String(piece.suffix(limit)) : piece
+    let room = limit - incoming.count
+    let kept = room > 0 ? String(text.suffix(room)) : ""
+    text = String(Self.join(kept, incoming).suffix(limit))
   }
 
   /// Preview mode: hands the display the committed tail plus the held-back words, built from
@@ -518,7 +524,17 @@ package actor TranscribeCppRollingSession: WhisperIncrementalSession {
   private func publishHypothesis() {
     guard let publication else { return }
     let limit = publication.retentionLimit
-    let held = heldBack.reduce("") { Self.join($0, $1.unit.text) }
+    // Built from the end within the budget: newest held-back word first, each cut to the limit,
+    // stopping once the budget is full, so an oversized hypothesis is never assembled whole.
+    var held = ""
+    for entry in heldBack.reversed() {
+      let unit = entry.unit.text
+      held = Self.join(unit.count > limit ? String(unit.suffix(limit)) : unit, held)
+      if held.count >= limit {
+        held = String(held.suffix(limit))
+        break
+      }
+    }
     let tail =
       held.count >= limit
       ? String(held.suffix(limit))
