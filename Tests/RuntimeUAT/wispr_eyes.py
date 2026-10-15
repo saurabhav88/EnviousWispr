@@ -605,6 +605,18 @@ def _play_take(audio, on_fail):
             raise _tg.SetupFailed("playback", f"afplay did not start: {exc!r}")
 
 
+def _recording_idle(seconds=30.0):
+    """Whether the app stopped recording: its menu offers Start Recording and not Stop Recording.
+    Both are read so a menu AX cannot see at all never reads as idle (#3764)."""
+    deadline = time.monotonic() + seconds
+    while time.monotonic() < deadline:
+        if (_find_match(_app, "Stop Recording", "AXMenuItem") is None
+                and _find_match(_app, "Start Recording", "AXMenuItem") is not None):
+            return True
+        time.sleep(0.3)  # settle: the recording state changes asynchronously; no ack to await
+    return False
+
+
 def _take_lines(start):
     """The take's own app.log entries, rotation-proof (`log_entries_since`)."""
     return "\n".join(log_entries_since(start))
@@ -2082,7 +2094,7 @@ def test_recording(audio=None, sentence=None, hold=3.0, expect=None, timeout=30.
         print("BLOCKED: Could not tap 'Start Recording'")
         end_test()
         return False
-    _tg.take_started(lambda: tap("Stop Recording"))
+    _tg.take_started(lambda: tap("Stop Recording"), _recording_idle)
     time.sleep(0.5)
 
     # Check overlay appeared
@@ -2094,6 +2106,7 @@ def test_recording(audio=None, sentence=None, hold=3.0, expect=None, timeout=30.
     if audio:
         print(f"Playing audio...")
         audio_proc = _play_take(audio, on_fail=lambda: (_tg.stop_active_take(), end_test()))
+        _tg.take_player(audio_proc)
 
     # Record for duration
     remaining = hold - 0.5
@@ -3210,13 +3223,14 @@ def test_ptt(key=None, audio=None, sentence=None, expect=None, timeout=10.0):
         print(f"BLOCKED: Unknown key '{key}'")
         end_test()
         return False
-    _tg.take_started(_key_up)  # #3764: any exit before the key-up below still releases it
+    _tg.take_started(_key_up, _recording_idle)  # #3764: any exit before the key-up still releases it
 
     time.sleep(0.8)  # let recording engage + model warm
 
     # Phase 2: Play audio
     print(f"Playing audio ({audio_dur:.2f}s)...")
     audio_proc = _play_take(audio, on_fail=lambda: (_tg.stop_active_take(), end_test()))
+    _tg.take_player(audio_proc)
 
     # Phase 3: Wait for audio + buffer
     hold_audio = audio_dur + 0.8
@@ -3339,10 +3353,16 @@ def record_tts(sentence="The quick brown fox jumps over the lazy dog", key=None,
     def _play():
         time.sleep(0.3)  # let key press register first
         try:
-            played.append(subprocess.run(["afplay", audio_path], stdout=subprocess.DEVNULL,
-                                         stderr=subprocess.DEVNULL).returncode)
+            proc = subprocess.Popen(["afplay", audio_path], stdout=subprocess.DEVNULL,
+                                    stderr=subprocess.DEVNULL)
+            _tg.take_player(proc)
+            played.append(proc.wait())
         except Exception:
             played.append(None)
+
+    # `hold_key` releases the key in its own finally; the registration makes an interrupted take
+    # stop its player and prove the app idle before the audio rig restores the microphone.
+    _tg.take_started(lambda: None, _recording_idle)
 
     player = threading.Thread(target=_play)
     player.start()
@@ -3352,6 +3372,7 @@ def record_tts(sentence="The quick brown fox jumps over the lazy dog", key=None,
         _si.hold_key(key, duration=hold_dur, before_release=before_release)
     finally:
         player.join()
+    _tg.take_stopped()
 
     # Wait for pipeline (ASR + polish + paste)
     print(f"Waiting {wait:.0f}s for pipeline...")

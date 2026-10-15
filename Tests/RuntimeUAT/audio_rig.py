@@ -162,14 +162,23 @@ class AudioRig:
     def _restore_all(self):
         """Every step runs even if another fails; True only when all verified. A take still
         running is stopped FIRST, so no recording outlives its route."""
-        tg.stop_active_take()
+        take_idle = tg.stop_active_take()
         tg.clear_target()
         try:
             self.target.close()
         except Exception as close_exc:  # a leftover test document never blocks the restore
             print(f"RIG: could not close the test document: {close_exc!r}", flush=True)
-        ok = True
-        for part in (self.route, self.alerts):
+        ok = take_idle
+        parts = (self.route, self.alerts)
+        if not take_idle and self.route is not None:
+            # The app may still be recording: put the SPEAKERS back but leave the system input and
+            # the app's microphone on BlackHole, so it can only hear silence, never the room. The
+            # on-disk restore file stays for `python3 silent_audio.py restore` once it is stopped.
+            self._speakers_back(self.route.original_output)
+            print("RIG: a take could not be proven stopped; the app's microphone stays on BlackHole. "
+                  "Stop the recording, then run `python3 Tests/RuntimeUAT/silent_audio.py restore`", flush=True)
+            parts = (self.alerts,)
+        for part in parts:
             if part is None:
                 continue
             try:
@@ -184,14 +193,20 @@ class AudioRig:
         self.restored = ok
         return ok
 
+    @staticmethod
+    def _speakers_back(device):
+        subprocess.run([sa.SWITCH, "-s", device, "-t", "output"], capture_output=True)
+
     def __exit__(self, exc_type, exc, tb):
         if self._restore_all():
             return False
         print("RIG RESTORE INCOMPLETE: run `python3 Tests/RuntimeUAT/silent_audio.py restore`",
               flush=True)
         if exc_type is None:
-            # A take that passed while the founder's devices stayed on BlackHole is not a pass.
-            raise tg.SetupFailed("restore", "audio devices or the app microphone were not put back")
+            # A take that passed while the founder's devices stayed on BlackHole, or while the app
+            # may still be recording, is not a pass.
+            raise tg.SetupFailed("restore", "a take was not proven stopped, or audio devices or the "
+                                 "app microphone were not put back")
         return False
 
 
@@ -277,7 +292,7 @@ def _self_test():
     expect("an app that vanished during restore still lets the alerts restore", later.calls == 1)
 
     order = []
-    tg.take_started(lambda: order.append("take stopped"))
+    tg.take_started(lambda: order.append("take stopped"), lambda: True)
 
     class Logs(Fake):
         def restore(self):
@@ -288,6 +303,45 @@ def _self_test():
     rig.__exit__(RuntimeError, RuntimeError("take crashed"), None)
     expect("a running take is stopped before the devices are restored",
            order == ["take stopped", "devices restored"])
+
+    tg.take_started(lambda: 1 / 0, lambda: True)
+    rig = AudioRig(target=FakeTarget())
+    rig.route, rig.alerts = Fake(), Fake()
+    expect("a stop that raises but leaves the app idle restores normally",
+           rig.__exit__(None, None, None) is False and rig.restored)
+
+    for label, stop, idle in (("a take that stays recording", lambda: None, lambda: False),
+                              ("an idle check that raises", lambda: None, lambda: 1 / 0)):
+        tg.take_started(stop, idle)
+        rig = AudioRig(target=FakeTarget())
+        rig._speakers_back = lambda device: None  # never touch the real devices in a self-test
+        route = Fake()
+        route.original_output = "MacBook Pro Speakers"
+        alerts = Fake()
+        rig.route, rig.alerts = route, alerts
+        try:
+            rig.__exit__(None, None, None)
+            expect(f"{label}: never a pass", False)
+        except tg.SetupFailed as exc:
+            expect(f"{label}: SETUP FAILED, app mic left on BlackHole, alerts restored",
+                   exc.step == "restore" and route.calls == 0 and alerts.calls == 1)
+
+    class Player:
+        def __init__(self):
+            self.terminated = False
+        def poll(self):
+            return None if not self.terminated else -15
+        def terminate(self):
+            self.terminated = True
+        def wait(self, timeout=None):
+            return -15
+        def kill(self):
+            pass
+    player = Player()
+    tg.take_started(lambda: None, lambda: True)
+    tg.take_player(player)
+    expect("an interrupted take's player is stopped before the restore",
+           tg.stop_active_take() and player.terminated)
 
     class Boom(FakeTarget):
         def ready(self):

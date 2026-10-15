@@ -42,34 +42,61 @@ class CouldNotTell(RuntimeError):
         super().__init__(f"COULD NOT TELL: {detail}. Not an app result.")
 
 
-_take_cleanup = None
+_take = None  # {"stop": callable, "idle": callable, "player": Popen or None}
 
 
-def take_started(stop):
-    """Register how to stop the running take (menu Stop, key up). Whatever ends the run, an
-    exception, an interrupt or a SetupFailed, `stop_active_take` runs it before the audio rig
-    puts the devices back, so a recording never outlives its route (#3764)."""
-    global _take_cleanup
-    _take_cleanup = stop
+def take_started(stop, idle):
+    """Register the running take: `stop()` ends it (menu Stop, key up) and `idle()` answers
+    whether the app is no longer recording. Whatever ends the run, `stop_active_take` stops the
+    player and the take and PROVES the app idle before the audio rig puts the devices back."""
+    global _take
+    _take = {"stop": stop, "idle": idle, "player": None}
+
+
+def take_player(proc):
+    """The running take's audio player, so an interrupted take stops it before output returns
+    to the speakers."""
+    if _take is not None:
+        _take["player"] = proc
 
 
 def take_stopped():
     """The take ended normally: nothing left to stop."""
-    global _take_cleanup
-    _take_cleanup = None
+    global _take
+    _take = None
 
 
 def stop_active_take():
-    """Stop a registered take once; never raises (it runs on the way out of a failure)."""
-    global _take_cleanup
-    stop, _take_cleanup = _take_cleanup, None
-    if stop is None:
-        return
+    """Stop a registered take's player and capture, then verify the app is idle. Returns True
+    when nothing was running or the stop is proven; never raises (it runs on the way out of a
+    failure, including an interrupt)."""
+    global _take
+    take, _take = _take, None
+    if take is None:
+        return True
+    proc = take["player"]
+    if proc is not None:
+        try:
+            if proc.poll() is None:
+                proc.terminate()
+            proc.wait(timeout=5)
+        except BaseException:
+            try:
+                proc.kill()
+            except BaseException:
+                pass
     try:
-        stop()
-        print("TAKE STOPPED by cleanup before the restore", flush=True)
-    except BaseException as exc:  # an interrupt during cleanup must not skip the device restore
-        print(f"TAKE CLEANUP FAILED: {exc!r}; the app may still be recording", flush=True)
+        take["stop"]()
+    except BaseException as exc:
+        print(f"TAKE CLEANUP: stop raised {exc!r}", flush=True)
+    try:
+        idle = bool(take["idle"]())
+    except BaseException as exc:
+        print(f"TAKE CLEANUP: idle check raised {exc!r}", flush=True)
+        idle = False
+    print("TAKE STOPPED and verified idle before the restore" if idle else
+          "TAKE CLEANUP FAILED: the app may still be recording", flush=True)
+    return idle
 
 
 def declare_target(bundle_id, activate=None):
