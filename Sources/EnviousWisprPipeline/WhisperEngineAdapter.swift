@@ -13,7 +13,7 @@ import Foundation
 // orchestration from `WhisperKitPipeline.swift`: model load + cancellation
 // (#445 held `prepareTask`), `warmUpFromCache` (cache-only preload, no
 // network), `beginSession` (cancel pending model unload), `acceptAudio`
-// (retained-PCM accumulator, bounded), `observeSpeechSegments` (store voiced
+// (streaming feed into `streamingPCM`, bounded), `observeSpeechSegments` (store voiced
 // ranges from the kernel's VAD), `finalize` (LID → transcribe with
 // `clipTimestamps` derived from observed segments → single clean batch
 // decode), `cancel` (cancels held tasks), `applyUnloadPolicy` (delay-then-
@@ -37,7 +37,7 @@ import Foundation
 // Scope (epic §4): an adapter owns its own ASR and rescue and NOTHING else —
 // no capture, no finalization, no paste, no UI, no FSM, no kernel state. The
 // adapter holds legitimate engine-session bookkeeping (a session ID, decode
-// options, an `isTerminal`/`isCancelled` pair, the retained PCM buffer, the
+// options, an `isTerminal`/`isCancelled` pair, the streaming buffer, the
 // authoritative batch-capture buffer, the observed speech segments, the LID
 // result, held async-task handles).
 //
@@ -51,17 +51,16 @@ import Foundation
 // The `finalize(batchSamples:)` parameter is intentionally ignored: it carries
 // the kernel's VAD-FILTERED `conditioned.samples` (silence stripped in place),
 // a different coordinate than the raw-sample segments. The earlier shape
-// decoded the adapter's own `onBufferCaptured`-fed `retainedPCM` and shifted
-// segments by `retainedPCM.count - capturedSamplesCount`; that shadow buffer is
-// async/lossy and diverges in length from `captureResult.samples`, so the shift
-// (always 0 in practice — retainedPCM is SHORTER, not longer) left segment ends
-// overrunning the buffer and WhisperKit threw "Audio samples are nil" on
-// alternating recordings. Restored OLD `WhisperKitPipeline.swift:614-615`
-// single-capture-coordinate parity. After #1307 removed the incremental
-// worker, `retainedPCM` has no production reader; it is still accumulated so
-// the #827 coordinate-regression tests keep exercising the capture-vs-shadow
-// distinction, and it is removed with the worker in Step 3. The Parakeet
-// adapter MUST use `batchSamples`; this adapter MUST NOT.
+// decoded the adapter's own `onBufferCaptured`-fed shadow copy (then named
+// `retainedPCM`) and shifted segments by its count minus `capturedSamplesCount`;
+// that shadow copy was async/lossy and diverged in length from
+// `captureResult.samples`, so the shift (always 0 in practice — the copy was
+// SHORTER, not longer) left segment ends overrunning the buffer and WhisperKit
+// threw "Audio samples are nil" on alternating recordings. Restored OLD
+// `WhisperKitPipeline.swift:614-615` single-capture-coordinate parity. After
+// #1307 removed the incremental worker the copy had no production reader, and
+// #3791 deleted it. The Parakeet adapter MUST use `batchSamples`; this adapter
+// MUST NOT.
 
 /// The kernel-facing `ASREngineAdapter` conformer for Whisper. Drives the
 /// underlying Whisper backend actor through a local `package` protocol seam
@@ -151,19 +150,6 @@ final class WhisperEngineAdapter: ASREngineAdapter, @unchecked Sendable {
 
   // MARK: Audio + speech segments
 
-  /// Live per-buffer accumulation from every `acceptAudio(_:)`, fed via
-  /// `onBufferCaptured` during capture. Historically the incremental worker's
-  /// live `audioSamplesProvider` read it; after #1307 removed the worker it has
-  /// NO production reader. It is still accumulated (and asserted by the #827
-  /// coordinate-regression tests) so the capture-vs-shadow distinction stays
-  /// under test, and is removed with the worker in Step 3. It is NOT the
-  /// batch-decode buffer: this stream is async/lossy and diverges in length
-  /// from the kernel's authoritative `captureResult.samples`, so using it for
-  /// the post-stop batch decode caused the "Audio samples are nil" alternating
-  /// failure (PR-5 Rung 5 UAT #827). Batch decode uses `batchCaptureSamples`
-  /// instead. Cleared on `cancel()` / `finalize()`.
-  private var retainedPCM: [Float] = []
-
   /// The authoritative raw capture audio for batch decode — the kernel's
   /// `captureResult.samples`, handed in by `observeSpeechSegments` at the stop
   /// boundary. This is the SAME buffer `observedSpeechSegments` index into, so
@@ -210,8 +196,8 @@ final class WhisperEngineAdapter: ASREngineAdapter, @unchecked Sendable {
   /// coordinate the whole streaming path lives in (§3.2). Fed by `acceptAudio`
   /// via retained `streamingFeedTasks` (Parakeet's drain pattern ported
   /// wholesale) and pulled by the session's provider closure (loop + flush). It
-  /// is DISTINCT from the lossy `retainedPCM` and from `batchCaptureSamples`
-  /// (the batch path's authoritative buffer): the streaming flush never reads
+  /// is DISTINCT from `batchCaptureSamples` (the batch path's authoritative
+  /// buffer): the streaming flush never reads
   /// `finalSamples`/`batchCaptureSamples`, so the pre-roll coordinate mismatch is
   /// structurally irrelevant. Bounded by the same recording cap. Cleared on
   /// `beginSession` / `cancel` / `finalize`.
@@ -227,12 +213,11 @@ final class WhisperEngineAdapter: ASREngineAdapter, @unchecked Sendable {
   /// `finalize`.
   private var streamingFeedTasks: [Task<Void, Never>] = []
 
-  /// Cap on `retainedPCM` — `maxRecordingDuration` worth of 16 kHz mono samples
-  /// (3600 s * 16 kHz = 57.6 M Float = ~230 MB; #1060 raised the cap 300→3600).
-  /// Mirrors Parakeet's cap so the two engines size memory the same way. On
-  /// reaching the cap the accumulation stops growing; recording auto-stops on
-  /// max-duration anyway.
-  private static let retainedPCMCap = Int(
+  /// Cap on `streamingPCM` — `maxRecordingDuration` worth of 16 kHz mono
+  /// samples (3600 s * 16 kHz = 57.6 M Float = ~230 MB; #1060 raised the cap
+  /// 300→3600). On reaching the cap the accumulation stops growing; recording
+  /// auto-stops on max-duration anyway.
+  private static let recordingSampleCap = Int(
     TimingConstants.maxRecordingDuration * AudioConstants.sampleRate)
 
   // MARK: Last-result + telemetry (Rung 2A passive surface)
@@ -519,7 +504,6 @@ final class WhisperEngineAdapter: ASREngineAdapter, @unchecked Sendable {
     sessionStreamingDegradeReason = streaming ? "none" : "disabled"
     sessionDegradedFlushResult = nil
     lastLanguageDetection = nil
-    retainedPCM.removeAll(keepingCapacity: true)
     observedSpeechSegments.removeAll()
     // Clear the authoritative batch buffer so a session that reaches finalize
     // without `observeSpeechSegments` can never decode a prior session's audio
@@ -631,9 +615,10 @@ final class WhisperEngineAdapter: ASREngineAdapter, @unchecked Sendable {
     }
   }
 
-  /// Accept one captured buffer. Always appends to `retainedPCM` (kept for the
-  /// #827 coordinate tests until Step 3). For a streaming session, ALSO appends
-  /// the samples to the lossless `streamingPCM` on a retained `Task` in
+  /// Accept one captured buffer. Batch sessions keep nothing here: batch
+  /// decode reads the kernel's capture handed in by `observeSpeechSegments`.
+  /// For a streaming session, appends the samples to the lossless
+  /// `streamingPCM` on a retained `Task` in
   /// `streamingFeedTasks`, which `finalize` drains before the flush (Parakeet's
   /// feed-task-handle pattern). A call after a terminal session is a no-op.
   func acceptAudio(_ buffer: AudioBufferHandoff) {
@@ -643,7 +628,6 @@ final class WhisperEngineAdapter: ASREngineAdapter, @unchecked Sendable {
     // would land in session B's buffers and misalign coordinates (Codex
     // code-diff r3 defect 3).
     guard !isTerminal, !isCancelled, buffer.sessionID == sessionID else { return }
-    appendRetainedPCM(from: buffer.buffer)
     guard streamingActive else { return }
     // Mirror Parakeet's per-buffer hand-off: dispatch the streamingPCM append on
     // its own retained `@MainActor` task and keep the handle so `finalize` awaits
@@ -670,8 +654,8 @@ final class WhisperEngineAdapter: ASREngineAdapter, @unchecked Sendable {
   /// directly from `observedSpeechSegments`. This restores OLD
   /// `WhisperKitPipeline.swift:614-615` parity (single capture-coordinate
   /// source) and fixes the alternating "Audio samples are nil" failure that the
-  /// prior `retainedPCM`-shadow-buffer + pre-roll-shift approach caused, since
-  /// the shadow buffer diverged in length from `captureResult.samples`
+  /// prior shadow-copy + pre-roll-shift approach caused, since the shadow copy
+  /// diverged in length from `captureResult.samples`
   /// (PR-5 Rung 5 UAT #827).
   func observeSpeechSegments(
     _ segments: [SpeechSegment], rawCaptureSamples: [Float]
@@ -750,8 +734,8 @@ final class WhisperEngineAdapter: ASREngineAdapter, @unchecked Sendable {
     // the kernel-driven model the kernel owns that gate.
     let minimumSamples = AudioConstants.minimumTranscriptionSamples
     // Batch decode over the kernel's authoritative `captureResult.samples`
-    // (handed in via `observeSpeechSegments`), NOT the lossy `retainedPCM`
-    // shadow buffer — the segments index into THIS buffer, so `clipTimestamps`
+    // (handed in via `observeSpeechSegments`), never a copy rebuilt from the
+    // buffer stream — the segments index into THIS buffer, so `clipTimestamps`
     // stay in range (PR-5 Rung 5 UAT #827 fix; OLD parity at
     // `WhisperKitPipeline.swift:614-615`).
     let rawSamples = batchCaptureSamples
@@ -1061,7 +1045,6 @@ final class WhisperEngineAdapter: ASREngineAdapter, @unchecked Sendable {
   /// does its own capacity-retaining reset; this is the free-memory variant
   /// for terminal/cancel.
   private func clearSessionBuffers() {
-    retainedPCM.removeAll()
     observedSpeechSegments.removeAll()
     batchCaptureSamples.removeAll()
     streamingPCM.removeAll()
@@ -1362,27 +1345,16 @@ final class WhisperEngineAdapter: ASREngineAdapter, @unchecked Sendable {
     }
   }
 
-  // MARK: PCM retention
-
-  /// Extract the buffer's Float32 samples and append to `retainedPCM`,
-  /// bounded by `retainedPCMCap`. Mirrors `ParakeetEngineAdapter`'s shape.
-  private func appendRetainedPCM(from buffer: AVAudioPCMBuffer) {
-    guard retainedPCM.count < Self.retainedPCMCap else { return }
-    let count = Int(buffer.frameLength)
-    guard count > 0, let channel = buffer.floatChannelData?[0] else { return }
-    let remaining = Self.retainedPCMCap - retainedPCM.count
-    let take = min(count, remaining)
-    retainedPCM.append(contentsOf: UnsafeBufferPointer(start: channel, count: take))
-  }
+  // MARK: Streaming PCM
 
   /// Append the buffer's Float32 samples to the lossless `streamingPCM` the
   /// streaming session reads, bounded by the same recording cap. Runs on
   /// `@MainActor` from a retained `streamingFeedTasks` task (#1276 PR-2).
   private func appendStreamingPCM(from buffer: AVAudioPCMBuffer) {
-    guard streamingPCM.count < Self.retainedPCMCap else { return }
+    guard streamingPCM.count < Self.recordingSampleCap else { return }
     let count = Int(buffer.frameLength)
     guard count > 0, let channel = buffer.floatChannelData?[0] else { return }
-    let remaining = Self.retainedPCMCap - streamingPCM.count
+    let remaining = Self.recordingSampleCap - streamingPCM.count
     let take = min(count, remaining)
     streamingPCM.append(contentsOf: UnsafeBufferPointer(start: channel, count: take))
   }

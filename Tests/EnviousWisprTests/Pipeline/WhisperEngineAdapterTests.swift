@@ -1267,7 +1267,7 @@ import Testing
     let sid = SessionID()
     try await adapter.beginSession(sid, options: .default, streaming: false)
     // Segments index into `rawCaptureSamples` (the kernel's captureResult.samples),
-    // NOT the adapter's retainedPCM shadow buffer — so they are stored verbatim,
+    // NOT the buffers fed through `acceptAudio` — so they are stored verbatim,
     // no pre-roll shift (#827 reverses the prior shift).
     adapter.observeSpeechSegments(
       [SpeechSegment(startSample: 100, endSample: 15_000)],
@@ -1279,14 +1279,14 @@ import Testing
   }
 
   @Test(
-    "batch decode uses rawCaptureSamples even when it is LONGER than retainedPCM (#827 nil-samples regression)"
+    "batch decode uses rawCaptureSamples even when it is LONGER than the fed audio (#827 nil-samples regression)"
   )
   func batchDecodeUsesCaptureBufferNotShadowPCM() async throws {
     // Reproduces the alternating "Audio samples are nil" shape: the adapter's
-    // async-fed `retainedPCM` is SHORTER than the kernel's authoritative
+    // async-fed buffers are SHORTER than the kernel's authoritative
     // `captureResult.samples`, and a VAD segment runs to the full capture
     // length. The fix decodes the capture buffer (segment in range), not the
-    // shorter shadow buffer (which would overrun → nil).
+    // shorter fed audio (which would overrun → nil).
     let backend = StubWhisperBackend()
     await backend.setTranscribeResult(
       ASRResult(
@@ -1296,7 +1296,7 @@ import Testing
       backend: backend, engineMutationScope: .alwaysAllowedForTesting)
     let sid = SessionID()
     try await adapter.beginSession(sid, options: .default, streaming: false)
-    // Shadow buffer (retainedPCM): 16_000 samples of 0.1, fed async.
+    // Fed audio: 16_000 samples of 0.1, through `acceptAudio`.
     feed(adapter, samples: [Float](repeating: 0.1, count: 16_000), session: sid)
     // Authoritative capture buffer: LONGER (24_000) and a distinct value, with
     // a segment running to its full length.
@@ -1311,9 +1311,9 @@ import Testing
     let lastSamples = await backend.lastTranscribeSamples
     #expect(
       lastSamples.count == 24_000,
-      "decode must use the 24_000-sample capture buffer, not the 16_000 shadow PCM")
+      "decode must use the 24_000-sample capture buffer, not the 16_000 fed samples")
     #expect(
-      lastSamples.first == Float(0.5), "decoded the capture buffer (0.5), not retainedPCM (0.1)")
+      lastSamples.first == Float(0.5), "decoded the capture buffer (0.5), not the fed audio (0.1)")
   }
 
   @Test(
