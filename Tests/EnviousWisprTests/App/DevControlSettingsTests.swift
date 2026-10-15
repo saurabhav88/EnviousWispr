@@ -107,23 +107,20 @@
       #expect(kinds.keys.sorted() == ["direct", "extractedCheck", "staging", "viaOwner"])
     }
 
-    @Test("deferred routes and legacy fields are named as the plan places them")
-    func deferredAndLegacyPlacement() {
+    @Test("checked kinds and legacy fields are named as the plan places them")
+    func kindAndLegacyPlacement() {
       func entry(_ key: SettingsManager.SettingKey) -> DevControlSettings.Entry {
         DevControlSettings.entry(key)
       }
-      #expect(entry(.languageMode).deferredTo == nil)
-      #expect(entry(.englishSpelling).deferredTo == nil)
-      #expect(entry(.recordingPillDesignWithWords).deferredTo == nil)
-      #expect(entry(.recordingPillDesignWithoutWords).deferredTo == nil)
-      #expect(entry(.toggleKeyCode).deferredTo == "PR-C")
-      #expect(entry(.inputChannelByDeviceUID).deferredTo == nil)
+      #expect(entry(.toggleKeyCode).kind == .extractedCheck)
+      #expect(entry(.copyLastModifiers).kind == .extractedCheck)
+      #expect(entry(.inputChannelByDeviceUID).kind == .extractedCheck)
       #expect(entry(.vadSilenceTimeout).kind == .extractedCheck)
       #expect(
         entry(.selectedInputDeviceUID)
           == DevControlSettings.Entry(
             key: .selectedInputDeviceUID, name: "selectedInputDeviceUID", kind: .viaOwner,
-            deferredTo: nil, legacy: false))
+            legacy: false))
       #expect(entry(.whisperKitLanguage).legacy == true)
       #expect(entry(.pushToTalkKeyCode).legacy == true)
       #expect(entry(.pushToTalkModifiers).legacy == true)
@@ -794,20 +791,22 @@
     }
 
     /// Written here by hand from plan §3.4, not derived from the table.
-    private static let deferredNames: Set<String> = [
-      "cancelKeyCode", "cancelModifiers", "quickAddKeyCode", "quickAddModifiers", "pasteLastKeyCode", "pasteLastModifiers", "copyLastKeyCode", "copyLastModifiers", "toggleKeyCode", "toggleModifiers",
+    private static let shortcutNames: Set<String> = [
+      "cancelKeyCode", "cancelModifiers", "quickAddKeyCode", "quickAddModifiers",
+      "pasteLastKeyCode", "pasteLastModifiers", "copyLastKeyCode", "copyLastModifiers",
+      "toggleKeyCode", "toggleModifiers",
     ]
 
-    @Test("every key has exactly one ordinary route; 10 are not shared yet")
+    @Test("every key has exactly one ordinary route; the 10 shortcut fields are checked whole")
     func routeCounts() {
       var counts: [DevControlSettings.Route: Int] = [:]
-      var notYetShared: Set<String> = []
+      var shortcutFields: Set<String> = []
       for key in DevControlSettings.allKeys {
         let route = DevControlSettings.route(key)
         counts[route, default: 0] += 1
-        if route == .notYetShared { notYetShared.insert(DevControlSettings.name(key)) }
+        if route == .shortcutField { shortcutFields.insert(DevControlSettings.name(key)) }
       }
-      #expect(notYetShared == Self.deferredNames)
+      #expect(shortcutFields == Self.shortcutNames)
       #expect(counts[.typed] == 46)
       #expect(counts[.modelCatalog] == 1)
       #expect(counts[.inputDevice] == 2)
@@ -819,36 +818,168 @@
       #expect(counts[.importModel] == 1)
       #expect(counts[.ollamaModel] == 2)
       #expect(counts[.channelCommand] == 1)
-      #expect(counts[.notYetShared] == 10)
+      #expect(counts[.shortcutField] == 10)
+      #expect(counts.values.reduce(0, +) == 70)
       #expect(DevControlSettings.route(.llmModel) == .modelCatalog)
       #expect(DevControlSettings.route(.hasCompletedOnboarding) == .typed)
     }
 
-    @Test("the 10 deferred keys refuse an ordinary write without any change, and force still writes them")
-    func deferredKeysRefuseOrdinaryWrites() throws {
-      var refused = 0
-      for row in Self.rows where Self.deferredNames.contains(row.name) {
-        let (suite, defaults, settings) = Self.fixture()
-        let key = try #require(DevControlSettings.key(named: row.name))
-        let text = row.wire(settings)
-        let before = DevControlSettings.read(key, from: settings)
-        let stored = defaults.persistentDomain(forName: suite) as NSDictionary?
-        var fired: [SettingsManager.SettingKey] = []
-        settings.onChange = { fired.append($0) }
-        let outcome = DevControlSettings.write(
-          key, value: try Self.wire(text), force: false, context: Self.context(), to: settings)
-        #expect(outcome == .refused(code: "checkNotYetShared", message: outcome.message), "\(row.name)")
-        #expect((before as AnyObject).isEqual(DevControlSettings.read(key, from: settings)), "\(row.name)")
-        #expect(fired.isEmpty, "\(row.name) fired \(fired)")
-        #expect(stored == defaults.persistentDomain(forName: suite) as NSDictionary?, "\(row.name)")
-        refused += 1
-
-        let forced = DevControlSettings.write(
-          key, value: try Self.wire(text), force: true, context: Self.context(), to: settings)
-        #expect(forced == .written(forced: true), "\(row.name)")
-        #expect(row.holds(settings), "\(row.name)")
+    @Test("a typed route is exactly a direct or staging row, or the onboarding alias")
+    func typedRouteMatchesKind() {
+      for key in DevControlSettings.allKeys where key != .llmModel {
+        let kind = DevControlSettings.entry(key).kind
+        let expected = kind == .direct || kind == .staging || key == .hasCompletedOnboarding
+        #expect(
+          (DevControlSettings.route(key) == .typed) == expected, "\(DevControlSettings.name(key))")
       }
-      #expect(refused == 10)
+    }
+
+    @Test("each shortcut field names its own row and half, matching the screen's fields")
+    func shortcutFieldsMatchTheScreen() throws {
+      let (_, _, settings) = Self.fixture()
+      var seen = 0
+      for key in DevControlSettings.allKeys {
+        guard let field = DevControlSettings.shortcutField(key) else {
+          #expect(!Self.shortcutNames.contains(DevControlSettings.name(key)))
+          continue
+        }
+        seen += 1
+        // Written through the screen's field path, read back through the door's table.
+        if field.isKeyCode {
+          settings[keyPath: ShortcutSettings.keyCodeField(for: field.role)] = 4000 + UInt16(seen)
+          #expect(DevControlSettings.read(key, from: settings) as? Int == 4000 + seen)
+        } else {
+          let flags = NSEvent.ModifierFlags(rawValue: UInt(1 << (16 + seen)))
+          settings[keyPath: ShortcutSettings.modifiersField(for: field.role)] = flags
+          #expect(DevControlSettings.read(key, from: settings) as? UInt == flags.rawValue)
+        }
+      }
+      #expect(seen == 10)
+    }
+
+    @Test("all five shortcuts go through the screen's check and save, with each role's own pair")
+    func setShortcutForEveryRole() {
+      let (_, _, settings) = Self.fixture()
+      let codes: [ShortcutRole: UInt16] = [
+        .record: 122, .cancel: 120, .quickAdd: 99, .pasteLast: 118, .copyLast: 96,
+      ]
+      for role in ShortcutRole.allCases {
+        var fired: [(SettingsManager.SettingKey, Bool)] = []
+        settings.onChange = { fired.append(($0, settings.isDevControlWrite)) }
+        let outcome = DevControlSettings.setShortcut(
+          role, keyCode: codes[role]!, modifiers: [.control, .option], to: settings)
+        #expect(outcome == .written(forced: false), "\(role)")
+        #expect(fired.count == 2 && fired.allSatisfy(\.1), "\(role): \(fired)")
+        #expect(settings.isDevControlWrite == false)
+      }
+      #expect(settings.toggleKeyCode == 122 && settings.toggleModifiers == [.control, .option])
+      #expect(settings.cancelKeyCode == 120)
+      #expect(settings.quickAddKeyCode == 99)
+      #expect(settings.pasteLastKeyCode == 118)
+      #expect(settings.copyLastKeyCode == 96 && settings.copyLastModifiers == [.control, .option])
+    }
+
+    @Test("a refused shortcut changes nothing and fires nothing")
+    func refusedShortcutsChangeNothing() {
+      for (role, keyCode, modifiers): (ShortcutRole, UInt16, NSEvent.ModifierFlags) in [
+        (.quickAdd, 8, [.command]),  // Command-C
+        (.quickAdd, 9, [.control, .command]),  // Paste Last's default
+        (.quickAdd, 40, [.option]),  // needs Option, which recording uses alone
+        (.record, 53, []),  // Cancel's Escape
+      ] {
+        let (suite, defaults, settings) = Self.fixture()
+        let before = settings.shortcutBindings
+        let stored = defaults.persistentDomain(forName: suite) as NSDictionary?
+        var fired = 0
+        settings.onChange = { _ in fired += 1 }
+        let outcome = DevControlSettings.setShortcut(
+          role, keyCode: keyCode, modifiers: modifiers, to: settings)
+        #expect(outcome.code == "checkFailed", "\(role) \(keyCode)")
+        #expect(settings.shortcutBindings == before)
+        #expect(fired == 0)
+        #expect(stored == defaults.persistentDomain(forName: suite) as NSDictionary?)
+      }
+    }
+
+    @Test("numbers are stored the way the screen stores the key")
+    func setShortcutNormalizes() {
+      let (_, _, settings) = Self.fixture()
+      // A lone Right Command with its own flag set stores no modifiers.
+      #expect(
+        DevControlSettings.setShortcut(
+          .record, keyCode: ModifierKeyCodes.rightCommand, modifiers: [.command], to: settings)
+          == .written(forced: false))
+      #expect(settings.toggleKeyCode == ModifierKeyCodes.rightCommand && settings.toggleModifiers == [])
+      // A chord keeps only Command, Option, Control and Shift.
+      #expect(
+        DevControlSettings.setShortcut(
+          .quickAdd, keyCode: 40, modifiers: [.control, .shift, .capsLock, .function],
+          to: settings) == .written(forced: false))
+      #expect(settings.quickAddKeyCode == 40 && settings.quickAddModifiers == [.control, .shift])
+    }
+
+    @Test("Globe saved from the door leaves the one-time Globe explanation for the screen")
+    func doorGlobeLeavesTheClaim() {
+      let (_, _, settings) = Self.fixture()
+      #expect(
+        DevControlSettings.setShortcut(
+          .record, keyCode: ModifierKeyCodes.globe, modifiers: [], to: settings)
+          == .written(forced: false))
+      #expect(settings.claimGlobeKeyGuidancePresentation(for: ModifierKeyCodes.globe))
+    }
+
+    @Test("one field on its own is checked whole with the other half as saved")
+    func singleFieldIsCheckedWhole() throws {
+      let (_, _, settings) = Self.fixture()
+      func write(_ key: SettingsManager.SettingKey, _ json: String) throws
+        -> DevControlSettings.SetOutcome
+      {
+        DevControlSettings.write(
+          key, value: try Self.wire(json), force: false, context: Self.context(), to: settings)
+      }
+      // Copy Last is Control-Command-C. Its key code alone to V makes Paste Last's shortcut.
+      #expect(try write(.copyLastKeyCode, "9").code == "checkFailed")
+      #expect(settings.copyLastKeyCode == 8)
+      // Its modifiers alone to Control-Shift make Control-Shift-C, which is free.
+      let controlShift = NSEvent.ModifierFlags([.control, .shift]).rawValue
+      #expect(try write(.copyLastModifiers, "\(controlShift)") == .written(forced: false))
+      #expect(settings.copyLastKeyCode == 8 && settings.copyLastModifiers == [.control, .shift])
+      // Then the key code to V is Control-Shift-V, also free.
+      #expect(try write(.copyLastKeyCode, "9") == .written(forced: false))
+      #expect(settings.copyLastKeyCode == 9)
+      #expect(try write(.toggleKeyCode, "1.5").code == "badValue")
+      #expect(try write(.toggleModifiers, "true").code == "badValue")
+    }
+
+    @Test("the whole shortcut can change where its first half alone would clash")
+    func compoundChangeSucceedsWhereAHalfWouldNot() throws {
+      let (_, _, settings) = Self.fixture()
+      // Control-Shift-V for Copy Last: the key code first would make Paste Last's shortcut.
+      #expect(
+        DevControlSettings.write(
+          .copyLastKeyCode, value: try Self.wire("9"), force: false, context: Self.context(),
+          to: settings).code == "checkFailed")
+      #expect(
+        DevControlSettings.setShortcut(
+          .copyLast, keyCode: 9, modifiers: [.control, .shift], to: settings)
+          == .written(forced: false))
+      #expect(settings.copyLastKeyCode == 9 && settings.copyLastModifiers == [.control, .shift])
+      #expect(settings.pasteLastKeyCode == 9 && settings.pasteLastModifiers == [.control, .command])
+    }
+
+    @Test("force still stages a clashing or unusual shortcut field as given")
+    func forceStagesShortcutFields() throws {
+      let (_, _, settings) = Self.fixture()
+      #expect(
+        DevControlSettings.write(
+          .toggleKeyCode, value: try Self.wire("53"), force: true, context: Self.context(),
+          to: settings) == .written(forced: true))
+      #expect(settings.toggleKeyCode == 53, "Cancel's key, staged")
+      #expect(
+        DevControlSettings.write(
+          .toggleModifiers, value: try Self.wire("\(NSEvent.ModifierFlags.capsLock.rawValue)"),
+          force: true, context: Self.context(), to: settings) == .written(forced: true))
+      #expect(settings.toggleModifiers == .capsLock, "not narrowed")
     }
 
     @Test("every typed-route key takes an ordinary write, reported not forced")

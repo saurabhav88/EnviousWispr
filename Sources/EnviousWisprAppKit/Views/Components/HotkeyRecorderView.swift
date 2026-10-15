@@ -316,30 +316,15 @@ enum HotkeyCapture {
   ///
   /// A standalone modifier reports its OWN flag in `modifierFlags`, so storing
   /// that flag would require the user to hold Globe while pressing Globe and the
-  /// shortcut could never fire. Those come back with empty modifiers; an ordinary
-  /// chord keeps its modifiers.
-  ///
-  /// #2613 — a chord's modifiers are narrowed to `ShortcutMatcher.carbonEffectiveModifiers`,
-  /// and the reason is that this function had no reachable chord case until #2613.
-  /// `.deviceIndependentFlagsMask` also carries Caps Lock, Numeric Pad, Help and
-  /// Function, and NEITHER consumer keeps them: `KeySymbols.symbolsForModifiers`
-  /// renders only these four, and `HotkeyService.carbonModifiers` maps only these
-  /// four on the way to `RegisterEventHotKey`. Storing a bit both of them drop
-  /// gives a binding that displays and fires as something other than what is
-  /// saved — a Caps-Lock-contaminated default stops comparing equal to its own
-  /// default, and Globe+W would store as W with an invisible `.function`.
-  ///
-  /// Narrowing HERE rather than at the capture view is deliberate: this is the one
-  /// authority both recording surfaces ask what an event MEANS, so a value the
-  /// view produced and this function disagreed with would be the #1987 drift all
-  /// over again. The set is not redefined here either — `ShortcutMatcher` already
-  /// owns it and already documents why those four are the whole answer.
+  /// shortcut could never fire. Only a `.flagsChanged` event for a modifier-only
+  /// key is a standalone modifier here; every other event is a chord.
+  /// `ShortcutSettings.normalized` turns each into what is stored, and the dev
+  /// control door asks it the same question.
   static func binding(for event: NSEvent) -> (keyCode: UInt16, modifiers: NSEvent.ModifierFlags) {
-    let keyCode = event.keyCode
-    if event.type == .flagsChanged && ModifierKeyCodes.isModifierOnly(keyCode) {
-      return (keyCode, [])
-    }
-    return (keyCode, event.modifierFlags.intersection(ShortcutMatcher.carbonEffectiveModifiers))
+    ShortcutSettings.normalized(
+      keyCode: event.keyCode, modifiers: event.modifierFlags,
+      standaloneModifier: event.type == .flagsChanged
+        && ModifierKeyCodes.isModifierOnly(event.keyCode))
   }
 }
 

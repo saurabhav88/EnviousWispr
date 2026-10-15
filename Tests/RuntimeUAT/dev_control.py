@@ -292,6 +292,10 @@ An AI Polish screen already open keeps showing the key it loaded; reopen it to s
 set or cleared here.
 channel set DEVICE_UID N picks a connected multi-input microphone's input (0 is Input 1);
 a whole inputChannelByDeviceUID write is refused toward it, --force stages one.
+shortcut set ROLE KEYCODE MODIFIERS saves a Keybinds shortcut whole, checked as the screen
+checks it (ROLE: record, cancel, quickAdd, pasteLast, copyLast; recording is stored as
+toggleKeyCode/toggleModifiers; MODIFIERS is the modifier-flags integer, 0 for none). A lone
+modifier key stores no modifiers. settings set on one half checks the pair it makes.
 language set CODE is the language picker's choice: lock and English spelling together
 (en-gb locks "en" with British spelling); auto unlocks. settings set languageMode or
 englishSpelling alone is refused toward it; --force stages one field.
@@ -310,6 +314,8 @@ Changes need the shared dev-app lock (dev-app-lock.py claim) unless run by hand.
 
 # The CLI's model names are the door's command segments (models.<backend>.<action>).
 MODEL_BACKENDS = ("parakeet", "whisper")
+# ShortcutRole raw values; the door refuses anything else.
+SHORTCUT_ROLES = ("record", "cancel", "quickAdd", "pasteLast", "copyLast")
 MODEL_ACTIONS = ("download", "cancel")
 
 
@@ -372,6 +378,14 @@ def build_parser():
     channel_set = channel.add_parser("set")
     channel_set.add_argument("device_uid", metavar="DEVICE_UID")
     channel_set.add_argument("channel", type=int, help="zero-based input (0 is Input 1)")
+
+    shortcut = sub.add_parser("shortcut", help="a Keybinds shortcut").add_subparsers(
+        dest="action", required=True, metavar="ACTION")
+    shortcut_set = shortcut.add_parser("set")
+    shortcut_set.add_argument("role", choices=SHORTCUT_ROLES)
+    shortcut_set.add_argument("key_code", metavar="KEYCODE", type=int)
+    shortcut_set.add_argument("modifiers", metavar="MODIFIERS", type=int,
+                              help="modifier-flags integer, 0 for none")
 
     language = sub.add_parser("language", help="the dictation language").add_subparsers(
         dest="action", required=True, metavar="ACTION")
@@ -458,6 +472,9 @@ def route(args):
         return "keys.clear", {"provider": KEY_PROVIDERS[args.provider]}, True
     if key == ("channel", "set"):
         return "channel.set", {"deviceUID": args.device_uid, "channel": args.channel}, True
+    if key == ("shortcut", "set"):
+        return "shortcut.set", {"role": args.role, "keyCode": args.key_code,
+                                "modifiers": args.modifiers}, True
     if key == ("language", "set"):
         return "language.set", {"code": args.code}, True
     if key == ("dictation", "start"):

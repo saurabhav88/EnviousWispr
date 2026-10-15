@@ -7,9 +7,9 @@
 
   /// #3765: the dev control door's table of every `SettingsManager.SettingKey`.
   ///
-  /// Three switches over `SettingKey`, none with a `default`, so a new setting does not
-  /// compile in a DEBUG build until it is placed in a kind, given a JSON reading, and given
-  /// a typed forced assignment. `allKeys` is the list the door exposes; a test compares it
+  /// Four switches over `SettingKey`, none with a `default`, so a new setting does not
+  /// compile in a DEBUG build until it is placed in a kind, given an ordinary route, given a
+  /// JSON reading, and given a typed forced assignment. `allKeys` is the list the door exposes; a test compares it
   /// with the enum's declaration in source, because an exhaustive switch cannot notice a
   /// case that is missing from a list.
   ///
@@ -28,7 +28,7 @@
       case direct
       /// The screen goes through an owner's helper with its preconditions.
       case viaOwner
-      /// The screen's check lives in a view today; PR-C moves it into a shared owner.
+      /// The screen's check, moved out of its view into a shared owner the door also calls.
       case extractedCheck
       /// No current screen operation writes it, or it is legacy; type checks only.
       case staging
@@ -38,8 +38,6 @@
       let key: Key
       let name: String
       let kind: Kind
-      /// The PR that delivers the non-forced route, or nil when it exists in this build.
-      let deferredTo: String?
       let legacy: Bool
     }
 
@@ -80,8 +78,8 @@
     // MARK: - Membership
 
     static func entry(_ key: Key) -> Entry {
-      func make(_ kind: Kind, deferredTo: String? = nil, legacy: Bool = false) -> Entry {
-        Entry(key: key, name: name(key), kind: kind, deferredTo: deferredTo, legacy: legacy)
+      func make(_ kind: Kind, legacy: Bool = false) -> Entry {
+        Entry(key: key, name: name(key), kind: kind, legacy: legacy)
       }
       switch key {
       case .selectedBackend, .recordingMode, .llmProvider, .llmModel, .s1MiniStyling,
@@ -101,10 +99,8 @@
         return make(.viaOwner)
       case .cancelKeyCode, .cancelModifiers, .quickAddKeyCode, .quickAddModifiers,
         .pasteLastKeyCode, .pasteLastModifiers, .copyLastKeyCode, .copyLastModifiers,
-        .toggleKeyCode, .toggleModifiers:
-        return make(.extractedCheck, deferredTo: "PR-C")
-      case .vadSilenceTimeout, .fileImportLLMProvider, .fileImportLLMModel, .fileImportOllamaModel,
-        .ollamaModel, .inputChannelByDeviceUID:
+        .toggleKeyCode, .toggleModifiers, .vadSilenceTimeout, .fileImportLLMProvider,
+        .fileImportLLMModel, .fileImportOllamaModel, .ollamaModel, .inputChannelByDeviceUID:
         return make(.extractedCheck)
       case .hotkeyEnabled, .vadSensitivity, .vadEnergyGate, .crashRecoveryEnabled,
         .onboardingState:
@@ -202,7 +198,6 @@
           "key": entry.name,
           "value": read(key, from: settings),
           "kind": entry.kind.rawValue,
-          "deferredTo": entry.deferredTo.map { $0 as Any } ?? NSNull(),
           "legacy": entry.legacy,
         ]
       }
@@ -471,38 +466,53 @@
       /// The language picker sets the lock and the spelling together, so a single-field
       /// write is refused toward `language.set` (`setLanguage`).
       case languageCommand
-      /// The check is delivered in a later PR; only `force` writes it in this build.
-      case notYetShared
+      /// One half of a Keybinds shortcut: checked as the whole binding it makes with the other
+      /// half as saved (`setShortcut`); `shortcut.set` changes both halves together.
+      case shortcutField
     }
 
-    /// Derived from `entry(_:)`, so membership has one authority. A `viaOwner` row with
-    /// no route here refuses rather than falling through to an unchecked assignment.
+    /// One case per key and no `default`, so a new setting cannot compile without a route.
+    /// The typed keys are the `direct` and `staging` rows plus `hasCompletedOnboarding`, whose
+    /// owner is a plain assignment; `DevControlSettingsTests` checks this against `entry(_:)`.
     static func route(_ key: Key) -> Route {
-      let entry = entry(key)
-      guard entry.deferredTo == nil else { return .notYetShared }
-      switch entry.kind {
-      case .direct, .staging:
-        return key == .llmModel ? .modelCatalog : .typed
-      case .viaOwner:
-        if key == .selectedInputDeviceUID || key == .preferredInputDeviceIDOverride {
-          return .inputDevice
-        }
-        if key == .spokenPunctuation { return .spokenPunctuation }
-        if key == .recordingPillDesignWithoutWords || key == .recordingPillDesignWithWords {
-          return .pillDesign
-        }
-        if key == .languageMode || key == .englishSpelling { return .languageCommand }
-        if key == .hasCompletedOnboarding { return .typed }
-        return .notYetShared
-      case .extractedCheck:
-        switch key {
-        case .vadSilenceTimeout: return .silenceTimeout
-        case .fileImportLLMProvider: return .importProvider
-        case .fileImportLLMModel: return .importModel
-        case .ollamaModel, .fileImportOllamaModel: return .ollamaModel
-        case .inputChannelByDeviceUID: return .channelCommand
-        default: return .notYetShared
-        }
+      switch key {
+      case .llmModel:
+        return .modelCatalog
+      case .selectedInputDeviceUID, .preferredInputDeviceIDOverride:
+        return .inputDevice
+      case .spokenPunctuation:
+        return .spokenPunctuation
+      case .recordingPillDesignWithoutWords, .recordingPillDesignWithWords:
+        return .pillDesign
+      case .languageMode, .englishSpelling:
+        return .languageCommand
+      case .vadSilenceTimeout:
+        return .silenceTimeout
+      case .fileImportLLMProvider:
+        return .importProvider
+      case .fileImportLLMModel:
+        return .importModel
+      case .ollamaModel, .fileImportOllamaModel:
+        return .ollamaModel
+      case .inputChannelByDeviceUID:
+        return .channelCommand
+      case .cancelKeyCode, .cancelModifiers, .quickAddKeyCode, .quickAddModifiers,
+        .pasteLastKeyCode, .pasteLastModifiers, .copyLastKeyCode, .copyLastModifiers,
+        .toggleKeyCode, .toggleModifiers:
+        return .shortcutField
+      case .selectedBackend, .recordingMode, .llmProvider, .s1MiniStyling, .s1MiniStructure,
+        .s1MiniContext, .autoCopyToClipboard, .hotkeyEnabled, .vadAutoStop, .vadSensitivity,
+        .vadEnergyGate, .onboardingState, .hasCompletedOnboarding, .pushToTalkKeyCode,
+        .pushToTalkModifiers, .modelUnloadPolicy, .restoreClipboardAfterPaste,
+        .keepDictationsOutOfClipboardHistory, .quickAddClipboardFallback, .smartInsertion,
+        .escapeRecoveryEnabled, .wordCorrectionEnabled, .fillerRemovalEnabled,
+        .emojiFormatterEnabled, .casualModeEnabled, .crashRecoveryEnabled, .shareUsageMetrics,
+        .sendCrashReports, .contactsSyncOnLaunchEnabled, .isDebugModeEnabled,
+        .isDictationAudioArchiveEnabled, .debugLogLevel, .whisperKitLanguage, .useStreamingASR,
+        .livePreviewEnabled, .livePreviewEngine, .warmEnginePolicy, .appearance,
+        .overlayPillPosition, .showBluetoothTips, .showInDock, .showMenuBarUpdateAlert,
+        .playRecordingSounds, .recordingSoundPairing, .otherAudioWhileDictating, .learnFromEdits:
+        return .typed
       }
     }
 
@@ -588,10 +598,76 @@
           code: "checkFailed",
           message: "the language picker sets the lock and the spelling together; use "
             + "language.set, or force to stage this field alone")
-      case .notYetShared:
-        return .refused(
-          code: "checkNotYetShared",
-          message: "this setting's screen check is not shared yet; use force to stage it")
+      case .shortcutField:
+        return writeShortcutField(key, value: value, to: settings)
+      }
+    }
+
+    /// The Keybinds role a shortcut field belongs to, and whether it is the key-code half.
+    /// `DevControlSettingsTests` checks every answer against `ShortcutSettings`' field paths.
+    static func shortcutField(_ key: Key) -> (role: ShortcutRole, isKeyCode: Bool)? {
+      switch key {
+      case .toggleKeyCode: return (.record, true)
+      case .toggleModifiers: return (.record, false)
+      case .cancelKeyCode: return (.cancel, true)
+      case .cancelModifiers: return (.cancel, false)
+      case .quickAddKeyCode: return (.quickAdd, true)
+      case .quickAddModifiers: return (.quickAdd, false)
+      case .pasteLastKeyCode: return (.pasteLast, true)
+      case .pasteLastModifiers: return (.pasteLast, false)
+      case .copyLastKeyCode: return (.copyLast, true)
+      case .copyLastModifiers: return (.copyLast, false)
+      default: return nil
+      }
+    }
+
+    /// `shortcut.set`: a Keybinds row's whole shortcut, read the way the screen stores a key
+    /// (`ShortcutSettings.binding(keyCode:modifiers:)`), then saved through the screen's own
+    /// check and write (`ShortcutSettings.assign`). Never claims the Globe guidance, which only
+    /// the screen that shows it may take.
+    static func setShortcut(
+      _ role: ShortcutRole, keyCode: UInt16, modifiers: NSEvent.ModifierFlags,
+      to settings: SettingsManager
+    ) -> SetOutcome {
+      let candidate = ShortcutSettings.binding(keyCode: keyCode, modifiers: modifiers)
+      let refusal = attributed(settings) {
+        ShortcutSettings.assign(candidate, to: role, in: settings)
+      }
+      guard let refusal else { return .written(forced: false) }
+      return .refused(code: "checkFailed", message: message(for: refusal))
+    }
+
+    /// One half on its own: the other half stays as saved, and the pair is checked whole.
+    private static func writeShortcutField(_ key: Key, value: Any, to settings: SettingsManager)
+      -> SetOutcome
+    {
+      guard let field = shortcutField(key) else {
+        return .refused(code: "badValue", message: "not a Keybinds shortcut field")
+      }
+      var keyCode = settings[keyPath: ShortcutSettings.keyCodeField(for: field.role)]
+      var modifiers = settings[keyPath: ShortcutSettings.modifiersField(for: field.role)]
+      if field.isKeyCode {
+        guard let decoded = Codec.uint16(value) else {
+          return .refused(code: "badValue", message: "wrong type or unknown value")
+        }
+        keyCode = decoded
+      } else {
+        guard let decoded = Codec.modifiers(value) else {
+          return .refused(code: "badValue", message: "wrong type or unknown value")
+        }
+        modifiers = decoded
+      }
+      return setShortcut(field.role, keyCode: keyCode, modifiers: modifiers, to: settings)
+    }
+
+    private static func message(for refusal: ShortcutRefusal) -> String {
+      switch refusal {
+      case .systemShortcut:
+        return "the Keybinds screen refuses a standard Mac shortcut"
+      case .sameAs(let other):
+        return "the \(other.rawValue) shortcut already uses those keys"
+      case .modifierConflict(let other):
+        return "clashes with the \(other.rawValue) shortcut: one needs a key the other uses on its own"
       }
     }
 
