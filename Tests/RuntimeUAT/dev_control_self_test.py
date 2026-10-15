@@ -1007,6 +1007,20 @@ def dictation_cases(r, tree):
         door.received.clear()
         scripted(door, [terminal("completed", row_id)], rows={newer: {"id": newer}})
         status, document, _, _ = _run(wait, ClockBoundaries({"111": exe}, door=door))
+        door.received.clear()
+        state = scripted(door, [terminal("completed", row_id)])
+        def too_large(request, _inner=door.respond):
+            if request.get("cmd") == "history.get":
+                return [door.frame(door.envelope(request, ok=False, result=None, error={
+                    "code": "responseTooLarge", "message": "reply over limit or not encodable"}))]
+            return _inner(request)
+        door.respond = too_large
+        status, too_big, _, _ = _run(wait, ClockBoundaries({"111": exe}, door=door))
+        r.check("dictation", "wait: a row too large to send keeps the door's own reason",
+                status == 1 and _code(too_big) == "responseTooLarge"
+                and "over limit" in too_big["error"].get("message", "")
+                and (too_big["error"].get("terminal") or {}).get("savedRowID") == row_id,
+                f"doc={too_big}")
         r.check("dictation", "wait: a deleted saved row is notFound, never a neighbour",
                 status == 1 and _code(document) == "notFound"
                 and (document["error"].get("terminal") or {}).get("savedRowID") == row_id

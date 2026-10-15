@@ -288,6 +288,8 @@ model). A successful write does not say when an in-flight dictation adopts the v
 keys set PROVIDER reads the key from stdin only (never an argument) and replies with
 presence, never the key; one trailing newline is the line end, not part of the key.
 keys clear PROVIDER removes it. A refused store reads storeFailed: the key is unknown.
+An AI Polish screen already open keeps showing the key it loaded; reopen it to see a key
+set or cleared here.
 language set CODE is the language picker's choice: lock and English spelling together
 (en-gb locks "en" with British spelling); auto unlocks. settings set languageMode or
 englishSpelling alone is refused toward it; --force stages one field.
@@ -794,7 +796,7 @@ def _wait(session, receipt, wait_timeout, boundaries, timeout):
         if not fetched["ok"]:
             raise CliError(
                 fetched["error"]["code"],
-                "the take saved a History row that History no longer offers",
+                fetched["error"].get("message") or "the History lookup failed",
                 EXIT_FAILED, terminal=result)
         row = fetched["result"].get("row")
         if not isinstance(row, dict) or row.get("id") != saved:

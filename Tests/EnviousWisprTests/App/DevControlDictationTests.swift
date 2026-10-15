@@ -717,7 +717,10 @@
         #expect(terminals == [backend], "\(backend): only the active engine's take ended")
         let ended = try #require(payload(read(dictation, started)))
         #expect(ended["status"] as? String == "terminal")
-        #expect(ended["ending"] as? String != "completed", "\(backend): \(ended)")
+        // Stopping while arming latches the stop, which the forward path concludes as
+        // discarded (released before recording); any other ending means the stop did not
+        // reach this take.
+        #expect(ended["ending"] as? String == "discarded", "\(backend): \(ended)")
       }
     }
 
