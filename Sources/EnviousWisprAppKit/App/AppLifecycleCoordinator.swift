@@ -387,15 +387,38 @@ final class AppLifecycleCoordinator {
     // #1986: nudge a newly-frontmost app's own on-demand accessibility
     // activation to start as early as possible, so slow-to-warm apps
     // (Chrome/Chromium) get the whole time the user spends in that app to
-    // wake up, instead of only the retry #1980 fires at commit time.
-    let warmupObserver = AccessibilityWarmupObserver()
-    warmupObserver.start()
-    accessibilityWarmupObserver = warmupObserver
+    // wake up, instead of only the retry #1980 fires at commit time. #3802:
+    // the wake is an `AXRole` read on the app element; a focus read alone
+    // leaves current Chrome asleep (see AccessibilityWarmupObserver).
+    if !Self.accessibilityWarmupSuppressedForUAT() {
+      let warmupObserver = AccessibilityWarmupObserver()
+      warmupObserver.start()
+      accessibilityWarmupObserver = warmupObserver
+    }
 
     // #3062: a clicking mouse wheel moved the page 7 points per notch in one
     // frame (reporter's video, discussion #3059); Chrome moves about 100 with a
     // glide. The smoother rewrites only non-precise wheel events.
     wheelScrollSmoother.start()
+  }
+
+  /// #3802 (Live UAT only): the sleeping-Chrome phases in
+  /// `Tests/RuntimeUAT/paste_landing_uat.py` need a Chrome nothing has woken,
+  /// which the warmup observer now prevents. With `EW_UAT_SKIP_AX_WARMUP=1` in
+  /// the launch environment the observer never starts. DEBUG-only, logged when
+  /// used; Release compiles none of it and always starts the observer.
+  private static func accessibilityWarmupSuppressedForUAT() -> Bool {
+    #if DEBUG
+      if ProcessInfo.processInfo.environment["EW_UAT_SKIP_AX_WARMUP"] == "1" {
+        Task {
+          await AppLogger.shared.log(
+            "AXWarmup disabled by EW_UAT_SKIP_AX_WARMUP", level: .info,
+            category: "AccessibilityWarmup")
+        }
+        return true
+      }
+    #endif
+    return false
   }
 
   func runDidBecomeActive() {

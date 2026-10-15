@@ -4,15 +4,24 @@ import EnviousWisprServices
 import Foundation
 
 /// Proactively nudges a newly-frontmost app's own on-demand accessibility
-/// activation (Chrome/Chromium apps only turn this on the first time
-/// something asks) to start as early as possible, instead of only when a
-/// dictation's own caret capture asks at record-start or commit time (#1980).
-/// The result of the priming query is always discarded — this exists purely
-/// to trigger the target app's own activation earlier, never to read it.
+/// activation (Chrome/Chromium apps only turn this on when an assistive client
+/// asks) to start as early as possible, instead of only when a dictation's own
+/// caret capture asks at record-start or commit time (#1980). The results of
+/// the priming reads are always discarded — this exists purely to trigger the
+/// target app's own activation earlier, never to read it.
 ///
 /// #1986, live-diagnosed 2026-08-08: a cold Chrome silently degraded smart
 /// insertion (trailing space / seam casing) to a plain paste for minutes on
 /// the founder's own machine.
+///
+/// #3802: the focused-element read #1986 relied on does NOT wake current
+/// Chrome (12 s of polling left it asleep, 2026-09-29; asleep with this app
+/// running on the founder's work laptop, 2026-10-15). An `AXRole` read on the
+/// application element does: Chromium enables its accessibility tree from
+/// NSApplication's `accessibilityRole`, and the focused text box was readable
+/// 104 ms later. A sleeping Chrome reports every paste as `no_target`, which
+/// never keeps the dictation (#3286), so a missed paste lost the Copied notice.
+/// The role read runs first; the focus read is kept for other hosts.
 @MainActor
 final class AccessibilityWarmupObserver {
   private var token: NSObjectProtocol?
@@ -126,6 +135,10 @@ final class AccessibilityWarmupObserver {
   // number.
   @concurrent
   private static func primeAccessibility(pid: pid_t) async {
+    // The role read is the wake (#3802); it must come before the focus read,
+    // which alone leaves a sleeping Chrome asleep.
+    let roleError = PasteService.requestAccessibilityRole(
+      ofAppWithPID: pid, messagingTimeout: PasteService.axMessagingTimeoutSeconds)
     let found =
       PasteService.focusedElement(
         inAppWithPID: pid, messagingTimeout: PasteService.axMessagingTimeoutSeconds
@@ -133,7 +146,10 @@ final class AccessibilityWarmupObserver {
     // .info, not .debug: AppLogger filters by `level <= logLevel`, default
     // `.info` — a `.debug`-level line is invisible under the standard
     // Debug-Mode-on / default-verbosity UAT setup this project requires.
+    // `found` right after a successful wake is usually false: Chrome takes
+    // about 100 ms to expose its focus.
     await AppLogger.shared.log(
-      "AXWarmup prime pid=\(pid) found=\(found)", level: .info, category: "AccessibilityWarmup")
+      "AXWarmup prime pid=\(pid) role=\(roleError.rawValue) found=\(found)", level: .info,
+      category: "AccessibilityWarmup")
   }
 }
