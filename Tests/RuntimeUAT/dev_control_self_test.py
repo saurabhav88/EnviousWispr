@@ -28,7 +28,7 @@ import dev_control
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 CATEGORIES = ("routes", "valueSyntax", "lock", "instances", "identity", "framing", "output",
-              "import")
+              "import", "dictation")
 _DOORS = []
 
 
@@ -235,6 +235,35 @@ class FakeBoundaries(dev_control.Boundaries):
         return call
 
 
+class ClockBoundaries(FakeBoundaries):
+    """FakeBoundaries with a fake monotonic clock: `sleep` advances it and records the
+    request, so a wait's polling runs as shipped without real time passing."""
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.now = 1000.0
+        self.sleeps = []
+        self.timeouts = []
+
+    def connect(self, pid, timeout):
+        connection = super().connect(pid, timeout)
+        recorded = self.timeouts
+
+        def set_timeout(seconds, _inner=connection.set_timeout):
+            recorded.append(seconds)
+            _inner(seconds)
+
+        connection.set_timeout = set_timeout
+        return connection
+
+    def monotonic(self):
+        return self.now
+
+    def sleep(self, seconds):
+        self.sleeps.append(seconds)
+        self.now += seconds
+
+
 def _run(argv, boundaries, timeout=1.0):
     """The CLI's `run`, with its stdout and stderr captured so a stray print is caught."""
     out, err = io.StringIO(), io.StringIO()
@@ -283,9 +312,16 @@ class Tree:
 # MARK: - Cases
 
 
+RECEIPT = {"launch": "0b7c2a1e-0000-4000-8000-000000000001", "backend": "parakeet",
+           "take": "5f1d7a3c-0000-4000-8000-000000000002"}
+
+
 def _label(argv):
-    """A check name: the command words, plus the model for a models command."""
-    return " ".join(argv[:3] if argv[0] == "models" else argv[:2])
+    """A check name: the command words, plus the model for a models command, or the front
+    app for a dictation start."""
+    if argv[0] == "models" or argv[:3] == ["dictation", "start", "--front-app"]:
+        return " ".join(argv[:3])
+    return " ".join(argv[:2])
 
 
 def routes_and_values(r, tree):
@@ -311,6 +347,14 @@ def routes_and_values(r, tree):
         (["models", "cancel", "parakeet"], "models.parakeet.cancel", None),
         (["models", "download", "whisperkit"], "models.whisperkit.download", None),
         (["models", "cancel", "whisperkit"], "models.whisperkit.cancel", None),
+        (["dictation", "start"], "dictation.start", {}),
+        (["dictation", "start", "--front-app", "com.apple.TextEdit"], "dictation.start",
+         {"frontApp": "com.apple.TextEdit"}),
+        (["dictation", "stop", "--receipt", json.dumps(RECEIPT)], "dictation.stop",
+         {"receipt": RECEIPT}),
+        (["dictation", "cancel"], "dictation.cancel", None),
+        (["dictation", "receipt", "--receipt", json.dumps(RECEIPT)], "dictation.receipt",
+         {"receipt": RECEIPT}),
     ]
     try:
         for argv, cmd, wire in socket_routes:
@@ -420,6 +464,9 @@ def lock_cases(r, tree):
         ["models", "cancel", "parakeet"],
         ["models", "download", "whisperkit"],
         ["models", "cancel", "whisperkit"],
+        ["dictation", "start"],
+        ["dictation", "stop", "--receipt", json.dumps(RECEIPT)],
+        ["dictation", "cancel"],
         ["file", "transcribe", "/abs/clip.m4a"],
     ]
     try:
@@ -862,6 +909,220 @@ def output_cases(r, tree):
             out.getvalue())
 
 
+def dictation_cases(r, tree):
+    """Dictation commands and `dictation wait` against a scripted door and a fake clock."""
+    exe = tree.dev(tree.wt)
+    row_id = str(uuid.uuid4())
+    newer = str(uuid.uuid4())
+    base = ["--worktree", tree.wt]
+    wait = base + ["dictation", "wait", "--receipt", json.dumps(RECEIPT)]
+
+    def scripted(door, receipts, rows=None, relaunch_after=None, clock=None, cost=0.0):
+        """`receipts` is the list of dictation.receipt results (or error dicts) in order;
+        the last one repeats. `rows` maps History ids to rows; a missing id is notFound."""
+        state = {"polls": 0}
+        rows = rows or {}
+
+        def respond(request):
+            cmd = request.get("cmd")
+            args = request.get("args") or {}
+            if cmd == "ping":
+                return [door.frame(door.envelope(request, result={"pong": True}))]
+            if cmd == "dictation.receipt":
+                state["polls"] += 1
+                if relaunch_after is not None and state["polls"] > relaunch_after:
+                    door.launch = str(uuid.uuid4())
+                answer = receipts[min(state["polls"], len(receipts)) - 1]
+                if clock is not None and answer.get("status") == "terminal":
+                    clock.now += cost  # the terminal reply took this long to arrive
+                if "code" in answer:
+                    return [door.frame(door.envelope(request, ok=False, result=None,
+                                                     error=answer))]
+                return [door.frame(door.envelope(request, result=answer))]
+            if cmd == "history.get":
+                row = rows.get(args.get("id"))
+                if row is None:
+                    return [door.frame(door.envelope(
+                        request, ok=False, result=None,
+                        error={"code": "notFound", "message": "no visible History row"}))]
+                return [door.frame(door.envelope(request, result={"row": row}))]
+            return [door.frame(door.envelope(request, result={"echo": cmd}))]
+
+        door.respond = respond
+        return state
+
+    def pending():
+        return {"receipt": RECEIPT, "status": "pending"}
+
+    def terminal(ending, saved=None, origin=None):
+        return {"receipt": RECEIPT, "status": "terminal", "ending": ending,
+                "cancelOrigin": origin, "savedRowID": saved}
+
+    door = FakeDoor(111, exe)
+    try:
+        # Pending through stopping and processing, then completed with its own row, while a
+        # newer unrelated row is also in History.
+        door.received.clear()
+        state = scripted(door, [pending(), pending(), pending(), terminal("completed", row_id)],
+                         rows={row_id: {"id": row_id, "text": "mine"},
+                               newer: {"id": newer, "text": "newer"}})
+        b = ClockBoundaries({"111": exe}, door=door, lock=FakeLock(session=AGENT, status=3))
+        status, document, out, _ = _run(wait, b)
+        gets = [q.get("args") for q in door.received if q.get("cmd") == "history.get"]
+        result = document.get("result") or {}
+        r.check("dictation", "wait: pending to completed returns that take's own row",
+                status == 0 and (result.get("row") or {}).get("id") == row_id
+                and result.get("terminal", {}).get("ending") == "completed"
+                and gets == [{"id": row_id}] and state["polls"] == 4 and result.get("polls") == 4
+                and b.sleeps == [0.25, 0.25, 0.25] and out == "",
+                f"status={status} doc={document} gets={gets} sleeps={b.sleeps}")
+        r.check("dictation", "wait: a read needs no dev-app lock",
+                b.lock.find_calls == 0 and b.lock.main_calls == [], str(b.lock.main_calls))
+        r.check("dictation", "wait: only reads were sent",
+                set(door.commands()) <= {"ping", "dictation.receipt", "history.get"},
+                str(door.commands()))
+
+        for ending, origin in (("cancelled", "cancelButton"), ("noSpeech", None),
+                               ("historySaveFailed", None)):
+            door.received.clear()
+            scripted(door, [terminal(ending, None, origin)])
+            status, document, _, _ = _run(wait, ClockBoundaries({"111": exe}, door=door))
+            result = document.get("result") or {}
+            r.check("dictation", f"wait: {ending} ends with no row and no History read",
+                    status == 0 and result.get("row") is None
+                    and result.get("terminal", {}).get("ending") == ending
+                    and result.get("terminal", {}).get("cancelOrigin") == origin
+                    and "history.get" not in door.commands(),
+                    f"status={status} doc={document}")
+
+        door.received.clear()
+        scripted(door, [terminal("completed", row_id)], rows={newer: {"id": newer}})
+        status, document, _, _ = _run(wait, ClockBoundaries({"111": exe}, door=door))
+        r.check("dictation", "wait: a deleted saved row is notFound, never a neighbour",
+                status == 1 and _code(document) == "notFound"
+                and (document["error"].get("terminal") or {}).get("savedRowID") == row_id
+                and "row" not in (document.get("result") or {}),
+                f"status={status} doc={document}")
+
+        door.received.clear()
+        scripted(door, [terminal("completed", row_id)], rows={row_id: {"id": newer}})
+        status, document, _, _ = _run(wait, ClockBoundaries({"111": exe}, door=door))
+        r.check("dictation", "wait: a row reply naming another id is refused",
+                status == 1 and _code(document) == "doorError", f"doc={document}")
+
+        # The terminal reply used 0.9 s of a 1 s wait: History gets only what is left.
+        door.received.clear()
+        b = ClockBoundaries({"111": exe}, door=door)
+        scripted(door, [terminal("completed", row_id)], rows={row_id: {"id": row_id}},
+                 clock=b, cost=0.9)
+        status, document, _, _ = _run(wait + ["--timeout", "1"], b)
+        r.check("dictation", "wait: History gets only the remaining deadline",
+                status == 0 and len(b.timeouts) == 2 and b.timeouts[0] == 1.0
+                and abs(b.timeouts[1] - 0.1) < 1e-9, f"status={status} timeouts={b.timeouts}")
+
+        # The terminal reply used the whole budget: no History read, explicit timeout, the
+        # terminal kept, nothing stopped.
+        door.received.clear()
+        b = ClockBoundaries({"111": exe}, door=door)
+        scripted(door, [terminal("completed", row_id)], rows={row_id: {"id": row_id}},
+                 clock=b, cost=1.5)
+        status, document, _, _ = _run(wait + ["--timeout", "1"], b)
+        r.check("dictation", "wait: an exhausted budget reads no row and keeps the terminal",
+                status == 1 and _code(document) == "waitTimeout"
+                and (document["error"].get("terminal") or {}).get("savedRowID") == row_id
+                and "history.get" not in door.commands()
+                and not {"dictation.stop", "dictation.cancel"} & set(door.commands()),
+                f"status={status} doc={document}")
+
+        door.received.clear()
+        scripted(door, [pending()])
+        b = ClockBoundaries({"111": exe}, door=door)
+        status, document, _, _ = _run(wait + ["--timeout", "1"], b)
+        r.check("dictation", "wait: timeout stops watching and sends no stop or cancel",
+                status == 1 and _code(document) == "waitTimeout"
+                and document["error"].get("receipt") == RECEIPT
+                and not {"dictation.stop", "dictation.cancel"} & set(door.commands())
+                and sum(b.sleeps) <= 1.0 and document["error"].get("polls") == 4,
+                f"status={status} doc={document} sleeps={b.sleeps}")
+
+        door.received.clear()
+        scripted(door, [pending()], relaunch_after=2)
+        status, document, _, _ = _run(wait, ClockBoundaries({"111": exe}, door=door))
+        r.check("dictation", "wait: a relaunch during polling is an identity error",
+                status == 2 and _code(document) == "identityChanged"
+                and document["error"].get("outcome") == "none", f"doc={document}")
+        door.launch = str(uuid.uuid4())
+
+        for code in ("receiptExpired", "unknownReceipt", "wrongLaunch"):
+            door.received.clear()
+            scripted(door, [pending(), {"code": code, "message": "x"}])
+            status, document, _, _ = _run(wait, ClockBoundaries({"111": exe}, door=door))
+            r.check("dictation", f"wait: {code} propagates",
+                    status == 1 and _code(document) == code
+                    and door.commands().count("dictation.receipt") == 2, f"doc={document}")
+
+        door.received.clear()
+        door.respond = lambda request: (
+            [door.frame(door.envelope(request, result={"pong": True}))]
+            if request.get("cmd") == "ping" else "close")
+        status, document, _, _ = _run(wait, ClockBoundaries({"111": exe}, door=door))
+        r.check("dictation", "wait: a lost reply is a read error, never retried",
+                status == 1 and _code(document) == "doorError"
+                and door.commands().count("dictation.receipt") == 1, f"doc={document}")
+
+        # frontAppLost: nonzero exit, but the structured receipt survives.
+        door.received.clear()
+        door.respond = lambda request: [door.frame(door.envelope(
+            request, ok=False, result=None,
+            error={"code": "frontAppLost", "message": "m", "receipt": RECEIPT}))] \
+            if request.get("cmd") == "dictation.start" else door.reply_ok(request)
+        status, document, _, _ = _run(base + ["dictation", "start", "--front-app", "x.app"],
+                                      FakeBoundaries({"111": exe}, door=door))
+        r.check("dictation", "start: frontAppLost keeps its receipt on a nonzero exit",
+                status == 1 and _code(document) == "frontAppLost"
+                and document["error"].get("receipt") == RECEIPT, f"doc={document}")
+
+        # --receipt takes the object or the document start printed (result or error).
+        for label, text in (
+            ("the receipt object", json.dumps(RECEIPT)),
+            ("start's ok document", json.dumps({"ok": True, "result": {"receipt": RECEIPT,
+                                                                       "status": "pending"}})),
+            ("start's frontAppLost document", json.dumps(
+                {"ok": False, "error": {"code": "frontAppLost", "receipt": RECEIPT}})),
+        ):
+            door.received.clear()
+            door.respond = door.reply_ok
+            status, _, _, _ = _run(base + ["dictation", "receipt", "--receipt", text],
+                                   FakeBoundaries({"111": exe}, door=door))
+            sent = door.received[-1].get("args") if door.received else None
+            r.check("dictation", f"--receipt accepts {label}",
+                    status == 0 and sent == {"receipt": RECEIPT}, f"sent={sent}")
+
+        bad_receipts = ("{bad", "[]", json.dumps({"launch": "x"}),
+                        json.dumps(dict(RECEIPT, extra="y")), json.dumps(dict(RECEIPT, take=3)),
+                        json.dumps({"ok": True, "result": {"status": "pending"}}), "NaN")
+        for verb in ("stop", "receipt", "wait"):
+            for text in bad_receipts:
+                door.received.clear()
+                b = FakeBoundaries({"111": exe}, door=door,
+                                   lock=FakeLock(session=AGENT, status=0))
+                status, document, _, _ = _run(base + ["dictation", verb, "--receipt", text], b)
+                r.check("dictation", f"{verb}: --receipt {text[:24]!r} refused before contact",
+                        status == 2 and _code(document) == "usage" and door.received == []
+                        and b.lock.main_calls == [], f"status={status} doc={document}")
+        for value in ("nan", "inf", "0", "-1"):
+            door.received.clear()
+            status, document, _, _ = _run(wait + ["--timeout", value],
+                                          FakeBoundaries({"111": exe}, door=door))
+            r.check("dictation", f"wait: --timeout {value} refused before contact",
+                    status == 2 and _code(document) == "usage" and door.received == [],
+                    f"doc={document}")
+        r.check("dictation", "dictation commands never load PyObjC or the import client",
+                "objc" not in sys.modules and "import_door" not in sys.modules, "")
+    finally:
+        door.stop()
+
+
 def run_self_test():
     """(exit status, document): 0 only when every category ran and nothing failed."""
     r = _Results()
@@ -875,6 +1136,7 @@ def run_self_test():
         identity_cases(r, tree)
         framing_cases(r, tree)
         import_cases(r, tree)
+        dictation_cases(r, tree)
         output_cases(r, tree)
     finally:
         tree.clean()

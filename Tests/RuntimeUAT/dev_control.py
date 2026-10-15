@@ -18,6 +18,9 @@ CLI, from a worktree whose dev build is running:
     python3 Tests/RuntimeUAT/dev_control.py settings set fillerRemovalEnabled false
     python3 Tests/RuntimeUAT/dev_control.py words add fooFlux --alias "foo flux"
     python3 Tests/RuntimeUAT/dev_control.py models download whisperkit
+    R=$(python3 Tests/RuntimeUAT/dev_control.py dictation start --front-app com.apple.TextEdit)
+    python3 Tests/RuntimeUAT/dev_control.py dictation stop --receipt "$R"
+    python3 Tests/RuntimeUAT/dev_control.py dictation wait --receipt "$R"
     python3 Tests/RuntimeUAT/dev_control.py --self-test
 
 Stdout carries exactly one JSON document per run; diagnostics go to stderr. Exit status:
@@ -35,6 +38,7 @@ import socket
 import subprocess
 import sys
 import threading
+import time
 import uuid
 
 PROTOCOL_VERSION = 1
@@ -207,6 +211,9 @@ class Connection:
             raise DoorError("reply id does not match the request")
         return reply
 
+    def set_timeout(self, seconds):
+        self._sock.settimeout(seconds)
+
     def close(self):
         self._sock.close()
 
@@ -279,6 +286,13 @@ skips the screens' checks, not the owner's consequences (a provider change still
 model). A successful write does not say when an in-flight dictation adopts the value.
 models download/cancel press the Settings row's own button and return that engine's
 state the instant after; poll status for progress. A reply is never a finished download.
+dictation start records on the ACTIVE engine and prints a receipt; --receipt takes that
+receipt object or the whole document start printed. --front-app brings that app forward
+first (best effort: leave the field you want the text in focused); if the app loses the
+front after the take starts, the take is cancelled and the error still carries its receipt.
+dictation wait polls that receipt every 250 ms and returns its own result and, when it
+saved one, that exact History row; a timeout stops watching, never the take. If a start,
+stop or cancel reply is lost, its outcome is unknown: read the receipt before retrying.
 Changes need the shared dev-app lock (dev-app-lock.py claim) unless run by hand.
 """
 
@@ -336,6 +350,17 @@ def build_parser():
         dest="action", required=True, metavar="ACTION")
     for verb in MODEL_ACTIONS:
         models.add_parser(verb).add_argument("backend", choices=MODEL_BACKENDS)
+
+    dictation = sub.add_parser("dictation", help="start, stop or follow one take").add_subparsers(
+        dest="action", required=True, metavar="ACTION")
+    start = dictation.add_parser("start")
+    start.add_argument("--front-app", metavar="BUNDLE_ID")
+    for verb in ("stop", "receipt", "wait"):
+        sub_ = dictation.add_parser(verb)
+        sub_.add_argument("--receipt", required=True, metavar="JSON")
+        if verb == "wait":
+            sub_.add_argument("--timeout", type=float, default=120.0)
+    dictation.add_parser("cancel")
 
     file_ = sub.add_parser("file", help="Transcribe a File").add_subparsers(
         dest="action", required=True, metavar="ACTION")
@@ -399,6 +424,18 @@ def route(args):
         if args.backend not in MODEL_BACKENDS:
             raise CliError("usage", f"unknown model {args.backend!r}", EXIT_USAGE)
         return f"models.{args.backend}.{args.action}", None, True
+    if key == ("dictation", "start"):
+        wire = {} if args.front_app is None else {"frontApp": args.front_app}
+        return "dictation.start", wire, True
+    if key == ("dictation", "stop"):
+        return "dictation.stop", {"receipt": receipt_argument(args.receipt)}, True
+    if key == ("dictation", "cancel"):
+        return "dictation.cancel", None, True
+    if key == ("dictation", "receipt"):
+        return "dictation.receipt", {"receipt": receipt_argument(args.receipt)}, False
+    if key == ("dictation", "wait"):
+        # Many requests on one session, not one route: `run` handles it before routing.
+        raise CliError("usage", "dictation wait is not a single door request", EXIT_USAGE)
     if key == ("history", "list"):
         return "history.list", ({} if args.limit is None else {"limit": args.limit}), False
     if key == ("history", "get"):
@@ -410,6 +447,40 @@ def route(args):
             raise CliError("usage", "--timeout must be positive and finite", EXIT_USAGE)
         return None
     raise CliError("usage", "no command given", EXIT_USAGE)
+
+
+RECEIPT_FIELDS = ("launch", "backend", "take")
+WAIT_POLL_SECONDS = 0.25
+
+
+def receipt_argument(text):
+    """The receipt object from --receipt: the object itself, or the whole document a
+    `dictation start` printed (its result, or its error for frontAppLost). Passed to the
+    door unchanged; anything else is a usage error before the app is contacted."""
+    try:
+        value = json.loads(text, parse_constant=_reject_constant)
+    except ValueError as error:
+        raise CliError("usage", f"--receipt is not JSON ({error})", EXIT_USAGE) from error
+    if isinstance(value, dict) and "receipt" not in value and set(value) != set(RECEIPT_FIELDS):
+        for holder in (value.get("result"), value.get("error")):
+            if isinstance(holder, dict) and "receipt" in holder:
+                value = holder
+                break
+    if isinstance(value, dict) and "receipt" in value:
+        value = value["receipt"]
+    if (not isinstance(value, dict) or set(value) != set(RECEIPT_FIELDS)
+            or not all(isinstance(value[k], str) for k in RECEIPT_FIELDS)):
+        raise CliError("usage", "--receipt must be the receipt dictation start printed",
+                       EXIT_USAGE)
+    return value
+
+
+def wait_arguments(args):
+    """(receipt, timeout) for `dictation wait`, refused before the app is contacted."""
+    receipt = receipt_argument(args.receipt)
+    if not math.isfinite(args.timeout) or args.timeout <= 0:
+        raise CliError("usage", "--timeout must be positive and finite", EXIT_USAGE)
+    return receipt, args.timeout
 
 
 class Boundaries:
@@ -447,6 +518,12 @@ class Boundaries:
     def load_import_backend(self):
         from import_door import transcribe_file_backend
         return transcribe_file_backend
+
+    def monotonic(self):
+        return time.monotonic()
+
+    def sleep(self, seconds):
+        time.sleep(seconds)
 
 
 def resolve_worktree(requested, boundaries):
@@ -577,7 +654,9 @@ class Session:
         self.launch = reply["launch"]
         return reply
 
-    def call(self, cmd, args):
+    def call(self, cmd, args, timeout=None):
+        if timeout is not None:
+            self.connection.set_timeout(timeout)
         reply = self.connection.request(cmd, args)
         _check_envelope(reply)
         if reply.get("launch") != self.launch or reply.get("executable") != self.executable:
@@ -600,9 +679,9 @@ def _open_session(root, boundaries, timeout):
     return session
 
 
-def _door_call(session, cmd, wire, mutation):
+def _door_call(session, cmd, wire, mutation, timeout=None):
     try:
-        reply = session.call(cmd, wire)
+        reply = session.call(cmd, wire, timeout=timeout)
     except IdentityError as error:
         raise CliError("identityChanged", str(error), EXIT_USAGE,
                        outcome="unknown" if mutation else "none") from error
@@ -621,6 +700,56 @@ def _door_call(session, cmd, wire, mutation):
             "the change may have applied, but its reply was over the size limit: read the "
             "state back before retrying", EXIT_FAILED)
     return (EXIT_OK if reply["ok"] else EXIT_FAILED), reply
+
+
+def _wait(session, receipt, wait_timeout, boundaries, timeout):
+    """Poll one receipt until it is terminal or the deadline passes. One validated session
+    for the whole wait, so a relaunch is an identity error, never a fresh start. Only that
+    receipt ends the wait; its saved row is fetched by its own id."""
+    deadline = boundaries.monotonic() + wait_timeout
+    polls = 0
+    while True:
+        remaining = deadline - boundaries.monotonic()
+        if remaining <= 0:
+            raise CliError(
+                "waitTimeout",
+                f"the take was still pending after {wait_timeout:g} s; it was not stopped",
+                EXIT_FAILED, receipt=receipt, polls=polls)
+        status, reply = _door_call(session, "dictation.receipt", {"receipt": receipt}, False,
+                                   timeout=min(timeout, remaining))
+        polls += 1
+        if not reply["ok"]:
+            return status, reply
+        result = reply["result"]
+        if result.get("status") == "terminal":
+            break
+        if result.get("status") != "pending":
+            raise CliError("doorError", f"unexpected receipt status {result.get('status')!r}",
+                           EXIT_FAILED)
+        boundaries.sleep(min(WAIT_POLL_SECONDS, max(0.0, deadline - boundaries.monotonic())))
+    row = None
+    saved = result.get("savedRowID")
+    if saved is not None:
+        remaining = deadline - boundaries.monotonic()
+        if remaining <= 0:
+            raise CliError(
+                "waitTimeout",
+                "the take finished, but its History lookup exceeded the wait deadline; "
+                "the take was not stopped",
+                EXIT_FAILED, receipt=receipt, terminal=result, polls=polls)
+        _, fetched = _door_call(session, "history.get", {"id": saved}, False,
+                                timeout=min(timeout, remaining))
+        if not fetched["ok"]:
+            raise CliError(
+                fetched["error"]["code"],
+                "the take saved a History row that History no longer offers",
+                EXIT_FAILED, terminal=result)
+        row = fetched["result"].get("row")
+        if not isinstance(row, dict) or row.get("id") != saved:
+            raise CliError("doorError", "history.get returned a different row", EXIT_FAILED)
+    return EXIT_OK, {"ok": True, "result": {"terminal": result, "row": row, "polls": polls},
+                     "pid": reply.get("pid"), "launch": reply.get("launch"),
+                     "executable": reply.get("executable"), "door": reply.get("door")}
 
 
 def _transcribe(args, root, boundaries, timeout):
@@ -667,6 +796,14 @@ def run(argv, boundaries, timeout=10.0):
         build_parser().print_usage()
         return EXIT_USAGE, CliError("usage", "no command given", EXIT_USAGE).document()
     try:
+        if (args.group, getattr(args, "action", None)) == ("dictation", "wait"):
+            receipt, wait_timeout = wait_arguments(args)
+            root = resolve_worktree(args.worktree, boundaries)
+            session = _open_session(root, boundaries, timeout)
+            try:
+                return _wait(session, receipt, wait_timeout, boundaries, timeout)
+            finally:
+                session.connection.close()
         socket_route = route(args)
         mutation = socket_route is None or socket_route[2]
         root = resolve_worktree(args.worktree, boundaries)
