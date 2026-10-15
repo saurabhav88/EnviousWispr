@@ -162,19 +162,27 @@ class AudioRig:
     def _restore_all(self):
         """Every step runs even if another fails; True only when all verified. A take still
         running is stopped FIRST, so no recording outlives its route."""
-        take_idle = tg.stop_active_take()
+        player_gone, take_idle = tg.stop_active_take()
         tg.clear_target()
         try:
             self.target.close()
         except Exception as close_exc:  # a leftover test document never blocks the restore
             print(f"RIG: could not close the test document: {close_exc!r}", flush=True)
-        ok = take_idle
+        ok = player_gone and take_idle
         parts = (self.route, self.alerts)
-        if not take_idle and self.route is not None:
+        if not player_gone:
+            # A test sound may still be playing: every device stays on BlackHole (nothing audible,
+            # nothing captured). The on-disk restore files finish the job once it is stopped.
+            print("RIG: the test sound is not proven stopped; all audio stays on BlackHole. Stop "
+                  "`afplay`, then run `python3 Tests/RuntimeUAT/silent_audio.py restore`", flush=True)
+            parts = ()
+        elif not take_idle and self.route is not None:
             # The app may still be recording: put the SPEAKERS back but leave the system input and
-            # the app's microphone on BlackHole, so it can only hear silence, never the room. The
-            # on-disk restore file stays for `python3 silent_audio.py restore` once it is stopped.
-            self._speakers_back(self.route.original_output)
+            # the app's microphone on BlackHole, so it can only hear silence, never the room.
+            try:
+                self._speakers_back(self.route.original_output)
+            except (Exception, SystemExit) as exc:
+                print(f"RIG: speakers not put back: {exc!r}", flush=True)
             print("RIG: a take could not be proven stopped; the app's microphone stays on BlackHole. "
                   "Stop the recording, then run `python3 Tests/RuntimeUAT/silent_audio.py restore`", flush=True)
             parts = (self.alerts,)
@@ -196,6 +204,8 @@ class AudioRig:
     @staticmethod
     def _speakers_back(device):
         subprocess.run([sa.SWITCH, "-s", device, "-t", "output"], capture_output=True)
+        if sa._current("output") != device:
+            raise RuntimeError(f"output is {sa._current('output')!r}, not {device!r}")
 
     def __exit__(self, exc_type, exc, tb):
         if self._restore_all():
@@ -312,6 +322,7 @@ def _self_test():
 
     for label, stop, idle in (("a take that stays recording", lambda: None, lambda: False),
                               ("an idle check that raises", lambda: None, lambda: 1 / 0)):
+        tg._take = None  # self-test reset: the previous case left an unproven take on purpose
         tg.take_started(stop, idle)
         rig = AudioRig(target=FakeTarget())
         rig._speakers_back = lambda device: None  # never touch the real devices in a self-test
@@ -337,11 +348,62 @@ def _self_test():
             return -15
         def kill(self):
             pass
+    tg._take = None
     player = Player()
     tg.take_started(lambda: None, lambda: True)
     tg.take_player(player)
     expect("an interrupted take's player is stopped before the restore",
-           tg.stop_active_take() and player.terminated)
+           tg.stop_active_take() == (True, True) and player.terminated)
+
+    tg._take = None
+    tg.take_started(lambda: None, lambda: False)
+    first = tg.stop_active_take()
+    expect("a second cleanup after a failed one is still not proven",
+           first == (True, False) and tg.stop_active_take() == (True, False))
+
+    tg._take = None
+    sent = []
+    tg.take_started(lambda: sent.append("stop"), lambda: False)
+    tg.take_stopped()
+    expect("a take that stopped itself is still verified, and no second stop is sent",
+           tg.stop_active_take() == (True, False) and sent == [])
+    try:
+        tg.take_started(lambda: None, lambda: True)
+        expect("a new take is refused while the previous one is unproven", False)
+    except tg.SetupFailed as exc:
+        expect("a new take is refused while the previous one is unproven", exc.step == "take-cleanup")
+
+    class Stuck(Player):
+        def terminate(self):
+            pass
+        def wait(self, timeout=None):
+            raise subprocess.TimeoutExpired("afplay", timeout)
+    tg._take = None
+    tg.take_started(lambda: None, lambda: True)
+    tg.take_player(Stuck())
+    rig = AudioRig(target=FakeTarget())
+    alerts = Fake()
+    rig.route, rig.alerts = Fake(), alerts
+    try:
+        rig.__exit__(None, None, None)
+        expect("an unkillable player keeps every device on BlackHole", False)
+    except tg.SetupFailed:
+        expect("an unkillable player keeps every device on BlackHole",
+               rig.route is None and alerts.calls == 0)
+
+    tg._take = None
+    tg.take_started(lambda: None, lambda: False)
+    rig = AudioRig(target=FakeTarget())
+    alerts = Fake()
+    rig.route, rig.alerts = Fake(), alerts
+    rig.route.original_output = "MacBook Pro Speakers"
+    rig._speakers_back = lambda device: 1 / 0
+    try:
+        rig.__exit__(None, None, None)
+    except tg.SetupFailed:
+        pass
+    expect("a failing speakers-only step still restores the alerts", alerts.calls == 1)
+    tg._take = None
 
     class Boom(FakeTarget):
         def ready(self):

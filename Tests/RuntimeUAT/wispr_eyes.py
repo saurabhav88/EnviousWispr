@@ -3371,7 +3371,7 @@ def record_tts(sentence="The quick brown fox jumps over the lazy dog", key=None,
     try:
         _si.hold_key(key, duration=hold_dur, before_release=before_release)
     finally:
-        player.join()
+        player.join(timeout=hold_dur + 15)  # bounded: a hung player is killed by the rig's cleanup
     _tg.take_stopped()
 
     # Wait for pipeline (ASR + polish + paste)

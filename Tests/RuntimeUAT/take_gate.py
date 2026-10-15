@@ -42,15 +42,18 @@ class CouldNotTell(RuntimeError):
         super().__init__(f"COULD NOT TELL: {detail}. Not an app result.")
 
 
-_take = None  # {"stop": callable, "idle": callable, "player": Popen or None}
+_take = None  # {"stop", "idle", "player", "stopped"}: kept until the take is PROVEN over
 
 
 def take_started(stop, idle):
     """Register the running take: `stop()` ends it (menu Stop, key up) and `idle()` answers
-    whether the app is no longer recording. Whatever ends the run, `stop_active_take` stops the
-    player and the take and PROVES the app idle before the audio rig puts the devices back."""
+    whether the app is no longer recording. The registration stays until `stop_active_take`
+    PROVES both the player gone and the app idle; the audio rig runs that before it puts any
+    device back (#3764). A previous take that is not proven over refuses the new one."""
     global _take
-    _take = {"stop": stop, "idle": idle, "player": None}
+    if _take is not None and stop_active_take() != (True, True):
+        raise SetupFailed("take-cleanup", "the previous take is not proven stopped")
+    _take = {"stop": stop, "idle": idle, "player": None, "stopped": False}
 
 
 def take_player(proc):
@@ -61,42 +64,56 @@ def take_player(proc):
 
 
 def take_stopped():
-    """The take ended normally: nothing left to stop."""
-    global _take
-    _take = None
+    """The take sent its own stop (menu Stop, key up). The registration stays: the next
+    `stop_active_take` verifies it without sending another stop."""
+    if _take is not None:
+        _take["stopped"] = True
+
+
+def _player_gone(proc):
+    """Stop the player and prove it exited (True), or report it may still play (False)."""
+    if proc is None:
+        return True
+    for attempt in (getattr(proc, "terminate", None), getattr(proc, "kill", None)):
+        try:
+            if proc.poll() is not None:
+                return True
+            if attempt is not None:
+                attempt()
+            proc.wait(timeout=5)
+        except BaseException:
+            pass
+    try:
+        return proc.poll() is not None
+    except BaseException:
+        return False
 
 
 def stop_active_take():
-    """Stop a registered take's player and capture, then verify the app is idle. Returns True
-    when nothing was running or the stop is proven; never raises (it runs on the way out of a
-    failure, including an interrupt)."""
+    """Prove the registered take over: (player_gone, app_idle). Sends the stop only if the take
+    did not send its own. Clears the registration ONLY when both are proven; otherwise a later
+    call re-checks. Never raises: it runs on the way out of a failure, including an interrupt."""
     global _take
-    take, _take = _take, None
+    take = _take
     if take is None:
-        return True
-    proc = take["player"]
-    if proc is not None:
+        return True, True
+    player_ok = _player_gone(take["player"])
+    if not take["stopped"]:
         try:
-            if proc.poll() is None:
-                proc.terminate()
-            proc.wait(timeout=5)
-        except BaseException:
-            try:
-                proc.kill()
-            except BaseException:
-                pass
-    try:
-        take["stop"]()
-    except BaseException as exc:
-        print(f"TAKE CLEANUP: stop raised {exc!r}", flush=True)
+            take["stop"]()
+        except BaseException as exc:
+            print(f"TAKE CLEANUP: stop raised {exc!r}", flush=True)
+        take["stopped"] = True
     try:
         idle = bool(take["idle"]())
     except BaseException as exc:
         print(f"TAKE CLEANUP: idle check raised {exc!r}", flush=True)
         idle = False
-    print("TAKE STOPPED and verified idle before the restore" if idle else
-          "TAKE CLEANUP FAILED: the app may still be recording", flush=True)
-    return idle
+    if player_ok and idle:
+        _take = None
+    else:
+        print(f"TAKE CLEANUP NOT PROVEN: player_gone={player_ok} app_idle={idle}", flush=True)
+    return player_ok, idle
 
 
 def declare_target(bundle_id, activate=None):
