@@ -991,7 +991,7 @@ import Testing
 
     private static let noContext = DevControlSettings.WriteContext(
       modelCatalog: { DevControlSettings.ModelCatalog(provider: nil, models: []) },
-      connectedInputUIDs: { [] })
+      connectedInputUIDs: { [] }, pillWordsCapability: { .available })
 
     /// Starts `model_unload_policy` at a known value with nothing pending, so each test
     /// below moves among three distinct projected values.

@@ -26,7 +26,7 @@
         settings: settings,
         writeContext: DevControlSettings.WriteContext(
           modelCatalog: { DevControlSettings.ModelCatalog(provider: nil, models: []) },
-          connectedInputUIDs: { ["mic-a"] }),
+          connectedInputUIDs: { ["mic-a"] }, pillWordsCapability: { .available }),
         status: DevControlFixtures.StatusFake().sources,
         history: DevControlFixtures.history([]),
         models: DevControlFixtures.ModelFake().actions,
@@ -230,7 +230,7 @@
         settings: settings,
         writeContext: DevControlSettings.WriteContext(
           modelCatalog: { DevControlSettings.ModelCatalog(provider: nil, models: []) },
-          connectedInputUIDs: { [] }),
+          connectedInputUIDs: { [] }, pillWordsCapability: { .available }),
         status: status.sources,
         history: DevControlDispatcher.HistorySource(visibleTranscripts: rows),
         models: models.actions,
@@ -568,7 +568,7 @@ private static func make(words: CustomWordsCoordinator) -> (SettingsManager, Dev
     settings: settings,
     writeContext: DevControlSettings.WriteContext(
       modelCatalog: { DevControlSettings.ModelCatalog(provider: nil, models: []) },
-      connectedInputUIDs: { [] }),
+      connectedInputUIDs: { [] }, pillWordsCapability: { .available }),
     status: DevControlFixtures.StatusFake().sources,
     history: DevControlFixtures.history([]),
     models: DevControlFixtures.ModelFake().actions,

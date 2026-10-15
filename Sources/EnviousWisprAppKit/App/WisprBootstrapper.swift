@@ -2302,7 +2302,8 @@ package final class WisprBootstrapper {
               DevControlSettings.ModelCatalog(
                 provider: llmDiscovery.stateProvider, models: llmDiscovery.discoveredModels)
             },
-            connectedInputUIDs: { AudioDeviceEnumerator.allInputDevices().map(\.uid) }),
+            connectedInputUIDs: { AudioDeviceEnumerator.allInputDevices().map(\.uid) },
+            pillWordsCapability: { [pillAppearance] in pillAppearance.wordsCapability }),
           status: DevControlDispatcher.StatusSources(
             engineStatus: { [engineCoordinator] in engineCoordinator.status },
             isSwitching: { [engineCoordinator] in engineCoordinator.isSwitching },

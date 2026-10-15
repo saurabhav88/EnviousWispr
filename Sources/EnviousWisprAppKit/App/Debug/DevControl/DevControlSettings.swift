@@ -96,10 +96,9 @@
         .playRecordingSounds, .recordingSoundPairing, .otherAudioWhileDictating, .learnFromEdits:
         return make(.direct)
       case .selectedInputDeviceUID, .preferredInputDeviceIDOverride, .spokenPunctuation,
-        .hasCompletedOnboarding:
+        .hasCompletedOnboarding, .recordingPillDesignWithoutWords, .recordingPillDesignWithWords:
         return make(.viaOwner)
-      case .recordingPillDesignWithoutWords, .recordingPillDesignWithWords, .languageMode,
-        .englishSpelling:
+      case .languageMode, .englishSpelling:
         return make(.viaOwner, deferredTo: "PR-B")
       case .cancelKeyCode, .cancelModifiers, .quickAddKeyCode, .quickAddModifiers,
         .pasteLastKeyCode, .pasteLastModifiers, .copyLastKeyCode, .copyLastModifiers,
@@ -410,6 +409,9 @@
       var modelCatalog: () -> ModelCatalog
       /// UIDs of the input devices the system lists right now.
       var connectedInputUIDs: () -> [String]
+      /// Whether the pill can show words right now, as the Appearance picker reads it
+      /// (`PillAppearanceModel.wordsCapability`).
+      var pillWordsCapability: () -> PillWordsCapability
     }
 
     struct ModelCatalog {
@@ -447,6 +449,9 @@
       case inputDevice
       /// The start-word owners on `SettingsManager`.
       case spokenPunctuation
+      /// The Appearance pill picker: its group for the slot, `offersCoupled`, then
+      /// `PillAppearanceModel.chooseCoupled`.
+      case pillDesign
       /// The check is delivered in a later PR; only `force` writes it in this build.
       case notYetShared
     }
@@ -464,6 +469,9 @@
           return .inputDevice
         }
         if key == .spokenPunctuation { return .spokenPunctuation }
+        if key == .recordingPillDesignWithoutWords || key == .recordingPillDesignWithWords {
+          return .pillDesign
+        }
         if key == .hasCompletedOnboarding { return .typed }
         return .notYetShared
       case .extractedCheck:
@@ -504,11 +512,44 @@
         return .written(forced: false)
       case .spokenPunctuation:
         return writeSpokenPunctuation(value, to: settings)
+      case .pillDesign:
+        return writePillDesign(
+          value, holdingWords: key == .recordingPillDesignWithWords, context: context,
+          to: settings)
       case .notYetShared:
         return .refused(
           code: "checkNotYetShared",
           message: "this setting's screen check is not shared yet; use force to stage it")
       }
+    }
+
+    /// The pill picker's own path. Each slot is one picker group
+    /// (`PillCatalog.designs(holdingWords:)`), so a design from the other group is refused
+    /// rather than letting `chooseCoupled` write the other slot. The picker greys out what
+    /// `offersCoupled` refuses for the capability right now; an offered choice goes through
+    /// `chooseCoupled`, which also sets Live Preview to what the design needs and leaves the
+    /// other slot as it was. The model is built over the request's settings with the live
+    /// capability: it holds no state of its own beyond an observation counter.
+    private static func writePillDesign(
+      _ value: Any, holdingWords: Bool, context: WriteContext, to settings: SettingsManager
+    ) -> SetOutcome {
+      guard let design = Codec.raw(value, RecordingPillDesign.self) else {
+        return .refused(code: "badValue", message: "wrong type or unknown value")
+      }
+      guard PillCatalog.designs(holdingWords: holdingWords).contains(design) else {
+        return .refused(
+          code: "checkFailed",
+          message: "that design belongs to the other pill slot; the picker never puts it here")
+      }
+      let model = PillAppearanceModel(settings: settings, capability: context.pillWordsCapability)
+      let capability = model.wordsCapability
+      guard model.offersCoupled(design, capability: capability) else {
+        return .refused(
+          code: "checkFailed",
+          message: "the pill picker does not offer that design right now (\(capability))")
+      }
+      model.chooseCoupled(design)
+      return .written(forced: false)
     }
 
     private static func outcome(_ written: WriteOutcome) -> SetOutcome {

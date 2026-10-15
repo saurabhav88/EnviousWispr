@@ -72,7 +72,7 @@
         settings: SettingsManager(defaults: defaults),
         writeContext: DevControlSettings.WriteContext(
           modelCatalog: { DevControlSettings.ModelCatalog(provider: nil, models: []) },
-          connectedInputUIDs: { [] }),
+          connectedInputUIDs: { [] }, pillWordsCapability: { .available }),
         status: status.sources,
         history: DevControlFixtures.history(rows),
         models: models.actions,
@@ -479,6 +479,37 @@
         #expect(line.contains("4322") == false)
         #expect(line.contains("toggleKeyCode") == false)
       }
+      try await stop(door)
+    }
+
+    @Test("a pill design write crosses the socket through the picker's route")
+    func pillDesignOverTheSocket() async throws {
+      let door = DevControlDoor(dispatcher: Self.dispatcher())
+      var outcomes: [String] = []
+      door.onOutcomeLogged = { outcomes.append($0) }
+      defer { door.uninstall() }
+      try #require(await door.install() == .ready)
+
+      let reply = try await runClient(
+        #"""
+        c = dev_control.Connection(\#(door.pid))
+        ok = c.request("settings.set", {"key": "recordingPillDesignWithWords", "value": "readingWell"})
+        wrong = c.request("settings.set", {"key": "recordingPillDesignWithWords", "value": "classic"})
+        preview = c.request("settings.get", {"key": "livePreviewEnabled"})
+        print(json.dumps({"ok": ok, "wrong": wrong, "preview": preview}))
+        """#)
+      let ok = try #require((reply["ok"] as? [String: Any])?["result"] as? [String: Any])
+      #expect(ok["value"] as? String == "readingWell")
+      #expect(ok["forced"] as? Bool == false)
+      #expect(ok["kind"] as? String == "viaOwner")
+      #expect(ok["deferredTo"] is NSNull)
+      let wrong = try #require(reply["wrong"] as? [String: Any])
+      #expect((wrong["error"] as? [String: Any])?["code"] as? String == "checkFailed")
+      let preview = try #require((reply["preview"] as? [String: Any])?["result"] as? [String: Any])
+      #expect(preview["value"] as? Bool == true, "the coupled pick turned Live Preview on")
+      try #require(outcomes.count == 3, "outcomes: \(outcomes)")
+      #expect(outcomes[0].contains("cmd=settings.set ok=true forced=false code=none"))
+      #expect(outcomes[1].contains("cmd=settings.set ok=false forced=false code=checkFailed"))
       try await stop(door)
     }
 

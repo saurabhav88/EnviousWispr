@@ -114,8 +114,8 @@
       }
       #expect(entry(.languageMode).deferredTo == "PR-B")
       #expect(entry(.englishSpelling).deferredTo == "PR-B")
-      #expect(entry(.recordingPillDesignWithWords).deferredTo == "PR-B")
-      #expect(entry(.recordingPillDesignWithoutWords).deferredTo == "PR-B")
+      #expect(entry(.recordingPillDesignWithWords).deferredTo == nil)
+      #expect(entry(.recordingPillDesignWithoutWords).deferredTo == nil)
       #expect(entry(.toggleKeyCode).deferredTo == "PR-C")
       #expect(entry(.inputChannelByDeviceUID).deferredTo == "PR-C")
       #expect(entry(.vadSilenceTimeout).kind == .extractedCheck)
@@ -546,23 +546,126 @@
 
     private static func context(
       catalog: DevControlSettings.ModelCatalog = .init(provider: nil, models: []),
-      connected: [String] = []
+      connected: [String] = [], pill: PillWordsCapability = .available
     ) -> DevControlSettings.WriteContext {
       DevControlSettings.WriteContext(
-        modelCatalog: { catalog }, connectedInputUIDs: { connected })
+        modelCatalog: { catalog }, connectedInputUIDs: { connected },
+        pillWordsCapability: { pill })
+    }
+
+    // MARK: - Pill design (PR-B)
+
+    /// One ordinary pill write against a fresh isolated store, with what it changed.
+    private struct PillWrite {
+      let outcome: DevControlSettings.SetOutcome
+      let withoutWords: RecordingPillDesign
+      let withWords: RecordingPillDesign
+      let livePreview: Bool
+      let fired: [(SettingsManager.SettingKey, Bool)]
+      let flagAfter: Bool
+    }
+
+    private static func pillWrite(
+      _ name: String, _ value: String, capability: PillWordsCapability, force: Bool = false,
+      start: (withoutWords: RecordingPillDesign, withWords: RecordingPillDesign, preview: Bool)
+        = (.levelRail, .readingWell, false)
+    ) throws -> PillWrite {
+      let (_, _, settings) = Self.fixture()
+      settings.recordingPillDesignWithoutWords = start.withoutWords
+      settings.recordingPillDesignWithWords = start.withWords
+      settings.livePreviewEnabled = start.preview
+      var fired: [(SettingsManager.SettingKey, Bool)] = []
+      settings.onChange = { fired.append(($0, settings.isDevControlWrite)) }
+      let key = try #require(DevControlSettings.key(named: name))
+      let outcome = DevControlSettings.write(
+        key, value: try Self.wire(value), force: force,
+        context: Self.context(pill: capability), to: settings)
+      return PillWrite(
+        outcome: outcome, withoutWords: settings.recordingPillDesignWithoutWords,
+        withWords: settings.recordingPillDesignWithWords,
+        livePreview: settings.livePreviewEnabled, fired: fired,
+        flagAfter: settings.isDevControlWrite)
+    }
+
+    @Test(
+      "a words design is offered when words are possible; the coupled pick turns Live Preview on",
+      arguments: [PillWordsCapability.available, .previewOff])
+    func wordsDesignOfferedWhenPossible(capability: PillWordsCapability) throws {
+      let write = try Self.pillWrite(
+        "recordingPillDesignWithWords", #""readingWell""#, capability: capability,
+        start: (.levelRail, .classic, false))
+      #expect(write.outcome == .written(forced: false))
+      #expect(write.withWords == .readingWell)
+      #expect(write.withoutWords == .levelRail, "the other slot keeps its memory")
+      #expect(write.livePreview == true)
+      #expect(write.fired.map(\.0).contains(.recordingPillDesignWithWords))
+      #expect(write.fired.map(\.0).contains(.livePreviewEnabled))
+      #expect(write.fired.allSatisfy { $0.1 }, "every notification is attributed to the door")
+      #expect(write.flagAfter == false)
+    }
+
+    @Test(
+      "a words design is refused where no tap can produce words, and nothing changes",
+      arguments: [PillWordsCapability.engineUnsupported, .modelBeingRemoved])
+    func wordsDesignRefusedWhenImpossible(capability: PillWordsCapability) throws {
+      let write = try Self.pillWrite(
+        "recordingPillDesignWithWords", #""readingWell""#, capability: capability,
+        start: (.levelRail, .classic, false))
+      #expect(write.outcome.code == "checkFailed")
+      #expect(write.withWords == .classic && write.withoutWords == .levelRail)
+      #expect(write.livePreview == false)
+      #expect(write.fired.isEmpty)
+      #expect(write.flagAfter == false)
+    }
+
+    @Test("a wordless design is offered even without an engine, and turns Live Preview off")
+    func wordlessDesignTurnsPreviewOff() throws {
+      let write = try Self.pillWrite(
+        "recordingPillDesignWithoutWords", #""classic""#, capability: .engineUnsupported,
+        start: (.levelRail, .readingWell, true))
+      #expect(write.outcome == .written(forced: false))
+      #expect(write.withoutWords == .classic)
+      #expect(write.withWords == .readingWell, "the other slot keeps its memory")
+      #expect(write.livePreview == false)
+      #expect(write.fired.allSatisfy { $0.1 })
+    }
+
+    @Test("a design from the other picker group is refused before any write; force stages it")
+    func otherGroupDesignIsRefusedButForceable() throws {
+      for (name, value) in [
+        ("recordingPillDesignWithWords", #""classic""#),
+        ("recordingPillDesignWithoutWords", #""readingWell""#),
+      ] {
+        let refused = try Self.pillWrite(name, value, capability: .available)
+        #expect(refused.outcome.code == "checkFailed", "\(name)")
+        #expect(refused.withoutWords == .levelRail && refused.withWords == .readingWell)
+        #expect(refused.fired.isEmpty, "\(name)")
+        let forced = try Self.pillWrite(name, value, capability: .engineUnsupported, force: true)
+        #expect(forced.outcome == .written(forced: true), "\(name)")
+        #expect(forced.livePreview == false, "force assigns only the addressed slot")
+        #expect(forced.fired.map(\.0) == [try #require(DevControlSettings.key(named: name))])
+      }
+    }
+
+    @Test("pill writes refuse a non-design value before any change")
+    func pillWriteDecodesFirst() throws {
+      for value in [#""nope""#, "3", "null"] {
+        let write = try Self.pillWrite("recordingPillDesignWithWords", value, capability: .available)
+        #expect(write.outcome.code == "badValue", "\(value)")
+        #expect(write.fired.isEmpty)
+      }
     }
 
     /// Written here by hand from plan §3.4, not derived from the table.
     private static let deferredNames: Set<String> = [
-      "recordingPillDesignWithoutWords", "recordingPillDesignWithWords", "languageMode",
-      "englishSpelling", "cancelKeyCode", "cancelModifiers", "quickAddKeyCode",
+      "languageMode", "englishSpelling", "cancelKeyCode", "cancelModifiers", "quickAddKeyCode",
       "quickAddModifiers", "pasteLastKeyCode", "pasteLastModifiers", "copyLastKeyCode",
       "copyLastModifiers", "toggleKeyCode", "toggleModifiers", "fileImportLLMProvider",
       "fileImportLLMModel", "fileImportOllamaModel", "ollamaModel", "vadSilenceTimeout",
       "inputChannelByDeviceUID",
     ]
 
-    @Test("every key has exactly one ordinary route; 20 are not shared yet")
+    @Test("every key has exactly one ordinary route; 18 are not shared yet")
     func routeCounts() {
       var counts: [DevControlSettings.Route: Int] = [:]
       var notYetShared: Set<String> = []
@@ -576,12 +679,13 @@
       #expect(counts[.modelCatalog] == 1)
       #expect(counts[.inputDevice] == 2)
       #expect(counts[.spokenPunctuation] == 1)
-      #expect(counts[.notYetShared] == 20)
+      #expect(counts[.pillDesign] == 2)
+      #expect(counts[.notYetShared] == 18)
       #expect(DevControlSettings.route(.llmModel) == .modelCatalog)
       #expect(DevControlSettings.route(.hasCompletedOnboarding) == .typed)
     }
 
-    @Test("the 20 deferred keys refuse an ordinary write without any change, and force still writes them")
+    @Test("the 18 deferred keys refuse an ordinary write without any change, and force still writes them")
     func deferredKeysRefuseOrdinaryWrites() throws {
       var refused = 0
       for row in Self.rows where Self.deferredNames.contains(row.name) {
@@ -605,7 +709,7 @@
         #expect(forced == .written(forced: true), "\(row.name)")
         #expect(row.holds(settings), "\(row.name)")
       }
-      #expect(refused == 20)
+      #expect(refused == 18)
     }
 
     @Test("every typed-route key takes an ordinary write, reported not forced")
