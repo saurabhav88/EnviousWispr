@@ -80,7 +80,7 @@ import Testing
     adapter.acceptAudio(
       AudioBufferHandoff(buffer: buf, frameCount: 16000, sequence: 1, sessionID: SessionID()))
 
-    _ = await adapter.finalize(batchSamples: nil)
+    _ = await adapter.finalize(batchSamples: [])
     #expect(readCount == 1, "finalize reads the source exactly once")
 
     let diag = try #require(adapter.lastASRDiagnostics)
@@ -124,7 +124,7 @@ import Testing
         sequence: 1,
         sessionID: SessionID()))
 
-    _ = await adapter.finalize(batchSamples: nil)
+    _ = await adapter.finalize(batchSamples: [])
 
     let diag = try #require(adapter.lastASRDiagnostics)
     #expect(diag.lidCaptureSessionID == capturedID)

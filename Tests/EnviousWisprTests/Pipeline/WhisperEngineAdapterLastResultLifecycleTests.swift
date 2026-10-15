@@ -30,7 +30,7 @@ import Testing
     try await adapter.beginSession(sid, options: .default, streaming: false)
     feed(adapter, samples: speechSamples(count: 16_000), session: sid)
     adapter.observeSpeechSegments([SpeechSegment(startSample: 0, endSample: 16_000)], captureSamples: speechSamples(count: 16_000))
-    _ = await adapter.finalize(batchSamples: nil)
+    _ = await adapter.finalize(batchSamples: [])
     #expect(adapter.lastResult != nil, "successful finalize set lastResult")
     try await adapter.beginSession(SessionID(), options: .default, streaming: false)
     #expect(adapter.lastResult == nil)
@@ -49,7 +49,7 @@ import Testing
     try await adapter.beginSession(sid, options: .default, streaming: false)
     feed(adapter, samples: speechSamples(count: 16_000), session: sid)
     adapter.observeSpeechSegments([SpeechSegment(startSample: 0, endSample: 16_000)], captureSamples: speechSamples(count: 16_000))
-    _ = await adapter.finalize(batchSamples: nil)
+    _ = await adapter.finalize(batchSamples: [])
     #expect(adapter.lastResult != nil)
     await adapter.cancel()
     #expect(adapter.lastResult == nil, "cancel() must clear lastResult")
@@ -68,7 +68,7 @@ import Testing
     try await adapter.beginSession(sid, options: .default, streaming: false)
     feed(adapter, samples: speechSamples(count: 16_000), session: sid)
     adapter.observeSpeechSegments([SpeechSegment(startSample: 0, endSample: 16_000)], captureSamples: speechSamples(count: 16_000))
-    let outcome = await adapter.finalize(batchSamples: nil)
+    let outcome = await adapter.finalize(batchSamples: [])
     guard case .empty = outcome else {
       Issue.record("expected .empty, got \(outcome)")
       return
@@ -88,7 +88,7 @@ import Testing
     try await adapter.beginSession(sid, options: .default, streaming: false)
     feed(adapter, samples: speechSamples(count: 16_000), session: sid)
     adapter.observeSpeechSegments([SpeechSegment(startSample: 0, endSample: 16_000)], captureSamples: speechSamples(count: 16_000))
-    let outcome = await adapter.finalize(batchSamples: nil)
+    let outcome = await adapter.finalize(batchSamples: [])
     guard case .failed = outcome else {
       Issue.record("expected .failed, got \(outcome)")
       return
@@ -103,7 +103,7 @@ import Testing
       backend: backend, engineMutationScope: .alwaysAllowedForTesting)
     try await adapter.beginSession(SessionID(), options: .default, streaming: false)
     await adapter.cancel()
-    _ = await adapter.finalize(batchSamples: nil)
+    _ = await adapter.finalize(batchSamples: [])
     #expect(adapter.lastResult == nil)
   }
 

@@ -1848,7 +1848,7 @@ final class RecordingSessionKernel {
     // arrived, and the buffers were dropped. The Parakeet adapter's
     // `beginSession` does not depend on the capture stream existing yet
     // (`ParakeetEngineAdapter.swift:155-181` — it only configures session-id /
-    // streaming flags / clears retainedPCM); reordering is safe.
+    // streaming flags); reordering is safe.
     //
     // Decode options derive from the frozen session config's language mode
     // (PR-4 plan §3.3a). The kernel owns the streaming-vs-batch policy: the
@@ -1897,8 +1897,9 @@ final class RecordingSessionKernel {
     // seen for the whole session (Codex review P1). The callback gates
     // delivery on `adapterSessionActive` (now true; PR-4.5 #0), so the
     // real pre-roll drained by `PreRollForwarder.activate()` during
-    // `beginCapturePhase` reaches the adapter via `retainedPCM` for batch
-    // rescue.
+    // `beginCapturePhase` reaches the adapter's streaming feed. (Batch decode
+    // reads the kernel's own capture and conditioned buffers, not these
+    // buffers; #3791 removed the adapters' retained copies.)
     audioCapture.onBufferCaptured = makeBufferCallback(sid)
     do {
       // #1807 round 2: set BEFORE the call, not after — once `beginCapturePhase`
@@ -2512,8 +2513,8 @@ final class RecordingSessionKernel {
     // receives in `finalize(batchSamples:)` immediately after. The kernel
     // hands the adapter the raw `captureResult.samples` alongside the segments
     // so a speech-range adapter (Whisper) batch-decodes the SAME buffer
-    // the segments index into — eliminating the shadow-`retainedPCM`
-    // divergence that caused the alternating "Audio samples are nil" failure.
+    // the segments index into — eliminating the divergence of the adapter's
+    // former shadow copy, which caused the alternating "Audio samples are nil" failure.
     // Adapters that use engine-internal VAD chunking or do not consume
     // segments inherit the no-op default and ignore both.
     //
@@ -3646,7 +3647,7 @@ final class RecordingSessionKernel {
     return await operation()
   }
 
-  private func finalize(_ sid: SessionID, batchSamples: [Float]?) async -> ASREngineOutcome {
+  private func finalize(_ sid: SessionID, batchSamples: [Float]) async -> ASREngineOutcome {
     finalizeWedgeDetected = false
     finalizeCompleted = false
     finalizeTickCount = 0

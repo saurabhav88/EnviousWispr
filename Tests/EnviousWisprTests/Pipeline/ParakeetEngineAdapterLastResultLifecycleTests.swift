@@ -27,7 +27,7 @@ import Testing
     let sid = SessionID()
     try await adapter.beginSession(sid, options: .default, streaming: true)
     feed(adapter, samples: [0.1], session: sid)
-    _ = await adapter.finalize(batchSamples: nil)
+    _ = await adapter.finalize(batchSamples: [0.1])
     #expect(adapter.lastResult != nil, "successful finalize set lastResult")
     // A fresh session must start with lastResult cleared.
     try await adapter.beginSession(SessionID(), options: .default, streaming: true)
@@ -41,7 +41,7 @@ import Testing
     let adapter = ParakeetEngineAdapter(
       asrManager: manager, parakeetUpgrade: .legacyForTesting())
     try await adapter.beginSession(SessionID(), options: .default, streaming: true)
-    let outcome = await adapter.finalize(batchSamples: nil)
+    let outcome = await adapter.finalize(batchSamples: [])
     guard case .transcript = outcome else {
       Issue.record("expected .transcript, got \(outcome)")
       return
@@ -59,7 +59,7 @@ import Testing
       asrManager: manager, parakeetUpgrade: .legacyForTesting())
     let sid = SessionID()
     try await adapter.beginSession(sid, options: .default, streaming: true)
-    _ = await adapter.finalize(batchSamples: nil)
+    _ = await adapter.finalize(batchSamples: [])
     #expect(adapter.lastResult != nil, "successful finalize set lastResult")
     await adapter.cancel()
     #expect(adapter.lastResult == nil, "cancel() must clear lastResult")
@@ -76,7 +76,7 @@ import Testing
     let sid = SessionID()
     try await adapter.beginSession(sid, options: .default, streaming: false)
     feed(adapter, samples: [0.1, 0.2], session: sid)
-    let outcome = await adapter.finalize(batchSamples: nil)
+    let outcome = await adapter.finalize(batchSamples: [0.1, 0.2])
     guard case .empty = outcome else {
       Issue.record("expected .empty, got \(outcome)")
       return

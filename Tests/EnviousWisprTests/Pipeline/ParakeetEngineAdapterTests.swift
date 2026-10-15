@@ -90,7 +90,7 @@ import Testing
     if cancel {
       await adapter.cancel()
     } else {
-      _ = await adapter.finalize(batchSamples: rescue ? [0.1, 0.2] : nil)
+      _ = await adapter.finalize(batchSamples: rescue ? [0.1, 0.2] : [])
       if rescue { manager.heldInferenceObserver?() }  // the rescue's vendor call entered
     }
     #expect((adapter.inferenceEntry(for: sid) != nil) == expected)
@@ -439,7 +439,7 @@ import Testing
     let adapter = ParakeetEngineAdapter(
       asrManager: manager, parakeetUpgrade: .legacyForTesting())
     try await adapter.beginSession(SessionID(), options: .default, streaming: true)
-    let outcome = await adapter.finalize(batchSamples: nil)
+    let outcome = await adapter.finalize(batchSamples: [])
     guard case .transcript(let result) = outcome else {
       Issue.record("expected .transcript, got \(outcome)")
       return
@@ -448,7 +448,7 @@ import Testing
     #expect(manager.transcribeCount == 0, "no batch rescue when streaming succeeds")
   }
 
-  @Test("finalize: streaming empty + speech evidence runs the batch rescue over retained PCM")
+  @Test("finalize: streaming empty + speech evidence runs the batch rescue over the kernel-supplied samples")
   func streamingEmptyTriggersBatchRescue() async throws {
     let manager = StubParakeetASRManager()
     manager.finalizeStreamingResult = makeResult("")  // streaming returns empty
@@ -459,7 +459,7 @@ import Testing
     try await adapter.beginSession(sid, options: .default, streaming: true)
     feed(adapter, samples: [0.1, 0.2, 0.3], session: sid)
     feed(adapter, samples: [0.4, 0.5], session: sid)
-    let outcome = await adapter.finalize(batchSamples: nil)
+    let outcome = await adapter.finalize(batchSamples: [0.6, 0.7, 0.8])
     guard case .transcript(let result) = outcome else {
       Issue.record("expected .transcript, got \(outcome)")
       return
@@ -467,8 +467,8 @@ import Testing
     #expect(result.text == "rescued text")
     #expect(manager.transcribeCount == 1, "the batch rescue ran")
     #expect(
-      manager.lastTranscribeSamples == [0.1, 0.2, 0.3, 0.4, 0.5],
-      "the batch rescue decoded the retained session PCM")
+      manager.lastTranscribeSamples == [0.6, 0.7, 0.8],
+      "the batch rescue decoded the kernel-supplied samples, not the streamed buffers")
   }
 
   @Test("finalize: streaming-finalize throwing falls back to the batch rescue")
@@ -481,7 +481,7 @@ import Testing
     let sid = SessionID()
     try await adapter.beginSession(sid, options: .default, streaming: true)
     feed(adapter, samples: [0.7], session: sid)
-    let outcome = await adapter.finalize(batchSamples: nil)
+    let outcome = await adapter.finalize(batchSamples: [0.7])
     guard case .transcript(let result) = outcome else {
       Issue.record("expected .transcript, got \(outcome)")
       return
@@ -499,7 +499,7 @@ import Testing
     let sid = SessionID()
     try await adapter.beginSession(sid, options: .default, streaming: true)
     feed(adapter, samples: [0.1], session: sid)
-    let outcome = await adapter.finalize(batchSamples: nil)
+    let outcome = await adapter.finalize(batchSamples: [0.1])
     guard case .empty(let hadSpeechEvidence) = outcome else {
       Issue.record("expected .empty, got \(outcome)")
       return
@@ -518,62 +518,17 @@ import Testing
     try await adapter.beginSession(sid, options: .default, streaming: false)
     feed(adapter, samples: [0.1, 0.2], session: sid)
     #expect(manager.startStreamingCount == 0, "streaming disabled — no live stream opened")
-    let outcome = await adapter.finalize(batchSamples: nil)
+    let outcome = await adapter.finalize(batchSamples: [0.3, 0.4])
     guard case .transcript(let result) = outcome else {
       Issue.record("expected .transcript, got \(outcome)")
       return
     }
     #expect(result.text == "batch decoded")
     #expect(manager.finalizeStreamingCount == 0, "no streaming finalize when streaming was off")
-    #expect(manager.transcribeCount == 1, "the batch rescue decoded the retained PCM")
+    #expect(manager.transcribeCount == 1, "the batch decode ran once")
     #expect(
-      manager.lastTranscribeSamples == [0.1, 0.2],
-      "the batch decode ran over the retained session PCM")
-  }
-
-  // MARK: Retained-PCM lifecycle
-
-  @Test("retained PCM is cleared on finalize()")
-  func pcmClearedOnFinalize() async throws {
-    let manager = StubParakeetASRManager()
-    manager.finalizeStreamingResult = makeResult("")
-    manager.transcribeResult = makeResult("x")
-    let adapter = ParakeetEngineAdapter(
-      asrManager: manager, parakeetUpgrade: .legacyForTesting())
-    let sid = SessionID()
-    try await adapter.beginSession(sid, options: .default, streaming: true)
-    feed(adapter, samples: [0.1, 0.2], session: sid)
-    _ = await adapter.finalize(batchSamples: nil)
-    // A fresh session must not see the prior session's PCM. Streaming empty +
-    // a no-op batch over zero retained samples => .empty.
-    manager.transcribeCount = 0
-    manager.lastTranscribeSamples = []
-    try await adapter.beginSession(SessionID(), options: .default, streaming: true)
-    let outcome = await adapter.finalize(batchSamples: nil)
-    guard case .empty = outcome else {
-      Issue.record("expected .empty over cleared PCM, got \(outcome)")
-      return
-    }
-    #expect(manager.transcribeCount == 0, "no retained PCM => no batch decode")
-  }
-
-  @Test("retained PCM is cleared on cancel()")
-  func pcmClearedOnCancel() async throws {
-    let manager = StubParakeetASRManager()
-    let adapter = ParakeetEngineAdapter(
-      asrManager: manager, parakeetUpgrade: .legacyForTesting())
-    let sid = SessionID()
-    try await adapter.beginSession(sid, options: .default, streaming: true)
-    feed(adapter, samples: [0.1, 0.2], session: sid)
-    await adapter.cancel()
-    manager.transcribeResult = makeResult("")
-    manager.finalizeStreamingResult = makeResult("")
-    // After cancel, finalize() must short-circuit to .cancelled regardless.
-    let outcome = await adapter.finalize(batchSamples: nil)
-    guard case .cancelled = outcome else {
-      Issue.record("expected .cancelled, got \(outcome)")
-      return
-    }
+      manager.lastTranscribeSamples == [0.3, 0.4],
+      "the batch decode ran over the kernel-supplied samples, not the fed buffers")
   }
 
   // MARK: #959 — cheap cancel() vs heavy recoverFromWedge() seam split
@@ -649,7 +604,7 @@ import Testing
     try await adapter.beginSession(sid, options: .default, streaming: true)
     feed(adapter, samples: [0.1], session: sid)
     feed(adapter, samples: [0.2], session: sid)
-    _ = await adapter.finalize(batchSamples: nil)
+    _ = await adapter.finalize(batchSamples: [0.1, 0.2])
     #expect(
       manager.feedAudioCount == 2,
       "finalize() waited for every dispatched feed — no tail buffer dropped")
@@ -671,7 +626,7 @@ import Testing
     try await adapter.beginSession(sid, options: .default, streaming: true)
     feed(adapter, samples: [0.1], session: sid)
     feed(adapter, samples: [0.2], session: sid)
-    _ = await adapter.finalize(batchSamples: nil)
+    _ = await adapter.finalize(batchSamples: [0.1, 0.2])
     let diag = try #require(adapter.lastASRDiagnostics)
     #expect(diag.streamingBuffersDispatched == 2, "both buffers were dispatched")
     #expect(
@@ -691,7 +646,7 @@ import Testing
     try await adapter.beginSession(sid, options: .default, streaming: true)
     feed(adapter, samples: [0.1], session: sid)
     feed(adapter, samples: [0.2], session: sid)
-    _ = await adapter.finalize(batchSamples: nil)
+    _ = await adapter.finalize(batchSamples: [0.1, 0.2])
     let diag = try #require(adapter.lastASRDiagnostics)
     #expect(diag.streamingBuffersDispatched == 2)
     #expect(
@@ -731,7 +686,7 @@ import Testing
     try await adapter.beginSession(sidA, options: .default, streaming: true)
     feed(adapter, samples: [0.1], session: sidA)
     // finalize() for session A suspends inside the slow finalizeStreaming.
-    async let outcomeA = adapter.finalize(batchSamples: nil)
+    async let outcomeA = adapter.finalize(batchSamples: [0.1])
     // Signal-wait until finalize actually entered finalizeStreaming, rather
     // than racing a fixed yield budget (#875).
     await manager.waitForFinalizeStreamingCount(1)
@@ -753,7 +708,7 @@ import Testing
       asrManager: manager, parakeetUpgrade: .legacyForTesting())
     let sid = SessionID()
     try await adapter.beginSession(sid, options: .default, streaming: true)
-    _ = await adapter.finalize(batchSamples: nil)
+    _ = await adapter.finalize(batchSamples: [])
     let before = manager.feedAudioCount
     feed(adapter, samples: [0.9], session: sid)  // post-terminal — must be ignored
     #expect(manager.feedAudioCount == before, "no audio fed after a terminal session")
@@ -767,7 +722,7 @@ import Testing
       asrManager: manager, parakeetUpgrade: .legacyForTesting())
     try await adapter.beginSession(SessionID(), options: .default, streaming: true)
     await adapter.cancel()
-    let outcome = await adapter.finalize(batchSamples: nil)
+    let outcome = await adapter.finalize(batchSamples: [])
     guard case .cancelled = outcome else {
       Issue.record("expected .cancelled, got \(outcome)")
       return
@@ -784,7 +739,7 @@ import Testing
     await adapter.cancel()
     await adapter.cancel()
     // Three cancels behave as one — the adapter stays terminal-cancelled.
-    let outcome = await adapter.finalize(batchSamples: nil)
+    let outcome = await adapter.finalize(batchSamples: [])
     guard case .cancelled = outcome else {
       Issue.record("expected .cancelled, got \(outcome)")
       return
@@ -971,7 +926,7 @@ import Testing
 
     _ = await adapter.recoverFromASRInterruption()
 
-    let outcome = await adapter.finalize(batchSamples: nil)
+    let outcome = await adapter.finalize(batchSamples: [0.1, 0.2, 0.3])
     #expect(
       manager.finalizeStreamingCount == 0,
       "recovery must retire streamingActive so finalize takes the batch path")
@@ -1022,7 +977,7 @@ import Testing
     try await adapter.beginSession(sid, options: .default, streaming: true)
     feed(adapter, samples: [0.1], session: sid)
 
-    let outcome = await adapter.finalize(batchSamples: nil)
+    let outcome = await adapter.finalize(batchSamples: [0.1])
     guard case .failed = outcome else {
       Issue.record("expected the internal rescue to also fail, got \(outcome)")
       return

@@ -21,7 +21,7 @@ struct FakeEngineTests {
   @Test("batchSuccess finalizes to a non-empty transcript")
   func batchSuccessOutcome() async {
     let (engine, _) = makeEngine(.batchSuccess(text: "hello"))
-    let outcome = await engine.finalize(batchSamples: nil)
+    let outcome = await engine.finalize(batchSamples: [])
     guard case .transcript(let result) = outcome else {
       Issue.record("expected .transcript, got \(outcome)")
       return
@@ -32,7 +32,7 @@ struct FakeEngineTests {
   @Test("streamingSuccess finalizes to the final transcript")
   func streamingSuccessOutcome() async {
     let (engine, _) = makeEngine(.streamingSuccess(partials: ["he"], final: "hello"))
-    let outcome = await engine.finalize(batchSamples: nil)
+    let outcome = await engine.finalize(batchSamples: [])
     guard case .transcript(let result) = outcome else {
       Issue.record("expected .transcript, got \(outcome)")
       return
@@ -43,7 +43,7 @@ struct FakeEngineTests {
   @Test("crashOnFinalize surfaces as .failed(.engineCrashed), never a throw or hang")
   func crashOutcome() async {
     let (engine, _) = makeEngine(.crashOnFinalize)
-    let outcome = await engine.finalize(batchSamples: nil)
+    let outcome = await engine.finalize(batchSamples: [])
     guard case .failed(.engineCrashed) = outcome else {
       Issue.record("expected .failed(.engineCrashed), got \(outcome)")
       return
@@ -56,8 +56,8 @@ struct FakeEngineTests {
   func emptyWithSpeechEvidenceIsDistinct() async {
     let (withEvidence, _) = makeEngine(.empty(hadSpeechEvidence: true))
     let (withoutEvidence, _) = makeEngine(.empty(hadSpeechEvidence: false))
-    let a = await withEvidence.finalize(batchSamples: nil)
-    let b = await withoutEvidence.finalize(batchSamples: nil)
+    let a = await withEvidence.finalize(batchSamples: [])
+    let b = await withoutEvidence.finalize(batchSamples: [])
     guard case .empty(let evidenceA) = a, case .empty(let evidenceB) = b else {
       Issue.record("expected .empty from both")
       return
@@ -70,7 +70,7 @@ struct FakeEngineTests {
   @Test("cancelled mode never yields text")
   func cancelledNeverYieldsText() async {
     let (engine, _) = makeEngine(.cancelled)
-    let outcome = await engine.finalize(batchSamples: nil)
+    let outcome = await engine.finalize(batchSamples: [])
     guard case .cancelled = outcome else {
       Issue.record("expected .cancelled, got \(outcome)")
       return
@@ -87,7 +87,7 @@ struct FakeEngineTests {
     await engine.cancel()
     #expect(engine.cancelCallCount == 3)
     // Idempotent EFFECT: still terminal-cancelled, finalize still .cancelled.
-    let outcome = await engine.finalize(batchSamples: nil)
+    let outcome = await engine.finalize(batchSamples: [])
     guard case .cancelled = outcome else {
       Issue.record("expected .cancelled after repeated cancel")
       return
@@ -176,7 +176,7 @@ struct FakeEngineTests {
   func wedgeOnFinalizeReleasedByRecoverFromWedge() async {
     let clock = FakeClock()
     let engine = FakeEngine(behavior: .wedgeOnFinalize, clock: clock)
-    let finalizeTask = Task { @MainActor in await engine.finalize(batchSamples: nil) }
+    let finalizeTask = Task { @MainActor in await engine.finalize(batchSamples: []) }
     await Task.yield()
     // #959: the heavy wedge-recovery path releases the wedge — NOT cheap cancel().
     await engine.recoverFromWedge()

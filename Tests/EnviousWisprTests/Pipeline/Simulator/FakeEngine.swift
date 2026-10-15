@@ -490,7 +490,7 @@ final class FakeEngine: ASREngineAdapter, @unchecked Sendable {
   /// a session can be superseded mid-ladder rather than before or after it.
   var onFinalizeCall: (@MainActor (Int) -> Void)?
 
-  func finalize(batchSamples: [Float]?) async -> ASREngineOutcome {
+  func finalize(batchSamples: [Float]) async -> ASREngineOutcome {
     finalizeCallCount += 1
     onFinalizeCall?(finalizeCallCount)
     eventLog.append(.finalize)

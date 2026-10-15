@@ -47,7 +47,7 @@ struct WhisperEngineAdapterTranscribeCppTests {
       sid, options: TranscriptionOptions(language: language), streaming: streaming)
     feed(adapter, samples: samples, session: sid)
     adapter.observeSpeechSegments([SpeechSegment(startSample: 0, endSample: samples.count)], captureSamples: samples)
-    return await adapter.finalize(batchSamples: nil)
+    return await adapter.finalize(batchSamples: [])
   }
 
   @Test("Faster Transcription on, locked language: the rolling session's flush is the transcript")
@@ -158,7 +158,7 @@ struct WhisperEngineAdapterTranscribeCppTests {
     feed(adapter, samples: [Float](repeating: 0.1, count: 16_000), session: sid)
     adapter.observeSpeechSegments([SpeechSegment(startSample: 0, endSample: 16_000)], captureSamples: [Float](repeating: 0.1, count: 16_000))
     driver.holdNative()
-    let take = Task { await adapter.finalize(batchSamples: nil) }
+    let take = Task { await adapter.finalize(batchSamples: []) }
     await driver.waitUntilNativeEntered()
     #expect(occupancy.inFlight == 1)
     take.cancel()

@@ -14,9 +14,10 @@ import Foundation
 // Scope (epic §4): an adapter owns its own ASR and rescue and NOTHING else — no
 // capture, no finalization, no paste, no UI, no FSM, no kernel state. This
 // adapter owns Parakeet transcription, the streaming-finalize-then-batch rescue
-// (D14, today the old Parakeet pipeline's `transcribeWithStreamingRescue`), and the
-// full-session PCM the batch rescue needs (§3.2a). It holds legitimate
-// engine-session bookkeeping (a streaming-active flag, the retained PCM, an
+// (D14, today the old Parakeet pipeline's `transcribeWithStreamingRescue`); the
+// batch rescue decodes the kernel-supplied `batchSamples` (§3.2a; #3791 removed
+// the adapter's own retained copy, which no production path read). It holds
+// legitimate engine-session bookkeeping (a streaming-active flag, an
 // in-flight-load flag, a terminal / cancelled flag) — session bookkeeping is
 // explicitly NOT FSM state (Codex finding 46, §3.11 adapter-shape check).
 //
@@ -69,15 +70,6 @@ final class ParakeetEngineAdapter: ASREngineAdapter, @unchecked Sendable {
   /// on success or a swallowed thrown error — never hangs.
   private var feedTasks: [Task<Void, Never>] = []
 
-  // MARK: Batch-rescue PCM retention (§3.2a)
-
-  /// The whole session's 16 kHz mono Float32 samples, accumulated from every
-  /// `acceptAudio(_:)`. The streaming-finalize-then-batch rescue needs the
-  /// complete audio; streaming feeds buffers piecemeal and `ASRManagerInterface`
-  /// does not retain them. Cleared on `cancel()` and on `finalize()` return —
-  /// no accumulation outlives its session.
-  private var retainedPCM: [Float] = []
-
   /// The `ASRResult` of the last successful `finalize()`, or `nil`. The kernel
   /// threads only `result.text` to its `runFinalizing` closures, so the
   /// finalization wiring reads the result's metadata (`language`, `duration`,
@@ -86,13 +78,6 @@ final class ParakeetEngineAdapter: ASREngineAdapter, @unchecked Sendable {
   private(set) var lastResult: ASRResult?
   private(set) var lastASRDiagnostics: KernelASRAdapterDiagnostics?
   private(set) var lastFailureError: (any Error)?
-
-  /// Cap on `retainedPCM` — `maxRecordingDuration` worth of 16 kHz mono samples
-  /// (3600 s x 16 kHz = 57.6 M `Float` = ~230 MB; #1060 raised the cap 300→3600).
-  /// On reaching the cap the accumulation stops growing; recording auto-stops on
-  /// max-duration anyway.
-  private static let retainedPCMCap = Int(
-    TimingConstants.maxRecordingDuration * AudioConstants.sampleRate)
 
   // MARK: Load-progress stream
 
@@ -181,7 +166,7 @@ final class ParakeetEngineAdapter: ASREngineAdapter, @unchecked Sendable {
   ///    path (delivery admission, cache-only config, one-shot transport
   ///    recovery, readiness recheck); no separate path is invented. `warmUp()`
   ///    touches none of this session's own bookkeeping (`sessionID`,
-  ///    `retainedPCM`, `decodeOptions`, `isTerminal`, `isCancelled`), so
+  ///    `decodeOptions`, `isTerminal`, `isCancelled`), so
   ///    calling it a second time mid-session is safe.
   /// 3. Bounds the attempt with `withMainActorOrderedDeadline`, NOT bare `withDeadline`
   ///    — on timeout, `onTimeout` actively invalidates this attempt's token
@@ -537,7 +522,6 @@ final class ParakeetEngineAdapter: ASREngineAdapter, @unchecked Sendable {
     streamingBuffersDispatched = 0
     streamingBuffersFed = 0
     feedTasks.removeAll()
-    retainedPCM.removeAll(keepingCapacity: true)
 
     // Cancel any pending model-unload timer a prior session armed via
     // `applyUnloadPolicy` — otherwise it can fire mid-recording and unload the
@@ -618,7 +602,8 @@ final class ParakeetEngineAdapter: ASREngineAdapter, @unchecked Sendable {
         streamingActive = false
       case .failed(let category, let description):
         // Streaming setup failed — fall back to batch decode after stop. Not a
-        // session failure; the batch rescue over `retainedPCM` covers it.
+        // session failure; the batch decode over the kernel's `batchSamples`
+        // covers it.
         streamingActive = false
         SentryBreadcrumb.add(
           stage: "asr", message: "Streaming start failed, will use batch", level: .warning)
@@ -718,12 +703,11 @@ final class ParakeetEngineAdapter: ASREngineAdapter, @unchecked Sendable {
     }
   }
 
-  /// Accept one captured buffer. Feeds streaming ASR (when streaming) and
-  /// always appends to `retainedPCM` for the batch rescue (§3.2a). A call after
-  /// a terminal session is a no-op (PR-1 §B.2.2).
+  /// Accept one captured buffer. Feeds streaming ASR (when streaming); batch
+  /// decode and the batch rescue read the kernel's `batchSamples` instead
+  /// (§3.2a). A call after a terminal session is a no-op (PR-1 §B.2.2).
   func acceptAudio(_ buffer: AudioBufferHandoff) {
     guard !isTerminal else { return }
-    appendRetainedPCM(from: buffer.buffer)
     guard streamingActive else { return }
     // Mirror the shipped per-buffer hand-off (old Parakeet pipeline):
     // each buffer is fed on its own `@MainActor` task. The buffer is already
@@ -761,13 +745,12 @@ final class ParakeetEngineAdapter: ASREngineAdapter, @unchecked Sendable {
 
   /// Finalize: one normalized outcome. Streaming runs the
   /// streaming-finalize-then-batch rescue (D14); batch-mode runs batch decode
-  /// over the kernel-conditioned audio when supplied, else raw retained PCM
-  /// (PR-4.5 #5). After `cancel()`, returns `.cancelled` (PR-1 §B.2.2).
-  func finalize(batchSamples: [Float]?) async -> ASREngineOutcome {
+  /// over the kernel-conditioned audio (PR-4.5 #5). After `cancel()`, returns
+  /// `.cancelled` (PR-1 §B.2.2).
+  func finalize(batchSamples: [Float]) async -> ASREngineOutcome {
     lastFailureError = nil
     if isCancelled {
       isTerminal = true
-      retainedPCM.removeAll()
       return .cancelled
     }
     let session = sessionID
@@ -782,8 +765,8 @@ final class ParakeetEngineAdapter: ASREngineAdapter, @unchecked Sendable {
         batchSamples: batchSamples, session: session, generation: generation)
     }
     // A `cancel()` + new `beginSession()` during the ASR await must not let
-    // this stale finalize clobber the fresh session's retained PCM / terminal
-    // flag (Codex r2 — stale-finalize race). `lastResult`/`lastASRDiagnostics`/
+    // this stale finalize clobber the fresh session's terminal / streaming
+    // flags (Codex r2 — stale-finalize race). `lastResult`/`lastASRDiagnostics`/
     // `lastFailureError` are already gated on this SAME staleness check inside
     // `commitAttempt`, called from `finalizeStreamingWithRescue`/`finalizeBatch`
     // — not re-written here (single owner, #1707 Phase 2).
@@ -792,7 +775,6 @@ final class ParakeetEngineAdapter: ASREngineAdapter, @unchecked Sendable {
     }
     isTerminal = true
     streamingActive = false
-    retainedPCM.removeAll()
     return outcome
   }
 
@@ -869,7 +851,6 @@ final class ParakeetEngineAdapter: ASREngineAdapter, @unchecked Sendable {
     isCancelled = true
     isTerminal = true
     lastResult = nil
-    retainedPCM.removeAll()
     // Drop feed-task handles — the tasks see `isTerminal` and skip; `finalize()`
     // after `cancel()` short-circuits to `.cancelled` and never drains.
     feedTasks.removeAll()
@@ -1032,15 +1013,16 @@ final class ParakeetEngineAdapter: ASREngineAdapter, @unchecked Sendable {
   /// `started`/`completed` pair above; PostHog + Sentry retain the
   /// streaming-finalize timing.
   private func drainStreamingFeeds() async {
-    let feedCount = feedTasks.count
-    let sampleCount = retainedPCM.count
+    let tasks = feedTasks
+    let feedCount = tasks.count
+    let bufferCount = streamingBuffersDispatched
     await AppLogger.shared.log(
-      "Streaming drain started (feeds=\(feedCount), samples=\(sampleCount))",
+      "Streaming drain started (feeds=\(feedCount), buffers=\(bufferCount))",
       level: .info, category: "PipelineTiming"
     )
-    for task in feedTasks { await task.value }
+    for task in tasks { await task.value }
     await AppLogger.shared.log(
-      "Streaming drain completed (feeds=\(feedCount), samples=\(retainedPCM.count))",
+      "Streaming drain completed (feeds=\(feedCount), buffers=\(bufferCount))",
       level: .info, category: "PipelineTiming"
     )
   }
@@ -1081,7 +1063,7 @@ final class ParakeetEngineAdapter: ASREngineAdapter, @unchecked Sendable {
   }
 
   private func finalizeStreamingWithRescue(
-    batchSamples: [Float]?, session: SessionID?, generation: Int
+    batchSamples: [Float], session: SessionID?, generation: Int
   ) async -> ASREngineOutcome {
     var diagnostics = KernelASRAdapterDiagnostics(
       streamingBuffersDispatched: streamingBuffersDispatched,
@@ -1142,13 +1124,13 @@ final class ParakeetEngineAdapter: ASREngineAdapter, @unchecked Sendable {
   }
 
   private func finalizeBatchRescue(
-    batchSamples: [Float]?,
+    batchSamples: [Float],
     diagnostics: KernelASRAdapterDiagnostics,
     session: SessionID?, generation: Int
   ) async -> ASREngineOutcome {
     var diagnostics = diagnostics
     diagnostics.batchRescueAttempted = true
-    let samples = batchSamples ?? retainedPCM
+    let samples = batchSamples
     await AppLogger.shared.log(
       "Streaming rescue triggered -> batch fallback (\(samples.count) samples)",
       level: .info, category: "Pipeline"
@@ -1200,13 +1182,12 @@ final class ParakeetEngineAdapter: ASREngineAdapter, @unchecked Sendable {
     }
   }
 
-  /// Batch decode (§3.2a). Uses kernel-conditioned `batchSamples` when
-  /// supplied (PR-4.5 #5 — VAD-filtered + raw-fallback + silence-padded);
-  /// else falls back to the adapter's raw retained PCM.
+  /// Batch decode (§3.2a) over the kernel-conditioned `batchSamples`
+  /// (PR-4.5 #5 — VAD-filtered + raw-fallback + silence-padded).
   private func finalizeBatch(
-    batchSamples: [Float]?, session: SessionID?, generation: Int
+    batchSamples: [Float], session: SessionID?, generation: Int
   ) async -> ASREngineOutcome {
-    let samples = batchSamples ?? retainedPCM
+    let samples = batchSamples
     let attempt = await attemptBatchDecode(samples: samples)
     return commitAttempt(attempt, session: session, generation: generation)
   }
@@ -1227,10 +1208,9 @@ final class ParakeetEngineAdapter: ASREngineAdapter, @unchecked Sendable {
   }
 
   /// Pure batch-decode attempt over already-resolved `samples` — reused by
-  /// `finalizeBatch` (existing decode, `batchSamples ?? retainedPCM`) and
-  /// `retryDecode` (always the retry's own `inputSamples`, no fallback: the
-  /// first attempt's `retainedPCM` is already cleared by the time a retry
-  /// runs). No shared-state writes; the caller commits via `commitAttempt`.
+  /// `finalizeBatch` (the kernel's `batchSamples`) and `retryDecode` (always
+  /// the retry's own `inputSamples`). No shared-state writes; the caller
+  /// commits via `commitAttempt`.
   private func attemptBatchDecode(samples: [Float]) async -> DecodeAttemptResult {
     var diagnostics = KernelASRAdapterDiagnostics(batchRescueAttempted: false)
     guard !samples.isEmpty else {
@@ -1281,8 +1261,8 @@ final class ParakeetEngineAdapter: ASREngineAdapter, @unchecked Sendable {
   /// `retryDecode`): writes `lastASRDiagnostics`/`lastFailureError`/
   /// `lastResult` ONLY while the captured session and generation are still
   /// current — the SOLE owner of these three fields (§3c single-authority).
-  /// Session-closing bookkeeping (`isTerminal`/`streamingActive`/
-  /// `retainedPCM`) is NOT this function's concern — `finalize()`'s own
+  /// Session-closing bookkeeping (`isTerminal`/`streamingActive`) is NOT
+  /// this function's concern — `finalize()`'s own
   /// wrapper owns that, since a retry does not re-terminate an
   /// already-terminal session.
   private func commitAttempt(
@@ -1297,20 +1277,6 @@ final class ParakeetEngineAdapter: ASREngineAdapter, @unchecked Sendable {
       lastResult = result
     }
     return attempt.outcome
-  }
-
-  // MARK: PCM retention
-
-  /// Extract the buffer's Float32 samples and append to `retainedPCM`, bounded
-  /// by `retainedPCMCap`. Runs on `@MainActor` (the audio thread did only the
-  /// wrap + hop — `architecture-rules.md` audio-thread discipline).
-  private func appendRetainedPCM(from buffer: AVAudioPCMBuffer) {
-    guard retainedPCM.count < Self.retainedPCMCap else { return }
-    let count = Int(buffer.frameLength)
-    guard count > 0, let channel = buffer.floatChannelData?[0] else { return }
-    let remaining = Self.retainedPCMCap - retainedPCM.count
-    let take = min(count, remaining)
-    retainedPCM.append(contentsOf: UnsafeBufferPointer(start: channel, count: take))
   }
 
   /// Test-only handle to the in-flight per-buffer feed tasks. A test captures

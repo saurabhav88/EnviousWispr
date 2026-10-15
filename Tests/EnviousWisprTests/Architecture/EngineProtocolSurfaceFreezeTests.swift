@@ -628,7 +628,7 @@ import Testing
           condition: nil, signature: "func acceptAudio(_ buffer: AudioBufferHandoff)"),
         MemberSignature(
           condition: nil,
-          signature: "func finalize(batchSamples: [Float]?) async -> ASREngineOutcome"),
+          signature: "func finalize(batchSamples: [Float]) async -> ASREngineOutcome"),
         MemberSignature(
           condition: nil,
           signature: "var finalizeProgress: AsyncStream<ASRFinalizeProgressTick>? { get }"),

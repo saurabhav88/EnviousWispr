@@ -31,7 +31,7 @@ import Testing
   func lastResultSetAfterSuccessfulFinalize() async throws {
     let engine = FakeEngine(behavior: .batchSuccess(text: "hello world"), clock: FakeClock())
     try await engine.beginSession(SessionID(), options: .default, streaming: false)
-    let outcome = await engine.finalize(batchSamples: nil)
+    let outcome = await engine.finalize(batchSamples: [])
     guard case .transcript = outcome else {
       Issue.record("expected .transcript, got \(outcome)")
       return
@@ -44,7 +44,7 @@ import Testing
   func lastResultNilAfterCancel() async throws {
     let engine = FakeEngine(behavior: .batchSuccess(text: "x"), clock: FakeClock())
     try await engine.beginSession(SessionID(), options: .default, streaming: false)
-    _ = await engine.finalize(batchSamples: nil)
+    _ = await engine.finalize(batchSamples: [])
     #expect(engine.lastResult != nil, "successful finalize set lastResult")
     await engine.cancel()
     #expect(engine.lastResult == nil, "cancel() must clear lastResult")
@@ -55,7 +55,7 @@ import Testing
     let engine = FakeEngine(
       behavior: .empty(hadSpeechEvidence: true), clock: FakeClock())
     try await engine.beginSession(SessionID(), options: .default, streaming: false)
-    let outcome = await engine.finalize(batchSamples: nil)
+    let outcome = await engine.finalize(batchSamples: [])
     guard case .empty = outcome else {
       Issue.record("expected .empty, got \(outcome)")
       return

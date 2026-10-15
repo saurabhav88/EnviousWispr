@@ -390,33 +390,32 @@ package protocol ASREngineAdapter: AnyObject, Sendable {
   /// Finalize and produce exactly one outcome. Engine-specific rescue lives
   /// here. After `cancel()`, MUST return `.cancelled` (PR-1 §B.2.2).
   ///
-  /// `batchSamples`, when non-nil, is the kernel-conditioned ASR-ready audio
-  /// (PR-4.5 #5 — VAD-segment filtering, raw fallback, short-utterance padding
-  /// are kernel-side, not adapter-side). Per-engine semantics:
+  /// `batchSamples` is the kernel-conditioned ASR-ready audio (PR-4.5 #5 —
+  /// VAD-segment filtering, raw fallback, short-utterance padding are
+  /// kernel-side, not adapter-side). An empty array means the kernel supplied
+  /// no conditioned samples; there is no adapter-owned audio fallback (#3791
+  /// removed the per-adapter retained copies, which no production path read).
+  /// Per-engine semantics:
   ///
-  /// - The Parakeet adapter MUST use `batchSamples` for batch rescue. The
-  ///   kernel-side conditioning is the canonical audio for Parakeet's
-  ///   decoder; using its own retained PCM would skip the conditioning step.
+  /// - The Parakeet adapter MUST use `batchSamples` for batch decode and for
+  ///   the streaming batch rescue. The kernel-side conditioning is the
+  ///   canonical audio for Parakeet's decoder.
   /// - The Whisper adapter MUST NOT use `batchSamples`. Whisper decodes
   ///   with `clipTimestamps` derived from kernel-supplied voiced segments
   ///   (the #452/#560 hallucination-suppression mechanism); the kernel's
   ///   silence-stripping conditioning shifts the time origin and would
   ///   invalidate the segment-derived timestamps. The Whisper adapter
-  ///   decodes against its own retained raw PCM so the coordinate space
+  ///   decodes the raw capture handed in by
+  ///   `observeSpeechSegments(_:rawCaptureSamples:)` so the coordinate space
   ///   matches.
   ///
   /// PR-5 Rung 3 (#827) carved out this engine-specific divergence; before
   /// Rung 3 the contract said all adapters MUST use `batchSamples`. Adapters
   /// whose decode requires raw-coordinate audio (engine-internal VAD chunking,
   /// `clipTimestamps` derivation, etc.) MUST document the deviation at the
-  /// adapter call site and use their own retained source.
-  ///
-  /// When `batchSamples` is nil, the adapter uses its own raw retained audio
-  /// unchanged (today's pre-PR-4.5 behavior, preserved for tests + the
-  /// `FakeEngine` simulator path). The streaming path is unaffected —
-  /// per-buffer feeds were already raw and the kernel's `acceptAudio`
-  /// contract has not changed.
-  func finalize(batchSamples: [Float]?) async -> ASREngineOutcome
+  /// adapter call site. The streaming path is unaffected: per-buffer feeds
+  /// are raw and the kernel's `acceptAudio` contract has not changed.
+  func finalize(batchSamples: [Float]) async -> ASREngineOutcome
 
   /// OPTIONAL `finalize()`-wedge signal (PR-1 §B.1.7). Same `nil` semantics as
   /// `loadProgress`.
@@ -559,12 +558,12 @@ package protocol ASREngineAdapter: AnyObject, Sendable {
   ///
   /// `rawCaptureSamples` is the kernel's `captureResult.samples` — the SAME
   /// buffer the segment offsets index into. An adapter that decodes with
-  /// speech ranges (Whisper) MUST batch-decode THIS buffer (padded),
-  /// not its own `onBufferCaptured`-fed `retainedPCM` shadow copy: the shadow
-  /// copy is rebuilt from a separate, lossy async stream and diverges in
-  /// length from `captureResult.samples`, so segment offsets indexed against
-  /// the latter overrun the former and WhisperKit's clip seek returned
-  /// "Audio samples are nil" (PR-5 Rung 5 UAT #827 — restores OLD
+  /// speech ranges (Whisper) MUST batch-decode THIS buffer (padded), never a
+  /// copy rebuilt from the `onBufferCaptured` stream: the adapter's former
+  /// shadow copy was rebuilt from that separate, lossy async stream and
+  /// diverged in length from `captureResult.samples`, so segment offsets
+  /// indexed against the latter overran the former and WhisperKit's clip seek
+  /// returned "Audio samples are nil" (PR-5 Rung 5 UAT #827 — restores OLD
   /// `WhisperKitPipeline.swift:614-615` single-coordinate parity). Adapters
   /// that do not consume segments ignore the parameter.
   func observeSpeechSegments(_ segments: [SpeechSegment], rawCaptureSamples: [Float])

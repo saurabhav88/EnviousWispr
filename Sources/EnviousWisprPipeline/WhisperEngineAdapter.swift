@@ -693,7 +693,7 @@ final class WhisperEngineAdapter: ASREngineAdapter, @unchecked Sendable {
   /// authoritative raw `captureResult.samples` handed in by
   /// `observeSpeechSegments`) so segment-derived `clipTimestamps` stay
   /// coordinate-aligned (#827), via the single `runBatchFallback()` helper.
-  func finalize(batchSamples: [Float]?) async -> ASREngineOutcome {
+  func finalize(batchSamples: [Float]) async -> ASREngineOutcome {
     _ = batchSamples  // intentionally ignored — see coordinate-space note
     lastFailureError = nil
     // PR-5 Rung 4.5 (#827): capture `currentCaptureSessionID` at finalize
