@@ -2289,6 +2289,11 @@ package final class WisprBootstrapper {
             visibleTranscripts: { [transcriptCoordinator] in
               transcriptCoordinator.visibleTranscripts
             }),
+          models: DevControlDispatcher.ModelActions(
+            parakeetDownload: { [modelDelivery] in modelDelivery.resumeParakeetDownload() },
+            parakeetCancel: { [modelDelivery] in modelDelivery.cancelParakeetDownload() },
+            whisperKitDownload: { [setup] in setup.whisperKitSetup.downloadModel() },
+            whisperKitCancel: { [setup] in setup.whisperKitSetup.cancelDownload() }),
           words: customWordsCoordinator))
     #endif
     self.transcriptCoordinator = transcriptCoordinator

@@ -29,6 +29,7 @@
           connectedInputUIDs: { ["mic-a"] }),
         status: DevControlFixtures.StatusFake().sources,
         history: DevControlFixtures.history([]),
+        models: DevControlFixtures.ModelFake().actions,
         words: DevControlFixtures.unwrittenWords())
       return (settings, dispatcher)
     }
@@ -61,6 +62,16 @@
       #expect(got["key"] as? String == "fillerRemovalEnabled")
       #expect(got["value"] as? Bool == false)
       #expect(got["kind"] as? String == "direct")
+
+      // A list row and a get reply describe one setting with the same field names, so a
+      // script can feed either one's `key` back into `settings get`.
+      for row in rows {
+        let name = try #require(row["key"] as? String, "list row without key: \(row)")
+        let single = try #require(
+          payload(await dispatcher.handle(.settingsGet, args: ["key": name])))
+        #expect(Set(row.keys) == Set(single.keys), "\(name)")
+        #expect(single["key"] as? String == name)
+      }
 
       #expect(code(await dispatcher.handle(.settingsGet, args: ["key": "nope"])) == "unknownKey")
       #expect(code(await dispatcher.handle(.settingsGet, args: ["key": 5])) == "badArgs")
@@ -147,10 +158,70 @@
       }
     }
 
+    // MARK: - Models
+
+    @Test(
+      "each model command presses exactly its own button once, then reads that engine's state",
+      arguments: [
+        (DevControlDispatcher.Command.modelsParakeetDownload, "parakeetDownload", "parakeet", "download"),
+        (.modelsParakeetCancel, "parakeetCancel", "parakeet", "cancel"),
+        (.modelsWhisperKitDownload, "whisperKitDownload", "whisperKit", "download"),
+        (.modelsWhisperKitCancel, "whisperKitCancel", "whisperKit", "cancel"),
+      ])
+    func modelCommandPressesOneButton(
+      command: DevControlDispatcher.Command, action: String, backend: String, verb: String
+    ) async throws {
+      let status = DevControlFixtures.StatusFake()
+      status.parakeet = .notReady
+      status.whisperKit = .notDownloaded
+      let models = DevControlFixtures.ModelFake()
+      // The owner moves its state when pressed; the reply must show the state AFTER.
+      models.onPress = { _ in
+        status.parakeet = .verifying
+        status.whisperKit = .paused
+      }
+      let (_, dispatcher) = Self.make(status: status, models: models)
+      let reply = try #require(payload(await dispatcher.handle(command, args: [:])))
+      #expect(models.pressed == [action])
+      #expect(reply["backend"] as? String == backend)
+      #expect(reply["action"] as? String == verb)
+      let state = try #require(reply["state"] as? [String: Any])
+      #expect(state["state"] as? String == (backend == "parakeet" ? "verifying" : "paused"))
+      #expect(JSONSerialization.isValidJSONObject(reply))
+    }
+
+    @Test("a model command whose owner does nothing reports the unchanged state")
+    func modelCommandWithIdleOwnerReportsUnchangedState() async throws {
+      let status = DevControlFixtures.StatusFake()
+      status.parakeet = .cancelled(resumable: true)
+      status.whisperKit = .ready
+      let models = DevControlFixtures.ModelFake()
+      let (_, dispatcher) = Self.make(status: status, models: models)
+      let parakeet = try #require(payload(await dispatcher.handle(.modelsParakeetCancel, args: [:])))
+      #expect(parakeet["state"] as? [String: AnyHashable] == ["state": "cancelled", "resumable": true])
+      let whisper = try #require(payload(await dispatcher.handle(.modelsWhisperKitDownload, args: [:])))
+      #expect(whisper["state"] as? [String: AnyHashable] == ["state": "ready"])
+      #expect(models.pressed == ["parakeetCancel", "whisperKitDownload"])
+    }
+
+    @Test("a model command with any argument is refused before any button is pressed")
+    func modelCommandRefusesArguments() async throws {
+      let models = DevControlFixtures.ModelFake()
+      let (_, dispatcher) = Self.make(status: DevControlFixtures.StatusFake(), models: models)
+      for command in [
+        DevControlDispatcher.Command.modelsParakeetDownload, .modelsParakeetCancel,
+        .modelsWhisperKitDownload, .modelsWhisperKitCancel,
+      ] {
+        #expect(code(await dispatcher.handle(command, args: ["backend": "parakeet"])) == "badArgs")
+      }
+      #expect(models.pressed.isEmpty)
+    }
+
     // MARK: - Status
 
     private static func make(
-      status: DevControlFixtures.StatusFake, rows: @escaping @MainActor () -> [Transcript] = { [] }
+      status: DevControlFixtures.StatusFake, rows: @escaping @MainActor () -> [Transcript] = { [] },
+      models: DevControlFixtures.ModelFake = DevControlFixtures.ModelFake()
     ) -> (SettingsManager, DevControlDispatcher) {
       let defaults = TestDefaults.suite("ew.tests.3765.dispatch.\(UUID().uuidString)")!
       let settings = SettingsManager(defaults: defaults)
@@ -161,6 +232,7 @@
           connectedInputUIDs: { [] }),
         status: status.sources,
         history: DevControlDispatcher.HistorySource(visibleTranscripts: rows),
+        models: models.actions,
         words: DevControlFixtures.unwrittenWords())
       return (settings, dispatcher)
     }
@@ -497,6 +569,7 @@ private static func make(words: CustomWordsCoordinator) -> (SettingsManager, Dev
       connectedInputUIDs: { [] }),
     status: DevControlFixtures.StatusFake().sources,
     history: DevControlFixtures.history([]),
+    models: DevControlFixtures.ModelFake().actions,
     words: words)
   return (settings, dispatcher)
 }
@@ -783,6 +856,27 @@ func wordCommandsLeaveSettingsAlone() async throws {
 
     static func history(_ rows: [Transcript]) -> DevControlDispatcher.HistorySource {
       DevControlDispatcher.HistorySource(visibleTranscripts: { rows })
+    }
+
+    /// Records which model button a command pressed, in order. `onPress` lets a test move
+    /// the matching status fact as a real owner would when it schedules work.
+    @MainActor
+    final class ModelFake {
+      private(set) var pressed: [String] = []
+      var onPress: (@MainActor (String) -> Void)?
+
+      var actions: DevControlDispatcher.ModelActions {
+        DevControlDispatcher.ModelActions(
+          parakeetDownload: { [self] in press("parakeetDownload") },
+          parakeetCancel: { [self] in press("parakeetCancel") },
+          whisperKitDownload: { [self] in press("whisperKitDownload") },
+          whisperKitCancel: { [self] in press("whisperKitCancel") })
+      }
+
+      private func press(_ action: String) {
+        pressed.append(action)
+        onPress?(action)
+      }
     }
 
     /// Mutable owner facts; `sources` reads them at call time, so a test can change one

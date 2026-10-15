@@ -199,7 +199,7 @@
       allKeys.map { key in
         let entry = entry(key)
         return [
-          "name": entry.name,
+          "key": entry.name,
           "value": read(key, from: settings),
           "kind": entry.kind.rawValue,
           "deferredTo": entry.deferredTo.map { $0 as Any } ?? NSNull(),

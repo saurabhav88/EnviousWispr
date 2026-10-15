@@ -26,6 +26,10 @@
       case wordsAdd = "words.add"
       case wordsUpdate = "words.update"
       case wordsRemove = "words.remove"
+      case modelsParakeetDownload = "models.parakeet.download"
+      case modelsParakeetCancel = "models.parakeet.cancel"
+      case modelsWhisperKitDownload = "models.whisperkit.download"
+      case modelsWhisperKitCancel = "models.whisperkit.cancel"
     }
 
     enum ErrorCode: String, CaseIterable {
@@ -81,6 +85,20 @@
       let visibleTranscripts: @MainActor () -> [Transcript]
     }
 
+    /// The Settings rows' model buttons, one closure each: Parakeet's foreground Resume and
+    /// Cancel (`ModelDeliveryHome.resumeParakeetDownload()` / `cancelParakeetDownload()`;
+    /// the row's background-upgrade and retry routes are not offered here) and
+    /// WhisperKit's Download and Cancel (`WhisperKitSetupService.downloadModel()` /
+    /// `cancelDownload()`). Each owner keeps its own guards and schedules its own work, so
+    /// a call returning means the button was pressed, never that a download finished or a
+    /// cancel drained.
+    struct ModelActions {
+      let parakeetDownload: @MainActor () -> Void
+      let parakeetCancel: @MainActor () -> Void
+      let whisperKitDownload: @MainActor () -> Void
+      let whisperKitCancel: @MainActor () -> Void
+    }
+
     /// Rows `history.list` returns when the request names no limit.
     static let defaultHistoryLimit = 20
     /// The most rows one `history.list` may ask for.
@@ -90,17 +108,20 @@
     private let writeContext: DevControlSettings.WriteContext
     private let statusSources: StatusSources
     private let history: HistorySource
+    private let models: ModelActions
     /// The same coordinator Your Words calls; every word command goes through it.
     private let words: CustomWordsCoordinator
 
     init(
       settings: SettingsManager, writeContext: DevControlSettings.WriteContext,
-      status: StatusSources, history: HistorySource, words: CustomWordsCoordinator
+      status: StatusSources, history: HistorySource, models: ModelActions,
+      words: CustomWordsCoordinator
     ) {
       self.settings = settings
       self.writeContext = writeContext
       self.statusSources = status
       self.history = history
+      self.models = models
       self.words = words
     }
 
@@ -134,6 +155,14 @@
         return wordsUpdate(args)
       case .wordsRemove:
         return wordsRemove(args)
+      case .modelsParakeetDownload:
+        return model(.parakeet, "download", args, models.parakeetDownload)
+      case .modelsParakeetCancel:
+        return model(.parakeet, "cancel", args, models.parakeetCancel)
+      case .modelsWhisperKitDownload:
+        return model(.whisperKit, "download", args, models.whisperKitDownload)
+      case .modelsWhisperKitCancel:
+        return model(.whisperKit, "cancel", args, models.whisperKitCancel)
       }
     }
 
@@ -329,6 +358,28 @@
     /// whole reply unencodable.
     private static func finite(_ value: Double) -> Any {
       value.isFinite ? value : NSNull()
+    }
+
+    // MARK: - Models
+
+    /// `{}`: press one model button, then read that engine's state. The state is the
+    /// instant after the press: an owner that refused or had nothing to do leaves it as it
+    /// was, and one that scheduled work may not have moved it yet. Poll `status` for
+    /// progress; this reply is never a completion receipt.
+    private func model(
+      _ backend: ASRBackendType, _ action: String, _ args: [String: Any],
+      _ press: @MainActor () -> Void
+    ) -> Result {
+      guard !unexpectedKeys(args, allowed: []) else {
+        return .failure(.badArgs, "model commands take no arguments")
+      }
+      press()
+      let state: [String: Any]
+      switch backend {
+      case .parakeet: state = Self.project(statusSources.parakeetDelivery())
+      case .whisperKit: state = Self.project(statusSources.whisperKitSetup())
+      }
+      return .ok(["backend": backend.rawValue, "action": action, "state": state])
     }
 
     // MARK: - History

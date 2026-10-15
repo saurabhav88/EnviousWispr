@@ -90,7 +90,7 @@
       let (_, _, settings) = Self.fixture()
       let rows = DevControlSettings.catalog(settings)
       #expect(rows.count == 70)
-      #expect(rows.compactMap { $0["name"] as? String } == declared)
+      #expect(rows.compactMap { $0["key"] as? String } == declared)
       for row in rows {
         #expect(row["value"] != nil)
         #expect(JSONSerialization.isValidJSONObject([row]))
@@ -98,7 +98,7 @@
 
       var kinds: [String: [String]] = [:]
       for row in rows {
-        kinds[row["kind"] as? String ?? "?", default: []].append(row["name"] as? String ?? "?")
+        kinds[row["kind"] as? String ?? "?", default: []].append(row["key"] as? String ?? "?")
       }
       #expect(kinds["direct"]?.count == 38)
       #expect(kinds["viaOwner"]?.count == 8)

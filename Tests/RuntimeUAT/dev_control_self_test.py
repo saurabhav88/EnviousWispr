@@ -283,6 +283,11 @@ class Tree:
 # MARK: - Cases
 
 
+def _label(argv):
+    """A check name: the command words, plus the model for a models command."""
+    return " ".join(argv[:3] if argv[0] == "models" else argv[:2])
+
+
 def routes_and_values(r, tree):
     exe = tree.dev(tree.wt)
     door = FakeDoor(111, exe)
@@ -302,6 +307,10 @@ def routes_and_values(r, tree):
         (["words", "remove", word_id], "words.remove", {"id": word_id}),
         (["history", "list", "--limit", "5"], "history.list", {"limit": 5}),
         (["history", "get", word_id], "history.get", {"id": word_id}),
+        (["models", "download", "parakeet"], "models.parakeet.download", None),
+        (["models", "cancel", "parakeet"], "models.parakeet.cancel", None),
+        (["models", "download", "whisperkit"], "models.whisperkit.download", None),
+        (["models", "cancel", "whisperkit"], "models.whisperkit.cancel", None),
     ]
     try:
         for argv, cmd, wire in socket_routes:
@@ -310,7 +319,7 @@ def routes_and_values(r, tree):
                                              FakeBoundaries({"111": exe}, door=door))
             sent = door.received[-1] if door.received else {}
             expected = {"pong": True} if cmd == "ping" else {"echo": cmd}
-            r.check("routes", " ".join(argv[:2]),
+            r.check("routes", _label(argv),
                     status == 0 and door.commands() == ["ping", cmd] and sent.get("args") == wire
                     and ("args" in sent) == (wire is not None) and out == ""
                     and document.get("result") == expected,
@@ -323,6 +332,16 @@ def routes_and_values(r, tree):
                 status == 0 and document.get("ok") is True and b.backend_calls == [
                     (111, "/abs/clip.m4a", {"timeout": 30.0, "worktree": tree.wt, "echo": False})],
                 f"status={status} calls={b.backend_calls}")
+
+        for argv in (["models", "download", "WhisperKit"], ["models", "resume", "parakeet"],
+                     ["models", "download", "parakeet", "extra"]):
+            door.received.clear()
+            b = FakeBoundaries({"111": exe}, door=door, lock=FakeLock(session=AGENT, status=0))
+            status, document, out, _ = _run(["--worktree", tree.wt] + argv, b)
+            r.check("routes", f"refused before contact: {' '.join(argv)}",
+                    status == 2 and _code(document) == "usage" and door.received == []
+                    and b.lock.main_calls == [] and b.lock.find_calls == 0 and out == "",
+                    f"status={status} doc={document} sent={door.received}")
 
         values = [
             (["3"], 3), (["0.5"], 0.5), (["1e300"], 1e300), (["null"], None), (["true"], True),
@@ -397,6 +416,10 @@ def lock_cases(r, tree):
         ["words", "add", "Fooflux"],
         ["words", "update", word_id, "--word", "W"],
         ["words", "remove", word_id],
+        ["models", "download", "parakeet"],
+        ["models", "cancel", "parakeet"],
+        ["models", "download", "whisperkit"],
+        ["models", "cancel", "whisperkit"],
         ["file", "transcribe", "/abs/clip.m4a"],
     ]
     try:
@@ -412,7 +435,7 @@ def lock_cases(r, tree):
                 status, document, out, err = _run(["--worktree", tree.wt] + argv, b)
                 reached = bool(door.received) or bool(b.backend_calls)
                 checked = lock.main_calls == ([] if lock.session is None else [["check"]])
-                name = " ".join(argv[:2]) + (" --force" if "--force" in argv else "")
+                name = _label(argv) + (" --force" if "--force" in argv else "")
                 r.check("lock", f"{label}: {name}",
                         status == want_status and _code(document) == want_code
                         and reached == dispatched and checked and lock.find_calls == 1
@@ -800,6 +823,11 @@ def output_cases(r, tree):
          "usage"),
         ("a setting VALUE that is not JSON",
          ["--worktree", missing, "settings", "set", "k", "parakeet"], 2, "usage"),
+        ("an unknown model", ["--worktree", missing, "models", "download", "sherpa"], 2, "usage"),
+        ("an unknown model action", ["--worktree", missing, "models", "pause", "parakeet"], 2,
+         "usage"),
+        ("a model command without a model", ["--worktree", missing, "models", "cancel"], 2,
+         "usage"),
         ("a missing worktree", ["--worktree", missing, "status"], 2, "worktreeUnresolved"),
         ("a missing worktree on a mutation", ["--worktree", missing, "words", "add", "X"], 2,
          "worktreeUnresolved"),

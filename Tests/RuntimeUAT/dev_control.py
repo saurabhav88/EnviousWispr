@@ -17,6 +17,7 @@ CLI, from a worktree whose dev build is running:
     python3 Tests/RuntimeUAT/dev_control.py status
     python3 Tests/RuntimeUAT/dev_control.py settings set fillerRemovalEnabled false
     python3 Tests/RuntimeUAT/dev_control.py words add fooFlux --alias "foo flux"
+    python3 Tests/RuntimeUAT/dev_control.py models download whisperkit
     python3 Tests/RuntimeUAT/dev_control.py --self-test
 
 Stdout carries exactly one JSON document per run; diagnostics go to stderr. Exit status:
@@ -276,8 +277,15 @@ types; a string needs JSON quotes ('"parakeet"') or --string (--string parakeet)
 Writes persist in the shared preferences every dev and production build reads. --force
 skips the screens' checks, not the owner's consequences (a provider change still resets its
 model). A successful write does not say when an in-flight dictation adopts the value.
+models download/cancel press the Settings row's own button and return that engine's
+state the instant after; poll status for progress. A reply is never a finished download.
 Changes need the shared dev-app lock (dev-app-lock.py claim) unless run by hand.
 """
+
+
+# The CLI's model names are the door's command segments (models.<backend>.<action>).
+MODEL_BACKENDS = ("parakeet", "whisperkit")
+MODEL_ACTIONS = ("download", "cancel")
 
 
 def build_parser():
@@ -323,6 +331,11 @@ def build_parser():
     history_list.add_argument("--limit", type=int)
     history_get = history.add_parser("get")
     history_get.add_argument("id")
+
+    models = sub.add_parser("models", help="download or cancel a speech model").add_subparsers(
+        dest="action", required=True, metavar="ACTION")
+    for verb in MODEL_ACTIONS:
+        models.add_parser(verb).add_argument("backend", choices=MODEL_BACKENDS)
 
     file_ = sub.add_parser("file", help="Transcribe a File").add_subparsers(
         dest="action", required=True, metavar="ACTION")
@@ -382,6 +395,10 @@ def route(args):
         return "words.update", wire, True
     if key == ("words", "remove"):
         return "words.remove", {"id": args.id}, True
+    if args.group == "models" and args.action in MODEL_ACTIONS:
+        if args.backend not in MODEL_BACKENDS:
+            raise CliError("usage", f"unknown model {args.backend!r}", EXIT_USAGE)
+        return f"models.{args.backend}.{args.action}", None, True
     if key == ("history", "list"):
         return "history.list", ({} if args.limit is None else {"limit": args.limit}), False
     if key == ("history", "get"):

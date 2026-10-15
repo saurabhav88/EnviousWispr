@@ -63,7 +63,8 @@
     private static func dispatcher(
       status: DevControlFixtures.StatusFake = DevControlFixtures.StatusFake(),
       rows: [Transcript] = [],
-      words: CustomWordsCoordinator = DevControlFixtures.unwrittenWords()
+      words: CustomWordsCoordinator = DevControlFixtures.unwrittenWords(),
+      models: DevControlFixtures.ModelFake = DevControlFixtures.ModelFake()
     ) -> DevControlDispatcher {
       let defaults = TestDefaults.suite("ew.tests.3765.framing.\(UUID().uuidString)")!
       return DevControlDispatcher(
@@ -73,6 +74,7 @@
           connectedInputUIDs: { [] }),
         status: status.sources,
         history: DevControlFixtures.history(rows),
+        models: models.actions,
         words: words)
     }
 
@@ -532,6 +534,59 @@
         #expect(line.contains(huge.id.uuidString) == false)
         #expect(line.contains("small row") == false)
       }
+      try await stop(door)
+    }
+
+    @Test("each model command over the socket presses only its own button and reads that engine after")
+    func modelCommandsOverTheSocket() async throws {
+      let status = DevControlFixtures.StatusFake()
+      let models = DevControlFixtures.ModelFake()
+      models.onPress = { action in
+        switch action {
+        case "parakeetDownload":
+          status.parakeet = .downloading(fractionCompleted: 0, bytesWritten: 0, totalBytes: 10)
+        case "whisperKitDownload":
+          status.whisperKit = .downloading(progress: 0, status: "Starting download...")
+        default: break
+        }
+      }
+      let door = DevControlDoor(dispatcher: Self.dispatcher(status: status, models: models))
+      var outcomes: [String] = []
+      door.onOutcomeLogged = { outcomes.append($0) }
+      defer { door.uninstall() }
+      try #require(await door.install() == .ready)
+
+      let reply = try await runClient(
+        #"""
+        c = dev_control.Connection(\#(door.pid))
+        out = {}
+        for cmd in ["models.parakeet.download", "models.parakeet.cancel",
+                    "models.whisperkit.download", "models.whisperkit.cancel"]:
+            out[cmd] = c.request(cmd)
+        out["extra"] = c.request("models.parakeet.download", {"model": "x"})
+        print(json.dumps(out))
+        """#)
+      #expect(models.pressed == [
+        "parakeetDownload", "parakeetCancel", "whisperKitDownload", "whisperKitCancel",
+      ])
+      func result(_ cmd: String) throws -> [String: Any] {
+        try #require((reply[cmd] as? [String: Any])?["result"] as? [String: Any])
+      }
+      let parakeet = try result("models.parakeet.download")
+      #expect(parakeet["backend"] as? String == "parakeet")
+      #expect(parakeet["action"] as? String == "download")
+      #expect((parakeet["state"] as? [String: Any])?["state"] as? String == "downloading")
+      let whisper = try result("models.whisperkit.cancel")
+      #expect(whisper["backend"] as? String == "whisperKit")
+      #expect(whisper["action"] as? String == "cancel")
+      #expect((whisper["state"] as? [String: Any])?["state"] as? String == "downloading")
+      let extra = try #require(reply["extra"] as? [String: Any])
+      #expect((extra["error"] as? [String: Any])?["code"] as? String == "badArgs")
+
+      try #require(outcomes.count == 5, "outcomes: \(outcomes)")
+      #expect(outcomes[0].contains("cmd=models.parakeet.download ok=true"))
+      #expect(outcomes[3].contains("cmd=models.whisperkit.cancel ok=true"))
+      #expect(outcomes[4].contains("cmd=models.parakeet.download ok=false forced=false code=badArgs"))
       try await stop(door)
     }
 
