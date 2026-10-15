@@ -20,6 +20,8 @@
       case settingsGet = "settings.get"
       case settingsSet = "settings.set"
       case languageSet = "language.set"
+      case keysSet = "keys.set"
+      case keysClear = "keys.clear"
       case status
       case historyList = "history.list"
       case historyGet = "history.get"
@@ -64,6 +66,8 @@
       case wrongLaunch
       case unknownReceipt
       case receiptExpired
+      /// The key store refused the save or clear; what is stored is now unknown.
+      case storeFailed
     }
 
     enum Result {
@@ -132,6 +136,8 @@
     private let statusSources: StatusSources
     private let history: HistorySource
     private let models: ModelActions
+    /// The writer the AI Polish screen's Save and Clear use; every key command goes through it.
+    private let credentials: CredentialWriter
     /// Dictation commands and their receipts. Its launch id is the door's.
     let dictation: DevControlDictation
     var launchID: UUID { dictation.launchID }
@@ -141,9 +147,11 @@
     init(
       settings: SettingsManager, writeContext: DevControlSettings.WriteContext,
       status: StatusSources, history: HistorySource, models: ModelActions,
-      dictation: DevControlDictation, words: CustomWordsCoordinator
+      dictation: DevControlDictation, credentials: CredentialWriter,
+      words: CustomWordsCoordinator
     ) {
       self.dictation = dictation
+      self.credentials = credentials
       self.settings = settings
       self.writeContext = writeContext
       self.statusSources = status
@@ -170,6 +178,10 @@
         return set(args)
       case .languageSet:
         return setLanguage(args)
+      case .keysSet:
+        return setKey(args)
+      case .keysClear:
+        return clearKey(args)
       case .status:
         return .ok(status())
       case .historyList:
@@ -279,6 +291,63 @@
           code: ErrorCode(rawValue: code)?.rawValue ?? ErrorCode.badValue.rawValue, message: message
         )
       }
+    }
+
+    // MARK: - Keys
+
+    /// The provider argument: a cloud polish provider's `LLMProvider` raw value only.
+    private func credentialProvider(_ raw: Any?) -> CredentialProvider? {
+      (raw as? String).flatMap(LLMProvider.init(rawValue:)).flatMap(CredentialProvider.init)
+    }
+
+    /// `{provider, value}`. The value is used for the store and nothing else: no reply, log
+    /// line or error message carries it. Admission matches the screen's Save, which is
+    /// enabled for any non-empty field and stores it as typed.
+    private func setKey(_ args: [String: Any]) -> Result {
+      guard Set(args.keys) == ["provider", "value"] else {
+        return .failure(.badArgs, "keys.set takes provider and value only")
+      }
+      guard let provider = credentialProvider(args["provider"]) else {
+        return .failure(.badValue, "provider must be openAI, gemini or claude")
+      }
+      guard let value = args["value"] as? String, !value.isEmpty else {
+        return .failure(.badArgs, "value must be a non-empty string")
+      }
+      // The save itself changes no setting; the scope covers any synchronous consequence.
+      let outcome = DevControlSettings.attributed(settings) {
+        credentials.save(value, for: provider, settings: settings, surface: .dictation)
+      }
+      switch outcome {
+      case .failed:
+        return .failure(.storeFailed, "the key store refused the save; the key is now unknown")
+      case .stored:
+        // The key check runs on; this reply is the store's acceptance, never its verdict.
+        return .ok(keyReply(provider, extra: ["stored": true, "validation": "started"]))
+      }
+    }
+
+    /// `{provider}`.
+    private func clearKey(_ args: [String: Any]) -> Result {
+      guard Set(args.keys) == ["provider"] else {
+        return .failure(.badArgs, "keys.clear takes provider only")
+      }
+      guard let provider = credentialProvider(args["provider"]) else {
+        return .failure(.badValue, "provider must be openAI, gemini or claude")
+      }
+      let outcome = DevControlSettings.attributed(settings) { credentials.clear(provider) }
+      switch outcome {
+      case .failed:
+        return .failure(.storeFailed, "the key store refused the clear; the key is now unknown")
+      case .cleared:
+        return .ok(keyReply(provider, extra: ["cleared": true]))
+      }
+    }
+
+    private func keyReply(_ provider: CredentialProvider, extra: [String: Any]) -> [String: Any] {
+      var reply = extra
+      reply["provider"] = provider.llmProvider.rawValue
+      reply["presence"] = Self.project(statusSources.savedKeyState(provider.llmProvider))
+      return reply
     }
 
     // MARK: - Status

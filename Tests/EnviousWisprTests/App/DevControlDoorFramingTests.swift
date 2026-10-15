@@ -65,7 +65,8 @@
       rows: [Transcript] = [],
       words: CustomWordsCoordinator = DevControlFixtures.unwrittenWords(),
       models: DevControlFixtures.ModelFake = DevControlFixtures.ModelFake(),
-      dictation: DevControlDictation = DevControlFixtures.inertDictation()
+      dictation: DevControlDictation = DevControlFixtures.inertDictation(),
+      credentials: CredentialWriter = DevControlFixtures.isolatedCredentials()
     ) -> DevControlDispatcher {
       let defaults = TestDefaults.suite("ew.tests.3765.framing.\(UUID().uuidString)")!
       return DevControlDispatcher(
@@ -77,6 +78,7 @@
         history: DevControlFixtures.history(rows),
         models: models.actions,
         dictation: dictation,
+        credentials: credentials,
         words: words)
     }
 
@@ -479,6 +481,45 @@
         #expect(line.contains("4322") == false)
         #expect(line.contains("toggleKeyCode") == false)
       }
+      try await stop(door)
+    }
+
+    @Test("keys.set and keys.clear cross the socket to the writer; no reply or log line holds the key")
+    func keysOverTheSocket() async throws {
+      let presence = SavedKeyPresence()
+      let status = DevControlFixtures.StatusFake()
+      status.keyState = { presence.state(for: $0) }
+      let door = DevControlDoor(
+        dispatcher: Self.dispatcher(
+          status: status, credentials: DevControlFixtures.isolatedCredentials(presence: presence)))
+      var outcomes: [String] = []
+      door.onOutcomeLogged = { outcomes.append($0) }
+      defer { door.uninstall() }
+      try #require(await door.install() == .ready)
+
+      let secret = "sk-synthetic-\(UUID().uuidString)"
+      let reply = try await runClient(
+        #"""
+        c = dev_control.Connection(\#(door.pid))
+        saved = c.request("keys.set", {"provider": "claude", "value": "\#(secret)"})
+        cleared = c.request("keys.clear", {"provider": "claude"})
+        bad = c.request("keys.set", {"provider": "ollama", "value": "\#(secret)"})
+        print(json.dumps({"saved": saved, "cleared": cleared, "bad": bad}))
+        """#)
+      let saved = try #require((reply["saved"] as? [String: Any])?["result"] as? [String: Any])
+      #expect(saved["stored"] as? Bool == true)
+      #expect(saved["presence"] as? String == "present")
+      #expect(saved["validation"] as? String == "started")
+      let cleared = try #require((reply["cleared"] as? [String: Any])?["result"] as? [String: Any])
+      #expect(cleared["presence"] as? String == "absent")
+      #expect(((reply["bad"] as? [String: Any])?["error"] as? [String: Any])?["code"] as? String
+        == "badValue")
+      let encoded = String(decoding: try JSONSerialization.data(withJSONObject: reply), as: UTF8.self)
+      #expect(encoded.contains(secret) == false)
+      try #require(outcomes.count == 3, "outcomes: \(outcomes)")
+      #expect(outcomes[0].contains("cmd=keys.set ok=true forced=false code=none"))
+      #expect(outcomes.allSatisfy { !$0.contains(secret) && !$0.contains("claude") })
+      #expect(presence.state(for: .claude) == .absent)
       try await stop(door)
     }
 

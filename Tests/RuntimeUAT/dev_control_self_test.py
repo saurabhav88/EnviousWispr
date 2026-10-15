@@ -28,7 +28,7 @@ import dev_control
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 CATEGORIES = ("routes", "valueSyntax", "lock", "instances", "identity", "framing", "output",
-              "import", "dictation")
+              "import", "dictation", "keys")
 _DOORS = []
 
 
@@ -182,7 +182,7 @@ class FakeBoundaries(dev_control.Boundaries):
     reply = {"status": "finished", "history": "row"}
 
     def __init__(self, instances, door=None, lock=None, toplevel=None, pyobjc=True,
-                 main_thread=True, backend=None, lock_load_error=None):
+                 main_thread=True, backend=None, lock_load_error=None, stdin=b""):
         self._instances = instances
         self.door = door
         self.lock = lock if lock is not None else FakeLock(session=None)
@@ -194,6 +194,12 @@ class FakeBoundaries(dev_control.Boundaries):
         self.backend_loads = 0
         self.backend_calls = []
         self.touched = []
+        self.stdin = stdin
+        self.stdin_reads = []
+
+    def read_stdin(self, limit):
+        self.stdin_reads.append(limit)
+        return self.stdin[:limit]
 
     def instances(self):
         self.touched.append("instances")
@@ -1126,6 +1132,117 @@ def dictation_cases(r, tree):
         door.stop()
 
 
+def key_cases(r, tree):
+    """keys set/clear: the key comes from stdin only and never reaches output."""
+    exe = tree.dev(tree.wt)
+    base = ["--worktree", tree.wt]
+    secret = "sk-synthetic-" + uuid.uuid4().hex
+
+    def clean(*texts):
+        return all(secret not in t for t in texts)
+
+    door = FakeDoor(111, exe)
+    try:
+        for cli, wire in (("openai", "openAI"), ("gemini", "gemini"), ("claude", "claude")):
+            door.received.clear()
+            b = FakeBoundaries({"111": exe}, door=door, lock=FakeLock(session=AGENT, status=0),
+                               stdin=(secret + "\n").encode())
+            status, document, out, err = _run(base + ["keys", "set", cli], b)
+            sent = door.received[-1] if door.received else {}
+            r.check("keys", f"set {cli}: stdin key reaches the door once, newline dropped",
+                    status == 0 and door.commands() == ["ping", "keys.set"]
+                    and sent.get("args") == {"provider": wire, "value": secret}
+                    and b.lock.main_calls == [["check"]] and out == ""
+                    and clean(json.dumps(document), err), f"status={status} sent={sent}")
+            door.received.clear()
+            b = FakeBoundaries({"111": exe}, door=door, lock=FakeLock(session=AGENT, status=0),
+                               stdin=b"never read")
+            status, document, _, _ = _run(base + ["keys", "clear", cli], b)
+            r.check("keys", f"clear {cli}: provider only, stdin untouched",
+                    status == 0 and door.received[-1].get("args") == {"provider": wire}
+                    and b.stdin_reads == [], f"status={status} reads={b.stdin_reads}")
+
+        for label, data, want in (
+            ("CRLF line end", (secret + "\r\n").encode(), secret),
+            ("an inner newline kept", ("a\nb\n").encode(), "a\nb"),
+            ("only one trailing newline dropped", b"x\n\n", "x\n"),
+            ("no line end at all", secret.encode(), secret),
+        ):
+            door.received.clear()
+            b = FakeBoundaries({"111": exe}, door=door, stdin=data)
+            status, _, _, _ = _run(base + ["keys", "set", "openai"], b)
+            value = (door.received[-1].get("args") or {}).get("value") if door.received else None
+            r.check("keys", f"stdin framing: {label}", status == 0 and value == want,
+                    f"value={value!r}")
+
+        for label, data in (("empty stdin", b""), ("only a newline", b"\n"),
+                            ("not UTF-8", b"\xff\xfe" + secret.encode()),
+                            ("over the size limit",
+                             secret.encode() * (dev_control.MAX_KEY_BYTES // len(secret) + 2))):
+            door.received.clear()
+            b = FakeBoundaries({"111": exe}, door=door, stdin=data)
+            status, document, out, err = _run(base + ["keys", "set", "openai"], b)
+            r.check("keys", f"{label} refused before contact, the key not echoed",
+                    status == 2 and _code(document) == "usage" and door.received == []
+                    and clean(json.dumps(document), out, err), f"status={status} doc={document}")
+
+        for argv in (["keys", "set", "ollama"], ["keys", "set", "openai", secret],
+                     ["keys", "clear", "openai", "--value", secret]):
+            door.received.clear()
+            b = FakeBoundaries({"111": exe}, door=door, stdin=secret.encode())
+            status, document, out, err = _run(base + argv, b)
+            r.check("keys", f"refused before contact: {' '.join(a if a != secret else '<key>' for a in argv)}",
+                    status == 2 and _code(document) == "usage" and door.received == []
+                    and clean(json.dumps(document), out, err), f"status={status}")
+
+        door.received.clear()
+        b = FakeBoundaries({"111": exe}, door=door, lock=FakeLock(session=AGENT, status=3),
+                           stdin=secret.encode())
+        status, document, out, err = _run(base + ["keys", "set", "openai"], b)
+        r.check("keys", "a peer's lock sends no key",
+                status == 3 and _code(document) == "lockNotHeld" and door.received == []
+                and clean(json.dumps(document), out, err), f"status={status}")
+
+        door.received.clear()
+        door.respond = lambda request: "close" if request.get("cmd") == "keys.set" \
+            else door.reply_ok(request)
+        b = FakeBoundaries({"111": exe}, door=door, stdin=secret.encode())
+        status, document, out, err = _run(base + ["keys", "set", "openai"], b)
+        r.check("keys", "a lost reply is outcomeUnknown, sent once, the key not echoed",
+                status == 1 and _code(document) == "outcomeUnknown"
+                and door.commands().count("keys.set") == 1
+                and clean(json.dumps(document), out, err), f"status={status} doc={document}")
+
+        door.received.clear()
+        door.respond = lambda request: [door.frame(door.envelope(
+            request, ok=False, result=None,
+            error={"code": "storeFailed", "message": "the key store refused the save"}))] \
+            if request.get("cmd") == "keys.set" else door.reply_ok(request)
+        b = FakeBoundaries({"111": exe}, door=door, stdin=secret.encode())
+        status, document, _, _ = _run(base + ["keys", "set", "gemini"], b)
+        r.check("keys", "storeFailed propagates", status == 1 and _code(document) == "storeFailed",
+                f"doc={document}")
+        door.respond = door.reply_ok
+    finally:
+        door.stop()
+
+    class Exploding(FakeBoundaries):
+        def connect(self, pid, timeout):
+            raise KeyError(secret)
+
+    real = dev_control.Boundaries
+    out, err = io.StringIO(), io.StringIO()
+    dev_control.Boundaries = lambda: Exploding({"111": exe}, stdin=secret.encode())
+    try:
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            status = dev_control.main(base + ["keys", "set", "openai"])
+    finally:
+        dev_control.Boundaries = real
+    r.check("keys", "an internal defect in a key command reports its type only",
+            status == 1 and secret not in out.getvalue() and secret not in err.getvalue()
+            and "KeyError" in out.getvalue(), out.getvalue())
+
+
 def run_self_test():
     """(exit status, document): 0 only when every category ran and nothing failed."""
     r = _Results()
@@ -1140,6 +1257,7 @@ def run_self_test():
         framing_cases(r, tree)
         import_cases(r, tree)
         dictation_cases(r, tree)
+        key_cases(r, tree)
         output_cases(r, tree)
     finally:
         tree.clean()

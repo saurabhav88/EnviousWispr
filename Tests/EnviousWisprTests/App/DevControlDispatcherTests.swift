@@ -8,6 +8,7 @@
   import Testing
 
   @testable import EnviousWisprAppKit
+  @testable import EnviousWisprLLM
   @testable import EnviousWisprPostProcessing
   @testable import EnviousWisprStorage
 
@@ -31,6 +32,7 @@
         history: DevControlFixtures.history([]),
         models: DevControlFixtures.ModelFake().actions,
         dictation: DevControlFixtures.inertDictation(),
+        credentials: DevControlFixtures.isolatedCredentials(),
         words: DevControlFixtures.unwrittenWords())
       return (settings, dispatcher)
     }
@@ -235,6 +237,7 @@
         history: DevControlDispatcher.HistorySource(visibleTranscripts: rows),
         models: models.actions,
         dictation: DevControlFixtures.inertDictation(),
+        credentials: DevControlFixtures.isolatedCredentials(),
         words: DevControlFixtures.unwrittenWords())
       return (settings, dispatcher)
     }
@@ -573,6 +576,7 @@ private static func make(words: CustomWordsCoordinator) -> (SettingsManager, Dev
     history: DevControlFixtures.history([]),
     models: DevControlFixtures.ModelFake().actions,
     dictation: DevControlFixtures.inertDictation(),
+    credentials: DevControlFixtures.isolatedCredentials(),
     words: words)
   return (settings, dispatcher)
 }
@@ -859,6 +863,26 @@ func wordCommandsLeaveSettingsAlone() async throws {
 
     static func history(_ rows: [Transcript]) -> DevControlDispatcher.HistorySource {
       DevControlDispatcher.HistorySource(visibleTranscripts: { rows })
+    }
+
+    /// The screen's credential writer over a fresh temporary key folder, a fresh presence and
+    /// a discovery that answers with no models: never the real key files or Keychain.
+    static func isolatedCredentials(
+      presence: SavedKeyPresence = SavedKeyPresence(),
+      storage: (any LegacyKeyFileStorage)? = nil,
+      emit: @escaping CredentialWriter.Emit = { _, _, _ in }
+    ) -> CredentialWriter {
+      let folder = FileManager.default.temporaryDirectory
+        .appending(path: "ew-tests-3765-keys-\(UUID().uuidString)")
+      let keychain = KeychainManager(
+        backend: .legacyFiles, legacyStore: storage ?? FileLegacyKeyStore(storageDirectory: folder))
+      let discovery = LLMModelDiscoveryCoordinator(
+        keychainManager: keychain,
+        cacheDefaults: TestDefaults.suite("ew.tests.3765.keys.cache.\(UUID().uuidString)")!,
+        savedKeyPresence: presence, discoverModels: { _, _ in [] })
+      var writer = CredentialWriter(keychainManager: keychain, presence: presence, discovery: discovery)
+      writer.emit = emit
+      return writer
     }
 
     /// A dictation owner whose runtime is at rest and never mints a take: for suites that

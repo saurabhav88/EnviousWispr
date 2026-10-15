@@ -2324,6 +2324,9 @@ package final class WisprBootstrapper {
             whisperKitDownload: { [setup] in setup.whisperKitSetup.downloadModel() },
             whisperKitCancel: { [setup] in setup.whisperKitSetup.cancelDownload() }),
           dictation: devControlDictation,
+          credentials: CredentialWriter(
+            keychainManager: keychainManager, presence: savedKeyPresence,
+            discovery: llmDiscovery),
           words: customWordsCoordinator))
     #endif
     self.transcriptCoordinator = transcriptCoordinator

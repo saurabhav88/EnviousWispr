@@ -18,6 +18,7 @@ CLI, from a worktree whose dev build is running:
     python3 Tests/RuntimeUAT/dev_control.py settings set fillerRemovalEnabled false
     python3 Tests/RuntimeUAT/dev_control.py words add fooFlux --alias "foo flux"
     python3 Tests/RuntimeUAT/dev_control.py models download whisperkit
+    <secret source> | python3 Tests/RuntimeUAT/dev_control.py keys set openai
     R=$(python3 Tests/RuntimeUAT/dev_control.py dictation start --front-app com.apple.TextEdit)
     python3 Tests/RuntimeUAT/dev_control.py dictation stop --receipt "$R"
     python3 Tests/RuntimeUAT/dev_control.py dictation wait --receipt "$R"
@@ -284,6 +285,9 @@ types; a string needs JSON quotes ('"parakeet"') or --string (--string parakeet)
 Writes persist in the shared preferences every dev and production build reads. --force
 skips the screens' checks, not the owner's consequences (a provider change still resets its
 model). A successful write does not say when an in-flight dictation adopts the value.
+keys set PROVIDER reads the key from stdin only (never an argument) and replies with
+presence, never the key; one trailing newline is the line end, not part of the key.
+keys clear PROVIDER removes it. A refused store reads storeFailed: the key is unknown.
 language set CODE is the language picker's choice: lock and English spelling together
 (en-gb locks "en" with British spelling); auto unlocks. settings set languageMode or
 englishSpelling alone is refused toward it; --force stages one field.
@@ -353,6 +357,11 @@ def build_parser():
         dest="action", required=True, metavar="ACTION")
     for verb in MODEL_ACTIONS:
         models.add_parser(verb).add_argument("backend", choices=MODEL_BACKENDS)
+
+    keys = sub.add_parser("keys", help="save or clear a cloud polish API key").add_subparsers(
+        dest="action", required=True, metavar="ACTION")
+    for verb in ("set", "clear"):
+        keys.add_parser(verb).add_argument("provider", choices=sorted(KEY_PROVIDERS))
 
     language = sub.add_parser("language", help="the dictation language").add_subparsers(
         dest="action", required=True, metavar="ACTION")
@@ -432,6 +441,11 @@ def route(args):
         if args.backend not in MODEL_BACKENDS:
             raise CliError("usage", f"unknown model {args.backend!r}", EXIT_USAGE)
         return f"models.{args.backend}.{args.action}", None, True
+    if key == ("keys", "set"):
+        # The value is added by `run` from stdin, never from argv.
+        return "keys.set", {"provider": KEY_PROVIDERS[args.provider]}, True
+    if key == ("keys", "clear"):
+        return "keys.clear", {"provider": KEY_PROVIDERS[args.provider]}, True
     if key == ("language", "set"):
         return "language.set", {"code": args.code}, True
     if key == ("dictation", "start"):
@@ -457,6 +471,31 @@ def route(args):
             raise CliError("usage", "--timeout must be positive and finite", EXIT_USAGE)
         return None
     raise CliError("usage", "no command given", EXIT_USAGE)
+
+
+# CLI provider names and the door's LLMProvider raw values.
+KEY_PROVIDERS = {"openai": "openAI", "gemini": "gemini", "claude": "claude"}
+MAX_KEY_BYTES = 16 * 1024
+
+
+def read_key(boundaries):
+    """The key from stdin, at most MAX_KEY_BYTES of UTF-8. One trailing newline (LF or
+    CRLF) is the line end a pipe adds; nothing else is trimmed. Every refusal is a fixed
+    sentence, so the key never reaches an error, a log or stdout."""
+    raw = boundaries.read_stdin(MAX_KEY_BYTES + 1)
+    if len(raw) > MAX_KEY_BYTES:
+        raise CliError("usage", f"the key on stdin is over {MAX_KEY_BYTES} bytes", EXIT_USAGE)
+    if raw.endswith(b"\r\n"):
+        raw = raw[:-2]
+    elif raw.endswith(b"\n"):
+        raw = raw[:-1]
+    try:
+        text = raw.decode("utf-8")
+    except UnicodeDecodeError:
+        raise CliError("usage", "the key on stdin is not UTF-8", EXIT_USAGE) from None
+    if not text:
+        raise CliError("usage", "no key on stdin", EXIT_USAGE)
+    return text
 
 
 RECEIPT_FIELDS = ("launch", "backend", "take")
@@ -528,6 +567,9 @@ class Boundaries:
     def load_import_backend(self):
         from import_door import transcribe_file_backend
         return transcribe_file_backend
+
+    def read_stdin(self, limit):
+        return sys.stdin.buffer.read(limit)
 
     def monotonic(self):
         return time.monotonic()
@@ -798,6 +840,9 @@ def run(argv, boundaries, timeout=10.0):
     except _ParserExit as done:
         return done.status, {"ok": done.status == 0, "result": {"help": "printed to stderr"}}
     except CliError as error:
+        if "keys" in argv:
+            # argparse names unexpected arguments, and one could be a key typed in argv.
+            error.message = "usage error in a keys command; the key goes on stdin, never argv"
         return error.exit_status, error.document()
     if args.self_test:
         from dev_control_self_test import run_self_test
@@ -816,6 +861,8 @@ def run(argv, boundaries, timeout=10.0):
                 session.connection.close()
         socket_route = route(args)
         mutation = socket_route is None or socket_route[2]
+        if socket_route is not None and socket_route[0] == "keys.set":
+            socket_route[1]["value"] = read_key(boundaries)
         root = resolve_worktree(args.worktree, boundaries)
         if mutation:
             require_mutation_ownership(boundaries)
@@ -833,12 +880,14 @@ def run(argv, boundaries, timeout=10.0):
 
 
 def main(argv=None):
+    argv = sys.argv[1:] if argv is None else argv
     try:
-        status, document = run(sys.argv[1:] if argv is None else argv, Boundaries())
+        status, document = run(argv, Boundaries())
     except Exception as error:  # a defect here must still leave one JSON document
         status = EXIT_FAILED
-        document = {"ok": False, "error": {"code": "internalError",
-                                           "message": f"{type(error).__name__}: {error}"}}
+        # A key command's defect reports its type only: the text could hold the key.
+        detail = type(error).__name__ if "keys" in argv else f"{type(error).__name__}: {error}"
+        document = {"ok": False, "error": {"code": "internalError", "message": detail}}
     sys.stdout.write(json.dumps(document) + "\n")
     sys.stdout.flush()
     return status
