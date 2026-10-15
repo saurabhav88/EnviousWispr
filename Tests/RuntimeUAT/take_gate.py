@@ -29,6 +29,8 @@ REPAIR = "Not an app result. Repair the setup or the harness, rerun the failed s
 
 _target = None
 _activate = None
+_paste = None
+_takes = 1
 
 
 class SetupFailed(RuntimeError):
@@ -116,17 +118,21 @@ def stop_active_take():
     return player_ok, idle
 
 
-def declare_target(bundle_id, activate=None):
-    """Name the app the take must paste into (its bundle id, e.g. com.apple.TextEdit).
+def declare_target(bundle_id, activate=None, paste=None, takes=1):
+    """Name the app that must be frontmost for the take (its bundle id, e.g. com.apple.TextEdit).
     `activate` (optional) brings it back to the front; the gate calls it once before refusing.
+    `paste`: where the text must land when that is another app (a launcher panel), or
+    CALLER_VERIFIES when the caller checks the landing itself; default: the same app.
+    `takes`: recordings the take deliberately makes (default 1).
     Scripts that set up their own route call it per take; `clear_target()` when they are done."""
-    global _target, _activate
-    _target, _activate = bundle_id, activate
+    global _target, _activate, _paste, _takes
+    _target, _activate, _paste, _takes = bundle_id, activate, paste, takes
 
 
 def clear_target():
-    global _target, _activate
-    _target = _activate = None
+    global _target, _activate, _paste, _takes
+    _target = _activate = _paste = None
+    _takes = 1
 
 
 def declared_target():
@@ -218,31 +224,59 @@ PASTE = re.compile(r"Paste cascade: tier=\S+?, app=([^,\s]+),")
 TERMINAL = re.compile(r"dictation_terminal result=(\S+)")
 
 
-def classify(chunk, target, speaker_ok=False):
-    """Pure verdict over the app.log lines one take wrote. Returns (outcome, detail) where outcome
-    is "APP", "SETUP" or "COULD_NOT_TELL"."""
-    transports = TRANSPORT.findall(chunk)
-    pastes = PASTE.findall(chunk)
-    terminals = TERMINAL.findall(chunk)
-    if len(transports) > 1 or len(terminals) > 1:
-        hint = ""
-        if chunk.count("Recording started.") > 1:
-            hint = ("; a second recording STARTED inside this take, the shape of #3107 (a menu Stop on "
-                    "a loopback mic starts an unrequested take): use push-to-talk (record_tts) for it")
-        return "COULD_NOT_TELL", (f"more than one recording in this take (captures={transports}, "
-                                  f"terminals={terminals}); the evidence cannot be tied to one take{hint}")
+CALLER_VERIFIES = "*"  # paste=CALLER_VERIFIES: the caller checks where the text landed itself
+
+
+def classify(chunk, target, speaker_ok=False, paste=None, takes=1):
+    """Pure verdict over the app.log entries one take wrote. Returns (outcome, detail) where
+    outcome is "APP", "SETUP" or "COULD_NOT_TELL".
+
+    `paste`: the bundle the text must land in (default `target`), or CALLER_VERIFIES when the
+    caller checks the landing itself (a launcher panel, an app swap). `takes`: recordings this
+    take deliberately makes. The evidence ends at the `takes`-th terminal line: a recording that
+    STARTS after that is the app's own behaviour (#3107), reported, never mixed into the evidence."""
+    # Safety holds across the WHOLE window, not just this take's own slice: a real-mic capture or
+    # a paste into another app anywhere in it is SETUP, never hidden behind the cut.
+    expected_paste = target if paste is None else paste
+    if not speaker_ok and any(t != "virtual" for t in TRANSPORT.findall(chunk)):
+        return "SETUP", f"a capture in this window was not through the virtual device: {TRANSPORT.findall(chunk)}"
+    if expected_paste not in (None, CALLER_VERIFIES) and any(p != expected_paste for p in PASTE.findall(chunk)):
+        return "SETUP", f"a paste in this window left the named target {expected_paste!r}: {PASTE.findall(chunk)}"
+    lines = chunk.splitlines()
+    cut, seen = len(lines), 0
+    for i, line in enumerate(lines):
+        if TERMINAL.search(line):
+            seen += 1
+            if seen == takes:
+                cut = i + 1
+                break
+    own = "\n".join(lines[:cut])
+    after = "\n".join(lines[cut:])
+    # A paste logged just after the terminal still belongs to this take (paste precedes the
+    # terminal in practice; keep any paste before the next recording starts).
+    tail_pastes = PASTE.findall(after.split("Recording started.")[0])
+    extra = ""
+    if "Recording started." in after:
+        extra = ("; NOTE: another recording started after this take (#3107: a menu Stop on a loopback "
+                 "mic starts an unrequested take); it is the app's behaviour, outside this take's evidence")
+    transports = TRANSPORT.findall(own)
+    pastes = PASTE.findall(own) + tail_pastes
+    terminals = TERMINAL.findall(own)
+    if transports and terminals and (len(transports) != takes or len(terminals) != takes):
+        return "COULD_NOT_TELL", (f"capture/terminal count does not match this take (expected {takes}, "
+                                  f"captures={transports}, terminals={terminals}){extra}")
     if not transports:
         return "COULD_NOT_TELL", ("no capture line (ZERO_PREFIX_MEASURE) in app.log for this take; "
                                   "if the report above shows no recording either, read it as the app's")
     if not speaker_ok and any(t != "virtual" for t in transports):
         return "SETUP", f"capture was not through the virtual device: transports={transports}"
-    if target is not None and any(p != target for p in pastes):
-        return "SETUP", f"paste left the named target {target!r}: pasted into {pastes}"
-    if not terminals:
-        return "COULD_NOT_TELL", "no dictation_terminal line for this take"
-    if terminals[0] == "completed" and not pastes:
+    if expected_paste not in (None, CALLER_VERIFIES) and any(p != expected_paste for p in pastes):
+        return "SETUP", f"paste left the named target {expected_paste!r}: pasted into {pastes}"
+    if len(terminals) < takes:
+        return "COULD_NOT_TELL", f"expected {takes} dictation_terminal line(s), found {len(terminals)}"
+    if (expected_paste != CALLER_VERIFIES and "completed" in terminals and not pastes):
         return "COULD_NOT_TELL", "a completed take with no paste line: delivery cannot be placed"
-    note = f"transports={transports} terminal={terminals[0]} pasted_into={pastes or 'nothing'}"
+    note = f"transports={transports} terminals={terminals} pasted_into={pastes or 'nothing'}{extra}"
     return "APP", note
 
 
@@ -262,7 +296,8 @@ def check_after_take(evidence):
     text = log_since(evidence) if isinstance(evidence, int) else evidence
     if not isinstance(text, str):
         raise CouldNotTell(f"no readable log evidence for this take ({type(evidence).__name__})")
-    outcome, detail = classify(text, _target, speaker_ok=bool(speaker_reason()))
+    outcome, detail = classify(text, _target, speaker_ok=bool(speaker_reason()),
+                               paste=_paste, takes=_takes)
     if outcome == "SETUP":
         raise SetupFailed("take-evidence", detail)
     if outcome == "COULD_NOT_TELL":
@@ -293,7 +328,21 @@ def _self_test():
     expect("virtual capture, pasted into the target", classify(v + p_te, te), "APP")
     expect("completed take with no paste line", classify(v, te), "COULD_NOT_TELL")
     expect("discarded take with no paste line", classify(nospeech, te), "APP")
-    expect("two recordings in one take", classify(v + p_te + v + p_te, te), "COULD_NOT_TELL")
+    second = ("[x] [INFO] [Pipeline] Recording started. Backend: parakeet, streaming=false\n"
+              + nospeech)
+    expect("an unrequested second take after this one (#3107) stays outside the evidence",
+           classify(p_te + v + second, te), "APP")
+    expect("two recordings before this take's terminal", classify(v.splitlines(True)[0] * 2 + v + p_te, te),
+           "COULD_NOT_TELL")
+    expect("a deliberate two-take hold with takes=2", classify(p_te + v + p_te + v, te, takes=2), "APP")
+    p_lp = "[x] [INFO] [PipelineTiming] Paste cascade: tier=ax_direct, app=com.enviouswispr.uat.launcherpanel, duration=5ms\n"
+    expect("a launcher panel paste with paste= that panel", classify(p_lp + v, te, paste="com.enviouswispr.uat.launcherpanel"), "APP")
+    expect("a launcher panel paste without declaring it", classify(p_lp + v, te), "SETUP")
+    expect("caller-verified landing accepts any paste", classify(p_gh + v, te, paste=CALLER_VERIFIES), "APP")
+    expect("caller-verified landing still requires the virtual capture", classify(p_gh + b, te, paste=CALLER_VERIFIES), "SETUP")
+    expect("a real-mic capture after the cut is still SETUP", classify(p_te + v + "[x] Recording started.\n" + b, te), "SETUP")
+    expect("a wrong-app paste after the cut is still SETUP", classify(p_te + v + "[x] Recording started.\n" + p_gh, te), "SETUP")
+    expect("two terminals with one capture is COULD NOT TELL", classify(p_te + v + v.splitlines(True)[1], te, takes=2), "COULD_NOT_TELL")
     expect("capture but no terminal line", classify(v.splitlines(True)[0] + p_te, te), "COULD_NOT_TELL")
     expect("speaker capture", classify(b + p_te, te), "SETUP")
     expect("speaker capture on a declared speaker take", classify(b + p_te, te, speaker_ok=True), "APP")

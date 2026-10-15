@@ -540,6 +540,7 @@ def dictate(path, label, pair, need_heard=True):
     """
     subprocess.run(["open", "-a", "TextEdit", path], check=True)
     time.sleep(0.8)  # settle: TextEdit frontmost before the menu-driven take; no ack
+    w.declare_paste_target("com.apple.TextEdit")  # #3764: the take gate checks it before and after
     mark = log_mark()
     # The local `say` voice: no cloud spend (GR-NO-CLOUD-SPEND).
     clip = w.tts(pair.sentence, engine="say")

@@ -65,6 +65,7 @@ def take(path, sentence, expect):
     clip = w.tts(sentence, engine="say")
     if not os.path.exists(clip) or os.path.getsize(clip) < 8192:
         return mark, None
+    w.declare_paste_target("com.apple.TextEdit")  # #3764: the take gate checks it before and after
     ok = w.test_recording(audio=clip, expect=expect, timeout=45.0)
     if not d.wait_for("the paste cascade line", lambda: re.search(r"Paste cascade: tier=\S+, app=com\.apple\.TextEdit", d.log_since(mark)), deadline=20.0):
         return mark, None

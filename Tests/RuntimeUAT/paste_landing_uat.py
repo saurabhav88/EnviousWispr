@@ -232,7 +232,9 @@ def take(label, base, bundle=CHROME, route=None, expected_takes=1, expect_landin
         if own:
             route.apply()
         u.require_front(bundle, f"{label}: before the take")
-        w.declare_paste_target(bundle)  # #3764: the take gate checks this target before and after
+        # #3764: the gate proves the BlackHole capture and the frontmost app; this harness checks
+        # the landing itself (launcher panels, app swaps, two-take holds), so it owns `paste`.
+        w.declare_paste_target(bundle, paste=w.CALLER_VERIFIES, takes=expected_takes)
         if label in EXPECTED_FOCUS and focused_role() != EXPECTED_FOCUS[label]:
             # Checked immediately before the hold: the paste goes wherever focus is NOW, and an
             # address bar focused here would make a no-focus phase pass on text that landed.

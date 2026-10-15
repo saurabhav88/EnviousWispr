@@ -25,7 +25,7 @@ from settings_nav import NavigationError, RouteError  # noqa: E402,F401
 # #3764: every audio take passes ONE gate: BlackHole, a named paste target in front, and the
 # take's own log lines afterwards. Set up with `audio_rig.AudioRig`.
 import take_gate as _tg  # noqa: E402
-from take_gate import CouldNotTell, SetupFailed, declare_target as declare_paste_target  # noqa: E402,F401
+from take_gate import CALLER_VERIFIES, CouldNotTell, SetupFailed, declare_target as declare_paste_target  # noqa: E402,F401
 
 _pid = None
 _app = None

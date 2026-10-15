@@ -314,7 +314,22 @@ def cmd_preflight(args):
     if args.silent_probe and not fails:
         print("\n== SILENT PROBE (6 s of true silence) ==")
         import wispr_eyes as w
-        state, words, _rec = run_silent_probe(w)
+        import audio_rig
+        # #3764: the probe must hear the real room (no BlackHole), and still paste only into a
+        # proven target; the reason is restored afterwards.
+        saved_reason = os.environ.get("EW_UAT_SPEAKER_REASON")
+        os.environ["EW_UAT_SPEAKER_REASON"] = "silent-probe measures the real room"
+        try:
+            with audio_rig.AudioRig(route=False):
+                state, words, _rec = run_silent_probe(w)
+        except Exception as exc:  # SETUP FAILED / COULD NOT TELL: not a room verdict
+            print(f"WARN  silent-probe      {exc}")
+            state, words = "inconclusive", None
+        finally:
+            if saved_reason is None:
+                os.environ.pop("EW_UAT_SPEAKER_REASON", None)
+            else:
+                os.environ["EW_UAT_SPEAKER_REASON"] = saved_reason
         if state == "inconclusive":
             warnings.append("silent-probe: no completed, attributable take; cannot tell whether the room is quiet. Re-run")
         elif state == "occupied":
