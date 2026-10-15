@@ -227,6 +227,26 @@ def _run_golden_vector_self_test():
 _run_golden_vector_self_test()
 
 
+def restore_target(pre_run_backend):
+    """The stored `selectedBackend` value to restore after the run, in today's spelling (the
+    value `switch_backend` takes and the app writes back), or None when the pre-run value is
+    not a backend. Builds before #3735 stored "whisperKit"; the app now stores "whisper"."""
+    return {"parakeet": "parakeet", "whisper": "whisper", "whisperKit": "whisper"}.get(
+        pre_run_backend)
+
+
+def _run_restore_mapping_self_test():
+    cases = [("parakeet", "parakeet"), ("whisper", "whisper"), ("whisperKit", "whisper"),
+             ("", None), ("bogus", None)]
+    bad = [(pre, want, restore_target(pre)) for pre, want in cases if restore_target(pre) != want]
+    if bad:
+        sys.stderr.write(f"[freeze-suite] FATAL — restore mapping wrong: {bad}\n")
+        sys.exit(EXIT_BASELINE_BAD)
+
+
+_run_restore_mapping_self_test()
+
+
 # --- helpers ----------------------------------------------------------------
 def sha256(path: str) -> str:
     h = hashlib.sha256()
@@ -763,11 +783,12 @@ try:
             if entry.get("engine") == "whisperKit" and entry.get("status") == "skipped":
                 entry["needs_review"] = True
 finally:
-    if pre_run_backend in ("parakeet", "whisper", "whisperKit"):
-        switch_target = "parakeet" if pre_run_backend == "parakeet" else "whisper"
+    switch_target = restore_target(pre_run_backend)
+    if switch_target is not None:
         try:
             print(f"\n[freeze-suite] restoring pre-run backend: {pre_run_backend}")
-            ensure_backend(switch_target, pre_run_backend)
+            # Verified against today's spelling: the app stores "whisper", never "whisperKit".
+            ensure_backend(switch_target, switch_target)
         except Exception as e:  # noqa: BLE001
             sys.stderr.write(
                 f"[freeze-suite] WARN — could not restore pre-run backend "

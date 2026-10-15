@@ -8,12 +8,14 @@ under Automatic is every dictation (#2614). This corpus proves the damage on REA
 engine output rather than on hand-typed text: each sentence is spoken by an Azure
 neural voice in its own language, transcribed by the shipped engines, and the
 transcripts are what the benchmark test feeds to the app's own chain. Parakeet runs
-via `parakeet_runner`. The Whisper rows in `transcripts.jsonl` are HISTORICAL WhisperKit
-large-v3-turbo output (September 2026, the gitignored `scripts/multilingual-eval/runner`);
-#3735 retired WhisperKit and removed that arm from `--transcribe`, so this script no
-longer produces Whisper rows. A transcribe.cpp arm is follow-up work. The Parakeet model is explicit (#3546):
-`transcripts.jsonl` holds the historical v3 rows (September 2026 audio, kept
-byte-for-byte), and `transcripts-ultra.jsonl` holds Parakeet Ultra rows only.
+via `parakeet_runner`; Whisper runs on the shipped transcribe.cpp backend through
+`WhisperFileTranscriptionRunner` (a named-manifest test run by `scripts/xcode-test.sh`) with
+the approved GGUF and no language hint, so each row carries the native detection. The
+Whisper rows in `transcripts.jsonl` are HISTORICAL WhisperKit large-v3-turbo output
+(September 2026, the gitignored `scripts/multilingual-eval/runner`; WhisperKit was retired in
+#3735); `--whisper-fixture` writes current transcribe.cpp rows to their own file. The Parakeet
+model is explicit (#3546): `transcripts.jsonl` holds the historical v3 rows (September 2026
+audio, kept byte-for-byte), and `transcripts-ultra.jsonl` holds Parakeet Ultra rows only.
 
 Every case carries its oracle, written BEFORE any run and independent of the
 chain: `must_keep` names the words that are lexical in the sentence's language
@@ -38,7 +40,10 @@ Usage (three stages, each resumable):
   ~/.claude/bin/get-key launch azure-speech-region AZURE_SPEECH_REGION -- \\
     python3 scripts/eval/language_gate_corpus.py --run <run-dir> --synth
   python3 scripts/eval/language_gate_corpus.py --run <run-dir> --transcribe \\
-    --parakeet-model ultra --parakeet-model-dir <installed parakeet-ultra dir>
+    --parakeet-model ultra --parakeet-model-dir <installed parakeet-ultra dir> \\
+    --whisper-gguf <installed whisper-large-v3-turbo-Q8_0.gguf>
+  python3 scripts/eval/language_gate_corpus.py --run <run-dir> \\
+    --whisper-fixture Tests/EnviousWisprTests/Resources/LanguageGate/transcripts-whisper.jsonl
   python3 scripts/eval/language_gate_corpus.py --run <run-dir> --parakeet-model ultra \\
     --parakeet-fixture Tests/EnviousWisprTests/Resources/LanguageGate/transcripts-ultra.jsonl
   python3 scripts/eval/language_gate_corpus.py --run <run-dir> --parakeet-model v3 --fixture \\
@@ -62,6 +67,9 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 PARAKEET_RUNNER = ROOT / "scripts/eval/parakeet_runner/.build/release/ParakeetRunner"
+WHISPER_RUNNER_TEST = "EnviousWisprTests/WhisperFileTranscriptionRunner"
+WHISPER_RUNNER_SOURCE = ROOT / "Tests/EnviousWisprTests/Pipeline/WhisperFileTranscriptionRunner.swift"
+WHISPER_MANIFEST = ROOT / "Sources/EnviousWispr/Resources/whisper-delivery-manifest.json"
 
 # Two voices per locale so no bucket is one voice's articulation.
 VOICES = {
@@ -390,19 +398,23 @@ def synth(run: Path) -> None:
     (run / "cases.jsonl").write_text("".join(json.dumps(r, ensure_ascii=False) + "\n" for r in rows))
 
 
-# ---- Stage 2: both engines ---------------------------------------------------------
+# ---- Stage 2: the engines ----------------------------------------------------------
 
 def parakeet_out(run: Path, model: str) -> Path:
     """One output file per Parakeet model, so an Ultra run never reuses v3 rows."""
     return run / f"parakeet-{model}.jsonl"
 
 
+def _require_wavs(run: Path) -> None:
+    missing = [r["id"] for r in cases() if not (run / "wav" / f"{r['id']}.wav").exists()]
+    if missing:
+        sys.exit(f"{len(missing)} WAVs missing (run --synth first): {missing[:5]}")
+
+
 def transcribe(run: Path, parakeet_model: str, parakeet_model_dir: Path) -> None:
     rows = cases()
     wav_dir = run / "wav"
-    missing = [r["id"] for r in rows if not (wav_dir / f"{r['id']}.wav").exists()]
-    if missing:
-        sys.exit(f"{len(missing)} WAVs missing (run --synth first): {missing[:5]}")
+    _require_wavs(run)
     if not PARAKEET_RUNNER.exists():
         sys.exit(f"missing runner binary: {PARAKEET_RUNNER}\n"
                  "Build it with `swift build -c release` in its package.")
@@ -427,6 +439,95 @@ def transcribe(run: Path, parakeet_model: str, parakeet_model_dir: Path) -> None
         pk_out.with_suffix(".provenance.json").write_text(json.dumps(before, sort_keys=True) + "\n")
         _verified_parakeet(run, parakeet_model)
     print("transcribe: done (parakeet)", file=sys.stderr)
+
+
+def whisper_out(run: Path) -> Path:
+    return run / "whisper-transcribecpp.jsonl"
+
+
+def _sha256(path: Path) -> str:
+    h = hashlib.sha256()
+    with path.open("rb") as f:
+        for block in iter(lambda: f.read(1 << 20), b""):
+            h.update(block)
+    return h.hexdigest()
+
+
+def _whisper_manifest() -> tuple[dict, str]:
+    """The shipped Whisper model's identity and the GGUF SHA-256 its delivery manifest pins."""
+    m = json.loads(WHISPER_MANIFEST.read_text())
+    ggufs = [f for f in m["files"] if f["path"].endswith(".gguf")]
+    if len(ggufs) != 1:
+        raise ValueError(f"{WHISPER_MANIFEST.name}: expected one GGUF, found {len(ggufs)}")
+    ident = {k: m["identity"][k] for k in ("name", "revision", "variant", "runtimeABI")}
+    return ident, ggufs[0]["sha256"]
+
+
+def _whisper_context(run: Path) -> dict:
+    """What a Whisper output was produced from: manifest identity and pinned GGUF, the runner
+    test's source and every WAV. Recorded at transcription time and compared on every reuse."""
+    ident, gguf_sha = _whisper_manifest()
+    return {
+        "engine": "whisper-transcribecpp",
+        "manifest_identity": ident,
+        "model_sha256": gguf_sha,
+        "runner_source_sha256": _sha256(WHISPER_RUNNER_SOURCE),
+        "audio_sha256": {r["id"]: _sha256(run / "wav" / f"{r['id']}.wav") for r in cases()},
+    }
+
+
+def transcribe_whisper(run: Path, gguf: Path) -> None:
+    """Whisper on transcribe.cpp: one test process over every WAV, refusing a GGUF that is not
+    the one the shipped delivery manifest pins."""
+    rows = cases()
+    _require_wavs(run)
+    out = whisper_out(run)
+    if out.exists():
+        _verified_whisper(run)
+        print("transcribe: whisper output present and verified", file=sys.stderr)
+        return
+    if not gguf.is_file():
+        sys.exit(f"Whisper GGUF missing: {gguf}")
+    before = _whisper_context(run)
+    if _sha256(gguf) != before["model_sha256"]:
+        sys.exit(f"{gguf} is not the GGUF {WHISPER_MANIFEST.name} pins")
+    manifest = run / "whisper-manifest.jsonl"
+    manifest.write_text("".join(
+        json.dumps({"id": r["id"], "wav": str((run / "wav" / f"{r['id']}.wav").resolve())}) + "\n"
+        for r in rows))
+    env = {**os.environ,
+           "TEST_RUNNER_EW_WHISPER_FILE_MANIFEST": str(manifest.resolve()),
+           "TEST_RUNNER_EW_WHISPER_FILE_OUT": str(out.resolve()),
+           "TEST_RUNNER_EW_WHISPER_FILE_GGUF": str(gguf.resolve()),
+           "TEST_RUNNER_EW_WHISPER_FILE_EXPECTED_MODEL_SHA256": before["model_sha256"]}
+    log = run / "whisper-transcribe.log"
+    print(f"Whisper (transcribe.cpp) … log: {log}", file=sys.stderr)
+    with log.open("w") as f:
+        rc = subprocess.run([str(ROOT / "scripts/xcode-test.sh"), "--filter", WHISPER_RUNNER_TEST],
+                            env=env, stdout=f, stderr=subprocess.STDOUT).returncode
+    if rc != 0 or not out.exists():
+        sys.exit(f"Whisper runner failed (exit {rc}, output {'present' if out.exists() else 'missing'}); see {log}")
+    if before != _whisper_context(run):
+        raise ValueError("Whisper inputs changed during transcription")
+    out.with_suffix(".provenance.json").write_text(json.dumps(before, sort_keys=True) + "\n")
+    _verified_whisper(run)
+    print("transcribe: done (whisper)", file=sys.stderr)
+
+
+def _verified_whisper(run: Path) -> dict[str, dict]:
+    path = whisper_out(run)
+    receipt = path.with_suffix(".provenance.json")
+    if not receipt.is_file():
+        raise ValueError(f"{path.name}: missing provenance; delete it and rerun transcription")
+    context = _whisper_context(run)
+    if json.loads(receipt.read_text()) != context:
+        raise ValueError(f"{path.name}: audio, model or runner changed; delete it and rerun transcription")
+    rows = _jsonl(path, {r["id"] for r in cases()})
+    for cid, row in rows.items():
+        if "error" in row or not isinstance(row.get("text"), str) \
+                or row.get("model_sha256") != context["model_sha256"]:
+            raise ValueError(f"{path.name}: {cid} is not a successful text row from the pinned model")
+    return rows
 
 
 # ---- Stage 3: the fixture the Swift benchmark reads --------------------------------
@@ -554,6 +655,33 @@ def parakeet_fixture(run: Path, dest: Path, model: str) -> None:
     print(f"parakeet fixture: {len(lines)} {model} rows -> {dest}", file=sys.stderr)
 
 
+def whisper_fixture(run: Path, dest: Path) -> None:
+    """Whisper-only fixture: same cases and oracles, rows from transcribe.cpp with the native
+    detected language and the SHA-256 of each WAV. Refuses a partial or unverified run."""
+    rows = cases()
+    wh = _verified_whisper(run)
+    context = _whisper_context(run)
+    lines = []
+    for r in rows:
+        w = wh[r["id"]]
+        base = {k: r[k] for k in ("id", "locale", "lang", "bucket", "text", "voice",
+                                  "must_keep", "must_convert", "must_drop")}
+        lines.append({**base, "engine": "whisper", "raw": w["text"],
+                      "engine_language": w.get("detected_lang"),
+                      "audio_sha256": context["audio_sha256"][r["id"]]})
+    rev = subprocess.run(["git", "-C", str(ROOT), "rev-parse", "--short", "HEAD"],
+                         capture_output=True, text=True, check=True).stdout.strip()
+    header = {"_meta": {"generated_at_repo_rev": rev, "run": run.name, "rows": len(lines),
+                        "tts": "Azure Neural TTS, riff-16khz-16bit-mono-pcm",
+                        "whisper_model": context["manifest_identity"],
+                        "whisper_model_sha256": context["model_sha256"],
+                        "whisper_runner": f"transcribe.cpp via {WHISPER_RUNNER_TEST}, no language hint"}}
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    dest.write_text(json.dumps(header, ensure_ascii=False) + "\n"
+                    + "".join(json.dumps(l, ensure_ascii=False) + "\n" for l in lines))
+    print(f"whisper fixture: {len(lines)} rows -> {dest}", file=sys.stderr)
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--run", required=True, help="run directory, e.g. scripts/eval/runs/language-gate-2026-09-03")
@@ -566,6 +694,10 @@ def main() -> None:
                     help="Parakeet model for --transcribe and the fixtures (required by them)")
     ap.add_argument("--parakeet-model-dir", type=Path,
                     help="installed Parakeet model folder for --transcribe")
+    ap.add_argument("--whisper-gguf", type=Path,
+                    help="the shipped Whisper GGUF for --transcribe (adds the transcribe.cpp arm)")
+    ap.add_argument("--whisper-fixture", metavar="DEST",
+                    help="write the Whisper (transcribe.cpp) fixture here")
     ap.add_argument("--list", action="store_true")
     a = ap.parse_args()
     run = Path(a.run)
@@ -573,18 +705,25 @@ def main() -> None:
         for r in cases():
             print(json.dumps(r, ensure_ascii=False))
         return
-    if (a.transcribe or a.fixture or a.parakeet_fixture) and not a.parakeet_model:
-        sys.exit("--parakeet-model is required for --transcribe and the fixtures")
+    wants_parakeet = a.fixture or a.parakeet_fixture or (a.transcribe and not a.whisper_gguf) \
+        or a.parakeet_model or a.parakeet_model_dir
+    if wants_parakeet and not a.parakeet_model:
+        sys.exit("--parakeet-model is required for the Parakeet arm and the Parakeet fixtures")
     if a.synth:
         synth(run)
     if a.transcribe:
-        if not a.parakeet_model_dir:
-            sys.exit("--transcribe needs --parakeet-model-dir")
-        transcribe(run, a.parakeet_model, a.parakeet_model_dir)
+        if a.parakeet_model:
+            if not a.parakeet_model_dir:
+                sys.exit("--transcribe needs --parakeet-model-dir for the Parakeet arm")
+            transcribe(run, a.parakeet_model, a.parakeet_model_dir)
+        if a.whisper_gguf:
+            transcribe_whisper(run, a.whisper_gguf)
     if a.fixture:
         fixture(run, Path(a.fixture), a.parakeet_model)
     if a.parakeet_fixture:
         parakeet_fixture(run, Path(a.parakeet_fixture), a.parakeet_model)
+    if a.whisper_fixture:
+        whisper_fixture(run, Path(a.whisper_fixture))
 
 
 if __name__ == "__main__":
