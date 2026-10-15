@@ -1681,11 +1681,16 @@ extension WhisperEngineAdapter: ASREngineLanguageIdentifying {}
 // MARK: - Test-only inspectors (`@testable import` reaches `internal`)
 
 extension WhisperEngineAdapter {
-  /// Test-only read of the retained PCM. The production read site is the
-  /// incremental worker's provider closure, which captures `self` weakly and
-  /// reads `retainedPCM` on `@MainActor`.
+  /// Test-only read of the streaming session's audio (`streamingPCM`).
   // periphery:ignore - test seam
-  internal var retainedPCMForUnitTests: [Float] { retainedPCM }
+  internal var streamingPCMForUnitTests: [Float] { streamingPCM }
+  /// Test-only handles of the dispatched streaming-feed tasks; awaiting them is
+  /// the completion signal for `streamingPCM` appends.
+  // periphery:ignore - test seam
+  internal var streamingFeedTasksForUnitTests: [Task<Void, Never>] { streamingFeedTasks }
+  /// Test-only read of the authoritative batch capture (`batchCaptureSamples`).
+  // periphery:ignore - test seam
+  internal var batchCaptureSamplesForUnitTests: [Float] { batchCaptureSamples }
   /// Test-only read of the kernel-supplied speech segments.
   // periphery:ignore - test seam
   internal var observedSpeechSegmentsForUnitTests: [SpeechSegment] { observedSpeechSegments }

@@ -46,7 +46,7 @@ struct WhisperEngineAdapterTranscribeCppTests {
     try await adapter.beginSession(
       sid, options: TranscriptionOptions(language: language), streaming: streaming)
     feed(adapter, samples: samples, session: sid)
-    adapter.observeSpeechSegments([SpeechSegment(startSample: 0, endSample: samples.count)])
+    adapter.observeSpeechSegments([SpeechSegment(startSample: 0, endSample: samples.count)], captureSamples: samples)
     return await adapter.finalize(batchSamples: nil)
   }
 
@@ -156,7 +156,7 @@ struct WhisperEngineAdapterTranscribeCppTests {
     try await adapter.beginSession(
       sid, options: TranscriptionOptions(language: "es"), streaming: false)
     feed(adapter, samples: [Float](repeating: 0.1, count: 16_000), session: sid)
-    adapter.observeSpeechSegments([SpeechSegment(startSample: 0, endSample: 16_000)])
+    adapter.observeSpeechSegments([SpeechSegment(startSample: 0, endSample: 16_000)], captureSamples: [Float](repeating: 0.1, count: 16_000))
     driver.holdNative()
     let take = Task { await adapter.finalize(batchSamples: nil) }
     await driver.waitUntilNativeEntered()
