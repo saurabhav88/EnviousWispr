@@ -63,7 +63,7 @@ struct EngineSettingsCopyTests {
   func helpUnchanged() {
     #expect(
       String(localized: Copy.modelSetupHelp)
-        == "WhisperKit requires a ~1.5 GB model download. It runs fully on your Mac, no internet needed after setup."
+        == "Whisper needs an 886 MB model download. It runs fully on your Mac, no internet needed after setup."
     )
     #expect(
       String(localized: Copy.suggestionsHelp)

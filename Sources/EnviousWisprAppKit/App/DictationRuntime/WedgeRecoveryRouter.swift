@@ -13,7 +13,7 @@ final class WedgeRecoveryRouter {
   init(
     audioCapture: any AudioCaptureInterface,
     kernelDriver _: KernelDictationDriver,
-    whisperKitKernelDriver _: KernelDictationDriver,
+    whisperKernelDriver _: KernelDictationDriver,
     isCurrentSession: @escaping @MainActor (UInt64) -> Bool,
     resolveActiveTelemetryTarget: @escaping @MainActor () -> (any HeartPathTelemetryTarget)?
   ) {

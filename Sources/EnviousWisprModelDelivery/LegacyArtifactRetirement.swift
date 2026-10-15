@@ -3,9 +3,9 @@ import Foundation
 
 /// The shared mechanism for retiring a legacy on-disk artifact we can prove is ours.
 ///
-/// Pure mechanism, **per-entry**, no store policy. EG-1 and WhisperKit both call it and
+/// Pure mechanism, **per-entry**, no store policy. EG-1 calls it (the retired WhisperKit coordinator did too, until #3735) and
 /// each keeps its own store knowledge: EG-1's old-store layout and sidecar sweeps have no
-/// business in a type that also serves a foreign Hugging Face cache, and WhisperKit's
+/// business in a type that also serves a foreign Hugging Face cache, and WhisperKit's former
 /// Documents/TCC concerns must never leak into EG-1.
 ///
 /// Extracted from `EGOneUpgradeCoordinator` (#1386 PR-2a, when it was named
@@ -18,7 +18,7 @@ public enum LegacyRetirement {
 
   /// A file we can prove is ours: a manifest-pinned path, size, and digest.
   public struct TrustedFile: Sendable, Equatable {
-    /// Path relative to the retirement root. May contain `/` — the WhisperKit manifest
+    /// Path relative to the retirement root. May contain `/` — the retired WhisperKit manifest
     /// nests up to three components deep (e.g. `AudioEncoder.mlmodelc/analytics/coremldata.bin`).
     public let relativePath: String
     public let sizeBytes: Int64

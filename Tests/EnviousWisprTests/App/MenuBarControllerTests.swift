@@ -1029,10 +1029,10 @@ struct MenuBarControllerTests {
     let store = TranscriptStore(directory: tempDir)
     let parakeet = DictationRuntimeFixtures.makeParakeetDriver(
       audioCapture: audioCapture, asrManager: asrManager, store: store)
-    let whisperKit = DictationRuntimeFixtures.makeWhisperKitPipeline(
+    let whisperDriver = DictationRuntimeFixtures.makeWhisperPipeline(
       audioCapture: audioCapture, store: store)
     let liveRecordingState = LiveRecordingState(
-      kernelDriver: parakeet, whisperKitKernelDriver: whisperKit,
+      kernelDriver: parakeet, whisperKernelDriver: whisperDriver,
       audioCapture: audioCapture, asrManager: asrManager)
     let backendMetadata = BackendMetadata(
       settings: settings,

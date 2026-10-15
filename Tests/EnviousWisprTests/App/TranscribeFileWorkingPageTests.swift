@@ -15,7 +15,7 @@ struct TranscribeFileWorkingPageTests {
   private func make(
     fraction: Double? = nil, landed: Bool = false, speakers: Int? = nil,
     done: Int? = nil, total: Int? = nil, words: Int? = nil, polisher: LLMProvider = .egOne,
-    engine: ASRBackendType = .whisperKit, fileSeconds: Double = 7_208.7
+    engine: ASRBackendType = .whisper, fileSeconds: Double = 7_208.7
   ) -> WorkingPageModel {
     WorkingPageModel.make(
       fileName: "4-elon-musk-jre-1470.m4a", fileSeconds: fileSeconds, engine: engine, polisher: polisher,

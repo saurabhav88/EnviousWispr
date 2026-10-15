@@ -37,8 +37,8 @@ import Testing
   @Test("adapter does NOT read audioCaptureSessionIDSource at beginSession")
   func adapterDoesNotCaptureAtBeginSession() async throws {
     var readCount = 0
-    let adapter = WhisperKitEngineAdapter(
-      backend: StubWhisperKitBackend(),
+    let adapter = WhisperEngineAdapter(
+      backend: StubWhisperBackend(),
       engineMutationScope: .alwaysAllowedForTesting,
       audioCaptureSessionIDSource: {
         readCount += 1
@@ -54,13 +54,13 @@ import Testing
 
   @Test("adapter reads audioCaptureSessionIDSource at finalize entry")
   func adapterCapturesSessionIDAtFinalizeEntry() async throws {
-    let backend = StubWhisperKitBackend()
+    let backend = StubWhisperBackend()
     await backend.setTranscribeResult(
       ASRResult(
         text: "ok", language: "en", duration: 1.0,
-        processingTime: 0.1, backendType: .whisperKit))
+        processingTime: 0.1, backendType: .whisper))
     var readCount = 0
-    let adapter = WhisperKitEngineAdapter(
+    let adapter = WhisperEngineAdapter(
       backend: backend,
       engineMutationScope: .alwaysAllowedForTesting,
       audioCaptureSessionIDSource: {
@@ -91,14 +91,14 @@ import Testing
 
   @Test("finalize populates lidCaptureSessionID on diagnostics for wiring transport")
   func finalizePopulatesLIDDiagnosticsForWiring() async throws {
-    let backend = StubWhisperKitBackend()
+    let backend = StubWhisperBackend()
     await backend.setTranscribeResult(
       ASRResult(
         text: "hola mundo", language: "es", duration: 1.0,
-        processingTime: 0.1, backendType: .whisperKit))
+        processingTime: 0.1, backendType: .whisper))
 
     let capturedID: UInt64 = 7777
-    let adapter = WhisperKitEngineAdapter(
+    let adapter = WhisperEngineAdapter(
       backend: backend,
       engineMutationScope: .alwaysAllowedForTesting,
       audioCaptureSessionIDSource: { capturedID })

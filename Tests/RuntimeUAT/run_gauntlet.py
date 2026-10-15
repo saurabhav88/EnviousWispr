@@ -9,7 +9,7 @@ is already broken.
 Usage:
     # Legacy Lane A gauntlet (health-check between scenarios):
     python3 Tests/RuntimeUAT/run_gauntlet.py --backend parakeet
-    python3 Tests/RuntimeUAT/run_gauntlet.py --backend whisperKit
+    python3 Tests/RuntimeUAT/run_gauntlet.py --backend whisper
 
 
 The #1317 dead-mic proof bench that used to live here was moved OFFLINE on
@@ -56,7 +56,7 @@ PARAKEET_GAUNTLET = [
     "A9_backend_switch_mid_record",
 ]
 
-WHISPERKIT_GAUNTLET = [
+WHISPER_GAUNTLET = [
     "A1_rapid_stop_start",
     "A2_esc_cancel",
     "A6_settings_storm",
@@ -121,13 +121,13 @@ def _main(argv: list[str]) -> int:
     # Subcommand routing; no subcommand ⇒ legacy Lane A gauntlet (back-compat).
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("--backend", choices=["parakeet", "whisperKit"],
+    parser.add_argument("--backend", choices=["parakeet", "whisper"],
                         default="parakeet")
     args = parser.parse_args(argv)
 
-    backend_key = "parakeet" if args.backend == "parakeet" else "whisperkit"
+    backend_key = "parakeet" if args.backend == "parakeet" else "whisper"
     scenarios = (PARAKEET_GAUNTLET if args.backend == "parakeet"
-                 else WHISPERKIT_GAUNTLET)
+                 else WHISPER_GAUNTLET)
 
     print(f"=== Lane A gauntlet — {args.backend} ===")
     print(f"pre-state: {query_state()}")

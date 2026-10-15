@@ -321,7 +321,7 @@ struct WordTimingRangeMapperTests {
     #expect(bound.map(\.startMs) == [nil, 100])
   }
 
-  /// A group with a leading space (WhisperKit's spaced-script tokens) still carves when the
+  /// A group with a leading space (Whisper's spaced-script tokens) still carves when the
   /// piece is one run, and the ranges skip nothing.
   @Test("groups with engine-side spaces carve by their non-space scalars")
   func groupsWithSpacesCarveByScalars() {
@@ -335,7 +335,7 @@ struct WordTimingRangeMapperTests {
   }
 
   /// A spaced-language window holding ONE word is not carved, even though its groups
-  /// concatenate to the run: WhisperKit's "don" + "'t" are sub-word pieces of a spaced word
+  /// concatenate to the run: Whisper's "don" + "'t" are sub-word pieces of a spaced word
   /// (cloud review of PR #2930).
   @Test("a one-word English window is not carved")
   func oneWordEnglishWindowIsNotCarved() {

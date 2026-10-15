@@ -114,15 +114,15 @@ import Testing
     func partialSummaryStopsAtLastBoundary() throws {
       let events = capture {
         TelemetryService.shared.dictationStarted(
-          takeID: Self.takeA, backend: "whisperKit", model: nil)
+          takeID: Self.takeA, backend: "whisper", model: nil)
         TelemetryService.shared.dictationVADPreparationCompleted(
-          backend: "whisperKit", inputRoute: "bluetooth", ready: true, modelReused: true,
+          backend: "whisper", inputRoute: "bluetooth", ready: true, modelReused: true,
           takeID: Self.takeA)
         TelemetryService.shared.dictationFirstVADChunkStarted(
-          backend: "whisperKit", inputRoute: "bluetooth", monitorToFirstChunkMs: 40,
+          backend: "whisper", inputRoute: "bluetooth", monitorToFirstChunkMs: 40,
           takeID: Self.takeA)
         TelemetryService.shared.dictationTerminal(
-          takeID: Self.takeA, backend: "whisperKit", result: "cancelled", reason: nil, model: nil)
+          takeID: Self.takeA, backend: "whisper", result: "cancelled", reason: nil, model: nil)
       }
       let e = try terminal(events, take: Self.takeA)
       #expect(e.stringProps["vad_stage_reached"] == "first_chunk_started")
@@ -170,12 +170,12 @@ import Testing
           takeID: Self.takeA)
         // Take B is accepted before A reports its ending.
         TelemetryService.shared.dictationStarted(
-          takeID: Self.takeB, backend: "whisperKit", model: nil)
+          takeID: Self.takeB, backend: "whisper", model: nil)
         Self.emitAllThree(takeID: Self.takeB)
         TelemetryService.shared.dictationTerminal(
           takeID: Self.takeA, backend: "parakeet", result: "cancelled", reason: nil, model: nil)
         TelemetryService.shared.dictationTerminal(
-          takeID: Self.takeB, backend: "whisperKit", result: "completed", reason: nil, model: nil)
+          takeID: Self.takeB, backend: "whisper", result: "completed", reason: nil, model: nil)
       }
       let a = try terminal(events, take: Self.takeA)
       let b = try terminal(events, take: Self.takeB)

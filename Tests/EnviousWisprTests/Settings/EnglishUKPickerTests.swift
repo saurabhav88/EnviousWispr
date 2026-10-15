@@ -66,12 +66,12 @@ struct EnglishUKPickerTests {
     let parakeet = try #require(LanguageLockOptions.lockableCodes(for: .parakeet))
     #expect(offered(parakeet).isSuperset(of: ["en", "en-gb"]))
     let frenchPackOnly = LanguageLockOptions.previewLockableCodes(
-      backend: .whisperKit, previewEngine: .apple, installedPackTags: ["fr-FR"])
+      backend: .whisper, previewEngine: .apple, installedPackTags: ["fr-FR"])
     #expect(offered(frenchPackOnly).contains("en-gb") == false)
     #expect(offered(frenchPackOnly).contains("en") == false)
     #expect(offered(frenchPackOnly).contains("fr"))
     let britishPack = LanguageLockOptions.previewLockableCodes(
-      backend: .whisperKit, previewEngine: .apple, installedPackTags: ["en-GB"])
+      backend: .whisper, previewEngine: .apple, installedPackTags: ["en-GB"])
     #expect(offered(britishPack).isSuperset(of: ["en", "en-gb"]))
   }
 
@@ -79,7 +79,7 @@ struct EnglishUKPickerTests {
   func previewNeedsBritishPack() {
     func previewRows(_ engine: LivePreviewEngineChoice, _ tags: [String]) -> Set<String> {
       let codes = LanguageLockOptions.previewLockableCodes(
-        backend: .whisperKit, previewEngine: engine, installedPackTags: tags)
+        backend: .whisper, previewEngine: engine, installedPackTags: tags)
       let uk = LanguageLockOptions.previewOffersEnglishUK(
         previewEngine: engine, installedPackTags: tags)
       return Set(

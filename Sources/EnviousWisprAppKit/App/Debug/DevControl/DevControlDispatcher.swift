@@ -62,12 +62,12 @@
       /// `EngineCoordinator.isSwitching`.
       let isSwitching: @MainActor () -> Bool
       /// The pipeline state of the dictation driver for one engine (the Parakeet kernel
-      /// driver or the WhisperKit one). Asked only for `engineStatus().active`.
+      /// driver or the Whisper one). Asked only for `engineStatus().active`.
       let driverState: @MainActor (ASRBackendType) -> PipelineState
       /// `ModelDeliveryHome.parakeetState`.
       let parakeetDelivery: @MainActor () -> DeliveryState
-      /// `WhisperKitSetupService.setupState`.
-      let whisperKitSetup: @MainActor () -> WhisperKitSetupState
+      /// `WhisperSetupService.setupState`.
+      let whisperSetup: @MainActor () -> WhisperSetupState
       /// `FileImportCoordinator.isRunning`.
       let isFileImportRunning: @MainActor () -> Bool
       /// `SavedKeyPresence.state(for:)`: what a path already learned, never a fresh read.
@@ -246,7 +246,7 @@
           "reason": driver.reason as Any? ?? NSNull(),
         ] as [String: Any],
         "parakeetDelivery": Self.project(statusSources.parakeetDelivery()),
-        "whisperKitSetup": Self.project(statusSources.whisperKitSetup()),
+        "whisperSetup": Self.project(statusSources.whisperSetup()),
         "fileImportRunning": statusSources.isFileImportRunning(),
         "savedKeys": savedKeys,
       ]
@@ -305,7 +305,7 @@
     }
 
     /// The download's status line and the error's text are screen copy, so they stay out.
-    private static func project(_ state: WhisperKitSetupState) -> [String: Any] {
+    private static func project(_ state: WhisperSetupState) -> [String: Any] {
       switch state {
       case .checking: return ["state": "checking"]
       case .notDownloaded: return ["state": "notDownloaded"]

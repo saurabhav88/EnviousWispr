@@ -26,7 +26,7 @@ struct AudioEventRouterTests {
     let store = DictationRuntimeFixtures.tempStore()
     let parakeet = DictationRuntimeFixtures.makeParakeetDriver(
       audioCapture: audio, asrManager: asr, store: store)
-    let whisperKit = DictationRuntimeFixtures.makeWhisperKitPipeline(
+    let whisperDriver = DictationRuntimeFixtures.makeWhisperPipeline(
       audioCapture: audio, store: store)
 
     #expect(audio.onEngineInterrupted == nil)
@@ -40,7 +40,7 @@ struct AudioEventRouterTests {
     let router = AudioEventRouter(
       audioCapture: audio,
       kernelDriver: parakeet,
-      whisperKitKernelDriver: whisperKit,
+      whisperKernelDriver: whisperDriver,
       resolveActiveCaptureBackend: { nil }
     )
 
@@ -56,7 +56,7 @@ struct AudioEventRouterTests {
     let store = DictationRuntimeFixtures.tempStore()
     let parakeet = DictationRuntimeFixtures.makeParakeetDriver(
       audioCapture: audio, asrManager: asr, store: store)
-    let whisperKit = DictationRuntimeFixtures.makeWhisperKitPipeline(
+    let whisperDriver = DictationRuntimeFixtures.makeWhisperPipeline(
       audioCapture: audio, store: store)
     var existingOwnerCallCount = 0
     audio.onVADAutoStop = { existingOwnerCallCount += 1 }
@@ -64,7 +64,7 @@ struct AudioEventRouterTests {
     let router = AudioEventRouter(
       audioCapture: audio,
       kernelDriver: parakeet,
-      whisperKitKernelDriver: whisperKit,
+      whisperKernelDriver: whisperDriver,
       resolveActiveCaptureBackend: { nil }
     )
 
@@ -110,20 +110,20 @@ struct AudioEventRouterTests {
     }
 
     let legacyStore = DictationRuntimeFixtures.tempStore()
-    // Share the SAME VAD source with the WhisperKit driver, mirroring production
+    // Share the SAME VAD source with the Whisper driver, mirroring production
     // (`WisprBootstrapper.swift:101-102`). Without this, the helper's own
     // `makeSharedVADSignalSource` builds a second source and re-binds
     // `audio.onVADAutoStop` to it — orphaning the Parakeet kernel's stop path so
     // `fireVADAutoStop()` reaches nobody and the recording survives to the 300s
     // cap (#882: the false-pass + 5-minute hang this test used to exhibit).
-    let whisperKit = DictationRuntimeFixtures.makeWhisperKitPipeline(
+    let whisperDriver = DictationRuntimeFixtures.makeWhisperPipeline(
       audioCapture: audio, store: legacyStore, sharedVAD: vad)
     // Post-PR-4b.4 of #827: the App router takes the same driver the kernel
     // path uses; there is no separate "legacy Parakeet" pipeline to satisfy.
     let router = AudioEventRouter(
       audioCapture: audio,
       kernelDriver: driver,
-      whisperKitKernelDriver: whisperKit,
+      whisperKernelDriver: whisperDriver,
       resolveActiveCaptureBackend: { .parakeet }
     )
 
@@ -151,7 +151,7 @@ struct AudioEventRouterTests {
 
     // The kernel claims `audio.onVADAutoStop` via the shared `CaptureVADSignalSource`.
     // Firing VAD auto-stop must reach the kernel (claim not overwritten by the
-    // WhisperKit driver's construction, nor by `AudioEventRouter`) and trigger a
+    // Whisper driver's construction, nor by `AudioEventRouter`) and trigger a
     // prompt stop.
     audio.fireVADAutoStop()
 
@@ -178,14 +178,14 @@ struct AudioEventRouterTests {
     let store = DictationRuntimeFixtures.tempStore()
     let parakeet = DictationRuntimeFixtures.makeParakeetDriver(
       audioCapture: audio, asrManager: asr, store: store)
-    let whisperKit = DictationRuntimeFixtures.makeWhisperKitPipeline(
+    let whisperDriver = DictationRuntimeFixtures.makeWhisperPipeline(
       audioCapture: audio, store: store)
 
     var resolverCallCount = 0
     let router = AudioEventRouter(
       audioCapture: audio,
       kernelDriver: parakeet,
-      whisperKitKernelDriver: whisperKit,
+      whisperKernelDriver: whisperDriver,
       resolveActiveCaptureBackend: {
         resolverCallCount += 1
         return nil

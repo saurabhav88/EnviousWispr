@@ -31,40 +31,40 @@ struct LiveTranscriptionCopyTests {
   ///
   /// One toggle drives two different implementations whose evidence points in OPPOSITE
   /// directions. The first draft showed Parakeet's 28-clip and 500-dictation figures to
-  /// WhisperKit users and told them to switch the setting off, which is materially wrong
+  /// Whisper users and told them to switch the setting off, which is materially wrong
   /// guidance for an engine where streaming is about as accurate as batch and clearly
-  /// faster on long recordings.
+  /// faster on long recordings (#3735 qualification, 71 clips:
+  /// `docs/audits/3735-swap/chunk8/qual/RECEIPT.md`).
   ///
-  /// WhisperKit carries NO figures on purpose: our own records disagree about them
-  /// (`#1276` says 3/107 phantom endings, `whisperkit-research.md` corrects it to 1/109),
-  /// and the quoted latency pair came from a prototype harness predating the shipped
-  /// architecture. Two sources disagreeing is exactly when a number must not reach a user.
-  @Test("Parakeet's measurements never appear in WhisperKit's panel")
-  func parakeetFiguresDoNotLeakIntoWhisperKit() {
-    let wk = LiveTranscriptionCopy.whisperKit
-    #expect(wk.comparisons.isEmpty, "WhisperKit has no defensible figures; it must show no table")
+  /// Whisper carries NO figures on purpose: its stop-to-text times were measured on one
+  /// Mac, and slower supported Macs would not see the same times.
+  @Test("Parakeet's measurements never appear in Whisper's panel")
+  func parakeetFiguresDoNotLeakIntoWhisper() {
+    let wk = LiveTranscriptionCopy.whisper
+    #expect(wk.comparisons.isEmpty, "Whisper has no defensible figures; it must show no table")
 
-    let allWhisperKitCopy = [
+    let allWhisperCopy = [
       wk.title, wk.speedHeading, wk.speedBody, wk.accuracyHeading, wk.accuracyBody,
       wk.whyHeading, wk.whyBody, wk.recommendationHeading, wk.recommendationBody, wk.footnote,
-      LiveTranscriptionCopy.whisperKitToggleDescription,
+      LiveTranscriptionCopy.whisperToggleDescription,
     ].joined(separator: " ")
 
     for parakeetFigure in ["2.0%", "3.7%", "1 in 24", "28 test recordings", "500 real dictations"] {
       #expect(
-        allWhisperKitCopy.contains(parakeetFigure) == false,
-        "Parakeet figure leaked into WhisperKit copy: \(parakeetFigure)")
+        allWhisperCopy.contains(parakeetFigure) == false,
+        "Parakeet figure leaked into Whisper copy: \(parakeetFigure)")
     }
   }
 
-  /// WhisperKit must not inherit Parakeet's "leave this off" advice. On that engine
-  /// streaming is roughly accuracy-neutral and genuinely faster on long recordings.
-  @Test("WhisperKit is not told to turn the setting off")
-  func whisperKitIsNotToldToDisable() {
-    let advice = LiveTranscriptionCopy.whisperKit.recommendationBody.lowercased()
+  /// Whisper must not inherit Parakeet's "leave this off" advice: Parakeet's measured cost
+  /// does not transfer. On Whisper streaming is roughly accuracy-neutral and faster on long
+  /// recordings (#3735 qualification).
+  @Test("Whisper is not told to turn the setting off")
+  func whisperIsNotToldToDisable() {
+    let advice = LiveTranscriptionCopy.whisper.recommendationBody.lowercased()
     #expect(
       advice.contains("leave this off") == false,
-      "WhisperKit must not inherit Parakeet's disable recommendation")
+      "Whisper must not inherit Parakeet's disable recommendation")
     #expect(
       LiveTranscriptionCopy.parakeet.recommendationBody.lowercased().contains("leave this off"),
       "Parakeet's recommendation must still say to leave it off")
@@ -78,11 +78,11 @@ struct LiveTranscriptionCopyTests {
       LiveTranscriptionCopy.panel(for: .parakeet).accuracyBody
         == LiveTranscriptionCopy.parakeet.accuracyBody)
     #expect(
-      LiveTranscriptionCopy.panel(for: .whisperKit).accuracyBody
-        == LiveTranscriptionCopy.whisperKit.accuracyBody)
+      LiveTranscriptionCopy.panel(for: .whisper).accuracyBody
+        == LiveTranscriptionCopy.whisper.accuracyBody)
     #expect(
       LiveTranscriptionCopy.toggleDescription(for: .parakeet)
-        != LiveTranscriptionCopy.toggleDescription(for: .whisperKit))
+        != LiveTranscriptionCopy.toggleDescription(for: .whisper))
   }
 
   /// The panel is keyed by `metric` through `Identifiable`, so a duplicate would silently
@@ -119,7 +119,7 @@ struct LiveTranscriptionCopyTests {
   /// perceptible gain below five minutes on Parakeet, so that claim must not return.
   @Test("No toggle description promises speed the measurements do not support")
   func descriptionsDoNotPromiseUnsupportedSpeed() {
-    for backend in [ASRBackendType.parakeet, .whisperKit] {
+    for backend in [ASRBackendType.parakeet, .whisper] {
       let d = LiveTranscriptionCopy.toggleDescription(for: backend).lowercased()
       #expect(
         d.contains("faster results") == false,
@@ -147,9 +147,9 @@ struct LiveTranscriptionCopyTests {
       LiveTranscriptionCopy.toggleLabel,
       LiveTranscriptionCopy.autoLanguageFootnote,
       LiveTranscriptionCopy.parakeetToggleDescription,
-      LiveTranscriptionCopy.whisperKitToggleDescription,
+      LiveTranscriptionCopy.whisperToggleDescription,
     ]
-    for panel in [LiveTranscriptionCopy.parakeet, LiveTranscriptionCopy.whisperKit] {
+    for panel in [LiveTranscriptionCopy.parakeet, LiveTranscriptionCopy.whisper] {
       out += [
         panel.title, panel.speedHeading, panel.speedBody, panel.accuracyHeading,
         panel.accuracyBody, panel.whyHeading, panel.whyBody, panel.recommendationHeading,

@@ -2674,7 +2674,7 @@
       }
     },
     "All Languages" : {
-      "comment" : "Speech engine settings, engine card: the multilingual engine's name.\nTranscribe a File: the WhisperKit transcription engine's name.",
+      "comment" : "Speech engine settings, engine card: the multilingual engine's name.\nTranscribe a File: the Whisper transcription engine's name.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -3522,13 +3522,13 @@
         }
       }
     },
-    "Auto-detect your language, or lock to a specific one. WhisperKit supports 99+ languages." : {
-      "comment" : "Speech engine settings, Language section: explanation for the multilingual engine (WhisperKit).",
+    "Auto-detect your language, or lock to a specific one. Whisper supports 99+ languages." : {
+      "comment" : "Speech engine settings, Language section: explanation for the multilingual engine (Whisper).",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Lass deine Sprache automatisch erkennen oder wähle eine feste Sprache. WhisperKit unterstützt über 99 Sprachen."
+            "value" : "Lass deine Sprache automatisch erkennen oder wähle eine feste Sprache. Whisper unterstützt über 99 Sprachen."
           }
         }
       }
@@ -6438,7 +6438,7 @@
       }
     },
     "Download Paused" : {
-      "comment" : "Speech engine settings, WhisperKit model: the current setup step.",
+      "comment" : "Speech engine settings, Whisper model: the current setup step.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -6674,7 +6674,7 @@
       }
     },
     "Downloading model files..." : {
-      "comment" : "Setup progress: the speech model is downloading.\nSpeech engine settings, WhisperKit model: download status line.",
+      "comment" : "Setup progress: the speech model is downloading.\nSpeech engine settings, Whisper model: download status line.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -6768,7 +6768,7 @@
       }
     },
     "Downloading..." : {
-      "comment" : "AI Polish, Ollama setup: step label while a model downloads.\nSpeech engine settings, WhisperKit model: the current setup step.",
+      "comment" : "AI Polish, Ollama setup: step label while a model downloads.\nSpeech engine settings, Whisper model: the current setup step.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -12343,13 +12343,13 @@
         }
       }
     },
-    "On short dictations you will not notice a difference. On long ones it helps clearly: transcribing after you stop gets slower the longer you spoke, while transcribing as you go stays about the same however long the recording is." : {
+    "On short dictations you will not notice a difference. On long ones it usually helps clearly, because most of the work is done before you stop. Now and then it falls back to transcribing after you stop, which takes about as long as having this off." : {
       "comment" : "Speech engine settings, Faster Transcription: help panel: speed.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Bei kurzen Diktaten merkst du keinen Unterschied. Bei langen hilft es deutlich: Die Transkription nach dem Stoppen dauert mit der Aufnahmelänge immer länger. Die laufende Transkription braucht danach ungefähr gleich lang, egal wie lang die Aufnahme ist."
+            "value" : "Bei kurzen Diktaten merkst du keinen Unterschied. Bei langen hilft die Einstellung meist deutlich, weil der Großteil der Arbeit schon vor dem Stoppen erledigt ist. Gelegentlich wird doch erst nach dem Stoppen transkribiert. Das dauert dann ungefähr so lange wie bei ausgeschalteter Einstellung."
           }
         }
       }
@@ -12442,13 +12442,13 @@
         }
       }
     },
-    "On-screen preview pauses while Faster Transcription is on." : {
+    "On-screen preview pauses while Faster Transcription works during recording." : {
       "comment" : "On-screen preview status. Faster Transcription is the name of a setting.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Die Bildschirmvorschau pausiert, solange „Schnellere Transkription“ aktiviert ist."
+            "value" : "Die Bildschirmvorschau pausiert, solange „Schnellere Transkription“ während der Aufnahme transkribiert."
           }
         }
       }
@@ -13097,13 +13097,13 @@
         }
       }
     },
-    "Paused while Faster Transcription is on" : {
+    "Paused while Faster Transcription works during recording" : {
       "comment" : "Live Preview settings: paused for faster transcription.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Pausiert, solange „Schnellere Transkription“ aktiv ist"
+            "value" : "Pausiert, solange „Schnellere Transkription“ während der Aufnahme transkribiert"
           }
         }
       }
@@ -13438,7 +13438,7 @@
       }
     },
     "Preparing..." : {
-      "comment" : "Speech engine settings, WhisperKit model: download status line.",
+      "comment" : "Speech engine settings, Whisper model: download status line.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -13837,12 +13837,12 @@
         }
       }
     },
-    "Read the notices for WhisperKit, FluidAudio, Silero VAD, Sparkle and other components." : {
+    "Read the notices for transcribe.cpp, FluidAudio, Silero VAD, Sparkle and other components." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Lies die Hinweise zu WhisperKit, FluidAudio, Silero VAD, Sparkle und weiteren Komponenten."
+            "value" : "Lies die Hinweise zu transcribe.cpp, FluidAudio, Silero VAD, Sparkle und weiteren Komponenten."
           }
         }
       }
@@ -16377,7 +16377,7 @@
       }
     },
     "Starting download..." : {
-      "comment" : "AI Polish, Ollama setup: a model download is starting.\nSpeech engine settings, WhisperKit model: download status line.",
+      "comment" : "AI Polish, Ollama setup: a model download is starting.\nSpeech engine settings, Whisper model: download status line.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -19560,7 +19560,7 @@
       }
     },
     "Verifying..." : {
-      "comment" : "Speech engine settings, WhisperKit model: download status line.",
+      "comment" : "Speech engine settings, Whisper model: download status line.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -20025,12 +20025,12 @@
         }
       }
     },
-    "WhisperKit requires a ~1.5 GB model download. It runs fully on your Mac, no internet needed after setup." : {
+    "Whisper needs an 886 MB model download. It runs fully on your Mac, no internet needed after setup." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "WhisperKit benötigt einen Modell-Download von etwa 1,5 GB. Danach läuft es vollständig auf deinem Mac, ohne Internetverbindung."
+            "value" : "Whisper benötigt einen Modell-Download von 886 MB. Danach läuft es vollständig auf deinem Mac, ohne Internetverbindung."
           }
         }
       }
@@ -20263,13 +20263,13 @@
         }
       }
     },
-    "Works on macOS 14 and later, in more languages. Needs one optional 217 MB download." : {
-      "comment" : "Live Preview settings, preview engine: universal description. 217 MB is a download size.",
+    "Works on macOS 14 and later, in more languages. Needs one optional 270 MB download." : {
+      "comment" : "Live Preview settings, preview engine: universal description. 270 MB is a download size.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Funktioniert ab macOS 14 und unterstützt mehr Sprachen. Ein optionaler Download von 217 MB ist nötig."
+            "value" : "Funktioniert ab macOS 14 und unterstützt mehr Sprachen. Ein optionaler Download von 270 MB ist nötig."
           }
         }
       }

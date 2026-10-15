@@ -104,7 +104,7 @@ public struct DeliveryManifest: Codable, Sendable, Equatable {
   /// tokenizer and decision-config digests), so a qualification can be
   /// checked against the exact bytes BEFORE they are fetched. Inside the
   /// signed manifest digest like every other field. Absent for families whose
-  /// runtime binds no such identity (Parakeet, WhisperKit, EG-1, S1).
+  /// runtime binds no such identity (Parakeet, EG-1, S1).
   public let runtimeIdentityDigest: String?
   /// #3105: signed-app, digest-covered checker qualification and exact-base pin.
   /// Required for the checker family; absent for every other model.
@@ -192,18 +192,14 @@ public struct DeliveryManifest: Codable, Sendable, Equatable {
     guard totalBytes == files.reduce(0, { $0 + $1.sizeBytes }) else {
       throw ManifestError.structurallyInvalid("totalBytes != sum(files)")
     }
-    // The mirror-first invariant (contract §7): sources[0] is our_copy for
-    // every family EXCEPT the multilingual (WhisperKit) engine — the ONE
-    // documented exception (#1386 PR-2, contract §5b/§13). We are not licensed
-    // to re-host Argmax's CoreML bytes, so that family's single source is an
-    // HF-pinned entry. Every other family still hard-requires our_copy first;
-    // `DeliveryManifestTests` proves the carve-out does not leak to any other
-    // family. The https-ending-in-slash check below still applies to every
-    // source regardless of family.
+    // The mirror-first invariant (contract §7): sources[0] is our_copy for every
+    // family. #3735 removed the one exception, the retired WhisperKit family's
+    // HF-pinned CoreML source. The https-ending-in-slash check below still applies
+    // to every source.
     guard let first = sources.first else {
       throw ManifestError.structurallyInvalid("sources[] empty")
     }
-    guard first.id == "our_copy" || identity.family == .whisperKit else {
+    guard first.id == "our_copy" else {
       throw ManifestError.structurallyInvalid("sources[0] must be our_copy")
     }
     var seenInstallPaths = Set<String>()

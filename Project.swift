@@ -264,8 +264,8 @@ let project = Project(
   name: "EnviousWispr",
   organizationName: "Envious Labs",
   packages: [
-    // Brings the root SwiftPM package so external products (WhisperKit,
-    // FluidAudio, Sparkle, PostHog, Sentry) resolve through its pinned
+    // Brings the root SwiftPM package so external products (ArgmaxOSS,
+    // CTranscribe, FluidAudio, Sparkle, PostHog, Sentry) resolve through its pinned
     // dependencies. First-party libs are NOT consumed as products — they are
     // the native targets below.
     .local(path: ".")
@@ -344,7 +344,6 @@ let project = Project(
         .target(name: "EnviousWisprServices"),
         // #3735: the transcribe.cpp boundary for the Whisper engine.
         .target(name: "EnviousWisprTranscribeCpp"),
-        .package(product: "WhisperKit"),
         .package(product: "CTranscribe"),  // #3735: transcribe.cpp; Xcode does not propagate it transitively
         .package(product: "FluidAudio"),
         .package(product: "PostHog"),
@@ -440,21 +439,17 @@ let project = Project(
         // here with no check failing (cloud review r8).
         // FluidAudio, declared even though this module never references it.
         // Xcode does not propagate package products transitively (same reason
-        // AppKit declares WhisperKit/FluidAudio/Sparkle directly), and linking
+        // AppKit declares FluidAudio/Sparkle directly), and linking
         // EnviousWisprASR pulls FluidAudio's C wrapper targets —
         // `FastClusterWrapper` and `MachTaskSelfWrapper` — which fail to resolve
         // without this. SwiftPM needs no such edge; only the Xcode graph does.
         .package(product: "FluidAudio"),
         .package(product: "PostHog"),
-        // NO `.package(product: "WhisperKit")`. Every WhisperKit type stays
-        // behind `WhisperPreviewRuntime` in ASR, and removing this edge was
-        // verified not to be the cause of the wrapper-module failure above.
-        // Matches Package.swift, which does not list it either.
       ]),
 
     // #919: app-shell library (homes + views + composition root + the
     // WisprBootstrapper front door). The unit-test target links THIS, so
-    // `xcodebuild test` never launches the app. WhisperKit/FluidAudio/Sparkle
+    // `xcodebuild test` never launches the app. CTranscribe/FluidAudio/Sparkle
     // declared directly because Xcode doesn't propagate them transitively.
     firstPartyLibrary(
       "EnviousWisprAppKit",
@@ -462,7 +457,6 @@ let project = Project(
         .target(name: "EnviousWisprContacts"),
         .target(name: "EnviousWisprLivePreview"),
         .target(name: "EnviousWisprWhisperPreviewAdapter"),
-        .package(product: "WhisperKit"),
         .package(product: "CTranscribe"),  // #3735: transcribe.cpp; Xcode does not propagate it transitively
         .package(product: "FluidAudio"),
         .package(product: "PostHog"),
@@ -501,7 +495,6 @@ let project = Project(
       dependencies: [
         .target(name: "EnviousWisprAppKit"),
         .target(name: "EnviousWisprCore"),
-        .package(product: "WhisperKit"),
         .package(product: "CTranscribe"),  // #3735: transcribe.cpp; Xcode does not propagate it transitively
         .package(product: "FluidAudio"),
         .package(product: "PostHog"),
@@ -516,7 +509,6 @@ let project = Project(
         .target(name: "EnviousWisprAppKit"),
         .target(name: "EnviousWisprServices"),
         // Same transitive-propagation reason as AppLive below.
-        .package(product: "WhisperKit"),
         .package(product: "CTranscribe"),  // #3735: transcribe.cpp; Xcode does not propagate it transitively
         .package(product: "FluidAudio"),
         .package(product: "PostHog"),
@@ -535,7 +527,6 @@ let project = Project(
         // vendor modules itself. Without these, AppLive fails to build with
         // "unable to resolve module dependency: 'FastClusterWrapper'" — a
         // FluidAudio internal named nowhere in this project's source.
-        .package(product: "WhisperKit"),
         .package(product: "CTranscribe"),  // #3735: transcribe.cpp; Xcode does not propagate it transitively
         .package(product: "FluidAudio"),
         .package(product: "PostHog"),
@@ -579,21 +570,6 @@ let project = Project(
         "Sources/EnviousWispr/Resources/InfoPlist.xcstrings",
         .folderReference(path: "Sources/EnviousWisprLLM/Resources/OutputClassifier.mlpackage"),
         .folderReference(path: "Sources/EnviousWisprLLM/Resources/OutputClassifierTokenizer"),
-        // #1386: the bundled WhisperKit tokenizer (Apache-2.0, pinned to a
-        // frozen HF commit) — same Bundle.main folder-reference route as
-        // OutputClassifierTokenizer above, for the same reason (a resource the
-        // downstream module resolves via an injected resourceURL, not
-        // Bundle.module). EnviousWisprASR stays hasResources:false.
-        .folderReference(path: "Sources/EnviousWisprASR/Resources/WhisperTokenizer"),
-        // #2108: the Live Preview model's OWN tokenizer, at a hub-structured
-        // path so WhisperKit resolves it by variant. It cannot share the folder
-        // above: that one has a top-level tokenizer.json, which WhisperKit
-        // matches variant-agnostically, so passing it for the small model loads
-        // the LARGE-V3 vocabulary silently (measured: noSpeechToken 50363
-        // instead of 50257, no error, fluent wrong output). ASR resources are
-        // not otherwise embedded, so without this line the artifact ships in no
-        // build and every on-disk test still passes.
-        .folderReference(path: "Sources/EnviousWisprASR/Resources/WhisperPreviewTokenizer"),
         // #1271: EG-1 native polish — the model manifest and the bundled
         // llama-server inference binary ride the APP target (Bundle.main,
         // Contents/Resources), same route as the classifier above. The
@@ -605,17 +581,9 @@ let project = Project(
         "Sources/EnviousWispr/Resources/parakeet-delivery-manifest.json",
         // #3546: the retired v3 manifest, for accepting an existing v3 install only.
         "Sources/EnviousWispr/Resources/parakeet-v3-retired-manifest.json",
-        "Sources/EnviousWispr/Resources/whisperkit-delivery-manifest.json",
-        // #2102 (epic #2077 chunk 3): the SECOND WhisperKit-family artifact —
-        // the small multilingual model Live Preview offers as the universal
-        // alternative to Apple's engine. Listed individually because this array
-        // is the only thing that bundles a manifest; nothing globs Resources/,
-        // so a file merely placed beside its siblings ships in no build.
-        // Nothing loads it until the preview recognizer arrives (chunk 4).
-        "Sources/EnviousWispr/Resources/whisperkit-preview-delivery-manifest.json",
         // #3735: the transcribe.cpp GGUF models (Whisper turbo Q8_0 as verified parts,
-        // and whisper-small Q8_0 for the Universal preview). Bundled now, inert until
-        // the engine swap registers them.
+        // and whisper-small Q8_0 for the Universal preview). Listed individually because
+        // this array is the only thing that bundles a manifest; nothing globs Resources/.
         "Sources/EnviousWispr/Resources/whisper-delivery-manifest.json",
         "Sources/EnviousWispr/Resources/whisper-preview-delivery-manifest.json",
         // #1348 Phase 3: EG-1 delivery manifest — the DELIVERY trust root for
@@ -702,7 +670,7 @@ let project = Project(
       ],
       entitlements: .file(path: "Sources/EnviousWispr/Resources/EnviousWispr.entitlements"),
       // #919: the thin shell links ONLY the kit (the kit static-links the
-      // engine modules + WhisperKit + FluidAudio). Sparkle stays a direct app
+      // engine modules + FluidAudio). Sparkle stays a direct app
       // dep so Tuist embeds Sparkle.framework into the .app. #1908: no XPC
       // helper remains — ASR collapsed in-process, following #1543's audio
       // capture collapse.
@@ -749,7 +717,6 @@ let project = Project(
         .target(name: "EnviousWisprAppKit"),
         .target(name: "EnviousWisprAppKitTestSupport"),
         .target(name: "EnviousWisprDesktopEffects"),
-        .package(product: "WhisperKit"),
         .package(product: "CTranscribe"),  // #3735: transcribe.cpp; Xcode does not propagate it transitively
         .package(product: "FluidAudio"),
         .package(product: "PostHog"),
@@ -812,7 +779,6 @@ let project = Project(
         .target(name: "EnviousWisprFluidAudioBridge"),
         // #3735: TranscribeCppRealBoundaryTests import the boundary directly.
         .target(name: "EnviousWisprTranscribeCpp"),
-        .package(product: "WhisperKit"),
         .package(product: "CTranscribe"),  // #3735: transcribe.cpp; Xcode does not propagate it transitively
         // Static-link FluidAudio: the test bundle links EnviousWisprASR (a
         // static framework that uses FluidAudio), so its symbols must be

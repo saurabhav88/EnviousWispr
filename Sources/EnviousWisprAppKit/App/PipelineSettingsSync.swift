@@ -12,7 +12,7 @@ import Foundation
 @MainActor
 final class PipelineSettingsSync {
   private let kernelDriver: KernelDictationDriver
-  private let whisperKitKernelDriver: KernelDictationDriver
+  private let whisperKernelDriver: KernelDictationDriver
   private let audioCapture: any AudioCaptureInterface
   private let asrManager: any ASRManagerInterface
   private let hotkeyService: HotkeyService
@@ -84,7 +84,7 @@ final class PipelineSettingsSync {
 
   init(
     kernelDriver: KernelDictationDriver,
-    whisperKitKernelDriver: KernelDictationDriver,
+    whisperKernelDriver: KernelDictationDriver,
     audioCapture: any AudioCaptureInterface,
     asrManager: any ASRManagerInterface,
     hotkeyService: HotkeyService,
@@ -116,7 +116,7 @@ final class PipelineSettingsSync {
     self.importPinnedLocalProvider = importPinnedLocalProvider
     self.importPinnedOllamaModel = importPinnedOllamaModel
     self.kernelDriver = kernelDriver
-    self.whisperKitKernelDriver = whisperKitKernelDriver
+    self.whisperKernelDriver = whisperKernelDriver
     self.audioCapture = audioCapture
     self.asrManager = asrManager
     self.hotkeyService = hotkeyService
@@ -164,7 +164,7 @@ final class PipelineSettingsSync {
 
   private func syncEGOneLearnedWordChecker() {
     kernelDriver.learnedWordCheck.selectionProvider = checkerSelectionProvider
-    whisperKitKernelDriver.learnedWordCheck.selectionProvider = checkerSelectionProvider
+    whisperKernelDriver.learnedWordCheck.selectionProvider = checkerSelectionProvider
   }
 
   /// Seed live-mutable subsystems. Per-recording values are captured fresh
@@ -178,15 +178,15 @@ final class PipelineSettingsSync {
     kernelDriver.wordCorrection.wordCorrectionEnabled = settings.wordCorrectionEnabled
     kernelDriver.fillerRemoval.fillerRemovalEnabled = settings.fillerRemovalEnabled
     kernelDriver.emojiFormatter.emojiFormatterEnabled = settings.emojiFormatterEnabled
-    whisperKitKernelDriver.wordCorrection.wordCorrectionEnabled = settings.wordCorrectionEnabled
+    whisperKernelDriver.wordCorrection.wordCorrectionEnabled = settings.wordCorrectionEnabled
     kernelDriver.learnedWordCheck.wordCorrectionEnabled = settings.wordCorrectionEnabled
-    whisperKitKernelDriver.learnedWordCheck.wordCorrectionEnabled = settings.wordCorrectionEnabled
-    whisperKitKernelDriver.fillerRemoval.fillerRemovalEnabled = settings.fillerRemovalEnabled
-    whisperKitKernelDriver.emojiFormatter.emojiFormatterEnabled = settings.emojiFormatterEnabled
+    whisperKernelDriver.learnedWordCheck.wordCorrectionEnabled = settings.wordCorrectionEnabled
+    whisperKernelDriver.fillerRemoval.fillerRemovalEnabled = settings.fillerRemovalEnabled
+    whisperKernelDriver.emojiFormatter.emojiFormatterEnabled = settings.emojiFormatterEnabled
     kernelDriver.spokenPunctuation = settings.spokenPunctuation
-    whisperKitKernelDriver.spokenPunctuation = settings.spokenPunctuation
+    whisperKernelDriver.spokenPunctuation = settings.spokenPunctuation
     kernelDriver.casualModeEnabled = settings.casualModeEnabled
-    whisperKitKernelDriver.casualModeEnabled = settings.casualModeEnabled
+    whisperKernelDriver.casualModeEnabled = settings.casualModeEnabled
 
     audioCapture.selectedInputDeviceUID = settings.selectedInputDeviceUID
     audioCapture.preferredInputDeviceIDOverride = settings.preferredInputDeviceIDOverride
@@ -329,27 +329,27 @@ final class PipelineSettingsSync {
       }
     case .emojiFormatterEnabled:
       kernelDriver.emojiFormatter.emojiFormatterEnabled = settings.emojiFormatterEnabled
-      whisperKitKernelDriver.emojiFormatter.emojiFormatterEnabled = settings.emojiFormatterEnabled
+      whisperKernelDriver.emojiFormatter.emojiFormatterEnabled = settings.emojiFormatterEnabled
     case .wordCorrectionEnabled:
       kernelDriver.wordCorrection.wordCorrectionEnabled = settings.wordCorrectionEnabled
-      whisperKitKernelDriver.wordCorrection.wordCorrectionEnabled = settings.wordCorrectionEnabled
+      whisperKernelDriver.wordCorrection.wordCorrectionEnabled = settings.wordCorrectionEnabled
       kernelDriver.learnedWordCheck.wordCorrectionEnabled = settings.wordCorrectionEnabled
-      whisperKitKernelDriver.learnedWordCheck.wordCorrectionEnabled = settings.wordCorrectionEnabled
+      whisperKernelDriver.learnedWordCheck.wordCorrectionEnabled = settings.wordCorrectionEnabled
       onWordCheckInputsChanged()
     case .fillerRemovalEnabled:
       kernelDriver.fillerRemoval.fillerRemovalEnabled = settings.fillerRemovalEnabled
-      whisperKitKernelDriver.fillerRemoval.fillerRemovalEnabled = settings.fillerRemovalEnabled
+      whisperKernelDriver.fillerRemoval.fillerRemovalEnabled = settings.fillerRemovalEnabled
     case .spokenPunctuation:
       // Live-mutable, matching its three Cleanup siblings above. A take already in
       // text processing keeps the value it started with (the step snapshots before
       // its actor hop); the next take uses the new value.
       kernelDriver.spokenPunctuation = settings.spokenPunctuation
-      whisperKitKernelDriver.spokenPunctuation = settings.spokenPunctuation
+      whisperKernelDriver.spokenPunctuation = settings.spokenPunctuation
     case .casualModeEnabled:
       // #3737: live-mutable; a change also affects an in-flight take
       // if its Casual Ending step has not run yet.
       kernelDriver.casualModeEnabled = settings.casualModeEnabled
-      whisperKitKernelDriver.casualModeEnabled = settings.casualModeEnabled
+      whisperKernelDriver.casualModeEnabled = settings.casualModeEnabled
     case .isDebugModeEnabled:
       Task { await AppLogger.shared.setDebugMode(settings.isDebugModeEnabled) }
     case .debugLogLevel:
@@ -539,12 +539,12 @@ final class PipelineSettingsSync {
     reconcileEGOneActivation(settings: settings)
   }
 
-  /// #1386 PR-2c: true while a WhisperKit dictation session is in flight —
+  /// #1386 PR-2c: true while a Whisper dictation session is in flight —
   /// the Remove refusal's one read (a session-state READ, not an engine
   /// write; L7 untouched). Same authority pattern as the EG-1 twin below:
   /// this class owns both drivers, so it owns the read.
-  func isWhisperKitDictationInFlight() -> Bool {
-    whisperKitKernelDriver.currentSessionConfig != nil
+  func isWhisperDictationInFlight() -> Bool {
+    whisperKernelDriver.currentSessionConfig != nil
   }
 
   /// #2649: which LOCAL engine an in-flight recording froze, if any.
@@ -557,7 +557,7 @@ final class PipelineSettingsSync {
     // #2648: the file import is a third holder of a bundled local server, and it
     // has no session config for the loop below to read.
     if let imported = importPinnedLocalProvider() { return imported }
-    for cfg in [kernelDriver.currentSessionConfig, whisperKitKernelDriver.currentSessionConfig] {
+    for cfg in [kernelDriver.currentSessionConfig, whisperKernelDriver.currentSessionConfig] {
       // #2651: the optional is unwrapped BEFORE the switch, so `.none` means
       // `LLMProvider.none` and nothing else. Matching on `cfg?.llmProvider`
       // directly makes `.none` read as `Optional.none`, which leaves the
@@ -767,7 +767,7 @@ final class PipelineSettingsSync {
     // frozen, and it is the one with no `DictationSessionConfig` to read.
     let target = Self.canonical(model)
     if importPinnedOllamaModel().map(Self.canonical) == target { return true }
-    for cfg in [kernelDriver.currentSessionConfig, whisperKitKernelDriver.currentSessionConfig] {
+    for cfg in [kernelDriver.currentSessionConfig, whisperKernelDriver.currentSessionConfig] {
       guard let cfg else { continue }
       if cfg.llmProvider == .ollama && Self.canonical(cfg.llmModel) == target {
         return true

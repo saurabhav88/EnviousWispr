@@ -911,8 +911,10 @@ def valued_cases():
         st = sn.stored
         rows += [
             ("a missing key is the shipped default", st(lambda: {}, "selectedBackend"), "parakeet"),
-            ("a stored backend is read", st(lambda: {"selectedBackend": "whisperKit"},
-                                            "selectedBackend"), "whisperKit"),
+            ("a stored backend is read", st(lambda: {"selectedBackend": "whisper"},
+                                            "selectedBackend"), "whisper"),
+            ("the pre-#3735 backend spelling reads as Whisper, as the app decodes it",
+             st(lambda: {"selectedBackend": "whisperKit"}, "selectedBackend"), "whisper"),
             ("an unknown backend string is the default, as the app treats it",
              st(lambda: {"selectedBackend": "turbo"}, "selectedBackend"), "parakeet"),
             ("a stored Bool is read", st(lambda: {"fillerRemovalEnabled": False},
@@ -1377,8 +1379,8 @@ def scan_cases():
 E, M, L, P, C, K = (("Dictation Settings", t) for t in sn.TABS["Dictation Settings"])
 INVENTORY = [
     ("1 engine cards (behind Change)", E, ("disclose", sn.ENGINE_DISCLOSURE)),
-    ("1 WhisperKit model actions", E, ("one_of", sn.WHISPERKIT_ACTIONS)),
-    ("1 WhisperKit re-check", E, ("button", "Re-check model status")),
+    ("1 Whisper model actions", E, ("one_of", sn.WHISPER_ACTIONS)),
+    ("1 Whisper re-check", E, ("button", "Re-check model status")),
     ("1 Fast read-only re-check", E, ("button", "Re-check Fast model status")),
     ("1 Auto-detect language", E, ("toggle", "Auto-detect language")),
     ("1 Change (language)", E, ("button", "Change dictation language")),
@@ -1459,8 +1461,8 @@ def coverage_cases():
             "apple_packs_shown", "debug_mode_on", "language_locked", "language_section_visible",
             "model_picker_shown", "polish_enabled", "multi_input_device", "parakeet_delivery_actions_shown",
             "pill_holds_words", "preview_language_shown", "preview_needs_language",
-            "universal_engine_built", "vad_auto_stop", "whisperkit_actions_shown",
-            "whisperkit_recheck_shown", "parakeet_selected"])),
+            "universal_engine_built", "vad_auto_stop", "whisper_actions_shown",
+            "whisper_recheck_shown", "parakeet_selected"])),
     ]
 
 

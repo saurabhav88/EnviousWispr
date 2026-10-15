@@ -48,7 +48,7 @@ public struct DeadMicRecoveryOutcome: Sendable, Equatable {
 /// for zombie-engine zero-peak events (#302) and the cross-take dead-mic
 /// recovery watch (#1520 heartpath 5b).
 ///
-/// Shared across both pipelines so a Parakeet-to-WhisperKit switch does not
+/// Shared across both pipelines so a Parakeet-to-Whisper switch does not
 /// reset dedupe, and so `timeSinceLastSuccessfulRecordingMs` is an app-level
 /// baseline rather than pipeline-local. The SAME instance must be handed to the
 /// recording kernel (arm-on-retire) and the lifecycle sink (resolve-on-success)

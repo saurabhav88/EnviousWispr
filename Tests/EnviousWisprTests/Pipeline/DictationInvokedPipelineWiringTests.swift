@@ -105,10 +105,10 @@ struct DictationInvokedPipelineWiringTests {
   // `WhisperKitPipeline.startRecording(config:)` body) is replaced by two
   // engine-agnostic guards: (1) the factory's WhisperKit branch has exactly
   // one production caller, locked by
-  // `EngineIdentityFreezeTests.makeForWhisperKitHasExactlyOneProductionCaller`;
+  // `EngineIdentityFreezeTests.makeForWhisperHasExactlyOneProductionCaller`;
   // (2) the constructed driver carries WhisperKit engine identity, locked by
-  // `KernelDictationDriverFactoryWhisperKitTests
-  // .makeForWhisperKitReturnsDriverWithWhisperKitIdentity`.
+  // `KernelDictationDriverFactoryWhisperTests
+  // .makeForWhisperReturnsDriverWithWhisperIdentity`.
 
   /// #1846 chunk 7: the SECOND production bridge, written proactively because chunk 6
   /// shipped without its equivalent and the reviewer had to find it.

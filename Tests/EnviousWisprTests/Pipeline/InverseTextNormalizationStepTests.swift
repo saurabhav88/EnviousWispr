@@ -40,7 +40,7 @@ import EnviousWisprPostProcessing
     #expect(step.lastRun?.skipReason == nil)
   }
 
-  @Test("WhisperKit-class (LID) + nil language → defensively skips (low-confidence)")
+  @Test("Whisper-class (LID) + nil language → defensively skips (low-confidence)")
   func skipsForLIDBackendWithNilLanguage() async throws {
     let step = InverseTextNormalizationStep()
     step.backendSupportsLID = true

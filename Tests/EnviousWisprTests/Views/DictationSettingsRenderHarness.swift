@@ -54,13 +54,13 @@ struct DictationSettingsRenderHarness {
       telemetry: NoTelemetry(), log: { _ in }, nowMicros: { 0 }, sleep: { _ in },
       pid: 0, isProcessAlive: { _ in false }))
     let sync = PipelineSettingsSync(kernelDriver: recording.kernelDriver,
-      whisperKitKernelDriver: recording.whisperKitKernelDriver, audioCapture: audio,
+      whisperKernelDriver: recording.whisperKernelDriver, audioCapture: audio,
       asrManager: asr, hotkeyService: hotkey, ollamaRemotenessLookup: { _ in nil })
     let last = LastRecordingResult()
     let locked = DictationLifecycleCoordinator.RecordingLockedAccess(get: { false }, set: { _ in })
     let lease = EngineLease()
     let lifecycle = DictationLifecycleCoordinator(
-      kernelDriver: recording.kernelDriver, whisperKitKernelDriver: recording.whisperKitKernelDriver,
+      kernelDriver: recording.kernelDriver, whisperKernelDriver: recording.whisperKernelDriver,
       recordingOverlay: overlay, hotkeyService: hotkey, settingsSync: sync,
       audioCapture: audio, transcriptCoordinator: TranscriptCoordinator(store: store),
       settings: settings, lastRecordingResult: last, languageSuggestionPresenter: nil,
@@ -73,7 +73,7 @@ struct DictationSettingsRenderHarness {
       recoveryEngineClaim: .alwaysAllowedForTesting,
       engineAdmission: .live(lease: lease, as: .crashRecovery))
     return DictationRuntime(audioCapture: audio, asrManager: asr,
-      kernelDriver: recording.kernelDriver, whisperKitKernelDriver: recording.whisperKitKernelDriver,
+      kernelDriver: recording.kernelDriver, whisperKernelDriver: recording.whisperKernelDriver,
       settings: settings, permissions: PermissionsService(accessibilityReader: { true },
         microphoneReader: { .authorized }, openMicrophoneSettings: { _ in }),
       recordingOverlay: overlay, hotkeyService: hotkey, lastRecordingResult: last,
@@ -116,7 +116,7 @@ struct DictationSettingsRenderHarness {
   struct Scenario {
     var label = "ordinary"
     var backend: ASRBackendType = .parakeet
-    var setupState: WhisperKitSetupState = .notDownloaded
+    var setupState: WhisperSetupState = .notDownloaded
     var expanded = false
     var removing = false
     var preparing = false
@@ -154,7 +154,7 @@ struct DictationSettingsRenderHarness {
     let warmGate = InstallGate()
     if scenario.removing { Self.installGates.append(removalGate) }
     if scenario.preparing { Self.installGates.append(warmGate) }
-    let service = WhisperKitSetupService(engineMutationScope: .alwaysAllowedForTesting,
+    let service = WhisperSetupService(engineMutationScope: .alwaysAllowedForTesting,
       readAvailability: { scenario.setupState },
       startDownload: { Issue.record("render tried downloading"); return false },
       cancelActiveDownload: { Issue.record("render tried cancelling"); return false },
@@ -168,7 +168,7 @@ struct DictationSettingsRenderHarness {
       service.removeModel()  // staged fake removal, no filesystem deletion capability
       try #require(service.isRemoving)
     }
-    let setup = SetupCoordinator(asrManager: RouterTestASRManager(), whisperKitSetup: service,
+    let setup = SetupCoordinator(asrManager: RouterTestASRManager(), whisperSetup: service,
       setupStateReader: { .notDownloaded }, preloadAction: { Issue.record("render tried preloading") },
       ollamaStatusProbe: { _ in })
     let presenter = LanguageSuggestionPresenter(overlay: NoOverlay(), onLanguageAccepted: { _ in }, defaults: defaults)
@@ -180,7 +180,7 @@ struct DictationSettingsRenderHarness {
     let store = TranscriptStore(directory: runDirectory.appending(path: "fixture-history"))
     let recording = LiveRecordingState(
       kernelDriver: DictationRuntimeFixtures.makeParakeetDriver(audioCapture: audio, asrManager: asr, store: store),
-      whisperKitKernelDriver: DictationRuntimeFixtures.makeWhisperKitPipeline(audioCapture: audio, store: store),
+      whisperKernelDriver: DictationRuntimeFixtures.makeWhisperPipeline(audioCapture: audio, store: store),
       audioCapture: audio, asrManager: asr)
     let runtime = idleRuntime(settings: settings, audio: audio, asr: asr, recording: recording, store: store)
     // The app reports .previewOff while Live Preview is off, which selects the wordless design.
@@ -237,9 +237,9 @@ struct DictationSettingsRenderHarness {
       let fake = FakeEngineDeps(selected: .parakeet, active: .parakeet)
       fake.onWarmAwait = { await warmGate.wait() }
       let coordinator = fake.makeStartedCoordinator()
-      fake.selected = .whisperKit
+      fake.selected = .whisper
       coordinator.poke(.settingsChanged)
-      let arrived = await enginePoll { coordinator.status.warmInFlight == .whisperKit }
+      let arrived = await enginePoll { coordinator.status.warmInFlight == .whisper }
       try #require(arrived, "the fake coordinator never reached its preparing state")
       hostedRoot = AnyView(hostedRoot.environment(coordinator))
     }
@@ -307,16 +307,16 @@ struct DictationSettingsRenderHarness {
   @Test("render Engine setup states and Preview readiness/inventory using isolated owners",
     .enabled(if: ProcessInfo.processInfo.environment["EW_RENDER_DICTATION"] == "1"))
   func statePages() async throws {
-    let engineStates: [(String, WhisperKitSetupState)] = [
+    let engineStates: [(String, WhisperSetupState)] = [
       ("setup", .notDownloaded), ("checking", .checking), ("downloading", .downloading(progress: 0.42, status: "420 MB of 1000 MB")),
       ("paused", .paused), ("ready", .ready), ("error", .error("Model files could not be verified. Try again.")),
     ]
     var scenarios: [(DictationTab, Scenario)] = engineStates.map { label, state in
-      (.engine, Scenario(label: "engine-\(label)", backend: .whisperKit, setupState: state))
+      (.engine, Scenario(label: "engine-\(label)", backend: .whisper, setupState: state))
     }
-    scenarios.append((.engine, Scenario(label: "engine-expanded", backend: .whisperKit, setupState: .ready, expanded: true)))
-    scenarios.append((.engine, Scenario(label: "engine-removing", backend: .whisperKit, setupState: .ready, removing: true)))
-    scenarios.append((.engine, Scenario(label: "engine-preparing", backend: .whisperKit, setupState: .ready, preparing: true)))
+    scenarios.append((.engine, Scenario(label: "engine-expanded", backend: .whisper, setupState: .ready, expanded: true)))
+    scenarios.append((.engine, Scenario(label: "engine-removing", backend: .whisper, setupState: .ready, removing: true)))
+    scenarios.append((.engine, Scenario(label: "engine-preparing", backend: .whisper, setupState: .ready, preparing: true)))
     scenarios += [
       (.livePreview, Scenario(label: "preview-off", previewOn: false)),
       (.livePreview, Scenario(label: "preview-auto", mode: .auto)),

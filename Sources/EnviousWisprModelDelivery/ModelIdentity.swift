@@ -5,10 +5,10 @@ import Foundation
 /// telemetry only (contract scope guardrails).
 public enum ModelFamily: String, Codable, Sendable, CaseIterable {
   case parakeet
-  case whisperKit = "whisper_kit"
   /// #3735: the transcribe.cpp Whisper GGUF models (turbo Q8_0 for dictation,
-  /// small Q8_0 for the Universal preview). Mirror-first like Parakeet; replaces
-  /// `whisperKit` when the engine swap lands.
+  /// small Q8_0 for the Universal preview). Mirror-first like Parakeet. It replaced
+  /// the retired `whisper_kit` family, whose leftovers only `WhisperModelMigration`
+  /// recognizes, by literal name.
   case whisper
   case egOne = "eg_one"
   /// #3105: independently admitted companion, never a member of EG-1's
@@ -41,7 +41,7 @@ public enum ModelFamily: String, Codable, Sendable, CaseIterable {
     switch self {
     case .egOneChecker: .egOne
     case .s1MiniChecker: .s1Mini
-    case .parakeet, .whisperKit, .whisper, .egOne, .s1Mini, .editJudge, .wordCheck: nil
+    case .parakeet, .whisper, .egOne, .s1Mini, .editJudge, .wordCheck: nil
     }
   }
 }

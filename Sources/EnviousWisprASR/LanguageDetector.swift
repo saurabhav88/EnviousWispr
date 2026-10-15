@@ -2,12 +2,12 @@ import EnviousWisprCore
 import Foundation
 
 // FIXME(#827): founder/upstream action needed. The LID observer closure needs
-// within-window progress from WhisperKit before LanguageDetector can recover a
+// within-window progress from the engine's detection call before LanguageDetector can recover a
 // wedged language-detection await without a wall-clock timeout.
 
-// R2 (#360): no longer reaches `WhisperKit` directly. The non-Sendable
-// reference stays inside `WhisperKitBackend.observeLID`; this actor consumes
-// only the Sendable `LIDObservationBatch` shape.
+// R2 (#360): no longer reaches the engine directly. The model handle stays inside the
+// backend's `observeLID` (since #3735 `TranscribeCppWhisperBackend.observeLID`); this actor
+// consumes only the Sendable `LIDObservationBatch` shape.
 
 /// Passive UX fallback event emitted by `LanguageDetector`.
 ///
@@ -63,16 +63,16 @@ public struct SystemLanguageDetectorClock: LanguageDetectorClock {
   public func now() -> Date { Date() }
 }
 
-/// Actor wrapping WhisperKit's `detectLanguage` with the five-layer autodetect
+/// Actor wrapping the Whisper engine's language detection with the five-layer autodetect
 /// stack defined in docs/feature-requests/multilingual-v1.md.
 ///
 /// Heart-protection contract: every public API returns a `LanguageDetectionResult`,
-/// never throws. If WhisperKit errors internally, the detector abstains and the
-/// pipeline passes `nil` to `TranscriptionOptions.language`, letting WhisperKit's
-/// own LID run as the final fallback.
+/// never throws. If detection errors internally, the detector abstains and the
+/// pipeline passes `nil` to `TranscriptionOptions.language`, letting the decode's
+/// own detection run as the final fallback.
 ///
 /// The detector is an actor so concurrent recordings serialize naturally. It holds
-/// only the `SessionLanguageMemory` state and a clock seam; WhisperKit is supplied
+/// only the `SessionLanguageMemory` state and a clock seam; the engine is supplied
 /// per call from the backend so unloaded-model lifecycles do not leak here.
 public actor LanguageDetector {
   private var memory: SessionLanguageMemory
@@ -137,15 +137,15 @@ public actor LanguageDetector {
   /// - Parameters:
   ///   - samples: 16kHz mono Float32 voiced samples. May be the raw captured
   ///     buffer or a VAD-filtered subset; the detector itself just windows what
-  ///     it is given. Forwarded to `observerFn` for the per-window WhisperKit
+  ///     it is given. Forwarded to `observerFn` for the per-window detection
   ///     calls.
   ///   - voicedDuration: Total voiced duration, in seconds. Used by the speech
   ///     gate (Layer 1).
-  ///   - observerFn: Closure that runs the WhisperKit-side LID call and returns
-  ///     a `LIDObservationBatch`. R2 (#360) — moves the WhisperKit handle out
+  ///   - observerFn: Closure that runs the engine-side LID call and returns
+  ///     a `LIDObservationBatch`. R2 (#360) — moves the engine handle out
   ///     of this actor. The closure is called only when actually needed (after
   ///     the locked-mode bypass and Layer 1 speech gate). The closure must
-  ///     return a Sendable batch; the non-Sendable `WhisperKit` reference
+  ///     return a Sendable batch; the model handle
   ///     stays inside the backend's actor isolation.
   ///   - mode: Current `LanguageMode` (auto or locked). Captured here (not at
   ///     recording-start) so late user toggles are respected.
@@ -186,12 +186,12 @@ public actor LanguageDetector {
       return .abstain(voicedDuration: voicedDuration)
     }
 
-    // Layer 2: multi-window detection. The backend runs the WhisperKit calls
+    // Layer 2: multi-window detection. The backend runs the detection calls
     // and returns a Sendable batch. We map each batch variant to the matching
     // abstain reason — this preserves the per-failure-mode semantics from
     // the previous inline implementation.
     // TODO(#827): watchdog needs a within-window progress signal from the
-    // observer owner (`WhisperKitBackend.observeLID`). This actor only sees the
+    // observer owner (`TranscribeCppWhisperBackend.observeLID`). This actor only sees the
     // batch after all windows return.
     let batch = await observerFn()
     let multi: MultiWindowLID
@@ -453,7 +453,7 @@ public actor LanguageDetector {
     self.memory = memory
   }
   /// Testing seam: run Layer 3 logic over a pre-computed probability dict.
-  /// Skips the WhisperKit call so tests do not need a real model.
+  /// Skips the engine call so tests do not need a real model.
   // periphery:ignore - test seam
   public func evaluateForTesting(
     windowProbs: [String: Double],
@@ -551,7 +551,7 @@ public actor LanguageDetector {
         registerFlipFlopCandidate(lang: top.key, confidence: rawTopProb, at: now)
         memory.recordAccepted(lang: top.key, confidence: rawTopProb, now: now)
         // Issue #252: same chip-counter evaluation as the production `detect`
-        // path, so tests can drive it without WhisperKit.
+        // path, so tests can drive it without a model.
         evaluateConsistentChipForAccept(
           finalLang: top.key,
           tier: tier,
@@ -593,9 +593,9 @@ public actor LanguageDetector {
 
   /// Aggregate per-window observations into vote counts + mean probabilities.
   ///
-  /// R2 (#360): This is the post-WhisperKit-call portion of the previous
-  /// `runMultiWindowLID`. Window construction + the `detectLangauge` call moved
-  /// to `WhisperKitBackend.observeLID`, which returns a `[RawLIDObservation]`
+  /// R2 (#360): This is the post-detection portion of the previous
+  /// `runMultiWindowLID`. Window construction and the detection call moved
+  /// to the backend's `observeLID` (since #3735 `TranscribeCppWhisperBackend`), which returns a `[RawLIDObservation]`
   /// inside `LIDObservationBatch.observations`. This helper takes that array
   /// and produces the `MultiWindowLID` shape the classifier consumes.
   ///

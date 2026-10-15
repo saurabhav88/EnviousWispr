@@ -121,8 +121,8 @@ struct RecordingSoundCueTests {
       return true
     }
 
-    cue.handle(.recording, backend: .whisperKit, enabled: false, selectedPairing: .airGlint)
-    cue.handle(.transcribing, backend: .whisperKit, enabled: true, selectedPairing: .velvetTap)
+    cue.handle(.recording, backend: .whisper, enabled: false, selectedPairing: .airGlint)
+    cue.handle(.transcribing, backend: .whisper, enabled: true, selectedPairing: .velvetTap)
 
     #expect(events.isEmpty)
   }

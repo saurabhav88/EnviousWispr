@@ -6,7 +6,7 @@ import Foundation
 ///
 /// Before PR-6 the driver-assembly factory (`KernelDictationDriverFactory`)
 /// constructed both concrete adapters inline, so it named `ParakeetEngineAdapter`
-/// and `WhisperKitEngineAdapter` directly and engine construction was entangled
+/// and `WhisperEngineAdapter` directly and engine construction was entangled
 /// with driver assembly. PR-6 moves the two construction expressions here so
 /// there is one home that knows how to build each engine's adapter, and the
 /// driver-assembly factory names no concrete adapter type in code.
@@ -42,14 +42,13 @@ package enum KernelAdapterFactory {
       batchDecodeFaultController: batchDecodeFaultController)
   }
 
-  /// The single WhisperKit adapter construction site in `Sources/`.
-  /// `audioCaptureSessionIDSource` mirrors the adapter's own parameter (PR-5
-  /// Rung 4.5) so the adapter can snapshot the capture session id at
-  /// `beginSession` for race-safe delayed LID perf signposts.
-  /// `batchDecodeFaultController` (#1707 Phase 2): DEBUG fault-injection
-  /// oracle, defaulted `nil` so every existing test call site is unaffected.
-  package static func makeWhisperKitAdapter(
-    backend: any WhisperKitBackendDriving,
+  /// #3735: the production Whisper adapter, over transcribe.cpp. It starts the adapter's
+  /// memory-pressure binding (§3.2a) here, at construction. The production backend is built
+  /// with `loadsAfterPressureBinding`, so every load, from any caller, waits for this binding:
+  /// no model is ever resident on it without the EngineMutationScope-authorized pressure
+  /// unload.
+  package static func makeWhisperAdapter<Driver: WhisperExecutorDriving>(
+    backend: TranscribeCppWhisperBackend<Driver>,
     languageDetector: LanguageDetector,
     audioCaptureSessionIDSource: @escaping @MainActor () -> UInt64,
     engineMutationScope: EngineMutationScope,
@@ -57,7 +56,7 @@ package enum KernelAdapterFactory {
     deliveredModelIdentity: ASRModelIdentity?,
     batchDecodeFaultController: BatchDecodeFaultController? = nil
   ) -> any ASREngineAdapter {
-    WhisperKitEngineAdapter(
+    let adapter = WhisperEngineAdapter(
       backend: backend,
       engineMutationScope: engineMutationScope,
       languageDetector: languageDetector,
@@ -65,5 +64,7 @@ package enum KernelAdapterFactory {
       vendorDecodeOccupancy: vendorDecodeOccupancy,
       batchDecodeFaultController: batchDecodeFaultController,
       deliveredModelIdentity: deliveredModelIdentity)
+    adapter.startMemoryPressureBinding(to: backend)
+    return adapter
   }
 }

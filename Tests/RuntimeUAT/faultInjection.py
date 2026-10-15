@@ -82,7 +82,7 @@ class ScenarioMeta:
     name: str
     lane: str  # "A" | "B" | "B'"
     family: str  # timing | stall | settings | app-quit | model-load | backend-switch | bt-route
-    backends: list[str]  # ["parakeet"] | ["whisperKit"] | ["both"]
+    backends: list[str]  # ["parakeet"] | ["whisper"] | ["both"]
     runtime_budget_seconds: float
     founder_required: bool
     negative_control: str
@@ -276,6 +276,12 @@ def force_cancel() -> str:
     return send("force_cancel")
 
 
+def whisper_memory_pressure() -> str:
+    """#3735: one memory-pressure event on the Whisper backend's real handler.
+    Reply `OK whisper_ready=<true|false>`; false means the idle model was unloaded."""
+    return send("whisper_memory_pressure", timeout=30.0)
+
+
 # #1543: audio capture is in-process now — the audio-boundary DEBUG commands
 # (force_audio_xpc_kill / force_proxy_buffer_drop / force_audio_wedge_start) and
 # their scenarios were removed with the audio-capture boundary. #1908: ASR
@@ -338,7 +344,7 @@ _TERMINAL_TOKENS = ("idle", "complete", "error", "ready")
 
 
 def _parse_query_state(reply: str) -> dict[str, str]:
-    """Parse `OK parakeet=<state> whisperkit=<state> backend=<X>` into a dict.
+    """Parse `OK parakeet=<state> whisper=<state> backend=<X>` into a dict.
     Returns `{}` if the reply doesn't match the expected shape."""
     if not reply.startswith("OK "):
         return {}
@@ -351,9 +357,9 @@ def _parse_query_state(reply: str) -> dict[str, str]:
 
 
 def _backend_pipeline_key(backend: str) -> str:
-    # `backend=.parakeet` / `backend=.whisperKit` → which pipeline-state key matters
+    # `backend=.parakeet` / `backend=.whisper` → which pipeline-state key matters
     if "whisper" in backend.lower():
-        return "whisperkit"
+        return "whisper"
     return "parakeet"
 
 
@@ -1728,11 +1734,11 @@ def A8a_cancel_during_parakeet_load(**_) -> dict:
         name="A8b_cancel_during_whisperkit_load",
         lane="A",
         family="model-load",
-        backends=["whisperKit"],
+        backends=["whisper"],
         runtime_budget_seconds=3.0,
         founder_required=False,
         negative_control="Remove WhisperKit prepare-state-flip at WhisperKitPipeline.swift:1078-1084; state stays inconsistent",
-        description="Cancel during WhisperKit model load — state-unwind only (no held task)",
+        description="Cancel during Whisper model load — state-unwind only (no held task)",
     )
 )
 def A8b_cancel_during_whisperkit_load(**_) -> dict:
@@ -1786,7 +1792,7 @@ def A9_backend_switch_mid_record(**_) -> dict:
         _stop_recording_locked(settle_s=2.0)
     import settings_nav
     try:
-        pre_backend = _read_setting("selectedBackend")   # "parakeet" | "whisperKit"
+        pre_backend = _read_setting("selectedBackend")   # "parakeet" | "whisper"
     except settings_nav.PreferenceError as e:
         return {"terminal": False, "reason": f"refused before any change: {e}",
                 "state": query_state()}
@@ -1844,8 +1850,8 @@ def A9_backend_switch_mid_record(**_) -> dict:
     # the original would have torn down to idle and the other would
     # have started recording.)
     parsed_during = _parse_query_state(pipeline_state_during)
-    pre_backend_key = "parakeet" if pre_backend.lower() == "parakeet" else "whisperkit"
-    other_key = "whisperkit" if pre_backend_key == "parakeet" else "parakeet"
+    pre_backend_key = "parakeet" if pre_backend.lower() == "parakeet" else "whisper"
+    other_key = "whisper" if pre_backend_key == "parakeet" else "parakeet"
     pre_backend_active = parsed_during.get(pre_backend_key, "") not in {"", "idle"}
     other_idle = parsed_during.get(other_key, "") in {"idle", ""}
     switch_was_blocked = pre_backend_active and other_idle

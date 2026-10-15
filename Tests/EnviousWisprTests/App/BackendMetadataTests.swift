@@ -25,11 +25,11 @@ struct BackendMetadataTests {
     #expect(bm.modelLabel == model)
   }
 
-  @Test("modelLabel: WhisperKit backend returns 'WhisperKit'")
-  func modelLabelWhisperKit() {
+  @Test("modelLabel: Whisper backend returns 'Whisper'")
+  func modelLabelWhisper() {
     let bm = makeBackendMetadata()
-    bm.settings.selectedBackend = .whisperKit
-    #expect(bm.modelLabel == "WhisperKit")
+    bm.settings.selectedBackend = .whisper
+    #expect(bm.modelLabel == "Whisper")
   }
 
   // MARK: - llmLabel
@@ -169,8 +169,8 @@ struct BackendMetadataTests {
   // MARK: - statusText(for:)
 
   /// #2065 replaced the per-engine cases here. There used to be a Parakeet block
-  /// and a WhisperKit block, each pinning the active engine and
-  /// asserting the same four strings — and only the WhisperKit block covered
+  /// and a Whisper block, each pinning the active engine and
+  /// asserting the same four strings — and only the Whisper block covered
   /// `.loadingModel`, which is precisely why the missing Parakeet case shipped.
   /// Two tables tested twice still leaves the untested cell untested.
   ///
@@ -232,7 +232,7 @@ struct BackendMetadataTests {
   // MARK: - Fixture
 
   /// `modelLoaded` drives the engine-health label, which is what `.loadingModel`
-  /// used to be mistaken for on the non-WhisperKit path (#2065).
+  /// used to be mistaken for on the non-Whisper path (#2065).
   private func makeBackendMetadata(
     modelLoaded: Bool = false, parakeetModel: String = "Parakeet v3"
   ) -> BackendMetadata {

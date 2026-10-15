@@ -81,7 +81,7 @@ struct DictationLanguageResolverTests {
 
   @Test("A detecting engine that reported nothing falls through to the text")
   func detectingEngineWithNoAnswerFallsThrough() {
-    // WhisperKit streaming with language on auto reports no language at all.
+    // Whisper streaming with language on auto reports no language at all.
     let resolved = DictationLanguageResolver.resolve(
       lockedLanguage: nil,
       engineDetectsLanguage: true,

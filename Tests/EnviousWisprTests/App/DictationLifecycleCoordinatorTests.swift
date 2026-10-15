@@ -28,7 +28,7 @@ import Testing
     coordinator: DictationLifecycleCoordinator,
     audio: RouterTestAudioCapture,
     kernelDriver: KernelDictationDriver,
-    whisperKitKernelDriver: KernelDictationDriver,
+    whisperKernelDriver: KernelDictationDriver,
     recordingLocked: TestRecordingLockedBox,
     engineLease: EngineLease
   ) {
@@ -37,14 +37,14 @@ import Testing
     let store = DictationRuntimeFixtures.tempStore()
     let pipeline = DictationRuntimeFixtures.makeParakeetDriver(
       audioCapture: audio, asrManager: asr, store: store)
-    let whisperKitKernelDriver = DictationRuntimeFixtures.makeWhisperKitPipeline(
+    let whisperKernelDriver = DictationRuntimeFixtures.makeWhisperPipeline(
       audioCapture: audio, store: store)
     let settings = SettingsManager()
     let overlay = OverlayTestDouble.headlessDirector()
     let hotkey = HotkeyService(effects: RecordingDesktopHotkeyEffects())
     let settingsSync = PipelineSettingsSync(
       kernelDriver: pipeline,
-      whisperKitKernelDriver: whisperKitKernelDriver,
+      whisperKernelDriver: whisperKernelDriver,
       audioCapture: audio,
       asrManager: asr,
       hotkeyService: hotkey,
@@ -59,7 +59,7 @@ import Testing
     let engineLease = EngineLease()
     let coordinator = DictationLifecycleCoordinator(
       kernelDriver: pipeline,
-      whisperKitKernelDriver: whisperKitKernelDriver,
+      whisperKernelDriver: whisperKernelDriver,
       recordingOverlay: overlay,
       hotkeyService: hotkey,
       settingsSync: settingsSync,
@@ -76,7 +76,7 @@ import Testing
       // and watch it come back on the session's terminal transition.
       releaseEngineClaim: { [engineLease] token in engineLease.release(token) }
     )
-    return (coordinator, audio, pipeline, whisperKitKernelDriver, lockBox, engineLease)
+    return (coordinator, audio, pipeline, whisperKernelDriver, lockBox, engineLease)
   }
 
   @Test func cancelPendingWarningIsSafeWhenNoTaskPending() {
@@ -91,7 +91,7 @@ import Testing
     let fixtures = Self.makeCoordinator()
     // Both pipelines start in `.idle`; no `install()` so no transitions fired.
     #expect(fixtures.kernelDriver.state.isActive == false)
-    #expect(fixtures.whisperKitKernelDriver.state.isActive == false)
+    #expect(fixtures.whisperKernelDriver.state.isActive == false)
     #expect(fixtures.coordinator.activeCaptureBackend() == nil)
   }
 
@@ -133,15 +133,15 @@ import Testing
     }
   }
 
-  @Test func whisperKitTerminalStatesClearRecordingLock() {
+  @Test func whisperTerminalStatesClearRecordingLock() {
     let fx = Self.makeCoordinator()
     fx.coordinator.install()
     for terminal in [PipelineState.idle, .complete, .error(.modelWedged)] {
       fx.recordingLocked.isLocked = true
-      fx.whisperKitKernelDriver.onStateChange?(terminal)
+      fx.whisperKernelDriver.onStateChange?(terminal)
       #expect(
         fx.recordingLocked.isLocked == false,
-        "WhisperKit terminal state \(terminal) must clear the hands-free lock")
+        "Whisper terminal state \(terminal) must clear the hands-free lock")
     }
   }
 
@@ -155,22 +155,22 @@ import Testing
   /// Driven through the KERNEL's accepted-terminal signal, for both backends. That signal is the release
   /// trigger, not the published state — see the row below for why.
   @Test func theAcceptedTerminalHandsTheEngineClaimBack() throws {
-    for useWhisperKit in [false, true] {
+    for useWhisper in [false, true] {
       let fx = Self.makeCoordinator()
       fx.coordinator.install()
       guard case .granted(let token) = fx.engineLease.admit(.dictation) else {
         Issue.record("a fresh lease refused the first claim")
         return
       }
-      fx.coordinator.acceptEngineToken(token, mintedBy: useWhisperKit ? .whisperKit : .parakeet)
+      fx.coordinator.acceptEngineToken(token, mintedBy: useWhisper ? .whisper : .parakeet)
       #expect(fx.engineLease.isBusy, "the claim must still be held while the session runs")
 
-      let driver = useWhisperKit ? fx.whisperKitKernelDriver : fx.kernelDriver
+      let driver = useWhisper ? fx.whisperKernelDriver : fx.kernelDriver
       driver.onSessionTerminalAccepted?("take-1")
 
       #expect(
         fx.engineLease.isBusy == false,
-        "\(useWhisperKit ? "WhisperKit" : "Parakeet")'s accepted terminal left the engine claimed")
+        "\(useWhisper ? "Whisper" : "Parakeet")'s accepted terminal left the engine claimed")
     }
   }
 
@@ -208,7 +208,7 @@ import Testing
   /// When this fails, a file import starts in the middle of a live dictation and the dictation comes
   /// back unpolished.
   @Test func aTerminalFromTheOtherBackendLeavesTheClaimAlone() throws {
-    for mintedByWhisperKit in [false, true] {
+    for mintedByWhisper in [false, true] {
       let fx = Self.makeCoordinator()
       fx.coordinator.install()
       guard case .granted(let token) = fx.engineLease.admit(.dictation) else {
@@ -216,16 +216,16 @@ import Testing
         return
       }
       fx.coordinator.acceptEngineToken(
-        token, mintedBy: mintedByWhisperKit ? .whisperKit : .parakeet)
+        token, mintedBy: mintedByWhisper ? .whisper : .parakeet)
 
-      let idleEngine = mintedByWhisperKit ? fx.kernelDriver : fx.whisperKitKernelDriver
+      let idleEngine = mintedByWhisper ? fx.kernelDriver : fx.whisperKernelDriver
       idleEngine.onSessionTerminalAccepted?("someone-elses-take")
 
       #expect(
         fx.engineLease.isBusy,
         "a terminal from the engine that minted nothing released the running session's claim")
 
-      let owner = mintedByWhisperKit ? fx.whisperKitKernelDriver : fx.kernelDriver
+      let owner = mintedByWhisper ? fx.whisperKernelDriver : fx.kernelDriver
       owner.onSessionTerminalAccepted?("take-1")
       #expect(fx.engineLease.isBusy == false)
     }
@@ -263,14 +263,14 @@ import Testing
   /// this signal for `.completed` — so it is covered by the driver's own projection
   /// test, not here.)
   @Test func sessionEndedWithoutSaveSignalRoutesToRecoveryCleanup() {
-    for backend in ["parakeet", "whisperKit"] {
+    for backend in ["parakeet", "whisper"] {
       let fx = Self.makeCoordinator()
       var calls: [(String?, RecordingRecoveryEnding)] = []
       fx.coordinator.onRecordingEndedWithoutDurableSave = { id, ending in
         calls.append((id, ending))
       }
       fx.coordinator.install()
-      let driver = backend == "whisperKit" ? fx.whisperKitKernelDriver : fx.kernelDriver
+      let driver = backend == "whisper" ? fx.whisperKernelDriver : fx.kernelDriver
 
       driver.onSessionEndedWithoutSave?("sid-1", .discarded)
       driver.onSessionEndedWithoutSave?(nil, .failed)
@@ -310,15 +310,15 @@ import Testing
       defer { TelemetryService.shared.testEventHook = nil }
 
       let parakeetTakeID = "3c7e5a11-92d4-4f60-b8a7-51e0c6d3f284"
-      let whisperKitTakeID = "8e1b67a4-3fa2-49dc-9478-962df325e10a"
+      let whisperTakeID = "8e1b67a4-3fa2-49dc-9478-962df325e10a"
 
       fixtures.kernelDriver.onApproachingMaxDuration?(45, parakeetTakeID)
-      fixtures.whisperKitKernelDriver.onApproachingMaxDuration?(30, whisperKitTakeID)
+      fixtures.whisperKernelDriver.onApproachingMaxDuration?(30, whisperTakeID)
 
       let events = box.values
       #expect(events.count == 2, "both installed driver callbacks must emit")
       #expect(
-        events.compactMap { $0.stringProps["take_id"] } == [parakeetTakeID, whisperKitTakeID],
+        events.compactMap { $0.stringProps["take_id"] } == [parakeetTakeID, whisperTakeID],
         "the coordinator must forward each callback's supplied key unchanged"
       )
     }

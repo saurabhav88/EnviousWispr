@@ -1,3 +1,4 @@
+import EnviousWisprASR
 import EnviousWisprAudio
 import EnviousWisprCore
 import EnviousWisprLivePreview
@@ -133,6 +134,10 @@ enum LivePreviewInstaller {
     // engine is going away either way — and weak for the same reason.
     modelDelivery.drainPreviewHoldersBeforeRemoval = { [weak coordinator] in
       await coordinator?.releaseAndDrainForRemoval()
+      // #3735: the executor, not ARC, owns a transcribe.cpp model. Dropping the last
+      // holder starts its free; the free drains any running native work first, so wait
+      // for it to finish before the file is deleted.
+      await TranscribeCppPreviewResidency.shared.waitUntilNoneLoaded()
     }
     modelDelivery.previewRemovalDidFinish = { [weak coordinator] in
       coordinator?.endRemovalSuppression()
@@ -145,8 +150,8 @@ enum LivePreviewInstaller {
   /// an audio capture or a delivery home.
   ///
   /// **A missing universal route is NOT an Apple fallback.** `makeRoute` returns
-  /// nil only for a build defect — no delivery registration, or no bundled
-  /// tokenizer — and running Apple under a universal selection would make the
+  /// nil only for a build defect (no delivery registration or no model entrypoint),
+  /// and running Apple under a universal selection would make the
   /// chosen card and the engine actually transcribing disagree, which is the
   /// confusion this chunk exists to remove. For a user below macOS 26 it would
   /// also silently restore the dead end this engine was added to fix: Apple's

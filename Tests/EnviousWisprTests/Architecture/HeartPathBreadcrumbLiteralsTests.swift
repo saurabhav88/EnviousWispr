@@ -44,7 +44,7 @@ import Testing
   private static let requiredLiterals: [String] = [
     "\"Audio engine interrupted\"",
     "\"parakeet_state\"",
-    "\"whisperkit_state\"",
+    "\"whisper_state\"",
     "[AudioEventRouter] Audio onEngineInterrupted",
   ]
 

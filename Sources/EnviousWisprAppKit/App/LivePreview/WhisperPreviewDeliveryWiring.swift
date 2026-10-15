@@ -8,65 +8,55 @@ import Foundation
 /// The ONLY place delivery is joined to the Live Preview universal engine
 /// (#2108, epic #2077 chunk 4).
 ///
-/// Mirrors `WhisperKitDeliveryWiring`: the app shell owns composition, and the
+/// Mirrors `WhisperDeliveryWiring`: the app shell owns composition, and the
 /// adapter owns behaviour.
 ///
 /// **What crosses the boundary is answers, never capabilities.** The adapter
 /// receives immutable identity and paths plus two closures that answer questions
 /// — it is handed neither `ModelDeliveryHome`, nor `ModelDeliveryController`, nor
-/// any fetch-capable handle. So "the preview cannot start a 217 MB download" is
+/// any fetch-capable handle. So "the preview cannot start a model download" is
 /// a structural property rather than a rule someone has to remember. The only
 /// dependency edge this creates is AppKit to Adapter; the adapter never imports
 /// AppKit.
 @MainActor
 enum WhisperPreviewDeliveryWiring {
 
-  /// Where the bundled tokenizer lives, or nil if this build did not ship one.
+  /// Whether a universal route can be composed in this build at all: the same
+  /// answer `makeRoute` gives, asked without building anything.
   ///
-  /// **One authority, because the UI needs the same answer.** The picker asks
-  /// whether the universal engine exists at all; asking only whether the model is
-  /// REGISTERED would enable the toggle and offer a Download for an engine that
-  /// can never run, since a route also needs this. Cloud review found exactly
-  /// that gap.
-  static func bundledTokenizerDirectory() -> URL? {
-    Bundle.main.url(forResource: "WhisperPreviewTokenizer", withExtension: nil)
-  }
-
-  /// Whether a universal route can be composed in this build at all — the same
-  /// two conditions `makeRoute` checks, asked without building anything.
-  ///
-  /// The UI needs this answer BEFORE it offers a control: asking only whether the
-  /// model is REGISTERED would enable the toggle and offer a Download for an
-  /// engine that could never run, because a route also needs the tokenizer.
+  /// The UI needs this answer BEFORE it offers a control: an engine that cannot
+  /// run must not enable the toggle or offer a Download.
   static func isComposable(modelDelivery: ModelDeliveryHome) -> Bool {
-    modelDelivery.whisperPreviewRegistration != nil && bundledTokenizerDirectory() != nil
+    modelPath(modelDelivery.whisperPreviewRegistration) != nil
   }
 
-  /// Build the preview engine's route, or nil when this build cannot compose one
-  /// — no delivery registration, or no bundled tokenizer. The same
-  /// can't-happen-in-release condition the sibling registrations guard.
+  /// Where the admitted model file lives: the manifest's entrypoint in its install
+  /// directory, or nil when this build registered no preview model (a build defect).
+  /// The one authority both `isComposable` and `makeRoute` read.
+  private static func modelPath(_ registration: DeliveryRegistration?) -> String? {
+    guard let registration, let entrypoint = registration.manifest.resolvedEntrypointPath
+    else { return nil }
+    return registration.installDirectory.appendingPathComponent(entrypoint).path
+  }
+
+  /// Build the preview engine's route, or nil when this build cannot compose one.
   ///
   /// **Nil means UNAVAILABLE IN THIS BUILD, not not-installed** (#2123). The
   /// caller renders `engineUnavailableInThisBuild`, which offers no user remedy,
-  /// because there is none: nothing shipped for this engine and no download can
-  /// supply it. Reporting not-installed would send someone to a button that
-  /// cannot help, and falling back to Apple would make the chosen card and the
-  /// running engine disagree.
+  /// because there is none: no download can supply an engine this build cannot
+  /// run. Reporting not-installed would send someone to a button that cannot
+  /// help, and falling back to Apple would make the chosen card and the running
+  /// engine disagree.
+  ///
+  /// #3735: the route decodes the transcribe.cpp whisper-small GGUF registered as
+  /// `modelDelivery.whisperPreviewRegistration`.
   static func makeRoute(
     modelDelivery: ModelDeliveryHome,
     settings: SettingsManager
   ) -> LivePreviewEngineRoute? {
-    guard let registration = modelDelivery.whisperPreviewRegistration else { return nil }
-
-    guard let tokenizerDirectory = bundledTokenizerDirectory() else {
-      // No tokenizer, no engine. Refusing here is deliberate: WhisperKit's
-      // tokenizer search runs independently of `download: false`, so a nil
-      // folder can reach the network, and the app's other bundled tokenizer is
-      // large-v3 and would load the WRONG vocabulary silently. Both measured.
-      // A missing bundled resource is a build defect, and the honest response is
-      // to have no engine rather than a subtly wrong one.
-      return nil
-    }
+    guard let registration = modelDelivery.whisperPreviewRegistration,
+      let modelPath = modelPath(registration)
+    else { return nil }
 
     let controller = modelDelivery.controller
     let identity = registration.manifest.identity
@@ -76,9 +66,7 @@ enum WhisperPreviewDeliveryWiring {
       // invalidates a prepared engine instead of serving weights we no longer
       // ship.
       artifactIdentity: "\(identity.cacheKey)@\(registration.manifest.manifestDigest.prefix(12))",
-      modelDirectory: registration.installDirectory,
-      tokenizerDirectory: tokenizerDirectory,
-      variant: identity.variant,
+      modelPath: modelPath,
       isAdmitted: { await controller.isAdmitted(registration) },
       isHeartStreaming: {
         await MainActor.run { Self.heartIsStreaming(settings: settings) }
@@ -94,14 +82,14 @@ enum WhisperPreviewDeliveryWiring {
   /// against a 591-626ms repeat-to-repeat envelope.
   ///
   /// **The condition is per-BACKEND, and an earlier version got that wrong.** It
-  /// mirrored `WhisperKitEngineAdapter`'s gate — toggle on AND language locked —
+  /// mirrored `WhisperEngineAdapter`'s gate — toggle on AND language locked —
   /// and applied it to both engines. But that language condition is
-  /// WhisperKit-adapter-specific: the KERNEL sets
+  /// Whisper-adapter-specific: the KERNEL sets
   /// `shouldStream = config.useStreamingASR && adapter.capabilities.supportsStreaming`
-  /// with no language term at all (`RecordingSessionKernel.swift:1397`), and
+  /// with no language term at all (`RecordingSessionKernel.swift:1858` at aed04f9c), and
   /// Parakeet advertises `supportsStreaming: true`
-  /// (`ParakeetEngineAdapter.swift:288`) and begins streaming regardless of
-  /// language mode. WhisperKit is the engine that degrades to batch on `.auto`.
+  /// (`ParakeetEngineAdapter.swift:289`) and begins streaming regardless of
+  /// language mode. Whisper is the engine that degrades to batch on `.auto`.
   ///
   /// So on Parakeet + streaming + Auto the heart IS decoding continuously, and
   /// the earlier predicate returned false — permitting exactly the contention
@@ -115,7 +103,7 @@ enum WhisperPreviewDeliveryWiring {
     case .parakeet:
       // No language condition: the adapter streams whenever the toggle is on.
       return true
-    case .whisperKit:
+    case .whisper:
       // Degrades to batch on `.auto`, which decodes AFTER the recording rather
       // than throughout it — no continuous overlap, so no refusal.
       switch settings.languageMode {

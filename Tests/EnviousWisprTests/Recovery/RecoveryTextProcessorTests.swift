@@ -121,7 +121,7 @@ struct RecoveryTextProcessorTests {
   /// gate the live pipeline does (Codex PR0 P2). Since #2614 both engines resolve
   /// the language through the runner: a recovered take has no persisted engine
   /// answer, so the text itself decides, and confidently English text runs ITN
-  /// on BOTH engines. Before #2614 the WhisperKit arm skipped (`lid_backend_nil`)
+  /// on BOTH engines. Before #2614 the Whisper arm skipped (`lid_backend_nil`)
   /// because nil meant "unknown"; nil now means "the resolver abstained", and it
   /// does not abstain on this sentence.
   @Test("the ITN language gate matches the live pipeline for the recorded engine")
@@ -135,13 +135,13 @@ struct RecoveryTextProcessorTests {
     let parakeetOut = await parakeet.process(rawText: spoken)
     #expect(parakeetOut.text == "call me at 203")
 
-    // LID engine (WhisperKit): the text resolves to English, so ITN runs here too
+    // LID engine (Whisper): the text resolves to English, so ITN runs here too
     // (#2614 closed the Automatic dead path on this engine).
-    let whisperKit = RecoveryTextProcessor(keychainManager: KeychainManager())
-    whisperKit.applySettings(
-      snapshot(fillerRemoval: false, backendType: .whisperKit, lidCapable: true))
-    let whisperKitOut = await whisperKit.process(rawText: spoken)
-    #expect(whisperKitOut.text == "call me at 203")
+    let whisperProcessor = RecoveryTextProcessor(keychainManager: KeychainManager())
+    whisperProcessor.applySettings(
+      snapshot(fillerRemoval: false, backendType: .whisper, lidCapable: true))
+    let whisperOut = await whisperProcessor.process(rawText: spoken)
+    #expect(whisperOut.text == "call me at 203")
   }
 
   /// #2614: an Automatic snapshot on the default engine used to replay Dutch under

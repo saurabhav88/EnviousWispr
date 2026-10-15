@@ -743,7 +743,7 @@ struct TranscribeFileView: View {
           (Self.specRunsOn, Self.runsOnNeuralEngine),
         ])
       engineCard(
-        backend: .whisperKit, title: WorkingPageModel.engineName(.whisperKit),
+        backend: .whisper, title: WorkingPageModel.engineName(.whisper),
         icon: "globe", recommended: false,
         blurb: String(
           localized: "Best for other languages or the toughest audio.",

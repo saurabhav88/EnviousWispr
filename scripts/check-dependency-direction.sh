@@ -60,7 +60,7 @@ permitted_imports_for() {
     # re-reading why the limb exists.
     EnviousWisprLivePreview)       echo "EnviousWisprCore EnviousWisprPostProcessing" ;;
     # #2108. The Live Preview engine backed by the downloadable universal model.
-    # It needs ASR (the WhisperKit runtime), which is exactly why it cannot live in
+    # It needs ASR (the transcribe.cpp preview runtime), which is exactly why it cannot live in
     # EnviousWisprLivePreview above. It does NOT need ModelDelivery: AppKit resolves
     # the artifact and hands this limb paths and an admission answer as values, so
     # the delivery edge only ever bought the ability to import a fetch-capable API

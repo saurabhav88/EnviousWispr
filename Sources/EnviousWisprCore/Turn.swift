@@ -1,5 +1,16 @@
 import Foundation
 
+/// What a turn's speaker assignment was built from (#3735 §3.10). Stored, so a reload knows
+/// which turns carry only segment-level boundaries.
+public enum TurnGranularity: String, Sendable, Equatable, Codable {
+  /// Word timings (`TurnAssembler.assemble(entries:segments:)`).
+  case word
+  /// Segment timings from an engine with no word timing
+  /// (`TurnAssembler.assemble(segmentTimings:rawText:segments:)`): coarser boundaries, and a
+  /// segment spanning different speakers is labelled Both.
+  case segment
+}
+
 /// One speaker's contiguous stretch of an imported transcript (#2810, phase 3 of #2807).
 ///
 /// Produced by `TurnAssembler` from phase 2's `ASRWordTiming`/`SpeakerSegment` data, and
@@ -35,10 +46,15 @@ public struct Turn: Sendable, Equatable, Codable {
   /// (`FileImportRunner.PartOutcome.isUnpolished`). Drives the per-turn "Not fully polished"
   /// disclosure; the document header's credit reads the parts, never this.
   public let wasPolished: Bool
+  /// What the speaker assignment was built from. `nil` on every row written before #3735 and
+  /// from constructors that predate it; read through `effectiveGranularity`, where absent
+  /// means word.
+  public let granularity: TurnGranularity?
 
   public init(
     id: String, speakerId: String, startMs: Int?, endMs: Int?,
-    originalTextRange: Range<Int>, processedText: String? = nil, wasPolished: Bool = false
+    originalTextRange: Range<Int>, processedText: String? = nil, wasPolished: Bool = false,
+    granularity: TurnGranularity? = nil
   ) {
     self.id = id
     self.speakerId = speakerId
@@ -47,7 +63,11 @@ public struct Turn: Sendable, Equatable, Codable {
     self.originalTextRange = originalTextRange
     self.processedText = processedText
     self.wasPolished = wasPolished
+    self.granularity = granularity
   }
+
+  /// Legacy rows (no stored value) were all built from word timings.
+  public var effectiveGranularity: TurnGranularity { granularity ?? .word }
 }
 
 /// A transcript's speaker-analysis outcome as STORED (distinct from Core's `SpeakerAnalysis`,
@@ -87,7 +107,8 @@ extension SpeakerAnalysis {
   /// The one exhaustive mapping from the analyzer's in-memory outcome to the persisted
   /// speaker-analysis state (#2810 addendum §3 E). `.noWordTimings` has no counterpart here —
   /// it is a merge-input failure the caller (`FileImportCoordinator`) produces itself when
-  /// `ASRResult.wordTimings` is `nil`, before this mapping would ever run.
+  /// neither `ASRResult.wordTimings` nor usable `ASRResult.segmentTimings` (#3735) can bind a
+  /// speaker, before this mapping would ever run.
   public var asStorageAnalysis: TranscriptSpeakerAnalysis {
     switch self {
     case .single: return .single

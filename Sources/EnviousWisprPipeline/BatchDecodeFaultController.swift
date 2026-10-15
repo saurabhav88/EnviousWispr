@@ -21,7 +21,8 @@ import Foundation
 /// (for the real-engine-boundary hold/release/query).
 @MainActor
 package final class BatchDecodeFaultController {
-  private let whisperKitBackend: WhisperKitBackend?
+  /// #3735: the Whisper route's transcribe.cpp backend (it replaced `WhisperKitBackend`).
+  private let whisperBackend: LiveTranscribeCppWhisperBackend?
   // #1908: widened from the concrete `ASRManagerProxy?` to the shared
   // interface — a hard downcast to the proxy type went silently dark
   // (`nil`, no build error, no test failure) the moment the composition
@@ -29,8 +30,10 @@ package final class BatchDecodeFaultController {
   // the three `#if DEBUG` batch-decode methods this type calls.
   private let asrManager: (any ASRManagerInterface)?
 
-  package init(whisperKitBackend: WhisperKitBackend?, asrManager: (any ASRManagerInterface)?) {
-    self.whisperKitBackend = whisperKitBackend
+  package init(
+    whisperBackend: LiveTranscribeCppWhisperBackend?, asrManager: (any ASRManagerInterface)?
+  ) {
+    self.whisperBackend = whisperBackend
     self.asrManager = asrManager
   }
 
@@ -43,7 +46,7 @@ package final class BatchDecodeFaultController {
   }
 
   private var parakeetPendingFailure: PendingFailure = .none
-  private var whisperKitPendingFailure: PendingFailure = .none
+  private var whisperPendingFailure: PendingFailure = .none
 
   package func failNextBatchDecode(backend: ASRBackendType) {
     setPendingFailure(.next, backend: backend)
@@ -61,7 +64,7 @@ package final class BatchDecodeFaultController {
   private func setPendingFailure(_ value: PendingFailure, backend: ASRBackendType) {
     switch backend {
     case .parakeet: parakeetPendingFailure = value
-    case .whisperKit: whisperKitPendingFailure = value
+    case .whisper: whisperPendingFailure = value
     }
   }
 
@@ -89,11 +92,11 @@ package final class BatchDecodeFaultController {
         return true
       case .every: return true
       }
-    case .whisperKit:
-      switch whisperKitPendingFailure {
+    case .whisper:
+      switch whisperPendingFailure {
       case .none: return false
       case .next:
-        whisperKitPendingFailure = .none
+        whisperPendingFailure = .none
         return true
       case .every: return true
       }
@@ -124,7 +127,7 @@ package final class BatchDecodeFaultController {
 
   // MARK: Real-engine-boundary hold/release/query (§3.2a-i)
   //
-  // DEBUG-only: `WhisperKitBackend`'s and `ASRManagerProxy`'s hold/release/
+  // DEBUG-only: `TranscribeCppWhisperBackend`'s and `ASRManagerProxy`'s hold/release/
   // clear methods are themselves declared inside `#if DEBUG` (they don't
   // exist in Release), and this controller is deliberately NOT gated at the
   // type level (§ file header) — so these four methods must be individually
@@ -134,12 +137,12 @@ package final class BatchDecodeFaultController {
 
   #if DEBUG
     /// Arms a one-shot hold on the NEXT real decode call the given backend
-    /// issues (`WhisperKitBackend.armBatchDecodeHold` in-process;
+    /// issues (`TranscribeCppWhisperBackend.armBatchDecodeHold` in-process;
     /// `ParakeetBackend.armBatchDecodeHold` across XPC via `ASRManagerProxy`).
     package func holdBatchDecode(backend: ASRBackendType, trialID: String) async {
       switch backend {
-      case .whisperKit:
-        await whisperKitBackend?.armBatchDecodeHold(trialID: trialID)
+      case .whisper:
+        await whisperBackend?.armBatchDecodeHold(trialID: trialID)
       case .parakeet:
         await asrManager?.armBatchDecodeHold(trialID: trialID)
       }
@@ -148,15 +151,15 @@ package final class BatchDecodeFaultController {
     /// Releases a previously-armed hold, letting the held decode proceed.
     package func releaseBatchDecode(backend: ASRBackendType, trialID: String) async {
       switch backend {
-      case .whisperKit:
-        await whisperKitBackend?.releaseBatchDecode(trialID: trialID)
+      case .whisper:
+        await whisperBackend?.releaseBatchDecode(trialID: trialID)
       case .parakeet:
         await asrManager?.releaseBatchDecode(trialID: trialID)
       }
     }
 
     /// Merges this controller's own kernel-side timestamps with the
-    /// backend-side timestamps — read directly from `WhisperKitBackend`
+    /// backend-side timestamps — read directly from `TranscribeCppWhisperBackend`
     /// in-process, or from the shared `BatchDecodeFaultSnapshotFile` for
     /// Parakeet (never over XPC — XPC replies serialize behind a pending
     /// request, so a query cannot ask the service for progress while a
@@ -171,8 +174,8 @@ package final class BatchDecodeFaultController {
       let kernel = kernelTimestamps
       let backendSnapshot: BatchDecodeFaultSnapshotState?
       switch backend {
-      case .whisperKit:
-        backendSnapshot = await whisperKitBackend?.queryBatchDecodeFault(trialID: trialID)
+      case .whisper:
+        backendSnapshot = await whisperBackend?.queryBatchDecodeFault(trialID: trialID)
       case .parakeet:
         backendSnapshot = BatchDecodeFaultSnapshotFile.shared.read()
           .flatMap { $0.trialID == trialID ? $0 : nil }
@@ -189,12 +192,12 @@ package final class BatchDecodeFaultController {
 
     /// Clears all armed/held state (both backends) and the kernel-side
     /// timestamps, so a forgotten trial from one Live UAT scenario cannot
-    /// leak into the next. Both backends: WhisperKit in-process, Parakeet
+    /// leak into the next. Both backends: Whisper in-process, Parakeet
     /// across XPC via `ASRManagerProxy` — a Parakeet-only trial that skipped
     /// this call would stay held until the 30-second safety release.
     package func clearBatchDecodeFault() async {
       kernelTimestamps = KernelTimestamps()
-      await whisperKitBackend?.clearBatchDecodeFault()
+      await whisperBackend?.clearBatchDecodeFault()
       await asrManager?.clearBatchDecodeFault()
       BatchDecodeFaultSnapshotFile.shared.clear()
     }

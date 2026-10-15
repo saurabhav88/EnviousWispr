@@ -41,7 +41,7 @@ struct FileImportLocalPolishRuntimeTests {
     let store = DictationRuntimeFixtures.tempStore()
     let pipeline = DictationRuntimeFixtures.makeParakeetDriver(
       audioCapture: audio, asrManager: asr, store: store)
-    let whisperKit = DictationRuntimeFixtures.makeWhisperKitPipeline(
+    let whisperDriver = DictationRuntimeFixtures.makeWhisperPipeline(
       audioCapture: audio, store: store)
     let settings = SettingsManager(
       defaults: TestDefaults.suite("SM-2772-runtime-\(UUID().uuidString)")!)
@@ -54,7 +54,7 @@ struct FileImportLocalPolishRuntimeTests {
       provider: .s1Mini)
     let sync = PipelineSettingsSync(
       kernelDriver: pipeline,
-      whisperKitKernelDriver: whisperKit,
+      whisperKernelDriver: whisperDriver,
       audioCapture: audio,
       asrManager: asr,
       hotkeyService: HotkeyService(effects: RecordingDesktopHotkeyEffects()),

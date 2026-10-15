@@ -79,7 +79,7 @@ import Testing
 
       _ = await DictationAudioArchive.archive(
         transcriptID: id, sid: "s", raw: [0.1], fed: [],
-        outcome: .noSpeech, classification: "notEvaluated", backend: "whisperKit",
+        outcome: .noSpeech, classification: "notEvaluated", backend: "whisper",
         directory: dir)
 
       let folder = dir.appendingPathComponent(id.uuidString)
@@ -298,7 +298,7 @@ import Testing
       #expect(
         !K.dictationFedUsesBatchBuffer(
           decodesConditionedBatch: true, isStreaming: true, cameFromBatchRescue: false))
-      // WhisperKit never uses the conditioned batch buffer.
+      // Whisper never uses the conditioned batch buffer.
       #expect(
         !K.dictationFedUsesBatchBuffer(
           decodesConditionedBatch: false, isStreaming: false, cameFromBatchRescue: false))

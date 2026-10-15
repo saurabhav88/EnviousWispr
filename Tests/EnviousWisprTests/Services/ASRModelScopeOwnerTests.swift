@@ -59,9 +59,9 @@ struct ASRModelScopeOwnerTests {
     #expect(recorder.snapshots == [loaded], "a late report from an older load is dropped")
     let whisperLoaded = ASRModelScopeOwner.Snapshot(
       requested: Self.whisper, phase: .loaded, serving: Self.whisper)
-    owner.observe(.whisperKit, sequence: 1, snapshot: whisperLoaded)
+    owner.observe(.whisper, sequence: 1, snapshot: whisperLoaded)
     #expect(recorder.snapshots == [loaded], "the engine not in use never writes the scope")
-    owner.activate(.whisperKit)
+    owner.activate(.whisper)
     #expect(recorder.snapshots.last == whisperLoaded, "switching shows that engine's own latest")
     owner.activate(.parakeet)
     #expect(recorder.snapshots.last == loaded)
@@ -74,7 +74,7 @@ struct ASRModelScopeOwnerTests {
     owner.observe(
       .parakeet, sequence: 1,
       snapshot: .init(requested: Self.ultra, phase: .loaded, serving: Self.ultra))
-    owner.activate(.whisperKit)
+    owner.activate(.whisper)
     #expect(recorder.snapshots.last == .init(requested: nil, phase: nil, serving: nil))
   }
 }

@@ -150,12 +150,12 @@ public struct DefaultPromptPlanner: PromptPlanning {
   ///
   /// - `backend == .parakeet`: force legacy English path (Parakeet is
   ///   English-only; ignore any `languageDetection` even if set).
-  /// - `backend == .whisperKit` + populated detection: tier-gated,
+  /// - `backend == .whisper` + populated detection: tier-gated,
   ///   language-aware policy (W3 behavior).
   ///   - `.locked` or `.highAuto`: global + perLanguage[detected]
   ///   - `.mediumAuto`: global only (no perLanguage)
   ///   - `.lowAuto` or `.abstain`: no lexical injection
-  /// - `backend == .whisperKit` + nil detection: defensive
+  /// - `backend == .whisper` + nil detection: defensive
   ///   formatting-only path (treat as low confidence — prevents English
   ///   contamination when the detector is bypassed).
   /// - `backend == nil`: safety-net passthrough for callsites that have not
@@ -168,11 +168,11 @@ public struct DefaultPromptPlanner: PromptPlanning {
       return input
     }
 
-    // WhisperKit without detection: treat as low confidence. No lexical
-    // injection. Defensive: a future WhisperKit codepath that forgets the
+    // Whisper without detection: treat as low confidence. No lexical
+    // injection. Defensive: a future Whisper codepath that forgets the
     // detector must not silently fall through to the English-centric
     // legacy prompt and corrupt non-English output.
-    if input.backend == .whisperKit, input.languageDetection == nil {
+    if input.backend == .whisper, input.languageDetection == nil {
       return input.withPolishVocabulary(
         PolishVocabulary(terms: [], generation: input.polishVocabulary.generation)
       )

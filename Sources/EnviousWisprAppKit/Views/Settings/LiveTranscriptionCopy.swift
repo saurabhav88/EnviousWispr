@@ -15,10 +15,10 @@ import Foundation
 ///
 /// **THE COPY IS SPLIT BY ENGINE, AND THAT IS LOAD-BEARING.** One toggle drives two
 /// completely different implementations, and the evidence points in OPPOSITE directions for
-/// them. Parakeet streams by sliding window and stitching text; WhisperKit uses
-/// `WhisperKitStreamingSession` (LocalAgreement-2 over one retained buffer, #1276 PR-2) and
-/// degrades to clean batch entirely when the language is Auto-detect. Showing Parakeet's
-/// 28-clip and 500-dictation figures to a WhisperKit user, and telling them to switch the
+/// them. Parakeet streams by sliding window and stitching text; Whisper uses
+/// `TranscribeCppRollingSession` (segment LocalAgreement over a bounded retained window,
+/// #3735) and degrades to clean batch entirely when the language is Auto-detect. Showing
+/// Parakeet's 28-clip and 500-dictation figures to a Whisper user, and telling them to switch the
 /// setting off, would be materially wrong guidance. The first draft of this file did
 /// exactly that and the diff review caught it.
 ///
@@ -29,14 +29,14 @@ import Foundation
 ///     word-level against the batch transcript of the same audio.
 /// If those are ever re-measured, change them HERE and in the test together.
 ///
-/// THE WHISPERKIT PANEL CARRIES NO FIGURES, DELIBERATELY. Its benchmark numbers are
-/// genuinely contested in our own records: `#1276`'s comment says 3/107 phantom endings
-/// while `whisperkit-research.md` FACT: ufal-streaming-architecture-shipped explicitly
-/// corrects that to "1/109 UFAL phantom endings versus 14/109 stitch, not 3/107", and the
-/// often-quoted 1.6s-vs-38.5s latency pair was measured on a PROTOTYPE harness before
-/// PR #1313 shipped a different architecture. Two sources disagreeing is precisely when a
-/// number must not be put in front of a user. The qualitative claims below are the ones
-/// both sources support.
+/// THE WHISPER PANEL CARRIES NO FIGURES, DELIBERATELY. Its claims come from the #3735
+/// streaming qualification (71 frozen clips, 54 of about 30 s and 17 of about 5.5 min in
+/// 18 languages, both settings on the same audio; receipt
+/// `docs/audits/3735-swap/chunk8/qual/RECEIPT.md`, final run 2): accuracy was comparable on
+/// this set, with per-language gains and losses; on the long clips the median stop-to-text
+/// was 238 ms against 3939 ms; four long clips and one medium clip fell back to batch. Those
+/// times are one Mac (M5 Max), so no number goes in front of a user; the qualitative claims
+/// below are the ones the run supports.
 ///
 /// Brand rule: no em-dashes or en-dashes in user-facing copy.
 enum LiveTranscriptionCopy {
@@ -63,11 +63,12 @@ enum LiveTranscriptionCopy {
   /// (a historical record — see the note there), the two comments quoting the original
   /// user report, and `ParakeetStreamingSentryError`'s diagnostic strings, which would
   /// change Sentry grouping and fire new-issue alerts for no user benefit.
-  static let toggleLabelResource = LocalizedStringResource("Faster Transcription",
+  static let toggleLabelResource = LocalizedStringResource(
+    "Faster Transcription",
     comment: "Speech engine settings, Faster Transcription: the toggle's name.")
   static var toggleLabel: String { String(localized: toggleLabelResource) }
 
-  /// Shown under the toggle only when WhisperKit is selected AND the language is
+  /// Shown under the toggle only when Whisper is selected AND the language is
   /// Auto-detect, because streaming must commit to one language up front and a bad early
   /// guess poisons the whole dictation (#1276). Lives here rather than inline so all of
   /// this toggle's user-facing strings have one home.
@@ -88,7 +89,7 @@ enum LiveTranscriptionCopy {
   }
 
   /// The content of one engine's help panel. Optional fields are genuinely absent for an
-  /// engine rather than empty: WhisperKit has no comparison table because it has no
+  /// engine rather than empty: Whisper has no comparison table because it has no
   /// figures we can defend, and rendering an empty table would read as a bug.
   struct Panel {
     let title: String
@@ -107,14 +108,14 @@ enum LiveTranscriptionCopy {
   static func panel(for backend: ASRBackendType) -> Panel {
     switch backend {
     case .parakeet: return parakeet
-    case .whisperKit: return whisperKit
+    case .whisper: return whisper
     }
   }
 
   static func toggleDescription(for backend: ASRBackendType) -> String {
     switch backend {
     case .parakeet: return parakeetToggleDescription
-    case .whisperKit: return whisperKitToggleDescription
+    case .whisper: return whisperToggleDescription
     }
   }
 
@@ -196,12 +197,13 @@ enum LiveTranscriptionCopy {
         comment: "Speech engine settings, Faster Transcription: help panel footnote.")
   )
 
-  // MARK: - WhisperKit
+  // MARK: - Whisper
 
   /// Carries the same #1988 disambiguating sentence as the Parakeet copy above. A
   /// clarification that lands on only one of two engine descriptions is the partial
   /// port this codebase keeps relearning.
-  static let whisperKitToggleDescription =
+  ///
+  static let whisperToggleDescription =
     String(
       localized:
         "Transcribes while you speak instead of once when you stop. Nothing looks different while you record; this only changes when the work happens. It mainly helps on long recordings, and it needs a language selected.",
@@ -209,7 +211,7 @@ enum LiveTranscriptionCopy {
         "Speech engine settings, Faster Transcription: description under the toggle (multilingual engine)."
     )
 
-  static let whisperKit = Panel(
+  static let whisper = Panel(
     title: String(
       localized: "What Faster Transcription changes",
       comment: "Speech engine settings, Faster Transcription: help panel title."),
@@ -219,7 +221,7 @@ enum LiveTranscriptionCopy {
     speedBody:
       String(
         localized:
-          "On short dictations you will not notice a difference. On long ones it helps clearly: transcribing after you stop gets slower the longer you spoke, while transcribing as you go stays about the same however long the recording is.",
+          "On short dictations you will not notice a difference. On long ones it usually helps clearly, because most of the work is done before you stop. Now and then it falls back to transcribing after you stop, which takes about as long as having this off.",
         comment: "Speech engine settings, Faster Transcription: help panel: speed."),
     accuracyHeading: String(
       localized: "Accuracy",

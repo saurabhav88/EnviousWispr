@@ -4,8 +4,8 @@ import Foundation
 
 /// #1525 PR I-B: pinned Sentry identity for a raw throw out of `ParakeetBackend
 /// .prepare`'s 3 FluidAudio model-load calls. Separate from `ParakeetTranscriptionSentryError`
-/// — different physical failure class and Sentry category, same reasoning WhisperKit
-/// load/decode stay separate from Parakeet transcription.
+/// — different physical failure class and Sentry category, same reasoning Whisper's
+/// load and run failures stay separate (`TranscribeCppWhisperError`).
 enum ParakeetModelLoadSentryError: Error, LocalizedError, CustomNSError, Sendable, Equatable {
   case modelsModelNotFound(String)
   case modelsDownloadFailed(String)

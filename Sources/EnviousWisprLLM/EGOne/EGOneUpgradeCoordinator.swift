@@ -177,7 +177,7 @@ public final class EGOneUpgradeCoordinator {
   private var automaticEnsureInProgress: Bool { !automaticFetchDecisions.isEmpty }
 
   /// Whether first-run setup has finished. EG-1 polish is a LIMB; during onboarding the HEART's
-  /// model (Parakeet or WhisperKit) is downloading, and dictation does not work at all until it
+  /// model (Parakeet or Whisper) is downloading, and dictation does not work at all until it
   /// lands. A limb must never compete with it for bandwidth or disk.
   private let isOnboardingComplete: @MainActor @Sendable () -> Bool
 

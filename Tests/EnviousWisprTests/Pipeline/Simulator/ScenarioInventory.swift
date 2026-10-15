@@ -329,7 +329,7 @@ enum ScenarioInventory {
 
   private static let regressionLocks: [Scenario] = [
     Scenario(
-      id: "R1", name: "WhisperKit stop-during-startup (regression lock)",
+      id: "R1", name: "Whisper stop-during-startup (regression lock)",
       // No trailing `expectState(.discarded)` — the terminal is clock-gated
       // (the warm-up completes only after the clock advances), and under the
       // interleaving sweep's `zeroTick` schedule that advance is zeroed, so a

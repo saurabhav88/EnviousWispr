@@ -10,7 +10,10 @@ import os
 /// allow one `transcribe_run` in flight per model (`transcribe.h` threading notes), so
 /// callers must serialize every call on a session. `requestAbort()` is the one method
 /// that may be called from another thread while a run is in flight.
-public final class TranscribeCppSession: @unchecked Sendable {
+///
+/// Internal: app code reaches native work only through `TranscribeCppExecutor.shared`,
+/// which is the serializer these threading notes require.
+final class TranscribeCppSession: @unchecked Sendable {
   private var handle: OpaquePointer?
   private let abortFlag = TranscribeCppAbortFlag()
   /// The model file this session loaded, for identity checks by callers.
@@ -90,10 +93,17 @@ public final class TranscribeCppSession: @unchecked Sendable {
   ///   - language: ISO code to force, or nil for the model's own detection.
   ///   - onProgress: optional seek-progress observer (fork API), called on the running
   ///     thread with (advanced frames, total frames); installed only for this run.
+  ///   - onInferenceEntered: called synchronously on the running thread immediately before
+  ///     `transcribe_run`, after every preparatory step; a run refused earlier never calls it.
+  ///   - shouldStop: the caller's cancellation, checked last, together with this session's
+  ///     abort flag, immediately before that notification. A stopped run returns the aborted
+  ///     status without notifying or entering native work.
   public func run(
     samples: [Float],
     language: String?,
-    onProgress: ((Int64, Int64) -> Void)? = nil
+    onProgress: ((Int64, Int64) -> Void)? = nil,
+    onInferenceEntered: (() -> Void)? = nil,
+    shouldStop: (() -> Bool)? = nil
   ) throws -> TranscribeCppRunResult {
     let session = try liveHandle()
     guard !samples.isEmpty else { throw TranscribeCppError(status: TRANSCRIBE_ERR_INVALID_ARG) }
@@ -124,10 +134,16 @@ public final class TranscribeCppSession: @unchecked Sendable {
       if let language {
         return language.withCString { code in
           params.language = code
+          guard !(shouldStop?() ?? false), !abortFlag.isRequested else {
+            return TRANSCRIBE_ERR_ABORTED
+          }
+          onInferenceEntered?()
           return transcribe_run(session, pcm.baseAddress, count, &params)
         }
       }
       params.language = nil
+      guard !(shouldStop?() ?? false), !abortFlag.isRequested else { return TRANSCRIBE_ERR_ABORTED }
+      onInferenceEntered?()
       return transcribe_run(session, pcm.baseAddress, count, &params)
     }
     guard status == TRANSCRIBE_OK else { throw TranscribeCppError(status: status) }
@@ -181,9 +197,16 @@ public struct TranscribeCppError: Error, Equatable, Sendable, CustomStringConver
   public let message: String
 
   init(status: transcribe_status) {
-    self.status = Int32(status.rawValue)
-    self.message = String(cString: transcribe_status_string(Int32(status.rawValue)))
+    self.init(rawStatus: Int32(status.rawValue))
   }
+
+  /// From a raw `transcribe_status` value (tests build native outcomes with it).
+  init(rawStatus: Int32) {
+    self.status = rawStatus
+    self.message = String(cString: transcribe_status_string(rawStatus))
+  }
+
+  static var abortedStatus: Int32 { Int32(TRANSCRIBE_ERR_ABORTED.rawValue) }
 
   public var isAborted: Bool { status == Int32(TRANSCRIBE_ERR_ABORTED.rawValue) }
   public var description: String { "transcribe.cpp status \(status): \(message)" }

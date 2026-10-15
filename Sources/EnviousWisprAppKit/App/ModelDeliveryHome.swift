@@ -101,7 +101,7 @@ final class ModelDeliveryHome {
   }
   /// #3546: the Parakeet selection-policy owner, built here because this home
   /// owns the Parakeet registration and handle (plan §3b, the
-  /// `WhisperKitLegacyUpgradeCoordinator` precedent). Set once by
+  /// precedent of the retired WhisperKit legacy upgrade coordinator). Set once by
   /// `installParakeetUpgrade(parakeetSelection:isOnboardingComplete:)`.
   private(set) var parakeetUpgrade: ParakeetUpgradeCoordinator?
 
@@ -135,16 +135,16 @@ final class ModelDeliveryHome {
     return coordinator
   }
 
-  /// #1386 PR-2. Nil when the bundled multilingual manifest failed to load —
-  /// unlike Parakeet there is NO legacy fallback behind it (PR-2 retired
-  /// `WhisperKit.download()`), so a nil handle means the multilingual engine
-  /// honestly reports "not installed" rather than fetching by an unverified
-  /// route. Unit-tested against the bundled resource.
-  private(set) var whisperKitHandle: DeliveredModelHandle?
-  private(set) var whisperKitRegistration: DeliveryRegistration?
+  /// #1386 PR-2; #3735: the transcribe.cpp Whisper turbo GGUF. Nil when the bundled
+  /// manifest failed to load — unlike Parakeet there is NO legacy fallback behind
+  /// it, so a nil handle means the multilingual engine honestly reports "not
+  /// installed" rather than fetching by an unverified route. Unit-tested against
+  /// the bundled resource.
+  private(set) var whisperHandle: DeliveredModelHandle?
+  private(set) var whisperRegistration: DeliveryRegistration?
 
-  /// #2108 (epic #2077 chunk 4). The SECOND artifact in the `whisperKit` family:
-  /// the small multilingual model Live Preview offers as the universal
+  /// #2108 (epic #2077 chunk 4); #3735: the whisper-small GGUF. The SECOND artifact in
+  /// the `whisper` family: the small multilingual model Live Preview offers as the universal
   /// alternative to Apple's engine, which needs macOS 26 and only recognises
   /// languages Apple has already installed.
   ///
@@ -195,12 +195,10 @@ final class ModelDeliveryHome {
   /// manifests to the same literal.
   static let ownedModelHost = "models.enviouswispr.com"
 
-  /// #3735: the transcribe.cpp Whisper turbo registration. Defined here because this
-  /// type is the single owner of "which models exist and where they install", but INERT
-  /// until the engine swap: `init` does not call it, so nothing fetches, sweeps or adopts
-  /// these bytes at launch. Installs into `Models/whisper-gguf`, a sibling of the retired
-  /// CoreML `Models/whisper`, never that directory. Metadata shares the delivery directory:
-  /// staging and markers key on the full `ModelIdentity.cacheKey`.
+  /// #3735: the transcribe.cpp Whisper turbo registration, built by `init`. Installs into
+  /// `Models/whisper-gguf`, a sibling of the retired CoreML `Models/whisper`, never that
+  /// directory. Metadata shares the delivery directory: staging and markers key on the full
+  /// `ModelIdentity.cacheKey`.
   static func whisperGGUFRegistration(
     manifestBundle: Bundle, appSupport: URL
   ) throws -> DeliveryRegistration {
@@ -209,8 +207,8 @@ final class ModelDeliveryHome {
       manifestBundle: manifestBundle, appSupport: appSupport)
   }
 
-  /// #3735: the transcribe.cpp whisper-small registration for the Universal preview.
-  /// Inert until the preview moves engines; installs into `Models/whisper-preview-gguf`.
+  /// #3735: the transcribe.cpp whisper-small registration for the Universal preview, built
+  /// by `init`; installs into `Models/whisper-preview-gguf`.
   static func whisperPreviewGGUFRegistration(
     manifestBundle: Bundle, appSupport: URL
   ) throws -> DeliveryRegistration {
@@ -387,7 +385,7 @@ final class ModelDeliveryHome {
   ///
   /// Lives here rather than on the settings page because the page is destroyed
   /// during navigation — the Apple-pack model is window-owned for exactly that
-  /// reason — and a 217 MB download must not lose its progress because someone
+  /// reason — and a 270 MB download must not lose its progress because someone
   /// looked at another tab.
   private(set) var whisperPreviewState: DeliveryState = .notReady
 
@@ -530,7 +528,7 @@ final class ModelDeliveryHome {
     //
     // SCOPE, counted from the registrations below rather than remembered: this
     // `return` skips the THREE this initializer builds — Parakeet (:219),
-    // WhisperKit transcription (:292) and WhisperKit preview (:334). All three
+    // Whisper transcription and Whisper preview. All three
     // would otherwise carry the same startup sweep and the same Resume path into
     // a location nobody may write to, so refusing all three is correct rather
     // than merely convenient. It is still wider than the finding that prompted
@@ -542,12 +540,12 @@ final class ModelDeliveryHome {
     // "every family" and named EG-1; that was wrong, and a wrong scope claim in
     // a comment is worse than none because the next reader stops counting.
     //
-    // Moving the WhisperKit pair onto the resolver is #2695's PR 2. This only
+    // Moving the Whisper pair onto the resolver is #2695's PR 2. This only
     // stops them registering when storage is already known to be unusable.
     guard !storage.isUnavailable else {
       Task {
         await AppLogger.shared.log(
-          "Model delivery: storage is unavailable, so Parakeet and both WhisperKit "
+          "Model delivery: storage is unavailable, so Parakeet and both Whisper "
             + "registrations are skipped and nothing will be written or deleted for them",
           level: .info, category: "Delivery")
       }
@@ -573,7 +571,7 @@ final class ModelDeliveryHome {
       Task { await controller.sweepSupersededStaging(registration) }
 
       // The kill-switch store is INJECTED, exactly as its two siblings below
-      // are (`:whisperKitHandle`, `:whisperPreviewHandle`). Omitting it made
+      // are (`:whisperHandle`, `:whisperPreviewHandle`). Omitting it made
       // this handle resolve `nil` to the real operational suite, so no test
       // could exercise the family flag without writing a live delivery kill
       // switch onto a developer's machine (#2139). Production is unchanged:
@@ -605,23 +603,17 @@ final class ModelDeliveryHome {
       }
     }
 
-    // The multilingual (WhisperKit) registration, built beside the shared
-    // controller (#1386 PR-2). It needs NO second telemetry observer: the
-    // observers wired above are per-identity for Parakeet's mirror only, and the
-    // event bridge below them is already generic across every identity.
+    // The multilingual (Whisper) registration, built beside the shared
+    // controller (#1386 PR-2; #3735: the transcribe.cpp GGUF). It needs NO second
+    // telemetry observer: the observers wired above are per-identity for
+    // Parakeet's mirror only, and the event bridge below them is already generic
+    // across every identity.
     do {
-      let manifest = try DeliveryManifest.loadBundled(
-        resource: "whisperkit-delivery-manifest", bundle: manifestBundle)
-      let appSupport = appSupportRoot
-      let registration = DeliveryRegistration(
-        manifest: manifest,
-        installDirectory: appSupport.appendingPathComponent(
-          "EnviousWispr/Models/whisper", isDirectory: true),
-        metadataDirectory: appSupport.appendingPathComponent(
-          "EnviousWispr/ModelDelivery", isDirectory: true))
-      whisperKitRegistration = registration
+      let registration = try Self.whisperGGUFRegistration(
+        manifestBundle: manifestBundle, appSupport: appSupportRoot)
+      whisperRegistration = registration
       Task { await controller.sweepSupersededStaging(registration) }
-      whisperKitHandle = DeliveredModelHandle(
+      whisperHandle = DeliveredModelHandle(
         controller: controller, registration: registration, defaults: deliveryFlagDefaults)
       let home = self
       Task { await home.recordFirstRunBaseline(for: registration) }
@@ -652,21 +644,14 @@ final class ModelDeliveryHome {
     // leaves it silently wrong. Every event from a user's first install would
     // have been stamped not-first-run. Cloud review caught it.
     do {
-      let manifest = try DeliveryManifest.loadBundled(
-        resource: "whisperkit-preview-delivery-manifest", bundle: manifestBundle)
-      let appSupport = appSupportRoot
-      let registration = DeliveryRegistration(
-        manifest: manifest,
-        // `whisper-preview`, deliberately a SIBLING of `whisper` and never that
-        // directory. See the property's own doc for what sharing one would do.
-        installDirectory: appSupport.appendingPathComponent(
-          "EnviousWispr/Models/whisper-preview", isDirectory: true),
-        // The SHARED metadata directory is safe: staging paths and admission
-        // markers key on the full `ModelIdentity.cacheKey`, which includes the
-        // variant, and the two manifests differ by variant. Only the install
-        // directory is exhaustive.
-        metadataDirectory: appSupport.appendingPathComponent(
-          "EnviousWispr/ModelDelivery", isDirectory: true))
+      // `whisper-preview-gguf`, deliberately a SIBLING of `whisper-gguf` and never
+      // that directory. See the property's own doc for what sharing one would do.
+      // The SHARED metadata directory is safe: staging paths and admission markers
+      // key on the full `ModelIdentity.cacheKey`, and the two manifests differ by
+      // name. Only the install directory is exhaustive.
+      let registration = try Self.whisperPreviewGGUFRegistration(
+        manifestBundle: manifestBundle, appSupport: appSupportRoot)
+      let manifest = registration.manifest
       whisperPreviewRegistration = registration
       Task { await controller.sweepSupersededStaging(registration) }
       whisperPreviewHandle = DeliveredModelHandle(
@@ -1191,16 +1176,16 @@ final class ModelDeliveryHome {
   /// that the heart never loads, so taking the claim would let a preview
   /// download block a dictation from switching engines — the limb interfering
   /// with the heart, which is the one thing this feature must never do.
-  /// **Honours the WhisperKit family kill switch** (#2137 cloud review). The
-  /// primary WhisperKit download door guards `handle.isEnabled()` immediately
-  /// before `ensureAvailable()` (`WhisperKitDeliveryWiring.swift:74,125`), because
+  /// **Honours the Whisper family kill switch** (#2137 cloud review). The
+  /// primary Whisper download door guards `handle.isEnabled()` immediately
+  /// before `ensureAvailable()` (`WhisperDeliveryWiring.swift`), because
   /// `ensureAvailable` does NOT enforce the flag itself. This door did not, so
-  /// with `modelDelivery.whisper_kit.enabled` set false an operator had disabled
-  /// the whole family and this path would still start a 217 MB fetch — bypassing
+  /// with `modelDelivery.whisper.enabled` set false an operator had disabled
+  /// the whole family and this path would still start a 270 MB fetch — bypassing
   /// the relaunch-free delivery rollback that flag exists to provide.
   ///
-  /// The preview model IS in that family (same `whisper_kit` registration family,
-  /// differing only by variant), so one flag correctly covers both.
+  /// The preview model IS in that family (same `whisper` registration family,
+  /// differing by model name), so one flag correctly covers both.
   ///
   /// Adds a guard only to THIS door, because the other two doors already carry
   /// the family's answer and they do not agree with each other:
@@ -1219,22 +1204,60 @@ final class ModelDeliveryHome {
   /// Do not "fix" that asymmetry from this file. Changing `remove()` would
   /// change a shared primitive the main transcription model also uses, against
   /// its owner's stated intent.
+  /// #3735: the preview artifact's replacement record (`WhisperModelMigration`), bound by
+  /// `WhisperDeliveryWiring`. Every preview command goes through it and refuses while it is
+  /// unbound: a Cancel or Remove that bypassed it would leave the record owed, and the next
+  /// launch would download the model again.
+  struct PreviewReplacementCommands {
+    /// Records owed, then fetches. False when the record could not be read or written.
+    let download: @MainActor () async -> Bool
+    /// Records declined. False when the record could not be read or written; the caller then
+    /// does nothing else.
+    let decline: @MainActor () -> Bool
+  }
+
+  var previewReplacement: PreviewReplacementCommands?
+
+  /// Bumped by every ACCEPTED Cancel or Remove. A Download press captures it when scheduled
+  /// and drops its work if it changed before the work runs, so a Cancel pressed right after
+  /// Download is never undone by the queued Download clearing the decline.
+  private var previewDownloadIntentEpoch = 0
+
+  private func logPreviewRefusal(_ command: String) {
+    Task {
+      await AppLogger.shared.log(
+        "Preview \(command) refused: the Whisper replacement record is unbound or unwritable",
+        level: .info, category: "Delivery")
+    }
+  }
+
   func startPreviewDownload() {
     guard let handle = whisperPreviewHandle else { return }
+    guard let previewReplacement else {
+      logPreviewRefusal("download")
+      return
+    }
     guard handle.isEnabled() else {
       // Logged rather than silent: a Download button that does nothing is
       // otherwise indistinguishable from a broken one, and the flag is remote,
       // so whoever debugs this will not know it was set.
       Task {
         await AppLogger.shared.log(
-          "Preview download refused: the whisper_kit delivery kill switch is off "
-            + "(modelDelivery.whisper_kit.enabled = false)",
+          "Preview download refused: the whisper delivery kill switch is off "
+            + "(modelDelivery.whisper.enabled = false)",
           level: .info, category: "Delivery")
       }
       return
     }
-    Task { _ = await handle.ensureAvailable() }
+    let epoch = previewDownloadIntentEpoch
+    previewDownloadTaskForTests = Task { [weak self] in
+      guard let self, self.previewDownloadIntentEpoch == epoch else { return }
+      if await previewReplacement.download() == false { self.logPreviewRefusal("download") }
+    }
   }
+
+  /// The last Download press's work, so a test can wait for it to end.
+  package private(set) var previewDownloadTaskForTests: Task<Void, Never>?
 
   /// Called BEFORE the preview model's files are deleted, so whoever holds the
   /// loaded model can let go of it first.
@@ -1254,7 +1277,7 @@ final class ModelDeliveryHome {
   /// Called once the files are gone, so previews can run again.
   var previewRemovalDidFinish: (() -> Void)?
 
-  /// Delete the preview model and reclaim its ~217 MB.
+  /// Delete the preview model and reclaim its ~270 MB.
   ///
   /// The controller's `remove` is already thorough and ordered correctly: it
   /// cancels anything in flight, deletes the admission MARKER FIRST so
@@ -1313,6 +1336,14 @@ final class ModelDeliveryHome {
     // other removal is still going, reopening the window it exists to close.
     // The button stays on screen throughout, so a second press is ordinary.
     guard removalTask == nil else { return }
+    // #3735: the decline is recorded BEFORE anything is drained or deleted, and a failed
+    // record refuses the whole removal, so the next launch never fetches a model the user
+    // removed.
+    guard let previewReplacement, previewReplacement.decline() else {
+      logPreviewRefusal("removal")
+      return
+    }
+    previewDownloadIntentEpoch += 1
     removalStepsForTests = []
     let task = Task { [weak self] in
       // AWAIT the drain, do not merely request it. Every holder must be gone
@@ -1334,8 +1365,8 @@ final class ModelDeliveryHome {
         // product decision rather than a review fix.
         self?.removalStepsForTests.append("refused")
         await AppLogger.shared.log(
-          "Preview removal deleted nothing: the whisper_kit delivery kill switch "
-            + "is off (modelDelivery.whisper_kit.enabled = false)",
+          "Preview removal deleted nothing: the whisper delivery kill switch "
+            + "is off (modelDelivery.whisper.enabled = false)",
           level: .info, category: "Delivery")
       }
       self?.removalStepsForTests.append("delete")
@@ -1359,6 +1390,12 @@ final class ModelDeliveryHome {
   /// reports `nothingToCancel` and no state moves.
   func cancelPreviewDownload() {
     guard let handle = whisperPreviewHandle else { return }
+    // #3735: recorded first, so the next launch does not restart a cancelled download.
+    guard let previewReplacement, previewReplacement.decline() else {
+      logPreviewRefusal("cancel")
+      return
+    }
+    previewDownloadIntentEpoch += 1
     Task { await handle.cancelActiveFetch() }
   }
 

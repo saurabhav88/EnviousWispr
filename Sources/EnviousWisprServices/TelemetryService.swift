@@ -187,7 +187,11 @@ public enum RecoveryFailureClass: String, Sendable {
   // functional collision — but one token meaning two things in a wire
   // vocabulary is cheap to avoid now and expensive to undo after it ships.
   case transcriptionFailed = "asr_transcription_failed"
-  case whisperKitModelLoad = "whisperkit_model_load"
+  /// #3735: the transcribe.cpp Whisper engine's model load or decode failed
+  /// (`TranscribeCppWhisperError`). Builds before #3735 report `whisperkit_model_load`
+  /// and `other` for the same slot.
+  case whisperModelLoad = "whisper_model_load"
+  case whisperTranscription = "whisper_transcription"
   case parakeetModelLoad = "parakeet_model_load"
   case parakeetTranscription = "parakeet_transcription"
   case xpcTransport = "xpc_transport"
@@ -356,7 +360,7 @@ public final class TelemetryService {
         asrInputDurationMs: m.asrInputDurationMs, asrLastTokenEndMs: m.asrLastTokenEndMs,
         asrLastTokenGapMs: m.asrLastTokenGapMs, asrChunked: m.asrChunked,
         // #1309: requested restated from the metrics' streamingMode only when
-        // the effective-path facts are present (WhisperKit; Parakeet omits all).
+        // the effective-path facts are present (Whisper; Parakeet omits all).
         streamingRequested: m.streamingEffective != nil ? m.streamingMode : nil,
         streamingEffective: m.streamingEffective,
         streamingDegradeReason: m.streamingDegradeReason,
@@ -2225,7 +2229,9 @@ public final class TelemetryService {
       "stage": stage,
       // #1348 D3 reconciliation: joinable with model_delivery.* datasets.
       "reason_class": "watchdog_fired",
-      "family": backend == "whisperKit" ? "whisper_kit" : backend,
+      // #3735: the backend label and the delivery family share one spelling
+      // ("parakeet", "whisper"), so the backend is the family.
+      "family": backend,
     ]
     if let silenceMs { properties["silence_ms"] = silenceMs }
     if let observedMaxGapMs { properties["observed_max_gap_ms"] = observedMaxGapMs }
@@ -2329,14 +2335,14 @@ public final class TelemetryService {
   }
 
   /// Cold-boot warm-up reached `.ready`. `durationMs` is `ready_at − warmup_started_at`.
-  /// #1275: `inferenceWarmupMs` is an optional property carrying the WhisperKit
+  /// #1275: `inferenceWarmupMs` is an optional property carrying the Whisper
   /// silent warm-up inference's own duration (nested inside `durationMs`, not
   /// additive) — absent/nil for Parakeet and for pre-#1275 rows. Query by
   /// presence; no consumer branches on magnitude.
   /// #1388: `installDurationMs` / `installSilenceMaxMs` record the CoreML
   /// install phase un-truncated (the removed 15s gate used to abort before
   /// the distribution was observable). Nil when no wedge guard covered the
-  /// warm-up (WhisperKit, in-process debug) and for pre-#1388 rows. Query by
+  /// warm-up (Whisper, in-process debug) and for pre-#1388 rows. Query by
   /// presence, never `!= 0`.
   /// #3546 §3.7 T1: `model` is the identity published by this warm-up.
   public func coldStartWarmupCompleted(
@@ -2658,7 +2664,7 @@ public final class TelemetryService {
   /// held the engine). Observability only, no behavior change: today these
   /// deferrals emit nothing, so a future regression reopening one of these
   /// races has no telemetry signal to catch it by. One shared event with a
-  /// `site` property (e.g. `"startWarm"` / `"whisperKitUnload"` /
+  /// `site` property (e.g. `"startWarm"` / `"whisperUnload"` /
   /// `"parakeetUnload"` / `"pttPrewarm"` / `"benchmarkSuite"`), not five
   /// separate events.
   public func recoveryEngineActionDeferred(site: String) {
@@ -2850,7 +2856,7 @@ public final class TelemetryService {
   /// **Exactly two properties, and the bound is deliberate.** Settings telemetry
   /// already reports whether the preview is switched ON; it cannot say which
   /// engine that adoption runs on, which is the question that decides whether
-  /// shipping a 217 MB download was worth it. A refusal REASON was drafted as a
+  /// shipping the optional Universal download was worth it. A refusal REASON was drafted as a
   /// third property and cut: the reasons are a closed set today but they name
   /// language and streaming state, and this event fires once per recording, so
   /// it is the wrong place to start describing what a user was doing.
@@ -3049,7 +3055,7 @@ public final class TelemetryService {
     public let asrLastTokenEndMs: Int?
     public let asrLastTokenGapMs: Int?
     public let asrChunked: Bool?
-    /// WhisperKit only. `streamingRequested` = the kernel's capability-gate
+    /// Whisper only. `streamingRequested` = the kernel's capability-gate
     /// decision; `streamingEffective` = a streaming flush delivered the
     /// transcript; `streamingDegradeReason` = none / disabled / auto_language /
     /// model_not_ready / flush_empty / flush_throw; `streamingFinalPath` =
@@ -3519,7 +3525,7 @@ public final class TelemetryService {
     PostHogSDK.shared.capture("settings.changed", properties: props)
   }
 
-  /// #1635: the WhisperKit setup row's "getting the model ready" copy genuinely entered the
+  /// #1635: the Whisper setup row's "getting the model ready" copy genuinely entered the
   /// visible view hierarchy.
   ///
   /// WHY THIS EXISTS AT ALL. The previous attempt at #1635 shipped a label that could NEVER
@@ -3627,7 +3633,7 @@ public final class TelemetryService {
   /// so it was deferred to the next idle/recording-start. Bypass, not a failure.
   public func settingsChangeBlocked(
     setting: String, requested: String, activeBackend: String,
-    reason: String, parakeetState: String, whisperKitState: String
+    reason: String, parakeetState: String, whisperState: String
   ) {
     #if DEBUG
       testEventHook?(
@@ -3639,7 +3645,7 @@ public final class TelemetryService {
             "active_backend": activeBackend,
             "reason": reason,
             "parakeet_state": parakeetState,
-            "whisperkit_state": whisperKitState,
+            "whisper_state": whisperState,
           ]))
     #endif
     PostHogSDK.shared.capture(
@@ -3650,7 +3656,7 @@ public final class TelemetryService {
         "active_backend": activeBackend,
         "reason": reason,
         "parakeet_state": parakeetState,
-        "whisperkit_state": whisperKitState,
+        "whisper_state": whisperState,
       ])
   }
 

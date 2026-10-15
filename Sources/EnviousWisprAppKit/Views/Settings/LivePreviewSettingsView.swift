@@ -677,7 +677,7 @@ struct LivePreviewSettingsView: View {
   ///
   /// **Selecting is separate from acting, and the structure enforces it.**
   /// Tapping the card chooses the engine; the footer button downloads, cancels,
-  /// resumes, retries or removes. Choosing an engine must never start a 217 MB
+  /// resumes, retries or removes. Choosing an engine must never start a model
   /// download by itself — the founder's Gate 1 decision on #2123. The footer is
   /// a sibling of `EngineCard`'s selection button rather than a child, because
   /// that button combines its accessibility children and anything actionable

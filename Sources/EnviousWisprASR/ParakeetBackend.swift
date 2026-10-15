@@ -389,7 +389,7 @@ public actor ParakeetBackend: ASRBackend {
     onInferenceEntered: ASRInferenceEntryObserver? = nil
   ) async throws -> ASRResult {
     // #2918: captured and cleared before the readiness guard, so a refused call leaves
-    // nothing installed for the next caller (same ordering as WhisperKit).
+    // nothing installed for the next caller (same ordering as the Whisper backend).
     let progressObserver = transcriptionProgressObserver
     transcriptionProgressObserver = nil
     guard isReady, let manager = fluidAsrManager else { throw ASRError.notReady }

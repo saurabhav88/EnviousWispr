@@ -8,7 +8,7 @@ import Speech
 /// `DictationTranscriber`, used for DISPLAY ONLY (#1988).
 ///
 /// This is a limb in the strictest sense. Nothing it produces reaches the
-/// clipboard: the pasted text still comes from the shipped Parakeet/WhisperKit
+/// clipboard: the pasted text still comes from the shipped Parakeet/Whisper
 /// path, decoded from the whole recording after the key is released, and then
 /// through custom words, the deterministic layer and polish. This engine exists
 /// so the user can SEE that we heard them while they are still talking.

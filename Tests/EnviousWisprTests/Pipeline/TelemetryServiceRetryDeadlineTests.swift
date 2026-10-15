@@ -61,7 +61,7 @@
     func resolvedPayloadTimeout() {
       let events = captureEvents {
         TelemetryService.shared.asrRetryDeadlineResolved(
-          takeID: "take-2", asrBackend: "whisperkit", budgetMs: 900,
+          takeID: "take-2", asrBackend: "whisper", budgetMs: 900,
           resolution: .timedOut, disposition: .rejected,
           operationReturnMs: nil, callerResumeMs: 950, acceptedAfterCutoff: false, model: nil)
       }

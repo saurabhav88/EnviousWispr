@@ -38,7 +38,7 @@ struct OpenSourceLicensesView: View {
             SettingsRow(
               map: .id(.licenseNotices),
               icon: "doc.on.doc",
-              help: "Read the notices for WhisperKit, FluidAudio, Silero VAD, Sparkle and other components."
+              help: "Read the notices for transcribe.cpp, FluidAudio, Silero VAD, Sparkle and other components."
             ) {
               SettingsActionButton(title: SettingsItemCopy.AppSettings.viewNotices, isEnabled: true) {
                 open(.notices)

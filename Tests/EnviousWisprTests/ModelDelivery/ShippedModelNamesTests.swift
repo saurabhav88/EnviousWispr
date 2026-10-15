@@ -47,8 +47,8 @@ import Testing
     for resource in [
       "edit-judge-delivery-manifest", "eg1-checker-delivery-manifest", "eg1-delivery-manifest", "parakeet-delivery-manifest",
       "parakeet-v3-retired-manifest",
-      "s1-checker-delivery-manifest", "s1-delivery-manifest", "whisperkit-delivery-manifest",
-      "whisperkit-preview-delivery-manifest", "word-check-delivery-manifest",
+      "s1-checker-delivery-manifest", "s1-delivery-manifest", "whisper-delivery-manifest",
+      "whisper-preview-delivery-manifest", "word-check-delivery-manifest",
     ] {
       let url = resourceDir.appendingPathComponent("\(resource).json")
       let manifest = try DeliveryManifest.load(from: try Data(contentsOf: url))
@@ -79,9 +79,12 @@ import Testing
       .s1Mini: ["s1-mini"],
       .s1MiniChecker: ["s1c"],
       .whisper: ["whisper-large-v3-turbo-gguf", "whisper-small-gguf"],
-      .whisperKit: ["whisperkit-coreml"],
       .wordCheck: ["kev-wc"],
     ]
+    // #3735: the one deliberate removal. The retired `whisper_kit` family left with its
+    // `ModelFamily` case, so no registration (and no sweep, which runs per family) can
+    // exist for it again; its leftovers are recognized by literal name in
+    // `WhisperModelMigration` instead.
     // EXACT equality, not containment. Containment would let the registry GROW
     // without this minimum growing with it, so a name added today could be
     // silently deleted tomorrow with nothing failing. Equality forces both to
@@ -100,10 +103,10 @@ import Testing
   /// The OTHER assumption the sweep rests on, and the one that nearly bit.
   ///
   /// "Superseded" means same family, same name, SAME VARIANT, different
-  /// revision. WhisperKit ships stable and Preview with the same family, the
-  /// same name AND the same revision, separated only by variant — so if two
-  /// registrations ever differed only by REVISION, the sweep would read one as
-  /// a superseded copy of the other and delete an in-flight download.
+  /// revision. The retired WhisperKit pair shipped stable and Preview with the
+  /// same family, the same name AND the same revision, separated only by variant
+  /// — so if two registrations ever differed only by REVISION, the sweep would
+  /// read one as a superseded copy of the other and delete an in-flight download.
   ///
   /// The plan's prose originally omitted variant from that definition. The
   /// inherited prefix/suffix mechanism carries it anyway, so the code was
@@ -141,8 +144,8 @@ import Testing
     for resource in [
       "edit-judge-delivery-manifest", "eg1-checker-delivery-manifest", "eg1-delivery-manifest", "parakeet-delivery-manifest",
       "parakeet-v3-retired-manifest",
-      "s1-checker-delivery-manifest", "s1-delivery-manifest", "whisperkit-delivery-manifest",
-      "whisperkit-preview-delivery-manifest", "word-check-delivery-manifest",
+      "s1-checker-delivery-manifest", "s1-delivery-manifest", "whisper-delivery-manifest",
+      "whisper-preview-delivery-manifest", "word-check-delivery-manifest",
     ] {
       let url = resourceDir.appendingPathComponent("\(resource).json")
       let identity = try DeliveryManifest.load(from: try Data(contentsOf: url)).identity
@@ -159,26 +162,26 @@ import Testing
   /// distinct, so the check above passes trivially and proves nothing until
   /// `firstCollision` is shown to FIRE on the shape it forbids.
   ///
-  /// The shipped stable and Preview pair differ only by VARIANT and must stay
-  /// distinct; two registrations differing only by REVISION collapse to the
-  /// same key and must be caught. Both directions asserted, because a key that
-  /// caught everything would break Preview and a key that caught nothing would
-  /// let the sweep delete a live download.
+  /// Two variants of one model (the retired WhisperKit pair's shape) differ only
+  /// by VARIANT and must stay distinct; two registrations differing only by
+  /// REVISION collapse to the same key and must be caught. Both directions
+  /// asserted, because a key that caught everything would break a variant pair
+  /// and a key that caught nothing would let the sweep delete a live download.
   @Test func theCollisionDetectorFiresOnRevisionOnlyDifferences() {
     let stable = ModelIdentity(
-      family: .whisperKit, name: "whisperkit-coreml", revision: "aaa",
-      variant: "openai_whisper-large-v3-v20240930_turbo", runtimeABI: "abi")
-    let preview = ModelIdentity(
-      family: .whisperKit, name: "whisperkit-coreml", revision: "aaa",
-      variant: "openai_whisper-small_216MB", runtimeABI: "abi")
+      family: .whisper, name: "whisper-large-v3-turbo-gguf", revision: "aaa",
+      variant: "q8_0", runtimeABI: "abi")
+    let otherVariant = ModelIdentity(
+      family: .whisper, name: "whisper-large-v3-turbo-gguf", revision: "aaa",
+      variant: "q5_0", runtimeABI: "abi")
     // Differs from `stable` ONLY by revision: the forbidden shape.
     let stableNewerRevision = ModelIdentity(
-      family: .whisperKit, name: "whisperkit-coreml", revision: "bbb",
-      variant: "openai_whisper-large-v3-v20240930_turbo", runtimeABI: "abi")
+      family: .whisper, name: "whisper-large-v3-turbo-gguf", revision: "bbb",
+      variant: "q8_0", runtimeABI: "abi")
 
     #expect(
-      Self.firstCollision([stable, preview].map(Self.uniquenessKey)) == nil,
-      "the shipped stable and Preview pair differ only by variant and must NOT collide")
+      Self.firstCollision([stable, otherVariant].map(Self.uniquenessKey)) == nil,
+      "two variants of one model differ only by variant and must NOT collide")
 
     #expect(
       Self.firstCollision([stable, stableNewerRevision].map(Self.uniquenessKey)) != nil,
@@ -217,8 +220,8 @@ import Testing
     for resource in [
       "edit-judge-delivery-manifest", "eg1-checker-delivery-manifest", "eg1-delivery-manifest", "parakeet-delivery-manifest",
       "parakeet-v3-retired-manifest",
-      "s1-checker-delivery-manifest", "s1-delivery-manifest", "whisperkit-delivery-manifest",
-      "whisperkit-preview-delivery-manifest", "word-check-delivery-manifest",
+      "s1-checker-delivery-manifest", "s1-delivery-manifest", "whisper-delivery-manifest",
+      "whisper-preview-delivery-manifest", "word-check-delivery-manifest",
     ] {
       let url = resourceDir.appendingPathComponent("\(resource).json")
       let identity = try DeliveryManifest.load(from: try Data(contentsOf: url)).identity

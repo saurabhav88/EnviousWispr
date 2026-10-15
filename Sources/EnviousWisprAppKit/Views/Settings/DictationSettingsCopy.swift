@@ -101,7 +101,7 @@ enum DictationSettingsCopy {
       "Runs on your Mac after the model is set up.",
       comment: "Speech engine settings: short line under the model setup row.")
     static let modelSetupHelp = LocalizedStringResource(
-      "WhisperKit requires a ~1.5 GB model download. It runs fully on your Mac, no internet needed after setup."
+      "Whisper needs an 886 MB model download. It runs fully on your Mac, no internet needed after setup."
     )
 
     static let autoDetectTitle = LocalizedStringResource("Auto-detect language")

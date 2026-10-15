@@ -4,8 +4,8 @@ import Foundation
 ///
 /// The same vocabulary as `model_delivery.model_name`: the delivery manifest's
 /// identity name, its revision cut to eight characters, and its variant. The
-/// name alone cannot tell the two WhisperKit manifests apart (they share name
-/// and revision and differ by variant), so the variant travels too.
+/// name alone could not tell the two retired WhisperKit manifests apart (they shared name
+/// and revision and differed by variant), so the variant travels too.
 ///
 /// `public` because the `TelemetryService` emitters that carry it are public.
 public struct ASRModelIdentity: Sendable, Equatable, Codable {

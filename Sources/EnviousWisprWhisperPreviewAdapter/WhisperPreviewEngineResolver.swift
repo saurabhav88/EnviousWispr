@@ -22,9 +22,10 @@ package enum WhisperPreviewEngineResolver {
     /// digest change invalidates a prepared engine rather than serving stale
     /// weights from a model that is no longer the one we ship.
     package let artifactIdentity: String
-    package let modelDirectory: URL
-    package let tokenizerDirectory: URL
-    package let variant: String
+    /// The admitted GGUF's resolved path (the manifest's entrypoint in its install
+    /// directory). transcribe.cpp reads its vocabulary from the file itself, so there is
+    /// no tokenizer to bundle or resolve.
+    package let modelPath: String
     /// Has delivery admitted the artifact. Never a download trigger.
     package let isAdmitted: @Sendable () async -> Bool
     /// Is the transcription engine itself decoding continuously right now.
@@ -32,16 +33,12 @@ package enum WhisperPreviewEngineResolver {
 
     package init(
       artifactIdentity: String,
-      modelDirectory: URL,
-      tokenizerDirectory: URL,
-      variant: String,
+      modelPath: String,
       isAdmitted: @escaping @Sendable () async -> Bool,
       isHeartStreaming: @escaping @Sendable () async -> Bool
     ) {
       self.artifactIdentity = artifactIdentity
-      self.modelDirectory = modelDirectory
-      self.tokenizerDirectory = tokenizerDirectory
-      self.variant = variant
+      self.modelPath = modelPath
       self.isAdmitted = isAdmitted
       self.isHeartStreaming = isHeartStreaming
     }
@@ -123,11 +120,8 @@ package enum WhisperPreviewEngineResolver {
     return .ready(
       LivePreviewEngineCandidate(key: key) {
         WhisperPreviewRecognizer(
-          runtime: WhisperPreviewRuntime(
-            modelDirectory: environment.modelDirectory,
-            tokenizerDirectory: environment.tokenizerDirectory,
-            variant: environment.variant,
-            isAdmitted: environment.isAdmitted),
+          runtime: TranscribeCppPreviewRuntime(
+            modelPath: environment.modelPath, isAdmitted: environment.isAdmitted),
           language: language)
       })
   }

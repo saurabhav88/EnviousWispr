@@ -16,7 +16,7 @@
  "retiredIDs": [],
  "resource": {
   "path": "Sources/EnviousWisprAppKit/Resources/SettingsSearchVocabulary.json",
-  "sha256": "8febfbae120e05d2b62a5ce65abcc5723a82502f3588b6312821a5c7cab1ed3b",
+  "sha256": "55ee74c2d244db94df78782b675eeb0b9b6ef494a69cbdef86ce2918df8df304",
   "bytes": 1606257
  },
  "sources": [
@@ -301,7 +301,7 @@
  "languages": [
   {
    "language": "ar",
-   "contentSHA256": "aef58c592b086f71a6d231f103bdbe9801040e17499c4f755f139b7baf79d72f",
+   "contentSHA256": "e01d0e6a9baacb4145dd1260dbd6308c646eeffbd7b13766205042d58a51bfa5",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -412,13 +412,22 @@
       "sha256": "41fdcefadf40189e9a6abc04ba829ce3e6788de7b33c0091baa25186ae29a57c"
      },
      "disposition": "adopted as returned by the review (additions/casualMode.json)"
+    },
+    {
+     "kind": "size-edit",
+     "scope": [
+      "previewEngine.universal"
+     ],
+     "date": "2026-10-14",
+     "method": "#3735 chunk 9: the Universal preview download is now the transcribe.cpp whisper-small q8_0 file, 270 MB by whisper-preview-delivery-manifest.json (LivePreviewEnginePresentationTests binds the English copy to that manifest)",
+     "disposition": "replaced the size token 217 with 270 in the reviewed words; no other word changed and no new translated content"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "bg",
-   "contentSHA256": "7e98f95b43e1437d4ea3b2de997fd2b247dfd839e8f205ed72be09dbe64853c2",
+   "contentSHA256": "b48348028ee09ee813e452f85fbbaa4cbba03ab06992fb52953933919aeb0509",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -520,13 +529,22 @@
       "sha256": "9915a97e0d8d3607355b9002562b2c9a804652f45081697b8164c31756280b77"
      },
      "disposition": "adopted as returned by the review (additions/casualMode.json)"
+    },
+    {
+     "kind": "size-edit",
+     "scope": [
+      "previewEngine.universal"
+     ],
+     "date": "2026-10-14",
+     "method": "#3735 chunk 9: the Universal preview download is now the transcribe.cpp whisper-small q8_0 file, 270 MB by whisper-preview-delivery-manifest.json (LivePreviewEnginePresentationTests binds the English copy to that manifest)",
+     "disposition": "replaced the size token 217 with 270 in the reviewed words; no other word changed and no new translated content"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "cs",
-   "contentSHA256": "570125e1266673446ced606e6291f1b9c3a42439df8b6d57b6894dd7913fab4b",
+   "contentSHA256": "e8bf60d75727ba13d1eb7863234f64ed2fab57f1f0fd7438fa8f18baedfde5d1",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -628,13 +646,22 @@
       "sha256": "c537c99135a371847974e950b3cf6829602020c8af5dd5281da222f1c2e021d5"
      },
      "disposition": "adopted as returned by the review (additions/casualMode.json)"
+    },
+    {
+     "kind": "size-edit",
+     "scope": [
+      "previewEngine.universal"
+     ],
+     "date": "2026-10-14",
+     "method": "#3735 chunk 9: the Universal preview download is now the transcribe.cpp whisper-small q8_0 file, 270 MB by whisper-preview-delivery-manifest.json (LivePreviewEnginePresentationTests binds the English copy to that manifest)",
+     "disposition": "replaced the size token 217 with 270 in the reviewed words; no other word changed and no new translated content"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "da",
-   "contentSHA256": "99acbbecfd24f5f211eb5143d941e578c795714f0c0d828b4c3bc14936308fe2",
+   "contentSHA256": "9d22f511ce1d9857df6b3eeda8ce7628cee601445a5da83722ea245cbd93aaf9",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -736,13 +763,22 @@
       "sha256": "df04fa7086aac08dfc851255af218efa8eaba6d1b9a20409a2b8572531aa09d7"
      },
      "disposition": "adopted as returned by the review (additions/casualMode.json)"
+    },
+    {
+     "kind": "size-edit",
+     "scope": [
+      "previewEngine.universal"
+     ],
+     "date": "2026-10-14",
+     "method": "#3735 chunk 9: the Universal preview download is now the transcribe.cpp whisper-small q8_0 file, 270 MB by whisper-preview-delivery-manifest.json (LivePreviewEnginePresentationTests binds the English copy to that manifest)",
+     "disposition": "replaced the size token 217 with 270 in the reviewed words; no other word changed and no new translated content"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "de",
-   "contentSHA256": "4c38f6af274fb26c0f3e79a451f105ed08acf87578a00b115338e73f3c02056e",
+   "contentSHA256": "c068a4e723468e2f45fd88ba42bce02295236e4908ab17297acad91d05c447c8",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -868,13 +904,22 @@
       "sha256": "687c85a4cd2180312c8ee50b70728bd6f31f42d75ef9b8843e7f9c31ea14523b"
      },
      "disposition": "adopted as returned by the review (additions/casualMode.json)"
+    },
+    {
+     "kind": "size-edit",
+     "scope": [
+      "previewEngine.universal"
+     ],
+     "date": "2026-10-14",
+     "method": "#3735 chunk 9: the Universal preview download is now the transcribe.cpp whisper-small q8_0 file, 270 MB by whisper-preview-delivery-manifest.json (LivePreviewEnginePresentationTests binds the English copy to that manifest)",
+     "disposition": "replaced the size token 217 with 270 in the reviewed words; no other word changed and no new translated content"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "el",
-   "contentSHA256": "609f4bc73a5801ac840d3eba5c1d88b812c1bc2b48d021597fba5134bae91475",
+   "contentSHA256": "e43bbba3c90950b8dd3ad52b3fc833291e219c50ed2f8cdba268340f359568d0",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -985,13 +1030,22 @@
       "sha256": "f88ece2fe7950b924a08b79b5d56ce07bfa6e51b80cdc81184f86a663eec87a0"
      },
      "disposition": "adopted as returned by the review (additions/casualMode.json)"
+    },
+    {
+     "kind": "size-edit",
+     "scope": [
+      "previewEngine.universal"
+     ],
+     "date": "2026-10-14",
+     "method": "#3735 chunk 9: the Universal preview download is now the transcribe.cpp whisper-small q8_0 file, 270 MB by whisper-preview-delivery-manifest.json (LivePreviewEnginePresentationTests binds the English copy to that manifest)",
+     "disposition": "replaced the size token 217 with 270 in the reviewed words; no other word changed and no new translated content"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "en",
-   "contentSHA256": "4acabcb9502436ea42a289128729e86a9f1c885d93c1b0df17fae69bc2710dc5",
+   "contentSHA256": "f99abdba6caacbc593a21cfc1b218125c7976159951b9263219fff51d660d545",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -1108,13 +1162,22 @@
       "sha256": "166b8979e538b26ce25b339674588e37489674003e488e635c40d3f13fd65016"
      },
      "disposition": "adopted as returned by the review (additions/casualMode.json)"
+    },
+    {
+     "kind": "size-edit",
+     "scope": [
+      "previewEngine.universal"
+     ],
+     "date": "2026-10-14",
+     "method": "#3735 chunk 9: the Universal preview download is now the transcribe.cpp whisper-small q8_0 file, 270 MB by whisper-preview-delivery-manifest.json (LivePreviewEnginePresentationTests binds the English copy to that manifest)",
+     "disposition": "replaced the size token 217 with 270 in the reviewed words; no other word changed and no new translated content"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "es",
-   "contentSHA256": "1426da6c2336b786627e996a0393ce0b4a36949912413d9a1a2ec12211a8aae9",
+   "contentSHA256": "93b9439d1956e627e2e4c69b0adfcb09a0f781c13918239f27ec4fb948e1f120",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -1225,13 +1288,22 @@
       "sha256": "4eaf4ee4e629947f4b2ba139d63c384ac0cb978f7777d971df9c5ff1e489376a"
      },
      "disposition": "adopted as returned by the review (additions/casualMode.json)"
+    },
+    {
+     "kind": "size-edit",
+     "scope": [
+      "previewEngine.universal"
+     ],
+     "date": "2026-10-14",
+     "method": "#3735 chunk 9: the Universal preview download is now the transcribe.cpp whisper-small q8_0 file, 270 MB by whisper-preview-delivery-manifest.json (LivePreviewEnginePresentationTests binds the English copy to that manifest)",
+     "disposition": "replaced the size token 217 with 270 in the reviewed words; no other word changed and no new translated content"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "et",
-   "contentSHA256": "f1e89d4bcd0928169983c417efde26d6ebd9489eb18a084fface1758bbd02f8c",
+   "contentSHA256": "8654a55625dd440e121c00c10e0741a4137552053b8efe8713657380f3b3fdcb",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -1333,13 +1405,22 @@
       "sha256": "2fe4d9fb46c3cac8f1d7a7d75a88a44ae9955ec22b0f45ef01c19cac7abc8915"
      },
      "disposition": "adopted as returned by the review (additions/casualMode.json)"
+    },
+    {
+     "kind": "size-edit",
+     "scope": [
+      "previewEngine.universal"
+     ],
+     "date": "2026-10-14",
+     "method": "#3735 chunk 9: the Universal preview download is now the transcribe.cpp whisper-small q8_0 file, 270 MB by whisper-preview-delivery-manifest.json (LivePreviewEnginePresentationTests binds the English copy to that manifest)",
+     "disposition": "replaced the size token 217 with 270 in the reviewed words; no other word changed and no new translated content"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "fi",
-   "contentSHA256": "ede139d4d2566e4d63ede2a19681672a513456364261ec86c46075874a99b218",
+   "contentSHA256": "0782a84b8de74a6e99bdfd79935a7326db2e3f6245f8ef6d28d8ecbe308bdda4",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -1441,13 +1522,22 @@
       "sha256": "d21d89137e2ce3f20b67776e6b169afc2e6f61d32c4f628e2948a6b4c81c08f6"
      },
      "disposition": "adopted as returned by the review (additions/casualMode.json)"
+    },
+    {
+     "kind": "size-edit",
+     "scope": [
+      "previewEngine.universal"
+     ],
+     "date": "2026-10-14",
+     "method": "#3735 chunk 9: the Universal preview download is now the transcribe.cpp whisper-small q8_0 file, 270 MB by whisper-preview-delivery-manifest.json (LivePreviewEnginePresentationTests binds the English copy to that manifest)",
+     "disposition": "replaced the size token 217 with 270 in the reviewed words; no other word changed and no new translated content"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "fr",
-   "contentSHA256": "2bb4cfa88674e7dd596f219e393d9a1597f5dfb901b56f2da0a613bf2673cb87",
+   "contentSHA256": "65956bbd0521aaec20896fcf12f80bf69273b203f07d818f4dffadb6f2971a00",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -1549,13 +1639,22 @@
       "sha256": "8a1fef204c63cae6b941856c428a0e2f5c279e09779a3b931192368e83c5e27d"
      },
      "disposition": "adopted as returned by the review (additions/casualMode.json)"
+    },
+    {
+     "kind": "size-edit",
+     "scope": [
+      "previewEngine.universal"
+     ],
+     "date": "2026-10-14",
+     "method": "#3735 chunk 9: the Universal preview download is now the transcribe.cpp whisper-small q8_0 file, 270 MB by whisper-preview-delivery-manifest.json (LivePreviewEnginePresentationTests binds the English copy to that manifest)",
+     "disposition": "replaced the size token 217 with 270 in the reviewed words; no other word changed and no new translated content"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "hi",
-   "contentSHA256": "4611bc2cf9c669a77843e5752050fc7c8578ca93607b71b7c6b04f5a4c411582",
+   "contentSHA256": "e79060a48a22a3d86c6b0e0a9b8ab05a0163fb24d794a57e6f1c68c2cd45ee8e",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -1657,13 +1756,22 @@
       "sha256": "cd1847780d1bee7883dc6e092117b9406b414f486c5f0ea93fba7ba1964b7a05"
      },
      "disposition": "adopted as returned by the review (additions/casualMode.json)"
+    },
+    {
+     "kind": "size-edit",
+     "scope": [
+      "previewEngine.universal"
+     ],
+     "date": "2026-10-14",
+     "method": "#3735 chunk 9: the Universal preview download is now the transcribe.cpp whisper-small q8_0 file, 270 MB by whisper-preview-delivery-manifest.json (LivePreviewEnginePresentationTests binds the English copy to that manifest)",
+     "disposition": "replaced the size token 217 with 270 in the reviewed words; no other word changed and no new translated content"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "hr",
-   "contentSHA256": "677bfa660963e082b2152150c2ad5214e0b3c58445612d9f50ffe88b27e6f6db",
+   "contentSHA256": "6193173af4b7b9a9c37c436f2d9d2e863e4ee2688dfd29903f768daacd5c5a3a",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -1765,13 +1873,22 @@
       "sha256": "291e6b2f03c2f1b9a8daa30297945534774cfcdf9e1c7b14959f163278274fd7"
      },
      "disposition": "adopted as returned by the review (additions/casualMode.json)"
+    },
+    {
+     "kind": "size-edit",
+     "scope": [
+      "previewEngine.universal"
+     ],
+     "date": "2026-10-14",
+     "method": "#3735 chunk 9: the Universal preview download is now the transcribe.cpp whisper-small q8_0 file, 270 MB by whisper-preview-delivery-manifest.json (LivePreviewEnginePresentationTests binds the English copy to that manifest)",
+     "disposition": "replaced the size token 217 with 270 in the reviewed words; no other word changed and no new translated content"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "hu",
-   "contentSHA256": "622bde66c1e90debeaeb09c8afa03226dc2d38fdcd1c67c2ca7d21cff318a2f0",
+   "contentSHA256": "2d679655c12209b000129f892f34d89f0c92e5d59a32ed828d299ee4ae1b4c7f",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -1873,13 +1990,22 @@
       "sha256": "1931eb9f2415f8ab980efcf049178eb5a7c54b322bcc14ef5bc4f215c3e15215"
      },
      "disposition": "adopted as returned by the review (additions/casualMode.json)"
+    },
+    {
+     "kind": "size-edit",
+     "scope": [
+      "previewEngine.universal"
+     ],
+     "date": "2026-10-14",
+     "method": "#3735 chunk 9: the Universal preview download is now the transcribe.cpp whisper-small q8_0 file, 270 MB by whisper-preview-delivery-manifest.json (LivePreviewEnginePresentationTests binds the English copy to that manifest)",
+     "disposition": "replaced the size token 217 with 270 in the reviewed words; no other word changed and no new translated content"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "it",
-   "contentSHA256": "e7eb156ab6779fb1c253607d48b336f5c44e98324d321c199ee72a6649e91d18",
+   "contentSHA256": "3d3e1ee0f99efef32206ef03180cec958576c997f435144d747de83de5ecc66b",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -1990,13 +2116,22 @@
       "sha256": "f8d991dc6d4882d4d42792e36d86192c79233c4889ab1ac21e42bd0495cf520c"
      },
      "disposition": "adopted as returned by the review (additions/casualMode.json)"
+    },
+    {
+     "kind": "size-edit",
+     "scope": [
+      "previewEngine.universal"
+     ],
+     "date": "2026-10-14",
+     "method": "#3735 chunk 9: the Universal preview download is now the transcribe.cpp whisper-small q8_0 file, 270 MB by whisper-preview-delivery-manifest.json (LivePreviewEnginePresentationTests binds the English copy to that manifest)",
+     "disposition": "replaced the size token 217 with 270 in the reviewed words; no other word changed and no new translated content"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "ja",
-   "contentSHA256": "16a6d2165d742923ca5bd8244640c09a90eb9949809d5e219d00d3582942d823",
+   "contentSHA256": "e4a60c3c78667d32c88fa83b65591a30b3b81c17deb3a030c484c7fc332bf6e3",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -2098,13 +2233,22 @@
       "sha256": "5594cae9c035bcec4b46f45bb66bff383c9fb89b5c9331c2a37a2caec903d710"
      },
      "disposition": "adopted as returned by the review (additions/casualMode.json)"
+    },
+    {
+     "kind": "size-edit",
+     "scope": [
+      "previewEngine.universal"
+     ],
+     "date": "2026-10-14",
+     "method": "#3735 chunk 9: the Universal preview download is now the transcribe.cpp whisper-small q8_0 file, 270 MB by whisper-preview-delivery-manifest.json (LivePreviewEnginePresentationTests binds the English copy to that manifest)",
+     "disposition": "replaced the size token 217 with 270 in the reviewed words; no other word changed and no new translated content"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "ko",
-   "contentSHA256": "71ccb428733627ffce8642ac6342fde442af2b7b4cc237fa6652a4c8fcb6b879",
+   "contentSHA256": "efecea0f4ef4cb427d56e958cc44f1966aaa560a6d6c3bba60b0a4f9a5d4b782",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -2206,13 +2350,22 @@
       "sha256": "9eba67e8825531f74c71bdd63abccdbfa6c5e30c9c80dd631449a3429a52192a"
      },
      "disposition": "adopted as returned by the review (additions/casualMode.json)"
+    },
+    {
+     "kind": "size-edit",
+     "scope": [
+      "previewEngine.universal"
+     ],
+     "date": "2026-10-14",
+     "method": "#3735 chunk 9: the Universal preview download is now the transcribe.cpp whisper-small q8_0 file, 270 MB by whisper-preview-delivery-manifest.json (LivePreviewEnginePresentationTests binds the English copy to that manifest)",
+     "disposition": "replaced the size token 217 with 270 in the reviewed words; no other word changed and no new translated content"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "lt",
-   "contentSHA256": "7901a3e0cfa397437d85a87d71082df5a81702ca81d735d446484a637fe1c92d",
+   "contentSHA256": "3b6a654dde2707eb6d55f2c70d1ccb39cbd6000ecf0f1c9f232b0cb7b68d5f30",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -2323,13 +2476,22 @@
       "sha256": "1d5a8768ef5083da6aad269ab3db5ea782bcae34097f2d4eedd73b4d0818c389"
      },
      "disposition": "adopted as returned by the review (additions/casualMode.json)"
+    },
+    {
+     "kind": "size-edit",
+     "scope": [
+      "previewEngine.universal"
+     ],
+     "date": "2026-10-14",
+     "method": "#3735 chunk 9: the Universal preview download is now the transcribe.cpp whisper-small q8_0 file, 270 MB by whisper-preview-delivery-manifest.json (LivePreviewEnginePresentationTests binds the English copy to that manifest)",
+     "disposition": "replaced the size token 217 with 270 in the reviewed words; no other word changed and no new translated content"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "lv",
-   "contentSHA256": "837116be5bc935e600939d52ff441a526864e586cba319f0014fd16e016e4465",
+   "contentSHA256": "60741089c24072ed8e892b5ea52edf11efd2aaaeae04d5f2fbd50f539a11c9e5",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -2431,13 +2593,22 @@
       "sha256": "c8dffec8f1ab295f4bd46d1c2b589156b4adb41632b2148541c21ff5206b467b"
      },
      "disposition": "adopted as returned by the review (additions/casualMode.json)"
+    },
+    {
+     "kind": "size-edit",
+     "scope": [
+      "previewEngine.universal"
+     ],
+     "date": "2026-10-14",
+     "method": "#3735 chunk 9: the Universal preview download is now the transcribe.cpp whisper-small q8_0 file, 270 MB by whisper-preview-delivery-manifest.json (LivePreviewEnginePresentationTests binds the English copy to that manifest)",
+     "disposition": "replaced the size token 217 with 270 in the reviewed words; no other word changed and no new translated content"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "mt",
-   "contentSHA256": "4282152c43d46ea4942287293d24babc664819a491a2afc799937d2b0ebe5d6c",
+   "contentSHA256": "cb8300197597682293267100a518e4db30d4eb4ce9b91365b6d3f6ff7f099dcc",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -2548,13 +2719,22 @@
       "sha256": "1196b84ea9c5c8a77e8883363e0f82d99decc6ed9338e5320ba933e32c0e116f"
      },
      "disposition": "adopted as returned by the review (additions/casualMode.json)"
+    },
+    {
+     "kind": "size-edit",
+     "scope": [
+      "previewEngine.universal"
+     ],
+     "date": "2026-10-14",
+     "method": "#3735 chunk 9: the Universal preview download is now the transcribe.cpp whisper-small q8_0 file, 270 MB by whisper-preview-delivery-manifest.json (LivePreviewEnginePresentationTests binds the English copy to that manifest)",
+     "disposition": "replaced the size token 217 with 270 in the reviewed words; no other word changed and no new translated content"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "nl",
-   "contentSHA256": "b60a62ad51bc53f65497bfd64180c28c818d12cdb03d26e6fbfea4aa2550497e",
+   "contentSHA256": "5d68f97148dd7e6711e0b6e517c40045bf3fdd7d5b97bc998d75608f99b83fea",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -2656,13 +2836,22 @@
       "sha256": "a9482f56f5ad51c79a059a976a39b4a3eb2825219597ca6dd0ecfd6e6eec472c"
      },
      "disposition": "adopted as returned by the review (additions/casualMode.json)"
+    },
+    {
+     "kind": "size-edit",
+     "scope": [
+      "previewEngine.universal"
+     ],
+     "date": "2026-10-14",
+     "method": "#3735 chunk 9: the Universal preview download is now the transcribe.cpp whisper-small q8_0 file, 270 MB by whisper-preview-delivery-manifest.json (LivePreviewEnginePresentationTests binds the English copy to that manifest)",
+     "disposition": "replaced the size token 217 with 270 in the reviewed words; no other word changed and no new translated content"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "pl",
-   "contentSHA256": "ead53b610e8750666ca28cec8b569d226403901fe3b8dcfe590b10b45a7a2d7f",
+   "contentSHA256": "43d11bb3add8f032c506154d9689e0cb00417b4e2fed1a8c260dd6b1e651f20e",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -2764,13 +2953,22 @@
       "sha256": "f518ff4915728711dd8e80239dcfdbb09005fcdda69fc5da8fc6aa2c14e5267c"
      },
      "disposition": "adopted as returned by the review (additions/casualMode.json)"
+    },
+    {
+     "kind": "size-edit",
+     "scope": [
+      "previewEngine.universal"
+     ],
+     "date": "2026-10-14",
+     "method": "#3735 chunk 9: the Universal preview download is now the transcribe.cpp whisper-small q8_0 file, 270 MB by whisper-preview-delivery-manifest.json (LivePreviewEnginePresentationTests binds the English copy to that manifest)",
+     "disposition": "replaced the size token 217 with 270 in the reviewed words; no other word changed and no new translated content"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "pt",
-   "contentSHA256": "6312981d236190e6fc288964397c7548162993d9e91d4f10169ef9ecad9154a2",
+   "contentSHA256": "3199808e071b1535deb2f4dc330d221b2b1765241c6ed5f920cd46efc2ff3f44",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -2880,13 +3078,22 @@
       "sha256": "e5990ed2cb631ab9706dd9465292afe48713c1504ef95efca50c0fc4191e54bc"
      },
      "disposition": "adopted as returned by the review (additions/casualMode.json)"
+    },
+    {
+     "kind": "size-edit",
+     "scope": [
+      "previewEngine.universal"
+     ],
+     "date": "2026-10-14",
+     "method": "#3735 chunk 9: the Universal preview download is now the transcribe.cpp whisper-small q8_0 file, 270 MB by whisper-preview-delivery-manifest.json (LivePreviewEnginePresentationTests binds the English copy to that manifest)",
+     "disposition": "replaced the size token 217 with 270 in the reviewed words; no other word changed and no new translated content"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "ro",
-   "contentSHA256": "765982767841792071c1d85aef9218681c226cdf1596f7748ff30140306d139a",
+   "contentSHA256": "01679e8d8eb22e7b4dbfd9969e3b75b6adc814fb507731a25b2374c52a04b05b",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -2988,13 +3195,22 @@
       "sha256": "4d95823f616797539c8dccf00f8aad58d70844263133bd6382a3ff64a6552b55"
      },
      "disposition": "adopted as returned by the review (additions/casualMode.json)"
+    },
+    {
+     "kind": "size-edit",
+     "scope": [
+      "previewEngine.universal"
+     ],
+     "date": "2026-10-14",
+     "method": "#3735 chunk 9: the Universal preview download is now the transcribe.cpp whisper-small q8_0 file, 270 MB by whisper-preview-delivery-manifest.json (LivePreviewEnginePresentationTests binds the English copy to that manifest)",
+     "disposition": "replaced the size token 217 with 270 in the reviewed words; no other word changed and no new translated content"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "ru",
-   "contentSHA256": "07fe1692fdbbecbeeb846ba05308b207936ff3ed635194d17c8302d7ed8ab3e2",
+   "contentSHA256": "e40265e4fbdd67936283eb7f6ed1471ffbc96672cf01d1d309eafc7dc81b80b7",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -3096,13 +3312,22 @@
       "sha256": "37818b3c5b5fc2f7bf383dd8a013c1fdedffe17fffd486ff53ec33f8d73072a4"
      },
      "disposition": "adopted as returned by the review (additions/casualMode.json)"
+    },
+    {
+     "kind": "size-edit",
+     "scope": [
+      "previewEngine.universal"
+     ],
+     "date": "2026-10-14",
+     "method": "#3735 chunk 9: the Universal preview download is now the transcribe.cpp whisper-small q8_0 file, 270 MB by whisper-preview-delivery-manifest.json (LivePreviewEnginePresentationTests binds the English copy to that manifest)",
+     "disposition": "replaced the size token 217 with 270 in the reviewed words; no other word changed and no new translated content"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "sk",
-   "contentSHA256": "798f84657c77fd693bbede0ccd87f80611f1c4e0dedf4f026ebaa4fbd4d3cba4",
+   "contentSHA256": "2fc9660c2802750607c4464eacbe504d8c4fbb7c7c00fa0414a877f162c10073",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -3204,13 +3429,22 @@
       "sha256": "0aadf63dfdcbdfbdfe842bf248f8e068567672c1a4dbf87b4e912bc7025ef0d1"
      },
      "disposition": "adopted as returned by the review (additions/casualMode.json)"
+    },
+    {
+     "kind": "size-edit",
+     "scope": [
+      "previewEngine.universal"
+     ],
+     "date": "2026-10-14",
+     "method": "#3735 chunk 9: the Universal preview download is now the transcribe.cpp whisper-small q8_0 file, 270 MB by whisper-preview-delivery-manifest.json (LivePreviewEnginePresentationTests binds the English copy to that manifest)",
+     "disposition": "replaced the size token 217 with 270 in the reviewed words; no other word changed and no new translated content"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "sl",
-   "contentSHA256": "5fcd54fb55f3bf480854138c450c70572fa4c0a5dc21df882203b2a3e9362681",
+   "contentSHA256": "b1f2d3a828f6ea3ecce2f2bda1becf0985c0b8710f8917fac7ef98c4dea70528",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -3321,13 +3555,22 @@
       "sha256": "6ee903a0b2128e1f38d2e27a4378a9c65acbc6ce99516aa6089862a959e01b6a"
      },
      "disposition": "adopted as returned by the review (additions/casualMode.json)"
+    },
+    {
+     "kind": "size-edit",
+     "scope": [
+      "previewEngine.universal"
+     ],
+     "date": "2026-10-14",
+     "method": "#3735 chunk 9: the Universal preview download is now the transcribe.cpp whisper-small q8_0 file, 270 MB by whisper-preview-delivery-manifest.json (LivePreviewEnginePresentationTests binds the English copy to that manifest)",
+     "disposition": "replaced the size token 217 with 270 in the reviewed words; no other word changed and no new translated content"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "sv",
-   "contentSHA256": "8038b94f6bfbe4ac3cea9872b9492fa5f04e0252032c1839fb51abbbd8f0b832",
+   "contentSHA256": "d92291e6dae7b5a2daf26525b89ac48546d6b66e08b7b32df3cbcede2e723373",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -3429,13 +3672,22 @@
       "sha256": "7dc92a94e9854858928f91adfab6049cfd21384608c886a2b2d05f3552741df1"
      },
      "disposition": "adopted as returned by the review (additions/casualMode.json)"
+    },
+    {
+     "kind": "size-edit",
+     "scope": [
+      "previewEngine.universal"
+     ],
+     "date": "2026-10-14",
+     "method": "#3735 chunk 9: the Universal preview download is now the transcribe.cpp whisper-small q8_0 file, 270 MB by whisper-preview-delivery-manifest.json (LivePreviewEnginePresentationTests binds the English copy to that manifest)",
+     "disposition": "replaced the size token 217 with 270 in the reviewed words; no other word changed and no new translated content"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "tr",
-   "contentSHA256": "d56c9a565b8ed395a023e24e1c3ff1f590f2a4b63d8c8f5f4ede8a2c7b8101b1",
+   "contentSHA256": "02575d5d0f559a43acda91801bc974ced8e8f9c2dff4c65accaa1296dc065db0",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -3537,13 +3789,22 @@
       "sha256": "4d3e31b3e97633fc00d795575bb71d77df1fdc93933b9ef473a45b95f7b37892"
      },
      "disposition": "adopted as returned by the review (additions/casualMode.json)"
+    },
+    {
+     "kind": "size-edit",
+     "scope": [
+      "previewEngine.universal"
+     ],
+     "date": "2026-10-14",
+     "method": "#3735 chunk 9: the Universal preview download is now the transcribe.cpp whisper-small q8_0 file, 270 MB by whisper-preview-delivery-manifest.json (LivePreviewEnginePresentationTests binds the English copy to that manifest)",
+     "disposition": "replaced the size token 217 with 270 in the reviewed words; no other word changed and no new translated content"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "uk",
-   "contentSHA256": "5bf20fa01711d010a43fe2e96ceebd020ceeb8eebd92db38f60eb749ae0676e3",
+   "contentSHA256": "0f8bf593cc1342e5b29473ca64119d373fd2576b802a9f92dfe407c0f59c4f63",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -3654,13 +3915,22 @@
       "sha256": "90cd717e511b9ee6aec70b619bfe3867c926fa970d940a2792d44e0c9540149f"
      },
      "disposition": "adopted as returned by the review (additions/casualMode.json)"
+    },
+    {
+     "kind": "size-edit",
+     "scope": [
+      "previewEngine.universal"
+     ],
+     "date": "2026-10-14",
+     "method": "#3735 chunk 9: the Universal preview download is now the transcribe.cpp whisper-small q8_0 file, 270 MB by whisper-preview-delivery-manifest.json (LivePreviewEnginePresentationTests binds the English copy to that manifest)",
+     "disposition": "replaced the size token 217 with 270 in the reviewed words; no other word changed and no new translated content"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "vi",
-   "contentSHA256": "1e2d55919724a03e2454177bd9d50153ed9887051b159b0fee2fdc7d6b68fc74",
+   "contentSHA256": "f4829a4d09aea492b47be6736ce6fb590cc1a1c2716f5334edc8ae5d33c7cf23",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -3762,13 +4032,22 @@
       "sha256": "ba37e8c43930b50062b4b15e41b167c328b559912084bc84d208daaccea2a665"
      },
      "disposition": "adopted as returned by the review (additions/casualMode.json)"
+    },
+    {
+     "kind": "size-edit",
+     "scope": [
+      "previewEngine.universal"
+     ],
+     "date": "2026-10-14",
+     "method": "#3735 chunk 9: the Universal preview download is now the transcribe.cpp whisper-small q8_0 file, 270 MB by whisper-preview-delivery-manifest.json (LivePreviewEnginePresentationTests binds the English copy to that manifest)",
+     "disposition": "replaced the size token 217 with 270 in the reviewed words; no other word changed and no new translated content"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "zh",
-   "contentSHA256": "2f861d5246744a4637bf2b9c2ac86b725885142dc5755a6f3fd5100695420b83",
+   "contentSHA256": "5c742c641b5cde0aaa710cb8479560d0ce3823172d2d6cad5e24e94a1370d39b",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -3870,6 +4149,15 @@
       "sha256": "9cc422cf4882d46980a092757666f0bd8f9b757af36f6b2c6a85ca4778393ae4"
      },
      "disposition": "adopted as returned by the review (additions/casualMode.json)"
+    },
+    {
+     "kind": "size-edit",
+     "scope": [
+      "previewEngine.universal"
+     ],
+     "date": "2026-10-14",
+     "method": "#3735 chunk 9: the Universal preview download is now the transcribe.cpp whisper-small q8_0 file, 270 MB by whisper-preview-delivery-manifest.json (LivePreviewEnginePresentationTests binds the English copy to that manifest)",
+     "disposition": "replaced the size token 217 with 270 in the reviewed words; no other word changed and no new translated content"
     }
    ],
    "phraseExemptions": []
@@ -4008,7 +4296,7 @@
   "previewEngine.change": "e1ca508730be536a4a9e5ea18c8da092f8556ed27d487e446e3af43add2f1121",
   "previewEngine.compare": "51255700352d1ac83a90858c40a09e25afc80aa373b5fa780202eccfd052a8bc",
   "previewEngine.keepCurrent": "89bd5abb64c773362022361e159be58d86bfffaeaf5d6752f2f219a6d6b10916",
-  "previewEngine.universal": "2a798a523246dc5e3fe4f86b8234e727921008a6c5283edfdee89f45506c7dda",
+  "previewEngine.universal": "852d21b2454e9cb565193901fd5919d94b8d27e1bbe39aa34212125b034ac9a2",
   "previewEngine.universal.cancel": "cf3bc0a960fd6592ebaa1466fa205ceea971a9dd1c29671293de17aaf7a1efa8",
   "previewEngine.universal.download": "9f673c469631296b34d3ced272dea22cba3d7ceebb7da68e7f881d87f6e141b9",
   "previewEngine.universal.remove": "805be96782daae8133c5da939388f7786b6253dcc18c5e9e0b19449fa49eb7cd",

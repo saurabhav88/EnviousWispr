@@ -188,7 +188,7 @@ final class EngineCoordinator {
     self.pokeContinuation = continuation
   }
 
-  /// Launch the single reconcile worker, begin observing the WhisperKit
+  /// Launch the single reconcile worker, begin observing the Whisper
   /// setup-state directly, and fire the initial reconcile. Called once by the
   /// composition root after construction (and by unit tests).
   func start() {
@@ -227,12 +227,12 @@ final class EngineCoordinator {
   /// materializes only at kernel-active, so a start that has committed but not
   /// yet frozen its config reads as "no session" — this gate covers exactly
   /// that window (the same gate 5 uses to refuse engine switches mid-start).
-  /// Scoped to WhisperKit: a Parakeet start does not block removing the
+  /// Scoped to Whisper: a Parakeet start does not block removing the
   /// multilingual model.
-  var isMintingWhisperKitSession: Bool { isMinting && status.active == .whisperKit }
+  var isMintingWhisperSession: Bool { isMinting && status.active == .whisper }
 
   /// GitHub cloud review, PR #1732: backend-agnostic twin of
-  /// `isMintingWhisperKitSession`, for `RecoveryCoordinator`'s
+  /// `isMintingWhisperSession`, for `RecoveryCoordinator`'s
   /// `isDictationActive` check. A record-press that has called
   /// `beginMinting()` but not yet reached an active kernel session (still
   /// suspended in `preWarm`/the recovery-arm await) does not yet make
@@ -376,7 +376,7 @@ final class EngineCoordinator {
     // minting a session on the active engine — defer to its terminal. The
     // `isMinting` gate closes the start-window race race-free (the active engine
     // can't be switched out mid-startup), replacing the leaky re-check-after-await guards.
-    if deps.isEngineActive(.parakeet) || deps.isEngineActive(.whisperKit) || isMinting {
+    if deps.isEngineActive(.parakeet) || deps.isEngineActive(.whisper) || isMinting {
       markBlocked(.pipelineActive)
       return
     }
@@ -450,7 +450,7 @@ final class EngineCoordinator {
   /// share one MainActor turn. The lease's release pokes this coordinator.
   private func isQuietForActivation() -> Bool {
     deps.readiness(.parakeet) != .warming
-      && !deps.isEngineActive(.parakeet) && !deps.isEngineActive(.whisperKit) && !isMinting
+      && !deps.isEngineActive(.parakeet) && !deps.isEngineActive(.whisper) && !isMinting
       && !deps.isRecovering() && !deps.isFileImportRunning() && !deps.isEngineHeld()
       && warmingBackend == nil && joiningBackend == nil
   }
@@ -480,7 +480,7 @@ final class EngineCoordinator {
     // never warm during an active recording (the record path warms its own).
     guard deps.isInstalled(backend) else { return }
     guard deps.readiness(backend) != .ready else { return }
-    guard !deps.isEngineActive(.parakeet), !deps.isEngineActive(.whisperKit) else { return }
+    guard !deps.isEngineActive(.parakeet), !deps.isEngineActive(.whisper) else { return }
     if warmingBackend == backend, warmTask != nil { return }
 
     warmTask?.cancel()
@@ -605,7 +605,7 @@ final class EngineCoordinator {
       TelemetryService.shared.settingsChangeBlocked(
         setting: "selected_backend", requested: want.rawValue, activeBackend: active.rawValue,
         reason: reason.rawValue,
-        parakeetState: deps.stateLabel(.parakeet), whisperKitState: deps.stateLabel(.whisperKit))
+        parakeetState: deps.stateLabel(.parakeet), whisperState: deps.stateLabel(.whisper))
     }
     publishStatus()
   }
@@ -616,17 +616,17 @@ final class EngineCoordinator {
     deferStart = nil
   }
 
-  // MARK: - WhisperKit setup-state observation (direct, not via SetupCoordinator)
+  // MARK: - Whisper setup-state observation (direct, not via SetupCoordinator)
 
-  /// Observe the WhisperKit setup-state DIRECTLY: `SetupCoordinator`'s observer
-  /// bails unless WhisperKit is the active backend, so a Settings-initiated
+  /// Observe the Whisper setup-state DIRECTLY: `SetupCoordinator`'s observer
+  /// bails unless Whisper is the active backend, so a Settings-initiated
   /// download completing while Fast is active would otherwise never flip
-  /// `selectedInstalled`. Reading `isInstalled(.whisperKit)` inside the tracking
-  /// block registers the dependency on `whisperKitSetup.setupState` (REV-4). In
+  /// `selectedInstalled`. Reading `isInstalled(.whisper)` inside the tracking
+  /// block registers the dependency on `whisperSetup.setupState` (REV-4). In
   /// unit tests the fake reader touches no `@Observable` source, so this is inert.
   private func observeInstalledState() {
     withObservationTracking {
-      _ = deps.isInstalled(.whisperKit)
+      _ = deps.isInstalled(.whisper)
     } onChange: { [weak self] in
       Task { @MainActor in
         guard let self else { return }
@@ -668,7 +668,7 @@ final class EngineCoordinator {
     if case .failed = s.switchPhase { return true }  // warm genuinely failed
     // Genuinely busy/recovering RIGHT NOW (live, not a stale cached reason): the
     // press cannot proceed, so give up rather than hang.
-    if deps.isEngineActive(.parakeet) || deps.isEngineActive(.whisperKit) { return true }
+    if deps.isEngineActive(.parakeet) || deps.isEngineActive(.whisper) { return true }
     if deps.isRecovering() { return true }
     // #3546 Chunk 12: a switch deferred behind a file import (gate 6b) cannot converge until
     // the import releases, and the import may be the very caller waiting here (its readiness

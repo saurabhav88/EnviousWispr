@@ -134,7 +134,7 @@ public enum DeliveryEvent: Sendable, Equatable {
 /// delayed `.downloading` can overwrite a later `.admitted`. Mint a sequence
 /// inside the observer (publish order), then drop MainActor applications older
 /// than the last applied. One canonical type: `ModelDeliveryHome` (Parakeet/EG-1
-/// projections) and `WhisperKitModelDelivery.observeState` both use it.
+/// projections, including Whisper's) uses it.
 public final class DeliveryStateSequencer: @unchecked Sendable {
   private let lock = NSLock()
   private var value: UInt64 = 0

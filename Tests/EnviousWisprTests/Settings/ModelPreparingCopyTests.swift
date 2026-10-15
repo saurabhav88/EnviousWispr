@@ -3,7 +3,7 @@ import Testing
 
 @testable import EnviousWisprAppKit
 
-/// #1635: the WhisperKit setup row's copy contract.
+/// #1635: the Whisper setup row's copy contract.
 ///
 /// These strings are founder-frozen (2026-08-01) and one of them states a DURATION derived
 /// from production telemetry. A silent edit to either would either break a promise made on
@@ -23,10 +23,10 @@ struct ModelPreparingCopyTests {
   /// (coordinator-owned post-switch warms, p50 27.4s). If someone widens the state to cover
   /// launch or cold-press warms, this mapping test cannot detect it. The canonical copy
   /// comment records that population and copy must be reviewed together.
-  @Test("only WhisperKit's own warm shows the preparing copy")
-  func whisperKitWarmShowsPreparing() {
-    #expect(ModelPreparingCopy.isPreparing(warmInFlight: .whisperKit))
-    #expect(ModelPreparingCopy.label(warmInFlight: .whisperKit) == ModelPreparingCopy.preparing)
+  @Test("only Whisper's own warm shows the preparing copy")
+  func whisperWarmShowsPreparing() {
+    #expect(ModelPreparingCopy.isPreparing(warmInFlight: .whisper))
+    #expect(ModelPreparingCopy.label(warmInFlight: .whisper) == ModelPreparingCopy.preparing)
   }
 
   /// Two-way control. Without these the mapping could return preparing unconditionally and
@@ -36,8 +36,8 @@ struct ModelPreparingCopyTests {
     #expect(ModelPreparingCopy.isPreparing(warmInFlight: nil) == false)
     #expect(ModelPreparingCopy.label(warmInFlight: nil) == ModelPreparingCopy.ready)
 
-    // Parakeet warming must not relabel WhisperKit's row. `selectedReadiness` describes
-    // whichever engine the user picked, and this label lives in the WhisperKit section.
+    // Parakeet warming must not relabel Whisper's row. `selectedReadiness` describes
+    // whichever engine the user picked, and this label lives in the Whisper section.
     #expect(ModelPreparingCopy.isPreparing(warmInFlight: .parakeet) == false)
     #expect(ModelPreparingCopy.label(warmInFlight: .parakeet) == ModelPreparingCopy.ready)
   }

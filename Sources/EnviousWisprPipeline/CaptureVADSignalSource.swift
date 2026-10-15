@@ -28,7 +28,7 @@ import Foundation
 /// signal origins (PR-1 §B.6, D7/D8). Widened from `internal` to `package` in
 /// PR-5 Rung 5 so the App-owned shared instance can be passed across the
 /// `package`-level `KernelDictationDriverFactory.ParakeetInputs` /
-/// `WhisperKitInputs` seams (Codex r2 new defect 1 / r3 new defect 1).
+/// `WhisperInputs` seams (Codex r2 new defect 1 / r3 new defect 1).
 @MainActor
 package final class CaptureVADSignalSource: VADSignalSource {
 

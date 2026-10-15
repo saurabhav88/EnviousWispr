@@ -8,19 +8,19 @@ import Testing
 
 /// Unit tests for SetupCoordinator's preload observation behavior.
 ///
-/// SetupCoordinator owns the WhisperKit preload observer that previously lived
+/// SetupCoordinator owns the Whisper preload observer that previously lived
 /// on the former root state. The observer is gated by two signals: `asrManager.activeBackendType`
-/// (must be `.whisperKit`) and `whisperKitSetup.setupState` (must reach `.ready`).
+/// (must be `.whisper`) and `whisperSetup.setupState` (must reach `.ready`).
 /// When both are satisfied, the injected `preloadAction` closure fires once.
 ///
-/// These tests exercise the gating without touching any real WhisperKit / Ollama
+/// These tests exercise the gating without touching any real Whisper / Ollama
 /// state — the closure-based seam is the whole point of moving this code off
 /// the former root state.
 @Suite @MainActor
 struct SetupCoordinatorTests {
 
   /// With setup forced `.ready`, the parakeet backend guard is the sole preload
-  /// suppressor: an active parakeet backend must skip preload even when WhisperKit
+  /// suppressor: an active parakeet backend must skip preload even when Whisper
   /// setup is ready. Deleting or inverting the backend guard makes preload fire
   /// for parakeet → this test goes red. (Before #898 both tests used a parakeet
   /// backend whose setup could never reach `.ready`, so the readiness gate alone
@@ -33,7 +33,7 @@ struct SetupCoordinatorTests {
     let counter = InvocationCounter()
     let coord = SetupCoordinator(
       asrManager: fakeASR,
-      whisperKitSetup: WhisperKitSetupService(engineMutationScope: .alwaysAllowedForTesting),
+      whisperSetup: WhisperSetupService(engineMutationScope: .alwaysAllowedForTesting),
       setupStateReader: { .ready },
       preloadAction: { @MainActor in counter.increment() }
     )
@@ -53,21 +53,21 @@ struct SetupCoordinatorTests {
     )
   }
 
-  /// With setup forced `.ready` and WhisperKit the active backend, rapid repeated
+  /// With setup forced `.ready` and Whisper the active backend, rapid repeated
   /// starts coalesce to a single preload: each `startPreloadObservation()` cancels
   /// the prior observation Task before it runs, so only the last survives and fires
-  /// preload exactly once. Deleting `whisperKitPreloadTask?.cancel()` leaks all
+  /// preload exactly once. Deleting `whisperPreloadTask?.cancel()` leaks all
   /// three observers → count == 3 → this test goes red.
   @Test(
     .bug(
       "https://github.com/saurabhav88/EnviousWispr/issues/898",
       "repeated-start cancellation untested"))
   func repeatedStartCoalescesToSinglePreload() async throws {
-    let fakeASR = FakeASRManager(backend: .whisperKit)
+    let fakeASR = FakeASRManager(backend: .whisper)
     let counter = InvocationCounter()
     let coord = SetupCoordinator(
       asrManager: fakeASR,
-      whisperKitSetup: WhisperKitSetupService(engineMutationScope: .alwaysAllowedForTesting),
+      whisperSetup: WhisperSetupService(engineMutationScope: .alwaysAllowedForTesting),
       setupStateReader: { .ready },
       preloadAction: { @MainActor in counter.increment() }
     )
@@ -107,7 +107,7 @@ struct SetupCoordinatorTests {
   ) -> SetupCoordinator {
     SetupCoordinator(
       asrManager: FakeASRManager(backend: .parakeet),
-      whisperKitSetup: WhisperKitSetupService(engineMutationScope: .alwaysAllowedForTesting),
+      whisperSetup: WhisperSetupService(engineMutationScope: .alwaysAllowedForTesting),
       preloadAction: { @MainActor in },
       ollamaStatusProbe: ollamaStatusProbe,
       ollamaPollDelay: ollamaPollDelay ?? neverFiringPollDelay
@@ -245,7 +245,7 @@ struct SetupCoordinatorTests {
 
   @Test("cleanup() also cancels migration/preload tasks")
   func cleanupCancelsMigrationAndPreloadTasks() async {
-    let fakeASR = FakeASRManager(backend: .whisperKit)
+    let fakeASR = FakeASRManager(backend: .whisper)
     let migrationLog = ProbeLog()
     let migrationGate = ReleaseGate()
     let migrationStarted = AsyncStream.makeStream(of: Void.self)
@@ -253,7 +253,7 @@ struct SetupCoordinatorTests {
 
     let coord = SetupCoordinator(
       asrManager: fakeASR,
-      whisperKitSetup: WhisperKitSetupService(engineMutationScope: .alwaysAllowedForTesting),
+      whisperSetup: WhisperSetupService(engineMutationScope: .alwaysAllowedForTesting),
       setupStateReader: { .ready },
       runDocumentsMigration: {
         migrationStartedContinuation.yield(())
@@ -264,7 +264,7 @@ struct SetupCoordinatorTests {
       preloadAction: { @MainActor in await migrationLog.record("preload-fired") }
     )
 
-    coord.startWhisperKitMigrationThenDetect()
+    coord.startWhisperMigrationThenDetect()
 
     var iterator = migrationStarted.stream.makeAsyncIterator()
     _ = await iterator.next()  // migration task is parked
@@ -280,7 +280,7 @@ struct SetupCoordinatorTests {
     // task's own `guard !Task.isCancelled else { return }` (checked right
     // after this await) must stop it from calling `detectState()` and
     // `startPreloadObservation()` — and since this test's fake backend is
-    // `.whisperKit` with `setupStateReader` fixed to `.ready`, preload would
+    // `.whisper` with `setupStateReader` fixed to `.ready`, preload would
     // fire almost immediately if that guard were missing.
     #expect(await migrationLog.triggers.contains("migration-completed"))
     #expect(
@@ -330,19 +330,19 @@ struct SetupCoordinatorTests {
   }
 
   @Test(
-    "cleanup() cancelling whisperKitMigrationTask before it starts must stop it from ever entering runDocumentsMigration — Task.cancel() only sets a flag, so a closure cancelled before entry still runs unless its own first line checks Task.isCancelled"
+    "cleanup() cancelling whisperMigrationTask before it starts must stop it from ever entering runDocumentsMigration — Task.cancel() only sets a flag, so a closure cancelled before entry still runs unless its own first line checks Task.isCancelled"
   )
   func cleanupBeforeMigrationTaskStartsPreventsEntry() async {
     let migrationLog = ProbeLog()
     let coord = SetupCoordinator(
-      asrManager: FakeASRManager(backend: .whisperKit),
-      whisperKitSetup: WhisperKitSetupService(engineMutationScope: .alwaysAllowedForTesting),
+      asrManager: FakeASRManager(backend: .whisper),
+      whisperSetup: WhisperSetupService(engineMutationScope: .alwaysAllowedForTesting),
       setupStateReader: { .ready },
       runDocumentsMigration: { await migrationLog.record("migration-entered") },
       preloadAction: { @MainActor in }
     )
 
-    coord.startWhisperKitMigrationThenDetect()
+    coord.startWhisperMigrationThenDetect()
     coord.cleanup()  // cancels the Task before it has necessarily been scheduled to run at all
     await drainMainActorTasks(200)
 

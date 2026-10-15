@@ -18,7 +18,7 @@ struct WedgeRecoveryRouterTests {
     let store = DictationRuntimeFixtures.tempStore()
     let parakeet = DictationRuntimeFixtures.makeParakeetDriver(
       audioCapture: audio, asrManager: asr, store: store)
-    let whisperKit = DictationRuntimeFixtures.makeWhisperKitPipeline(
+    let whisperDriver = DictationRuntimeFixtures.makeWhisperPipeline(
       audioCapture: audio, store: store)
 
     #expect(audio.onCaptureStalled == nil)
@@ -26,7 +26,7 @@ struct WedgeRecoveryRouterTests {
     let router = WedgeRecoveryRouter(
       audioCapture: audio,
       kernelDriver: parakeet,
-      whisperKitKernelDriver: whisperKit,
+      whisperKernelDriver: whisperDriver,
       isCurrentSession: { _ in true },
       resolveActiveTelemetryTarget: { nil }
     )
@@ -75,7 +75,7 @@ struct WedgeRecoveryRouterTests {
       audioCapture: audio,
       kernelDriver: DictationRuntimeFixtures.makeParakeetDriver(
         audioCapture: audio, asrManager: asr, store: store),
-      whisperKitKernelDriver: DictationRuntimeFixtures.makeWhisperKitPipeline(
+      whisperKernelDriver: DictationRuntimeFixtures.makeWhisperPipeline(
         audioCapture: audio, store: store),
       isCurrentSession: isCurrentSession,
       resolveActiveTelemetryTarget: resolveActiveTelemetryTarget)
@@ -160,7 +160,7 @@ struct WedgeRecoveryRouterTests {
     let store = DictationRuntimeFixtures.tempStore()
     let parakeet = DictationRuntimeFixtures.makeParakeetDriver(
       audioCapture: audio, asrManager: asr, store: store)
-    let whisperKit = DictationRuntimeFixtures.makeWhisperKitPipeline(
+    let whisperDriver = DictationRuntimeFixtures.makeWhisperPipeline(
       audioCapture: audio, store: store)
 
     var sessionFilterCalls: [UInt64] = []
@@ -169,7 +169,7 @@ struct WedgeRecoveryRouterTests {
     let router = WedgeRecoveryRouter(
       audioCapture: audio,
       kernelDriver: parakeet,
-      whisperKitKernelDriver: whisperKit,
+      whisperKernelDriver: whisperDriver,
       isCurrentSession: { sessionID in
         sessionFilterCalls.append(sessionID)
         return false  // always stale
@@ -194,7 +194,7 @@ struct WedgeRecoveryRouterTests {
     let store = DictationRuntimeFixtures.tempStore()
     let parakeet = DictationRuntimeFixtures.makeParakeetDriver(
       audioCapture: audio, asrManager: asr, store: store)
-    let whisperKit = DictationRuntimeFixtures.makeWhisperKitPipeline(
+    let whisperDriver = DictationRuntimeFixtures.makeWhisperPipeline(
       audioCapture: audio, store: store)
 
     var resolverCallCount = 0
@@ -202,7 +202,7 @@ struct WedgeRecoveryRouterTests {
     let router = WedgeRecoveryRouter(
       audioCapture: audio,
       kernelDriver: parakeet,
-      whisperKitKernelDriver: whisperKit,
+      whisperKernelDriver: whisperDriver,
       isCurrentSession: { _ in true },
       resolveActiveTelemetryTarget: {
         resolverCallCount += 1

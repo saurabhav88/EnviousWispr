@@ -83,7 +83,7 @@ struct LivePreviewSettingsEnglishTests {
     )
     #expect(
       LivePreviewSettingsCopy.pausedForFasterTranscription
-        == "Paused while Faster Transcription is on")
+        == "Paused while Faster Transcription works during recording")
     #expect(
       LivePreviewSettingsCopy.statusPausedDetail
         == "Your dictation keeps its full speed. Turn Faster Transcription off to see the preview.")
@@ -133,7 +133,7 @@ struct LivePreviewSettingsEnglishTests {
     #expect(LivePreviewEngineCopy.universalTitle == "Universal")
     #expect(
       LivePreviewEngineCopy.universalDescription
-        == "Works on macOS 14 and later, in more languages. Needs one optional 217 MB download.")
+        == "Works on macOS 14 and later, in more languages. Needs one optional 270 MB download.")
     #expect(LivePreviewEngineCopy.notDownloadedYet == "Not downloaded yet.")
     #expect(LivePreviewEngineCopy.downloadFailed == "The download did not finish.")
     #expect(

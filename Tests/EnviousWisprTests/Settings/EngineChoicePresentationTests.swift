@@ -14,9 +14,9 @@ struct EngineChoicePresentationTests {
 
   @Test("engines are Fast then All Languages, and every backend has a card")
   func orderAndLookup() {
-    #expect(Presentation.choices.map(\.backend) == [.parakeet, .whisperKit])
+    #expect(Presentation.choices.map(\.backend) == [.parakeet, .whisper])
     #expect(Presentation.choice(for: .parakeet, parakeetModel: "Parakeet v3").backend == .parakeet)
-    #expect(Presentation.choice(for: .whisperKit, parakeetModel: "Parakeet v3").backend == .whisperKit)
+    #expect(Presentation.choice(for: .whisper, parakeetModel: "Parakeet v3").backend == .whisper)
     #expect(Presentation.choices.map(\.icon) == ["bolt.fill", "globe"])
   }
 
@@ -39,7 +39,7 @@ struct EngineChoicePresentationTests {
       "Runs on", "Apple GPU", "Transcribe time", "Usually 1-2s after you speak",
     ].map { Array($0.utf8) }
     #expect(card(Presentation.choice(for: .parakeet, parakeetModel: "Parakeet v3")) == fast)
-    #expect(card(Presentation.choice(for: .whisperKit, parakeetModel: "Parakeet v3")) == all)
+    #expect(card(Presentation.choice(for: .whisper, parakeetModel: "Parakeet v3")) == all)
   }
 
   @Test("titles and taglines keep their catalog keys; model names stay verbatim")
@@ -79,7 +79,7 @@ struct EngineChoicePresentationTests {
   @Test("the selected-engine summary reads the same choice and its existing short line")
   func summaryCorrespondence() {
     let fast = Presentation.choice(for: .parakeet, parakeetModel: "Parakeet v3")
-    let all = Presentation.choice(for: .whisperKit, parakeetModel: "Parakeet v3")
+    let all = Presentation.choice(for: .whisper, parakeetModel: "Parakeet v3")
     #expect(String(localized: fast.summary) == "For everyday English and European dictation")
     #expect(String(localized: all.summary) == "For other languages or the toughest audio")
     #expect(fast.summary.key == "For everyday English and European dictation")

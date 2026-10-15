@@ -173,11 +173,11 @@
     func statusReadsEachOwner() async throws {
       let fake = DevControlFixtures.StatusFake()
       fake.engine = DevControlFixtures.engine(
-        selected: .whisperKit, active: .parakeet, selectedReadiness: .notReady,
+        selected: .whisper, active: .parakeet, selectedReadiness: .notReady,
         activeReadiness: .ready, selectedInstalled: false, blockedReason: .notInstalled)
-      fake.driverStates = [.parakeet: .recording, .whisperKit: .polishing]
+      fake.driverStates = [.parakeet: .recording, .whisper: .polishing]
       fake.parakeet = .downloading(fractionCompleted: 0.25, bytesWritten: 100, totalBytes: 400)
-      fake.whisperKit = .downloading(progress: 0.5, status: "Downloading screen copy")
+      fake.whisper = .downloading(progress: 0.5, status: "Downloading screen copy")
       fake.fileImportRunning = true
       fake.keys = [.openAI: .present, .gemini: .absent, .claude: .unknown]
       let (settings, dispatcher) = Self.make(status: fake)
@@ -187,7 +187,7 @@
       // The live setting and the coordinator's snapshot are separate facts.
       #expect(reply["selectedBackend"] as? String == "parakeet")
       let engine = try object(reply["engine"])
-      #expect(engine["selected"] as? String == "whisperKit")
+      #expect(engine["selected"] as? String == "whisper")
       #expect(engine["active"] as? String == "parakeet")
       #expect(engine["diverged"] as? Bool == true)
       #expect(engine["selectedReadiness"] as? String == "notReady")
@@ -210,7 +210,7 @@
       #expect(parakeet["fractionCompleted"] as? Double == 0.25)
       #expect(parakeet["bytesWritten"] as? Int64 == 100)
       #expect(parakeet["totalBytes"] as? Int64 == 400)
-      let whisper = try object(reply["whisperKitSetup"])
+      let whisper = try object(reply["whisperSetup"])
       #expect(whisper["state"] as? String == "downloading")
       #expect(whisper["progress"] as? Double == 0.5)
       #expect(reply["fileImportRunning"] as? Bool == true)
@@ -233,30 +233,30 @@
     func statusFollowsChangingSnapshots() async throws {
       let fake = DevControlFixtures.StatusFake()
       fake.engine = DevControlFixtures.engine(
-        selected: .whisperKit, active: .whisperKit, selectedReadiness: .warming,
-        activeReadiness: .warming, switchPhase: .switching, warmInFlight: .whisperKit)
+        selected: .whisper, active: .whisper, selectedReadiness: .warming,
+        activeReadiness: .warming, switchPhase: .switching, warmInFlight: .whisper)
       fake.isSwitching = true
-      fake.driverStates = [.parakeet: .idle, .whisperKit: .advisory(.vadGateNoSpeech)]
+      fake.driverStates = [.parakeet: .idle, .whisper: .advisory(.vadGateNoSpeech)]
       fake.parakeet = .failed(
         DeliveryFailure(reason: .insufficientDisk, detail: "detail-text", failingSourceID: "src-x"))
-      fake.whisperKit = .error("owner error words")
+      fake.whisper = .error("owner error words")
       let (_, dispatcher) = Self.make(status: fake)
 
       let first = try #require(payload(await dispatcher.handle(.status, args: [:])))
       let engine = try object(first["engine"])
-      #expect(engine["active"] as? String == "whisperKit")
+      #expect(engine["active"] as? String == "whisper")
       #expect(engine["diverged"] as? Bool == false)
       #expect(engine["activeReadiness"] as? String == "warming")
       #expect(engine["switchPhase"] as? String == "switching")
-      #expect(engine["warmInFlight"] as? String == "whisperKit")
+      #expect(engine["warmInFlight"] as? String == "whisper")
       #expect(engine["isSwitching"] as? Bool == true)
       let driver = try object(first["activeDriver"])
-      #expect(driver["backend"] as? String == "whisperKit")
+      #expect(driver["backend"] as? String == "whisper")
       #expect(driver["state"] as? String == "advisory")
       #expect(driver["reason"] as? String == "vadGateNoSpeech")
-      #expect(fake.driverStateAsked == [.whisperKit])
+      #expect(fake.driverStateAsked == [.whisper])
       #expect(try object(first["parakeetDelivery"]) as NSDictionary == ["state": "failed", "reason": "insufficient_disk"])
-      #expect(try object(first["whisperKitSetup"]) as NSDictionary == ["state": "error"])
+      #expect(try object(first["whisperSetup"]) as NSDictionary == ["state": "error"])
       let encoded = String(decoding: try JSONSerialization.data(withJSONObject: first), as: UTF8.self)
       for owned in ["detail-text", "src-x", "owner error words"] {
         #expect(encoded.contains(owned) == false, "\(owned)")
@@ -266,9 +266,9 @@
         selected: .parakeet, active: .parakeet, selectedReadiness: .ready,
         activeReadiness: .ready, switchPhase: .failed(reason: "load_failed"))
       fake.isSwitching = false
-      fake.driverStates = [.parakeet: .error(.asrFailed), .whisperKit: .idle]
+      fake.driverStates = [.parakeet: .error(.asrFailed), .whisper: .idle]
       fake.parakeet = .cancelled(resumable: true)
-      fake.whisperKit = .paused
+      fake.whisper = .paused
       let second = try #require(payload(await dispatcher.handle(.status, args: [:])))
       let engineAfter = try object(second["engine"])
       #expect(engineAfter["active"] as? String == "parakeet")
@@ -278,24 +278,24 @@
       let driverAfter = try object(second["activeDriver"])
       #expect(driverAfter["state"] as? String == "error")
       #expect(driverAfter["reason"] as? String == "asr_failed")
-      #expect(fake.driverStateAsked == [.whisperKit, .parakeet])
+      #expect(fake.driverStateAsked == [.whisper, .parakeet])
       #expect(
         try object(second["parakeetDelivery"]) as NSDictionary
           == ["state": "cancelled", "resumable": true])
-      #expect(try object(second["whisperKitSetup"]) as NSDictionary == ["state": "paused"])
+      #expect(try object(second["whisperSetup"]) as NSDictionary == ["state": "paused"])
 
       fake.parakeet = .preparing(validatingExistingCache: true)
-      fake.whisperKit = .notDownloaded
+      fake.whisper = .notDownloaded
       let third = try #require(payload(await dispatcher.handle(.status, args: [:])))
       #expect(
         try object(third["parakeetDelivery"]) as NSDictionary
           == ["state": "preparing", "validatingExistingCache": true])
-      #expect(try object(third["whisperKitSetup"]) as NSDictionary == ["state": "notDownloaded"])
+      #expect(try object(third["whisperSetup"]) as NSDictionary == ["state": "notDownloaded"])
       fake.parakeet = .admitted
-      fake.whisperKit = .ready
+      fake.whisper = .ready
       let fourth = try #require(payload(await dispatcher.handle(.status, args: [:])))
       #expect(try object(fourth["parakeetDelivery"]) as NSDictionary == ["state": "admitted"])
-      #expect(try object(fourth["whisperKitSetup"]) as NSDictionary == ["state": "ready"])
+      #expect(try object(fourth["whisperSetup"]) as NSDictionary == ["state": "ready"])
     }
 
     @Test("saved keys come from SavedKeyPresence alone; a provider no path has read is unknown")
@@ -792,9 +792,9 @@ func wordCommandsLeaveSettingsAlone() async throws {
     final class StatusFake {
       var engine = DevControlFixtures.engine()
       var isSwitching = false
-      var driverStates: [ASRBackendType: PipelineState] = [.parakeet: .idle, .whisperKit: .idle]
+      var driverStates: [ASRBackendType: PipelineState] = [.parakeet: .idle, .whisper: .idle]
       var parakeet: DeliveryState = .notReady
-      var whisperKit: WhisperKitSetupState = .checking
+      var whisper: WhisperSetupState = .checking
       var fileImportRunning = false
       var keys: [LLMProvider: SavedKeyState] = [:]
       var keyState: (@MainActor (LLMProvider) -> SavedKeyState)?
@@ -810,7 +810,7 @@ func wordCommandsLeaveSettingsAlone() async throws {
             return driverStates[backend] ?? .idle
           },
           parakeetDelivery: { [self] in parakeet },
-          whisperKitSetup: { [self] in whisperKit },
+          whisperSetup: { [self] in whisper },
           isFileImportRunning: { [self] in fileImportRunning },
           savedKeyState: { [self] provider in
             keyState?(provider) ?? keys[provider] ?? .unknown

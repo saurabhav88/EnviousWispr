@@ -19,8 +19,8 @@ struct ASRManagerColdStateContractTests {
   }
 
   @Test(
-    "setInitialBackendType on a cold manager selects WhisperKit and reports no streaming support")
-  func setInitialBackendTypeSelectsWhisperKitFromCold() async {
+    "setInitialBackendType on a cold manager selects Whisper and reports no streaming support")
+  func setInitialBackendTypeSelectsWhisperFromCold() async {
     // Adversarial-review note. Starting from cold means `isModelLoaded` and
     // `isStreaming` are already false, so this test does not prove the reset
     // branch inside `setInitialBackendType`. It only proves backend selection
@@ -30,9 +30,9 @@ struct ASRManagerColdStateContractTests {
     let sut = ASRManager(
       engineMutationScope: .alwaysAllowedForTesting, parakeetSelection: ParakeetSelectionProvider())
 
-    sut.setInitialBackendType(.whisperKit)
+    sut.setInitialBackendType(.whisper)
 
-    #expect(sut.activeBackendType == .whisperKit)
+    #expect(sut.activeBackendType == .whisper)
     #expect(sut.isModelLoaded == false)
     #expect(sut.isStreaming == false)
     #expect(await sut.activeBackendSupportsStreaming == false)
@@ -43,8 +43,8 @@ struct ASRManagerColdStateContractTests {
     let sut = ASRManager(
       engineMutationScope: .alwaysAllowedForTesting, parakeetSelection: ParakeetSelectionProvider())
 
-    await sut.switchBackend(to: .whisperKit)
-    #expect(sut.activeBackendType == .whisperKit)
+    await sut.switchBackend(to: .whisper)
+    #expect(sut.activeBackendType == .whisper)
     #expect(sut.isModelLoaded == false)
     #expect(sut.isStreaming == false)
 
@@ -53,8 +53,8 @@ struct ASRManagerColdStateContractTests {
     #expect(sut.isModelLoaded == false)
     #expect(sut.isStreaming == false)
 
-    await sut.switchBackend(to: .whisperKit)
-    #expect(sut.activeBackendType == .whisperKit)
+    await sut.switchBackend(to: .whisper)
+    #expect(sut.activeBackendType == .whisper)
     #expect(sut.isModelLoaded == false)
     #expect(sut.isStreaming == false)
   }
@@ -107,15 +107,15 @@ struct ASRManagerColdStateContractTests {
     #expect(sut.isStreaming == false)
   }
 
-  @Test("startStreaming on WhisperKit is a no-op because streaming is unsupported")
-  func startStreamingOnWhisperKitDoesNothing() async throws {
+  @Test("startStreaming on Whisper is a no-op because streaming is unsupported")
+  func startStreamingOnWhisperDoesNothing() async throws {
     let sut = ASRManager(
       engineMutationScope: .alwaysAllowedForTesting, parakeetSelection: ParakeetSelectionProvider())
-    sut.setInitialBackendType(.whisperKit)
+    sut.setInitialBackendType(.whisper)
 
     try await sut.startStreaming(options: .default)
 
-    #expect(sut.activeBackendType == .whisperKit)
+    #expect(sut.activeBackendType == .whisper)
     #expect(sut.isModelLoaded == false)
     #expect(sut.isStreaming == false)
     #expect(await sut.activeBackendSupportsStreaming == false)

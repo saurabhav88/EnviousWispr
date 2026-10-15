@@ -164,12 +164,12 @@ struct RecoveryCoordinatorTests {
     let h = Self.makeHarness()
     let result = await h.coordinator.makeDirective(
       settings: Self.freshSettings(crashRecoveryEnabled: true),
-      backendType: .whisperKit, supportsLanguageDetection: true)
+      backendType: .whisper, supportsLanguageDetection: true)
     let armed = try #require(result)
     let directive = try JSONDecoder().decode(RecoverySpoolDirective.self, from: armed.payload)
     #expect(directive.enabled)
     #expect(directive.recoverySessionID == armed.recoverySessionID)
-    #expect(directive.settingsSnapshot.backendType == .whisperKit)
+    #expect(directive.settingsSnapshot.backendType == .whisper)
     let storedKey = try h.keyStore.retrieve(for: armed.recoverySessionID)
     #expect(storedKey == directive.keyData)
   }
@@ -1484,7 +1484,7 @@ struct RecoveryCoordinatorTests {
       "makeDirective is not reading the coordinator: recovery is off, so there is no directive")
     let armed = try #require(
       await access.makeDirective(
-        Self.freshSettings(crashRecoveryEnabled: true), .whisperKit, true),
+        Self.freshSettings(crashRecoveryEnabled: true), .whisper, true),
       "makeDirective is not reading the coordinator: recovery is on and it armed nothing")
     #expect(
       try h.keyStore.retrieve(for: armed.recoverySessionID) != nil,

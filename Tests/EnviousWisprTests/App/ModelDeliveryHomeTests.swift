@@ -458,7 +458,7 @@ struct ModelDeliveryHomeTests {
   /// The whole point of chunk 4a, and the one thing in it that can destroy data.
   ///
   /// `CacheAdmission` treats an install directory as exhaustive truth and deletes
-  /// every top-level entry the active manifest does not list. If both WhisperKit
+  /// every top-level entry the active manifest does not list. If both Whisper
   /// registrations pointed at one directory, admitting either model would delete
   /// the other's files — the 1.6 GB transcription model, a heart-path artifact,
   /// wiped by a display-only limb.
@@ -476,14 +476,14 @@ struct ModelDeliveryHomeTests {
       manifestBundle: try Self.manifestBundle(),
       appSupportOverride: try Self.tempAppSupport())
 
-    let transcription = try #require(home.whisperKitRegistration)
+    let transcription = try #require(home.whisperRegistration)
     let preview = try #require(home.whisperPreviewRegistration)
 
     #expect(
       preview.installDirectory != transcription.installDirectory,
       "two registrations sharing an install directory delete each other's files")
-    #expect(preview.installDirectory.lastPathComponent == "whisper-preview")
-    #expect(transcription.installDirectory.lastPathComponent == "whisper")
+    #expect(preview.installDirectory.lastPathComponent == "whisper-preview-gguf")
+    #expect(transcription.installDirectory.lastPathComponent == "whisper-gguf")
 
     // Neither may be an ANCESTOR of the other either: the exhaustive sweep runs
     // over a directory's top-level entries, so a nested install would put one
@@ -495,10 +495,10 @@ struct ModelDeliveryHomeTests {
     #expect(!transcriptionPath.hasPrefix(previewPath + "/"))
   }
 
-  /// Everything that makes a collision plausible is genuinely true — same family,
-  /// same source repo, same pinned revision — so the separation above is carrying
-  /// real weight rather than restating an accident.
-  @Test("the two WhisperKit registrations differ only by variant and install directory")
+  /// Same family and same kill switch, so the separation above is carrying real
+  /// weight rather than restating an accident. #3735: the GGUF pair differs by model
+  /// name (one variant, `q8_0`, for both), where the WhisperKit pair differed by variant.
+  @Test("the two Whisper registrations share a family and differ by model name")
   func previewAndTranscriptionShareFamilyAndRevision() async throws {
     let home = ModelDeliveryHome(
       engineMutationScope: .live(
@@ -506,13 +506,13 @@ struct ModelDeliveryHomeTests {
       manifestBundle: try Self.manifestBundle(),
       appSupportOverride: try Self.tempAppSupport())
 
-    let transcription = try #require(home.whisperKitRegistration).manifest.identity
+    let transcription = try #require(home.whisperRegistration).manifest.identity
     let preview = try #require(home.whisperPreviewRegistration).manifest.identity
 
-    #expect(preview.family == transcription.family)
-    #expect(preview.revision == transcription.revision)
-    #expect(preview.variant != transcription.variant)
-    #expect(preview.variant == "openai_whisper-small_216MB")
+    #expect(preview.family == .whisper)
+    #expect(transcription.family == .whisper)
+    #expect(preview.name == "whisper-small-gguf")
+    #expect(transcription.name == "whisper-large-v3-turbo-gguf")
   }
 
   /// The shared metadata directory is deliberate and safe. Staging paths and
@@ -528,7 +528,7 @@ struct ModelDeliveryHomeTests {
       manifestBundle: try Self.manifestBundle(),
       appSupportOverride: try Self.tempAppSupport())
 
-    let transcription = try #require(home.whisperKitRegistration)
+    let transcription = try #require(home.whisperRegistration)
     let preview = try #require(home.whisperPreviewRegistration)
     #expect(preview.metadataDirectory == transcription.metadataDirectory)
     #expect(
@@ -580,7 +580,7 @@ struct ModelDeliveryHomeTests {
   ) {
     let manifest = try DeliveryManifest.loadBundled(
       resource: "parakeet-delivery-manifest", bundle: Self.manifestBundle())
-    let metadata = try #require(home.whisperKitRegistration).metadataDirectory
+    let metadata = try #require(home.whisperRegistration).metadataDirectory
     let directory = ParakeetInstallLocation.directory(
       for: .ultra, dataDirectory: metadata.deletingLastPathComponent())
     let admission = CacheAdmission(
@@ -699,6 +699,7 @@ struct ModelDeliveryHomeTests {
       }
     }
     let gate = Gate()
+    Self.bindPreviewCommandsForTests(home)
     home.drainPreviewHoldersBeforeRemoval = { await gate.wait() }
     home.previewRemovalDidFinish = { gate.noteFinished() }
     // **Never the real delete.** `manifestBundle` redirects only where manifests
@@ -774,6 +775,7 @@ struct ModelDeliveryHomeTests {
       }
     }
     let gate = Gate()
+    Self.bindPreviewCommandsForTests(home)
     home.drainPreviewHoldersBeforeRemoval = { await gate.wait() }
     // Counted, not performed: see the note above about Application Support.
     let deletes = Deletes()
@@ -796,6 +798,18 @@ struct ModelDeliveryHomeTests {
     #expect(deletes.count == 1, "two presses performed \(deletes.count) deletes")
   }
 
+  /// #3735: preview commands refuse until the replacement record is bound. These tests are about
+  /// the doors' other contracts, so the record here always accepts, and `download` reaches
+  /// delivery the way `WhisperModelMigration.download` does.
+  static func bindPreviewCommandsForTests(_ home: ModelDeliveryHome) {
+    home.previewReplacement = .init(
+      download: { [weak home] in
+        _ = await home?.whisperPreviewHandle?.ensureAvailable()
+        return true
+      },
+      decline: { true })
+  }
+
   private final class Deletes: @unchecked Sendable {
     private let mutex = NSLock()
     private var value = 0
@@ -805,12 +819,12 @@ struct ModelDeliveryHomeTests {
 
   // MARK: - #2137 cloud review: the delivery kill switch
 
-  /// The Download door must honour `modelDelivery.whisper_kit.enabled`.
+  /// The Download door must honour `modelDelivery.whisper.enabled`.
   ///
-  /// `ensureAvailable()` does NOT enforce the flag itself — the primary WhisperKit
+  /// `ensureAvailable()` does NOT enforce the flag itself — the primary Whisper
   /// door guards `handle.isEnabled()` immediately before calling it
-  /// (`WhisperKitDeliveryWiring.swift:74,125`). This door did not, so an operator
-  /// who had disabled the whole family could still have a 217 MB preview fetch
+  /// (`WhisperDeliveryWiring.swift`). This door did not, so an operator
+  /// who had disabled the whole family could still have a preview model fetch
   /// start, bypassing the relaunch-free rollback the flag exists to provide.
   ///
   /// Asserted BOTH ways in one test, because either half alone is satisfiable by
@@ -821,11 +835,11 @@ struct ModelDeliveryHomeTests {
   ///
   /// The flag store is injected. Writing a real kill switch into the shared suite
   /// to test it would leave an operational flag set on a developer's machine.
-  @Test("the preview Download door honours the whisper_kit kill switch, both ways")
+  @Test("the preview Download door honours the whisper kill switch, both ways")
   func previewDownloadHonoursTheKillSwitch() async throws {
     func home(enabled: Bool) throws -> ModelDeliveryHome {
       let suite = try #require(TestDefaults.suite("ew-2137-killswitch-\(UUID().uuidString)"))
-      suite.set(enabled, forKey: "modelDelivery.whisper_kit.enabled")
+      suite.set(enabled, forKey: "modelDelivery.whisper.enabled")
       return ModelDeliveryHome(
         engineMutationScope: .live(
           tryBegin: { true }, end: { true }, wake: {}, onRefused: { _ in }),
@@ -866,6 +880,7 @@ struct ModelDeliveryHomeTests {
     }
 
     let off = try home(enabled: false)
+    Self.bindPreviewCommandsForTests(off)
     let offBaseline = await baselineAfterLaunchProbe(off)
     off.startPreviewDownload()
     for _ in 0..<2000 { await Task.yield() }
@@ -874,6 +889,7 @@ struct ModelDeliveryHomeTests {
       "the kill switch is off but the download door still reached delivery")
 
     let on = try home(enabled: true)
+    Self.bindPreviewCommandsForTests(on)
     let onBaseline = await baselineAfterLaunchProbe(on)
     on.startPreviewDownload()
     for _ in 0..<4000 where on.previewStateUpdatesForTests == onBaseline { await Task.yield() }
@@ -1065,12 +1081,12 @@ struct ModelDeliveryHomeTests {
   /// substitute it.** That is safe only because `appSupportOverride` roots BOTH
   /// the preview model's `installDirectory` and its `metadataDirectory`
   /// (`ModelDeliveryHome.swift:196-210`), so the flag-on half deletes inside a
-  /// temp directory rather than the developer's installed 217 MB model.
+  /// temp directory rather than the developer's installed preview model.
   @Test("a kill-switch-refused preview removal still finishes, both ways")
   func refusedPreviewRemovalStillFinishes() async throws {
     func home(enabled: Bool) throws -> ModelDeliveryHome {
       let suite = try #require(TestDefaults.suite("ew-2137-rmswitch-\(UUID().uuidString)"))
-      suite.set(enabled, forKey: "modelDelivery.whisper_kit.enabled")
+      suite.set(enabled, forKey: "modelDelivery.whisper.enabled")
       return ModelDeliveryHome(
         engineMutationScope: .live(
           tryBegin: { true }, end: { true }, wake: {}, onRefused: { _ in }),
@@ -1092,6 +1108,7 @@ struct ModelDeliveryHomeTests {
     }
 
     let off = try home(enabled: false)
+    Self.bindPreviewCommandsForTests(off)
     let offFinishes = Finishes()
     off.previewRemovalDidFinish = { offFinishes.record() }
     for _ in 0..<400 { await Task.yield() }
@@ -1106,6 +1123,7 @@ struct ModelDeliveryHomeTests {
       "control: with the flag OFF the removal must actually have been refused")
 
     let on = try home(enabled: true)
+    Self.bindPreviewCommandsForTests(on)
     let onFinishes = Finishes()
     on.previewRemovalDidFinish = { onFinishes.record() }
     for _ in 0..<400 { await Task.yield() }
@@ -1189,7 +1207,7 @@ struct ModelDeliveryHomeTests {
     #expect(home.whisperPreviewState == .notReady)
 
     let preview = try #require(home.whisperPreviewRegistration)
-    let transcription = try #require(home.whisperKitRegistration).manifest.identity
+    let transcription = try #require(home.whisperRegistration).manifest.identity
     #expect(
       preview.manifest.identity.cacheKey != transcription.cacheKey,
       "two mirrors over one identity would make each model report the other's progress")
@@ -1430,8 +1448,8 @@ struct WhisperGGUFRegistrationTests {
     #expect(turbo.manifest.identity.cacheKey != preview.manifest.identity.cacheKey)
   }
 
-  @Test("construction still registers the WhisperKit models and nothing of the new family")
-  func constructionLeavesTheActiveRoutesOnWhisperKit() throws {
+  @Test("construction registers the Whisper GGUF models and fetches nothing")
+  func constructionRegistersTheGGUFModelsWithoutFetching() throws {
     let root = URL(fileURLWithPath: NSTemporaryDirectory())
       .appendingPathComponent("ew-3735-mdh-\(UUID().uuidString)", isDirectory: true)
     try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
@@ -1439,14 +1457,29 @@ struct WhisperGGUFRegistrationTests {
       engineMutationScope: .live(tryBegin: { true }, end: { true }, wake: {}, onRefused: { _ in }),
       manifestBundle: try Self.manifestBundle(),
       appSupportOverride: root)
-    #expect(home.whisperKitRegistration?.manifest.identity.family == .whisperKit)
-    #expect(home.whisperPreviewRegistration?.manifest.identity.family == .whisperKit)
-    #expect(home.whisperKitRegistration?.installDirectory.lastPathComponent == "whisper")
-    #expect(home.whisperPreviewRegistration?.installDirectory.lastPathComponent == "whisper-preview")
-    // Construction created no new-family install folder: nothing was fetched or adopted.
+    #expect(home.whisperRegistration?.manifest.identity.name == "whisper-large-v3-turbo-gguf")
+    #expect(home.whisperPreviewRegistration?.manifest.identity.name == "whisper-small-gguf")
+    #expect(home.whisperRegistration?.installDirectory.lastPathComponent == "whisper-gguf")
+    #expect(
+      home.whisperPreviewRegistration?.installDirectory.lastPathComponent == "whisper-preview-gguf")
+    // Construction created no install folder: nothing was fetched or adopted.
     let models = root.appendingPathComponent("EnviousWispr/Models", isDirectory: true)
     for name in ["whisper-gguf", "whisper-preview-gguf"] {
       #expect(!FileManager.default.fileExists(atPath: models.appendingPathComponent(name).path))
     }
+  }
+
+  /// The Settings help promises an 886 MB download (`DictationSettingsCopy.Engine.modelSetupHelp`).
+  /// This fails when the shipped manifest's size no longer rounds to that figure, so the copy
+  /// cannot silently outlive a model change.
+  @Test("the Settings download size is the shipped manifest's size")
+  func settingsDownloadSizeMatchesManifest() throws {
+    let appSupport = URL(fileURLWithPath: NSTemporaryDirectory())
+      .appendingPathComponent("ew-3735-size-\(UUID().uuidString)", isDirectory: true)
+    let turbo = try ModelDeliveryHome.whisperGGUFRegistration(
+      manifestBundle: try Self.manifestBundle(), appSupport: appSupport)
+    let megabytes = Int((Double(turbo.manifest.totalBytes) / 1_000_000).rounded())
+    #expect(megabytes == 886)
+    #expect(String(localized: DictationSettingsCopy.Engine.modelSetupHelp).contains("\(megabytes) MB"))
   }
 }

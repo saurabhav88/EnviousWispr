@@ -31,7 +31,7 @@ enum RecordingSoundMoment: String, CaseIterable {
 struct RecordingSoundCue {
   enum Backend: CaseIterable, Hashable {
     case parakeet
-    case whisperKit
+    case whisper
   }
 
   typealias Playback = @MainActor (

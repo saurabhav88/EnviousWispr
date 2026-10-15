@@ -95,7 +95,7 @@ final class FakeEngine: ASREngineAdapter, @unchecked Sendable {
   var behavior: FakeEngineBehavior
 
   /// Self-declared identity (PR-5 Rung 1). Settable so the engine-identity
-  /// propagation sentinel test can construct a `FakeEngine` with `.whisperKit`
+  /// propagation sentinel test can construct a `FakeEngine` with `.whisper`
   /// and assert the kernel reads it back; defaults to `.parakeet` so existing
   /// scenarios assert byte-identical strings.
   var engineIdentity: ASREngineIdentity = ASREngineIdentity(backendType: .parakeet)
@@ -126,7 +126,7 @@ final class FakeEngine: ASREngineAdapter, @unchecked Sendable {
     }
   }
 
-  /// #2614: a WhisperKit-shaped fake advertises language detection, so the
+  /// #2614: a Whisper-shaped fake advertises language detection, so the
   /// finalization wiring's `LanguageEvidence` takes the engine rung. Off by
   /// default: every existing scenario keeps its Parakeet-class capabilities.
   var detectsLanguage = false

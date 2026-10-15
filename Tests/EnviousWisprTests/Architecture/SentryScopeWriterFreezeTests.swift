@@ -46,8 +46,9 @@ struct SentryScopeWriterFreezeTests {
   /// #3685: publishPolishScope configures the scope; writePolishScope redacts the complete
   /// polish context at write time. writeStableTags adds four fixed/UUID process identity tags.
   /// captureChildProcessFailure adds a metadata-only breadcrumb from the typed child facts.
+  /// #3735: the adapter's unchanged finalize breadcrumb moved to WhisperEngineAdapter.swift.
   static let inventoryFingerprint =
-    "626c9c9b9fd91b0a901b619ec17809251e8ef92e63e1f529f28a59f9d37fc302"
+    "29e4e0944304463156ece55a94d5a0d7c528556e71deb87860bf0dec811651a3"
 
   struct Site: Hashable, Comparable {
     let file: String

@@ -1242,7 +1242,7 @@ struct FileImportCoordinatorTests {
     #expect(coordinator.runConfiguration?.backendType == .parakeet)
 
     // The user switches the shared engine and picks another polisher, then cleans again.
-    engine = .whisperKit
+    engine = .whisper
     polisher = .ollama
     coordinator.rePolish()
     await settleUntil { coordinator.state == .finished }

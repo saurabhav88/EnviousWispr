@@ -163,7 +163,7 @@ final class FileImportCoordinator {
   /// How long the run is expected to take, for "Ready in about 3 minutes": one constant
   /// per audio minute, per engine. Parakeet: calibrated on four Parakeet + EG-1 runs on
   /// 2026-09-13 (4 to 120 audio minutes; 3.25 to 3.89 s per audio minute from Start to
-  /// stored; the 48-minute run's Start is approximate). WhisperKit decodes in 30-second
+  /// stored; the 48-minute run's Start is approximate). Whisper decodes in 30-second
   /// windows and is the slower engine by a wide margin: the 120-minute file took 741 s from
   /// Start to stored on the same night (6.2 s per audio minute; #2919's run), against 467 s
   /// on Parakeet. The run is one polish call per speaker section, except sections too short
@@ -172,7 +172,7 @@ final class FileImportCoordinator {
   nonisolated static func secondsPerAudioMinute(for backend: ASRBackendType) -> Double {
     switch backend {
     case .parakeet: return 3.8
-    case .whisperKit: return 6.2
+    case .whisper: return 6.2
     }
   }
 
@@ -337,7 +337,7 @@ final class FileImportCoordinator {
 
   // MARK: - Progress the Working card can draw (#2918)
 
-  /// How far transcription is, 0...1, from the engine's own report (WhisperKit: the max
+  /// How far transcription is, 0...1, from the engine's own report (Whisper: the max
   /// segment end over the file's length, one tick per finished window; Parakeet: its chunk
   /// stream), or nil before the first tick and outside the transcribing step. Only ever moves
   /// up within a run (windows finish out of order); reset where the run's other per-run
@@ -894,6 +894,7 @@ final class FileImportCoordinator {
     retainedAnalysisSamples = []
     retainedWordTimings = nil
     retainedWordTimingCoverage = nil
+    retainedSegmentTimings = nil
     // Detached from `runTask` (see `run()`), so choosing a new file while a PRIOR
     // file's speaker step is still quietly running in the background must stop it
     // itself, not rely on Stop having already done so.
@@ -1330,6 +1331,7 @@ final class FileImportCoordinator {
     retainedAnalysisSamples = []
     retainedWordTimings = nil
     retainedWordTimingCoverage = nil
+    retainedSegmentTimings = nil
     speakerStepTask?.cancel()
     // And a run still in flight. Since #2851 nothing runs behind Done, so after Done this
     // is a no-op.
@@ -1473,6 +1475,9 @@ final class FileImportCoordinator {
   private var retainedAnalysisSamples: [Float] = []
   private var retainedWordTimings: [ASRWordTiming]?
   private var retainedWordTimingCoverage: ASRWordTimingCoverage?
+  /// #3735 §3.10: segment timings from an engine with no word timing, retained and cleared
+  /// with the word timings above, for the same reasons.
+  private var retainedSegmentTimings: [ASRSegmentTiming]?
 
   /// Test-facing: whether a "Try again" still has audio to run against.
   var retainsRetryInputs: Bool { !retainedAnalysisSamples.isEmpty }
@@ -1483,10 +1488,25 @@ final class FileImportCoordinator {
   /// reruns the analyzer and never the ASR or the timing mapper. A present-but-partial
   /// coverage stays retryable: assembly binds whatever entries ARE timed, and a different
   /// segmentation can bind them differently.
+  ///
+  /// #3735 §3.10: usable segment timings (at least one timed segment) can bind speakers too,
+  /// through the segment path. This one decision gates the retry button and the release of
+  /// the retained audio, so the two can never disagree.
   private var retainedTimingsCanBindSpeakers: Bool {
-    guard retainedWordTimings != nil else { return false }
-    if let coverage = retainedWordTimingCoverage, coverage.timed == 0 { return false }
+    Self.wordTimingsCanBind(retainedWordTimings, retainedWordTimingCoverage)
+      || Self.segmentTimingsCanBind(retainedSegmentTimings)
+  }
+
+  static func wordTimingsCanBind(
+    _ words: [ASRWordTiming]?, _ coverage: ASRWordTimingCoverage?
+  ) -> Bool {
+    guard words != nil else { return false }
+    if let coverage, coverage.timed == 0 { return false }
     return true
+  }
+
+  static func segmentTimingsCanBind(_ segments: [ASRSegmentTiming]?) -> Bool {
+    segments?.contains { !$0.range.isEmpty && $0.hasUsableBounds } ?? false
   }
 
   /// The one reading of "could a retry change this stored outcome", shared by the button
@@ -1544,6 +1564,7 @@ final class FileImportCoordinator {
     retainedAnalysisSamples = []
     retainedWordTimings = nil
     retainedWordTimingCoverage = nil
+    retainedSegmentTimings = nil
   }
 
   /// Bumped only by a successful `renameSpeaker` (#2811, phase 4 of #2807). `turns`/
@@ -1756,7 +1777,7 @@ final class FileImportCoordinator {
       // read v3 as loaded while it unloads it; the readiness drive waits for that
       // switch to settle, and returns at once when nothing is in flight.
       //
-      // **This await is a suspension point a Stop can land in.** For WhisperKit,
+      // **This await is a suspension point a Stop can land in.** For Whisper,
       // readiness hops to the backend actor, so the window is real rather than
       // theoretical. It does not throw on cancellation, so without the guard a
       // stopped run carried on and transcribed. Found by cloud review.
@@ -2040,6 +2061,7 @@ final class FileImportCoordinator {
       retainedAnalysisSamples = analysisSamples
       retainedWordTimings = result.wordTimings
       retainedWordTimingCoverage = result.wordTimingCoverage
+      retainedSegmentTimings = result.segmentTimings
       speakerStepState = .inProgress
       // #2851 follow-up: AWAITED, not detached. The cleanup runs per speaker section, so it
       // needs the turns first. The step is bounded (`SpeakerLabeler`), touches no ASR engine,
@@ -2049,7 +2071,9 @@ final class FileImportCoordinator {
       let stepTask = Task { [weak self] () async -> Void in
         await self?.runSpeakerStep(
           analysisSamples: analysisSamples, historyIDAtStart: historyIDAtStart,
-          wordTimings: result.wordTimings, wordTimingCoverage: result.wordTimingCoverage)
+          timings: SpeakerTimings(
+            words: result.wordTimings, wordCoverage: result.wordTimingCoverage,
+            segments: result.segmentTimings, rawText: result.text))
       }
       speakerStepTask = stepTask
       await stepTask.value
@@ -2084,9 +2108,9 @@ final class FileImportCoordinator {
   /// an early return, or cancellation — but only for the document this pass was FOR, so a
   /// stale completion can never mark a NEWER document's own in-progress pass as finished.
   private func runSpeakerStep(
-    analysisSamples: [Float], historyIDAtStart: UUID?,
-    wordTimings: [ASRWordTiming]?, wordTimingCoverage: ASRWordTimingCoverage?
+    analysisSamples: [Float], historyIDAtStart: UUID?, timings: SpeakerTimings
   ) async {
+    let wordTimingCoverage = timings.wordCoverage
     defer {
       if historyIDAtStart == historyID {
         speakerStepState = .finished
@@ -2115,8 +2139,17 @@ final class FileImportCoordinator {
     guard historyIDAtStart == historyID, !Task.isCancelled else { return }
     emitSpeakerTelemetry(outcome, durationSeconds, analysisMs, wordTimingCoverage)
 
-    await runTurnStorage(
-      outcome: outcome, wordTimings: wordTimings, historyIDAtStart: historyIDAtStart)
+    await runTurnStorage(outcome: outcome, timings: timings, historyIDAtStart: historyIDAtStart)
+  }
+
+  /// The timing inputs one speaker pass assembles turns from, snapshotted together so an
+  /// initial pass and a retry read the same document's values (#3735 §3.10). `rawText` is the
+  /// text the ranges index (`ASRResult.text`, kept as `rawTranscript`).
+  struct SpeakerTimings: Sendable {
+    let words: [ASRWordTiming]?
+    let wordCoverage: ASRWordTimingCoverage?
+    let segments: [ASRSegmentTiming]?
+    let rawText: String
   }
 
   /// Phase 3: turn assembly, background turn-safe cleanup, and storage (#2810 addendum §3
@@ -2125,7 +2158,7 @@ final class FileImportCoordinator {
   /// finishes, and claims the same engine admission the visible run does for its own
   /// duration, exactly as round 2 of the addendum's review settled.
   private func runTurnStorage(
-    outcome: SpeakerAnalysis, wordTimings: [ASRWordTiming]?, historyIDAtStart: UUID?
+    outcome: SpeakerAnalysis, timings: SpeakerTimings, historyIDAtStart: UUID?
   ) async {
     guard historyID != nil else { return }
     let passStart = CFAbsoluteTimeGetCurrent()
@@ -2139,7 +2172,7 @@ final class FileImportCoordinator {
 
     guard
       let (assembledTurns, labeledCount) = await assembleTurnsOrPersistTerminal(
-        outcome: outcome, wordTimings: wordTimings, historyIDAtStart: historyIDAtStart)
+        outcome: outcome, timings: timings, historyIDAtStart: historyIDAtStart)
     else { return }
     guard historyIDAtStart == historyID, !Task.isCancelled else { return }
 
@@ -2163,7 +2196,7 @@ final class FileImportCoordinator {
   /// caller must stop, writing nothing further. Non-nil hands back turns ready for EITHER
   /// cleanup (the ordinary path) or direct persistence (retry, which skips cleanup).
   private func assembleTurnsOrPersistTerminal(
-    outcome: SpeakerAnalysis, wordTimings: [ASRWordTiming]?, historyIDAtStart: UUID?
+    outcome: SpeakerAnalysis, timings: SpeakerTimings, historyIDAtStart: UUID?
   ) async -> (turns: [Turn], labeledCount: Int)? {
     // Non-labeled outcomes map directly through the one exhaustive mapping (chunk 1) and
     // never touch turn assembly. A missing `wordTimings` matters ONLY when assembly is
@@ -2181,37 +2214,63 @@ final class FileImportCoordinator {
         analysis: outcome.asStorageAnalysis, turns: nil, terminalOutcome: turnsOutcome)
       return nil
     }
-    guard let wordTimings else {
+    let wordTimings = timings.words
+    // #3735 §3.10: segment timings are the second source, for an engine with no word timing.
+    let segmentTimings = Self.segmentTimingsCanBind(timings.segments) ? timings.segments : nil
+    guard wordTimings != nil || segmentTimings != nil else {
       pendingSpeakerResult = SpeakerStepResult(
         analysis: .failed(.noWordTimings), turns: nil, terminalOutcome: .noWordTimings)
       return nil
     }
-
-    // Off the main actor: a multi-hour, highly segmented recording's O(words × segments)
-    // scan would otherwise run synchronously on this MainActor-isolated method and freeze
-    // the UI before the background cleanup even claims the engine (found by cloud review).
-    // `entries`/`segments`/`Turn` are all `Sendable` value types, so handing the pure
-    // computation to a detached task changes nothing about its result.
-    //
-    // `Task.detached` is UNSTRUCTURED: cancelling THIS task (e.g. `stop()`'s unconditional
-    // `speakerStepTask?.cancel()`) would not by itself cancel the detached child, leaving it
-    // to run the full scan to completion and this task waiting on it the whole time
-    // (found by cloud review). `withTaskCancellationHandler` propagates cancellation into
-    // the child explicitly; `TurnAssembler.assemble`'s own loop checks `Task.isCancelled`
-    // per entry so the propagated cancellation actually shortens the scan.
-    let assemblyTask = Task.detached(priority: .utility) {
-      TurnAssembler.assemble(entries: wordTimings, segments: segments)
+    // The word path keeps precedence; the segment path runs only when the word path has no
+    // timings or binds no individual speaker.
+    var assembledTurns: [Turn] = []
+    if let wordTimings {
+      // Off the main actor: a multi-hour, highly segmented recording's O(words × segments)
+      // scan would otherwise run synchronously on this MainActor-isolated method and freeze
+      // the UI before the background cleanup even claims the engine (found by cloud review).
+      // `entries`/`segments`/`Turn` are all `Sendable` value types, so handing the pure
+      // computation to a detached task changes nothing about its result.
+      //
+      // `Task.detached` is UNSTRUCTURED: cancelling THIS task (e.g. `stop()`'s unconditional
+      // `speakerStepTask?.cancel()`) would not by itself cancel the detached child, leaving it
+      // to run the full scan to completion and this task waiting on it the whole time
+      // (found by cloud review). `withTaskCancellationHandler` propagates cancellation into
+      // the child explicitly; `TurnAssembler.assemble`'s own loop checks `Task.isCancelled`
+      // per entry so the propagated cancellation actually shortens the scan.
+      let assemblyTask = Task.detached(priority: .utility) {
+        TurnAssembler.assemble(entries: wordTimings, segments: segments)
+      }
+      assembledTurns = await withTaskCancellationHandler(
+        operation: { await assemblyTask.value },
+        onCancel: { assemblyTask.cancel() }
+      )
+      // A stale/cancelled pass writes NOTHING here, matching every other staleness guard in
+      // this file — the caller must not fall through to the all-unknown check below and
+      // persist a failure on behalf of a document nobody is watching anymore. Compares against
+      // the LIVE `historyID` property, never `historyIDForWrite` — a value captured once at
+      // entry cannot detect a document swap that happened during this `await`.
+      guard historyIDAtStart == historyID, !Task.isCancelled else { return nil }
+      if Self.bindsIndividualSpeaker(assembledTurns) { return (assembledTurns, labeledCount) }
     }
-    let assembledTurns = await withTaskCancellationHandler(
-      operation: { await assemblyTask.value },
-      onCancel: { assemblyTask.cancel() }
-    )
-    // A stale/cancelled pass writes NOTHING here, matching every other staleness guard in
-    // this file — the caller must not fall through to the all-unknown check below and
-    // persist a failure on behalf of a document nobody is watching anymore. Compares against
-    // the LIVE `historyID` property, never `historyIDForWrite` — a value captured once at
-    // entry cannot detect a document swap that happened during this `await`.
-    guard historyIDAtStart == historyID, !Task.isCancelled else { return nil }
+
+    // #3735 §3.10: the segment path, off the main actor and cancellable for the same reasons
+    // as the word path above. A result whose segments overlapped the diarizer at all is
+    // stored even when every turn is Both: segments that mix speakers are a legitimate,
+    // honest result, not missing timings.
+    if let segmentTimings {
+      let rawText = timings.rawText
+      let segmentTask = Task.detached(priority: .utility) {
+        TurnAssembler.assemble(segmentTimings: segmentTimings, rawText: rawText, segments: segments)
+      }
+      let assembly = await withTaskCancellationHandler(
+        operation: { await segmentTask.value },
+        onCancel: { segmentTask.cancel() }
+      )
+      guard historyIDAtStart == historyID, !Task.isCancelled else { return nil }
+      if assembly.anySegmentBound { return (assembly.turns, labeledCount) }
+      assembledTurns = assembly.turns
+    }
 
     // A space-free script (Chinese, Japanese, ...) makes the production word-timing mapper
     // (`WordTimingRangeMapper`, #2809) return exactly one untimed entry for the whole
@@ -2223,26 +2282,25 @@ final class FileImportCoordinator {
     // timings that never bind to anything are exactly "nothing to merge against," matching
     // that reason's own documented scope. The real fix (a mapper that can tokenize a
     // space-free script) belongs to `WordTimingRangeMapper` itself, out of this phase's scope.
-    guard
-      assembledTurns.contains(where: {
-        $0.speakerId != TurnAssembler.unknownSpeakerID
-          && $0.speakerId != TurnAssembler.bothSpeakersID
-      })
-    else {
-      pendingSpeakerResult = SpeakerStepResult(
-        analysis: .failed(.noWordTimings), turns: nil, terminalOutcome: .noWordTimings)
-      // #2919: the one line that says WHY a labeled analysis stored no turns. The WhisperKit
-      // long-file failure ran for a day with `outcome=labeled` in the log and nothing after it.
-      // Logged AFTER the assignment, like the success path: an await between the staleness
-      // guard above and the assignment would let a replaced document's failure land on the
-      // next one (found by Codex).
-      let coverage = retainedWordTimingCoverage
-      await AppLogger.shared.log(
-        "[TurnStorage] no speaker turns: timed=\(coverage?.timed ?? -1) total=\(coverage?.total ?? -1) entries=\(assembledTurns.count) speakers=\(labeledCount)",
-        level: .info, category: "FileImportCoordinator")
-      return nil
+    pendingSpeakerResult = SpeakerStepResult(
+      analysis: .failed(.noWordTimings), turns: nil, terminalOutcome: .noWordTimings)
+    // #2919: the one line that says WHY a labeled analysis stored no turns. The WhisperKit
+    // long-file failure ran for a day with `outcome=labeled` in the log and nothing after it.
+    // Logged AFTER the assignment, like the success path: an await between the staleness
+    // guard above and the assignment would let a replaced document's failure land on the
+    // next one (found by Codex).
+    let coverage = retainedWordTimingCoverage
+    await AppLogger.shared.log(
+      "[TurnStorage] no speaker turns: timed=\(coverage?.timed ?? -1) total=\(coverage?.total ?? -1) entries=\(assembledTurns.count) speakers=\(labeledCount)",
+      level: .info, category: "FileImportCoordinator")
+    return nil
+  }
+
+  /// Whether word-path turns name at least one real speaker (not unknown, not Both).
+  static func bindsIndividualSpeaker(_ turns: [Turn]) -> Bool {
+    turns.contains {
+      $0.speakerId != TurnAssembler.unknownSpeakerID && $0.speakerId != TurnAssembler.bothSpeakersID
     }
-    return (assembledTurns, labeledCount)
   }
 
   /// Why the Done screen should show a speaker-analysis notice right now, if at all (#2811 §4
@@ -2301,13 +2359,13 @@ final class FileImportCoordinator {
   func retrySpeakerAnalysis() {
     guard canRetrySpeakerAnalysis, let historyIDAtStart = historyID else { return }
     let analysisSamples = retainedAnalysisSamples
-    let wordTimings = retainedWordTimings
-    let wordTimingCoverage = retainedWordTimingCoverage
+    let timings = SpeakerTimings(
+      words: retainedWordTimings, wordCoverage: retainedWordTimingCoverage,
+      segments: retainedSegmentTimings, rawText: rawTranscript)
     speakerStepState = .inProgress
     speakerStepTask = Task { [weak self] in
       await self?.runRetryAnalysis(
-        analysisSamples: analysisSamples, wordTimings: wordTimings,
-        wordTimingCoverage: wordTimingCoverage, historyIDAtStart: historyIDAtStart)
+        analysisSamples: analysisSamples, timings: timings, historyIDAtStart: historyIDAtStart)
       // Read AFTER the retry's own write, from the STORED outcome (§3 Design "failure
       // authority" correction) — never the in-memory analyzer-only `speakerAnalysis`, and
       // never assumed from whether `runRetryAnalysis` itself returned normally, since a
@@ -2332,9 +2390,9 @@ final class FileImportCoordinator {
   }
 
   private func runRetryAnalysis(
-    analysisSamples: [Float], wordTimings: [ASRWordTiming]?,
-    wordTimingCoverage: ASRWordTimingCoverage?, historyIDAtStart: UUID
+    analysisSamples: [Float], timings: SpeakerTimings, historyIDAtStart: UUID
   ) async {
+    let wordTimingCoverage = timings.wordCoverage
     // Every comparison below reads the LIVE `historyID` property — never a locally-bound
     // value of the same name, which would shadow it and neuter the staleness check (the
     // exact defect found by chunk review in an earlier version of this function).
@@ -2359,7 +2417,7 @@ final class FileImportCoordinator {
 
     guard
       let (assembledTurns, labeledCount) = await assembleTurnsOrPersistTerminal(
-        outcome: outcome, wordTimings: wordTimings, historyIDAtStart: historyIDAtStart)
+        outcome: outcome, timings: timings, historyIDAtStart: historyIDAtStart)
     else {
       // A terminal result (one voice, no timings, all unknown): written now, since no
       // cleanup follows to write it.

@@ -1404,7 +1404,7 @@ public actor ModelDeliveryController {
   /// three of four shipped manifests carry that flag's value copied from a
   /// sibling, so for most artefacts it encodes nobody's decision.
   ///
-  /// SAME VARIANT is part of the match, not a detail. WhisperKit transcription
+  /// SAME VARIANT is part of the match, not a detail. Whisper transcription
   /// and Live Preview deliberately SHARE this one metadata directory while
   /// keeping separate install directories, on the stated grounds that
   /// `cacheKey` includes the variant so their staging and markers cannot
@@ -1442,7 +1442,7 @@ public actor ModelDeliveryController {
     // four bootstrap sites call it directly. Without this guard, launching
     // during an incident freeze deletes superseded staging — resumable
     // multi-GB partials — at the exact moment nothing is permitted to
-    // re-fetch them. `WhisperKitLegacyUpgradeCoordinator` step 0 gates its
+    // re-fetch them. The retired WhisperKit legacy upgrade coordinator's step 0 gated its
     // own deletion run for this reason and names the harm: deleting while
     // disabled strands a user with neither the old copy nor a fetchable
     // replacement.

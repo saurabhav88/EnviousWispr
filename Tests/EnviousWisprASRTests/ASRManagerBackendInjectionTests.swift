@@ -8,7 +8,7 @@ import os
 
 /// Phase G5 — exercises reset-branch behavior in `setInitialBackendType` and
 /// `switchBackend` from a synthetic loaded state. Previously NOT_TESTABLE
-/// because driving a real `ParakeetBackend` / `WhisperKitBackend` to
+/// because driving a real `ParakeetBackend` / `Whisper backend` to
 /// `isReady=true` requires a real model download/compile on CI.
 ///
 /// `FakeASRBackend` is an actor (matches `ASRBackend: Actor` requirement)
@@ -181,9 +181,9 @@ struct ASRManagerBackendInjectionTests {
     try await manager.loadModel()
     #expect(manager.isModelLoaded == true)
 
-    await manager.switchBackend(to: .whisperKit)
+    await manager.switchBackend(to: .whisper)
     #expect(manager.isModelLoaded == false)
-    #expect(manager.activeBackendType == .whisperKit)
+    #expect(manager.activeBackendType == .whisper)
   }
 
   /// #3546 A-fail: when this fails, a failed Ultra load is still releasing its model while
@@ -345,7 +345,7 @@ struct ASRManagerBackendInjectionTests {
       parakeetSelection: ParakeetSelectionProvider(), parakeetBackendFactory: { parakeet })
     try await manager.loadModel()
 
-    await manager.switchBackend(to: .whisperKit)
+    await manager.switchBackend(to: .whisper)
 
     let parakeetUnloads = await parakeet.unloadCount
     #expect(parakeetUnloads == 1)
@@ -378,10 +378,10 @@ struct ASRManagerBackendInjectionTests {
     try await manager.loadModel()
     #expect(manager.isModelLoaded == true)
 
-    manager.setInitialBackendType(.whisperKit)
+    manager.setInitialBackendType(.whisper)
     #expect(manager.isModelLoaded == false)
     #expect(manager.isStreaming == false)
-    #expect(manager.activeBackendType == .whisperKit)
+    #expect(manager.activeBackendType == .whisper)
   }
 }
 
@@ -478,7 +478,7 @@ struct ASRManagerLoadGenerationTests {
       await #expect(throws: ASRLoadSupersededError.self) { try await manager.loadModel() }
     }
     await waitForPrepareEntered(parakeet)
-    await manager.switchBackend(to: .whisperKit)  // retires the parakeet load task
+    await manager.switchBackend(to: .whisper)  // retires the parakeet load task
     await parakeet.releaseGate()
     await loadTask.value
 
@@ -507,17 +507,17 @@ struct ASRManagerLoadGenerationTests {
     let manager = ASRManager(
       engineMutationScope: .alwaysAllowedForTesting,
       parakeetSelection: ParakeetSelectionProvider(), parakeetBackendFactory: { parakeet })
-    manager.setInitialBackendType(.whisperKit)
+    manager.setInitialBackendType(.whisper)
 
-    // WhisperKit loads in-process behind its relocation gate, never here. A
+    // Whisper loads in-process behind its relocation gate, never here. A
     // silent no-op would look like a successful warm-up of a model that isn't
     // there; worse, the old code mapped one the gate never saw.
-    await #expect(throws: ASRManagerNotOwnedError(backend: .whisperKit)) {
+    await #expect(throws: ASRManagerNotOwnedError(backend: .whisper)) {
       try await manager.loadModel()
     }
     #expect(manager.isModelLoaded == false)
     let prepares = await parakeet.prepareCount
-    #expect(prepares == 0, "the Parakeet backend must not be loaded for a WhisperKit request")
+    #expect(prepares == 0, "the Parakeet backend must not be loaded for a Whisper request")
   }
 
   @Test("transcribe refuses an engine the manager does not own")
@@ -526,9 +526,9 @@ struct ASRManagerLoadGenerationTests {
     let manager = ASRManager(
       engineMutationScope: .alwaysAllowedForTesting,
       parakeetSelection: ParakeetSelectionProvider(), parakeetBackendFactory: { parakeet })
-    manager.setInitialBackendType(.whisperKit)
+    manager.setInitialBackendType(.whisper)
 
-    await #expect(throws: ASRManagerNotOwnedError(backend: .whisperKit)) {
+    await #expect(throws: ASRManagerNotOwnedError(backend: .whisper)) {
       _ = try await manager.transcribe(audioSamples: [0.0], options: .default)
     }
   }
@@ -539,7 +539,7 @@ struct ASRManagerLoadGenerationTests {
       engineMutationScope: .alwaysAllowedForTesting,
       parakeetSelection: ParakeetSelectionProvider(),
       parakeetBackendFactory: { FakeASRBackend(initiallyReady: true) })
-    manager.setInitialBackendType(.whisperKit)
+    manager.setInitialBackendType(.whisper)
     #expect(await manager.activeBackendSupportsStreaming == false)
   }
 

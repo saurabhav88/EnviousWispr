@@ -55,7 +55,7 @@ import Testing
       return DebugFaultEndpoint(
         audioCapture: nil,
         kernelDriver: makeDriver(),
-        whisperKitKernelDriver: makeDriver(),
+        whisperKernelDriver: makeDriver(),
         activeBackend: { .parakeet }, qualificationAction: action, qualificationChildTrap: child)
     }
 

@@ -18,7 +18,7 @@
   /// PR10 of #763 — behavior tests for `RecordingFinalizer`.
   ///
   /// Deep dispatch paths (Parakeet `await pipeline.cancelRecording()` /
-  /// WhisperKit `try await whisperKitKernelDriver.handle(event: .cancelRecording)`)
+  /// Whisper `try await whisperKernelDriver.handle(event: .cancelRecording)`)
   /// require real pipeline state and are exercised end-to-end via founder /
   /// automated UAT. These tests verify what is mechanically verifiable in a
   /// unit context:
@@ -28,7 +28,7 @@
   ///   - `markLocked()` flips the shared lock-state setter to true and
   ///     updates the overlay.
   ///   - `resetActive()` calls the active backend's `reset()` (Parakeet vs
-  ///     WhisperKit branching).
+  ///     Whisper branching).
   ///   - Construction does not crash.
   @MainActor
   @Suite struct RecordingFinalizerCancelPathTests {
@@ -36,7 +36,7 @@
     private struct Fixture {
       let finalizer: RecordingFinalizer
       let kernelDriver: KernelDictationDriver
-      let whisperKitKernelDriver: KernelDictationDriver
+      let whisperKernelDriver: KernelDictationDriver
       let asr: RouterTestASRManager
       let lockBox: TestRecordingLockedBox
       let overlay: OverlayDirector
@@ -48,7 +48,7 @@
       let store = DictationRuntimeFixtures.tempStore()
       let pipeline = DictationRuntimeFixtures.makeParakeetDriver(
         audioCapture: audio, asrManager: asr, store: store)
-      let whisperKitKernelDriver = DictationRuntimeFixtures.makeWhisperKitPipeline(
+      let whisperKernelDriver = DictationRuntimeFixtures.makeWhisperPipeline(
         audioCapture: audio, store: store)
       let overlay = OverlayTestDouble.headlessDirector()
       let lockBox = TestRecordingLockedBox()
@@ -63,7 +63,7 @@
       )
       let finalizer = RecordingFinalizer(
         kernelDriver: pipeline,
-        whisperKitKernelDriver: whisperKitKernelDriver,
+        whisperKernelDriver: whisperKernelDriver,
         asrManager: asr,
         recordingOverlay: overlay,
         heartControlRecovery: hcr,
@@ -73,7 +73,7 @@
       return Fixture(
         finalizer: finalizer,
         kernelDriver: pipeline,
-        whisperKitKernelDriver: whisperKitKernelDriver,
+        whisperKernelDriver: whisperKernelDriver,
         asr: asr,
         lockBox: lockBox,
         overlay: overlay
@@ -89,9 +89,9 @@
       #expect(fx.lockBox.isLocked == false)
     }
 
-    @Test func cancelIsNoOpWhenWhisperKitIdle() async {
+    @Test func cancelIsNoOpWhenWhisperIdle() async {
       let fx = Self.makeFixture()
-      fx.asr.activeBackendType = .whisperKit
+      fx.asr.activeBackendType = .whisper
       fx.lockBox.isLocked = true
       await fx.finalizer.cancel(trigger: .shortcut)
       #expect(fx.lockBox.isLocked == false)
@@ -326,19 +326,19 @@
       do {  // Parakeet active.
         let fx = Self.makeFixture()
         fx.kernelDriver.setTerminalReason(.modelWedged)
-        fx.whisperKitKernelDriver.setTerminalReason(.asrFailed)
+        fx.whisperKernelDriver.setTerminalReason(.asrFailed)
         fx.asr.activeBackendType = .parakeet
         fx.finalizer.resetActive()
         #expect(fx.kernelDriver.state == .idle)
-        #expect(fx.whisperKitKernelDriver.state == .error(.asrFailed))
+        #expect(fx.whisperKernelDriver.state == .error(.asrFailed))
       }
-      do {  // WhisperKit active.
+      do {  // Whisper active.
         let fx = Self.makeFixture()
         fx.kernelDriver.setTerminalReason(.modelWedged)
-        fx.whisperKitKernelDriver.setTerminalReason(.asrFailed)
-        fx.asr.activeBackendType = .whisperKit
+        fx.whisperKernelDriver.setTerminalReason(.asrFailed)
+        fx.asr.activeBackendType = .whisper
         fx.finalizer.resetActive()
-        #expect(fx.whisperKitKernelDriver.state == .idle)
+        #expect(fx.whisperKernelDriver.state == .idle)
         #expect(fx.kernelDriver.state == .error(.modelWedged))
       }
     }

@@ -17,26 +17,26 @@ final class FakeEngineDeps {
   var selected: ASRBackendType
   var active: ASRBackendType
   var parakeetReadiness: ASREngineReadiness
-  var whisperKitReadiness: ASREngineReadiness
+  var whisperReadiness: ASREngineReadiness
   var parakeetActive = false
-  var whisperKitActive = false
+  var whisperActive = false
   var recovering = false
   var parakeetInstalled = true
 
   /// #1635: backed by an `@Observable` box so `EngineCoordinator.observeInstalledState()`
   /// can genuinely track it.
   ///
-  /// That method wraps `deps.isInstalled(.whisperKit)` in `withObservationTracking`, and
+  /// That method wraps `deps.isInstalled(.whisper)` in `withObservationTracking`, and
   /// its own comment says "In unit tests the fake reader touches no `@Observable` source,
   /// so this is inert." A plain stored property therefore made the real download-completion
   /// trigger untestable, and a test could only fake it by calling
   /// `poke(.setupStateChanged)` by hand — which exercises the EFFECT, not the trigger.
   /// Reading through this box makes the observation fire for real.
-  var whisperKitInstalled: Bool {
-    get { whisperKitInstalledBox.value }
-    set { whisperKitInstalledBox.value = newValue }
+  var whisperInstalled: Bool {
+    get { whisperInstalledBox.value }
+    set { whisperInstalledBox.value = newValue }
   }
-  private let whisperKitInstalledBox = ObservableInstallFlag(true)
+  private let whisperInstalledBox = ObservableInstallFlag(true)
 
   /// Switch bookkeeping.
   private(set) var switchCount = 0
@@ -89,25 +89,25 @@ final class FakeEngineDeps {
     selected: ASRBackendType = .parakeet,
     active: ASRBackendType = .parakeet,
     parakeetReadiness: ASREngineReadiness = .ready,
-    whisperKitReadiness: ASREngineReadiness = .ready
+    whisperReadiness: ASREngineReadiness = .ready
   ) {
     self.selected = selected
     self.active = active
     self.parakeetReadiness = parakeetReadiness
-    self.whisperKitReadiness = whisperKitReadiness
+    self.whisperReadiness = whisperReadiness
   }
 
   func readiness(_ b: ASRBackendType) -> ASREngineReadiness {
-    b == .whisperKit ? whisperKitReadiness : parakeetReadiness
+    b == .whisper ? whisperReadiness : parakeetReadiness
   }
   func setReadiness(_ b: ASRBackendType, _ r: ASREngineReadiness) {
-    if b == .whisperKit { whisperKitReadiness = r } else { parakeetReadiness = r }
+    if b == .whisper { whisperReadiness = r } else { parakeetReadiness = r }
   }
   func isActive(_ b: ASRBackendType) -> Bool {
-    b == .whisperKit ? whisperKitActive : parakeetActive
+    b == .whisper ? whisperActive : parakeetActive
   }
   func installed(_ b: ASRBackendType) -> Bool {
-    b == .whisperKit ? whisperKitInstalled : parakeetInstalled
+    b == .whisper ? whisperInstalled : parakeetInstalled
   }
 
   func makeDependencies() -> EngineCoordinator.Dependencies {
@@ -183,7 +183,7 @@ func enginePoll(
 
 enum FakeWarmError: Error { case failed }
 
-/// #1635: an `@Observable` cell so `FakeEngineDeps.whisperKitInstalled` participates in
+/// #1635: an `@Observable` cell so `FakeEngineDeps.whisperInstalled` participates in
 /// `withObservationTracking`. Without this, `EngineCoordinator.observeInstalledState()` is
 /// inert under test and the real download-completion trigger cannot be exercised.
 @Observable

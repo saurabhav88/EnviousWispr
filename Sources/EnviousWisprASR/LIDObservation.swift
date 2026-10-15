@@ -1,14 +1,15 @@
 import Foundation
 
-/// Sendable raw observation from a single WhisperKit `detectLangauge` window.
+/// Sendable raw observation from a single language-detection window.
 ///
-/// `WhisperKit.detectLangauge` returns a single-entry `langProbs` map of the form
-/// `{detectedLanguage: logProb}` — i.e. the argmax language for that window plus
-/// its log-softmax score. Per-window aggregation (vote counting + mean probability)
-/// happens in `LanguageDetector` against a batch of these.
+/// Since #3735 each window is one transcribe.cpp language detection on the loaded model
+/// (`TranscribeCppLanguageObservation`): the argmax language for that window plus its
+/// log-softmax score, the same shape the retired WhisperKit `detectLangauge` returned.
+/// Per-window aggregation (vote counting + mean probability) happens in `LanguageDetector`
+/// against a batch of these.
 ///
-/// This is the Sendable surface that crosses the `WhisperKitBackend` actor boundary.
-/// The non-Sendable `WhisperKit` reference itself never leaves the backend.
+/// This is the Sendable surface that crosses the `TranscribeCppWhisperBackend` actor
+/// boundary; the native model handle never leaves the backend.
 package struct RawLIDObservation: Sendable, Equatable {
   package let argmaxLang: String
   package let logProb: Double
@@ -27,9 +28,8 @@ package struct RawLIDObservation: Sendable, Equatable {
 /// classifier should NOT touch session memory in this case (matches today's
 /// behavior in `LanguageDetector.detect` cancellation branch).
 package enum LIDObservationBatch: Sendable {
-  /// Backend not ready (WhisperKit handle is nil — model unloaded). Caller
-  /// abstains; pipeline passes nil language to `WhisperKit.transcribe`, letting
-  /// WhisperKit's internal LID run during transcribe.
+  /// Backend not ready (no loaded model). Caller abstains; the pipeline passes a nil
+  /// language to the decode, which then detects the language itself.
   case unavailable
 
   /// User hotkey-cancelled during the LID window pass. Caller abstains
@@ -37,7 +37,7 @@ package enum LIDObservationBatch: Sendable {
   ///
   /// Note: cancellation responsiveness is slightly faster than the previous
   /// inline implementation. The old `LanguageDetector.runMultiWindowLID`
-  /// caught `CancellationError` thrown from inside `whisperKit.detectLangauge`
+  /// caught `CancellationError` thrown from inside the vendor's detection call
   /// in the same try/catch as other errors and continued to the next window
   /// (cancellation only took effect at the next pre-window
   /// `Task.checkCancellation()`). This implementation surfaces inner
@@ -49,7 +49,7 @@ package enum LIDObservationBatch: Sendable {
   /// abstains with reason `too_short` (matches today's empty-result branch).
   case noWindows
 
-  /// All attempted windows failed (WhisperKit threw on every one). Caller
+  /// All attempted windows failed (the detection threw on every one). Caller
   /// abstains with reason `internal_error` and records the abstain in
   /// session memory.
   case error(reason: String)

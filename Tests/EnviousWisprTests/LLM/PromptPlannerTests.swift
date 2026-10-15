@@ -543,12 +543,12 @@ struct EGOneNamedLanguagePromptTests {
 
   @Test("Through the whole planner: a named Polish input survives the vocabulary copy and reaches the prompt")
   func namedPolishThroughThePlanner() {
-    // `.whisperKit` with no detection is the path where the planner REBUILDS the input
+    // `.whisper` with no detection is the path where the planner REBUILDS the input
     // through `withPolishVocabulary`, so a dropped field would show up here and nowhere else.
     let input = PromptBuildInput(
       transcript: "daty płatności", provider: .egOne, modelID: "eg-1", appName: nil,
       language: nil, polishVocabulary: PolishVocabulary(terms: [], generation: 3),
-      backend: .whisperKit, namedLanguage: "pl")
+      backend: .whisper, namedLanguage: "pl")
     let plan = DefaultPromptPlanner(egOneFamily: .egOneEnvelopeNamedLanguage).plan(input: input)
     #expect(plan.family == .egOneEnvelopeNamedLanguage)
     #expect(
@@ -564,7 +564,7 @@ struct EGOneNamedLanguagePromptTests {
     let input = PromptBuildInput(
       transcript: "please send the invoice", provider: .egOne, modelID: "eg-1", appName: nil,
       language: nil, polishVocabulary: PolishVocabulary(terms: [], generation: 0),
-      backend: .whisperKit, namedLanguage: code)
+      backend: .whisper, namedLanguage: code)
     let plan = DefaultPromptPlanner(egOneFamily: .egOneEnvelopeNamedLanguage).plan(input: input)
     #expect(plan.envelope.messages[0].content == EGOneEnvelopePromptBuilder.systemPrompt)
   }

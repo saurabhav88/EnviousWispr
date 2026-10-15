@@ -248,7 +248,7 @@ enum LanguageLockOptions {
   /// property this replaces rather than "cleaned up" into a non-optional.
   static func lockableCodes(for backend: ASRBackendType) -> Set<String>? {
     switch backend {
-    case .whisperKit:
+    case .whisper:
       // The engine's full catalogue. It claims no restriction, so the app must not invent one.
       return nil
     case .parakeet:

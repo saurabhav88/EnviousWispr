@@ -236,20 +236,21 @@ import Testing
 
   /// #2154 — the public download size must be the size we actually ship.
   ///
-  /// **Product Outcome.** "217 MB" is a claim a user decides on: it is the whole
-  /// cost of choosing the Universal engine. Nothing bound it. The manifest test
-  /// pinned `totalBytes == 217_350_763` and this file had a test with 217 MB in
-  /// its NAME that asserted something else entirely, so the copy could have said
-  /// any number and every test would still have passed
+  /// **Product Outcome.** The download size is a claim a user decides on: it is the
+  /// whole cost of choosing the Universal engine. Nothing bound it at first: the
+  /// manifest test pinned the WhisperKit size and this file had a test with that
+  /// size in its NAME that asserted something else entirely, so the copy could have
+  /// said any number and every test would still have passed
   /// (`testing-philosophy.md` RULE: a-public-product-promise-needs-a-binding-test).
+  /// #3735: the Universal engine now downloads the transcribe.cpp whisper-small GGUF,
+  /// so the authority is that manifest (`whisper-preview-delivery-manifest.json`).
   ///
   /// Derives the number from the shipped manifest rather than restating it, so
   /// there is exactly one authority. Decimal MB, matching how a download size is
   /// quoted to users and how the copy was written.
   @Test("the engine card's download size is the shipped manifest's size")
   func universalDescriptionMatchesShippedManifestSize() throws {
-    let url = WhisperKitPreviewManifestTests.previewManifestURL
-    let manifest = try DeliveryManifest.load(from: Data(contentsOf: url))
+    let manifest = try WhisperGGUFManifestTests.load("whisper-preview-delivery-manifest").manifest
 
     let megabytes = Int((Double(manifest.totalBytes) / 1_000_000).rounded())
     #expect(

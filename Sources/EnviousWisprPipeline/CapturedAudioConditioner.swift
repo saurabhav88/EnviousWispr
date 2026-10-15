@@ -13,7 +13,7 @@ import Foundation
 // Placement: kernel-adjacent (NOT inside an `ASREngineAdapter` conformer).
 // The adapter contract says an adapter owns its own ASR and rescue; it does
 // NOT own capture/VAD policy. A shared kernel-side conditioner means PR-5
-// WhisperKit inherits parity without re-duplicating the logic.
+// Whisper inherits parity without re-duplicating the logic.
 //
 // Built ON the existing `SampleFilter.filter` (the VAD-segment merge), wrapped
 // to return both the ASR-ready samples AND the metadata-only telemetry fields

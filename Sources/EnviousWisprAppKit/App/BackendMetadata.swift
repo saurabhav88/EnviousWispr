@@ -36,7 +36,7 @@ final class BackendMetadata {
   }
 
   var modelLabel: String {
-    settings.selectedBackend == .parakeet ? parakeetModelLabel() : "WhisperKit"
+    settings.selectedBackend == .parakeet ? parakeetModelLabel() : "Whisper"
   }
 
   /// Sidebar AI Polish row label. Reads the CONFIGURED polish target

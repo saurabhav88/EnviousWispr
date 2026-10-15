@@ -1,7 +1,7 @@
 import EnviousWisprCore
 import Foundation
 
-/// #1635: canonical copy for the WhisperKit "Model Setup" row's two settled-ish states.
+/// #1635: canonical copy for the Whisper "Model Setup" row's two settled-ish states.
 ///
 /// The row previously had ONE state and it lied. "Model Ready" is delivery truth — the
 /// model is admitted on disk — but the engine then loads into memory for a measured p50 of
@@ -19,8 +19,8 @@ import Foundation
 /// it then describes. Do not widen one without the other.
 ///
 /// "usually" is load-bearing: p90 on this path is 44.2s, so a hard promise would be broken
-/// for about a quarter of users. A progress percentage is impossible — WhisperKit exposes
-/// no load-progress stream (`whisperkit-research.md` FACT: cold-start-warmup-lifecycle).
+/// for about a quarter of users. A progress percentage is impossible — WhisperKit exposed
+/// no load-progress stream (`whisperkit-research.md` FACT: cold-start-warmup-lifecycle), nor does transcribe.cpp's single native load.
 ///
 /// ## THE ROW STILL LIES ON A COLD PRESS. This is known, observed, and accepted.
 ///
@@ -77,7 +77,7 @@ enum ModelPreparingCopy {
   /// "ready" is the status quo, whereas a stuck "preparing" would be a NEW lie with no way
   /// out.
   static func isPreparing(warmInFlight: ASRBackendType?) -> Bool {
-    warmInFlight == .whisperKit
+    warmInFlight == .whisper
   }
 
   /// The label for a given warm state. Convenience over `isPreparing` for the row.

@@ -50,7 +50,7 @@ import Testing
 
       box.removeAll()
       TelemetryService.shared.recordingCapWarningShown(
-        backend: "whisperKit", capSeconds: 3600, takeID: nil)
+        backend: "whisper", capSeconds: 3600, takeID: nil)
 
       let absent = box.values
       #expect(absent.count == 1, "the nil case must still fire")
@@ -58,7 +58,7 @@ import Testing
       #expect(
         absentEvent.stringProps["take_id"] == nil,
         "an absent take key must be OMITTED, not sent as an empty string")
-      #expect(absentEvent.stringProps["asr_backend"] == "whisperKit")
+      #expect(absentEvent.stringProps["asr_backend"] == "whisper")
     }
   }
 

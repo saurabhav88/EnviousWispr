@@ -10,7 +10,7 @@ import Testing
 /// Plan ids that the Settings Map renamed are renamed here, never re-derived from search output:
 /// openAIKey, geminiKey, claudeKey → apiKey.openAI, apiKey.gemini, apiKey.claude;
 /// recordingKeybind → recordKeybind; removeFillerWords → fillerRemoval;
-/// transcriptionEngine.parakeet / .whisperKit → transcriptionEngine.fast / .allLanguages;
+/// transcriptionEngine.parakeet / .whisper → transcriptionEngine.fast / .allLanguages;
 /// learnFromEdits → selfLearningDictionary; aiPolishEngine.ollama → aiPolishProvider.ollama;
 /// exportWords → yourWords.export; playRecordingSounds → recordingChimes.
 @Suite("Settings search matching (#3482)", .tags(.productOutcome))

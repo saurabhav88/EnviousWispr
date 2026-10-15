@@ -22,7 +22,7 @@ struct RecoverySpoolStoreTests {
 
   private func snapshot() -> RecordingSettingsSnapshot {
     RecordingSettingsSnapshot(
-      backendType: .whisperKit,
+      backendType: .whisper,
       backendSupportsLanguageDetection: true,
       languageMode: .locked("es"),
       wordCorrectionEnabled: false,

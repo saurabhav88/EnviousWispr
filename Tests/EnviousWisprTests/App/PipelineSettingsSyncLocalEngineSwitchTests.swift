@@ -27,7 +27,7 @@ struct PipelineSettingsSyncLocalEngineSwitchTests {
     let store = DictationRuntimeFixtures.tempStore()
     let pipeline = DictationRuntimeFixtures.makeParakeetDriver(
       audioCapture: audio, asrManager: asr, store: store)
-    let whisperKit = DictationRuntimeFixtures.makeWhisperKitPipeline(
+    let whisperDriver = DictationRuntimeFixtures.makeWhisperPipeline(
       audioCapture: audio, store: store)
     let settings = SettingsManager(
       defaults: TestDefaults.suite("SM-2649-switch-\(UUID().uuidString)")!)
@@ -43,7 +43,7 @@ struct PipelineSettingsSyncLocalEngineSwitchTests {
       provider: .s1Mini)
     let sync = PipelineSettingsSync(
       kernelDriver: pipeline,
-      whisperKitKernelDriver: whisperKit,
+      whisperKernelDriver: whisperDriver,
       audioCapture: audio,
       asrManager: asr,
       hotkeyService: HotkeyService(effects: RecordingDesktopHotkeyEffects()),
@@ -52,7 +52,7 @@ struct PipelineSettingsSyncLocalEngineSwitchTests {
       checkerSelectionProvider: selection,
       ollamaRemotenessLookup: { _ in nil }
     )
-    return (sync, settings, coordinator, pipeline, whisperKit)
+    return (sync, settings, coordinator, pipeline, whisperDriver)
   }
 
   /// Stamps claimed by a switch, measured as the gap between two probe claims.
@@ -116,12 +116,12 @@ struct PipelineSettingsSyncLocalEngineSwitchTests {
   /// both drivers the one selection owner, on launch and on every switch.
   @Test("launch and every engine switch hand both drivers the checker selection")
   func checkerSelectionReachesBothDrivers() async {
-    let (sync, settings, _, parakeet, whisperKit) = makeSync(
+    let (sync, settings, _, parakeet, whisperDriver) = makeSync(
       selection: { _, _ in .init(absence: .adapterDownloading) })
     settings.llmProvider = .egOne
     sync.applyInitialSettings(settings)
     let first = await parakeet.learnedWordCheck.selectionProvider?(.egOne, "en")
-    let second = await whisperKit.learnedWordCheck.selectionProvider?(.egOne, "en")
+    let second = await whisperDriver.learnedWordCheck.selectionProvider?(.egOne, "en")
     #expect(first?.absence == .adapterDownloading)
     #expect(second?.absence == .adapterDownloading)
     for provider in [

@@ -26,7 +26,7 @@ import Observation
 /// it fails, switch to concrete types before PR merge.
 ///
 /// **Ceiling-raise note (3 → 4 stored).** The four sources of truth
-/// (`kernelDriver`, `whisperKitKernelDriver`, `audioCapture`, `asrManager`)
+/// (`kernelDriver`, `whisperKernelDriver`, `audioCapture`, `asrManager`)
 /// reflect real root-state code; bundling them into a lens value-type would
 /// hide the count rather than reduce coupling. Bible §30 entry filed.
 /// PR-5 Rung 5 (#827) replaced the legacy WhisperKit pipeline class with a
@@ -36,7 +36,7 @@ import Observation
 @Observable @MainActor
 final class LiveRecordingState {
   let kernelDriver: KernelDictationDriver
-  let whisperKitKernelDriver: KernelDictationDriver
+  let whisperKernelDriver: KernelDictationDriver
   let audioCapture: any AudioCaptureInterface
   let asrManager: any ASRManagerInterface
 
@@ -47,12 +47,12 @@ final class LiveRecordingState {
 
   init(
     kernelDriver: KernelDictationDriver,
-    whisperKitKernelDriver: KernelDictationDriver,
+    whisperKernelDriver: KernelDictationDriver,
     audioCapture: any AudioCaptureInterface,
     asrManager: any ASRManagerInterface
   ) {
     self.kernelDriver = kernelDriver
-    self.whisperKitKernelDriver = whisperKitKernelDriver
+    self.whisperKernelDriver = whisperKernelDriver
     self.audioCapture = audioCapture
     self.asrManager = asrManager
   }
@@ -61,8 +61,8 @@ final class LiveRecordingState {
   /// `asrManager.activeBackendType`. Both drivers expose `PipelineState`
   /// natively post-Rung 5, so no bridge is needed.
   var pipelineState: PipelineState {
-    if asrManager.activeBackendType == .whisperKit {
-      return whisperKitKernelDriver.state
+    if asrManager.activeBackendType == .whisper {
+      return whisperKernelDriver.state
     }
     return kernelDriver.state
   }
@@ -76,8 +76,8 @@ final class LiveRecordingState {
   /// #1393: monotonic elapsed recording time, mirroring `pipelineState`'s
   /// exact backend-branching shape.
   var recordingElapsedSeconds: TimeInterval? {
-    if asrManager.activeBackendType == .whisperKit {
-      return whisperKitKernelDriver.recordingElapsedSeconds
+    if asrManager.activeBackendType == .whisper {
+      return whisperKernelDriver.recordingElapsedSeconds
     }
     return kernelDriver.recordingElapsedSeconds
   }
@@ -89,7 +89,7 @@ final class LiveRecordingState {
   /// Telemetry reads the driver's `currentTranscript` directly, unaffected.
   var currentTranscript: Transcript? {
     let driver =
-      asrManager.activeBackendType == .whisperKit ? whisperKitKernelDriver : kernelDriver
+      asrManager.activeBackendType == .whisper ? whisperKernelDriver : kernelDriver
     guard driver.lastHistorySaved else { return nil }
     return driver.currentTranscript
   }
@@ -104,6 +104,6 @@ final class LiveRecordingState {
 extension LiveRecordingState {
   /// True when either pipeline is recording, transcribing, or polishing.
   var isDictationActive: Bool {
-    kernelDriver.state.isActive || whisperKitKernelDriver.state.isActive
+    kernelDriver.state.isActive || whisperKernelDriver.state.isActive
   }
 }

@@ -35,31 +35,31 @@ struct SpokenPunctuationSettingsPlumbingTests {
     let store = DictationRuntimeFixtures.tempStore()
     let parakeet = DictationRuntimeFixtures.makeParakeetDriver(
       audioCapture: audio, asrManager: asr, store: store)
-    let whisperKit = DictationRuntimeFixtures.makeWhisperKitPipeline(
+    let whisperDriver = DictationRuntimeFixtures.makeWhisperPipeline(
       audioCapture: audio, store: store)
     let settings = Self.freshSettings()
     let sync = PipelineSettingsSync(
       kernelDriver: parakeet,
-      whisperKitKernelDriver: whisperKit,
+      whisperKernelDriver: whisperDriver,
       audioCapture: audio,
       asrManager: asr,
       hotkeyService: HotkeyService(effects: RecordingDesktopHotkeyEffects()),
       ollamaRemotenessLookup: { _ in nil })
-    return (sync, settings, parakeet, whisperKit)
+    return (sync, settings, parakeet, whisperDriver)
   }
 
   @Test("#3737: Casual mode initially syncs and changes on both drivers")
   func casualModeSync() {
-    let (sync, settings, parakeet, whisperKit) = makeSync()
+    let (sync, settings, parakeet, whisperDriver) = makeSync()
     settings.casualModeEnabled = true
     sync.applyInitialSettings(settings)
     #expect(parakeet.casualModeEnabled == true)
-    #expect(whisperKit.casualModeEnabled == true)
+    #expect(whisperDriver.casualModeEnabled == true)
     for enabled in [false, true] {
       settings.casualModeEnabled = enabled
       sync.handleSettingChanged(.casualModeEnabled, settings: settings)
       #expect(parakeet.casualModeEnabled == enabled)
-      #expect(whisperKit.casualModeEnabled == enabled)
+      #expect(whisperDriver.casualModeEnabled == enabled)
     }
   }
 
@@ -85,19 +85,19 @@ struct SpokenPunctuationSettingsPlumbingTests {
 
   @Test("Initial sync hands both drivers the whole value")
   func initialSyncCarriesTheWholeValue() {
-    let (sync, settings, parakeet, whisperKit) = makeSync()
+    let (sync, settings, parakeet, whisperDriver) = makeSync()
     settings.spokenPunctuation.enabled = true
     settings.commitSpokenPunctuationStartWord("Sprich", language: "de")
     sync.applyInitialSettings(settings)
 
     let expected = SpokenPunctuationSettings(enabled: true, startWordOverrides: ["de": "Sprich"])
     #expect(parakeet.spokenPunctuation == expected)
-    #expect(whisperKit.spokenPunctuation == expected)
+    #expect(whisperDriver.spokenPunctuation == expected)
   }
 
   @Test("A live change to either half reaches both drivers")
   func liveChangesReachBothDrivers() {
-    let (sync, settings, parakeet, whisperKit) = makeSync()
+    let (sync, settings, parakeet, whisperDriver) = makeSync()
     sync.applyInitialSettings(settings)
     #expect(parakeet.spokenPunctuation == SpokenPunctuationSettings.off)
 
@@ -106,13 +106,13 @@ struct SpokenPunctuationSettingsPlumbingTests {
     #expect(
       parakeet.spokenPunctuation
         == SpokenPunctuationSettings(enabled: true, startWordOverrides: [:]))
-    #expect(whisperKit.spokenPunctuation == parakeet.spokenPunctuation)
+    #expect(whisperDriver.spokenPunctuation == parakeet.spokenPunctuation)
 
     settings.commitSpokenPunctuationStartWord("Schreibe", language: "de")
     sync.handleSettingChanged(.spokenPunctuation, settings: settings)
     let expected = SpokenPunctuationSettings(enabled: true, startWordOverrides: ["de": "Schreibe"])
     #expect(parakeet.spokenPunctuation == expected)
-    #expect(whisperKit.spokenPunctuation == expected)
+    #expect(whisperDriver.spokenPunctuation == expected)
   }
 
   // MARK: - The cleanup step reads one snapshot of the value

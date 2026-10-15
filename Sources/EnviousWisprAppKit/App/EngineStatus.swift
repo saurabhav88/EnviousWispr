@@ -37,7 +37,7 @@ struct EngineStatus: Sendable {
   let activeReadiness: ASREngineReadiness
   let switchPhase: SwitchPhase
   /// Whether the SELECTED engine's model is on disk (Parakeet is always true;
-  /// WhisperKit is true only once downloaded).
+  /// Whisper is true only once downloaded).
   let selectedInstalled: Bool
   let blockedReason: BlockedReason?
   /// The engine whose COORDINATOR-OWNED warm is in flight right now, else nil.

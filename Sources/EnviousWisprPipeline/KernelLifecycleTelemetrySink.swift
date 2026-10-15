@@ -17,7 +17,7 @@ import Foundation
 ///
 /// **Engine-internal events stay where they live today.** PR-1 §B.7.4 covers
 /// the kernel-owned vocabulary; engine-internal telemetry (Parakeet streaming,
-/// WhisperKit language detection, etc.) remains in its owning pipeline and
+/// Whisper language detection, etc.) remains in its owning pipeline and
 /// will move in PR-5 / PR-6.
 @MainActor
 final class KernelLifecycleTelemetrySink {
@@ -537,7 +537,7 @@ final class KernelLifecycleTelemetrySink {
       // ("ASR XPC service crashed (WhisperKit)") so Sentry can slice the
       // crash bucket by backend again.
       let bv = backend.rawValue
-      let backendLabel = backend == .whisperKit ? "WhisperKit" : "Parakeet"
+      let backendLabel = backend == .whisper ? "Whisper" : "Parakeet"
       // #1707: which salvage outcome preceded this terminal — absent when the
       // interruption was never salvage-eligible (recovery not attempted).
       var extra: [String: Any] = ["was_recording": wasRecording, "backend": bv]
@@ -761,7 +761,7 @@ final class KernelLifecycleTelemetrySink {
     if let incremental = telemetryState.asrCompletedTelemetry?.incrementalAccepted {
       payload["incremental"] = incremental
     }
-    // #1309 effective-path streaming facts (WhisperKit only; nil omitted).
+    // #1309 effective-path streaming facts (Whisper only; nil omitted).
     if let t = telemetryState.asrCompletedTelemetry {
       if let v = t.streamingRequested { payload["streaming_requested"] = v }
       if let v = t.streamingEffective { payload["streaming_effective"] = v }
@@ -916,7 +916,7 @@ final class KernelLifecycleTelemetrySink {
       error: error,
       audioCapture: audioCapture,
       failureMode: failureMode,
-      backend: backend == .whisperKit ? backend.rawValue : nil
+      backend: backend == .whisper ? backend.rawValue : nil
     )
   }
 

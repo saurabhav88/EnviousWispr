@@ -22,7 +22,7 @@ struct LivePreviewCopyTests {
         == "Download the preview model in Settings to see words appear.")
     #expect(
       LivePreviewCopy.heartIsStreaming
-        == "On-screen preview pauses while Faster Transcription is on.")
+        == "On-screen preview pauses while Faster Transcription works during recording.")
     #expect(
       LivePreviewCopy.engineUnavailableInThisBuild
         == "This version of EnviousWispr cannot run that preview engine.")

@@ -28,6 +28,10 @@ import {
 // when a user has neither a settings record nor any dictation carrying a
 // signal. See plan §3.3 row 4.
 const DEFAULT_ENGINE = "parakeet";
+// #3735: app builds before the transcribe.cpp swap sent the Whisper engine as
+// "whisperKit"; later builds send "whisper". One engine slot, so both
+// spellings count in one bucket (each user is still counted once).
+const ENGINE_ALIASES = { whisperKit: "whisper" };
 const DEFAULT_PROVIDER = "appleIntelligence";
 
 /** The day's active-user population (successful dictators), used once as an
@@ -379,7 +383,8 @@ export function resolveBuckets(data) {
   const resolutionSource = { settings: 0, actual_dictation: 0, shipped_default: 0 };
 
   for (const row of data.engineAndTierB) {
-    const engine = row.engine || DEFAULT_ENGINE;
+    const rawEngine = row.engine || DEFAULT_ENGINE;
+    const engine = ENGINE_ALIASES[rawEngine] || rawEngine;
     engineBuckets[engine] = (engineBuckets[engine] || 0) + 1;
     engineCount += 1;
 

@@ -10,7 +10,7 @@ import Testing
 //
 // Sentinel coverage for the protocol-typed `adapter.lastResult` read at
 // `KernelFinalizationWiring.swift:156-158`. Drives the production `store`
-// closure with a `FakeEngine` whose engine identity is `.whisperKit` and
+// closure with a `FakeEngine` whose engine identity is `.whisper` and
 // whose `lastResult` is seeded with deterministic metadata. A future
 // refactor that re-narrows the `adapter:` parameter back to a concrete type
 // fails to compile here (FakeEngine is not `ParakeetEngineAdapter`); a
@@ -23,10 +23,10 @@ import Testing
   @Test("store closure reads ASR metadata + backend through the protocol existential")
   func metadataReadsThroughProtocol() async throws {
     let engine = FakeEngine(behavior: .batchSuccess(text: "hi"), clock: FakeClock())
-    engine.engineIdentity = ASREngineIdentity(backendType: .whisperKit)
+    engine.engineIdentity = ASREngineIdentity(backendType: .whisper)
     engine.lastResult = ASRResult(
       text: "hi", language: "es", duration: 1.5, processingTime: 0.2,
-      backendType: .whisperKit)
+      backendType: .whisper)
 
     let outcome = KernelFinalizationOutcome()
     outcome.rawText = "hi"
@@ -69,7 +69,7 @@ import Testing
     #expect(transcript.language == "es")
     #expect(transcript.duration == 1.5)
     #expect(transcript.processingTime == 0.2)
-    #expect(transcript.backendType == .whisperKit)
+    #expect(transcript.backendType == .whisper)
     #expect(outcome.transcript?.language == "es")
   }
 }

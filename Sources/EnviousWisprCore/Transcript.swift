@@ -129,7 +129,7 @@ public struct ExecutionMetrics: Codable, Sendable {
   public var cleanupLanguageSource: String?
   public var cleanupLanguageBucket: String?
   /// #950 tail-trim diagnostic. Populated only for eligible Parakeet batch
-  /// successes; nil for streaming, WhisperKit, non-success, and pre-#950
+  /// successes; nil for streaming, Whisper, non-success, and pre-#950
   /// transcripts on disk (additive optional Codable, back-compatible).
   /// `tailDroppedMs` = trailing audio (ms) the VAD trim discarded after the last
   /// detected word (0 = ran, nothing dropped). `tailHadEnergy` = that discarded
@@ -138,7 +138,7 @@ public struct ExecutionMetrics: Codable, Sendable {
   public var tailDroppedMs: Int?
   public var tailHadEnergy: Bool?
   /// #950 tail-preserve recovery + tuning signals. Populated only for eligible
-  /// Parakeet batch; nil for streaming / WhisperKit / non-success / pre-#950
+  /// Parakeet batch; nil for streaming / Whisper / non-success / pre-#950
   /// transcripts on disk (additive optional Codable, back-compatible).
   /// `usedTailPreservation`: nil=ineligible, false=eligible-not-preserved,
   /// true=recovered a sustained-voice dropped tail. `recoveredTailMs`: ms appended
@@ -183,7 +183,7 @@ public struct ExecutionMetrics: Codable, Sendable {
   /// the delivered text is British. Counts only (`telemetry-privacy-boundary`).
   public var englishSpelling: EnglishSpelling?
   public var spellingSwaps: Int?
-  /// #1309 effective-path streaming telemetry (WhisperKit only; nil for
+  /// #1309 effective-path streaming telemetry (Whisper only; nil for
   /// Parakeet and pre-#1309 transcripts on disk — additive optional Codable,
   /// back-compatible). `streamingMode` above is the REQUESTED mode (kernel
   /// capability gate); these describe what actually ran. Metadata only.

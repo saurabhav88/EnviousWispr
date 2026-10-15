@@ -38,13 +38,13 @@ import Testing
       defer { TelemetryService.shared.testEventHook = nil }
 
       TelemetryService.shared.settingsModelPreparingImpression(
-        engine: "whisperKit", reason: "engine_swap")
+        engine: "whisper", reason: "engine_swap")
 
       let event = try #require(
         box.value,
         "Expected settings.model_preparing_impression event")
       #expect(event.name == "settings.model_preparing_impression")
-      #expect(event.stringProps["engine"] == "whisperKit")
+      #expect(event.stringProps["engine"] == "whisper")
       #expect(event.stringProps["reason"] == "engine_swap")
 
       // Exactly two properties. A third would mean someone added a field without deciding

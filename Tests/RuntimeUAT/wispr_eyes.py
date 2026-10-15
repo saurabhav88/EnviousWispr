@@ -1506,23 +1506,23 @@ def _scan_probes():
         backend = stored_or_none("selectedBackend")
         if backend is None: return None
         if backend == "parakeet": return True
-        # WhisperKit shows the language rows only once its model is ready, the state that
+        # Whisper shows the language rows only once its model is ready, the state that
         # also shows Remove Model (`languageSectionIsAvailable`).
         if button("Remove Model") or text("Removing model..."): return True
         if any(button(b) for b in ("Set up model", "Resume", "Try Again")): return False
         if text("Checking model status..."): return False
         return None
 
-    def whisperkit_actions_shown():
+    def whisper_actions_shown():
         backend = stored_or_none("selectedBackend")
         if backend is None: return None
         if backend == "parakeet": return False
-        # Every WhisperKit state offers one action except checking and removing.
+        # Every Whisper model state offers one action except checking and removing.
         checking, removing = text("Checking model status..."), text("Removing model...")
         if checking is None or removing is None: return None
         return not (checking or removing)
 
-    def whisperkit_recheck_shown():
+    def whisper_recheck_shown():
         backend = stored_or_none("selectedBackend")
         if backend is None: return None
         if backend == "parakeet": return False
@@ -1629,8 +1629,8 @@ def _scan_probes():
 
     return {
         "language_section_visible": language_section_visible,
-        "whisperkit_actions_shown": whisperkit_actions_shown,
-        "whisperkit_recheck_shown": whisperkit_recheck_shown,
+        "whisper_actions_shown": whisper_actions_shown,
+        "whisper_recheck_shown": whisper_recheck_shown,
         "parakeet_selected": parakeet_selected,
         "parakeet_delivery_actions_shown": parakeet_delivery_actions_shown,
         "preview_language_shown": preview_language_shown,
@@ -1951,7 +1951,7 @@ def _extract_transcript_text(signal, log_state_before, clip_seen=None, lines_acc
 # #3385: they label the engine CARDS behind Dictation Settings > Engine > "Change speech engine".
 _BACKEND_LABELS = {
     "parakeet": "Fast",
-    "whisperkit": "All Languages",
+    "whisper": "All Languages",
 }
 
 
@@ -1959,19 +1959,19 @@ def switch_backend(name, wait=3.0):
     """Switch the active ASR engine via the Settings UI.
 
     Args:
-        name: "parakeet" or "whisperkit".
+        name: "parakeet" or "whisper".
         wait: seconds to let the model load after switching.
 
     #3385: Dictation Settings > Engine shows the current engine as a summary; "Change speech
-    engine" opens the two cards (Fast -> Parakeet, All Languages -> WhisperKit). This opens
+    engine" opens the two cards (Fast -> Parakeet, All Languages -> Whisper). This opens
     THAT Change (not the preview engine's or the language's), presses the card, and requires
     the choices to close with the summary naming it (`settings_nav.choose_engine`). A card
     press only selects; it starts no download. The UI landing is not proof that a deferred
     runtime switch finished: recording oracles still decide that.
 
     Usage:
-        switch_backend("whisperkit")
-        test_recording(sentence="...")  # now runs on WhisperKit
+        switch_backend("whisper")
+        test_recording(sentence="...")  # now runs on Whisper
     """
     if name not in _BACKEND_LABELS:
         raise ValueError(f"Unknown backend '{name}'. Use one of: {list(_BACKEND_LABELS)}")
@@ -4179,7 +4179,7 @@ def _self_test():
         _sn.restore_input = (lambda ax, root_of, read_uid, choice, timeout=5.0, cancel=None:
                              route_calls.append(("restore", choice, cancel is not None)))
         time.sleep = lambda s: None
-        switch_backend("whisperkit", wait=0)
+        switch_backend("whisper", wait=0)
         cycle_rows.append(("switch_backend routes to Dictation Settings > Engine and picks All Languages",
                            route_calls[-2:], [("nav", "Dictation Settings", "Engine"),
                                               ("engine", "All Languages")]))
@@ -4293,7 +4293,7 @@ def _self_test():
     mic = lambda value: _el("AXMenuButton", desc="Input device", value=value)
     prof = lambda n: {"SPAudioDataType": [{"_items": [{"_name": "Scarlett 2i2",
                                                        "coreaudio_device_input": n}]}]}
-    WK, PK = {"selectedBackend": "whisperKit"}, {"selectedBackend": "parakeet"}
+    WK, PK = {"selectedBackend": "whisper"}, {"selectedBackend": "parakeet"}
     probe_rows = [
         ("parakeet_selected", (), PK, None, None, True),
         ("parakeet_selected", (), WK, None, None, False),
@@ -4302,13 +4302,13 @@ def _self_test():
         ("language_section_visible", (btn("Remove Model"),), WK, None, None, True),
         ("language_section_visible", (btn("Set up model"),), WK, None, None, False),
         ("language_section_visible", (), None, None, None, None),
-        ("whisperkit_actions_shown", (), PK, None, None, False),
-        ("whisperkit_actions_shown", (btn("Set up model"),), WK, None, None, True),
-        ("whisperkit_actions_shown", (txt("Checking model status..."),), WK, None, None, False),
-        ("whisperkit_actions_shown", (), None, None, None, None),
-        ("whisperkit_recheck_shown", (btn("Resume"),), WK, None, None, True),
-        ("whisperkit_recheck_shown", (btn("Cancel"),), WK, None, None, False),
-        ("whisperkit_recheck_shown", (), WK, None, None, None),
+        ("whisper_actions_shown", (), PK, None, None, False),
+        ("whisper_actions_shown", (btn("Set up model"),), WK, None, None, True),
+        ("whisper_actions_shown", (txt("Checking model status..."),), WK, None, None, False),
+        ("whisper_actions_shown", (), None, None, None, None),
+        ("whisper_recheck_shown", (btn("Resume"),), WK, None, None, True),
+        ("whisper_recheck_shown", (btn("Cancel"),), WK, None, None, False),
+        ("whisper_recheck_shown", (), WK, None, None, None),
         ("language_locked", (sw("Auto-detect language", "Off"),), PK, None, None, True),
         ("language_locked", (sw("Auto-detect language", "On"),), PK, None, None, False),
         ("language_locked", (), PK, None, None, None),

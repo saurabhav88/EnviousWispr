@@ -535,7 +535,7 @@ struct KernelFinalizationWiring {
       steps.llmPolish.onWillProcess = { onPolishStarted() }
       // PR-5 Rung 5 (#827): wire engine LID -> polish for engines that detect.
       // Parakeet (no LID) returns nil through the cast; polish-step stays nil
-      // and planner uses legacy prompt path. WhisperKit returns the last LID
+      // and planner uses legacy prompt path. Whisper returns the last LID
       // result; planner reads it via `LLMPolishStep.languageDetection`.
       steps.llmPolish.languageDetection =
         (adapter as? any ASREngineLanguageIdentifying)?.lastLanguageDetection
@@ -1726,7 +1726,7 @@ struct KernelFinalizationWiring {
       cleanupLanguageBucket: outcome.cleanupLanguageBucket,
       // #950 tail-trim diagnostic — kernel-computed, read from the shared
       // telemetry state (eligible Parakeet batch only; nil for streaming /
-      // WhisperKit / non-success). Carried onto `dictation.completed`.
+      // Whisper / non-success). Carried onto `dictation.completed`.
       tailDroppedMs: telemetryState.asrCompletedTelemetry?.droppedTailMs,
       tailHadEnergy: telemetryState.asrCompletedTelemetry?.tailHadEnergy,
       // #950 tail-preserve recovery + tuning signals.
@@ -1756,7 +1756,7 @@ struct KernelFinalizationWiring {
       englishSpelling: outcome.englishSpelling,
       spellingSwaps: outcome.englishSpelling == nil ? nil : outcome.spellingSwaps,
       // #1309 effective-path streaming telemetry — kernel-assembled from the
-      // adapter's diagnostics (WhisperKit only; nil omitted). `streamingMode`
+      // adapter's diagnostics (Whisper only; nil omitted). `streamingMode`
       // above stays the REQUESTED mode.
       streamingEffective: telemetryState.asrCompletedTelemetry?.streamingEffective,
       streamingDegradeReason: telemetryState.asrCompletedTelemetry?.streamingDegradeReason,
@@ -1816,7 +1816,7 @@ struct KernelFinalizationWiring {
   }
 
   /// PR-5 Rung 4.5 (#827): LID perf signpost `t_clipboard_write` — fires
-  /// when finalization completes for WhisperKit-mode sessions, regardless
+  /// when finalization completes for Whisper-mode sessions, regardless
   /// of paste outcome. Source session id + LID shape from
   /// `adapter.lastASRDiagnostics` (per-session captured in the WK adapter
   /// at `beginSession`; race-safe vs delayed emit). Matches OLD

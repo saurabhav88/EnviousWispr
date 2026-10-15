@@ -679,8 +679,12 @@ class PreferenceError(RuntimeError):
 # key -> (kind, allowed raw values or None, the shipped default). Defaults mirror
 # `SettingsDefaultValues.swift`, enum values mirror their Swift enums' cases; the self-test
 # checks both against the Swift source.
+# Legacy raw values the app still decodes to a current case (#3735: builds before the
+# transcribe.cpp swap stored "whisperKit"; `ASRBackendType.init(rawValue:)` maps it).
+LEGACY_ENUM_VALUES = {"selectedBackend": {"whisperKit": "whisper"}}
+
 STORED = {
-    "selectedBackend": ("enum", ("parakeet", "whisperKit"), "parakeet"),
+    "selectedBackend": ("enum", ("parakeet", "whisper"), "parakeet"),
     "llmProvider": ("enum", ("openAI", "gemini", "claude", "ollama", "appleIntelligence",
                              "egOne", "s1Mini", "none"), "appleIntelligence"),
     "wordCorrectionEnabled": ("bool", None, True),
@@ -716,6 +720,7 @@ def stored(read_domain, key):
     if not isinstance(value, str):
         raise PreferenceError(f"{key}: {value!r} is not a stored String")
     if kind == "enum":
+        value = LEGACY_ENUM_VALUES.get(key, {}).get(value, value)
         return value if value in allowed else default
     return value
 
@@ -1048,7 +1053,7 @@ PARAKEET_ACTIONS = ("Cancel", "Resume", "Try Again")
 PREVIEW_LANGUAGE = "Change dictation language: %@, %@"
 ENGINE_DISCLOSURE = (CHANGE_ENGINE, ENGINE_LABELS, "Keep current engine")
 PREVIEW_DISCLOSURE = ("Change preview engine", ("Apple", "Universal"), "Keep current preview engine")
-WHISPERKIT_ACTIONS = ("Set up model", "Cancel", "Resume", "Remove Model", "Try Again")
+WHISPER_ACTIONS = ("Set up model", "Cancel", "Resume", "Remove Model", "Try Again")
 INSTALL_ROW_TITLES = ("Install new languages", "Checking which languages are on this Mac",
                       "Could not read the language list from macOS. Reopen this page to try again.")
 DICTIONARY_SECTIONS = ("Your Words", "Vocabulary Packs", "Learn from...", "Quick Add")
@@ -1081,9 +1086,9 @@ SCAN = [
     ("Dictation Settings", "Engine", [
         ("button", CHANGE_ENGINE, None),
         ("disclose", ENGINE_DISCLOSURE, None),
-        ("one_of", WHISPERKIT_ACTIONS, "whisperkit_actions_shown"),
+        ("one_of", WHISPER_ACTIONS, "whisper_actions_shown"),
         ("one_of", PARAKEET_ACTIONS, "parakeet_delivery_actions_shown"),
-        ("button", "Re-check model status", "whisperkit_recheck_shown"),
+        ("button", "Re-check model status", "whisper_recheck_shown"),
         ("button", "Re-check Fast model status", "parakeet_selected"),
         ("toggle", "Auto-detect language", "language_section_visible"),
         ("button", "Change dictation language", "language_locked"),

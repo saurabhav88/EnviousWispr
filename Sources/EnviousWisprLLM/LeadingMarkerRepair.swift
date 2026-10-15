@@ -12,7 +12,7 @@ import Foundation
 /// the 2026-06-21 #963 follow-up so the repair fires on the default path):
 ///   - Runs on English-or-unknown; skips ONLY a positively-identified
 ///     non-English language. The default Parakeet path reports no language
-///     (nil) → runs (this is the headline fix); WhisperKit reports its LID, or
+///     (nil) → runs (this is the headline fix); Whisper reports its LID, or
 ///     abstains to nil → a non-`en` code skips. The marker set is English-only,
 ///     so a non-English first token no-ops the match regardless.
 ///   - Runs on the post-`EnviousOutputFilter` text (wrapper/preamble already

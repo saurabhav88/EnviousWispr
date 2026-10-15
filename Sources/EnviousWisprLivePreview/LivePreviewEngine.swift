@@ -174,7 +174,7 @@ package enum LivePreviewUnavailability: Sendable, Equatable {
   /// together cost it 50% — 591 ms to 885 ms, far outside the 591-626 ms
   /// repeat-to-repeat envelope. The heart streams throughout a recording when
   /// live transcription is on with a locked language
-  /// (`WhisperKitEngineAdapter.startRecording`), which is a continuous overlap
+  /// (`WhisperEngineAdapter.startRecording`), which is a continuous overlap
   /// rather than a brief one.
   ///
   /// So the preview REFUSES in that configuration rather than degrading or

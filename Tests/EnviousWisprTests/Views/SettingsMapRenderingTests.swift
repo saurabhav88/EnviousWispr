@@ -268,19 +268,19 @@ struct SettingsMapRenderingTests {
     case "": ordinary = true
     case "choicesOpen": scenario.expanded = true
     case "allLanguagesAuto":
-      scenario.backend = .whisperKit
+      scenario.backend = .whisper
       scenario.mode = .auto
     case "allLanguagesReady":
-      scenario.backend = .whisperKit
+      scenario.backend = .whisper
       scenario.setupState = .ready
     case "allLanguagesDownloading":
-      scenario.backend = .whisperKit
+      scenario.backend = .whisper
       scenario.setupState = .downloading(progress: 0.4, status: "")
     case "allLanguagesPaused":
-      scenario.backend = .whisperKit
+      scenario.backend = .whisper
       scenario.setupState = .paused
     case "allLanguagesFailed":
-      scenario.backend = .whisperKit
+      scenario.backend = .whisper
       scenario.setupState = .error("fixture")
     case "switchesOn":
       scenario.stopOnSilence = true
@@ -369,7 +369,7 @@ struct SettingsMapRenderingTests {
         legacyStore: FileLegacyKeyStore(storageDirectory: directory.appending(path: "keys")))
       setup = SetupCoordinator(
         asrManager: RouterTestASRManager(),
-        whisperKitSetup: WhisperKitSetupService(
+        whisperSetup: WhisperSetupService(
           engineMutationScope: .alwaysAllowedForTesting, readAvailability: { .notDownloaded }),
         setupStateReader: { .notDownloaded }, preloadAction: {}, ollamaStatusProbe: { _ in },
         ollamaSetup: ollama)
@@ -689,7 +689,7 @@ struct SettingsMapRenderingTests {
     let recording = LiveRecordingState(
       kernelDriver: DictationRuntimeFixtures.makeParakeetDriver(
         audioCapture: audio, asrManager: asr, store: store),
-      whisperKitKernelDriver: DictationRuntimeFixtures.makeWhisperKitPipeline(
+      whisperKernelDriver: DictationRuntimeFixtures.makeWhisperPipeline(
         audioCapture: audio, store: store), audioCapture: audio, asrManager: asr)
     let runtime = DictationSettingsRenderHarness.idleRuntime(
       settings: home.settings, audio: audio, asr: asr, recording: recording, store: store)

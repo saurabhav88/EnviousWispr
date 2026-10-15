@@ -45,7 +45,7 @@ package struct EngineMutationScope {
   ///
   /// Deliberately does NOT interpret `Task` cancellation. Every site's own
   /// domain-specific cancellation and identity checks (e.g.
-  /// `WhisperKitEngineAdapter`'s `sessionID`-keying re-check) stay inside
+  /// `WhisperEngineAdapter`'s `sessionID`-keying re-check) stay inside
   /// that site's own `operation` closure, unchanged from today.
   package func withClaim<T: Sendable>(
     site: String,

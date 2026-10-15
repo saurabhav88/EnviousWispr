@@ -84,7 +84,7 @@ struct EngineSettingsLayoutTests {
     let settings = SettingsManager(defaults: defaults)
     settings.selectedBackend = .parakeet
     let setup = SetupCoordinator(asrManager: RouterTestASRManager(),
-      whisperKitSetup: WhisperKitSetupService(engineMutationScope: .alwaysAllowedForTesting,
+      whisperSetup: WhisperSetupService(engineMutationScope: .alwaysAllowedForTesting,
         readAvailability: { .notDownloaded }),
       setupStateReader: { .notDownloaded }, preloadAction: {}, ollamaStatusProbe: { _ in })
     let presenter = LanguageSuggestionPresenter(overlay: DictationSettingsRenderHarness.NoOverlay(),
@@ -113,7 +113,7 @@ struct EngineSettingsLayoutTests {
     manual() // same handler as the actual button, deliberately not a view-bound Task
     try #require(await delayed.arrived.wait(after: 0), "manual check never parked")
     if switchEngine {
-      settings.selectedBackend = .whisperKit
+      settings.selectedBackend = .whisper
       host.layoutSubtreeIfNeeded()
     }
     delayed.release()

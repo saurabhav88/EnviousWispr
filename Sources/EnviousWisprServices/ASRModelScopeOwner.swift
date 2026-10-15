@@ -2,7 +2,7 @@ import EnviousWisprCore
 import Foundation
 
 /// #3546 §3.7 T3: the single owner of the crash-report model tags. Each engine's load
-/// owner (Parakeet: `ASRManager`; WhisperKit: `WhisperKitBackend`) reports a snapshot of
+/// owner (Parakeet: `ASRManager`; Whisper: `TranscribeCppWhisperBackend`) reports a snapshot of
 /// what it was asked to load, its load phase and what it serves now, with its own
 /// increasing sequence number. A snapshot older than one already seen for that engine is
 /// dropped, so a late report from a superseded load cannot overwrite a newer one; only the

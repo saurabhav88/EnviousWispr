@@ -36,14 +36,14 @@ import Testing
     let store = DictationRuntimeFixtures.tempStore()
     let pipeline = DictationRuntimeFixtures.makeParakeetDriver(
       audioCapture: audio, asrManager: asr, store: store)
-    let whisperKitKernelDriver = DictationRuntimeFixtures.makeWhisperKitPipeline(
+    let whisperKernelDriver = DictationRuntimeFixtures.makeWhisperPipeline(
       audioCapture: audio, store: store)
     let overlay = OverlayTestDouble.headlessDirector()
     let permissions = PermissionsService()
     let hotkey = HotkeyService(effects: RecordingDesktopHotkeyEffects())
     let settingsSync = PipelineSettingsSync(
       kernelDriver: pipeline,
-      whisperKitKernelDriver: whisperKitKernelDriver,
+      whisperKernelDriver: whisperKernelDriver,
       audioCapture: audio,
       asrManager: asr,
       hotkeyService: hotkey,
@@ -64,7 +64,7 @@ import Testing
     )
     let finalizer = RecordingFinalizer(
       kernelDriver: pipeline,
-      whisperKitKernelDriver: whisperKitKernelDriver,
+      whisperKernelDriver: whisperKernelDriver,
       asrManager: asr,
       recordingOverlay: overlay,
       heartControlRecovery: hcr,
@@ -75,7 +75,7 @@ import Testing
       audioCapture: audio,
       asrManager: asr,
       kernelDriver: pipeline,
-      whisperKitKernelDriver: whisperKitKernelDriver,
+      whisperKernelDriver: whisperKernelDriver,
       settings: settings,
       permissions: permissions,
       recordingOverlay: overlay,

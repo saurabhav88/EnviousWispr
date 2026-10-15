@@ -15,7 +15,7 @@ enum DictationSessionConfigFactory {
   static func make(
     asrManager: any ASRManagerInterface,
     kernelDriver: KernelDictationDriver,
-    whisperKitKernelDriver: KernelDictationDriver,
+    whisperKernelDriver: KernelDictationDriver,
     settings: SettingsManager,
     triggerSource: TriggerSource,
     recoverySessionID: String? = nil,
@@ -23,9 +23,9 @@ enum DictationSessionConfigFactory {
   ) -> DictationSessionConfig {
     // PR-5 Rung 5 (#827): both backends share `PipelineState` vocabulary now,
     // so the per-backend idle switch collapses; the legacy `.ready` case
-    // (WhisperKit-only) maps to `.idle` in the kernel driver's state mapping.
+    // (Whisper-only) maps to `.idle` in the kernel driver's state mapping.
     let active: KernelDictationDriver =
-      asrManager.activeBackendType == .whisperKit ? whisperKitKernelDriver : kernelDriver
+      asrManager.activeBackendType == .whisper ? whisperKernelDriver : kernelDriver
     let activePipelineIdle = active.state.allowsAutoPaste
     // #500: drop the legacy `permissions.hasAccessibilityPermission` gate so the
     // paste cascade always runs. The cascade already handles AX-not-trusted

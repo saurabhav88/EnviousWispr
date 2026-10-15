@@ -217,7 +217,7 @@ struct LivePreviewSettingsCopyTests {
   /// A list of banned phrases (`live transcription`, `live text`, ...) let
   /// "Your transcription appears live while you speak" through, which restates
   /// the other feature's promise almost verbatim; and it rejected this page's
-  /// own required label, "Paused while Faster Transcription is on". A blacklist
+  /// own required label, "Paused while Faster Transcription works during recording". A blacklist
   /// enumerates the collisions you imagined. An allowlist enumerates the uses
   /// you sanctioned, and only the second is closed under sentences nobody
   /// thought of.
@@ -242,7 +242,7 @@ struct LivePreviewSettingsCopyTests {
     ]
     #expect(
       LivePreviewSettingsCopy.pausedForFasterTranscription
-        == "Paused while Faster Transcription is on")
+        == "Paused while Faster Transcription works during recording")
     #expect(
       LivePreviewSettingsCopy.statusPausedDetail
         == "Your dictation keeps its full speed. Turn Faster Transcription off to see the preview.")
@@ -279,7 +279,7 @@ struct LivePreviewSettingsCopyTests {
   func bothEnginesDisambiguate() {
     for description in [
       LiveTranscriptionCopy.parakeetToggleDescription,
-      LiveTranscriptionCopy.whisperKitToggleDescription,
+      LiveTranscriptionCopy.whisperToggleDescription,
     ] {
       #expect(
         description.lowercased().contains("nothing looks different"),

@@ -1,6 +1,6 @@
 """Set up, prove and undo everything an audio take needs (#3764).
 
-    with AudioRig() as rig:                      # TextEdit: a NEW document, never an existing one
+    with AudioRig() as rig:                      # TextEdit: the one test document, never the founder's
         w.test_recording(sentence="...")
     with AudioRig(target=AppTarget("com.google.Chrome", prepare=open_gmail_compose)) as rig:
         w.record_tts("...")
@@ -17,6 +17,7 @@ printed and leaves `python3 silent_audio.py restore` to finish.
 Every failure here is SETUP, never an app result. `python3 audio_rig.py check` enters and leaves
 a rig with no take: run it before a test session (also `uat.py rig-check`).
 """
+import os
 import signal
 import subprocess
 import sys
@@ -63,38 +64,59 @@ class AppTarget:
                                  f"(front is {tg.frontmost_bundle()!r})")
 
 
+TEXTEDIT_TARGET_FILE = os.path.expanduser("~/.ew-uat-paste-target.txt")
+
+
+def _osascript(*lines):
+    r = subprocess.run(["osascript", *[a for line in lines for a in ("-e", line)]],
+                       capture_output=True, text=True, timeout=20)
+    return r.returncode, r.stdout.strip(), r.stderr.strip()
+
+
+def _target_doc():
+    return f'(first document whose path is "{TEXTEDIT_TARGET_FILE}")'
+
+
+def close_test_document():
+    """Close the test file's TextEdit window, if open. The file is saved, so TextEdit asks nothing."""
+    rc, out, _ = _osascript('if application "TextEdit" is running then',
+                            'tell application "TextEdit"',
+                            f'if exists {_target_doc()} then',
+                            f"close {_target_doc()} saving yes", 'return "closed"', "end if",
+                            "end tell", "end if", 'return "none"')
+    return rc == 0 and out == "closed"
+
+
 class TextEditTarget(AppTarget):
-    """A NEW TextEdit document. Never clears or reuses one the founder may have open."""
+    """ONE dedicated plain-text file, `~/.ew-uat-paste-target.txt`, emptied and reused by every
+    rig. A new untitled document is not used: TextEdit autosaves it into the founder's TextEdit
+    folder under a name it invents from the text ("Quarterly Report - Finance"), leaves its
+    window open, and asks keep-or-delete when closed by hand (#3774). Never touches a document
+    the founder may have open."""
 
     def __init__(self):
         super().__init__(TEXTEDIT)
-        self.document = None
 
     def activate(self):
-        subprocess.run(["osascript", "-e", 'tell application "TextEdit" to activate'],
-                       capture_output=True, timeout=20)
+        _osascript('tell application "TextEdit"', "activate",
+                   f"if exists {_target_doc()} then set index of (first window whose document is "
+                   f"{_target_doc()}) to 1", "end tell")
 
     def ready(self):
-        r = subprocess.run(["osascript", "-e", 'tell application "TextEdit"', "-e", "activate",
-                            "-e", "set d to make new document", "-e", "return name of d",
-                            "-e", "end tell"],
-                           capture_output=True, text=True, timeout=20)
-        if r.returncode != 0 or not r.stdout.strip():
-            raise tg.SetupFailed("paste-target", f"TextEdit refused a new document: {r.stderr.strip()!r}")
-        self.document = r.stdout.strip()
+        if not os.path.exists(TEXTEDIT_TARGET_FILE):
+            open(TEXTEDIT_TARGET_FILE, "w").close()
+        rc, _, err = _osascript('tell application "TextEdit"', "activate",
+                                f'open POSIX file "{TEXTEDIT_TARGET_FILE}"',
+                                f'set text of {_target_doc()} to ""', "end tell")
+        if rc != 0:
+            raise tg.SetupFailed("paste-target", f"TextEdit could not open the test file: {err!r}")
+        self.activate()
         if not _wait_frontmost(TEXTEDIT):
             raise tg.SetupFailed("paste-target",
                                  f"TextEdit did not come to the front (front is {tg.frontmost_bundle()!r})")
 
     def close(self):
-        """Close only the document this target made, unsaved (it holds test dictation)."""
-        if not self.document:
-            return
-        name = self.document.replace('"', '\\"')
-        subprocess.run(["osascript", "-e", 'tell application "TextEdit"', "-e",
-                        f'if exists document "{name}" then close document "{name}" saving no',
-                        "-e", "end tell"], capture_output=True, timeout=20)
-        self.document = None
+        """Keep the test file open for the next rig; `close_test_document()` closes it."""
 
 
 class AudioRig:
@@ -433,5 +455,8 @@ def _self_test():
 
 if __name__ == "__main__" and sys.argv[1:] == ["check"]:
     sys.exit(0 if check() else 1)
+if __name__ == "__main__" and sys.argv[1:] == ["close-target"]:
+    print("closed test document window", close_test_document())
+    sys.exit(0)
 if __name__ == "__main__" and sys.argv[1:] == ["--self-test"]:
     sys.exit(0 if _self_test() else 1)

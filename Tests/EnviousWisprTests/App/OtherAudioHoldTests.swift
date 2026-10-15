@@ -381,7 +381,7 @@ struct OtherAudioHoldTests {
   func otherBackendIgnored() async {
     let rig = Rig()
     await rig.start(.mute, backend: .parakeet)
-    rig.stop(backend: .whisperKit)
+    rig.stop(backend: .whisper)
     #expect(rig.volume.muted == true, "still held")
     rig.stop(backend: .parakeet)
     #expect(rig.volume.muted == false)
@@ -725,7 +725,7 @@ struct OtherAudioHoldTests {
   @Test("Repeated transitions apply and restore exactly once per take, for either backend")
   func exactOnceBothBackends() async {
     let rig = Rig()
-    for backend in [OtherAudioBackend.parakeet, .whisperKit] {
+    for backend in [OtherAudioBackend.parakeet, .whisper] {
       await rig.start(.mute, backend: backend)
       rig.hold.handle(.recording, backend: backend, mode: .mute, startDelay: 0)  // repeated
       await awaitApplyCompletion(rig.hold.pendingApplyForTesting)

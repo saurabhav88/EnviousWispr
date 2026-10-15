@@ -18,10 +18,9 @@ let package = Package(
     // scripts/eval/alias_runner. Purely additive — no production code
     // imports change. (#637)
     .library(name: "EnviousWisprPostProcessing", targets: ["EnviousWisprPostProcessing"]),
-    // Exposed for the tail-finalization eval harness at scripts/eval/tail_runner,
-    // which drives the shipped WhisperKitStreamingSession through the benchmark-only
-    // TailBenchmarkHarness facade. Purely additive — no production code imports
-    // change. (#1276 PR-2)
+    // Exposed for eval harnesses that link the ASR module. #1276 PR-2 added it for a
+    // tail-finalization runner (scripts/eval/tail_runner) that has since been removed.
+    // Purely additive — no production code imports change.
     .library(name: "EnviousWisprASR", targets: ["EnviousWisprASR"]),
     // Exposed for the deterministic-layer polish harness at
     // scripts/eval/deterministic_runner, which grades SHIPPED behaviour by
@@ -247,7 +246,6 @@ let package = Package(
         // #1707 Phase 3: TelemetryService (recoveryEngineActionDeferred) for
         // the EngineRecoveryGate mutation-claim guards on the idle-unload path.
         "EnviousWisprServices",
-        .product(name: "WhisperKit", package: "argmax-oss-swift"),
         "FluidAudio",
         // #3735: the transcribe.cpp boundary for the Whisper engine.
         "EnviousWisprTranscribeCpp",
@@ -293,10 +291,6 @@ let package = Package(
         "EnviousWisprPostProcessing",
         "EnviousWisprServices",
         "EnviousWisprStorage",
-        // R2 (#360): WhisperKit dependency dropped — Pipeline no longer
-        // references WhisperKit-typed values directly. The reach goes
-        // through `EnviousWisprASR`'s package-access seams
-        // (`makeIncrementalSession`, `observeLID`).
       ],
       path: "Sources/EnviousWisprPipeline"
     ),
@@ -322,7 +316,6 @@ let package = Package(
         "EnviousWisprContacts",
         // #3242: composition only. `WordCheckRuntime` owns the Kev model's load and unload.
         "EnviousWisprWordCheck",
-        .product(name: "WhisperKit", package: "argmax-oss-swift"),
         "FluidAudio",
         "Sparkle",
       ],

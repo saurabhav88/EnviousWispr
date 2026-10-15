@@ -35,7 +35,7 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
   public var languageDetection: LanguageDetectionResult?
 
   /// Active ASR backend for this polish step. Set at init time by the
-  /// owning pipeline (Parakeet or WhisperKit) so the prompt planner can
+  /// owning pipeline (Parakeet or Whisper) so the prompt planner can
   /// dispatch on explicit engine identity rather than inferring it from
   /// the absence of `languageDetection`. Nil for standalone callsites
   /// (e.g. crash-recovery's `RecoveryTextProcessor`, #1063) that do not know

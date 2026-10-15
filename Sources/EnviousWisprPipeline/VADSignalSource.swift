@@ -82,7 +82,7 @@ protocol VADSignalSource: AnyObject {
   ///
   /// PR-5 Rung 5 (#827) Codex code-diff r1 P1: a single shared
   /// `AsyncStream` cannot be safely consumed by two kernel drivers
-  /// (Parakeet + WhisperKit) — `AsyncStream` delivers each yielded item to
+  /// (Parakeet + Whisper) — `AsyncStream` delivers each yielded item to
   /// exactly one iterator, and overlap between two `for await` loops makes
   /// signal delivery non-deterministic. Each call returns a NEW stream
   /// backed by its own continuation; the source broadcasts every yield to

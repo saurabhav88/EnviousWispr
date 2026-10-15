@@ -36,11 +36,11 @@ struct AudioCaptureFailureExtrasTests {
       error: GenericStartError.failed,
       audioCapture: ExtrasAudioCapture(),
       failureMode: "thrown_start",
-      backend: "whisperKit"
+      backend: "whisper"
     )
 
     #expect(extras["capture.error_source"] == nil)
-    #expect(extras["backend"] as? String == "whisperKit")
+    #expect(extras["backend"] as? String == "whisper")
   }
 
   // MARK: - #1714 input-resolution attribution

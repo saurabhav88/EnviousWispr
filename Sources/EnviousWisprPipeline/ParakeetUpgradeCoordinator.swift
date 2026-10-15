@@ -1280,7 +1280,7 @@ extension ParakeetUpgradeCoordinator {
   /// unrejected v3 frozen; the owned transport on; onboarding complete; the
   /// target's state readable, not declined, not exhausted, with a load left in
   /// its budget (bytes nothing may load are never fetched); its location
-  /// usable; no Cancel this process. A WhisperKit-only launch has no frozen
+  /// usable; no Cancel this process. A Whisper-only launch has no frozen
   /// choice, so it starts nothing; work already running survives E14.
   private func backgroundEligible(_ target: UpgradeTarget) -> Bool {
     guard !backgroundSuppressed, isOnboardingComplete(),

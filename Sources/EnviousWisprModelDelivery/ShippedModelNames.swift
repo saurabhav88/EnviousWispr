@@ -35,12 +35,14 @@ enum ShippedModelNames {
     .s1Mini: ["s1-mini"],
     .s1MiniChecker: ["s1c"],
     .whisper: ["whisper-large-v3-turbo-gguf", "whisper-small-gguf"],
-    .whisperKit: ["whisperkit-coreml"],
     .wordCheck: ["kev-wc"],
   ]
 
   /// Historical models no longer offered for delivery. Their validation-only
-  /// manifests may remain bundled for migration and acceptance.
+  /// manifests may remain bundled for migration and acceptance. #3735: the retired
+  /// `whisper_kit` family is absent with its `ModelFamily` case; no registration or
+  /// per-family sweep can exist for it, and `WhisperModelMigration` recognizes its
+  /// leftovers by literal name.
   static let retired: [ModelFamily: Set<String>] = [
     .parakeet: ["parakeet-tdt-0.6b-v3-coreml"],
   ]
@@ -77,9 +79,6 @@ enum ShippedModelNames {
     "s1_mini_checker|s1c": ["f16"],
     "whisper|whisper-large-v3-turbo-gguf": ["q8_0"],
     "whisper|whisper-small-gguf": ["q8_0"],
-    "whisper_kit|whisperkit-coreml": [
-      "openai_whisper-large-v3-v20240930_turbo", "openai_whisper-small_216MB",
-    ],
     "word_check|kev-wc": ["mlx-q4", "mlx-q5-embed-q4"],
   ]
 

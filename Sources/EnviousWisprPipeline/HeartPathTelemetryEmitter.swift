@@ -13,7 +13,7 @@ import Foundation
 ///   4. no audio captured (rawSamples-empty terminal branch)
 ///   5. zombie zero-peak (peak == 0 with non-empty samples — issue #302)
 ///
-/// Engine-internal telemetry (Parakeet streaming, MLX kernels; WhisperKit
+/// Engine-internal telemetry (Parakeet streaming, MLX kernels; Whisper
 /// language detection, batch failures, model load) is NOT moved here by
 /// design — those events stay in their owning pipeline. See `#290` plan.
 ///
@@ -378,7 +378,7 @@ final class HeartPathTelemetryEmitter {
   private var dedupedBreadcrumbMessage: String {
     switch backend {
     case .parakeet: return "No audio captured (deduped)"
-    case .whisperKit: return "No audio captured (WhisperKit, deduped)"
+    case .whisper: return "No audio captured (Whisper, deduped)"
     }
   }
 

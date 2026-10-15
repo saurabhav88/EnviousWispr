@@ -54,6 +54,15 @@ struct LanguageGateBenchmarkTests {
   /// #3546: Parakeet Ultra rows on the same 178 sentences, re-spoken by the same Azure voices
   /// (October 2026; the September WAVs were not kept). Same oracles, Parakeet only.
   static let ultraFixtureURL = fixtureDirectory.appending(path: "transcripts-ultra.jsonl")
+  /// #3735: Whisper on transcribe.cpp (the shipped turbo Q8_0 GGUF, no language hint) on the
+  /// same October 2026 audio as the Ultra rows. Same oracles, Whisper only.
+  static let whisperFixtureURL = fixtureDirectory.appending(path: "transcripts-whisper.jsonl")
+
+  /// The engines that report a detected language: the historical WhisperKit rows and the
+  /// current transcribe.cpp Whisper rows. Parakeet detects nothing.
+  static func detectsLanguage(_ engine: String) -> Bool {
+    engine == "whisperkit" || engine == "whisper"
+  }
 
   static func loadRows(_ url: URL = fixtureURL) throws -> [Row] {
     let text = try String(contentsOf: url, encoding: .utf8)
@@ -83,8 +92,8 @@ struct LanguageGateBenchmarkTests {
     let itn = InverseTextNormalizationStep()
     itn.spokenPunctuation = .off
     // The per-session capability hint `KernelFinalizationWiring` wires from the adapter:
-    // WhisperKit declares language detection, Parakeet does not.
-    itn.backendSupportsLID = engine == "whisperkit"
+    // Whisper declares language detection, Parakeet does not.
+    itn.backendSupportsLID = detectsLanguage(engine)
     return [SnippetExpansionStep(), wordCorrection, filler, emoji, itn]
   }
 
@@ -104,8 +113,8 @@ struct LanguageGateBenchmarkTests {
       rawText: row.raw,
       evidence: LanguageEvidence(
         lockedLanguage: nil,
-        engineDetectsLanguage: row.engine == "whisperkit",
-        engineReportedLanguage: row.engine == "whisperkit" ? row.engine_language : nil,
+        engineDetectsLanguage: Self.detectsLanguage(row.engine),
+        engineReportedLanguage: Self.detectsLanguage(row.engine) ? row.engine_language : nil,
         englishSpelling: .american),
       targetAppName: nil,
       steps: deterministicChain(engine: row.engine))
@@ -388,5 +397,72 @@ struct LanguageGateBenchmarkTests {
     }
     for f in failures { print("  ENGLISH-CONTROL ultra \(f)") }
     #expect(failures.isEmpty, "\(failures.count) Ultra English controls regressed:\n\(failures.joined(separator: "\n"))")
+  }
+
+  // MARK: - Whisper on transcribe.cpp (#3735)
+
+  /// The Whisper rows grade the same way. When these fail, the shipped Whisper engine's own
+  /// spelling or detected language lets the English rules rewrite a real word, or an English
+  /// control stops converting.
+  @Test("Whisper fixture: 178 transcribe.cpp rows covering every language")
+  func whisperFixtureShape() throws {
+    let rows = try Self.loadRows(Self.whisperFixtureURL)
+    #expect(rows.count == 178, "Whisper fixture rows: \(rows.count)")
+    #expect(Set(rows.map(\.engine)) == ["whisper"])
+    #expect(Set(rows.map(\.id)).count == rows.count, "duplicate Whisper case ids")
+    #expect(Set(rows.map(\.lang)).count >= 20, "languages: \(Set(rows.map(\.lang)).count)")
+    #expect(rows.allSatisfy { $0.engine_language != nil }, "a Whisper row has no detected language")
+    let header = try String(contentsOf: Self.whisperFixtureURL, encoding: .utf8)
+      .split(separator: "\n").first.map(String.init) ?? ""
+    #expect(
+      header.contains("\"whisper-large-v3-turbo-gguf\""), "header names another model: \(header)")
+  }
+
+  @Test("Whisper: foreign-word damage stays within the measured residual")
+  func whisperForeignWordsSurviveCleanup() async throws {
+    let rows = try Self.loadRows(Self.whisperFixtureURL)
+    var outcomes: [Outcome] = []
+    for row in rows {
+      outcomes.append(Self.grade(row, cleaned: try await Self.clean(row)))
+    }
+    let report = try Self.writeReport(outcomes)
+    let staged = outcomes.filter { $0.staged && $0.hasOracle && !$0.bucket.hasPrefix("english") }
+    let damaged = staged.filter { !$0.damaged.isEmpty }
+    print(
+      "LanguageGateBenchmark Whisper: staged=\(staged.count) "
+        + "unreachable=\(outcomes.filter { $0.hasOracle && !$0.staged }.count) "
+        + "damaged=\(damaged.count) report=\(report.path)")
+    for o in damaged {
+      print("  DAMAGED \(o.id) [whisper] lost \(o.damaged): \(o.raw) -> \(o.cleaned)")
+    }
+    #expect(staged.count >= 80, "too few staged Whisper collision rows to mean anything: \(staged.count)")
+    // Measured 2026-10-14 on the October audio: 0 of 111 staged rows damaged (8 unreachable).
+    // No residual is permitted, so the first one fails here by name.
+    let permittedResiduals: Set<String> = []
+    let unexpected = Set(damaged.map(\.id)).subtracting(permittedResiduals).sorted()
+    #expect(
+      unexpected.isEmpty,
+      "\(unexpected.count) of \(staged.count) staged Whisper rows lost a real word: \(unexpected.joined(separator: ", "))"
+    )
+  }
+
+  @Test("Whisper: English controls still convert numbers and still drop fillers")
+  func whisperEnglishControlsStillConvert() async throws {
+    let rows = try Self.loadRows(Self.whisperFixtureURL).filter { $0.bucket.hasPrefix("english") }
+    #expect(rows.count >= 10, "Whisper English controls are missing or truncated: \(rows.count)")
+    #expect(rows.contains { !$0.must_convert.isEmpty }, "no number-conversion oracle")
+    #expect(rows.contains { !$0.must_drop.isEmpty }, "no filler-removal oracle")
+    var failures: [String] = []
+    for row in rows {
+      let o = Self.grade(row, cleaned: try await Self.clean(row))
+      if !o.missingConversions.isEmpty {
+        failures.append("\(o.id) missing \(o.missingConversions): \(o.cleaned)")
+      }
+      if !o.survivingFillers.isEmpty {
+        failures.append("\(o.id) kept filler \(o.survivingFillers): \(o.cleaned)")
+      }
+    }
+    for f in failures { print("  ENGLISH-CONTROL whisper \(f)") }
+    #expect(failures.isEmpty, "\(failures.count) Whisper English controls regressed:\n\(failures.joined(separator: "\n"))")
   }
 }

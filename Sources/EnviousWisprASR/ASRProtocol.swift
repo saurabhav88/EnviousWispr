@@ -9,7 +9,7 @@ public typealias ProgressCallback = @Sendable (Double, String, String) -> Void
 
 /// Unified protocol for all ASR backends.
 ///
-/// Both WhisperKit and Parakeet/FluidAudio conform to this protocol,
+/// Both the transcribe.cpp Whisper backend and Parakeet/FluidAudio conform to this protocol,
 /// enabling seamless backend switching at runtime.
 package protocol ASRBackend: Actor {
   /// Whether the backend is initialized and ready to transcribe.
@@ -38,7 +38,7 @@ package protocol ASRBackend: Actor {
   func setDecodeChunkObserver(_ observer: (@Sendable () -> Void)?) async
 
   /// #2918: observation only, same terms as `setDecodeChunkObserver`. A backend that can say
-  /// how far a decode is (WhisperKit per finished window, Parakeet per scheduled chunk)
+  /// how far a decode is (Whisper per native seek, Parakeet per scheduled chunk)
   /// reports a 0...1 fraction of the input's audio reached, for the duration of the next
   /// `transcribe`; the caller installs it per call and the backend clears it on exit. It
   /// never changes what is transcribed.
@@ -72,7 +72,7 @@ extension ASRBackend {
   /// #2787: observation only. A backend whose vendor reports chunk scheduling
   /// (Parakeet, for audio longer than one model window) forwards each report
   /// to `observer` for the duration of the next `transcribe`. Default: no
-  /// signal (WhisperKit has none), which is honest — the checkpoint simply
+  /// signal (Whisper has none), which is honest — the checkpoint simply
   /// carries no chunk count for that engine.
   public func setDecodeChunkObserver(_ observer: (@Sendable () -> Void)?) async {}
 

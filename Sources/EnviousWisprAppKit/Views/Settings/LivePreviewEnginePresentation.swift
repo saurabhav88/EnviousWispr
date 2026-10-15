@@ -216,9 +216,9 @@ enum LivePreviewEngineCopy {
   static var universalTitle: String { String(localized: universalTitleResource) }
   static let universalDescriptionResource =
     LocalizedStringResource(
-      "Works on macOS 14 and later, in more languages. Needs one optional 217 MB download.",
+      "Works on macOS 14 and later, in more languages. Needs one optional 270 MB download.",
       comment:
-        "Live Preview settings, preview engine: universal description. 217 MB is a download size.")
+        "Live Preview settings, preview engine: universal description. 270 MB is a download size.")
   static var universalDescription: String { String(localized: universalDescriptionResource) }
   static let notDownloadedYet = String(
     localized: "Not downloaded yet.",

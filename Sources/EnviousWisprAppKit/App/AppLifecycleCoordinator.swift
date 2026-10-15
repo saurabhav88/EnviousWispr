@@ -62,7 +62,7 @@ final class AppLifecycleCoordinator {
   private let audioCapture: any AudioCaptureInterface
   private let asrManager: any ASRManagerInterface
   private let kernelDriver: KernelDictationDriver
-  private let whisperKitKernelDriver: KernelDictationDriver
+  private let whisperKernelDriver: KernelDictationDriver
   private let setup: SetupCoordinator
   private let dictationRuntime: DictationRuntime
   private let dictationLifecycleCoordinator: DictationLifecycleCoordinator
@@ -83,6 +83,9 @@ final class AppLifecycleCoordinator {
   /// into `DebugFaultEndpoint`'s construction below: one genuinely new
   /// capability adding exactly one dependency.
   private let batchDecodeFaultController: BatchDecodeFaultController?
+  /// #3735: DEBUG `whisper_memory_pressure` command target, forwarded into
+  /// `DebugFaultEndpoint`; nil in Release.
+  private let whisperMemoryPressure: (@MainActor () async -> Bool)?
   /// #2787: the persisted stage checkpoint. Read once at launch for the
   /// previous process's interrupted take, and mirrored into every telemetry
   /// flush as `last_stage` / `stage_age_ms`.
@@ -106,7 +109,7 @@ final class AppLifecycleCoordinator {
     audioCapture: any AudioCaptureInterface,
     asrManager: any ASRManagerInterface,
     kernelDriver: KernelDictationDriver,
-    whisperKitKernelDriver: KernelDictationDriver,
+    whisperKernelDriver: KernelDictationDriver,
     setup: SetupCoordinator,
     dictationRuntime: DictationRuntime,
     dictationLifecycleCoordinator: DictationLifecycleCoordinator,
@@ -121,6 +124,7 @@ final class AppLifecycleCoordinator {
     onboardingProgress: OnboardingProgress,
     transcriptionCheckpointStore: TranscriptionCheckpointStore,
     batchDecodeFaultController: BatchDecodeFaultController? = nil,
+    whisperMemoryPressure: (@MainActor () async -> Bool)? = nil,
     // Required and non-defaulted (review r1): a composition that forgets it
     // must fail to compile, not silently drop the watcher's cancellation.
     onRecordingStarted: @escaping @MainActor () -> Void
@@ -136,7 +140,7 @@ final class AppLifecycleCoordinator {
     self.audioCapture = audioCapture
     self.asrManager = asrManager
     self.kernelDriver = kernelDriver
-    self.whisperKitKernelDriver = whisperKitKernelDriver
+    self.whisperKernelDriver = whisperKernelDriver
     self.setup = setup
     self.dictationRuntime = dictationRuntime
     self.dictationLifecycleCoordinator = dictationLifecycleCoordinator
@@ -147,6 +151,7 @@ final class AppLifecycleCoordinator {
     self.applicationRelocationCoordinator = applicationRelocationCoordinator
     self.bluetoothAwarenessPresenter = bluetoothAwarenessPresenter
     self.batchDecodeFaultController = batchDecodeFaultController
+    self.whisperMemoryPressure = whisperMemoryPressure
     self.transcriptionCheckpointStore = transcriptionCheckpointStore
     // Icon-refresh seam: the window coordinator's two onboarding-dismiss
     // callsites route through this closure. Was wired in `AppDelegate.attach`
@@ -198,7 +203,7 @@ final class AppLifecycleCoordinator {
     // `SetupCoordinator` (it already owns this engine's setup lifecycle), so no
     // new dependency lands on this coordinator. A limb: never blocks launch, and
     // a denied prompt leaves the user's copy untouched.
-    setup.startWhisperKitMigrationThenDetect()
+    setup.startWhisperMigrationThenDetect()
 
     // Update menu bar icon whenever pipeline state changes. The closure is
     // composite — it also triggers the audio-environment snapshotter on
@@ -339,11 +344,12 @@ final class AppLifecycleCoordinator {
         let endpoint = DebugFaultEndpoint(
           audioCapture: audioCapture as? AudioCaptureManager,
           kernelDriver: kernelDriver,
-          whisperKitKernelDriver: whisperKitKernelDriver,
+          whisperKernelDriver: whisperKernelDriver,
           activeBackend: { [weak self] in
             self?.settings.selectedBackend ?? .parakeet
           },
           batchDecodeFaultController: batchDecodeFaultController,
+          whisperMemoryPressure: whisperMemoryPressure,
           qualificationChildTrap: qualificationChildTrap
         )
         endpoint.start()

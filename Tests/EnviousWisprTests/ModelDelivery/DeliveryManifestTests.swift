@@ -153,30 +153,21 @@ enum ManifestFixture {
       ).runtimeIdentityDigest == nil)
   }
 
-  @Test func whisperKitCarveOutForNonOurCopyPrimarySource() throws {
-    // #1386 PR-2: the multilingual (WhisperKit) engine is the ONE licensed
-    // exception to mirror-first — its single source is HF-pinned, not our_copy.
+  @Test func everyFamilyRequiresOurCopyFirst() throws {
+    // Contract §7 mirror-first. #3735 removed the one exception (the retired WhisperKit
+    // family's HF-pinned CoreML source), so a non-our_copy primary is refused everywhere.
     let hfOnly = [["id": "hugging_face", "baseURL": "https://hf.invalid.example/base/"]]
-
-    // WhisperKit ACCEPTS a non-our_copy primary source.
-    let whisper = try ManifestFixture.manifestJSON(
-      files: ManifestFixture.smallFiles, sources: hfOnly, family: "whisper_kit")
-    #expect(throws: Never.self) { try DeliveryManifest.load(from: whisper) }
-
-    // The carve-out MUST NOT leak: every other family still hard-requires
-    // our_copy first (a non-our_copy primary is refused).
-    for family in ["parakeet", "eg_one", "s1_mini"] {
-      let leaky = try ManifestFixture.manifestJSON(
+    for family in ["parakeet", "whisper", "eg_one", "s1_mini"] {
+      let hfFirst = try ManifestFixture.manifestJSON(
         files: ManifestFixture.smallFiles, sources: hfOnly, family: family)
-      #expect(throws: (any Error).self) { try DeliveryManifest.load(from: leaky) }
+      #expect(throws: (any Error).self, "\(family)") {
+        try DeliveryManifest.load(from: hfFirst)
+      }
     }
-
-    // WhisperKit still enforces every OTHER source rule (https + trailing slash).
-    let badScheme = try ManifestFixture.manifestJSON(
-      files: ManifestFixture.smallFiles,
-      sources: [["id": "hugging_face", "baseURL": "http://hf.invalid.example/base/"]],
-      family: "whisper_kit")
-    #expect(throws: (any Error).self) { try DeliveryManifest.load(from: badScheme) }
+    // The retired family no longer decodes at all: an unknown family must fail.
+    let retired = try ManifestFixture.manifestJSON(
+      files: ManifestFixture.smallFiles, family: "whisper_kit")
+    #expect(throws: (any Error).self) { try DeliveryManifest.load(from: retired) }
   }
 
   @Test func missingBundleResourceThrowsTyped() {
@@ -186,236 +177,7 @@ enum ManifestFixture {
   }
 }
 
-// MARK: - The shipped Parakeet manifest (golden fixture, grounded r1 rev 8/9)
-
-/// The shipped multilingual (WhisperKit) manifest (#1386 PR-2). This is the ONE
-/// family fetched from a source we do not host — we are not licensed to re-host
-/// Argmax's CoreML weights — so the safety property is entirely in this file:
-/// an immutable pinned commit, an exhaustive file list, and a SHA-256 per byte
-/// range that must verify before anything is admitted. There is no runtime
-/// listing call and no moving branch to drift under us.
-@Suite struct WhisperKitShippedManifestTests {
-  static var shippedManifestURL: URL {
-    ParakeetShippedManifestTests.repoRoot.appendingPathComponent(
-      "Sources/EnviousWispr/Resources/whisperkit-delivery-manifest.json")
-  }
-
-  /// Golden digest: the authoring script and the Swift loader must agree, or a
-  /// valid manifest gets rejected at runtime. Not copied from the authoring
-  /// script — `DeliveryManifest.load` recomputes the digest and THROWS on a
-  /// mismatch, so a manifest that loads at all has already had this value
-  /// confirmed by the shipped Swift canonicalization, independently.
-  static let goldenDigest = "75996a983589ad730bff39bc650be022414f3d0fb2660907e83d6ead5541c3bb"
-
-  @Test func shippedManifestLoadsAndMatchesGoldenDigest() throws {
-    let data = try Data(contentsOf: Self.shippedManifestURL)
-    let manifest = try DeliveryManifest.load(from: data)
-    #expect(manifest.manifestDigest == Self.goldenDigest)
-    #expect(try DeliveryManifest.canonicalDigest(of: data) == Self.goldenDigest)
-    #expect(manifest.identity.family == .whisperKit)
-    #expect(manifest.identity.variant == "openai_whisper-large-v3-v20240930_turbo")
-    #expect(manifest.files.count == 24)
-    #expect(manifest.totalBytes == 1_638_464_446)
-
-    // Every component the loader needs; a partial set would admit a cache that
-    // cannot actually transcribe.
-    let components = Set(manifest.files.map(\.component))
-    for required in [
-      "AudioEncoder.mlmodelc", "MelSpectrogram.mlmodelc", "TextDecoder.mlmodelc",
-      "TextDecoderContextPrefill.mlmodelc", "config.json",
-    ] {
-      #expect(components.contains(required), "missing component \(required)")
-    }
-  }
-
-  /// The pin is the whole point: a `/resolve/<40-hex-commit>/` URL cannot move
-  /// under us the way `/resolve/main/` can. Ship criterion 1.
-  @Test func sourceIsPinnedToAnImmutableCommitNotABranch() throws {
-    let manifest = try DeliveryManifest.load(from: Data(contentsOf: Self.shippedManifestURL))
-    #expect(manifest.sources.count == 1)
-    let baseURL = try #require(manifest.sources.first?.baseURL.absoluteString)
-    #expect(baseURL.hasPrefix("https://huggingface.co/argmaxinc/whisperkit-coreml/resolve/"))
-    #expect(!baseURL.contains("/resolve/main/"), "a branch ref would let the bytes change")
-
-    let revision = manifest.identity.revision
-    #expect(revision.count == 40, "revision must be a full commit SHA, never a short ref or tag")
-    #expect(revision.allSatisfy { $0.isHexDigit })
-    #expect(baseURL.contains(revision), "the fetch URL must pin the SAME commit the identity names")
-    // No embedded token: the pinned URL is publicly resolvable.
-    #expect(!baseURL.contains("@") && !baseURL.contains("token"))
-  }
-
-  @Test func manifestIsDeclaredAsAppResource() throws {
-    let project = try String(
-      contentsOf: ParakeetShippedManifestTests.repoRoot.appendingPathComponent("Project.swift"),
-      encoding: .utf8)
-    #expect(
-      project.contains("Sources/EnviousWispr/Resources/whisperkit-delivery-manifest.json"),
-      "whisperkit-delivery-manifest.json must be listed in the app target's resources")
-  }
-}
-
-/// The SECOND artifact in the `whisperKit` family (#2102, epic #2077 chunk 3):
-/// the small multilingual model Live Preview offers as the universal
-/// alternative to Apple's engine, which only recognises languages Apple has
-/// already installed and does not exist below macOS 26 at all.
-///
-/// Nothing loads this manifest yet — the preview recognizer arrives in chunk 4.
-/// It is registered and provable now so that chunk builds on a pinned,
-/// digest-locked artifact rather than authoring one under deadline.
-///
-/// Two manifests in one family are unambiguous ONLY because every load site
-/// names its resource literally (`ModelDeliveryHome`, `WisprBootstrapper`);
-/// nothing resolves a manifest by `ModelFamily`. Do not add a generic
-/// enumerator without revisiting that.
-@Suite struct WhisperKitPreviewManifestTests {
-  static var previewManifestURL: URL {
-    ParakeetShippedManifestTests.repoRoot.appendingPathComponent(
-      "Sources/EnviousWispr/Resources/whisperkit-preview-delivery-manifest.json")
-  }
-
-  /// Golden digest, same contract as the transcription manifest above: the
-  /// authoring script and the Swift loader must agree or a valid manifest is
-  /// rejected at runtime. `DeliveryManifest.load` recomputes it and THROWS on
-  /// mismatch, so a manifest that loads at all has had this value confirmed by
-  /// the shipped Swift canonicalization independently of how it was authored.
-  static let goldenDigest = "235dd98cedfa0ac999fbe18ca24c91d46970c299c1177a0030f5faf2d14aef16"
-
-  /// Every byte-level constant below was MEASURED, not transcribed: each file
-  /// was downloaded through its pinned `resolve/<sha>/` URL and hashed from the
-  /// stream actually received, and the count and total were cross-checked
-  /// against an independent earlier download of the same revision.
-  ///
-  /// A digest alone would lock whatever was authored, INCLUDING the wrong
-  /// artifact — an internally-consistent manifest for `openai_whisper-base`
-  /// would pass a digest-only test. These assertions are what make the digest
-  /// mean "the model we chose" rather than "some model".
-  @Test func previewManifestLoadsAndMatchesGoldenDigest() throws {
-    let data = try Data(contentsOf: Self.previewManifestURL)
-    let manifest = try DeliveryManifest.load(from: data)
-    #expect(manifest.manifestDigest == Self.goldenDigest)
-    #expect(try DeliveryManifest.canonicalDigest(of: data) == Self.goldenDigest)
-
-    #expect(manifest.identity.family == .whisperKit)
-    #expect(manifest.identity.name == "whisperkit-coreml")
-    #expect(manifest.identity.variant == "openai_whisper-small_216MB")
-    #expect(manifest.identity.runtimeABI == "whisperkit-1.0.0")
-    #expect(manifest.files.count == 19)
-    #expect(manifest.totalBytes == 217_350_763)
-    #expect(manifest.optionalFiles.isEmpty)
-
-    let components = Set(manifest.files.map(\.component))
-    for required in [
-      "AudioEncoder.mlmodelc", "MelSpectrogram.mlmodelc", "TextDecoder.mlmodelc", "config.json",
-    ] {
-      #expect(components.contains(required), "missing component \(required)")
-    }
-    // The small variant genuinely has no prefill decoder at this revision,
-    // unlike large-v3-turbo. Asserting its ABSENCE keeps the required-component
-    // list above from being quietly copied from the transcription manifest,
-    // where it would then be describing a different model.
-    #expect(!components.contains("TextDecoderContextPrefill.mlmodelc"))
-  }
-
-  /// The pin is the whole point, and this artifact has NO mirror of our own to
-  /// fall back to — we are not licensed to re-host these bytes — so a movable
-  /// ref would be the only thing standing between us and silently different
-  /// weights.
-  @Test func previewSourceIsPinnedToAnImmutableCommitNotABranch() throws {
-    let manifest = try DeliveryManifest.load(from: Data(contentsOf: Self.previewManifestURL))
-    #expect(manifest.sources.count == 1)
-    #expect(manifest.sources.first?.id == "hf_pinned")
-    let baseURL = try #require(manifest.sources.first?.baseURL.absoluteString)
-    #expect(baseURL.hasPrefix("https://huggingface.co/argmaxinc/whisperkit-coreml/resolve/"))
-    #expect(!baseURL.contains("/resolve/main/"), "a branch ref would let the bytes change")
-    #expect(baseURL.hasSuffix("/openai_whisper-small_216MB/"), "must fetch the preview variant")
-
-    let revision = manifest.identity.revision
-    #expect(revision.count == 40, "revision must be a full commit SHA, never a short ref or tag")
-    #expect(revision.allSatisfy { $0.isHexDigit })
-    #expect(baseURL.contains(revision), "the fetch URL must pin the SAME commit the identity names")
-    #expect(!baseURL.contains("@") && !baseURL.contains("token"))
-  }
-
-  /// The one thing in this chunk that could destroy user data.
-  ///
-  /// `CacheAdmission` treats its install directory as exhaustive truth and
-  /// removes every top-level entry the active manifest does not list. Two
-  /// manifests admitted into ONE directory would therefore delete each other's
-  /// files on every admission — the transcription model, a heart-path artifact,
-  /// wiped by a limb.
-  ///
-  /// The token asserted here does not itself resolve to a path: it is metadata
-  /// (`DeliveryManifest.Admission.installLocation` is a free `String` nothing in
-  /// ModelDelivery interprets), and the real filesystem authority is the
-  /// caller-supplied `DeliveryRegistration.installDirectory`. So this test
-  /// cannot prove the directories differ — it pins the DECLARATION, so that a
-  /// chunk-4 author wiring the registration cannot read the two manifests as
-  /// asking to share a home.
-  @Test func previewInstallLocationIsDistinctFromTheTranscriptionModel() throws {
-    let preview = try DeliveryManifest.load(from: Data(contentsOf: Self.previewManifestURL))
-    let transcription = try DeliveryManifest.load(
-      from: Data(contentsOf: WhisperKitShippedManifestTests.shippedManifestURL))
-
-    #expect(preview.admission.installLocation == "whisperPreviewModelsCache")
-    #expect(
-      preview.admission.installLocation != transcription.admission.installLocation,
-      "two manifests sharing an install directory delete each other's files")
-    // Same family, same source repo, same pinned revision — everything that
-    // makes a collision plausible is genuinely true here. Only the variant and
-    // the install location separate them.
-    #expect(preview.identity.family == transcription.identity.family)
-    #expect(preview.identity.revision == transcription.identity.revision)
-    #expect(preview.identity.variant != transcription.identity.variant)
-  }
-
-  /// A digest test that only ever sees the good file proves nothing. Both
-  /// mutations below must be REJECTED, and the second is the load-bearing one:
-  /// `runtimeCompatibility` is not a declared property of `DeliveryManifest` at
-  /// all, so the decoder ignores it — yet canonicalization re-serializes the RAW
-  /// JSON, so an undeclared field still participates in the digest. Without this
-  /// case, silently dropping such a field would look like a passing test.
-  @Test func aMutatedPreviewManifestIsRejected() throws {
-    let data = try Data(contentsOf: Self.previewManifestURL)
-    let object = try #require(
-      try JSONSerialization.jsonObject(with: data) as? [String: Any])
-
-    func expectRejected(_ mutated: [String: Any], _ label: String) throws {
-      let mutatedData = try JSONSerialization.data(withJSONObject: mutated)
-      #expect(throws: DeliveryManifest.ManifestError.self, "\(label) must not load") {
-        try DeliveryManifest.load(from: mutatedData)
-      }
-    }
-
-    var byteCount = object
-    byteCount["totalBytes"] = 217_350_764
-    try expectRejected(byteCount, "a manifest claiming one extra byte")
-
-    var undeclaredField = object
-    undeclaredField["runtimeCompatibility"] = ["minAppVersion": "99.0.0"]
-    try expectRejected(undeclaredField, "a manifest with an edited undecoded field")
-
-    // Two-way control: the SAME round-trip through JSONSerialization with no
-    // mutation must still load, or the two cases above would be proving only
-    // that re-serialization breaks manifests.
-    let roundTripped = try JSONSerialization.data(withJSONObject: object)
-    #expect(try DeliveryManifest.load(from: roundTripped).manifestDigest == Self.goldenDigest)
-  }
-
-  /// `Project.swift` lists every manifest individually and nothing globs
-  /// `Resources/`, so a file merely placed beside its siblings is not a build
-  /// input and would be ABSENT from the signed app while every other test here
-  /// still passed — they all read the source tree.
-  @Test func previewManifestIsDeclaredAsAppResource() throws {
-    let project = try String(
-      contentsOf: ParakeetShippedManifestTests.repoRoot.appendingPathComponent("Project.swift"),
-      encoding: .utf8)
-    #expect(
-      project.contains(
-        "Sources/EnviousWispr/Resources/whisperkit-preview-delivery-manifest.json"),
-      "whisperkit-preview-delivery-manifest.json must be listed in the app target's resources")
-  }
-}
+// MARK: - Shipped manifests (golden fixtures)
 
 /// #3735: the transcribe.cpp Whisper GGUF manifests. Bytes verified over the public copy
 /// before bundling (`docs/audits/3735-swap/chunk2/public-verify.txt`); the turbo file is
@@ -474,11 +236,11 @@ enum ManifestFixture {
     #expect(file.parts == nil)
   }
 
-  @Test func bothIdentitiesAreDistinctFromEachOtherAndFromWhisperKit() throws {
+  @Test func bothIdentitiesAreWhisperFamilyAndDistinct() throws {
     let turbo = try Self.load("whisper-delivery-manifest").manifest.identity
     let preview = try Self.load("whisper-preview-delivery-manifest").manifest.identity
     #expect(turbo.cacheKey != preview.cacheKey)
-    #expect(turbo.family != .whisperKit && preview.family != .whisperKit)
+    #expect(turbo.family == .whisper && preview.family == .whisper)
   }
 
   @Test func bothManifestsAreDeclaredAsAppResources() throws {
@@ -886,7 +648,7 @@ enum ManifestFixture {
 /// chunks build on a pinned, digest-locked artifact rather than authoring one
 /// under deadline, exactly as the WhisperKit Preview manifest was.
 ///
-/// Two sources here, unlike WhisperKit's single pinned mirror: the naming term
+/// Two sources here, unlike the retired WhisperKit manifest's single pinned source: the naming term
 /// in the S1-mini licence restricts what we must CALL the model, not whether we
 /// may re-host its bytes, so the mirror-first invariant applies unchanged and
 /// `our_copy` leads.

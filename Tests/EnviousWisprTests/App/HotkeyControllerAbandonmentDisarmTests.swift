@@ -99,7 +99,7 @@ struct HotkeyControllerAbandonmentDisarmTests {
       let store = DictationRuntimeFixtures.tempStore()
       let pipeline = DictationRuntimeFixtures.makeParakeetDriver(
         audioCapture: audio, asrManager: asr, store: store)
-      let whisperKitKernelDriver = DictationRuntimeFixtures.makeWhisperKitPipeline(
+      let whisperKernelDriver = DictationRuntimeFixtures.makeWhisperPipeline(
         audioCapture: audio, store: store)
       let settings = SettingsManager()
       let overlay = OverlayTestDouble.headlessDirector()
@@ -114,7 +114,7 @@ struct HotkeyControllerAbandonmentDisarmTests {
         backend: { "parakeet" })
       let finalizer = RecordingFinalizer(
         kernelDriver: pipeline,
-        whisperKitKernelDriver: whisperKitKernelDriver,
+        whisperKernelDriver: whisperKernelDriver,
         asrManager: asr,
         recordingOverlay: overlay,
         heartControlRecovery: hcr,
@@ -124,7 +124,7 @@ struct HotkeyControllerAbandonmentDisarmTests {
         audioCapture: audio,
         asrManager: asr,
         kernelDriver: pipeline,
-        whisperKitKernelDriver: whisperKitKernelDriver,
+        whisperKernelDriver: whisperKernelDriver,
         settings: settings,
         permissions: permissions,
         recordingOverlay: overlay,

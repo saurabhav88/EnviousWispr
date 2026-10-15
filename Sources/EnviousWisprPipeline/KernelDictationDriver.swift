@@ -338,7 +338,7 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
   /// adapter TYPE stays module-internal. No-op for engines without one
   /// (Parakeet's removal story is not this PR's).
   package func unloadEngineForRemoval() async {
-    await (adapter as? WhisperKitEngineAdapter)?.unloadForRemoval()
+    await (adapter as? WhisperEngineAdapter)?.unloadForRemoval()
   }
 
   /// The per-session context the wiring's closures read (PR-4 §3.3 — "captured
@@ -412,7 +412,7 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
   /// `onStateChange` above. Guards this driver's own `ensureEngineWarm(_:)`
   /// claim (row 4/12/13/15/16/18's single shared choke point). The owned
   /// `RecordingSessionKernel` (row 21's `preWarm()` guard) and, when this
-  /// driver's adapter is a `WhisperKitEngineAdapter` (row 6's idle-unload
+  /// driver's adapter is a `WhisperEngineAdapter` (row 6's idle-unload
   /// guard), the adapter itself now each receive the SAME shared value
   /// directly at THEIR OWN construction, via the factories — no more
   /// post-construction forwarding through this property.
@@ -519,21 +519,21 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
 
   /// Cold-boot warm-up coordinator (#879). The SINGLE shared entry every warm-up
   /// site routes through — launch (`WisprBootstrapper` for Parakeet,
-  /// `SetupCoordinator` for WhisperKit), onboarding (`OnboardingV2View`), engine
+  /// `SetupCoordinator` for Whisper), onboarding (`OnboardingV2View`), engine
   /// swap (`PipelineSettingsSync`), and the cold press (`RecordingStarter`) — so
   /// the readiness-check + single-flight + telemetry live in one place and can't
   /// drift. Reads the live `adapter.readiness` (the ONLY gate — no persisted
   /// OS-build stamp, which would be an unsafe cache key per #879 §3); if the
   /// engine is already ready it no-ops. Otherwise it drives the engine's normal
   /// model load via `adapter.warmUp()` — idempotent and single-flighted by the
-  /// backend (`WhisperKitBackend.loadTask` / `ASRManager.inFlightLoadTask`), so a
+  /// backend (`TranscribeCppWhisperBackend`'s load state / `ASRManager.inFlightLoadTask`), so a
   /// press landing during a launch/onboarding warm-up JOINS the in-flight load
   /// rather than starting a second compile. This drives the normal load only
   /// — no `prewarm` (it would load twice). #1275: the earlier "loaded already
   /// means first press instant, no dummy-transcribe" claim here (measured
   /// 2026-06-01) turned out to be path-dependent — a warm-cache relaunch
   /// showed a real first-decode penalty, contradicting that cold-load
-  /// measurement. WhisperKit's backend now runs its own silent warm-up
+  /// measurement. The Whisper backend now runs its own silent warm-up
   /// inference inside `loadFromPath` before flipping `isReady`, so "loaded"
   /// now genuinely means "first press instant" regardless of load path; see
   /// `whisperkit-research.md` for the full finding.
@@ -587,7 +587,7 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
       model: Self.requestedAttribution(adapter))
     // #1339: arm the sessionless load-wedge guard — exactly one per attempt.
     // Gated to file-backed signal sources (`warmupStallGuardEligible`:
-    // Parakeet-over-XPC yes; WhisperKit and the in-process debug manager are
+    // Parakeet-over-XPC yes; Whisper and the in-process debug manager are
     // signal-free for the guard's poll and stay uncovered — Codex r1 P2) and
     // to the driver-level single-flight slot (a concurrent second warm-up
     // joins the same underlying load; the first caller's guard covers it).
@@ -636,7 +636,7 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
         // #1388: un-truncated install-phase observation. With gate (B) removed
         // there is no auto-abort at 15s, so the success event finally records
         // what real installs look like (duration + longest internal silence).
-        // Nil when no guard covered this warm-up (WhisperKit, in-process debug).
+        // Nil when no guard covered this warm-up (Whisper, in-process debug).
         let install = observedGuard?.installObservation
         TelemetryService.shared.coldStartWarmupCompleted(
           engine: engine, reason: reason.telemetryToken, durationMs: ms,
@@ -879,12 +879,12 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
   /// (`engineReadinessAtPTT`) onto the `PTT-to-recording` log line at trigger
   /// entry. `adapter` is package-scoped; this is the only App-visible window
   /// onto its readiness. Sourcing the cohort here (not `asrManager.isModelLoaded`)
-  /// is correct for both engines: WhisperKit's live driver uses a separate
+  /// is correct for both engines: Whisper's live driver uses a separate
   /// in-process backend, so the shared ASR manager's flag does not reflect it.
   public var engineReadiness: ASREngineReadiness { adapter.readiness }
 
   /// The active engine's user-facing display name (e.g. "Parakeet" /
-  /// "WhisperKit"). Exposed read-only so the App layer can label the cold-boot
+  /// "Whisper"). Exposed read-only so the App layer can label the cold-boot
   /// warm-up pill (#879) without reaching into the package-scoped `adapter`.
   public var engineDisplayName: String { adapter.engineIdentity.displayName }
 

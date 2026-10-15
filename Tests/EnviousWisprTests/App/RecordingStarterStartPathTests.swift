@@ -34,7 +34,7 @@ import Testing
     let starter: RecordingStarter
     let finalizer: RecordingFinalizer
     let kernelDriver: KernelDictationDriver
-    let whisperKitKernelDriver: KernelDictationDriver
+    let whisperKernelDriver: KernelDictationDriver
     let asr: RouterTestASRManager
     let audio: RouterTestAudioCapture
     let permissions: PermissionsService
@@ -130,7 +130,7 @@ import Testing
     let store = DictationRuntimeFixtures.tempStore()
     let pipeline = DictationRuntimeFixtures.makeParakeetDriver(
       audioCapture: audio, asrManager: asr, store: store)
-    let whisperKitKernelDriver = DictationRuntimeFixtures.makeWhisperKitPipeline(
+    let whisperKernelDriver = DictationRuntimeFixtures.makeWhisperPipeline(
       audioCapture: audio, store: store)
     // #959: isolate each fixture's settings in its own UserDefaults suite so a
     // test that changes `modelUnloadPolicy` (e.g. `warmRespawnRequiresNeverPolicy`)
@@ -152,7 +152,7 @@ import Testing
     )
     let finalizer = RecordingFinalizer(
       kernelDriver: pipeline,
-      whisperKitKernelDriver: whisperKitKernelDriver,
+      whisperKernelDriver: whisperKernelDriver,
       asrManager: asr,
       recordingOverlay: overlay,
       heartControlRecovery: hcr,
@@ -188,7 +188,7 @@ import Testing
       audioCapture: audio,
       asrManager: asr,
       kernelDriver: pipeline,
-      whisperKitKernelDriver: whisperKitKernelDriver,
+      whisperKernelDriver: whisperKernelDriver,
       settings: settings,
       permissions: permissions,
       recordingOverlay: overlay,
@@ -216,7 +216,7 @@ import Testing
       starter: starter,
       finalizer: finalizer,
       kernelDriver: pipeline,
-      whisperKitKernelDriver: whisperKitKernelDriver,
+      whisperKernelDriver: whisperKernelDriver,
       asr: asr,
       audio: audio,
       permissions: permissions,
@@ -234,7 +234,7 @@ import Testing
     let fx = Self.makeFixture()
     fx.asr.activeBackendType = .parakeet
     #expect(fx.starter.isProcessing == false)
-    fx.asr.activeBackendType = .whisperKit
+    fx.asr.activeBackendType = .whisper
     #expect(fx.starter.isProcessing == false)
   }
 
@@ -615,18 +615,18 @@ import Testing
       }
     }
 
-    @Test("an already-active WhisperKit session reports its continuing id")
-    func whisperKitAlreadyActiveReportsRecording() async throws {
+    @Test("an already-active Whisper session reports its continuing id")
+    func whisperAlreadyActiveReportsRecording() async throws {
       let fx = Self.makeFixture()
-      fx.asr.activeBackendType = .whisperKit
-      fx.whisperKitKernelDriver.kernelForTesting.testForceState(.live)
-      let expected = try #require(fx.whisperKitKernelDriver.continuingSessionID)
+      fx.asr.activeBackendType = .whisper
+      fx.whisperKernelDriver.kernelForTesting.testForceState(.live)
+      let expected = try #require(fx.whisperKernelDriver.continuingSessionID)
 
       let outcome = await fx.starter.start()
 
       switch outcome {
       case .recording(let sessionID): #expect(sessionID == expected)
-      case .noRecording: Issue.record("expected the already-active WhisperKit session")
+      case .noRecording: Issue.record("expected the already-active Whisper session")
       }
     }
 

@@ -29,7 +29,7 @@ struct ModelPreparingImpressionPlacementTests {
       var body: some View {
         SettingsContentView { Text("x") }
           .onAppear {
-            TelemetryService.shared.settingsModelPreparingImpression(engine: "whisperKit", reason: "engine_swap")
+            TelemetryService.shared.settingsModelPreparingImpression(engine: "whisper", reason: "engine_swap")
           }
       }
       """
@@ -48,7 +48,7 @@ struct ModelPreparingImpressionPlacementTests {
         } else {
           Label(ModelPreparingCopy.label(warmInFlight: x), systemImage: "checkmark")
             .onAppear {
-              TelemetryService.shared.settingsModelPreparingImpression(engine: "whisperKit", reason: "engine_swap")
+              TelemetryService.shared.settingsModelPreparingImpression(engine: "whisper", reason: "engine_swap")
             }
         }
       default: EmptyView()
@@ -67,7 +67,7 @@ struct ModelPreparingImpressionPlacementTests {
         if ModelPreparingCopy.isPreparing(warmInFlight: x) {
           Text("Text(ModelPreparingCopy.label")
             .onAppear {
-              TelemetryService.shared.settingsModelPreparingImpression(engine: "whisperKit", reason: "engine_swap")
+              TelemetryService.shared.settingsModelPreparingImpression(engine: "whisper", reason: "engine_swap")
             }
         }
       default: EmptyView()
@@ -86,7 +86,7 @@ struct ModelPreparingImpressionPlacementTests {
         if ModelPreparingCopy.isPreparing(warmInFlight: x) == false {
           Text(ModelPreparingCopy.label(warmInFlight: x))
             .onAppear {
-              TelemetryService.shared.settingsModelPreparingImpression(engine: "whisperKit", reason: "engine_swap")
+              TelemetryService.shared.settingsModelPreparingImpression(engine: "whisper", reason: "engine_swap")
             }
         }
       default: EmptyView()
@@ -108,7 +108,7 @@ struct ModelPreparingImpressionPlacementTests {
             Text(ModelPreparingCopy.label(warmInFlight: x))
           }
           .onAppear {
-            TelemetryService.shared.settingsModelPreparingImpression(engine: "whisperKit", reason: "engine_swap")
+            TelemetryService.shared.settingsModelPreparingImpression(engine: "whisper", reason: "engine_swap")
           }
         }
       default: EmptyView()

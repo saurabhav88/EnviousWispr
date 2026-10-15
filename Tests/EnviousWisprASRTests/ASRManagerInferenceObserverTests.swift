@@ -63,7 +63,10 @@ struct ASRManagerInferenceObserverTests {
         audioSamples: [0.1], options: .default, onInferenceEntered: { count.bump() })
     }
     await #expect(throws: ASRError.self) {
-      _ = try await WhisperKitBackend(admittedModelFolder: { nil }).transcribe(
+      _ = try await TranscribeCppWhisperBackend(
+        driver: LiveWhisperExecutorDriver(), modelVariant: "whisper-large-v3-turbo-Q8_0",
+        admittedModelPath: { nil }
+      ).transcribe(
         audioSamples: [0.1], options: .default, onInferenceEntered: { count.bump() })
     }
     #expect(count.fired == 0)

@@ -13,7 +13,7 @@ import Foundation
 ///
 /// The App layer needs a `KernelDictationDriver` but cannot construct one
 /// directly: `RecordingSessionKernel`, `ParakeetEngineAdapter`,
-/// `WhisperKitEngineAdapter`, `KernelHeartPathTelemetryObserver`, `LimbSteps`,
+/// `WhisperEngineAdapter`, `KernelHeartPathTelemetryObserver`, `LimbSteps`,
 /// `KernelFinalizationOutcome`, `KernelSessionContext`, `KernelFinalizationWiring`,
 /// `HeartPathTelemetryEmitter`, `KernelLifecycleTelemetrySink`, and
 /// `CaptureVADSignalSource` are all module-internal-or-package by design (epic
@@ -246,12 +246,13 @@ public enum KernelDictationDriverFactory {
     }
   }
 
-  /// Package-typed inputs for the WhisperKit engine branch (PR-5 Rung 4;
-  /// access narrowed in Rung 5). Carries the WhisperKit-flavored dependencies:
+  /// Package-typed inputs for the Whisper engine branch (PR-5 Rung 4;
+  /// access narrowed in Rung 5). Carries the Whisper-flavored dependencies:
   /// the model-owning backend actor and the LID actor.
-  package struct WhisperKitInputs {
+  package struct WhisperInputs {
     package let audioCapture: any AudioCaptureInterface
-    package let whisperKitBackend: WhisperKitBackend
+    /// #3735: transcribe.cpp; `WhisperKitBackend` no longer serves this route.
+    package let whisperBackend: LiveTranscribeCppWhisperBackend
     package let languageDetector: LanguageDetector
     package let vadSignalSource: CaptureVADSignalSource
     package let transcriptStore: TranscriptStore
@@ -282,18 +283,18 @@ public enum KernelDictationDriverFactory {
     package let batchDecodeFaultController: BatchDecodeFaultController?
     /// #1741 Chunk 9 — the shared `EngineMutationScope` constructed once by
     /// the composition root, threaded into the driver, kernel, and
-    /// `WhisperKitEngineAdapter` this factory builds. Required — no default.
+    /// `WhisperEngineAdapter` this factory builds. Required — no default.
     package let engineMutationScope: EngineMutationScope
     /// #2787: the ONE occupancy counter the composition root owns
-    /// (`ASRManager.vendorDecodeOccupancy`). WhisperKit's live batch decode
+    /// (`ASRManager.vendorDecodeOccupancy`). Whisper's live batch decode
     /// does not go through `ASRManager.transcribe`, so the adapter counts its
     /// own vendor call against this. Required — no default — so the production
-    /// site cannot leave WhisperKit invisible to the engine hold.
+    /// site cannot leave Whisper invisible to the engine hold.
     package let vendorDecodeOccupancy: VendorDecodeOccupancy
     /// #3546 §3.7 T1: the delivered dictation model's identity, read by AppKit
-    /// from the stable WhisperKit manifest; `nil` when no manifest loaded.
-    /// Required, so the production site cannot leave WhisperKit unattributed.
-    package let whisperKitModelIdentity: ASRModelIdentity?
+    /// from the Whisper turbo manifest; `nil` when no manifest loaded.
+    /// Required, so the production site cannot leave Whisper unattributed.
+    package let whisperModelIdentity: ASRModelIdentity?
     /// #2087: writes the crash-provenance marker that tells the next launch this
     /// spool was a cancelled-but-kept dictation. Defaults to "cannot prepare", so
     /// a call site that never wires it gets today's destructive cancel rather
@@ -325,7 +326,7 @@ public enum KernelDictationDriverFactory {
     @MainActor
     package init(
       audioCapture: any AudioCaptureInterface,
-      whisperKitBackend: WhisperKitBackend,
+      whisperBackend: LiveTranscribeCppWhisperBackend,
       languageDetector: LanguageDetector,
       vadSignalSource: CaptureVADSignalSource,
       transcriptStore: TranscriptStore,
@@ -334,7 +335,7 @@ public enum KernelDictationDriverFactory {
       pasteCompletionRegistry: PasteCompletionRegistry,
       engineMutationScope: EngineMutationScope,
       vendorDecodeOccupancy: VendorDecodeOccupancy,
-      whisperKitModelIdentity: ASRModelIdentity?,
+      whisperModelIdentity: ASRModelIdentity?,
       captureErrorSink: @escaping HeartPathCaptureErrorSink = defaultCaptureErrorSink,
       outputClassifierHolder: OutputClassifierHolder? = nil,
       dictationAudioArchiveOptInProvider: @escaping @MainActor () -> Bool = { false },
@@ -348,9 +349,9 @@ public enum KernelDictationDriverFactory {
       onTakeAccepted: @escaping @MainActor (String) -> Void = { _ in },
       onRetained: @escaping RetainedCallback = { _, _, report in report(false) }
     ) {
-      self.whisperKitModelIdentity = whisperKitModelIdentity
+      self.whisperModelIdentity = whisperModelIdentity
       self.audioCapture = audioCapture
-      self.whisperKitBackend = whisperKitBackend
+      self.whisperBackend = whisperBackend
       self.vendorDecodeOccupancy = vendorDecodeOccupancy
       self.languageDetector = languageDetector
       self.vadSignalSource = vadSignalSource
@@ -405,7 +406,7 @@ public enum KernelDictationDriverFactory {
 
   /// PR-5 Rung 5 (#827): construct the App-owned shared VAD signal source.
   /// Called exactly once by `EnviousWisprApp.init` after `audioCapture` exists
-  /// and BEFORE either `makeForParakeet` / `makeForWhisperKit` runs. The
+  /// and BEFORE either `makeForParakeet` / `makeForWhisper` runs. The
   /// returned source is passed into both inputs structs so the two drivers
   /// share a single binding to `audioCapture.onVADAutoStop` — preventing the
   /// second driver's construction from silently overwriting the first
@@ -464,12 +465,12 @@ public enum KernelDictationDriverFactory {
       onRetained: inputs.onRetained)
   }
 
-  /// Build the driver stack for the WhisperKit engine. PR-5 Rung 5 flips the
+  /// Build the driver stack for the Whisper engine. PR-5 Rung 5 flips the
   /// App caller from the legacy `WhisperKitPipeline` to this entry point;
   /// the deleted `EngineIdentityFreezeTests.makeForWhisperKitHasNoProductionCaller`
-  /// invariant inverts to `makeForWhisperKitHasExactlyOneProductionCaller`
+  /// invariant inverts to `makeForWhisperHasExactlyOneProductionCaller`
   /// (locked in the same architecture freeze file).
-  package static func makeForWhisperKit(inputs: WhisperKitInputs) -> KernelDictationDriver {
+  package static func makeForWhisper(inputs: WhisperInputs) -> KernelDictationDriver {
     // Resolve the delivery policy HERE, while the driver is being built, not lazily on
     // the first paste. A `static let` is lazy, so without this touch the control line
     // that proves which policy a process resolved would not appear until a dictation had
@@ -487,13 +488,13 @@ public enum KernelDictationDriverFactory {
     // PR-6 (#827): concrete adapter construction is owned by
     // `KernelAdapterFactory`; this file names no concrete adapter type in code.
     let captureSource = inputs.audioCapture
-    let adapter = KernelAdapterFactory.makeWhisperKitAdapter(
-      backend: inputs.whisperKitBackend,
+    let adapter = KernelAdapterFactory.makeWhisperAdapter(
+      backend: inputs.whisperBackend,
       languageDetector: inputs.languageDetector,
       audioCaptureSessionIDSource: { captureSource.currentCaptureSessionID },
       engineMutationScope: inputs.engineMutationScope,
       vendorDecodeOccupancy: inputs.vendorDecodeOccupancy,
-      deliveredModelIdentity: inputs.whisperKitModelIdentity,
+      deliveredModelIdentity: inputs.whisperModelIdentity,
       batchDecodeFaultController: inputs.batchDecodeFaultController)
     return assembleDriver(
       adapter: adapter,

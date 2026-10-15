@@ -78,7 +78,7 @@ struct RecordStartTelemetrySinkTests {
   func chunkStartedParity() {
     let spy = Spy()
     spy.makeSink().firstChunkStarted(
-      backend: "whisperKit", inputRoute: "bluetooth", monitorToFirstChunkMs: 7.5, takeID: Self.takeID)
+      backend: "whisper", inputRoute: "bluetooth", monitorToFirstChunkMs: 7.5, takeID: Self.takeID)
 
     #expect(spy.breadcrumbs.count == 1)
     #expect(spy.chunkStarted.count == 1)
@@ -88,13 +88,13 @@ struct RecordStartTelemetrySinkTests {
     let crumb = try! #require(spy.breadcrumbs.first)
     #expect(crumb.stage == "vad")
     #expect(crumb.message == "vad#first_chunk_started")
-    #expect(crumb.data["backend"] as? String == "whisperKit")
+    #expect(crumb.data["backend"] as? String == "whisper")
     #expect(crumb.data["input_route"] as? String == "bluetooth")
     #expect(crumb.data["monitor_to_first_chunk_ms"] as? Double == 7.5)
     #expect(crumb.data.count == 3)
 
     let emitted = try! #require(spy.chunkStarted.first)
-    #expect(emitted.0 == "whisperKit")
+    #expect(emitted.0 == "whisper")
     #expect(emitted.1 == "bluetooth")
     #expect(emitted.2 == 7.5)
   }

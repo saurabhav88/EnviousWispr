@@ -33,8 +33,8 @@ struct LanguageLockOptionsTests {
   /// it as the multilingual engine's full catalogue, so a well-meaning cleanup
   /// to a non-optional empty set would render an empty picker.
   @Test("The multilingual engine is unrestricted, and unrestricted is nil not empty")
-  func whisperKitIsUnrestricted() {
-    #expect(LanguageLockOptions.lockableCodes(for: .whisperKit) == nil)
+  func whisperIsUnrestricted() {
+    #expect(LanguageLockOptions.lockableCodes(for: .whisper) == nil)
   }
 
   /// Delegated to the backend, which derives it from the vendor enum minus the
@@ -167,7 +167,7 @@ struct LanguageLockOptionsTests {
   @Test("On Apple the picker offers only languages whose pack is installed")
   func applyPickerIsInstalledOnly() {
     let codes = LanguageLockOptions.previewLockableCodes(
-      backend: .whisperKit, previewEngine: .apple,
+      backend: .whisper, previewEngine: .apple,
       installedPackTags: ["en-US", "de-DE"])
     #expect(codes == ["en", "de"], "only installed packs, as ISO language codes")
     #expect(
@@ -181,11 +181,11 @@ struct LanguageLockOptionsTests {
   @Test("Downloading a pack makes that language available to the picker")
   func downloadedPackAppearsInPicker() {
     let before = LanguageLockOptions.previewLockableCodes(
-      backend: .whisperKit, previewEngine: .apple, installedPackTags: ["en-US"])
+      backend: .whisper, previewEngine: .apple, installedPackTags: ["en-US"])
     #expect(before?.contains("de") != true, "German is absent before its pack exists")
 
     let after = LanguageLockOptions.previewLockableCodes(
-      backend: .whisperKit, previewEngine: .apple, installedPackTags: ["en-US", "de-DE"])
+      backend: .whisper, previewEngine: .apple, installedPackTags: ["en-US", "de-DE"])
     #expect(
       after?.contains("de") == true,
       "after the table installs German it must appear in the picker")
@@ -196,9 +196,9 @@ struct LanguageLockOptionsTests {
   @Test("On Universal the picker ignores installed packs entirely")
   func universalPickerIgnoresInstalls() {
     let none = LanguageLockOptions.previewLockableCodes(
-      backend: .whisperKit, previewEngine: .universal, installedPackTags: [])
+      backend: .whisper, previewEngine: .universal, installedPackTags: [])
     #expect(
-      none == LanguageLockOptions.lockableCodes(for: .whisperKit),
+      none == LanguageLockOptions.lockableCodes(for: .whisper),
       "Universal must offer the backend's whole set even with no packs installed")
 
     let some = LanguageLockOptions.previewLockableCodes(
@@ -239,7 +239,7 @@ struct LanguageLockOptionsTests {
   @Test("No installed packs offers nothing to lock, not everything")
   func noInstalledPacksOffersNothing() {
     let codes = LanguageLockOptions.previewLockableCodes(
-      backend: .whisperKit, previewEngine: .apple, installedPackTags: [])
+      backend: .whisper, previewEngine: .apple, installedPackTags: [])
     #expect(codes == [], "empty, never nil — nil would mean unrestricted")
   }
 
@@ -275,7 +275,7 @@ struct LanguageLockOptionsTests {
       "nb-NO must translate to the catalogue's Norwegian")
 
     let codes = LanguageLockOptions.previewLockableCodes(
-      backend: .whisperKit, previewEngine: .apple,
+      backend: .whisper, previewEngine: .apple,
       installedPackTags: ["nb-NO"])
     #expect(
       codes?.contains("no") == true,

@@ -43,10 +43,10 @@ struct WorkingPageModel: Equatable {
     case .parakeet:
       return String(
         localized: "Fast", comment: "Transcribe a File: the Parakeet transcription engine's name.")
-    case .whisperKit:
+    case .whisper:
       return String(
         localized: "All Languages",
-        comment: "Transcribe a File: the WhisperKit transcription engine's name.")
+        comment: "Transcribe a File: the Whisper transcription engine's name.")
     }
   }
 

@@ -187,13 +187,13 @@
       ]
 
     /// Every speech engine whose name appears in a pill sentence.
-    static let backends: [ASRBackendType] = [.parakeet, .whisperKit]
+    static let backends: [ASRBackendType] = [.parakeet, .whisper]
 
     /// Exhaustive, so a new engine is forced into `backends`.
     static func backendCaseName(_ backend: ASRBackendType) -> String {
       switch backend {
       case .parakeet: return "parakeet"
-      case .whisperKit: return "whisperKit"
+      case .whisper: return "whisper"
       }
     }
 
