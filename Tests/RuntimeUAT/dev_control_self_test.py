@@ -445,12 +445,59 @@ def lock_cases(r, tree):
                                    FakeBoundaries({"111": exe}, door=door, lock=reader_lock))
             r.check("lock", f"a read needs no ownership: {argv[0]}",
                     status == 0 and reader_lock.find_calls == 0, f"status={status}")
+        # Oracle for "the main checkout": the first `worktree` entry git lists, NUL-parsed.
+        listed = subprocess.run(["git", "-C", HERE, "worktree", "list", "--porcelain", "-z"],
+                                capture_output=True, env=dev_control._git_env())
+        first = listed.stdout.split(b"\0\0", 1)[0].split(b"\0")
+        main_checkout = (os.path.realpath(os.fsdecode(first[0][len(b"worktree "):]))
+                         if listed.returncode == 0 and first and first[0].startswith(b"worktree ")
+                         and b"bare" not in first else None)
+        expected = None if main_checkout is None else os.path.join(
+            main_checkout, "scripts", "lib", "dev-app-lock.py")
+        r.check("lock", "the lock owner is the listed main checkout's owner",
+                expected is not None and dev_control.lock_owner_path() == expected,
+                f"{dev_control.lock_owner_path()!r} vs {expected!r}")
+        saved = {k: os.environ.get(k) for k in ("GIT_DIR", "PATH")}
+        stray = tempfile.mkdtemp(prefix="ewdc-gitdir-")
+        try:
+            os.environ["GIT_DIR"] = stray
+            r.check("lock", "an inherited GIT_DIR does not move the lock owner",
+                    dev_control.lock_owner_path() == expected, str(dev_control.lock_owner_path()))
+            os.environ.pop("GIT_DIR")
+            os.environ["PATH"] = ""
+            r.check("lock", "without git the owner path is unknown, and the worktree is too",
+                    dev_control.lock_owner_path() is None
+                    and dev_control.Boundaries().git_toplevel(HERE) is None, "")
+        finally:
+            for key, value in saved.items():
+                if value is None:
+                    os.environ.pop(key, None)
+                else:
+                    os.environ[key] = value
+            shutil.rmtree(stray, ignore_errors=True)
+        relocated = tempfile.mkdtemp(prefix="ewdc-relocated-")
+        try:
+            work = os.path.join(relocated, "work")
+            gitdir = os.path.join(relocated, "state", "repo.git")
+            os.makedirs(os.path.dirname(gitdir))
+            made = subprocess.run(["git", "init", "-q", f"--separate-git-dir={gitdir}", work],
+                                  capture_output=True, env=dev_control._git_env())
+            decoy = os.path.join(relocated, "state", "scripts", "lib")
+            os.makedirs(decoy)
+            open(os.path.join(decoy, "dev-app-lock.py"), "w").write("raise SystemExit('decoy')\n")
+            # git lists the separate git directory as the main worktree here, so no real main
+            # checkout can be confirmed: the resolver refuses rather than load the decoy.
+            got = dev_control.lock_owner_path(work)
+            r.check("lock", "relocated git metadata refuses instead of loading a decoy beside it",
+                    made.returncode == 0 and got is None, f"git init {made.returncode}, got {got!r}")
+        finally:
+            shutil.rmtree(relocated, ignore_errors=True)
         real = dev_control.Boundaries().load_lock_owner()
         r.check("lock", "the main-checkout owner loads and exposes find_session, main, Undecided",
                 callable(getattr(real, "find_session", None))
                 and callable(getattr(real, "main", None))
                 and isinstance(getattr(real, "Undecided", None), type),
-                dev_control.LOCK_OWNER_PATH)
+                str(dev_control.lock_owner_path()))
     finally:
         door.stop()
 

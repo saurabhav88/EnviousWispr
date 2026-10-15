@@ -44,9 +44,6 @@ EXIT_FAILED = 1
 EXIT_USAGE = 2
 EXIT_NOT_OWNER = 3
 
-# The machine-wide lock owner lives in the main checkout and is shared by every
-# worktree; older worktree copies may lack the current policy.
-LOCK_OWNER_PATH = "/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr/scripts/lib/dev-app-lock.py"
 DEV_EXECUTABLE_SUFFIX = "/EnviousWispr Local.app/Contents/MacOS/EnviousWispr"
 
 
@@ -80,6 +77,63 @@ def _read_frame(sock, buffer):
     if len(frame) > MAX_FRAME_BYTES:
         raise DoorError("reply over frame limit")
     return frame, rest
+
+
+def _git_env():
+    """The environment for git discovery, without inherited `GIT_*` overrides: `GIT_DIR`
+    beats `git -C`, so a leftover one would point discovery at another repository."""
+    return {key: value for key, value in os.environ.items() if not key.startswith("GIT_")}
+
+
+def _git_path(cwd, *args):
+    """One absolute path git prints for `args` run in `cwd`, resolved; None when git cannot
+    run, fails, or prints something that is not one absolute path."""
+    try:
+        out = subprocess.run(["git", "-C", cwd, *args], capture_output=True, env=_git_env())
+    except OSError:
+        return None
+    if out.returncode != 0 or not out.stdout.endswith(b"\n"):
+        return None
+    value = os.fsdecode(out.stdout[:-1])
+    return os.path.realpath(value) if os.path.isabs(value) else None
+
+
+def _main_worktree(here):
+    """The first entry of `git worktree list` (the main checkout), parsed NUL-delimited so
+    any path survives; None for a bare main or any failure."""
+    try:
+        out = subprocess.run(["git", "-C", here, "worktree", "list", "--porcelain", "-z"],
+                             capture_output=True, env=_git_env())
+    except OSError:
+        return None
+    if out.returncode != 0:
+        return None
+    first = out.stdout.split(b"\0\0", 1)[0].split(b"\0")
+    if not first or not first[0].startswith(b"worktree ") or b"bare" in first:
+        return None
+    return os.path.realpath(os.fsdecode(first[0][len(b"worktree "):]))
+
+
+def lock_owner_path(here=None):
+    """The machine-wide dev-app lock owner in the MAIN checkout of the repository holding
+    `here` (default: this file's folder). Every worktree shares the main checkout's git
+    directory, and older worktree copies of the owner may lack the current policy. Returns
+    None, so the caller refuses, unless git confirms the main checkout is a real checkout
+    that owns that shared git directory."""
+    here = os.path.dirname(os.path.realpath(__file__)) if here is None else here
+    common = _git_path(here, "rev-parse", "--path-format=absolute", "--git-common-dir")
+    current = _git_path(here, "rev-parse", "--show-toplevel")
+    current_git = _git_path(here, "rev-parse", "--absolute-git-dir")
+    main = _main_worktree(here)
+    if None in (common, current, current_git, main):
+        return None
+    if _git_path(main, "rev-parse", "--show-toplevel") != main:
+        return None
+    if _git_path(main, "rev-parse", "--absolute-git-dir") != common:
+        return None
+    if current_git == common and current != main:
+        return None
+    return os.path.join(main, "scripts", "lib", "dev-app-lock.py")
 
 
 def _reject_constant(name):
@@ -351,16 +405,15 @@ class Boundaries:
         return running_enviouswispr_instances()
 
     def git_toplevel(self, cwd):
-        out = subprocess.run(["git", "-C", cwd, "rev-parse", "--show-toplevel"],
-                             capture_output=True, text=True)
-        if out.returncode != 0 or not out.stdout.strip():
-            return None
-        return out.stdout.strip()
+        return _git_path(cwd, "rev-parse", "--show-toplevel")
 
     def load_lock_owner(self):
-        spec = importlib.util.spec_from_file_location("ew_dev_app_lock", LOCK_OWNER_PATH)
+        path = lock_owner_path()
+        if path is None or not os.path.isfile(path):
+            raise ImportError(f"cannot find the main checkout's lock owner ({path})")
+        spec = importlib.util.spec_from_file_location("ew_dev_app_lock", path)
         if spec is None or spec.loader is None:
-            raise ImportError(f"cannot load {LOCK_OWNER_PATH}")
+            raise ImportError(f"cannot load {path}")
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
         return module
