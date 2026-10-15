@@ -101,10 +101,10 @@
         return make(.viaOwner)
       case .cancelKeyCode, .cancelModifiers, .quickAddKeyCode, .quickAddModifiers,
         .pasteLastKeyCode, .pasteLastModifiers, .copyLastKeyCode, .copyLastModifiers,
-        .toggleKeyCode, .toggleModifiers, .inputChannelByDeviceUID:
+        .toggleKeyCode, .toggleModifiers:
         return make(.extractedCheck, deferredTo: "PR-C")
       case .vadSilenceTimeout, .fileImportLLMProvider, .fileImportLLMModel, .fileImportOllamaModel,
-        .ollamaModel:
+        .ollamaModel, .inputChannelByDeviceUID:
         return make(.extractedCheck)
       case .hotkeyEnabled, .vadSensitivity, .vadEnergyGate, .crashRecoveryEnabled,
         .onboardingState:
@@ -410,6 +410,8 @@
       var modelCatalog: () -> ModelCatalog
       /// UIDs of the input devices the system lists right now.
       var connectedInputUIDs: () -> [String]
+      /// Input count per connected input device UID, read at request time.
+      var inputChannelCounts: () -> [String: Int]
       /// Whether the pill can show words right now, as the Appearance picker reads it
       /// (`PillAppearanceModel.wordsCapability`).
       var pillWordsCapability: () -> PillWordsCapability
@@ -463,6 +465,9 @@
       /// An Ollama model pick on the surface the field belongs to, allowed only while that
       /// surface's provider is Ollama; the pick goes through the model menu's own write.
       case ollamaModel
+      /// The socket row picks one device's input at a time, against that device's inputs, so
+      /// a whole-map write is refused toward `channel.set` (`setChannel`).
+      case channelCommand
       /// The language picker sets the lock and the spelling together, so a single-field
       /// write is refused toward `language.set` (`setLanguage`).
       case languageCommand
@@ -495,6 +500,7 @@
         case .fileImportLLMProvider: return .importProvider
         case .fileImportLLMModel: return .importModel
         case .ollamaModel, .fileImportOllamaModel: return .ollamaModel
+        case .inputChannelByDeviceUID: return .channelCommand
         default: return .notYetShared
         }
       }
@@ -572,6 +578,11 @@
             message: "the pause slider offers 0.5 to 3.0 seconds in 0.25 steps; use force to stage another value")
         }
         return outcome(assign(key, value: value, to: settings, forced: false))
+      case .channelCommand:
+        return .refused(
+          code: "checkFailed",
+          message: "the input-socket row sets one device's input at a time; use channel.set, "
+            + "or force to stage the whole map")
       case .languageCommand:
         return .refused(
           code: "checkFailed",
@@ -610,6 +621,27 @@
           message: "the pill picker does not offer that design right now (\(capability))")
       }
       model.chooseCoupled(design)
+      return .written(forced: false)
+    }
+
+    /// `channel.set`: the Audio screen's input-socket pick for one CONNECTED device, offered
+    /// only when that device has a readable UID and more than one input
+    /// (`InputChannelSettings`), and only an input it has. Other devices' saved inputs are
+    /// untouched and no device is selected. The screen shows the row for the device in use;
+    /// the door can stage any connected multi-input device.
+    static func setChannel(
+      _ channel: Int, for uid: String, context: WriteContext, to settings: SettingsManager
+    ) -> SetOutcome {
+      guard let count = context.inputChannelCounts()[uid] else {
+        return .refused(code: "checkFailed", message: "no connected input device has that UID")
+      }
+      guard InputChannelSettings.offersChoice(uid: uid, inputChannelCount: count) else {
+        return .refused(code: "checkFailed", message: "that device has one input; the row is not offered")
+      }
+      guard InputChannelSettings.offers(channel, inputChannelCount: count) else {
+        return .refused(code: "checkFailed", message: "that device has inputs 0 to \(count - 1)")
+      }
+      attributed(settings) { InputChannelSettings.choose(channel, for: uid, in: settings) }
       return .written(forced: false)
     }
 

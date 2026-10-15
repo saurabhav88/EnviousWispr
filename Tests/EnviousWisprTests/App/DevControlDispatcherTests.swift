@@ -27,7 +27,7 @@
         settings: settings,
         writeContext: DevControlSettings.WriteContext(
           modelCatalog: { DevControlSettings.ModelCatalog(provider: nil, models: []) },
-          connectedInputUIDs: { ["mic-a"] }, pillWordsCapability: { .available }),
+          connectedInputUIDs: { ["mic-a"] }, inputChannelCounts: { [:] }, pillWordsCapability: { .available }),
         status: DevControlFixtures.StatusFake().sources,
         history: DevControlFixtures.history([]),
         models: DevControlFixtures.ModelFake().actions,
@@ -121,6 +121,38 @@
       #expect(forcedFlag(forced) == true)
       #expect(payload(forced)?["forced"] as? Bool == true)
       #expect(settings.fillerRemovalEnabled == !target)
+    }
+
+    @Test("channel.set validates its arguments, then reads back the input the row shows")
+    func channelSetThroughDispatch() async throws {
+      let defaults = TestDefaults.suite("ew.tests.3765.dispatch.\(UUID().uuidString)")!
+      let settings = SettingsManager(defaults: defaults)
+      let dispatcher = DevControlDispatcher(
+        settings: settings,
+        writeContext: DevControlSettings.WriteContext(
+          modelCatalog: { DevControlSettings.ModelCatalog(provider: nil, models: []) },
+          connectedInputUIDs: { [] }, inputChannelCounts: { ["mic-a": 4] },
+          pillWordsCapability: { .available }),
+        status: DevControlFixtures.StatusFake().sources,
+        history: DevControlFixtures.history([]),
+        models: DevControlFixtures.ModelFake().actions,
+        dictation: DevControlFixtures.inertDictation(),
+        credentials: DevControlFixtures.isolatedCredentials(),
+        words: DevControlFixtures.unwrittenWords())
+      let reply = try #require(payload(await dispatcher.handle(
+        .channelSet, args: ["deviceUID": "mic-a", "channel": NSNumber(value: 2)])))
+      #expect(reply["deviceUID"] as? String == "mic-a")
+      #expect(reply["channel"] as? Int == 2)
+      for args: [String: Any] in [
+        ["deviceUID": "mic-a"], ["channel": 1], ["deviceUID": "", "channel": 1],
+        ["deviceUID": "mic-a", "channel": true], ["deviceUID": "mic-a", "channel": 1.5],
+        ["deviceUID": "mic-a", "channel": "1"], ["deviceUID": "mic-a", "channel": 1, "x": 1],
+      ] {
+        #expect(code(await dispatcher.handle(.channelSet, args: args)) == "badArgs", "\(args)")
+      }
+      #expect(code(await dispatcher.handle(
+        .channelSet, args: ["deviceUID": "mic-a", "channel": 9])) == "checkFailed")
+      #expect(settings.inputChannelByDeviceUID == ["mic-a": 2])
     }
 
     @Test("a deferred key refuses an ordinary write and accepts a forced one")
@@ -232,7 +264,7 @@
         settings: settings,
         writeContext: DevControlSettings.WriteContext(
           modelCatalog: { DevControlSettings.ModelCatalog(provider: nil, models: []) },
-          connectedInputUIDs: { [] }, pillWordsCapability: { .available }),
+          connectedInputUIDs: { [] }, inputChannelCounts: { [:] }, pillWordsCapability: { .available }),
         status: status.sources,
         history: DevControlDispatcher.HistorySource(visibleTranscripts: rows),
         models: models.actions,
@@ -571,7 +603,7 @@ private static func make(words: CustomWordsCoordinator) -> (SettingsManager, Dev
     settings: settings,
     writeContext: DevControlSettings.WriteContext(
       modelCatalog: { DevControlSettings.ModelCatalog(provider: nil, models: []) },
-      connectedInputUIDs: { [] }, pillWordsCapability: { .available }),
+      connectedInputUIDs: { [] }, inputChannelCounts: { [:] }, pillWordsCapability: { .available }),
     status: DevControlFixtures.StatusFake().sources,
     history: DevControlFixtures.history([]),
     models: DevControlFixtures.ModelFake().actions,

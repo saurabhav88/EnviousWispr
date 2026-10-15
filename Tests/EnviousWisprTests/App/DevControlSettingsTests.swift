@@ -117,7 +117,7 @@
       #expect(entry(.recordingPillDesignWithWords).deferredTo == nil)
       #expect(entry(.recordingPillDesignWithoutWords).deferredTo == nil)
       #expect(entry(.toggleKeyCode).deferredTo == "PR-C")
-      #expect(entry(.inputChannelByDeviceUID).deferredTo == "PR-C")
+      #expect(entry(.inputChannelByDeviceUID).deferredTo == nil)
       #expect(entry(.vadSilenceTimeout).kind == .extractedCheck)
       #expect(
         entry(.selectedInputDeviceUID)
@@ -546,10 +546,12 @@
 
     private static func context(
       catalog: DevControlSettings.ModelCatalog = .init(provider: nil, models: []),
-      connected: [String] = [], pill: PillWordsCapability = .available
+      connected: [String] = [], pill: PillWordsCapability = .available,
+      channels: [String: Int] = [:]
     ) -> DevControlSettings.WriteContext {
       DevControlSettings.WriteContext(
         modelCatalog: { catalog }, connectedInputUIDs: { connected },
+        inputChannelCounts: { channels },
         pillWordsCapability: { pill })
     }
 
@@ -793,10 +795,10 @@
 
     /// Written here by hand from plan §3.4, not derived from the table.
     private static let deferredNames: Set<String> = [
-      "cancelKeyCode", "cancelModifiers", "quickAddKeyCode", "quickAddModifiers", "pasteLastKeyCode", "pasteLastModifiers", "copyLastKeyCode", "copyLastModifiers", "toggleKeyCode", "toggleModifiers", "inputChannelByDeviceUID",
+      "cancelKeyCode", "cancelModifiers", "quickAddKeyCode", "quickAddModifiers", "pasteLastKeyCode", "pasteLastModifiers", "copyLastKeyCode", "copyLastModifiers", "toggleKeyCode", "toggleModifiers",
     ]
 
-    @Test("every key has exactly one ordinary route; 11 are not shared yet")
+    @Test("every key has exactly one ordinary route; 10 are not shared yet")
     func routeCounts() {
       var counts: [DevControlSettings.Route: Int] = [:]
       var notYetShared: Set<String> = []
@@ -816,12 +818,13 @@
       #expect(counts[.importProvider] == 1)
       #expect(counts[.importModel] == 1)
       #expect(counts[.ollamaModel] == 2)
-      #expect(counts[.notYetShared] == 11)
+      #expect(counts[.channelCommand] == 1)
+      #expect(counts[.notYetShared] == 10)
       #expect(DevControlSettings.route(.llmModel) == .modelCatalog)
       #expect(DevControlSettings.route(.hasCompletedOnboarding) == .typed)
     }
 
-    @Test("the 11 deferred keys refuse an ordinary write without any change, and force still writes them")
+    @Test("the 10 deferred keys refuse an ordinary write without any change, and force still writes them")
     func deferredKeysRefuseOrdinaryWrites() throws {
       var refused = 0
       for row in Self.rows where Self.deferredNames.contains(row.name) {
@@ -845,7 +848,7 @@
         #expect(forced == .written(forced: true), "\(row.name)")
         #expect(row.holds(settings), "\(row.name)")
       }
-      #expect(refused == 11)
+      #expect(refused == 10)
     }
 
     @Test("every typed-route key takes an ordinary write, reported not forced")
@@ -951,6 +954,50 @@
       #expect(write(.fileImportOllamaModel, "local-dev:1b") == .written(forced: false))
       #expect(settings.fileImportLLMModel == "local-dev:1b")
       #expect(settings.llmProvider == .openAI)
+    }
+
+    @Test("channel.set takes an input a connected multi-input device has, and only that device's")
+    func channelSet() {
+      let (_, _, settings) = Self.fixture()
+      settings.inputChannelByDeviceUID = ["mic-b": 2]
+      let context = Self.context(channels: ["mic-a": 4, "mic-b": 4, "mono": 1])
+      var fired: [(SettingsManager.SettingKey, Bool)] = []
+      settings.onChange = { fired.append(($0, settings.isDevControlWrite)) }
+      #expect(DevControlSettings.setChannel(3, for: "mic-a", context: context, to: settings)
+        == .written(forced: false))
+      #expect(DevControlSettings.setChannel(0, for: "mic-a", context: context, to: settings)
+        == .written(forced: false))
+      #expect(settings.inputChannelByDeviceUID == ["mic-a": 0, "mic-b": 2])
+      #expect(fired.map(\.0) == [.inputChannelByDeviceUID, .inputChannelByDeviceUID])
+      #expect(fired.allSatisfy { $0.1 } && settings.isDevControlWrite == false)
+      fired.removeAll()
+      for (channel, uid) in [(4, "mic-a"), (-1, "mic-a"), (0, "mono"), (1, "gone"), (0, "")] {
+        #expect(
+          DevControlSettings.setChannel(channel, for: uid, context: context, to: settings).code
+            == "checkFailed", "\(uid) \(channel)")
+      }
+      #expect(settings.inputChannelByDeviceUID == ["mic-a": 0, "mic-b": 2])
+      #expect(fired.isEmpty)
+    }
+
+    @Test("a whole-map channel write is refused toward channel.set; force stages an invalid index")
+    func channelMapWrites() throws {
+      let (_, _, settings) = Self.fixture()
+      let map = #"{"mic-a": 9}"#
+      let refused = DevControlSettings.write(
+        .inputChannelByDeviceUID, value: try Self.wire(map), force: false,
+        context: Self.context(channels: ["mic-a": 2]), to: settings)
+      #expect(refused.code == "checkFailed" && refused.message.contains("channel.set"))
+      #expect(settings.inputChannelByDeviceUID.isEmpty)
+      let forced = DevControlSettings.write(
+        .inputChannelByDeviceUID, value: try Self.wire(map), force: true,
+        context: Self.context(channels: ["mic-a": 2]), to: settings)
+      #expect(forced == .written(forced: true))
+      #expect(settings.inputChannelByDeviceUID == ["mic-a": 9])
+      #expect(
+        InputChannelSettings.selection(
+          for: "mic-a", inputChannelCount: 2, in: settings.inputChannelByDeviceUID) == 0,
+        "a saved input the device does not have shows as Input 1")
     }
 
     @Test("an ordinary llmModel write admits only an offered model from the current provider's catalog")

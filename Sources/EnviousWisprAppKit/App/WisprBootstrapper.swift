@@ -2303,6 +2303,11 @@ package final class WisprBootstrapper {
                 provider: llmDiscovery.stateProvider, models: llmDiscovery.discoveredModels)
             },
             connectedInputUIDs: { AudioDeviceEnumerator.allInputDevices().map(\.uid) },
+            inputChannelCounts: {
+              Dictionary(
+                AudioDeviceEnumerator.allInputDevices().map { ($0.uid, $0.inputChannelCount) },
+                uniquingKeysWith: { first, _ in first })
+            },
             pillWordsCapability: { [pillAppearance] in pillAppearance.wordsCapability }),
           status: DevControlDispatcher.StatusSources(
             engineStatus: { [engineCoordinator] in engineCoordinator.status },

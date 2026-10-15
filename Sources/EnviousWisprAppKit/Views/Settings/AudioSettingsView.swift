@@ -69,7 +69,8 @@ struct AudioSettingsView: View {
     // pure rule HAL applies, so a saved index the device no longer has shows
     // as Input 1. Stored 0-based; labelled from 1 like the sockets on the box.
     let multiInputDevice = socketDevice.flatMap { device in
-      device.inputChannelCount > 1 && !device.uid.isEmpty ? device : nil
+      InputChannelSettings.offersChoice(uid: device.uid, inputChannelCount: device.inputChannelCount)
+        ? device : nil
     }
     // #3385: each device's transport, read once per body through the one
     // vocabulary (`AudioDeviceEnumerator.transportLabel`) and reused by the
@@ -123,13 +124,12 @@ struct AudioSettingsView: View {
             if let device = multiInputDevice {
               let socketSelection = Binding<Int>(
                 get: {
-                  InputChannelPreference.effectiveChannel(
-                    requested: InputChannelPreference.requested(
-                      for: device.uid, in: settingsManager.inputChannelByDeviceUID),
-                    availableChannels: device.inputChannelCount)
+                  InputChannelSettings.selection(
+                    for: device.uid, inputChannelCount: device.inputChannelCount,
+                    in: settingsManager.inputChannelByDeviceUID)
                 },
                 set: { newValue in
-                  settingsManager.inputChannelByDeviceUID[device.uid] = newValue
+                  InputChannelSettings.choose(newValue, for: device.uid, in: settingsManager)
                 }
               )
               SettingsRow(

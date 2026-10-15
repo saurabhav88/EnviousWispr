@@ -290,6 +290,8 @@ presence, never the key; one trailing newline is the line end, not part of the k
 keys clear PROVIDER removes it. A refused store reads storeFailed: the key is unknown.
 An AI Polish screen already open keeps showing the key it loaded; reopen it to see a key
 set or cleared here.
+channel set DEVICE_UID N picks a connected multi-input microphone's input (0 is Input 1);
+a whole inputChannelByDeviceUID write is refused toward it, --force stages one.
 language set CODE is the language picker's choice: lock and English spelling together
 (en-gb locks "en" with British spelling); auto unlocks. settings set languageMode or
 englishSpelling alone is refused toward it; --force stages one field.
@@ -364,6 +366,12 @@ def build_parser():
         dest="action", required=True, metavar="ACTION")
     for verb in ("set", "clear"):
         keys.add_parser(verb).add_argument("provider", choices=sorted(KEY_PROVIDERS))
+
+    channel = sub.add_parser("channel", help="a microphone's input socket").add_subparsers(
+        dest="action", required=True, metavar="ACTION")
+    channel_set = channel.add_parser("set")
+    channel_set.add_argument("device_uid", metavar="DEVICE_UID")
+    channel_set.add_argument("channel", type=int, help="zero-based input (0 is Input 1)")
 
     language = sub.add_parser("language", help="the dictation language").add_subparsers(
         dest="action", required=True, metavar="ACTION")
@@ -448,6 +456,8 @@ def route(args):
         return "keys.set", {"provider": KEY_PROVIDERS[args.provider]}, True
     if key == ("keys", "clear"):
         return "keys.clear", {"provider": KEY_PROVIDERS[args.provider]}, True
+    if key == ("channel", "set"):
+        return "channel.set", {"deviceUID": args.device_uid, "channel": args.channel}, True
     if key == ("language", "set"):
         return "language.set", {"code": args.code}, True
     if key == ("dictation", "start"):

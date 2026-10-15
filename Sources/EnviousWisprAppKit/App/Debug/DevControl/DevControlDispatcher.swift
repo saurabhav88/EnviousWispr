@@ -20,6 +20,7 @@
       case settingsGet = "settings.get"
       case settingsSet = "settings.set"
       case languageSet = "language.set"
+      case channelSet = "channel.set"
       case keysSet = "keys.set"
       case keysClear = "keys.clear"
       case status
@@ -178,6 +179,8 @@
         return set(args)
       case .languageSet:
         return setLanguage(args)
+      case .channelSet:
+        return setChannel(args)
       case .keysSet:
         return setKey(args)
       case .keysClear:
@@ -285,6 +288,30 @@
         return .ok([
           "languageMode": DevControlSettings.read(.languageMode, from: settings),
           "englishSpelling": DevControlSettings.read(.englishSpelling, from: settings),
+        ])
+      case .refused(let code, let message):
+        return .error(
+          code: ErrorCode(rawValue: code)?.rawValue ?? ErrorCode.badValue.rawValue, message: message
+        )
+      }
+    }
+
+    /// `{deviceUID, channel}`: a zero-based input of one connected device. The reply reads
+    /// back the input the row shows for that device afterwards.
+    private func setChannel(_ args: [String: Any]) -> Result {
+      guard Set(args.keys) == ["deviceUID", "channel"],
+        let uid = args["deviceUID"] as? String, !uid.isEmpty,
+        let raw = args["channel"], let channel = DevControlSettings.Codec.exactInteger(raw, Int.self)
+      else {
+        return .failure(.badArgs, "channel.set takes deviceUID (a string) and channel (an integer)")
+      }
+      switch DevControlSettings.setChannel(channel, for: uid, context: writeContext, to: settings) {
+      case .written:
+        let count = writeContext.inputChannelCounts()[uid] ?? 0
+        return .ok([
+          "deviceUID": uid,
+          "channel": InputChannelSettings.selection(
+            for: uid, inputChannelCount: count, in: settings.inputChannelByDeviceUID),
         ])
       case .refused(let code, let message):
         return .error(

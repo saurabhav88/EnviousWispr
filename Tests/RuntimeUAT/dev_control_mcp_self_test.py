@@ -27,6 +27,7 @@ SERVER = os.path.join(HERE, "dev_control_mcp.py")
 
 EXPECTED_TOOLS = {
     "ew_status", "ew_settings_list", "ew_settings_get", "ew_settings_set", "ew_language_set",
+    "ew_channel_set",
     "ew_keys_set", "ew_keys_clear", "ew_words_list", "ew_words_add", "ew_words_update",
     "ew_words_remove", "ew_history_list", "ew_history_get", "ew_dictation_start",
     "ew_dictation_stop", "ew_dictation_cancel", "ew_dictation_receipt", "ew_dictation_wait",
@@ -167,6 +168,11 @@ async def run_cases(r, base):
             r.check("a positional that starts with a dash stays a positional",
                     calls and calls[0]["argv"][2:] == ["words", "add", "--alias=a b", "--",
                                                        "-dash"], f"{calls}")
+
+            reply, text, calls = await call("ew_channel_set", {"device_uid": "-mic", "channel": 1})
+            r.check("channel set passes the device after -- and the input as an integer",
+                    not reply.is_error and calls and calls[0]["argv"][2:] == [
+                        "channel", "set", "--", "-mic", "1"], f"{calls}")
 
             reply, text, calls = await call("ew_dictation_start", {"front_app": "lost.app"})
             document = json.loads(text) if text.strip() else {}
