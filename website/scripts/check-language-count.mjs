@@ -37,10 +37,10 @@ const COUNT = '99+';
 // (FAQ JSON + rendered FAQ) are listed once per copy, with the wrapper that
 // distinguishes the two.
 const SITES = [
-  ['README.md', 'WhisperKit (99+ languages, with automatic language detection)'],
-  ['README.md', 'Broadest language coverage and automatic language detection | 99+ languages | ~1.6 GB'],
+  ['README.md', 'Whisper (99+ languages, with automatic language detection)'],
+  ['README.md', 'Broadest language coverage and automatic language detection | 99+ languages | ~0.9 GB'],
   ['Sources/EnviousWisprAppKit/Views/Settings/EngineChoicePresentation.swift', '"99+ languages",'],
-  ['Sources/EnviousWisprAppKit/Views/Settings/SpeechEngineSettingsView.swift', 'WhisperKit supports 99+ languages.'],
+  ['Sources/EnviousWisprAppKit/Views/Settings/SpeechEngineSettingsView.swift', 'Whisper supports 99+ languages.'],
   ['Sources/EnviousWisprAppKit/Views/Settings/WhatsNewContent.swift', 'title: "Dictate in 99+ languages"'],
   ['website/src/content/blog/live-transcription-that-keeps-up-with-you.md', 'the one that covers 99+ languages and the toughest audio'],
   ['website/src/content/blog/on-device-dictation-polishing-small-models.md', 'with WhisperKit available for 99+ languages.'],
