@@ -15,7 +15,7 @@ import Testing
   /// Body is synchronous (set hook → mutate → flush → read → restore), so the
   /// process-global `testEventHook` is flake-immune (suite is `.serialized`).
   @MainActor
-  @Suite("Settings change telemetry", .serialized)
+  @Suite("Settings change telemetry", .serialized, .tags(.observabilityContract))
   struct SettingsChangeTelemetryTests {
 
     /// Collects every `settings.changed` event the hook sees, in order.
@@ -985,6 +985,143 @@ import Testing
       settings.wordCorrectionEnabled = false
       telemetry.flush()
       #expect(deltas(box, setting: "word_correction").count == 1)
+    }
+
+    // MARK: - #3765 dev control door attribution
+
+    private static let noContext = DevControlSettings.WriteContext(
+      modelCatalog: { DevControlSettings.ModelCatalog(provider: nil, models: []) },
+      connectedInputUIDs: { [] })
+
+    /// Starts `model_unload_policy` at a known value with nothing pending, so each test
+    /// below moves among three distinct projected values.
+    private func harnessAtNever() -> (SettingsManager, SettingsChangeTelemetry, DeltaBox) {
+      let (settings, telemetry, box, _) = makeHarness()
+      settings.modelUnloadPolicy = .never
+      telemetry.flush()
+      box.clear()
+      return (settings, telemetry, box)
+    }
+
+    private func doorWrite(_ settings: SettingsManager, _ policy: ModelUnloadPolicy, force: Bool = false) {
+      let outcome = DevControlSettings.write(
+        .modelUnloadPolicy, value: policy.rawValue, force: force, context: Self.noContext,
+        to: settings)
+      #expect(outcome == .written(forced: force))
+    }
+
+    @Test("an ordinary or forced door write is attributed dev_control")
+    func doorWritesAreDevControl() {
+      for force in [false, true] {
+        let (settings, telemetry, box) = harnessAtNever()
+        defer { TelemetryService.shared.testEventHook = nil }
+        doorWrite(settings, .tenMinutes, force: force)
+        telemetry.flush()
+        let d = deltas(box, setting: "model_unload_policy")
+        #expect(d.count == 1)
+        #expect(d.first?.stringProps["from"] == "never")
+        #expect(d.first?.stringProps["to"] == "tenMinutes")
+        #expect(d.first?.stringProps["source"] == "dev_control")
+        #expect(settings.isDevControlWrite == false)
+      }
+    }
+
+    @Test("last writer wins: a user write after a door write in one window is user")
+    func doorThenUserIsUser() {
+      let (settings, telemetry, box) = harnessAtNever()
+      defer { TelemetryService.shared.testEventHook = nil }
+      doorWrite(settings, .tenMinutes)
+      settings.modelUnloadPolicy = .fifteenMinutes
+      telemetry.flush()
+      let d = deltas(box, setting: "model_unload_policy")
+      #expect(d.count == 1)
+      #expect(d.first?.stringProps["from"] == "never")
+      #expect(d.first?.stringProps["to"] == "fifteenMinutes")
+      #expect(d.first?.stringProps["source"] == "user")
+    }
+
+    @Test("last writer wins: a door write after a user write in one window is dev_control")
+    func userThenDoorIsDevControl() {
+      let (settings, telemetry, box) = harnessAtNever()
+      defer { TelemetryService.shared.testEventHook = nil }
+      settings.modelUnloadPolicy = .tenMinutes
+      doorWrite(settings, .fifteenMinutes)
+      telemetry.flush()
+      let d = deltas(box, setting: "model_unload_policy")
+      #expect(d.count == 1)
+      #expect(d.first?.stringProps["from"] == "never")
+      #expect(d.first?.stringProps["to"] == "fifteenMinutes")
+      #expect(d.first?.stringProps["source"] == "dev_control")
+    }
+
+    @Test("a door write that returns to the starting value emits nothing")
+    func doorNetNoOp() {
+      let (settings, telemetry, box) = harnessAtNever()
+      defer { TelemetryService.shared.testEventHook = nil }
+      settings.modelUnloadPolicy = .tenMinutes
+      doorWrite(settings, .never)
+      telemetry.flush()
+      #expect(deltas(box, setting: "model_unload_policy").isEmpty)
+    }
+
+    @Test("writes outside the door stay user or system; the door wins when both flags are set")
+    func sourcesOutsideAndPrecedence() {
+      let (settings, telemetry, box) = harnessAtNever()
+      defer { TelemetryService.shared.testEventHook = nil }
+      doorWrite(settings, .tenMinutes)
+      telemetry.flush()
+      settings.modelUnloadPolicy = .fifteenMinutes
+      telemetry.flush()
+      settings.isApplyingSystemWrite = true
+      settings.modelUnloadPolicy = .sixtyMinutes
+      settings.isApplyingSystemWrite = false
+      telemetry.flush()
+      settings.isApplyingSystemWrite = true
+      doorWrite(settings, .twoMinutes)
+      settings.isApplyingSystemWrite = false
+      telemetry.flush()
+      let sources = deltas(box, setting: "model_unload_policy").map { $0.stringProps["source"] }
+      #expect(sources == ["dev_control", "user", "system", "dev_control"])
+    }
+
+    @Test("a forced provider change attributes its synchronous model canonicalization to the door")
+    func providerConsequenceIsDevControl() {
+      let (settings, telemetry, box, _) = makeHarness()
+      defer { TelemetryService.shared.testEventHook = nil }
+      settings.llmProvider = .openAI
+      telemetry.flush()
+      box.clear()
+      let before = SettingsProjection.value(for: .llmModel, settings: settings)
+      #expect(
+        DevControlSettings.forceWrite(.llmProvider, value: "none", to: settings)
+          == .written(forced: true))
+      telemetry.flush()
+      let provider = deltas(box, setting: "llm_provider")
+      #expect(provider.count == 1)
+      #expect(provider.first?.stringProps["source"] == "dev_control")
+      let model = deltas(box, setting: "llm_model")
+      #expect(model.count == 1)
+      #expect(model.first?.stringProps["from"] == before)
+      #expect(model.first?.stringProps["source"] == "dev_control")
+    }
+
+    @Test("the attribution flag is restored after a write and a refusal, from false and from true")
+    func attributionFlagRestores() {
+      let (settings, _, _, _) = makeHarness()
+      defer { TelemetryService.shared.testEventHook = nil }
+      for prior in [false, true] {
+        settings.isDevControlWrite = prior
+        doorWrite(settings, prior ? .tenMinutes : .fifteenMinutes)
+        #expect(settings.isDevControlWrite == prior)
+        let refused = DevControlSettings.write(
+          .modelUnloadPolicy, value: "nope", force: false, context: Self.noContext, to: settings)
+        #expect(refused.code == "badValue")
+        #expect(settings.isDevControlWrite == prior)
+        let refusedForce = DevControlSettings.forceWrite(.modelUnloadPolicy, value: 3, to: settings)
+        #expect(refusedForce == .badValue("wrong type or unknown value"))
+        #expect(settings.isDevControlWrite == prior)
+      }
+      settings.isDevControlWrite = false
     }
   }
 

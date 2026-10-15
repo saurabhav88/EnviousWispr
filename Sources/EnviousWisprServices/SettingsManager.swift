@@ -101,6 +101,14 @@ public final class SettingsManager {
   /// reset synchronously on the main actor (no `await` between, so no reentrancy).
   public var isApplyingSystemWrite = false
 
+  #if DEBUG
+    /// #3765: true only while the DEBUG dev control door is writing a setting, so the change
+    /// observer stamps that delta `source=dev_control` instead of `user`. Like
+    /// `isApplyingSystemWrite` it gates no behavior, only the telemetry label, and is set and
+    /// restored synchronously around the write (`DevControlSettings.attributed`).
+    public var isDevControlWrite = false
+  #endif
+
   /// The store backing all user-preference reads/writes. Injected for testability;
   /// production resolves to `SettingsDefaults.store` (the build-shared suite, #923).
   /// EXCEPTION: the per-build `devAdapterPolishEnabled` knob (DEBUG only)

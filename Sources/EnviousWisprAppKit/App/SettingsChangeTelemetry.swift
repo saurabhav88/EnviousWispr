@@ -477,11 +477,18 @@ final class SettingsChangeTelemetry {
   private var committedBaseline: [SettingsProjection.Logical: String] = [:]
   /// Value at the start of the in-flight burst, set once per window per logical.
   private var pendingOriginal: [SettingsProjection.Logical: String] = [:]
-  /// Burst source per logical (system iff every contributing write was system).
+  /// Burst source per logical: last-writer-wins, the source of the most recent write in the
+  /// window (see `enqueue`).
   private var pendingSource: [SettingsProjection.Logical: Source] = [:]
   private var settleTask: Task<Void, Never>?
 
-  enum Source: String { case user, system }
+  enum Source: String {
+    case user, system
+    #if DEBUG
+      /// #3765: a write made by the DEBUG dev control door.
+      case devControl = "dev_control"
+    #endif
+  }
 
   init(
     settings: SettingsManager,
@@ -551,7 +558,13 @@ final class SettingsChangeTelemetry {
       return
     }
 
-    let source: Source = settings.isApplyingSystemWrite ? .system : .user
+    // Read now, while the writer's scope is open; the flags are restored before `flush`.
+    #if DEBUG
+      let source: Source =
+        settings.isDevControlWrite ? .devControl : (settings.isApplyingSystemWrite ? .system : .user)
+    #else
+      let source: Source = settings.isApplyingSystemWrite ? .system : .user
+    #endif
     // Each logical coalesces and suppresses net no-ops independently, so a
     // key-code change that alters identity but not shape (Globe and Right Option
     // are both modifier-only) emits one delta, not two.

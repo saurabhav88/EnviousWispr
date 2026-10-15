@@ -213,7 +213,18 @@
     /// Decodes `value` to the property's type and assigns it, skipping the screens' policy.
     /// Nothing is assigned when decoding or the crash-prevention check fails.
     static func forceWrite(_ key: Key, value: Any, to settings: SettingsManager) -> WriteOutcome {
-      assign(key, value: value, to: settings, forced: true)
+      attributed(settings) { assign(key, value: value, to: settings, forced: true) }
+    }
+
+    /// Runs `body` with `settings.isDevControlWrite` set, so every change notification the
+    /// write causes (including a setter's synchronous consequences, such as the model a
+    /// provider change canonicalizes) is attributed to the door. Restores the caller's prior
+    /// value, so nested use keeps an enclosing scope open. Synchronous: never await inside.
+    static func attributed<T>(_ settings: SettingsManager, _ body: () -> T) -> T {
+      let prior = settings.isDevControlWrite
+      settings.isDevControlWrite = true
+      defer { settings.isDevControlWrite = prior }
+      return body()
     }
 
     /// The one property mapping: decode to the property's type, keep the crash-prevention
@@ -464,6 +475,14 @@
     /// ordinary write takes the key's route first. Every refusal happens before the first
     /// mutation.
     static func write(
+      _ key: Key, value: Any, force: Bool, context: WriteContext, to settings: SettingsManager
+    ) -> SetOutcome {
+      attributed(settings) {
+        checkedWrite(key, value: value, force: force, context: context, to: settings)
+      }
+    }
+
+    private static func checkedWrite(
       _ key: Key, value: Any, force: Bool, context: WriteContext, to settings: SettingsManager
     ) -> SetOutcome {
       if force { return outcome(forceWrite(key, value: value, to: settings)) }

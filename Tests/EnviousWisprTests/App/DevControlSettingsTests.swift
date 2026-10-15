@@ -755,6 +755,40 @@
       #expect(stored == defaults.persistentDomain(forName: suite) as NSDictionary?)
     }
 
+    @Test("every mutation route runs with the door's attribution flag set, then restores it")
+    func everyRouteIsAttributed() throws {
+      let (_, _, settings) = Self.fixture()
+      settings.onboardingState = .completed
+      settings.llmProvider = .openAI
+      var seen: [(SettingsManager.SettingKey, Bool)] = []
+      settings.onChange = { seen.append(($0, settings.isDevControlWrite)) }
+      let catalog = DevControlSettings.ModelCatalog(
+        provider: .openAI, models: [Self.model("gpt-dev-a", .openAI)])
+      let context = Self.context(catalog: catalog, connected: ["mic-a"])
+      func write(_ key: SettingsManager.SettingKey, _ json: String, force: Bool = false) throws {
+        let outcome = DevControlSettings.write(
+          key, value: try Self.wire(json), force: force, context: context, to: settings)
+        #expect(outcome == .written(forced: force), "\(DevControlSettings.name(key))")
+      }
+      try write(.fillerRemovalEnabled, settings.fillerRemovalEnabled ? "false" : "true")
+      try write(.llmModel, #""gpt-dev-a""#)
+      try write(.selectedInputDeviceUID, #""mic-a""#)
+      try write(.spokenPunctuation, #"{"enabled":true,"startWordOverrides":{"fr":"lapin"}}"#)
+      try write(.hasCompletedOnboarding, "false")
+      try write(.toggleKeyCode, "33", force: true)
+      try write(.llmProvider, #""none""#, force: true)
+
+      let keys = Set(seen.map(\.0))
+      for key in [SettingsManager.SettingKey.fillerRemovalEnabled, .llmModel,
+        .preferredInputDeviceIDOverride, .selectedInputDeviceUID, .spokenPunctuation,
+        .onboardingState, .toggleKeyCode, .llmProvider]
+      {
+        #expect(keys.contains(key), "\(DevControlSettings.name(key)) never notified")
+      }
+      #expect(seen.allSatisfy { $0.1 }, "unattributed: \(seen.filter { !$0.1 }.map(\.0))")
+      #expect(settings.isDevControlWrite == false)
+    }
+
     @Test("an ordinary hasCompletedOnboarding write goes through the alias setter")
     func onboardingAliasOrdinaryWrite() throws {
       let (_, _, settings) = Self.fixture()
