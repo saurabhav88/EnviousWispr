@@ -565,7 +565,7 @@
       }
     },
     "%@ s" : {
-      "comment" : "Transcribe a File, Working step: seconds spent on a step. s abbreviates seconds.",
+      "comment" : "Speech engine settings, engine card: a time in seconds. %@ is the number.\nTranscribe a File, Working step: seconds spent on a step. s abbreviates seconds.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -898,6 +898,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "%lld"
+          }
+        }
+      }
+    },
+    "%lld MB" : {
+      "comment" : "Speech engine settings, engine card: a model's download size in megabytes.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld MB"
           }
         }
       }
@@ -6579,6 +6590,17 @@
         }
       }
     },
+    "Download size" : {
+      "comment" : "Speech engine settings, engine card: a row label in the card's spec table.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Downloadgröße"
+          }
+        }
+      }
+    },
     "Download stopped." : {
       "comment" : "Live Preview settings, preview engine: download stopped.",
       "localizations" : {
@@ -10493,6 +10515,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Gemessen mit 28 Testaufnahmen und der erneuten Verarbeitung von 500 echten Diktaten. Beide Einstellungen wurden mit demselben Audio verglichen."
+          }
+        }
+      }
+    },
+    "Measured on a MacBook Pro with M5 Max. Older Macs take longer." : {
+      "comment" : "Speech engine settings, All Languages engine card: where its transcribe times come from. M5 Max is Apple's chip name.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gemessen auf einem MacBook Pro mit M5 Max. Ältere Macs brauchen länger."
           }
         }
       }
@@ -18940,6 +18973,34 @@
         }
       }
     },
+    "Typical times for people using EnviousWispr. On the oldest supported Macs (M1), about %@, %@ and %@." : {
+      "comment" : "Speech engine settings, Fast engine card: where its transcribe times come from. M1 is Apple's chip name. Each %@ is a time such as 0.2 s.",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Typical times for people using EnviousWispr. On the oldest supported Macs (M1), about %1$@, %2$@ and %3$@."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Typische Werte bei der Nutzung von EnviousWispr. Auf den ältesten unterstützten Macs (M1) etwa %1$@, %2$@ und %3$@."
+          }
+        }
+      }
+    },
+    "Typical transcription time after you stop speaking. This does not include AI polish or pasting. Short means under 5 seconds of speech, medium about 30 seconds, long about 5 minutes." : {
+      "comment" : "Speech engine settings, engine card: help beside Transcribe time, explaining the three times.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Typische Transkriptionsdauer, nachdem du aufgehört hast zu sprechen. KI-Nachbearbeitung und Einfügen sind nicht eingerechnet. Kurz bedeutet unter 5 Sekunden Sprechzeit, mittel etwa 30 Sekunden, lang etwa 5 Minuten."
+          }
+        }
+      }
+    },
     "USB" : {
       "comment" : "Microphone settings: the microphone is connected over USB.",
       "localizations" : {
@@ -19436,28 +19497,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Verwendest du ein Bluetooth-Mikrofon?"
-          }
-        }
-      }
-    },
-    "Usually 1-2s after you speak" : {
-      "comment" : "Speech engine settings, engine card: how quickly text appears, in seconds.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Meist 1–2 Sek. nach dem Sprechen"
-          }
-        }
-      }
-    },
-    "Usually ~0.1s after you speak" : {
-      "comment" : "Speech engine settings, engine card: how quickly text appears. 0.1s is a tenth of a second.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Meist ~0,1 Sek. nach dem Sprechen"
           }
         }
       }
@@ -22701,6 +22740,17 @@
         }
       }
     },
+    "long" : {
+      "comment" : "Speech engine settings, engine card: caption under the transcribe time of a long recording (about 5 minutes).",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "lang"
+          }
+        }
+      }
+    },
     "macOS calls this permission \"Accessibility.\" It lets EnviousWispr recognize modifier keys such as Right Option and paste your dictation into other apps. Without it, a modifier key used on its own does not respond. Other supported keybinds can still start dictation, and you paste the finished text from the clipboard." : {
       "localizations" : {
         "de" : {
@@ -22740,6 +22790,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "macOS verwendet die Globus-Taste möglicherweise bereits zum Wechseln der Tastatursprache, zum Öffnen der Emoji-Auswahl oder für die eigene Diktierfunktion. Falls das beim Diktieren passiert, kannst du diese Aktion ausschalten:"
+          }
+        }
+      }
+    },
+    "medium" : {
+      "comment" : "Speech engine settings, engine card: caption under the transcribe time of a medium recording (about 30 seconds).",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "mittel"
           }
         }
       }
@@ -23064,6 +23125,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "KI-Nachbearbeitung aktivieren"
+          }
+        }
+      }
+    },
+    "short" : {
+      "comment" : "Speech engine settings, engine card: caption under the transcribe time of a short recording (under 5 seconds).",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "kurz"
           }
         }
       }
