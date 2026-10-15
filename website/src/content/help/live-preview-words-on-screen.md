@@ -47,7 +47,7 @@ To watch your words appear while you talk, use Live Preview. [Faster Transcripti
 The preview needs its own small engine, separate from the one that produces your final text. Click **Change** under **Preview engine** on the **Live Preview** tab and pick one.
 
 - **Apple** is built into macOS, so the engine itself needs no download. It needs **macOS 26 or later**, and it only recognizes languages your Mac has installed. Other languages are a download.
-- **Universal** works on **macOS 14 and later** and covers more languages. It needs one optional **270 MB** download, which only starts when you click **Download** on its card. You can remove it from the same card to get the space back.
+- **Universal** works on **macOS 14 and later** and covers more languages. It needs one optional **270 MB** download, which starts when you click **Download** on its card. If Universal was already your preview engine when you updated to the current version, EnviousWispr downloads its new model by itself. You can remove it from the same card to get the space back.
 
 If you are on macOS 26 and Apple supports your language, use Apple. Choose Universal on older macOS versions, or when Apple does not support your language.
 

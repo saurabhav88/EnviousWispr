@@ -297,7 +297,7 @@ const faqs = [
           </tr>
           <tr>
             <td>Audio processing</td>
-            <td><span class="table-highlight">On-device</span> (Apple Silicon Neural Engine)</td>
+            <td><span class="table-highlight">On-device</span> (Neural Engine or GPU)</td>
             <td>On-device (CPU/GPU, any platform)</td>
           </tr>
           <tr>
@@ -489,7 +489,7 @@ const faqs = [
     <div class="section-head reveal">
       <div class="section-label-pill amber">Speed</div>
       <h2 class="section-title">Optimized for Apple Silicon, not just compatible</h2>
-      <p class="section-sub">whisper.cpp runs on everything. EnviousWispr is tuned specifically for the Neural Engine on M-series Macs, which means faster inference for the same model quality.</p>
+      <p class="section-sub">whisper.cpp runs on everything. EnviousWispr runs Parakeet on the Neural Engine and Whisper through transcribe.cpp on the GPU of M-series Macs. Whisper speed depends on the model, the Mac and the runtime settings.</p>
     </div>
     <div class="speed-stats">
       <div class="speed-card reveal">

@@ -82,6 +82,6 @@ EnviousWispr is built for macOS users on Apple Silicon who produce a lot of text
 
 **RSI and accessibility users** reduce keyboard load without giving up productivity. Hands-free mode lets you lock recording with a double-press so you don't have to hold any key. Useful for longer sessions or when holding a keybind isn't comfortable.
 
-The one hard requirement: an Apple Silicon Mac (M1 or later) running macOS Sonoma 14+. The Neural Engine is what makes local transcription fast enough to feel instant. Intel Macs won't run it.
+The one hard requirement: an Apple Silicon Mac (M1 or later) running macOS Sonoma 14+. The Neural Engine and GPU in Apple Silicon are what make local transcription fast enough to feel instant. Intel Macs won't run it.
 
 Curious how EnviousWispr stacks up against other tools? See how it compares to [WisprFlow](/compare/wisprflow/), [Apple Dictation](/compare/apple-dictation/), and [other alternatives](/compare/).

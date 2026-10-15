@@ -49,7 +49,7 @@ const faqs = [
   },
   {
     "q": "What Mac do I need?",
-    "a": "Any Mac with Apple Silicon (M1 or later) running macOS 14 Sonoma or newer. The Neural Engine on Apple Silicon is what makes on-device transcription fast."
+    "a": "Any Mac with Apple Silicon (M1 or later) running macOS 14 Sonoma or newer. The Neural Engine and GPU on Apple Silicon are what make on-device transcription fast."
   },
   {
     "q": "Is EnviousWispr open source?",
@@ -317,7 +317,7 @@ const faqs = [
           </tr>
           <tr>
             <td>Audio processing</td>
-            <td><span class="table-highlight">On-device</span> (Apple Neural Engine)</td>
+            <td><span class="table-highlight">On-device</span> (Neural Engine or GPU)</td>
             <td>Local or cloud speech model by Mode; local choices keep audio on the Mac</td>
           </tr>
           <tr>
@@ -506,7 +506,7 @@ const faqs = [
         </div>
         <div class="privacy-step">
           <div class="privacy-step-num">2</div>
-          <div>Audio is processed by the Neural Engine on your Apple Silicon chip. Nothing is uploaded.</div>
+          <div>Audio is processed on your Apple Silicon chip: Parakeet on the Neural Engine, Whisper on the GPU. Nothing is uploaded.</div>
         </div>
         <div class="privacy-step">
           <div class="privacy-step-num">3</div>
@@ -695,7 +695,7 @@ const faqs = [
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">What Mac do I need?</div>
-        <p class="faq-a">Any Mac with Apple Silicon (M1 or later) running macOS 14 Sonoma or newer. The Neural Engine on Apple Silicon is what makes on-device transcription fast.</p>
+        <p class="faq-a">Any Mac with Apple Silicon (M1 or later) running macOS 14 Sonoma or newer. The Neural Engine and GPU on Apple Silicon are what make on-device transcription fast.</p>
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">Is EnviousWispr open source?</div>
