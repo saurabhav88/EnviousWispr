@@ -80,7 +80,7 @@ extension ASREngineNotReadyAfterLoadError: StableSentryErrorIdentity {
 }
 
 /// Thrown when the ASR manager is asked to load or transcribe on an engine it
-/// does not own (#1386 PR-2: WhisperKit). WhisperKit runs in-process behind its
+/// does not own (#1386 PR-2: Whisper). Whisper runs in-process behind its
 /// relocation gate via `WhisperEngineAdapter`; the manager and its XPC helper
 /// are Parakeet-only. This exists so the retired route fails loudly instead of
 /// quietly doing nothing — or mapping a model the gate never saw.
@@ -217,7 +217,7 @@ public protocol ASRManagerInterface: AnyObject {
 
   /// #1908: the HEAVY half of issue #445 wedge recovery, called ONLY after
   /// `cancelInFlightLoad()`. In-process, a deadline-bounded, fail-open attempt
-  /// to unload the currently-published backend — WhisperKit's
+  /// to unload the currently-published backend — the Whisper adapter's
   /// `recoverFromWedge()` pattern, ported. `ASRManagerProxy`'s XPC connection
   /// invalidation already does the equivalent job, so it keeps the protocol
   /// extension's no-op default rather than overriding.

@@ -6,10 +6,12 @@ The cleanup chain (filler removal, inverse text normalization) runs English rule
 on every dictation whose language it does not know, which on the default engine
 under Automatic is every dictation (#2614). This corpus proves the damage on REAL
 engine output rather than on hand-typed text: each sentence is spoken by an Azure
-neural voice in its own language, transcribed by BOTH shipped engines (Parakeet
-via `parakeet_runner`, WhisperKit large-v3-turbo via
-`scripts/multilingual-eval/runner`), and the transcripts are what the benchmark
-test feeds to the app's own chain. The Parakeet model is explicit (#3546):
+neural voice in its own language, transcribed by the shipped engines, and the
+transcripts are what the benchmark test feeds to the app's own chain. Parakeet runs
+via `parakeet_runner`. The Whisper rows in `transcripts.jsonl` are HISTORICAL WhisperKit
+large-v3-turbo output (September 2026, the gitignored `scripts/multilingual-eval/runner`);
+#3735 retired WhisperKit and removed that arm from `--transcribe`, so this script no
+longer produces Whisper rows. A transcribe.cpp arm is follow-up work. The Parakeet model is explicit (#3546):
 `transcripts.jsonl` holds the historical v3 rows (September 2026 audio, kept
 byte-for-byte), and `transcripts-ultra.jsonl` holds Parakeet Ultra rows only.
 
@@ -36,7 +38,7 @@ Usage (three stages, each resumable):
   ~/.claude/bin/get-key launch azure-speech-region AZURE_SPEECH_REGION -- \\
     python3 scripts/eval/language_gate_corpus.py --run <run-dir> --synth
   python3 scripts/eval/language_gate_corpus.py --run <run-dir> --transcribe \\
-    --parakeet-model ultra --parakeet-model-dir <installed parakeet-ultra dir> [--parakeet-only]
+    --parakeet-model ultra --parakeet-model-dir <installed parakeet-ultra dir>
   python3 scripts/eval/language_gate_corpus.py --run <run-dir> --parakeet-model ultra \\
     --parakeet-fixture Tests/EnviousWisprTests/Resources/LanguageGate/transcripts-ultra.jsonl
   python3 scripts/eval/language_gate_corpus.py --run <run-dir> --parakeet-model v3 --fixture \\
@@ -60,12 +62,6 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 PARAKEET_RUNNER = ROOT / "scripts/eval/parakeet_runner/.build/release/ParakeetRunner"
-WHISPERKIT_RUNNER = ROOT / "scripts/multilingual-eval/runner/.build/release/MultilingualEvalRunner"
-# Default WhisperKit model location on the dev machine; override with --whisperkit-model-folder.
-WHISPERKIT_MODEL_FOLDER = (
-    Path.home()
-    / "Documents/huggingface/models/argmaxinc/whisperkit-coreml/openai_whisper-large-v3-v20240930_turbo_632MB"
-)
 
 # Two voices per locale so no bucket is one voice's articulation.
 VOICES = {
@@ -401,31 +397,18 @@ def parakeet_out(run: Path, model: str) -> Path:
     return run / f"parakeet-{model}.jsonl"
 
 
-def transcribe(run: Path, parakeet_model: str, parakeet_model_dir: Path,
-               whisperkit_model_folder: Path = WHISPERKIT_MODEL_FOLDER,
-               parakeet_only: bool = False) -> None:
+def transcribe(run: Path, parakeet_model: str, parakeet_model_dir: Path) -> None:
     rows = cases()
     wav_dir = run / "wav"
     missing = [r["id"] for r in rows if not (wav_dir / f"{r['id']}.wav").exists()]
     if missing:
         sys.exit(f"{len(missing)} WAVs missing (run --synth first): {missing[:5]}")
-    for tool in (PARAKEET_RUNNER,) if parakeet_only else (PARAKEET_RUNNER, WHISPERKIT_RUNNER):
-        if not tool.exists():
-            sys.exit(f"missing runner binary: {tool}\nBuild it with `swift build -c release` in its package.")
-    expected = {r["id"] for r in rows}
-
-    def _complete(path: Path) -> bool:
-        """An existing engine output is reused only when it is complete; a partial
-        one (a killed runner) is an error here, not at the fixture stage."""
-        if not path.exists():
-            return False
-        _jsonl(path, expected)  # raises with the delete-and-rerun message
-        return True
+    if not PARAKEET_RUNNER.exists():
+        sys.exit(f"missing runner binary: {PARAKEET_RUNNER}\n"
+                 "Build it with `swift build -c release` in its package.")
 
     if not parakeet_model_dir.is_dir():
         sys.exit(f"Parakeet {parakeet_model} model folder missing: {parakeet_model_dir}")
-    if not parakeet_only and not whisperkit_model_folder.exists():
-        sys.exit(f"WhisperKit model folder missing: {whisperkit_model_folder}")
 
     pk_manifest = run / "parakeet-manifest.jsonl"
     pk_manifest.write_text("".join(
@@ -443,23 +426,7 @@ def transcribe(run: Path, parakeet_model: str, parakeet_model_dir: Path,
             raise ValueError("Parakeet inputs changed during transcription")
         pk_out.with_suffix(".provenance.json").write_text(json.dumps(before, sort_keys=True) + "\n")
         _verified_parakeet(run, parakeet_model)
-    if parakeet_only:
-        print("transcribe: done (parakeet only)", file=sys.stderr)
-        return
-
-    wk_manifest = run / "whisperkit-manifest.jsonl"
-    wk_manifest.write_text("".join(json.dumps({
-        "id": r["id"], "lang": r["lang"], "text": r["text"],
-        "audio_path": str(wav_dir / f"{r['id']}.wav"),
-    }, ensure_ascii=False) + "\n" for r in rows))
-    wk_out = run / "whisperkit.jsonl"
-    if not _complete(wk_out):
-        print("WhisperKit large-v3-turbo (autodetect) …", file=sys.stderr)
-        subprocess.run([
-            str(WHISPERKIT_RUNNER), "--manifest", str(wk_manifest), "--mode", "autodetect",
-            "--output", str(wk_out), "--model-folder", str(whisperkit_model_folder),
-        ], check=True)
-    print("transcribe: done", file=sys.stderr)
+    print("transcribe: done (parakeet)", file=sys.stderr)
 
 
 # ---- Stage 3: the fixture the Swift benchmark reads --------------------------------
@@ -486,6 +453,8 @@ def _jsonl(path: Path, expected_ids: set[str]) -> dict[str, dict]:
 
 
 def fixture(run: Path, dest: Path, parakeet_model: str) -> None:
+    """The historical two-engine shape: rebuilds it from a run directory that already holds
+    `whisperkit.jsonl` (#3735: nothing produces that file any more)."""
     rows = cases()
     expected = {r["id"] for r in rows}
     pk = _verified_parakeet(run, parakeet_model)
@@ -597,11 +566,7 @@ def main() -> None:
                     help="Parakeet model for --transcribe and the fixtures (required by them)")
     ap.add_argument("--parakeet-model-dir", type=Path,
                     help="installed Parakeet model folder for --transcribe")
-    ap.add_argument("--parakeet-only", action="store_true",
-                    help="--transcribe runs Parakeet only (the WhisperKit rows are unchanged)")
     ap.add_argument("--list", action="store_true")
-    ap.add_argument("--whisperkit-model-folder", type=Path, default=WHISPERKIT_MODEL_FOLDER,
-                    help=f"WhisperKit CoreML model folder (default: {WHISPERKIT_MODEL_FOLDER})")
     a = ap.parse_args()
     run = Path(a.run)
     if a.list:
@@ -615,8 +580,7 @@ def main() -> None:
     if a.transcribe:
         if not a.parakeet_model_dir:
             sys.exit("--transcribe needs --parakeet-model-dir")
-        transcribe(run, a.parakeet_model, a.parakeet_model_dir, a.whisperkit_model_folder,
-                   a.parakeet_only)
+        transcribe(run, a.parakeet_model, a.parakeet_model_dir)
     if a.fixture:
         fixture(run, Path(a.fixture), a.parakeet_model)
     if a.parakeet_fixture:

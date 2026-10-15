@@ -338,7 +338,7 @@ _TERMINAL_TOKENS = ("idle", "complete", "error", "ready")
 
 
 def _parse_query_state(reply: str) -> dict[str, str]:
-    """Parse `OK parakeet=<state> whisperkit=<state> backend=<X>` into a dict.
+    """Parse `OK parakeet=<state> whisper=<state> backend=<X>` into a dict.
     Returns `{}` if the reply doesn't match the expected shape."""
     if not reply.startswith("OK "):
         return {}
@@ -353,7 +353,7 @@ def _parse_query_state(reply: str) -> dict[str, str]:
 def _backend_pipeline_key(backend: str) -> str:
     # `backend=.parakeet` / `backend=.whisper` → which pipeline-state key matters
     if "whisper" in backend.lower():
-        return "whisperkit"
+        return "whisper"
     return "parakeet"
 
 
@@ -1732,7 +1732,7 @@ def A8a_cancel_during_parakeet_load(**_) -> dict:
         runtime_budget_seconds=3.0,
         founder_required=False,
         negative_control="Remove WhisperKit prepare-state-flip at WhisperKitPipeline.swift:1078-1084; state stays inconsistent",
-        description="Cancel during WhisperKit model load — state-unwind only (no held task)",
+        description="Cancel during Whisper model load — state-unwind only (no held task)",
     )
 )
 def A8b_cancel_during_whisperkit_load(**_) -> dict:
@@ -1844,8 +1844,8 @@ def A9_backend_switch_mid_record(**_) -> dict:
     # the original would have torn down to idle and the other would
     # have started recording.)
     parsed_during = _parse_query_state(pipeline_state_during)
-    pre_backend_key = "parakeet" if pre_backend.lower() == "parakeet" else "whisperkit"
-    other_key = "whisperkit" if pre_backend_key == "parakeet" else "parakeet"
+    pre_backend_key = "parakeet" if pre_backend.lower() == "parakeet" else "whisper"
+    other_key = "whisper" if pre_backend_key == "parakeet" else "parakeet"
     pre_backend_active = parsed_during.get(pre_backend_key, "") not in {"", "idle"}
     other_idle = parsed_during.get(other_key, "") in {"idle", ""}
     switch_was_blocked = pre_backend_active and other_idle

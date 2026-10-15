@@ -17,8 +17,6 @@ private enum ShippedBackendLatencyFixture {
     .deletingLastPathComponent()  // repo root
 
   static let audioURL = repoRoot.appending(path: "scripts/freeze-suite/clips/normal-speech.wav")
-  static let tokenizerFolder = repoRoot.appending(
-    path: "Sources/EnviousWisprASR/Resources/WhisperTokenizer")
   static let expectedTranscript =
     "the quick brown fox jumps over the lazy dog while the morning sun rises slowly above the quiet hills"
 
@@ -47,22 +45,24 @@ private enum ShippedBackendLatencyFixture {
     return await ModelDeliveryController().isAdmitted(registration)
   }
 
-  static func whisperKitRegistration() throws -> DeliveryRegistration {
+  /// #3735: the transcribe.cpp turbo GGUF, where the app installs it (`Models/whisper-gguf`,
+  /// `ModelDeliveryHome.whisperGGUFRegistration`).
+  static func whisperRegistration() throws -> DeliveryRegistration {
     let manifestURL = repoRoot.appending(
-      path: "Sources/EnviousWispr/Resources/whisperkit-delivery-manifest.json")
+      path: "Sources/EnviousWispr/Resources/whisper-delivery-manifest.json")
     let manifest = try DeliveryManifest.load(from: Data(contentsOf: manifestURL))
     let appSupport = FileManager.default.urls(
       for: .applicationSupportDirectory, in: .userDomainMask)[0]
     return DeliveryRegistration(
       manifest: manifest,
       installDirectory: appSupport.appending(
-        path: "EnviousWispr/Models/whisper", directoryHint: .isDirectory),
+        path: "EnviousWispr/Models/whisper-gguf", directoryHint: .isDirectory),
       metadataDirectory: appSupport.appending(
         path: "EnviousWispr/ModelDelivery", directoryHint: .isDirectory))
   }
 
-  static func whisperKitIsAdmitted() async -> Bool {
-    guard let registration = try? whisperKitRegistration() else { return false }
+  static func whisperIsAdmitted() async -> Bool {
+    guard let registration = try? whisperRegistration() else { return false }
     return await ModelDeliveryController().isAdmitted(registration)
   }
 
@@ -150,37 +150,38 @@ struct ShippedBackendLatencyTests {
   }
 
   @Test(
-    "WhisperKit p95 stays under one second after warm-up",
+    "Whisper p95 stays under one second after warm-up",
     .enabled("requires the shipped model to be admitted") {
-      await ShippedBackendLatencyFixture.whisperKitIsAdmitted()
+      await ShippedBackendLatencyFixture.whisperIsAdmitted()
     },
     .tags(.realBoundary)
   )
-  func whisperKitP95StaysUnderOneSecond() async throws {
+  func whisperP95StaysUnderOneSecond() async throws {
     let samples = try AudioConverter().resampleAudioFile(
       path: ShippedBackendLatencyFixture.audioURL.path)
-    let registration = try ShippedBackendLatencyFixture.whisperKitRegistration()
+    let registration = try ShippedBackendLatencyFixture.whisperRegistration()
+    let entrypoint = try #require(registration.manifest.resolvedEntrypointPath)
     let controller = ModelDeliveryController()
-    let backend = WhisperKitBackend(
-      admittedModelFolder: {
+    let backend = TranscribeCppWhisperBackend(
+      driver: LiveWhisperExecutorDriver(), modelVariant: registration.manifest.identity.variant,
+      admittedModelPath: {
         guard await controller.isAdmitted(registration) else { return nil }
-        return registration.installDirectory.path
-      },
-      tokenizerFolderURL: ShippedBackendLatencyFixture.tokenizerFolder)
+        return registration.installDirectory.appendingPathComponent(entrypoint).path
+      })
 
     do {
       try await backend.prepare()
       let warmup = try await backend.transcribe(audioSamples: samples, options: .default)
-      ShippedBackendLatencyFixture.requireExpectedTranscript(warmup, backend: "WhisperKit warm-up")
+      ShippedBackendLatencyFixture.requireExpectedTranscript(warmup, backend: "Whisper warm-up")
 
       var timings: [TimeInterval] = []
       for _ in 0..<ShippedBackendLatencyFixture.runCount {
         let result = try await backend.transcribe(audioSamples: samples, options: .default)
-        ShippedBackendLatencyFixture.requireExpectedTranscript(result, backend: "WhisperKit")
+        ShippedBackendLatencyFixture.requireExpectedTranscript(result, backend: "Whisper")
         #expect(result.backendType == .whisper)
         timings.append(result.processingTime)
       }
-      ShippedBackendLatencyFixture.requireBudget(timings, backend: "WhisperKit")
+      ShippedBackendLatencyFixture.requireBudget(timings, backend: "Whisper")
       await backend.unload()
     } catch {
       await backend.unload()

@@ -218,7 +218,7 @@ final class BenchmarkSuite {
         return
       }
 
-      // Load test audio — try jfk.wav from WhisperKit test resources, fall back to synthetic
+      // Load test audio — try Tests/Resources/jfk.wav, fall back to synthetic
       // Resolve jfk.wav relative to the bundle: .app is inside the project's build/ dir,
       // so go up two levels (Contents/MacOS → .app → build/) then ../Tests/Resources/
       let executableURL = Bundle.main.executableURL ?? URL(fileURLWithPath: "/")

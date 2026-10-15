@@ -1050,7 +1050,7 @@ struct ParakeetUpgradePolicyTests {
     case .directLoad:
       try await ActiveEngineOperation.live(
         asrManager: manager, parakeetUpgrade: rig.coordinator,
-        whisperKitBackend: LiveTranscribeCppWhisperBackend(
+        whisperBackend: LiveTranscribeCppWhisperBackend(
           driver: LiveWhisperExecutorDriver(), modelVariant: "q8_0", admittedModelPath: { nil })
       ).load()
     }
@@ -1782,7 +1782,7 @@ struct ParakeetUpgradePolicyTests {
     var started = false
     rig.coordinator.onOutcome = { if $0 == .backgroundStarted { started = true } }
     if reason == .noSelection {
-      // A WhisperKit-only launch: no Parakeet selection was ever settled.
+      // A Whisper-only launch: no Parakeet selection was ever settled.
       rig.coordinator.onboardingDidComplete()
     } else {
       let prepared = try await rig.coordinator.prepareLoad()

@@ -106,7 +106,7 @@ extension TranscribeCppWhisperError: StableSentryErrorIdentity {
 
 // MARK: - Backend
 
-/// The loaded-model marker the shared load-state machine carries (`WhisperKitLoadState.swift`).
+/// The loaded-model marker the shared load-state machine carries (`WhisperLoadState.swift`).
 final class LoadedWhisperModel<Handle: Hashable & Sendable>: LoadedASRModel, Sendable {
   let handle: Handle
   init(handle: Handle) { self.handle = handle }
@@ -118,8 +118,8 @@ final class LoadedWhisperModel<Handle: Hashable & Sendable>: LoadedASRModel, Sen
 /// scope), the speech envelope, language and timing mapping, LID observation and the memory
 /// pressure policy.
 ///
-/// The load lifecycle reuses `WhisperKitLoadStateMachine` unchanged (its reasons are in that
-/// file and in `WhisperKitBackend`): one load at a time, a load or warm-up completing after an
+/// The load lifecycle reuses `WhisperLoadStateMachine` unchanged (its reasons are in that
+/// file): one load at a time, a load or warm-up completing after an
 /// unload is stale by generation, readiness flips only after the warm-up resolves, and the
 /// warm-up's 20 s fail-open ceiling is paid at most once per generation.
 package actor TranscribeCppWhisperBackend<Driver: WhisperExecutorDriving>: ASRBackend {
@@ -229,9 +229,13 @@ package actor TranscribeCppWhisperBackend<Driver: WhisperExecutorDriving>: ASRBa
   // MARK: - Load
 
   /// Loads the admitted model, or throws `.notReady` when none is admitted. No download and no
-  /// automatic repair: the current Whisper policy (`WhisperKitBackend.prepare()` comment) is
-  /// that a download is the user's decision, so an admitted but unloadable file is an honest,
-  /// visible load failure.
+  /// automatic repair (#1386 PR-2, kept for #3735): fetching is only ever an explicit user
+  /// action through the verified delivery path. An automatic load-miss repair deletes the
+  /// failed components and re-fetches them, so on a corrupted cache it turns a keypress into a
+  /// silent ~0.9 GB download and races its own deletion against this load. Parakeet (the
+  /// primary engine) and EG-1 (a limb that falls back) keep their repair; for Whisper a
+  /// download is the user's decision, so an admitted but unloadable file is an honest, visible
+  /// load failure, answered by a Remove and re-download the user chooses.
   package func prepare() async throws {
     while loadsAfterPressureBinding, authorizeUnload == nil {
       await withCheckedContinuation { pressureBindingWaiters.append($0) }
@@ -397,11 +401,11 @@ package actor TranscribeCppWhisperBackend<Driver: WhisperExecutorDriving>: ASRBa
     await driver.unload(handle)
   }
 
-  // MARK: - State machine plumbing (ported from WhisperKitBackend)
+  // MARK: - State machine plumbing (ported from the retired WhisperKit backend)
 
   @discardableResult
   private func emit(_ event: LoadEvent, failure: (any Error)? = nil) async -> [Effect] {
-    let (next, effects) = WhisperKitLoadStateMachine.transition(
+    let (next, effects) = WhisperLoadStateMachine.transition(
       loadState, on: event, generation: generation)
     let previous = loadState.phase
     loadState = next
@@ -414,8 +418,13 @@ package actor TranscribeCppWhisperBackend<Driver: WhisperExecutorDriving>: ASRBa
     return effects
   }
 
-  /// #3546 §3.7 T3: crash-report model tags follow ACCEPTED transitions only. Same mapping
-  /// as `WhisperKitBackend.reportModelScope` (that method holds the reasons).
+  /// #3546 §3.7 T3: the crash-report model tags follow ACCEPTED transitions only (a stale
+  /// completion leaves the state, and so the tags, unchanged). A load in flight, including its
+  /// warm-up, is `loading`; a ready model is `loaded` even when its warm-up inference failed; a
+  /// load that ends without a model is `failed`, or `cancelled` when unloaded or when its own
+  /// error was a cancellation or supersession. Synchronous: the snapshot and its sequence are
+  /// taken here, delivery is queued, and no await is added before the transition's effects;
+  /// `publishLoadingScope()` makes a physical load wait for delivery.
   private func reportModelScope(
     from previous: LoadPhase, on event: LoadEvent, failure: (any Error)?
   ) {
@@ -533,7 +542,7 @@ package actor TranscribeCppWhisperBackend<Driver: WhisperExecutorDriving>: ASRBa
     let start = ContinuousClock.now
     #if DEBUG
       // #1707 Phase 2: the real shared-engine call boundary for the overlap Live UAT oracle
-      // (§3.2a-i), ported from `WhisperKitBackend` for #3735. `defer` closes the interval on
+      // (§3.2a-i), ported from the retired WhisperKit backend for #3735. `defer` closes the interval on
       // every exit. Because this backend is an actor, suspending at this exact point (BEFORE
       // the real call) is what lets a SECOND `transcribe()` call reach this SAME point and
       // proceed to ITS OWN native call while the first is held: the actor-reentrancy question
@@ -587,7 +596,7 @@ package actor TranscribeCppWhisperBackend<Driver: WhisperExecutorDriving>: ASRBa
     }
   }
 
-  /// transcribe_run has no range field, so WhisperKit's per-range `clipTimestamps` becomes one
+  /// transcribe_run has no range field, so the retired WhisperKit per-range `clipTimestamps` became one
   /// envelope: first valid speech start to last valid speech end, clamped to the input. No
   /// usable range (file import, replay, empty or zero-width ranges) means the whole input:
   /// the kernel already decided to decode, and this never becomes a new no-speech gate.
@@ -612,8 +621,8 @@ package actor TranscribeCppWhisperBackend<Driver: WhisperExecutorDriving>: ASRBa
     originalSampleCount: Int, processingTime: TimeInterval, enableTimestamps: Bool
   ) -> ASRResult {
     let text = run.text.trimmingCharacters(in: .whitespacesAndNewlines)
-    // A hint is the forced-language result contract (`WhisperKitBackend.swift:983`); without
-    // one, the native detection. The native call returns no detection when a hint was given.
+    // A hint is the forced-language result contract (the decode was forced to it, so the result
+    // reports it); without one, the native detection. The native call returns no detection when a hint was given.
     let language: String?
     if let languageHint {
       language = languageHint
@@ -686,8 +695,8 @@ package actor TranscribeCppWhisperBackend<Driver: WhisperExecutorDriving>: ASRBa
 
   // MARK: - Language identification
 
-  /// Window construction (fixed windows, full-window cap, dedup, prefix) is
-  /// `WhisperKitBackend.observeLID`'s, unchanged (R2 characterization); only the per-window
+  /// Window construction (fixed windows, full-window cap, dedup, prefix) is the retired
+  /// WhisperKit backend's, unchanged (R2 characterization); only the per-window
   /// observation comes from the fork's language-probability API.
   package func observeLID(samples: [Float], maxWindows: Int) async -> LIDObservationBatch {
     guard !admissionClosed else { return .unavailable }
@@ -921,8 +930,8 @@ package actor TranscribeCppWhisperBackend<Driver: WhisperExecutorDriving>: ASRBa
     // `ParakeetBackend`'s identically-shaped seam; unlike Parakeet, this
     // actor is in-process, so `queryBatchDecodeFault` returns state directly
     // — no cross-process file needed (`BatchDecodeFaultController` holds a
-    // direct reference to this actor). #3735: ported unchanged from
-    // `WhisperKitBackend`, which it replaces on the Whisper route.
+    // direct reference to this actor). #3735: ported unchanged from the
+    // retired WhisperKit backend.
 
     private enum BatchDecodeFaultRole {
       case none

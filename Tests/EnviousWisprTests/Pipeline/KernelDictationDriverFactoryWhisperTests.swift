@@ -9,9 +9,9 @@ import Testing
 @testable import EnviousWisprASR
 @testable import EnviousWisprPipeline
 
-// MARK: - KernelDictationDriverFactoryWhisperKitTests (epic #827, PR-5 Rung 4)
+// MARK: - KernelDictationDriverFactoryWhisperTests (epic #827, PR-5 Rung 4)
 //
-// Coverage for `KernelDictationDriverFactory.makeForWhisperKit(inputs:)` — the
+// Coverage for `KernelDictationDriverFactory.makeForWhisper(inputs:)` — the
 // second-engine factory branch added in Rung 4. The branch ships
 // production-unwired this rung (no App caller); these unit tests are the only
 // runtime exercise of the WhisperKit factory path until Rung 5's App cutover.
@@ -41,7 +41,7 @@ import Testing
 #if DEBUG
 
   @MainActor
-  @Suite struct KernelDictationDriverFactoryWhisperKitTests {
+  @Suite(.tags(.productOutcome)) struct KernelDictationDriverFactoryWhisperTests {
 
     // MARK: Helpers
 
@@ -52,9 +52,9 @@ import Testing
     private func makeDriver() -> KernelDictationDriver {
       let audio = FakeAudioCapture()
       let vad = KernelDictationDriverFactory.makeSharedVADSignalSource(audioCapture: audio)
-      let inputs = KernelDictationDriverFactory.WhisperKitInputs(
+      let inputs = KernelDictationDriverFactory.WhisperInputs(
         audioCapture: audio,
-        whisperKitBackend: LiveTranscribeCppWhisperBackend(
+        whisperBackend: LiveTranscribeCppWhisperBackend(
           driver: LiveWhisperExecutorDriver(), modelVariant: "q8_0", admittedModelPath: { nil }),
         languageDetector: LanguageDetector(),
         vadSignalSource: vad,
@@ -64,17 +64,17 @@ import Testing
         pasteCompletionRegistry: PasteCompletionRegistry(),
         engineMutationScope: .alwaysAllowedForTesting,
         vendorDecodeOccupancy: VendorDecodeOccupancy(),
-        whisperKitModelIdentity: nil)
-      return KernelDictationDriverFactory.makeForWhisperKit(inputs: inputs)
+        whisperModelIdentity: nil)
+      return KernelDictationDriverFactory.makeForWhisper(inputs: inputs)
     }
 
-    // MARK: 1. Construction returns a WhisperKit-identity driver
+    // MARK: 1. Construction returns a Whisper-identity driver
 
-    @Test("makeForWhisperKit returns a driver whose polish step is stamped .whisper")
-    func makeForWhisperKitReturnsDriverWithWhisperKitIdentity() {
+    @Test("makeForWhisper returns a driver whose polish step is stamped .whisper")
+    func makeForWhisperReturnsDriverWithWhisperIdentity() {
       let driver = makeDriver()
       // The assembler does `limbSteps.llmPolish.backend = adapter.engineIdentity.backendType`.
-      // For the WhisperKit branch, `adapter.engineIdentity.backendType == .whisper`
+      // For the Whisper branch, `adapter.engineIdentity.backendType == .whisper`
       // (`WhisperEngineAdapter.engineIdentity` declares it). The polish stamp
       // is the directly observable proof that the assembler routed identity
       // correctly. (Emitter + lifecycle sink stamps covered transitively by
@@ -84,15 +84,15 @@ import Testing
 
     // MARK: 2. Factory construction does not load the model
 
-    @Test("makeForWhisperKit does not call backend.prepare() (factory is lazy)")
-    func makeForWhisperKitDoesNotLoadModel() async {
+    @Test("makeForWhisper does not call backend.prepare() (factory is lazy)")
+    func makeForWhisperDoesNotLoadModel() async {
       let backend = LiveTranscribeCppWhisperBackend(
           driver: LiveWhisperExecutorDriver(), modelVariant: "q8_0", admittedModelPath: { nil })
       let audio = FakeAudioCapture()
       let vad = KernelDictationDriverFactory.makeSharedVADSignalSource(audioCapture: audio)
-      let inputs = KernelDictationDriverFactory.WhisperKitInputs(
+      let inputs = KernelDictationDriverFactory.WhisperInputs(
         audioCapture: audio,
-        whisperKitBackend: backend,
+        whisperBackend: backend,
         languageDetector: LanguageDetector(),
         vadSignalSource: vad,
         transcriptStore: TranscriptStore(),
@@ -101,8 +101,8 @@ import Testing
         pasteCompletionRegistry: PasteCompletionRegistry(),
         engineMutationScope: .alwaysAllowedForTesting,
         vendorDecodeOccupancy: VendorDecodeOccupancy(),
-        whisperKitModelIdentity: nil)
-      _ = KernelDictationDriverFactory.makeForWhisperKit(inputs: inputs)
+        whisperModelIdentity: nil)
+      _ = KernelDictationDriverFactory.makeForWhisper(inputs: inputs)
       // Factory construction is synchronous and pure — no warm-up dispatch.
       // Backend's `isReady` flips to true only after `prepare()` completes.
       // If a future refactor accidentally fires warm-up from inside the

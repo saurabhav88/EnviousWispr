@@ -62,7 +62,7 @@ public enum EGOneInstallState: Sendable, Equatable {
   case installed(version: String?)
   /// An interrupted FIRST install: no working model, resumable partials on
   /// disk. Ported from the founder ruling of 2026-07-17 already shipped for
-  /// Parakeet and WhisperKit (`WhisperKitDownloadState.paused`) — paused,
+  /// Parakeet and the retired WhisperKit download state (`.paused`) — paused,
   /// Resume anytime. EG-1 was the only engine of the three without it, and
   /// presented a deliberate cancel as a failure with a Try Again button.
   case paused

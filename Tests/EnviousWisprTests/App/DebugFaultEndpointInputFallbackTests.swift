@@ -70,7 +70,7 @@ import Testing
       return DebugFaultEndpoint(
         audioCapture: audioCapture,
         kernelDriver: makeDriver(),
-        whisperKitKernelDriver: makeDriver(),
+        whisperKernelDriver: makeDriver(),
         activeBackend: { .parakeet })
     }
 

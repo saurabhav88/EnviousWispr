@@ -46,7 +46,7 @@ struct WorkingPageModel: Equatable {
     case .whisper:
       return String(
         localized: "All Languages",
-        comment: "Transcribe a File: the WhisperKit transcription engine's name.")
+        comment: "Transcribe a File: the Whisper transcription engine's name.")
     }
   }
 

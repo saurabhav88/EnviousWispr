@@ -406,7 +406,8 @@ final class LivePreviewCoordinator: CorrectorVocabularyConsumer {
         // engine prepared before the user disabled it stayed resident for the
         // life of the process. That cost nothing while Apple's engine was the
         // only one — it holds a locale — but the universal engine holds a loaded
-        // WhisperKit model, so the same slot now pins roughly 50-60 MB for a
+        // whisper-small model, so the same slot pins that model's memory (roughly 50-60 MB
+        // measured under WhisperKit; not re-measured on transcribe.cpp, #3735) for a
         // feature the user has switched off. Cloud review caught it.
         //
         // Dropping the reference is the whole release: the engine owns its

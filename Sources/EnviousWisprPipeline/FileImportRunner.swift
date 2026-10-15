@@ -188,7 +188,7 @@ public final class FileImportRunner {
       evidence: LanguageEvidence(
         lockedLanguage: lockedLanguage,
         engineDetectsLanguage: settings.backendSupportsLanguageDetection,
-        // **What the ENGINE heard, not nil.** WhisperKit reports the language it
+        // **What the ENGINE heard, not nil.** Whisper reports the language it
         // detected and the resolver's ladder prefers that over identifying the
         // language from the text — which is the weaker source, and the only one
         // an import had. A Spanish recording under automatic language was

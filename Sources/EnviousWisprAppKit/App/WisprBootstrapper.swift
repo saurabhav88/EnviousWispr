@@ -321,7 +321,7 @@ package final class WisprBootstrapper {
       wake: { recoveryCoordinatorForEngineMutationScope?.requestRecoveryRecheck() },
       onRefused: { site in TelemetryService.shared.recoveryEngineActionDeferred(site: site) })
 
-    // #1908: ASR now always runs in-process, same as WhisperKit — the XPC
+    // #1908: ASR now always runs in-process, same as Whisper — the XPC
     // helper this used to conditionally route to (`ASRManagerProxy` /
     // `EnviousWisprASRService`) is deleted; macOS can no longer reclaim it
     // out from under an idle dictation. The `useXPCASRService` selector and
@@ -389,15 +389,15 @@ package final class WisprBootstrapper {
       asrManager.activeBackendType == .parakeet && asrManager.isModelLoaded
     }
 
-    // #1707 Phase 2: `whisperKitBackend` is hoisted here (only these two
-    // lines — NOT the full `whisperKitKernelDriver`, which still needs
+    // #1707 Phase 2: `whisperBackend` is hoisted here (only these two
+    // lines — NOT the full `whisperKernelDriver`, which still needs
     // `vadSource`/`languageDetector` built later) so `BatchDecodeFaultController`
     // can be constructed with BOTH backend references before the Parakeet
     // driver below. No circular dependency: `WhisperDeliveryWiring.make`'s
     // inputs are already in scope. #3735: the backend is transcribe.cpp.
     let whisper = WhisperDeliveryWiring.make(
       modelDelivery: modelDelivery, settings: settings, engineMutationScope: engineMutationScope)
-    let whisperKitBackend = whisper.backend
+    let whisperBackend = whisper.backend
 
     // #1707 Phase 2: DEBUG fault-injection oracle (§11.1/§3.2a-i) — the SOLE
     // owner of every batch-decode fault command, dispatching to whichever
@@ -417,7 +417,7 @@ package final class WisprBootstrapper {
     // every other DEBUG-only fault seam.
     #if DEBUG
       let batchDecodeFaultController: BatchDecodeFaultController? = BatchDecodeFaultController(
-        whisperKitBackend: whisperKitBackend,
+        whisperBackend: whisperBackend,
         asrManager: asrManager)
     #else
       let batchDecodeFaultController: BatchDecodeFaultController? = nil
@@ -644,8 +644,8 @@ package final class WisprBootstrapper {
       }
     )
 
-    // PR-5 Rung 5 (#827): WhisperKit recordings now flow through a second
-    // `KernelDictationDriver` built by the factory's WhisperKit branch. The
+    // PR-5 Rung 5 (#827): Whisper recordings now flow through a second
+    // `KernelDictationDriver` built by the factory's Whisper branch. The
     // App still builds one driver per backend; PR-6 (#827) introduced the
     // `KernelAdapterFactory` construction owner that the driver factory calls
     // into, not a single-dispatch-surface consolidation (still two drivers).
@@ -656,16 +656,16 @@ package final class WisprBootstrapper {
     // #1386 PR-2: the multilingual engine's delivery wiring (owned folder,
     // migration, one gated backend, setup surface). Detail lives in
     // `WhisperDeliveryWiring`; the root just names it.
-    // #1707 Phase 2: `whisper`/`whisperKitBackend` are constructed earlier
+    // #1707 Phase 2: `whisper`/`whisperBackend` are constructed earlier
     // (hoisted above the Parakeet driver, see the #1707 comment near
     // `modelDelivery`) — only `whisperMigration` is extracted here, from that
     // SAME already-constructed `whisper` value.
     let whisperMigration = whisper.migration
 
-    let whisperKitKernelDriver = KernelDictationDriverFactory.makeForWhisperKit(
-      inputs: KernelDictationDriverFactory.WhisperKitInputs(
+    let whisperKernelDriver = KernelDictationDriverFactory.makeForWhisper(
+      inputs: KernelDictationDriverFactory.WhisperInputs(
         audioCapture: audioCapture,
-        whisperKitBackend: whisperKitBackend,
+        whisperBackend: whisperBackend,
         languageDetector: languageDetector,
         vadSignalSource: vadSource,
         transcriptStore: transcriptStore,
@@ -674,7 +674,7 @@ package final class WisprBootstrapper {
         pasteCompletionRegistry: pasteCompletionRegistry,
         engineMutationScope: engineMutationScope,
         vendorDecodeOccupancy: asrManager.vendorDecodeOccupancy,
-        whisperKitModelIdentity: modelDelivery.whisperRegistration?.manifest.identity
+        whisperModelIdentity: modelDelivery.whisperRegistration?.manifest.identity
           .asrModelIdentity,
         outputClassifierHolder: outputClassifierHolder,
         dictationAudioArchiveOptInProvider: { settings.isDictationAudioArchiveEnabled },
@@ -693,9 +693,9 @@ package final class WisprBootstrapper {
         }
       ))
 
-    // Phase F (#501) — `SetupCoordinator` needs `asrManager` + the WhisperKit
-    // preload closure. `[weak whisperKitKernelDriver]` so it does not retain it.
-    // The WhisperKit launch warm-up routes through the shared
+    // Phase F (#501) — `SetupCoordinator` needs `asrManager` + the Whisper
+    // preload closure. `[weak whisperKernelDriver]` so it does not retain it.
+    // The Whisper launch warm-up routes through the shared
     // `ensureEngineWarm(reason: .launch)` (gated by `SetupCoordinator` on
     // `setupState == .ready`, so it only fires for a downloaded model — never
     // an unprompted download for a non-opted-in user).
@@ -710,8 +710,8 @@ package final class WisprBootstrapper {
       runDocumentsMigration: { [weak whisperMigration] in
         await whisperMigration?.runLaunch()
       },
-      preloadAction: { [weak whisperKitKernelDriver] in
-        await whisperKitKernelDriver?.ensureEngineWarm(reason: .launch)
+      preloadAction: { [weak whisperKernelDriver] in
+        await whisperKernelDriver?.ensureEngineWarm(reason: .launch)
         #if DEBUG
           // Re-check the SELECTED and ACTIVE backend, not just this driver's
           // own readiness (#2377, C1 repair). A backend switch mid-await can
@@ -721,7 +721,7 @@ package final class WisprBootstrapper {
           // ColdPressGuard (#879) false alarm this marker exists to avoid.
           if settings.selectedBackend == .whisper,
             asrManager.activeBackendType == .whisper,
-            whisperKitKernelDriver?.engineReadiness == .ready
+            whisperKernelDriver?.engineReadiness == .ready
           {
             OverlayFirstRenderMarkers.emitEngineReadyOnce()
           }
@@ -744,8 +744,8 @@ package final class WisprBootstrapper {
     // 2c: the Remove drain's engine-unload seam — assignable only now that the
     // driver (and its adapter) exist; the wiring that built the coordinator ran
     // before them. L1: the drain awaits this BEFORE the delivery deletion.
-    whisper.removal.unloadForRemoval = { [weak whisperKitKernelDriver] in
-      await whisperKitKernelDriver?.unloadEngineForRemoval()
+    whisper.removal.unloadForRemoval = { [weak whisperKernelDriver] in
+      await whisperKernelDriver?.unloadEngineForRemoval()
     }
     // ONE lookup, three readers: the polish-runtime eviction rule below, the
     // import page's privacy line, and the configuration an import freezes at
@@ -817,7 +817,7 @@ package final class WisprBootstrapper {
     }
     let settingsSync = PipelineSettingsSync(
       kernelDriver: kernelDriver,
-      whisperKitKernelDriver: whisperKitKernelDriver,
+      whisperKernelDriver: whisperKernelDriver,
       audioCapture: audioCapture,
       asrManager: asrManager,
       hotkeyService: hotkeyService,
@@ -1039,15 +1039,15 @@ package final class WisprBootstrapper {
       correctorConsumers: [
         kernelDriver.wordCorrection,
         kernelDriver.learnedWordCheck,
-        whisperKitKernelDriver.wordCorrection,
-        whisperKitKernelDriver.learnedWordCheck,
+        whisperKernelDriver.wordCorrection,
+        whisperKernelDriver.learnedWordCheck,
         // #1988: the preview corrects displayed text with the SAME lane, so a
         // user's own names do not visibly mangle while the pasted text is fixed.
         livePreview,
       ],
       polishConsumers: [
         kernelDriver.llmPolish,
-        whisperKitKernelDriver.llmPolish,
+        whisperKernelDriver.llmPolish,
       ],
       coordinator: customWordsCoordinator,
       packManager: vocabularyPackManager
@@ -1068,9 +1068,9 @@ package final class WisprBootstrapper {
     // Recovery is wired separately, at `RecoverySpoolReplayer`'s `currentSnippets` provider,
     // because that processor is built per replay.
     let seedSnippets: @MainActor (SnippetVocabulary) -> Void = {
-      [kernelDriver, whisperKitKernelDriver] vocabulary in
+      [kernelDriver, whisperKernelDriver] vocabulary in
       kernelDriver.snippetExpansion.snippetVocabulary = vocabulary
-      whisperKitKernelDriver.snippetExpansion.snippetVocabulary = vocabulary
+      whisperKernelDriver.snippetExpansion.snippetVocabulary = vocabulary
     }
     seedSnippets(snippetsCoordinator.vocabulary)
     snippetsCoordinator.onVocabularyChanged = seedSnippets
@@ -1213,7 +1213,7 @@ package final class WisprBootstrapper {
 
     // Pre-load the selected backend's model in the background to eliminate
     // cold-start delay. Parakeet: shared warm-up via the active driver.
-    // WhisperKit: observation-based (waits for setupState to become .ready
+    // Whisper: observation-based (waits for setupState to become .ready
     // first, then `preloadAction` → `ensureEngineWarm`).
     // #3546 row T: Settings' Try again loads right after the granted cycle,
     // through the same guarded warm-up, only while Parakeet is selected and
@@ -1233,7 +1233,7 @@ package final class WisprBootstrapper {
         // (`EngineWarmupOutcome` does not declare Sendable conformance).
         _ = await kernelDriver?.ensureEngineWarm(reason: .launch)
         #if DEBUG
-          // Same re-check as the WhisperKit path, mirrored: the SELECTED and
+          // Same re-check as the Whisper path, mirrored: the SELECTED and
           // ACTIVE backend, not just this driver's own readiness (#2377, C1
           // repair).
           if settings.selectedBackend == .parakeet,
@@ -1253,7 +1253,7 @@ package final class WisprBootstrapper {
     // Transcription step rather than the one the manager happens to own.
     let activeEngine = ActiveEngineOperation.live(
       asrManager: asrManager, parakeetUpgrade: parakeetUpgrade,
-      whisperKitBackend: whisperKitBackend)
+      whisperBackend: whisperBackend)
 
     // The benchmark is a FOURTH workload on the one inference slot, so it takes
     // the same claim a dictation, a replay and an import take. Built here rather
@@ -1298,7 +1298,7 @@ package final class WisprBootstrapper {
 
     let liveRecordingState = LiveRecordingState(
       kernelDriver: kernelDriver,
-      whisperKitKernelDriver: whisperKitKernelDriver,
+      whisperKernelDriver: whisperKernelDriver,
       audioCapture: audioCapture,
       asrManager: asrManager
     )
@@ -1366,7 +1366,7 @@ package final class WisprBootstrapper {
       // otherwise-uncancellable recovery load/transcribe aborts and the next
       // recording gets a clean engine. Routed through the active-engine door
       // because recovery itself runs there: resetting only the Parakeet manager
-      // would leave a WhisperKit recovery uncancellable (Codex 2b-r2 P1).
+      // would leave a Whisper recovery uncancellable (Codex 2b-r2 P1).
       resetEngine: { [activeEngine] in Task { await activeEngine.hardCancel() } })
     // #1741 Chunk 3 — now that `recoveryCoordinator` exists, the shared
     // `engineMutationScope`'s wake closure (constructed before `asrManager`,
@@ -1397,14 +1397,14 @@ package final class WisprBootstrapper {
       dependencies: EngineCoordinator.Dependencies(
         selectedBackend: { settings.selectedBackend },
         activeBackend: { [asrManager] in asrManager.activeBackendType },
-        readiness: { [kernelDriver, whisperKitKernelDriver] backend in
-          (backend == .whisper ? whisperKitKernelDriver : kernelDriver).engineReadiness
+        readiness: { [kernelDriver, whisperKernelDriver] backend in
+          (backend == .whisper ? whisperKernelDriver : kernelDriver).engineReadiness
         },
         // #2787: an engine whose abandoned decode is still running is ACTIVE
         // for switching purposes, whatever the pipeline state says.
-        isEngineActive: { [kernelDriver, whisperKitKernelDriver, engineLease] backend in
+        isEngineActive: { [kernelDriver, whisperKernelDriver, engineLease] backend in
           engineLease.currentHolder == .abandonedDecode
-            || (backend == .whisper ? whisperKitKernelDriver : kernelDriver).state.isActive
+            || (backend == .whisper ? whisperKernelDriver : kernelDriver).state.isActive
         },
         isRecovering: { [weak recoveryCoordinator] in recoveryCoordinator?.isRecovering ?? false },
         // `isEngineHeld`, not `isRunning`: Stop flips the visible state at the
@@ -1415,8 +1415,8 @@ package final class WisprBootstrapper {
         isInstalled: { [setup] backend in
           backend == .parakeet ? true : setup.whisperSetup.setupState == .ready
         },
-        stateLabel: { [kernelDriver, whisperKitKernelDriver] backend in
-          (backend == .whisper ? whisperKitKernelDriver : kernelDriver).state.telemetryLabel
+        stateLabel: { [kernelDriver, whisperKernelDriver] backend in
+          (backend == .whisper ? whisperKernelDriver : kernelDriver).state.telemetryLabel
         },
         performSwitch: { [asrManager, parakeetUpgrade] backend in
           // #3546 E21: an actual transition INTO Parakeet is a selection point;
@@ -1429,8 +1429,8 @@ package final class WisprBootstrapper {
           // #3546 §3.7 T3: the model tags follow the engine now active.
           ASRModelScopeOwner.shared.activate(backend)
         },
-        warm: { [kernelDriver, whisperKitKernelDriver] backend in
-          await (backend == .whisper ? whisperKitKernelDriver : kernelDriver)
+        warm: { [kernelDriver, whisperKernelDriver] backend in
+          await (backend == .whisper ? whisperKernelDriver : kernelDriver)
             .ensureEngineWarm(reason: .engineSwap)
         },
         // #1707 Phase 3 (§3.2, row 4) / #1741 Chunk 7: `startWarm()`'s
@@ -1489,14 +1489,14 @@ package final class WisprBootstrapper {
       recoveryCoordinator?.requestRecoveryRecheck()
     }
     // Rows 4/12/13/15/16/18 (via `ensureEngineWarm()`'s shared choke point) +
-    // row 6 (the WhisperKit adapter) + row 21 (the owned
+    // row 6 (the Whisper adapter) + row 21 (the owned
     // `RecordingSessionKernel`'s `preWarm()`) — #1741 Chunk 9: `kernelDriver`
-    // and `whisperKitKernelDriver`, their owned kernels, and the WhisperKit
+    // and `whisperKernelDriver`, their owned kernels, and the Whisper
     // adapter all received the shared `engineMutationScope` directly at
     // THEIR OWN construction, via the factories above; no post-init
     // forwarding needed here anymore. §3.4's "active dictation ended" wake-up
     // cause still needs per-driver wiring.
-    for driver in [kernelDriver, whisperKitKernelDriver] {
+    for driver in [kernelDriver, whisperKernelDriver] {
       driver.onDictationEndedForRecovery = { [weak recoveryCoordinator] in
         recoveryCoordinator?.requestRecoveryRecheck()
       }
@@ -1578,7 +1578,7 @@ package final class WisprBootstrapper {
         }))
     let dictationLifecycleCoordinator = DictationLifecycleCoordinator(
       kernelDriver: kernelDriver,
-      whisperKitKernelDriver: whisperKitKernelDriver,
+      whisperKernelDriver: whisperKernelDriver,
       recordingOverlay: recordingOverlay,
       hotkeyService: hotkeyService,
       settingsSync: settingsSync,
@@ -1610,7 +1610,7 @@ package final class WisprBootstrapper {
       audioCapture: audioCapture,
       asrManager: asrManager,
       kernelDriver: kernelDriver,
-      whisperKitKernelDriver: whisperKitKernelDriver,
+      whisperKernelDriver: whisperKernelDriver,
       settings: settings,
       permissions: permissions,
       recordingOverlay: recordingOverlay,
@@ -1779,9 +1779,9 @@ package final class WisprBootstrapper {
     // counts from Start, before its claim. The word check's idle
     // timer asks a narrower question, work that uses THAT check (`inFlightWorkNeedsWordCheck`).
     let isWorkInFlight: @MainActor () -> Bool = {
-      [weak kernelDriver, weak whisperKitKernelDriver, weak engineLease] in
+      [weak kernelDriver, weak whisperKernelDriver, weak engineLease] in
       kernelDriver?.currentSessionConfig != nil
-        || whisperKitKernelDriver?.currentSessionConfig != nil
+        || whisperKernelDriver?.currentSessionConfig != nil
         || engineLease?.isBusy == true
         // An import is running from Start, including while it readies the engine before it claims
         // the lease (#3289 final review).
@@ -1803,13 +1803,13 @@ package final class WisprBootstrapper {
           checkerEligibility?.wordCheck?.isWantedForTelemetry ?? false
         )
       },
-      emit: { [asrManager, kernelDriver, whisperKitKernelDriver] sample in
+      emit: { [asrManager, kernelDriver, whisperKernelDriver] sample in
         TelemetryService.shared.appIdleMemory(
           footprintMB: sample.footprintMB, minutesSinceLaunch: sample.minutesSinceLaunch,
           wordCheckLoaded: sample.wordCheckLoaded, wordCheckWanted: sample.wordCheckWanted,
           // #3546 §3.7 T1: the active engine's loaded model, nil when none is loaded.
           model: asrManager.activeBackendType == .whisper
-            ? whisperKitKernelDriver.servingModelAttribution
+            ? whisperKernelDriver.servingModelAttribution
             : kernelDriver.servingModelAttribution)
       })
     idleMemoryObserver.start()
@@ -1828,7 +1828,7 @@ package final class WisprBootstrapper {
       audioCapture: audioCapture,
       asrManager: asrManager,
       kernelDriver: kernelDriver,
-      whisperKitKernelDriver: whisperKitKernelDriver,
+      whisperKernelDriver: whisperKernelDriver,
       setup: setup,
       dictationRuntime: dictationRuntime,
       dictationLifecycleCoordinator: dictationLifecycleCoordinator,
@@ -1846,13 +1846,13 @@ package final class WisprBootstrapper {
       onRecordingStarted: {
         [
           weak learnFromEdits, weak checkerEligibility, weak kernelDriver,
-          weak whisperKitKernelDriver
+          weak whisperKernelDriver
         ] in
         learnFromEdits?.recordingStarted()
         // The take's frozen provider (set at arming), never the mutable setting.
         guard
           let provider = kernelDriver?.currentSessionConfig?.llmProvider
-            ?? whisperKitKernelDriver?.currentSessionConfig?.llmProvider
+            ?? whisperKernelDriver?.currentSessionConfig?.llmProvider
         else { return }
         checkerEligibility?.wordCheck?.recordingStarted(
           needsWordCheckForRecording: LearnedWordCheckerEngine(provider: provider) == nil)
@@ -1920,14 +1920,14 @@ package final class WisprBootstrapper {
     let fileImportCoordinator = FileImportCoordinator(
       decode: { url in try await AudioFileDecoder.decode(url: url) },
       // **The user's locked language reaches ASR, not just the cleanup.** Cloud
-      // review found `.default` here: WhisperKit uses `options.language` to turn
+      // review found `.default` here: Whisper uses `options.language` to turn
       // auto-detection OFF and Parakeet uses it for its language/script filter,
       // so a locked non-English recording could be recognised in the wrong
       // script before post-processing ever saw it.
       // **Through `ActiveEngineOperation`, which is the ONE door for "whichever
       // speech engine is active".** Calling `asrManager.transcribe` directly
       // reached Parakeet and only Parakeet: with All Languages selected it threw
-      // `ASRManagerNotOwnedError`, because WhisperKit does not live in the
+      // `ASRManagerNotOwnedError`, because Whisper does not live in the
       // manager.
       //
       // No load here: `ensureEngineReady` above owns warming, and it runs before
@@ -2037,13 +2037,13 @@ package final class WisprBootstrapper {
       // the adapters covers both engines rather than one of them twice.
       // Idempotent, so both are always touched rather than whichever looks
       // active.
-      disarmEngineTimers: { [kernelDriver, whisperKitKernelDriver] in
+      disarmEngineTimers: { [kernelDriver, whisperKernelDriver] in
         kernelDriver.cancelPendingEngineUnload()
-        whisperKitKernelDriver.cancelPendingEngineUnload()
+        whisperKernelDriver.cancelPendingEngineUnload()
       },
-      rearmEngineTimers: { [kernelDriver, whisperKitKernelDriver, settings] in
+      rearmEngineTimers: { [kernelDriver, whisperKernelDriver, settings] in
         kernelDriver.applyEngineUnloadPolicy(settings.modelUnloadPolicy)
-        whisperKitKernelDriver.applyEngineUnloadPolicy(settings.modelUnloadPolicy)
+        whisperKernelDriver.applyEngineUnloadPolicy(settings.modelUnloadPolicy)
       },
       engineSelectionSettled: { [settings, asrManager] in
         settings.selectedBackend == asrManager.activeBackendType
@@ -2102,7 +2102,7 @@ package final class WisprBootstrapper {
       // The wizard's steps WRITE settings when the user picks, so freezing
       // settings here freezes exactly what the user chose on those screens.
       beginRun: {
-        [settings, customWordsPropagator, localPolishRuntimes, kernelDriver, whisperKitKernelDriver]
+        [settings, customWordsPropagator, localPolishRuntimes, kernelDriver, whisperKernelDriver]
         in
         let snapshot = FileImportSettingsFreeze.snapshot(settings: settings)
         fileImportRunner.freeze(settings: snapshot, vocabulary: customWordsPropagator.corrector)
@@ -2120,8 +2120,8 @@ package final class WisprBootstrapper {
         configuration.asrModel = FileImportSettingsFreeze.frozenASRModel(
           backend: configuration.backendType,
           parakeetServing: kernelDriver.servingModelAttribution,
-          whisperKitServing: whisperKitKernelDriver.servingModelAttribution,
-          whisperKitValidated: whisperKitKernelDriver.requestedModelAttribution)
+          whisperServing: whisperKernelDriver.servingModelAttribution,
+          whisperValidated: whisperKernelDriver.requestedModelAttribution)
         // #2772: **the import starts its OWN bundled polisher.**
         //
         // Since the import's polisher is chosen independently of dictation's, EG-1 can be
@@ -2215,12 +2215,12 @@ package final class WisprBootstrapper {
     // coordinator exists, so the closure can see it.
     checkerEligibility.wordCheck?.inFlightWorkNeedsWordCheck = {
       [
-        weak kernelDriver, weak whisperKitKernelDriver, weak fileImportCoordinator,
+        weak kernelDriver, weak whisperKernelDriver, weak fileImportCoordinator,
         weak fileImportRunner
       ] in
       WordCheckRuntime.workNeedsWordCheck(
         dictationProviders: [
-          kernelDriver?.currentSessionConfig, whisperKitKernelDriver?.currentSessionConfig,
+          kernelDriver?.currentSessionConfig, whisperKernelDriver?.currentSessionConfig,
         ]
         .compactMap { $0?.llmProvider },
         importHoldsEngine: fileImportCoordinator?.isEngineHeld == true,
@@ -2362,7 +2362,7 @@ package final class WisprBootstrapper {
           after: outcome, dataLossDisclosureScheduled: mayOfferCard == false)
       })
     kernelDriver.polishSetupHooks = polishSetupTakeHooks
-    whisperKitKernelDriver.polishSetupHooks = polishSetupTakeHooks
+    whisperKernelDriver.polishSetupHooks = polishSetupTakeHooks
     self.polishSetup = PolishSetupWiring(
       savedKeyPresence: savedKeyPresence, monitor: polishSetupMonitor, card: polishSetupCard)
     self.vocabularyPackManager = vocabularyPackManager
@@ -2376,7 +2376,7 @@ package final class WisprBootstrapper {
     // #1173: App-owned settings-change telemetry observer.
     self.settingsChangeTelemetry = settingsChangeTelemetry
 
-    // #1171 — launch the coordinator's reconcile worker + WhisperKit setup-state
+    // #1171 — launch the coordinator's reconcile worker + Whisper setup-state
     // observation and fire the initial reconcile. Wiring above (the picker /
     // recovery / driver-state pokes) is all set, so the worker drains correctly.
     // At boot active == selected (`setInitialBackendType` above), so the first
@@ -2401,7 +2401,7 @@ package final class WisprBootstrapper {
     // | `isSharedEngineBusy` (+ S1-mini) | `EngineLease.isBusy` | the lease itself |
     // | `isOllamaModelPinnedInFlight` | the two session configs | `importPinnedOllamaModel` |
     // | the ASR idle-unload timer | `cancelIdleTimer` / `noteTranscriptionComplete` | bracketed around the hold |
-    // | THIS one, WhisperKit Remove | dictation config + minting flag | the lease term below |
+    // | THIS one, Whisper Remove | dictation config + minting flag | the lease term below |
     //
     // Sweeping that list found exactly one gap, this seam: an All Languages
     // import held the engine while Remove deleted the model out from under it,
@@ -2412,8 +2412,8 @@ package final class WisprBootstrapper {
     // Found by Codex; the sweep is mine.
     setup.whisperSetup.isDictationInFlight = {
       [weak settingsSync, weak engineCoordinator, weak engineLease] in
-      (settingsSync?.isWhisperKitDictationInFlight() ?? true)
-        || (engineCoordinator?.isMintingWhisperKitSession ?? true)
+      (settingsSync?.isWhisperDictationInFlight() ?? true)
+        || (engineCoordinator?.isMintingWhisperSession ?? true)
         || (engineLease?.isBusy ?? true)
     }
     engineCoordinator.start()

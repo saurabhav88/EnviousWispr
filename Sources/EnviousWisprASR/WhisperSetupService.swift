@@ -137,7 +137,7 @@ public final class WhisperSetupService {
       progress: 0,
       status: String(
         localized: "Starting download...",
-        comment: "Speech engine settings, WhisperKit model: download status line."))
+        comment: "Speech engine settings, Whisper model: download status line."))
     downloadIntentEpoch += 1
     let epoch = downloadIntentEpoch
     Task { [startDownload, weak self] in
@@ -217,7 +217,7 @@ public final class WhisperSetupService {
     // atomic reservation is a press-path gate: the thing L7 removed. The
     // seconds-long drain case cannot host a session at all — a live fetch
     // implies no admitted model, so a press lands on the honest cold-press
-    // pill and never mints a WhisperKit session. What remains is a
+    // pill and never mints a Whisper session. What remains is a
     // milliseconds window no human can aim at.
     if isDictationInFlight?() != false {
       removeNotice = .refusedDictationInFlight

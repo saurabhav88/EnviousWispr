@@ -370,7 +370,7 @@ import Testing
     }
 
     /// #2787 (Codex chunk-2 P1): a cancel DURING RECORDING never projects
-    /// stop-waiting, even with a decode in flight — a live WhisperKit streaming
+    /// stop-waiting, even with a decode in flight — a live Whisper streaming
     /// decode is the normal state there, and that audio is discarded (#1755).
     @Test("a cancel before transcribing projects the ordinary cancelled ending even with a decode in flight")
     func cancelBeforeTranscribingIsNeverStopWaiting() async {

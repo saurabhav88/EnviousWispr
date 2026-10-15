@@ -84,7 +84,7 @@ enum WhisperPreviewDeliveryWiring {
   /// **The condition is per-BACKEND, and an earlier version got that wrong.** It
   /// mirrored `WhisperEngineAdapter`'s gate — toggle on AND language locked —
   /// and applied it to both engines. But that language condition is
-  /// WhisperKit-adapter-specific: the KERNEL sets
+  /// Whisper-adapter-specific: the KERNEL sets
   /// `shouldStream = config.useStreamingASR && adapter.capabilities.supportsStreaming`
   /// with no language term at all (`RecordingSessionKernel.swift:1858` at aed04f9c), and
   /// Parakeet advertises `supportsStreaming: true`

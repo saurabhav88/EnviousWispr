@@ -91,7 +91,7 @@ struct SmartInsertionSettingRoutingTests {
     // owners makes a future live-sync addition fail here rather than silently
     // altering an in-flight dictation.
     for forbidden in [
-      "settings.smartInsertion", "kernelDriver", "whisperKitKernelDriver", "audioCapture",
+      "settings.smartInsertion", "kernelDriver", "whisperKernelDriver", "audioCapture",
       "hotkeyService",
     ] {
       #expect(

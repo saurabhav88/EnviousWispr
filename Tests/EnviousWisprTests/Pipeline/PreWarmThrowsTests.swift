@@ -8,7 +8,7 @@ import Testing
 /// Issue #289 — verify the `AudioCaptureInterface.preWarm` contract now
 /// propagates errors. Full pipeline-level integration tests for the
 /// `handle(event:)` / `handleCaptureStall` recovery paths are gapped for
-/// follow-up (requires mocks for `ASRManagerInterface` + `WhisperKitBackend`
+/// follow-up (requires mocks for `ASRManagerInterface` + `Whisper backend`
 /// that don't yet exist in this repo). The core behavior is validated by
 /// deliberate-failure UAT in the PR (inject `PreWarmFailedError.simulated`
 /// and observe recovery to `.error`).

@@ -4,18 +4,18 @@ import Foundation
 @testable import EnviousWisprASR
 @testable import EnviousWisprPipeline
 
-// MARK: - StubWhisperKitBackend (epic #827, PR-5 Rung 3 §11.2)
+// MARK: - StubWhisperBackend (epic #827, PR-5 Rung 3 §11.2)
 //
 // Configurable test double for the `WhisperBackendDriving` actor-bound
 // protocol declared in `WhisperEngineAdapter.swift`. Lets
-// `WhisperKitEngineAdapterTests` drive the adapter without loading a real
-// WhisperKit model. The actor-bound seam means this stub must itself be an
+// `WhisperEngineAdapterTests` drive the adapter without loading a real
+// Whisper model. The actor-bound seam means this stub must itself be an
 // `actor` (the protocol declares `: Actor`).
 //
 // Members mirror the protocol surface 1:1. Configurable behavior knobs +
 // observed counters follow the `StubParakeetASRManager` shape.
 
-actor StubWhisperKitBackend: WhisperBackendDriving {
+actor StubWhisperBackend: WhisperBackendDriving {
 
   // MARK: Configurable behavior
 
@@ -23,7 +23,7 @@ actor StubWhisperKitBackend: WhisperBackendDriving {
   /// protocol's `isReady` getter. The adapter refreshes `cachedReadiness`
   /// from this value on every transition.
   var isReady = false
-  var modelVariantName: String = "stub-whisperkit-large-v3"
+  var modelVariantName: String = "stub-whisper-large-v3-turbo"
   /// #1275: stub for the warm-up-inference duration read. Defaults nil
   /// (matches a fresh backend before any load's warm-up completes).
   var lastWarmupInferenceMs: Int?
@@ -42,7 +42,7 @@ actor StubWhisperKitBackend: WhisperBackendDriving {
   var streamingSessionFactory: (@Sendable () -> (any WhisperIncrementalSession)?)?
 
   /// When set, `transcribe(...)` yields N times before returning — models a
-  /// decode suspended in WhisperKit while a new session begins.
+  /// decode suspended in Whisper while a new session begins.
   var slowTranscribe = false
 
   // MARK: Observed counters

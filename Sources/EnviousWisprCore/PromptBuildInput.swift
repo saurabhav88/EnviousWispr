@@ -33,7 +33,7 @@ public struct PromptBuildInput: Sendable {
 
   /// Active ASR backend for this polish request. Set explicitly by the
   /// pipeline so the planner can dispatch on engine identity rather than
-  /// inferring it from `languageDetection == nil` (fragile: a WhisperKit
+  /// inferring it from `languageDetection == nil` (fragile: a Whisper
   /// codepath that forgets to run the detector would silently fall through
   /// to the English-centric legacy prompt). Nil means "unknown callsite"
   /// and preserves legacy passthrough behavior as a safety net.

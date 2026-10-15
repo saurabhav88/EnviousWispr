@@ -274,8 +274,8 @@ struct HeartPathTelemetryEmitterTests {
     }
   }
 
-  @Test("noAudioCaptured dedup breadcrumb for WhisperKit carries WhisperKit-tagged message")
-  func noAudioDedupBreadcrumbWhisperKitTag() {
+  @Test("noAudioCaptured dedup breadcrumb for Whisper carries Whisper-tagged message")
+  func noAudioDedupBreadcrumbWhisperTag() {
     let recorder = Recorder()
     let emitter = Self.makeEmitter(backend: .whisper, recorder: recorder)
 

@@ -47,7 +47,6 @@ package func recoveryFailureClass(for error: any Error) -> RecoveryFailureClass?
     case .streamingNotSupported, .streamingTimeout: return nil
     }
   }
-  if error is WhisperKitModelLoadSentryError { return .whisperKitModelLoad }
   if let whisper = error as? TranscribeCppWhisperError {
     switch whisper {
     case .loadFailed: return .whisperModelLoad

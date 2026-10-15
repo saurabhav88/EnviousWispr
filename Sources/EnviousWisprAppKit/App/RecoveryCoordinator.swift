@@ -1462,10 +1462,10 @@ final class RecoveryCoordinator {
         // A replay that never returns therefore never releases. That is not new:
         // `isRecovering` is cleared by this same `defer`, so a wedged replay
         // already blocked every record press before this claim existed
-        // (`RecordingStarter`'s recovery gate). WhisperKit is the known case —
-        // `WhisperKitBackend.swift:537` says cancellation depends on
-        // transcription returning, and Discard's `unload()` does not interrupt a
-        // running Core ML decode.
+        // (`RecordingStarter`'s recovery gate). The retired WhisperKit backend was the known
+        // case: its cancellation depended on transcription returning, and Discard's `unload()`
+        // did not interrupt a running Core ML decode. Since #3735 a cancelled transcribe.cpp
+        // run is aborted and waited for, so a replay returns once that native run ends.
         engineAdmission.release(engineTokenForThisItem)
         onRecoveryComplete?()
       }

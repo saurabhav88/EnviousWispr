@@ -1459,7 +1459,7 @@ struct LivePreviewCoordinatorTests {
 
   // MARK: - #2108: the prepared engine is released when preview is disabled
 
-  /// The universal engine holds a loaded WhisperKit model, so the cached-engine
+  /// The universal engine holds a loaded Whisper model, so the cached-engine
   /// slot now pins roughly 50-60 MB. It is otherwise cleared only when the
   /// candidate KEY changes, and turning the preview off changes no key — so an
   /// engine prepared before the user disabled it stayed cached for the life of
@@ -1536,7 +1536,7 @@ struct LivePreviewCoordinatorTests {
   /// WHEN it fires. All of them CANCELLED the session task and moved on — and a
   /// cancelled task still owns its engine and its session until it reaches
   /// `session.end()`. So the next recording could open a second session over the
-  /// same cached WhisperKit instance while the previous one was still inside its
+  /// same cached Whisper instance while the previous one was still inside its
   /// final decode: the exact corruption the turnover lock and the joinable
   /// `end()` exist to prevent, reached from a layer above both.
   ///

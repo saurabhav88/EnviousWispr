@@ -67,29 +67,4 @@ package enum KernelAdapterFactory {
     adapter.startMemoryPressureBinding(to: backend)
     return adapter
   }
-
-  /// The single WhisperKit adapter construction site in `Sources/`.
-  /// `audioCaptureSessionIDSource` mirrors the adapter's own parameter (PR-5
-  /// Rung 4.5) so the adapter can snapshot the capture session id at
-  /// `beginSession` for race-safe delayed LID perf signposts.
-  /// `batchDecodeFaultController` (#1707 Phase 2): DEBUG fault-injection
-  /// oracle, defaulted `nil` so every existing test call site is unaffected.
-  package static func makeWhisperKitAdapter(
-    backend: any WhisperBackendDriving,
-    languageDetector: LanguageDetector,
-    audioCaptureSessionIDSource: @escaping @MainActor () -> UInt64,
-    engineMutationScope: EngineMutationScope,
-    vendorDecodeOccupancy: VendorDecodeOccupancy,
-    deliveredModelIdentity: ASRModelIdentity?,
-    batchDecodeFaultController: BatchDecodeFaultController? = nil
-  ) -> any ASREngineAdapter {
-    WhisperEngineAdapter(
-      backend: backend,
-      engineMutationScope: engineMutationScope,
-      languageDetector: languageDetector,
-      audioCaptureSessionIDSource: audioCaptureSessionIDSource,
-      vendorDecodeOccupancy: vendorDecodeOccupancy,
-      batchDecodeFaultController: batchDecodeFaultController,
-      deliveredModelIdentity: deliveredModelIdentity)
-  }
 }

@@ -45,12 +45,16 @@ mkdir -p "$LOG_DIR"
 # inside it is the receipt not running: any skip fails the battery (cloud
 # review r6). Regenerate the candidates with (the admitted/installed gates are
 # spelled differently per fixture, so the pattern names them all):
-#   grep -rlE "shippedModelIsAdmitted|shippedModelIsInstalled|modelsInstalled|firstEligibleRealDevice|ShippedBackendLatency" Tests
+#   grep -rlE "shippedModelIsAdmitted|shippedModelIsInstalled|modelsInstalled|modelIsPresent|modelsArePresent|firstEligibleRealDevice|ShippedBackendLatency" Tests
 SUITES=(
   "EnviousWisprASRTests/ParakeetRealBoundaryTests"
-  "EnviousWisprASRTests/WhisperKitWordTimingRealBoundaryTests"
+  # #3735: the transcribe.cpp Whisper engine and Universal preview on the real models.
+  "EnviousWisprASRTests/TranscribeCppRealBoundaryTests"
+  "EnviousWisprASRTests/TranscribeCppExecutorRealBoundaryTests"
+  "EnviousWisprASRTests/TranscribeCppWhisperBackendRealBoundaryTests"
+  "EnviousWisprASRTests/TranscribeCppPreviewRealBoundaryTests"
+  "EnviousWisprTests/WhisperProductionWiringRealBoundaryTests"
   "EnviousWisprTests/ShippedBackendLatencyTests"
-  "EnviousWisprTests/WhisperKitRealBoundaryTests"
   "EnviousWisprTests/FileImportRealBoundaryTests"
   "EnviousWisprTests/KernelFrozenBindGuardTests"
   "EnviousWisprTests/SpeakerLabelerTests"

@@ -33,7 +33,7 @@ struct LanguageLockOptionsTests {
   /// it as the multilingual engine's full catalogue, so a well-meaning cleanup
   /// to a non-optional empty set would render an empty picker.
   @Test("The multilingual engine is unrestricted, and unrestricted is nil not empty")
-  func whisperKitIsUnrestricted() {
+  func whisperIsUnrestricted() {
     #expect(LanguageLockOptions.lockableCodes(for: .whisper) == nil)
   }
 

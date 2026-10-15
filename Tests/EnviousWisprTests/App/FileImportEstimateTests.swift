@@ -41,10 +41,10 @@ struct FileImportEstimateTests {
     #expect(ImportEstimateWording.text(seconds: 3_600) == "about 60 minutes")
   }
 
-  /// WhisperKit is the slower engine (30-second windows): the 120-minute file took 741 s from
+  /// Whisper is the slower engine (30-second windows): the 120-minute file took 741 s from
   /// Start to stored on 2026-09-13 (6.2 s per audio minute) against 467 s on Parakeet.
-  @Test("WhisperKit's estimate is longer than Parakeet's on the same file")
-  func whisperKitEstimateIsLonger() {
+  @Test("Whisper's estimate is longer than Parakeet's on the same file")
+  func whisperEstimateIsLonger() {
     #expect(FileImportCoordinator.secondsPerAudioMinute(for: .whisper) == 6.2)
     #expect(FileImportCoordinator.secondsPerAudioMinute(for: .parakeet) == 3.8)
     #expect(FileImportCoordinator.estimateText(audioSeconds: 7_208.7, backend: .whisper) == "about 12 minutes")

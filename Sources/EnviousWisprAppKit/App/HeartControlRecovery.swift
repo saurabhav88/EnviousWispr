@@ -7,7 +7,7 @@ import Foundation
 ///
 /// Two shapes:
 /// - `logDispatchFailure` — log only. Use when the caller has already reset overlay + lock
-///   before the dispatch (Stop, WhisperKit Cancel paths).
+///   before the dispatch (Stop, Whisper Cancel paths).
 /// - `recover` — full recovery: log, hide overlay, clear lock, surface the terminal notice
 ///   via the driver's `setTerminalReason` closure (#1558: a TYPED reason, not English — the
 ///   presenter authors the sentence). Use when the caller has NOT pre-reset state (Toggle paths).

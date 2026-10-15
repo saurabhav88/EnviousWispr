@@ -62,7 +62,7 @@ final class AppLifecycleCoordinator {
   private let audioCapture: any AudioCaptureInterface
   private let asrManager: any ASRManagerInterface
   private let kernelDriver: KernelDictationDriver
-  private let whisperKitKernelDriver: KernelDictationDriver
+  private let whisperKernelDriver: KernelDictationDriver
   private let setup: SetupCoordinator
   private let dictationRuntime: DictationRuntime
   private let dictationLifecycleCoordinator: DictationLifecycleCoordinator
@@ -106,7 +106,7 @@ final class AppLifecycleCoordinator {
     audioCapture: any AudioCaptureInterface,
     asrManager: any ASRManagerInterface,
     kernelDriver: KernelDictationDriver,
-    whisperKitKernelDriver: KernelDictationDriver,
+    whisperKernelDriver: KernelDictationDriver,
     setup: SetupCoordinator,
     dictationRuntime: DictationRuntime,
     dictationLifecycleCoordinator: DictationLifecycleCoordinator,
@@ -136,7 +136,7 @@ final class AppLifecycleCoordinator {
     self.audioCapture = audioCapture
     self.asrManager = asrManager
     self.kernelDriver = kernelDriver
-    self.whisperKitKernelDriver = whisperKitKernelDriver
+    self.whisperKernelDriver = whisperKernelDriver
     self.setup = setup
     self.dictationRuntime = dictationRuntime
     self.dictationLifecycleCoordinator = dictationLifecycleCoordinator
@@ -198,7 +198,7 @@ final class AppLifecycleCoordinator {
     // `SetupCoordinator` (it already owns this engine's setup lifecycle), so no
     // new dependency lands on this coordinator. A limb: never blocks launch, and
     // a denied prompt leaves the user's copy untouched.
-    setup.startWhisperKitMigrationThenDetect()
+    setup.startWhisperMigrationThenDetect()
 
     // Update menu bar icon whenever pipeline state changes. The closure is
     // composite — it also triggers the audio-environment snapshotter on
@@ -339,7 +339,7 @@ final class AppLifecycleCoordinator {
         let endpoint = DebugFaultEndpoint(
           audioCapture: audioCapture as? AudioCaptureManager,
           kernelDriver: kernelDriver,
-          whisperKitKernelDriver: whisperKitKernelDriver,
+          whisperKernelDriver: whisperKernelDriver,
           activeBackend: { [weak self] in
             self?.settings.selectedBackend ?? .parakeet
           },

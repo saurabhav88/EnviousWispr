@@ -6,7 +6,7 @@ import Foundation
 /// engine choices from it, so they can never disagree about an engine's name, model or specs.
 ///
 /// Model names stay verbatim product names. `ASRBackendType.displayName` is not the shipped
-/// model name for WhisperKit, so the cards never read it.
+/// model name for Whisper, so the cards never read it.
 enum EngineChoicePresentation {
   /// A spec-table value: translated copy, or a product name shown as written.
   enum SpecValue: Sendable {
@@ -78,8 +78,8 @@ enum EngineChoicePresentation {
   // card AND a live in-app test (French/Spanish/German, 2026-07-03); transcribe times come from
   // our own benchmark data (asr-landscape-2026.md). The "Runs on" values are read from the
   // actual compute-unit config: Parakeet loads `.cpuAndNeuralEngine` (FluidAudio
-  // AsrModels.defaultConfiguration), WhisperKit is pinned `.cpuAndGPU` and explicitly avoids
-  // the Neural Engine (WhisperKitBackend dictationComputeOptions, #879). Both run entirely
+  // AsrModels.defaultConfiguration); Whisper runs on transcribe.cpp's Metal (GPU) backend
+  // (#3735; the retired WhisperKit also avoided the Neural Engine, #879). Both run entirely
   // on-device. Copy advertises Parakeet's 25 European languages, not just English (founder,
   // 2026-07-03).
   static let fast = fast(parakeetModel: fastModelName)

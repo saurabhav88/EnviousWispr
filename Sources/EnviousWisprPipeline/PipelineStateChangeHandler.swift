@@ -4,7 +4,7 @@ import Foundation
 
 /// Executes the side-effect plan produced by `PipelineStateChangePlanner`.
 ///
-/// One instance per pipeline (Parakeet / WhisperKit). The handler holds no
+/// One instance per pipeline (Parakeet / Whisper). The handler holds no
 /// pipeline reference itself — the caller passes the pipeline-scoped inputs
 /// (`pipelineOverlayIntent`, `lastPolishError`, `currentTranscript`) for each
 /// transition. the former root state remains the owner of cross-pipeline state (the
@@ -16,7 +16,7 @@ import Foundation
 /// `schedulePostCompletionWarning` at the former root-state file treats
 /// the WhisperKit driver's state at `.complete` (pre-Rung-5 also `.ready`)
 /// delayed guard. That check crosses pipeline boundaries (the warning can be
-/// scheduled from Parakeet's closure and still fire if WhisperKit is in
+/// scheduled from Parakeet's closure and still fire if Whisper is in
 /// `.ready` when the 400 ms sleep wakes). Moving the task into a per-pipeline
 /// handler would split that shared lifecycle across two owners — a behavior
 /// change, not a refactor. Preserved verbatim via the `cancelPendingWarning`

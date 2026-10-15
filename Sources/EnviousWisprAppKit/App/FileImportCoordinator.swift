@@ -163,7 +163,7 @@ final class FileImportCoordinator {
   /// How long the run is expected to take, for "Ready in about 3 minutes": one constant
   /// per audio minute, per engine. Parakeet: calibrated on four Parakeet + EG-1 runs on
   /// 2026-09-13 (4 to 120 audio minutes; 3.25 to 3.89 s per audio minute from Start to
-  /// stored; the 48-minute run's Start is approximate). WhisperKit decodes in 30-second
+  /// stored; the 48-minute run's Start is approximate). Whisper decodes in 30-second
   /// windows and is the slower engine by a wide margin: the 120-minute file took 741 s from
   /// Start to stored on the same night (6.2 s per audio minute; #2919's run), against 467 s
   /// on Parakeet. The run is one polish call per speaker section, except sections too short
@@ -337,7 +337,7 @@ final class FileImportCoordinator {
 
   // MARK: - Progress the Working card can draw (#2918)
 
-  /// How far transcription is, 0...1, from the engine's own report (WhisperKit: the max
+  /// How far transcription is, 0...1, from the engine's own report (Whisper: the max
   /// segment end over the file's length, one tick per finished window; Parakeet: its chunk
   /// stream), or nil before the first tick and outside the transcribing step. Only ever moves
   /// up within a run (windows finish out of order); reset where the run's other per-run
@@ -1777,7 +1777,7 @@ final class FileImportCoordinator {
       // read v3 as loaded while it unloads it; the readiness drive waits for that
       // switch to settle, and returns at once when nothing is in flight.
       //
-      // **This await is a suspension point a Stop can land in.** For WhisperKit,
+      // **This await is a suspension point a Stop can land in.** For Whisper,
       // readiness hops to the backend actor, so the window is real rather than
       // theoretical. It does not throw on cancellation, so without the guard a
       // stopped run carried on and transcribed. Found by cloud review.

@@ -51,7 +51,7 @@ struct SpeechEngineSettingsView: View {
   }
 
   /// The two-engine selector: a pair of square selectable cards. Fast (Parakeet)
-  /// leads on speed; All Languages (WhisperKit) leads on breadth. Adaptive grid
+  /// leads on speed; All Languages (Whisper) leads on breadth. Adaptive grid
   /// so the pair reflows to a single column as the content card narrows.
   private var engineCards: some View {
     // ── Transcription Engine (card selector) ─────────────────────────
@@ -140,7 +140,7 @@ struct SpeechEngineSettingsView: View {
         // the reported bug (Greek recognised in German speech). The two engines
         // genuinely do different amounts with a lock, and that difference is
         // carried by the help copy below, not by a different control or label.
-        // WhisperKit still waits for setup: its language list is only meaningful
+        // Whisper still waits for setup: its language list is only meaningful
         // once its model is ready. Parakeet's lock is a stored preference that
         // applies at decode time, so it needs no readiness gate.
         if languageSectionIsAvailable {
@@ -234,7 +234,7 @@ struct SpeechEngineSettingsView: View {
 
         // ── Section 4: Transcription Mode ────────────────────────────────
         // #1276 Step 2 (PR-2): the "Faster Transcription" toggle now shows for both
-        // engines (it binds the same `useStreamingASR`). On WhisperKit with
+        // engines (it binds the same `useStreamingASR`). On Whisper with
         // Auto-detect language, streaming safely uses clean batch instead
         // (the footnote explains why); a picked language streams.
         if settings.selectedBackend == .parakeet || settings.selectedBackend == .whisper {
@@ -518,7 +518,7 @@ struct SpeechEngineSettingsView: View {
         .padding(.leading, 4)
     }
 
-    // ── Section 2: WhisperKit Model Setup (conditional) ───────────────
+    // ── Section 2: Whisper Model Setup (conditional) ───────────────
     if settings.selectedBackend == .whisper {
           VStack(alignment: .leading, spacing: 6) {
             whisperSetupContent
@@ -619,7 +619,7 @@ struct SpeechEngineSettingsView: View {
 
   // MARK: - Language section (#1678)
 
-  /// WhisperKit's list is only meaningful once its model is ready. Parakeet's
+  /// Whisper's list is only meaningful once its model is ready. Parakeet's
   /// lock is a stored preference applied at decode time, so it has no such gate.
   private var languageSectionIsAvailable: Bool {
     switch settings.selectedBackend {
@@ -871,7 +871,7 @@ struct SpeechEngineSettingsView: View {
     return "en"
   }
 
-  // MARK: - WhisperKit Setup UI
+  // MARK: - Whisper Setup UI
 
   @ViewBuilder
   private var whisperSetupContent: some View {
@@ -903,16 +903,16 @@ struct SpeechEngineSettingsView: View {
           }
           .settingsMapRegistration(.whisperModelSetUp)
 
-          whisperKitRefreshButton
+          whisperRefreshButton
         }
       }
 
     case .downloading(let progress, let status):
       VStack(alignment: .leading, spacing: 8) {
-        whisperKitStepIndicator(
+        whisperStepIndicator(
           LocalizedStringResource(
             "Downloading...",
-            comment: "Speech engine settings, WhisperKit model: the current setup step."))
+            comment: "Speech engine settings, Whisper model: the current setup step."))
 
         ProgressView(value: progress)
           .progressViewStyle(.linear)
@@ -944,10 +944,10 @@ struct SpeechEngineSettingsView: View {
 
     case .paused:
       VStack(alignment: .leading, spacing: 8) {
-        whisperKitStepIndicator(
+        whisperStepIndicator(
           LocalizedStringResource(
             "Download Paused",
-            comment: "Speech engine settings, WhisperKit model: the current setup step."))
+            comment: "Speech engine settings, Whisper model: the current setup step."))
         Text("Download paused. Resume anytime.")
           .settingsReadingCopy()
         HStack {
@@ -955,7 +955,7 @@ struct SpeechEngineSettingsView: View {
             setup.whisperSetup.downloadModel()
           }
           .settingsMapRegistration(.whisperModelResume)
-          whisperKitRefreshButton
+          whisperRefreshButton
         }
       }
 
@@ -1025,7 +1025,7 @@ struct SpeechEngineSettingsView: View {
             .foregroundStyle(.stError)
             .settingsArrivalFocusControl()
             .settingsMapRegistration(.whisperModelRemove)
-            whisperKitRefreshButton
+            whisperRefreshButton
           }
         }
       }
@@ -1053,14 +1053,14 @@ struct SpeechEngineSettingsView: View {
   }
 
   @ViewBuilder
-  private func whisperKitStepIndicator(_ title: LocalizedStringResource) -> some View {
+  private func whisperStepIndicator(_ title: LocalizedStringResource) -> some View {
     Label(String(localized: title), systemImage: "1.circle.fill")
       .foregroundStyle(Color.stAccent)
       .font(.stRowLabel)
   }
 
   @ViewBuilder
-  private var whisperKitRefreshButton: some View {
+  private var whisperRefreshButton: some View {
     Button {
       Task { await setup.whisperSetup.forceDetectState() }
     } label: {

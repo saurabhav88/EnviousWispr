@@ -97,9 +97,9 @@ import Testing
 
   /// `end()` is idempotent AND awaitable: a second caller waits for the same
   /// teardown rather than returning early. An early return would let the
-  /// recognizer open a new decode loop over the shared WhisperKit instance while
+  /// recognizer open a new decode loop over the shared Whisper instance while
   /// the old session's still-returning transcribe was still running — the
-  /// decoder-state corruption `WhisperKitStreamingSession.cancel()` documents.
+  /// decoder-state corruption `Whisper streaming session.cancel()` documents.
   @Test("end is safe and complete when called twice, from two callers")
   func endIsIdempotentAndAwaitable() async {
     let box = Box()
@@ -122,7 +122,7 @@ import Testing
   // MARK: - #2108: the ten-minute cap must not orphan a running decode
 
   /// A session whose `cancel()` blocks until the test lets it finish, standing in
-  /// for the real one still inside a WhisperKit transcribe.
+  /// for the real one still inside a Whisper transcribe.
   ///
   /// Held through `WhisperIncrementalSession` rather than the concrete type,
   /// which is the only reason a teardown that must WAIT can be observed at all.
@@ -165,7 +165,7 @@ import Testing
   ///
   /// The failure it prevents: cap fires, the user stops and immediately starts
   /// another recording, `end()` sees no session and returns instantly, and a new
-  /// decode loop begins on the same cached WhisperKit instance while the old
+  /// decode loop begins on the same cached Whisper instance while the old
   /// transcribe is still in it. That is the decoder-state corruption the whole
   /// turnover design exists to prevent, reached through a path that bypasses it.
   ///

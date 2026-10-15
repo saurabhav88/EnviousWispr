@@ -248,7 +248,7 @@ struct KernelASRCompletedTelemetry {
   let charCount: Int
   let mode: String
   let language: String?
-  // PR-5 Rung 5 Pass 2 r2 #B1: WhisperKit-only — whether incremental-worker
+  // PR-5 Rung 5 Pass 2 r2 #B1: Whisper-only — whether incremental-worker
   // output was accepted vs batch fallback. Restores the `"incremental"` key the
   // OLD `WhisperKitPipeline.swift:1049-1052` ASR-completed breadcrumb carried.
   // nil for Parakeet (no incremental concept) → sink omits the key.
@@ -281,7 +281,7 @@ struct KernelASRCompletedTelemetry {
   var asrLastTokenEndMs: Int? = nil
   var asrLastTokenGapMs: Int? = nil
   var asrChunked: Bool? = nil
-  // #1309 effective-path streaming telemetry (WhisperKit only; nil omitted).
+  // #1309 effective-path streaming telemetry (Whisper only; nil omitted).
   // `mode` above is the REQUESTED mode (kernel capability gate);
   // `streamingRequested` restates it as an explicit boolean so the event can
   // filter requested-vs-effective without string parsing. All metadata.
@@ -303,7 +303,7 @@ struct KernelASRCompletedTelemetry {
 }
 
 struct KernelASRAdapterDiagnostics {
-  // #1309 effective-path telemetry (WhisperKit adapter; nil for Parakeet).
+  // #1309 effective-path telemetry (Whisper adapter; nil for Parakeet).
   // `streamingEffective`: did a streaming flush deliver the transcript.
   // `streamingDegradeReason`: none / disabled / auto_language /
   // model_not_ready / flush_empty / flush_throw.
@@ -330,8 +330,8 @@ struct KernelASRAdapterDiagnostics {
   var batchRescueAttempted: Bool? = nil
   var batchRescueResultChars: Int? = nil
 
-  // PR-5 Rung 3 (#827): WhisperKit-specific finalize diagnostics. The
-  // WhisperKit adapter populates these on every terminal outcome so the
+  // PR-5 Rung 3 (#827): Whisper-specific finalize diagnostics. The
+  // Whisper adapter populates these on every terminal outcome so the
   // kernel's lifecycle sink can render the asr-empty-with-speech-evidence
   // payload (today's `WhisperKitPipeline.swift:1005-1019` Sentry call).
   // Sink-side wiring lands in Rung 5; adapter-side population lands here.
@@ -344,7 +344,7 @@ struct KernelASRAdapterDiagnostics {
   var incrementalMode: String? = nil
   var incrementalTailDecodeMs: Int? = nil
 
-  // PR-5 Rung 4.5 (#827): LID perf signpost transport. The WhisperKit adapter
+  // PR-5 Rung 4.5 (#827): LID perf signpost transport. The Whisper adapter
   // populates these during finalize so `KernelFinalizationWiring.deliver` can
   // emit `t_clipboard_write` with the same `session_id` + LID-shape fields the
   // OLD pipeline carried (`WhisperKitPipeline.swift:1079-1086`). Parakeet does

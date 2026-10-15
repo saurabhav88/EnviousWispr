@@ -101,7 +101,7 @@ final class ModelDeliveryHome {
   }
   /// #3546: the Parakeet selection-policy owner, built here because this home
   /// owns the Parakeet registration and handle (plan §3b, the
-  /// `WhisperKitLegacyUpgradeCoordinator` precedent). Set once by
+  /// precedent of the retired WhisperKit legacy upgrade coordinator). Set once by
   /// `installParakeetUpgrade(parakeetSelection:isOnboardingComplete:)`.
   private(set) var parakeetUpgrade: ParakeetUpgradeCoordinator?
 

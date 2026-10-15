@@ -1085,7 +1085,7 @@ public final class SettingsManager {
     }
   }
 
-  /// WhisperKit language code (ISO 639-1). Manual selection, not auto-detect.
+  /// Legacy WhisperKit language code (ISO 639-1), kept for the W2 `languageMode` migration.
   /// EN, DE, TA supported. "en" is default.
   /// Deprecated: superseded by `languageMode` (Multilingual v1). Retained for
   /// one-time migration and will be removed in a later stream.

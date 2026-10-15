@@ -22,7 +22,7 @@ import Foundation
 @MainActor
 package final class BatchDecodeFaultController {
   /// #3735: the Whisper route's transcribe.cpp backend (it replaced `WhisperKitBackend`).
-  private let whisperKitBackend: LiveTranscribeCppWhisperBackend?
+  private let whisperBackend: LiveTranscribeCppWhisperBackend?
   // #1908: widened from the concrete `ASRManagerProxy?` to the shared
   // interface — a hard downcast to the proxy type went silently dark
   // (`nil`, no build error, no test failure) the moment the composition
@@ -31,9 +31,9 @@ package final class BatchDecodeFaultController {
   private let asrManager: (any ASRManagerInterface)?
 
   package init(
-    whisperKitBackend: LiveTranscribeCppWhisperBackend?, asrManager: (any ASRManagerInterface)?
+    whisperBackend: LiveTranscribeCppWhisperBackend?, asrManager: (any ASRManagerInterface)?
   ) {
-    self.whisperKitBackend = whisperKitBackend
+    self.whisperBackend = whisperBackend
     self.asrManager = asrManager
   }
 
@@ -46,7 +46,7 @@ package final class BatchDecodeFaultController {
   }
 
   private var parakeetPendingFailure: PendingFailure = .none
-  private var whisperKitPendingFailure: PendingFailure = .none
+  private var whisperPendingFailure: PendingFailure = .none
 
   package func failNextBatchDecode(backend: ASRBackendType) {
     setPendingFailure(.next, backend: backend)
@@ -64,7 +64,7 @@ package final class BatchDecodeFaultController {
   private func setPendingFailure(_ value: PendingFailure, backend: ASRBackendType) {
     switch backend {
     case .parakeet: parakeetPendingFailure = value
-    case .whisper: whisperKitPendingFailure = value
+    case .whisper: whisperPendingFailure = value
     }
   }
 
@@ -93,10 +93,10 @@ package final class BatchDecodeFaultController {
       case .every: return true
       }
     case .whisper:
-      switch whisperKitPendingFailure {
+      switch whisperPendingFailure {
       case .none: return false
       case .next:
-        whisperKitPendingFailure = .none
+        whisperPendingFailure = .none
         return true
       case .every: return true
       }
@@ -142,7 +142,7 @@ package final class BatchDecodeFaultController {
     package func holdBatchDecode(backend: ASRBackendType, trialID: String) async {
       switch backend {
       case .whisper:
-        await whisperKitBackend?.armBatchDecodeHold(trialID: trialID)
+        await whisperBackend?.armBatchDecodeHold(trialID: trialID)
       case .parakeet:
         await asrManager?.armBatchDecodeHold(trialID: trialID)
       }
@@ -152,7 +152,7 @@ package final class BatchDecodeFaultController {
     package func releaseBatchDecode(backend: ASRBackendType, trialID: String) async {
       switch backend {
       case .whisper:
-        await whisperKitBackend?.releaseBatchDecode(trialID: trialID)
+        await whisperBackend?.releaseBatchDecode(trialID: trialID)
       case .parakeet:
         await asrManager?.releaseBatchDecode(trialID: trialID)
       }
@@ -175,7 +175,7 @@ package final class BatchDecodeFaultController {
       let backendSnapshot: BatchDecodeFaultSnapshotState?
       switch backend {
       case .whisper:
-        backendSnapshot = await whisperKitBackend?.queryBatchDecodeFault(trialID: trialID)
+        backendSnapshot = await whisperBackend?.queryBatchDecodeFault(trialID: trialID)
       case .parakeet:
         backendSnapshot = BatchDecodeFaultSnapshotFile.shared.read()
           .flatMap { $0.trialID == trialID ? $0 : nil }
@@ -192,12 +192,12 @@ package final class BatchDecodeFaultController {
 
     /// Clears all armed/held state (both backends) and the kernel-side
     /// timestamps, so a forgotten trial from one Live UAT scenario cannot
-    /// leak into the next. Both backends: WhisperKit in-process, Parakeet
+    /// leak into the next. Both backends: Whisper in-process, Parakeet
     /// across XPC via `ASRManagerProxy` — a Parakeet-only trial that skipped
     /// this call would stay held until the 30-second safety release.
     package func clearBatchDecodeFault() async {
       kernelTimestamps = KernelTimestamps()
-      await whisperKitBackend?.clearBatchDecodeFault()
+      await whisperBackend?.clearBatchDecodeFault()
       await asrManager?.clearBatchDecodeFault()
       BatchDecodeFaultSnapshotFile.shared.clear()
     }

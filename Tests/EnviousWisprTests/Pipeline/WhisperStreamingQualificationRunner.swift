@@ -43,7 +43,7 @@ struct WhisperStreamingQualificationRunner {
     try #require(
       !FileManager.default.fileExists(atPath: outPath), "refusing to overwrite \(outPath)")
     let gguf = try #require(env["EW_TRANSCRIBECPP_TURBO_GGUF"])
-    let fingerprint = try WhisperLIDParityRunner.modelFingerprint(atPath: gguf)
+    let fingerprint = try WhisperQualificationFixtures.modelFingerprint(atPath: gguf)
     let expected = try #require(env["EW_STREAM_QUAL_EXPECTED_MODEL_SHA256"])
     try #require(fingerprint == expected, "model fingerprint \(fingerprint) != \(expected)")
 
@@ -66,7 +66,7 @@ struct WhisperStreamingQualificationRunner {
       let row = try #require(JSONSerialization.jsonObject(with: Data(line.utf8)) as? [String: Any])
       let id = row["id"] as? String ?? "?"
       do {
-        let samples = try WhisperLIDParityRunner.loadFrozenPCM(row)
+        let samples = try WhisperQualificationFixtures.loadFrozenPCM(row)
         try emit(try await Self.runClip(id: id, row: row, samples: samples, backend: backend))
       } catch {
         try emit(["kind": "row", "id": id, "status": "error", "error": String(describing: error)])

@@ -312,7 +312,7 @@ import Testing
       ])
   }
 
-  @Test(".asrCompleted carries the 'incremental' key when WhisperKit set it (Pass 2 r2 #B1)")
+  @Test(".asrCompleted carries the 'incremental' key when Whisper set it (Pass 2 r2 #B1)")
   func asrCompletedCarriesIncrementalWhenSet() {
     let recorder = Recorder()
     let state = KernelTelemetryState()
@@ -386,7 +386,7 @@ import Testing
       ])
   }
 
-  @Test(".asrCompleted omits both tail keys when nil (streaming / WhisperKit, #950)")
+  @Test(".asrCompleted omits both tail keys when nil (streaming / Whisper, #950)")
   func asrCompletedOmitsTailKeysWhenNil() {
     let recorder = Recorder()
     let state = KernelTelemetryState()

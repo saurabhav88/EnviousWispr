@@ -29,14 +29,14 @@ struct EngineCoordinatorTests {
     let converged = await enginePoll { fake.active == .whisper }
     #expect(converged, "idle switch must apply")
     #expect(fake.switchCount == 1)
-    let warmed = await enginePoll { fake.whisperKitReadiness == .ready }
+    let warmed = await enginePoll { fake.whisperReadiness == .ready }
     #expect(warmed, "the now-active engine must be warmed")
 
     // #2028 — wait for the SNAPSHOT, not for the fake.
     //
     // `c.status` is republished by the coordinator (`EngineCoordinator.swift`
     // `selectedReadiness: deps.readiness(sel)`); it is not a live read of the
-    // fake. Polling `fake.whisperKitReadiness` above converges the moment the
+    // fake. Polling `fake.whisperReadiness` above converges the moment the
     // FAKE flips, which is strictly before the coordinator has republished — so
     // asserting `c.status` on the next line raced, passed on a fast local
     // machine, and failed on a loaded hosted runner. It failed `build-debug`,
@@ -59,7 +59,7 @@ struct EngineCoordinatorTests {
     let fake = FakeEngineDeps(selected: .parakeet, active: .parakeet)
     let c = fake.makeStartedCoordinator()
     // P -> W -> P -> W back-to-back (synchronous): the mailbox coalesces to the
-    // latest (whisperKit), so the coordinator switches straight to it and never
+    // latest (whisper), so the coordinator switches straight to it and never
     // to the intermediate parakeet.
     fake.selected = .whisper
     c.poke(.settingsChanged)
@@ -68,7 +68,7 @@ struct EngineCoordinatorTests {
     fake.selected = .whisper
     c.poke(.settingsChanged)
     let settled = await enginePoll { fake.active == .whisper && !c.isSwitching }
-    #expect(settled, "the latest selection (whisperKit) must win")
+    #expect(settled, "the latest selection (whisper) must win")
     #expect(
       fake.switchHistory.allSatisfy { $0 == .whisper },
       "must only ever switch toward the latest, never the coalesced intermediate: \(fake.switchHistory)"
@@ -92,7 +92,7 @@ struct EngineCoordinatorTests {
   func supersededMidSwitch() async {
     let fake = FakeEngineDeps(selected: .parakeet, active: .parakeet)
     let latch = AsyncLatch()
-    // While switching to WhisperKit, the user flips back to Parakeet.
+    // While switching to Whisper, the user flips back to Parakeet.
     fake.onSwitchAwait = { [weak fake] in
       fake?.selected = .parakeet
       await latch.wait()
@@ -103,7 +103,7 @@ struct EngineCoordinatorTests {
     let switching = await enginePoll { c.isSwitching }
     #expect(switching)
     latch.release()
-    // The first switch lands on WhisperKit but is detected superseded; the loop
+    // The first switch lands on Whisper but is detected superseded; the loop
     // then switches back to the latest (Parakeet).
     let settled = await enginePoll { fake.active == .parakeet && !c.isSwitching }
     #expect(settled, "must converge to the latest selection after supersession")
@@ -193,7 +193,7 @@ struct EngineCoordinatorTests {
   @Test("not-installed selection never loads, applies once the model downloads")
   func notInstalledDefersUntilDownloaded() async {
     let fake = FakeEngineDeps(selected: .parakeet, active: .parakeet)
-    fake.whisperKitInstalled = false
+    fake.whisperInstalled = false
     let c = fake.makeStartedCoordinator()
     fake.selected = .whisper
     c.poke(.settingsChanged)
@@ -201,7 +201,7 @@ struct EngineCoordinatorTests {
     #expect(stayed == false, "must never attempt a switch to a missing model")
     #expect(c.status.blockedReason == .notInstalled)
     // Download completes (fires even though Fast is active — direct observation).
-    fake.whisperKitInstalled = true
+    fake.whisperInstalled = true
     c.poke(.setupStateChanged)
     let applied = await enginePoll { fake.active == .whisper }
     #expect(applied, "the switch must apply once the model is installed")
@@ -211,7 +211,7 @@ struct EngineCoordinatorTests {
   func deferredWhileActiveEngineWarming() async {
     let fake = FakeEngineDeps(
       selected: .parakeet, active: .parakeet,
-      parakeetReadiness: .warming, whisperKitReadiness: .ready)
+      parakeetReadiness: .warming, whisperReadiness: .ready)
     // Hold the active engine's in-flight load open so the gate-4b defer is
     // observable; the coordinator joins this same (single-flight) warm.
     let latch = AsyncLatch()
@@ -253,7 +253,7 @@ struct EngineCoordinatorTests {
     "isMintingAnySession tracks beginMinting/endMinting for BOTH backends (GitHub cloud review, PR #1732)"
   )
   func isMintingAnySessionTracksBothBackends() async {
-    // `isMintingWhisperKitSession` is scoped to WhisperKit; `RecoveryCoordinator`'s
+    // `isMintingWhisperSession` is scoped to Whisper; `RecoveryCoordinator`'s
     // isDictationActive check needs a backend-agnostic signal so a record-press
     // still mid-start (beginMinting called, not yet an active kernel session)
     // is never mistaken for "engine free" regardless of which backend it targets.
@@ -318,7 +318,7 @@ struct EngineCoordinatorTests {
   @Test("ensureSelectedReadyForPress returns .notInstalled (no hang) when the model is absent")
   func ensureSelectedReadyForPressReturnsOnNotInstalled() async {
     let fake = FakeEngineDeps(selected: .whisper, active: .parakeet)
-    fake.whisperKitInstalled = false
+    fake.whisperInstalled = false
     let c = fake.makeStartedCoordinator()
     let outcome = await c.ensureSelectedReadyForPress()  // must not deadlock
     // The contract is the OUTCOME (read from live install state); a press on a
@@ -362,7 +362,7 @@ struct EngineCoordinatorTests {
   func ensureSelectedReadyForPressWaitsThroughLoading() async {
     let fake = FakeEngineDeps(
       selected: .whisper, active: .parakeet,
-      parakeetReadiness: .warming, whisperKitReadiness: .ready)
+      parakeetReadiness: .warming, whisperReadiness: .ready)
     let latch = AsyncLatch()
     fake.onWarmAwait = { await latch.wait() }
     let c = fake.makeStartedCoordinator()
@@ -408,7 +408,7 @@ struct EngineCoordinatorTests {
     fake.onSwitchAwait = { await latch.wait() }
     let c = fake.makeStartedCoordinator()
     _ = await enginePoll { c.status.active == .parakeet && !c.isSwitching }
-    // Start a switch to WhisperKit (held mid-flight)...
+    // Start a switch to Whisper (held mid-flight)...
     fake.selected = .whisper
     c.poke(.settingsChanged)
     let switching = await enginePoll { c.isSwitching }
@@ -505,7 +505,7 @@ struct EngineCoordinatorTests {
       let applied = try await waiter.waitForEvent(
         matching: {
           $0.name == "settings.change_applied" && $0.stringProps["to"] == "whisper"
-        }, describedAs: "settings.change_applied(to: whisperKit)")
+        }, describedAs: "settings.change_applied(to: whisper)")
       #expect(applied.boolProps["deferred"] == true)
     }
 
@@ -558,7 +558,7 @@ struct EngineCoordinatorTests {
       _ = await enginePoll { fake.active == .parakeet && !c.isSwitching }
       // #1599: the prior assertion only checked the event NAME occurred, so a
       // reversed or missing from/to payload would still pass. `want` was
-      // whisperKit when the switch was superseded back to parakeet mid-await.
+      // whisper when the switch was superseded back to parakeet mid-await.
       let event = try #require(waiter.events.first { $0.name == "engine.switch_superseded" })
       #expect(event.stringProps["from"] == "whisper")
       #expect(event.stringProps["to"] == "parakeet")
@@ -645,7 +645,7 @@ struct EngineCoordinatorTests {
   @Test("a converged ready engine never publishes warmInFlight")
   func warmInFlightStaysNilWhenNothingWarms() async {
     let fake = FakeEngineDeps(
-      selected: .whisper, active: .whisper, whisperKitReadiness: .ready)
+      selected: .whisper, active: .whisper, whisperReadiness: .ready)
     let c = fake.makeStartedCoordinator()
     // Signal, not a window: this returns once the coordinator has fully converged, which is
     // the exact point at which a spurious warm would already have announced itself.

@@ -182,21 +182,21 @@ enum WhisperDeliveryWiring {
             progress: 0,
             status: String(
               localized: "Preparing...",
-              comment: "Speech engine settings, WhisperKit model: download status line.")))
+              comment: "Speech engine settings, Whisper model: download status line.")))
       case .downloading(let fraction, _, _):
         setupService.applyDeliveryState(
           .downloading(
             progress: fraction,
             status: String(
               localized: "Downloading model files...",
-              comment: "Speech engine settings, WhisperKit model: download status line.")))
+              comment: "Speech engine settings, Whisper model: download status line.")))
       case .verifying:
         setupService.applyDeliveryState(
           .downloading(
             progress: 1.0,
             status: String(
               localized: "Verifying...",
-              comment: "Speech engine settings, WhisperKit model: download status line.")))
+              comment: "Speech engine settings, Whisper model: download status line.")))
       case .admitted:
         setupService.applyDeliveryState(.ready)
       case .failed(let failure):

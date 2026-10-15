@@ -6,20 +6,20 @@ import Testing
 @testable import EnviousWisprASR
 @testable import EnviousWisprPipeline
 
-// MARK: - WhisperKitEngineAdapterLastResultLifecycleTests (epic #827, PR-5 Rung 3 §11.2)
+// MARK: - WhisperEngineAdapterLastResultLifecycleTests (epic #827, PR-5 Rung 3 §11.2)
 //
 // Mirrors `ParakeetEngineAdapterLastResultLifecycleTests` against the
-// WhisperKit conformer using `StubWhisperKitBackend` (declared at the bottom
-// of `StubWhisperKitBackend.swift`). The adversarial empty-finalize test
+// Whisper conformer using `StubWhisperBackend` (declared at the bottom
+// of `StubWhisperBackend.swift`). The adversarial empty-finalize test
 // exercises the .empty(hadSpeechEvidence: true) branch — the conformer's
 // most regression-prone path.
 
 @MainActor
-@Suite struct WhisperKitEngineAdapterLastResultLifecycleTests {
+@Suite(.tags(.productOutcome)) struct WhisperEngineAdapterLastResultLifecycleTests {
 
   @Test("lastResult is nil after beginSession()")
   func lastResultNilAfterBeginSession() async throws {
-    let backend = StubWhisperKitBackend()
+    let backend = StubWhisperBackend()
     await backend.setTranscribeResult(
       ASRResult(
         text: "first", language: "en", duration: 1, processingTime: 0.1,
@@ -38,7 +38,7 @@ import Testing
 
   @Test("lastResult is nil after cancel()")
   func lastResultNilAfterCancel() async throws {
-    let backend = StubWhisperKitBackend()
+    let backend = StubWhisperBackend()
     await backend.setTranscribeResult(
       ASRResult(
         text: "done", language: "en", duration: 1, processingTime: 0.1,
@@ -57,7 +57,7 @@ import Testing
 
   @Test("lastResult is NOT set on .empty / non-transcript finalize outcomes")
   func lastResultNotSetOnEmptyFinalize() async throws {
-    let backend = StubWhisperKitBackend()
+    let backend = StubWhisperBackend()
     await backend.setTranscribeResult(
       ASRResult(
         text: "", language: "en", duration: 1, processingTime: 0.1,
@@ -80,7 +80,7 @@ import Testing
 
   @Test("lastResult is NOT set on .failed finalize outcomes")
   func lastResultNotSetOnFailedFinalize() async throws {
-    let backend = StubWhisperKitBackend()
+    let backend = StubWhisperBackend()
     await backend.setTranscribeThrows(StubBackendError.decodeFailed)
     let adapter = WhisperEngineAdapter(
       backend: backend, engineMutationScope: .alwaysAllowedForTesting)
@@ -98,7 +98,7 @@ import Testing
 
   @Test("lastResult is NOT set on .cancelled finalize outcomes")
   func lastResultNotSetOnCancelledFinalize() async throws {
-    let backend = StubWhisperKitBackend()
+    let backend = StubWhisperBackend()
     let adapter = WhisperEngineAdapter(
       backend: backend, engineMutationScope: .alwaysAllowedForTesting)
     try await adapter.beginSession(SessionID(), options: .default, streaming: false)

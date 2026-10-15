@@ -46,8 +46,8 @@ struct WhisperPreviewQualificationRunner {
       !FileManager.default.fileExists(atPath: outPath), "refusing to overwrite \(outPath)")
     let small = try #require(env["EW_TRANSCRIBECPP_SMALL_GGUF"])
     let turbo = try #require(env["EW_TRANSCRIBECPP_TURBO_GGUF"])
-    let smallPrint = try WhisperLIDParityRunner.modelFingerprint(atPath: small)
-    let turboPrint = try WhisperLIDParityRunner.modelFingerprint(atPath: turbo)
+    let smallPrint = try WhisperQualificationFixtures.modelFingerprint(atPath: small)
+    let turboPrint = try WhisperQualificationFixtures.modelFingerprint(atPath: turbo)
     try #require(
       smallPrint == env["EW_PREVIEW_QUAL_EXPECTED_SMALL_SHA256"],
       "small model fingerprint \(smallPrint) is not the approved one")
@@ -75,7 +75,7 @@ struct WhisperPreviewQualificationRunner {
       let row = try #require(JSONSerialization.jsonObject(with: Data(line.utf8)) as? [String: Any])
       let id = row["id"] as? String ?? "?"
       do {
-        let samples = try WhisperLIDParityRunner.loadFrozenPCM(row)
+        let samples = try WhisperQualificationFixtures.loadFrozenPCM(row)
         let residency = TranscribeCppPreviewResidency()
         var result = try await Self.runClip(
           id: id, row: row, samples: samples, small: small, heart: heart, residency: residency)

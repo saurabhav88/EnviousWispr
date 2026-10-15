@@ -51,7 +51,7 @@ struct TailClipDiagnostics: Sendable, Equatable {
   let tail400RMS: Float
   let tail400Peak: Float
   /// Nil unless the decoded ASR input is authoritative (Parakeet batch, unpadded).
-  /// For WhisperKit (decodes its own raw/padded buffer), streaming (live feed),
+  /// For Whisper (decodes its own raw/padded buffer), streaming (live feed),
   /// and padded-to-minimum short utterances, `asrSamples` is NOT what the engine
   /// decoded / includes synthetic silence, so these would be wrong — omit.
   let asrInputDurationMs: Int?
@@ -79,7 +79,7 @@ struct TailClipDiagnostics: Sendable, Equatable {
 
   /// - Parameter decodedInputSampleCount: the sample count the engine ACTUALLY
   ///   decoded, or nil when that is not the unpadded conditioned batch buffer
-  ///   (WhisperKit, streaming, padded short utterance) — ASR-input fields omitted.
+  ///   (Whisper, streaming, padded short utterance) — ASR-input fields omitted.
   static func compute(
     rawSamples: [Float],
     vadSegments: [SpeechSegment],
@@ -135,7 +135,7 @@ struct TailClipDiagnostics: Sendable, Equatable {
     lastTokenGapMs: Int?,
     tailIsDeadAir: Bool
   ) -> Classification {
-    // No authoritative token timing (WhisperKit / streaming / padded / raw-fed) —
+    // No authoritative token timing (Whisper / streaming / padded / raw-fed) —
     // cannot judge the ASR tail.
     guard let gap = lastTokenGapMs else { return .unknown }
     // A dead-air tail means the audio ended in silence: the decoder stopping at

@@ -67,7 +67,7 @@ enum LiveTranscriptionCopy {
     comment: "Speech engine settings, Faster Transcription: the toggle's name.")
   static var toggleLabel: String { String(localized: toggleLabelResource) }
 
-  /// Shown under the toggle only when WhisperKit is selected AND the language is
+  /// Shown under the toggle only when Whisper is selected AND the language is
   /// Auto-detect, because streaming must commit to one language up front and a bad early
   /// guess poisons the whole dictation (#1276). Lives here rather than inline so all of
   /// this toggle's user-facing strings have one home.
@@ -88,7 +88,7 @@ enum LiveTranscriptionCopy {
   }
 
   /// The content of one engine's help panel. Optional fields are genuinely absent for an
-  /// engine rather than empty: WhisperKit has no comparison table because it has no
+  /// engine rather than empty: Whisper has no comparison table because it has no
   /// figures we can defend, and rendering an empty table would read as a bug.
   struct Panel {
     let title: String
@@ -107,14 +107,14 @@ enum LiveTranscriptionCopy {
   static func panel(for backend: ASRBackendType) -> Panel {
     switch backend {
     case .parakeet: return parakeet
-    case .whisper: return whisperKit
+    case .whisper: return whisper
     }
   }
 
   static func toggleDescription(for backend: ASRBackendType) -> String {
     switch backend {
     case .parakeet: return parakeetToggleDescription
-    case .whisper: return whisperKitToggleDescription
+    case .whisper: return whisperToggleDescription
     }
   }
 
@@ -202,7 +202,7 @@ enum LiveTranscriptionCopy {
   /// clarification that lands on only one of two engine descriptions is the partial
   /// port this codebase keeps relearning.
   ///
-  static let whisperKitToggleDescription =
+  static let whisperToggleDescription =
     String(
       localized:
         "Transcribes while you speak instead of once when you stop. Nothing looks different while you record; this only changes when the work happens. It mainly helps on long recordings, and it needs a language selected.",
@@ -210,7 +210,7 @@ enum LiveTranscriptionCopy {
         "Speech engine settings, Faster Transcription: description under the toggle (multilingual engine)."
     )
 
-  static let whisperKit = Panel(
+  static let whisper = Panel(
     title: String(
       localized: "What Faster Transcription changes",
       comment: "Speech engine settings, Faster Transcription: help panel title."),

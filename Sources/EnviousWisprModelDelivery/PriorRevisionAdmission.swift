@@ -50,7 +50,7 @@ public enum PriorRevisionAdmission {
   /// no model name within a family being a prefix of another, which
   /// `ShippedModelNames` freezes over every name ever shipped.
   ///
-  /// VARIANT IS PART OF THE MATCH, not an afterthought. WhisperKit ships
+  /// VARIANT IS PART OF THE MATCH, not an afterthought. The retired WhisperKit pair shipped
   /// stable and Preview with the same family, name and revision, separated
   /// only by variant; if two registrations ever differed only by REVISION,
   /// one would be read as a superseded copy of the other and a live download

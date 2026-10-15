@@ -254,17 +254,17 @@ public final class ASRManager: ASRManagerInterface {
     self.parakeetBackend = parakeetBackendFactory()
   }
 
-  /// The active backend WHEN THIS MANAGER OWNS IT — nil for WhisperKit.
+  /// The active backend WHEN THIS MANAGER OWNS IT — nil for Whisper.
   ///
   /// #1386 PR-2 made this manager Parakeet-only. It used to construct its own
-  /// `WhisperKitBackend`, which was never the instance real dictation used: the
+  /// WhisperKit backend, which was never the instance real dictation used: the
   /// kernel driver builds its own and drives it through `WhisperEngineAdapter`
   /// (`WisprBootstrapper.swift:282`). So this was a duplicate model owner reachable
   /// only from crash recovery and Diagnostics — and under the default
   /// `ASRManagerProxy` those two crossed XPC and had the helper build a THIRD one
   /// (`ASRServiceHandler.swift:77`), where no in-process relocation gate can reach
   /// it. A model mapped behind the gate's back is exactly what PR-2 forbids, so
-  /// WhisperKit is gone from here entirely and both callers route through the
+  /// the Whisper engine is gone from here entirely and both callers route through the
   /// gated adapter instead. XPC stays Parakeet-only, as the architecture intends.
   ///
   /// `activeBackendType` still tracks BOTH engines: it is this manager's
@@ -310,7 +310,7 @@ public final class ASRManager: ASRManagerInterface {
     // real work finish and gets `ASRLoadSupersededError()` from the
     // generation check in `performLoad`, unchanged.
     //
-    // Switching AWAY from WhisperKit unloads nothing here: the adapter owns that
+    // Switching AWAY from Whisper unloads nothing here: the adapter owns that
     // model's lifecycle, and the instance this manager used to unload was never
     // the one holding real weights.
     await activeBackend?.unload()
@@ -431,8 +431,8 @@ public final class ASRManager: ASRManagerInterface {
     ProgressFile.shared.clear()
 
     guard activeBackendType == .parakeet else {
-      // #1386 PR-2: WhisperKit does not load here. Callers that reach this
-      // with WhisperKit active are on the retired route and must go through
+      // #1386 PR-2: Whisper does not load here. Callers that reach this
+      // with Whisper active are on the retired route and must go through
       // the gated adapter (`ASRManagerNotOwnedError` says so out loud rather
       // than silently loading nothing or, worse, mapping past the gate).
       throw ASRManagerNotOwnedError(backend: activeBackendType)
@@ -906,7 +906,7 @@ public final class ASRManager: ASRManagerInterface {
   /// load's freshly-constructed candidate (§`performLoad`) is never
   /// reachable from outside the load task by design, so its own vendor call
   /// may continue running in the background until it completes or the app
-  /// quits, matching WhisperKit's already-accepted risk for the identical
+  /// quits, matching the Whisper engine's already-accepted risk for the identical
   /// case. `ASRManagerProxy` relies on its own XPC connection invalidation
   /// instead and does not override the protocol's no-op default.
   public func attemptWedgeRecoveryUnload() async {

@@ -20,7 +20,7 @@ final class RecordingStarter {
   let audioCapture: any AudioCaptureInterface
   let asrManager: any ASRManagerInterface
   let kernelDriver: KernelDictationDriver
-  let whisperKitKernelDriver: KernelDictationDriver
+  let whisperKernelDriver: KernelDictationDriver
   let settings: SettingsManager
   let recordingOverlay: OverlayDirector
   /// #904 test seam — the accessibility re-arm step `start()`/`toggle()` run.
@@ -153,7 +153,7 @@ final class RecordingStarter {
   /// recordings on top of in-flight post-processing.
   var isProcessing: Bool {
     if asrManager.activeBackendType == .whisper {
-      let state = whisperKitKernelDriver.state
+      let state = whisperKernelDriver.state
       return state == .transcribing || state == .polishing
     } else {
       let state = kernelDriver.state
@@ -166,7 +166,7 @@ final class RecordingStarter {
   /// shared `ensureEngineWarm`. Computed (not a stored slot or a method), so it
   /// adds no entanglement to this start-path home.
   var activeDriver: KernelDictationDriver {
-    asrManager.activeBackendType == .whisper ? whisperKitKernelDriver : kernelDriver
+    asrManager.activeBackendType == .whisper ? whisperKernelDriver : kernelDriver
   }
 
   /// #1707 Phase 3 — the backend + timestamp of the FIRST recovery refusal in
@@ -249,7 +249,7 @@ final class RecordingStarter {
     audioCapture: any AudioCaptureInterface,
     asrManager: any ASRManagerInterface,
     kernelDriver: KernelDictationDriver,
-    whisperKitKernelDriver: KernelDictationDriver,
+    whisperKernelDriver: KernelDictationDriver,
     settings: SettingsManager,
     permissions: PermissionsService,
     recordingOverlay: OverlayDirector,
@@ -278,7 +278,7 @@ final class RecordingStarter {
     self.audioCapture = audioCapture
     self.asrManager = asrManager
     self.kernelDriver = kernelDriver
-    self.whisperKitKernelDriver = whisperKitKernelDriver
+    self.whisperKernelDriver = whisperKernelDriver
     self.settings = settings
     self.recordingOverlay = recordingOverlay
     self.heartControlRecovery = heartControlRecovery
@@ -302,15 +302,15 @@ final class RecordingStarter {
   func start() async -> RecordingStartOutcome {
     dictationLifecycleCoordinator?.cancelPendingWarning()
     let backend = asrManager.activeBackendType
-    let isWhisperKit = backend == .whisper
-    let active: KernelDictationDriver = isWhisperKit ? whisperKitKernelDriver : kernelDriver
+    let isWhisper = backend == .whisper
+    let active: KernelDictationDriver = isWhisper ? whisperKernelDriver : kernelDriver
     // PR-7 (#827): snapshot engine readiness BEFORE prewarm so the cold-start
     // log cohorts warm/cold/mid-flight; snapshot-at-entry avoids retro-labeling.
-    let readinessAtEntry = (isWhisperKit ? whisperKitKernelDriver : kernelDriver).engineReadiness
-    if isWhisperKit {
-      guard !whisperKitKernelDriver.state.isActive else {
+    let readinessAtEntry = (isWhisper ? whisperKernelDriver : kernelDriver).engineReadiness
+    if isWhisper {
+      guard !whisperKernelDriver.state.isActive else {
         return RecordingStartOutcome.make(
-          pipelineActive: true, continuingSessionID: whisperKitKernelDriver.continuingSessionID)
+          pipelineActive: true, continuingSessionID: whisperKernelDriver.continuingSessionID)
       }
     } else {
       guard !kernelDriver.state.isActive else {
@@ -504,7 +504,7 @@ final class RecordingStarter {
       // release it on the way out, which costs this session's exclusivity and
       // keeps the record button working — the right way round for a limb.
       if let coordinator = dictationLifecycleCoordinator {
-        coordinator.acceptEngineToken(engineToken, mintedBy: isWhisperKit ? .whisper : .parakeet)
+        coordinator.acceptEngineToken(engineToken, mintedBy: isWhisper ? .whisper : .parakeet)
         unmintedEngineToken = nil
       } else {
         Self.reportNilCollaborator(callback: "acceptEngineToken")
@@ -593,9 +593,9 @@ final class RecordingStarter {
     dictationLifecycleCoordinator?.cancelPendingWarning()
     let backend = asrManager.activeBackendType
     let isWK = backend == .whisper
-    let active: KernelDictationDriver = isWK ? whisperKitKernelDriver : kernelDriver
+    let active: KernelDictationDriver = isWK ? whisperKernelDriver : kernelDriver
     let isStartingFromIdle =
-      !(isWK ? whisperKitKernelDriver.state.isActive : kernelDriver.state.isActive)
+      !(isWK ? whisperKernelDriver.state.isActive : kernelDriver.state.isActive)
     // #2648 — held from the claim below until either the mint hands it to the
     // lifecycle coordinator or this call ends without minting. Declared out here
     // because the claim happens inside the start-only gate block and the release
@@ -744,7 +744,7 @@ final class RecordingStarter {
     }
     ColdPressGuard.reconcileSelectedBackend(
       overlay: recordingOverlay,
-      selectedDriver: selected == .whisper ? whisperKitKernelDriver : kernelDriver,
+      selectedDriver: selected == .whisper ? whisperKernelDriver : kernelDriver,
       ensureSelectedReady: ensureSelectedReadyForPress)
     return true
   }
@@ -767,7 +767,7 @@ final class RecordingStarter {
     return DictationSessionConfigFactory.make(
       asrManager: asrManager,
       kernelDriver: kernelDriver,
-      whisperKitKernelDriver: whisperKitKernelDriver,
+      whisperKernelDriver: whisperKernelDriver,
       settings: settings,
       triggerSource: triggerSource,
       recoverySessionID: recovery?.recoverySessionID,

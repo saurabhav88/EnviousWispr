@@ -75,7 +75,8 @@ import Testing
 
   /// A different FAMILY sharing the metadata directory must be untouched. All
   /// engines share one `staging/` root, so a sweep run for EG-1 that matched
-  /// loosely would delete Parakeet's or WhisperKit's work.
+  /// loosely would delete Parakeet's or Whisper's work. The `whisper_kit-` key is a
+  /// retired family's leftover, which must stay invisible too.
   @Test func ignoresOtherFamiliesInTheSharedStagingRoot() throws {
     let dirs = try makeDirs()
     defer { dirs.cleanup() }
@@ -90,24 +91,23 @@ import Testing
     #expect(found.isEmpty, "an EG-1 sweep must not see other families")
   }
 
-  /// THE case that nearly shipped wrong. WhisperKit stable and Preview share
-  /// family, name AND revision, and differ only by variant. A sweep for one
+  /// THE case that nearly shipped wrong (#2109): two variants of one model share
+  /// family, name AND revision (the retired WhisperKit pair did). A sweep for one
   /// must never see the other, or it deletes a live download.
   @Test func neverMatchesADifferentVariantOfTheSameModel() throws {
     let dirs = try makeDirs()
     defer { dirs.cleanup() }
 
     let stable = identity(
-      family: .whisperKit, name: "whisperkit-coreml", revision: "aaa",
-      variant: "openai_whisper-large-v3-v20240930_turbo")
-    let previewKey = "whisper_kit-whisperkit-coreml-aaa-openai_whisper-small_216MB"
+      family: .whisper, name: "whisper-large-v3-turbo-gguf", revision: "aaa", variant: "q8_0")
+    let previewKey = "whisper-whisper-large-v3-turbo-gguf-aaa-q5_0"
     try seedStaging(dirs.metadata, key: previewKey)
 
     let found = PriorRevisionAdmission.supersededStagingURLs(
       for: stable, metadataDirectory: dirs.metadata)
 
     #expect(
-      found.isEmpty, "Preview differs only by variant and is a LIVE model, not a superseded one")
+      found.isEmpty, "the other variant differs only by variant and is LIVE, not superseded")
   }
 
   /// The hyphen-ambiguous real key, which is why the revision cannot be
@@ -191,7 +191,7 @@ import Testing
 
     let parakeet = try seedStaging(
       dirs.metadata, key: "parakeet-parakeet-tdt-0.6b-v3-coreml-abc-int8")
-    let preview = try seedStaging(
+    let retired = try seedStaging(
       dirs.metadata, key: "whisper_kit-whisperkit-coreml-aaa-openai_whisper-small_216MB")
     let superseded = try seedStaging(dirs.metadata, key: "eg_one-eg-1-v2-sharded-q5km")
 
@@ -202,7 +202,7 @@ import Testing
 
     #expect(exists(superseded) == false, "the EG-1 sweep did not do its job")
     #expect(exists(parakeet) == true, "Parakeet's staging was deleted by an EG-1 sweep")
-    #expect(exists(preview) == true, "WhisperKit Preview's staging was deleted by an EG-1 sweep")
+    #expect(exists(retired) == true, "a retired family's staging was deleted by an EG-1 sweep")
   }
 
   /// Nothing to do must mean nothing done. A sweep with no superseded
@@ -334,10 +334,11 @@ import Testing
     #expect(exists(impostor), "the file was destroyed")
   }
 
-  /// The REAL shipped pair, both directions, with their actual cache keys
-  /// rather than synthetic ones. Stable and Preview differ only by variant and
-  /// each must be invisible to the other's sweep.
-  @Test func theShippedWhisperKitPairIsMutuallyInvisible() throws {
+  /// The REAL shipped Whisper pair (#3735: dictation turbo and the Universal preview's
+  /// small model), both directions, with their actual cache keys rather than synthetic
+  /// ones. They share the family and one metadata directory; each must be invisible to
+  /// the other's sweep.
+  @Test func theShippedWhisperPairIsMutuallyInvisible() throws {
     let dirs = try makeDirs()
     defer { dirs.cleanup() }
 
@@ -354,15 +355,13 @@ import Testing
       let url = resourceDir.appendingPathComponent("\(resource).json")
       return try DeliveryManifest.load(from: try Data(contentsOf: url)).identity
     }
-    let stable = try shippedIdentity("whisperkit-delivery-manifest")
-    let preview = try shippedIdentity("whisperkit-preview-delivery-manifest")
-    // Equal REVISIONS is part of "differ only by variant" and is the half that
-    // makes this pair dangerous: same family, same name, same revision means
-    // only the variant separates them in the cache key.
+    let stable = try shippedIdentity("whisper-delivery-manifest")
+    let preview = try shippedIdentity("whisper-preview-delivery-manifest")
+    // Same family is the half that makes this pair worth testing: one shared metadata
+    // directory, so only the name (and revision) separates them in the cache key.
     try #require(
-      stable.family == preview.family && stable.name == preview.name
-        && stable.revision == preview.revision && stable.variant != preview.variant,
-      "the shipped pair no longer differs ONLY by variant, so this test no longer covers that case")
+      stable.family == .whisper && preview.family == .whisper && stable.name != preview.name,
+      "the shipped pair no longer shares the Whisper family, so this test no longer covers it")
 
     try seedStaging(dirs.metadata, key: stable.cacheKey)
     try seedStaging(dirs.metadata, key: preview.cacheKey)

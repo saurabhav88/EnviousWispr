@@ -44,7 +44,7 @@ struct ActiveEngineLoadPostconditionTests {
 
     let op = ActiveEngineOperation.live(
       asrManager: manager, parakeetUpgrade: .legacyForTesting(),
-      whisperKitBackend: Self.unusedBackend())
+      whisperBackend: Self.unusedBackend())
 
     await #expect(throws: ASREngineNotReadyAfterLoadError.self) {
       try await op.load()
@@ -63,7 +63,7 @@ struct ActiveEngineLoadPostconditionTests {
 
     let op = ActiveEngineOperation.live(
       asrManager: manager, parakeetUpgrade: .legacyForTesting(),
-      whisperKitBackend: Self.unusedBackend())
+      whisperBackend: Self.unusedBackend())
 
     try await op.load()
     #expect(manager.isModelLoaded, "the loader made it ready and the postcondition agreed")
@@ -109,7 +109,7 @@ struct ReadinessRetryTelemetryContractTests {
     manager.readyAfterLoad = false
     let engine = ActiveEngineOperation.live(
       asrManager: manager, parakeetUpgrade: .legacyForTesting(),
-      whisperKitBackend: LiveTranscribeCppWhisperBackend(
+      whisperBackend: LiveTranscribeCppWhisperBackend(
           driver: LiveWhisperExecutorDriver(), modelVariant: "q8_0", admittedModelPath: { nil }))
     let suite = BenchmarkSuite(
       engineMutationScope: .alwaysAllowedForTesting, isEngineSwitching: { false })
@@ -135,7 +135,7 @@ struct ReadinessRetryTelemetryContractTests {
     manager.readyAfterLoad = false
     let engine = ActiveEngineOperation.live(
       asrManager: manager, parakeetUpgrade: .legacyForTesting(),
-      whisperKitBackend: LiveTranscribeCppWhisperBackend(
+      whisperBackend: LiveTranscribeCppWhisperBackend(
           driver: LiveWhisperExecutorDriver(), modelVariant: "q8_0", admittedModelPath: { nil }))
     let lease = EngineLease()
     var released = 0

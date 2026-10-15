@@ -261,10 +261,10 @@ final class RecordingSessionKernel {
   /// Disarms this engine's pending model-unload timer.
   ///
   /// **Each engine arms its OWN timer and they are cancelled by different
-  /// calls.** Parakeet's lives on `ASRManager` (`cancelIdleTimer`); WhisperKit's
+  /// calls.** Parakeet's lives on `ASRManager` (`cancelIdleTimer`); Whisper's
   /// is a `Task` on its adapter and only `cancelPendingUnload()` stops it. File
   /// import cancelled the first and not the second, so an All Languages import
-  /// following a WhisperKit dictation could still have its model unloaded
+  /// following a Whisper dictation could still have its model unloaded
   /// mid-transcription. Found by cloud review — the twin of the finding one
   /// round earlier, which is the question I did not ask: which OTHER engine has
   /// one of these.
@@ -1211,7 +1211,7 @@ final class RecordingSessionKernel {
       guard !recordingExitLatched else { return }
       // Latched; the forward path's checkpoint consumes `stopLatched` and concludes
       // `.discarded(.releasedBeforeRecording)`. `detachedAdapterCancel()` breaks a
-      // model-warmup await that has no deadline (WhisperKit) — without it, a stop
+      // model-warmup await that has no deadline (Whisper) — without it, a stop
       // during a slow cold load would strand the session until the load finished
       // (impl-design consult, Dec 1).
       stopLatched = true
@@ -1854,7 +1854,7 @@ final class RecordingSessionKernel {
     // (PR-4 plan §3.3a). The kernel owns the streaming-vs-batch policy: the
     // user's `useStreamingASR` setting ANDed with the adapter's static
     // streaming capability (PR-4 plan §3.4). A non-streaming engine (PR-5
-    // WhisperKit) is never asked to stream.
+    // Whisper) is never asked to stream.
     let shouldStream = config.useStreamingASR && adapter.capabilities.supportsStreaming
     // Stamp BEFORE beginSession so the lifecycle observer reads the correct
     // streaming flag at the `.recording` transition (Codex review #11 r2).
@@ -2497,7 +2497,7 @@ final class RecordingSessionKernel {
     // (possibly zero-suffix-trimmed above) coordinate space so
     // `vadSpeechDurationMs` / the adapter's `voicedDurationSec` / LID window
     // count never count samples that no longer exist — `SampleFilter` and
-    // WhisperKit's own backend already clamp defensively so this was never a
+    // Whisper's own backend already clamp defensively so this was never a
     // crash risk, only a silently-inflated-duration one.
     let vadSegments = Self.clampSegments(rawVadSegments, to: captureResult.samples.count)
     // PR-5 Rung 2B (#827): push the kernel-computed VAD speech segments to
@@ -2511,7 +2511,7 @@ final class RecordingSessionKernel {
     // audio), NOT into the VAD-filtered `conditioned.samples` the adapter
     // receives in `finalize(batchSamples:)` immediately after. The kernel
     // hands the adapter the raw `captureResult.samples` alongside the segments
-    // so a clipTimestamps adapter (WhisperKit) batch-decodes the SAME buffer
+    // so a speech-range adapter (Whisper) batch-decodes the SAME buffer
     // the segments index into — eliminating the shadow-`retainedPCM`
     // divergence that caused the alternating "Audio samples are nil" failure.
     // Adapters that use engine-internal VAD chunking or do not consume
@@ -2561,7 +2561,7 @@ final class RecordingSessionKernel {
     // #950 tail-trim diagnostic. Eligible = the engine decodes the conditioned
     // (VAD-trimmed) batch buffer (Parakeet, via capability) AND this is a batch
     // session; only then does "trailing audio the VAD trim dropped before ASR"
-    // mean anything (WhisperKit decodes the raw capture, so the trim does not
+    // mean anything (Whisper decodes the raw capture, so the trim does not
     // touch its ASR input). Metadata only; never gates the heart path.
     let tailEligible =
       adapter.capabilities.decodesConditionedBatchSamples && effectivelyBatch
@@ -2714,7 +2714,7 @@ final class RecordingSessionKernel {
     // #1707: an ASR-interruption salvage must confirm the engine is actually
     // ready before decoding — the connection that crashed is the SAME one
     // `finalize` would otherwise call into. For every other exit the adapter
-    // was never touched, so this check is a no-op cost (WhisperKit) or is
+    // was never touched, so this check is a no-op cost (Whisper) or is
     // skipped entirely (the guard below is false).
     if telemetryState.interruptedSalvageSource == .asr {
       // #1707 Codex code-diff r6: the app.log file sink only carries
@@ -2803,7 +2803,7 @@ final class RecordingSessionKernel {
       // Parakeet batch session, OR a streaming session whose finalize fell back
       // to the batch rescue — the rescue decodes the conditioned `asrSamples`, so
       // its tokens map onto that timeline (Codex P2). Streaming that returned
-      // text from the live feed, and WhisperKit (decodes its own raw buffer), are
+      // text from the live feed, and Whisper (decodes its own raw buffer), are
       // NOT authoritative. In every authoritative case padding would inflate the
       // gap, so require unpadded (Codex r4).
       let cameFromBatchRescue =
@@ -2863,7 +2863,7 @@ final class RecordingSessionKernel {
       completedTelemetry.asrChunked = tailClip.asrChunked
       // #1309 effective-path streaming telemetry. Requested comes from the
       // kernel's own capability gate; effective/degrade/path from the
-      // adapter's diagnostics. WhisperKit-only (nil for Parakeet → omitted).
+      // adapter's diagnostics. Whisper-only (nil for Parakeet → omitted).
       completedTelemetry.streamingRequested =
         adapterDiag?.streamingEffective != nil ? isStreamingSession : nil
       completedTelemetry.streamingEffective = adapterDiag?.streamingEffective
@@ -2913,7 +2913,7 @@ final class RecordingSessionKernel {
       // #1434 degraded-lead salvage ladder. Runs ONLY where today's outcome is
       // the user-visible asrEmpty failure: real speech evidence (the #964
       // energy-only path keeps its quiet noSpeech routing), batch mode, and a
-      // conditioned-batch engine (capability gate — WhisperKit's finalize
+      // conditioned-batch engine (capability gate — Whisper's finalize
       // decodes its own retained buffer, so the trimmed-batchSamples retry
       // seam doesn't exist there). A Bluetooth link that is settling can
       // poison the first 1-2 s and collapse the whole TDT decode; retrying
@@ -3270,7 +3270,7 @@ final class RecordingSessionKernel {
         // streaming session that fell to batch rescue. A streaming WIN decoded the
         // raw live feed (`acceptAudio` forwards `captureResult.samples`, not the
         // conditioned buffer — :1150-1163 / :1878), so raw.wav is authoritative and
-        // there is no distinct fed buffer. WhisperKit always decodes the raw
+        // there is no distinct fed buffer. Whisper always decodes the raw
         // capture padded to the transcription minimum.
         let decodesConditionedBatch = adapter.capabilities.decodesConditionedBatchSamples
         let cameFromBatchRescue =
@@ -3292,7 +3292,7 @@ final class RecordingSessionKernel {
         } else if decodesConditionedBatch {
           archiveFed = []  // streaming win: raw.wav is the decoded audio
         } else {
-          archiveFed = WhisperKitPipelineSpeechRouting.paddedASRSamples(
+          archiveFed = WhisperPipelineSpeechRouting.paddedASRSamples(
             rawSamples: captureResult.samples,
             minimumSamples: AudioConstants.minimumTranscriptionSamples)
         }
@@ -3381,7 +3381,7 @@ final class RecordingSessionKernel {
     /// capture, not the conditioned buffer), so `asrSamples` is NOT its decode
     /// input and `raw.wav` is the faithful replay. Same `tailEligible ||
     /// cameFromBatchRescue` identity the tail-clip diagnostics use. Returns false
-    /// for WhisperKit (decodes raw padded to the transcription minimum).
+    /// for Whisper (decodes raw padded to the transcription minimum).
     nonisolated static func dictationFedUsesBatchBuffer(
       decodesConditionedBatch: Bool,
       isStreaming: Bool,
@@ -4841,7 +4841,7 @@ final class RecordingSessionKernel {
       let adapterDiagnostics = (adapter as? ASREngineTelemetryProviding)?.lastASRDiagnostics
     else { return }
 
-    // PR-5 Rung 5 Pass 2 r2 #B2: the copy (incl. the WhisperKit incremental
+    // PR-5 Rung 5 Pass 2 r2 #B2: the copy (incl. the Whisper incremental
     // fields previously dropped before Sentry) lives in a pure, unit-tested
     // method so a future field addition can't silently skip the copy again.
     diagnostics.absorbAdapterDiagnostics(adapterDiagnostics)

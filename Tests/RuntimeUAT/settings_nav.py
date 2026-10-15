@@ -1053,7 +1053,7 @@ PARAKEET_ACTIONS = ("Cancel", "Resume", "Try Again")
 PREVIEW_LANGUAGE = "Change dictation language: %@, %@"
 ENGINE_DISCLOSURE = (CHANGE_ENGINE, ENGINE_LABELS, "Keep current engine")
 PREVIEW_DISCLOSURE = ("Change preview engine", ("Apple", "Universal"), "Keep current preview engine")
-WHISPERKIT_ACTIONS = ("Set up model", "Cancel", "Resume", "Remove Model", "Try Again")
+WHISPER_ACTIONS = ("Set up model", "Cancel", "Resume", "Remove Model", "Try Again")
 INSTALL_ROW_TITLES = ("Install new languages", "Checking which languages are on this Mac",
                       "Could not read the language list from macOS. Reopen this page to try again.")
 DICTIONARY_SECTIONS = ("Your Words", "Vocabulary Packs", "Learn from...", "Quick Add")
@@ -1086,9 +1086,9 @@ SCAN = [
     ("Dictation Settings", "Engine", [
         ("button", CHANGE_ENGINE, None),
         ("disclose", ENGINE_DISCLOSURE, None),
-        ("one_of", WHISPERKIT_ACTIONS, "whisperkit_actions_shown"),
+        ("one_of", WHISPER_ACTIONS, "whisper_actions_shown"),
         ("one_of", PARAKEET_ACTIONS, "parakeet_delivery_actions_shown"),
-        ("button", "Re-check model status", "whisperkit_recheck_shown"),
+        ("button", "Re-check model status", "whisper_recheck_shown"),
         ("button", "Re-check Fast model status", "parakeet_selected"),
         ("toggle", "Auto-detect language", "language_section_visible"),
         ("button", "Change dictation language", "language_locked"),

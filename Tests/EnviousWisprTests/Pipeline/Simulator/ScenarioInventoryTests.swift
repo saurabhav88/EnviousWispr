@@ -27,7 +27,7 @@ struct ScenarioInventoryTests {
   @Test("the two §1.3 regression locks are present by ID")
   func regressionLocksPresent() {
     let ids = Set(ScenarioInventory.all.map(\.id))
-    #expect(ids.contains("R1"), "WhisperKit stop-during-startup lock — drop-resistant")
+    #expect(ids.contains("R1"), "Whisper stop-during-startup lock — drop-resistant")
     #expect(ids.contains("R2"), "Parakeet stale-latch lock — drop-resistant")
   }
 

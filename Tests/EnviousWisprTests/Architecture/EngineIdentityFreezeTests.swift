@@ -24,8 +24,8 @@ import Testing
   private static let bannedParakeetLiteral = #"\.parakeet\b"#
 
   /// Matches the `.whisper` enum-case literal. Does NOT match
-  /// `WhisperKit` (capitalized engine name) nor `WhisperEngineAdapter` /
-  /// `WhisperKitBackend` type names.
+  /// `Whisper` (capitalized engine name) nor `WhisperEngineAdapter` /
+  /// `TranscribeCppWhisperBackend` type names.
   private static let bannedWhisperLiteral = #"\.whisper\b"#
 
   /// All banned engine-identity literals — both must be absent at every
@@ -46,7 +46,7 @@ import Testing
   /// `adapter.engineIdentity` directly. It also carries one legitimate
   /// `backend == .whisper` routing-policy switch at
   /// `KernelLifecycleTelemetrySink.swift:399` (only emits the backend tag
-  /// in capture-failure extras for WhisperKit). That switch is pre-Rung-3
+  /// in capture-failure extras for Whisper). That switch is pre-Rung-3
   /// behavior unrelated to the kernel-side identity-reader contract this
   /// freeze test guards; ideally it migrates to a capability flag, but
   /// that's a separate refactor (epic backlog).
@@ -251,16 +251,16 @@ import Testing
   // PR-5 Rung 5 (#827) — `makeForWhisperKitHasNoProductionCaller` was deleted
   // in this PR; its invariant inverted at cutover. The tests below lock the
   // post-cutover invariants that remain: exactly one App caller of the
-  // WhisperKit factory branch, and a single VAD signal source.
+  // Whisper factory branch, and a single VAD signal source.
 
-  @Test("WhisperKit factory branch has exactly one production caller")
-  func makeForWhisperKitHasExactlyOneProductionCaller() throws {
+  @Test("Whisper factory branch has exactly one production caller")
+  func makeForWhisperHasExactlyOneProductionCaller() throws {
     let sourcesRoot = RepoRoot.url.appending(path: "Sources")
     let enumerator = FileManager.default.enumerator(
       at: sourcesRoot, includingPropertiesForKeys: nil,
       options: [.skipsHiddenFiles, .skipsPackageDescendants])
     var callers: [String] = []
-    let regex = try NSRegularExpression(pattern: #"makeForWhisperKit\s*\("#)
+    let regex = try NSRegularExpression(pattern: #"makeForWhisper\s*\("#)
     while let url = enumerator?.nextObject() as? URL {
       guard url.pathExtension == "swift" else { continue }
       let relative = url.path.replacingOccurrences(
@@ -279,7 +279,7 @@ import Testing
     #expect(
       callers.count == 1,
       """
-      Expected exactly one production caller of `makeForWhisperKit(inputs:)`;
+      Expected exactly one production caller of `makeForWhisper(inputs:)`;
       found \(callers.count) in \(callers).
       """)
     #expect(
@@ -365,7 +365,7 @@ import Testing
   }
 
   @Test("a source line with `.whisper` is flagged (PR-5 Rung 3 adversarial mirror)")
-  func adversarialWhisperKitRegressionFlagged() {
+  func adversarialWhisperRegressionFlagged() {
     let source = """
       let snapshot = KernelRecordingSnapshotTelemetry(
         backend: ASRBackendType.whisper.rawValue,
@@ -391,18 +391,18 @@ import Testing
   }
 
   @Test(
-    "`WhisperKit`, `WhisperEngineAdapter`, and `WhisperKitBackend` strings are not flagged (PR-5 Rung 3 negative control)"
+    "`Whisper`, `WhisperEngineAdapter`, and `TranscribeCppWhisperBackend` strings are not flagged (PR-5 Rung 3 negative control)"
   )
-  func negativeControlWhisperKitEngineNamePasses() {
+  func negativeControlWhisperEngineNamePasses() {
     let source = """
-      // 5. WhisperKit adapter.
-      let adapter = WhisperEngineAdapter(backend: inputs.whisperKitBackend)
-      // The WhisperKit display name is sourced from adapter.engineIdentity.displayName.
-      // WhisperKitBackend lives in EnviousWisprASR; reach via the package seam.
+      // 5. Whisper adapter.
+      let adapter = WhisperEngineAdapter(backend: inputs.whisperBackend)
+      // The Whisper display name is sourced from adapter.engineIdentity.displayName.
+      // TranscribeCppWhisperBackend lives in EnviousWisprASR; reach via the package seam.
       """
     #expect(
       Self.regexFlags(source: source, pattern: Self.bannedWhisperLiteral) == false,
-      "capitalized `WhisperKit` engine-name references must NOT be flagged")
+      "capitalized `Whisper` engine-name references must NOT be flagged")
   }
 
   // MARK: PR-5 Rung 2A KernelFinalizationWiring takes the protocol type

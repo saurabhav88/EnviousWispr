@@ -25,7 +25,7 @@ import Foundation
 ///   Stores the latest valid trigger.
 /// - `surfaceBufferedChipIfPossible(currentLanguageMode:)` is called by the
 ///   pipeline-completion site on transition to `.complete` (parakeet) or
-///   `.complete` / `.ready` (whisperkit). Decides whether to surface the chip
+///   `.complete` / `.ready` (whisper). Decides whether to surface the chip
 ///   given the current language mode. Admission is the overlay's answer, not a
 ///   question asked of it: `present` returns a receipt or nil, and a nil commits
 ///   nothing (#2292 C3). Caller does not need to read state back.
@@ -138,7 +138,7 @@ final class LanguageSuggestionPresenter {
   }
 
   /// Called on pipeline transition to `.complete` (parakeet) or
-  /// `.complete`/`.ready` (whisperkit). Decides whether to OFFER the buffered
+  /// `.complete`/`.ready` (whisper). Decides whether to OFFER the buffered
   /// trigger, given the current language mode; whether it is then admitted is
   /// the overlay's answer, returned by `present`.
   ///

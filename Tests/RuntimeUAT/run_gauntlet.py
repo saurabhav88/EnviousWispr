@@ -56,7 +56,7 @@ PARAKEET_GAUNTLET = [
     "A9_backend_switch_mid_record",
 ]
 
-WHISPERKIT_GAUNTLET = [
+WHISPER_GAUNTLET = [
     "A1_rapid_stop_start",
     "A2_esc_cancel",
     "A6_settings_storm",
@@ -125,9 +125,9 @@ def _main(argv: list[str]) -> int:
                         default="parakeet")
     args = parser.parse_args(argv)
 
-    backend_key = "parakeet" if args.backend == "parakeet" else "whisperkit"
+    backend_key = "parakeet" if args.backend == "parakeet" else "whisper"
     scenarios = (PARAKEET_GAUNTLET if args.backend == "parakeet"
-                 else WHISPERKIT_GAUNTLET)
+                 else WHISPER_GAUNTLET)
 
     print(f"=== Lane A gauntlet — {args.backend} ===")
     print(f"pre-state: {query_state()}")

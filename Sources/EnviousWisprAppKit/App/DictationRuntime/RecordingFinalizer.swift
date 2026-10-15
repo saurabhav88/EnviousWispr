@@ -23,7 +23,7 @@ import Foundation
 @MainActor
 final class RecordingFinalizer {
   let kernelDriver: KernelDictationDriver
-  let whisperKitKernelDriver: KernelDictationDriver
+  let whisperKernelDriver: KernelDictationDriver
   let asrManager: any ASRManagerInterface
   let recordingOverlay: OverlayDirector
 
@@ -67,7 +67,7 @@ final class RecordingFinalizer {
 
   init(
     kernelDriver: KernelDictationDriver,
-    whisperKitKernelDriver: KernelDictationDriver,
+    whisperKernelDriver: KernelDictationDriver,
     asrManager: any ASRManagerInterface,
     recordingOverlay: OverlayDirector,
     heartControlRecovery: HeartControlRecovery,
@@ -75,7 +75,7 @@ final class RecordingFinalizer {
     languageSuggestionPresenter: LanguageSuggestionPresenter?
   ) {
     self.kernelDriver = kernelDriver
-    self.whisperKitKernelDriver = whisperKitKernelDriver
+    self.whisperKernelDriver = whisperKernelDriver
     self.asrManager = asrManager
     self.recordingOverlay = recordingOverlay
     self.heartControlRecovery = heartControlRecovery
@@ -87,7 +87,7 @@ final class RecordingFinalizer {
     recordingLockedAccess.set(false)
     lastUserStopRequest = ContinuousClock.now
     let active: KernelDictationDriver =
-      asrManager.activeBackendType == .whisper ? whisperKitKernelDriver : kernelDriver
+      asrManager.activeBackendType == .whisper ? whisperKernelDriver : kernelDriver
     do {
       try await requestStopDispatch(active)
     } catch {
@@ -113,7 +113,7 @@ final class RecordingFinalizer {
     // and gated on the now-extinct `.startingUp` state) onto the same
     // `cancelRecording()` shape Parakeet uses.
     let active: KernelDictationDriver =
-      asrManager.activeBackendType == .whisper ? whisperKitKernelDriver : kernelDriver
+      asrManager.activeBackendType == .whisper ? whisperKernelDriver : kernelDriver
     // #2087: abandonment returns at once — no teardown, no terminal await; see policy.
     if CancelAffordancePolicy.isAbandonment(
       trigger: trigger, isEscapeRecoveryTranscribing: active.isEscapeRecoveryTranscribing)
@@ -150,7 +150,7 @@ final class RecordingFinalizer {
   /// itself; Finalizer already holds them.
   func resetActive() {
     if asrManager.activeBackendType == .whisper {
-      whisperKitKernelDriver.reset()
+      whisperKernelDriver.reset()
     } else {
       kernelDriver.reset()
     }

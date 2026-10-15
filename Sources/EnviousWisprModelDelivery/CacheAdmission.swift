@@ -291,7 +291,7 @@ struct CacheAdmission {
     // Its markers do not: they live in the metadata directory, which every family shares, so
     // nothing here has ever swept them. That is the half `evictPreviousRevisions` named and never
     // delivered — the flag has shipped decoded and unread, `true` for EG-1 and `false` for
-    // Parakeet and WhisperKit, so honouring it changes exactly the family that asked for it.
+    // Parakeet and Whisper, so honouring it changes exactly the family that asked for it.
     //
     // AFTER the marker write, never before: running it earlier and then failing at (4) would
     // leave the machine with no admitted revision AND no record that one was ever admitted.

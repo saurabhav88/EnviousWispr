@@ -1,32 +1,28 @@
 import Foundation
 
-// MARK: - WhisperKit model-load state machine (functional core, #1276 Step 1)
+// MARK: - Whisper model-load state machine (functional core, #1276 Step 1)
 //
-// Consolidates the nine hand-rolled load-state members that used to live on
-// `WhisperKitBackend` (`loadTask`, `loadTaskSeq`, `activeLoadTaskID`,
-// `loadGeneration`, `warmupTask`, `warmupTaskGeneration`, `warmupBudgetExhausted`,
-// `whisperKit`, `isReady`) into ONE `LoadState` value plus one monotonic
-// `generation` counter the actor owns. The scattered fields could disagree with
-// each other (kit non-nil while `isReady` false, a budget-spent flag forgotten,
-// a warm-up task orphaned with no matching generation); folding them into a
-// single enum makes those disagreements unrepresentable.
+// Consolidates what were nine hand-rolled load-state members on the retired
+// WhisperKit backend (load task handles, generations, the warm-up task and its
+// spent budget, the loaded instance, `isReady`) into ONE `LoadState` value plus
+// one monotonic `generation` counter the actor owns. The scattered fields could
+// disagree with each other (a loaded instance while `isReady` was false, a
+// budget-spent flag forgotten, a warm-up task orphaned with no matching
+// generation); a single enum makes those disagreements unrepresentable.
 //
 // `transition(_:on:generation:)` is a PURE function: given the current state, an
 // event, and the live generation, it returns the next state plus a list of
 // side-effects for the actor to execute (create a task, throw, log). The actor
-// (`WhisperKitBackend`) owns the `WhisperKit` instance and performs every effect;
-// this file makes zero calls into WhisperKit and holds zero live state. That
-// split lets the exhaustive (state × event) matrix be tested without ever
-// constructing a `WhisperKit` (see `WhisperKitLoadStateTests`).
+// (`TranscribeCppWhisperBackend` since #3735) owns the loaded model and performs
+// every effect; this file holds zero live state, so the exhaustive
+// (state × event) matrix is tested without loading a model (`WhisperLoadStateTests`).
 //
-// Buy-vs-build note (#1276, Codex-validated 2026-07-03): the toolkit ships its
-// own `ModelState`/`ModelManager`, but `ModelManager` needs a `ModelLoader` shim
-// (WhisperKit isn't one) and its `unloadModels()` no-ops mid-load, so it does not
-// solve the unload-during-load race this machine's `generation` guard covers.
-// We therefore keep our own (now consolidated) machine. `isReady` is a strict
-// superset of the toolkit's `.loaded` (loaded AND warm-up resolved), so
-// `modelState` cannot be the readiness authority either. Detail:
-// `docs/feature-requests/issue-1276-step1-buy-vs-build-inventory.md`.
+// Buy-vs-build (#1276, 2026-07-03): the WhisperKit toolkit's own model manager
+// no-oped an unload mid-load, so it did not cover the unload-during-load race this
+// machine's `generation` guard covers, and its loaded state was not readiness
+// (`isReady` here means loaded AND warm-up resolved). The same reasons hold for
+// transcribe.cpp, whose load is a single native call the executor owns.
+// Detail: `docs/feature-requests/issue-1276-step1-buy-vs-build-inventory.md`.
 
 /// Terminal status of the silent warm-up inference run once at load time.
 /// Moved here (was a `private enum` on the actor) so tests can assert on it.
@@ -61,11 +57,11 @@ struct OrphanWarmup {
   let task: Task<WarmupOutcome, Never>
 }
 
-/// Marker for the loaded model instance the state carries. Real path: `WhisperKit`
-/// (conformance below). Tests: a trivial fake. Deliberately NOT `Sendable` and
-/// requirement-free — the instance is only ever touched inside the owning actor's
+/// Marker for the loaded model instance the state carries. Real path:
+/// `LoadedWhisperModel` (TranscribeCppWhisperBackend.swift). Tests: a trivial fake.
+/// Requirement-free: the instance is only ever touched inside the owning actor's
 /// isolation, and existentiality is purely to let the state machine be tested
-/// without constructing a real `WhisperKit`.
+/// without loading a real model.
 protocol LoadedASRModel: AnyObject {}
 
 /// The single load-state authority. Each non-idle case carries exactly the
@@ -75,7 +71,7 @@ protocol LoadedASRModel: AnyObject {}
 enum LoadState {
   /// No kit, no load in flight.
   case idle
-  /// A CoreML load is in flight. Carries the load `Task` so a concurrent caller
+  /// A model load is in flight. Carries the load `Task` so a concurrent caller
   /// joins it (single-flight) instead of starting a second load.
   case loading(LoadIdentity, task: Task<Void, Error>)
   /// Model loaded; the silent warm-up inference is running. NOT yet vendable
@@ -179,7 +175,7 @@ enum Effect {
   case logBudgetExhaustedVend
   /// The drain also timed out — log and vend anyway (accept documented risk).
   case logDrainTimedOutVend
-  /// Cancel these tasks on unload (best-effort; CoreML load/decode is
+  /// Cancel these tasks on unload (best-effort; a native load/decode is
   /// uncancellable — clearing the handle is what matters).
   case cancelLoadTask(Task<Void, Error>)
   case cancelOrphanWarmupOnUnload(Task<WarmupOutcome, Never>)
@@ -230,7 +226,7 @@ extension Effect {
 /// `generation` is the LIVE generation at call time — the actor bumps it (in
 /// `unload()`) BEFORE feeding `.unloadRequested`, so a completion event carrying
 /// an older generation is recognizably stale here.
-enum WhisperKitLoadStateMachine {
+enum WhisperLoadStateMachine {
   static func transition(
     _ state: LoadState, on event: LoadEvent, generation: UInt64
   ) -> (LoadState, [Effect]) {

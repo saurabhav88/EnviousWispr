@@ -17,32 +17,33 @@ import Testing
 // SCOPE, STATED HONESTLY (do not remove or soften this without a fresh
 // grounding pass — see `EngineMutationInventoryFreezeTests`'s own Chunk 11
 // doc comment for the two-consecutive-Codex-round history that makes this
-// necessary): this suite freezes the exact signatures of TEN engine-facing
+// necessary): this suite freezes the exact signatures of NINE engine-facing
 // protocols and TWO known concrete-only method surfaces not declared by any
-// of the ten protocols (one, `WhisperEngineAdapter.unloadForRemoval()`,
+// of the nine protocols (one, `WhisperEngineAdapter.unloadForRemoval()`,
 // is reached only via a type-cast; the other,
 // `ParakeetBackend.prepare(selection:progressCallback:)`, is reached via a
 // type-cast at one call site AND via direct, uncast construction/ownership
 // at another — `ASRServiceHandler.swift` builds and holds a concrete
 // `ParakeetBackend` natively), all grounded as of 2026-07-23. It
 // WILL catch: a member added to, removed from, or resignatured on any of
-// the ten protocols (including a changed parameter label, type, return
+// the nine protocols (including a changed parameter label, type, return
 // type, `async`/`throws`, property accessor kind, or an added overload); a
 // changed inheritance clause; a member added only via a protocol extension
 // declared in the SAME FILE as the protocol, with no matching requirement;
 // and a signature change to either pinned concrete method. It will NOT, and
 // cannot, catch: a brand-new protocol nobody has told it about, a
 // brand-new concrete type, a new XPC route, an extension of one of these
-// ten protocols declared in a DIFFERENT file (grounded 2026-07-23: none of
-// the ten currently has one — Codex final-integration r1 flagged this as a
+// nine protocols declared in a DIFFERENT file (grounded 2026-07-23: none of
+// the nine currently has one — Codex final-integration r1 flagged this as a
 // theoretical future gap, not a present one — but the scanner does not look
 // beyond each protocol's own declaration file), a
 // macro-generated call, or a concrete engine type accessed with no
 // protocol and no cast at all (the exact structural hole a proposed
 // general downcast scanner had — Codex's second grounded review round
-// found `ActiveEngineOperation.live(asrManager:whisperKitBackend:)` takes
-// `WhisperKitBackend` as a plain typed parameter, no cast in sight). Those
-// require the same kind of human grounding pass that found the ten
+// found `ActiveEngineOperation.live(asrManager:whisperBackend:)` takes the
+// concrete Whisper backend, since #3735 `LiveTranscribeCppWhisperBackend`, as a
+// plain typed parameter, no cast in sight). Those
+// require the same kind of human grounding pass that found the
 // protocols and two escape hatches here — this suite is a guardrail on top
 // of that judgment, not a replacement for it.
 @Suite struct EngineProtocolSurfaceFreezeTests {
@@ -92,8 +93,10 @@ import Testing
       in: .whitespacesAndNewlines)
   }
 
-  /// Recognized protocol-member declaration kinds. Anything else (an
-  /// `associatedtype`, `init`, `subscript`, macro expansion, or any future
+  /// Recognized protocol-member declaration kinds: functions, properties and
+  /// `associatedtype` requirements (whose constraints are part of the promise,
+  /// so the whole text is frozen; #3735's `WhisperExecutorDriving.Handle`).
+  /// Anything else (an `init`, `subscript`, macro expansion, or any future
   /// syntax this visitor does not recognize) fails the scan closed rather
   /// than being silently skipped — Codex's grounded review flagged exactly
   /// this as a real risk for a member-kind-unaware collector.
@@ -103,7 +106,7 @@ import Testing
   /// of the SIGNATURE itself (it declares whether the property must be
   /// settable), not a body to strip. An extension's real computed-property
   /// body is kept whole too, for the same reason a function's is stripped —
-  /// property bodies in this codebase's ten protocols are short, single-
+  /// property bodies in this codebase's nine protocols are short, single-
   /// expression defaults where the distinction rarely matters, and keeping
   /// the whole text is simpler and cannot under-report a change.
   private static func normalizedSignature(of decl: DeclSyntax) throws -> String? {
@@ -112,6 +115,9 @@ import Testing
     }
     if let v = decl.as(VariableDeclSyntax.self) {
       return v.trimmedDescription
+    }
+    if let a = decl.as(AssociatedTypeDeclSyntax.self) {
+      return a.trimmedDescription
     }
     if decl.is(MissingDeclSyntax.self) { return nil }  // a bare `;` between members
     throw ScanFailedError(
@@ -356,7 +362,7 @@ import Testing
     return Surface(name: "\(typeName).\(methodName)", file: file, header: nil, members: members)
   }
 
-  // MARK: Frozen surfaces — the ten protocols + two concrete escape hatches
+  // MARK: Frozen surfaces — the nine protocols + two concrete escape hatches
   // grounded as of 2026-07-23 (#1741 Chunk 11). Adding an eleventh protocol
   // or a third escape hatch to this list is a deliberate grounding decision,
   // not something this suite can discover on its own — see the file-level
@@ -383,8 +389,8 @@ import Testing
       "Sources/EnviousWisprASR/WhisperIncrementalSession.swift", nil
     ),
     (
-      "protocol", "WhisperKitTranscribing",
-      "Sources/EnviousWisprASR/WhisperKitIncrementalSession.swift", nil
+      "protocol", "WhisperExecutorDriving",
+      "Sources/EnviousWisprASR/TranscribeCppWhisperBackend.swift", nil
     ),
     (
       "protocol", "ASREngineTelemetryProviding",
@@ -727,17 +733,29 @@ import Testing
         MemberSignature(condition: nil, signature: "func cancel() async"),
         MemberSignature(condition: nil, signature: "func noteStopRequested() async"),
       ]),
-    "WhisperKitTranscribing": Surface(
-      name: "WhisperKitTranscribing",
-      file: "Sources/EnviousWisprASR/WhisperKitIncrementalSession.swift",
-      header: "protocol WhisperKitTranscribing : Sendable",
+    "WhisperExecutorDriving": Surface(
+      name: "WhisperExecutorDriving",
+      file: "Sources/EnviousWisprASR/TranscribeCppWhisperBackend.swift",
+      header: "protocol WhisperExecutorDriving : Sendable",
       members: [
+        MemberSignature(condition: nil, signature: "associatedtype Handle: Hashable & Sendable"),
         MemberSignature(
           condition: nil,
           signature:
-            "func transcribe(\n    audioArray: [Float], decodeOptions: DecodingOptions?,\n    shouldContinueDecoding: (@Sendable () -> Bool)?\n  ) async throws -> [TranscriptionResult]"
+            "func load(modelPath: String, lane: TranscribeCppExecutor.Lane) async throws -> Handle"
         ),
-        MemberSignature(condition: nil, signature: "func encodeText(_ text: String) -> [Int]"),
+        MemberSignature(
+          condition: nil,
+          signature:
+            "func detectLanguage(\n    _ handle: Handle, samples: [Float], lane: TranscribeCppExecutor.Lane\n  ) async throws -> TranscribeCppLanguageObservation"
+        ),
+        MemberSignature(
+          condition: nil,
+          signature:
+            "func transcribe(\n    _ handle: Handle, samples: [Float], language: String?,\n    lane: TranscribeCppExecutor.Lane,\n    onInferenceEntered: (@Sendable () -> Void)?,\n    onProgress: (@Sendable (Int64, Int64) -> Void)?\n  ) async throws -> TranscribeCppRunResult"
+        ),
+        MemberSignature(condition: nil, signature: "func waitForDrain(_ handle: Handle) async"),
+        MemberSignature(condition: nil, signature: "func unload(_ handle: Handle) async"),
       ]),
     "ASREngineTelemetryProviding": Surface(
       name: "ASREngineTelemetryProviding",
@@ -814,7 +832,7 @@ import Testing
   }
 
   // MARK: 2 — fixture proofs that the mechanism itself detects each named
-  // change shape, not just that today's ten protocols happen to match.
+  // change shape, not just that today's nine protocols happen to match.
 
   private static func members(of source: String, protocolName: String) throws -> Set<
     MemberSignature
@@ -1001,7 +1019,7 @@ import Testing
     "an unsupported protocol member kind fails the scan closed rather than being silently skipped")
   func adversarialUnsupportedMemberKindFailsClosed() throws {
     #expect(throws: ScanFailedError.self) {
-      _ = try Self.members(of: "protocol P { associatedtype Foo }", protocolName: "P")
+      _ = try Self.members(of: "protocol P { subscript(i: Int) -> Int { get } }", protocolName: "P")
     }
   }
 

@@ -34,16 +34,16 @@ struct LiveRecordingStateTests {
   @Test("pipelineState routes through asrManager.activeBackendType")
   func pipelineStateRoutesByBackend() {
     let state = makeState()
-    // #881 TO-3: drive the WhisperKit driver to a DISTINCT observable state so
+    // #881 TO-3: drive the Whisper driver to a DISTINCT observable state so
     // the two routing arms return values neither branch can produce by accident.
     // The prior test left both drivers .idle, so it stayed green even if the
     // router ignored activeBackendType, inverted the condition, or read the
-    // wrong driver in the WhisperKit arm.
-    state.whisperKitKernelDriver.setTerminalReason(.deviceRemoved)
+    // wrong driver in the Whisper arm.
+    state.whisperKernelDriver.setTerminalReason(.deviceRemoved)
     // Parakeet arm → reads the (error-free) parakeet driver → .idle.
     state.asrManager.setInitialBackendType(.parakeet)
     #expect(state.pipelineState == .idle)
-    // WhisperKit arm → reads the WhisperKit driver → .error(.deviceRemoved).
+    // Whisper arm → reads the Whisper driver → .error(.deviceRemoved).
     state.asrManager.setInitialBackendType(.whisper)
     #expect(state.pipelineState == .error(.deviceRemoved))
   }
@@ -135,11 +135,11 @@ struct LiveRecordingStateTests {
     let store = TranscriptStore(directory: tempDir)
     let parakeet = DictationRuntimeFixtures.makeParakeetDriver(
       audioCapture: audioCapture, asrManager: asrManager, store: store)
-    let whisperKit = DictationRuntimeFixtures.makeWhisperKitPipeline(
+    let whisperDriver = DictationRuntimeFixtures.makeWhisperPipeline(
       audioCapture: audioCapture, store: store)
     return LiveRecordingState(
       kernelDriver: parakeet,
-      whisperKitKernelDriver: whisperKit,
+      whisperKernelDriver: whisperDriver,
       audioCapture: audioCapture,
       asrManager: asrManager
     )

@@ -1,7 +1,7 @@
 import EnviousWisprCore
 import Foundation
 
-internal enum WhisperKitPipelineSpeechRouting {
+internal enum WhisperPipelineSpeechRouting {
   // periphery:ignore - test seam
   static func hasSpeechEvidence(vadSegments: [SpeechSegment]?) -> Bool {
     vadSegments.map { !$0.isEmpty } ?? true

@@ -279,7 +279,7 @@ struct LivePreviewSettingsCopyTests {
   func bothEnginesDisambiguate() {
     for description in [
       LiveTranscriptionCopy.parakeetToggleDescription,
-      LiveTranscriptionCopy.whisperKitToggleDescription,
+      LiveTranscriptionCopy.whisperToggleDescription,
     ] {
       #expect(
         description.lowercased().contains("nothing looks different"),

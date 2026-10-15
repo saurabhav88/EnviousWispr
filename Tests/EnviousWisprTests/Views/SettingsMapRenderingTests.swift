@@ -689,7 +689,7 @@ struct SettingsMapRenderingTests {
     let recording = LiveRecordingState(
       kernelDriver: DictationRuntimeFixtures.makeParakeetDriver(
         audioCapture: audio, asrManager: asr, store: store),
-      whisperKitKernelDriver: DictationRuntimeFixtures.makeWhisperKitPipeline(
+      whisperKernelDriver: DictationRuntimeFixtures.makeWhisperPipeline(
         audioCapture: audio, store: store), audioCapture: audio, asrManager: asr)
     let runtime = DictationSettingsRenderHarness.idleRuntime(
       settings: home.settings, audio: audio, asr: asr, recording: recording, store: store)

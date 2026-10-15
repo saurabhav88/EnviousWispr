@@ -295,7 +295,7 @@
     /// the driver's `engineReadiness == .ready` itself before calling this.
     /// This function only owns the "at most once" property, the same reason
     /// `emitFirst` exists: two launch warm-up paths exist (parakeet's launch
-    /// `Task` and WhisperKit's `preloadAction`), only one of which runs for a
+    /// `Task` and Whisper's `preloadAction`), only one of which runs for a
     /// given launch (keyed on the selected backend), so in practice this
     /// fires from whichever path actually ran. A simple boolean latch is
     /// correct here — unlike `emitFirst`'s per-INTENT latching, there is only

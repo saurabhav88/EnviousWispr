@@ -108,16 +108,16 @@ enum FileImportSettingsFreeze {
   /// #3546 §3.7 T1: the frozen engine's model, read at the same freeze. Called only after
   /// the import's readiness drive confirmed the engine ready from the backend itself.
   ///
-  /// WhisperKit falls back to the identity its adapter validated: an import that finds
-  /// WhisperKit unloaded reloads it directly (`ActiveEngineOperation`), which does not refresh
+  /// Whisper falls back to the identity its adapter validated: an import that finds
+  /// Whisper unloaded reloads it directly (`ActiveEngineOperation`), which does not refresh
   /// the adapter's cached readiness, so its serving read stays nil while the backend serves
   /// that validated model (Chunk 12 whole-PR review r4). Parakeet's serving read is live.
   static func frozenASRModel(
     backend: ASRBackendType, parakeetServing: ASRModelAttribution?,
-    whisperKitServing: ASRModelAttribution?, whisperKitValidated: ASRModelAttribution?
+    whisperServing: ASRModelAttribution?, whisperValidated: ASRModelAttribution?
   ) -> ASRModelIdentity? {
     switch backend {
-    case .whisper: return (whisperKitServing ?? whisperKitValidated)?.identity
+    case .whisper: return (whisperServing ?? whisperValidated)?.identity
     case .parakeet: return parakeetServing?.identity
     }
   }

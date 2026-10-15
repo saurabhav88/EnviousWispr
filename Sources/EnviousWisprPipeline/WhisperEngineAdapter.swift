@@ -6,10 +6,10 @@ import Foundation
 
 // MARK: - WhisperEngineAdapter (epic #827, PR-5 Rung 3)
 //
-// The production `ASREngineAdapter` conformer for the WhisperKit engine. It
-// wraps a `WhisperKitBackend` actor (the model-owning seam introduced by R2,
+// The production `ASREngineAdapter` conformer for the Whisper engine. It
+// wraps the Whisper backend actor (since #3735 `TranscribeCppWhisperBackend`) (the model-owning seam introduced by R2,
 // #360) plus a `LanguageDetector` actor (engine-internal LID, capability
-// `supportsLanguageDetection: true`) and lifts the WhisperKit-engine-internal
+// `supportsLanguageDetection: true`) and lifts the Whisper-engine-internal
 // orchestration from `WhisperKitPipeline.swift`: model load + cancellation
 // (#445 held `prepareTask`), `warmUpFromCache` (cache-only preload, no
 // network), `beginSession` (cancel pending model unload), `acceptAudio`
@@ -63,8 +63,8 @@ import Foundation
 // distinction, and it is removed with the worker in Step 3. The Parakeet
 // adapter MUST use `batchSamples`; this adapter MUST NOT.
 
-/// The kernel-facing `ASREngineAdapter` conformer for WhisperKit. Drives the
-/// underlying WhisperKit actor through a local `package` protocol seam
+/// The kernel-facing `ASREngineAdapter` conformer for Whisper. Drives the
+/// underlying Whisper backend actor through a local `package` protocol seam
 /// (`WhisperBackendDriving` below) so tests can inject a stub without
 /// loading a real model.
 @MainActor
@@ -89,7 +89,7 @@ final class WhisperEngineAdapter: ASREngineAdapter, @unchecked Sendable {
   private let vendorDecodeOccupancy: VendorDecodeOccupancy
 
   /// #3546 §3.7 T1: the delivered dictation model's identity (the stable
-  /// WhisperKit manifest), handed in by AppKit, which can read the manifest.
+  /// Whisper turbo manifest), handed in by AppKit, which can read the manifest.
   /// Production passes it through the factory (required there); the init
   /// default `nil` keeps test construction sites untouched and reports no
   /// model, never a wrong one.
@@ -124,7 +124,7 @@ final class WhisperEngineAdapter: ASREngineAdapter, @unchecked Sendable {
   /// `ParakeetEngineAdapter`'s identically-named field.
   private var retryGeneration = 0
 
-  /// Synchronously-readable cached readiness. WhisperKit's `isReady` lives on
+  /// Synchronously-readable cached readiness. Whisper's `isReady` lives on
   /// an actor (`public private(set) var isReady`); the `ASREngineAdapter`
   /// protocol's `readiness` getter is synchronous, so the adapter caches the
   /// most-recent observed state and refreshes it on every transition. All
@@ -174,7 +174,7 @@ final class WhisperEngineAdapter: ASREngineAdapter, @unchecked Sendable {
   /// Speech segments handed in by the kernel's `observeSpeechSegments` hook
   /// (Rung 2B). Coordinates are raw-capture-sample positions indexing into
   /// `batchCaptureSamples` (NO pre-roll shift — same coordinate). Used to
-  /// derive `clipTimestamps` for WhisperKit's VAD-driven clip-seek (the
+  /// derive the decode's speech envelope (WhisperKit's VAD-driven clip-seek before #3735, the
   /// #452/#560 hallucination-suppression mechanism) and to filter LID audio to
   /// voiced-only ranges. Cleared on `cancel()` / `beginSession()` and after
   /// `finalize()` commits.
@@ -265,12 +265,12 @@ final class WhisperEngineAdapter: ASREngineAdapter, @unchecked Sendable {
   /// on `self`, so a concurrent `beginSession(B)` cannot retroactively
   /// change session A's in-flight signposts. PR-5 Rung 4.5 (#827) reuses
   /// the existing `audioCapture: any AudioCaptureInterface` plumbed
-  /// through `KernelDictationDriverFactory.WhisperKitInputs:62-69`.
+  /// through `KernelDictationDriverFactory.WhisperInputs:62-69`.
   private let audioCaptureSessionIDSource: @MainActor () -> UInt64
 
   // MARK: ASREngineAdapter — engine interruption
 
-  /// Optional adapter-local interruption hook. WhisperKit has no
+  /// Optional adapter-local interruption hook. Whisper has no
   /// mid-recording crash signal today (the legacy pipeline's
   /// `handleASRServiceInterruption` is XPC-driven from the App layer), so
   /// this remains settable but unused inside the adapter.
@@ -286,10 +286,10 @@ final class WhisperEngineAdapter: ASREngineAdapter, @unchecked Sendable {
   /// `wakeRecoveryIfOwed` closure triplet.
   let engineMutationScope: EngineMutationScope
 
-  /// #1707: WhisperKit is never the SOURCE of an ASR-interruption signal (no
+  /// #1707: Whisper is never the SOURCE of an ASR-interruption signal (no
   /// out-of-process connection to lose), but the shared `ASREventRouter` can
   /// still forward a stale Parakeet-origin signal to this adapter's kernel if
-  /// WhisperKit happens to be the actively recording driver. Since this
+  /// Whisper happens to be the actively recording driver. Since this
   /// adapter's own engine was never touched, confirming readiness is a real
   /// (not stubbed) but normally near-instant check: `await backend.isReady`
   /// is the SAME actor-isolated authority `warmUp()` itself consults — never
@@ -342,7 +342,7 @@ final class WhisperEngineAdapter: ASREngineAdapter, @unchecked Sendable {
   /// comfortably above every observed RTF at any length, including the
   /// short-clip outliers, not just the settled long-clip rate. At the 3600s
   /// (60-minute) recording cap this budgets 1085s, generous given the
-  /// measured trend — WhisperKit is deliberately the slower, more-capable
+  /// measured trend — Whisper is deliberately the slower, more-capable
   /// "toughest audio" option, so its floor is the widest of the two.
   /// Raw samples: `docs/audits/2026-07-20-recovery-v2-phase2-retry-decode-latency.md`.
   func retryDecodeTimeoutSeconds(forSampleCount sampleCount: Int) -> Double {
@@ -350,7 +350,7 @@ final class WhisperEngineAdapter: ASREngineAdapter, @unchecked Sendable {
     return 5.0 + audioDurationSec * 0.30
   }
 
-  /// WhisperKit runs engine-internal LID and, since #1276 Step 2 (PR-2),
+  /// Whisper runs engine-internal LID and, since #1276 Step 2 (PR-2),
   /// advertises streaming: the kernel's existing `useStreamingASR &&
   /// supportsStreaming` gate then routes the "Live transcription" toggle through
   /// `beginSession(streaming: true)`. The adapter still degrades to the clean
@@ -358,7 +358,7 @@ final class WhisperEngineAdapter: ASREngineAdapter, @unchecked Sendable {
   /// the capability only says "you may ask me to stream." Static — the kernel
   /// branches on `capabilities`, never on engine identity (epic §3.4).
   var capabilities: ASREngineCapabilities {
-    // decodesConditionedBatchSamples: false — WhisperKit ignores `batchSamples`
+    // decodesConditionedBatchSamples: false — Whisper ignores `batchSamples`
     // and decodes the raw capture via clipTimestamps (#950 tail-trim diagnostic
     // is meaningless for it; the VAD trim does not drop its ASR input).
     ASREngineCapabilities(
@@ -453,7 +453,7 @@ final class WhisperEngineAdapter: ASREngineAdapter, @unchecked Sendable {
     }
   }
 
-  /// Cache-only warm-up — intentionally a near no-op for WhisperKit.
+  /// Cache-only warm-up — intentionally a near no-op for Whisper.
   ///
   /// Earlier drafts dispatched a detached cache-only load here during the
   /// kernel's `preWarm` hop, which risked two concurrent CoreML loads racing the
@@ -481,13 +481,13 @@ final class WhisperEngineAdapter: ASREngineAdapter, @unchecked Sendable {
     cachedWarmupInferenceMs = ready ? await backend.lastWarmupInferenceMs : nil
   }
 
-  /// WhisperKit / CoreML exposes no model-load progress signal. The kernel
+  /// The Whisper engine exposes no model-load progress signal (one native load). The kernel
   /// runs signal-free `warmingUp` with no wedge detection, per the protocol's
   /// MUST NOT clause.
   var loadProgress: AsyncStream<ASRLoadProgressTick>? { nil }
 
   // `lastObservedPhase` falls back to the protocol-extension default
-  // (`"warmup"`) — WhisperKit's loader exposes no phase strings.
+  // (`"warmup"`) — the Whisper loader exposes no phase strings.
 
   // MARK: ASREngineAdapter — session lifecycle
 
@@ -497,7 +497,7 @@ final class WhisperEngineAdapter: ASREngineAdapter, @unchecked Sendable {
   ///   decoding whose flush IS the transcript.
   /// - `streaming && auto` (language nil): DEGRADE to the clean batch decode (no
   ///   session). Streaming commits to one language at the first cycle and
-  ///   WhisperKit's sub-second in-decoder LID is unreliable (the garble trap);
+  ///   Whisper's sub-second in-decoder LID is unreliable (the garble trap);
   ///   auto stays batch until Ship 2 adds confidence-gated early-LID.
   /// - `!streaming` (toggle off): the clean batch decode (PR-1).
   /// Both non-streaming paths finalize through the single `runBatchFallback()`
@@ -547,10 +547,10 @@ final class WhisperEngineAdapter: ASREngineAdapter, @unchecked Sendable {
     // superseded before finalize/cancel cleared the handle (mirrors PR-1's old
     // orphan-worker cancel). AWAITED, not detached (Codex r2 P1): the orphan's
     // in-flight decode stops early but still returns on its own schedule
-    // (#2108: WhisperKit polls a per-token callback, not task cancellation),
+    // (#2108: the engine polls an abort callback, not task cancellation),
     // and vending a new
     // streaming session before it fully exits would put two concurrent
-    // transcribes on the same WhisperKit instance. `cancel()` returns only
+    // transcribes on the same Whisper model. `cancel()` returns only
     // after the orphan's loop has exited, bounded by that single decode.
     if let orphan = streamingSession {
       streamingSession = nil
@@ -759,17 +759,17 @@ final class WhisperEngineAdapter: ASREngineAdapter, @unchecked Sendable {
     // Sample shaping for LID + ASR. ASR runs over raw capture audio (padded);
     // LID runs over voiced-only audio (with raw fallback if voiced is too short).
     let speechSegments = observedSpeechSegments
-    let asrSamples = WhisperKitPipelineSpeechRouting.paddedASRSamples(
+    let asrSamples = WhisperPipelineSpeechRouting.paddedASRSamples(
       rawSamples: rawSamples,
       minimumSamples: minimumSamples
     )
     let lidFiltered = SampleFilter.filter(from: rawSamples, segments: speechSegments)
-    let lidSamples = WhisperKitPipelineSpeechRouting.paddedLIDSamples(
+    let lidSamples = WhisperPipelineSpeechRouting.paddedLIDSamples(
       filteredSamples: lidFiltered,
       rawSamples: rawSamples,
       minimumSamples: minimumSamples
     )
-    decodeOptions = WhisperKitPipelineSpeechRouting.transcriptionOptions(
+    decodeOptions = WhisperPipelineSpeechRouting.transcriptionOptions(
       from: decodeOptions,
       speechSegments: speechSegments
     )
@@ -777,7 +777,7 @@ final class WhisperEngineAdapter: ASREngineAdapter, @unchecked Sendable {
       Double(
         speechSegments.reduce(0) { $0 + ($1.endSample - $1.startSample) }
       ) / AudioConstants.sampleRate
-    let lidWindowCount = WhisperKitPipelineSpeechRouting.lidWindowCount(
+    let lidWindowCount = WhisperPipelineSpeechRouting.lidWindowCount(
       forVoicedDuration: voicedDurationSec
     )
     let clipKind = lidWindowCount == 1 ? "short" : "normal"
@@ -806,11 +806,11 @@ final class WhisperEngineAdapter: ASREngineAdapter, @unchecked Sendable {
       samples: lidSamples,
       voicedDuration: voicedDurationSec,
       observerFn: {
-        // #2787 (second-pass review): language detection is a real WhisperKit
+        // #2787 (second-pass review): language detection is a real Whisper
         // model call that runs BEFORE the decode, so it is counted too. Left
         // uncounted, an Escape during it read the engine as idle, released
         // the lease and deleted the spool while the model was still working,
-        // and the next record press could enter WhisperKit under it.
+        // and the next record press could enter Whisper under it.
         await occupancyForObserver.track {
           await backendForObserver.observeLID(
             samples: observerSamples, maxWindows: lidWindowCountForObserver)
@@ -837,7 +837,7 @@ final class WhisperEngineAdapter: ASREngineAdapter, @unchecked Sendable {
     if let lang = lidResult.lang, !lidResult.abstained {
       decodeOptions.language = lang
     } else {
-      decodeOptions.language = nil  // let WhisperKit's internal LID run
+      decodeOptions.language = nil  // let the decode's own language detection run
     }
     Task {
       await AppLogger.shared.log(
@@ -1046,7 +1046,7 @@ final class WhisperEngineAdapter: ASREngineAdapter, @unchecked Sendable {
     return .transcript(result)
   }
 
-  /// WhisperKit's `transcribe(...)` is completion-only — no decoder-step
+  /// The Whisper batch `transcribe(...)` is completion-only — no decoder-step
   /// progress signal. Same `nil` semantics as `loadProgress`.
   var finalizeProgress: AsyncStream<ASRFinalizeProgressTick>? { nil }
 
@@ -1110,13 +1110,13 @@ final class WhisperEngineAdapter: ASREngineAdapter, @unchecked Sendable {
   /// recovery by construction, not merely in practice. Documented, not
   /// gated (RULE: close-the-window-never-handle-it).
   /// #959 HEAVY wedge recovery. The cheap discard (`cancel()`) PLUS a forced
-  /// in-process backend unload so the next press reloads fresh. WhisperKit
+  /// in-process backend unload so the next press reloads fresh. Whisper
   /// decodes IN-PROCESS, so a genuinely wedged CoreML decode could block
   /// `unload()` on the same locked resource — the unload is therefore
   /// deadline-bounded (fail-open: a blocked unload is abandoned rather than
   /// hanging recovery; a pathological in-process freeze may still need a user
   /// force-quit, unlike Parakeet's XPC service which the OS reaps). Called ONLY
-  /// by the kernel's wedge detectors. Dormant in practice: WhisperKit is
+  /// by the kernel's wedge detectors. Dormant in practice: Whisper is
   /// signal-free for load-wedge detection and exposes no `finalizeProgress`, so
   /// no kernel wedge detector currently fires for it (whisperkit-research.md).
   func recoverFromWedge() async {
@@ -1293,7 +1293,7 @@ final class WhisperEngineAdapter: ASREngineAdapter, @unchecked Sendable {
     // retained the entire recording (potentially hundreds of MB) until some
     // later session's `beginSession()`/`cancel()` happened to clear it. No
     // assignment means nothing to release.
-    let asrSamples = WhisperKitPipelineSpeechRouting.paddedASRSamples(
+    let asrSamples = WhisperPipelineSpeechRouting.paddedASRSamples(
       rawSamples: inputSamples,
       minimumSamples: AudioConstants.minimumTranscriptionSamples
     )
@@ -1324,7 +1324,7 @@ final class WhisperEngineAdapter: ASREngineAdapter, @unchecked Sendable {
       // reads `adapter.lastResult?.duration` straight into saved History
       // metadata, so storing the backend's own `result.duration` as-is
       // would persist a wrong/zero duration for a retry-rescued dictation
-      // whenever `WhisperKitBackend.mapResults` derived it from the LAST
+      // whenever the backend derived it from the LAST
       // DECODED SEGMENT's end time (short on trailing silence, or zero
       // when text exists without segment timestamps). Mirrors the normal
       // finalize path's identical rebuild (`:914-921` above), which
@@ -1454,7 +1454,7 @@ final class WhisperEngineAdapter: ASREngineAdapter, @unchecked Sendable {
     // Preserve the locked-language detection state the batch finalize would have
     // set via `LanguageDetector.detect(.locked)` (Codex r4 P2). Streaming only
     // runs for a picked language, so it never calls LID — but downstream polish
-    // (`DefaultPromptPlanner`) treats `whisperKit && languageDetection == nil` as
+    // (`DefaultPromptPlanner`) treats `whisper && languageDetection == nil` as
     // low confidence and DROPS per-language custom vocabulary. Mirror the locked
     // short-circuit result (`LanguageDetector.swift:160-170`) exactly. Synchronous
     // (no await after the stale guard) so no concurrent `beginSession(B)` can tear
@@ -1523,7 +1523,7 @@ final class WhisperEngineAdapter: ASREngineAdapter, @unchecked Sendable {
     let inferenceObserver = inferenceObserver(for: sessionID)
     do {
       // #2787: counted for the whole vendor call, so a session that stops
-      // waiting leaves the engine visibly busy until WhisperKit returns.
+      // waiting leaves the engine visibly busy until Whisper returns.
       let result = try await vendorDecodeOccupancy.track {
         // Twin of `ASRManager.transcribe`: never START a decode in a task the
         // session terminal already cancelled (second-pass review, #2787).
@@ -1672,7 +1672,7 @@ extension WhisperEngineAdapter: ASREngineTelemetryProviding {}
 extension WhisperEngineAdapter: ASREngineLanguageIdentifying {}
 
 // #879: the `ASREngineCacheModelLoadable` conformance (`prepareModelIfCached`)
-// was removed with `KernelDictationDriver.prepareBackendSilently()`. WhisperKit's
+// was removed with `KernelDictationDriver.prepareBackendSilently()`. Whisper's
 // launch warm-up now routes through the shared `ensureEngineWarm(reason: .launch)`
 // (gated by `SetupCoordinator` on `setupState == .ready`), which drives
 // `warmUp()` → `backend.prepare()` (cache-first, with the existing download
@@ -1701,16 +1701,16 @@ extension WhisperEngineAdapter {
 
 // MARK: - WhisperBackendDriving — local seam for testability (OQ-4 option a)
 
-/// Actor-bound protocol that captures every WhisperKit-backend surface this
+/// Actor-bound protocol that captures every Whisper-backend surface this
 /// adapter needs to drive. Declared `package` and local to this file so the
 /// protocol surface for the adapter stays in Pipeline; tests inject a stub
-/// conforming to this protocol without loading a real WhisperKit model. The
-/// concrete `WhisperKitBackend` (in `EnviousWisprASR`) is retro-conformed
+/// conforming to this protocol without loading a real model. The
+/// concrete `TranscribeCppWhisperBackend` (in `EnviousWisprASR`) is retro-conformed
 /// below.
 ///
 /// The `: Actor` constraint mirrors `package protocol ASRBackend: Actor` at
-/// `Sources/EnviousWisprASR/ASRProtocol.swift:14` — `WhisperKitBackend.isReady`
-/// is actor-isolated (`public private(set) var isReady`), so the synchronous
+/// `Sources/EnviousWisprASR/ASRProtocol.swift:14` — the backend's `isReady`
+/// is actor-isolated, so the synchronous
 /// protocol requirement only satisfies through an actor-bound protocol.
 package protocol WhisperBackendDriving: Actor {
   var isReady: Bool { get }
@@ -1737,15 +1737,8 @@ package protocol WhisperBackendDriving: Actor {
   func unload() async
 }
 
-// Retroactive conformance — `WhisperKitBackend` already has every requirement
-// at the right access level (`isReady` public, `modelVariantName` package,
-// `prepare()` public, `transcribe(..., onInferenceEntered:)` package,
-// `observeLID(...)` package, `makeStreamingSession(...)` package, `unload()`
-// public). No method additions needed in `EnviousWisprASR`.
-extension WhisperKitBackend: WhisperBackendDriving {}
-
-// #3735 §3.2: the transcribe.cpp backend drives the same adapter. Its streaming vend is nil
-// until Chunk 8's rolling session, so the adapter decodes in batch.
+// #3735 §3.2: the transcribe.cpp backend drives the adapter. Its streaming vend is the
+// rolling session (locked Faster Transcription); nil keeps the adapter in batch.
 extension TranscribeCppWhisperBackend: WhisperBackendDriving {}
 
 // MARK: - Memory-pressure unload binding (#3735 §3.2a)

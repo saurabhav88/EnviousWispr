@@ -23,7 +23,7 @@ struct SpeechSettingsCopyTests {
         == "Transcribes while you speak instead of once when you stop. Nothing looks different while you record; this only changes when the work happens. It does not save time you can notice on most dictations, and it can drop your last few words."
     )
     #expect(
-      LiveTranscriptionCopy.whisperKitToggleDescription
+      LiveTranscriptionCopy.whisperToggleDescription
         == "Transcribes while you speak instead of once when you stop. Nothing looks different while you record; this only changes when the work happens. It mainly helps on long recordings, and it needs a language selected."
     )
     #expect(LiveTranscriptionCopy.parakeet.title == "What Faster Transcription changes")
@@ -55,32 +55,32 @@ struct SpeechSettingsCopyTests {
       LiveTranscriptionCopy.parakeet.comparisons.map(\.metric) == [
         "Word errors", "Repeated or invented words",
       ])
-    #expect(LiveTranscriptionCopy.whisperKit.title == "What Faster Transcription changes")
-    #expect(LiveTranscriptionCopy.whisperKit.speedHeading == "Speed")
+    #expect(LiveTranscriptionCopy.whisper.title == "What Faster Transcription changes")
+    #expect(LiveTranscriptionCopy.whisper.speedHeading == "Speed")
     #expect(
-      LiveTranscriptionCopy.whisperKit.speedBody
+      LiveTranscriptionCopy.whisper.speedBody
         == "On short dictations you will not notice a difference. On long ones it usually helps clearly, because most of the work is done before you stop. Now and then it falls back to transcribing after you stop, which takes about as long as having this off."
     )
-    #expect(LiveTranscriptionCopy.whisperKit.accuracyHeading == "Accuracy")
+    #expect(LiveTranscriptionCopy.whisper.accuracyHeading == "Accuracy")
     #expect(
-      LiveTranscriptionCopy.whisperKit.accuracyBody
+      LiveTranscriptionCopy.whisper.accuracyBody
         == "On this engine, transcribing as you go is about as accurate as waiting until you stop. It can still occasionally drop a final word or two, which we are working on."
     )
-    #expect(LiveTranscriptionCopy.whisperKit.whyHeading == "One thing to know")
+    #expect(LiveTranscriptionCopy.whisper.whyHeading == "One thing to know")
     #expect(
-      LiveTranscriptionCopy.whisperKit.whyBody
+      LiveTranscriptionCopy.whisper.whyBody
         == "This engine has to commit to a language before it can start. If your language is set to Auto-detect, EnviousWispr ignores this setting and transcribes after you stop instead, because guessing the language early gets it wrong too often."
     )
-    #expect(LiveTranscriptionCopy.whisperKit.recommendationHeading == "What we recommend")
+    #expect(LiveTranscriptionCopy.whisper.recommendationHeading == "What we recommend")
     #expect(
-      LiveTranscriptionCopy.whisperKit.recommendationBody
+      LiveTranscriptionCopy.whisper.recommendationBody
         == "If you pick a specific language and often dictate for more than a minute, turn this on. Otherwise it makes little difference either way."
     )
     #expect(
-      LiveTranscriptionCopy.whisperKit.footnote
+      LiveTranscriptionCopy.whisper.footnote
         == "This engine transcribes differently from the Fast engine, so its behaviour and the advice here are not the same."
     )
-    #expect(LiveTranscriptionCopy.whisperKit.comparisons.isEmpty)
+    #expect(LiveTranscriptionCopy.whisper.comparisons.isEmpty)
     #expect(LiveTranscriptionCopy.parakeet.comparisons.map(\.off) == ["2.0%", "17"])
     #expect(LiveTranscriptionCopy.parakeet.comparisons.map(\.on) == ["3.7%", "51"])
   }

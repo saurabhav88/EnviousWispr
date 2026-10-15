@@ -170,6 +170,52 @@ struct WhisperEngineAdapterTranscribeCppTests {
     #expect(occupancy.isIdle)
   }
 
+  /// #3546 §3.7 T1, ported from the retired Whisper streaming decorator: every rolling-session
+  /// decode tells the adapter a decode is starting, once, before the native run returns.
+  @Test("a rolling-session decode reports its inference entry once, before the native return")
+  func rollingDecodeReportsEntryOnce() async throws {
+    let driver = AdapterFakeDriver()
+    let backend = makeBackend(driver)
+    try await backend.prepare()
+    let fired = CallCount()
+    driver.holdNative()
+    let decode = Task {
+      try await backend.decodeForRollingSession(
+        samples: [Float](repeating: 0.1, count: 16_000), language: "es",
+        onDecode: { fired.increment() })
+    }
+    await driver.waitUntilNativeEntered()
+    #expect(fired.value == 1, "reported before the native run returned")
+    await driver.releaseNative()
+    _ = try await decode.value
+    #expect(fired.value == 1)
+  }
+
+  /// #3546, ported: a rolling-session decode cancelled before the native call reports nothing,
+  /// never reaches the native run, stays a cancellation and releases occupancy. When this fails,
+  /// a cancelled live take is reported as having reached inference.
+  @Test("a rolling-session decode cancelled before the native call reports nothing")
+  func cancelledRollingDecodeReportsNothing() async throws {
+    let driver = AdapterFakeDriver()
+    let backend = makeBackend(driver)
+    try await backend.prepare()
+    let nativeCallsBefore = driver.decodeLanguages.count
+    let fired = CallCount()
+    let occupancy = VendorDecodeOccupancy()
+    let decode = Task { @MainActor in
+      withUnsafeCurrentTask { $0?.cancel() }
+      return try await occupancy.track {
+        try await backend.decodeForRollingSession(
+          samples: [Float](repeating: 0.1, count: 16_000), language: "es",
+          onDecode: { fired.increment() })
+      }
+    }
+    await #expect(throws: CancellationError.self) { _ = try await decode.value }
+    #expect(fired.value == 0)
+    #expect(driver.decodeLanguages.count == nativeCallsBefore, "never reached the native run")
+    #expect(occupancy.isIdle)
+  }
+
   @Test(
     "memory pressure while idle unloads under the adapter's claim and marks the engine not ready")
   func pressureUnloadsUnderClaim() async throws {
@@ -314,6 +360,13 @@ private final class AdapterFakeDriver: WhisperExecutorDriving, @unchecked Sendab
   }
 
   func unload(_ handle: Int) async { lock.withLock { _unloaded.append(handle) } }
+}
+
+private final class CallCount: @unchecked Sendable {
+  private let lock = NSLock()
+  private var count = 0
+  func increment() { lock.withLock { count += 1 } }
+  var value: Int { lock.withLock { count } }
 }
 
 /// One-shot: the first `finish` decides whether the caller saw a cancel or the native return.

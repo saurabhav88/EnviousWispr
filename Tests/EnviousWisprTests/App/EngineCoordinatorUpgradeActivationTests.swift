@@ -79,7 +79,7 @@ struct EngineCoordinatorUpgradeActivationTests {
   }
 
   enum Busy: CaseIterable {
-    case recovering, fileImport, minting, whisperKitDictation
+    case recovering, fileImport, minting, whisperDictation
   }
 
   @Test(
@@ -92,7 +92,7 @@ struct EngineCoordinatorUpgradeActivationTests {
     case .recovering: fake.recovering = true
     case .fileImport: fake.fileImportRunning = true
     case .minting: break
-    case .whisperKitDictation: fake.whisperKitActive = true
+    case .whisperDictation: fake.whisperActive = true
     }
     let c = fake.makeStartedCoordinator()
     if busy == .minting { c.beginMinting() }
@@ -104,7 +104,7 @@ struct EngineCoordinatorUpgradeActivationTests {
     case .recovering: fake.recovering = false
     case .fileImport: fake.fileImportRunning = false
     case .minting: c.endMinting()
-    case .whisperKitDictation: fake.whisperKitActive = false
+    case .whisperDictation: fake.whisperActive = false
     }
     c.poke(.driverStateChanged)
     #expect(await enginePoll { fake.activationCount == 1 }, "\(busy) released: it runs")
@@ -148,7 +148,7 @@ struct EngineCoordinatorUpgradeActivationTests {
     #expect(await enginePoll { fake.activationCount == 1 })
   }
 
-  @Test("nothing owed, or WhisperKit selected, activates nothing")
+  @Test("nothing owed, or Whisper selected, activates nothing")
   func onlyAnOwedConvergedParakeetActivates() async {
     let idle = FakeEngineDeps()
     let c = idle.makeStartedCoordinator()
@@ -161,6 +161,6 @@ struct EngineCoordinatorUpgradeActivationTests {
     let w = whisper.makeStartedCoordinator()
     w.poke(.parakeetUpgradeOwed)
     let ranWhisper = await enginePoll(.milliseconds(300)) { whisper.activationCount > 0 }
-    #expect(ranWhisper == false, "E14: WhisperKit users activate when they select Parakeet")
+    #expect(ranWhisper == false, "E14: Whisper users activate when they select Parakeet")
   }
 }

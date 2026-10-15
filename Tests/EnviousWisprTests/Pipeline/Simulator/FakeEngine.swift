@@ -126,7 +126,7 @@ final class FakeEngine: ASREngineAdapter, @unchecked Sendable {
     }
   }
 
-  /// #2614: a WhisperKit-shaped fake advertises language detection, so the
+  /// #2614: a Whisper-shaped fake advertises language detection, so the
   /// finalization wiring's `LanguageEvidence` takes the engine rung. Off by
   /// default: every existing scenario keeps its Parakeet-class capabilities.
   var detectsLanguage = false

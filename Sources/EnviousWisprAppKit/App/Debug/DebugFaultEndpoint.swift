@@ -67,7 +67,7 @@
 
     private let audioCapture: AudioCaptureManager?
     private let kernelDriver: KernelDictationDriver
-    private let whisperKitKernelDriver: KernelDictationDriver
+    private let whisperKernelDriver: KernelDictationDriver
     private let activeBackend: () -> ASRBackendType
     /// #1707 Phase 2: DEBUG fault-injection oracle (§11.1/§3.2a-i) — the SOLE
     /// dispatch target for every `*_batch_decode*` command below.
@@ -99,7 +99,7 @@
     init(
       audioCapture: AudioCaptureManager?,
       kernelDriver: KernelDictationDriver,
-      whisperKitKernelDriver: KernelDictationDriver,
+      whisperKernelDriver: KernelDictationDriver,
       activeBackend: @escaping () -> ASRBackendType,
       port: UInt16 = 8765,
       batchDecodeFaultController: BatchDecodeFaultController? = nil,
@@ -111,7 +111,7 @@
       self.qualificationAction = qualificationAction
       self.audioCapture = audioCapture
       self.kernelDriver = kernelDriver
-      self.whisperKitKernelDriver = whisperKitKernelDriver
+      self.whisperKernelDriver = whisperKernelDriver
       self.activeBackend = activeBackend
       self.port = port
       self.batchDecodeFaultController = batchDecodeFaultController
@@ -325,7 +325,7 @@
       case "force_cancel":
         switch activeBackend() {
         case .parakeet: await kernelDriver.forceCancelNow()
-        case .whisper: await whisperKitKernelDriver.forceCancelNow()
+        case .whisper: await whisperKernelDriver.forceCancelNow()
         }
         return "OK"
 
@@ -433,8 +433,8 @@
 
       case "query_state":
         let p = kernelDriver.state
-        let w = whisperKitKernelDriver.state
-        return "OK parakeet=\(p) whisperkit=\(w) backend=\(activeBackend())"
+        let w = whisperKernelDriver.state
+        return "OK parakeet=\(p) whisper=\(w) backend=\(activeBackend())"
 
       default:
         // #1317 proof-bench: force_zero_fill(mode,N,trialID) — arm the DEBUG
@@ -610,7 +610,7 @@
     }
 
     /// #1707 Phase 2: parse `<prefix><backend>)` — `<backend>` is
-    /// `ASRBackendType`'s raw value (`parakeet` or `whisperKit`).
+    /// `ASRBackendType`'s raw value (`parakeet` or `whisper`; the legacy `whisperKit` still parses).
     private func parseBackendArgCommand(_ cmd: String, prefix: String) -> ASRBackendType? {
       guard let raw = parseStringArgCommand(cmd, prefix: prefix) else { return nil }
       return ASRBackendType(rawValue: raw)

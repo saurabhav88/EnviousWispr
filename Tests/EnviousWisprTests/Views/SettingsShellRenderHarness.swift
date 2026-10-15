@@ -182,7 +182,7 @@ struct SettingsShellRenderHarness {
     let store = TranscriptStore(directory: Self.runDirectory.appending(path: "fixture-history"))
     let recording = LiveRecordingState(
       kernelDriver: DictationRuntimeFixtures.makeParakeetDriver(audioCapture: audio, asrManager: asr, store: store),
-      whisperKitKernelDriver: DictationRuntimeFixtures.makeWhisperKitPipeline(audioCapture: audio, store: store),
+      whisperKernelDriver: DictationRuntimeFixtures.makeWhisperPipeline(audioCapture: audio, store: store),
       audioCapture: audio, asrManager: asr)
     let runtime = DictationSettingsRenderHarness.idleRuntime(
       settings: settings, audio: audio, asr: asr, recording: recording, store: store)

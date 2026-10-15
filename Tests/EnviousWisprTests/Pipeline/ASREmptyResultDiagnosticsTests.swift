@@ -72,8 +72,8 @@ struct ASREmptyResultDiagnosticsTests {
     #expect(diagnostics.sentryExtra()["capture.input_channel"] as? Int == 1)
   }
 
-  @Test("WhisperKit diagnostics keep comparable base fields and worker subset")
-  func whisperKitDiagnosticsShape() {
+  @Test("Whisper diagnostics keep comparable base fields and worker subset")
+  func whisperDiagnosticsShape() {
     let diagnostics = ASREmptyResultDiagnostics(
       backend: "whisper",
       hasSpeechEvidence: true,

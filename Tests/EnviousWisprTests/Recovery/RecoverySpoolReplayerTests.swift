@@ -741,7 +741,7 @@ struct RecoverySpoolReplayerTests {
     }
 
     /// #2132 — THE COUNTERPART GUARD, and it protects against the OPPOSITE
-    /// mistake. `WhisperKitBackend.prepare()` throws `ASRError.notReady` when no
+    /// mistake. `Whisper backend.prepare()` throws `ASRError.notReady` when no
     /// model folder is admitted — deterministic, not transient. Deferring THAT
     /// would retain the spool and repeat the identical failure every launch
     /// forever, with no cleanup. Caught by Codex review on the confirming pass;

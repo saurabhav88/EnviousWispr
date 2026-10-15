@@ -6,7 +6,7 @@ import Foundation
 //
 // Faster Transcription on Whisper, over transcribe.cpp. The #1276 architecture (the UFAL
 // whisper_streaming recipe, `.claude/knowledge/whisperkit-research.md` FACT:
-// ufal-streaming-architecture-shipped) as `WhisperKitStreamingSession` shipped it, with one
+// ufal-streaming-architecture-shipped) as the retired WhisperKit streaming session shipped it, with one
 // change forced by the engine: transcribe.cpp gives SEGMENT timestamps, never word times.
 //
 //   - Per cycle: pull the adapter's lossless `streamingPCM`; gate on >= 1 s of new audio;
@@ -82,10 +82,10 @@ package actor TranscribeCppRollingSession: WhisperIncrementalSession {
   private var lastPublished = ""
 
   static let sampleRate: Float = 16_000
-  /// One second of new audio before a cycle decodes (the shipped WhisperKit gate).
+  /// One second of new audio before a cycle decodes (the retired WhisperKit session's gate).
   private let minNewSamplesToDecode = 16_000
 
-  /// §3.5 retention values, shared with the shipped WhisperKit session.
+  /// §3.5 retention values, carried over from the retired WhisperKit session.
   package static let defaultMaxUnconfirmedWindowSec: Float = 25
   static let bufferTrimSec: Float = 15
   static let minRetainedBufferSec: Float = 8

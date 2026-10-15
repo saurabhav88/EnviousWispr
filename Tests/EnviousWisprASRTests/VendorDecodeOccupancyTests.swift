@@ -1,7 +1,6 @@
 import EnviousWisprCore
 import Foundation
 import Testing
-import WhisperKit
 import os
 
 @testable import EnviousWisprASR
@@ -211,99 +210,9 @@ struct VendorDecodeOccupancyTests {
     #expect(manager.vendorDecodeOccupancy.isIdle)
   }
 
-  /// The WhisperKit STREAMING path never touches `ASRManager.transcribe`; its
-  /// session decodes through the decoder interface. The decorator counts every
-  /// one of those decodes, so a stream stopped mid-decode reads busy until the
-  /// vendor call actually returns.
-  @Test("the streaming decoder decorator counts each vendor decode for its whole duration")
-  func streamingDecoderIsCounted() async throws {
-    let occupancy = VendorDecodeOccupancy()
-    let gate = Gate()
-    let decoder = OccupiedWhisperKitDecoder(
-      base: ParkedDecoder(gate: gate), occupancy: occupancy)
-    let decode = Task { @MainActor in
-      try await decoder.transcribe(
-        audioArray: [0.0], decodeOptions: nil, shouldContinueDecoding: nil)
-    }
-    #expect(await gate.entered())
-    #expect(occupancy.inFlight == 1)
-    gate.open()
-    let results = try await decode.value
-    #expect(results.isEmpty)
-    #expect(occupancy.isIdle)
-    #expect(decoder.encodeText("x") == [7], "pass-through must reach the base decoder")
-  }
-
-  /// #3546 §3.7 T1: every streaming decode passes the decorator, which tells the adapter a
-  /// decode is starting, once per decode and before the vendor runs. A cycle the session
-  /// skips (too little new audio, a silent flush) never reaches the decorator, so it never
-  /// fires.
-  @Test("the streaming decoder decorator reports each decode before the vendor runs")
-  func streamingDecoderReportsEachDecode() async throws {
-    let gate = Gate()
-    let fired = OSAllocatedUnfairLock(initialState: 0)
-    let decoder = OccupiedWhisperKitDecoder(
-      base: ParkedDecoder(gate: gate), occupancy: VendorDecodeOccupancy(),
-      onDecode: { fired.withLock { $0 += 1 } })
-    #expect(fired.withLock { $0 } == 0, "building a session decodes nothing")
-    let decode = Task { @MainActor in
-      try await decoder.transcribe(
-        audioArray: [0.0], decodeOptions: nil, shouldContinueDecoding: nil)
-    }
-    #expect(await gate.entered())
-    #expect(fired.withLock { $0 } == 1, "reported before the vendor returned")
-    gate.open()
-    _ = try await decode.value
-    #expect(fired.withLock { $0 } == 1)
-  }
-
-  /// #3546: a decode cancelled before the vendor call commits nothing and never reaches the
-  /// vendor; the cancellation stays a cancellation and occupancy is released. When this
-  /// fails, a cancelled live take is reported as having reached inference.
-  @Test("a cancelled streaming decode reports nothing and never reaches the vendor")
-  func cancelledStreamingDecodeReportsNothing() async throws {
-    let vendorEntries = OSAllocatedUnfairLock(initialState: 0)
-    let reported = OSAllocatedUnfairLock(initialState: 0)
-    let occupancy = VendorDecodeOccupancy()
-    let decoder = OccupiedWhisperKitDecoder(
-      base: CountingDecoder(entries: vendorEntries), occupancy: occupancy,
-      onDecode: { reported.withLock { $0 += 1 } })
-    let decode = Task { @MainActor in
-      withUnsafeCurrentTask { $0?.cancel() }
-      return try await decoder.transcribe(
-        audioArray: [0.0], decodeOptions: nil, shouldContinueDecoding: nil)
-    }
-    await #expect(throws: CancellationError.self) { _ = try await decode.value }
-    #expect(reported.withLock { $0 } == 0)
-    #expect(vendorEntries.withLock { $0 } == 0)
-    #expect(occupancy.isIdle)
-  }
-
-  /// A decoder that counts its vendor entries and returns at once.
-  private struct CountingDecoder: WhisperKitTranscribing {
-    let entries: OSAllocatedUnfairLock<Int>
-    func transcribe(
-      audioArray: [Float], decodeOptions: DecodingOptions?,
-      shouldContinueDecoding: (@Sendable () -> Bool)?
-    ) async throws -> [TranscriptionResult] {
-      entries.withLock { $0 += 1 }
-      return []
-    }
-    func encodeText(_ text: String) -> [Int] { [] }
-  }
-
-  /// A decoder that parks inside `transcribe` until the gate opens.
-  private struct ParkedDecoder: WhisperKitTranscribing {
-    let gate: Gate
-    func transcribe(
-      audioArray: [Float], decodeOptions: DecodingOptions?,
-      shouldContinueDecoding: (@Sendable () -> Bool)?
-    ) async throws -> [TranscriptionResult] {
-      await gate.park()
-      return []
-    }
-    func encodeText(_ text: String) -> [Int] { [7] }
-  }
+  // The streaming path (the transcribe.cpp rolling session) is counted in
+  // WhisperEngineAdapterTranscribeCppTests: its flush, a cancelled take's drain, the
+  // once-per-decode inference report and a cancellation before the native call.
 
   @Test("a refused transcribe (backend not owned) never touches the count")
   func refusedTranscribeNotCounted() async {

@@ -53,12 +53,12 @@ struct KernelFallbackSentryErrorIdentityTests {
 
   @Test("xpcServiceError's associated backendLabel never changes the pinned descriptor")
   func xpcServiceErrorIgnoresBackendLabel() {
-    let whisperKit = KernelFallbackSentryError.xpcServiceError(backendLabel: "Whisper")
+    let whisperError = KernelFallbackSentryError.xpcServiceError(backendLabel: "Whisper")
     let parakeet = KernelFallbackSentryError.xpcServiceError(backendLabel: "Parakeet")
     #expect(
-      SentryBreadcrumb.structuredDescriptor(whisperKit)
+      SentryBreadcrumb.structuredDescriptor(whisperError)
         == SentryBreadcrumb.structuredDescriptor(parakeet))
-    #expect(whisperKit.errorDescription == "ASR XPC service crashed (Whisper)")
+    #expect(whisperError.errorDescription == "ASR XPC service crashed (Whisper)")
     #expect(parakeet.errorDescription == "ASR XPC service crashed (Parakeet)")
   }
 

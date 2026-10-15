@@ -674,7 +674,7 @@ public enum InverseTextNormalizationGate {
   ///   stamp "en" on its result, which never reached here anyway; #1678 removed
   ///   that constant — it reports nil now.) Run for non-LID backends
   ///   (Parakeet-class, legacy English); defensively skip for LID backends
-  ///   (WhisperKit), where nil means "couldn't identify" (`lid_backend_nil`).
+  ///   (Whisper), where nil means "couldn't identify" (`lid_backend_nil`).
 
   public static func skipReason(language: String?, englishVetoed: Bool, backendSupportsLID: Bool)
     -> String?

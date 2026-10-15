@@ -67,14 +67,14 @@ struct HeartControlRecoveryTests {
   func logDispatchFailureCapturesNonCancellation() {
     let hide = HideCallCounter()
     let locked = LockedCallCounter()
-    let recovery = makeRecovery(hideCalls: hide, lockedCalls: locked, backend: "whisperkit")
+    let recovery = makeRecovery(hideCalls: hide, lockedCalls: locked, backend: "whisper")
     withSentrySpy { spy in
       recovery.logDispatchFailure(TestStableSentryError(), op: "stop")
       #expect(spy.calls.count == 1)
       #expect(spy.calls.first?.category == .pipelineDispatchFailed)
       #expect(spy.calls.first?.stage == "recording")
       #expect(spy.calls.first?.extra?["op"] as? String == "stop")
-      #expect(spy.calls.first?.extra?["backend"] as? String == "whisperkit")
+      #expect(spy.calls.first?.extra?["backend"] as? String == "whisper")
     }
     #expect(hide.count == 0, "log-only path must not touch overlay")
     #expect(locked.values.isEmpty, "log-only path must not touch lock")

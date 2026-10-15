@@ -49,7 +49,7 @@ final class DictationRuntime {
     audioCapture: any AudioCaptureInterface,
     asrManager: any ASRManagerInterface,
     kernelDriver: KernelDictationDriver,
-    whisperKitKernelDriver: KernelDictationDriver,
+    whisperKernelDriver: KernelDictationDriver,
     settings: SettingsManager,
     permissions: PermissionsService,
     recordingOverlay: OverlayDirector,
@@ -88,13 +88,13 @@ final class DictationRuntime {
     self.audioEventRouter = AudioEventRouter(
       audioCapture: audioCapture,
       kernelDriver: kernelDriver,
-      whisperKitKernelDriver: whisperKitKernelDriver,
+      whisperKernelDriver: whisperKernelDriver,
       resolveActiveCaptureBackend: resolveActiveCaptureBackend
     )
     self.wedgeRecoveryRouter = WedgeRecoveryRouter(
       audioCapture: audioCapture,
       kernelDriver: kernelDriver,
-      whisperKitKernelDriver: whisperKitKernelDriver,
+      whisperKernelDriver: whisperKernelDriver,
       isCurrentSession: isCurrentSession,
       resolveActiveTelemetryTarget: resolveActiveTelemetryTarget
     )
@@ -113,7 +113,7 @@ final class DictationRuntime {
     )
     let finalizer = RecordingFinalizer(
       kernelDriver: kernelDriver,
-      whisperKitKernelDriver: whisperKitKernelDriver,
+      whisperKernelDriver: whisperKernelDriver,
       asrManager: asrManager,
       recordingOverlay: recordingOverlay,
       heartControlRecovery: heartControlRecovery,
@@ -125,7 +125,7 @@ final class DictationRuntime {
       audioCapture: audioCapture,
       asrManager: asrManager,
       kernelDriver: kernelDriver,
-      whisperKitKernelDriver: whisperKitKernelDriver,
+      whisperKernelDriver: whisperKernelDriver,
       settings: settings,
       permissions: permissions,
       recordingOverlay: recordingOverlay,

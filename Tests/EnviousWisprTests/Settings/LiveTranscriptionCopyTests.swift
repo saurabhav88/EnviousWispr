@@ -38,33 +38,33 @@ struct LiveTranscriptionCopyTests {
   ///
   /// Whisper carries NO figures on purpose: its stop-to-text times were measured on one
   /// Mac, and slower supported Macs would not see the same times.
-  @Test("Parakeet's measurements never appear in WhisperKit's panel")
-  func parakeetFiguresDoNotLeakIntoWhisperKit() {
-    let wk = LiveTranscriptionCopy.whisperKit
-    #expect(wk.comparisons.isEmpty, "WhisperKit has no defensible figures; it must show no table")
+  @Test("Parakeet's measurements never appear in Whisper's panel")
+  func parakeetFiguresDoNotLeakIntoWhisper() {
+    let wk = LiveTranscriptionCopy.whisper
+    #expect(wk.comparisons.isEmpty, "Whisper has no defensible figures; it must show no table")
 
-    let allWhisperKitCopy = [
+    let allWhisperCopy = [
       wk.title, wk.speedHeading, wk.speedBody, wk.accuracyHeading, wk.accuracyBody,
       wk.whyHeading, wk.whyBody, wk.recommendationHeading, wk.recommendationBody, wk.footnote,
-      LiveTranscriptionCopy.whisperKitToggleDescription,
+      LiveTranscriptionCopy.whisperToggleDescription,
     ].joined(separator: " ")
 
     for parakeetFigure in ["2.0%", "3.7%", "1 in 24", "28 test recordings", "500 real dictations"] {
       #expect(
-        allWhisperKitCopy.contains(parakeetFigure) == false,
-        "Parakeet figure leaked into WhisperKit copy: \(parakeetFigure)")
+        allWhisperCopy.contains(parakeetFigure) == false,
+        "Parakeet figure leaked into Whisper copy: \(parakeetFigure)")
     }
   }
 
   /// Whisper must not inherit Parakeet's "leave this off" advice: Parakeet's measured cost
   /// does not transfer. On Whisper streaming is roughly accuracy-neutral and faster on long
   /// recordings (#3735 qualification).
-  @Test("WhisperKit is not told to turn the setting off")
-  func whisperKitIsNotToldToDisable() {
-    let advice = LiveTranscriptionCopy.whisperKit.recommendationBody.lowercased()
+  @Test("Whisper is not told to turn the setting off")
+  func whisperIsNotToldToDisable() {
+    let advice = LiveTranscriptionCopy.whisper.recommendationBody.lowercased()
     #expect(
       advice.contains("leave this off") == false,
-      "WhisperKit must not inherit Parakeet's disable recommendation")
+      "Whisper must not inherit Parakeet's disable recommendation")
     #expect(
       LiveTranscriptionCopy.parakeet.recommendationBody.lowercased().contains("leave this off"),
       "Parakeet's recommendation must still say to leave it off")
@@ -79,7 +79,7 @@ struct LiveTranscriptionCopyTests {
         == LiveTranscriptionCopy.parakeet.accuracyBody)
     #expect(
       LiveTranscriptionCopy.panel(for: .whisper).accuracyBody
-        == LiveTranscriptionCopy.whisperKit.accuracyBody)
+        == LiveTranscriptionCopy.whisper.accuracyBody)
     #expect(
       LiveTranscriptionCopy.toggleDescription(for: .parakeet)
         != LiveTranscriptionCopy.toggleDescription(for: .whisper))
@@ -147,9 +147,9 @@ struct LiveTranscriptionCopyTests {
       LiveTranscriptionCopy.toggleLabel,
       LiveTranscriptionCopy.autoLanguageFootnote,
       LiveTranscriptionCopy.parakeetToggleDescription,
-      LiveTranscriptionCopy.whisperKitToggleDescription,
+      LiveTranscriptionCopy.whisperToggleDescription,
     ]
-    for panel in [LiveTranscriptionCopy.parakeet, LiveTranscriptionCopy.whisperKit] {
+    for panel in [LiveTranscriptionCopy.parakeet, LiveTranscriptionCopy.whisper] {
       out += [
         panel.title, panel.speedHeading, panel.speedBody, panel.accuracyHeading,
         panel.accuracyBody, panel.whyHeading, panel.whyBody, panel.recommendationHeading,

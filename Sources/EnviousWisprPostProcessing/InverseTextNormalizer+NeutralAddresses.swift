@@ -4,7 +4,7 @@ import Foundation
 /// app resolved as non-English (`normalizeLanguageNeutral`). #3233 adds German, Russian,
 /// Portuguese and Italian (perfect-hearing baseline 68/120 before, same method; #3233 baseline v1).
 ///
-/// Target is the CORRECTLY HEARD sentence: a speaker of these languages uses WhisperKit with the
+/// Target is the CORRECTLY HEARD sentence: a speaker of these languages uses Whisper with the
 /// language set and repairs a misheard word with the custom dictionary, which runs before this
 /// cleanup (founder, 2026-09-26). Measured on 120 Azure clips (#3226 baseline v3): perfect-hearing
 /// transcripts 54/120 before this file. No open-source inverse normalizer covers these shapes for

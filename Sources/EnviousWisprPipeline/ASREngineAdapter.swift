@@ -11,7 +11,7 @@ import Foundation
 // PR-2: no production type conforms to or calls it yet. `FakeEngine` (test
 // target) is the PR-2 conformer and the proof the surface is implementable;
 // the `RecordingSessionKernel` (PR-3) becomes the caller; the real Parakeet
-// and WhisperKit adapters (PR-4 / PR-5) become the production conformers.
+// and Whisper adapters (PR-4 / PR-5) become the production conformers.
 //
 // Placement: `EnviousWisprPipeline`, not `EnviousWisprASR` — this is a
 // kernel-facing orchestration contract, not the engine-internal `ASRBackend`
@@ -76,13 +76,13 @@ package final class WarmUpModelReceipt {
 /// cleanly.
 package struct ASREngineCapabilities: Sendable {
   /// The engine decodes incrementally and accepts `acceptAudio(_:)` during
-  /// recording (Parakeet). `false` for batch-after-stop engines (WhisperKit).
+  /// recording (Parakeet). `false` for batch-after-stop engines (Whisper).
   package let supportsStreaming: Bool
 
-  /// The engine can detect the spoken language (WhisperKit). `false` for
+  /// The engine can detect the spoken language (Whisper). `false` for
   /// Parakeet.
   ///
-  /// TODO(PR-5 telemetry): the WhisperKit adapter must surface its
+  /// TODO(PR-5 telemetry): the Whisper adapter must surface its
   /// engine-internal telemetry at this seam: `language.detected`,
   /// `language.lid_abstained`, `language.transcription_latency`,
   /// LID perf signpost logs (`lid_perf_signpost`), and incremental-finalize
@@ -91,12 +91,12 @@ package struct ASREngineCapabilities: Sendable {
 
   /// The engine's ASR decodes the kernel-conditioned (VAD-trimmed) batch buffer
   /// passed to `finalize(batchSamples:)` (Parakeet). `false` for engines that
-  /// ignore `batchSamples` and decode the raw capture instead (WhisperKit, which
+  /// ignore `batchSamples` and decode the raw capture instead (Whisper, which
   /// derives `clipTimestamps` from VAD segments over the raw audio). Gates the
   /// #950 tail-trim diagnostic: "audio dropped before ASR by the VAD trim" is
   /// only meaningful when the engine actually consumes the trimmed buffer.
   /// Defaulted `true` so existing constructions stay source-compatible; the only
-  /// `false` is WhisperKit.
+  /// `false` is Whisper.
   package let decodesConditionedBatchSamples: Bool
 
   package init(
@@ -397,11 +397,11 @@ package protocol ASREngineAdapter: AnyObject, Sendable {
   /// - The Parakeet adapter MUST use `batchSamples` for batch rescue. The
   ///   kernel-side conditioning is the canonical audio for Parakeet's
   ///   decoder; using its own retained PCM would skip the conditioning step.
-  /// - The WhisperKit adapter MUST NOT use `batchSamples`. WhisperKit decodes
+  /// - The Whisper adapter MUST NOT use `batchSamples`. Whisper decodes
   ///   with `clipTimestamps` derived from kernel-supplied voiced segments
   ///   (the #452/#560 hallucination-suppression mechanism); the kernel's
   ///   silence-stripping conditioning shifts the time origin and would
-  ///   invalidate the segment-derived timestamps. The WhisperKit adapter
+  ///   invalidate the segment-derived timestamps. The Whisper adapter
   ///   decodes against its own retained raw PCM so the coordinate space
   ///   matches.
   ///
@@ -437,7 +437,7 @@ package protocol ASREngineAdapter: AnyObject, Sendable {
   /// `finalize()` call does not crash — it silently misbehaves. `inputSamples`
   /// is REQUIRED (non-optional) — never falls back to adapter-held state,
   /// because that state is already gone. Named `inputSamples`, NOT
-  /// `batchSamples`: for WhisperKit this is raw capture, not a "batch" buffer
+  /// `batchSamples`: for Whisper this is raw capture, not a "batch" buffer
   /// in the sense `finalize(batchSamples:)`'s own parameter name implies.
   func retryDecode(inputSamples: [Float]) async -> ASREngineOutcome
 
@@ -447,7 +447,7 @@ package protocol ASREngineAdapter: AnyObject, Sendable {
   /// single fixed constant either rejects a healthy long decode too early
   /// or wastes time waiting on a short one) — a flat placeholder was
   /// measured 2026-07-20 against the live dev app across {Parakeet,
-  /// WhisperKit} x {~5s, ~20s, ~59s} real audio
+  /// Whisper} x {~5s, ~20s, ~59s} real audio
   /// (`docs/audits/2026-07-20-recovery-v2-phase2-retry-decode-latency.md`)
   /// and replaced with a fixed-floor-plus-per-second-budget formula, each
   /// conformer tuned from its own measured real-time factor. Pipeline-owned
@@ -482,7 +482,7 @@ package protocol ASREngineAdapter: AnyObject, Sendable {
   /// reloads fresh. Called ONLY by the kernel's load-wedge / finalize-wedge
   /// detectors, never for an ordinary session discard. Does everything `cancel()`
   /// does PLUS the engine-specific kill (Parakeet: XPC service teardown via
-  /// `cancelInFlightLoad()`; WhisperKit: in-process backend unload). MUST be
+  /// `cancelInFlightLoad()`; Whisper: in-process backend unload). MUST be
   /// best-effort and deadline-bounded so a wedged in-process decode cannot hang
   /// the kernel's recovery path. After it returns, `readiness` is expected
   /// `.notReady` and the next press warms the engine.
@@ -559,11 +559,11 @@ package protocol ASREngineAdapter: AnyObject, Sendable {
   ///
   /// `rawCaptureSamples` is the kernel's `captureResult.samples` — the SAME
   /// buffer the segment offsets index into. An adapter that decodes with
-  /// `clipTimestamps` (WhisperKit) MUST batch-decode THIS buffer (padded),
+  /// speech ranges (Whisper) MUST batch-decode THIS buffer (padded),
   /// not its own `onBufferCaptured`-fed `retainedPCM` shadow copy: the shadow
   /// copy is rebuilt from a separate, lossy async stream and diverges in
   /// length from `captureResult.samples`, so segment offsets indexed against
-  /// the latter overrun the former and WhisperKit's clip seek returns
+  /// the latter overrun the former and WhisperKit's clip seek returned
   /// "Audio samples are nil" (PR-5 Rung 5 UAT #827 — restores OLD
   /// `WhisperKitPipeline.swift:614-615` single-coordinate parity). Adapters
   /// that do not consume segments ignore the parameter.
@@ -576,7 +576,7 @@ extension ASREngineAdapter {
   /// real phase strings.
   public var lastObservedPhase: String { "warmup" }
 
-  /// Default: no warm-up-inference concept (Parakeet). WhisperKit overrides.
+  /// Default: no warm-up-inference concept (Parakeet). Whisper overrides.
   public var lastWarmupInferenceMs: Int? { nil }
 
   // PR-5 Rung 2A: no-op defaults for the three optional hooks. Adapters
@@ -591,6 +591,6 @@ extension ASREngineAdapter {
 extension ASREngineAdapter {
   /// #1339 safe default: not eligible. `ParakeetEngineAdapter` opts in when
   /// its manager feeds the shared progress file; signal-free adapters
-  /// (WhisperKit) and in-process managers stay uncovered.
+  /// (Whisper) and in-process managers stay uncovered.
   public var warmupStallGuardEligible: Bool { false }
 }

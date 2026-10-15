@@ -4,8 +4,8 @@ import EnviousWisprLLM
 import Observation
 
 /// Owns setup-orchestration concerns previously held directly on the former root state:
-/// the Ollama setup service, the WhisperKit setup service, and the background
-/// observation task that pre-loads WhisperKit when its setup state becomes ready.
+/// the Ollama setup service, the Whisper setup service, and the background
+/// observation task that pre-loads Whisper when its setup state becomes ready.
 ///
 /// Heart path does not consult this object. If setup services fail, dictation
 /// still completes — the user just sees broken status in Settings tabs.
@@ -18,10 +18,10 @@ final class SetupCoordinator {
   let whisperSetup: WhisperSetupService
 
   @ObservationIgnored
-  private var whisperKitPreloadTask: Task<Void, Never>?
+  private var whisperPreloadTask: Task<Void, Never>?
 
   @ObservationIgnored
-  private var whisperKitMigrationTask: Task<Void, Never>?
+  private var whisperMigrationTask: Task<Void, Never>?
 
   /// #1918: the settings-pane-scoped poll and the app-activation probe for
   /// Ollama status. Both nil when no pane is watching.
@@ -37,7 +37,7 @@ final class SetupCoordinator {
   private let asrManager: any ASRManagerInterface
   private let preloadAction: @MainActor () async -> Void
 
-  /// Reads WhisperKit setup readiness for the preload gate. Defaults to the owned
+  /// Reads Whisper setup readiness for the preload gate. Defaults to the owned
   /// `whisperSetup` service, so production behavior is unchanged. A unit test
   /// injects a reader that returns `.ready` to prove the parakeet backend guard —
   /// not the (test-unreachable) readiness gate — is what suppresses preload (#898).
@@ -45,7 +45,7 @@ final class SetupCoordinator {
 
   /// #1386 PR-2: the ~/Documents phase of the multilingual migration. Injected
   /// (the coordinator that owns it is built beside this one) and fired from
-  /// `startWhisperKitMigrationThenDetect()` once the app has UI, because this is
+  /// `startWhisperMigrationThenDetect()` once the app has UI, because this is
   /// the step that can raise a Files-and-Folders prompt. Defaults to a no-op.
   private let runDocumentsMigration: @MainActor () async -> Void
 
@@ -88,8 +88,8 @@ final class SetupCoordinator {
   /// then start watching for readiness. Sequenced so setup never reports on a
   /// half-migrated state, and called from `runDidFinishLaunching` so the
   /// Documents read (and any permission prompt) happens with the app on screen.
-  func startWhisperKitMigrationThenDetect() {
-    whisperKitMigrationTask = Task { [weak self] in
+  func startWhisperMigrationThenDetect() {
+    whisperMigrationTask = Task { [weak self] in
       // `Task.cancel()` only sets a flag; a closure cancelled before entry
       // still runs until its first cancellation check. This is that check.
       guard !Task.isCancelled, let self else { return }
@@ -104,7 +104,7 @@ final class SetupCoordinator {
   /// Start the settings-pane-scoped poll for Ollama status, called from
   /// `ProviderSetupLifecycle.onAppear`/`.onChange(llmProvider)` (#2772 chunk 1). Idempotent:
   /// cancels-before-restart, mirroring `startPreloadObservation()`'s own
-  /// precedent for the sibling WhisperKit observer.
+  /// precedent for the sibling Whisper observer.
   func startOllamaStatusWatch() {
     // #3438: the visible watch owns Ollama status from here; an off-page probe stands down.
     cancelOffPageOllamaRefresh()
@@ -182,8 +182,8 @@ final class SetupCoordinator {
   }
 
   /// Cancel every task this coordinator owns: the Ollama poll, the Ollama
-  /// activation probe, the off-page probe, the WhisperKit preload observer, and the
-  /// WhisperKit migration task.
+  /// activation probe, the off-page probe, the Whisper preload observer, and the
+  /// Whisper migration task.
   func cleanup() {
     ollamaStatusPollTask?.cancel()
     ollamaStatusPollTask = nil
@@ -191,26 +191,26 @@ final class SetupCoordinator {
     ollamaActivationProbeTask = nil
     ollamaOffPageProbeTask?.cancel()
     ollamaOffPageProbeTask = nil
-    whisperKitPreloadTask?.cancel()
-    whisperKitPreloadTask = nil
-    whisperKitMigrationTask?.cancel()
-    whisperKitMigrationTask = nil
+    whisperPreloadTask?.cancel()
+    whisperPreloadTask = nil
+    whisperMigrationTask?.cancel()
+    whisperMigrationTask = nil
     ollamaSetup.cleanup()
   }
 
   /// Observe `whisperSetup.setupState` and invoke `preloadAction` when it becomes
-  /// `.ready` and the active backend is WhisperKit. Cancels any prior observation
+  /// `.ready` and the active backend is Whisper. Cancels any prior observation
   /// task; safe to call repeatedly (e.g. on backend switch).
   func startPreloadObservation() {
-    whisperKitPreloadTask?.cancel()
-    whisperKitPreloadTask = Task { [weak self] in
+    whisperPreloadTask?.cancel()
+    whisperPreloadTask = Task { [weak self] in
       while !Task.isCancelled {
         guard let self else { return }
 
-        // Exit immediately when WhisperKit isn't the active backend. Parakeet
+        // Exit immediately when Whisper isn't the active backend. Parakeet
         // users shouldn't pay CPU/memory cost warming a backend they never use.
         // This observer covers launch + a download-completing-while-already-on-
-        // WhisperKit; warming AFTER a backend switch is owned by
+        // Whisper; warming AFTER a backend switch is owned by
         // `EngineCoordinator` (#1171), so this observer is no longer restarted on
         // a switch.
         guard self.asrManager.activeBackendType == .whisper else { return }

@@ -191,7 +191,7 @@ final class AudioSystemEventReporter {
 
     // Snapshot collaborators on MainActor.
     let route = audioCapture.currentAudioRoute  // built_in_mic / hal_device_input / audio_engine / failed / unknown
-    let backend = asrManager.activeBackendType.rawValue  // parakeet / whisperKit
+    let backend = asrManager.activeBackendType.rawValue  // parakeet / whisper
     let recordingActive = pipelineStateProvider() == .recording
 
     var data: [String: Any] = [

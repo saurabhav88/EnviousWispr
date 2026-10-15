@@ -73,7 +73,9 @@ CLIPS = ["normal-speech", "silence", "background-noise", "mumbled-speech", "sudd
 # (baseline label, switch_backend arg, selectedBackend rawValue)
 ENGINES = [
     ("parakeet", "parakeet", "parakeet"),
-    ("whisperKit", "whisperkit", "whisperKit"),
+    # #3735: the baseline label stays "whisperKit" (baseline.json keys); the app now stores
+    # and switch_backend takes "whisper".
+    ("whisperKit", "whisper", "whisper"),
 ]
 
 # Per-clip expected-outcome rule — written explicitly, never inferred (§3.8).

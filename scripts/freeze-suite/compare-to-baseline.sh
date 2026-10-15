@@ -146,7 +146,9 @@ CLIPS = ["normal-speech", "silence", "background-noise", "mumbled-speech", "sudd
 # (baseline label, switch_backend arg, selectedBackend rawValue)
 ENGINES = [
     ("parakeet", "parakeet", "parakeet"),
-    ("whisperKit", "whisperkit", "whisperKit"),
+    # #3735: the baseline label stays "whisperKit" (baseline.json keys); the app now stores
+    # and switch_backend takes "whisper".
+    ("whisperKit", "whisper", "whisper"),
 ]
 DEFAULTS_DOMAIN = "com.enviouswispr.app.dev"
 
@@ -761,8 +763,8 @@ try:
             if entry.get("engine") == "whisperKit" and entry.get("status") == "skipped":
                 entry["needs_review"] = True
 finally:
-    if pre_run_backend in ("parakeet", "whisperKit"):
-        switch_target = "parakeet" if pre_run_backend == "parakeet" else "whisperkit"
+    if pre_run_backend in ("parakeet", "whisper", "whisperKit"):
+        switch_target = "parakeet" if pre_run_backend == "parakeet" else "whisper"
         try:
             print(f"\n[freeze-suite] restoring pre-run backend: {pre_run_backend}")
             ensure_backend(switch_target, pre_run_backend)

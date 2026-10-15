@@ -26,16 +26,16 @@ struct ModelPreparingRowIntegrationTests {
     ModelPreparingCopy.label(warmInFlight: c.status.warmInFlight)
   }
 
-  /// Drive: not installed → user picks WhisperKit → download admits → coordinator switches
+  /// Drive: not installed → user picks Whisper → download admits → coordinator switches
   /// and warms. Returns the coordinator with its warm parked on `warm`.
   ///
-  /// **The admission is NOT poked by hand.** Flipping `whisperKitInstalled` is the whole
+  /// **The admission is NOT poked by hand.** Flipping `whisperInstalled` is the whole
   /// trigger: the fake's flag is `@Observable`, so the coordinator's own
   /// `observeInstalledState()` sees the change and fires `.setupStateChanged` itself. An
   /// earlier draft called `poke(.setupStateChanged)` manually, which exercised the EFFECT
   /// of the trigger rather than the trigger, and the audit caught it.
   ///
-  /// **IF THIS HANGS, `FakeEngineDeps.whisperKitInstalled` HAS STOPPED BEING OBSERVABLE.**
+  /// **IF THIS HANGS, `FakeEngineDeps.whisperInstalled` HAS STOPPED BEING OBSERVABLE.**
   /// The `#require` below does not catch that: losing observability still leaves the switch
   /// correctly blocked, so the precondition passes and the hang lands later at
   /// `waitUntilWaiting()`, waiting for a warm the coordinator was never told to start.
@@ -44,13 +44,13 @@ struct ModelPreparingRowIntegrationTests {
   private func driveToParkedWarm(
     _ fake: FakeEngineDeps, _ warm: AsyncLatch
   ) async throws -> EngineCoordinator {
-    fake.whisperKitInstalled = false
+    fake.whisperInstalled = false
     fake.onWarmAwait = { await warm.wait() }
     let c = fake.makeStartedCoordinator()
 
     // The user picks the optional engine before it exists on disk. The switch must be
     // refused (gate 4, not installed) with Parakeet still active — this is the real
-    // ordering, since the Download button only renders once WhisperKit is selected.
+    // ordering, since the Download button only renders once Whisper is selected.
     fake.selected = .whisper
     c.poke(.settingsChanged)
     let blocked = await enginePoll { c.status.blockedReason == .notInstalled }
@@ -60,7 +60,7 @@ struct ModelPreparingRowIntegrationTests {
     #expect(renderedLabel(c) == ModelPreparingCopy.ready, "and the row is not preparing yet")
 
     // Download completes. Nothing else: the observation does the rest.
-    fake.whisperKitInstalled = true
+    fake.whisperInstalled = true
 
     await warm.waitUntilWaiting()
     return c

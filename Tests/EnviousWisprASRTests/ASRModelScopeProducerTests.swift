@@ -4,8 +4,29 @@ import Foundation
 import Testing
 
 @testable import EnviousWisprASR
+@testable import EnviousWisprTranscribeCpp
 
-private final class FakeScopeModel: LoadedASRModel {}
+/// A native driver whose load is the test's closure; decodes return at once.
+private struct ScopeDriver: WhisperExecutorDriving {
+  typealias Handle = Int
+  let loadModel: @Sendable (String) async throws -> Int
+  func load(modelPath: String, lane: TranscribeCppExecutor.Lane) async throws -> Int {
+    try await loadModel(modelPath)
+  }
+  func detectLanguage(
+    _ handle: Int, samples: [Float], lane: TranscribeCppExecutor.Lane
+  ) async throws -> TranscribeCppLanguageObservation {
+    TranscribeCppLanguageObservation(code: "en", logProb: -0.01)
+  }
+  func transcribe(
+    _ handle: Int, samples: [Float], language: String?, lane: TranscribeCppExecutor.Lane,
+    onInferenceEntered: (@Sendable () -> Void)?, onProgress: (@Sendable (Int64, Int64) -> Void)?
+  ) async throws -> TranscribeCppRunResult {
+    TranscribeCppRunResult(text: "", detectedLanguage: "en", segments: [])
+  }
+  func waitForDrain(_ handle: Int) async {}
+  func unload(_ handle: Int) async {}
+}
 
 /// Delivered scope snapshots, readable synchronously from any thread (the fake native loader
 /// reads it at its first statement). Safe: every access holds `lock`, nothing awaits or calls
@@ -88,7 +109,7 @@ private actor Hold {
   private var arrivalWaiters: [CheckedContinuation<Void, Never>] = []
   private var releaseWaiters: [CheckedContinuation<Void, Never>] = []
   private var deadlineTask: Task<Void, Never>?
-  /// How many held deliveries must arrive before the hold counts as reached: the WhisperKit
+  /// How many held deliveries must arrive before the hold counts as reached: the Whisper
   /// tests need both the queued loading report and the physical-load barrier's own delivery.
   private let arrivalsRequired: Int
   private var arrivalsObserved = 0
@@ -153,28 +174,29 @@ private actor Counter {
 @MainActor
 @Suite("ASR model scope producers (#3546)", .tags(.observabilityContract))
 struct ASRModelScopeProducerTests {
+  static let whisperVariant = "whisper-large-v3-turbo-Q8_0"
   static let whisper = ASRModelIdentity(
-    name: "whisperkit-coreml", revision: "0123456789abcdef",
-    variant: WhisperKitBackend.defaultModelVariant())
+    name: "whisper-large-v3-turbo-gguf", revision: "0123456789abcdef", variant: whisperVariant)
 
   fileprivate static func backend(
-    load: @escaping @Sendable (String) async throws -> any LoadedASRModel,
+    load: @escaping @Sendable (String) async throws -> Int,
     identity: ASRModelIdentity? = whisper, delivered: DeliveredScope,
     hold: Hold? = nil
-  ) -> WhisperKitBackend {
-    WhisperKitBackend(
-      testSeams: .init(loadModel: load, runWarmup: { .completed(ms: 1) }),
-      admittedModelFolder: { "/fake" }, modelIdentity: identity,
+  ) -> TranscribeCppWhisperBackend<ScopeDriver> {
+    TranscribeCppWhisperBackend(
+      driver: ScopeDriver(loadModel: load), modelVariant: whisperVariant,
+      admittedModelPath: { "/fake/turbo.gguf" }, modelIdentity: identity,
       scopeDelivery: { sequence, snapshot in
         if let hold, snapshot.phase == .loading { await hold.arriveAndWait() }
         delivered.append(snapshot, sequence: sequence)
-      })
+      },
+      authorizeUnload: nil, warmupDeadlineSeconds: 5)
   }
 
-  @Test("a WhisperKit load reports loading, then loaded and serving; an unload stops serving")
-  func whisperKitLoadAndUnload() async throws {
+  @Test("a Whisper load reports loading, then loaded and serving; an unload stops serving")
+  func whisperLoadAndUnload() async throws {
     let delivered = DeliveredScope()
-    let backend = Self.backend(load: { _ in FakeScopeModel() }, delivered: delivered)
+    let backend = Self.backend(load: { _ in 1 }, delivered: delivered)
     try await backend.prepare()
     await delivered.waitFor(count: 2)
     #expect(delivered.all.map(\.phase) == [.loading, .loaded])
@@ -186,8 +208,8 @@ struct ASRModelScopeProducerTests {
     #expect(delivered.all.last?.serving == nil, "an unloaded engine serves nothing")
   }
 
-  @Test("a failed WhisperKit load reports failed and serves nothing")
-  func whisperKitFailure() async throws {
+  @Test("a failed Whisper load reports failed and serves nothing")
+  func whisperFailure() async throws {
     struct BrokenCache: Error {}
     let delivered = DeliveredScope()
     let backend = Self.backend(load: { _ in throw BrokenCache() }, delivered: delivered)
@@ -198,8 +220,8 @@ struct ASRModelScopeProducerTests {
     #expect(delivered.all.last?.serving == nil)
   }
 
-  @Test("a WhisperKit load that throws a cancellation reports cancelled, not failed")
-  func whisperKitCancellation() async throws {
+  @Test("a Whisper load that throws a cancellation reports cancelled, not failed")
+  func whisperCancellation() async throws {
     let delivered = DeliveredScope()
     let backend = Self.backend(load: { _ in throw CancellationError() }, delivered: delivered)
     await #expect(throws: CancellationError.self) { try await backend.prepare() }
@@ -209,8 +231,8 @@ struct ASRModelScopeProducerTests {
 
   /// The loading delivery is held: the native loader must not start until it lands, and at
   /// its first statement the loading tags are already delivered. Removing the barrier in
-  /// `runLoad` fails this test.
-  @Test("WhisperKit's native load waits until its loading tags are delivered")
+  /// `TranscribeCppWhisperBackend.runLoad` fails this test.
+  @Test("the Whisper native load waits until its loading tags are delivered")
   func nativeLoadWaitsForLoadingTags() async throws {
     let delivered = DeliveredScope()
     let hold = Hold(arrivalsRequired: 2)
@@ -220,7 +242,7 @@ struct ASRModelScopeProducerTests {
       load: { _ in
         if let last = delivered.all.last { atEntry.append(last) }
         await entries.bump()
-        return FakeScopeModel()
+        return 1
       }, delivered: delivered, hold: hold)
     let load = Task { try await backend.prepare() }
     await hold.waitForArrival()
@@ -234,7 +256,7 @@ struct ASRModelScopeProducerTests {
 
   /// An unload while the loading delivery is held: the abandoned load never enters the
   /// native loader, and the tags end cancelled with nothing serving.
-  @Test("a WhisperKit load unloaded while its tags are held never enters the native load")
+  @Test("a Whisper load unloaded while its tags are held never enters the native load")
   func unloadWhileTagsHeldNeverLoads() async throws {
     let delivered = DeliveredScope()
     let hold = Hold(arrivalsRequired: 2)
@@ -242,7 +264,7 @@ struct ASRModelScopeProducerTests {
     let backend = Self.backend(
       load: { _ in
         await entries.bump()
-        return FakeScopeModel()
+        return 1
       }, delivered: delivered, hold: hold)
     let load = Task { try await backend.prepare() }
     await hold.waitForArrival()
@@ -255,12 +277,13 @@ struct ASRModelScopeProducerTests {
     #expect(delivered.all.contains { $0.phase == .cancelled && $0.serving == nil })
   }
 
-  @Test("a delivered identity for another WhisperKit variant is never reported")
+  @Test("a delivered identity for another Whisper variant is never reported")
   func mismatchedVariantNamesNoModel() async throws {
     let delivered = DeliveredScope()
-    let other = ASRModelIdentity(name: "whisperkit-coreml", revision: "01234567", variant: "tiny")
+    let other = ASRModelIdentity(
+      name: "whisper-large-v3-turbo-gguf", revision: "01234567", variant: "small-Q8_0")
     let backend = Self.backend(
-      load: { _ in FakeScopeModel() }, identity: other, delivered: delivered)
+      load: { _ in 1 }, identity: other, delivered: delivered)
     try await backend.prepare()
     await delivered.waitFor(count: 2)
     #expect(delivered.all.last?.phase == .loaded)

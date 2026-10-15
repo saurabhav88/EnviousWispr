@@ -8,7 +8,7 @@ import os
 
 /// Phase G5 — exercises reset-branch behavior in `setInitialBackendType` and
 /// `switchBackend` from a synthetic loaded state. Previously NOT_TESTABLE
-/// because driving a real `ParakeetBackend` / `WhisperKitBackend` to
+/// because driving a real `ParakeetBackend` / `Whisper backend` to
 /// `isReady=true` requires a real model download/compile on CI.
 ///
 /// `FakeASRBackend` is an actor (matches `ASRBackend: Actor` requirement)
@@ -509,7 +509,7 @@ struct ASRManagerLoadGenerationTests {
       parakeetSelection: ParakeetSelectionProvider(), parakeetBackendFactory: { parakeet })
     manager.setInitialBackendType(.whisper)
 
-    // WhisperKit loads in-process behind its relocation gate, never here. A
+    // Whisper loads in-process behind its relocation gate, never here. A
     // silent no-op would look like a successful warm-up of a model that isn't
     // there; worse, the old code mapped one the gate never saw.
     await #expect(throws: ASRManagerNotOwnedError(backend: .whisper)) {
@@ -517,7 +517,7 @@ struct ASRManagerLoadGenerationTests {
     }
     #expect(manager.isModelLoaded == false)
     let prepares = await parakeet.prepareCount
-    #expect(prepares == 0, "the Parakeet backend must not be loaded for a WhisperKit request")
+    #expect(prepares == 0, "the Parakeet backend must not be loaded for a Whisper request")
   }
 
   @Test("transcribe refuses an engine the manager does not own")

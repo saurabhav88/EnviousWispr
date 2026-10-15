@@ -221,7 +221,7 @@ public final class AudioCaptureManager: AudioCaptureInterface {
   public nonisolated static let maxRecordingSamples: Int = Int(
     maxRecordingDurationSeconds * targetSampleRate)
 
-  /// Target format: 16kHz, mono, Float32 — required by both Parakeet and WhisperKit.
+  /// Target format: 16kHz, mono, Float32 — required by both Parakeet and Whisper.
   public nonisolated static let targetSampleRate: Double = 16000
 
   /// The active capture source. Created on startEnginePhase / preWarm.

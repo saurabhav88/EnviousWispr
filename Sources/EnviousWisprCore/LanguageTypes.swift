@@ -6,7 +6,7 @@ import Foundation
 ///
 /// Produced by `LanguageDetector` and consumed by the pipeline and prompt layers.
 /// When `abstained` is true (or `tier == .abstain`), `lang` is nil and the caller
-/// should let WhisperKit's internal LID run by passing `nil` into
+/// should let the Whisper decode's own language detection run by passing `nil` into
 /// `TranscriptionOptions.language`.
 public struct LanguageDetectionResult: Sendable, Equatable {
   public let lang: String?  // ISO 639-1, nil if abstaining

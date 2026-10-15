@@ -11,8 +11,8 @@ import os
 /// — but an actor is reentrant at every `await`, and that method awaits three
 /// times before it records the new session. A second call arriving during any of
 /// those suspensions also read `previousSession == nil`, so both proceeded and
-/// both started decode loops over the same cached WhisperKit instance: exactly
-/// the concurrent-transcribe corruption `WhisperKitStreamingSession.cancel()`
+/// both started decode loops over the same cached WhisperKit instance (before #3735): exactly
+/// the concurrent-transcribe corruption the retired WhisperKit streaming session's `cancel()`
 /// documents. Cloud review caught it after the serialization was added.
 ///
 /// The lock is held ACROSS the suspensions instead. This is the repo's own

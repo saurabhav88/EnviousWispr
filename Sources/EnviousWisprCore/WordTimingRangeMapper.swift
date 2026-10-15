@@ -11,11 +11,11 @@ public enum WordTimingRangeMapper {
 
   /// Above this many candidate (engine word × text word) pairs, the exact forced-alignment
   /// search is skipped in favor of returning no bound words for the mismatched region. The
-  /// cap bounds the O(m × n) tables; it is never meant to decide a real file. #2919: WhisperKit's
+  /// cap bounds the O(m × n) tables; it is never meant to decide a real file. #2919: Whisper's
   /// words are its own tokens, which split differently from whitespace runs on a few words per
   /// window, so the identity fast path fails and one 18,351-word file put the WHOLE transcript
   /// (m × n ≈ 337 M) over this cap, leaving every word untimed and the speaker labels lost.
-  /// Callers with a natural seam (WhisperKit's one result per decode window) bind PER PIECE
+  /// Callers with a natural seam (Whisper's one result per decode window) bind PER PIECE
   /// through `map(text:audioDurationMs:pieces:)`, so a piece is a few hundred words and the
   /// cap is out of reach; a whole-transcript call is the one-piece case.
   static let forcedAlignmentSearchCap = 4_000_000
@@ -134,14 +134,14 @@ public enum WordTimingRangeMapper {
   // MARK: - Space-free scripts (#2838)
 
   /// A script with no spaces (Chinese, Japanese, Thai) tokenizes into ONE run per piece, so
-  /// no run can equal an engine word and `forcedBinding` times nothing. WhisperKit splits
+  /// no run can equal an engine word and `forcedBinding` times nothing. Whisper splits
   /// such text into token groups of one to five characters (its own `splitTokensOnUnicode`).
   /// When those groups, laid end to end, ARE the run, the run is carved into one range per
   /// group; each carries that group's timing. Any mismatch aborts the walk and returns `nil`,
   /// so the run falls through to the forced binding exactly as before. Only reached for a
   /// single-run piece with several engine words, never for a spaced script.
   /// Whether a run holds at least one scalar from a script written without word spaces: the
-  /// languages WhisperKit splits on Unicode rather than on spaces (zh, ja, th, lo, my, yue).
+  /// languages Whisper splits on Unicode rather than on spaces (zh, ja, th, lo, my, yue).
   /// A spaced-language window that happens to hold ONE word ("don't" alone) is not carved:
   /// its engine groups are sub-word pieces of a spaced word, and the forced binding is the
   /// right reader (cloud review of PR #2930).

@@ -54,13 +54,13 @@ struct DictationSettingsRenderHarness {
       telemetry: NoTelemetry(), log: { _ in }, nowMicros: { 0 }, sleep: { _ in },
       pid: 0, isProcessAlive: { _ in false }))
     let sync = PipelineSettingsSync(kernelDriver: recording.kernelDriver,
-      whisperKitKernelDriver: recording.whisperKitKernelDriver, audioCapture: audio,
+      whisperKernelDriver: recording.whisperKernelDriver, audioCapture: audio,
       asrManager: asr, hotkeyService: hotkey, ollamaRemotenessLookup: { _ in nil })
     let last = LastRecordingResult()
     let locked = DictationLifecycleCoordinator.RecordingLockedAccess(get: { false }, set: { _ in })
     let lease = EngineLease()
     let lifecycle = DictationLifecycleCoordinator(
-      kernelDriver: recording.kernelDriver, whisperKitKernelDriver: recording.whisperKitKernelDriver,
+      kernelDriver: recording.kernelDriver, whisperKernelDriver: recording.whisperKernelDriver,
       recordingOverlay: overlay, hotkeyService: hotkey, settingsSync: sync,
       audioCapture: audio, transcriptCoordinator: TranscriptCoordinator(store: store),
       settings: settings, lastRecordingResult: last, languageSuggestionPresenter: nil,
@@ -73,7 +73,7 @@ struct DictationSettingsRenderHarness {
       recoveryEngineClaim: .alwaysAllowedForTesting,
       engineAdmission: .live(lease: lease, as: .crashRecovery))
     return DictationRuntime(audioCapture: audio, asrManager: asr,
-      kernelDriver: recording.kernelDriver, whisperKitKernelDriver: recording.whisperKitKernelDriver,
+      kernelDriver: recording.kernelDriver, whisperKernelDriver: recording.whisperKernelDriver,
       settings: settings, permissions: PermissionsService(accessibilityReader: { true },
         microphoneReader: { .authorized }, openMicrophoneSettings: { _ in }),
       recordingOverlay: overlay, hotkeyService: hotkey, lastRecordingResult: last,
@@ -180,7 +180,7 @@ struct DictationSettingsRenderHarness {
     let store = TranscriptStore(directory: runDirectory.appending(path: "fixture-history"))
     let recording = LiveRecordingState(
       kernelDriver: DictationRuntimeFixtures.makeParakeetDriver(audioCapture: audio, asrManager: asr, store: store),
-      whisperKitKernelDriver: DictationRuntimeFixtures.makeWhisperKitPipeline(audioCapture: audio, store: store),
+      whisperKernelDriver: DictationRuntimeFixtures.makeWhisperPipeline(audioCapture: audio, store: store),
       audioCapture: audio, asrManager: asr)
     let runtime = idleRuntime(settings: settings, audio: audio, asr: asr, recording: recording, store: store)
     // The app reports .previewOff while Live Preview is off, which selects the wordless design.

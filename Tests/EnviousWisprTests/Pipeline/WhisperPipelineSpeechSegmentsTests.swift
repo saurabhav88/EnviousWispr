@@ -3,8 +3,8 @@ import Testing
 
 @testable import EnviousWisprPipeline
 
-@Suite("KernelDictationDriver speech-segment routing")
-struct WhisperKitPipelineSpeechSegmentsTests {
+@Suite("KernelDictationDriver speech-segment routing", .tags(.productOutcome))
+struct WhisperPipelineSpeechSegmentsTests {
   @Test("pipeline passes speech segments to backend options")
   func pipelinePassesSpeechSegmentsToBackend() {
     let segments = [
@@ -13,7 +13,7 @@ struct WhisperKitPipelineSpeechSegmentsTests {
     ]
     let base = TranscriptionOptions(language: "en", enableTimestamps: false)
 
-    let options = WhisperKitPipelineSpeechRouting.transcriptionOptions(
+    let options = WhisperPipelineSpeechRouting.transcriptionOptions(
       from: base,
       speechSegments: segments
     )
@@ -26,8 +26,8 @@ struct WhisperKitPipelineSpeechSegmentsTests {
 
   @Test("VAD gate still fires on zero segments")
   func vadGateStillFires_onZeroSegments() {
-    #expect(WhisperKitPipelineSpeechRouting.hasSpeechEvidence(vadSegments: []) == false)
-    #expect(WhisperKitPipelineSpeechRouting.hasSpeechEvidence(vadSegments: nil) == true)
+    #expect(WhisperPipelineSpeechRouting.hasSpeechEvidence(vadSegments: []) == false)
+    #expect(WhisperPipelineSpeechRouting.hasSpeechEvidence(vadSegments: nil) == true)
   }
 
   @Test("LID samples unchanged when ASR samples are raw")
@@ -41,11 +41,11 @@ struct WhisperKitPipelineSpeechSegmentsTests {
     let speechSegments = [SpeechSegment(startSample: voicedStart, endSample: voicedEnd)]
     let expectedLIDSamples = SampleFilter.filter(from: rawSamples, segments: speechSegments)
 
-    let asrSamples = WhisperKitPipelineSpeechRouting.paddedASRSamples(
+    let asrSamples = WhisperPipelineSpeechRouting.paddedASRSamples(
       rawSamples: rawSamples,
       minimumSamples: AudioConstants.minimumTranscriptionSamples
     )
-    let lidSamples = WhisperKitPipelineSpeechRouting.paddedLIDSamples(
+    let lidSamples = WhisperPipelineSpeechRouting.paddedLIDSamples(
       filteredSamples: expectedLIDSamples,
       rawSamples: rawSamples,
       minimumSamples: AudioConstants.minimumTranscriptionSamples
@@ -59,14 +59,14 @@ struct WhisperKitPipelineSpeechSegmentsTests {
   @Test("LID window routing uses one window below 3 seconds")
   func lidWindowCountUsesSingleWindowForShortClips() {
     for duration in [0.5, 1.0, 2.5, 2.99] {
-      #expect(WhisperKitPipelineSpeechRouting.lidWindowCount(forVoicedDuration: duration) == 1)
+      #expect(WhisperPipelineSpeechRouting.lidWindowCount(forVoicedDuration: duration) == 1)
     }
   }
 
   @Test("LID window routing uses four windows at and above 3 seconds")
   func lidWindowCountUsesFourWindowsForNormalClips() {
     for duration in [3.0, 5.0, 15.0] {
-      #expect(WhisperKitPipelineSpeechRouting.lidWindowCount(forVoicedDuration: duration) == 4)
+      #expect(WhisperPipelineSpeechRouting.lidWindowCount(forVoicedDuration: duration) == 4)
     }
   }
 }

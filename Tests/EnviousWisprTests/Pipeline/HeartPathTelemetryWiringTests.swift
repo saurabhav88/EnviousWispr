@@ -33,12 +33,12 @@ import Testing
 /// drive into `.recording` before calling `handleCaptureStall`.
 ///
 /// We test `KernelDictationDriver` (Parakeet) directly because its
-/// dependencies are easy to stub. The WhisperKit equivalent would require
-/// constructing a real `WhisperKitBackend` actor; the asymmetry it depends
+/// dependencies are easy to stub. The Whisper equivalent would require
+/// constructing a real `Whisper backend` actor; the asymmetry it depends
 /// on is already proven by the unit tests in
 /// `HeartPathTelemetryEmitterTests` plus the literal `backend: .whisper`
-/// argument at the WhisperKit init site. Adding a full pipeline init test
-/// for WhisperKit would not catch a regression the unit tests miss.
+/// argument at the Whisper init site. Adding a full pipeline init test
+/// for Whisper would not catch a regression the unit tests miss.
 @MainActor
 @Suite("HeartPathTelemetryEmitter — pipeline wiring + dedup at pipeline level")
 struct HeartPathTelemetryWiringTests {

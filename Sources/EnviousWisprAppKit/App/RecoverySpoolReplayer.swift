@@ -353,9 +353,9 @@ final class RecoverySpoolReplayer: RecoverySpoolReplaying {
       // not a recovery failure (don't log/emit; the coordinator owns cleanup).
       if isAborted() { return .aborted }
       // #2132: a LOAD-time refusal is TERMINAL, deliberately, and this is the
-      // line Codex review sharpened. `WhisperKitBackend.prepare()` throws
+      // line Codex review sharpened. `TranscribeCppWhisperBackend.prepare()` throws
       // `ASRError.notReady` when no model folder is admitted
-      // (`WhisperKitBackend.swift:223-226`) — a DETERMINISTIC "there is no model
+      // (its `admittedModelPath()` guard) — a DETERMINISTIC "there is no model
       // here", not a transient readiness loss. Deferring it would retain the
       // spool and repeat the identical failure every launch, forever, with no
       // cleanup. Only the POST-LOAD refusal below is the race this issue fixes.
@@ -824,7 +824,7 @@ final class RecoverySpoolReplayer: RecoverySpoolReplaying {
       // false prevents an accidental future fall-through into the unbounded
       // unavailable-engine deferral.
       case .xpcModelNotLoaded: return false
-      case .xpcUnreachable, .cancelled, .transcriptionFailed, .whisperKitModelLoad,
+      case .xpcUnreachable, .cancelled, .transcriptionFailed,
         .whisperModelLoad, .whisperTranscription,
         .parakeetModelLoad, .parakeetTranscription, .xpcTransport, .other:
         return false

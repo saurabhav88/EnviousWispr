@@ -2,7 +2,7 @@ import Testing
 
 @testable import EnviousWisprASR
 
-// Pure-function tests for the #1276 Step 1 load-state machine. No WhisperKit
+// Pure-function tests for the #1276 Step 1 load-state machine. No model
 // instance is ever constructed — the state carries an `any LoadedASRModel`, and
 // these tests supply a trivial `FakeModel`, exactly the property that made the
 // functional-core split worth its cost. Covers the exhaustive (state × event)
@@ -12,7 +12,7 @@ import Testing
 
 private final class FakeModel: LoadedASRModel {}
 
-private typealias Machine = WhisperKitLoadStateMachine
+private typealias Machine = WhisperLoadStateMachine
 
 // Dummy task handles for building states/events. Their bodies never run in these
 // pure tests — only the handle identity matters to the state machine.
@@ -21,8 +21,8 @@ private func dummyWarmupTask() -> Task<WarmupOutcome, Never> { Task { .completed
 
 private func tags(_ effects: [Effect]) -> [EffectTag] { effects.map(\.tag) }
 
-@Suite("WhisperKitLoadState — pure transition matrix (#1276 Step 1)", .tags(.productOutcome))
-struct WhisperKitLoadStateTests {
+@Suite("Whisper load state — pure transition matrix (#1276 Step 1)", .tags(.productOutcome))
+struct WhisperLoadStateTests {
 
   // MARK: prepareRequested — single-flight 3-way decision (invariant #1)
 

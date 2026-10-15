@@ -39,11 +39,11 @@ through `defaults export` / `defaults import` and compares parsed values.
 
 **THE LANGUAGE CHIP IS UNREACHABLE ON PARAKEET, AND NOTHING SAYS SO.**
 `languageDetector.detect(...)` has exactly ONE caller in the tree,
-`WhisperKitEngineAdapter.swift:721`. Parakeet performs no language identification
+`WhisperEngineAdapter.swift` (the Whisper engine's adapter). Parakeet performs no language identification
 at all, so on the default backend the detector never receives an accept, the
 counter never increments, and no chip can ever appear. Measured: seven Spanish
 takes on Parakeet produced zero chips and zero `LID result` lines, while every
-`LID result` in the log's history carries `[WhisperKitEngineAdapter]`.
+`LID result` in the log's history carries the Whisper adapter's tag.
 Nothing errors and nothing is logged, so the row reads as the dwell being broken.
 This row therefore switches the backend, and ASSERTS it from the app's own
 `Recording started. Backend: ...` line rather than from the value it wrote —
@@ -87,14 +87,12 @@ DEV_DOMAIN = "com.enviouswispr.app.dev"
 SHARED_DOMAIN = "com.enviouswispr.app"
 STATE_KEYS = ["languageChipSuppressedLanguages", "languageChipDismissalCounts"]
 LOG = pathlib.Path.home() / "Library/Logs/EnviousWispr/app.log"
-# THE RAW VALUE IS THE ENUM CASE NAME, camelCase. `ASRBackendType` declares
-# `case whisperKit` with no explicit raw value (`ASRResult.swift:6`), and the
-# reader is `ASRBackendType(rawValue: defaults.string(...) ?? "") ?? default`
-# (`SettingsManager.swift:739`) — so `"whisperkit"` parses to nil and SILENTLY
-# falls back to Parakeet. Measured: eight takes recorded on parakeet after a
+# THE RAW VALUE MUST BE EXACT. Since #3735 `ASRBackendType` stores `"whisper"` and still
+# reads the legacy `"whisperKit"`; any other spelling (`"whisperkit"`) parses to nil and
+# SILENTLY falls back to Parakeet (`ASRBackendType.init(rawValue:)`, ASRResult.swift). Measured: eight takes recorded on parakeet after a
 # write that `defaults read` echoed back happily. Same plausible-value trap as
 # writing a Bool as `1`.
-REQUIRED_BACKEND = "whisperKit"
+REQUIRED_BACKEND = "whisper"
 
 # Spanish, ordinary prose. Long enough for the detector to reach
 # `consistentHighConfidence` rather than a single-word guess.

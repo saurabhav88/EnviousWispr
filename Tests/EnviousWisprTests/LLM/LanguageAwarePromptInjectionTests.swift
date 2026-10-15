@@ -352,8 +352,8 @@ struct LanguageAwarePromptInjectionTests {
   }
 
   @Test("backend .whisper with nil detection uses formatting-only path")
-  func whisperKitNilDetectionIsFormattingOnly() {
-    // Defensive: a future WhisperKit codepath that bypasses the detector
+  func whisperNilDetectionIsFormattingOnly() {
+    // Defensive: a future Whisper codepath that bypasses the detector
     // must NOT fall through to the English-centric legacy prompt. The
     // planner treats this as low-confidence and strips all lexical
     // injection.
@@ -368,13 +368,13 @@ struct LanguageAwarePromptInjectionTests {
     let system = plan.envelope.messages.first(where: { $0.role == .system })?.content ?? ""
     #expect(
       !system.contains("EnviousWispr"),
-      "no lexical injection when detection is absent on WhisperKit")
+      "no lexical injection when detection is absent on Whisper")
     #expect(!system.contains("CUSTOM VOCABULARY"))
   }
 
   @Test("backend .whisper with populated detection uses tier-gated W3 path")
-  func whisperKitWithDetectionUsesTierPolicy() {
-    // Explicit WhisperKit + populated high-confidence detection should
+  func whisperWithDetectionUsesTierPolicy() {
+    // Explicit Whisper + populated high-confidence detection should
     // behave identically to the W3 tier-gated path: global + perLanguage
     // for the detected language are injected.
     let vocab = PromptVocabulary(

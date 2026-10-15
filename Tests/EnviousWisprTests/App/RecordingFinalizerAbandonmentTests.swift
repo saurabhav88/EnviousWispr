@@ -164,7 +164,7 @@ struct RecordingFinalizerAbandonmentTests {
     private static func driver(_ fx: Fixture, _ backend: ASRBackendType)
       -> KernelDictationDriver
     {
-      backend == .whisper ? fx.whisperKitKernelDriver : fx.kernelDriver
+      backend == .whisper ? fx.whisperKernelDriver : fx.kernelDriver
     }
 
     /// Park a driver's kernel where an Escape Recovery is transcribing. Nothing
@@ -185,7 +185,7 @@ struct RecordingFinalizerAbandonmentTests {
     private struct Fixture {
       let finalizer: RecordingFinalizer
       let kernelDriver: KernelDictationDriver
-      let whisperKitKernelDriver: KernelDictationDriver
+      let whisperKernelDriver: KernelDictationDriver
       let asr: RouterTestASRManager
       let lockBox: TestRecordingLockedBox
       let overlay: OverlayDirector
@@ -197,7 +197,7 @@ struct RecordingFinalizerAbandonmentTests {
       let store = DictationRuntimeFixtures.tempStore()
       let pipeline = DictationRuntimeFixtures.makeParakeetDriver(
         audioCapture: audio, asrManager: asr, store: store)
-      let whisperKitKernelDriver = DictationRuntimeFixtures.makeWhisperKitPipeline(
+      let whisperKernelDriver = DictationRuntimeFixtures.makeWhisperPipeline(
         audioCapture: audio, store: store)
       let overlay = OverlayTestDouble.headlessDirector()
       let lockBox = TestRecordingLockedBox()
@@ -209,7 +209,7 @@ struct RecordingFinalizerAbandonmentTests {
         backend: { asr.activeBackendType.rawValue })
       let finalizer = RecordingFinalizer(
         kernelDriver: pipeline,
-        whisperKitKernelDriver: whisperKitKernelDriver,
+        whisperKernelDriver: whisperKernelDriver,
         asrManager: asr,
         recordingOverlay: overlay,
         heartControlRecovery: hcr,
@@ -218,7 +218,7 @@ struct RecordingFinalizerAbandonmentTests {
       return Fixture(
         finalizer: finalizer,
         kernelDriver: pipeline,
-        whisperKitKernelDriver: whisperKitKernelDriver,
+        whisperKernelDriver: whisperKernelDriver,
         asr: asr,
         lockBox: lockBox,
         overlay: overlay)

@@ -66,8 +66,8 @@ public func withThrowingTimeout<T: Sendable>(
 // for why the abort count alone is not enough.
 //
 // Measured 2026-09-09 against
-// `EnviousWisprASRTests/WhisperKitBackendLoadOrchestrationTests` in the Release
-// lane (`ENABLE_TESTABILITY=YES`), each run's build settings verified with
+// `EnviousWisprASRTests/WhisperKitBackendLoadOrchestrationTests` (nine tests; deleted with
+// WhisperKit in #3735) in the Release lane (`ENABLE_TESTABILITY=YES`), each run's build settings verified with
 // `-showBuildSettings` BEFORE it ran:
 //
 //     -O everywhere ............................. 3 aborts, TEST FAILED
@@ -101,12 +101,17 @@ public func withThrowingTimeout<T: Sendable>(
 // and run:
 //
 //     scripts/xcode-test.sh --release \
-//       --filter EnviousWisprASRTests/WhisperKitBackendLoadOrchestrationTests
+//       --filter EnviousWisprASRTests/TranscribeCppWhisperBackendTests
+//
+// #3735 deleted the measured suite with WhisperKit; `TranscribeCppWhisperBackendTests` now
+// owns the same load lifecycle. It has NOT been shown to reproduce the abort with the
+// attributes removed, so a clean run of it is weaker evidence than the 2026-09-09 one: also
+// run the whole Release lane before removing them.
 //
 // Zero abort lines is NOT the pass condition on its own. A build that fails
 // before the first test prints zero of them too, and reading that as a fix is how
 // the protection comes off without ever having been exercised. The pass condition
-// is all four together: the Release lane reports `TEST SUCCEEDED`; all NINE tests
+// is all four together: the Release lane reports `TEST SUCCEEDED`; every test
 // in that suite ran and passed; `-showBuildSettings` confirms EnviousWisprCore is
 // at `-O`; and the log carries zero `freed pointer was not the last allocation`
 // lines. Only then do these attributes come off, in the same change. Upstream

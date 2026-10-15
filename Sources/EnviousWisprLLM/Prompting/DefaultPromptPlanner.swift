@@ -168,8 +168,8 @@ public struct DefaultPromptPlanner: PromptPlanning {
       return input
     }
 
-    // WhisperKit without detection: treat as low confidence. No lexical
-    // injection. Defensive: a future WhisperKit codepath that forgets the
+    // Whisper without detection: treat as low confidence. No lexical
+    // injection. Defensive: a future Whisper codepath that forgets the
     // detector must not silently fall through to the English-centric
     // legacy prompt and corrupt non-English output.
     if input.backend == .whisper, input.languageDetection == nil {

@@ -2,7 +2,7 @@ import EnviousWisprModelDelivery
 import Foundation
 
 /// Pipeline-side handle for one delivery-managed model whose transfer does
-/// not use Parakeet's `ProgressFile` bridge: the multilingual WhisperKit engine
+/// not use Parakeet's `ProgressFile` bridge: the multilingual Whisper engine
 /// (#1386 PR-2), the Live Preview model (#2108) and the correction judge (#996
 /// phase D) all hold one. The ONE object their wiring talks to. A THIN facade over the shared
 /// `ModelDeliveryController` — it owns the D5 kill-switch read for the
@@ -59,7 +59,7 @@ public final class DeliveredModelHandle {
 
   /// The D5 kill-switch for THIS registration's family, read fresh per
   /// attempt (relaunch-free legacy fallback). Two registrations in one family
-  /// (the WhisperKit pair) share one flag on purpose.
+  /// (the Whisper pair) share one flag on purpose.
   public func isEnabled() -> Bool {
     let family = registration.manifest.identity.family
     return defaults.object(forKey: DeliveryFlags.key("enabled", family: family)) as? Bool ?? true

@@ -12,7 +12,7 @@ import Testing
 // freeze tests (`EngineIdentityFreezeTests` Test A / Test B) lock concrete
 // adapter construction to this factory at source level; these runtime tests
 // close the §7 gap the `any ASREngineAdapter` return type leaves open: the
-// compiler does not prove `makeWhisperKitAdapter` returns a `.whisper`
+// compiler does not prove `makeWhisperAdapter` returns a `.whisper`
 // identity adapter, so assert each make function yields the right identity.
 //
 // There is no shared `FakeASRManager` (the ASR-manager fakes are `private` to
@@ -29,12 +29,13 @@ import Testing
     #expect(adapter.engineIdentity.backendType == .parakeet)
   }
 
-  @Test("makeWhisperKitAdapter returns a .whisper-identity adapter")
-  func makeWhisperKitAdapterHasWhisperKitIdentity() {
-    // `WhisperKitBackend()` is the lazy actor (no CoreML load until prepare()),
-    // matching `KernelDictationDriverFactoryWhisperKitTests`.
-    let adapter = KernelAdapterFactory.makeWhisperKitAdapter(
-      backend: WhisperKitBackend(admittedModelFolder: { nil }),
+  @Test("makeWhisperAdapter returns a .whisper-identity adapter")
+  func makeWhisperAdapterHasWhisperIdentity() {
+    // Construction loads nothing: no admitted model path, and no load until prepare().
+    let adapter = KernelAdapterFactory.makeWhisperAdapter(
+      backend: TranscribeCppWhisperBackend(
+        driver: LiveWhisperExecutorDriver(), modelVariant: "whisper-large-v3-turbo-Q8_0",
+        admittedModelPath: { nil }),
       languageDetector: LanguageDetector(),
       audioCaptureSessionIDSource: { 0 },
       engineMutationScope: .alwaysAllowedForTesting,

@@ -14,8 +14,8 @@ import os
 /// - receives a resolved model path and an admission ANSWER, never a fetch capability, so a
 ///   display limb cannot start a download.
 ///
-/// **The executor, not ARC, owns the loaded model.** Dropping the WhisperKit runtime used to
-/// free its model; a transcribe.cpp model stays in the executor until someone unloads it. So the
+/// **The executor, not ARC, owns the loaded model.** Dropping the retired WhisperKit runtime
+/// freed its model; a transcribe.cpp model stays in the executor until someone unloads it. So the
 /// model is unloaded exactly once when this runtime is released (every holder dropped it), and
 /// `TranscribeCppPreviewResidency` lets Remove wait for that free before it deletes the file.
 package actor TranscribeCppPreviewRuntime {

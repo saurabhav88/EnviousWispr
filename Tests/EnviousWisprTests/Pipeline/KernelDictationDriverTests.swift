@@ -705,7 +705,7 @@ import Testing
     await drainUntil { h.adapter.warmUpCallCount == 1 }
     #expect(
       h.driver.sessionlessWedgeGuard == nil,
-      "a signal-free engine (WhisperKit) must stay uncovered — no watcher, no deadline")
+      "a signal-free engine (Whisper) must stay uncovered — no watcher, no deadline")
     h.clock.advance(by: 2)
     _ = await warm.value
     #expect(h.driver.sessionlessWedgeGuard == nil)

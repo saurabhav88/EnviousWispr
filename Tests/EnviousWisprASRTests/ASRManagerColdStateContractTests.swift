@@ -19,8 +19,8 @@ struct ASRManagerColdStateContractTests {
   }
 
   @Test(
-    "setInitialBackendType on a cold manager selects WhisperKit and reports no streaming support")
-  func setInitialBackendTypeSelectsWhisperKitFromCold() async {
+    "setInitialBackendType on a cold manager selects Whisper and reports no streaming support")
+  func setInitialBackendTypeSelectsWhisperFromCold() async {
     // Adversarial-review note. Starting from cold means `isModelLoaded` and
     // `isStreaming` are already false, so this test does not prove the reset
     // branch inside `setInitialBackendType`. It only proves backend selection
@@ -107,8 +107,8 @@ struct ASRManagerColdStateContractTests {
     #expect(sut.isStreaming == false)
   }
 
-  @Test("startStreaming on WhisperKit is a no-op because streaming is unsupported")
-  func startStreamingOnWhisperKitDoesNothing() async throws {
+  @Test("startStreaming on Whisper is a no-op because streaming is unsupported")
+  func startStreamingOnWhisperDoesNothing() async throws {
     let sut = ASRManager(
       engineMutationScope: .alwaysAllowedForTesting, parakeetSelection: ParakeetSelectionProvider())
     sut.setInitialBackendType(.whisper)

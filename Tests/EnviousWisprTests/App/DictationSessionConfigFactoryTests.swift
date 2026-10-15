@@ -19,7 +19,7 @@ import Testing
 /// invariants: trigger-source passthrough, LLM-model resolution per provider,
 /// and settings passthrough on the parakeet-idle path (the common case).
 ///
-/// Pipeline-state branching (whisperKit `.ready` etc.) is covered end-to-end by
+/// Pipeline-state branching (whisper `.ready` etc.) is covered end-to-end by
 /// `HeartPathIntegrationTests` after this PR rewires `toggleRecording` through
 /// the factory.
 @MainActor
@@ -36,7 +36,7 @@ struct DictationSessionConfigFactoryTests {
       let config = DictationSessionConfigFactory.make(
         asrManager: harness.asrManager,
         kernelDriver: harness.kernelDriver,
-        whisperKitKernelDriver: harness.whisperKitKernelDriver,
+        whisperKernelDriver: harness.whisperKernelDriver,
         settings: harness.settings,
         triggerSource: source
       )
@@ -55,7 +55,7 @@ struct DictationSessionConfigFactoryTests {
     let captured = DictationSessionConfigFactory.make(
       asrManager: harness.asrManager,
       kernelDriver: harness.kernelDriver,
-      whisperKitKernelDriver: harness.whisperKitKernelDriver,
+      whisperKernelDriver: harness.whisperKernelDriver,
       settings: harness.settings,
       triggerSource: .pttHotkey
     )
@@ -65,7 +65,7 @@ struct DictationSessionConfigFactoryTests {
     let next = DictationSessionConfigFactory.make(
       asrManager: harness.asrManager,
       kernelDriver: harness.kernelDriver,
-      whisperKitKernelDriver: harness.whisperKitKernelDriver,
+      whisperKernelDriver: harness.whisperKernelDriver,
       settings: harness.settings,
       triggerSource: .pttHotkey
     )
@@ -86,7 +86,7 @@ struct DictationSessionConfigFactoryTests {
       DictationSessionConfigFactory.make(
         asrManager: harness.asrManager,
         kernelDriver: harness.kernelDriver,
-        whisperKitKernelDriver: harness.whisperKitKernelDriver,
+        whisperKernelDriver: harness.whisperKernelDriver,
         settings: harness.settings,
         triggerSource: .pttHotkey)
     }
@@ -121,7 +121,7 @@ struct DictationSessionConfigFactoryTests {
     let captured = DictationSessionConfigFactory.make(
       asrManager: harness.asrManager,
       kernelDriver: harness.kernelDriver,
-      whisperKitKernelDriver: harness.whisperKitKernelDriver,
+      whisperKernelDriver: harness.whisperKernelDriver,
       settings: harness.settings,
       triggerSource: .pttHotkey
     )
@@ -131,7 +131,7 @@ struct DictationSessionConfigFactoryTests {
     let next = DictationSessionConfigFactory.make(
       asrManager: harness.asrManager,
       kernelDriver: harness.kernelDriver,
-      whisperKitKernelDriver: harness.whisperKitKernelDriver,
+      whisperKernelDriver: harness.whisperKernelDriver,
       settings: harness.settings,
       triggerSource: .pttHotkey
     )
@@ -183,19 +183,19 @@ struct DictationSessionConfigFactoryTests {
     #expect(config.autoPasteToActiveApp == true)
   }
 
-  @Test("autoPasteToActiveApp is true when whisperKit pipeline is idle")
-  func autoPasteOnIdleWhisperKit() async throws {
-    // Pins the happy path of the WhisperKit branch: when
+  @Test("autoPasteToActiveApp is true when the Whisper pipeline is idle")
+  func autoPasteOnIdleWhisper() async throws {
+    // Pins the happy path of the Whisper branch: when
     // `asrManager.activeBackendType == .whisper`, the factory must produce
-    // `autoPasteToActiveApp == true` while `whisperKitKernelDriver.state == .idle`.
+    // `autoPasteToActiveApp == true` while `whisperKernelDriver.state == .idle`.
     //
     // Note on coverage limits (Codex r2 finding): both pipelines start `.idle`
     // at construction, so this test would not catch a hypothetical regression
     // where the factory mistakenly reads `pipeline.state` instead of
-    // `whisperKitKernelDriver.state`. That mismatch is, however, already prevented
+    // `whisperKernelDriver.state`. That mismatch is, however, already prevented
     // by the type system: `WhisperKitPipelineState` includes cases (`.ready`,
     // `.startingUp`) that `PipelineState` does not, so swapping the operand of
-    // the WhisperKit `switch` is a compile error. Driving a pipeline to a non-
+    // the Whisper `switch` is a compile error. Driving a pipeline to a non-
     // idle state in unit tests would require booting real audio capture / ASR
     // (the only public mutator is `startRecording(config:)`); the runtime UAT
     // covers that path.
@@ -238,7 +238,7 @@ struct DictationSessionConfigFactoryTests {
 private struct Harness {
   let asrManager: FactoryFakeASRManager
   let kernelDriver: KernelDictationDriver
-  let whisperKitKernelDriver: KernelDictationDriver
+  let whisperKernelDriver: KernelDictationDriver
   let settings: SettingsManager
 
   static func make(backend: ASRBackendType) throws -> Harness {
@@ -255,13 +255,13 @@ private struct Harness {
     let store = TranscriptStore()
     let pipeline = DictationRuntimeFixtures.makeParakeetDriver(
       audioCapture: audio, asrManager: asr, store: store)
-    let whisperKitKernelDriver = DictationRuntimeFixtures.makeWhisperKitPipeline(
+    let whisperKernelDriver = DictationRuntimeFixtures.makeWhisperPipeline(
       audioCapture: audio, store: store)
     let settings = SettingsManager()
     return Harness(
       asrManager: asr,
       kernelDriver: pipeline,
-      whisperKitKernelDriver: whisperKitKernelDriver,
+      whisperKernelDriver: whisperKernelDriver,
       settings: settings
     )
   }
@@ -270,7 +270,7 @@ private struct Harness {
     DictationSessionConfigFactory.make(
       asrManager: asrManager,
       kernelDriver: kernelDriver,
-      whisperKitKernelDriver: whisperKitKernelDriver,
+      whisperKernelDriver: whisperKernelDriver,
       settings: settings,
       triggerSource: triggerSource
     )

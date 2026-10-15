@@ -2674,7 +2674,7 @@
       }
     },
     "All Languages" : {
-      "comment" : "Speech engine settings, engine card: the multilingual engine's name.\nTranscribe a File: the WhisperKit transcription engine's name.",
+      "comment" : "Speech engine settings, engine card: the multilingual engine's name.\nTranscribe a File: the Whisper transcription engine's name.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -6438,7 +6438,7 @@
       }
     },
     "Download Paused" : {
-      "comment" : "Speech engine settings, WhisperKit model: the current setup step.",
+      "comment" : "Speech engine settings, Whisper model: the current setup step.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -6674,7 +6674,7 @@
       }
     },
     "Downloading model files..." : {
-      "comment" : "Setup progress: the speech model is downloading.\nSpeech engine settings, WhisperKit model: download status line.",
+      "comment" : "Setup progress: the speech model is downloading.\nSpeech engine settings, Whisper model: download status line.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -6768,7 +6768,7 @@
       }
     },
     "Downloading..." : {
-      "comment" : "AI Polish, Ollama setup: step label while a model downloads.\nSpeech engine settings, WhisperKit model: the current setup step.",
+      "comment" : "AI Polish, Ollama setup: step label while a model downloads.\nSpeech engine settings, Whisper model: the current setup step.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -13438,7 +13438,7 @@
       }
     },
     "Preparing..." : {
-      "comment" : "Speech engine settings, WhisperKit model: download status line.",
+      "comment" : "Speech engine settings, Whisper model: download status line.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -13837,12 +13837,12 @@
         }
       }
     },
-    "Read the notices for WhisperKit, FluidAudio, Silero VAD, Sparkle and other components." : {
+    "Read the notices for transcribe.cpp, FluidAudio, Silero VAD, Sparkle and other components." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Lies die Hinweise zu WhisperKit, FluidAudio, Silero VAD, Sparkle und weiteren Komponenten."
+            "value" : "Lies die Hinweise zu transcribe.cpp, FluidAudio, Silero VAD, Sparkle und weiteren Komponenten."
           }
         }
       }
@@ -16377,7 +16377,7 @@
       }
     },
     "Starting download..." : {
-      "comment" : "AI Polish, Ollama setup: a model download is starting.\nSpeech engine settings, WhisperKit model: download status line.",
+      "comment" : "AI Polish, Ollama setup: a model download is starting.\nSpeech engine settings, Whisper model: download status line.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -19560,7 +19560,7 @@
       }
     },
     "Verifying..." : {
-      "comment" : "Speech engine settings, WhisperKit model: download status line.",
+      "comment" : "Speech engine settings, Whisper model: download status line.",
       "localizations" : {
         "de" : {
           "stringUnit" : {

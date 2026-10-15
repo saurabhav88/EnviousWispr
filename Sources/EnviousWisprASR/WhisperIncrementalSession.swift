@@ -4,8 +4,7 @@ import Foundation
 /// Opaque handle to a Whisper incremental (Faster Transcription) session.
 ///
 /// Vended by the Whisper backend via `makeStreamingSession(options:...)`: since #3735
-/// `TranscribeCppRollingSession`; the retired `WhisperKitStreamingSession` still conforms
-/// until WhisperKit is removed. Pipeline code drives the lifecycle (start → finalize or
+/// `TranscribeCppRollingSession`, which replaced the WhisperKit streaming session. Pipeline code drives the lifecycle (start → finalize or
 /// cancel) without holding any engine-specific type.
 ///
 /// This is the seam introduced by the R2 refactor (#360) so that the pipeline does not

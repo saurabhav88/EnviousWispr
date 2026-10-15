@@ -30,7 +30,9 @@ CO="${PROJ_ROOT}/.build/checkouts"
 # cross-check below hard-fails if Package.resolved gains/loses a direct dep that
 # this list does not cover, so the notices can't silently go stale (Codex #2).
 COMPONENTS=(
-  "WhisperKit (argmax-oss-swift)|1.1.1|MIT|argmax-oss-swift/LICENSE|https://github.com/argmaxinc/argmax-oss-swift|argmax-oss-swift"
+  # #3735: the WhisperKit engine is gone; the app still links Argmax OSS for the tokenizer
+  # library the output classifier and correction judge use (ArgmaxOSS).
+  "Argmax OSS (argmax-oss-swift)|1.1.1|MIT|argmax-oss-swift/LICENSE|https://github.com/argmaxinc/argmax-oss-swift|argmax-oss-swift"
   # Argmax OSS itself is MIT, but it incorporates Apache-2.0 swift-transformers
   # code (Sources/ArgmaxCore/External) and ships the required attribution in its
   # own NOTICES file. Apache §4(d) / good-faith attribution: carry that NOTICES
@@ -95,15 +97,10 @@ COMPONENTS=(
   # license text is the canonical one from the upstream silero-vad repo
   # (the CoreML conversion repo itself ships no separate LICENSE file).
   "Silero VAD (bundled CoreML model, converted by FluidInference)|v6.0.0|MIT|repo:Sources/EnviousWispr/Resources/silero-vad-coreml-LICENSE.txt|https://huggingface.co/FluidInference/silero-vad-coreml|"
-  # #1386: the bundled WhisperKit tokenizer, pinned to a frozen HF commit so
-  # WhisperKit never fetches it unverified over the network. Not a SwiftPM dep
-  # (a committed data asset, same shape as llama.cpp/Silero VAD above) —
-  # Apache-2.0, vendored license text lives beside the tokenizer files.
-  "OpenAI Whisper large-v3 tokenizer|06f233fe06e710322aca913c1bc4249a0d71fce1|Apache-2.0|repo:Sources/EnviousWisprASR/Resources/WhisperTokenizer/LICENSE|https://huggingface.co/openai/whisper-large-v3|"
   # #2809: the four bundled offline speaker-diarization CoreML models
   # (Segmentation/FBank/Embedding/PldaRho) plus their PLDA parameters JSON.
   # Not a SwiftPM dep — a committed data asset, same shape as the Silero VAD
-  # and WhisperKit tokenizer entries above. The parent models (pyannote,
+  # entry above. The parent models (pyannote,
   # WeSpeaker) are CC-BY-4.0, distinct from every other entry here (which are
   # all MIT/Apache-2.0), so the vendored file carries the CC-BY-4.0 text and
   # the required source/citation attribution, not just a bare license file.

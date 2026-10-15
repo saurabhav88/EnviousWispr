@@ -6,54 +6,54 @@ import Testing
 @testable import EnviousWisprASR
 @testable import EnviousWisprPipeline
 
-// MARK: - WhisperKitEngineAdapterTests (epic #827, PR-5 Rung 3 §11.2)
+// MARK: - WhisperEngineAdapterTests (epic #827, PR-5 Rung 3 §11.2)
 //
 // Unit coverage for `WhisperEngineAdapter` — the production
-// `ASREngineAdapter` WhisperKit conformer. Drives a configurable
-// `StubWhisperKitBackend` (actor stub conforming to the local
-// `WhisperBackendDriving` seam) so no real WhisperKit model loads. The
+// `ASREngineAdapter` Whisper conformer. Drives a configurable
+// `StubWhisperBackend` (actor stub conforming to the local
+// `WhisperBackendDriving` seam) so no real Whisper model loads. The
 // PR-1 §B.2.2 MUST / MUST NOT clauses get adversarial coverage, and the
 // coordinate-space lesson (epic §0.5) is locked by `batchSamplesIgnored`.
 
 @MainActor
-@Suite struct WhisperKitEngineAdapterTests {
+@Suite(.tags(.productOutcome)) struct WhisperEngineAdapterTests {
 
   // MARK: Identity (PR-5 Rung 1)
 
-  @Test("engineIdentity: WhisperKit declares .whisper backend")
+  @Test("engineIdentity: Whisper declares .whisper backend")
   func engineIdentityBackend() {
     let adapter = WhisperEngineAdapter(
-      backend: StubWhisperKitBackend(), engineMutationScope: .alwaysAllowedForTesting)
+      backend: StubWhisperBackend(), engineMutationScope: .alwaysAllowedForTesting)
     #expect(adapter.engineIdentity.backendType == .whisper)
     #expect(adapter.engineIdentity.rawValue == "whisper")
   }
 
-  @Test("engineIdentity: WhisperKit displayName == WhisperKit")
+  @Test("engineIdentity: Whisper displayName == Whisper")
   func engineIdentityDisplayName() {
     let adapter = WhisperEngineAdapter(
-      backend: StubWhisperKitBackend(), engineMutationScope: .alwaysAllowedForTesting)
+      backend: StubWhisperBackend(), engineMutationScope: .alwaysAllowedForTesting)
     #expect(adapter.engineIdentity.displayName == "Whisper")
   }
 
   // MARK: Capabilities + readiness
 
-  @Test("capabilities: WhisperKit streams (PR-2), detects language, ignores conditioned batch")
+  @Test("capabilities: Whisper streams (PR-2), detects language, ignores conditioned batch")
   func capabilities() {
     let adapter = WhisperEngineAdapter(
-      backend: StubWhisperKitBackend(), engineMutationScope: .alwaysAllowedForTesting)
-    // #1308 (Step 2, PR-2): WhisperKit now advertises streaming so the kernel's
+      backend: StubWhisperBackend(), engineMutationScope: .alwaysAllowedForTesting)
+    // #1308 (Step 2, PR-2): Whisper now advertises streaming so the kernel's
     // `useStreamingASR && supportsStreaming` gate can route the Live-transcription
     // toggle through it (the adapter still degrades to batch for auto language).
     #expect(adapter.capabilities.supportsStreaming == true)
     #expect(adapter.capabilities.supportsLanguageDetection == true)
-    // #950 — WhisperKit ignores `batchSamples` and decodes the raw capture, so
+    // #950 — Whisper ignores `batchSamples` and decodes the raw capture, so
     // the VAD trim does not touch its ASR input; tail-trim diagnostic excluded.
     #expect(adapter.capabilities.decodesConditionedBatchSamples == false)
   }
 
   @Test("readiness transitions: init → notReady; warmUp → ready; cancel keeps notReady")
   func cachedReadinessTransitions() async throws {
-    let backend = StubWhisperKitBackend()
+    let backend = StubWhisperBackend()
     let adapter = WhisperEngineAdapter(
       backend: backend, engineMutationScope: .alwaysAllowedForTesting)
     #expect(adapter.readiness == .notReady)
@@ -70,7 +70,7 @@ import Testing
 
   @Test("#959 recoverFromWedge() tears the engine down to .notReady for a fresh reload")
   func recoverFromWedgeForcesNotReady() async throws {
-    let backend = StubWhisperKitBackend()
+    let backend = StubWhisperBackend()
     let adapter = WhisperEngineAdapter(
       backend: backend, engineMutationScope: .alwaysAllowedForTesting)
     try await adapter.warmUp(modelReceipt: nil)
@@ -82,7 +82,7 @@ import Testing
 
   @Test("#959 recoverFromWedge() returns within its deadline even if unload() hangs")
   func recoverFromWedgeIsDeadlineBounded() async throws {
-    let backend = StubWhisperKitBackend()
+    let backend = StubWhisperBackend()
     await backend.setHangUnload(true)
     // Inject a fast fail-open deadline; a wedged in-process unload must NOT hang
     // the kernel's recovery path.
@@ -97,7 +97,7 @@ import Testing
 
   @Test("readiness goes notReady after applyUnloadPolicy(.immediately) executes")
   func cachedReadinessAfterImmediateUnload() async throws {
-    let backend = StubWhisperKitBackend()
+    let backend = StubWhisperBackend()
     let adapter = WhisperEngineAdapter(
       backend: backend, engineMutationScope: .alwaysAllowedForTesting)
     try await adapter.warmUp(modelReceipt: nil)
@@ -144,7 +144,7 @@ import Testing
       },
       wake: {},
       onRefused: { _ in })
-    let backend = StubWhisperKitBackend()
+    let backend = StubWhisperBackend()
     let adapter = WhisperEngineAdapter(backend: backend, engineMutationScope: scope)
     box.adapter = adapter
     try await adapter.warmUp(modelReceipt: nil)
@@ -161,7 +161,7 @@ import Testing
 
   @Test("readiness goes notReady when warmUp throws (failed prepare)")
   func cachedReadinessAfterFailedPrepare() async {
-    let backend = StubWhisperKitBackend()
+    let backend = StubWhisperBackend()
     await backend.setPrepareThrows(StubBackendError.prepareFailed)
     let adapter = WhisperEngineAdapter(
       backend: backend, engineMutationScope: .alwaysAllowedForTesting)
@@ -178,7 +178,7 @@ import Testing
 
   @Test("warmUp() loads when the backend is not ready")
   func warmUpLoads() async throws {
-    let backend = StubWhisperKitBackend()
+    let backend = StubWhisperBackend()
     let adapter = WhisperEngineAdapter(
       backend: backend, engineMutationScope: .alwaysAllowedForTesting)
     try await adapter.warmUp(modelReceipt: nil)
@@ -188,7 +188,7 @@ import Testing
 
   @Test("warmUp() is a no-op when the backend is already ready")
   func warmUpIdempotent() async throws {
-    let backend = StubWhisperKitBackend()
+    let backend = StubWhisperBackend()
     await backend.setIsReady(true)
     let adapter = WhisperEngineAdapter(
       backend: backend, engineMutationScope: .alwaysAllowedForTesting)
@@ -201,11 +201,11 @@ import Testing
 
   @Test("recoverFromASRInterruption(): confirms readiness via the real backend.isReady authority")
   func recoverFromASRInterruptionConfirmsReadiness() async {
-    // #1707 — this is the router-misrouting fix's actual mechanism: WhisperKit
+    // #1707 — this is the router-misrouting fix's actual mechanism: Whisper
     // never crashes from this signal, so its engine is already ready; the
     // adapter must confirm that via the awaited actor-isolated authority, not
     // an unconditional stub.
-    let backend = StubWhisperKitBackend()
+    let backend = StubWhisperBackend()
     await backend.setIsReady(true)
     let adapter = WhisperEngineAdapter(
       backend: backend, engineMutationScope: .alwaysAllowedForTesting)
@@ -215,7 +215,7 @@ import Testing
 
   @Test("recoverFromASRInterruption(): returns .failed when the backend genuinely is not ready")
   func recoverFromASRInterruptionFailsWhenNotReady() async {
-    let backend = StubWhisperKitBackend()
+    let backend = StubWhisperBackend()
     await backend.setIsReady(false)
     let adapter = WhisperEngineAdapter(
       backend: backend, engineMutationScope: .alwaysAllowedForTesting)
@@ -227,7 +227,7 @@ import Testing
   func recoverFromASRInterruptionDoesNotTrustStaleCachedReadiness() async throws {
     // The mirror can go stale (e.g. after an unload elsewhere); recovery must
     // re-await the real backend, not read the cache alone.
-    let backend = StubWhisperKitBackend()
+    let backend = StubWhisperBackend()
     await backend.setIsReady(true)
     let adapter = WhisperEngineAdapter(
       backend: backend, engineMutationScope: .alwaysAllowedForTesting)
@@ -240,7 +240,7 @@ import Testing
 
   @Test("warmUpFromCache() reads readiness and never triggers a load")
   func warmUpFromCacheDoesNotTriggerLoad() async throws {
-    let backend = StubWhisperKitBackend()
+    let backend = StubWhisperBackend()
     let adapter = WhisperEngineAdapter(
       backend: backend, engineMutationScope: .alwaysAllowedForTesting)
     try await adapter.warmUpFromCache()
@@ -255,7 +255,7 @@ import Testing
 
   @Test("warmUpFromCache() refreshes cachedReadiness from the backend state")
   func warmUpFromCacheRefreshesCachedReadiness() async throws {
-    let backend = StubWhisperKitBackend()
+    let backend = StubWhisperBackend()
     let adapter = WhisperEngineAdapter(
       backend: backend, engineMutationScope: .alwaysAllowedForTesting)
     // Backend is not ready → cachedReadiness stays .notReady.
@@ -270,36 +270,36 @@ import Testing
 
   @Test("warmUpFromCache() never throws (limb-style)")
   func warmUpFromCacheNeverThrows() async throws {
-    let backend = StubWhisperKitBackend()
+    let backend = StubWhisperBackend()
     let adapter = WhisperEngineAdapter(
       backend: backend, engineMutationScope: .alwaysAllowedForTesting)
     try await adapter.warmUpFromCache()  // must not throw
   }
 
-  @Test("loadProgress returns nil (WhisperKit has no model-load signal)")
+  @Test("loadProgress returns nil (Whisper has no model-load signal)")
   func loadProgressIsNil() {
     let adapter = WhisperEngineAdapter(
-      backend: StubWhisperKitBackend(), engineMutationScope: .alwaysAllowedForTesting)
+      backend: StubWhisperBackend(), engineMutationScope: .alwaysAllowedForTesting)
     #expect(adapter.loadProgress == nil)
   }
 
   @Test("lastObservedPhase falls back to protocol default \"warmup\"")
   func lastObservedPhaseDefault() {
     let adapter = WhisperEngineAdapter(
-      backend: StubWhisperKitBackend(), engineMutationScope: .alwaysAllowedForTesting)
+      backend: StubWhisperBackend(), engineMutationScope: .alwaysAllowedForTesting)
     #expect(adapter.lastObservedPhase == "warmup")
   }
 
   // MARK: Session lifecycle
 
   // #1315: the incremental worker and its vend are deleted outright; the
-  // WhisperKitStitchFreezeTests suite blocks their return by symbol name.
+  // WhisperStitchFreezeTests suite blocks their return by symbol name.
 
   @Test(
     "beginSession clears lastResult, lastASRDiagnostics, lastFailureError, lastLanguageDetection, PCM, segments"
   )
   func beginSessionClearsState() async throws {
-    let backend = StubWhisperKitBackend()
+    let backend = StubWhisperBackend()
     let adapter = WhisperEngineAdapter(
       backend: backend, engineMutationScope: .alwaysAllowedForTesting)
     let sid = SessionID()
@@ -318,7 +318,7 @@ import Testing
 
   @Test("acceptAudio after a terminal session is a no-op")
   func acceptAudioAfterTerminalIsNoOp() async throws {
-    let backend = StubWhisperKitBackend()
+    let backend = StubWhisperBackend()
     await backend.setObserveLIDResult(.unavailable)
     let adapter = WhisperEngineAdapter(
       backend: backend, engineMutationScope: .alwaysAllowedForTesting)
@@ -336,7 +336,7 @@ import Testing
     "acceptAudio drops late buffers stamped with a prior session (Codex code-diff r3 defect 3, PR-1 §B.3 invariant 7)"
   )
   func acceptAudioDropsStaleSessionBuffers() async throws {
-    let backend = StubWhisperKitBackend()
+    let backend = StubWhisperBackend()
     let adapter = WhisperEngineAdapter(
       backend: backend, engineMutationScope: .alwaysAllowedForTesting)
     let sidA = SessionID()
@@ -357,7 +357,7 @@ import Testing
 
   @Test("acceptAudio is bounded by retainedPCMCap")
   func acceptAudioCappedAtMaxRecording() async throws {
-    let backend = StubWhisperKitBackend()
+    let backend = StubWhisperBackend()
     let adapter = WhisperEngineAdapter(
       backend: backend, engineMutationScope: .alwaysAllowedForTesting)
     let sid = SessionID()
@@ -374,7 +374,7 @@ import Testing
 
   @Test("observeSpeechSegments stores segments; cleared on beginSession and cancel")
   func observeSpeechSegmentsLifecycle() async throws {
-    let backend = StubWhisperKitBackend()
+    let backend = StubWhisperBackend()
     let adapter = WhisperEngineAdapter(
       backend: backend, engineMutationScope: .alwaysAllowedForTesting)
     let sid = SessionID()
@@ -392,7 +392,7 @@ import Testing
     "finalize with empty observeSpeechSegments runs ASR — adapter trusts kernel-side no-speech gate (Codex r2 defect 1)"
   )
   func finalizeEmptySegmentsRunsASRTrustingKernelGate() async throws {
-    let backend = StubWhisperKitBackend()
+    let backend = StubWhisperBackend()
     await backend.setTranscribeResult(
       ASRResult(
         text: "recovered", language: "en", duration: 1, processingTime: 0.1,
@@ -422,7 +422,7 @@ import Testing
     "finalize WITHOUT observeSpeechSegments runs ASR — adapter trusts kernel-side no-speech gate"
   )
   func finalizeNoSegmentSignalRunsASR() async throws {
-    let backend = StubWhisperKitBackend()
+    let backend = StubWhisperBackend()
     await backend.setTranscribeResult(
       ASRResult(
         text: "recovered", language: "en", duration: 1, processingTime: 0.1,
@@ -444,7 +444,7 @@ import Testing
 
   @Test("finalize with segments + non-empty decode returns .transcript and sets lastResult")
   func finalizeSuccessSetsLastResult() async throws {
-    let backend = StubWhisperKitBackend()
+    let backend = StubWhisperBackend()
     await backend.setTranscribeResult(
       ASRResult(
         text: "hello world", language: "en", duration: 1, processingTime: 0.1,
@@ -466,7 +466,7 @@ import Testing
 
   @Test("finalize with segments + empty decode returns .empty(hadSpeechEvidence: true)")
   func finalizeEmptyDecodeReturnsEmptyTrue() async throws {
-    let backend = StubWhisperKitBackend()
+    let backend = StubWhisperBackend()
     await backend.setTranscribeResult(
       ASRResult(
         text: "  ", language: "en", duration: 1, processingTime: 0.1,
@@ -489,7 +489,7 @@ import Testing
     "asrEmptyWithSpeechEvidenceExposesDiagnostics: lastASRDiagnostics survives finalize (council F4 / OQ-6)"
   )
   func asrEmptyWithSpeechEvidenceExposesDiagnostics() async throws {
-    let backend = StubWhisperKitBackend()
+    let backend = StubWhisperBackend()
     await backend.setTranscribeResult(
       ASRResult(
         text: "", language: "en", duration: 1, processingTime: 0.1,
@@ -512,7 +512,7 @@ import Testing
 
   @Test("finalize after cancel() returns .cancelled (never partial text)")
   func finalizeAfterCancelReturnsCancelled() async throws {
-    let backend = StubWhisperKitBackend()
+    let backend = StubWhisperBackend()
     let adapter = WhisperEngineAdapter(
       backend: backend, engineMutationScope: .alwaysAllowedForTesting)
     try await adapter.beginSession(SessionID(), options: .default, streaming: false)
@@ -526,7 +526,7 @@ import Testing
 
   @Test("finalize: backend throws CancellationError returns .cancelled")
   func finalizeBackendCancellationReturnsCancelled() async throws {
-    let backend = StubWhisperKitBackend()
+    let backend = StubWhisperBackend()
     await backend.setTranscribeThrows(CancellationError())
     let adapter = WhisperEngineAdapter(
       backend: backend, engineMutationScope: .alwaysAllowedForTesting)
@@ -545,7 +545,7 @@ import Testing
     "finalize: backend throws non-cancel error returns .failed(.decodeFailed) and sets lastFailureError"
   )
   func finalizeBackendErrorReturnsFailed() async throws {
-    let backend = StubWhisperKitBackend()
+    let backend = StubWhisperBackend()
     await backend.setTranscribeThrows(StubBackendError.decodeFailed)
     let adapter = WhisperEngineAdapter(
       backend: backend, engineMutationScope: .alwaysAllowedForTesting)
@@ -565,7 +565,7 @@ import Testing
 
   @Test("lidDetectedSetsLanguage: LID non-abstain sets decodeOptions.language before transcribe")
   func lidDetectedSetsLanguage() async throws {
-    let backend = StubWhisperKitBackend()
+    let backend = StubWhisperBackend()
     await backend.setObserveLIDResult(
       .observations([
         RawLIDObservation(argmaxLang: "es", logProb: -0.05),
@@ -592,7 +592,7 @@ import Testing
 
   @Test("lidAbstainedKeepsNilLanguage: abstaining LID nulls decodeOptions.language")
   func lidAbstainedKeepsNilLanguage() async throws {
-    let backend = StubWhisperKitBackend()
+    let backend = StubWhisperBackend()
     await backend.setObserveLIDResult(.error(reason: "all_windows_failed"))
     let adapter = WhisperEngineAdapter(
       backend: backend, engineMutationScope: .alwaysAllowedForTesting)
@@ -609,7 +609,7 @@ import Testing
     "lastLanguageDetectionLifecycle: nil at init / beginSession; set after finalize; nil after cancel"
   )
   func lastLanguageDetectionLifecycle() async throws {
-    let backend = StubWhisperKitBackend()
+    let backend = StubWhisperBackend()
     let adapter = WhisperEngineAdapter(
       backend: backend, engineMutationScope: .alwaysAllowedForTesting)
     #expect(adapter.lastLanguageDetection == nil)
@@ -628,7 +628,7 @@ import Testing
 
   @Test("lockedModeGoesStraightToBatch: .locked finalize runs one clean batch decode")
   func lockedModeGoesStraightToBatch() async throws {
-    let backend = StubWhisperKitBackend()
+    let backend = StubWhisperBackend()
     await backend.setTranscribeResult(
       ASRResult(
         text: "batch-text", language: "en", duration: 1, processingTime: 0.1,
@@ -652,7 +652,7 @@ import Testing
 
   @Test("autoModeGoesStraightToBatch: .auto finalize runs one clean batch decode")
   func autoModeGoesStraightToBatch() async throws {
-    let backend = StubWhisperKitBackend()
+    let backend = StubWhisperBackend()
     await backend.setTranscribeResult(
       ASRResult(
         text: "auto-batch", language: "en", duration: 1, processingTime: 0.1,
@@ -676,7 +676,7 @@ import Testing
 
   @Test("streaming ON + locked language: starts the streaming session; its flush is authoritative")
   func streamingLockedUsesSession() async throws {
-    let backend = StubWhisperKitBackend()
+    let backend = StubWhisperBackend()
     let stubSession = StubIncrementalSession(result: .accepted(text: "streamed-text"))
     await backend.setStreamingSessionFactory({ stubSession })
     let adapter = WhisperEngineAdapter(
@@ -716,7 +716,7 @@ import Testing
 
   @Test("streaming ON + auto language: degrades to clean batch, no streaming session")
   func streamingAutoDegradesToBatch() async throws {
-    let backend = StubWhisperKitBackend()
+    let backend = StubWhisperBackend()
     let stubSession = StubIncrementalSession(result: .accepted(text: "should-not-run"))
     await backend.setStreamingSessionFactory({ stubSession })
     await backend.setTranscribeResult(
@@ -749,7 +749,7 @@ import Testing
 
   @Test("streaming ON + locked but model not ready (nil vend): fail-open to clean batch")
   func streamingModelNotReadyFailsOpen() async throws {
-    let backend = StubWhisperKitBackend()
+    let backend = StubWhisperBackend()
     // No streamingSessionFactory set → makeStreamingSession returns nil.
     await backend.setTranscribeResult(
       ASRResult(
@@ -779,7 +779,7 @@ import Testing
 
   @Test("streaming ON + locked but flush returns empty: fail-open to clean batch")
   func streamingEmptyFlushFailsOpen() async throws {
-    let backend = StubWhisperKitBackend()
+    let backend = StubWhisperBackend()
     let stubSession = StubIncrementalSession(
       result: .rejected(stopWhileDecodeInFlight: true))
     await backend.setStreamingSessionFactory({ stubSession })
@@ -823,7 +823,7 @@ import Testing
   /// the WHOLE recording, never that prefix, and never prefix plus batch.
   @Test("a rejected flush that still carries text: the prefix is discarded for one clean batch")
   func rejectedFlushWithDiagnosticPrefixFallsBack() async throws {
-    let backend = StubWhisperKitBackend()
+    let backend = StubWhisperBackend()
     let stubSession = StubIncrementalSession(
       result: IncrementalResult(
         text: "diagnostic prefix", samplesCovered: 0, decodeCount: 7, totalDecodeTimeMs: 900,
@@ -859,7 +859,7 @@ import Testing
 
   @Test("streaming OFF + locked: no streaming session, clean batch")
   func streamingOffUsesBatch() async throws {
-    let backend = StubWhisperKitBackend()
+    let backend = StubWhisperBackend()
     let stubSession = StubIncrementalSession(result: .accepted(text: "should-not-run"))
     await backend.setStreamingSessionFactory({ stubSession })
     await backend.setTranscribeResult(
@@ -894,7 +894,7 @@ import Testing
     "batchSamplesIgnored: adapter passes its own retainedPCM-derived samples, not batchSamples (council F1 / OQ-1)"
   )
   func batchSamplesIgnored() async throws {
-    let backend = StubWhisperKitBackend()
+    let backend = StubWhisperBackend()
     await backend.setTranscribeResult(
       ASRResult(
         text: "decoded", language: "en", duration: 1, processingTime: 0.1,
@@ -908,7 +908,7 @@ import Testing
     // The 1-arg test overload sets the authoritative capture buffer to the
     // fed retained PCM (all 0.1).
     adapter.observeSpeechSegments([SpeechSegment(startSample: 0, endSample: 16_000)])
-    // Pass a distinct, easily-identifiable batchSamples — the WhisperKit
+    // Pass a distinct, easily-identifiable batchSamples — the Whisper
     // adapter MUST ignore `finalize`'s batchSamples and decode the
     // observe-provided capture buffer instead (#827).
     let distinct: [Float] = [Float](repeating: 0.99, count: 16_000)
@@ -925,7 +925,7 @@ import Testing
   @Test(
     "clipTimestampsDerivedFromObservedSegments: decodeOptions.speechSegments threaded from observe")
   func clipTimestampsDerivedFromObservedSegments() async throws {
-    let backend = StubWhisperKitBackend()
+    let backend = StubWhisperBackend()
     await backend.setTranscribeResult(
       ASRResult(
         text: "ok", language: "en", duration: 1, processingTime: 0.1,
@@ -960,7 +960,7 @@ import Testing
     // cancellation worked, was inverted, or was deleted. Arms a real unload
     // first (mirroring cancelPendingUnloadCancelsArmed below) so repeated
     // cancellation has something real to cancel.
-    let backend = StubWhisperKitBackend()
+    let backend = StubWhisperBackend()
     let adapter = WhisperEngineAdapter(
       backend: backend, engineMutationScope: .alwaysAllowedForTesting)
     try await adapter.warmUp(modelReceipt: nil)
@@ -985,7 +985,7 @@ import Testing
     "staleFeedDropped: a buffer fed after cancel + new beginSession does not appear in the fresh session's PCM"
   )
   func staleFeedDropped() async throws {
-    let backend = StubWhisperKitBackend()
+    let backend = StubWhisperBackend()
     let adapter = WhisperEngineAdapter(
       backend: backend, engineMutationScope: .alwaysAllowedForTesting)
     let sidA = SessionID()
@@ -1001,7 +1001,7 @@ import Testing
 
   @Test("staleFinalize: a stale finalize during a fresh session does not clobber lastResult")
   func staleFinalizeGuard() async throws {
-    let backend = StubWhisperKitBackend()
+    let backend = StubWhisperBackend()
     await backend.setSlowTranscribe(true)
     await backend.setTranscribeResult(
       ASRResult(
@@ -1031,7 +1031,7 @@ import Testing
     "staleFinalize must NOT clear session B's PCM/segments (Codex code-diff defect 3)"
   )
   func staleFinalizeMustNotClearFreshSessionState() async throws {
-    let backend = StubWhisperKitBackend()
+    let backend = StubWhisperBackend()
     await backend.setSlowTranscribe(true)
     await backend.setTranscribeResult(
       ASRResult(
@@ -1070,7 +1070,7 @@ import Testing
 
   @Test("applyUnloadPolicy(.never) schedules no unload task")
   func applyUnloadPolicyNever() async throws {
-    let backend = StubWhisperKitBackend()
+    let backend = StubWhisperBackend()
     let adapter = WhisperEngineAdapter(
       backend: backend, engineMutationScope: .alwaysAllowedForTesting)
     try await adapter.warmUp(modelReceipt: nil)
@@ -1085,7 +1085,7 @@ import Testing
 
   @Test("applyUnloadPolicy(.immediately) calls backend.unload()")
   func applyUnloadPolicyImmediately() async throws {
-    let backend = StubWhisperKitBackend()
+    let backend = StubWhisperBackend()
     let adapter = WhisperEngineAdapter(
       backend: backend, engineMutationScope: .alwaysAllowedForTesting)
     try await adapter.warmUp(modelReceipt: nil)
@@ -1099,7 +1099,7 @@ import Testing
 
   @Test("cancelPendingUnload cancels the in-flight modelUnloadTask")
   func cancelPendingUnloadCancelsArmed() async throws {
-    let backend = StubWhisperKitBackend()
+    let backend = StubWhisperBackend()
     let adapter = WhisperEngineAdapter(
       backend: backend, engineMutationScope: .alwaysAllowedForTesting)
     try await adapter.warmUp(modelReceipt: nil)
@@ -1123,14 +1123,14 @@ import Testing
 
   // MARK: Engine interruption hook
 
-  @Test("WhisperKit leaves onEngineInterrupted to the App router (settable but not auto-fired)")
+  @Test("Whisper leaves onEngineInterrupted to the App router (settable but not auto-fired)")
   func engineInterruptedCallbackOwnership() async throws {
     let adapter = WhisperEngineAdapter(
-      backend: StubWhisperKitBackend(), engineMutationScope: .alwaysAllowedForTesting)
+      backend: StubWhisperBackend(), engineMutationScope: .alwaysAllowedForTesting)
     var fired = false
     adapter.onEngineInterrupted = { fired = true }
     #expect(fired == false)
-    // No mid-recording crash signal exists for WhisperKit today; the App
+    // No mid-recording crash signal exists for Whisper today; the App
     // layer's `handleASRServiceInterruption` (Rung 5) wires the callback.
   }
 
@@ -1140,7 +1140,7 @@ import Testing
     "finalize without an active session returns .empty(false) and never decodes (Codex r7 S0)"
   )
   func finalizeWithoutSessionShortCircuits() async {
-    let backend = StubWhisperKitBackend()
+    let backend = StubWhisperBackend()
     let adapter = WhisperEngineAdapter(
       backend: backend, engineMutationScope: .alwaysAllowedForTesting)
     let outcome = await adapter.finalize(batchSamples: nil)
@@ -1158,7 +1158,7 @@ import Testing
     "finalize after a successful terminal finalize returns .empty(false) — no re-decode (Codex r7 S4)"
   )
   func finalizeAfterTerminalShortCircuits() async throws {
-    let backend = StubWhisperKitBackend()
+    let backend = StubWhisperBackend()
     await backend.setTranscribeResult(
       ASRResult(
         text: "first", language: "en", duration: 1, processingTime: 0.1,
@@ -1187,7 +1187,7 @@ import Testing
     "observeSpeechSegments is dropped after cancel and after a terminal finalize (Codex r7 S3/S4)"
   )
   func observeSpeechSegmentsDroppedAfterTerminal() async throws {
-    let backend = StubWhisperKitBackend()
+    let backend = StubWhisperBackend()
     await backend.setTranscribeResult(
       ASRResult(
         text: "done", language: "en", duration: 1, processingTime: 0.1,
@@ -1210,7 +1210,7 @@ import Testing
     "observeSpeechSegments is dropped after cancel (Codex r7 S3)"
   )
   func observeSpeechSegmentsDroppedAfterCancel() async throws {
-    let backend = StubWhisperKitBackend()
+    let backend = StubWhisperBackend()
     let adapter = WhisperEngineAdapter(
       backend: backend, engineMutationScope: .alwaysAllowedForTesting)
     let sid = SessionID()
@@ -1227,7 +1227,7 @@ import Testing
   )
   func observeSpeechSegmentsWithoutSessionIsDropped() {
     let adapter = WhisperEngineAdapter(
-      backend: StubWhisperKitBackend(), engineMutationScope: .alwaysAllowedForTesting)
+      backend: StubWhisperBackend(), engineMutationScope: .alwaysAllowedForTesting)
     adapter.observeSpeechSegments([SpeechSegment(startSample: 0, endSample: 16_000)])
     #expect(
       adapter.observedSpeechSegmentsForTests.isEmpty,
@@ -1240,7 +1240,7 @@ import Testing
     "observeSpeechSegments stores segments unshifted in the capture coordinate"
   )
   func observeSpeechSegmentsStoresUnshifted() async throws {
-    let backend = StubWhisperKitBackend()
+    let backend = StubWhisperBackend()
     let adapter = WhisperEngineAdapter(
       backend: backend, engineMutationScope: .alwaysAllowedForTesting)
     let sid = SessionID()
@@ -1266,7 +1266,7 @@ import Testing
     // `captureResult.samples`, and a VAD segment runs to the full capture
     // length. The fix decodes the capture buffer (segment in range), not the
     // shorter shadow buffer (which would overrun → nil).
-    let backend = StubWhisperKitBackend()
+    let backend = StubWhisperBackend()
     await backend.setTranscribeResult(
       ASRResult(
         text: "decoded", language: "en", duration: 1, processingTime: 0.1,
@@ -1299,7 +1299,7 @@ import Testing
     "applyUnloadPolicy refuses to arm during an active session (Codex r7 S1)"
   )
   func applyUnloadPolicyRefusedDuringActiveSession() async throws {
-    let backend = StubWhisperKitBackend()
+    let backend = StubWhisperBackend()
     let adapter = WhisperEngineAdapter(
       backend: backend, engineMutationScope: .alwaysAllowedForTesting)
     let sid = SessionID()
@@ -1319,7 +1319,7 @@ import Testing
     "applyUnloadPolicy armed under session A does NOT unload after beginSession(B) (Codex r7 S5)"
   )
   func applyUnloadPolicyArmedUnderADoesNotFireUnderB() async throws {
-    let backend = StubWhisperKitBackend()
+    let backend = StubWhisperBackend()
     let adapter = WhisperEngineAdapter(
       backend: backend, engineMutationScope: .alwaysAllowedForTesting)
     // Drive A through to terminal (so applyUnloadPolicy may arm).
@@ -1352,7 +1352,7 @@ import Testing
 
   @Test("retryDecode() decodes the given samples and commits lastResult on success")
   func retryDecodeSucceeds() async throws {
-    let backend = StubWhisperKitBackend()
+    let backend = StubWhisperBackend()
     await backend.setTranscribeResult(
       ASRResult(
         text: "retried text", language: "en", duration: 1, processingTime: 0.1,
@@ -1378,8 +1378,8 @@ import Testing
     "GitHub cloud review: a retry-rescued result whose backend duration is short (trailing silence) or zero (no segment timestamps) still commits the FULL capture duration to lastResult, since KernelFinalizationWiring saves History metadata straight from it"
   )
   func retryDecodeCorrectsBackendDurationBeforeCommitting() async throws {
-    let backend = StubWhisperKitBackend()
-    // Simulates WhisperKitBackend.mapResults deriving duration from the last
+    let backend = StubWhisperBackend()
+    // Simulates Whisper backend.mapResults deriving duration from the last
     // decoded segment's end time — 0 here models "text exists without
     // segment timestamps," the case that would otherwise silently skip
     // telemetry AND persist a zero-duration History entry.
@@ -1413,7 +1413,7 @@ import Testing
     "an adapter's own internal streaming-then-clean-batch-fallback and an explicit Phase-2 retryDecode are two distinct decode calls, never one shared budget"
   )
   func internalFallbackAndPhase2RetryAreDistinctDecodeCalls() async throws {
-    let backend = StubWhisperKitBackend()
+    let backend = StubWhisperBackend()
     let stubSession = StubIncrementalSession(result: .rejected(stopWhileDecodeInFlight: true))
     await backend.setStreamingSessionFactory({ stubSession })
     // The internal clean-batch fallback (triggered by the empty flush) also
@@ -1459,7 +1459,7 @@ import Testing
     "retryDecode reuses the first attempt's finalized decode options exactly and never re-runs LID"
   )
   func retryDecodePreservesDecodeOptionsAndSkipsLID() async throws {
-    let backend = StubWhisperKitBackend()
+    let backend = StubWhisperBackend()
     // Three unanimous, high-confidence votes for "es" — a clean, unambiguous
     // LID resolution on the first (auto-language) attempt.
     await backend.setObserveLIDResult(
@@ -1513,7 +1513,7 @@ import Testing
   )
   func retryDecodeTimeoutScalesWithSampleCount() {
     let adapter = WhisperEngineAdapter(
-      backend: StubWhisperKitBackend(), engineMutationScope: .alwaysAllowedForTesting)
+      backend: StubWhisperBackend(), engineMutationScope: .alwaysAllowedForTesting)
     let zero = adapter.retryDecodeTimeoutSeconds(forSampleCount: 0)
     let oneMinute = adapter.retryDecodeTimeoutSeconds(forSampleCount: 16_000 * 60)
     let oneHour = adapter.retryDecodeTimeoutSeconds(forSampleCount: 16_000 * 3600)

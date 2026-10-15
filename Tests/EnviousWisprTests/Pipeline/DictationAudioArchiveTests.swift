@@ -298,7 +298,7 @@ import Testing
       #expect(
         !K.dictationFedUsesBatchBuffer(
           decodesConditionedBatch: true, isStreaming: true, cameFromBatchRescue: false))
-      // WhisperKit never uses the conditioned batch buffer.
+      // Whisper never uses the conditioned batch buffer.
       #expect(
         !K.dictationFedUsesBatchBuffer(
           decodesConditionedBatch: false, isStreaming: false, cameFromBatchRescue: false))

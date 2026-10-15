@@ -8,7 +8,7 @@ import Foundation
 ///
 /// It exists because "load the active engine" used to mean one thing —
 /// `ASRManagerInterface.loadModel()` — and that is no longer true. Parakeet still
-/// loads through the manager (in-process or its XPC helper). WhisperKit must load
+/// loads through the manager (in-process or its XPC helper). Whisper must load
 /// in-process through the backend the adapter drives, behind its relocation gate:
 /// the manager's XPC route would have the helper build a second WhisperKit model
 /// where the gate cannot reach it, and mapping a model whose bytes may still be
@@ -18,8 +18,8 @@ import Foundation
 /// crash recovery, the Diagnostics benchmark, and since #2648 file import, whose
 /// Transcription step lets the user pick All Languages for one recording — a
 /// direct `ASRManager.transcribe` there throws `ASRManagerNotOwnedError`, since
-/// WhisperKit does not live in the manager. Streaming deliberately
-/// stays on the manager — WhisperKit does not stream through it, and the manager
+/// Whisper does not live in the manager. Streaming deliberately
+/// stays on the manager — Whisper does not stream through it, and the manager
 /// answers `activeBackendSupportsStreaming` false for a backend it does not own.
 @MainActor
 struct ActiveEngineOperation {
@@ -89,7 +89,7 @@ struct ActiveEngineOperation {
 
   /// The production wiring. Lives beside the type rather than in the composition
   /// root: the root names subsystems, it does not spell out their routing.
-  /// WhisperKit resolves to the same in-process backend the adapter drives, so
+  /// Whisper resolves to the same in-process backend the adapter drives, so
   /// the relocation gate always runs, and the backend's single-flight makes a
   /// recovery load and an adapter warm-up ONE load rather than two models.
   /// - Parameter afterLoadForTesting: invoked ONLY when non-nil, after the
@@ -97,10 +97,10 @@ struct ActiveEngineOperation {
   ///   Optional-and-nil rather than a default no-op closure, so production adds
   ///   no suspension point at all.
   ///
-  ///   It exists because the WhisperKit branch cannot produce the postcondition's
+  ///   It exists because the Whisper branch cannot produce the postcondition's
   ///   failure naturally: `prepare()` DELIBERATELY throws superseded when an
   ///   unload races its warm-up, precisely so it never "reports success while the
-  ///   backend is actually unloaded" (`WhisperKitBackend.swift:386-392`). Without
+  ///   backend is actually unloaded" (`WhisperLoadStateMachine`'s `throwSuperseded`). Without
   ///   a seam the test would either race a concurrent unload — timing-dependent,
   ///   which this repo forbids — or substitute a fake loader, which would stop
   ///   testing this factory at all.
@@ -109,18 +109,18 @@ struct ActiveEngineOperation {
   ///   so this door never loads the request an earlier selection published.
   static func live(
     asrManager: any ASRManagerInterface, parakeetUpgrade: ParakeetUpgradeCoordinator,
-    whisperKitBackend: LiveTranscribeCppWhisperBackend,
+    whisperBackend: LiveTranscribeCppWhisperBackend,
     afterLoadForTesting: (@MainActor () async -> Void)? = nil
   ) -> ActiveEngineOperation {
     let readiness: @MainActor () async -> Bool = {
       asrManager.activeBackendType == .whisper
-        ? await whisperKitBackend.isReady : asrManager.isModelLoaded
+        ? await whisperBackend.isReady : asrManager.isModelLoaded
     }
     var operation = ActiveEngineOperation(
       isLoaded: readiness,
       load: {
         if asrManager.activeBackendType == .whisper {
-          try await whisperKitBackend.prepare()
+          try await whisperBackend.prepare()
         } else {
           // #3546: every Parakeet load here runs the same load and failure
           // sequence a warm-up does. A pending selection settles first (A-fail,
@@ -148,25 +148,25 @@ struct ActiveEngineOperation {
       },
       transcribe: { samples, options, onInferenceEntered in
         if asrManager.activeBackendType == .whisper {
-          return try await whisperKitBackend.transcribe(
+          return try await whisperBackend.transcribe(
             audioSamples: samples, options: options, onInferenceEntered: onInferenceEntered)
         }
         return try await asrManager.transcribe(
           audioSamples: samples, options: options, onInferenceEntered: onInferenceEntered)
       },
       hardCancel: {
-        // Mirrors load/transcribe's routing. WhisperKit's `unload()` supersedes
+        // Mirrors load/transcribe's routing. Whisper's `unload()` supersedes
         // the in-flight load/warm-up (generation bump + task drop) so a joined
         // recovery `prepare()` aborts instead of blocking dictation until the
         // model finishes loading (Codex 2b-r2 P1). Engine switches defer while
         // recovery replays, so the routing read here is stable.
         if asrManager.activeBackendType == .whisper {
-          await whisperKitBackend.unload()
+          await whisperBackend.unload()
         } else {
           asrManager.cancelInFlightLoad()
         }
       })
-    // #2918: routed exactly as `transcribe` is. The file path calls WhisperKit directly, so
+    // #2918: routed exactly as `transcribe` is. The file path calls Whisper directly, so
     // the observer goes straight on that backend (hopping to the MainActor here, as
     // `ASRManager.transcribe` does for its own backends); every other engine goes through
     // the manager, which installs it per call.
@@ -176,7 +176,7 @@ struct ActiveEngineOperation {
         if let observer {
           hopped = { @Sendable fraction in Task { @MainActor in observer(fraction) } }
         }
-        await whisperKitBackend.setTranscriptionProgressObserver(hopped)
+        await whisperBackend.setTranscriptionProgressObserver(hopped)
       } else {
         asrManager.onTranscriptionProgress = observer
       }
