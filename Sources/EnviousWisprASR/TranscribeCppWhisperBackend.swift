@@ -885,7 +885,8 @@ package actor TranscribeCppWhisperBackend<Driver: WhisperExecutorDriving>: ASRBa
     }
     pressureRunning = true
     teardownRan = false
-    let authorized = await authorizeUnload { [weak self] in await self?.pressureTeardown() ?? false }
+    let authorized = await authorizeUnload { [weak self] in await self?.pressureTeardown() ?? false
+    }
     pressureRunning = false
     // Refused, or an authorizer that never ran the teardown: the model stays ready.
     if !authorized || !teardownRan { pressurePending = false }
@@ -909,6 +910,11 @@ package actor TranscribeCppWhisperBackend<Driver: WhisperExecutorDriving>: ASRBa
     if let handle = currentHandle() { await driver.waitForDrain(handle) }
     await unload()
     pressurePending = false
+    // The next press then warms the model through the cold-press path; without this line
+    // that press reads as an unexplained "engine not ready" in app.log.
+    await AppLogger.shared.log(
+      "Whisper model unloaded for memory pressure (idle)", level: .info,
+      category: "TranscribeCppWhisper")
     return true
   }
 
