@@ -8,6 +8,7 @@
   import Testing
 
   @testable import EnviousWisprAppKit
+  @testable import EnviousWisprPostProcessing
   @testable import EnviousWisprStorage
 
   /// #3765: the dev control door's command dispatcher (settings commands).
@@ -27,7 +28,8 @@
           modelCatalog: { DevControlSettings.ModelCatalog(provider: nil, models: []) },
           connectedInputUIDs: { ["mic-a"] }),
         status: DevControlFixtures.StatusFake().sources,
-        history: DevControlFixtures.history([]))
+        history: DevControlFixtures.history([]),
+        words: DevControlFixtures.unwrittenWords())
       return (settings, dispatcher)
     }
 
@@ -158,7 +160,8 @@
           modelCatalog: { DevControlSettings.ModelCatalog(provider: nil, models: []) },
           connectedInputUIDs: { [] }),
         status: status.sources,
-        history: DevControlDispatcher.HistorySource(visibleTranscripts: rows))
+        history: DevControlDispatcher.HistorySource(visibleTranscripts: rows),
+        words: DevControlFixtures.unwrittenWords())
       return (settings, dispatcher)
     }
 
@@ -482,9 +485,252 @@
       #expect(writeFlags.value.count == 3)
       #expect(writeFlags.value.allSatisfy { $0 == false })
     }
+// MARK: - Words
+
+private static func make(words: CustomWordsCoordinator) -> (SettingsManager, DevControlDispatcher) {
+  let defaults = TestDefaults.suite("ew.tests.3765.dispatch.\(UUID().uuidString)")!
+  let settings = SettingsManager(defaults: defaults)
+  let dispatcher = DevControlDispatcher(
+    settings: settings,
+    writeContext: DevControlSettings.WriteContext(
+      modelCatalog: { DevControlSettings.ModelCatalog(provider: nil, models: []) },
+      connectedInputUIDs: { [] }),
+    status: DevControlFixtures.StatusFake().sources,
+    history: DevControlFixtures.history([]),
+    words: words)
+  return (settings, dispatcher)
+}
+
+private func listed(_ dispatcher: DevControlDispatcher) async throws -> [[String: Any]] {
+  let reply = try #require(payload(await dispatcher.handle(.wordsList, args: [:])))
+  return try #require(reply["words"] as? [[String: Any]])
+}
+
+private func word(_ result: DevControlDispatcher.Result) throws -> [String: Any] {
+  try object(try #require(payload(result))["word"])
+}
+
+private func outcome(_ result: DevControlDispatcher.Result) -> String? {
+  payload(result)?["outcome"] as? String
+}
+
+@Test("add, list, update and remove go through the coordinator and persist to its file")
+func wordsRoundTrip() async throws {
+  let temp = DevControlFixtures.TempWords()
+  defer { temp.cleanUp() }
+  let (_, dispatcher) = Self.make(words: temp.coordinator)
+
+  let added = await dispatcher.handle(
+    .wordsAdd, args: ["word": "  Zorblax ", "aliases": ["zor blacks"]])
+  #expect(outcome(added) == "created")
+  let row = try word(added)
+  let id = try #require(row["id"] as? String)
+  #expect(row["word"] as? String == "Zorblax")
+  #expect(row["aliases"] as? [String] == ["zor blacks"])
+  #expect(row["source"] as? String == "user")
+  let listedRow = try #require(try await listed(dispatcher).first { $0["id"] as? String == id })
+  #expect(listedRow["word"] as? String == "Zorblax")
+  #expect(
+    try await listed(dispatcher).map { $0["id"] as? String }
+      == temp.coordinator.customWords.map(\.id.uuidString))
+
+  let aliasOnly = await dispatcher.handle(
+    .wordsUpdate, args: ["id": id.lowercased(), "aliases": ["zorb lax"]])
+  #expect(outcome(aliasOnly) == "updated")
+  #expect(try word(aliasOnly)["word"] as? String == "Zorblax")
+  #expect(try word(aliasOnly)["aliases"] as? [String] == ["zorb lax"])
+  #expect(try word(aliasOnly)["id"] as? String == id)
+
+  let wordOnly = await dispatcher.handle(.wordsUpdate, args: ["id": id, "word": "Zorblaxx"])
+  #expect(try word(wordOnly)["word"] as? String == "Zorblaxx")
+  #expect(try word(wordOnly)["aliases"] as? [String] == ["zorb lax"])
+
+  let cleared = await dispatcher.handle(.wordsUpdate, args: ["id": id, "aliases": [String]()])
+  #expect(try word(cleared)["aliases"] as? [String] == [])
+
+  let reread = try #require(CustomWordsManager(fileURL: temp.url).load())
+  let saved = try #require(reread.first { $0.id.uuidString == id })
+  #expect(saved.canonical == "Zorblaxx")
+  #expect(saved.aliases.isEmpty)
+
+  let removed = await dispatcher.handle(.wordsRemove, args: ["id": id])
+  #expect(outcome(removed) == "removed")
+  #expect(try await listed(dispatcher).contains { $0["id"] as? String == id } == false)
+  let afterRemove = try #require(CustomWordsManager(fileURL: temp.url).load())
+  #expect(afterRemove.contains { $0.id.uuidString == id } == false)
+}
+
+@Test("malformed word requests and missing targets change nothing and fire no callback")
+func wordRefusalsChangeNothing() async throws {
+  let temp = DevControlFixtures.TempWords()
+  defer { temp.cleanUp() }
+  let (_, dispatcher) = Self.make(words: temp.coordinator)
+  let existing = try #require(
+    payload(await dispatcher.handle(.wordsAdd, args: ["word": "Kestrel"])))
+  let id = try #require((existing["word"] as? [String: Any])?["id"] as? String)
+  var callbacks = 0
+  temp.coordinator.onWordsChanged = { _ in callbacks += 1 }
+  let before = temp.coordinator.customWords
+  let fileBefore = try Data(contentsOf: temp.url)
+
+  let refusals: [(DevControlDispatcher.Command, [String: Any], String)] = [
+    (.wordsList, ["limit": 5], "badArgs"),
+    (.wordsAdd, [:], "badArgs"),
+    (.wordsAdd, ["word": 5], "badArgs"),
+    (.wordsAdd, ["word": "Osprey", "aliases": "osprey"], "badArgs"),
+    (.wordsAdd, ["word": "Osprey", "aliases": ["ok", 2]], "badArgs"),
+    (.wordsAdd, ["word": "Osprey", "aliases": [NSNull()]], "badArgs"),
+    (.wordsAdd, ["word": "Osprey", "id": UUID().uuidString], "badArgs"),
+    (.wordsAdd, ["word": "Osprey", "source": "builtin"], "badArgs"),
+    (.wordsUpdate, ["word": "Osprey"], "badArgs"),
+    (.wordsUpdate, ["id": "not-a-uuid", "word": "Osprey"], "badArgs"),
+    (.wordsUpdate, ["id": 7, "word": "Osprey"], "badArgs"),
+    (.wordsUpdate, ["id": id], "badArgs"),
+    (.wordsUpdate, ["id": id, "word": 5], "badArgs"),
+    (.wordsUpdate, ["id": id, "aliases": ["a", 1]], "badArgs"),
+    (.wordsUpdate, ["id": id, "frequencyUsed": 9], "badArgs"),
+    (.wordsUpdate, ["id": UUID().uuidString, "word": "Osprey"], "notFound"),
+    (.wordsRemove, [:], "badArgs"),
+    (.wordsRemove, ["id": "nope"], "badArgs"),
+    (.wordsRemove, ["id": id, "force": true], "badArgs"),
+    (.wordsRemove, ["id": UUID().uuidString], "notFound"),
+  ]
+  for (command, args, expected) in refusals {
+    #expect(code(await dispatcher.handle(command, args: args)) == expected, "\(command) \(args)")
+  }
+  #expect(callbacks == 0)
+  #expect(temp.coordinator.customWords == before)
+  #expect(try Data(contentsOf: temp.url) == fileBefore)
+}
+
+@Test("an owner refusal comes back as rejected with the owner's message, and nothing changes")
+func ownerRefusalIsRejected() async throws {
+  let temp = DevControlFixtures.TempWords()
+  defer { temp.cleanUp() }
+  let (_, dispatcher) = Self.make(words: temp.coordinator)
+  let id = try #require(
+    try word(await dispatcher.handle(.wordsAdd, args: ["word": "Heron"]))["id"] as? String)
+  var callbacks = 0
+  temp.coordinator.onWordsChanged = { _ in callbacks += 1 }
+  let before = temp.coordinator.customWords
+  let tooLong = String(repeating: "a", count: CustomWordsImportLimits.maximumStoredValueScalars + 1)
+
+  for (command, args) in [
+    (DevControlDispatcher.Command.wordsAdd, ["word": tooLong] as [String: Any]),
+    (.wordsAdd, ["word": "Egret", "aliases": [tooLong]]),
+    (.wordsUpdate, ["id": id, "aliases": [tooLong]]),
+    (.wordsUpdate, ["id": id, "word": tooLong]),
+  ] {
+    let result = await dispatcher.handle(command, args: args)
+    guard case .error(let code, let message) = result else {
+      Issue.record("expected a refusal for \(command)")
+      continue
+    }
+    #expect(code == "rejected")
+    #expect(message == CustomWordsPersistenceError.unusableValue.localizedDescription)
+  }
+  #expect(callbacks == 0)
+  #expect(temp.coordinator.customWords == before)
+}
+
+@Test("a duplicate or blank add makes nothing new and names what the list holds")
+func duplicateAndBlankAdds() async throws {
+  let temp = DevControlFixtures.TempWords()
+  defer { temp.cleanUp() }
+  let (_, dispatcher) = Self.make(words: temp.coordinator)
+  var published: [[CustomWord]] = []
+  temp.coordinator.onWordsChanged = { published.append($0) }
+
+  let first = await dispatcher.handle(.wordsAdd, args: ["word": "Kestrel"])
+  let id = try #require(try word(first)["id"] as? String)
+  let count = temp.coordinator.customWords.count
+
+  let duplicate = await dispatcher.handle(.wordsAdd, args: ["word": " kestrel"])
+  #expect(outcome(duplicate) == "existing")
+  #expect(try word(duplicate)["id"] as? String == id)
+  #expect(try word(duplicate)["word"] as? String == "Kestrel")
+
+  let blank = await dispatcher.handle(.wordsAdd, args: ["word": "   "])
+  #expect(outcome(blank) == "unchanged")
+  #expect(payload(blank)?["word"] is NSNull)
+  #expect(temp.coordinator.customWords.count == count)
+  // The coordinator publishes after every accepted add, its no-op ones included.
+  #expect(published.count == 3)
+  #expect(published.last == temp.coordinator.customWords)
+}
+
+@Test("a built-in can be edited, removed and brought back through the same owner")
+func builtinEditRemoveRestore() async throws {
+  let temp = DevControlFixtures.TempWords()
+  defer { temp.cleanUp() }
+  let (_, dispatcher) = Self.make(words: temp.coordinator)
+  let builtin = try #require(temp.coordinator.customWords.first { $0.source == .builtin })
+  let id = builtin.id.uuidString
+
+  let removed = await dispatcher.handle(.wordsRemove, args: ["id": id])
+  #expect(outcome(removed) == "removed")
+  #expect(temp.coordinator.customWords.contains { $0.id == builtin.id } == false)
+
+  let restored = await dispatcher.handle(
+    .wordsAdd, args: ["word": builtin.canonical.uppercased()])
+  #expect(outcome(restored) == "restored")
+  #expect(try word(restored)["id"] as? String == id)
+  #expect(try word(restored)["source"] as? String == "builtin")
+
+  let edited = await dispatcher.handle(
+    .wordsUpdate, args: ["id": id, "aliases": builtin.aliases + ["extra sound alike"]])
+  #expect(outcome(edited) == "updated")
+  #expect(try word(edited)["id"] as? String == id)
+  #expect(try word(edited)["source"] as? String == "user")
+  #expect((try word(edited)["aliases"] as? [String])?.contains("extra sound alike") == true)
+}
+
+@Test("an edit to a word another window deleted is dropped, and the reply says the target is gone")
+func staleUpdateReportsTargetGone() async throws {
+  let temp = DevControlFixtures.TempWords()
+  defer { temp.cleanUp() }
+  let (_, dispatcher) = Self.make(words: temp.coordinator)
+  let id = try #require(
+    try word(await dispatcher.handle(.wordsAdd, args: ["word": "Quokka"]))["id"] as? String)
+  let uuid = try #require(UUID(uuidString: id))
+
+  // A second app copy removes the word straight from the shared file.
+  let other = CustomWordsManager(fileURL: temp.url)
+  var otherWords = try #require(other.load())
+  try other.remove(id: uuid, from: &otherWords)
+  #expect(temp.coordinator.customWords.contains { $0.id == uuid })
+
+  let stale = await dispatcher.handle(.wordsUpdate, args: ["id": id, "aliases": ["quoka"]])
+  #expect(outcome(stale) == "targetGone")
+  #expect(payload(stale)?["word"] is NSNull)
+  #expect(temp.coordinator.customWords.contains { $0.id == uuid } == false)
+  #expect(
+    try #require(CustomWordsManager(fileURL: temp.url).load()).contains { $0.id == uuid } == false)
+}
+
+@Test("word commands never enter a settings attribution scope or change a setting")
+func wordCommandsLeaveSettingsAlone() async throws {
+  let temp = DevControlFixtures.TempWords()
+  defer { temp.cleanUp() }
+  let (settings, dispatcher) = Self.make(words: temp.coordinator)
+  var flags: [Bool] = []
+  temp.coordinator.onWordsChanged = { _ in flags.append(settings.isDevControlWrite) }
+  let before = try JSONSerialization.data(
+    withJSONObject: DevControlSettings.catalog(settings), options: .sortedKeys)
+
+  let id = try #require(
+    try word(await dispatcher.handle(.wordsAdd, args: ["word": "Puffin"]))["id"] as? String)
+  _ = await dispatcher.handle(.wordsUpdate, args: ["id": id, "aliases": ["puff in"]])
+  _ = await dispatcher.handle(.wordsRemove, args: ["id": id])
+
+  #expect(flags == [false, false, false])
+  let after = try JSONSerialization.data(
+    withJSONObject: DevControlSettings.catalog(settings), options: .sortedKeys)
+  #expect(before == after)
+}
   }
 
-  /// Plain-value owners for the dispatcher's `status` and History reads.
+  /// Plain-value owners for the dispatcher's `status`, History and word commands.
   @MainActor
   enum DevControlFixtures {
     static func engine(
@@ -505,6 +751,34 @@
     final class Box<Value> {
       var value: Value
       init(_ value: Value) { self.value = value }
+    }
+
+    /// A coordinator for tests that never change a word. The manager makes its folder at
+    /// init; the folder is removed again once the coordinator has loaded (the built-ins), so
+    /// nothing is left behind.
+    static func unwrittenWords() -> CustomWordsCoordinator {
+      let words = TempWords()
+      words.cleanUp()
+      return words.coordinator
+    }
+
+    /// A temporary word library this test owns: the coordinator, its file, and `cleanUp` to
+    /// remove the folder made for it.
+    @MainActor
+    struct TempWords {
+      let coordinator: CustomWordsCoordinator
+      let url: URL
+      let folder: URL
+
+      init() {
+        folder = FileManager.default.temporaryDirectory
+          .appendingPathComponent("ew-3765-words-\(UUID().uuidString)", isDirectory: true)
+        try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        url = folder.appendingPathComponent("custom-words.json")
+        coordinator = CustomWordsCoordinator(manager: CustomWordsManager(fileURL: url))
+      }
+
+      func cleanUp() { try? FileManager.default.removeItem(at: folder) }
     }
 
     static func history(_ rows: [Transcript]) -> DevControlDispatcher.HistorySource {

@@ -22,6 +22,10 @@
       case status
       case historyList = "history.list"
       case historyGet = "history.get"
+      case wordsList = "words.list"
+      case wordsAdd = "words.add"
+      case wordsUpdate = "words.update"
+      case wordsRemove = "words.remove"
     }
 
     enum ErrorCode: String, CaseIterable {
@@ -33,6 +37,8 @@
       case checkNotYetShared
       case catalogUnavailable
       case notFound
+      /// The word owner refused the change; the reply carries its own message.
+      case rejected
     }
 
     enum Result {
@@ -84,15 +90,18 @@
     private let writeContext: DevControlSettings.WriteContext
     private let statusSources: StatusSources
     private let history: HistorySource
+    /// The same coordinator Your Words calls; every word command goes through it.
+    private let words: CustomWordsCoordinator
 
     init(
       settings: SettingsManager, writeContext: DevControlSettings.WriteContext,
-      status: StatusSources, history: HistorySource
+      status: StatusSources, history: HistorySource, words: CustomWordsCoordinator
     ) {
       self.settings = settings
       self.writeContext = writeContext
       self.statusSources = status
       self.history = history
+      self.words = words
     }
 
     func handle(_ command: Command?, args: [String: Any]) async -> Result {
@@ -117,6 +126,14 @@
         return historyList(args)
       case .historyGet:
         return historyGet(args)
+      case .wordsList:
+        return wordsList(args)
+      case .wordsAdd:
+        return wordsAdd(args)
+      case .wordsUpdate:
+        return wordsUpdate(args)
+      case .wordsRemove:
+        return wordsRemove(args)
       }
     }
 
@@ -382,6 +399,169 @@
         row.escapeRecoveredAt.map { $0.formatted(timestamp) as Any } ?? NSNull()
       detail["importedFileName"] = row.importedFileName as Any? ?? NSNull()
       return detail
+    }
+
+    // MARK: - Words
+
+    /// Each word command names the only argument keys it accepts. Any other key (an id on
+    /// add, a source, a usage count) is refused rather than ignored, so a script never
+    /// believes it set a field the screens do not let a person set.
+    private func unexpectedKeys(_ args: [String: Any], allowed: Set<String>) -> Bool {
+      !Set(args.keys).isSubset(of: allowed)
+    }
+
+    /// The aliases argument: an array whose every element is a string. One non-string
+    /// element refuses the whole request; nothing is dropped.
+    private enum AliasesArgument {
+      case absent
+      case value([String])
+      case invalid
+    }
+
+    private func aliases(in args: [String: Any]) -> AliasesArgument {
+      guard let raw = args["aliases"] else { return .absent }
+      guard let array = raw as? [Any] else { return .invalid }
+      var strings: [String] = []
+      for element in array {
+        guard let string = element as? String else { return .invalid }
+        strings.append(string)
+      }
+      return .value(strings)
+    }
+
+    private func id(in args: [String: Any]) -> UUID? {
+      (args["id"] as? String).flatMap(UUID.init(uuidString:))
+    }
+
+    /// `{}`: the coordinator's list, in its order.
+    private func wordsList(_ args: [String: Any]) -> Result {
+      guard !unexpectedKeys(args, allowed: []) else {
+        return .failure(.badArgs, "words.list takes no arguments")
+      }
+      return .ok(["words": words.customWords.map(Self.project)])
+    }
+
+    /// `{word, aliases?}`. The coordinator owns trimming, the storable-value check,
+    /// duplicates and bringing back a deleted built-in, so the reply reads what the list
+    /// holds after the call instead of assuming a new row:
+    /// - `created`: the list now holds the row this request made.
+    /// - `restored`: a deleted built-in came back under its own id.
+    /// - `existing`: a word with that spelling was already there (here, or saved by another
+    ///   window first); nothing new was made.
+    /// - `unchanged`: the owner accepted the request and the list holds no such word (a
+    ///   blank word, which the owner ignores).
+    private func wordsAdd(_ args: [String: Any]) -> Result {
+      guard !unexpectedKeys(args, allowed: ["word", "aliases"]) else {
+        return .failure(.badArgs, "words.add takes word and aliases only")
+      }
+      guard let canonical = args["word"] as? String else {
+        return .failure(.badArgs, "word must be a string")
+      }
+      let newAliases: [String]
+      switch aliases(in: args) {
+      case .absent: newAliases = []
+      case .value(let value): newAliases = value
+      case .invalid: return .failure(.badArgs, "aliases must be an array of strings")
+      }
+      let candidate = CustomWord(canonical: canonical, aliases: newAliases)
+      let beforeIDs = Set(words.customWords.map(\.id))
+      if let message = words.add(candidate) {
+        return .failure(.rejected, message)
+      }
+      let spelling = canonical.trimmingCharacters(in: .whitespacesAndNewlines)
+      guard
+        !spelling.isEmpty,
+        let match = words.customWords.first(where: {
+          $0.canonical.caseInsensitiveCompare(spelling) == .orderedSame
+        })
+      else {
+        return .ok(["outcome": "unchanged", "word": NSNull()])
+      }
+      let outcome: String
+      if match.id == candidate.id {
+        outcome = "created"
+      } else if !beforeIDs.contains(match.id) && match.source == .builtin {
+        outcome = "restored"
+      } else {
+        outcome = "existing"
+      }
+      return .ok(["outcome": outcome, "word": Self.project(match)])
+    }
+
+    /// `{id, word?, aliases?}`: at least one of word and aliases. The row is copied and
+    /// only the supplied fields change; `aliases: []` clears them. When another window
+    /// deleted the word first, the owner drops the edit and adopts the saved list; the
+    /// reply then says `targetGone` instead of naming a row.
+    private func wordsUpdate(_ args: [String: Any]) -> Result {
+      guard !unexpectedKeys(args, allowed: ["id", "word", "aliases"]) else {
+        return .failure(.badArgs, "words.update takes id, word and aliases only")
+      }
+      guard let id = id(in: args) else {
+        return .failure(.badArgs, "id must be a UUID string")
+      }
+      var newCanonical: String?
+      if let raw = args["word"] {
+        guard let string = raw as? String else {
+          return .failure(.badArgs, "word must be a string")
+        }
+        newCanonical = string
+      }
+      let newAliases: [String]?
+      switch aliases(in: args) {
+      case .absent: newAliases = nil
+      case .value(let value): newAliases = value
+      case .invalid: return .failure(.badArgs, "aliases must be an array of strings")
+      }
+      guard newCanonical != nil || newAliases != nil else {
+        return .failure(.badArgs, "give word, aliases or both")
+      }
+      guard var edited = words.customWords.first(where: { $0.id == id }) else {
+        return .failure(.notFound, "no word has that id")
+      }
+      if let newCanonical { edited.canonical = newCanonical }
+      if let newAliases { edited.aliases = newAliases }
+      if let message = words.update(edited) {
+        return .failure(.rejected, message)
+      }
+      guard let saved = words.customWords.first(where: { $0.id == id }) else {
+        return .ok(["outcome": "targetGone", "word": NSNull()])
+      }
+      return .ok(["outcome": "updated", "word": Self.project(saved)])
+    }
+
+    /// `{id}`. Removing a built-in records its deletion, as the screen does.
+    private func wordsRemove(_ args: [String: Any]) -> Result {
+      guard !unexpectedKeys(args, allowed: ["id"]) else {
+        return .failure(.badArgs, "words.remove takes id only")
+      }
+      guard let id = id(in: args) else {
+        return .failure(.badArgs, "id must be a UUID string")
+      }
+      guard words.customWords.contains(where: { $0.id == id }) else {
+        return .failure(.notFound, "no word has that id")
+      }
+      if let message = words.remove(id: id) {
+        return .failure(.rejected, message)
+      }
+      let stillListed = words.customWords.contains { $0.id == id }
+      return .ok(["outcome": stillListed ? "stillListed" : "removed", "id": id.uuidString])
+    }
+
+    private static func project(_ word: CustomWord) -> [String: Any] {
+      [
+        "id": word.id.uuidString,
+        "word": word.canonical,
+        "aliases": word.aliases,
+        "learnedAliases": word.learnedAliases,
+        "source": word.source.rawValue,
+        "category": word.category.rawValue,
+        "priority": word.priority,
+        "forceReplace": word.forceReplace,
+        "caseSensitive": word.caseSensitive,
+        "frequencyUsed": word.frequencyUsed,
+        "lastUsed": word.lastUsed.map { $0.formatted(timestamp) as Any } ?? NSNull(),
+        "enrichmentPending": word.enrichmentPending,
+      ]
     }
   }
 #endif

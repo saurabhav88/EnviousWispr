@@ -59,10 +59,11 @@
     }
 
     /// A real dispatcher over isolated settings, with no discovered models, no connected
-    /// input devices, plain status facts and the given History rows.
+    /// input devices, plain status facts, the given History rows and word library.
     private static func dispatcher(
       status: DevControlFixtures.StatusFake = DevControlFixtures.StatusFake(),
-      rows: [Transcript] = []
+      rows: [Transcript] = [],
+      words: CustomWordsCoordinator = DevControlFixtures.unwrittenWords()
     ) -> DevControlDispatcher {
       let defaults = TestDefaults.suite("ew.tests.3765.framing.\(UUID().uuidString)")!
       return DevControlDispatcher(
@@ -71,7 +72,8 @@
           modelCatalog: { DevControlSettings.ModelCatalog(provider: nil, models: []) },
           connectedInputUIDs: { [] }),
         status: status.sources,
-        history: DevControlFixtures.history(rows))
+        history: DevControlFixtures.history(rows),
+        words: words)
     }
 
     /// The Python source for a child that has imported `Tests/RuntimeUAT/dev_control.py`
@@ -529,6 +531,66 @@
         #expect(line.contains(small.id.uuidString) == false)
         #expect(line.contains(huge.id.uuidString) == false)
         #expect(line.contains("small row") == false)
+      }
+      try await stop(door)
+    }
+
+    @Test("words CRUD over the socket logs no word content; a list too large to send is refused whole")
+    func wordsOverTheSocket() async throws {
+      let temp = DevControlFixtures.TempWords()
+      defer { temp.cleanUp() }
+      let door = DevControlDoor(dispatcher: Self.dispatcher(words: temp.coordinator))
+      var outcomes: [String] = []
+      door.onOutcomeLogged = { outcomes.append($0) }
+      defer { door.uninstall() }
+      try #require(await door.install() == .ready)
+
+      let reply = try await runClient(
+        #"""
+        c = dev_control.Connection(\#(door.pid))
+        added = c.request("words.add", {"word": "Fooflux", "aliases": ["foo flux"]})
+        wid = added["result"]["word"]["id"]
+        listed = c.request("words.list")
+        updated = c.request("words.update", {"id": wid, "aliases": ["fu flux"]})
+        removed = c.request("words.remove", {"id": wid})
+        missing = c.request("words.remove", {"id": wid})
+        print(json.dumps({"added": added, "listed": listed, "updated": updated,
+                          "removed": removed, "missing": missing}))
+        """#)
+      let added = try #require((reply["added"] as? [String: Any])?["result"] as? [String: Any])
+      #expect(added["outcome"] as? String == "created")
+      let id = try #require((added["word"] as? [String: Any])?["id"] as? String)
+      let listed = try #require((reply["listed"] as? [String: Any])?["result"] as? [String: Any])
+      #expect((listed["words"] as? [[String: Any]])?.contains { $0["id"] as? String == id } == true)
+      let updated = try #require((reply["updated"] as? [String: Any])?["result"] as? [String: Any])
+      #expect((updated["word"] as? [String: Any])?["aliases"] as? [String] == ["fu flux"])
+      #expect((reply["removed"] as? [String: Any])?["ok"] as? Bool == true)
+      #expect(
+        ((reply["missing"] as? [String: Any])?["error"] as? [String: Any])?["code"] as? String
+          == "notFound")
+      #expect(temp.coordinator.customWords.contains { $0.id.uuidString == id } == false)
+
+      // In memory only: enough long rows that the list passes the reply limit.
+      let alias = String(repeating: "x", count: 200)
+      temp.coordinator.customWords = (0..<6_000).map {
+        CustomWord(canonical: "Word\($0)", aliases: [alias])
+      }
+      let big = try await runClient(
+        #"""
+        print(json.dumps(dev_control.request(\#(door.pid), "words.list")))
+        """#)
+      #expect(big["ok"] as? Bool == false)
+      #expect((big["error"] as? [String: Any])?["code"] as? String == "responseTooLarge")
+      #expect(big["launch"] as? String == door.launchID.uuidString)
+      #expect(big["result"] == nil)
+
+      try #require(outcomes.count == 6, "outcomes: \(outcomes)")
+      #expect(outcomes[0].contains("cmd=words.add ok=true forced=false code=none"))
+      #expect(outcomes[4].contains("cmd=words.remove ok=false forced=false code=notFound"))
+      #expect(outcomes[5].contains("cmd=words.list ok=false forced=false code=responseTooLarge"))
+      for line in outcomes {
+        #expect(line.lowercased().contains("flux") == false)
+        #expect(line.contains(id) == false)
       }
       try await stop(door)
     }
