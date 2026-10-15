@@ -483,8 +483,8 @@
       let small = Transcript(text: "small row", polishedText: "Small row.")
       let huge = Transcript(text: String(repeating: "a", count: 2 << 20))
       let fake = DevControlFixtures.StatusFake()
-      fake.engine = DevControlFixtures.engine(selected: .whisperKit, active: .parakeet)
-      fake.driverStates = [.parakeet: .transcribing, .whisperKit: .idle]
+      fake.engine = DevControlFixtures.engine(selected: .whisper, active: .parakeet)
+      fake.driverStates = [.parakeet: .transcribing, .whisper: .idle]
       let door = DevControlDoor(dispatcher: Self.dispatcher(status: fake, rows: [huge, small]))
       var outcomes: [String] = []
       door.onOutcomeLogged = { outcomes.append($0) }
@@ -503,7 +503,7 @@
         """#)
       let status = try #require((reply["status"] as? [String: Any])?["result"] as? [String: Any])
       #expect(status["selectedBackend"] as? String == "parakeet")
-      #expect((status["engine"] as? [String: Any])?["selected"] as? String == "whisperKit")
+      #expect((status["engine"] as? [String: Any])?["selected"] as? String == "whisper")
       #expect((status["activeDriver"] as? [String: Any])?["state"] as? String == "transcribing")
 
       let listed = try #require((reply["listed"] as? [String: Any])?["result"] as? [String: Any])

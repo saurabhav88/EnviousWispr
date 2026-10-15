@@ -213,7 +213,7 @@
 
     private static let rows: [Row] = [
       choice(
-        "selectedBackend", \.selectedBackend, [.parakeet, .whisperKit], fires: .selectedBackend),
+        "selectedBackend", \.selectedBackend, [.parakeet, .whisper], fires: .selectedBackend),
       choice("recordingMode", \.recordingMode, [.pushToTalk, .toggle], fires: .recordingMode),
       choice("llmProvider", \.llmProvider, [.ollama, .openAI], fires: .llmProvider),
       text("llmModel", \.llmModel, fires: .llmModel),

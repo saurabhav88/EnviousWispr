@@ -2267,11 +2267,11 @@ package final class WisprBootstrapper {
           status: DevControlDispatcher.StatusSources(
             engineStatus: { [engineCoordinator] in engineCoordinator.status },
             isSwitching: { [engineCoordinator] in engineCoordinator.isSwitching },
-            driverState: { [kernelDriver, whisperKitKernelDriver] backend in
-              (backend == .whisperKit ? whisperKitKernelDriver : kernelDriver).state
+            driverState: { [kernelDriver, whisperKernelDriver] backend in
+              (backend == .whisper ? whisperKernelDriver : kernelDriver).state
             },
             parakeetDelivery: { [modelDelivery] in modelDelivery.parakeetState },
-            whisperKitSetup: { [setup] in setup.whisperKitSetup.setupState },
+            whisperSetup: { [setup] in setup.whisperSetup.setupState },
             isFileImportRunning: { [fileImportCoordinator] in fileImportCoordinator.isRunning },
             savedKeyState: { [savedKeyPresence] in savedKeyPresence.state(for: $0) }),
           history: DevControlDispatcher.HistorySource(
