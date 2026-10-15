@@ -1665,8 +1665,23 @@ def launch_dev_app(label, skip_warmup):
     if not u.wait_for(f"{label}: one dev app running", lambda: len(dev_app_candidates()) == 1,
                       deadline=30.0):
         raise u.Aborted(f"{label}: the dev app did not start ({dev_app_candidates()})")
-    w.connect()
+    connect_dev_app(label)
     return base
+
+
+def connect_dev_app(label):
+    """Point the driver at THIS worktree's dev app by verified executable path, never by name
+    (`w.connect()` picks the first process named EnviousWispr, which can be the shipped app or a
+    sibling worktree's build), and require it ready."""
+    from ui_helpers import validate_app_ready
+    pids = dev_app_candidates()
+    if len(pids) != 1:
+        raise u.Aborted(f"{label}: ambiguous dev app: {pids}")
+    w._pid = pids[0]
+    w._app = w.get_ax_app(w._pid)
+    ready, reason = validate_app_ready(w._pid)
+    if not ready:
+        raise u.Aborted(f"{label}: the dev app is not ready: {reason}")
 
 
 def relaunch_dev_app(label, skip_warmup):
@@ -1684,13 +1699,15 @@ def relaunch_dev_app(label, skip_warmup):
                         deadline=20.0) and WARMUP_OFF not in u.log_since(base)
     u.check(f"{label}: dev app relaunched {'with the warmup suppressed' if skip_warmup else 'normally'}",
             ok)
+    if not ok:
+        raise u.Aborted(f"{label}: required launch proof missing")
     return base
 
 
 def with_warmup_suppressed(name, fn):
     """Run a sleeping phase with the warmup suppressed; always put a normal launch back."""
-    relaunch_dev_app(f"{name}: suppress warmup", skip_warmup=True)
     try:
+        relaunch_dev_app(f"{name}: suppress warmup", skip_warmup=True)
         fn()
     finally:
         if TAKE_STUCK["stuck"]:
@@ -1750,32 +1767,41 @@ def stage_wake_arm(arm):
     with open(path, "w") as fh:
         fh.write(WAKE_PAGE.format(tag=f"{arm}-{u.RUN_ID}"))
     chrome = SleepingChrome(label)
-    chrome.open(f"file://{path}")
-    time.sleep(3)  # settle: the page loads and focuses its box; nothing is read
-    chrome.front()
-    baseline = focus_code(chrome.pid)
+    try:
+        chrome.open(f"file://{path}")
+        time.sleep(3)  # settle: the page loads and focuses its box; nothing is read
+        chrome.front()
+        baseline = focus_code(chrome.pid)
+    except BaseException:
+        # A partly started Chrome is still this arm's to clean up: found by its profile path.
+        u.check(f"{label}: its Chrome closed after a staging failure", chrome.close())
+        raise
     print(f"    {label}: asleep baseline focus_code={baseline}")
     if baseline != SLEEP_CODE:
         inconclusive(f"{label}: asleep baseline", f"focus_code={baseline}, not {SLEEP_CODE}")
-        chrome.close()
+        u.check(f"{label}: its Chrome closed and its profile removed", chrome.close())
         return None, path
     return chrome, path
 
 
 def prove_woke(label, chrome, base, started):
-    """Within the window: the known box is focused and readable, and THIS launch logged a role=0
-    warmup line for this Chrome's pid."""
-    woke = u.wait_for(f"{label}: the box readable", lambda: chrome_focus(chrome.pid)[0] == "AXTextArea",
-                      deadline=WAKE_WINDOW_S)
-    elapsed_ms = int((time.time() - started) * 1000)
+    """The known box focused, readable and empty no later than `WAKE_WINDOW_S` after `started`
+    (a `time.monotonic()` taken before the trigger), and THIS launch logged a role=0 warmup line
+    for this Chrome's pid. For b1 the clock includes app start-up, so exceeding the window there is
+    unresolved start-up-versus-wake timing, not proof that the wake failed."""
+    end = started + WAKE_WINDOW_S
+    woke = u.wait_for(f"{label}: the box readable",
+                      lambda: chrome_focus(chrome.pid) == ("AXTextArea", ""),
+                      deadline=max(0.0, end - time.monotonic()))
+    elapsed = time.monotonic() - started
+    within = woke and elapsed <= WAKE_WINDOW_S
     role, value = chrome_focus(chrome.pid)
     lines = [l for l in warmup_lines(u.log_since(base)) if l[0] == chrome.pid]
-    print(f"    {label}: woke={woke} after {elapsed_ms} ms role={role} value={value!r} warmup={lines}")
-    u.check(f"{label}: the box became readable within {WAKE_WINDOW_S:.0f} s", woke and value == "",
-            f"role={role} value={value!r} elapsed_ms={elapsed_ms}")
-    u.check(f"{label}: this launch sent the role read to this Chrome (role=0)",
-            any(r == 0 for _, r, _ in lines), str(lines))
-    return woke
+    print(f"    {label}: woke={woke} after {elapsed:.3f} s role={role} value={value!r} warmup={lines}")
+    u.check(f"{label}: readable within two seconds", within, f"{elapsed:.3f} s role={role} value={value!r}")
+    role_ok = u.check(f"{label}: this launch sent the role read to this Chrome (role=0)",
+                      any(r == 0 for _, r, _ in lines), str(lines))
+    return within and role_ok
 
 
 def wake_takes(label, chrome):
@@ -1829,6 +1855,8 @@ def wake_takes(label, chrome):
     u.check(f"{label}-found: one landing line, found", [l[1] for l in lines] == ["found"], str(lines))
     u.wait_for(f"{label}-found: the box filled", lambda: (_box_value(chrome) or "") != "", deadline=5.0)
     verify_exact(f"{label}-found", _box_value(chrome), u.log_since(base), WAKE_SENTENCE)
+    u.check(f"{label}-found: no Copied notice", not NOTICE.search(u.log_since(base)),
+            str(NOTICE.findall(u.log_since(base))))
 
 
 def _box(chrome):
@@ -1851,18 +1879,16 @@ def phase_wake():
     print("\n== wake: the app wakes a Chrome that no accessibility client has woken")
     for arm in ("b1", "b2"):
         label = f"wake-{arm}"
-        chrome, path = stage_wake_arm(arm)
+        chrome = None
+        path = f"/tmp/ew-uat-3802-wake-{arm}-{u.RUN_ID}.html"
         try:
+            chrome, path = stage_wake_arm(arm)
             if chrome is None:
                 continue
             if arm == "b1":
-                # The clock starts at this launch's prime of this Chrome, not at the launch: app
-                # start-up time is not wake time.
+                # Conservative: the clock includes app start-up (see prove_woke).
+                started = time.monotonic()
                 base = launch_dev_app(label, skip_warmup=False)
-                u.wait_for(f"{label}: the launch prime of this Chrome",
-                           lambda: [l for l in warmup_lines(u.log_since(base)) if l[0] == chrome.pid],
-                           deadline=20.0)
-                started = time.time()
             else:
                 activate_bundle(FINDER, label)
                 base = launch_dev_app(label, skip_warmup=False)
@@ -1874,7 +1900,7 @@ def phase_wake():
                     inconclusive(f"{label}: still asleep before activation",
                                  f"warmup={early} focus_code={still}")
                     continue
-                started = time.time()
+                started = time.monotonic()
                 chrome.front()
             if prove_woke(label, chrome, base, started):
                 wake_takes(label, chrome)

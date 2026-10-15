@@ -17,7 +17,10 @@ Copied; a doubled paste is not a single insertion; the push-to-talk key is relea
 before-release callback, even when that callback raises. #3802: the wake phase's warmup-line
 parser refuses the old line shape; its dev-app launcher refuses two candidates and never passes an
 inherited suppression on; the sleeping phases' wrapper always restores a normal launch unless a take
-may still be live; a doubled wake take is not an exact insertion.
+may still be live, including when the suppressed launch itself fails, and every relaunch
+refuses to continue without its own launch line; the driver targets the dev app by verified path,
+never a same-name sibling; a staging failure still closes its Chrome; a doubled wake take is not an
+exact insertion.
 """
 import os
 import pathlib
@@ -542,7 +545,12 @@ class WakeHarness(unittest.TestCase):
 
     def setUp(self):
         self.saved = {name: getattr(h, name) for name in
-                      ("dev_app_candidates", "relaunch_dev_app")}
+                      ("dev_app_candidates", "relaunch_dev_app", "connect_dev_app", "stop_dev_app",
+                       "launch_dev_app", "SleepingChrome")}
+        self.saved_w = {name: getattr(h.w, name) for name in ("_pid", "_app", "get_ax_app")}
+        import ui_helpers
+        self.ui_helpers = ui_helpers
+        self.saved_ready = ui_helpers.validate_app_ready
         self.saved_u = {name: getattr(h.u, name) for name in ("log_size", "log_since", "wait_for")}
         self.saved_popen = h.subprocess.Popen
         self.saved_connect = h.w.connect
@@ -561,6 +569,9 @@ class WakeHarness(unittest.TestCase):
         else:
             os.environ[h.SKIP_WARMUP_ENV] = self.saved_env
         h.TAKE_STUCK["stuck"] = self.saved_stuck
+        for name, value in self.saved_w.items():
+            setattr(h.w, name, value)
+        self.ui_helpers.validate_app_ready = self.saved_ready
 
     def test_warmup_parser_reads_the_new_line_and_not_the_old_one(self):
         self.assertEqual(h.warmup_lines(self.NEW), [(4242, 0, False)])
@@ -590,7 +601,7 @@ class WakeHarness(unittest.TestCase):
         h.dev_app_candidates = lambda: next(running)
         h.u.log_size = lambda: 0
         h.u.wait_for = lambda what, predicate, deadline=10.0, poll=0.1: predicate()
-        h.w.connect = lambda: None
+        h.connect_dev_app = lambda label: None
 
         def fake_popen(argv, env=None, **kwargs):
             calls.append((argv, env))
@@ -634,6 +645,87 @@ class WakeHarness(unittest.TestCase):
             statuses = [status for _, status, _ in results]
         self.assertEqual(calls, [True])
         self.assertIn("FAIL", statuses)
+
+    def test_wrapper_restores_when_the_suppressed_launch_itself_fails(self):
+        calls = []
+
+        def relaunch(label, skip_warmup):
+            calls.append(skip_warmup)
+            if skip_warmup:
+                raise h.u.Aborted("no suppression line")
+        h.relaunch_dev_app = relaunch
+        ran = []
+        with self.assertRaises(h.u.Aborted):
+            h.with_warmup_suppressed("sleeping", lambda: ran.append(True))
+        self.assertEqual(ran, [])
+        self.assertEqual(calls, [True, False])
+
+    def test_relaunch_refuses_without_its_launch_proof(self):
+        h.stop_dev_app = lambda label: True
+        h.launch_dev_app = lambda label, skip_warmup: 0
+        h.u.log_since = lambda offset: "no warmup line at all"
+        h.u.wait_for = lambda what, predicate, deadline=10.0, poll=0.1: predicate()
+        with Results():
+            with self.assertRaises(h.u.Aborted):
+                h.relaunch_dev_app("probe", skip_warmup=True)
+            with self.assertRaises(h.u.Aborted):
+                h.relaunch_dev_app("probe", skip_warmup=False)
+
+    def test_relaunch_normal_refuses_a_launch_that_logged_suppression(self):
+        h.stop_dev_app = lambda label: True
+        h.launch_dev_app = lambda label, skip_warmup: 0
+        h.u.log_since = lambda offset: h.WARMUP_OFF + "\n" + self.NEW
+        h.u.wait_for = lambda what, predicate, deadline=10.0, poll=0.1: predicate()
+        with Results():
+            with self.assertRaises(h.u.Aborted):
+                h.relaunch_dev_app("probe", skip_warmup=False)
+
+    def test_driver_targets_the_verified_dev_app_never_a_same_name_sibling(self):
+        h.w._pid = 1  # a same-name sibling the name lookup would have found
+        h.w.get_ax_app = lambda pid: f"ax-{pid}"
+        self.ui_helpers.validate_app_ready = lambda pid: (True, "ok")
+        h.dev_app_candidates = lambda: [555]
+        h.connect_dev_app("probe")
+        self.assertEqual((h.w._pid, h.w._app), (555, "ax-555"))
+        for pids in ([], [555, 556]):
+            h.dev_app_candidates = lambda pids=pids: pids
+            with self.assertRaises(h.u.Aborted):
+                h.connect_dev_app("probe")
+        h.dev_app_candidates = lambda: [555]
+        self.ui_helpers.validate_app_ready = lambda pid: (False, "no window")
+        with self.assertRaises(h.u.Aborted):
+            h.connect_dev_app("probe")
+
+    def test_a_staging_failure_after_chrome_started_still_closes_it(self):
+        closed = []
+
+        class FakeChrome:
+            def __init__(self, label):
+                self.pid = 777
+
+            def open(self, url):
+                pass
+
+            def front(self):
+                raise h.u.Aborted("did not come front")
+
+            def close(self):
+                closed.append(True)
+                return True
+        h.SleepingChrome = FakeChrome
+        h.stop_dev_app = lambda label: True
+        saved_sleep = h.time.sleep
+        h.time.sleep = lambda s: None
+        try:
+            with Results():
+                with self.assertRaises(h.u.Aborted):
+                    h.stage_wake_arm("probe")
+        finally:
+            h.time.sleep = saved_sleep
+            path = f"/tmp/ew-uat-3802-wake-probe-{h.u.RUN_ID}.html"
+            if os.path.exists(path):
+                os.remove(path)
+        self.assertEqual(closed, [True])
 
     def test_exact_insertion_rejects_a_doubled_wake_take(self):
         log = ("[x] [INFO] [Pipeline] CORRECTION_DEBUG [LLM Polish] OUT: Quick async update for the "
