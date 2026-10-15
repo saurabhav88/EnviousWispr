@@ -5,6 +5,7 @@
     python3 Tests/RuntimeUAT/paste_landing_uat.py focused    # one phase
     python3 Tests/RuntimeUAT/paste_landing_uat.py otherwindow closedwindow   # #3121 window phases
     python3 Tests/RuntimeUAT/paste_landing_uat.py sleepingswitch sleepingclosed sleepingstay  # #3304
+    python3 Tests/RuntimeUAT/paste_landing_uat.py wake    # #3802: the app wakes a sleeping Chrome
 
 Exit status: 0 all passed, 1 anything failed, 3 a required proof was INCONCLUSIVE (a sleeping
 phase whose Chrome was not asleep at record start and just before the stop). On the dev Mac a
@@ -1580,6 +1581,312 @@ def phase_sleeping_stay(takes=5):
                 os.remove(path)
 
 
+# ── #3802: the app wakes a sleeping Chrome itself ─────────────────────────────────────────────
+#
+# `AccessibilityWarmupObserver` reads `AXRole` on every newly frontmost app's application element
+# (and once at launch for the app already in front). Chromium turns its accessibility tree on from
+# that read; a focus read alone does not (founder's work laptop 2026-10-15: focus readable 104 ms
+# after one role read). Each arm stages a fresh isolated Chrome WITH THE DEV APP STOPPED, proves it
+# asleep (-25212 with its box focused), then gives the app exactly one chance to wake it:
+#   b1: the app launches while that Chrome is front (the launch prime);
+#   b2: the app launches with Finder front, Chrome is proven still asleep, then activated once.
+# Nothing in this phase calls `SleepingChrome.wake()` (it sets AXEnhancedUserInterface).
+# Then the click-off take (d): no box focused, the miss is `absent`, KEPT and the Copied notice
+# shown, with a captured frame for the visual check; then the found take (e): the box holds the
+# take's submitted text exactly once.
+#
+# The four sleeping phases need a Chrome nothing has woken, so they relaunch the dev app with
+# `EW_UAT_SKIP_AX_WARMUP=1` (a DEBUG-only launch switch, logged) and always restore a normal launch.
+# The operator claims the dev-app lock (tools-and-apps.md RULE: peer-occupancy-procedure) before
+# running any of these phases; the harness only stops this worktree's verified dev app.
+
+WARMUP = re.compile(r"AXWarmup prime pid=(\d+) role=(-?\d+) found=(true|false)")
+WARMUP_OFF = "AXWarmup disabled by EW_UAT_SKIP_AX_WARMUP"
+SKIP_WARMUP_ENV = "EW_UAT_SKIP_AX_WARMUP"
+WAKE_SENTENCE = "quick async update for the team I just wrapped up with sales"
+WAKE_WINDOW_S = 2.0
+FINDER = "com.apple.finder"
+SLEEPING_PHASES = ("sleeping", "sleepingswitch", "sleepingclosed", "sleepingstay")
+WAKE_PAGE = ('<!doctype html><meta charset="utf-8"><title>ew wake {tag}</title>'
+             '<body style="font:18px sans-serif;padding:24px">'
+             '<p>Wake check (local page, nothing is sent anywhere).</p>'
+             '<textarea id="t" autofocus rows="6" cols="70"></textarea>'
+             '<script>document.getElementById("t").focus()</script></body>')
+
+
+def warmup_lines(text):
+    """[(pid, role error, found)] for every warmup line in `text`."""
+    return [(int(p), int(r), f == "true") for p, r, f in WARMUP.findall(text)]
+
+
+def dev_app_executable():
+    return os.path.join(u.APP_BUNDLE, "Contents", "MacOS", "EnviousWispr")
+
+
+def dev_app_candidates():
+    """Every running process whose executable path is EXACTLY this worktree's dev app."""
+    exe = dev_app_executable()
+    out = subprocess.run(["ps", "-eww", "-o", "pid=,comm="], capture_output=True, text=True)
+    if out.returncode != 0:
+        raise u.Aborted(f"ps failed: {out.stderr.strip()}")
+    return [int(line.split(None, 1)[0]) for line in out.stdout.splitlines()
+            if line.strip() and line.split(None, 1)[1:] == [exe]]
+
+
+def stop_dev_app(label):
+    """TERM exactly this worktree's dev app, re-verified by path right before the signal. Refuses
+    (Aborted) on more than one candidate; True when none is left running."""
+    pids = dev_app_candidates()
+    if not pids:
+        return True
+    if len(pids) > 1:
+        raise u.Aborted(f"{label}: {len(pids)} dev apps at {dev_app_executable()}: {pids}; "
+                        "refusing to choose")
+    pid = pids[0]
+    cmd = subprocess.run(["ps", "-o", "comm=", "-p", str(pid)], capture_output=True, text=True)
+    if cmd.stdout.strip() != dev_app_executable():
+        raise u.Aborted(f"{label}: pid {pid} is no longer this worktree's dev app")
+    os.kill(pid, 15)
+    return u.wait_for(f"{label}: the dev app exits", lambda: not dev_app_candidates(), deadline=15.0)
+
+
+def launch_dev_app(label, skip_warmup):
+    """Start this worktree's dev app from its executable, with `EW_UAT_SKIP_AX_WARMUP=1` only when
+    asked (removed from the inherited environment otherwise), wait for exactly one instance, and
+    reconnect the driver. Returns the log offset taken just before the launch."""
+    if dev_app_candidates():
+        raise u.Aborted(f"{label}: the dev app is still running; stop it first")
+    env = {k: v for k, v in os.environ.items() if k != SKIP_WARMUP_ENV}
+    if skip_warmup:
+        env[SKIP_WARMUP_ENV] = "1"
+    base = u.log_size()
+    subprocess.Popen([dev_app_executable()], env=env, stdin=subprocess.DEVNULL,
+                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+    if not u.wait_for(f"{label}: one dev app running", lambda: len(dev_app_candidates()) == 1,
+                      deadline=30.0):
+        raise u.Aborted(f"{label}: the dev app did not start ({dev_app_candidates()})")
+    w.connect()
+    return base
+
+
+def relaunch_dev_app(label, skip_warmup):
+    """Stop, then start with or without suppression, and prove which startup ran from THIS
+    launch's own log lines: the suppression line when suppressed; otherwise no suppression line and
+    a warmup line (a regular app is always front when it launches here)."""
+    if not stop_dev_app(label):
+        raise u.Aborted(f"{label}: the dev app did not stop")
+    base = launch_dev_app(label, skip_warmup)
+    if skip_warmup:
+        ok = u.wait_for(f"{label}: the suppression line", lambda: WARMUP_OFF in u.log_since(base),
+                        deadline=20.0)
+    else:
+        ok = u.wait_for(f"{label}: a warmup line", lambda: warmup_lines(u.log_since(base)),
+                        deadline=20.0) and WARMUP_OFF not in u.log_since(base)
+    u.check(f"{label}: dev app relaunched {'with the warmup suppressed' if skip_warmup else 'normally'}",
+            ok)
+    return base
+
+
+def with_warmup_suppressed(name, fn):
+    """Run a sleeping phase with the warmup suppressed; always put a normal launch back."""
+    relaunch_dev_app(f"{name}: suppress warmup", skip_warmup=True)
+    try:
+        fn()
+    finally:
+        if TAKE_STUCK["stuck"]:
+            u.record(f"{name}: warmup restored", "FAIL", "a take may still be live; the dev app is "
+                     "left running with the warmup suppressed. Relaunch it by hand.")
+        else:
+            relaunch_dev_app(f"{name}: restore warmup", skip_warmup=False)
+
+
+def activate_bundle(bundle, label):
+    from AppKit import NSRunningApplication
+    apps = NSRunningApplication.runningApplicationsWithBundleIdentifier_(bundle)
+    if not apps:
+        raise u.Aborted(f"{label}: {bundle} is not running")
+    apps[0].activateWithOptions_(0)
+    if not u.wait_for(f"{label}: {bundle} frontmost",
+                      lambda: frontmost_pid() == int(apps[0].processIdentifier()), deadline=5.0):
+        raise u.Aborted(f"{label}: {bundle} did not come front")
+    return int(apps[0].processIdentifier())
+
+
+def chrome_focus(pid):
+    """(role, value) of `pid`'s focused element, or (None, None) when it reports none."""
+    from ui_helpers import get_attr, get_ax_app
+    focused = get_attr(get_ax_app(pid), "AXFocusedUIElement")
+    if focused is None:
+        return None, None
+    value = get_attr(focused, "AXValue")
+    return get_attr(focused, "AXRole"), (None if value is None else str(value))
+
+
+def chrome_web_area(pid):
+    from ui_helpers import get_attr, get_ax_app
+    element = get_attr(get_ax_app(pid), "AXFocusedUIElement")
+    for _ in range(30):
+        if element is None or get_attr(element, "AXRole") == "AXWebArea":
+            return element
+        element = get_attr(element, "AXParent")
+    return None
+
+
+def capture_frame(label):
+    """A full-screen frame taken while the notice is up, for the human visual check. Returns the
+    path, or None when the capture produced no file (Screen Recording not granted)."""
+    path = f"/tmp/ew-uat-3802-{label}-{u.RUN_ID}.png"
+    subprocess.run(["screencapture", "-x", path], capture_output=True)
+    return path if os.path.exists(path) and os.path.getsize(path) > 0 else None
+
+
+def stage_wake_arm(arm):
+    """Stop the app, open a fresh isolated Chrome on the wake page, and prove it asleep. Returns
+    (chrome, page path) or (None, path) when the baseline is not asleep (recorded INCONCLUSIVE)."""
+    label = f"wake-{arm}"
+    if not stop_dev_app(f"{label}: stage with the app stopped"):
+        raise u.Aborted(f"{label}: the dev app did not stop")
+    path = f"/tmp/ew-uat-3802-wake-{arm}-{u.RUN_ID}.html"
+    with open(path, "w") as fh:
+        fh.write(WAKE_PAGE.format(tag=f"{arm}-{u.RUN_ID}"))
+    chrome = SleepingChrome(label)
+    chrome.open(f"file://{path}")
+    time.sleep(3)  # settle: the page loads and focuses its box; nothing is read
+    chrome.front()
+    baseline = focus_code(chrome.pid)
+    print(f"    {label}: asleep baseline focus_code={baseline}")
+    if baseline != SLEEP_CODE:
+        inconclusive(f"{label}: asleep baseline", f"focus_code={baseline}, not {SLEEP_CODE}")
+        chrome.close()
+        return None, path
+    return chrome, path
+
+
+def prove_woke(label, chrome, base, started):
+    """Within the window: the known box is focused and readable, and THIS launch logged a role=0
+    warmup line for this Chrome's pid."""
+    woke = u.wait_for(f"{label}: the box readable", lambda: chrome_focus(chrome.pid)[0] == "AXTextArea",
+                      deadline=WAKE_WINDOW_S)
+    elapsed_ms = int((time.time() - started) * 1000)
+    role, value = chrome_focus(chrome.pid)
+    lines = [l for l in warmup_lines(u.log_since(base)) if l[0] == chrome.pid]
+    print(f"    {label}: woke={woke} after {elapsed_ms} ms role={role} value={value!r} warmup={lines}")
+    u.check(f"{label}: the box became readable within {WAKE_WINDOW_S:.0f} s", woke and value == "",
+            f"role={role} value={value!r} elapsed_ms={elapsed_ms}")
+    u.check(f"{label}: this launch sent the role read to this Chrome (role=0)",
+            any(r == 0 for _, r, _ in lines), str(lines))
+    return woke
+
+
+def wake_takes(label, chrome):
+    """(d) click off, kept with the notice; then (e) back in the box, found, exactly once."""
+    from ApplicationServices import AXUIElementSetAttributeValue
+    area = chrome_web_area(chrome.pid)
+    if area is None:
+        raise u.Aborted(f"{label}: the page's web area was not found")
+    AXUIElementSetAttributeValue(area, "AXFocused", True)
+    if not u.wait_for(f"{label}: focus on the page", lambda: chrome_focus(chrome.pid)[0] == "AXWebArea",
+                      deadline=2.0):
+        raise u.Aborted(f"{label}: could not move focus off the box ({chrome_focus(chrome.pid)})")
+    u.set_clipboard_text(f"ew-uat-sentinel-wake-{label}")
+    base = u.log_size()
+    PHASE_BASE["offset"] = base
+    lines, cascades = take(f"{label}-clickoff", base, sentence=WAKE_SENTENCE)
+    text = u.log_since(base)
+    observed = [l[1] for l in lines]
+    u.check(f"{label}-clickoff: one landing line, a readable-field miss (absent)",
+            observed == ["absent"], str(lines))
+    u.wait_for("the checked cleanup's line", lambda: KEPT.search(u.log_since(base)), deadline=10.0)
+    u.wait_for("the notice's line", lambda: NOTICE.search(u.log_since(base)), deadline=5.0)
+    frame = capture_frame(f"{label}-copied")
+    text = u.log_since(base)
+    kept = [k[0] for k in KEPT.findall(text)]
+    notices = NOTICE.findall(text)
+    u.check(f"{label}-clickoff: the cleanup kept the dictation", kept == ["keep_dictation"], str(kept))
+    u.check(f"{label}-clickoff: the Copied notice was shown, once",
+            len(notices) == 1 and notices[0][1] == "true", str(notices))
+    board = u.clipboard_text() or ""
+    submitted = submitted_text(text)
+    u.check(f"{label}-clickoff: the clipboard holds the take's submitted text",
+            submitted is not None and board.strip() == submitted, f"board={board[:80]!r} submitted={submitted!r}")
+    # The frame is evidence for a human: a file is not proof the pill was visible, so the
+    # visual verdict stays outside the automatic count.
+    u.check(f"{label}-clickoff: a frame was captured while the notice was up", frame is not None,
+            "no file (Screen Recording not granted?)")
+    if frame:
+        u.skip(f"{label}-clickoff: Copied pill visible", f"VISUAL CHECK PENDING: open {frame}")
+    u.check(f"{label}-clickoff: the box is still empty", _box_value(chrome) == "",
+            repr(_box_value(chrome)))
+    # (e) back into the box: the paste lands there, once.
+    box = _box(chrome)
+    AXUIElementSetAttributeValue(box, "AXFocused", True)
+    if not u.wait_for(f"{label}: focus back in the box", lambda: chrome_focus(chrome.pid)[0] == "AXTextArea",
+                      deadline=2.0):
+        raise u.Aborted(f"{label}: could not focus the box again")
+    base = u.log_size()
+    PHASE_BASE["offset"] = base
+    lines, cascades = take(f"{label}-found", base, sentence=WAKE_SENTENCE)
+    u.check(f"{label}-found: one landing line, found", [l[1] for l in lines] == ["found"], str(lines))
+    u.wait_for(f"{label}-found: the box filled", lambda: (_box_value(chrome) or "") != "", deadline=5.0)
+    verify_exact(f"{label}-found", _box_value(chrome), u.log_since(base), WAKE_SENTENCE)
+
+
+def _box(chrome):
+    area = chrome_web_area(chrome.pid)
+    found = [el for role, el in page_descendants(area) if role == "AXTextArea"] if area else []
+    if len(found) != 1:
+        raise u.Aborted(f"wake: expected one text box on the page, found {len(found)}")
+    return found[0]
+
+
+def _box_value(chrome):
+    from ui_helpers import get_attr
+    value = get_attr(_box(chrome), "AXValue")
+    return None if value is None else str(value)
+
+
+def phase_wake():
+    """#3802: the app wakes a sleeping Chrome on launch (b1) and on activation (b2), then a
+    click-off miss is kept with the Copied notice and a focused take lands once."""
+    print("\n== wake: the app wakes a Chrome that no accessibility client has woken")
+    for arm in ("b1", "b2"):
+        label = f"wake-{arm}"
+        chrome, path = stage_wake_arm(arm)
+        try:
+            if chrome is None:
+                continue
+            if arm == "b1":
+                # The clock starts at this launch's prime of this Chrome, not at the launch: app
+                # start-up time is not wake time.
+                base = launch_dev_app(label, skip_warmup=False)
+                u.wait_for(f"{label}: the launch prime of this Chrome",
+                           lambda: [l for l in warmup_lines(u.log_since(base)) if l[0] == chrome.pid],
+                           deadline=20.0)
+                started = time.time()
+            else:
+                activate_bundle(FINDER, label)
+                base = launch_dev_app(label, skip_warmup=False)
+                u.wait_for(f"{label}: the launch prime", lambda: warmup_lines(u.log_since(base)),
+                           deadline=20.0)
+                early = [l for l in warmup_lines(u.log_since(base)) if l[0] == chrome.pid]
+                still = focus_code(chrome.pid)
+                if early or still != SLEEP_CODE:
+                    inconclusive(f"{label}: still asleep before activation",
+                                 f"warmup={early} focus_code={still}")
+                    continue
+                started = time.time()
+                chrome.front()
+            if prove_woke(label, chrome, base, started):
+                wake_takes(label, chrome)
+        finally:
+            if chrome is not None:
+                u.check(f"{label}: its Chrome closed and its profile removed", chrome.close())
+            if os.path.exists(path):
+                os.remove(path)
+            if not dev_app_candidates() and not TAKE_STUCK["stuck"]:
+                launch_dev_app(f"{label}: leave the app running", skip_warmup=False)
+
+
 # ---------------------------------------------------------------------------------------------
 # #3423: a floating launcher panel (Raycast, Alfred) takes the keyboard focus WITHOUT becoming the
 # front application. The fixture (`Tests/Fixtures/launcher-panel/`) is that window and nothing else: an
@@ -2092,7 +2399,7 @@ LAUNCHER_PHASES = {
 
 PHASES = ["focused", "nofocus", "textedit", "readonly", "copy", "newtake", "otherwindow",
           "closedwindow", "reuseafter", "clickout", "sleeping", "sleepingswitch", "sleepingclosed",
-          "sleepingstay", *LAUNCHER_PHASES]
+          "sleepingstay", "wake", *LAUNCHER_PHASES]
 
 
 def main():
@@ -2138,14 +2445,16 @@ def main():
                 phase_click_out()
             elif name in ("otherwindow", "closedwindow"):
                 phase_other_window(close_target=name == "closedwindow")
-            elif name == "sleeping":
-                phase_sleeping()
-            elif name == "sleepingswitch":
-                phase_sleeping_switch()
-            elif name == "sleepingclosed":
-                phase_sleeping_closed()
-            elif name == "sleepingstay":
-                phase_sleeping_stay()
+            elif name in SLEEPING_PHASES:
+                # #3802: the app now wakes Chrome on activation; these phases need it asleep.
+                with_warmup_suppressed(name, {
+                    "sleeping": phase_sleeping,
+                    "sleepingswitch": phase_sleeping_switch,
+                    "sleepingclosed": phase_sleeping_closed,
+                    "sleepingstay": phase_sleeping_stay,
+                }[name])
+            elif name == "wake":
+                phase_wake()
             elif name in LAUNCHER_PHASES:
                 LAUNCHER_PHASES[name]()
             else:

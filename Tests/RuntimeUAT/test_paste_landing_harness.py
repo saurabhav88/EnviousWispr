@@ -14,7 +14,10 @@ clipboard), reads an exact paste as ok and an empty, truncated or doubled one as
 cleanup parsers keep checked (PR B) and unchecked (#3304 recorded window) lines apart; a sleeping proof on an awake or unreadable Chrome is INCONCLUSIVE, never PASS, and a run
 with one exits 3, while a proven failure still exits 1; step 0 fails a paste that also showed
 Copied; a doubled paste is not a single insertion; the push-to-talk key is released after the
-before-release callback, even when that callback raises.
+before-release callback, even when that callback raises. #3802: the wake phase's warmup-line
+parser refuses the old line shape; its dev-app launcher refuses two candidates and never passes an
+inherited suppression on; the sleeping phases' wrapper always restores a normal launch unless a take
+may still be live; a doubled wake take is not an exact insertion.
 """
 import os
 import pathlib
@@ -528,6 +531,119 @@ class LauncherHarness(unittest.TestCase):
         finally:
             h.FIXTURE.clear()
             h.FIXTURE.update(saved)
+
+
+class WakeHarness(unittest.TestCase):
+    """#3802: the wake phase's parser, its dev-app launcher and the sleeping phases' suppression
+    wrapper, with every process, signal and log read scripted. No app, Chrome, screen or key."""
+
+    NEW = "[INFO] [AccessibilityWarmup] AXWarmup prime pid=4242 role=0 found=false"
+    OLD = "[INFO] [AccessibilityWarmup] AXWarmup prime pid=4242 found=true"
+
+    def setUp(self):
+        self.saved = {name: getattr(h, name) for name in
+                      ("dev_app_candidates", "relaunch_dev_app")}
+        self.saved_u = {name: getattr(h.u, name) for name in ("log_size", "log_since", "wait_for")}
+        self.saved_popen = h.subprocess.Popen
+        self.saved_connect = h.w.connect
+        self.saved_env = os.environ.get(h.SKIP_WARMUP_ENV)
+        self.saved_stuck = h.TAKE_STUCK["stuck"]
+
+    def tearDown(self):
+        for name, value in self.saved.items():
+            setattr(h, name, value)
+        for name, value in self.saved_u.items():
+            setattr(h.u, name, value)
+        h.subprocess.Popen = self.saved_popen
+        h.w.connect = self.saved_connect
+        if self.saved_env is None:
+            os.environ.pop(h.SKIP_WARMUP_ENV, None)
+        else:
+            os.environ[h.SKIP_WARMUP_ENV] = self.saved_env
+        h.TAKE_STUCK["stuck"] = self.saved_stuck
+
+    def test_warmup_parser_reads_the_new_line_and_not_the_old_one(self):
+        self.assertEqual(h.warmup_lines(self.NEW), [(4242, 0, False)])
+        self.assertEqual(h.warmup_lines("AXWarmup prime pid=7 role=-25204 found=false"),
+                         [(7, -25204, False)])
+        # Two-way control: the pre-#3802 line carries no role, so it can never prove a wake.
+        self.assertEqual(h.warmup_lines(self.OLD), [])
+
+    def test_wake_phase_is_registered_and_sleeping_phases_are_wrapped(self):
+        self.assertIn("wake", h.PHASES)
+        self.assertEqual(set(h.SLEEPING_PHASES),
+                         {"sleeping", "sleepingswitch", "sleepingclosed", "sleepingstay"})
+        self.assertTrue(set(h.SLEEPING_PHASES) <= set(h.PHASES))
+
+    def test_stop_refuses_to_choose_between_two_dev_apps(self):
+        h.dev_app_candidates = lambda: [101, 202]
+        with self.assertRaises(h.u.Aborted):
+            h.stop_dev_app("probe")
+
+    def test_stop_with_nothing_running_is_done(self):
+        h.dev_app_candidates = lambda: []
+        self.assertTrue(h.stop_dev_app("probe"))
+
+    def launched_env(self, skip):
+        calls = []
+        running = iter([[], [999], [999]])
+        h.dev_app_candidates = lambda: next(running)
+        h.u.log_size = lambda: 0
+        h.u.wait_for = lambda what, predicate, deadline=10.0, poll=0.1: predicate()
+        h.w.connect = lambda: None
+
+        def fake_popen(argv, env=None, **kwargs):
+            calls.append((argv, env))
+        h.subprocess.Popen = fake_popen
+        h.launch_dev_app("probe", skip_warmup=skip)
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(calls[0][0], [h.dev_app_executable()])
+        return calls[0][1]
+
+    def test_normal_launch_drops_an_inherited_suppression(self):
+        os.environ[h.SKIP_WARMUP_ENV] = "1"
+        self.assertNotIn(h.SKIP_WARMUP_ENV, self.launched_env(skip=False))
+
+    def test_suppressed_launch_sets_exactly_one(self):
+        os.environ.pop(h.SKIP_WARMUP_ENV, None)
+        self.assertEqual(self.launched_env(skip=True)[h.SKIP_WARMUP_ENV], "1")
+
+    def test_launch_refuses_while_the_app_still_runs(self):
+        h.dev_app_candidates = lambda: [999]
+        with self.assertRaises(h.u.Aborted):
+            h.launch_dev_app("probe", skip_warmup=False)
+
+    def test_wrapper_restores_a_normal_launch_even_when_the_phase_raises(self):
+        calls = []
+        h.relaunch_dev_app = lambda label, skip_warmup: calls.append(skip_warmup)
+
+        def phase():
+            raise h.u.Aborted("phase failed")
+        with self.assertRaises(h.u.Aborted):
+            h.with_warmup_suppressed("sleeping", phase)
+        self.assertEqual(calls, [True, False])
+
+    def test_wrapper_leaves_the_app_alone_while_a_take_may_be_live(self):
+        calls = []
+        h.relaunch_dev_app = lambda label, skip_warmup: calls.append(skip_warmup)
+
+        def phase():
+            h.TAKE_STUCK["stuck"] = True
+        with Results() as results:
+            h.with_warmup_suppressed("sleeping", phase)
+            statuses = [status for _, status, _ in results]
+        self.assertEqual(calls, [True])
+        self.assertIn("FAIL", statuses)
+
+    def test_exact_insertion_rejects_a_doubled_wake_take(self):
+        log = ("[x] [INFO] [Pipeline] CORRECTION_DEBUG [LLM Polish] OUT: Quick async update for the "
+               "team, I just wrapped up with sales.\n")
+        once = "Quick async update for the team, I just wrapped up with sales."
+        with Results() as results:
+            h.verify_exact("wake-found", once, log, h.WAKE_SENTENCE)
+            h.verify_exact("wake-found", once + " " + once, log, h.WAKE_SENTENCE)
+            statuses = [status for _, status, _ in results]
+        self.assertEqual(statuses, ["PASS", "PASS", "PASS", "FAIL"])
 
 
 if __name__ == "__main__":
