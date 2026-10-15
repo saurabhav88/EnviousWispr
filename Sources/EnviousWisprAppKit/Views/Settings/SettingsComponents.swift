@@ -1862,10 +1862,12 @@ struct EngineCard<Footer: View>: View {
                   Divider().overlay(Color.stDivider)
                 }
                 HStack(alignment: .firstTextBaseline, spacing: 10) {
+                  // #3792: the label keeps its width and the value wraps. A one-word label
+                  // (German "Downloadgröße") otherwise broke mid-word at the narrowest window.
                   Text(row.label)
                     .font(.stHelper)
                     .foregroundStyle(Color.stTextTertiary)
-                    .fixedSize(horizontal: false, vertical: true)
+                    .fixedSize()
                   Spacer(minLength: 12)
                   Text(row.value)
                     .font(.stHelper)
@@ -1962,39 +1964,83 @@ struct EngineCard<Footer: View>: View {
     }
   }
 
-  /// The times row: its label with room for the overlaid "?", then each value over its caption.
+  /// The times row: its label with room for the overlaid "?", then the three values.
+  ///
+  /// Cloud review (#3792): at the 750-point window minimum each card is about 192 points wide
+  /// inside, and the one-line row wrapped its label and captions letter by letter. The row now
+  /// takes the first of three layouts that fits on one line per piece: everything on one line;
+  /// the label above the values; the label above one "caption value" line per length. Every
+  /// text keeps its ideal width, so a layout that does not fit is skipped rather than squeezed.
   private func timesRow(_ times: EngineCardTimes) -> some View {
-    HStack(alignment: .firstTextBaseline, spacing: 10) {
-      HStack(alignment: .firstTextBaseline, spacing: 6) {
-        Text(times.label)
-          .font(.stHelper)
-          .foregroundStyle(Color.stTextTertiary)
-          .fixedSize(horizontal: false, vertical: true)
-        Color.clear
-          .frame(width: 18, height: 18)
-          .anchorPreference(key: EngineCardHelpAnchorKey.self, value: .bounds) { $0 }
+    ViewThatFits(in: .horizontal) {
+      HStack(alignment: .firstTextBaseline, spacing: 10) {
+        timesLabel(times)
+        Spacer(minLength: 12)
+        timesGrid(times)
       }
-      Spacer(minLength: 12)
-      Grid(alignment: .trailing, horizontalSpacing: 14, verticalSpacing: 2) {
-        GridRow {
-          ForEach(Array(times.values.enumerated()), id: \.offset) { _, value in
-            Text(value)
+      VStack(alignment: .leading, spacing: 6) {
+        timesLabel(times)
+        timesGrid(times)
+      }
+      .frame(maxWidth: .infinity, alignment: .leading)
+      VStack(alignment: .leading, spacing: 6) {
+        timesLabel(times)
+        ForEach(Array(zip(times.captions, times.values).enumerated()), id: \.offset) { _, pair in
+          HStack(alignment: .firstTextBaseline, spacing: 10) {
+            Text(pair.0)
+              .font(.stHelper)
+              .foregroundStyle(Color.stTextTertiary)
+              .fixedSize()
+            Spacer(minLength: 12)
+            Text(pair.1)
               .font(.stHelper)
               .fontWeight(.medium)
               .monospacedDigit()
               .foregroundStyle(.stTextBody)
-          }
-        }
-        GridRow {
-          ForEach(Array(times.captions.enumerated()), id: \.offset) { _, caption in
-            Text(caption)
-              .font(.stHelper)
-              .foregroundStyle(Color.stTextTertiary)
+              .fixedSize()
           }
         }
       }
+      .frame(maxWidth: .infinity, alignment: .leading)
     }
     .padding(.vertical, 8)
+  }
+
+  /// The row's label and the room the overlaid "?" sits in.
+  private func timesLabel(_ times: EngineCardTimes) -> some View {
+    HStack(alignment: .firstTextBaseline, spacing: 6) {
+      Text(times.label)
+        .font(.stHelper)
+        .foregroundStyle(Color.stTextTertiary)
+        .fixedSize()
+      Color.clear
+        .frame(width: 18, height: 18)
+        .anchorPreference(key: EngineCardHelpAnchorKey.self, value: .bounds) { $0 }
+    }
+  }
+
+  /// Each value over its caption, in columns.
+  private func timesGrid(_ times: EngineCardTimes) -> some View {
+    Grid(alignment: .trailing, horizontalSpacing: 14, verticalSpacing: 2) {
+      GridRow {
+        ForEach(Array(times.values.enumerated()), id: \.offset) { _, value in
+          Text(value)
+            .font(.stHelper)
+            .fontWeight(.medium)
+            .monospacedDigit()
+            .foregroundStyle(.stTextBody)
+            .fixedSize()
+        }
+      }
+      GridRow {
+        ForEach(Array(times.captions.enumerated()), id: \.offset) { _, caption in
+          Text(caption)
+            .font(.stHelper)
+            .foregroundStyle(Color.stTextTertiary)
+            .fixedSize()
+        }
+      }
+    }
   }
 }
 
