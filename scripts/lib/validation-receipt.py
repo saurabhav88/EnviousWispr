@@ -95,7 +95,7 @@ def name_inputs(root, script, key, files, limit=5, budget=40):
             if len(hits) == limit:
                 break
     if not hits:
-        return "(not attributable to one file; untracked: " + ", ".join(sorted(files)[:limit]) + ")"
+        return f"(input name not located within the first {budget} paths; remaining paths were not checked)"
     more = " ..." if len(files) > budget or len(hits) == limit else ""
     return ", ".join(hits) + more
 
@@ -147,8 +147,11 @@ def capture(root):
                                    ("scripts/ci/needs-eval-packages.sh", "needs_eval_packages",
                                     "an eval-package input")):
             if classifier_says_input(root, script, key, untracked):
-                raise Ineligible(f"an untracked file is {what} (add it, or remove it): "
-                                 + name_inputs(root, script, key, untracked))
+                try:
+                    detail = name_inputs(root, script, key, untracked)
+                except (RuntimeError, OSError, ValueError) as error:
+                    detail = f"(input names unavailable: {error})"
+                raise Ineligible(f"an untracked file is {what} (add it, or remove it): " + detail)
     return {"tree": tree, "head": head, "toolchain": toolchain()}
 
 

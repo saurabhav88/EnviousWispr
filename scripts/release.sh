@@ -49,9 +49,10 @@ import re, sys
 readme, version, notes = sys.argv[1:4]
 text = open(readme, encoding="utf-8").read()
 tag = f"(v{version})"
-if tag in text:
-    print(f"README: already has {tag} lines")
-    sys.exit(0)
+# Re-runs replace this version's rows, so changed notes never leave stale README lines.
+old = [ln for ln in text.splitlines(keepends=True) if ln.startswith("- **") and ln.rstrip().endswith(f" {tag}")]
+for ln in old:
+    text = text.replace(ln, "", 1)
 items = [line.rstrip() for line in open(notes, encoding="utf-8") if line.startswith("- **")]
 if not items:
     sys.exit("README: the rendered notes have no '- **Title.** text' lines")
@@ -64,7 +65,7 @@ if not first:
     sys.exit("README: no list under '## Recent improvements'")
 block = "".join(f"{line} {tag}\n" for line in items)
 open(readme, "w", encoding="utf-8").write(text[: first.start()] + block + text[first.start():])
-print(f"README: added {len(items)} {tag} lines")
+print(f"README: {'replaced' if old else 'added'} {len(items)} {tag} lines")
 PY
 }
 
@@ -242,6 +243,10 @@ cmd_self_test() {
     '[ "$(sed -n 7p "$tmp/README.md")" = "- **New thing.** Does it. (v1.0.1)" ] && [ "$(sed -n 9p "$tmp/README.md")" = "- **Old.** Text. (v1.0.0)" ]'
   readme_insert "$tmp/README.md" 1.0.1 "$tmp/notes.md" >/dev/null
   check "README insertion is idempotent" '[ "$(grep -c "(v1.0.1)" "$tmp/README.md")" = 2 ]'
+  printf '## x\n\n- **New thing.** Does it better.\n' > "$tmp/notes2.md"
+  readme_insert "$tmp/README.md" 1.0.1 "$tmp/notes2.md" >/dev/null
+  check "changed notes replace this version's README lines" \
+    '[ "$(grep -c "(v1.0.1)" "$tmp/README.md")" = 1 ] && grep -q "Does it better. (v1.0.1)" "$tmp/README.md" && grep -q "(v1.0.0)" "$tmp/README.md"'
   # skeleton detection
   write_skeletons "$tmp/notes" 1.0.1
   check "skeleton notes are not ready" '! notes_ready "$tmp/notes/v1.0.1.md" "$tmp/notes/v1.0.1.probes" 2>/dev/null'

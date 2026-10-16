@@ -331,13 +331,16 @@ print(json.dumps({'testNodes': [{'nodeType': 'Test Plan', 'children': nodes}]}))
         self.assertFalse(self.lock.exists())
 
     def test_ineligible_untracked_input_is_named(self):
-        # Scratch files that sort first must not crowd out the real input (#3729 review).
-        for name in ('a1.txt', 'a2.txt', 'a3.txt', 'a4.txt', 'a5.txt'):
-            (self.root / name).write_text('scratch\n')
+        # Scratch files that sort BEFORE the real input must not crowd it out (#3729 review):
+        # .github/ sorts before Sources/ and is not a build input for the stand-in classifier.
+        scratch = self.root / '.github'
+        scratch.mkdir(exist_ok=True)
+        for n in range(5):
+            (scratch / f'a{n}.txt').write_text('scratch\n')
         (self.root / 'Sources/New.swift').write_text('x\n')
         result = self.run_runner(rc=2)
         self.assertIn('Sources/New.swift', result.stdout)
-        self.assertNotIn('a1.txt', result.stdout)
+        self.assertNotIn('.github/a0.txt', result.stdout)
         self.assertEqual(self.tests, [])
 
     def test_untracked_build_input_issues_no_receipt(self):
