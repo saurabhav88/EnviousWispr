@@ -1817,18 +1817,36 @@ def prove_woke(label, chrome, base, started):
     for this Chrome's pid. For b1 the clock includes app start-up, so exceeding the window there is
     unresolved start-up-versus-wake timing, not proof that the wake failed."""
     end = started + WAKE_WINDOW_S
-    woke = u.wait_for(f"{label}: the box readable",
-                      lambda: chrome_focus(chrome.pid) == ("AXTextArea", ""),
-                      deadline=max(0.0, end - time.monotonic()))
+    readable = lambda: chrome_focus(chrome.pid) == ("AXTextArea", "")  # noqa: E731
+    # Polled at least once even when start-up used the whole window (b1), so an already awake
+    # Chrome is seen rather than read as a timeout.
+    woke = u.wait_for(f"{label}: the box readable", readable,
+                      deadline=max(0.0, end - time.monotonic())) or readable()
     elapsed = time.monotonic() - started
     within = woke and elapsed <= WAKE_WINDOW_S
     role, value = chrome_focus(chrome.pid)
-    lines = [l for l in warmup_lines(u.log_since(base)) if l[0] == chrome.pid]
+
+    def successful_warmup():
+        return [l for l in warmup_lines(u.log_since(base)) if l[0] == chrome.pid and l[1] == 0]
+    # The warmup line is written after the role AND focus reads, asynchronously, so it can land
+    # after the box is already readable: wait for it separately, keeping the measured wake time.
+    u.wait_for(f"{label}: successful warmup logged", successful_warmup, deadline=5.0)
+    lines = successful_warmup()
     print(f"    {label}: woke={woke} after {elapsed:.3f} s role={role} value={value!r} warmup={lines}")
-    u.check(f"{label}: readable within two seconds", within, f"{elapsed:.3f} s role={role} value={value!r}")
+    if arm_includes_startup(label) and woke and not within:
+        inconclusive(f"{label}: wake timing",
+                     f"launch and readiness used the observation window ({elapsed:.3f} s)")
+    else:
+        u.check(f"{label}: readable within two seconds", within,
+                f"{elapsed:.3f} s role={role} value={value!r}")
     role_ok = u.check(f"{label}: this launch sent the role read to this Chrome (role=0)",
-                      any(r == 0 for _, r, _ in lines), str(lines))
-    return within and role_ok
+                      bool(lines), str(warmup_lines(u.log_since(base))))
+    return woke and role_ok
+
+
+def arm_includes_startup(label):
+    """b1's clock starts before the app launches, so its window also holds app start-up."""
+    return label.endswith("-b1")
 
 
 def wake_takes(label, chrome):

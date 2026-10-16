@@ -752,6 +752,45 @@ class WakeHarness(unittest.TestCase):
         Clip.exists = True
         self.assertEqual(h.notice_frames(Clip(), "nothing", "probe"), [])
 
+    def prove(self, label, started_offset, log_texts):
+        """Run prove_woke with Chrome already readable and the log answering `log_texts` in turn."""
+        saved_focus = h.chrome_focus
+        h.chrome_focus = lambda pid: ("AXTextArea", "")
+        texts = iter(log_texts)
+        last = {"t": ""}
+
+        def log_since(offset):
+            last["t"] = next(texts, last["t"])
+            return last["t"]
+        h.u.log_since = log_since
+        h.u.wait_for = lambda what, predicate, deadline=10.0, poll=0.1: predicate() or predicate()
+
+        class Chrome:
+            pid = 4242
+        try:
+            with Results() as results:
+                ok = h.prove_woke(label, Chrome(), 0, h.time.monotonic() - started_offset)
+                statuses = {name: status for name, status, _ in results}
+        finally:
+            h.chrome_focus = saved_focus
+        return ok, statuses
+
+    def test_b1_start_up_that_uses_the_window_is_inconclusive_not_a_failure(self):
+        ok, statuses = self.prove("wake-b1", 3.0, [self.NEW])
+        self.assertTrue(ok)
+        self.assertEqual(statuses.get("wake-b1: wake timing"), "INCONCLUSIVE")
+        self.assertNotIn("FAIL", statuses.values())
+
+    def test_b2_over_the_window_still_fails(self):
+        ok, statuses = self.prove("wake-b2", 3.0, [self.NEW])
+        self.assertEqual(statuses.get("wake-b2: readable within two seconds"), "FAIL")
+
+    def test_a_warmup_line_that_lands_after_the_wake_still_counts(self):
+        ok, statuses = self.prove("wake-b2", 0.0, ["", "", self.NEW])
+        self.assertTrue(ok)
+        self.assertEqual(statuses.get("wake-b2: this launch sent the role read to this Chrome (role=0)"),
+                         "PASS")
+
     def test_exact_insertion_rejects_a_doubled_wake_take(self):
         log = ("[x] [INFO] [Pipeline] CORRECTION_DEBUG [LLM Polish] OUT: Quick async update for the "
                "team, I just wrapped up with sales.\n")
