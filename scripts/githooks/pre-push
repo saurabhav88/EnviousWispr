@@ -525,11 +525,11 @@ receipt_record() {
     why="the remote's ${rsha:0:12} is not in this repository"
   else
     if git -C "$REPO" diff -z --no-renames --name-only "$rsha" "$tip" > "$list" 2> /dev/null; then :; else
-      echo "==> receipt: BLOCKED ($ref: git cannot diff ${rsha:0:12}..$tag). Run scripts/xcode-test.sh in $ORIGIN, then push again." >&2
+      echo "==> receipt: BLOCKED ($ref: git cannot diff ${rsha:0:12}..$tag). Stage what you will push, run scripts/xcode-test.sh in $ORIGIN, then push again." >&2
       return 1
     fi
     if ! classify_list "$snap" "$list"; then
-      echo "==> receipt: BLOCKED ($ref: cannot classify ${rsha:0:12}..$tag: $CLS_ERROR). Run scripts/xcode-test.sh in $ORIGIN, then push again." >&2
+      echo "==> receipt: BLOCKED ($ref: cannot classify ${rsha:0:12}..$tag: $CLS_ERROR). Stage what you will push, run scripts/xcode-test.sh in $ORIGIN, then push again." >&2
       return 1
     fi
     if [ "$CLS_BUILD" = false ] && [ "$CLS_EVAL" = false ]; then
@@ -539,21 +539,21 @@ receipt_record() {
     why="$new${rsha:0:12}..$tag changes build or eval inputs"
   fi
   if [ "$RECEIPT_STATE" != ok ]; then
-    echo "==> receipt: BLOCKED ($why, and $RECEIPT_STATE). Run scripts/xcode-test.sh in $ORIGIN, then push again." >&2
+    echo "==> receipt: BLOCKED ($why, and $RECEIPT_STATE). Stage what you will push, run scripts/xcode-test.sh in $ORIGIN, then push again." >&2
     return 1
   fi
   CLS_SEQ=$((CLS_SEQ + 1))
   list="$WORK/paths.$CLS_SEQ"
   if git -C "$REPO" diff -z --no-renames --name-only "$RECEIPT_TREE" "$tip^{tree}" > "$list" 2> /dev/null; then :; else
-    echo "==> receipt: BLOCKED ($ref: git cannot compare the receipt's tree ${RECEIPT_TREE:0:12} with $tag). Run scripts/xcode-test.sh in $ORIGIN, then push again." >&2
+    echo "==> receipt: BLOCKED ($ref: git cannot compare the receipt's tree ${RECEIPT_TREE:0:12} with $tag). Stage what you will push, run scripts/xcode-test.sh in $ORIGIN, then push again." >&2
     return 1
   fi
   if ! classify_list "$snap" "$list"; then
-    echo "==> receipt: BLOCKED ($ref: cannot classify how $tag differs from the receipt: $CLS_ERROR). Run scripts/xcode-test.sh in $ORIGIN, then push again." >&2
+    echo "==> receipt: BLOCKED ($ref: cannot classify how $tag differs from the receipt: $CLS_ERROR). Stage what you will push, run scripts/xcode-test.sh in $ORIGIN, then push again." >&2
     return 1
   fi
   if [ "$CLS_BUILD" = true ] || [ "$CLS_EVAL" = true ]; then
-    echo "==> receipt: BLOCKED ($why; the receipt proves tree ${RECEIPT_TREE:0:12}, and $tag differs from it in build or eval inputs). Run scripts/xcode-test.sh in $ORIGIN, then push again." >&2
+    echo "==> receipt: BLOCKED ($why; the receipt proves tree ${RECEIPT_TREE:0:12}, and $tag differs from it in build or eval inputs). Stage what you will push, run scripts/xcode-test.sh in $ORIGIN, then push again." >&2
     return 1
   fi
   echo "==> receipt: $ref covered (the receipt's tree ${RECEIPT_TREE:0:12} has the same inputs as $tag)" >&2
@@ -1384,7 +1384,7 @@ PY
   corrupt_receipt
   push origin p-docs; rc=$?
   check "P1 a new ref that changes an input from its merge base blocks without valid proof, names the command, leaves the remote alone" \
-    "$rc|$(hits 'receipt: BLOCKED (refs/heads/p-docs is a new ref, and .* changes build or eval inputs, and the receipt is not valid proof')|$(hits "Run scripts/xcode-test.sh in $repo")|$(remote_tip p-docs)" \
+    "$rc|$(hits 'receipt: BLOCKED (refs/heads/p-docs is a new ref, and .* changes build or eval inputs, and the receipt is not valid proof')|$(hits "run scripts/xcode-test.sh in $repo")|$(remote_tip p-docs)" \
     "1|1|1|none"
   make_receipt
   push origin p-docs; rc=$?

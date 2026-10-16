@@ -128,9 +128,11 @@ def capture(root):
                  .stdout.decode().split("\0") if p]
     if untracked:
         if classifier_says_input(root, "scripts/ci/classify-changes.sh", "needs_build", untracked):
-            raise Ineligible("an untracked file is a build input (add it, or remove it)")
+            raise Ineligible("an untracked file is a build input (add it, or remove it): "
+                             + ", ".join(sorted(untracked)[:5]) + (" ..." if len(untracked) > 5 else ""))
         if classifier_says_input(root, "scripts/ci/needs-eval-packages.sh", "needs_eval_packages", untracked):
-            raise Ineligible("an untracked file is an eval-package input (add it, or remove it)")
+            raise Ineligible("an untracked file is an eval-package input (add it, or remove it): "
+                             + ", ".join(sorted(untracked)[:5]) + (" ..." if len(untracked) > 5 else ""))
     return {"tree": tree, "head": head, "toolchain": toolchain()}
 
 

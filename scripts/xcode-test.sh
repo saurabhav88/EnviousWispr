@@ -172,9 +172,18 @@ if [ "${#TEST_ARGS[@]}" -eq 0 ] && [ "$CONFIGURATION" != "Release" ]; then
   fi
   if [ -z "$NO_RECEIPT_REASON" ]; then
     # Captured BEFORE generation. Exit 3 is an ineligible tree (reason printed).
-    if START_IDENTITY="$(python3 "$RECEIPT_HELPER" capture --root "$PROJECT_ROOT")"; then :; else
+    if START_IDENTITY="$(python3 "$RECEIPT_HELPER" capture --root "$PROJECT_ROOT")"; then CAPTURE_RC=0; else CAPTURE_RC=$?; fi
+    if [ "$CAPTURE_RC" -ne 0 ]; then
       NO_RECEIPT_REASON="the input tree is not eligible at the start (see the line above)"
       START_IDENTITY=""
+      # #3729: a full local run that cannot issue push proof used to spend ~15 minutes and
+      # say so only at the end. Exit 3 is an ineligible tree (fixable now: stage or remove the
+      # named files); any other code is an operational failure and keeps the old behaviour.
+      if [ "$CAPTURE_RC" -eq 3 ] && [ "${EW_ALLOW_NO_RECEIPT:-}" != "1" ]; then
+        echo "ERROR: this full run could not issue a validation receipt (reason above), so a push of build inputs would be refused." >&2
+        echo "       Stage or remove the named files and run again, or set EW_ALLOW_NO_RECEIPT=1 to run the tests without push proof." >&2
+        exit 2
+      fi
     fi
   fi
 fi

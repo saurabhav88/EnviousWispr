@@ -315,18 +315,35 @@ print(json.dumps({'testNodes': [{'nodeType': 'Test Plan', 'children': nodes}]}))
 
     def test_unstaged_tracked_change_issues_no_receipt(self):
         (self.root / 'Sources/A.swift').write_text('let a = 2\n')
-        result = self.run_runner()
+        result = self.run_runner(EW_ALLOW_NO_RECEIPT='1')
         self.assert_no_receipt(result, 'differs from the index')
         self.assertIn('eval', self.trace())  # the full run still validates
 
+    # #3729: an ineligible full run stops before any build instead of reporting at the end.
+    def test_ineligible_full_run_stops_before_setup(self):
+        (self.root / 'Sources/A.swift').write_text('let a = 2\n')
+        result = self.run_runner(rc=2)
+        self.assertIn('differs from the index', result.stdout)
+        self.assertIn('EW_ALLOW_NO_RECEIPT=1', result.stdout)
+        self.assertEqual(self.tests, [])
+        self.assertNotIn('eval', self.trace())
+        self.assertFalse(self.receipt.exists())
+        self.assertFalse(self.lock.exists())
+
+    def test_ineligible_untracked_input_is_named(self):
+        (self.root / 'Sources/New.swift').write_text('x\n')
+        result = self.run_runner(rc=2)
+        self.assertIn('Sources/New.swift', result.stdout)
+        self.assertEqual(self.tests, [])
+
     def test_untracked_build_input_issues_no_receipt(self):
         (self.root / 'Sources/New.swift').write_text('x\n')
-        self.assert_no_receipt(self.run_runner(), 'untracked file is a build input')
+        self.assert_no_receipt(self.run_runner(EW_ALLOW_NO_RECEIPT='1'), 'untracked file is a build input')
 
     def test_untracked_eval_input_issues_no_receipt(self):
         (self.root / 'scripts/eval').mkdir()
         (self.root / 'scripts/eval/x.swift').write_text('x\n')
-        self.assert_no_receipt(self.run_runner(), 'eval-package input')
+        self.assert_no_receipt(self.run_runner(EW_ALLOW_NO_RECEIPT='1'), 'eval-package input')
 
     def test_unrelated_untracked_file_still_issues_a_receipt(self):
         (self.root / 'notes.txt').write_text('scratch\n')

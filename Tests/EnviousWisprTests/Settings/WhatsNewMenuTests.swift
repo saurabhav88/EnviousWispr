@@ -91,12 +91,15 @@ struct WhatsNewMenuTests {
     presentation.requestOpen()
     presentation.didOpen(settings: settings)
     #expect(settings.hasUnreadWhatsNew == false)
-    #expect(defaults.string(forKey: WhatsNewConstants.lastSeenVersionDefaultsKey) == "2.5.4")
+    // #3729: follows the content version, so a release bump never edits this test.
+    #expect(
+      defaults.string(forKey: WhatsNewConstants.lastSeenVersionDefaultsKey)
+        == WhatsNewConstants.currentContentVersion)
     presentation.dismiss()
     #expect(presentation.isPresented == false)
     presentation.requestOpen()
     presentation.didOpen(settings: settings)
-    #expect(settings.lastSeenWhatsNewVersion == "2.5.4")
+    #expect(settings.lastSeenWhatsNewVersion == WhatsNewConstants.currentContentVersion)
   }
 
   @Test("Update copy states only what the availability service knows")

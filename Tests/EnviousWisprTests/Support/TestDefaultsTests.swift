@@ -170,8 +170,11 @@ struct TestDefaultsTests {
 
   @Test("no test file creates a named suite except through TestDefaults")
   func noRawSuiteInitializers() throws {
+    // Both sides resolved (#3820): under /tmp, #filePath keeps the link while the enumerator
+    // returns /private/tmp, and the prefix arithmetic below then cut the wrong characters.
     let testsRoot = URL(fileURLWithPath: #filePath)
       .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+      .resolvingSymlinksInPath()
     // The only two files allowed to hold the raw call, by path (a same-named file elsewhere is not).
     let allowed: Set<String> = [
       "EnviousWisprTests/Support/TestDefaults.swift", "EnviousWisprASRTests/TestDefaults.swift",
@@ -183,7 +186,7 @@ struct TestDefaultsTests {
     for case let url as URL in files where url.pathExtension == "swift" {
       scanned += 1
       if Self.callsRawSuiteInitializer(try String(contentsOf: url, encoding: .utf8)) {
-        holders.insert(String(url.path.dropFirst(testsRoot.path.count + 1)))
+        holders.insert(String(url.resolvingSymlinksInPath().path.dropFirst(testsRoot.path.count + 1)))
       }
     }
     #expect(scanned > 100, "fixture: the scan must see the test sources (saw \(scanned))")
