@@ -744,8 +744,8 @@ class WakeHarness(unittest.TestCase):
             def frame_at(self, offset, save_path=None):
                 asked.append(round(offset, 1))
                 return save_path
-        self.assertEqual(len(h.notice_frames(Clip(), text, "probe")), 3)
-        self.assertEqual(asked, [3.4, 4.2, 5.0])
+        self.assertEqual(len(h.notice_frames(Clip(), text, "probe")), 7)
+        self.assertEqual(asked, [2.5, 3.2, 4.0, 4.8, 5.5, 6.2, 7.0])
         # Two-way: no recording, or no notice line, gives no frames rather than a guess.
         Clip.exists = False
         self.assertEqual(h.notice_frames(Clip(), text, "probe"), [])

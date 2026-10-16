@@ -1767,14 +1767,16 @@ def notice_epoch(text):
 
 def notice_frames(clip, text, label):
     """Frames from the screen recording that spans the take, around the logged notice. The notice
-    stays up about 2.5 s (PillCatalog) and the log stamp is whole seconds, so three frames spread
+    stays up about 2.5 s (PillCatalog) and the log stamp is whole seconds, so seven frames spread
     over that span. Returns the frame paths ([] when there is no recording or no notice line)."""
     when = notice_epoch(text)
     if when is None or not clip.exists or clip.started_at is None:
         return []
+    # The recording's own clock starts about a second before `started_at` (recorder start-up plus
+    # `settle`), and the stamp is whole seconds, so frames cover a wide span around the notice.
     base = when - clip.started_at
     frames = []
-    for extra in (0.4, 1.2, 2.0):
+    for extra in (-0.5, 0.25, 1.0, 1.75, 2.5, 3.25, 4.0):
         offset = max(0.0, base + extra)
         frame = clip.frame_at(offset, save_path=f"/tmp/ew-uat-3802-{label}-{u.RUN_ID}-{offset:.1f}s.png")
         if frame:
@@ -1832,6 +1834,9 @@ def prove_woke(label, chrome, base, started):
 def wake_takes(label, chrome):
     """(d) click off, kept with the notice; then (e) back in the box, found, exactly once."""
     from ApplicationServices import AXUIElementSetAttributeValue
+    # A launch from the executable can leave the dev app's own window in front (seen in the first
+    # Live UAT run): the takes need this Chrome front, or the key paste goes elsewhere.
+    chrome.front()
     area = chrome_web_area(chrome.pid)
     if area is None:
         raise u.Aborted(f"{label}: the page's web area was not found")
@@ -1845,8 +1850,27 @@ def wake_takes(label, chrome):
     # The Copied notice lasts about 2.5 s and `take()` returns well after it is gone, so the screen
     # is recorded across the whole take and the frames are picked afterwards from the notice's log
     # time (uat-testing.md RULE: record-the-screen-a-visual-question-is-not-a-blocker).
-    with w.record(CLICKOFF_RECORD_S) as clip:
+    # The recorder starts on a worker the moment this take's "Recording started" line appears:
+    # `record_tts` can spend over a minute on set-up before the key goes down (Live UAT, wake-b2:
+    # 80 s), which outlasted a recorder started before `take()`; and starting it from
+    # `before_release` held the key 1.2 s past the speech, so the silent BlackHole stream read as a
+    # dead microphone and the app showed "Recording interrupted" (Live UAT, run 4).
+    import threading
+    clip = w.record(CLICKOFF_RECORD_S)
+    stop = threading.Event()
+
+    def start_recorder():
+        if u.wait_for("the take to start", lambda: stop.is_set()
+                      or "Recording started" in u.log_since(base), deadline=180.0) and not stop.is_set():
+            clip.start()
+    recorder = threading.Thread(target=start_recorder, daemon=True)
+    recorder.start()
+    try:
         lines, cascades = take(f"{label}-clickoff", base, sentence=WAKE_SENTENCE)
+    finally:
+        stop.set()
+        recorder.join(timeout=10.0)
+        clip.stop()
     text = u.log_since(base)
     observed = [l[1] for l in lines]
     u.check(f"{label}-clickoff: one landing line, a readable-field miss (absent)",
