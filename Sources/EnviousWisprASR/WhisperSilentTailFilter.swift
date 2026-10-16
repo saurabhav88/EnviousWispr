@@ -13,6 +13,7 @@ import Foundation
 ///
 /// An acoustic heuristic, not proof of silence. Genuine-word preservation is the acceptance
 /// gate (measured on 1,758 recordings, plan `issue-3801-2026-10-15-whisper-trailing-hallucination.md`).
+/// It never empties a result: removals need a clearly voiced segment left in front of them.
 /// Every constant below is frozen to that measured rule.
 enum WhisperSilentTailFilter {
   static let sampleRate = 16_000.0
@@ -73,20 +74,24 @@ enum WhisperSilentTailFilter {
       return Double(rms[lower..<upper].filter { $0 > threshold }.count) * windowMs
     }
 
+    /// nil for invalid times (never evidence either way); otherwise whether the segment's audio
+    /// lacks sufficient acoustic support.
+    func lacksSupport(_ segment: TranscribeCppSegment) -> Bool? {
+      guard segment.startMs >= 0, segment.endMs >= segment.startMs else { return nil }
+      let start = Double(segment.startMs) + offsetMs
+      let end = Double(segment.endMs) + offsetMs
+      return start >= endMs - afterEndToleranceMs
+        ? voicedMs(endMs - marginMs, endMs) < minVoicedMs
+        : voicedMs(max(0, min(start, endMs) - marginMs), min(endMs, end + marginMs))
+          < minVoicedMs
+    }
+
     var segments = run.segments
     var text = trimmingTrailingWhitespace(run.text)
     var dropped = 0
     while let last = segments.last {
       // Invalid times are never evidence of silence: stop, keeping earlier removals.
-      guard last.startMs >= 0, last.endMs >= last.startMs else { break }
-      let start = Double(last.startMs) + offsetMs
-      let end = Double(last.endMs) + offsetMs
-      let unsupported =
-        start >= endMs - afterEndToleranceMs
-        ? voicedMs(endMs - marginMs, endMs) < minVoicedMs
-        : voicedMs(max(0, min(start, endMs) - marginMs), min(endMs, end + marginMs))
-          < minVoicedMs
-      guard unsupported else { break }
+      guard lacksSupport(last) == true else { break }
       // The native full text is decoded separately from segment texts; cut only an exact suffix.
       let piece = last.text.trimmingCharacters(in: .whitespacesAndNewlines)
       guard !piece.isEmpty, text.hasSuffix(piece) else { break }
@@ -96,6 +101,11 @@ enum WhisperSilentTailFilter {
       dropped += 1
     }
     guard dropped > 0 else { return (run, 0) }
+    // Remove an ending only behind clearly voiced speech. When no remaining segment is voiced
+    // (a whisper as quiet as the room, or room tone alone), this check cannot tell speech from
+    // noise, so it changes nothing (founder 2026-10-15, after two correctly decoded soft takes
+    // were emptied).
+    guard segments.contains(where: { lacksSupport($0) == false }) else { return (run, 0) }
     return (
       TranscribeCppRunResult(
         text: text, detectedLanguage: run.detectedLanguage, segments: segments),

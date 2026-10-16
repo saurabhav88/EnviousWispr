@@ -87,14 +87,15 @@ struct WhisperSilentTailFilterTests {
     #expect(result.segments == [Self.spoken])
   }
 
-  @Test("pure room tone with an invented sentence yields empty text")
-  func allSilentYieldsEmpty() {
+  @Test("a recording with no clearly voiced segment is never emptied")
+  func neverEmptiesAResult() {
+    // Room tone alone and a whisper as quiet as the room look the same here, so nothing is
+    // removed: a correctly heard soft whisper must never vanish (#3801 founder takes).
     let samples = Self.audio([(3000, Self.tone)])
-    let (result, dropped) = Self.filter(
-      Self.run([Self.segment(0, 3000, "Thank you.")]), samples)
-    #expect(dropped == 1)
-    #expect(result.text.isEmpty)
-    #expect(result.segments.isEmpty)
+    let input = Self.run([Self.segment(0, 1500, "This is me speaking"), Self.segment(1500, 3000, "very softly.")])
+    let (result, dropped) = Self.filter(input, samples)
+    #expect(dropped == 0)
+    #expect(result == input)
   }
 
   @Test("digital silence after speech is treated as silence")

@@ -231,8 +231,8 @@ struct TranscribeCppWhisperBackendTests {
     #expect(result.silentTailDropped == 0, "the filter ran and removed nothing")
   }
 
-  @Test("a batch decode that is only an invented sentence over silence returns empty text")
-  func batchAllSilentIsEmptySuccess() async throws {
+  @Test("a batch decode with no voiced segment keeps its text (never emptied)")
+  func batchAllSilentIsKept() async throws {
     let driver = FakeWhisperDriver()
     let backend = Self.makeBackend(driver)
     try await backend.prepare()
@@ -244,7 +244,8 @@ struct TranscribeCppWhisperBackendTests {
     let result = try await backend.transcribe(
       audioSamples: [Float](repeating: 0, count: 32_000), options: .default,
       onInferenceEntered: nil)
-    #expect(result.text.isEmpty)
+    #expect(result.text == "Thank you.")
+    #expect(result.silentTailDropped == 0)
   }
 
   @Test("a rolling-session decode returns the filtered result to the loop and the flush")
