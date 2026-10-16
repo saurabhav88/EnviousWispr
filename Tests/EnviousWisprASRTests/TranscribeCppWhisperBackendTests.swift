@@ -149,7 +149,10 @@ struct TranscribeCppWhisperBackendTests {
     let driver = FakeWhisperDriver()
     let backend = Self.makeBackend(driver)
     try await backend.prepare()
-    let samples = [Float](repeating: 0.1, count: 64_000)  // 4 s
+    // 4 s of silence with speech at 20_000..<36_000 under the fake segment (#3801: constant
+    // audio has no quieter room tone, so the silent-tail filter would classify it as unvoiced).
+    var samples = [Float](repeating: 0, count: 64_000)
+    samples.replaceSubrange(20_000..<36_000, with: [Float](repeating: 0.1, count: 16_000))
     let options = TranscriptionOptions(
       language: "en", enableTimestamps: true,
       speechSegments: [
@@ -171,6 +174,94 @@ struct TranscribeCppWhisperBackendTests {
     #expect(
       result.segmentTimings == [ASRSegmentTiming(range: 0..<11, startMs: 1_350, endMs: 2_150)])
     #expect(result.wordTimings == nil, "segment timing never becomes word timing")
+  }
+
+  // MARK: - #3801 silent-tail filter at the native boundary
+
+  /// 4 s: silence, speech at 20_000..<36_000 (1.25-2.25 s), silence.
+  static var speechInSilence: [Float] {
+    var samples = [Float](repeating: 0, count: 64_000)
+    samples.replaceSubrange(20_000..<36_000, with: [Float](repeating: 0.1, count: 16_000))
+    return samples
+  }
+
+  @Test("a batch decode drops an invented trailing sentence and keeps the real one timed")
+  func batchDropsSilentTail() async throws {
+    let driver = FakeWhisperDriver()
+    let backend = Self.makeBackend(driver)
+    try await backend.prepare()
+    // Envelope 16_000..<64_000: native times are 1_000 ms behind the capture timeline.
+    let options = TranscriptionOptions(
+      language: "en", enableTimestamps: true,
+      speechSegments: [SpeechSegment(startSample: 16_000, endSample: 64_000)])
+    driver.runOutcome = { _, _ in
+      Self.run(
+        "hello there Thank you.",
+        segments: [
+          TranscribeCppSegment(startMs: 300, endMs: 1_100, text: " hello there"),
+          TranscribeCppSegment(startMs: 1_800, endMs: 2_400, text: " Thank you."),
+        ])
+    }
+    let result = try await backend.transcribe(
+      audioSamples: Self.speechInSilence, options: options, onInferenceEntered: nil)
+    #expect(result.text == "hello there")
+    #expect(
+      result.segmentTimings == [ASRSegmentTiming(range: 0..<11, startMs: 1_300, endMs: 2_100)])
+  }
+
+  @Test("batch statistics read the full capture, so an all-speech envelope keeps its sentence")
+  func batchStatsUseFullCapture() async throws {
+    let driver = FakeWhisperDriver()
+    let backend = Self.makeBackend(driver)
+    try await backend.prepare()
+    // The envelope is exactly the speech; its own windows have no quieter room tone.
+    let options = TranscriptionOptions(
+      language: "en", enableTimestamps: false,
+      speechSegments: [SpeechSegment(startSample: 20_000, endSample: 36_000)])
+    driver.runOutcome = { _, _ in
+      Self.run(
+        "hello there",
+        segments: [TranscribeCppSegment(startMs: 0, endMs: 1_000, text: "hello there")])
+    }
+    let result = try await backend.transcribe(
+      audioSamples: Self.speechInSilence, options: options, onInferenceEntered: nil)
+    #expect(driver.lastSampleCount == 16_000 + 8_000)
+    #expect(result.text == "hello there")
+  }
+
+  @Test("a batch decode that is only an invented sentence over silence returns empty text")
+  func batchAllSilentIsEmptySuccess() async throws {
+    let driver = FakeWhisperDriver()
+    let backend = Self.makeBackend(driver)
+    try await backend.prepare()
+    driver.runOutcome = { _, _ in
+      Self.run(
+        "Thank you.", segments: [TranscribeCppSegment(startMs: 0, endMs: 2_000, text: "Thank you.")]
+      )
+    }
+    let result = try await backend.transcribe(
+      audioSamples: [Float](repeating: 0, count: 32_000), options: .default,
+      onInferenceEntered: nil)
+    #expect(result.text.isEmpty)
+  }
+
+  @Test("a rolling-session decode returns the filtered result to the loop and the flush")
+  func rollingDecodeDropsSilentTail() async throws {
+    let driver = FakeWhisperDriver()
+    let backend = Self.makeBackend(driver)
+    try await backend.prepare()
+    driver.runOutcome = { _, _ in
+      Self.run(
+        "hello there Thank you.",
+        segments: [
+          TranscribeCppSegment(startMs: 1_300, endMs: 2_100, text: "hello there"),
+          TranscribeCppSegment(startMs: 3_000, endMs: 3_800, text: "Thank you."),
+        ])
+    }
+    let run = try await backend.decodeForRollingSession(
+      samples: Self.speechInSilence, language: "en", onDecode: nil)
+    #expect(run.text == "hello there")
+    #expect(run.segments.map(\.text) == ["hello there"])
   }
 
   @Test("no usable speech range decodes the whole input")
@@ -293,7 +384,8 @@ struct TranscribeCppWhisperBackendTests {
     #expect(seen.values == [0.4], "a failed run never reports completion")
   }
 
-  @Test("a cancelled decode returns only after its native call ends, and stays in flight until then")
+  @Test(
+    "a cancelled decode returns only after its native call ends, and stays in flight until then")
   func cancellationAndDrain() async throws {
     let driver = FakeWhisperDriver()
     let backend = Self.makeBackend(driver)
@@ -552,24 +644,24 @@ struct TranscribeCppWhisperBackendTests {
 
 // MARK: - Helpers
 
-fileprivate final class Counter: @unchecked Sendable {
+private final class Counter: @unchecked Sendable {
   private let lock = NSLock()
   private var count = 0
   func increment() { lock.withLock { count += 1 } }
   var value: Int { lock.withLock { count } }
 }
 
-fileprivate final class Recorder<T: Sendable>: @unchecked Sendable {
+private final class Recorder<T: Sendable>: @unchecked Sendable {
   private let lock = NSLock()
   private var items: [T] = []
   func append(_ item: T) { lock.withLock { items.append(item) } }
   var values: [T] { lock.withLock { items } }
 }
 
-fileprivate struct BackendDeadlineExpired: Error {}
+private struct BackendDeadlineExpired: Error {}
 
 /// A one-shot async gate: `wait()` returns once `open()` has been called.
-fileprivate final class AsyncGate: @unchecked Sendable {
+private final class AsyncGate: @unchecked Sendable {
   private let lock = NSLock()
   private var isOpen = false
   private var waiters: [CheckedContinuation<Void, Never>] = []
@@ -600,7 +692,7 @@ fileprivate final class AsyncGate: @unchecked Sendable {
 }
 
 /// A value set at most once; the first `fulfil` wins.
-fileprivate final class FirstResult<Value: Sendable>: @unchecked Sendable {
+private final class FirstResult<Value: Sendable>: @unchecked Sendable {
   private let lock = NSLock()
   private var stored: Value?
   private var waiter: CheckedContinuation<Value, Never>?
@@ -630,7 +722,7 @@ fileprivate final class FirstResult<Value: Sendable>: @unchecked Sendable {
 /// A fake executor driver. Native work runs in its own task: a cancelled caller is released
 /// at once with `.cancelled` (as the real executor does) while the "native" call keeps running
 /// until the test releases it, and `waitForDrain` waits for that return.
-fileprivate final class FakeWhisperDriver: WhisperExecutorDriving, @unchecked Sendable {
+private final class FakeWhisperDriver: WhisperExecutorDriving, @unchecked Sendable {
   typealias Handle = Int
 
   private let lock = NSLock()

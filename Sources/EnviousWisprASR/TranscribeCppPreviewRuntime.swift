@@ -69,8 +69,9 @@ package actor TranscribeCppPreviewRuntime {
           input.append(
             contentsOf: [Float](
               repeating: 0, count: LiveTranscribeCppWhisperBackend.silencePaddingSamples))
+          let run: TranscribeCppRunResult
           do {
-            return try await driver.transcribe(
+            run = try await driver.transcribe(
               handle, samples: input, language: language, lane: .preview,
               onInferenceEntered: nil, onProgress: nil)
           } catch {
@@ -82,6 +83,11 @@ package actor TranscribeCppPreviewRuntime {
             }
             throw error
           }
+          // #3801: preview hypotheses pass the same silent-tail filter as heart decodes.
+          let tail = WhisperSilentTailFilter.filter(
+            run, statsSamples: samples, segmentOffsetSamples: 0, realEndSample: samples.count)
+          await LiveTranscribeCppWhisperBackend.logSilentTail(tail.dropped, route: "preview")
+          return tail.result
         },
         unload: {
           await driver.unload(handle)

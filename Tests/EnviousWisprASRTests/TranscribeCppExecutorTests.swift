@@ -90,9 +90,13 @@ struct TranscribeCppExecutorTests {
       try await executor.transcribe(heart, samples: [9], language: "en", lane: .heart)
     }
     // The queued preview ends at once, without ever entering native code.
-    await #expect(throws: TranscribeCppExecutor.ExecutorError.preempted) { try await native.bounded(p2) }
+    await #expect(throws: TranscribeCppExecutor.ExecutorError.preempted) {
+      try await native.bounded(p2)
+    }
     // The running preview was aborted out of band and returns; only then does the heart run.
-    await #expect(throws: TranscribeCppExecutor.ExecutorError.preempted) { try await native.bounded(p1) }
+    await #expect(throws: TranscribeCppExecutor.ExecutorError.preempted) {
+      try await native.bounded(p1)
+    }
     await native.waitForArrivals(2)
     native.release("turbo")
     #expect(try await native.bounded(h).text == "turbo")
@@ -132,7 +136,9 @@ struct TranscribeCppExecutorTests {
     let h = Task { try await executor.transcribe(heart, samples: [1], language: nil, lane: .heart) }
     await native.waitForAbort("small")
     native.release("small")  // the native call returns SUCCESS despite the abort
-    await #expect(throws: TranscribeCppExecutor.ExecutorError.preempted) { try await native.bounded(p) }
+    await #expect(throws: TranscribeCppExecutor.ExecutorError.preempted) {
+      try await native.bounded(p)
+    }
     await native.waitForArrivals(2)
     native.release("turbo")
     _ = try await native.bounded(h)
@@ -154,7 +160,9 @@ struct TranscribeCppExecutorTests {
     }
     await native.waitForSubmitted(executor: executor, heartQueued: 1)
     queued.cancel()
-    await #expect(throws: TranscribeCppExecutor.ExecutorError.cancelled) { try await native.bounded(queued) }
+    await #expect(throws: TranscribeCppExecutor.ExecutorError.cancelled) {
+      try await native.bounded(queued)
+    }
     #expect(native.abortCount("m") == 0)
     native.release("m")
     #expect(try await native.bounded(running).text == "m")
@@ -174,7 +182,9 @@ struct TranscribeCppExecutorTests {
     }
     await native.waitForArrivals(1)
     running.cancel()
-    await #expect(throws: TranscribeCppExecutor.ExecutorError.cancelled) { try await native.bounded(running) }
+    await #expect(throws: TranscribeCppExecutor.ExecutorError.cancelled) {
+      try await native.bounded(running)
+    }
     #expect(native.abortCount("m") == 1)
     // Native code is still inside; the next request must wait for it.
     let next = Task { try await executor.transcribe(m, samples: [2], language: nil, lane: .heart) }
@@ -197,7 +207,9 @@ struct TranscribeCppExecutorTests {
     let first = Task { try await executor.transcribe(m, samples: [1], language: nil, lane: .heart) }
     await native.waitForArrivals(1)
     first.cancel()
-    await #expect(throws: TranscribeCppExecutor.ExecutorError.cancelled) { try await native.bounded(first) }
+    await #expect(throws: TranscribeCppExecutor.ExecutorError.cancelled) {
+      try await native.bounded(first)
+    }
     // The fake aborted (it honours abort), so the native call has returned.
     await native.waitForExits(1)
     let second = Task {
@@ -255,7 +267,9 @@ struct TranscribeCppExecutorTests {
     let executor = TranscribeCppExecutor(makeSession: native.makeSession)
     let a = try await executor.load(modelPath: "a", lane: .heart)
     let b = try await executor.load(modelPath: "b", lane: .heart)
-    let running = Task { try await executor.transcribe(a, samples: [1], language: nil, lane: .heart) }
+    let running = Task {
+      try await executor.transcribe(a, samples: [1], language: nil, lane: .heart)
+    }
     await native.waitForArrivals(1)
     let unload = Task { await executor.unload(a) }
     await native.waitForAbort("a")
@@ -276,7 +290,9 @@ struct TranscribeCppExecutorTests {
     let native = FakeNative(ignoresAbort: ["m"])
     let executor = TranscribeCppExecutor(makeSession: native.makeSession)
     let m = try await executor.load(modelPath: "m", lane: .heart)
-    let running = Task { try await executor.transcribe(m, samples: [1], language: nil, lane: .heart) }
+    let running = Task {
+      try await executor.transcribe(m, samples: [1], language: nil, lane: .heart)
+    }
     await native.waitForArrivals(1)
     let unload = Task { await executor.unload(m) }
     await native.waitForAbort("m")
@@ -297,13 +313,17 @@ struct TranscribeCppExecutorTests {
     await native.observe(executor)
     let heart = try await executor.load(modelPath: "turbo", lane: .heart)
     let preview = try await executor.load(modelPath: "small", lane: .preview)
-    let p = Task { try await executor.transcribe(preview, samples: [1], language: nil, lane: .preview) }
+    let p = Task {
+      try await executor.transcribe(preview, samples: [1], language: nil, lane: .preview)
+    }
     await native.waitForArrivals(1)
     let h = Task {
       withUnsafeCurrentTask { $0?.cancel() }
       return try await executor.transcribe(heart, samples: [9], language: "en", lane: .heart)
     }
-    await #expect(throws: TranscribeCppExecutor.ExecutorError.cancelled) { try await native.bounded(h) }
+    await #expect(throws: TranscribeCppExecutor.ExecutorError.cancelled) {
+      try await native.bounded(h)
+    }
     #expect(native.abortCount("small") == 0)
     native.release("small")
     #expect(try await native.bounded(p).text == "small")
@@ -317,7 +337,9 @@ struct TranscribeCppExecutorTests {
     let native = FakeNative(ignoresAbort: ["m"])
     let executor = TranscribeCppExecutor(makeSession: native.makeSession)
     let m = try await executor.load(modelPath: "m", lane: .heart)
-    let racing = Task { try await executor.transcribe(m, samples: [1], language: nil, lane: .heart) }
+    let racing = Task {
+      try await executor.transcribe(m, samples: [1], language: nil, lane: .heart)
+    }
     await native.waitForArrivals(1)
     native.release("m")
     racing.cancel()
@@ -340,7 +362,9 @@ struct TranscribeCppExecutorTests {
     let load = Task { try await executor.load(modelPath: "x", lane: .heart) }
     await native.waitForLog("load x")
     load.cancel()
-    await #expect(throws: TranscribeCppExecutor.ExecutorError.cancelled) { try await native.bounded(load) }
+    await #expect(throws: TranscribeCppExecutor.ExecutorError.cancelled) {
+      try await native.bounded(load)
+    }
     native.releaseLoad("x")
     await native.waitForLog("close x")
     // The lane is free again and the orphan was closed once, before any later work.
@@ -360,7 +384,9 @@ struct TranscribeCppExecutorTests {
     let h = Task { try await executor.transcribe(heart, samples: [1], language: nil, lane: .heart) }
     await native.waitForSubmitted(executor: executor, heartQueued: 1)
     native.releaseLoad("small")
-    await #expect(throws: TranscribeCppExecutor.ExecutorError.preempted) { try await native.bounded(load) }
+    await #expect(throws: TranscribeCppExecutor.ExecutorError.preempted) {
+      try await native.bounded(load)
+    }
     await native.waitForArrivals(1)
     native.release("turbo")
     #expect(try await native.bounded(h).text == "turbo")
@@ -417,7 +443,8 @@ private final class FakeNative: @unchecked Sendable {
   ) {
     self.ignoresAbort = ignoresAbort
     self.results = results
-    self.loadGates = Dictionary(uniqueKeysWithValues: blocksLoad.map { ($0, DispatchSemaphore(value: 0)) })
+    self.loadGates = Dictionary(
+      uniqueKeysWithValues: blocksLoad.map { ($0, DispatchSemaphore(value: 0)) })
   }
 
   func releaseLoad(_ name: String) { loadGates[name]?.signal() }
@@ -748,7 +775,12 @@ struct TranscribeCppPreviewPriorityTests {
   private static let heard = TranscribeCppRunResult(
     text: "Hello there.", detectedLanguage: nil,
     segments: [TranscribeCppSegment(startMs: 0, endMs: 1_100, text: "Hello there.")])
-  private static let speech: [Float] = (0..<19_200).map { Float(sin(Double($0) * 0.05)) * 0.2 }
+  /// 1.0 s of tone then 0.2 s of silence (19_200 samples). #3801: the preview's results pass the
+  /// silent-tail filter, which needs room quieter than the speech to tell voice from silence;
+  /// an unbroken tone would classify its own fake segment as unvoiced.
+  private static let speech: [Float] = (0..<19_200).map {
+    $0 < 16_000 ? Float(sin(Double($0) * 0.05)) * 0.2 : 0
+  }
 
   private static func runtime(
     _ executor: TranscribeCppExecutor, residency: TranscribeCppPreviewResidency = .init()
@@ -766,7 +798,9 @@ struct TranscribeCppPreviewPriorityTests {
     await TranscribeCppRollingSessionTests.within(what, sourceLocation: sourceLocation, ready)
   }
 
-  @Test("a heart request aborts the running preview decode, runs after its native return, and the preview shows nothing from it")
+  @Test(
+    "a heart request aborts the running preview decode, runs after its native return, and the preview shows nothing from it"
+  )
   func heartPreemptsThePreview() async throws {
     let native = FakeNative(results: [Self.small: Self.heard])
     let executor = TranscribeCppExecutor(makeSession: native.makeSession)
@@ -779,11 +813,14 @@ struct TranscribeCppPreviewPriorityTests {
     await native.waitForArrivals(1)
     #expect(native.log == ["enter small"], "control: the preview decode is inside native code")
 
-    let h = Task { try await executor.transcribe(heart, samples: [1], language: "en", lane: .heart) }
+    let h = Task {
+      try await executor.transcribe(heart, samples: [1], language: "en", lane: .heart)
+    }
     await native.waitForAbort(Self.small)
     await native.waitForArrivals(2)
     // The aborted preview run returned BEFORE the heart run entered: never two at once.
-    #expect(Array(native.log.prefix(4)) == ["enter small", "abort small", "exit small", "enter turbo"])
+    #expect(
+      Array(native.log.prefix(4)) == ["enter small", "abort small", "exit small", "enter turbo"])
     #expect(published.all.isEmpty, "a preempted decode must publish nothing")
     native.release("turbo")
     #expect(try await native.bounded(h).text == "turbo")
@@ -797,7 +834,8 @@ struct TranscribeCppPreviewPriorityTests {
     #expect(native.peakInside == 1)
   }
 
-  @Test("while heart work runs the preview never enters native code; it decodes once the heart is done")
+  @Test(
+    "while heart work runs the preview never enters native code; it decodes once the heart is done")
   func previewRefusedWhileTheHeartRuns() async throws {
     let native = FakeNative(results: [Self.small: Self.heard])
     let executor = TranscribeCppExecutor(makeSession: native.makeSession)
@@ -807,7 +845,9 @@ struct TranscribeCppPreviewPriorityTests {
     // while heart work runs is refused too (`heartBusy`), which is the same rule.
     let runtime = Self.runtime(executor)
     try await runtime.ensureLoaded()
-    let h = Task { try await executor.transcribe(heart, samples: [1], language: "en", lane: .heart) }
+    let h = Task {
+      try await executor.transcribe(heart, samples: [1], language: "en", lane: .heart)
+    }
     await native.waitForArrivals(1)
 
     let published = Published()
@@ -829,6 +869,31 @@ struct TranscribeCppPreviewPriorityTests {
     await session.cancel()
   }
 
+  @Test("the preview never shows an invented sentence that sits on the trailing silence (#3801)")
+  func previewDropsSilentTail() async throws {
+    // 1 s of tone, then 1 s of silence; the fake native result adds "Thank you." over the
+    // silence, which the native boundary's silent-tail filter removes before publication.
+    let audio: [Float] = (0..<32_000).map { $0 < 16_000 ? Float(sin(Double($0) * 0.05)) * 0.2 : 0 }
+    let invented = TranscribeCppRunResult(
+      text: "Hello there. Thank you.", detectedLanguage: nil,
+      segments: [
+        TranscribeCppSegment(startMs: 0, endMs: 1_000, text: "Hello there."),
+        TranscribeCppSegment(startMs: 1_500, endMs: 2_000, text: "Thank you."),
+      ])
+    let native = FakeNative(results: [Self.small: invented])
+    let executor = TranscribeCppExecutor(makeSession: native.makeSession)
+    await native.observe(executor)
+    let published = Published()
+    let session = try await Self.runtime(executor).makeSession(
+      language: "en", hypothesisRetentionLimit: 2_000, onHypothesis: published.append)
+    await session.start { (audio, audio.count) }
+    await native.waitForArrivals(1)
+    native.release(Self.small)
+    await Self.within("the first preview text") { await published.first() }
+    #expect(published.all.first == "Hello there.")
+    await session.cancel()
+  }
+
   @Test("stopping the preview aborts its decode and returns only after the native run ended")
   func stopJoinsTheNativeReturn() async throws {
     let native = FakeNative(results: [Self.small: Self.heard])
@@ -846,7 +911,9 @@ struct TranscribeCppPreviewPriorityTests {
     #expect(published.all.isEmpty)
   }
 
-  @Test("the preview model loads on the preview lane, decodes with padding, and is freed once when released")
+  @Test(
+    "the preview model loads on the preview lane, decodes with padding, and is freed once when released"
+  )
   func previewLaneLoadAndRelease() async throws {
     let native = FakeNative(results: [Self.small: Self.heard])
     let executor = TranscribeCppExecutor(makeSession: native.makeSession)
