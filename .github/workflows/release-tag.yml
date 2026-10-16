@@ -7,11 +7,16 @@ name: Release tag
 # nothing. Manual fallback: `git tag -a v<V> <merge sha>` + `git push origin v<V>`.
 #
 # The App token (enviouswispr-release-bot) creates the tag because a tag pushed with
-# GITHUB_TOKEN does not start other workflows. This workflow runs from main's copy at
-# event time; a later merged change to it applies to later merges.
+# GITHUB_TOKEN does not start other workflows.
+#
+# pull_request_target, not pull_request (Codex review, #3729): pull_request would load
+# this file and the guard from the PR itself, so a PR could rewrite its own guards and
+# reach the App credentials by closing unmerged. pull_request_target always runs main's
+# copy. The job checks out only the merge commit, which is already on main, and only
+# after the merged/same-repository conditions below pass; no PR head code ever runs.
 
 on:
-  pull_request:
+  pull_request_target:
     types: [closed]
     branches: [main]
 

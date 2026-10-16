@@ -178,6 +178,7 @@ SUMMARY
   fi
 }
 
+# shellcheck disable=SC2163,SC2016 # self-test: exports caller-supplied NAME=VALUE pairs; echo-only && || reporting; literal needles
 self_test() {
   local tmp fails=0
   tmp="$(mktemp -d)"; trap 'rm -rf "$tmp"' RETURN

@@ -75,6 +75,7 @@ jobs:
     permissions:
       contents: read   # checkout
       issues: read     # #1144: warn-only release-action surfacing below
+      actions: read    # #3729: verify a recovery source run
     outputs:
       version: ${{ steps.version.outputs.version }}
       tag: ${{ steps.version.outputs.tag }}
@@ -210,6 +211,30 @@ jobs:
           fi
           bash scripts/ci/check-release-probes.sh --manifest "$PROBES"
           echo "==> Notes and probes present for v$VERSION"
+
+      # #3729 (Codex review): a recovery mode republishes another run's artifacts, so that
+      # run must be a release.yml run of THIS repository built from the commit the tag names.
+      # Otherwise a rehearsal artifact could be published under any tag.
+      - name: Verify the recovery source run
+        if: github.event_name == 'workflow_dispatch' && inputs.mode != 'full' && inputs.mode != 'build-only'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SOURCE_RUN_ID: ${{ inputs.source_run_id }}
+          TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          set -euo pipefail
+          RUN="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$SOURCE_RUN_ID")" \
+            || { echo "::error::cannot read source run $SOURCE_RUN_ID"; exit 1; }
+          TAG_SHA="$(gh api "repos/$GITHUB_REPOSITORY/commits/$TAG" --jq .sha)" \
+            || { echo "::error::tag $TAG does not resolve to a commit"; exit 1; }
+          if ! jq -e --arg sha "$TAG_SHA" --arg repo "$GITHUB_REPOSITORY" '
+              .head_sha == $sha and
+              .head_repository.full_name == $repo and
+              .path == ".github/workflows/release.yml"' <<< "$RUN" >/dev/null; then
+            echo "::error::source run $SOURCE_RUN_ID is not a release.yml run of $GITHUB_REPOSITORY at $TAG ($TAG_SHA): $(jq -c '{head_sha, path, repo: .head_repository.full_name}' <<< "$RUN")"
+            exit 1
+          fi
+          echo "==> Source run $SOURCE_RUN_ID built $TAG ($TAG_SHA)"
 
       - name: Check required secrets
         env:
@@ -933,7 +958,11 @@ jobs:
           if ! bash "$V" assets "dl/EnviousWispr-${VERSION}.dmg" dl/EnviousWispr.dmg; then
             echo "state=failed" >> "$GITHUB_OUTPUT"; exit 0
           fi
-          LATEST="$(gh release view --repo "${{ github.repository }}" --json tagName --jq .tagName 2>/dev/null || true)"
+          if ! LATEST="$(gh release view --repo "${{ github.repository }}" --json tagName --jq .tagName)" \
+             || [[ -z "$LATEST" ]]; then
+            echo "::warning::Could not determine the latest release; website button not checked"
+            echo "state=failed" >> "$GITHUB_OUTPUT"; exit 0
+          fi
           if [[ "$LATEST" != "$TAG" ]]; then
             echo "==> $TAG is not the latest release ($LATEST); website button check not applicable"
             echo "state=not-applicable" >> "$GITHUB_OUTPUT"; exit 0
