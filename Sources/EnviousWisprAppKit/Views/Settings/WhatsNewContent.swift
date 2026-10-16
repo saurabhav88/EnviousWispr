@@ -54,6 +54,78 @@ enum WhatsNewContent {
   }
 
   static let entries: [Entry] = [
+    // MARK: - v2.5.4
+
+    // Founder-approved group, 2026-10-16 (Claude Doc "EnviousWispr 2.5.4 Release Notes", Version 1).
+    // The founder asked for test results in the engine entries, which overrides the no-measurement
+    // default for this group. Facts behind the claims:
+    // - Parakeet Ultra (#3546 eval, #3699): 960 recordings in 24 languages, WER 12.41% -> 10.10%
+    //   (18.6% fewer); English 120 set 6.64% vs 7.09%, paired interval crosses zero, so no English
+    //   claim; batch median latency equal or faster in every bucket. Background download and switch:
+    //   #3699.
+    // - Whisper on transcribe.cpp (#3735 Chunk 8, founder-approved 2026-10-15; #3777): average error
+    //   25.36% -> 22.08% (12.9% fewer, 13 of 16 languages better); long recordings 10.5 s -> 4.4 s
+    //   (2.4x); 1,836 recordings in one process at 1.38 GB peak vs WhisperKit failing after ~130.
+    // - Hold plus Space: #3698/#3709. Casual mode: #3744. Spoken symbols: #3755. Clipboard history
+    //   switch: #3671/#3683 (opt-in). Last entry: #3540/#3564/#3576 record key, #3763 Bottom pills
+    //   above the Dock, #3805 Chrome, #3574/#3677 crashes.
+    Entry(
+      id: "parakeet-ultra",
+      icon: "waveform",
+      title: "Improved Dictation Engine: Parakeet Ultra",
+      description:
+        "In our tests across 24 languages, Parakeet Ultra made about 19% fewer word errors than the old Parakeet, at the same speed. It downloads and switches over on its own.",
+      version: "2.5.4"
+    ),
+    Entry(
+      id: "whisper-new-engine",
+      icon: "globe",
+      title: "Improved Whisper Engine",
+      description:
+        "Whisper now runs on a new engine built for Apple Silicon. In our tests it made about 13% fewer errors, transcribed long recordings more than twice as fast, and stayed steady through a full day of dictation.",
+      version: "2.5.4"
+    ),
+    Entry(
+      id: "hold-plus-space",
+      icon: "keyboard",
+      title: "Introducing \"Hold plus Space\"",
+      description:
+        "Hold your record key and press Space to go hands-free.",
+      version: "2.5.4"
+    ),
+    Entry(
+      id: "casual-mode",
+      icon: "text.bubble",
+      title: "Introducing \"Casual mode\"",
+      description:
+        "Leave off the full stop at the end of each dictation.",
+      version: "2.5.4"
+    ),
+    Entry(
+      id: "say-more-symbols",
+      icon: "textformat",
+      title: "Say More Symbols",
+      description:
+        "Say brackets, quotes, ampersands and more.",
+      version: "2.5.4"
+    ),
+    Entry(
+      id: "keep-out-of-clipboard-history",
+      icon: "list.clipboard",
+      title: "Introducing \"Keep Out of Clipboard History\"",
+      description:
+        "A new switch keeps your dictations out of clipboard history apps.",
+      version: "2.5.4"
+    ),
+    Entry(
+      id: "smoother-every-day",
+      icon: "sparkles",
+      title: "Smoother Every Day",
+      description:
+        "Steadier record key, pills above the Dock, better Chrome pasting and fewer crashes.",
+      version: "2.5.4"
+    ),
+
     // MARK: - v2.5.3
 
     // Founder-written group, 2026-10-07 (Claude Doc "EnviousWispr 2.5.3 Release Notes"). Titles and

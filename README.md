@@ -42,7 +42,7 @@ It is open source under the GPLv3, actively maintained, and built to be a tool y
 |---|---|---|
 | **Privacy** | 100% on-device transcription | Audio uploaded to servers |
 | **Speed** | Sub-second transcription, paste-on-stop | Network round-trip latency |
-| **Models** | Parakeet v3 (NVIDIA NeMo) + OpenAI Whisper (via transcribe.cpp) | Single vendor model |
+| **Models** | Parakeet Ultra (NVIDIA NeMo) + OpenAI Whisper (via transcribe.cpp) | Single vendor model |
 | **Polish** | Optional. Fully on-device (EG-1, S1-mini by Superwhisper, Apple Intelligence, Ollama) or bring-your-own-key cloud (OpenAI, Gemini, Claude) | Cloud polish, included in subscription |
 | **Cost** | Free. No account, no subscription | Monthly subscription |
 | **Works offline** | Yes, fully functional without internet | No |
@@ -56,7 +56,7 @@ Press keybind -->  Record  -->  Transcribe  -->  Polish (optional)  -->  Paste
 
 1. **Press your keybind** from any app. Push-to-talk, toggle, or hands-free (double-press to lock for long-form), your choice.
 2. **Speak naturally.** Silero VAD detects when you stop talking and ends recording automatically.
-3. **On-device transcription.** Choose Parakeet v3 (fastest, 25 European languages) or Whisper (99+ languages, with automatic language detection).
+3. **On-device transcription.** Choose Parakeet Ultra (fastest, 25 European languages) or Whisper (99+ languages, with automatic language detection).
 4. **AI polish** (optional). Clean up grammar, punctuation, and formatting. Runs fully on-device with EG-1 (our own custom model), S1-mini by Superwhisper, Apple Intelligence (macOS 26+), or Ollama, or in the cloud via OpenAI, Gemini, or Claude with your own API key.
 5. **Text lands in your clipboard** and optionally auto-pastes into the active app.
 
@@ -104,7 +104,7 @@ On our own benchmark of 1,890 real dictation-cleanup cases, EG-1 passed 93.7%, a
 
 ## Features
 
-- 🎙️ **Dual ASR engines** with [Parakeet v3](https://github.com/FluidInference/FluidAudio) (NVIDIA NeMo) and OpenAI Whisper on [transcribe.cpp](https://github.com/saurabhav88/transcribe.cpp)
+- 🎙️ **Dual ASR engines** with [Parakeet Ultra](https://github.com/FluidInference/FluidAudio) (NVIDIA NeMo) and OpenAI Whisper on [transcribe.cpp](https://github.com/saurabhav88/transcribe.cpp)
 - 👀 **Live Preview**: watch your words appear in the recording pill while you speak, so you can see it is working without waiting for the paste. On by default, switchable off, and it never changes the text you get. A Mac that cannot run it behaves as though it were off
 - ↩️ **Escape Recovery**: hit your cancel keybind by mistake and get the dictation back. On by default: a keybind cancel keeps the text for 24 hours instead of discarding it, and you can switch that off. The Cancel button in the recording pill still discards on the spot, so you keep one way to mean it. Only the text is kept, never the audio
 - ✨ **AI polish that respects your words**: strips filler words and false starts, fixes grammar and punctuation, formats numbers, dates, and URLs, and honors your custom vocabulary, all in your spoken language (never translated or rewritten)
@@ -134,6 +134,13 @@ On our own benchmark of 1,890 real dictation-cleanup cases, EG-1 passed 93.7%, a
 
 EnviousWispr ships often. A few of the user-facing improvements from recent releases:
 
+- **Improved Dictation Engine: Parakeet Ultra.** In our tests across 24 languages, Parakeet Ultra made about 19% fewer word errors than the old Parakeet, at the same speed. It downloads and switches over on its own. (v2.5.4)
+- **Improved Whisper Engine.** Whisper now runs on a new engine built for Apple Silicon. In our tests it made about 13% fewer errors, transcribed long recordings more than twice as fast, and stayed steady through a full day of dictation. (v2.5.4)
+- **Introducing "Hold plus Space".** Hold your record key and press Space to go hands-free. (v2.5.4)
+- **Introducing "Casual mode".** Leave off the full stop at the end of each dictation. (v2.5.4)
+- **Say More Symbols.** Say brackets, quotes, ampersands and more. (v2.5.4)
+- **Introducing "Keep Out of Clipboard History".** A new switch keeps your dictations out of clipboard history apps. (v2.5.4)
+- **Smoother Every Day.** Steadier record key, pills above the Dock, better Chrome pasting and fewer crashes. (v2.5.4)
 - **Streamlined Settings with Instant Search.** Completely redesigned the settings UI to eliminate clutter, featuring a new search bar to quickly jump to any configuration option. (v2.5.3)
 - **Modernized Menu Bar.** Refreshed the menu bar interface with a cleaner layout and faster access to primary controls. (v2.5.3)
 - **Launcher Support (Raycast).** Dictation now works inside Raycast. (v2.5.3)

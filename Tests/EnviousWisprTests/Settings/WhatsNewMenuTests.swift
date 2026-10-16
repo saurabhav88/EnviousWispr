@@ -91,12 +91,12 @@ struct WhatsNewMenuTests {
     presentation.requestOpen()
     presentation.didOpen(settings: settings)
     #expect(settings.hasUnreadWhatsNew == false)
-    #expect(defaults.string(forKey: WhatsNewConstants.lastSeenVersionDefaultsKey) == "2.5.3")
+    #expect(defaults.string(forKey: WhatsNewConstants.lastSeenVersionDefaultsKey) == "2.5.4")
     presentation.dismiss()
     #expect(presentation.isPresented == false)
     presentation.requestOpen()
     presentation.didOpen(settings: settings)
-    #expect(settings.lastSeenWhatsNewVersion == "2.5.3")
+    #expect(settings.lastSeenWhatsNewVersion == "2.5.4")
   }
 
   @Test("Update copy states only what the availability service knows")

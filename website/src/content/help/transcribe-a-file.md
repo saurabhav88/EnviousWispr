@@ -44,7 +44,7 @@ Both engines run entirely on this Mac. **This choice also changes the engine you
 | | **Fast** (recommended) | **All Languages** |
 |---|---|---|
 | What the card says | "Best for everyday English and European recordings." | "Best for other languages or the toughest audio." |
-| Model | Parakeet v3 | Whisper Large v3 Turbo |
+| Model | Parakeet Ultra | Whisper Large v3 Turbo |
 | Languages | 25 European | 99+ |
 | An hour of audio takes | About 7 seconds | About 2 minutes |
 

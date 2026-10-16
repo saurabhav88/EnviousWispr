@@ -23449,6 +23449,258 @@
         }
       }
     },
+    "whatsNew.parakeet-ultra.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry parakeet-ultra).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Improved Dictation Engine: Parakeet Ultra"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Verbesserte Diktier-Engine: Parakeet Ultra"
+          }
+        }
+      }
+    },
+    "whatsNew.parakeet-ultra.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry parakeet-ultra).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "In our tests across 24 languages, Parakeet Ultra made about 19% fewer word errors than the old Parakeet, at the same speed. It downloads and switches over on its own."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "In unseren Tests in 24 Sprachen machte Parakeet Ultra rund 19 % weniger Wortfehler als das bisherige Parakeet, bei gleicher Geschwindigkeit. Download und Umstellung erfolgen automatisch."
+          }
+        }
+      }
+    },
+    "whatsNew.whisper-new-engine.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry whisper-new-engine).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Improved Whisper Engine"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Verbesserte Whisper-Engine"
+          }
+        }
+      }
+    },
+    "whatsNew.whisper-new-engine.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry whisper-new-engine).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Whisper now runs on a new engine built for Apple Silicon. In our tests it made about 13% fewer errors, transcribed long recordings more than twice as fast, and stayed steady through a full day of dictation."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Whisper läuft jetzt auf einer neuen Engine für Apple Silicon. In unseren Tests machte es rund 13 % weniger Fehler, transkribierte lange Aufnahmen mehr als doppelt so schnell und blieb einen ganzen Tag lang beim Diktieren stabil."
+          }
+        }
+      }
+    },
+    "whatsNew.hold-plus-space.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry hold-plus-space).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Introducing \"Hold plus Space\""
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Neu: „Halten plus Leertaste“"
+          }
+        }
+      }
+    },
+    "whatsNew.hold-plus-space.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry hold-plus-space).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hold your record key and press Space to go hands-free."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Halte deine Aufnahmetaste gedrückt und drücke die Leertaste, um freihändig zu diktieren."
+          }
+        }
+      }
+    },
+    "whatsNew.casual-mode.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry casual-mode).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Introducing \"Casual mode\""
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Neu: „Lockerer Modus“"
+          }
+        }
+      }
+    },
+    "whatsNew.casual-mode.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry casual-mode).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Leave off the full stop at the end of each dictation."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lass den Punkt am Ende jedes Diktats weg."
+          }
+        }
+      }
+    },
+    "whatsNew.say-more-symbols.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry say-more-symbols).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Say More Symbols"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mehr Symbole diktieren"
+          }
+        }
+      }
+    },
+    "whatsNew.say-more-symbols.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry say-more-symbols).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Say brackets, quotes, ampersands and more."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Diktiere Klammern, Anführungszeichen, Und-Zeichen und mehr."
+          }
+        }
+      }
+    },
+    "whatsNew.keep-out-of-clipboard-history.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry keep-out-of-clipboard-history).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Introducing \"Keep Out of Clipboard History\""
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Neu: „Aus dem Verlauf von Zwischenablage-Apps heraushalten“"
+          }
+        }
+      }
+    },
+    "whatsNew.keep-out-of-clipboard-history.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry keep-out-of-clipboard-history).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A new switch keeps your dictations out of clipboard history apps."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ein neuer Schalter hält deine Diktate aus dem Verlauf von Zwischenablage-Apps heraus."
+          }
+        }
+      }
+    },
+    "whatsNew.smoother-every-day.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry smoother-every-day).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Smoother Every Day"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Runder im Alltag"
+          }
+        }
+      }
+    },
+    "whatsNew.smoother-every-day.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry smoother-every-day).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Steadier record key, pills above the Dock, better Chrome pasting and fewer crashes."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zuverlässigere Aufnahmetaste, Hinweise über dem Dock, besseres Einfügen in Chrome und weniger Abstürze."
+          }
+        }
+      }
+    },
     "whatsNew.settings-easier-to-find.title" : {
       "comment" : "Settings > What's New: the title of one feature announcement (entry settings-easier-to-find).",
       "extractionState" : "manual",
