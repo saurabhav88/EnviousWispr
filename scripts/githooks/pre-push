@@ -503,11 +503,24 @@ PY
 
 # receipt_record <remote ref> <remote sha> <peeled tip> <snapshot>: 0 PASS, 1 BLOCK.
 receipt_record() {
-  local ref="$1" rsha="$2" tip="$3" snap="$4" tag="${3:0:12}" why list
+  local ref="$1" rsha="$2" tip="$3" snap="$4" tag="${3:0:12}" why list new="" base
   CLS_SEQ=$((CLS_SEQ + 1))
   list="$WORK/paths.$CLS_SEQ"
+  # #3785: a new ref is judged by what it adds to main, from merge-base(origin/main, tip), so a
+  # website-only branch needs no full test run. Without a fetched main or a merge base it still
+  # needs proof (fail closed).
   if [ "$rsha" = "$ZERO_SHA" ]; then
-    why="$ref is a new ref"
+    fetch_main
+    if [ "$MAIN_STATE" = ok ] && base="$(git -C "$REPO" merge-base "$MAIN_SHA" "$tip" 2> /dev/null)" \
+      && [ ${#base} -eq 40 ]; then
+      rsha="$base"
+      new="$ref is a new ref, and "
+    fi
+  fi
+  if [ "$rsha" = "$ZERO_SHA" ] && [ "$MAIN_STATE" != ok ]; then
+    why="$ref is a new ref and origin/main is unavailable ($MAIN_STATE)"
+  elif [ "$rsha" = "$ZERO_SHA" ]; then
+    why="$ref is a new ref with no merge base on origin/main"
   elif ! git -C "$REPO" cat-file -e "$rsha^{commit}" 2> /dev/null; then
     why="the remote's ${rsha:0:12} is not in this repository"
   else
@@ -523,7 +536,7 @@ receipt_record() {
       echo "==> receipt: $ref not required (no build or eval input changed in ${rsha:0:12}..$tag)" >&2
       return 0
     fi
-    why="${rsha:0:12}..$tag changes build or eval inputs"
+    why="$new${rsha:0:12}..$tag changes build or eval inputs"
   fi
   if [ "$RECEIPT_STATE" != ok ]; then
     echo "==> receipt: BLOCKED ($why, and $RECEIPT_STATE). Run scripts/xcode-test.sh in $ORIGIN, then push again." >&2
@@ -1349,12 +1362,29 @@ PY
   commit_file() { mkdir -p "$(dirname "$repo/$1")" && echo "${2:-x}" > "$repo/$1" && git -C "$repo" add -A && git -C "$repo" commit --quiet -m "$1"; }
   hits() { grep -c -- "$1" "$tmp/push.out"; }
 
+  # #3785: a new ref that adds no build or eval input to main needs no proof.
+  git -C "$repo" checkout --quiet -b p-web main
+  commit_file docs/web.md
+  corrupt_receipt
+  push origin p-web; rc=$?
+  check "P0a a new ref that changes no input from its merge base needs no proof" \
+    "$rc|$(hits 'receipt: refs/heads/p-web not required (no build or eval input changed in')|$(remote_tip p-web)" \
+    "0|1|$(git -C "$repo" rev-parse p-web)"
+  orphan_blob="$(echo orphan | git -C "$repo" hash-object -w --stdin)"
+  orphan_tree="$(printf '100644 blob %s\torphan.md\n' "$orphan_blob" | git -C "$repo" mktree)"
+  git -C "$repo" branch p-orphan "$(git -C "$repo" commit-tree -m orphan "$orphan_tree")"
+  push origin p-orphan; rc=$?
+  check "P0b a new ref with no merge base on origin/main still needs proof (fail closed)" \
+    "$rc|$(hits 'receipt: BLOCKED (refs/heads/p-orphan is a new ref with no merge base on origin/main, and the receipt is not valid proof')|$(remote_tip p-orphan)" \
+    "1|1|none"
+  git -C "$repo" checkout --quiet main
+
   git -C "$repo" checkout --quiet -b p-docs main
-  commit_file docs/p1.md
+  commit_file APP/p1.swift
   corrupt_receipt
   push origin p-docs; rc=$?
-  check "P1 a new ref without valid proof blocks, names the command, leaves the remote alone" \
-    "$rc|$(hits 'receipt: BLOCKED (refs/heads/p-docs is a new ref, and the receipt is not valid proof')|$(hits "Run scripts/xcode-test.sh in $repo")|$(remote_tip p-docs)" \
+  check "P1 a new ref that changes an input from its merge base blocks without valid proof, names the command, leaves the remote alone" \
+    "$rc|$(hits 'receipt: BLOCKED (refs/heads/p-docs is a new ref, and .* changes build or eval inputs, and the receipt is not valid proof')|$(hits "Run scripts/xcode-test.sh in $repo")|$(remote_tip p-docs)" \
     "1|1|1|none"
   make_receipt
   push origin p-docs; rc=$?
@@ -1390,7 +1420,7 @@ PY
   git -C "$repo" checkout --quiet p-docs
   push origin p-other; rc=$?
   check "P7 a non-HEAD tip is judged at its own tree, not the receipt's" \
-    "$rc|$(hits 'receipt: BLOCKED (refs/heads/p-other is a new ref; the receipt proves tree')" "1|1"
+    "$rc|$(hits 'receipt: BLOCKED (refs/heads/p-other is a new ref, and .* changes build or eval inputs; the receipt proves tree')" "1|1"
 
   commit_file docs/p8.md
   corrupt_receipt
