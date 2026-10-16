@@ -3,7 +3,7 @@ title: "Structural Engineering for Small Language Models in On-Device Dictation 
 description: "What it takes to turn a transcript into useful writing on your Mac."
 topic: behind-enviouswispr
 pubDate: 2026-05-30
-updatedDate: 2026-07-06
+updatedDate: 2026-10-16
 tags: ["on-device", "small-language-models", "apple-intelligence", "dictation", "benchmarks", "privacy"]
 author: "Saurabh Vaish"
 keywords: ["on-device dictation", "small language model polishing", "Apple Intelligence on-device model", "private speech to text", "on-device vs cloud language model"]

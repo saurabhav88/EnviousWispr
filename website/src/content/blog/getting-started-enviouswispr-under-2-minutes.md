@@ -3,7 +3,7 @@ title: "Getting Started with EnviousWispr in Under 2 Minutes"
 description: "From installing the app to speaking your first sentence."
 topic: getting-started
 pubDate: 2026-03-11
-updatedDate: 2026-04-28
+updatedDate: 2026-10-16
 tags: ["getting-started", "tutorial", "setup", "dictation"]
 draft: false
 author: "Saurabh Vaish"

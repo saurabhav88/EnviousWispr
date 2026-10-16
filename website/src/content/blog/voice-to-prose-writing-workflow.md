@@ -3,7 +3,7 @@ title: "Voice to Prose on macOS: A Realistic Writing Workflow"
 description: "Move from a spoken first draft to writing that sounds like you."
 topic: writing-productivity
 pubDate: 2026-03-24
-updatedDate: 2026-04-04
+updatedDate: 2026-10-16
 tags: ["writing", "workflow", "dictation", "writing-style"]
 author: "Saurabh Vaish"
 ---

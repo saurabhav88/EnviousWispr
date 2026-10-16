@@ -3,6 +3,7 @@ title: "How to Get British Spelling When You Dictate on a Mac"
 description: "Colour, not color. How to make dictation on your Mac write British spelling, what it changes, and the few words it leaves alone."
 topic: tips-troubleshooting
 pubDate: 2026-09-28
+updatedDate: 2026-10-16
 tags: ["dictation", "macos", "languages", "writing"]
 draft: false
 author: "Saurabh Vaish"

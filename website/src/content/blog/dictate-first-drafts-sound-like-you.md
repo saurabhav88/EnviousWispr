@@ -3,7 +3,7 @@ title: "Dictate First Drafts That Sound Like You"
 description: "Keep your own phrasing and rhythm as you edit a dictated draft."
 topic: writing-productivity
 pubDate: 2026-03-14
-updatedDate: 2026-04-04
+updatedDate: 2026-10-16
 tags: ["writing", "dictation", "workflow", "writing-style"]
 draft: false
 author: "Saurabh Vaish"

@@ -10,7 +10,7 @@ const meta = {
   "breadcrumb": "EnviousWispr vs Apple Dictation",
   "ogImage": "/images/og/apple-dictation.png",
   "datePublished": "2026-04-04T21:41:19Z",
-  "dateModified": "2026-08-21T13:11:11Z"
+  "dateModified": "2026-10-16T00:00:00Z"
 };
 
 const faqs = [
@@ -40,7 +40,7 @@ const faqs = [
   },
   {
     "q": "How accurate is EnviousWispr compared to Apple Dictation?",
-    "a": "EnviousWispr uses Parakeet TDT, a modern ASR model, combined with AI polish that fixes misrecognitions and grammar. Apple Dictation achieves ~90% in quiet conditions but degrades with background noise. EnviousWispr's AI polish layer provides an additional correction pass that Apple Dictation lacks."
+    "a": "EnviousWispr uses Parakeet Ultra, a modern ASR model, combined with AI polish that fixes misrecognitions and grammar. Apple Dictation achieves ~90% in quiet conditions but degrades with background noise. EnviousWispr's AI polish layer provides an additional correction pass that Apple Dictation lacks."
   },
   {
     "q": "Can EnviousWispr remove filler words from dictation?",
@@ -307,7 +307,7 @@ const faqs = [
           </tr>
           <tr>
             <td>Audio processing</td>
-            <td><span class="table-highlight">On-device</span> (<a href="https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3" style="color: var(--accent); text-decoration: underline;">Parakeet TDT</a> + <a href="https://huggingface.co/openai/whisper-large-v3-turbo" style="color: var(--accent); text-decoration: underline;">Whisper</a>)</td>
+            <td><span class="table-highlight">On-device</span> (<a href="https://huggingface.co/FluidInference/parakeet-ultra-coreml" style="color: var(--accent); text-decoration: underline;">Parakeet Ultra</a> + <a href="https://huggingface.co/openai/whisper-large-v3-turbo" style="color: var(--accent); text-decoration: underline;">Whisper</a>)</td>
             <td>On-device (Apple Silicon); cloud fallback on Intel</td>
           </tr>
           <tr>
@@ -342,7 +342,7 @@ const faqs = [
           </tr>
           <tr>
             <td>Accuracy (clean audio)</td>
-            <td>High (Parakeet TDT 0.6B + AI polish correction)</td>
+            <td>High (Parakeet Ultra + AI polish correction)</td>
             <td>90-92% (degrades significantly with background noise)</td>
           </tr>
           <tr>
@@ -430,7 +430,7 @@ const faqs = [
       <div class="advantage-card reveal">
         <div class="advantage-icon">📖</div>
         <div class="advantage-title">Custom words that stick</div>
-        <p class="advantage-desc">Names, product terms, technical jargon. Apple Dictation has no custom vocabulary feature. EnviousWispr lets you add <a href="/blog/getting-started-enviouswispr-under-2-minutes/" style="color: var(--accent); text-decoration: underline;">custom words</a> so "Parakeet TDT" and "Kubernetes" come out right every time.</p>
+        <p class="advantage-desc">Names, product terms, technical jargon. Apple Dictation has no custom vocabulary feature. EnviousWispr lets you add <a href="/blog/getting-started-enviouswispr-under-2-minutes/" style="color: var(--accent); text-decoration: underline;">custom words</a> so "Parakeet Ultra" and "Kubernetes" come out right every time.</p>
       </div>
       <div class="advantage-card reveal">
         <div class="advantage-icon">⏱️</div>
@@ -498,7 +498,7 @@ const faqs = [
         <div class="deep-dive-icon">📖</div>
         <div class="deep-dive-title">Custom vocabulary and smart correction</div>
         <div class="deep-dive-body">
-          <p>Apple Dictation has no custom vocabulary feature. If you work with specialized terminology, product names, or technical jargon, you get whatever the built-in model guesses. "Parakeet TDT" might come out as "parakeet teddy." "Kubernetes" might become "Cooper Netties."</p>
+          <p>Apple Dictation has no custom vocabulary feature. If you work with specialized terminology, product names, or technical jargon, you get whatever the built-in model guesses. "Parakeet Ultra" might come out as "parakeet teddy." "Kubernetes" might become "Cooper Netties."</p>
           <p>EnviousWispr lets you add custom words with a 6-pass fuzzy matching system. Each word can have aliases (phonetic variants the ASR model might produce), and the app suggests aliases automatically using AI analysis of likely misrecognitions. When the model outputs "envious whisper," the custom words system corrects it to "EnviousWispr" before the text reaches your clipboard.</p>
           <p>This works at the post-processing layer, so it applies regardless of which ASR backend you use. Add a word once, and it corrects everywhere.</p>
           <div class="deep-dive-detail">
@@ -595,7 +595,7 @@ const faqs = [
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">How accurate is EnviousWispr compared to Apple Dictation?</div>
-        <p class="faq-a">EnviousWispr uses Parakeet TDT, a modern ASR model, combined with AI polish that fixes misrecognitions and grammar. Apple Dictation achieves ~90% in quiet conditions (third-party tests) in clean environments but degrades significantly with background noise. EnviousWispr's AI polish layer provides an additional correction pass that Apple Dictation lacks.</p>
+        <p class="faq-a">EnviousWispr uses Parakeet Ultra, a modern ASR model, combined with AI polish that fixes misrecognitions and grammar. Apple Dictation achieves ~90% in quiet conditions (third-party tests) in clean environments but degrades significantly with background noise. EnviousWispr's AI polish layer provides an additional correction pass that Apple Dictation lacks.</p>
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">Can EnviousWispr remove filler words from dictation?</div>

@@ -10,13 +10,13 @@ const meta = {
   "breadcrumb": "EnviousWispr vs whisper.cpp",
   "ogImage": "/images/og/whisper-cpp.png",
   "datePublished": "2026-04-04T21:41:19Z",
-  "dateModified": "2026-08-21T00:00:00Z"
+  "dateModified": "2026-10-16T00:00:00Z"
 };
 
 const faqs = [
   {
     "q": "Is there a GUI for whisper.cpp on Mac?",
-    "a": "whisper.cpp itself is a command-line tool with no GUI. Several third-party apps wrap whisper.cpp with a graphical interface. EnviousWispr runs two engines on Apple Silicon (Parakeet TDT and Whisper), wrapped in a native Mac app with a hold-to-talk keybind and automatic clipboard pasting."
+    "a": "whisper.cpp itself is a command-line tool with no GUI. Several third-party apps wrap whisper.cpp with a graphical interface. EnviousWispr runs two engines on Apple Silicon (Parakeet Ultra and Whisper), wrapped in a native Mac app with a hold-to-talk keybind and automatic clipboard pasting."
   },
   {
     "q": "Can I use whisper.cpp for live dictation on Mac?",
@@ -24,11 +24,11 @@ const faqs = [
   },
   {
     "q": "Does EnviousWispr use whisper.cpp internally?",
-    "a": "No. EnviousWispr runs Parakeet TDT (NVIDIA's transducer-based model) on the Neural Engine, and Whisper Large v3 Turbo through transcribe.cpp, an open-source engine built on ggml, the same tensor library whisper.cpp uses. It does not include whisper.cpp itself."
+    "a": "No. EnviousWispr runs Parakeet Ultra (NVIDIA's transducer-based model) on the Neural Engine, and Whisper Large v3 Turbo through transcribe.cpp, an open-source engine built on ggml, the same tensor library whisper.cpp uses. It does not include whisper.cpp itself."
   },
   {
     "q": "Is EnviousWispr faster than whisper.cpp?",
-    "a": "For live dictation on Apple Silicon Macs, EnviousWispr's default engine, Parakeet TDT, reaches a 0.61s median latency on the Neural Engine. For Whisper models, EnviousWispr and whisper.cpp both run on the Mac's GPU through ggml, so speed depends mostly on the model and the Mac. whisper.cpp performance varies widely by model size, hardware, and build flags."
+    "a": "For live dictation on Apple Silicon Macs, EnviousWispr's default engine, Parakeet Ultra, reaches a 0.61s median latency on the Neural Engine. For Whisper models, EnviousWispr and whisper.cpp both run on the Mac's GPU through ggml, so speed depends mostly on the model and the Mac. whisper.cpp performance varies widely by model size, hardware, and build flags."
   },
   {
     "q": "Is EnviousWispr open source?",
@@ -347,7 +347,7 @@ const faqs = [
           </tr>
           <tr>
             <td>Speech engine</td>
-            <td><a href="https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3" style="color: var(--accent); text-decoration: underline;">Parakeet TDT</a> + <a href="https://huggingface.co/openai/whisper-large-v3-turbo" style="color: var(--accent); text-decoration: underline;">Whisper</a> (via <a href="https://github.com/handy-computer/transcribe.cpp" style="color: var(--accent); text-decoration: underline;">transcribe.cpp</a>)</td>
+            <td><a href="https://huggingface.co/FluidInference/parakeet-ultra-coreml" style="color: var(--accent); text-decoration: underline;">Parakeet Ultra</a> + <a href="https://huggingface.co/openai/whisper-large-v3-turbo" style="color: var(--accent); text-decoration: underline;">Whisper</a> (via <a href="https://github.com/handy-computer/transcribe.cpp" style="color: var(--accent); text-decoration: underline;">transcribe.cpp</a>)</td>
             <td><a href="https://github.com/ggml-org/whisper.cpp" style="color: var(--accent); text-decoration: underline;">whisper.cpp</a> (C/C++ port of OpenAI Whisper)</td>
           </tr>
           <tr>
@@ -415,7 +415,7 @@ const faqs = [
       <div class="advantage-card reveal">
         <div class="advantage-icon">⚡</div>
         <div class="advantage-title">Apple Silicon optimized</div>
-        <p class="advantage-desc">EnviousWispr runs <a href="https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3" style="color: var(--accent); text-decoration: underline;">Parakeet TDT</a> on the Apple Neural Engine for the fastest dictation, and <a href="https://huggingface.co/openai/whisper-large-v3-turbo" style="color: var(--accent); text-decoration: underline;">Whisper</a> through <a href="https://github.com/handy-computer/transcribe.cpp" style="color: var(--accent); text-decoration: underline;">transcribe.cpp</a> on the Apple GPU for 99+ languages. You never compile or configure either one. See <a href="/features/" style="color: var(--accent); text-decoration: underline;">how the pipeline works</a>.</p>
+        <p class="advantage-desc">EnviousWispr runs <a href="https://huggingface.co/FluidInference/parakeet-ultra-coreml" style="color: var(--accent); text-decoration: underline;">Parakeet Ultra</a> on the Apple Neural Engine for the fastest dictation, and <a href="https://huggingface.co/openai/whisper-large-v3-turbo" style="color: var(--accent); text-decoration: underline;">Whisper</a> through <a href="https://github.com/handy-computer/transcribe.cpp" style="color: var(--accent); text-decoration: underline;">transcribe.cpp</a> on the Apple GPU for 99+ languages. You never compile or configure either one. See <a href="/features/" style="color: var(--accent); text-decoration: underline;">how the pipeline works</a>.</p>
       </div>
       <div class="advantage-card reveal">
         <div class="advantage-icon">🔄</div>
@@ -446,7 +446,7 @@ const faqs = [
         </div>
         <div class="privacy-step">
           <div class="privacy-step-num">2</div>
-          <div>Audio is captured and processed on-device by Parakeet TDT on the Neural Engine or Whisper on the GPU.</div>
+          <div>Audio is captured and processed on-device by Parakeet Ultra on the Neural Engine or Whisper on the GPU.</div>
         </div>
         <div class="privacy-step">
           <div class="privacy-step-num">3</div>
@@ -526,7 +526,7 @@ const faqs = [
         <div class="deep-dive-title">From speech to polished text in one step</div>
         <div class="deep-dive-body">
           <p>whisper.cpp gives you raw Whisper output in a terminal. You record audio separately, convert it to the right format, run a command, and read the result from stdout.</p>
-          <p>EnviousWispr captures speech, transcribes via Parakeet TDT or Whisper, corrects with fuzzy word matching, strips filler words, polishes with AI, and pastes into your active app. One keybind press, one result.</p>
+          <p>EnviousWispr captures speech, transcribes via Parakeet Ultra or Whisper, corrects with fuzzy word matching, strips filler words, polishes with AI, and pastes into your active app. One keybind press, one result.</p>
           <div class="deep-dive-detail">
             <strong>The pipeline:</strong> pre-roll buffer catches early speech, VAD detects voice activity, the warm engine transcribes instantly, custom words fix domain terms, AI polish cleans grammar and punctuation, then the text is delivered to your app. Transcription lands in well under a second; AI polish and delivery add variable time that scales with how much you said.
           </div>
@@ -606,7 +606,7 @@ const faqs = [
     <div class="faq-list">
       <div class="faq-item reveal">
         <div class="faq-q">Is there a GUI for whisper.cpp on Mac?</div>
-        <p class="faq-a">whisper.cpp itself is a command-line tool with no GUI. Several third-party apps (VoiceInk, MacWhisper, and others) wrap whisper.cpp with a graphical interface. EnviousWispr takes a different approach: it runs two engines on Apple Silicon (Parakeet TDT and Whisper), wrapped in a native Mac app with a hold-to-talk keybind and automatic clipboard pasting.</p>
+        <p class="faq-a">whisper.cpp itself is a command-line tool with no GUI. Several third-party apps (VoiceInk, MacWhisper, and others) wrap whisper.cpp with a graphical interface. EnviousWispr takes a different approach: it runs two engines on Apple Silicon (Parakeet Ultra and Whisper), wrapped in a native Mac app with a hold-to-talk keybind and automatic clipboard pasting.</p>
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">Can I use whisper.cpp for live dictation on Mac?</div>
@@ -614,11 +614,11 @@ const faqs = [
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">Does EnviousWispr use whisper.cpp internally?</div>
-        <p class="faq-a">No. EnviousWispr runs <a href="https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3" style="color: var(--accent); text-decoration: underline;">Parakeet TDT</a> (NVIDIA's transducer-based model) on the Neural Engine, and <a href="https://huggingface.co/openai/whisper-large-v3-turbo" style="color: var(--accent); text-decoration: underline;">Whisper</a> Large v3 Turbo through <a href="https://github.com/handy-computer/transcribe.cpp" style="color: var(--accent); text-decoration: underline;">transcribe.cpp</a>, an open-source engine built on ggml, the same tensor library whisper.cpp uses. It does not include whisper.cpp itself.</p>
+        <p class="faq-a">No. EnviousWispr runs <a href="https://huggingface.co/FluidInference/parakeet-ultra-coreml" style="color: var(--accent); text-decoration: underline;">Parakeet Ultra</a> (NVIDIA's transducer-based model) on the Neural Engine, and <a href="https://huggingface.co/openai/whisper-large-v3-turbo" style="color: var(--accent); text-decoration: underline;">Whisper</a> Large v3 Turbo through <a href="https://github.com/handy-computer/transcribe.cpp" style="color: var(--accent); text-decoration: underline;">transcribe.cpp</a>, an open-source engine built on ggml, the same tensor library whisper.cpp uses. It does not include whisper.cpp itself.</p>
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">Is EnviousWispr faster than whisper.cpp?</div>
-        <p class="faq-a">For live dictation on Apple Silicon Macs, EnviousWispr's default engine, Parakeet TDT, reaches a 0.61s median latency on the Neural Engine. For Whisper models, EnviousWispr and whisper.cpp both run on the Mac's GPU through ggml, so speed depends mostly on the model and the Mac. whisper.cpp performance varies widely by model size, hardware, and build flags.</p>
+        <p class="faq-a">For live dictation on Apple Silicon Macs, EnviousWispr's default engine, Parakeet Ultra, reaches a 0.61s median latency on the Neural Engine. For Whisper models, EnviousWispr and whisper.cpp both run on the Mac's GPU through ggml, so speed depends mostly on the model and the Mac. whisper.cpp performance varies widely by model size, hardware, and build flags.</p>
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">Is EnviousWispr open source?</div>
@@ -642,7 +642,7 @@ const faqs = [
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">Does EnviousWispr use whisper.cpp under the hood?</div>
-        <p class="faq-a">No. EnviousWispr uses two engines: <a href="https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3" style="color: var(--accent); text-decoration: underline;">Parakeet TDT</a> (NVIDIA's transducer-based model) on the Neural Engine, and <a href="https://huggingface.co/openai/whisper-large-v3-turbo" style="color: var(--accent); text-decoration: underline;">Whisper</a> Large v3 Turbo through <a href="https://github.com/handy-computer/transcribe.cpp" style="color: var(--accent); text-decoration: underline;">transcribe.cpp</a>. transcribe.cpp is a separate open-source project from whisper.cpp; both are built on ggml. EnviousWispr adds the dictation app around the engine: the keybind, cleanup, polish and paste.</p>
+        <p class="faq-a">No. EnviousWispr uses two engines: <a href="https://huggingface.co/FluidInference/parakeet-ultra-coreml" style="color: var(--accent); text-decoration: underline;">Parakeet Ultra</a> (NVIDIA's transducer-based model) on the Neural Engine, and <a href="https://huggingface.co/openai/whisper-large-v3-turbo" style="color: var(--accent); text-decoration: underline;">Whisper</a> Large v3 Turbo through <a href="https://github.com/handy-computer/transcribe.cpp" style="color: var(--accent); text-decoration: underline;">transcribe.cpp</a>. transcribe.cpp is a separate open-source project from whisper.cpp; both are built on ggml. EnviousWispr adds the dictation app around the engine: the keybind, cleanup, polish and paste.</p>
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">Can I use whisper.cpp and EnviousWispr together?</div>

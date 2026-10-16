@@ -3,6 +3,7 @@ title: "Moving Whisper Off the Neural Engine: What We Found"
 description: "The measurements and decisions behind a change to our speech engine."
 topic: behind-enviouswispr
 pubDate: 2026-06-09
+updatedDate: 2026-10-16
 tags: ["engineering", "macos", "apple-silicon", "performance", "whisper"]
 draft: false
 author: "Saurabh Vaish"

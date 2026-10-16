@@ -10,7 +10,7 @@ const meta = {
   "breadcrumb": "EnviousWispr vs Willow Voice",
   "ogImage": "/images/og/willow-voice.png",
   "datePublished": "2026-04-04T21:41:19Z",
-  "dateModified": "2026-08-21T13:11:11Z"
+  "dateModified": "2026-10-16T00:00:00Z"
 };
 
 const faqs = [
@@ -24,7 +24,7 @@ const faqs = [
   },
   {
     "q": "Does Willow Voice work offline?",
-    "a": "Willow Voice is cloud-based and requires an internet connection for transcription. EnviousWispr was built on-device from the start. Parakeet TDT and Whisper run natively on Apple Silicon, delivering 0.61s median latency without any cloud dependency."
+    "a": "Willow Voice is cloud-based and requires an internet connection for transcription. EnviousWispr was built on-device from the start. Parakeet Ultra and Whisper run natively on Apple Silicon, delivering 0.61s median latency without any cloud dependency."
   },
   {
     "q": "Does EnviousWispr work offline?",
@@ -286,7 +286,7 @@ const faqs = [
                - Security: willowvoice.com - SOC 2, HIPAA, zero data retention, privacy mode (Business/Enterprise tiers)
                - Backing: YC-backed
              Firsthand testing: Willow Voice was not tested firsthand for this comparison.
-             EnviousWispr latency (0.61s / 1.65s) and language count (99+ via WhisperKit) re-measured 2026-08-21.
+             EnviousWispr latency (0.61s / 1.65s) and language count (99+ via Whisper) re-measured 2026-08-21.
              "Not specified" is used for any feature not explicitly documented on their site. -->
         <tbody>
           <tr>
@@ -326,7 +326,7 @@ const faqs = [
           </tr>
           <tr>
             <td>Speech engines</td>
-            <td><a href="https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3" style="color: var(--accent); text-decoration: underline;">Parakeet TDT</a> + <a href="https://huggingface.co/openai/whisper-large-v3-turbo" style="color: var(--accent); text-decoration: underline;">Whisper</a> (on-device)</td>
+            <td><a href="https://huggingface.co/FluidInference/parakeet-ultra-coreml" style="color: var(--accent); text-decoration: underline;">Parakeet Ultra</a> + <a href="https://huggingface.co/openai/whisper-large-v3-turbo" style="color: var(--accent); text-decoration: underline;">Whisper</a> (on-device)</td>
             <td>Cloud speech API</td>
           </tr>
           <tr>
@@ -618,7 +618,7 @@ const faqs = [
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">Does Willow Voice work offline?</div>
-        <p class="faq-a">Willow Voice is cloud-based and requires an internet connection for transcription. EnviousWispr was built on-device from the start. Parakeet TDT and Whisper run natively on Apple Silicon, delivering 0.61s median latency without any cloud dependency.</p>
+        <p class="faq-a">Willow Voice is cloud-based and requires an internet connection for transcription. EnviousWispr was built on-device from the start. Parakeet Ultra and Whisper run natively on Apple Silicon, delivering 0.61s median latency without any cloud dependency.</p>
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">Does EnviousWispr work offline?</div>

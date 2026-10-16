@@ -3,7 +3,7 @@ title: "Voice Input for RSI on macOS: A Keyboard-Free Workflow"
 description: "Explore ways to reduce typing and adapt voice input to your routine."
 topic: writing-productivity
 pubDate: 2026-03-12
-updatedDate: 2026-09-26
+updatedDate: 2026-10-16
 tags: ["accessibility", "rsi", "voice-input", "workflow", "hands-free"]
 draft: false
 author: "Saurabh Vaish"

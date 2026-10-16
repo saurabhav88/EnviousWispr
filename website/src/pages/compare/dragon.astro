@@ -10,7 +10,7 @@ const meta = {
   "breadcrumb": "EnviousWispr vs Dragon",
   "ogImage": "/images/og/dragon.png",
   "datePublished": "2026-04-04T21:41:19Z",
-  "dateModified": "2026-08-21T13:11:11Z"
+  "dateModified": "2026-10-16T00:00:00Z"
 };
 
 const faqs = [
@@ -347,7 +347,7 @@ const faqs = [
           </tr>
           <tr>
             <td>Speech engines</td>
-            <td><a href="https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3" style="color: var(--accent); text-decoration: underline;">Parakeet TDT</a> + <a href="https://huggingface.co/openai/whisper-large-v3-turbo" style="color: var(--accent); text-decoration: underline;">Whisper</a></td>
+            <td><a href="https://huggingface.co/FluidInference/parakeet-ultra-coreml" style="color: var(--accent); text-decoration: underline;">Parakeet Ultra</a> + <a href="https://huggingface.co/openai/whisper-large-v3-turbo" style="color: var(--accent); text-decoration: underline;">Whisper</a></td>
             <td>Proprietary Nuance engine (decades of refinement)</td>
           </tr>
           <tr>
@@ -455,7 +455,7 @@ const faqs = [
       <div class="advantage-card reveal">
         <div class="advantage-icon">⚡</div>
         <div class="advantage-title">Works instantly</div>
-        <p class="advantage-desc">Dragon claims up to 99% accuracy from first use, improving further with corrections over time. EnviousWispr works immediately. Modern speech models like <a href="https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3" style="color: var(--accent); text-decoration: underline;">Parakeet TDT</a> are accurate out of the box.</p>
+        <p class="advantage-desc">Dragon claims up to 99% accuracy from first use, improving further with corrections over time. EnviousWispr works immediately. Modern speech models like <a href="https://huggingface.co/FluidInference/parakeet-ultra-coreml" style="color: var(--accent); text-decoration: underline;">Parakeet Ultra</a> are accurate out of the box.</p>
       </div>
       <div class="advantage-card reveal">
         <div class="advantage-icon">🔄</div>
@@ -491,7 +491,7 @@ const faqs = [
         </div>
         <div class="privacy-step">
           <div class="privacy-step-num">2</div>
-          <div>Audio is transcribed on your Mac by Parakeet TDT on the Neural Engine or Whisper on the GPU. Nothing uploaded.</div>
+          <div>Audio is transcribed on your Mac by Parakeet Ultra on the Neural Engine or Whisper on the GPU. Nothing uploaded.</div>
         </div>
         <div class="privacy-step">
           <div class="privacy-step-num">3</div>
@@ -545,7 +545,7 @@ const faqs = [
           <p>EnviousWispr is built natively for Apple Silicon. Its default engine uses Core ML and the Neural Engine directly, and its Whisper engine runs on the Apple GPU, so transcription runs on dedicated hardware rather than general-purpose CPU cores. The app is a lightweight menu bar utility that launches in seconds and uses minimal memory.</p>
           <p>This is not a compatibility layer or a port. Every component, from audio capture to paste-back, uses native macOS APIs: AVFoundation for audio, Accessibility API for text insertion, and Core ML and Metal for model inference.</p>
           <div class="deep-dive-detail">
-            <strong>Technical detail:</strong> EnviousWispr runs Parakeet TDT (600M parameters) through Core ML on Apple Silicon's Neural Engine, and Whisper Large v3 Turbo through transcribe.cpp on the Apple GPU. Dragon's proprietary engine was optimized for x86 Windows with no Apple Silicon path. The last Dragon Mac release cannot even launch on macOS 14+.
+            <strong>Technical detail:</strong> EnviousWispr runs Parakeet Ultra (600M parameters) through Core ML on Apple Silicon's Neural Engine, and Whisper Large v3 Turbo through transcribe.cpp on the Apple GPU. Dragon's proprietary engine was optimized for x86 Windows with no Apple Silicon path. The last Dragon Mac release cannot even launch on macOS 14+.
           </div>
         </div>
       </div>

@@ -3,7 +3,7 @@ title: "Async Communication Is Better When You Speak It"
 description: "Add context to a message without losing the thread of your thought."
 topic: writing-productivity
 pubDate: 2026-03-17
-updatedDate: 2026-04-04
+updatedDate: 2026-10-16
 tags: ["remote-work", "async-communication", "dictation", "productivity", "slack"]
 draft: false
 author: "Saurabh Vaish"

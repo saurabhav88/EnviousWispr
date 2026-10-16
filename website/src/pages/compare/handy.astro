@@ -11,7 +11,7 @@ const meta = {
   "breadcrumb": "EnviousWispr vs Handy",
   "ogImage": "/og-image.png",
   "datePublished": "2026-08-21T16:00:00Z",
-  "dateModified": "2026-08-21T16:00:00Z"
+  "dateModified": "2026-10-16T00:00:00Z"
 };
 
 const faqs = [
@@ -49,7 +49,7 @@ const faqs = [
   },
   {
     "q": "Which speech engines does each app use?",
-    "a": "EnviousWispr runs NVIDIA Parakeet TDT v3 and Whisper Large v3 Turbo. Handy 0.9.5 showed dozens of downloadable choices across Parakeet, Nemotron, Canary, Cohere, Whisper, Voxtral, Qwen3 ASR, FunASR, Granite, Moonshine, SenseVoice, GigaAM, Breeze, and MedASR."
+    "a": "EnviousWispr runs Parakeet Ultra and Whisper Large v3 Turbo. Handy 0.9.5 showed dozens of downloadable choices across Parakeet, Nemotron, Canary, Cohere, Whisper, Voxtral, Qwen3 ASR, FunASR, Granite, Moonshine, SenseVoice, GigaAM, Breeze, and MedASR."
   },
   {
     "q": "Can I switch from Handy to EnviousWispr easily?",
@@ -325,7 +325,7 @@ const faqs = [
           </tr>
           <tr>
             <td>Speech engines</td>
-            <td><span class="table-highlight"><a href="https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3" style="color: var(--accent); text-decoration: underline;">Parakeet TDT v3</a> + Whisper</span> (dual engines, on-device)</td>
+            <td><span class="table-highlight"><a href="https://huggingface.co/FluidInference/parakeet-ultra-coreml" style="color: var(--accent); text-decoration: underline;">Parakeet Ultra</a> + Whisper</span> (dual engines, on-device)</td>
             <td><span class="table-check">Dozens of local choices</span> across Parakeet, Nemotron, Canary, Cohere, Whisper, Voxtral, Qwen3 ASR, FunASR, Granite, Moonshine, SenseVoice, GigaAM, Breeze, and MedASR</td>
           </tr>
           <tr>
@@ -411,7 +411,7 @@ const faqs = [
           <tr>
             <td>Multi-language</td>
             <td>25 European (Parakeet), 99+ via Whisper</td>
-            <td>Broad via Whisper; automatic detection on Parakeet V3</td>
+            <td>Broad via Whisper; automatic detection on Parakeet Ultra</td>
           </tr>
           <tr>
             <td>Platform support</td>
@@ -463,7 +463,7 @@ const faqs = [
       <div class="advantage-card reveal">
         <div class="advantage-icon">⚡</div>
         <div class="advantage-title">0.61s median latency</div>
-        <p class="advantage-desc">Measured in production on Apple Silicon Macs. Parakeet TDT runs on the Neural Engine specifically tuned for fast, accurate dictation, so text appears almost instantly after you stop talking.</p>
+        <p class="advantage-desc">Measured in production on Apple Silicon Macs. Parakeet Ultra runs on the Neural Engine specifically tuned for fast, accurate dictation, so text appears almost instantly after you stop talking.</p>
       </div>
       <div class="advantage-card reveal">
         <div class="advantage-icon">🌍</div>
@@ -541,8 +541,8 @@ const faqs = [
   <div class="container">
     <div class="section-head reveal">
       <div class="section-label-pill amber">Speed</div>
-      <h2 class="section-title">Parakeet TDT: built for speed</h2>
-      <p class="section-sub">EnviousWispr uses NVIDIA Parakeet TDT v3, a multilingual ASR model covering 25 European languages that runs natively on the Apple Neural Engine. No network dependency, no server queues.</p>
+      <h2 class="section-title">Parakeet Ultra: built for speed</h2>
+      <p class="section-sub">EnviousWispr uses Parakeet Ultra, a multilingual ASR model covering 25 European languages that runs natively on the Apple Neural Engine. No network dependency, no server queues.</p>
     </div>
     <div class="speed-stats">
       <div class="speed-card reveal">
@@ -579,7 +579,7 @@ const faqs = [
         <div class="deep-dive-title">A menu of models vs two, tuned for the job</div>
         <div class="deep-dive-body">
           <p>Handy gives you a real menu: Whisper Small through Large with GPU acceleration, Parakeet V2 or V3, and it can auto-discover custom GGUF models you download from Hugging Face. If you run Handy on a Windows machine with a discrete GPU, that flexibility is genuinely useful, and it is one of the clearest reasons to pick Handy over EnviousWispr.</p>
-          <p>EnviousWispr keeps it to two: Parakeet TDT v3 is the default, tuned for speed and English/European accuracy. If you dictate in a language it doesn't cover, switch to Whisper under Dictation Settings → Engine, a one-time switch plus a download of about 886 MB the first time. The choice is manual, not automatic; there just isn't a size ladder to climb.</p>
+          <p>EnviousWispr keeps it to two: Parakeet Ultra is the default, tuned for speed and English/European accuracy. If you dictate in a language it doesn't cover, switch to Whisper under Dictation Settings → Engine, a one-time switch plus a download of about 886 MB the first time. The choice is manual, not automatic; there just isn't a size ladder to climb.</p>
           <div class="deep-dive-detail">
             <strong>Why it matters:</strong> Power users who want to tune the speed-versus-accuracy dial themselves, or who need Windows or Linux support, get more from Handy today. Anyone who wants one setting to change instead of four model sizes to compare gets that from EnviousWispr.
           </div>
@@ -687,7 +687,7 @@ const faqs = [
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">Which speech engines does each app use?</div>
-        <p class="faq-a">EnviousWispr runs NVIDIA Parakeet TDT v3 and Whisper Large v3 Turbo. Handy 0.9.5 showed dozens of downloadable choices across Parakeet, Nemotron, Canary, Cohere, Whisper, Voxtral, Qwen3 ASR, FunASR, Granite, Moonshine, SenseVoice, GigaAM, Breeze, and MedASR.</p>
+        <p class="faq-a">EnviousWispr runs Parakeet Ultra and Whisper Large v3 Turbo. Handy 0.9.5 showed dozens of downloadable choices across Parakeet, Nemotron, Canary, Cohere, Whisper, Voxtral, Qwen3 ASR, FunASR, Granite, Moonshine, SenseVoice, GigaAM, Breeze, and MedASR.</p>
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">Can I switch from Handy to EnviousWispr easily?</div>

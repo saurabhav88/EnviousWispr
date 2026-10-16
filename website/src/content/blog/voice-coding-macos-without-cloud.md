@@ -3,7 +3,7 @@ title: "Voice Coding on macOS Without Cloud APIs"
 description: "A practical look at voice input in a developer’s Mac workflow."
 topic: writing-productivity
 pubDate: 2026-03-16
-updatedDate: 2026-09-26
+updatedDate: 2026-10-16
 tags: ["voice-coding", "privacy", "developer", "macos", "dictation"]
 draft: false
 author: "Saurabh Vaish"

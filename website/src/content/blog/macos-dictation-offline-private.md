@@ -3,7 +3,7 @@ title: "How Offline Dictation Works on Mac and What Stays On Device"
 description: "Understand on-device dictation and the choices that keep your audio on your Mac."
 topic: privacy-offline
 pubDate: 2026-03-11
-updatedDate: 2026-08-22
+updatedDate: 2026-10-16
 tags: ["accessibility", "privacy", "dictation", "offline"]
 draft: false
 author: "Saurabh Vaish"

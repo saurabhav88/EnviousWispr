@@ -3,7 +3,7 @@ title: "How to Take Lecture Notes by Speaking on Mac"
 description: "Use spoken summaries to work through what you have learned."
 topic: writing-productivity
 pubDate: 2026-03-17
-updatedDate: 2026-09-26
+updatedDate: 2026-10-16
 tags: ["students", "lecture-notes", "dictation", "how-to"]
 keywords: ["lecture notes by speaking", "voice notes for students", "dictate lecture notes mac", "speech to text lecture", "take notes without typing", "mac dictation students free", "hands-free note taking"]
 draft: false

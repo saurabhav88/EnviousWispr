@@ -3,7 +3,7 @@ title: "macOS Dictation for Parents Who Type One-Handed"
 description: "Make room for everyday writing when you have only one hand free."
 topic: writing-productivity
 pubDate: 2026-03-15
-updatedDate: 2026-04-04
+updatedDate: 2026-10-16
 tags: ["parents", "dictation", "hands-free", "privacy"]
 draft: false
 author: "Saurabh Vaish"

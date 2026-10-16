@@ -10,7 +10,7 @@ const meta = {
   "breadcrumb": "EnviousWispr vs VoiceInk",
   "ogImage": "/images/og/voiceink.png",
   "datePublished": "2026-04-04T21:41:19Z",
-  "dateModified": "2026-08-21T13:11:11Z"
+  "dateModified": "2026-10-16T00:00:00Z"
 };
 
 const faqs = [
@@ -20,11 +20,11 @@ const faqs = [
   },
   {
     "q": "Both are on-device. Why does the speech engine matter?",
-    "a": "Different engines have different speed and accuracy profiles. EnviousWispr uses Parakeet TDT by default, a CTC-Transducer model optimized for Apple's Neural Engine, which delivers 0.61s median latency for English. VoiceInk also now offers Parakeet (via FluidAudio) and Cohere Transcribe alongside whisper.cpp as selectable engines, so this is no longer a Parakeet-vs-whisper.cpp distinction; EnviousWispr defaults to Parakeet and lets you switch to Whisper in Settings when you need broader language coverage, the same manual-switch shape as VoiceInk's own engine picker."
+    "a": "Different engines have different speed and accuracy profiles. EnviousWispr uses Parakeet Ultra by default, a CTC-Transducer model optimized for Apple's Neural Engine, which delivers 0.61s median latency for English. VoiceInk also now offers Parakeet (via FluidAudio) and Cohere Transcribe alongside whisper.cpp as selectable engines, so this is no longer a Parakeet-vs-whisper.cpp distinction; EnviousWispr defaults to Parakeet and lets you switch to Whisper in Settings when you need broader language coverage, the same manual-switch shape as VoiceInk's own engine picker."
   },
   {
     "q": "Does EnviousWispr support languages other than English?",
-    "a": "Yes. Parakeet TDT covers 25 European languages. For wider coverage, you can switch EnviousWispr to Whisper, which supports 99+ languages. VoiceInk supports 100+ languages through whisper.cpp."
+    "a": "Yes. Parakeet Ultra covers 25 European languages. For wider coverage, you can switch EnviousWispr to Whisper, which supports 99+ languages. VoiceInk supports 100+ languages through whisper.cpp."
   },
   {
     "q": "How does custom vocabulary compare between the two apps?",
@@ -36,7 +36,7 @@ const faqs = [
   },
   {
     "q": "Which app is better for non-English languages?",
-    "a": "VoiceInk supports 100+ languages through whisper.cpp and may have an edge in multilingual breadth. EnviousWispr supports 99+ languages via Whisper. For English specifically, EnviousWispr is faster thanks to Parakeet TDT."
+    "a": "VoiceInk supports 100+ languages through whisper.cpp and may have an edge in multilingual breadth. EnviousWispr supports 99+ languages via Whisper. For English specifically, EnviousWispr is faster thanks to Parakeet Ultra."
   },
   {
     "q": "What Mac do I need?",
@@ -44,7 +44,7 @@ const faqs = [
   },
   {
     "q": "Is there a free alternative to VoiceInk?",
-    "a": "Yes. EnviousWispr is a free, on-device dictation app for Apple Silicon Macs. It uses Parakeet TDT for fast English transcription and includes an AI polish pipeline. No account or payment required."
+    "a": "Yes. EnviousWispr is a free, on-device dictation app for Apple Silicon Macs. It uses Parakeet Ultra for fast English transcription and includes an AI polish pipeline. No account or payment required."
   },
   {
     "q": "Is EnviousWispr open source?",
@@ -378,7 +378,7 @@ const faqs = [
           </tr>
           <tr>
             <td>Speech engines</td>
-            <td><a href="https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3" style="color: var(--accent); text-decoration: underline;">Parakeet TDT</a> + <a href="https://huggingface.co/openai/whisper-large-v3-turbo" style="color: var(--accent); text-decoration: underline;">Whisper</a></td>
+            <td><a href="https://huggingface.co/FluidInference/parakeet-ultra-coreml" style="color: var(--accent); text-decoration: underline;">Parakeet Ultra</a> + <a href="https://huggingface.co/openai/whisper-large-v3-turbo" style="color: var(--accent); text-decoration: underline;">Whisper</a></td>
             <td><a href="https://github.com/ggml-org/whisper.cpp" style="color: var(--accent); text-decoration: underline;">whisper.cpp</a>, Parakeet (FluidAudio), or Cohere Transcribe, user-selectable</td>
           </tr>
           <tr>
@@ -501,7 +501,7 @@ const faqs = [
       <div class="advantage-card reveal">
         <div class="advantage-icon">&#9889;</div>
         <div class="advantage-title">Faster English transcription</div>
-        <p class="advantage-desc">Parakeet TDT covers 25 European languages and runs on Apple's Neural Engine. 0.61s median latency. Whisper handles 99+ languages when you need wider coverage.</p>
+        <p class="advantage-desc">Parakeet Ultra covers 25 European languages and runs on Apple's Neural Engine. 0.61s median latency. Whisper handles 99+ languages when you need wider coverage.</p>
       </div>
       <div class="advantage-card reveal">
         <div class="advantage-icon">&#129504;</div>
@@ -511,7 +511,7 @@ const faqs = [
       <div class="advantage-card reveal">
         <div class="advantage-icon">&#128295;</div>
         <div class="advantage-title">Dual speech engines</div>
-        <p class="advantage-desc">Parakeet TDT for speed on English by default. Switch to Whisper in Settings for multilingual coverage. See <a href="/features/" style="color: var(--accent); text-decoration: underline;">how the pipeline works</a>. VoiceInk offers whisper.cpp, Parakeet, and Cohere Transcribe, also a manual pick between engines in its own settings.</p>
+        <p class="advantage-desc">Parakeet Ultra for speed on English by default. Switch to Whisper in Settings for multilingual coverage. See <a href="/features/" style="color: var(--accent); text-decoration: underline;">how the pipeline works</a>. VoiceInk offers whisper.cpp, Parakeet, and Cohere Transcribe, also a manual pick between engines in its own settings.</p>
       </div>
       <div class="advantage-card reveal">
         <div class="advantage-icon">&#128218;</div>
@@ -547,7 +547,7 @@ const faqs = [
         </div>
         <div class="privacy-step">
           <div class="privacy-step-num">2</div>
-          <div>Audio is processed by Parakeet TDT on the Neural Engine or by Whisper on the GPU. Nothing is uploaded.</div>
+          <div>Audio is processed by Parakeet Ultra on the Neural Engine or by Whisper on the GPU. Nothing is uploaded.</div>
         </div>
         <div class="privacy-step">
           <div class="privacy-step-num">3</div>
@@ -590,13 +590,13 @@ const faqs = [
     <div class="section-head reveal">
       <div class="section-label-pill amber">Speed</div>
       <h2 class="section-title">Tuned default vs pick-your-own</h2>
-      <p class="section-sub">Both apps can run Parakeet on-device now, but the setup differs. EnviousWispr defaults to Parakeet TDT, tuned for Apple's Neural Engine, so you get the speed without configuring anything. VoiceInk offers Parakeet, whisper.cpp, and Cohere Transcribe as options you choose yourself.</p>
+      <p class="section-sub">Both apps can run Parakeet on-device now, but the setup differs. EnviousWispr defaults to Parakeet Ultra, tuned for Apple's Neural Engine, so you get the speed without configuring anything. VoiceInk offers Parakeet, whisper.cpp, and Cohere Transcribe as options you choose yourself.</p>
     </div>
     <div class="speed-stats">
       <div class="speed-card reveal">
         <div class="speed-value">0.61s</div>
         <div class="speed-label">Median transcription</div>
-        <div class="speed-detail">Parakeet TDT on Apple Silicon</div>
+        <div class="speed-detail">Parakeet Ultra on Apple Silicon</div>
       </div>
       <div class="speed-card reveal">
         <div class="speed-value">1.65s</div>
@@ -682,7 +682,7 @@ const faqs = [
       <div class="advantage-card reveal">
         <div class="advantage-icon">&#127758;</div>
         <div class="advantage-title">Broader multilingual support</div>
-        <p class="advantage-desc">VoiceInk supports 100+ languages through whisper.cpp and has been tuned for multilingual workflows. EnviousWispr supports 99+ via Whisper, and Parakeet TDT (the fast engine) covers 25 European languages. If you dictate heavily in non-European languages, VoiceInk may be more polished for that use case.</p>
+        <p class="advantage-desc">VoiceInk supports 100+ languages through whisper.cpp and has been tuned for multilingual workflows. EnviousWispr supports 99+ via Whisper, and Parakeet Ultra (the fast engine) covers 25 European languages. If you dictate heavily in non-European languages, VoiceInk may be more polished for that use case.</p>
       </div>
       <div class="advantage-card reveal">
         <div class="advantage-icon">&#9201;</div>
@@ -708,11 +708,11 @@ const faqs = [
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">Both are on-device. Why does the speech engine matter?</div>
-        <p class="faq-a">Different engines have different speed and accuracy profiles. EnviousWispr uses Parakeet TDT by default, a CTC-Transducer model optimized for Apple's Neural Engine, which delivers 0.61s median latency for English. VoiceInk also now offers Parakeet (via FluidAudio) and Cohere Transcribe alongside whisper.cpp as selectable engines, so this is no longer a Parakeet-vs-whisper.cpp distinction; EnviousWispr defaults to Parakeet and lets you switch to Whisper in Settings when you need broader language coverage, the same manual-switch shape as VoiceInk's own engine picker.</p>
+        <p class="faq-a">Different engines have different speed and accuracy profiles. EnviousWispr uses Parakeet Ultra by default, a CTC-Transducer model optimized for Apple's Neural Engine, which delivers 0.61s median latency for English. VoiceInk also now offers Parakeet (via FluidAudio) and Cohere Transcribe alongside whisper.cpp as selectable engines, so this is no longer a Parakeet-vs-whisper.cpp distinction; EnviousWispr defaults to Parakeet and lets you switch to Whisper in Settings when you need broader language coverage, the same manual-switch shape as VoiceInk's own engine picker.</p>
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">Does EnviousWispr support languages other than English?</div>
-        <p class="faq-a">Yes. Parakeet TDT covers 25 European languages. For wider coverage, you can switch EnviousWispr to Whisper, which supports 99+ languages. VoiceInk supports 100+ languages through whisper.cpp.</p>
+        <p class="faq-a">Yes. Parakeet Ultra covers 25 European languages. For wider coverage, you can switch EnviousWispr to Whisper, which supports 99+ languages. VoiceInk supports 100+ languages through whisper.cpp.</p>
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">How does custom vocabulary compare between the two apps?</div>
@@ -724,7 +724,7 @@ const faqs = [
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">Which app is better for non-English languages?</div>
-        <p class="faq-a">VoiceInk supports 100+ languages through whisper.cpp and has been optimized for multilingual use. EnviousWispr supports 99+ via Whisper, and its fastest engine (Parakeet TDT) covers 25 European languages. For languages outside those, VoiceInk may have an edge in breadth and tuning.</p>
+        <p class="faq-a">VoiceInk supports 100+ languages through whisper.cpp and has been optimized for multilingual use. EnviousWispr supports 99+ via Whisper, and its fastest engine (Parakeet Ultra) covers 25 European languages. For languages outside those, VoiceInk may have an edge in breadth and tuning.</p>
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">Does VoiceInk have AI text enhancement?</div>
@@ -740,7 +740,7 @@ const faqs = [
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">Is there a free alternative to VoiceInk?</div>
-        <p class="faq-a">Yes. EnviousWispr is a free, on-device dictation app for Apple Silicon Macs. It uses Parakeet TDT for fast English transcription and includes an AI polish pipeline with 7 providers. No account or payment required.</p>
+        <p class="faq-a">Yes. EnviousWispr is a free, on-device dictation app for Apple Silicon Macs. It uses Parakeet Ultra for fast English transcription and includes an AI polish pipeline with 7 providers. No account or payment required.</p>
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">Is EnviousWispr open source?</div>

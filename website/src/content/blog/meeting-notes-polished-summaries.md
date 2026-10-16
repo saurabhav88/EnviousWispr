@@ -3,7 +3,7 @@ title: "Dictate Meeting Notes to Polished Summaries on Mac"
 description: "Turn your thoughts after a meeting into a useful written summary."
 topic: writing-productivity
 pubDate: 2026-03-13
-updatedDate: 2026-04-04
+updatedDate: 2026-10-16
 tags: ["meetings", "dictation", "productivity", "writing-styles"]
 draft: false
 author: "Saurabh Vaish"
