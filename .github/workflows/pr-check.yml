@@ -230,8 +230,13 @@ jobs:
       # one timing-sensitive test failed under the load. The overlap went; the
       # compile then ran after this step until #3729 PR-B moved it to the local
       # full run.
+      # A hung test used to hold this step until the 60-minute job limit (#3808: 34 silent
+      # minutes). Green runs took 383-693 s (57 PR runs up to 2026-10-16), so 20 minutes is
+      # about 1.7 times the slowest and fails a hang 40 minutes sooner. The failure report
+      # below still runs and prints the last started test.
       - name: Run logic tests (release, Xcode)
         if: steps.changes.outputs.needs_build == 'true'
+        timeout-minutes: 20
         run: |
           set -euo pipefail
           . "$GITHUB_WORKSPACE/scripts/lib/xcode-test-run.sh"

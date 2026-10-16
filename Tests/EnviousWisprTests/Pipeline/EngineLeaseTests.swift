@@ -8,18 +8,16 @@ import Testing
 /// one-slot polish server, and the dictation silently comes back unpolished.** That is the whole
 /// reason the claim exists, so this suite is product coverage rather than a drift guard.
 ///
-/// **It is raced, not driven single-threaded, and that is not optional here.** A single-threaded test
-/// passes identically against an atomic claim and against a `if free { take }` that suspends in the
-/// middle, because one caller can never open the window between the check and the write
+/// **It is raced, not driven single-threaded.** A single-threaded test passes identically against an
+/// atomic claim and against a `if free { take }` that suspends in the middle, because one caller can
+/// never open the window between the check and the write
 /// (`validation-discipline.md` RULE: a-single-threaded-test-cannot-distinguish-atomic-from-check-then-act).
-/// `RacyLease` below is the two-way control: it is the broken shape — the same claim with one `await`
-/// added between the read and the write — and the same race asserts that it really does hand the
-/// resource to more than one caller. Without that control a green run here would be equally consistent
-/// with the race never having happened.
 ///
-/// **Being on an isolated executor is not by itself the protection**, which is what the control shows:
-/// it is isolated too, and it still hands the resource to several callers. What protects the claim is
-/// that `admit` contains no suspension point at all.
+/// **What protects the claim is that `admit` contains no suspension point at all**; being on an
+/// isolated executor is not by itself the protection, because an actor releases isolation at every
+/// `await`. The positive control that raced a deliberately broken copy (one `await` between the read
+/// and the write) was removed in #3784: whether its contenders interleave depends on the runner's
+/// scheduling, so it failed at random on hosted CI while finding no real defect.
 @Suite(.tags(.productOutcome))
 @MainActor
 struct EngineLeaseTests {
@@ -33,25 +31,6 @@ struct EngineLeaseTests {
   private func token(from admission: EngineLease.Admission) -> EngineLease.Token? {
     guard case .granted(let token) = admission else { return nil }
     return token
-  }
-
-  // MARK: - The broken shape, kept as a control
-
-  /// `EngineLease` with one suspension point added between the check and the write — the classic
-  /// check-then-act hole that isolation does NOT close, because an actor and the main actor both
-  /// release isolation at every `await`. Written as an actor here only because a non-Sendable
-  /// `@MainActor` class cannot be handed to a task group; the defect being demonstrated is the
-  /// `await`, not which executor it is on. Nothing in production uses this; it exists so the race
-  /// below can be shown to detect the defect it is written to catch.
-  private actor RacyLease {
-    private var held = false
-
-    func acquire() async -> Bool {
-      guard !held else { return false }
-      await Task.yield()
-      held = true
-      return true
-    }
   }
 
   // MARK: - The race
@@ -74,27 +53,6 @@ struct EngineLeaseTests {
     #expect(tokens.count == Self.contenders)
     #expect(tokens.compactMap { $0 }.count == 1)
     #expect(lease.isBusy)
-  }
-
-  @Test("the race harness can see a check-then-act hole")
-  func theRaceDetectsTheBrokenShape() async {
-    let racy = RacyLease()
-
-    let winners = await withTaskGroup(of: Bool.self) { group in
-      for _ in 0..<Self.contenders {
-        group.addTask { await racy.acquire() }
-      }
-      var count = 0
-      for await won in group where won { count += 1 }
-      return count
-    }
-
-    #expect(
-      winners > 1,
-      """
-      The control did not race: \(winners) winner(s) out of \(Self.contenders). \
-      A control that cannot expose the broken shape makes the sibling test's green meaningless.
-      """)
   }
 
   // MARK: - Token identity

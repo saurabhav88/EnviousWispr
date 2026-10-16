@@ -74,10 +74,8 @@ struct CustomWordsManagerLockingTests {
     // request that doesn't carry LOCK_NB is refused WITHOUT ever touching the
     // real (and, here, genuinely contended) syscall, so a regression to
     // blocking mode fails fast on the flags assertion rather than hanging.
-    var producedFD: Int32?
     var observedFlags: Int32?
     mgr.lockSyscall = { fd, flags in
-      producedFD = fd
       observedFlags = flags
       guard flags & LOCK_NB != 0 else {
         errno = EINVAL
@@ -99,15 +97,6 @@ struct CustomWordsManagerLockingTests {
     // Nothing changed: neither disk nor the caller's in-memory list.
     #expect(try Data(contentsOf: url) == bytesBefore)
     #expect(words.contains { $0.canonical == "Terraform" } == false)
-
-    // The production descriptor was closed on the contention path too, not
-    // just the injected-failure path.
-    let producedFDValue = try #require(producedFD)
-    errno = 0
-    let producedFDStatus = fcntl(producedFDValue, F_GETFD)
-    let producedFDErrno = errno
-    #expect(producedFDStatus == -1)
-    #expect(producedFDErrno == EBADF)
 
     // Release the raw lock; the identical mutation now succeeds against the
     // fresh disk baseline.
@@ -149,17 +138,11 @@ struct CustomWordsManagerLockingTests {
     #expect(try Data(contentsOf: url) == bytesBefore)
     #expect(words.contains { $0.canonical == "Terraform" } == false)
 
-    // The real descriptor handed to the seam was still closed by
-    // `withExclusiveFileLock`'s own `defer` — an injected acquisition
-    // failure must not leak the fd. `fcntl(F_GETFD)` on a closed descriptor
-    // fails with EBADF specifically, pinning down "closed" as the cause
-    // rather than some other fcntl failure.
+    // The seam received a real descriptor. Whether it was closed afterwards is
+    // not asserted: a closed descriptor's number is reused at once by any test
+    // running in parallel, so `fcntl(F_GETFD)` on it failed at random in CI
+    // (#3817).
     #expect(seamFD >= 0)
-    errno = 0
-    let seamFDStatus = fcntl(seamFD, F_GETFD)
-    let seamFDErrno = errno
-    #expect(seamFDStatus == -1)
-    #expect(seamFDErrno == EBADF)
   }
 
   /// The debounced usage-count writer is the one AUTOMATIC (non-user-triggered)
@@ -304,11 +287,6 @@ struct CustomWordsManagerLockingTests {
     #expect(Self.backupFiles(in: dir) == backupsBefore)
 
     #expect(seamFD >= 0)
-    errno = 0
-    let seamFDStatus = fcntl(seamFD, F_GETFD)
-    let seamFDErrno = errno
-    #expect(seamFDStatus == -1)
-    #expect(seamFDErrno == EBADF)
   }
 
   /// A fresh Phase 3 review finding (#1690): the lock alone does not stop a
@@ -709,11 +687,6 @@ struct CustomWordsManagerLockingTests {
     #expect(observedFlags == LOCK_EX)
 
     #expect(seamFD >= 0)
-    errno = 0
-    let seamFDStatus = fcntl(seamFD, F_GETFD)
-    let seamFDErrno = errno
-    #expect(seamFDStatus == -1)
-    #expect(seamFDErrno == EBADF)
 
     #expect(try Data(contentsOf: url) == bytesBefore)
     let sidecars =
