@@ -61,10 +61,14 @@ enum WhisperSilentTailFilter {
     let offsetMs = Double(segmentOffsetSamples) / sampleRate * 1000
     let endMs = Double(realEndSample) / sampleRate * 1000
 
+    // Windows that end at or before the real end; one crossing it would count audio past the
+    // real end (padding or excluded capture) as voice.
+    let realWindows = min(rms.count, realEndSample / windowSamples)
+
     /// Milliseconds of windows overlapping `[start, end)` whose RMS is strictly above threshold.
     func voicedMs(_ start: Double, _ end: Double) -> Double {
       let lower = max(0, Int(max(0, start) / 1000 / (windowMs / 1000)))
-      let upper = min(rms.count, Int((max(0, end) / 1000 / (windowMs / 1000)).rounded(.up)))
+      let upper = min(realWindows, Int((max(0, end) / 1000 / (windowMs / 1000)).rounded(.up)))
       guard lower < upper else { return 0 }
       return Double(rms[lower..<upper].filter { $0 > threshold }.count) * windowMs
     }

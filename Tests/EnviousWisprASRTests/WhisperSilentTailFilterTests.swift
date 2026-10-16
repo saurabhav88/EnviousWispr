@@ -240,6 +240,21 @@ struct WhisperSilentTailFilterTests {
     #expect(dropped == 1)
   }
 
+  @Test("a window crossing an unaligned real end never counts as voice")
+  func windowCrossingRealEndIgnored() {
+    // Real end at 4010 ms: room tone to 3920, voice 3920-4000 (two windows), room tone to 4010,
+    // then loud audio past the real end. The 4000-4040 window crosses the real end; counting it
+    // would reach 120 ms and keep the invented sentence.
+    let samples = Self.audio([
+      (1000, Self.tone), (1500, Self.voice), (1420, Self.tone), (80, Self.voice), (10, Self.tone),
+      (990, Self.voice),
+    ])
+    let input = Self.run([Self.spoken, Self.segment(4000, 5000, "Thank you.")])
+    let (result, dropped) = Self.filter(input, samples, realEnd: 4010 * 16)
+    #expect(dropped == 1)
+    #expect(result.text == "Let's ship on Friday.")
+  }
+
   @Test("a trailing partial window cannot supply the third voiced window")
   func partialWindowIgnored() {
     // Two complete voiced windows (80 ms) end the complete-window audio; 300 loud samples after
