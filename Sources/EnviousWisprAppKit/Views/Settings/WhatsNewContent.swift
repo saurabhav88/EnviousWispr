@@ -90,7 +90,7 @@ enum WhatsNewContent {
       icon: "keyboard",
       title: "Introducing \"Hold plus Space\"",
       description:
-        "In Push to Talk, hold your record key and press Space to go hands-free.",
+        "In Push to Talk with a modifier key such as Right Option, hold it and press Space to go hands-free.",
       version: "2.5.4"
     ),
     Entry(

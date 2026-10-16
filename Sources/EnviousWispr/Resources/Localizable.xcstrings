@@ -23546,13 +23546,13 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "In Push to Talk, hold your record key and press Space to go hands-free."
+            "value" : "In Push to Talk with a modifier key such as Right Option, hold it and press Space to go hands-free."
           }
         },
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Halte im Modus „Zum Sprechen drücken“ deine Aufnahmetaste gedrückt und drücke die Leertaste, um freihändig zu diktieren."
+            "value" : "Halte im Modus „Zum Sprechen drücken“ deine Sondertaste, etwa die rechte Wahltaste, gedrückt und drücke die Leertaste, um freihändig zu diktieren."
           }
         }
       }
