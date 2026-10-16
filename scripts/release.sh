@@ -23,6 +23,8 @@
 #       Runs the pure helpers and `start` against a throwaway origin. No network.
 set -euo pipefail
 
+# shellcheck disable=SC2034 # used inside the self-test's eval strings
+SELF="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/$(basename "${BASH_SOURCE[0]}")"
 SKELETON_MARK='<!-- release-notes: skeleton, replace before prepare -->'
 PROBE_MARK='# release-probes: skeleton, replace before prepare'
 
@@ -97,7 +99,7 @@ $PROBE_MARK
 EOF
 }
 
-cmd_start() {
+cmd_start() (
   local version="${1:-}" remote="${RELEASE_REMOTE:-origin}"
   valid_version "$version" || die "usage: scripts/release.sh start MAJOR.MINOR.PATCH (got '${version}')"
   local common root parent wt branch="release/v$version" tag="v$version"
@@ -105,6 +107,8 @@ cmd_start() {
   root="$(dirname "$common")"
   parent="$(dirname "$root")"
   wt="$parent/$(basename "$root")-release-v$version"
+  [ -z "$(git -C "$root" status --porcelain --untracked-files=no)" ] \
+    || die "main checkout has uncommitted changes: $root"
   git -C "$root" fetch --quiet --tags "$remote" || die "could not fetch $remote"
   local last
   last="$(git -C "$root" describe --tags --abbrev=0 --match 'v[0-9]*' "$remote/main" 2>/dev/null || true)"
@@ -118,6 +122,8 @@ cmd_start() {
   fi
   [ -e "$wt" ] && die "folder already exists: $wt"
   git -C "$root" worktree add --quiet -b "$branch" "$wt" "$remote/main"
+  # A failure before the skeletons exist removes the half-made release, so a retry works.
+  trap 'rc=$?; if [ "$rc" -ne 0 ]; then git -C "$root" worktree remove --force "$wt" >/dev/null 2>&1; git -C "$root" branch -D "$branch" >/dev/null 2>&1; fi; exit "$rc"' EXIT
   local plist="$wt/Sources/EnviousWispr/Resources/Info.plist"
   local constants="$wt/Sources/EnviousWisprCore/WhatsNewConstants.swift"
   /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $version" "$plist"
@@ -129,6 +135,7 @@ cmd_start() {
     sed -i '' "s/currentContentVersion = \"$old\"/currentContentVersion = \"$version\"/" "$constants"
   fi
   write_skeletons "$wt/.github/release-notes" "$version"
+  trap - EXIT
   echo "==> Release worktree: $wt (branch $branch from $remote/main)"
   echo "==> Set Info.plist CFBundleShortVersionString and CFBundleVersion to $version; currentContentVersion $old -> $version"
   echo "==> Skeletons: .github/release-notes/v$version.md and v$version.probes"
@@ -151,11 +158,10 @@ cmd_start() {
   echo "==> Commits since ${last:-the first commit} (advisory: a filtered subject can still be user-visible):"
   git -C "$root" log --format='%h %s' "$range" \
     | grep -v -E '^[0-9a-f]+ (ci|test|tests|docs|build\(deps\)|chore)(\(|:)' || true
-  echo "==> Filtered out as ci/test/docs/deps/chore (skim these too):"
-  git -C "$root" log --format='%h %s' "$range" \
-    | grep -E '^[0-9a-f]+ (ci|test|tests|docs|build\(deps\)|chore)(\(|:)' | wc -l | tr -d ' '
+  echo "==> Full commit list (including the filtered subjects above; skim these too):"
+  git -C "$root" log --format='%h %s' "$range"
   echo "==> Next: draft both notes versions, have Codex verify every claim, then the founder edits."
-}
+)
 
 cmd_prepare() {
   local top branch version
@@ -184,18 +190,28 @@ cmd_prepare() {
   digest="$(python3 scripts/lib/l10n-build-receipt.py input-digest --repo "$top" --configuration Dev \
     | python3 -c 'import json, sys; print(json.load(sys.stdin)["input_digest"])')"
   bash scripts/lib/l10n-catalog-sync.sh --update --configuration Dev \
-    --derived-data "$top/.derivedData/Dev" --expect-inputs "$digest" || true
+    --derived-data "$top/.derivedData/Dev" --expect-inputs "$digest"
   echo "==> [4/7] German"
-  if ! bash scripts/lib/l10n-catalog-sync.sh --check --configuration Dev \
-      --derived-data "$top/.derivedData/Dev" --expect-inputs "$digest"; then
-    echo "release: German is missing or unreviewed (list above). Draft it, have the GPT + Gemini council" >&2
-    echo "         review it, mark it translated, then run scripts/release.sh prepare again." >&2
-    exit 4
-  fi
+  local rc=0
+  bash scripts/lib/l10n-catalog-sync.sh --check --configuration Dev \
+    --derived-data "$top/.derivedData/Dev" --expect-inputs "$digest" || rc=$?
+  case "$rc" in
+    0) ;;
+    1)
+      echo "release: German is missing or unreviewed (list above). Draft it, have the GPT + Gemini council" >&2
+      echo "         review it, mark it translated, then run scripts/release.sh prepare again." >&2
+      exit 4 ;;
+    *) die "the catalog check could not run (exit $rc, reason above)" ;;
+  esac
   echo "==> [5/7] Settings map"
   scripts/settings-map/export.sh
   echo "==> [6/7] Help catalog"
-  node website/scripts/generate-help-article-catalog.mjs
+  if git diff --quiet origin/main -- website/src/content/help && git diff --cached --quiet -- website/src/content/help \
+     && [ -z "$(git ls-files --others --exclude-standard -- website/src/content/help)" ]; then
+    echo "help pages unchanged; nothing to regenerate"
+  else
+    (cd website && npm ci --no-audit --no-fund && node scripts/generate-help-article-catalog.mjs)
+  fi
   echo "==> [7/7] README"
   readme_insert README.md "$version" build/release-notes-app.md
   echo "==> Changed files:"
@@ -204,6 +220,7 @@ cmd_prepare() {
   echo "    run scripts/xcode-test.sh once, one local Codex review, then open the release PR."
 }
 
+# shellcheck disable=SC2016 # the self-test passes literal shell text to eval
 cmd_self_test() {
   local tmp failures=0
   tmp="$(mktemp -d "${TMPDIR:-/tmp}/ew-release-selftest.XXXXXX")"
@@ -254,17 +271,25 @@ PLIST
   git -C "$seed" -c user.name=t -c user.email=t@t commit -q --allow-empty -m "fix(app): something"
   git -C "$seed" push -q "$origin" main --tags
   mkdir -p "$tmp/w" && git clone -q "$origin" "$clone"
-  check "start refuses an older version" '! (cd "$clone" && RELEASE_OFFLINE=1 cmd_start 0.9.0) >/dev/null 2>&1'
-  check "start refuses the same version" '! (cd "$clone" && RELEASE_OFFLINE=1 cmd_start 1.0.0) >/dev/null 2>&1'
-  check "start creates the release" '(cd "$clone" && RELEASE_OFFLINE=1 cmd_start 1.0.1) >"$tmp/start.out" 2>&1'
+  check "start refuses an older version" '! (cd "$clone" && RELEASE_OFFLINE=1 bash "$SELF" start 0.9.0) >/dev/null 2>&1'
+  check "start refuses the same version" '! (cd "$clone" && RELEASE_OFFLINE=1 bash "$SELF" start 1.0.0) >/dev/null 2>&1'
+  check "start creates the release" '(cd "$clone" && RELEASE_OFFLINE=1 bash "$SELF" start 1.0.1) >"$tmp/start.out" 2>&1'
   local wt="$tmp/w/EnviousWispr-release-v1.0.1"
   check "worktree on its branch" '[ "$(git -C "$wt" branch --show-current)" = release/v1.0.1 ]'
   check "both plist versions set" '[ "$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$wt/Sources/EnviousWispr/Resources/Info.plist")/$(/usr/libexec/PlistBuddy -c "Print :CFBundleVersion" "$wt/Sources/EnviousWispr/Resources/Info.plist")" = 1.0.1/1.0.1 ]'
   check "content version set" 'grep -q "currentContentVersion = \"1.0.1\"" "$wt/Sources/EnviousWisprCore/WhatsNewConstants.swift"'
   check "skeletons written" '[ -s "$wt/.github/release-notes/v1.0.1.md" ] && [ -s "$wt/.github/release-notes/v1.0.1.probes" ]'
   check "commit list printed" 'grep -q "fix(app): something" "$tmp/start.out"'
-  check "start refuses an existing branch" '! (cd "$clone" && RELEASE_OFFLINE=1 cmd_start 1.0.1) >/dev/null 2>&1'
+  check "start refuses an existing branch" '! (cd "$clone" && RELEASE_OFFLINE=1 bash "$SELF" start 1.0.1) >/dev/null 2>&1'
   git -C "$clone" worktree remove --force "$wt" >/dev/null 2>&1 || true
+  printf 'dirty\n' >> "$clone/Sources/EnviousWisprCore/WhatsNewConstants.swift"
+  check "start refuses a dirty main checkout" '! (cd "$clone" && RELEASE_OFFLINE=1 bash "$SELF" start 1.0.2) >/dev/null 2>&1'
+  git -C "$clone" checkout -q -- Sources
+  # A failure after the worktree exists must remove it, so a retry works.
+  printf 'enum W {}\n' > "$seed/Sources/EnviousWisprCore/WhatsNewConstants.swift"
+  git -C "$seed" -c user.name=t -c user.email=t@t commit -q -am "chore: drop the constant"
+  git -C "$seed" push -q "$origin" main
+  check "a failed start leaves no worktree or branch" '! (cd "$clone" && RELEASE_OFFLINE=1 bash "$SELF" start 1.0.3) >/dev/null 2>&1 && [ ! -e "$tmp/w/EnviousWispr-release-v1.0.3" ] && ! git -C "$clone" rev-parse -q --verify refs/heads/release/v1.0.3 >/dev/null'
   echo "release.sh self-test: failures=$failures"
   [ "$failures" -eq 0 ]
 }
