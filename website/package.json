@@ -17,10 +17,10 @@
     "test:catalog": "node --test scripts/help-catalog.test.mjs scripts/help-media-contract.test.mjs"
   },
   "overrides": {
-    "devalue": ">=5.8.1",
+    "devalue": "^5.9.3",
     "undici": ">=7.24.0",
     "esbuild": ">=0.28.1",
-    "sharp": ">=0.35.0",
+    "sharp": "^0.35.5",
     "nanoid": "^3.3.17"
   },
   "dependencies": {
