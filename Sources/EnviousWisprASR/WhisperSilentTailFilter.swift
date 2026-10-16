@@ -1,3 +1,4 @@
+import Accelerate
 import EnviousWisprTranscribeCpp
 import Foundation
 
@@ -36,15 +37,24 @@ enum WhisperSilentTailFilter {
     else { return (run, 0) }
 
     // Complete windows only; a final partial window is ignored.
-    let rms: [Double] = (0..<(statsSamples.count / windowSamples)).map { window in
-      var sum = 0.0
-      for index in (window * windowSamples)..<((window + 1) * windowSamples) {
-        let value = Double(statsSamples[index])
-        sum += value * value
+    // Widen each window to Double before Accelerate computes its mean square.
+    let windowCount = statsSamples.count / windowSamples
+    var widened = [Double](repeating: 0, count: windowSamples)
+    var rms = [Double](repeating: 0, count: windowCount)
+    statsSamples.withUnsafeBufferPointer { source in
+      widened.withUnsafeMutableBufferPointer { scratch in
+        for window in 0..<windowCount {
+          vDSP_vspdp(
+            source.baseAddress! + window * windowSamples, 1, scratch.baseAddress!, 1,
+            vDSP_Length(windowSamples))
+          var meanSquare = 0.0
+          vDSP_measqvD(scratch.baseAddress!, 1, &meanSquare, vDSP_Length(windowSamples))
+          rms[window] = meanSquare.squareRoot()
+        }
       }
-      return (sum / Double(windowSamples)).squareRoot()
     }
-    let sorted = rms.isEmpty ? [0.0] : rms.sorted()
+    var sorted = rms.isEmpty ? [0.0] : rms
+    vDSP_vsortD(&sorted, vDSP_Length(sorted.count), 1)  // ascending
     let p05 = sorted[sorted.count / 20]
     let p90 = sorted[Int(Double(sorted.count) * 0.9)]
     let threshold = max(2 * p05, 0.12 * p90, absoluteFloor)
