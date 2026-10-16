@@ -154,6 +154,17 @@ public actor ModelDeliveryController {
   ) {
     assemblyWriteForTesting = write
   }
+  /// #3750 test seam: replaces the inter-attempt backoff sleep for every attempt this
+  /// controller starts, so a test that fails against unreachable sources does not wait out
+  /// production backoff (about 6 s per test). Internal; nothing in production sets it.
+  private(set) var backoffSleepForTesting:
+    (@Sendable (_ seconds: TimeInterval) async throws -> Void)?
+
+  func setBackoffSleepForTesting(
+    _ sleep: (@Sendable (_ seconds: TimeInterval) async throws -> Void)?
+  ) {
+    backoffSleepForTesting = sleep
+  }
   private var stateObservers: [@Sendable (ModelIdentity, DeliveryState) -> Void] = []
   private var eventObservers: [@Sendable (ModelIdentity, DeliveryEvent) -> Void] = []
   /// Events emitted before the first event observer attaches (see
@@ -1056,6 +1067,7 @@ public actor ModelDeliveryController {
           generation: generation)
       })
     if let assemblyWriteForTesting { fetchTask.assemblyWrite = assemblyWriteForTesting }
+    if let backoffSleepForTesting { fetchTask.backoffSleep = backoffSleepForTesting }
 
     do {
       let outcome = try await fetchTask.run()

@@ -243,6 +243,9 @@ import Testing
     #expect(!defaults.bool(forKey: "modelDelivery.parakeet.forceRevalidate"))
   }
 
+  /// #3750: tests that fail against unreachable sources retry without production backoff.
+  private static let noBackoff: @Sendable (TimeInterval) async throws -> Void = { _ in }
+
   @Test func damagedComponentTriggersRepairPipeline() async throws {
     // Admitted cache → user damages a file → next ensure revalidates (size
     // stamp mismatch), deletes the component, and needs a fetch. Sources are
@@ -252,6 +255,7 @@ import Testing
     try seedValidCache(registration)
     let controller = ModelDeliveryController(
       defaults: testDefaults(), availableDiskBytes: { _ in .max })
+    await controller.setBackoffSleepForTesting(Self.noBackoff)
     #expect(await controller.ensureModelAvailable(registration) == .admitted)
 
     let vocab = registration.installDirectory.appendingPathComponent("vocab.json")
@@ -314,6 +318,7 @@ import Testing
     try Data("{\"a\":9}".utf8).write(to: vocab)
     let controller = ModelDeliveryController(
       defaults: testDefaults(), availableDiskBytes: { _ in .max })
+    await controller.setBackoffSleepForTesting(Self.noBackoff)
     let log = EventLog()
     await controller.addEventObserver { _, event in log.append(event) }
 
@@ -369,6 +374,7 @@ import Testing
     // room for one, not both.
     let controller = ModelDeliveryController(
       defaults: testDefaults(), availableDiskBytes: { _ in 50 })
+    await controller.setBackoffSleepForTesting(Self.noBackoff)
     let log = EventLog()
     await controller.addEventObserver { _, event in log.append(event) }
 
