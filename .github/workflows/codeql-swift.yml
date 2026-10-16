@@ -1,0 +1,91 @@
+name: CodeQL Swift
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'Sources/**'
+      - 'Package.swift'
+      - 'Package.resolved'
+      - 'Project.swift'
+      - 'Tuist.swift'
+      - 'Workspace.swift'
+      - 'Tuist/**'
+      - 'scripts/ci/**'
+      - '.github/actions/**'
+      - '**/*.xcconfig'
+      - '.github/workflows/codeql*.yml'
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'Sources/**'
+      - 'Package.swift'
+      - 'Package.resolved'
+      - 'Project.swift'
+      - 'Tuist.swift'
+      - 'Workspace.swift'
+      - 'Tuist/**'
+      - 'scripts/ci/**'
+      - '.github/actions/**'
+      - '**/*.xcconfig'
+      - '.github/workflows/codeql*.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: codeql-swift-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  analyze:
+    name: Analyze Swift app
+    runs-on: xcode-27
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+      - name: Xcode CI setup
+        uses: ./.github/actions/xcode-ci-setup
+        with:
+          derived-data-path: .derivedData/CI
+          configuration: release
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@6f2ac81f5cd81fe351a197ba0b00d91d03cd2aee # v4.39.0
+        with:
+          languages: swift
+          build-mode: manual
+      - name: Verify toolchain after CodeQL initialization
+        run: |
+          xcodebuild -version
+          scripts/ci/ensure-metal-toolchain.sh
+          xcrun --find metal
+      # Autobuild selected AliasRunner instead of the app. Execute every app
+      # compile under CodeQL; restored compiler results cannot provide extraction.
+      - name: Build app under CodeQL
+        run: |
+          unset XCODE_XCCONFIG_FILE
+          build_args=(
+            -workspace EnviousWispr.xcworkspace
+            -scheme EnviousWispr
+            -configuration Release
+            -derivedDataPath .derivedData/CI
+            -destination 'generic/platform=macOS'
+            -onlyUsePackageVersionsFromResolvedFile
+            ARCHS=arm64 ONLY_ACTIVE_ARCH=YES VALID_ARCHS=arm64
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO
+            COMPILATION_CACHE_ENABLE_CACHING=NO
+            SWIFT_ENABLE_COMPILE_CACHE=NO CLANG_ENABLE_COMPILE_CACHE=NO
+            SWIFT_USE_INTEGRATED_DRIVER=NO
+          )
+          xcodebuild -showBuildSettings "${build_args[@]}" > "$RUNNER_TEMP/codeql-settings.txt"
+          grep -E 'COMPILATION_CACHE_ENABLE_CACHING =|SWIFT_ENABLE_COMPILE_CACHE =|CLANG_ENABLE_COMPILE_CACHE =|SWIFT_USE_INTEGRATED_DRIVER =' "$RUNNER_TEMP/codeql-settings.txt"
+          xcodebuild clean build "${build_args[@]}"
+      - name: Analyze
+        uses: github/codeql-action/analyze@6f2ac81f5cd81fe351a197ba0b00d91d03cd2aee # v4.39.0
+        with:
+          category: /language:swift
