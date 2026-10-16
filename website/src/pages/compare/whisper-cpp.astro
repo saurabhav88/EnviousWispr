@@ -24,7 +24,7 @@ const faqs = [
   },
   {
     "q": "Does EnviousWispr use whisper.cpp internally?",
-    "a": "No. EnviousWispr runs Parakeet Ultra (NVIDIA's transducer-based model) on the Neural Engine, and Whisper Large v3 Turbo through transcribe.cpp, an open-source engine built on ggml, the same tensor library whisper.cpp uses. It does not include whisper.cpp itself."
+    "a": "No. EnviousWispr runs Parakeet Ultra (built on NVIDIA's Parakeet transducer model) on the Neural Engine, and Whisper Large v3 Turbo through transcribe.cpp, an open-source engine built on ggml, the same tensor library whisper.cpp uses. It does not include whisper.cpp itself."
   },
   {
     "q": "Is EnviousWispr faster than whisper.cpp?",
@@ -614,7 +614,7 @@ const faqs = [
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">Does EnviousWispr use whisper.cpp internally?</div>
-        <p class="faq-a">No. EnviousWispr runs <a href="https://huggingface.co/FluidInference/parakeet-ultra-coreml" style="color: var(--accent); text-decoration: underline;">Parakeet Ultra</a> (NVIDIA's transducer-based model) on the Neural Engine, and <a href="https://huggingface.co/openai/whisper-large-v3-turbo" style="color: var(--accent); text-decoration: underline;">Whisper</a> Large v3 Turbo through <a href="https://github.com/handy-computer/transcribe.cpp" style="color: var(--accent); text-decoration: underline;">transcribe.cpp</a>, an open-source engine built on ggml, the same tensor library whisper.cpp uses. It does not include whisper.cpp itself.</p>
+        <p class="faq-a">No. EnviousWispr runs <a href="https://huggingface.co/FluidInference/parakeet-ultra-coreml" style="color: var(--accent); text-decoration: underline;">Parakeet Ultra</a> (built on NVIDIA's Parakeet transducer model) on the Neural Engine, and <a href="https://huggingface.co/openai/whisper-large-v3-turbo" style="color: var(--accent); text-decoration: underline;">Whisper</a> Large v3 Turbo through <a href="https://github.com/handy-computer/transcribe.cpp" style="color: var(--accent); text-decoration: underline;">transcribe.cpp</a>, an open-source engine built on ggml, the same tensor library whisper.cpp uses. It does not include whisper.cpp itself.</p>
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">Is EnviousWispr faster than whisper.cpp?</div>
@@ -642,7 +642,7 @@ const faqs = [
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">Does EnviousWispr use whisper.cpp under the hood?</div>
-        <p class="faq-a">No. EnviousWispr uses two engines: <a href="https://huggingface.co/FluidInference/parakeet-ultra-coreml" style="color: var(--accent); text-decoration: underline;">Parakeet Ultra</a> (NVIDIA's transducer-based model) on the Neural Engine, and <a href="https://huggingface.co/openai/whisper-large-v3-turbo" style="color: var(--accent); text-decoration: underline;">Whisper</a> Large v3 Turbo through <a href="https://github.com/handy-computer/transcribe.cpp" style="color: var(--accent); text-decoration: underline;">transcribe.cpp</a>. transcribe.cpp is a separate open-source project from whisper.cpp; both are built on ggml. EnviousWispr adds the dictation app around the engine: the keybind, cleanup, polish and paste.</p>
+        <p class="faq-a">No. EnviousWispr uses two engines: <a href="https://huggingface.co/FluidInference/parakeet-ultra-coreml" style="color: var(--accent); text-decoration: underline;">Parakeet Ultra</a> (built on NVIDIA's Parakeet transducer model) on the Neural Engine, and <a href="https://huggingface.co/openai/whisper-large-v3-turbo" style="color: var(--accent); text-decoration: underline;">Whisper</a> Large v3 Turbo through <a href="https://github.com/handy-computer/transcribe.cpp" style="color: var(--accent); text-decoration: underline;">transcribe.cpp</a>. transcribe.cpp is a separate open-source project from whisper.cpp; both are built on ggml. EnviousWispr adds the dictation app around the engine: the keybind, cleanup, polish and paste.</p>
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">Can I use whisper.cpp and EnviousWispr together?</div>
