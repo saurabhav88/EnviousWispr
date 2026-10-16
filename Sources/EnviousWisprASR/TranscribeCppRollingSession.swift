@@ -289,8 +289,11 @@ package actor TranscribeCppRollingSession: WhisperIncrementalSession {
       }
       // The scrolled-out prefix plus the buffer decode IS the transcript (committed text in
       // the buffer is re-decoded inside `bufferText`; never add both).
-      return result(
+      var released = result(
         text: Self.join(scrolledOutText, bufferText), samplesCovered: count, tailDecodeMs: tailMs)
+      // #3801: this flush decode supplied the released text; carry its filter count.
+      released.silentTailDropped = decoded.silentTailDropped
+      return released
     } catch {
       _ = await flush.result  // a cancelled caller still waits for the native return
       guard isCurrent(run) else { return cancelledResult() }

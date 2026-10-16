@@ -584,8 +584,10 @@ package actor TranscribeCppWhisperBackend<Driver: WhisperExecutorDriving>: ASRBa
       realEndSample: envelope.upperBound)
     await Self.logSilentTail(tail.dropped, route: "batch")
     let elapsed = ContinuousClock.now - start
+    var filtered = tail.result
+    filtered.silentTailDropped = tail.dropped
     return Self.mapResult(
-      tail.result, languageHint: options.language, envelope: envelope,
+      filtered, languageHint: options.language, envelope: envelope,
       originalSampleCount: audioSamples.count,
       processingTime: Double(elapsed / .milliseconds(1)) / 1000,
       enableTimestamps: options.enableTimestamps)
@@ -654,7 +656,8 @@ package actor TranscribeCppWhisperBackend<Driver: WhisperExecutorDriving>: ASRBa
       text: text, language: language,
       duration: Double(originalSampleCount) / Double(sampleRate),
       processingTime: processingTime, backendType: .whisper,
-      wordTimings: nil, wordTimingCoverage: nil, segmentTimings: segmentTimings)
+      wordTimings: nil, wordTimingCoverage: nil, segmentTimings: segmentTimings,
+      silentTailDropped: run.silentTailDropped)
   }
 
   /// Binds each segment's text to its UTF-16 range in `text`, in order, and restores its
@@ -822,7 +825,9 @@ package actor TranscribeCppWhisperBackend<Driver: WhisperExecutorDriving>: ASRBa
     let tail = WhisperSilentTailFilter.filter(
       run, statsSamples: samples, segmentOffsetSamples: 0, realEndSample: samples.count)
     await Self.logSilentTail(tail.dropped, route: "rolling")
-    return tail.result
+    var filtered = tail.result
+    filtered.silentTailDropped = tail.dropped
+    return filtered
   }
 
   // MARK: - Unload and memory pressure

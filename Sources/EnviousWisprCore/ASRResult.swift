@@ -136,12 +136,16 @@ public struct ASRResult: Sendable, Codable {
   /// timestamps were not requested or the engine has no segment timing. Optional + defaulted
   /// so existing callers and old Codable payloads still decode.
   public let segmentTimings: [ASRSegmentTiming]?
+  /// #3801: trailing segments the Whisper silent-tail filter removed from the decode that
+  /// produced `text` (0 = it ran and removed nothing). `nil` for Parakeet and when not measured.
+  /// Telemetry metadata only. Optional + defaulted so existing callers and old payloads decode.
+  public let silentTailDropped: Int?
 
   public init(
     text: String, language: String?, duration: TimeInterval, processingTime: TimeInterval,
     backendType: ASRBackendType, tokenTimingSummary: ASRTokenTimingSummary? = nil,
     wordTimings: [ASRWordTiming]? = nil, wordTimingCoverage: ASRWordTimingCoverage? = nil,
-    segmentTimings: [ASRSegmentTiming]? = nil
+    segmentTimings: [ASRSegmentTiming]? = nil, silentTailDropped: Int? = nil
   ) {
     self.text = text
     self.language = language
@@ -152,6 +156,7 @@ public struct ASRResult: Sendable, Codable {
     self.wordTimings = wordTimings
     self.wordTimingCoverage = wordTimingCoverage
     self.segmentTimings = segmentTimings
+    self.silentTailDropped = silentTailDropped
   }
 }
 

@@ -207,6 +207,7 @@ struct TranscribeCppWhisperBackendTests {
     #expect(result.text == "hello there")
     #expect(
       result.segmentTimings == [ASRSegmentTiming(range: 0..<11, startMs: 1_300, endMs: 2_100)])
+    #expect(result.silentTailDropped == 1)
   }
 
   @Test("batch statistics read the full capture, so an all-speech envelope keeps its sentence")
@@ -227,6 +228,7 @@ struct TranscribeCppWhisperBackendTests {
       audioSamples: Self.speechInSilence, options: options, onInferenceEntered: nil)
     #expect(driver.lastSampleCount == 16_000 + 8_000)
     #expect(result.text == "hello there")
+    #expect(result.silentTailDropped == 0, "the filter ran and removed nothing")
   }
 
   @Test("a batch decode that is only an invented sentence over silence returns empty text")
@@ -262,6 +264,7 @@ struct TranscribeCppWhisperBackendTests {
       samples: Self.speechInSilence, language: "en", onDecode: nil)
     #expect(run.text == "hello there")
     #expect(run.segments.map(\.text) == ["hello there"])
+    #expect(run.silentTailDropped == 1)
   }
 
   @Test("no usable speech range decodes the whole input")

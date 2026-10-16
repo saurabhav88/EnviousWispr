@@ -936,6 +936,7 @@ final class WhisperEngineAdapter: ASREngineAdapter, @unchecked Sendable {
     let asrText: String
     let asrLanguage: String?
     let asrSegmentTimings: [ASRSegmentTiming]?
+    let asrSilentTailDropped: Int?
     let asrStart = CFAbsoluteTimeGetCurrent()
 
     switch await runBatchFallback(
@@ -947,10 +948,11 @@ final class WhisperEngineAdapter: ASREngineAdapter, @unchecked Sendable {
       clipKind: clipKind,
       diagnostics: &diagnostics
     ) {
-    case .success(let text, let language, let segmentTimings):
+    case .success(let text, let language, let segmentTimings, let silentTailDropped):
       asrText = text
       asrLanguage = language
       asrSegmentTimings = segmentTimings
+      asrSilentTailDropped = silentTailDropped
     case .stale(let outcome):
       // Session changed under the decode await — return without mutating
       // adapter state (a stale session-A finalize must not clobber B).
@@ -1008,7 +1010,8 @@ final class WhisperEngineAdapter: ASREngineAdapter, @unchecked Sendable {
       duration: audioDurationSec,
       processingTime: asrLatencySec,
       backendType: .whisper,
-      segmentTimings: asrSegmentTimings
+      segmentTimings: asrSegmentTimings,
+      silentTailDropped: asrSilentTailDropped
     )
     lastResult = result
 
@@ -1320,7 +1323,8 @@ final class WhisperEngineAdapter: ASREngineAdapter, @unchecked Sendable {
         duration: audioDurationSec,
         processingTime: result.processingTime,
         backendType: result.backendType,
-        segmentTimings: result.segmentTimings
+        segmentTimings: result.segmentTimings,
+        silentTailDropped: result.silentTailDropped
       )
       lastResult = correctedResult
       // #1707 Codex r9/r10: mirror the normal finalize path's per-
@@ -1458,7 +1462,9 @@ final class WhisperEngineAdapter: ASREngineAdapter, @unchecked Sendable {
       language: decodeOptions.language,
       duration: audioDurationSec,
       processingTime: Double(flushMs) / 1000.0,
-      backendType: .whisper
+      backendType: .whisper,
+      // #3801: the accepted flush decode's filter count (nil for a caught-up release).
+      silentTailDropped: result.silentTailDropped
     )
     lastResult = asrResult
     Task { [chars = trimmed.count, decodes = result.decodeCount, tailMs = result.tailDecodeMs] in
@@ -1514,7 +1520,10 @@ final class WhisperEngineAdapter: ASREngineAdapter, @unchecked Sendable {
   /// The `finalize`-facing result of the single batch-decode path.
   private enum BatchFallbackResult {
     /// `segmentTimings` (#3735 §3.10) index `text`; nil when the adapter's trim changed it.
-    case success(text: String, language: String?, segmentTimings: [ASRSegmentTiming]?)
+    /// `silentTailDropped` (#3801): the backend filter's count for this decode.
+    case success(
+      text: String, language: String?, segmentTimings: [ASRSegmentTiming]?,
+      silentTailDropped: Int?)
     /// Session changed under the decode await — `finalize` returns this
     /// verbatim WITHOUT mutating adapter state (a stale session-A finalize must
     /// not clobber session B).
@@ -1574,7 +1583,8 @@ final class WhisperEngineAdapter: ASREngineAdapter, @unchecked Sendable {
       // Segment ranges index the backend's text; they travel only while that text is unchanged.
       return .success(
         text: trimmed, language: result.language,
-        segmentTimings: trimmed == result.text ? result.segmentTimings : nil)
+        segmentTimings: trimmed == result.text ? result.segmentTimings : nil,
+        silentTailDropped: result.silentTailDropped)
     case .cancelled:
       return .cancelled
     case .failed(let error):

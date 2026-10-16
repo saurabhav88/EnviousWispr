@@ -290,6 +290,9 @@ struct KernelASRCompletedTelemetry {
   var streamingDegradeReason: String? = nil
   var streamingFinalPath: String? = nil
   var streamingDecodeCount: Int? = nil
+  /// #3801: from the accepted `ASRResult` (`stampAcceptedTranscriptTelemetry`), so a retry or
+  /// salvage acceptance reports the winning decode's count.
+  var whisperSilentTailDropped: Int? = nil
   var streamingCoveredSec: Double? = nil
   var tailDecodeSec: Double? = nil
   var maxUnconfirmedWindowSec: Double? = nil

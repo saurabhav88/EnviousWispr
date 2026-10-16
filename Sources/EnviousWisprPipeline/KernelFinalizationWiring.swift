@@ -1762,6 +1762,7 @@ struct KernelFinalizationWiring {
       streamingDegradeReason: telemetryState.asrCompletedTelemetry?.streamingDegradeReason,
       streamingFinalPath: telemetryState.asrCompletedTelemetry?.streamingFinalPath,
       streamingDecodeCount: telemetryState.asrCompletedTelemetry?.streamingDecodeCount,
+      whisperSilentTailDropped: telemetryState.asrCompletedTelemetry?.whisperSilentTailDropped,
       streamingCoveredSec: telemetryState.asrCompletedTelemetry?.streamingCoveredSec,
       tailDecodeSec: telemetryState.asrCompletedTelemetry?.tailDecodeSec,
       maxUnconfirmedWindowSec: telemetryState.asrCompletedTelemetry?.maxUnconfirmedWindowSec,

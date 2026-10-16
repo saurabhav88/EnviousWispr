@@ -27,6 +27,12 @@ struct WhisperEngineAdapterTranscribeCppTests {
       authorizeUnload: nil, warmupDeadlineSeconds: 5)
   }
 
+  /// 1 s: speech (0.9 s) then 0.1 s of silence. #3801: decodes pass the silent-tail filter, which
+  /// needs room quieter than the speech; an unbroken constant would classify its own fake
+  /// segment as unvoiced.
+  static let speech: [Float] =
+    [Float](repeating: 0.1, count: 14_400) + [Float](repeating: 0, count: 1_600)
+
   private func feed(_ adapter: WhisperEngineAdapter, samples: [Float], session: SessionID) {
     guard let buffer = FakeAudioCapture.makeBuffer(samples: samples) else {
       Issue.record("failed to synthesize a test buffer")
@@ -40,7 +46,7 @@ struct WhisperEngineAdapterTranscribeCppTests {
   /// One take: begin, feed `samples`, mark them speech, finalize.
   private func take(
     _ adapter: WhisperEngineAdapter, language: String?, streaming: Bool,
-    samples: [Float] = [Float](repeating: 0.1, count: 16_000)
+    samples: [Float] = Self.speech
   ) async throws -> ASREngineOutcome {
     let sid = SessionID()
     try await adapter.beginSession(
@@ -100,6 +106,76 @@ struct WhisperEngineAdapterTranscribeCppTests {
     #expect(diag?.streamingFinalPath == "clean_batch")
   }
 
+  // MARK: - #3801 silent-tail count on the accepted result
+
+  /// 0.9 s of speech then 1.1 s of silence, with an invented sentence placed over the silence.
+  static let speechThenPause: [Float] =
+    [Float](repeating: 0.1, count: 14_400) + [Float](repeating: 0, count: 17_600)
+  static let withInvented = TranscribeCppRunResult(
+    text: " hola mundo Gracias.", detectedLanguage: nil,
+    segments: [
+      TranscribeCppSegment(startMs: 0, endMs: 900, text: " hola mundo"),
+      TranscribeCppSegment(startMs: 1_500, endMs: 2_000, text: " Gracias."),
+    ])
+
+  @Test("the streaming flush's silent-tail count rides on the accepted result")
+  func streamingFlushCarriesSilentTailCount() async throws {
+    let driver = AdapterFakeDriver()
+    driver.setRun(Self.withInvented)
+    let adapter = WhisperEngineAdapter(
+      backend: makeBackend(driver), engineMutationScope: .alwaysAllowedForTesting)
+    try await adapter.warmUp(modelReceipt: nil)
+    let outcome = try await take(
+      adapter, language: "es", streaming: true, samples: Self.speechThenPause)
+    guard case .transcript(let result) = outcome else {
+      Issue.record("expected .transcript, got \(outcome)")
+      return
+    }
+    #expect(result.text == "hola mundo")
+    #expect(adapter.lastASRDiagnostics?.streamingFinalPath == "streaming_flush")
+    #expect(result.silentTailDropped == 1)
+  }
+
+  @Test("a batch fallback reports the batch decode's count, not the discarded flush's")
+  func batchFallbackCarriesItsOwnCount() async throws {
+    let driver = AdapterFakeDriver()
+    driver.setRun(Self.withInvented)
+    let adapter = WhisperEngineAdapter(
+      backend: makeBackend(driver), engineMutationScope: .alwaysAllowedForTesting)
+    try await adapter.warmUp(modelReceipt: nil)
+    // The flush decodes to nothing (count 0); the batch fallback removes the invented sentence.
+    driver.enqueue([TranscribeCppRunResult(text: "", detectedLanguage: nil, segments: [])])
+    let outcome = try await take(
+      adapter, language: "es", streaming: true, samples: Self.speechThenPause)
+    guard case .transcript(let result) = outcome else {
+      Issue.record("expected .transcript, got \(outcome)")
+      return
+    }
+    #expect(adapter.lastASRDiagnostics?.streamingFinalPath == "fallback_batch")
+    #expect(result.text == "hola mundo")
+    #expect(result.silentTailDropped == 1)
+  }
+
+  @Test("a retry-rescued result keeps its own decode's count")
+  func retryCarriesSilentTailCount() async throws {
+    let driver = AdapterFakeDriver()
+    driver.setRun(Self.withInvented)
+    let adapter = WhisperEngineAdapter(
+      backend: makeBackend(driver), engineMutationScope: .alwaysAllowedForTesting)
+    try await adapter.warmUp(modelReceipt: nil)
+    let sid = SessionID()
+    try await adapter.beginSession(
+      sid, options: TranscriptionOptions(language: "es"), streaming: false)
+    let outcome = await adapter.retryDecode(inputSamples: Self.speechThenPause)
+    guard case .transcript(let result) = outcome else {
+      Issue.record("expected .transcript, got \(outcome)")
+      return
+    }
+    #expect(result.text == "hola mundo")
+    #expect(result.silentTailDropped == 1)
+    #expect(adapter.lastResult?.silentTailDropped == 1)
+  }
+
   @Test("an empty streaming flush falls back to the clean batch decode of the whole recording")
   func emptyFlushFallsBackToBatch() async throws {
     let driver = AdapterFakeDriver()
@@ -155,8 +231,8 @@ struct WhisperEngineAdapterTranscribeCppTests {
     let sid = SessionID()
     try await adapter.beginSession(
       sid, options: TranscriptionOptions(language: "es"), streaming: false)
-    feed(adapter, samples: [Float](repeating: 0.1, count: 16_000), session: sid)
-    adapter.observeSpeechSegments([SpeechSegment(startSample: 0, endSample: 16_000)], captureSamples: [Float](repeating: 0.1, count: 16_000))
+    feed(adapter, samples: Self.speech, session: sid)
+    adapter.observeSpeechSegments([SpeechSegment(startSample: 0, endSample: 16_000)], captureSamples: Self.speech)
     driver.holdNative()
     let take = Task { await adapter.finalize(batchSamples: []) }
     await driver.waitUntilNativeEntered()
@@ -181,7 +257,7 @@ struct WhisperEngineAdapterTranscribeCppTests {
     driver.holdNative()
     let decode = Task {
       try await backend.decodeForRollingSession(
-        samples: [Float](repeating: 0.1, count: 16_000), language: "es",
+        samples: Self.speech, language: "es",
         onDecode: { fired.increment() })
     }
     await driver.waitUntilNativeEntered()
@@ -206,7 +282,7 @@ struct WhisperEngineAdapterTranscribeCppTests {
       withUnsafeCurrentTask { $0?.cancel() }
       return try await occupancy.track {
         try await backend.decodeForRollingSession(
-          samples: [Float](repeating: 0.1, count: 16_000), language: "es",
+          samples: Self.speech, language: "es",
           onDecode: { fired.increment() })
       }
     }

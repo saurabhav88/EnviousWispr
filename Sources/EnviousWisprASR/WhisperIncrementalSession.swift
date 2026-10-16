@@ -56,4 +56,7 @@ package struct IncrementalResult: Sendable {
   /// #1309: a loop decode was still in flight when finalize/stop arrived.
   /// Telemetry metadata.
   package var stopWhileDecodeInFlight: Bool = false
+  /// #3801: segments the silent-tail filter removed from the terminal flush decode whose text
+  /// this result releases. `nil` when no flush decoded (caught-up release, fallback, cancel).
+  package var silentTailDropped: Int? = nil
 }

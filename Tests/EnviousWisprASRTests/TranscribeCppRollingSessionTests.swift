@@ -131,7 +131,9 @@ struct TranscribeCppRollingSessionTests {
     await s.apply(first, realAudioEnd: 3.5)
     #expect(await s.committedTextForTests == " Their thermal behavior is not")
     // The next decodes re-hear "thermal" as "formal" inside one long segment.
-    let revised = [Self.seg(0, 4.5, " Their formal behavior is not as steady"), Self.seg(4.5, 5, " as")]
+    let revised = [
+      Self.seg(0, 4.5, " Their formal behavior is not as steady"), Self.seg(4.5, 5, " as"),
+    ]
     await s.apply(revised, realAudioEnd: 5)
     await s.apply(revised, realAudioEnd: 5.5)
     let committed = await s.committedTextForTests
@@ -272,7 +274,9 @@ struct TranscribeCppRollingSessionTests {
     #expect(result.text == nil, "no text after a cancel")
     #expect(result.strategy == "streaming_cancelled")
     // Reuse after the drain.
-    let again = ScriptedDecoder([[Self.native(0, 1200, " Next.")], [Self.native(0, 1200, " Next.")]])
+    let again = ScriptedDecoder([
+      [Self.native(0, 1200, " Next.")], [Self.native(0, 1200, " Next.")],
+    ])
     let reuse = Self.session(again.decode)
     audio.set(Self.voiced(1.2))
     await reuse.start(audioSamplesProvider: audio.provider)
@@ -372,7 +376,10 @@ struct TranscribeCppRollingSessionTests {
     _ ready: @escaping @Sendable () async -> Void
   ) async -> Bool {
     let once = Once<Bool>()
-    let watch = Task { await ready(); once.fulfil(true) }
+    let watch = Task {
+      await ready()
+      once.fulfil(true)
+    }
     let timer = Task {
       try? await Task.sleep(for: .seconds(seconds))  // deadline-fallback: hang guard only
       once.fulfil(false)
@@ -579,7 +586,12 @@ struct TranscribeCppRollingSessionTests {
       }
     }
     private var pullWaiters: [(Int, CheckedContinuation<Void, Never>)] = []
-    func set(_ s: [Float]) { lock.withLock { samples = s; pulls = 0 } }
+    func set(_ s: [Float]) {
+      lock.withLock {
+        samples = s
+        pulls = 0
+      }
+    }
     func pulled(_ count: Int) async {
       await withCheckedContinuation { c in
         let now = lock.withLock { () -> Bool in
@@ -652,7 +664,56 @@ struct TranscribeCppRollingSessionTests {
     let result = await s.finalize(finalSamples: [], speechSegments: [])
     #expect(result.accepted)
     #expect(result.text == "One two three")
-    #expect(d.callSampleCounts == [Int(1.2 * 16_000), Int(2.1 * 16_000)], "one flush over the buffer")
+    #expect(
+      d.callSampleCounts == [Int(1.2 * 16_000), Int(2.1 * 16_000)], "one flush over the buffer")
+  }
+
+  /// #3801: a run as the backend returns it after the silent-tail filter.
+  private static func filtered(_ segments: [TranscribeCppSegment], dropped: Int)
+    -> TranscribeCppRunResult
+  {
+    TranscribeCppRunResult(
+      text: segments.map(\.text).joined().trimmingCharacters(in: .whitespaces),
+      detectedLanguage: nil, segments: segments, silentTailDropped: dropped)
+  }
+
+  @Test("the released flush reports its own silent-tail count, never the loop decodes' (#3801)")
+  func flushReportsItsOwnSilentTailCount() async {
+    let d = ScriptedDecoder(runs: [
+      Self.filtered([Self.native(0, 1000, " One")], dropped: 2),
+      Self.filtered([Self.native(0, 2000, " One two three")], dropped: 1),
+    ])
+    let audio = Audio()
+    audio.set(Self.voiced(1.2))
+    let s = Self.session(d.decode)
+    await s.start(audioSamplesProvider: audio.provider)
+    await Self.within("cycle 1 applied") { await s.cyclesCompleted(reach: 1) }
+    audio.set(Self.voiced(2.1))
+    let result = await s.finalize(finalSamples: [], speechSegments: [])
+    #expect(result.text == "One two three")
+    #expect(d.callSampleCounts.count == 2, "one loop decode, one flush")
+    #expect(result.silentTailDropped == 1)
+  }
+
+  @Test("a caught-up release has no flush decode, so it reports no silent-tail count (#3801)")
+  func caughtUpReleaseHasNoSilentTailCount() async {
+    let d = ScriptedDecoder(runs: [
+      Self.filtered(
+        [Self.native(0, 1500, " Turn left at"), Self.native(1500, 2000, " the light")], dropped: 3),
+      Self.filtered(
+        [Self.native(0, 1500, " Turn left at"), Self.native(1500, 2000, " the light.")], dropped: 3),
+    ])
+    let audio = Audio()
+    audio.set(Self.voiced(2) + Self.silence(0.5))
+    let s = Self.session(d.decode)
+    await s.start(audioSamplesProvider: audio.provider)
+    await Self.within("cycle 1 applied") { await s.cyclesCompleted(reach: 1) }
+    audio.set(Self.voiced(2) + Self.silence(1.6))
+    await Self.within("cycle 2 applied") { await s.cyclesCompleted(reach: 2) }
+    let result = await s.finalize(finalSamples: [], speechSegments: [])
+    #expect(result.text == "Turn left at the light.")
+    #expect(d.callSampleCounts.count == 2, "caught up: no flush decode")
+    #expect(result.silentTailDropped == nil)
   }
 
   @Test("a silent tail releases without a decode")
@@ -781,7 +842,9 @@ struct TranscribeCppRollingSessionTests {
 
   // MARK: - Round 2: stale terminals and caller cancellation
 
-  @Test("finalize, Cancel, then a restart while the old loop decode is native: the old finalize releases nothing")
+  @Test(
+    "finalize, Cancel, then a restart while the old loop decode is native: the old finalize releases nothing"
+  )
   func restartFencesTheOldFinalize() async {
     let d = ScriptedDecoder([
       [Self.native(0, 1200, " New take.")], [Self.native(0, 1200, " New take.")],
@@ -815,7 +878,9 @@ struct TranscribeCppRollingSessionTests {
     #expect(d.overlapped == false)
   }
 
-  @Test("finalize, Cancel, then a restart while the old flush is native: the old finalize releases nothing")
+  @Test(
+    "finalize, Cancel, then a restart while the old flush is native: the old finalize releases nothing"
+  )
   func restartFencesTheOldFlush() async {
     let d = ScriptedDecoder([
       [Self.native(0, 1000, " One")], [Self.native(0, 2000, " One two")],
@@ -918,7 +983,9 @@ struct TranscribeCppRollingSessionTests {
       publication: .init(retentionLimit: limit, onHypothesis: shown.append))
   }
 
-  @Test("the preview hands over a bounded tail from the end, never an empty one, and only when it changes")
+  @Test(
+    "the preview hands over a bounded tail from the end, never an empty one, and only when it changes"
+  )
   func previewPublishesBoundedChangedTails() async {
     let long = (0..<30).map { " word\($0)" }.joined()  // 247 characters, one segment
     let d = ScriptedDecoder([
@@ -980,7 +1047,8 @@ struct TranscribeCppRollingSessionTests {
     #expect(shown.all.first.map { unbroken.hasSuffix($0) } == true, "the newest text, unspaced")
   }
 
-  @Test("an oversized committed word and an oversized hypothesis are both handed over within the limit")
+  @Test(
+    "an oversized committed word and an oversized hypothesis are both handed over within the limit")
   func previewBuildsOversizedTextWithinTheLimit() async {
     let unbroken = String(repeating: "日本語の文章", count: 600)  // 3,600 characters, no spaces
     let d = ScriptedDecoder([
@@ -1000,10 +1068,13 @@ struct TranscribeCppRollingSessionTests {
     await Self.within("cycle 3") { await s.cyclesCompleted(reach: 3) }
     await s.cancel()
     #expect(d.callSampleCounts.count == 3, "control: all three decodes ran")
-    #expect(await s.committedTextForTests.count <= 2_000, "the committed oversized word is kept bounded")
+    #expect(
+      await s.committedTextForTests.count <= 2_000, "the committed oversized word is kept bounded")
     #expect(!shown.all.isEmpty && shown.all.allSatisfy { $0.count <= 2_000 })
-    #expect(shown.all.last.map { unbroken.hasSuffix($0) || $0.hasSuffix(String(unbroken.suffix(100))) } == true,
-            "the newest text, from the end")
+    #expect(
+      shown.all.last.map { unbroken.hasSuffix($0) || $0.hasSuffix(String(unbroken.suffix(100))) }
+        == true,
+      "the newest text, from the end")
   }
 
   @Test("continuous unstable speech past the window bound keeps handing over bounded text")

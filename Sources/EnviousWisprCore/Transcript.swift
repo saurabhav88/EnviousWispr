@@ -194,6 +194,10 @@ public struct ExecutionMetrics: Codable, Sendable {
   public var streamingDegradeReason: String?
   public var streamingFinalPath: String?
   public var streamingDecodeCount: Int?
+  /// #3801: trailing segments the Whisper silent-tail filter removed from the decode whose text
+  /// was released (0 = ran, removed nothing). nil for Parakeet, when no Whisper decode released
+  /// text, and on every older record (additive optional Codable). Metadata only.
+  public var whisperSilentTailDropped: Int?
   public var streamingCoveredSec: Double?
   public var tailDecodeSec: Double?
   public var maxUnconfirmedWindowSec: Double?
@@ -279,6 +283,7 @@ public struct ExecutionMetrics: Codable, Sendable {
     streamingDegradeReason: String? = nil,
     streamingFinalPath: String? = nil,
     streamingDecodeCount: Int? = nil,
+    whisperSilentTailDropped: Int? = nil,
     streamingCoveredSec: Double? = nil,
     tailDecodeSec: Double? = nil,
     maxUnconfirmedWindowSec: Double? = nil,
@@ -350,6 +355,7 @@ public struct ExecutionMetrics: Codable, Sendable {
     self.streamingDegradeReason = streamingDegradeReason
     self.streamingFinalPath = streamingFinalPath
     self.streamingDecodeCount = streamingDecodeCount
+    self.whisperSilentTailDropped = whisperSilentTailDropped
     self.streamingCoveredSec = streamingCoveredSec
     self.tailDecodeSec = tailDecodeSec
     self.maxUnconfirmedWindowSec = maxUnconfirmedWindowSec

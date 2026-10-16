@@ -145,7 +145,12 @@ struct TranscribeCppPreviewRecognizerTests {
     func append(_ text: String) { lock.withLock { texts.append(text) } }
   }
 
-  private static let speech: [Float] = (0..<19_200).map { Float(sin(Double($0) * 0.05)) * 0.2 }
+  /// 1.0 s of tone then 0.2 s of silence (19_200 samples). #3801: preview results pass the
+  /// silent-tail filter, which needs room quieter than the speech; an unbroken tone would
+  /// classify its own fake segment as unvoiced.
+  private static let speech: [Float] = (0..<19_200).map {
+    $0 < 16_000 ? Float(sin(Double($0) * 0.05)) * 0.2 : 0
+  }
 
   private static func recognizer(
     _ driver: FakeDriver, admitted: @escaping @Sendable () async -> Bool = { true },

@@ -224,13 +224,20 @@ public struct TranscribeCppRunResult: Sendable, Equatable {
   /// Native auto-detected language; nil whenever a language was forced.
   public let detectedLanguage: String?
   public let segments: [TranscribeCppSegment]
+  /// #3801: trailing segments the silent-tail filter removed from this decode; `nil` until the
+  /// ASR boundary filters it (native results never carry a count).
+  package var silentTailDropped: Int? = nil
 
   /// #3801: lets the ASR module return a shortened copy of a native result
   /// (`WhisperSilentTailFilter`); the memberwise initializer is internal to this module.
-  package init(text: String, detectedLanguage: String?, segments: [TranscribeCppSegment]) {
+  package init(
+    text: String, detectedLanguage: String?, segments: [TranscribeCppSegment],
+    silentTailDropped: Int? = nil
+  ) {
     self.text = text
     self.detectedLanguage = detectedLanguage
     self.segments = segments
+    self.silentTailDropped = silentTailDropped
   }
 }
 

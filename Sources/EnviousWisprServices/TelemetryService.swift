@@ -366,6 +366,7 @@ public final class TelemetryService {
         streamingDegradeReason: m.streamingDegradeReason,
         streamingFinalPath: m.streamingFinalPath,
         streamingDecodeCount: m.streamingDecodeCount,
+        whisperSilentTailDropped: m.whisperSilentTailDropped,
         streamingCoveredSec: m.streamingCoveredSec,
         tailDecodeSec: m.tailDecodeSec,
         maxUnconfirmedWindowSec: m.maxUnconfirmedWindowSec,
@@ -3065,6 +3066,7 @@ public final class TelemetryService {
     public let streamingDegradeReason: String?
     public let streamingFinalPath: String?
     public let streamingDecodeCount: Int?
+    public let whisperSilentTailDropped: Int?
     public let streamingCoveredSec: Double?
     public let tailDecodeSec: Double?
     public let maxUnconfirmedWindowSec: Double?
@@ -3081,7 +3083,8 @@ public final class TelemetryService {
       asrLastTokenGapMs: Int? = nil, asrChunked: Bool? = nil,
       streamingRequested: Bool? = nil, streamingEffective: Bool? = nil,
       streamingDegradeReason: String? = nil, streamingFinalPath: String? = nil,
-      streamingDecodeCount: Int? = nil, streamingCoveredSec: Double? = nil,
+      streamingDecodeCount: Int? = nil, whisperSilentTailDropped: Int? = nil,
+      streamingCoveredSec: Double? = nil,
       tailDecodeSec: Double? = nil, maxUnconfirmedWindowSec: Double? = nil,
       stopWhileDecodeInFlight: Bool? = nil
     ) {
@@ -3106,6 +3109,7 @@ public final class TelemetryService {
       self.streamingDegradeReason = streamingDegradeReason
       self.streamingFinalPath = streamingFinalPath
       self.streamingDecodeCount = streamingDecodeCount
+      self.whisperSilentTailDropped = whisperSilentTailDropped
       self.streamingCoveredSec = streamingCoveredSec
       self.tailDecodeSec = tailDecodeSec
       self.maxUnconfirmedWindowSec = maxUnconfirmedWindowSec
@@ -3139,6 +3143,8 @@ public final class TelemetryService {
       if let streamingDegradeReason { out["streaming_degrade_reason"] = streamingDegradeReason }
       if let streamingFinalPath { out["final_path"] = streamingFinalPath }
       if let streamingDecodeCount { out["streaming_decode_count"] = streamingDecodeCount }
+      // #3801: count only, never text; nil omits the key, 0 stays present.
+      if let whisperSilentTailDropped { out["whisper_silent_tail_dropped"] = whisperSilentTailDropped }
       if let streamingCoveredSec { out["streaming_covered_sec"] = streamingCoveredSec }
       if let tailDecodeSec { out["tail_decode_sec"] = tailDecodeSec }
       if let maxUnconfirmedWindowSec {

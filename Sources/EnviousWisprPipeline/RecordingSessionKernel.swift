@@ -4833,7 +4833,8 @@ final class RecordingSessionKernel {
       durationSeconds: result.processingTime,
       charCount: result.text.trimmingCharacters(in: .whitespacesAndNewlines).count,
       mode: mode,
-      language: result.language
+      language: result.language,
+      whisperSilentTailDropped: result.silentTailDropped
     )
   }
 
