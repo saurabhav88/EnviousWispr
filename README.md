@@ -84,7 +84,7 @@ Dictation is only useful if you can trust it mid-sentence, every time. EnviousWi
 | **Parakeet Ultra** | Fastest dictation (default) | 25 European languages | ~630 MB | Apple Neural Engine |
 | **Whisper** (Whisper Large v3 Turbo) | Broadest language coverage and automatic language detection | 99+ languages | ~0.9 GB | Apple GPU |
 
-Both models run entirely on-device on Apple Silicon. Parakeet runs on the Apple Neural Engine through Core ML, which is what makes the default engine near-instant; Whisper runs on the GPU through transcribe.cpp (Metal) for broad-language accuracy. First launch downloads and compiles the model; subsequent launches are instant.
+Both models run entirely on-device on Apple Silicon. Parakeet runs on the Apple Neural Engine through Core ML, which is what makes the default engine near-instant; Whisper runs on the GPU through transcribe.cpp (Metal) for broad-language accuracy. Models are downloaded separately and stored on your Mac.
 
 ## On-device AI polish
 
