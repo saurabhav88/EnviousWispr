@@ -72,20 +72,24 @@ read by `scripts/ci/check-ci-drift.py`.
 ## Release flow
 
 Branch protection on `main` blocks direct pushes — every change goes through a PR with
-`build-check` passing. The release flow:
+`build-check` passing. The operator procedure is owned by the release skill
+(`.claude/skills/wispr-release-checklist/SKILL.md`, gitignored); the automation is:
 
-1. Worktree from `origin/main`, bump version + What's New, commit on `release/v<version>`
-2. Open PR → auto-merge once `build-check` passes
-3. Sync local main, annotated tag the merge commit, push tag (triggers `release.yml`)
-4. `release.yml` runs a 4-job idempotent pipeline:
-   - **Preflight** — validates tag format (semver), required secrets, probes existing release/appcast state
-   - **Build** — SDK probe → build → sign → notarize → DMG → Sparkle sign → upload artifacts (30-day retention)
-   - **Publish Release** — idempotent: probes if release exists, creates or skips (clobber only in explicit `release-only` recovery mode)
-   - **Publish Appcast** — inject entry → validate XML → push to main via App bypass token (falls back to PR if push fails)
-5. Recovery via `workflow_dispatch` with modes: `full`, `release-only`, `appcast-only`, `assets-only`
+1. `scripts/release.sh start <V>` makes the `release/v<V>` worktree, sets the version and
+   writes `.github/release-notes/v<V>.md` (GitHub notes) and `v<V>.probes` skeletons.
+2. `scripts/release.sh prepare` regenerates the derived files; the release PR merges after
+   `build-check`.
+3. `release-tag.yml` tags the recorded merge commit `v<V>` with the release bot token
+   (`scripts/ci/release-tag-guard.sh`), which starts `release.yml`.
+4. `release.yml` (nine jobs; its header is the job list): preflight requires the committed
+   notes and probes for a new build; the build checks the probes in the Release binary;
+   publish uses the committed notes; limbs publish the appcast, Sentry symbols and the
+   Homebrew cask and verify the downloads; release-summary reports every job.
+5. Recovery via `workflow_dispatch` modes `release-only`, `appcast-only`, `sentry-only`
+   (with `source_run_id`), plus `full`/`build-only` and `dry_run` rehearsals.
 
-Published releases are immutable. Never retag or force-push a release tag.
-If a release is broken, use recovery modes or cut a new patch version.
+Never move or reuse a release tag. If a release is broken, pull it from the appcast and
+ship a higher patch version.
 
 ## When drift check fails
 

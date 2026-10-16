@@ -44,7 +44,7 @@ DEFAULT_TREE="$(cd "$SCRIPT_DIR/../.." && pwd)"
 # POSIX baseline every supported machine has: grep, sed, awk, find, cut, tr.
 # Order is CI's step order, then the two members whose CI home is another job.
 MEMBERS=(
-  "ci-self-tests|bash python3 git jq|build-check"
+  "ci-self-tests|bash python3 git jq curl iconv|build-check"
   "dependency-direction|bash grep|build-check"
   "lane-verdict-self-test|bash python3|build-check"
   "dev-app-lock-self-test|python3 ps|build-check"
@@ -94,6 +94,13 @@ member_ci_self_tests() {
   # building correctly and slowly with nothing red. Needs no Xcode, so
   # this ubuntu aggregator can hold it.
   scripts/ci/configure-compilation-cache.sh --self-test
+  # #3729: the release robot's helpers (notes body, probes, tag-on-merge, downloads,
+  # summary). Each one decides something release.yml or release-tag.yml acts on.
+  bash scripts/ci/compose-release-body.sh --self-test
+  bash scripts/ci/check-release-probes.sh --self-test
+  bash scripts/ci/release-tag-guard.sh --self-test
+  bash scripts/ci/verify-release-downloads.sh --self-test
+  bash scripts/ci/release-summary.sh --self-test
 }
 
 # CI step: Dependency direction (#3095)

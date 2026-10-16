@@ -1,0 +1,73 @@
+name: Release tag
+
+# #3729 (founder Option A, 2026-10-16): merging the release PR is the "go". When a
+# release/vMAJOR.MINOR.PATCH PR from this repository merges into main, tag its recorded
+# merge commit v<V>. The tag push then runs release.yml. All checks and the tag itself
+# live in scripts/ci/release-tag-guard.sh (self-tested); any mismatch fails and tags
+# nothing. Manual fallback: `git tag -a v<V> <merge sha>` + `git push origin v<V>`.
+#
+# The App token (enviouswispr-release-bot) creates the tag because a tag pushed with
+# GITHUB_TOKEN does not start other workflows. This workflow runs from main's copy at
+# event time; a later merged change to it applies to later merges.
+
+on:
+  pull_request:
+    types: [closed]
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  # One group per release branch, never cancelled, so a pending tag is not discarded.
+  group: release-tag-${{ github.event.pull_request.head.ref }}
+  cancel-in-progress: false
+
+jobs:
+  tag:
+    if: >
+      github.event.pull_request.merged == true &&
+      startsWith(github.event.pull_request.head.ref, 'release/v') &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout the merge commit
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          ref: ${{ github.event.pull_request.merge_commit_sha }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Check the merged release
+        env:
+          PR_MERGED: ${{ github.event.pull_request.merged }}
+          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+          BASE_REPO: ${{ github.repository }}
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+          MERGE_SHA: ${{ github.event.pull_request.merge_commit_sha }}
+        run: bash scripts/ci/release-tag-guard.sh check
+
+      - name: Mint release bot token
+        id: app-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          app-id: ${{ secrets.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+          permission-contents: write
+
+      - name: Tag the merge commit
+        env:
+          PR_MERGED: ${{ github.event.pull_request.merged }}
+          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+          BASE_REPO: ${{ github.repository }}
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+          MERGE_SHA: ${{ github.event.pull_request.merge_commit_sha }}
+          APP_TOKEN: ${{ steps.app-token.outputs.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          git remote set-url origin "https://x-access-token:${APP_TOKEN}@github.com/${REPO}.git"
+          bash scripts/ci/release-tag-guard.sh tag | tee -a "$GITHUB_STEP_SUMMARY"

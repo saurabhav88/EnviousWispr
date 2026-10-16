@@ -41,14 +41,23 @@ permissions:
 # ==========================================================================
 # Architecture: Heart & Limbs
 #
+# Nine jobs (#3729). A tag push normally comes from release-tag.yml, which tags the
+# merged release PR's commit.
+#
 # HEART (must succeed for release to ship):
-#   Job A: build-release-artifacts — build, sign, notarize, package
-#   Job B: publish-github-release  — create GitHub Release with DMGs
+#   preflight                — version, mode, secrets; a new build needs committed notes
+#                              and probes (.github/release-notes/v<V>.md, .probes)
+#   build-release-artifacts  — build, sign, notarize, package; probes checked in the binary
+#   launch-on-macos-14       — the notarized app, unmodified, launches on macOS 14 (#3348)
+#   publish-github-release   — GitHub Release with both DMGs and the committed notes
 #
 # LIMBS (report failure, never block shipping):
-#   Job C: publish-appcast         — push appcast entry to main
-#   Job D: upload-sentry-dsyms     — upload debug symbols to Sentry
-#   Job E: release-summary         — single truth source for release status
+#   publish-appcast          — push appcast entry to main, verify the live feed
+#   upload-sentry-dsyms      — upload and process debug symbols
+#   bump-homebrew-cask       — update and verify the Homebrew cask
+#   verify-downloads         — both DMGs identical; the website button serves this release
+#   release-summary          — single truth source for release status (runs even when
+#                              preflight fails)
 #
 # Auth strategy:
 #   - GITHUB_TOKEN for read-only ops and GitHub Release creation
@@ -71,10 +80,11 @@ jobs:
       tag: ${{ steps.version.outputs.tag }}
       source-run-id: ${{ steps.resolve-run.outputs.run-id }}
     steps:
+      # #3729: the build source (github.sha: the pushed tag's commit, or the dispatched
+      # branch), so the notes/probes check below reads the files the build will package.
       - name: Checkout
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
-          ref: main
           fetch-depth: 1
 
       - name: Resolve version
@@ -178,6 +188,28 @@ jobs:
             echo "run-id=$INPUT_RUN_ID" >> "$GITHUB_OUTPUT"
             echo "==> Source run: $INPUT_RUN_ID (from input)"
           fi
+
+      # #3729: a new build must carry founder-approved notes and a valid probe list,
+      # checked here before any macOS minute. Recovery modes reuse the source run's
+      # artifacts and need no new files. Releases at or below 2.5.4 predate the files.
+      - name: Check committed release notes and probes (new builds)
+        if: github.event_name == 'push' || inputs.mode == 'full' || inputs.mode == 'build-only'
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          if python3 -c 'import sys; v=tuple(map(int, sys.argv[1].split("."))); sys.exit(0 if v <= (2,5,4) else 1)' "$VERSION"; then
+            echo "==> v$VERSION predates committed release notes; not required"
+            exit 0
+          fi
+          NOTES=".github/release-notes/v${VERSION}.md"
+          PROBES=".github/release-notes/v${VERSION}.probes"
+          if [[ ! -s "$NOTES" ]] || grep -qF '<!-- release-notes: skeleton, replace before prepare -->' "$NOTES"; then
+            echo "::error::$NOTES is missing, empty or still the skeleton at ${GITHUB_SHA}"
+            exit 1
+          fi
+          bash scripts/ci/check-release-probes.sh --manifest "$PROBES"
+          echo "==> Notes and probes present for v$VERSION"
 
       - name: Check required secrets
         env:
@@ -433,6 +465,24 @@ jobs:
           # script generates from these env vars. (#913 PR6)
           ./scripts/build-release-dmg.sh "$VERSION"
 
+      # #3729: the probe list names on-screen words of this release's new features; a
+      # missing one means a note promises something the Release build does not contain.
+      # Packaging backstop only: presence is not proof a feature is reachable.
+      - name: Check release probes in the Release binary
+        env:
+          VERSION: ${{ needs.preflight.outputs.version }}
+        run: |
+          set -euo pipefail
+          PROBES=".github/release-notes/v${VERSION}.probes"
+          if [[ ! -f "$PROBES" ]]; then
+            if python3 -c 'import sys; v=tuple(map(int, sys.argv[1].split("."))); sys.exit(0 if v <= (2,5,4) else 1)' "$VERSION"; then
+              echo "==> v$VERSION predates release probes; skipped"; exit 0
+            fi
+            echo "::error::$PROBES missing"; exit 1
+          fi
+          bash scripts/ci/check-release-probes.sh --manifest "$PROBES" \
+            --binary build/EnviousWispr.app/Contents/MacOS/EnviousWispr
+
       - name: Notarize DMG
         env:
           APPLE_API_KEY_BASE64: ${{ secrets.APPLE_API_KEY_BASE64 }}
@@ -570,18 +620,22 @@ jobs:
           VERSION: ${{ needs.preflight.outputs.version }}
         run: cp "build/EnviousWispr-${VERSION}.dmg" "build/EnviousWispr.dmg"
 
-      - name: Render curated release notes
-        # Render marketing-friendly notes from the in-app What's New copy (the single
-        # source of truth: WhatsNewContent.swift). Best-effort by design: on any
-        # failure the publish job falls back to GitHub's auto-generated notes, so this
-        # step can never block a release or ship it with a blank body.
-        continue-on-error: true
+      # #3729: the GitHub body is the founder-approved detailed notes committed in the
+      # release PR (two versions: WhatsNewContent.swift is the short in-app copy). Preflight
+      # already required the file for a new version; a version at or below 2.5.4 has none
+      # and the publish job's composer applies the legacy fallback.
+      - name: Package committed release notes
         env:
           VERSION: ${{ needs.preflight.outputs.version }}
         run: |
-          python3 scripts/ci/render-release-notes.py \
-            --version "$VERSION" --out build/release-notes-curated.md \
-          || echo "::warning::Could not render curated notes for v$VERSION; release will use auto-generated notes"
+          set -euo pipefail
+          NOTES=".github/release-notes/v${VERSION}.md"
+          if [[ -s "$NOTES" ]]; then
+            cp "$NOTES" build/release-notes-curated.md
+            echo "==> Packaged $NOTES ($(wc -l < build/release-notes-curated.md) lines)"
+          else
+            echo "::warning::No $NOTES (a release at or below 2.5.4); publish applies the legacy fallback"
+          fi
 
       - name: Upload release artifacts
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -729,35 +783,40 @@ jobs:
             echo "==> Release $TAG does not exist — will create"
           fi
 
+      # #3729: one composer for the real and the dry-run create (they used to carry their
+      # own fallbacks). The body is the committed founder-approved notes plus the folded
+      # PR changelog. From 2.5.5 a missing body FAILS here; only a release at or below
+      # 2.5.4 (no committed notes) may fall back to GitHub's generated notes.
+      - name: Checkout composer
+        if: steps.check-release.outputs.exists == 'false'
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          path: src
+          fetch-depth: 1
+          sparse-checkout: scripts/ci
+          persist-credentials: false
+
       - name: Compose release notes
-        # If the build job rendered curated What's New notes, wrap them with the
-        # auto-generated PR changelog (collapsed) into the final release body. If no
-        # curated notes exist, leave no body file so the create step falls back to
-        # --generate-notes. This step never fails the release.
+        id: compose
         if: steps.check-release.outputs.exists == 'false'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: ${{ needs.preflight.outputs.tag }}
+          VERSION: ${{ needs.preflight.outputs.version }}
           COMMITISH: ${{ github.sha }}
         run: |
           set -uo pipefail
-          CURATED="build/release-notes-curated.md"
-          if [ -s "$CURATED" ]; then
-            # target_commitish is required by the generate-notes API when the tag
-            # does not yet exist (e.g. a workflow_dispatch release that creates the
-            # tag); it is ignored when the tag already exists (the normal tag-push
-            # path), so passing it always is safe and preserves the changelog in both.
-            AUTO=$(gh api "repos/${{ github.repository }}/releases/generate-notes" \
-              -f tag_name="$TAG" -f target_commitish="$COMMITISH" --jq '.body' 2>/dev/null || true)
-            {
-              cat "$CURATED"
-              if [ -n "${AUTO:-}" ]; then
-                printf '\n<details>\n<summary>Full technical changelog</summary>\n\n%s\n\n</details>\n' "$AUTO"
-              fi
-            } > build/release-body.md
-            echo "==> Composed curated release notes ($(wc -l < build/release-body.md) lines)"
+          # target_commitish is required by the generate-notes API when the tag does not
+          # yet exist (a dispatched rehearsal); ignored when it exists (the tag push).
+          gh api "repos/${{ github.repository }}/releases/generate-notes" \
+            -f tag_name="$TAG" -f target_commitish="$COMMITISH" --jq '.body' > build/auto-notes.md 2>/dev/null \
+            || : > build/auto-notes.md
+          if bash src/scripts/ci/compose-release-body.sh --version "$VERSION" \
+            --curated build/release-notes-curated.md --auto build/auto-notes.md --out build/release-body.md; then
+            echo "notes=file" >> "$GITHUB_OUTPUT"
           else
-            echo "::warning::No curated What's New notes found; release will use auto-generated notes"
+            rc=$?
+            if [[ "$rc" -eq 10 ]]; then echo "notes=generate" >> "$GITHUB_OUTPUT"; else exit "$rc"; fi
           fi
 
       - name: Create GitHub Release
@@ -766,16 +825,16 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           VERSION: ${{ needs.preflight.outputs.version }}
           TAG: ${{ needs.preflight.outputs.tag }}
+          NOTES_SOURCE: ${{ steps.compose.outputs.notes }}
         run: |
-          # --repo is required on hosted runners: this job has no checkout, so a
-          # fresh hosted workspace has no .git for gh to infer the repo from. (#1087)
-          if [ -s build/release-body.md ]; then
-            NOTES_ARGS=(--notes-file build/release-body.md)
-            echo "==> Using curated release notes"
-          else
-            NOTES_ARGS=(--generate-notes)
-            echo "==> Using auto-generated release notes (no curated notes available)"
-          fi
+          set -euo pipefail
+          # --repo is required on hosted runners: this job has no repo checkout at the
+          # root, so gh cannot infer the repo. (#1087)
+          case "$NOTES_SOURCE" in
+            file) NOTES_ARGS=(--notes-file build/release-body.md) ;;
+            generate) NOTES_ARGS=(--generate-notes) ;;
+            *) echo "::error::no composed release body (NOTES_SOURCE='$NOTES_SOURCE')"; exit 1 ;;
+          esac
           gh release create "$TAG" \
             --repo "${{ github.repository }}" \
             --title "EnviousWispr v${VERSION}" \
@@ -788,15 +847,14 @@ jobs:
         env:
           VERSION: ${{ needs.preflight.outputs.version }}
           TAG: ${{ needs.preflight.outputs.tag }}
+          NOTES_SOURCE: ${{ steps.compose.outputs.notes }}
         run: |
           # #1117: rehearsal — print what WOULD run, create nothing.
-          if [ -s build/release-body.md ]; then
-            echo "DRY RUN: would create release $TAG with CURATED notes (--notes-file):"
+          echo "DRY RUN: would create release $TAG (notes: ${NOTES_SOURCE:-none})"
+          if [[ "$NOTES_SOURCE" == "file" ]]; then
             echo "----------------------------------------"
             cat build/release-body.md
             echo "----------------------------------------"
-          else
-            echo "DRY RUN: would create release $TAG with AUTO-generated notes (--generate-notes)"
           fi
           ls -la build/EnviousWispr-*.dmg build/EnviousWispr.dmg 2>/dev/null || echo "::warning::expected DMGs not found in dry-run download"
 
@@ -815,6 +873,76 @@ jobs:
       - name: Skip asset upload (release already exists, not recovery)
         if: steps.check-release.outputs.exists == 'true' && inputs.mode != 'release-only'
         run: echo "==> Release already exists and mode is not release-only — skipping asset upload"
+
+  # ==========================================================================
+  # LIMB — Verify downloads (#3729). Replaces the operator's hand checks: both DMG
+  # assets of THIS tag are identical, and the website button serves them when this tag
+  # is GitHub's latest release. Never blocks shipping; release-summary reports it.
+  # ==========================================================================
+  verify-downloads:
+    needs: [preflight, publish-github-release]
+    if: |
+      !cancelled() &&
+      needs.publish-github-release.result == 'success' &&
+      (github.event_name == 'push' || inputs.mode == 'full' || inputs.mode == 'release-only')
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      state: ${{ steps.verify.outputs.state }}
+    steps:
+      - name: Checkout verifier
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          fetch-depth: 1
+          sparse-checkout: scripts/ci
+          persist-credentials: false
+
+      - name: Download this run's artifacts (dry run)
+        if: inputs.dry_run == true
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: release-artifacts-${{ needs.preflight.outputs.version }}
+          path: dl/
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          run-id: ${{ needs.preflight.outputs.source-run-id }}
+
+      - name: Verify
+        id: verify
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ needs.preflight.outputs.version }}
+          TAG: ${{ needs.preflight.outputs.tag }}
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          set -uo pipefail
+          V="scripts/ci/verify-release-downloads.sh"
+          if [[ "$DRY_RUN" == "true" ]]; then
+            # Rehearsal: nothing is public; compare the two DMGs this run built.
+            bash "$V" assets "dl/EnviousWispr-${VERSION}.dmg" dl/EnviousWispr.dmg | tee verify.log
+            rc=${PIPESTATUS[0]}
+            if [[ "$rc" -eq 0 ]]; then echo "state=dry-run" >> "$GITHUB_OUTPUT"; else echo "state=failed" >> "$GITHUB_OUTPUT"; fi
+            echo "==> public download checks not exercised in a dry run"
+            exit 0
+          fi
+          mkdir -p dl
+          gh release download "$TAG" --repo "${{ github.repository }}" --dir dl \
+            --pattern "EnviousWispr-${VERSION}.dmg" --pattern "EnviousWispr.dmg" --clobber || true
+          if ! bash "$V" assets "dl/EnviousWispr-${VERSION}.dmg" dl/EnviousWispr.dmg; then
+            echo "state=failed" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          LATEST="$(gh release view --repo "${{ github.repository }}" --json tagName --jq .tagName 2>/dev/null || true)"
+          if [[ "$LATEST" != "$TAG" ]]; then
+            echo "==> $TAG is not the latest release ($LATEST); website button check not applicable"
+            echo "state=not-applicable" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          if bash "$V" doorway https://enviouswispr.com/download dl/EnviousWispr.dmg 6 60; then
+            echo "state=verified" >> "$GITHUB_OUTPUT"
+          else
+            echo "state=failed" >> "$GITHUB_OUTPUT"
+          fi
 
   # ==========================================================================
   # LIMB Job C — Publish Appcast
@@ -1436,17 +1564,27 @@ jobs:
   # Always runs. Single truth source for what shipped and what didn't.
   # ==========================================================================
   release-summary:
-    needs: [preflight, build-release-artifacts, launch-on-macos-14, publish-github-release, publish-appcast, upload-sentry-dsyms, bump-homebrew-cask]
-    if: always() && needs.preflight.result == 'success'
+    needs: [preflight, build-release-artifacts, launch-on-macos-14, publish-github-release, publish-appcast, upload-sentry-dsyms, bump-homebrew-cask, verify-downloads]
+    # #3729: runs even when preflight fails, so a missing notes file or a bad tag is
+    # reported here like every other failure.
+    if: always()
     runs-on: ubuntu-latest   # #1117: pure-bash summary
     timeout-minutes: 5
     steps:
+      - name: Checkout summary script
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          fetch-depth: 1
+          sparse-checkout: scripts/ci
+          persist-credentials: false
+
       - name: Write release summary
         env:
           VERSION: ${{ needs.preflight.outputs.version }}
-          TAG: ${{ needs.preflight.outputs.tag }}
+          TAG: ${{ needs.preflight.outputs.tag || github.ref_name }}
           SOURCE_RUN: ${{ needs.preflight.outputs.source-run-id }}
           MODE: ${{ inputs.mode || 'full' }}
+          PREFLIGHT_RESULT: ${{ needs.preflight.result }}
           BUILD_RESULT: ${{ needs.build-release-artifacts.result }}
           LAUNCH_RESULT: ${{ needs.launch-on-macos-14.result }}
           RELEASE_RESULT: ${{ needs.publish-github-release.result }}
@@ -1454,142 +1592,12 @@ jobs:
           APPCAST_DELIVERY_RESULT: ${{ needs.publish-appcast.outputs.delivery-result }}
           SENTRY_RESULT: ${{ needs.upload-sentry-dsyms.result }}
           CASK_RESULT: ${{ needs.bump-homebrew-cask.result }}
+          DOWNLOADS_RESULT: ${{ needs.verify-downloads.result }}
+          DOWNLOADS_STATE: ${{ needs.verify-downloads.outputs.state }}
           DRY_RUN: ${{ inputs.dry_run }}
           SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
           SENTRY_PROJECT: ${{ secrets.SENTRY_PROJECT }}
           DISCORD_RELEASE_WEBHOOK: ${{ secrets.DISCORD_RELEASE_WEBHOOK }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-        run: |
-          set -euo pipefail
-
-          # #1117: a dry_run rehearsal ends every job in `success` (mutations are
-          # gated/no-op'd), so distinguish it from a real shipped release in the
-          # summary — an operator must never read a rehearsal as "shipped".
-          if [[ "${DRY_RUN}" == "true" ]]; then
-            SUMMARY_TITLE="DRY RUN (rehearsal — nothing shipped) — v${VERSION}"
-          else
-            SUMMARY_TITLE="Release Summary — v${VERSION}"
-          fi
-
-          status_emoji() {
-            case "$1" in
-              success|delivered) echo "✅" ;;
-              skipped|dry-run) echo "⏭️" ;;
-              *)       echo "❌" ;;
-            esac
-          }
-
-          # `publish-appcast` is intentionally skipped for release-only,
-          # sentry-only, and build-only modes. Every other empty/unknown output
-          # fails closed: the job ended before it could prove public delivery.
-          if [[ "$APPCAST_JOB_RESULT" == "skipped" ]]; then
-            APPCAST_STATE="skipped"
-          elif [[ "$APPCAST_JOB_RESULT" != "success" ]]; then
-            APPCAST_STATE="failed"
-            echo "::warning::Appcast job ended ${APPCAST_JOB_RESULT}; treating delivery as failed."
-          else
-            case "$APPCAST_DELIVERY_RESULT" in
-              dry-run|delivered|pending-pr|failed)
-                APPCAST_STATE="$APPCAST_DELIVERY_RESULT"
-                ;;
-              *)
-                APPCAST_STATE="failed"
-                echo "::warning::Appcast job produced no recognized delivery result; treating delivery as failed."
-                ;;
-            esac
-          fi
-
-          BUILD_STATUS=$(status_emoji "$BUILD_RESULT")
-          LAUNCH_STATUS=$(status_emoji "$LAUNCH_RESULT")
-          RELEASE_STATUS=$(status_emoji "$RELEASE_RESULT")
-          APPCAST_STATUS=$(status_emoji "$APPCAST_STATE")
-          SENTRY_STATUS=$(status_emoji "$SENTRY_RESULT")
-          CASK_STATUS=$(status_emoji "$CASK_RESULT")
-
-          # Determine if manual follow-up is needed
-          NEEDS_FOLLOWUP="No"
-          FOLLOWUP_ITEMS=""
-          if [[ "$APPCAST_STATE" == "failed" || "$APPCAST_STATE" == "pending-pr" ]]; then
-            NEEDS_FOLLOWUP="Yes"
-            FOLLOWUP_ITEMS="${FOLLOWUP_ITEMS}\n- Appcast: \`gh workflow run release.yml -f mode=appcast-only -f tag=${TAG} -f source_run_id=${SOURCE_RUN}\`"
-          fi
-          if [[ "$SENTRY_RESULT" != "success" && "$SENTRY_RESULT" != "skipped" ]]; then
-            NEEDS_FOLLOWUP="Yes"
-            FOLLOWUP_ITEMS="${FOLLOWUP_ITEMS}\n- Sentry: \`gh workflow run release.yml -f mode=sentry-only -f tag=${TAG} -f source_run_id=${SOURCE_RUN}\`"
-          fi
-          if [[ "$CASK_RESULT" != "success" && "$CASK_RESULT" != "skipped" ]]; then
-            NEEDS_FOLLOWUP="Yes"
-            FOLLOWUP_ITEMS="${FOLLOWUP_ITEMS}\n- Homebrew cask: \`gh workflow run bump-cask.yml -R saurabhav88/homebrew-tap -f version=${VERSION}\`"
-          fi
-
-          cat >> "$GITHUB_STEP_SUMMARY" << SUMMARY
-          ## ${SUMMARY_TITLE}
-
-          | Component | Status | Type |
-          |---|---|---|
-          | Build/Package | ${BUILD_STATUS} \`${BUILD_RESULT}\` | **HEART** |
-          | Launch on macOS 14 (as shipped) | ${LAUNCH_STATUS} \`${LAUNCH_RESULT}\` | **HEART** |
-          | GitHub Release | ${RELEASE_STATUS} \`${RELEASE_RESULT}\` | **HEART** |
-          | Appcast | ${APPCAST_STATUS} \`${APPCAST_STATE}\` | limb |
-          | Sentry dSYMs | ${SENTRY_STATUS} \`${SENTRY_RESULT}\` | limb |
-          | Homebrew cask | ${CASK_STATUS} \`${CASK_RESULT}\` | limb |
-
-          | Detail | Value |
-          |---|---|
-          | Mode | \`${MODE}\` |
-          | Source run ID | \`${SOURCE_RUN}\` |
-          | Manual follow-up needed | **${NEEDS_FOLLOWUP}** |
-          SUMMARY
-
-          if [[ "$NEEDS_FOLLOWUP" == "Yes" ]]; then
-            echo -e "\n### Recovery commands\n${FOLLOWUP_ITEMS}" >> "$GITHUB_STEP_SUMMARY"
-          fi
-
-          # Fail the summary job only if HEART jobs failed
-          if [[ "$BUILD_RESULT" != "success" && "$BUILD_RESULT" != "skipped" ]]; then
-            echo "::error::HEART FAILURE: Build failed — release did not ship"
-            exit 1
-          fi
-          # #3348: a failed or cancelled launch gate SKIPS publishing, so RELEASE_RESULT
-          # reads `skipped` and would pass the check below; name the gate itself.
-          if [[ "$LAUNCH_RESULT" != "success" && "$LAUNCH_RESULT" != "skipped" ]]; then
-            echo "::error::HEART FAILURE: the shipped app did not launch on macOS 14 (${LAUNCH_RESULT}) — release not published"
-            exit 1
-          fi
-          if [[ "$RELEASE_RESULT" != "success" && "$RELEASE_RESULT" != "skipped" ]]; then
-            echo "::error::HEART FAILURE: GitHub Release failed — release did not ship"
-            exit 1
-          fi
-
-          # #1117: dry_run rehearsal — report as a rehearsal, never as "shipped".
-          if [[ "${DRY_RUN}" == "true" ]]; then
-            echo "==> DRY RUN v${VERSION} complete — pipeline rehearsed on its runners, NOTHING shipped (no GitHub Release, no appcast push, no Sentry upload)."
-            exit 0
-          fi
-
-          # Limb failures are warnings, not errors. Reaching here means we passed the
-          # heart-failure exit guards AND the dry_run gate above, so this is a real
-          # release that actually shipped. Push a proactive Discord alert (the backup
-          # for unattended releases). Non-blocking: it can never fail the summary job,
-          # but its absence/failure is made VISIBLE (#1088).
-          if [[ "$NEEDS_FOLLOWUP" == "Yes" ]]; then
-            echo "::warning::Limb failures detected — release shipped but follow-up needed. See summary for recovery commands."
-            if [[ -z "${DISCORD_RELEASE_WEBHOOK:-}" ]]; then
-              echo "::warning::DISCORD_RELEASE_WEBHOOK not configured — proactive alert NOT sent."
-              echo "| Discord alert | NOT configured |" >> "$GITHUB_STEP_SUMMARY"
-            else
-              MSG=$(printf 'RELEASE FOLLOW-UP NEEDED. v%s shipped to users, but a release limb needs attention.\nFollow-up:%b\nRun: %s\nSentry: %s / %s' \
-                "$VERSION" "${FOLLOWUP_ITEMS}" "$RUN_URL" "${SENTRY_ORG:-?}" "${SENTRY_PROJECT:-?}")
-              PAYLOAD=$(python3 -c 'import json,sys; print(json.dumps({"content": sys.argv[1]}))' "$MSG")
-              CODE=$(curl -sS -o /dev/null -w '%{http_code}' -X POST "$DISCORD_RELEASE_WEBHOOK" \
-                -H "Content-Type: application/json" -d "$PAYLOAD" || echo "000")
-              if [[ "$CODE" == "204" || "$CODE" == "200" ]]; then
-                echo "| Discord alert | sent ($CODE) |" >> "$GITHUB_STEP_SUMMARY"
-              else
-                echo "::warning::Discord alert POST failed (HTTP $CODE) — GitHub summary is the fallback record."
-                echo "| Discord alert | attempted, failed ($CODE) |" >> "$GITHUB_STEP_SUMMARY"
-              fi
-            fi
-          else
-            echo "==> Release v${VERSION} fully shipped. All components successful."
-          fi
+        # Decisions and messages live in the script so its fixture self-test covers them.
+        run: bash scripts/ci/release-summary.sh
