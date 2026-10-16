@@ -23546,13 +23546,13 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Hold your record key and press Space to go hands-free."
+            "value" : "In Push to Talk, hold your record key and press Space to go hands-free."
           }
         },
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Halte deine Aufnahmetaste gedrückt und drücke die Leertaste, um freihändig zu diktieren."
+            "value" : "Halte im Modus „Zum Sprechen drücken“ deine Aufnahmetaste gedrückt und drücke die Leertaste, um freihändig zu diktieren."
           }
         }
       }
@@ -23654,13 +23654,13 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "A new switch keeps your dictations out of clipboard history apps."
+            "value" : "A new switch asks clipboard history apps to skip your dictations."
           }
         },
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Ein neuer Schalter hält deine Diktate aus dem Verlauf von Zwischenablage-Apps heraus."
+            "value" : "Ein neuer Schalter bittet Zwischenablage-Apps, deine Diktate nicht in ihren Verlauf aufzunehmen."
           }
         }
       }
@@ -23690,13 +23690,13 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Steadier record key, pills above the Dock, better Chrome pasting and fewer crashes."
+            "value" : "Steadier record key, Bottom pills above the Dock, better Chrome pasting and fewer crashes."
           }
         },
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Zuverlässigere Aufnahmetaste, Hinweise über dem Dock, besseres Einfügen in Chrome und weniger Abstürze."
+            "value" : "Zuverlässigere Aufnahmetaste, Hinweise unten jetzt über dem Dock, besseres Einfügen in Chrome und weniger Abstürze."
           }
         }
       }

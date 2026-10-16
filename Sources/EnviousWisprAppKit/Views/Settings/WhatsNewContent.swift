@@ -90,7 +90,7 @@ enum WhatsNewContent {
       icon: "keyboard",
       title: "Introducing \"Hold plus Space\"",
       description:
-        "Hold your record key and press Space to go hands-free.",
+        "In Push to Talk, hold your record key and press Space to go hands-free.",
       version: "2.5.4"
     ),
     Entry(
@@ -114,7 +114,7 @@ enum WhatsNewContent {
       icon: "list.clipboard",
       title: "Introducing \"Keep Out of Clipboard History\"",
       description:
-        "A new switch keeps your dictations out of clipboard history apps.",
+        "A new switch asks clipboard history apps to skip your dictations.",
       version: "2.5.4"
     ),
     Entry(
@@ -122,7 +122,7 @@ enum WhatsNewContent {
       icon: "sparkles",
       title: "Smoother Every Day",
       description:
-        "Steadier record key, pills above the Dock, better Chrome pasting and fewer crashes.",
+        "Steadier record key, Bottom pills above the Dock, better Chrome pasting and fewer crashes.",
       version: "2.5.4"
     ),
 

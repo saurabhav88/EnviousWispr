@@ -37,7 +37,7 @@ struct WhatsNewMenuRenderHarness {
     #expect(settings.hasUnreadWhatsNew && !readSettings.hasUnreadWhatsNew)
     let entries = WhatsNewMenuPresentation.entries()
     #expect(entries.map(\.description) == WhatsNewContent.entries
-      .filter { $0.version == "2.5.3" }.map(\.description))
+      .filter { $0.version == WhatsNewConstants.currentContentVersion }.map(\.description))
     for width in [750, 820, 1300] {
       for dark in [false, true] {
         let content = VStack(alignment: .trailing, spacing: 12) {
