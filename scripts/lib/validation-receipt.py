@@ -84,6 +84,22 @@ def toolchain():
     raise RuntimeError("xcodebuild -version printed no 'Build version' line")
 
 
+def name_inputs(root, script, key, files, limit=5, budget=40):
+    """Name the untracked paths that ARE inputs (#3729): ask the classifier one path at a
+    time, up to `budget` paths, so harmless scratch files are not reported. The aggregate
+    verdict already decided; this is only the message."""
+    hits = []
+    for path in sorted(files)[:budget]:
+        if classifier_says_input(root, script, key, [path]):
+            hits.append(path)
+            if len(hits) == limit:
+                break
+    if not hits:
+        return "(not attributable to one file; untracked: " + ", ".join(sorted(files)[:limit]) + ")"
+    more = " ..." if len(files) > budget or len(hits) == limit else ""
+    return ", ".join(hits) + more
+
+
 def classifier_says_input(root, script, key, files):
     """Run one input classifier on a newline file list; True when it calls any an input."""
     out = tempfile.NamedTemporaryFile(prefix="ew-receipt-classify.", delete=False)
@@ -127,12 +143,12 @@ def capture(root):
     untracked = [p for p in git(root, "ls-files", "--others", "--exclude-standard", "-z")
                  .stdout.decode().split("\0") if p]
     if untracked:
-        if classifier_says_input(root, "scripts/ci/classify-changes.sh", "needs_build", untracked):
-            raise Ineligible("an untracked file is a build input (add it, or remove it): "
-                             + ", ".join(sorted(untracked)[:5]) + (" ..." if len(untracked) > 5 else ""))
-        if classifier_says_input(root, "scripts/ci/needs-eval-packages.sh", "needs_eval_packages", untracked):
-            raise Ineligible("an untracked file is an eval-package input (add it, or remove it): "
-                             + ", ".join(sorted(untracked)[:5]) + (" ..." if len(untracked) > 5 else ""))
+        for script, key, what in (("scripts/ci/classify-changes.sh", "needs_build", "a build input"),
+                                   ("scripts/ci/needs-eval-packages.sh", "needs_eval_packages",
+                                    "an eval-package input")):
+            if classifier_says_input(root, script, key, untracked):
+                raise Ineligible(f"an untracked file is {what} (add it, or remove it): "
+                                 + name_inputs(root, script, key, untracked))
     return {"tree": tree, "head": head, "toolchain": toolchain()}
 
 

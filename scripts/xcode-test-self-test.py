@@ -331,9 +331,13 @@ print(json.dumps({'testNodes': [{'nodeType': 'Test Plan', 'children': nodes}]}))
         self.assertFalse(self.lock.exists())
 
     def test_ineligible_untracked_input_is_named(self):
+        # Scratch files that sort first must not crowd out the real input (#3729 review).
+        for name in ('a1.txt', 'a2.txt', 'a3.txt', 'a4.txt', 'a5.txt'):
+            (self.root / name).write_text('scratch\n')
         (self.root / 'Sources/New.swift').write_text('x\n')
         result = self.run_runner(rc=2)
         self.assertIn('Sources/New.swift', result.stdout)
+        self.assertNotIn('a1.txt', result.stdout)
         self.assertEqual(self.tests, [])
 
     def test_untracked_build_input_issues_no_receipt(self):
