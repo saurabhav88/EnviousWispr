@@ -811,23 +811,23 @@ package actor TranscribeCppWhisperBackend<Driver: WhisperExecutorDriving>: ASRBa
     var input = samples
     input.append(contentsOf: [Float](repeating: 0, count: Self.silencePaddingSamples))
     try Task.checkCancellation()
-    let run: TranscribeCppRunResult
     do {
-      run = try await driver.transcribe(
+      let run = try await driver.transcribe(
         handle, samples: input, language: language, lane: .heart,
         onInferenceEntered: onDecode, onProgress: nil)
+      // #3801: the loop and the flush both decode here, so both only ever see filtered
+      // results. Nothing below throws, so the catch still sees only the native call's errors.
+      let tail = WhisperSilentTailFilter.filter(
+        run, statsSamples: samples, segmentOffsetSamples: 0, realEndSample: samples.count)
+      await Self.logSilentTail(tail.dropped, route: "rolling")
+      var filtered = tail.result
+      filtered.silentTailDropped = tail.dropped
+      return filtered
     } catch {
       let mapped = Self.mapRunError(error)
       if mapped is CancellationError { await driver.waitForDrain(handle) }
       throw mapped
     }
-    // #3801: the loop and the flush both decode here, so both only ever see filtered results.
-    let tail = WhisperSilentTailFilter.filter(
-      run, statsSamples: samples, segmentOffsetSamples: 0, realEndSample: samples.count)
-    await Self.logSilentTail(tail.dropped, route: "rolling")
-    var filtered = tail.result
-    filtered.silentTailDropped = tail.dropped
-    return filtered
   }
 
   // MARK: - Unload and memory pressure

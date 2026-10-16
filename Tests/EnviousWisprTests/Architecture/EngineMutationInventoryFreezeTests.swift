@@ -722,7 +722,7 @@ import Testing
       text: "let load = loadModel", classification: .unrelatedDomain),
     CallSite(
       file: "Sources/EnviousWisprASR/TranscribeCppPreviewRuntime.swift", matcher: "transcribe",
-      text: "return try await driver.transcribe(", classification: .unrelatedDomain),
+      text: "let run = try await driver.transcribe(", classification: .unrelatedDomain),
     CallSite(
       file: "Sources/EnviousWisprASR/TranscribeCppPreviewRuntime.swift", matcher: "transcribe",
       text: "return try await model.transcribe(samples, language)",
