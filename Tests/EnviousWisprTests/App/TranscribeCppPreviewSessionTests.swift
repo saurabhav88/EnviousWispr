@@ -61,7 +61,7 @@ import Testing
     handle.enqueue(text)
 
     await waitForDelivery(box)
-    await handle.end()
+    await PreviewWait.within("the session's end") { await handle.end() }
 
     #expect(box.delivered.first != nil, "control: something must have been delivered")
     if let text = box.delivered.first {
@@ -85,7 +85,7 @@ import Testing
     handle.enqueue("")
     handle.enqueue("real words")
     await waitForDelivery(box)
-    await handle.end()
+    await PreviewWait.within("the session's end") { await handle.end() }
 
     // CONTROL FIRST. Without it this test passes when nothing is delivered at
     // all, which is exactly how it passed before the delivery wait was fixed.
@@ -106,9 +106,11 @@ import Testing
     let handle = TranscribeCppPreviewSession(
       lookups: nil, onText: { box.delivered.append($0) })
 
-    async let first: Void = handle.end()
-    async let second: Void = handle.end()
-    _ = await (first, second)
+    await PreviewWait.within("both ends") {
+      async let first: Void = handle.end()
+      async let second: Void = handle.end()
+      _ = await (first, second)
+    }
 
     // Both returned; nothing hung and nothing crashed. A post-end enqueue must
     // also not deliver, since the stream is finished.
@@ -178,13 +180,15 @@ import Testing
     let handle = TranscribeCppPreviewSession(
       lookups: nil, onText: { box.delivered.append($0) })
     let session = BlockingSession()
-    await handle.attach(session)
+    await PreviewWait.within("the attach", onExpiry: session.releaseCancel) {
+      await handle.attach(session)
+    }
 
     // One feed over the cap. The samples are never retained — the guard caps
     // before the append — so this array is transient.
     let overCap = [Float](
       repeating: 0, count: TranscribeCppPreviewSession.maxRetainedSamples + 1)
-    async let fed: Void = handle.feed(overCap)
+    let fed = Task { await handle.feed(overCap) }
 
     // CONTROL: the cap really fired and the cancel really started. Without this
     // the wait below would pass on a run where nothing was ever cancelled.
@@ -194,10 +198,10 @@ import Testing
     #expect(session.cancelEntered, "control: the cap must have started a cancel")
 
     let ended = Flag()
-    async let endReturned: Void = {
+    let ending = Task {
       await handle.end()
       ended.set()
-    }()
+    }
 
     // deadline-fallback: give an incorrect early return a real chance to land.
     try? await Task.sleep(for: .milliseconds(100))
@@ -206,7 +210,10 @@ import Testing
       "end() returned while the capped session's decode was still stopping")
 
     session.releaseCancel()
-    _ = await (fed, endReturned)
+    await PreviewWait.within("the capped feed and end to finish", onExpiry: session.releaseCancel) {
+      await fed.value
+      await ending.value
+    }
     #expect(ended.isSet, "end() must complete once the cancel finishes")
   }
 
@@ -260,10 +267,10 @@ import Testing
   @Test("a session attached after end() is never started and is released")
   func attachAfterEndNeverStarts() async {
     let handle = TranscribeCppPreviewSession(lookups: nil, onText: { _ in })
-    await handle.end()
+    await PreviewWait.within("the end") { await handle.end() }
     let session = OrderedSession()
     session.releaseStart()
-    await handle.attach(session)
+    await PreviewWait.within("the late attach") { await handle.attach(session) }
     #expect(session.events == ["cancel"], "never started, only released")
   }
 
@@ -328,18 +335,20 @@ import Testing
     }
     let occupancy = Occupancy()
 
-    await withTaskGroup(of: Void.self) { group in
-      for _ in 0..<12 {
-        group.addTask {
-          await lock.acquire()
-          occupancy.enter()
-          // Suspend INSIDE the critical section. Without this the sections may
-          // not overlap even when unprotected, and the test would pass against
-          // a broken lock.
-          await Task.yield()
-          await Task.yield()
-          occupancy.leave()
-          await lock.release()
+    await PreviewWait.within("every holder to pass the lock") {
+      await withTaskGroup(of: Void.self) { group in
+        for _ in 0..<12 {
+          group.addTask {
+            await lock.acquire()
+            occupancy.enter()
+            // Suspend INSIDE the critical section. Without this the sections may
+            // not overlap even when unprotected, and the test would pass against
+            // a broken lock.
+            await Task.yield()
+            await Task.yield()
+            occupancy.leave()
+            await lock.release()
+          }
         }
       }
     }
@@ -367,13 +376,15 @@ import Testing
     }
     let counter = Counter()
 
-    await withTaskGroup(of: Void.self) { group in
-      for _ in 0..<25 {
-        group.addTask {
-          await lock.acquire()
-          await Task.yield()
-          counter.tick()
-          await lock.release()
+    await PreviewWait.within("every waiter to pass the lock") {
+      await withTaskGroup(of: Void.self) { group in
+        for _ in 0..<25 {
+          group.addTask {
+            await lock.acquire()
+            await Task.yield()
+            counter.tick()
+            await lock.release()
+          }
         }
       }
     }

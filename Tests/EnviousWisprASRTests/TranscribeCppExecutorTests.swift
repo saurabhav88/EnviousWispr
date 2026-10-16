@@ -791,11 +791,13 @@ struct TranscribeCppPreviewPriorityTests {
   }
 
   /// A bounded wait (the rolling tests' deadline helper: expiry fails the test, never hangs).
+  /// Expiry releases every native call, so work the expired step left parked returns (#3808).
   private static func within(
-    _ what: String, sourceLocation: SourceLocation = #_sourceLocation,
+    _ what: String, _ native: FakeNative, sourceLocation: SourceLocation = #_sourceLocation,
     _ ready: @escaping @Sendable () async -> Void
   ) async {
-    await TranscribeCppRollingSessionTests.within(what, sourceLocation: sourceLocation, ready)
+    await TranscribeCppRollingSessionTests.within(
+      what, sourceLocation: sourceLocation, onExpiry: { native.releaseEverything() }, ready)
   }
 
   @Test(
@@ -828,9 +830,9 @@ struct TranscribeCppPreviewPriorityTests {
     // The preview resumes on its next cycle and publishes the retried audio.
     await native.waitForArrivals(3)
     native.release(Self.small)
-    await Self.within("the retried decode's text") { await published.first() }
+    await Self.within("the retried decode's text", native) { await published.first() }
     #expect(published.all == ["Hello there."])
-    await session.cancel()
+    await Self.within("the preview's stop", native) { await session.cancel() }
     #expect(native.peakInside == 1)
   }
 
@@ -856,7 +858,7 @@ struct TranscribeCppPreviewPriorityTests {
     await session.start { (Self.speech, Self.speech.count) }
     let rolling = try #require(session as? TranscribeCppRollingSession)
     // Three refused cycles: the executor answered `heartBusy` without queueing anything.
-    await Self.within("three refused cycles") { await rolling.cyclesCompleted(reach: 3) }
+    await Self.within("three refused cycles", native) { await rolling.cyclesCompleted(reach: 3) }
     #expect(native.log == ["enter turbo"], "no preview decode while the heart works")
     #expect(published.all.isEmpty)
 
@@ -864,9 +866,9 @@ struct TranscribeCppPreviewPriorityTests {
     _ = try await native.bounded(h)
     await native.waitForArrivals(2)
     native.release(Self.small)
-    await Self.within("the first preview text") { await published.first() }
+    await Self.within("the first preview text", native) { await published.first() }
     #expect(published.all == ["Hello there."])
-    await session.cancel()
+    await Self.within("the preview's stop", native) { await session.cancel() }
   }
 
   @Test("the preview never shows an invented sentence that sits on the trailing silence (#3801)")
@@ -904,7 +906,7 @@ struct TranscribeCppPreviewPriorityTests {
       language: "en", hypothesisRetentionLimit: 2_000, onHypothesis: published.append)
     await session.start { (Self.speech, Self.speech.count) }
     await native.waitForArrivals(1)
-    await session.cancel()
+    await Self.within("the preview's stop", native) { await session.cancel() }
     // Cancel returned: the aborted run had already exited native code.
     #expect(native.log == ["enter small", "abort small", "exit small"])
     #expect(native.inside == 0)
@@ -936,13 +938,15 @@ struct TranscribeCppPreviewPriorityTests {
     // The window plus 0.5 s of trailing silence, like the heart's decodes.
     #expect(native.samplesSeen.first?.count == Self.speech.count + 8_000)
     native.release(Self.small)
-    await Self.within("the first preview text") { await published.first() }
-    await session?.cancel()
+    await Self.within("the first preview text", native) { await published.first() }
+    await Self.within("the preview's stop", native) { [session] in
+      await session?.cancel()
+    }
     runtime = nil
     #expect(native.closeCount(Self.small) == 0, "a session still holds the runtime and its model")
 
     session = nil
-    await Self.within("the released model's free") { await residency.waitUntilNoneLoaded() }
+    await Self.within("the released model's free", native) { await residency.waitUntilNoneLoaded() }
     #expect(native.closeCount(Self.small) == 1)
     #expect(residency.loadedCount == 0)
   }

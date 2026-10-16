@@ -25,18 +25,22 @@ struct VendorDecodeOccupancyTests {
     private var parked: CheckedContinuation<Void, Never>?
     private var enteredWaiters: [(id: UUID, continuation: CheckedContinuation<Bool, Never>)] = []
     private var hasEntered = false
+    /// Remembers `open()`, so an open that lands before the park (after an expired
+    /// `entered()`) still lets the parked operation return instead of hanging (#3808).
+    private var isOpen = false
 
     func park() async {
       await withCheckedContinuation { c in
-        let waiters = lock.withLock {
-          () -> [(id: UUID, continuation: CheckedContinuation<Bool, Never>)] in
-          parked = c
+        let (waiters, open) = lock.withLock {
+          () -> ([(id: UUID, continuation: CheckedContinuation<Bool, Never>)], Bool) in
           hasEntered = true
+          if !isOpen { parked = c }
           let ws = enteredWaiters
           enteredWaiters.removeAll()
-          return ws
+          return (ws, isOpen)
         }
         for waiter in waiters { waiter.continuation.resume(returning: true) }
+        if open { c.resume() }
       }
     }
 
@@ -74,6 +78,7 @@ struct VendorDecodeOccupancyTests {
 
     func open() {
       let c = lock.withLock { () -> CheckedContinuation<Void, Never>? in
+        isOpen = true
         let p = parked
         parked = nil
         return p
