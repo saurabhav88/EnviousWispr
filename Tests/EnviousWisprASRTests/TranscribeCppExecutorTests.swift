@@ -891,9 +891,9 @@ struct TranscribeCppPreviewPriorityTests {
     await session.start { (audio, audio.count) }
     await native.waitForArrivals(1)
     native.release(Self.small)
-    await Self.within("the first preview text") { await published.first() }
+    await Self.within("the first preview text", native) { await published.first() }
     #expect(published.all.first == "Hello there.")
-    await session.cancel()
+    await Self.within("the preview's stop", native) { await session.cancel() }
   }
 
   @Test("stopping the preview aborts its decode and returns only after the native run ended")
