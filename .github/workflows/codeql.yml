@@ -1,5 +1,8 @@
 name: CodeQL
 
+# Swift is blocked by Xcode 27 compatibility (#3828). Autobuild selected
+# AliasRunner and missed the app; do not mistake that partial scan for coverage.
+
 on:
   push:
     branches: [ main ]
@@ -8,6 +11,15 @@ on:
       - 'scripts/**'
       - 'website/**'
       - 'workers/**'
+      - '**/*.py'
+      - '**/*.js'
+      - '**/*.mjs'
+      - '**/*.cjs'
+      - '**/*.jsx'
+      - '**/*.ts'
+      - '**/*.tsx'
+      - '**/*.mts'
+      - '**/*.cts'
   pull_request:
     branches: [ main ]
     paths:
@@ -15,6 +27,15 @@ on:
       - 'scripts/**'
       - 'website/**'
       - 'workers/**'
+      - '**/*.py'
+      - '**/*.js'
+      - '**/*.mjs'
+      - '**/*.cjs'
+      - '**/*.jsx'
+      - '**/*.ts'
+      - '**/*.tsx'
+      - '**/*.mts'
+      - '**/*.cts'
   workflow_dispatch:
 
 permissions:

@@ -22,3 +22,10 @@ For app vulnerabilities, please check whether the problem also occurs in the
 [latest published release](https://github.com/saurabhav88/EnviousWispr/releases/latest),
 if you can do so safely. You can report without retesting.
 Keeping the app up to date is recommended for receiving app security fixes.
+
+## Automated scans
+
+CodeQL scans GitHub Actions, JavaScript/TypeScript, and Python in this repository.
+Swift app scanning awaits
+[GitHub support for the app's Xcode 27 toolchain](https://github.com/github/codeql/issues/22742#issuecomment-5949040893).
+The coverage gap is tracked in [#3828](https://github.com/saurabhav88/EnviousWispr/issues/3828).
