@@ -227,10 +227,8 @@ jobs:
             || { echo "::error::cannot read source run $SOURCE_RUN_ID"; exit 1; }
           TAG_SHA="$(gh api "repos/$GITHUB_REPOSITORY/commits/$TAG" --jq .sha)" \
             || { echo "::error::tag $TAG does not resolve to a commit"; exit 1; }
-          if ! jq -e --arg sha "$TAG_SHA" --arg repo "$GITHUB_REPOSITORY" '
-              .head_sha == $sha and
-              .head_repository.full_name == $repo and
-              .path == ".github/workflows/release.yml"' <<< "$RUN" >/dev/null; then
+          printf '%s' "$RUN" > source-run.json
+          if ! bash scripts/ci/check-source-run.sh source-run.json "$TAG_SHA" "$GITHUB_REPOSITORY"; then
             echo "::error::source run $SOURCE_RUN_ID is not a release.yml run of $GITHUB_REPOSITORY at $TAG ($TAG_SHA): $(jq -c '{head_sha, path, repo: .head_repository.full_name}' <<< "$RUN")"
             exit 1
           fi

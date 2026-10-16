@@ -101,6 +101,7 @@ member_ci_self_tests() {
   bash scripts/ci/release-tag-guard.sh --self-test
   bash scripts/ci/verify-release-downloads.sh --self-test
   bash scripts/ci/release-summary.sh --self-test
+  bash scripts/ci/check-source-run.sh --self-test
 }
 
 # CI step: Dependency direction (#3095)
