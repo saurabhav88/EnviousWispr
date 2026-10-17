@@ -529,6 +529,70 @@ struct TranscribeCppExecutorLifetimeTests {
     #expect(native.violations.isEmpty)
   }
 
+  /// #3849 plan §11 item 3: the production fallback in a child process, ending it for real. The
+  /// child records the release's actual outcome and the exit request on stdout as they happen;
+  /// the parent requires both, a status-zero termination (`_exit(0)`) and the note on disk.
+  @Test(
+    "a stuck decode at quit writes the note, then the production fallback ends the process",
+    .timeLimit(.minutes(1)))
+  func fallbackProducerWritesNoteAndExits() async throws {
+    let token = UUID().uuidString
+    let directory = Self.temporaryDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let path = directory.path
+    let observed = await #expect(
+      processExitsWith: .success, observing: [\.standardOutputContent, \.standardErrorContent]
+    ) { [token = token as String, path = path as String] in
+      await Self.fallbackChild(token: token, noteDirectory: path)
+    }
+    let result = try #require(observed)
+    let lines = String(decoding: result.standardOutputContent, as: UTF8.self)
+      .split(separator: "\n").map(String.init).filter { $0.hasPrefix("fallback-") }
+    #expect(
+      lines == [
+        "fallback-release timedOut(sessions: 1) \(token)", "fallback-exit \(token)",
+      ], "stderr: \(String(decoding: result.standardErrorContent, as: UTF8.self))")
+    let note = try Self.noteJSON(in: directory)
+    #expect(
+      Set(note.keys) == [
+        "bundleIdentifier", "environment", "appVersion", "timestamp", "sessions", "boundMs",
+      ])
+    #expect(note["sessions"] as? Int == 1)
+    #expect(note["boundMs"] as? Int == 200)
+    // The child is this same test host, so it stamps this build's identity.
+    let bundle = Bundle.main.bundleIdentifier ?? "com.enviouswispr.app"
+    #expect(note["bundleIdentifier"] as? String == bundle)
+    #expect(
+      note["environment"] as? String == (bundle.hasSuffix(".dev") ? "development" : "production"))
+  }
+
+  /// The fallback child body: an abort-ignoring decode holds the session, then the PRODUCTION
+  /// quit step runs with `_exit(0)`. Records no test issues; a failed step ends with status 1.
+  private static func fallbackChild(token: String, noteDirectory: String) async {
+    DispatchQueue.global().asyncAfter(deadline: .now() + 30) { childFail("watchdog") }
+    let native = FakeNative(ignoresAbort: ["m"])
+    let executor = TranscribeCppExecutor(makeSession: native.makeSession)
+    guard let m = try? await executor.load(modelPath: "m", lane: .heart) else { childFail("load") }
+    let running = Task {
+      try await executor.transcribe(m, samples: [1], language: nil, lane: .heart)
+    }
+    await native.waitForArrivals(1)
+    guard native.inside == 1 else { childFail("native entry") }
+    TranscribeCppProcessExit.releaseBeforeExit(
+      release: { timeout in
+        let outcome = executor.releaseAllForTermination(timeout: timeout)
+        FileHandle.standardOutput.write(Data("fallback-release \(outcome) \(token)\n".utf8))
+        return outcome
+      },
+      noteDirectory: URL(filePath: noteDirectory), timeout: .milliseconds(200),
+      exitNow: {
+        FileHandle.standardOutput.write(Data("fallback-exit \(token)\n".utf8))
+        _exit(0)
+      })
+    running.cancel()
+    childFail("the quit step returned normally")
+  }
+
   @Test("a release already under way is unconfirmed: note without a count, then exit")
   func quitStepTreatsRepeatAsUnconfirmed() async throws {
     let native = FakeNative()
