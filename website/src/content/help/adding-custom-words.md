@@ -6,10 +6,10 @@ section: "Dictionary"
 order: 1
 keywords: ["custom words", "vocabulary", "add a word", "my name", "names", "jargon", "technical terms", "spells my name wrong", "dictionary", "teach it a word", "acronyms", "how do I add a name", "where is your words", "fix a misspelled name", "turn on vocabulary packs", "import my contacts", "wrong spelling", "word keeps coming out wrong", "custom word not working", "Enable Dictionary"]
 related: ["self-learning-dictionary", "why-is-my-dictation-inaccurate", "how-custom-word-correction-works", "using-snippets"]
-updated: 2026-09-29
+updated: 2026-10-17
 deflection: "can_resolve"
 ---
-When EnviousWispr keeps misspelling a name or a specialised word, add it to your words and it writes your spelling from then on. You often do not need to add it by hand: fix the word once in text EnviousWispr recently pasted, and the [Self-Learning Dictionary](/help/self-learning-dictionary/) adds it for you.
+When EnviousWispr keeps misspelling a name or a specialised word, add it to your words, which helps it write your spelling. You often do not need to add it by hand: fix the word once in text EnviousWispr recently pasted, and the [Self-Learning Dictionary](/help/self-learning-dictionary/) adds it for you.
 
 ### Add a word it keeps getting wrong
 

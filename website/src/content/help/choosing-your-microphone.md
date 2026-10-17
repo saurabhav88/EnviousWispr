@@ -21,7 +21,9 @@ The **Microphone** tab shows which device Auto is using.
 
 ### Auto picked a virtual device and records silence
 
-If your Mac's input is not a real microphone, EnviousWispr records from an available real microphone instead. Virtual devices from Krisp, Loopback, BlackHole, meeting apps and aggregate devices deliver only silence, so Auto skips them. If a virtual device is the only input on your Mac, it is still used.
+If your Mac's input is a virtual device, such as one from Krisp, Loopback, BlackHole or a meeting app, or an aggregate device, **Auto** records from a real microphone instead when one is available. A default input like this often delivers only silence. If a virtual or aggregate device is the only input on your Mac, Auto still uses it.
+
+If you want your audio to go through a virtual or aggregate device, choose it yourself from the list, as described below. EnviousWispr then uses it. Check that the meter on the recording bar moves when you speak.
 
 ### Always use one specific microphone
 

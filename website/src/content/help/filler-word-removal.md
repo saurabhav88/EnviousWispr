@@ -5,7 +5,7 @@ category: "features"
 section: "Text Processing"
 order: 2
 keywords: ["um", "uh", "filler", "filler words", "remove um", "you know", "like", "stop words", "cleaner speech", "keep ums", "turn off filler removal", "er", "hmm", "false starts", "repeated words"]
-updated: 2026-09-29
+updated: 2026-10-17
 deflection: "can_resolve"
 ---
 EnviousWispr removes spoken noises like "um", "uh", "hmm" and "er" from your dictated text before it reaches your app. This is on by default.
@@ -18,7 +18,7 @@ Turn the setting off if you would rather keep your spoken hesitations.
 2. Click **Dictation Settings**, then **Engine**.
 3. Turn off **Remove filler words (um, uh, hmm...)**.
 
-Your next dictation keeps every noise in the text.
+This stops EnviousWispr's own filler-removal step. AI Polish can still remove hesitations, so turn off **Enable AI Polish** too if you want to keep them. The speech engine may also leave out some spoken sounds before any of these steps run.
 
 ### Does filler removal need AI or the internet?
 

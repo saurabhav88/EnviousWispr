@@ -6,7 +6,7 @@ section: "Audio Processing"
 order: 4
 keywords: ["auto stop", "stops on silence", "stops too early", "cuts me off", "pause", "silence", "vad", "keeps going after i stop", "waits too long", "voice activity detection", "stop recording on silence", "pause duration", "stops mid sentence"]
 related: ["hands-free-mode-long-dictation", "first-word-gets-cut-off"]
-updated: 2026-09-29
+updated: 2026-10-17
 deflection: "show_but_always_send"
 ---
 EnviousWispr can end a recording by itself once you stop talking, so you do not have to press your keybind again. This is off by default. Switch it on first.
@@ -37,8 +37,13 @@ Check that **Stop recording on silence** is switched on. It is off by default. I
 
 ### Silence is cut out of my dictation
 
-Before your speech is transcribed, EnviousWispr finds the parts of the recording where you were talking and sends only those to the speech engine. In a quiet or normal room that comes to the same thing as removing the silence at the start and the end. Anything the app does not recognise as speech can be left out, wherever it falls in the recording.
+Before your speech is transcribed, EnviousWispr finds the parts of the recording where you were talking. What happens next depends on your engine:
 
-This trimming happens whether or not auto-stop is switched on. It runs entirely on your Mac and needs no setup. It works from a copy of your audio with low rumble (fans, engines, air conditioners) taken out. Your recording and the audio your engine transcribes are untouched.
+- **Fast (Parakeet).** Only the parts where you were talking go to the engine. In a quiet or normal room that comes to the same thing as removing the silence at the start and the end. Anything the app does not recognise as speech can be left out, wherever it falls in the recording. With **Faster Transcription** on, the engine transcribes your audio as it arrives instead, and the trimmed audio is used only if that comes back empty or fails.
+- **All Languages (Whisper).** The engine receives the whole recording and is told where your speech is.
+
+If trimming would leave too little audio, or could cut a soft first word from a short dictation, EnviousWispr keeps the original audio instead.
+
+This happens whether or not auto-stop is switched on. It runs entirely on your Mac and needs no setup. The step that finds your speech works from a copy of your audio with low rumble (fans, engines, air conditioners) taken out. That filter is not applied to your recording or to the audio the engine transcribes.
 
 If a noisy room is the problem, read [_Noise Suppression_](/help/noise-suppression/).

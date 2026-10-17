@@ -29,7 +29,7 @@ A physical mute switch stops your voice reaching the app even when everything el
 
 EnviousWispr needs to listen to the device you are actually speaking into. Open **Dictation Settings** > **Microphone**. When it is set to **Auto**, EnviousWispr records from whatever input your Mac is using, which may not be the device at your mouth. Pick a specific device from the list to remove the doubt.
 
-If your Mac's default input is a virtual device, such as one installed by Krisp, Loopback, BlackHole, an aggregate device or a meeting app, **Auto** skips it and records from a real microphone, because a virtual device delivers only silence. A virtual device is still used when it is the only input on your Mac.
+If your Mac's default input is a virtual device, such as one installed by Krisp, Loopback, BlackHole, an aggregate device or a meeting app, **Auto** records from a real microphone instead when one is available, because a default input like this often delivers only silence. A virtual device is still used when it is the only input on your Mac. If you chose a virtual or aggregate device yourself, EnviousWispr uses it, so check that the meter on the recording bar moves when you speak.
 
 If you record through an audio interface with more than one input, such as a Focusrite Scarlett, also check the **Mic is on** control next to the device picker. EnviousWispr listens to Input 1 unless you pick another, and a microphone plugged into Input 2 records silence until you do. See [_Choosing Your Microphone_](/help/choosing-your-microphone/).
 

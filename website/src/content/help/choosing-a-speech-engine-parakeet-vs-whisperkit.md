@@ -6,7 +6,7 @@ section: "Transcription"
 order: 1
 keywords: ["parakeet", "whisper", "whisperkit", "whisper large v3 turbo", "which engine", "engine", "speech engine", "model", "accuracy vs speed", "switch engine", "transcription engine", "which is better", "fast engine", "all languages", "engine is slow", "wrong language", "download whisper model"]
 related: ["multi-language-dictation", "why-is-my-dictation-inaccurate", "using-snippets"]
-updated: 2026-10-15
+updated: 2026-10-17
 deflection: "can_resolve"
 ---
 Keep the **Fast** engine, which uses Parakeet. Switch to the **All Languages** engine, which uses Whisper, only if you dictate in a language Fast does not cover.
@@ -46,7 +46,7 @@ If one engine feels slow or keeps missing your language, try the other. Speed de
 
 When you finish a recording, EnviousWispr does five things in order. Knowing the order helps you find where a delay or an unexpected change came from.
 
-1. **Trim the audio.** EnviousWispr keeps the parts of the recording where you were talking. In a quiet or normal room, that is the same as trimming the silence at the start and the end.
+1. **Find your speech.** EnviousWispr finds the parts of the recording where you were talking. On Fast this usually trims the silence before transcription. All Languages gets the whole recording and is told where the speech is. See [_Stop Recording Automatically When You Stop Talking_](/help/voice-activity-detection-and-auto-stop/).
 2. **Transcribe the speech.** Your chosen engine reads the audio and writes out the text.
 3. **Clean up the text.** A snippet you said is expanded first. Then your custom words are applied, filler words are removed, spoken emoji are converted, and numbers, dates and times are written the way you would type them. This step always runs, whatever your AI Polish setting is, and each part has its own setting.
 4. **Polish the text.** If AI Polish is on, it runs on the cleaned-up text. Switch **Enable AI Polish** off under **Settings** > **AI Polish** to skip this step.
