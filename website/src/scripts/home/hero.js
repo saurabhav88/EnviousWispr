@@ -93,14 +93,5 @@ export function init(root, motion, scope) {
     { signal: scope.signal },
   );
   next.disabled = false;
-  const measure = () =>
-    root.style.setProperty(
-      '--intro-copy-height',
-      root.querySelector('.screen-hero-copy').offsetHeight + 'px',
-    );
-  const observer = new ResizeObserver(measure);
-  observer.observe(root.querySelector('.screen-hero-copy'));
-  scope.defer(() => observer.disconnect());
-  measure();
   render();
 }
