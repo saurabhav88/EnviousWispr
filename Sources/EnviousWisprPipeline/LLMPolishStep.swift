@@ -73,10 +73,9 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
       && lhs.thinking == rhs.thinking && lhs.detectedLanguage == rhs.detectedLanguage
   }
 
-  /// A fresh group step accepts only members with identical existing instruction/config policy.
-  /// nil asks the caller to use ordinary processing, with no cloud request made here.
-  func prepareFileBatch(_ members: [FileBatchMember]) -> TextProcessingContext? {
-    guard fileBatchConsumed == false, fileBatchInput == nil, fileBatchOutput == nil, members.count > 1,
+  /// Pure compatibility query for incremental packing; prepare uses the same decision.
+  func canShareFileBatch(_ members: [FileBatchMember]) -> Bool {
+    guard members.count > 1,
       let first = members.first, let own = fileBatchMember(first.context),
       own.provider == first.provider, own.model == first.model,
       own.system == first.system, Self.sameConfig(own.config, first.config),
@@ -88,6 +87,15 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
           && member.context.language == first.context.language
           && member.context.languageSource == first.context.languageSource
       })
+    else { return false }
+    return true
+  }
+
+  /// A fresh group step accepts only members with identical existing instruction/config policy.
+  /// nil asks the caller to use ordinary processing, with no cloud request made here.
+  func prepareFileBatch(_ members: [FileBatchMember]) -> TextProcessingContext? {
+    guard fileBatchConsumed == false, fileBatchInput == nil, fileBatchOutput == nil,
+      canShareFileBatch(members), let first = members.first
     else { return nil }
     let text = SectionEnvelope.wrap(members.map { $0.context.text })
     let batch = FileBatchInput(id: UUID(), members: members, text: text)

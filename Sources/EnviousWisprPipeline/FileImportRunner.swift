@@ -79,6 +79,7 @@ public final class FileImportRunner {
   private let languageIdentifier: (String) -> (language: String, confidence: Double)?
   private let makeEGOnePolisher: (@MainActor (EGOneEndpoint) -> any TranscriptPolisher)?
   private let promptPlanner: (any PromptPlanning)?
+  private let makePolisher: LLMPolishStep.PolisherFactory?
 
   /// **One import, one configuration.** Frozen when the run starts and applied
   /// identically to every part, so a user who changes their polisher halfway
@@ -129,7 +130,8 @@ public final class FileImportRunner {
     languageIdentifier: @escaping (String) -> (language: String, confidence: Double)?,
     makeEGOnePolisher: (@MainActor (EGOneEndpoint) -> any TranscriptPolisher)?,
     promptPlanner: (any PromptPlanning)?,
-    checkerSelectionProvider: (@MainActor (LLMProvider, String?) async -> LearnedWordCheckerSelection)? = nil
+    checkerSelectionProvider: (@MainActor (LLMProvider, String?) async -> LearnedWordCheckerSelection)? = nil,
+    makePolisher: LLMPolishStep.PolisherFactory? = nil
   ) {
     self.keychainManager = keychainManager
     self.egOneRuntime = egOneRuntime
@@ -138,6 +140,7 @@ public final class FileImportRunner {
     self.languageIdentifier = languageIdentifier
     self.makeEGOnePolisher = makeEGOnePolisher
     self.promptPlanner = promptPlanner
+    self.makePolisher = makePolisher
     self.checkerSelectionProvider = checkerSelectionProvider
   }
 
@@ -210,6 +213,139 @@ public final class FileImportRunner {
     // for a dictation and wrong here.
     try Task.checkCancellation()
 
+    return Self.outcome(settings: settings, result: result)
+  }
+
+  private struct PreparedPart {
+    let index: Int
+    let context: TextProcessingContext
+    let steps: LimbSteps
+    let member: LLMPolishStep.FileBatchMember?
+  }
+
+  /// File import's ordered streaming cleanup. A rejected callback ends the invocation.
+  /// Locals and singletons retain the existing pipeline; only compatible cloud pieces share a call.
+  package func process(
+    parts: [String], engineLanguage: String? = nil,
+    onOutcome: @MainActor (Int, PartOutcome) -> Bool
+  ) async throws {
+    guard let settings = frozenSettings else { throw FileImportRunnerError.notConfigured }
+    let vocabulary = frozenVocabulary
+    let generation = checkerSelectionGeneration
+    let provider = LLMProvider(rawValue: settings.llmProvider) ?? .none
+    let runner = TextProcessingRunner(telemetry: .silent, languageIdentifier: languageIdentifier)
+    var pending: [PreparedPart] = []
+    var groupStep: LLMPolishStep?
+
+    func checkCurrent() throws {
+      try Task.checkCancellation()
+      guard checkerSelectionGeneration == generation else { throw CancellationError() }
+    }
+    func emit(_ index: Int, _ outcome: PartOutcome) throws {
+      try checkCurrent()
+      guard onOutcome(index, outcome) else { throw CancellationError() }
+      try checkCurrent()
+    }
+    func finish(_ part: PreparedPart, context: TextProcessingContext, includePolish: Bool) async throws {
+      try checkCurrent()
+      let stages = part.steps.fileImportStages
+      let chain = (includePolish ? [stages.polish] : []) + stages.afterPolish
+      let result = try await runner.run(context: context, steps: chain)
+      try checkCurrent()
+      try emit(part.index, Self.outcome(settings: settings, result: result))
+    }
+    func flush() async throws {
+      try checkCurrent()
+      guard pending.isEmpty == false else { return }
+      let current = pending
+      let step = groupStep
+      pending.removeAll(keepingCapacity: true)
+      groupStep = nil
+      let members = current.compactMap(\.member)
+      if current.count > 1, let step, members.count == current.count,
+        let input = step.prepareFileBatch(members)
+      {
+        try checkCurrent()
+        let accepted = try await runner.run(context: input, steps: [step])
+        try checkCurrent()
+        let mapped = step.takeFileBatchResults(accepted: accepted.context)
+        for (offset, part) in current.enumerated() {
+          try await finish(part, context: mapped?[offset] ?? part.context, includePolish: false)
+          try checkCurrent()
+        }
+      } else {
+        for part in current {
+          try await finish(part, context: part.context, includePolish: true)
+          try checkCurrent()
+        }
+      }
+    }
+    func fits(_ members: [LLMPolishStep.FileBatchMember]) -> Bool {
+      let text = SectionEnvelope.wrap(members.map { $0.context.text })
+      return text.split(whereSeparator: \.isWhitespace).count <= TranscriptSplitter.maximumWordsPerPart
+        && text.utf8.count <= TranscriptSplitter.maximumBytesPerPart
+    }
+
+    try checkCurrent()
+    for (index, text) in parts.enumerated() {
+      try checkCurrent()
+      guard [.openAI, .gemini, .claude].contains(provider) else {
+        do {
+          let outcome = try await process(part: text, engineLanguage: engineLanguage)
+          try checkCurrent()
+          try emit(index, outcome)
+        } catch is CancellationError { throw CancellationError() }
+        catch {
+          try checkCurrent()
+          try emit(index, PartOutcome(text: text, polishedText: nil))
+        }
+        continue
+      }
+      // Preparation retains the full chain's frozen language/checker/spelling state once.
+      let steps = makeSteps(settings: settings, vocabulary: vocabulary, generation: generation)
+      let stages = steps.fileImportStages
+      var lock: String?
+      if case .locked(let code) = settings.languageMode { lock = code }
+      let seed = await runner.makeContext(
+        rawText: text,
+        evidence: LanguageEvidence(
+          lockedLanguage: lock, engineDetectsLanguage: settings.backendSupportsLanguageDetection,
+          engineReportedLanguage: engineLanguage, englishSpelling: settings.englishSpelling ?? .american),
+        targetAppName: nil, steps: steps.orderedChainForFileImport,
+        frozenCorrectorVocabulary: steps.wordCorrection.correctorVocabulary)
+      try checkCurrent()
+      let prefix = try await runner.run(context: seed, steps: stages.beforePolish)
+      try checkCurrent()
+      let context = prefix.context
+      let member = stages.polish.fileBatchMember(context)
+      let part = PreparedPart(index: index, context: context, steps: steps, member: member)
+      if let member, fits([member]) {
+        let candidates = pending.compactMap(\.member) + [member]
+        if pending.isEmpty == false,
+          (fits(candidates) == false || groupStep?.canShareFileBatch(candidates) != true)
+        {
+          try await flush()
+          try checkCurrent()
+        }
+        if pending.isEmpty {
+          groupStep = makeSteps(settings: settings, vocabulary: vocabulary, generation: generation).llmPolish
+        }
+        pending.append(part)
+      } else {
+        // Bypass/short/oversized pieces keep their ordinary policy and original position.
+        try await flush()
+        try checkCurrent()
+        try await finish(part, context: context, includePolish: true)
+        try checkCurrent()
+      }
+    }
+    try await flush()
+    try checkCurrent()
+  }
+
+  private static func outcome(
+    settings: RecordingSettingsSnapshot, result: TextProcessingRunResult
+  ) -> PartOutcome {
     // A blank polish is not a polish — the same rule the recovery replay
     // applies, for the same reason: the floor is real text and an empty string
     // is not an improvement on it. Reachable the same way as on the live path,
@@ -261,6 +397,12 @@ public final class FileImportRunner {
   /// Builds this part's own step instances and applies the frozen settings.
   /// Internal, not private, so a test can see which settings reached the steps it builds (#2450).
   func makeSteps(settings: RecordingSettingsSnapshot) -> LimbSteps {
+    makeSteps(settings: settings, vocabulary: frozenVocabulary, generation: checkerSelectionGeneration)
+  }
+
+  private func makeSteps(
+    settings: RecordingSettingsSnapshot, vocabulary: CorrectorVocabulary?, generation: UInt64
+  ) -> LimbSteps {
     let llmPolish = LLMPolishStep(keychainManager: keychainManager, telemetry: .silent())
     // Standalone, exactly like the recovery replay: no live kernel is attached,
     // so there is nothing to stream tokens to and no lifecycle to notify.
@@ -270,6 +412,7 @@ public final class FileImportRunner {
     llmPolish.egOneRuntime = egOneRuntime
     if let makeEGOnePolisher { llmPolish.makeEGOnePolisher = makeEGOnePolisher }
     if let promptPlanner { llmPolish.promptPlanner = promptPlanner }
+    if let makePolisher { llmPolish.makePolisher = makePolisher }
     llmPolish.s1MiniRuntime = s1MiniRuntime
     llmPolish.llmProvider = LLMProvider(rawValue: settings.llmProvider) ?? .none
     llmPolish.llmModel = LLMProvider.replacingRetiredModel(
@@ -280,13 +423,13 @@ public final class FileImportRunner {
 
     let wordCorrection = WordCorrectionStep()
     wordCorrection.wordCorrectionEnabled = settings.wordCorrectionEnabled
-    if let frozenVocabulary { wordCorrection.correctorVocabulary = frozenVocabulary }
+    if let vocabulary { wordCorrection.correctorVocabulary = vocabulary }
     let learnedWordCheck = LearnedWordCheckStep()
     learnedWordCheck.selectionProvider = { [weak self] provider, language in
-      guard let self else { return .init(absence: .serverUnavailable) }
+      guard let self, self.checkerSelectionGeneration == generation
+      else { return .init(absence: .serverUnavailable) }
       let key = language ?? ""
       if let frozen = self.frozenCheckerSelections[key] { return frozen }
-      let generation = self.checkerSelectionGeneration
       let selection = await self.checkerSelectionProvider?(provider, language)
         ?? .init(absence: .serverUnavailable)
       // A release or a newer freeze happened while this selection was out: it answers this part
@@ -297,7 +440,7 @@ public final class FileImportRunner {
       return selection
     }
     learnedWordCheck.wordCorrectionEnabled = settings.wordCorrectionEnabled
-    if let frozenVocabulary { learnedWordCheck.correctorVocabulary = frozenVocabulary }
+    if let vocabulary { learnedWordCheck.correctorVocabulary = vocabulary }
 
     let fillerRemoval = FillerRemovalStep()
     fillerRemoval.fillerRemovalEnabled = settings.fillerRemovalEnabled
