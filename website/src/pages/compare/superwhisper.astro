@@ -1,5 +1,6 @@
 ---
 import CompareLayout from '../../layouts/CompareLayout.astro';
+import { faqAnswerHtml } from '../../utils/compare-faq.js';
 import CompareDecisionSummary from '../../components/CompareDecisionSummary.astro';
 
 const meta = {
@@ -45,7 +46,7 @@ const faqs = [
   },
   {
     "q": "Can I switch from Superwhisper easily?",
-    "a": "Yes. Download EnviousWispr, set your keybind, and start dictating. There is no data to migrate. Both apps work in any text field on macOS. See the 2-minute getting started guide."
+    "a": "Yes. Download EnviousWispr, set your keybind, and start dictating. There is no data to migrate. Both apps work in any text field on macOS. See the [2-minute getting started guide](/blog/getting-started-enviouswispr-under-2-minutes/)."
   },
   {
     "q": "What Mac do I need?",
@@ -244,7 +245,7 @@ const faqs = [
       </span>
       <span class="hero-pill">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-        0.61s median latency
+        Sub-second for short dictations
       </span>
     </div>
     <div class="hero-cta reveal">
@@ -303,7 +304,7 @@ const faqs = [
              Confidence: source-verified from the public website, the installed app opened directly, and an
              independent public source for S1-mini. Features marked "Not specified" were not found on
              superwhisper.com or in the app as of 2026-08-21.
-             EnviousWispr latency (0.61s / 1.65s) and language count (99+ via Whisper) re-measured 2026-08-21.
+             EnviousWispr transcription timing: Sources/EnviousWisprAppKit/Views/Settings/EngineChoicePresentation.swift (#3792, measured 2026-10-15); no whole-path speed figure (#3895); language count (99+ via Whisper) re-measured 2026-08-21.
              Last verified: 2026-08-21. -->
         <tbody>
           <tr>
@@ -348,7 +349,7 @@ const faqs = [
           </tr>
           <tr>
             <td>Transcription latency</td>
-            <td><span class="table-highlight">0.61s median</span>; ~1.65s with on-device AI polish</td>
+            <td><span class="table-highlight">Under a second</span> for typical short dictations; AI polish adds time that grows with length</td>
             <td>Not published</td>
           </tr>
           <tr>
@@ -439,7 +440,7 @@ const faqs = [
         </tbody>
       </table>
     </div>
-    <p style="font-size: 12px; color: var(--text-3); margin-top: 12px; text-align: center;">*Based on Superwhisper's public website (superwhisper.com), last checked October 2026. Pricing: free tier (unlimited local Whisper models, Mac meetings, 3,000-word Pro trial), Pro ~$8.49/mo (yearly discount available), lifetime purchase option. EnviousWispr latency from production PostHog data on Apple Silicon Macs, 30-day trailing median. Superwhisper features source-verified from superwhisper.com, the installed app opened directly, and independent public sources for S1-mini. Competitor claims last verified: 2026-10-17.</p>
+    <p style="font-size: 12px; color: var(--text-3); margin-top: 12px; text-align: center;">*Based on Superwhisper's public website (superwhisper.com), last checked October 2026. Pricing: free tier (unlimited local Whisper models, Mac meetings, 3,000-word Pro trial), Pro ~$8.49/mo (yearly discount available), lifetime purchase option. EnviousWispr transcription time is the median for short dictations with the default engine, from production use on Apple Silicon Macs (October 2026), excluding AI polish and pasting. Superwhisper features source-verified from superwhisper.com, the installed app opened directly, and independent public sources for S1-mini. Competitor claims last verified: 2026-10-17.</p>
     <div style="text-align: center; margin-top: 28px;">
       <a href="/#download" class="btn-primary">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
@@ -470,8 +471,8 @@ const faqs = [
       </div>
       <div class="advantage-card reveal">
         <div class="advantage-icon">⚡</div>
-        <div class="advantage-title">0.61s median latency</div>
-        <p class="advantage-desc">Measured in production on Apple Silicon Macs. Text appears almost instantly after you stop speaking. No waiting for model warm-up or network round-trips.</p>
+        <div class="advantage-title">Sub-second transcription</div>
+        <p class="advantage-desc">Measured in production on Apple Silicon Macs, short dictations are typically transcribed in under a second after you stop speaking. Transcription never waits on a network round-trip.</p>
       </div>
       <div class="advantage-card reveal">
         <div class="advantage-icon">🚫</div>
@@ -559,22 +560,22 @@ const faqs = [
     </div>
     <div class="speed-stats">
       <div class="speed-card reveal">
-        <div class="speed-value">0.61s</div>
-        <div class="speed-label">Median transcription</div>
-        <div class="speed-detail">From end of speech to raw text</div>
+        <div class="speed-value">&lt;1s</div>
+        <div class="speed-label">Transcription, short dictations</div>
+        <div class="speed-detail">Typical time after you stop speaking</div>
       </div>
       <div class="speed-card reveal">
-        <div class="speed-value">1.65s</div>
-        <div class="speed-label">With AI polish</div>
-        <div class="speed-detail">EG-1 or Apple, on-device</div>
+        <div class="speed-value">Scales</div>
+        <div class="speed-label">AI polish time</div>
+        <div class="speed-detail">Grows with how much you dictated</div>
       </div>
       <div class="speed-card reveal">
         <div class="speed-value">0ms</div>
         <div class="speed-label">Network overhead</div>
-        <div class="speed-detail">Immune to bad Wi-Fi</div>
+        <div class="speed-detail">Transcription is immune to bad Wi-Fi</div>
       </div>
     </div>
-    <p style="font-size: 11px; color: var(--text-3); margin-top: 12px; text-align: center;">Based on production data from Apple Silicon Macs. Results vary by hardware and settings.</p>
+    <p style="font-size: 11px; color: var(--text-3); margin-top: 12px; text-align: center;">Transcription time is the median for short dictations (under 5 seconds of speech) with the default Parakeet Ultra engine, from production use on Apple Silicon Macs, measured October 2026. It is still under a second on the oldest supported Macs (M1). It excludes AI polish and pasting; longer recordings take longer.</p>
   </div>
 </section>
 
@@ -667,46 +668,12 @@ const faqs = [
       <h2 class="section-title">Common questions</h2>
     </div>
     <div class="faq-list">
-      <div class="faq-item reveal">
-        <div class="faq-q">Is there a free alternative to Superwhisper?</div>
-        <p class="faq-a">Yes. EnviousWispr offers on-device transcription on Apple Silicon Macs, completely free, with no account or subscription required. It uses Parakeet Ultra for 25 European languages and Whisper for 99+.</p>
-      </div>
-      <div class="faq-item reveal">
-        <div class="faq-q">How is EnviousWispr different from Superwhisper?</div>
-        <p class="faq-a">Both are Mac-native and offer on-device transcription. EnviousWispr is free, uses two curated local engines, and is open source under GPLv3. Superwhisper offers a much larger library of local and cloud speech models, plus free meeting transcription on Mac, apps for iPhone, Windows and Android, and more writing modes. Superwhisper Pro costs about $8.49 per month.</p>
-      </div>
-      <div class="faq-item reveal">
-        <div class="faq-q">How does EnviousWispr compare to Superwhisper for accuracy?</div>
-        <p class="faq-a">EnviousWispr uses Parakeet Ultra for 25 European languages and Whisper for wider language coverage. Superwhisper offers a large searchable library of local and cloud speech models, including Cohere Transcribe, Parakeet realtime, and its Nano, Fast, Standard, Pro, and Ultra choices. Superwhisper gives you more models to compare, while EnviousWispr keeps the choice to two curated local engines.</p>
-      </div>
-      <div class="faq-item reveal">
-        <div class="faq-q">Can I use EnviousWispr completely offline?</div>
-        <p class="faq-a">Yes. After the one-time model download, transcription runs entirely on-device with no internet required. AI polish can also run offline using EG-1 (our own model, macOS 14+), S1-mini by Superwhisper, Apple Intelligence (macOS 26+), or Ollama with a local model. Cloud AI providers like OpenAI, Gemini, or Claude are optional and require your own API key.</p>
-      </div>
-      <div class="faq-item reveal">
-        <div class="faq-q">Does Superwhisper have offline AI polish?</div>
-        <p class="faq-a">Superwhisper can transcribe offline with a downloaded local speech model, and it now has an on-device polish option too: a Local mode powered by S1-mini, its own 0.6B open-weights model that cleans up fillers, punctuation, and numbers without sending anything off your Mac. It is a newer, experimental addition and a lighter cleanup pass than the cloud writing modes, which still need an internet connection. EnviousWispr's EG-1, S1-mini by Superwhisper, and Ollama integrations run entirely on your Mac, and so does Apple Intelligence on macOS 26+.</p>
-      </div>
-      <div class="faq-item reveal">
-        <div class="faq-q">Is EnviousWispr really free?</div>
-        <p class="faq-a">Yes. No subscription, no usage limits, no account required. Download and use it. The source code is open source on GitHub under the GPLv3 license.</p>
-      </div>
-      <div class="faq-item reveal">
-        <div class="faq-q">What is Parakeet Ultra?</div>
-        <p class="faq-a">Parakeet Ultra is a multilingual speech recognition model built on NVIDIA Parakeet, covering 25 European languages. It is purpose-built for accurate, fast transcription and runs on the Apple Neural Engine at ~110x real-time. It delivers stronger English accuracy than Whisper for dictation use cases.</p>
-      </div>
-      <div class="faq-item reveal">
-        <div class="faq-q">Can I switch from Superwhisper easily?</div>
-        <p class="faq-a">Yes. Download EnviousWispr, set your keybind, and start dictating. There is no data to migrate. Both apps work in any text field on macOS. See the <a href="/blog/getting-started-enviouswispr-under-2-minutes/" style="color: var(--accent); text-decoration: underline;">2-minute getting started guide</a>.</p>
-      </div>
-      <div class="faq-item reveal">
-        <div class="faq-q">What Mac do I need?</div>
-        <p class="faq-a">Any Mac with Apple Silicon (M1 or later) running macOS 14 Sonoma or newer. The Neural Engine and GPU on Apple Silicon are what make on-device transcription fast.</p>
-      </div>
-      <div class="faq-item reveal">
-        <div class="faq-q">Is EnviousWispr open source?</div>
-        <p class="faq-a">Open source under the GNU General Public License v3 (GPLv3), an OSI-approved license. You can read, build, inspect, and contribute to every line of code on GitHub. Contributions are welcome.</p>
-      </div>
+      {faqs.map(({ q, a }) => (
+        <div class="faq-item reveal">
+          <div class="faq-q">{q}</div>
+          <p class="faq-a" set:html={faqAnswerHtml(a)} />
+        </div>
+      ))}
     </div>
   </div>
 </section>

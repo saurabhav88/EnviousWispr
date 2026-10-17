@@ -1,5 +1,6 @@
 ---
 import CompareLayout from '../../layouts/CompareLayout.astro';
+import { faqAnswerHtml } from '../../utils/compare-faq.js';
 
 const meta = {
   "slug": "voiceink",
@@ -20,7 +21,7 @@ const faqs = [
   },
   {
     "q": "Both are on-device. Why does the speech engine matter?",
-    "a": "Different engines have different speed and accuracy profiles. EnviousWispr uses Parakeet Ultra by default, a CTC-Transducer model optimized for Apple's Neural Engine, which delivers 0.61s median latency for English. VoiceInk now offers a large on-device catalog, including Parakeet (Ultra among them), Nemotron, Whisper, Cohere Transcribe, SenseVoice and Apple Speech, plus optional cloud speech providers with your own key, so this is no longer a Parakeet-vs-whisper.cpp distinction. EnviousWispr keeps the choice small: Parakeet Ultra by default, and Whisper in Settings when you need broader language coverage."
+    "a": "Different engines have different speed and accuracy profiles. EnviousWispr uses Parakeet Ultra by default, a CTC-Transducer model optimized for Apple's Neural Engine, which typically transcribes a short dictation in under a second. VoiceInk now offers a large on-device catalog, including Parakeet (Ultra among them), Nemotron, Whisper, Cohere Transcribe, SenseVoice and Apple Speech, plus optional cloud speech providers with your own key, so this is no longer a Parakeet-vs-whisper.cpp distinction. EnviousWispr keeps the choice small: Parakeet Ultra by default, and Whisper in Settings when you need broader language coverage."
   },
   {
     "q": "Does EnviousWispr support languages other than English?",
@@ -31,12 +32,20 @@ const faqs = [
     "a": "EnviousWispr uses a 6-pass fuzzy matching system with Levenshtein distance, Soundex phonetic matching, and bigram similarity to catch misrecognized words even when the ASR output is phonetically close but spelled differently. VoiceInk offers vocabulary, word replacements and, since September 2026, automatic dictionary learning."
   },
   {
-    "q": "Can I switch from VoiceInk to EnviousWispr easily?",
-    "a": "Yes. Download EnviousWispr, set your keybind, and start dictating. There is no data to migrate. Both apps work in any text field on macOS."
+    "q": "What is AI polish and does VoiceInk have it?",
+    "a": "AI polish is a post-transcription step that fixes grammar, removes filler words, and formats your text using a language model. EnviousWispr supports EG-1, S1-mini by Superwhisper, Ollama, and Apple Intelligence (all on-device, Apple Intelligence needs macOS 26+), and cloud providers (OpenAI, Gemini, Claude) with your own API key. VoiceInk offers its own on-device Refine cleanup model, Ollama, or cloud LLM providers."
   },
   {
     "q": "Which app is better for non-English languages?",
-    "a": "VoiceInk offers more speech models, including Nemotron and SenseVoice for Asian languages, and may have an edge in multilingual breadth. EnviousWispr supports 99+ languages via Whisper and 25 European languages with Parakeet Ultra."
+    "a": "VoiceInk offers more speech models for other languages, including Nemotron Multilingual and SenseVoice for Asian languages. EnviousWispr supports 99+ via Whisper, and its fastest engine (Parakeet Ultra) covers 25 European languages. For languages outside those, VoiceInk may have an edge in breadth and tuning."
+  },
+  {
+    "q": "Does VoiceInk have AI text enhancement?",
+    "a": "Yes. VoiceInk offers its own on-device Refine cleanup model, Ollama, or cloud LLM providers. EnviousWispr supports 7 AI polish engines including EG-1 (our own on-device model), S1-mini by Superwhisper (on-device), Ollama (on-device), Apple Intelligence (on-device, macOS 26+), and cloud providers (OpenAI, Gemini, Claude) with your own API key, plus built-in hallucination safeguards."
+  },
+  {
+    "q": "Can I switch from VoiceInk easily?",
+    "a": "Yes. Download EnviousWispr, set your keybind, and start dictating. There is no data to migrate. Both apps work in any text field on macOS. See the [2-minute getting started guide](/blog/getting-started-enviouswispr-under-2-minutes/)."
   },
   {
     "q": "What Mac do I need?",
@@ -44,15 +53,11 @@ const faqs = [
   },
   {
     "q": "Is there a free alternative to VoiceInk?",
-    "a": "Yes. EnviousWispr is a free, on-device dictation app for Apple Silicon Macs. It uses Parakeet Ultra for fast English transcription and includes an AI polish pipeline. No account or payment required."
+    "a": "Yes. EnviousWispr is a free, on-device dictation app for Apple Silicon Macs. It uses Parakeet Ultra for fast English transcription and includes an AI polish pipeline with 7 providers. No account or payment required."
   },
   {
     "q": "Is EnviousWispr open source?",
-    "a": "Open source under the GNU General Public License v3 (GPLv3), an OSI-approved license. You can read, build, and inspect every line of code on GitHub. VoiceInk also uses GPL v3, so both apps share the same license."
-  },
-  {
-    "q": "Does VoiceInk have AI text enhancement?",
-    "a": "Yes. VoiceInk offers its own on-device Refine cleanup model, Ollama, or cloud LLM providers. EnviousWispr supports 7 AI polish engines including EG-1 (our own on-device model), S1-mini by Superwhisper (on-device), Ollama (on-device), Apple Intelligence (on-device, macOS 26+), and cloud providers (OpenAI, Gemini, Claude) with your own API key, plus built-in hallucination safeguards."
+    "a": "Open source under the GNU General Public License v3 (GPLv3), the same OSI-approved license VoiceInk uses. You can read, build, and inspect every line of code on GitHub."
   }
 ];
 ---
@@ -275,7 +280,7 @@ const faqs = [
       </span>
       <span class="hero-pill">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-        0.61s median latency
+        Sub-second for short dictations
       </span>
     </div>
     <div class="hero-cta reveal">
@@ -466,7 +471,7 @@ const faqs = [
           </tr>
           <tr>
             <td>Transcription latency</td>
-            <td><span class="table-highlight">0.61s median</span>; ~1.65s with on-device AI polish</td>
+            <td><span class="table-highlight">Under a second</span> for typical short dictations; AI polish adds time that grows with length</td>
             <td>Depends on model size and hardware</td>
           </tr>
           <tr>
@@ -509,7 +514,7 @@ const faqs = [
       <div class="advantage-card reveal">
         <div class="advantage-icon">&#9889;</div>
         <div class="advantage-title">Faster English transcription</div>
-        <p class="advantage-desc">Parakeet Ultra covers 25 European languages and runs on Apple's Neural Engine. 0.61s median latency. Whisper handles 99+ languages when you need wider coverage.</p>
+        <p class="advantage-desc">Parakeet Ultra covers 25 European languages and runs on Apple's Neural Engine, transcribing short dictations in under a second. Whisper handles 99+ languages when you need wider coverage.</p>
       </div>
       <div class="advantage-card reveal">
         <div class="advantage-icon">&#129504;</div>
@@ -602,14 +607,14 @@ const faqs = [
     </div>
     <div class="speed-stats">
       <div class="speed-card reveal">
-        <div class="speed-value">0.61s</div>
-        <div class="speed-label">Median transcription</div>
+        <div class="speed-value">&lt;1s</div>
+        <div class="speed-label">Transcription, short dictations</div>
         <div class="speed-detail">Parakeet Ultra on Apple Silicon</div>
       </div>
       <div class="speed-card reveal">
-        <div class="speed-value">1.65s</div>
-        <div class="speed-label">With AI polish</div>
-        <div class="speed-detail">EG-1 or Apple, on-device</div>
+        <div class="speed-value">Scales</div>
+        <div class="speed-label">AI polish time</div>
+        <div class="speed-detail">Grows with how much you dictated</div>
       </div>
       <div class="speed-card reveal">
         <div class="speed-value">0ms</div>
@@ -617,7 +622,7 @@ const faqs = [
         <div class="speed-detail">Both apps work fully offline</div>
       </div>
     </div>
-    <p style="font-size: 11px; color: var(--text-3); margin-top: 12px; text-align: center;">EnviousWispr latency based on production data from Apple Silicon Macs. VoiceInk latency depends on chosen Whisper model size and hardware. Results vary by settings.</p>
+    <p style="font-size: 11px; color: var(--text-3); margin-top: 12px; text-align: center;">EnviousWispr transcription time is the median for short dictations with the default engine, from production use on Apple Silicon Macs (October 2026), excluding AI polish and pasting. VoiceInk latency depends on chosen Whisper model size and hardware. Results vary by settings.</p>
   </div>
 </section>
 
@@ -710,50 +715,12 @@ const faqs = [
       <h2 class="section-title">Common questions</h2>
     </div>
     <div class="faq-list">
-      <div class="faq-item reveal">
-        <div class="faq-q">Is EnviousWispr really free compared to VoiceInk?</div>
-        <p class="faq-a">Yes. EnviousWispr has no purchase price, no subscription, and no usage limits. VoiceInk charges a one-time fee, currently starting at $25 (Solo tier).</p>
-      </div>
-      <div class="faq-item reveal">
-        <div class="faq-q">Both are on-device. Why does the speech engine matter?</div>
-        <p class="faq-a">Different engines have different speed and accuracy profiles. EnviousWispr uses Parakeet Ultra by default, a CTC-Transducer model optimized for Apple's Neural Engine, which delivers 0.61s median latency for English. VoiceInk now offers a large on-device catalog, including Parakeet (Ultra among them), Nemotron, Whisper, Cohere Transcribe, SenseVoice and Apple Speech, plus optional cloud speech providers with your own key, so this is no longer a Parakeet-vs-whisper.cpp distinction. EnviousWispr keeps the choice small: Parakeet Ultra by default, and Whisper in Settings when you need broader language coverage.</p>
-      </div>
-      <div class="faq-item reveal">
-        <div class="faq-q">Does EnviousWispr support languages other than English?</div>
-        <p class="faq-a">Yes. Parakeet Ultra covers 25 European languages. For wider coverage, you can switch EnviousWispr to Whisper, which supports 99+ languages. VoiceInk's language coverage depends on the model you pick; its Whisper and Nemotron models cover many languages.</p>
-      </div>
-      <div class="faq-item reveal">
-        <div class="faq-q">How does custom vocabulary compare between the two apps?</div>
-        <p class="faq-a">EnviousWispr uses a 6-pass fuzzy matching system with Levenshtein distance, Soundex phonetic matching, and bigram similarity to catch misrecognized words even when the ASR output is phonetically close but spelled differently. VoiceInk offers vocabulary, word replacements and, since September 2026, automatic dictionary learning, which works well for exact substitutions but may miss phonetic errors.</p>
-      </div>
-      <div class="faq-item reveal">
-        <div class="faq-q">What is AI polish and does VoiceInk have it?</div>
-        <p class="faq-a">AI polish is a post-transcription step that fixes grammar, removes filler words, and formats your text using a language model. EnviousWispr supports EG-1, S1-mini by Superwhisper, Ollama, and Apple Intelligence (all on-device, Apple Intelligence needs macOS 26+), and cloud providers (OpenAI, Gemini, Claude) with your own API key. VoiceInk offers its own on-device Refine cleanup model, Ollama, or cloud LLM providers.</p>
-      </div>
-      <div class="faq-item reveal">
-        <div class="faq-q">Which app is better for non-English languages?</div>
-        <p class="faq-a">VoiceInk offers more speech models for other languages, including Nemotron Multilingual and SenseVoice for Asian languages. EnviousWispr supports 99+ via Whisper, and its fastest engine (Parakeet Ultra) covers 25 European languages. For languages outside those, VoiceInk may have an edge in breadth and tuning.</p>
-      </div>
-      <div class="faq-item reveal">
-        <div class="faq-q">Does VoiceInk have AI text enhancement?</div>
-        <p class="faq-a">Yes. VoiceInk offers its own on-device Refine cleanup model, Ollama, or cloud LLM providers. EnviousWispr supports 7 AI polish engines including EG-1 (our own on-device model), S1-mini by Superwhisper (on-device), Ollama (on-device), Apple Intelligence (on-device, macOS 26+), OpenAI, Gemini, and Claude, plus built-in hallucination safeguards that reject fabricated output.</p>
-      </div>
-      <div class="faq-item reveal">
-        <div class="faq-q">Can I switch from VoiceInk easily?</div>
-        <p class="faq-a">Yes. Download EnviousWispr, set your keybind, and start dictating. There is no data to migrate. Both apps work in any text field on macOS. See the <a href="/blog/getting-started-enviouswispr-under-2-minutes/" style="color: var(--accent); text-decoration: underline;">2-minute getting started guide</a>.</p>
-      </div>
-      <div class="faq-item reveal">
-        <div class="faq-q">What Mac do I need?</div>
-        <p class="faq-a">EnviousWispr requires Apple Silicon (M1 or later) running macOS 14 Sonoma or newer. VoiceInk requires an Apple Silicon Mac with macOS 14.4 or later. Both apps target modern Macs.</p>
-      </div>
-      <div class="faq-item reveal">
-        <div class="faq-q">Is there a free alternative to VoiceInk?</div>
-        <p class="faq-a">Yes. EnviousWispr is a free, on-device dictation app for Apple Silicon Macs. It uses Parakeet Ultra for fast English transcription and includes an AI polish pipeline with 7 providers. No account or payment required.</p>
-      </div>
-      <div class="faq-item reveal">
-        <div class="faq-q">Is EnviousWispr open source?</div>
-        <p class="faq-a">Open source under the GNU General Public License v3 (GPLv3), the same OSI-approved license VoiceInk uses. You can read, build, and inspect every line of code on GitHub.</p>
-      </div>
+      {faqs.map(({ q, a }) => (
+        <div class="faq-item reveal">
+          <div class="faq-q">{q}</div>
+          <p class="faq-a" set:html={faqAnswerHtml(a)} />
+        </div>
+      ))}
     </div>
   </div>
 </section>

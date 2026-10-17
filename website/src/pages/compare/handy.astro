@@ -1,5 +1,6 @@
 ---
 import CompareLayout from '../../layouts/CompareLayout.astro';
+import { faqAnswerHtml } from '../../utils/compare-faq.js';
 import CompareDecisionSummary from '../../components/CompareDecisionSummary.astro';
 
 const meta = {
@@ -244,7 +245,7 @@ const faqs = [
       </span>
       <span class="hero-pill">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-        0.61s median latency
+        Sub-second for short dictations
       </span>
     </div>
     <div class="hero-cta reveal">
@@ -395,7 +396,7 @@ const faqs = [
           </tr>
           <tr>
             <td>Transcription latency</td>
-            <td><span class="table-highlight">0.61s median</span>; ~1.65s with on-device AI polish</td>
+            <td><span class="table-highlight">Under a second</span> for typical short dictations; AI polish adds time that grows with length</td>
             <td>Not published</td>
           </tr>
           <tr>
@@ -467,8 +468,8 @@ const faqs = [
       </div>
       <div class="advantage-card reveal">
         <div class="advantage-icon">⚡</div>
-        <div class="advantage-title">0.61s median latency</div>
-        <p class="advantage-desc">Measured in production on Apple Silicon Macs. Parakeet Ultra runs on the Neural Engine specifically tuned for fast, accurate dictation, so text appears almost instantly after you stop talking.</p>
+        <div class="advantage-title">Sub-second transcription</div>
+        <p class="advantage-desc">Parakeet Ultra runs on the Neural Engine, tuned for fast, accurate dictation. Measured in production on Apple Silicon Macs, short dictations are typically transcribed in under a second after you stop talking.</p>
       </div>
       <div class="advantage-card reveal">
         <div class="advantage-icon">🌍</div>
@@ -551,22 +552,22 @@ const faqs = [
     </div>
     <div class="speed-stats">
       <div class="speed-card reveal">
-        <div class="speed-value">0.61s</div>
-        <div class="speed-label">Median transcription</div>
-        <div class="speed-detail">From end of speech to raw text</div>
+        <div class="speed-value">&lt;1s</div>
+        <div class="speed-label">Transcription, short dictations</div>
+        <div class="speed-detail">Typical time after you stop speaking</div>
       </div>
       <div class="speed-card reveal">
-        <div class="speed-value">1.65s</div>
-        <div class="speed-label">With AI polish</div>
-        <div class="speed-detail">EG-1 or Apple, on-device</div>
+        <div class="speed-value">Scales</div>
+        <div class="speed-label">AI polish time</div>
+        <div class="speed-detail">Grows with how much you dictated</div>
       </div>
       <div class="speed-card reveal">
         <div class="speed-value">0ms</div>
         <div class="speed-label">Network overhead</div>
-        <div class="speed-detail">Immune to bad Wi-Fi</div>
+        <div class="speed-detail">Transcription is immune to bad Wi-Fi</div>
       </div>
     </div>
-    <p style="font-size: 11px; color: var(--text-3); margin-top: 12px; text-align: center;">Based on production data from Apple Silicon Macs. Results vary by hardware and settings. Handy does not publish comparable latency figures.</p>
+    <p style="font-size: 11px; color: var(--text-3); margin-top: 12px; text-align: center;">Transcription time is the median for short dictations (under 5 seconds of speech) with the default Parakeet Ultra engine, from production use on Apple Silicon Macs, measured October 2026. It is still under a second on the oldest supported Macs (M1). It excludes AI polish and pasting; longer recordings take longer. Handy does not publish comparable latency figures.</p>
   </div>
 </section>
 
@@ -658,46 +659,12 @@ const faqs = [
       <h2 class="section-title">Common questions</h2>
     </div>
     <div class="faq-list">
-      <div class="faq-item reveal">
-        <div class="faq-q">Is EnviousWispr free, like Handy?</div>
-        <p class="faq-a">Yes. Both EnviousWispr and Handy are completely free, with no subscription, no word limits, and no account required. Both are also open source, so you can read the code that runs on your Mac.</p>
-      </div>
-      <div class="faq-item reveal">
-        <div class="faq-q">How is EnviousWispr different from Handy?</div>
-        <p class="faq-a">Both transcribe on-device with no cloud dependency for speech recognition, and both can run AI cleanup afterward. The difference is how that cleanup works. EnviousWispr's polish runs on the same hotkey as transcription, automatically once it is on, and never needs a second hotkey: on macOS 26+, Apple Intelligence is the default provider and needs no download, when it's turned on for your Mac; on earlier versions, deterministic cleanup (removing filler words like um and uh, and converting spoken numbers, dates, and times to digits when dictating in English) still runs automatically, and EG-1, our own model, adds the harder cases like formatting spoken lists once you pick it, no account or API key, after a one-time 2.9GB download. EnviousWispr also adds a Live Preview of your words as you speak and Escape Recovery for accidentally cancelled dictations. Handy's cleanup, called Post-Processing, is genuinely capable, supporting more cloud providers than we do (OpenAI, Anthropic, OpenRouter, Groq, Cerebras, Z.AI, or Apple Intelligence), and it now ships a ready-made default prompt, so you are not required to write your own. But it is off until you turn it on, always asks you to enable it and supply an API key or switch to a keyless option, and fires on a separate dedicated hotkey from plain transcription. Handy in turn runs on Windows and Linux in addition to Mac, and lets you choose among several Whisper model sizes for a speed-versus-accuracy trade-off; EnviousWispr is Apple Silicon Mac only.</p>
-      </div>
-      <div class="faq-item reveal">
-        <div class="faq-q">Does Handy have AI cleanup or polish?</div>
-        <p class="faq-a">Yes, it does. Handy's Post-Processing feature sends your transcript to a provider of your choice (OpenAI, Anthropic, OpenRouter, Groq, Cerebras, Z.AI, Apple Intelligence on-device, or a local server) along with a prompt. Handy ships one ready-made default prompt, called Improve Transcriptions, so you don't have to write your own to get started, though you can edit it or add your own. The feature is off until you turn it on, and it fires on a separate dedicated hotkey from plain transcription, so you choose per recording whether to use it. EnviousWispr's polish runs on the same hotkey as transcription and needs no prompt to write: on macOS 26+ that's Apple Intelligence, the default provider needing no download, and on earlier versions EG-1, our own model already fine-tuned for dictation cleanup, is one setting away with no account or API key needed.</p>
-      </div>
-      <div class="faq-item reveal">
-        <div class="faq-q">Can I use EnviousWispr completely offline?</div>
-        <p class="faq-a">Yes. After the one-time model download, transcription runs entirely on-device with no internet required. AI polish can also run offline using EG-1 (our own model, macOS 14+), S1-mini by Superwhisper, Apple Intelligence (macOS 26+), or Ollama with a local model. Cloud providers like OpenAI, Claude, or Gemini are optional and require your own API key.</p>
-      </div>
-      <div class="faq-item reveal">
-        <div class="faq-q">Is EnviousWispr open source like Handy?</div>
-        <p class="faq-a">Yes, though under a different license. EnviousWispr is licensed under the GNU General Public License v3 (GPLv3), a copyleft license: anyone can read, build, and modify the code, but a distributed derivative must also be open under GPLv3. Handy is licensed under the MIT license, which is more permissive and lets anyone fold the code into a closed-source or commercial product. Both are genuinely open source; the licenses just make different trade-offs.</p>
-      </div>
-      <div class="faq-item reveal">
-        <div class="faq-q">Can I import my Handy custom words into EnviousWispr?</div>
-        <p class="faq-a">Yes. EnviousWispr's Smart Import reads your custom vocabulary directly out of Handy, without changing Handy's own files, and shows you every word it found before anything joins your library. It also imports from Wispr Flow, Superwhisper, FluidVoice, TypeWhisper, Spokenly, Juno, and Vox.</p>
-      </div>
-      <div class="faq-item reveal">
-        <div class="faq-q">Does EnviousWispr work on Windows or Linux like Handy?</div>
-        <p class="faq-a">Not today. EnviousWispr runs on Apple Silicon Macs only (macOS 14 Sonoma or later). Handy supports macOS (Intel and Apple Silicon), Windows, and Linux, which is a real advantage if you need one dictation tool across multiple operating systems.</p>
-      </div>
-      <div class="faq-item reveal">
-        <div class="faq-q">What Mac do I need for EnviousWispr?</div>
-        <p class="faq-a">Any Mac with Apple Silicon (M1 or later) running macOS 14 Sonoma or newer. The Neural Engine and GPU on Apple Silicon are what make on-device transcription fast. Handy also supports Intel Macs, which EnviousWispr does not.</p>
-      </div>
-      <div class="faq-item reveal">
-        <div class="faq-q">Which speech engines does each app use?</div>
-        <p class="faq-a">EnviousWispr runs Parakeet Ultra and Whisper Large v3 Turbo. Handy offers dozens of downloadable choices across Parakeet, Nemotron, Canary, Cohere, Whisper, Voxtral, Qwen3 ASR, FunASR, Granite, Moonshine, SenseVoice, GigaAM, Breeze, and MedASR.</p>
-      </div>
-      <div class="faq-item reveal">
-        <div class="faq-q">Can I switch from Handy to EnviousWispr easily?</div>
-        <p class="faq-a">Yes. Download EnviousWispr, set your keybind, and Smart Import can bring your Handy custom words across in one pass. Handy's own filler-word list, prompts, and tuning settings stay behind, since those are Handy-specific settings rather than words to keep, not a data-loss gap. Both apps work in any text field on macOS, so nothing about your workflow has to change.</p>
-      </div>
+      {faqs.map(({ q, a }) => (
+        <div class="faq-item reveal">
+          <div class="faq-q">{q}</div>
+          <p class="faq-a" set:html={faqAnswerHtml(a)} />
+        </div>
+      ))}
     </div>
   </div>
 </section>

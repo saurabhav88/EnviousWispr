@@ -1,5 +1,6 @@
 ---
 import CompareLayout from '../../layouts/CompareLayout.astro';
+import { faqAnswerHtml } from '../../utils/compare-faq.js';
 import CompareDecisionSummary from '../../components/CompareDecisionSummary.astro';
 
 const meta = {
@@ -45,7 +46,7 @@ const faqs = [
   },
   {
     "q": "What is Spokenly's MCP integration for?",
-    "a": "Spokenly exposes an MCP tool named ask_user_dictation. Claude Code, Codex or Cursor can call it when the agent needs an answer, and the person can respond by voice through Spokenly. This is a voice-response path for agent questions, not a replacement for ordinary system-wide dictation."
+    "a": "Spokenly exposes an MCP tool named `ask_user_dictation`. Claude Code, Codex or Cursor can call it when the agent needs an answer, and the person can respond by voice through Spokenly. This is a voice-response path for agent questions, not a replacement for ordinary system-wide dictation."
   },
   {
     "q": "Can I switch from Spokenly to EnviousWispr easily?",
@@ -240,7 +241,7 @@ const faqs = [
       </span>
       <span class="hero-pill">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-        0.61s median latency
+        Sub-second for short dictations
       </span>
     </div>
     <div class="hero-cta reveal">
@@ -373,7 +374,7 @@ const faqs = [
           </tr>
           <tr>
             <td>Transcription latency</td>
-            <td><span class="table-highlight">0.61s median</span>; ~1.65s with on-device AI polish</td>
+            <td><span class="table-highlight">Under a second</span> for typical short dictations; AI polish adds time that grows with length</td>
             <td>Not published</td>
           </tr>
           <tr>
@@ -420,8 +421,8 @@ const faqs = [
       </div>
       <div class="advantage-card reveal">
         <div class="advantage-icon">⚡</div>
-        <div class="advantage-title">0.61s median latency</div>
-        <p class="advantage-desc">Measured in production on Apple Silicon Macs. Parakeet Ultra runs on the Neural Engine specifically tuned for fast, accurate dictation, so text appears almost instantly after you stop talking.</p>
+        <div class="advantage-title">Sub-second transcription</div>
+        <p class="advantage-desc">Parakeet Ultra runs on the Neural Engine, tuned for fast, accurate dictation. Measured in production on Apple Silicon Macs, short dictations are typically transcribed in under a second after you stop talking.</p>
       </div>
       <div class="advantage-card reveal">
         <div class="advantage-icon">🌍</div>
@@ -504,22 +505,22 @@ const faqs = [
     </div>
     <div class="speed-stats">
       <div class="speed-card reveal">
-        <div class="speed-value">0.61s</div>
-        <div class="speed-label">Median transcription</div>
-        <div class="speed-detail">From end of speech to raw text</div>
+        <div class="speed-value">&lt;1s</div>
+        <div class="speed-label">Transcription, short dictations</div>
+        <div class="speed-detail">Typical time after you stop speaking</div>
       </div>
       <div class="speed-card reveal">
-        <div class="speed-value">1.65s</div>
-        <div class="speed-label">With AI polish</div>
-        <div class="speed-detail">EG-1 or Apple, on-device</div>
+        <div class="speed-value">Scales</div>
+        <div class="speed-label">AI polish time</div>
+        <div class="speed-detail">Grows with how much you dictated</div>
       </div>
       <div class="speed-card reveal">
         <div class="speed-value">0ms</div>
         <div class="speed-label">Network overhead</div>
-        <div class="speed-detail">Immune to bad Wi-Fi</div>
+        <div class="speed-detail">Transcription is immune to bad Wi-Fi</div>
       </div>
     </div>
-    <p style="font-size: 11px; color: var(--text-3); margin-top: 12px; text-align: center;">Based on production data from Apple Silicon Macs. Results vary by hardware and settings. Spokenly does not publish comparable latency figures.</p>
+    <p style="font-size: 11px; color: var(--text-3); margin-top: 12px; text-align: center;">Transcription time is the median for short dictations (under 5 seconds of speech) with the default Parakeet Ultra engine, from production use on Apple Silicon Macs, measured October 2026. It is still under a second on the oldest supported Macs (M1). It excludes AI polish and pasting; longer recordings take longer. Spokenly does not publish comparable latency figures.</p>
   </div>
 </section>
 
@@ -605,42 +606,12 @@ const faqs = [
       <h2 class="section-title">Common questions</h2>
     </div>
     <div class="faq-list">
-      <div class="faq-item reveal">
-        <div class="faq-q">Is EnviousWispr free, like Spokenly?</div>
-        <p class="faq-a">Yes. Spokenly's free tier includes unlimited local transcription and lets you bring your own API key for cloud AI, with no time limit or word cap. A Local+ tier ($29 one-time) adds extra recording styles and settings sync, and its Pro tier ($9.99 a month or $99.99 a year) adds Spokenly's own managed cloud transcription and cleanup so you do not need your own key. EnviousWispr has no paid tier of any kind.</p>
-      </div>
-      <div class="faq-item reveal">
-        <div class="faq-q">How is EnviousWispr different from Spokenly?</div>
-        <p class="faq-a">The clearest difference is source code: EnviousWispr is open source under GPLv3, so anyone can read exactly what it does. Spokenly is free but proprietary, by its own admission not open source and not on GitHub. Spokenly in turn is more feature-rich in places: it runs on macOS, Windows, Linux, and iOS, its Modes system lets you save different AI Instructions and providers per app, and its Agentic Actions can search the web, hand off to an AI assistant, or run a Shortcut after transcribing. EnviousWispr is macOS only and does not have an equivalent to Agentic Actions.</p>
-      </div>
-      <div class="faq-item reveal">
-        <div class="faq-q">Is Spokenly open source?</div>
-        <p class="faq-a">No. Spokenly's own site states plainly that it is not open source and not available on GitHub, while noting it is free to use. EnviousWispr is open source under GPLv3, so the code that runs on your Mac can be read, built, and audited by anyone.</p>
-      </div>
-      <div class="faq-item reveal">
-        <div class="faq-q">Does Spokenly have AI cleanup like EnviousWispr's EG-1?</div>
-        <p class="faq-a">Yes, through its Modes system. A mode carries its own AI Instructions, transcription model, and AI provider, and instructions can drive translation, cleanup, and formatting. Since October 2026 Spokenly also has Local Model Cleanup, its own small on-device model that removes fillers and fixes punctuation without a prompt; it is off by default and needs macOS 26 on Apple Silicon. EG-1 is also purpose-built for dictation cleanup, ships with the app, needs no prompt to write, and runs on macOS 14 or later.</p>
-      </div>
-      <div class="faq-item reveal">
-        <div class="faq-q">Can I use EnviousWispr completely offline?</div>
-        <p class="faq-a">Yes. After the one-time model download, transcription runs entirely on-device with no internet required. AI polish can also run offline using EG-1 (our own model, macOS 14+), S1-mini by Superwhisper, Apple Intelligence (macOS 26+), or Ollama with a local model. Cloud providers like OpenAI, Claude, or Gemini are optional and require your own API key.</p>
-      </div>
-      <div class="faq-item reveal">
-        <div class="faq-q">Can I import my Spokenly custom words into EnviousWispr?</div>
-        <p class="faq-a">Yes. EnviousWispr's Smart Import reads your custom vocabulary directly out of Spokenly, without changing Spokenly's own files, and shows you every word it found before anything joins your library. Spokenly can also store find-and-replace rules written as patterns; those are skipped, since a pattern is not a word. It also imports from Wispr Flow, Superwhisper, FluidVoice, Handy, TypeWhisper, Juno, and Vox.</p>
-      </div>
-      <div class="faq-item reveal">
-        <div class="faq-q">Does Spokenly run on Windows or iOS?</div>
-        <p class="faq-a">Yes, natively on macOS, Windows, Linux, and iOS. EnviousWispr is macOS only, on Apple Silicon.</p>
-      </div>
-      <div class="faq-item reveal">
-        <div class="faq-q">What is Spokenly's MCP integration for?</div>
-        <p class="faq-a">Spokenly exposes an MCP tool named <code>ask_user_dictation</code>. Claude Code, Codex or Cursor can call it when the agent needs an answer, and the person can respond by voice through Spokenly. This is a voice-response path for agent questions, not a replacement for ordinary system-wide dictation.</p>
-      </div>
-      <div class="faq-item reveal">
-        <div class="faq-q">Can I switch from Spokenly to EnviousWispr easily?</div>
-        <p class="faq-a">Yes. Download EnviousWispr, set your keybind, and Smart Import can bring your Spokenly custom words across in one pass. There is no other data to migrate for dictation purposes. Both apps work in any text field on macOS.</p>
-      </div>
+      {faqs.map(({ q, a }) => (
+        <div class="faq-item reveal">
+          <div class="faq-q">{q}</div>
+          <p class="faq-a" set:html={faqAnswerHtml(a)} />
+        </div>
+      ))}
     </div>
   </div>
 </section>

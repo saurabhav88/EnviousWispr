@@ -1,5 +1,6 @@
 ---
 import CompareLayout from '../../layouts/CompareLayout.astro';
+import { faqAnswerHtml } from '../../utils/compare-faq.js';
 import CompareDecisionSummary from '../../components/CompareDecisionSummary.astro';
 
 const meta = {
@@ -244,7 +245,7 @@ const faqs = [
       </span>
       <span class="hero-pill">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-        0.61s median latency
+        Sub-second for short dictations
       </span>
     </div>
     <div class="hero-cta reveal">
@@ -368,7 +369,7 @@ const faqs = [
           </tr>
           <tr>
             <td>Transcription latency</td>
-            <td><span class="table-highlight">0.61s median</span>; ~1.65s with on-device AI polish</td>
+            <td><span class="table-highlight">Under a second</span> for typical short dictations; AI polish adds time that grows with length</td>
             <td>Not published</td>
           </tr>
           <tr>
@@ -425,8 +426,8 @@ const faqs = [
       </div>
       <div class="advantage-card reveal">
         <div class="advantage-icon">⚡</div>
-        <div class="advantage-title">0.61s median latency</div>
-        <p class="advantage-desc">Measured in production on Apple Silicon Macs. Parakeet Ultra runs on the Neural Engine specifically tuned for fast, accurate dictation, so text appears almost instantly after you stop talking.</p>
+        <div class="advantage-title">Sub-second transcription</div>
+        <p class="advantage-desc">Parakeet Ultra runs on the Neural Engine, tuned for fast, accurate dictation. Measured in production on Apple Silicon Macs, short dictations are typically transcribed in under a second after you stop talking.</p>
       </div>
       <div class="advantage-card reveal">
         <div class="advantage-icon">🌍</div>
@@ -509,22 +510,22 @@ const faqs = [
     </div>
     <div class="speed-stats">
       <div class="speed-card reveal">
-        <div class="speed-value">0.61s</div>
-        <div class="speed-label">Median transcription</div>
-        <div class="speed-detail">From end of speech to raw text</div>
+        <div class="speed-value">&lt;1s</div>
+        <div class="speed-label">Transcription, short dictations</div>
+        <div class="speed-detail">Typical time after you stop speaking</div>
       </div>
       <div class="speed-card reveal">
-        <div class="speed-value">1.65s</div>
-        <div class="speed-label">With AI polish</div>
-        <div class="speed-detail">EG-1 or Apple, on-device</div>
+        <div class="speed-value">Scales</div>
+        <div class="speed-label">AI polish time</div>
+        <div class="speed-detail">Grows with how much you dictated</div>
       </div>
       <div class="speed-card reveal">
         <div class="speed-value">0ms</div>
         <div class="speed-label">Network overhead</div>
-        <div class="speed-detail">Immune to bad Wi-Fi</div>
+        <div class="speed-detail">Transcription is immune to bad Wi-Fi</div>
       </div>
     </div>
-    <p style="font-size: 11px; color: var(--text-3); margin-top: 12px; text-align: center;">Based on production data from Apple Silicon Macs. Results vary by hardware and settings. FluidVoice does not publish comparable latency figures.</p>
+    <p style="font-size: 11px; color: var(--text-3); margin-top: 12px; text-align: center;">Transcription time is the median for short dictations (under 5 seconds of speech) with the default Parakeet Ultra engine, from production use on Apple Silicon Macs, measured October 2026. It is still under a second on the oldest supported Macs (M1). It excludes AI polish and pasting; longer recordings take longer. FluidVoice does not publish comparable latency figures.</p>
   </div>
 </section>
 
@@ -615,46 +616,12 @@ const faqs = [
       <h2 class="section-title">Common questions</h2>
     </div>
     <div class="faq-list">
-      <div class="faq-item reveal">
-        <div class="faq-q">Is EnviousWispr free, like FluidVoice?</div>
-        <p class="faq-a">Yes. Both EnviousWispr and FluidVoice are completely free, with no subscription and no account required. Both are also open source under the same license, GPLv3, so you can read the code that runs on your Mac.</p>
-      </div>
-      <div class="faq-item reveal">
-        <div class="faq-q">How is EnviousWispr different from FluidVoice?</div>
-        <p class="faq-a">Both are Mac-native, on-device, GPLv3, and ship a custom AI model tuned specifically for cleaning up dictation. EnviousWispr supports macOS 14 Sonoma and later; FluidVoice needs macOS 15 Sequoia or later. FluidVoice offers more than a dozen speech-model choices across Apple Speech, Cohere, Fluid Speech, Nemotron, Parakeet, and Whisper; EnviousWispr offers Parakeet Ultra and Whisper. FluidVoice also has deeper prompt routing, spoken formatting, and Command Mode. EnviousWispr keeps setup smaller, and its Escape Recovery polishes a dictation cancelled by accident and offers Undo to put it back where you were typing, where FluidVoice saves a cancelled dictation to History when History is on.</p>
-      </div>
-      <div class="faq-item reveal">
-        <div class="faq-q">Does FluidVoice have AI polish like EnviousWispr's EG-1?</div>
-        <p class="faq-a">Yes. FluidVoice ships Fluid Intelligence, also called Fluid-1, and a working default prompt. It also supports OpenAI, Anthropic, xAI, Groq, Cerebras, Google, OpenRouter, Ollama, LM Studio, and custom OpenAI-compatible endpoints, with reusable prompt profiles and app overrides. EnviousWispr offers a smaller provider list and its own EG-1 model with published license and base-model details.</p>
-      </div>
-      <div class="faq-item reveal">
-        <div class="faq-q">Can I use EnviousWispr completely offline?</div>
-        <p class="faq-a">Yes. After the one-time model download, transcription runs entirely on-device with no internet required. AI polish can also run offline using EG-1 (our own model, macOS 14+), S1-mini by Superwhisper, Apple Intelligence (macOS 26+), or Ollama with a local model. Cloud providers like OpenAI, Claude, or Gemini are optional and require your own API key.</p>
-      </div>
-      <div class="faq-item reveal">
-        <div class="faq-q">Is EnviousWispr open source like FluidVoice?</div>
-        <p class="faq-a">Yes, and under the exact same license. Both EnviousWispr and FluidVoice's app code are licensed under the GNU General Public License v3 (GPLv3), an OSI-approved copyleft license. In both cases, the polish model itself sits outside that license under its own separate terms: our EG-1 under the EG-1 Community Model License, and FluidVoice's Fluid-1 under terms it has not published in the same place as its app code.</p>
-      </div>
-      <div class="faq-item reveal">
-        <div class="faq-q">Can I import my FluidVoice custom words into EnviousWispr?</div>
-        <p class="faq-a">Yes. EnviousWispr's Smart Import reads your custom vocabulary directly out of FluidVoice, without changing FluidVoice's own files, and shows you every word it found before anything joins your library. It also imports from Wispr Flow, Superwhisper, Handy, TypeWhisper, Spokenly, Juno, and Vox.</p>
-      </div>
-      <div class="faq-item reveal">
-        <div class="faq-q">What macOS version do I need for each app?</div>
-        <p class="faq-a">EnviousWispr needs macOS 14 Sonoma or later. FluidVoice needs macOS 15 Sequoia or later, one version newer. Both need Apple Silicon for their primary engines, though FluidVoice also supports Intel Macs through its Whisper option.</p>
-      </div>
-      <div class="faq-item reveal">
-        <div class="faq-q">Which speech engines does each app use?</div>
-        <p class="faq-a">EnviousWispr runs Parakeet Ultra for 25 European languages and Whisper for 99+ languages, switched manually under Dictation Settings, Engine. FluidVoice 1.6.9 showed 14 choices across Apple Speech, Cohere, Parakeet, Nemotron, and Whisper, and version 1.6.11 added two smaller English-only Fluid Speech models, Mini and Pico.</p>
-      </div>
-      <div class="faq-item reveal">
-        <div class="faq-q">Does FluidVoice run on Windows or iOS?</div>
-        <p class="faq-a">Windows, partly. FluidVoice's own GitHub repository description states a Windows pre-build is available, so a Windows version exists though it may be earlier-stage than the Mac app. iOS is not shipped; the repository lists it as planned. EnviousWispr is macOS only, on Apple Silicon specifically.</p>
-      </div>
-      <div class="faq-item reveal">
-        <div class="faq-q">Can I switch from FluidVoice to EnviousWispr easily?</div>
-        <p class="faq-a">Yes. Download EnviousWispr, set your keybind, and Smart Import can bring your FluidVoice custom words across in one pass. There is no other data to migrate. Both apps work in any text field on macOS, so nothing about your workflow has to change.</p>
-      </div>
+      {faqs.map(({ q, a }) => (
+        <div class="faq-item reveal">
+          <div class="faq-q">{q}</div>
+          <p class="faq-a" set:html={faqAnswerHtml(a)} />
+        </div>
+      ))}
     </div>
   </div>
 </section>
