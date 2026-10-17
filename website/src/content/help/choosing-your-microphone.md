@@ -6,7 +6,7 @@ section: "Input Configuration"
 order: 1
 keywords: ["microphone", "mic", "input device", "which microphone", "headset", "usb mic", "external mic", "built in mic", "change microphone", "wrong microphone", "music", "spotify", "pause music", "lower the volume", "duck", "mute music while dictating", "other audio", "youtube", "audio interface", "focusrite", "scarlett", "virtual microphone", "wrong input", "records silence"]
 related: ["bluetooth-and-airpods", "empty-or-missing-transcription"]
-updated: 2026-09-29
+updated: 2026-10-17
 deflection: "can_resolve"
 ---
 EnviousWispr follows whichever microphone your Mac is set to, or uses a specific device you choose. Both choices live under **Dictation Settings** \> **Microphone**.
@@ -37,7 +37,7 @@ You can also switch without opening the window: click the EnviousWispr icon in t
 
 Audio interfaces such as a Focusrite Scarlett have two or more inputs, and EnviousWispr records from Input 1 unless you say otherwise. When the selected device has more than one input, a **Mic is on** control appears next to the device picker. Pick the input your microphone is plugged into. EnviousWispr remembers that choice for that device.
 
-If your microphone is on the wrong input, a recording ends with a notice that names the device and points you to this setting. If the input numbers do not match the sockets on your device, try the next one.
+If your microphone is on the wrong input, a recording may end with a notice that names the device and points you to this setting. If the input numbers do not match the sockets on your device, try the next one.
 
 - **Scarlett Solo 4th Gen:** the XLR socket is Input 2, so pick Input 2. If you have turned on "Combine inputs", Input 1 already carries your microphone and you need no change.
 - **Scarlett Solo 3rd Gen:** the XLR socket is Input 1.

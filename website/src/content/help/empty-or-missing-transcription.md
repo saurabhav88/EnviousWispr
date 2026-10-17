@@ -6,10 +6,10 @@ section: "Transcription Issues"
 order: 3
 keywords: ["nothing happens", "no text", "empty", "microphone not working", "mic not working", "not hearing me", "no output", "blank", "nothing appears", "not transcribing", "not working at all", "silent", "no sound", "meter is flat", "cant hear me"]
 related: ["choosing-your-microphone", "granting-permissions-microphone-accessibility-and-automation"]
-updated: 2026-09-29
+updated: 2026-10-17
 deflection: "show_but_always_send"
 ---
-When a recording finishes and no text appears, something between your microphone and the speech model did not deliver. Work through these checks in order, from the most common cause to the least.
+A brief press without speech can end quietly with nothing pasted. If you spoke and no text appeared, work through these checks in order, from the most common cause to the least.
 
 ### Microphone not working: check that EnviousWispr can hear you
 
