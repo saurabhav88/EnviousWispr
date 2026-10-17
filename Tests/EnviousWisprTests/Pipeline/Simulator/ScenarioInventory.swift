@@ -304,11 +304,14 @@ enum ScenarioInventory {
       steps: [
         // A silent tap (sub-floor amplitude) must still skip ASR entirely — the
         // engine is never consulted, so the configured batch success is unused.
-        // #3834: the clock never advances, so the take is short and ends
+        // #3834: held for 29 ticks, one short of the bar, so the take ends
         // SILENTLY (`.vadGateSilent`); before #3834 it selected the advisory.
+        // 29 (not 0) binds the production seconds-to-ticks conversion: a wrong
+        // conversion that put the bar at one tick would select the advisory here.
         .engine(.setBehavior(.batchSuccess(text: "should never paste"))),
         .vad(.evidence(.confirmedNoSpeech)),
-        .trigger(.start), .capture(.deliverSilentBuffer), .trigger(.stop),
+        .trigger(.start), .capture(.deliverSilentBuffer), .awaitLiveRecording,
+        .advanceClock(ticks: 29), .trigger(.stop),
       ],
       expected: ExpectedOutcome(
         terminalState: .noSpeech, pasteCount: 0, pasteOutcome: .none,
