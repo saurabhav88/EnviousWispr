@@ -1156,14 +1156,6 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
         "prompt_family": plan.family.rawValue,
       ])
 
-    let validation = validatePolishOutput(
-      polished: result.polishedText,
-      original: context.text,
-      mode: plan.mode,
-      provider: provider, model: model
-    )
-    let validatedText = validation.text
-
     // #2093: the round trip completed, so this (provider, model) is warm and the
     // next take inside the window needs no warm-up request. Without this call
     // the gate in `LLMNetworkSession` could only ever be satisfied by a warm-up
@@ -1176,6 +1168,42 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
     // timeout, empty response) exits before here and records nothing.
     // `recordPolishSuccess` itself ignores providers whose policy is `.never`.
     LLMNetworkSession.shared.recordPolishSuccess(provider: provider, model: model)
+
+    return finishResult(
+      result, context: context, mode: plan.mode, provider: provider, model: model,
+      ollamaRemote: ollamaRemote, family: plan.family)
+  }
+
+  /// Ordinary calls keep their existing validation. File-batch pieces omit only the
+  /// length heuristics rejected for batching; this is not a semantic quality judge.
+  enum ResultPolicy: Equatable { case ordinary, batchPiece }
+
+  func finishResult(
+    _ result: LLMResult, context: TextProcessingContext, mode: PolishMode,
+    provider: LLMProvider, model: String, ollamaRemote: Bool?, family: PromptFamily,
+    policy: ResultPolicy = .ordinary
+  ) -> TextProcessingContext {
+    if policy == .batchPiece,
+      result.polishedText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    {
+      // The request ran but this piece has no usable answer. Keep its prepared floor,
+      // without claiming a bypass or a successful per-piece polish.
+      var ctx = Self.bypassedContext(context)
+      ctx.polishWasBypassed = false
+      ctx.polishMetadata = nil
+      ctx.pipelineFellBackToRaw = false
+      ctx.polishFallbackReason = nil
+      ctx.polishValidatorGuard = nil
+      ctx.symbolTokens = nil
+      return ctx
+    }
+    let validation = validatePolishOutput(
+      polished: result.polishedText,
+      original: context.text,
+      mode: mode,
+      provider: provider, model: model, policy: policy
+    )
+    let validatedText = validation.text
 
     var ctx = context
     ctx.polishedText = validatedText
@@ -1206,7 +1234,7 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
     // above.
     ctx.polishRanRemote = ollamaRemote
     // #1948: same stamp site, same reasoning — set only after a real polish returned.
-    ctx.promptFamily = plan.family
+    ctx.promptFamily = family
     return ctx
   }
 
@@ -1294,68 +1322,71 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
   /// slash or backslash token the deterministic text carried.
   func validatePolishOutput(
     polished: String, original: String, mode: PolishMode,
-    provider: LLMProvider, model: String
+    provider: LLMProvider, model: String, policy: ResultPolicy = .ordinary
   ) -> PolishValidation {
     guard !original.isEmpty else {
       return PolishValidation(text: polished, guardName: nil, symbolTokens: nil)
     }
 
-    // Mode-aware thresholds (from plan Appendix C).
-    //
-    // #1948: ONLY `.message` is reachable in production. `DefaultPromptPlanner` forces it for
-    // every family now that `TranscriptAnalyzer` is deleted, and the Apple Intelligence path
-    // passes `.message` literally (`:648`), so `.inline` / `.structured` / `.edit` are inert.
-    // They are kept rather than deleted because `PolishMode` is a public Core type and the
-    // switch must stay exhaustive — not because a caller still selects them. The cost of
-    // moving the former `.structured` inputs onto `.message` thresholds was measured before
-    // the change rather than assumed: +11 extra fallbacks of 1,690 on `qwen2.5:3b`, +6 on
-    // `llama3.2`. If you are here to tune a threshold, tune `.message`; the others describe
-    // transcript shapes nothing classifies any more.
-    let expansionThreshold: Int
-    let contentDropFraction: (numerator: Int, denominator: Int)
-    switch mode {
-    case .inline:
-      expansionThreshold = max(original.count * 3, 150)
-      contentDropFraction = (2, 5)  // 40% retention minimum
-    case .message:
-      expansionThreshold = max(original.count * 3, 200)
-      contentDropFraction = (2, 5)
-    case .structured:
-      expansionThreshold = max(original.count * 4, 300)
-      contentDropFraction = (1, 3)  // 33% retention minimum (more aggressive cleanup ok)
-    case .edit:
-      expansionThreshold = max(original.count * 4, 300)
-      contentDropFraction = (1, 3)
-    }
-
-    // Guard 1: Expansion hallucination
-    if polished.count > expansionThreshold {
-      Task {
-        await AppLogger.shared.log(
-          "LLM polish validator: expansion \(polished.count)/\(original.count) chars "
-            + "exceeds \(expansionThreshold) (mode=\(mode.rawValue)) — falling back "
-            + "(provider=\(provider.rawValue), model=\(model))",
-          level: .info, category: "LLM"
-        )
+    if policy == .ordinary {
+      // Mode-aware thresholds (from plan Appendix C).
+      //
+      // #1948: ONLY `.message` is reachable in production. `DefaultPromptPlanner` forces it for
+      // every family now that `TranscriptAnalyzer` is deleted, and the Apple Intelligence path
+      // passes `.message` literally (`:648`), so `.inline` / `.structured` / `.edit` are inert.
+      // They are kept rather than deleted because `PolishMode` is a public Core type and the
+      // switch must stay exhaustive — not because a caller still selects them. The cost of
+      // moving the former `.structured` inputs onto `.message` thresholds was measured before
+      // the change rather than assumed: +11 extra fallbacks of 1,690 on `qwen2.5:3b`, +6 on
+      // `llama3.2`. If you are here to tune a threshold, tune `.message`; the others describe
+      // transcript shapes nothing classifies any more.
+      let expansionThreshold: Int
+      let contentDropFraction: (numerator: Int, denominator: Int)
+      switch mode {
+      case .inline:
+        expansionThreshold = max(original.count * 3, 150)
+        contentDropFraction = (2, 5)  // 40% retention minimum
+      case .message:
+        expansionThreshold = max(original.count * 3, 200)
+        contentDropFraction = (2, 5)
+      case .structured:
+        expansionThreshold = max(original.count * 4, 300)
+        contentDropFraction = (1, 3)  // 33% retention minimum (more aggressive cleanup ok)
+      case .edit:
+        expansionThreshold = max(original.count * 4, 300)
+        contentDropFraction = (1, 3)
       }
-      return PolishValidation(text: original, guardName: "expansion", symbolTokens: nil)
-    }
 
-    // Guard 2: Content drop
-    let originalWords = original.split(whereSeparator: \.isWhitespace)
-    let polishedWords = polished.split(whereSeparator: \.isWhitespace)
-    let dropThreshold =
-      (originalWords.count * contentDropFraction.numerator + contentDropFraction.denominator - 1)
-      / contentDropFraction.denominator
-    if originalWords.count >= 10 && polishedWords.count < dropThreshold {
-      Task {
-        await AppLogger.shared.log(
-          "LLM polish validator: content drop \(polishedWords.count)/\(originalWords.count) words "
-            + "(mode=\(mode.rawValue)) — falling back (provider=\(provider.rawValue), model=\(model))",
-          level: .info, category: "LLM"
-        )
+      // Guard 1: Expansion hallucination
+      if polished.count > expansionThreshold {
+        Task {
+          await AppLogger.shared.log(
+            "LLM polish validator: expansion \(polished.count)/\(original.count) chars "
+              + "exceeds \(expansionThreshold) (mode=\(mode.rawValue)) — falling back "
+              + "(provider=\(provider.rawValue), model=\(model))",
+            level: .info, category: "LLM"
+          )
+        }
+        return PolishValidation(text: original, guardName: "expansion", symbolTokens: nil)
       }
-      return PolishValidation(text: original, guardName: "content_drop", symbolTokens: nil)
+
+      // Guard 2: Content drop
+      let originalWords = original.split(whereSeparator: \.isWhitespace)
+      let polishedWords = polished.split(whereSeparator: \.isWhitespace)
+      let dropThreshold =
+        (originalWords.count * contentDropFraction.numerator + contentDropFraction.denominator - 1)
+        / contentDropFraction.denominator
+      if originalWords.count >= 10 && polishedWords.count < dropThreshold {
+        Task {
+          await AppLogger.shared.log(
+            "LLM polish validator: content drop \(polishedWords.count)/\(originalWords.count) words "
+              + "(mode=\(mode.rawValue)) — falling back (provider=\(provider.rawValue), model=\(model))",
+            level: .info, category: "LLM"
+          )
+        }
+        return PolishValidation(text: original, guardName: "content_drop", symbolTokens: nil)
+      }
+
     }
 
     // Guard 3: Question-to-answer conversion (unchanged across modes)
