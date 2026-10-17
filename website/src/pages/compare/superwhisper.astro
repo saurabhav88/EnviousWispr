@@ -258,7 +258,7 @@ const faqs = [
 </header>
 
 <CompareDecisionSummary id="superwhisper-vs-enviouswispr-answer" heading="Superwhisper or EnviousWispr: which should you choose?">
-  <p>Choose Superwhisper if you need meeting notes, iPhone, Windows or Android support, a large speech and writing model library, or custom writing modes. Choose EnviousWispr if your priority is free, open-source Mac dictation with no account or subscription, local speech processing, and a smaller set of built-in defaults. Both can run transcription locally, but Superwhisper is the broader paid product and EnviousWispr is the focused free alternative. For everyday speech-to-text on an Apple Silicon Mac, the decision mainly comes down to whether you value Superwhisper's wider feature set or EnviousWispr's cost, inspectability, and simpler setup. If meetings or file work are central, Superwhisper's paid features matter. If your main job is live dictation into Mac apps, EnviousWispr covers that narrower path without a purchase.</p>
+  <p>Choose Superwhisper if you need meeting notes, iPhone, Windows or Android support, a large speech and writing model library, or custom writing modes. Choose EnviousWispr if your priority is free, open-source Mac dictation with no account or subscription, local speech processing, and ready-made defaults. Both can run transcription locally, but Superwhisper is the broader paid product and EnviousWispr is the focused free alternative. For everyday speech-to-text on an Apple Silicon Mac, the decision mainly comes down to whether you value Superwhisper's wider feature set or EnviousWispr's cost, inspectability, and simpler setup. If meetings or file work are central, Superwhisper's paid features matter. If your main job is live dictation into Mac apps, EnviousWispr is built for that job and costs nothing.</p>
 </CompareDecisionSummary>
 
 <!-- Side-by-Side Table -->
@@ -466,7 +466,7 @@ const faqs = [
       <div class="advantage-card reveal">
         <div class="advantage-icon">🧠</div>
         <div class="advantage-title">Two curated local engines</div>
-        <p class="advantage-desc">EnviousWispr uses <a href="https://huggingface.co/FluidInference/parakeet-ultra-coreml" style="color: var(--accent); text-decoration: underline;">Parakeet Ultra</a> (built on NVIDIA Parakeet) for 25 European languages and Whisper for wider coverage. Superwhisper gives you a much larger library of local and cloud models to compare. EnviousWispr keeps the choice smaller and entirely local. See <a href="/features/" style="color: var(--accent); text-decoration: underline;">how the pipeline works</a>.</p>
+        <p class="advantage-desc">EnviousWispr uses <a href="https://huggingface.co/FluidInference/parakeet-ultra-coreml" style="color: var(--accent); text-decoration: underline;">Parakeet Ultra</a> (built on NVIDIA Parakeet) for 25 European languages and Whisper for wider coverage. Superwhisper gives you a much larger library of local and cloud models to compare. EnviousWispr ships two engines, both local, and sets key defaults from its own tests. See <a href="/features/" style="color: var(--accent); text-decoration: underline;">how the pipeline works</a>.</p>
       </div>
       <div class="advantage-card reveal">
         <div class="advantage-icon">⚡</div>
@@ -595,7 +595,7 @@ const faqs = [
           <p>EnviousWispr takes a different approach: Parakeet Ultra, a CTC/TDT hybrid model that runs at ~110x real-time on the Apple Neural Engine. It covers 25 European languages and is tuned for fast, accurate dictation. For languages outside those 25, you switch EnviousWispr to Whisper Large v3 Turbo, which runs on the Apple GPU.</p>
           <p>EnviousWispr uses Parakeet Ultra for the languages it covers and Whisper for broader language support. Superwhisper gives you much more room to compare models, providers, and local or cloud trade-offs.</p>
           <div class="deep-dive-detail">
-            <strong>Why it matters:</strong> Choose Superwhisper if model selection is part of the experience you want. Choose EnviousWispr if you prefer a smaller set of defaults.
+            <strong>Why it matters:</strong> Choose Superwhisper if model selection is part of the experience you want. Choose EnviousWispr if you would rather start from ready-made defaults. We <a href="/help/live-transcription-streaming-asr/" style="color: var(--accent); text-decoration: underline;">tested the faster live transcription mode</a>, found it made about twice as many wrong words on Parakeet, and shipped it switched off.
           </div>
         </div>
       </div>
@@ -621,7 +621,7 @@ const faqs = [
     <div class="section-head reveal">
       <div class="section-label-pill">Being Honest</div>
       <h2 class="section-title">Choose Superwhisper if you need its broader feature set</h2>
-      <p class="section-sub">Superwhisper is a more mature product with features EnviousWispr does not have yet. It may be a better fit in these situations:</p>
+      <p class="section-sub">Superwhisper covers more ground than EnviousWispr, across more devices and more kinds of work. It may be a better fit in these situations:</p>
     </div>
     <div class="advantages-grid">
       <div class="advantage-card reveal">

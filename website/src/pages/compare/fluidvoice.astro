@@ -21,11 +21,11 @@ const faqs = [
   },
   {
     "q": "How is EnviousWispr different from FluidVoice?",
-    "a": "Both are Mac-native, on-device, GPLv3, and ship a custom AI model tuned specifically for cleaning up dictation. EnviousWispr supports macOS 14 Sonoma and later; FluidVoice needs macOS 15 Sequoia or later. FluidVoice offers more than a dozen speech-model choices across Apple Speech, Cohere, Fluid Speech, Nemotron, Parakeet, and Whisper; EnviousWispr offers Parakeet Ultra and Whisper. FluidVoice also has deeper prompt routing, spoken formatting, and Command Mode. EnviousWispr keeps setup smaller, and its Escape Recovery polishes a dictation cancelled by accident and offers Undo to put it back where you were typing, where FluidVoice saves a cancelled dictation to History when History is on."
+    "a": "Both are Mac-native, on-device, GPLv3, and ship a custom AI model tuned specifically for cleaning up dictation. EnviousWispr supports macOS 14 Sonoma and later; FluidVoice needs macOS 15 Sequoia or later. FluidVoice offers more than a dozen speech-model choices across Apple Speech, Cohere, Fluid Speech, Nemotron, Parakeet, and Whisper; EnviousWispr offers Parakeet Ultra and Whisper. FluidVoice also has deeper prompt routing, spoken formatting, and Command Mode. EnviousWispr ships two engines and sets key defaults from its own tests. Its Escape Recovery polishes a dictation cancelled by accident and offers Undo to put it back where you were typing, where FluidVoice saves a cancelled dictation to History when History is on."
   },
   {
     "q": "Does FluidVoice have AI polish like EnviousWispr's EG-1?",
-    "a": "Yes. FluidVoice ships Fluid Intelligence, also called Fluid-1, and a working default prompt. It also supports OpenAI, Anthropic, xAI, Groq, Cerebras, Google, OpenRouter, Ollama, LM Studio, and custom OpenAI-compatible endpoints, with reusable prompt profiles and app overrides. EnviousWispr offers a smaller provider list and its own EG-1 model with published license and base-model details."
+    "a": "Yes. FluidVoice ships Fluid Intelligence, also called Fluid-1, and a working default prompt. It also supports OpenAI, Anthropic, xAI, Groq, Cerebras, Google, OpenRouter, Ollama, LM Studio, and custom OpenAI-compatible endpoints, with reusable prompt profiles and app overrides. EnviousWispr offers a shorter, curated provider list, marks the local Ollama models that passed its own cleanup tests, and ships its own EG-1 model with published license and base-model details."
   },
   {
     "q": "Can I use EnviousWispr completely offline?",
@@ -258,7 +258,7 @@ const faqs = [
 </header>
 
 <CompareDecisionSummary id="fluidvoice-vs-enviouswispr-answer" heading="FluidVoice or EnviousWispr: which should you choose?">
-  <p>Both apps are free, GPLv3, and can transcribe and polish speech on your Mac. Choose FluidVoice if you want more than a dozen speech-model choices, local meeting recording, an Intel or Windows route, or deeper prompt routing. Choose EnviousWispr if you want a smaller setup on macOS 14 or later, direct paste with Escape Recovery, and a built-in polish model whose base model and license are published. FluidVoice is the more configurable toolkit; EnviousWispr is the more guided default. Neither choice requires a subscription or account, so the practical decision is flexibility versus simplicity rather than price. If you dictate mainly on a newer Mac, both cover the core job well. The stronger reason to switch is a missing workflow or compatibility feature, not a basic difference in transcription privacy.</p>
+  <p>Both apps are free, GPLv3, and can transcribe and polish speech on your Mac. Choose FluidVoice if you want more than a dozen speech-model choices, local meeting recording, an Intel or Windows route, or deeper prompt routing. Choose EnviousWispr if you want ready-made defaults on macOS 14 or later, direct paste with Escape Recovery, and a built-in polish model whose base model and license are published. FluidVoice is the more configurable toolkit; EnviousWispr picks the defaults for you. We set key EnviousWispr defaults from our own tests. Neither choice requires a subscription or account, so the practical decision is how much you want to configure, rather than price. If you dictate mainly on a newer Mac, both cover the core job well. The stronger reason to switch is a missing workflow or compatibility feature, not a basic difference in transcription privacy.</p>
 </CompareDecisionSummary>
 
 <!-- Side-by-Side Table -->
@@ -542,9 +542,9 @@ const faqs = [
         <div class="deep-dive-title">Two engines to switch between, or more than a dozen models to choose from</div>
         <div class="deep-dive-body">
           <p>FluidVoice offers more than a dozen choices across Apple Speech, Cohere, Fluid Speech, Nemotron, Parakeet, and Whisper. The list includes streaming, multilingual, small, and large options with different speed and language trade-offs.</p>
-          <p>EnviousWispr keeps it to two: Parakeet Ultra for the 25 languages it covers best, and Whisper filling in the other 74, switched manually under Dictation Settings, Engine. There is no larger menu; the app is built around this one pairing.</p>
+          <p>EnviousWispr keeps it to two: Parakeet Ultra for the 25 languages it covers best, and Whisper filling in the other 74, switched manually under Dictation Settings, Engine. There is no larger menu on purpose. We set key defaults for this pairing from our own tests.</p>
           <div class="deep-dive-detail">
-            <strong>Why it matters:</strong> Power users who want to compare engines directly get much more choice in FluidVoice. Anyone who wants a smaller setup gets that from EnviousWispr.
+            <strong>Why it matters:</strong> Power users who want to compare engines directly get much more choice in FluidVoice. EnviousWispr sets key defaults from its own tests. We <a href="/help/live-transcription-streaming-asr/" style="color: var(--accent); text-decoration: underline;">tested the faster live transcription mode</a>, found it made about twice as many wrong words on Parakeet, and shipped it switched off.
           </div>
         </div>
       </div>
@@ -575,7 +575,7 @@ const faqs = [
       <div class="advantage-card reveal">
         <div class="advantage-icon">🎚️</div>
         <div class="advantage-title">You want a wider menu of transcription engines</div>
-        <p class="advantage-desc">FluidVoice offers more than a dozen speech-model choices across six families, including its own Fluid Speech models. EnviousWispr offers Parakeet and Whisper, which is simpler but leaves much less to tune.</p>
+        <p class="advantage-desc">FluidVoice offers more than a dozen speech-model choices across six families, including its own Fluid Speech models. EnviousWispr ships two engines and sets key defaults from its own tests. If comparing engines is part of the fun for you, FluidVoice gives you far more to try.</p>
       </div>
       <div class="advantage-card reveal">
         <div class="advantage-icon">💻</div>
@@ -603,7 +603,7 @@ const faqs = [
         <p class="advantage-desc">FluidVoice takes a dragged-in WAV, MP3, M4A, OGG, MP4, WhatsApp voice notes and more. EnviousWispr transcribes audio and video files too, with local or cloud cleanup and a switch between the original, the cleaned text and a marked-up view; check the <a href="/features/file-transcription/">supported formats</a> before you count on a rarer one.</p>
       </div>
     </div>
-    <p style="font-size: 15px; color: var(--text-2); text-align: center; margin-top: 24px;">If you want more than a dozen speech-model choices, local meeting recording, deep prompt routing, or an Intel Mac path, FluidVoice is a strong pick. If you want a smaller setup with a tuned default model on more macOS versions, <a href="/#download" style="color: var(--accent); text-decoration: underline;">give EnviousWispr a try</a>. You can always use both.</p>
+    <p style="font-size: 15px; color: var(--text-2); text-align: center; margin-top: 24px;">If you want more than a dozen speech-model choices, local meeting recording, deep prompt routing, or an Intel Mac path, FluidVoice is a strong pick. If you want ready-made defaults and a polish model fine-tuned for dictation on more macOS versions, <a href="/#download" style="color: var(--accent); text-decoration: underline;">give EnviousWispr a try</a>. You can always use both.</p>
   </div>
 </section>
 
@@ -621,11 +621,11 @@ const faqs = [
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">How is EnviousWispr different from FluidVoice?</div>
-        <p class="faq-a">Both are Mac-native, on-device, GPLv3, and ship a custom AI model tuned specifically for cleaning up dictation. EnviousWispr supports macOS 14 Sonoma and later; FluidVoice needs macOS 15 Sequoia or later. FluidVoice offers more than a dozen speech-model choices across Apple Speech, Cohere, Fluid Speech, Nemotron, Parakeet, and Whisper; EnviousWispr offers Parakeet Ultra and Whisper. FluidVoice also has deeper prompt routing, spoken formatting, and Command Mode. EnviousWispr keeps setup smaller, and its Escape Recovery polishes a dictation cancelled by accident and offers Undo to put it back where you were typing, where FluidVoice saves a cancelled dictation to History when History is on.</p>
+        <p class="faq-a">Both are Mac-native, on-device, GPLv3, and ship a custom AI model tuned specifically for cleaning up dictation. EnviousWispr supports macOS 14 Sonoma and later; FluidVoice needs macOS 15 Sequoia or later. FluidVoice offers more than a dozen speech-model choices across Apple Speech, Cohere, Fluid Speech, Nemotron, Parakeet, and Whisper; EnviousWispr offers Parakeet Ultra and Whisper. FluidVoice also has deeper prompt routing, spoken formatting, and Command Mode. EnviousWispr ships two engines and sets key defaults from its own tests. Its Escape Recovery polishes a dictation cancelled by accident and offers Undo to put it back where you were typing, where FluidVoice saves a cancelled dictation to History when History is on.</p>
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">Does FluidVoice have AI polish like EnviousWispr's EG-1?</div>
-        <p class="faq-a">Yes. FluidVoice ships Fluid Intelligence, also called Fluid-1, and a working default prompt. It also supports OpenAI, Anthropic, xAI, Groq, Cerebras, Google, OpenRouter, Ollama, LM Studio, and custom OpenAI-compatible endpoints, with reusable prompt profiles and app overrides. EnviousWispr offers a smaller provider list and its own EG-1 model with published license and base-model details.</p>
+        <p class="faq-a">Yes. FluidVoice ships Fluid Intelligence, also called Fluid-1, and a working default prompt. It also supports OpenAI, Anthropic, xAI, Groq, Cerebras, Google, OpenRouter, Ollama, LM Studio, and custom OpenAI-compatible endpoints, with reusable prompt profiles and app overrides. EnviousWispr offers a shorter, curated provider list, marks the local Ollama models that passed its own cleanup tests, and ships its own EG-1 model with published license and base-model details.</p>
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">Can I use EnviousWispr completely offline?</div>
