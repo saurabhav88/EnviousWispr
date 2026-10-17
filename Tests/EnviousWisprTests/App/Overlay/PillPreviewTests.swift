@@ -334,10 +334,11 @@
         controller.play()
         #expect(director.isCurrent(receipt), "\(name): the real pill was replaced")
         #expect(director.renderModel.state.presentation?.id == before, "\(name): slot changed")
-        if case .notShown = controller.outcome {
-        } else {
-          Issue.record("\(name): outcome was \(controller.outcome)")
-        }
+        // The refusal must come from the controller's own eligibility check; the overlay also
+        // refuses a real pill, which would hide a controller that wrongly asked.
+        #expect(
+          controller.outcome == .notShown("a real dictation or a real pill is on screen"),
+          "\(name): outcome was \(controller.outcome)")
       }
     }
 

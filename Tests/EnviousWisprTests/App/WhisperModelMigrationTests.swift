@@ -262,14 +262,19 @@ struct WhisperModelMigrationTests {
   func recordWriteFailure() async throws {
     var rig = try Rig(dictationSelected: true)
     try rig.makeOldModels()
-    // A directory where the record file must go makes the atomic write fail.
-    try FileManager.default.createDirectory(
-      at: rig.metadata.appendingPathComponent("whisper-replacement.json"),
-      withIntermediateDirectories: true)
+    // A read-only metadata folder lets the record read as absent (the code reaches its write) and
+    // makes the atomic write fail. A directory at the record path reads as unusable instead and
+    // returns before the write, so it would not reach the line this test guards.
+    try FileManager.default.setAttributes([.posixPermissions: 0o500], ofItemAtPath: rig.metadata.path)
+    defer {
+      try? FileManager.default.setAttributes(
+        [.posixPermissions: 0o700], ofItemAtPath: rig.metadata.path)
+    }
     let (migration, read) = makeMigration(&rig)
 
     await migration.runLaunch()
 
+    #expect(!read().exists(read().metadata.appendingPathComponent("whisper-replacement.json")))
     #expect(read().exists(read().legacyDictation))
     #expect(read().dictation.fetches == 0)
   }

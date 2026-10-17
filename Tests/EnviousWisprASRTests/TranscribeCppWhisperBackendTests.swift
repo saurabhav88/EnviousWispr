@@ -215,17 +215,25 @@ struct TranscribeCppWhisperBackendTests {
     let driver = FakeWhisperDriver()
     let backend = Self.makeBackend(driver)
     try await backend.prepare()
-    // The envelope is exactly the speech; its own windows have no quieter room tone.
+    // Envelope 20_000..<36_000 is all speech: loud first, then quieter. Read alone, it sets a
+    // threshold above the quiet half; read with the room tone around it, the quiet half is voiced.
+    // One loud sentence cannot show this: the filter never empties a result.
+    var samples = [Float](repeating: 0, count: 64_000)
+    samples.replaceSubrange(20_000..<28_000, with: [Float](repeating: 0.1, count: 8_000))
+    samples.replaceSubrange(28_000..<36_000, with: [Float](repeating: 0.02, count: 8_000))
     let options = TranscriptionOptions(
       language: "en", enableTimestamps: false,
       speechSegments: [SpeechSegment(startSample: 20_000, endSample: 36_000)])
     driver.runOutcome = { _, _ in
       Self.run(
         "hello there",
-        segments: [TranscribeCppSegment(startMs: 0, endMs: 1_000, text: "hello there")])
+        segments: [
+          TranscribeCppSegment(startMs: 0, endMs: 500, text: "hello"),
+          TranscribeCppSegment(startMs: 750, endMs: 1_000, text: " there"),
+        ])
     }
     let result = try await backend.transcribe(
-      audioSamples: Self.speechInSilence, options: options, onInferenceEntered: nil)
+      audioSamples: samples, options: options, onInferenceEntered: nil)
     #expect(driver.lastSampleCount == 16_000 + 8_000)
     #expect(result.text == "hello there")
     #expect(result.silentTailDropped == 0, "the filter ran and removed nothing")
@@ -503,7 +511,10 @@ struct TranscribeCppWhisperBackendTests {
         onInferenceEntered: nil)
     }
     await driver.waitForLog("enter 1 lang=nil samples=24000")
-    await backend.handleMemoryPressure()
+    // Bounded: a pressure call that tears down under a running decode waits for it to drain, so
+    // awaiting it inline would hang the suite instead of failing this test.
+    let pressure = Task { await backend.handleMemoryPressure() }
+    try await driver.bounded(pressure)
     #expect(!driver.log.contains("unload 1"), "never while a decode runs")
     #expect(await backend.operationCountsForTesting.pressurePending)
     driver.releaseRuns()

@@ -65,6 +65,15 @@ struct CrashReportContextTests {
     #expect(state.snapshot.context["phase"] as? String == "idle")
   }
 
+  @Test func endingOneOverflowOperationTwiceDoesNotClearAnotherActiveOne() {
+    var state = SentryBreadcrumb.PolishScopeState()
+    let tokens = (0..<10).map { state.begin(provider: .openAI, model: "model-\($0)") }
+    state.end(tokens[8])
+    state.end(tokens[8])
+    #expect(state.snapshot.context["untracked_active_count"] as? Int == 1)
+    #expect(state.snapshot.context["active_count"] as? Int == 9)
+  }
+
   @Test func scopeWriterFiltersBeforePersistenceAndRetainsBothSelections() throws {
     var state = SentryBreadcrumb.PolishScopeState()
     state.select(provider: .egOne, model: "eg-1", fileImport: false)

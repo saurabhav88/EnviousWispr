@@ -127,6 +127,10 @@ struct SpokenSymbolsTests {
     #expect(startWord(bare, "en", "Insert") == "Run (/clear) now")
     // A transcript's own hair space is never removed, and the pass still runs.
     #expect(on("Run open paren x close paren\u{200A}now") == "Run (x)\u{200A}now")
+    // The gap is only kept for the joiner pass. When the joiner leaves the slash as a plain word
+    // (a capitalised "Slash" mid-sentence), the gap must still be removed from the output (#3753).
+    #expect(on("Type underscore Slash now").contains("\u{200A}") == false)
+    #expect(on("Type Slash close paren now").contains("\u{200A}") == false)
   }
 
   /// Every English symbol form on BOTH English routes, with the expected spacing written from the plan's
