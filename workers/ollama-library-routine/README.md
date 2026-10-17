@@ -47,10 +47,20 @@ on issue #2778.
 - A bad file cannot merge: `pr-check.yml` runs `validate-feed.py --offline` against the PR base, and the
   Swift lane (forced for this path by `scripts/ci/classify-changes.sh`) parses the committed file with the
   production parser and fails if any row would be dropped.
-- A made-up model name cannot be added: `validate-feed.py --registry` (routine time) requires the registry
-  manifest to answer 200 and its layer sizes to equal `sizeBytes`.
+- The routine verifies added names and sizes against the registry before proposing them
+  (`validate-feed.py --registry`: the manifest must answer 200 and its layer sizes must equal `sizeBytes`).
+  CI validates structure and append-only changes only; it does not reach the network, so a name that was
+  never checked against the registry would still pass CI. That is why a feed change that did not come
+  through the routine's registry check needs a person to run `validate-feed.py --registry` first.
 - A hostile feed cannot widen what the app trusts: the app re-validates every row, a row cannot carry a
   verdict, and every row reads "Not tested by us".
+
+## Retiring a row the app now covers
+
+When the app starts shipping a model (or we measure it) that already has a feed row, the stale row would be
+dropped by the app's parser and would fail the committed-file test. The same change removes the row: the
+validator permits removing exactly those rows (shipped, measured or first party) and refuses every other
+removal, change or reorder.
 
 ## Recovery
 

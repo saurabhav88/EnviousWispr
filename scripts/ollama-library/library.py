@@ -68,7 +68,7 @@ def is_first_party(name: str) -> bool:
 
 
 def _displayable(text, max_length: int) -> bool:
-    if not isinstance(text, str) or not text or len(text) > max_length:
+    if not isinstance(text, str) or not text.strip() or len(text) > max_length:
         return False
     for ch in text:
         if unicodedata.category(ch) in {"Cc", "Cf", "Zl", "Zp", "Cs", "Co", "Cn"}:

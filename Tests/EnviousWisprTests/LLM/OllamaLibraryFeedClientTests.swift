@@ -164,6 +164,7 @@ struct OllamaLibraryFeedClientTests {
     bad("cloud repository", name: "kimi-cloud", reason: .reservedName),
     bad("s1-mini lookalike", name: "hf.co/superwhisper/s1-mini-gguf", reason: .badName),
     bad("empty display name", displayName: "", reason: .badDisplayName),
+    bad("whitespace-only display name", displayName: "   ", reason: .badDisplayName),
     bad(
       "display name over 60", displayName: String(repeating: "x", count: 61),
       reason: .badDisplayName),
@@ -171,6 +172,7 @@ struct OllamaLibraryFeedClientTests {
     bad("zero width space in display name", displayName: "ab\u{200B}c", reason: .badDisplayName),
     bad("newline in display name", displayName: "ab\nc", reason: .badDisplayName),
     bad("empty parameter count", parameterCount: "", reason: .badParameterCount),
+    bad("whitespace-only parameter count", parameterCount: " ", reason: .badParameterCount),
     bad("parameter count over 12", parameterCount: "1234567890123", reason: .badParameterCount),
     bad("bidi in parameter count", parameterCount: "4\u{2067}B", reason: .badParameterCount),
     bad("size below floor", sizeBytes: 49_999_999, reason: .badSize),

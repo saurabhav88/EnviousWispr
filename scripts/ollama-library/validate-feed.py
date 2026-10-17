@@ -99,13 +99,25 @@ def offline_errors(base, candidate, known: set) -> list:
             f"capacity: {len(rows)} rows exceeds {library.MAX_ROWS}; a person decides what to retire"
         )
 
-    if rows[: len(base_rows)] != base_rows:
-        removed = [r for r in base_rows if r not in rows]
+    # A retained row may be RETIRED when it has since become a model the app already has a position on
+    # (shipped, measured or first party): the Swift parser would drop it and the committed-feed test
+    # would fail, so the same change that ships the model must be able to remove the stale row.
+    # Every other removal, change or reorder is still refused, and a retired row may not stay.
+    def retired(row) -> bool:
+        return (
+            isinstance(row, dict)
+            and not library.row_shape_errors(row)
+            and bool(library.known_errors(row, known))
+        )
+
+    retained_base = [r for r in base_rows if not retired(r)]
+    if rows[: len(retained_base)] != retained_base:
+        removed = [r for r in retained_base if r not in rows]
         errors.append(
             "append-only violated: a retained row was removed, changed or reordered"
             + (f" (missing: {[r.get('name') for r in removed if isinstance(r, dict)]})" if removed else "")
         )
-    additions = rows[len(base_rows) :]
+    additions = rows[len(retained_base) :]
     if len(additions) > library.MAX_ADDITIONS_PER_RUN:
         errors.append(
             f"{len(additions)} additions exceeds the limit of {library.MAX_ADDITIONS_PER_RUN}"
@@ -194,9 +206,16 @@ def self_test() -> int:
         ("changed retained row", _doc(a), _doc(_with(name=a["name"], displayName="Changed")), False),
         ("reordered", _doc(a, b), _doc(b, a), False),
         ("clearing a populated feed", _doc(a), _doc(), False),
+        ("retire a row that became shipped", _doc(_with(name="qwen2.5:3b"), a), _doc(a), True),
+        ("retire a row that became shipped and add one", _doc(_with(name="qwen2.5:3b"), a), _doc(a, b), True),
+        ("keep a row that became shipped", _doc(_with(name="qwen2.5:3b"), a), _doc(_with(name="qwen2.5:3b"), a), False),
+        ("remove a row that is NOT known", _doc(a, b), _doc(b), False),
+        ("retire plus change a retained row", _doc(_with(name="qwen2.5:3b"), a), _doc(_with(name=a["name"], displayName="X")), False),
         ("updated field may change", _doc(a), dict(_doc(a), updated="2026-11-01"), True),
         ("wrong schema", _doc(a), dict(_doc(a), schema=2), False),
         ("bad name", _doc(), _doc(_with(name="Bad Name")), False),
+        ("whitespace-only displayName", _doc(), _doc(_with(displayName="   ")), False),
+        ("whitespace-only parameterCount", _doc(), _doc(_with(parameterCount=" ")), False),
         ("trailing newline in name", _doc(), _doc(_with(name="olmo2:7b\n")), False),
         ("uppercase LATEST", _doc(), _doc(_with(name="olmo2:LATEST")), False),
         ("cloud name", _doc(), _doc(_with(name="x-cloud:7b")), False),

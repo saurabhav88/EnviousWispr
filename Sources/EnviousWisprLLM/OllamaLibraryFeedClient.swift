@@ -207,10 +207,11 @@ package struct OllamaLibraryFeedClient: Sendable {
         downloadSize: downloadSizeText(bytes: sizeBytes)))
   }
 
-  /// Non-empty, bounded, and free of control, format (including bidirectional) and
+  /// Non-blank, bounded, and free of control, format (including bidirectional) and
   /// line or paragraph separator characters.
   private nonisolated static func isDisplayable(_ text: String, maxLength: Int) -> Bool {
-    guard !text.isEmpty, text.count <= maxLength else { return false }
+    guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, text.count <= maxLength
+    else { return false }
     return text.unicodeScalars.allSatisfy { scalar in
       switch scalar.properties.generalCategory {
       case .control, .format, .lineSeparator, .paragraphSeparator, .surrogate, .privateUse,
