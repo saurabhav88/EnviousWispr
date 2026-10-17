@@ -756,6 +756,9 @@ import Testing
         ),
         MemberSignature(condition: nil, signature: "func waitForDrain(_ handle: Handle) async"),
         MemberSignature(condition: nil, signature: "func unload(_ handle: Handle) async"),
+        MemberSignature(
+          condition: nil,
+          signature: "func awaitSettled(openedOn lane: TranscribeCppExecutor.Lane) async -> Int"),
       ]),
     "ASREngineTelemetryProviding": Surface(
       name: "ASREngineTelemetryProviding",

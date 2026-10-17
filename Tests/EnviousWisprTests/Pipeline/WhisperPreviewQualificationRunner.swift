@@ -150,6 +150,9 @@ struct WhisperPreviewQualificationRunner {
     }
     func waitForDrain(_ handle: Handle) async { await live.waitForDrain(handle) }
     func unload(_ handle: Handle) async { await live.unload(handle) }
+    func awaitSettled(openedOn lane: TranscribeCppExecutor.Lane) async -> Int {
+      await live.awaitSettled(openedOn: lane)
+    }
 
     private func record(
       _ submitted: ContinuousClock.Instant, _ entered: EntryClock, outcome: String

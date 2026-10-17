@@ -436,6 +436,8 @@ private final class AdapterFakeDriver: WhisperExecutorDriving, @unchecked Sendab
   }
 
   func unload(_ handle: Int) async { lock.withLock { _unloaded.append(handle) } }
+  /// Loads return at once and `unload` frees synchronously, so no session outlives a call.
+  func awaitSettled(openedOn lane: TranscribeCppExecutor.Lane) async -> Int { 0 }
 }
 
 private final class CallCount: @unchecked Sendable {

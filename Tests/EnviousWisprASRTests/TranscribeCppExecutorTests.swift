@@ -1111,6 +1111,9 @@ struct TranscribeCppPreviewPriorityTests {
     }
     func waitForDrain(_ handle: Handle) async { await executor.waitForDrain(handle) }
     func unload(_ handle: Handle) async { await executor.unload(handle) }
+    func awaitSettled(openedOn lane: TranscribeCppExecutor.Lane) async -> Int {
+      await executor.awaitSettled(openedOn: lane)
+    }
   }
 
   /// Texts the preview publishes, with a signal for the first one.

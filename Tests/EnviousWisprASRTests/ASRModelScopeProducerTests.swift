@@ -26,6 +26,9 @@ private struct ScopeDriver: WhisperExecutorDriving {
   }
   func waitForDrain(_ handle: Int) async {}
   func unload(_ handle: Int) async {}
+  /// Nothing outlives a call here: the test's load returns its handle and unload frees
+  /// nothing, so the heart lane is always settled.
+  func awaitSettled(openedOn lane: TranscribeCppExecutor.Lane) async -> Int { 0 }
 }
 
 /// Delivered scope snapshots, readable synchronously from any thread (the fake native loader
@@ -268,12 +271,15 @@ struct ASRModelScopeProducerTests {
       }, delivered: delivered, hold: hold)
     let load = Task { try await backend.prepare() }
     await hold.waitForArrival()
-    await backend.unload()
+    // #3849: the unload joins the load it cancels, so it returns only after the held delivery
+    // lets that load end. Its cancelled report (never held) shows it has superseded the load.
+    let unload = Task { await backend.unload() }
+    await delivered.waitUntil { $0.contains { $0.phase == .cancelled } }
     await hold.release()
+    await unload.value
     await #expect(throws: (any Error).self) { try await load.value }
     #expect(await entries.value == 0, "the abandoned load never reached the native loader")
     // The unload's report outranks the held loading one, which may then be dropped.
-    await delivered.waitUntil { $0.contains { $0.phase == .cancelled } }
     #expect(delivered.all.contains { $0.phase == .cancelled && $0.serving == nil })
   }
 
