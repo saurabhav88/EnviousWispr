@@ -781,7 +781,7 @@ struct SettingsMapRenderingTests {
       updateHistoryRow: { _ in throw Unexpected.work },
       mergeSpeakerFields: { _, _, _ in throw Unexpected.work },
       historyRowExists: { _ in false },
-      processPart: { _, _ in throw Unexpected.work })
+      processParts: { _, _, _ in throw Unexpected.work })
     let list = try await registrations(home.polish(TranscribeFileView().environment(coordinator)))
     return Rendered(list: list, destination: .transcribeFile, alwaysOnThisPage: [])
   }

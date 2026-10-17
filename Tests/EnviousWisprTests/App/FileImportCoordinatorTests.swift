@@ -7,6 +7,25 @@ import Testing
 @testable import EnviousWisprAppKit
 @testable import EnviousWisprPipeline
 
+/// Test-only migration of existing per-piece stubs to the required producer contract.
+/// Production forwards directly to FileImportRunner's multipart API.
+@MainActor
+func serialFileImportTestProcessor(
+  _ processPart: @escaping @MainActor (String, String?) async throws -> FileImportRunner.PartOutcome
+) -> FileImportCoordinator.ProcessParts {
+  { pieces, language, emit in
+    for (index, piece) in pieces.enumerated() {
+      try Task.checkCancellation()
+      let outcome: FileImportRunner.PartOutcome
+      do { outcome = try await processPart(piece, language) }
+      catch is CancellationError { throw CancellationError() }
+      catch { outcome = FileImportRunner.PartOutcome(text: piece, polishedText: nil) }
+      try Task.checkCancellation()
+      guard emit(index, outcome) else { throw CancellationError() }
+    }
+  }
+}
+
 /// #2648 — the state machine behind Transcribe a File.
 ///
 /// **When this fails, the user presses Stop and the screen carries on, or presses Stop and a dictation
@@ -105,7 +124,9 @@ struct FileImportCoordinatorTests {
     ensureEngineReady: @escaping @MainActor () async -> FileImportCoordinator.EngineReadiness = {
       .ready
     },
-    onEngineReleased: @escaping @MainActor () -> Void = {}
+    onEngineReleased: @escaping @MainActor () -> Void = {},
+    processPartsOverride: FileImportCoordinator.ProcessParts? = nil,
+    onHistoryUpdate: @escaping @MainActor () -> Void = {}
   ) -> FileImportCoordinator {
     FileImportCoordinator(
       decode: decode,
@@ -131,10 +152,10 @@ struct FileImportCoordinatorTests {
       // `FileImportHistoryTests` owns what reaches History. A no-op save that reports
       // success is the explicit statement of that, not a default.
       saveToHistory: { _ in },
-      updateHistoryRow: { _ in true },
+      updateHistoryRow: { _ in onHistoryUpdate(); return true },
       mergeSpeakerFields: { _, _, _ in true },
       historyRowExists: { _ in true },
-      processPart: { part, _ in try await processPart(part) })
+      processParts: processPartsOverride ?? serialFileImportTestProcessor { part, _ in try await processPart(part) })
   }
 
   /// Drives a coordinator to a finished document, so a test about what happens
@@ -156,6 +177,74 @@ struct FileImportCoordinatorTests {
     await settleUntil { coordinator.state == .finished }
     await settleUntil { coordinator.isEngineHeld == false }
     return coordinator
+  }
+
+  @Test("Unexpected bulk failure and invalid/incomplete rosters keep accepted parts and every remaining source piece",
+    arguments: ["throws", "incomplete", "duplicate", "order", "range"])
+  func bulkFailurePreservesRoster(kind: String) async throws {
+    struct Failed: Error {}
+    let finished = BoundedWait.Signal()
+    let raw = (0..<450).map { "word\($0)" }.joined(separator: " ")
+    var supplied: [String] = []
+    let coordinator = makeCoordinator(
+      lease: EngineLease(), transcribe: { _ in raw }, onEngineReleased: { finished.fire() },
+      processPartsOverride: { pieces, _, emit in
+        supplied = pieces
+        #expect(pieces.count == 3)
+        if kind == "order" || kind == "range" {
+          #expect(emit(kind == "order" ? 1 : pieces.count, Self.outcome("WRONG")) == false)
+          #expect(emit(0, Self.outcome("LATE")) == false)
+          return
+        }
+        #expect(emit(0, Self.outcome("Kept first result.")))
+        if kind == "throws" { throw Failed() }
+        if kind == "duplicate" {
+          #expect(emit(0, Self.outcome("WRONG")) == false)
+          #expect(emit(1, Self.outcome("LATE")) == false)
+          throw CancellationError()
+        }
+      })
+    coordinator.choose(url: Self.anyURL)
+    try #require(await settleUntil { if case .ready = coordinator.state { return true }; return false })
+    coordinator.start()
+    try await BoundedWait.until(finished)
+    #expect(coordinator.state == .finished)
+    #expect(coordinator.parts.map(\.id) == [0, 1, 2])
+    let kept = kind == "order" || kind == "range" ? 0 : 1
+    if kept == 1 { #expect(coordinator.parts[0].text == "Kept first result.") }
+    #expect(Array(coordinator.parts.dropFirst(kept).map(\.text)) == Array(supplied.dropFirst(kept)))
+    #expect(coordinator.parts.dropFirst(kept).allSatisfy { $0.isUnpolished && $0.polishWasAttempted })
+  }
+
+  @Test("A multipart dependency completing after Stop cannot append or save, and the claim waits for exit")
+  func lateBulkCompletionAfterStop() async throws {
+    let lease = EngineLease()
+    let entered = BoundedWait.Signal(); let release = BoundedWait.Signal(); let exited = BoundedWait.Signal()
+    var writes = 0; var lateAccepted: Bool?
+    let coordinator = makeCoordinator(
+      lease: lease, onEngineReleased: { exited.fire() },
+      processPartsOverride: { pieces, _, emit in
+        entered.fire()
+        try await BoundedWait.until(release)
+        // Deliberately ignore cancellation: the coordinator must reject this independently.
+        lateAccepted = emit(0, Self.outcome(pieces[0]))
+      }, onHistoryUpdate: { writes += 1 })
+    defer { release.fire() }
+    coordinator.choose(url: Self.anyURL)
+    try #require(await settleUntil { if case .ready = coordinator.state { return true }; return false })
+    coordinator.start()
+    try await BoundedWait.until(entered)
+    coordinator.stop()
+    let writesAtStop = writes
+    #expect(coordinator.state == .stopped)
+    #expect(lease.isBusy)
+    release.fire()
+    try await BoundedWait.until(exited)
+    #expect(lateAccepted == false)
+    #expect(coordinator.parts.isEmpty)
+    #expect(writes == writesAtStop)
+    #expect(lease.isBusy == false)
+    #expect(coordinator.state == .stopped)
   }
 
   // MARK: - The engine the user picked has to be the engine that runs

@@ -107,7 +107,7 @@
         updateHistoryRow: { _ in true },
         mergeSpeakerFields: { _, _, _ in true },
         historyRowExists: { _ in true },
-        processPart: { part, _ in
+        processParts: serialFileImportTestProcessor { part, _ in
           FileImportRunner.PartOutcome(text: part, polishedText: part)
         })
     }
@@ -379,7 +379,7 @@
         },
         saveToHistory: { _ in }, updateHistoryRow: { _ in true },
         mergeSpeakerFields: { _, _, _ in true }, historyRowExists: { _ in true },
-        processPart: { part, _ in
+        processParts: serialFileImportTestProcessor { part, _ in
           FileImportRunner.PartOutcome(text: part, polishedText: part)
         })
       let refusingSink = ReplySink()

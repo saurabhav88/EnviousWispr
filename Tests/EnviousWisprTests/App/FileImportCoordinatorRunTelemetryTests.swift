@@ -142,7 +142,7 @@ struct FileImportCoordinatorRunTelemetryTests {
       updateHistoryRow: updateHistoryRow,
       mergeSpeakerFields: { _, _, _ in true },
       historyRowExists: { _ in true },
-      processPart: { part, _ in try await processPart(part) })
+      processParts: serialFileImportTestProcessor { part, _ in try await processPart(part) })
   }
 
   // MARK: - #3546 model attribution

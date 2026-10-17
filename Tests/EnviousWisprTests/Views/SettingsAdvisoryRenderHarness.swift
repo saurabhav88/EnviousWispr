@@ -89,7 +89,7 @@ struct SettingsAdvisoryRenderHarness {
       updateHistoryRow: { _ in throw HarnessFailure.unexpectedWork },
       mergeSpeakerFields: { _, _, _ in throw HarnessFailure.unexpectedWork },
       historyRowExists: { _ in false },
-      processPart: { _, _ in throw HarnessFailure.unexpectedWork })
+      processParts: { _, _, _ in throw HarnessFailure.unexpectedWork })
     coordinator.choose(url: URL(fileURLWithPath: "/fixture/Meeting.m4a"))
     try await awaitState(coordinator, .ready(fileName: "Meeting.m4a", seconds: 60))
     coordinator.start()

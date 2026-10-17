@@ -88,7 +88,7 @@ struct FileImportHistoryTests {
       updateHistoryRow: { try spy.update($0) },
       mergeSpeakerFields: { _, _, _ in true },
       historyRowExists: { spy.exists($0) },
-      processPart: { _, _ in
+      processParts: serialFileImportTestProcessor { _, _ in
         onPart?()
         return FileImportRunner.PartOutcome(
           text: cleaned, polishedText: cleaned)
@@ -567,7 +567,7 @@ struct FileImportHistoryTests {
       historyRowExists: { spy.exists($0) },
       // Every part comes back with NO polished text, which is what a bypassed or entirely
       // failed polish produces.
-      processPart: { part, _ in
+      processParts: serialFileImportTestProcessor { part, _ in
         FileImportRunner.PartOutcome(text: part, polishedText: nil)
       })
     await run(c)

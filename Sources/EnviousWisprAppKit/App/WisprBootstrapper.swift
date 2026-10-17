@@ -2201,8 +2201,8 @@ package final class WisprBootstrapper {
       },
       currentHistoryRow: { [transcriptCoordinator] id in transcriptCoordinator.currentRow(id: id) },
       historyRowExists: { [transcriptCoordinator] id in transcriptCoordinator.hasRow(id: id) },
-      processPart: { [fileImportRunner] part, language in
-        try await fileImportRunner.process(part: part, engineLanguage: language)
+      processParts: { [fileImportRunner] parts, language, onOutcome in
+        try await fileImportRunner.process(parts: parts, engineLanguage: language, onOutcome: onOutcome)
       })
     // History announces a deleted row; the wizard drops the retry audio it holds for that
     // row (#2811, cloud review of PR #2846). Late-bound because History's coordinator is

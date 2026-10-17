@@ -665,7 +665,10 @@ final class FileImportCoordinator {
   /// that Stop changes the screen at once while the claim waits for the work to
   /// exit — cannot be tested at all unless a test can make a part take as long
   /// as it likes.
-  private let processPart: @MainActor (String, String?) async throws -> FileImportRunner.PartOutcome
+  typealias ProcessParts = @MainActor (
+    [String], String?, @MainActor (Int, FileImportRunner.PartOutcome) -> Bool
+  ) async throws -> Void
+  private let processParts: ProcessParts
 
   /// Writes this import to History, or throws.
   ///
@@ -843,8 +846,7 @@ final class FileImportCoordinator {
       ) throws -> Bool = { _, _, _, _ in false },
     currentHistoryRow: @escaping @MainActor (UUID) -> Transcript? = { _ in nil },
     historyRowExists: @escaping @MainActor (UUID) -> Bool,
-    processPart:
-      @escaping @MainActor (String, String?) async throws -> FileImportRunner.PartOutcome
+    processParts: @escaping ProcessParts
   ) {
     self.polishOllamaLocalityNow = polishOllamaLocalityNow
     self.refreshOllamaFacts = refreshOllamaFacts
@@ -872,7 +874,7 @@ final class FileImportCoordinator {
     self.writeExplicitRename = writeExplicitRename
     self.currentHistoryRow = currentHistoryRow
     self.historyRowExists = historyRowExists
-    self.processPart = processPart
+    self.processParts = processParts
   }
 
   // MARK: - The user's four actions
@@ -2610,41 +2612,55 @@ final class FileImportCoordinator {
       await writeSpeakerFields(cleanupOutcome: .polisherNotReady)
       return
     }
+    guard Task.isCancelled == false, generationAtStart == generation else { return }
     phase = "Cleaning it up"
     state = .polishing(done: 0, total: pieces.count)
+    var nextIndex = 0
+    var rejectedDelivery = false
+    var acceptingOutcomes = true
+    defer { acceptingOutcomes = false }
 
-    for (index, piece) in pieces.enumerated() {
-      if Task.isCancelled || generationAtStart != generation { return }
-      do {
-        let outcome = try await processPart(piece, engineReportedLanguage)
-        // Re-read AFTER the await: a Stop during this part must not write into
-        // a run the user has already ended.
-        guard generationAtStart == generation else { return }
-        parts.append(
-          Part(
-            id: index, text: outcome.displayText, isUnpolished: outcome.isUnpolished,
-            wasPolished: outcome.polishedText != nil,
-            polishWasAttempted: outcome.wasPolishAttempted,
-            turnID: index < turnIDs.count ? turnIDs[index] : nil,
-            trailingGap: index < gaps.count ? gaps[index] : ""))
-      } catch is CancellationError {
-        return
-      } catch {
-        guard generationAtStart == generation else { return }
-        // A part that could not run at all still appears, carrying its raw
-        // words. A gap in the document would be the silent failure. This part WAS an
-        // attempt (the call threw rather than declining), so it counts toward `.failed`,
-        // never `.skipped`.
-        parts.append(
-          Part(
-            id: index, text: piece, isUnpolished: true, polishWasAttempted: true,
-            turnID: index < turnIDs.count ? turnIDs[index] : nil,
-            trailingGap: index < gaps.count ? gaps[index] : ""))
+    func append(_ index: Int, _ outcome: FileImportRunner.PartOutcome) -> Bool {
+      // Re-read AFTER the await: a Stop during this part must not write into
+      // a run the user has already ended.
+      guard Task.isCancelled == false, generationAtStart == generation else { return false }
+      guard index == nextIndex, pieces.indices.contains(index) else {
+        rejectedDelivery = true
+        return false
       }
-      guard generationAtStart == generation else { return }
-      state = .polishing(done: index + 1, total: pieces.count)
+      parts.append(
+        Part(
+          id: index, text: outcome.displayText, isUnpolished: outcome.isUnpolished,
+          wasPolished: outcome.polishedText != nil,
+          polishWasAttempted: outcome.wasPolishAttempted,
+          turnID: index < turnIDs.count ? turnIDs[index] : nil,
+          trailingGap: index < gaps.count ? gaps[index] : ""))
+      nextIndex += 1
+      state = .polishing(done: nextIndex, total: pieces.count)
+      return true
     }
-    guard generationAtStart == generation else { return }
+    do {
+      try await processParts(pieces, engineReportedLanguage) { index, outcome in
+        guard acceptingOutcomes, rejectedDelivery == false else { return false }
+        return append(index, outcome)
+      }
+    } catch is CancellationError {
+      guard Task.isCancelled == false, generationAtStart == generation, rejectedDelivery else { return }
+    } catch {
+      // The processor could not finish its roster. Preserve accepted results and
+      // disclose the remaining source as unpolished, without a processing retry.
+    }
+    acceptingOutcomes = false
+    guard Task.isCancelled == false, generationAtStart == generation else { return }
+    for index in nextIndex..<pieces.count {
+      // A missing or invalid delivery follows the same failure path as a throw.
+      // A part that could not run at all still appears, carrying its raw
+      // words. A gap in the document would be the silent failure. This part WAS an
+      // attempt (the call threw rather than declining), so it counts toward `.failed`,
+      // never `.skipped`.
+      guard append(index, FileImportRunner.PartOutcome(text: pieces[index], polishedText: nil)) else { return }
+    }
+    guard Task.isCancelled == false, generationAtStart == generation else { return }
     await finishRun(savingDocument: true, asrOutcome: asrOutcome)
   }
 

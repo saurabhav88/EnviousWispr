@@ -1,6 +1,7 @@
 import EnviousWisprASR
 import EnviousWisprCore
-import EnviousWisprPipeline
+import EnviousWisprLLM
+@testable import EnviousWisprPipeline
 import EnviousWisprServices
 import Foundation
 import Testing
@@ -146,7 +147,10 @@ struct FileImportCoordinatorSpeakerTests {
       FileImportRunner
       .PartOutcome = { part, _ in
         FileImportRunner.PartOutcome(text: part, polishedText: part)
-      }
+      },
+    processPartsOverride: FileImportCoordinator.ProcessParts? = nil,
+    beginRunOverride: (@MainActor () -> FileImportCoordinator.RunConfiguration)? = nil,
+    onEngineReleased: @escaping @MainActor () -> Void = {}
   ) -> FileImportCoordinator {
     FileImportCoordinator(
       decode: { _ in Self.decoded(seconds: seconds) },
@@ -163,7 +167,8 @@ struct FileImportCoordinatorSpeakerTests {
       emitSpeakerRetryTelemetry: emitSpeakerRetryTelemetry,
       emitTurnsDisplayedTelemetry: emitTurnsDisplayedTelemetry,
       engineAdmission: .live(lease: lease, as: .fileImport),
-      beginRun: {
+      onEngineReleased: onEngineReleased,
+      beginRun: beginRunOverride ?? {
         FileImportCoordinator.RunConfiguration(
           polishIsCloud: false, localPolishProvider: nil, polishProvider: .egOne,
           ollamaModel: nil, polishModel: "eg-1", backendType: .parakeet)
@@ -175,7 +180,7 @@ struct FileImportCoordinatorSpeakerTests {
       writeExplicitRename: writeExplicitRename,
       currentHistoryRow: currentHistoryRow,
       historyRowExists: { _ in true },
-      processPart: processPart)
+      processParts: processPartsOverride ?? serialFileImportTestProcessor(processPart))
   }
 
   @Test("the speaker step never runs when the raw save is refused, and neither does cleanup/polish")
@@ -746,7 +751,10 @@ struct FileImportCoordinatorSpeakerTests {
     ) -> Void = { _ in },
     emitTurnsDisplayedTelemetry: @escaping @MainActor () -> Void = {},
     prepareLocalPolish: @escaping @MainActor (FileImportCoordinator.RunConfiguration) async ->
-      Bool = { _ in true }
+      Bool = { _ in true },
+    processPartsOverride: FileImportCoordinator.ProcessParts? = nil,
+    beginRunOverride: (@MainActor () -> FileImportCoordinator.RunConfiguration)? = nil,
+    onEngineReleased: @escaping @MainActor () -> Void = {}
   ) -> FileImportCoordinator {
     makeCoordinator(
       lease: lease, seconds: seconds, transcribedText: transcribedText,
@@ -759,7 +767,138 @@ struct FileImportCoordinatorSpeakerTests {
       emitTurnTelemetry: emitTurnTelemetry, emitRenameTelemetry: emitRenameTelemetry,
       emitSpeakerRetryTelemetry: emitSpeakerRetryTelemetry,
       emitTurnsDisplayedTelemetry: emitTurnsDisplayedTelemetry,
-      prepareLocalPolish: prepareLocalPolish, processPart: processPart)
+      prepareLocalPolish: prepareLocalPolish, processPart: processPart,
+      processPartsOverride: processPartsOverride, beginRunOverride: beginRunOverride,
+      onEngineReleased: onEngineReleased)
+  }
+
+  @MainActor
+  private final class BatchCapture {
+    var requests = 0
+    var batches = 0
+    var onRequest: (@MainActor () -> Void)?
+  }
+  private struct BatchPolisher: TranscriptPolisher {
+    let capture: BatchCapture
+    func polish(
+      text: String, instructions: PolishInstructions, config: LLMProviderConfig,
+      onToken: (@Sendable (String) -> Void)?
+    ) async throws -> LLMResult { throw LLMError.requestFailed("Unexpected legacy batch fixture path") }
+    func polish(
+      envelope: PromptEnvelope, config: LLMProviderConfig,
+      onToken: (@Sendable (String) -> Void)?
+    ) async throws -> LLMResult {
+      await MainActor.run { capture.requests += 1; capture.onRequest?() }
+      guard let pair = envelope.asSingleTurn(), pair.user.hasPrefix("Transcript to clean:\n\n")
+      else { throw LLMError.requestFailed("Unexpected fixture envelope") }
+      let text = String(pair.user.dropFirst("Transcript to clean:\n\n".count))
+      func clean(_ text: String) -> String { text.prefix(1).uppercased() + text.dropFirst() + "." }
+      if text.hasPrefix("<s1>") {
+        await MainActor.run { capture.batches += 1 }
+        guard let sections = SectionEnvelope.unwrap(text, expected: 2)
+        else { throw LLMError.requestFailed("Expected two real runner sections in one request") }
+        return LLMResult(polishedText: SectionEnvelope.wrap(sections.map(clean)))
+      }
+      return LLMResult(polishedText: clean(text))
+    }
+  }
+
+  @Test("Initial import and Clean it again use real batching while keeping speaker IDs, gaps, History and piece progress",
+    arguments: [false, true])
+  func realBatchPreservesSpeakerDocument(longFirstTurn: Bool) async throws {
+    let tail = "please send the final report to the design team before lunch tomorrow"
+    let left = Array(repeating: "the report needs review by our design team before Friday", count: 50).joined(separator: " ")
+    let insideGap = "  "
+    let a = longFirstTurn ? left + insideGap + tail : tail
+    let b = "we should review the remaining changes with our colleagues before we publish"
+    let gap = "  \n"
+    let raw = a + gap + b
+    let firstCount = a.split(whereSeparator: \.isWhitespace).count
+    var timings: [ASRWordTiming] = []
+    var cursor = raw.startIndex
+    for (index, token) in raw.split(whereSeparator: \.isWhitespace).enumerated() {
+      let range = try #require(raw.range(of: String(token), range: cursor..<raw.endIndex))
+      let ns = NSRange(range, in: raw)
+      let start = index < firstCount ? index * 50 : firstCount * 50 + 1000 + (index - firstCount) * 50
+      timings.append(ASRWordTiming(word: String(token), range: ns.location..<(ns.location + ns.length), startMs: start, endMs: start + 40))
+      cursor = range.upperBound
+    }
+    let store = FakeHistoryStore(); let capture = BatchCapture()
+    let processor = FileImportRunner(
+      keychainManager: KeychainManager(), egOneRuntime: nil, s1MiniRuntime: nil,
+      outputClassifierHolder: nil, languageIdentifier: { _ in ("en", 0.99) },
+      makeEGOnePolisher: nil, promptPlanner: nil,
+      makePolisher: { _, _, _ in BatchPolisher(capture: capture) })
+    let settings = RecordingSettingsSnapshot(
+      backendType: .parakeet, backendSupportsLanguageDetection: false, languageMode: .locked("en"),
+      wordCorrectionEnabled: false, fillerRemovalEnabled: false, emojiFormatterEnabled: false,
+      spokenPunctuationEnabled: false, spokenPunctuationStartWords: nil,
+      llmProvider: LLMProvider.openAI.rawValue, llmModel: LLMProvider.defaultModel(for: .openAI),
+      s1Control: nil, englishSpelling: .american, casualModeEnabled: false)
+    var finished = BoundedWait.Signal()
+    weak var observed: FileImportCoordinator?
+    var progress: [FileImportCoordinator.State] = []
+    let coordinator = makeStoreBackedCoordinator(
+      store: store, seconds: Double((timings.last?.endMs ?? 0) + 1000) / 1000, transcribedText: raw, wordTimings: timings,
+      speakerLabeler: { _, _ in .labeled(count: 2, segments: [
+        SpeakerSegment(speakerId: "A", startMs: 0, endMs: firstCount * 50, quality: 1),
+        SpeakerSegment(speakerId: "B", startMs: firstCount * 50 + 1000, endMs: (timings.last?.endMs ?? 0) + 10, quality: 1)
+      ]) },
+      processPartsOverride: { pieces, language, emit in
+        #expect(pieces == (longFirstTurn ? [left, tail, b] : [a, b]))
+        try await processor.process(parts: pieces, engineLanguage: language) { index, outcome in
+          let accepted = emit(index, outcome)
+          if let state = observed?.state { progress.append(state) }
+          return accepted
+        }
+      },
+      beginRunOverride: {
+        processor.freeze(settings: settings, vocabulary: nil)
+        return FileImportCoordinator.RunConfiguration(
+          polishIsCloud: true, localPolishProvider: nil, polishProvider: .openAI,
+          ollamaModel: nil, polishModel: settings.llmModel, backendType: .parakeet)
+      }, onEngineReleased: { processor.releaseCheckerSelections(); finished.fire() })
+    observed = coordinator
+    capture.onRequest = {
+      guard let id = observed?.historyID else { Issue.record("missing durable History identity before cleanup"); return }
+      #expect(store.current(id)?.text == raw)
+    }
+    coordinator.choose(url: Self.anyURL)
+    try #require(await settleUntil { if case .ready = coordinator.state { return true }; return false })
+    coordinator.start()
+    try await BoundedWait.until(finished)
+    let id = try #require(coordinator.historyID)
+    let row = try #require(store.current(id))
+    let turns = try #require(row.turns)
+    func clean(_ text: String) -> String { text.prefix(1).uppercased() + text.dropFirst() + "." }
+    let expected = [longFirstTurn ? clean(left) + insideGap + clean(tail) : clean(a), clean(b)]
+    let perPassRequests = longFirstTurn ? 2 : 1
+    let expectedGaps = longFirstTurn ? [insideGap, "", ""] : ["", ""]
+    let expectedProgress: [FileImportCoordinator.State] = longFirstTurn
+      ? [.polishing(done: 1, total: 3), .polishing(done: 2, total: 3), .polishing(done: 3, total: 3)]
+      : [.polishing(done: 1, total: 2), .polishing(done: 2, total: 2)]
+    #expect(capture.requests == perPassRequests)
+    #expect(capture.batches == 1)
+    #expect(turns.map(\.speakerId) == ["A", "B"])
+    #expect(turns.map(\.processedText) == expected.map(Optional.some))
+    #expect(turns.allSatisfy { $0.wasPolished })
+    #expect(coordinator.parts.map(\.turnID) == (longFirstTurn ? [turns[0].id, turns[0].id, turns[1].id] : turns.map(\.id)).map(Optional.some))
+    #expect(coordinator.parts.map(\.trailingGap) == expectedGaps)
+    #expect(progress == expectedProgress)
+    #expect(row.polishedText == expected.joined(separator: "\n\n"))
+    let ids = turns.map(\.id)
+    finished = BoundedWait.Signal(); progress = []
+    coordinator.rePolish()
+    try await BoundedWait.until(finished)
+    let repeated = try #require(store.current(id)?.turns)
+    #expect(capture.requests == perPassRequests * 2)
+    #expect(capture.batches == 2)
+    #expect(repeated.map(\.id) == ids)
+    #expect(repeated.map(\.speakerId) == ["A", "B"])
+    #expect(repeated.map(\.processedText) == expected.map(Optional.some))
+    #expect(coordinator.parts.map(\.trailingGap) == expectedGaps)
+    #expect(progress == expectedProgress)
+    #expect(coordinator.state == .finished)
   }
 
   @Test(
