@@ -63,6 +63,22 @@ struct FileImportRunnerTests {
       "the import chain is not the ordinary chain's order with the snippet step removed")
   }
 
+  @Test("file stages retain exactly the original chain instances around its configured polisher")
+  func fileStagesPreserveIdentityAndOrder() {
+    let steps = makeSteps()
+    let stages = steps.fileImportStages
+    let recombined = stages.beforePolish + [stages.polish] + stages.afterPolish
+    let original = steps.orderedChainForFileImport
+    #expect(stages.polish === steps.llmPolish)
+    #expect(recombined.count == original.count)
+    #expect(zip(recombined, original).allSatisfy {
+      ObjectIdentifier($0 as AnyObject) == ObjectIdentifier($1 as AnyObject)
+    })
+    #expect(stages.beforePolish.contains { $0 is LLMPolishStep } == false)
+    #expect(stages.afterPolish.contains { $0 is LLMPolishStep } == false)
+    #expect(recombined.contains { $0 is SnippetExpansionStep } == false)
+  }
+
   /// #3124: an imported part is spelled under the choice frozen at Start, British or American.
   @Test("a part imported under English (UK) comes back British; American stays American")
   func importedPartFollowsFrozenSpelling() async throws {

@@ -153,6 +153,18 @@ struct LimbSteps {
   var orderedChainForFileImport: [any TextProcessingStep] {
     orderedChain.filter { !($0 is SnippetExpansionStep) }
   }
+
+  /// The configured polish INSTANCE is the boundary, not a second list of step names. Retaining
+  /// the same instances keeps each part's step-owned outcomes attached when execution resumes.
+  @MainActor
+  var fileImportStages: (
+    beforePolish: [any TextProcessingStep], polish: LLMPolishStep,
+    afterPolish: [any TextProcessingStep]
+  ) {
+    let chain = orderedChainForFileImport
+    let before = Array(chain.prefix { ($0 as? LLMPolishStep) !== llmPolish })
+    return (before, llmPolish, Array(chain.dropFirst(before.count + 1)))
+  }
 }
 
 /// Issue #1339: sessionless model-load wedge guard for `ensureEngineWarm`.

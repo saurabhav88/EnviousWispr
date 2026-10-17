@@ -227,6 +227,19 @@ internal final class TextProcessingRunner {
     /// moves on mid-chain.
     takeID: String? = nil
   ) async throws -> TextProcessingRunResult {
+    let context = await makeContext(
+      rawText: rawText, evidence: evidence, targetAppName: targetAppName, steps: steps,
+      frozenCorrectorVocabulary: frozenCorrectorVocabulary, takeID: takeID)
+    return try await run(context: context, steps: steps, polishSetup: polishSetup)
+  }
+
+  /// Seeds once from the FULL chain, even when a caller will execute it in stages. Language,
+  /// protected spelling and checker selection must not be recomputed between those stages.
+  func makeContext(
+    rawText: String, evidence: LanguageEvidence, targetAppName: String?,
+    steps: [any TextProcessingStep], frozenCorrectorVocabulary: CorrectorVocabulary? = nil,
+    takeID: String? = nil
+  ) async -> TextProcessingContext {
     // No surrounding text: the chain has no caret window. The repair path
     // resolves again later with one, and the two share one floor and one
     // precedence ladder, so a disagreement is a difference in INPUT only.
@@ -262,6 +275,25 @@ internal final class TextProcessingRunner {
       context.frozenLearnedWordChecker = await learnedStep.boundedSelection(
         for: selectedProvider, language: resolution.language)
     }
+    let logger = self.logger
+    Task {
+      await logger.log(
+        "CORRECTION_DEBUG [RAW ASR] \(rawText)",
+        level: .info, category: "CorrectionDebug"
+      )
+    }
+
+    return context
+  }
+
+  /// Executes only the supplied stage, retaining the complete context and original step instances.
+  /// Notices describe this stage; raw entry still runs the full chain in one call. In particular,
+  /// continuation never labels prepared text as RAW ASR or selects a checker a second time.
+  func run(
+    context initialContext: TextProcessingContext, steps: [any TextProcessingStep],
+    polishSetup: PolishSetupTakeProbe? = nil
+  ) async throws -> TextProcessingRunResult {
+    var context = initialContext
     var polishNotice: PolishNotice?
     // #3438: set once, at the moment the polish step's result is classified; never rewritten.
     var polishTakeOutcome: PolishTakeOutcome?
@@ -283,12 +315,6 @@ internal final class TextProcessingRunner {
     }
 
     let logger = self.logger
-    Task {
-      await logger.log(
-        "CORRECTION_DEBUG [RAW ASR] \(rawText)",
-        level: .info, category: "CorrectionDebug"
-      )
-    }
 
     for step in steps {
       let stepName = step.name
