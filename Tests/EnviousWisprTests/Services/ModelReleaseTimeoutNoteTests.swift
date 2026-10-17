@@ -185,20 +185,28 @@ struct ModelReleaseTimeoutNoteTests {
     #expect(exits == 1, "a failed note write never keeps a stuck process alive")
   }
 
-  @Test("the report drops the reporting launch's id and trail, and keeps install identity")
+  @Test("the report keeps only install identity from the reporting launch's scope")
   func reportScopeDropsTheReportingLaunch() throws {
+    // Populated as production leaves it by the time the reader runs (stable tags and the
+    // `polish` context from `initialize`), plus later launch state.
     let scope = Scope()
+    let install: [String: String] = [
+      "app.role": "host", "process.role": "main", "crash.context_schema": "1",
+      "app.build_type": "debug", "analytics.distinct_id": "AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE",
+    ]
+    for (key, value) in install { scope.setTag(value: value, key: key) }
     scope.setTag(value: "11111111-2222-3333-4444-555555555555", key: "process.launch_id")
-    scope.setTag(value: "host", key: "app.role")
-    scope.setTag(value: "AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE", key: "analytics.distinct_id")
+    scope.setTag(value: "whisper", key: "asr.backend")
+    scope.setContext(value: ["phase": "idle"], key: "polish")
+    scope.setContext(value: ["active": true], key: "recording_state")
+    scope.setUser(User(userId: "install-user"))
     scope.addBreadcrumb(Breadcrumb(level: .info, category: "relaunch"))
     SentryBreadcrumb.scopeForModelReleaseTimeout(scope)
     let serialized = scope.serialize()
-    let tags = try #require(serialized["tags"] as? [String: String])
-    #expect(tags["process.launch_id"] == nil, "the reporting launch is not the failed quit")
-    #expect(tags["app.role"] == "host")
-    #expect(tags["analytics.distinct_id"] == "AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE")
+    #expect(serialized["tags"] as? [String: String] == install)
+    #expect((serialized["context"] as? [String: Any] ?? [:]).isEmpty)
     #expect((serialized["breadcrumbs"] as? [Any] ?? []).isEmpty)
+    #expect((serialized["user"] as? [String: Any])?["id"] as? String == "install-user")
   }
 
   @Test("the report carries only the declared fields and splits dev from production")

@@ -47,11 +47,12 @@ struct SentryScopeWriterFreezeTests {
   /// polish context at write time. writeStableTags adds four fixed/UUID process identity tags.
   /// captureChildProcessFailure adds a metadata-only breadcrumb from the typed child facts.
   /// #3735: the adapter's unchanged finalize breadcrumb moved to WhisperEngineAdapter.swift.
-  /// #3849: `scopeForModelReleaseTimeout` (removeTag, clearBreadcrumbs) only REMOVES values, on
-  /// the one event's scope copy: the next launch's `process.launch_id` and breadcrumbs, which do
-  /// not describe the quit that timed out. It writes nothing.
+  /// #3849: `scopeForModelReleaseTimeout` (removeTag, removeContext, clearBreadcrumbs) only
+  /// REMOVES values, on the one event's scope copy: every tag outside its install allowlist,
+  /// every context and every breadcrumb of the next launch, which do not describe the quit that
+  /// timed out. It writes nothing.
   static let inventoryFingerprint =
-    "76f74e5879c4b9e195bc808a284b703677d2b883347e01d8756c78b0a152f92f"
+    "29684f0d2e2971606eb6eea6aa5d0f9e4cf358104aeb47a65148f627af9d44f3"
 
   struct Site: Hashable, Comparable {
     let file: String

@@ -359,12 +359,27 @@ public enum SentryBreadcrumb {
     }
   }
 
-  /// The reporting launch's own identity and trail are not the failed quit's: its
-  /// `process.launch_id` tag and its breadcrumbs are removed from this event's scope copy. The
-  /// reader runs right after `ObservabilityBootstrap.initialize`, before any session, polish or
-  /// recording scope is written, so the stable install and app tags are all that remain.
+  /// Tags that describe the install and the app, true of the failed quit too. Every other tag
+  /// on the reporting launch's scope (`process.launch_id`, engine, route, take, recording,
+  /// model) describes that launch.
+  nonisolated static let modelReleaseTimeoutInstallTags: Set<String> = [
+    "app.role", "process.role", "crash.context_schema", "app.build_type", "synthetic",
+    ObservabilityBootstrap.joinTagKey,
+  ]
+
+  /// The reporting launch's state is not the failed quit's, so this event's scope copy keeps
+  /// only the install tags above and the user: every other tag, every context the app wrote
+  /// (the `polish` context `initialize` writes, and any later one) and every breadcrumb go.
+  /// An allowlist, so a scope writer added later cannot leak into this event.
   nonisolated static func scopeForModelReleaseTimeout(_ scope: Scope) {
-    scope.removeTag(key: "process.launch_id")
+    let serialized = scope.serialize()
+    for key in (serialized["tags"] as? [String: Any] ?? [:]).keys
+    where !modelReleaseTimeoutInstallTags.contains(key) {
+      scope.removeTag(key: key)
+    }
+    for key in (serialized["context"] as? [String: Any] ?? [:]).keys {
+      scope.removeContext(key: key)
+    }
     scope.clearBreadcrumbs()
   }
 
