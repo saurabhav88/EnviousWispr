@@ -24,9 +24,10 @@ struct MicrophoneNoticeGeometryTests {
     let definition = try #require(entry.definition)
 
     #expect(definition.requestedWidth == .fixed(400))
+    // #3912: the box keeps its 400 width and takes its height from the text (it was 400 x 64).
     #expect(
-      definition.reservesFixedHeight == 64,
-      "the 40pt circular badge needs a taller box than the other button-carrying notices")
+      definition.reservesFixedHeight == nil,
+      "a fixed height cuts off a longer translation of the title or subtitle")
 
     guard case .notice(let model) = definition.content else {
       Issue.record("expected a notice, got \(definition.content)")
@@ -43,7 +44,7 @@ struct MicrophoneNoticeGeometryTests {
     #expect(model.action?.label == "Open Settings")
   }
 
-  @Test("every other error reason keeps the original fixed 280x44 box, no action")
+  @Test("every other error reason wraps at the message width, no action")
   func otherReasonsUnchanged() throws {
     // A representative sample, not exhaustive — TerminalNoticeReason's full
     // enumeration against the frozen fixture is PillCatalogParityTests' job.
@@ -51,14 +52,16 @@ struct MicrophoneNoticeGeometryTests {
       let entry = PillCatalog.entry(for: .error(reason: reason), id: PresentationID())
       let definition = try #require(entry.definition)
 
-      #expect(definition.requestedWidth == .fixed(280), "\(reason) width regressed")
-      #expect(definition.reservesFixedHeight == 44, "\(reason) height regressed")
+      // #3912: was a fixed 280 x 44 single line; now wraps at the message width.
+      #expect(
+        definition.requestedWidth == .fixed(PillCatalog.messageWidth), "\(reason) width regressed")
+      #expect(definition.reservesFixedHeight == nil, "\(reason) reserves a fixed height")
 
       guard case .notice(let model) = definition.content else {
         Issue.record("expected a notice, got \(definition.content)")
         continue
       }
-      #expect(model.isMultiline == false, "\(reason) should not have gone multiline")
+      #expect(model.isMultiline == true, "\(reason) no longer wraps")
       #expect(model.action == nil, "\(reason) should not have gained a button")
     }
   }
