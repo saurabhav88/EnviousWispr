@@ -185,6 +185,22 @@ struct ModelReleaseTimeoutNoteTests {
     #expect(exits == 1, "a failed note write never keeps a stuck process alive")
   }
 
+  @Test("the report drops the reporting launch's id and trail, and keeps install identity")
+  func reportScopeDropsTheReportingLaunch() throws {
+    let scope = Scope()
+    scope.setTag(value: "11111111-2222-3333-4444-555555555555", key: "process.launch_id")
+    scope.setTag(value: "host", key: "app.role")
+    scope.setTag(value: "AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE", key: "analytics.distinct_id")
+    scope.addBreadcrumb(Breadcrumb(level: .info, category: "relaunch"))
+    SentryBreadcrumb.scopeForModelReleaseTimeout(scope)
+    let serialized = scope.serialize()
+    let tags = try #require(serialized["tags"] as? [String: String])
+    #expect(tags["process.launch_id"] == nil, "the reporting launch is not the failed quit")
+    #expect(tags["app.role"] == "host")
+    #expect(tags["analytics.distinct_id"] == "AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE")
+    #expect((serialized["breadcrumbs"] as? [Any] ?? []).isEmpty)
+  }
+
   @Test("the report carries only the declared fields and splits dev from production")
   func eventHasOnlyDeclaredExtrasAndStableEnvironmentGrouping() {
     let event = SentryBreadcrumb.makeModelReleaseTimeoutEvent(
@@ -197,6 +213,9 @@ struct ModelReleaseTimeoutNoteTests {
     #expect(event.extra?["boundMs"] as? Int == 2_000)
     #expect(event.extra?["timestamp"] as? String == "2027-01-15T08:00:00Z")
     #expect(event.fingerprint == ["model_release_timeout", "production"])
+    // Sent by the next launch, possibly after an update: the event names the quit that failed.
+    #expect(event.releaseName == "com.enviouswispr.app@2.5.4")
+    #expect(event.timestamp == Date(timeIntervalSince1970: 1_800_000_000))
     let dev = SentryBreadcrumb.makeModelReleaseTimeoutEvent(Self.note(), environment: "development")
     #expect(dev.fingerprint == ["model_release_timeout", "development"])
     // An unobserved count is left out, never invented.

@@ -348,9 +348,24 @@ public enum SentryBreadcrumb {
   /// #3849: one error event for a consumed timeout note. Built directly (as `reportAIFailure`
   /// is) rather than through `makeHandledErrorEvent`, whose merged extras would add ambient
   /// context: this event carries the note's declared fields and nothing else.
+  ///
+  /// It is sent by the NEXT launch, so the event takes its release and time from the note (the
+  /// quit that timed out, possibly an older version) and drops what describes the reporting
+  /// launch (`scopeForModelReleaseTimeout`). The install-level scope stays.
   public static func captureModelReleaseTimeout(_ note: ModelReleaseTimeoutNote) {
     guard ObservabilityBootstrap.lifecycle.isSentryRunning else { return }
-    SentrySDK.capture(event: makeModelReleaseTimeoutEvent(note))
+    SentrySDK.capture(event: makeModelReleaseTimeoutEvent(note)) { scope in
+      scopeForModelReleaseTimeout(scope)
+    }
+  }
+
+  /// The reporting launch's own identity and trail are not the failed quit's: its
+  /// `process.launch_id` tag and its breadcrumbs are removed from this event's scope copy. The
+  /// reader runs right after `ObservabilityBootstrap.initialize`, before any session, polish or
+  /// recording scope is written, so the stable install and app tags are all that remain.
+  nonisolated static func scopeForModelReleaseTimeout(_ scope: Scope) {
+    scope.removeTag(key: "process.launch_id")
+    scope.clearBreadcrumbs()
   }
 
   /// Pure, so a test asserts the exact wire shape. Grouping is split by environment as the
@@ -373,6 +388,9 @@ public enum SentryBreadcrumb {
     if let sessions = note.sessions { extra["sessions"] = sessions }
     event.extra = extra
     event.fingerprint = ["model_release_timeout", environment]
+    event.releaseName = ObservabilityBootstrap.sentryReleaseName(
+      version: note.appVersion, stamped: nil)
+    event.timestamp = note.timestamp
     return event
   }
 
