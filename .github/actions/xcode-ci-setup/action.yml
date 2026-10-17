@@ -111,7 +111,7 @@ runs:
     - name: Select Xcode
       uses: maxim-lobanov/setup-xcode@ed7a3b1fda3918c0306d1b724322adc0b8cc0a90 # v1
       with:
-        xcode-version: '27.0'
+        xcode-version: '27.1'
 
     # #3242: the word check runs on MLX, whose Cmlx target compiles Metal shaders; hosted images do
     # not always carry Xcode's separate Metal toolchain. Owner and the #3344 cache fix:
@@ -123,7 +123,7 @@ runs:
     - name: Verify environment
       shell: bash
       env:
-        EXPECTED_XCODE_BUILD: 27A266a
+        EXPECTED_XCODE_BUILD: 27A9275
       run: |
         set -euo pipefail
         swift --version
