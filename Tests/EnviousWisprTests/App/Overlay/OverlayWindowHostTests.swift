@@ -314,7 +314,8 @@ struct OverlayWindowHostTests {
     #expect(display == false)
     #expect(animated == false)
     #expect(contentID == panelID)
-    #expect(viewID == ObjectIdentifier(view))
+    // #3850: the panel gets the host's plain container, and the view sits inside it.
+    #expect(viewID != nil && viewID == view.superview.map(ObjectIdentifier.init))
     #expect(frontID == panelID)
 
     let resizeStart = recorder.commands.count
@@ -419,7 +420,10 @@ struct OverlayWindowHostTests {
     let replacement = Self.view(width: 320, height: 120)
     h.present(replacement, width: .fixed(320), fixedHeight: nil, isFresh: false, position: .bottom)
 
-    #expect(panel.contentView === replacement, "the panel kept the previous presentation's view")
+    // #3850: the view sits inside the host's plain container, never as the content view itself.
+    #expect(
+      replacement.superview === panel.contentView && panel.contentView != nil,
+      "the panel kept the previous presentation's view")
   }
 
   /// **The copied panel configuration is pinned.** Removing the floating level,

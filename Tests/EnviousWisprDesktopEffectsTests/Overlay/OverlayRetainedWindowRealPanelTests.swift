@@ -82,7 +82,10 @@ struct OverlayRetainedWindowRealPanelTests {
     defer { host.hide() }
 
     #expect(panel.isVisible, "show did not put the panel on screen")
-    #expect(panel.contentView === firstView, "show did not attach the content view")
+    // #3850: the view sits inside the host's plain container, never as the content view itself.
+    #expect(
+      firstView.superview === panel.contentView && panel.contentView != nil,
+      "show did not attach the content view")
 
     host.hide()
     #expect(panel.isVisible == false, "hide left the panel on screen")
@@ -102,7 +105,9 @@ struct OverlayRetainedWindowRealPanelTests {
       ObjectIdentifier(secondPanel) == ObjectIdentifier(panel.underlyingPanel),
       "show after hide built a NEW panel — the window is not retained")
     #expect(secondPanel.isVisible, "the second show did not put the panel back on screen")
-    #expect(secondPanel.contentView === secondView, "the second show kept the old content view")
+    #expect(
+      secondView.superview === secondPanel.contentView && secondPanel.contentView != nil,
+      "the second show kept the old content view")
     #expect(
       closed == false,
       "the panel was CLOSED at some point in show/hide/show — orderOut never posts this")

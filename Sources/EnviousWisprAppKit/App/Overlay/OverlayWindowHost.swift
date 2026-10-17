@@ -216,9 +216,22 @@ final class OverlayWindowHost: OverlayWindowHosting {
     // Growth that is genuinely wanted still has an explicit path:
     // `onContentHeightChange` → `resizeCurrentPresentation`, which places the
     // window deliberately. This closes the implicit one.
+    //
+    // **The view goes INSIDE a plain container, never in as the content view
+    // itself (#3850).** A hosting view that IS the window's content view resizes
+    // the window on every window layout (`NSHostingView.windowDidLayout` →
+    // `updateAnimatedWindowSize`), whatever its autoresizing mask or
+    // `sizingOptions` say: the German "Parakeet Ultra wird heruntergeladen" pill
+    // was placed at 300 x 56 and dragged to 268 x 51, each resize changed its
+    // safe area and asked for another constraints pass, and AppKit ended the
+    // loop with NSGenericException (ENVIOUSWISPR-7F, a 2.5.4 launch crash).
+    // Inside a container it cannot reach the window; the container follows the
+    // window and the view follows the container.
+    let container = NSView(frame: NSRect(origin: .zero, size: size))
     view.autoresizingMask = [.width, .height]
-    view.frame = NSRect(origin: .zero, size: size)
-    panel.contentView = view
+    view.frame = container.bounds
+    container.addSubview(view)
+    panel.contentView = container
     panel.orderFrontRegardless()
     // #2377 Phase 6: DEBUG-only, and `emitFirst` rather than `emit` because the
     // host orders a panel front on EVERY presentation while the benchmark is
@@ -331,25 +344,15 @@ final class OverlayWindowHost: OverlayWindowHosting {
     // Fall back to the view's own frame, which is what a caller that sized its
     // view already means. Never to a literal default — a plausible number here
     // is exactly what `.measured` exists to forbid.
-    // **CONSTRAIN THE WIDTH BEFORE MEASURING THE HEIGHT.** A pill that asks for a
-    // fixed width and a CONTENT height is asking "how tall is this text at that
-    // width", and an unconstrained `fittingSize` answers a different question:
-    // how tall it is at whatever width it would naturally take. For the #1891
-    // advisory that is one line, so the panel was then narrowed to 360 points
-    // without gaining the height its sentence needs and the text was clipped.
     //
-    // The deleted panel avoided this by wrapping the advisory in
-    // `.frame(width: 360)` inside the SwiftUI hierarchy. Fixing it HERE instead
-    // covers every fixed-width, measured-height pill rather than the one that
-    // happened to be reported -- the twin-site class this repo already names
-    // (`workflow-process.md` RULE: port-proven-patterns-wholesale).
+    // **A fixed width with a CONTENT height is proposed inside SwiftUI, not
+    // here (#3850).** `OverlayRootView.contentWidthProposal(for:)` frames that
+    // pill at its width, so `fittingSize` below is the wrapped height. Narrowing
+    // this view's frame never reached the text: `fittingSize` answers for an
+    // unspecified width, and the #1891 advisory measured one 39-point line here
+    // while the hosting view, as the window's content view, quietly stretched
+    // the window to fit afterwards. That stretching was the #3850 crash loop.
     //
-    // Only that combination is touched: a `.measured` width must stay
-    // unconstrained, or the measurement it exists for is the constraint we just
-    // imposed.
-    if case .fixed(let constrained) = width, fixedHeight == nil, constrained > 0 {
-      view.setFrameSize(NSSize(width: constrained, height: view.frame.height))
-    }
     // **FLUSH THE PENDING LAYOUT BEFORE MEASURING, ALWAYS (#2292, C21).**
     //
     // `render`'s comment claimed "the model is set BEFORE this runs, so the

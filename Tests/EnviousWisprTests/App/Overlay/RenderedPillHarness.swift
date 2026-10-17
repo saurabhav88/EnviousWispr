@@ -88,9 +88,11 @@ enum RenderedPillHarness {
     // reproduces.
     //
     // Applied ONLY to a fixed width with a CONTENT height, which is the one
-    // combination `OverlayWindowHost.resolvedSize` constrains for the same
-    // reason. A `.measured` width stays unproposed, or the measurement it exists
-    // for becomes the constraint we just imposed.
+    // combination `OverlayRootView.contentWidthProposal(for:)` proposes in
+    // production for the same reason (#3850). It is repeated here on purpose, so
+    // this harness stays an independent measurement of the production one. A
+    // `.measured` width stays unproposed, or the measurement it exists for
+    // becomes the constraint we just imposed.
     var proposal: CGFloat?
     if let definition, case .fixed(let constrained) = definition.requestedWidth,
       definition.reservesFixedHeight == nil, constrained > 0

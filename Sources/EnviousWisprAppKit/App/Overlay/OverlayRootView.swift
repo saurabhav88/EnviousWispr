@@ -68,6 +68,16 @@ struct OverlayRootView: View {
     return Group {
       if let presentation = frame.presentation {
         content(for: presentation, frame: frame)
+          // **A fixed width with a CONTENT height is proposed HERE, inside SwiftUI
+          // (#3850).** `NSHostingView.fittingSize` answers for an unspecified width
+          // proposal, so narrowing the hosting view or its window never reaches the
+          // text: the #1891 advisory measured one unwrapped line (39 points) for a
+          // pill that wraps to three or four at 360. Until #3850 the hosting view
+          // hid that by resizing its own window after placement; it can no longer
+          // reach the window, so the measurement has to be right. `nil` (every other
+          // pill) proposes nothing. `RenderedPillHarness.rootSize` measures the same
+          // way.
+          .frame(width: Self.contentWidthProposal(for: presentation))
           // **Identity at the occupant boundary.** A same-id morph — an audio
           // tick, a lock change, an in-panel notice — preserves SwiftUI's view
           // identity so animations and `@State` continue; a genuinely new
@@ -82,6 +92,16 @@ struct OverlayRootView: View {
           .onHover { sendEvent(.hoverChanged(presentation.id, $0)) }
       }
     }
+  }
+
+  /// The width to propose to a pill that asks for a fixed width and a content
+  /// height, and `nil` for every other pill. `OverlayWindowHost.resolvedSize`
+  /// reads the height this produces.
+  static func contentWidthProposal(for presentation: PillDefinition) -> CGFloat? {
+    guard case .fixed(let width) = presentation.requestedWidth,
+      presentation.reservesFixedHeight == nil, width > 0
+    else { return nil }
+    return width
   }
 
   /// Every leaf callback goes through here, so the presentation's own ID travels
