@@ -34,6 +34,15 @@ struct OllamaLibraryFeedTests {
     let rawRows = try #require(raw["models"] as? [[String: Any]])
     let rawNames = rawRows.compactMap { $0["name"] as? String }
 
+    // The routine stamps `updated` on every change. The app ignores it, but a missing or malformed
+    // stamp means the routine's output is not what its prompt describes.
+    let updated = try #require(raw["updated"] as? String, "updated must be a string")
+    let formatter = ISO8601DateFormatter()
+    formatter.formatOptions = [.withFullDate]
+    #expect(
+      updated.range(of: #"^\d{4}-\d{2}-\d{2}$"#, options: .regularExpression) != nil
+        && formatter.date(from: updated) != nil, "updated must be a real YYYY-MM-DD date: \(updated)")
+
     let parsed = try OllamaLibraryFeedClient.parseFeed(data)
 
     #expect(parsed.dropped.isEmpty, "rows dropped by the production parser: \(parsed.dropped)")

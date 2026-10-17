@@ -20,7 +20,9 @@ When the base revision exists but has no feed file, that is also a seed.
 """
 
 import argparse
+import datetime
 import json
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -65,6 +67,20 @@ def base_document(revision: str, feed: str):
     return load_json_text(shown.stdout, f"{feed} at {revision}")
 
 
+_DATE_RE = re.compile(r"\d{4}-\d{2}-\d{2}")
+
+
+def valid_date(value) -> bool:
+    """A real calendar date written exactly YYYY-MM-DD (the routine stamps one on every change)."""
+    if not isinstance(value, str) or _DATE_RE.fullmatch(value) is None:
+        return False
+    try:
+        datetime.date.fromisoformat(value)
+    except ValueError:
+        return False
+    return True
+
+
 def document_errors(document, label: str) -> list:
     if not isinstance(document, dict):
         return [f"{label}: top level is not an object"]
@@ -77,11 +93,29 @@ def document_errors(document, label: str) -> list:
     return errors
 
 
+def updated_errors(base, candidate) -> list:
+    """`updated` is informational to the app, but the routine must stamp it on every change."""
+    errors = []
+    updated = candidate.get("updated")
+    if not valid_date(updated):
+        errors.append(f"candidate: updated must be a real YYYY-MM-DD date, got {updated!r}")
+        return errors
+    if base is not None and candidate.get("models") != base.get("models"):
+        base_updated = base.get("updated")
+        if valid_date(base_updated) and updated < base_updated:
+            errors.append(
+                f"candidate: updated {updated} is earlier than the base's {base_updated} although "
+                "the rows changed"
+            )
+    return errors
+
+
 def offline_errors(base, candidate, known: set) -> list:
     """All offline problems of `candidate` against `base` (None = seed)."""
     errors = document_errors(candidate, "candidate")
     if errors:
         return errors
+    errors.extend(updated_errors(base, candidate))
     rows = candidate["models"]
 
     if base is None:
@@ -222,6 +256,13 @@ def self_test() -> int:
         ("remove a row that is NOT known", _doc(a, b), _doc(b), False),
         ("retire plus change a retained row", _doc(_with(name="qwen2.5:3b"), a), _doc(_with(name=a["name"], displayName="X")), False),
         ("updated field may change", _doc(a), dict(_doc(a), updated="2026-11-01"), True),
+        ("updated missing", _doc(a), {k: v for k, v in _doc(a).items() if k != "updated"}, False),
+        ("updated malformed", _doc(a), dict(_doc(a), updated="2026-13-45"), False),
+        ("updated wrong shape", _doc(a), dict(_doc(a), updated="Oct 16 2026"), False),
+        ("updated not a string", _doc(a), dict(_doc(a), updated=20261016), False),
+        ("updated earlier than base with rows changed", _doc(a), dict(_doc(a, b), updated="2026-10-01"), False),
+        ("updated later with rows changed", _doc(a), dict(_doc(a, b), updated="2026-10-23"), True),
+        ("updated earlier but rows unchanged", _doc(a), dict(_doc(a), updated="2026-10-01"), True),
         ("wrong schema", _doc(a), dict(_doc(a), schema=2), False),
         ("bad name", _doc(), _doc(_with(name="Bad Name")), False),
         ("whitespace-only displayName", _doc(), _doc(_with(displayName="   ")), False),
