@@ -6,7 +6,7 @@ section: "Paste System"
 order: 2
 keywords: ["clipboard", "copied text", "lost what i copied", "overwrites clipboard", "restore clipboard", "cmd v", "pasteboard", "dictation replaced my clipboard", "clipboard history", "auto-copy"]
 related: ["how-text-gets-pasted-into-your-app", "adding-a-word-from-your-selection"]
-updated: 2026-10-12
+updated: 2026-10-17
 deflection: "can_resolve"
 ---
 ### Does dictating erase what I copied?
@@ -21,7 +21,7 @@ In three situations EnviousWispr does not put your old clipboard back, each to a
 
 - **The text went straight into the text box.** EnviousWispr never touched your clipboard at all.
 - **Another app changed your clipboard while you dictated.** This can happen with a clipboard manager. EnviousWispr does not overwrite the new content.
-- **The paste failed.** Your dictation is on the clipboard so you can paste it yourself, and EnviousWispr leaves it there.
+- **EnviousWispr could not deliver the text, or could not confirm it arrived.** Your dictation is on the clipboard so you can paste it yourself, and EnviousWispr leaves it there. A paste that looked successful but did not land cannot always be detected; see [_Paste Not Working?_](/help/paste-not-working/).
 
 ### Keep my dictation on the clipboard
 
