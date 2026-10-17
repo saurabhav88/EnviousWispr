@@ -237,14 +237,27 @@ public final class TelemetryService {
   public static let shared = TelemetryService()
   private init() {
     takeStages = TakeStageLedger()
+    feedbackRefusalCaptureAvailable = { ObservabilityBootstrap.isUsageCaptureRunning }
+    feedbackRefusalCapture = nil
   }
+
+  private let feedbackRefusalCaptureAvailable: @MainActor () -> Bool
+  private let feedbackRefusalCapture: (@MainActor ([String: Any]) -> Void)?
 
   /// Internal injection so a test can drive the real fold against an isolated
   /// ledger instead of the shared service (#1413), and optionally an isolated
   /// diagnostics diary (#3269).
-  init(takeStages: TakeStageLedger, diagnosticsDiary: DiagnosticsDiary? = nil) {
+  init(
+    takeStages: TakeStageLedger, diagnosticsDiary: DiagnosticsDiary? = nil,
+    feedbackRefusalCaptureAvailable: @escaping @MainActor () -> Bool = {
+      ObservabilityBootstrap.isUsageCaptureRunning
+    },
+    feedbackRefusalCapture: (@MainActor ([String: Any]) -> Void)? = nil
+  ) {
     self.takeStages = takeStages
     self.diagnosticsDiary = diagnosticsDiary
+    self.feedbackRefusalCaptureAvailable = feedbackRefusalCaptureAvailable
+    self.feedbackRefusalCapture = feedbackRefusalCapture
   }
 
   /// #3269: the local diagnostics diary. Nil until `activateDiagnosticsDiary()`, so the shared
@@ -1276,6 +1289,49 @@ public final class TelemetryService {
           doubleProps: doubles, boolProps: [:]))
     #endif
     PostHogSDK.shared.capture("settings.search_finished", properties: props)
+  }
+
+  /// #3292: one nonblocking handoff for production and isolated tests. The returned task is
+  /// the subject-owned completion signal; delivery never waits for analytics.
+  nonisolated static func enqueueFeedbackRefusal(
+    _ observation: FeedbackRefusalObservation,
+    service: @escaping @MainActor @Sendable () -> TelemetryService = { .shared }
+  ) -> Task<Void, Never> {
+    Task { @MainActor in service().feedbackReportRefused(observation) }
+  }
+
+  /// Received observations, not unique reports, persisted rejections or backlog. Usage capture
+  /// must be running when this main-actor task executes. Nothing is replayed when metrics turns on.
+  func feedbackReportRefused(_ observation: FeedbackRefusalObservation) {
+    let captureRunning = feedbackRefusalCaptureAvailable()
+    #if DEBUG
+      let line = "feedback_refused kind=\(observation.kind.rawValue)"
+        + " status=\(observation.httpStatus.map(String.init) ?? "none")"
+        + " size=\(observation.reportSizeBucket.rawValue)"
+        + " prior_retries=\(observation.priorRetryCount) capture=\(captureRunning)"
+      Task { await AppLogger.shared.log(line, category: "Telemetry") }
+    #endif
+    guard captureRunning else { return }
+    let strings = [
+      "refusal_kind": observation.kind.rawValue,
+      "report_size_bucket": observation.reportSizeBucket.rawValue,
+    ]
+    var ints = ["prior_retry_count": observation.priorRetryCount]
+    if let status = observation.httpStatus { ints["http_status"] = status }
+    var props: [String: Any] = [:]
+    for (key, value) in strings { props[key] = value }
+    for (key, value) in ints { props[key] = value }
+    #if DEBUG
+      testEventHook?(
+        CapturedTelemetryEvent(
+          name: "feedback.report_refused", stringProps: strings, intProps: ints))
+      testRawPropertiesHook?("feedback.report_refused", props)
+    #endif
+    if let feedbackRefusalCapture {
+      feedbackRefusalCapture(props)
+    } else {
+      PostHogSDK.shared.capture("feedback.report_refused", properties: props)
+    }
   }
 
   /// #3275: how one in-app help check ended, once per check, from `FeedbackSubmission`. Counts,

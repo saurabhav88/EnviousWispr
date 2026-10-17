@@ -203,8 +203,11 @@ struct TelemetryEmitterRegistryTests {
   /// #3834: `vadGateNoSpeech` gains an `advisoryEligible:` parameter (property
   /// `advisory_eligible`). Same event, one site, cadence `per_take`, same population (every
   /// dead-air exit); the row stays `ungraded`, unchanged.
+  /// #3292: one rare_failure feedback.report_refused site, keep whole; status/count and
+  /// closed kind/size only, no take key or content. Reader: founder release review, then on request;
+  /// metrics-off observations are absent, duplicates/losses prevent unique-report/rate claims.
   static let sitesFingerprint =
-    "b51e04b23004d95ac636b90f35d07a3e2334de4b7da510c2f96a1374953d383a"
+    "19afaea9417fe8c9dc92e189cd39f795e4a114f349dfc766754f5f49576bd82c"
   static let ungradedFingerprint =
     "8c5e46c2f2f7fb59004bb2eb5ea1ac210ef32dbb79fdcb68b3eff70a28cc133f"
 

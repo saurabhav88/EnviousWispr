@@ -52,6 +52,7 @@ actor FeedbackOutbox {
   private let sleep: @Sendable (TimeInterval) async throws -> Void
   private let writeData: @Sendable (Data, URL) throws -> Void
   private let readData: @Sendable (URL) throws -> Data
+  private let onRefusal: @Sendable (FeedbackRefusalObservation) -> Void
   private let maxRecords: Int
   private let maxEncodedBytes: Int
 
@@ -85,7 +86,8 @@ actor FeedbackOutbox {
     },
     readData: @escaping @Sendable (URL) throws -> Data = { try Data(contentsOf: $0) },
     maxRecords: Int = FeedbackOutbox.maxRecords,
-    maxEncodedBytes: Int = FeedbackOutbox.maxEncodedBytes
+    maxEncodedBytes: Int = FeedbackOutbox.maxEncodedBytes,
+    onRefusal: @escaping @Sendable (FeedbackRefusalObservation) -> Void = { _ in }
   ) {
     self.directory = directory
     self.fileURL = directory.appendingPathComponent(Self.fileName)
@@ -95,6 +97,7 @@ actor FeedbackOutbox {
     self.sleep = sleep
     self.writeData = writeData
     self.readData = readData
+    self.onRefusal = onRefusal
     self.maxRecords = maxRecords
     self.maxEncodedBytes = maxEncodedBytes
     self.isPaused = sender == nil
@@ -111,11 +114,32 @@ actor FeedbackOutbox {
 
   /// The shared outbox, built at first use from the app's DSN and a real network path monitor.
   static let shared: FeedbackOutbox = {
+    let onRefusal: @Sendable (FeedbackRefusalObservation) -> Void = { observation in
+      _ = TelemetryService.enqueueFeedbackRefusal(observation)
+    }
+    #if DEBUG
+      do {
+        if let fixture = try FeedbackRefusalUATFixture.makeIfRequested(
+          environment: ProcessInfo.processInfo.environment,
+          bundleID: Bundle.main.bundleIdentifier, onRefusal: onRefusal)
+        {
+          // Local arming receipt only. Never include the store path in vendor telemetry.
+          let receipt = "EW_FEEDBACK_REFUSAL_UAT armed case=\(fixture.scenario.rawValue)"
+            + " pid=\(ProcessInfo.processInfo.processIdentifier) store=\(fixture.directory.path)\n"
+          FileHandle.standardError.write(Data(receipt.utf8))
+          return fixture.outbox
+        }
+      } catch {
+        // A requested fixture must never silently use the live sender or normal saved reports.
+        fatalError("Feedback refusal UAT could not arm; refusing live feedback startup.")
+      }
+    #endif
     let dsn = KeyResolver.resolveKey(plistKey: "SentryDSN", fileName: "sentry-dsn")
       .flatMap(FeedbackDSN.init)
     let sender = dsn.map { FeedbackSender(dsn: $0, http: FeedbackHTTP.live, now: { Date() }) }
     return FeedbackOutbox(
-      directory: productionDirectory, sender: sender, path: FeedbackPathMonitor())
+      directory: productionDirectory, sender: sender, path: FeedbackPathMonitor(),
+      onRefusal: onRefusal)
   }()
 
   // MARK: - Lifecycle
@@ -144,7 +168,10 @@ actor FeedbackOutbox {
   // MARK: - Enqueue
 
   func enqueue(_ record: FeedbackRecord) async -> EnqueueResult {
-    guard sender != nil else { return .unavailable }
+    guard sender != nil else {
+      onRefusal(FeedbackRefusalObservation(kind: .invalidDSN, record: record))
+      return .unavailable
+    }
     let offline = !path.isSatisfied
     let maxRecords = maxRecords
     let maxEncodedBytes = maxEncodedBytes
@@ -261,7 +288,8 @@ actor FeedbackOutbox {
             return true
           } ?? false
         if !saved { memoryNotBefore[record.id] = .distantFuture }
-      case .configurationFailure(let holdUntil):
+        onRefusal(FeedbackRefusalObservation(kind: .payloadRejected, record: record, httpStatus: status))
+      case .configurationFailure(let status, let holdUntil):
         if let holdUntil {
           memoryGlobalNotBefore = max(memoryGlobalNotBefore ?? holdUntil, holdUntil)
           _ = mutate { doc in
@@ -269,6 +297,7 @@ actor FeedbackOutbox {
           }
         }
         isPaused = true
+        onRefusal(FeedbackRefusalObservation(kind: .configurationHTTP, record: record, httpStatus: status))
         return
       }
     }
@@ -334,6 +363,111 @@ actor FeedbackOutbox {
     return try encoder.encode(document)
   }
 }
+
+/// One observed feedback refusal, projected before crossing the telemetry boundary (#3292).
+/// This is not a unique-report count or a durable rejection receipt. Only metadata survives here.
+struct FeedbackRefusalObservation: Equatable, Sendable {
+  enum Kind: String, Sendable {
+    case payloadRejected = "payload_rejected"
+    case configurationHTTP = "configuration_http"
+    case invalidDSN = "invalid_dsn"
+  }
+
+  enum SizeBucket: String, Sendable {
+    case under10KB = "lt_10kb"
+    case tenTo100KB = "10_100kb"
+    case hundredKBTo1MB = "100kb_1mb"
+    case atLeast1MB = "ge_1mb"
+
+    init(contentByteCount: Int) {
+      switch contentByteCount {
+      case ..<10_000: self = .under10KB
+      case ..<100_000: self = .tenTo100KB
+      case ..<1_000_000: self = .hundredKBTo1MB
+      default: self = .atLeast1MB
+      }
+    }
+  }
+
+  let kind: Kind
+  let httpStatus: Int?
+  let reportSizeBucket: SizeBucket
+  /// Persisted retry outcomes before this response, not total requests or an attempt ordinal.
+  let priorRetryCount: Int
+
+  init(kind: Kind, record: FeedbackRecord, httpStatus: Int? = nil) {
+    self.kind = kind
+    self.httpStatus = httpStatus
+    // A rough content-byte bucket; excludes JSON, base64 and envelope framing overhead.
+    reportSizeBucket = SizeBucket(
+      contentByteCount: record.message.utf8.count + (record.email?.utf8.count ?? 0)
+        + (record.attachment?.count ?? 0))
+    priorRetryCount = record.attempts
+  }
+}
+
+#if DEBUG
+  /// #3292: an opt-in dev-only construction fixture. It cannot select a caller-provided store
+  /// or reach live HTTP. The normal outbox is not constructed when arming is requested but fails.
+  enum FeedbackRefusalUATFixture {
+    enum Scenario: String, CaseIterable {
+      case http413 = "http_413"
+      case http401 = "http_401"
+      case invalidDSN = "invalid_dsn"
+    }
+
+    enum SetupError: Error { case invalidRequest }
+
+    struct Instance {
+      let scenario: Scenario
+      let directory: URL
+      let outbox: FeedbackOutbox
+    }
+
+    static func requestedScenario(environment: [String: String], bundleID: String?) throws -> Scenario? {
+      guard let raw = environment["EW_FEEDBACK_UAT_CASE"] else { return nil }
+      guard environment["EW_FAULT_INJECTION"] == "1", bundleID?.hasSuffix(".dev") == true,
+        let scenario = Scenario(rawValue: raw)
+      else { throw SetupError.invalidRequest }
+      return scenario
+    }
+
+    static func makeIfRequested(
+      environment: [String: String], bundleID: String?,
+      onRefusal: @escaping @Sendable (FeedbackRefusalObservation) -> Void,
+      prepareDirectory: (URL) throws -> Void = { directory in
+        try FileManager.default.createDirectory(
+          at: directory, withIntermediateDirectories: false, attributes: [.posixPermissions: 0o700])
+      }
+    ) throws -> Instance? {
+      guard let scenario = try requestedScenario(environment: environment, bundleID: bundleID)
+      else { return nil }
+      let sender: FeedbackSender?
+      switch scenario {
+      case .http413, .http401:
+        guard let dsn = FeedbackDSN("https://public@feedback.invalid/1")
+        else { throw SetupError.invalidRequest }
+        let status = scenario == .http413 ? 413 : 401
+        sender = FeedbackSender(dsn: dsn, http: { _ in (status, [:]) }, now: { Date() })
+      case .invalidDSN:
+        sender = nil
+      }
+      let directory = FileManager.default.temporaryDirectory.appendingPathComponent(
+        "ew-feedback-refusal-uat-\(UUID().uuidString)", isDirectory: true)
+      try prepareDirectory(directory)
+      return Instance(
+        scenario: scenario, directory: directory,
+        outbox: FeedbackOutbox(
+          directory: directory, sender: sender, path: ReadyPath(), onRefusal: onRefusal))
+    }
+
+    private final class ReadyPath: FeedbackPathMonitoring, Sendable {
+      let isSatisfied = true
+      func start(onChange: @escaping @Sendable (Bool) -> Void) { onChange(true) }
+      func cancel() {}
+    }
+  }
+#endif
 
 /// The production HTTP call: an ephemeral session that refuses redirects, so a report never
 /// follows a redirect to another host, and gives up on one request after 60 seconds.

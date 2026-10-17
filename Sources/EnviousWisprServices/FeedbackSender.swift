@@ -138,7 +138,7 @@ struct FeedbackSender: Sendable {
     case rejected(status: Int, holdUntil: Date?)
     /// The DSN or credentials are wrong; pause every send until the next launch. `holdUntil` as
     /// for `accepted`, kept across launches.
-    case configurationFailure(holdUntil: Date?)
+    case configurationFailure(status: Int, holdUntil: Date?)
   }
 
   typealias HTTP = @Sendable (URLRequest) async throws -> (status: Int, headers: [String: String])
@@ -267,7 +267,7 @@ struct FeedbackSender: Sendable {
       let wait = max(after, now.addingTimeInterval(1))
       return .retry(notBefore: max(wait, limit ?? wait))
     case 401, 403, 404:
-      return .configurationFailure(holdUntil: limit)
+      return .configurationFailure(status: status, holdUntil: limit)
     case 400, 413:
       return .rejected(status: status, holdUntil: limit)
     default:

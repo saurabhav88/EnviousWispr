@@ -569,9 +569,9 @@ struct FeedbackSenderTests {
       (408, FeedbackSender.Result.retry(notBefore: nil)),
       (400, FeedbackSender.Result.rejected(status: 400, holdUntil: nil)),
       (413, FeedbackSender.Result.rejected(status: 413, holdUntil: nil)),
-      (401, FeedbackSender.Result.configurationFailure(holdUntil: nil)),
-      (403, FeedbackSender.Result.configurationFailure(holdUntil: nil)),
-      (404, FeedbackSender.Result.configurationFailure(holdUntil: nil)),
+      (401, FeedbackSender.Result.configurationFailure(status: 401, holdUntil: nil)),
+      (403, FeedbackSender.Result.configurationFailure(status: 403, holdUntil: nil)),
+      (404, FeedbackSender.Result.configurationFailure(status: 404, holdUntil: nil)),
     ])
   func statusMapping(status: Int, expected: FeedbackSender.Result) {
     #expect(FeedbackSender.classify(status: status, headers: [:], now: .distantPast) == expected)
@@ -588,7 +588,7 @@ struct FeedbackSenderTests {
         == .rejected(status: 413, holdUntil: hold))
     #expect(
       FeedbackSender.classify(status: 401, headers: headers, now: now)
-        == .configurationFailure(holdUntil: hold))
+        == .configurationFailure(status: 401, holdUntil: hold))
     #expect(FeedbackSender.classify(status: 503, headers: headers, now: now) == .retry(notBefore: hold))
     #expect(FeedbackSender.classify(status: 429, headers: headers, now: now) == .retry(notBefore: hold))
   }

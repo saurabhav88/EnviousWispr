@@ -129,7 +129,8 @@ struct FeedbackOutboxTests {
     writeData: (@Sendable (Data, URL) throws -> Void)? = nil,
     readData: (@Sendable (URL) throws -> Data)? = nil,
     gate: Gate? = nil,
-    maxEncodedBytes: Int = FeedbackOutbox.maxEncodedBytes
+    maxEncodedBytes: Int = FeedbackOutbox.maxEncodedBytes,
+    onRefusal: @escaping @Sendable (FeedbackRefusalObservation) -> Void = { _ in }
   ) -> FeedbackOutbox {
     let sender = http.map { http in
       FeedbackSender(
@@ -145,7 +146,8 @@ struct FeedbackOutboxTests {
       writeData: writeData ?? { data, url in
         try DurableJSONFile.write(data: data, to: url, tempPrefix: ".outbox")
       },
-      readData: readData ?? { try Data(contentsOf: $0) }, maxEncodedBytes: maxEncodedBytes)
+      readData: readData ?? { try Data(contentsOf: $0) }, maxEncodedBytes: maxEncodedBytes,
+      onRefusal: onRefusal)
   }
 
   // MARK: - Enqueue
@@ -740,5 +742,161 @@ struct FeedbackOutboxTests {
       get { lock.withLock { on } }
       set { lock.withLock { on = newValue } }
     }
+  }
+}
+
+/// #3292: observation contracts, not product-delivery coverage. Reuses the outbox's real
+/// persistence, HTTP/path/clock fixtures and completion signal; no live analytics or network.
+@Suite("Feedback refusal observations (#3292)", .tags(.observabilityContract))
+struct FeedbackRefusalObservationTests {
+  final class Observed: @unchecked Sendable {
+    private let lock = NSLock()
+    private var items: [FeedbackRefusalObservation] = []
+    func append(_ item: FeedbackRefusalObservation) { lock.withLock { items.append(item) } }
+    var all: [FeedbackRefusalObservation] { lock.withLock { items } }
+  }
+
+  private func seed(_ records: [FeedbackRecord], in directory: URL) throws {
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    try FeedbackOutbox.encode(FeedbackOutbox.Document(records: records))
+      .write(to: directory.appendingPathComponent(FeedbackOutbox.fileName))
+  }
+
+  @Test("Each refused HTTP response is observed once in this actor", arguments: [400, 413, 401, 403, 404])
+  func response(status: Int) async throws {
+    let directory = FeedbackOutboxTests.tempDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let observed = Observed()
+    let http = FeedbackOutboxTests.HTTP([.status(status, [:])])
+    let outbox = FeedbackOutboxTests.makeOutbox(directory, http: http, onRefusal: observed.append)
+    _ = await outbox.enqueue(FeedbackOutboxTests.record(1))
+    await outbox.drain()
+    await outbox.drain()
+    let observation = try #require(observed.all.first)
+    #expect(observed.all.count == 1)
+    #expect(observation.httpStatus == status)
+    #expect(observation.kind == ([400, 413].contains(status) ? .payloadRejected : .configurationHTTP))
+    #expect(observation.priorRetryCount == 0)
+    #expect(http.sent.count == 1)
+    #expect(try FeedbackOutboxTests.records(in: directory).count == 1)
+  }
+
+  @Test("Missing sender still refuses saving and is observed without a request")
+  func missingSender() async {
+    let observed = Observed()
+    let outbox = FeedbackOutboxTests.makeOutbox(
+      FeedbackOutboxTests.tempDirectory(), http: nil, onRefusal: observed.append)
+    #expect(await outbox.enqueue(FeedbackOutboxTests.record(1)) == .unavailable)
+    await outbox.drain()
+    #expect(observed.all.map(\.kind) == [.invalidDSN])
+    #expect(observed.all.first?.httpStatus == nil)
+  }
+
+  @Test("Accepted and retryable HTTP answers are not refusal observations", arguments: [200, 429, 503, 408])
+  func excludedHTTP(status: Int) async throws {
+    let directory = FeedbackOutboxTests.tempDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let observed = Observed()
+    let http = FeedbackOutboxTests.HTTP([.status(status, [:])])
+    let outbox = FeedbackOutboxTests.makeOutbox(directory, http: http, onRefusal: observed.append)
+    _ = await outbox.enqueue(FeedbackOutboxTests.record(1))
+    await outbox.drain()
+    #expect(observed.all.isEmpty)
+  }
+
+  @Test("Transport failure is not a refusal, and a later refusal reports the stored retry count")
+  func retryCount() async throws {
+    let directory = FeedbackOutboxTests.tempDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let observed = Observed()
+    let clock = FeedbackOutboxTests.Clock(FeedbackOutboxTests.start)
+    let http = FeedbackOutboxTests.HTTP([.networkError, .status(413, [:])])
+    let outbox = FeedbackOutboxTests.makeOutbox(directory, http: http, clock: clock, onRefusal: observed.append)
+    _ = await outbox.enqueue(FeedbackOutboxTests.record(1))
+    await outbox.drain()
+    #expect(observed.all.isEmpty)
+    clock.advance(60)
+    await outbox.drain()
+    #expect(observed.all.count == 1)
+    #expect(observed.all.first?.priorRetryCount == 1)
+  }
+
+  @Test("Saved rejected records are not backfilled; a configuration refusal can recur after restart")
+  func reload() async throws {
+    let directory = FeedbackOutboxTests.tempDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let observed = Observed()
+    var rejected = FeedbackOutboxTests.record(1)
+    rejected.state = .rejected
+    rejected.rejectedStatus = 413
+    try seed([rejected, FeedbackOutboxTests.record(2)], in: directory)
+    for _ in 0..<2 {
+      let outbox = FeedbackOutboxTests.makeOutbox(
+        directory, http: FeedbackOutboxTests.HTTP([.status(401, [:])]), onRefusal: observed.append)
+      await outbox.drain()
+    }
+    #expect(observed.all.map(\.kind) == [.configurationHTTP, .configurationHTTP])
+  }
+
+  @Test("A failed rejection write is still an observed response, suppressed until restart")
+  func rejectionWriteFailure() async throws {
+    let directory = FeedbackOutboxTests.tempDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    try seed([FeedbackOutboxTests.record(1)], in: directory)
+    let observed = Observed()
+    let http = FeedbackOutboxTests.HTTP([.status(413, [:]), .status(413, [:])])
+    let outbox = FeedbackOutboxTests.makeOutbox(
+      directory, http: http, writeData: { _, _ in throw CocoaError(.fileWriteNoPermission) },
+      onRefusal: observed.append)
+    await outbox.drain()
+    await outbox.drain()
+    #expect(observed.all.count == 1)
+    #expect(try FeedbackOutboxTests.records(in: directory).first?.state == .pending)
+    let restarted = FeedbackOutboxTests.makeOutbox(directory, http: http, onRefusal: observed.append)
+    await restarted.drain()
+    #expect(observed.all.count == 2)
+  }
+
+  @Test("An observed refusal still counts if the in-flight record was removed elsewhere")
+  func removedDuringHTTP() async throws {
+    let directory = FeedbackOutboxTests.tempDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    try seed([FeedbackOutboxTests.record(1)], in: directory)
+    let file = directory.appendingPathComponent(FeedbackOutbox.fileName)
+    let empty = try FeedbackOutbox.encode(FeedbackOutbox.Document())
+    let sender = FeedbackSender(
+      dsn: FeedbackOutboxTests.dsn,
+      http: { _ in
+        // Another process accepted/removed this report before this response completed.
+        try DurableJSONFile.withExclusiveLock(on: file, blocking: true) {
+          try DurableJSONFile.write(data: empty, to: file, tempPrefix: ".outbox")
+        }
+        return (413, [:])
+      }, now: { FeedbackOutboxTests.start })
+    let observed = Observed()
+    let outbox = FeedbackOutbox(
+      directory: directory, sender: sender, path: FeedbackOutboxTests.FakePath(satisfied: true),
+      onRefusal: observed.append)
+    await outbox.drain()
+    #expect(observed.all.map(\.kind) == [.payloadRejected])
+    #expect(try FeedbackOutboxTests.records(in: directory).isEmpty)
+  }
+
+  @Test("Capacity refusal and unreadable storage do not impersonate a server refusal")
+  func admissionAndStorage() async throws {
+    let directory = FeedbackOutboxTests.tempDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let observed = Observed()
+    try seed((1...50).map { FeedbackOutboxTests.record($0) }, in: directory)
+    let path = FeedbackOutboxTests.FakePath(satisfied: false)
+    let full = FeedbackOutboxTests.makeOutbox(
+      directory, http: FeedbackOutboxTests.HTTP([]), path: path, onRefusal: observed.append)
+    #expect(await full.enqueue(FeedbackOutboxTests.record(51)) == .full)
+    let unreadable = FeedbackOutboxTests.makeOutbox(
+      directory, http: FeedbackOutboxTests.HTTP([]),
+      readData: { _ in throw CocoaError(.fileReadNoPermission) }, onRefusal: observed.append)
+    #expect(await unreadable.enqueue(FeedbackOutboxTests.record(52)) == .unavailable)
+    await unreadable.drain()
+    #expect(observed.all.isEmpty)
   }
 }
