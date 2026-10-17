@@ -81,10 +81,13 @@ classify() {
   #     website/public/help-media/push-to-talk-modes-poster.jpg (#3703):
   #     RecordingModeHelpArticleParityTests reads the page the Recording mode
   #     "?" links to and the clip it declares.
+  #   - website/public/ollama-library.json (#2778): OllamaLibraryFeedTests parses the
+  #     committed file with the production parser, so a feed-only PR must run the Swift
+  #     lane; a green build-check with Swift skipped is not parser evidence.
   # The match is the exact path, not the help directory: every other help
   # article stays a website-only change, and so does a later clip file such as
   # a German one.
-  if grep -qE '^(\.github/(workflows/(pr-check|cache-warm)\.yml$|actions/)|website/src/content/help/(spoken-punctuation-and-emoji|push-to-talk-mode)\.md$|website/public/help-media/push-to-talk-modes(-poster\.jpg|\.mp4)$)' <<<"$changed"; then
+  if grep -qE '^(\.github/(workflows/(pr-check|cache-warm)\.yml$|actions/)|website/src/content/help/(spoken-punctuation-and-emoji|push-to-talk-mode)\.md$|website/public/help-media/push-to-talk-modes(-poster\.jpg|\.mp4)$|website/public/ollama-library\.json$)' <<<"$changed"; then
     printf 'needs_build=true\n' >>"$GITHUB_OUTPUT"
     printf 'needs_website=%s\n' "$website" >>"$GITHUB_OUTPUT"
     echo "==> CI build workflow, composite action or a help file a Swift parity test reads (spoken-punctuation article, push-to-talk article, its clip) changed — full Xcode build required (needs_website=$website)"
@@ -346,6 +349,12 @@ self_test() {
   _expect_classify "website/src/content/help/push-to-talk-mode-2.md" false "near-miss ptt article name -> website only" true
   _expect_classify "website/public/help-media/push-to-talk-modes-de.mp4" false "later German clip -> website only" true
   _expect_classify "website/public/help-media/other-clip.mp4" false "another clip file -> website only" true
+  # #2778: the Ollama library feed is read by a Swift parser test, so a feed-only change builds. Two-way
+  # controls: a near-miss filename, a file beside it, and the feed plus docs.
+  _expect_classify "website/public/ollama-library.json" true "ollama feed alone -> build and website" true
+  _expect_classify $'docs/x.md\nwebsite/public/ollama-library.json' true "ollama feed plus docs -> build and website" true
+  _expect_classify "website/public/ollama-library.json.bak" false "near-miss feed name -> website only" true
+  _expect_classify "website/public/ollama-library-notes.json" false "another file beside the feed -> website only" true
   # 2026-10-08: content no app build or test reads skips the build. Two-way controls: the
   # same names elsewhere, a near-miss name, and the kept-out neighbours still build.
   _expect_classify $'README.md

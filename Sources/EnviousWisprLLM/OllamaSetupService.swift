@@ -126,6 +126,16 @@ package enum CloudCatalogState: Equatable {
   case failed(reason: String)
 }
 
+/// #2778: what the published Ollama library feed last told us. Deliberately has no
+/// `.loading` case: the list only ever ADDS rows from a `.loaded` feed, so there is
+/// nothing to show while a first fetch is in flight, and a refresh after a success
+/// keeps the last good rows (single-flight is the stored task, not a state).
+package enum LibraryFeedState {
+  case idle
+  case loaded(entries: [OllamaModelCatalogEntry], fetchedAt: Date)
+  case failed
+}
+
 /// #1956: the state of a hosted-model Add, which has to resolve a pullable name
 /// before it can pull anything.
 ///
@@ -205,6 +215,13 @@ public final class OllamaSetupService {
   private let cloudCatalogClient: OllamaCloudCatalogClient
   private let cloudCatalogNow: @MainActor () -> Date
   private var cloudCatalogRefreshTask: Task<Void, Never>?
+
+  /// #2778: the published library feed (weekly additions to the suggestion list). Like
+  /// `cloudCatalog` it is a limb: it never touches `setupState`, and before the first
+  /// success or after any failure that follows no success it contributes no rows.
+  package private(set) var libraryFeed: LibraryFeedState = .idle
+  private let libraryFeedClient: OllamaLibraryFeedClient
+  private var libraryFeedRefreshTask: Task<Void, Never>?
 
   /// #1918 test seam: overrides `findOllamaBinary()` for `resolveState`'s full
   /// detection path, so the two tests exercising it are deterministic on CI,
@@ -415,10 +432,12 @@ public final class OllamaSetupService {
   /// `.idle`, `.loading` and `.failed` all contribute nothing, so the list
   /// degrades to exactly its pre-#1956 contents rather than to a guess.
   public var dynamicCatalog: [OllamaModelCatalogEntry] {
-    if case .loaded(let ids, _) = cloudCatalog {
-      return Self.dynamicCatalog(from: downloadedModels, cloudCatalogIDs: ids)
-    }
-    return Self.dynamicCatalog(from: downloadedModels)
+    var hostedIDs: [String] = []
+    if case .loaded(let ids, _) = cloudCatalog { hostedIDs = ids }
+    var libraryEntries: [OllamaModelCatalogEntry] = []
+    if case .loaded(let entries, _) = libraryFeed { libraryEntries = entries }
+    return Self.dynamicCatalog(
+      from: downloadedModels, cloudCatalogIDs: hostedIDs, libraryEntries: libraryEntries)
   }
 
   /// #1956: shared identity for a hosted model, which reaches us under two
@@ -459,7 +478,8 @@ public final class OllamaSetupService {
   /// suggestions would reopen it by the back door.
   nonisolated static func dynamicCatalog(
     from downloadedModels: [OllamaDownloadedModel],
-    cloudCatalogIDs: [String] = []
+    cloudCatalogIDs: [String] = [],
+    libraryEntries: [OllamaModelCatalogEntry] = []
   ) -> [OllamaModelCatalogEntry] {
     let canonicalDownloaded = Set(downloadedModels.map(\.canonicalName))
 
@@ -585,7 +605,20 @@ public final class OllamaSetupService {
     // Hosted rows are NOT band-ordered and stay last: they are a different kind of thing (they run
     // on Ollama's servers, are never selected for you, and some need a paid plan), and we have not
     // measured them on this corpus, so ordering them by a verdict they do not have would imply one.
-    return downloadedEntriesOrdered + suggestions + hostedSuggestions
+    //
+    // #2778: library feed rows follow every shipped suggestion, in file order and NOT
+    // band-ordered: they carry no verdict by construction (`OllamaLibraryFeedClient`),
+    // so they read "Not tested by us" and must never sit among measured rows. A row the
+    // user already downloaded or a name matching a shipped entry is suppressed here as
+    // well as in the parser; the parser's filter is against the shipped table, this one
+    // is against what is on this Mac right now.
+    let shippedCanonical = Set(Self.modelCatalog.map { Self.canonicalModelName($0.name) })
+    let libraryFeedSuggestions = libraryEntries.filter { entry in
+      let canonical = Self.canonicalModelName(entry.name)
+      return !canonicalDownloaded.contains(canonical) && !shippedCanonical.contains(canonical)
+    }
+
+    return downloadedEntriesOrdered + suggestions + libraryFeedSuggestions + hostedSuggestions
   }
 
   // MARK: - Name Normalization
@@ -679,6 +712,7 @@ public final class OllamaSetupService {
   /// to miss rather than merely something to remember.
   private init(
     cloudCatalogClient: OllamaCloudCatalogClient,
+    libraryFeedClient: OllamaLibraryFeedClient = OllamaLibraryFeedClient(),
     now: @escaping @MainActor () -> Date,
     downloadedModels: [OllamaDownloadedModel],
     findOllamaBinaryOverride: (@MainActor () -> String?)? = nil,
@@ -686,6 +720,7 @@ public final class OllamaSetupService {
     pullPerformer: (@MainActor (String) async throws -> Void)? = nil
   ) {
     self.cloudCatalogClient = cloudCatalogClient
+    self.libraryFeedClient = libraryFeedClient
     self.cloudCatalogNow = now
     self.downloadedModels = downloadedModels
     self.findOllamaBinaryOverride = findOllamaBinaryOverride
@@ -709,13 +744,15 @@ public final class OllamaSetupService {
   /// (swift-patterns RULE: tests-no-real-time-scheduling-precision).
   package convenience init(
     cloudCatalogClient: OllamaCloudCatalogClient,
+    libraryFeedClient: OllamaLibraryFeedClient = OllamaLibraryFeedClient(),
     now: @escaping @MainActor () -> Date = Date.init,
     findOllamaBinaryOverride: (@MainActor () -> String?)? = nil,
     localDaemonTransport: (@Sendable (URLRequest) async throws -> (Data, URLResponse))? = nil,
     pullPerformer: (@MainActor (String) async throws -> Void)? = nil
   ) {
     self.init(
-      cloudCatalogClient: cloudCatalogClient, now: now, downloadedModels: [],
+      cloudCatalogClient: cloudCatalogClient, libraryFeedClient: libraryFeedClient,
+      now: now, downloadedModels: [],
       findOllamaBinaryOverride: findOllamaBinaryOverride,
       localDaemonTransport: localDaemonTransport, pullPerformer: pullPerformer)
   }
@@ -1049,6 +1086,42 @@ public final class OllamaSetupService {
       }
     }
     cloudCatalogRefreshTask = task
+    await task.value
+  }
+
+  /// #2778: fetch the published library feed, at most once at a time, reusing a recent
+  /// success. A port of `refreshCloudCatalog` (same single-flight, the stored task owns
+  /// the commit, the existing-task check precedes the freshness check, a failure never
+  /// discards a prior success), with one deliberate difference: there is no `.loading`
+  /// state, because nothing is shown while a first fetch is in flight.
+  package func refreshLibraryFeed(force: Bool = false) async {
+    if let existing = libraryFeedRefreshTask {
+      await existing.value
+      return
+    }
+
+    if !force, case .loaded(_, let fetchedAt) = libraryFeed,
+      cloudCatalogNow().timeIntervalSince(fetchedAt) < 15 * 60
+    {
+      return
+    }
+
+    let previous = libraryFeed
+    let task = Task { @MainActor [weak self] in
+      guard let self else { return }
+      defer { self.libraryFeedRefreshTask = nil }
+      do {
+        let entries = try await self.libraryFeedClient.fetchEntries()
+        self.libraryFeed = .loaded(entries: entries, fetchedAt: self.cloudCatalogNow())
+      } catch {
+        if case .loaded = previous {
+          self.libraryFeed = previous
+        } else {
+          self.libraryFeed = .failed
+        }
+      }
+    }
+    libraryFeedRefreshTask = task
     await task.value
   }
 

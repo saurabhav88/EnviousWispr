@@ -2634,6 +2634,9 @@ struct ProviderSetupLifecycle: ViewModifier {
         // single-flight and 15-minute reuse rules absorb any overlap with the
         // readiness-transition refresh below.
         Task { await setup.ollamaSetup.refreshCloudCatalog() }
+        // #2778: the published library feed rides the same three triggers; its own
+        // single-flight and 15-minute reuse absorb the overlap, and a failure adds no rows.
+        Task { await setup.ollamaSetup.refreshLibraryFeed() }
       } else if provider == .appleIntelligence {
         Task {
           await FileImportPolishGate.armImport(
@@ -2704,6 +2707,9 @@ struct ProviderSetupLifecycle: ViewModifier {
         // this issue exists to fix. Single-flight and the 15-minute window
         // absorb the overlap with the other two triggers.
         Task { await setup.ollamaSetup.refreshCloudCatalog() }
+        // #2778: the published library feed rides the same three triggers; its own
+        // single-flight and 15-minute reuse absorb the overlap, and a failure adds no rows.
+        Task { await setup.ollamaSetup.refreshLibraryFeed() }
       case .appleIntelligence:
         Task { await aiAvailability.checkAvailability(trigger: "provider_switch") }
       case .egOne, .s1Mini:
@@ -2749,6 +2755,9 @@ struct ProviderSetupLifecycle: ViewModifier {
         // so it is the second and last automatic trigger. Separate task for the
         // same reason as the appearance one.
         Task { await setup.ollamaSetup.refreshCloudCatalog() }
+        // #2778: the published library feed rides the same three triggers; its own
+        // single-flight and 15-minute reuse absorb the overlap, and a failure adds no rows.
+        Task { await setup.ollamaSetup.refreshLibraryFeed() }
         // Warm up the selected model when Ollama becomes ready. Dictation only (#2772): see
         // the indicator above for why the import surface may not touch the shared warm-up.
         if surface == .dictation, !surfaceCloudModel.isEmpty {

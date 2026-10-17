@@ -44,3 +44,7 @@
 /blog-search.json
   X-Robots-Tag: noindex
   Cache-Control: public, max-age=0, must-revalidate
+
+/ollama-library.json
+  Cache-Control: public, max-age=300
+  X-Robots-Tag: noindex

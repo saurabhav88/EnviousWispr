@@ -482,6 +482,16 @@ jobs:
         working-directory: website
         run: npm run check:help
 
+      # #2778: the Ollama library feed is published by a routine, so a bad or non-append-only
+      # change must fail BEFORE merge. Offline only (no network, no registry): the validator's own
+      # fixtures first, then the candidate against the PR base. The required Swift lane separately
+      # parses the committed file with the production parser (classify-changes.sh forces it).
+      - name: Ollama library feed (offline)
+        if: steps.changes.outputs.needs_website == 'true'
+        run: |
+          python3 -I scripts/ollama-library/validate-feed.py --self-test
+          python3 -I scripts/ollama-library/validate-feed.py --offline --base "$BASE_SHA" --feed website/public/ollama-library.json
+
 
   # A PR adding more than a floor of test lines must name how those tests are
   # bound (#2868): a `Recipe: #N` whose recipe VALIDATES against the checkout,

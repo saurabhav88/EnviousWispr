@@ -55,7 +55,7 @@ package struct OllamaCloudCatalogClient: Sendable {
   // An overload pair, NOT a default argument: a `package` declaration cannot
   // expose the `private` live transport through a default argument value
   // (swift-patterns RULE: package-visibility-avoids-cross-module-unknown-default).
-  package init() { self.transport = Self.liveTransport }
+  package init() { self.transport = Self.liveTransport(allowedHost: Self.allowedHost) }
 
   package init(transport: @escaping Transport) { self.transport = transport }
 
@@ -163,29 +163,40 @@ package struct OllamaCloudCatalogClient: Sendable {
     return URLSession(configuration: configuration)
   }()
 
-  private static func liveTransport(
-    request: URLRequest, maximumBytes: Int
-  ) async throws -> (Data, URLResponse) {
-    let delegate = SameHostRedirectDelegate()
-    let (bytes, response) = try await liveSession.bytes(for: request, delegate: delegate)
-    return (try await accumulate(bytes, maximumBytes: maximumBytes), response)
+  /// The one bounded, cookie-free, same-host-redirect transport. `package` so the
+  /// Ollama library feed client (#2778, `enviouswispr.com`) reuses it instead of
+  /// keeping a second copy of the safety limits; the host is the only thing that
+  /// differs between the two callers.
+  package static func liveTransport(allowedHost: String) -> Transport {
+    return { request, maximumBytes in
+      let delegate = SameHostRedirectDelegate(allowedHost: allowedHost)
+      let (bytes, response) = try await liveSession.bytes(for: request, delegate: delegate)
+      return (try await accumulate(bytes, maximumBytes: maximumBytes), response)
+    }
   }
 }
 
 /// `@unchecked Sendable` justification, per swift-concurrency-patterns
-/// `no-new-unchecked-sendable`: this type has NO stored properties, therefore no
-/// mutable state to race. It exists solely as an Objective-C delegate bridge so
-/// `URLSession` can ask a redirect question, and it forwards that question
-/// unchanged to a pure static function. The narrow delegate-bridge exception is
-/// exactly the case that rule permits.
+/// `no-new-unchecked-sendable`: this type's only stored property is an immutable
+/// `let` String, therefore no mutable state to race. It exists solely as an
+/// Objective-C delegate bridge so `URLSession` can ask a redirect question, and
+/// it forwards that question unchanged to a pure static function. The narrow
+/// delegate-bridge exception is exactly the case that rule permits.
 private final class SameHostRedirectDelegate: NSObject, URLSessionTaskDelegate, @unchecked Sendable
 {
+  private let allowedHost: String
+
+  init(allowedHost: String) {
+    self.allowedHost = allowedHost
+  }
+
   func urlSession(
     _ session: URLSession,
     task: URLSessionTask,
     willPerformHTTPRedirection response: HTTPURLResponse,
     newRequest request: URLRequest
   ) async -> URLRequest? {
-    OllamaCloudCatalogClient.shouldFollowRedirect(to: request.url) ? request : nil
+    OllamaCloudCatalogClient.shouldFollowRedirect(to: request.url, allowedHost: allowedHost)
+      ? request : nil
   }
 }

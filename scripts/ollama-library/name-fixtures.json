@@ -1,0 +1,29 @@
+{
+  "comment": "Shared by validate-feed.py --self-test and OllamaLibraryFeedClientTests. Names only; both sides assert the same accept/reject answer on these named cases. Agreement on examples is not proof the two implementations are identical; the required Swift test that parses the committed feed is the authority for runtime eligibility.",
+  "valid": [
+    "gemma4:e4b",
+    "olmo2:7b",
+    "granite3.3:8b",
+    "llama3.1",
+    "foo:Q4_K_M",
+    "a",
+    "qwen3-coder:30b-a3b",
+    "name.with.dots:1.5b"
+  ],
+  "invalid": [
+    "",
+    "Gemma4",
+    "-foo",
+    "foo bar",
+    "foo:",
+    "foo::bar",
+    "gemma4:e4b\n",
+    "hf.co/foo/bar",
+    "foo/bar",
+    "foo:LATEST",
+    "foo:Latest",
+    "gpt-oss:120b-cloud",
+    "kimi-cloud",
+    "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+  ]
+}
