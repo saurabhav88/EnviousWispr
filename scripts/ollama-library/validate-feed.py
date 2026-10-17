@@ -140,8 +140,18 @@ def offline_errors(base, candidate, known: set) -> list:
 
 def registry_errors(base, candidate) -> list:
     """Network checks for the rows added on top of `base`."""
-    base_count = 0 if base is None else len(base["models"])
-    additions = candidate["models"][base_count:]
+    # Retirement changes the retained prefix length, so additions are selected by identity, not by the
+    # original base length. Offline validation runs first and forbids retained-row changes, reordering
+    # and re-adding retired identities.
+    base_rows = [] if base is None else base["models"]
+    base_names = {
+        library.canonical(row["name"])
+        for row in base_rows
+        if isinstance(row, dict) and isinstance(row.get("name"), str)
+    }
+    additions = [
+        row for row in candidate["models"] if library.canonical(row["name"]) not in base_names
+    ]
     if not additions:
         return []
     errors = []
@@ -306,6 +316,18 @@ def self_test() -> int:
                 print(f"FAIL [registry {label}] got {errors}")
             else:
                 print(f"ok   [registry {label}]")
+        # Retiring a row and adding another must still send the addition through the registry check.
+        fixture.clear()
+        fixture.update({"layers": [4_000_000_000]})
+        retirement_base = _doc(_with(name="qwen2.5:3b"), a)
+        retirement_candidate = _doc(a, _GOOD)
+        offline = offline_errors(retirement_base, retirement_candidate, known)
+        registry = registry_errors(retirement_base, retirement_candidate)
+        if offline or not any("registry layer sum" in error for error in registry):
+            failures += 1
+            print(f"FAIL [retire and add still checks registry] offline={offline}, registry={registry}")
+        else:
+            print("ok   [retire and add still checks registry]")
     finally:
         library.fetch = original_fetch
         library.fetch_library_cards = original_cards
