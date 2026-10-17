@@ -26,6 +26,11 @@ public struct DefaultPromptPlanner: PromptPlanning {
   static let bundledEGOneFamily: PromptFamily =
     (try? EGOneManifest.loadBundled())?.promptFamily ?? .egOneFixed
 
+  /// The existing cloud prompt's short-input policy, shared with file batching.
+  package static func cloudRequiresMinimalEdits(_ transcript: String) -> Bool {
+    CloudFixedPromptBuilder.requiresMinimalEdits(transcript)
+  }
+
   public func plan(input: PromptBuildInput) -> PolishPlan {
     // #1255: the cloud providers use one fixed, modeless prompt. Force the plan mode to
     // `.message` so the builder (which ignores mode), the downstream output validator

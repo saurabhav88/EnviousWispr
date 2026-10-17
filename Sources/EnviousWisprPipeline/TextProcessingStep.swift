@@ -5,6 +5,9 @@ import Foundation
 
 /// Context passed through the text processing chain after ASR transcription.
 public struct TextProcessingContext: Sendable {
+  /// File-import transport receipt only. A timeout retains the input's nil receipt,
+  /// so late mutations on a batch step cannot masquerade as accepted runner output.
+  var fileBatchCompletionID: UUID?
   /// The current text being processed. Steps modify this.
   public var text: String
   /// Optional polished/enhanced version of the text.

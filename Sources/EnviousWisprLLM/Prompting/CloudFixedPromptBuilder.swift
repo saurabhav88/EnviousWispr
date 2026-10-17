@@ -29,6 +29,10 @@ import EnviousWisprCore
 struct CloudFixedPromptBuilder: PromptBuilder {
   init() {}
 
+  static func requiresMinimalEdits(_ transcript: String) -> Bool {
+    transcript.split(whereSeparator: \.isWhitespace).count <= 10
+  }
+
   func build(input: PromptBuildInput, mode: PolishMode) -> PromptEnvelope {
     // `mode` is intentionally unused: the cloud paths no longer segregate polish by
     // transcript length or shape. Formatting is decided by the fixed prompt's rules.
@@ -60,8 +64,7 @@ struct CloudFixedPromptBuilder: PromptBuilder {
 
     // Short-input safety net (the pipeline gate skips <=3 words; this covers 4-10 words).
     // NOT a formatting mode — a guard against over-editing a very short utterance.
-    let wordCount = input.transcript.split(whereSeparator: \.isWhitespace).count
-    if wordCount <= 10 {
+    if Self.requiresMinimalEdits(input.transcript) {
       system += "\n\nIMPORTANT: Very short input. Return as-is with only minimal punctuation fixes."
     }
 
