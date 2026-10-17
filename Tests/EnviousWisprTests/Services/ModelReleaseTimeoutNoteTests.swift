@@ -197,6 +197,7 @@ struct ModelReleaseTimeoutNoteTests {
     for (key, value) in install { scope.setTag(value: value, key: key) }
     scope.setTag(value: "11111111-2222-3333-4444-555555555555", key: "process.launch_id")
     scope.setTag(value: "whisper", key: "asr.backend")
+    scope.setTag(value: "true", key: "synthetic")  // this launch's fault injection, not the quit's
     scope.setContext(value: ["phase": "idle"], key: "polish")
     scope.setContext(value: ["active": true], key: "recording_state")
     scope.setUser(User(userId: "install-user"))

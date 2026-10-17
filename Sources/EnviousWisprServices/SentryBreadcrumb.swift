@@ -360,10 +360,10 @@ public enum SentryBreadcrumb {
   }
 
   /// Tags that describe the install and the app, true of the failed quit too. Every other tag
-  /// on the reporting launch's scope (`process.launch_id`, engine, route, take, recording,
-  /// model) describes that launch.
+  /// on the reporting launch's scope (`process.launch_id`, `synthetic` fault injection, engine,
+  /// route, take, recording, model) describes that launch.
   nonisolated static let modelReleaseTimeoutInstallTags: Set<String> = [
-    "app.role", "process.role", "crash.context_schema", "app.build_type", "synthetic",
+    "app.role", "process.role", "crash.context_schema", "app.build_type",
     ObservabilityBootstrap.joinTagKey,
   ]
 
