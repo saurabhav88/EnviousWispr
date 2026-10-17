@@ -42,23 +42,24 @@ struct ColdStartNoticeView: View {
       }
 
       VStack(alignment: .leading, spacing: 1) {
+        // #3912: both lines wrap at the pill's width; the pill grows taller.
         Text(title)
           .font(.system(size: 13, weight: .medium))
           .foregroundStyle(.white)
-          .lineLimit(1)
+          .fixedSize(horizontal: false, vertical: true)
         if let subtitle {
           Text(subtitle)
             .font(.system(size: 11, weight: .regular))
             .foregroundStyle(.white.opacity(0.65))
-            .lineLimit(1)
+            .fixedSize(horizontal: false, vertical: true)
         }
       }
     }
     .padding(.horizontal, 14)
     .padding(.vertical, 10)
-    // The progress line sits in the bottom padding and adds no height: any line laid out
-    // under the subtitle made the pill taller than its reserved 56 pt, and it rendered cut
-    // off at the screen's bottom edge (#3546 live UAT, 2026-10-12).
+    // The progress line sits in the bottom padding and adds no height. A line laid out
+    // under the subtitle made the pill taller than its then-reserved 56 pt, and it rendered
+    // cut off at the screen's bottom edge (#3546 live UAT, 2026-10-12).
     .overlay(alignment: .bottom) {
       if let progress {
         Capsule()

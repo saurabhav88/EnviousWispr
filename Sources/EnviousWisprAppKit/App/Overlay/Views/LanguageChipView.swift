@@ -27,7 +27,7 @@ struct LanguageChipView: View {
       Text(promptText)
         .font(.system(size: 13, weight: .medium))
         .foregroundStyle(.white)
-        .lineLimit(2)
+        // #3912: no line cap; a long translation wraps and the chip grows taller.
         .fixedSize(horizontal: false, vertical: true)
 
       Spacer(minLength: 6)

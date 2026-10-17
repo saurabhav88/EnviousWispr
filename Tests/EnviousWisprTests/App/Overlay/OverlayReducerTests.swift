@@ -631,6 +631,11 @@ struct OverlayReducerTests {
   /// Oracle is `RecordingOverlayPanel`, read one call site at a time; each row
   /// names it. `nil` means the shipped site passes `fitToContent: true`, which
   /// makes the height content-driven and DISCARDS the width argument.
+  ///
+  /// **#3912 deliberately moved the message pills off their shipped boxes:** they
+  /// now wrap at `PillCatalog.messageWidth` with a content height, so a long
+  /// translation adds lines instead of ending in "…". Those rows say so, and
+  /// `messagePillsWrapAtTheMessageWidth` pins the width they wrap at.
   @Test(
     "every notice reserves the box its shipped pill reserved",
     arguments: [
@@ -638,16 +643,16 @@ struct OverlayReducerTests {
       (OverlayIntent.processing(phase: .transcribing), CGFloat?.none, "showPanel fitToContent"),
       (.clipboardFallback, nil, "showPanel fitToContent"),
       (.accessibilityToast, 56, "showPanel height: 56"),
-      (.warning(reason: .polishFailed), 44, "showPanel default height 44, not fitToContent"),
-      (.error(reason: .asrFailed), 44, "showPanel default height 44, not fitToContent"),
-      (.interruption(reason: .deviceRemoved), 44, "showPanel default height 44, not fitToContent"),
+      (.warning(reason: .polishFailed), nil, "#3912 wraps; was showPanel default height 44"),
+      (.error(reason: .asrFailed), nil, "#3912 wraps; was showPanel default height 44"),
+      (.interruption(reason: .deviceRemoved), nil, "#3912 wraps; was showPanel default height 44"),
       // The one notification that IS content-sized: `fitToContent:` is passed
       // `style.isMultiline`, and advisory is the only style where that is true.
       (.advisory(reason: .zeroSignal), nil, "showPanel fitToContent style.isMultiline"),
-      (.cachingModel(engineLabel: "Parakeet"), 56, "presentTransientNotice height 56"),
-      (.engineReady, 44, "presentTransientNotice height 44"),
-      (.recoveringLastRecording, 56, "presentTransientNotice height 56"),
-      (.recoverySucceeded, 56, "presentTransientNotice height 56"),
+      (.cachingModel(engineLabel: "Parakeet"), nil, "#3912 wraps; was presentTransientNotice height 56"),
+      (.engineReady, nil, "#3912 wraps; was presentTransientNotice height 44"),
+      (.recoveringLastRecording, nil, "#3912 wraps; was presentTransientNotice height 56"),
+      (.recoverySucceeded, nil, "#3912 wraps; was presentTransientNotice height 56"),
     ])
   func noticeGeometryIsPinned(row: (intent: OverlayIntent, height: CGFloat?, shipped: String)) {
     var r = Self.makeReducer()
@@ -661,9 +666,31 @@ struct OverlayReducerTests {
       "\(row.intent) should reserve \(String(describing: row.height)) — shipped: \(row.shipped)")
   }
 
+  /// #3912: every message pill wraps at ONE width, so no translation can make it
+  /// wider and none can cut it off. A row taken off this list must say why.
+  @Test(
+    "every message pill wraps at the message width",
+    arguments: [
+      OverlayIntent.warning(reason: .polishFailed), .error(reason: .asrFailed),
+      .interruption(reason: .deviceRemoved), .cachingModel(engineLabel: "Parakeet"),
+      .engineReady, .recoveringLastRecording, .recoverySucceeded,
+    ])
+  func messagePillsWrapAtTheMessageWidth(intent: OverlayIntent) {
+    var r = Self.makeReducer()
+    _ = r.reduce(.pipeline(intent))
+    guard let presentation = r.state.current else {
+      Issue.record("\(intent) produced no presentation")
+      return
+    }
+    #expect(
+      presentation.requestedWidth == .fixed(PillCatalog.messageWidth),
+      "\(intent) asks for \(presentation.requestedWidth), not the message width")
+    #expect(presentation.reservesFixedHeight == nil, "\(intent) reserves a fixed height")
+  }
+
   /// The two presentations that are not notices carry a box too, and neither
   /// goes through the notice factory, so the sweep above cannot see them.
-  @Test("the language chip and the accessibility feature request keep their boxes")
+  @Test("the language chip grows with its sentence; the accessibility request keeps its box")
   func nonNoticePresentationsKeepTheirBoxes() {
     var chip = Self.makeReducer()
     _ = chip.reduce(
@@ -671,9 +698,10 @@ struct OverlayReducerTests {
         .passiveChip(
           payload: LanguageChipPayload(
             lang: "es", displayName: "Spanish", state: .askToLock, generation: 1))))
+    // #3912: the chip keeps its 340 width and takes its height from the sentence.
     #expect(
-      chip.state.current?.reservesFixedHeight == 56,
-      "the language chip is showPanel(width: 340, height: 56) at its shipped site")
+      chip.state.current?.reservesFixedHeight == nil,
+      "the language chip reserves a fixed height, so a long translation is cut off")
 
     var toast = Self.makeReducer()
     _ = toast.reduceAccessibilityNotice(showingToast: { true })

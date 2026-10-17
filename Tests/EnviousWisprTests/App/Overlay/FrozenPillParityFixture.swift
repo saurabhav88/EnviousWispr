@@ -175,22 +175,26 @@ enum FrozenPillParity {
     // replacing "Polish failed. Using raw text." with "Pasted without AI polish.", a
     // deliberate copy change, so the oracle carries the new sentence. Every other value in
     // this row is the original capture.
+    // #3912 re-froze this row's box (founder-approved wrap design, 2026-10-17): it wraps at
+    // the 320-point message width with a content height. Every other value is the capture.
     FrozenRow(
       label: "warning.polishFailed", hasDefinition: true, contentTag: "notice",
       notice: FrozenNotice(
         kind: "notification", text: "Pasted without AI polish.", secondary: nil,
-        severity: "warning", isMultiline: false, actionLabel: nil, actionCase: nil),
-      width: .fixed(280), fixedHeight: 44,
+        severity: "warning", isMultiline: true, actionLabel: nil, actionCase: nil),
+      width: .fixed(320), fixedHeight: nil,
       expiry: .after(seconds: 2.5, pausesOnHover: false),
       announcement: FrozenAnnouncement(
         text: "Warning: Pasted without AI polish.", isHighPriority: false)),
 
+    // #3912 re-froze this row's box (founder-approved wrap design, 2026-10-17): it wraps at
+    // the 320-point message width with a content height. Every other value is the capture.
     FrozenRow(
       label: "error.asrFailed", hasDefinition: true, contentTag: "notice",
       notice: FrozenNotice(
         kind: "notification", text: "Transcription error. Try again.", secondary: nil,
-        severity: "error", isMultiline: false, actionLabel: nil, actionCase: nil),
-      width: .fixed(280), fixedHeight: 44,
+        severity: "error", isMultiline: true, actionLabel: nil, actionCase: nil),
+      width: .fixed(320), fixedHeight: nil,
       expiry: .after(seconds: 3, pausesOnHover: false),
       announcement: FrozenAnnouncement(
         text: "Error: Transcription error. Try again.", isHighPriority: true)),
@@ -212,50 +216,60 @@ enum FrozenPillParity {
           "Audio isn't capturing. Your lid may be closed, your headset muted, or there may be a hardware issue. Please check your microphone settings.",
         isHighPriority: true)),
 
+    // #3912 re-froze this row's box (founder-approved wrap design, 2026-10-17): it wraps at
+    // the 320-point message width with a content height. Every other value is the capture.
     FrozenRow(
       label: "interruption.deviceRemoved", hasDefinition: true, contentTag: "notice",
       notice: FrozenNotice(
         kind: "notification", text: "Microphone disconnected.", secondary: nil,
-        severity: "distress", isMultiline: false, actionLabel: nil, actionCase: nil),
-      width: .fixed(280), fixedHeight: 44,
+        severity: "distress", isMultiline: true, actionLabel: nil, actionCase: nil),
+      width: .fixed(320), fixedHeight: nil,
       expiry: .after(seconds: 2, pausesOnHover: false),
       announcement: FrozenAnnouncement(
         text: "Interruption: Microphone disconnected.", isHighPriority: true)),
 
+    // #3912 re-froze this row's height (founder-approved wrap design, 2026-10-17): the chip
+    // keeps its 340 width and takes its height from the sentence.
     FrozenRow(
       label: "passiveChip", hasDefinition: true, contentTag: "languageChip", notice: nil,
-      width: .fixed(340), fixedHeight: 56,
+      width: .fixed(340), fixedHeight: nil,
       expiry: .after(seconds: 6, pausesOnHover: true),
       announcement: FrozenAnnouncement(text: "Detected Spanish", isHighPriority: false)),
 
+    // #3912 re-froze this row's box (founder-approved wrap design, 2026-10-17): it wraps at
+    // the 320-point message width with a content height. Every other value is the capture.
     FrozenRow(
       label: "cachingModel", hasDefinition: true, contentTag: "notice",
       notice: FrozenNotice(
         kind: "warmingUp", text: "Getting dictation ready…",
         secondary: "Parakeet is warming up after a restart", severity: "neutral",
         isMultiline: false, actionLabel: nil, actionCase: nil),
-      width: .fixed(300), fixedHeight: 56,
+      width: .fixed(320), fixedHeight: nil,
       expiry: .after(seconds: 2, pausesOnHover: false),
       announcement: FrozenAnnouncement(
         text: "Getting dictation ready, one moment", isHighPriority: false)),
 
+    // #3912 re-froze this row's box (founder-approved wrap design, 2026-10-17): it wraps at
+    // the 320-point message width with a content height. Every other value is the capture.
     FrozenRow(
       label: "engineReady", hasDefinition: true, contentTag: "notice",
       notice: FrozenNotice(
         kind: "ready", text: "Ready — press to dictate", secondary: nil, severity: "neutral",
         isMultiline: false, actionLabel: nil, actionCase: nil),
-      width: .fixed(240), fixedHeight: 44,
+      width: .fixed(320), fixedHeight: nil,
       expiry: .after(seconds: 1.5, pausesOnHover: false),
       announcement: FrozenAnnouncement(
         text: "Dictation ready. Press to start.", isHighPriority: true)),
 
+    // #3912 re-froze this row's box (founder-approved wrap design, 2026-10-17): it wraps at
+    // the 320-point message width with a content height. Every other value is the capture.
     FrozenRow(
       label: "recoveringLastRecording", hasDefinition: true, contentTag: "notice",
       notice: FrozenNotice(
         kind: "recovery", text: "Recovering your last recording…",
         secondary: "Anything saved lands in History", severity: "neutral", isMultiline: true,
         actionLabel: "Discard", actionCase: "discardRecovery"),
-      width: .fixed(320), fixedHeight: 56,
+      width: .fixed(320), fixedHeight: nil,
       expiry: .after(seconds: 6, pausesOnHover: false),
       announcement: FrozenAnnouncement(
         text: "Recovering your last recording. Press Discard to skip.", isHighPriority: true)),
@@ -263,12 +277,14 @@ enum FrozenPillParity {
     // `ready`, NOT `notification`: routing a success through the notification
     // leaf would paint it as a warning, which is the mis-kind this mapping
     // exists to stop.
+    // #3912 re-froze this row's box (founder-approved wrap design, 2026-10-17): it wraps at
+    // the 320-point message width with a content height. Every other value is the capture.
     FrozenRow(
       label: "recoverySucceeded", hasDefinition: true, contentTag: "notice",
       notice: FrozenNotice(
         kind: "ready", text: "Recovered your last recording", secondary: "Saved to History",
         severity: "neutral", isMultiline: false, actionLabel: nil, actionCase: nil),
-      width: .fixed(300), fixedHeight: 56,
+      width: .fixed(320), fixedHeight: nil,
       expiry: .after(seconds: 3, pausesOnHover: false),
       announcement: FrozenAnnouncement(
         text: "Recovered your last recording. Saved to History.", isHighPriority: true)),

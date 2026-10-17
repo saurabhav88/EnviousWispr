@@ -30,13 +30,16 @@ struct RecoveryNoticeView: View {
         .controlSize(.small)
         .accessibilityHidden(true)
       VStack(alignment: .leading, spacing: 1) {
+        // #3912: both lines wrap at the pill's width; the pill grows taller.
         Text(title)
           .font(.system(size: 13, weight: .medium))
           .foregroundStyle(.white)
+          .fixedSize(horizontal: false, vertical: true)
         if let subtitle {
           Text(subtitle)
             .font(.system(size: 11))
             .foregroundStyle(.white.opacity(0.7))
+            .fixedSize(horizontal: false, vertical: true)
         }
       }
       Spacer(minLength: 8)
