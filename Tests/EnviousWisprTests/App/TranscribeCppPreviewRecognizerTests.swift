@@ -117,6 +117,10 @@ struct TranscribeCppPreviewRecognizerTests {
       notify()
     }
 
+    /// The preview runtime never settles a lane (only the heart backend's teardown does), and
+    /// this fake's loads and unloads complete within the call.
+    func awaitSettled(openedOn lane: TranscribeCppExecutor.Lane) async -> Int { 0 }
+
     /// Ends every held decode.
     func releaseAll() {
       let all = lock.withLock { () -> [CheckedContinuation<Void, Never>] in

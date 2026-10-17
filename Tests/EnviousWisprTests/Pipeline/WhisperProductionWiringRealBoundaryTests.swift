@@ -167,6 +167,8 @@ struct WhisperProductionWiringRealBoundaryTests {
       at: Self.evaluationModel, to: registration.installDirectory.appendingPathComponent(entrypoint))
     let settings = SettingsManager(
       defaults: try #require(TestDefaults.suite("ew-3735-rolling-s-\(UUID().uuidString)")))
+    // The wiring parks Whisper unless it is the stored selection (#3849).
+    settings.selectedBackend = .whisper
     let wired = WhisperDeliveryWiring.make(
       modelDelivery: home, settings: settings, engineMutationScope: .alwaysAllowedForTesting)
     #expect(await home.whisperHandle?.adoptIfPresent() == true)

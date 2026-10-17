@@ -99,8 +99,9 @@ import Testing
 // though they are not vocabulary candidates themselves; see
 // `EngineProtocolSurfaceFreezeTests` for all ten's frozen signatures) plus
 // two concrete-only method surfaces not declared by any of the ten frozen
-// protocols (`WhisperEngineAdapter.unloadForRemoval()`, reached via a
-// type-cast at one call site; `ParakeetBackend.prepare(selection:progressCallback:)`,
+// protocols (`WhisperEngineAdapter.unloadModel()`, renamed from
+// `unloadForRemoval()` in #3849 and reached via a type-cast at one call site,
+// as are #3849's `parkEngine()`/`unparkEngine()`; `ParakeetBackend.prepare(selection:progressCallback:)`,
 // reached via a type-cast at one call site AND via direct, uncast
 // construction/ownership at another — `ASRServiceHandler.swift` builds and
 // holds a concrete `ParakeetBackend` natively, so "reached only via a cast"
@@ -252,7 +253,8 @@ import Testing
   /// `ASREngineTelemetryProviding` — see `EngineProtocolSurfaceFreezeTests`
   /// for their frozen signatures) plus two concrete-only method surfaces not
   /// declared by any of the ten frozen protocols
-  /// (`WhisperEngineAdapter.unloadForRemoval()`, reached via a type-cast;
+  /// (`WhisperEngineAdapter.unloadModel()`, then named `unloadForRemoval()`
+  /// (#3849 rename), reached via a type-cast;
   /// `ParakeetBackend.prepare(selection:progressCallback:)`, reached via a
   /// type-cast at one call site and via direct, uncast construction/ownership
   /// in `ASRServiceHandler`; both are already caught here because their names
@@ -270,8 +272,9 @@ import Testing
   /// a different type sharing the bare name; classified like every other
   /// entry, not specially unified), `observeLID`, `makeStreamingSession`
   /// (`WhisperBackendDriving`), `cancelSessionlessWarmup`
-  /// (`ASREngineWarmupCancelling`), `unloadForRemoval` (concrete-only,
-  /// reached via `adapter as? WhisperEngineAdapter`), `transcribeSamples`,
+  /// (`ASREngineWarmupCancelling`), `unloadForRemoval` (then concrete-only,
+  /// reached via `adapter as? WhisperEngineAdapter`; since #3849 that method is
+  /// `unloadModel` and this name matches the Remove seam property), `transcribeSamples`,
   /// `feedAudioBuffer` (`ASRServiceProtocol` — its own `loadModel`/
   /// `unloadModel`/`startStreaming`/`finalizeStreaming`/`cancelStreaming`
   /// requirements share bare names already tracked, so only these two
@@ -341,6 +344,9 @@ import Testing
     // collapse. Its sole production call site is
     // `ParakeetEngineAdapter.recoverFromWedge()`.
     "attemptWedgeRecoveryUnload",
+    // #3849: the engine switch's Whisper park and unpark at every layer (bootstrapper,
+    // driver, adapter, backend), and the driver's renamed unload.
+    "park", "unpark", "parkEngine", "unparkEngine", "unloadEngine",
   ]
 
   /// A member-access reference (`adapter.warmUp`) or bare reference
@@ -539,6 +545,16 @@ import Testing
     CallSite(
       file: "Sources/EnviousWisprAppKit/App/WisprBootstrapper.swift", matcher: "switchBackend",
       text: "await asrManager.switchBackend(to: backend)", classification: .structurallySafe),
+    // #3849: the same `performSwitch` closure parks Whisper before that switch and unparks
+    // it after (`switchEngine`), under the same `isSwitching` protection.
+    CallSite(
+      file: "Sources/EnviousWisprAppKit/App/WisprBootstrapper.swift", matcher: "parkEngine",
+      text: "parkWhisper: { await whisperKernelDriver.parkEngine() },",
+      classification: .structurallySafe),
+    CallSite(
+      file: "Sources/EnviousWisprAppKit/App/WisprBootstrapper.swift", matcher: "unparkEngine",
+      text: "unparkWhisper: { await whisperKernelDriver.unparkEngine() },",
+      classification: .structurallySafe),
     // #3546 A3: the `activateParakeetUpgrade` closure's unload of v3. Its only caller is
     // `EngineCoordinator.activateParakeetUpgrade()`, which runs it inside
     // `engineMutationScope.withClaim(site: "parakeetUpgradeActivation")` with
@@ -1009,10 +1025,10 @@ import Testing
     CallSite(
       file: "Sources/EnviousWisprPipeline/WhisperEngineAdapter.swift", matcher: "unload",
       text: "await captured.unload()", classification: .structurallySafe),
-    // `unloadForRemoval()`'s unload — reached ONLY via the user-facing Remove
+    // `unloadModel()`'s unload — reached ONLY via the user-facing Remove
     // command (`WhisperSetupService.removeModel()` -> `removeModelAction`
     // -> #3735 `WhisperDeliveryWiring`'s Remove action -> `WhisperRemovalHook.unloadForRemoval`
-    // closure -> `KernelDictationDriver.unloadEngineForRemoval()` -> here),
+    // closure -> `KernelDictationDriver.unloadEngine()` -> here; #3849 renamed both functions),
     // which is entirely inside `removeModel()`'s own "whisperKitRemove"
     // claim closure (verified end-to-end; this is NOT the same as the two
     // `whisperKitIdleUnload` sites below, which are direct claim-closure
@@ -1028,6 +1044,15 @@ import Testing
     CallSite(
       file: "Sources/EnviousWisprPipeline/WhisperEngineAdapter.swift", matcher: "unload",
       text: "await backend.unload()", classification: .gated),
+    // #3849: `parkEngine()`'s park and `unparkEngine()`'s unpark — reached ONLY via the
+    // engine switch (`WisprBootstrapper.switchEngine` -> `KernelDictationDriver` -> here),
+    // whose `isSwitching` protection is the `WisprBootstrapper` rows below.
+    CallSite(
+      file: "Sources/EnviousWisprPipeline/WhisperEngineAdapter.swift", matcher: "park",
+      text: "let receipt = await backend.park()", classification: .transitivelyCoveredByCaller),
+    CallSite(
+      file: "Sources/EnviousWisprPipeline/WhisperEngineAdapter.swift", matcher: "unpark",
+      text: "await backend.unpark()", classification: .transitivelyCoveredByCaller),
     // `warmUp()`'s own prepare call — reached via the same gated- and
     // structurally-safe-mixed callers as `ParakeetEngineAdapter.warmUp()`.
     CallSite(
@@ -1299,16 +1324,31 @@ import Testing
 
     // MARK: WhisperDeliveryWiring / KernelDictationDriver / WisprBootstrapper —
     // the remaining links in the ALREADY-verified "whisperKitRemove" claim chain
-    // this file's existing `WhisperEngineAdapter.swift` `unloadForRemoval` entry
+    // this file's existing `WhisperEngineAdapter.swift` `unloadModel` entry
     // documents end-to-end (`WhisperSetupService.removeModel()` -> #3735
     // `WhisperDeliveryWiring`'s Remove action -> `WhisperRemovalHook.unloadForRemoval`
-    // closure -> `KernelDictationDriver.unloadEngineForRemoval()` -> the
+    // closure -> `KernelDictationDriver.unloadEngine()` -> the
     // already-counted adapter entry). Each is one more layer of that same
     // verified chain, not a new one. (#3735 deleted the retired WhisperKit legacy
-    // upgrade coordinator and its `remove()` site.)
+    // upgrade coordinator and its `remove()` site.) The Remove seam property keeps
+    // its `unloadForRemoval` name through #3849's rename: it names Remove's need.
     CallSite(
-      file: "Sources/EnviousWisprPipeline/KernelDictationDriver.swift", matcher: "unloadForRemoval",
-      text: "await (adapter as? WhisperEngineAdapter)?.unloadForRemoval()",
+      file: "Sources/EnviousWisprPipeline/KernelDictationDriver.swift", matcher: "unloadModel",
+      text: "await (adapter as? WhisperEngineAdapter)?.unloadModel()",
+      classification: .transitivelyCoveredByCaller),
+    CallSite(
+      file: "Sources/EnviousWisprAppKit/App/WisprBootstrapper.swift", matcher: "unloadEngine",
+      text: "await whisperKernelDriver?.unloadEngine()",
+      classification: .transitivelyCoveredByCaller),
+    // #3849: the engine switch's driver forwards, one layer of the switch chain whose
+    // protection is the `WisprBootstrapper` rows below.
+    CallSite(
+      file: "Sources/EnviousWisprPipeline/KernelDictationDriver.swift", matcher: "parkEngine",
+      text: "await (adapter as? WhisperEngineAdapter)?.parkEngine()",
+      classification: .transitivelyCoveredByCaller),
+    CallSite(
+      file: "Sources/EnviousWisprPipeline/KernelDictationDriver.swift", matcher: "unparkEngine",
+      text: "await (adapter as? WhisperEngineAdapter)?.unparkEngine()",
       classification: .transitivelyCoveredByCaller),
     // The closure WIRING itself — a property assignment, not a call; safety
     // inherited from wherever it is actually invoked (the same chain above).

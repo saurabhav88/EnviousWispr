@@ -68,6 +68,11 @@ final class FakeEngineDeps {
   private(set) var activationCount = 0
   var onActivateAwait: (@MainActor () async -> Void)?
 
+  /// #3849: when set, `performSwitch` runs the production `WisprBootstrapper.switchEngine`
+  /// sequence over this probe's Whisper backend stub, and a Whisper warm is the stub's real
+  /// `prepare()` (refused while parked). Every probe event lands in one ordered log.
+  var whisperSwitch: WhisperSwitchProbe?
+
   /// Records the site string of every refused claim, so a test can prove the refusal
   /// actually happened rather than inferring it from an absence.
   private(set) var refusedSites: [String] = []
@@ -123,18 +128,43 @@ final class FakeEngineDeps {
       stateLabel: { _ in "idle" },
       performSwitch: { backend in
         if let hook = self.onSwitchAwait { await hook() }
-        self.switchCount += 1
-        self.switchHistory.append(backend)
-        // Mirror `switchBackend`: the old engine is unloaded and the new one is
-        // set active but NOT yet loaded (a warm follows).
-        self.active = backend
-        self.setReadiness(backend, .notReady)
+        guard let probe = self.whisperSwitch else {
+          self.landSwitch(backend)
+          return
+        }
+        await WisprBootstrapper.switchEngine(
+          to: backend, activeBackend: { self.active },
+          parkWhisper: {
+            probe.record("park")
+            if let hook = probe.onPark { await hook() }
+            let receipt = await probe.backend.park()
+            probe.record("parked")
+            return receipt
+          },
+          switchManager: { backend in
+            probe.record("switch \(backend.rawValue)")
+            if let hook = probe.onManagerSwitch { await hook() }
+            self.landSwitch(backend)
+          },
+          unparkWhisper: {
+            await probe.backend.unpark()
+            probe.record("unpark")
+          },
+          log: { probe.record($0) })
       },
       warm: { backend in
         self.warmCount += 1
         self.warmHistory.append(backend)
+        self.whisperSwitch?.record("warm \(backend.rawValue)")
         if let hook = self.onWarmAwait { await hook() }
-        let outcome = self.warmOutcome[backend] ?? .ready
+        var outcome = self.warmOutcome[backend] ?? .ready
+        if backend == .whisper, let probe = self.whisperSwitch {
+          do {
+            try await probe.backend.prepare()
+          } catch {
+            outcome = .failed(error)
+          }
+        }
         if case .ready = outcome { self.setReadiness(backend, .ready) }
         return outcome
       },
@@ -145,6 +175,15 @@ final class FakeEngineDeps {
         self.activationCount += 1
         if let hook = self.onActivateAwait { await hook() }
       })
+  }
+
+  /// Mirror `switchBackend`: the old engine is unloaded and the new one is set active but NOT
+  /// yet loaded (a warm follows).
+  private func landSwitch(_ backend: ASRBackendType) {
+    switchCount += 1
+    switchHistory.append(backend)
+    active = backend
+    setReadiness(backend, .notReady)
   }
 
   /// Build a started coordinator over this fake. `start()` fires the initial
@@ -182,6 +221,19 @@ func enginePoll(
 }
 
 enum FakeWarmError: Error { case failed }
+
+/// #3849: the Whisper side of a switch run through `WisprBootstrapper.switchEngine`: a backend
+/// stub (parked as the composition parks it), hooks that hold the park or the manager switch
+/// open, and one ordered event log shared with the fake's warm.
+@MainActor
+final class WhisperSwitchProbe {
+  let backend = StubWhisperBackend()
+  private(set) var events: [String] = []
+  var onPark: (@MainActor () async -> Void)?
+  var onManagerSwitch: (@MainActor () async -> Void)?
+
+  func record(_ event: String) { events.append(event) }
+}
 
 /// #1635: an `@Observable` cell so `FakeEngineDeps.whisperInstalled` participates in
 /// `withObservationTracking`. Without this, `EngineCoordinator.observeInstalledState()` is

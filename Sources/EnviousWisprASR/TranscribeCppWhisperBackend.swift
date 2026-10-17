@@ -28,6 +28,10 @@ package protocol WhisperExecutorDriving: Sendable {
   func waitForDrain(_ handle: Handle) async
   /// Aborts and drains work on `handle`, then frees it. Unknown handles return at once.
   func unload(_ handle: Handle) async
+  /// #3849: returns once no load on `lane` is queued or running and no session a load on
+  /// `lane` opened is still alive, whoever frees it; returns the count left (0). Call only
+  /// after releasing every handle you own on that lane, with your admission closed.
+  func awaitSettled(openedOn lane: TranscribeCppExecutor.Lane) async -> Int
 }
 
 /// The production driver: a thin forwarder to the one process-wide executor.
@@ -64,12 +68,24 @@ package struct LiveWhisperExecutorDriver: WhisperExecutorDriving {
   package func unload(_ handle: Handle) async {
     await TranscribeCppExecutor.shared.unload(handle)
   }
+
+  package func awaitSettled(openedOn lane: TranscribeCppExecutor.Lane) async -> Int {
+    await TranscribeCppExecutor.shared.awaitSettled(openedOn: lane)
+  }
 }
 
 /// #3735: the Whisper backend the app composes (transcribe.cpp over the shared executor).
 package typealias LiveTranscribeCppWhisperBackend = TranscribeCppWhisperBackend<
   LiveWhisperExecutorDriver
 >
+
+/// #3849: what one Whisper teardown released. `freed` counts the resident models this
+/// teardown freed itself (a load or warm-up it superseded frees its own model); `remaining` is
+/// the executor's count of heart-lane sessions still alive once it settled (0).
+package struct UnloadReceipt: Sendable, Equatable {
+  package let freed: Int
+  package let remaining: Int
+}
 
 // MARK: - Errors
 
@@ -173,6 +189,10 @@ package actor TranscribeCppWhisperBackend<Driver: WhisperExecutorDriving>: ASRBa
   // Operation and pressure bookkeeping.
   private var inFlight = 0
   private var admissionClosed = false
+  /// #3849: Whisper may load only while it is the active heart engine. Set by `park()` (engine
+  /// switch away) or at construction when another engine is selected; cleared only by
+  /// `unpark()`. A completed unload never clears it.
+  private var parked: Bool
   private var pressurePending = false
   private var pressureRunning = false
   private var pressureSource: (any DispatchSourceMemoryPressure)?
@@ -186,13 +206,14 @@ package actor TranscribeCppWhisperBackend<Driver: WhisperExecutorDriving>: ASRBa
     modelIdentity: ASRModelIdentity? = nil,
     scopeOwner: ASRModelScopeOwner? = nil,
     authorizeUnload: UnloadAuthorizer? = nil,
-    loadsAfterPressureBinding: Bool = false
+    loadsAfterPressureBinding: Bool = false,
+    initiallyParked: Bool = false
   ) {
     self.init(
       driver: driver, modelVariant: modelVariant, admittedModelPath: admittedModelPath,
       modelIdentity: modelIdentity, scopeDelivery: Self.delivery(to: scopeOwner),
       authorizeUnload: authorizeUnload, warmupDeadlineSeconds: 20,
-      loadsAfterPressureBinding: loadsAfterPressureBinding)
+      loadsAfterPressureBinding: loadsAfterPressureBinding, initiallyParked: initiallyParked)
   }
 
   /// Full initializer; tests shorten the warm-up ceiling and capture scope reports.
@@ -204,7 +225,8 @@ package actor TranscribeCppWhisperBackend<Driver: WhisperExecutorDriving>: ASRBa
     scopeDelivery: ScopeDelivery?,
     authorizeUnload: UnloadAuthorizer?,
     warmupDeadlineSeconds: Double,
-    loadsAfterPressureBinding: Bool = false
+    loadsAfterPressureBinding: Bool = false,
+    initiallyParked: Bool = false
   ) {
     self.driver = driver
     self.variant = modelVariant
@@ -214,6 +236,7 @@ package actor TranscribeCppWhisperBackend<Driver: WhisperExecutorDriving>: ASRBa
     self.authorizeUnload = authorizeUnload
     self.warmupDeadlineSeconds = warmupDeadlineSeconds
     self.loadsAfterPressureBinding = loadsAfterPressureBinding
+    self.parked = initiallyParked
   }
 
   private static func delivery(to owner: ASRModelScopeOwner?) -> ScopeDelivery? {
@@ -238,11 +261,15 @@ package actor TranscribeCppWhisperBackend<Driver: WhisperExecutorDriving>: ASRBa
   /// load failure, answered by a Remove and re-download the user chooses.
   package func prepare() async throws {
     while loadsAfterPressureBinding, authorizeUnload == nil {
-      await withCheckedContinuation { pressureBindingWaiters.append($0) }
+      await withCheckedContinuation {
+        pressureBindingWaiters.append($0)
+        testEventObserver?(.waitingForPressureBinding)
+      }
     }
     // A teardown in progress still frees handles after it published idle; a replacement load
-    // started now could be freed by it.
-    guard !admissionClosed else { throw ASRError.notReady }
+    // started now could be freed by it. Checked after the binding wait: a parked engine (#3849)
+    // refuses a warm however long ago it was scheduled.
+    guard !admissionClosed, !parked else { throw ASRError.notReady }
     let effects = await emit(.prepareRequested)
     for effect in effects {
       switch effect {
@@ -396,9 +423,12 @@ package actor TranscribeCppWhisperBackend<Driver: WhisperExecutorDriving>: ASRBa
     }
   }
 
-  private func release(_ handle: Driver.Handle) async {
-    guard liveHandles.remove(handle) != nil else { return }
+  /// Returns whether this call freed `handle` (false when it was already released).
+  @discardableResult
+  private func release(_ handle: Driver.Handle) async -> Bool {
+    guard liveHandles.remove(handle) != nil else { return false }
     await driver.unload(handle)
+    return true
   }
 
   // MARK: - State machine plumbing (ported from the retired WhisperKit backend)
@@ -836,28 +866,67 @@ package actor TranscribeCppWhisperBackend<Driver: WhisperExecutorDriving>: ASRBa
   /// executor aborts and drains running work before it frees. Callers hold the app's
   /// engine-mutation authorization (the adapter's guarded unload).
   package func unload() async {
-    // Coalesces: a second caller waits for the one teardown. Admission stays closed until
-    // every handle is freed, so no replacement load can start under it.
+    await unloadAndSettle()
+  }
+
+  /// #3849: engine switch away from Whisper. Refuses every later load until `unpark()`, then
+  /// unloads. `parked` is set before the first suspension, so a warm that reaches `prepare()`
+  /// after this call starts is refused however it was scheduled.
+  @discardableResult
+  package func park() async -> UnloadReceipt {
+    parked = true
+    return await unloadAndSettle()
+  }
+
+  /// #3849: Whisper is the active heart engine again; loads are admitted.
+  package func unpark() {
+    parked = false
+  }
+
+  /// The one teardown behind `unload()` and `park()`. Returns only after every native session
+  /// this backend's loads opened is physically closed (#3849): it joins the load, warm-up and
+  /// orphan warm-up tasks the unload transition cancels (a superseded load frees its own model;
+  /// a load request still travelling to the executor lands first), frees the resident models,
+  /// then waits for the executor to settle the heart lane (an aborted native load's orphan
+  /// close runs later on the executor's queue). No timeout: an engine switch waits for physical
+  /// cleanup; quit has its own bound.
+  @discardableResult
+  func unloadAndSettle() async -> UnloadReceipt {
+    // Coalesces: a second caller waits for the one teardown and gets its receipt. Admission
+    // stays closed until every session is closed, so no replacement load can start under it.
     if unloading {
-      await withCheckedContinuation { unloadWaiters.append($0) }
-      return
+      return await withCheckedContinuation {
+        unloadWaiters.append($0)
+        testEventObserver?(.joinedUnload)
+      }
     }
     unloading = true
     admissionClosed = true
-    defer {
-      unloading = false
-      admissionClosed = false
-      let waiters = unloadWaiters
-      unloadWaiters.removeAll()
-      for waiter in waiters { waiter.resume() }
-    }
     generation &+= 1
-    await emit(.unloadRequested)
-    for handle in Array(liveHandles) { await release(handle) }
+    let effects = await emit(.unloadRequested)
+    for effect in effects {
+      switch effect {
+      case .cancelLoadTask(let task): _ = await task.result
+      case .cancelWarmupTask(let task), .cancelOrphanWarmupOnUnload(let task): _ = await task.value
+      default: break
+      }
+    }
+    var freed = 0
+    for handle in Array(liveHandles) {
+      if await release(handle) { freed += 1 }
+    }
+    let remaining = await driver.awaitSettled(openedOn: .heart)
+    let receipt = UnloadReceipt(freed: freed, remaining: remaining)
+    unloading = false
+    admissionClosed = false
+    let waiters = unloadWaiters
+    unloadWaiters.removeAll()
+    for waiter in waiters { waiter.resume(returning: receipt) }
+    return receipt
   }
 
   private var unloading = false
-  private var unloadWaiters: [CheckedContinuation<Void, Never>] = []
+  private var unloadWaiters: [CheckedContinuation<UnloadReceipt, Never>] = []
 
   /// Installs the unload authorizer and only then starts the memory-pressure monitor, in one
   /// actor step, so no pressure event can arrive before the authorization path exists. Called
@@ -951,6 +1020,17 @@ package actor TranscribeCppWhisperBackend<Driver: WhisperExecutorDriving>: ASRBa
 
   var operationCountsForTesting: (inFlight: Int, pressurePending: Bool) {
     (inFlight, pressurePending)
+  }
+
+  /// #3849: the composition's initial park, read without attempting a load.
+  var isParkedForTesting: Bool { parked }
+
+  /// #3849 test seam: suspensions a test must reach before it acts, announced synchronously
+  /// on the actor once the caller is parked.
+  enum TestEvent: Sendable { case waitingForPressureBinding, joinedUnload }
+  private var testEventObserver: (@Sendable (TestEvent) -> Void)?
+  func setTestEventObserver(_ observer: (@Sendable (TestEvent) -> Void)?) {
+    testEventObserver = observer
   }
 
   #if DEBUG

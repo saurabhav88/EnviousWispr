@@ -53,7 +53,11 @@ enum WhisperDeliveryWiring {
       modelIdentity: registration?.manifest.identity.asrModelIdentity,
       scopeOwner: .shared,
       // Every load waits for the adapter factory's memory-pressure binding (§3.2a).
-      loadsAfterPressureBinding: true)
+      loadsAfterPressureBinding: true,
+      // #3849: Whisper may load only while it is the active engine. The stored selection is
+      // what `setInitialBackendType` restores at launch; parked from construction, so no
+      // warm scheduled before that (launch preload, a cold press) loads it beside Parakeet.
+      initiallyParked: settings.selectedBackend != .whisper)
 
     let previewHandle = modelDelivery.whisperPreviewHandle
     // The retired CoreML folders were siblings of the GGUF ones under `Models/`; derived from

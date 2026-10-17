@@ -1,5 +1,6 @@
 import Foundation
 import Testing
+import os
 
 @testable import EnviousWisprASR
 @testable import EnviousWisprTranscribeCpp
@@ -417,6 +418,479 @@ struct TranscribeCppExecutorTests {
   }
 }
 
+// MARK: - #3849: quit release and physical lifetime
+
+/// The executor's quit release and its lane settlement, over controlled fake sessions.
+///
+/// **What the user sees when this fails:** quitting with Whisper or Universal Live Preview
+/// loaded shows a "quit unexpectedly" crash dialog (a session survived to `exit()`), quitting
+/// hangs, a model is freed while it is still decoding (crash), or switching from Whisper to
+/// Parakeet reports Whisper freed while its memory is still held.
+@Suite("transcribe.cpp quit release and settle (#3849)", .serialized, .tags(.productOutcome))
+struct TranscribeCppExecutorLifetimeTests {
+
+  /// Runs the synchronous release on a plain thread, as the quit path's main thread would,
+  /// so it never blocks a cooperative-pool thread the executor itself needs.
+  private static func release(
+    _ executor: TranscribeCppExecutor, timeout: Duration = .seconds(2)
+  ) async -> TranscribeCppExecutor.TerminationRelease {
+    await withCheckedContinuation { continuation in
+      DispatchQueue.global().async {
+        continuation.resume(returning: executor.releaseAllForTermination(timeout: timeout))
+      }
+    }
+  }
+
+  private static func released(_ result: TranscribeCppExecutor.TerminationRelease) -> Int? {
+    if case .released(let sessions, _) = result { return sessions }
+    return nil
+  }
+
+  // MARK: The quit step over a private executor
+
+  /// Records the quit step's immediate-exit request instead of ending the test host.
+  private final class ExitRequests: @unchecked Sendable {
+    private let lock = NSLock()
+    private var count = 0
+    func request() { lock.withLock { count += 1 } }
+    var value: Int { lock.withLock { count } }
+  }
+
+  /// Runs the production quit step on a plain thread (it blocks up to its bound), over this
+  /// test's executor and a temporary note directory.
+  private static func quitStep(
+    _ executor: TranscribeCppExecutor, noteDirectory: URL, timeout: Duration = .seconds(2),
+    exits: ExitRequests
+  ) async -> TranscribeCppProcessExit.Outcome {
+    await withCheckedContinuation { continuation in
+      DispatchQueue.global().async {
+        continuation.resume(
+          returning: TranscribeCppProcessExit.releaseBeforeExit(
+            release: { executor.releaseAllForTermination(timeout: $0) },
+            noteDirectory: noteDirectory, timeout: timeout, exitNow: { exits.request() }))
+      }
+    }
+  }
+
+  private static func temporaryDirectory() -> URL {
+    FileManager.default.temporaryDirectory
+      .appendingPathComponent("ew-3849-quit-\(UUID().uuidString)", isDirectory: true)
+  }
+
+  /// The note as written, read as plain JSON (independent of the type that wrote it).
+  private static func noteJSON(in directory: URL) throws -> [String: Any] {
+    let data = try Data(contentsOf: directory.appendingPathComponent("model-release-timeout.json"))
+    return try #require(try JSONSerialization.jsonObject(with: data) as? [String: Any])
+  }
+
+  @Test("the quit step returns normally, with no note, when every model is freed")
+  func quitStepReturnsWithoutNoteWhenReleased() async throws {
+    let native = FakeNative()
+    let executor = TranscribeCppExecutor(makeSession: native.makeSession)
+    _ = try await executor.load(modelPath: "turbo", lane: .heart)
+    let directory = Self.temporaryDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let exits = ExitRequests()
+    let outcome = await Self.quitStep(executor, noteDirectory: directory, exits: exits)
+    guard case .released(let sessions, _) = outcome else {
+      Issue.record("expected a normal return, got \(outcome)")
+      return
+    }
+    #expect(sessions == 1)
+    #expect(exits.value == 0, "a clean release never ends the process early")
+    #expect(!FileManager.default.fileExists(atPath: directory.path), "no note is written")
+    #expect(native.closeCount("turbo") == 1)
+  }
+
+  @Test("a decode stuck past the bound leaves a note, then the quit step ends the process")
+  func quitStepWritesNoteAndExitsOnStuckDecode() async throws {
+    let native = FakeNative(ignoresAbort: ["m"])
+    let executor = TranscribeCppExecutor(makeSession: native.makeSession)
+    let m = try await executor.load(modelPath: "m", lane: .heart)
+    let running = Task {
+      try await executor.transcribe(m, samples: [1], language: nil, lane: .heart)
+    }
+    await native.waitForArrivals(1)
+    let directory = Self.temporaryDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let exits = ExitRequests()
+    let outcome = await Self.quitStep(
+      executor, noteDirectory: directory, timeout: .milliseconds(200), exits: exits)
+    #expect(outcome == .exited(noteWritten: true))
+    #expect(exits.value == 1)
+    let note = try Self.noteJSON(in: directory)
+    #expect(note["sessions"] as? Int == 1)
+    #expect(note["boundMs"] as? Int == 200)
+    #expect(native.closeCount("m") == 0, "the running call still owns its session")
+    // Unblock and join the native work before the fixture ends.
+    native.release("m")
+    _ = try? await native.bounded(running)
+    await native.waitForLog("close m")
+    #expect(native.violations.isEmpty)
+  }
+
+  /// #3849 plan §11 item 3: the production fallback in a child process, ending it for real. The
+  /// child records the release's actual outcome and the exit request on stdout as they happen;
+  /// the parent requires both, a status-zero termination (`_exit(0)`) and the note on disk.
+  @Test(
+    "a stuck decode at quit writes the note, then the production fallback ends the process",
+    .timeLimit(.minutes(1)))
+  func fallbackProducerWritesNoteAndExits() async throws {
+    let token = UUID().uuidString
+    let directory = Self.temporaryDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let path = directory.path
+    let observed = await #expect(
+      processExitsWith: .success, observing: [\.standardOutputContent, \.standardErrorContent]
+    ) { [token = token as String, path = path as String] in
+      await Self.fallbackChild(token: token, noteDirectory: path)
+    }
+    let result = try #require(observed)
+    let lines = String(decoding: result.standardOutputContent, as: UTF8.self)
+      .split(separator: "\n").map(String.init).filter { $0.hasPrefix("fallback-") }
+    #expect(
+      lines == [
+        "fallback-release timedOut(sessions: 1) \(token)", "fallback-exit \(token)",
+      ], "stderr: \(String(decoding: result.standardErrorContent, as: UTF8.self))")
+    let note = try Self.noteJSON(in: directory)
+    #expect(
+      Set(note.keys) == [
+        "bundleIdentifier", "environment", "appVersion", "timestamp", "sessions", "boundMs",
+      ])
+    #expect(note["sessions"] as? Int == 1)
+    #expect(note["boundMs"] as? Int == 200)
+    // The child is this same test host, so it stamps this build's identity.
+    let bundle = Bundle.main.bundleIdentifier ?? "com.enviouswispr.app"
+    #expect(note["bundleIdentifier"] as? String == bundle)
+    #expect(
+      note["environment"] as? String == (bundle.hasSuffix(".dev") ? "development" : "production"))
+  }
+
+  /// The fallback child body: an abort-ignoring decode holds the session, then the PRODUCTION
+  /// quit step runs with `_exit(0)`. Records no test issues; a failed step ends with status 1.
+  private static func fallbackChild(token: String, noteDirectory: String) async {
+    DispatchQueue.global().asyncAfter(deadline: .now() + 30) { childFail("watchdog") }
+    let native = FakeNative(ignoresAbort: ["m"])
+    let executor = TranscribeCppExecutor(makeSession: native.makeSession)
+    guard let m = try? await executor.load(modelPath: "m", lane: .heart) else { childFail("load") }
+    let running = Task {
+      try await executor.transcribe(m, samples: [1], language: nil, lane: .heart)
+    }
+    await native.waitForArrivals(1)
+    guard native.inside == 1 else { childFail("native entry") }
+    TranscribeCppProcessExit.releaseBeforeExit(
+      release: { timeout in
+        let outcome = executor.releaseAllForTermination(timeout: timeout)
+        FileHandle.standardOutput.write(Data("fallback-release \(outcome) \(token)\n".utf8))
+        return outcome
+      },
+      noteDirectory: URL(filePath: noteDirectory), timeout: .milliseconds(200),
+      exitNow: {
+        FileHandle.standardOutput.write(Data("fallback-exit \(token)\n".utf8))
+        _exit(0)
+      })
+    running.cancel()
+    childFail("the quit step returned normally")
+  }
+
+  @Test("a release already under way is unconfirmed: note without a count, then exit")
+  func quitStepTreatsRepeatAsUnconfirmed() async throws {
+    let native = FakeNative()
+    let executor = TranscribeCppExecutor(makeSession: native.makeSession)
+    _ = try await executor.load(modelPath: "turbo", lane: .heart)
+    #expect(Self.released(await Self.release(executor)) == 1)
+    let directory = Self.temporaryDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let exits = ExitRequests()
+    let outcome = await Self.quitStep(executor, noteDirectory: directory, exits: exits)
+    #expect(outcome == .exited(noteWritten: true))
+    #expect(exits.value == 1)
+    let note = try Self.noteJSON(in: directory)
+    #expect(note["sessions"] == nil, "the count is not observable on this branch")
+  }
+
+  @Test("an idle release frees every session on both lanes and nothing native runs after it")
+  func idleReleaseFreesAll() async throws {
+    let native = FakeNative()
+    let executor = TranscribeCppExecutor(makeSession: native.makeSession)
+    let heart = try await executor.load(modelPath: "turbo", lane: .heart)
+    _ = try await executor.load(modelPath: "small", lane: .preview)
+    let result = await Self.release(executor)
+    #expect(Self.released(result) == 2)
+    #expect(native.closeCount("turbo") == 1)
+    #expect(native.closeCount("small") == 1)
+    #expect(try await native.bounded(Task { await executor.awaitSettled(openedOn: .heart) }) == 0)
+    #expect(try await native.bounded(Task { await executor.awaitSettled(openedOn: .preview) }) == 0)
+    await #expect(throws: TranscribeCppExecutor.ExecutorError.modelUnavailable) {
+      _ = try await executor.transcribe(heart, samples: [1], language: nil, lane: .heart)
+    }
+    await #expect(throws: TranscribeCppExecutor.ExecutorError.modelUnavailable) {
+      _ = try await executor.detectLanguage(heart, samples: [1], lane: .heart)
+    }
+    await #expect(throws: TranscribeCppExecutor.ExecutorError.modelUnavailable) {
+      _ = try await executor.load(modelPath: "late", lane: .heart)
+    }
+    #expect(!native.log.contains { $0.hasPrefix("enter") }, "no native run after the release")
+    #expect(native.violations.isEmpty)
+  }
+
+  @Test("a running decode is aborted, returns, and only then is its session freed")
+  func releaseAbortsRunningDecode() async throws {
+    let native = FakeNative()
+    let executor = TranscribeCppExecutor(makeSession: native.makeSession)
+    let m = try await executor.load(modelPath: "m", lane: .heart)
+    let running = Task {
+      try await executor.transcribe(m, samples: [1], language: nil, lane: .heart)
+    }
+    await native.waitForArrivals(1)
+    let result = await Self.release(executor)
+    #expect(Self.released(result) == 1)
+    #expect(native.log == ["enter m", "abort m", "exit m", "close m"])
+    await #expect(throws: (any Error).self) { try await native.bounded(running) }
+    #expect(native.violations.isEmpty)
+  }
+
+  @Test("a decode that never stops times out and is never freed underneath")
+  func releaseTimesOutOnStuckDecode() async throws {
+    let native = FakeNative(ignoresAbort: ["m"])
+    let executor = TranscribeCppExecutor(makeSession: native.makeSession)
+    let m = try await executor.load(modelPath: "m", lane: .heart)
+    let running = Task {
+      try await executor.transcribe(m, samples: [1], language: nil, lane: .heart)
+    }
+    await native.waitForArrivals(1)
+    let result = await Self.release(executor, timeout: .milliseconds(200))
+    #expect(result == .timedOut(sessions: 1))
+    #expect(native.closeCount("m") == 0, "the running call still owns its session")
+    // Unblock and join the native work before the fixture ends.
+    native.release("m")
+    _ = try? await native.bounded(running)
+    await native.waitForLog("close m")
+    #expect(try await native.bounded(Task { await executor.awaitSettled(openedOn: .heart) }) == 0)
+    #expect(native.closeCount("m") == 1)
+    #expect(native.violations.isEmpty)
+  }
+
+  @Test("a load that returns after the release began is freed at once and never published")
+  func lateLoadIsFreedAtRegistration() async throws {
+    let native = FakeNative(blocksLoad: ["x"])
+    let executor = TranscribeCppExecutor(makeSession: native.makeSession)
+    let load = Task { try await executor.load(modelPath: "x", lane: .heart) }
+    await native.waitForLog("load x")
+    let result = await Self.release(executor, timeout: .milliseconds(200))
+    #expect(result == .timedOut(sessions: 0), "an open in flight cannot be aborted")
+    native.releaseLoad("x")
+    await #expect(throws: TranscribeCppExecutor.ExecutorError.modelUnavailable) {
+      try await native.bounded(load)
+    }
+    await native.waitForLog("close x")
+    #expect(try await native.bounded(Task { await executor.awaitSettled(openedOn: .heart) }) == 0)
+    #expect(native.closeCount("x") == 1)
+    #expect(native.violations.isEmpty)
+  }
+
+  @Test("a second release while the first waits reports only that one started")
+  func secondReleaseIsAlreadyStarted() async throws {
+    let native = FakeNative(ignoresAbort: ["m"])
+    let executor = TranscribeCppExecutor(makeSession: native.makeSession)
+    let m = try await executor.load(modelPath: "m", lane: .heart)
+    let running = Task {
+      try await executor.transcribe(m, samples: [1], language: nil, lane: .heart)
+    }
+    await native.waitForArrivals(1)
+    async let first = Self.release(executor)
+    await native.waitForAbort("m")  // the first release has set its latch
+    #expect(executor.releaseAllForTermination(timeout: .seconds(2)) == .alreadyStarted)
+    native.release("m")
+    #expect(Self.released(await first) == 1)
+    _ = try? await native.bounded(running)
+    #expect(native.violations.isEmpty)
+  }
+
+  @Test("an unload after the release frees nothing twice")
+  func unloadAfterReleaseIsSafe() async throws {
+    let native = FakeNative()
+    let executor = TranscribeCppExecutor(makeSession: native.makeSession)
+    let m = try await executor.load(modelPath: "m", lane: .heart)
+    #expect(Self.released(await Self.release(executor)) == 1)
+    try await native.bounded(Task { await executor.unload(m) })
+    #expect(native.closeCount("m") == 1)
+    #expect(native.violations.isEmpty)
+  }
+
+  @Test("a release behind a free already running waits for it and frees nothing twice")
+  func releaseWaitsForRunningFree() async throws {
+    let native = FakeNative(blocksClose: ["m"])
+    let executor = TranscribeCppExecutor(makeSession: native.makeSession)
+    let m = try await executor.load(modelPath: "m", lane: .heart)
+    let unload = Task { await executor.unload(m) }
+    await native.waitForLog("closing m")
+    async let result = Self.release(executor)
+    // The release began while the free was still inside native code: it saw `m` alive.
+    await native.waitForAbort("m")
+    native.releaseClose("m")
+    #expect(Self.released(await result) == 0, "the free in progress already freed it")
+    try await native.bounded(unload)
+    #expect(native.closeCount("m") == 1)
+    #expect(native.violations.isEmpty)
+  }
+
+  @Test("a language detection that ignores the abort returns before its session is freed")
+  func releaseWaitsForDetection() async throws {
+    let native = FakeNative()
+    let executor = TranscribeCppExecutor(makeSession: native.makeSession)
+    let m = try await executor.load(modelPath: "m", lane: .heart)
+    let detect = Task { try await executor.detectLanguage(m, samples: [1], lane: .heart) }
+    await native.waitForArrivals(1)
+    async let result = Self.release(executor)
+    await native.waitForAbort("m")
+    #expect(native.closeCount("m") == 0, "detection is still inside native code")
+    native.release("m")
+    #expect(Self.released(await result) == 1)
+    #expect(native.log == ["enter m", "abort m", "exit m", "close m"])
+    _ = try? await native.bounded(detect)
+    #expect(native.violations.isEmpty)
+  }
+
+  @Test(
+    "heart settle waits for a cancelled open and its orphan free; a preview model does not hold it")
+  func settleWaitsForOrphan() async throws {
+    let native = FakeNative(blocksLoad: ["x"], blocksClose: ["x"])
+    let executor = TranscribeCppExecutor(makeSession: native.makeSession)
+    await native.observe(executor)
+    _ = try await executor.load(modelPath: "small", lane: .preview)
+    let load = Task { try await executor.load(modelPath: "x", lane: .heart) }
+    await native.waitForLog("load x")
+    load.cancel()
+    await #expect(throws: TranscribeCppExecutor.ExecutorError.cancelled) {
+      try await native.bounded(load)
+    }
+    let settle = Task { await executor.awaitSettled(openedOn: .heart) }
+    await native.waitForSettleWaiters(1)
+    #expect(native.closeCount("x") == 0, "control: the open is still inside native code")
+    native.releaseLoad("x")
+    // The open returned and its orphan free is inside native code: settle is still parked.
+    await native.waitForLog("closing x")
+    #expect(await executor.queueDepths.settleWaiting == 1)
+    native.releaseClose("x")
+    #expect(try await native.bounded(settle) == 0)
+    #expect(native.closeCount("x") == 1, "settle returned only after the orphan free")
+    // The orphan left the registry: the quit release finds only the preview model.
+    #expect(Self.released(await Self.release(executor)) == 1)
+    #expect(native.violations.isEmpty)
+  }
+
+  @Test("settle stays parked while the quit release is inside a free and completes after it")
+  func settleWaitsForTerminationFree() async throws {
+    let native = FakeNative(blocksClose: ["m"])
+    let executor = TranscribeCppExecutor(makeSession: native.makeSession)
+    await native.observe(executor)
+    _ = try await executor.load(modelPath: "m", lane: .heart)
+    async let result = Self.release(executor)
+    await native.waitForLog("closing m")
+    let settle = Task { await executor.awaitSettled(openedOn: .heart) }
+    await native.waitForSettleWaiters(1)
+    native.releaseClose("m")
+    #expect(Self.released(await result) == 1)
+    #expect(try await native.bounded(settle) == 0)
+    #expect(native.violations.isEmpty)
+  }
+
+  @Test("a cancelled queued load that pump discards wakes heart settle with no later work")
+  func pumpDiscardWakesSettle() async throws {
+    let native = FakeNative()
+    let executor = TranscribeCppExecutor(makeSession: native.makeSession)
+    let queuedLoad = OSAllocatedUnfairLock<Task<TranscribeCppExecutor.ModelHandle, any Error>?>(
+      initialState: nil)
+    let armed = OSAllocatedUnfairLock(initialState: false)
+    // Runs on the actor inside `complete`'s announce: the decode has just ended and the load
+    // is still queued. Cancelling here latches the request before `pump` looks at it, while
+    // the cancellation handler's hop to the actor cannot run yet, so `pump` must discard it.
+    await native.observe(executor) { depths in
+      guard depths.heart == 1, !depths.running else { return }
+      guard
+        armed.withLock({ armed in
+          defer { armed = false }
+          return armed
+        })
+      else { return }
+      queuedLoad.withLock { $0 }?.cancel()
+    }
+    let m = try await executor.load(modelPath: "m", lane: .preview)
+    let running = Task {
+      try await executor.transcribe(m, samples: [1], language: nil, lane: .heart)
+    }
+    await native.waitForArrivals(1)
+    let load = Task { try await executor.load(modelPath: "x", lane: .heart) }
+    queuedLoad.withLock { $0 = load }
+    await native.waitForSubmitted(executor: executor, heartQueued: 1)
+    let settle = Task { await executor.awaitSettled(openedOn: .heart) }
+    await native.waitForSettleWaiters(1)
+    armed.withLock { $0 = true }
+    native.release("m")
+    #expect(try await native.bounded(settle) == 0)
+    await #expect(throws: TranscribeCppExecutor.ExecutorError.cancelled) {
+      try await native.bounded(load)
+    }
+    #expect(try await native.bounded(running).text == "m")
+    #expect(native.log == ["enter m", "exit m"], "the discarded load never reached native code")
+    #expect(native.violations.isEmpty)
+  }
+
+  @Test("a queued load removed by its cancellation handler wakes heart settle with no later work")
+  func cancelledQueuedLoadWakesSettle() async throws {
+    let native = FakeNative()
+    let executor = TranscribeCppExecutor(makeSession: native.makeSession)
+    await native.observe(executor)
+    // Loaded on the preview lane, decoding on the heart lane: it never holds heart settle.
+    let m = try await executor.load(modelPath: "m", lane: .preview)
+    let running = Task {
+      try await executor.transcribe(m, samples: [1], language: nil, lane: .heart)
+    }
+    await native.waitForArrivals(1)
+    let load = Task { try await executor.load(modelPath: "x", lane: .heart) }
+    await native.waitForSubmitted(executor: executor, heartQueued: 1)
+    let settle = Task { await executor.awaitSettled(openedOn: .heart) }
+    await native.waitForSettleWaiters(1)
+    // The decode is still running, so `pump` cannot run: the cancellation handler removes it.
+    load.cancel()
+    #expect(try await native.bounded(settle) == 0)
+    native.release("m")
+    #expect(try await native.bounded(running).text == "m")
+    await #expect(throws: TranscribeCppExecutor.ExecutorError.cancelled) {
+      try await native.bounded(load)
+    }
+    #expect(native.violations.isEmpty)
+  }
+
+  @Test("heart preemption dropping a queued preview load wakes preview settle")
+  func preemptedPreviewLoadWakesSettle() async throws {
+    let native = FakeNative()
+    let executor = TranscribeCppExecutor(makeSession: native.makeSession)
+    await native.observe(executor)
+    let heart = try await executor.load(modelPath: "turbo", lane: .heart)
+    let p = try await executor.load(modelPath: "p", lane: .heart)
+    let previewRun = Task {
+      try await executor.transcribe(p, samples: [1], language: nil, lane: .preview)
+    }
+    await native.waitForArrivals(1)
+    let previewLoad = Task { try await executor.load(modelPath: "small", lane: .preview) }
+    await native.waitForSubmitted(executor: executor, previewQueued: 1)
+    let settle = Task { await executor.awaitSettled(openedOn: .preview) }
+    await native.waitForSettleWaiters(1)
+    let h = Task { try await executor.transcribe(heart, samples: [2], language: nil, lane: .heart) }
+    #expect(try await native.bounded(settle) == 0)
+    await #expect(throws: TranscribeCppExecutor.ExecutorError.preempted) {
+      try await native.bounded(previewLoad)
+    }
+    _ = try? await native.bounded(previewRun)
+    await native.waitForArrivals(2)
+    native.release("turbo")
+    #expect(try await native.bounded(h).text == "turbo")
+    #expect(native.violations.isEmpty)
+  }
+}
+
 // MARK: - Fake native boundary
 
 /// Shared state for every fake session: occupancy is measured ACROSS sessions, because the
@@ -436,18 +910,41 @@ private final class FakeNative: @unchecked Sendable {
   private let loadGates: [String: DispatchSemaphore]
   /// What a model's successful run returns; by default its name as text, with no segments.
   let results: [String: TranscribeCppRunResult]
+  /// #3849: frees that block inside native code until `releaseClose` (or a deadline).
+  private let closeGates: [String: DispatchSemaphore]
 
   init(
     ignoresAbort: Set<String> = [], blocksLoad: Set<String> = [],
-    results: [String: TranscribeCppRunResult] = [:]
+    blocksClose: Set<String> = [], results: [String: TranscribeCppRunResult] = [:]
   ) {
     self.ignoresAbort = ignoresAbort
     self.results = results
     self.loadGates = Dictionary(
       uniqueKeysWithValues: blocksLoad.map { ($0, DispatchSemaphore(value: 0)) })
+    self.closeGates = Dictionary(
+      uniqueKeysWithValues: blocksClose.map { ($0, DispatchSemaphore(value: 0)) })
   }
 
   func releaseLoad(_ name: String) { loadGates[name]?.signal() }
+  func releaseClose(_ name: String) { closeGates[name]?.signal() }
+
+  /// Called on the native queue by `FakeSession.close()`: a gated free parks here.
+  func waitForCloseGate(_ name: String) {
+    guard let gate = closeGates[name] else { return }
+    record("closing \(name)")
+    if !releasedAll { gate.wait() }
+  }
+
+  /// Misuse the executor must never cause: a call on a freed session, a second free, or a
+  /// free while a native call is inside.
+  var violations: [String] {
+    lock.withLock {
+      _log.filter {
+        $0.hasPrefix("use after close") || $0.hasPrefix("double close")
+          || $0.hasPrefix("close during run")
+      }
+    }
+  }
 
   var makeSession: @Sendable (String) throws -> any TranscribeCppEngineSession {
     { [self] path in
@@ -538,11 +1035,21 @@ private final class FakeNative: @unchecked Sendable {
 
   private var _depths = TranscribeCppExecutor.QueueDepths(heart: 0, preview: 0, running: false)
 
-  /// Subscribes to the executor's synchronous state announcements (its test seam).
-  func observe(_ executor: TranscribeCppExecutor) async {
+  /// #3849: waits for the executor to announce `count` parked settle callers.
+  func waitForSettleWaiters(_ count: Int, sourceLocation: SourceLocation = #_sourceLocation) async {
+    await waitUntil(sourceLocation: sourceLocation) { self._depths.settleWaiting >= count }
+  }
+
+  /// Subscribes to the executor's synchronous state announcements (its test seam). `also`
+  /// runs on the actor inside the same announcement, after the fake has recorded it.
+  func observe(
+    _ executor: TranscribeCppExecutor,
+    also: (@Sendable (TranscribeCppExecutor.QueueDepths) -> Void)? = nil
+  ) async {
     await executor.setStateObserver { [self] depths in
       lock.withLock { _depths = depths }
       notify()
+      also?(depths)
     }
   }
 
@@ -610,6 +1117,7 @@ private final class FakeNative: @unchecked Sendable {
     }
     for session in all { for _ in 0..<64 { session.gate.signal() } }
     for gate in loadGates.values { for _ in 0..<64 { gate.signal() } }
+    for gate in closeGates.values { for _ in 0..<64 { gate.signal() } }
   }
 
   private var _released = false
@@ -633,6 +1141,10 @@ private final class FakeSession: TranscribeCppEngineSession, @unchecked Sendable
   let gate = DispatchSemaphore(value: 0)
   private let lock = NSLock()
   private var _abort = false
+  /// #3849: freed sessions stay freed; the executor must never use or free one again.
+  private var _closed = false
+  /// #3849: the real language detection does not poll the abort flag (plan P7).
+  private var _inDetection = false
   var abortFlag: Bool { lock.withLock { _abort } }
 
   init(name: String, native: FakeNative) {
@@ -643,22 +1155,32 @@ private final class FakeSession: TranscribeCppEngineSession, @unchecked Sendable
   func requestAbort() {
     lock.withLock { _abort = true }
     native.record("abort \(name)")
-    // An honouring native call stops at its next poll: wake it.
-    if !native.ignoresAbort.contains(name) { gate.signal() }
+    // An honouring native call stops at its next poll: wake it. Detection never polls.
+    if !native.ignoresAbort.contains(name), !lock.withLock({ _inDetection }) { gate.signal() }
   }
 
   func clearAbort() { lock.withLock { _abort = false } }
 
+  /// Blocks like a run but ignores aborts, as `transcribe_whisper_detect_language` does.
   func detectLanguage(samples: [Float]) throws -> TranscribeCppLanguageObservation {
-    _ = try run(
-      samples: samples, language: nil, onProgress: nil, onInferenceEntered: nil, shouldStop: nil)
+    checkOpen()
+    lock.withLock { _inDetection = true }
+    native.enter(self, samples: samples)
+    if !native.releasedAll { gate.wait() }
+    native.exit(self)
+    lock.withLock { _inDetection = false }
     return TranscribeCppLanguageObservation(code: "en", logProb: -0.01)
+  }
+
+  private func checkOpen() {
+    if lock.withLock({ _closed }) { native.record("use after close \(name)") }
   }
 
   func run(
     samples: [Float], language: String?, onProgress: ((Int64, Int64) -> Void)?,
     onInferenceEntered: (() -> Void)?, shouldStop: (() -> Bool)?
   ) throws -> TranscribeCppRunResult {
+    checkOpen()
     if shouldStop?() == true { throw FakeAbort() }
     onInferenceEntered?()
     native.enter(self, samples: samples)
@@ -670,7 +1192,16 @@ private final class FakeSession: TranscribeCppEngineSession, @unchecked Sendable
       ?? TranscribeCppRunResult(text: name, detectedLanguage: nil, segments: [])
   }
 
-  func close() { native.record("close \(name)") }
+  func close() {
+    if lock.withLock({ _closed }) {
+      native.record("double close \(name)")
+      return
+    }
+    if native.inside > 0 { native.record("close during run \(name)") }
+    native.waitForCloseGate(name)
+    lock.withLock { _closed = true }
+    native.record("close \(name)")
+  }
 }
 
 private struct FakeAbort: Error {}
@@ -743,6 +1274,9 @@ struct TranscribeCppPreviewPriorityTests {
     }
     func waitForDrain(_ handle: Handle) async { await executor.waitForDrain(handle) }
     func unload(_ handle: Handle) async { await executor.unload(handle) }
+    func awaitSettled(openedOn lane: TranscribeCppExecutor.Lane) async -> Int {
+      await executor.awaitSettled(openedOn: lane)
+    }
   }
 
   /// Texts the preview publishes, with a signal for the first one.

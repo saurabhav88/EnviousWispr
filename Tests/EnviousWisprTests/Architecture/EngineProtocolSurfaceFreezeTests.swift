@@ -18,9 +18,10 @@ import Testing
 // grounding pass — see `EngineMutationInventoryFreezeTests`'s own Chunk 11
 // doc comment for the two-consecutive-Codex-round history that makes this
 // necessary): this suite freezes the exact signatures of NINE engine-facing
-// protocols and TWO known concrete-only method surfaces not declared by any
-// of the nine protocols (one, `WhisperEngineAdapter.unloadForRemoval()`,
-// is reached only via a type-cast; the other,
+// protocols and FOUR known concrete-only method surfaces not declared by any
+// of the nine protocols (three, `WhisperEngineAdapter.unloadModel()` (named
+// `unloadForRemoval()` before #3849) and #3849's `parkEngine()`/`unparkEngine()`,
+// are reached only via a type-cast; the fourth,
 // `ParakeetBackend.prepare(selection:progressCallback:)`, is reached via a
 // type-cast at one call site AND via direct, uncast construction/ownership
 // at another — `ASRServiceHandler.swift` builds and holds a concrete
@@ -30,7 +31,7 @@ import Testing
 // type, `async`/`throws`, property accessor kind, or an added overload); a
 // changed inheritance clause; a member added only via a protocol extension
 // declared in the SAME FILE as the protocol, with no matching requirement;
-// and a signature change to either pinned concrete method. It will NOT, and
+// and a signature change to any pinned concrete method. It will NOT, and
 // cannot, catch: a brand-new protocol nobody has told it about, a
 // brand-new concrete type, a new XPC route, an extension of one of these
 // nine protocols declared in a DIFFERENT file (grounded 2026-07-23: none of
@@ -44,7 +45,7 @@ import Testing
 // concrete Whisper backend, since #3735 `LiveTranscribeCppWhisperBackend`, as a
 // plain typed parameter, no cast in sight). Those
 // require the same kind of human grounding pass that found the
-// protocols and two escape hatches here — this suite is a guardrail on top
+// protocols and escape hatches here — this suite is a guardrail on top
 // of that judgment, not a replacement for it.
 @Suite struct EngineProtocolSurfaceFreezeTests {
 
@@ -346,7 +347,7 @@ import Testing
   }
 
   /// Reads `file` and pins ONE concrete method's own signature(s) by name —
-  /// used for the two known concrete escape hatches.
+  /// used for the known concrete escape hatches.
   private static func concreteMethodSurface(
     typeName: String, methodName: String, in file: String
   ) throws -> Surface {
@@ -362,7 +363,7 @@ import Testing
     return Surface(name: "\(typeName).\(methodName)", file: file, header: nil, members: members)
   }
 
-  // MARK: Frozen surfaces — the nine protocols + two concrete escape hatches
+  // MARK: Frozen surfaces — the nine protocols + four concrete escape hatches
   // grounded as of 2026-07-23 (#1741 Chunk 11). Adding an eleventh protocol
   // or a third escape hatch to this list is a deliberate grounding decision,
   // not something this suite can discover on its own — see the file-level
@@ -398,7 +399,16 @@ import Testing
     ),
     (
       "concrete", "WhisperEngineAdapter",
-      "Sources/EnviousWisprPipeline/WhisperEngineAdapter.swift", "unloadForRemoval"
+      "Sources/EnviousWisprPipeline/WhisperEngineAdapter.swift", "unloadModel"
+    ),
+    // #3849: the engine switch's park and unpark, reached through the same cast.
+    (
+      "concrete", "WhisperEngineAdapter",
+      "Sources/EnviousWisprPipeline/WhisperEngineAdapter.swift", "parkEngine"
+    ),
+    (
+      "concrete", "WhisperEngineAdapter",
+      "Sources/EnviousWisprPipeline/WhisperEngineAdapter.swift", "unparkEngine"
     ),
     ("concrete", "ParakeetBackend", "Sources/EnviousWisprASR/ParakeetBackend.swift", "prepare"),
   ]
@@ -714,6 +724,9 @@ import Testing
             "func makeStreamingSession(\n    options: TranscriptionOptions, vendorDecodeOccupancy: VendorDecodeOccupancy,\n    onDecode: ASRInferenceEntryObserver?\n  ) async -> (any WhisperIncrementalSession)?"
         ),
         MemberSignature(condition: nil, signature: "func unload() async"),
+        // #3849: the engine switch's park and unpark.
+        MemberSignature(condition: nil, signature: "func park() async -> UnloadReceipt"),
+        MemberSignature(condition: nil, signature: "func unpark() async"),
       ]),
     "WhisperIncrementalSession": Surface(
       name: "WhisperIncrementalSession",
@@ -756,6 +769,9 @@ import Testing
         ),
         MemberSignature(condition: nil, signature: "func waitForDrain(_ handle: Handle) async"),
         MemberSignature(condition: nil, signature: "func unload(_ handle: Handle) async"),
+        MemberSignature(
+          condition: nil,
+          signature: "func awaitSettled(openedOn lane: TranscribeCppExecutor.Lane) async -> Int"),
       ]),
     "ASREngineTelemetryProviding": Surface(
       name: "ASREngineTelemetryProviding",
@@ -767,11 +783,24 @@ import Testing
           signature: "var lastASRDiagnostics: KernelASRAdapterDiagnostics? { get }"),
         MemberSignature(condition: nil, signature: "var lastFailureError: (any Error)? { get }"),
       ]),
-    "WhisperEngineAdapter.unloadForRemoval": Surface(
-      name: "WhisperEngineAdapter.unloadForRemoval",
+    "WhisperEngineAdapter.unloadModel": Surface(
+      name: "WhisperEngineAdapter.unloadModel",
       file: "Sources/EnviousWisprPipeline/WhisperEngineAdapter.swift", header: nil,
       members: [
-        MemberSignature(condition: nil, signature: "package func unloadForRemoval() async")
+        MemberSignature(condition: nil, signature: "package func unloadModel() async")
+      ]),
+    "WhisperEngineAdapter.parkEngine": Surface(
+      name: "WhisperEngineAdapter.parkEngine",
+      file: "Sources/EnviousWisprPipeline/WhisperEngineAdapter.swift", header: nil,
+      members: [
+        MemberSignature(
+          condition: nil, signature: "package func parkEngine() async -> UnloadReceipt")
+      ]),
+    "WhisperEngineAdapter.unparkEngine": Surface(
+      name: "WhisperEngineAdapter.unparkEngine",
+      file: "Sources/EnviousWisprPipeline/WhisperEngineAdapter.swift", header: nil,
+      members: [
+        MemberSignature(condition: nil, signature: "package func unparkEngine() async")
       ]),
     "ParakeetBackend.prepare": Surface(
       name: "ParakeetBackend.prepare", file: "Sources/EnviousWisprASR/ParakeetBackend.swift",

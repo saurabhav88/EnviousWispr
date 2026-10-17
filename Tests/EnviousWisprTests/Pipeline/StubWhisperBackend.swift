@@ -54,6 +54,11 @@ actor StubWhisperBackend: WhisperBackendDriving {
   var observeLIDCount = 0
   var makeStreamingSessionCount = 0
   var unloadCount = 0
+  /// #3849: park state and calls. A parked stub refuses `prepare()`, as the backend does.
+  var parked = false
+  var parkCount = 0
+  var unparkCount = 0
+  var parkReceipt = UnloadReceipt(freed: 1, remaining: 0)
 
   // Signal-based waiter for `transcribeCount`. Tests await
   // `waitForTranscribeCount(1)` to know `finalize` reached the (suspended)
@@ -79,6 +84,7 @@ actor StubWhisperBackend: WhisperBackendDriving {
 
   func prepare() async throws {
     prepareCount += 1
+    if parked { throw ASRError.notReady }
     if let err = prepareThrows { throw err }
     isReady = true
   }
@@ -144,6 +150,18 @@ actor StubWhisperBackend: WhisperBackendDriving {
       return
     }
     isReady = false
+  }
+
+  func park() async -> UnloadReceipt {
+    parkCount += 1
+    parked = true
+    isReady = false
+    return parkReceipt
+  }
+
+  func unpark() async {
+    unparkCount += 1
+    parked = false
   }
 }
 

@@ -755,7 +755,7 @@ package final class WisprBootstrapper {
     // driver (and its adapter) exist; the wiring that built the coordinator ran
     // before them. L1: the drain awaits this BEFORE the delivery deletion.
     whisper.removal.unloadForRemoval = { [weak whisperKernelDriver] in
-      await whisperKernelDriver?.unloadEngineForRemoval()
+      await whisperKernelDriver?.unloadEngine()
     }
     // ONE lookup, three readers: the polish-runtime eviction rule below, the
     // import page's privacy line, and the configuration an import freezes at
@@ -1428,13 +1428,22 @@ package final class WisprBootstrapper {
         stateLabel: { [kernelDriver, whisperKernelDriver] backend in
           (backend == .whisper ? whisperKernelDriver : kernelDriver).state.telemetryLabel
         },
-        performSwitch: { [asrManager, parakeetUpgrade] backend in
+        performSwitch: { [asrManager, parakeetUpgrade, whisperKernelDriver] backend in
           // #3546 E21: an actual transition INTO Parakeet is a selection point;
           // re-selecting the already-active Parakeet is not.
           if backend == .parakeet, asrManager.activeBackendType != .parakeet {
             parakeetUpgrade.markSelectionPoint()
           }
-          await asrManager.switchBackend(to: backend)
+          await Self.switchEngine(
+            to: backend, activeBackend: { asrManager.activeBackendType },
+            parkWhisper: { await whisperKernelDriver.parkEngine() },
+            switchManager: { backend in
+              await asrManager.switchBackend(to: backend)
+            },
+            unparkWhisper: { await whisperKernelDriver.unparkEngine() },
+            log: { line in
+              await AppLogger.shared.log(line, level: .info, category: "ASR")
+            })
           SentryBreadcrumb.updateASRBackend(backend.rawValue)
           // #3546 §3.7 T3: the model tags follow the engine now active.
           ASRModelScopeOwner.shared.activate(backend)
@@ -1473,6 +1482,7 @@ package final class WisprBootstrapper {
     }
     // #3546 A3: an activation deferred because the engine lease was held (a speed test, a
     // decode still finishing for an abandoned take) is offered again when it is released.
+    // #3849: every poke re-runs every gate, so a switch deferred by gate 6c applies here too.
     engineLease.onReleased = { [weak engineCoordinator] in
       engineCoordinator?.poke(.parakeetUpgradeOwed)
     }
@@ -2481,6 +2491,9 @@ package final class WisprBootstrapper {
     // #3269: the stored switches decide whether PostHog starts and Sentry's mode for this run.
     ObservabilityBootstrap.initialize(
       usageMetrics: settings.shareUsageMetrics, crashReports: settings.sendCrashReports)
+    // #3849: the previous quit's model-release timeout note, if any: removed, and reported only
+    // when crash reports are on (this build's namespace only).
+    ModelReleaseTimeoutNote.consumeAtLaunch(crashReportsEnabled: settings.sendCrashReports)
     // #3269: the local diagnostics diary records whatever the switches say; it never uploads.
     TelemetryService.shared.activateDiagnosticsDiary()
     // #3269: saved bug reports are delivered on their own, independent of both switches.
@@ -2681,6 +2694,11 @@ package final class WisprBootstrapper {
       // Live read so a just-before-quit grant isn't logged denied (cloud Codex r3).
       accessibilityStatus: permissions.accessibilityGrantedLive ? "granted" : "denied")
     appLifecycleCoordinator.runWillTerminate()
+    // #3849: LAST, synchronously, after every step above: free every transcribe.cpp model
+    // (Whisper, Universal Live Preview) so the Metal device destructor at exit finds none
+    // alive. Returns when all are freed; a native call stuck past the 2 s bound ends the
+    // process here instead, after a note the next launch reports.
+    TranscribeCppProcessExit.releaseBeforeExit()
   }
 
   // MARK: - Window titles (so the shell needs no EnviousWisprCore dependency)
@@ -2699,6 +2717,39 @@ package final class WisprBootstrapper {
 
   package func onboardingWindowContent() -> some View {
     OnboardingWindowRoot(b: self)
+  }
+}
+
+// MARK: - Engine switch sequence (#3849)
+
+extension WisprBootstrapper {
+  /// #3849: the switch `EngineCoordinator` performs at step 7 (`performSwitch`). Away from
+  /// Whisper, Whisper parks and its model is physically freed before the manager switches, so
+  /// the replacement engine's warm (coordinator step 8) never runs beside it. Toward Whisper,
+  /// Whisper stays parked while the manager unloads the outgoing engine, and is unparked only
+  /// once it is the active engine, before this returns. No time limit: the switch waits for
+  /// physical cleanup (quit has its own bound).
+  static func switchEngine(
+    to backend: ASRBackendType,
+    activeBackend: () -> ASRBackendType,
+    parkWhisper: () async -> UnloadReceipt?,
+    switchManager: (ASRBackendType) async -> Void,
+    unparkWhisper: () async -> Void,
+    log: (String) async -> Void
+  ) async {
+    if activeBackend() == .whisper, backend != .whisper {
+      if let receipt = await parkWhisper() {
+        await log(
+          "Whisper model released for engine switch freed=\(receipt.freed) "
+            + "remaining=\(receipt.remaining)")
+      } else {
+        await log("Whisper model release for engine switch: no Whisper engine to park")
+      }
+    }
+    await switchManager(backend)
+    if backend == .whisper, activeBackend() == .whisper {
+      await unparkWhisper()
+    }
   }
 }
 

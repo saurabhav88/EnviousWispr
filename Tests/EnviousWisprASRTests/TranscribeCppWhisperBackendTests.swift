@@ -18,12 +18,19 @@ struct TranscribeCppWhisperBackendTests {
 
   fileprivate static func makeBackend(
     _ driver: FakeWhisperDriver, path: String? = "turbo.gguf",
-    authorize: Backend.UnloadAuthorizer? = nil, warmupDeadline: Double = 5
+    authorize: Backend.UnloadAuthorizer? = nil, warmupDeadline: Double = 5,
+    loadsAfterPressureBinding: Bool = false, initiallyParked: Bool = false
   ) -> Backend {
     Backend(
       driver: driver, modelVariant: "whisper-large-v3-turbo-Q8_0",
       admittedModelPath: { path }, modelIdentity: nil, scopeDelivery: nil,
-      authorizeUnload: authorize, warmupDeadlineSeconds: warmupDeadline)
+      authorizeUnload: authorize, warmupDeadlineSeconds: warmupDeadline,
+      loadsAfterPressureBinding: loadsAfterPressureBinding, initiallyParked: initiallyParked)
+  }
+
+  /// The backend's parked-caller announcements, recorded in the driver's log.
+  fileprivate static func observe(_ backend: Backend, into driver: FakeWhisperDriver) async {
+    await backend.setTestEventObserver { event in driver.record("event \(event)") }
   }
 
   static func run(
@@ -86,19 +93,95 @@ struct TranscribeCppWhisperBackendTests {
     #expect(await backend.lastWarmupInferenceMs == nil)
   }
 
-  @Test("an unload during the load frees the late model and the stale load reports superseded")
+  @Test("an unload during a native load returns only after the late model is physically freed")
   func lateLoadIsFreed() async throws {
     let driver = FakeWhisperDriver()
     driver.holdLoad("turbo.gguf")
     let backend = Self.makeBackend(driver)
     let prepare = Task { try await backend.prepare() }
     await driver.waitForLog("load turbo.gguf")
-    await backend.unload()
+    let unload = Task { await backend.unloadAndSettle() }
+    // The cancelled caller left at once (as the executor releases it); the native open goes on.
+    await #expect(throws: CancellationError.self) { try await driver.bounded(prepare) }
+    await driver.waitForLog("settle-wait")
+    #expect(!driver.log.contains("orphan-free 1"), "control: the native open is still running")
+    await #expect(throws: ASRError.self, "admission stays closed while the unload settles") {
+      try await backend.prepare()
+    }
     driver.releaseLoad("turbo.gguf")
-    await #expect(throws: (any Error).self) { try await driver.bounded(prepare) }
-    #expect(driver.log.contains("unload 1"), "the stale model must be freed, never leaked")
+    #expect(try await driver.bounded(unload) == UnloadReceipt(freed: 0, remaining: 0))
+    #expect(driver.log.contains("orphan-free 1"), "the stale model must be freed, never leaked")
     #expect(!driver.log.contains("enter 1 lang=nil samples=16000"), "no warm-up on a stale model")
     #expect(await backend.isReady == false)
+  }
+
+  @Test("an unload joins a load still travelling to the executor before it settles")
+  func unloadJoinsBlockedLoad() async throws {
+    let driver = FakeWhisperDriver()
+    driver.holdArrival("turbo.gguf")
+    driver.holdLoad("turbo.gguf")
+    let backend = Self.makeBackend(driver)
+    let prepare = Task { try await backend.prepare() }
+    await driver.waitForLog("travelling turbo.gguf")
+    let unload = Task { await backend.unloadAndSettle() }
+    await driver.waitForLog("cancel-seen turbo.gguf")
+    driver.releaseArrival("turbo.gguf")
+    await #expect(throws: CancellationError.self) { try await driver.bounded(prepare) }
+    // Settling started only after the load reached the executor, so it waits for that open.
+    await driver.waitForLog("settle-wait")
+    let log = driver.log
+    #expect(log.firstIndex(of: "arrived turbo.gguf")! < log.firstIndex(of: "settle-wait")!)
+    driver.releaseLoad("turbo.gguf")
+    #expect(try await driver.bounded(unload) == UnloadReceipt(freed: 0, remaining: 0))
+    #expect(driver.log.contains("orphan-free 1"))
+  }
+
+  @Test("an unload of a resident model returns only after its free, with admission closed")
+  func unloadWaitsForPhysicalFreeAndSettlement() async throws {
+    let driver = FakeWhisperDriver()
+    let backend = Self.makeBackend(driver)
+    try await backend.prepare()
+    driver.holdUnloads()
+    let unload = Task { await backend.unloadAndSettle() }
+    await driver.waitForLog("unloading 1")
+    await #expect(throws: ASRError.self) { try await backend.prepare() }
+    driver.releaseUnloads()
+    #expect(try await driver.bounded(unload) == UnloadReceipt(freed: 1, remaining: 0))
+    #expect(driver.log.last == "unload 1")
+    try await backend.prepare()
+    #expect(await backend.isReady, "an unparked backend reopens after the teardown")
+  }
+
+  @Test("an unload joins a warm-up that outlives its cancellation; the load frees its own model")
+  func unloadJoinsWarmupTask() async throws {
+    let driver = FakeWhisperDriver()
+    driver.holdRuns(ignoringCancel: true)
+    let backend = Self.makeBackend(driver)
+    let prepare = Task { try await backend.prepare() }
+    await driver.waitForLog("enter 1 lang=nil samples=16000")
+    let unload = Task { await backend.unloadAndSettle() }
+    await driver.waitForLog("run-cancel-seen 1")
+    await #expect(throws: ASRError.self) { try await backend.prepare() }
+    driver.releaseRuns()
+    #expect(try await driver.bounded(unload) == UnloadReceipt(freed: 0, remaining: 0))
+    await #expect(throws: (any Error).self) { try await driver.bounded(prepare) }
+    #expect(driver.log.contains("unload 1"))
+    #expect(!driver.log.contains("abort 1"), "the warm-up ended before its model was freed")
+  }
+
+  @Test("an unload joins a timed-out warm-up still running natively before it frees the model")
+  func unloadJoinsOrphanWarmup() async throws {
+    let driver = FakeWhisperDriver()
+    driver.holdRuns(ignoringCancel: true)
+    let backend = Self.makeBackend(driver, warmupDeadline: 0.2)
+    try await backend.prepare()  // fail-open ready after the warm-up ceiling
+    #expect(await backend.isReady)
+    let unload = Task { await backend.unloadAndSettle() }
+    await driver.waitForLog("run-cancel-seen 1")
+    #expect(!driver.log.contains("unloading 1"), "the free waits for the orphan warm-up")
+    driver.releaseRuns()
+    #expect(try await driver.bounded(unload) == UnloadReceipt(freed: 1, remaining: 0))
+    #expect(!driver.log.contains("abort 1"), "the orphan warm-up ended before its model was freed")
   }
 
   @Test("an unload during the warm-up frees the model and readiness never flips")
@@ -537,20 +620,94 @@ struct TranscribeCppWhisperBackendTests {
   func prepareDuringTeardown() async throws {
     let driver = FakeWhisperDriver()
     let backend = Self.makeBackend(driver)
+    await Self.observe(backend, into: driver)
     try await backend.prepare()
     driver.holdUnloads()
-    let first = Task { await backend.unload() }
+    let first = Task { await backend.unloadAndSettle() }
     await driver.waitForLog("unloading 1")
     await #expect(throws: ASRError.self) { try await backend.prepare() }
-    let second = Task { await backend.unload() }
+    let second = Task { await backend.unloadAndSettle() }
+    await driver.waitForLog("event joinedUnload")
     driver.releaseUnloads()
-    try await driver.bounded(first)
-    try await driver.bounded(second)
+    let receipt = UnloadReceipt(freed: 1, remaining: 0)
+    #expect(try await driver.bounded(first) == receipt)
+    #expect(try await driver.bounded(second) == receipt, "a joined caller gets the one receipt")
     #expect(driver.log.filter { $0.hasPrefix("unload") } == ["unloading 1", "unload 1"])
     #expect(driver.log.filter { $0.hasPrefix("load ") }.count == 1, "no replacement load ran")
     // Admission reopens after the teardown.
     try await backend.prepare()
     #expect(await backend.isReady)
+  }
+
+  // MARK: - Engine switch park (#3849)
+
+  @Test(
+    "the engine selected at launch decides whether Whisper may warm; unpark admits it",
+    arguments: [true, false])
+  func initialParkDecidesPrepare(initiallyParked: Bool) async throws {
+    let driver = FakeWhisperDriver()
+    let backend = Self.makeBackend(driver, initiallyParked: initiallyParked)
+    if initiallyParked {
+      await #expect(throws: ASRError.self) { try await backend.prepare() }
+      #expect(driver.log.isEmpty, "a parked engine never reaches the native load")
+      await backend.unpark()
+    }
+    try await backend.prepare()
+    #expect(await backend.isReady)
+  }
+
+  @Test("park refuses a warm waiting for the pressure binding when that wait ends")
+  func parkRefusesDelayedPrepare() async throws {
+    let driver = FakeWhisperDriver()
+    let backend = Self.makeBackend(driver, loadsAfterPressureBinding: true)
+    await Self.observe(backend, into: driver)
+    let prepare = Task { try await backend.prepare() }
+    await driver.waitForLog("event waitingForPressureBinding")
+    #expect(await backend.park() == UnloadReceipt(freed: 0, remaining: 0))
+    await backend.bindMemoryPressure(authorizer: { _ in false })
+    await #expect(throws: ASRError.self) { try await driver.bounded(prepare) }
+    #expect(!driver.log.contains("load turbo.gguf"))
+  }
+
+  @Test("park refuses a warm scheduled before it and entered after it; parking outlives unload")
+  func parkRefusesPreviouslyScheduledPrepare() async throws {
+    let driver = FakeWhisperDriver()
+    let backend = Self.makeBackend(driver)
+    try await backend.prepare()
+    let gate = AsyncGate(open: false)
+    let warm = Task {
+      await gate.wait()
+      try await backend.prepare()
+    }
+    #expect(await backend.park() == UnloadReceipt(freed: 1, remaining: 0))
+    gate.open()
+    await #expect(throws: ASRError.self) { try await driver.bounded(warm) }
+    // A later ordinary unload completes without reopening a parked engine.
+    await backend.unload()
+    await #expect(throws: ASRError.self) { try await backend.prepare() }
+    #expect(driver.log.filter { $0.hasPrefix("load ") }.count == 1)
+    await backend.unpark()
+    try await backend.prepare()
+    #expect(await backend.isReady, "unpark reopens loading")
+  }
+
+  @Test("a park during an unload already running joins it and keeps Whisper parked")
+  func concurrentUnloadReceipts() async throws {
+    let driver = FakeWhisperDriver()
+    let backend = Self.makeBackend(driver)
+    await Self.observe(backend, into: driver)
+    try await backend.prepare()
+    driver.holdUnloads()
+    let unload = Task { await backend.unloadAndSettle() }
+    await driver.waitForLog("unloading 1")
+    let park = Task { await backend.park() }
+    await driver.waitForLog("event joinedUnload")
+    driver.releaseUnloads()
+    #expect(try await driver.bounded(unload) == UnloadReceipt(freed: 1, remaining: 0))
+    #expect(try await driver.bounded(park) == UnloadReceipt(freed: 1, remaining: 0))
+    await #expect(throws: ASRError.self, "the teardown's end does not clear the park") {
+      try await backend.prepare()
+    }
   }
 
   @Test("pressure that arrives during the load is serviced once the model is ready")
@@ -712,14 +869,17 @@ private final class FirstResult<Value: Sendable>: @unchecked Sendable {
   private var stored: Value?
   private var waiter: CheckedContinuation<Value, Never>?
 
-  func fulfil(_ value: Value) {
-    let waiting = lock.withLock { () -> CheckedContinuation<Value, Never>? in
-      guard stored == nil else { return nil }
+  /// Returns whether this value won.
+  @discardableResult
+  func fulfil(_ value: Value) -> Bool {
+    let (won, waiting) = lock.withLock { () -> (Bool, CheckedContinuation<Value, Never>?) in
+      guard stored == nil else { return (false, nil) }
       stored = value
       defer { waiter = nil }
-      return waiter
+      return (true, waiter)
     }
     waiting?.resume(returning: value)
+    return won
   }
 
   func value() async -> Value {
@@ -736,7 +896,9 @@ private final class FirstResult<Value: Sendable>: @unchecked Sendable {
 
 /// A fake executor driver. Native work runs in its own task: a cancelled caller is released
 /// at once with `.cancelled` (as the real executor does) while the "native" call keeps running
-/// until the test releases it, and `waitForDrain` waits for that return.
+/// until the test releases it, and `waitForDrain` waits for that return. A native open whose
+/// caller left is freed when it returns ("orphan-free"), and `awaitSettled` waits until no open
+/// runs and no opened model is alive, as the executor's registry does (#3849).
 private final class FakeWhisperDriver: WhisperExecutorDriving, @unchecked Sendable {
   typealias Handle = Int
 
@@ -744,6 +906,12 @@ private final class FakeWhisperDriver: WhisperExecutorDriving, @unchecked Sendab
   private var _log: [String] = []
   private var nextHandle = 1
   private var loadGates: [String: AsyncGate] = [:]
+  /// Holds a load before it reaches the executor (still travelling from the backend).
+  private var arrivalGates: [String: AsyncGate] = [:]
+  private var opening = 0
+  private var live: Set<Int> = []
+  private var settleWaiters: [CheckedContinuation<Int, Never>] = []
+  private var runsIgnoreCancel = false
   private var runGate = AsyncGate(open: true)
   private var unloadGate = AsyncGate(open: true)
   private var nativeRunning: [Int: Int] = [:]
@@ -788,7 +956,15 @@ private final class FakeWhisperDriver: WhisperExecutorDriving, @unchecked Sendab
 
   func holdLoad(_ path: String) { lock.withLock { loadGates[path] = AsyncGate(open: false) } }
   func releaseLoad(_ path: String) { lock.withLock { loadGates[path] }?.open() }
-  func holdRuns() { lock.withLock { runGate = AsyncGate(open: false) } }
+  func holdArrival(_ path: String) { lock.withLock { arrivalGates[path] = AsyncGate(open: false) } }
+  func releaseArrival(_ path: String) { lock.withLock { arrivalGates[path] }?.open() }
+  /// `ignoringCancel`: a cancelled caller stays until the run returns (records the cancel).
+  func holdRuns(ignoringCancel: Bool = false) {
+    lock.withLock {
+      runGate = AsyncGate(open: false)
+      runsIgnoreCancel = ignoringCancel
+    }
+  }
   func holdUnloads() { lock.withLock { unloadGate = AsyncGate(open: false) } }
   func releaseUnloads() { lock.withLock { unloadGate }.open() }
 
@@ -836,12 +1012,40 @@ private final class FakeWhisperDriver: WhisperExecutorDriving, @unchecked Sendab
   // MARK: WhisperExecutorDriving
 
   func load(modelPath: String, lane: TranscribeCppExecutor.Lane) async throws -> Int {
+    if let arrival = lock.withLock({ arrivalGates[modelPath] }) {
+      record("travelling \(modelPath)")
+      await withTaskCancellationHandler {
+        await arrival.wait()
+      } onCancel: {
+        self.record("cancel-seen \(modelPath)")
+      }
+      record("arrived \(modelPath)")
+    }
+    let gate = lock.withLock { () -> AsyncGate? in
+      opening += 1
+      return loadGates[modelPath]
+    }
     record("load \(modelPath)")
-    if let gate = lock.withLock({ loadGates[modelPath] }) { await gate.wait() }
-    if let failure = failLoad { throw failure }
-    return lock.withLock {
-      defer { nextHandle += 1 }
-      return nextHandle
+    let result = FirstResult<Result<Int, any Error>>()
+    Task {
+      if let gate { await gate.wait() }
+      let opened: Result<Int, any Error> = lock.withLock {
+        opening -= 1
+        if let failure = _failLoad { return .failure(failure) }
+        defer { nextHandle += 1 }
+        live.insert(nextHandle)
+        return .success(nextHandle)
+      }
+      if !result.fulfil(opened), case .success(let handle) = opened {
+        lock.withLock { _ = live.remove(handle) }
+        self.record("orphan-free \(handle)")
+      }
+      self.lifetimeChanged()
+    }
+    return try await withTaskCancellationHandler {
+      try await result.value().get()
+    } onCancel: {
+      result.fulfil(.failure(TranscribeCppExecutor.ExecutorError.cancelled))
     }
   }
 
@@ -878,10 +1082,15 @@ private final class FakeWhisperDriver: WhisperExecutorDriving, @unchecked Sendab
       self.endNative(handle)
       result.fulfil(value)
     }
+    let ignoresCancel = lock.withLock { runsIgnoreCancel }
     return try await withTaskCancellationHandler {
       try await result.value().get()
     } onCancel: {
-      result.fulfil(.failure(TranscribeCppExecutor.ExecutorError.cancelled))
+      if ignoresCancel {
+        self.record("run-cancel-seen \(handle)")
+      } else {
+        result.fulfil(.failure(TranscribeCppExecutor.ExecutorError.cancelled))
+      }
     }
   }
 
@@ -914,9 +1123,39 @@ private final class FakeWhisperDriver: WhisperExecutorDriving, @unchecked Sendab
     record("unloading \(handle)")
     await lock.withLock { unloadGate }.wait()
     // The real executor aborts running work first; here the test's held run is released.
-    if lock.withLock({ nativeRunning[handle, default: 0] > 0 }) { releaseRuns() }
+    if lock.withLock({ nativeRunning[handle, default: 0] > 0 }) {
+      record("abort \(handle)")
+      releaseRuns()
+    }
     await waitForDrain(handle)
+    lock.withLock { _ = live.remove(handle) }
     record("unload \(handle)")
+    lifetimeChanged()
+  }
+
+  /// Every test load runs on the heart lane, so one registry stands for it.
+  func awaitSettled(openedOn lane: TranscribeCppExecutor.Lane) async -> Int {
+    await withCheckedContinuation { continuation in
+      let settled = lock.withLock { () -> Bool in
+        if opening == 0, live.isEmpty { return true }
+        settleWaiters.append(continuation)
+        return false
+      }
+      if settled {
+        continuation.resume(returning: 0)
+      } else {
+        record("settle-wait")
+      }
+    }
+  }
+
+  private func lifetimeChanged() {
+    let ready = lock.withLock { () -> [CheckedContinuation<Int, Never>] in
+      guard opening == 0, live.isEmpty else { return [] }
+      defer { settleWaiters = [] }
+      return settleWaiters
+    }
+    for waiter in ready { waiter.resume(returning: 0) }
   }
 
   // MARK: Bounded waits
@@ -939,7 +1178,9 @@ private final class FakeWhisperDriver: WhisperExecutorDriving, @unchecked Sendab
       Issue.record("the task never completed", sourceLocation: sourceLocation)
       releaseRuns()
       releaseUnloads()
-      for gate in lock.withLock({ Array(loadGates.values) }) { gate.open() }
+      for gate in lock.withLock({ Array(loadGates.values) + Array(arrivalGates.values) }) {
+        gate.open()
+      }
     }
     return try outcome.get()
   }

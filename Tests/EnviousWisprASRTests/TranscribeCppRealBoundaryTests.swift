@@ -42,12 +42,22 @@ private enum TranscribeCppRealBoundaryFixture {
 
   /// Binds the run to the approved #3705 turbo Q8_0 candidate, not merely a same-size file.
   static func requireExpectedModel() throws {
-    let data = try Data(contentsOf: URL(filePath: modelPath), options: .mappedIfSafe)
-    let digest = SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
-    try #require(
-      digest == "b2e30cc286bc9f3aba4db9099fc7403543497c05ce7100d0d83091ddfd25a183",
-      "requires the approved turbo Q8_0 model")
+    try #require(try modelDigestMatches(), "requires the approved turbo Q8_0 model")
   }
+
+  /// The identity check alone, for a child process that must not record test issues (#3849).
+  static func modelDigestMatches(at path: String = modelPath) throws -> Bool {
+    let data = try Data(contentsOf: URL(filePath: path), options: .mappedIfSafe)
+    let digest = SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+    return digest == "b2e30cc286bc9f3aba4db9099fc7403543497c05ce7100d0d83091ddfd25a183"
+  }
+
+  static let expectedWords =
+    "the quick brown fox jumps over the lazy dog while the morning sun rises slowly above the quiet hills"
+
+  /// #3849: true whenever a file is there, right or wrong, so a truncated or wrong model reaches
+  /// the identity check and fails instead of skipping. Only a missing file skips.
+  static var modelFileExists: Bool { FileManager.default.fileExists(atPath: modelPath) }
 
   static var modelIsPresent: Bool {
     let size = (try? FileManager.default.attributesOfItem(atPath: modelPath)[.size]) as? NSNumber
@@ -215,6 +225,73 @@ struct TranscribeCppExecutorRealBoundaryTests {
     await executor.unload(model)
     #expect(await executor.counters.freed == 1)
   }
+
+  /// #3849 plan §11 item 2: the crash on quit itself. A child process loads the real model,
+  /// decodes, keeps the model loaded, runs the quit release, and then calls the normal `exit(0)`,
+  /// which runs the static ggml Metal device destructor that asserted while a session was alive.
+  /// The child's receipt is written only after every check passed, and the parent also requires
+  /// a normal status-zero termination, so a check that failed, a crash in the destructor, or a
+  /// child that never ran all fail this test.
+  @Test(
+    "a real model freed by the quit release lets the process exit normally (#3849)",
+    .enabled(if: TranscribeCppRealBoundaryFixture.modelFileExists),
+    .tags(.realBoundary), .timeLimit(.minutes(3))
+  )
+  func realModelReleaseSurvivesNormalExit() async throws {
+    let token = UUID().uuidString
+    let modelPath = TranscribeCppRealBoundaryFixture.modelPath
+    let audioPath = TranscribeCppRealBoundaryFixture.audioURL.path
+    let observed = await #expect(
+      processExitsWith: .success, observing: [\.standardOutputContent, \.standardErrorContent]
+    ) {
+      [token = token as String, modelPath = modelPath as String, audioPath = audioPath as String]
+      in
+      await Self.releaseThenExitChild(token: token, modelPath: modelPath, audioPath: audioPath)
+    }
+    let result = try #require(observed)
+    let lines = String(decoding: result.standardOutputContent, as: UTF8.self)
+      .split(separator: "\n").map(String.init)
+    #expect(
+      lines.filter { $0.hasPrefix("release-receipt ") } == ["release-receipt \(token)"],
+      "stderr: \(String(decoding: result.standardErrorContent, as: UTF8.self))")
+  }
+
+  /// The child body. Records no test issues: any failed check writes its step to stderr and
+  /// ends with a nonzero status, never `exit(0)`.
+  private static func releaseThenExitChild(token: String, modelPath: String, audioPath: String)
+    async
+  {
+    // Owned bound: a hung child ends itself rather than outliving the parent's wait.
+    DispatchQueue.global().asyncAfter(deadline: .now() + 120) { childFail("watchdog") }
+    guard (try? TranscribeCppRealBoundaryFixture.modelDigestMatches(at: modelPath)) == true else {
+      childFail("model identity")
+    }
+    guard let samples = try? AudioConverter().resampleAudioFile(path: audioPath) else {
+      childFail("clip")
+    }
+    let executor = TranscribeCppExecutor()
+    guard let model = try? await executor.load(modelPath: modelPath, lane: .heart) else {
+      childFail("load")
+    }
+    guard
+      let run = try? await executor.transcribe(model, samples: samples, language: nil, lane: .heart)
+    else { childFail("decode") }
+    let words = run.text.lowercased()
+      .split(whereSeparator: { !$0.isLetter && !$0.isNumber }).joined(separator: " ")
+    guard words == TranscribeCppRealBoundaryFixture.expectedWords else { childFail("words") }
+    // The model stays loaded: the quit release must free it.
+    guard case .released(sessions: 1, _) = executor.releaseAllForTermination(timeout: .seconds(2))
+    else { childFail("release") }
+    FileHandle.standardOutput.write(Data("release-receipt \(token)\n".utf8))
+    exit(0)
+  }
+}
+
+/// A child-process check failed: names the step on stderr and ends with status 1, so the
+/// parent's success condition can never be met after it (#3849).
+func childFail(_ step: String) -> Never {
+  FileHandle.standardError.write(Data("child failed: \(step)\n".utf8))
+  _exit(1)
 }
 
 /// #3735 plan §3.2 on real bytes: the Whisper backend through the live executor driver.

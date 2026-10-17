@@ -66,6 +66,51 @@ import Testing
     #expect(adapter.readiness == .ready)
   }
 
+  // MARK: #3849 — Remove unload and engine-switch park
+
+  @Test("Remove's unloadModel cancels pending model work, unloads, and leaves loading open")
+  func unloadModelPreservesRemoveCleanup() async throws {
+    let backend = StubWhisperBackend()
+    let adapter = WhisperEngineAdapter(
+      backend: backend, engineMutationScope: .alwaysAllowedForTesting)
+    try await adapter.warmUp(modelReceipt: nil)
+    #expect(adapter.readiness == .ready)
+    await adapter.unloadModel()
+    #expect(adapter.readiness == .notReady)
+    #expect(await backend.unloadCount == 1)
+    #expect(await backend.parkCount == 0, "Remove does not park the engine")
+    try await adapter.warmUp(modelReceipt: nil)
+    #expect(adapter.readiness == .ready, "a Remove leaves the next download free to load")
+  }
+
+  @Test("parkEngine returns the backend's receipt, marks the engine not ready, and refuses warms")
+  func parkEngineForwardsReceiptAndInvalidatesReadiness() async throws {
+    let backend = StubWhisperBackend()
+    let adapter = WhisperEngineAdapter(
+      backend: backend, engineMutationScope: .alwaysAllowedForTesting)
+    try await adapter.warmUp(modelReceipt: nil)
+    #expect(adapter.readiness == .ready)
+    #expect(await adapter.parkEngine() == UnloadReceipt(freed: 1, remaining: 0))
+    #expect(adapter.readiness == .notReady)
+    #expect(await backend.parkCount == 1)
+    #expect(await backend.unloadCount == 0, "the park is the one teardown")
+    await #expect(throws: (any Error).self) { try await adapter.warmUp(modelReceipt: nil) }
+    #expect(adapter.readiness != .ready, "a parked engine never becomes ready")
+  }
+
+  @Test("unparkEngine reopens loading without claiming the model is ready")
+  func unparkEngineForwards() async throws {
+    let backend = StubWhisperBackend()
+    let adapter = WhisperEngineAdapter(
+      backend: backend, engineMutationScope: .alwaysAllowedForTesting)
+    _ = await adapter.parkEngine()
+    await adapter.unparkEngine()
+    #expect(await backend.unparkCount == 1)
+    #expect(adapter.readiness == .notReady, "nothing is loaded until the next warm")
+    try await adapter.warmUp(modelReceipt: nil)
+    #expect(adapter.readiness == .ready)
+  }
+
   // MARK: #959 — heavy recoverFromWedge() (best-effort, deadline-bounded)
 
   @Test("#959 recoverFromWedge() tears the engine down to .notReady for a fresh reload")

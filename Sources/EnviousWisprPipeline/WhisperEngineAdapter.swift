@@ -1119,20 +1119,43 @@ final class WhisperEngineAdapter: ASREngineAdapter, @unchecked Sendable {
   /// Deliberately NOT `recoverFromWedge()`: that path is deadline-bounded and
   /// fail-open — an abandoned unload is acceptable for wedge recovery, but a
   /// Remove must have the model genuinely released (inference stopped, memory
-  /// and disk reclaimable) before deletion proceeds.
+  /// and disk reclaimable) before deletion proceeds. The engine switch uses
+  /// `parkEngine()`, which shares this cleanup and also refuses later loads.
   ///
-  /// It does NOT drain a wedged CoreML task beyond `unload()`'s own semantics
-  /// (ACCEPTED, plan §5c.2/§6.3 — reviewers re-derive this): deleting under a
-  /// surviving mapping is safe (unlink keeps the inode until the last holder
-  /// exits; no SIGBUS), so the worst case is disk space lingering until the
-  /// wedged task dies. Blocking Remove on an unbounded CoreML drain would
-  /// trade that bounded delay for an unbounded UI hang.
-  package func unloadForRemoval() async {
+  /// #3849: the backend's teardown returns only after every native session its
+  /// loads opened is closed, with no timeout (the executor aborts running work
+  /// first). This supersedes the WhisperKit-era limit recorded here (#1386
+  /// plan §5c.2/§6.3: Remove did not drain a wedged CoreML task, to avoid an
+  /// unbounded UI hang): a native call that never returns now holds Remove
+  /// until it ends. Deleting under a surviving mapping stays safe (unlink keeps
+  /// the inode until the last holder exits; no SIGBUS).
+  package func unloadModel() async {
     await cancel()
-    modelUnloadTask?.cancel()
-    modelUnloadTask = nil
+    cancelPendingModelWork()
     await backend.unload()
     cachedReadiness = .notReady
+  }
+
+  /// #3849: the engine switch away from Whisper. The same cleanup as `unloadModel()`, then
+  /// the backend parks (no load until `unparkEngine()`) and frees the model physically.
+  /// Returns the backend's receipt.
+  package func parkEngine() async -> UnloadReceipt {
+    await cancel()
+    cancelPendingModelWork()
+    let receipt = await backend.park()
+    cachedReadiness = .notReady
+    return receipt
+  }
+
+  /// #3849: Whisper is the active engine again; the next warm may load. Readiness is
+  /// unchanged: nothing is loaded until that warm.
+  package func unparkEngine() async {
+    await backend.unpark()
+  }
+
+  private func cancelPendingModelWork() {
+    modelUnloadTask?.cancel()
+    modelUnloadTask = nil
   }
 
   // MARK: ASREngineAdapter — cleanup
@@ -1722,6 +1745,11 @@ package protocol WhisperBackendDriving: Actor {
     onDecode: ASRInferenceEntryObserver?
   ) async -> (any WhisperIncrementalSession)?
   func unload() async
+  /// #3849: engine switch away from Whisper. Refuses every later load until `unpark()`, then
+  /// unloads; returns once every native session its loads opened is closed.
+  func park() async -> UnloadReceipt
+  /// #3849: Whisper is the active engine again; loads are admitted. Loads nothing itself.
+  func unpark() async
 }
 
 // #3735 §3.2: the transcribe.cpp backend drives the adapter. Its streaming vend is the

@@ -345,6 +345,70 @@ public enum SentryBreadcrumb {
     return event
   }
 
+  /// #3849: one error event for a consumed timeout note. Built directly (as `reportAIFailure`
+  /// is) rather than through `makeHandledErrorEvent`, whose merged extras would add ambient
+  /// context: this event carries the note's declared fields and nothing else.
+  ///
+  /// It is sent by the NEXT launch, so the event takes its release and time from the note (the
+  /// quit that timed out, possibly an older version) and drops what describes the reporting
+  /// launch (`scopeForModelReleaseTimeout`). The install-level scope stays.
+  public static func captureModelReleaseTimeout(_ note: ModelReleaseTimeoutNote) {
+    guard ObservabilityBootstrap.lifecycle.isSentryRunning else { return }
+    SentrySDK.capture(event: makeModelReleaseTimeoutEvent(note)) { scope in
+      scopeForModelReleaseTimeout(scope)
+    }
+  }
+
+  /// Tags that describe the install and the app, true of the failed quit too. Every other tag
+  /// on the reporting launch's scope (`process.launch_id`, `synthetic` fault injection, engine,
+  /// route, take, recording, model) describes that launch.
+  nonisolated static let modelReleaseTimeoutInstallTags: Set<String> = [
+    "app.role", "process.role", "crash.context_schema", "app.build_type",
+    ObservabilityBootstrap.joinTagKey,
+  ]
+
+  /// The reporting launch's state is not the failed quit's, so this event's scope copy keeps
+  /// only the install tags above and the user: every other tag, every context the app wrote
+  /// (the `polish` context `initialize` writes, and any later one) and every breadcrumb go.
+  /// An allowlist, so a scope writer added later cannot leak into this event.
+  nonisolated static func scopeForModelReleaseTimeout(_ scope: Scope) {
+    let serialized = scope.serialize()
+    for key in (serialized["tags"] as? [String: Any] ?? [:]).keys
+    where !modelReleaseTimeoutInstallTags.contains(key) {
+      scope.removeTag(key: key)
+    }
+    for key in (serialized["context"] as? [String: Any] ?? [:]).keys {
+      scope.removeContext(key: key)
+    }
+    scope.clearBreadcrumbs()
+  }
+
+  /// Pure, so a test asserts the exact wire shape. Grouping is split by environment as the
+  /// handled-error fingerprint is (`handledErrorFingerprint`), so a dev-machine occurrence
+  /// never absorbs a real user's.
+  nonisolated static func makeModelReleaseTimeoutEvent(
+    _ note: ModelReleaseTimeoutNote,
+    environment: String = ObservabilityBootstrap.currentEnvironment
+  ) -> Event {
+    let event = Event(level: .error)
+    event.message = SentryMessage(formatted: "model_release_timeout")
+    event.tags = ["diagnostic.kind": "model_release_timeout"]
+    var extra: [String: Any] = [
+      "bundleIdentifier": note.bundleIdentifier,
+      "environment": note.environment,
+      "appVersion": note.appVersion,
+      "timestamp": ISO8601DateFormatter().string(from: note.timestamp),
+      "boundMs": note.boundMs,
+    ]
+    if let sessions = note.sessions { extra["sessions"] = sessions }
+    event.extra = extra
+    event.fingerprint = ["model_release_timeout", environment]
+    event.releaseName = ObservabilityBootstrap.sentryReleaseName(
+      version: note.appVersion, stamped: nil)
+    event.timestamp = note.timestamp
+    return event
+  }
+
   /// Capture a handled error with pipeline context tags.
   /// Use for failures that don't crash the app but should be diagnosable in Sentry.
   /// - Parameters:

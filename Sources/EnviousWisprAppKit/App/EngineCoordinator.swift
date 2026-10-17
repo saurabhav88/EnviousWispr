@@ -397,6 +397,14 @@ final class EngineCoordinator {
       return
     }
 
+    // 6c. #3849 — the shared engine lease is held (a Diagnostics speed test, or a decode still
+    // finishing for an abandoned take). Switching now would unload the engine under it. The
+    // lease's release pokes this coordinator, which re-runs every gate.
+    if deps.isEngineHeld() {
+      markBlocked(.pipelineActive)
+      return
+    }
+
     // 7. Perform the (mechanical, nonthrowing) switch under the held gate.
     let deferred = deferStart != nil
     let deferMs = deferStart.map { Self.elapsedMs(since: $0) } ?? 0

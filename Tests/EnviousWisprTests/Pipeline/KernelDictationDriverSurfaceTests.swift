@@ -78,6 +78,15 @@ import Testing
 
     // MARK: 2. currentSessionConfig reads context.config
 
+    @Test("#3849: an engine without a Whisper park returns no receipt and ignores unpark")
+    func nonWhisperDriverParkIsNoOp() async {
+      let driver = makeDriver()
+      let before = driver.engineReadiness
+      #expect(await driver.parkEngine() == nil)
+      await driver.unparkEngine()
+      #expect(driver.engineReadiness == before, "Parakeet's engine is untouched")
+    }
+
     @Test("currentSessionConfig returns nil before any session")
     func currentSessionConfigNilBeforeSession() {
       let driver = makeDriver()
